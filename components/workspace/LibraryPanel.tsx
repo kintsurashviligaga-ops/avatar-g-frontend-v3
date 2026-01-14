@@ -38,7 +38,7 @@ const LibraryPanel: React.FC = () => {
     return acc
   }, {} as Record<AssetType, typeof assets>)
 
-  const handleDragStart = (e: React.DragEvent, assetId: string) => {
+  const handleDragStart = (e: React.DragEvent<HTMLDivElement>, assetId: string) => {
     e.dataTransfer.setData('assetId', assetId)
   }
 
@@ -85,30 +85,34 @@ const LibraryPanel: React.FC = () => {
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: index * 0.05 }}
-                      draggable
-                      onDragStart={(e) => handleDragStart(e, asset.id)}
                     >
-                      <Card hover className="cursor-move">
-                        <div className="flex items-start justify-between mb-3">
-                          <div className="flex-1">
-                            <h5 className="text-sm font-medium text-silver mb-1">{asset.title}</h5>
-                            <p className="text-xs text-silver/50">{formatDate(asset.createdAt)}</p>
+                      <div
+                        draggable
+                        onDragStart={(e) => handleDragStart(e, asset.id)}
+                        className="cursor-move"
+                      >
+                        <Card hover>
+                          <div className="flex items-start justify-between mb-3">
+                            <div className="flex-1">
+                              <h5 className="text-sm font-medium text-silver mb-1">{asset.title}</h5>
+                              <p className="text-xs text-silver/50">{formatDate(asset.createdAt)}</p>
+                            </div>
+                            <button className="text-silver/50 hover:text-silver transition-colors">
+                              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
+                              </svg>
+                            </button>
                           </div>
-                          <button className="text-silver/50 hover:text-silver transition-colors">
-                            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
-                            </svg>
-                          </button>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Badge variant="default" className="text-xs">
-                            {type}
-                          </Badge>
-                          {asset.sizeLabel && (
-                            <span className="text-xs text-silver/40">{asset.sizeLabel}</span>
-                          )}
-                        </div>
-                      </Card>
+                          <div className="flex items-center gap-2">
+                            <Badge variant="default" className="text-xs">
+                              {type}
+                            </Badge>
+                            {asset.sizeLabel && (
+                              <span className="text-xs text-silver/40">{asset.sizeLabel}</span>
+                            )}
+                          </div>
+                        </Card>
+                      </div>
                     </motion.div>
                   ))}
                 </div>
