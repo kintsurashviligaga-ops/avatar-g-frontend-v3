@@ -27,8 +27,8 @@ function SplashScreen({ onComplete }: { onComplete: () => void }) {
           transition={{ duration: 0.5 }}
           className="mb-6"
         >
-          <div className="w-24 h-24 mx-auto rounded-2xl bg-gradient-to-br from-midnight-blue to-deep-navy flex items-center justify-center border border-silver/20 shadow-2xl">
-            <span className="text-4xl font-bold text-silver">A</span>
+          <div className="w-20 h-20 md:w-24 md:h-24 mx-auto rounded-2xl bg-gradient-to-br from-midnight-blue to-deep-navy flex items-center justify-center border border-silver/20 shadow-2xl">
+            <span className="text-3xl md:text-4xl font-bold text-silver">A</span>
           </div>
         </motion.div>
         
@@ -36,7 +36,7 @@ function SplashScreen({ onComplete }: { onComplete: () => void }) {
           initial={{ y: 20, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           transition={{ delay: 0.2, duration: 0.5 }}
-          className="text-2xl font-bold text-silver mb-2"
+          className="text-xl md:text-2xl font-bold text-silver mb-2"
         >
           Avatar G
         </motion.h1>
@@ -45,7 +45,7 @@ function SplashScreen({ onComplete }: { onComplete: () => void }) {
           initial={{ y: 20, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           transition={{ delay: 0.3, duration: 0.5 }}
-          className="text-silver/50 text-sm"
+          className="text-silver/50 text-xs md:text-sm"
         >
           Neural Ecosystem Initializing...
         </motion.p>
@@ -92,7 +92,7 @@ function WorkspaceContent() {
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                className="flex-1 flex items-center justify-center p-8"
+                className="flex-1 flex overflow-hidden"
               >
                 <ServiceGrid />
               </motion.div>
@@ -102,7 +102,7 @@ function WorkspaceContent() {
                 initial={{ opacity: 0, x: 20 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -20 }}
-                className="flex-1 flex"
+                className="flex-1 flex overflow-hidden"
               >
                 <ChatPanel />
               </motion.div>
@@ -130,4 +130,4 @@ export default function HomePage() {
       )}
     </>
   )
-}
+                         }
