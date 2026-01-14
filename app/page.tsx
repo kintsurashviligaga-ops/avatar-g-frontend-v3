@@ -1,4 +1,4 @@
-use client'
+'use client'
 
 import { useState } from 'react'
 
@@ -77,7 +77,7 @@ export default function HomePage() {
           <p className="text-sm text-[#C0C0C0]/50">Select an AI module to begin</p>
         </div>
 
-        {/* Services List - Vertical Stack */}
+        {/* Services List */}
         <div className="space-y-3 max-w-md mx-auto">
           {services.map((service) => (
             <button
@@ -86,18 +86,13 @@ export default function HomePage() {
               className="w-full bg-white/5 backdrop-blur-md border border-[#C0C0C0]/10 rounded-xl p-4 text-left active:bg-white/10 transition-all hover:border-[#C0C0C0]/20"
             >
               <div className="flex items-center gap-3">
-                {/* Icon */}
                 <div className="w-12 h-12 rounded-lg bg-white/10 backdrop-blur-sm border border-[#C0C0C0]/10 flex items-center justify-center flex-shrink-0">
                   <span className="text-2xl">{service.icon}</span>
                 </div>
-                
-                {/* Text */}
                 <div className="flex-1 min-w-0">
                   <h3 className="text-sm font-bold text-[#C0C0C0] truncate">{service.title}</h3>
                   <p className="text-xs text-[#C0C0C0]/50 truncate">{service.subtitle}</p>
                 </div>
-                
-                {/* Arrow */}
                 <svg className="w-5 h-5 text-[#C0C0C0]/30 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                 </svg>
@@ -106,7 +101,7 @@ export default function HomePage() {
           ))}
         </div>
 
-        {/* Credits Info */}
+        {/* Credits Widget */}
         <div className="mt-8 max-w-md mx-auto">
           <div className="bg-gradient-to-br from-blue-900/20 to-purple-900/20 backdrop-blur-sm border border-[#C0C0C0]/10 rounded-xl p-4">
             <div className="flex items-center justify-between">
