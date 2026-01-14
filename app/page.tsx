@@ -114,9 +114,3 @@ export default function V2Page() {
     </div>
   )
 }
-Deploy:
-mkdir -p app/v2
-# create the file above in app/v2/page.tsx
-git add app/v2/page.tsx
-git commit -m "feat: add /v2 route with inline styles - no cache possible"
-git push origin main
