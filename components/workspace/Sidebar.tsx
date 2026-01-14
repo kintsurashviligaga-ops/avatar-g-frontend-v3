@@ -121,10 +121,6 @@ const Sidebar: React.FC = () => {
         assetId: asset.id,
         status: 'processing',
       })
-      
-      setTimeout(() => {
-        // Toast would show here
-      }, 100)
     }
   }
 
@@ -136,7 +132,7 @@ const Sidebar: React.FC = () => {
     <motion.aside
       initial={{ x: -20, opacity: 0 }}
       animate={{ x: 0, opacity: 1 }}
-      className="w-72 glass-panel border-r border-silver/10 flex flex-col relative z-10"
+      className="hidden md:flex w-64 lg:w-72 glass-panel border-r border-silver/10 flex-col relative z-10"
     >
       <div className="p-4 border-b border-silver/10">
         <h2 className="text-xs font-semibold text-silver/60 uppercase tracking-wider">Services</h2>
@@ -159,25 +155,25 @@ const Sidebar: React.FC = () => {
           >
             <div className={`absolute inset-0 bg-gradient-to-br ${service.accent} opacity-0 group-hover:opacity-100 transition-opacity duration-300`}></div>
             
-            <div className="relative flex items-center gap-3 px-4 py-3">
-              <span className="text-2xl">{service.icon}</span>
-              <div className="flex-1 text-left">
-                <p className="text-sm font-medium text-silver">{service.title}</p>
-                <p className="text-xs text-silver/50">{service.subtitle}</p>
+            <div className="relative flex items-center gap-2 px-3 py-2.5">
+              <span className="text-xl flex-shrink-0">{service.icon}</span>
+              <div className="flex-1 text-left min-w-0">
+                <p className="text-xs font-medium text-silver truncate">{service.title}</p>
+                <p className="text-[10px] text-silver/50 truncate">{service.subtitle}</p>
               </div>
               {activeService === service.key && (
-                <div className="w-2 h-2 rounded-full bg-silver"></div>
+                <div className="w-1.5 h-1.5 rounded-full bg-silver flex-shrink-0"></div>
               )}
             </div>
           </motion.button>
         ))}
       </nav>
 
-      <div className="p-4 border-t border-silver/10 space-y-3">
-        <div className="glass-panel rounded-lg p-4">
-          <p className="text-xs font-semibold text-silver/70 mb-2">Neural Credits</p>
-          <p className="text-2xl font-bold text-silver mb-3">1,250</p>
-          <button className="w-full glass-card border-silver/20 text-silver hover:bg-white/10 text-xs font-medium py-2 rounded-lg transition-all">
+      <div className="p-3 border-t border-silver/10">
+        <div className="glass-panel rounded-lg p-3">
+          <p className="text-[10px] font-semibold text-silver/70 mb-1.5">Neural Credits</p>
+          <p className="text-xl font-bold text-silver mb-2">1,250</p>
+          <button className="w-full glass-card border-silver/20 text-silver hover:bg-white/10 text-[10px] font-medium py-1.5 rounded-lg transition-all">
             Purchase Credits
           </button>
         </div>
