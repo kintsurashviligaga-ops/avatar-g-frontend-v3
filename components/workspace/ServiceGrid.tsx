@@ -1,61 +1,64 @@
 'use client'
 
-import React from 'react'
-import { motion } from 'framer-motion'
-import { useWorkspace } from './WorkspaceProvider'
-import { services } from './Sidebar'
+import { useRouter } from 'next/navigation'
 
-const ServiceGrid: React.FC = () => {
-  const { setActiveService } = useWorkspace()
+const services = [
+  { id: 'voice-lab', label: 'Voice Lab', subtitle: 'AI voice synthesis', path: '/voice-lab' },
+  { id: 'avatar-builder', label: 'Avatar Builder', subtitle: 'Digital personas', path: '/avatar-builder' },
+  { id: 'image-architect', label: 'Image Architect', subtitle: 'Visual creation', path: '/image-architect' },
+  { id: 'music-studio', label: 'Music Studio', subtitle: 'Audio composition', path: '/music-studio' },
+  { id: 'video-cine-lab', label: 'Video Cine-Lab', subtitle: 'AI filmmaking', path: '/video-cine-lab' },
+  { id: 'game-forge', label: 'Game Forge', subtitle: 'World builder', path: '/game-forge' },
+  { id: 'ai-production', label: 'AI Production', subtitle: 'Assembly pipeline', path: '/ai-production' },
+  { id: 'business-agent', label: 'Business Agent', subtitle: 'Strategy intelligence', path: '/business-agent' },
+]
+
+export default function ServiceGrid() {
+  const router = useRouter()
 
   return (
-    <div className="w-full h-full overflow-y-auto bg-obsidian">
-      <div className="w-full px-4 py-6">
-        {/* Header */}
-        <div className="text-center mb-6">
-          <h2 className="text-2xl font-bold text-silver mb-2">
-            Choose Your Service
-          </h2>
-          <p className="text-sm text-silver/50">
-            Select an AI module to begin
-          </p>
-        </div>
+    <div style={{ padding: '0 20px 100px' }}>
+      <h2
+        style={{
+          fontSize: '20px',
+          fontWeight: '600',
+          color: '#ffffff',
+          marginBottom: '16px',
+          letterSpacing: '-0.01em',
+        }}
+      >
+        All Services
+      </h2>
 
-        {/* Services List - Mobile Only */}
-        <div className="space-y-3 max-w-md mx-auto">
-          {services.map((service, i) => (
-            <button
-              key={service.key}
-              onClick={() => setActiveService(service.key)}
-              className="w-full glass-card rounded-xl p-4 text-left active:bg-white/10 transition-all"
-            >
-              <div className="flex items-center gap-3">
-                {/* Icon */}
-                <div className="w-12 h-12 rounded-lg glass-panel flex items-center justify-center flex-shrink-0">
-                  <span className="text-2xl">{service.icon}</span>
-                </div>
-                
-                {/* Text */}
-                <div className="flex-1 min-w-0">
-                  <h3 className="text-sm font-bold text-silver truncate">
-                    {service.title}
-                  </h3>
-                  <p className="text-xs text-silver/50 truncate">
-                    {service.subtitle}
-                  </p>
-                </div>
-                
-                {/* Arrow */}
-                <svg className="w-5 h-5 text-silver/30 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                </svg>
-              </div>
-            </button>
-          ))}
-        </div>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(2, 1fr)',
+          gap: '12px',
+        }}
+      >
+        {services.map((service) => (
+          <button
+            key={service.id}
+            onClick={() => router.push(service.path)}
+            style={{
+              padding: '20px 16px',
+              background: 'rgba(255, 255, 255, 0.03)',
+              border: '1px solid rgba(192, 192, 192, 0.15)',
+              borderRadius: '16px',
+              backdropFilter: 'blur(16px)',
+              cursor: 'pointer',
+              transition: 'all 0.2s ease',
+              textAlign: 'left',
+            }}
+          >
+            <div style={{ fontSize: '14px', fontWeight: '600', color: '#ffffff', marginBottom: '4px' }}>
+              {service.label}
+            </div>
+            <div style={{ fontSize: '11px', color: 'rgba(192, 192, 192, 0.6)' }}>{service.subtitle}</div>
+          </button>
+        ))}
       </div>
     </div>
   )
 }
-
-export default ServiceGrid
