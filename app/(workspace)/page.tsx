@@ -34,7 +34,9 @@ export default function HomePage() {
           <div style={{ background: 'linear-gradient(135deg, rgba(139, 92, 246, 0.1), rgba(59, 130, 246, 0.1))', backdropFilter: 'blur(20px)', border: '1px solid rgba(139, 92, 246, 0.2)', borderRadius: '9999px', boxShadow: '0 0 40px rgba(139, 92, 246, 0.2)', display: 'flex', alignItems: 'center', padding: '4px' }}>
             <input type="text" placeholder="Ask anything…" style={{ flex: 1, padding: '14px 20px', fontSize: '16px', color: '#fff', background: 'transparent', border: 'none', outline: 'none' }} />
             <button style={{ width: '44px', height: '44px', borderRadius: '50%', background: 'linear-gradient(135deg, #8B5CF6, #3B82F6)', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" /></svg>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2">
+                <path d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+              </svg>
             </button>
           </div>
         </div>
@@ -49,7 +51,11 @@ export default function HomePage() {
             { label: 'Text', path: '/ai-production' },
             { label: 'Voice', path: '/voice-lab' },
           ].map((item) => (
-            <button key={item.path} onClick={() => router.push(item.path)} style={{ padding: '20px 12px', background: 'rgba(26, 26, 46, 0.6)', backdropFilter: 'blur(20px)', border: '1px solid rgba(255, 255, 255, 0.1)', borderRadius: '16px', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', color: '#fff', fontSize: '13px', fontWeight: '500' }}>
+            <button 
+              key={item.path} 
+              onClick={() => router.push(item.path)} 
+              style={{ padding: '20px 12px', background: 'rgba(26, 26, 46, 0.6)', backdropFilter: 'blur(20px)', border: '1px solid rgba(255, 255, 255, 0.1)', borderRadius: '16px', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', color: '#fff', fontSize: '13px', fontWeight: '500' }}
+            >
               <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'rgba(139, 92, 246, 0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>●</div>
               {item.label}
             </button>
@@ -64,7 +70,11 @@ export default function HomePage() {
         </h3>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '12px' }}>
           {services.map((service) => (
-            <button key={service.id} onClick={() => router.push(service.path)} style={{ padding: '20px 16px', background: 'rgba(26, 26, 46, 0.6)', backdropFilter: 'blur(20px)', border: '1px solid rgba(255, 255, 255, 0.1)', borderRadius: '20px', cursor: 'pointer', textAlign: 'left', position: 'relative', overflow: 'hidden' }}>
+            <button 
+              key={service.id} 
+              onClick={() => router.push(service.path)} 
+              style={{ padding: '20px 16px', background: 'rgba(26, 26, 46, 0.6)', backdropFilter: 'blur(20px)', border: '1px solid rgba(255, 255, 255, 0.1)', borderRadius: '20px', cursor: 'pointer', textAlign: 'left', position: 'relative', overflow: 'hidden' }}
+            >
               <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '2px', background: 'linear-gradient(90deg, #8B5CF6, #3B82F6)', opacity: 0.6 }} />
               <h4 style={{ fontSize: '16px', fontWeight: '600', color: '#fff', marginBottom: '4px' }}>{service.title}</h4>
               <p style={{ fontSize: '13px', color: 'rgba(255, 255, 255, 0.6)', margin: 0 }}>{service.subtitle}</p>
@@ -82,12 +92,33 @@ export default function HomePage() {
           { label: 'Chats' },
           { label: 'Profile' },
         ].map((item, i) => (
-          <button key={i} style={{ flex: item.center ? 0 : 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', background: item.center ? 'linear-gradient(135deg, #8B5CF6, #3B82F6)' : 'transparent', width: item.center ? '56px' : 'auto', height: item.center ? '56px' : 'auto', borderRadius: item.center ? '50%' : '0', border: 'none', cursor: 'pointer', position: 'relative', top: item.center ? '-12px' : '0', boxShadow: item.center ? '0 8px 28px rgba(139, 92, 246, 0.4)' : 'none', justifyContent: 'center' }}>
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={item.center ? '#fff' : item.active ? '#8B5CF6' : '#6B7280'}><circle cx="12" cy="12" r="10" /></svg>
+          <button 
+            key={i} 
+            style={{ 
+              flex: item.center ? 0 : 1, 
+              display: 'flex', 
+              flexDirection: 'column', 
+              alignItems: 'center', 
+              gap: '4px', 
+              background: item.center ? 'linear-gradient(135deg, #8B5CF6, #3B82F6)' : 'transparent', 
+              width: item.center ? '56px' : 'auto', 
+              height: item.center ? '56px' : 'auto', 
+              borderRadius: item.center ? '50%' : '0', 
+              border: 'none', 
+              cursor: 'pointer', 
+              position: 'relative', 
+              top: item.center ? '-12px' : '0', 
+              boxShadow: item.center ? '0 8px 28px rgba(139, 92, 246, 0.4)' : 'none', 
+              justifyContent: 'center' 
+            }}
+          >
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={item.center ? '#fff' : item.active ? '#8B5CF6' : '#6B7280'} strokeWidth="2">
+              <circle cx="12" cy="12" r="10" />
+            </svg>
             {!item.center && <span style={{ fontSize: '11px', color: item.active ? '#8B5CF6' : '#6B7280', fontWeight: item.active ? '600' : '500' }}>{item.label}</span>}
           </button>
         ))}
       </nav>
     </div>
   )
-}
+                            }
