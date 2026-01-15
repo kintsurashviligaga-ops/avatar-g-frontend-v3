@@ -8,21 +8,21 @@ export default function WorkspacePage() {
   const [message, setMessage] = useState('')
 
   const services = [
-    { id: 'voice', label: 'Voice Lab', subtitle: '🎙️ Voice synthesis', path: '/voice-lab' },
-    { id: 'avatar', label: 'Avatar Builder', subtitle: '👤 Digital personas', path: '/avatar-builder' },
-    { id: 'image', label: 'Image Architect', subtitle: '🖼️ Visual creation', path: '/image-architect' },
-    { id: 'music', label: 'Music Studio', subtitle: '🎵 Audio composition', path: '/music-studio' },
-    { id: 'video', label: 'Video Cine-Lab', subtitle: '🎬 AI filmmaking', path: '/video-cine-lab' },
-    { id: 'game', label: 'Game Forge', subtitle: '🎮 World builder', path: '/game-forge' },
-    { id: 'production', label: 'AI Production', subtitle: '⚡ Assembly pipeline', path: '/ai-production' },
-    { id: 'business', label: 'Business Agent', subtitle: '💼 Strategy intelligence', path: '/business-agent' },
+    { id: 'voice', label: 'Voice Lab', emoji: '🎙️', subtitle: 'Voice synthesis', path: '/voice-lab' },
+    { id: 'avatar', label: 'Avatar Builder', emoji: '👤', subtitle: 'Digital personas', path: '/avatar-builder' },
+    { id: 'image', label: 'Image Architect', emoji: '🖼️', subtitle: 'Visual creation', path: '/image-architect' },
+    { id: 'music', label: 'Music Studio', emoji: '🎵', subtitle: 'Audio composition', path: '/music-studio' },
+    { id: 'video', label: 'Video Cine-Lab', emoji: '🎬', subtitle: 'AI filmmaking', path: '/video-cine-lab' },
+    { id: 'game', label: 'Game Forge', emoji: '🎮', subtitle: 'World builder', path: '/game-forge' },
+    { id: 'production', label: 'AI Production', emoji: '⚡', subtitle: 'Assembly pipeline', path: '/ai-production' },
+    { id: 'business', label: 'Business Agent', emoji: '💼', subtitle: 'Strategy intelligence', path: '/business-agent' },
   ]
 
   return (
     <div
       style={{
         minHeight: '100vh',
-        background: 'linear-gradient(180deg, #1a1a2e 0%, #16213e 50%, #0f1419 100%)',
+        background: 'linear-gradient(180deg, rgb(26, 26, 46) 0%, rgb(22, 33, 62) 50%, rgb(15, 20, 25) 100%)',
       }}
     >
       {/* TOP BAR */}
@@ -32,8 +32,9 @@ export default function WorkspacePage() {
           top: 0,
           zIndex: 50,
           padding: '16px 20px',
-          background: 'rgba(26, 26, 46, 0.95)',
+          backgroundColor: 'rgba(26, 26, 46, 0.95)',
           backdropFilter: 'blur(24px)',
+          WebkitBackdropFilter: 'blur(24px)',
           borderBottom: '1px solid rgba(139, 92, 246, 0.1)',
         }}
       >
@@ -43,20 +44,20 @@ export default function WorkspacePage() {
               width: '40px',
               height: '40px',
               borderRadius: '12px',
-              background: 'linear-gradient(135deg, #8B5CF6, #A78BFA)',
+              background: 'linear-gradient(135deg, rgb(139, 92, 246), rgb(167, 139, 250))',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               fontSize: '20px',
-              fontWeight: '700',
-              color: '#ffffff',
+              fontWeight: 700,
+              color: 'rgb(255, 255, 255)',
               boxShadow: '0 4px 16px rgba(139, 92, 246, 0.3)',
             }}
           >
             G
           </div>
 
-          <h1 style={{ fontSize: '18px', fontWeight: '600', color: '#ffffff', margin: 0 }}>Avatar G</h1>
+          <h1 style={{ fontSize: '18px', fontWeight: 600, color: 'rgb(255, 255, 255)', margin: 0 }}>Avatar G</h1>
 
           <div style={{ position: 'relative' }}>
             <div
@@ -64,7 +65,7 @@ export default function WorkspacePage() {
                 width: '40px',
                 height: '40px',
                 borderRadius: '50%',
-                background: 'linear-gradient(135deg, #A78BFA, #C4B5FD)',
+                background: 'linear-gradient(135deg, rgb(167, 139, 250), rgb(196, 181, 253))',
                 border: '2px solid rgba(139, 92, 246, 0.3)',
               }}
             />
@@ -76,8 +77,8 @@ export default function WorkspacePage() {
                 width: '12px',
                 height: '12px',
                 borderRadius: '50%',
-                background: '#10B981',
-                border: '3px solid #1a1a2e',
+                backgroundColor: 'rgb(16, 185, 129)',
+                border: '3px solid rgb(26, 26, 46)',
               }}
             />
           </div>
@@ -93,6 +94,7 @@ export default function WorkspacePage() {
             padding: '16px 20px',
             background: 'linear-gradient(135deg, rgba(139, 92, 246, 0.15), rgba(167, 139, 250, 0.15))',
             backdropFilter: 'blur(20px)',
+            WebkitBackdropFilter: 'blur(20px)',
             borderRadius: '24px',
             border: '1px solid rgba(139, 92, 246, 0.2)',
             boxShadow: '0 8px 32px rgba(139, 92, 246, 0.2)',
@@ -110,8 +112,8 @@ export default function WorkspacePage() {
               flex: 1,
               padding: '8px 0',
               fontSize: '17px',
-              color: '#ffffff',
-              background: 'transparent',
+              color: 'rgb(255, 255, 255)',
+              backgroundColor: 'transparent',
               border: 'none',
               outline: 'none',
             }}
@@ -121,7 +123,7 @@ export default function WorkspacePage() {
               width: '40px',
               height: '40px',
               borderRadius: '50%',
-              background: 'linear-gradient(135deg, #FBBF24, #F59E0B)',
+              background: 'linear-gradient(135deg, rgb(251, 191, 36), rgb(245, 158, 11))',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -139,7 +141,7 @@ export default function WorkspacePage() {
         <h2
           style={{
             fontSize: '13px',
-            fontWeight: '600',
+            fontWeight: 600,
             color: 'rgba(255, 255, 255, 0.5)',
             marginBottom: '16px',
             textTransform: 'uppercase',
@@ -156,8 +158,9 @@ export default function WorkspacePage() {
               onClick={() => router.push(service.path)}
               style={{
                 padding: '24px 20px',
-                background: 'rgba(139, 92, 246, 0.08)',
+                backgroundColor: 'rgba(139, 92, 246, 0.08)',
                 backdropFilter: 'blur(20px)',
+                WebkitBackdropFilter: 'blur(20px)',
                 border: '1px solid rgba(139, 92, 246, 0.15)',
                 borderRadius: '20px',
                 cursor: 'pointer',
@@ -166,7 +169,8 @@ export default function WorkspacePage() {
                 boxShadow: '0 4px 16px rgba(0, 0, 0, 0.2)',
               }}
             >
-              <div style={{ fontSize: '16px', fontWeight: '600', color: '#ffffff', marginBottom: '6px' }}>
+              <div style={{ fontSize: '32px', marginBottom: '8px' }}>{service.emoji}</div>
+              <div style={{ fontSize: '16px', fontWeight: 600, color: 'rgb(255, 255, 255)', marginBottom: '4px' }}>
                 {service.label}
               </div>
               <div style={{ fontSize: '13px', color: 'rgba(255, 255, 255, 0.5)' }}>{service.subtitle}</div>
@@ -183,8 +187,9 @@ export default function WorkspacePage() {
           left: 0,
           right: 0,
           height: '90px',
-          background: 'rgba(26, 26, 46, 0.95)',
+          backgroundColor: 'rgba(26, 26, 46, 0.95)',
           backdropFilter: 'blur(24px)',
+          WebkitBackdropFilter: 'blur(24px)',
           borderTop: '1px solid rgba(139, 92, 246, 0.1)',
           display: 'flex',
           alignItems: 'center',
@@ -194,11 +199,11 @@ export default function WorkspacePage() {
         }}
       >
         {[
-          { id: 'home', label: 'Home', icon: '🏠', active: true },
-          { id: 'explore', label: 'Explore', icon: '🔍' },
-          { id: 'create', label: '', icon: '➕', center: true },
-          { id: 'chats', label: 'Chats', icon: '💬' },
-          { id: 'profile', label: 'Profile', icon: '👤' },
+          { id: 'home', label: 'Home', emoji: '🏠', active: true },
+          { id: 'explore', label: 'Explore', emoji: '🔍', active: false },
+          { id: 'create', label: '', emoji: '➕', center: true },
+          { id: 'chats', label: 'Chats', emoji: '💬', active: false },
+          { id: 'profile', label: 'Profile', emoji: '👤', active: false },
         ].map((item) => (
           <button
             key={item.id}
@@ -209,7 +214,7 @@ export default function WorkspacePage() {
               alignItems: 'center',
               justifyContent: 'center',
               gap: '4px',
-              background: item.center ? 'linear-gradient(135deg, #8B5CF6, #A78BFA)' : 'transparent',
+              background: item.center ? 'linear-gradient(135deg, rgb(139, 92, 246), rgb(167, 139, 250))' : 'transparent',
               width: item.center ? '64px' : 'auto',
               height: item.center ? '64px' : 'auto',
               borderRadius: item.center ? '50%' : '0',
@@ -220,13 +225,13 @@ export default function WorkspacePage() {
               boxShadow: item.center ? '0 8px 28px rgba(139, 92, 246, 0.4)' : 'none',
             }}
           >
-            <span style={{ fontSize: item.center ? '28px' : '24px' }}>{item.icon}</span>
+            <span style={{ fontSize: item.center ? '28px' : '24px' }}>{item.emoji}</span>
             {!item.center && (
               <span
                 style={{
                   fontSize: '11px',
-                  color: item.active ? '#A78BFA' : 'rgba(255, 255, 255, 0.5)',
-                  fontWeight: item.active ? '600' : '500',
+                  color: item.active ? 'rgb(167, 139, 250)' : 'rgba(255, 255, 255, 0.5)',
+                  fontWeight: item.active ? 600 : 500,
                 }}
               >
                 {item.label}
@@ -237,4 +242,4 @@ export default function WorkspacePage() {
       </nav>
     </div>
   )
-              }
+}
