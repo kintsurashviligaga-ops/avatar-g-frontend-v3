@@ -15,9 +15,12 @@ export class APIClient {
   private async request(endpoint: string, options: RequestInit = {}) {
     const url = `${this.baseURL}${endpoint}`
     
-    const headers: HeadersInit = {
+    const headers: Record<string, string> = {
       'Content-Type': 'application/json',
-      ...options.headers,
+    }
+
+    if (options.headers) {
+      Object.assign(headers, options.headers)
     }
 
     if (this.token) {
