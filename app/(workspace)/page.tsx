@@ -18,13 +18,11 @@ export default function HomePage() {
 
   return (
     <div style={{ minHeight: '100vh', background: 'radial-gradient(ellipse at top, rgba(139, 92, 246, 0.15), transparent 50%), #0a0e14', paddingBottom: '100px' }}>
-      {/* Header */}
       <header style={{ position: 'sticky', top: 0, zIndex: 50, padding: '20px', background: 'rgba(10, 14, 20, 0.95)', backdropFilter: 'blur(20px)', borderBottom: '1px solid rgba(255, 255, 255, 0.1)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <h2 style={{ fontSize: '16px', fontWeight: '600', color: '#fff', margin: 0 }}>Home</h2>
         <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: 'linear-gradient(135deg, #8B5CF6, #3B82F6)', border: '2px solid rgba(255, 255, 255, 0.1)' }} />
       </header>
 
-      {/* Hero */}
       <div style={{ padding: '32px 20px' }}>
         <h1 style={{ fontSize: '32px', fontWeight: '700', color: '#fff', marginBottom: '24px', textAlign: 'center', letterSpacing: '-0.02em' }}>
           Hello, how can I help?
@@ -42,7 +40,6 @@ export default function HomePage() {
         </div>
       </div>
 
-      {/* Quick Actions */}
       <div style={{ padding: '0 20px 24px' }}>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px' }}>
           {[
@@ -63,7 +60,6 @@ export default function HomePage() {
         </div>
       </div>
 
-      {/* Services Grid */}
       <div style={{ padding: '0 20px' }}>
         <h3 style={{ fontSize: '14px', fontWeight: '600', color: 'rgba(255, 255, 255, 0.6)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '16px' }}>
           All Services
@@ -83,7 +79,6 @@ export default function HomePage() {
         </div>
       </div>
 
-      {/* Bottom Nav */}
       <nav style={{ position: 'fixed', bottom: 0, left: 0, right: 0, height: '80px', background: 'rgba(10, 14, 20, 0.95)', backdropFilter: 'blur(24px)', borderTop: '1px solid rgba(255, 255, 255, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'space-around', zIndex: 100 }}>
         {[
           { label: 'Home', active: true },
@@ -121,4 +116,4 @@ export default function HomePage() {
       </nav>
     </div>
   )
-                            }
+}
