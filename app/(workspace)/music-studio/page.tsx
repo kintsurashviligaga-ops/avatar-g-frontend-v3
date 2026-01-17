@@ -6,9 +6,6 @@ export default function MusicStudioPremium() {
   const [genre, setGenre] = useState('Alt Rock');
   const [mood, setMood] = useState('Energetic');
   const [voiceMode, setVoiceMode] = useState('AI');
-  const [visualEnabled, setVisualEnabled] = useState(true);
-  const [visualStyle, setVisualStyle] = useState('Cyberpunk');
-  const [advancedOpen, setAdvancedOpen] = useState(false);
   const [lyrics, setLyrics] = useState("Chasing dreams, running through the night.\nA spark in the heart, burning so bright.");
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationProgress, setGenerationProgress] = useState(0);
@@ -19,7 +16,6 @@ export default function MusicStudioPremium() {
     setIsGenerating(true);
     setGenerationProgress(0);
     
-    // Simulate generation progress
     const interval = setInterval(() => {
       setGenerationProgress(prev => {
         if (prev >= 100) {
@@ -107,10 +103,13 @@ export default function MusicStudioPremium() {
         {/* Header */}
         <div className="page-header">
           <div className="header-top">
-            <button className="back-button glass-element neon-outline">← Back</button>
+            <button className="back-button glass-element neon-outline">
+              <span className="back-arrow">←</span>
+              <span>Back</span>
+            </button>
             <div className="credit-badge glass-element neon-outline">
               <span className="credit-icon">✦</span>
-              <span>100 Credits</span>
+              <span className="credit-text">100 Credits</span>
             </div>
           </div>
           
@@ -125,22 +124,25 @@ export default function MusicStudioPremium() {
             <button 
               className={`chip-button glass-element neon-outline ${genre === 'Alt Rock' ? 'active' : ''}`}
               onClick={() => setGenre('Alt Rock')}>
-              🎸 Alt Rock
+              <span className="chip-emoji">🎸</span>
+              <span>Alt Rock</span>
             </button>
             <button 
-              className={`chip-button glass-element neon-outline ${genre === 'Pop' ? 'active' : ''}`}
-              onClick={() => setGenre('Pop')}>
-              🎹 Pop
+              className={`chip-button glass-element neon-outline ${genre === 'Cello, Synth' ? 'active' : ''}`}
+              onClick={() => setGenre('Cello, Synth')}>
+              <span className="chip-emoji">🎹</span>
+              <span>Cello, Synth</span>
             </button>
             <button 
               className={`chip-button glass-element neon-outline ${mood === 'Energetic' ? 'active' : ''}`}
               onClick={() => setMood('Energetic')}>
-              ⚡ Energetic
+              <span className="chip-emoji">⚡</span>
+              <span>Energetic</span>
             </button>
           </div>
         </div>
 
-        {/* Lyrics Input */}
+        {/* Lyrics & Vision */}
         <div className="glass-card neon-outline section-card">
           <div className="card-header">
             <h3 className="section-title">Lyrics & Vision</h3>
@@ -148,7 +150,8 @@ export default function MusicStudioPremium() {
               className={`sync-button glass-element neon-outline ${isSyncing ? 'syncing' : ''}`}
               onClick={handleSmartSync}
               disabled={isSyncing}>
-              {isSyncing ? '⚡ Syncing...' : '✨ Smart Sync'}
+              <span className="sync-emoji">✨</span>
+              <span>{isSyncing ? 'Syncing...' : 'Smart Sync'}</span>
             </button>
           </div>
           <textarea
@@ -170,14 +173,14 @@ export default function MusicStudioPremium() {
               AI Voice
             </button>
             <button 
-              className={`mode-button glass-element neon-outline ${voiceMode === 'MY' ? 'active' : ''}`}
-              onClick={() => setVoiceMode('MY')}>
+              className={`mode-button glass-element neon-outline ${voiceMode === 'YOUR' ? 'active' : ''}`}
+              onClick={() => setVoiceMode('YOUR')}>
               Your Voice
             </button>
           </div>
 
           <div className="timeline-strip">
-            {['Intro', 'Verse', 'Chorus', 'Bridge', 'Outro'].map((segment, idx) => (
+            {['Intro', 'Verse', 'Chorus', 'Bridge', 'Outro'].map((segment) => (
               <button
                 key={segment}
                 className={`timeline-segment glass-element ${selectedSegment === segment ? 'active' : ''}`}
@@ -189,12 +192,11 @@ export default function MusicStudioPremium() {
           </div>
         </div>
 
-        {/* Equipment Preview */}
+        {/* Studio Equipment */}
         <div className="glass-card neon-outline section-card preview-card">
           <h3 className="section-title">Studio Equipment</h3>
           <div className="equipment-display">
             <div className="retro-equipment">
-              {/* Vintage tape reel icon representation */}
               <div className="tape-reel">
                 <div className={`reel-circle left-reel ${isGenerating ? 'spinning' : ''}`}>
                   <div className="reel-center" />
@@ -384,14 +386,17 @@ export default function MusicStudioPremium() {
         }
 
         .back-button {
-          padding: 8px 16px;
-          border-radius: 12px;
+          padding: 10px 18px;
+          border-radius: 14px;
           border: none;
           color: rgba(255, 255, 255, 0.9);
-          font-size: 14px;
-          font-weight: 500;
+          font-size: 15px;
+          font-weight: 600;
           cursor: pointer;
           transition: all 0.3s ease;
+          display: flex;
+          align-items: center;
+          gap: 6px;
         }
 
         .back-button:hover {
@@ -401,21 +406,29 @@ export default function MusicStudioPremium() {
             0 0 50px rgba(251, 146, 60, 0.3);
         }
 
+        .back-arrow {
+          font-size: 18px;
+        }
+
         .credit-badge {
-          padding: 8px 16px;
+          padding: 10px 18px;
           border-radius: 20px;
           border: none;
           display: flex;
           align-items: center;
-          gap: 6px;
+          gap: 8px;
           color: rgba(255, 255, 255, 0.95);
-          font-size: 14px;
+          font-size: 15px;
           font-weight: 600;
         }
 
         .credit-icon {
           color: #fbbf24;
-          font-size: 16px;
+          font-size: 18px;
+        }
+
+        .credit-text {
+          letter-spacing: 0.02em;
         }
 
         /* ============ ELECTRIC TYPOGRAPHY ============ */
@@ -460,10 +473,10 @@ export default function MusicStudioPremium() {
           opacity: 0;
         }
 
-        .section-card:nth-child(1) { animation-delay: 0.1s; }
-        .section-card:nth-child(2) { animation-delay: 0.2s; }
-        .section-card:nth-child(3) { animation-delay: 0.3s; }
-        .section-card:nth-child(4) { animation-delay: 0.4s; }
+        .section-card:nth-child(2) { animation-delay: 0.1s; }
+        .section-card:nth-child(3) { animation-delay: 0.2s; }
+        .section-card:nth-child(4) { animation-delay: 0.3s; }
+        .section-card:nth-child(5) { animation-delay: 0.4s; }
 
         @keyframes fadeInUp {
           from {
@@ -491,7 +504,7 @@ export default function MusicStudioPremium() {
         }
 
         .chip-button {
-          padding: 10px 18px;
+          padding: 11px 18px;
           border-radius: 16px;
           border: none;
           color: rgba(255, 255, 255, 0.85);
@@ -499,6 +512,13 @@ export default function MusicStudioPremium() {
           font-weight: 600;
           cursor: pointer;
           transition: all 0.3s ease;
+          display: flex;
+          align-items: center;
+          gap: 6px;
+        }
+
+        .chip-emoji {
+          font-size: 16px;
         }
 
         .chip-button:hover {
@@ -517,14 +537,21 @@ export default function MusicStudioPremium() {
         }
 
         .sync-button {
-          padding: 8px 16px;
-          border-radius: 12px;
+          padding: 9px 16px;
+          border-radius: 14px;
           border: none;
           color: rgba(255, 255, 255, 0.9);
-          font-size: 13px;
+          font-size: 14px;
           font-weight: 600;
           cursor: pointer;
           transition: all 0.3s ease;
+          display: flex;
+          align-items: center;
+          gap: 6px;
+        }
+
+        .sync-emoji {
+          font-size: 15px;
         }
 
         .sync-button:hover:not(:disabled) {
@@ -591,11 +618,11 @@ export default function MusicStudioPremium() {
 
         .mode-button {
           flex: 1;
-          padding: 12px;
+          padding: 13px;
           border-radius: 14px;
           border: none;
           color: rgba(255, 255, 255, 0.7);
-          font-size: 14px;
+          font-size: 15px;
           font-weight: 600;
           cursor: pointer;
           transition: all 0.3s ease;
@@ -631,13 +658,17 @@ export default function MusicStudioPremium() {
           border: none;
           cursor: pointer;
           transition: all 0.3s ease;
+          background: rgba(255, 255, 255, 0.06);
+          backdrop-filter: blur(20px);
         }
 
         .timeline-segment:hover {
           transform: translateY(-2px);
+          background: rgba(255, 255, 255, 0.08);
         }
 
         .timeline-segment.active {
+          background: rgba(255, 255, 255, 0.1);
           box-shadow: 
             0 0 20px rgba(34, 211, 238, 0.4),
             0 0 30px rgba(251, 146, 60, 0.3);
@@ -887,6 +918,7 @@ export default function MusicStudioPremium() {
           position: relative;
           z-index: 1;
           transition: transform 0.3s ease;
+          font-size: 20px;
         }
 
         .primary-cta:hover .cta-icon {
