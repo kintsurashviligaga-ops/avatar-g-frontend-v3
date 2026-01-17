@@ -112,7 +112,7 @@ export default function MusicStudioPage() {
       // Call backend
       const result = await apiClient.generateMusic({
         prompt: `${lyrics}\n\nStyle: ${genre}, Mood: ${mood}\n${description}`,
-        duration: 120,
+        duration: 30,
         style: genre.toLowerCase(),
       })
 
@@ -464,4 +464,4 @@ export default function MusicStudioPage() {
       `}</style>
     </div>
   )
-    }
+                        }
