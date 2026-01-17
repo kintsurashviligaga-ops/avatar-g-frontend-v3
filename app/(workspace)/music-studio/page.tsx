@@ -10,10 +10,28 @@ export default function MusicStudioPremium() {
   const [visualStyle, setVisualStyle] = useState('Cyberpunk');
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [syncGlow, setSyncGlow] = useState(false);
+  const [lyrics, setLyrics] = useState("Chasing dreams, running through the night.\nA spark in the heart, burning so bright.");
 
   const handleSmartSync = () => {
     setSyncGlow(true);
     setTimeout(() => setSyncGlow(false), 2800);
+    alert('Smart Sync activated! ✨');
+  };
+
+  const handleGenerate = () => {
+    alert('🎵 Generating track...\n\nBackend integration coming soon!');
+  };
+
+  const handleMelodyCapture = () => {
+    alert('🎤 Melody capture coming soon!');
+  };
+
+  const handleExploreGenres = () => {
+    alert('🎸 Genre explorer coming soon!');
+  };
+
+  const clearLyrics = () => {
+    setLyrics('');
   };
 
   // Stable star particles (no random jitter per render)
@@ -76,7 +94,9 @@ export default function MusicStudioPremium() {
           <div className="section">
             <div className="section-header">
               <h3 className="section-title">Project Setup</h3>
-              <button className="explore-button">Explore Genres →</button>
+              <button className="explore-button" onClick={handleExploreGenres}>
+                Explore Genres →
+              </button>
             </div>
             <div className="chips-container">
               <div className="chip chip-purple">
@@ -128,9 +148,10 @@ export default function MusicStudioPremium() {
               <textarea
                 className="lyrics-textarea"
                 placeholder="Enter your lyrics or musical idea..."
-                defaultValue="Chasing dreams, running through the night.&#10;A spark in the heart, burning so bright."
+                value={lyrics}
+                onChange={(e) => setLyrics(e.target.value)}
               />
-              <button className="clear-button">✕</button>
+              <button className="clear-button" onClick={clearLyrics}>✕</button>
             </div>
           </div>
 
@@ -146,13 +167,15 @@ export default function MusicStudioPremium() {
 
           {/* Melody & Voice Section */}
           <div className="section melody-section">
-            <button className="melody-button">
+            <button className="melody-button" onClick={handleMelodyCapture}>
               <span className="melody-icon">🎤</span>
               Capture My Melody
             </button>
             <div className="voice-info">
               <p className="voice-connected">Connected: Giorgi Voice v1</p>
-              <a href="#" className="voice-link">Go to Voice Lab →</a>
+              <a href="#" className="voice-link" onClick={(e) => { e.preventDefault(); alert('Voice Lab coming soon!'); }}>
+                Go to Voice Lab →
+              </a>
             </div>
           </div>
 
@@ -265,7 +288,7 @@ export default function MusicStudioPremium() {
           </div>
 
           {/* Generate Button */}
-          <button className="generate-button">
+          <button className="generate-button" onClick={handleGenerate}>
             <span className="generate-content">
               Generate Track
               <span className="generate-arrow">→</span>
@@ -275,7 +298,7 @@ export default function MusicStudioPremium() {
       </div>
 
       {/* Floating Chat Button */}
-      <button className="chat-button">💬</button>
+      <button className="chat-button" onClick={() => alert('💬 Chat coming soon!')}>💬</button>
 
       <style jsx>{`
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
@@ -711,6 +734,7 @@ export default function MusicStudioPremium() {
           color: rgba(192, 132, 252, 0.6);
           font-size: 12px;
           text-decoration: underline;
+          cursor: pointer;
           transition: color 0.3s ease;
         }
 
@@ -1222,4 +1246,4 @@ export default function MusicStudioPremium() {
       `}</style>
     </div>
   );
-}
+      }
