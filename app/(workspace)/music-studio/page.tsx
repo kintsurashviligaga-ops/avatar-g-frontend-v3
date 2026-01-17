@@ -1,8 +1,9 @@
 'use client'
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 
 export default function MusicStudioPremium() {
+  const [mounted, setMounted] = useState(false);
   const [genre, setGenre] = useState('Alt Rock');
   const [instruments, setInstruments] = useState('Cello, Synth');
   const [mood, setMood] = useState('Energetic');
@@ -19,6 +20,11 @@ export default function MusicStudioPremium() {
   const [visualEnabled, setVisualEnabled] = useState(true);
   const [visualStyle, setVisualStyle] = useState('Cyberpunk');
   const [advancedOpen, setAdvancedOpen] = useState(false);
+
+  // Ensure client-side mounting
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://avatarg-backend.vercel.app';
 
@@ -90,8 +96,10 @@ export default function MusicStudioPremium() {
     }
   };
 
+  // Simplified particles - only generate on client
   const starParticles = useMemo(() => {
-    return [...Array(150)].map((_, i) => ({
+    if (!mounted) return [];
+    return [...Array(80)].map((_, i) => ({
       id: i,
       size: (i % 5) * 0.5 + 0.5,
       left: ((i * 47) % 100),
@@ -100,10 +108,11 @@ export default function MusicStudioPremium() {
       duration: (i % 12) * 2 + 15,
       delay: (i % 10) * 0.3
     }));
-  }, []);
+  }, [mounted]);
 
   const particleGlow = useMemo(() => {
-    return [...Array(30)].map((_, i) => ({
+    if (!mounted) return [];
+    return [...Array(20)].map((_, i) => ({
       id: i,
       size: (i % 4) * 20 + 40,
       left: ((i * 73) % 100),
@@ -113,7 +122,46 @@ export default function MusicStudioPremium() {
       duration: (i % 8) * 3 + 20,
       delay: (i % 6) * 2
     }));
-  }, []);
+  }, [mounted]);
+
+  // Show loading state while mounting
+  if (!mounted) {
+    return (
+      <div style={{
+        minHeight: '100vh',
+        width: '100%',
+        background: '#050B2A',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        color: 'rgba(255, 255, 255, 0.7)',
+        fontSize: '16px',
+        fontFamily: 'Inter, sans-serif'
+      }}>
+        <div style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          gap: '16px'
+        }}>
+          <div style={{
+            width: '40px',
+            height: '40px',
+            border: '3px solid rgba(34, 211, 238, 0.3)',
+            borderTopColor: '#22D3EE',
+            borderRadius: '50%',
+            animation: 'spin 1s linear infinite'
+          }} />
+          <div>Loading Music Studio...</div>
+        </div>
+        <style>{`
+          @keyframes spin {
+            to { transform: rotate(360deg); }
+          }
+        `}</style>
+      </div>
+    );
+  }
 
   return (
     <div className="app-root">
@@ -122,7 +170,7 @@ export default function MusicStudioPremium() {
         <div className="nebula-layer"></div>
         <div className="noise-layer"></div>
         
-        {/* Stars */}
+        {/* Stars - Only render when mounted */}
         {starParticles.map((star) => (
           <div
             key={`star-${star.id}`}
@@ -155,13 +203,13 @@ export default function MusicStudioPremium() {
         ))}
       </div>
 
-      {/* Main Content */}
+      {/* Main Content - Always renders */}
       <div className="content-container">
         
         {/* Header */}
         <div className="page-header">
           <div className="header-top">
-            <button className="back-button cosmic-card">
+            <button className="back-button cosmic-card" onClick={() => window.history.back()}>
               <span className="back-arrow">←</span>
               <span>Back</span>
             </button>
@@ -314,7 +362,7 @@ export default function MusicStudioPremium() {
               <div className="cover-preview cosmic-display">
                 <div className="cover-gradient-flow"></div>
                 <div className="cover-particles">
-                  {[...Array(20)].map((_, i) => (
+                  {mounted && [...Array(20)].map((_, i) => (
                     <div 
                       key={i} 
                       className="cover-particle"
@@ -396,7 +444,7 @@ export default function MusicStudioPremium() {
               </div>
               <div className="deck-panel">
                 <div className="vu-meter">
-                  {[...Array(20)].map((_, i) => (
+                  {mounted && [...Array(20)].map((_, i) => (
                     <div 
                       key={i} 
                       className={`vu-bar ${isGenerating ? 'active' : ''}`}
@@ -500,7 +548,7 @@ export default function MusicStudioPremium() {
       {/* Bottom Navigation */}
       <nav className="bottom-navigation">
         <div className="nav-glow-bar"></div>
-        <button className="nav-item">
+        <button className="nav-item" onClick={() => window.location.href = '/'}>
           <span className="nav-icon">🏠</span>
           <span className="nav-label">Home</span>
         </button>
@@ -533,7 +581,6 @@ export default function MusicStudioPremium() {
           font-family: 'Inter', -apple-system, system-ui, sans-serif;
         }
 
-        /* ============ DEEP SPACE BACKGROUND ============ */
         .app-root {
           min-height: 100vh;
           width: 100%;
@@ -586,22 +633,12 @@ export default function MusicStudioPremium() {
           background: rgba(255, 255, 255, 0.9);
           border-radius: 50%;
           pointer-events: none;
-          box-shadow: 
-            0 0 4px rgba(255, 255, 255, 0.8),
-            0 0 8px rgba(56, 189, 248, 0.4);
+          box-shadow: 0 0 4px rgba(255, 255, 255, 0.8), 0 0 8px rgba(56, 189, 248, 0.4);
         }
 
         @keyframes twinkle {
-          0%, 100% { 
-            opacity: 0.3; 
-            transform: scale(1);
-            filter: brightness(1);
-          }
-          50% { 
-            opacity: 1; 
-            transform: scale(1.3);
-            filter: brightness(1.5);
-          }
+          0%, 100% { opacity: 0.3; transform: scale(1); filter: brightness(1); }
+          50% { opacity: 1; transform: scale(1.3); filter: brightness(1.5); }
         }
 
         .particle-glow {
@@ -629,7 +666,6 @@ export default function MusicStudioPremium() {
           66% { transform: translate(-20px, 20px) scale(0.9); }
         }
 
-        /* ============ CONTENT CONTAINER ============ */
         .content-container {
           position: relative;
           z-index: 1;
@@ -638,7 +674,6 @@ export default function MusicStudioPremium() {
           padding: 20px 16px 120px;
         }
 
-        /* ============ COSMIC CARDS ============ */
         .cosmic-card {
           position: relative;
           background: rgba(255, 255, 255, 0.03);
@@ -648,27 +683,17 @@ export default function MusicStudioPremium() {
           border: 1.5px solid transparent;
           background-image: 
             linear-gradient(rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0.03)),
-            linear-gradient(135deg, 
-              rgba(34, 211, 238, 0.3) 0%, 
-              rgba(236, 72, 153, 0.2) 50%, 
-              rgba(251, 146, 60, 0.25) 100%);
+            linear-gradient(135deg, rgba(34, 211, 238, 0.3) 0%, rgba(236, 72, 153, 0.2) 50%, rgba(251, 146, 60, 0.25) 100%);
           background-origin: border-box;
           background-clip: padding-box, border-box;
-          box-shadow: 
-            0 8px 32px rgba(0, 0, 0, 0.4),
-            0 0 0 1px rgba(255, 255, 255, 0.05) inset,
-            0 0 60px rgba(34, 211, 238, 0.1);
+          box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.05) inset, 0 0 60px rgba(34, 211, 238, 0.1);
         }
 
         .card-inner-glow {
           position: absolute;
           inset: 0;
           border-radius: 24px;
-          background: radial-gradient(
-            circle at 50% 0%,
-            rgba(34, 211, 238, 0.08),
-            transparent 70%
-          );
+          background: radial-gradient(circle at 50% 0%, rgba(34, 211, 238, 0.08), transparent 70%);
           pointer-events: none;
         }
 
@@ -688,17 +713,10 @@ export default function MusicStudioPremium() {
         .section-card:nth-child(8) { animation-delay: 0.4s; }
 
         @keyframes cardFloat {
-          from {
-            opacity: 0;
-            transform: translateY(30px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
+          from { opacity: 0; transform: translateY(30px); }
+          to { opacity: 1; transform: translateY(0); }
         }
 
-        /* ============ HEADER ============ */
         .page-header {
           margin-bottom: 36px;
         }
@@ -725,9 +743,7 @@ export default function MusicStudioPremium() {
 
         .back-button:hover {
           transform: translateX(-3px);
-          box-shadow: 
-            0 0 40px rgba(34, 211, 238, 0.3),
-            0 8px 32px rgba(0, 0, 0, 0.4);
+          box-shadow: 0 0 40px rgba(34, 211, 238, 0.3), 0 8px 32px rgba(0, 0, 0, 0.4);
         }
 
         .back-arrow {
@@ -767,7 +783,6 @@ export default function MusicStudioPremium() {
           opacity: 0.7;
         }
 
-        /* ============ ELECTRIC TITLES ============ */
         .electric-title {
           font-size: 48px;
           font-weight: 900;
@@ -817,7 +832,6 @@ export default function MusicStudioPremium() {
           margin-bottom: 20px;
         }
 
-        /* ============ COSMIC PILLS & BUTTONS ============ */
         .cosmic-pill {
           position: relative;
           background: rgba(255, 255, 255, 0.05);
@@ -830,30 +844,20 @@ export default function MusicStudioPremium() {
           font-weight: 600;
           cursor: pointer;
           transition: all 0.3s ease;
-          box-shadow: 
-            0 4px 16px rgba(0, 0, 0, 0.2),
-            inset 0 1px 0 rgba(255, 255, 255, 0.1);
+          box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.1);
         }
 
         .cosmic-pill:hover {
           transform: translateY(-2px);
           border-color: rgba(34, 211, 238, 0.5);
-          box-shadow: 
-            0 0 30px rgba(34, 211, 238, 0.3),
-            0 8px 24px rgba(0, 0, 0, 0.3),
-            inset 0 1px 0 rgba(255, 255, 255, 0.2);
+          box-shadow: 0 0 30px rgba(34, 211, 238, 0.3), 0 8px 24px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.2);
         }
 
         .cosmic-pill.active {
-          background: linear-gradient(135deg, 
-            rgba(34, 211, 238, 0.2) 0%, 
-            rgba(236, 72, 153, 0.15) 100%);
+          background: linear-gradient(135deg, rgba(34, 211, 238, 0.2) 0%, rgba(236, 72, 153, 0.15) 100%);
           border-color: rgba(34, 211, 238, 0.6);
           color: #FFFFFF;
-          box-shadow: 
-            0 0 40px rgba(34, 211, 238, 0.5),
-            0 8px 24px rgba(0, 0, 0, 0.3),
-            inset 0 0 20px rgba(34, 211, 238, 0.15);
+          box-shadow: 0 0 40px rgba(34, 211, 238, 0.5), 0 8px 24px rgba(0, 0, 0, 0.3), inset 0 0 20px rgba(34, 211, 238, 0.15);
         }
 
         .chips-row {
@@ -873,13 +877,10 @@ export default function MusicStudioPremium() {
           font-size: 18px;
         }
 
-        /* ============ NEON BUTTONS ============ */
         .neon-button {
           width: 100%;
           padding: 16px 28px;
-          background: linear-gradient(135deg, 
-            rgba(34, 211, 238, 0.15) 0%, 
-            rgba(59, 130, 246, 0.15) 100%);
+          background: linear-gradient(135deg, rgba(34, 211, 238, 0.15) 0%, rgba(59, 130, 246, 0.15) 100%);
           border: 2px solid rgba(34, 211, 238, 0.4);
           border-radius: 18px;
           color: rgba(255, 255, 255, 0.95);
@@ -891,18 +892,13 @@ export default function MusicStudioPremium() {
           justify-content: center;
           gap: 12px;
           transition: all 0.3s ease;
-          box-shadow: 
-            0 0 30px rgba(34, 211, 238, 0.2),
-            inset 0 1px 0 rgba(255, 255, 255, 0.1);
+          box-shadow: 0 0 30px rgba(34, 211, 238, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.1);
         }
 
         .neon-button:hover {
           transform: translateY(-3px);
           border-color: rgba(34, 211, 238, 0.6);
-          box-shadow: 
-            0 0 50px rgba(34, 211, 238, 0.4),
-            0 12px 40px rgba(0, 0, 0, 0.4),
-            inset 0 0 20px rgba(34, 211, 238, 0.1);
+          box-shadow: 0 0 50px rgba(34, 211, 238, 0.4), 0 12px 40px rgba(0, 0, 0, 0.4), inset 0 0 20px rgba(34, 211, 238, 0.1);
         }
 
         .arrow-glow {
@@ -934,19 +930,10 @@ export default function MusicStudioPremium() {
         }
 
         @keyframes syncPulse {
-          0%, 100% { 
-            box-shadow: 
-              0 0 30px rgba(34, 211, 238, 0.4),
-              inset 0 0 10px rgba(34, 211, 238, 0.1);
-          }
-          50% { 
-            box-shadow: 
-              0 0 50px rgba(34, 211, 238, 0.6),
-              inset 0 0 20px rgba(34, 211, 238, 0.2);
-          }
+          0%, 100% { box-shadow: 0 0 30px rgba(34, 211, 238, 0.4), inset 0 0 10px rgba(34, 211, 238, 0.1); }
+          50% { box-shadow: 0 0 50px rgba(34, 211, 238, 0.6), inset 0 0 20px rgba(34, 211, 238, 0.2); }
         }
 
-        /* ============ COSMIC INPUTS ============ */
         .cosmic-input {
           width: 100%;
           min-height: 150px;
@@ -962,9 +949,7 @@ export default function MusicStudioPremium() {
           resize: none;
           outline: none;
           transition: all 0.3s ease;
-          box-shadow: 
-            inset 0 2px 8px rgba(0, 0, 0, 0.3),
-            0 0 0 1px rgba(255, 255, 255, 0.05);
+          box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(255, 255, 255, 0.05);
         }
 
         .cosmic-input::placeholder {
@@ -973,17 +958,13 @@ export default function MusicStudioPremium() {
 
         .cosmic-input:focus {
           border-color: rgba(34, 211, 238, 0.5);
-          box-shadow: 
-            inset 0 2px 8px rgba(0, 0, 0, 0.3),
-            0 0 30px rgba(34, 211, 238, 0.2),
-            inset 0 0 20px rgba(34, 211, 238, 0.05);
+          box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.3), 0 0 30px rgba(34, 211, 238, 0.2), inset 0 0 20px rgba(34, 211, 238, 0.05);
         }
 
         .scene-input {
           min-height: 110px;
         }
 
-        /* ============ VINTAGE MICROPHONE ============ */
         .melody-button {
           position: relative;
           flex-direction: column;
@@ -997,16 +978,8 @@ export default function MusicStudioPremium() {
         }
 
         @keyframes recordingPulse {
-          0%, 100% {
-            box-shadow: 
-              0 0 40px rgba(239, 68, 68, 0.4),
-              inset 0 0 20px rgba(239, 68, 68, 0.1);
-          }
-          50% {
-            box-shadow: 
-              0 0 60px rgba(239, 68, 68, 0.6),
-              inset 0 0 30px rgba(239, 68, 68, 0.15);
-          }
+          0%, 100% { box-shadow: 0 0 40px rgba(239, 68, 68, 0.4), inset 0 0 20px rgba(239, 68, 68, 0.1); }
+          50% { box-shadow: 0 0 60px rgba(239, 68, 68, 0.6), inset 0 0 30px rgba(239, 68, 68, 0.15); }
         }
 
         .vintage-mic {
@@ -1023,14 +996,9 @@ export default function MusicStudioPremium() {
           width: 50px;
           height: 50px;
           border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%;
-          background: linear-gradient(135deg, 
-            rgba(192, 192, 192, 0.9) 0%, 
-            rgba(128, 128, 128, 0.8) 100%);
+          background: linear-gradient(135deg, rgba(192, 192, 192, 0.9) 0%, rgba(128, 128, 128, 0.8) 100%);
           border: 2px solid rgba(80, 80, 80, 0.6);
-          box-shadow: 
-            inset 0 -2px 8px rgba(0, 0, 0, 0.4),
-            inset 0 2px 4px rgba(255, 255, 255, 0.3),
-            0 4px 12px rgba(0, 0, 0, 0.3);
+          box-shadow: inset 0 -2px 8px rgba(0, 0, 0, 0.4), inset 0 2px 4px rgba(255, 255, 255, 0.3), 0 4px 12px rgba(0, 0, 0, 0.3);
           position: relative;
         }
 
@@ -1039,33 +1007,21 @@ export default function MusicStudioPremium() {
           position: absolute;
           inset: 6px;
           border-radius: 50%;
-          background: repeating-linear-gradient(
-            0deg,
-            rgba(0, 0, 0, 0.2) 0px,
-            transparent 1px,
-            transparent 3px,
-            rgba(0, 0, 0, 0.2) 4px
-          );
+          background: repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.2) 0px, transparent 1px, transparent 3px, rgba(0, 0, 0, 0.2) 4px);
         }
 
         .mic-body {
           width: 30px;
           height: 15px;
-          background: linear-gradient(180deg, 
-            rgba(160, 160, 160, 0.9),
-            rgba(100, 100, 100, 0.8));
+          background: linear-gradient(180deg, rgba(160, 160, 160, 0.9), rgba(100, 100, 100, 0.8));
           border-radius: 4px;
-          box-shadow: 
-            inset 0 1px 2px rgba(255, 255, 255, 0.3),
-            0 2px 6px rgba(0, 0, 0, 0.3);
+          box-shadow: inset 0 1px 2px rgba(255, 255, 255, 0.3), 0 2px 6px rgba(0, 0, 0, 0.3);
         }
 
         .mic-base {
           width: 24px;
           height: 8px;
-          background: linear-gradient(180deg, 
-            rgba(120, 120, 120, 0.9),
-            rgba(60, 60, 60, 0.8));
+          background: linear-gradient(180deg, rgba(120, 120, 120, 0.9), rgba(60, 60, 60, 0.8));
           border-radius: 2px;
           box-shadow: 0 2px 4px rgba(0, 0, 0, 0.4);
         }
@@ -1094,16 +1050,8 @@ export default function MusicStudioPremium() {
         }
 
         @keyframes pulse {
-          0%, 100% { 
-            opacity: 1;
-            transform: scale(1);
-            box-shadow: 0 0 16px rgba(16, 185, 129, 0.8);
-          }
-          50% { 
-            opacity: 0.6;
-            transform: scale(0.9);
-            box-shadow: 0 0 24px rgba(16, 185, 129, 1);
-          }
+          0%, 100% { opacity: 1; transform: scale(1); box-shadow: 0 0 16px rgba(16, 185, 129, 0.8); }
+          50% { opacity: 0.6; transform: scale(0.9); box-shadow: 0 0 24px rgba(16, 185, 129, 1); }
         }
 
         .status-text {
@@ -1141,7 +1089,6 @@ export default function MusicStudioPremium() {
           transform: translateX(4px);
         }
 
-        /* ============ POWER SWITCH ============ */
         .power-switch {
           position: relative;
           width: 64px;
@@ -1171,14 +1118,10 @@ export default function MusicStudioPremium() {
           height: 24px;
           left: 3px;
           top: 2px;
-          background: linear-gradient(135deg, 
-            rgba(200, 200, 200, 0.9),
-            rgba(150, 150, 150, 0.9));
+          background: linear-gradient(135deg, rgba(200, 200, 200, 0.9), rgba(150, 150, 150, 0.9));
           border-radius: 50%;
           transition: all 0.3s ease;
-          box-shadow: 
-            0 2px 8px rgba(0, 0, 0, 0.4),
-            inset 0 1px 2px rgba(255, 255, 255, 0.5);
+          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4), inset 0 1px 2px rgba(255, 255, 255, 0.5);
         }
 
         .switch-glow {
@@ -1186,33 +1129,26 @@ export default function MusicStudioPremium() {
           inset: 0;
           border-radius: 16px;
           opacity: 0;
-          background: linear-gradient(135deg, 
-            rgba(34, 211, 238, 0.3),
-            rgba(59, 130, 246, 0.3));
+          background: linear-gradient(135deg, rgba(34, 211, 238, 0.3), rgba(59, 130, 246, 0.3));
           transition: opacity 0.3s ease;
         }
 
         input:checked + .switch-track {
           background: rgba(34, 211, 238, 0.15);
           border-color: rgba(34, 211, 238, 0.6);
-          box-shadow: 
-            inset 0 2px 6px rgba(0, 0, 0, 0.4),
-            0 0 30px rgba(34, 211, 238, 0.3);
+          box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.4), 0 0 30px rgba(34, 211, 238, 0.3);
         }
 
         input:checked + .switch-track .switch-thumb {
           transform: translateX(32px);
           background: linear-gradient(135deg, #22D3EE, #3B82F6);
-          box-shadow: 
-            0 2px 12px rgba(34, 211, 238, 0.6),
-            inset 0 1px 2px rgba(255, 255, 255, 0.5);
+          box-shadow: 0 2px 12px rgba(34, 211, 238, 0.6), inset 0 1px 2px rgba(255, 255, 255, 0.5);
         }
 
         input:checked + .switch-track .switch-glow {
           opacity: 1;
         }
 
-        /* ============ STYLE PILLS ============ */
         .style-pills {
           display: flex;
           flex-wrap: wrap;
@@ -1224,7 +1160,6 @@ export default function MusicStudioPremium() {
           padding: 10px 20px;
         }
 
-        /* ============ COSMIC DISPLAY ============ */
         .cosmic-display {
           position: relative;
           width: 100%;
@@ -1240,29 +1175,13 @@ export default function MusicStudioPremium() {
         .cover-gradient-flow {
           position: absolute;
           inset: 0;
-          background: linear-gradient(135deg, 
-            rgba(34, 211, 238, 0.25) 0%, 
-            rgba(168, 85, 247, 0.2) 33%,
-            rgba(236, 72, 153, 0.25) 66%,
-            rgba(251, 146, 60, 0.2) 100%);
+          background: linear-gradient(135deg, rgba(34, 211, 238, 0.25) 0%, rgba(168, 85, 247, 0.2) 33%, rgba(236, 72, 153, 0.25) 66%, rgba(251, 146, 60, 0.2) 100%);
           animation: gradientFlow 12s ease-in-out infinite;
         }
 
         @keyframes gradientFlow {
-          0%, 100% {
-            background: linear-gradient(135deg, 
-              rgba(34, 211, 238, 0.25) 0%, 
-              rgba(168, 85, 247, 0.2) 33%,
-              rgba(236, 72, 153, 0.25) 66%,
-              rgba(251, 146, 60, 0.2) 100%);
-          }
-          50% {
-            background: linear-gradient(135deg, 
-              rgba(251, 146, 60, 0.2) 0%,
-              rgba(34, 211, 238, 0.25) 33%,
-              rgba(236, 72, 153, 0.25) 66%,
-              rgba(168, 85, 247, 0.2) 100%);
-          }
+          0%, 100% { background: linear-gradient(135deg, rgba(34, 211, 238, 0.25) 0%, rgba(168, 85, 247, 0.2) 33%, rgba(236, 72, 153, 0.25) 66%, rgba(251, 146, 60, 0.2) 100%); }
+          50% { background: linear-gradient(135deg, rgba(251, 146, 60, 0.2) 0%, rgba(34, 211, 238, 0.25) 33%, rgba(236, 72, 153, 0.25) 66%, rgba(168, 85, 247, 0.2) 100%); }
         }
 
         .cover-particles {
@@ -1281,14 +1200,8 @@ export default function MusicStudioPremium() {
         }
 
         @keyframes particleDrift {
-          0%, 100% { 
-            transform: translate(0, 0);
-            opacity: 0.3;
-          }
-          50% { 
-            transform: translate(40px, -40px);
-            opacity: 1;
-          }
+          0%, 100% { transform: translate(0, 0); opacity: 0.3; }
+          50% { transform: translate(40px, -40px); opacity: 1; }
         }
 
         .cover-label {
@@ -1301,7 +1214,6 @@ export default function MusicStudioPremium() {
           text-transform: uppercase;
         }
 
-        /* ============ VOICE MODE ============ */
         .voice-mode-selector {
           display: flex;
           gap: 12px;
@@ -1313,7 +1225,6 @@ export default function MusicStudioPremium() {
           padding: 14px;
         }
 
-        /* ============ TIMELINE TRANSPORT ============ */
         .timeline-transport {
           display: flex;
           gap: 10px;
@@ -1335,28 +1246,19 @@ export default function MusicStudioPremium() {
           flex-direction: column;
           align-items: center;
           gap: 8px;
-          box-shadow: 
-            inset 0 1px 2px rgba(255, 255, 255, 0.05),
-            0 2px 8px rgba(0, 0, 0, 0.3);
+          box-shadow: inset 0 1px 2px rgba(255, 255, 255, 0.05), 0 2px 8px rgba(0, 0, 0, 0.3);
         }
 
         .cosmic-capsule:hover {
           transform: translateY(-2px);
           border-color: rgba(34, 211, 238, 0.4);
-          box-shadow: 
-            0 0 20px rgba(34, 211, 238, 0.2),
-            0 4px 16px rgba(0, 0, 0, 0.3);
+          box-shadow: 0 0 20px rgba(34, 211, 238, 0.2), 0 4px 16px rgba(0, 0, 0, 0.3);
         }
 
         .cosmic-capsule.active {
-          background: linear-gradient(135deg, 
-            rgba(34, 211, 238, 0.15),
-            rgba(59, 130, 246, 0.1));
+          background: linear-gradient(135deg, rgba(34, 211, 238, 0.15), rgba(59, 130, 246, 0.1));
           border-color: rgba(34, 211, 238, 0.6);
-          box-shadow: 
-            0 0 30px rgba(34, 211, 238, 0.4),
-            0 4px 16px rgba(0, 0, 0, 0.3),
-            inset 0 0 20px rgba(34, 211, 238, 0.1);
+          box-shadow: 0 0 30px rgba(34, 211, 238, 0.4), 0 4px 16px rgba(0, 0, 0, 0.3), inset 0 0 20px rgba(34, 211, 238, 0.1);
         }
 
         .segment-label {
@@ -1389,7 +1291,6 @@ export default function MusicStudioPremium() {
           50% { opacity: 0.6; }
         }
 
-        /* ============ ENERGY PROGRESS ============ */
         .energy-progress {
           margin-top: 8px;
         }
@@ -1415,10 +1316,7 @@ export default function MusicStudioPremium() {
         .energy-glow {
           position: absolute;
           inset: 0;
-          background: linear-gradient(90deg, 
-            transparent,
-            rgba(255, 255, 255, 0.4),
-            transparent);
+          background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.4), transparent);
           animation: energyFlow 2s linear infinite;
         }
 
@@ -1427,7 +1325,6 @@ export default function MusicStudioPremium() {
           100% { transform: translateX(100%); }
         }
 
-        /* ============ VINTAGE TAPE DECK ============ */
         .equipment-panel {
           background: rgba(0, 0, 0, 0.25);
         }
@@ -1454,16 +1351,10 @@ export default function MusicStudioPremium() {
           width: 70px;
           height: 70px;
           border-radius: 50%;
-          background: 
-            radial-gradient(circle at 30% 30%, 
-              rgba(220, 220, 220, 0.95),
-              rgba(140, 140, 140, 0.9));
+          background: radial-gradient(circle at 30% 30%, rgba(220, 220, 220, 0.95), rgba(140, 140, 140, 0.9));
           border: 3px solid rgba(80, 80, 80, 0.7);
           position: relative;
-          box-shadow: 
-            0 6px 20px rgba(0, 0, 0, 0.5),
-            inset 0 2px 6px rgba(255, 255, 255, 0.4),
-            inset 0 -2px 6px rgba(0, 0, 0, 0.4);
+          box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5), inset 0 2px 6px rgba(255, 255, 255, 0.4), inset 0 -2px 6px rgba(0, 0, 0, 0.4);
         }
 
         .reel.spinning {
@@ -1483,36 +1374,23 @@ export default function MusicStudioPremium() {
           width: 24px;
           height: 24px;
           border-radius: 50%;
-          background: 
-            radial-gradient(circle at 30% 30%, 
-              rgba(180, 180, 180, 1),
-              rgba(80, 80, 80, 0.9));
-          box-shadow: 
-            0 2px 8px rgba(0, 0, 0, 0.6),
-            inset 0 1px 3px rgba(255, 255, 255, 0.5);
+          background: radial-gradient(circle at 30% 30%, rgba(180, 180, 180, 1), rgba(80, 80, 80, 0.9));
+          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.6), inset 0 1px 3px rgba(255, 255, 255, 0.5);
         }
 
         .reel-tape {
           position: absolute;
           inset: 8px;
           border-radius: 50%;
-          background: repeating-conic-gradient(
-            from 0deg,
-            rgba(60, 60, 60, 0.8) 0deg 10deg,
-            rgba(100, 100, 100, 0.7) 10deg 20deg
-          );
+          background: repeating-conic-gradient(from 0deg, rgba(60, 60, 60, 0.8) 0deg 10deg, rgba(100, 100, 100, 0.7) 10deg 20deg);
         }
 
         .tape-path {
           width: 50px;
           height: 8px;
-          background: linear-gradient(180deg, 
-            rgba(90, 60, 40, 0.9),
-            rgba(60, 40, 30, 0.9));
+          background: linear-gradient(180deg, rgba(90, 60, 40, 0.9), rgba(60, 40, 30, 0.9));
           border-radius: 2px;
-          box-shadow: 
-            0 2px 8px rgba(0, 0, 0, 0.5),
-            inset 0 1px 2px rgba(255, 255, 255, 0.2);
+          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5), inset 0 1px 2px rgba(255, 255, 255, 0.2);
         }
 
         .deck-panel {
@@ -1533,9 +1411,7 @@ export default function MusicStudioPremium() {
         .vu-bar {
           width: 4px;
           height: 20%;
-          background: linear-gradient(180deg, 
-            rgba(34, 211, 238, 0.3),
-            rgba(59, 130, 246, 0.3));
+          background: linear-gradient(180deg, rgba(34, 211, 238, 0.3), rgba(59, 130, 246, 0.3));
           border-radius: 2px;
           transition: all 0.1s ease;
         }
@@ -1559,7 +1435,6 @@ export default function MusicStudioPremium() {
           text-align: center;
         }
 
-        /* ============ AUDIO PLAYER ============ */
         .audio-output {
           padding: 28px 24px;
           animation: cardFloat 0.6s ease-out;
@@ -1570,9 +1445,7 @@ export default function MusicStudioPremium() {
           height: 56px;
           margin-bottom: 20px;
           border-radius: 14px;
-          filter: 
-            drop-shadow(0 0 30px rgba(34, 211, 238, 0.3))
-            drop-shadow(0 4px 16px rgba(0, 0, 0, 0.4));
+          filter: drop-shadow(0 0 30px rgba(34, 211, 238, 0.3)) drop-shadow(0 4px 16px rgba(0, 0, 0, 0.4));
         }
 
         .download-button {
@@ -1584,7 +1457,6 @@ export default function MusicStudioPremium() {
           font-size: 20px;
         }
 
-        /* ============ ADVANCED SECTION ============ */
         .advanced-section {
           margin-bottom: 24px;
         }
@@ -1602,9 +1474,7 @@ export default function MusicStudioPremium() {
 
         .advanced-toggle:hover {
           transform: translateY(-2px);
-          box-shadow: 
-            0 0 40px rgba(34, 211, 238, 0.25),
-            0 8px 32px rgba(0, 0, 0, 0.4);
+          box-shadow: 0 0 40px rgba(34, 211, 238, 0.25), 0 8px 32px rgba(0, 0, 0, 0.4);
         }
 
         .advanced-label {
@@ -1679,17 +1549,13 @@ export default function MusicStudioPremium() {
           border-radius: 50%;
           background: linear-gradient(135deg, #22D3EE, #3B82F6);
           cursor: pointer;
-          box-shadow: 
-            0 0 16px rgba(34, 211, 238, 0.6),
-            0 2px 8px rgba(0, 0, 0, 0.4);
+          box-shadow: 0 0 16px rgba(34, 211, 238, 0.6), 0 2px 8px rgba(0, 0, 0, 0.4);
           transition: all 0.2s ease;
         }
 
         .cosmic-slider::-webkit-slider-thumb:hover {
           transform: scale(1.1);
-          box-shadow: 
-            0 0 24px rgba(34, 211, 238, 0.8),
-            0 2px 12px rgba(0, 0, 0, 0.5);
+          box-shadow: 0 0 24px rgba(34, 211, 238, 0.8), 0 2px 12px rgba(0, 0, 0, 0.5);
         }
 
         .cosmic-slider::-moz-range-thumb {
@@ -1699,9 +1565,7 @@ export default function MusicStudioPremium() {
           border-radius: 50%;
           background: linear-gradient(135deg, #22D3EE, #3B82F6);
           cursor: pointer;
-          box-shadow: 
-            0 0 16px rgba(34, 211, 238, 0.6),
-            0 2px 8px rgba(0, 0, 0, 0.4);
+          box-shadow: 0 0 16px rgba(34, 211, 238, 0.6), 0 2px 8px rgba(0, 0, 0, 0.4);
         }
 
         .param-value {
@@ -1712,13 +1576,10 @@ export default function MusicStudioPremium() {
           text-align: right;
         }
 
-        /* ============ GENERATE CTA ============ */
         .generate-cta {
           width: 100%;
           padding: 22px 36px;
-          background: linear-gradient(135deg, 
-            rgba(34, 211, 238, 0.25) 0%, 
-            rgba(59, 130, 246, 0.2) 100%);
+          background: linear-gradient(135deg, rgba(34, 211, 238, 0.25) 0%, rgba(59, 130, 246, 0.2) 100%);
           border: 2px solid rgba(34, 211, 238, 0.5);
           border-radius: 20px;
           color: #FFFFFF;
@@ -1732,19 +1593,13 @@ export default function MusicStudioPremium() {
           position: relative;
           overflow: hidden;
           transition: all 0.3s ease;
-          box-shadow: 
-            0 0 40px rgba(34, 211, 238, 0.3),
-            0 8px 32px rgba(0, 0, 0, 0.4),
-            inset 0 1px 0 rgba(255, 255, 255, 0.15);
+          box-shadow: 0 0 40px rgba(34, 211, 238, 0.3), 0 8px 32px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.15);
         }
 
         .generate-cta:hover:not(:disabled) {
           transform: translateY(-4px);
           border-color: rgba(34, 211, 238, 0.7);
-          box-shadow: 
-            0 0 60px rgba(34, 211, 238, 0.5),
-            0 12px 48px rgba(0, 0, 0, 0.5),
-            inset 0 0 30px rgba(34, 211, 238, 0.15);
+          box-shadow: 0 0 60px rgba(34, 211, 238, 0.5), 0 12px 48px rgba(0, 0, 0, 0.5), inset 0 0 30px rgba(34, 211, 238, 0.15);
         }
 
         .generate-cta:disabled {
@@ -1757,24 +1612,14 @@ export default function MusicStudioPremium() {
         }
 
         @keyframes generatePulse {
-          0%, 100% {
-            box-shadow: 
-              0 0 40px rgba(34, 211, 238, 0.4),
-              0 8px 32px rgba(0, 0, 0, 0.4);
-          }
-          50% {
-            box-shadow: 
-              0 0 80px rgba(34, 211, 238, 0.6),
-              0 12px 48px rgba(0, 0, 0, 0.5);
-          }
+          0%, 100% { box-shadow: 0 0 40px rgba(34, 211, 238, 0.4), 0 8px 32px rgba(0, 0, 0, 0.4); }
+          50% { box-shadow: 0 0 80px rgba(34, 211, 238, 0.6), 0 12px 48px rgba(0, 0, 0, 0.5); }
         }
 
         .button-glow-layer {
           position: absolute;
           inset: 0;
-          background: linear-gradient(135deg, 
-            rgba(34, 211, 238, 0.15),
-            rgba(59, 130, 246, 0.1));
+          background: linear-gradient(135deg, rgba(34, 211, 238, 0.15), rgba(59, 130, 246, 0.1));
           opacity: 0;
           transition: opacity 0.3s ease;
         }
@@ -1821,7 +1666,6 @@ export default function MusicStudioPremium() {
           to { transform: rotate(360deg); }
         }
 
-        /* ============ GENERATION ENERGY BAR ============ */
         .generation-energy-bar {
           width: 100%;
           height: 6px;
@@ -1843,14 +1687,10 @@ export default function MusicStudioPremium() {
         .energy-pulse {
           position: absolute;
           inset: 0;
-          background: linear-gradient(90deg, 
-            transparent,
-            rgba(255, 255, 255, 0.6),
-            transparent);
+          background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.6), transparent);
           animation: energyFlow 1.5s linear infinite;
         }
 
-        /* ============ BOTTOM NAVIGATION ============ */
         .bottom-navigation {
           position: fixed;
           bottom: 0;
@@ -1862,10 +1702,7 @@ export default function MusicStudioPremium() {
           border-top: 2px solid transparent;
           background-image: 
             linear-gradient(rgba(5, 11, 42, 0.95), rgba(5, 11, 42, 0.95)),
-            linear-gradient(90deg, 
-              rgba(34, 211, 238, 0.3) 0%, 
-              rgba(236, 72, 153, 0.25) 50%, 
-              rgba(251, 146, 60, 0.3) 100%);
+            linear-gradient(90deg, rgba(34, 211, 238, 0.3) 0%, rgba(236, 72, 153, 0.25) 50%, rgba(251, 146, 60, 0.3) 100%);
           background-origin: border-box;
           background-clip: padding-box, border-box;
           display: flex;
@@ -1873,9 +1710,7 @@ export default function MusicStudioPremium() {
           align-items: center;
           padding: 12px 8px 16px;
           z-index: 100;
-          box-shadow: 
-            0 -8px 32px rgba(0, 0, 0, 0.6),
-            inset 0 1px 0 rgba(255, 255, 255, 0.05);
+          box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.05);
         }
 
         .nav-glow-bar {
@@ -1884,10 +1719,7 @@ export default function MusicStudioPremium() {
           left: 0;
           right: 0;
           height: 2px;
-          background: linear-gradient(90deg, 
-            rgba(34, 211, 238, 0.6),
-            rgba(236, 72, 153, 0.5),
-            rgba(251, 146, 60, 0.6));
+          background: linear-gradient(90deg, rgba(34, 211, 238, 0.6), rgba(236, 72, 153, 0.5), rgba(251, 146, 60, 0.6));
           filter: blur(4px);
         }
 
@@ -1922,22 +1754,14 @@ export default function MusicStudioPremium() {
           width: 60px;
           height: 60px;
           border-radius: 50%;
-          background: radial-gradient(circle, 
-            rgba(34, 211, 238, 0.3),
-            transparent 70%);
+          background: radial-gradient(circle, rgba(34, 211, 238, 0.3), transparent 70%);
           animation: navPulse 2s ease-in-out infinite;
           pointer-events: none;
         }
 
         @keyframes navPulse {
-          0%, 100% { 
-            transform: translate(-50%, -50%) scale(1);
-            opacity: 0.6;
-          }
-          50% { 
-            transform: translate(-50%, -50%) scale(1.2);
-            opacity: 1;
-          }
+          0%, 100% { transform: translate(-50%, -50%) scale(1); opacity: 0.6; }
+          50% { transform: translate(-50%, -50%) scale(1.2); opacity: 1; }
         }
 
         .nav-icon {
@@ -1959,7 +1783,6 @@ export default function MusicStudioPremium() {
           z-index: 1;
         }
 
-        /* ============ SCROLLBAR ============ */
         ::-webkit-scrollbar {
           width: 8px;
         }
@@ -1969,16 +1792,12 @@ export default function MusicStudioPremium() {
         }
 
         ::-webkit-scrollbar-thumb {
-          background: linear-gradient(180deg, 
-            rgba(34, 211, 238, 0.4),
-            rgba(59, 130, 246, 0.4));
+          background: linear-gradient(180deg, rgba(34, 211, 238, 0.4), rgba(59, 130, 246, 0.4));
           border-radius: 4px;
         }
 
         ::-webkit-scrollbar-thumb:hover {
-          background: linear-gradient(180deg, 
-            rgba(34, 211, 238, 0.6),
-            rgba(59, 130, 246, 0.6));
+          background: linear-gradient(180deg, rgba(34, 211, 238, 0.6), rgba(59, 130, 246, 0.6));
         }
       `}</style>
     </div>
