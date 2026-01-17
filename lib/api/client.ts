@@ -58,7 +58,7 @@ export class APIClient {
     language?: string
     emotion?: number
   }) {
-    return this.request('/api/voice', {
+    return this.request('/api/voice/generate', {
       method: 'POST',
       body: JSON.stringify(params),
     })
