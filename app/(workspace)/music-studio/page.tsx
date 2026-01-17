@@ -20,7 +20,6 @@ export default function MusicStudioPremium() {
   const [visualStyle, setVisualStyle] = useState('Cyberpunk');
   const [advancedOpen, setAdvancedOpen] = useState(false);
 
-  // Backend API URL
   const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://avatarg-backend.vercel.app';
 
   const handleSmartSync = () => {
@@ -35,7 +34,6 @@ export default function MusicStudioPremium() {
     }
   };
 
-  // Handle music generation
   const handleGenerate = async () => {
     setIsGenerating(true);
     setGenerationProgress(0);
@@ -67,7 +65,6 @@ export default function MusicStudioPremium() {
       });
 
       clearInterval(progressInterval);
-
       const data = await response.json();
 
       if (!response.ok) {
@@ -93,35 +90,39 @@ export default function MusicStudioPremium() {
     }
   };
 
-  // Stable star particles
   const starParticles = useMemo(() => {
-    return [...Array(80)].map((_, i) => ({
+    return [...Array(150)].map((_, i) => ({
       id: i,
-      size: (i % 4) * 0.5 + 1,
+      size: (i % 5) * 0.5 + 0.5,
       left: ((i * 47) % 100),
       top: ((i * 83) % 100),
-      opacity: (i % 5) * 0.15 + 0.3,
-      duration: (i % 10) * 3 + 20,
-      delay: (i % 8) * 0.5
+      opacity: (i % 7) * 0.1 + 0.2,
+      duration: (i % 12) * 2 + 15,
+      delay: (i % 10) * 0.3
     }));
   }, []);
 
-  // Fire ember particles
-  const emberParticles = useMemo(() => {
-    return [...Array(25)].map((_, i) => ({
+  const particleGlow = useMemo(() => {
+    return [...Array(30)].map((_, i) => ({
       id: i,
-      size: (i % 3) * 1.5 + 2,
-      left: ((i * 67) % 100),
-      bottom: -10 + (i % 5) * 5,
-      duration: (i % 6) * 2 + 8,
-      delay: (i % 7) * 0.8
+      size: (i % 4) * 20 + 40,
+      left: ((i * 73) % 100),
+      top: ((i * 61) % 100),
+      opacity: (i % 3) * 0.1 + 0.05,
+      color: i % 3 === 0 ? 'cyan' : i % 3 === 1 ? 'magenta' : 'orange',
+      duration: (i % 8) * 3 + 20,
+      delay: (i % 6) * 2
     }));
   }, []);
 
   return (
     <div className="app-root">
-      {/* Cosmic Background */}
+      {/* Deep Space Background */}
       <div className="cosmic-background">
+        <div className="nebula-layer"></div>
+        <div className="noise-layer"></div>
+        
+        {/* Stars */}
         {starParticles.map((star) => (
           <div
             key={`star-${star.id}`}
@@ -137,16 +138,18 @@ export default function MusicStudioPremium() {
           />
         ))}
         
-        {emberParticles.map((ember) => (
+        {/* Glowing Particles */}
+        {particleGlow.map((particle) => (
           <div
-            key={`ember-${ember.id}`}
-            className="ember"
+            key={`glow-${particle.id}`}
+            className={`particle-glow particle-${particle.color}`}
             style={{
-              width: ember.size + 'px',
-              height: ember.size + 'px',
-              left: ember.left + '%',
-              bottom: ember.bottom + '%',
-              animation: `rise ${ember.duration}s ease-out ${ember.delay}s infinite`
+              width: particle.size + 'px',
+              height: particle.size + 'px',
+              left: particle.left + '%',
+              top: particle.top + '%',
+              opacity: particle.opacity,
+              animation: `float ${particle.duration}s ease-in-out ${particle.delay}s infinite`
             }}
           />
         ))}
@@ -158,13 +161,14 @@ export default function MusicStudioPremium() {
         {/* Header */}
         <div className="page-header">
           <div className="header-top">
-            <button className="back-button glass-element neon-outline">
+            <button className="back-button cosmic-card">
               <span className="back-arrow">←</span>
               <span>Back</span>
             </button>
-            <div className="credit-badge glass-element neon-outline">
+            <div className="credit-badge cosmic-card">
               <span className="credit-icon">✦</span>
-              <span className="credit-text">{credits} Credits</span>
+              <span className="credit-text">{credits}</span>
+              <span className="credit-label">Credits</span>
             </div>
           </div>
           
@@ -173,97 +177,124 @@ export default function MusicStudioPremium() {
         </div>
 
         {/* Project Setup */}
-        <div className="glass-card neon-outline section-card">
-          <h3 className="section-title">Project Setup</h3>
+        <div className="cosmic-card section-card">
+          <div className="card-inner-glow"></div>
+          <h3 className="section-title">
+            <span className="title-icon">🎚️</span>
+            Project Setup
+          </h3>
           <div className="chips-row">
             <button 
-              className={`chip-button glass-element neon-outline ${genre === 'Alt Rock' ? 'active' : ''}`}
+              className={`chip-button cosmic-pill ${genre === 'Alt Rock' ? 'active' : ''}`}
               onClick={() => setGenre('Alt Rock')}>
-              <span className="chip-emoji">🎸</span>
+              <span className="chip-icon">🎸</span>
               <span>Alt Rock</span>
             </button>
             <button 
-              className={`chip-button glass-element neon-outline ${instruments === 'Cello, Synth' ? 'active' : ''}`}
+              className={`chip-button cosmic-pill ${instruments === 'Cello, Synth' ? 'active' : ''}`}
               onClick={() => setInstruments('Cello, Synth')}>
-              <span className="chip-emoji">🎹</span>
+              <span className="chip-icon">🎹</span>
               <span>Cello, Synth</span>
             </button>
             <button 
-              className={`chip-button glass-element neon-outline ${mood === 'Energetic' ? 'active' : ''}`}
+              className={`chip-button cosmic-pill ${mood === 'Energetic' ? 'active' : ''}`}
               onClick={() => setMood('Energetic')}>
-              <span className="chip-emoji">⚡</span>
+              <span className="chip-icon">⚡</span>
               <span>Energetic</span>
             </button>
           </div>
-          <button className="explore-button glass-element neon-outline">
+          <button className="explore-button neon-button">
             <span>Explore Genres</span>
-            <span className="arrow-icon">→</span>
+            <span className="arrow-glow">→</span>
           </button>
         </div>
 
         {/* Lyrics & Vision */}
-        <div className="glass-card neon-outline section-card">
+        <div className="cosmic-card section-card">
+          <div className="card-inner-glow"></div>
           <div className="card-header">
-            <h3 className="section-title">Lyrics & Vision</h3>
+            <h3 className="section-title">
+              <span className="title-icon">✍️</span>
+              Lyrics & Vision
+            </h3>
             <button 
-              className={`sync-button glass-element neon-outline ${isSyncing ? 'syncing' : ''}`}
+              className={`sync-button cosmic-pill ${isSyncing ? 'syncing' : ''}`}
               onClick={handleSmartSync}
               disabled={isSyncing}>
-              <span className="sync-emoji">✨</span>
+              <span className="sync-icon">✨</span>
               <span>{isSyncing ? 'Syncing...' : 'Smart Sync'}</span>
             </button>
           </div>
           <textarea
-            className="lyrics-input glass-element neon-outline"
+            className="cosmic-input"
             placeholder="Enter your lyrics or musical vision..."
             value={lyrics}
             onChange={(e) => setLyrics(e.target.value)}
           />
         </div>
 
-        {/* Music Vibe & Scene Description */}
-        <div className="glass-card neon-outline section-card">
-          <h3 className="section-title">Music Vibe & Scene Description</h3>
+        {/* Music Vibe & Scene */}
+        <div className="cosmic-card section-card">
+          <div className="card-inner-glow"></div>
+          <h3 className="section-title">
+            <span className="title-icon">🌌</span>
+            Music Vibe & Scene
+          </h3>
           <textarea
-            className="description-input glass-element neon-outline"
+            className="cosmic-input scene-input"
             placeholder="Describe the mood, instruments, and atmosphere..."
             value={description}
             onChange={(e) => setDescription(e.target.value)}
           />
         </div>
 
-        {/* Capture My Melody */}
-        <div className="glass-card neon-outline section-card">
-          <h3 className="section-title">Capture My Melody</h3>
+        {/* Capture Melody */}
+        <div className="cosmic-card section-card">
+          <div className="card-inner-glow"></div>
+          <h3 className="section-title">
+            <span className="title-icon">🎤</span>
+            Capture My Melody
+          </h3>
           <button 
-            className={`melody-button glass-element neon-outline ${isRecording ? 'recording' : ''}`}
+            className={`melody-button neon-button ${isRecording ? 'recording' : ''}`}
             onClick={handleCaptureMelody}>
-            <span className="mic-icon">{isRecording ? '⏹' : '🎤'}</span>
+            <div className="vintage-mic">
+              <div className="mic-grille"></div>
+              <div className="mic-body"></div>
+              <div className="mic-base"></div>
+            </div>
             <span className="melody-text">
               {isRecording ? 'Stop Recording' : 'Capture My Melody'}
             </span>
           </button>
           <div className="voice-status">
-            <span className="status-dot"></span>
+            <span className="status-pulse"></span>
             <span className="status-text">Connected: Giorgi Voice v1</span>
           </div>
-          <button className="voice-lab-link">
+          <button className="voice-lab-link neon-link">
             <span>Go to Voice Lab</span>
             <span className="link-arrow">→</span>
           </button>
         </div>
 
         {/* Visual Alchemist */}
-        <div className="glass-card neon-outline section-card">
+        <div className="cosmic-card section-card">
+          <div className="card-inner-glow"></div>
           <div className="card-header">
-            <h3 className="section-title">Visual Alchemist</h3>
-            <label className="toggle-switch">
+            <h3 className="section-title">
+              <span className="title-icon">🎨</span>
+              Visual Alchemist
+            </h3>
+            <label className="power-switch">
               <input 
                 type="checkbox" 
                 checked={visualEnabled}
                 onChange={() => setVisualEnabled(!visualEnabled)}
               />
-              <span className="toggle-slider glass-element"></span>
+              <span className="switch-track">
+                <span className="switch-thumb"></span>
+                <span className="switch-glow"></span>
+              </span>
             </label>
           </div>
           
@@ -273,90 +304,109 @@ export default function MusicStudioPremium() {
                 {['Cinematic', 'Cyberpunk', 'Abstract', 'Retro'].map((style) => (
                   <button
                     key={style}
-                    className={`style-pill glass-element neon-outline ${visualStyle === style ? 'active' : ''}`}
+                    className={`style-pill cosmic-pill ${visualStyle === style ? 'active' : ''}`}
                     onClick={() => setVisualStyle(style)}>
                     {style}
                   </button>
                 ))}
               </div>
               
-              <div className="cover-preview glass-element">
-                <div className="cover-gradient"></div>
-                <span className="cover-label">Cover Preview</span>
+              <div className="cover-preview cosmic-display">
+                <div className="cover-gradient-flow"></div>
+                <div className="cover-particles">
+                  {[...Array(20)].map((_, i) => (
+                    <div 
+                      key={i} 
+                      className="cover-particle"
+                      style={{
+                        left: `${(i * 17) % 100}%`,
+                        top: `${(i * 23) % 100}%`,
+                        animationDelay: `${i * 0.3}s`
+                      }}
+                    />
+                  ))}
+                </div>
+                <span className="cover-label">Album Art Preview</span>
               </div>
             </>
           )}
         </div>
 
         {/* Voice & Timeline */}
-        <div className="glass-card neon-outline section-card">
-          <h3 className="section-title">Voice & Timeline</h3>
+        <div className="cosmic-card section-card">
+          <div className="card-inner-glow"></div>
+          <h3 className="section-title">
+            <span className="title-icon">🎙️</span>
+            Voice & Timeline
+          </h3>
           
           <div className="voice-mode-selector">
             <button 
-              className={`mode-button glass-element neon-outline ${voiceMode === 'AI' ? 'active' : ''}`}
+              className={`mode-button cosmic-pill ${voiceMode === 'AI' ? 'active' : ''}`}
               onClick={() => setVoiceMode('AI')}>
               AI Voice
             </button>
             <button 
-              className={`mode-button glass-element neon-outline ${voiceMode === 'YOUR' ? 'active' : ''}`}
+              className={`mode-button cosmic-pill ${voiceMode === 'YOUR' ? 'active' : ''}`}
               onClick={() => setVoiceMode('YOUR')}>
               Your Voice
             </button>
           </div>
 
-          <div className="timeline-strip">
+          <div className="timeline-transport">
             {['Intro', 'Verse 1', 'Chorus', 'Verse 2', 'Outro'].map((segment) => (
               <button
                 key={segment}
-                className={`timeline-segment glass-element ${selectedSegment === segment ? 'active' : ''}`}
+                className={`transport-segment cosmic-capsule ${selectedSegment === segment ? 'active' : ''}`}
                 onClick={() => setSelectedSegment(segment)}>
                 <span className="segment-label">{segment}</span>
-                <div className={`segment-bar ${selectedSegment === segment ? 'active' : ''}`} />
+                <div className={`segment-indicator ${selectedSegment === segment ? 'active' : ''}`} />
               </button>
             ))}
           </div>
           
-          <div className="timeline-progress-bar">
-            <div className="progress-track glass-element">
-              <div className="progress-active" style={{ width: '40%' }}></div>
+          <div className="energy-progress">
+            <div className="progress-track">
+              <div className="progress-energy" style={{ width: '40%' }}>
+                <div className="energy-glow"></div>
+              </div>
             </div>
           </div>
         </div>
 
         {/* Studio Equipment */}
-        <div className="glass-card neon-outline section-card preview-card">
-          <h3 className="section-title">Studio Equipment</h3>
+        <div className="cosmic-card section-card equipment-panel">
+          <div className="card-inner-glow"></div>
+          <h3 className="section-title">
+            <span className="title-icon">🎚️</span>
+            Studio Equipment
+          </h3>
           <div className="equipment-display">
-            <div className="retro-equipment">
-              <div className="tape-reel">
-                <div className={`reel-circle left-reel ${isGenerating ? 'spinning' : ''}`}>
-                  <div className="reel-center" />
-                  <div className="reel-spokes" />
+            <div className="vintage-deck">
+              <div className="tape-reel-container">
+                <div className={`reel left-reel ${isGenerating ? 'spinning' : ''}`}>
+                  <div className="reel-hub"></div>
+                  <div className="reel-tape"></div>
                 </div>
-                <div className="tape-strip" />
-                <div className={`reel-circle right-reel ${isGenerating ? 'spinning' : ''}`}>
-                  <div className="reel-center" />
-                  <div className="reel-spokes" />
+                <div className="tape-path"></div>
+                <div className={`reel right-reel ${isGenerating ? 'spinning' : ''}`}>
+                  <div className="reel-hub"></div>
+                  <div className="reel-tape"></div>
                 </div>
               </div>
-              <div className="equipment-label">
-                {isGenerating ? 'Recording...' : 'Analog Tape Deck'}
+              <div className="deck-panel">
+                <div className="vu-meter">
+                  {[...Array(20)].map((_, i) => (
+                    <div 
+                      key={i} 
+                      className={`vu-bar ${isGenerating ? 'active' : ''}`}
+                      style={{ animationDelay: `${i * 0.05}s` }}
+                    />
+                  ))}
+                </div>
               </div>
-            </div>
-            
-            <div className="waveform-preview">
-              <div className="waveform-bars">
-                {[...Array(20)].map((_, i) => (
-                  <div 
-                    key={i} 
-                    className={`wave-bar ${isGenerating ? 'active' : ''}`}
-                    style={{ 
-                      height: `${20 + Math.sin(i * 0.5) * 40}%`,
-                      animationDelay: `${i * 0.05}s`
-                    }}
-                  />
-                ))}
+              <div className="equipment-status">
+                {isGenerating ? 'Recording in Progress...' : 'Analog Tape Deck Ready'}
               </div>
             </div>
           </div>
@@ -364,88 +414,92 @@ export default function MusicStudioPremium() {
 
         {/* Audio Player */}
         {audioUrl && !isGenerating && (
-          <div className="glass-card neon-outline audio-player-card">
-            <h3 className="section-title">Generated Track</h3>
+          <div className="cosmic-card audio-output">
+            <div className="card-inner-glow"></div>
+            <h3 className="section-title">
+              <span className="title-icon">🎵</span>
+              Generated Track
+            </h3>
             <audio 
               controls 
-              className="audio-player"
+              className="cosmic-audio-player"
               src={audioUrl}>
-              Your browser does not support audio playback.
             </audio>
             <button 
-              className="download-button glass-element neon-outline"
+              className="download-button neon-button"
               onClick={() => {
                 const a = document.createElement('a');
                 a.href = audioUrl;
                 a.download = 'generated-track.mp3';
                 a.click();
               }}>
-              <span>⬇</span>
+              <span className="download-icon">⬇</span>
               <span>Download Track</span>
             </button>
           </div>
         )}
 
-        {/* Advanced Section */}
+        {/* Advanced */}
         <div className="advanced-section">
           <button 
-            className="advanced-toggle glass-element neon-outline"
+            className={`advanced-toggle cosmic-card ${advancedOpen ? 'open' : ''}`}
             onClick={() => setAdvancedOpen(!advancedOpen)}>
-            <span className="advanced-label">Advanced</span>
-            <span className={`advanced-arrow ${advancedOpen ? 'open' : ''}`}>▼</span>
+            <span className="advanced-label">
+              <span className="adv-icon">⚙️</span>
+              Advanced Audio Controls
+            </span>
+            <span className={`advanced-chevron ${advancedOpen ? 'open' : ''}`}>▼</span>
           </button>
           
           {advancedOpen && (
-            <div className="advanced-content glass-card neon-outline">
-              <div className="advanced-row">
-                <span className="advanced-option">Reverb</span>
-                <input type="range" className="advanced-slider" min="0" max="100" defaultValue="30" />
-              </div>
-              <div className="advanced-row">
-                <span className="advanced-option">Echo</span>
-                <input type="range" className="advanced-slider" min="0" max="100" defaultValue="20" />
-              </div>
-              <div className="advanced-row">
-                <span className="advanced-option">Compression</span>
-                <input type="range" className="advanced-slider" min="0" max="100" defaultValue="50" />
-              </div>
+            <div className="advanced-content cosmic-card">
+              <div className="card-inner-glow"></div>
+              {['Reverb', 'Echo', 'Compression'].map((param) => (
+                <div key={param} className="advanced-row">
+                  <span className="param-label">{param}</span>
+                  <div className="param-control">
+                    <input type="range" className="cosmic-slider" defaultValue="50" />
+                    <span className="param-value">50%</span>
+                  </div>
+                </div>
+              ))}
             </div>
           )}
         </div>
 
         {/* Generate Button */}
         <button 
-          className={`primary-cta glass-element neon-outline ${isGenerating ? 'generating' : ''}`}
+          className={`generate-cta neon-button-primary ${isGenerating ? 'generating' : ''}`}
           onClick={handleGenerate}
           disabled={isGenerating}>
-          <span className="cta-glow" />
+          <div className="button-glow-layer"></div>
           {isGenerating ? (
             <>
-              <span className="spinner" />
+              <span className="energy-spinner"></span>
               <span className="cta-text">Generating {generationProgress}%</span>
             </>
           ) : (
             <>
+              <span className="cta-icon">🎵</span>
               <span className="cta-text">Generate Track</span>
-              <span className="cta-icon">→</span>
+              <span className="cta-arrow">→</span>
             </>
           )}
         </button>
 
-        {/* Progress Bar */}
         {isGenerating && (
-          <div className="generation-progress">
-            <div 
-              className="progress-fill"
-              style={{ width: `${generationProgress}%` }}
-            />
+          <div className="generation-energy-bar">
+            <div className="energy-fill" style={{ width: `${generationProgress}%` }}>
+              <div className="energy-pulse"></div>
+            </div>
           </div>
         )}
 
       </div>
 
       {/* Bottom Navigation */}
-      <nav className="bottom-nav glass-element">
+      <nav className="bottom-navigation">
+        <div className="nav-glow-bar"></div>
         <button className="nav-item">
           <span className="nav-icon">🏠</span>
           <span className="nav-label">Home</span>
@@ -455,7 +509,7 @@ export default function MusicStudioPremium() {
           <span className="nav-label">Create</span>
         </button>
         <button className="nav-item active">
-          <div className="nav-glow-ring" />
+          <div className="nav-active-glow"></div>
           <span className="nav-icon">🎵</span>
           <span className="nav-label">Music</span>
         </button>
@@ -470,81 +524,109 @@ export default function MusicStudioPremium() {
       </nav>
 
       <style jsx>{`
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
 
         * {
           margin: 0;
           padding: 0;
           box-sizing: border-box;
-          font-family: 'Inter', sans-serif;
+          font-family: 'Inter', -apple-system, system-ui, sans-serif;
         }
 
-        /* ============ COSMIC BACKGROUND ============ */
+        /* ============ DEEP SPACE BACKGROUND ============ */
         .app-root {
           min-height: 100vh;
           width: 100%;
           position: relative;
           overflow-x: hidden;
           overflow-y: auto;
+          background: #050B2A;
         }
 
         .cosmic-background {
           position: fixed;
           inset: 0;
           background: 
-            radial-gradient(ellipse at top left, rgba(30, 58, 138, 0.4), transparent 50%),
-            radial-gradient(ellipse at bottom right, rgba(59, 130, 246, 0.3), transparent 50%),
-            radial-gradient(ellipse at center, rgba(15, 23, 42, 0.8), transparent 70%),
-            linear-gradient(180deg, #0a1128 0%, #0d1b3a 50%, #1a1f3a 100%);
+            radial-gradient(ellipse at 20% 30%, rgba(6, 78, 159, 0.15) 0%, transparent 50%),
+            radial-gradient(ellipse at 80% 70%, rgba(139, 92, 246, 0.12) 0%, transparent 50%),
+            radial-gradient(ellipse at 50% 50%, rgba(5, 11, 42, 1) 0%, #050B2A 100%);
           z-index: 0;
+        }
+
+        .nebula-layer {
+          position: absolute;
+          inset: 0;
+          background: 
+            radial-gradient(circle at 15% 25%, rgba(56, 189, 248, 0.08) 0%, transparent 40%),
+            radial-gradient(circle at 85% 75%, rgba(236, 72, 153, 0.06) 0%, transparent 40%),
+            radial-gradient(circle at 50% 50%, rgba(251, 146, 60, 0.04) 0%, transparent 50%);
+          animation: nebulaFlow 30s ease-in-out infinite;
+        }
+
+        @keyframes nebulaFlow {
+          0%, 100% { opacity: 0.6; transform: scale(1) rotate(0deg); }
+          50% { opacity: 0.8; transform: scale(1.1) rotate(5deg); }
+        }
+
+        .noise-layer {
+          position: absolute;
+          inset: 0;
+          background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 400 400' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.03'/%3E%3C/svg%3E");
+          opacity: 0.4;
+          animation: noiseMove 8s linear infinite;
+        }
+
+        @keyframes noiseMove {
+          0% { transform: translate(0, 0); }
+          100% { transform: translate(-10%, -10%); }
         }
 
         .star {
           position: absolute;
-          background: white;
+          background: rgba(255, 255, 255, 0.9);
           border-radius: 50%;
           pointer-events: none;
-          box-shadow: 0 0 4px rgba(255, 255, 255, 0.8);
-        }
-
-        .ember {
-          position: absolute;
-          background: radial-gradient(circle, rgba(255, 150, 80, 0.9), rgba(255, 80, 40, 0.4));
-          border-radius: 50%;
-          pointer-events: none;
-          filter: blur(1px);
-          box-shadow: 0 0 8px rgba(255, 120, 60, 0.6);
+          box-shadow: 
+            0 0 4px rgba(255, 255, 255, 0.8),
+            0 0 8px rgba(56, 189, 248, 0.4);
         }
 
         @keyframes twinkle {
-          0%, 100% { opacity: 0.3; transform: scale(1); }
-          50% { opacity: 1; transform: scale(1.2); }
+          0%, 100% { 
+            opacity: 0.3; 
+            transform: scale(1);
+            filter: brightness(1);
+          }
+          50% { 
+            opacity: 1; 
+            transform: scale(1.3);
+            filter: brightness(1.5);
+          }
         }
 
-        @keyframes rise {
-          0% { transform: translateY(0) translateX(0); opacity: 0.8; }
-          50% { opacity: 1; }
-          100% { transform: translateY(-100vh) translateX(20px); opacity: 0; }
+        .particle-glow {
+          position: absolute;
+          border-radius: 50%;
+          pointer-events: none;
+          filter: blur(40px);
         }
 
-        /* ============ GLASS & NEON SYSTEM ============ */
-        .glass-element {
-          background: rgba(255, 255, 255, 0.08);
-          backdrop-filter: blur(28px);
-          -webkit-backdrop-filter: blur(28px);
+        .particle-cyan {
+          background: radial-gradient(circle, rgba(34, 211, 238, 0.4), transparent);
         }
 
-        .neon-outline {
-          border: 2px solid transparent;
-          background-image: 
-            linear-gradient(rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.08)),
-            linear-gradient(135deg, rgba(34, 211, 238, 0.6) 0%, rgba(251, 146, 60, 0.6) 100%);
-          background-origin: border-box;
-          background-clip: padding-box, border-box;
-          box-shadow: 
-            0 0 20px rgba(34, 211, 238, 0.3),
-            0 0 40px rgba(251, 146, 60, 0.2),
-            inset 0 1px 0 rgba(255, 255, 255, 0.15);
+        .particle-magenta {
+          background: radial-gradient(circle, rgba(236, 72, 153, 0.3), transparent);
+        }
+
+        .particle-orange {
+          background: radial-gradient(circle, rgba(251, 146, 60, 0.25), transparent);
+        }
+
+        @keyframes float {
+          0%, 100% { transform: translate(0, 0) scale(1); }
+          33% { transform: translate(30px, -30px) scale(1.1); }
+          66% { transform: translate(-20px, 20px) scale(0.9); }
         }
 
         /* ============ CONTENT CONTAINER ============ */
@@ -553,121 +635,62 @@ export default function MusicStudioPremium() {
           z-index: 1;
           max-width: 480px;
           margin: 0 auto;
-          padding: 20px 16px 100px;
+          padding: 20px 16px 120px;
         }
 
-        /* ============ HEADER ============ */
-        .page-header {
-          margin-bottom: 32px;
-        }
-
-        .header-top {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          margin-bottom: 24px;
-        }
-
-        .back-button {
-          padding: 10px 18px;
-          border-radius: 14px;
-          border: none;
-          color: rgba(255, 255, 255, 0.9);
-          font-size: 15px;
-          font-weight: 600;
-          cursor: pointer;
-          transition: all 0.3s ease;
-          display: flex;
-          align-items: center;
-          gap: 6px;
-        }
-
-        .back-button:hover {
-          transform: translateX(-2px);
-          box-shadow: 
-            0 0 30px rgba(34, 211, 238, 0.4),
-            0 0 50px rgba(251, 146, 60, 0.3);
-        }
-
-        .back-arrow {
-          font-size: 18px;
-        }
-
-        .credit-badge {
-          padding: 10px 18px;
-          border-radius: 20px;
-          border: none;
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          color: rgba(255, 255, 255, 0.95);
-          font-size: 15px;
-          font-weight: 600;
-        }
-
-        .credit-icon {
-          color: #fbbf24;
-          font-size: 18px;
-        }
-
-        .credit-text {
-          letter-spacing: 0.02em;
-        }
-
-        /* ============ ELECTRIC TYPOGRAPHY ============ */
-        .electric-title {
-          font-size: 42px;
-          font-weight: 800;
-          color: rgba(255, 255, 255, 0.98);
-          letter-spacing: -0.02em;
-          margin-bottom: 8px;
-          text-shadow: 
-            0 0 30px rgba(34, 211, 238, 0.5),
-            0 0 60px rgba(251, 146, 60, 0.3),
-            0 2px 4px rgba(0, 0, 0, 0.3);
-          filter: drop-shadow(0 1px 2px rgba(255, 255, 255, 0.3));
-        }
-
-        .electric-subtitle {
-          font-size: 15px;
-          font-weight: 500;
-          color: rgba(255, 255, 255, 0.7);
-          letter-spacing: 0.05em;
-        }
-
-        .section-title {
-          font-size: 18px;
-          font-weight: 700;
-          color: rgba(255, 255, 255, 0.95);
-          margin-bottom: 16px;
-          text-shadow: 0 0 20px rgba(34, 211, 238, 0.4);
-        }
-
-        /* ============ CARDS ============ */
-        .glass-card {
-          border-radius: 20px;
-          padding: 24px;
-          margin-bottom: 20px;
+        /* ============ COSMIC CARDS ============ */
+        .cosmic-card {
           position: relative;
+          background: rgba(255, 255, 255, 0.03);
+          backdrop-filter: blur(20px);
+          -webkit-backdrop-filter: blur(20px);
+          border-radius: 24px;
+          border: 1.5px solid transparent;
+          background-image: 
+            linear-gradient(rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0.03)),
+            linear-gradient(135deg, 
+              rgba(34, 211, 238, 0.3) 0%, 
+              rgba(236, 72, 153, 0.2) 50%, 
+              rgba(251, 146, 60, 0.25) 100%);
+          background-origin: border-box;
+          background-clip: padding-box, border-box;
+          box-shadow: 
+            0 8px 32px rgba(0, 0, 0, 0.4),
+            0 0 0 1px rgba(255, 255, 255, 0.05) inset,
+            0 0 60px rgba(34, 211, 238, 0.1);
+        }
+
+        .card-inner-glow {
+          position: absolute;
+          inset: 0;
+          border-radius: 24px;
+          background: radial-gradient(
+            circle at 50% 0%,
+            rgba(34, 211, 238, 0.08),
+            transparent 70%
+          );
+          pointer-events: none;
         }
 
         .section-card {
-          animation: fadeInUp 0.6s ease-out forwards;
+          padding: 28px 24px;
+          margin-bottom: 24px;
+          animation: cardFloat 0.8s ease-out forwards;
           opacity: 0;
         }
 
         .section-card:nth-child(2) { animation-delay: 0.1s; }
-        .section-card:nth-child(3) { animation-delay: 0.2s; }
-        .section-card:nth-child(4) { animation-delay: 0.3s; }
-        .section-card:nth-child(5) { animation-delay: 0.4s; }
-        .section-card:nth-child(6) { animation-delay: 0.5s; }
-        .section-card:nth-child(7) { animation-delay: 0.6s; }
-        .section-card:nth-child(8) { animation-delay: 0.7s; }
+        .section-card:nth-child(3) { animation-delay: 0.15s; }
+        .section-card:nth-child(4) { animation-delay: 0.2s; }
+        .section-card:nth-child(5) { animation-delay: 0.25s; }
+        .section-card:nth-child(6) { animation-delay: 0.3s; }
+        .section-card:nth-child(7) { animation-delay: 0.35s; }
+        .section-card:nth-child(8) { animation-delay: 0.4s; }
 
-        @keyframes fadeInUp {
+        @keyframes cardFloat {
           from {
             opacity: 0;
-            transform: translateY(20px);
+            transform: translateY(30px);
           }
           to {
             opacity: 1;
@@ -675,386 +698,596 @@ export default function MusicStudioPremium() {
           }
         }
 
+        /* ============ HEADER ============ */
+        .page-header {
+          margin-bottom: 36px;
+        }
+
+        .header-top {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 28px;
+        }
+
+        .back-button {
+          padding: 12px 20px;
+          border: none;
+          color: rgba(255, 255, 255, 0.95);
+          font-size: 15px;
+          font-weight: 600;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          transition: all 0.3s ease;
+        }
+
+        .back-button:hover {
+          transform: translateX(-3px);
+          box-shadow: 
+            0 0 40px rgba(34, 211, 238, 0.3),
+            0 8px 32px rgba(0, 0, 0, 0.4);
+        }
+
+        .back-arrow {
+          font-size: 20px;
+        }
+
+        .credit-badge {
+          padding: 12px 20px;
+          border: none;
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          color: rgba(255, 255, 255, 0.95);
+        }
+
+        .credit-icon {
+          font-size: 22px;
+          color: #FBB040;
+          filter: drop-shadow(0 0 8px rgba(251, 176, 64, 0.6));
+          animation: creditPulse 2s ease-in-out infinite;
+        }
+
+        @keyframes creditPulse {
+          0%, 100% { transform: scale(1); filter: drop-shadow(0 0 8px rgba(251, 176, 64, 0.6)); }
+          50% { transform: scale(1.1); filter: drop-shadow(0 0 12px rgba(251, 176, 64, 0.8)); }
+        }
+
+        .credit-text {
+          font-size: 20px;
+          font-weight: 800;
+          letter-spacing: -0.02em;
+        }
+
+        .credit-label {
+          font-size: 13px;
+          font-weight: 600;
+          opacity: 0.7;
+        }
+
+        /* ============ ELECTRIC TITLES ============ */
+        .electric-title {
+          font-size: 48px;
+          font-weight: 900;
+          background: linear-gradient(135deg, #FFFFFF 0%, #22D3EE 100%);
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+          background-clip: text;
+          letter-spacing: -0.03em;
+          margin-bottom: 12px;
+          filter: drop-shadow(0 0 30px rgba(34, 211, 238, 0.4));
+          animation: titleGlow 3s ease-in-out infinite;
+        }
+
+        @keyframes titleGlow {
+          0%, 100% { filter: drop-shadow(0 0 30px rgba(34, 211, 238, 0.4)); }
+          50% { filter: drop-shadow(0 0 40px rgba(34, 211, 238, 0.6)); }
+        }
+
+        .electric-subtitle {
+          font-size: 16px;
+          font-weight: 500;
+          color: rgba(34, 211, 238, 0.8);
+          letter-spacing: 0.08em;
+          text-transform: uppercase;
+        }
+
+        .section-title {
+          font-size: 20px;
+          font-weight: 700;
+          color: rgba(255, 255, 255, 0.95);
+          margin-bottom: 20px;
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          position: relative;
+        }
+
+        .title-icon {
+          font-size: 24px;
+          filter: drop-shadow(0 0 8px rgba(34, 211, 238, 0.5));
+        }
+
         .card-header {
           display: flex;
           justify-content: space-between;
           align-items: center;
-          margin-bottom: 16px;
+          margin-bottom: 20px;
         }
 
-        /* ============ CHIPS ============ */
-        .chips-row {
-          display: flex;
-          flex-wrap: wrap;
-          gap: 10px;
-          margin-bottom: 16px;
-        }
-
-        .chip-button {
-          padding: 11px 18px;
+        /* ============ COSMIC PILLS & BUTTONS ============ */
+        .cosmic-pill {
+          position: relative;
+          background: rgba(255, 255, 255, 0.05);
+          backdrop-filter: blur(10px);
           border-radius: 16px;
-          border: none;
+          border: 1px solid rgba(34, 211, 238, 0.2);
+          padding: 12px 20px;
           color: rgba(255, 255, 255, 0.85);
           font-size: 14px;
           font-weight: 600;
           cursor: pointer;
           transition: all 0.3s ease;
-          display: flex;
-          align-items: center;
-          gap: 6px;
+          box-shadow: 
+            0 4px 16px rgba(0, 0, 0, 0.2),
+            inset 0 1px 0 rgba(255, 255, 255, 0.1);
         }
 
-        .chip-emoji {
-          font-size: 16px;
-        }
-
-        .chip-button:hover {
+        .cosmic-pill:hover {
           transform: translateY(-2px);
+          border-color: rgba(34, 211, 238, 0.5);
           box-shadow: 
-            0 0 30px rgba(34, 211, 238, 0.5),
-            0 0 50px rgba(251, 146, 60, 0.3);
+            0 0 30px rgba(34, 211, 238, 0.3),
+            0 8px 24px rgba(0, 0, 0, 0.3),
+            inset 0 1px 0 rgba(255, 255, 255, 0.2);
         }
 
-        .chip-button.active {
-          color: #fff;
-          box-shadow: 
-            0 0 40px rgba(34, 211, 238, 0.6),
-            0 0 60px rgba(251, 146, 60, 0.4),
-            inset 0 0 20px rgba(255, 255, 255, 0.1);
-        }
-
-        .explore-button {
-          width: 100%;
-          padding: 12px 20px;
-          border-radius: 14px;
-          border: none;
-          color: rgba(255, 255, 255, 0.9);
-          font-size: 15px;
-          font-weight: 600;
-          cursor: pointer;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          gap: 8px;
-          transition: all 0.3s ease;
-        }
-
-        .explore-button:hover {
-          transform: translateY(-2px);
-          box-shadow: 
-            0 0 30px rgba(34, 211, 238, 0.5),
-            0 0 50px rgba(251, 146, 60, 0.3);
-        }
-
-        .arrow-icon {
-          font-size: 18px;
-          transition: transform 0.3s ease;
-        }
-
-        .explore-button:hover .arrow-icon {
-          transform: translateX(4px);
-        }
-
-        .sync-button {
-          padding: 9px 16px;
-          border-radius: 14px;
-          border: none;
-          color: rgba(255, 255, 255, 0.9);
-          font-size: 14px;
-          font-weight: 600;
-          cursor: pointer;
-          transition: all 0.3s ease;
-          display: flex;
-          align-items: center;
-          gap: 6px;
-        }
-
-        .sync-emoji {
-          font-size: 15px;
-        }
-
-        .sync-button:hover:not(:disabled) {
-          transform: scale(1.05);
-          box-shadow: 
-            0 0 30px rgba(34, 211, 238, 0.5),
-            0 0 50px rgba(251, 146, 60, 0.3);
-        }
-
-        .sync-button.syncing {
-          animation: syncPulse 0.5s ease-in-out infinite;
-        }
-
-        @keyframes syncPulse {
-          0%, 100% { 
-            box-shadow: 
-              0 0 30px rgba(34, 211, 238, 0.5),
-              0 0 50px rgba(251, 146, 60, 0.3);
-          }
-          50% { 
-            box-shadow: 
-              0 0 50px rgba(34, 211, 238, 0.8),
-              0 0 80px rgba(251, 146, 60, 0.5);
-          }
-        }
-
-        .sync-button:disabled {
-          cursor: not-allowed;
-          opacity: 0.7;
-        }
-
-        /* ============ INPUTS ============ */
-        .lyrics-input,
-        .description-input {
-          width: 100%;
-          min-height: 140px;
-          padding: 16px;
-          border-radius: 16px;
-          border: none;
-          color: rgba(255, 255, 255, 0.95);
-          font-size: 15px;
-          line-height: 1.6;
-          resize: none;
-          outline: none;
-          transition: all 0.3s ease;
-        }
-
-        .description-input {
-          min-height: 100px;
-        }
-
-        .lyrics-input::placeholder,
-        .description-input::placeholder {
-          color: rgba(255, 255, 255, 0.4);
-        }
-
-        .lyrics-input:focus,
-        .description-input:focus {
+        .cosmic-pill.active {
+          background: linear-gradient(135deg, 
+            rgba(34, 211, 238, 0.2) 0%, 
+            rgba(236, 72, 153, 0.15) 100%);
+          border-color: rgba(34, 211, 238, 0.6);
+          color: #FFFFFF;
           box-shadow: 
             0 0 40px rgba(34, 211, 238, 0.5),
-            0 0 60px rgba(251, 146, 60, 0.3),
-            inset 0 0 30px rgba(255, 255, 255, 0.05);
+            0 8px 24px rgba(0, 0, 0, 0.3),
+            inset 0 0 20px rgba(34, 211, 238, 0.15);
         }
 
-        /* ============ CAPTURE MELODY ============ */
-        .melody-button {
+        .chips-row {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 12px;
+          margin-bottom: 20px;
+        }
+
+        .chip-button {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+
+        .chip-icon {
+          font-size: 18px;
+        }
+
+        /* ============ NEON BUTTONS ============ */
+        .neon-button {
           width: 100%;
-          padding: 16px 24px;
-          border-radius: 16px;
-          border: none;
+          padding: 16px 28px;
+          background: linear-gradient(135deg, 
+            rgba(34, 211, 238, 0.15) 0%, 
+            rgba(59, 130, 246, 0.15) 100%);
+          border: 2px solid rgba(34, 211, 238, 0.4);
+          border-radius: 18px;
           color: rgba(255, 255, 255, 0.95);
           font-size: 16px;
-          font-weight: 600;
+          font-weight: 700;
           cursor: pointer;
           display: flex;
           align-items: center;
           justify-content: center;
           gap: 12px;
           transition: all 0.3s ease;
-          margin-bottom: 16px;
+          box-shadow: 
+            0 0 30px rgba(34, 211, 238, 0.2),
+            inset 0 1px 0 rgba(255, 255, 255, 0.1);
         }
 
-        .melody-button:hover {
-          transform: translateY(-2px);
+        .neon-button:hover {
+          transform: translateY(-3px);
+          border-color: rgba(34, 211, 238, 0.6);
           box-shadow: 
-            0 0 30px rgba(34, 211, 238, 0.5),
-            0 0 50px rgba(251, 146, 60, 0.3);
+            0 0 50px rgba(34, 211, 238, 0.4),
+            0 12px 40px rgba(0, 0, 0, 0.4),
+            inset 0 0 20px rgba(34, 211, 238, 0.1);
+        }
+
+        .arrow-glow {
+          font-size: 20px;
+          transition: transform 0.3s ease;
+        }
+
+        .neon-button:hover .arrow-glow {
+          transform: translateX(4px);
+        }
+
+        .explore-button {
+          margin-top: 4px;
+        }
+
+        .sync-button {
+          padding: 10px 18px;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+
+        .sync-icon {
+          font-size: 16px;
+        }
+
+        .sync-button.syncing {
+          animation: syncPulse 1s ease-in-out infinite;
+        }
+
+        @keyframes syncPulse {
+          0%, 100% { 
+            box-shadow: 
+              0 0 30px rgba(34, 211, 238, 0.4),
+              inset 0 0 10px rgba(34, 211, 238, 0.1);
+          }
+          50% { 
+            box-shadow: 
+              0 0 50px rgba(34, 211, 238, 0.6),
+              inset 0 0 20px rgba(34, 211, 238, 0.2);
+          }
+        }
+
+        /* ============ COSMIC INPUTS ============ */
+        .cosmic-input {
+          width: 100%;
+          min-height: 150px;
+          padding: 18px;
+          background: rgba(0, 0, 0, 0.3);
+          backdrop-filter: blur(10px);
+          border: 1px solid rgba(34, 211, 238, 0.2);
+          border-radius: 16px;
+          color: rgba(255, 255, 255, 0.95);
+          font-size: 15px;
+          line-height: 1.7;
+          font-family: 'Inter', sans-serif;
+          resize: none;
+          outline: none;
+          transition: all 0.3s ease;
+          box-shadow: 
+            inset 0 2px 8px rgba(0, 0, 0, 0.3),
+            0 0 0 1px rgba(255, 255, 255, 0.05);
+        }
+
+        .cosmic-input::placeholder {
+          color: rgba(255, 255, 255, 0.3);
+        }
+
+        .cosmic-input:focus {
+          border-color: rgba(34, 211, 238, 0.5);
+          box-shadow: 
+            inset 0 2px 8px rgba(0, 0, 0, 0.3),
+            0 0 30px rgba(34, 211, 238, 0.2),
+            inset 0 0 20px rgba(34, 211, 238, 0.05);
+        }
+
+        .scene-input {
+          min-height: 110px;
+        }
+
+        /* ============ VINTAGE MICROPHONE ============ */
+        .melody-button {
+          position: relative;
+          flex-direction: column;
+          padding: 32px;
+          gap: 20px;
         }
 
         .melody-button.recording {
-          animation: recordingPulse 1s ease-in-out infinite;
+          animation: recordingPulse 1.5s ease-in-out infinite;
+          border-color: rgba(239, 68, 68, 0.6);
         }
 
         @keyframes recordingPulse {
           0%, 100% {
             box-shadow: 
-              0 0 30px rgba(239, 68, 68, 0.5),
-              0 0 50px rgba(239, 68, 68, 0.3);
+              0 0 40px rgba(239, 68, 68, 0.4),
+              inset 0 0 20px rgba(239, 68, 68, 0.1);
           }
           50% {
             box-shadow: 
-              0 0 50px rgba(239, 68, 68, 0.8),
-              0 0 80px rgba(239, 68, 68, 0.5);
+              0 0 60px rgba(239, 68, 68, 0.6),
+              inset 0 0 30px rgba(239, 68, 68, 0.15);
           }
         }
 
-        .mic-icon {
-          font-size: 24px;
+        .vintage-mic {
+          position: relative;
+          width: 60px;
+          height: 80px;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          filter: drop-shadow(0 4px 16px rgba(34, 211, 238, 0.4));
+        }
+
+        .mic-grille {
+          width: 50px;
+          height: 50px;
+          border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%;
+          background: linear-gradient(135deg, 
+            rgba(192, 192, 192, 0.9) 0%, 
+            rgba(128, 128, 128, 0.8) 100%);
+          border: 2px solid rgba(80, 80, 80, 0.6);
+          box-shadow: 
+            inset 0 -2px 8px rgba(0, 0, 0, 0.4),
+            inset 0 2px 4px rgba(255, 255, 255, 0.3),
+            0 4px 12px rgba(0, 0, 0, 0.3);
+          position: relative;
+        }
+
+        .mic-grille::before {
+          content: '';
+          position: absolute;
+          inset: 6px;
+          border-radius: 50%;
+          background: repeating-linear-gradient(
+            0deg,
+            rgba(0, 0, 0, 0.2) 0px,
+            transparent 1px,
+            transparent 3px,
+            rgba(0, 0, 0, 0.2) 4px
+          );
+        }
+
+        .mic-body {
+          width: 30px;
+          height: 15px;
+          background: linear-gradient(180deg, 
+            rgba(160, 160, 160, 0.9),
+            rgba(100, 100, 100, 0.8));
+          border-radius: 4px;
+          box-shadow: 
+            inset 0 1px 2px rgba(255, 255, 255, 0.3),
+            0 2px 6px rgba(0, 0, 0, 0.3);
+        }
+
+        .mic-base {
+          width: 24px;
+          height: 8px;
+          background: linear-gradient(180deg, 
+            rgba(120, 120, 120, 0.9),
+            rgba(60, 60, 60, 0.8));
+          border-radius: 2px;
+          box-shadow: 0 2px 4px rgba(0, 0, 0, 0.4);
         }
 
         .melody-text {
-          font-size: 15px;
+          font-size: 17px;
+          font-weight: 700;
+          color: rgba(255, 255, 255, 0.95);
         }
 
         .voice-status {
           display: flex;
           align-items: center;
-          gap: 8px;
-          margin-bottom: 12px;
-          padding: 8px 0;
+          gap: 10px;
+          margin: 16px 0;
+          padding: 12px 0;
         }
 
-        .status-dot {
-          width: 8px;
-          height: 8px;
+        .status-pulse {
+          width: 10px;
+          height: 10px;
           border-radius: 50%;
-          background: #10b981;
-          box-shadow: 0 0 10px rgba(16, 185, 129, 0.6);
+          background: #10B981;
+          box-shadow: 0 0 16px rgba(16, 185, 129, 0.8);
           animation: pulse 2s ease-in-out infinite;
         }
 
         @keyframes pulse {
-          0%, 100% { opacity: 1; }
-          50% { opacity: 0.5; }
+          0%, 100% { 
+            opacity: 1;
+            transform: scale(1);
+            box-shadow: 0 0 16px rgba(16, 185, 129, 0.8);
+          }
+          50% { 
+            opacity: 0.6;
+            transform: scale(0.9);
+            box-shadow: 0 0 24px rgba(16, 185, 129, 1);
+          }
         }
 
         .status-text {
-          font-size: 13px;
+          font-size: 14px;
           color: rgba(255, 255, 255, 0.7);
           font-weight: 500;
         }
 
-        .voice-lab-link {
+        .neon-link {
           background: transparent;
           border: none;
-          color: rgba(34, 211, 238, 0.9);
-          font-size: 14px;
+          color: rgba(34, 211, 238, 0.95);
+          font-size: 15px;
           font-weight: 600;
           cursor: pointer;
           display: flex;
           align-items: center;
-          gap: 6px;
+          gap: 8px;
           padding: 0;
           transition: all 0.3s ease;
         }
 
-        .voice-lab-link:hover {
-          color: rgba(34, 211, 238, 1);
-          transform: translateX(2px);
+        .neon-link:hover {
+          color: #22D3EE;
+          text-shadow: 0 0 16px rgba(34, 211, 238, 0.6);
+          transform: translateX(3px);
         }
 
         .link-arrow {
-          font-size: 16px;
+          font-size: 18px;
           transition: transform 0.3s ease;
         }
 
-        .voice-lab-link:hover .link-arrow {
+        .neon-link:hover .link-arrow {
           transform: translateX(4px);
         }
 
-        /* ============ VISUAL ALCHEMIST ============ */
-        .toggle-switch {
+        /* ============ POWER SWITCH ============ */
+        .power-switch {
           position: relative;
-          display: inline-block;
-          width: 52px;
-          height: 28px;
+          width: 64px;
+          height: 32px;
+          cursor: pointer;
         }
 
-        .toggle-switch input {
+        .power-switch input {
           opacity: 0;
           width: 0;
           height: 0;
         }
 
-        .toggle-slider {
+        .switch-track {
           position: absolute;
-          cursor: pointer;
           inset: 0;
-          border-radius: 14px;
+          background: rgba(0, 0, 0, 0.4);
+          border-radius: 16px;
+          border: 2px solid rgba(34, 211, 238, 0.3);
           transition: all 0.3s ease;
-          border: 2px solid rgba(34, 211, 238, 0.4);
+          box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.4);
         }
 
-        .toggle-slider:before {
-          content: '';
+        .switch-thumb {
           position: absolute;
-          height: 20px;
-          width: 20px;
+          width: 24px;
+          height: 24px;
           left: 3px;
-          bottom: 3px;
-          background: white;
+          top: 2px;
+          background: linear-gradient(135deg, 
+            rgba(200, 200, 200, 0.9),
+            rgba(150, 150, 150, 0.9));
           border-radius: 50%;
           transition: all 0.3s ease;
-          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
-        }
-
-        input:checked + .toggle-slider {
-          border-color: rgba(34, 211, 238, 0.8);
           box-shadow: 
-            0 0 20px rgba(34, 211, 238, 0.4),
-            inset 0 0 15px rgba(34, 211, 238, 0.2);
+            0 2px 8px rgba(0, 0, 0, 0.4),
+            inset 0 1px 2px rgba(255, 255, 255, 0.5);
         }
 
-        input:checked + .toggle-slider:before {
-          transform: translateX(24px);
-          background: linear-gradient(135deg, #22d3ee, #fb923c);
+        .switch-glow {
+          position: absolute;
+          inset: 0;
+          border-radius: 16px;
+          opacity: 0;
+          background: linear-gradient(135deg, 
+            rgba(34, 211, 238, 0.3),
+            rgba(59, 130, 246, 0.3));
+          transition: opacity 0.3s ease;
         }
 
+        input:checked + .switch-track {
+          background: rgba(34, 211, 238, 0.15);
+          border-color: rgba(34, 211, 238, 0.6);
+          box-shadow: 
+            inset 0 2px 6px rgba(0, 0, 0, 0.4),
+            0 0 30px rgba(34, 211, 238, 0.3);
+        }
+
+        input:checked + .switch-track .switch-thumb {
+          transform: translateX(32px);
+          background: linear-gradient(135deg, #22D3EE, #3B82F6);
+          box-shadow: 
+            0 2px 12px rgba(34, 211, 238, 0.6),
+            inset 0 1px 2px rgba(255, 255, 255, 0.5);
+        }
+
+        input:checked + .switch-track .switch-glow {
+          opacity: 1;
+        }
+
+        /* ============ STYLE PILLS ============ */
         .style-pills {
           display: flex;
           flex-wrap: wrap;
-          gap: 10px;
-          margin-bottom: 20px;
+          gap: 12px;
+          margin-bottom: 24px;
         }
 
         .style-pill {
-          padding: 10px 18px;
-          border-radius: 20px;
-          border: none;
-          color: rgba(255, 255, 255, 0.85);
-          font-size: 14px;
-          font-weight: 600;
-          cursor: pointer;
-          transition: all 0.3s ease;
+          padding: 10px 20px;
         }
 
-        .style-pill:hover {
-          transform: translateY(-2px);
-          box-shadow: 
-            0 0 20px rgba(34, 211, 238, 0.4),
-            0 0 30px rgba(251, 146, 60, 0.2);
-        }
-
-        .style-pill.active {
-          color: #fff;
-          box-shadow: 
-            0 0 30px rgba(34, 211, 238, 0.6),
-            0 0 50px rgba(251, 146, 60, 0.4),
-            inset 0 0 20px rgba(255, 255, 255, 0.1);
-        }
-
-        .cover-preview {
-          width: 100%;
-          height: 200px;
-          border-radius: 16px;
+        /* ============ COSMIC DISPLAY ============ */
+        .cosmic-display {
           position: relative;
+          width: 100%;
+          height: 220px;
+          border-radius: 20px;
+          background: rgba(0, 0, 0, 0.4);
           overflow: hidden;
           display: flex;
           align-items: center;
           justify-content: center;
         }
 
-        .cover-gradient {
+        .cover-gradient-flow {
           position: absolute;
           inset: 0;
           background: linear-gradient(135deg, 
-            rgba(34, 211, 238, 0.3) 0%, 
-            rgba(168, 85, 247, 0.3) 50%, 
-            rgba(251, 146, 60, 0.3) 100%);
-          animation: gradientShift 8s ease-in-out infinite;
+            rgba(34, 211, 238, 0.25) 0%, 
+            rgba(168, 85, 247, 0.2) 33%,
+            rgba(236, 72, 153, 0.25) 66%,
+            rgba(251, 146, 60, 0.2) 100%);
+          animation: gradientFlow 12s ease-in-out infinite;
         }
 
-        @keyframes gradientShift {
-          0%, 100% { 
+        @keyframes gradientFlow {
+          0%, 100% {
             background: linear-gradient(135deg, 
-              rgba(34, 211, 238, 0.3) 0%, 
-              rgba(168, 85, 247, 0.3) 50%, 
-              rgba(251, 146, 60, 0.3) 100%);
+              rgba(34, 211, 238, 0.25) 0%, 
+              rgba(168, 85, 247, 0.2) 33%,
+              rgba(236, 72, 153, 0.25) 66%,
+              rgba(251, 146, 60, 0.2) 100%);
+          }
+          50% {
+            background: linear-gradient(135deg, 
+              rgba(251, 146, 60, 0.2) 0%,
+              rgba(34, 211, 238, 0.25) 33%,
+              rgba(236, 72, 153, 0.25) 66%,
+              rgba(168, 85, 247, 0.2) 100%);
+          }
+        }
+
+        .cover-particles {
+          position: absolute;
+          inset: 0;
+        }
+
+        .cover-particle {
+          position: absolute;
+          width: 3px;
+          height: 3px;
+          background: rgba(255, 255, 255, 0.8);
+          border-radius: 50%;
+          animation: particleDrift 8s ease-in-out infinite;
+          box-shadow: 0 0 6px rgba(34, 211, 238, 0.6);
+        }
+
+        @keyframes particleDrift {
+          0%, 100% { 
+            transform: translate(0, 0);
+            opacity: 0.3;
           }
           50% { 
-            background: linear-gradient(135deg, 
-              rgba(251, 146, 60, 0.3) 0%, 
-              rgba(34, 211, 238, 0.3) 50%, 
-              rgba(168, 85, 247, 0.3) 100%);
+            transform: translate(40px, -40px);
+            opacity: 1;
           }
         }
 
@@ -1062,184 +1295,179 @@ export default function MusicStudioPremium() {
           position: relative;
           z-index: 1;
           color: rgba(255, 255, 255, 0.7);
-          font-size: 14px;
+          font-size: 15px;
           font-weight: 600;
-          letter-spacing: 0.05em;
+          letter-spacing: 0.1em;
+          text-transform: uppercase;
         }
 
         /* ============ VOICE MODE ============ */
         .voice-mode-selector {
           display: flex;
           gap: 12px;
-          margin-bottom: 20px;
+          margin-bottom: 24px;
         }
 
         .mode-button {
           flex: 1;
-          padding: 13px;
-          border-radius: 14px;
-          border: none;
-          color: rgba(255, 255, 255, 0.7);
-          font-size: 15px;
-          font-weight: 600;
-          cursor: pointer;
-          transition: all 0.3s ease;
+          padding: 14px;
         }
 
-        .mode-button:hover {
-          color: rgba(255, 255, 255, 0.9);
-          transform: translateY(-2px);
-        }
-
-        .mode-button.active {
-          color: #fff;
-          box-shadow: 
-            0 0 30px rgba(34, 211, 238, 0.5),
-            0 0 50px rgba(251, 146, 60, 0.3),
-            inset 0 0 15px rgba(255, 255, 255, 0.1);
-        }
-
-        /* ============ TIMELINE ============ */
-        .timeline-strip {
+        /* ============ TIMELINE TRANSPORT ============ */
+        .timeline-transport {
           display: flex;
-          gap: 8px;
+          gap: 10px;
           overflow-x: auto;
+          margin-bottom: 20px;
           padding-bottom: 4px;
-          margin-bottom: 16px;
         }
 
-        .timeline-segment {
-          flex: 1;
-          min-width: 80px;
-          padding: 10px 12px;
-          border-radius: 12px;
-          text-align: center;
-          border: none;
+        .cosmic-capsule {
+          min-width: 85px;
+          padding: 12px 14px;
+          background: rgba(0, 0, 0, 0.3);
+          backdrop-filter: blur(10px);
+          border: 1px solid rgba(34, 211, 238, 0.2);
+          border-radius: 14px;
           cursor: pointer;
           transition: all 0.3s ease;
-          background: rgba(255, 255, 255, 0.06);
-          backdrop-filter: blur(20px);
-        }
-
-        .timeline-segment:hover {
-          transform: translateY(-2px);
-          background: rgba(255, 255, 255, 0.08);
-        }
-
-        .timeline-segment.active {
-          background: rgba(255, 255, 255, 0.1);
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 8px;
           box-shadow: 
-            0 0 20px rgba(34, 211, 238, 0.4),
-            0 0 30px rgba(251, 146, 60, 0.3);
+            inset 0 1px 2px rgba(255, 255, 255, 0.05),
+            0 2px 8px rgba(0, 0, 0, 0.3);
+        }
+
+        .cosmic-capsule:hover {
+          transform: translateY(-2px);
+          border-color: rgba(34, 211, 238, 0.4);
+          box-shadow: 
+            0 0 20px rgba(34, 211, 238, 0.2),
+            0 4px 16px rgba(0, 0, 0, 0.3);
+        }
+
+        .cosmic-capsule.active {
+          background: linear-gradient(135deg, 
+            rgba(34, 211, 238, 0.15),
+            rgba(59, 130, 246, 0.1));
+          border-color: rgba(34, 211, 238, 0.6);
+          box-shadow: 
+            0 0 30px rgba(34, 211, 238, 0.4),
+            0 4px 16px rgba(0, 0, 0, 0.3),
+            inset 0 0 20px rgba(34, 211, 238, 0.1);
         }
 
         .segment-label {
-          display: block;
-          font-size: 11px;
+          font-size: 12px;
           font-weight: 600;
           color: rgba(255, 255, 255, 0.7);
-          margin-bottom: 6px;
+          letter-spacing: 0.03em;
         }
 
-        .segment-bar {
+        .segment-indicator {
+          width: 100%;
           height: 4px;
-          background: rgba(255, 255, 255, 0.2);
+          background: rgba(255, 255, 255, 0.15);
           border-radius: 2px;
           position: relative;
           overflow: hidden;
         }
 
-        .segment-bar.active::after {
+        .segment-indicator.active::after {
           content: '';
           position: absolute;
-          left: 0;
-          top: 0;
-          height: 100%;
-          width: 100%;
-          background: linear-gradient(90deg, #22d3ee, #fb923c);
-          box-shadow: 0 0 10px rgba(34, 211, 238, 0.6);
-          animation: progress 2s ease-in-out infinite;
+          inset: 0;
+          background: linear-gradient(90deg, #22D3EE, #3B82F6);
+          box-shadow: 0 0 10px rgba(34, 211, 238, 0.8);
+          animation: indicatorPulse 2s ease-in-out infinite;
         }
 
-        @keyframes progress {
+        @keyframes indicatorPulse {
           0%, 100% { opacity: 1; }
           50% { opacity: 0.6; }
         }
 
-        .timeline-progress-bar {
-          width: 100%;
+        /* ============ ENERGY PROGRESS ============ */
+        .energy-progress {
+          margin-top: 8px;
         }
 
         .progress-track {
           width: 100%;
-          height: 6px;
-          border-radius: 3px;
+          height: 8px;
+          background: rgba(0, 0, 0, 0.4);
+          border-radius: 4px;
           position: relative;
           overflow: hidden;
+          box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.4);
         }
 
-        .progress-active {
+        .progress-energy {
           height: 100%;
-          background: linear-gradient(90deg, #22d3ee, #fb923c);
-          border-radius: 3px;
-          box-shadow: 0 0 12px rgba(34, 211, 238, 0.6);
+          background: linear-gradient(90deg, #22D3EE, #3B82F6);
+          border-radius: 4px;
+          position: relative;
           transition: width 0.5s ease;
         }
 
-        /* ============ EQUIPMENT PREVIEW ============ */
-        .preview-card {
-          background: rgba(255, 255, 255, 0.06);
+        .energy-glow {
+          position: absolute;
+          inset: 0;
+          background: linear-gradient(90deg, 
+            transparent,
+            rgba(255, 255, 255, 0.4),
+            transparent);
+          animation: energyFlow 2s linear infinite;
+        }
+
+        @keyframes energyFlow {
+          0% { transform: translateX(-100%); }
+          100% { transform: translateX(100%); }
+        }
+
+        /* ============ VINTAGE TAPE DECK ============ */
+        .equipment-panel {
+          background: rgba(0, 0, 0, 0.25);
         }
 
         .equipment-display {
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          gap: 24px;
+          padding: 24px 0;
         }
 
-        .retro-equipment {
+        .vintage-deck {
           display: flex;
           flex-direction: column;
-          align-items: center;
-          gap: 12px;
-        }
-
-        .tape-reel {
-          display: flex;
           align-items: center;
           gap: 20px;
-          filter: drop-shadow(0 4px 12px rgba(34, 211, 238, 0.3));
         }
 
-        .reel-circle {
-          width: 60px;
-          height: 60px;
+        .tape-reel-container {
+          display: flex;
+          align-items: center;
+          gap: 30px;
+          position: relative;
+        }
+
+        .reel {
+          width: 70px;
+          height: 70px;
           border-radius: 50%;
           background: 
-            radial-gradient(circle at 30% 30%, rgba(200, 200, 200, 0.9), rgba(120, 120, 120, 0.8)),
-            linear-gradient(135deg, rgba(180, 180, 180, 0.9), rgba(100, 100, 100, 0.8));
-          border: 3px solid rgba(80, 80, 80, 0.9);
+            radial-gradient(circle at 30% 30%, 
+              rgba(220, 220, 220, 0.95),
+              rgba(140, 140, 140, 0.9));
+          border: 3px solid rgba(80, 80, 80, 0.7);
           position: relative;
           box-shadow: 
-            0 4px 12px rgba(0, 0, 0, 0.5),
-            inset 0 2px 4px rgba(255, 255, 255, 0.3),
-            inset 0 -2px 4px rgba(0, 0, 0, 0.3);
-          transition: animation-duration 0.3s ease;
+            0 6px 20px rgba(0, 0, 0, 0.5),
+            inset 0 2px 6px rgba(255, 255, 255, 0.4),
+            inset 0 -2px 6px rgba(0, 0, 0, 0.4);
         }
 
-        .reel-circle.spinning {
-          animation: rotate 2s linear infinite !important;
-        }
-
-        .left-reel {
-          animation: rotate 8s linear infinite;
-          animation-direction: normal;
-        }
-
-        .right-reel {
-          animation: rotate 8s linear infinite;
-          animation-direction: reverse;
+        .reel.spinning {
+          animation: rotate 3s linear infinite;
         }
 
         @keyframes rotate {
@@ -1247,304 +1475,344 @@ export default function MusicStudioPremium() {
           to { transform: rotate(360deg); }
         }
 
-        .reel-center {
+        .reel-hub {
           position: absolute;
           top: 50%;
           left: 50%;
           transform: translate(-50%, -50%);
-          width: 20px;
-          height: 20px;
+          width: 24px;
+          height: 24px;
           border-radius: 50%;
           background: 
-            radial-gradient(circle at 30% 30%, rgba(150, 150, 150, 1), rgba(60, 60, 60, 0.9));
+            radial-gradient(circle at 30% 30%, 
+              rgba(180, 180, 180, 1),
+              rgba(80, 80, 80, 0.9));
           box-shadow: 
-            0 2px 6px rgba(0, 0, 0, 0.6),
-            inset 0 1px 2px rgba(255, 255, 255, 0.4);
+            0 2px 8px rgba(0, 0, 0, 0.6),
+            inset 0 1px 3px rgba(255, 255, 255, 0.5);
         }
 
-        .reel-spokes {
+        .reel-tape {
           position: absolute;
-          inset: 0;
-          background: 
-            linear-gradient(0deg, transparent 48%, rgba(80, 80, 80, 0.8) 48%, rgba(80, 80, 80, 0.8) 52%, transparent 52%),
-            linear-gradient(90deg, transparent 48%, rgba(80, 80, 80, 0.8) 48%, rgba(80, 80, 80, 0.8) 52%, transparent 52%),
-            linear-gradient(45deg, transparent 48%, rgba(80, 80, 80, 0.8) 48%, rgba(80, 80, 80, 0.8) 52%, transparent 52%),
-            linear-gradient(-45deg, transparent 48%, rgba(80, 80, 80, 0.8) 48%, rgba(80, 80, 80, 0.8) 52%, transparent 52%);
+          inset: 8px;
+          border-radius: 50%;
+          background: repeating-conic-gradient(
+            from 0deg,
+            rgba(60, 60, 60, 0.8) 0deg 10deg,
+            rgba(100, 100, 100, 0.7) 10deg 20deg
+          );
         }
 
-        .tape-strip {
-          width: 40px;
-          height: 6px;
-          background: linear-gradient(180deg, rgba(90, 60, 40, 0.9), rgba(60, 40, 30, 0.9));
-          border-radius: 1px;
+        .tape-path {
+          width: 50px;
+          height: 8px;
+          background: linear-gradient(180deg, 
+            rgba(90, 60, 40, 0.9),
+            rgba(60, 40, 30, 0.9));
+          border-radius: 2px;
           box-shadow: 
-            0 2px 6px rgba(0, 0, 0, 0.5),
-            inset 0 1px 1px rgba(255, 255, 255, 0.2);
+            0 2px 8px rgba(0, 0, 0, 0.5),
+            inset 0 1px 2px rgba(255, 255, 255, 0.2);
         }
 
-        .equipment-label {
-          font-size: 13px;
+        .deck-panel {
+          width: 100%;
+          padding: 20px;
+          background: rgba(0, 0, 0, 0.3);
+          border-radius: 12px;
+        }
+
+        .vu-meter {
+          display: flex;
+          align-items: flex-end;
+          justify-content: center;
+          gap: 4px;
+          height: 60px;
+        }
+
+        .vu-bar {
+          width: 4px;
+          height: 20%;
+          background: linear-gradient(180deg, 
+            rgba(34, 211, 238, 0.3),
+            rgba(59, 130, 246, 0.3));
+          border-radius: 2px;
+          transition: all 0.1s ease;
+        }
+
+        .vu-bar.active {
+          height: 70%;
+          background: linear-gradient(180deg, #22D3EE, #3B82F6);
+          box-shadow: 0 0 8px rgba(34, 211, 238, 0.8);
+          animation: vuBounce 0.8s ease-in-out infinite;
+        }
+
+        @keyframes vuBounce {
+          0%, 100% { height: 30%; }
+          50% { height: 85%; }
+        }
+
+        .equipment-status {
+          font-size: 14px;
           font-weight: 600;
           color: rgba(255, 255, 255, 0.7);
-          letter-spacing: 0.05em;
-          transition: all 0.3s ease;
-        }
-
-        /* ============ WAVEFORM ============ */
-        .waveform-preview {
-          width: 100%;
-          height: 60px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          background: rgba(0, 0, 0, 0.2);
-          border-radius: 12px;
-          padding: 8px;
-        }
-
-        .waveform-bars {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          gap: 3px;
-          height: 100%;
-        }
-
-        .wave-bar {
-          width: 3px;
-          background: linear-gradient(180deg, rgba(34, 211, 238, 0.4), rgba(251, 146, 60, 0.4));
-          border-radius: 2px;
-          transition: all 0.3s ease;
-        }
-
-        .wave-bar.active {
-          background: linear-gradient(180deg, #22d3ee, #fb923c);
-          animation: wave 0.8s ease-in-out infinite;
-          box-shadow: 0 0 6px rgba(34, 211, 238, 0.6);
-        }
-
-        @keyframes wave {
-          0%, 100% { transform: scaleY(0.5); }
-          50% { transform: scaleY(1.2); }
+          text-align: center;
         }
 
         /* ============ AUDIO PLAYER ============ */
-        .audio-player-card {
-          background: rgba(255, 255, 255, 0.06);
-          animation: fadeInUp 0.6s ease-out;
+        .audio-output {
+          padding: 28px 24px;
+          animation: cardFloat 0.6s ease-out;
         }
 
-        .audio-player {
+        .cosmic-audio-player {
           width: 100%;
-          height: 50px;
-          margin-bottom: 16px;
-          border-radius: 12px;
+          height: 56px;
+          margin-bottom: 20px;
+          border-radius: 14px;
           filter: 
-            drop-shadow(0 0 20px rgba(34, 211, 238, 0.3))
-            drop-shadow(0 0 40px rgba(251, 146, 60, 0.2));
+            drop-shadow(0 0 30px rgba(34, 211, 238, 0.3))
+            drop-shadow(0 4px 16px rgba(0, 0, 0, 0.4));
         }
 
         .download-button {
-          width: 100%;
           padding: 14px;
-          border-radius: 14px;
-          border: none;
-          color: rgba(255, 255, 255, 0.9);
-          font-size: 15px;
-          font-weight: 600;
-          cursor: pointer;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          gap: 8px;
-          transition: all 0.3s ease;
+          gap: 10px;
         }
 
-        .download-button:hover {
-          transform: translateY(-2px);
-          box-shadow: 
-            0 0 30px rgba(34, 211, 238, 0.5),
-            0 0 50px rgba(251, 146, 60, 0.3);
+        .download-icon {
+          font-size: 20px;
         }
 
         /* ============ ADVANCED SECTION ============ */
         .advanced-section {
-          margin-bottom: 20px;
+          margin-bottom: 24px;
         }
 
         .advanced-toggle {
           width: 100%;
-          padding: 14px 20px;
-          border-radius: 14px;
-          border: none;
-          color: rgba(255, 255, 255, 0.9);
-          font-size: 15px;
-          font-weight: 600;
-          cursor: pointer;
+          padding: 18px 24px;
           display: flex;
           align-items: center;
           justify-content: space-between;
+          border: none;
+          cursor: pointer;
           transition: all 0.3s ease;
         }
 
         .advanced-toggle:hover {
           transform: translateY(-2px);
           box-shadow: 
-            0 0 30px rgba(34, 211, 238, 0.4),
-            0 0 50px rgba(251, 146, 60, 0.2);
+            0 0 40px rgba(34, 211, 238, 0.25),
+            0 8px 32px rgba(0, 0, 0, 0.4);
         }
 
         .advanced-label {
-          font-size: 15px;
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          font-size: 16px;
+          font-weight: 700;
+          color: rgba(255, 255, 255, 0.95);
         }
 
-        .advanced-arrow {
-          font-size: 12px;
+        .adv-icon {
+          font-size: 22px;
+        }
+
+        .advanced-chevron {
+          font-size: 14px;
+          color: rgba(34, 211, 238, 0.8);
           transition: transform 0.3s ease;
         }
 
-        .advanced-arrow.open {
+        .advanced-chevron.open {
           transform: rotate(180deg);
         }
 
         .advanced-content {
-          margin-top: 12px;
-          padding: 20px;
-          animation: fadeInUp 0.4s ease-out;
+          margin-top: 16px;
+          padding: 24px;
+          animation: cardFloat 0.4s ease-out;
         }
 
         .advanced-row {
           display: flex;
           align-items: center;
           justify-content: space-between;
-          gap: 16px;
-          margin-bottom: 16px;
+          gap: 20px;
+          margin-bottom: 20px;
         }
 
         .advanced-row:last-child {
           margin-bottom: 0;
         }
 
-        .advanced-option {
-          font-size: 14px;
+        .param-label {
+          font-size: 15px;
           font-weight: 600;
           color: rgba(255, 255, 255, 0.85);
-          min-width: 100px;
+          min-width: 110px;
         }
 
-        .advanced-slider {
+        .param-control {
           flex: 1;
-          height: 6px;
-          border-radius: 3px;
-          background: rgba(255, 255, 255, 0.1);
+          display: flex;
+          align-items: center;
+          gap: 16px;
+        }
+
+        .cosmic-slider {
+          flex: 1;
+          height: 8px;
+          border-radius: 4px;
+          background: rgba(0, 0, 0, 0.4);
           outline: none;
           -webkit-appearance: none;
+          box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.4);
         }
 
-        .advanced-slider::-webkit-slider-thumb {
+        .cosmic-slider::-webkit-slider-thumb {
           -webkit-appearance: none;
-          appearance: none;
-          width: 18px;
-          height: 18px;
+          width: 20px;
+          height: 20px;
           border-radius: 50%;
-          background: linear-gradient(135deg, #22d3ee, #fb923c);
+          background: linear-gradient(135deg, #22D3EE, #3B82F6);
           cursor: pointer;
-          box-shadow: 0 0 10px rgba(34, 211, 238, 0.6);
+          box-shadow: 
+            0 0 16px rgba(34, 211, 238, 0.6),
+            0 2px 8px rgba(0, 0, 0, 0.4);
+          transition: all 0.2s ease;
         }
 
-        .advanced-slider::-moz-range-thumb {
-          width: 18px;
-          height: 18px;
-          border-radius: 50%;
-          background: linear-gradient(135deg, #22d3ee, #fb923c);
-          cursor: pointer;
-          box-shadow: 0 0 10px rgba(34, 211, 238, 0.6);
+        .cosmic-slider::-webkit-slider-thumb:hover {
+          transform: scale(1.1);
+          box-shadow: 
+            0 0 24px rgba(34, 211, 238, 0.8),
+            0 2px 12px rgba(0, 0, 0, 0.5);
+        }
+
+        .cosmic-slider::-moz-range-thumb {
+          width: 20px;
+          height: 20px;
           border: none;
+          border-radius: 50%;
+          background: linear-gradient(135deg, #22D3EE, #3B82F6);
+          cursor: pointer;
+          box-shadow: 
+            0 0 16px rgba(34, 211, 238, 0.6),
+            0 2px 8px rgba(0, 0, 0, 0.4);
         }
 
-        /* ============ PRIMARY CTA ============ */
-        .primary-cta {
+        .param-value {
+          font-size: 14px;
+          font-weight: 600;
+          color: rgba(34, 211, 238, 0.9);
+          min-width: 45px;
+          text-align: right;
+        }
+
+        /* ============ GENERATE CTA ============ */
+        .generate-cta {
           width: 100%;
-          padding: 18px 32px;
-          border-radius: 18px;
-          border: none;
-          color: #fff;
-          font-size: 17px;
-          font-weight: 700;
+          padding: 22px 36px;
+          background: linear-gradient(135deg, 
+            rgba(34, 211, 238, 0.25) 0%, 
+            rgba(59, 130, 246, 0.2) 100%);
+          border: 2px solid rgba(34, 211, 238, 0.5);
+          border-radius: 20px;
+          color: #FFFFFF;
+          font-size: 18px;
+          font-weight: 800;
           cursor: pointer;
-          position: relative;
-          overflow: hidden;
-          margin-top: 8px;
           display: flex;
           align-items: center;
           justify-content: center;
-          gap: 12px;
+          gap: 16px;
+          position: relative;
+          overflow: hidden;
           transition: all 0.3s ease;
-        }
-
-        .primary-cta:hover:not(:disabled) {
-          transform: translateY(-2px);
           box-shadow: 
-            0 0 50px rgba(34, 211, 238, 0.6),
-            0 0 80px rgba(251, 146, 60, 0.4);
+            0 0 40px rgba(34, 211, 238, 0.3),
+            0 8px 32px rgba(0, 0, 0, 0.4),
+            inset 0 1px 0 rgba(255, 255, 255, 0.15);
         }
 
-        .primary-cta:disabled {
+        .generate-cta:hover:not(:disabled) {
+          transform: translateY(-4px);
+          border-color: rgba(34, 211, 238, 0.7);
+          box-shadow: 
+            0 0 60px rgba(34, 211, 238, 0.5),
+            0 12px 48px rgba(0, 0, 0, 0.5),
+            inset 0 0 30px rgba(34, 211, 238, 0.15);
+        }
+
+        .generate-cta:disabled {
           cursor: not-allowed;
+          opacity: 0.7;
         }
 
-        .primary-cta.generating {
-          animation: generatePulse 1.5s ease-in-out infinite;
+        .generate-cta.generating {
+          animation: generatePulse 2s ease-in-out infinite;
         }
 
         @keyframes generatePulse {
           0%, 100% {
             box-shadow: 
-              0 0 30px rgba(34, 211, 238, 0.4),
-              0 0 50px rgba(251, 146, 60, 0.3);
+              0 0 40px rgba(34, 211, 238, 0.4),
+              0 8px 32px rgba(0, 0, 0, 0.4);
           }
           50% {
             box-shadow: 
-              0 0 60px rgba(34, 211, 238, 0.7),
-              0 0 100px rgba(251, 146, 60, 0.5);
+              0 0 80px rgba(34, 211, 238, 0.6),
+              0 12px 48px rgba(0, 0, 0, 0.5);
           }
         }
 
-        .cta-glow {
+        .button-glow-layer {
           position: absolute;
           inset: 0;
-          background: linear-gradient(135deg, rgba(34, 211, 238, 0.3), rgba(251, 146, 60, 0.3));
+          background: linear-gradient(135deg, 
+            rgba(34, 211, 238, 0.15),
+            rgba(59, 130, 246, 0.1));
           opacity: 0;
           transition: opacity 0.3s ease;
         }
 
-        .primary-cta:hover .cta-glow {
+        .generate-cta:hover .button-glow-layer {
           opacity: 1;
+        }
+
+        .cta-icon {
+          font-size: 26px;
+          position: relative;
+          z-index: 1;
         }
 
         .cta-text {
           position: relative;
           z-index: 1;
+          letter-spacing: 0.02em;
         }
 
-        .cta-icon {
+        .cta-arrow {
+          font-size: 24px;
           position: relative;
           z-index: 1;
           transition: transform 0.3s ease;
-          font-size: 20px;
         }
 
-        .primary-cta:hover .cta-icon {
-          transform: translateX(4px);
+        .generate-cta:hover .cta-arrow {
+          transform: translateX(6px);
         }
 
-        .spinner {
-          width: 20px;
-          height: 20px;
-          border: 3px solid rgba(255, 255, 255, 0.3);
-          border-top-color: #fff;
+        .energy-spinner {
+          width: 24px;
+          height: 24px;
+          border: 3px solid rgba(255, 255, 255, 0.2);
+          border-top-color: #FFFFFF;
           border-radius: 50%;
-          animation: spin 0.8s linear infinite;
+          animation: spin 1s linear infinite;
           position: relative;
           z-index: 1;
         }
@@ -1553,117 +1821,164 @@ export default function MusicStudioPremium() {
           to { transform: rotate(360deg); }
         }
 
-        /* ============ PROGRESS BAR ============ */
-        .generation-progress {
+        /* ============ GENERATION ENERGY BAR ============ */
+        .generation-energy-bar {
           width: 100%;
-          height: 4px;
-          background: rgba(255, 255, 255, 0.1);
-          border-radius: 2px;
+          height: 6px;
+          background: rgba(0, 0, 0, 0.4);
+          border-radius: 3px;
+          margin-top: 16px;
           overflow: hidden;
-          margin-top: 12px;
+          box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.4);
         }
 
-        .progress-fill {
+        .energy-fill {
           height: 100%;
-          background: linear-gradient(90deg, #22d3ee, #fb923c);
-          border-radius: 2px;
+          background: linear-gradient(90deg, #22D3EE, #3B82F6);
+          border-radius: 3px;
+          position: relative;
           transition: width 0.3s ease;
-          box-shadow: 0 0 10px rgba(34, 211, 238, 0.6);
         }
 
-        /* ============ BOTTOM NAV ============ */
-        .bottom-nav {
+        .energy-pulse {
+          position: absolute;
+          inset: 0;
+          background: linear-gradient(90deg, 
+            transparent,
+            rgba(255, 255, 255, 0.6),
+            transparent);
+          animation: energyFlow 1.5s linear infinite;
+        }
+
+        /* ============ BOTTOM NAVIGATION ============ */
+        .bottom-navigation {
           position: fixed;
           bottom: 0;
           left: 0;
           right: 0;
-          display: flex;
-          justify-content: space-around;
-          padding: 12px 8px 16px;
+          background: rgba(5, 11, 42, 0.95);
+          backdrop-filter: blur(20px);
+          -webkit-backdrop-filter: blur(20px);
           border-top: 2px solid transparent;
           background-image: 
-            linear-gradient(rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.08)),
-            linear-gradient(90deg, rgba(34, 211, 238, 0.4) 0%, rgba(251, 146, 60, 0.4) 100%);
+            linear-gradient(rgba(5, 11, 42, 0.95), rgba(5, 11, 42, 0.95)),
+            linear-gradient(90deg, 
+              rgba(34, 211, 238, 0.3) 0%, 
+              rgba(236, 72, 153, 0.25) 50%, 
+              rgba(251, 146, 60, 0.3) 100%);
           background-origin: border-box;
           background-clip: padding-box, border-box;
-          box-shadow: 
-            0 -4px 24px rgba(0, 0, 0, 0.3),
-            inset 0 1px 0 rgba(255, 255, 255, 0.1);
+          display: flex;
+          justify-content: space-around;
+          align-items: center;
+          padding: 12px 8px 16px;
           z-index: 100;
+          box-shadow: 
+            0 -8px 32px rgba(0, 0, 0, 0.6),
+            inset 0 1px 0 rgba(255, 255, 255, 0.05);
+        }
+
+        .nav-glow-bar {
+          position: absolute;
+          top: 0;
+          left: 0;
+          right: 0;
+          height: 2px;
+          background: linear-gradient(90deg, 
+            rgba(34, 211, 238, 0.6),
+            rgba(236, 72, 153, 0.5),
+            rgba(251, 146, 60, 0.6));
+          filter: blur(4px);
         }
 
         .nav-item {
           display: flex;
           flex-direction: column;
           align-items: center;
-          gap: 4px;
-          padding: 8px 12px;
+          gap: 6px;
+          padding: 10px 16px;
           background: transparent;
           border: none;
-          color: rgba(255, 255, 255, 0.6);
+          color: rgba(255, 255, 255, 0.5);
           cursor: pointer;
           transition: all 0.3s ease;
           position: relative;
         }
 
         .nav-item:hover {
-          color: rgba(255, 255, 255, 0.9);
+          color: rgba(255, 255, 255, 0.8);
+          transform: translateY(-2px);
         }
 
         .nav-item.active {
-          color: #fff;
+          color: #FFFFFF;
         }
 
-        .nav-glow-ring {
+        .nav-active-glow {
           position: absolute;
           top: 50%;
           left: 50%;
           transform: translate(-50%, -50%);
-          width: 50px;
-          height: 50px;
+          width: 60px;
+          height: 60px;
           border-radius: 50%;
-          border: 2px solid rgba(34, 211, 238, 0.6);
-          box-shadow: 
-            0 0 20px rgba(34, 211, 238, 0.6),
-            0 0 40px rgba(251, 146, 60, 0.4);
-          animation: pulse-ring 2s ease-in-out infinite;
+          background: radial-gradient(circle, 
+            rgba(34, 211, 238, 0.3),
+            transparent 70%);
+          animation: navPulse 2s ease-in-out infinite;
+          pointer-events: none;
         }
 
-        @keyframes pulse-ring {
-          0%, 100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
-          50% { transform: translate(-50%, -50%) scale(1.1); opacity: 0.7; }
+        @keyframes navPulse {
+          0%, 100% { 
+            transform: translate(-50%, -50%) scale(1);
+            opacity: 0.6;
+          }
+          50% { 
+            transform: translate(-50%, -50%) scale(1.2);
+            opacity: 1;
+          }
         }
 
         .nav-icon {
-          font-size: 22px;
+          font-size: 24px;
           position: relative;
           z-index: 1;
+          filter: drop-shadow(0 0 8px rgba(34, 211, 238, 0.3));
+        }
+
+        .nav-item.active .nav-icon {
+          filter: drop-shadow(0 0 16px rgba(34, 211, 238, 0.8));
         }
 
         .nav-label {
           font-size: 11px;
           font-weight: 600;
-          letter-spacing: 0.03em;
+          letter-spacing: 0.05em;
           position: relative;
           z-index: 1;
         }
 
         /* ============ SCROLLBAR ============ */
         ::-webkit-scrollbar {
-          width: 6px;
+          width: 8px;
         }
 
         ::-webkit-scrollbar-track {
-          background: rgba(255, 255, 255, 0.05);
+          background: rgba(0, 0, 0, 0.3);
         }
 
         ::-webkit-scrollbar-thumb {
-          background: linear-gradient(180deg, rgba(34, 211, 238, 0.5), rgba(251, 146, 60, 0.5));
-          border-radius: 3px;
+          background: linear-gradient(180deg, 
+            rgba(34, 211, 238, 0.4),
+            rgba(59, 130, 246, 0.4));
+          border-radius: 4px;
         }
 
         ::-webkit-scrollbar-thumb:hover {
-          background: linear-gradient(180deg, rgba(34, 211, 238, 0.7), rgba(251, 146, 60, 0.7));
+          background: linear-gradient(180deg, 
+            rgba(34, 211, 238, 0.6),
+            rgba(59, 130, 246, 0.6));
         }
       `}</style>
     </div>
