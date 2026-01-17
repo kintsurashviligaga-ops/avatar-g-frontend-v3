@@ -1,9 +1,17 @@
 'use client'
 
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { supabase } from '@/lib/supabase/client'
+import AuthModal from '@/components/auth/AuthModal'
+import toast, { Toaster } from 'react-hot-toast'
 
 export default function HomePage() {
   const router = useRouter()
+  const [user, setUser] = useState<any>(null)
+  const [credits, setCredits] = useState(0)
+  const [showAuthModal, setShowAuthModal] = useState(false)
+  const [loading, setLoading] = useState(true)
 
   const services = [
     { id: 'avatar-builder', title: 'Avatar Builder', subtitle: 'Identity Lab', path: '/avatar-builder' },
@@ -16,11 +24,110 @@ export default function HomePage() {
     { id: 'business-agent', title: 'Business Agent', subtitle: 'The Brain', path: '/business-agent' },
   ]
 
+  useEffect(() => {
+    // Check auth status
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null)
+      if (session?.user) {
+        fetchCredits(session.user.id)
+      }
+      setLoading(false)
+    })
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null)
+      if (session?.user) {
+        fetchCredits(session.user.id)
+      } else {
+        setCredits(0)
+      }
+    })
+
+    return () => subscription.unsubscribe()
+  }, [])
+
+  const fetchCredits = async (userId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('credits')
+        .eq('id', userId)
+        .single()
+      
+      if (error) throw error
+      if (data) setCredits(data.credits)
+    } catch (error) {
+      console.error('Error fetching credits:', error)
+    }
+  }
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut()
+    toast.success('Signed out successfully')
+  }
+
+  const handleServiceClick = (path: string) => {
+    if (!user) {
+      setShowAuthModal(true)
+      toast.error('Please sign in to use services')
+      return
+    }
+    router.push(path)
+  }
+
   return (
     <div style={{ minHeight: '100vh', background: 'radial-gradient(ellipse at top, rgba(139, 92, 246, 0.15), transparent 50%), #0a0e14', paddingBottom: '100px' }}>
       <header style={{ position: 'sticky', top: 0, zIndex: 50, padding: '20px', background: 'rgba(10, 14, 20, 0.95)', backdropFilter: 'blur(20px)', borderBottom: '1px solid rgba(255, 255, 255, 0.1)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <h2 style={{ fontSize: '16px', fontWeight: '600', color: '#fff', margin: 0 }}>Home</h2>
-        <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: 'linear-gradient(135deg, #8B5CF6, #3B82F6)', border: '2px solid rgba(255, 255, 255, 0.1)' }} />
+        
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          {user && (
+            <div style={{ 
+              padding: '6px 12px', 
+              background: 'rgba(139, 92, 246, 0.2)', 
+              border: '1px solid rgba(139, 92, 246, 0.3)', 
+              borderRadius: '12px',
+              fontSize: '13px',
+              fontWeight: '600',
+              color: '#8B5CF6'
+            }}>
+              {credits} Credits
+            </div>
+          )}
+          
+          {user ? (
+            <button onClick={handleSignOut} style={{ 
+              width: '36px', 
+              height: '36px', 
+              borderRadius: '50%', 
+              background: 'linear-gradient(135deg, #8B5CF6, #3B82F6)', 
+              border: '2px solid rgba(255, 255, 255, 0.1)',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: '14px',
+              fontWeight: '600',
+              color: '#fff'
+            }}>
+              {user.email?.[0].toUpperCase()}
+            </button>
+          ) : (
+            <button onClick={() => setShowAuthModal(true)} style={{
+              padding: '8px 16px',
+              background: 'linear-gradient(135deg, #8B5CF6, #3B82F6)',
+              border: 'none',
+              borderRadius: '12px',
+              color: '#fff',
+              fontSize: '14px',
+              fontWeight: '600',
+              cursor: 'pointer'
+            }}>
+              Sign In
+            </button>
+          )}
+        </div>
       </header>
 
       <div style={{ padding: '32px 20px' }}>
@@ -50,7 +157,7 @@ export default function HomePage() {
           ].map((item) => (
             <button 
               key={item.path} 
-              onClick={() => router.push(item.path)} 
+              onClick={() => handleServiceClick(item.path)} 
               style={{ padding: '20px 12px', background: 'rgba(26, 26, 46, 0.6)', backdropFilter: 'blur(20px)', border: '1px solid rgba(255, 255, 255, 0.1)', borderRadius: '16px', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', color: '#fff', fontSize: '13px', fontWeight: '500' }}
             >
               <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'rgba(139, 92, 246, 0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>●</div>
@@ -68,7 +175,7 @@ export default function HomePage() {
           {services.map((service) => (
             <button 
               key={service.id} 
-              onClick={() => router.push(service.path)} 
+              onClick={() => handleServiceClick(service.path)} 
               style={{ padding: '20px 16px', background: 'rgba(26, 26, 46, 0.6)', backdropFilter: 'blur(20px)', border: '1px solid rgba(255, 255, 255, 0.1)', borderRadius: '20px', cursor: 'pointer', textAlign: 'left', position: 'relative', overflow: 'hidden' }}
             >
               <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '2px', background: 'linear-gradient(90deg, #8B5CF6, #3B82F6)', opacity: 0.6 }} />
@@ -114,6 +221,9 @@ export default function HomePage() {
           </button>
         ))}
       </nav>
+
+      {showAuthModal && <AuthModal onClose={() => setShowAuthModal(false)} />}
+      <Toaster position="bottom-center" />
     </div>
   )
-}
+      }
