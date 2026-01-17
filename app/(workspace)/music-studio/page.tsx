@@ -10,9 +10,34 @@ export default function MusicStudioPremium() {
   const [visualStyle, setVisualStyle] = useState('Cyberpunk');
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [lyrics, setLyrics] = useState("Chasing dreams, running through the night.\nA spark in the heart, burning so bright.");
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [generationProgress, setGenerationProgress] = useState(0);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [selectedSegment, setSelectedSegment] = useState('Chorus');
 
   const handleGenerate = () => {
-    alert('🎵 Generating track...\n\nBackend integration coming soon!');
+    setIsGenerating(true);
+    setGenerationProgress(0);
+    
+    // Simulate generation progress
+    const interval = setInterval(() => {
+      setGenerationProgress(prev => {
+        if (prev >= 100) {
+          clearInterval(interval);
+          setTimeout(() => {
+            setIsGenerating(false);
+            setGenerationProgress(0);
+          }, 500);
+          return 100;
+        }
+        return prev + 2;
+      });
+    }, 50);
+  };
+
+  const handleSmartSync = () => {
+    setIsSyncing(true);
+    setTimeout(() => setIsSyncing(false), 2500);
   };
 
   // Stable star particles
@@ -97,14 +122,20 @@ export default function MusicStudioPremium() {
         <div className="glass-card neon-outline section-card">
           <h3 className="section-title">Project Setup</h3>
           <div className="chips-row">
-            <button className="chip-button glass-element neon-outline active">
-              🎸 {genre}
+            <button 
+              className={`chip-button glass-element neon-outline ${genre === 'Alt Rock' ? 'active' : ''}`}
+              onClick={() => setGenre('Alt Rock')}>
+              🎸 Alt Rock
             </button>
-            <button className="chip-button glass-element neon-outline">
-              🎹 Cello, Synth
+            <button 
+              className={`chip-button glass-element neon-outline ${genre === 'Pop' ? 'active' : ''}`}
+              onClick={() => setGenre('Pop')}>
+              🎹 Pop
             </button>
-            <button className="chip-button glass-element neon-outline">
-              ⚡ {mood}
+            <button 
+              className={`chip-button glass-element neon-outline ${mood === 'Energetic' ? 'active' : ''}`}
+              onClick={() => setMood('Energetic')}>
+              ⚡ Energetic
             </button>
           </div>
         </div>
@@ -113,8 +144,11 @@ export default function MusicStudioPremium() {
         <div className="glass-card neon-outline section-card">
           <div className="card-header">
             <h3 className="section-title">Lyrics & Vision</h3>
-            <button className="sync-button glass-element neon-outline">
-              ✨ Smart Sync
+            <button 
+              className={`sync-button glass-element neon-outline ${isSyncing ? 'syncing' : ''}`}
+              onClick={handleSmartSync}
+              disabled={isSyncing}>
+              {isSyncing ? '⚡ Syncing...' : '✨ Smart Sync'}
             </button>
           </div>
           <textarea
@@ -144,10 +178,13 @@ export default function MusicStudioPremium() {
 
           <div className="timeline-strip">
             {['Intro', 'Verse', 'Chorus', 'Bridge', 'Outro'].map((segment, idx) => (
-              <div key={segment} className="timeline-segment glass-element">
+              <button
+                key={segment}
+                className={`timeline-segment glass-element ${selectedSegment === segment ? 'active' : ''}`}
+                onClick={() => setSelectedSegment(segment)}>
                 <span className="segment-label">{segment}</span>
-                <div className={`segment-bar ${idx === 2 ? 'active' : ''}`} />
-              </div>
+                <div className={`segment-bar ${selectedSegment === segment ? 'active' : ''}`} />
+              </button>
             ))}
           </div>
         </div>
@@ -159,17 +196,19 @@ export default function MusicStudioPremium() {
             <div className="retro-equipment">
               {/* Vintage tape reel icon representation */}
               <div className="tape-reel">
-                <div className="reel-circle left-reel">
+                <div className={`reel-circle left-reel ${isGenerating ? 'spinning' : ''}`}>
                   <div className="reel-center" />
                   <div className="reel-spokes" />
                 </div>
                 <div className="tape-strip" />
-                <div className="reel-circle right-reel">
+                <div className={`reel-circle right-reel ${isGenerating ? 'spinning' : ''}`}>
                   <div className="reel-center" />
                   <div className="reel-spokes" />
                 </div>
               </div>
-              <div className="equipment-label">Analog Tape Deck</div>
+              <div className="equipment-label">
+                {isGenerating ? 'Recording...' : 'Analog Tape Deck'}
+              </div>
             </div>
             
             <div className="waveform-preview">
@@ -177,8 +216,11 @@ export default function MusicStudioPremium() {
                 {[...Array(20)].map((_, i) => (
                   <div 
                     key={i} 
-                    className="wave-bar"
-                    style={{ height: `${20 + Math.sin(i * 0.5) * 40}%` }}
+                    className={`wave-bar ${isGenerating ? 'active' : ''}`}
+                    style={{ 
+                      height: `${20 + Math.sin(i * 0.5) * 40}%`,
+                      animationDelay: `${i * 0.05}s`
+                    }}
                   />
                 ))}
               </div>
@@ -187,11 +229,33 @@ export default function MusicStudioPremium() {
         </div>
 
         {/* Generate Button */}
-        <button className="primary-cta glass-element neon-outline" onClick={handleGenerate}>
+        <button 
+          className={`primary-cta glass-element neon-outline ${isGenerating ? 'generating' : ''}`}
+          onClick={handleGenerate}
+          disabled={isGenerating}>
           <span className="cta-glow" />
-          <span className="cta-text">Generate Track</span>
-          <span className="cta-icon">→</span>
+          {isGenerating ? (
+            <>
+              <span className="spinner" />
+              <span className="cta-text">Generating {generationProgress}%</span>
+            </>
+          ) : (
+            <>
+              <span className="cta-text">Generate Track</span>
+              <span className="cta-icon">→</span>
+            </>
+          )}
         </button>
+
+        {/* Progress Bar */}
+        {isGenerating && (
+          <div className="generation-progress">
+            <div 
+              className="progress-fill"
+              style={{ width: `${generationProgress}%` }}
+            />
+          </div>
+        )}
 
       </div>
 
@@ -463,11 +527,33 @@ export default function MusicStudioPremium() {
           transition: all 0.3s ease;
         }
 
-        .sync-button:hover {
+        .sync-button:hover:not(:disabled) {
           transform: scale(1.05);
           box-shadow: 
             0 0 30px rgba(34, 211, 238, 0.5),
             0 0 50px rgba(251, 146, 60, 0.3);
+        }
+
+        .sync-button.syncing {
+          animation: syncPulse 0.5s ease-in-out infinite;
+        }
+
+        @keyframes syncPulse {
+          0%, 100% { 
+            box-shadow: 
+              0 0 30px rgba(34, 211, 238, 0.5),
+              0 0 50px rgba(251, 146, 60, 0.3);
+          }
+          50% { 
+            box-shadow: 
+              0 0 50px rgba(34, 211, 238, 0.8),
+              0 0 80px rgba(251, 146, 60, 0.5);
+          }
+        }
+
+        .sync-button:disabled {
+          cursor: not-allowed;
+          opacity: 0.7;
         }
 
         /* ============ INPUTS ============ */
@@ -517,6 +603,7 @@ export default function MusicStudioPremium() {
 
         .mode-button:hover {
           color: rgba(255, 255, 255, 0.9);
+          transform: translateY(-2px);
         }
 
         .mode-button.active {
@@ -541,6 +628,19 @@ export default function MusicStudioPremium() {
           padding: 10px 12px;
           border-radius: 12px;
           text-align: center;
+          border: none;
+          cursor: pointer;
+          transition: all 0.3s ease;
+        }
+
+        .timeline-segment:hover {
+          transform: translateY(-2px);
+        }
+
+        .timeline-segment.active {
+          box-shadow: 
+            0 0 20px rgba(34, 211, 238, 0.4),
+            0 0 30px rgba(251, 146, 60, 0.3);
         }
 
         .segment-label {
@@ -615,14 +715,20 @@ export default function MusicStudioPremium() {
             0 4px 12px rgba(0, 0, 0, 0.5),
             inset 0 2px 4px rgba(255, 255, 255, 0.3),
             inset 0 -2px 4px rgba(0, 0, 0, 0.3);
-          animation: rotate 4s linear infinite;
+          transition: animation-duration 0.3s ease;
+        }
+
+        .reel-circle.spinning {
+          animation: rotate 2s linear infinite !important;
         }
 
         .left-reel {
+          animation: rotate 8s linear infinite;
           animation-direction: normal;
         }
 
         .right-reel {
+          animation: rotate 8s linear infinite;
           animation-direction: reverse;
         }
 
@@ -671,6 +777,7 @@ export default function MusicStudioPremium() {
           font-weight: 600;
           color: rgba(255, 255, 255, 0.7);
           letter-spacing: 0.05em;
+          transition: all 0.3s ease;
         }
 
         /* ============ WAVEFORM ============ */
@@ -695,18 +802,20 @@ export default function MusicStudioPremium() {
 
         .wave-bar {
           width: 3px;
-          background: linear-gradient(180deg, #22d3ee, #fb923c);
+          background: linear-gradient(180deg, rgba(34, 211, 238, 0.4), rgba(251, 146, 60, 0.4));
           border-radius: 2px;
-          animation: wave 1.5s ease-in-out infinite;
+          transition: all 0.3s ease;
+        }
+
+        .wave-bar.active {
+          background: linear-gradient(180deg, #22d3ee, #fb923c);
+          animation: wave 0.8s ease-in-out infinite;
           box-shadow: 0 0 6px rgba(34, 211, 238, 0.6);
         }
 
-        .wave-bar:nth-child(2n) { animation-delay: 0.1s; }
-        .wave-bar:nth-child(3n) { animation-delay: 0.2s; }
-
         @keyframes wave {
           0%, 100% { transform: scaleY(0.5); }
-          50% { transform: scaleY(1); }
+          50% { transform: scaleY(1.2); }
         }
 
         /* ============ PRIMARY CTA ============ */
@@ -729,11 +838,32 @@ export default function MusicStudioPremium() {
           transition: all 0.3s ease;
         }
 
-        .primary-cta:hover {
+        .primary-cta:hover:not(:disabled) {
           transform: translateY(-2px);
           box-shadow: 
             0 0 50px rgba(34, 211, 238, 0.6),
             0 0 80px rgba(251, 146, 60, 0.4);
+        }
+
+        .primary-cta:disabled {
+          cursor: not-allowed;
+        }
+
+        .primary-cta.generating {
+          animation: generatePulse 1.5s ease-in-out infinite;
+        }
+
+        @keyframes generatePulse {
+          0%, 100% {
+            box-shadow: 
+              0 0 30px rgba(34, 211, 238, 0.4),
+              0 0 50px rgba(251, 146, 60, 0.3);
+          }
+          50% {
+            box-shadow: 
+              0 0 60px rgba(34, 211, 238, 0.7),
+              0 0 100px rgba(251, 146, 60, 0.5);
+          }
         }
 
         .cta-glow {
@@ -761,6 +891,39 @@ export default function MusicStudioPremium() {
 
         .primary-cta:hover .cta-icon {
           transform: translateX(4px);
+        }
+
+        .spinner {
+          width: 20px;
+          height: 20px;
+          border: 3px solid rgba(255, 255, 255, 0.3);
+          border-top-color: #fff;
+          border-radius: 50%;
+          animation: spin 0.8s linear infinite;
+          position: relative;
+          z-index: 1;
+        }
+
+        @keyframes spin {
+          to { transform: rotate(360deg); }
+        }
+
+        /* ============ PROGRESS BAR ============ */
+        .generation-progress {
+          width: 100%;
+          height: 4px;
+          background: rgba(255, 255, 255, 0.1);
+          border-radius: 2px;
+          overflow: hidden;
+          margin-top: 12px;
+        }
+
+        .progress-fill {
+          height: 100%;
+          background: linear-gradient(90deg, #22d3ee, #fb923c);
+          border-radius: 2px;
+          transition: width 0.3s ease;
+          box-shadow: 0 0 10px rgba(34, 211, 238, 0.6);
         }
 
         /* ============ BOTTOM NAV ============ */
