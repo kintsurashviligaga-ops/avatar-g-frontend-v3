@@ -1,467 +1,735 @@
-'use client'
+import React, { useState, useMemo } from 'react';
 
-import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
-import { motion, AnimatePresence } from 'framer-motion'
-import { supabase } from '@/lib/supabase/client'
-import { useMusicStudioStore } from '@/lib/stores/musicStudioStore'
-import { apiClient } from '@/lib/api/client'
-import toast, { Toaster } from 'react-hot-toast'
+export default function MusicStudioPremium() {
+  const [genre, setGenre] = useState('Alt Rock');
+  const [mood, setMood] = useState('Energetic');
+  const [voiceMode, setVoiceMode] = useState('AI');
+  const [visualEnabled, setVisualEnabled] = useState(true);
+  const [visualStyle, setVisualStyle] = useState('Cyberpunk');
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [syncGlow, setSyncGlow] = useState(false);
 
-export default function MusicStudioPage() {
-  const router = useRouter()
-  const [user, setUser] = useState<any>(null)
-  
-  const {
-    pageState,
-    setPageState,
-    lyrics,
-    setLyrics,
-    description,
-    setDescription,
-    isSynced,
-    setIsSynced,
-    genre,
-    setGenre,
-    mood,
-    setMood,
-    segments,
-    updateSegment,
-    voiceMode,
-    setVoiceMode,
-    voiceStyle,
-    setVoiceStyle,
-    voiceConnected,
-    visualEnabled,
-    setVisualEnabled,
-    visualStyle,
-    setVisualStyle,
-    coverUrl,
-    audioUrl,
-    setAudioUrl,
-    advancedOpen,
-    setAdvancedOpen,
-    chatOpen,
-    setChatOpen,
-  } = useMusicStudioStore()
+  const handleSmartSync = () => {
+    setSyncGlow(true);
+    setTimeout(() => setSyncGlow(false), 2800);
+  };
 
-  const [showGenreSheet, setShowGenreSheet] = useState(false)
-  const [syncAnimating, setSyncAnimating] = useState(false)
-
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (!session) {
-        router.push('/')
-        return
-      }
-      setUser(session.user)
-      apiClient.setToken(session.access_token)
-    })
-  }, [router])
-
-  const handleSmartSync = async () => {
-    if (!lyrics.trim()) {
-      toast.error('Please add lyrics first')
-      return
-    }
-
-    setSyncAnimating(true)
-    
-    // Simulate AI sync (in real app, call API)
-    await new Promise(resolve => setTimeout(resolve, 2000))
-    
-    // Generate description from lyrics
-    const generatedDescription = `${mood} track with ${genre} vibes. ${lyrics.split('\n')[0]}...`
-    setDescription(generatedDescription)
-    setIsSynced(true)
-    setSyncAnimating(false)
-    toast.success('Lyrics & description synced!')
-  }
-
-  const handleGenerate = async () => {
-    // Validation
-    if (!lyrics.trim()) {
-      toast.error('Please add lyrics')
-      setPageState('ERROR_VALIDATION')
-      return
-    }
-
-    if (voiceMode === 'MY' && !voiceConnected) {
-      toast.error('Please connect your voice first')
-      setPageState('ERROR_VALIDATION')
-      return
-    }
-
-    setPageState('GENERATING')
-    const loadingToast = toast.loading('Generating music...')
-
-    try {
-      // Simulate progressive generation
-      for (let i = 0; i < segments.length; i++) {
-        updateSegment(segments[i].id, { status: 'in_progress' })
-        
-        // Simulate progress
-        for (let p = 0; p <= 100; p += 20) {
-          await new Promise(resolve => setTimeout(resolve, 200))
-          updateSegment(segments[i].id, { progress: p / 100 })
-        }
-        
-        updateSegment(segments[i].id, { status: 'completed', progress: 1 })
-      }
-
-      // Call backend
-      const result = await apiClient.generateMusic({
-        prompt: `${lyrics}\n\nStyle: ${genre}, Mood: ${mood}\n${description}`,
-        duration: 30,
-        style: genre.toLowerCase(),
-      })
-
-      if (result.audioUrl) {
-        setAudioUrl(result.audioUrl)
-        setPageState('SUCCESS')
-        toast.success('Music generated successfully!', { id: loadingToast })
-      } else {
-        throw new Error('No audio URL returned')
-      }
-    } catch (error: any) {
-      console.error('Generation error:', error)
-      setPageState('ERROR_RUNTIME')
-      toast.error(error.message || 'Generation failed', { id: loadingToast })
-    }
-  }
-
-  const getStatusColor = () => {
-    if (pageState === 'GENERATING') return 'bg-yellow-500'
-    if (pageState.startsWith('ERROR')) return 'bg-red-500'
-    return 'bg-green-500'
-  }
-
-  const getStatusText = () => {
-    if (pageState === 'GENERATING') return 'Busy'
-    if (pageState.startsWith('ERROR')) return 'Error'
-    return 'Active'
-  }
+  // Stable star particles (no random jitter per render)
+  const starParticles = useMemo(() => {
+    return [...Array(50)].map((_, i) => ({
+      id: i,
+      width: (i % 5) * 0.6 + 1,
+      height: (i % 5) * 0.6 + 1,
+      left: ((i * 37) % 100),
+      top: ((i * 73) % 100),
+      background: i % 3 === 0 ? 'rgba(168, 85, 247, 0.3)' : 
+                 i % 3 === 1 ? 'rgba(236, 72, 153, 0.25)' : 
+                 'rgba(59, 130, 246, 0.2)',
+      shadowSize: (i % 7) + 4,
+      shadowOpacity: (i % 5) * 0.08 + 0.2,
+      duration: (i % 8) * 2 + 15,
+      delay: (i % 10) * 0.5
+    }));
+  }, []);
 
   return (
-    <div style={{ minHeight: '100vh', background: 'radial-gradient(ellipse at top, rgba(139, 92, 246, 0.15), transparent 50%), #0a0e14', paddingBottom: '120px' }}>
-      {/* Header */}
-      <header style={{ position: 'sticky', top: 0, zIndex: 50, padding: '20px', background: 'rgba(10, 14, 20, 0.95)', backdropFilter: 'blur(20px)', borderBottom: '1px solid rgba(255, 255, 255, 0.1)', display: 'flex', alignItems: 'center', gap: '12px' }}>
-        <button onClick={() => router.push('/')} style={{ padding: '8px', background: 'rgba(255, 255, 255, 0.05)', border: '1px solid rgba(255, 255, 255, 0.1)', borderRadius: '12px', cursor: 'pointer', color: '#fff', fontSize: '18px' }}>←</button>
-        
-        <div style={{ flex: 1 }}>
-          <h1 style={{ fontSize: '18px', fontWeight: '600', color: '#fff', margin: 0 }}>Music Studio</h1>
-          <p style={{ fontSize: '12px', color: 'rgba(255, 255, 255, 0.6)', margin: 0 }}>Neural Audio-Visual Lab</p>
-        </div>
-        
-        <div style={{ padding: '6px 12px', background: `rgba(${getStatusColor().includes('green') ? '16, 185, 129' : getStatusColor().includes('yellow') ? '245, 158, 11' : '239, 68, 68'}, 0.1)`, border: `1px solid rgba(${getStatusColor().includes('green') ? '16, 185, 129' : getStatusColor().includes('yellow') ? '245, 158, 11' : '239, 68, 68'}, 0.3)`, borderRadius: '12px', fontSize: '11px', fontWeight: '600', color: getStatusColor().includes('green') ? '#10B981' : getStatusColor().includes('yellow') ? '#F59E0B' : '#EF4444' }}>
-          {getStatusText()}
-        </div>
-      </header>
+    <div className="min-h-screen w-full overflow-auto" style={{
+      background: 'radial-gradient(ellipse at top, rgba(88, 28, 135, 0.35), transparent 65%), radial-gradient(ellipse at bottom, rgba(30, 58, 138, 0.25), transparent 65%), #0a0a0f'
+    }}>
+      {/* Stable floating star particles */}
+      <div className="fixed inset-0 overflow-hidden pointer-events-none">
+        {starParticles.map((star) => (
+          <div
+            key={star.id}
+            className="absolute rounded-full star-particle"
+            style={{
+              width: star.width + 'px',
+              height: star.height + 'px',
+              left: star.left + '%',
+              top: star.top + '%',
+              background: star.background,
+              boxShadow: `0 0 ${star.shadowSize}px rgba(168, 85, 247, ${star.shadowOpacity})`,
+              animation: `float ${star.duration}s linear infinite`,
+              animationDelay: star.delay + 's'
+            }}
+          />
+        ))}
+      </div>
 
-      <div style={{ padding: '20px' }}>
-        {/* Main Studio Card */}
-        <div style={{ background: 'rgba(26, 26, 46, 0.6)', backdropFilter: 'blur(20px)', border: '1px solid rgba(255, 255, 255, 0.1)', borderRadius: '24px', padding: '24px' }}>
+      {/* Main Container */}
+      <div className="relative max-w-md mx-auto px-5 py-10 pb-28">
+        
+        {/* Premium Header with Horizontal Band Glow */}
+        <div className="text-center mb-12 relative">
+          {/* Wide horizontal purple "band glow" - aurora bar effect */}
+          <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[120%] h-32 band-glow" 
+               style={{
+                 background: 'linear-gradient(90deg, transparent, rgba(139, 92, 246, 0.4) 20%, rgba(168, 85, 247, 0.5) 50%, rgba(139, 92, 246, 0.4) 80%, transparent)',
+                 filter: 'blur(40px)',
+                 opacity: 0.6
+               }} />
+          <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[100%] h-20"
+               style={{
+                 background: 'linear-gradient(90deg, transparent, rgba(168, 85, 247, 0.6) 30%, rgba(236, 72, 153, 0.4) 50%, rgba(168, 85, 247, 0.6) 70%, transparent)',
+                 filter: 'blur(30px)',
+                 opacity: 0.5
+               }} />
           
-          {/* Project Setup Chips */}
-          <div style={{ marginBottom: '24px' }}>
-            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '12px' }}>
-              <button onClick={() => setShowGenreSheet(true)} style={{ padding: '8px 16px', background: 'rgba(139, 92, 246, 0.2)', border: '1px solid rgba(139, 92, 246, 0.3)', borderRadius: '12px', color: '#8B5CF6', fontSize: '13px', fontWeight: '500', cursor: 'pointer' }}>
-                🎸 {genre}
-              </button>
-              <button style={{ padding: '8px 16px', background: 'rgba(59, 130, 246, 0.2)', border: '1px solid rgba(59, 130, 246, 0.3)', borderRadius: '12px', color: '#3B82F6', fontSize: '13px', fontWeight: '500', cursor: 'pointer' }}>
-                🎹 Guitar, Drums
-              </button>
-              <button onClick={() => {
-                const moods = ['Energetic', 'Calm', 'Melancholic', 'Epic', 'Chill']
-                const currentIndex = moods.indexOf(mood)
-                setMood(moods[(currentIndex + 1) % moods.length])
-              }} style={{ padding: '8px 16px', background: 'rgba(236, 72, 153, 0.2)', border: '1px solid rgba(236, 72, 153, 0.3)', borderRadius: '12px', color: '#EC4899', fontSize: '13px', fontWeight: '500', cursor: 'pointer' }}>
-                ⚡ {mood}
+          <h1 className="relative text-5xl font-bold mb-3 bg-gradient-to-r from-purple-200 via-purple-100 to-blue-200 bg-clip-text text-transparent"
+              style={{ 
+                textShadow: '0 0 80px rgba(168, 85, 247, 0.9), 0 0 40px rgba(236, 72, 153, 0.5)',
+                letterSpacing: '0.02em',
+                lineHeight: 1.2
+              }}>
+            Music Studio
+          </h1>
+          <p className="relative text-[10px] text-purple-300/50 font-light tracking-[0.3em] uppercase">
+            Neural Audio-Visual Lab
+          </p>
+        </div>
+
+        {/* Main Card */}
+        <div className="glass-card p-7 space-y-7">
+          
+          {/* Project Setup */}
+          <div className="space-y-4">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-semibold text-purple-100">Project Setup</h3>
+              <button className="px-3 py-1.5 text-xs rounded-full glass-button text-purple-300 hover:text-purple-100">
+                Explore Genres →
               </button>
             </div>
-            <button onClick={() => setShowGenreSheet(true)} style={{ fontSize: '12px', color: 'rgba(255, 255, 255, 0.5)', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}>
-              Explore Genres →
+            <div className="flex flex-wrap gap-2.5">
+              <div className="chip chip-purple">
+                <span className="text-lg mr-1.5">🎸</span>
+                {genre}
+              </div>
+              <div className="chip chip-blue">
+                <span className="text-lg mr-1.5">🎹</span>
+                Cello, Synth
+              </div>
+              <div className="chip chip-pink">
+                <span className="text-lg mr-1.5">⚡</span>
+                {mood}
+              </div>
+            </div>
+          </div>
+
+          {/* Lyrics Section with Horizontal Sync Bridge */}
+          <div className="space-y-3 relative">
+            <div className="flex items-center justify-between relative">
+              <h3 className="text-sm font-semibold text-purple-100 relative z-20">Lyrics / Idea</h3>
+              
+              {/* Horizontal Sync Bridge */}
+              {syncGlow && (
+                <div className="absolute left-[100px] right-[120px] top-1/2 -translate-y-1/2 h-0.5 z-10 sync-bridge">
+                  <div className="absolute inset-0 bg-gradient-to-r from-purple-500 via-pink-400 to-blue-400" 
+                       style={{
+                         boxShadow: '0 0 20px rgba(168, 85, 247, 0.9), 0 0 40px rgba(236, 72, 153, 0.6)',
+                         filter: 'brightness(1.5)'
+                       }} />
+                  {/* Left flare point */}
+                  <div className="absolute left-0 top-1/2 -translate-y-1/2 w-2 h-2 rounded-full bg-purple-400"
+                       style={{
+                         boxShadow: '0 0 12px rgba(168, 85, 247, 1), 0 0 24px rgba(168, 85, 247, 0.8)',
+                         animation: 'pulse 0.5s ease-in-out infinite alternate'
+                       }} />
+                  {/* Right flare point */}
+                  <div className="absolute right-0 top-1/2 -translate-y-1/2 w-2 h-2 rounded-full bg-blue-400"
+                       style={{
+                         boxShadow: '0 0 12px rgba(59, 130, 246, 1), 0 0 24px rgba(59, 130, 246, 0.8)',
+                         animation: 'pulse 0.5s ease-in-out infinite alternate'
+                       }} />
+                  {/* Sparkles */}
+                  {[...Array(5)].map((_, i) => (
+                    <div
+                      key={i}
+                      className="absolute top-1/2 -translate-y-1/2 w-1 h-1 rounded-full bg-white"
+                      style={{
+                        left: `${20 + i * 20}%`,
+                        animation: `sparkle 1s ease-in-out ${i * 0.2}s infinite`,
+                        opacity: 0
+                      }}
+                    />
+                  ))}
+                </div>
+              )}
+              
+              <button 
+                onClick={handleSmartSync}
+                className="px-3 py-1.5 text-xs rounded-full glass-button-glow text-purple-300 hover:text-purple-100 transition-all relative z-20">
+                <span className="mr-1">✨</span>
+                Smart Sync
+              </button>
+            </div>
+            
+            <textarea
+              className="glass-input w-full h-28 resize-none"
+              placeholder="Enter your lyrics or musical idea..."
+              defaultValue="Chasing dreams, running through the night.&#10;A spark in the heart, burning so bright."
+            />
+            <button className="absolute bottom-3 right-3 p-1.5 rounded-lg glass-button text-purple-300/60 hover:text-purple-200">
+              ✕
             </button>
           </div>
 
-          {/* Lyrics Input */}
-          <div style={{ marginBottom: '24px', position: 'relative' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-              <h3 style={{ fontSize: '14px', fontWeight: '600', color: '#fff', margin: 0 }}>Lyrics / Idea</h3>
-              <div style={{ display: 'flex', gap: '8px' }}>
-                <button 
-                  onClick={handleSmartSync}
-                  disabled={syncAnimating || pageState === 'GENERATING'}
-                  style={{ padding: '6px 12px', background: syncAnimating ? 'rgba(139, 92, 246, 0.3)' : 'rgba(139, 92, 246, 0.2)', border: '1px solid rgba(139, 92, 246, 0.3)', borderRadius: '8px', color: '#8B5CF6', fontSize: '12px', fontWeight: '500', cursor: syncAnimating ? 'wait' : 'pointer', opacity: syncAnimating || pageState === 'GENERATING' ? 0.5 : 1 }}>
-                  {syncAnimating ? '✨ Syncing...' : '✨ Smart Sync'}
-                </button>
-                {isSynced && (
-                  <motion.div 
-                    initial={{ scale: 0 }}
-                    animate={{ scale: 1 }}
-                    style={{ padding: '6px 12px', background: 'rgba(16, 185, 129, 0.2)', border: '1px solid rgba(16, 185, 129, 0.3)', borderRadius: '8px', fontSize: '12px', fontWeight: '500', color: '#10B981' }}>
-                    Aligned ✓
-                  </motion.div>
-                )}
-                <button onClick={() => setLyrics('')} disabled={pageState === 'GENERATING'} style={{ padding: '6px 12px', background: 'rgba(255, 255, 255, 0.05)', border: '1px solid rgba(255, 255, 255, 0.1)', borderRadius: '8px', color: '#fff', fontSize: '12px', cursor: pageState === 'GENERATING' ? 'not-allowed' : 'pointer' }}>Clear</button>
+          {/* Description Section */}
+          <div className="space-y-3">
+            <h3 className="text-sm font-semibold text-purple-100">Music Vibe & Scene Description</h3>
+            <textarea
+              className="glass-input w-full h-24 resize-none"
+              placeholder="Describe mood, pacing, instruments, scene..."
+              defaultValue="Starts slow with Georgian chonguri, then turns into energetic alt-rock chorus."
+            />
+          </div>
+
+          {/* Melody & Voice Section */}
+          <div className="space-y-4 text-center">
+            <button className="w-full py-5 rounded-2xl glass-button-glow text-purple-100 font-semibold text-base hover:scale-[1.02] transition-transform">
+              <span className="text-2xl mr-2">🎤</span>
+              Capture My Melody
+            </button>
+            <div className="text-sm">
+              <p className="text-purple-300 font-medium">Connected: Giorgi Voice v1</p>
+              <a href="#" className="text-purple-400/60 text-xs hover:text-purple-300 transition-colors underline">
+                Go to Voice Lab →
+              </a>
+            </div>
+          </div>
+
+          {/* Compact Timeline with Progress Line */}
+          <div className="space-y-3">
+            <h3 className="text-sm font-semibold text-purple-100">Timeline</h3>
+            <div className="space-y-2.5">
+              <div className="flex gap-1.5 overflow-x-auto pb-2">
+                {['Intro', 'Verse 1', 'Chorus', 'Verse 2', 'Outro'].map((segment) => (
+                  <div key={segment} className="timeline-segment-compact">
+                    {segment}
+                  </div>
+                ))}
+              </div>
+              {/* Thin progress bar with 35% placeholder */}
+              <div className="w-full h-1 rounded-full bg-purple-950/40 overflow-hidden">
+                <div className="h-full w-[35%] bg-gradient-to-r from-purple-500 via-pink-500 to-blue-500 rounded-full transition-all duration-1000"
+                     style={{
+                       boxShadow: '0 0 12px rgba(168, 85, 247, 0.7), 0 0 6px rgba(236, 72, 153, 0.5)'
+                     }} />
               </div>
             </div>
-            
-            {syncAnimating && (
-              <motion.div
-                initial={{ opacity: 0, scaleX: 0 }}
-                animate={{ opacity: 1, scaleX: 1 }}
-                style={{ position: 'absolute', top: '50%', left: 0, right: 0, height: '2px', background: 'linear-gradient(90deg, #8B5CF6, #3B82F6)', transformOrigin: 'left', zIndex: 10 }}
-              />
-            )}
-            
-            <textarea
-              value={lyrics}
-              onChange={(e) => setLyrics(e.target.value)}
-              placeholder="Enter your lyrics or song idea here..."
-              disabled={pageState === 'GENERATING'}
-              style={{ width: '100%', minHeight: '120px', padding: '14px', background: 'rgba(10, 14, 20, 0.6)', border: '1px solid rgba(255, 255, 255, 0.1)', borderRadius: '12px', color: '#fff', fontSize: '14px', outline: 'none', resize: 'vertical', fontFamily: 'inherit', opacity: pageState === 'GENERATING' ? 0.5 : 1 }}
-            />
           </div>
 
-          {/* Description Input */}
-          <div style={{ marginBottom: '24px' }}>
-            <h3 style={{ fontSize: '14px', fontWeight: '600', color: '#fff', marginBottom: '8px' }}>Music Vibe & Scene Description</h3>
-            <p style={{ fontSize: '12px', color: 'rgba(255, 255, 255, 0.5)', marginBottom: '12px' }}>Describe mood, pacing, instruments, scene...</p>
-            <textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="A dramatic orchestral piece with sweeping strings and powerful brass..."
-              disabled={pageState === 'GENERATING'}
-              style={{ width: '100%', minHeight: '100px', padding: '14px', background: 'rgba(10, 14, 20, 0.6)', border: '1px solid rgba(255, 255, 255, 0.1)', borderRadius: '12px', color: '#fff', fontSize: '14px', outline: 'none', resize: 'vertical', fontFamily: 'inherit', opacity: pageState === 'GENERATING' ? 0.5 : 1 }}
-            />
-          </div>
-
-          {/* Timeline Preview */}
-          <div style={{ marginBottom: '24px' }}>
-            <h3 style={{ fontSize: '14px', fontWeight: '600', color: '#fff', marginBottom: '12px' }}>Timeline</h3>
-            <div style={{ display: 'flex', gap: '4px', height: '40px', background: 'rgba(10, 14, 20, 0.6)', borderRadius: '12px', padding: '4px', overflow: 'hidden' }}>
-              {segments.map((segment, idx) => (
-                <div key={segment.id} style={{ flex: 1, position: 'relative', background: 'rgba(255, 255, 255, 0.05)', borderRadius: '8px', overflow: 'hidden' }}>
-                  {segment.status === 'in_progress' && (
-                    <motion.div
-                      initial={{ width: 0 }}
-                      animate={{ width: `${segment.progress * 100}%` }}
-                      style={{ position: 'absolute', top: 0, left: 0, bottom: 0, background: 'linear-gradient(90deg, #8B5CF6, #3B82F6)', borderRadius: '8px' }}
-                    />
-                  )}
-                  {segment.status === 'completed' && (
-                    <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(16, 185, 129, 0.3)', borderRadius: '8px' }} />
-                  )}
-                  <div style={{ position: 'relative', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '11px', color: '#fff', fontWeight: '500' }}>
-                    {segment.label}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Voice Section */}
-          <div style={{ marginBottom: '24px' }}>
-            <h3 style={{ fontSize: '14px', fontWeight: '600', color: '#fff', marginBottom: '12px' }}>Voice</h3>
-            <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
-              <button 
+          {/* Voice Mode Section */}
+          <div className="space-y-3">
+            <h3 className="text-sm font-semibold text-purple-100">Voice Mode</h3>
+            <div className="flex gap-2.5">
+              <button
                 onClick={() => setVoiceMode('AI')}
-                disabled={pageState === 'GENERATING'}
-                style={{ flex: 1, padding: '12px', background: voiceMode === 'AI' ? 'rgba(139, 92, 246, 0.2)' : 'rgba(255, 255, 255, 0.05)', border: `1px solid ${voiceMode === 'AI' ? '#8B5CF6' : 'rgba(255, 255, 255, 0.1)'}`, borderRadius: '12px', color: '#fff', fontSize: '14px', fontWeight: '500', cursor: pageState === 'GENERATING' ? 'not-allowed' : 'pointer' }}>
+                className={`flex-1 py-3 rounded-xl font-medium text-sm transition-all ${
+                  voiceMode === 'AI' 
+                    ? 'glass-button-glow text-purple-100' 
+                    : 'glass-button text-purple-400/60'
+                }`}>
                 AI Voice
               </button>
-              <button 
+              <button
                 onClick={() => setVoiceMode('MY')}
-                disabled={pageState === 'GENERATING'}
-                style={{ flex: 1, padding: '12px', background: voiceMode === 'MY' ? 'rgba(139, 92, 246, 0.2)' : 'rgba(255, 255, 255, 0.05)', border: `1px solid ${voiceMode === 'MY' ? '#8B5CF6' : 'rgba(255, 255, 255, 0.1)'}`, borderRadius: '12px', color: '#fff', fontSize: '14px', fontWeight: '500', cursor: pageState === 'GENERATING' ? 'not-allowed' : 'pointer' }}>
+                className={`flex-1 py-3 rounded-xl font-medium text-sm transition-all ${
+                  voiceMode === 'MY' 
+                    ? 'glass-button-glow text-purple-100' 
+                    : 'glass-button text-purple-400/60'
+                }`}>
                 Use My Voice
               </button>
             </div>
-            
             {voiceMode === 'AI' && (
-              <select value={voiceStyle} onChange={(e) => setVoiceStyle(e.target.value)} disabled={pageState === 'GENERATING'} style={{ width: '100%', padding: '12px', background: 'rgba(10, 14, 20, 0.6)', border: '1px solid rgba(255, 255, 255, 0.1)', borderRadius: '12px', color: '#fff', fontSize: '14px', outline: 'none', cursor: pageState === 'GENERATING' ? 'not-allowed' : 'pointer' }}>
-                <option value="Neutral">Neutral</option>
-                <option value="Pop">Pop</option>
-                <option value="Rap">Rap</option>
-                <option value="Cinematic">Cinematic</option>
+              <select className="glass-input w-full py-3 text-sm">
+                <option>Neutral</option>
+                <option>Pop</option>
+                <option>Rap</option>
+                <option>Cinematic</option>
               </select>
-            )}
-            
-            {voiceMode === 'MY' && (
-              <div style={{ padding: '16px', background: 'rgba(10, 14, 20, 0.6)', border: '1px solid rgba(255, 255, 255, 0.1)', borderRadius: '12px' }}>
-                <button onClick={() => router.push('/voice-lab')} style={{ width: '100%', padding: '12px', background: 'rgba(139, 92, 246, 0.2)', border: '1px solid rgba(139, 92, 246, 0.3)', borderRadius: '12px', color: '#8B5CF6', fontSize: '14px', fontWeight: '500', cursor: 'pointer', marginBottom: '8px' }}>
-                  🎤 Record & Sync Your Voice
-                </button>
-                <button onClick={() => router.push('/voice-lab')} style={{ width: '100%', padding: '10px', background: 'none', border: '1px solid rgba(255, 255, 255, 0.1)', borderRadius: '12px', color: 'rgba(255, 255, 255, 0.7)', fontSize: '13px', cursor: 'pointer' }}>
-                  Go to Voice Lab →
-                </button>
-                <p style={{ fontSize: '12px', color: 'rgba(255, 255, 255, 0.5)', textAlign: 'center', marginTop: '8px', marginBottom: 0 }}>
-                  {voiceConnected ? '✓ Connected' : 'Not connected'}
-                </p>
-              </div>
             )}
           </div>
 
-          {/* Visual Section */}
-          <div style={{ marginBottom: '24px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-              <h3 style={{ fontSize: '14px', fontWeight: '600', color: '#fff', margin: 0 }}>Visual Alchemist</h3>
-              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
-                <input 
-                  type="checkbox" 
-                  checked={visualEnabled} 
+          {/* Visual Alchemist with Horizontal Scrollable Pills */}
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-purple-100">Visual Alchemist</h3>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={visualEnabled}
                   onChange={(e) => setVisualEnabled(e.target.checked)}
-                  disabled={pageState === 'GENERATING'}
-                  style={{ width: '16px', height: '16px' }}
+                  className="sr-only"
                 />
-                <span style={{ fontSize: '13px', color: 'rgba(255, 255, 255, 0.7)' }}>Enable</span>
+                <div className={`toggle ${visualEnabled ? 'active' : ''}`} />
               </label>
             </div>
             
             {visualEnabled && (
-              <div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', marginBottom: '12px' }}>
+              <>
+                {/* Single horizontal scrollable pill row */}
+                <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
                   {['Cinematic', 'Cyberpunk', 'Abstract', 'Retro', 'Minimal', 'Noir'].map((style) => (
                     <button
                       key={style}
                       onClick={() => setVisualStyle(style)}
-                      disabled={pageState === 'GENERATING'}
-                      style={{ padding: '10px', background: visualStyle === style ? 'rgba(139, 92, 246, 0.2)' : 'rgba(255, 255, 255, 0.05)', border: `1px solid ${visualStyle === style ? '#8B5CF6' : 'rgba(255, 255, 255, 0.1)'}`, borderRadius: '8px', color: '#fff', fontSize: '12px', fontWeight: '500', cursor: pageState === 'GENERATING' ? 'not-allowed' : 'pointer' }}>
+                      className={`py-2.5 px-5 rounded-full text-xs font-medium whitespace-nowrap transition-all ${
+                        visualStyle === style
+                          ? 'visual-pill-active'
+                          : 'glass-button text-purple-400/60'
+                      }`}>
                       {style}
                     </button>
                   ))}
                 </div>
                 
-                <div style={{ width: '100%', height: '200px', background: 'rgba(10, 14, 20, 0.6)', border: '1px solid rgba(255, 255, 255, 0.1)', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
-                  {coverUrl ? (
-                    <img src={coverUrl} alt="Cover" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                  ) : (
-                    <p style={{ fontSize: '13px', color: 'rgba(255, 255, 255, 0.5)' }}>Cover art will appear here</p>
-                  )}
+                {/* Animated Nebula Preview */}
+                <div className="relative overflow-hidden rounded-3xl aspect-video glass-panel">
+                  {/* Layered radial gradients for nebula effect */}
+                  <div className="absolute inset-0 nebula-layer-1" />
+                  <div className="absolute inset-0 nebula-layer-2" />
+                  <div className="absolute inset-0 nebula-layer-3" />
+                  <div className="absolute inset-0 shimmer-overlay" />
+                  
+                  {/* Cover Preview text */}
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <div className="text-center space-y-3 z-10">
+                      <div className="w-20 h-20 mx-auto rounded-full bg-gradient-to-br from-purple-400/20 to-pink-400/20 animate-pulse-slow backdrop-blur-sm border border-purple-400/30" />
+                      <p className="text-xs text-purple-200/50 font-light tracking-wide">Cover Preview</p>
+                    </div>
+                  </div>
                 </div>
-              </div>
+              </>
             )}
           </div>
 
-          {/* Advanced Drawer */}
-          <div style={{ marginBottom: '24px' }}>
-            <button 
+          {/* Advanced Section */}
+          <div className="space-y-3">
+            <button
               onClick={() => setAdvancedOpen(!advancedOpen)}
-              disabled={pageState === 'GENERATING'}
-              style={{ width: '100%', padding: '12px', background: 'rgba(255, 255, 255, 0.05)', border: '1px solid rgba(255, 255, 255, 0.1)', borderRadius: '12px', color: '#fff', fontSize: '14px', fontWeight: '500', cursor: pageState === 'GENERATING' ? 'not-allowed' : 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span>⚙️ Advanced</span>
-              <span>{advancedOpen ? '▲' : '▼'}</span>
+              className="w-full flex items-center justify-between py-3 px-5 rounded-2xl glass-button text-purple-300 hover:text-purple-100 transition-colors">
+              <span className="flex items-center gap-2 text-sm font-medium">
+                <span>⚙️</span>
+                Advanced
+              </span>
+              <span className={`transition-transform ${advancedOpen ? 'rotate-180' : ''}`}>▼</span>
             </button>
             
-            <AnimatePresence>
-              {advancedOpen && (
-                <motion.div
-                  initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: 'auto', opacity: 1 }}
-                  exit={{ height: 0, opacity: 0 }}
-                  style={{ overflow: 'hidden', marginTop: '12px', padding: '16px', background: 'rgba(10, 14, 20, 0.6)', border: '1px solid rgba(255, 255, 255, 0.1)', borderRadius: '12px' }}>
-                  <p style={{ fontSize: '13px', color: 'rgba(255, 255, 255, 0.7)', margin: 0 }}>
-                    🎛️ Vibe Switcher, Auto-Mix Controls, Collaboration Links — Coming Soon!
-                  </p>
-                </motion.div>
-              )}
-            </AnimatePresence>
+            {advancedOpen && (
+              <div className="glass-panel p-5 space-y-3 animate-fadeIn rounded-2xl">
+                <p className="text-xs text-purple-300/70">
+                  🎛️ Vibe Switcher, Auto-Mix Controls, Collaboration Links — Coming Soon!
+                </p>
+              </div>
+            )}
           </div>
 
           {/* Generate Button */}
-          <button
-            onClick={handleGenerate}
-            disabled={pageState === 'GENERATING' || !lyrics.trim() || (voiceMode === 'MY' && !voiceConnected)}
-            style={{ width: '100%', padding: '18px', background: pageState === 'GENERATING' || !lyrics.trim() ? 'rgba(139, 92, 246, 0.3)' : 'linear-gradient(135deg, #8B5CF6, #3B82F6)', border: 'none', borderRadius: '20px', color: '#fff', fontSize: '16px', fontWeight: '600', cursor: pageState === 'GENERATING' || !lyrics.trim() ? 'not-allowed' : 'pointer', boxShadow: pageState === 'GENERATING' || !lyrics.trim() ? 'none' : '0 8px 24px rgba(139, 92, 246, 0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
-            {pageState === 'GENERATING' ? (
-              <>
-                <div style={{ width: '16px', height: '16px', border: '2px solid rgba(255,255,255,0.3)', borderTop: '2px solid #fff', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
-                Generating Track...
-              </>
-            ) : pageState === 'SUCCESS' ? (
-              'Regenerate Track'
-            ) : pageState.startsWith('ERROR') ? (
-              'Try Again'
-            ) : (
-              'Generate Track'
-            )}
+          <button className="w-full py-6 rounded-3xl font-bold text-lg generate-button group">
+            <span className="relative z-10 flex items-center justify-center gap-2">
+              Generate Track
+              <span className="group-hover:translate-x-1 transition-transform">→</span>
+            </span>
           </button>
-
-          {/* Result Panel */}
-          {pageState === 'SUCCESS' && audioUrl && (
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              style={{ marginTop: '24px', padding: '20px', background: 'rgba(26, 26, 46, 0.6)', borderRadius: '16px', border: '1px solid rgba(139, 92, 246, 0.3)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
-                <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#10B981' }} />
-                <span style={{ fontSize: '14px', fontWeight: '600', color: '#fff' }}>Generated Track</span>
-              </div>
-              <audio controls style={{ width: '100%', height: '40px', marginBottom: '12px' }}>
-                <source src={audioUrl} type="audio/mpeg" />
-              </audio>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '8px' }}>
-                <button style={{ padding: '10px', background: 'rgba(139, 92, 246, 0.2)', border: '1px solid rgba(139, 92, 246, 0.3)', borderRadius: '8px', color: '#8B5CF6', fontSize: '13px', fontWeight: '500', cursor: 'pointer' }}>
-                  📹 Export Video 9:16
-                </button>
-                <button style={{ padding: '10px', background: 'rgba(59, 130, 246, 0.2)', border: '1px solid rgba(59, 130, 246, 0.3)', borderRadius: '8px', color: '#3B82F6', fontSize: '13px', fontWeight: '500', cursor: 'pointer' }}>
-                  🎵 Download MP3
-                </button>
-              </div>
-            </motion.div>
-          )}
         </div>
       </div>
 
-      {/* Chat Bubble */}
-      <button
-        onClick={() => setChatOpen(!chatOpen)}
-        style={{ position: 'fixed', bottom: '24px', right: '24px', width: '56px', height: '56px', borderRadius: '50%', background: 'linear-gradient(135deg, #8B5CF6, #3B82F6)', border: 'none', color: '#fff', fontSize: '24px', cursor: 'pointer', boxShadow: '0 8px 24px rgba(139, 92, 246, 0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      {/* Floating Chat Button */}
+      <button className="fixed bottom-6 right-6 w-16 h-16 rounded-full chat-button flex items-center justify-center text-2xl shadow-2xl">
         💬
       </button>
 
-      {/* Genre Explorer Sheet */}
-      <AnimatePresence>
-        {showGenreSheet && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={() => setShowGenreSheet(false)}
-            style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0, 0, 0, 0.8)', zIndex: 100, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
-            <motion.div
-              initial={{ y: '100%' }}
-              animate={{ y: 0 }}
-              exit={{ y: '100%' }}
-              onClick={(e) => e.stopPropagation()}
-              style={{ width: '100%', maxWidth: '600px', background: '#1a1a2e', borderRadius: '24px 24px 0 0', padding: '24px', maxHeight: '80vh', overflowY: 'auto' }}>
-              <h2 style={{ fontSize: '20px', fontWeight: '600', color: '#fff', marginBottom: '16px' }}>Explore Genres</h2>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '12px' }}>
-                {['Alt Rock', 'Pop', 'Hip Hop', 'Classical', 'Electronic', 'Jazz', 'R&B', 'Country', 'Metal', 'Indie'].map((g) => (
-                  <button
-                    key={g}
-                    onClick={() => {
-                      setGenre(g)
-                      setShowGenreSheet(false)
-                    }}
-                    style={{ padding: '16px', background: genre === g ? 'rgba(139, 92, 246, 0.2)' : 'rgba(255, 255, 255, 0.05)', border: `1px solid ${genre === g ? '#8B5CF6' : 'rgba(255, 255, 255, 0.1)'}`, borderRadius: '12px', color: '#fff', fontSize: '14px', fontWeight: '500', cursor: 'pointer', textAlign: 'left' }}>
-                    {g}
-                  </button>
-                ))}
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <style jsx>{`
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
-      <Toaster position="bottom-center" />
-      
-      <style>{`
-        @keyframes spin {
-          to { transform: rotate(360deg); }
+        * {
+          font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+        }
+
+        @keyframes float {
+          0%, 100% { transform: translateY(0) translateX(0); }
+          33% { transform: translateY(-20px) translateX(10px); }
+          66% { transform: translateY(-10px) translateX(-10px); }
+        }
+
+        @keyframes fadeIn {
+          from { opacity: 0; transform: translateY(-10px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+
+        @keyframes sparkle {
+          0%, 100% { opacity: 0; transform: scale(0); }
+          50% { opacity: 1; transform: scale(1.5); }
+        }
+
+        @keyframes pulse {
+          from { opacity: 0.6; }
+          to { opacity: 1; }
+        }
+
+        @keyframes pulse-slow {
+          0%, 100% { opacity: 0.4; transform: scale(1); }
+          50% { opacity: 0.7; transform: scale(1.05); }
+        }
+
+        @keyframes nebula-drift-1 {
+          0%, 100% { transform: translate(0, 0) scale(1); }
+          33% { transform: translate(10%, -5%) scale(1.1); }
+          66% { transform: translate(-5%, 10%) scale(0.95); }
+        }
+
+        @keyframes nebula-drift-2 {
+          0%, 100% { transform: translate(0, 0) rotate(0deg); }
+          50% { transform: translate(-8%, 8%) rotate(180deg); }
+        }
+
+        @keyframes shimmer {
+          0% { transform: translateX(-100%); }
+          100% { transform: translateX(100%); }
+        }
+
+        .sync-bridge {
+          animation: fadeOut 2.8s ease-out forwards;
+        }
+
+        @keyframes fadeOut {
+          0% { opacity: 1; }
+          75% { opacity: 1; }
+          100% { opacity: 0; }
+        }
+
+        .star-particle {
+          will-change: transform;
+        }
+
+        .band-glow {
+          animation: band-pulse 6s ease-in-out infinite;
+        }
+
+        @keyframes band-pulse {
+          0%, 100% { opacity: 0.5; }
+          50% { opacity: 0.7; }
+        }
+
+        .glass-card {
+          background: rgba(15, 15, 25, 0.75);
+          backdrop-filter: blur(28px);
+          border: 1px solid rgba(139, 92, 246, 0.25);
+          border-radius: 32px;
+          box-shadow: 
+            0 12px 48px rgba(0, 0, 0, 0.5),
+            0 4px 16px rgba(0, 0, 0, 0.3),
+            inset 0 1px 0 rgba(255, 255, 255, 0.08),
+            inset 0 -1px 0 rgba(255, 255, 255, 0.02);
+        }
+
+        .glass-panel {
+          background: rgba(10, 10, 20, 0.65);
+          backdrop-filter: blur(18px);
+          border: 1px solid rgba(139, 92, 246, 0.18);
+        }
+
+        .glass-button {
+          background: rgba(139, 92, 246, 0.12);
+          backdrop-filter: blur(12px);
+          border: 1px solid rgba(139, 92, 246, 0.25);
+          transition: all 0.3s ease;
+        }
+
+        .glass-button:hover {
+          background: rgba(139, 92, 246, 0.22);
+          border-color: rgba(139, 92, 246, 0.45);
+          box-shadow: 0 4px 20px rgba(139, 92, 246, 0.25);
+          transform: translateY(-1px);
+        }
+
+        .glass-button-glow {
+          background: rgba(139, 92, 246, 0.28);
+          backdrop-filter: blur(14px);
+          border: 1px solid rgba(139, 92, 246, 0.45);
+          box-shadow: 
+            0 4px 28px rgba(139, 92, 246, 0.35),
+            0 2px 12px rgba(168, 85, 247, 0.2),
+            inset 0 1px 0 rgba(255, 255, 255, 0.12);
+          transition: all 0.3s ease;
+        }
+
+        .glass-button-glow:hover {
+          background: rgba(139, 92, 246, 0.35);
+          border-color: rgba(139, 92, 246, 0.6);
+          box-shadow: 
+            0 6px 32px rgba(139, 92, 246, 0.45),
+            0 3px 16px rgba(168, 85, 247, 0.3),
+            inset 0 1px 0 rgba(255, 255, 255, 0.15);
+          transform: translateY(-1px);
+        }
+
+        .glass-input {
+          background: rgba(10, 10, 20, 0.85);
+          backdrop-filter: blur(14px);
+          border: 1px solid rgba(139, 92, 246, 0.25);
+          border-radius: 18px;
+          padding: 14px 18px;
+          color: rgba(255, 255, 255, 0.92);
+          outline: none;
+          transition: all 0.3s ease;
+          font-size: 14px;
+          line-height: 1.5;
+        }
+
+        .glass-input:focus {
+          border-color: rgba(139, 92, 246, 0.6);
+          background: rgba(10, 10, 20, 0.9);
+          box-shadow: 
+            0 0 0 3px rgba(139, 92, 246, 0.15),
+            0 4px 20px rgba(139, 92, 246, 0.25),
+            inset 0 1px 0 rgba(255, 255, 255, 0.06);
+        }
+
+        .glass-input::placeholder {
+          color: rgba(168, 139, 230, 0.45);
+        }
+
+        .chip {
+          padding: 9px 18px;
+          border-radius: 24px;
+          font-size: 13px;
+          font-weight: 500;
+          backdrop-filter: blur(14px);
+          border: 1px solid;
+          display: inline-flex;
+          align-items: center;
+          transition: all 0.3s ease;
+        }
+
+        .chip-purple {
+          background: rgba(139, 92, 246, 0.25);
+          border-color: rgba(139, 92, 246, 0.4);
+          color: rgba(196, 181, 253, 1);
+          box-shadow: 0 2px 12px rgba(139, 92, 246, 0.25);
+        }
+
+        .chip-purple:hover {
+          background: rgba(139, 92, 246, 0.32);
+          box-shadow: 0 4px 16px rgba(139, 92, 246, 0.35);
+          transform: translateY(-1px);
+        }
+
+        .chip-blue {
+          background: rgba(59, 130, 246, 0.25);
+          border-color: rgba(59, 130, 246, 0.4);
+          color: rgba(147, 197, 253, 1);
+          box-shadow: 0 2px 12px rgba(59, 130, 246, 0.25);
+        }
+
+        .chip-blue:hover {
+          background: rgba(59, 130, 246, 0.32);
+          box-shadow: 0 4px 16px rgba(59, 130, 246, 0.35);
+          transform: translateY(-1px);
+        }
+
+        .chip-pink {
+          background: rgba(236, 72, 153, 0.25);
+          border-color: rgba(236, 72, 153, 0.4);
+          color: rgba(251, 207, 232, 1);
+          box-shadow: 0 2px 12px rgba(236, 72, 153, 0.25);
+        }
+
+        .chip-pink:hover {
+          background: rgba(236, 72, 153, 0.32);
+          box-shadow: 0 4px 16px rgba(236, 72, 153, 0.35);
+          transform: translateY(-1px);
+        }
+
+        .timeline-segment-compact {
+          flex: 1;
+          min-width: 70px;
+          padding: 8px 12px;
+          background: rgba(139, 92, 246, 0.12);
+          backdrop-filter: blur(10px);
+          border: 1px solid rgba(139, 92, 246, 0.2);
+          border-radius: 16px;
+          font-size: 10px;
+          font-weight: 500;
+          text-align: center;
+          color: rgba(196, 181, 253, 0.8);
+          white-space: nowrap;
+          transition: all 0.3s ease;
+        }
+
+        .timeline-segment-compact:hover {
+          background: rgba(139, 92, 246, 0.18);
+          border-color: rgba(139, 92, 246, 0.3);
+          color: rgba(196, 181, 253, 1);
+        }
+
+        .visual-pill-active {
+          background: linear-gradient(135deg, rgba(139, 92, 246, 0.7), rgba(236, 72, 153, 0.6));
+          border: 1.5px solid rgba(168, 85, 247, 0.9);
+          color: rgba(255, 255, 255, 0.98);
+          box-shadow: 
+            0 0 24px rgba(168, 85, 247, 0.7),
+            0 0 48px rgba(236, 72, 153, 0.4),
+            0 4px 16px rgba(139, 92, 246, 0.5),
+            inset 0 1px 0 rgba(255, 255, 255, 0.25),
+            inset 0 0 20px rgba(168, 85, 247, 0.3);
+          backdrop-filter: blur(16px);
+        }
+
+        .nebula-layer-1 {
+          background: radial-gradient(ellipse at 30% 40%, rgba(139, 92, 246, 0.5), rgba(168, 85, 247, 0.3) 40%, transparent 65%);
+          animation: nebula-drift-1 25s ease-in-out infinite;
+        }
+
+        .nebula-layer-2 {
+          background: radial-gradient(ellipse at 70% 60%, rgba(236, 72, 153, 0.4), rgba(219, 39, 119, 0.25) 35%, transparent 60%);
+          animation: nebula-drift-2 30s ease-in-out infinite;
+        }
+
+        .nebula-layer-3 {
+          background: radial-gradient(ellipse at 50% 30%, rgba(59, 130, 246, 0.45), rgba(96, 165, 250, 0.3) 40%, transparent 75%);
+          animation: nebula-drift-1 35s ease-in-out infinite reverse;
+        }
+
+        .shimmer-overlay {
+          background: linear-gradient(
+            90deg,
+            transparent,
+            rgba(255, 255, 255, 0.04),
+            rgba(168, 85, 247, 0.02),
+            transparent
+          );
+          animation: shimmer 10s ease-in-out infinite;
+        }
+
+        .animate-pulse-slow {
+          animation: pulse-slow 4s ease-in-out infinite;
+        }
+
+        .toggle {
+          width: 48px;
+          height: 26px;
+          background: rgba(139, 92, 246, 0.15);
+          border: 1px solid rgba(139, 92, 246, 0.35);
+          border-radius: 13px;
+          position: relative;
+          transition: all 0.3s ease;
+        }
+
+        .toggle::after {
+          content: '';
+          position: absolute;
+          width: 20px;
+          height: 20px;
+          background: rgba(168, 139, 230, 0.7);
+          border-radius: 50%;
+          top: 2px;
+          left: 2px;
+          transition: all 0.3s ease;
+          box-shadow: 0 2px 10px rgba(139, 92, 246, 0.5);
+        }
+
+        .toggle.active {
+          background: rgba(139, 92, 246, 0.45);
+          border-color: rgba(168, 85, 247, 0.7);
+          box-shadow: 0 0 16px rgba(139, 92, 246, 0.4);
+        }
+
+        .toggle.active::after {
+          left: 24px;
+          background: rgba(196, 181, 253, 1);
+          box-shadow: 
+            0 2px 14px rgba(139, 92, 246, 0.7),
+            0 0 8px rgba(168, 85, 247, 0.5);
+        }
+
+        .generate-button {
+          background: linear-gradient(135deg, rgba(139, 92, 246, 0.85), rgba(59, 130, 246, 0.85));
+          border: 1px solid rgba(168, 85, 247, 0.6);
+          box-shadow: 
+            0 10px 40px rgba(139, 92, 246, 0.5),
+            0 4px 16px rgba(59, 130, 246, 0.3),
+            inset 0 1px 0 rgba(255, 255, 255, 0.25),
+            inset 0 -1px 0 rgba(0, 0, 0, 0.1);
+          color: white;
+          position: relative;
+          overflow: hidden;
+          transition: all 0.3s ease;
+        }
+
+        .generate-button::before {
+          content: '';
+          position: absolute;
+          inset: 0;
+          background: linear-gradient(135deg, rgba(168, 85, 247, 0.4), rgba(99, 102, 241, 0.4));
+          opacity: 0;
+          transition: opacity 0.3s ease;
+        }
+
+        .generate-button:hover {
+          transform: translateY(-3px);
+          box-shadow: 
+            0 16px 52px rgba(139, 92, 246, 0.6),
+            0 8px 24px rgba(59, 130, 246, 0.4),
+            inset 0 1px 0 rgba(255, 255, 255, 0.35);
+        }
+
+        .generate-button:hover::before {
+          opacity: 1;
+        }
+
+        .chat-button {
+          background: linear-gradient(135deg, rgba(139, 92, 246, 0.95), rgba(59, 130, 246, 0.95));
+          backdrop-filter: blur(16px);
+          border: 1px solid rgba(168, 85, 247, 0.6);
+          box-shadow: 
+            0 10px 40px rgba(139, 92, 246, 0.6),
+            0 4px 16px rgba(59, 130, 246, 0.4),
+            inset 0 1px 0 rgba(255, 255, 255, 0.25);
+          transition: all 0.3s ease;
+        }
+
+        .chat-button:hover {
+          transform: scale(1.12);
+          box-shadow: 
+            0 14px 52px rgba(139, 92, 246, 0.7),
+            0 6px 24px rgba(59, 130, 246, 0.5),
+            inset 0 1px 0 rgba(255, 255, 255, 0.35);
+        }
+
+        .animate-fadeIn {
+          animation: fadeIn 0.3s ease;
+        }
+
+        .scrollbar-hide {
+          -ms-overflow-style: none;
+          scrollbar-width: none;
+        }
+
+        .scrollbar-hide::-webkit-scrollbar {
+          display: none;
+        }
+
+        /* Custom scrollbar for other elements */
+        ::-webkit-scrollbar {
+          width: 6px;
+          height: 6px;
+        }
+
+        ::-webkit-scrollbar-track {
+          background: rgba(139, 92, 246, 0.05);
+        }
+
+        ::-webkit-scrollbar-thumb {
+          background: rgba(139, 92, 246, 0.3);
+          border-radius: 3px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+          background: rgba(139, 92, 246, 0.5);
         }
       `}</style>
     </div>
-  )
-                        }
+  );
+}
