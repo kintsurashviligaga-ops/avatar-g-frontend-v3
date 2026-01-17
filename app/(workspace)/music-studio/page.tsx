@@ -4,36 +4,93 @@ import React, { useState, useMemo } from 'react';
 
 export default function MusicStudioPremium() {
   const [genre, setGenre] = useState('Alt Rock');
+  const [instruments, setInstruments] = useState('Cello, Synth');
   const [mood, setMood] = useState('Energetic');
   const [voiceMode, setVoiceMode] = useState('AI');
   const [lyrics, setLyrics] = useState("Chasing dreams, running through the night.\nA spark in the heart, burning so bright.");
+  const [description, setDescription] = useState("Starts slow with Georgian chonguri, then turns into energetic alt-rock chorus.");
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationProgress, setGenerationProgress] = useState(0);
   const [isSyncing, setIsSyncing] = useState(false);
   const [selectedSegment, setSelectedSegment] = useState('Chorus');
+  const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const [credits, setCredits] = useState(100);
+  const [isRecording, setIsRecording] = useState(false);
+  const [visualEnabled, setVisualEnabled] = useState(true);
+  const [visualStyle, setVisualStyle] = useState('Cyberpunk');
+  const [advancedOpen, setAdvancedOpen] = useState(false);
 
-  const handleGenerate = () => {
-    setIsGenerating(true);
-    setGenerationProgress(0);
-    
-    const interval = setInterval(() => {
-      setGenerationProgress(prev => {
-        if (prev >= 100) {
-          clearInterval(interval);
-          setTimeout(() => {
-            setIsGenerating(false);
-            setGenerationProgress(0);
-          }, 500);
-          return 100;
-        }
-        return prev + 2;
-      });
-    }, 50);
-  };
+  // Backend API URL
+  const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://avatarg-backend.vercel.app';
 
   const handleSmartSync = () => {
     setIsSyncing(true);
     setTimeout(() => setIsSyncing(false), 2500);
+  };
+
+  const handleCaptureMelody = () => {
+    setIsRecording(!isRecording);
+    if (!isRecording) {
+      setTimeout(() => setIsRecording(false), 3000);
+    }
+  };
+
+  // Handle music generation
+  const handleGenerate = async () => {
+    setIsGenerating(true);
+    setGenerationProgress(0);
+    setAudioUrl(null);
+    
+    try {
+      const prompt = `${lyrics}\n\nStyle: ${genre}, Instruments: ${instruments}, Mood: ${mood}\n${description}`;
+      
+      const progressInterval = setInterval(() => {
+        setGenerationProgress(prev => {
+          if (prev >= 90) {
+            clearInterval(progressInterval);
+            return 90;
+          }
+          return prev + 10;
+        });
+      }, 500);
+
+      const response = await fetch(`${API_URL}/api/music/generate`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          prompt: prompt,
+          duration: 30,
+          style: genre.toLowerCase()
+        }),
+      });
+
+      clearInterval(progressInterval);
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Generation failed');
+      }
+
+      setGenerationProgress(100);
+      setAudioUrl(data.audioUrl);
+      
+      if (data.creditsUsed) {
+        setCredits(prev => Math.max(0, prev - data.creditsUsed));
+      }
+
+      setTimeout(() => {
+        setIsGenerating(false);
+        setGenerationProgress(0);
+      }, 2000);
+
+    } catch (error) {
+      console.error('Generation error:', error);
+      setIsGenerating(false);
+      setGenerationProgress(0);
+    }
   };
 
   // Stable star particles
@@ -65,7 +122,6 @@ export default function MusicStudioPremium() {
     <div className="app-root">
       {/* Cosmic Background */}
       <div className="cosmic-background">
-        {/* Stars */}
         {starParticles.map((star) => (
           <div
             key={`star-${star.id}`}
@@ -81,7 +137,6 @@ export default function MusicStudioPremium() {
           />
         ))}
         
-        {/* Fire Embers */}
         {emberParticles.map((ember) => (
           <div
             key={`ember-${ember.id}`}
@@ -109,7 +164,7 @@ export default function MusicStudioPremium() {
             </button>
             <div className="credit-badge glass-element neon-outline">
               <span className="credit-icon">✦</span>
-              <span className="credit-text">100 Credits</span>
+              <span className="credit-text">{credits} Credits</span>
             </div>
           </div>
           
@@ -128,8 +183,8 @@ export default function MusicStudioPremium() {
               <span>Alt Rock</span>
             </button>
             <button 
-              className={`chip-button glass-element neon-outline ${genre === 'Cello, Synth' ? 'active' : ''}`}
-              onClick={() => setGenre('Cello, Synth')}>
+              className={`chip-button glass-element neon-outline ${instruments === 'Cello, Synth' ? 'active' : ''}`}
+              onClick={() => setInstruments('Cello, Synth')}>
               <span className="chip-emoji">🎹</span>
               <span>Cello, Synth</span>
             </button>
@@ -140,6 +195,10 @@ export default function MusicStudioPremium() {
               <span>Energetic</span>
             </button>
           </div>
+          <button className="explore-button glass-element neon-outline">
+            <span>Explore Genres</span>
+            <span className="arrow-icon">→</span>
+          </button>
         </div>
 
         {/* Lyrics & Vision */}
@@ -162,6 +221,73 @@ export default function MusicStudioPremium() {
           />
         </div>
 
+        {/* Music Vibe & Scene Description */}
+        <div className="glass-card neon-outline section-card">
+          <h3 className="section-title">Music Vibe & Scene Description</h3>
+          <textarea
+            className="description-input glass-element neon-outline"
+            placeholder="Describe the mood, instruments, and atmosphere..."
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+          />
+        </div>
+
+        {/* Capture My Melody */}
+        <div className="glass-card neon-outline section-card">
+          <h3 className="section-title">Capture My Melody</h3>
+          <button 
+            className={`melody-button glass-element neon-outline ${isRecording ? 'recording' : ''}`}
+            onClick={handleCaptureMelody}>
+            <span className="mic-icon">{isRecording ? '⏹' : '🎤'}</span>
+            <span className="melody-text">
+              {isRecording ? 'Stop Recording' : 'Capture My Melody'}
+            </span>
+          </button>
+          <div className="voice-status">
+            <span className="status-dot"></span>
+            <span className="status-text">Connected: Giorgi Voice v1</span>
+          </div>
+          <button className="voice-lab-link">
+            <span>Go to Voice Lab</span>
+            <span className="link-arrow">→</span>
+          </button>
+        </div>
+
+        {/* Visual Alchemist */}
+        <div className="glass-card neon-outline section-card">
+          <div className="card-header">
+            <h3 className="section-title">Visual Alchemist</h3>
+            <label className="toggle-switch">
+              <input 
+                type="checkbox" 
+                checked={visualEnabled}
+                onChange={() => setVisualEnabled(!visualEnabled)}
+              />
+              <span className="toggle-slider glass-element"></span>
+            </label>
+          </div>
+          
+          {visualEnabled && (
+            <>
+              <div className="style-pills">
+                {['Cinematic', 'Cyberpunk', 'Abstract', 'Retro'].map((style) => (
+                  <button
+                    key={style}
+                    className={`style-pill glass-element neon-outline ${visualStyle === style ? 'active' : ''}`}
+                    onClick={() => setVisualStyle(style)}>
+                    {style}
+                  </button>
+                ))}
+              </div>
+              
+              <div className="cover-preview glass-element">
+                <div className="cover-gradient"></div>
+                <span className="cover-label">Cover Preview</span>
+              </div>
+            </>
+          )}
+        </div>
+
         {/* Voice & Timeline */}
         <div className="glass-card neon-outline section-card">
           <h3 className="section-title">Voice & Timeline</h3>
@@ -180,7 +306,7 @@ export default function MusicStudioPremium() {
           </div>
 
           <div className="timeline-strip">
-            {['Intro', 'Verse', 'Chorus', 'Bridge', 'Outro'].map((segment) => (
+            {['Intro', 'Verse 1', 'Chorus', 'Verse 2', 'Outro'].map((segment) => (
               <button
                 key={segment}
                 className={`timeline-segment glass-element ${selectedSegment === segment ? 'active' : ''}`}
@@ -189,6 +315,12 @@ export default function MusicStudioPremium() {
                 <div className={`segment-bar ${selectedSegment === segment ? 'active' : ''}`} />
               </button>
             ))}
+          </div>
+          
+          <div className="timeline-progress-bar">
+            <div className="progress-track glass-element">
+              <div className="progress-active" style={{ width: '40%' }}></div>
+            </div>
           </div>
         </div>
 
@@ -228,6 +360,57 @@ export default function MusicStudioPremium() {
               </div>
             </div>
           </div>
+        </div>
+
+        {/* Audio Player */}
+        {audioUrl && !isGenerating && (
+          <div className="glass-card neon-outline audio-player-card">
+            <h3 className="section-title">Generated Track</h3>
+            <audio 
+              controls 
+              className="audio-player"
+              src={audioUrl}>
+              Your browser does not support audio playback.
+            </audio>
+            <button 
+              className="download-button glass-element neon-outline"
+              onClick={() => {
+                const a = document.createElement('a');
+                a.href = audioUrl;
+                a.download = 'generated-track.mp3';
+                a.click();
+              }}>
+              <span>⬇</span>
+              <span>Download Track</span>
+            </button>
+          </div>
+        )}
+
+        {/* Advanced Section */}
+        <div className="advanced-section">
+          <button 
+            className="advanced-toggle glass-element neon-outline"
+            onClick={() => setAdvancedOpen(!advancedOpen)}>
+            <span className="advanced-label">Advanced</span>
+            <span className={`advanced-arrow ${advancedOpen ? 'open' : ''}`}>▼</span>
+          </button>
+          
+          {advancedOpen && (
+            <div className="advanced-content glass-card neon-outline">
+              <div className="advanced-row">
+                <span className="advanced-option">Reverb</span>
+                <input type="range" className="advanced-slider" min="0" max="100" defaultValue="30" />
+              </div>
+              <div className="advanced-row">
+                <span className="advanced-option">Echo</span>
+                <input type="range" className="advanced-slider" min="0" max="100" defaultValue="20" />
+              </div>
+              <div className="advanced-row">
+                <span className="advanced-option">Compression</span>
+                <input type="range" className="advanced-slider" min="0" max="100" defaultValue="50" />
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Generate Button */}
@@ -477,6 +660,9 @@ export default function MusicStudioPremium() {
         .section-card:nth-child(3) { animation-delay: 0.2s; }
         .section-card:nth-child(4) { animation-delay: 0.3s; }
         .section-card:nth-child(5) { animation-delay: 0.4s; }
+        .section-card:nth-child(6) { animation-delay: 0.5s; }
+        .section-card:nth-child(7) { animation-delay: 0.6s; }
+        .section-card:nth-child(8) { animation-delay: 0.7s; }
 
         @keyframes fadeInUp {
           from {
@@ -501,6 +687,7 @@ export default function MusicStudioPremium() {
           display: flex;
           flex-wrap: wrap;
           gap: 10px;
+          margin-bottom: 16px;
         }
 
         .chip-button {
@@ -534,6 +721,38 @@ export default function MusicStudioPremium() {
             0 0 40px rgba(34, 211, 238, 0.6),
             0 0 60px rgba(251, 146, 60, 0.4),
             inset 0 0 20px rgba(255, 255, 255, 0.1);
+        }
+
+        .explore-button {
+          width: 100%;
+          padding: 12px 20px;
+          border-radius: 14px;
+          border: none;
+          color: rgba(255, 255, 255, 0.9);
+          font-size: 15px;
+          font-weight: 600;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+          transition: all 0.3s ease;
+        }
+
+        .explore-button:hover {
+          transform: translateY(-2px);
+          box-shadow: 
+            0 0 30px rgba(34, 211, 238, 0.5),
+            0 0 50px rgba(251, 146, 60, 0.3);
+        }
+
+        .arrow-icon {
+          font-size: 18px;
+          transition: transform 0.3s ease;
+        }
+
+        .explore-button:hover .arrow-icon {
+          transform: translateX(4px);
         }
 
         .sync-button {
@@ -584,7 +803,8 @@ export default function MusicStudioPremium() {
         }
 
         /* ============ INPUTS ============ */
-        .lyrics-input {
+        .lyrics-input,
+        .description-input {
           width: 100%;
           min-height: 140px;
           padding: 16px;
@@ -598,15 +818,253 @@ export default function MusicStudioPremium() {
           transition: all 0.3s ease;
         }
 
-        .lyrics-input::placeholder {
+        .description-input {
+          min-height: 100px;
+        }
+
+        .lyrics-input::placeholder,
+        .description-input::placeholder {
           color: rgba(255, 255, 255, 0.4);
         }
 
-        .lyrics-input:focus {
+        .lyrics-input:focus,
+        .description-input:focus {
           box-shadow: 
             0 0 40px rgba(34, 211, 238, 0.5),
             0 0 60px rgba(251, 146, 60, 0.3),
             inset 0 0 30px rgba(255, 255, 255, 0.05);
+        }
+
+        /* ============ CAPTURE MELODY ============ */
+        .melody-button {
+          width: 100%;
+          padding: 16px 24px;
+          border-radius: 16px;
+          border: none;
+          color: rgba(255, 255, 255, 0.95);
+          font-size: 16px;
+          font-weight: 600;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 12px;
+          transition: all 0.3s ease;
+          margin-bottom: 16px;
+        }
+
+        .melody-button:hover {
+          transform: translateY(-2px);
+          box-shadow: 
+            0 0 30px rgba(34, 211, 238, 0.5),
+            0 0 50px rgba(251, 146, 60, 0.3);
+        }
+
+        .melody-button.recording {
+          animation: recordingPulse 1s ease-in-out infinite;
+        }
+
+        @keyframes recordingPulse {
+          0%, 100% {
+            box-shadow: 
+              0 0 30px rgba(239, 68, 68, 0.5),
+              0 0 50px rgba(239, 68, 68, 0.3);
+          }
+          50% {
+            box-shadow: 
+              0 0 50px rgba(239, 68, 68, 0.8),
+              0 0 80px rgba(239, 68, 68, 0.5);
+          }
+        }
+
+        .mic-icon {
+          font-size: 24px;
+        }
+
+        .melody-text {
+          font-size: 15px;
+        }
+
+        .voice-status {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          margin-bottom: 12px;
+          padding: 8px 0;
+        }
+
+        .status-dot {
+          width: 8px;
+          height: 8px;
+          border-radius: 50%;
+          background: #10b981;
+          box-shadow: 0 0 10px rgba(16, 185, 129, 0.6);
+          animation: pulse 2s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.5; }
+        }
+
+        .status-text {
+          font-size: 13px;
+          color: rgba(255, 255, 255, 0.7);
+          font-weight: 500;
+        }
+
+        .voice-lab-link {
+          background: transparent;
+          border: none;
+          color: rgba(34, 211, 238, 0.9);
+          font-size: 14px;
+          font-weight: 600;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          padding: 0;
+          transition: all 0.3s ease;
+        }
+
+        .voice-lab-link:hover {
+          color: rgba(34, 211, 238, 1);
+          transform: translateX(2px);
+        }
+
+        .link-arrow {
+          font-size: 16px;
+          transition: transform 0.3s ease;
+        }
+
+        .voice-lab-link:hover .link-arrow {
+          transform: translateX(4px);
+        }
+
+        /* ============ VISUAL ALCHEMIST ============ */
+        .toggle-switch {
+          position: relative;
+          display: inline-block;
+          width: 52px;
+          height: 28px;
+        }
+
+        .toggle-switch input {
+          opacity: 0;
+          width: 0;
+          height: 0;
+        }
+
+        .toggle-slider {
+          position: absolute;
+          cursor: pointer;
+          inset: 0;
+          border-radius: 14px;
+          transition: all 0.3s ease;
+          border: 2px solid rgba(34, 211, 238, 0.4);
+        }
+
+        .toggle-slider:before {
+          content: '';
+          position: absolute;
+          height: 20px;
+          width: 20px;
+          left: 3px;
+          bottom: 3px;
+          background: white;
+          border-radius: 50%;
+          transition: all 0.3s ease;
+          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+        }
+
+        input:checked + .toggle-slider {
+          border-color: rgba(34, 211, 238, 0.8);
+          box-shadow: 
+            0 0 20px rgba(34, 211, 238, 0.4),
+            inset 0 0 15px rgba(34, 211, 238, 0.2);
+        }
+
+        input:checked + .toggle-slider:before {
+          transform: translateX(24px);
+          background: linear-gradient(135deg, #22d3ee, #fb923c);
+        }
+
+        .style-pills {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 10px;
+          margin-bottom: 20px;
+        }
+
+        .style-pill {
+          padding: 10px 18px;
+          border-radius: 20px;
+          border: none;
+          color: rgba(255, 255, 255, 0.85);
+          font-size: 14px;
+          font-weight: 600;
+          cursor: pointer;
+          transition: all 0.3s ease;
+        }
+
+        .style-pill:hover {
+          transform: translateY(-2px);
+          box-shadow: 
+            0 0 20px rgba(34, 211, 238, 0.4),
+            0 0 30px rgba(251, 146, 60, 0.2);
+        }
+
+        .style-pill.active {
+          color: #fff;
+          box-shadow: 
+            0 0 30px rgba(34, 211, 238, 0.6),
+            0 0 50px rgba(251, 146, 60, 0.4),
+            inset 0 0 20px rgba(255, 255, 255, 0.1);
+        }
+
+        .cover-preview {
+          width: 100%;
+          height: 200px;
+          border-radius: 16px;
+          position: relative;
+          overflow: hidden;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+
+        .cover-gradient {
+          position: absolute;
+          inset: 0;
+          background: linear-gradient(135deg, 
+            rgba(34, 211, 238, 0.3) 0%, 
+            rgba(168, 85, 247, 0.3) 50%, 
+            rgba(251, 146, 60, 0.3) 100%);
+          animation: gradientShift 8s ease-in-out infinite;
+        }
+
+        @keyframes gradientShift {
+          0%, 100% { 
+            background: linear-gradient(135deg, 
+              rgba(34, 211, 238, 0.3) 0%, 
+              rgba(168, 85, 247, 0.3) 50%, 
+              rgba(251, 146, 60, 0.3) 100%);
+          }
+          50% { 
+            background: linear-gradient(135deg, 
+              rgba(251, 146, 60, 0.3) 0%, 
+              rgba(34, 211, 238, 0.3) 50%, 
+              rgba(168, 85, 247, 0.3) 100%);
+          }
+        }
+
+        .cover-label {
+          position: relative;
+          z-index: 1;
+          color: rgba(255, 255, 255, 0.7);
+          font-size: 14px;
+          font-weight: 600;
+          letter-spacing: 0.05em;
         }
 
         /* ============ VOICE MODE ============ */
@@ -647,11 +1105,12 @@ export default function MusicStudioPremium() {
           gap: 8px;
           overflow-x: auto;
           padding-bottom: 4px;
+          margin-bottom: 16px;
         }
 
         .timeline-segment {
           flex: 1;
-          min-width: 70px;
+          min-width: 80px;
           padding: 10px 12px;
           border-radius: 12px;
           text-align: center;
@@ -705,6 +1164,26 @@ export default function MusicStudioPremium() {
         @keyframes progress {
           0%, 100% { opacity: 1; }
           50% { opacity: 0.6; }
+        }
+
+        .timeline-progress-bar {
+          width: 100%;
+        }
+
+        .progress-track {
+          width: 100%;
+          height: 6px;
+          border-radius: 3px;
+          position: relative;
+          overflow: hidden;
+        }
+
+        .progress-active {
+          height: 100%;
+          background: linear-gradient(90deg, #22d3ee, #fb923c);
+          border-radius: 3px;
+          box-shadow: 0 0 12px rgba(34, 211, 238, 0.6);
+          transition: width 0.5s ease;
         }
 
         /* ============ EQUIPMENT PREVIEW ============ */
@@ -847,6 +1326,140 @@ export default function MusicStudioPremium() {
         @keyframes wave {
           0%, 100% { transform: scaleY(0.5); }
           50% { transform: scaleY(1.2); }
+        }
+
+        /* ============ AUDIO PLAYER ============ */
+        .audio-player-card {
+          background: rgba(255, 255, 255, 0.06);
+          animation: fadeInUp 0.6s ease-out;
+        }
+
+        .audio-player {
+          width: 100%;
+          height: 50px;
+          margin-bottom: 16px;
+          border-radius: 12px;
+          filter: 
+            drop-shadow(0 0 20px rgba(34, 211, 238, 0.3))
+            drop-shadow(0 0 40px rgba(251, 146, 60, 0.2));
+        }
+
+        .download-button {
+          width: 100%;
+          padding: 14px;
+          border-radius: 14px;
+          border: none;
+          color: rgba(255, 255, 255, 0.9);
+          font-size: 15px;
+          font-weight: 600;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+          transition: all 0.3s ease;
+        }
+
+        .download-button:hover {
+          transform: translateY(-2px);
+          box-shadow: 
+            0 0 30px rgba(34, 211, 238, 0.5),
+            0 0 50px rgba(251, 146, 60, 0.3);
+        }
+
+        /* ============ ADVANCED SECTION ============ */
+        .advanced-section {
+          margin-bottom: 20px;
+        }
+
+        .advanced-toggle {
+          width: 100%;
+          padding: 14px 20px;
+          border-radius: 14px;
+          border: none;
+          color: rgba(255, 255, 255, 0.9);
+          font-size: 15px;
+          font-weight: 600;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          transition: all 0.3s ease;
+        }
+
+        .advanced-toggle:hover {
+          transform: translateY(-2px);
+          box-shadow: 
+            0 0 30px rgba(34, 211, 238, 0.4),
+            0 0 50px rgba(251, 146, 60, 0.2);
+        }
+
+        .advanced-label {
+          font-size: 15px;
+        }
+
+        .advanced-arrow {
+          font-size: 12px;
+          transition: transform 0.3s ease;
+        }
+
+        .advanced-arrow.open {
+          transform: rotate(180deg);
+        }
+
+        .advanced-content {
+          margin-top: 12px;
+          padding: 20px;
+          animation: fadeInUp 0.4s ease-out;
+        }
+
+        .advanced-row {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 16px;
+          margin-bottom: 16px;
+        }
+
+        .advanced-row:last-child {
+          margin-bottom: 0;
+        }
+
+        .advanced-option {
+          font-size: 14px;
+          font-weight: 600;
+          color: rgba(255, 255, 255, 0.85);
+          min-width: 100px;
+        }
+
+        .advanced-slider {
+          flex: 1;
+          height: 6px;
+          border-radius: 3px;
+          background: rgba(255, 255, 255, 0.1);
+          outline: none;
+          -webkit-appearance: none;
+        }
+
+        .advanced-slider::-webkit-slider-thumb {
+          -webkit-appearance: none;
+          appearance: none;
+          width: 18px;
+          height: 18px;
+          border-radius: 50%;
+          background: linear-gradient(135deg, #22d3ee, #fb923c);
+          cursor: pointer;
+          box-shadow: 0 0 10px rgba(34, 211, 238, 0.6);
+        }
+
+        .advanced-slider::-moz-range-thumb {
+          width: 18px;
+          height: 18px;
+          border-radius: 50%;
+          background: linear-gradient(135deg, #22d3ee, #fb923c);
+          cursor: pointer;
+          box-shadow: 0 0 10px rgba(34, 211, 238, 0.6);
+          border: none;
         }
 
         /* ============ PRIMARY CTA ============ */
