@@ -1,3 +1,5 @@
+'use client'
+
 import React, { useState, useMemo } from 'react';
 
 export default function MusicStudioPremium() {
@@ -732,4 +734,4 @@ export default function MusicStudioPremium() {
       `}</style>
     </div>
   );
-}
+              }
