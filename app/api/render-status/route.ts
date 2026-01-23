@@ -1,51 +1,89 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
 
-const SUPABASE_URL = process.env.SUPABASE_URL!;
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+const DEFAULT_TARGET = 'https://avatarg-backend.vercel.app/api/render-status';
 
-const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
-  auth: { persistSession: false },
-});
+function pickTarget() {
+  // Optional env (recommended later):
+  // RENDER_STATUS_BACKEND_URL = https://avatarg-backend.vercel.app/api/render-status
+  const env = process.env.RENDER_STATUS_BACKEND_URL?.trim();
+  return env && env.startsWith('http') ? env : DEFAULT_TARGET;
+}
 
-export async function GET(req: Request) {
+function withTimeout(ms: number) {
+  const controller = new AbortController();
+  const t = setTimeout(() => controller.abort(), ms);
+  return { controller, cleanup: () => clearTimeout(t) };
+}
+
+function safeJson(text: string) {
   try {
-    const { searchParams } = new URL(req.url);
-    const jobId = searchParams.get('jobId');
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
 
-    if (!jobId) {
-      return NextResponse.json({ success: false, error: 'jobId is required' }, { status: 400 });
-    }
+// ✅ UI health check helper
+export async function GET(req: Request) {
+  const target = pickTarget();
+  const { searchParams } = new URL(req.url);
+  const jobId = searchParams.get('jobId') || searchParams.get('renderJobId') || '';
 
-    const { data, error } = await supabase
-      .from('render_jobs')
-      .select('id,status,final_video_url,error_message,created_at,updated_at')
-      .eq('id', jobId)
-      .maybeSingle();
-
-    if (error) {
-      return NextResponse.json({ success: false, error: error.message }, { status: 500 });
-    }
-    if (!data) {
-      return NextResponse.json(
-        { success: false, status: 'not_found', finalVideoUrl: null, error_message: null },
-        { status: 404 }
-      );
-    }
-
+  // If no jobId -> just return route info (so UI can show "ready")
+  if (!jobId) {
     return NextResponse.json({
-      success: true,
-      id: data.id,
-      status: data.status,
-      finalVideoUrl: data.final_video_url ?? null,
-      error_message: data.error_message ?? null,
-      createdAt: data.created_at,
-      updatedAt: data.updated_at,
+      ok: true,
+      route: '/api/render-status',
+      method: 'GET',
+      usage: '/api/render-status?jobId=YOUR_JOB_ID',
+      note: 'Local proxy ready (CORS-safe). Provide jobId to query status.',
     });
+  }
+
+  try {
+    const url = new URL(target);
+    url.searchParams.set('jobId', jobId);
+
+    const { controller, cleanup } = withTimeout(30_000);
+    let upstreamRes: Response;
+
+    try {
+      upstreamRes = await fetch(url.toString(), {
+        method: 'GET',
+        headers: {
+          Accept: 'application/json',
+          'x-proxy': 'avatar-g-frontend',
+          'x-forwarded-at': new Date().toISOString(),
+        },
+        signal: controller.signal,
+        cache: 'no-store',
+      });
+    } finally {
+      cleanup();
+    }
+
+    const text = await upstreamRes.text();
+    const parsed = safeJson(text);
+
+    return new NextResponse(
+      parsed ? JSON.stringify(parsed) : text,
+      {
+        status: upstreamRes.status,
+        headers: {
+          'Content-Type': 'application/json; charset=utf-8',
+          'Cache-Control': 'no-store',
+        },
+      }
+    );
   } catch (err: any) {
+    const isAbort = err?.name === 'AbortError';
     return NextResponse.json(
-      { success: false, error: err?.message || 'Internal server error' },
-      { status: 500 }
+      {
+        ok: false,
+        error: isAbort ? 'Upstream timeout (30s)' : err?.message || 'Proxy failed',
+        target,
+      },
+      { status: isAbort ? 504 : 500 }
     );
   }
 }
