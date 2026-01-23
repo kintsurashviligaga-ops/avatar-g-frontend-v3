@@ -11,22 +11,28 @@ type PentagonResult = {
   [key: string]: any;
 };
 
+type RenderStatus =
+  | {
+      ok?: boolean;
+      success?: boolean;
+      status?: 'queued' | 'processing' | 'rendering' | 'uploading' | 'completed' | 'error';
+      progress?: number; // 0..100
+      renderJobId?: string;
+      finalVideoUrl?: string;
+      error?: string;
+      meta?: any;
+      [key: string]: any;
+    }
+  | null;
+
 type HealthState =
   | { ok: true; info: string }
   | { ok: false; info: string }
   | { ok: null; info: string };
 
-function nowIso() {
-  return new Date().toISOString();
-}
-
 function clamp(n: number, min: number, max: number) {
   if (Number.isNaN(n)) return min;
   return Math.max(min, Math.min(max, n));
-}
-
-function normalizeBaseUrl(url: string) {
-  return url.trim().replace(/\/+$/, '');
 }
 
 async function safeRead(res: Response) {
@@ -36,12 +42,6 @@ async function safeRead(res: Response) {
   } catch {
     return { json: null, text };
   }
-}
-
-async function safeFetchJson(url: string, init?: RequestInit) {
-  const res = await fetch(url, init);
-  const { json, text } = await safeRead(res);
-  return { res, json, text };
 }
 
 export default function VideoCineLabPage() {
@@ -58,45 +58,127 @@ export default function VideoCineLabPage() {
   const [debug, setDebug] = useState<string>('');
   const [result, setResult] = useState<PentagonResult | null>(null);
 
+  const [status, setStatus] = useState<RenderStatus>(null);
+  const [polling, setPolling] = useState(false);
+
   const controllerRef = useRef<AbortController | null>(null);
+  const pollStopRef = useRef<(() => void) | null>(null);
 
-  /**
-   * ✅ IMPORTANT:
-   * Browser must NOT call backend directly (CORS).
-   * Always call local proxy route: app/api/pentagon/route.ts
-   */
-  const endpoint = useMemo(() => {
-    return '/api/pentagon';
-  }, []);
+  const endpoint = useMemo(() => '/api/pentagon', []);
+  const statusEndpoint = useMemo(() => '/api/render-status', []);
 
-  /**
-   * Health check:
-   * - For local proxy, we can ping the backend root via our proxy using GET /api/pentagon/health (optional)
-   * - But simplest: just show "local endpoint" as OK, and rely on debug if POST fails.
-   */
   const bg =
-    'radial-gradient(ellipse at top, rgba(139, 92, 246, 0.18), transparent 55%), radial-gradient(ellipse at center, rgba(59, 130, 246, 0.10), transparent 60%), #0a0e14';
+    "radial-gradient(ellipse at top, rgba(139, 92, 246, 0.18), transparent 55%), radial-gradient(ellipse at center, rgba(59, 130, 246, 0.10), transparent 60%), #0a0e14";
 
-  function buildDebugBlock(lines: string[]) {
-    return lines.filter(Boolean).join('\n');
-  }
-
-  function stopOngoing() {
+  function stopAll() {
     controllerRef.current?.abort();
     controllerRef.current = null;
+
+    pollStopRef.current?.();
+    pollStopRef.current = null;
+
+    setPolling(false);
     setLoading(false);
   }
 
   async function runHealthCheck() {
-    // With local proxy, we can only "check" that our app is reachable.
-    // True backend health is reflected by POST response/debug.
-    setHealth({ ok: true, info: 'Local proxy endpoint ready: POST /api/pentagon (CORS-safe)' });
+    try {
+      const res = await fetch(endpoint, { method: 'GET', cache: 'no-store' });
+      if (!res.ok) {
+        setHealth({ ok: false, info: `Local proxy not ready: GET ${endpoint} → ${res.status}` });
+        return;
+      }
+      setHealth({ ok: true, info: `Local proxy endpoint ready: POST ${endpoint} (CORS-safe)` });
+    } catch (e: any) {
+      setHealth({ ok: false, info: `Health check failed: ${e?.message || 'network error'}` });
+    }
   }
 
   useEffect(() => {
     runHealthCheck();
+    return () => stopAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  async function startPolling(jobId: string) {
+    // stop previous polling
+    pollStopRef.current?.();
+
+    setPolling(true);
+    setStatus({ status: 'queued', progress: 0, renderJobId: jobId });
+
+    let stopped = false;
+    const stop = () => {
+      stopped = true;
+      setPolling(false);
+    };
+    pollStopRef.current = stop;
+
+    const startedAt = Date.now();
+    const maxMs = 5 * 60 * 1000; // 5 minutes max polling
+    const intervalMs = 2500;
+
+    const tick = async () => {
+      if (stopped) return;
+
+      // hard stop after maxMs
+      if (Date.now() - startedAt > maxMs) {
+        setError('Polling timeout (5 წუთი). სცადე თავიდან ან გაზარდე pipeline timeout backend-ში.');
+        stop();
+        return;
+      }
+
+      try {
+        const url = `${statusEndpoint}?jobId=${encodeURIComponent(jobId)}`;
+        const res = await fetch(url, { method: 'GET', cache: 'no-store' });
+        const { json, text } = await safeRead(res);
+
+        // Debug minimal for status
+        setDebug((prev) => {
+          const head = `\n\n--- STATUS POLL ---\nHTTP: ${res.status}\nRAW: ${(text || '').slice(0, 600)}\n--- END ---\n`;
+          // keep debug from exploding
+          const merged = (prev || '') + head;
+          return merged.slice(-6000);
+        });
+
+        if (!res.ok) {
+          // keep polling, but show error if persistent
+          setStatus((s) => ({ ...(s || {}), status: (s?.status as any) || 'processing', progress: s?.progress ?? 10 }));
+        } else {
+          const data = (json || {}) as RenderStatus;
+
+          // Typical expected:
+          // { status: 'processing', progress: 45, renderJobId, finalVideoUrl? }
+          setStatus(data);
+
+          if ((data as any)?.finalVideoUrl) {
+            setResult((r) => ({ ...(r || {}), finalVideoUrl: (data as any).finalVideoUrl, renderJobId: jobId }));
+            stop();
+            return;
+          }
+
+          if ((data as any)?.status === 'completed' && (data as any)?.finalVideoUrl) {
+            setResult((r) => ({ ...(r || {}), finalVideoUrl: (data as any).finalVideoUrl, renderJobId: jobId }));
+            stop();
+            return;
+          }
+
+          if ((data as any)?.status === 'error') {
+            setError((data as any)?.error || 'Render failed');
+            stop();
+            return;
+          }
+        }
+      } catch (e: any) {
+        // keep polling but show soft error
+        setStatus((s) => ({ ...(s || {}), status: (s?.status as any) || 'processing', progress: s?.progress ?? 10 }));
+      }
+
+      setTimeout(tick, intervalMs);
+    };
+
+    tick();
+  }
 
   const handleGenerate = async () => {
     const p = prompt.trim();
@@ -114,15 +196,14 @@ export default function VideoCineLabPage() {
     setLoading(true);
     setError(null);
     setResult(null);
+    setStatus(null);
     setDebug('');
 
-    // cancel previous request if any
-    controllerRef.current?.abort();
+    // stop any prior runs
+    stopAll();
+
     const controller = new AbortController();
     controllerRef.current = controller;
-
-    // longer timeout because pipeline can be heavy
-    const timeout = window.setTimeout(() => controller.abort(), 120000); // 120s
 
     const payload = {
       userPrompt: p,
@@ -134,20 +215,19 @@ export default function VideoCineLabPage() {
     };
 
     try {
-      const startedAt = nowIso();
-
-      const { res, json, text } = await safeFetchJson(endpoint, {
+      const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         signal: controller.signal,
         body: JSON.stringify(payload),
+        cache: 'no-store',
       });
 
-      // Debug always
+      const { json, text } = await safeRead(res);
+
       setDebug(
-        buildDebugBlock([
+        [
           `=== VIDEO CINE LAB DEBUG ===`,
-          `TIME: ${startedAt}`,
           `ENDPOINT: ${endpoint}`,
           `METHOD: POST`,
           `PAYLOAD: ${JSON.stringify(payload)}`,
@@ -159,36 +239,40 @@ export default function VideoCineLabPage() {
           (text || '(empty response)').slice(0, 2000),
           ``,
           `=== END ===`,
-        ])
+        ].join('\n')
       );
 
       if (!res.ok) {
-        const hint =
-          res.status === 405
-            ? `\n\nHINT: 405 = Method Not Allowed. Proxy route.ts უნდა ჰქონდეს POST export.`
-            : res.status === 404
-              ? `\n\nHINT: 404 = /api/pentagon route არ არსებობს. გადაამოწმე app/api/pentagon/route.ts შექმნილია?`
-              : res.status === 401 || res.status === 403
-                ? `\n\nHINT: 401/403 = backend auth/token/cors policy. ახლა უკვე CORS-safe ვართ, ამიტომ backend auth/keys გადაამოწმე.`
-                : '';
-
-        throw new Error(`HTTP ${res.status}: ${(text || '').slice(0, 300) || 'Request failed'}${hint}`);
+        throw new Error(`HTTP ${res.status}: ${(text || '').slice(0, 300) || 'Request failed'}`);
       }
 
       const data = (json || {}) as PentagonResult;
       const success = data.success ?? true;
-
       if (!success) throw new Error(data.error || 'Pipeline failed');
 
       setResult(data);
+
+      // ✅ If finalVideoUrl returned immediately -> done
+      if (data.finalVideoUrl) {
+        setStatus({ status: 'completed', progress: 100, finalVideoUrl: data.finalVideoUrl, renderJobId: data.renderJobId });
+        return;
+      }
+
+      // ✅ If only renderJobId -> start polling
+      if (data.renderJobId) {
+        await startPolling(data.renderJobId);
+        return;
+      }
+
+      // If nothing returned, show warning
+      setError('Backend-მა არ დააბრუნა finalVideoUrl ან renderJobId. გადაამოწმე backend response.');
     } catch (e: any) {
       if (e?.name === 'AbortError') {
-        setError('Request გაჩერდა / Timeout (120s). სცადე კიდევ ერთხელ.');
+        setError('Request გაჩერდა / Abort. Try again.');
       } else {
         setError(e?.message || 'Failed to fetch');
       }
     } finally {
-      window.clearTimeout(timeout);
       setLoading(false);
     }
   };
@@ -197,9 +281,27 @@ export default function VideoCineLabPage() {
     try {
       await navigator.clipboard.writeText(debug || '');
     } catch {
-      // mobile may block clipboard; ignore
+      // mobile might block
     }
   };
+
+  const statusLabel = status?.status
+    ? status.status === 'queued'
+      ? 'Queued'
+      : status.status === 'processing'
+        ? 'Processing'
+        : status.status === 'rendering'
+          ? 'Rendering'
+          : status.status === 'uploading'
+            ? 'Uploading'
+            : status.status === 'completed'
+              ? 'Completed'
+              : status.status === 'error'
+                ? 'Error'
+                : status.status
+    : '';
+
+  const statusPct = typeof status?.progress === 'number' ? clamp(status.progress, 0, 100) : polling ? 10 : 0;
 
   return (
     <div style={{ minHeight: '100vh', background: bg, paddingBottom: 110 }}>
@@ -265,7 +367,6 @@ export default function VideoCineLabPage() {
             padding: 16,
           }}
         >
-          {/* Health */}
           <div
             style={{
               marginBottom: 12,
@@ -290,6 +391,48 @@ export default function VideoCineLabPage() {
           >
             <strong>Endpoint Check:</strong> {health.info}
           </div>
+
+          {/* Status Bar */}
+          {(polling || status?.status) && (
+            <div
+              style={{
+                marginBottom: 12,
+                padding: 12,
+                borderRadius: 16,
+                border: '1px solid rgba(255,255,255,0.10)',
+                background: 'rgba(0,0,0,0.20)',
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 10 }}>
+                <div style={{ color: 'rgba(255,255,255,0.82)', fontWeight: 900, fontSize: 12 }}>
+                  Pipeline Status: <span style={{ color: '#fff' }}>{statusLabel || (polling ? 'Polling…' : '—')}</span>
+                </div>
+                <div style={{ color: 'rgba(255,255,255,0.70)', fontWeight: 900, fontSize: 12 }}>{statusPct}%</div>
+              </div>
+              <div
+                style={{
+                  height: 10,
+                  borderRadius: 999,
+                  border: '1px solid rgba(255,255,255,0.10)',
+                  background: 'rgba(255,255,255,0.06)',
+                  overflow: 'hidden',
+                }}
+              >
+                <div
+                  style={{
+                    width: `${statusPct}%`,
+                    height: '100%',
+                    background: 'linear-gradient(135deg, #8B5CF6, #3B82F6)',
+                  }}
+                />
+              </div>
+              {result?.renderJobId && (
+                <div style={{ marginTop: 10, fontSize: 12, color: 'rgba(255,255,255,0.60)' }}>
+                  Job ID: <span style={{ color: 'rgba(255,255,255,0.86)' }}>{result.renderJobId}</span>
+                </div>
+              )}
+            </div>
+          )}
 
           <div style={{ marginBottom: 12 }}>
             <div style={{ fontSize: 12, fontWeight: 900, color: 'rgba(255,255,255,0.75)', marginBottom: 8 }}>
@@ -363,36 +506,36 @@ export default function VideoCineLabPage() {
 
           <button
             onClick={handleGenerate}
-            disabled={loading}
+            disabled={loading || polling}
             style={{
               width: '100%',
               padding: 16,
               borderRadius: 18,
               border: '1px solid rgba(255,255,255,0.12)',
-              background: loading ? 'rgba(255,255,255,0.12)' : 'linear-gradient(135deg, #8B5CF6, #3B82F6)',
+              background: loading || polling ? 'rgba(255,255,255,0.12)' : 'linear-gradient(135deg, #8B5CF6, #3B82F6)',
               color: '#fff',
               fontSize: 15,
               fontWeight: 950,
-              cursor: loading ? 'not-allowed' : 'pointer',
-              boxShadow: loading ? 'none' : '0 10px 28px rgba(139, 92, 246, 0.28)',
+              cursor: loading || polling ? 'not-allowed' : 'pointer',
+              boxShadow: loading || polling ? 'none' : '0 10px 28px rgba(139, 92, 246, 0.28)',
             }}
           >
-            {loading ? '⏳ Generating…' : '🚀 Generate Video'}
+            {loading ? '⏳ Generating…' : polling ? '📡 Polling Status…' : '🚀 Generate Video'}
           </button>
 
           <div style={{ display: 'flex', gap: 10, marginTop: 10 }}>
             <button
-              onClick={stopOngoing}
-              disabled={!loading}
+              onClick={stopAll}
+              disabled={!loading && !polling}
               style={{
                 flex: 1,
                 padding: 12,
                 borderRadius: 14,
                 border: '1px solid rgba(255,255,255,0.12)',
-                background: !loading ? 'rgba(255,255,255,0.06)' : 'rgba(239,68,68,0.16)',
-                color: !loading ? 'rgba(255,255,255,0.55)' : '#fecaca',
+                background: !loading && !polling ? 'rgba(255,255,255,0.06)' : 'rgba(239,68,68,0.16)',
+                color: !loading && !polling ? 'rgba(255,255,255,0.55)' : '#fecaca',
                 fontWeight: 900,
-                cursor: !loading ? 'not-allowed' : 'pointer',
+                cursor: !loading && !polling ? 'not-allowed' : 'pointer',
               }}
             >
               ⛔ Cancel
@@ -417,6 +560,9 @@ export default function VideoCineLabPage() {
 
           <div style={{ marginTop: 10, fontSize: 12, color: 'rgba(255,255,255,0.55)' }}>
             Using endpoint: <span style={{ color: 'rgba(255,255,255,0.86)' }}>{endpoint}</span>
+          </div>
+          <div style={{ marginTop: 6, fontSize: 12, color: 'rgba(255,255,255,0.55)' }}>
+            Status endpoint: <span style={{ color: 'rgba(255,255,255,0.86)' }}>{statusEndpoint}</span>
           </div>
         </div>
 
@@ -468,7 +614,6 @@ export default function VideoCineLabPage() {
                 📋 Copy Debug
               </button>
             </div>
-
             {debug}
           </div>
         )}
@@ -501,4 +646,4 @@ export default function VideoCineLabPage() {
       </div>
     </div>
   );
-              }
+                         }
