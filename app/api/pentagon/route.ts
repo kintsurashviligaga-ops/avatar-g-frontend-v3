@@ -1,18 +1,24 @@
 import { NextResponse } from 'next/server';
+import { createClient } from '@supabase/supabase-js';
 
-const DEFAULT_TARGET = 'https://avatarg-backend.vercel.app/api/pentagon';
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
-function pickTarget() {
-  // Optional: if you set it later on Vercel
-  // PENTAGON_BACKEND_URL = https://avatarg-backend.vercel.app/api/pentagon
-  const env = process.env.PENTAGON_BACKEND_URL?.trim();
-  return env && env.startsWith('http') ? env : DEFAULT_TARGET;
-}
+/**
+ * Modes:
+ * 1) If RENDER_STATUS_BACKEND_URL is set -> proxy to backend
+ * 2) Else -> read from Supabase (requires SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY)
+ */
 
-function withTimeout(ms: number) {
-  const controller = new AbortController();
-  const t = setTimeout(() => controller.abort(), ms);
-  return { controller, cleanup: () => clearTimeout(t) };
+const DEFAULT_BACKEND_BASE = 'https://avatarg-backend.vercel.app';
+
+function pickRenderStatusTarget(req: Request) {
+  const env = process.env.RENDER_STATUS_BACKEND_URL?.trim();
+  if (env && /^https?:\/\//i.test(env)) return env;
+
+  // Default: backend base + /api/render-status?...
+  const url = new URL(req.url);
+  return `${DEFAULT_BACKEND_BASE}/api/render-status?${url.searchParams.toString()}`;
 }
 
 function safeJson(text: string) {
@@ -23,83 +29,101 @@ function safeJson(text: string) {
   }
 }
 
-// ✅ Health check for your UI "Endpoint Check"
-export async function GET() {
-  return NextResponse.json({
-    ok: true,
-    route: '/api/pentagon',
-    method: 'POST',
-    note: 'Local proxy endpoint ready (CORS-safe)',
-  });
+function withTimeout(ms: number) {
+  const controller = new AbortController();
+  const t = setTimeout(() => controller.abort(), ms);
+  return { controller, cleanup: () => clearTimeout(t) };
 }
 
-export async function POST(req: Request) {
-  const target = pickTarget();
-
+export async function GET(req: Request) {
   try {
-    const body = await req.text(); // keep raw text (works for JSON + avoids double parse issues)
+    const url = new URL(req.url);
+    const jobId = url.searchParams.get('jobId');
 
-    // Forward only safe/useful headers
-    const incoming = req.headers;
-    const headers: Record<string, string> = {
-      'Content-Type': incoming.get('content-type') || 'application/json',
-      Accept: incoming.get('accept') || 'application/json',
-    };
-
-    // Forward auth headers if present (important!)
-    const auth = incoming.get('authorization');
-    if (auth) headers.Authorization = auth;
-
-    const apiKey = incoming.get('x-api-key');
-    if (apiKey) headers['x-api-key'] = apiKey;
-
-    const supaAuth = incoming.get('apikey');
-    if (supaAuth) headers.apikey = supaAuth;
-
-    // Optional trace id for debugging
-    headers['x-proxy'] = 'avatar-g-frontend';
-    headers['x-forwarded-at'] = new Date().toISOString();
-
-    const { controller, cleanup } = withTimeout(120_000); // 120s (video pipeline can be slow)
-    let upstreamRes: Response;
-
-    try {
-      upstreamRes = await fetch(target, {
-        method: 'POST',
-        headers,
-        body,
-        signal: controller.signal,
-        // IMPORTANT: do NOT set mode:'no-cors' (it breaks reading response)
-        cache: 'no-store',
-      });
-    } finally {
-      cleanup();
+    if (!jobId) {
+      return NextResponse.json({ ok: false, error: 'jobId is required' }, { status: 400 });
     }
 
-    const text = await upstreamRes.text();
-    const ct = upstreamRes.headers.get('content-type') || '';
+    // ✅ If backend URL is provided (or default base), proxy first
+    const useProxy =
+      !!process.env.RENDER_STATUS_BACKEND_URL?.trim() || !!process.env.PREFER_RENDER_STATUS_PROXY?.trim();
 
-    // If upstream returns JSON, ensure we return JSON too (even if content-type is wrong)
-    const parsed = safeJson(text);
-    const isJson = ct.includes('application/json') || parsed !== null;
+    if (useProxy) {
+      const target = pickRenderStatusTarget(req);
+      const { controller, cleanup } = withTimeout(30_000);
 
-    // Pass-through status and response body
-    return new NextResponse(isJson ? JSON.stringify(parsed ?? {}) : text, {
-      status: upstreamRes.status,
-      headers: {
-        'Content-Type': isJson ? 'application/json; charset=utf-8' : (ct || 'text/plain; charset=utf-8'),
-        'Cache-Control': 'no-store',
+      try {
+        const upstream = await fetch(target, {
+          method: 'GET',
+          signal: controller.signal,
+          cache: 'no-store',
+          headers: { Accept: 'application/json', 'x-proxy': 'avatar-g-frontend' },
+        });
+
+        const text = await upstream.text();
+        const parsed = safeJson(text);
+        const isJson = upstream.headers.get('content-type')?.includes('application/json') || parsed !== null;
+
+        return new NextResponse(isJson ? JSON.stringify(parsed ?? {}) : text, {
+          status: upstream.status,
+          headers: {
+            'Content-Type': isJson ? 'application/json; charset=utf-8' : 'text/plain; charset=utf-8',
+            'Cache-Control': 'no-store',
+          },
+        });
+      } finally {
+        cleanup();
+      }
+    }
+
+    // ✅ Supabase mode (build-safe: client created only inside handler)
+    const supabaseUrl = process.env.SUPABASE_URL;
+    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+    if (!supabaseUrl || !serviceRoleKey) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: 'Supabase env vars are missing (or proxy mode not enabled).',
+          details: {
+            hasSUPABASE_URL: !!supabaseUrl,
+            hasSUPABASE_SERVICE_ROLE_KEY: !!serviceRoleKey,
+            hint:
+              'Set RENDER_STATUS_BACKEND_URL to proxy, OR set SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY to read DB directly.',
+          },
+        },
+        { status: 500 }
+      );
+    }
+
+    const supabase = createClient(supabaseUrl, serviceRoleKey);
+
+    // You can rename table/columns to match your schema
+    const { data, error } = await supabase
+      .from('render_jobs')
+      .select('*')
+      .eq('id', jobId)
+      .single();
+
+    if (error || !data) {
+      return NextResponse.json({ ok: false, error: 'Job not found' }, { status: 404 });
+    }
+
+    return NextResponse.json({
+      ok: true,
+      job: {
+        id: data.id,
+        status: data.status,
+        progress: data.progress ?? null,
+        finalVideoUrl: data.final_video_url ?? data.finalVideoUrl ?? null,
+        error: data.error ?? null,
+        updatedAt: data.updated_at ?? null,
       },
     });
   } catch (err: any) {
-    const isAbort = err?.name === 'AbortError';
     return NextResponse.json(
-      {
-        success: false,
-        error: isAbort ? 'Upstream timeout (120s)' : err?.message || 'Proxy failed',
-        target,
-      },
-      { status: isAbort ? 504 : 500 }
+      { ok: false, error: err?.message || 'Internal server error' },
+      { status: 500 }
     );
   }
 }
