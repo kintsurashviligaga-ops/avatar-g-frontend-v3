@@ -26,7 +26,6 @@ function clamp(n: number, min: number, max: number) {
 }
 
 function normalizeBaseUrl(url: string) {
-  // trims and removes trailing slash
   return url.trim().replace(/\/+$/, '');
 }
 
@@ -61,26 +60,22 @@ export default function VideoCineLabPage() {
 
   const controllerRef = useRef<AbortController | null>(null);
 
+  /**
+   * ✅ IMPORTANT:
+   * Browser must NOT call backend directly (CORS).
+   * Always call local proxy route: app/api/pentagon/route.ts
+   */
   const endpoint = useMemo(() => {
-    const env = process.env.NEXT_PUBLIC_PENTAGON_API_URL?.trim() || '';
-    if (env) return normalizeBaseUrl(env);
-    return '/api/v1/pentagon';
+    return '/api/pentagon';
   }, []);
 
-  // Guess a "base" to try health checks (only if it's a full URL)
-  const endpointBase = useMemo(() => {
-    if (endpoint.startsWith('http://') || endpoint.startsWith('https://')) {
-      // if endpoint ends with /api/pentagon, base is domain
-      // otherwise keep same
-      const u = endpoint;
-      const match = u.match(/^(https?:\/\/[^/]+)(\/.*)?$/);
-      return match?.[1] || endpoint;
-    }
-    return '';
-  }, [endpoint]);
-
+  /**
+   * Health check:
+   * - For local proxy, we can ping the backend root via our proxy using GET /api/pentagon/health (optional)
+   * - But simplest: just show "local endpoint" as OK, and rely on debug if POST fails.
+   */
   const bg =
-    "radial-gradient(ellipse at top, rgba(139, 92, 246, 0.18), transparent 55%), radial-gradient(ellipse at center, rgba(59, 130, 246, 0.10), transparent 60%), #0a0e14";
+    'radial-gradient(ellipse at top, rgba(139, 92, 246, 0.18), transparent 55%), radial-gradient(ellipse at center, rgba(59, 130, 246, 0.10), transparent 60%), #0a0e14';
 
   function buildDebugBlock(lines: string[]) {
     return lines.filter(Boolean).join('\n');
@@ -93,42 +88,15 @@ export default function VideoCineLabPage() {
   }
 
   async function runHealthCheck() {
-    // Health check is best-effort. If endpoint is relative (same app), we skip external checks.
-    if (!endpointBase) {
-      setHealth({ ok: null, info: 'Local endpoint (no external health check).' });
-      return;
-    }
-
-    try {
-      // Try GET /health (common)
-      const healthUrl = `${endpointBase}/health`;
-      const r1 = await fetch(healthUrl, { method: 'GET' });
-      if (r1.ok) {
-        setHealth({ ok: true, info: `Backend reachable: GET ${healthUrl} → ${r1.status}` });
-        return;
-      }
-
-      // Try GET / (should not be 404 if project serves something)
-      const rootUrl = `${endpointBase}/`;
-      const r2 = await fetch(rootUrl, { method: 'GET' });
-      if (r2.ok) {
-        setHealth({ ok: true, info: `Backend reachable: GET ${rootUrl} → ${r2.status}` });
-        return;
-      }
-
-      setHealth({
-        ok: false,
-        info: `Backend not reachable on GET. Tried: ${healthUrl} (${r1.status}), ${rootUrl} (${r2.status})`,
-      });
-    } catch (e: any) {
-      setHealth({ ok: false, info: `Health check failed: ${e?.message || 'network error'}` });
-    }
+    // With local proxy, we can only "check" that our app is reachable.
+    // True backend health is reflected by POST response/debug.
+    setHealth({ ok: true, info: 'Local proxy endpoint ready: POST /api/pentagon (CORS-safe)' });
   }
 
   useEffect(() => {
     runHealthCheck();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [endpointBase]);
+  }, []);
 
   const handleGenerate = async () => {
     const p = prompt.trim();
@@ -153,7 +121,8 @@ export default function VideoCineLabPage() {
     const controller = new AbortController();
     controllerRef.current = controller;
 
-    const timeout = window.setTimeout(() => controller.abort(), 90000); // 90s
+    // longer timeout because pipeline can be heavy
+    const timeout = window.setTimeout(() => controller.abort(), 120000); // 120s
 
     const payload = {
       userPrompt: p,
@@ -194,29 +163,27 @@ export default function VideoCineLabPage() {
       );
 
       if (!res.ok) {
-        // Common helpful hints
         const hint =
           res.status === 405
-            ? `\n\nHINT: 405 ნიშნავს "Method Not Allowed". ანუ ეს URL შეიძლება მხოლოდ GET იყოს და არა POST, ან route არასწორია.`
+            ? `\n\nHINT: 405 = Method Not Allowed. Proxy route.ts უნდა ჰქონდეს POST export.`
             : res.status === 404
-              ? `\n\nHINT: 404 ნიშნავს route არ არსებობს ამ URL-ზე. გადაამოწმე endpoint ზუსტად.`
+              ? `\n\nHINT: 404 = /api/pentagon route არ არსებობს. გადაამოწმე app/api/pentagon/route.ts შექმნილია?`
               : res.status === 401 || res.status === 403
-                ? `\n\nHINT: 401/403 ნიშნავს ავტორიზაცია/Token/CORS პოლიტიკა.`
+                ? `\n\nHINT: 401/403 = backend auth/token/cors policy. ახლა უკვე CORS-safe ვართ, ამიტომ backend auth/keys გადაამოწმე.`
                 : '';
 
         throw new Error(`HTTP ${res.status}: ${(text || '').slice(0, 300) || 'Request failed'}${hint}`);
       }
 
       const data = (json || {}) as PentagonResult;
-
-      // Some backends don't set success explicitly
       const success = data.success ?? true;
+
       if (!success) throw new Error(data.error || 'Pipeline failed');
 
       setResult(data);
     } catch (e: any) {
       if (e?.name === 'AbortError') {
-        setError('Request გაჩერდა / Timeout (90s). Try again.');
+        setError('Request გაჩერდა / Timeout (120s). სცადე კიდევ ერთხელ.');
       } else {
         setError(e?.message || 'Failed to fetch');
       }
@@ -230,7 +197,7 @@ export default function VideoCineLabPage() {
     try {
       await navigator.clipboard.writeText(debug || '');
     } catch {
-      // ignore (mobile may block)
+      // mobile may block clipboard; ignore
     }
   };
 
@@ -534,4 +501,4 @@ export default function VideoCineLabPage() {
       </div>
     </div>
   );
-    }
+              }
