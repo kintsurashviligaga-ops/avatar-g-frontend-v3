@@ -3,8 +3,6 @@ import { NextResponse } from 'next/server';
 const DEFAULT_TARGET = 'https://avatarg-backend.vercel.app/api/render-status';
 
 function pickTarget() {
-  // Optional env (recommended later):
-  // RENDER_STATUS_BACKEND_URL = https://avatarg-backend.vercel.app/api/render-status
   const env = process.env.RENDER_STATUS_BACKEND_URL?.trim();
   return env && env.startsWith('http') ? env : DEFAULT_TARGET;
 }
@@ -23,32 +21,34 @@ function safeJson(text: string) {
   }
 }
 
-// ✅ UI health check helper
+// Health check (no jobId in path)
 export async function GET(req: Request) {
-  const target = pickTarget();
-  const { searchParams } = new URL(req.url);
-  const jobId = searchParams.get('jobId') || searchParams.get('renderJobId') || '';
+  const url = new URL(req.url);
+  
+  // Extract jobId from path: /api/render-status/xxx
+  const pathParts = url.pathname.split('/').filter(Boolean);
+  const jobId = pathParts[pathParts.length - 1] === 'render-status' ? '' : pathParts[pathParts.length - 1];
 
-  // If no jobId -> just return route info (so UI can show "ready")
   if (!jobId) {
     return NextResponse.json({
       ok: true,
       route: '/api/render-status',
       method: 'GET',
-      usage: '/api/render-status?jobId=YOUR_JOB_ID',
-      note: 'Local proxy ready (CORS-safe). Provide jobId to query status.',
+      usage: '/api/render-status/YOUR_JOB_ID',
+      note: 'Local proxy ready (CORS-safe). Provide jobId in path.',
     });
   }
 
   try {
-    const url = new URL(target);
-    url.searchParams.set('jobId', jobId);
+    const target = pickTarget();
+    const upstreamUrl = `${target}/${jobId}`;
+    console.log('🔗 Proxying to:', upstreamUrl);
 
     const { controller, cleanup } = withTimeout(30_000);
     let upstreamRes: Response;
 
     try {
-      upstreamRes = await fetch(url.toString(), {
+      upstreamRes = await fetch(upstreamUrl, {
         method: 'GET',
         headers: {
           Accept: 'application/json',
@@ -65,23 +65,19 @@ export async function GET(req: Request) {
     const text = await upstreamRes.text();
     const parsed = safeJson(text);
 
-    return new NextResponse(
-      parsed ? JSON.stringify(parsed) : text,
-      {
-        status: upstreamRes.status,
-        headers: {
-          'Content-Type': 'application/json; charset=utf-8',
-          'Cache-Control': 'no-store',
-        },
-      }
-    );
+    return new NextResponse(parsed ? JSON.stringify(parsed) : text, {
+      status: upstreamRes.status,
+      headers: {
+        'Content-Type': 'application/json; charset=utf-8',
+        'Cache-Control': 'no-store',
+      },
+    });
   } catch (err: any) {
     const isAbort = err?.name === 'AbortError';
     return NextResponse.json(
       {
         ok: false,
         error: isAbort ? 'Upstream timeout (30s)' : err?.message || 'Proxy failed',
-        target,
       },
       { status: isAbort ? 504 : 500 }
     );
