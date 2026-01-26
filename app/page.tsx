@@ -1,4 +1,3 @@
-```tsx
 // app/page.tsx
 import Link from 'next/link'
 
@@ -218,4 +217,3 @@ export default function RootLayout({
 .font-orbitron {
   font-family: var(--font-orbitron);
 }
-```
