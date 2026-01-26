@@ -26,8 +26,8 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="ka" className={`${orbitron.variable} ${inter.variable}`}>
-      <body className={`${inter.className} antialiased`}>
+    <html lang="ka" className={orbitron.variable + ' ' + inter.variable}>
+      <body className={inter.className + ' antialiased'}>
         {children}
       </body>
     </html>
