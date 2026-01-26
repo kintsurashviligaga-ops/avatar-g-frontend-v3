@@ -2,10 +2,9 @@
 // app/page.tsx
 import Link from 'next/link'
 
-export default function HomePage() {
+export default function Home() {
   return (
-    <div className="min-h-dvh bg-[#05070A] text-white">
-      {/* Top Bar */}
+    <div className="min-h-screen bg-[#05070A] text-white">
       <header className="sticky top-0 z-50 backdrop-blur-xl bg-white/5 border-b border-white/10">
         <div className="max-w-[480px] mx-auto px-5 h-14 flex items-center justify-between">
           <button className="w-8 h-8 flex items-center justify-center text-white/60">
@@ -24,7 +23,6 @@ export default function HomePage() {
       </header>
 
       <main className="max-w-[480px] mx-auto px-5">
-        {/* Hero */}
         <section className="pt-16 pb-12 text-center">
           <h2 className="font-orbitron text-5xl font-black tracking-wider mb-3 bg-gradient-to-br from-white to-[#C0C0C0] bg-clip-text text-transparent">
             AVATAR G
@@ -39,12 +37,8 @@ export default function HomePage() {
           >
             Start Creating
           </Link>
-          <Link href="/workspace" className="block mt-4 text-xs text-white/30 underline">
-            Open Workspace
-          </Link>
         </section>
 
-        {/* Pipeline Architecture */}
         <section className="py-10 border-y border-white/5 bg-white/[0.02]">
           <h3 className="text-[10px] uppercase tracking-[0.15em] text-white/40 text-center mb-6">
             Pipeline Architecture
@@ -78,7 +72,6 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* Feature Hero Card */}
         <section className="py-10">
           <div className="p-7 bg-white/6 backdrop-blur-xl border border-white/15 rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.3)]">
             <div className="text-3xl mb-4">🎬</div>
@@ -106,7 +99,6 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* Services Grid */}
         <section className="pb-10">
           <div className="grid grid-cols-2 gap-3">
             {[
@@ -115,6 +107,8 @@ export default function HomePage() {
               { icon: '🎵', name: 'Music Studio', desc: 'AI composition', href: '/music-studio' },
               { icon: '🎞', name: 'Cine-Lab', desc: 'Video rendering', href: '/video-cine-lab' },
               { icon: '🧍', name: 'Avatar Builder', desc: '3D characters', href: '/avatar-builder' },
+              { icon: '🖼', name: 'Image Architect', desc: 'AI generation', href: '/image-architect' },
+              { icon: '🎮', name: 'Game Forge', desc: 'Interactive', href: '/game-forge' },
               { icon: '🏢', name: 'Business Agent', desc: 'Enterprise tools', href: '/business-agent' }
             ].map((service, i) => (
               <Link
@@ -130,7 +124,6 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* System Status */}
         <section className="pb-10">
           <div className="p-5 bg-white/4 backdrop-blur-xl border border-white/10 rounded-2xl">
             <h4 className="text-[10px] uppercase tracking-[0.15em] text-white/40 mb-4">System Status</h4>
@@ -153,7 +146,6 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* Final CTA */}
         <section className="py-16 text-center pb-10">
           <h3 className="font-orbitron text-2xl font-bold mb-3">Create Your First AI Video</h3>
           <p className="text-sm text-white/50 mb-8 leading-relaxed">
@@ -202,8 +194,8 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="ka" className={`${orbitron.variable} ${inter.variable}`}>
-      <body className={`${inter.className} antialiased`}>
+    <html lang="ka" className={orbitron.variable + ' ' + inter.variable}>
+      <body className={inter.className + ' antialiased'}>
         {children}
       </body>
     </html>
@@ -218,10 +210,6 @@ export default function RootLayout({
 @tailwind utilities;
 
 @layer base {
-  * {
-    @apply border-border;
-  }
-  
   body {
     @apply bg-[#05070A] text-white;
   }
