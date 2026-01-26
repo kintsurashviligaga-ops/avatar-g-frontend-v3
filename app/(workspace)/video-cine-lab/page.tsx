@@ -16,7 +16,7 @@ type RenderStatus =
       ok?: boolean;
       success?: boolean;
       status?: 'queued' | 'processing' | 'rendering' | 'uploading' | 'completed' | 'error';
-      progress?: number; // 0..100
+      progress?: number;
       renderJobId?: string;
       finalVideoUrl?: string;
       error?: string;
@@ -68,9 +68,10 @@ export default function VideoCineLabPage() {
   const statusEndpoint = useMemo(() => '/api/render-status', []);
 
   const bg =
-    "radial-gradient(ellipse at top, rgba(139, 92, 246, 0.18), transparent 55%), radial-gradient(ellipse at center, rgba(59, 130, 246, 0.10), transparent 60%), #0a0e14";
+    'radial-gradient(ellipse at top, rgba(139, 92, 246, 0.18), transparent 55%), radial-gradient(ellipse at center, rgba(59, 130, 246, 0.10), transparent 60%), #0a0e14';
 
   function stopAll() {
+    console.log('🛑 Stopping all active processes');
     controllerRef.current?.abort();
     controllerRef.current = null;
 
@@ -82,14 +83,18 @@ export default function VideoCineLabPage() {
   }
 
   async function runHealthCheck() {
+    console.log('🏥 Running health check on endpoint:', endpoint);
     try {
       const res = await fetch(endpoint, { method: 'GET', cache: 'no-store' });
       if (!res.ok) {
+        console.error('❌ Health check failed:', res.status);
         setHealth({ ok: false, info: `Local proxy not ready: GET ${endpoint} → ${res.status}` });
         return;
       }
+      console.log('✅ Health check passed');
       setHealth({ ok: true, info: `Local proxy endpoint ready: POST ${endpoint} (CORS-safe)` });
     } catch (e: any) {
+      console.error('❌ Health check exception:', e);
       setHealth({ ok: false, info: `Health check failed: ${e?.message || 'network error'}` });
     }
   }
@@ -101,7 +106,23 @@ export default function VideoCineLabPage() {
   }, []);
 
   async function startPolling(jobId: string) {
-    // stop previous polling
+    console.group('🎯 startPolling');
+    console.log('jobId:', jobId);
+    console.log('jobId type:', typeof jobId);
+    console.log('jobId length:', jobId?.length);
+    console.log('jobId empty?:', !jobId || jobId.trim() === '');
+    console.groupEnd();
+
+    // Validation
+    if (!jobId || jobId.trim() === '') {
+      const errorMsg = '❌ CRITICAL: No valid jobId provided to startPolling!';
+      console.error(errorMsg);
+      console.trace('Stack trace for invalid jobId call');
+      setError('შეცდომა: jobId არ არის მოწოდებული status polling-ისთვის');
+      return;
+    }
+
+    // Stop previous polling
     pollStopRef.current?.();
 
     setPolling(true);
@@ -111,18 +132,24 @@ export default function VideoCineLabPage() {
     const stop = () => {
       stopped = true;
       setPolling(false);
+      console.log('⏹ Polling stopped for jobId:', jobId);
     };
     pollStopRef.current = stop;
 
     const startedAt = Date.now();
-    const maxMs = 5 * 60 * 1000; // 5 minutes max polling
+    const maxMs = 5 * 60 * 1000;
     const intervalMs = 2500;
 
-    const tick = async () => {
-      if (stopped) return;
+    console.log('📡 Starting polling loop with interval:', intervalMs, 'ms');
 
-      // hard stop after maxMs
+    const tick = async () => {
+      if (stopped) {
+        console.log('⏹ Tick skipped: polling stopped');
+        return;
+      }
+
       if (Date.now() - startedAt > maxMs) {
+        console.error('⏱ Polling timeout reached (5 min)');
         setError('Polling timeout (5 წუთი). სცადე თავიდან ან გაზარდე pipeline timeout backend-ში.');
         stop();
         return;
@@ -130,47 +157,57 @@ export default function VideoCineLabPage() {
 
       try {
         const url = `${statusEndpoint}?jobId=${encodeURIComponent(jobId)}`;
+        console.log('📡 Fetching status:', url);
+
         const res = await fetch(url, { method: 'GET', cache: 'no-store' });
         const { json, text } = await safeRead(res);
 
-        // Debug minimal for status
+        console.log('📥 Status response:', {
+          status: res.status,
+          ok: res.ok,
+          dataPreview: text?.slice(0, 200),
+        });
+
         setDebug((prev) => {
           const head = `\n\n--- STATUS POLL ---\nHTTP: ${res.status}\nRAW: ${(text || '').slice(0, 600)}\n--- END ---\n`;
-          // keep debug from exploding
           const merged = (prev || '') + head;
           return merged.slice(-6000);
         });
 
         if (!res.ok) {
-          // keep polling, but show error if persistent
+          console.warn('⚠️ Status check returned non-OK status:', res.status);
           setStatus((s) => ({ ...(s || {}), status: (s?.status as any) || 'processing', progress: s?.progress ?? 10 }));
         } else {
           const data = (json || {}) as RenderStatus;
+          console.log('✅ Status data:', data);
 
-          // Typical expected:
-          // { status: 'processing', progress: 45, renderJobId, finalVideoUrl? }
           setStatus(data);
 
           if ((data as any)?.finalVideoUrl) {
+            console.log('🎉 Final video URL received!', (data as any).finalVideoUrl);
             setResult((r) => ({ ...(r || {}), finalVideoUrl: (data as any).finalVideoUrl, renderJobId: jobId }));
             stop();
             return;
           }
 
           if ((data as any)?.status === 'completed' && (data as any)?.finalVideoUrl) {
+            console.log('🎉 Job completed with video URL!');
             setResult((r) => ({ ...(r || {}), finalVideoUrl: (data as any).finalVideoUrl, renderJobId: jobId }));
             stop();
             return;
           }
 
           if ((data as any)?.status === 'error') {
+            console.error('❌ Job failed with error:', (data as any)?.error);
             setError((data as any)?.error || 'Render failed');
             stop();
             return;
           }
+
+          console.log('⏳ Job still processing, progress:', (data as any)?.progress);
         }
       } catch (e: any) {
-        // keep polling but show soft error
+        console.error('❌ Polling tick error:', e);
         setStatus((s) => ({ ...(s || {}), status: (s?.status as any) || 'processing', progress: s?.progress ?? 10 }));
       }
 
@@ -181,9 +218,13 @@ export default function VideoCineLabPage() {
   }
 
   const handleGenerate = async () => {
+    console.group('🚀 handleGenerate');
+
     const p = prompt.trim();
     if (!p) {
+      console.warn('⚠️ Empty prompt');
       setError('ჩაწერე prompt (მაგ: "კინემატოგრაფიული ვიდეო საქართველოს მთებზე მზის ჩასვლისას")');
+      console.groupEnd();
       return;
     }
 
@@ -199,7 +240,6 @@ export default function VideoCineLabPage() {
     setStatus(null);
     setDebug('');
 
-    // stop any prior runs
     stopAll();
 
     const controller = new AbortController();
@@ -214,6 +254,10 @@ export default function VideoCineLabPage() {
       },
     };
 
+    console.log('📤 Sending request to Pentagon API');
+    console.log('Endpoint:', endpoint);
+    console.log('Payload:', payload);
+
     try {
       const res = await fetch(endpoint, {
         method: 'POST',
@@ -224,6 +268,11 @@ export default function VideoCineLabPage() {
       });
 
       const { json, text } = await safeRead(res);
+
+      console.log('📥 Pentagon response received');
+      console.log('Status:', res.status);
+      console.log('OK:', res.ok);
+      console.log('Response preview:', text?.slice(0, 300));
 
       setDebug(
         [
@@ -247,31 +296,55 @@ export default function VideoCineLabPage() {
       }
 
       const data = (json || {}) as PentagonResult;
+      console.log('📦 Parsed Pentagon data:', data);
+
       const success = data.success ?? true;
       if (!success) throw new Error(data.error || 'Pipeline failed');
 
       setResult(data);
 
+      // Check what was returned
+      console.group('🔍 Checking Pentagon response');
+      console.log('Has finalVideoUrl?', !!data.finalVideoUrl);
+      console.log('Has renderJobId?', !!data.renderJobId);
+      console.log('finalVideoUrl:', data.finalVideoUrl);
+      console.log('renderJobId:', data.renderJobId);
+      console.groupEnd();
+
       // ✅ If finalVideoUrl returned immediately -> done
       if (data.finalVideoUrl) {
-        setStatus({ status: 'completed', progress: 100, finalVideoUrl: data.finalVideoUrl, renderJobId: data.renderJobId });
+        console.log('✅ Immediate video URL received, no polling needed');
+        setStatus({
+          status: 'completed',
+          progress: 100,
+          finalVideoUrl: data.finalVideoUrl,
+          renderJobId: data.renderJobId,
+        });
+        console.groupEnd();
         return;
       }
 
       // ✅ If only renderJobId -> start polling
       if (data.renderJobId) {
+        console.log('🎯 Render job ID received, starting polling:', data.renderJobId);
         await startPolling(data.renderJobId);
+        console.groupEnd();
         return;
       }
 
       // If nothing returned, show warning
+      console.error('⚠️ No finalVideoUrl or renderJobId in response!');
+      console.log('Full response data:', data);
       setError('Backend-მა არ დააბრუნა finalVideoUrl ან renderJobId. გადაამოწმე backend response.');
+      console.groupEnd();
     } catch (e: any) {
+      console.error('❌ Generation failed:', e);
       if (e?.name === 'AbortError') {
         setError('Request გაჩერდა / Abort. Try again.');
       } else {
         setError(e?.message || 'Failed to fetch');
       }
+      console.groupEnd();
     } finally {
       setLoading(false);
     }
@@ -280,8 +353,9 @@ export default function VideoCineLabPage() {
   const copyDebug = async () => {
     try {
       await navigator.clipboard.writeText(debug || '');
-    } catch {
-      // mobile might block
+      console.log('📋 Debug log copied to clipboard');
+    } catch (e) {
+      console.warn('⚠️ Clipboard write failed (may be blocked on mobile)');
     }
   };
 
@@ -380,11 +454,7 @@ export default function VideoCineLabPage() {
                     ? 'rgba(239,68,68,0.08)'
                     : 'rgba(255,255,255,0.04)',
               color:
-                health.ok === true
-                  ? '#a7f3d0'
-                  : health.ok === false
-                    ? '#fecaca'
-                    : 'rgba(255,255,255,0.70)',
+                health.ok === true ? '#a7f3d0' : health.ok === false ? '#fecaca' : 'rgba(255,255,255,0.70)',
               fontSize: 12,
               lineHeight: 1.35,
             }}
@@ -392,7 +462,6 @@ export default function VideoCineLabPage() {
             <strong>Endpoint Check:</strong> {health.info}
           </div>
 
-          {/* Status Bar */}
           {(polling || status?.status) && (
             <div
               style={{
@@ -646,4 +715,4 @@ export default function VideoCineLabPage() {
       </div>
     </div>
   );
-                         }
+    }
