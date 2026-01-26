@@ -156,7 +156,8 @@ export default function VideoCineLabPage() {
       }
 
       try {
-        const url = `${statusEndpoint}?jobId=${encodeURIComponent(jobId)}`;
+        // ✅ FIXED: Use path-based jobId instead of query param
+        const url = `${statusEndpoint}/${encodeURIComponent(jobId)}`;
         console.log('📡 Fetching status:', url);
 
         const res = await fetch(url, { method: 'GET', cache: 'no-store' });
@@ -715,4 +716,4 @@ export default function VideoCineLabPage() {
       </div>
     </div>
   );
-    }
+      }
