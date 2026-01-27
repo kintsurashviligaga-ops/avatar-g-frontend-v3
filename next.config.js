@@ -5,3 +5,7 @@ const nextConfig = {
 }
 
 module.exports = nextConfig
+
+// Force complete rebuild - 2026-01-27 23:13
+// Clear all caches and regenerate bundle
+// Bypass Vercel build cache
