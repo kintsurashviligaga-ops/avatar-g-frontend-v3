@@ -16,23 +16,29 @@ function safeJson(text: string) {
   }
 }
 
+interface RouteContext {
+  params: Promise<{ jobId: string }>;
+}
+
 export async function GET(
   request: NextRequest,
-  { params }: { params: { jobId: string } }
+  context: RouteContext
 ) {
-  const jobId = params.jobId;
-
-  console.log('🔍 Status check for jobId:', jobId);
-
-  if (!jobId || jobId.trim() === '') {
-    console.error('❌ No jobId provided');
-    return NextResponse.json(
-      { success: false, error: 'jobId is required' },
-      { status: 400 }
-    );
-  }
-
   try {
+    // CRITICAL: await params (Next.js 15 requirement)
+    const params = await context.params;
+    const jobId = params.jobId;
+
+    console.log('🔍 Status check for jobId:', jobId);
+
+    if (!jobId || jobId.trim() === '') {
+      console.error('❌ No jobId provided');
+      return NextResponse.json(
+        { success: false, error: 'jobId is required' },
+        { status: 400 }
+      );
+    }
+
     const target = process.env.RENDER_STATUS_BACKEND_URL?.trim() || DEFAULT_TARGET;
     const upstreamUrl = `${target}/${jobId}`;
     
@@ -69,12 +75,13 @@ export async function GET(
       },
     });
   } catch (err: any) {
-    console.error('❌ Proxy error:', err);
+    console.error('❌ Route error:', err);
     const isAbort = err?.name === 'AbortError';
     return NextResponse.json(
       {
         success: false,
-        error: isAbort ? 'Upstream timeout (30s)' : err?.message || 'Proxy failed',
+        error: isAbort ? 'Upstream timeout (30s)' : err?.message || 'Route handler failed',
+        details: process.env.NODE_ENV === 'development' ? err?.stack : undefined,
       },
       { status: isAbort ? 504 : 500 }
     );
