@@ -3,8 +3,9 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { Send, Paperclip, Image as ImageIcon, Mic, X } from 'lucide-react';
+import Image from 'next/image';
 
-// Service Configuration - EXACTLY 12 services with correct routes
+// Service Configuration - EXACTLY 12 services
 interface Service {
   id: string;
   slug: string;
@@ -132,7 +133,6 @@ const defaultQuickPrompts = [
   'შექმენი ვიდეო იდეა',
 ];
 
-// Message Interface
 interface Message {
   id: string;
   role: 'user' | 'assistant';
@@ -146,10 +146,24 @@ interface Attachment {
   type: 'image' | 'file';
 }
 
-// Web Audio sound effect
+// Custom hook for reduced motion
+const usePrefersReducedMotion = () => {
+  const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+    setPrefersReducedMotion(mediaQuery.matches);
+
+    const listener = (e: MediaQueryListEvent) => setPrefersReducedMotion(e.matches);
+    mediaQuery.addEventListener('change', listener);
+    return () => mediaQuery.removeEventListener('change', listener);
+  }, []);
+
+  return prefersReducedMotion;
+};
+
 const playSlideSound = () => {
   if (typeof window === 'undefined') return;
-  
   try {
     const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
     const oscillator = audioContext.createOscillator();
@@ -171,16 +185,14 @@ const playSlideSound = () => {
     oscillator.start(audioContext.currentTime);
     oscillator.stop(audioContext.currentTime + 0.045);
 
-    // Haptic feedback for iOS
     if ('vibrate' in navigator) {
       navigator.vibrate(8);
     }
   } catch (e) {
-    // Silently fail if audio context not supported
+    // Silently fail
   }
 };
 
-// Warp Speed Canvas Background Component
 const WarpSpeedBackground: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animationRef = useRef<number>();
@@ -192,7 +204,6 @@ const WarpSpeedBackground: React.FC = () => {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // Set canvas size
     const setCanvasSize = () => {
       canvas.width = window.innerWidth;
       canvas.height = window.innerHeight;
@@ -200,7 +211,6 @@ const WarpSpeedBackground: React.FC = () => {
     setCanvasSize();
     window.addEventListener('resize', setCanvasSize);
 
-    // Star field
     const stars: Array<{ x: number; y: number; z: number; ox: number; oy: number }> = [];
     const numStars = 400;
     const centerX = canvas.width / 2;
@@ -218,7 +228,6 @@ const WarpSpeedBackground: React.FC = () => {
       });
     }
 
-    // Animation loop
     const animate = () => {
       ctx.fillStyle = 'rgba(6, 7, 11, 0.15)';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -242,16 +251,14 @@ const WarpSpeedBackground: React.FC = () => {
         const size = (1 - star.z / 2000) * 2;
         const opacity = Math.min(1, (2000 - star.z) / 1000);
 
-        // Draw star
         ctx.fillStyle = `rgba(142, 197, 255, ${opacity * 0.8})`;
         ctx.beginPath();
         ctx.arc(px, py, size, 0, Math.PI * 2);
         ctx.fill();
 
-        // Draw streak
         const opx = (star.ox - centerX) * k + centerX;
         const opy = (star.oy - centerY) * k + centerY;
-        
+
         ctx.strokeStyle = `rgba(142, 197, 255, ${opacity * 0.3})`;
         ctx.lineWidth = size * 0.5;
         ctx.beginPath();
@@ -263,7 +270,6 @@ const WarpSpeedBackground: React.FC = () => {
         star.oy = star.y;
       });
 
-      // Center glow
       const gradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, canvas.height * 0.6);
       gradient.addColorStop(0, 'rgba(59, 130, 246, 0.12)');
       gradient.addColorStop(0.5, 'rgba(59, 130, 246, 0.04)');
@@ -274,13 +280,11 @@ const WarpSpeedBackground: React.FC = () => {
       animationRef.current = requestAnimationFrame(animate);
     };
 
-    // Check reduced motion preference
     const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    
+
     if (!prefersReducedMotion) {
       animate();
     } else {
-      // Static background for reduced motion
       ctx.fillStyle = '#06070B';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       const gradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, canvas.height * 0.6);
@@ -314,6 +318,194 @@ const WarpSpeedBackground: React.FC = () => {
   );
 };
 
+// AI Agent Console Panel Component
+const AgentConsolePanel: React.FC<{ currentService: Service | null }> = ({ currentService }) => {
+  const prefersReducedMotion = usePrefersReducedMotion();
+
+  return (
+    <div
+      className="agent-panel"
+      style={{
+        background: 'linear-gradient(135deg, rgba(15, 20, 30, 0.9), rgba(10, 15, 25, 0.95))',
+        backdropFilter: 'blur(16px)',
+        border: '1px solid rgba(142, 197, 255, 0.2)',
+        borderRadius: 16,
+        padding: 16,
+        display: 'flex',
+        flexDirection: 'column',
+        position: 'relative',
+        overflow: 'hidden',
+      }}
+    >
+      {/* Agent Console Header */}
+      <div style={{ marginBottom: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+          <span
+            style={{
+              fontSize: 9,
+              fontWeight: 700,
+              color: 'rgba(142, 197, 255, 0.5)',
+              letterSpacing: '1px',
+              textTransform: 'uppercase',
+            }}
+          >
+            Agent Console
+          </span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <span
+              style={{
+                width: 4,
+                height: 4,
+                borderRadius: '50%',
+                background: '#4ADE80',
+                animation: prefersReducedMotion ? 'none' : 'pulse 2s infinite',
+              }}
+            />
+            <span style={{ fontSize: 8, fontWeight: 600, color: '#4ADE80' }}>ONLINE</span>
+          </div>
+        </div>
+
+        {/* Telemetry Lines */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+          <div style={{ fontSize: 8, color: 'rgba(183, 195, 214, 0.5)', fontFamily: 'monospace' }}>
+            Context: Ready
+          </div>
+          <div style={{ fontSize: 8, color: 'rgba(183, 195, 214, 0.5)', fontFamily: 'monospace' }}>
+            Tools: Attach / Image / Voice
+          </div>
+          <div style={{ fontSize: 8, color: 'rgba(183, 195, 214, 0.5)', fontFamily: 'monospace' }}>
+            Mode: Executive
+          </div>
+        </div>
+      </div>
+
+      {/* AI Agent Visual */}
+      <div
+        style={{
+          flex: 1,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          position: 'relative',
+          minHeight: 180,
+        }}
+      >
+        {/* Agent Silhouette (Placeholder - replace with actual asset) */}
+        <div
+          className={prefersReducedMotion ? '' : 'agent-idle-motion'}
+          style={{
+            width: '100%',
+            maxWidth: 160,
+            height: '100%',
+            maxHeight: 240,
+            background: 'linear-gradient(180deg, rgba(142, 197, 255, 0.15) 0%, rgba(142, 197, 255, 0.05) 100%)',
+            borderRadius: 12,
+            position: 'relative',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            border: '1px solid rgba(142, 197, 255, 0.2)',
+            boxShadow: '0 4px 24px rgba(142, 197, 255, 0.1)',
+          }}
+        >
+          {/* Executive AI Figure Placeholder */}
+          <div
+            style={{
+              width: '70%',
+              height: '85%',
+              background: 'linear-gradient(180deg, rgba(232, 238, 248, 0.3) 0%, rgba(232, 238, 248, 0.1) 100%)',
+              borderRadius: 8,
+              position: 'relative',
+            }}
+          >
+            {/* Head */}
+            <div
+              style={{
+                width: 40,
+                height: 40,
+                borderRadius: '50%',
+                background: 'rgba(232, 238, 248, 0.4)',
+                position: 'absolute',
+                top: 10,
+                left: '50%',
+                transform: 'translateX(-50%)',
+                border: '2px solid rgba(142, 197, 255, 0.3)',
+              }}
+            />
+            {/* Shoulders/Coat */}
+            <div
+              style={{
+                width: '100%',
+                height: '70%',
+                background: 'linear-gradient(180deg, rgba(232, 238, 248, 0.2) 0%, rgba(232, 238, 248, 0.05) 100%)',
+                position: 'absolute',
+                bottom: 0,
+                borderRadius: '8px 8px 0 0',
+                border: '1px solid rgba(142, 197, 255, 0.2)',
+                borderBottom: 'none',
+              }}
+            >
+              {/* Coat lapels suggestion */}
+              <div
+                style={{
+                  position: 'absolute',
+                  top: 20,
+                  left: '30%',
+                  width: 2,
+                  height: 60,
+                  background: 'rgba(142, 197, 255, 0.2)',
+                  transform: 'rotate(-10deg)',
+                }}
+              />
+              <div
+                style={{
+                  position: 'absolute',
+                  top: 20,
+                  right: '30%',
+                  width: 2,
+                  height: 60,
+                  background: 'rgba(142, 197, 255, 0.2)',
+                  transform: 'rotate(10deg)',
+                }}
+              />
+            </div>
+          </div>
+
+          {/* Glow effect */}
+          <div
+            style={{
+              position: 'absolute',
+              bottom: 0,
+              left: '50%',
+              transform: 'translateX(-50%)',
+              width: '80%',
+              height: 40,
+              background: 'radial-gradient(ellipse, rgba(142, 197, 255, 0.3), transparent 70%)',
+              filter: 'blur(12px)',
+            }}
+          />
+        </div>
+      </div>
+
+      {/* Current Service Indicator */}
+      {currentService && (
+        <div
+          style={{
+            marginTop: 12,
+            padding: 8,
+            background: 'rgba(142, 197, 255, 0.08)',
+            border: '1px solid rgba(142, 197, 255, 0.15)',
+            borderRadius: 8,
+          }}
+        >
+          <div style={{ fontSize: 9, color: 'rgba(142, 197, 255, 0.5)', marginBottom: 2 }}>Active Service:</div>
+          <div style={{ fontSize: 11, fontWeight: 600, color: '#E8EEF8' }}>{currentService.geName}</div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 export default function HomePage() {
   const router = useRouter();
   const [activeIndex, setActiveIndex] = useState(0);
@@ -328,7 +520,6 @@ export default function HomePage() {
   const quickPrompts = services[activeIndex]?.prompts || defaultQuickPrompts;
   const currentService = services[activeIndex];
 
-  // Auto-resize textarea
   useEffect(() => {
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
@@ -337,12 +528,10 @@ export default function HomePage() {
     }
   }, [inputValue]);
 
-  // Scroll to bottom on new messages
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // Handle carousel scroll with sound
   const handleScroll = useCallback(() => {
     if (!carouselRef.current) return;
 
@@ -434,7 +623,7 @@ export default function HomePage() {
   return (
     <>
       <WarpSpeedBackground />
-      
+
       <div style={{ position: 'relative', zIndex: 1, minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
         {/* Header */}
         <header
@@ -496,12 +685,12 @@ export default function HomePage() {
 
         {/* Main Content */}
         <main style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: '20px 16px 60px', gap: 24 }}>
-          {/* Chat Console */}
+          {/* Chat Console with Agent Panel */}
           <div style={{ display: 'flex', justifyContent: 'center' }}>
             <div
               style={{
                 width: '100%',
-                maxWidth: 640,
+                maxWidth: 840,
                 background: 'rgba(15, 20, 30, 0.7)',
                 backdropFilter: 'blur(24px)',
                 border: '1px solid rgba(142, 197, 255, 0.15)',
@@ -520,272 +709,370 @@ export default function HomePage() {
                   justifyContent: 'space-between',
                 }}
               >
-                <span style={{ fontSize: 11, fontWeight: 600, color: 'rgba(142, 197, 255, 0.6)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                <span
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 600,
+                    color: 'rgba(142, 197, 255, 0.6)',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.5px',
+                  }}
+                >
                   Executive AI Console
                 </span>
-                <span style={{ fontSize: 13, fontWeight: 600, color: '#EAF1FF' }}>
+                <span style={{ fontSize: 13, fontWeight: 600, color: '#E8EEF8' }}>
                   {currentService ? currentService.geName : 'აღმასრულებელი AI'}
                 </span>
               </div>
 
-              {/* Messages Area */}
-              <div style={{ position: 'relative', height: 280 }}>
+              {/* Chat Body - 2 Column Layout */}
+              <div
+                className="chat-body"
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  minHeight: 0,
+                }}
+              >
                 <div
+                  className="chat-inner"
                   style={{
-                    position: 'absolute',
-                    inset: 0,
-                    overflowY: 'auto',
-                    overflowX: 'hidden',
-                    padding: '16px',
                     display: 'flex',
                     flexDirection: 'column',
+                    gap: 12,
+                    padding: 14,
                     minHeight: 0,
                   }}
                 >
-                  {messages.length === 0 ? (
-                    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 14 }}>
-                      <p style={{ color: 'rgba(142, 197, 255, 0.5)', fontSize: 13, textAlign: 'center', margin: 0 }}>
-                        დაიწყეთ საუბარი AI-თან ✨
-                      </p>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: 6 }}>
-                        {quickPrompts.map((prompt, index) => (
-                          <button
-                            key={index}
-                            onClick={() => handleQuickPrompt(prompt)}
-                            style={{
-                              padding: '6px 12px',
-                              fontSize: 11,
-                              background: 'rgba(142, 197, 255, 0.08)',
-                              border: '1px solid rgba(142, 197, 255, 0.2)',
-                              borderRadius: 999,
-                              color: 'rgba(142, 197, 255, 0.9)',
-                              cursor: 'pointer',
-                              transition: 'all 0.2s',
-                              whiteSpace: 'nowrap',
-                            }}
-                            onMouseEnter={(e) => {
-                              e.currentTarget.style.background = 'rgba(142, 197, 255, 0.15)';
-                              e.currentTarget.style.borderColor = 'rgba(142, 197, 255, 0.4)';
-                            }}
-                            onMouseLeave={(e) => {
-                              e.currentTarget.style.background = 'rgba(142, 197, 255, 0.08)';
-                              e.currentTarget.style.borderColor = 'rgba(142, 197, 255, 0.2)';
-                            }}
-                          >
-                            {prompt}
-                          </button>
-                        ))}
-                      </div>
+                  {/* Agent Panel + Messages Row */}
+                  <div
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: 12,
+                      minHeight: 0,
+                      flex: 1,
+                    }}
+                    className="md:flex-row"
+                  >
+                    {/* Agent Console Panel - Left/Top */}
+                    <div
+                      className="agent-panel-wrapper"
+                      style={{
+                        flexShrink: 0,
+                        width: '100%',
+                        height: 140,
+                        overflow: 'hidden',
+                      }}
+                    >
+                      <AgentConsolePanel currentService={currentService} />
                     </div>
-                  ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10, flex: 1, minHeight: 0 }}>
-                      {messages.map((message) => (
-                        <div
-                          key={message.id}
-                          style={{
-                            display: 'flex',
-                            justifyContent: message.role === 'user' ? 'flex-end' : 'flex-start',
-                          }}
-                        >
+
+                    {/* Messages Panel - Right/Bottom */}
+                    <div
+                      className="messages-panel"
+                      style={{
+                        flex: 1,
+                        minWidth: 0,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        minHeight: 0,
+                      }}
+                    >
+                      {/* Messages Area */}
+                      <div
+                        style={{
+                          flex: 1,
+                          minHeight: 0,
+                          overflowY: 'auto',
+                          overflowX: 'hidden',
+                          padding: '12px',
+                          background: 'rgba(6, 7, 11, 0.3)',
+                          borderRadius: 12,
+                          border: '1px solid rgba(142, 197, 255, 0.1)',
+                          minHeight: 200,
+                        }}
+                      >
+                        {messages.length === 0 ? (
                           <div
                             style={{
-                              maxWidth: '85%',
-                              padding: '10px 14px',
-                              borderRadius: 14,
-                              background:
-                                message.role === 'user'
-                                  ? 'linear-gradient(135deg, rgba(139, 92, 246, 0.25), rgba(59, 130, 246, 0.25))'
-                                  : 'rgba(142, 197, 255, 0.1)',
-                              border: `1px solid ${message.role === 'user' ? 'rgba(139, 92, 246, 0.3)' : 'rgba(142, 197, 255, 0.15)'}`,
-                              wordBreak: 'break-word',
+                              height: '100%',
+                              display: 'flex',
+                              flexDirection: 'column',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              gap: 12,
+                            }}
+                          >
+                            <p style={{ color: 'rgba(142, 197, 255, 0.5)', fontSize: 12, textAlign: 'center', margin: 0 }}>
+                              დაიწყეთ საუბარი AI-თან ✨
+                            </p>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: 6 }}>
+                              {quickPrompts.map((prompt, index) => (
+                                <button
+                                  key={index}
+                                  onClick={() => handleQuickPrompt(prompt)}
+                                  style={{
+                                    padding: '6px 12px',
+                                    fontSize: 10,
+                                    background: 'rgba(142, 197, 255, 0.08)',
+                                    border: '1px solid rgba(142, 197, 255, 0.2)',
+                                    borderRadius: 999,
+                                    color: 'rgba(142, 197, 255, 0.9)',
+                                    cursor: 'pointer',
+                                    transition: 'all 0.2s',
+                                    whiteSpace: 'nowrap',
+                                  }}
+                                  onMouseEnter={(e) => {
+                                    e.currentTarget.style.background = 'rgba(142, 197, 255, 0.15)';
+                                    e.currentTarget.style.borderColor = 'rgba(142, 197, 255, 0.4)';
+                                  }}
+                                  onMouseLeave={(e) => {
+                                    e.currentTarget.style.background = 'rgba(142, 197, 255, 0.08)';
+                                    e.currentTarget.style.borderColor = 'rgba(142, 197, 255, 0.2)';
+                                  }}
+                                >
+                                  {prompt}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        ) : (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                            {messages.map((message) => (
+                              <div
+                                key={message.id}
+                                style={{
+                                  display: 'flex',
+                                  justifyContent: message.role === 'user' ? 'flex-end' : 'flex-start',
+                                }}
+                              >
+                                <div
+                                  style={{
+                                    maxWidth: '85%',
+                                    padding: '10px 12px',
+                                    borderRadius: 12,
+                                    background:
+                                      message.role === 'user'
+                                        ? 'rgba(139, 92, 246, 0.15)'
+                                        : 'rgba(142, 197, 255, 0.1)',
+                                    border: `1px solid ${
+                                      message.role === 'user' ? 'rgba(139, 92, 246, 0.3)' : 'rgba(142, 197, 255, 0.15)'
+                                    }`,
+                                    wordBreak: 'break-word',
+                                  }}
+                                >
+                                  <p style={{ color: '#E8EEF8', fontSize: 12, margin: 0, lineHeight: 1.5 }}>
+                                    {message.content}
+                                  </p>
+                                  <span
+                                    style={{
+                                      color: 'rgba(183, 195, 214, 0.5)',
+                                      fontSize: 9,
+                                      marginTop: 4,
+                                      display: 'block',
+                                    }}
+                                  >
+                                    {message.timestamp.toLocaleTimeString('ka-GE', {
+                                      hour: '2-digit',
+                                      minute: '2-digit',
+                                    })}
+                                  </span>
+                                </div>
+                              </div>
+                            ))}
+                            <div ref={messagesEndRef} />
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Attachments */}
+                  {attachments.length > 0 && (
+                    <div
+                      style={{
+                        padding: '10px 12px',
+                        background: 'rgba(142, 197, 255, 0.05)',
+                        border: '1px solid rgba(142, 197, 255, 0.1)',
+                        borderRadius: 10,
+                        maxHeight: 80,
+                        overflowY: 'auto',
+                      }}
+                    >
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                        {attachments.map((attachment) => (
+                          <div
+                            key={attachment.id}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 6,
+                              padding: '5px 10px',
+                              background: 'rgba(142, 197, 255, 0.08)',
+                              border: '1px solid rgba(142, 197, 255, 0.2)',
+                              borderRadius: 8,
                               minWidth: 0,
                             }}
                           >
-                            <p style={{ color: '#EAF1FF', fontSize: 13, margin: 0, lineHeight: 1.5 }}>
-                              {message.content}
-                            </p>
-                            <span style={{ color: 'rgba(142, 197, 255, 0.5)', fontSize: 9, marginTop: 4, display: 'block' }}>
-                              {message.timestamp.toLocaleTimeString('ka-GE', { hour: '2-digit', minute: '2-digit' })}
+                            <span
+                              style={{
+                                color: 'rgba(142, 197, 255, 0.9)',
+                                fontSize: 10,
+                                maxWidth: 80,
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap',
+                              }}
+                            >
+                              {attachment.name}
                             </span>
+                            <button
+                              onClick={() => removeAttachment(attachment.id)}
+                              style={{
+                                padding: 2,
+                                background: 'transparent',
+                                border: 'none',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                flexShrink: 0,
+                              }}
+                            >
+                              <X size={10} color="rgba(142, 197, 255, 0.6)" />
+                            </button>
                           </div>
-                        </div>
-                      ))}
-                      <div ref={messagesEndRef} />
+                        ))}
+                      </div>
                     </div>
                   )}
-                </div>
-              </div>
 
-              {/* Attachments */}
-              {attachments.length > 0 && (
-                <div style={{ padding: '10px 16px', borderTop: '1px solid rgba(142, 197, 255, 0.1)', maxHeight: 80, overflowY: 'auto' }}>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                    {attachments.map((attachment) => (
-                      <div
-                        key={attachment.id}
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: 6,
-                          padding: '5px 10px',
-                          background: 'rgba(142, 197, 255, 0.08)',
-                          border: '1px solid rgba(142, 197, 255, 0.2)',
-                          borderRadius: 8,
-                          minWidth: 0,
-                        }}
-                      >
-                        <span
-                          style={{
-                            color: 'rgba(142, 197, 255, 0.9)',
-                            fontSize: 11,
-                            maxWidth: 80,
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                            whiteSpace: 'nowrap',
-                          }}
-                        >
-                          {attachment.name}
-                        </span>
+                  {/* Composer */}
+                  <div
+                    style={{
+                      flexShrink: 0,
+                      padding: '12px',
+                      background: 'rgba(6, 7, 11, 0.3)',
+                      border: '1px solid rgba(142, 197, 255, 0.1)',
+                      borderRadius: 12,
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, minWidth: 0 }}>
+                      {/* Action Buttons */}
+                      <div style={{ display: 'flex', gap: 2, flexShrink: 0 }}>
                         <button
-                          onClick={() => removeAttachment(attachment.id)}
+                          onClick={() => addAttachment('file')}
                           style={{
-                            padding: 2,
+                            padding: 8,
                             background: 'transparent',
                             border: 'none',
+                            borderRadius: 10,
                             cursor: 'pointer',
                             display: 'flex',
                             alignItems: 'center',
-                            flexShrink: 0,
+                            justifyContent: 'center',
+                            minWidth: 40,
+                            minHeight: 40,
+                            transition: 'background 0.2s',
                           }}
+                          onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(142, 197, 255, 0.1)')}
+                          onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
                         >
-                          <X size={10} color="rgba(142, 197, 255, 0.6)" />
+                          <Paperclip size={16} color="rgba(183, 195, 214, 0.7)" />
+                        </button>
+                        <button
+                          onClick={() => addAttachment('image')}
+                          style={{
+                            padding: 8,
+                            background: 'transparent',
+                            border: 'none',
+                            borderRadius: 10,
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            minWidth: 40,
+                            minHeight: 40,
+                            transition: 'background 0.2s',
+                          }}
+                          onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(142, 197, 255, 0.1)')}
+                          onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                        >
+                          <ImageIcon size={16} color="rgba(183, 195, 214, 0.7)" />
+                        </button>
+                        <button
+                          style={{
+                            padding: 8,
+                            background: 'transparent',
+                            border: 'none',
+                            borderRadius: 10,
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            minWidth: 40,
+                            minHeight: 40,
+                            transition: 'background 0.2s',
+                          }}
+                          onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(142, 197, 255, 0.1)')}
+                          onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                        >
+                          <Mic size={16} color="rgba(183, 195, 214, 0.7)" />
                         </button>
                       </div>
-                    ))}
+
+                      {/* Textarea */}
+                      <textarea
+                        ref={textareaRef}
+                        value={inputValue}
+                        onChange={(e) => setInputValue(e.target.value)}
+                        onKeyDown={handleKeyDown}
+                        placeholder="ჰკითხე AI-ს ყველაფერი..."
+                        rows={1}
+                        style={{
+                          flex: 1,
+                          minWidth: 0,
+                          padding: '10px 12px',
+                          background: 'rgba(142, 197, 255, 0.05)',
+                          border: '1px solid rgba(142, 197, 255, 0.15)',
+                          borderRadius: 10,
+                          color: '#E8EEF8',
+                          fontSize: 12,
+                          resize: 'none',
+                          outline: 'none',
+                          fontFamily: 'inherit',
+                          minHeight: 40,
+                          maxHeight: 112,
+                        }}
+                      />
+
+                      {/* Send Button */}
+                      <button
+                        onClick={handleSend}
+                        disabled={!inputValue.trim() && attachments.length === 0}
+                        style={{
+                          padding: 10,
+                          background:
+                            inputValue.trim() || attachments.length > 0
+                              ? 'linear-gradient(135deg, #8B5CF6, #3B82F6)'
+                              : 'rgba(142, 197, 255, 0.1)',
+                          border: 'none',
+                          borderRadius: 10,
+                          cursor: inputValue.trim() || attachments.length > 0 ? 'pointer' : 'not-allowed',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          minWidth: 40,
+                          minHeight: 40,
+                          opacity: inputValue.trim() || attachments.length > 0 ? 1 : 0.5,
+                          transition: 'all 0.2s',
+                          flexShrink: 0,
+                        }}
+                      >
+                        <Send size={16} color="#fff" />
+                      </button>
+                    </div>
                   </div>
-                </div>
-              )}
-
-              {/* Composer */}
-              <div style={{ padding: '14px 16px', borderTop: '1px solid rgba(142, 197, 255, 0.1)' }}>
-                <div style={{ display: 'flex', alignItems: 'flex-end', gap: 10, minWidth: 0 }}>
-                  {/* Action Buttons */}
-                  <div style={{ display: 'flex', gap: 2, flexShrink: 0 }}>
-                    <button
-                      onClick={() => addAttachment('file')}
-                      style={{
-                        padding: 8,
-                        background: 'transparent',
-                        border: 'none',
-                        borderRadius: 10,
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        minWidth: 40,
-                        minHeight: 40,
-                        transition: 'background 0.2s',
-                      }}
-                      onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(142, 197, 255, 0.1)')}
-                      onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-                      aria-label="ფაილის დამატება"
-                    >
-                      <Paperclip size={16} color="rgba(142, 197, 255, 0.7)" />
-                    </button>
-                    <button
-                      onClick={() => addAttachment('image')}
-                      style={{
-                        padding: 8,
-                        background: 'transparent',
-                        border: 'none',
-                        borderRadius: 10,
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        minWidth: 40,
-                        minHeight: 40,
-                        transition: 'background 0.2s',
-                      }}
-                      onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(142, 197, 255, 0.1)')}
-                      onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-                      aria-label="სურათის დამატება"
-                    >
-                      <ImageIcon size={16} color="rgba(142, 197, 255, 0.7)" />
-                    </button>
-                    <button
-                      style={{
-                        padding: 8,
-                        background: 'transparent',
-                        border: 'none',
-                        borderRadius: 10,
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        minWidth: 40,
-                        minHeight: 40,
-                        transition: 'background 0.2s',
-                      }}
-                      onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(142, 197, 255, 0.1)')}
-                      onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-                      aria-label="ხმოვანი შეყვანა"
-                    >
-                      <Mic size={16} color="rgba(142, 197, 255, 0.7)" />
-                    </button>
-                  </div>
-
-                  {/* Textarea */}
-                  <textarea
-                    ref={textareaRef}
-                    value={inputValue}
-                    onChange={(e) => setInputValue(e.target.value)}
-                    onKeyDown={handleKeyDown}
-                    placeholder="ჰკითხე AI-ს ყველაფერი..."
-                    rows={1}
-                    style={{
-                      flex: 1,
-                      minWidth: 0,
-                      padding: '10px 12px',
-                      background: 'rgba(142, 197, 255, 0.05)',
-                      border: '1px solid rgba(142, 197, 255, 0.15)',
-                      borderRadius: 12,
-                      color: '#EAF1FF',
-                      fontSize: 13,
-                      resize: 'none',
-                      outline: 'none',
-                      fontFamily: 'inherit',
-                      minHeight: 40,
-                      maxHeight: 112,
-                    }}
-                  />
-
-                  {/* Send Button */}
-                  <button
-                    onClick={handleSend}
-                    disabled={!inputValue.trim() && attachments.length === 0}
-                    style={{
-                      padding: 10,
-                      background:
-                        inputValue.trim() || attachments.length > 0
-                          ? 'linear-gradient(135deg, #8B5CF6, #3B82F6)'
-                          : 'rgba(142, 197, 255, 0.1)',
-                      border: 'none',
-                      borderRadius: 12,
-                      cursor: inputValue.trim() || attachments.length > 0 ? 'pointer' : 'not-allowed',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      minWidth: 40,
-                      minHeight: 40,
-                      opacity: inputValue.trim() || attachments.length > 0 ? 1 : 0.5,
-                      transition: 'all 0.2s',
-                      flexShrink: 0,
-                    }}
-                    aria-label="გაგზავნა"
-                  >
-                    <Send size={16} color="#fff" />
-                  </button>
                 </div>
               </div>
             </div>
@@ -794,7 +1081,15 @@ export default function HomePage() {
           {/* Services Carousel */}
           <div>
             <div style={{ textAlign: 'center', marginBottom: 16 }}>
-              <h2 style={{ fontSize: 14, fontWeight: 700, color: 'rgba(142, 197, 255, 0.8)', margin: '0 0 4px', letterSpacing: '0.5px' }}>
+              <h2
+                style={{
+                  fontSize: 14,
+                  fontWeight: 700,
+                  color: 'rgba(142, 197, 255, 0.8)',
+                  margin: '0 0 4px',
+                  letterSpacing: '0.5px',
+                }}
+              >
                 სერვისები
               </h2>
               <p style={{ fontSize: 11, color: 'rgba(142, 197, 255, 0.5)', margin: 0 }}>
@@ -859,7 +1154,6 @@ export default function HomePage() {
                         overflow: 'hidden',
                       }}
                     >
-                      {/* Icon Area */}
                       <div
                         style={{
                           width: 80,
@@ -889,7 +1183,6 @@ export default function HomePage() {
                         {service.slug === 'text-intelligence' && '📊'}
                       </div>
 
-                      {/* Text Content */}
                       <div>
                         <h3
                           style={{
@@ -898,7 +1191,6 @@ export default function HomePage() {
                             color: '#EAF1FF',
                             margin: '0 0 8px',
                             lineHeight: 1.2,
-                            maxWidth: '100%',
                           }}
                         >
                           {service.geName}
@@ -914,7 +1206,6 @@ export default function HomePage() {
                           {service.description}
                         </p>
 
-                        {/* Prompts */}
                         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                           {service.prompts.slice(0, 2).map((prompt, idx) => (
                             <span
@@ -927,9 +1218,6 @@ export default function HomePage() {
                                 borderRadius: 6,
                                 color: service.color,
                                 whiteSpace: 'nowrap',
-                                maxWidth: '100%',
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis',
                               }}
                             >
                               {prompt}
@@ -938,7 +1226,6 @@ export default function HomePage() {
                         </div>
                       </div>
 
-                      {/* Glow effect */}
                       <div
                         style={{
                           position: 'absolute',
@@ -956,7 +1243,6 @@ export default function HomePage() {
               })}
             </div>
 
-            {/* Scroll indicator */}
             <div style={{ display: 'flex', justifyContent: 'center', gap: 6, marginTop: 16 }}>
               {services.map((_, index) => (
                 <div
@@ -966,9 +1252,7 @@ export default function HomePage() {
                     height: 6,
                     borderRadius: 3,
                     background:
-                      index === activeIndex
-                        ? 'rgba(142, 197, 255, 0.8)'
-                        : 'rgba(142, 197, 255, 0.2)',
+                      index === activeIndex ? 'rgba(142, 197, 255, 0.8)' : 'rgba(142, 197, 255, 0.2)',
                     transition: 'all 0.3s',
                   }}
                 />
@@ -991,18 +1275,23 @@ export default function HomePage() {
           overflow-x: hidden;
         }
 
-        /* Hide scrollbar */
         div::-webkit-scrollbar {
           display: none;
         }
 
         @keyframes pulse {
-          0%, 100% { opacity: 1; }
-          50% { opacity: 0.5; }
+          0%,
+          100% {
+            opacity: 1;
+          }
+          50% {
+            opacity: 0.5;
+          }
         }
 
         @keyframes iconFloat {
-          0%, 100% {
+          0%,
+          100% {
             transform: rotateY(-6deg) rotateX(3deg) translateY(0px);
           }
           50% {
@@ -1010,8 +1299,35 @@ export default function HomePage() {
           }
         }
 
+        @keyframes agentIdleMotion {
+          0%,
+          100% {
+            transform: translateY(0px) rotate(0deg) scale(1);
+          }
+          50% {
+            transform: translateY(-3px) rotate(0.3deg) scale(1.01);
+          }
+        }
+
+        .agent-idle-motion {
+          animation: agentIdleMotion 4.6s ease-in-out infinite;
+        }
+
+        @media (min-width: 768px) {
+          .md\\:flex-row {
+            flex-direction: row !important;
+          }
+
+          .agent-panel-wrapper {
+            width: 36% !important;
+            height: auto !important;
+            min-height: 360px;
+          }
+        }
+
         @media (prefers-reduced-motion: reduce) {
-          * {
+          *,
+          .agent-idle-motion {
             animation: none !important;
             transition: none !important;
           }
