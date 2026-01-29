@@ -1,123 +1,54 @@
-"use client";
-
-import React, { useState, useCallback } from "react";
-import { Check, Loader2, X } from "lucide-react";
-import ServicePageShell from "@/components/ServicePageShell";
-
-type JobStatus = "queued" | "processing" | "done" | "error";
-
-interface Job {
-  id: string;
-  name: string;
-  status: JobStatus;
-  createdAt: Date;
-}
-
-const GAME_TYPES = ["Runner", "Puzzle", "Arcade", "Idle", "Strategy"];
-const DIFFICULTIES = ["Easy", "Normal", "Hard"];
-const ART_STYLES = ["Pixel", "Lowpoly", "Modern", "Retro Noir"];
-const RESOLUTIONS = ["Mobile", "Tablet", "Desktop"];
-const TARGETS = ["Web", "Android", "iOS"];
-
-export default function GameForgePage() {
-  const [toast, setToast] = useState<string | null>(null);
-  const [jobs, setJobs] = useState<Job[]>([]);
-  
-  const [gameType, setGameType] = useState(GAME_TYPES[0]);
-  const [coreLoop, setCoreLoop] = useState("");
-  const [difficulty, setDifficulty] = useState(DIFFICULTIES[1]);
-  const [artStyle, setArtStyle] = useState(ART_STYLES[0]);
-  const [resolution, setResolution] = useState(RESOLUTIONS[0]);
-  const [target, setTarget] = useState(TARGETS[0]);
-  const [monetization, setMonetization] = useState(false);
-
-  const showToast = useCallback((message: string) => {
-    setToast(message);
-    setTimeout(() => setToast(null), 3000);
-  }, []);
-
-  const handleGenerate = useCallback(() => {
-    const newJob: Job = {
-      id: `job-${Date.now()}`,
-      name: `${gameType} Game`,
-      status: "queued",
-      createdAt: new Date(),
-    };
-    setJobs(prev => [newJob, ...prev]);
-    showToast("Prototype generation started.");
-    
-    setTimeout(() => {
-      setJobs(prev => prev.map(j => j.id === newJob.id ? { ...j, status: "processing" } : j));
-    }, 1000);
-    setTimeout(() => {
-      setJobs(prev => prev.map(j => j.id === newJob.id ? { ...j, status: "done" } : j));
-    }, 7000);
-  }, [gameType, showToast]);
-
-  const clearCompleted = useCallback(() => {
-    setJobs(prev => prev.filter(j => j.status !== "done"));
-  }, []);
-
-  const getStatusIcon = (status: JobStatus) => {
-    switch (status) {
-      case "queued": return <div className="w-4 h-4 rounded-full border-2 border-yellow-500/50" />;
-      case "processing": return <Loader2 className="w-4 h-4 text-blue-400 animate-spin" />;
-      case "done": return <Check className="w-4 h-4 text-green-400" />;
-      case "error": return <X className="w-4 h-4 text-red-400" />;
-    }
-  };
-
-  return (
-    <ServicePageShell
-      title="Game Forge"
-      subtitle="Playable Prototype Engine"
-      primaryLabel="Generate Prototype"
-      onPrimary={handleGenerate}
-      toast={toast}
-    >
-      <section className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-sm p-4">
-        <h2 className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-4">Game Type</h2>
-        <select value={gameType} onChange={(e) => setGameType(e.target.value)} className="w-full px-3 py-2.5 rounded-xl bg-black/40 border border-white/10 text-sm focus:outline-none focus:border-cyan-500/50">
-          {GAME_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-        </select>
-      </section>
-
-      <section className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-sm p-4">
-        <h2 className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-4">Core Loop</h2>
-        <div className="space-y-4">
-          <textarea value={coreLoop} onChange={(e) => setCoreLoop(e.target.value)} placeholder="What the player does..." rows={3} className="w-full px-3 py-2.5 rounded-xl bg-black/40 border border-white/10 text-sm resize-none focus:outline-none focus:border-cyan-500/50" />
-          <div>
-            <label className="text-xs text-gray-500 mb-1.5 block">Difficulty</label>
-            <select value={difficulty} onChange={(e) => setDifficulty(e.target.value)} className="w-full px-3 py-2.5 rounded-xl bg-black/40 border border-white/10 text-sm focus:outline-none focus:border-cyan-500/50">
-              {DIFFICULTIES.map(d => <option key={d} value={d}>{d}</option>)}
-            </select>
-          </div>
-        </div>
-      </section>
-
-      <section className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-sm p-4">
-        <h2 className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-4">Art Style</h2>
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="text-xs text-gray-500 mb-1.5 block">Style</label>
-            <select value={artStyle} onChange={(e) => setArtStyle(e.target.value)} className="w-full px-3 py-2.5 rounded-xl bg-black/40 border border-white/10 text-sm focus:outline-none focus:border-cyan-500/50">
-              {ART_STYLES.map(s => <option key={s} value={s}>{s}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="text-xs text-gray-500 mb-1.5 block">Resolution</label>
-            <select value={resolution} onChange={(e) => setResolution(e.target.value)} className="w-full px-3 py-2.5 rounded-xl bg-black/40 border border-white/10 text-sm focus:outline-none focus:border-cyan-500/50">
-              {RESOLUTIONS.map(r => <option key={r} value={r}>{r}</option>)}
-            </select>
-          </div>
-        </div>
-      </section>
-
-      <section className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-sm p-4">
-        <h2 className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-4">Export Target</h2>
-        <div className="space-y-4">
-          <select value={target} onChange={(e) => setTarget(e.target.value)} className="w-full px-3 py-2.5 rounded-xl bg-black/40 border border-white/10 text-sm focus:outline-none focus:border-cyan-500/50">
-            {TARGETS.map(t => <option key={t} value={t}>{t}</option>)}
-          </select>
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input type="checkbox" checked={monetization} onChange={(e) => setMonetization(e.target.checked)} className="w-4 h-4 rounded border-white/20 bg-black/
+1 line selected
+Find in logs
+CtrlF
+23:54:50.132 
+Running build in Portland, USA (West) – pdx1
+23:54:50.133 
+Build machine configuration: 2 cores, 8 GB
+23:54:50.399 
+Cloning github.com/kintsurashviligaga-ops/avatar-g-frontend-v3 (Branch: main, Commit: 8821426)
+23:54:51.154 
+Cloning completed: 754.000ms
+23:54:51.340 
+Restored build cache from previous deployment (2XzztfTVdVDWkiTq31LVfgQ6JJWe)
+23:54:51.692 
+Running "vercel build"
+23:54:52.625 
+Vercel CLI 50.5.2
+23:54:52.891 
+Installing dependencies...
+23:54:54.902 
+23:54:54.903 
+up to date in 2s
+23:54:54.903 
+23:54:54.903 
+25 packages are looking for funding
+23:54:54.904 
+  run `npm fund` for details
+23:54:54.932 
+Detected Next.js version: 14.2.35
+23:54:54.936 
+Running "npm run build"
+23:54:55.032 
+23:54:55.032 
+> avatar-g-workspace@2.0.0 build
+23:54:55.032 
+> next build
+23:54:55.032 
+23:54:55.731 
+  ▲ Next.js 14.2.35
+23:54:55.732 
+23:54:55.749 
+   Creating an optimized production build ...
+23:55:01.190 
+Failed to compile.
+23:55:01.190 
+23:55:01.191 
+./app/(workspace)/game-forge/page.tsx
+23:55:01.191 
+Error: 
+23:55:01.191 
+  x Unexpected token `ServicePageShell`. Expected jsx identifier
+23:55:01.191 
+    ,-[/vercel/path0/app/(workspace)/game-forge/page.tsx:68:1]
+Deployment Summary
