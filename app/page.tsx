@@ -3,7 +3,6 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { Send, Paperclip, Image as ImageIcon, Mic, X } from 'lucide-react';
-import Image from 'next/image';
 
 // Service Configuration - EXACTLY 12 services
 interface Service {
@@ -783,14 +782,13 @@ export default function HomePage() {
                       <div
                         style={{
                           flex: 1,
-                          minHeight: 0,
+                          minHeight: 200,
                           overflowY: 'auto',
                           overflowX: 'hidden',
                           padding: '12px',
                           background: 'rgba(6, 7, 11, 0.3)',
                           borderRadius: 12,
                           border: '1px solid rgba(142, 197, 255, 0.1)',
-                          minHeight: 200,
                         }}
                       >
                         {messages.length === 0 ? (
