@@ -1,719 +1,272 @@
-'use client';
+"use client";
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import React, { useState, useCallback } from "react";
+import { Check, Loader2, X, Upload } from "lucide-react";
+import ServicePageShell from "@/components/ServicePageShell";
 
-type PentagonResult = {
-  success?: boolean;
-  error?: string;
-  finalVideoUrl?: string;
-  renderJobId?: string;
-  [key: string]: any;
-};
+type JobStatus = "queued" | "processing" | "done" | "error";
 
-type RenderStatus =
-  | {
-      ok?: boolean;
-      success?: boolean;
-      status?: 'queued' | 'processing' | 'rendering' | 'uploading' | 'completed' | 'error';
-      progress?: number;
-      renderJobId?: string;
-      finalVideoUrl?: string;
-      error?: string;
-      meta?: any;
-      [key: string]: any;
-    }
-  | null;
-
-type HealthState =
-  | { ok: true; info: string }
-  | { ok: false; info: string }
-  | { ok: null; info: string };
-
-function clamp(n: number, min: number, max: number) {
-  if (Number.isNaN(n)) return min;
-  return Math.max(min, Math.min(max, n));
+interface Job {
+  id: string;
+  name: string;
+  status: JobStatus;
+  createdAt: Date;
 }
 
-async function safeRead(res: Response) {
-  const text = await res.text();
-  try {
-    return { json: JSON.parse(text), text };
-  } catch {
-    return { json: null, text };
-  }
-}
+const SCENE_STYLES = ["Cinematic", "Ad", "Story", "Trailer"];
+const ASPECTS = ["9:16", "16:9", "1:1"];
+const DURATIONS = ["5s", "10s", "15s", "30s"];
+const VISUAL_STYLES = ["Photoreal", "Noir", "Futuristic", "Studio Product"];
 
 export default function VideoCineLabPage() {
-  const router = useRouter();
+  const [toast, setToast] = useState<string | null>(null);
+  const [jobs, setJobs] = useState<Job[]>([]);
 
-  const [prompt, setPrompt] = useState('');
-  const [maxScenes, setMaxScenes] = useState<number>(5);
-  const [maxDurationSec, setMaxDurationSec] = useState<number>(15);
+  const [concept, setConcept] = useState("");
+  const [sceneStyle, setSceneStyle] = useState(SCENE_STYLES[0]);
+  const [aspect, setAspect] = useState(ASPECTS[0]);
+  const [duration, setDuration] = useState(DURATIONS[1]);
+  const [visualStyle, setVisualStyle] = useState(VISUAL_STYLES[0]);
+  const [motionLevel, setMotionLevel] = useState(5);
+  const [detail, setDetail] = useState(7);
+  const [useReference, setUseReference] = useState(false);
 
-  const [loading, setLoading] = useState(false);
-  const [health, setHealth] = useState<HealthState>({ ok: null, info: 'Checking endpoint…' });
-
-  const [error, setError] = useState<string | null>(null);
-  const [debug, setDebug] = useState<string>('');
-  const [result, setResult] = useState<PentagonResult | null>(null);
-
-  const [status, setStatus] = useState<RenderStatus>(null);
-  const [polling, setPolling] = useState(false);
-
-  const controllerRef = useRef<AbortController | null>(null);
-  const pollStopRef = useRef<(() => void) | null>(null);
-
-  const endpoint = useMemo(() => '/api/pentagon', []);
-  const statusEndpoint = useMemo(() => '/api/render-status', []);
-
-  const bg =
-    'radial-gradient(ellipse at top, rgba(139, 92, 246, 0.18), transparent 55%), radial-gradient(ellipse at center, rgba(59, 130, 246, 0.10), transparent 60%), #0a0e14';
-
-  function stopAll() {
-    console.log('🛑 Stopping all active processes');
-    controllerRef.current?.abort();
-    controllerRef.current = null;
-
-    pollStopRef.current?.();
-    pollStopRef.current = null;
-
-    setPolling(false);
-    setLoading(false);
-  }
-
-  async function runHealthCheck() {
-    console.log('🏥 Running health check on endpoint:', endpoint);
-    try {
-      const res = await fetch(endpoint, { method: 'GET', cache: 'no-store' });
-      if (!res.ok) {
-        console.error('❌ Health check failed:', res.status);
-        setHealth({ ok: false, info: `Local proxy not ready: GET ${endpoint} → ${res.status}` });
-        return;
-      }
-      console.log('✅ Health check passed');
-      setHealth({ ok: true, info: `Local proxy endpoint ready: POST ${endpoint} (CORS-safe)` });
-    } catch (e: any) {
-      console.error('❌ Health check exception:', e);
-      setHealth({ ok: false, info: `Health check failed: ${e?.message || 'network error'}` });
-    }
-  }
-
-  useEffect(() => {
-    runHealthCheck();
-    return () => stopAll();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  const showToast = useCallback((message: string) => {
+    setToast(message);
+    setTimeout(() => setToast(null), 3000);
   }, []);
 
-  async function startPolling(jobId: string) {
-    console.group('🎯 startPolling');
-    console.log('jobId:', jobId);
-    console.log('jobId type:', typeof jobId);
-    console.log('jobId length:', jobId?.length);
-    console.log('jobId empty?:', !jobId || jobId.trim() === '');
-    console.groupEnd();
-
-    // Validation
-    if (!jobId || jobId.trim() === '') {
-      const errorMsg = '❌ CRITICAL: No valid jobId provided to startPolling!';
-      console.error(errorMsg);
-      console.trace('Stack trace for invalid jobId call');
-      setError('შეცდომა: jobId არ არის მოწოდებული status polling-ისთვის');
-      return;
-    }
-
-    // Stop previous polling
-    pollStopRef.current?.();
-
-    setPolling(true);
-    setStatus({ status: 'queued', progress: 0, renderJobId: jobId });
-
-    let stopped = false;
-    const stop = () => {
-      stopped = true;
-      setPolling(false);
-      console.log('⏹ Polling stopped for jobId:', jobId);
-    };
-    pollStopRef.current = stop;
-
-    const startedAt = Date.now();
-    const maxMs = 5 * 60 * 1000;
-    const intervalMs = 2500;
-
-    console.log('📡 Starting polling loop with interval:', intervalMs, 'ms');
-
-    const tick = async () => {
-      if (stopped) {
-        console.log('⏹ Tick skipped: polling stopped');
-        return;
-      }
-
-      if (Date.now() - startedAt > maxMs) {
-        console.error('⏱ Polling timeout reached (5 min)');
-        setError('Polling timeout (5 წუთი). სცადე თავიდან ან გაზარდე pipeline timeout backend-ში.');
-        stop();
-        return;
-      }
-
-      try {
-        // ✅ CRITICAL FIX: Use path-based URL (NOT query param)
-        const url = `${statusEndpoint}/${encodeURIComponent(jobId)}`;
-        console.log('📡 Fetching status:', url);
-
-        const res = await fetch(url, { method: 'GET', cache: 'no-store' });
-        const { json, text } = await safeRead(res);
-
-        console.log('📥 Status response:', {
-          status: res.status,
-          ok: res.ok,
-          dataPreview: text?.slice(0, 200),
-        });
-
-        setDebug((prev) => {
-          const head = `\n\n--- STATUS POLL ---\nHTTP: ${res.status}\nRAW: ${(text || '').slice(0, 600)}\n--- END ---\n`;
-          const merged = (prev || '') + head;
-          return merged.slice(-6000);
-        });
-
-        if (!res.ok) {
-          console.warn('⚠️ Status check returned non-OK status:', res.status);
-          setStatus((s) => ({ ...(s || {}), status: (s?.status as any) || 'processing', progress: s?.progress ?? 10 }));
-        } else {
-          const data = (json || {}) as RenderStatus;
-          console.log('✅ Status data:', data);
-
-          setStatus(data);
-
-          if ((data as any)?.finalVideoUrl) {
-            console.log('🎉 Final video URL received!', (data as any).finalVideoUrl);
-            setResult((r) => ({ ...(r || {}), finalVideoUrl: (data as any).finalVideoUrl, renderJobId: jobId }));
-            stop();
-            return;
-          }
-
-          if ((data as any)?.status === 'completed' && (data as any)?.finalVideoUrl) {
-            console.log('🎉 Job completed with video URL!');
-            setResult((r) => ({ ...(r || {}), finalVideoUrl: (data as any).finalVideoUrl, renderJobId: jobId }));
-            stop();
-            return;
-          }
-
-          if ((data as any)?.status === 'error') {
-            console.error('❌ Job failed with error:', (data as any)?.error);
-            setError((data as any)?.error || 'Render failed');
-            stop();
-            return;
-          }
-
-          console.log('⏳ Job still processing, progress:', (data as any)?.progress);
-        }
-      } catch (e: any) {
-        console.error('❌ Polling tick error:', e);
-        setStatus((s) => ({ ...(s || {}), status: (s?.status as any) || 'processing', progress: s?.progress ?? 10 }));
-      }
-
-      setTimeout(tick, intervalMs);
+  const handleGenerate = useCallback(() => {
+    const newJob: Job = {
+      id: `job-${Date.now()}`,
+      name: concept.slice(0, 30) || "Untitled Video",
+      status: "queued",
+      createdAt: new Date(),
     };
 
-    tick();
-  }
+    setJobs((prev) => [newJob, ...prev]);
+    showToast("Video generation started.");
 
-  const handleGenerate = async () => {
-    console.group('🚀 handleGenerate');
-
-    const p = prompt.trim();
-    if (!p) {
-      console.warn('⚠️ Empty prompt');
-      setError('ჩაწერე prompt (მაგ: "კინემატოგრაფიული ვიდეო საქართველოს მთებზე მზის ჩასვლისას")');
-      console.groupEnd();
-      return;
-    }
-
-    const scenes = clamp(Number(maxScenes || 5), 1, 12);
-    const dur = clamp(Number(maxDurationSec || 15), 5, 180);
-
-    setMaxScenes(scenes);
-    setMaxDurationSec(dur);
-
-    setLoading(true);
-    setError(null);
-    setResult(null);
-    setStatus(null);
-    setDebug('');
-
-    stopAll();
-
-    const controller = new AbortController();
-    controllerRef.current = controller;
-
-    const payload = {
-      userPrompt: p,
-      constraints: {
-        maxScenes: scenes,
-        maxDurationSec: dur,
-        style: 'cinematic, professional, 4K, beautiful lighting',
-      },
-    };
-
-    console.log('📤 Sending request to Pentagon API');
-    console.log('Endpoint:', endpoint);
-    console.log('Payload:', payload);
-
-    try {
-      const res = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        signal: controller.signal,
-        body: JSON.stringify(payload),
-        cache: 'no-store',
-      });
-
-      const { json, text } = await safeRead(res);
-
-      console.log('📥 Pentagon response received');
-      console.log('Status:', res.status);
-      console.log('OK:', res.ok);
-      console.log('Response preview:', text?.slice(0, 300));
-
-      setDebug(
-        [
-          `=== VIDEO CINE LAB DEBUG ===`,
-          `ENDPOINT: ${endpoint}`,
-          `METHOD: POST`,
-          `PAYLOAD: ${JSON.stringify(payload)}`,
-          ``,
-          `HTTP: ${res.status} ${res.statusText}`,
-          `CONTENT-TYPE: ${res.headers.get('content-type') || '(none)'}`,
-          ``,
-          `RAW (first 2000 chars):`,
-          (text || '(empty response)').slice(0, 2000),
-          ``,
-          `=== END ===`,
-        ].join('\n')
+    setTimeout(() => {
+      setJobs((prev) =>
+        prev.map((j) => (j.id === newJob.id ? { ...j, status: "processing" } : j))
       );
+    }, 1000);
 
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status}: ${(text || '').slice(0, 300) || 'Request failed'}`);
-      }
+    setTimeout(() => {
+      setJobs((prev) =>
+        prev.map((j) => (j.id === newJob.id ? { ...j, status: "done" } : j))
+      );
+    }, 10000);
+  }, [concept, showToast]);
 
-      const data = (json || {}) as PentagonResult;
-      console.log('📦 Parsed Pentagon data:', data);
+  const clearCompleted = useCallback(() => {
+    setJobs((prev) => prev.filter((j) => j.status !== "done"));
+  }, []);
 
-      const success = data.success ?? true;
-      if (!success) throw new Error(data.error || 'Pipeline failed');
-
-      setResult(data);
-
-      // Check what was returned
-      console.group('🔍 Checking Pentagon response');
-      console.log('Has finalVideoUrl?', !!data.finalVideoUrl);
-      console.log('Has renderJobId?', !!data.renderJobId);
-      console.log('finalVideoUrl:', data.finalVideoUrl);
-      console.log('renderJobId:', data.renderJobId);
-      console.groupEnd();
-
-      // ✅ If finalVideoUrl returned immediately -> done
-      if (data.finalVideoUrl) {
-        console.log('✅ Immediate video URL received, no polling needed');
-        setStatus({
-          status: 'completed',
-          progress: 100,
-          finalVideoUrl: data.finalVideoUrl,
-          renderJobId: data.renderJobId,
-        });
-        console.groupEnd();
-        return;
-      }
-
-      // ✅ If only renderJobId -> start polling
-      if (data.renderJobId) {
-        console.log('🎯 Render job ID received, starting polling:', data.renderJobId);
-        await startPolling(data.renderJobId);
-        console.groupEnd();
-        return;
-      }
-
-      // If nothing returned, show warning
-      console.error('⚠️ No finalVideoUrl or renderJobId in response!');
-      console.log('Full response data:', data);
-      setError('Backend-მა არ დააბრუნა finalVideoUrl ან renderJobId. გადაამოწმე backend response.');
-      console.groupEnd();
-    } catch (e: any) {
-      console.error('❌ Generation failed:', e);
-      if (e?.name === 'AbortError') {
-        setError('Request გაჩერდა / Abort. Try again.');
-      } else {
-        setError(e?.message || 'Failed to fetch');
-      }
-      console.groupEnd();
-    } finally {
-      setLoading(false);
+  const getStatusIcon = (status: JobStatus) => {
+    switch (status) {
+      case "queued":
+        return <div className="w-4 h-4 rounded-full border-2 border-yellow-500/50" />;
+      case "processing":
+        return <Loader2 className="w-4 h-4 text-blue-400 animate-spin" />;
+      case "done":
+        return <Check className="w-4 h-4 text-green-400" />;
+      case "error":
+        return <X className="w-4 h-4 text-red-400" />;
     }
   };
-
-  const copyDebug = async () => {
-    try {
-      await navigator.clipboard.writeText(debug || '');
-      console.log('📋 Debug log copied to clipboard');
-    } catch (e) {
-      console.warn('⚠️ Clipboard write failed (may be blocked on mobile)');
-    }
-  };
-
-  const statusLabel = status?.status
-    ? status.status === 'queued'
-      ? 'Queued'
-      : status.status === 'processing'
-        ? 'Processing'
-        : status.status === 'rendering'
-          ? 'Rendering'
-          : status.status === 'uploading'
-            ? 'Uploading'
-            : status.status === 'completed'
-              ? 'Completed'
-              : status.status === 'error'
-                ? 'Error'
-                : status.status
-    : '';
-
-  const statusPct = typeof status?.progress === 'number' ? clamp(status.progress, 0, 100) : polling ? 10 : 0;
 
   return (
-    <div style={{ minHeight: '100vh', background: bg, paddingBottom: 110 }}>
-      <header
-        style={{
-          padding: 18,
-          background: 'rgba(10, 14, 20, 0.92)',
-          backdropFilter: 'blur(18px)',
-          borderBottom: '1px solid rgba(255, 255, 255, 0.10)',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 12,
-          position: 'sticky',
-          top: 0,
-          zIndex: 10,
-        }}
-      >
-        <button
-          onClick={() => router.push('/')}
-          style={{
-            padding: 10,
-            background: 'rgba(255, 255, 255, 0.06)',
-            border: '1px solid rgba(255, 255, 255, 0.12)',
-            borderRadius: 14,
-            cursor: 'pointer',
-            color: '#fff',
-            fontSize: 18,
-            lineHeight: 1,
-          }}
-          aria-label="Back"
-        >
-          ←
-        </button>
-
-        <div style={{ flex: 1 }}>
-          <h1 style={{ fontSize: 18, fontWeight: 800, color: '#fff', margin: 0 }}>Video Cine Lab</h1>
-          <p style={{ fontSize: 12, color: 'rgba(255, 255, 255, 0.62)', margin: 0 }}>Neural Video Render Studio</p>
+    <ServicePageShell
+      title="Video Cine-Lab"
+      subtitle="Cinematic Generator"
+      primaryLabel="Generate Video"
+      onPrimary={handleGenerate}
+      toast={toast}
+    >
+      <section className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-sm p-4">
+        <h2 className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-4">
+          Concept
+        </h2>
+        <div className="space-y-4">
+          <textarea
+            value={concept}
+            onChange={(e) => setConcept(e.target.value)}
+            placeholder="Describe your video idea..."
+            rows={4}
+            className="w-full px-3 py-2.5 rounded-xl bg-black/40 border border-white/10 text-sm resize-none focus:outline-none focus:border-cyan-500/50"
+          />
+          <div>
+            <label className="text-xs text-gray-500 mb-1.5 block">Scene Style</label>
+            <select
+              value={sceneStyle}
+              onChange={(e) => setSceneStyle(e.target.value)}
+              className="w-full px-3 py-2.5 rounded-xl bg-black/40 border border-white/10 text-sm focus:outline-none focus:border-cyan-500/50"
+            >
+              {SCENE_STYLES.map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
+      </section>
 
-        <div
-          style={{
-            padding: '6px 12px',
-            background: 'rgba(16, 185, 129, 0.10)',
-            border: '1px solid rgba(16, 185, 129, 0.30)',
-            borderRadius: 999,
-            fontSize: 11,
-            fontWeight: 900,
-            color: '#10B981',
-          }}
-        >
-          Active
+      <section className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-sm p-4">
+        <h2 className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-4">
+          Format
+        </h2>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="text-xs text-gray-500 mb-1.5 block">Aspect</label>
+            <select
+              value={aspect}
+              onChange={(e) => setAspect(e.target.value)}
+              className="w-full px-3 py-2.5 rounded-xl bg-black/40 border border-white/10 text-sm focus:outline-none focus:border-cyan-500/50"
+            >
+              {ASPECTS.map((a) => (
+                <option key={a} value={a}>
+                  {a}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="text-xs text-gray-500 mb-1.5 block">Duration</label>
+            <select
+              value={duration}
+              onChange={(e) => setDuration(e.target.value)}
+              className="w-full px-3 py-2.5 rounded-xl bg-black/40 border border-white/10 text-sm focus:outline-none focus:border-cyan-500/50"
+            >
+              {DURATIONS.map((d) => (
+                <option key={d} value={d}>
+                  {d}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
-      </header>
+      </section>
 
-      <div style={{ padding: '18px 18px 0 18px' }}>
-        <div
-          style={{
-            borderRadius: 20,
-            border: '1px solid rgba(255,255,255,0.10)',
-            background: 'rgba(255,255,255,0.06)',
-            boxShadow: '0 18px 55px rgba(0,0,0,0.45)',
-            backdropFilter: 'blur(18px)',
-            padding: 16,
-          }}
-        >
-          <div
-            style={{
-              marginBottom: 12,
-              padding: 10,
-              borderRadius: 14,
-              border: '1px solid rgba(255,255,255,0.10)',
-              background:
-                health.ok === true
-                  ? 'rgba(16,185,129,0.08)'
-                  : health.ok === false
-                    ? 'rgba(239,68,68,0.08)'
-                    : 'rgba(255,255,255,0.04)',
-              color:
-                health.ok === true ? '#a7f3d0' : health.ok === false ? '#fecaca' : 'rgba(255,255,255,0.70)',
-              fontSize: 12,
-              lineHeight: 1.35,
-            }}
-          >
-            <strong>Endpoint Check:</strong> {health.info}
+      <section className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-sm p-4">
+        <h2 className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-4">
+          Visual Controls
+        </h2>
+        <div className="space-y-4">
+          <div>
+            <label className="text-xs text-gray-500 mb-1.5 block">Visual Style</label>
+            <select
+              value={visualStyle}
+              onChange={(e) => setVisualStyle(e.target.value)}
+              className="w-full px-3 py-2.5 rounded-xl bg-black/40 border border-white/10 text-sm focus:outline-none focus:border-cyan-500/50"
+            >
+              {VISUAL_STYLES.map((v) => (
+                <option key={v} value={v}>
+                  {v}
+                </option>
+              ))}
+            </select>
           </div>
 
-          {(polling || status?.status) && (
-            <div
-              style={{
-                marginBottom: 12,
-                padding: 12,
-                borderRadius: 16,
-                border: '1px solid rgba(255,255,255,0.10)',
-                background: 'rgba(0,0,0,0.20)',
-              }}
-            >
-              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 10 }}>
-                <div style={{ color: 'rgba(255,255,255,0.82)', fontWeight: 900, fontSize: 12 }}>
-                  Pipeline Status: <span style={{ color: '#fff' }}>{statusLabel || (polling ? 'Polling…' : '—')}</span>
-                </div>
-                <div style={{ color: 'rgba(255,255,255,0.70)', fontWeight: 900, fontSize: 12 }}>{statusPct}%</div>
-              </div>
-              <div
-                style={{
-                  height: 10,
-                  borderRadius: 999,
-                  border: '1px solid rgba(255,255,255,0.10)',
-                  background: 'rgba(255,255,255,0.06)',
-                  overflow: 'hidden',
-                }}
-              >
-                <div
-                  style={{
-                    width: `${statusPct}%`,
-                    height: '100%',
-                    background: 'linear-gradient(135deg, #8B5CF6, #3B82F6)',
-                  }}
-                />
-              </div>
-              {result?.renderJobId && (
-                <div style={{ marginTop: 10, fontSize: 12, color: 'rgba(255,255,255,0.60)' }}>
-                  Job ID: <span style={{ color: 'rgba(255,255,255,0.86)' }}>{result.renderJobId}</span>
-                </div>
-              )}
+          <div>
+            <div className="flex justify-between mb-1.5">
+              <label className="text-xs text-gray-500">Motion</label>
+              <span className="text-xs text-cyan-400">{motionLevel}</span>
             </div>
-          )}
-
-          <div style={{ marginBottom: 12 }}>
-            <div style={{ fontSize: 12, fontWeight: 900, color: 'rgba(255,255,255,0.75)', marginBottom: 8 }}>
-              Prompt
-            </div>
-            <textarea
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              placeholder='მაგ: "კინემატოგრაფიული ვიდეო საქართველოს მთებზე მზის ჩასვლისას"'
-              rows={3}
-              style={{
-                width: '100%',
-                padding: 12,
-                borderRadius: 14,
-                border: '1px solid rgba(255,255,255,0.12)',
-                background: 'rgba(10,14,20,0.55)',
-                color: '#fff',
-                outline: 'none',
-                fontSize: 14,
-              }}
+            <input
+              type="range"
+              min={1}
+              max={10}
+              value={motionLevel}
+              onChange={(e) => setMotionLevel(Number(e.target.value))}
+              className="w-full h-1.5 bg-white/10 rounded-lg appearance-none cursor-pointer accent-cyan-500"
             />
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
-            <div>
-              <div style={{ fontSize: 12, fontWeight: 900, color: 'rgba(255,255,255,0.75)', marginBottom: 8 }}>
-                Max Scenes
-              </div>
-              <input
-                type="number"
-                value={maxScenes}
-                onChange={(e) => setMaxScenes(Number(e.target.value))}
-                min={1}
-                max={12}
-                style={{
-                  width: '100%',
-                  padding: 12,
-                  borderRadius: 14,
-                  border: '1px solid rgba(255,255,255,0.12)',
-                  background: 'rgba(10,14,20,0.55)',
-                  color: '#fff',
-                  outline: 'none',
-                  fontSize: 14,
-                }}
-              />
+          <div>
+            <div className="flex justify-between mb-1.5">
+              <label className="text-xs text-gray-500">Detail</label>
+              <span className="text-xs text-cyan-400">{detail}</span>
             </div>
-
-            <div>
-              <div style={{ fontSize: 12, fontWeight: 900, color: 'rgba(255,255,255,0.75)', marginBottom: 8 }}>
-                Max Duration (sec)
-              </div>
-              <input
-                type="number"
-                value={maxDurationSec}
-                onChange={(e) => setMaxDurationSec(Number(e.target.value))}
-                min={5}
-                max={180}
-                style={{
-                  width: '100%',
-                  padding: 12,
-                  borderRadius: 14,
-                  border: '1px solid rgba(255,255,255,0.12)',
-                  background: 'rgba(10,14,20,0.55)',
-                  color: '#fff',
-                  outline: 'none',
-                  fontSize: 14,
-                }}
-              />
-            </div>
-          </div>
-
-          <button
-            onClick={handleGenerate}
-            disabled={loading || polling}
-            style={{
-              width: '100%',
-              padding: 16,
-              borderRadius: 18,
-              border: '1px solid rgba(255,255,255,0.12)',
-              background: loading || polling ? 'rgba(255,255,255,0.12)' : 'linear-gradient(135deg, #8B5CF6, #3B82F6)',
-              color: '#fff',
-              fontSize: 15,
-              fontWeight: 950,
-              cursor: loading || polling ? 'not-allowed' : 'pointer',
-              boxShadow: loading || polling ? 'none' : '0 10px 28px rgba(139, 92, 246, 0.28)',
-            }}
-          >
-            {loading ? '⏳ Generating…' : polling ? '📡 Polling Status…' : '🚀 Generate Video'}
-          </button>
-
-          <div style={{ display: 'flex', gap: 10, marginTop: 10 }}>
-            <button
-              onClick={stopAll}
-              disabled={!loading && !polling}
-              style={{
-                flex: 1,
-                padding: 12,
-                borderRadius: 14,
-                border: '1px solid rgba(255,255,255,0.12)',
-                background: !loading && !polling ? 'rgba(255,255,255,0.06)' : 'rgba(239,68,68,0.16)',
-                color: !loading && !polling ? 'rgba(255,255,255,0.55)' : '#fecaca',
-                fontWeight: 900,
-                cursor: !loading && !polling ? 'not-allowed' : 'pointer',
-              }}
-            >
-              ⛔ Cancel
-            </button>
-
-            <button
-              onClick={runHealthCheck}
-              style={{
-                flex: 1,
-                padding: 12,
-                borderRadius: 14,
-                border: '1px solid rgba(255,255,255,0.12)',
-                background: 'rgba(255,255,255,0.06)',
-                color: 'rgba(255,255,255,0.80)',
-                fontWeight: 900,
-                cursor: 'pointer',
-              }}
-            >
-              🔎 Recheck
-            </button>
-          </div>
-
-          <div style={{ marginTop: 10, fontSize: 12, color: 'rgba(255,255,255,0.55)' }}>
-            Using endpoint: <span style={{ color: 'rgba(255,255,255,0.86)' }}>{endpoint}</span>
-          </div>
-          <div style={{ marginTop: 6, fontSize: 12, color: 'rgba(255,255,255,0.55)' }}>
-            Status endpoint: <span style={{ color: 'rgba(255,255,255,0.86)' }}>{statusEndpoint}</span>
+            <input
+              type="range"
+              min={1}
+              max={10}
+              value={detail}
+              onChange={(e) => setDetail(Number(e.target.value))}
+              className="w-full h-1.5 bg-white/10 rounded-lg appearance-none cursor-pointer accent-cyan-500"
+            />
           </div>
         </div>
+      </section>
 
-        {error && (
-          <div
-            style={{
-              marginTop: 14,
-              padding: 14,
-              borderRadius: 16,
-              border: '1px solid rgba(239,68,68,0.35)',
-              background: 'rgba(239,68,68,0.10)',
-              color: '#fecaca',
-              whiteSpace: 'pre-wrap',
-            }}
-          >
-            <strong>❌ Error:</strong> {error}
-          </div>
-        )}
+      <section className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-sm p-4">
+        <h2 className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-4">
+          Optional Assets
+        </h2>
+        <div className="space-y-4">
+          <button className="w-full py-4 rounded-xl border border-dashed border-white/20 bg-black/20 flex flex-col items-center gap-2 hover:border-cyan-500/50 transition-colors">
+            <Upload className="w-6 h-6 text-gray-500" />
+            <span className="text-xs text-gray-400">Upload Image/Video Reference</span>
+          </button>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={useReference}
+              onChange={(e) => setUseReference(e.target.checked)}
+              className="w-4 h-4 rounded border-white/20 bg-black/40 text-cyan-500 focus:ring-cyan-500/50"
+            />
+            <span className="text-xs text-gray-400">Use as Reference</span>
+          </label>
+        </div>
+      </section>
 
-        {debug && (
-          <div
-            style={{
-              marginTop: 14,
-              padding: 14,
-              borderRadius: 16,
-              border: '1px solid rgba(255,255,255,0.10)',
-              background: 'rgba(0,0,0,0.35)',
-              color: 'rgba(255,255,255,0.88)',
-              whiteSpace: 'pre-wrap',
-              fontFamily:
-                'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
-              fontSize: 12,
-              overflow: 'auto',
-            }}
-          >
-            <div style={{ display: 'flex', gap: 10, marginBottom: 10 }}>
-              <button
-                onClick={copyDebug}
-                style={{
-                  padding: '10px 12px',
-                  borderRadius: 12,
-                  border: '1px solid rgba(255,255,255,0.12)',
-                  background: 'rgba(255,255,255,0.06)',
-                  color: 'rgba(255,255,255,0.85)',
-                  fontWeight: 900,
-                  cursor: 'pointer',
-                }}
+      <section className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-sm p-4">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-xs font-medium text-gray-400 uppercase tracking-wider">
+            Queue
+          </h2>
+          {jobs.some((j) => j.status === "done") && (
+            <button
+              onClick={clearCompleted}
+              className="text-[10px] text-gray-500 hover:text-white transition-colors"
+            >
+              Clear Completed
+            </button>
+          )}
+        </div>
+
+        <div className="space-y-2">
+          {jobs.length === 0 ? (
+            <p className="text-xs text-gray-600 text-center py-4">No jobs in queue</p>
+          ) : (
+            jobs.map((job) => (
+              <div
+                key={job.id}
+                className="flex items-center justify-between p-3 rounded-xl bg-black/40 border border-white/5"
               >
-                📋 Copy Debug
-              </button>
-            </div>
-            {debug}
-          </div>
-        )}
-
-        {result?.finalVideoUrl ? (
-          <div
-            style={{
-              marginTop: 14,
-              borderRadius: 18,
-              overflow: 'hidden',
-              border: '1px solid rgba(255,255,255,0.10)',
-              background: '#000',
-            }}
-          >
-            <video controls playsInline style={{ width: '100%', display: 'block' }} src={result.finalVideoUrl} />
-            <div style={{ padding: 12, background: 'rgba(0,0,0,0.55)' }}>
-              <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.70)', marginBottom: 6 }}>Final Video URL</div>
-              <div style={{ fontSize: 12, color: '#fff', wordBreak: 'break-all' }}>{result.finalVideoUrl}</div>
-              <a
-                href={result.finalVideoUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{ display: 'inline-block', marginTop: 10, fontSize: 12, color: '#93c5fd', fontWeight: 900 }}
-              >
-                Open in new tab →
-              </a>
-            </div>
-          </div>
-        ) : null}
-      </div>
-    </div>
+                <div className="flex items-center gap-3">
+                  {getStatusIcon(job.status)}
+                  <div>
+                    <p className="text-xs font-medium text-white truncate max-w-[150px]">
+                      {job.name}
+                    </p>
+                    <p className="text-[10px] text-gray-500 capitalize">{job.status}</p>
+                  </div>
+                </div>
+                <span className="text-[10px] text-gray-600">
+                  {job.createdAt.toLocaleTimeString([], {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
+                </span>
+              </div>
+            ))
+          )}
+        </div>
+      </section>
+    </ServicePageShell>
   );
 }
