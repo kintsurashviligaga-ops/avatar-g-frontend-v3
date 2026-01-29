@@ -1,10 +1,10 @@
 'use client';
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { Send, Paperclip, Image as ImageIcon, Mic, X, Sparkles } from 'lucide-react';
+import { Send, Paperclip, Image as ImageIcon, Mic, X } from 'lucide-react';
 
-// Service Configuration
+// Service Configuration - EXACTLY 12 services with correct routes
 interface Service {
   id: string;
   slug: string;
@@ -12,7 +12,7 @@ interface Service {
   description: string;
   route: string;
   prompts: string[];
-  emoji: string;
+  color: string;
 }
 
 const services: Service[] = [
@@ -23,25 +23,25 @@ const services: Service[] = [
     description: 'პერსონალური AI ავატარი',
     route: '/avatar-builder',
     prompts: ['შემიქმენი ავატარი', 'გამიუმჯობესე ფოტო'],
-    emoji: '🎭',
+    color: '#8B5CF6',
   },
   {
     id: 'voice-lab',
     slug: 'voice-lab',
-    geName: 'ხმის ლაბორატორია',
+    geName: 'ხმის ლაბი',
     description: 'ხმის კლონირება',
     route: '/voice-lab',
     prompts: ['კლონირე ხმა', 'შეცვალე ტონი'],
-    emoji: '🎤',
+    color: '#EC4899',
   },
   {
     id: 'image-architect',
     slug: 'image-architect',
-    geName: 'სურათის დიზაინერი',
+    geName: 'ფოტოს დიზაინი',
     description: 'პროფესიული დიზაინი',
     route: '/image-architect',
     prompts: ['შემიქმენი ლოგო', 'გაფორმე პოსტერი'],
-    emoji: '🎨',
+    color: '#3B82F6',
   },
   {
     id: 'music-studio',
@@ -50,25 +50,25 @@ const services: Service[] = [
     description: 'AI მუსიკა',
     route: '/music-studio',
     prompts: ['შემიქმენი მელოდია', 'დაამატე ბასი'],
-    emoji: '🎵',
+    color: '#10B981',
   },
   {
     id: 'video-cine-lab',
     slug: 'video-cine-lab',
-    geName: 'ვიდეო კინოლაბი',
+    geName: 'ვიდეო სტუდია',
     description: 'ვიდეო მონტაჟი',
     route: '/video-cine-lab',
     prompts: ['შემიქმენი სცენარი', 'დამიმონტაჟე'],
-    emoji: '🎬',
+    color: '#F59E0B',
   },
   {
     id: 'game-forge',
     slug: 'game-forge',
-    geName: 'თამაშის ქარხანა',
+    geName: 'თამაშის შექმნა',
     description: 'თამაშების დეველოპმენტი',
     route: '/game-forge',
     prompts: ['შემიქმენი პერსონაჟი', 'დაწერე კოდი'],
-    emoji: '🎮',
+    color: '#EF4444',
   },
   {
     id: 'ai-production',
@@ -77,25 +77,25 @@ const services: Service[] = [
     description: 'მასობრივი წარმოება',
     route: '/ai-production',
     prompts: ['დამიგეგმე კამპანია', 'შექმენი კონტენტი'],
-    emoji: '⚡',
+    color: '#06B6D4',
   },
   {
     id: 'business-agent',
     slug: 'business-agent',
-    geName: 'ბიზნეს აგენტი',
+    geName: 'ბიზნეს ასისტენტი',
     description: 'ავტომატიზაცია',
     route: '/business-agent',
     prompts: ['განსაზღვრე KPI-ები', 'შექმენი სტრატეგია'],
-    emoji: '💼',
+    color: '#8B5CF6',
   },
   {
     id: 'prompt-builder',
     slug: 'prompt-builder',
-    geName: 'პრომპტის მექანიკა',
+    geName: 'პრომპტების გენერატორი',
     description: 'პროფესიული პრომპტები',
     route: '/prompt-builder',
     prompts: ['გააუმჯობესე პრომპტი', 'შემიქმენი თემპლეიტი'],
-    emoji: '📝',
+    color: '#A855F7',
   },
   {
     id: 'image-generator',
@@ -104,7 +104,7 @@ const services: Service[] = [
     description: 'AI სურათები',
     route: '/image-generator',
     prompts: ['შემიქმენი ილუსტრაცია', 'გენერირე ფოტო'],
-    emoji: '🖼️',
+    color: '#3B82F6',
   },
   {
     id: 'video-generator',
@@ -113,16 +113,16 @@ const services: Service[] = [
     description: 'AI ვიდეოები',
     route: '/video-generator',
     prompts: ['შემიქმენი ვიდეო', 'გენერირე ანიმაცია'],
-    emoji: '📹',
+    color: '#F59E0B',
   },
   {
     id: 'text-intelligence',
     slug: 'text-intelligence',
-    geName: 'ტექსტის ანალიტიკა',
+    geName: 'ტექსტის ანალიზი',
     description: 'ანალიზი და ოპტიმიზაცია',
     route: '/text-intelligence',
     prompts: ['გაანალიზე ტექსტი', 'შექმენი რეზიუმე'],
-    emoji: '📊',
+    color: '#10B981',
   },
 ];
 
@@ -146,27 +146,193 @@ interface Attachment {
   type: 'image' | 'file';
 }
 
+// Web Audio sound effect
+const playSlideSound = () => {
+  if (typeof window === 'undefined') return;
+  
+  try {
+    const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const oscillator = audioContext.createOscillator();
+    const gainNode = audioContext.createGain();
+    const filter = audioContext.createBiquadFilter();
+
+    oscillator.connect(filter);
+    filter.connect(gainNode);
+    gainNode.connect(audioContext.destination);
+
+    oscillator.frequency.value = 820;
+    oscillator.type = 'sine';
+    filter.type = 'lowpass';
+    filter.frequency.value = 2000;
+
+    gainNode.gain.setValueAtTime(0.06, audioContext.currentTime);
+    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.045);
+
+    oscillator.start(audioContext.currentTime);
+    oscillator.stop(audioContext.currentTime + 0.045);
+
+    // Haptic feedback for iOS
+    if ('vibrate' in navigator) {
+      navigator.vibrate(8);
+    }
+  } catch (e) {
+    // Silently fail if audio context not supported
+  }
+};
+
+// Warp Speed Canvas Background Component
+const WarpSpeedBackground: React.FC = () => {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const animationRef = useRef<number>();
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    // Set canvas size
+    const setCanvasSize = () => {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+    };
+    setCanvasSize();
+    window.addEventListener('resize', setCanvasSize);
+
+    // Star field
+    const stars: Array<{ x: number; y: number; z: number; ox: number; oy: number }> = [];
+    const numStars = 400;
+    const centerX = canvas.width / 2;
+    const centerY = canvas.height / 2;
+
+    for (let i = 0; i < numStars; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const radius = Math.random() * Math.max(canvas.width, canvas.height);
+      stars.push({
+        x: centerX + Math.cos(angle) * radius,
+        y: centerY + Math.sin(angle) * radius,
+        z: Math.random() * 2000,
+        ox: centerX + Math.cos(angle) * radius,
+        oy: centerY + Math.sin(angle) * radius,
+      });
+    }
+
+    // Animation loop
+    const animate = () => {
+      ctx.fillStyle = 'rgba(6, 7, 11, 0.15)';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      stars.forEach((star) => {
+        star.z -= 8;
+        if (star.z <= 0) {
+          const angle = Math.random() * Math.PI * 2;
+          const radius = Math.random() * Math.max(canvas.width, canvas.height);
+          star.x = centerX + Math.cos(angle) * radius;
+          star.y = centerY + Math.sin(angle) * radius;
+          star.z = 2000;
+          star.ox = star.x;
+          star.oy = star.y;
+        }
+
+        const k = 128 / star.z;
+        const px = (star.x - centerX) * k + centerX;
+        const py = (star.y - centerY) * k + centerY;
+
+        const size = (1 - star.z / 2000) * 2;
+        const opacity = Math.min(1, (2000 - star.z) / 1000);
+
+        // Draw star
+        ctx.fillStyle = `rgba(142, 197, 255, ${opacity * 0.8})`;
+        ctx.beginPath();
+        ctx.arc(px, py, size, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Draw streak
+        const opx = (star.ox - centerX) * k + centerX;
+        const opy = (star.oy - centerY) * k + centerY;
+        
+        ctx.strokeStyle = `rgba(142, 197, 255, ${opacity * 0.3})`;
+        ctx.lineWidth = size * 0.5;
+        ctx.beginPath();
+        ctx.moveTo(opx, opy);
+        ctx.lineTo(px, py);
+        ctx.stroke();
+
+        star.ox = star.x;
+        star.oy = star.y;
+      });
+
+      // Center glow
+      const gradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, canvas.height * 0.6);
+      gradient.addColorStop(0, 'rgba(59, 130, 246, 0.12)');
+      gradient.addColorStop(0.5, 'rgba(59, 130, 246, 0.04)');
+      gradient.addColorStop(1, 'rgba(6, 7, 11, 0)');
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      animationRef.current = requestAnimationFrame(animate);
+    };
+
+    // Check reduced motion preference
+    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    
+    if (!prefersReducedMotion) {
+      animate();
+    } else {
+      // Static background for reduced motion
+      ctx.fillStyle = '#06070B';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      const gradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, canvas.height * 0.6);
+      gradient.addColorStop(0, 'rgba(59, 130, 246, 0.08)');
+      gradient.addColorStop(1, 'rgba(6, 7, 11, 0)');
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
+
+    return () => {
+      window.removeEventListener('resize', setCanvasSize);
+      if (animationRef.current) {
+        cancelAnimationFrame(animationRef.current);
+      }
+    };
+  }, []);
+
+  return (
+    <canvas
+      ref={canvasRef}
+      style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        width: '100%',
+        height: '100%',
+        zIndex: 0,
+        pointerEvents: 'none',
+      }}
+    />
+  );
+};
+
 export default function HomePage() {
   const router = useRouter();
-  const [selectedService, setSelectedService] = useState<string | undefined>();
+  const [activeIndex, setActiveIndex] = useState(0);
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [attachments, setAttachments] = useState<Attachment[]>([]);
-  const [isTyping, setIsTyping] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const carouselRef = useRef<HTMLDivElement>(null);
+  const lastSoundTime = useRef(0);
 
-  const quickPrompts = selectedService
-    ? services.find((s) => s.slug === selectedService)?.prompts || defaultQuickPrompts
-    : defaultQuickPrompts;
-
-  const currentService = selectedService ? services.find((s) => s.slug === selectedService) : null;
+  const quickPrompts = services[activeIndex]?.prompts || defaultQuickPrompts;
+  const currentService = services[activeIndex];
 
   // Auto-resize textarea
   useEffect(() => {
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
-      const newHeight = Math.min(textareaRef.current.scrollHeight, 100);
+      const newHeight = Math.min(textareaRef.current.scrollHeight, 112);
       textareaRef.current.style.height = `${newHeight}px`;
     }
   }, [inputValue]);
@@ -175,6 +341,41 @@ export default function HomePage() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  // Handle carousel scroll with sound
+  const handleScroll = useCallback(() => {
+    if (!carouselRef.current) return;
+
+    const scrollLeft = carouselRef.current.scrollLeft;
+    const cardWidth = carouselRef.current.offsetWidth * 0.82;
+    const newIndex = Math.round(scrollLeft / cardWidth);
+
+    if (newIndex !== activeIndex && newIndex >= 0 && newIndex < services.length) {
+      const now = Date.now();
+      if (now - lastSoundTime.current > 120) {
+        playSlideSound();
+        lastSoundTime.current = now;
+      }
+      setActiveIndex(newIndex);
+    }
+  }, [activeIndex]);
+
+  useEffect(() => {
+    const carousel = carouselRef.current;
+    if (!carousel) return;
+
+    let timeout: NodeJS.Timeout;
+    const debouncedScroll = () => {
+      clearTimeout(timeout);
+      timeout = setTimeout(handleScroll, 50);
+    };
+
+    carousel.addEventListener('scroll', debouncedScroll);
+    return () => {
+      carousel.removeEventListener('scroll', debouncedScroll);
+      clearTimeout(timeout);
+    };
+  }, [handleScroll]);
 
   const handleSend = () => {
     if (!inputValue.trim() && attachments.length === 0) return;
@@ -189,9 +390,7 @@ export default function HomePage() {
     setMessages((prev) => [...prev, newMessage]);
     setInputValue('');
     setAttachments([]);
-    setIsTyping(false);
 
-    // Simulate AI response
     setTimeout(() => {
       const aiResponse: Message = {
         id: (Date.now() + 1).toString(),
@@ -208,11 +407,6 @@ export default function HomePage() {
       e.preventDefault();
       handleSend();
     }
-  };
-
-  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setInputValue(e.target.value);
-    setIsTyping(e.target.value.length > 0);
   };
 
   const addAttachment = (type: 'image' | 'file') => {
@@ -238,429 +432,591 @@ export default function HomePage() {
   };
 
   return (
-    <div
-      style={{
-        minHeight: '100vh',
-        background:
-          'radial-gradient(ellipse at top, rgba(139, 92, 246, 0.15), transparent 50%), radial-gradient(ellipse at bottom, rgba(59, 130, 246, 0.1), transparent 50%), #07090D',
-        position: 'relative',
-        overflow: 'hidden',
-      }}
-    >
-      {/* Animated Background Stars */}
-      <div
-        style={{
-          position: 'absolute',
-          inset: 0,
-          background:
-            'radial-gradient(2px 2px at 20% 30%, rgba(142, 197, 255, 0.3), transparent), radial-gradient(2px 2px at 60% 70%, rgba(142, 197, 255, 0.2), transparent), radial-gradient(1px 1px at 80% 10%, rgba(255, 255, 255, 0.2), transparent)',
-          backgroundSize: '200px 200px, 250px 250px, 150px 150px',
-          animation: 'stars 20s linear infinite',
-          pointerEvents: 'none',
-        }}
-      />
+    <>
+      <WarpSpeedBackground />
+      
+      <div style={{ position: 'relative', zIndex: 1, minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+        {/* Header */}
+        <header
+          style={{
+            padding: '12px 16px',
+            background: 'rgba(10, 14, 20, 0.75)',
+            backdropFilter: 'blur(20px)',
+            borderBottom: '1px solid rgba(142, 197, 255, 0.1)',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div
+                style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: 10,
+                  background: 'linear-gradient(135deg, #8B5CF6, #3B82F6)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: 18,
+                }}
+              >
+                ✨
+              </div>
+              <div>
+                <h1 style={{ fontSize: 16, fontWeight: 800, color: '#EAF1FF', margin: 0, lineHeight: 1 }}>Avatar G</h1>
+                <p style={{ fontSize: 10, color: 'rgba(142, 197, 255, 0.7)', margin: 0, lineHeight: 1.2 }}>
+                  AI Media Factory
+                </p>
+              </div>
+            </div>
 
-      {/* Header */}
-      <header
-        style={{
-          padding: '16px 20px',
-          background: 'rgba(10, 14, 20, 0.8)',
-          backdropFilter: 'blur(24px)',
-          borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
-          position: 'sticky',
-          top: 0,
-          zIndex: 50,
-        }}
-      >
-        <div style={{ maxWidth: '1400px', margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <div
               style={{
-                width: 40,
-                height: 40,
-                borderRadius: 12,
-                background: 'linear-gradient(135deg, #8B5CF6, #3B82F6)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: 20,
-              }}
-            >
-              ✨
-            </div>
-            <div>
-              <h1 style={{ fontSize: 18, fontWeight: 800, color: '#EAF1FF', margin: 0 }}>Avatar G</h1>
-              <p style={{ fontSize: 11, color: 'rgba(175, 192, 224, 0.7)', margin: 0 }}>Your AI Media Factory</p>
-            </div>
-          </div>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <div
-              style={{
-                padding: '6px 12px',
-                background: 'rgba(74, 222, 128, 0.1)',
+                padding: '4px 10px',
+                background: 'rgba(74, 222, 128, 0.15)',
                 border: '1px solid rgba(74, 222, 128, 0.3)',
                 borderRadius: 999,
                 display: 'flex',
                 alignItems: 'center',
-                gap: 6,
+                gap: 5,
               }}
             >
               <span
                 style={{
-                  width: 6,
-                  height: 6,
+                  width: 5,
+                  height: 5,
                   borderRadius: '50%',
                   background: '#4ADE80',
                   animation: 'pulse 2s infinite',
                 }}
               />
-              <span style={{ fontSize: 11, fontWeight: 700, color: '#4ADE80' }}>აქტიური</span>
+              <span style={{ fontSize: 10, fontWeight: 700, color: '#4ADE80' }}>აქტიური</span>
             </div>
           </div>
-        </div>
-      </header>
+        </header>
 
-      {/* Main Content */}
-      <main style={{ maxWidth: '1200px', margin: '0 auto', padding: '32px 20px 80px' }}>
-        {/* Chat Console */}
-        <div style={{ marginBottom: 48 }}>
-          <div
-            style={{
-              maxWidth: 800,
-              margin: '0 auto',
-              background: 'rgba(255, 255, 255, 0.06)',
-              backdropFilter: 'blur(24px)',
-              border: '1px solid rgba(255, 255, 255, 0.12)',
-              borderRadius: 20,
-              overflow: 'hidden',
-              boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.05)',
-            }}
-          >
-            {/* Chat Header */}
+        {/* Main Content */}
+        <main style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: '20px 16px 60px', gap: 24 }}>
+          {/* Chat Console */}
+          <div style={{ display: 'flex', justifyContent: 'center' }}>
             <div
               style={{
-                padding: '16px 20px',
-                borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
+                width: '100%',
+                maxWidth: 640,
+                background: 'rgba(15, 20, 30, 0.7)',
+                backdropFilter: 'blur(24px)',
+                border: '1px solid rgba(142, 197, 255, 0.15)',
+                borderRadius: 20,
+                overflow: 'hidden',
+                boxShadow: '0 8px 32px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(142, 197, 255, 0.1)',
               }}
             >
-              <span style={{ fontSize: 12, fontWeight: 600, color: 'rgba(142, 197, 255, 0.7)' }}>Avatar G Console</span>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <Sparkles size={16} color="#8EC5FF" />
-                <span style={{ fontSize: 14, fontWeight: 600, color: '#EAF1FF' }}>
-                  {currentService ? currentService.geName : 'აღმასრულებელი AI კონსოლი'}
+              {/* Chat Header */}
+              <div
+                style={{
+                  padding: '14px 16px',
+                  borderBottom: '1px solid rgba(142, 197, 255, 0.1)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                }}
+              >
+                <span style={{ fontSize: 11, fontWeight: 600, color: 'rgba(142, 197, 255, 0.6)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                  Executive AI Console
+                </span>
+                <span style={{ fontSize: 13, fontWeight: 600, color: '#EAF1FF' }}>
+                  {currentService ? currentService.geName : 'აღმასრულებელი AI'}
                 </span>
               </div>
-            </div>
 
-            {/* Messages Area */}
-            <div style={{ position: 'relative', height: 320 }}>
-              <div style={{ position: 'absolute', inset: 0, overflowY: 'auto', padding: '20px' }}>
-                {messages.length === 0 ? (
-                  <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16 }}>
-                    <p style={{ color: 'rgba(175, 192, 224, 0.6)', fontSize: 14, textAlign: 'center' }}>
-                      დაიწყეთ საუბარი Avatar G-თან ✨
-                    </p>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: 8 }}>
-                      {quickPrompts.map((prompt, index) => (
-                        <button
-                          key={index}
-                          onClick={() => handleQuickPrompt(prompt)}
+              {/* Messages Area */}
+              <div style={{ position: 'relative', height: 280 }}>
+                <div
+                  style={{
+                    position: 'absolute',
+                    inset: 0,
+                    overflowY: 'auto',
+                    overflowX: 'hidden',
+                    padding: '16px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    minHeight: 0,
+                  }}
+                >
+                  {messages.length === 0 ? (
+                    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 14 }}>
+                      <p style={{ color: 'rgba(142, 197, 255, 0.5)', fontSize: 13, textAlign: 'center', margin: 0 }}>
+                        დაიწყეთ საუბარი AI-თან ✨
+                      </p>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: 6 }}>
+                        {quickPrompts.map((prompt, index) => (
+                          <button
+                            key={index}
+                            onClick={() => handleQuickPrompt(prompt)}
+                            style={{
+                              padding: '6px 12px',
+                              fontSize: 11,
+                              background: 'rgba(142, 197, 255, 0.08)',
+                              border: '1px solid rgba(142, 197, 255, 0.2)',
+                              borderRadius: 999,
+                              color: 'rgba(142, 197, 255, 0.9)',
+                              cursor: 'pointer',
+                              transition: 'all 0.2s',
+                              whiteSpace: 'nowrap',
+                            }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.background = 'rgba(142, 197, 255, 0.15)';
+                              e.currentTarget.style.borderColor = 'rgba(142, 197, 255, 0.4)';
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.background = 'rgba(142, 197, 255, 0.08)';
+                              e.currentTarget.style.borderColor = 'rgba(142, 197, 255, 0.2)';
+                            }}
+                          >
+                            {prompt}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10, flex: 1, minHeight: 0 }}>
+                      {messages.map((message) => (
+                        <div
+                          key={message.id}
                           style={{
-                            padding: '8px 16px',
-                            fontSize: 12,
-                            background: 'rgba(255, 255, 255, 0.05)',
-                            border: '1px solid rgba(255, 255, 255, 0.1)',
-                            borderRadius: 999,
-                            color: '#AFC0E0',
-                            cursor: 'pointer',
-                            transition: 'all 0.2s',
-                          }}
-                          onMouseEnter={(e) => {
-                            e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)';
-                            e.currentTarget.style.borderColor = 'rgba(142, 197, 255, 0.3)';
-                          }}
-                          onMouseLeave={(e) => {
-                            e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
-                            e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.1)';
+                            display: 'flex',
+                            justifyContent: message.role === 'user' ? 'flex-end' : 'flex-start',
                           }}
                         >
-                          {prompt}
-                        </button>
+                          <div
+                            style={{
+                              maxWidth: '85%',
+                              padding: '10px 14px',
+                              borderRadius: 14,
+                              background:
+                                message.role === 'user'
+                                  ? 'linear-gradient(135deg, rgba(139, 92, 246, 0.25), rgba(59, 130, 246, 0.25))'
+                                  : 'rgba(142, 197, 255, 0.1)',
+                              border: `1px solid ${message.role === 'user' ? 'rgba(139, 92, 246, 0.3)' : 'rgba(142, 197, 255, 0.15)'}`,
+                              wordBreak: 'break-word',
+                              minWidth: 0,
+                            }}
+                          >
+                            <p style={{ color: '#EAF1FF', fontSize: 13, margin: 0, lineHeight: 1.5 }}>
+                              {message.content}
+                            </p>
+                            <span style={{ color: 'rgba(142, 197, 255, 0.5)', fontSize: 9, marginTop: 4, display: 'block' }}>
+                              {message.timestamp.toLocaleTimeString('ka-GE', { hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                          </div>
+                        </div>
                       ))}
+                      <div ref={messagesEndRef} />
                     </div>
-                  </div>
-                ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                    {messages.map((message) => (
+                  )}
+                </div>
+              </div>
+
+              {/* Attachments */}
+              {attachments.length > 0 && (
+                <div style={{ padding: '10px 16px', borderTop: '1px solid rgba(142, 197, 255, 0.1)', maxHeight: 80, overflowY: 'auto' }}>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                    {attachments.map((attachment) => (
                       <div
-                        key={message.id}
+                        key={attachment.id}
                         style={{
                           display: 'flex',
-                          justifyContent: message.role === 'user' ? 'flex-end' : 'flex-start',
+                          alignItems: 'center',
+                          gap: 6,
+                          padding: '5px 10px',
+                          background: 'rgba(142, 197, 255, 0.08)',
+                          border: '1px solid rgba(142, 197, 255, 0.2)',
+                          borderRadius: 8,
+                          minWidth: 0,
                         }}
                       >
-                        <div
+                        <span
                           style={{
-                            maxWidth: '85%',
-                            padding: '12px 16px',
-                            borderRadius: 16,
-                            background: message.role === 'user' 
-                              ? 'linear-gradient(135deg, rgba(139, 92, 246, 0.3), rgba(59, 130, 246, 0.3))'
-                              : 'rgba(255, 255, 255, 0.08)',
-                            border: '1px solid rgba(255, 255, 255, 0.1)',
+                            color: 'rgba(142, 197, 255, 0.9)',
+                            fontSize: 11,
+                            maxWidth: 80,
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
                           }}
                         >
-                          <p style={{ color: '#EAF1FF', fontSize: 14, margin: 0, lineHeight: 1.5, wordBreak: 'break-word' }}>
-                            {message.content}
-                          </p>
-                          <span style={{ color: 'rgba(107, 122, 153, 0.8)', fontSize: 10, marginTop: 4, display: 'block' }}>
-                            {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                          </span>
-                        </div>
+                          {attachment.name}
+                        </span>
+                        <button
+                          onClick={() => removeAttachment(attachment.id)}
+                          style={{
+                            padding: 2,
+                            background: 'transparent',
+                            border: 'none',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            flexShrink: 0,
+                          }}
+                        >
+                          <X size={10} color="rgba(142, 197, 255, 0.6)" />
+                        </button>
                       </div>
                     ))}
-                    <div ref={messagesEndRef} />
                   </div>
-                )}
-              </div>
-            </div>
+                </div>
+              )}
 
-            {/* Attachments */}
-            {attachments.length > 0 && (
-              <div style={{ padding: '12px 20px', borderTop: '1px solid rgba(255, 255, 255, 0.1)' }}>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                  {attachments.map((attachment) => (
-                    <div
-                      key={attachment.id}
+              {/* Composer */}
+              <div style={{ padding: '14px 16px', borderTop: '1px solid rgba(142, 197, 255, 0.1)' }}>
+                <div style={{ display: 'flex', alignItems: 'flex-end', gap: 10, minWidth: 0 }}>
+                  {/* Action Buttons */}
+                  <div style={{ display: 'flex', gap: 2, flexShrink: 0 }}>
+                    <button
+                      onClick={() => addAttachment('file')}
                       style={{
+                        padding: 8,
+                        background: 'transparent',
+                        border: 'none',
+                        borderRadius: 10,
+                        cursor: 'pointer',
                         display: 'flex',
                         alignItems: 'center',
-                        gap: 8,
-                        padding: '6px 12px',
-                        background: 'rgba(255, 255, 255, 0.05)',
-                        border: '1px solid rgba(255, 255, 255, 0.1)',
-                        borderRadius: 8,
+                        justifyContent: 'center',
+                        minWidth: 40,
+                        minHeight: 40,
+                        transition: 'background 0.2s',
+                      }}
+                      onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(142, 197, 255, 0.1)')}
+                      onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                      aria-label="ფაილის დამატება"
+                    >
+                      <Paperclip size={16} color="rgba(142, 197, 255, 0.7)" />
+                    </button>
+                    <button
+                      onClick={() => addAttachment('image')}
+                      style={{
+                        padding: 8,
+                        background: 'transparent',
+                        border: 'none',
+                        borderRadius: 10,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        minWidth: 40,
+                        minHeight: 40,
+                        transition: 'background 0.2s',
+                      }}
+                      onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(142, 197, 255, 0.1)')}
+                      onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                      aria-label="სურათის დამატება"
+                    >
+                      <ImageIcon size={16} color="rgba(142, 197, 255, 0.7)" />
+                    </button>
+                    <button
+                      style={{
+                        padding: 8,
+                        background: 'transparent',
+                        border: 'none',
+                        borderRadius: 10,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        minWidth: 40,
+                        minHeight: 40,
+                        transition: 'background 0.2s',
+                      }}
+                      onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(142, 197, 255, 0.1)')}
+                      onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                      aria-label="ხმოვანი შეყვანა"
+                    >
+                      <Mic size={16} color="rgba(142, 197, 255, 0.7)" />
+                    </button>
+                  </div>
+
+                  {/* Textarea */}
+                  <textarea
+                    ref={textareaRef}
+                    value={inputValue}
+                    onChange={(e) => setInputValue(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    placeholder="ჰკითხე AI-ს ყველაფერი..."
+                    rows={1}
+                    style={{
+                      flex: 1,
+                      minWidth: 0,
+                      padding: '10px 12px',
+                      background: 'rgba(142, 197, 255, 0.05)',
+                      border: '1px solid rgba(142, 197, 255, 0.15)',
+                      borderRadius: 12,
+                      color: '#EAF1FF',
+                      fontSize: 13,
+                      resize: 'none',
+                      outline: 'none',
+                      fontFamily: 'inherit',
+                      minHeight: 40,
+                      maxHeight: 112,
+                    }}
+                  />
+
+                  {/* Send Button */}
+                  <button
+                    onClick={handleSend}
+                    disabled={!inputValue.trim() && attachments.length === 0}
+                    style={{
+                      padding: 10,
+                      background:
+                        inputValue.trim() || attachments.length > 0
+                          ? 'linear-gradient(135deg, #8B5CF6, #3B82F6)'
+                          : 'rgba(142, 197, 255, 0.1)',
+                      border: 'none',
+                      borderRadius: 12,
+                      cursor: inputValue.trim() || attachments.length > 0 ? 'pointer' : 'not-allowed',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      minWidth: 40,
+                      minHeight: 40,
+                      opacity: inputValue.trim() || attachments.length > 0 ? 1 : 0.5,
+                      transition: 'all 0.2s',
+                      flexShrink: 0,
+                    }}
+                    aria-label="გაგზავნა"
+                  >
+                    <Send size={16} color="#fff" />
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Services Carousel */}
+          <div>
+            <div style={{ textAlign: 'center', marginBottom: 16 }}>
+              <h2 style={{ fontSize: 14, fontWeight: 700, color: 'rgba(142, 197, 255, 0.8)', margin: '0 0 4px', letterSpacing: '0.5px' }}>
+                სერვისები
+              </h2>
+              <p style={{ fontSize: 11, color: 'rgba(142, 197, 255, 0.5)', margin: 0 }}>
+                გადაადგილეთ → აირჩიეთ სერვისი
+              </p>
+            </div>
+
+            <div
+              ref={carouselRef}
+              style={{
+                display: 'flex',
+                gap: 20,
+                overflowX: 'auto',
+                scrollSnapType: 'x mandatory',
+                scrollPaddingLeft: '12vw',
+                scrollPaddingRight: '12vw',
+                paddingBottom: 20,
+                WebkitOverflowScrolling: 'touch',
+                scrollbarWidth: 'none',
+                msOverflowStyle: 'none',
+              }}
+            >
+              {services.map((service, index) => {
+                const distance = Math.abs(index - activeIndex);
+                const scale = distance === 0 ? 1.0 : distance === 1 ? 0.86 : 0.76;
+                const blur = distance === 0 ? 0 : distance === 1 ? 1.5 : 4;
+                const opacity = distance === 0 ? 1.0 : distance === 1 ? 0.65 : 0.35;
+                const zIndex = distance === 0 ? 30 : distance === 1 ? 20 : 10;
+
+                return (
+                  <div
+                    key={service.id}
+                    onClick={() => handleServiceClick(service)}
+                    style={{
+                      minWidth: '82vw',
+                      maxWidth: 420,
+                      height: 'clamp(300px, 44vh, 420px)',
+                      scrollSnapAlign: 'center',
+                      transition: 'all 260ms cubic-bezier(0.22, 1, 0.36, 1)',
+                      transform: `scale(${scale})`,
+                      filter: `blur(${blur}px)`,
+                      opacity,
+                      zIndex,
+                      cursor: 'pointer',
+                      flexShrink: 0,
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: '100%',
+                        height: '100%',
+                        background: `linear-gradient(135deg, ${service.color}15, ${service.color}08)`,
+                        backdropFilter: 'blur(20px)',
+                        border: `1px solid ${service.color}40`,
+                        borderRadius: 24,
+                        padding: 24,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        justifyContent: 'space-between',
+                        boxShadow: `0 8px 32px ${service.color}20, inset 0 1px 0 ${service.color}30`,
+                        position: 'relative',
+                        overflow: 'hidden',
                       }}
                     >
-                      <span style={{ color: '#AFC0E0', fontSize: 12, maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {attachment.name}
-                      </span>
-                      <button
-                        onClick={() => removeAttachment(attachment.id)}
+                      {/* Icon Area */}
+                      <div
                         style={{
-                          padding: 2,
-                          background: 'transparent',
-                          border: 'none',
-                          cursor: 'pointer',
+                          width: 80,
+                          height: 80,
+                          borderRadius: 20,
+                          background: `linear-gradient(135deg, ${service.color}40, ${service.color}20)`,
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'center',
+                          fontSize: 40,
+                          marginBottom: 20,
+                          animation: 'iconFloat 4.2s ease-in-out infinite',
+                          boxShadow: `0 4px 16px ${service.color}30`,
                         }}
                       >
-                        <X size={12} color="#6B7A99" />
-                      </button>
+                        {service.slug === 'avatar-builder' && '🎭'}
+                        {service.slug === 'voice-lab' && '🎤'}
+                        {service.slug === 'image-architect' && '🎨'}
+                        {service.slug === 'music-studio' && '🎵'}
+                        {service.slug === 'video-cine-lab' && '🎬'}
+                        {service.slug === 'game-forge' && '🎮'}
+                        {service.slug === 'ai-production' && '⚡'}
+                        {service.slug === 'business-agent' && '💼'}
+                        {service.slug === 'prompt-builder' && '📝'}
+                        {service.slug === 'image-generator' && '🖼️'}
+                        {service.slug === 'video-generator' && '📹'}
+                        {service.slug === 'text-intelligence' && '📊'}
+                      </div>
+
+                      {/* Text Content */}
+                      <div>
+                        <h3
+                          style={{
+                            fontSize: 'clamp(14px, 2.8vw, 18px)',
+                            fontWeight: 800,
+                            color: '#EAF1FF',
+                            margin: '0 0 8px',
+                            lineHeight: 1.2,
+                            maxWidth: '100%',
+                          }}
+                        >
+                          {service.geName}
+                        </h3>
+                        <p
+                          style={{
+                            fontSize: 'clamp(11px, 2.2vw, 13px)',
+                            color: 'rgba(142, 197, 255, 0.7)',
+                            margin: '0 0 16px',
+                            lineHeight: 1.4,
+                          }}
+                        >
+                          {service.description}
+                        </p>
+
+                        {/* Prompts */}
+                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                          {service.prompts.slice(0, 2).map((prompt, idx) => (
+                            <span
+                              key={idx}
+                              style={{
+                                padding: '4px 8px',
+                                fontSize: 9,
+                                background: `${service.color}20`,
+                                border: `1px solid ${service.color}40`,
+                                borderRadius: 6,
+                                color: service.color,
+                                whiteSpace: 'nowrap',
+                                maxWidth: '100%',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                              }}
+                            >
+                              {prompt}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Glow effect */}
+                      <div
+                        style={{
+                          position: 'absolute',
+                          bottom: -100,
+                          right: -100,
+                          width: 200,
+                          height: 200,
+                          background: `radial-gradient(circle, ${service.color}30, transparent 70%)`,
+                          pointerEvents: 'none',
+                        }}
+                      />
                     </div>
-                  ))}
-                </div>
-              </div>
-            )}
+                  </div>
+                );
+              })}
+            </div>
 
-            {/* Composer */}
-            <div style={{ padding: '16px 20px', borderTop: '1px solid rgba(255, 255, 255, 0.1)' }}>
-              <div style={{ display: 'flex', alignItems: 'flex-end', gap: 12 }}>
-                {/* Action Buttons */}
-                <div style={{ display: 'flex', gap: 4 }}>
-                  <button
-                    onClick={() => addAttachment('file')}
-                    style={{
-                      padding: 8,
-                      background: 'transparent',
-                      border: 'none',
-                      borderRadius: 12,
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      transition: 'background 0.2s',
-                    }}
-                    onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)')}
-                    onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-                    aria-label="ფაილის დამატება"
-                  >
-                    <Paperclip size={16} color="#AFC0E0" />
-                  </button>
-                  <button
-                    onClick={() => addAttachment('image')}
-                    style={{
-                      padding: 8,
-                      background: 'transparent',
-                      border: 'none',
-                      borderRadius: 12,
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      transition: 'background 0.2s',
-                    }}
-                    onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)')}
-                    onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-                    aria-label="სურათის დამატება"
-                  >
-                    <ImageIcon size={16} color="#AFC0E0" />
-                  </button>
-                  <button
-                    style={{
-                      padding: 8,
-                      background: 'transparent',
-                      border: 'none',
-                      borderRadius: 12,
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      transition: 'background 0.2s',
-                    }}
-                    onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)')}
-                    onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-                    aria-label="ხმოვანი შეყვანა"
-                  >
-                    <Mic size={16} color="#AFC0E0" />
-                  </button>
-                </div>
-
-                {/* Textarea */}
-                <textarea
-                  ref={textareaRef}
-                  value={inputValue}
-                  onChange={handleInputChange}
-                  onKeyDown={handleKeyDown}
-                  placeholder="ჰკითხე Avatar G-ს ყველაფერი..."
-                  rows={1}
+            {/* Scroll indicator */}
+            <div style={{ display: 'flex', justifyContent: 'center', gap: 6, marginTop: 16 }}>
+              {services.map((_, index) => (
+                <div
+                  key={index}
                   style={{
-                    flex: 1,
-                    padding: '10px 14px',
-                    background: 'rgba(255, 255, 255, 0.05)',
-                    border: '1px solid rgba(255, 255, 255, 0.1)',
-                    borderRadius: 12,
-                    color: '#EAF1FF',
-                    fontSize: 14,
-                    resize: 'none',
-                    outline: 'none',
-                    fontFamily: 'inherit',
-                    minHeight: 40,
-                    maxHeight: 100,
+                    width: index === activeIndex ? 20 : 6,
+                    height: 6,
+                    borderRadius: 3,
+                    background:
+                      index === activeIndex
+                        ? 'rgba(142, 197, 255, 0.8)'
+                        : 'rgba(142, 197, 255, 0.2)',
+                    transition: 'all 0.3s',
                   }}
                 />
-
-                {/* Send Button */}
-                <button
-                  onClick={handleSend}
-                  disabled={!inputValue.trim() && attachments.length === 0}
-                  style={{
-                    padding: 10,
-                    background: inputValue.trim() || attachments.length > 0
-                      ? 'linear-gradient(135deg, #8B5CF6, #3B82F6)'
-                      : 'rgba(255, 255, 255, 0.1)',
-                    border: 'none',
-                    borderRadius: 12,
-                    cursor: inputValue.trim() || attachments.length > 0 ? 'pointer' : 'not-allowed',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    opacity: inputValue.trim() || attachments.length > 0 ? 1 : 0.4,
-                    transition: 'all 0.2s',
-                  }}
-                  aria-label="გაგზავნა"
-                >
-                  <Send size={16} color="#fff" />
-                </button>
-              </div>
+              ))}
             </div>
           </div>
-        </div>
+        </main>
+      </div>
 
-        {/* Services Grid */}
-        <div>
-          <div style={{ marginBottom: 20, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <h2 style={{ fontSize: 16, fontWeight: 700, color: '#AFC0E0', margin: 0 }}>სერვისები</h2>
-            <span style={{ fontSize: 12, color: '#6B7A99' }}>აირჩიე სერვისი →</span>
-          </div>
+      <style jsx global>{`
+        * {
+          -webkit-tap-highlight-color: transparent;
+        }
 
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
-              gap: 16,
-            }}
-          >
-            {services.map((service) => (
-              <button
-                key={service.id}
-                onClick={() => handleServiceClick(service)}
-                onMouseEnter={() => setSelectedService(service.slug)}
-                style={{
-                  padding: 20,
-                  background: selectedService === service.slug
-                    ? 'rgba(255, 255, 255, 0.1)'
-                    : 'rgba(255, 255, 255, 0.06)',
-                  backdropFilter: 'blur(24px)',
-                  border: selectedService === service.slug
-                    ? '1px solid rgba(142, 197, 255, 0.3)'
-                    : '1px solid rgba(255, 255, 255, 0.1)',
-                  borderRadius: 16,
-                  cursor: 'pointer',
-                  textAlign: 'left',
-                  transition: 'all 0.3s',
-                  boxShadow: selectedService === service.slug
-                    ? '0 8px 32px rgba(142, 197, 255, 0.2)'
-                    : 'none',
-                }}
-              >
-                <div style={{ fontSize: 36, marginBottom: 12 }}>{service.emoji}</div>
-                <h3 style={{ fontSize: 16, fontWeight: 700, color: '#EAF1FF', margin: '0 0 8px 0' }}>
-                  {service.geName}
-                </h3>
-                <p style={{ fontSize: 13, color: '#6B7A99', margin: 0, lineHeight: 1.5 }}>
-                  {service.description}
-                </p>
-                <div style={{ marginTop: 12, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                  {service.prompts.slice(0, 2).map((prompt, idx) => (
-                    <span
-                      key={idx}
-                      style={{
-                        padding: '4px 8px',
-                        fontSize: 10,
-                        background: 'rgba(142, 197, 255, 0.1)',
-                        border: '1px solid rgba(142, 197, 255, 0.2)',
-                        borderRadius: 6,
-                        color: '#8EC5FF',
-                      }}
-                    >
-                      {prompt}
-                    </span>
-                  ))}
-                </div>
-              </button>
-            ))}
-          </div>
-        </div>
-      </main>
+        body {
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans Georgian', sans-serif;
+          background: #06070B;
+          margin: 0;
+          padding: 0;
+          overflow-x: hidden;
+        }
 
-      <style jsx>{`
+        /* Hide scrollbar */
+        div::-webkit-scrollbar {
+          display: none;
+        }
+
         @keyframes pulse {
           0%, 100% { opacity: 1; }
           50% { opacity: 0.5; }
         }
 
-        @keyframes stars {
-          from { transform: translate(0, 0); }
-          to { transform: translate(-50px, -50px); }
+        @keyframes iconFloat {
+          0%, 100% {
+            transform: rotateY(-6deg) rotateX(3deg) translateY(0px);
+          }
+          50% {
+            transform: rotateY(6deg) rotateX(-3deg) translateY(-4px);
+          }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+          * {
+            animation: none !important;
+            transition: none !important;
+          }
         }
       `}</style>
-    </div>
+    </>
   );
 }
