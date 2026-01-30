@@ -6,7 +6,7 @@ import { motion } from "framer-motion";
 import { 
   Sparkles, Zap, MessageSquare, Video, Music, 
   Code, ChevronRight, Settings, User, LogOut,
-  History, Grid3X3
+  History, LayoutGrid
 } from "lucide-react";
 import Link from "next/link";
 
@@ -24,7 +24,7 @@ const services = [
 ];
 
 const navItems = [
-  { label: "Workspace", href: "/workspace", icon: Grid3X3, active: true },
+  { label: "Workspace", href: "/workspace", icon: LayoutGrid, active: true },
   { label: "Services", href: "/services", icon: Sparkles, active: false },
   { label: "History", href: "/history", icon: History, active: false },
   { label: "Settings", href: "/settings", icon: Settings, active: false },
