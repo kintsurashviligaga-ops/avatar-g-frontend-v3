@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef } from "react";
 import { motion } from "framer-motion";
 import Link from "next/link";
 import {
@@ -10,16 +10,13 @@ import {
   Gamepad2,
   Image as ImageIcon,
   Music,
-  Wand2,
   Sparkles,
   FileText,
-  Bot,
+  Crown,
   Camera,
   Palette,
-  Code2,
   Briefcase,
   Zap,
-  Crown,
 } from "lucide-react";
 
 const services = [
