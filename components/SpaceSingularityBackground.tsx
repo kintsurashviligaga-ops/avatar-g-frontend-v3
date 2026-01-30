@@ -20,16 +20,16 @@ export default function SpaceSingularityBackground() {
   const isActiveRef = useRef(true);
 
   const initStars = useCallback((width: number, height: number) => {
-    const starCount = 80; // Reduced for calmness
+    const starCount = 60; // Reduced for calmness - blueprint spec
     starsRef.current = [];
     for (let i = 0; i < starCount; i++) {
       starsRef.current.push({
         x: (Math.random() - 0.5) * width * 2,
         y: (Math.random() - 0.5) * height * 2,
         z: Math.random() * 1500 + 500,
-        size: Math.random() * 0.8 + 0.2,
-        speed: Math.random() * 0.3 + 0.1, // Slow for calm
-        opacity: Math.random() * 0.4 + 0.2,
+        size: Math.random() * 0.6 + 0.2, // Small, subtle
+        speed: Math.random() * 0.2 + 0.05, // Very slow
+        opacity: Math.random() * 0.3 + 0.1, // Subtle
       });
     }
   }, []);
@@ -62,36 +62,37 @@ export default function SpaceSingularityBackground() {
     const animate = () => {
       if (!isActiveRef.current || !canvas || !ctx) return;
 
+      // 30fps for performance - render every 2nd frame
       frameCountRef.current = (frameCountRef.current + 1) % 1000;
       if (frameCountRef.current % 2 !== 0) {
         animationRef.current = requestAnimationFrame(animate);
         return;
       }
 
-      const centerX = canvas.width / 2 + mouseRef.current.x * 10;
-      const centerY = canvas.height / 2 + mouseRef.current.y * 10;
+      const centerX = canvas.width / 2 + mouseRef.current.x * 8; // Subtle parallax
+      const centerY = canvas.height / 2 + mouseRef.current.y * 8;
 
-      // Deep black background
+      // EXACT: Background Black #05070A
       ctx.fillStyle = "#05070A";
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-      // Vignette
+      // Subtle vignette - doesn't fight text
       const vignette = ctx.createRadialGradient(
         centerX, centerY, 0,
         centerX, centerY, Math.max(canvas.width, canvas.height) * 0.8
       );
       vignette.addColorStop(0, "rgba(5, 7, 10, 0)");
-      vignette.addColorStop(0.7, "rgba(5, 7, 10, 0.3)");
-      vignette.addColorStop(1, "rgba(5, 7, 10, 0.6)");
+      vignette.addColorStop(0.6, "rgba(5, 7, 10, 0.2)");
+      vignette.addColorStop(1, "rgba(5, 7, 10, 0.5)");
       ctx.fillStyle = vignette;
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-      // Stars - slow fly-into-singularity
+      // Stars - slow fly-into-singularity (calm, not dizzying)
       starsRef.current.forEach((star) => {
         star.z -= star.speed;
         
         if (star.z <= 10) {
-          star.z = 2000;
+          star.z = 1500;
           star.x = (Math.random() - 0.5) * canvas.width * 2;
           star.y = (Math.random() - 0.5) * canvas.height * 2;
         }
@@ -100,22 +101,22 @@ export default function SpaceSingularityBackground() {
         const x = centerX + star.x * scale;
         const y = centerY + star.y * scale;
         const size = star.size * scale * 0.5;
-        const alpha = Math.min(1, (1500 - star.z) / 1000) * star.opacity;
+        const alpha = Math.min(1, (1000 - star.z) / 800) * star.opacity;
 
-        // Draw star
+        // Draw star - soft, not harsh
         ctx.beginPath();
         ctx.arc(x, y, size, 0, Math.PI * 2);
         ctx.fillStyle = `rgba(200, 230, 255, ${alpha})`;
         ctx.fill();
       });
 
-      // Subtle singularity glow
+      // Subtle singularity glow - cyan #22D3EE at very low opacity
       const singularity = ctx.createRadialGradient(
         centerX, centerY, 0,
-        centerX, centerY, 100
+        centerX, centerY, 120
       );
-      singularity.addColorStop(0, "rgba(34, 211, 238, 0.03)");
-      singularity.addColorStop(0.5, "rgba(8, 145, 178, 0.01)");
+      singularity.addColorStop(0, "rgba(34, 211, 238, 0.02)"); // #22D3EE
+      singularity.addColorStop(0.5, "rgba(56, 189, 248, 0.01)"); // #38BDF8
       singularity.addColorStop(1, "rgba(5, 7, 10, 0)");
       ctx.fillStyle = singularity;
       ctx.fillRect(0, 0, canvas.width, canvas.height);
