@@ -5,11 +5,9 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Send,
   Paperclip,
-  Mic,
   Sparkles,
   ChevronDown,
   Crown,
-  Bot,
   Video,
   Mic2,
   Image as ImageIcon,
@@ -18,12 +16,9 @@ import {
   Wand2,
   FileText,
   Camera,
-  Palette,
-  Code2,
   UserCircle,
   Briefcase,
   Zap,
-  MoreHorizontal,
   X,
 } from "lucide-react";
 import Link from "next/link";
