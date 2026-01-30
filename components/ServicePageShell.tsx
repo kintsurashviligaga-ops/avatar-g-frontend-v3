@@ -14,6 +14,7 @@ interface ServicePageShellProps {
   children?: React.ReactNode;
 }
 
+// Named export
 export function ServicePageShell({
   title,
   subtitle,
@@ -79,3 +80,6 @@ export function ServicePageShell({
     </div>
   );
 }
+
+// Default export (უკან თავსებადობისთვის)
+export default ServicePageShell;
