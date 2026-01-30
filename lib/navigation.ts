@@ -1,52 +1,67 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { useState, useCallback } from "react";
+import { useRouter, usePathname } from "next/navigation";
+import { useCallback, useEffect, useState } from "react";
 
-interface UseNavigationReturn {
-  isComplete: boolean;
-  complete: () => void;
-  reset: () => void;
-  goBack: (fallback?: string) => void;
+interface NavigationState {
+  history: string[];
+  canGoBack: boolean;
 }
 
-export function useNavigation(): UseNavigationReturn {
+export function useSafeNavigation() {
   const router = useRouter();
-  const [isComplete, setIsComplete] = useState(false);
+  const pathname = usePathname();
+  const [navState, setNavState] = useState<NavigationState>({
+    history: [],
+    canGoBack: false,
+  });
 
-  const complete = useCallback(() => {
-    setIsComplete(true);
-  }, []);
+  // Track navigation history
+  useEffect(() => {
+    setNavState((prev) => {
+      const newHistory = [...prev.history, pathname];
+      // Keep only last 10 entries
+      if (newHistory.length > 10) newHistory.shift();
+      return {
+        history: newHistory,
+        canGoBack: newHistory.length > 1,
+      };
+    });
+  }, [pathname]);
 
-  const reset = useCallback(() => {
-    setIsComplete(false);
-  }, []);
+  const safeBack = useCallback(
+    (fallback: string = "/workspace") => {
+      // ALWAYS go to workspace - blueprint rule
+      router.push("/workspace");
+    },
+    [router]
+  );
 
-  const goBack = useCallback((fallback: string = "/workspace") => {
-    if (typeof window !== "undefined") {
-      // Check if there's history to go back to
-      if (window.history.length > 2) {
-        router.back();
-      } else {
-        router.push(fallback);
-      }
-    }
-  }, [router]);
+  const navigateToService = useCallback(
+    (servicePath: string) => {
+      router.push(servicePath);
+    },
+    [router]
+  );
 
-  return { isComplete, complete, reset, goBack };
+  return {
+    safeBack,
+    navigateToService,
+    currentPath: pathname,
+    canGoBack: navState.canGoBack,
+  };
 }
 
-// For tracking navigation history
-export function useNavigationHistory() {
-  const [history, setHistory] = useState<string[]>([]);
+// Hook for checking if user came from workspace
+export function useCameFromWorkspace() {
+  const [cameFromWorkspace, setCameFromWorkspace] = useState(false);
 
-  const push = useCallback((path: string) => {
-    setHistory((prev) => [...prev, path]);
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const referrer = document.referrer;
+      setCameFromWorkspace(referrer.includes("/workspace"));
+    }
   }, []);
 
-  const canGoBack = useCallback(() => {
-    return history.length > 1;
-  }, [history]);
-
-  return { history, push, canGoBack };
+  return cameFromWorkspace;
 }
