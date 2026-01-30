@@ -1,6 +1,20 @@
 import type { Metadata } from 'next';
+import { Orbitron, Inter } from 'next/font/google';
 import { validateServerEnv } from '@/lib/env/server';
 import { validatePublicEnv } from '@/lib/env/public';
+import './globals.css';
+
+const orbitron = Orbitron({
+  subsets: ['latin'],
+  variable: '--font-orbitron',
+  display: 'swap',
+});
+
+const inter = Inter({
+  subsets: ['latin'],
+  variable: '--font-inter',
+  display: 'swap',
+});
 
 // CRITICAL: Validate server env at startup
 // This runs once at server startup/build time
@@ -12,8 +26,8 @@ if (process.env.NODE_ENV === 'development') {
 }
 
 export const metadata: Metadata = {
-  title: 'Avatar G',
-  description: 'AI Avatar Generation Platform',
+  title: 'Avatar G - AI Media Factory',
+  description: 'Georgian AI-powered video, voice, and media generation platform',
 };
 
 export default function RootLayout({
@@ -22,8 +36,10 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
-      <body>{children}</body>
+    <html lang="ka" className={`${orbitron.variable} ${inter.variable}`}>
+      <body className={`${inter.className} antialiased`}>
+        {children}
+      </body>
     </html>
   );
 }
