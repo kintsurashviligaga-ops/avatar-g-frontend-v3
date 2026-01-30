@@ -1,178 +1,133 @@
+// Complete bilingual dictionary - Georgian FIRST, English second
 export const translations = {
-  ge: {
-    appName: "Avatar G",
-    online: "ონლაინ",
-    back: "უკან",
-    next: "შემდეგი",
-    skip: "გამოტოვება",
-    continue: "გაგრძელება",
-    activate: "გააქტიურება",
-    notNow: "ახლა არა",
-    agentReady: "Agent G მზადაა. რით დავიწყოთ?",
-    messagePlaceholder: "დაწერეთ მესიჯი...",
+  ka: {
+    // Navigation
+    workspace: "სამუშაო სივრცე",
+    settings: "პარამეტრები",
+    memory: "მეხსიერება",
+    pricing: "ფასები",
+    onboarding: "გაცნობა",
     
+    // Agent G
+    agentG: "Agent G",
+    agentGTitle: "თქვენი პერსონალური ასისტენტი",
+    readyToAssist: "მზად არის დასახმარებლად",
+    
+    // Services (All 13)
     services: {
-      agentG: "Agent G",
-      avatarBuilder: "ავატარი",
-      voiceLab: "ხმა",
-      imageArchitect: "ფოტო",
-      musicStudio: "მუსიკა",
-      videoCineLab: "ვიდეო",
-      gameForge: "თამაში",
-      aiProduction: "პროდუქცია",
-      businessAgent: "ბიზნესი",
-      promptBuilder: "პრომპტი",
-      imageGenerator: "სურათი",
-      videoGenerator: "კლიპი",
-      textIntelligence: "ტექსტი",
+      agentG: "Agent G (Luxury)",
+      avatarBuilder: "Avatar Builder",
+      voiceLab: "Voice Lab",
+      imageArchitect: "Image Architect",
+      musicStudio: "Music Studio",
+      videoCineLab: "Video Cine Lab",
+      gameForge: "Game Forge",
+      aiProduction: "AI Production",
+      businessAgent: "Business Agent",
+      promptBuilder: "Prompt Builder",
+      imageGenerator: "Image Generator",
+      videoGenerator: "Video Generator",
+      textIntelligence: "Text Intelligence",
     },
     
-    pricing: {
-      title: "Agent G Premium",
-      subtitle: "პერსონალური AI აგენტი სრული კონტროლით",
-      price: "2000₾ / წელი",
-      trustLine: "აქტივაცია მხოლოდ მაშინ, როცა მზად იქნები.",
-      premiumModal: "Agent G Premium რეჟიმი ხელმისაწვდომია — 2000₾/წელი",
-      view: "ნახვა",
-      features: [
-        "Agent G — Personal რეჟიმი",
-        "ულიმიტო პროექტების მეხსიერება",
-        "პრიორიტეტული რესპონსები",
-        "კონსიერჟის სტრუქტურირებული აუთფუთი",
-        "დედიკირებული საპორტო ხაზი",
-      ],
-    },
+    // Chat
+    typeMessage: "შეიყვანეთ შეტყობინება...",
+    send: "გაგზავნა",
     
-    settings: {
-      title: "პარამეტრები",
-      language: "ენა",
-      georgian: "ქართული",
-      english: "English",
-      memory: "Agent G მეხსიერება",
-      projectMemory: "პროექტების მეხსიერება",
-      preferenceMemory: "პრეფერენციების მეხსიერება",
-      tempChats: "დროებითი ჩათები",
-      viewMemory: "მეხსიერების ნახვა",
-      clearMemory: "მეხსიერების გასუფთავება",
-      privacy: "კონფიდენციალურობა",
-      privacyText: "შენი მონაცემები შენს კონტროლშია.",
-      replay: "ტურის გამეორება",
-      showOnboarding: "ონბორდინგის ჩვენება",
-    },
+    // Buttons
+    getStarted: "დაწყება",
+    viewDemo: "დემო ნახვა",
+    backToWorkspace: "სამუშაო სივრცეში დაბრუნება",
     
-    memory: {
-      title: "ჩემი მეხსიერება",
-      search: "მეხსიერების ძიება...",
-      empty: "მეხსიერება ჯერ ცარიელია",
-      preferences: "პრეფერენციები",
-      projects: "პროექტები",
-      style: "სტილი",
-      tools: "ინსტრუმენტები",
-      delete: "წაშლა",
-      export: "ექსპორტი",
-    },
+    // Settings
+    language: "ენა",
+    georgian: "ქართული",
+    english: "English",
+    memorySettings: "მეხსიერების პარამეტრები",
+    privacy: "კონფიდენციალურობა",
+    replayOnboarding: "გაცნობის ხელახლა ჩვენება",
     
-    notFound: {
-      title: "გვერდი ვერ მოიძებნა",
-      return: "სტუდიაში დაბრუნება",
-    },
+    // Pricing
+    premiumPlan: "Agent G Premium",
+    price: "2000 GEL / წელიწადი",
+    unlocks: "გახსნის",
     
-    onboarding: {
-      slide1: { title: "შენი AI სივრცე", subtitle: "პრემიუმ ინტელექტი ერთ სივრცეში" },
-      slide2: { title: "გაიცანი Agent G", subtitle: "თქვენი პერსონალური AI ასისტენტი" },
-      slide3: { title: "ყველაფერი ერთ სივრცეში", subtitle: "13 პროფესიული ინსტრუმენტი" },
-      slide4: { title: "შენი კონტროლი. შენი მონაცემები.", subtitle: "პრივატულობა უპირატესობაა" },
-      slide5: { title: "მზად ხართ?", subtitle: "სტუდია ელოდება", cta: "სტუდიაში შესვლა" },
-    },
+    // Errors
+    notFound: "გვერდი ვერ მოიძებნა",
+    returnToWorkspace: "სამუშაო სივრცეში დაბრუნება",
   },
-  
   en: {
-    appName: "Avatar G",
-    online: "Online",
-    back: "Back",
-    next: "Next",
-    skip: "Skip",
-    continue: "Continue",
-    activate: "Activate",
-    notNow: "Not now",
-    agentReady: "Agent G is ready. What should we start with?",
-    messagePlaceholder: "Type your message...",
+    // Navigation
+    workspace: "Workspace",
+    settings: "Settings",
+    memory: "Memory",
+    pricing: "Pricing",
+    onboarding: "Onboarding",
     
+    // Agent G
+    agentG: "Agent G",
+    agentGTitle: "Your Personal Assistant",
+    readyToAssist: "Ready to assist",
+    
+    // Services (All 13)
     services: {
-      agentG: "Agent G",
-      avatarBuilder: "Avatar",
-      voiceLab: "Voice",
-      imageArchitect: "Photo",
-      musicStudio: "Music",
-      videoCineLab: "Video",
-      gameForge: "Game",
-      aiProduction: "Production",
-      businessAgent: "Business",
-      promptBuilder: "Prompt",
-      imageGenerator: "Image",
-      videoGenerator: "Clip",
-      textIntelligence: "Text",
+      agentG: "Agent G (Luxury)",
+      avatarBuilder: "Avatar Builder",
+      voiceLab: "Voice Lab",
+      imageArchitect: "Image Architect",
+      musicStudio: "Music Studio",
+      videoCineLab: "Video Cine Lab",
+      gameForge: "Game Forge",
+      aiProduction: "AI Production",
+      businessAgent: "Business Agent",
+      promptBuilder: "Prompt Builder",
+      imageGenerator: "Image Generator",
+      videoGenerator: "Video Generator",
+      textIntelligence: "Text Intelligence",
     },
     
-    pricing: {
-      title: "Agent G Premium",
-      subtitle: "Your personal AI agent with full control",
-      price: "2000 GEL / year",
-      trustLine: "Activate only when you're ready.",
-      premiumModal: "Agent G Premium available — 2000 GEL/year",
-      view: "View",
-      features: [
-        "Agent G — Personal mode",
-        "Unlimited project memory",
-        "Priority responses",
-        "Concierge structured outputs",
-        "Dedicated support line",
-      ],
-    },
+    // Chat
+    typeMessage: "Type your message...",
+    send: "Send",
     
-    settings: {
-      title: "Settings",
-      language: "Language",
-      georgian: "Georgian",
-      english: "English",
-      memory: "Agent G Memory",
-      projectMemory: "Project memory",
-      preferenceMemory: "Preference memory",
-      tempChats: "Temporary chats",
-      viewMemory: "View Memory",
-      clearMemory: "Clear Memory",
-      privacy: "Privacy",
-      privacyText: "Your data stays under your control.",
-      replay: "Replay Tour",
-      showOnboarding: "Show Onboarding",
-    },
+    // Buttons
+    getStarted: "Get Started",
+    viewDemo: "View Demo",
+    backToWorkspace: "Return to Workspace",
     
-    memory: {
-      title: "My Memory",
-      search: "Search memory...",
-      empty: "Memory is empty",
-      preferences: "Preferences",
-      projects: "Projects",
-      style: "Style",
-      tools: "Tools",
-      delete: "Delete",
-      export: "Export",
-    },
+    // Settings
+    language: "Language",
+    georgian: "Georgian",
+    english: "English",
+    memorySettings: "Memory Settings",
+    privacy: "Privacy",
+    replayOnboarding: "Replay Onboarding",
     
-    notFound: {
-      title: "Page not found",
-      return: "Return to Studio",
-    },
+    // Pricing
+    premiumPlan: "Agent G Premium",
+    price: "2000 GEL / year",
+    unlocks: "Unlocks",
     
-    onboarding: {
-      slide1: { title: "Your AI Space", subtitle: "Premium intelligence in one workspace" },
-      slide2: { title: "Meet Agent G", subtitle: "Your personal AI assistant" },
-      slide3: { title: "Everything in One Space", subtitle: "13 professional tools" },
-      slide4: { title: "Your Control. Your Data.", subtitle: "Privacy is priority" },
-      slide5: { title: "Ready?", subtitle: "The studio awaits", cta: "Enter Studio" },
-    },
+    // Errors
+    notFound: "Page Not Found",
+    returnToWorkspace: "Return to Workspace",
   },
 };
 
-export type Lang = "ge" | "en";
+export type Language = "ka" | "en";
 export type Translations = typeof translations;
+
+export function getTranslation(lang: Language, key: string): string {
+  const keys = key.split(".");
+  let value: any = translations[lang];
+  
+  for (const k of keys) {
+    if (value && typeof value === "object") {
+      value = value[k];
+    } else {
+      return key; // Fallback to key if not found
+    }
+  }
+  
+  return typeof value === "string" ? value : key;
+}
