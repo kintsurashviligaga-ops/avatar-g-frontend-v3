@@ -1,58 +1,52 @@
 "use client";
 
-import { useRouter, usePathname } from "next/navigation";
-import { useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
+import { useState, useCallback } from "react";
 
-const SAFE_ROUTE_KEY = "ag_last_safe_route";
-const ONBOARDING_KEY = "ag_onboarding_done";
-
-export function useSafeNavigation() {
-  const router = useRouter();
-  const pathname = usePathname();
-
-  useEffect(() => {
-    const safeRoutes = ["/workspace", "/settings", "/pricing", "/memory"];
-    const isService = pathname.startsWith("/") && 
-      !["/onboarding", "/404"].includes(pathname) &&
-      pathname !== "/";
-    
-    if (safeRoutes.includes(pathname) || isService) {
-      sessionStorage.setItem(SAFE_ROUTE_KEY, pathname);
-    }
-  }, [pathname]);
-
-  const safeBack = useCallback((fallback: string = "/workspace") => {
-    const lastSafe = sessionStorage.getItem(SAFE_ROUTE_KEY);
-    const currentPath = window.location.pathname;
-    
-    if (lastSafe && lastSafe !== currentPath) {
-      router.push(lastSafe);
-      return;
-    }
-    
-    router.push(fallback);
-  }, [router]);
-
-  const goToWorkspace = useCallback(() => {
-    router.push("/workspace");
-  }, [router]);
-
-  return { safeBack, goToWorkspace, router };
+interface UseNavigationReturn {
+  isComplete: boolean;
+  complete: () => void;
+  reset: () => void;
+  goBack: (fallback?: string) => void;
 }
 
-export function useOnboarding() {
-  const isComplete = () => {
-    if (typeof window === "undefined") return false;
-    return localStorage.getItem(ONBOARDING_KEY) === "true";
-  };
+export function useNavigation(): UseNavigationReturn {
+  const router = useRouter();
+  const [isComplete, setIsComplete] = useState(false);
 
-  const complete = () => {
-    localStorage.setItem(ONBOARDING_KEY, "true");
-  };
+  const complete = useCallback(() => {
+    setIsComplete(true);
+  }, []);
 
-  const reset = () => {
-    localStorage.removeItem(ONBOARDING_KEY);
-  };
+  const reset = useCallback(() => {
+    setIsComplete(false);
+  }, []);
 
-  return { isComplete, complete, reset };
+  const goBack = useCallback((fallback: string = "/workspace") => {
+    if (typeof window !== "undefined") {
+      // Check if there's history to go back to
+      if (window.history.length > 2) {
+        router.back();
+      } else {
+        router.push(fallback);
+      }
+    }
+  }, [router]);
+
+  return { isComplete, complete, reset, goBack };
+}
+
+// For tracking navigation history
+export function useNavigationHistory() {
+  const [history, setHistory] = useState<string[]>([]);
+
+  const push = useCallback((path: string) => {
+    setHistory((prev) => [...prev, path]);
+  }, []);
+
+  const canGoBack = useCallback(() => {
+    return history.length > 1;
+  }, [history]);
+
+  return { history, push, canGoBack };
 }
