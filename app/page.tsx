@@ -77,6 +77,9 @@ export default function VideoCineLabPage() {
     }
   };
 
+  // Custom slider thumb style
+  const sliderClassName = "w-full h-1.5 bg-white/10 rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-cyan-500 [&::-webkit-slider-thumb]:transition-all [&::-webkit-slider-thumb]:hover:scale-110";
+
   return (
     <ServicePageShell
       title="Video Cine-Lab"
@@ -95,7 +98,7 @@ export default function VideoCineLabPage() {
             onChange={(e) => setConcept(e.target.value)}
             placeholder="Describe your video idea..."
             rows={4}
-            className="w-full px-3 py-2.5 rounded-xl bg-black/40 border border-white/10 text-sm resize-none focus:outline-none focus:border-cyan-500/50"
+            className="w-full px-3 py-2.5 rounded-xl bg-black/40 border border-white/10 text-sm resize-none focus:outline-none focus:border-cyan-500/50 placeholder:text-gray-600"
           />
           <div>
             <label className="text-xs text-gray-500 mb-1.5 block">Scene Style</label>
@@ -173,7 +176,7 @@ export default function VideoCineLabPage() {
           <div>
             <div className="flex justify-between mb-1.5">
               <label className="text-xs text-gray-500">Motion</label>
-              <span className="text-xs text-cyan-400">{motionLevel}</span>
+              <span className="text-xs text-cyan-400 font-medium">{motionLevel}</span>
             </div>
             <input
               type="range"
@@ -181,14 +184,14 @@ export default function VideoCineLabPage() {
               max={10}
               value={motionLevel}
               onChange={(e) => setMotionLevel(Number(e.target.value))}
-              className="w-full h-1.5 bg-white/10 rounded-lg appearance-none cursor-pointer accent-cyan-500"
+              className={sliderClassName}
             />
           </div>
 
           <div>
             <div className="flex justify-between mb-1.5">
               <label className="text-xs text-gray-500">Detail</label>
-              <span className="text-xs text-cyan-400">{detail}</span>
+              <span className="text-xs text-cyan-400 font-medium">{detail}</span>
             </div>
             <input
               type="range"
@@ -196,7 +199,7 @@ export default function VideoCineLabPage() {
               max={10}
               value={detail}
               onChange={(e) => setDetail(Number(e.target.value))}
-              className="w-full h-1.5 bg-white/10 rounded-lg appearance-none cursor-pointer accent-cyan-500"
+              className={sliderClassName}
             />
           </div>
         </div>
@@ -207,18 +210,18 @@ export default function VideoCineLabPage() {
           Optional Assets
         </h2>
         <div className="space-y-4">
-          <button className="w-full py-4 rounded-xl border border-dashed border-white/20 bg-black/20 flex flex-col items-center gap-2 hover:border-cyan-500/50 transition-colors">
+          <button className="w-full py-4 rounded-xl border border-dashed border-white/20 bg-black/20 flex flex-col items-center gap-2 hover:border-cyan-500/50 hover:bg-black/30 transition-all duration-200">
             <Upload className="w-6 h-6 text-gray-500" />
             <span className="text-xs text-gray-400">Upload Image/Video Reference</span>
           </button>
-          <label className="flex items-center gap-2 cursor-pointer">
+          <label className="flex items-center gap-2 cursor-pointer group">
             <input
               type="checkbox"
               checked={useReference}
               onChange={(e) => setUseReference(e.target.checked)}
-              className="w-4 h-4 rounded border-white/20 bg-black/40 text-cyan-500 focus:ring-cyan-500/50"
+              className="w-4 h-4 rounded border-white/20 bg-black/40 text-cyan-500 focus:ring-cyan-500/50 focus:ring-2 cursor-pointer"
             />
-            <span className="text-xs text-gray-400">Use as Reference</span>
+            <span className="text-xs text-gray-400 group-hover:text-gray-300 transition-colors">Use as Reference</span>
           </label>
         </div>
       </section>
@@ -231,7 +234,7 @@ export default function VideoCineLabPage() {
           {jobs.some((j) => j.status === "done") && (
             <button
               onClick={clearCompleted}
-              className="text-[10px] text-gray-500 hover:text-white transition-colors"
+              className="text-[10px] text-gray-500 hover:text-white transition-colors px-2 py-1 rounded hover:bg-white/5"
             >
               Clear Completed
             </button>
@@ -245,7 +248,7 @@ export default function VideoCineLabPage() {
             jobs.map((job) => (
               <div
                 key={job.id}
-                className="flex items-center justify-between p-3 rounded-xl bg-black/40 border border-white/5"
+                className="flex items-center justify-between p-3 rounded-xl bg-black/40 border border-white/5 hover:border-white/10 transition-colors"
               >
                 <div className="flex items-center gap-3">
                   {getStatusIcon(job.status)}
