@@ -9,7 +9,6 @@ export const translations = {
     activate: "გააქტიურება",
     notNow: "ახლა არა",
     agentReady: "Agent G მზადაა. რით დავიწყოთ?",
-    services: "სერვისები",
     messagePlaceholder: "დაწერეთ მესიჯი...",
     
     services: {
@@ -97,7 +96,6 @@ export const translations = {
     activate: "Activate",
     notNow: "Not now",
     agentReady: "Agent G is ready. What should we start with?",
-    services: "Services",
     messagePlaceholder: "Type your message...",
     
     services: {
