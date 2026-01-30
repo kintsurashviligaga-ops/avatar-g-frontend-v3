@@ -2,7 +2,7 @@
 
 import React from "react";
 import { motion } from "framer-motion";
-import { ArrowLeft, Sparkles } from "lucide-react";
+import { ArrowLeft, Sparkles, Crown } from "lucide-react";
 import Image from "next/image";
 import { useSafeNavigation } from "@/lib/navigation";
 
@@ -17,10 +17,10 @@ interface ServicePageShellProps {
   primaryLabelKa?: string;
   onPrimary?: () => void;
   toast?: string | null;
+  isPremium?: boolean;
   children?: React.ReactNode;
 }
 
-// Named export
 export function ServicePageShell({
   title,
   titleKa,
@@ -32,6 +32,7 @@ export function ServicePageShell({
   primaryLabelKa,
   onPrimary,
   toast,
+  isPremium,
   children,
 }: ServicePageShellProps) {
   const { safeBack } = useSafeNavigation();
@@ -57,6 +58,7 @@ export function ServicePageShell({
           <div className="flex-1" />
           
           <div className="flex items-center gap-2">
+            {isPremium && <Crown className="w-5 h-5 text-amber-400" />}
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
             <span className="text-xs text-slate-400">ონლაინ</span>
           </div>
@@ -83,22 +85,19 @@ export function ServicePageShell({
                   className="object-contain"
                   onError={(e) => {
                     (e.target as HTMLImageElement).style.display = 'none';
-                    e.currentTarget.parentElement?.classList.add('bg-gradient-to-br', 'from-cyan-400', 'to-blue-600', 'rounded-2xl', 'flex', 'items-center', 'justify-center');
-                    const fallback = document.createElement('div');
-                    fallback.innerHTML = '<svg class="w-12 h-12 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>';
-                    e.currentTarget.parentElement?.appendChild(fallback.firstChild!);
+                    e.currentTarget.parentElement?.classList.add('bg-gradient-to-br', 'from-cyan-400', 'to-blue-600', 'rounded-2xl');
                   }}
                 />
               ) : (
-                <div className="w-full h-full rounded-2xl bg-gradient-to-br from-cyan-400 to-blue-600 flex items-center justify-center">
-                  <Sparkles className="w-12 h-12 text-white" />
+                <div className={`w-full h-full rounded-2xl flex items-center justify-center ${isPremium ? 'bg-gradient-to-br from-amber-400 to-orange-600' : 'bg-gradient-to-br from-cyan-400 to-blue-600'}`}>
+                  {isPremium ? <Crown className="w-12 h-12 text-white" /> : <Sparkles className="w-12 h-12 text-white" />}
                 </div>
               )}
             </div>
             <h1 className="text-3xl font-bold mb-2 bg-gradient-to-r from-white to-cyan-200 bg-clip-text text-transparent">
               {displayTitle}
             </h1>
-            <p className="text-cyan-400 text-lg mb-2">{displaySubtitle}</p>
+            <p className={`text-lg mb-2 ${isPremium ? 'text-amber-400' : 'text-cyan-400'}`}>{displaySubtitle}</p>
             {description && <p className="text-slate-400">{description}</p>}
           </div>
 
@@ -106,7 +105,7 @@ export function ServicePageShell({
             <div className="text-center mb-8">
               <button
                 onClick={onPrimary}
-                className="px-8 py-4 rounded-2xl bg-gradient-to-r from-cyan-500 to-blue-600 text-white font-semibold shadow-lg shadow-cyan-500/25 hover:shadow-cyan-500/40 transition-shadow"
+                className={`px-8 py-4 rounded-2xl text-white font-semibold shadow-lg transition-shadow ${isPremium ? 'bg-gradient-to-r from-amber-500 to-orange-600 shadow-amber-500/25 hover:shadow-amber-500/40' : 'bg-gradient-to-r from-cyan-500 to-blue-600 shadow-cyan-500/25 hover:shadow-cyan-500/40'}`}
               >
                 {displayPrimaryLabel}
               </button>
