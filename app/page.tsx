@@ -1,275 +1,193 @@
 "use client";
 
-import React, { useState, useCallback } from "react";
-import { Check, Loader2, X, Upload } from "lucide-react";
-import ServicePageShell from "@/components/ServicePageShell";
+import Link from "next/link";
+import { 
+  Video, 
+  Mic, 
+  UserCircle, 
+  Gamepad2, 
+  Image as ImageIcon, 
+  Music, 
+  Wand2,
+  Sparkles,
+  FileText,
+  Bot,
+  Camera,
+  Palette,
+  Code2
+} from "lucide-react";
 
-type JobStatus = "queued" | "processing" | "done" | "error";
+const services = [
+  {
+    id: "video-cine-lab",
+    title: "Video Cine-Lab",
+    description: "Cinematic video generation",
+    icon: Video,
+    color: "from-cyan-500 to-blue-600",
+    href: "/video-cine-lab",
+  },
+  {
+    id: "voice-lab",
+    title: "Voice Lab",
+    description: "AI voice generation",
+    icon: Mic,
+    color: "from-purple-500 to-pink-600",
+    href: "/voice-lab",
+  },
+  {
+    id: "avatar-builder",
+    title: "Avatar Builder",
+    description: "Create AI avatars",
+    icon: UserCircle,
+    color: "from-green-500 to-emerald-600",
+    href: "/avatar-builder",
+  },
+  {
+    id: "game-forge",
+    title: "Game Forge",
+    description: "Game asset generation",
+    icon: Gamepad2,
+    color: "from-orange-500 to-red-600",
+    href: "/game-forge",
+  },
+  {
+    id: "ai-production",
+    title: "AI Production",
+    description: "Image generation",
+    icon: ImageIcon,
+    color: "from-yellow-500 to-amber-600",
+    href: "/ai-production",
+  },
+  {
+    id: "music-studio",
+    title: "Music Studio",
+    description: "AI music generation",
+    icon: Music,
+    color: "from-pink-500 to-rose-600",
+    href: "/music-studio",
+  },
+  {
+    id: "magic-studio",
+    title: "Magic Studio",
+    description: "AI-powered effects",
+    icon: Wand2,
+    color: "from-indigo-500 to-violet-600",
+    href: "/magic-studio",
+  },
+  {
+    id: "sparkle-lab",
+    title: "Sparkle Lab",
+    description: "Visual effects",
+    icon: Sparkles,
+    color: "from-teal-500 to-cyan-600",
+    href: "/sparkle-lab",
+  },
+  {
+    id: "text-craft",
+    title: "Text Craft",
+    description: "AI text generation",
+    icon: FileText,
+    color: "from-blue-500 to-indigo-600",
+    href: "/text-craft",
+  },
+  {
+    id: "ai-agent",
+    title: "AI Agent",
+    description: "Intelligent assistants",
+    icon: Bot,
+    color: "from-red-500 to-pink-600",
+    href: "/ai-agent",
+  },
+  {
+    id: "photo-lab",
+    title: "Photo Lab",
+    description: "Photo enhancement",
+    icon: Camera,
+    color: "from-lime-500 to-green-600",
+    href: "/photo-lab",
+  },
+  {
+    id: "art-studio",
+    title: "Art Studio",
+    description: "Digital art creation",
+    icon: Palette,
+    color: "from-fuchsia-500 to-purple-600",
+    href: "/art-studio",
+  },
+  {
+    id: "code-lab",
+    title: "Code Lab",
+    description: "AI code generation",
+    icon: Code2,
+    color: "from-slate-500 to-gray-600",
+    href: "/code-lab",
+  },
+];
 
-interface Job {
-  id: string;
-  name: string;
-  status: JobStatus;
-  createdAt: Date;
-}
-
-const SCENE_STYLES = ["Cinematic", "Ad", "Story", "Trailer"];
-const ASPECTS = ["9:16", "16:9", "1:1"];
-const DURATIONS = ["5s", "10s", "15s", "30s"];
-const VISUAL_STYLES = ["Photoreal", "Noir", "Futuristic", "Studio Product"];
-
-export default function VideoCineLabPage() {
-  const [toast, setToast] = useState<string | null>(null);
-  const [jobs, setJobs] = useState<Job[]>([]);
-
-  const [concept, setConcept] = useState("");
-  const [sceneStyle, setSceneStyle] = useState(SCENE_STYLES[0]);
-  const [aspect, setAspect] = useState(ASPECTS[0]);
-  const [duration, setDuration] = useState(DURATIONS[1]);
-  const [visualStyle, setVisualStyle] = useState(VISUAL_STYLES[0]);
-  const [motionLevel, setMotionLevel] = useState(5);
-  const [detail, setDetail] = useState(7);
-  const [useReference, setUseReference] = useState(false);
-
-  const showToast = useCallback((message: string) => {
-    setToast(message);
-    setTimeout(() => setToast(null), 3000);
-  }, []);
-
-  const handleGenerate = useCallback(() => {
-    const newJob: Job = {
-      id: `job-${Date.now()}`,
-      name: concept.slice(0, 30) || "Untitled Video",
-      status: "queued",
-      createdAt: new Date(),
-    };
-
-    setJobs((prev) => [newJob, ...prev]);
-    showToast("Video generation started.");
-
-    setTimeout(() => {
-      setJobs((prev) =>
-        prev.map((j) => (j.id === newJob.id ? { ...j, status: "processing" } : j))
-      );
-    }, 1000);
-
-    setTimeout(() => {
-      setJobs((prev) =>
-        prev.map((j) => (j.id === newJob.id ? { ...j, status: "done" } : j))
-      );
-    }, 10000);
-  }, [concept, showToast]);
-
-  const clearCompleted = useCallback(() => {
-    setJobs((prev) => prev.filter((j) => j.status !== "done"));
-  }, []);
-
-  const getStatusIcon = (status: JobStatus) => {
-    switch (status) {
-      case "queued":
-        return <div className="w-4 h-4 rounded-full border-2 border-yellow-500/50" />;
-      case "processing":
-        return <Loader2 className="w-4 h-4 text-blue-400 animate-spin" />;
-      case "done":
-        return <Check className="w-4 h-4 text-green-400" />;
-      case "error":
-        return <X className="w-4 h-4 text-red-400" />;
-    }
-  };
-
-  // Custom slider thumb style
-  const sliderClassName = "w-full h-1.5 bg-white/10 rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-cyan-500 [&::-webkit-slider-thumb]:transition-all [&::-webkit-slider-thumb]:hover:scale-110";
-
+export default function HomePage() {
   return (
-    <ServicePageShell
-      title="Video Cine-Lab"
-      subtitle="Cinematic Generator"
-      primaryLabel="Generate Video"
-      onPrimary={handleGenerate}
-      toast={toast}
-    >
-      <section className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-sm p-4">
-        <h2 className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-4">
-          Concept
-        </h2>
-        <div className="space-y-4">
-          <textarea
-            value={concept}
-            onChange={(e) => setConcept(e.target.value)}
-            placeholder="Describe your video idea..."
-            rows={4}
-            className="w-full px-3 py-2.5 rounded-xl bg-black/40 border border-white/10 text-sm resize-none focus:outline-none focus:border-cyan-500/50 placeholder:text-gray-600"
-          />
-          <div>
-            <label className="text-xs text-gray-500 mb-1.5 block">Scene Style</label>
-            <select
-              value={sceneStyle}
-              onChange={(e) => setSceneStyle(e.target.value)}
-              className="w-full px-3 py-2.5 rounded-xl bg-black/40 border border-white/10 text-sm focus:outline-none focus:border-cyan-500/50"
-            >
-              {SCENE_STYLES.map((s) => (
-                <option key={s} value={s}>
-                  {s}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-      </section>
-
-      <section className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-sm p-4">
-        <h2 className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-4">
-          Format
-        </h2>
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="text-xs text-gray-500 mb-1.5 block">Aspect</label>
-            <select
-              value={aspect}
-              onChange={(e) => setAspect(e.target.value)}
-              className="w-full px-3 py-2.5 rounded-xl bg-black/40 border border-white/10 text-sm focus:outline-none focus:border-cyan-500/50"
-            >
-              {ASPECTS.map((a) => (
-                <option key={a} value={a}>
-                  {a}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="text-xs text-gray-500 mb-1.5 block">Duration</label>
-            <select
-              value={duration}
-              onChange={(e) => setDuration(e.target.value)}
-              className="w-full px-3 py-2.5 rounded-xl bg-black/40 border border-white/10 text-sm focus:outline-none focus:border-cyan-500/50"
-            >
-              {DURATIONS.map((d) => (
-                <option key={d} value={d}>
-                  {d}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-      </section>
-
-      <section className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-sm p-4">
-        <h2 className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-4">
-          Visual Controls
-        </h2>
-        <div className="space-y-4">
-          <div>
-            <label className="text-xs text-gray-500 mb-1.5 block">Visual Style</label>
-            <select
-              value={visualStyle}
-              onChange={(e) => setVisualStyle(e.target.value)}
-              className="w-full px-3 py-2.5 rounded-xl bg-black/40 border border-white/10 text-sm focus:outline-none focus:border-cyan-500/50"
-            >
-              {VISUAL_STYLES.map((v) => (
-                <option key={v} value={v}>
-                  {v}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <div className="flex justify-between mb-1.5">
-              <label className="text-xs text-gray-500">Motion</label>
-              <span className="text-xs text-cyan-400 font-medium">{motionLevel}</span>
+    <div className="min-h-screen bg-black text-white">
+      {/* Header */}
+      <header className="border-b border-white/10 bg-black/50 backdrop-blur-xl sticky top-0 z-50">
+        <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center">
+              <span className="text-xl font-bold">A</span>
             </div>
-            <input
-              type="range"
-              min={1}
-              max={10}
-              value={motionLevel}
-              onChange={(e) => setMotionLevel(Number(e.target.value))}
-              className={sliderClassName}
-            />
-          </div>
-
-          <div>
-            <div className="flex justify-between mb-1.5">
-              <label className="text-xs text-gray-500">Detail</label>
-              <span className="text-xs text-cyan-400 font-medium">{detail}</span>
+            <div>
+              <h1 className="text-lg font-bold">Avatar G</h1>
+              <p className="text-xs text-gray-400">AI Media Factory</p>
             </div>
-            <input
-              type="range"
-              min={1}
-              max={10}
-              value={detail}
-              onChange={(e) => setDetail(Number(e.target.value))}
-              className={sliderClassName}
-            />
           </div>
+          <div className="text-xs text-gray-500">v2.0</div>
         </div>
-      </section>
+      </header>
 
-      <section className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-sm p-4">
-        <h2 className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-4">
-          Optional Assets
-        </h2>
-        <div className="space-y-4">
-          <button className="w-full py-4 rounded-xl border border-dashed border-white/20 bg-black/20 flex flex-col items-center gap-2 hover:border-cyan-500/50 hover:bg-black/30 transition-all duration-200">
-            <Upload className="w-6 h-6 text-gray-500" />
-            <span className="text-xs text-gray-400">Upload Image/Video Reference</span>
-          </button>
-          <label className="flex items-center gap-2 cursor-pointer group">
-            <input
-              type="checkbox"
-              checked={useReference}
-              onChange={(e) => setUseReference(e.target.checked)}
-              className="w-4 h-4 rounded border-white/20 bg-black/40 text-cyan-500 focus:ring-cyan-500/50 focus:ring-2 cursor-pointer"
-            />
-            <span className="text-xs text-gray-400 group-hover:text-gray-300 transition-colors">Use as Reference</span>
-          </label>
-        </div>
-      </section>
-
-      <section className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-sm p-4">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xs font-medium text-gray-400 uppercase tracking-wider">
-            Queue
+      {/* Hero */}
+      <section className="max-w-7xl mx-auto px-4 py-12">
+        <div className="text-center mb-12">
+          <h2 className="text-4xl md:text-5xl font-bold mb-4 bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">
+            AI-Powered Media Creation
           </h2>
-          {jobs.some((j) => j.status === "done") && (
-            <button
-              onClick={clearCompleted}
-              className="text-[10px] text-gray-500 hover:text-white transition-colors px-2 py-1 rounded hover:bg-white/5"
-            >
-              Clear Completed
-            </button>
-          )}
+          <p className="text-gray-400 max-w-2xl mx-auto">
+            13 powerful AI tools for video, voice, images, code, and more
+          </p>
         </div>
 
-        <div className="space-y-2">
-          {jobs.length === 0 ? (
-            <p className="text-xs text-gray-600 text-center py-4">No jobs in queue</p>
-          ) : (
-            jobs.map((job) => (
-              <div
-                key={job.id}
-                className="flex items-center justify-between p-3 rounded-xl bg-black/40 border border-white/5 hover:border-white/10 transition-colors"
+        {/* Services Grid - 13 cards */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          {services.map((service) => {
+            const Icon = service.icon;
+            return (
+              <Link
+                key={service.id}
+                href={service.href}
+                className="group relative p-6 rounded-2xl border border-white/10 bg-white/5 backdrop-blur-sm hover:bg-white/10 hover:border-white/20 transition-all duration-300 hover:scale-[1.02]"
               >
-                <div className="flex items-center gap-3">
-                  {getStatusIcon(job.status)}
-                  <div>
-                    <p className="text-xs font-medium text-white truncate max-w-[150px]">
-                      {job.name}
-                    </p>
-                    <p className="text-[10px] text-gray-500 capitalize">{job.status}</p>
-                  </div>
+                <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${service.color} flex items-center justify-center mb-4 group-hover:scale-110 transition-transform`}>
+                  <Icon className="w-6 h-6 text-white" />
                 </div>
-                <span className="text-[10px] text-gray-600">
-                  {job.createdAt.toLocaleTimeString([], {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })}
-                </span>
-              </div>
-            ))
-          )}
+                <h3 className="text-lg font-semibold mb-2 group-hover:text-cyan-400 transition-colors">
+                  {service.title}
+                </h3>
+                <p className="text-sm text-gray-400">
+                  {service.description}
+                </p>
+                <div className="mt-4 flex items-center text-xs text-cyan-400 opacity-0 group-hover:opacity-100 transition-opacity">
+                  Open →
+                </div>
+              </Link>
+            );
+          })}
         </div>
       </section>
-    </ServicePageShell>
+
+      {/* Footer */}
+      <footer className="border-t border-white/10 mt-12 py-8">
+        <div className="max-w-7xl mx-auto px-4 text-center text-xs text-gray-500">
+          © 2024 Avatar G. All rights reserved.
+        </div>
+      </footer>
+    </div>
   );
 }
