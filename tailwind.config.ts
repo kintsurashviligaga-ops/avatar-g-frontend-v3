@@ -5,58 +5,41 @@ const config: Config = {
     './pages/**/*.{js,ts,jsx,tsx,mdx}',
     './components/**/*.{js,ts,jsx,tsx,mdx}',
     './app/**/*.{js,ts,jsx,tsx,mdx}',
-    './lib/**/*.{js,ts,jsx,tsx,mdx}',
   ],
   theme: {
     extend: {
       colors: {
-        // Custom brand colors
-        obsidian: '#05070A',
-        silver: '#C0C0C0',
-        'midnight-blue': '#1a2332',
-        'deep-navy': '#0f1419',
-        
-        // System colors
-        background: '#000000',
-        foreground: '#ffffff',
-        
-        // Accent colors (cyan theme)
-        cyan: {
-          50: '#ecfeff',
-          100: '#cffafe',
-          200: '#a5f3fc',
-          300: '#67e8f9',
-          400: '#22d3ee',
-          500: '#06b6d4',
-          600: '#0891b2',
-          700: '#0e7490',
-          800: '#155e75',
-          900: '#164e63',
-          950: '#083344',
+        space: {
+          black: '#05070A',
+          dark: '#0A1423',
         },
-      },
-      fontFamily: {
-        inter: ['var(--font-inter)', 'system-ui', '-apple-system', 'sans-serif'],
-        orbitron: ['var(--font-orbitron)', 'sans-serif'],
+        cyan: {
+          400: '#22D3EE',
+          500: '#06B6D4',
+          600: '#0891B2',
+        },
+        silver: {
+          100: '#F5F5F5',
+          300: '#C0C0C0',
+          400: '#A0A0A0',
+          500: '#808080',
+        },
       },
       backdropBlur: {
         xs: '2px',
       },
       animation: {
-        'spin-slow': 'spin 3s linear infinite',
-        'pulse-slow': 'pulse 3s ease-in-out infinite',
-        'bounce-slow': 'bounce 3s infinite',
+        'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+        'float': 'float 6s ease-in-out infinite',
       },
-      transitionDuration: {
-        '400': '400ms',
-      },
-      borderRadius: {
-        '4xl': '2rem',
+      keyframes: {
+        float: {
+          '0%, 100%': { transform: 'translateY(0)' },
+          '50%': { transform: 'translateY(-10px)' },
+        },
       },
     },
   },
   plugins: [],
-  darkMode: 'class',
 }
-
 export default config
