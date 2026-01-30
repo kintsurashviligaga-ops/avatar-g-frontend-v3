@@ -1,36 +1,29 @@
-import type { Metadata, Viewport } from "next";
-import { Inter } from "next/font/google";
-import "./globals.css";
+import type { Metadata } from 'next';
+import { validateServerEnv } from '@/lib/env/server';
+import { validatePublicEnv } from '@/lib/env/public';
 
-const inter = Inter({
-  subsets: ["latin", "cyrillic"],
-  display: "swap",
-  variable: "--font-inter",
-});
+// CRITICAL: Validate server env at startup
+// This runs once at server startup/build time
+validateServerEnv();
+
+// Optional: Validate public env in development
+if (process.env.NODE_ENV === 'development') {
+  validatePublicEnv();
+}
 
 export const metadata: Metadata = {
-  title: "Avatar G - პერსონალური AI ეკოსისტემა",
-  description: "პირველი ქართული AI ეკოსისტემა. ლოკალური. უსაფრთხო. გონიერი.",
-  keywords: ["AI", "Georgia", "Avatar", "Agent G", "ეკოსისტემა"],
-};
-
-export const viewport: Viewport = {
-  width: "device-width",
-  initialScale: 1,
-  maximumScale: 1,
-  themeColor: "#000000",
+  title: 'Avatar G',
+  description: 'AI Avatar Generation Platform',
 };
 
 export default function RootLayout({
   children,
-}: Readonly<{
+}: {
   children: React.ReactNode;
-}>) {
+}) {
   return (
-    <html lang="ka" className={inter.variable}>
-      <body className="antialiased bg-black text-white font-sans">
-        {children}
-      </body>
+    <html lang="en">
+      <body>{children}</body>
     </html>
   );
 }
