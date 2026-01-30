@@ -6,6 +6,7 @@
   --background: #000000;
   --foreground: #ffffff;
   --font-inter: "Inter", system-ui, -apple-system, sans-serif;
+  --font-orbitron: "Orbitron", sans-serif;
 }
 
 * {
@@ -28,6 +29,11 @@ body {
   -moz-osx-font-smoothing: grayscale;
   overscroll-behavior-y: none;
   min-height: 100vh;
+}
+
+/* Orbitron font for headings */
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-orbitron);
 }
 
 ::-webkit-scrollbar {
@@ -58,15 +64,13 @@ body {
   outline-offset: 2px;
 }
 
-body {
-  overscroll-behavior-y: none;
-}
-
+/* Glass morphism utilities */
 .glass {
   background: rgba(255, 255, 255, 0.05);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 1rem;
 }
 
 .glass-strong {
@@ -74,8 +78,19 @@ body {
   backdrop-filter: blur(40px);
   -webkit-backdrop-filter: blur(40px);
   border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 1rem;
 }
 
+/* Hide scrollbar utility */
+.hide-scrollbar::-webkit-scrollbar { 
+  display: none; 
+}
+.hide-scrollbar { 
+  -ms-overflow-style: none; 
+  scrollbar-width: none; 
+}
+
+/* Reduced motion */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -87,11 +102,9 @@ body {
   }
 }
 
+/* Touch device optimizations */
 @media (hover: none) {
   .hover-effect:active {
     opacity: 0.8;
   }
 }
-
-.hide-scrollbar::-webkit-scrollbar { display: none; }
-.hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
