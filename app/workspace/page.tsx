@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { 
   Send, 
   Sparkles, 
-  Zap,
+  Zap, 
   Crown,
   User,
   Bot,
@@ -18,15 +18,20 @@ import {
   Briefcase,
   Wand2,
   FileText,
-  MessageSquare
+  MessageSquare,
+  LayoutGrid
 } from "lucide-react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 
-// Dynamic background for SSR safety
 const SpaceBackground = dynamic(
   () => import("@/components/SpaceSingularityBackground"),
   { ssr: false, loading: () => <div className="fixed inset-0 bg-[#05070A]" /> }
+);
+
+const AgentGOrb = dynamic(
+  () => import("@/components/AgentGOrb"),
+  { ssr: false }
 );
 
 // Types
@@ -47,164 +52,22 @@ interface Service {
   color: string;
 }
 
-// LOCKED SERVICE ORDER - 13 services exact
+// LOCKED SERVICE ORDER - 13 services exact per blueprint
 const services: Service[] = [
-  { 
-    id: "agent-g", 
-    nameKa: "Agent G", 
-    nameEn: "Agent G (Luxury)", 
-    icon: Crown, 
-    href: "/agent-g",
-    isPremium: true,
-    color: "from-amber-400 to-yellow-600"
-  },
-  { 
-    id: "avatar-builder", 
-    nameKa: "Avatar Builder", 
-    nameEn: "Avatar Builder", 
-    icon: User, 
-    href: "/avatar-builder",
-    color: "from-cyan-400 to-blue-600"
-  },
-  { 
-    id: "voice-lab", 
-    nameKa: "Voice Lab", 
-    nameEn: "Voice Lab", 
-    icon: Music, 
-    href: "/voice-lab",
-    color: "from-emerald-400 to-teal-600"
-  },
-  { 
-    id: "image-architect", 
-    nameKa: "Image Architect", 
-    nameEn: "Image Architect", 
-    icon: Palette, 
-    href: "/image-architect",
-    color: "from-violet-400 to-purple-600"
-  },
-  { 
-    id: "music-studio", 
-    nameKa: "Music Studio", 
-    nameEn: "Music Studio", 
-    icon: Music, 
-    href: "/music-studio",
-    color: "from-pink-400 to-rose-600"
-  },
-  { 
-    id: "video-cine-lab", 
-    nameKa: "Video Cine Lab", 
-    nameEn: "Video Cine Lab", 
-    icon: Video, 
-    href: "/video-cine-lab",
-    color: "from-red-400 to-orange-600"
-  },
-  { 
-    id: "game-forge", 
-    nameKa: "Game Forge", 
-    nameEn: "Game Forge", 
-    icon: Gamepad2, 
-    href: "/game-forge",
-    color: "from-indigo-400 to-blue-600"
-  },
-  { 
-    id: "ai-production", 
-    nameKa: "AI Production", 
-    nameEn: "AI Production", 
-    icon: Sparkles, 
-    href: "/ai-production",
-    color: "from-cyan-400 to-sky-600"
-  },
-  { 
-    id: "business-agent", 
-    nameKa: "Business Agent", 
-    nameEn: "Business Agent", 
-    icon: Briefcase, 
-    href: "/business-agent",
-    color: "from-slate-400 to-gray-600"
-  },
-  { 
-    id: "prompt-builder", 
-    nameKa: "Prompt Builder", 
-    nameEn: "Prompt Builder", 
-    icon: Wand2, 
-    href: "/prompt-builder",
-    color: "from-teal-400 to-cyan-600"
-  },
-  { 
-    id: "image-generator", 
-    nameKa: "Image Generator", 
-    nameEn: "Image Generator", 
-    icon: ImageIcon, 
-    href: "/image-generator",
-    color: "from-fuchsia-400 to-pink-600"
-  },
-  { 
-    id: "video-generator", 
-    nameKa: "Video Generator", 
-    nameEn: "Video Generator", 
-    icon: Video, 
-    href: "/video-generator",
-    color: "from-rose-400 to-red-600"
-  },
-  { 
-    id: "text-intelligence", 
-    nameKa: "Text Intelligence", 
-    nameEn: "Text Intelligence", 
-    icon: MessageSquare, 
-    href: "/text-intelligence",
-    color: "from-blue-400 to-indigo-600"
-  },
+  { id: "agent-g", nameKa: "Agent G", nameEn: "Agent G (Luxury)", icon: Crown, href: "/agent-g", isPremium: true, color: "from-amber-400 to-yellow-600" },
+  { id: "avatar-builder", nameKa: "Avatar Builder", nameEn: "Avatar Builder", icon: User, href: "/avatar-builder", color: "from-cyan-400 to-blue-600" },
+  { id: "voice-lab", nameKa: "Voice Lab", nameEn: "Voice Lab", icon: Music, href: "/voice-lab", color: "from-emerald-400 to-teal-600" },
+  { id: "image-architect", nameKa: "Image Architect", nameEn: "Image Architect", icon: Palette, href: "/image-architect", color: "from-violet-400 to-purple-600" },
+  { id: "music-studio", nameKa: "Music Studio", nameEn: "Music Studio", icon: Music, href: "/music-studio", color: "from-pink-400 to-rose-600" },
+  { id: "video-cine-lab", nameKa: "Video Cine Lab", nameEn: "Video Cine Lab", icon: Video, href: "/video-cine-lab", color: "from-red-400 to-orange-600" },
+  { id: "game-forge", nameKa: "Game Forge", nameEn: "Game Forge", icon: Gamepad2, href: "/game-forge", color: "from-indigo-400 to-blue-600" },
+  { id: "ai-production", nameKa: "AI Production", nameEn: "AI Production", icon: Sparkles, href: "/ai-production", color: "from-cyan-400 to-sky-600" },
+  { id: "business-agent", nameKa: "Business Agent", nameEn: "Business Agent", icon: Briefcase, href: "/business-agent", color: "from-slate-400 to-gray-600" },
+  { id: "prompt-builder", nameKa: "Prompt Builder", nameEn: "Prompt Builder", icon: Wand2, href: "/prompt-builder", color: "from-teal-400 to-cyan-600" },
+  { id: "image-generator", nameKa: "Image Generator", nameEn: "Image Generator", icon: ImageIcon, href: "/image-generator", color: "from-fuchsia-400 to-pink-600" },
+  { id: "video-generator", nameKa: "Video Generator", nameEn: "Video Generator", icon: Video, href: "/video-generator", color: "from-rose-400 to-red-600" },
+  { id: "text-intelligence", nameKa: "Text Intelligence", nameEn: "Text Intelligence", icon: MessageSquare, href: "/text-intelligence", color: "from-blue-400 to-indigo-600" },
 ];
-
-// Agent G Orb Component - PREMIUM PLACEHOLDER
-function AgentGOrb() {
-  return (
-    <div className="relative w-24 h-24 mx-auto">
-      {/* Outer glow */}
-      <motion.div
-        animate={{ 
-          scale: [1, 1.1, 1],
-          opacity: [0.3, 0.5, 0.3]
-        }}
-        transition={{ 
-          duration: 4, 
-          repeat: Infinity, 
-          ease: "easeInOut" 
-        }}
-        className="absolute inset-0 rounded-full bg-gradient-to-br from-cyan-400 to-blue-600 blur-xl"
-      />
-      
-      {/* Middle ring */}
-      <motion.div
-        animate={{ rotate: 360 }}
-        transition={{ duration: 20, repeat: Infinity, ease: "linear" }}
-        className="absolute inset-2 rounded-full border border-cyan-400/30 border-dashed"
-      />
-      
-      {/* Core orb */}
-      <motion.div
-        animate={{ 
-          scale: [1, 1.05, 1],
-        }}
-        transition={{ 
-          duration: 3, 
-          repeat: Infinity, 
-          ease: "easeInOut" 
-        }}
-        className="absolute inset-4 rounded-full bg-gradient-to-br from-cyan-300 via-cyan-500 to-blue-600 shadow-2xl shadow-cyan-500/50 flex items-center justify-center"
-      >
-        <Sparkles className="w-8 h-8 text-white" strokeWidth={1.5} />
-      </motion.div>
-      
-      {/* Inner ring */}
-      <motion.div
-        animate={{ rotate: -360 }}
-        transition={{ duration: 15, repeat: Infinity, ease: "linear" }}
-        className="absolute inset-6 rounded-full border border-white/20"
-      />
-    </div>
-  );
-}
 
 // Service Strip Item
 function ServiceItem({ service, index }: { service: Service; index: number }) {
@@ -230,7 +93,7 @@ function ServiceItem({ service, index }: { service: Service; index: number }) {
             </div>
           )}
         </div>
-        <p className="text-[10px] text-center text-gray-400 group-hover:text-cyan-300 transition-colors leading-tight">
+        <p className="text-[10px] text-center text-gray-400 group-hover:text-cyan-300 transition-colors leading-tight line-clamp-2">
           {service.nameKa}
         </p>
       </motion.div>
@@ -238,37 +101,37 @@ function ServiceItem({ service, index }: { service: Service; index: number }) {
   );
 }
 
-// Chat Message Bubble
+// Chat Message Bubble - EXACT SPECS
 function ChatMessage({ message }: { message: Message }) {
   const isUser = message.role === "user";
   
   return (
     <motion.div
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
+      initial={{ opacity: 0, y: 10, scale: 0.98 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
       className={`flex ${isUser ? "justify-end" : "justify-start"} mb-4`}
     >
-      <div className={`max-w-[80%] ${isUser ? "items-end" : "items-start"}`}>
+      <div className={`max-w-[85%] sm:max-w-[75%] ${isUser ? "items-end" : "items-start"}`}>
         {!isUser && (
           <div className="flex items-center gap-2 mb-1 ml-1">
             <div className="w-5 h-5 rounded-full bg-gradient-to-br from-cyan-400 to-blue-600 flex items-center justify-center">
               <Sparkles className="w-3 h-3 text-white" />
             </div>
-            <span className="text-xs text-cyan-400">Agent G</span>
+            <span className="text-xs text-cyan-400 font-medium">Agent G</span>
           </div>
         )}
         
         <div
           className={`px-4 py-3 rounded-2xl ${
             isUser
-              ? "bg-gradient-to-r from-cyan-500 to-blue-600 text-white rounded-br-md"
-              : "bg-[rgba(10,20,35,0.7)] backdrop-blur-md border border-white/10 text-gray-200 rounded-bl-md"
+              ? "bg-gradient-to-r from-cyan-500 to-blue-600 text-white rounded-br-md shadow-lg shadow-cyan-500/20"
+              : "bg-[rgba(10,20,35,0.7)] backdrop-blur-md border border-cyan-500/20 text-gray-200 rounded-bl-md"
           }`}
         >
-          <p className="text-sm leading-relaxed">{message.content}</p>
+          <p className="text-sm leading-relaxed whitespace-pre-wrap">{message.content}</p>
         </div>
         
-        <span className="text-[10px] text-gray-500 mt-1 block">
+        <span className="text-[10px] text-gray-600 mt-1 block">
           {message.timestamp.toLocaleTimeString("ka-GE", { hour: "2-digit", minute: "2-digit" })}
         </span>
       </div>
@@ -283,12 +146,13 @@ export default function WorkspacePage() {
     {
       id: "welcome",
       role: "agent",
-      content: "გამარჯობა! მე ვარ Agent G, თქვენი AI ასისტენტი. რით შემიძლია დაგეხმაროთ დღეს?\n\nHello! I'm Agent G, your AI assistant. How can I help you today?",
+      content: "გამარჯობა. მზად ვარ დაგეხმარო.\n\nHello. Ready to assist.",
       timestamp: new Date(),
     },
   ]);
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
+  const [agentState, setAgentState] = useState<"idle" | "thinking">("idle");
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -312,18 +176,20 @@ export default function WorkspacePage() {
     setMessages((prev) => [...prev, userMessage]);
     setInput("");
     setIsTyping(true);
+    setAgentState("thinking");
     
     // Simulate Agent G response
     setTimeout(() => {
       const agentMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: "agent",
-        content: "ვმუშაობ ამაზე... / I'm working on this...",
+        content: "ვფიქრობ… / Thinking…",
         timestamp: new Date(),
       };
       setMessages((prev) => [...prev, agentMessage]);
       setIsTyping(false);
-    }, 1500);
+      setAgentState("idle");
+    }, 2000);
   };
 
   if (!mounted) {
@@ -344,17 +210,22 @@ export default function WorkspacePage() {
       <SpaceBackground />
       
       {/* Top Bar */}
-      <header className="fixed top-0 left-0 right-0 z-50 h-14 bg-[rgba(5,7,10,0.8)] backdrop-blur-xl border-b border-white/5">
-        <div className="max-w-5xl mx-auto px-4 h-full flex items-center justify-between">
+      <header className="fixed top-0 left-0 right-0 z-50 h-14 bg-[rgba(5,7,10,0.85)] backdrop-blur-xl border-b border-white/5">
+        <div className="max-w-4xl mx-auto px-4 h-full flex items-center justify-between">
           {/* Left: Logo */}
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-cyan-400 to-blue-600 flex items-center justify-center">
-              <Zap className="w-4 h-4 text-white" fill="currentColor" />
-            </div>
-            <span className="text-lg font-bold bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">
-              Avatar G
-            </span>
-          </div>
+          <Link href="/workspace">
+            <motion.div 
+              className="flex items-center gap-2 cursor-pointer"
+              whileHover={{ scale: 1.02 }}
+            >
+              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-cyan-400 to-blue-600 flex items-center justify-center shadow-lg shadow-cyan-500/30">
+                <Zap className="w-4 h-4 text-white" fill="currentColor" />
+              </div>
+              <span className="text-lg font-bold bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">
+                Avatar G
+              </span>
+            </motion.div>
+          </Link>
           
           {/* Center: Online Indicator */}
           <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-white/5 border border-white/10">
@@ -362,42 +233,47 @@ export default function WorkspacePage() {
             <span className="text-xs text-gray-400">Online</span>
           </div>
           
-          {/* Right: User */}
-          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-cyan-400 to-blue-600 flex items-center justify-center border-2 border-white/10">
-            <User className="w-4 h-4 text-white" />
-          </div>
+          {/* Right: Settings */}
+          <Link href="/settings">
+            <motion.div 
+              whileHover={{ scale: 1.1 }}
+              className="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center border border-white/10 hover:border-cyan-500/30 transition-colors cursor-pointer"
+            >
+              <LayoutGrid className="w-4 h-4 text-gray-400" />
+            </motion.div>
+          </Link>
         </div>
       </header>
 
       {/* Main Chat Cockpit */}
-      <main className="relative z-10 pt-14 pb-4 h-screen flex flex-col max-w-5xl mx-auto px-4">
-        {/* Agent G Presence */}
-        <div className="flex-shrink-0 py-6 flex flex-col items-center">
-          <AgentGOrb />
+      <main className="relative z-10 pt-14 pb-4 h-screen flex flex-col max-w-4xl mx-auto px-4">
+        {/* Agent G Presence - EXACT PLACEMENT */}
+        <div className="flex-shrink-0 py-4 flex flex-col items-center">
+          <AgentGOrb state={agentState} size="md" />
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ delay: 0.5 }}
-            className="mt-4 text-center"
+            className="mt-3 text-center"
           >
-            <h2 className="text-lg font-semibold text-white">Agent G</h2>
-            <p className="text-sm text-cyan-400">მზად არის დასახმარებლად / Ready to assist</p>
+            <h2 className="text-base font-semibold text-white">Agent G</h2>
+            <p className="text-xs text-cyan-400">მზად არის დასახმარებლად / Ready to assist</p>
           </motion.div>
         </div>
 
-        {/* Services Strip - INSIDE CHAT */}
-        <div className="flex-shrink-0 mb-4">
-          <p className="text-xs text-gray-500 mb-2 text-center">სერვისები / Services</p>
-          <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide px-2">
+        {/* Services Strip - INSIDE CHAT COCKPIT */}
+        <div className="flex-shrink-0 mb-3">
+          <p className="text-[10px] text-gray-600 mb-2 text-center uppercase tracking-wider">სერვისები / Services</p>
+          <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide px-2">
             {services.map((service, index) => (
               <ServiceItem key={service.id} service={service} index={index} />
             ))}
           </div>
         </div>
 
-        {/* Chat Window - GLASS COCKPIT */}
+        {/* Chat Window - GLASS COCKPIT EXACT SPECS */}
         <div className="flex-1 min-h-0 flex flex-col">
-          <div className="flex-1 overflow-y-auto rounded-2xl bg-[rgba(10,20,35,0.4)] backdrop-blur-md border border-white/10 p-4 mb-4">
+          <div className="flex-1 overflow-y-auto rounded-2xl bg-[rgba(10,20,35,0.4)] backdrop-blur-md border border-white/10 p-4 mb-3 shadow-inner">
             <AnimatePresence>
               {messages.map((message) => (
                 <ChatMessage key={message.id} message={message} />
@@ -414,21 +290,14 @@ export default function WorkspacePage() {
                   <Sparkles className="w-3 h-3 text-white" />
                 </div>
                 <div className="flex gap-1">
-                  <motion.div
-                    animate={{ y: [0, -4, 0] }}
-                    transition={{ duration: 0.6, repeat: Infinity, delay: 0 }}
-                    className="w-2 h-2 rounded-full bg-cyan-400"
-                  />
-                  <motion.div
-                    animate={{ y: [0, -4, 0] }}
-                    transition={{ duration: 0.6, repeat: Infinity, delay: 0.2 }}
-                    className="w-2 h-2 rounded-full bg-cyan-400"
-                  />
-                  <motion.div
-                    animate={{ y: [0, -4, 0] }}
-                    transition={{ duration: 0.6, repeat: Infinity, delay: 0.4 }}
-                    className="w-2 h-2 rounded-full bg-cyan-400"
-                  />
+                  {[0, 0.2, 0.4].map((delay) => (
+                    <motion.div
+                      key={delay}
+                      animate={{ y: [0, -4, 0] }}
+                      transition={{ duration: 0.6, repeat: Infinity, delay }}
+                      className="w-2 h-2 rounded-full bg-cyan-400"
+                    />
+                  ))}
                 </div>
               </motion.div>
             )}
@@ -436,13 +305,15 @@ export default function WorkspacePage() {
             <div ref={messagesEndRef} />
           </div>
 
-          {/* Input Area */}
-          <div className="flex-shrink-0 flex gap-3">
+          {/* Input Area - EXACT SPECS */}
+          <div className="flex-shrink-0 flex gap-2">
             <input
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && handleSend()}
+              onFocus={() => setAgentState("thinking")}
+              onBlur={() => !isTyping && setAgentState("idle")}
               placeholder="შეიყვანეთ შეტყობინება... / Type your message..."
               className="flex-1 px-4 py-3 rounded-xl bg-[rgba(10,20,35,0.6)] backdrop-blur-md border border-white/10 text-white placeholder-gray-500 focus:outline-none focus:border-cyan-500/50 transition-colors text-sm"
             />
