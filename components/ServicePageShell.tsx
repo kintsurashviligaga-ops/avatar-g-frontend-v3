@@ -2,7 +2,7 @@
 
 import React from "react";
 import { motion } from "framer-motion";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Sparkles } from "lucide-react";
 import Image from "next/image";
 import { useSafeNavigation } from "@/lib/navigation";
 
@@ -12,7 +12,7 @@ interface ServicePageShellProps {
   subtitle: string;
   subtitleKa?: string;
   description?: string;
-  icon: string;
+  icon?: string;
   primaryLabel?: string;
   primaryLabelKa?: string;
   onPrimary?: () => void;
@@ -36,18 +36,15 @@ export function ServicePageShell({
 }: ServicePageShellProps) {
   const { safeBack } = useSafeNavigation();
 
-  // Use Georgian if available, fallback to English
   const displayTitle = titleKa || title;
   const displaySubtitle = subtitleKa || subtitle;
   const displayPrimaryLabel = primaryLabelKa || primaryLabel || "დაწყება";
 
   return (
     <div className="min-h-screen bg-[#05070A] text-white overflow-hidden relative">
-      {/* Background */}
       <div className="fixed inset-0 z-0 bg-gradient-to-b from-[#05070A] via-[#0a0f1a] to-[#05070A]" />
       
       <div className="relative z-10 min-h-screen flex flex-col max-w-4xl mx-auto p-4">
-        {/* Header */}
         <header className="flex items-center gap-4 mb-6 pt-4">
           <button
             onClick={() => safeBack("/workspace")}
@@ -65,14 +62,12 @@ export function ServicePageShell({
           </div>
         </header>
 
-        {/* Toast notification */}
         {toast && (
           <div className="mb-4 p-4 rounded-xl bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 text-center">
             {toast}
           </div>
         )}
 
-        {/* Content */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -80,16 +75,25 @@ export function ServicePageShell({
         >
           <div className="text-center mb-8">
             <div className="relative w-24 h-24 mx-auto mb-4">
-              <Image
-                src={icon}
-                alt={displayTitle}
-                fill
-                className="object-contain"
-                onError={(e) => {
-                  (e.target as HTMLImageElement).style.display = 'none';
-                  e.currentTarget.parentElement?.classList.add('bg-gradient-to-br', 'from-cyan-400', 'to-blue-600', 'rounded-2xl');
-                }}
-              />
+              {icon ? (
+                <Image
+                  src={icon}
+                  alt={displayTitle}
+                  fill
+                  className="object-contain"
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).style.display = 'none';
+                    e.currentTarget.parentElement?.classList.add('bg-gradient-to-br', 'from-cyan-400', 'to-blue-600', 'rounded-2xl', 'flex', 'items-center', 'justify-center');
+                    const fallback = document.createElement('div');
+                    fallback.innerHTML = '<svg class="w-12 h-12 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>';
+                    e.currentTarget.parentElement?.appendChild(fallback.firstChild!);
+                  }}
+                />
+              ) : (
+                <div className="w-full h-full rounded-2xl bg-gradient-to-br from-cyan-400 to-blue-600 flex items-center justify-center">
+                  <Sparkles className="w-12 h-12 text-white" />
+                </div>
+              )}
             </div>
             <h1 className="text-3xl font-bold mb-2 bg-gradient-to-r from-white to-cyan-200 bg-clip-text text-transparent">
               {displayTitle}
@@ -98,7 +102,6 @@ export function ServicePageShell({
             {description && <p className="text-slate-400">{description}</p>}
           </div>
 
-          {/* Primary action button */}
           {onPrimary && (
             <div className="text-center mb-8">
               <button
@@ -117,5 +120,4 @@ export function ServicePageShell({
   );
 }
 
-// Default export (უკან თავსებადობისთვის)
 export default ServicePageShell;
