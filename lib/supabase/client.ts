@@ -1,7 +1,8 @@
-import { createBrowserClient } from '@supabase/ssr'
+// ვარიანტი A: თუ @supabase/ssr არ გინდა
+import { createClient } from '@supabase/supabase-js'
 import { getPublicEnv } from '@/lib/env/public'
 
-export const supabase = createBrowserClient(
-  getPublicEnv('NEXT_PUBLIC_SUPABASE_URL'),      // ✅ type-safe, throws if missing
-  getPublicEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY')  // ✅ type-safe, throws if missing
+export const supabase = createClient(
+  getPublicEnv('NEXT_PUBLIC_SUPABASE_URL'),
+  getPublicEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY')
 )
