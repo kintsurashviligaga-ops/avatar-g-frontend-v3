@@ -2,121 +2,83 @@
 
 import React from "react";
 import { motion } from "framer-motion";
-import { ArrowLeft, Sparkles, Crown } from "lucide-react";
-import Image from "next/image";
-import { useSafeNavigation } from "@/lib/navigation";
+import { ArrowLeft, Home } from "lucide-react";
+import Link from "next/link";
+import { useNavigation } from "@/lib/navigation";
 
 interface ServicePageShellProps {
+  children: React.ReactNode;
   title: string;
-  titleKa?: string;
-  subtitle: string;
-  subtitleKa?: string;
   description?: string;
-  icon?: string;
-  primaryLabel?: string;
-  primaryLabelKa?: string;
-  onPrimary?: () => void;
-  toast?: string | null;
-  isPremium?: boolean;
-  children?: React.ReactNode;
+  icon?: React.ReactNode;
+  gradient?: string;
 }
 
-export function ServicePageShell({
+export default function ServicePageShell({
+  children,
   title,
-  titleKa,
-  subtitle,
-  subtitleKa,
   description,
   icon,
-  primaryLabel,
-  primaryLabelKa,
-  onPrimary,
-  toast,
-  isPremium,
-  children,
+  gradient = "from-cyan-500 to-blue-600",
 }: ServicePageShellProps) {
-  const { safeBack } = useSafeNavigation();
-
-  const displayTitle = titleKa || title;
-  const displaySubtitle = subtitleKa || subtitle;
-  const displayPrimaryLabel = primaryLabelKa || primaryLabel || "დაწყება";
+  const { goBack } = useNavigation();
 
   return (
-    <div className="min-h-screen bg-[#05070A] text-white overflow-hidden relative">
-      <div className="fixed inset-0 z-0 bg-gradient-to-b from-[#05070A] via-[#0a0f1a] to-[#05070A]" />
+    <div className="relative min-h-screen bg-[#05070A]">
+      {/* Background gradient */}
+      <div className={`absolute inset-0 bg-gradient-to-br ${gradient} opacity-5`} />
       
-      <div className="relative z-10 min-h-screen flex flex-col max-w-4xl mx-auto p-4">
-        <header className="flex items-center gap-4 mb-6 pt-4">
-          <button
-            onClick={() => safeBack("/workspace")}
-            className="flex items-center gap-2 p-3 rounded-xl bg-white/5 border border-white/10 hover:border-cyan-500/30 transition-colors group"
-          >
-            <ArrowLeft className="w-5 h-5 group-hover:-translate-x-0.5 transition-transform" />
-            <span className="text-sm">უკან</span>
-          </button>
-          
-          <div className="flex-1" />
-          
-          <div className="flex items-center gap-2">
-            {isPremium && <Crown className="w-5 h-5 text-amber-400" />}
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-            <span className="text-xs text-slate-400">ონლაინ</span>
-          </div>
-        </header>
-
-        {toast && (
-          <div className="mb-4 p-4 rounded-xl bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 text-center">
-            {toast}
-          </div>
-        )}
-
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="flex-1"
-        >
-          <div className="text-center mb-8">
-            <div className="relative w-24 h-24 mx-auto mb-4">
-              {icon ? (
-                <Image
-                  src={icon}
-                  alt={displayTitle}
-                  fill
-                  className="object-contain"
-                  onError={(e) => {
-                    (e.target as HTMLImageElement).style.display = 'none';
-                    e.currentTarget.parentElement?.classList.add('bg-gradient-to-br', 'from-cyan-400', 'to-blue-600', 'rounded-2xl');
-                  }}
-                />
-              ) : (
-                <div className={`w-full h-full rounded-2xl flex items-center justify-center ${isPremium ? 'bg-gradient-to-br from-amber-400 to-orange-600' : 'bg-gradient-to-br from-cyan-400 to-blue-600'}`}>
-                  {isPremium ? <Crown className="w-12 h-12 text-white" /> : <Sparkles className="w-12 h-12 text-white" />}
-                </div>
-              )}
-            </div>
-            <h1 className="text-3xl font-bold mb-2 bg-gradient-to-r from-white to-cyan-200 bg-clip-text text-transparent">
-              {displayTitle}
-            </h1>
-            <p className={`text-lg mb-2 ${isPremium ? 'text-amber-400' : 'text-cyan-400'}`}>{displaySubtitle}</p>
-            {description && <p className="text-slate-400">{description}</p>}
-          </div>
-
-          {onPrimary && (
-            <div className="text-center mb-8">
-              <button
-                onClick={onPrimary}
-                className={`px-8 py-4 rounded-2xl text-white font-semibold shadow-lg transition-shadow ${isPremium ? 'bg-gradient-to-r from-amber-500 to-orange-600 shadow-amber-500/25 hover:shadow-amber-500/40' : 'bg-gradient-to-r from-cyan-500 to-blue-600 shadow-cyan-500/25 hover:shadow-cyan-500/40'}`}
+      {/* Header */}
+      <motion.header
+        initial={{ y: -20, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        className="fixed top-0 left-0 right-0 z-50 bg-[#05070A]/80 backdrop-blur-xl border-b border-white/10"
+      >
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between h-16">
+            {/* Left: Back Button */}
+            <div className="flex items-center gap-4">
+              <motion.button
+                whileHover={{ scale: 1.05, x: -2 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={() => goBack("/workspace")}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5 border border-white/10 text-gray-300 hover:text-white hover:bg-white/10 hover:border-white/20 transition-all"
               >
-                {displayPrimaryLabel}
-              </button>
+                <ArrowLeft className="w-4 h-4" />
+                <span className="text-sm font-medium">Back</span>
+              </motion.button>
+
+              <Link href="/workspace">
+                <motion.div
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5 border border-white/10 text-gray-300 hover:text-white hover:bg-white/10 hover:border-white/20 transition-all"
+                >
+                  <Home className="w-4 h-4" />
+                  <span className="text-sm font-medium hidden sm:inline">Workspace</span>
+                </motion.div>
+              </Link>
             </div>
-          )}
-          
-          {children}
-        </motion.div>
-      </div>
+
+            {/* Center: Title */}
+            <div className="flex items-center gap-3">
+              {icon && <div className={`p-2 rounded-lg bg-gradient-to-br ${gradient}`}>{icon}</div>}
+              <div className="hidden md:block">
+                <h1 className="text-lg font-bold text-white">{title}</h1>
+                {description && <p className="text-xs text-gray-400">{description}</p>}
+              </div>
+            </div>
+
+            {/* Right: Placeholder for actions */}
+            <div className="w-24" />
+          </div>
+        </div>
+      </motion.header>
+
+      {/* Main Content */}
+      <main className="relative z-10 pt-24 pb-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
+        {children}
+      </main>
     </div>
   );
 }
-
-export default ServicePageShell;
