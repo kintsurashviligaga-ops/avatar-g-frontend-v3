@@ -2,7 +2,7 @@
 
 import React, { useState, useCallback } from "react";
 import { Check, Loader2, X, Upload } from "lucide-react";
-import ServicePageShell from "../../../components/ServicePageShell";
+import ServicePageShell from "@/components/ServicePageShell";
 
 type JobStatus = "queued" | "processing" | "done" | "error";
 
