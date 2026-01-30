@@ -8,21 +8,38 @@ import { useSafeNavigation } from "@/lib/navigation";
 
 interface ServicePageShellProps {
   title: string;
+  titleKa?: string;
   subtitle: string;
-  description: string;
+  subtitleKa?: string;
+  description?: string;
   icon: string;
+  primaryLabel?: string;
+  primaryLabelKa?: string;
+  onPrimary?: () => void;
+  toast?: string | null;
   children?: React.ReactNode;
 }
 
 // Named export
 export function ServicePageShell({
   title,
+  titleKa,
   subtitle,
+  subtitleKa,
   description,
   icon,
+  primaryLabel,
+  primaryLabelKa,
+  onPrimary,
+  toast,
   children,
 }: ServicePageShellProps) {
   const { safeBack } = useSafeNavigation();
+
+  // Use Georgian if available, fallback to English
+  const displayTitle = titleKa || title;
+  const displaySubtitle = subtitleKa || subtitle;
+  const displayPrimaryLabel = primaryLabelKa || primaryLabel || "დაწყება";
 
   return (
     <div className="min-h-screen bg-[#05070A] text-white overflow-hidden relative">
@@ -48,6 +65,13 @@ export function ServicePageShell({
           </div>
         </header>
 
+        {/* Toast notification */}
+        {toast && (
+          <div className="mb-4 p-4 rounded-xl bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 text-center">
+            {toast}
+          </div>
+        )}
+
         {/* Content */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -58,7 +82,7 @@ export function ServicePageShell({
             <div className="relative w-24 h-24 mx-auto mb-4">
               <Image
                 src={icon}
-                alt={title}
+                alt={displayTitle}
                 fill
                 className="object-contain"
                 onError={(e) => {
@@ -68,11 +92,23 @@ export function ServicePageShell({
               />
             </div>
             <h1 className="text-3xl font-bold mb-2 bg-gradient-to-r from-white to-cyan-200 bg-clip-text text-transparent">
-              {title}
+              {displayTitle}
             </h1>
-            <p className="text-cyan-400 text-lg mb-2">{subtitle}</p>
-            <p className="text-slate-400">{description}</p>
+            <p className="text-cyan-400 text-lg mb-2">{displaySubtitle}</p>
+            {description && <p className="text-slate-400">{description}</p>}
           </div>
+
+          {/* Primary action button */}
+          {onPrimary && (
+            <div className="text-center mb-8">
+              <button
+                onClick={onPrimary}
+                className="px-8 py-4 rounded-2xl bg-gradient-to-r from-cyan-500 to-blue-600 text-white font-semibold shadow-lg shadow-cyan-500/25 hover:shadow-cyan-500/40 transition-shadow"
+              >
+                {displayPrimaryLabel}
+              </button>
+            </div>
+          )}
           
           {children}
         </motion.div>
