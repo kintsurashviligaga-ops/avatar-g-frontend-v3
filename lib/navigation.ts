@@ -30,16 +30,6 @@ export function useSafeNavigation() {
       return;
     }
     
-    if (window.history.length > 2) {
-      const prevPath = document.referrer;
-      const isInternal = prevPath.includes(window.location.host);
-      
-      if (isInternal) {
-        router.back();
-        return;
-      }
-    }
-    
     router.push(fallback);
   }, [router]);
 
