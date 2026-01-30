@@ -22,11 +22,11 @@ export default function ImageArchitectPage() {
   const [jobs, setJobs] = useState<Job[]>([]);
 
   const [prompt, setPrompt] = useState("");
-  const [negativePrompt, setNegativePrompt] = useState("");
   const [style, setStyle] = useState(STYLES[0]);
   const [aspect, setAspect] = useState(ASPECTS[0]);
   const [quality, setQuality] = useState(QUALITIES[1]);
-  const [steps, setSteps] = useState(30);
+  const [creativity, setCreativity] = useState(5);
+  const [steps, setSteps] = useState(25);
   const [useReference, setUseReference] = useState(false);
 
   const showToast = useCallback((message: string) => {
@@ -37,7 +37,7 @@ export default function ImageArchitectPage() {
   const handleGenerate = useCallback(() => {
     const newJob: Job = {
       id: `job-${Date.now()}`,
-      name: prompt.slice(0, 30) || "New Image",
+      name: prompt.slice(0, 30) || "Untitled Image",
       status: "queued",
       createdAt: new Date(),
     };
@@ -55,7 +55,7 @@ export default function ImageArchitectPage() {
       setJobs((prev) =>
         prev.map((j) => (j.id === newJob.id ? { ...j, status: "done" } : j))
       );
-    }, 7000);
+    }, 6000);
   }, [prompt, showToast]);
 
   const clearCompleted = useCallback(() => {
@@ -78,9 +78,9 @@ export default function ImageArchitectPage() {
   return (
     <ServicePageShell
       title="Image Architect"
-      titleKa="სურათი"
-      subtitle="AI Image Generation"
-      subtitleKa="AI სურათის გენერაცია"
+      titleKa="სურათის არქიტექტორი"
+      subtitle="Image Generation"
+      subtitleKa="სურათის გენერაცია"
       primaryLabel="Generate Image"
       primaryLabelKa="სურათის გენერაცია"
       onPrimary={handleGenerate}
@@ -88,31 +88,16 @@ export default function ImageArchitectPage() {
     >
       <section className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-sm p-4">
         <h2 className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-4">
-          Prompt
+          პრომპტი
         </h2>
-        <div className="space-y-3">
+        <div className="space-y-4">
           <textarea
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
-            placeholder="აღწერეთ სურათი..."
-            rows={3}
-            className="w-full px-3 py-2.5 rounded-xl bg-black/40 border border-white/10 text-sm resize-none focus:outline-none focus:border-cyan-500/50 placeholder:text-gray-600"
+            placeholder="აღწერეთ სურათი რომელიც გინდათ..."
+            rows={4}
+            className="w-full px-3 py-2.5 rounded-xl bg-black/40 border border-white/10 text-sm resize-none focus:outline-none focus:border-cyan-500/50"
           />
-          <textarea
-            value={negativePrompt}
-            onChange={(e) => setNegativePrompt(e.target.value)}
-            placeholder="Negative prompt (რისი თავიდან აცილება გინდათ)..."
-            rows={2}
-            className="w-full px-3 py-2.5 rounded-xl bg-black/40 border border-white/10 text-sm resize-none focus:outline-none focus:border-cyan-500/50 placeholder:text-gray-600"
-          />
-        </div>
-      </section>
-
-      <section className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-sm p-4">
-        <h2 className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-4">
-          პარამეტრები
-        </h2>
-        <div className="space-y-3">
           <div>
             <label className="text-xs text-gray-500 mb-1.5 block">სტილი</label>
             <select
@@ -127,48 +112,78 @@ export default function ImageArchitectPage() {
               ))}
             </select>
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs text-gray-500 mb-1.5 block">პროპორცია</label>
-              <select
-                value={aspect}
-                onChange={(e) => setAspect(e.target.value)}
-                className="w-full px-3 py-2.5 rounded-xl bg-black/40 border border-white/10 text-sm focus:outline-none focus:border-cyan-500/50"
-              >
-                {ASPECTS.map((a) => (
-                  <option key={a} value={a}>
-                    {a}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="text-xs text-gray-500 mb-1.5 block">ხარისხი</label>
-              <select
-                value={quality}
-                onChange={(e) => setQuality(e.target.value)}
-                className="w-full px-3 py-2.5 rounded-xl bg-black/40 border border-white/10 text-sm focus:outline-none focus:border-cyan-500/50"
-              >
-                {QUALITIES.map((q) => (
-                  <option key={q} value={q}>
-                    {q}
-                  </option>
-                ))}
-              </select>
-            </div>
+        </div>
+      </section>
+
+      <section className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-sm p-4">
+        <h2 className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-4">
+          ფორმატი
+        </h2>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="text-xs text-gray-500 mb-1.5 block">პროპორცია</label>
+            <select
+              value={aspect}
+              onChange={(e) => setAspect(e.target.value)}
+              className="w-full px-3 py-2.5 rounded-xl bg-black/40 border border-white/10 text-sm focus:outline-none focus:border-cyan-500/50"
+            >
+              {ASPECTS.map((a) => (
+                <option key={a} value={a}>
+                  {a}
+                </option>
+              ))}
+            </select>
           </div>
           <div>
+            <label className="text-xs text-gray-500 mb-1.5 block">ხარისხი</label>
+            <select
+              value={quality}
+              onChange={(e) => setQuality(e.target.value)}
+              className="w-full px-3 py-2.5 rounded-xl bg-black/40 border border-white/10 text-sm focus:outline-none focus:border-cyan-500/50"
+            >
+              {QUALITIES.map((q) => (
+                <option key={q} value={q}>
+                  {q}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+      </section>
+
+      <section className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-sm p-4">
+        <h2 className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-4">
+          გენერაციის კონტროლი
+        </h2>
+        <div className="space-y-4">
+          <div>
             <div className="flex justify-between mb-1.5">
-              <label className="text-xs text-gray-500">Steps</label>
+              <label className="text-xs text-gray-500">კრეატიულობა</label>
+              <span className="text-xs text-cyan-400">{creativity}</span>
+            </div>
+            <input
+              type="range"
+              min={1}
+              max={10}
+              value={creativity}
+              onChange={(e) => setCreativity(Number(e.target.value))}
+              className="w-full h-1.5 bg-white/10 rounded-lg appearance-none cursor-pointer accent-cyan-500"
+            />
+          </div>
+
+          <div>
+            <div className="flex justify-between mb-1.5">
+              <label className="text-xs text-gray-500">სტეპები</label>
               <span className="text-xs text-cyan-400">{steps}</span>
             </div>
             <input
               type="range"
               min={10}
               max={50}
+              step={5}
               value={steps}
               onChange={(e) => setSteps(Number(e.target.value))}
-              className="w-full h-1.5 bg-white/10 rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-cyan-500"
+              className="w-full h-1.5 bg-white/10 rounded-lg appearance-none cursor-pointer accent-cyan-500"
             />
           </div>
         </div>
@@ -176,12 +191,12 @@ export default function ImageArchitectPage() {
 
       <section className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-sm p-4">
         <h2 className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-4">
-          რეფერენსი
+          რეფერენსები
         </h2>
         <div className="space-y-4">
           <button className="w-full py-4 rounded-xl border border-dashed border-white/20 bg-black/20 flex flex-col items-center gap-2 hover:border-cyan-500/50 transition-colors">
             <Upload className="w-6 h-6 text-gray-500" />
-            <span className="text-xs text-gray-400">ატვირთეთ სურათი</span>
+            <span className="text-xs text-gray-400">ატვირთეთ სურათი რეფერენსად</span>
           </button>
           <label className="flex items-center gap-2 cursor-pointer">
             <input
@@ -190,7 +205,7 @@ export default function ImageArchitectPage() {
               onChange={(e) => setUseReference(e.target.checked)}
               className="w-4 h-4 rounded border-white/20 bg-black/40 text-cyan-500 focus:ring-cyan-500/50"
             />
-            <span className="text-xs text-gray-400">Image-to-Image</span>
+            <span className="text-xs text-gray-400">გამოიყენე რეფერენსი</span>
           </label>
         </div>
       </section>
@@ -225,7 +240,11 @@ export default function ImageArchitectPage() {
                     <p className="text-xs font-medium text-white truncate max-w-[150px]">
                       {job.name}
                     </p>
-                    <p className="text-[10px] text-gray-500 capitalize">{job.status}</p>
+                    <p className="text-[10px] text-gray-500 capitalize">
+                      {job.status === "queued" ? "რიგშია" : 
+                       job.status === "processing" ? "მუშავდება" : 
+                       job.status === "done" ? "დასრულებული" : "შეცდომა"}
+                    </p>
                   </div>
                 </div>
                 <span className="text-[10px] text-gray-600">
