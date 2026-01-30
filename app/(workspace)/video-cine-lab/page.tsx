@@ -45,7 +45,7 @@ export default function VideoCineLabPage() {
     };
 
     setJobs((prev) => [newJob, ...prev]);
-    showToast("Video generation started.");
+    showToast("ვიდეოს გენერაცია დაიწყო");
 
     setTimeout(() => {
       setJobs((prev) =>
@@ -80,25 +80,28 @@ export default function VideoCineLabPage() {
   return (
     <ServicePageShell
       title="Video Cine-Lab"
+      titleKa="ვიდეო ლაბორატორია"
       subtitle="Cinematic Generator"
+      subtitleKa="კინემატოგრაფიული ვიდეო"
       primaryLabel="Generate Video"
+      primaryLabelKa="ვიდეოს გენერაცია"
       onPrimary={handleGenerate}
       toast={toast}
     >
       <section className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-sm p-4">
         <h2 className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-4">
-          Concept
+          კონცეფცია
         </h2>
         <div className="space-y-4">
           <textarea
             value={concept}
             onChange={(e) => setConcept(e.target.value)}
-            placeholder="Describe your video idea..."
+            placeholder="აღწერეთ თქვენი ვიდეოს იდეა..."
             rows={4}
             className="w-full px-3 py-2.5 rounded-xl bg-black/40 border border-white/10 text-sm resize-none focus:outline-none focus:border-cyan-500/50"
           />
           <div>
-            <label className="text-xs text-gray-500 mb-1.5 block">Scene Style</label>
+            <label className="text-xs text-gray-500 mb-1.5 block">სცენის სტილი</label>
             <select
               value={sceneStyle}
               onChange={(e) => setSceneStyle(e.target.value)}
@@ -116,11 +119,11 @@ export default function VideoCineLabPage() {
 
       <section className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-sm p-4">
         <h2 className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-4">
-          Format
+          ფორმატი
         </h2>
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="text-xs text-gray-500 mb-1.5 block">Aspect</label>
+            <label className="text-xs text-gray-500 mb-1.5 block">პროპორცია</label>
             <select
               value={aspect}
               onChange={(e) => setAspect(e.target.value)}
@@ -134,7 +137,7 @@ export default function VideoCineLabPage() {
             </select>
           </div>
           <div>
-            <label className="text-xs text-gray-500 mb-1.5 block">Duration</label>
+            <label className="text-xs text-gray-500 mb-1.5 block">ხანგრძლივობა</label>
             <select
               value={duration}
               onChange={(e) => setDuration(e.target.value)}
@@ -152,11 +155,11 @@ export default function VideoCineLabPage() {
 
       <section className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-sm p-4">
         <h2 className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-4">
-          Visual Controls
+          ვიზუალური კონტროლი
         </h2>
         <div className="space-y-4">
           <div>
-            <label className="text-xs text-gray-500 mb-1.5 block">Visual Style</label>
+            <label className="text-xs text-gray-500 mb-1.5 block">ვიზუალური სტილი</label>
             <select
               value={visualStyle}
               onChange={(e) => setVisualStyle(e.target.value)}
@@ -172,7 +175,7 @@ export default function VideoCineLabPage() {
 
           <div>
             <div className="flex justify-between mb-1.5">
-              <label className="text-xs text-gray-500">Motion</label>
+              <label className="text-xs text-gray-500">მოძრაობა</label>
               <span className="text-xs text-cyan-400">{motionLevel}</span>
             </div>
             <input
@@ -187,7 +190,7 @@ export default function VideoCineLabPage() {
 
           <div>
             <div className="flex justify-between mb-1.5">
-              <label className="text-xs text-gray-500">Detail</label>
+              <label className="text-xs text-gray-500">დეტალიზაცია</label>
               <span className="text-xs text-cyan-400">{detail}</span>
             </div>
             <input
@@ -204,12 +207,12 @@ export default function VideoCineLabPage() {
 
       <section className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-sm p-4">
         <h2 className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-4">
-          Optional Assets
+          რეფერენსები
         </h2>
         <div className="space-y-4">
           <button className="w-full py-4 rounded-xl border border-dashed border-white/20 bg-black/20 flex flex-col items-center gap-2 hover:border-cyan-500/50 transition-colors">
             <Upload className="w-6 h-6 text-gray-500" />
-            <span className="text-xs text-gray-400">Upload Image/Video Reference</span>
+            <span className="text-xs text-gray-400">ატვირთეთ სურათი/ვიდეო</span>
           </button>
           <label className="flex items-center gap-2 cursor-pointer">
             <input
@@ -218,7 +221,7 @@ export default function VideoCineLabPage() {
               onChange={(e) => setUseReference(e.target.checked)}
               className="w-4 h-4 rounded border-white/20 bg-black/40 text-cyan-500 focus:ring-cyan-500/50"
             />
-            <span className="text-xs text-gray-400">Use as Reference</span>
+            <span className="text-xs text-gray-400">გამოიყენე რეფერენსი</span>
           </label>
         </div>
       </section>
@@ -226,21 +229,21 @@ export default function VideoCineLabPage() {
       <section className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-sm p-4">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-xs font-medium text-gray-400 uppercase tracking-wider">
-            Queue
+            რიგი
           </h2>
           {jobs.some((j) => j.status === "done") && (
             <button
               onClick={clearCompleted}
               className="text-[10px] text-gray-500 hover:text-white transition-colors"
             >
-              Clear Completed
+              გასუფთავება
             </button>
           )}
         </div>
 
         <div className="space-y-2">
           {jobs.length === 0 ? (
-            <p className="text-xs text-gray-600 text-center py-4">No jobs in queue</p>
+            <p className="text-xs text-gray-600 text-center py-4">რიგი ცარიელია</p>
           ) : (
             jobs.map((job) => (
               <div
@@ -253,7 +256,11 @@ export default function VideoCineLabPage() {
                     <p className="text-xs font-medium text-white truncate max-w-[150px]">
                       {job.name}
                     </p>
-                    <p className="text-[10px] text-gray-500 capitalize">{job.status}</p>
+                    <p className="text-[10px] text-gray-500 capitalize">
+                      {job.status === "queued" ? "რიგშია" : 
+                       job.status === "processing" ? "მუშავდება" : 
+                       job.status === "done" ? "დასრულებული" : "შეცდომა"}
+                    </p>
                   </div>
                 </div>
                 <span className="text-[10px] text-gray-600">
