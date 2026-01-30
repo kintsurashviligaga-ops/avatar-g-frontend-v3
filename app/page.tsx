@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { 
   Video, 
@@ -18,113 +19,32 @@ import {
 } from "lucide-react";
 
 const services = [
-  {
-    id: "video-cine-lab",
-    title: "Video Cine-Lab",
-    description: "Cinematic video generation",
-    icon: Video,
-    color: "from-cyan-500 to-blue-600",
-    href: "/video-cine-lab",
-  },
-  {
-    id: "voice-lab",
-    title: "Voice Lab",
-    description: "AI voice generation",
-    icon: Mic,
-    color: "from-purple-500 to-pink-600",
-    href: "/voice-lab",
-  },
-  {
-    id: "avatar-builder",
-    title: "Avatar Builder",
-    description: "Create AI avatars",
-    icon: UserCircle,
-    color: "from-green-500 to-emerald-600",
-    href: "/avatar-builder",
-  },
-  {
-    id: "game-forge",
-    title: "Game Forge",
-    description: "Game asset generation",
-    icon: Gamepad2,
-    color: "from-orange-500 to-red-600",
-    href: "/game-forge",
-  },
-  {
-    id: "ai-production",
-    title: "AI Production",
-    description: "Image generation",
-    icon: ImageIcon,
-    color: "from-yellow-500 to-amber-600",
-    href: "/ai-production",
-  },
-  {
-    id: "music-studio",
-    title: "Music Studio",
-    description: "AI music generation",
-    icon: Music,
-    color: "from-pink-500 to-rose-600",
-    href: "/music-studio",
-  },
-  {
-    id: "magic-studio",
-    title: "Magic Studio",
-    description: "AI-powered effects",
-    icon: Wand2,
-    color: "from-indigo-500 to-violet-600",
-    href: "/magic-studio",
-  },
-  {
-    id: "sparkle-lab",
-    title: "Sparkle Lab",
-    description: "Visual effects",
-    icon: Sparkles,
-    color: "from-teal-500 to-cyan-600",
-    href: "/sparkle-lab",
-  },
-  {
-    id: "text-craft",
-    title: "Text Craft",
-    description: "AI text generation",
-    icon: FileText,
-    color: "from-blue-500 to-indigo-600",
-    href: "/text-craft",
-  },
-  {
-    id: "ai-agent",
-    title: "AI Agent",
-    description: "Intelligent assistants",
-    icon: Bot,
-    color: "from-red-500 to-pink-600",
-    href: "/ai-agent",
-  },
-  {
-    id: "photo-lab",
-    title: "Photo Lab",
-    description: "Photo enhancement",
-    icon: Camera,
-    color: "from-lime-500 to-green-600",
-    href: "/photo-lab",
-  },
-  {
-    id: "art-studio",
-    title: "Art Studio",
-    description: "Digital art creation",
-    icon: Palette,
-    color: "from-fuchsia-500 to-purple-600",
-    href: "/art-studio",
-  },
-  {
-    id: "code-lab",
-    title: "Code Lab",
-    description: "AI code generation",
-    icon: Code2,
-    color: "from-slate-500 to-gray-600",
-    href: "/code-lab",
-  },
+  { id: "video-cine-lab", title: "Video Cine-Lab", description: "Cinematic video generation", icon: Video, color: "from-cyan-500 to-blue-600", href: "/video-cine-lab" },
+  { id: "voice-lab", title: "Voice Lab", description: "AI voice generation", icon: Mic, color: "from-purple-500 to-pink-600", href: "/voice-lab" },
+  { id: "avatar-builder", title: "Avatar Builder", description: "Create AI avatars", icon: UserCircle, color: "from-green-500 to-emerald-600", href: "/avatar-builder" },
+  { id: "game-forge", title: "Game Forge", description: "Game asset generation", icon: Gamepad2, color: "from-orange-500 to-red-600", href: "/game-forge" },
+  { id: "ai-production", title: "AI Production", description: "Image generation", icon: ImageIcon, color: "from-yellow-500 to-amber-600", href: "/ai-production" },
+  { id: "music-studio", title: "Music Studio", description: "AI music generation", icon: Music, color: "from-pink-500 to-rose-600", href: "/music-studio" },
+  { id: "magic-studio", title: "Magic Studio", description: "AI-powered effects", icon: Wand2, color: "from-indigo-500 to-violet-600", href: "/magic-studio" },
+  { id: "sparkle-lab", title: "Sparkle Lab", description: "Visual effects", icon: Sparkles, color: "from-teal-500 to-cyan-600", href: "/sparkle-lab" },
+  { id: "text-craft", title: "Text Craft", description: "AI text generation", icon: FileText, color: "from-blue-500 to-indigo-600", href: "/text-craft" },
+  { id: "ai-agent", title: "AI Agent", description: "Intelligent assistants", icon: Bot, color: "from-red-500 to-pink-600", href: "/ai-agent" },
+  { id: "photo-lab", title: "Photo Lab", description: "Photo enhancement", icon: Camera, color: "from-lime-500 to-green-600", href: "/photo-lab" },
+  { id: "art-studio", title: "Art Studio", description: "Digital art creation", icon: Palette, color: "from-fuchsia-500 to-purple-600", href: "/art-studio" },
+  { id: "code-lab", title: "Code Lab", description: "AI code generation", icon: Code2, color: "from-slate-500 to-gray-600", href: "/code-lab" },
 ];
 
 export default function HomePage() {
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!mounted) {
+    return <div className="min-h-screen bg-black" />;
+  }
+
   return (
     <div className="min-h-screen bg-black text-white">
       {/* Header */}
@@ -154,7 +74,7 @@ export default function HomePage() {
           </p>
         </div>
 
-        {/* Services Grid - 13 cards */}
+        {/* Services Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           {services.map((service) => {
             const Icon = service.icon;
