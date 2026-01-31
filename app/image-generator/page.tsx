@@ -1,4 +1,4 @@
-// "use client";
+"use client";
 
 import { ImageIcon } from "lucide-react";
 import ServicePageShell from "@/components/ServicePageShell";
@@ -26,6 +26,3 @@ export default function ImageGeneratorPage() {
     </ServicePageShell>
   );
 }
-... ServicePageShell with ImageIcon icon, fuchsia gradient
-// Input: Text prompt
-// Output: Generated image
