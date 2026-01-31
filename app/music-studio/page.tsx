@@ -1,28 +1,32 @@
 "use client";
 
-import { Music } from "lucide-react";
 import ServicePageShell from "@/components/ServicePageShell";
+import ServiceContent from "@/components/ServiceContent";
+import { ToastProvider } from "@/components/Toast";
+import { Music } from "lucide-react";
+import { services } from "@/lib/services-config";
 
 export default function MusicStudioPage() {
+  const service = services.find((s) => s.id === "music-studio")!;
+
   return (
-    <ServicePageShell
-      serviceId="music-studio"
-      serviceNameKa="მუსიკის სტუდია"
-      serviceNameEn="Music Studio"
-      serviceDescriptionKa="AI მუსიკის შექმნა და რედაქტირება"
-      serviceDescriptionEn="AI music generation and editing"
-      icon={<Music className="w-8 h-8 text-white" />}
-      gradient="from-pink-400 to-rose-600"
-    >
-      <div className="p-8 text-center">
-        <Music className="w-16 h-16 mx-auto mb-4 text-pink-400" />
-        <h3 className="text-xl font-semibold text-white mb-2">
-          Music Studio
-        </h3>
-        <p className="text-gray-400">
-          Create original music with AI-powered tools.
-        </p>
-      </div>
-    </ServicePageShell>
+    <ToastProvider>
+      <ServicePageShell
+        serviceId={service.id}
+        titleKa={service.nameKa}
+        titleEn={service.nameEn}
+        subtitleKa="AI მუსიკის სტუდია"
+        subtitleEn="AI Music Studio"
+        descriptionKa={service.descriptionKa}
+        descriptionEn={service.descriptionEn}
+        icon={<Music className="w-12 h-12 text-cyan-400" />}
+        primaryCtaKa={service.ctaPrimaryKa}
+        primaryCtaEn={service.ctaPrimaryEn}
+        secondaryCtaKa={service.ctaSecondaryKa}
+        secondaryCtaEn={service.ctaSecondaryEn}
+      >
+        <ServiceContent />
+      </ServicePageShell>
+    </ToastProvider>
   );
 }
