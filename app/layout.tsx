@@ -1,32 +1,25 @@
-import type { Metadata, Viewport } from 'next'
-import './globals.css'
+import type { Metadata } from "next";
+import { Inter } from "next/font/google";
+import "../styles/globals.css";
+import { LanguageProvider } from "@/components/LanguageProvider";
+
+const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: 'Avatar G — Universal AI Assistant',
-  description: 'პრემიუმ AI სივრცე ჩათისთვის, კონტენტისთვის და გადაწყვეტილებისთვის.',
-  keywords: ['AI', 'Georgia', 'Chatbot', 'Premium', 'Agent G'],
-  authors: [{ name: 'Avatar G Team' }],
-  manifest: '/manifest.json',
-}
-
-export const viewport: Viewport = {
-  width: 'device-width',
-  initialScale: 1,
-  maximumScale: 1,
-  userScalable: false,
-  themeColor: '#05070A',
-}
+  title: "Avatar G - Georgian AI Content Platform",
+  description: "საქართველოს პირველი native AI კონტენტ პლატფორმა",
+};
 
 export default function RootLayout({
   children,
 }: {
-  children: React.ReactNode
+  children: React.ReactNode;
 }) {
   return (
-    <html lang="ka">
-      <body className="antialiased bg-[#05070A] text-white overflow-hidden">
-        {children}
+    <html lang="ka" suppressHydrationWarning>
+      <body className={inter.className}>
+        <LanguageProvider>{children}</LanguageProvider>
       </body>
     </html>
-  )
+  );
 }
