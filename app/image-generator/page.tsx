@@ -7,7 +7,9 @@ import { Image } from "lucide-react";
 import { services } from "@/lib/services-config";
 
 export default function ImageGeneratorPage() {
-  const service = services.find((s) => s.id === "image-generator")!;
+  const service = services.find((s) => s.id === "image-generator");
+
+  if (!service) return null;
 
   return (
     <ToastProvider>
@@ -29,3 +31,4 @@ export default function ImageGeneratorPage() {
       </ServicePageShell>
     </ToastProvider>
   );
+}
