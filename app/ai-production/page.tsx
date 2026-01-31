@@ -1,28 +1,32 @@
 "use client";
 
-import { Sparkles } from "lucide-react";
 import ServicePageShell from "@/components/ServicePageShell";
+import ServiceContent from "@/components/ServiceContent";
+import { ToastProvider } from "@/components/Toast";
+import { Target } from "lucide-react";
+import { services } from "@/lib/services-config";
 
 export default function AIProductionPage() {
+  const service = services.find((s) => s.id === "ai-production")!;
+
   return (
-    <ServicePageShell
-      serviceId="ai-production"
-      serviceNameKa="AI პროდაქშენი"
-      serviceNameEn="AI Production"
-      serviceDescriptionKa="AI ტექნოლოგიებით შექმნილი პროფესიული კონტენტის წარმოება"
-      serviceDescriptionEn="Professional content production using AI technologies"
-      icon={<Sparkles className="w-8 h-8 text-white" />}
-      gradient="from-cyan-500 to-blue-600"
-    >
-      <div className="p-8 text-center">
-        <Sparkles className="w-16 h-16 mx-auto mb-4 text-cyan-400" />
-        <h3 className="text-xl font-semibold text-white mb-2">
-          AI Production Pipeline
-        </h3>
-        <p className="text-gray-400">
-          Transform your production brief into complete AI-generated content.
-        </p>
-      </div>
-    </ServicePageShell>
+    <ToastProvider>
+      <ServicePageShell
+        serviceId={service.id}
+        titleKa={service.nameKa}
+        titleEn={service.nameEn}
+        subtitleKa="სრული პროდუქცია"
+        subtitleEn="Complete Production"
+        descriptionKa={service.descriptionKa}
+        descriptionEn={service.descriptionEn}
+        icon={<Target className="w-12 h-12 text-cyan-400" />}
+        primaryCtaKa={service.ctaPrimaryKa}
+        primaryCtaEn={service.ctaPrimaryEn}
+        secondaryCtaKa={service.ctaSecondaryKa}
+        secondaryCtaEn={service.ctaSecondaryEn}
+      >
+        <ServiceContent />
+      </ServicePageShell>
+    </ToastProvider>
   );
 }
