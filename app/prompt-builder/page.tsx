@@ -1,4 +1,4 @@
-// .."use client";
+"use client";
 
 import { Wand2 } from "lucide-react";
 import ServicePageShell from "@/components/ServicePageShell";
@@ -26,6 +26,3 @@ export default function PromptBuilderPage() {
     </ServicePageShell>
   );
 }
-. ServicePageShell with Wand2 icon, teal gradient
-// Input: Rough idea
-// Output: Optimized prompts
