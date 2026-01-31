@@ -5,18 +5,7 @@
 @layer base {
   html,
   body {
-    @apply overflow-x-hidden;
-    @apply bg-[#05070A];
-    @apply text-[#E5E7EB];
-    @apply antialiased;
-  }
-
-  * {
-    @apply border-border;
-  }
-
-  body {
-    @apply min-h-screen;
+    @apply overflow-x-hidden bg-[#05070A] text-[#E5E7EB] antialiased min-h-screen;
   }
 }
 

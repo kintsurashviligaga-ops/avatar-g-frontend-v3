@@ -9,16 +9,16 @@ interface LanguageContextType {
   setLanguage: (lang: Language) => void;
 }
 
-const LanguageContext = createContext<LanguageContextType | undefined>(
-  undefined
-);
+const LanguageContext = createContext<LanguageContextType>({
+  language: "ka",
+  setLanguage: () => {},
+});
 
 export function LanguageProvider({ children }: { children: React.ReactNode }) {
   const [language, setLanguageState] = useState<Language>("ka");
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    // Load language from localStorage on mount
     const stored = localStorage.getItem("avatar_g_language") as Language;
     if (stored === "ka" || stored === "en") {
       setLanguageState(stored);
@@ -28,10 +28,11 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
 
   const setLanguage = (lang: Language) => {
     setLanguageState(lang);
-    localStorage.setItem("avatar_g_language", lang);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("avatar_g_language", lang);
+    }
   };
 
-  // Prevent hydration mismatch
   if (!mounted) {
     return <>{children}</>;
   }
@@ -45,8 +46,5 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
 
 export function useLanguage() {
   const context = useContext(LanguageContext);
-  if (context === undefined) {
-    throw new Error("useLanguage must be used within a LanguageProvider");
-  }
   return context;
 }
