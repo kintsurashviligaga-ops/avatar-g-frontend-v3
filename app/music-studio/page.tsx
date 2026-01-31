@@ -1,5 +1,4 @@
-// ... ServicePageShell with Music icon, pink gradient
-// Input: Text pr"use client";
+"use client";
 
 import { Music } from "lucide-react";
 import ServicePageShell from "@/components/ServicePageShell";
@@ -27,5 +26,3 @@ export default function MusicStudioPage() {
     </ServicePageShell>
   );
 }
-ompt or humming
-// Output: Generated music track
