@@ -1,28 +1,32 @@
 "use client";
 
-import { Briefcase } from "lucide-react";
 import ServicePageShell from "@/components/ServicePageShell";
+import ServiceContent from "@/components/ServiceContent";
+import { ToastProvider } from "@/components/Toast";
+import { Briefcase } from "lucide-react";
+import { services } from "@/lib/services-config";
 
 export default function BusinessAgentPage() {
+  const service = services.find((s) => s.id === "business-agent")!;
+
   return (
-    <ServicePageShell
-      serviceId="business-agent"
-      serviceNameKa="ბიზნეს აგენტი"
-      serviceNameEn="Business Agent"
-      serviceDescriptionKa="AI ბიზნეს ასისტენტი თქვენი ბიზნესის განვითარებისთვის"
-      serviceDescriptionEn="AI business assistant for your business growth"
-      icon={<Briefcase className="w-8 h-8 text-white" />}
-      gradient="from-slate-400 to-gray-600"
-    >
-      <div className="p-8 text-center">
-        <Briefcase className="w-16 h-16 mx-auto mb-4 text-gray-400" />
-        <h3 className="text-xl font-semibold text-white mb-2">
-          Business Agent
-        </h3>
-        <p className="text-gray-400">
-          AI-powered business assistance and automation.
-        </p>
-      </div>
-    </ServicePageShell>
+    <ToastProvider>
+      <ServicePageShell
+        serviceId={service.id}
+        titleKa={service.nameKa}
+        titleEn={service.nameEn}
+        subtitleKa="ბიზნეს ავტომატიზაცია"
+        subtitleEn="Business Automation"
+        descriptionKa={service.descriptionKa}
+        descriptionEn={service.descriptionEn}
+        icon={<Briefcase className="w-12 h-12 text-cyan-400" />}
+        primaryCtaKa={service.ctaPrimaryKa}
+        primaryCtaEn={service.ctaPrimaryEn}
+        secondaryCtaKa={service.ctaSecondaryKa}
+        secondaryCtaEn={service.ctaSecondaryEn}
+      >
+        <ServiceContent />
+      </ServicePageShell>
+    </ToastProvider>
   );
 }
