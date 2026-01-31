@@ -1,133 +1,110 @@
-// Complete bilingual dictionary - Georgian FIRST, English second
-export const translations = {
-  ka: {
-    // Navigation
-    workspace: "სამუშაო სივრცე",
-    settings: "პარამეტრები",
-    memory: "მეხსიერება",
-    pricing: "ფასები",
-    onboarding: "გაცნობა",
-    
-    // Agent G
-    agentG: "Agent G",
-    agentGTitle: "თქვენი პერსონალური ასისტენტი",
-    readyToAssist: "მზად არის დასახმარებლად",
-    
-    // Services (All 13)
-    services: {
-      agentG: "Agent G (Luxury)",
-      avatarBuilder: "Avatar Builder",
-      voiceLab: "Voice Lab",
-      imageArchitect: "Image Architect",
-      musicStudio: "Music Studio",
-      videoCineLab: "Video Cine Lab",
-      gameForge: "Game Forge",
-      aiProduction: "AI Production",
-      businessAgent: "Business Agent",
-      promptBuilder: "Prompt Builder",
-      imageGenerator: "Image Generator",
-      videoGenerator: "Video Generator",
-      textIntelligence: "Text Intelligence",
-    },
-    
-    // Chat
-    typeMessage: "შეიყვანეთ შეტყობინება...",
-    send: "გაგზავნა",
-    
-    // Buttons
-    getStarted: "დაწყება",
-    viewDemo: "დემო ნახვა",
-    backToWorkspace: "სამუშაო სივრცეში დაბრუნება",
-    
-    // Settings
-    language: "ენა",
-    georgian: "ქართული",
-    english: "English",
-    memorySettings: "მეხსიერების პარამეტრები",
-    privacy: "კონფიდენციალურობა",
-    replayOnboarding: "გაცნობის ხელახლა ჩვენება",
-    
-    // Pricing
-    premiumPlan: "Agent G Premium",
-    price: "2000 GEL / წელიწადი",
-    unlocks: "გახსნის",
-    
-    // Errors
-    notFound: "გვერდი ვერ მოიძებნა",
-    returnToWorkspace: "სამუშაო სივრცეში დაბრუნება",
+export type Language = "ka" | "en";
+
+// Translation dictionary
+const translations = {
+  // Common
+  "common.back": {
+    ka: "უკან",
+    en: "Back",
   },
-  en: {
-    // Navigation
-    workspace: "Workspace",
-    settings: "Settings",
-    memory: "Memory",
-    pricing: "Pricing",
-    onboarding: "Onboarding",
-    
-    // Agent G
-    agentG: "Agent G",
-    agentGTitle: "Your Personal Assistant",
-    readyToAssist: "Ready to assist",
-    
-    // Services (All 13)
-    services: {
-      agentG: "Agent G (Luxury)",
-      avatarBuilder: "Avatar Builder",
-      voiceLab: "Voice Lab",
-      imageArchitect: "Image Architect",
-      musicStudio: "Music Studio",
-      videoCineLab: "Video Cine Lab",
-      gameForge: "Game Forge",
-      aiProduction: "AI Production",
-      businessAgent: "Business Agent",
-      promptBuilder: "Prompt Builder",
-      imageGenerator: "Image Generator",
-      videoGenerator: "Video Generator",
-      textIntelligence: "Text Intelligence",
-    },
-    
-    // Chat
-    typeMessage: "Type your message...",
-    send: "Send",
-    
-    // Buttons
-    getStarted: "Get Started",
-    viewDemo: "View Demo",
-    backToWorkspace: "Return to Workspace",
-    
-    // Settings
-    language: "Language",
-    georgian: "Georgian",
-    english: "English",
-    memorySettings: "Memory Settings",
-    privacy: "Privacy",
-    replayOnboarding: "Replay Onboarding",
-    
-    // Pricing
-    premiumPlan: "Agent G Premium",
-    price: "2000 GEL / year",
-    unlocks: "Unlocks",
-    
-    // Errors
-    notFound: "Page Not Found",
-    returnToWorkspace: "Return to Workspace",
+  "common.active": {
+    ka: "აქტიური",
+    en: "Active",
+  },
+  "common.loading": {
+    ka: "იტვირთება...",
+    en: "Loading...",
+  },
+
+  // Workspace
+  "workspace.title": {
+    ka: "სამუშაო არე",
+    en: "Workspace",
+  },
+  "workspace.online": {
+    ka: "ონლაინ",
+    en: "Online",
+  },
+  "workspace.offline": {
+    ka: "ოფლაინ",
+    en: "Offline",
+  },
+  "workspace.agentLabelKa": {
+    ka: "Agent G",
+    en: "Agent G",
+  },
+  "workspace.agentLabelEn": {
+    ka: "Agent G",
+    en: "Agent G",
+  },
+  "workspace.welcomeTitle": {
+    ka: "გამარჯობა, Avatar G-ზე",
+    en: "Welcome to Avatar G",
+  },
+  "workspace.welcomeSubtitle": {
+    ka: "აირჩიე სერვისი ზემოდან ან დაწერე შენი მოთხოვნა",
+    en: "Choose a service above or type your request",
+  },
+  "workspace.primaryCTA": {
+    ka: "დაიწყე შექმნა",
+    en: "Start Creating",
+  },
+  "workspace.secondaryCTA": {
+    ka: "გაიგე მეტი",
+    en: "Learn More",
+  },
+  "workspace.inputPlaceholder": {
+    ka: "დაწერე შენი მოთხოვნა...",
+    en: "Type your request...",
+  },
+  "workspace.sampleResponse": {
+    ka: "გაიგე რომ მზად ვარ დაგეხმაროთ! რით შემიძლია დაგეხმაროთ?",
+    en: "I'm ready to help! How can I assist you?",
+  },
+  "workspace.primaryCTAToast": {
+    ka: "იწყება შექმნა...",
+    en: "Starting creation...",
+  },
+  "workspace.secondaryCTAToast": {
+    ka: "იხილეთ დამატებითი ინფორმაცია",
+    en: "View additional information",
+  },
+
+  // Service Pages Common
+  "service.projectSetup": {
+    ka: "პროექტის კონფიგურაცია",
+    en: "Project Setup",
+  },
+  "service.parameters": {
+    ka: "პარამეტრები",
+    en: "Parameters",
+  },
+  "service.comingSoon": {
+    ka: "მალე ხელმისაწვდომი იქნება",
+    en: "Coming Soon",
   },
 };
 
-export type Language = "ka" | "en";
-export type Translations = typeof translations;
-
-export function getTranslation(lang: Language, key: string): string {
-  const keys = key.split(".");
-  let value: any = translations[lang];
+// Translation function that works with LanguageProvider
+export function t(key: string, lang?: Language): string {
+  // If lang is provided, use it; otherwise try to get from localStorage
+  let language = lang;
   
-  for (const k of keys) {
-    if (value && typeof value === "object") {
-      value = value[k];
-    } else {
-      return key; // Fallback to key if not found
-    }
+  if (!language && typeof window !== "undefined") {
+    const stored = localStorage.getItem("avatar_g_language") as Language;
+    language = stored || "ka";
   }
   
-  return typeof value === "string" ? value : key;
+  if (!language) {
+    language = "ka";
+  }
+
+  const translation = translations[key as keyof typeof translations];
+
+  if (!translation) {
+    console.warn(`Translation missing for key: ${key}`);
+    return key;
+  }
+
+  return translation[language];
 }
