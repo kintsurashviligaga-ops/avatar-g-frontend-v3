@@ -1,28 +1,32 @@
 "use client";
 
-import { Wand2 } from "lucide-react";
 import ServicePageShell from "@/components/ServicePageShell";
+import ServiceContent from "@/components/ServiceContent";
+import { ToastProvider } from "@/components/Toast";
+import { FileText } from "lucide-react";
+import { services } from "@/lib/services-config";
 
 export default function PromptBuilderPage() {
+  const service = services.find((s) => s.id === "prompt-builder")!;
+
   return (
-    <ServicePageShell
-      serviceId="prompt-builder"
-      serviceNameKa="პრომპტის შექმნა"
-      serviceNameEn="Prompt Builder"
-      serviceDescriptionKa="პროფესიული AI პრომპტების აწყობა"
-      serviceDescriptionEn="Build professional AI prompts"
-      icon={<Wand2 className="w-8 h-8 text-white" />}
-      gradient="from-teal-400 to-cyan-600"
-    >
-      <div className="p-8 text-center">
-        <Wand2 className="w-16 h-16 mx-auto mb-4 text-teal-400" />
-        <h3 className="text-xl font-semibold text-white mb-2">
-          Prompt Builder
-        </h3>
-        <p className="text-gray-400">
-          Craft perfect prompts for any AI model.
-        </p>
-      </div>
-    </ServicePageShell>
+    <ToastProvider>
+      <ServicePageShell
+        serviceId={service.id}
+        titleKa={service.nameKa}
+        titleEn={service.nameEn}
+        subtitleKa="პრომპტების შემქმნელი"
+        subtitleEn="Prompt Creator"
+        descriptionKa={service.descriptionKa}
+        descriptionEn={service.descriptionEn}
+        icon={<FileText className="w-12 h-12 text-cyan-400" />}
+        primaryCtaKa={service.ctaPrimaryKa}
+        primaryCtaEn={service.ctaPrimaryEn}
+        secondaryCtaKa={service.ctaSecondaryKa}
+        secondaryCtaEn={service.ctaSecondaryEn}
+      >
+        <ServiceContent />
+      </ServicePageShell>
+    </ToastProvider>
   );
 }
