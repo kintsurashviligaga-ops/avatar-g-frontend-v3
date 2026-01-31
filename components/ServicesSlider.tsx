@@ -1,217 +1,59 @@
 "use client";
 
-import React, { useState, useRef } from "react";
-import { motion } from "framer-motion";
-import Link from "next/link";
-import {
-  Video,
-  Mic,
-  UserCircle,
-  Gamepad2,
-  Image as ImageIcon,
-  Music,
-  Sparkles,
-  FileText,
-  Crown,
-  Camera,
-  Palette,
-  Briefcase,
-  Zap,
-} from "lucide-react";
-
-const services = [
-  {
-    id: "video-cine-lab",
-    title: "ვიდეო",
-    subtitle: "Cinematic",
-    icon: Video,
-    color: "from-orange-500 to-red-600",
-    href: "/video-cine-lab",
-    implemented: true,
-  },
-  {
-    id: "voice-lab",
-    title: "ხმა",
-    subtitle: "Voice AI",
-    icon: Mic,
-    color: "from-purple-500 to-pink-600",
-    href: "/voice-lab",
-    implemented: true,
-  },
-  {
-    id: "avatar-builder",
-    title: "ავატარი",
-    subtitle: "Avatars",
-    icon: UserCircle,
-    color: "from-green-500 to-emerald-600",
-    href: "/avatar-builder",
-    implemented: true,
-  },
-  {
-    id: "image-architect",
-    title: "სურათი",
-    subtitle: "Images",
-    icon: ImageIcon,
-    color: "from-cyan-500 to-blue-600",
-    href: "/image-architect",
-    implemented: true,
-  },
-  {
-    id: "music-studio",
-    title: "მუსიკა",
-    subtitle: "Music",
-    icon: Music,
-    color: "from-pink-500 to-rose-600",
-    href: "/music-studio",
-    implemented: true,
-  },
-  {
-    id: "game-forge",
-    title: "თამაში",
-    subtitle: "Game Assets",
-    icon: Gamepad2,
-    color: "from-indigo-500 to-violet-600",
-    href: "/game-forge",
-    implemented: true,
-  },
-  {
-    id: "ai-production",
-    title: "პროდაქშენი",
-    subtitle: "Production",
-    icon: Zap,
-    color: "from-yellow-500 to-amber-600",
-    href: "/ai-production",
-    implemented: true,
-  },
-  {
-    id: "business-agent",
-    title: "ბიზნესი",
-    subtitle: "Business",
-    icon: Briefcase,
-    color: "from-blue-500 to-indigo-600",
-    href: "/business-agent",
-    implemented: true,
-  },
-  {
-    id: "prompt-builder",
-    title: "პრომპტი",
-    subtitle: "Prompts",
-    icon: Sparkles,
-    color: "from-teal-500 to-cyan-600",
-    href: "/prompt-builder",
-    implemented: true,
-  },
-  {
-    id: "image-generator",
-    title: "გენერატორი",
-    subtitle: "Fast Gen",
-    icon: Camera,
-    color: "from-lime-500 to-green-600",
-    href: "/image-generator",
-    implemented: true,
-  },
-  {
-    id: "video-generator",
-    title: "ვიდეო გენ",
-    subtitle: "Quick Video",
-    icon: Video,
-    color: "from-red-500 to-pink-600",
-    href: "/video-generator",
-    implemented: true,
-  },
-  {
-    id: "text-intelligence",
-    title: "ტექსტი",
-    subtitle: "Writing",
-    icon: FileText,
-    color: "from-slate-500 to-gray-600",
-    href: "/text-intelligence",
-    implemented: true,
-  },
-  {
-    id: "agent-g",
-    title: "Agent G",
-    subtitle: "Premium",
-    icon: Crown,
-    color: "from-amber-500 to-yellow-600",
-    href: "/agent-g",
-    implemented: true,
-    isPremium: true,
-  },
-];
+import { useRouter, usePathname } from "next/navigation";
+import { services } from "@/lib/services-config";
+import { useLanguage } from "./LanguageProvider";
 
 export default function ServicesSlider() {
-  const [activeIndex, setActiveIndex] = useState(0);
-  const containerRef = useRef<HTMLDivElement>(null);
-
-  const handleScroll = () => {
-    if (!containerRef.current) return;
-    const scrollLeft = containerRef.current.scrollLeft;
-    const itemWidth = 280 + 16;
-    const newIndex = Math.round(scrollLeft / itemWidth);
-    setActiveIndex(newIndex);
-  };
+  const router = useRouter();
+  const pathname = usePathname();
+  const { language } = useLanguage();
 
   return (
-    <div className="w-full">
-      <div
-        ref={containerRef}
-        onScroll={handleScroll}
-        className="flex gap-4 overflow-x-auto snap-x snap-mandatory scrollbar-hide px-4 py-2"
-        style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
-      >
-        {services.map((service, index) => {
-          const Icon = service.icon;
+    <div className="w-full overflow-x-auto hide-scrollbar">
+      <div className="flex gap-3 pb-2 min-w-max">
+        {services.map((service) => {
+          const isActive = pathname === service.route;
+
           return (
-            <Link
+            <button
               key={service.id}
-              href={service.href}
-              className="flex-shrink-0 w-[280px] snap-center"
+              onClick={() => router.push(service.route)}
+              className={`group relative px-4 py-3 rounded-lg transition-all duration-300 flex-shrink-0 ${
+                isActive
+                  ? "bg-white/10 border border-cyan-500/40"
+                  : "bg-white/5 hover:bg-white/10 border border-cyan-500/20 hover:border-cyan-500/40"
+              }`}
             >
-              <motion.div
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                className={`relative p-6 rounded-3xl border backdrop-blur-sm transition-all ${
-                  index === activeIndex
-                    ? "bg-white/10 border-white/20"
-                    : "bg-white/5 border-white/10"
+              {/* Glow Effect */}
+              <div
+                className={`absolute inset-0 rounded-lg transition-all duration-300 ${
+                  isActive
+                    ? "bg-cyan-500/10"
+                    : "bg-cyan-500/0 group-hover:bg-cyan-500/10"
                 }`}
-              >
-                {service.isPremium && (
-                  <div className="absolute top-3 right-3">
-                    <Crown className="w-4 h-4 text-amber-400" />
-                  </div>
-                )}
+              />
 
-                <div
-                  className={`w-14 h-14 rounded-2xl bg-gradient-to-br ${service.color} flex items-center justify-center mb-4`}
-                >
-                  <Icon className="w-7 h-7 text-white" />
+              {/* Content */}
+              <div className="relative flex items-center gap-2">
+                <span className="text-xl">{service.icon}</span>
+                <div className="text-left">
+                  <p className="text-sm font-medium text-slate-200 whitespace-nowrap">
+                    {language === "ka" ? service.nameKa : service.nameEn}
+                  </p>
+                  {service.id === "agent-g" && (
+                    <p className="text-xs text-cyan-400">Luxury</p>
+                  )}
                 </div>
+              </div>
 
-                <h3 className="text-lg font-bold mb-1">{service.title}</h3>
-                <p className="text-sm text-gray-400">{service.subtitle}</p>
-
-                <div className="mt-4 flex items-center justify-between">
-                  <span className="text-xs text-cyan-400">Open →</span>
-                  <div className="w-2 h-2 rounded-full bg-green-500" />
-                </div>
-              </motion.div>
-            </Link>
+              {/* Active Indicator */}
+              {isActive && (
+                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-cyan-400" />
+              )}
+            </button>
           );
         })}
-      </div>
-
-      {/* Pagination Dots */}
-      <div className="flex justify-center gap-2 mt-4">
-        {services.map((_, index) => (
-          <div
-            key={index}
-            className={`w-2 h-2 rounded-full transition-all ${
-              index === activeIndex ? "bg-cyan-500 w-4" : "bg-white/20"
-            }`}
-          />
-        ))}
       </div>
     </div>
   );
