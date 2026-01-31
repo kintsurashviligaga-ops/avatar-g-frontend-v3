@@ -3,107 +3,45 @@
 @tailwind utilities;
 
 @layer base {
-  :root {
-    --background: #05070A;
-    --foreground: #E5E7EB;
-    --accent: #22D3EE;
-    --accent-soft: #38BDF8;
-    --glass: rgba(10, 20, 35, 0.55);
-    --glass-border: rgba(255, 255, 255, 0.08);
+  html,
+  body {
+    @apply overflow-x-hidden;
+    @apply bg-[#05070A];
+    @apply text-[#E5E7EB];
+    @apply antialiased;
   }
 
   * {
-    @apply border-white/[0.08];
-  }
-
-  html {
-    scroll-behavior: smooth;
+    @apply border-border;
   }
 
   body {
-    @apply bg-[#05070A] text-gray-100;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
+    @apply min-h-screen;
   }
 }
 
 @layer utilities {
-  /* Hide scrollbar but keep functionality */
-  .scrollbar-hide {
-    -ms-overflow-style: none;
-    scrollbar-width: none;
+  .text-balance {
+    text-wrap: balance;
   }
-  .scrollbar-hide::-webkit-scrollbar {
+
+  .hide-scrollbar::-webkit-scrollbar {
     display: none;
   }
 
-  /* Glass effect utilities */
-  .glass {
-    @apply bg-[#0A1423]/55 backdrop-blur-xl border border-white/[0.08];
-  }
-
-  .glass-strong {
-    @apply bg-[#0A1423]/80 backdrop-blur-2xl border border-white/[0.12];
-  }
-
-  /* Premium button styles */
-  .btn-primary {
-    @apply bg-gradient-to-br from-cyan-500 to-blue-600 text-white 
-           shadow-lg shadow-cyan-500/25 
-           hover:shadow-cyan-500/40 
-           active:scale-95 
-           transition-all duration-200;
-  }
-
-  .btn-glass {
-    @apply bg-white/[0.03] border border-white/[0.08] 
-           hover:bg-white/[0.06] hover:border-white/[0.12] 
-           transition-all duration-300;
-  }
-
-  /* Text gradient */
-  .text-gradient {
-    @apply bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent;
-  }
-
-  /* Glow effects */
-  .glow-cyan {
-    box-shadow: 0 0 20px rgba(34, 211, 238, 0.3);
-  }
-
-  .glow-soft {
-    box-shadow: 0 0 40px rgba(34, 211, 238, 0.15);
+  .hide-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
   }
 }
 
-/* Custom range slider */
-input[type="range"] {
-  @apply appearance-none bg-transparent cursor-pointer;
-}
-
-input[type="range"]::-webkit-slider-runnable-track {
-  @apply h-1.5 rounded-full bg-white/10;
-}
-
-input[type="range"]::-webkit-slider-thumb {
-  @apply appearance-none w-4 h-4 rounded-full bg-cyan-400 shadow-lg shadow-cyan-500/50 -mt-1.5 transition-transform hover:scale-110;
-}
-
-input[type="range"]::-moz-range-track {
-  @apply h-1.5 rounded-full bg-white/10;
-}
-
-input[type="range"]::-moz-range-thumb {
-  @apply w-4 h-4 rounded-full bg-cyan-400 shadow-lg shadow-cyan-500/50 border-0;
-}
-
-/* Selection color */
-::selection {
-  @apply bg-cyan-500/30 text-white;
-}
-
-/* Focus styles */
-*:focus-visible {
-  @apply outline-none ring-2 ring-cyan-500/50 ring-offset-2 ring-offset-[#05070A];
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
