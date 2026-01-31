@@ -2,14 +2,19 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Send, Sparkles, Zap, Crown, User, Music, Video, Code, Palette, Gamepad2, Briefcase, Wand2, Image as ImageIcon, MessageSquare } from "lucide-react";
+import { Send, Sparkles, Zap, Crown, User, Music, Video, Palette, Gamepad2, Briefcase, Wand2, Image as ImageIcon, MessageSquare } from "lucide-react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 
 const SpaceBackground = dynamic(() => import("@/components/SpaceSingularityBackground"), { ssr: false });
-const AgentGOrb = dynamic(() => import("@/components/AgentGOrb"), { ssr: false });
+const AgentGConsole = dynamic(() => import("@/components/AgentGConsole"), { ssr: false });
 
-interface Message { id: string; role: "user" | "agent"; content: string; timestamp: Date; }
+interface Message { 
+  id: string; 
+  role: "user" | "agent"; 
+  content: string; 
+  timestamp: Date; 
+}
 
 const services = [
   { id: "agent-g", nameKa: "Agent G", nameEn: "Agent G (Luxury)", icon: Crown, href: "/agent-g", isPremium: true, color: "from-amber-400 to-yellow-600" },
@@ -31,14 +36,27 @@ function ServiceItem({ service, index }: { service: typeof services[0]; index: n
   const Icon = service.icon;
   return (
     <Link href={service.href}>
-      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5 + index * 0.05 }} whileHover={{ scale: 1.05, y: -2 }} whileTap={{ scale: 0.95 }} className="flex-shrink-0 w-20 cursor-pointer group">
+      <motion.div 
+        initial={{ opacity: 0, y: 20 }} 
+        animate={{ opacity: 1, y: 0 }} 
+        transition={{ delay: 0.5 + index * 0.05 }} 
+        whileHover={{ scale: 1.05, y: -2 }} 
+        whileTap={{ scale: 0.95 }} 
+        className="flex-shrink-0 w-20 cursor-pointer group"
+      >
         <div className={`relative w-16 h-16 mx-auto mb-2 rounded-2xl bg-gradient-to-br ${service.color} p-[1px] shadow-lg shadow-black/50`}>
           <div className="w-full h-full rounded-2xl bg-[rgba(10,20,35,0.9)] backdrop-blur-sm flex items-center justify-center group-hover:bg-[rgba(10,20,35,0.7)] transition-colors">
             <Icon className="w-7 h-7 text-white" strokeWidth={1.5} />
           </div>
-          {service.isPremium && <div className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-gradient-to-br from-amber-400 to-yellow-600 flex items-center justify-center shadow-lg"><Crown className="w-3 h-3 text-white" /></div>}
+          {service.isPremium && (
+            <div className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-gradient-to-br from-amber-400 to-yellow-600 flex items-center justify-center shadow-lg">
+              <Crown className="w-3 h-3 text-white" />
+            </div>
+          )}
         </div>
-        <p className="text-[10px] text-center text-gray-400 group-hover:text-cyan-300 transition-colors leading-tight line-clamp-2">{service.nameKa}</p>
+        <p className="text-[10px] text-center text-gray-400 group-hover:text-cyan-300 transition-colors leading-tight line-clamp-2">
+          {service.nameKa}
+        </p>
       </motion.div>
     </Link>
   );
@@ -47,13 +65,30 @@ function ServiceItem({ service, index }: { service: typeof services[0]; index: n
 function ChatMessage({ message }: { message: Message }) {
   const isUser = message.role === "user";
   return (
-    <motion.div initial={{ opacity: 0, y: 10, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} className={`flex ${isUser ? "justify-end" : "justify-start"} mb-4`}>
+    <motion.div 
+      initial={{ opacity: 0, y: 10, scale: 0.98 }} 
+      animate={{ opacity: 1, y: 0, scale: 1 }} 
+      className={`flex ${isUser ? "justify-end" : "justify-start"} mb-4`}
+    >
       <div className={`max-w-[85%] sm:max-w-[75%] ${isUser ? "items-end" : "items-start"}`}>
-        {!isUser && <div className="flex items-center gap-2 mb-1 ml-1"><div className="w-5 h-5 rounded-full bg-gradient-to-br from-cyan-400 to-blue-600 flex items-center justify-center"><Sparkles className="w-3 h-3 text-white" /></div><span className="text-xs text-cyan-400 font-medium">Agent G</span></div>}
-        <div className={`px-4 py-3 rounded-2xl ${isUser ? "bg-gradient-to-r from-cyan-500 to-blue-600 text-white rounded-br-md shadow-lg shadow-cyan-500/20" : "bg-[rgba(10,20,35,0.7)] backdrop-blur-md border border-cyan-500/20 text-gray-200 rounded-bl-md"}`}>
+        {!isUser && (
+          <div className="flex items-center gap-2 mb-1 ml-1">
+            <div className="w-5 h-5 rounded-full bg-gradient-to-br from-cyan-400 to-blue-600 flex items-center justify-center">
+              <Sparkles className="w-3 h-3 text-white" />
+            </div>
+            <span className="text-xs text-cyan-400 font-medium">Agent G</span>
+          </div>
+        )}
+        <div className={`px-4 py-3 rounded-2xl ${
+          isUser 
+            ? "bg-gradient-to-r from-cyan-500 to-blue-600 text-white rounded-br-md shadow-lg shadow-cyan-500/20" 
+            : "bg-[rgba(10,20,35,0.7)] backdrop-blur-md border border-cyan-500/20 text-gray-200 rounded-bl-md"
+        }`}>
           <p className="text-sm leading-relaxed whitespace-pre-wrap">{message.content}</p>
         </div>
-        <span className="text-[10px] text-gray-600 mt-1 block">{message.timestamp.toLocaleTimeString("ka-GE", { hour: "2-digit", minute: "2-digit" })}</span>
+        <span className="text-[10px] text-gray-600 mt-1 block">
+          {message.timestamp.toLocaleTimeString("ka-GE", { hour: "2-digit", minute: "2-digit" })}
+        </span>
       </div>
     </motion.div>
   );
@@ -61,48 +96,175 @@ function ChatMessage({ message }: { message: Message }) {
 
 export default function WorkspacePage() {
   const [mounted, setMounted] = useState(false);
-  const [messages, setMessages] = useState<Message[]>([{ id: "welcome", role: "agent", content: "გამარჯობა. მზად ვარ დაგეხმარო.\n\nHello. Ready to assist.", timestamp: new Date() }]);
+  const [messages, setMessages] = useState<Message[]>([
+    { 
+      id: "welcome", 
+      role: "agent", 
+      content: "გამარჯობა! მზად ვარ დაგეხმარო.\n\nHello! Ready to assist.", 
+      timestamp: new Date() 
+    }
+  ]);
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
   const [agentState, setAgentState] = useState<"idle" | "thinking">("idle");
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => { setMounted(true); }, []);
-  useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
+  useEffect(() => { 
+    setMounted(true); 
+  }, []);
+
+  useEffect(() => { 
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); 
+  }, [messages]);
 
   const handleSend = () => {
     if (!input.trim()) return;
-    const userMessage: Message = { id: Date.now().toString(), role: "user", content: input, timestamp: new Date() };
+    
+    const userMessage: Message = { 
+      id: Date.now().toString(), 
+      role: "user", 
+      content: input, 
+      timestamp: new Date() 
+    };
+    
     setMessages((prev) => [...prev, userMessage]);
     setInput("");
     setIsTyping(true);
     setAgentState("thinking");
+    
     setTimeout(() => {
-      const agentMessage: Message = { id: (Date.now() + 1).toString(), role: "agent", content: "ვფიქრობ… / Thinking…", timestamp: new Date() };
+      const agentMessage: Message = { 
+        id: (Date.now() + 1).toString(), 
+        role: "agent", 
+        content: "ვფიქრობ… / Thinking…", 
+        timestamp: new Date() 
+      };
       setMessages((prev) => [...prev, agentMessage]);
       setIsTyping(false);
       setAgentState("idle");
     }, 2000);
   };
 
-  if (!mounted) return <div className="fixed inset-0 bg-[#05070A] flex items-center justify-center"><motion.div animate={{ scale: [1, 1.2, 1], opacity: [0.5, 1, 0.5] }} transition={{ duration: 1.5, repeat: Infinity }} className="w-12 h-12 rounded-full bg-gradient-to-br from-cyan-400 to-blue-600" /></div>;
+  if (!mounted) {
+    return (
+      <div className="fixed inset-0 bg-[#05070A] flex items-center justify-center">
+        <motion.div 
+          animate={{ scale: [1, 1.2, 1], opacity: [0.5, 1, 0.5] }} 
+          transition={{ duration: 1.5, repeat: Infinity }} 
+          className="w-12 h-12 rounded-full bg-gradient-to-br from-cyan-400 to-blue-600" 
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="relative min-h-screen bg-[#05070A] overflow-hidden">
       <SpaceBackground />
+      
       <header className="fixed top-0 left-0 right-0 z-50 h-14 bg-[rgba(5,7,10,0.85)] backdrop-blur-xl border-b border-white/5">
         <div className="max-w-4xl mx-auto px-4 h-full flex items-center justify-between">
-          <Link href="/workspace"><motion.div className="flex items-center gap-2 cursor-pointer" whileHover={{ scale: 1.02 }}><div className="w-8 h-8 rounded-lg bg-gradient-to-br from-cyan-400 to-blue-600 flex items-center justify-center shadow-lg shadow-cyan-500/30"><Zap className="w-4 h-4 text-white" fill="currentColor" /></div><span className="text-lg font-bold bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">Avatar G</span></motion.div></Link>
-          <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-white/5 border border-white/10"><div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" /><span className="text-xs text-gray-400">Online</span></div>
-          <Link href="/settings"><motion.div whileHover={{ scale: 1.1 }} className="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center border border-white/10 hover:border-cyan-500/30 transition-colors cursor-pointer"><Sparkles className="w-4 h-4 text-gray-400" /></motion.div></Link>
+          <Link href="/workspace">
+            <motion.div className="flex items-center gap-2 cursor-pointer" whileHover={{ scale: 1.02 }}>
+              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-cyan-400 to-blue-600 flex items-center justify-center shadow-lg shadow-cyan-500/30">
+                <Zap className="w-4 h-4 text-white" fill="currentColor" />
+              </div>
+              <span className="text-lg font-bold bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">
+                Avatar G
+              </span>
+            </motion.div>
+          </Link>
+          
+          <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-white/5 border border-white/10">
+            <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+            <span className="text-xs text-gray-400">Online</span>
+          </div>
+          
+          <Link href="/settings">
+            <motion.div 
+              whileHover={{ scale: 1.1 }} 
+              className="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center border border-white/10 hover:border-cyan-500/30 transition-colors cursor-pointer"
+            >
+              <Sparkles className="w-4 h-4 text-gray-400" />
+            </motion.div>
+          </Link>
         </div>
       </header>
+
       <main className="relative z-10 pt-14 pb-4 h-screen flex flex-col max-w-4xl mx-auto px-4">
-        <div className="flex-shrink-0 py-4 flex flex-col items-center"><AgentGOrb state={agentState} size="md" /><motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.5 }} className="mt-3 text-center"><h2 className="text-base font-semibold text-white">Agent G</h2><p className="text-xs text-cyan-400">მზად არის დასახმარებლად / Ready to assist</p></motion.div></div>
-        <div className="flex-shrink-0 mb-3"><p className="text-[10px] text-gray-600 mb-2 text-center uppercase tracking-wider">სერვისები / Services</p><div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide px-2">{services.map((service, index) => <ServiceItem key={service.id} service={service} index={index} />)}</div></div>
+        <div className="flex-shrink-0 py-4 flex flex-col items-center">
+          <AgentGConsole />
+          <motion.div 
+            initial={{ opacity: 0 }} 
+            animate={{ opacity: 1 }} 
+            transition={{ delay: 0.5 }} 
+            className="mt-3 text-center"
+          >
+            <h2 className="text-base font-semibold text-white">Agent G</h2>
+            <p className="text-xs text-cyan-400">მზად არის დასახმარებლად / Ready to assist</p>
+          </motion.div>
+        </div>
+
+        <div className="flex-shrink-0 mb-3">
+          <p className="text-[10px] text-gray-600 mb-2 text-center uppercase tracking-wider">
+            სერვისები / Services
+          </p>
+          <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide px-2">
+            {services.map((service, index) => (
+              <ServiceItem key={service.id} service={service} index={index} />
+            ))}
+          </div>
+        </div>
+
         <div className="flex-1 min-h-0 flex flex-col">
-          <div className="flex-1 overflow-y-auto rounded-2xl bg-[rgba(10,20,35,0.4)] backdrop-blur-md border border-white/10 p-4 mb-3 shadow-inner"><AnimatePresence>{messages.map((message) => <ChatMessage key={message.id} message={message} />)}</AnimatePresence>{isTyping && <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex items-center gap-2 ml-1"><div className="w-5 h-5 rounded-full bg-gradient-to-br from-cyan-400 to-blue-600 flex items-center justify-center"><Sparkles className="w-3 h-3 text-white" /></div><div className="flex gap-1">{[0, 0.2, 0.4].map((delay) => <motion.div key={delay} animate={{ y: [0, -4, 0] }} transition={{ duration: 0.6, repeat: Infinity, delay }} className="w-2 h-2 rounded-full bg-cyan-400" />)}</div></motion.div>}<div ref={messagesEndRef} /></div>
-          <div className="flex-shrink-0 flex gap-2"><input type="text" value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleSend()} onFocus={() => setAgentState("thinking")} onBlur={() => !isTyping && setAgentState("idle")} placeholder="შეიყვანეთ შეტყობინება... / Type your message..." className="flex-1 px-4 py-3 rounded-xl bg-[rgba(10,20,35,0.6)] backdrop-blur-md border border-white/10 text-white placeholder-gray-500 focus:outline-none focus:border-cyan-500/50 transition-colors text-sm" /><motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} onClick={handleSend} className="px-4 py-3 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 text-white shadow-lg shadow-cyan-500/30"><Send className="w-5 h-5" /></motion.button></div>
+          <div className="flex-1 overflow-y-auto rounded-2xl bg-[rgba(10,20,35,0.4)] backdrop-blur-md border border-white/10 p-4 mb-3 shadow-inner">
+            <AnimatePresence>
+              {messages.map((message) => (
+                <ChatMessage key={message.id} message={message} />
+              ))}
+            </AnimatePresence>
+            
+            {isTyping && (
+              <motion.div 
+                initial={{ opacity: 0 }} 
+                animate={{ opacity: 1 }} 
+                className="flex items-center gap-2 ml-1"
+              >
+                <div className="w-5 h-5 rounded-full bg-gradient-to-br from-cyan-400 to-blue-600 flex items-center justify-center">
+                  <Sparkles className="w-3 h-3 text-white" />
+                </div>
+                <div className="flex gap-1">
+                  {[0, 0.2, 0.4].map((delay) => (
+                    <motion.div 
+                      key={delay} 
+                      animate={{ y: [0, -4, 0] }} 
+                      transition={{ duration: 0.6, repeat: Infinity, delay }} 
+                      className="w-2 h-2 rounded-full bg-cyan-400" 
+                    />
+                  ))}
+                </div>
+              </motion.div>
+            )}
+            <div ref={messagesEndRef} />
+          </div>
+
+          <div className="flex-shrink-0 flex gap-2">
+            <input 
+              type="text" 
+              value={input} 
+              onChange={(e) => setInput(e.target.value)} 
+              onKeyDown={(e) => e.key === "Enter" && handleSend()} 
+              placeholder="შეიყვანეთ შეტყობინება... / Type your message..." 
+              className="flex-1 px-4 py-3 rounded-xl bg-[rgba(10,20,35,0.6)] backdrop-blur-md border border-white/10 text-white placeholder-gray-500 focus:outline-none focus:border-cyan-500/50 transition-colors text-sm" 
+            />
+            <motion.button 
+              whileHover={{ scale: 1.05 }} 
+              whileTap={{ scale: 0.95 }} 
+              onClick={handleSend} 
+              className="px-4 py-3 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 text-white shadow-lg shadow-cyan-500/30"
+            >
+              <Send className="w-5 h-5" />
+            </motion.button>
+          </div>
         </div>
       </main>
     </div>
