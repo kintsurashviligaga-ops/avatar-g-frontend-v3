@@ -1,28 +1,31 @@
 "use client";
 
-import { ImageIcon } from "lucide-react";
 import ServicePageShell from "@/components/ServicePageShell";
+import ServiceContent from "@/components/ServiceContent";
+import { ToastProvider } from "@/components/Toast";
+import { Image } from "lucide-react";
+import { services } from "@/lib/services-config";
 
 export default function ImageGeneratorPage() {
+  const service = services.find((s) => s.id === "image-generator")!;
+
   return (
-    <ServicePageShell
-      serviceId="image-generator"
-      serviceNameKa="გამოსახულების გენერატორი"
-      serviceNameEn="Image Generator"
-      serviceDescriptionKa="ტექსტიდან სურათების AI გენერაცია"
-      serviceDescriptionEn="AI image generation from text prompts"
-      icon={<ImageIcon className="w-8 h-8 text-white" />}
-      gradient="from-fuchsia-400 to-pink-600"
-    >
-      <div className="p-8 text-center">
-        <ImageIcon className="w-16 h-16 mx-auto mb-4 text-fuchsia-400" />
-        <h3 className="text-xl font-semibold text-white mb-2">
-          Image Generator
-        </h3>
-        <p className="text-gray-400">
-          Create stunning images from text descriptions.
-        </p>
-      </div>
-    </ServicePageShell>
+    <ToastProvider>
+      <ServicePageShell
+        serviceId={service.id}
+        titleKa={service.nameKa}
+        titleEn={service.nameEn}
+        subtitleKa="სწრაფი გენერაცია"
+        subtitleEn="Quick Generation"
+        descriptionKa={service.descriptionKa}
+        descriptionEn={service.descriptionEn}
+        icon={<Image className="w-12 h-12 text-cyan-400" />}
+        primaryCtaKa={service.ctaPrimaryKa}
+        primaryCtaEn={service.ctaPrimaryEn}
+        secondaryCtaKa={service.ctaSecondaryKa}
+        secondaryCtaEn={service.ctaSecondaryEn}
+      >
+        <ServiceContent />
+      </ServicePageShell>
+    </ToastProvider>
   );
-}
