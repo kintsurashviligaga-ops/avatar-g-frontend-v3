@@ -1,272 +1,219 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import { useState } from "react";
+import { Send, Sparkles } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Send, Sparkles, Zap, Crown, User, Music, Video, Palette, Gamepad2, Briefcase, Wand2, Image as ImageIcon, MessageSquare } from "lucide-react";
-import Link from "next/link";
-import dynamic from "next/dynamic";
+import AgentOrb from "@/components/AgentOrb";
+import ServicesSlider from "@/components/ServicesSlider";
+import LanguageToggle from "@/components/LanguageToggle";
+import { useToast } from "@/components/Toast";
+import { useLanguage } from "@/components/LanguageProvider";
+import { t } from "@/lib/i18n";
 
-const SpaceBackground = dynamic(() => import("@/components/SpaceSingularityBackground"), { ssr: false });
-const AgentGConsole = dynamic(() => import("@/components/AgentGConsole"), { ssr: false });
-
-interface Message { 
-  id: string; 
-  role: "user" | "agent"; 
-  content: string; 
-  timestamp: Date; 
-}
-
-const services = [
-  { id: "agent-g", nameKa: "Agent G", nameEn: "Agent G (Luxury)", icon: Crown, href: "/agent-g", isPremium: true, color: "from-amber-400 to-yellow-600" },
-  { id: "avatar-builder", nameKa: "Avatar Builder", nameEn: "Avatar Builder", icon: User, href: "/avatar-builder", color: "from-cyan-400 to-blue-600" },
-  { id: "voice-lab", nameKa: "Voice Lab", nameEn: "Voice Lab", icon: Music, href: "/voice-lab", color: "from-emerald-400 to-teal-600" },
-  { id: "image-architect", nameKa: "Image Architect", nameEn: "Image Architect", icon: Palette, href: "/image-architect", color: "from-violet-400 to-purple-600" },
-  { id: "music-studio", nameKa: "Music Studio", nameEn: "Music Studio", icon: Music, href: "/music-studio", color: "from-pink-400 to-rose-600" },
-  { id: "video-cine-lab", nameKa: "Video Cine Lab", nameEn: "Video Cine Lab", icon: Video, href: "/video-cine-lab", color: "from-red-400 to-orange-600" },
-  { id: "game-forge", nameKa: "Game Forge", nameEn: "Game Forge", icon: Gamepad2, href: "/game-forge", color: "from-indigo-400 to-blue-600" },
-  { id: "ai-production", nameKa: "AI Production", nameEn: "AI Production", icon: Sparkles, href: "/ai-production", color: "from-cyan-400 to-sky-600" },
-  { id: "business-agent", nameKa: "Business Agent", nameEn: "Business Agent", icon: Briefcase, href: "/business-agent", color: "from-slate-400 to-gray-600" },
-  { id: "prompt-builder", nameKa: "Prompt Builder", nameEn: "Prompt Builder", icon: Wand2, href: "/prompt-builder", color: "from-teal-400 to-cyan-600" },
-  { id: "image-generator", nameKa: "Image Generator", nameEn: "Image Generator", icon: ImageIcon, href: "/image-generator", color: "from-fuchsia-400 to-pink-600" },
-  { id: "video-generator", nameKa: "Video Generator", nameEn: "Video Generator", icon: Video, href: "/video-generator", color: "from-rose-400 to-red-600" },
-  { id: "text-intelligence", nameKa: "Text Intelligence", nameEn: "Text Intelligence", icon: MessageSquare, href: "/text-intelligence", color: "from-blue-400 to-indigo-600" },
-];
-
-function ServiceItem({ service, index }: { service: typeof services[0]; index: number }) {
-  const Icon = service.icon;
-  return (
-    <Link href={service.href}>
-      <motion.div 
-        initial={{ opacity: 0, y: 20 }} 
-        animate={{ opacity: 1, y: 0 }} 
-        transition={{ delay: 0.5 + index * 0.05 }} 
-        whileHover={{ scale: 1.05, y: -2 }} 
-        whileTap={{ scale: 0.95 }} 
-        className="flex-shrink-0 w-20 cursor-pointer group"
-      >
-        <div className={`relative w-16 h-16 mx-auto mb-2 rounded-2xl bg-gradient-to-br ${service.color} p-[1px] shadow-lg shadow-black/50`}>
-          <div className="w-full h-full rounded-2xl bg-[rgba(10,20,35,0.9)] backdrop-blur-sm flex items-center justify-center group-hover:bg-[rgba(10,20,35,0.7)] transition-colors">
-            <Icon className="w-7 h-7 text-white" strokeWidth={1.5} />
-          </div>
-          {service.isPremium && (
-            <div className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-gradient-to-br from-amber-400 to-yellow-600 flex items-center justify-center shadow-lg">
-              <Crown className="w-3 h-3 text-white" />
-            </div>
-          )}
-        </div>
-        <p className="text-[10px] text-center text-gray-400 group-hover:text-cyan-300 transition-colors leading-tight line-clamp-2">
-          {service.nameKa}
-        </p>
-      </motion.div>
-    </Link>
-  );
-}
-
-function ChatMessage({ message }: { message: Message }) {
-  const isUser = message.role === "user";
-  return (
-    <motion.div 
-      initial={{ opacity: 0, y: 10, scale: 0.98 }} 
-      animate={{ opacity: 1, y: 0, scale: 1 }} 
-      className={`flex ${isUser ? "justify-end" : "justify-start"} mb-4`}
-    >
-      <div className={`max-w-[85%] sm:max-w-[75%] ${isUser ? "items-end" : "items-start"}`}>
-        {!isUser && (
-          <div className="flex items-center gap-2 mb-1 ml-1">
-            <div className="w-5 h-5 rounded-full bg-gradient-to-br from-cyan-400 to-blue-600 flex items-center justify-center">
-              <Sparkles className="w-3 h-3 text-white" />
-            </div>
-            <span className="text-xs text-cyan-400 font-medium">Agent G</span>
-          </div>
-        )}
-        <div className={`px-4 py-3 rounded-2xl ${
-          isUser 
-            ? "bg-gradient-to-r from-cyan-500 to-blue-600 text-white rounded-br-md shadow-lg shadow-cyan-500/20" 
-            : "bg-[rgba(10,20,35,0.7)] backdrop-blur-md border border-cyan-500/20 text-gray-200 rounded-bl-md"
-        }`}>
-          <p className="text-sm leading-relaxed whitespace-pre-wrap">{message.content}</p>
-        </div>
-        <span className="text-[10px] text-gray-600 mt-1 block">
-          {message.timestamp.toLocaleTimeString("ka-GE", { hour: "2-digit", minute: "2-digit" })}
-        </span>
-      </div>
-    </motion.div>
-  );
-}
+type Message = {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  timestamp: Date;
+};
 
 export default function WorkspacePage() {
-  const [mounted, setMounted] = useState(false);
-  const [messages, setMessages] = useState<Message[]>([
-    { 
-      id: "welcome", 
-      role: "agent", 
-      content: "გამარჯობა! მზად ვარ დაგეხმარო.\n\nHello! Ready to assist.", 
-      timestamp: new Date() 
-    }
-  ]);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
-  const [isTyping, setIsTyping] = useState(false);
-  const [agentState, setAgentState] = useState<"idle" | "thinking">("idle");
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [orbState, setOrbState] = useState<
+    "idle" | "thinking" | "processing" | "success" | "error"
+  >("idle");
+  const [isOnline] = useState(true);
+  const { showToast } = useToast();
+  const { language } = useLanguage();
 
-  useEffect(() => { 
-    setMounted(true); 
-  }, []);
-
-  useEffect(() => { 
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); 
-  }, [messages]);
-
-  const handleSend = () => {
+  const handleSend = async () => {
     if (!input.trim()) return;
-    
-    const userMessage: Message = { 
-      id: Date.now().toString(), 
-      role: "user", 
-      content: input, 
-      timestamp: new Date() 
+
+    const userMessage: Message = {
+      id: Date.now().toString(),
+      role: "user",
+      content: input,
+      timestamp: new Date(),
     };
-    
+
     setMessages((prev) => [...prev, userMessage]);
     setInput("");
-    setIsTyping(true);
-    setAgentState("thinking");
-    
+    setOrbState("thinking");
+
+    // Simulate AI response
     setTimeout(() => {
-      const agentMessage: Message = { 
-        id: (Date.now() + 1).toString(), 
-        role: "agent", 
-        content: "ვფიქრობ… / Thinking…", 
-        timestamp: new Date() 
-      };
-      setMessages((prev) => [...prev, agentMessage]);
-      setIsTyping(false);
-      setAgentState("idle");
-    }, 2000);
+      setOrbState("processing");
+      setTimeout(() => {
+        const aiMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          role: "assistant",
+          content: t("workspace.sampleResponse"),
+          timestamp: new Date(),
+        };
+        setMessages((prev) => [...prev, aiMessage]);
+        setOrbState("success");
+        setTimeout(() => setOrbState("idle"), 2000);
+      }, 1500);
+    }, 1000);
   };
 
-  if (!mounted) {
-    return (
-      <div className="fixed inset-0 bg-[#05070A] flex items-center justify-center">
-        <motion.div 
-          animate={{ scale: [1, 1.2, 1], opacity: [0.5, 1, 0.5] }} 
-          transition={{ duration: 1.5, repeat: Infinity }} 
-          className="w-12 h-12 rounded-full bg-gradient-to-br from-cyan-400 to-blue-600" 
-        />
-      </div>
-    );
-  }
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
+    }
+  };
+
+  const handlePrimaryCTA = () => {
+    showToast(t("workspace.primaryCTAToast"), "success");
+  };
+
+  const handleSecondaryCTA = () => {
+    showToast(t("workspace.secondaryCTAToast"), "info");
+  };
 
   return (
-    <div className="relative min-h-screen bg-[#05070A] overflow-hidden">
-      <SpaceBackground />
-      
-      <header className="fixed top-0 left-0 right-0 z-50 h-14 bg-[rgba(5,7,10,0.85)] backdrop-blur-xl border-b border-white/5">
-        <div className="max-w-4xl mx-auto px-4 h-full flex items-center justify-between">
-          <Link href="/workspace">
-            <motion.div className="flex items-center gap-2 cursor-pointer" whileHover={{ scale: 1.02 }}>
-              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-cyan-400 to-blue-600 flex items-center justify-center shadow-lg shadow-cyan-500/30">
-                <Zap className="w-4 h-4 text-white" fill="currentColor" />
-              </div>
-              <span className="text-lg font-bold bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">
-                Avatar G
-              </span>
-            </motion.div>
-          </Link>
-          
-          <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-white/5 border border-white/10">
-            <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-            <span className="text-xs text-gray-400">Online</span>
+    <div className="min-h-screen bg-[#05070A] text-[#E5E7EB] flex flex-col">
+      {/* Top Bar */}
+      <header className="border-b border-cyan-500/20 bg-white/5 backdrop-blur-xl">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+          {/* Logo */}
+          <div className="flex items-center gap-2">
+            <Sparkles className="w-6 h-6 text-cyan-400" />
+            <span className="font-bold text-lg">Avatar G</span>
           </div>
-          
-          <Link href="/settings">
-            <motion.div 
-              whileHover={{ scale: 1.1 }} 
-              className="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center border border-white/10 hover:border-cyan-500/30 transition-colors cursor-pointer"
-            >
-              <Sparkles className="w-4 h-4 text-gray-400" />
-            </motion.div>
-          </Link>
+
+          {/* Title */}
+          <h1 className="text-sm sm:text-base font-medium text-center absolute left-1/2 transform -translate-x-1/2">
+            {t("workspace.title")}
+          </h1>
+
+          {/* Online Indicator + Language Toggle */}
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
+              <div
+                className={`w-2 h-2 rounded-full ${
+                  isOnline ? "bg-green-400" : "bg-red-400"
+                } animate-pulse`}
+              />
+              <span className="text-xs hidden sm:inline">
+                {isOnline ? t("workspace.online") : t("workspace.offline")}
+              </span>
+            </div>
+            <LanguageToggle />
+          </div>
         </div>
       </header>
 
-      <main className="relative z-10 pt-14 pb-4 h-screen flex flex-col max-w-4xl mx-auto px-4">
-        <div className="flex-shrink-0 py-4 flex flex-col items-center">
-          <AgentGConsole />
-          <motion.div 
-            initial={{ opacity: 0 }} 
-            animate={{ opacity: 1 }} 
-            transition={{ delay: 0.5 }} 
-            className="mt-3 text-center"
-          >
-            <h2 className="text-base font-semibold text-white">Agent G</h2>
-            <p className="text-xs text-cyan-400">მზად არის დასახმარებლად / Ready to assist</p>
-          </motion.div>
-        </div>
+      {/* Main Chat Cockpit */}
+      <main className="flex-1 flex items-center justify-center p-4 overflow-hidden">
+        <div className="w-full max-w-5xl h-[calc(100vh-8rem)] flex flex-col">
+          {/* Glass Chat Window */}
+          <div className="flex-1 bg-white/5 backdrop-blur-xl border border-cyan-500/20 rounded-2xl shadow-2xl shadow-cyan-500/10 flex flex-col overflow-hidden">
+            {/* Services Slider - Inside Chat Window */}
+            <div className="p-4 border-b border-cyan-500/10">
+              <ServicesSlider />
+            </div>
 
-        <div className="flex-shrink-0 mb-3">
-          <p className="text-[10px] text-gray-600 mb-2 text-center uppercase tracking-wider">
-            სერვისები / Services
-          </p>
-          <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide px-2">
-            {services.map((service, index) => (
-              <ServiceItem key={service.id} service={service} index={index} />
-            ))}
-          </div>
-        </div>
+            {/* Agent Orb & Messages Area */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-6">
+              {messages.length === 0 ? (
+                // Empty State with Orb
+                <div className="h-full flex flex-col items-center justify-center space-y-8">
+                  <AgentOrb
+                    state={orbState}
+                    labelKa={t("workspace.agentLabelKa")}
+                    labelEn={t("workspace.agentLabelEn")}
+                  />
 
-        <div className="flex-1 min-h-0 flex flex-col">
-          <div className="flex-1 overflow-y-auto rounded-2xl bg-[rgba(10,20,35,0.4)] backdrop-blur-md border border-white/10 p-4 mb-3 shadow-inner">
-            <AnimatePresence>
-              {messages.map((message) => (
-                <ChatMessage key={message.id} message={message} />
-              ))}
-            </AnimatePresence>
-            
-            {isTyping && (
-              <motion.div 
-                initial={{ opacity: 0 }} 
-                animate={{ opacity: 1 }} 
-                className="flex items-center gap-2 ml-1"
-              >
-                <div className="w-5 h-5 rounded-full bg-gradient-to-br from-cyan-400 to-blue-600 flex items-center justify-center">
-                  <Sparkles className="w-3 h-3 text-white" />
+                  <div className="text-center space-y-4 max-w-md">
+                    <h2 className="text-2xl font-semibold text-cyan-400">
+                      {t("workspace.welcomeTitle")}
+                    </h2>
+                    <p className="text-sm text-slate-400">
+                      {t("workspace.welcomeSubtitle")}
+                    </p>
+                  </div>
+
+                  {/* Primary & Secondary CTAs */}
+                  <div className="flex flex-col sm:flex-row gap-3">
+                    <button
+                      onClick={handlePrimaryCTA}
+                      className="px-6 py-3 bg-cyan-500 hover:bg-cyan-400 text-white rounded-lg font-medium transition-colors shadow-lg shadow-cyan-500/25"
+                    >
+                      {t("workspace.primaryCTA")}
+                    </button>
+                    <button
+                      onClick={handleSecondaryCTA}
+                      className="px-6 py-3 bg-white/10 hover:bg-white/20 text-slate-200 rounded-lg font-medium transition-colors border border-cyan-500/30"
+                    >
+                      {t("workspace.secondaryCTA")}
+                    </button>
+                  </div>
                 </div>
-                <div className="flex gap-1">
-                  {[0, 0.2, 0.4].map((delay) => (
-                    <motion.div 
-                      key={delay} 
-                      animate={{ y: [0, -4, 0] }} 
-                      transition={{ duration: 0.6, repeat: Infinity, delay }} 
-                      className="w-2 h-2 rounded-full bg-cyan-400" 
-                    />
-                  ))}
-                </div>
-              </motion.div>
-            )}
-            <div ref={messagesEndRef} />
-          </div>
+              ) : (
+                // Messages
+                <div className="space-y-4">
+                  <AnimatePresence>
+                    {messages.map((message) => (
+                      <motion.div
+                        key={message.id}
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -10 }}
+                        className={`flex ${
+                          message.role === "user"
+                            ? "justify-end"
+                            : "justify-start"
+                        }`}
+                      >
+                        <div
+                          className={`max-w-[80%] sm:max-w-[70%] px-4 py-3 rounded-2xl ${
+                            message.role === "user"
+                              ? "bg-cyan-500/20 border border-cyan-500/30"
+                              : "bg-white/10 border border-slate-700/50"
+                          }`}
+                        >
+                          <p className="text-sm">{message.content}</p>
+                        </div>
+                      </motion.div>
+                    ))}
+                  </AnimatePresence>
 
-          <div className="flex-shrink-0 flex gap-2">
-            <input 
-              type="text" 
-              value={input} 
-              onChange={(e) => setInput(e.target.value)} 
-              onKeyDown={(e) => e.key === "Enter" && handleSend()} 
-              placeholder="შეიყვანეთ შეტყობინება... / Type your message..." 
-              className="flex-1 px-4 py-3 rounded-xl bg-[rgba(10,20,35,0.6)] backdrop-blur-md border border-white/10 text-white placeholder-gray-500 focus:outline-none focus:border-cyan-500/50 transition-colors text-sm" 
-            />
-            <motion.button 
-              whileHover={{ scale: 1.05 }} 
-              whileTap={{ scale: 0.95 }} 
-              onClick={handleSend} 
-              className="px-4 py-3 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 text-white shadow-lg shadow-cyan-500/30"
-            >
-              <Send className="w-5 h-5" />
-            </motion.button>
+                  {/* Orb during conversation */}
+                  {orbState !== "idle" && (
+                    <div className="flex justify-start">
+                      <AgentOrb state={orbState} size="sm" />
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Composer */}
+            <div className="p-4 border-t border-cyan-500/10">
+              <div className="flex gap-3">
+                <input
+                  type="text"
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyPress={handleKeyPress}
+                  placeholder={t("workspace.inputPlaceholder")}
+                  className="flex-1 bg-white/5 border border-cyan-500/20 rounded-lg px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500/50 placeholder-slate-500"
+                />
+                <button
+                  onClick={handleSend}
+                  disabled={!input.trim()}
+                  className="px-4 py-3 bg-cyan-500 hover:bg-cyan-400 disabled:bg-slate-700 disabled:cursor-not-allowed text-white rounded-lg transition-colors shadow-lg shadow-cyan-500/25"
+                >
+                  <Send className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       </main>
     </div>
   );
-}
+                }
