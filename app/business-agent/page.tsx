@@ -1,5 +1,4 @@
-// ... ServicePageShell with Briefcase icon, slate gradient
-// "use client";
+"use client";
 
 import { Briefcase } from "lucide-react";
 import ServicePageShell from "@/components/ServicePageShell";
@@ -27,5 +26,3 @@ export default function BusinessAgentPage() {
     </ServicePageShell>
   );
 }
-Input: Business task
-// Output: Analysis / strategy / documents
