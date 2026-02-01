@@ -1,13 +1,14 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
-import Providers from "./providers";
+import { LanguageProvider } from "@/components/LanguageProvider";
+import { ToastProvider } from "@/components/Toast";
 
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
   title: "Avatar G - Georgian AI Content Platform",
-  description: "საქართველოში პირველი native AI კონტენტის პლატფორმა",
+  description: "საქართველოს პირველი native AI კონტენტ პლატფორმა",
 };
 
 export default function RootLayout({
@@ -18,7 +19,10 @@ export default function RootLayout({
   return (
     <html lang="ka" suppressHydrationWarning>
       <body className={inter.className}>
-        <Providers>{children}</Providers>
+        <LanguageProvider>
+          <ToastProvider>{children}</ToastProvider>
+        </LanguageProvider>
       </body>
     </html>
   );
+}
