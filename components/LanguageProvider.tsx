@@ -16,14 +16,13 @@ const LanguageContext = createContext<LanguageContextType>({
 
 export function LanguageProvider({ children }: { children: React.ReactNode }) {
   const [language, setLanguageState] = useState<Language>("ka");
-  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
+    // Only run on client side
     const stored = localStorage.getItem("avatar_g_language") as Language;
     if (stored === "ka" || stored === "en") {
       setLanguageState(stored);
     }
-    setMounted(true);
   }, []);
 
   const setLanguage = (lang: Language) => {
@@ -32,10 +31,6 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
       localStorage.setItem("avatar_g_language", lang);
     }
   };
-
-  if (!mounted) {
-    return <>{children}</>;
-  }
 
   return (
     <LanguageContext.Provider value={{ language, setLanguage }}>
