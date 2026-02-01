@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { ToastProvider } from "@/components/Toast";
-import { Mic, Play, Pause, Download, AudioLines, Upload } from "lucide-react";
+import { Mic, Music } from "lucide-react";
 import ChatWindow from "@/components/shared/ChatWindow";
 import ParameterSlider from "@/components/shared/ParameterSlider";
 import FileUploadZone from "@/components/shared/FileUploadZone";
@@ -44,9 +44,7 @@ export default function VoiceLabPage() {
 
   const handleGenerate = () => {
     if (!text.trim() && voiceSamples.length === 0) return;
-
     setIsGenerating(true);
-
     setTimeout(() => {
       setGeneratedAudio("https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3");
       setIsGenerating(false);
@@ -78,9 +76,7 @@ export default function VoiceLabPage() {
               <button
                 onClick={() => setMode("tts")}
                 className={`px-6 py-2 rounded-md text-sm font-medium transition-all ${
-                  mode === "tts"
-                    ? "bg-cyan-500 text-white"
-                    : "text-slate-400 hover:text-slate-200"
+                  mode === "tts" ? "bg-cyan-500 text-white" : "text-slate-400 hover:text-slate-200"
                 }`}
               >
                 {language === "ka" ? "ტექსტი → ხმა" : "Text to Speech"}
@@ -88,9 +84,7 @@ export default function VoiceLabPage() {
               <button
                 onClick={() => setMode("clone")}
                 className={`px-6 py-2 rounded-md text-sm font-medium transition-all ${
-                  mode === "clone"
-                    ? "bg-cyan-500 text-white"
-                    : "text-slate-400 hover:text-slate-200"
+                  mode === "clone" ? "bg-cyan-500 text-white" : "text-slate-400 hover:text-slate-200"
                 }`}
               >
                 {language === "ka" ? "ხმის კლონირება" : "Voice Cloning"}
@@ -107,11 +101,7 @@ export default function VoiceLabPage() {
                 <textarea
                   value={text}
                   onChange={(e) => setText(e.target.value)}
-                  placeholder={
-                    language === "ka"
-                      ? "ჩაწერეთ ტექსტი რომელიც უნდა გახმოვანდეს..."
-                      : "Enter text to be spoken..."
-                  }
+                  placeholder={language === "ka" ? "ჩაწერეთ ტექსტი რომელიც უნდა გახმოვანდეს..." : "Enter text to be spoken..."}
                   rows={6}
                   className="w-full bg-white/5 border border-cyan-500/20 rounded-lg px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500/50 placeholder-slate-500 resize-none"
                 />
@@ -132,15 +122,11 @@ export default function VoiceLabPage() {
                           key={voice.id}
                           onClick={() => setVoiceModel(voice.id)}
                           className={`w-full px-4 py-3 rounded-lg text-sm transition-all flex items-center justify-between ${
-                            voiceModel === voice.id
-                              ? "bg-cyan-500 text-white"
-                              : "bg-white/5 hover:bg-white/10 border border-cyan-500/20"
+                            voiceModel === voice.id ? "bg-cyan-500 text-white" : "bg-white/5 hover:bg-white/10 border border-cyan-500/20"
                           }`}
                         >
                           <span>{language === "ka" ? voice.nameKa : voice.nameEn}</span>
-                          <span className="text-xs opacity-70">
-                            {voice.lang.toUpperCase()}
-                          </span>
+                          <span className="text-xs opacity-70">{voice.lang.toUpperCase()}</span>
                         </button>
                       ))}
                     </div>
@@ -156,9 +142,7 @@ export default function VoiceLabPage() {
                           key={e.id}
                           onClick={() => setEmotion(e.id)}
                           className={`px-3 py-2 rounded-lg text-xs transition-all ${
-                            emotion === e.id
-                              ? "bg-cyan-500 text-white"
-                              : "bg-white/5 hover:bg-white/10 border border-cyan-500/20"
+                            emotion === e.id ? "bg-cyan-500 text-white" : "bg-white/5 hover:bg-white/10 border border-cyan-500/20"
                           }`}
                         >
                           {language === "ka" ? e.labelKa : e.labelEn}
@@ -174,17 +158,9 @@ export default function VoiceLabPage() {
                       {language === "ka" ? "ხმის ნიმუშები" : "Voice Samples"}
                     </h3>
                     <p className="text-xs text-slate-400 mb-4">
-                      {language === "ka"
-                        ? "ატვირთეთ 3-5 აუდიო ფაილი (თითო 10+ წამი)"
-                        : "Upload 3-5 audio files (10+ seconds each)"}
+                      {language === "ka" ? "ატვირთეთ 3-5 აუდიო ფაილი (თითო 10+ წამი)" : "Upload 3-5 audio files (10+ seconds each)"}
                     </p>
-                    <FileUploadZone
-                      accept="audio/*"
-                      maxFiles={5}
-                      onFilesSelected={setVoiceSamples}
-                      labelKa="აუდიოს ატვირთვა"
-                      labelEn="Upload Audio"
-                    />
+                    <FileUploadZone accept="audio/*" maxFiles={5} onFilesSelected={setVoiceSamples} labelKa="აუდიოს ატვირთვა" labelEn="Upload Audio" />
                   </div>
 
                   <div className="bg-white/5 border border-cyan-500/20 rounded-2xl p-6 backdrop-blur-xl">
@@ -194,19 +170,11 @@ export default function VoiceLabPage() {
                     <button
                       onClick={toggleRecording}
                       className={`w-full px-6 py-4 rounded-lg font-medium transition-all flex items-center justify-center gap-2 ${
-                        isRecording
-                          ? "bg-red-500 hover:bg-red-400 text-white"
-                          : "bg-cyan-500 hover:bg-cyan-400 text-white"
+                        isRecording ? "bg-red-500 hover:bg-red-400 text-white" : "bg-cyan-500 hover:bg-cyan-400 text-white"
                       }`}
                     >
                       <Mic className="w-5 h-5" />
-                      {isRecording
-                        ? language === "ka"
-                          ? "შეჩერება"
-                          : "Stop Recording"
-                        : language === "ka"
-                        ? "ჩაწერის დაწყება"
-                        : "Start Recording"}
+                      {isRecording ? (language === "ka" ? "შეჩერება" : "Stop Recording") : (language === "ka" ? "ჩაწერის დაწყება" : "Start Recording")}
                     </button>
                   </div>
                 </>
@@ -216,38 +184,9 @@ export default function VoiceLabPage() {
                 <h3 className="text-sm font-semibold text-cyan-400 mb-4">
                   {language === "ka" ? "პარამეტრები" : "Parameters"}
                 </h3>
-
-                <ParameterSlider
-                  labelKa="სიჩქარე"
-                  labelEn="Speed"
-                  value={speed}
-                  onChange={setSpeed}
-                  min={0.5}
-                  max={2.0}
-                  step={0.1}
-                  unit="x"
-                />
-
-                <ParameterSlider
-                  labelKa="ტონი"
-                  labelEn="Pitch"
-                  value={pitch}
-                  onChange={setPitch}
-                  min={0.5}
-                  max={2.0}
-                  step={0.1}
-                  unit="x"
-                />
-
-                <ParameterSlider
-                  labelKa="სტაბილურობა"
-                  labelEn="Stability"
-                  value={stability}
-                  onChange={setStability}
-                  min={0}
-                  max={1}
-                  step={0.05}
-                />
+                <ParameterSlider labelKa="სიჩქარე" labelEn="Speed" value={speed} onChange={setSpeed} min={0.5} max={2.0} step={0.1} unit="x" />
+                <ParameterSlider labelKa="ტონი" labelEn="Pitch" value={pitch} onChange={setPitch} min={0.5} max={2.0} step={0.1} unit="x" />
+                <ParameterSlider labelKa="სტაბილურობა" labelEn="Stability" value={stability} onChange={setStability} min={0} max={1} step={0.05} />
               </div>
 
               <button
@@ -255,23 +194,13 @@ export default function VoiceLabPage() {
                 disabled={!text.trim() || isGenerating}
                 className="w-full px-6 py-4 bg-cyan-500 hover:bg-cyan-400 disabled:bg-slate-700 disabled:cursor-not-allowed text-white rounded-lg font-medium transition-colors shadow-lg shadow-cyan-500/25 flex items-center justify-center gap-2"
               >
-                <AudioLines className="w-5 h-5" />
-                {isGenerating
-                  ? language === "ka"
-                    ? "გენერაცია..."
-                    : "Generating..."
-                  : language === "ka"
-                  ? "ხმის შექმნა"
-                  : "Generate Voice"}
+                <Music className="w-5 h-5" />
+                {isGenerating ? (language === "ka" ? "გენერაცია..." : "Generating...") : (language === "ka" ? "ხმის შექმნა" : "Generate Voice")}
               </button>
             </div>
 
             <div className="lg:col-span-1">
-              <OutputDisplay
-                type="audio"
-                content={generatedAudio}
-                isLoading={isGenerating}
-              />
+              <OutputDisplay type="audio" content={generatedAudio} isLoading={isGenerating} />
 
               {generatedAudio && !isGenerating && (
                 <div className="mt-6 bg-white/5 border border-cyan-500/20 rounded-2xl p-6 backdrop-blur-xl">
@@ -281,14 +210,7 @@ export default function VoiceLabPage() {
                   <div className="h-32 bg-[#05070A] rounded-lg flex items-center justify-center">
                     <div className="flex items-end gap-1 h-20">
                       {Array.from({ length: 50 }).map((_, i) => (
-                        <div
-                          key={i}
-                          className="w-1 bg-cyan-500/50 rounded-full animate-pulse"
-                          style={{
-                            height: `${Math.random() * 100}%`,
-                            animationDelay: `${i * 50}ms`,
-                          }}
-                        />
+                        <div key={i} className="w-1 bg-cyan-500/50 rounded-full animate-pulse" style={{ height: `${Math.random() * 100}%`, animationDelay: `${i * 50}ms` }} />
                       ))}
                     </div>
                   </div>
@@ -304,14 +226,7 @@ export default function VoiceLabPage() {
                     {language === "ka" ? "ხმის ასისტენტი" : "Voice Assistant"}
                   </h3>
                 </div>
-                <ChatWindow
-                  serviceName="Voice Lab"
-                  placeholder={
-                    language === "ka"
-                      ? "ჰკითხეთ ხმის შესახებ..."
-                      : "Ask about voice generation..."
-                  }
-                />
+                <ChatWindow serviceName="Voice Lab" placeholder={language === "ka" ? "ჰკითხეთ ხმის შესახებ..." : "Ask about voice generation..."} />
               </div>
             </div>
           </div>
