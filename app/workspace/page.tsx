@@ -6,7 +6,6 @@ import { motion, AnimatePresence } from "framer-motion";
 import AgentOrb from "@/components/AgentOrb";
 import ServicesSlider from "@/components/ServicesSlider";
 import LanguageToggle from "@/components/LanguageToggle";
-import { useToast } from "@/components/Toast";
 import { useLanguage } from "@/components/LanguageProvider";
 import { t } from "@/lib/i18n";
 
@@ -24,7 +23,6 @@ export default function WorkspacePage() {
     "idle" | "thinking" | "processing" | "success" | "error"
   >("idle");
   const [isOnline] = useState(true);
-  const { showToast } = useToast();
   const { language } = useLanguage();
 
   const handleSend = async () => {
@@ -41,7 +39,6 @@ export default function WorkspacePage() {
     setInput("");
     setOrbState("thinking");
 
-    // Simulate AI response
     setTimeout(() => {
       setOrbState("processing");
       setTimeout(() => {
@@ -65,31 +62,17 @@ export default function WorkspacePage() {
     }
   };
 
-  const handlePrimaryCTA = () => {
-    showToast(t("workspace.primaryCTAToast"), "success");
-  };
-
-  const handleSecondaryCTA = () => {
-    showToast(t("workspace.secondaryCTAToast"), "info");
-  };
-
   return (
     <div className="min-h-screen bg-[#05070A] text-[#E5E7EB] flex flex-col">
-      {/* Top Bar */}
       <header className="border-b border-cyan-500/20 bg-white/5 backdrop-blur-xl">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-          {/* Logo */}
           <div className="flex items-center gap-2">
             <Sparkles className="w-6 h-6 text-cyan-400" />
             <span className="font-bold text-lg">Avatar G</span>
           </div>
-
-          {/* Title */}
           <h1 className="text-sm sm:text-base font-medium text-center absolute left-1/2 transform -translate-x-1/2">
             {t("workspace.title")}
           </h1>
-
-          {/* Online Indicator + Language Toggle */}
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2">
               <div
@@ -106,27 +89,21 @@ export default function WorkspacePage() {
         </div>
       </header>
 
-      {/* Main Chat Cockpit */}
       <main className="flex-1 flex items-center justify-center p-4 overflow-hidden">
         <div className="w-full max-w-5xl h-[calc(100vh-8rem)] flex flex-col">
-          {/* Glass Chat Window */}
           <div className="flex-1 bg-white/5 backdrop-blur-xl border border-cyan-500/20 rounded-2xl shadow-2xl shadow-cyan-500/10 flex flex-col overflow-hidden">
-            {/* Services Slider - Inside Chat Window */}
             <div className="p-4 border-b border-cyan-500/10">
               <ServicesSlider />
             </div>
 
-            {/* Agent Orb & Messages Area */}
             <div className="flex-1 overflow-y-auto p-6 space-y-6">
               {messages.length === 0 ? (
-                // Empty State with Orb
                 <div className="h-full flex flex-col items-center justify-center space-y-8">
                   <AgentOrb
                     state={orbState}
                     labelKa={t("workspace.agentLabelKa")}
                     labelEn={t("workspace.agentLabelEn")}
                   />
-
                   <div className="text-center space-y-4 max-w-md">
                     <h2 className="text-2xl font-semibold text-cyan-400">
                       {t("workspace.welcomeTitle")}
@@ -135,25 +112,16 @@ export default function WorkspacePage() {
                       {t("workspace.welcomeSubtitle")}
                     </p>
                   </div>
-
-                  {/* Primary & Secondary CTAs */}
                   <div className="flex flex-col sm:flex-row gap-3">
-                    <button
-                      onClick={handlePrimaryCTA}
-                      className="px-6 py-3 bg-cyan-500 hover:bg-cyan-400 text-white rounded-lg font-medium transition-colors shadow-lg shadow-cyan-500/25"
-                    >
+                    <button className="px-6 py-3 bg-cyan-500 hover:bg-cyan-400 text-white rounded-lg font-medium transition-colors shadow-lg shadow-cyan-500/25">
                       {t("workspace.primaryCTA")}
                     </button>
-                    <button
-                      onClick={handleSecondaryCTA}
-                      className="px-6 py-3 bg-white/10 hover:bg-white/20 text-slate-200 rounded-lg font-medium transition-colors border border-cyan-500/30"
-                    >
+                    <button className="px-6 py-3 bg-white/10 hover:bg-white/20 text-slate-200 rounded-lg font-medium transition-colors border border-cyan-500/30">
                       {t("workspace.secondaryCTA")}
                     </button>
                   </div>
                 </div>
               ) : (
-                // Messages
                 <div className="space-y-4">
                   <AnimatePresence>
                     {messages.map((message) => (
@@ -180,8 +148,6 @@ export default function WorkspacePage() {
                       </motion.div>
                     ))}
                   </AnimatePresence>
-
-                  {/* Orb during conversation */}
                   {orbState !== "idle" && (
                     <div className="flex justify-start">
                       <AgentOrb state={orbState} size="sm" />
@@ -191,7 +157,6 @@ export default function WorkspacePage() {
               )}
             </div>
 
-            {/* Composer */}
             <div className="p-4 border-t border-cyan-500/10">
               <div className="flex gap-3">
                 <input
@@ -216,4 +181,4 @@ export default function WorkspacePage() {
       </main>
     </div>
   );
-                }
+}
