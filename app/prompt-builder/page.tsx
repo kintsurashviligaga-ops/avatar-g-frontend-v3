@@ -26,7 +26,8 @@ export default function PromptBuilderPage() {
   const handleGenerate = () => {
     setIsGenerating(true);
     setTimeout(() => {
-      setGeneratedPrompt(\`Enhanced prompt: \${prompt}, ultra detailed, \${style} style, professional photography --ar \${aspectRatio}\`);
+      const enhanced = "Enhanced prompt: " + prompt + ", ultra detailed, " + style + " style, professional photography --ar " + aspectRatio;
+      setGeneratedPrompt(enhanced);
       setIsGenerating(false);
     }, 2000);
   };
@@ -98,9 +99,7 @@ export default function PromptBuilderPage() {
                       <button
                         key={s}
                         onClick={() => setStyle(s)}
-                        className={\`px-3 py-2 rounded-lg text-xs transition-all \${
-                          style === s ? "bg-cyan-500 text-white" : "bg-white/5 hover:bg-white/10 border border-cyan-500/20"
-                        }\`}
+                        className={'px-3 py-2 rounded-lg text-xs transition-all ' + (style === s ? "bg-cyan-500 text-white" : "bg-white/5 hover:bg-white/10 border border-cyan-500/20")}
                       >
                         {s}
                       </button>
@@ -117,9 +116,7 @@ export default function PromptBuilderPage() {
                       <button
                         key={r}
                         onClick={() => setAspectRatio(r)}
-                        className={\`px-3 py-2 rounded-lg text-xs transition-all \${
-                          aspectRatio === r ? "bg-cyan-500 text-white" : "bg-white/5 hover:bg-white/10 border border-cyan-500/20"
-                        }\`}
+                        className={'px-3 py-2 rounded-lg text-xs transition-all ' + (aspectRatio === r ? "bg-cyan-500 text-white" : "bg-white/5 hover:bg-white/10 border border-cyan-500/20")}
                       >
                         {r}
                       </button>
