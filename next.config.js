@@ -1,12 +1,19 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  reactStrictMode: true,
+  output: 'export',
+  distDir: 'dist',
+  images: {
+    unoptimized: true,
+  },
   swcMinify: true,
+  experimental: {
+    optimizeCss: true,
+  },
+  // მეხსიერების დაზოგვა
+  onDemandEntries: {
+    maxInactiveAge: 25 * 1000,
+    pagesBufferLength: 2,
+  },
 }
 
 module.exports = nextConfig
-
-// Force complete rebuild - 2026-01-27 23:13
-// Clear all caches and regenerate bundle
-// Bypass Vercel build cache
-// Trigger rebuild - 2026-01-29 19:10
