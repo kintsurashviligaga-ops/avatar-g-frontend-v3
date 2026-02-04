@@ -1,3 +1,78 @@
+#!/bin/bash
+
+set -e
+
+echo "🚀 AVATAR G - სრული რებილდი იწყება..."
+
+# 1. საჭირო API-ების შენახვა
+mkdir -p /tmp/backup-api
+cp -r app/api/stt /tmp/backup-api/ 2>/dev/null || true
+cp -r app/api/tts /tmp/backup-api/ 2>/dev/null || true
+cp -r app/api/upload /tmp/backup-api/ 2>/dev/null || true
+
+# 2. წაშლა და ახალი სტრუქტურა
+rm -rf app/api/* components/* app/services/* app/page.tsx app/layout.tsx app/globals.css lib/* 2>/dev/null || true
+mkdir -p app/api/{openrouter,gemini,groq,deepseek,xai,chatbot,tts,stt,image-generator,video-generator,music-generator,voice-lab,upload}
+mkdir -p app/services/\[id\] components lib
+
+# 3. აღდგენა
+mv /tmp/backup-api/* app/api/ 2>/dev/null || true
+
+echo "✅ სტრუქტურა მზადაა!"
+
+# 4. ფაილების შექმნა
+cat > app/layout.tsx << 'EOF'
+import type { Metadata } from "next";
+import { Inter } from "next/font/google";
+import "./globals.css";
+import { LanguageProvider } from "@/components/LanguageProvider";
+
+const inter = Inter({ subsets: ["latin"] });
+
+export const metadata: Metadata = {
+  title: "Avatar G - Georgian AI Content Platform",
+  description: "პროფესიონალური AI ინსტრუმენტები ქართულ ენაზე",
+};
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <html lang="ka" className="dark">
+      <body className={`${inter.className} antialiased`}>
+        <LanguageProvider>{children}</LanguageProvider>
+      </body>
+    </html>
+  );
+}
+EOF
+
+cat > app/globals.css << 'EOF'
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #05070A;
+  --foreground: #ffffff;
+}
+
+body {
+  @apply bg-[#05070A] text-white;
+}
+
+.text-gradient {
+  @apply bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 via-blue-500 to-purple-600;
+}
+
+.glass {
+  @apply bg-white/5 backdrop-blur-xl border border-white/10;
+}
+
+.glass-hover {
+  @apply hover:bg-white/10 hover:border-cyan-500/50 transition-all duration-300;
+}
+EOF
+
+cat > app/page.tsx << 'EOF'
 "use client";
 
 import React, { useState, useEffect } from "react";
@@ -78,3 +153,7 @@ export default function Home() {
     </div>
   );
 }
+EOF
+
+echo "✅ app ფაილები შექმნილია"
+

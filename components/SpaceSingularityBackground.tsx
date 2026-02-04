@@ -1,147 +1,83 @@
 "use client";
 
-import React, { useEffect, useRef, useCallback } from "react";
-
-interface Star {
-  x: number;
-  y: number;
-  z: number;
-  size: number;
-  speed: number;
-  opacity: number;
-}
+import React, { useEffect, useRef } from "react";
 
 export default function SpaceSingularityBackground() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const animationRef = useRef<number | null>(null);
-  const starsRef = useRef<Star[]>([]);
-  const mouseRef = useRef({ x: 0, y: 0 });
-  const frameCountRef = useRef(0);
-  const isActiveRef = useRef(true);
-
-  const initStars = useCallback((width: number, height: number) => {
-    const starCount = 60; // Reduced for calmness - blueprint spec
-    starsRef.current = [];
-    for (let i = 0; i < starCount; i++) {
-      starsRef.current.push({
-        x: (Math.random() - 0.5) * width * 2,
-        y: (Math.random() - 0.5) * height * 2,
-        z: Math.random() * 1500 + 500,
-        size: Math.random() * 0.6 + 0.2, // Small, subtle
-        speed: Math.random() * 0.2 + 0.05, // Very slow
-        opacity: Math.random() * 0.3 + 0.1, // Subtle
-      });
-    }
-  }, []);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    isActiveRef.current = true;
-    
+    let animationId: number;
+    let particles: Array<{ x: number; y: number; size: number; speedX: number; speedY: number; opacity: number; twinkle: number }> = [];
+
     const resize = () => {
       canvas.width = window.innerWidth;
       canvas.height = window.innerHeight;
-      initStars(canvas.width, canvas.height);
     };
-    resize();
-    window.addEventListener("resize", resize);
 
-    const handleMouseMove = (e: MouseEvent) => {
-      mouseRef.current = {
-        x: (e.clientX / window.innerWidth - 0.5) * 2,
-        y: (e.clientY / window.innerHeight - 0.5) * 2,
-      };
-    };
-    window.addEventListener("mousemove", handleMouseMove);
-
-    const animate = () => {
-      if (!isActiveRef.current || !canvas || !ctx) return;
-
-      // 30fps for performance - render every 2nd frame
-      frameCountRef.current = (frameCountRef.current + 1) % 1000;
-      if (frameCountRef.current % 2 !== 0) {
-        animationRef.current = requestAnimationFrame(animate);
-        return;
+    const createParticles = () => {
+      particles = [];
+      const count = Math.floor((canvas.width * canvas.height) / 10000);
+      for (let i = 0; i < count; i++) {
+        particles.push({
+          x: Math.random() * canvas.width,
+          y: Math.random() * canvas.height,
+          size: Math.random() * 2 + 0.5,
+          speedX: (Math.random() - 0.5) * 0.2,
+          speedY: (Math.random() - 0.5) * 0.2,
+          opacity: Math.random() * 0.5 + 0.2,
+          twinkle: Math.random() * Math.PI * 2,
+        });
       }
+    };
 
-      const centerX = canvas.width / 2 + mouseRef.current.x * 8; // Subtle parallax
-      const centerY = canvas.height / 2 + mouseRef.current.y * 8;
-
-      // EXACT: Background Black #05070A
+    const draw = () => {
       ctx.fillStyle = "#05070A";
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-      // Subtle vignette - doesn't fight text
-      const vignette = ctx.createRadialGradient(
-        centerX, centerY, 0,
-        centerX, centerY, Math.max(canvas.width, canvas.height) * 0.8
-      );
-      vignette.addColorStop(0, "rgba(5, 7, 10, 0)");
-      vignette.addColorStop(0.6, "rgba(5, 7, 10, 0.2)");
-      vignette.addColorStop(1, "rgba(5, 7, 10, 0.5)");
-      ctx.fillStyle = vignette;
+      const gradient = ctx.createRadialGradient(canvas.width / 2, canvas.height / 2, 0, canvas.width / 2, canvas.height / 2, canvas.width * 0.8);
+      gradient.addColorStop(0, "rgba(6, 182, 212, 0.08)");
+      gradient.addColorStop(0.4, "rgba(59, 130, 246, 0.03)");
+      gradient.addColorStop(1, "rgba(0, 0, 0, 0)");
+      ctx.fillStyle = gradient;
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-      // Stars - slow fly-into-singularity (calm, not dizzying)
-      starsRef.current.forEach((star) => {
-        star.z -= star.speed;
-        
-        if (star.z <= 10) {
-          star.z = 1500;
-          star.x = (Math.random() - 0.5) * canvas.width * 2;
-          star.y = (Math.random() - 0.5) * canvas.height * 2;
-        }
-
-        const scale = 300 / star.z;
-        const x = centerX + star.x * scale;
-        const y = centerY + star.y * scale;
-        const size = star.size * scale * 0.5;
-        const alpha = Math.min(1, (1000 - star.z) / 800) * star.opacity;
-
-        // Draw star - soft, not harsh
+      particles.forEach((particle) => {
+        particle.twinkle += 0.02;
+        const twinkleOpacity = particle.opacity * (0.7 + 0.3 * Math.sin(particle.twinkle));
         ctx.beginPath();
-        ctx.arc(x, y, size, 0, Math.PI * 2);
-        ctx.fillStyle = `rgba(200, 230, 255, ${alpha})`;
+        ctx.arc(particle.x, particle.y, particle.size, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(6, 182, 212, ${twinkleOpacity})`;
         ctx.fill();
+
+        particle.x += particle.speedX;
+        particle.y += particle.speedY;
+
+        if (particle.x < 0) particle.x = canvas.width;
+        if (particle.x > canvas.width) particle.x = 0;
+        if (particle.y < 0) particle.y = canvas.height;
+        if (particle.y > canvas.height) particle.y = 0;
       });
 
-      // Subtle singularity glow - cyan #22D3EE at very low opacity
-      const singularity = ctx.createRadialGradient(
-        centerX, centerY, 0,
-        centerX, centerY, 120
-      );
-      singularity.addColorStop(0, "rgba(34, 211, 238, 0.02)"); // #22D3EE
-      singularity.addColorStop(0.5, "rgba(56, 189, 248, 0.01)"); // #38BDF8
-      singularity.addColorStop(1, "rgba(5, 7, 10, 0)");
-      ctx.fillStyle = singularity;
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-      animationRef.current = requestAnimationFrame(animate);
+      animationId = requestAnimationFrame(draw);
     };
 
-    animate();
+    resize();
+    createParticles();
+    draw();
+
+    const handleResize = () => { resize(); createParticles(); };
+    window.addEventListener("resize", handleResize);
 
     return () => {
-      isActiveRef.current = false;
-      window.removeEventListener("resize", resize);
-      window.removeEventListener("mousemove", handleMouseMove);
-      if (animationRef.current) {
-        cancelAnimationFrame(animationRef.current);
-        animationRef.current = null;
-      }
+      cancelAnimationFrame(animationId);
+      window.removeEventListener("resize", handleResize);
     };
-  }, [initStars]);
+  }, []);
 
-  return (
-    <canvas
-      ref={canvasRef}
-      className="fixed inset-0 pointer-events-none"
-      style={{ background: "#05070A", zIndex: 0 }}
-    />
-  );
+  return <canvas ref={canvasRef} className="fixed inset-0 z-0 pointer-events-none" style={{ background: "#05070A" }} />;
 }
