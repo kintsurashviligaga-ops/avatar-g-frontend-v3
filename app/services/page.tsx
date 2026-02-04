@@ -1,75 +1,129 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { motion } from "framer-motion";
 import { useRouter } from "next/navigation";
-import { Sparkles, MessageSquare, Image, Music, Video, Wand2, Gamepad2, Briefcase, Zap, Bot, ChevronRight, Search, ArrowLeft } from "lucide-react";
+import { 
+  Sparkles, 
+  MessageSquare, 
+  Image, 
+  Music, 
+  Video, 
+  Wand2, 
+  Gamepad2, 
+  Brain,
+  ArrowLeft,
+  Search,
+  Filter
+} from "lucide-react";
 import SpaceSingularityBackground from "@/components/SpaceSingularityBackground";
 import GlobalChatbot from "@/components/GlobalChatbot";
 import ServiceCard from "@/components/ServiceCard";
 
-const services = [
-  { id: "text-intelligence", title: "ტექსტის ინტელექტი", description: "პროფესიონალური წერა და ანალიზი", icon: MessageSquare, color: "from-cyan-500 to-blue-500", category: "ტექსტი" },
-  { id: "prompt-builder", title: "პრომპტის ბილდერი", description: "AI პრომპტების ოპტიმიზაცია", icon: Sparkles, color: "from-violet-500 to-purple-500", category: "ტექსტი" },
-  { id: "image-generator", title: "სურათის გენერატორი", description: "AI სურათების შექმნა", icon: Image, color: "from-pink-500 to-rose-500", category: "ვიზუალი" },
-  { id: "image-architect", title: "სურათის არქიტექტორი", description: "დიზაინის სისტემები", icon: Wand2, color: "from-indigo-500 to-blue-600", category: "ვიზუალი" },
-  { id: "music-studio", title: "მუსიკის სტუდია", description: "AI მუსიკის შექმნა", icon: Music, color: "from-amber-500 to-orange-500", category: "აუდიო" },
-  { id: "voice-lab", title: "ხმის ლაბორატორია", description: "ხმის გენერაცია და კლონირება", icon: Bot, color: "from-emerald-500 to-teal-500", category: "აუდიო" },
-  { id: "video-generator", title: "ვიდეო გენერატორი", description: "AI ვიდეოების შექმნა", icon: Video, color: "from-red-500 to-pink-500", category: "ვიდეო" },
-  { id: "video-cine-lab", title: "ვიდეო კინო ლაბი", description: "კინემატოგრაფიული პროდუქცია", icon: Video, color: "from-orange-500 to-red-500", category: "ვიდეო" },
-  { id: "game-forge", title: "თამაშის ფორჯი", description: "თამაშის დიზაინი", icon: Gamepad2, color: "from-emerald-500 to-green-500", category: "თამაში" },
-  { id: "ai-production", title: "AI პროდუქცია", description: "კონტენტის ქარხანა", icon: Zap, color: "from-yellow-500 to-amber-500", category: "პროდუქცია" },
-  { id: "business-agent", title: "ბიზნეს აგენტი", description: "ბიზნეს სტრატეგია", icon: Briefcase, color: "from-blue-500 to-indigo-500", category: "ბიზნესი" },
-];
+const categories = ["ყველა", "ტექსტი", "სურათი", "ვიდეო", "აუდიო", "სხვა"];
 
-const categories = ["ყველა", "ტექსტი", "ვიზუალი", "აუდიო", "ვიდეო", "თამაში", "პროდუქცია", "ბიზნესი"];
+const services = [
+  { id: "text-intelligence", title: "ტექსტის ინტელექტი", description: "AI ტექსტის ანალიზი და გენერაცია", icon: MessageSquare, color: "from-cyan-500 to-blue-500", category: "ტექსტი" },
+  { id: "prompt-builder", title: "პრომპტის ბილდერი", description: "პროფესიონალური პრომპტების შექმნა", icon: Sparkles, color: "from-violet-500 to-purple-500", category: "ტექსტი" },
+  { id: "image-generator", title: "სურათის გენერატორი", description: "AI სურათების გენერაცია Stability AI-ით", icon: Image, color: "from-pink-500 to-rose-500", category: "სურათი" },
+  { id: "image-architect", title: "სურათის არქიტექტორი", description: "სურათების რედაქტირება AI-ით", icon: Wand2, color: "from-amber-500 to-orange-500", category: "სურათი" },
+  { id: "music-studio", title: "მუსიკის სტუდია", description: "AI მუსიკის გენერაცია", icon: Music, color: "from-emerald-500 to-teal-500", category: "აუდიო" },
+  { id: "voice-lab", title: "ხმის ლაბორატორია", description: "ხმის კლონირება და TTS", icon: MessageSquare, color: "from-indigo-500 to-blue-500", category: "აუდიო" },
+  { id: "video-generator", title: "ვიდეო გენერატორი", description: "AI ვიდეოების შექმნა", icon: Video, color: "from-red-500 to-pink-500", category: "ვიდეო" },
+  { id: "video-cine-lab", title: "ვიდეო კინო ლაბი", description: "პროფესიონალური ვიდეო ედიტირება", icon: Video, color: "from-purple-500 to-indigo-500", category: "ვიდეო" },
+  { id: "game-forge", title: "თამაშის ფორჯი", description: "AI თამაშების დეველოპმენტი", icon: Gamepad2, color: "from-green-500 to-emerald-500", category: "სხვა" },
+  { id: "agent-g", title: "Agent G", description: "თქვენი პერსონალური AI აგენტი", icon: Brain, color: "from-cyan-500 to-blue-600", category: "სხვა" },
+];
 
 export default function ServicesPage() {
   const router = useRouter();
-  const [mounted, setMounted] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("ყველა");
+  const [searchQuery, setSearchQuery] = useState("");
 
-  useEffect(() => { setMounted(true); }, []);
-  if (!mounted) return <div className="min-h-screen bg-[#05070A] flex items-center justify-center"><div className="animate-pulse text-cyan-400">Loading...</div></div>;
-
-  const filteredServices = services.filter((service) => {
-    const matchesSearch = service.title.toLowerCase().includes(searchQuery.toLowerCase()) || service.description.toLowerCase().includes(searchQuery.toLowerCase());
+  const filteredServices = services.filter(service => {
     const matchesCategory = selectedCategory === "ყველა" || service.category === selectedCategory;
-    return matchesSearch && matchesCategory;
+    const matchesSearch = service.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                         service.description.toLowerCase().includes(searchQuery.toLowerCase());
+    return matchesCategory && matchesSearch;
   });
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-[#05070A]">
+    <main className="relative min-h-screen overflow-hidden bg-[#05070A]">
       <SpaceSingularityBackground />
-      <div className="relative z-10">
-        <header className="border-b border-white/10 bg-black/20 backdrop-blur-xl">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-            <div className="flex items-center gap-4 mb-6">
-              <button onClick={() => router.push("/")} className="flex items-center gap-2 text-gray-400 hover:text-white transition-colors"><ArrowLeft className="w-5 h-5" /><span>უკან</span></button>
+      
+      {/* Header */}
+      <header className="relative z-20 flex items-center justify-between px-6 py-4 border-b border-white/10 bg-[#05070A]/50 backdrop-blur-sm">
+        <div className="flex items-center gap-4">
+          <button 
+            onClick={() => router.push("/")}
+            className="p-2 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition-colors"
+          >
+            <ArrowLeft className="w-5 h-5" />
+          </button>
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center">
+              <Sparkles className="w-5 h-5 text-white" />
             </div>
-            <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="text-center">
-              <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold text-white mb-4">ყველა სერვისი</h1>
-              <p className="text-gray-400 max-w-2xl mx-auto mb-6 text-lg">აირჩიეთ AI ინსტრუმენტი თქვენი პროექტისთვის</p>
-              <div className="relative max-w-md mx-auto">
-                <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500" />
-                <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="ძიება სერვისებში..." className="w-full bg-white/5 border border-white/10 rounded-xl pl-12 pr-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-cyan-500/50" />
-              </div>
-            </motion.div>
+            <span className="text-xl font-bold text-white">სერვისები</span>
           </div>
-        </header>
+        </div>
+      </header>
 
-        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <div className="flex flex-wrap justify-center gap-2 mb-8">
-            {categories.map((category) => <button key={category} onClick={() => setSelectedCategory(category)} className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${selectedCategory === category ? "bg-cyan-500 text-white" : "bg-white/5 text-gray-400 hover:bg-white/10"}`}>{category}</button>)}
+      {/* Content */}
+      <div className="relative z-10 max-w-7xl mx-auto px-4 py-8">
+        {/* Search and Filter */}
+        <div className="mb-8 space-y-4">
+          <div className="relative max-w-md">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500" />
+            <input
+              type="text"
+              placeholder="მოძებნე სერვისი..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-10 pr-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-gray-500 focus:outline-none focus:border-cyan-500/50"
+            />
           </div>
+          
+          <div className="flex flex-wrap gap-2">
+            {categories.map((category) => (
+              <button
+                key={category}
+                onClick={() => setSelectedCategory(category)}
+                className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
+                  selectedCategory === category
+                    ? "bg-cyan-500 text-white"
+                    : "bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white"
+                }`}
+              >
+                {category}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Services Grid */}
+        {filteredServices.length > 0 ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-            {filteredServices.map((service, index) => <ServiceCard key={service.id} {...service} index={index} />)}
+            {filteredServices.map((service, index) => (
+              <ServiceCard
+                key={service.id}
+                id={service.id}
+                title={service.title}
+                description={service.description}
+                icon={service.icon}
+                color={service.color}
+                index={index}
+              />
+            ))}
           </div>
-          {filteredServices.length === 0 && <div className="text-center py-12"><p className="text-gray-400">სერვისები ვერ მოიძებნა</p></div>}
-        </main>
+        ) : (
+          <div className="text-center py-20">
+            <p className="text-gray-500 text-lg">სერვისები ვერ მოიძებნა</p>
+          </div>
+        )}
       </div>
+
       <GlobalChatbot />
-    </div>
+    </main>
   );
 }

@@ -6,15 +6,21 @@ import { LanguageProvider } from "@/components/LanguageProvider";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Avatar G - Georgian AI Content Platform",
+  title: "Avatar G - AI Platform",
   description: "პროფესიონალური AI ინსტრუმენტები ქართულ ენაზე",
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default function RootLayout({
+  children,
+}: Readonly<{
+  children: React.ReactNode;
+}>) {
   return (
-    <html lang="ka" className="dark">
-      <body className={`${inter.className} antialiased`}>
-        <LanguageProvider>{children}</LanguageProvider>
+    <html lang="ka">
+      <body className={inter.className}>
+        <LanguageProvider>
+          {children}
+        </LanguageProvider>
       </body>
     </html>
   );
