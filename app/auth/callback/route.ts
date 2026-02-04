@@ -1,19 +1,25 @@
-import { createClient } from '@/lib/supabase/server';
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from "next/server";
+import { supabaseServer } from "@/lib/supabase/server";
 
-export async function GET(request: NextRequest) {
-  const { searchParams, origin } = new URL(request.url);
-  const code = searchParams.get('code');
-  const next = searchParams.get('next') ?? '/';
+export async function GET(req: NextRequest) {
+  const { searchParams } = new URL(req.url);
+  const code = searchParams.get("code");
 
   if (code) {
-    const supabase = createClient();
-    const { error } = await supabase.auth.exchangeCodeForSession(code);
-    
-    if (!error) {
-      return NextResponse.redirect(`${origin}${next}`);
+    try {
+      const { data, error } = await supabaseServer.auth.exchangeCodeForSession(code);
+      
+      if (error) {
+        console.error("Auth callback error:", error);
+        return NextResponse.redirect(new URL("/?error=auth", req.url));
+      }
+
+      return NextResponse.redirect(new URL("/workspace", req.url));
+    } catch (error) {
+      console.error("Auth callback exception:", error);
+      return NextResponse.redirect(new URL("/?error=auth", req.url));
     }
   }
 
-  return NextResponse.redirect(`${origin}/login?error=auth_callback_failed`);
+  return NextResponse.redirect(new URL("/", req.url));
 }
