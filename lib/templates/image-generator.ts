@@ -1,0 +1,58 @@
+import { ChatTemplate } from "@/lib/types/runtime";
+
+export const imageGeneratorTemplates: ChatTemplate[] = [
+  {
+    id: "img-product-luxury",
+    serviceId: "image-generator",
+    title: "Product Shot (Luxury)",
+    desc: "High-end product photography style",
+    tags: ["product", "luxury", "commercial"],
+    prompt: "Professional product photography of [product], luxury style, studio lighting, white background, 8K resolution, commercial quality",
+    params: { style: "photorealistic", aspectRatio: "1:1", quality: "high" },
+  },
+  {
+    id: "img-portrait-noir",
+    serviceId: "image-generator",
+    title: "Noir Portrait",
+    desc: "Classic film noir style portrait",
+    tags: ["portrait", "noir", "cinematic"],
+    prompt: "Film noir portrait, dramatic shadows, high contrast black and white, 1940s style, moody lighting, cinematic composition",
+    params: { style: "noir", aspectRatio: "4:5", quality: "high" },
+  },
+  {
+    id: "img-food-macro",
+    serviceId: "image-generator",
+    title: "Instagram Food Macro",
+    desc: "Social media ready food photography",
+    tags: ["food", "instagram", "macro"],
+    prompt: "Instagram-style food photography, macro shot, natural lighting, vibrant colors, shallow depth of field, professional food styling",
+    params: { style: "photorealistic", aspectRatio: "1:1", quality: "high" },
+  },
+  {
+    id: "img-app-icon",
+    serviceId: "image-generator",
+    title: "App Icon Set",
+    desc: "Modern app icon design",
+    tags: ["icon", "app", "ui"],
+    prompt: "Modern app icon design, minimalist, gradient colors, rounded square, professional UI design, clean and simple",
+    params: { style: "illustration", aspectRatio: "1:1", quality: "high" },
+  },
+  {
+    id: "img-landscape-cinematic",
+    serviceId: "image-generator",
+    title: "Cinematic Landscape",
+    desc: "Epic landscape photography",
+    tags: ["landscape", "cinematic", "nature"],
+    prompt: "Cinematic landscape photography, golden hour lighting, dramatic sky, ultra wide angle, 8K resolution, epic composition",
+    params: { style: "cinematic", aspectRatio: "16:9", quality: "high" },
+  },
+  {
+    id: "img-character-concept",
+    serviceId: "image-generator",
+    title: "Character Concept Art",
+    desc: "Game/film character design",
+    tags: ["character", "concept", "art"],
+    prompt: "Character concept art, full body, detailed costume design, professional game art style, multiple angles, reference sheet",
+    params: { style: "illustration", aspectRatio: "9:16", quality: "high" },
+  },
+];
