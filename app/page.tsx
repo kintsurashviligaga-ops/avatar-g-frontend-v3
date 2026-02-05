@@ -1,28 +1,13 @@
-import { Metadata } from "next";
-import HeroSection from "@/components/sections/HeroSection";
-import FeaturesSection from "@/components/sections/FeaturesSection";
-import ServicesSection from "@/components/sections/ServicesSection";
-import IdentitySection from "@/components/sections/IdentitySection";
-import CTASection from "@/components/sections/CTASection";
-
-export const metadata: Metadata = {
-  title: "Avatar G - Digital Twin Protocol",
-  description: "Create your AI-powered digital twin. Voice cloning, avatar generation, and intelligent media production.",
-  openGraph: {
-    title: "Avatar G - Digital Twin Protocol",
-    description: "Your AI-powered digital identity",
-    images: ["/og-image.png"],
-  },
-};
-
-export default function HomePage() {
+export default function Home() {
   return (
-    <main className="min-h-screen bg-[#05070A] text-white overflow-hidden">
-      <HeroSection />
-      <FeaturesSection />
-      <ServicesSection />
-      <IdentitySection />
-      <CTASection />
-    </main>
+    <div className="min-h-screen bg-black text-white flex items-center justify-center">
+      <div className="text-center">
+        <h1 className="text-4xl font-bold mb-4">Avatar G</h1>
+        <p className="text-gray-400">Digital Twin Protocol</p>
+        <a href="/services" className="mt-6 inline-block px-6 py-3 bg-cyan-600 rounded-lg">
+          Services
+        </a>
+      </div>
+    </div>
   );
 }
