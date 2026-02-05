@@ -67,3 +67,13 @@ export async function cloneVoice(audioFile: File, name: string) {
     samples: data.samples
   };
 }
+  throw new Error(`Voice cloning failed: ${response.status}`);
+  }
+
+  const data = await response.json();
+  return {
+    voiceId: data.voice_id,
+    name: data.name,
+    samples: data.samples
+  };
+}
