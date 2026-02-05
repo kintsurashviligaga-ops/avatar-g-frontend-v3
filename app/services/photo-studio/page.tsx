@@ -11,7 +11,8 @@ import {
   Move, MousePointer2, Scissors, Frame, Filter,
   Blur, Triangle, Circle, Square, Star, Heart,
   ChevronLeft, ChevronRight, Plus, Minus, Grid3X3,
-  FileImage, Images, FolderOpen, Settings, Info
+  FileImage, Images, FolderOpen, Settings, Info,
+  Eraser, Cloud, Paperclip, Link, Send, Layout
 } from "lucide-react"
 import { ServiceShell } from "@/components/shared/ServiceShell"
 import { FeatureCard } from "@/components/shared/FeatureCard"
