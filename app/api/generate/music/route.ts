@@ -1,38 +1,34 @@
 import { NextRequest, NextResponse } from "next/server";
+import { generateMusic } from "@/lib/ai/replicate";
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const { prompt, _identity, duration = 30, vocals = true, genre = "electronic" } = body;
 
-    if (!_identity?.voiceId && vocals) {
+    if (vocals && !_identity?.voiceId) {
       return NextResponse.json(
         { error: "IdentityIntegrityError: Voice ID required for vocal tracks" },
         { status: 403 }
       );
     }
 
-    // Simulate MusicGen + vocal synthesis
-    const genres = {
-      electronic: { tempo: 128, key: "C minor", instruments: ["synth", "bass", "drums"] },
-      orchestral: { tempo: 90, key: "D major", instruments: ["strings", "brass", "percussion"] },
-      jazz: { tempo: 110, key: "F major", instruments: ["piano", "sax", "bass"] },
-      pop: { tempo: 120, key: "G major", instruments: ["guitar", "drums", "synth"] }
-    };
+    // Call real Replicate API
+    const result = await generateMusic(prompt, duration, vocals, _identity?.voiceId);
 
-    const result = {
-      audioUrl: `https://api.avatar-g.io/music/${Date.now()}.mp3`,
+    return NextResponse.json({
+      audioUrl: result.musicUrl,
       stems: {
-        vocals: vocals ? `https://api.avatar-g.io/music/${Date.now()}_vocals.mp3` : null,
-        instrumental: `https://api.avatar-g.io/music/${Date.now()}_inst.mp3`,
-        drums: `https://api.avatar-g.io/music/${Date.now()}_drums.mp3`,
-        bass: `https://api.avatar-g.io/music/${Date.now()}_bass.mp3`
+        vocals: result.vocalTrack ? `data:audio/mpeg;base64,${Buffer.from(result.vocalTrack.audioBuffer).toString('base64')}` : null,
+        instrumental: result.musicUrl,
+        full: result.vocalTrack 
+          ? `data:audio/mpeg;base64,${Buffer.from(result.vocalTrack.audioBuffer).toString('base64')}` 
+          : result.musicUrl
       },
       composition: {
         prompt,
         genre,
         duration,
-        ...genres[genre as keyof typeof genres],
         vocals: vocals ? {
           voiceId: _identity.voiceId,
           lyrics: "AI-generated based on prompt",
@@ -50,14 +46,12 @@ export async function POST(req: NextRequest) {
         compression: "3:1 ratio"
       },
       timestamp: new Date().toISOString()
-    };
+    });
 
-    await new Promise(resolve => setTimeout(resolve, 4000));
-
-    return NextResponse.json(result);
-  } catch (error) {
+  } catch (error: any) {
+    console.error("Music generation error:", error);
     return NextResponse.json(
-      { error: "Music generation failed", code: "GEN-005" },
+      { error: error.message || "Music generation failed", code: "GEN-005" },
       { status: 500 }
     );
   }

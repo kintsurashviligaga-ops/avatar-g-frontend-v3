@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { generateVoice } from "@/lib/ai/elevenlabs";
 
 export async function POST(req: NextRequest) {
   try {
@@ -12,28 +13,30 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Simulate ElevenLabs API response
-    const emotions = {
-      neutral: { stability: 0.75, similarity: 0.85 },
-      happy: { stability: 0.65, similarity: 0.90 },
-      serious: { stability: 0.85, similarity: 0.80 },
-      excited: { stability: 0.55, similarity: 0.95 }
-    };
+    // Call real ElevenLabs API
+    const result = await generateVoice(text, _identity.voiceId, emotion);
 
-    const result = {
-      audioUrl: `https://api.avatar-g.io/voice/${Date.now()}.mp3`,
+    // Convert buffer to base64 for immediate playback
+    const audioBase64 = Buffer.from(result.audioBuffer).toString('base64');
+    const audioUrl = `data:audio/mpeg;base64,${audioBase64}`;
+
+    return NextResponse.json({
+      audioUrl,
       text: text.slice(0, 100) + (text.length > 100 ? "..." : ""),
       voice: {
         voiceId: _identity.voiceId,
         cloned: true,
         model: "eleven_multilingual_v2"
       },
-      settings: emotions[emotion as keyof typeof emotions],
+      settings: {
+        stability: emotion === "excited" ? 0.55 : 0.75,
+        similarity: emotion === "excited" ? 0.95 : 0.85
+      },
       audioProperties: {
         sampleRate: 44100,
         bitrate: "192kbps",
         format: "mp3",
-        duration: Math.floor(text.length / 15) // Approximate
+        duration: result.duration
       },
       identityVerification: {
         voicePrintMatch: "97.3%",
@@ -41,14 +44,12 @@ export async function POST(req: NextRequest) {
         emotionDetected: emotion
       },
       timestamp: new Date().toISOString()
-    };
+    });
 
-    await new Promise(resolve => setTimeout(resolve, 2000));
-
-    return NextResponse.json(result);
-  } catch (error) {
+  } catch (error: any) {
+    console.error("Voice generation error:", error);
     return NextResponse.json(
-      { error: "Voice synthesis failed", code: "GEN-003" },
+      { error: error.message || "Voice synthesis failed", code: "GEN-003" },
       { status: 500 }
     );
   }
