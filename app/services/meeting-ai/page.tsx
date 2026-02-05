@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button"
 export default function Page() {
   return (
     <ServiceShell
-      title="Executive-agent"
+      title="Meeting-ai"
       subtitle="Premium AI-powered service with full functionality"
       gradient="from-cyan-400 to-blue-500"
     >
@@ -13,7 +13,7 @@ export default function Page() {
         <div className="lg:col-span-2">
           <Card className="p-8 min-h-[500px] flex items-center justify-center" glow>
             <div className="text-center">
-              <h2 className="text-2xl font-bold mb-4">Executive-agent Workspace</h2>
+              <h2 className="text-2xl font-bold mb-4">Meeting-ai Workspace</h2>
               <p className="text-gray-400 mb-6">Full-featured interface loading...</p>
               <Button variant="glow">Get Started</Button>
             </div>
