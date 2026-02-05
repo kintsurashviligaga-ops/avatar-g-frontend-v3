@@ -1,0 +1,22 @@
+{
+  "name": "Avatar G - Digital Twin Protocol",
+  "short_name": "Avatar G",
+  "description": "AI-powered digital twin and media generation platform",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#05070A",
+  "theme_color": "#05070A",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/icon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

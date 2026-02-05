@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://avatar-g-frontend-v3.vercel.app/sitemap.xml
