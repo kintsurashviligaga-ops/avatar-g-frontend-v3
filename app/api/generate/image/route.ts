@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { generateImage } from "@/lib/ai/stability";
 
 export async function POST(req: NextRequest) {
   try {
@@ -12,21 +13,20 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Simulate Stability AI response
-    const imageStyles = {
-      photorealistic: "4K photorealistic render",
-      cinematic: "Cinematic composition, film grain",
-      cyberpunk: "Neon-lit cyberpunk aesthetic",
-      oil: "Oil painting style, classical technique",
-      anime: "Anime style, Studio Ghibli inspired"
-    };
+    // Get avatar config if appearance integration requested
+    const avatarConfig = avatarAppearance ? {
+      skinTone: "medium",
+      eyeColor: "brown",
+      style: "business"
+    } : undefined;
 
-    const result = {
-      imageUrl: `https://api.avatar-g.io/generated/${Date.now()}.png`,
-      prompt: `${prompt} | Style: ${imageStyles[style as keyof typeof imageStyles]} | Identity: ${_identity.avatarId.slice(0, 8)}`,
-      seed: Math.floor(Math.random() * 1000000),
-      width: 1024,
-      height: 1024,
+    // Call real Stability AI API
+    const result = await generateImage(prompt, style, avatarConfig);
+
+    return NextResponse.json({
+      imageUrl: `data:image/png;base64,${result.imageBuffer.toString('base64')}`,
+      prompt: result.prompt,
+      seed: result.seed,
       style,
       identityIntegration: {
         avatarEmbedded: avatarAppearance,
@@ -34,20 +34,13 @@ export async function POST(req: NextRequest) {
         facialGeometry: "32-point mesh applied",
         consistency: "98.7%"
       },
-      generationParams: {
-        steps: 50,
-        cfgScale: 7.5,
-        sampler: "DPM++ 2M Karras"
-      },
       timestamp: new Date().toISOString()
-    };
+    });
 
-    await new Promise(resolve => setTimeout(resolve, 3000));
-
-    return NextResponse.json(result);
-  } catch (error) {
+  } catch (error: any) {
+    console.error("Image generation error:", error);
     return NextResponse.json(
-      { error: "Image generation failed", code: "GEN-002" },
+      { error: error.message || "Image generation failed", code: "GEN-002" },
       { status: 500 }
     );
   }
