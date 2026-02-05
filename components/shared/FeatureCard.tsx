@@ -1,34 +1,39 @@
 "use client"
 
 import { motion } from "framer-motion"
-import { Card } from "@/components/ui/card"
+import { ReactNode } from "react"
 
 interface FeatureCardProps {
   title: string
   description: string
-  icon: React.ReactNode
-  gradient?: string
-  onClick?: () => void
+  icon: ReactNode
+  gradient: string
   isActive?: boolean
+  onClick?: () => void
 }
 
-export function FeatureCard({ title, description, icon, gradient = "from-cyan-500 to-blue-500", onClick, isActive }: FeatureCardProps) {
+export function FeatureCard({ title, description, icon, gradient, isActive, onClick }: FeatureCardProps) {
   return (
-    <motion.div
-      whileHover={{ scale: 1.02, y: -4 }}
+    <motion.button
+      whileHover={{ scale: 1.02, y: -2 }}
       whileTap={{ scale: 0.98 }}
       onClick={onClick}
+      className={`
+        w-full p-4 rounded-xl border-2 transition-all text-left
+        ${isActive 
+          ? 'border-white/30 bg-white/10' 
+          : 'border-white/5 bg-[#0A0F1C] hover:border-white/20 hover:bg-white/5'}
+      `}
     >
-      <Card 
-        className={`p-6 cursor-pointer transition-all duration-300 ${isActive ? 'ring-2 ring-cyan-500 shadow-[0_0_30px_rgba(6,182,212,0.3)]' : ''}`}
-        gradient={gradient}
-      >
-        <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${gradient} flex items-center justify-center mb-4`}>
-          {icon}
-        </div>
-        <h3 className="text-lg font-semibold mb-2">{title}</h3>
-        <p className="text-sm text-gray-400">{description}</p>
-      </Card>
-    </motion.div>
+      <div className={`
+        w-10 h-10 rounded-lg bg-gradient-to-br ${gradient} 
+        flex items-center justify-center mb-3
+        ${isActive ? 'shadow-lg shadow-white/10' : ''}
+      `}>
+        {icon}
+      </div>
+      <h3 className="font-semibold text-sm mb-1">{title}</h3>
+      <p className="text-xs text-gray-500">{description}</p>
+    </motion.button>
   )
 }

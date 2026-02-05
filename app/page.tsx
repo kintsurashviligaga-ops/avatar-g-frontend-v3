@@ -8,13 +8,14 @@ import {
   TrendingUp, Code, PenTool, Presentation, Languages, 
   Video, Glasses, Sparkles, ChevronRight, Star, Zap,
   Play, Pause, Settings, Bell, Search, Menu, X,
-  ArrowRight, ArrowUpRight, Heart, Share2, Download
+  ArrowRight, ArrowUpRight, Heart, Share2, Download,
+  Bot, Cpu, Shield, Activity
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 
-// Services data
+// Services data - 13 services
 const services = [
   { 
     id: 'avatar-builder', 
@@ -179,7 +180,7 @@ const stats = [
   { value: '13', label: 'AI Services', icon: Zap },
   { value: '50K+', label: 'Active Users', icon: User },
   { value: '1M+', label: 'Creations', icon: Star },
-  { value: '99.9%', label: 'Uptime', icon: TrendingUp },
+  { value: '99.9%', label: 'Uptime', icon: Activity },
 ]
 
 // Testimonials
@@ -196,7 +197,6 @@ export default function Home() {
   const [scrollY, setScrollY] = useState(0)
   const [isAutoRotating, setIsAutoRotating] = useState(true)
   const [rotation, setRotation] = useState(0)
-  const containerRef = useRef<HTMLDivElement>(null)
 
   // Mouse tracking
   useEffect(() => {
@@ -228,23 +228,22 @@ export default function Home() {
       {/* Animated Background */}
       <div className="fixed inset-0 pointer-events-none overflow-hidden">
         {/* Stars */}
-        {[...Array(100)].map((_, i) => (
+        {[...Array(50)].map((_, i) => (
           <motion.div
             key={i}
             className="absolute w-1 h-1 bg-white rounded-full"
-            initial={{ 
-              x: Math.random() * (typeof window !== 'undefined' ? window.innerWidth : 1000), 
-              y: Math.random() * (typeof window !== 'undefined' ? window.innerHeight : 1000),
-              opacity: Math.random() 
+            style={{ 
+              left: `${Math.random() * 100}%`, 
+              top: `${Math.random() * 100}%`,
             }}
             animate={{ 
-              y: [null, Math.random() * -200],
-              opacity: [null, 0] 
+              opacity: [0.2, 1, 0.2],
+              scale: [1, 1.5, 1]
             }}
             transition={{ 
-              duration: Math.random() * 5 + 5, 
+              duration: Math.random() * 3 + 2, 
               repeat: Infinity,
-              delay: Math.random() * 5 
+              delay: Math.random() * 2 
             }}
           />
         ))}
@@ -264,13 +263,6 @@ export default function Home() {
           }}
           className="absolute bottom-1/4 right-1/4 w-[600px] h-[600px] bg-purple-500/10 rounded-full blur-[150px]" 
         />
-        <motion.div 
-          animate={{ 
-            x: mousePosition.x * 0.01, 
-            y: -mousePosition.y * 0.01 
-          }}
-          className="absolute top-1/2 right-1/3 w-[400px] h-[400px] bg-pink-500/5 rounded-full blur-[120px]" 
-        />
       </div>
 
       {/* Navigation */}
@@ -287,11 +279,29 @@ export default function Home() {
             className="flex items-center gap-3"
             whileHover={{ scale: 1.02 }}
           >
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-400 to-blue-500 flex items-center justify-center shadow-lg shadow-cyan-500/25">
-              <Sparkles size={20} />
+            <div className="relative">
+              {/* Rocket Logo */}
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-400 to-blue-500 flex items-center justify-center shadow-lg shadow-cyan-500/25">
+                <motion.div
+                  animate={{ y: [0, -2, 0] }}
+                  transition={{ duration: 2, repeat: Infinity }}
+                >
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" className="text-white">
+                    <path d="M12 2C12 2 8 6 8 10C8 12 9 14 12 14C15 14 16 12 16 10C16 6 12 2 12 2Z" fill="currentColor"/>
+                    <path d="M12 14V22" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                    <path d="M9 18L12 14L15 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                    <path d="M7 10C4 10 2 12 2 14C2 16 4 17 7 17" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                    <path d="M17 10C20 10 22 12 22 14C22 16 20 17 17 17" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                  </svg>
+                </motion.div>
+              </div>
+              {/* Glow effect */}
+              <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-cyan-400 to-blue-500 blur-lg opacity-50 -z-10" />
             </div>
             <div>
-              <h1 className="text-xl font-bold">Avatar G</h1>
+              <h1 className="text-xl font-bold bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent">
+                Avatar G
+              </h1>
               <p className="text-xs text-gray-400">Singularity Protocol v4.0</p>
             </div>
           </motion.div>
@@ -385,7 +395,7 @@ export default function Home() {
                 className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-cyan-500/10 border border-cyan-500/30 mb-6"
               >
                 <Star size={14} className="text-cyan-400" />
-                <span className="text-sm text-cyan-400">New: AR/VR Lab is now available</span>
+                <span className="text-sm text-cyan-400">New: Agent G is now available</span>
               </motion.div>
 
               <h1 className="text-5xl md:text-7xl font-bold mb-6 leading-tight">
@@ -455,7 +465,20 @@ export default function Home() {
                   className="relative w-64 h-64 rounded-full bg-gradient-to-br from-cyan-400/10 to-blue-500/10 backdrop-blur-xl border-2 border-white/20 flex items-center justify-center group overflow-hidden"
                 >
                   <div className="absolute inset-0 bg-gradient-to-br from-cyan-400 to-blue-500 opacity-0 group-hover:opacity-20 transition-opacity" />
-                  <User size={80} className="text-cyan-400 relative z-10" />
+                  
+                  {/* Rocket Icon in Center */}
+                  <motion.div
+                    animate={{ y: [0, -5, 0] }}
+                    transition={{ duration: 2, repeat: Infinity }}
+                  >
+                    <svg width="80" height="80" viewBox="0 0 24 24" fill="none" className="text-cyan-400">
+                      <path d="M12 2C12 2 8 6 8 10C8 12 9 14 12 14C15 14 16 12 16 10C16 6 12 2 12 2Z" fill="currentColor"/>
+                      <path d="M12 14V22" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                      <path d="M9 18L12 14L15 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                      <path d="M7 10C4 10 2 12 2 14C2 16 4 17 7 17" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                      <path d="M17 10C20 10 22 12 22 14C22 16 20 17 17 17" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                    </svg>
+                  </motion.div>
                   
                   {/* Scanning effect */}
                   <motion.div
@@ -574,7 +597,6 @@ export default function Home() {
                   <Link href={`/services/${service.id}`}>
                     <Card 
                       className="h-full p-6 group cursor-pointer hover:scale-[1.02] transition-all duration-300"
-                      gradient={service.color}
                     >
                       <div className="flex items-start justify-between mb-4">
                         <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${service.color} flex items-center justify-center`}>
@@ -619,137 +641,6 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Features Section */}
-      <section id="features" className="py-32 relative">
-        <div className="max-w-7xl mx-auto px-6">
-          <div className="grid lg:grid-cols-2 gap-16 items-center">
-            <motion.div
-              initial={{ opacity: 0, x: -50 }}
-              whileInView={{ opacity: 1, x: 0 }}
-              viewport={{ once: true }}
-            >
-              <h2 className="text-4xl md:text-5xl font-bold mb-6">
-                Why Choose{' '}
-                <span className="bg-gradient-to-r from-purple-400 to-pink-500 bg-clip-text text-transparent">
-                  Avatar G
-                </span>
-              </h2>
-              <p className="text-xl text-gray-400 mb-8">
-                The most comprehensive AI platform for creators, professionals, and developers.
-              </p>
-
-              <div className="space-y-6">
-                {[
-                  { icon: Zap, title: 'Lightning Fast', desc: 'Generate content in seconds, not hours' },
-                  { icon: Star, title: 'Professional Quality', desc: 'Studio-grade output with AI enhancement' },
-                  { icon: Shield, title: 'Secure & Private', desc: 'Your data is encrypted and protected' },
-                  { icon: TrendingUp, title: 'Always Improving', desc: 'Regular updates with new features' },
-                ].map((feature, i) => (
-                  <motion.div
-                    key={feature.title}
-                    initial={{ opacity: 0, x: -20 }}
-                    whileInView={{ opacity: 1, x: 0 }}
-                    viewport={{ once: true }}
-                    transition={{ delay: i * 0.1 }}
-                    className="flex items-start gap-4"
-                  >
-                    <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-purple-500/20 to-pink-500/20 flex items-center justify-center shrink-0">
-                      <feature.icon size={24} className="text-purple-400" />
-                    </div>
-                    <div>
-                      <h3 className="font-semibold text-lg mb-1">{feature.title}</h3>
-                      <p className="text-gray-400">{feature.desc}</p>
-                    </div>
-                  </motion.div>
-                ))}
-              </div>
-            </motion.div>
-
-            <motion.div
-              initial={{ opacity: 0, scale: 0.9 }}
-              whileInView={{ opacity: 1, scale: 1 }}
-              viewport={{ once: true }}
-              className="relative"
-            >
-              <div className="relative rounded-2xl overflow-hidden bg-gradient-to-br from-purple-500/20 to-pink-500/20 border border-white/10 p-8">
-                <div className="grid grid-cols-2 gap-4">
-                  {services.slice(0, 4).map((service) => {
-                    const Icon = service.icon
-                    return (
-                      <div key={service.id} className="bg-[#05070A]/50 rounded-xl p-4 flex items-center gap-3">
-                        <div className={`w-10 h-10 rounded-lg bg-gradient-to-br ${service.color} flex items-center justify-center`}>
-                          <Icon size={20} />
-                        </div>
-                        <span className="font-medium text-sm">{service.shortName}</span>
-                      </div>
-                    )
-                  })}
-                </div>
-                <div className="mt-4 p-4 bg-[#05070A]/50 rounded-xl">
-                  <div className="flex items-center gap-2 mb-3">
-                    <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
-                    <span className="text-sm text-gray-400">AI Processing</span>
-                  </div>
-                  <div className="h-2 bg-gray-800 rounded-full overflow-hidden">
-                    <motion.div
-                      className="h-full bg-gradient-to-r from-purple-400 to-pink-500"
-                      animate={{ width: ['0%', '100%'] }}
-                      transition={{ duration: 2, repeat: Infinity }}
-                    />
-                  </div>
-                </div>
-              </div>
-            </motion.div>
-          </div>
-        </div>
-      </section>
-
-      {/* Testimonials Section */}
-      <section className="py-32 relative">
-        <div className="max-w-7xl mx-auto px-6">
-          <motion.div
-            initial={{ opacity: 0, y: 30 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            className="text-center mb-16"
-          >
-            <h2 className="text-4xl md:text-5xl font-bold mb-4">
-              Loved by <span className="bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent">Creators</span>
-            </h2>
-          </motion.div>
-
-          <div className="grid md:grid-cols-3 gap-8">
-            {testimonials.map((testimonial, i) => (
-              <motion.div
-                key={testimonial.name}
-                initial={{ opacity: 0, y: 30 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ delay: i * 0.1 }}
-              >
-                <Card className="p-6 h-full">
-                  <div className="flex items-center gap-4 mb-4">
-                    <div className="w-12 h-12 rounded-full bg-gradient-to-br from-cyan-400 to-blue-500 flex items-center justify-center text-lg font-bold">
-                      {testimonial.avatar}
-                    </div>
-                    <div>
-                      <h4 className="font-semibold">{testimonial.name}</h4>
-                      <p className="text-sm text-gray-400">{testimonial.role}</p>
-                    </div>
-                  </div>
-                  <p className="text-gray-300 italic">"{testimonial.text}"</p>
-                  <div className="flex gap-1 mt-4">
-                    {[...Array(5)].map((_, i) => (
-                      <Star key={i} size={16} className="text-yellow-400 fill-yellow-400" />
-                    ))}
-                  </div>
-                </Card>
-              </motion.div>
-            ))}
-          </div>
-        </div>
-      </section>
-
       {/* CTA Section */}
       <section className="py-32 relative">
         <div className="max-w-4xl mx-auto px-6 text-center">
@@ -759,9 +650,6 @@ export default function Home() {
             viewport={{ once: true }}
             className="relative p-12 rounded-3xl bg-gradient-to-br from-cyan-500/20 via-purple-500/20 to-pink-500/20 border border-white/10 overflow-hidden"
           >
-            {/* Background decoration */}
-            <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxnIGZpbGw9IiNmZmZmZmYiIGZpbGwtb3BhY2l0eT0iMC4wMyI+PGNpcmNsZSBjeD0iMzAiIGN5PSIzMCIgcj0iMiIvPjwvZz48L2c+PC9zdmc+')] opacity-50" />
-            
             <h2 className="text-4xl md:text-5xl font-bold mb-6 relative z-10">
               Ready to Create?
             </h2>
@@ -784,56 +672,19 @@ export default function Home() {
       {/* Footer */}
       <footer className="py-12 border-t border-white/10">
         <div className="max-w-7xl mx-auto px-6">
-          <div className="grid md:grid-cols-4 gap-8 mb-8">
-            <div>
-              <div className="flex items-center gap-2 mb-4">
-                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-cyan-400 to-blue-500 flex items-center justify-center">
-                  <Sparkles size={16} />
-                </div>
-                <span className="font-bold">Avatar G</span>
+          <div className="flex flex-col md:flex-row justify-between items-center gap-4">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-cyan-400 to-blue-500 flex items-center justify-center">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" className="text-white">
+                  <path d="M12 2C12 2 8 6 8 10C8 12 9 14 12 14C15 14 16 12 16 10C16 6 12 2 12 2Z" fill="currentColor"/>
+                  <path d="M12 14V22" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                </svg>
               </div>
-              <p className="text-sm text-gray-400">
-                The future of AI-powered content creation.
-              </p>
+              <span className="font-bold">Avatar G</span>
             </div>
-            <div>
-              <h4 className="font-semibold mb-4">Services</h4>
-              <ul className="space-y-2 text-sm text-gray-400">
-                <li><a href="#" className="hover:text-white transition-colors">Avatar Builder</a></li>
-                <li><a href="#" className="hover:text-white transition-colors">Voice Cloner</a></li>
-                <li><a href="#" className="hover:text-white transition-colors">Media Production</a></li>
-                <li><a href="#" className="hover:text-white transition-colors">Music Studio</a></li>
-              </ul>
-            </div>
-            <div>
-              <h4 className="font-semibold mb-4">Company</h4>
-              <ul className="space-y-2 text-sm text-gray-400">
-                <li><a href="#" className="hover:text-white transition-colors">About</a></li>
-                <li><a href="#" className="hover:text-white transition-colors">Blog</a></li>
-                <li><a href="#" className="hover:text-white transition-colors">Careers</a></li>
-                <li><a href="#" className="hover:text-white transition-colors">Contact</a></li>
-              </ul>
-            </div>
-            <div>
-              <h4 className="font-semibold mb-4">Connect</h4>
-              <div className="flex gap-4">
-                <Button variant="ghost" size="icon">
-                  <Share2 size={20} />
-                </Button>
-                <Button variant="ghost" size="icon">
-                  <Download size={20} />
-                </Button>
-              </div>
-            </div>
-          </div>
-          <div className="pt-8 border-t border-white/10 flex flex-col md:flex-row justify-between items-center gap-4">
             <p className="text-sm text-gray-500">
               © 2024 Avatar G. All rights reserved.
             </p>
-            <div className="flex gap-6 text-sm text-gray-500">
-              <a href="#" className="hover:text-white transition-colors">Privacy Policy</a>
-              <a href="#" className="hover:text-white transition-colors">Terms of Service</a>
-            </div>
           </div>
         </div>
       </footer>

@@ -1,62 +1,65 @@
 "use client"
 
 import { motion } from "framer-motion"
+import { ArrowLeft, Sparkles } from "lucide-react"
 import Link from "next/link"
-import { ArrowLeft, Home } from "lucide-react"
-import { Button } from "@/components/ui/button"
+import { ReactNode } from "react"
 
 interface ServiceShellProps {
   title: string
   subtitle: string
   gradient: string
-  children: React.ReactNode
-  actions?: React.ReactNode
+  children: ReactNode
+  actions?: ReactNode
 }
 
 export function ServiceShell({ title, subtitle, gradient, children, actions }: ServiceShellProps) {
   return (
     <div className="min-h-screen bg-[#05070A] text-white">
       {/* Header */}
-      <header className="fixed top-0 left-0 right-0 z-50 bg-[#05070A]/80 backdrop-blur-xl border-b border-white/5">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <Link href="/">
-              <Button variant="ghost" size="sm">
-                <ArrowLeft size={18} className="mr-2" /> Back
-              </Button>
-            </Link>
-            <div className="h-6 w-px bg-white/10" />
-            <Link href="/">
-              <Button variant="ghost" size="sm">
-                <Home size={18} />
-              </Button>
-            </Link>
-          </div>
-          
-          <div className="flex items-center gap-3">
-            <h1 className={`text-xl font-bold bg-gradient-to-r ${gradient} bg-clip-text text-transparent`}>
-              {title}
-            </h1>
-          </div>
+      <header className="sticky top-0 z-40 bg-[#05070A]/80 backdrop-blur-xl border-b border-white/5">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between h-16">
+            {/* Left: Back + Logo */}
+            <div className="flex items-center gap-4">
+              <Link 
+                href="/"
+                className="flex items-center gap-2 text-gray-400 hover:text-white transition-colors"
+              >
+                <ArrowLeft size={20} />
+                <span className="hidden sm:inline text-sm">Back</span>
+              </Link>
+              
+              <div className="flex items-center gap-3">
+                <div className={`w-8 h-8 rounded-lg bg-gradient-to-br ${gradient} flex items-center justify-center`}>
+                  <Sparkles size={16} />
+                </div>
+                <div>
+                  <h1 className="text-lg font-bold">{title}</h1>
+                  <p className="text-xs text-gray-500 hidden sm:block">{subtitle}</p>
+                </div>
+              </div>
+            </div>
 
-          <div className="flex items-center gap-2">
-            {actions}
+            {/* Right: Actions */}
+            {actions && (
+              <div className="flex items-center gap-2">
+                {actions}
+              </div>
+            )}
           </div>
         </div>
       </header>
 
       {/* Main Content */}
-      <main className="pt-24 pb-12 px-6">
-        <div className="max-w-7xl mx-auto">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5 }}
-          >
-            <p className="text-gray-400 mb-8 text-lg">{subtitle}</p>
-            {children}
-          </motion.div>
-        </div>
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5 }}
+        >
+          {children}
+        </motion.div>
       </main>
     </div>
   )
