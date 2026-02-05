@@ -12,7 +12,7 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // Try Gemini FIRST (most reliable)
+    // Try Gemini
     if (process.env.GEMINI_API_KEY) {
       try {
         const response = await fetch(
@@ -23,9 +23,7 @@ export async function POST(req: NextRequest) {
             body: JSON.stringify({
               contents: [{ 
                 parts: [{ 
-                  text: language === "ka" 
-                    ? `უპასუხე ქართულ ენაზე: ${message}` 
-                    : message 
+                  text: language === "ka" ? `უპასუხე ქართულად: ${message}` : message 
                 }] 
               }]
             })
@@ -41,20 +39,19 @@ export async function POST(req: NextRequest) {
               provider: "Gemini",
               language
             });
-          }
+n          }
         }
       } catch (e) {
         console.error("Gemini error:", e);
       }
     }
 
-    // Local fallback
+    // Fallback
     return NextResponse.json({
       response: language === "ka" 
-        ? `გამარჯობა! მე ვარ Avatar G Assistant.\n\nთქვენი შეკითხვა: "${message}"\n\nამჟამად მუშაობს ლოკალური რეჟიმში.`
-        : `Hello! I am Avatar G Assistant.\n\nYour question: "${message}"\n\nRunning in local mode.`,
+        ? `გამარჯობა! მე ვარ Avatar G Assistant.\n\nთქვენი შეკითხვა: "${message}"`
+        : `Hello! I am Avatar G Assistant.\n\nYour question: "${message}"`,
       provider: "Local",
-      language,
       fallback: true
     });
 
@@ -65,4 +62,12 @@ export async function POST(req: NextRequest) {
       error: error.message
     });
   }
+}
+
+export async function GET() {
+  return NextResponse.json({
+    status: "ok",
+    geminiConfigured: !!process.env.GEMINI_API_KEY,
+    timestamp: new Date().toISOString()
+  });
 }
