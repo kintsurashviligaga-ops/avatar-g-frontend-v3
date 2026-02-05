@@ -1,382 +1,433 @@
 "use client";
 
-import { useState, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { useState, useRef, useEffect } from "react";
+import { useIdentity } from "@/lib/identity/IdentityContext";
 import { 
   Phone, 
-  Upload, 
-  FileText, 
-  Mic,
+  PhoneOff, 
+  Mic, 
+  Send, 
+  Clock, 
+  CheckCircle, 
+  AlertCircle,
+  Loader2,
   Play,
   Pause,
-  Check,
-  Clock,
-  User,
   Volume2,
-  Sparkles,
-  ArrowRight,
-  X
+  FileText,
+  MessageSquare
 } from "lucide-react";
-import { useIdentity } from "@/lib/identity/IdentityContext";
-
-type TaskStatus = "pending" | "processing" | "complete" | "calling";
 
 interface Task {
   id: string;
-  type: "document" | "voice" | "text";
+  type: "text" | "voice" | "document";
   content: string;
-  status: TaskStatus;
+  status: "pending" | "processing" | "complete" | "failed";
   result?: string;
-  callDuration?: number;
+  createdAt: string;
+  completedAt?: string;
 }
 
 export default function ExecutiveAgentClient() {
-  const { globalAvatarId, globalVoiceId, injectIdentity } = useIdentity();
+  const { globalAvatarId, globalVoiceId, verifyIdentity } = useIdentity();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [input, setInput] = useState("");
   const [isCallActive, setIsCallActive] = useState(false);
-  const [callProgress, setCallProgress] = useState(0);
-  const [currentTask, setCurrentTask] = useState<Task | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [callStatus, setCallStatus] = useState<"idle" | "connecting" | "active" | "ended">("idle");
+  const [audioLevel, setAudioLevel] = useState(0);
+  const [activeTask, setActiveTask] = useState<Task | null>(null);
+  
+  const hasIdentity = verifyIdentity();
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
-  const colors = {
-    gold: "#D4AF37",
-    cyan: "#00FFFF",
-    obsidian: "#0A0A0A"
-  };
+  // Simulate audio visualization
+  useEffect(() => {
+    if (isCallActive) {
+      const interval = setInterval(() => {
+        setAudioLevel(Math.random() * 100);
+      }, 100);
+      return () => clearInterval(interval);
+    }
+  }, [isCallActive]);
 
-  const handleSubmit = async (type: "document" | "voice" | "text") => {
+  const submitTask = async (type: "text" | "voice" | "document") => {
     if (!input.trim() && type === "text") return;
-
+    
     const newTask: Task = {
-      id: Date.now().toString(),
+      id: `task-${Date.now()}`,
       type,
-      content: input || "Document uploaded",
-      status: "processing"
+      content: input,
+      status: "pending",
+      createdAt: new Date().toISOString()
     };
-
-    // Inject identity before processing
-    try {
-      const taskWithIdentity = injectIdentity(newTask);
-      setTasks(prev => [...prev, taskWithIdentity]);
-      setInput("");
+    
+    setTasks(prev => [newTask, ...prev]);
+    setActiveTask(newTask);
+    setInput("");
+    
+    // Simulate processing
+    setTimeout(() => {
+      setTasks(prev => prev.map(t => 
+        t.id === newTask.id ? { ...t, status: "processing" } : t
+      ));
       
-      // Simulate processing
+      // Simulate completion with voice callback
       setTimeout(() => {
+        const completedTask = {
+          ...newTask,
+          status: "complete" as const,
+          result: "Task completed successfully. Analysis shows 94% confidence in recommendations.",
+          completedAt: new Date().toISOString()
+        };
+        
         setTasks(prev => prev.map(t => 
-          t.id === newTask.id 
-            ? { ...t, status: "complete", result: generateResult(t) }
-            : t
+          t.id === newTask.id ? completedTask : t
         ));
         
-        // Initiate callback
-        initiateCallback(newTask.id);
-      }, 3000);
+        // Trigger voice callback if voice ID exists
+        if (globalVoiceId) {
+          initiateVoiceCallback(completedTask);
+        }
+      }, 5000);
+    }, 2000);
+  };
+
+  const initiateVoiceCallback = async (task: Task) => {
+    setCallStatus("connecting");
+    
+    try {
+      // Generate voice message
+      const response = await fetch('/api/generate/voice', {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          text: `Task ${task.id.slice(-4)} completed. ${task.result}`,
+          _identity: { voiceId: globalVoiceId },
+          emotion: "neutral"
+        })
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        
+        // Play audio
+        if (audioRef.current) {
+          audioRef.current.src = data.audioUrl;
+          await audioRef.current.play();
+        }
+        
+        setIsCallActive(true);
+        setCallStatus("active");
+        
+        // Auto end after audio finishes
+        setTimeout(() => {
+          endCall();
+        }, (data.audioProperties?.duration || 10) * 1000);
+      }
     } catch (error) {
-      alert("Identity verification required!");
+      console.error("Voice callback failed:", error);
+      setCallStatus("idle");
     }
   };
 
-  const generateResult = (task: Task): string => {
-    const results = [
-      `Analyzed ${task.content}. Key findings: 3 critical insights identified. Revenue impact: +$2.4M. Recommend immediate action on Q3 strategy.`,
-      `Processed ${task.content}. Generated comprehensive report with 12 data points. Risk assessment: LOW. Opportunity score: 8.7/10.`,
-      `Reviewed ${task.content}. Executive summary prepared. 5 action items identified. Timeline: 30 days. Budget requirement: $150K.`
-    ];
-    return results[Math.floor(Math.random() * results.length)];
+  const endCall = () => {
+    setIsCallActive(false);
+    setCallStatus("ended");
+    setAudioLevel(0);
+    if (audioRef.current) {
+      audioRef.current.pause();
+    }
+    setTimeout(() => setCallStatus("idle"), 2000);
   };
 
-  const initiateCallback = (taskId: string) => {
-    const task = tasks.find(t => t.id === taskId) || currentTask;
-    if (!task) return;
-
-    setCurrentTask(task);
-    setIsCallActive(true);
-    setCallProgress(0);
-
-    // Simulate call progress
-    const interval = setInterval(() => {
-      setCallProgress(prev => {
-        if (prev >= 100) {
-          clearInterval(interval);
-          setIsCallActive(false);
-          setTasks(prev => prev.map(t => 
-            t.id === taskId ? { ...t, status: "calling", callDuration: 45 } : t
-          ));
-          return 100;
-        }
-        return prev + 2;
-      });
-    }, 100);
+  const simulateIncomingCall = () => {
+    setCallStatus("connecting");
+    setTimeout(() => {
+      setIsCallActive(true);
+      setCallStatus("active");
+    }, 2000);
   };
 
-  const renderCallModal = () => (
-    <AnimatePresence>
-      {isCallActive && (
+  if (!hasIdentity) {
+    return (
+      <div className="min-h-screen bg-[#05070A] text-white pt-20 flex items-center justify-center p-6">
         <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-6"
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="max-w-2xl w-full bg-[#1A1A1A] border border-red-500/30 rounded-3xl p-8 text-center"
         >
-          <motion.div
-            initial={{ scale: 0.9, y: 20 }}
-            animate={{ scale: 1, y: 0 }}
-            className="max-w-md w-full bg-[#1A1A1A] border border-[#D4AF37]/30 rounded-3xl p-8 text-center"
+          <AlertCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
+          <h2 className="text-2xl font-bold text-red-400 mb-2">Identity Required</h2>
+          <p className="text-gray-400 mb-6">Executive Agent requires Digital Twin setup</p>
+          <a 
+            href="/services/avatar-builder"
+            className="inline-block px-6 py-3 bg-gradient-to-r from-[#D4AF37] to-[#00FFFF] rounded-xl text-black font-bold"
           >
-            {/* Pulsing Avatar */}
-            <div className="relative w-32 h-32 mx-auto mb-6">
-              <motion.div
-                animate={{ scale: [1, 1.2, 1], opacity: [0.5, 0.8, 0.5] }}
-                transition={{ duration: 2, repeat: Infinity }}
-                className="absolute inset-0 rounded-full bg-gradient-to-r from-[#D4AF37] to-[#00FFFF] blur-2xl"
-              />
-              <div className="relative w-full h-full rounded-full bg-gradient-to-br from-[#F5D0C5] to-[#E8B4A0] flex items-center justify-center border-4 border-[#D4AF37]">
-                <User className="w-16 h-16 text-[#4A90E2]" />
-              </div>
-              <div className="absolute -bottom-2 -right-2 w-10 h-10 rounded-full bg-green-500 flex items-center justify-center border-4 border-[#1A1A1A]">
-                <Phone className="w-5 h-5 text-white" />
-              </div>
-            </div>
-
-            <h3 className="text-2xl font-bold text-[#D4AF37] mb-2">
-              Avatar G Calling
-            </h3>
-            <p className="text-gray-400 mb-6">
-              Delivering your executive briefing using cloned voice...
-            </p>
-
-            {/* Voice Waveform */}
-            <div className="h-16 bg-[#0A0A0A] rounded-xl flex items-center justify-center gap-1 mb-6 px-4">
-              {Array.from({length: 40}).map((_, i) => (
-                <motion.div
-                  key={i}
-                  animate={{ height: [4, 20 + Math.random() * 30, 4] }}
-                  transition={{ duration: 0.3, repeat: Infinity, delay: i * 0.02 }}
-                  className="w-1 bg-gradient-to-t from-[#D4AF37] to-[#00FFFF] rounded-full"
-                />
-              ))}
-            </div>
-
-            {/* Progress */}
-            <div className="space-y-2 mb-6">
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-400">Call Progress</span>
-                <span className="text-[#00FFFF]">{callProgress}%</span>
-              </div>
-              <div className="h-2 bg-[#0A0A0A] rounded-full overflow-hidden">
-                <motion.div
-                  className="h-full bg-gradient-to-r from-[#D4AF37] to-[#00FFFF]"
-                  style={{ width: `${callProgress}%` }}
-                />
-              </div>
-            </div>
-
-            <div className="flex gap-4 justify-center">
-              <motion.button
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                onClick={() => setIsCallActive(false)}
-                className="w-14 h-14 rounded-full bg-red-500 flex items-center justify-center"
-              >
-                <X className="w-6 h-6 text-white" />
-              </motion.button>
-              <motion.button
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                className="w-14 h-14 rounded-full bg-[#0A0A0A] border border-[#D4AF37] flex items-center justify-center"
-              >
-                <Volume2 className="w-6 h-6 text-[#D4AF37]" />
-              </motion.button>
-            </div>
-          </motion.div>
+            Create Identity
+          </a>
         </motion.div>
-      )}
-    </AnimatePresence>
-  );
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-[#0A0A0A] text-white pt-20">
+    <div className="min-h-screen bg-[#05070A] text-white pt-20">
+      <audio ref={audioRef} className="hidden" />
+      
       {/* Header */}
-      <div className="bg-gradient-to-r from-[#0A0A0A] via-[#1A1A1A] to-[#0A0A0A] border-b border-[#D4AF37]/20 py-8">
+      <div className="bg-gradient-to-r from-[#D4AF37]/20 to-[#00FFFF]/20 border-b border-[#D4AF37]/30 py-8">
         <div className="container mx-auto px-4">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#D4AF37] to-[#00FFFF] flex items-center justify-center">
-              <Phone className="w-6 h-6 text-black" />
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="flex items-center gap-4"
+          >
+            <div className="w-16 h-16 rounded-full bg-gradient-to-br from-[#D4AF37] to-[#00FFFF] p-0.5">
+              <div className="w-full h-full rounded-full bg-[#0A0A0A] flex items-center justify-center">
+                <Phone className="w-8 h-8 text-[#D4AF37]" />
+              </div>
             </div>
             <div>
-              <h1 className="text-3xl font-bold text-[#D4AF37]">Executive Agent</h1>
-              <p className="text-gray-400">AI assistant with voice callback protocol</p>
+              <h1 className="text-3xl font-bold">Executive Agent</h1>
+              <p className="text-gray-400">AI-powered task management with voice callbacks</p>
             </div>
-          </div>
+          </motion.div>
         </div>
       </div>
 
-      <div className="container mx-auto px-4 py-8 max-w-6xl">
-        <div className="grid lg:grid-cols-2 gap-8">
-          {/* Input Section */}
-          <div className="space-y-6">
+      <div className="container mx-auto px-4 py-8">
+        <div className="grid lg:grid-cols-3 gap-8">
+          {/* Task Input */}
+          <div className="lg:col-span-2 space-y-6">
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              className="bg-[#1A1A1A] border border-[#D4AF37]/20 rounded-2xl p-6"
+              className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-6"
             >
-              <h3 className="text-xl font-bold text-[#D4AF37] mb-4 flex items-center gap-2">
-                <Sparkles className="w-5 h-5" />
-                New Request
+              <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                <MessageSquare className="w-5 h-5 text-[#D4AF37]" />
+                New Task
               </h3>
-
+              
               <textarea
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                placeholder="Describe your task... (e.g., 'Analyze Q3 financial report and prepare executive summary')"
-                className="w-full h-32 bg-[#0A0A0A] border border-[#D4AF37]/30 rounded-xl p-4 text-white placeholder-gray-500 focus:border-[#D4AF37] focus:outline-none resize-none mb-4"
+                placeholder="Describe your task... (e.g., 'Analyze Q4 sales data and prepare executive summary')"
+                className="w-full h-32 bg-black/30 border border-white/20 rounded-xl p-4 text-white placeholder-gray-500 focus:border-[#D4AF37] focus:outline-none resize-none mb-4"
               />
-
+              
               <div className="flex gap-3">
                 <motion.button
                   whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.95 }}
-                  onClick={() => handleSubmit("text")}
-                  className="flex-1 py-3 bg-gradient-to-r from-[#D4AF37] to-[#00FFFF] rounded-xl text-black font-bold flex items-center justify-center gap-2"
+                  whileTap={{ scale: 0.98 }}
+                  onClick={() => submitTask("text")}
+                  disabled={!input.trim()}
+                  className="flex-1 py-3 bg-gradient-to-r from-[#D4AF37] to-[#00FFFF] text-black rounded-xl font-semibold flex items-center justify-center gap-2 disabled:opacity-50"
                 >
-                  <ArrowRight className="w-5 h-5" />
+                  <Send className="w-5 h-5" />
                   Submit Task
                 </motion.button>
+                
                 <motion.button
                   whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.95 }}
-                  onClick={() => fileInputRef.current?.click()}
-                  className="px-4 py-3 bg-[#0A0A0A] border border-[#D4AF37]/30 rounded-xl hover:border-[#D4AF37]/60"
+                  whileTap={{ scale: 0.98 }}
+                  onClick={() => submitTask("voice")}
+                  className="px-4 py-3 bg-white/10 hover:bg-white/20 rounded-xl transition-colors"
                 >
-                  <Upload className="w-5 h-5 text-[#D4AF37]" />
-                </motion.button>
-                <motion.button
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.95 }}
-                  className="px-4 py-3 bg-[#0A0A0A] border border-[#D4AF37]/30 rounded-xl hover:border-[#D4AF37]/60"
-                >
-                  <Mic className="w-5 h-5 text-[#00FFFF]" />
+                  <Mic className="w-5 h-5" />
                 </motion.button>
               </div>
-
-              <input
-                type="file"
-                ref={fileInputRef}
-                className="hidden"
-                onChange={() => handleSubmit("document")}
-              />
             </motion.div>
 
-            {/* Identity Status */}
+            {/* Task History */}
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.1 }}
-              className="bg-[#1A1A1A] border border-[#00FFFF]/20 rounded-2xl p-6"
+              className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-6"
             >
-              <h3 className="text-lg font-bold text-[#00FFFF] mb-4">Identity Status</h3>
+              <h3 className="text-lg font-semibold mb-4">Recent Tasks</h3>
+              
               <div className="space-y-3">
-                <div className="flex items-center justify-between p-3 bg-[#0A0A0A] rounded-xl">
-                  <div className="flex items-center gap-3">
-                    <User className="w-5 h-5 text-[#D4AF37]" />
-                    <span className="text-gray-300">Global Avatar ID</span>
-                  </div>
-                  <span className="text-[#00FFFF] font-mono text-sm">
-                    {globalAvatarId || "Not established"}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between p-3 bg-[#0A0A0A] rounded-xl">
-                  <div className="flex items-center gap-3">
-                    <Volume2 className="w-5 h-5 text-[#D4AF37]" />
-                    <span className="text-gray-300">Global Voice ID</span>
-                  </div>
-                  <span className="text-[#00FFFF] font-mono text-sm">
-                    {globalVoiceId || "Not established"}
-                  </span>
-                </div>
+                <AnimatePresence>
+                  {tasks.map((task) => (
+                    <motion.div
+                      key={task.id}
+                      initial={{ opacity: 0, x: -20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      exit={{ opacity: 0, x: 20 }}
+                      className={`p-4 rounded-xl border ${
+                        task.status === "complete" ? "bg-green-500/10 border-green-500/30" :
+                        task.status === "processing" ? "bg-yellow-500/10 border-yellow-500/30" :
+                        "bg-white/5 border-white/10"
+                      }`}
+                    >
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <p className="text-sm text-gray-300 line-clamp-2">{task.content || "Voice task"}</p>
+                          <div className="flex items-center gap-4 mt-2 text-xs text-gray-500">
+                            <span className="flex items-center gap-1">
+                              <Clock className="w-3 h-3" />
+                              {new Date(task.createdAt).toLocaleTimeString()}
+                            </span>
+                            <span className={`flex items-center gap-1 ${
+                              task.status === "complete" ? "text-green-400" :
+                              task.status === "processing" ? "text-yellow-400" :
+                              "text-gray-400"
+                            }`}>
+                              {task.status === "complete" && <CheckCircle className="w-3 h-3" />}
+                              {task.status === "processing" && <Loader2 className="w-3 h-3 animate-spin" />}
+                              {task.status.charAt(0).toUpperCase() + task.status.slice(1)}
+                            </span>
+                          </div>
+                          {task.result && (
+                            <p className="mt-2 text-sm text-green-300 bg-green-500/10 rounded-lg p-2">
+                              {task.result}
+                            </p>
+                          )}
+                        </div>
+                        <div className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center">
+                          {task.type === "voice" ? <Mic className="w-5 h-5" /> :
+                           task.type === "document" ? <FileText className="w-5 h-5" /> :
+                           <MessageSquare className="w-5 h-5" />}
+                        </div>
+                      </div>
+                    </motion.div>
+                  ))}
+                </AnimatePresence>
+                
+                {tasks.length === 0 && (
+                  <p className="text-center text-gray-500 py-8">No tasks yet. Submit your first task above.</p>
+                )}
               </div>
             </motion.div>
           </div>
 
-          {/* Tasks History */}
+          {/* Call Interface */}
           <div className="space-y-6">
-            <h3 className="text-xl font-bold text-[#D4AF37]">Task History</h3>
-            
-            <div className="space-y-4">
-              {tasks.length === 0 ? (
-                <div className="text-center py-12 text-gray-500">
-                  <Clock className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                  <p>No tasks yet. Submit your first request.</p>
+            <motion.div
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              className={`rounded-2xl p-6 border ${
+                isCallActive ? "bg-green-500/10 border-green-500/50" : "bg-white/5 border-white/10"
+              }`}
+            >
+              <h3 className="text-lg font-semibold mb-4">Voice Channel</h3>
+              
+              {/* Call Status */}
+              <div className="text-center py-8">
+                <motion.div
+                  animate={isCallActive ? {
+                    scale: [1, 1.2, 1],
+                    boxShadow: [
+                      "0 0 0 0 rgba(0, 255, 0, 0.4)",
+                      "0 0 0 20px rgba(0, 255, 0, 0)",
+                      "0 0 0 0 rgba(0, 255, 0, 0)"
+                    ]
+                  } : {}}
+                  transition={{ duration: 2, repeat: Infinity }}
+                  className={`w-24 h-24 mx-auto rounded-full flex items-center justify-center mb-4 ${
+                    isCallActive ? "bg-green-500" :
+                    callStatus === "connecting" ? "bg-yellow-500" :
+                    "bg-gray-700"
+                  }`}
+                >
+                  {isCallActive ? (
+                    <Volume2 className="w-12 h-12 text-white" />
+                  ) : callStatus === "connecting" ? (
+                    <Loader2 className="w-12 h-12 text-white animate-spin" />
+                  ) : (
+                    <Phone className="w-12 h-12 text-gray-400" />
+                  )}
+                </motion.div>
+                
+                <p className="text-xl font-semibold mb-1">
+                  {isCallActive ? "Call in Progress" :
+                   callStatus === "connecting" ? "Connecting..." :
+                   callStatus === "ended" ? "Call Ended" :
+                   "Ready"}
+                </p>
+                <p className="text-sm text-gray-400">
+                  {isCallActive ? "Your AI agent is speaking" :
+                   callStatus === "connecting" ? "Establishing connection..." :
+                   "Waiting for task completion"}
+                </p>
+              </div>
+
+              {/* Audio Visualization */}
+              {isCallActive && (
+                <div className="flex justify-center items-end gap-1 h-16 mb-4">
+                  {Array.from({ length: 20 }).map((_, i) => (
+                    <motion.div
+                      key={i}
+                      animate={{ height: [10, Math.random() * 60 + 10, 10] }}
+                      transition={{ duration: 0.3, repeat: Infinity, delay: i * 0.05 }}
+                      className="w-2 bg-gradient-to-t from-green-500 to-green-300 rounded-full"
+                    />
+                  ))}
                 </div>
-              ) : (
-                tasks.map((task) => (
-                  <motion.div
-                    key={task.id}
-                    initial={{ opacity: 0, x: 20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    className="bg-[#1A1A1A] border border-[#D4AF37]/20 rounded-2xl p-6"
-                  >
-                    <div className="flex items-start justify-between mb-3">
-                      <div className="flex items-center gap-3">
-                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
-                          task.status === "complete" ? 'bg-[#00FFFF]/20' :
-                          task.status === "calling" ? 'bg-[#D4AF37]/20' :
-                          'bg-[#0A0A0A]'
-                        }`}>
-                          {task.status === "complete" && <Check className="w-5 h-5 text-[#00FFFF]" />}
-                          {task.status === "calling" && <Phone className="w-5 h-5 text-[#D4AF37]" />}
-                          {task.status === "processing" && <motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity }} className="w-5 h-5 border-2 border-[#D4AF37] border-t-transparent rounded-full" />}
-                        </div>
-                        <div>
-                          <p className="font-semibold text-white capitalize">{task.type} Task</p>
-                          <p className="text-xs text-gray-500">{new Date(parseInt(task.id)).toLocaleString()}</p>
-                        </div>
-                      </div>
-                      <span className={`text-xs px-3 py-1 rounded-full ${
-                        task.status === "complete" ? 'bg-[#00FFFF]/20 text-[#00FFFF]' :
-                        task.status === "calling" ? 'bg-[#D4AF37]/20 text-[#D4AF37]' :
-                        'bg-[#0A0A0A] text-gray-400'
-                      }`}>
-                        {task.status}
-                      </span>
-                    </div>
-
-                    <p className="text-gray-300 text-sm mb-3 line-clamp-2">{task.content}</p>
-
-                    {task.result && (
-                      <div className="bg-[#0A0A0A] rounded-xl p-4 mb-3">
-                        <p className="text-sm text-gray-400">{task.result}</p>
-                      </div>
-                    )}
-
-                    {task.status === "complete" && !task.callDuration && (
-                      <motion.button
-                        whileHover={{ scale: 1.02 }}
-                        whileTap={{ scale: 0.98 }}
-                        onClick={() => initiateCallback(task.id)}
-                        className="w-full py-2 bg-gradient-to-r from-[#D4AF37] to-[#00FFFF] rounded-lg text-black font-semibold flex items-center justify-center gap-2"
-                      >
-                        <Phone className="w-4 h-4" />
-                        Receive Voice Briefing
-                      </motion.button>
-                    )}
-
-                    {task.callDuration && (
-                      <div className="flex items-center gap-2 text-sm text-[#00FFFF]">
-                        <Phone className="w-4 h-4" />
-                        <span>Call completed ({task.callDuration}s)</span>
-                      </div>
-                    )}
-                  </motion.div>
-                ))
               )}
-            </div>
+
+              {/* Call Controls */}
+              <div className="flex gap-3">
+                {isCallActive ? (
+                  <motion.button
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                    onClick={endCall}
+                    className="flex-1 py-3 bg-red-500 hover:bg-red-600 rounded-xl font-semibold flex items-center justify-center gap-2"
+                  >
+                    <PhoneOff className="w-5 h-5" />
+                    End Call
+                  </motion.button>
+                ) : (
+                  <motion.button
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                    onClick={simulateIncomingCall}
+                    disabled={callStatus !== "idle"}
+                    className="flex-1 py-3 bg-green-500 hover:bg-green-600 disabled:bg-gray-700 rounded-xl font-semibold flex items-center justify-center gap-2"
+                  >
+                    <Phone className="w-5 h-5" />
+                    Simulate Call
+                  </motion.button>
+                )}
+              </div>
+            </motion.div>
+
+            {/* Identity Card */}
+            <motion.div
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: 0.1 }}
+              className="bg-gradient-to-br from-[#D4AF37]/10 to-[#00FFFF]/10 border border-[#D4AF37]/30 rounded-2xl p-6"
+            >
+              <h3 className="text-lg font-semibold mb-4 text-[#D4AF37]">Active Identity</h3>
+              <div className="space-y-3">
+                <div className="flex items-center gap-3 p-3 bg-black/30 rounded-xl">
+                  <div className="w-10 h-10 rounded-full bg-[#D4AF37]/20 flex items-center justify-center">
+                    <span className="text-[#D4AF37] font-bold">A</span>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs text-gray-400">Avatar ID</p>
+                    <p className="text-sm text-[#00FFFF] font-mono truncate">{globalAvatarId}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3 p-3 bg-black/30 rounded-xl">
+                  <div className="w-10 h-10 rounded-full bg-[#00FFFF]/20 flex items-center justify-center">
+                    <span className="text-[#00FFFF] font-bold">V</span>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs text-gray-400">Voice ID</p>
+                    <p className="text-sm text-[#00FFFF] font-mono truncate">{globalVoiceId}</p>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
           </div>
         </div>
       </div>
-
-      {renderCallModal()}
     </div>
   );
 }

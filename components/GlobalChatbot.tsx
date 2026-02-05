@@ -1,31 +1,38 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { MessageSquare, X, Send, Mic, Bot, User } from "lucide-react";
-import { useLanguage } from "@/lib/i18n/LanguageContext";
+import { useState, useRef, useEffect } from "react";
+import { 
+  MessageCircle, 
+  X, 
+  Send, 
+  Mic, 
+  MicOff, 
+  Bot,
+  User,
+  Loader2,
+  Volume2,
+  VolumeX
+} from "lucide-react";
+import { useIdentity } from "@/lib/identity/IdentityContext";
 
 interface Message {
   id: string;
   role: "user" | "assistant";
   content: string;
-  timestamp: Date;
+  timestamp: string;
+  audioUrl?: string;
 }
 
 export default function GlobalChatbot() {
   const [isOpen, setIsOpen] = useState(false);
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: "welcome",
-      role: "assistant",
-      content: "გამარჯობა! მე ვარ Avatar G AI ასისტენტი. რით შემიძლია დაგეხმაროთ?",
-      timestamp: new Date(),
-    },
-  ]);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
-  const [isTyping, setIsTyping] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [autoSpeak, setAutoSpeak] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const { t } = useLanguage();
+  const { globalVoiceId } = useIdentity();
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -35,61 +42,105 @@ export default function GlobalChatbot() {
     scrollToBottom();
   }, [messages]);
 
-  const handleSend = async () => {
-    if (!input.trim()) return;
+  const sendMessage = async (content: string) => {
+    if (!content.trim()) return;
 
     const userMessage: Message = {
-      id: Date.now().toString(),
+      id: `msg-${Date.now()}`,
       role: "user",
-      content: input,
-      timestamp: new Date(),
+      content,
+      timestamp: new Date().toISOString()
     };
 
-    setMessages((prev) => [...prev, userMessage]);
+    setMessages(prev => [...prev, userMessage]);
     setInput("");
-    setIsTyping(true);
+    setIsLoading(true);
 
-    // Simulate AI response
-    setTimeout(() => {
-      const responses = [
-        "საინტერესო კითხვაა! მე შემიძლია დაგეხმაროთ AI სერვისების გამოყენებაში.",
-        "გესმის, მოდი ვცადოთ ეს ფუნქცია. რომელ სერვისში გსურთ გამოყენება?",
-        "AI ტექნოლოგიები სწრაფად ვითარდება. მე მზად ვარ დაგეხმაროთ!",
-        "შეგიძლიათ გამოიყენოთ ჩვენი სერვისები: Video Lab, Image Forge, Text Intelligence, Voice Studio და სხვა.",
-      ];
-      const randomResponse = responses[Math.floor(Math.random() * responses.length)];
+    try {
+      // Call text generation API
+      const response = await fetch('/api/generate/text', {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          content,
+          _identity: { avatarId: "chatbot", voiceId: globalVoiceId },
+          type: "general"
+        })
+      });
 
-      const assistantMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        role: "assistant",
-        content: randomResponse,
-        timestamp: new Date(),
-      };
+      if (response.ok) {
+        const data = await response.json();
+        
+        // Generate voice if enabled and voice ID exists
+        let audioUrl = undefined;
+        if (autoSpeak && globalVoiceId) {
+          const voiceResponse = await fetch('/api/generate/voice', {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              text: data.text,
+              _identity: { voiceId: globalVoiceId },
+              emotion: "neutral"
+            })
+          });
+          
+          if (voiceResponse.ok) {
+            const voiceData = await voiceResponse.json();
+            audioUrl = voiceData.audioUrl;
+            
+            // Auto-play
+            const audio = new Audio(audioUrl);
+            audio.play();
+          }
+        }
 
-      setMessages((prev) => [...prev, assistantMessage]);
-      setIsTyping(false);
-    }, 1500);
+        const assistantMessage: Message = {
+          id: `msg-${Date.now() + 1}`,
+          role: "assistant",
+          content: data.text,
+          timestamp: new Date().toISOString(),
+          audioUrl
+        };
+
+        setMessages(prev => [...prev, assistantMessage]);
+      }
+    } catch (error) {
+      console.error("Chat error:", error);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
+  const toggleRecording = () => {
+    setIsRecording(!isRecording);
+    // In production: Implement Web Speech API or similar
+    if (!isRecording) {
+      setTimeout(() => {
+        setIsRecording(false);
+        sendMessage("Voice message simulated");
+      }, 3000);
     }
+  };
+
+  const playAudio = (url: string) => {
+    const audio = new Audio(url);
+    audio.play();
   };
 
   return (
     <>
       {/* Floating Button */}
       <motion.button
-        initial={{ scale: 0 }}
-        animate={{ scale: 1 }}
         whileHover={{ scale: 1.1 }}
         whileTap={{ scale: 0.9 }}
-        onClick={() => setIsOpen(true)}
-        className="fixed bottom-6 right-6 z-50 w-14 h-14 bg-gradient-to-r from-cyan-500 to-blue-600 rounded-full shadow-lg shadow-cyan-500/30 flex items-center justify-center"
+        onClick={() => setIsOpen(!isOpen)}
+        className="fixed bottom-6 right-6 z-50 w-14 h-14 rounded-full bg-gradient-to-r from-[#D4AF37] to-[#00FFFF] shadow-lg shadow-[#00FFFF]/20 flex items-center justify-center"
       >
-        <MessageSquare className="w-6 h-6 text-white" />
+        {isOpen ? (
+          <X className="w-6 h-6 text-black" />
+        ) : (
+          <MessageCircle className="w-6 h-6 text-black" />
+        )}
       </motion.button>
 
       {/* Chat Window */}
@@ -99,104 +150,118 @@ export default function GlobalChatbot() {
             initial={{ opacity: 0, scale: 0.9, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.9, y: 20 }}
-            className="fixed bottom-24 right-6 z-50 w-96 h-[500px] bg-[#0a0f1a] border border-white/10 rounded-2xl shadow-2xl overflow-hidden flex flex-col"
+            className="fixed bottom-24 right-6 z-50 w-96 h-[500px] bg-[#1A1A1A] border border-white/10 rounded-2xl shadow-2xl overflow-hidden flex flex-col"
           >
             {/* Header */}
-            <div className="bg-gradient-to-r from-cyan-500 to-blue-600 p-4 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center">
-                  <Bot className="w-6 h-6 text-white" />
+            <div className="bg-gradient-to-r from-[#D4AF37]/20 to-[#00FFFF]/20 p-4 border-b border-white/10">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#D4AF37] to-[#00FFFF] flex items-center justify-center">
+                    <Bot className="w-6 h-6 text-black" />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold">Avatar G Assistant</h3>
+                    <p className="text-xs text-gray-400">Powered by GPT-4</p>
+                  </div>
                 </div>
-                <div>
-                  <h3 className="font-semibold text-white">Avatar G AI</h3>
-                  <p className="text-xs text-white/70">ონლაინ</p>
-                </div>
+                <button
+                  onClick={() => setAutoSpeak(!autoSpeak)}
+                  className={`p-2 rounded-lg transition-colors ${autoSpeak ? 'bg-[#00FFFF]/20 text-[#00FFFF]' : 'bg-white/5 text-gray-400'}`}
+                  title={autoSpeak ? "Disable voice" : "Enable voice"}
+                >
+                  {autoSpeak ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+                </button>
               </div>
-              <button
-                onClick={() => setIsOpen(false)}
-                className="p-2 hover:bg-white/10 rounded-lg transition-colors"
-              >
-                <X className="w-5 h-5 text-white" />
-              </button>
             </div>
 
             {/* Messages */}
             <div className="flex-1 overflow-y-auto p-4 space-y-4">
+              {messages.length === 0 && (
+                <div className="text-center text-gray-500 py-8">
+                  <Bot className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                  <p>How can I help you today?</p>
+                </div>
+              )}
+              
               {messages.map((message) => (
                 <motion.div
                   key={message.id}
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
-                  className={`flex gap-3 ${
-                    message.role === "user" ? "flex-row-reverse" : ""
-                  }`}
+                  className={`flex gap-3 ${message.role === "user" ? "flex-row-reverse" : ""}`}
                 >
-                  <div
-                    className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
-                      message.role === "user"
-                        ? "bg-cyan-500/20"
-                        : "bg-gradient-to-r from-cyan-500 to-blue-600"
-                    }`}
-                  >
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
+                    message.role === "user" ? "bg-[#D4AF37]/20" : "bg-[#00FFFF]/20"
+                  }`}>
                     {message.role === "user" ? (
-                      <User className="w-4 h-4 text-cyan-400" />
+                      <User className="w-4 h-4 text-[#D4AF37]" />
                     ) : (
-                      <Bot className="w-4 h-4 text-white" />
+                      <Bot className="w-4 h-4 text-[#00FFFF]" />
                     )}
                   </div>
-                  <div
-                    className={`max-w-[70%] p-3 rounded-2xl ${
-                      message.role === "user"
-                        ? "bg-cyan-500/20 text-white rounded-br-none"
-                        : "bg-white/5 text-gray-200 rounded-bl-none border border-white/10"
-                    }`}
-                  >
-                    {message.content}
+                  <div className={`max-w-[70%] rounded-2xl p-3 ${
+                    message.role === "user" 
+                      ? "bg-[#D4AF37]/20 text-white" 
+                      : "bg-white/10 text-gray-200"
+                  }`}>
+                    <p className="text-sm">{message.content}</p>
+                    {message.audioUrl && (
+                      <button
+                        onClick={() => playAudio(message.audioUrl!)}
+                        className="mt-2 flex items-center gap-1 text-xs text-[#00FFFF] hover:underline"
+                      >
+                        <Volume2 className="w-3 h-3" />
+                        Play voice
+                      </button>
+                    )}
                   </div>
                 </motion.div>
               ))}
-              {isTyping && (
-                <motion.div
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  className="flex gap-3"
-                >
-                  <div className="w-8 h-8 rounded-full bg-gradient-to-r from-cyan-500 to-blue-600 flex items-center justify-center">
-                    <Bot className="w-4 h-4 text-white" />
+              
+              {isLoading && (
+                <div className="flex gap-3">
+                  <div className="w-8 h-8 rounded-full bg-[#00FFFF]/20 flex items-center justify-center">
+                    <Bot className="w-4 h-4 text-[#00FFFF]" />
                   </div>
-                  <div className="bg-white/5 border border-white/10 p-3 rounded-2xl rounded-bl-none flex gap-1">
-                    <div className="w-2 h-2 bg-cyan-400 rounded-full animate-bounce" />
-                    <div className="w-2 h-2 bg-cyan-400 rounded-full animate-bounce delay-100" />
-                    <div className="w-2 h-2 bg-cyan-400 rounded-full animate-bounce delay-200" />
+                  <div className="bg-white/10 rounded-2xl p-3">
+                    <Loader2 className="w-5 h-5 animate-spin text-[#00FFFF]" />
                   </div>
-                </motion.div>
+                </div>
               )}
+              
               <div ref={messagesEndRef} />
             </div>
 
             {/* Input */}
-            <div className="p-4 border-t border-white/10 bg-[#0a0f1a]">
+            <div className="p-4 border-t border-white/10 bg-[#0A0A0A]">
               <div className="flex gap-2">
-                <button className="p-3 hover:bg-white/10 rounded-xl transition-colors">
-                  <Mic className="w-5 h-5 text-gray-400" />
+                <button
+                  onClick={toggleRecording}
+                  className={`p-3 rounded-xl transition-colors ${
+                    isRecording 
+                      ? "bg-red-500/20 text-red-500 animate-pulse" 
+                      : "bg-white/5 text-gray-400 hover:bg-white/10"
+                  }`}
+                >
+                  {isRecording ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
                 </button>
+                
                 <input
                   type="text"
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
-                  onKeyPress={handleKeyPress}
-                  placeholder="შეიყვანეთ შეტყობინება..."
-                  className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 text-white placeholder-gray-500 focus:border-cyan-500 focus:outline-none"
+                  onKeyPress={(e) => e.key === "Enter" && sendMessage(input)}
+                  placeholder="Type a message..."
+                  className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 text-white placeholder-gray-500 focus:border-[#00FFFF] focus:outline-none"
                 />
-                <motion.button
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                  onClick={handleSend}
-                  disabled={!input.trim()}
-                  className="p-3 bg-gradient-to-r from-cyan-500 to-blue-600 rounded-xl disabled:opacity-50"
+                
+                <button
+                  onClick={() => sendMessage(input)}
+                  disabled={!input.trim() || isLoading}
+                  className="p-3 bg-gradient-to-r from-[#D4AF37] to-[#00FFFF] rounded-xl text-black disabled:opacity-50"
                 >
-                  <Send className="w-5 h-5 text-white" />
-                </motion.button>
+                  <Send className="w-5 h-5" />
+                </button>
               </div>
             </div>
           </motion.div>
