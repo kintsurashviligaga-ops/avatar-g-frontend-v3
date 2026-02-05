@@ -3,7 +3,7 @@
 import { motion } from "framer-motion";
 import { useLanguage } from "@/lib/i18n/LanguageContext";
 import { useIdentity } from "@/lib/identity/IdentityContext";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { 
   Sparkles, 
   Wand2, 
@@ -22,11 +22,31 @@ import {
   User,
   Volume2,
   Check,
-  AlertTriangle
+  AlertTriangle,
+  Loader2,
+  Music
 } from "lucide-react";
 
 interface ServicePageClientProps {
   id: string;
+}
+
+interface GenerationResult {
+  type: string;
+  url?: string;
+  text?: string;
+  previewUrl?: string;
+  stems?: Record<string, string | null>;
+  identity: {
+    avatarId: string;
+    voiceId: string;
+    injected: boolean;
+  };
+  timestamp: string;
+  processing?: {
+    renderTime?: string;
+    steps?: number;
+  };
 }
 
 const services = {
@@ -34,19 +54,21 @@ const services = {
     icon: Video,
     title: "Video Cine-Lab",
     description: "პროფესიონალური AI ვიდეო გენერაცია",
-    features: ["15 წამიანი კლიპები", "Cinematic ხარისხი", "მულტიმოდალური AI", "4K რეზოლუცია", "Avatar Integration"],
+    features: ["15 წამიანი კლიპები", "Cinematic ხარისხი", "Avatar Acting", "4K რეზოლუცია", "Lip Sync"],
     placeholder: "აღწერეთ თქვენი ვიდეო... (მაგ: 'ქართული ფეხბურთის მატჩი, საღამოს სანათი, დინამიკური კადრები')",
     color: "from-purple-500 to-pink-600",
-    requiresIdentity: true
+    requiresIdentity: true,
+    apiType: "video"
   },
   "image-generator": {
     icon: ImageIcon,
     title: "Image Forge",
     description: "AI სურათების გენერაცია",
-    features: ["4K ხარისხი", "სტილის კონტროლი", "Inpainting", "Outpainting", "Avatar Appearance"],
+    features: ["4K ხარისხი", "სტილის კონტროლი", "Avatar Appearance", "Inpainting", "Outpainting"],
     placeholder: "აღწერეთ სურათი... (მაგ: 'ფუტურისტული ქალაქი, ნეონური განათება, cyberpunk სტილი')",
     color: "from-cyan-500 to-blue-600",
-    requiresIdentity: true
+    requiresIdentity: true,
+    apiType: "image"
   },
   "text-intelligence": {
     icon: MessageSquare,
@@ -55,16 +77,18 @@ const services = {
     features: ["GPT-4 ინტეგრაცია", "მრავალენოვანი", "კონტექსტური გაგება", "Code generation"],
     placeholder: "დაწერეთ რაიმე... (მაგ: 'დამიწერე პოემა თბილისზე')",
     color: "from-emerald-500 to-teal-600",
-    requiresIdentity: false
+    requiresIdentity: false,
+    apiType: "text"
   },
   "voice-studio": {
     icon: Mic,
     title: "Voice Studio",
     description: "ხმოვანი AI ასისტენტი",
-    features: ["TTS/STT", "ხმის კლონირება", "მრავალენოვანი", "Real-time"],
-    placeholder: "ჩაწერეთ ან ჩაწერეთ ტექსტი...",
+    features: ["TTS/STT", "Voice Cloning", "Emotion Control", "Real-time"],
+    placeholder: "ჩაწერეთ ტექსტი... (მაგ: 'გამარჯობა, მე ვარ თქვენი AI ასისტენტი')",
     color: "from-orange-500 to-red-600",
-    requiresIdentity: true
+    requiresIdentity: true,
+    apiType: "voice"
   },
   "code-assistant": {
     icon: Code,
@@ -73,7 +97,8 @@ const services = {
     features: ["ავტომატური კოდი", "Debug", "რეფაქტორინგი", "Documentation"],
     placeholder: "ჩაწერეთ კოდი ან აღწერეთ რა გინდათ...",
     color: "from-indigo-500 to-purple-600",
-    requiresIdentity: false
+    requiresIdentity: false,
+    apiType: "text"
   },
   "data-analyst": {
     icon: BarChart3,
@@ -82,16 +107,18 @@ const services = {
     features: ["ვიზუალიზაცია", "პროგნოზირება", "ავტომატური report-ები", "CSV/Excel"],
     placeholder: "ატვირთეთ მონაცემები ან აღწერეთ ანალიზი...",
     color: "from-rose-500 to-pink-600",
-    requiresIdentity: false
+    requiresIdentity: false,
+    apiType: "text"
   },
   "music-generator": {
-    icon: Mic,
+    icon: Music,
     title: "Music Studio",
     description: "AI მუსიკის გენერაცია",
-    features: ["Original compositions", "Voice integration", "Multi-genre", "Stem separation"],
+    features: ["Original compositions", "Voice Integration", "Multi-genre", "Stem separation"],
     placeholder: "აღწერეთ მუსიკა... (მაგ: 'Epic orchestral, cinematic, heroic theme')",
     color: "from-amber-500 to-orange-600",
-    requiresIdentity: true
+    requiresIdentity: true,
+    apiType: "music"
   }
 };
 
@@ -100,9 +127,10 @@ export default function ServicePageClient({ id }: ServicePageClientProps) {
   const { globalAvatarId, globalVoiceId, injectIdentity, verifyIdentity } = useIdentity();
   const [input, setInput] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
-  const [result, setResult] = useState<string | null>(null);
+  const [result, setResult] = useState<GenerationResult | null>(null);
   const [progress, setProgress] = useState(0);
-  const [identityError, setIdentityError] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [previewPlaying, setPreviewPlaying] = useState(false);
   
   const service = services[id as keyof typeof services] || {
     icon: Sparkles,
@@ -111,7 +139,8 @@ export default function ServicePageClient({ id }: ServicePageClientProps) {
     features: [],
     placeholder: "შეიყვანეთ ტექსტი...",
     color: "from-cyan-500 to-blue-600",
-    requiresIdentity: false
+    requiresIdentity: false,
+    apiType: "text"
   };
   
   const Icon = service.icon;
@@ -120,92 +149,82 @@ export default function ServicePageClient({ id }: ServicePageClientProps) {
   // Check identity requirement
   useEffect(() => {
     if (service.requiresIdentity && !hasIdentity) {
-      setIdentityError(true);
+      setError("Identity required");
     }
   }, [service.requiresIdentity, hasIdentity]);
 
   const handleGenerate = async () => {
     if (!input.trim()) return;
     
-    // Identity verification for required services
     if (service.requiresIdentity && !hasIdentity) {
-      setIdentityError(true);
+      setError("Identity verification required");
       return;
     }
 
     setIsGenerating(true);
     setProgress(0);
     setResult(null);
+    setError(null);
     
     try {
-      // Inject identity into request
+      // Prepare request with identity
       const requestData = {
+        prompt: input,
         content: input,
-        service: id,
-        timestamp: new Date().toISOString()
+        type: id === "code-assistant" ? "code" : id === "data-analyst" ? "executive" : "general",
+        style: "photorealistic",
+        emotion: "neutral",
+        duration: 15,
+        avatarAppearance: true,
+        vocals: true,
+        genre: "electronic"
       };
       
       const requestWithIdentity = service.requiresIdentity 
         ? injectIdentity(requestData)
         : requestData;
 
-      console.log("Request with identity:", requestWithIdentity);
-
-      // Simulate progress
-      const interval = setInterval(() => {
-        setProgress((prev) => {
-          if (prev >= 100) {
-            clearInterval(interval);
-            return 100;
-          }
-          return prev + 10;
+      // Progress simulation
+      const progressInterval = setInterval(() => {
+        setProgress(prev => {
+          if (prev >= 90) return 90;
+          return prev + Math.random() * 15;
         });
-      }, 300);
+      }, 500);
 
-      // Simulate AI generation with identity
-      setTimeout(() => {
-        clearInterval(interval);
-        setProgress(100);
-        
-        let resultText = `✨ AI გენერაციის შედეგი:\n\n"${input}"\n\n🎯 სერვისი: ${service.title}\n⏱️ დრო: 2.3 წამი\n📊 ხარისხი: 98.5%\n\n`;
-        
-        // Add identity-specific output
-        if (service.requiresIdentity && hasIdentity) {
-          resultText += `\n🎭 იდენტიფიკატორის ინტეგრაცია:\n`;
-          resultText += `   Avatar ID: ${globalAvatarId?.slice(0, 16)}...\n`;
-          resultText += `   Voice ID: ${globalVoiceId?.slice(0, 16)}...\n`;
-          resultText += `   Style: ${service.title} with personal avatar\n\n`;
-          
-          if (id === "video-lab") {
-            resultText += `🎬 თქვენი ავატარი გამოჩნდება ვიდეოში\n`;
-            resultText += `🎙️ ხმოვანი კომენტარი თქვენი კლონირებული ხმით\n`;
-          } else if (id === "image-generator") {
-            resultText += `🎨 თქვენი ავატარი გამოსახულია სურათში\n`;
-            resultText += `✨ სტილი: ${service.title}\n`;
-          } else if (id === "music-generator") {
-            resultText += `🎵 მუსიკა შექმნილია თქვენი ხმის პროფილით\n`;
-            resultText += `🎤 შესაძლებელია ვოკალის დამატება\n`;
-          } else if (id === "voice-studio") {
-            resultText += `🎙️ ხმის კლონი წარმატებით გამოყენებულია\n`;
-            resultText += `🗣️ ინტონაცია: ბუნებრივი\n`;
-          }
-        }
-        
-        resultText += `\n✅ მზადაა ჩამოტვირთვისთვის!`;
-        
-        setResult(resultText);
-        setIsGenerating(false);
-      }, 3000);
+      // API call
+      const response = await fetch(`/api/generate/${service.apiType}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(requestWithIdentity)
+      });
+
+      clearInterval(progressInterval);
+      setProgress(100);
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Generation failed");
+      }
+
+      const data = await response.json();
+      setResult(data);
       
-    } catch (error) {
-      console.error("Generation error:", error);
-      setIdentityError(true);
+    } catch (err: any) {
+      setError(err.message || "Generation failed");
+    } finally {
       setIsGenerating(false);
     }
   };
 
-  // Render identity error state
-  if (identityError) {
+  const downloadResult = () => {
+    if (result?.url) {
+      window.open(result.url, '_blank');
+    }
+  };
+
+  // Render identity error
+  if (error === "Identity required" || error === "Identity verification required") {
     return (
       <div className="min-h-screen bg-[#05070A] text-white pt-20 flex items-center justify-center p-6">
         <motion.div
@@ -232,12 +251,10 @@ export default function ServicePageClient({ id }: ServicePageClientProps) {
             <div className={`p-6 rounded-2xl border ${globalAvatarId ? 'border-[#00FFFF] bg-[#00FFFF]/10' : 'border-[#D4AF37]/30 bg-[#0A0A0A]'}`}>
               <User className={`w-8 h-8 mx-auto mb-3 ${globalAvatarId ? 'text-[#00FFFF]' : 'text-gray-600'}`} />
               <p className="font-semibold mb-1">{globalAvatarId ? 'Avatar Ready' : 'Avatar Required'}</p>
-              <p className="text-xs text-gray-500">{globalAvatarId ? 'Established' : 'Not created'}</p>
             </div>
             <div className={`p-6 rounded-2xl border ${globalVoiceId ? 'border-[#00FFFF] bg-[#00FFFF]/10' : 'border-[#D4AF37]/30 bg-[#0A0A0A]'}`}>
               <Volume2 className={`w-8 h-8 mx-auto mb-3 ${globalVoiceId ? 'text-[#00FFFF]' : 'text-gray-600'}`} />
               <p className="font-semibold mb-1">{globalVoiceId ? 'Voice Ready' : 'Voice Required'}</p>
-              <p className="text-xs text-gray-500">{globalVoiceId ? 'Cloned' : 'Not created'}</p>
             </div>
           </div>
 
@@ -273,7 +290,7 @@ export default function ServicePageClient({ id }: ServicePageClientProps) {
         </div>
       )}
 
-      {/* Hero Section */}
+      {/* Hero */}
       <div className={`bg-gradient-to-r ${service.color} py-16 relative overflow-hidden`}>
         <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20" />
         <div className="container mx-auto px-4 relative z-10">
@@ -308,45 +325,43 @@ export default function ServicePageClient({ id }: ServicePageClientProps) {
         <div className="grid lg:grid-cols-3 gap-8">
           {/* Main Content */}
           <div className="lg:col-span-2 space-y-6">
-            {/* Input Area */}
+            {/* Input */}
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-6"
             >
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-semibold">🎯 შეყვანა</h3>
-                <div className="flex gap-2">
-                  <button className="p-2 hover:bg-white/10 rounded-lg transition-colors" title="Upload">
-                    <Upload className="w-5 h-5" />
-                  </button>
-                  <button className="p-2 hover:bg-white/10 rounded-lg transition-colors" title="Settings">
-                    <Settings className="w-5 h-5" />
-                  </button>
-                </div>
-              </div>
+              <h3 className="text-lg font-semibold mb-4">🎯 შეყვანა</h3>
               
               <textarea
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 placeholder={service.placeholder}
-                className="w-full h-40 bg-black/30 border border-white/20 rounded-xl p-4 text-white placeholder-gray-500 focus:border-cyan-500 focus:outline-none resize-none"
+                disabled={isGenerating}
+                className="w-full h-40 bg-black/30 border border-white/20 rounded-xl p-4 text-white placeholder-gray-500 focus:border-cyan-500 focus:outline-none resize-none disabled:opacity-50"
               />
               
-              {/* Progress Bar */}
               {isGenerating && (
                 <div className="mt-4">
                   <div className="flex justify-between text-sm mb-2">
-                    <span>გენერაცია...</span>
-                    <span>{progress}%</span>
+                    <span className="flex items-center gap-2">
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      გენერაცია...
+                    </span>
+                    <span>{Math.round(progress)}%</span>
                   </div>
                   <div className="h-2 bg-white/10 rounded-full overflow-hidden">
                     <motion.div
                       className={`h-full bg-gradient-to-r ${service.color}`}
-                      initial={{ width: 0 }}
-                      animate={{ width: `${progress}%` }}
+                      style={{ width: `${progress}%` }}
                     />
                   </div>
+                </div>
+              )}
+
+              {error && !error.includes("Identity") && (
+                <div className="mt-4 p-4 bg-red-500/20 border border-red-500/30 rounded-xl text-red-400">
+                  {error}
                 </div>
               )}
 
@@ -356,7 +371,7 @@ export default function ServicePageClient({ id }: ServicePageClientProps) {
                     <Mic className="w-5 h-5" />
                   </button>
                   <button className="p-3 bg-white/5 hover:bg-white/10 rounded-xl transition-colors border border-white/10">
-                    <ImageIcon className="w-5 h-5" />
+                    <Upload className="w-5 h-5" />
                   </button>
                 </div>
                 <motion.button
@@ -368,7 +383,7 @@ export default function ServicePageClient({ id }: ServicePageClientProps) {
                 >
                   {isGenerating ? (
                     <>
-                      <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      <Loader2 className="w-5 h-5 animate-spin" />
                       გენერაცია...
                     </>
                   ) : (
@@ -381,7 +396,7 @@ export default function ServicePageClient({ id }: ServicePageClientProps) {
               </div>
             </motion.div>
 
-            {/* Result Area */}
+            {/* Result */}
             {result && (
               <motion.div
                 initial={{ opacity: 0, scale: 0.95 }}
@@ -389,9 +404,16 @@ export default function ServicePageClient({ id }: ServicePageClientProps) {
                 className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-6"
               >
                 <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-xl font-semibold">✨ შედეგი</h3>
+                  <h3 className="text-xl font-semibold flex items-center gap-2">
+                    <Check className="w-5 h-5 text-[#00FFFF]" />
+                    შედეგი
+                  </h3>
                   <div className="flex gap-2">
-                    <button className="p-2 hover:bg-white/10 rounded-lg transition-colors" title="Download">
+                    <button 
+                      onClick={downloadResult}
+                      className="p-2 hover:bg-white/10 rounded-lg transition-colors"
+                      title="Download"
+                    >
                       <Download className="w-5 h-5" />
                     </button>
                     <button className="p-2 hover:bg-white/10 rounded-lg transition-colors" title="Share">
@@ -399,11 +421,77 @@ export default function ServicePageClient({ id }: ServicePageClientProps) {
                     </button>
                   </div>
                 </div>
-                <div className="bg-black/30 rounded-xl p-4 whitespace-pre-wrap font-mono text-sm">
-                  {result}
+
+                {/* Media Preview */}
+                {result.url && service.apiType === "image" && (
+                  <div className="aspect-video bg-black/30 rounded-xl mb-4 flex items-center justify-center overflow-hidden">
+                    <div className={`w-32 h-32 rounded-full bg-gradient-to-r ${service.color} flex items-center justify-center`}>
+                      <ImageIcon className="w-16 h-16 text-white" />
+                    </div>
+                  </div>
+                )}
+
+                {result.url && (service.apiType === "video" || service.apiType === "music" || service.apiType === "voice") && (
+                  <div className="bg-black/30 rounded-xl p-4 mb-4">
+                    <div className="flex items-center gap-4">
+                      <button 
+                        onClick={() => setPreviewPlaying(!previewPlaying)}
+                        className={`w-14 h-14 rounded-full bg-gradient-to-r ${service.color} flex items-center justify-center`}
+                      >
+                        {previewPlaying ? (
+                          <Pause className="w-6 h-6 text-white" />
+                        ) : (
+                          <Play className="w-6 h-6 text-white ml-1" />
+                        )}
+                      </button>
+                      <div className="flex-1">
+                        <div className="h-12 bg-black/50 rounded-lg flex items-center px-4 gap-1">
+                          {Array.from({length: 30}).map((_, i) => (
+                            <motion.div
+                              key={i}
+                              animate={{ 
+                                height: previewPlaying ? [4, 20 + Math.random() * 20, 4] : 4 
+                              }}
+                              transition={{ 
+                                duration: 0.3, 
+                                repeat: previewPlaying ? Infinity : 0,
+                                delay: i * 0.02 
+                              }}
+                              className={`w-1 bg-gradient-to-t ${service.color} rounded-full`}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Text Result */}
+                {result.text && (
+                  <div className="bg-black/30 rounded-xl p-4 mb-4">
+                    <pre className="whitespace-pre-wrap font-mono text-sm text-gray-300">
+                      {result.text}
+                    </pre>
+                  </div>
+                )}
+
+                {/* Metadata */}
+                <div className="grid grid-cols-2 gap-4 text-xs">
+                  <div className="bg-black/30 rounded-lg p-3">
+                    <p className="text-gray-500 mb-1">Identity</p>
+                    <p className="text-[#00FFFF] font-mono">{result.identity?.avatarId?.slice(0, 16)}...</p>
+                  </div>
+                  <div className="bg-black/30 rounded-lg p-3">
+                    <p className="text-gray-500 mb-1">Timestamp</p>
+                    <p className="text-gray-300">{new Date(result.timestamp).toLocaleString()}</p>
+                  </div>
                 </div>
+
                 <div className="flex gap-3 mt-4">
-                  <button className={`flex-1 py-3 bg-gradient-to-r ${service.color} rounded-xl font-semibold hover:opacity-90 transition-opacity`}>
+                  <button 
+                    onClick={downloadResult}
+                    className={`flex-1 py-3 bg-gradient-to-r ${service.color} rounded-xl font-semibold hover:opacity-90 transition-opacity`}
+                  >
                     ჩამოტვირთვა
                   </button>
                   <button className="flex-1 py-3 bg-white/10 hover:bg-white/20 rounded-xl transition-colors">
@@ -442,10 +530,7 @@ export default function ServicePageClient({ id }: ServicePageClientProps) {
                 hasIdentity ? 'bg-[#00FFFF]/5 border-[#00FFFF]/30' : 'bg-white/5 border-white/10'
               }`}
             >
-              <h3 className="text-xl font-semibold mb-4 flex items-center gap-2">
-                {hasIdentity ? <Check className="w-5 h-5 text-[#00FFFF]" /> : <User className="w-5 h-5" />}
-                Identity Status
-              </h3>
+              <h3 className="text-xl font-semibold mb-4">Identity Status</h3>
               
               {hasIdentity ? (
                 <div className="space-y-3">
@@ -463,10 +548,6 @@ export default function ServicePageClient({ id }: ServicePageClientProps) {
                       <p className="text-sm text-[#00FFFF] font-mono truncate">{globalVoiceId}</p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2 text-sm text-[#00FFFF]">
-                    <Check className="w-4 h-4" />
-                    <span>Ready for identity-bound generation</span>
-                  </div>
                 </div>
               ) : (
                 <div className="text-center py-4">
@@ -478,7 +559,7 @@ export default function ServicePageClient({ id }: ServicePageClientProps) {
               )}
             </motion.div>
 
-            {/* AI Assistant Card */}
+            {/* AI Assistant */}
             <motion.div
               initial={{ opacity: 0, x: 20 }}
               animate={{ opacity: 1, x: 0 }}
@@ -487,8 +568,7 @@ export default function ServicePageClient({ id }: ServicePageClientProps) {
             >
               <h3 className="text-xl font-semibold mb-2">💬 AI ჩათბოტი</h3>
               <p className="text-gray-400 text-sm mb-4">დაგეხმარებათ სერვისის გამოყენებაში</p>
-              <button className="w-full py-3 bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/50 rounded-xl transition-colors flex items-center justify-center gap-2">
-                <MessageSquare className="w-5 h-5" />
+              <button className="w-full py-3 bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/50 rounded-xl transition-colors">
                 ჩათის დაწყება
               </button>
             </motion.div>
