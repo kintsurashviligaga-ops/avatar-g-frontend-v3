@@ -1,99 +1,89 @@
 "use client";
 
-import React, { createContext, useContext, useState, useCallback, ReactNode } from "react";
+import { createContext, useContext, useState, useEffect, ReactNode } from "react";
 
-interface IdentityState {
+interface IdentityContextType {
   globalAvatarId: string | null;
   globalVoiceId: string | null;
-  avatarConfig: {
-    facialGeometry: number[];
-    style: string;
-    skinTone: string;
-    eyeColor: string;
-  } | null;
-  voiceConfig: {
-    sampleDuration: number;
-    qualityScore: number;
-    emotionProfiles: string[];
-  } | null;
-}
-
-interface IdentityContextType extends IdentityState {
-  setGlobalAvatarId: (id: string) => void;
-  setGlobalVoiceId: (id: string) => void;
-  setAvatarConfig: (config: IdentityState["avatarConfig"]) => void;
-  setVoiceConfig: (config: IdentityState["voiceConfig"]) => void;
-  injectIdentity: (content: any) => any;
+  setGlobalAvatarId: (id: string | null) => void;
+  setGlobalVoiceId: (id: string | null) => void;
   verifyIdentity: () => boolean;
+  injectIdentity: (data: any) => any;
+  clearIdentity: () => void;
 }
 
 const IdentityContext = createContext<IdentityContextType | undefined>(undefined);
 
 export function IdentityProvider({ children }: { children: ReactNode }) {
-  const [identity, setIdentity] = useState<IdentityState>({
-    globalAvatarId: null,
-    globalVoiceId: null,
-    avatarConfig: null,
-    voiceConfig: null
-  });
+  const [globalAvatarId, setGlobalAvatarIdState] = useState<string | null>(null);
+  const [globalVoiceId, setGlobalVoiceIdState] = useState<string | null>(null);
+  const [isLoaded, setIsLoaded] = useState(false);
 
-  const setGlobalAvatarId = useCallback((id: string) => {
-    setIdentity(prev => ({ ...prev, globalAvatarId: id }));
-    // Persist to localStorage for session continuity
-    localStorage.setItem("GLOBAL_AVATAR_ID", id);
+  // Load from localStorage on mount
+  useEffect(() => {
+    const storedAvatarId = localStorage.getItem("GLOBAL_AVATAR_ID");
+    const storedVoiceId = localStorage.getItem("GLOBAL_VOICE_ID");
+    
+    if (storedAvatarId) setGlobalAvatarIdState(storedAvatarId);
+    if (storedVoiceId) setGlobalVoiceIdState(storedVoiceId);
+    
+    setIsLoaded(true);
   }, []);
 
-  const setGlobalVoiceId = useCallback((id: string) => {
-    setIdentity(prev => ({ ...prev, globalVoiceId: id }));
-    localStorage.setItem("GLOBAL_VOICE_ID", id);
-  }, []);
-
-  const setAvatarConfig = useCallback((config: IdentityState["avatarConfig"]) => {
-    setIdentity(prev => ({ ...prev, avatarConfig: config }));
-    localStorage.setItem("AVATAR_CONFIG", JSON.stringify(config));
-  }, []);
-
-  const setVoiceConfig = useCallback((config: IdentityState["voiceConfig"]) => {
-    setIdentity(prev => ({ ...prev, voiceConfig: config }));
-    localStorage.setItem("VOICE_CONFIG", JSON.stringify(config));
-  }, []);
-
-  // MANDATORY: Identity Injection Protocol
-  const injectIdentity = useCallback((content: any) => {
-    if (!identity.globalAvatarId || !identity.globalVoiceId) {
-      throw new Error("IdentityIntegrityError: Missing global identity");
+  const setGlobalAvatarId = (id: string | null) => {
+    setGlobalAvatarIdState(id);
+    if (id) {
+      localStorage.setItem("GLOBAL_AVATAR_ID", id);
+    } else {
+      localStorage.removeItem("GLOBAL_AVATAR_ID");
     }
+  };
 
+  const setGlobalVoiceId = (id: string | null) => {
+    setGlobalVoiceIdState(id);
+    if (id) {
+      localStorage.setItem("GLOBAL_VOICE_ID", id);
+    } else {
+      localStorage.removeItem("GLOBAL_VOICE_ID");
+    }
+  };
+
+  const verifyIdentity = () => {
+    return !!globalAvatarId && !!globalVoiceId;
+  };
+
+  const injectIdentity = (data: any) => {
     return {
-      ...content,
+      ...data,
       _identity: {
-        avatarId: identity.globalAvatarId,
-        voiceId: identity.globalVoiceId,
-        timestamp: new Date().toISOString(),
-        version: "1.0"
-      },
-      _constraints: {
-        visualIdentity: identity.globalAvatarId,
-        audioIdentity: identity.globalVoiceId,
-        styleConsistency: "STRICT"
+        avatarId: globalAvatarId,
+        voiceId: globalVoiceId,
+        timestamp: new Date().toISOString()
       }
     };
-  }, [identity]);
+  };
 
-  const verifyIdentity = useCallback(() => {
-    return !!(identity.globalAvatarId && identity.globalVoiceId);
-  }, [identity]);
+  const clearIdentity = () => {
+    setGlobalAvatarIdState(null);
+    setGlobalVoiceIdState(null);
+    localStorage.removeItem("GLOBAL_AVATAR_ID");
+    localStorage.removeItem("GLOBAL_VOICE_ID");
+  };
+
+  if (!isLoaded) {
+    return null;
+  }
 
   return (
     <IdentityContext.Provider
       value={{
-        ...identity,
+        globalAvatarId,
+        globalVoiceId,
         setGlobalAvatarId,
         setGlobalVoiceId,
-        setAvatarConfig,
-        setVoiceConfig,
+        verifyIdentity,
         injectIdentity,
-        verifyIdentity
+        clearIdentity
       }}
     >
       {children}
@@ -104,7 +94,7 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
 export function useIdentity() {
   const context = useContext(IdentityContext);
   if (context === undefined) {
-    throw new Error("useIdentity must be used within IdentityProvider");
+    throw new Error("useIdentity must be used within an IdentityProvider");
   }
   return context;
 }
