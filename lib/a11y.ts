@@ -7,7 +7,7 @@ export function trapFocus(element: HTMLElement) {
   const firstFocusable = focusableElements[0] as HTMLElement;
   const lastFocusable = focusableElements[focusableElements.length - 1] as HTMLElement;
 
-  element.addEventListener("keydown", (e) => {
+  element.addEventListener("keydown", (e: KeyboardEvent) => {
     if (e.key !== "Tab") return;
 
     if (e.shiftKey) {
@@ -42,14 +42,26 @@ export function announce(message: string, priority: "polite" | "assertive" = "po
   }, 1000);
 }
 
-// Skip to content link
-export function SkipToContent() {
-  return (
-    <a
-      href="#main-content"
-      className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-50 focus:px-4 focus:py-2 focus:bg-[#D4AF37] focus:text-black focus:rounded-lg"
-    >
-      Skip to main content
-    </a>
-  );
-}
+// Skip to content link component (for React)
+export const skipToContentStyles = {
+  position: "absolute" as const,
+  top: "4px",
+  left: "4px",
+  zIndex: 50,
+  padding: "8px 16px",
+  backgroundColor: "#D4AF37",
+  color: "#000",
+  borderRadius: "8px",
+  textDecoration: "none",
+  clipPath: "inset(50%)",
+  overflow: "hidden",
+  whiteSpace: "nowrap",
+  width: "1px",
+  height: "1px",
+};
+
+export const skipToContentFocusStyles = {
+  clipPath: "none",
+  width: "auto",
+  height: "auto",
+};
