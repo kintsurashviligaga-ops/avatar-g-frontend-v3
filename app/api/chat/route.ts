@@ -12,41 +12,49 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // Try Grok first
-    if (process.env.XAI_API_KEY) {
+    // Try Gemini FIRST (most reliable)
+    if (process.env.GEMINI_API_KEY) {
       try {
-        const response = await fetch("https://api.x.ai/v1/chat/completions", {
-          method: "POST",
-          headers: {
-            "Authorization": `Bearer ${process.env.XAI_API_KEY}`,
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
-            model: "grok-beta",
-            messages: [
-              { role: "system", content: "თქვენ ხართ Avatar G Assistant. უპასუხეთ ქართულად." },
-              { role: "user", content: message }
-            ],
-            max_tokens: 1000
-          })
-        });
+        const response = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${process.env.GEMINI_API_KEY}`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              contents: [{ 
+                parts: [{ 
+                  text: language === "ka" 
+                    ? `უპასუხე ქართულ ენაზე: ${message}` 
+                    : message 
+                }] 
+              }]
+            })
+          }
+        );
 
         if (response.ok) {
           const data = await response.json();
-          return NextResponse.json({
-            response: data.choices[0].message.content,
-            provider: "Grok"
-          });
+          const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+          if (text) {
+            return NextResponse.json({
+              response: text,
+              provider: "Gemini",
+              language
+            });
+          }
         }
       } catch (e) {
-        console.error("Grok error:", e);
+        console.error("Gemini error:", e);
       }
     }
 
     // Local fallback
     return NextResponse.json({
-      response: `გამარჯობა! მე ვარ Avatar G Assistant.\n\nთქვენი შეკითხვა: "${message}"\n\nამჟამად მუშაობს ლოკალური რეჟიმში.`,
+      response: language === "ka" 
+        ? `გამარჯობა! მე ვარ Avatar G Assistant.\n\nთქვენი შეკითხვა: "${message}"\n\nამჟამად მუშაობს ლოკალური რეჟიმში.`
+        : `Hello! I am Avatar G Assistant.\n\nYour question: "${message}"\n\nRunning in local mode.`,
       provider: "Local",
+      language,
       fallback: true
     });
 
@@ -57,11 +65,4 @@ export async function POST(req: NextRequest) {
       error: error.message
     });
   }
-}
-
-export async function GET() {
-  return NextResponse.json({
-    status: "ok",
-    grokConfigured: !!process.env.XAI_API_KEY
-  });
 }
