@@ -1,17 +1,15 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  typescript: { 
-    ignoreBuildErrors: true 
+  eslint: {
+    ignoreDuringBuilds: true,
   },
-  eslint: { 
-    ignoreDuringBuilds: true 
+  typescript: {
+    ignoreBuildErrors: true,
   },
   swcMinify: true,
-  images: {
-    unoptimized: true
+  experimental: {
+    optimizePackageImports: ['lucide-react'],
   },
-  // Remove output: 'export' for Vercel serverless deployment
-  // Remove distDir: 'dist' to use default .next directory
 }
 
 module.exports = nextConfig

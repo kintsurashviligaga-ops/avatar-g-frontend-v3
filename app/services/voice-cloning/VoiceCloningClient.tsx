@@ -16,7 +16,7 @@ import {
   RefreshCw,
   ArrowRight,
   Clock,
-  Waveform,
+  Activity,
   Sparkles
 } from "lucide-react";
 
@@ -77,8 +77,8 @@ export default function VoiceCloningClient() {
     };
   }, []);
 
-  // Waveform visualization
-  const drawWaveform = useCallback(() => {
+  // Activity visualization
+  const drawActivity = useCallback(() => {
     if (!canvasRef.current || !recording.isRecording) return;
     
     const canvas = canvasRef.current;
@@ -113,16 +113,16 @@ export default function VoiceCloningClient() {
     ctx.stroke();
     ctx.shadowBlur = 0;
 
-    animationRef.current = requestAnimationFrame(drawWaveform);
+    animationRef.current = requestAnimationFrame(drawActivity);
   }, [recording.isRecording]);
 
   useEffect(() => {
     if (recording.isRecording) {
-      drawWaveform();
+      drawActivity();
     } else if (animationRef.current) {
       cancelAnimationFrame(animationRef.current);
     }
-  }, [recording.isRecording, drawWaveform]);
+  }, [recording.isRecording, drawActivity]);
 
   const startRecording = async () => {
     try {
@@ -333,7 +333,7 @@ export default function VoiceCloningClient() {
             animate={{ opacity: 1, scale: 1 }}
             className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-3xl p-8"
           >
-            {/* Waveform Canvas */}
+            {/* Activity Canvas */}
             <div className="relative h-48 bg-black/30 rounded-2xl mb-8 overflow-hidden">
               <canvas
                 ref={canvasRef}
@@ -343,7 +343,7 @@ export default function VoiceCloningClient() {
               />
               {!recording.isRecording && !recording.audioUrl && (
                 <div className="absolute inset-0 flex items-center justify-center text-gray-500">
-                  <Waveform className="w-16 h-16 opacity-30" />
+                  <Activity className="w-16 h-16 opacity-30" />
                 </div>
               )}
             </div>
