@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from "framer-motion"
 import { 
   Music, Disc3, Mic2, Radio, Play, Pause, Square, SkipBack, SkipForward,
   Volume2, VolumeX, Wand2, Download, Share2, Save, Trash2, Plus,
-  Settings, Sliders, Zap, Headphones, Mic, AudioWaveform, Music2
+  Settings, Sliders, Zap, Headphones, Mic, Activity, Music2
 } from "lucide-react"
 import { ServiceShell } from "@/components/shared/ServiceShell"
 import { FeatureCard } from "@/components/shared/FeatureCard"
@@ -54,7 +54,7 @@ const features = [
 // Track types
 const trackTypes = [
   { id: 'drums', name: 'Drums', icon: <Disc3 size={16} />, color: 'from-red-500 to-orange-500', muted: false, solo: false, volume: 80 },
-  { id: 'bass', name: 'Bass', icon: <AudioWaveform size={16} />, color: 'from-orange-500 to-yellow-500', muted: false, solo: false, volume: 75 },
+  { id: 'bass', name: 'Bass', icon: <Activity size={16} />, color: 'from-orange-500 to-yellow-500', muted: false, solo: false, volume: 75 },
   { id: 'synth', name: 'Synth', icon: <Zap size={16} />, color: 'from-purple-500 to-pink-500', muted: false, solo: false, volume: 70 },
   { id: 'pads', name: 'Pads', icon: <Music size={16} />, color: 'from-blue-500 to-cyan-500', muted: false, solo: false, volume: 60 },
   { id: 'vocals', name: 'Vocals', icon: <Mic size={16} />, color: 'from-green-500 to-emerald-500', muted: true, solo: false, volume: 85 },
@@ -74,7 +74,7 @@ const compositionStyles = [
 // Effects
 const effectsList = [
   { id: 'reverb', name: 'Reverb', value: 30, icon: <Radio size={16} /> },
-  { id: 'delay', name: 'Delay', value: 20, icon: <AudioWaveform size={16} /> },
+  { id: 'delay', name: 'Delay', value: 20, icon: <Activity size={16} /> },
   { id: 'chorus', name: 'Chorus', value: 15, icon: <Music2 size={16} /> },
   { id: 'distortion', name: 'Distortion', value: 10, icon: <Zap size={16} /> },
   { id: 'compression', name: 'Compression', value: 45, icon: <Sliders size={16} /> },
