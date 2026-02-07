@@ -96,7 +96,7 @@ const colorPresets = [
 // Effects library
 const effectsLibrary = [
   { id: 'transition', name: 'Transitions', items: ['Fade', 'Dissolve', 'Wipe', 'Zoom', 'Slide', 'Glitch'] },
-  { id: 'filter', name: 'Filters', items: ['Blur', 'Sharpen', 'Noise', 'Vignette', 'Lens Flare'] },
+  { id: 'filter', name: 'Filters', items: ['Aperture', 'Sharpen', 'Noise', 'Vignette', 'Lens Flare'] },
   { id: 'text', name: 'Text Animations', items: ['Typewriter', 'Fade In', 'Slide Up', 'Scale', 'Rotate'] },
   { id: 'motion', name: 'Motion Graphics', items: ['Particles', 'Light Leaks', 'Film Grain', 'Scan Lines'] },
 ]

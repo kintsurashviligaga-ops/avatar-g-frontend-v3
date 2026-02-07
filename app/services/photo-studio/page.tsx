@@ -9,7 +9,7 @@ import {
   Type, Sticker, Layers, Maximize2, Minimize2, ZoomIn, 
   ZoomOut, Undo2, Redo2, History, Copy, Check, X,
   Move, MousePointer2, Scissors, Frame, Filter,
-  Blur, Triangle, Circle, Square, Star, Heart,
+  Aperture, Triangle, Circle, Square, Star, Heart,
   ChevronLeft, ChevronRight, Plus, Minus, Grid3X3,
   FileImage, Images, FolderOpen, Settings, Info,
   Eraser, Cloud, Paperclip, Link, Send, Layout
@@ -80,7 +80,7 @@ const adjustments = [
   { id: 'highlights', name: 'Highlights', icon: Maximize2, min: -100, max: 100, default: 0 },
   { id: 'shadows', name: 'Shadows', icon: Minimize2, min: -100, max: 100, default: 0 },
   { id: 'sharpness', name: 'Sharpness', icon: Eye, min: 0, max: 100, default: 0 },
-  { id: 'blur', name: 'Blur', icon: Blur, min: 0, max: 100, default: 0 },
+  { id: 'blur', name: 'Aperture', icon: Aperture, min: 0, max: 100, default: 0 },
   { id: 'vignette', name: 'Vignette', icon: Circle, min: 0, max: 100, default: 0 },
 ]
 
@@ -761,7 +761,7 @@ export default function PhotoStudioPage() {
                     <p className="text-xs text-gray-500">Make background transparent</p>
                   </button>
                   <button className="w-full p-3 bg-gray-800/50 rounded-lg hover:bg-white/5 transition-colors text-left">
-                    <p className="font-medium text-sm">Blur Background</p>
+                    <p className="font-medium text-sm">Aperture Background</p>
                     <p className="text-xs text-gray-500">Keep subject, blur background</p>
                   </button>
                   <button className="w-full p-3 bg-gray-800/50 rounded-lg hover:bg-white/5 transition-colors text-left">
