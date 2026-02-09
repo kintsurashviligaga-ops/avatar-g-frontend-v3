@@ -4,9 +4,7 @@ import { motion, AnimatePresence } from "framer-motion"
 import Link from "next/link"
 import { useState, useEffect, useRef } from "react"
 import { 
-  User, Mic, Film, Music, Camera, Briefcase, 
-  TrendingUp, Code, PenTool, Presentation, Languages, 
-  Video, Glasses, Sparkles, ChevronRight, Star, Zap,
+  User, Film, Music, Camera, ChevronRight, Star, Zap,
   Play, Pause, Settings, Bell, Search, Menu, X,
   ArrowRight, ArrowUpRight, Heart, Share2, Download,
   Bot, Cpu, Shield, Activity
@@ -15,7 +13,7 @@ import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 
-// Services data - 13 services
+// Services data - 4 Core Services Only
 const services = [
   { 
     id: 'avatar-builder', 
@@ -30,154 +28,46 @@ const services = [
     isPopular: true
   },
   { 
-    id: 'voice-cloner', 
-    name: 'Voice Cloner', 
-    shortName: 'Voice',
-    icon: Mic, 
-    color: 'from-purple-400 to-pink-500',
-    bgColor: 'bg-purple-500/20',
-    description: 'Clone any voice with neural precision',
-    features: ['Recording', 'AI Cloning', 'Text to Speech'],
-    isNew: false,
-    isPopular: true
-  },
-  { 
     id: 'media-production', 
-    name: 'Media Production', 
+    name: 'Video Generation', 
     shortName: 'Video',
     icon: Film, 
     color: 'from-red-400 to-orange-500',
     bgColor: 'bg-red-500/20',
-    description: 'Professional video editing and AI generation',
-    features: ['Timeline Edit', 'AI Generate', 'Color Grade'],
+    description: 'Professional AI video generation',
+    features: ['AI Video', 'Editing', 'Export'],
+    isNew: false,
+    isPopular: true
+  },
+  { 
+    id: 'photo-studio', 
+    name: 'Image Generation', 
+    shortName: 'Images',
+    icon: Camera, 
+    color: 'from-yellow-400 to-amber-500',
+    bgColor: 'bg-yellow-500/20',
+    description: 'AI-powered image creation',
+    features: ['Generate', 'Edit', 'Enhance'],
     isNew: false,
     isPopular: true
   },
   { 
     id: 'music-studio', 
-    name: 'Music Studio', 
+    name: 'Music Generation', 
     shortName: 'Music',
     icon: Music, 
     color: 'from-green-400 to-emerald-500',
     bgColor: 'bg-green-500/20',
-    description: 'Create music with AI assistance',
-    features: ['AI Composer', 'Recording', 'Mastering'],
+    description: 'Create music with AI',
+    features: ['Compose', 'Record', 'Master'],
     isNew: false,
-    isPopular: false
-  },
-  { 
-    id: 'photo-studio', 
-    name: 'Photo Studio', 
-    shortName: 'Photo',
-    icon: Camera, 
-    color: 'from-yellow-400 to-amber-500',
-    bgColor: 'bg-yellow-500/20',
-    description: 'AI-powered photo editing',
-    features: ['Enhancement', 'Background Removal', 'Restoration'],
-    isNew: false,
-    isPopular: false
-  },
-  { 
-    id: 'executive-agent', 
-    name: 'Executive Agent', 
-    shortName: 'Agent',
-    icon: Briefcase, 
-    color: 'from-blue-400 to-indigo-500',
-    bgColor: 'bg-blue-500/20',
-    description: 'Your AI executive assistant',
-    features: ['Scheduling', 'Email', 'Reports'],
-    isNew: true,
-    isPopular: false
-  },
-  { 
-    id: 'finance-ai', 
-    name: 'Finance AI', 
-    shortName: 'Finance',
-    icon: TrendingUp, 
-    color: 'from-emerald-400 to-green-500',
-    bgColor: 'bg-emerald-500/20',
-    description: 'Intelligent financial analysis',
-    features: ['Portfolio', 'Forecasting', 'Insights'],
-    isNew: false,
-    isPopular: false
-  },
-  { 
-    id: 'code-studio', 
-    name: 'Code Studio', 
-    shortName: 'Code',
-    icon: Code, 
-    color: 'from-cyan-400 to-teal-500',
-    bgColor: 'bg-cyan-500/20',
-    description: 'AI-powered development environment',
-    features: ['Code Generation', 'Debugging', 'Refactoring'],
-    isNew: true,
-    isPopular: true
-  },
-  { 
-    id: 'creative-writer', 
-    name: 'Creative Writer', 
-    shortName: 'Writer',
-    icon: PenTool, 
-    color: 'from-pink-400 to-rose-500',
-    bgColor: 'bg-pink-500/20',
-    description: 'AI content creation',
-    features: ['Blog Posts', 'Stories', 'Marketing'],
-    isNew: false,
-    isPopular: false
-  },
-  { 
-    id: 'presentations', 
-    name: 'Presentations', 
-    shortName: 'Slides',
-    icon: Presentation, 
-    color: 'from-orange-400 to-red-500',
-    bgColor: 'bg-orange-500/20',
-    description: 'AI-powered slide decks',
-    features: ['Auto Generate', 'Templates', 'Animation'],
-    isNew: false,
-    isPopular: false
-  },
-  { 
-    id: 'language-tutor', 
-    name: 'Language Tutor', 
-    shortName: 'Language',
-    icon: Languages, 
-    color: 'from-indigo-400 to-purple-500',
-    bgColor: 'bg-indigo-500/20',
-    description: 'AI language learning',
-    features: ['Conversation', 'Grammar', 'Pronunciation'],
-    isNew: true,
-    isPopular: false
-  },
-  { 
-    id: 'meeting-ai', 
-    name: 'Meeting AI', 
-    shortName: 'Meeting',
-    icon: Video, 
-    color: 'from-teal-400 to-cyan-500',
-    bgColor: 'bg-teal-500/20',
-    description: 'Intelligent meeting assistant',
-    features: ['Transcription', 'Summary', 'Action Items'],
-    isNew: false,
-    isPopular: false
-  },
-  { 
-    id: 'ar-vr-lab', 
-    name: 'AR/VR Lab', 
-    shortName: 'AR/VR',
-    icon: Glasses, 
-    color: 'from-violet-400 to-fuchsia-500',
-    bgColor: 'bg-violet-500/20',
-    description: 'Create immersive experiences',
-    features: ['3D Models', 'AR Preview', 'VR Worlds'],
-    isNew: true,
     isPopular: true
   },
 ]
 
 // Stats
 const stats = [
-  { value: '13', label: 'AI Services', icon: Zap },
+  { value: '4', label: 'Core Services', icon: Zap },
   { value: '50K+', label: 'Active Users', icon: User },
   { value: '1M+', label: 'Creations', icon: Star },
   { value: '99.9%', label: 'Uptime', icon: Activity },
@@ -185,9 +75,9 @@ const stats = [
 
 // Testimonials
 const testimonials = [
-  { name: 'Sarah Chen', role: 'Content Creator', text: 'Avatar G transformed my workflow. The AI tools are incredibly powerful!', avatar: 'SC' },
-  { name: 'Marcus Johnson', role: 'Developer', text: 'Code Studio is a game changer. It writes better code than I do!', avatar: 'MJ' },
-  { name: 'Elena Rodriguez', role: 'Designer', text: 'The media production tools are professional grade. Absolutely love it.', avatar: 'ER' },
+  { name: 'Sarah Chen', role: 'Content Creator', text: 'Avatar G transformed my workflow. Lightweight and powerful!', avatar: 'SC' },
+  { name: 'Marcus Johnson', role: 'Creator', text: 'Video generation is extremely efficient on my PC.', avatar: 'MJ' },
+  { name: 'Elena Rodriguez', role: 'Designer', text: 'Image creation tools are fast and responsive.', avatar: 'ER' },
 ]
 
 export default function Home() {

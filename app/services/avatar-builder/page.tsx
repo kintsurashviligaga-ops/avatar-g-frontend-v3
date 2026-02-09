@@ -12,6 +12,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Slider } from '@/components/ui/slider';
+import { Progress } from '@/components/ui/progress';
 import { ServicePageShell } from '@/components/ServicePageShell';
 
 // ტიპები
@@ -201,23 +202,69 @@ export default function AvatarBuilderPage() {
   const generateAvatar = async () => {
     setCurrentStep('processing');
     setProcessingProgress(0);
+    setError(null);
 
-    // სიმულაცია - რეალურად აქ AI API იქნებოდა
-    for (let i = 0; i <= 100; i += 10) {
-      await new Promise(resolve => setTimeout(resolve, 300));
-      setProcessingProgress(i);
+    try {
+      console.log('🎨 Starting avatar generation...');
+      
+      // Progress simulation while API processes
+      const progressInterval = setInterval(() => {
+        setProcessingProgress(prev => {
+          if (prev >= 90) return prev;
+          return prev + 5;
+        });
+      }, 500);
+
+      // Call the avatar generation API
+      console.log('📡 Calling API with data:', {
+        hasImage: !!avatar.image,
+        style: avatar.style.artStyle,
+        fashion: avatar.fashion.outfit
+      });
+
+      const response = await fetch('/api/generate/avatar', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          imageBase64: avatar.image,
+          style: avatar.style,
+          fashion: avatar.fashion,
+        }),
+      });
+
+      clearInterval(progressInterval);
+
+      console.log('📥 API response status:', response.status);
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error('❌ API error:', errorData);
+        throw new Error(errorData.error || 'Failed to generate avatar');
+      }
+
+      const data = await response.json();
+      console.log('✅ Avatar generated successfully!');
+      
+      setProcessingProgress(100);
+
+      // Set the generated avatar image
+      setAvatar(prev => ({ 
+        ...prev, 
+        generatedImage: data.image 
+      }));
+
+      // Move to voice step
+      setTimeout(() => {
+        setCurrentStep('voice');
+      }, 500);
+
+    } catch (err: any) {
+      console.error('💥 Avatar generation error:', err);
+      setError(err.message || 'Failed to generate avatar. Please check your API keys and try again.');
+      setCurrentStep('face');
     }
-
-    // რეალურად აქ AI დააბრუნებს ახალ სურათს
-    // ახლა ვიყენებთ ატვირთულს + ეფექტებს
-    setAvatar(prev => ({ 
-      ...prev, 
-      generatedImage: prev.image // რეალურად აქ AI-ის პასუხი იქნებოდა
-    }));
-
-    setTimeout(() => {
-      setCurrentStep('voice');
-    }, 500);
   };
 
   // ჩამოტვირთვა

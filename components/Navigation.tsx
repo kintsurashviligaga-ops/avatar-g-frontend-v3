@@ -6,9 +6,10 @@ import { motion } from "framer-motion";
 import { 
   Home, 
   User, 
-  Mic, 
+  Film,
+  Camera,
+  Music,
   LayoutDashboard, 
-  Sparkles,
   Menu,
   X
 } from "lucide-react";
@@ -26,8 +27,9 @@ export default function Navigation() {
     { href: "/", label: "Home", icon: Home },
     { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
     { href: "/services/avatar-builder", label: "Avatar", icon: User },
-    { href: "/services/voice-cloning", label: "Voice", icon: Mic },
-    { href: "/services/executive-agent", label: "Agent", icon: Sparkles },
+    { href: "/services/media-production", label: "Video", icon: Film },
+    { href: "/services/photo-studio", label: "Images", icon: Camera },
+    { href: "/services/music-studio", label: "Music", icon: Music },
   ];
 
   return (

@@ -11,11 +11,11 @@ const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
   title: {
-    default: "Avatar G - Digital Twin Protocol",
+    default: "Avatar G - AI Media Creation",
     template: "%s - Avatar G"
   },
-  description: "AI-powered digital twin and media generation platform",
-  keywords: ["AI", "digital twin", "voice cloning", "avatar", "generative AI"],
+  description: "Create avatars, video, images, and music with AI",
+  keywords: ["AI", "avatar", "video generation", "image generation", "music generation"],
   authors: [{ name: "Avatar G Team" }],
   openGraph: {
     type: "website",
@@ -26,13 +26,13 @@ export const metadata: Metadata = {
       url: "/og-image.png",
       width: 1200,
       height: 630,
-      alt: "Avatar G - Digital Twin Protocol"
+      alt: "Avatar G - AI Media Creation"
     }]
   },
   twitter: {
     card: "summary_large_image",
-    title: "Avatar G - Digital Twin Protocol",
-    description: "Create your AI-powered digital twin",
+    title: "Avatar G - AI Media Creation",
+    description: "Create AI media with Avatar G",
     images: ["/og-image.png"]
   },
   robots: {
