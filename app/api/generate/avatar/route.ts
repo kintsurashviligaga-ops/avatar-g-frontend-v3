@@ -16,21 +16,19 @@ export async function POST(req: NextRequest) {
     const { 
       imageBase64, 
       style, 
-      fashion 
+      fashion,
+      prompt: customPrompt 
     } = await req.json();
 
     console.log("📝 Request data:", { 
       hasImage: !!imageBase64, 
       style: style?.artStyle,
-      fashion: fashion?.outfit 
+      fashion: fashion?.outfit,
+      customPrompt: !!customPrompt
     });
 
-    if (!imageBase64) {
-      return NextResponse.json({ error: "Image is required" }, { status: 400 });
-    }
-
-    // Build the prompt based on style and fashion preferences
-    const prompt = buildPrompt(style, fashion);
+    // Use custom prompt if provided, otherwise build from style/fashion
+    const prompt = customPrompt || buildPrompt(style, fashion);
     console.log("🎨 Generated prompt:", prompt);
 
     // Use Stability AI for avatar generation
@@ -99,18 +97,23 @@ export async function POST(req: NextRequest) {
 }
 
 function buildPrompt(style: any, fashion: any): string {
-  const parts = [
-    "professional portrait photo,",
-    `${style.artStyle} art style,`,
-    `${style.age} years old,`,
-    `${style.hairStyle.toLowerCase()} ${style.hairColor.toLowerCase()} hair,`,
-    `${style.eyeColor.toLowerCase()} eyes,`,
-    `${style.expression.toLowerCase()} expression,`,
-    `wearing ${fashion.outfit} outfit,`,
-  ];
+  const parts = ["professional portrait photo,"];
 
-  if (fashion.accessories && fashion.accessories.length > 0) {
-    parts.push(`with ${fashion.accessories.join(", ")},`);
+  if (style) {
+    if (style.artStyle) parts.push(`${style.artStyle} art style,`);
+    if (style.age) parts.push(`${style.age} years old,`);
+    if (style.hairStyle && style.hairColor) {
+      parts.push(`${style.hairStyle.toLowerCase()} ${style.hairColor.toLowerCase()} hair,`);
+    }
+    if (style.eyeColor) parts.push(`${style.eyeColor.toLowerCase()} eyes,`);
+    if (style.expression) parts.push(`${style.expression.toLowerCase()} expression,`);
+  }
+
+  if (fashion) {
+    if (fashion.outfit) parts.push(`wearing ${fashion.outfit} outfit,`);
+    if (fashion.accessories && fashion.accessories.length > 0) {
+      parts.push(`with ${fashion.accessories.join(", ")},`);
+    }
   }
 
   parts.push(

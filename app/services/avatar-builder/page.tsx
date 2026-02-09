@@ -1,226 +1,100 @@
 "use client";
 
-import React, { useState, useRef, useEffect } from 'react';
+import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
-  User, Camera, Shield, Sparkles, Mic, Palette, Shirt, Eye, 
-  ChevronRight, ChevronLeft, Upload, Check, RefreshCw, 
-  Download, Share2, Play, Pause, Zap, Crown, Gem, Heart, 
-  Star, ArrowRight, Glasses, Sliders, Loader2, CheckCircle2,
-  AlertCircle, Image as ImageIcon, Type
+  User, Camera, Sparkles, Upload, Download, Share2, Wand2, 
+  Loader2, Check, X, ArrowRight, ArrowLeft, Image as ImageIcon,
+  Palette, Shirt, Eye, Smile, Sun, Moon, Zap, Crown, Heart
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 import { Slider } from '@/components/ui/slider';
-import { Progress } from '@/components/ui/progress';
-import { ServicePageShell } from '@/components/ServicePageShell';
+import { ChatInterface } from '@/components/services/ChatInterface';
 
-// ტიპები
-type Step = 'welcome' | 'face' | 'processing' | 'voice' | 'style' | 'fashion' | 'preview';
-
-interface AvatarData {
-  image: string | null;
-  voice: Blob | null;
-  voiceURL: string | null;
-  style: {
-    artStyle: string;
-    age: number;
-    hairStyle: string;
-    hairColor: string;
-    eyeColor: string;
-    expression: string;
-  };
-  fashion: {
-    outfit: string;
-    accessories: string[];
-  };
-  generatedImage: string | null;
+interface AvatarStyle {
+  id: string;
+  name: string;
+  emoji: string;
+  description: string;
+  prompt: string;
 }
 
-// კონფიგურაცია
-const STEPS = [
-  { id: 'welcome', icon: User, title: 'Welcome' },
-  { id: 'face', icon: Camera, title: 'Face' },
-  { id: 'processing', icon: Sparkles, title: 'Processing' },
-  { id: 'voice', icon: Mic, title: 'Voice' },
-  { id: 'style', icon: Palette, title: 'Style' },
-  { id: 'fashion', icon: Shirt, title: 'Fashion' },
-  { id: 'preview', icon: Eye, title: 'Preview' },
-] as const;
-
-const ART_STYLES = [
-  { id: 'realistic', name: 'Realistic', icon: User },
-  { id: 'anime', name: 'Anime', icon: Sparkles },
-  { id: 'cartoon', name: 'Cartoon', icon: Zap },
-  { id: 'cyberpunk', name: 'Cyberpunk', icon: Zap },
-  { id: 'fantasy', name: 'Fantasy', icon: Crown },
+const AVATAR_STYLES: AvatarStyle[] = [
+  { id: 'professional', name: 'Professional', emoji: '💼', description: 'Business headshot', prompt: 'professional business portrait, formal attire, confident expression, studio lighting' },
+  { id: 'casual', name: 'Casual', emoji: '😊', description: 'Relaxed & friendly', prompt: 'casual portrait, relaxed expression, natural lighting, approachable' },
+  { id: 'artistic', name: 'Artistic', emoji: '🎨', description: 'Creative & unique', prompt: 'artistic portrait, creative styling, artistic lighting, expressive' },
+  { id: 'cinematic', name: 'Cinematic', emoji: '🎬', description: 'Movie-quality', prompt: 'cinematic portrait, dramatic lighting, film quality, professional' },
+  { id: 'anime', name: 'Anime', emoji: '✨', description: 'Anime style', prompt: 'anime style portrait, vibrant colors, stylized features, high detail' },
+  { id: 'cartoon', name: 'Cartoon', emoji: '🎭', description: '3D cartoon', prompt: '3D cartoon style, colorful, stylized, fun and playful' },
+  { id: 'cyberpunk', name: 'Cyberpunk', emoji: '🤖', description: 'Futuristic tech', prompt: 'cyberpunk style, neon lights, futuristic, tech aesthetic' },
+  { id: 'fantasy', name: 'Fantasy', emoji: '🧙', description: 'Magical theme', prompt: 'fantasy style portrait, magical, ethereal, mystical atmosphere' },
 ];
 
-const HAIR_STYLES = ['Short', 'Medium', 'Long', 'Curly', 'Bald'];
-const HAIR_COLORS = ['Black', 'Brown', 'Blonde', 'Red', 'White', 'Blue'];
-const EYE_COLORS = ['Brown', 'Blue', 'Green', 'Gray', 'Amber'];
-const EXPRESSIONS = ['Neutral', 'Smile', 'Laugh', 'Serious'];
-const OUTFITS = [
-  { id: 'casual', name: 'Casual', icon: Shirt },
-  { id: 'formal', name: 'Formal', icon: Crown },
-  { id: 'sporty', name: 'Sporty', icon: Zap },
-  { id: 'elegant', name: 'Elegant', icon: Gem },
-];
-const ACCESSORIES = [
-  { id: 'glasses', name: 'Glasses', icon: Glasses },
-  { id: 'hat', name: 'Hat', icon: Crown },
-  { id: 'earrings', name: 'Earrings', icon: Gem },
-  { id: 'necklace', name: 'Necklace', icon: Heart },
+const SUGGESTIONS = [
+  "Professional headshot with navy blue suit",
+  "Casual portrait with warm smile and natural lighting",
+  "Artistic black and white portrait",
+  "Cinematic portrait with dramatic shadows",
+  "Friendly avatar with bright background",
+  "Creative portrait with colorful styling"
 ];
 
 export default function AvatarBuilderPage() {
-  const [currentStep, setCurrentStep] = useState<Step>('welcome');
-  const [isRecording, setIsRecording] = useState(false);
-  const [recordingTime, setRecordingTime] = useState(0);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [processingProgress, setProcessingProgress] = useState(0);
-  const [error, setError] = useState<string | null>(null);
+  const [activeView, setActiveView] = useState<'create' | 'gallery'>('create');
+  const [selectedStyle, setSelectedStyle] = useState<string>('professional');
+  const [uploadedImage, setUploadedImage] = useState<string | null>(null);
+  const [generatedAvatars, setGeneratedAvatars] = useState<any[]>([]);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [generationProgress, setGenerationProgress] = useState(0);
+  const [currentAvatar, setCurrentAvatar] = useState<any | null>(null);
+  const [showUploadModal, setShowUploadModal] = useState(false);
 
-  const [avatar, setAvatar] = useState<AvatarData>({
-    image: null,
-    voice: null,
-    voiceURL: null,
-    style: {
-      artStyle: 'realistic',
-      age: 25,
-      hairStyle: 'Medium',
-      hairColor: 'Brown',
-      eyeColor: 'Brown',
-      expression: 'Smile',
-    },
-    fashion: {
-      outfit: 'casual',
-      accessories: [],
-    },
-    generatedImage: null,
-  });
+  const handleSendMessage = async (message: string, attachments?: File[]) => {
+    setIsGenerating(true);
+    setGenerationProgress(0);
 
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  const recordingIntervalRef = useRef<NodeJS.Timeout | null>(null);
-
-  const currentStepIndex = STEPS.findIndex(s => s.id === currentStep);
-
-  // ნავიგაცია
-  const nextStep = () => {
-    if (currentStepIndex < STEPS.length - 1) {
-      setCurrentStep(STEPS[currentStepIndex + 1].id);
-    }
-  };
-
-  const prevStep = () => {
-    if (currentStepIndex > 0) {
-      setCurrentStep(STEPS[currentStepIndex - 1].id);
-    }
-  };
-
-  // ფოტოს ატვირთვა
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      if (file.size > 10 * 1024 * 1024) {
-        setError('File size must be less than 10MB');
-        return;
-      }
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setAvatar(prev => ({ ...prev, image: reader.result as string }));
-        setError(null);
-      };
-      reader.readAsDataURL(file);
-    }
-  };
-
-  // ხმის ჩაწერა
-  const startRecording = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mediaRecorder = new MediaRecorder(stream);
-      const chunks: BlobPart[] = [];
-
-      mediaRecorder.ondataavailable = (e) => {
-        if (e.data.size > 0) chunks.push(e.data);
-      };
-
-      mediaRecorder.onstop = () => {
-        const blob = new Blob(chunks, { type: 'audio/webm' });
-        const url = URL.createObjectURL(blob);
-        setAvatar(prev => ({ ...prev, voice: blob, voiceURL: url }));
-        stream.getTracks().forEach(track => track.stop());
-      };
-
-      mediaRecorderRef.current = mediaRecorder;
-      mediaRecorder.start(100);
-      setIsRecording(true);
-      setRecordingTime(0);
-
-      recordingIntervalRef.current = setInterval(() => {
-        setRecordingTime(prev => {
-          if (prev >= 10) {
-            stopRecording();
-            return 10;
-          }
-          return prev + 1;
-        });
-      }, 1000);
-    } catch (err) {
-      setError('Microphone access denied');
-    }
-  };
-
-  const stopRecording = () => {
-    mediaRecorderRef.current?.stop();
-    setIsRecording(false);
-    if (recordingIntervalRef.current) {
-      clearInterval(recordingIntervalRef.current);
-    }
-  };
-
-  const playRecording = () => {
-    if (avatar.voiceURL) {
-      if (!audioRef.current) {
-        audioRef.current = new Audio(avatar.voiceURL);
-        audioRef.current.onended = () => setIsPlaying(false);
-      }
-      if (isPlaying) {
-        audioRef.current.pause();
-        setIsPlaying(false);
-      } else {
-        audioRef.current.play();
-        setIsPlaying(true);
+    // Handle image from attachments if present
+    let imageData: string | null = uploadedImage;
+    if (attachments && attachments.length > 0) {
+      const imageFile = attachments.find(f => f.type.startsWith('image/'));
+      if (imageFile) {
+        imageData = await fileToBase64(imageFile);
+        setUploadedImage(imageData);
       }
     }
-  };
 
-  // ავატარის გენერაცია
-  const generateAvatar = async () => {
-    setCurrentStep('processing');
-    setProcessingProgress(0);
-    setError(null);
+    const selectedStyleData = AVATAR_STYLES.find(s => s.id === selectedStyle);
+    
+    // Create placeholder avatar
+    const newAvatar = {
+      id: Date.now().toString(),
+      prompt: message,
+      style: selectedStyle,
+      image: null,
+      createdAt: new Date(),
+      isGenerating: true
+    };
 
-    try {
-      console.log('🎨 Starting avatar generation...');
-      
-      // Progress simulation while API processes
-      const progressInterval = setInterval(() => {
-        setProcessingProgress(prev => {
-          if (prev >= 90) return prev;
-          return prev + 5;
-        });
-      }, 500);
+    setGeneratedAvatars(prev => [newAvatar, ...prev]);
 
-      // Call the avatar generation API
-      console.log('📡 Calling API with data:', {
-        hasImage: !!avatar.image,
-        style: avatar.style.artStyle,
-        fashion: avatar.fashion.outfit
+    // Simulate progress
+    const progressInterval = setInterval(() => {
+      setGenerationProgress(prev => {
+        if (prev >= 90) {
+          clearInterval(progressInterval);
+          return 90;
+        }
+        return prev + 5;
       });
+    }, 500);
+
+    try {
+      console.log('🎨 Generating avatar with prompt:', message);
+      
+      // Build comprehensive prompt
+      const fullPrompt = `${selectedStyleData?.prompt}, ${message}, high quality, detailed, professional photography, 4K resolution, centered composition`;
 
       const response = await fetch('/api/generate/avatar', {
         method: 'POST',
@@ -228,15 +102,24 @@ export default function AvatarBuilderPage() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          imageBase64: avatar.image,
-          style: avatar.style,
-          fashion: avatar.fashion,
+          imageBase64: imageData,
+          style: {
+            artStyle: selectedStyle,
+            age: 30,
+            hairStyle: 'medium',
+            hairColor: 'brown',
+            eyeColor: 'brown',
+            expression: 'smile'
+          },
+          fashion: {
+            outfit: message.toLowerCase().includes('suit') ? 'formal' : 'casual',
+            accessories: []
+          },
+          prompt: fullPrompt
         }),
       });
 
       clearInterval(progressInterval);
-
-      console.log('📥 API response status:', response.status);
 
       if (!response.ok) {
         const errorData = await response.json();
@@ -246,515 +129,389 @@ export default function AvatarBuilderPage() {
 
       const data = await response.json();
       console.log('✅ Avatar generated successfully!');
+
+      setGenerationProgress(100);
+
+      // Update avatar with generated image
+      setGeneratedAvatars(prev => prev.map(a => 
+        a.id === newAvatar.id 
+          ? { ...a, image: data.image, isGenerating: false }
+          : a
+      ));
+
+      setCurrentAvatar({ ...newAvatar, image: data.image, isGenerating: false });
+
+    } catch (error: any) {
+      console.error('💥 Avatar generation error:', error);
       
-      setProcessingProgress(100);
-
-      // Set the generated avatar image
-      setAvatar(prev => ({ 
-        ...prev, 
-        generatedImage: data.image 
-      }));
-
-      // Move to voice step
-      setTimeout(() => {
-        setCurrentStep('voice');
-      }, 500);
-
-    } catch (err: any) {
-      console.error('💥 Avatar generation error:', err);
-      setError(err.message || 'Failed to generate avatar. Please check your API keys and try again.');
-      setCurrentStep('face');
+      // Remove placeholder on error
+      setGeneratedAvatars(prev => prev.filter(a => a.id !== newAvatar.id));
+      
+      alert(error.message || 'Failed to generate avatar. Please check your API key and try again.');
+    } finally {
+      setIsGenerating(false);
+      setGenerationProgress(0);
     }
   };
 
-  // ჩამოტვირთვა
-  const downloadAvatar = () => {
-    if (avatar.generatedImage || avatar.image) {
+  const fileToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = error => reject(error);
+    });
+  };
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 10 * 1024 * 1024) {
+        alert('File size must be less than 10MB');
+        return;
+      }
+      const base64 = await fileToBase64(file);
+      setUploadedImage(base64);
+      setShowUploadModal(false);
+    }
+  };
+
+  const handleDownload = async (avatar: any) => {
+    if (!avatar.image || avatar.isGenerating) return;
+    
+    try {
       const link = document.createElement('a');
-      link.href = avatar.generatedImage || avatar.image!;
-      link.download = `avatar-${Date.now()}.png`;
+      link.href = avatar.image;
+      link.download = `avatar-${avatar.id}.png`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-    }
-  };
-
-  // გაზიარება
-  const shareAvatar = async () => {
-    if (navigator.share) {
-      try {
-        await navigator.share({
-          title: 'My AI Avatar',
-          text: 'Check out my digital twin!',
-          url: window.location.href,
-        });
-      } catch (err) {
-        console.log('Share cancelled');
-      }
-    } else {
-      await navigator.clipboard.writeText(window.location.href);
-      alert('Link copied!');
-    }
-  };
-
-  // კომპონენტის გასუფთავება
-  useEffect(() => {
-    return () => {
-      if (recordingIntervalRef.current) clearInterval(recordingIntervalRef.current);
-      if (avatar.voiceURL) URL.revokeObjectURL(avatar.voiceURL);
-    };
-  }, [avatar.voiceURL]);
-
-  // რენდერი
-  const renderStep = () => {
-    switch (currentStep) {
-      case 'welcome':
-        return (
-          <div className="text-center py-12">
-            <motion.div
-              initial={{ scale: 0 }}
-              animate={{ scale: 1 }}
-              className="w-32 h-32 mx-auto mb-8 rounded-3xl bg-gradient-to-br from-cyan-400 to-blue-500 flex items-center justify-center"
-            >
-              <User size={64} className="text-white" />
-            </motion.div>
-            <h1 className="text-4xl md:text-6xl font-bold mb-4 bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent">
-              Avatar Builder
-            </h1>
-            <p className="text-xl text-gray-400 mb-8 max-w-2xl mx-auto">
-              Create your digital twin with AI. Upload a photo, customize your style, and generate a unique avatar.
-            </p>
-            <Button onClick={nextStep} size="lg" className="bg-gradient-to-r from-cyan-400 to-blue-500 px-12 py-6 text-lg">
-              Get Started <ArrowRight className="ml-2" />
-            </Button>
-          </div>
-        );
-
-      case 'face':
-        return (
-          <div className="text-center">
-            <h2 className="text-3xl font-bold mb-2">Upload Your Photo</h2>
-            <p className="text-gray-400 mb-8">Choose a clear photo of your face</p>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8 max-w-3xl mx-auto">
-              <motion.div
-                whileHover={{ scale: 1.02 }}
-                onClick={() => fileInputRef.current?.click()}
-                className={`aspect-square rounded-3xl border-2 border-dashed cursor-pointer flex flex-col items-center justify-center ${
-                  avatar.image ? 'border-green-500 bg-green-500/10' : 'border-gray-600 hover:border-cyan-400'
-                }`}
-              >
-                {avatar.image ? (
-                  <>
-                    <img src={avatar.image} alt="Uploaded" className="w-full h-full object-cover rounded-3xl" />
-                    <div className="absolute inset-0 bg-black/50 rounded-3xl flex items-center justify-center">
-                      <Check className="w-16 h-16 text-green-400" />
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <Upload className="w-16 h-16 text-cyan-400 mb-4" />
-                    <p className="text-lg font-medium">Click to upload</p>
-                    <p className="text-sm text-gray-500">JPG, PNG up to 10MB</p>
-                  </>
-                )}
-              </motion.div>
-
-              <div className="aspect-square rounded-3xl bg-gray-900/50 border border-gray-800 p-6 flex flex-col justify-center">
-                <h3 className="text-lg font-semibold mb-4">Tips for best results:</h3>
-                <ul className="space-y-2 text-gray-400 text-left">
-                  <li>✓ Face clearly visible</li>
-                  <li>✓ Good lighting</li>
-                  <li>✓ Front facing</li>
-                  <li>✓ Neutral background</li>
-                </ul>
-              </div>
-            </div>
-
-            <div className="flex gap-4 justify-center">
-              <Button variant="outline" onClick={prevStep} size="lg">
-                <ChevronLeft className="mr-2" /> Back
-              </Button>
-              <Button 
-                onClick={generateAvatar} 
-                disabled={!avatar.image}
-                size="lg"
-                className="bg-gradient-to-r from-cyan-400 to-blue-500"
-              >
-                Generate Avatar <ChevronRight className="ml-2" />
-              </Button>
-            </div>
-          </div>
-        );
-
-      case 'processing':
-        return (
-          <div className="text-center py-12">
-            <motion.div
-              animate={{ rotate: 360 }}
-              transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
-              className="w-32 h-32 mx-auto mb-8 rounded-full border-4 border-cyan-400 border-t-transparent"
-            />
-            <h2 className="text-3xl font-bold mb-4">AI is Creating Your Avatar</h2>
-            <p className="text-gray-400 mb-8">Analyzing features and generating...</p>
-            <div className="max-w-md mx-auto">
-              <Progress value={processingProgress} className="h-2 mb-2" />
-              <p className="text-cyan-400 font-semibold">{processingProgress}%</p>
-            </div>
-          </div>
-        );
-
-      case 'voice':
-        return (
-          <div className="text-center">
-            <h2 className="text-3xl font-bold mb-2">Clone Your Voice</h2>
-            <p className="text-gray-400 mb-8">Record a 10-second sample</p>
-
-            <div className="max-w-md mx-auto mb-8">
-              <motion.div
-                animate={isRecording ? { scale: [1, 1.1, 1] } : {}}
-                transition={{ repeat: Infinity, duration: 1 }}
-                onClick={isRecording ? stopRecording : startRecording}
-                className={`w-48 h-48 mx-auto rounded-full flex items-center justify-center mb-6 cursor-pointer ${
-                  isRecording ? 'bg-red-500/20 border-4 border-red-500' : 
-                  avatar.voice ? 'bg-green-500/20 border-4 border-green-500' : 
-                  'bg-cyan-500/10 border-4 border-cyan-400'
-                }`}
-              >
-                {isRecording ? (
-                  <div className="text-center">
-                    <div className="w-12 h-12 bg-red-500 rounded-lg mb-2" />
-                    <p className="text-red-400 font-bold text-xl">0:{recordingTime.toString().padStart(2, '0')}</p>
-                  </div>
-                ) : avatar.voice ? (
-                  <CheckCircle2 className="w-20 h-20 text-green-400" />
-                ) : (
-                  <Mic className="w-20 h-20 text-cyan-400" />
-                )}
-              </motion.div>
-
-              {avatar.voice && (
-                <div className="flex justify-center gap-4">
-                  <Button variant="outline" onClick={playRecording}>
-                    {isPlaying ? <Pause className="mr-2" /> : <Play className="mr-2" />}
-                    {isPlaying ? 'Pause' : 'Play'}
-                  </Button>
-                  <Button variant="outline" onClick={startRecording}>
-                    <RefreshCw className="mr-2" /> Re-record
-                  </Button>
-                </div>
-              )}
-            </div>
-
-            <div className="flex gap-4 justify-center">
-              <Button variant="outline" onClick={prevStep} size="lg">
-                <ChevronLeft className="mr-2" /> Back
-              </Button>
-              <Button variant="ghost" onClick={nextStep} size="lg">
-                Skip
-              </Button>
-              <Button onClick={nextStep} size="lg" className="bg-gradient-to-r from-cyan-400 to-blue-500">
-                Continue <ChevronRight className="ml-2" />
-              </Button>
-            </div>
-          </div>
-        );
-
-      case 'style':
-        return (
-          <div>
-            <h2 className="text-3xl font-bold mb-2 text-center">Customize Style</h2>
-            <p className="text-gray-400 mb-8 text-center">Choose your avatar's look</p>
-
-            <div className="space-y-6 max-w-3xl mx-auto">
-              {/* Art Style */}
-              <div>
-                <h3 className="text-lg font-semibold mb-3">Art Style</h3>
-                <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-                  {ART_STYLES.map((style) => (
-                    <button
-                      key={style.id}
-                      onClick={() => setAvatar(prev => ({ ...prev, style: { ...prev.style, artStyle: style.id } }))}
-                      className={`p-4 rounded-xl border-2 ${
-                        avatar.style.artStyle === style.id ? 'border-cyan-400 bg-cyan-400/10' : 'border-gray-700'
-                      }`}
-                    >
-                      <style.icon className="w-8 h-8 mx-auto mb-2" />
-                      <p className="text-sm">{style.name}</p>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Age */}
-              <div className="bg-gray-900/50 rounded-xl p-4">
-                <div className="flex justify-between mb-2">
-                  <span>Age</span>
-                  <span className="text-cyan-400 font-bold">{avatar.style.age}</span>
-                </div>
-                <Slider
-                  value={[avatar.style.age]}
-                  onValueChange={([v]) => setAvatar(prev => ({ ...prev, style: { ...prev.style, age: v } }))}
-                  min={18}
-                  max={80}
-                />
-              </div>
-
-              {/* Hair & Eyes */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="bg-gray-900/50 rounded-xl p-4">
-                  <h4 className="font-medium mb-2">Hair Style</h4>
-                  <div className="flex flex-wrap gap-2">
-                    {HAIR_STYLES.map(h => (
-                      <button
-                        key={h}
-                        onClick={() => setAvatar(prev => ({ ...prev, style: { ...prev.style, hairStyle: h } }))}
-                        className={`px-3 py-1 rounded-lg text-sm ${
-                          avatar.style.hairStyle === h ? 'bg-cyan-400 text-black' : 'bg-gray-800'
-                        }`}
-                      >
-                        {h}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <div className="bg-gray-900/50 rounded-xl p-4">
-                  <h4 className="font-medium mb-2">Eye Color</h4>
-                  <div className="flex flex-wrap gap-2">
-                    {EYE_COLORS.map(c => (
-                      <button
-                        key={c}
-                        onClick={() => setAvatar(prev => ({ ...prev, style: { ...prev.style, eyeColor: c } }))}
-                        className={`px-3 py-1 rounded-lg text-sm ${
-                          avatar.style.eyeColor === c ? 'bg-cyan-400 text-black' : 'bg-gray-800'
-                        }`}
-                      >
-                        {c}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex gap-4 justify-center mt-8">
-              <Button variant="outline" onClick={prevStep} size="lg">
-                <ChevronLeft className="mr-2" /> Back
-              </Button>
-              <Button onClick={nextStep} size="lg" className="bg-gradient-to-r from-cyan-400 to-blue-500">
-                Continue <ChevronRight className="ml-2" />
-              </Button>
-            </div>
-          </div>
-        );
-
-      case 'fashion':
-        return (
-          <div>
-            <h2 className="text-3xl font-bold mb-2 text-center">Fashion</h2>
-            <p className="text-gray-400 mb-8 text-center">Dress up your avatar</p>
-
-            <div className="space-y-6 max-w-3xl mx-auto">
-              {/* Outfit */}
-              <div>
-                <h3 className="text-lg font-semibold mb-3">Outfit</h3>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                  {OUTFITS.map((outfit) => (
-                    <button
-                      key={outfit.id}
-                      onClick={() => setAvatar(prev => ({ ...prev, fashion: { ...prev.fashion, outfit: outfit.id } }))}
-                      className={`p-4 rounded-xl border-2 ${
-                        avatar.fashion.outfit === outfit.id ? 'border-cyan-400 bg-cyan-400/10' : 'border-gray-700'
-                      }`}
-                    >
-                      <outfit.icon className="w-8 h-8 mx-auto mb-2" />
-                      <p className="text-sm">{outfit.name}</p>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Accessories */}
-              <div>
-                <h3 className="text-lg font-semibold mb-3">Accessories</h3>
-                <div className="flex flex-wrap gap-3">
-                  {ACCESSORIES.map((acc) => (
-                    <button
-                      key={acc.id}
-                      onClick={() => {
-                        const newAcc = avatar.fashion.accessories.includes(acc.id)
-                          ? avatar.fashion.accessories.filter(a => a !== acc.id)
-                          : [...avatar.fashion.accessories, acc.id];
-                        setAvatar(prev => ({ ...prev, fashion: { ...prev.fashion, accessories: newAcc } }));
-                      }}
-                      className={`flex items-center gap-2 px-4 py-2 rounded-xl border-2 ${
-                        avatar.fashion.accessories.includes(acc.id) 
-                          ? 'border-cyan-400 bg-cyan-400/10 text-cyan-400' 
-                          : 'border-gray-700'
-                      }`}
-                    >
-                      <acc.icon className="w-5 h-5" />
-                      <span>{acc.name}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            <div className="flex gap-4 justify-center mt-8">
-              <Button variant="outline" onClick={prevStep} size="lg">
-                <ChevronLeft className="mr-2" /> Back
-              </Button>
-              <Button onClick={nextStep} size="lg" className="bg-gradient-to-r from-cyan-400 to-blue-500">
-                Preview <ChevronRight className="ml-2" />
-              </Button>
-            </div>
-          </div>
-        );
-
-      case 'preview':
-        return (
-          <div className="text-center">
-            <h2 className="text-3xl font-bold mb-2">Your Avatar is Ready!</h2>
-            <p className="text-gray-400 mb-8">Download or share your digital twin</p>
-
-            <div className="max-w-md mx-auto mb-8">
-              <div className="aspect-square rounded-3xl overflow-hidden border-4 border-cyan-400/30 shadow-2xl">
-                {avatar.generatedImage || avatar.image ? (
-                  <img 
-                    src={avatar.generatedImage || avatar.image!} 
-                    alt="Avatar" 
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <div className="w-full h-full bg-gray-800 flex items-center justify-center">
-                    <User className="w-32 h-32 text-gray-600" />
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 max-w-2xl mx-auto mb-8">
-              <Card className="bg-gray-900/50 border-gray-800 p-4">
-                <p className="text-xl font-bold text-cyan-400">{avatar.style.artStyle}</p>
-                <p className="text-xs text-gray-500">Style</p>
-              </Card>
-              <Card className="bg-gray-900/50 border-gray-800 p-4">
-                <p className="text-xl font-bold text-cyan-400">{avatar.style.age}</p>
-                <p className="text-xs text-gray-500">Age</p>
-              </Card>
-              <Card className="bg-gray-900/50 border-gray-800 p-4">
-                <p className="text-xl font-bold text-cyan-400">{avatar.fashion.outfit}</p>
-                <p className="text-xs text-gray-500">Outfit</p>
-              </Card>
-              <Card className="bg-gray-900/50 border-gray-800 p-4">
-                <p className="text-xl font-bold text-cyan-400">4K</p>
-                <p className="text-xs text-gray-500">Quality</p>
-              </Card>
-            </div>
-
-            <div className="flex flex-wrap gap-3 justify-center">
-              <Button onClick={downloadAvatar} size="lg" className="bg-green-500 hover:bg-green-600">
-                <Download className="mr-2" /> Download
-              </Button>
-              <Button onClick={shareAvatar} size="lg" variant="outline">
-                <Share2 className="mr-2" /> Share
-              </Button>
-              <Button onClick={() => setCurrentStep('face')} size="lg" variant="outline">
-                <RefreshCw className="mr-2" /> Create New
-              </Button>
-            </div>
-          </div>
-        );
-
-      default:
-        return null;
+    } catch (error) {
+      console.error('Download error:', error);
+      alert('Failed to download avatar');
     }
   };
 
   return (
-    <ServicePageShell
-      title="Avatar Builder"
-      description="Create your digital twin"
-      icon={<User size={24} />}
-      gradient="from-cyan-400 to-blue-500"
-    >
-      <div className="min-h-screen bg-[#0A0F1C] text-white">
-        {/* Progress Bar */}
-        {currentStep !== 'welcome' && (
-          <div className="py-6 px-4 bg-black/20 border-b border-white/5">
-            <div className="max-w-4xl mx-auto">
-              <div className="flex justify-between items-center mb-4">
-                {STEPS.map((step, idx) => {
-                  const isActive = idx === currentStepIndex;
-                  const isCompleted = idx < currentStepIndex;
-                  const Icon = step.icon;
-
-                  return (
-                    <div key={step.id} className="flex flex-col items-center">
-                      <motion.div
-                        className={`w-10 h-10 rounded-xl flex items-center justify-center mb-2 ${
-                          isActive ? 'bg-gradient-to-br from-cyan-400 to-blue-500' : 
-                          isCompleted ? 'bg-green-500' : 'bg-gray-800'
-                        }`}
-                        animate={isActive ? { scale: [1, 1.1, 1] } : {}}
-                        transition={{ repeat: Infinity, duration: 2 }}
-                      >
-                        <Icon size={20} className="text-white" />
-                      </motion.div>
-                      <span className={`text-xs ${isActive ? 'text-cyan-400' : 'text-gray-500'}`}>
-                        {step.title}
-                      </span>
-                    </div>
-                  );
-                })}
+    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-black to-gray-900">
+      {/* Header */}
+      <div className="border-b border-white/10 bg-black/20 backdrop-blur-xl">
+        <div className="max-w-7xl mx-auto px-6 py-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-400 to-pink-500 flex items-center justify-center">
+                <User className="text-white" size={20} />
               </div>
-              <div className="h-1 bg-gray-800 rounded-full overflow-hidden">
-                <motion.div
-                  className="h-full bg-gradient-to-r from-cyan-400 to-blue-500"
-                  initial={{ width: 0 }}
-                  animate={{ width: `${((currentStepIndex) / (STEPS.length - 1)) * 100}%` }}
-                  transition={{ duration: 0.5 }}
-                />
+              <div>
+                <h1 className="text-xl font-bold text-white">Avatar Builder</h1>
+                <p className="text-sm text-gray-400">AI-Powered Avatar Generation</p>
               </div>
             </div>
-          </div>
-        )}
 
-        {/* Error */}
-        {error && (
-          <div className="max-w-4xl mx-auto mt-4 px-4">
-            <div className="bg-red-500/10 border border-red-500/30 text-red-400 px-4 py-3 rounded-xl">
-              {error}
-            </div>
-          </div>
-        )}
-
-        {/* Content */}
-        <main className="pt-8 pb-24 px-4">
-          <div className="max-w-4xl mx-auto">
-            <AnimatePresence mode="wait">
-              <motion.div
-                key={currentStep}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -20 }}
-                transition={{ duration: 0.3 }}
+            <div className="flex items-center gap-2">
+              <Button
+                variant={activeView === 'create' ? 'default' : 'outline'}
+                onClick={() => setActiveView('create')}
+                className={activeView === 'create' ? 'bg-gradient-to-r from-purple-500 to-pink-500' : 'border-white/10'}
               >
-                {renderStep()}
-              </motion.div>
-            </AnimatePresence>
+                <Wand2 size={16} className="mr-2" />
+                Create
+              </Button>
+              <Button
+                variant={activeView === 'gallery' ? 'default' : 'outline'}
+                onClick={() => setActiveView('gallery')}
+                className={activeView === 'gallery' ? 'bg-gradient-to-r from-purple-500 to-pink-500' : 'border-white/10'}
+              >
+                <ImageIcon size={16} className="mr-2" />
+                Gallery ({generatedAvatars.length})
+              </Button>
+            </div>
           </div>
-        </main>
-
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/*"
-          onChange={handleFileUpload}
-          className="hidden"
-        />
+        </div>
       </div>
-    </ServicePageShell>
+
+      <div className="max-w-7xl mx-auto px-6 py-8">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Main Content */}
+          <div className="lg:col-span-2 space-y-6">
+            {activeView === 'create' ? (
+              <>
+                {/* Style Selection */}
+                <Card className="p-6 bg-black/40 border-white/10">
+                  <div className="flex items-center gap-2 mb-4">
+                    <Sparkles className="text-purple-400" size={20} />
+                    <h3 className="text-lg font-semibold text-white">Choose Avatar Style</h3>
+                  </div>
+                  
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    {AVATAR_STYLES.map((style) => (
+                      <button
+                        key={style.id}
+                        onClick={() => setSelectedStyle(style.id)}
+                        className={`p-4 rounded-xl border-2 transition-all ${
+                          selectedStyle === style.id
+                            ? 'border-purple-500 bg-purple-500/10'
+                            : 'border-white/10 bg-white/5 hover:border-white/20'
+                        }`}
+                      >
+                        <div className="text-3xl mb-2">{style.emoji}</div>
+                        <div className="text-sm font-semibold text-white">{style.name}</div>
+                        <div className="text-xs text-gray-400 mt-1">{style.description}</div>
+                      </button>
+                    ))}
+                  </div>
+                </Card>
+
+                {/* Reference Image Upload (Optional) */}
+                <Card className="p-6 bg-black/40 border-white/10">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-2">
+                      <Camera className="text-cyan-400" size={20} />
+                      <h3 className="text-lg font-semibold text-white">Reference Photo (Optional)</h3>
+                    </div>
+                    <Badge variant="outline" className="text-xs border-cyan-500/30 text-cyan-400">
+                      Optional
+                    </Badge>
+                  </div>
+
+                  {uploadedImage ? (
+                    <div className="relative group">
+                      <img
+                        src={uploadedImage}
+                        alt="Reference"
+                        className="w-full h-48 object-cover rounded-lg"
+                      />
+                      <button
+                        onClick={() => setUploadedImage(null)}
+                        className="absolute top-2 right-2 p-2 bg-red-500 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        <X size={16} className="text-white" />
+                      </button>
+                    </div>
+                  ) : (
+                    <label className="block w-full h-48 border-2 border-dashed border-white/20 rounded-lg flex flex-col items-center justify-center hover:border-purple-500/50 hover:bg-purple-500/5 transition-all cursor-pointer">
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={handleImageUpload}
+                        className="hidden"
+                      />
+                      <Upload size={32} className="text-gray-600 mb-2" />
+                      <p className="text-gray-400">Click to upload reference photo</p>
+                      <p className="text-xs text-gray-500 mt-1">JPG, PNG up to 10MB</p>
+                    </label>
+                  )}
+                </Card>
+
+                {/* Generation Progress */}
+                {isGenerating && (
+                  <Card className="p-6 bg-gradient-to-r from-purple-500/20 to-pink-500/20 border-purple-500/30">
+                    <div className="flex items-center gap-4">
+                      <Loader2 className="animate-spin text-purple-400" size={24} />
+                      <div className="flex-1">
+                        <div className="text-white font-semibold mb-2">Generating your avatar...</div>
+                        <div className="w-full bg-black/20 rounded-full h-2">
+                          <div 
+                            className="bg-gradient-to-r from-purple-400 to-pink-500 h-2 rounded-full transition-all duration-300"
+                            style={{ width: `${generationProgress}%` }}
+                          />
+                        </div>
+                        <div className="text-sm text-gray-300 mt-2">{generationProgress}% complete</div>
+                      </div>
+                    </div>
+                  </Card>
+                )}
+
+                {/* Chat Interface */}
+                <Card className="bg-black/40 border-white/10 h-[500px]">
+                  <ChatInterface
+                    onSendMessage={handleSendMessage}
+                    placeholder={`Describe the ${AVATAR_STYLES.find(s => s.id === selectedStyle)?.name.toLowerCase()} avatar you want...`}
+                    suggestions={SUGGESTIONS}
+                    isGenerating={isGenerating}
+                  />
+                </Card>
+              </>
+            ) : (
+              /* Gallery View */
+              <div className="space-y-4">
+                {generatedAvatars.length === 0 ? (
+                  <Card className="p-12 bg-black/20 border-white/10 text-center">
+                    <User className="mx-auto text-gray-600 mb-4" size={48} />
+                    <h3 className="text-lg font-semibold text-white mb-2">No avatars yet</h3>
+                    <p className="text-gray-400 mb-4">Create your first avatar to get started</p>
+                    <Button
+                      onClick={() => setActiveView('create')}
+                      className="bg-gradient-to-r from-purple-500 to-pink-500"
+                    >
+                      <Wand2 size={16} className="mr-2" />
+                      Create Avatar
+                    </Button>
+                  </Card>
+                ) : (
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                    {generatedAvatars.map((avatar) => (
+                      <Card 
+                        key={avatar.id} 
+                        className="p-0 bg-black/40 border-white/10 hover:border-purple-500/30 transition-all overflow-hidden group cursor-pointer"
+                        onClick={() => setCurrentAvatar(avatar)}
+                      >
+                        <div className="relative aspect-square bg-black">
+                          {avatar.image ? (
+                            <img
+                              src={avatar.image}
+                              alt={avatar.prompt}
+                              className="w-full h-full object-cover"
+                            />
+                          ) : (
+                            <div className="absolute inset-0 flex items-center justify-center">
+                              <Loader2 className="animate-spin text-purple-400" size={32} />
+                            </div>
+                          )}
+                          {!avatar.isGenerating && avatar.image && (
+                            <div className="absolute inset-0 bg-black/60 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                              <Button className="bg-gradient-to-r from-purple-500 to-pink-500">
+                                <Eye size={20} />
+                              </Button>
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="p-3">
+                          <p className="text-sm text-white truncate mb-2">{avatar.prompt}</p>
+                          <div className="flex items-center justify-between">
+                            <Badge variant="outline" className="text-xs border-purple-500/30 text-purple-400">
+                              {avatar.style}
+                            </Badge>
+                            {!avatar.isGenerating && avatar.image && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleDownload(avatar);
+                                }}
+                              >
+                                <Download size={14} />
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      </Card>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Sidebar - Preview */}
+          <div className="space-y-6">
+            <Card className="p-6 bg-black/40 border-white/10">
+              <h3 className="text-sm font-semibold text-gray-400 mb-4 flex items-center gap-2">
+                <Eye size={16} />
+                PREVIEW
+              </h3>
+
+              {currentAvatar ? (
+                <>
+                  <div className="relative aspect-square bg-black rounded-lg overflow-hidden mb-4">
+                    {currentAvatar.isGenerating ? (
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <Loader2 className="animate-spin text-purple-400" size={32} />
+                      </div>
+                    ) : currentAvatar.image ? (
+                      <img
+                        src={currentAvatar.image}
+                        alt={currentAvatar.prompt}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <User className="text-gray-600" size={48} />
+                      </div>
+                    )}
+                  </div>
+
+                  <p className="text-sm text-gray-400 mb-4">{currentAvatar.prompt}</p>
+
+                  {/* Actions */}
+                  {!currentAvatar.isGenerating && currentAvatar.image && (
+                    <div className="flex gap-2">
+                      <Button
+                        onClick={() => handleDownload(currentAvatar)}
+                        className="flex-1 bg-gradient-to-r from-purple-500 to-pink-500"
+                      >
+                        <Download size={16} className="mr-2" />
+                        Download
+                      </Button>
+                      <Button variant="outline" size="icon" className="border-white/10">
+                        <Share2 size={16} />
+                      </Button>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="text-center py-12">
+                  <User className="mx-auto text-gray-600 mb-4" size={48} />
+                  <p className="text-gray-400">No avatar selected</p>
+                </div>
+              )}
+            </Card>
+
+            {/* Quick Tips */}
+            <Card className="p-6 bg-black/40 border-white/10">
+              <h3 className="text-sm font-semibold text-gray-400 mb-4">TIPS FOR BEST RESULTS</h3>
+              <div className="space-y-3 text-sm text-gray-400">
+                <div className="flex items-start gap-2">
+                  <Check size={16} className="text-green-400 flex-shrink-0 mt-0.5" />
+                  <span>Be specific about desired features and style</span>
+                </div>
+                <div className="flex items-start gap-2">
+                  <Check size={16} className="text-green-400 flex-shrink-0 mt-0.5" />
+                  <span>Reference photo improves results (optional)</span>
+                </div>
+                <div className="flex items-start gap-2">
+                  <Check size={16} className="text-green-400 flex-shrink-0 mt-0.5" />
+                  <span>Try different styles for variety</span>
+                </div>
+                <div className="flex items-start gap-2">
+                  <Check size={16} className="text-green-400 flex-shrink-0 mt-0.5" />
+                  <span>Include details like clothing, background</span>
+                </div>
+              </div>
+            </Card>
+
+            {/* Stats */}
+            <Card className="p-6 bg-black/40 border-white/10">
+              <h3 className="text-sm font-semibold text-gray-400 mb-4">STATISTICS</h3>
+              <div className="space-y-3">
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-400 text-sm">Total Avatars</span>
+                  <span className="text-white font-semibold">{generatedAvatars.length}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-400 text-sm">This Month</span>
+                  <span className="text-white font-semibold">{generatedAvatars.filter(a => {
+                    const now = new Date();
+                    return a.createdAt.getMonth() === now.getMonth() && 
+                           a.createdAt.getFullYear() === now.getFullYear();
+                  }).length}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-400 text-sm">Favorite Style</span>
+                  <span className="text-white font-semibold capitalize">
+                    {generatedAvatars.length > 0 
+                      ? generatedAvatars[0].style 
+                      : '-'}
+                  </span>
+                </div>
+              </div>
+            </Card>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
