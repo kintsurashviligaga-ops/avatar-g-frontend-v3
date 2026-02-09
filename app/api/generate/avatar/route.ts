@@ -51,7 +51,7 @@ export async function POST(req: NextRequest) {
       formData.append('samples', '1');
       formData.append('steps', '50');
       formData.append('style_preset', stylePreset);
-      formData.append('strength', '0.45');
+      formData.append('image_strength', '0.45');
 
       response = await fetch(
         "https://api.stability.ai/v1/generation/stable-diffusion-xl-1024-v1-0/image-to-image",
