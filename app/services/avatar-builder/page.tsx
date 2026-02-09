@@ -24,6 +24,7 @@ interface AvatarStyle {
 interface AvatarPreset {
   id: string;
   name: string;
+  category: string;
   data: {
     selectedStyle: string;
     age: number;
@@ -69,12 +70,13 @@ const SUGGESTIONS = [
 
 const BODY_TYPES = ['Slim', 'Athletic', 'Average', 'Curvy', 'Muscular'];
 const PRESENTATIONS = ['Feminine', 'Masculine', 'Androgynous'];
+const PRESET_CATEGORIES = ['Professional', 'Casual', 'Studio', 'Cinematic', 'Fantasy', 'Street'];
 const POSES = [
-  { id: 'a-pose', name: 'A-pose', prompt: 'neutral A-pose' },
-  { id: 't-pose', name: 'T-pose', prompt: 'neutral T-pose' },
-  { id: 'relaxed', name: 'Relaxed', prompt: 'relaxed standing pose' },
-  { id: 'confident', name: 'Confident', prompt: 'confident pose, shoulders back' },
-  { id: 'hands-on-hips', name: 'Hands on Hips', prompt: 'hands on hips pose' },
+  { id: 'a-pose', name: 'A-pose', prompt: 'neutral A-pose', desc: 'Balanced stance', gradient: 'from-slate-900 to-slate-700' },
+  { id: 't-pose', name: 'T-pose', prompt: 'neutral T-pose', desc: 'Arms out', gradient: 'from-zinc-900 to-zinc-700' },
+  { id: 'relaxed', name: 'Relaxed', prompt: 'relaxed standing pose', desc: 'Natural posture', gradient: 'from-emerald-900 to-emerald-700' },
+  { id: 'confident', name: 'Confident', prompt: 'confident pose, shoulders back', desc: 'Strong stance', gradient: 'from-indigo-900 to-indigo-700' },
+  { id: 'hands-on-hips', name: 'Hands on Hips', prompt: 'hands on hips pose', desc: 'Power pose', gradient: 'from-amber-900 to-amber-700' },
 ];
 const SKIN_TONES = ['Light', 'Medium', 'Tan', 'Deep'];
 const HAIR_STYLES = ['Short', 'Medium', 'Long', 'Curly', 'Buzz'];
@@ -88,6 +90,53 @@ const COLORWAYS = [
   { id: 'premium-tech', name: 'Premium Tech', colors: ['#2B2D31', '#F2F2F2', '#21D4FD'] },
   { id: 'urban-classic', name: 'Urban Classic', colors: ['#1E1E1E', '#6C7280', '#F59E0B'] },
   { id: 'modern-soft', name: 'Modern Soft', colors: ['#0F172A', '#E5E7EB', '#10B981'] },
+];
+
+const OUTFIT_BUNDLES = [
+  {
+    id: 'executive-classic',
+    name: 'Executive Classic',
+    desc: 'Premium suit + leather shoes',
+    top: 'suit',
+    bottom: 'pants',
+    shoes: 'shoes',
+    eyewear: 'classic',
+    headwear: 'none',
+    accessories: ['Watch'],
+  },
+  {
+    id: 'street-flex',
+    name: 'Street Flex',
+    desc: 'Hoodie + cargo + sneakers',
+    top: 'hoodie',
+    bottom: 'cargo',
+    shoes: 'sneakers',
+    eyewear: 'sport',
+    headwear: 'cap',
+    accessories: ['Bracelet'],
+  },
+  {
+    id: 'modern-minimal',
+    name: 'Modern Minimal',
+    desc: 'T-shirt + jeans + sneakers',
+    top: 'tshirt',
+    bottom: 'jeans',
+    shoes: 'sneakers',
+    eyewear: 'none',
+    headwear: 'none',
+    accessories: [],
+  },
+  {
+    id: 'creative-artist',
+    name: 'Creative Artist',
+    desc: 'Jacket + pants + boots',
+    top: 'jacket',
+    bottom: 'pants',
+    shoes: 'boots',
+    eyewear: 'round',
+    headwear: 'beanie',
+    accessories: ['Necklace'],
+  },
 ];
 
 const TOP_ITEMS = [
@@ -156,6 +205,7 @@ export default function AvatarBuilderPage() {
   const [extraDetails, setExtraDetails] = useState('');
   const [promptSeed, setPromptSeed] = useState('Premium full-body avatar');
   const [presetName, setPresetName] = useState('');
+  const [presetCategory, setPresetCategory] = useState('Professional');
   const [savedPresets, setSavedPresets] = useState<AvatarPreset[]>([]);
   const presetImportRef = useRef<HTMLInputElement>(null);
 
@@ -222,6 +272,20 @@ export default function AvatarBuilderPage() {
   }, []);
 
   useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const encoded = params.get('preset');
+    if (!encoded) return;
+    try {
+      const json = atob(decodeURIComponent(encoded));
+      const preset = JSON.parse(json) as AvatarPreset;
+      applyPreset(preset);
+    } catch {
+      // Ignore invalid preset query
+    }
+  }, []);
+
+  useEffect(() => {
     localStorage.setItem('avatar-presets', JSON.stringify(savedPresets));
   }, [savedPresets]);
 
@@ -255,6 +319,7 @@ export default function AvatarBuilderPage() {
     const newPreset: AvatarPreset = {
       id: `${Date.now()}`,
       name: presetName.trim(),
+      category: presetCategory,
       data: {
         selectedStyle,
         age,
@@ -312,6 +377,25 @@ export default function AvatarBuilderPage() {
     } finally {
       if (presetImportRef.current) presetImportRef.current.value = '';
     }
+  };
+
+  const applyOutfitBundle = (bundle: typeof OUTFIT_BUNDLES[number]) => {
+    setTop(bundle.top);
+    setBottom(bundle.bottom);
+    setShoes(bundle.shoes);
+    setEyewear(bundle.eyewear);
+    setHeadwear(bundle.headwear);
+    setAccessories(bundle.accessories);
+  };
+
+  const handleSharePreset = (preset: AvatarPreset) => {
+    if (typeof window === 'undefined') return;
+    const data = JSON.stringify(preset);
+    const encoded = encodeURIComponent(btoa(data));
+    const url = `${window.location.origin}${window.location.pathname}?preset=${encoded}`;
+    navigator.clipboard.writeText(url).catch(() => {
+      // no-op
+    });
   };
 
   const handleSendMessage = async (message: string, attachments?: File[]) => {
@@ -614,18 +698,20 @@ export default function AvatarBuilderPage() {
 
                     <div>
                       <label className="text-sm text-gray-400 mb-2 block">Pose</label>
-                      <div className="grid grid-cols-2 gap-2">
+                      <div className="grid grid-cols-2 gap-3">
                         {POSES.map((item) => (
                           <button
                             key={item.id}
                             onClick={() => setPose(item.id)}
-                            className={`px-3 py-2 rounded-lg border text-sm transition-all ${
+                            className={`p-3 rounded-xl border transition-all text-left ${
                               pose === item.id
-                                ? 'border-cyan-500 bg-cyan-500/10 text-cyan-300'
-                                : 'border-white/10 text-gray-400 hover:border-white/20'
+                                ? 'border-cyan-500 bg-cyan-500/10'
+                                : 'border-white/10 bg-white/5 hover:border-white/20'
                             }`}
                           >
-                            {item.name}
+                            <div className={`h-12 rounded-lg bg-gradient-to-br ${item.gradient} mb-2`} />
+                            <div className="text-sm font-semibold text-white">{item.name}</div>
+                            <div className="text-xs text-gray-400">{item.desc}</div>
                           </button>
                         ))}
                       </div>
@@ -726,6 +812,22 @@ export default function AvatarBuilderPage() {
                   <div className="flex items-center gap-2 mb-4">
                     <Shirt className="text-yellow-400" size={20} />
                     <h3 className="text-lg font-semibold text-white">Outfit & Accessories</h3>
+                  </div>
+
+                  <div className="mb-6">
+                    <label className="text-sm text-gray-400 mb-2 block">Outfit Bundles</label>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      {OUTFIT_BUNDLES.map((bundle) => (
+                        <button
+                          key={bundle.id}
+                          onClick={() => applyOutfitBundle(bundle)}
+                          className="p-4 rounded-xl border border-white/10 bg-white/5 hover:border-yellow-500/40 transition-all text-left"
+                        >
+                          <div className="text-sm font-semibold text-white">{bundle.name}</div>
+                          <div className="text-xs text-gray-400 mt-1">{bundle.desc}</div>
+                        </button>
+                      ))}
+                    </div>
                   </div>
 
                   <div className="space-y-6">
@@ -1191,6 +1293,25 @@ export default function AvatarBuilderPage() {
                   </Button>
                 </div>
 
+                <div>
+                  <label className="text-xs text-gray-500 mb-2 block">Category</label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {PRESET_CATEGORIES.map((item) => (
+                      <button
+                        key={item}
+                        onClick={() => setPresetCategory(item)}
+                        className={`px-2 py-1 rounded-lg border text-xs transition-all ${
+                          presetCategory === item
+                            ? 'border-purple-500 bg-purple-500/10 text-purple-300'
+                            : 'border-white/10 text-gray-400 hover:border-white/20'
+                        }`}
+                      >
+                        {item}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
                 <div className="flex gap-2">
                   <Button
                     variant="outline"
@@ -1227,12 +1348,23 @@ export default function AvatarBuilderPage() {
                       key={preset.id}
                       className="flex items-center justify-between gap-2 p-2 rounded-lg border border-white/10 bg-black/20"
                     >
-                      <button
-                        onClick={() => applyPreset(preset)}
-                        className="text-left text-sm text-white flex-1 hover:text-purple-300"
+                      <div className="flex-1">
+                        <button
+                          onClick={() => applyPreset(preset)}
+                          className="text-left text-sm text-white hover:text-purple-300"
+                        >
+                          {preset.name}
+                        </button>
+                        <p className="text-[11px] text-gray-500">{preset.category}</p>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleSharePreset(preset)}
+                        className="h-7 w-7"
                       >
-                        {preset.name}
-                      </button>
+                        <Share2 size={12} />
+                      </Button>
                       <Button
                         variant="ghost"
                         size="icon"
