@@ -41,6 +41,22 @@ const SUGGESTIONS = [
   "Creative portrait with colorful styling"
 ];
 
+const BODY_TYPES = ['Slim', 'Athletic', 'Average', 'Curvy', 'Muscular'];
+const SKIN_TONES = ['Light', 'Medium', 'Tan', 'Deep'];
+const HAIR_STYLES = ['Short', 'Medium', 'Long', 'Curly', 'Buzz'];
+const HAIR_COLORS = ['Black', 'Brown', 'Blonde', 'Red', 'Gray', 'White', 'Blue'];
+const EYE_COLORS = ['Brown', 'Blue', 'Green', 'Gray', 'Amber', 'Hazel'];
+const EXPRESSIONS = ['Neutral', 'Smile', 'Serious', 'Confident', 'Friendly'];
+const OUTFITS = ['Jacket', 'Hoodie', 'T-shirt', 'Formal Suit', 'Streetwear'];
+const ACCESSORIES = ['Sunglasses', 'Hat', 'Earrings', 'Necklace', 'Watch'];
+const LIGHTING_STYLES = ['Studio', 'Cinematic', 'Soft Daylight', 'Neon'];
+
+const COLORWAYS = [
+  { id: 'premium-tech', name: 'Premium Tech', colors: ['#2B2D31', '#F2F2F2', '#21D4FD'] },
+  { id: 'urban-classic', name: 'Urban Classic', colors: ['#1E1E1E', '#6C7280', '#F59E0B'] },
+  { id: 'modern-soft', name: 'Modern Soft', colors: ['#0F172A', '#E5E7EB', '#10B981'] },
+];
+
 export default function AvatarBuilderPage() {
   const [activeView, setActiveView] = useState<'create' | 'gallery'>('create');
   const [selectedStyle, setSelectedStyle] = useState<string>('professional');
@@ -50,6 +66,23 @@ export default function AvatarBuilderPage() {
   const [generationProgress, setGenerationProgress] = useState(0);
   const [currentAvatar, setCurrentAvatar] = useState<any | null>(null);
   const [showUploadModal, setShowUploadModal] = useState(false);
+  const [age, setAge] = useState(28);
+  const [bodyType, setBodyType] = useState('Athletic');
+  const [skinTone, setSkinTone] = useState('Medium');
+  const [hairStyle, setHairStyle] = useState('Medium');
+  const [hairColor, setHairColor] = useState('Brown');
+  const [eyeColor, setEyeColor] = useState('Brown');
+  const [expression, setExpression] = useState('Smile');
+  const [outfit, setOutfit] = useState('Jacket');
+  const [accessories, setAccessories] = useState<string[]>([]);
+  const [colorway, setColorway] = useState('premium-tech');
+  const [lighting, setLighting] = useState('Studio');
+
+  const toggleAccessory = (item: string) => {
+    setAccessories(prev =>
+      prev.includes(item) ? prev.filter(a => a !== item) : [...prev, item]
+    );
+  };
 
   const handleSendMessage = async (message: string, attachments?: File[]) => {
     setIsGenerating(true);
@@ -94,7 +127,26 @@ export default function AvatarBuilderPage() {
       console.log('🎨 Generating avatar with prompt:', message);
       
       // Build comprehensive prompt
-      const fullPrompt = `${selectedStyleData?.prompt}, ${message}, high quality, detailed, professional photography, 4K resolution, centered composition`;
+      const selectedColorway = COLORWAYS.find(c => c.id === colorway);
+      const promptParts = [
+        selectedStyleData?.prompt,
+        message,
+        'full body, head-to-toe',
+        `${age}-year-old`,
+        `${bodyType.toLowerCase()} body`,
+        `${skinTone.toLowerCase()} skin tone`,
+        `${hairStyle.toLowerCase()} ${hairColor.toLowerCase()} hair`,
+        `${eyeColor.toLowerCase()} eyes`,
+        `${expression.toLowerCase()} expression`,
+        `wearing ${outfit.toLowerCase()}`,
+        accessories.length > 0 ? `with ${accessories.join(', ')}` : null,
+        selectedColorway ? `color palette ${selectedColorway.name}` : null,
+        `${lighting.toLowerCase()} lighting`,
+        'high quality, detailed, professional photography, 4K resolution, centered composition',
+        'neutral background, subtle rim light'
+      ].filter(Boolean);
+
+      const fullPrompt = promptParts.join(', ');
 
       const response = await fetch('/api/generate/avatar', {
         method: 'POST',
@@ -105,15 +157,15 @@ export default function AvatarBuilderPage() {
           imageBase64: imageData,
           style: {
             artStyle: selectedStyle,
-            age: 30,
-            hairStyle: 'medium',
-            hairColor: 'brown',
-            eyeColor: 'brown',
-            expression: 'smile'
+            age,
+            hairStyle,
+            hairColor,
+            eyeColor,
+            expression
           },
           fashion: {
-            outfit: message.toLowerCase().includes('suit') ? 'formal' : 'casual',
-            accessories: []
+            outfit: outfit.toLowerCase(),
+            accessories
           },
           prompt: fullPrompt
         }),
@@ -259,6 +311,252 @@ export default function AvatarBuilderPage() {
                         <div className="text-xs text-gray-400 mt-1">{style.description}</div>
                       </button>
                     ))}
+                  </div>
+                </Card>
+
+                {/* Identity & Body */}
+                <Card className="p-6 bg-black/40 border-white/10">
+                  <div className="flex items-center gap-2 mb-4">
+                    <User className="text-cyan-400" size={20} />
+                    <h3 className="text-lg font-semibold text-white">Identity & Body</h3>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                      <label className="text-sm text-gray-400 mb-2 block">Age: {age}</label>
+                      <Slider
+                        value={[age]}
+                        onValueChange={(v) => setAge(v[0])}
+                        min={18}
+                        max={65}
+                        step={1}
+                        className="w-full"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-sm text-gray-400 mb-2 block">Body Type</label>
+                      <div className="grid grid-cols-2 gap-2">
+                        {BODY_TYPES.map((type) => (
+                          <button
+                            key={type}
+                            onClick={() => setBodyType(type)}
+                            className={`px-3 py-2 rounded-lg border text-sm transition-all ${
+                              bodyType === type
+                                ? 'border-cyan-500 bg-cyan-500/10 text-cyan-300'
+                                : 'border-white/10 text-gray-400 hover:border-white/20'
+                            }`}
+                          >
+                            {type}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-6">
+                    <label className="text-sm text-gray-400 mb-2 block">Skin Tone</label>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                      {SKIN_TONES.map((tone) => (
+                        <button
+                          key={tone}
+                          onClick={() => setSkinTone(tone)}
+                          className={`px-3 py-2 rounded-lg border text-sm transition-all ${
+                            skinTone === tone
+                              ? 'border-cyan-500 bg-cyan-500/10 text-cyan-300'
+                              : 'border-white/10 text-gray-400 hover:border-white/20'
+                          }`}
+                        >
+                          {tone}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </Card>
+
+                {/* Hair & Face */}
+                <Card className="p-6 bg-black/40 border-white/10">
+                  <div className="flex items-center gap-2 mb-4">
+                    <Smile className="text-emerald-400" size={20} />
+                    <h3 className="text-lg font-semibold text-white">Hair & Face</h3>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                      <label className="text-sm text-gray-400 mb-2 block">Hair Style</label>
+                      <div className="grid grid-cols-2 gap-2">
+                        {HAIR_STYLES.map((style) => (
+                          <button
+                            key={style}
+                            onClick={() => setHairStyle(style)}
+                            className={`px-3 py-2 rounded-lg border text-sm transition-all ${
+                              hairStyle === style
+                                ? 'border-emerald-500 bg-emerald-500/10 text-emerald-300'
+                                : 'border-white/10 text-gray-400 hover:border-white/20'
+                            }`}
+                          >
+                            {style}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="text-sm text-gray-400 mb-2 block">Hair Color</label>
+                      <div className="grid grid-cols-3 gap-2">
+                        {HAIR_COLORS.map((color) => (
+                          <button
+                            key={color}
+                            onClick={() => setHairColor(color)}
+                            className={`px-3 py-2 rounded-lg border text-sm transition-all ${
+                              hairColor === color
+                                ? 'border-emerald-500 bg-emerald-500/10 text-emerald-300'
+                                : 'border-white/10 text-gray-400 hover:border-white/20'
+                            }`}
+                          >
+                            {color}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
+                    <div>
+                      <label className="text-sm text-gray-400 mb-2 block">Eye Color</label>
+                      <div className="grid grid-cols-3 gap-2">
+                        {EYE_COLORS.map((color) => (
+                          <button
+                            key={color}
+                            onClick={() => setEyeColor(color)}
+                            className={`px-3 py-2 rounded-lg border text-sm transition-all ${
+                              eyeColor === color
+                                ? 'border-emerald-500 bg-emerald-500/10 text-emerald-300'
+                                : 'border-white/10 text-gray-400 hover:border-white/20'
+                            }`}
+                          >
+                            {color}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="text-sm text-gray-400 mb-2 block">Expression</label>
+                      <div className="grid grid-cols-2 gap-2">
+                        {EXPRESSIONS.map((exp) => (
+                          <button
+                            key={exp}
+                            onClick={() => setExpression(exp)}
+                            className={`px-3 py-2 rounded-lg border text-sm transition-all ${
+                              expression === exp
+                                ? 'border-emerald-500 bg-emerald-500/10 text-emerald-300'
+                                : 'border-white/10 text-gray-400 hover:border-white/20'
+                            }`}
+                          >
+                            {exp}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </Card>
+
+                {/* Outfit & Accessories */}
+                <Card className="p-6 bg-black/40 border-white/10">
+                  <div className="flex items-center gap-2 mb-4">
+                    <Shirt className="text-yellow-400" size={20} />
+                    <h3 className="text-lg font-semibold text-white">Outfit & Accessories</h3>
+                  </div>
+
+                  <div className="mb-6">
+                    <label className="text-sm text-gray-400 mb-2 block">Outfit</label>
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                      {OUTFITS.map((item) => (
+                        <button
+                          key={item}
+                          onClick={() => setOutfit(item)}
+                          className={`px-3 py-2 rounded-lg border text-sm transition-all ${
+                            outfit === item
+                              ? 'border-yellow-500 bg-yellow-500/10 text-yellow-300'
+                              : 'border-white/10 text-gray-400 hover:border-white/20'
+                          }`}
+                        >
+                          {item}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-sm text-gray-400 mb-2 block">Accessories</label>
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                      {ACCESSORIES.map((item) => (
+                        <button
+                          key={item}
+                          onClick={() => toggleAccessory(item)}
+                          className={`px-3 py-2 rounded-lg border text-sm transition-all ${
+                            accessories.includes(item)
+                              ? 'border-yellow-500 bg-yellow-500/10 text-yellow-300'
+                              : 'border-white/10 text-gray-400 hover:border-white/20'
+                          }`}
+                        >
+                          {item}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </Card>
+
+                {/* Colorway & Lighting */}
+                <Card className="p-6 bg-black/40 border-white/10">
+                  <div className="flex items-center gap-2 mb-4">
+                    <Palette className="text-pink-400" size={20} />
+                    <h3 className="text-lg font-semibold text-white">Colorway & Lighting</h3>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6">
+                    {COLORWAYS.map((cw) => (
+                      <button
+                        key={cw.id}
+                        onClick={() => setColorway(cw.id)}
+                        className={`p-3 rounded-xl border transition-all text-left ${
+                          colorway === cw.id
+                            ? 'border-pink-500 bg-pink-500/10'
+                            : 'border-white/10 bg-white/5 hover:border-white/20'
+                        }`}
+                      >
+                        <div className="text-sm font-semibold text-white mb-2">{cw.name}</div>
+                        <div className="flex gap-2">
+                          {cw.colors.map((color) => (
+                            <span
+                              key={color}
+                              className="w-6 h-6 rounded-full border border-white/10"
+                              style={{ backgroundColor: color }}
+                            />
+                          ))}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+
+                  <div>
+                    <label className="text-sm text-gray-400 mb-2 block">Lighting Style</label>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                      {LIGHTING_STYLES.map((style) => (
+                        <button
+                          key={style}
+                          onClick={() => setLighting(style)}
+                          className={`px-3 py-2 rounded-lg border text-sm transition-all ${
+                            lighting === style
+                              ? 'border-pink-500 bg-pink-500/10 text-pink-300'
+                              : 'border-white/10 text-gray-400 hover:border-white/20'
+                          }`}
+                        >
+                          {style}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 </Card>
 
