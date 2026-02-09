@@ -1,11 +1,11 @@
 "use client";
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   User, Camera, Sparkles, Upload, Download, Share2, Wand2, 
   Loader2, Check, X, ArrowRight, ArrowLeft, Image as ImageIcon,
-  Palette, Shirt, Eye, Smile, Sun, Moon, Zap, Crown, Heart
+  Palette, Shirt, Eye, Smile, Sun, Moon, Zap, Crown, Heart, Save
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -19,6 +19,32 @@ interface AvatarStyle {
   emoji: string;
   description: string;
   prompt: string;
+}
+
+interface AvatarPreset {
+  id: string;
+  name: string;
+  data: {
+    selectedStyle: string;
+    age: number;
+    presentation: string;
+    bodyType: string;
+    skinTone: string;
+    hairStyle: string;
+    hairColor: string;
+    eyeColor: string;
+    expression: string;
+    top: string;
+    bottom: string;
+    shoes: string;
+    eyewear: string;
+    headwear: string;
+    accessories: string[];
+    colorway: string;
+    lighting: string;
+    pose: string;
+    extraDetails: string;
+  };
 }
 
 const AVATAR_STYLES: AvatarStyle[] = [
@@ -42,19 +68,63 @@ const SUGGESTIONS = [
 ];
 
 const BODY_TYPES = ['Slim', 'Athletic', 'Average', 'Curvy', 'Muscular'];
+const PRESENTATIONS = ['Feminine', 'Masculine', 'Androgynous'];
+const POSES = [
+  { id: 'a-pose', name: 'A-pose', prompt: 'neutral A-pose' },
+  { id: 't-pose', name: 'T-pose', prompt: 'neutral T-pose' },
+  { id: 'relaxed', name: 'Relaxed', prompt: 'relaxed standing pose' },
+  { id: 'confident', name: 'Confident', prompt: 'confident pose, shoulders back' },
+  { id: 'hands-on-hips', name: 'Hands on Hips', prompt: 'hands on hips pose' },
+];
 const SKIN_TONES = ['Light', 'Medium', 'Tan', 'Deep'];
 const HAIR_STYLES = ['Short', 'Medium', 'Long', 'Curly', 'Buzz'];
 const HAIR_COLORS = ['Black', 'Brown', 'Blonde', 'Red', 'Gray', 'White', 'Blue'];
 const EYE_COLORS = ['Brown', 'Blue', 'Green', 'Gray', 'Amber', 'Hazel'];
 const EXPRESSIONS = ['Neutral', 'Smile', 'Serious', 'Confident', 'Friendly'];
-const OUTFITS = ['Jacket', 'Hoodie', 'T-shirt', 'Formal Suit', 'Streetwear'];
-const ACCESSORIES = ['Sunglasses', 'Hat', 'Earrings', 'Necklace', 'Watch'];
+const ACCESSORIES = ['Earrings', 'Necklace', 'Watch', 'Bracelet', 'Ring'];
 const LIGHTING_STYLES = ['Studio', 'Cinematic', 'Soft Daylight', 'Neon'];
 
 const COLORWAYS = [
   { id: 'premium-tech', name: 'Premium Tech', colors: ['#2B2D31', '#F2F2F2', '#21D4FD'] },
   { id: 'urban-classic', name: 'Urban Classic', colors: ['#1E1E1E', '#6C7280', '#F59E0B'] },
   { id: 'modern-soft', name: 'Modern Soft', colors: ['#0F172A', '#E5E7EB', '#10B981'] },
+];
+
+const TOP_ITEMS = [
+  { id: 'jacket', name: 'Jacket', desc: 'Clean tech jacket', gradient: 'from-slate-800 to-slate-600' },
+  { id: 'hoodie', name: 'Hoodie', desc: 'Street hoodie', gradient: 'from-zinc-800 to-zinc-600' },
+  { id: 'tshirt', name: 'T-shirt', desc: 'Minimal tee', gradient: 'from-gray-700 to-gray-500' },
+  { id: 'suit', name: 'Formal Suit', desc: 'Premium suit', gradient: 'from-neutral-900 to-neutral-700' },
+  { id: 'streetwear', name: 'Streetwear', desc: 'Urban fit', gradient: 'from-indigo-900 to-indigo-700' },
+];
+
+const BOTTOM_ITEMS = [
+  { id: 'jeans', name: 'Jeans', desc: 'Slim denim', gradient: 'from-blue-900 to-blue-700' },
+  { id: 'pants', name: 'Pants', desc: 'Tailored pants', gradient: 'from-stone-800 to-stone-600' },
+  { id: 'cargo', name: 'Cargo', desc: 'Utility fit', gradient: 'from-olive-900 to-olive-700' },
+  { id: 'shorts', name: 'Shorts', desc: 'Casual shorts', gradient: 'from-amber-900 to-amber-700' },
+];
+
+const SHOE_ITEMS = [
+  { id: 'sneakers', name: 'Sneakers', desc: 'Sporty', gradient: 'from-emerald-900 to-emerald-700' },
+  { id: 'shoes', name: 'Shoes', desc: 'Formal leather', gradient: 'from-neutral-900 to-neutral-700' },
+  { id: 'boots', name: 'Boots', desc: 'Rugged', gradient: 'from-amber-900 to-amber-700' },
+];
+
+const EYEWEAR_ITEMS = [
+  { id: 'none', name: 'None', desc: 'No eyewear', gradient: 'from-gray-800 to-gray-700' },
+  { id: 'classic', name: 'Classic', desc: 'Clear frames', gradient: 'from-cyan-900 to-cyan-700' },
+  { id: 'aviator', name: 'Aviator', desc: 'Metal frame', gradient: 'from-slate-900 to-slate-700' },
+  { id: 'round', name: 'Round', desc: 'Retro round', gradient: 'from-purple-900 to-purple-700' },
+  { id: 'sport', name: 'Sport', desc: 'Active style', gradient: 'from-lime-900 to-lime-700' },
+];
+
+const HEADWEAR_ITEMS = [
+  { id: 'none', name: 'None', desc: 'No headwear', gradient: 'from-gray-800 to-gray-700' },
+  { id: 'cap', name: 'Cap', desc: 'Classic cap', gradient: 'from-orange-900 to-orange-700' },
+  { id: 'beanie', name: 'Beanie', desc: 'Soft beanie', gradient: 'from-pink-900 to-pink-700' },
+  { id: 'fedora', name: 'Fedora', desc: 'Elegant hat', gradient: 'from-stone-900 to-stone-700' },
+  { id: 'hood', name: 'Hood', desc: 'Hood up', gradient: 'from-violet-900 to-violet-700' },
 ];
 
 export default function AvatarBuilderPage() {
@@ -67,21 +137,181 @@ export default function AvatarBuilderPage() {
   const [currentAvatar, setCurrentAvatar] = useState<any | null>(null);
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [age, setAge] = useState(28);
+  const [presentation, setPresentation] = useState('Androgynous');
   const [bodyType, setBodyType] = useState('Athletic');
   const [skinTone, setSkinTone] = useState('Medium');
   const [hairStyle, setHairStyle] = useState('Medium');
   const [hairColor, setHairColor] = useState('Brown');
   const [eyeColor, setEyeColor] = useState('Brown');
   const [expression, setExpression] = useState('Smile');
-  const [outfit, setOutfit] = useState('Jacket');
+  const [pose, setPose] = useState('a-pose');
+  const [top, setTop] = useState('jacket');
+  const [bottom, setBottom] = useState('jeans');
+  const [shoes, setShoes] = useState('sneakers');
+  const [eyewear, setEyewear] = useState('none');
+  const [headwear, setHeadwear] = useState('none');
   const [accessories, setAccessories] = useState<string[]>([]);
   const [colorway, setColorway] = useState('premium-tech');
   const [lighting, setLighting] = useState('Studio');
+  const [extraDetails, setExtraDetails] = useState('');
+  const [promptSeed, setPromptSeed] = useState('Premium full-body avatar');
+  const [presetName, setPresetName] = useState('');
+  const [savedPresets, setSavedPresets] = useState<AvatarPreset[]>([]);
+  const presetImportRef = useRef<HTMLInputElement>(null);
 
   const toggleAccessory = (item: string) => {
     setAccessories(prev =>
       prev.includes(item) ? prev.filter(a => a !== item) : [...prev, item]
     );
+  };
+
+  const getItemName = (items: { id: string; name: string }[], id: string) =>
+    items.find(item => item.id === id)?.name || id;
+
+  const buildPrompt = (basePrompt: string) => {
+    const selectedStyleData = AVATAR_STYLES.find(s => s.id === selectedStyle);
+    const selectedColorway = COLORWAYS.find(c => c.id === colorway);
+    const selectedPose = POSES.find(p => p.id === pose);
+    const topName = getItemName(TOP_ITEMS, top);
+    const bottomName = getItemName(BOTTOM_ITEMS, bottom);
+    const shoesName = getItemName(SHOE_ITEMS, shoes);
+    const eyewearName = getItemName(EYEWEAR_ITEMS, eyewear);
+    const headwearName = getItemName(HEADWEAR_ITEMS, headwear);
+
+    const accessoryList = [
+      ...accessories,
+      eyewear !== 'none' ? eyewearName : null,
+      headwear !== 'none' ? headwearName : null,
+    ].filter(Boolean) as string[];
+
+    const promptParts = [
+      selectedStyleData?.prompt,
+      basePrompt,
+      extraDetails.trim() ? extraDetails.trim() : null,
+      `${presentation.toLowerCase()} presentation`,
+      'full body, head-to-toe',
+      selectedPose?.prompt,
+      `${age}-year-old`,
+      `${bodyType.toLowerCase()} body`,
+      `${skinTone.toLowerCase()} skin tone`,
+      `${hairStyle.toLowerCase()} ${hairColor.toLowerCase()} hair`,
+      `${eyeColor.toLowerCase()} eyes`,
+      `${expression.toLowerCase()} expression`,
+      `wearing ${topName.toLowerCase()}, ${bottomName.toLowerCase()}, ${shoesName.toLowerCase()}`,
+      accessoryList.length > 0 ? `with ${accessoryList.join(', ')}` : null,
+      selectedColorway ? `color palette ${selectedColorway.name}` : null,
+      `${lighting.toLowerCase()} lighting`,
+      'premium 3D avatar, AAA game quality, clean topology, clothing-friendly',
+      'high quality, detailed, professional photography, 4K resolution, centered composition',
+      'neutral background, subtle rim light'
+    ].filter(Boolean);
+
+    return promptParts.join(', ');
+  };
+
+  useEffect(() => {
+    const stored = localStorage.getItem('avatar-presets');
+    if (stored) {
+      try {
+        const parsed = JSON.parse(stored) as AvatarPreset[];
+        setSavedPresets(parsed);
+      } catch {
+        setSavedPresets([]);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem('avatar-presets', JSON.stringify(savedPresets));
+  }, [savedPresets]);
+
+  const applyPreset = (preset: AvatarPreset) => {
+    const data = preset.data;
+    setSelectedStyle(data.selectedStyle);
+    setAge(data.age);
+    setPresentation(data.presentation);
+    setBodyType(data.bodyType);
+    setSkinTone(data.skinTone);
+    setHairStyle(data.hairStyle);
+    setHairColor(data.hairColor);
+    setEyeColor(data.eyeColor);
+    setExpression(data.expression);
+    setTop(data.top);
+    setBottom(data.bottom);
+    setShoes(data.shoes);
+    setEyewear(data.eyewear);
+    setHeadwear(data.headwear);
+    setAccessories(data.accessories || []);
+    setColorway(data.colorway);
+    setLighting(data.lighting);
+    setPose(data.pose);
+    setExtraDetails(data.extraDetails || '');
+  };
+
+  const handleSavePreset = () => {
+    if (!presetName.trim()) {
+      return;
+    }
+    const newPreset: AvatarPreset = {
+      id: `${Date.now()}`,
+      name: presetName.trim(),
+      data: {
+        selectedStyle,
+        age,
+        presentation,
+        bodyType,
+        skinTone,
+        hairStyle,
+        hairColor,
+        eyeColor,
+        expression,
+        top,
+        bottom,
+        shoes,
+        eyewear,
+        headwear,
+        accessories,
+        colorway,
+        lighting,
+        pose,
+        extraDetails,
+      },
+    };
+    setSavedPresets(prev => [newPreset, ...prev]);
+    setPresetName('');
+  };
+
+  const removePreset = (id: string) => {
+    setSavedPresets(prev => prev.filter(p => p.id !== id));
+  };
+
+  const handleExportPresets = () => {
+    const data = JSON.stringify(savedPresets, null, 2);
+    const blob = new Blob([data], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'avatar-presets.json';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImportPresets = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const imported = JSON.parse(text) as AvatarPreset[];
+      if (Array.isArray(imported)) {
+        setSavedPresets(prev => [...imported, ...prev]);
+      }
+    } catch {
+      alert('Invalid preset file');
+    } finally {
+      if (presetImportRef.current) presetImportRef.current.value = '';
+    }
   };
 
   const handleSendMessage = async (message: string, attachments?: File[]) => {
@@ -98,8 +328,6 @@ export default function AvatarBuilderPage() {
       }
     }
 
-    const selectedStyleData = AVATAR_STYLES.find(s => s.id === selectedStyle);
-    
     // Create placeholder avatar
     const newAvatar = {
       id: Date.now().toString(),
@@ -127,26 +355,17 @@ export default function AvatarBuilderPage() {
       console.log('🎨 Generating avatar with prompt:', message);
       
       // Build comprehensive prompt
-      const selectedColorway = COLORWAYS.find(c => c.id === colorway);
-      const promptParts = [
-        selectedStyleData?.prompt,
-        message,
-        'full body, head-to-toe',
-        `${age}-year-old`,
-        `${bodyType.toLowerCase()} body`,
-        `${skinTone.toLowerCase()} skin tone`,
-        `${hairStyle.toLowerCase()} ${hairColor.toLowerCase()} hair`,
-        `${eyeColor.toLowerCase()} eyes`,
-        `${expression.toLowerCase()} expression`,
-        `wearing ${outfit.toLowerCase()}`,
-        accessories.length > 0 ? `with ${accessories.join(', ')}` : null,
-        selectedColorway ? `color palette ${selectedColorway.name}` : null,
-        `${lighting.toLowerCase()} lighting`,
-        'high quality, detailed, professional photography, 4K resolution, centered composition',
-        'neutral background, subtle rim light'
-      ].filter(Boolean);
-
-      const fullPrompt = promptParts.join(', ');
+      const fullPrompt = buildPrompt(message);
+      const topName = getItemName(TOP_ITEMS, top);
+      const bottomName = getItemName(BOTTOM_ITEMS, bottom);
+      const shoesName = getItemName(SHOE_ITEMS, shoes);
+      const eyewearName = getItemName(EYEWEAR_ITEMS, eyewear);
+      const headwearName = getItemName(HEADWEAR_ITEMS, headwear);
+      const normalizedAccessories = [
+        ...accessories,
+        eyewear !== 'none' ? eyewearName : null,
+        headwear !== 'none' ? headwearName : null,
+      ].filter(Boolean) as string[];
 
       const response = await fetch('/api/generate/avatar', {
         method: 'POST',
@@ -164,8 +383,8 @@ export default function AvatarBuilderPage() {
             expression
           },
           fashion: {
-            outfit: outfit.toLowerCase(),
-            accessories
+            outfit: `${topName}, ${bottomName}, ${shoesName}`,
+            accessories: normalizedAccessories
           },
           prompt: fullPrompt
         }),
@@ -372,6 +591,46 @@ export default function AvatarBuilderPage() {
                       ))}
                     </div>
                   </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
+                    <div>
+                      <label className="text-sm text-gray-400 mb-2 block">Presentation</label>
+                      <div className="grid grid-cols-2 gap-2">
+                        {PRESENTATIONS.map((item) => (
+                          <button
+                            key={item}
+                            onClick={() => setPresentation(item)}
+                            className={`px-3 py-2 rounded-lg border text-sm transition-all ${
+                              presentation === item
+                                ? 'border-cyan-500 bg-cyan-500/10 text-cyan-300'
+                                : 'border-white/10 text-gray-400 hover:border-white/20'
+                            }`}
+                          >
+                            {item}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="text-sm text-gray-400 mb-2 block">Pose</label>
+                      <div className="grid grid-cols-2 gap-2">
+                        {POSES.map((item) => (
+                          <button
+                            key={item.id}
+                            onClick={() => setPose(item.id)}
+                            className={`px-3 py-2 rounded-lg border text-sm transition-all ${
+                              pose === item.id
+                                ? 'border-cyan-500 bg-cyan-500/10 text-cyan-300'
+                                : 'border-white/10 text-gray-400 hover:border-white/20'
+                            }`}
+                          >
+                            {item.name}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
                 </Card>
 
                 {/* Hair & Face */}
@@ -469,41 +728,131 @@ export default function AvatarBuilderPage() {
                     <h3 className="text-lg font-semibold text-white">Outfit & Accessories</h3>
                   </div>
 
-                  <div className="mb-6">
-                    <label className="text-sm text-gray-400 mb-2 block">Outfit</label>
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-                      {OUTFITS.map((item) => (
-                        <button
-                          key={item}
-                          onClick={() => setOutfit(item)}
-                          className={`px-3 py-2 rounded-lg border text-sm transition-all ${
-                            outfit === item
-                              ? 'border-yellow-500 bg-yellow-500/10 text-yellow-300'
-                              : 'border-white/10 text-gray-400 hover:border-white/20'
-                          }`}
-                        >
-                          {item}
-                        </button>
-                      ))}
+                  <div className="space-y-6">
+                    <div>
+                      <label className="text-sm text-gray-400 mb-2 block">Top</label>
+                      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                        {TOP_ITEMS.map((item) => (
+                          <button
+                            key={item.id}
+                            onClick={() => setTop(item.id)}
+                            className={`p-3 rounded-xl border transition-all text-left ${
+                              top === item.id
+                                ? 'border-yellow-500 bg-yellow-500/10'
+                                : 'border-white/10 bg-white/5 hover:border-white/20'
+                            }`}
+                          >
+                            <div className={`h-16 rounded-lg bg-gradient-to-br ${item.gradient} mb-2`} />
+                            <div className="text-sm font-semibold text-white">{item.name}</div>
+                            <div className="text-xs text-gray-400">{item.desc}</div>
+                          </button>
+                        ))}
+                      </div>
                     </div>
-                  </div>
 
-                  <div>
-                    <label className="text-sm text-gray-400 mb-2 block">Accessories</label>
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-                      {ACCESSORIES.map((item) => (
-                        <button
-                          key={item}
-                          onClick={() => toggleAccessory(item)}
-                          className={`px-3 py-2 rounded-lg border text-sm transition-all ${
-                            accessories.includes(item)
-                              ? 'border-yellow-500 bg-yellow-500/10 text-yellow-300'
-                              : 'border-white/10 text-gray-400 hover:border-white/20'
-                          }`}
-                        >
-                          {item}
-                        </button>
-                      ))}
+                    <div>
+                      <label className="text-sm text-gray-400 mb-2 block">Bottom</label>
+                      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                        {BOTTOM_ITEMS.map((item) => (
+                          <button
+                            key={item.id}
+                            onClick={() => setBottom(item.id)}
+                            className={`p-3 rounded-xl border transition-all text-left ${
+                              bottom === item.id
+                                ? 'border-yellow-500 bg-yellow-500/10'
+                                : 'border-white/10 bg-white/5 hover:border-white/20'
+                            }`}
+                          >
+                            <div className={`h-16 rounded-lg bg-gradient-to-br ${item.gradient} mb-2`} />
+                            <div className="text-sm font-semibold text-white">{item.name}</div>
+                            <div className="text-xs text-gray-400">{item.desc}</div>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="text-sm text-gray-400 mb-2 block">Shoes</label>
+                      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                        {SHOE_ITEMS.map((item) => (
+                          <button
+                            key={item.id}
+                            onClick={() => setShoes(item.id)}
+                            className={`p-3 rounded-xl border transition-all text-left ${
+                              shoes === item.id
+                                ? 'border-yellow-500 bg-yellow-500/10'
+                                : 'border-white/10 bg-white/5 hover:border-white/20'
+                            }`}
+                          >
+                            <div className={`h-16 rounded-lg bg-gradient-to-br ${item.gradient} mb-2`} />
+                            <div className="text-sm font-semibold text-white">{item.name}</div>
+                            <div className="text-xs text-gray-400">{item.desc}</div>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div>
+                        <label className="text-sm text-gray-400 mb-2 block">Eyewear</label>
+                        <div className="grid grid-cols-2 gap-3">
+                          {EYEWEAR_ITEMS.map((item) => (
+                            <button
+                              key={item.id}
+                              onClick={() => setEyewear(item.id)}
+                              className={`p-3 rounded-xl border transition-all text-left ${
+                                eyewear === item.id
+                                  ? 'border-yellow-500 bg-yellow-500/10'
+                                  : 'border-white/10 bg-white/5 hover:border-white/20'
+                              }`}
+                            >
+                              <div className={`h-12 rounded-lg bg-gradient-to-br ${item.gradient} mb-2`} />
+                              <div className="text-xs font-semibold text-white">{item.name}</div>
+                              <div className="text-[11px] text-gray-400">{item.desc}</div>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="text-sm text-gray-400 mb-2 block">Headwear</label>
+                        <div className="grid grid-cols-2 gap-3">
+                          {HEADWEAR_ITEMS.map((item) => (
+                            <button
+                              key={item.id}
+                              onClick={() => setHeadwear(item.id)}
+                              className={`p-3 rounded-xl border transition-all text-left ${
+                                headwear === item.id
+                                  ? 'border-yellow-500 bg-yellow-500/10'
+                                  : 'border-white/10 bg-white/5 hover:border-white/20'
+                              }`}
+                            >
+                              <div className={`h-12 rounded-lg bg-gradient-to-br ${item.gradient} mb-2`} />
+                              <div className="text-xs font-semibold text-white">{item.name}</div>
+                              <div className="text-[11px] text-gray-400">{item.desc}</div>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="text-sm text-gray-400 mb-2 block">Accessories</label>
+                      <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                        {ACCESSORIES.map((item) => (
+                          <button
+                            key={item}
+                            onClick={() => toggleAccessory(item)}
+                            className={`px-3 py-2 rounded-lg border text-sm transition-all ${
+                              accessories.includes(item)
+                                ? 'border-yellow-500 bg-yellow-500/10 text-yellow-300'
+                                : 'border-white/10 text-gray-400 hover:border-white/20'
+                            }`}
+                          >
+                            {item}
+                          </button>
+                        ))}
+                      </div>
                     </div>
                   </div>
                 </Card>
@@ -556,6 +905,45 @@ export default function AvatarBuilderPage() {
                           {style}
                         </button>
                       ))}
+                    </div>
+                  </div>
+                </Card>
+
+                {/* Prompt Controls */}
+                <Card className="p-6 bg-black/40 border-white/10">
+                  <div className="flex items-center gap-2 mb-4">
+                    <Wand2 className="text-blue-400" size={20} />
+                    <h3 className="text-lg font-semibold text-white">Prompt Controls</h3>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                      <label className="text-sm text-gray-400 mb-2 block">Prompt Seed</label>
+                      <input
+                        type="text"
+                        value={promptSeed}
+                        onChange={(e) => setPromptSeed(e.target.value)}
+                        className="w-full px-3 py-2 bg-black/20 border border-white/10 rounded-lg text-white placeholder:text-gray-500 focus:outline-none focus:border-blue-500/50"
+                        placeholder="Premium full-body avatar"
+                      />
+                      <p className="text-xs text-gray-500 mt-2">This is used for prompt preview only.</p>
+                    </div>
+
+                    <div>
+                      <label className="text-sm text-gray-400 mb-2 block">Extra Details</label>
+                      <textarea
+                        value={extraDetails}
+                        onChange={(e) => setExtraDetails(e.target.value)}
+                        className="w-full h-24 px-3 py-2 bg-black/20 border border-white/10 rounded-lg text-white placeholder:text-gray-500 focus:outline-none focus:border-blue-500/50"
+                        placeholder="Add extra details like background, mood, or styling notes..."
+                      />
+                    </div>
+                  </div>
+
+                  <div className="mt-4">
+                    <label className="text-sm text-gray-400 mb-2 block">Prompt Preview</label>
+                    <div className="p-3 bg-black/30 border border-white/10 rounded-lg text-xs text-gray-300 whitespace-pre-wrap">
+                      {buildPrompt(promptSeed || 'premium avatar')}
                     </div>
                   </div>
                 </Card>
@@ -778,6 +1166,84 @@ export default function AvatarBuilderPage() {
                   <Check size={16} className="text-green-400 flex-shrink-0 mt-0.5" />
                   <span>Include details like clothing, background</span>
                 </div>
+              </div>
+            </Card>
+
+            {/* Preset Manager */}
+            <Card className="p-6 bg-black/40 border-white/10">
+              <h3 className="text-sm font-semibold text-gray-400 mb-4">PRESET MANAGER</h3>
+
+              <div className="space-y-3">
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={presetName}
+                    onChange={(e) => setPresetName(e.target.value)}
+                    className="flex-1 px-3 py-2 bg-black/20 border border-white/10 rounded-lg text-white placeholder:text-gray-500 focus:outline-none focus:border-purple-500/50"
+                    placeholder="Preset name"
+                  />
+                  <Button
+                    onClick={handleSavePreset}
+                    className="bg-gradient-to-r from-purple-500 to-pink-500"
+                  >
+                    <Save size={16} className="mr-2" />
+                    Save
+                  </Button>
+                </div>
+
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={handleExportPresets}
+                    className="border-white/10 flex-1"
+                  >
+                    <Download size={16} className="mr-2" />
+                    Export
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => presetImportRef.current?.click()}
+                    className="border-white/10 flex-1"
+                  >
+                    <Upload size={16} className="mr-2" />
+                    Import
+                  </Button>
+                  <input
+                    ref={presetImportRef}
+                    type="file"
+                    accept="application/json"
+                    onChange={handleImportPresets}
+                    className="hidden"
+                  />
+                </div>
+              </div>
+
+              <div className="mt-4 space-y-2 max-h-48 overflow-y-auto">
+                {savedPresets.length === 0 ? (
+                  <p className="text-xs text-gray-500">No presets saved yet.</p>
+                ) : (
+                  savedPresets.map((preset) => (
+                    <div
+                      key={preset.id}
+                      className="flex items-center justify-between gap-2 p-2 rounded-lg border border-white/10 bg-black/20"
+                    >
+                      <button
+                        onClick={() => applyPreset(preset)}
+                        className="text-left text-sm text-white flex-1 hover:text-purple-300"
+                      >
+                        {preset.name}
+                      </button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => removePreset(preset.id)}
+                        className="h-7 w-7"
+                      >
+                        <X size={12} />
+                      </Button>
+                    </div>
+                  ))
+                )}
               </div>
             </Card>
 
