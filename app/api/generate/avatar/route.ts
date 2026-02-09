@@ -33,28 +33,60 @@ export async function POST(req: NextRequest) {
 
     // Use Stability AI for avatar generation
     console.log("🔄 Calling Stability AI API...");
-    const response = await fetch(
-      "https://api.stability.ai/v1/generation/stable-diffusion-xl-1024-v1-0/text-to-image",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${process.env.STABILITY_API_KEY}`,
-        },
-        body: JSON.stringify({
-          text_prompts: [
-            { text: prompt, weight: 1 },
-            { text: "low quality, blurry, distorted", weight: -1 }
-          ],
-          cfg_scale: 7,
-          samples: 1,
-          width: 1024,
-          height: 1024,
-          steps: 50,
-          style_preset: mapArtStyleToPreset(style.artStyle),
-        }),
-      }
-    );
+    const hasReferenceImage = typeof imageBase64 === 'string' && imageBase64.includes('base64,');
+    const stylePreset = mapArtStyleToPreset(style?.artStyle);
+
+    let response: Response;
+
+    if (hasReferenceImage) {
+      const base64Data = imageBase64.split(',')[1];
+      const imageBuffer = Buffer.from(base64Data, 'base64');
+      const formData = new FormData();
+      formData.append('init_image', new Blob([imageBuffer], { type: 'image/png' }), 'reference.png');
+      formData.append('text_prompts[0][text]', prompt);
+      formData.append('text_prompts[0][weight]', '1');
+      formData.append('text_prompts[1][text]', 'low quality, blurry, distorted');
+      formData.append('text_prompts[1][weight]', '-1');
+      formData.append('cfg_scale', '7');
+      formData.append('samples', '1');
+      formData.append('steps', '50');
+      formData.append('style_preset', stylePreset);
+      formData.append('strength', '0.45');
+
+      response = await fetch(
+        "https://api.stability.ai/v1/generation/stable-diffusion-xl-1024-v1-0/image-to-image",
+        {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${process.env.STABILITY_API_KEY}`,
+          },
+          body: formData,
+        }
+      );
+    } else {
+      response = await fetch(
+        "https://api.stability.ai/v1/generation/stable-diffusion-xl-1024-v1-0/text-to-image",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${process.env.STABILITY_API_KEY}`,
+          },
+          body: JSON.stringify({
+            text_prompts: [
+              { text: prompt, weight: 1 },
+              { text: "low quality, blurry, distorted", weight: -1 }
+            ],
+            cfg_scale: 7,
+            samples: 1,
+            width: 1024,
+            height: 1024,
+            steps: 50,
+            style_preset: stylePreset,
+          }),
+        }
+      );
+    }
 
     console.log("📡 Stability AI response status:", response.status);
 

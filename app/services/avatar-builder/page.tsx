@@ -25,6 +25,7 @@ interface AvatarPreset {
   id: string;
   name: string;
   category: string;
+  tags: string[];
   data: {
     selectedStyle: string;
     age: number;
@@ -71,6 +72,7 @@ const SUGGESTIONS = [
 const BODY_TYPES = ['Slim', 'Athletic', 'Average', 'Curvy', 'Muscular'];
 const PRESENTATIONS = ['Feminine', 'Masculine', 'Androgynous'];
 const PRESET_CATEGORIES = ['Professional', 'Casual', 'Studio', 'Cinematic', 'Fantasy', 'Street'];
+const PRESET_TAGS = ['HQ', 'Studio', 'Street', 'Clean', 'Futuristic', 'Minimal', 'Warm', 'Cool'];
 const POSES = [
   { id: 'a-pose', name: 'A-pose', prompt: 'neutral A-pose', desc: 'Balanced stance', gradient: 'from-slate-900 to-slate-700' },
   { id: 't-pose', name: 'T-pose', prompt: 'neutral T-pose', desc: 'Arms out', gradient: 'from-zinc-900 to-zinc-700' },
@@ -90,6 +92,14 @@ const COLORWAYS = [
   { id: 'premium-tech', name: 'Premium Tech', colors: ['#2B2D31', '#F2F2F2', '#21D4FD'] },
   { id: 'urban-classic', name: 'Urban Classic', colors: ['#1E1E1E', '#6C7280', '#F59E0B'] },
   { id: 'modern-soft', name: 'Modern Soft', colors: ['#0F172A', '#E5E7EB', '#10B981'] },
+];
+
+const SCAN_STEPS = [
+  { id: 'front', label: 'Front', hint: 'Face forward' },
+  { id: 'left', label: 'Left', hint: 'Turn head left' },
+  { id: 'right', label: 'Right', hint: 'Turn head right' },
+  { id: 'up', label: 'Up', hint: 'Tilt head slightly up' },
+  { id: 'down', label: 'Down', hint: 'Tilt head slightly down' },
 ];
 
 const OUTFIT_BUNDLES = [
@@ -206,8 +216,18 @@ export default function AvatarBuilderPage() {
   const [promptSeed, setPromptSeed] = useState('Premium full-body avatar');
   const [presetName, setPresetName] = useState('');
   const [presetCategory, setPresetCategory] = useState('Professional');
+  const [presetTags, setPresetTags] = useState<string[]>(['HQ']);
+  const [presetCategoryFilter, setPresetCategoryFilter] = useState('All');
+  const [presetTagFilter, setPresetTagFilter] = useState('All');
   const [savedPresets, setSavedPresets] = useState<AvatarPreset[]>([]);
   const presetImportRef = useRef<HTMLInputElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const [isScanning, setIsScanning] = useState(false);
+  const [scanStepIndex, setScanStepIndex] = useState(0);
+  const [scanImages, setScanImages] = useState<string[]>([]);
+  const [scanError, setScanError] = useState<string | null>(null);
 
   const toggleAccessory = (item: string) => {
     setAccessories(prev =>
@@ -238,6 +258,7 @@ export default function AvatarBuilderPage() {
       selectedStyleData?.prompt,
       basePrompt,
       extraDetails.trim() ? extraDetails.trim() : null,
+      scanImages.length > 0 ? 'face scan reference from multiple angles' : null,
       `${presentation.toLowerCase()} presentation`,
       'full body, head-to-toe',
       selectedPose?.prompt,
@@ -289,6 +310,14 @@ export default function AvatarBuilderPage() {
     localStorage.setItem('avatar-presets', JSON.stringify(savedPresets));
   }, [savedPresets]);
 
+  useEffect(() => {
+    return () => {
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop());
+      }
+    };
+  }, []);
+
   const applyPreset = (preset: AvatarPreset) => {
     const data = preset.data;
     setSelectedStyle(data.selectedStyle);
@@ -320,6 +349,7 @@ export default function AvatarBuilderPage() {
       id: `${Date.now()}`,
       name: presetName.trim(),
       category: presetCategory,
+      tags: presetTags,
       data: {
         selectedStyle,
         age,
@@ -379,6 +409,68 @@ export default function AvatarBuilderPage() {
     }
   };
 
+  const togglePresetTag = (tag: string) => {
+    setPresetTags(prev =>
+      prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]
+    );
+  };
+
+  const startFaceScan = async () => {
+    setScanError(null);
+    setScanImages([]);
+    setScanStepIndex(0);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      streamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        await videoRef.current.play();
+      }
+      setIsScanning(true);
+    } catch (error) {
+      setScanError('Camera access denied. Please allow camera access.');
+      setIsScanning(false);
+    }
+  };
+
+  const stopFaceScan = () => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop());
+    }
+    streamRef.current = null;
+    setIsScanning(false);
+  };
+
+  const captureFaceScan = () => {
+    if (!videoRef.current || !canvasRef.current) return;
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    const context = canvas.getContext('2d');
+    if (!context) return;
+
+    canvas.width = video.videoWidth || 640;
+    canvas.height = video.videoHeight || 480;
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+    setScanImages(prev => [...prev, dataUrl]);
+
+    if (scanStepIndex >= SCAN_STEPS.length - 1) {
+      stopFaceScan();
+      if (!uploadedImage) {
+        setUploadedImage(dataUrl);
+      }
+    } else {
+      setScanStepIndex(prev => prev + 1);
+    }
+  };
+
+  const resetFaceScan = () => {
+    stopFaceScan();
+    setScanImages([]);
+    setScanStepIndex(0);
+    setScanError(null);
+  };
+
   const applyOutfitBundle = (bundle: typeof OUTFIT_BUNDLES[number]) => {
     setTop(bundle.top);
     setBottom(bundle.bottom);
@@ -403,7 +495,7 @@ export default function AvatarBuilderPage() {
     setGenerationProgress(0);
 
     // Handle image from attachments if present
-    let imageData: string | null = uploadedImage;
+    let imageData: string | null = uploadedImage || (scanImages[0] ?? null);
     if (attachments && attachments.length > 0) {
       const imageFile = attachments.find(f => f.type.startsWith('image/'));
       if (imageFile) {
@@ -814,6 +906,35 @@ export default function AvatarBuilderPage() {
                     <h3 className="text-lg font-semibold text-white">Outfit & Accessories</h3>
                   </div>
 
+                  <div className="mb-6 flex flex-wrap gap-2">
+                    <Button
+                      variant="outline"
+                      className="border-white/10"
+                      onClick={() => {
+                        const outfitPack = {
+                          top,
+                          bottom,
+                          shoes,
+                          eyewear,
+                          headwear,
+                          accessories,
+                        };
+                        const blob = new Blob([JSON.stringify(outfitPack, null, 2)], { type: 'application/json' });
+                        const url = URL.createObjectURL(blob);
+                        const link = document.createElement('a');
+                        link.href = url;
+                        link.download = 'outfit-pack.json';
+                        document.body.appendChild(link);
+                        link.click();
+                        document.body.removeChild(link);
+                        URL.revokeObjectURL(url);
+                      }}
+                    >
+                      <Download size={16} className="mr-2" />
+                      Export Outfit Pack
+                    </Button>
+                  </div>
+
                   <div className="mb-6">
                     <label className="text-sm text-gray-400 mb-2 block">Outfit Bundles</label>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -1091,6 +1212,88 @@ export default function AvatarBuilderPage() {
                   )}
                 </Card>
 
+                {/* Face Scan */}
+                <Card className="p-6 bg-black/40 border-white/10">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-2">
+                      <Camera className="text-purple-400" size={20} />
+                      <h3 className="text-lg font-semibold text-white">Face Scan (Best Match)</h3>
+                    </div>
+                    <Badge variant="outline" className="text-xs border-purple-500/30 text-purple-300">
+                      Beta
+                    </Badge>
+                  </div>
+
+                  {scanError && (
+                    <div className="mb-4 text-sm text-red-300 bg-red-500/10 border border-red-500/20 rounded-lg p-3">
+                      {scanError}
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="rounded-xl border border-white/10 bg-black/20 p-3">
+                      <div className="relative aspect-video rounded-lg overflow-hidden bg-black">
+                        {isScanning ? (
+                          <video ref={videoRef} className="w-full h-full object-cover" />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center text-gray-500 text-sm">
+                            Camera preview
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex items-center justify-between mt-3">
+                        <div className="text-sm text-gray-400">
+                          Step {Math.min(scanStepIndex + 1, SCAN_STEPS.length)} of {SCAN_STEPS.length}:
+                          <span className="text-white ml-2">
+                            {SCAN_STEPS[Math.min(scanStepIndex, SCAN_STEPS.length - 1)].label}
+                          </span>
+                        </div>
+                        <div className="text-xs text-gray-500">
+                          {SCAN_STEPS[Math.min(scanStepIndex, SCAN_STEPS.length - 1)].hint}
+                        </div>
+                      </div>
+                      <div className="flex gap-2 mt-3">
+                        {!isScanning ? (
+                          <Button onClick={startFaceScan} className="bg-gradient-to-r from-purple-500 to-pink-500">
+                            Start Scan
+                          </Button>
+                        ) : (
+                          <Button onClick={captureFaceScan} className="bg-gradient-to-r from-purple-500 to-pink-500">
+                            Capture
+                          </Button>
+                        )}
+                        <Button variant="outline" onClick={resetFaceScan} className="border-white/10">
+                          Reset
+                        </Button>
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="text-sm text-gray-400 mb-2">Captured angles</div>
+                      <div className="grid grid-cols-5 gap-2">
+                        {SCAN_STEPS.map((step, index) => (
+                          <div
+                            key={step.id}
+                            className="aspect-square rounded-lg border border-white/10 bg-black/20 overflow-hidden"
+                          >
+                            {scanImages[index] ? (
+                              <img src={scanImages[index]} alt={step.label} className="w-full h-full object-cover" />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center text-[10px] text-gray-500">
+                                {step.label}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                      <p className="text-xs text-gray-500 mt-3">
+                        Face scan improves identity consistency. The first scan is used as the reference image.
+                      </p>
+                    </div>
+                  </div>
+                  <canvas ref={canvasRef} className="hidden" />
+                </Card>
+
                 {/* Generation Progress */}
                 {isGenerating && (
                   <Card className="p-6 bg-gradient-to-r from-purple-500/20 to-pink-500/20 border-purple-500/30">
@@ -1276,6 +1479,32 @@ export default function AvatarBuilderPage() {
               <h3 className="text-sm font-semibold text-gray-400 mb-4">PRESET MANAGER</h3>
 
               <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-xs text-gray-500 mb-1 block">Filter Category</label>
+                    <select
+                      value={presetCategoryFilter}
+                      onChange={(e) => setPresetCategoryFilter(e.target.value)}
+                      className="w-full px-2 py-2 bg-black/20 border border-white/10 rounded-lg text-xs text-white"
+                    >
+                      {['All', ...PRESET_CATEGORIES].map(item => (
+                        <option key={item} value={item}>{item}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500 mb-1 block">Filter Tag</label>
+                    <select
+                      value={presetTagFilter}
+                      onChange={(e) => setPresetTagFilter(e.target.value)}
+                      className="w-full px-2 py-2 bg-black/20 border border-white/10 rounded-lg text-xs text-white"
+                    >
+                      {['All', ...PRESET_TAGS].map(item => (
+                        <option key={item} value={item}>{item}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
                 <div className="flex gap-2">
                   <input
                     type="text"
@@ -1312,6 +1541,25 @@ export default function AvatarBuilderPage() {
                   </div>
                 </div>
 
+                <div>
+                  <label className="text-xs text-gray-500 mb-2 block">Tags</label>
+                  <div className="flex flex-wrap gap-2">
+                    {PRESET_TAGS.map((tag) => (
+                      <button
+                        key={tag}
+                        onClick={() => togglePresetTag(tag)}
+                        className={`px-2 py-1 rounded-lg border text-xs transition-all ${
+                          presetTags.includes(tag)
+                            ? 'border-purple-500 bg-purple-500/10 text-purple-300'
+                            : 'border-white/10 text-gray-400 hover:border-white/20'
+                        }`}
+                      >
+                        {tag}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
                 <div className="flex gap-2">
                   <Button
                     variant="outline"
@@ -1343,7 +1591,14 @@ export default function AvatarBuilderPage() {
                 {savedPresets.length === 0 ? (
                   <p className="text-xs text-gray-500">No presets saved yet.</p>
                 ) : (
-                  savedPresets.map((preset) => (
+                  savedPresets
+                    .filter(preset =>
+                      presetCategoryFilter === 'All' || preset.category === presetCategoryFilter
+                    )
+                    .filter(preset =>
+                      presetTagFilter === 'All' || (preset.tags || []).includes(presetTagFilter)
+                    )
+                    .map((preset) => (
                     <div
                       key={preset.id}
                       className="flex items-center justify-between gap-2 p-2 rounded-lg border border-white/10 bg-black/20"
@@ -1356,6 +1611,15 @@ export default function AvatarBuilderPage() {
                           {preset.name}
                         </button>
                         <p className="text-[11px] text-gray-500">{preset.category}</p>
+                        {preset.tags && preset.tags.length > 0 && (
+                          <div className="flex flex-wrap gap-1 mt-1">
+                            {preset.tags.map(tag => (
+                              <span key={tag} className="text-[10px] text-purple-200 border border-purple-500/20 rounded px-1">
+                                {tag}
+                              </span>
+                            ))}
+                          </div>
+                        )}
                       </div>
                       <Button
                         variant="ghost"
