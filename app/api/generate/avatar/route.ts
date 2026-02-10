@@ -50,6 +50,8 @@ export async function POST(req: NextRequest) {
       formData.append('cfg_scale', '7');
       formData.append('samples', '1');
       formData.append('steps', '50');
+      formData.append('width', '1024');
+      formData.append('height', '1024');
       formData.append('style_preset', stylePreset);
       formData.append('image_strength', '0.45');
 
