@@ -2,16 +2,16 @@
 
 import { motion, AnimatePresence } from "framer-motion"
 import Link from "next/link"
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect } from "react"
 import { 
-  User, Film, Music, Camera, ChevronRight, Star, Zap,
-  Play, Pause, Settings, Bell, Search, Menu, X,
-  ArrowRight, ArrowUpRight, Heart, Share2, Download,
-  Bot, Cpu, Shield, Activity
+  User, Film, Music, Camera, Star, Zap,
+  Play, Bell, Search, Menu, X,
+  ArrowRight, ArrowUpRight, Activity
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { RocketLogo } from "@/components/ui/RocketLogo"
 
 // Services data - 4 Core Services Only
 const services = [
@@ -73,15 +73,7 @@ const stats = [
   { value: '99.9%', label: 'Uptime', icon: Activity },
 ]
 
-// Testimonials
-const testimonials = [
-  { name: 'Sarah Chen', role: 'Content Creator', text: 'Avatar G transformed my workflow. Lightweight and powerful!', avatar: 'SC' },
-  { name: 'Marcus Johnson', role: 'Creator', text: 'Video generation is extremely efficient on my PC.', avatar: 'MJ' },
-  { name: 'Elena Rodriguez', role: 'Designer', text: 'Image creation tools are fast and responsive.', avatar: 'ER' },
-]
-
 export default function Home() {
-  const [activeService, setActiveService] = useState<string | null>(null)
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 })
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const [scrollY, setScrollY] = useState(0)
@@ -163,7 +155,7 @@ export default function Home() {
           scrollY > 50 ? 'bg-[#05070A]/90 backdrop-blur-xl border-b border-white/5' : ''
         }`}
       >
-        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between">
           {/* Logo */}
           <motion.div 
             className="flex items-center gap-3"
@@ -268,9 +260,9 @@ export default function Home() {
       </motion.header>
 
       {/* Hero Section */}
-      <section className="relative min-h-screen flex items-center justify-center pt-20 pb-32 overflow-hidden">
-        <div className="max-w-7xl mx-auto px-6 w-full">
-          <div className="grid lg:grid-cols-2 gap-12 items-center">
+      <section className="relative min-h-screen flex items-center justify-center pt-32 md:pt-24 pb-16 md:pb-32 px-4 sm:px-6 overflow-hidden">
+        <div className="max-w-7xl mx-auto w-full">
+          <div className="grid lg:grid-cols-2 gap-8 lg:gap-12 items-center">
             {/* Left Content */}
             <motion.div
               initial={{ opacity: 0, x: -50 }}
@@ -288,14 +280,35 @@ export default function Home() {
                 <span className="text-sm text-cyan-400">New: Agent G is now available</span>
               </motion.div>
 
-              <h1 className="text-5xl md:text-7xl font-bold mb-6 leading-tight">
+              {/* DEPLOY MARKER - VISIBLE TEST */}
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.3 }}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-green-500/20 border border-green-500/50 mb-6 ml-0 md:ml-2"
+              >
+                <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
+                <span className="text-sm text-green-300 font-mono">DEPLOY_MARKER_2026-02-12_v1</span>
+              </motion.div>
+
+              <h1 
+                className="font-bold mb-6 leading-tight text-white"
+                style={{
+                  fontSize: 'clamp(2rem, 5vw, 3.5rem)',
+                }}
+              >
                 Create with{' '}
                 <span className="bg-gradient-to-r from-cyan-400 via-blue-500 to-purple-500 bg-clip-text text-transparent">
                   AI Power
                 </span>
               </h1>
               
-              <p className="text-xl text-gray-400 mb-8 max-w-xl mx-auto lg:mx-0">
+              <p 
+                className="text-gray-400 mb-8 max-w-2xl mx-auto lg:mx-0"
+                style={{
+                  fontSize: 'clamp(1rem, 2.5vw, 1.25rem)',
+                }}
+              >
                 13 professional AI services to create, edit, and enhance your digital content. 
                 From avatars to music, code to video.
               </p>
@@ -312,7 +325,7 @@ export default function Home() {
               </div>
 
               {/* Stats */}
-              <div className="grid grid-cols-4 gap-6 mt-12 pt-12 border-t border-white/10">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-6 mt-12 pt-8 sm:pt-12 border-t border-white/10">
                 {stats.map((stat, i) => (
                   <motion.div
                     key={stat.label}
@@ -321,8 +334,8 @@ export default function Home() {
                     transition={{ delay: 0.4 + i * 0.1 }}
                     className="text-center"
                   >
-                    <p className="text-2xl md:text-3xl font-bold text-white">{stat.value}</p>
-                    <p className="text-xs text-gray-500 mt-1">{stat.label}</p>
+                    <p className="font-bold text-white" style={{ fontSize: 'clamp(1.25rem, 3vw, 1.875rem)' }}>{stat.value}</p>
+                    <p className="text-xs sm:text-sm text-gray-500 mt-1">{stat.label}</p>
                   </motion.div>
                 ))}
               </div>
@@ -333,7 +346,7 @@ export default function Home() {
               initial={{ opacity: 0, scale: 0.8 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{ duration: 0.8 }}
-              className="relative h-[500px] md:h-[600px] hidden lg:block"
+              className="relative h-[400px] sm:h-[500px] md:h-[600px] hidden lg:block"
             >
               {/* Central Avatar */}
               <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-20">
@@ -457,23 +470,28 @@ export default function Home() {
       </section>
 
       {/* Services Grid Section */}
-      <section id="services" className="py-32 relative">
-        <div className="max-w-7xl mx-auto px-6">
+      <section id="services" className="py-16 sm:py-24 md:py-32 relative">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6">
           <motion.div
             initial={{ opacity: 0, y: 30 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
-            className="text-center mb-16"
+            className="text-center mb-12 sm:mb-16"
           >
-            <h2 className="text-4xl md:text-5xl font-bold mb-4">
-              All <span className="bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent">AI Services</span>
+            <h2 
+              className="font-bold mb-4 bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent"
+              style={{
+                fontSize: 'clamp(1.875rem, 4vw, 2.25rem)',
+              }}
+            >
+              All <span>AI Services</span>
             </h2>
-            <p className="text-xl text-gray-400 max-w-2xl mx-auto">
+            <p className="text-lg sm:text-xl text-gray-400 max-w-2xl mx-auto px-2">
               Everything you need to create professional content, powered by cutting-edge AI
             </p>
           </motion.div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6">
             {services.map((service, index) => {
               const Icon = service.icon
               return (
@@ -489,10 +507,10 @@ export default function Home() {
                       className="h-full p-6 group cursor-pointer hover:scale-[1.02] transition-all duration-300"
                     >
                       <div className="flex items-start justify-between mb-4">
-                        <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${service.color} flex items-center justify-center`}>
+                        <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${service.color} flex items-center justify-center flex-shrink-0`}>
                           <Icon size={24} className="text-white" />
                         </div>
-                        <div className="flex gap-2">
+                        <div className="flex gap-2 ml-2">
                           {service.isNew && (
                             <Badge variant="success" className="text-xs">New</Badge>
                           )}
@@ -505,22 +523,22 @@ export default function Home() {
                       <h3 className="text-lg font-semibold mb-2 group-hover:text-cyan-400 transition-colors">
                         {service.name}
                       </h3>
-                      <p className="text-sm text-gray-400 mb-4">
+                      <p className="text-sm text-gray-400 mb-4 line-clamp-2">
                         {service.description}
                       </p>
 
                       <div className="space-y-2">
                         {service.features.map((feature, i) => (
                           <div key={i} className="flex items-center gap-2 text-xs text-gray-500">
-                            <Zap size={12} className="text-cyan-400" />
-                            {feature}
+                            <Zap size={12} className="text-cyan-400 flex-shrink-0" />
+                            <span className="truncate">{feature}</span>
                           </div>
                         ))}
                       </div>
 
                       <div className="mt-4 pt-4 border-t border-white/10 flex items-center justify-between">
                         <span className="text-sm text-cyan-400">Open Service</span>
-                        <ArrowUpRight size={16} className="text-cyan-400 group-hover:translate-x-1 group-hover:-translate-y-1 transition-transform" />
+                        <ArrowUpRight size={16} className="text-cyan-400 group-hover:translate-x-1 group-hover:-translate-y-1 transition-transform flex-shrink-0" />
                       </div>
                     </Card>
                   </Link>
@@ -532,26 +550,31 @@ export default function Home() {
       </section>
 
       {/* CTA Section */}
-      <section className="py-32 relative">
-        <div className="max-w-4xl mx-auto px-6 text-center">
+      <section className="py-16 sm:py-24 md:py-32 relative px-4 sm:px-6">
+        <div className="max-w-4xl mx-auto">
           <motion.div
             initial={{ opacity: 0, scale: 0.9 }}
             whileInView={{ opacity: 1, scale: 1 }}
             viewport={{ once: true }}
-            className="relative p-12 rounded-3xl bg-gradient-to-br from-cyan-500/20 via-purple-500/20 to-pink-500/20 border border-white/10 overflow-hidden"
+            className="relative p-8 sm:p-12 md:p-16 rounded-3xl bg-gradient-to-br from-cyan-500/20 via-purple-500/20 to-pink-500/20 border border-white/10 overflow-hidden"
           >
-            <h2 className="text-4xl md:text-5xl font-bold mb-6 relative z-10">
+            <h2 
+              className="font-bold mb-4 sm:mb-6 relative z-10 text-white"
+              style={{
+                fontSize: 'clamp(1.875rem, 4vw, 2.25rem)',
+              }}
+            >
               Ready to Create?
             </h2>
-            <p className="text-xl text-gray-400 mb-8 relative z-10">
+            <p className="text-base sm:text-lg md:text-xl text-gray-400 mb-8 relative z-10">
               Join thousands of creators using Avatar G to bring their ideas to life.
             </p>
-            <div className="flex flex-col sm:flex-row gap-4 justify-center relative z-10">
-              <Button variant="glow" size="lg">
+            <div className="flex flex-col sm:flex-row gap-4 relative z-10">
+              <Button variant="glow" size="lg" className="w-full sm:w-auto">
                 Get Started Free
                 <ArrowRight size={18} className="ml-2" />
               </Button>
-              <Button variant="outline" size="lg">
+              <Button variant="outline" size="lg" className="w-full sm:w-auto">
                 View Pricing
               </Button>
             </div>
@@ -560,19 +583,19 @@ export default function Home() {
       </section>
 
       {/* Footer */}
-      <footer className="py-12 border-t border-white/10">
-        <div className="max-w-7xl mx-auto px-6">
-          <div className="flex flex-col md:flex-row justify-between items-center gap-4">
+      <footer className="py-8 sm:py-12 border-t border-white/10 px-4 sm:px-6">
+        <div className="max-w-7xl mx-auto">
+          <div className="flex flex-col sm:flex-row justify-between items-center gap-4 sm:gap-8">
             <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-cyan-400 to-blue-500 flex items-center justify-center">
+              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-cyan-400 to-blue-500 flex items-center justify-center flex-shrink-0">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" className="text-white">
                   <path d="M12 2C12 2 8 6 8 10C8 12 9 14 12 14C15 14 16 12 16 10C16 6 12 2 12 2Z" fill="currentColor"/>
                   <path d="M12 14V22" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
                 </svg>
               </div>
-              <span className="font-bold">Avatar G</span>
+              <span className="font-bold text-sm sm:text-base">Avatar G</span>
             </div>
-            <p className="text-sm text-gray-500">
+            <p className="text-xs sm:text-sm text-gray-500 text-center">
               © 2024 Avatar G. All rights reserved.
             </p>
           </div>
