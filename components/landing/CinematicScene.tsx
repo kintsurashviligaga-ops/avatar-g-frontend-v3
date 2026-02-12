@@ -53,10 +53,8 @@ export default function CinematicScene({ userAvatar }: CinematicSceneProps) {
       style={{ background: colors.bg.dark }}
     >
       <Canvas
-        ref={(instance) => {
-          if (instance && instance.domElement) {
-            canvasRef.current = instance.domElement as HTMLCanvasElement;
-          }
+        onCreated={({ gl }) => {
+          canvasRef.current = gl.domElement;
         }}
         camera={{
           position: [0, 0, 8],

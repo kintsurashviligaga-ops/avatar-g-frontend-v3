@@ -3,6 +3,9 @@ import { createClient } from '@supabase/supabase-js';
 import { apiError, apiSuccess } from '@/lib/api/response';
 import { MusicTrackRequestSchema, validateInput } from '@/lib/api/validation';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
+import { withEnforcement, deductCredits } from '@/lib/billing/enforce';
+import { getCreditCost } from '@/lib/billing/plans';
+import { createJob } from '@/lib/jobs/jobs';
 import type { GenerateTrackRequest } from '@/types/music-video';
 
 export const dynamic = 'force-dynamic';
