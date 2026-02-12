@@ -2,6 +2,7 @@
 
 import React from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { useStudioStore } from '@/store/useStudioStore';
 import { useLanguage } from '@/lib/i18n/useLanguage';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -96,9 +97,11 @@ export function StudioBar({ className }: StudioBarProps) {
                   )}
                 >
                   {selectedAvatarPreviewUrl && (
-                    <img
+                    <Image
                       src={selectedAvatarPreviewUrl}
                       alt="Selected Avatar"
+                      width={24}
+                      height={24}
                       className="w-6 h-6 rounded-full object-cover"
                     />
                   )}
@@ -141,9 +144,11 @@ export function StudioBar({ className }: StudioBarProps) {
                   )}
                 >
                   {selectedTrackCoverUrl && (
-                    <img
+                    <Image
                       src={selectedTrackCoverUrl}
                       alt="Track Cover"
+                      width={24}
+                      height={24}
                       className="w-6 h-6 rounded object-cover"
                     />
                   )}
@@ -186,9 +191,11 @@ export function StudioBar({ className }: StudioBarProps) {
                   )}
                 >
                   {selectedVideoThumbnailUrl && (
-                    <img
+                    <Image
                       src={selectedVideoThumbnailUrl}
                       alt="Video Thumbnail"
+                      width={24}
+                      height={24}
                       className="w-6 h-6 rounded object-cover"
                     />
                   )}

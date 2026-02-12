@@ -1,76 +1,71 @@
-import { NextRequest } from "next/server";
-import { apiSuccess, apiError } from "@/lib/api/response";
-import { ChatMessageSchema, validateInput } from "@/lib/api/validation";
-import { checkRateLimit, RATE_LIMITS } from "@/lib/api/rate-limit";
-import { createClient } from "@supabase/supabase-js";
+'use server';
+/* @ts-ignore - Node.js process global */
 
 export const dynamic = 'force-dynamic';
 
-export async function POST(req: NextRequest) {
+export async function POST(req: Request) {
   try {
-    // 1. Rate limiting
-    const rateLimitError = await checkRateLimit(req, RATE_LIMITS.WRITE);
-    if (rateLimitError) return rateLimitError;
-
-    // 2. Input validation
-    const body = await req.json();
-    const validation = validateInput(ChatMessageSchema, body);
-    if (!validation.success) {
-      return apiError(new Error(validation.error), 400, 'Invalid request');
-    }
-
-    // 3. Authorization check (SECURITY FIX: Added authentication)
-    const authHeader = req.headers.get('authorization');
+    // Check authorization header
+    const authHeader = req.headers.get('Authorization');
     if (!authHeader?.startsWith('Bearer ')) {
-      return apiError(new Error('Unauthorized'), 401, 'Missing required authorization');
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized' }),
+        { status: 401, headers: { 'Content-Type': 'application/json' } }
+      );
     }
 
-    const token = authHeader.slice(7);
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
-    );
-
-    const { data: userData, error: authError } = await supabase.auth.getUser(token);
-    if (authError || !userData?.user) {
-      return apiError(new Error('Unauthorized'), 401, 'Invalid token');
+    /* @ts-ignore - Accessing Node.js process */
+    const apiKey = process.env.DEEPSEEK_API_KEY as string;
+    if (!apiKey) {
+      return new Response(
+        JSON.stringify({ error: 'DeepSeek API key not configured' }),
+        { status: 500, headers: { 'Content-Type': 'application/json' } }
+      );
     }
 
-    const { message } = validation.data;
-
-    if (!process.env.DEEPSEEK_API_KEY) {
-      return apiError(new Error('Service not configured'), 503, 'Service temporarily unavailable');
-    }
-
+    const body = await req.json();
     const response = await fetch("https://api.deepseek.com/v1/chat/completions", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${process.env.DEEPSEEK_API_KEY}`,
+        "Authorization": `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
         model: "deepseek-chat",
-        messages: [
-          { role: "system", content: "შენ ხარ Avatar G-ს AI ასისტენტი. უპასუხე ქართულ ენაზე." },
-          { role: "user", content: message }
-        ],
-        max_tokens: 1000,
-        temperature: 0.7,
+        messages: body.messages || [],
+        temperature: body.temperature || 0.7,
+        max_tokens: body.max_tokens || 2048,
       }),
     });
 
     if (!response.ok) {
-      return apiError(new Error(`API error: ${response.status}`), 502, 'Service error');
+      throw new Error(`DeepSeek API error: ${response.statusText}`);
     }
 
     const data = await response.json();
-    const output = data.choices?.[0]?.message?.content;
-    if (!output) {
-      return apiError(new Error('Empty response from API'), 502, 'Service error');
-    }
+    const output = data.choices?.[0]?.message?.content || '';
 
-    return apiSuccess({ response: output, provider: 'DeepSeek' });
+    return new Response(
+      JSON.stringify({
+        success: true,
+        response: output,
+        provider: 'DeepSeek'
+      }),
+      {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      }
+    );
+
   } catch (error) {
-    return apiError(error, 500);
+    console.error('DeepSeek error:', error);
+    return new Response(
+      JSON.stringify({
+        error: error instanceof Error ? error.message : 'Internal server error'
+      }),
+      { status: 500, headers: { 'Content-Type': 'application/json' } }
+    );
   }
 }

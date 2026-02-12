@@ -3,8 +3,6 @@
 import { motion } from "framer-motion";
 import { Check, Sparkles } from "lucide-react";
 import SpaceBackground from "@/components/SpaceBackground";
-import Header from "@/components/Header";
-import Footer from "@/components/Footer";
 
 const plans = [
   { name: "უფასო", price: "0", description: "დაიწყე უფასოდ", features: ["100 მესიჯი/თვე", "10 სურათის გენერაცია", "ძირითადი მოდელები"], gradient: "from-gray-500 to-gray-600", popular: false },
@@ -16,7 +14,6 @@ export default function PricingPage() {
   return (
     <main className="relative min-h-screen">
       <SpaceBackground />
-      <Header />
       <section className="pt-32 pb-24">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} className="text-center mb-16">
@@ -46,7 +43,6 @@ export default function PricingPage() {
           </div>
         </div>
       </section>
-      <Footer />
     </main>
   );
 }

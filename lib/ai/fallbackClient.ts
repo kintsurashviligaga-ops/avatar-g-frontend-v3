@@ -163,9 +163,10 @@ export async function generateWithFallback(options: AIGenerateOptions): Promise<
         const text = await provider.generate(options);
         console.log(`[AI] Success with ${provider.name}`);
         return { text, provider: provider.name, isRealAI: provider.name !== "Local" };
-      } catch (error: any) {
-        console.error(`[AI] ${provider.name} failed:`, error.message);
-        errors.push(`${provider.name}: ${error.message}`);
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : "Unknown error";
+        console.error(`[AI] ${provider.name} failed:`, message);
+        errors.push(`${provider.name}: ${message}`);
         continue;
       }
     }

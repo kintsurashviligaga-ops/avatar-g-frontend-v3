@@ -2,7 +2,7 @@
 
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useCallback } from 'react';
 import { useStudioStore } from '@/store/useStudioStore';
 import type { Language } from '@/types/platform';
 import { translations } from './translations';

@@ -2,6 +2,9 @@
 
 import type { Language, VoiceSlot, JobStatus } from './avatar-builder';
 
+// Re-export commonly used types
+export type { Language, VoiceSlot, JobStatus };
+
 // ============================================
 // MUSIC/TRACK TYPES
 // ============================================
@@ -206,6 +209,8 @@ export interface GenerateTrackRequest {
   style_tags?: string[];
   use_custom_vocals?: boolean;
   voice_slots?: VoiceSlot[];
+  avatar_id?: string;
+  use_avatar_voice?: boolean;
   generate_cover?: boolean;
 }
 

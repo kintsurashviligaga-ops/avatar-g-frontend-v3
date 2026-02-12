@@ -2,9 +2,8 @@
 
 import { useRef, useState, useCallback, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Send, Paperclip, Settings, Maximize2, Minimize2, X, Loader2 } from "lucide-react";
+import { Send, Paperclip, Settings, Maximize2, Minimize2, Loader2 } from "lucide-react";
 import { Button } from "./button";
-import { Card } from "./card";
 
 export type ServiceContext = "global" | "music" | "video" | "avatar" | "voice" | "business";
 
@@ -14,12 +13,16 @@ export interface ChatMessage {
   content: string;
   timestamp: Date;
   isError?: boolean;
+  provider?: string;
 }
 
 interface ChatWindowProps {
   title?: string;
   serviceContext?: ServiceContext;
-  onSendMessage?: (message: string, context: ServiceContext) => Promise<void>;
+  onSendMessage?: (
+    message: string,
+    context: ServiceContext
+  ) => Promise<{ response: string; provider?: string } | null>;
   isLoading?: boolean;
   onSettingsClick?: () => void;
   minimizable?: boolean;
@@ -111,28 +114,53 @@ export function ChatWindow({
     setMessages((prev) => [...prev, userMessage]);
     setInput("");
 
-    if (onSendMessage) {
-      try {
-        await onSendMessage(input, serviceContext);
+    try {
+      let result: { response: string; provider?: string } | null = null;
 
-        // In real implementation, this would be replaced by streaming response
+      if (onSendMessage) {
+        result = await onSendMessage(input, serviceContext);
+      } else {
+        const response = await fetch('/api/chat', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            message: input,
+            context: serviceContext,
+            conversationId: `${serviceContext}_${Date.now()}`
+          })
+        });
+
+        if (!response.ok) {
+          throw new Error('Chat request failed');
+        }
+
+        const data = await response.json();
+        result = data?.data
+          ? { response: data.data.response, provider: data.data.provider }
+          : null;
+      }
+
+      if (result?.response) {
         const assistantMessage: ChatMessage = {
           id: Math.random().toString(36),
-          role: "assistant",
-          content: "I've processed your request. Response will appear here.",
+          role: 'assistant',
+          content: result.response,
           timestamp: new Date(),
+          provider: result.provider,
         };
         setMessages((prev) => [...prev, assistantMessage]);
-      } catch (error) {
-        const errorMessage: ChatMessage = {
-          id: Math.random().toString(36),
-          role: "assistant",
-          content: "Sorry, something went wrong. Please try again.",
-          timestamp: new Date(),
-          isError: true,
-        };
-        setMessages((prev) => [...prev, errorMessage]);
       }
+    } catch {
+      const errorMessage: ChatMessage = {
+        id: Math.random().toString(36),
+        role: 'assistant',
+        content: 'Sorry, something went wrong. Please try again.',
+        timestamp: new Date(),
+        isError: true,
+      };
+      setMessages((prev) => [...prev, errorMessage]);
     }
   }, [input, serviceContext, onSendMessage]);
 
@@ -146,7 +174,6 @@ export function ChatWindow({
       }`}
       layout
     >
-      {/* Header */}
       <div
         className={`flex items-center justify-between px-4 py-3 bg-gradient-to-r ${config.color} text-white cursor-pointer`}
         onClick={() => collapsible && setIsMinimized(!isMinimized)}
@@ -187,7 +214,6 @@ export function ChatWindow({
         </div>
       </div>
 
-      {/* Messages area */}
       <AnimatePresence>
         {!isMinimized && (
           <motion.div
@@ -213,6 +239,9 @@ export function ChatWindow({
                   }`}
                 >
                   {msg.content}
+                  {msg.provider && (
+                    <div className="mt-1 text-xs text-gray-400">via {msg.provider}</div>
+                  )}
                 </div>
               </motion.div>
             ))}
@@ -234,7 +263,6 @@ export function ChatWindow({
         )}
       </AnimatePresence>
 
-      {/* Input area */}
       {!isMinimized && (
         <motion.div
           initial={{ opacity: 0 }}

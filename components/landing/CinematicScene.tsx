@@ -8,10 +8,9 @@
  * - Space background effects
  */
 
-import React, { useEffect, useRef, useState } from 'react';
-import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { PerspectiveCamera, Preload, Plane } from '@react-three/drei';
-import * as THREE from 'three';
+import React, { useRef } from 'react';
+import { Canvas } from '@react-three/fiber';
+import { Preload } from '@react-three/drei';
 import { colors } from '@/lib/design/tokens';
 import AvatarModel from './AvatarModel';
 import OrbitingServices from './OrbitingServices';

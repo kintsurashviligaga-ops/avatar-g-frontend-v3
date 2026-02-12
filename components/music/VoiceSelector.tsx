@@ -27,7 +27,6 @@ interface VoiceSelectorProps {
 export function VoiceSelector({
   voices = [],
   selectedSlots = [],
-  duetMode = false,
   onSlotToggle,
   onDuetToggle,
   onTrainVoice,

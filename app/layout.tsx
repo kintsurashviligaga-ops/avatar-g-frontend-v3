@@ -6,10 +6,19 @@ import { LanguageProvider } from "@/lib/i18n/LanguageContext";
 import { ToastProvider } from "@/components/ui/Toast";
 import GlobalChatbot from "@/components/GlobalChatbot";
 import { Navbar, Footer } from "@/components/layout/AppLayout";
+import { validateEnvironment } from "@/lib/server/env";
+
+if (process.env.NODE_ENV !== "test") {
+  const validation = validateEnvironment();
+  if (!validation.isValid) {
+    throw new Error("Missing required environment variables. Check server logs for details.");
+  }
+}
 
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://avatar-g-frontend-v3.vercel.app"),
   title: {
     default: "Avatar G - AI Media Creation",
     template: "%s - Avatar G"

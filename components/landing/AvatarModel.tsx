@@ -10,7 +10,7 @@
  * - Rim glow effect
  */
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { Suspense, useEffect, useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { useGLTF, useAnimations } from '@react-three/drei';
 import * as THREE from 'three';
@@ -68,8 +68,8 @@ function DefaultAvatarMesh() {
     };
   }, []);
 
-  // Animation loop
-  useFrame((state) => {
+  // Animation loop  
+  useFrame(() => {
     if (!groupRef.current) return;
 
     time.current += 0.005;
@@ -77,13 +77,21 @@ function DefaultAvatarMesh() {
     // 360° slow rotation
     groupRef.current.rotation.y = time.current * 0.5;
 
-    // Breathing animation (scale Y pulse)
-    const breathing = Math.sin(time.current * 2) * 0.05;
-    groupRef.current.scale.y = 1 + breathing;
+    // Enhanced breathing animation with multiple waves
+    const breathing = Math.sin(time.current * 2) * 0.05 + Math.sin(time.current * 0.8) * 0.02;
+    groupRef.current.scale.set(1, 1 + breathing, 1);
 
-    // Float hover motion
-    const floatY = Math.sin(time.current * 1.5) * 0.3;
+    // Float hover motion with sinusoidal waves
+    const floatY = Math.sin(time.current * 1.5) * 0.3 + Math.sin(time.current * 0.7) * 0.15;
     groupRef.current.position.y = floatY;
+
+    // Subtle head tilt
+    const tilt = Math.sin(time.current * 0.5) * 0.15;
+    groupRef.current.rotation.z = tilt;
+
+    // Gentle wobble side-to-side
+    const wobble = Math.sin(time.current * 1.2) * 0.1;
+    groupRef.current.position.x = wobble;
   });
 
   return <group ref={groupRef} />;
@@ -93,50 +101,26 @@ function DefaultAvatarMesh() {
 function LoadedAvatarModel({ modelUrl }: { modelUrl: string }) {
   const groupRef = useRef<THREE.Group>(null);
   const time = useRef(0);
-  const [model, setModel] = useState<THREE.Group | null>(null);
-  const [loading, setLoading] = useState(true);
+  const gltf = useGLTF(modelUrl) as {
+    scene: THREE.Group;
+    animations: THREE.AnimationClip[];
+  };
+  const { actions } = useAnimations(gltf.animations, groupRef);
+  const modelScene = useMemo(() => gltf.scene, [gltf.scene]);
 
   useEffect(() => {
-    if (!modelUrl) return;
+    modelScene.scale.set(1.5, 1.5, 1.5);
+  }, [modelScene]);
 
-    const loadModel = async () => {
-      try {
-        // Dynamic import loader based on file type
-        if (modelUrl.endsWith('.glb') || modelUrl.endsWith('.gltf')) {
-          const { GLTFLoader } = await import('three/examples/jsm/loaders/GLTFLoader');
-          const loader = new GLTFLoader();
-
-          loader.load(
-            modelUrl,
-            (gltf) => {
-              const loadedModel = gltf.scene;
-              loadedModel.scale.set(1.5, 1.5, 1.5);
-              setModel(loadedModel);
-              setLoading(false);
-            },
-            undefined,
-            (error) => {
-              console.error('Error loading avatar model:', error);
-              setLoading(false);
-            }
-          );
-        }
-      } catch (error) {
-        console.error('Error loading model:', error);
-        setLoading(false);
-      }
+  useEffect(() => {
+    const firstAction = Object.values(actions || {})[0];
+    firstAction?.play();
+    return () => {
+      firstAction?.stop();
     };
+  }, [actions]);
 
-    loadModel();
-  }, [modelUrl]);
-
-  useEffect(() => {
-    if (model && groupRef.current && !groupRef.current.children.includes(model)) {
-      groupRef.current.add(model);
-    }
-  }, [model]);
-
-  useFrame((state) => {
+  useFrame(() => {
     if (!groupRef.current) return;
 
     time.current += 0.005;
@@ -144,18 +128,26 @@ function LoadedAvatarModel({ modelUrl }: { modelUrl: string }) {
     // 360° slow rotation
     groupRef.current.rotation.y = time.current * 0.5;
 
-    // Breathing animation
-    const breathing = Math.sin(time.current * 2) * 0.05;
-    groupRef.current.scale.y = 1 + breathing;
+    // Enhanced breathing animation with multiple waves
+    const breathing = Math.sin(time.current * 2) * 0.05 + Math.sin(time.current * 0.8) * 0.02;
+    groupRef.current.scale.set(1.5, 1.5 + breathing * 1.5, 1.5);
 
-    // Float hover motion
-    const floatY = Math.sin(time.current * 1.5) * 0.3;
+    // Float hover motion with sinusoidal waves
+    const floatY = Math.sin(time.current * 1.5) * 0.3 + Math.sin(time.current * 0.7) * 0.15;
     groupRef.current.position.y = floatY;
+
+    // Subtle head tilt
+    const tilt = Math.sin(time.current * 0.5) * 0.1;
+    groupRef.current.rotation.z = tilt;
+
+    // Gentle wobble side-to-side
+    const wobble = Math.sin(time.current * 1.2) * 0.08;
+    groupRef.current.position.x = wobble;
   });
 
   return (
     <group ref={groupRef}>
-      {loading && <DefaultAvatarMesh />}
+      <primitive object={modelScene} />
     </group>
   );
 }
@@ -164,7 +156,9 @@ export default function AvatarModel({ userAvatar }: AvatarModelProps) {
   return (
     <group position={[0, 0, 0]}>
       {userAvatar?.model_url ? (
-        <LoadedAvatarModel modelUrl={userAvatar.model_url} />
+        <Suspense fallback={<DefaultAvatarMesh />}>
+          <LoadedAvatarModel modelUrl={userAvatar.model_url} />
+        </Suspense>
       ) : (
         <DefaultAvatarMesh />
       )}

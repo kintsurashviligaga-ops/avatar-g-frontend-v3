@@ -178,6 +178,8 @@ export const MusicTrackRequestSchema = z.object({
   style_tags: z.array(z.string().max(CONSTRAINTS.PARAM_MAX_LENGTH)).optional().default([]),
   use_custom_vocals: z.boolean().optional().default(false),
   voice_slots: z.array(z.enum(['A', 'B', 'C'])).optional().default(['A']),
+  avatar_id: z.string().uuid().optional(),
+  use_avatar_voice: z.boolean().optional().default(false),
 });
 
 export type MusicTrackRequest = z.infer<typeof MusicTrackRequestSchema>;

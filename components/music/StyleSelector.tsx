@@ -2,10 +2,7 @@
 
 'use client';
 
-import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { X } from 'lucide-react';
-import { Button } from '@/components/ui/button';
 import { useLanguage } from '@/lib/i18n/useLanguage';
 import { cn } from '@/lib/utils';
 

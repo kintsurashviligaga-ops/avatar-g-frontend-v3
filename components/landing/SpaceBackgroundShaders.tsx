@@ -10,8 +10,8 @@
  * - Parallax on mouse movement
  */
 
-import React, { useRef, useMemo, useEffect } from 'react';
-import { useFrame, useThree } from '@react-three/fiber';
+import React, { useRef, useMemo } from 'react';
+import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { colors } from '@/lib/design/tokens';
 
@@ -35,23 +35,35 @@ function ParticleField() {
     return { positions, velocities };
   }, []);
 
-  useFrame((state) => {
+  useFrame(() => {
     if (!particles.current) return;
 
     const positions = particlesData.positions;
+    const velocities = particlesData.velocities;
 
     for (let i = 0; i < positions.length; i += 3) {
-      positions[i] += particlesData.velocities[i];
-      positions[i + 1] += particlesData.velocities[i + 1];
-      positions[i + 2] += particlesData.velocities[i + 2];
+      const vx = velocities[i] ?? 0;
+      const vy = velocities[i + 1] ?? 0;
+      const vz = velocities[i + 2] ?? 0;
+
+      const posX = (positions[i] ?? 0) + vx;
+      const posY = (positions[i + 1] ?? 0) + vy;
+      const posZ = (positions[i + 2] ?? 0) + vz;
+
+      positions[i] = posX;
+      positions[i + 1] = posY;
+      positions[i + 2] = posZ;
 
       // Wrap around
-      if (Math.abs(positions[i]) > 50) positions[i] *= -1;
-      if (Math.abs(positions[i + 1]) > 50) positions[i + 1] *= -1;
-      if (Math.abs(positions[i + 2]) > 50) positions[i + 2] *= -1;
+      positions[i] = Math.abs(posX) > 50 ? posX * -1 : posX;
+      positions[i + 1] = Math.abs(posY) > 50 ? posY * -1 : posY;
+      positions[i + 2] = Math.abs(posZ) > 50 ? posZ * -1 : posZ;
     }
 
-    particles.current.geometry.attributes.position.needsUpdate = true;
+    const positionAttr = particles.current.geometry.getAttribute('position');
+    if (positionAttr) {
+      positionAttr.needsUpdate = true;
+    }
   });
 
   return (
@@ -157,7 +169,10 @@ function NebulaBackground() {
 
   useFrame((state) => {
     if (meshRef.current && meshRef.current.material instanceof THREE.ShaderMaterial) {
-      meshRef.current.material.uniforms.uTime.value = state.clock.elapsedTime;
+      const { uniforms } = meshRef.current.material;
+      if (uniforms?.uTime) {
+        uniforms.uTime.value = state.clock.elapsedTime;
+      }
     }
   });
 

@@ -3,10 +3,17 @@
 import type {
   MusicGenerationResult,
   CoverArtResult,
-  LyricsMode,
   Language,
-  VoiceSlot
+  LyricsMode
 } from '@/types/music-video';
+
+// Re-export types for provider implementations
+export type {
+  MusicGenerationResult,
+  CoverArtResult,
+  Language,
+  LyricsMode
+};
 
 // ============================================
 // MUSIC GENERATION PROVIDER
@@ -50,7 +57,7 @@ export interface VocalProviderInput {
 export interface VocalResult {
   audio_url: string;
   duration_seconds: number;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 export interface IVocalProvider {
@@ -120,7 +127,7 @@ export interface VideoGenerationInput {
     duration: number;
     effects?: Array<{
       type: string;
-      params: Record<string, any>;
+      params: Record<string, unknown>;
     }>;
   }>;
   
@@ -131,7 +138,7 @@ export interface VideoGenerationInput {
   // Background
   background?: {
     type: 'solid' | 'gradient' | 'image';
-    config: Record<string, any>;
+    config: Record<string, unknown>;
   };
   
   // Text/Lyrics

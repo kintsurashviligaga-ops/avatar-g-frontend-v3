@@ -35,34 +35,25 @@ export class DefaultProviderFactory implements ProviderFactory {
     // Check which API keys are available
     const hasStability = !!process.env.STABILITY_API_KEY;
     const hasReplicate = !!process.env.REPLICATE_API_TOKEN;
-    const hasElevenLabs = !!process.env.ELEVENLABS_API_KEY;
-
     // Avatar Generation: prefer Stability, fallback to Replicate, then Mock
     if (hasStability) {
-      console.log('[ProviderFactory] Using Stability AI for avatar generation');
       this.avatarProvider = new StabilityAvatarProvider();
     } else if (hasReplicate) {
-      console.log('[ProviderFactory] Using Replicate for avatar generation');
       this.avatarProvider = new ReplicateAvatarProvider();
     } else {
-      console.warn('[ProviderFactory] No avatar generation API keys found, using mock provider');
       this.avatarProvider = new MockAvatarProvider();
     }
 
     // Outfit Fitting: use Mock for now (can add real provider later)
-    console.log('[ProviderFactory] Using Mock provider for outfit fitting');
     this.outfitProvider = new MockOutfitFittingProvider();
 
     // Voice: use Mock for MVP (can add ElevenLabs later)
-    console.log('[ProviderFactory] Using Mock provider for voice synthesis');
     this.voiceProvider = new MockVoiceProvider();
 
     // Talking Avatar: use Mock for MVP
-    console.log('[ProviderFactory] Using Mock provider for talking avatars');
     this.talkingAvatarProvider = new MockTalkingAvatarProvider();
 
     // Face Analysis: use Mock for MVP
-    console.log('[ProviderFactory] Using Mock provider for face analysis');
     this.faceAnalysisProvider = new MockFaceAnalysisProvider();
   }
 

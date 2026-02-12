@@ -8,18 +8,21 @@ import type {
   ITalkingAvatarProvider,
   IFaceAnalysisProvider,
   AvatarProviderInput,
-  AvatarGenerationResult,
   OutfitFittingInput,
   OutfitFittingResult,
   VoiceTrainingInput,
-  VoiceTrainingResult,
   VoiceSynthesisInput,
   VoiceSynthesisResult,
   TalkingAvatarInput,
-  TalkClipResult,
   FaceAnalysisInput,
   FaceAnalysisResult
 } from './interfaces';
+
+import type {
+  AvatarGenerationResult,
+  TalkClipResult,
+  VoiceTrainingResult
+} from '@/types/avatar-builder';
 
 // Placeholder avatar images (base64 1x1 colored pixels for demo)
 const MOCK_AVATAR_FRONT = 'data:image/svg+xml;base64,' + btoa(`
@@ -64,7 +67,8 @@ export class MockAvatarProvider implements IAvatarProvider {
     };
   }
 
-  async imageToImage(input: AvatarProviderInput & { init_image: string }): Promise<AvatarGenerationResult> {
+  async imageToImage(_input: AvatarProviderInput & { init_image: string }): Promise<AvatarGenerationResult> {
+    void _input;
     await this.delay(2000);
 
     return {
@@ -188,7 +192,8 @@ export class MockFaceAnalysisProvider implements IFaceAnalysisProvider {
     return true;
   }
 
-  async analyze(input: FaceAnalysisInput): Promise<FaceAnalysisResult> {
+  async analyze(_input: FaceAnalysisInput): Promise<FaceAnalysisResult> {
+    void _input;
     await this.delay(1000);
 
     return {

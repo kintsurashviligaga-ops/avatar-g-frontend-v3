@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import { TrackCard } from '@/components/music/TrackCard';
 import { WaveformPlayer } from '@/components/music/WaveformPlayer';
 import { LyricsEditor } from '@/components/music/LyricsEditor';
@@ -12,7 +11,7 @@ import { StyleSelector } from '@/components/music/StyleSelector';
 import { VoiceSelector } from '@/components/music/VoiceSelector';
 import { ChatWindow } from '@/components/ui/ChatWindow';
 import { PromptBuilder } from '@/components/ui/PromptBuilder';
-import { Loader2, Music, Sparkles, ChevronDown, Heart, Download, Share2, RotateCcw } from 'lucide-react';
+import { Loader2, Music, Sparkles, ChevronDown } from 'lucide-react';
 import { useMusicStudio } from '@/store/useMusicStudio';
 import { useStudioStore } from '@/store/useStudioStore';
 import { useJob } from '@/lib/hooks/useJob';
@@ -94,6 +93,8 @@ export default function MusicStudioPage() {
   const [voiceLabOpen, setVoiceLabOpen] = useState(true);
   const [mixLevel, setMixLevel] = useState(0.5);
   const [isChatLoading, setIsChatLoading] = useState(false);
+  const [avatarRef, setAvatarRef] = useState<{ id: string | null; url: string | null } | null>(null);
+  const [useAvatarVocals, setUseAvatarVocals] = useState(false);
 
   const {
     prompt,
@@ -173,6 +174,15 @@ export default function MusicStudioPage() {
   }, [loadUserTracks]);
 
   useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const storedId = localStorage.getItem('avatar_g_latest_avatar_id');
+    const storedUrl = localStorage.getItem('avatar_g_latest_avatar_url');
+    if (storedId || storedUrl) {
+      setAvatarRef({ id: storedId, url: storedUrl });
+    }
+  }, []);
+
+  useEffect(() => {
     if (job?.progress !== undefined) {
       updateProgress(job.progress);
     }
@@ -198,7 +208,9 @@ export default function MusicStudioPage() {
           language,
           style_tags: styleTags,
           use_custom_vocals: useCustomVocals,
-          voice_slots: useCustomVocals ? selectedVoiceSlots : undefined
+          voice_slots: useCustomVocals ? selectedVoiceSlots : undefined,
+          use_avatar_voice: useAvatarVocals,
+          avatar_id: useAvatarVocals ? avatarRef?.id || undefined : undefined
         })
       });
 
@@ -319,6 +331,28 @@ export default function MusicStudioPage() {
                 <Music className="w-4 h-4 text-purple-400" />
                 {t('music.lyrics.label')}
               </h3>
+              <div className="flex items-center gap-2 mb-4">
+                <button
+                  onClick={() => setLyricsMode('instrumental')}
+                  className={`px-3 py-1 rounded border text-xs transition ${
+                    lyricsMode === 'instrumental'
+                      ? 'border-cyan-400/70 text-cyan-200 bg-cyan-500/10'
+                      : 'border-white/10 text-white/50 hover:text-white'
+                  }`}
+                >
+                  Instrumental
+                </button>
+                <button
+                  onClick={() => setLyricsMode('auto')}
+                  className={`px-3 py-1 rounded border text-xs transition ${
+                    lyricsMode !== 'instrumental'
+                      ? 'border-cyan-400/70 text-cyan-200 bg-cyan-500/10'
+                      : 'border-white/10 text-white/50 hover:text-white'
+                  }`}
+                >
+                  Vocals
+                </button>
+              </div>
               <LyricsEditor
                 value={lyrics}
                 onChange={setLyrics}
@@ -466,6 +500,27 @@ export default function MusicStudioPage() {
                     className="mt-4 space-y-4"
                   >
                     <div className="flex items-center justify-between text-xs text-white/60">
+                      <span>Sing with my Avatar</span>
+                      <button
+                        onClick={() => setUseAvatarVocals((prev) => !prev)}
+                        disabled={!avatarRef?.id}
+                        className={`px-2 py-1 rounded border transition ${
+                          useAvatarVocals
+                            ? 'border-cyan-400/60 text-cyan-200'
+                            : 'border-white/10 text-white/40'
+                        } ${!avatarRef?.id ? 'opacity-40 cursor-not-allowed' : ''}`}
+                      >
+                        {useAvatarVocals ? t('common.on', 'On') : t('common.off', 'Off')}
+                      </button>
+                    </div>
+
+                    {!avatarRef?.id && (
+                      <p className="text-xs text-white/40">
+                        Create an avatar first to enable vocal identity.
+                      </p>
+                    )}
+
+                    <div className="flex items-center justify-between text-xs text-white/60">
                       <span>{t('music.custom_vocals', 'Custom Vocals')}</span>
                       <button
                         onClick={toggleCustomVocals}
@@ -528,8 +583,14 @@ export default function MusicStudioPage() {
                       if (!response.ok) {
                         throw new Error(`Chat API error: ${response.status}`);
                       }
+
+                      const data = await response.json();
+                      return data?.data
+                        ? { response: data.data.response, provider: data.data.provider }
+                        : null;
                     } catch (error) {
                       console.error('Chat error:', error);
+                      return null;
                     } finally {
                       setIsChatLoading(false);
                     }

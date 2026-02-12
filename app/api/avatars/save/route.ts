@@ -10,42 +10,51 @@
  * }
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { v4 as uuidv4 } from 'uuid';
+import { z } from 'zod';
+import { apiError, apiSuccess } from '@/lib/api/response';
+import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 
 export const dynamic = 'force-dynamic';
 
-interface SaveAvatarRequest {
-  model_url?: string;
-  preview_image_url?: string;
-  name?: string;
-  owner_id: string; // Required: either auth user id or anon id
-}
-
-interface SaveAvatarResponse {
-  success: boolean;
-  avatar?: {
-    id: string;
-    owner_id: string;
-    model_url?: string;
-    preview_image_url?: string;
-    created_at: string;
-  };
-  error?: string;
-}
-
-export async function POST(request: NextRequest): Promise<NextResponse> {
+const isValidOptionalUrl = (value?: string | null) => {
+  if (!value) return true;
+  if (value.startsWith('data:image/')) return true;
   try {
-    const body = await request.json() as SaveAvatarRequest;
+    const parsed = new URL(value);
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+  } catch {
+    return false;
+  }
+};
+
+const saveAvatarSchema = z.object({
+  owner_id: z.string().min(3),
+  model_url: z.string().optional().nullable().refine(isValidOptionalUrl, {
+    message: 'Invalid model_url',
+  }),
+  preview_image_url: z.string().optional().nullable().refine(isValidOptionalUrl, {
+    message: 'Invalid preview_image_url',
+  }),
+  name: z.string().min(1).max(120).optional().nullable(),
+});
+
+export async function POST(request: NextRequest) {
+  try {
+    const rateLimitError = await checkRateLimit(request, RATE_LIMITS.WRITE);
+    if (rateLimitError) return rateLimitError;
+
+    const body = await request.json();
+    const parsed = saveAvatarSchema.safeParse(body);
+
+    if (!parsed.success) {
+      return apiError(new Error('Invalid request'), 400, 'Invalid request');
+    }
     
     // Validate required fields
-    if (!body.owner_id) {
-      return NextResponse.json(
-        { success: false, error: 'owner_id is required' },
-        { status: 400 }
-      );
-    }
+    const { owner_id, model_url, preview_image_url, name } = parsed.data;
     
     // Get Supabase service role client (server-side only)
     const supabase = createClient(
@@ -59,10 +68,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       .from('avatars')
       .insert({
         id: avatarId,
-        owner_id: body.owner_id,
-        model_url: body.model_url || null,
-        preview_image_url: body.preview_image_url || null,
-        name: body.name || null,
+        owner_id,
+        model_url: model_url || null,
+        preview_image_url: preview_image_url || null,
+        name: name || null,
         created_at: new Date().toISOString(),
       })
       .select()
@@ -70,27 +79,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     
     if (error) {
       console.error('Error saving avatar:', error);
-      return NextResponse.json(
-        { success: false, error: `Failed to save avatar: ${error.message}` },
-        { status: 500 }
-      );
+      return apiError(error, 500, 'Failed to save avatar');
     }
-    
-    return NextResponse.json(
-      {
-        success: true,
-        avatar: data,
-      },
-      { status: 201 }
-    );
+
+    return apiSuccess({
+      success: true,
+      avatar: data,
+    }, 201);
   } catch (error) {
-    console.error('Avatar save endpoint error:', error);
-    return NextResponse.json(
-      {
-        success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
-      },
-      { status: 500 }
-    );
+    return apiError(error, 500, 'Failed to save avatar');
   }
 }

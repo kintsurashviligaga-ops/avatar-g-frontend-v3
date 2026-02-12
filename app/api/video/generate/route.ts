@@ -66,7 +66,7 @@ export async function POST(request: NextRequest) {
       .from('avatars')
       .select('id')
       .eq('id', input.avatar_id)
-      .eq('user_id', userId)
+      .eq('owner_id', userId)
       .single();
 
     if (avatarError || !avatar) {

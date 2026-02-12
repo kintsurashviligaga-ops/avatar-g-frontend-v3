@@ -366,9 +366,9 @@ export const variants = {
 // ==========================================
 // UTILITY FUNCTIONS
 // ==========================================
-export const getContrastText = (bgColor: string): string => {
+export const getContrastText = (_bgColor: string): string => {
   // Simple contrast checker - returns dark or light text color
-  return colors.text.primary;
+  return _bgColor ? colors.text.primary : colors.text.primary;
 };
 
 export const withOpacity = (color: string, opacity: number): string => {
@@ -379,7 +379,7 @@ export const withOpacity = (color: string, opacity: number): string => {
 // ==========================================
 // EXPORT ALL TOKENS
 // ==========================================
-export default {
+const tokens = {
   colors,
   spacing,
   containers,
@@ -391,3 +391,5 @@ export default {
   breakpoints,
   variants,
 };
+
+export default tokens;

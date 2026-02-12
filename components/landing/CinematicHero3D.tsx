@@ -11,10 +11,9 @@
  * - Hover effects and glassmorphism
  */
 
-import React, { useEffect, useRef, useState, Suspense } from 'react';
+import React, { useEffect, useState, Suspense } from 'react';
 import dynamic from 'next/dynamic';
 import { getOwnerId } from '@/lib/auth/identity';
-import { colors, spacing } from '@/lib/design/tokens';
 
 // Lazy load Three.js components
 const CinematicScene = dynamic(() => import('./CinematicScene'), {
@@ -62,12 +61,13 @@ export default function CinematicHero3D() {
         // Fetch latest avatar from Supabase
         const response = await fetch(`/api/avatars/latest?owner_id=${encodeURIComponent(ownerId)}`);
         const data = await response.json();
+        const avatar = data?.data?.avatar || null;
 
-        if (data.success && data.avatar) {
+        if (avatar) {
           setLoadingState({
             isLoading: false,
             hasUserAvatar: true,
-            userAvatar: data.avatar,
+            userAvatar: avatar,
             error: null,
           });
         } else {

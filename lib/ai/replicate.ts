@@ -7,7 +7,8 @@ export async function generateMusic(prompt: string, duration: number = 30) {
       { input: { prompt: `${prompt}, high quality`, duration, model_version: "large", output_format: "mp3" } }
     ) as string;
     return { audioUrl: output, duration, prompt };
-  } catch (error: any) {
-    throw new Error(`Music generation failed: ${error.message}`);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    throw new Error(`Music generation failed: ${message}`);
   }
 }

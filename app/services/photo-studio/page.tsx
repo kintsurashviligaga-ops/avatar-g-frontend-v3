@@ -3,22 +3,20 @@
 import { useState, useRef, useEffect } from "react"
 import { motion } from "framer-motion"
 import { 
-  Image, Wand2, Sparkles, Download, Save, 
+  Image as ImageIcon, Wand2, Sparkles, Download, Save, 
   Upload, Sliders, Crop, RotateCw, FlipHorizontal, 
   FlipVertical, Sun, Contrast, Droplets, Eye, Palette, 
   Layers, Maximize2, Minimize2, ZoomIn, 
   ZoomOut, Undo2, Redo2, History, Check,
   Move, Scissors,
   Aperture, Circle,
-  Eraser, Cloud, Send, Layout
+  Eraser, Cloud
 } from "lucide-react"
 import { ServiceShell } from "@/components/shared/ServiceShell"
 import { FeatureCard } from "@/components/shared/FeatureCard"
 import { WorkspacePanel } from "@/components/shared/WorkspacePanel"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import { Slider } from "@/components/ui/slider"
 
 // Feature definitions
 const features = [
@@ -123,7 +121,6 @@ export default function PhotoStudioPage() {
   const [processingProgress, setProcessingProgress] = useState(0)
   const [history, setHistory] = useState<string[]>(['Original'])
   const [historyIndex, setHistoryIndex] = useState(0)
-  const [activeTab, setActiveTab] = useState('filters')
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Initialize adjustment values
@@ -325,7 +322,7 @@ export default function PhotoStudioPage() {
                   transition={{ duration: 2, repeat: Infinity }}
                   className="w-24 h-24 mx-auto rounded-2xl bg-gradient-to-br from-yellow-400/20 to-orange-500/20 flex items-center justify-center mb-6"
                 >
-                  <Image size={48} className="text-yellow-400" />
+                  <ImageIcon size={48} className="text-yellow-400" />
                 </motion.div>
                 <h3 className="text-xl font-semibold mb-2">Drop your photo here</h3>
                 <p className="text-gray-400 mb-6">or click upload to get started</p>

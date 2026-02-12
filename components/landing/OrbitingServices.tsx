@@ -41,7 +41,7 @@ const SERVICES: ServiceIcon[] = [
   {
     id: 'video-generator',
     label: 'Video Generator',
-    route: '/services/video-generator',
+    route: '/services/media-production',
     color: colors.accent.pink,
     glowColor: colors.primary.from,
   },
@@ -66,10 +66,59 @@ const SERVICES: ServiceIcon[] = [
     color: colors.primary.from,
     glowColor: colors.accent.purple,
   },
+  {
+    id: 'voice-cloning',
+    label: 'Voice Cloning',
+    route: '/services/avatar-builder',
+    color: colors.primary.from,
+    glowColor: colors.primary.to,
+  },
+  {
+    id: 'gesture-sync',
+    label: 'Gesture Sync',
+    route: '/services/avatar-builder',
+    color: colors.primary.to,
+    glowColor: colors.primary.from,
+  },
+  {
+    id: 'lip-sync',
+    label: 'Lip Sync',
+    route: '/services/media-production',
+    color: colors.accent.green,
+    glowColor: colors.primary.from,
+  },
+  {
+    id: 'outfit-fitting',
+    label: 'Outfit Fitting',
+    route: '/services/avatar-builder',
+    color: colors.accent.pink,
+    glowColor: colors.accent.red,
+  },
+  {
+    id: 'text-to-video',
+    label: 'Text-to-Video',
+    route: '/services/media-production',
+    color: colors.accent.purple,
+    glowColor: colors.accent.pink,
+  },
+  {
+    id: 'image-generation',
+    label: 'Image AI',
+    route: '/services/photo-studio',
+    color: colors.primary.from,
+    glowColor: colors.accent.green,
+  },
+  {
+    id: 'premium-agent',
+    label: 'Premium Agent',
+    route: '/services/premium',
+    color: colors.accent.orange,
+    glowColor: colors.accent.yellow,
+  },
 ];
 
-const ORBIT_RADIUS = 5;
-const ORBIT_HEIGHT = 2;
+const ORBIT_RADIUS = 7;
+const ORBIT_HEIGHT = 2.5;
 
 interface ServiceIconMeshProps {
   service: ServiceIcon;

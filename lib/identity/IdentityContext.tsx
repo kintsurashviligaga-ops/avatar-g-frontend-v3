@@ -8,7 +8,13 @@ interface IdentityContextType {
   setGlobalAvatarId: (id: string | null) => void;
   setGlobalVoiceId: (id: string | null) => void;
   verifyIdentity: () => boolean;
-  injectIdentity: (data: any) => any;
+  injectIdentity: <T extends Record<string, unknown>>(data: T) => T & {
+    _identity: {
+      avatarId: string | null;
+      voiceId: string | null;
+      timestamp: string;
+    };
+  };
   clearIdentity: () => void;
 }
 
@@ -52,7 +58,7 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
     return !!globalAvatarId && !!globalVoiceId;
   };
 
-  const injectIdentity = (data: any) => {
+  const injectIdentity = <T extends Record<string, unknown>>(data: T) => {
     return {
       ...data,
       _identity: {

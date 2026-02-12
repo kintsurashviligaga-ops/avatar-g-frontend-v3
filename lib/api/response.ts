@@ -7,7 +7,7 @@ import { NextResponse } from 'next/server';
 
 export type ApiStatus = 'success' | 'error' | 'partial';
 
-export interface ApiResponse<T = any> {
+export interface ApiResponse<T = unknown> {
   status: ApiStatus;
   data?: T;
   error?: string;
@@ -156,7 +156,7 @@ export async function requireAuth(request: Request): Promise<{ userId: string } 
 /**
  * Middleware for wrapping route handlers with error handling
  */
-export async function withErrorHandling<T extends any[], R>(
+export async function withErrorHandling<T extends unknown[], R>(
   handler: (...args: T) => Promise<R>,
   ...args: T
 ): Promise<NextResponse<ApiResponse>> {

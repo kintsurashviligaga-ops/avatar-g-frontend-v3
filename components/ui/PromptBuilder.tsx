@@ -18,15 +18,6 @@ interface PromptTemplate {
   isFavorite: boolean;
 }
 
-interface PromptField {
-  key: string;
-  label: string;
-  placeholder: string;
-  type: "text" | "textarea" | "select" | "number";
-  options?: string[];
-  required: boolean;
-}
-
 // Pre-defined templates for each service
 const templateLibrary: Record<ServiceType, PromptTemplate[]> = {
   music: [

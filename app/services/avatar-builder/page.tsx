@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from 'react';
+import Image from 'next/image';
 import { 
   User, Camera, Sparkles, Upload, Download, Share2, Wand2, 
   Loader2, Check, X, Image as ImageIcon,
@@ -72,15 +73,6 @@ const AVATAR_STYLES: AvatarStyle[] = [
   { id: 'cartoon', nameKey: 'avatar.style.cartoon', emoji: '🎭', descriptionKey: 'avatar.style.cartoon.desc', prompt: '3D cartoon style, colorful, stylized, fun and playful' },
   { id: 'cyberpunk', nameKey: 'avatar.style.cyberpunk', emoji: '🤖', descriptionKey: 'avatar.style.cyberpunk.desc', prompt: 'cyberpunk style, neon lights, futuristic, tech aesthetic' },
   { id: 'fantasy', nameKey: 'avatar.style.fantasy', emoji: '🧙', descriptionKey: 'avatar.style.fantasy.desc', prompt: 'fantasy style portrait, magical, ethereal, mystical atmosphere' },
-];
-
-const SUGGESTIONS = [
-  'avatar.suggestion.1',
-  'avatar.suggestion.2',
-  'avatar.suggestion.3',
-  'avatar.suggestion.4',
-  'avatar.suggestion.5',
-  'avatar.suggestion.6',
 ];
 
 const BODY_TYPES = ['Slim', 'Athletic', 'Average', 'Curvy', 'Muscular'];
@@ -265,7 +257,7 @@ export default function AvatarBuilderPage() {
         const response = await fetch('/api/avatars', { headers });
         if (response.ok) {
           const data = await response.json();
-          setSavedAvatars(data.avatars || []);
+          setSavedAvatars(data?.data?.avatars || []);
         }
       } catch (error) {
         console.error('Error loading saved avatars:', error);
@@ -368,8 +360,6 @@ export default function AvatarBuilderPage() {
     Warm: t('avatar.preset.tag.warm'),
     Cool: t('avatar.preset.tag.cool'),
   };
-
-  const suggestionLabels = SUGGESTIONS.map((key) => t(key));
 
   const toggleAccessory = (item: string) => {
     setAccessories(prev =>
@@ -757,7 +747,7 @@ export default function AvatarBuilderPage() {
         headwear !== 'none' ? headwearName : null,
       ].filter(Boolean) as string[];
 
-      const response = await fetch('/api/generate/avatar', {
+      const response = await fetch('/api/avatar/generate', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -803,7 +793,7 @@ export default function AvatarBuilderPage() {
       // Auto-save avatar to Supabase persistence layer
       try {
         const ownerId = await getOwnerId();
-        await fetch('/api/avatars/save', {
+        const saveResponse = await fetch('/api/avatars/save', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -815,7 +805,18 @@ export default function AvatarBuilderPage() {
             name: `Avatar ${new Date().toLocaleDateString()}`,
           }),
         });
-        // Success - avatar saved to Supabase
+        const saveData = saveResponse.ok ? await saveResponse.json() : null;
+        const savedAvatarId = saveData?.data?.avatar?.id || null;
+
+        // Store latest avatar pointer locally for quick access
+        if (typeof window !== 'undefined') {
+          if (savedAvatarId) {
+            localStorage.setItem('avatar_g_latest_avatar_id', savedAvatarId);
+          }
+          if (data.image) {
+            localStorage.setItem('avatar_g_latest_avatar_url', data.image);
+          }
+        }
       } catch (error) {
         console.error('Failed to persist avatar to Supabase:', error);
         // Non-critical: avatar still displays locally even if save fails
@@ -1416,11 +1417,14 @@ export default function AvatarBuilderPage() {
                   </div>
 
                   {uploadedImage ? (
-                    <div className="relative group">
-                      <img
+                    <div className="relative group h-48 rounded-lg overflow-hidden">
+                      <Image
                         src={uploadedImage}
                         alt={t('avatar.section.reference')}
-                        className="w-full h-48 object-cover rounded-lg"
+                        fill
+                        sizes="(max-width: 768px) 100vw, 480px"
+                        className="object-cover"
+                        unoptimized
                       />
                       <button
                         onClick={() => setUploadedImage(null)}
@@ -1514,10 +1518,17 @@ export default function AvatarBuilderPage() {
                         {SCAN_STEPS.map((step, index) => (
                           <div
                             key={step.id}
-                            className="aspect-square rounded-lg border border-white/10 bg-black/20 overflow-hidden"
+                            className="relative aspect-square rounded-lg border border-white/10 bg-black/20 overflow-hidden"
                           >
                             {scanImages[index] ? (
-                              <img src={scanImages[index]} alt={t(step.labelKey)} className="w-full h-full object-cover" />
+                              <Image
+                                src={scanImages[index]}
+                                alt={t(step.labelKey)}
+                                fill
+                                sizes="80px"
+                                className="object-cover"
+                                unoptimized
+                              />
                             ) : (
                               <div className="w-full h-full flex items-center justify-center text-[10px] text-gray-500">
                                 {t(step.labelKey)}
@@ -1584,10 +1595,14 @@ export default function AvatarBuilderPage() {
                               conversationId: `avatar_${Date.now()}`
                             })
                           });
-                          if (response.ok) {
-                            const data = await response.json();
-                            // Response is handled by ChatWindow component internally
+                          if (!response.ok) {
+                            throw new Error(`Chat API error: ${response.status}`);
                           }
+
+                          const data = await response.json();
+                          return data?.data
+                            ? { response: data.data.response, provider: data.data.provider }
+                            : null;
                         } finally {
                           setIsChatLoading(false);
                         }
@@ -1623,10 +1638,12 @@ export default function AvatarBuilderPage() {
                       >
                         <div className="relative aspect-square bg-black">
                           {avatar.image ? (
-                            <img
+                            <Image
                               src={avatar.image}
                               alt={avatar.prompt}
-                              className="w-full h-full object-cover"
+                              fill
+                              sizes="(max-width: 1024px) 50vw, 320px"
+                              className="object-cover"
                             />
                           ) : (
                             <div className="absolute inset-0 flex items-center justify-center">
@@ -1687,10 +1704,12 @@ export default function AvatarBuilderPage() {
                         <Loader2 className="animate-spin text-purple-400" size={32} />
                       </div>
                     ) : currentAvatar.image ? (
-                      <img
+                      <Image
                         src={currentAvatar.image}
                         alt={currentAvatar.prompt}
-                        className="w-full h-full object-cover"
+                        fill
+                        sizes="(max-width: 1024px) 100vw, 360px"
+                        className="object-cover"
                       />
                     ) : (
                       <div className="absolute inset-0 flex items-center justify-center">
@@ -1745,15 +1764,17 @@ export default function AvatarBuilderPage() {
                       // Save avatar via API
                       if (currentAvatar.image && avatarNameInput.trim()) {
                         try {
-                          const headers = await getAuthHeaders();
-                          const response = await fetch('/api/avatar/save', {
+                          const ownerId = await getOwnerId();
+                          const response = await fetch('/api/avatars/save', {
                             method: 'POST',
-                            headers,
+                            headers: {
+                              'Content-Type': 'application/json'
+                            },
                             body: JSON.stringify({
-                              title: avatarNameInput.trim(),
-                              description: currentAvatar.prompt,
-                              style: currentAvatar.style,
-                              preview_image_url: currentAvatar.image
+                              owner_id: ownerId,
+                              name: avatarNameInput.trim(),
+                              preview_image_url: currentAvatar.image,
+                              model_url: null
                             })
                           });
                           if (response.ok) {
@@ -1767,7 +1788,7 @@ export default function AvatarBuilderPage() {
                             });
                             if (listResponse.ok) {
                               const listData = await listResponse.json();
-                              setSavedAvatars(listData.avatars || []);
+                              setSavedAvatars(listData?.data?.avatars || []);
                             }
                           }
                         } catch (error) {

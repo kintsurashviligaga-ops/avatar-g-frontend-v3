@@ -4,7 +4,7 @@
 
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Copy, RefreshCw, Wand2 } from 'lucide-react';
+import { Copy, Wand2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useLanguage } from '@/lib/i18n/useLanguage';
 import { cn } from '@/lib/utils';
@@ -46,20 +46,22 @@ export function LyricsEditor({
     return 'text-red-400';
   };
 
+  const modeOptions: Array<{ id: LyricsEditorProps['mode']; label: string }> = [
+    { id: 'auto', label: t('music.auto_lyrics') },
+    { id: 'custom', label: t('music.custom_lyrics') },
+    { id: 'instrumental', label: t('music.instrumental') }
+  ];
+
   return (
     <div className={cn('space-y-3', className)}>
       {/* Mode Selector */}
       <div className="flex gap-2">
-        {[
-          { id: 'auto', label: t('music.auto_lyrics') },
-          { id: 'custom', label: t('music.custom_lyrics') },
-          { id: 'instrumental', label: t('music.instrumental') }
-        ].map((option) => (
+        {modeOptions.map((option) => (
           <motion.button
             key={option.id}
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
-            onClick={() => onModeChange(option.id as any)}
+            onClick={() => onModeChange(option.id)}
             className={cn(
               'px-3 py-1.5 rounded-lg font-medium text-sm transition',
               mode === option.id

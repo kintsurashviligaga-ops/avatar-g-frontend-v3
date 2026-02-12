@@ -3,8 +3,6 @@
 import { motion } from "framer-motion";
 import { Sparkles, Zap, Shield, Globe, Heart } from "lucide-react";
 import SpaceBackground from "@/components/SpaceBackground";
-import Header from "@/components/Header";
-import Footer from "@/components/Footer";
 
 const stats = [
   { value: "10K+", label: "მომხმარებელი" },
@@ -24,7 +22,6 @@ export default function AboutPage() {
   return (
     <main className="relative min-h-screen">
       <SpaceBackground />
-      <Header />
       <section className="pt-32 pb-24">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} className="text-center mb-20">
@@ -59,7 +56,6 @@ export default function AboutPage() {
           </motion.div>
         </div>
       </section>
-      <Footer />
     </main>
   );
 }

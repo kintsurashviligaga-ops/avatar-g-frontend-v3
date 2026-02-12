@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { z } from "zod";
 import { apiSuccess, apiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/api/rate-limit";
@@ -15,6 +15,7 @@ const chatRequestSchema = z.object({
 });
 
 type ChatRequest = z.infer<typeof chatRequestSchema>;
+type ChatContext = ChatRequest["context"];
 
 // Service-specific prompt engineering
 const systemPrompts = {
@@ -26,16 +27,28 @@ const systemPrompts = {
   business: "You are the Avatar G Business Agent. Provide admin insights, usage analytics, billing information, and system status updates.",
 };
 
+const PROVIDER_TIMEOUT_MS = 12000;
+
+const fetchWithTimeout = async (url: string, options: RequestInit, timeoutMs: number) => {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(timeoutId);
+  }
+};
+
 // Handler for each service context
 async function handleServiceChat(
   message: string,
-  context: "global" | "music" | "video" | "avatar" | "voice" | "business",
-  language: string = "en"
+  context: ChatContext
 ): Promise<{ text: string; provider: string }> {
   // Try OpenAI GPT-4 FIRST (if configured)
   if (process.env.OPENAI_API_KEY) {
     try {
-      const response = await fetch("https://api.openai.com/v1/chat/completions", {
+      const response = await fetchWithTimeout("https://api.openai.com/v1/chat/completions", {
         method: "POST",
         headers: {
           "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`,
@@ -56,7 +69,7 @@ async function handleServiceChat(
           max_tokens: 1500,
           temperature: 0.7,
         }),
-      });
+      }, PROVIDER_TIMEOUT_MS);
 
       if (response.ok) {
         const data = await response.json();
@@ -73,7 +86,7 @@ async function handleServiceChat(
   // Try Groq (faster, cheaper)
   if (process.env.GROQ_API_KEY) {
     try {
-      const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      const response = await fetchWithTimeout("https://api.groq.com/openai/v1/chat/completions", {
         method: "POST",
         headers: {
           "Authorization": `Bearer ${process.env.GROQ_API_KEY}`,
@@ -94,7 +107,7 @@ async function handleServiceChat(
           max_tokens: 1000,
           temperature: 0.7,
         }),
-      });
+      }, PROVIDER_TIMEOUT_MS);
 
       if (response.ok) {
         const data = await response.json();
@@ -109,7 +122,7 @@ async function handleServiceChat(
   }
 
   // Local fallback
-  const fallbackResponses: Record<string, string> = {
+  const fallbackResponses: Record<ChatContext, string> = {
     global: "Hello! I'm Avatar G Assistant. I'm here to help you create amazing digital content. What would you like to build today?",
     music: "I'm your Music Studio Assistant! I can help you generate melodies, suggest lyrics, and discuss music styles. What kind of music are you thinking about?",
     video: "Welcome to Video Studio! Let's create something visual. What kind of video content interests you?",
@@ -118,8 +131,10 @@ async function handleServiceChat(
     business: "Business Agent ready. I can provide system status, usage reports, and analytics.",
   };
 
+  const fallbackText = fallbackResponses[context];
+
   return {
-    text: fallbackResponses[context] || fallbackResponses.global,
+    text: fallbackText,
     provider: "Local Fallback",
   };
 }
@@ -145,7 +160,7 @@ export async function POST(req: NextRequest) {
     const { message, context, conversationId, language, metadata } = parsedRequest.data;
 
     // Get response from appropriate handler
-    const { text, provider } = await handleServiceChat(message, context, language);
+    const { text, provider } = await handleServiceChat(message, context);
 
     // TODO: Store conversation history in Supabase
     // TODO: Track tokens for billing

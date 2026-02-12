@@ -4,11 +4,58 @@ import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { getAccessToken, isAuthenticated } from '@/lib/auth/client';
 
-interface DiagnosticsData {
+interface EnvValidationSummary {
+  total: number;
+  present: number;
+  missing: number;
+  empty: number;
+}
+
+interface EnvValidation {
+  summary: EnvValidationSummary;
+  errors: string[];
+  warnings: string[];
+}
+
+interface ProviderInfo {
+  available: boolean;
+  mode: string;
+}
+
+interface FeatureInfo {
+  ready: boolean;
+  message: string;
+}
+
+interface EnvironmentReport {
+  validation: EnvValidation;
+  providers: Record<string, ProviderInfo>;
+  features: Record<string, FeatureInfo>;
+}
+
+interface SupabaseStatus {
+  connected: boolean;
+  error: string | null;
+  tables: string[];
+  buckets: string[];
+}
+
+interface DiagnosticsPayload {
   status: string;
   timestamp: string;
-  environment?: unknown;
-  supabase?: unknown;
+  environment?: EnvironmentReport;
+  supabase?: SupabaseStatus;
+  vercel?: {
+    isVercel: boolean;
+    env: string;
+  };
+  error?: string;
+}
+
+interface DiagnosticsResponse {
+  status: 'success' | 'error' | 'partial';
+  data?: DiagnosticsPayload;
+  error?: string;
 }
 
 interface TestResult {
@@ -19,7 +66,7 @@ interface TestResult {
 }
 
 export default function DiagnosticsPage() {
-  const [diagnostics, setDiagnostics] = useState<DiagnosticsData | null>(null);
+  const [diagnostics, setDiagnostics] = useState<DiagnosticsPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [testResults, setTestResults] = useState<TestResult[]>([]);
   const [authToken, setAuthToken] = useState<string>('');
@@ -47,15 +94,26 @@ export default function DiagnosticsPage() {
     try {
       setLoading(true);
       const response = await fetch('/api/diagnostics');
-      const data = await response.json();
-      setDiagnostics(data);
+      const data: DiagnosticsResponse = await response.json();
+
+      if (!response.ok || data.status !== 'success' || !data.data) {
+        const message = data.error || `HTTP ${response.status}`;
+        setDiagnostics({
+          status: 'error',
+          timestamp: new Date().toISOString(),
+          error: message,
+        });
+        return;
+      }
+
+      setDiagnostics(data.data);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       console.error('Failed to load diagnostics:', message);
       setDiagnostics({
         status: 'error',
         timestamp: new Date().toISOString(),
-        environment: { error: message },
+        error: message,
       });
     } finally {
       setLoading(false);
@@ -130,14 +188,14 @@ export default function DiagnosticsPage() {
     }
 
     // Test Avatar Save
-    const avatarTest = await runTest('Avatar Save (Mock)', '/api/avatar/save', {
+    const avatarTest = await runTest('Avatar Save (Mock)', '/api/avatars/save', {
       method: 'POST',
       headers,
       body: JSON.stringify({
+        owner_id: token ? 'auth_user' : 'anon_user',
         name: 'Test Avatar Diagnostics',
-        image_url: 'https://example.com/test.png',
-        prompt: 'Diagnostic test avatar',
-        parameters: {},
+        preview_image_url: 'https://example.com/test.png',
+        model_url: null
       }),
     });
     tests.push(avatarTest);
@@ -352,7 +410,7 @@ export default function DiagnosticsPage() {
           {diagnostics?.environment?.providers ? (
             <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
               {Object.entries(diagnostics.environment.providers).map(
-                ([name, info]: [string, unknown]) => (
+                ([name, info]) => (
                   <div key={name} className="bg-gray-700 p-4 rounded">
                     <div className="font-semibold capitalize mb-2">{name}</div>
                     <div
@@ -385,7 +443,7 @@ export default function DiagnosticsPage() {
           {diagnostics?.environment?.features ? (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {Object.entries(diagnostics.environment.features).map(
-                ([name, info]: [string, unknown]) => (
+                ([name, info]) => (
                   <div
                     key={name}
                     className={`p-4 rounded border-2 ${

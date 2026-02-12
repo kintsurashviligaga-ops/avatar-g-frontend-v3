@@ -32,9 +32,10 @@ export async function generateVideo(
       duration,
       id: data.id
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Unknown error";
     console.error("Runway error:", error);
-    throw new Error(`Video generation failed: ${error.message}`);
+    throw new Error(`Video generation failed: ${message}`);
   }
 }
 

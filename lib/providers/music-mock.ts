@@ -9,11 +9,9 @@ import type {
   IVideoProvider,
   IImageAnimationProvider,
   MusicProviderInput,
-  MusicGenerationResult,
   VocalProviderInput,
   VocalResult,
   CoverArtInput,
-  CoverArtResult,
   AudioMixInput,
   AudioMixResult,
   VideoGenerationInput,
@@ -21,6 +19,11 @@ import type {
   ImageAnimationInput,
   ImageAnimationResult
 } from './music-interfaces';
+
+import type {
+  MusicGenerationResult,
+  CoverArtResult
+} from '@/types/music-video';
 
 // Mock audio (empty WAV file)
 const MOCK_AUDIO = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=';
@@ -193,7 +196,8 @@ export class MockAudioProcessor implements IAudioProcessor {
     return true;
   }
 
-  async mixTracks(input: AudioMixInput): Promise<AudioMixResult> {
+  async mixTracks(_input: AudioMixInput): Promise<AudioMixResult> {
+    void _input;
     await this.delay(1000);
 
     return {
@@ -202,17 +206,24 @@ export class MockAudioProcessor implements IAudioProcessor {
     };
   }
 
-  async extractWaveform(audio_url: string): Promise<number[]> {
+  async extractWaveform(_audio_url: string): Promise<number[]> {
+    void _audio_url;
     await this.delay(500);
     return Array.from({ length: 100 }, () => Math.random() * 0.8 + 0.2);
   }
 
-  async trimAudio(audio_url: string, start: number, end: number): Promise<string> {
+  async trimAudio(_audio_url: string, _start: number, _end: number): Promise<string> {
+    void _audio_url;
+    void _start;
+    void _end;
     await this.delay(500);
     return MOCK_AUDIO;
   }
 
-  async fadeInOut(audio_url: string, fade_in: number, fade_out: number): Promise<string> {
+  async fadeInOut(_audio_url: string, _fade_in: number, _fade_out: number): Promise<string> {
+    void _audio_url;
+    void _fade_in;
+    void _fade_out;
     await this.delay(500);
     return MOCK_AUDIO;
   }

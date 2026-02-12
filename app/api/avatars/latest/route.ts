@@ -6,36 +6,23 @@
  * - owner_id: Required. User ID (auth) or anonymous UUID
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { apiError, apiSuccess } from '@/lib/api/response';
+import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 
 export const dynamic = 'force-dynamic';
 
-interface AvatarRow {
-  id: string;
-  owner_id: string;
-  model_url?: string;
-  preview_image_url?: string;
-  name?: string;
-  created_at: string;
-}
-
-interface LatestAvatarResponse {
-  success: boolean;
-  avatar?: AvatarRow | null;
-  error?: string;
-}
-
-export async function GET(request: NextRequest): Promise<NextResponse> {
+export async function GET(request: NextRequest) {
   try {
+    const rateLimitError = await checkRateLimit(request, RATE_LIMITS.READ);
+    if (rateLimitError) return rateLimitError;
+
     const { searchParams } = new URL(request.url);
     const ownerId = searchParams.get('owner_id');
     
     if (!ownerId) {
-      return NextResponse.json(
-        { success: false, error: 'owner_id query param is required' },
-        { status: 400 }
-      );
+      return apiError(new Error('owner_id is required'), 400, 'owner_id query param is required');
     }
     
     // Get Supabase service role client (server-side only)
@@ -54,28 +41,14 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       .maybeSingle();
     
     if (error) {
-      console.error('Error fetching latest avatar:', error);
-      return NextResponse.json(
-        { success: false, error: `Failed to fetch avatar: ${error.message}` },
-        { status: 500 }
-      );
+      return apiError(error, 500, 'Failed to fetch avatar');
     }
-    
-    return NextResponse.json(
-      {
-        success: true,
-        avatar: data || null,
-      },
-      { status: 200 }
-    );
+
+    return apiSuccess({
+      success: true,
+      avatar: data || null,
+    });
   } catch (error) {
-    console.error('Latest avatar endpoint error:', error);
-    return NextResponse.json(
-      {
-        success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
-      },
-      { status: 500 }
-    );
+    return apiError(error, 500, 'Failed to fetch avatar');
   }
 }

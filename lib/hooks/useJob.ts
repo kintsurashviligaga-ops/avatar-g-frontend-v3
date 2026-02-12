@@ -75,7 +75,7 @@ export function useJob({
         setLoading(false);
       }
     },
-    [getAuthToken, onComplete, onError]
+    [onComplete, onError]
   );
 
   // Start polling when jobId is set
@@ -105,63 +105,4 @@ export function useJob({
     error,
     refetch: () => (jobId ? fetchJob(jobId) : Promise.resolve())
   };
-}
-
-// Hook: useAvatarSave - Save generated avatar to database
-
-export function useAvatarSave() {
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const save = useCallback(
-    async (title: string, preview: string, metadata: Record<string, any>) => {
-      try {
-        setLoading(true);
-        setError(null);
-
-        // Get auth token
-        const response = await fetch('/api/avatar/save', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${await getAuthToken()}`
-          },
-          body: JSON.stringify({
-            title,
-            preview_image_url: preview,
-            metadata
-          })
-        });
-
-        if (!response.ok) {
-          const data = await response.json();
-          throw new Error(data.error || 'Failed to save avatar');
-        }
-
-        const data = await response.json();
-        return data.avatar;
-      } catch (err) {
-        const message = err instanceof Error ? err.message : 'Unknown error';
-        setError(message);
-        throw err;
-      } finally {
-        setLoading(false);
-      }
-    },
-    []
-  );
-
-  return { save, loading, error };
-}
-
-// Helper to get auth token - adjust based on your auth setup
-async function getAuthToken(): Promise<string> {
-  try {
-    // This is a placeholder - replace with your actual auth token retrieval
-    // For Supabase: const { data } = await supabase.auth.getSession();
-    // return data.session?.access_token || '';
-    return '';
-  } catch {
-    return '';
-  }
 }

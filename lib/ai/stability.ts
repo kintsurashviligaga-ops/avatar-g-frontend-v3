@@ -1,9 +1,31 @@
 import { config } from "@/lib/config";
-export async function generateImage(prompt: string, style: string = "photorealistic", avatarConfig?: any) {
+
+interface AvatarConfig {
+  skinTone?: string;
+  eyeColor?: string;
+}
+
+interface StabilityArtifact {
+  base64?: string;
+  seed?: number;
+}
+
+interface StabilityResponse {
+  artifacts?: StabilityArtifact[];
+}
+
+export async function generateImage(
+  prompt: string,
+  style: string = "photorealistic",
+  avatarConfig?: AvatarConfig
+) {
   try {
     const engineId = config.apis.stability.engine;
     const apiHost = config.apis.stability.baseUrl;
-    const enhancedPrompt = avatarConfig ? `${prompt} | Featuring: ${avatarConfig.skinTone} skin, ${avatarConfig.eyeColor} eyes` : prompt;
+    const stylePrompt = style ? `${prompt} | Style: ${style}` : prompt;
+    const enhancedPrompt = avatarConfig
+      ? `${stylePrompt} | Featuring: ${avatarConfig.skinTone} skin, ${avatarConfig.eyeColor} eyes`
+      : stylePrompt;
     const response = await fetch(`${apiHost}/generation/${engineId}/text-to-image`, {
       method: "POST",
       headers: {
@@ -21,9 +43,15 @@ export async function generateImage(prompt: string, style: string = "photorealis
       })
     });
     if (!response.ok) throw new Error(`Stability AI error: ${response.status}`);
-    const data = await response.json();
-    return { base64: data.artifacts[0].base64, seed: data.artifacts[0].seed, prompt: enhancedPrompt };
-  } catch (error: any) {
-    throw new Error(`Image generation failed: ${error.message}`);
+    const data = (await response.json()) as StabilityResponse;
+    const artifact = data.artifacts?.[0];
+    if (!artifact?.base64) {
+      throw new Error("Image generation failed: no artifacts returned");
+    }
+
+    return { base64: artifact.base64, seed: artifact.seed, prompt: enhancedPrompt };
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    throw new Error(`Image generation failed: ${message}`);
   }
 }

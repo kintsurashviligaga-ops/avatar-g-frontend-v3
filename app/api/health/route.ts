@@ -7,20 +7,11 @@
  * Verifies: Redis connectivity, Vercel environment, service status
  */
 
+import { NextRequest, NextResponse } from 'next/server';
+import { Redis } from '@upstash/redis';
+
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
-
-import { NextRequest, NextResponse } from 'next/server';
-
-// Redis import - uses REST API for serverless Vercel
-let Redis: any;
-try {
-  const upstashModule = require('@upstash/redis');
-  Redis = upstashModule.Redis;
-} catch {
-  // @upstash/redis not installed yet
-  Redis = null;
-}
 
 interface HealthResponse {
   ok: boolean;
@@ -86,14 +77,6 @@ async function verifyRedis(): Promise<
       };
     }
 
-    // Fail gracefully if module not installed
-    if (!Redis) {
-      return {
-        redis: 'error',
-        message: '@upstash/redis package not installed',
-      };
-    }
-
     // Initialize Redis client (REST-based for serverless)
     const redis = new Redis({ url, token });
 
@@ -110,7 +93,7 @@ async function verifyRedis(): Promise<
     const result = await redis.get(testKey);
 
     // Cleanup (best effort, ignore errors)
-    redis.delete(testKey).catch(() => undefined);
+    redis.del(testKey).catch(() => undefined);
 
     if (result === testValue) {
       return { redis: 'connected' };
@@ -132,7 +115,7 @@ async function verifyRedis(): Promise<
  * GET /api/health
  * Public health check endpoint
  */
-export async function GET(req: NextRequest) {
+export async function GET() {
   try {
     const redisStatus = await verifyRedis();
     const ts = Date.now();
@@ -152,7 +135,7 @@ export async function GET(req: NextRequest) {
 
     // Always return 200 (health endpoint must not fail the system)
     return NextResponse.json(response, { status: 200 });
-  } catch (error) {
+  } catch {
     // Fallback: still return 200 even if something goes wrong
     return NextResponse.json(
       {
@@ -182,5 +165,5 @@ export async function POST(req: NextRequest) {
   }
 
   // Delegate to GET
-  return GET(req);
+  return GET();
 }

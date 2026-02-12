@@ -4,7 +4,8 @@ import { ReactNode } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { colors, spacing, zIndex } from '@/lib/design/tokens';
+import { Rocket } from 'lucide-react';
+import { colors, shadows } from '@/lib/design/tokens';
 
 export default function AppLayout({ children }: { children: ReactNode }) {
   return (
@@ -42,30 +43,13 @@ export function Navbar() {
         <Link href="/" className="flex items-center gap-3 hover:opacity-80 transition-opacity">
           <div className="relative">
             <div
-              className="w-10 h-10 rounded-xl flex items-center justify-center shadow-lg"
+              className="w-12 h-12 rounded-2xl flex items-center justify-center shadow-lg"
               style={{
                 background: colors.gradients.cyanToBlue,
-                boxShadow: colors.shadows.glow.cyan,
+                boxShadow: shadows.glow.cyan,
               }}
             >
-              <svg
-                width="24"
-                height="24"
-                viewBox="0 0 24 24"
-                fill="none"
-                className="text-white"
-              >
-                <path
-                  d="M12 2C12 2 8 6 8 10C8 12 9 14 12 14C15 14 16 12 16 10C16 6 12 2 12 2Z"
-                  fill="currentColor"
-                />
-                <path
-                  d="M12 14V22"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                />
-              </svg>
+              <Rocket className="w-6 h-6 text-white" />
             </div>
           </div>
           <div>

@@ -1,8 +1,8 @@
 // GET /api/avatars - List user's saved avatars
 
 import { createClient } from '@supabase/supabase-js';
-import { NextRequest, NextResponse } from 'next/server';
-import type { Avatar } from '@/types/platform';
+import { NextRequest } from 'next/server';
+import { apiError, apiSuccess } from '@/lib/api/response';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,30 +22,23 @@ export async function GET(request: NextRequest) {
     // Health check endpoint
     const url = new URL(request.url);
     if (url.searchParams.get('health') === '1') {
-      return NextResponse.json({
+      return apiSuccess({
         status: 'ok',
         service: 'avatars-api',
-        timestamp: new Date().toISOString(),
       });
     }
 
     const supabase = getSupabaseClient();
     const authHeader = request.headers.get('authorization');
     if (!authHeader?.startsWith('Bearer ')) {
-      return NextResponse.json(
-        { error: 'Missing or invalid authorization' },
-        { status: 401 }
-      );
+      return apiError(new Error('Unauthorized'), 401, 'Missing or invalid authorization');
     }
 
     const token = authHeader.slice(7);
     const { data, error: authError } = await supabase.auth.getUser(token);
 
     if (authError || !data.user) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
+      return apiError(new Error('Unauthorized'), 401, 'Unauthorized');
     }
 
     // Query parameters (url already defined above for health check)
@@ -58,31 +51,23 @@ export async function GET(request: NextRequest) {
     const query = supabase
       .from('avatars')
       .select('*', { count: 'exact' })
-      .eq('user_id', data.user.id)
+      .eq('owner_id', data.user.id)
       .order(sortBy, { ascending: sortDir === 'asc' })
       .range(offset, offset + limit - 1);
 
     const { data: avatars, error, count } = await query;
 
     if (error) {
-      console.error('Database error:', error);
-      return NextResponse.json(
-        { error: 'Failed to fetch avatars' },
-        { status: 500 }
-      );
+      return apiError(error, 500, 'Failed to fetch avatars');
     }
 
-    return NextResponse.json({
-      avatars: avatars as Avatar[],
+    return apiSuccess({
+      avatars: avatars || [],
       total: count || 0,
       limit,
       offset
     });
   } catch (err) {
-    console.error('Error in get avatars:', err);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return apiError(err, 500);
   }
 }

@@ -4,8 +4,6 @@ import { useState } from "react";
 import { motion } from "framer-motion";
 import { Mail, MapPin, Phone, Send, CheckCircle } from "lucide-react";
 import SpaceBackground from "@/components/SpaceBackground";
-import Header from "@/components/Header";
-import Footer from "@/components/Footer";
 
 export default function ContactPage() {
   const [sent, setSent] = useState(false);
@@ -18,7 +16,6 @@ export default function ContactPage() {
   return (
     <main className="relative min-h-screen">
       <SpaceBackground />
-      <Header />
       <section className="pt-32 pb-24">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} className="text-center mb-16">
@@ -84,7 +81,6 @@ export default function ContactPage() {
           </div>
         </div>
       </section>
-      <Footer />
     </main>
   );
 }

@@ -3,8 +3,7 @@
 import { motion } from "framer-motion";
 import { useRouter } from "next/navigation";
 import SpaceBackground from "@/components/SpaceBackground";
-import Header from "@/components/Header";
-import ChatInterface from "@/components/ChatInterface";
+import { ChatWindow } from "@/components/ui/ChatWindow";
 import { MessageSquare, Image as ImageIcon, Video, Mic, FileText, Code, Sparkles, ChevronRight } from "lucide-react";
 
 const quickActions = [
@@ -21,7 +20,6 @@ export default function WorkspacePage() {
   return (
     <main className="relative min-h-screen">
       <SpaceBackground />
-      <Header />
       <section className="pt-24 pb-12 min-h-screen">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-[calc(100vh-6rem)]">
           <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 h-full">
@@ -46,7 +44,15 @@ export default function WorkspacePage() {
                 <button className="w-full py-2 bg-gradient-to-r from-cyan-500 to-blue-600 text-white text-sm font-medium rounded-lg hover:shadow-lg hover:shadow-cyan-500/25 transition-shadow">განახლება</button>
               </div>
             </motion.div>
-            <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} className="lg:col-span-3 h-full"><ChatInterface /></motion.div>
+            <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} className="lg:col-span-3 h-full">
+              <ChatWindow
+                title="Avatar G Assistant"
+                serviceContext="global"
+                height="full"
+                minimizable={false}
+                collapsible={false}
+              />
+            </motion.div>
           </div>
         </div>
       </section>

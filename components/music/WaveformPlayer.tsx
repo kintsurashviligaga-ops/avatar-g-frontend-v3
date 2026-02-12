@@ -3,7 +3,6 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
-import { motion } from 'framer-motion';
 import { Play, Pause, Volume2, VolumeX } from 'lucide-react';
 import { Slider } from '@/components/ui/slider';
 import { cn } from '@/lib/utils';
@@ -187,7 +186,6 @@ export function WaveformPlayer({
         className="w-full h-20 bg-slate-800/50 rounded-lg cursor-pointer border border-slate-700/40 hover:border-cyan-400/40 transition"
       />
 
-      {/* Controls */}
       <div className="flex items-center gap-3">
         {/* Play/Pause */}
         <button
@@ -213,19 +211,19 @@ export function WaveformPlayer({
         {/* Progress bar */}
         <div className="flex-1">
           <Slider
-            min={0}
-            max={duration}
             value={[currentTime]}
             onValueChange={(value) => {
               const newTime = value[0];
-              setCurrentTime(newTime);
-              if (audioRef.current) {
-                audioRef.current.currentTime = newTime;
-                onTimeChange?.(newTime);
+              if (newTime !== undefined) {
+                setCurrentTime(newTime);
+                if (audioRef.current) {
+                  audioRef.current.currentTime = newTime;
+                  onTimeChange?.(newTime);
+                }
               }
             }}
+            max={duration}
             step={0.1}
-            disabled={!audioUrl}
             className="cursor-pointer"
           />
         </div>
@@ -238,10 +236,14 @@ export function WaveformPlayer({
             <Volume2 size={16} className="text-slate-400" />
           )}
           <Slider
-            min={0}
-            max={1}
             value={[volume]}
-            onValueChange={(value) => setVolume(value[0])}
+            onValueChange={(value) => {
+              const newVolume = value[0];
+              if (newVolume !== undefined) {
+                setVolume(newVolume);
+              }
+            }}
+            max={1}
             step={0.01}
             className="w-16 cursor-pointer"
           />

@@ -4,9 +4,29 @@ import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { MessageCircle, X, Send, Mic, MicOff, Volume2, VolumeX, Loader2, Bot, Paperclip, Camera, Image as ImageIcon, Settings, Trash2, Copy, Check } from "lucide-react";
 
+type ChatMessage = {
+  role: "user" | "assistant";
+  content: string;
+  provider?: string;
+};
+
+type SpeechRecognitionEventLike = {
+  results: ArrayLike<ArrayLike<{ transcript: string }>>;
+};
+
+type SpeechRecognitionLike = {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  onresult: (event: SpeechRecognitionEventLike) => void;
+  onend: () => void;
+  start: () => void;
+  stop: () => void;
+};
+
 export default function GlobalChatbot() {
   const [isOpen, setIsOpen] = useState(false);
-  const [messages, setMessages] = useState<any[]>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
@@ -15,15 +35,18 @@ export default function GlobalChatbot() {
   const [showAttach, setShowAttach] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
-  const recognitionRef = useRef<any>(null);
+  const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
 
   useEffect(() => {
     if (typeof window !== "undefined" && "webkitSpeechRecognition" in window) {
-      const SpeechRecognition = (window as any).webkitSpeechRecognition;
+      const SpeechRecognition = (window as unknown as { webkitSpeechRecognition?: new () => SpeechRecognitionLike })
+        .webkitSpeechRecognition;
+      if (!SpeechRecognition) return;
       recognitionRef.current = new SpeechRecognition();
       recognitionRef.current.continuous = false;
       recognitionRef.current.interimResults = true;
-      recognitionRef.current.onresult = (e: any) => setInput(e.results[0][0].transcript);
+      recognitionRef.current.onresult = (e: SpeechRecognitionEventLike) =>
+        setInput(e.results[0][0].transcript);
       recognitionRef.current.onend = () => setIsRecording(false);
     }
   }, []);
@@ -41,13 +64,19 @@ export default function GlobalChatbot() {
         body: JSON.stringify({ message: input, language })
       });
       const data = await res.json();
-      setMessages(prev => [...prev, { role: "assistant", content: data.response, provider: data.provider }]);
-      if (voiceEnabled && data.response) {
-        const u = new SpeechSynthesisUtterance(data.response);
+      const responseText = data?.data?.response || data?.response;
+      const provider = data?.data?.provider || data?.provider;
+
+      if (responseText) {
+        setMessages(prev => [...prev, { role: "assistant", content: responseText, provider }]);
+      }
+
+      if (voiceEnabled && responseText) {
+        const u = new SpeechSynthesisUtterance(responseText);
         u.lang = language === "ka" ? "ka-GE" : "en-US";
         speechSynthesis.speak(u);
       }
-    } catch (err) {
+    } catch {
       setMessages(prev => [...prev, { role: "assistant", content: "Error occurred" }]);
     }
     setIsLoading(false);

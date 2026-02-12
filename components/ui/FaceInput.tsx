@@ -2,7 +2,8 @@
 
 import { useRef, useState, useCallback, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Camera, RotateCw, Check, X, AlertCircle, Upload } from "lucide-react";
+import Image from 'next/image';
+import { Camera, RotateCw, Check, AlertCircle, Upload } from "lucide-react";
 import { Button } from "./button";
 import { Card } from "./card";
 
@@ -23,6 +24,7 @@ export function FaceInput({ onCapture, onSkip, isLoading = false }: FaceInputPro
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [permissionDenied, setPermissionDenied] = useState(false);
+  const [hasMediaSupport, setHasMediaSupport] = useState(true);
 
   // Request camera permission
   const requestCamera = useCallback(async () => {
@@ -30,6 +32,20 @@ export function FaceInput({ onCapture, onSkip, isLoading = false }: FaceInputPro
     setErrorMessage(null);
 
     try {
+      if (typeof window !== "undefined" && !window.isSecureContext) {
+        setHasMediaSupport(false);
+        setMode("error");
+        setErrorMessage("Camera access requires HTTPS or localhost. Please use a secure connection.");
+        return;
+      }
+
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        setHasMediaSupport(false);
+        setMode("error");
+        setErrorMessage("Camera is not supported in this browser. Please upload a photo instead.");
+        return;
+      }
+
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
           facingMode: "user",
@@ -46,14 +62,18 @@ export function FaceInput({ onCapture, onSkip, isLoading = false }: FaceInputPro
           setMode("ready");
         };
       }
-    } catch (err) {
-      const error = err as any;
+    } catch (err: unknown) {
+      const error = err instanceof Error ? err : new Error("Unknown error");
+      const errorName =
+        typeof err === "object" && err !== null && "name" in err
+          ? String((err as { name?: string }).name)
+          : error.name;
       setPermissionDenied(true);
       setMode("error");
 
-      if (error.name === "NotAllowedError") {
+      if (errorName === "NotAllowedError") {
         setErrorMessage("Camera permission was denied. Please enable camera access in your browser settings.");
-      } else if (error.name === "NotFoundError") {
+      } else if (errorName === "NotFoundError") {
         setErrorMessage("No camera found on this device. Please use a device with a camera or upload a photo.");
       } else {
         setErrorMessage("Unable to access camera. Please try uploading a photo instead.");
@@ -120,10 +140,11 @@ export function FaceInput({ onCapture, onSkip, isLoading = false }: FaceInputPro
   );
 
   useEffect(() => {
+    const video = videoRef.current;
     return () => {
       // Cleanup: stop video stream on unmount
-      if (videoRef.current?.srcObject) {
-        const stream = videoRef.current.srcObject as MediaStream;
+      if (video?.srcObject) {
+        const stream = video.srcObject as MediaStream;
         stream?.getTracks().forEach((track) => track.stop());
       }
     };
@@ -239,6 +260,7 @@ export function FaceInput({ onCapture, onSkip, isLoading = false }: FaceInputPro
                   ref={videoRef}
                   className="w-full h-full object-cover scale-x-[-1]"
                   playsInline
+                  muted
                 />
                 <div className="absolute inset-0 border-2 border-cyan-400/30 rounded-lg pointer-events-none" />
               </div>
@@ -263,10 +285,13 @@ export function FaceInput({ onCapture, onSkip, isLoading = false }: FaceInputPro
               className="space-y-3"
             >
               <div className="relative bg-black rounded-lg overflow-hidden aspect-video">
-                <img
+                <Image
                   src={capturedImage}
                   alt="Captured face"
-                  className="w-full h-full object-cover"
+                  fill
+                  sizes="(max-width: 768px) 100vw, 640px"
+                  className="object-cover"
+                  unoptimized
                 />
               </div>
 
@@ -309,8 +334,25 @@ export function FaceInput({ onCapture, onSkip, isLoading = false }: FaceInputPro
                   <div>
                     <p className="text-red-300 font-medium">Camera Access Failed</p>
                     <p className="text-red-200/70 text-sm mt-1">{errorMessage}</p>
+                    {permissionDenied && (
+                      <p className="text-red-200/70 text-xs mt-2">
+                        Tip: On iOS Safari, open Settings → Safari → Camera and allow access.
+                      </p>
+                    )}
                   </div>
                 </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-3">
+                <Button
+                  onClick={requestCamera}
+                  className="w-full bg-cyan-500 hover:bg-cyan-600 text-white"
+                  size="lg"
+                  disabled={!hasMediaSupport}
+                >
+                  <Camera className="w-4 h-4 mr-2" />
+                  Try Camera Again
+                </Button>
               </div>
 
               <Button

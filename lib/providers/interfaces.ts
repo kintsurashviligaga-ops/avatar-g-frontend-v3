@@ -3,13 +3,18 @@
 
 import type {
   AvatarGenerationResult,
-  VoiceTrainingResult,
   TalkClipResult,
-  Language,
-  VoiceSlot
+  VoiceTrainingResult,
+  Language
 } from '@/types/avatar-builder';
 
-// ============================================
+// Re-export types for provider implementations
+export type {
+  AvatarGenerationResult,
+  TalkClipResult,
+  VoiceTrainingResult,
+  Language
+};// ============================================
 // AVATAR GENERATION PROVIDER
 // ============================================
 
@@ -48,7 +53,7 @@ export interface OutfitFittingInput {
 export interface OutfitFittingResult {
   image_url: string;
   generation_time_ms: number;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 export interface IOutfitFittingProvider {
@@ -79,7 +84,7 @@ export interface VoiceSynthesisInput {
 export interface VoiceSynthesisResult {
   audio_url: string;
   duration_seconds: number;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 export interface IVoiceProvider {

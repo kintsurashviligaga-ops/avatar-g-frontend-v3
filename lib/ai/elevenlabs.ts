@@ -1,5 +1,3 @@
-import { config } from "@/lib/config";
-
 export async function generateVoice(text: string, voiceId: string, emotion: string = "neutral") {
   try {
     const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
@@ -21,8 +19,9 @@ export async function generateVoice(text: string, voiceId: string, emotion: stri
     if (!response.ok) throw new Error(`Voice generation failed: ${response.status}`);
     const audioBuffer = await response.arrayBuffer();
     return { audioBuffer, duration: Math.ceil(text.length / 15), voiceId };
-  } catch (error: any) {
-    throw new Error(`Voice generation failed: ${error.message}`);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    throw new Error(`Voice generation failed: ${message}`);
   }
 }
 
@@ -39,7 +38,8 @@ export async function cloneVoice(audioFile: File, name: string) {
     if (!response.ok) throw new Error(`Voice cloning failed: ${response.status}`);
     const data = await response.json();
     return { voiceId: data.voice_id, name: data.name, samples: data.samples };
-  } catch (error: any) {
-    throw new Error(`Voice cloning failed: ${error.message}`);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    throw new Error(`Voice cloning failed: ${message}`);
   }
 }

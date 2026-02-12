@@ -4,14 +4,10 @@
 
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
+import Image from 'next/image';
 import {
   Play,
-  Pause,
-  Download,
-  Heart,
   Trash2,
-  Copy,
-  Volume2,
   MoreVertical,
   Radio
 } from 'lucide-react';
@@ -82,10 +78,12 @@ export function TrackCard({
       >
         {track.cover_url && (
           <div className="relative mb-2 rounded overflow-hidden aspect-square">
-            <img
+            <Image
               src={track.cover_url}
               alt={track.title || 'Track'}
-              className="w-full h-full object-cover"
+              fill
+              sizes="96px"
+              className="object-cover"
             />
             {isPlaying && (
               <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
@@ -119,11 +117,13 @@ export function TrackCard({
       {/* Header with cover image */}
       <div className="flex gap-4 mb-3">
         {track.cover_url && (
-          <div className="flex-shrink-0 w-20 h-20 rounded-lg overflow-hidden">
-            <img
+          <div className="flex-shrink-0 w-20 h-20 rounded-lg overflow-hidden relative">
+            <Image
               src={track.cover_url}
               alt={track.title || 'Track'}
-              className="w-full h-full object-cover"
+              fill
+              sizes="80px"
+              className="object-cover"
             />
           </div>
         )}

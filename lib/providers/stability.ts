@@ -7,6 +7,32 @@ import type {
   AvatarGenerationResult
 } from './interfaces';
 
+interface StabilityTextPrompt {
+  text: string;
+  weight: number;
+}
+
+interface StabilityTextToImagePayload {
+  text_prompts: StabilityTextPrompt[];
+  width: number;
+  height: number;
+  samples: number;
+  steps: number;
+  cfg_scale?: number;
+  seed?: number;
+  style_preset?: string;
+}
+
+interface StabilityArtifact {
+  base64?: string;
+  seed?: number;
+  finishReason?: string;
+}
+
+interface StabilityResponse {
+  artifacts?: StabilityArtifact[];
+}
+
 export class StabilityAvatarProvider implements IAvatarProvider {
   name = 'stability';
   private apiKey: string;
@@ -31,7 +57,7 @@ export class StabilityAvatarProvider implements IAvatarProvider {
     const endpoint = `${this.baseUrl}/generation/stable-diffusion-xl-1024-v1-0/text-to-image`;
 
     // Build request payload - ONLY include supported fields
-    const payload: any = {
+    const payload: StabilityTextToImagePayload = {
       text_prompts: [
         {
           text: input.prompt,
@@ -80,27 +106,27 @@ export class StabilityAvatarProvider implements IAvatarProvider {
         throw new Error(`Stability AI error: ${response.status} - ${error}`);
       }
 
-      const data = await response.json();
+      const data = (await response.json()) as StabilityResponse;
       const generationTime = Date.now() - startTime;
 
       // Extract image URLs from artifacts
       const artifacts = data.artifacts || [];
-      if (artifacts.length === 0) {
+      const imageUrls = artifacts
+        .map((artifact) => artifact.base64)
+        .filter((base64): base64 is string => Boolean(base64))
+        .map((base64) => `data:image/png;base64,${base64}`);
+
+      if (imageUrls.length === 0) {
         throw new Error('No images generated');
       }
 
-      // Convert base64 to data URLs
-      const imageUrls = artifacts.map((artifact: any) => {
-        return `data:image/png;base64,${artifact.base64}`;
-      });
-
       return {
-        image_url: imageUrls[0],
+        image_url: imageUrls[0]!,
         turnaround_urls: imageUrls.length > 1 ? imageUrls.slice(1) : undefined,
         generation_time_ms: generationTime,
         metadata: {
-          seed: data.artifacts[0]?.seed,
-          finish_reason: data.artifacts[0]?.finishReason
+          seed: data.artifacts?.at(0)?.seed,
+          finish_reason: data.artifacts?.at(0)?.finishReason
         }
       };
 
@@ -172,15 +198,16 @@ export class StabilityAvatarProvider implements IAvatarProvider {
         throw new Error(`Stability AI error: ${response.status} - ${error}`);
       }
 
-      const data = await response.json();
+      const data = (await response.json()) as StabilityResponse;
       const generationTime = Date.now() - startTime;
 
       const artifacts = data.artifacts || [];
-      if (artifacts.length === 0) {
+      const firstImage = artifacts.find((artifact) => artifact.base64)?.base64;
+      if (!firstImage) {
         throw new Error('No images generated');
       }
 
-      const imageUrl = `data:image/png;base64,${artifacts[0].base64}`;
+      const imageUrl = `data:image/png;base64,${firstImage}`;
 
       return {
         image_url: imageUrl,

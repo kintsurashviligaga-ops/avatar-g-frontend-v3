@@ -14,6 +14,7 @@ import {
   Clock,
   TrendingUp,
 } from "lucide-react";
+import { getAccessToken } from "@/lib/auth/client";
 
 interface GenerationStats {
   total: number;
@@ -37,10 +38,13 @@ export default function OrbitalDashboardClient() {
   useEffect(() => {
     async function fetchStats() {
       try {
-        const response = await fetch('/api/user/stats');
+        const token = await getAccessToken();
+        const response = await fetch('/api/user/stats', {
+          headers: token ? { Authorization: `Bearer ${token}` } : undefined
+        });
         if (response.ok) {
           const data = await response.json();
-          setStats(data);
+          setStats(data?.data || data);
         }
       } catch (error) {
         console.error("Failed to fetch stats:", error);

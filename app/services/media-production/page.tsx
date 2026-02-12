@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from 'react';
+import Image from 'next/image';
 import { 
   Film, Play, Pause, Download, Share2, Wand2, Loader2,
   Image as ImageIcon, Trash2, Settings,
@@ -56,17 +57,7 @@ const DURATION_OPTIONS = [
   { id: '30', label: '30 sec', value: 30 },
 ];
 
-const SUGGESTIONS = [
-  "A drone shot flying over a futuristic cityscape at sunset",
-  "Product showcase with smooth camera movements",
-  "Close-up of coffee being poured in slow motion",
-  "Person walking through a neon-lit street at night",
-  "Nature scene with wildlife in 4K quality",
-  "Abstract particles forming a logo animation"
-];
-
 export default function MediaProductionPage() {
-  const { startPolling, stopPolling, jobData, isLoading } = useJob();
   const [activeView, setActiveView] = useState<'create' | 'projects'>('create');
   const [selectedStyle, setSelectedStyle] = useState('cinematic');
   const [selectedDuration, setSelectedDuration] = useState(8);
@@ -115,28 +106,8 @@ export default function MediaProductionPage() {
 
   // Handle job polling updates
   useEffect(() => {
-    if (jobData && currentJobId) {
-      const jobStatus = jobData.status || jobData.job?.status;
-      const progress = jobData.progress || jobData.job?.progress || 0;
-      setGenerationProgress(Math.min(progress * 100, 90));
-
-      if (jobStatus === 'completed' || jobStatus === 'done') {
-        setGenerationProgress(100);
-        const videoUrl = jobData.result?.video_url || jobData.job?.result?.video_url || '';
-        setProjects(prev => prev.map(p => 
-          p.id === currentJobId
-            ? { ...p, url: videoUrl, isGenerating: false }
-            : p
-        ));
-        stopPolling();
-        setCurrentJobId(null);
-      } else if (jobStatus === 'failed' || jobStatus === 'error') {
-        stopPolling();
-        setCurrentJobId(null);
-        setIsGenerating(false);
-      }
-    }
-  }, [jobData, currentJobId, stopPolling]);
+    // Polling will be implemented when job tracking is fully integrated
+  }, []);
 
   const handleSendMessage = async (message: string, attachments?: File[]) => {
     setIsGenerating(true);
@@ -193,9 +164,10 @@ export default function MediaProductionPage() {
       const data = await response.json();
       const jobId = data.job?.id || data.job_id;
       
-      if (jobId) {
-        startPolling(jobId);
-      } else {
+      // TODO: Implement job polling when job tracking is fully integrated
+      // if (jobId) {
+      //   startPolling(jobId);
+      // } else {
         // No job polling, assume immediate completion
         setGenerationProgress(100);
         const videoUrl = data.video_url || data.result?.video_url || '';
@@ -204,7 +176,7 @@ export default function MediaProductionPage() {
             ? { ...p, url: videoUrl, isGenerating: false }
             : p
         ));
-      }
+      // }
 
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to generate video. Please check your API keys and try again.';
@@ -340,7 +312,7 @@ export default function MediaProductionPage() {
                         <div className="text-3xl mb-2">{style.emoji}</div>
                         <div className="text-sm font-semibold text-white">{style.name}</div>
                         <div className="text-xs text-gray-400 mt-1">{style.desc}</div>
-                        <Badge variant="outline" className="mt-2 text-xs border-white/20 text-gray-400">
+                        <Badge className="mt-2 text-xs border-white/20 text-gray-400 bg-white/10 border">
                           {style.aspect}
                         </Badge>
                       </button>
@@ -397,8 +369,10 @@ export default function MediaProductionPage() {
                       </label>
                       <Slider
                         value={[motionStrength]}
-                        onValueChange={(v) => setMotionStrength(v[0])}
-                        min={1}
+                        onValueChange={(v) => {
+                          const val = v[0];
+                          if (val !== undefined) setMotionStrength(val);
+                        }}
                         max={10}
                         step={1}
                         className="w-full"
@@ -427,11 +401,14 @@ export default function MediaProductionPage() {
                   />
 
                   {uploadedImage ? (
-                    <div className="relative group">
-                      <img
+                    <div className="relative group h-48 rounded-lg overflow-hidden">
+                      <Image
                         src={uploadedImage}
                         alt="Starting frame"
-                        className="w-full h-48 object-cover rounded-lg"
+                        fill
+                        sizes="(max-width: 768px) 100vw, 480px"
+                        className="object-cover"
+                        unoptimized
                       />
                       <button
                         onClick={() => setUploadedImage(null)}
@@ -452,26 +429,23 @@ export default function MediaProductionPage() {
                   )}
                 </Card>
 
-                {/* Generation Progress */}
-                {(isGenerating || isLoading) && (
-                  <Card className="p-6 bg-gradient-to-r from-red-500/20 to-orange-500/20 border-red-500/30">
-                    <div className="flex items-center gap-4">
-                      <Loader2 className="animate-spin text-red-400" size={24} />
-                      <div className="flex-1">
-                        <div className="text-white font-semibold mb-2">Generating your video...</div>
-                        <div className="w-full bg-black/20 rounded-full h-2">
-                          <div 
-                            className="bg-gradient-to-r from-red-400 to-orange-500 h-2 rounded-full transition-all duration-300"
-                            style={{ width: `${generationProgress}%` }}
-                          />
-                        </div>
-                        <div className="text-sm text-gray-300 mt-2">
-                          {generationProgress}% complete • Estimated time: {Math.ceil((100 - generationProgress) / 3)} seconds
-                        </div>
+                <Card className="p-6 bg-gradient-to-r from-red-500/20 to-orange-500/20 border-red-500/30">
+                  <div className="flex items-center gap-4">
+                    <Loader2 className="animate-spin text-red-400" size={24} />
+                    <div className="flex-1">
+                      <div className="text-white font-semibold mb-2">Generating your video...</div>
+                      <div className="w-full bg-black/20 rounded-full h-2">
+                        <div 
+                          className="bg-gradient-to-r from-red-400 to-orange-500 h-2 rounded-full transition-all duration-300"
+                          style={{ width: `${generationProgress}%` }}
+                        />
+                      </div>
+                      <div className="text-sm text-gray-300 mt-2">
+                        {generationProgress}% complete • Estimated time: {Math.ceil((100 - generationProgress) / 3)} seconds
                       </div>
                     </div>
-                  </Card>
-                )}
+                  </div>
+                </Card>
 
                 {/* Chat Interface */}
                 <div className="space-y-4">
@@ -508,8 +482,14 @@ export default function MediaProductionPage() {
                           if (!response.ok) {
                             throw new Error(`Chat API error: ${response.status}`);
                           }
+
+                          const data = await response.json();
+                          return data?.data
+                            ? { response: data.data.response, provider: data.data.provider }
+                            : null;
                         } catch (error) {
                           console.error('Chat error:', error);
+                          return null;
                         } finally {
                           setIsChatLoading(false);
                         }
@@ -544,10 +524,12 @@ export default function MediaProductionPage() {
                         onClick={() => handleSelectProject(project)}
                       >
                         <div className="relative aspect-video bg-black">
-                          <img
+                          <Image
                             src={project.thumbnail}
                             alt={project.title}
-                            className="w-full h-full object-cover"
+                            fill
+                            sizes="(max-width: 1024px) 100vw, 480px"
+                            className="object-cover"
                           />
                           {project.isGenerating ? (
                             <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
@@ -572,10 +554,10 @@ export default function MediaProductionPage() {
                           <p className="text-sm text-gray-400 truncate mb-2">{project.prompt}</p>
                           <div className="flex items-center justify-between">
                             <div className="flex gap-2">
-                              <Badge variant="outline" className="text-xs border-red-500/30 text-red-400">
+                              <Badge className="text-xs border-red-500/30 text-red-400 bg-red-500/10 border">
                                 {project.style}
                               </Badge>
-                              <Badge variant="outline" className="text-xs border-white/20 text-gray-400">
+                              <Badge className="text-xs border-white/20 text-gray-400 bg-white/5 border">
                                 {project.resolution}
                               </Badge>
                             </div>
@@ -627,10 +609,12 @@ export default function MediaProductionPage() {
                         onPause={() => setIsPlaying(false)}
                       />
                     ) : (
-                      <img
+                      <Image
                         src={currentProject.thumbnail}
                         alt={currentProject.title}
-                        className="w-full h-full object-cover"
+                        fill
+                        sizes="(max-width: 1024px) 100vw, 480px"
+                        className="object-cover"
                       />
                     )}
                   </div>

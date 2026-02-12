@@ -4,7 +4,6 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { apiError } from './response';
 
 interface RateLimitConfig {
   maxRequests: number;

@@ -1,4 +1,4 @@
-export function reportWebVitals(metric: any) {
+export function reportWebVitals(metric: unknown) {
   // Send to analytics in production
   if (process.env.NODE_ENV === "production") {
     console.log(metric);
