@@ -5,7 +5,6 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { X, Sparkles, Zap, Brain, Shield } from 'lucide-react';
-import { colors } from '@/lib/design/tokens';
 
 interface PremiumAgentFormProps {
   isOpen: boolean;
@@ -36,7 +35,6 @@ const premiumFeatures = [
 ];
 
 export default function PremiumAgentForm({ isOpen, onClose }: PremiumAgentFormProps) {
-  const [formStep, setFormStep] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -73,14 +71,16 @@ export default function PremiumAgentForm({ isOpen, onClose }: PremiumAgentFormPr
             className="fixed inset-0 z-50 flex items-center justify-center p-4"
           >
             <Card className="w-full max-w-2xl bg-gradient-to-b from-slate-900 to-slate-950 border border-cyan-500/20 shadow-2xl">
-              {/* Header */}
-              <div className="relative p-6 border-b border-cyan-500/10 flex items-start justify-between">
+              {/* Header with Premium Agent branding */}
+              <div className="relative p-6 border-b border-cyan-500/10 flex items-start justify-between bg-gradient-to-r from-cyan-500/5 to-orange-500/5">
+                {/* Glow effect */}
+                <div className="absolute inset-0 bg-gradient-to-r from-cyan-500/10 via-transparent to-orange-500/10 opacity-50 rounded-t-lg pointer-events-none" />
                 <div>
-                  <h2 className="text-2xl font-bold flex items-center gap-2">
-                    <Sparkles className="w-6 h-6 text-cyan-400" />
+                  <h2 className="text-2xl font-bold flex items-center gap-2 relative z-10">
+                    <Sparkles className="w-6 h-6 text-cyan-400 drop-shadow-lg" />
                     Premium Agent
                   </h2>
-                  <p className="text-sm text-gray-400 mt-1">Unlock unlimited potential</p>
+                  <p className="text-sm text-gray-400 mt-1">Enterprise-level AI superpowers</p>
                 </div>
                 <button
                   onClick={onClose}

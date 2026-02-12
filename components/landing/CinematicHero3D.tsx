@@ -58,10 +58,37 @@ export default function CinematicHero3D() {
         // Get owner ID (auth or anon)
         const ownerId = await getOwnerId();
 
-        // Fetch latest avatar from Supabase
-        const response = await fetch(`/api/avatars/latest?owner_id=${encodeURIComponent(ownerId)}`);
+        // Check session cache first (avoid duplicate fetches)
+        const cachedAvatar = sessionStorage?.getItem(`avatar_${ownerId}`);
+        if (cachedAvatar) {
+          const avatar = JSON.parse(cachedAvatar);
+          setLoadingState({
+            isLoading: false,
+            hasUserAvatar: true,
+            userAvatar: avatar,
+            error: null,
+          });
+          return;
+        }
+
+        // Fetch latest avatar from Supabase with timeout
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000); // 5s timeout
+
+        const response = await fetch(`/api/avatars/latest?owner_id=${encodeURIComponent(ownerId)}`, {
+          signal: controller.signal,
+        });
+        clearTimeout(timeoutId);
+
+        if (!response.ok) throw new Error(`Failed: ${response.status}`);
+
         const data = await response.json();
         const avatar = data?.data?.avatar || null;
+
+        // Cache to session storage
+        if (avatar && typeof sessionStorage !== 'undefined') {
+          sessionStorage.setItem(`avatar_${ownerId}`, JSON.stringify(avatar));
+        }
 
         if (avatar) {
           setLoadingState({
@@ -79,13 +106,25 @@ export default function CinematicHero3D() {
           });
         }
       } catch (error) {
-        console.error('Failed to load user avatar:', error);
-        setLoadingState({
-          isLoading: false,
-          hasUserAvatar: false,
-          userAvatar: null,
-          error: error instanceof Error ? error.message : 'Failed to load avatar',
-        });
+        const message = error instanceof Error ? error.message : 'Failed to load avatar';
+        
+        // Don't show error for timeouts or aborts - just show default
+        if (message.includes('abort')) {
+          setLoadingState({
+            isLoading: false,
+            hasUserAvatar: false,
+            userAvatar: null,
+            error: null,
+          });
+        } else {
+          console.error('Failed to load user avatar:', error);
+          setLoadingState({
+            isLoading: false,
+            hasUserAvatar: false,
+            userAvatar: null,
+            error: null, // Don't show error UI - fallback silently
+          });
+        }
       }
     };
 

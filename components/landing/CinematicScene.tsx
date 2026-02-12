@@ -6,9 +6,10 @@
  * - 3D avatar rendering with animations
  * - Orbiting service icons
  * - Space background effects
+ * - WebGL context management and memory cleanup
  */
 
-import React, { useRef } from 'react';
+import React, { useRef, useEffect } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { Preload } from '@react-three/drei';
 import { colors } from '@/lib/design/tokens';
@@ -30,6 +31,20 @@ interface CinematicSceneProps {
 
 export default function CinematicScene({ userAvatar }: CinematicSceneProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  // Cleanup WebGL context on unmount
+  useEffect(() => {
+    return () => {
+      if (canvasRef.current) {
+        const gl = canvasRef.current.getContext('webgl2') || canvasRef.current.getContext('webgl');
+        if (gl) {
+          const loseContext = gl.getExtension('WEBGL_lose_context');
+          if (loseContext) loseContext.loseContext();
+        }
+      }
+    };
+  }, []);
 
   return (
     <div
@@ -38,6 +53,11 @@ export default function CinematicScene({ userAvatar }: CinematicSceneProps) {
       style={{ background: colors.bg.dark }}
     >
       <Canvas
+        ref={(instance) => {
+          if (instance && instance.domElement) {
+            canvasRef.current = instance.domElement as HTMLCanvasElement;
+          }
+        }}
         camera={{
           position: [0, 0, 8],
           fov: 75,
@@ -48,6 +68,7 @@ export default function CinematicScene({ userAvatar }: CinematicSceneProps) {
           width: '100%',
           height: '100%',
         }}
+        performance={{ min: 0.5 }}
       >
         {/* Lighting */}
         <ambientLight intensity={0.4} color={colors.primary.from} />

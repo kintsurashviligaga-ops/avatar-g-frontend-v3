@@ -13,7 +13,6 @@ import { Slider } from '@/components/ui/slider';
 import { Badge } from '@/components/ui/badge';
 import { ChatWindow } from '@/components/ui/ChatWindow';
 import { PromptBuilder } from '@/components/ui/PromptBuilder';
-import { useJob } from '@/lib/hooks/useJob';
 import { getAuthHeaders } from '@/lib/auth/client';
 
 interface VideoProject {
@@ -64,14 +63,12 @@ export default function MediaProductionPage() {
   const [projects, setProjects] = useState<VideoProject[]>([]);
   const [currentProject, setCurrentProject] = useState<VideoProject | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [isGenerating, setIsGenerating] = useState(false);
   const [generationProgress, setGenerationProgress] = useState(0);
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
   const [motionStrength, setMotionStrength] = useState(5);
   const [resolution, setResolution] = useState('1080p');
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const [currentJobId, setCurrentJobId] = useState<string | null>(null);
   const [isChatLoading, setIsChatLoading] = useState(false);
 
   // Load My Videos on mount
@@ -162,21 +159,15 @@ export default function MediaProductionPage() {
       }
 
       const data = await response.json();
-      const jobId = data.job?.id || data.job_id;
       
-      // TODO: Implement job polling when job tracking is fully integrated
-      // if (jobId) {
-      //   startPolling(jobId);
-      // } else {
-        // No job polling, assume immediate completion
-        setGenerationProgress(100);
-        const videoUrl = data.video_url || data.result?.video_url || '';
-        setProjects(prev => prev.map(p => 
-          p.id === projectId
-            ? { ...p, url: videoUrl, isGenerating: false }
-            : p
-        ));
-      // }
+      // Assume immediate completion (job polling can be added later)
+      setGenerationProgress(100);
+      const videoUrl = data.video_url || data.result?.video_url || '';
+      setProjects(prev => prev.map(p => 
+        p.id === projectId
+          ? { ...p, url: videoUrl, isGenerating: false }
+          : p
+      ));
 
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to generate video. Please check your API keys and try again.';

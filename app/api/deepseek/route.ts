@@ -1,6 +1,3 @@
-'use server';
-/* @ts-ignore - Node.js process global */
-
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: Request) {
@@ -14,8 +11,7 @@ export async function POST(req: Request) {
       );
     }
 
-    /* @ts-ignore - Accessing Node.js process */
-    const apiKey = process.env.DEEPSEEK_API_KEY as string;
+    const apiKey = process.env['DEEPSEEK_API_KEY'] as string | undefined;
     if (!apiKey) {
       return new Response(
         JSON.stringify({ error: 'DeepSeek API key not configured' }),
