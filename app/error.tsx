@@ -1,21 +1,25 @@
-"use client"
+'use client';
 
-import { useEffect } from "react"
-import { motion } from "framer-motion"
-import { AlertTriangle, RefreshCw, Home } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import Link from "next/link"
+import { useEffect } from 'react';
+import { motion } from 'framer-motion';
+import { AlertTriangle, RefreshCw, Home } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import Link from 'next/link';
 
 export default function Error({
   error,
   reset,
 }: {
-  error: Error & { digest?: string }
-  reset: () => void
+  error: Error & { digest?: string };
+  reset: () => void;
 }) {
   useEffect(() => {
-    console.error(error)
-  }, [error])
+    // Only log in development, never expose errors in production
+    if (process.env.NODE_ENV === 'development') {
+      console.error('[App Error]', error);
+    }
+    // TODO: Send to error tracking service (Sentry, LogRocket, etc)
+  }, [error]);
 
   return (
     <div className="min-h-screen bg-[#05070A] flex items-center justify-center p-4">

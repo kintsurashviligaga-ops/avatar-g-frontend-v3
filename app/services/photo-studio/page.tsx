@@ -1,18 +1,16 @@
 "use client"
 
 import { useState, useRef, useEffect } from "react"
-import { motion, AnimatePresence } from "framer-motion"
+import { motion } from "framer-motion"
 import { 
-  Camera, Image, Wand2, Sparkles, Download, Share2, Save, 
-  Trash2, Upload, Sliders, Crop, RotateCw, FlipHorizontal, 
+  Image, Wand2, Sparkles, Download, Save, 
+  Upload, Sliders, Crop, RotateCw, FlipHorizontal, 
   FlipVertical, Sun, Contrast, Droplets, Eye, Palette, 
-  Type, Sticker, Layers, Maximize2, Minimize2, ZoomIn, 
-  ZoomOut, Undo2, Redo2, History, Copy, Check, X,
-  Move, MousePointer2, Scissors, Frame, Filter,
-  Aperture, Triangle, Circle, Square, Star, Heart,
-  ChevronLeft, ChevronRight, Plus, Minus, Grid3X3,
-  FileImage, Images, FolderOpen, Settings, Info,
-  Eraser, Cloud, Paperclip, Link, Send, Layout
+  Layers, Maximize2, Minimize2, ZoomIn, 
+  ZoomOut, Undo2, Redo2, History, Check,
+  Move, Scissors,
+  Aperture, Circle,
+  Eraser, Cloud, Send, Layout
 } from "lucide-react"
 import { ServiceShell } from "@/components/shared/ServiceShell"
 import { FeatureCard } from "@/components/shared/FeatureCard"

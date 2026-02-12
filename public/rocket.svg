@@ -1,0 +1,29 @@
+<svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg" className="w-full h-full">
+  <!-- Rocket Body -->
+  <path d="M100 20 L110 40 L90 40 Z" fill="#D4AF37" stroke="#00FFFF" stroke-width="2"/>
+  
+  <!-- Main Body -->
+  <rect x="85" y="35" width="30" height="100" fill="#00FFFF" stroke="#D4AF37" stroke-width="2" rx="5"/>
+  
+  <!-- Window -->
+  <circle cx="100" cy="55" r="8" fill="#0A0A0A" stroke="#D4AF37" stroke-width="2"/>
+  
+  <!-- Left Fin -->
+  <path d="M85 110 L70 135 L85 125 Z" fill="#D4AF37" stroke="#00FFFF" stroke-width="2"/>
+  
+  <!-- Right Fin -->
+  <path d="M115 110 L130 135 L115 125 Z" fill="#D4AF37" stroke="#00FFFF" stroke-width="2"/>
+  
+  <!-- Left Thruster -->
+  <path d="M80 145 L75 165 L80 155 Z" fill="#FF6B6B" stroke="#FFA500" stroke-width="1.5"/>
+  
+  <!-- Right Thruster -->
+  <path d="M120 145 L125 165 L120 155 Z" fill="#FF6B6B" stroke="#FFA500" stroke-width="1.5"/>
+  
+  <!-- Center Engine -->
+  <path d="M100 145 L95 165 L105 165 Z" fill="#FF6B6B" stroke="#FFA500" stroke-width="1.5"/>
+  
+  <!-- Flame effect (animated) -->
+  <path d="M98 155 Q95 170 100 180 Q105 170 102 155" fill="#FFA500" opacity="0.7"/>
+  <path d="M100 160 Q98 172 100 180 Q102 172 100 160" fill="#FFD700" opacity="0.8"/>
+</svg>

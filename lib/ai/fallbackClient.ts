@@ -86,11 +86,13 @@ const geminiProvider: AIProvider = {
   name: "Gemini",
   isAvailable: () => !!process.env.GEMINI_API_KEY,
   generate: async (options) => {
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${process.env.GEMINI_API_KEY}`, {
+    // SECURITY FIX: API key now in request body, not URL
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        contents: [{ parts: [{ text: `${getSystemPrompt(options.type, options.language)}\n\n${options.prompt}` }] }]
+        contents: [{ parts: [{ text: `${getSystemPrompt(options.type, options.language)}\n\n${options.prompt}` }] }],
+        apiKey: process.env.GEMINI_API_KEY
       })
     });
     if (!response.ok) throw new Error(`Gemini error: ${response.status}`);

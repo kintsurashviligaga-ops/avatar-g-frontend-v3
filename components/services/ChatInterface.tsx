@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { useLanguage } from '@/lib/i18n/LanguageContext';
 
 interface Message {
   id: string;
@@ -26,10 +27,11 @@ interface ChatInterfaceProps {
 
 export function ChatInterface({ 
   onSendMessage, 
-  placeholder = "Describe what you want to create...",
+  placeholder,
   suggestions = [],
   isGenerating = false 
 }: ChatInterfaceProps) {
+  const { t } = useLanguage();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isRecording, setIsRecording] = useState(false);
@@ -79,6 +81,8 @@ export function ChatInterface({
   const handleSuggestionClick = (suggestion: string) => {
     setInput(suggestion);
   };
+
+  const resolvedPlaceholder = placeholder || t("type_message");
 
   return (
     <div className="flex flex-col h-full">
@@ -149,7 +153,7 @@ export function ChatInterface({
             <Card className="p-3 bg-black/20 border-white/10">
               <div className="flex items-center gap-2">
                 <Loader2 size={16} className="animate-spin text-cyan-400" />
-                <span className="text-sm text-gray-400">Generating...</span>
+                <span className="text-sm text-gray-400">{t("avatar.label.generatingShort")}</span>
               </div>
             </Card>
           </motion.div>
@@ -163,7 +167,7 @@ export function ChatInterface({
         <div className="px-4 pb-2">
           <div className="flex items-center gap-2 mb-2">
             <Sparkles size={14} className="text-cyan-400" />
-            <span className="text-xs text-gray-400">Try these:</span>
+            <span className="text-xs text-gray-400">{t("avatar.label.tryThese")}</span>
           </div>
           <div className="flex flex-wrap gap-2">
             {suggestions.map((suggestion, i) => (
@@ -242,7 +246,7 @@ export function ChatInterface({
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyPress={(e) => e.key === 'Enter' && handleSend()}
-              placeholder={placeholder}
+              placeholder={resolvedPlaceholder}
               disabled={isGenerating}
               className="w-full px-4 py-2 bg-black/20 border border-white/10 rounded-lg text-white placeholder:text-gray-500 focus:outline-none focus:border-cyan-500/50 disabled:opacity-50 disabled:cursor-not-allowed"
             />

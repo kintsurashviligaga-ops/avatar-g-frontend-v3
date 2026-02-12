@@ -1,18 +1,19 @@
 "use client";
 
 import { useState, useRef, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Film, Play, Pause, Download, Share2, Wand2, Loader2,
-  Clock, Sliders, Zap, Image as ImageIcon, Type, Music,
-  Scissors, Copy, Trash2, Plus, Settings, Grid3X3, Maximize2,
-  Video, Sparkles, Upload, FileVideo, Palette, Layers
+  Image as ImageIcon, Trash2, Settings,
+  Video, Sparkles, Upload, FileVideo
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Slider } from '@/components/ui/slider';
 import { Badge } from '@/components/ui/badge';
-import { ChatInterface } from '@/components/services/ChatInterface';
+import { ChatWindow } from '@/components/ui/ChatWindow';
+import { PromptBuilder } from '@/components/ui/PromptBuilder';
+import { useJob } from '@/lib/hooks/useJob';
+import { getAuthHeaders } from '@/lib/auth/client';
 
 interface VideoProject {
   id: string;
@@ -26,6 +27,16 @@ interface VideoProject {
   createdAt: Date;
   isGenerating?: boolean;
 }
+
+type VideoListItem = {
+  id: string;
+  title?: string;
+  description?: string;
+  duration_seconds?: number;
+  video_url?: string;
+  preview_url?: string;
+  created_at?: string;
+};
 
 const VIDEO_STYLES = [
   { id: 'cinematic', name: 'Cinematic', emoji: '🎬', desc: 'Movie-quality visuals', aspect: '16:9' },
@@ -55,6 +66,7 @@ const SUGGESTIONS = [
 ];
 
 export default function MediaProductionPage() {
+  const { startPolling, stopPolling, jobData, isLoading } = useJob();
   const [activeView, setActiveView] = useState<'create' | 'projects'>('create');
   const [selectedStyle, setSelectedStyle] = useState('cinematic');
   const [selectedDuration, setSelectedDuration] = useState(8);
@@ -68,6 +80,63 @@ export default function MediaProductionPage() {
   const [resolution, setResolution] = useState('1080p');
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [currentJobId, setCurrentJobId] = useState<string | null>(null);
+  const [isChatLoading, setIsChatLoading] = useState(false);
+
+  // Load My Videos on mount
+  useEffect(() => {
+    const loadMyVideos = async () => {
+      try {
+        const headers = await getAuthHeaders();
+        const response = await fetch('/api/videos', { headers });
+        if (response.ok) {
+          const data = await response.json();
+          const videos = (data.videos || []).map((v: VideoListItem) => ({
+            id: v.id,
+            title: v.title,
+            prompt: v.description || v.title,
+            duration: v.duration_seconds || 15,
+            url: v.video_url || '',
+            thumbnail: v.preview_url || `https://placehold.co/1920x1080/000000/FFFFFF`,
+            style: 'cinematic',
+            resolution: '1080p',
+            createdAt: new Date(v.created_at || new Date().toISOString()),
+            isGenerating: false
+          }));
+          setProjects(videos);
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Error loading videos';
+        console.error('Error loading videos:', message);
+      }
+    };
+    loadMyVideos();
+  }, []);
+
+  // Handle job polling updates
+  useEffect(() => {
+    if (jobData && currentJobId) {
+      const jobStatus = jobData.status || jobData.job?.status;
+      const progress = jobData.progress || jobData.job?.progress || 0;
+      setGenerationProgress(Math.min(progress * 100, 90));
+
+      if (jobStatus === 'completed' || jobStatus === 'done') {
+        setGenerationProgress(100);
+        const videoUrl = jobData.result?.video_url || jobData.job?.result?.video_url || '';
+        setProjects(prev => prev.map(p => 
+          p.id === currentJobId
+            ? { ...p, url: videoUrl, isGenerating: false }
+            : p
+        ));
+        stopPolling();
+        setCurrentJobId(null);
+      } else if (jobStatus === 'failed' || jobStatus === 'error') {
+        stopPolling();
+        setCurrentJobId(null);
+        setIsGenerating(false);
+      }
+    }
+  }, [jobData, currentJobId, stopPolling]);
 
   const handleSendMessage = async (message: string, attachments?: File[]) => {
     setIsGenerating(true);
@@ -84,8 +153,9 @@ export default function MediaProductionPage() {
     }
 
     // Create a placeholder project
+    const projectId = Date.now().toString();
     const newProject: VideoProject = {
-      id: Date.now().toString(),
+      id: projectId,
       title: message.split(' ').slice(0, 6).join(' ') || 'New Video',
       prompt: message,
       duration: selectedDuration,
@@ -98,41 +168,22 @@ export default function MediaProductionPage() {
     };
 
     setProjects(prev => [newProject, ...prev]);
-
-    // Simulate progress
-    const progressInterval = setInterval(() => {
-      setGenerationProgress(prev => {
-        if (prev >= 90) {
-          clearInterval(progressInterval);
-          return 90;
-        }
-        return prev + 3;
-      });
-    }, 1000);
+    setCurrentJobId(projectId);
 
     try {
-      console.log('🎬 Generating video with prompt:', message);
-      
-      const response = await fetch('/api/generate/video', {
+      const headers = await getAuthHeaders();
+      const response = await fetch('/api/video/generate', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers,
         body: JSON.stringify({
           prompt: message,
-          imageUrl: imageData,
+          image_url: imageData,
           duration: selectedDuration,
           style: selectedStyle,
           resolution: resolution,
-          motionStrength: motionStrength,
-          _identity: {
-            avatarId: 'user-avatar',
-            voiceId: 'user-voice'
-          }
+          motion_strength: motionStrength
         }),
       });
-
-      clearInterval(progressInterval);
 
       if (!response.ok) {
         const errorData = await response.json();
@@ -140,35 +191,29 @@ export default function MediaProductionPage() {
       }
 
       const data = await response.json();
-      console.log('✅ Video generated successfully!', data);
-
-      setGenerationProgress(100);
-
-      // Update the project with real data
-      setProjects(prev => prev.map(p => 
-        p.id === newProject.id 
-          ? { ...p, url: data.videoUrl, thumbnail: data.previewUrl || p.thumbnail, isGenerating: false }
-          : p
-      ));
-
-      // Auto-load the video
-      setTimeout(() => {
-        const updatedProject = projects.find(p => p.id === newProject.id);
-        if (updatedProject && !updatedProject.isGenerating) {
-          handleSelectProject(updatedProject);
-        }
-      }, 500);
-
-    } catch (error: any) {
-      console.error('💥 Video generation error:', error);
+      const jobId = data.job?.id || data.job_id;
       
-      // Remove the placeholder project on error
-      setProjects(prev => prev.filter(p => p.id !== newProject.id));
-      
-      alert(error.message || 'Failed to generate video. Please check your API keys and try again.');
-    } finally {
+      if (jobId) {
+        startPolling(jobId);
+      } else {
+        // No job polling, assume immediate completion
+        setGenerationProgress(100);
+        const videoUrl = data.video_url || data.result?.video_url || '';
+        setProjects(prev => prev.map(p => 
+          p.id === projectId
+            ? { ...p, url: videoUrl, isGenerating: false }
+            : p
+        ));
+      }
+
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to generate video. Please check your API keys and try again.';
+      console.error('💥 Video generation error:', message);
+      setProjects(prev => prev.filter(p => p.id !== projectId));
+      alert(message);
       setIsGenerating(false);
-      setGenerationProgress(0);
+      setCurrentJobId(null);
+    } finally {
       setUploadedImage(null);
     }
   };
@@ -408,7 +453,7 @@ export default function MediaProductionPage() {
                 </Card>
 
                 {/* Generation Progress */}
-                {isGenerating && (
+                {(isGenerating || isLoading) && (
                   <Card className="p-6 bg-gradient-to-r from-red-500/20 to-orange-500/20 border-red-500/30">
                     <div className="flex items-center gap-4">
                       <Loader2 className="animate-spin text-red-400" size={24} />
@@ -429,14 +474,50 @@ export default function MediaProductionPage() {
                 )}
 
                 {/* Chat Interface */}
-                <Card className="bg-black/40 border-white/10 h-[500px]">
-                  <ChatInterface
-                    onSendMessage={handleSendMessage}
-                    placeholder={`Describe the ${VIDEO_STYLES.find(s => s.id === selectedStyle)?.name.toLowerCase()} video you want to create...`}
-                    suggestions={SUGGESTIONS}
-                    isGenerating={isGenerating}
+                <div className="space-y-4">
+                  <PromptBuilder
+                    serviceType="video"
+                    onApplyPrompt={(prompt) => {
+                      // Auto-fill the selected style from prompt context if possible
+                      handleSendMessage(prompt);
+                    }}
                   />
-                </Card>
+                  <Card className="bg-black/40 border-white/10 overflow-hidden">
+                    <ChatWindow
+                      title="Video Assistant"
+                      serviceContext="video"
+                      height="md"
+                      minimizable
+                      collapsible
+                      onSendMessage={async (message, context) => {
+                        setIsChatLoading(true);
+                        try {
+                          const response = await fetch('/api/chat', {
+                            method: 'POST',
+                            headers: {
+                              'Content-Type': 'application/json',
+                              ...(await getAuthHeaders())
+                            },
+                            body: JSON.stringify({
+                              message,
+                              context,
+                              conversationId: `video_${Date.now()}`
+                            })
+                          });
+
+                          if (!response.ok) {
+                            throw new Error(`Chat API error: ${response.status}`);
+                          }
+                        } catch (error) {
+                          console.error('Chat error:', error);
+                        } finally {
+                          setIsChatLoading(false);
+                        }
+                      }}
+                      isLoading={isChatLoading}
+                    />
+                  </Card>
+                </div>
               </>
             ) : (
               /* Projects View */

@@ -1,9 +1,25 @@
 import { NextRequest, NextResponse } from "next/server";
+import { apiError } from "@/lib/api/response";
+import { ImageGenerationSchema, validateInput } from "@/lib/api/validation";
+import { checkRateLimit, RATE_LIMITS } from "@/lib/api/rate-limit";
 
 export async function POST(req: NextRequest) {
+  const rateLimitError = await checkRateLimit(req, RATE_LIMITS.EXPENSIVE);
+  if (rateLimitError) return rateLimitError;
+
   try {
-    const { prompt, width = 1024, height = 1024 } = await req.json();
-    if (!prompt) return NextResponse.json({ error: "Prompt is required" }, { status: 400 });
+    const body = await req.json();
+    const validation = validateInput(ImageGenerationSchema, body);
+
+    if (!validation.success) {
+      return apiError(new Error(validation.error), 400, 'Invalid request');
+    }
+
+    const { prompt, width = 1024, height = 1024 } = validation.data;
+
+    if (!process.env.STABILITY_API_KEY) {
+      return apiError(new Error('Service not configured'), 503, 'Service temporarily unavailable');
+    }
 
     const response = await fetch("https://api.stability.ai/v1/generation/stable-diffusion-xl-1024-v1-0/text-to-image", {
       method: "POST",
@@ -21,10 +37,15 @@ export async function POST(req: NextRequest) {
       }),
     });
 
-    if (!response.ok) throw new Error("Stability AI error");
+    if (!response.ok) {
+      return apiError(new Error(`API error: ${response.status}`), 502, 'Failed to generate image');
+    }
+
     const data = await response.json();
     const imageBase64 = data.artifacts?.[0]?.base64;
-    if (!imageBase64) throw new Error("No image generated");
+    if (!imageBase64) {
+      return apiError(new Error('No image in response'), 502, 'Failed to generate image');
+    }
 
     const imageBuffer = Buffer.from(imageBase64, "base64");
     return new NextResponse(imageBuffer, {
@@ -34,7 +55,6 @@ export async function POST(req: NextRequest) {
       },
     });
   } catch (error) {
-    console.error("Image generator error:", error);
-    return NextResponse.json({ error: "Failed to generate image" }, { status: 500 });
+    return apiError(error, 500);
   }
 }

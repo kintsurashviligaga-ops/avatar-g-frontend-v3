@@ -1,23 +1,27 @@
 "use client";
 
 import { useEffect, useRef, useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
 import { 
   User, Camera, Sparkles, Upload, Download, Share2, Wand2, 
-  Loader2, Check, X, ArrowRight, ArrowLeft, Image as ImageIcon,
-  Palette, Shirt, Eye, Smile, Sun, Moon, Zap, Crown, Heart, Save
+  Loader2, Check, X, Image as ImageIcon,
+  Palette, Shirt, Eye, Smile, Save, Music
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Slider } from '@/components/ui/slider';
-import { ChatInterface } from '@/components/services/ChatInterface';
+import { ChatWindow } from '@/components/ui/ChatWindow';
+import { PromptBuilder } from '@/components/ui/PromptBuilder';
+import { useLanguage } from '@/lib/i18n/LanguageContext';
+import { useStudioStore } from '@/store/useStudioStore';
+import type { Avatar } from '@/types/platform';
+import { getAuthHeaders } from '@/lib/auth/client';
 
 interface AvatarStyle {
   id: string;
-  name: string;
+  nameKey: string;
   emoji: string;
-  description: string;
+  descriptionKey: string;
   prompt: string;
 }
 
@@ -49,24 +53,33 @@ interface AvatarPreset {
   };
 }
 
+type GeneratedAvatar = {
+  id: string;
+  prompt: string;
+  style: string;
+  image: string | null;
+  createdAt: Date;
+  isGenerating: boolean;
+};
+
 const AVATAR_STYLES: AvatarStyle[] = [
-  { id: 'professional', name: 'Professional', emoji: '💼', description: 'Business headshot', prompt: 'professional business portrait, formal attire, confident expression, studio lighting' },
-  { id: 'casual', name: 'Casual', emoji: '😊', description: 'Relaxed & friendly', prompt: 'casual portrait, relaxed expression, natural lighting, approachable' },
-  { id: 'artistic', name: 'Artistic', emoji: '🎨', description: 'Creative & unique', prompt: 'artistic portrait, creative styling, artistic lighting, expressive' },
-  { id: 'cinematic', name: 'Cinematic', emoji: '🎬', description: 'Movie-quality', prompt: 'cinematic portrait, dramatic lighting, film quality, professional' },
-  { id: 'anime', name: 'Anime', emoji: '✨', description: 'Anime style', prompt: 'anime style portrait, vibrant colors, stylized features, high detail' },
-  { id: 'cartoon', name: 'Cartoon', emoji: '🎭', description: '3D cartoon', prompt: '3D cartoon style, colorful, stylized, fun and playful' },
-  { id: 'cyberpunk', name: 'Cyberpunk', emoji: '🤖', description: 'Futuristic tech', prompt: 'cyberpunk style, neon lights, futuristic, tech aesthetic' },
-  { id: 'fantasy', name: 'Fantasy', emoji: '🧙', description: 'Magical theme', prompt: 'fantasy style portrait, magical, ethereal, mystical atmosphere' },
+  { id: 'professional', nameKey: 'avatar.style.professional', emoji: '💼', descriptionKey: 'avatar.style.professional.desc', prompt: 'professional business portrait, formal attire, confident expression, studio lighting' },
+  { id: 'casual', nameKey: 'avatar.style.casual', emoji: '😊', descriptionKey: 'avatar.style.casual.desc', prompt: 'casual portrait, relaxed expression, natural lighting, approachable' },
+  { id: 'artistic', nameKey: 'avatar.style.artistic', emoji: '🎨', descriptionKey: 'avatar.style.artistic.desc', prompt: 'artistic portrait, creative styling, artistic lighting, expressive' },
+  { id: 'cinematic', nameKey: 'avatar.style.cinematic', emoji: '🎬', descriptionKey: 'avatar.style.cinematic.desc', prompt: 'cinematic portrait, dramatic lighting, film quality, professional' },
+  { id: 'anime', nameKey: 'avatar.style.anime', emoji: '✨', descriptionKey: 'avatar.style.anime.desc', prompt: 'anime style portrait, vibrant colors, stylized features, high detail' },
+  { id: 'cartoon', nameKey: 'avatar.style.cartoon', emoji: '🎭', descriptionKey: 'avatar.style.cartoon.desc', prompt: '3D cartoon style, colorful, stylized, fun and playful' },
+  { id: 'cyberpunk', nameKey: 'avatar.style.cyberpunk', emoji: '🤖', descriptionKey: 'avatar.style.cyberpunk.desc', prompt: 'cyberpunk style, neon lights, futuristic, tech aesthetic' },
+  { id: 'fantasy', nameKey: 'avatar.style.fantasy', emoji: '🧙', descriptionKey: 'avatar.style.fantasy.desc', prompt: 'fantasy style portrait, magical, ethereal, mystical atmosphere' },
 ];
 
 const SUGGESTIONS = [
-  "Professional headshot with navy blue suit",
-  "Casual portrait with warm smile and natural lighting",
-  "Artistic black and white portrait",
-  "Cinematic portrait with dramatic shadows",
-  "Friendly avatar with bright background",
-  "Creative portrait with colorful styling"
+  'avatar.suggestion.1',
+  'avatar.suggestion.2',
+  'avatar.suggestion.3',
+  'avatar.suggestion.4',
+  'avatar.suggestion.5',
+  'avatar.suggestion.6',
 ];
 
 const BODY_TYPES = ['Slim', 'Athletic', 'Average', 'Curvy', 'Muscular'];
@@ -74,11 +87,11 @@ const PRESENTATIONS = ['Feminine', 'Masculine', 'Androgynous'];
 const PRESET_CATEGORIES = ['Professional', 'Casual', 'Studio', 'Cinematic', 'Fantasy', 'Street'];
 const PRESET_TAGS = ['HQ', 'Studio', 'Street', 'Clean', 'Futuristic', 'Minimal', 'Warm', 'Cool'];
 const POSES = [
-  { id: 'a-pose', name: 'A-pose', prompt: 'neutral A-pose', desc: 'Balanced stance', gradient: 'from-slate-900 to-slate-700' },
-  { id: 't-pose', name: 'T-pose', prompt: 'neutral T-pose', desc: 'Arms out', gradient: 'from-zinc-900 to-zinc-700' },
-  { id: 'relaxed', name: 'Relaxed', prompt: 'relaxed standing pose', desc: 'Natural posture', gradient: 'from-emerald-900 to-emerald-700' },
-  { id: 'confident', name: 'Confident', prompt: 'confident pose, shoulders back', desc: 'Strong stance', gradient: 'from-indigo-900 to-indigo-700' },
-  { id: 'hands-on-hips', name: 'Hands on Hips', prompt: 'hands on hips pose', desc: 'Power pose', gradient: 'from-amber-900 to-amber-700' },
+  { id: 'a-pose', nameKey: 'avatar.pose.apose', prompt: 'neutral A-pose', descKey: 'avatar.pose.apose.desc', gradient: 'from-slate-900 to-slate-700' },
+  { id: 't-pose', nameKey: 'avatar.pose.tpose', prompt: 'neutral T-pose', descKey: 'avatar.pose.tpose.desc', gradient: 'from-zinc-900 to-zinc-700' },
+  { id: 'relaxed', nameKey: 'avatar.pose.relaxed', prompt: 'relaxed standing pose', descKey: 'avatar.pose.relaxed.desc', gradient: 'from-emerald-900 to-emerald-700' },
+  { id: 'confident', nameKey: 'avatar.pose.confident', prompt: 'confident pose, shoulders back', descKey: 'avatar.pose.confident.desc', gradient: 'from-indigo-900 to-indigo-700' },
+  { id: 'hands-on-hips', nameKey: 'avatar.pose.handsOnHips', prompt: 'hands on hips pose', descKey: 'avatar.pose.handsOnHips.desc', gradient: 'from-amber-900 to-amber-700' },
 ];
 const SKIN_TONES = ['Light', 'Medium', 'Tan', 'Deep'];
 const HAIR_STYLES = ['Short', 'Medium', 'Long', 'Curly', 'Buzz'];
@@ -89,24 +102,26 @@ const ACCESSORIES = ['Earrings', 'Necklace', 'Watch', 'Bracelet', 'Ring'];
 const LIGHTING_STYLES = ['Studio', 'Cinematic', 'Soft Daylight', 'Neon'];
 
 const COLORWAYS = [
-  { id: 'premium-tech', name: 'Premium Tech', colors: ['#2B2D31', '#F2F2F2', '#21D4FD'] },
-  { id: 'urban-classic', name: 'Urban Classic', colors: ['#1E1E1E', '#6C7280', '#F59E0B'] },
-  { id: 'modern-soft', name: 'Modern Soft', colors: ['#0F172A', '#E5E7EB', '#10B981'] },
+  { id: 'premium-tech', name: 'Premium Tech', nameKey: 'avatar.colorway.premiumTech', colors: ['#2B2D31', '#F2F2F2', '#21D4FD'] },
+  { id: 'urban-classic', name: 'Urban Classic', nameKey: 'avatar.colorway.urbanClassic', colors: ['#1E1E1E', '#6C7280', '#F59E0B'] },
+  { id: 'modern-soft', name: 'Modern Soft', nameKey: 'avatar.colorway.modernSoft', colors: ['#0F172A', '#E5E7EB', '#10B981'] },
 ];
 
 const SCAN_STEPS = [
-  { id: 'front', label: 'Front', hint: 'Face forward' },
-  { id: 'left', label: 'Left', hint: 'Turn head left' },
-  { id: 'right', label: 'Right', hint: 'Turn head right' },
-  { id: 'up', label: 'Up', hint: 'Tilt head slightly up' },
-  { id: 'down', label: 'Down', hint: 'Tilt head slightly down' },
+  { id: 'front', labelKey: 'avatar.scan.front', hintKey: 'avatar.scan.front.hint' },
+  { id: 'left', labelKey: 'avatar.scan.left', hintKey: 'avatar.scan.left.hint' },
+  { id: 'right', labelKey: 'avatar.scan.right', hintKey: 'avatar.scan.right.hint' },
+  { id: 'up', labelKey: 'avatar.scan.up', hintKey: 'avatar.scan.up.hint' },
+  { id: 'down', labelKey: 'avatar.scan.down', hintKey: 'avatar.scan.down.hint' },
 ];
 
 const OUTFIT_BUNDLES = [
   {
     id: 'executive-classic',
     name: 'Executive Classic',
+    nameKey: 'avatar.bundle.executive',
     desc: 'Premium suit + leather shoes',
+    descKey: 'avatar.bundle.executive.desc',
     top: 'suit',
     bottom: 'pants',
     shoes: 'shoes',
@@ -117,7 +132,9 @@ const OUTFIT_BUNDLES = [
   {
     id: 'street-flex',
     name: 'Street Flex',
+    nameKey: 'avatar.bundle.street',
     desc: 'Hoodie + cargo + sneakers',
+    descKey: 'avatar.bundle.street.desc',
     top: 'hoodie',
     bottom: 'cargo',
     shoes: 'sneakers',
@@ -128,7 +145,9 @@ const OUTFIT_BUNDLES = [
   {
     id: 'modern-minimal',
     name: 'Modern Minimal',
+    nameKey: 'avatar.bundle.modern',
     desc: 'T-shirt + jeans + sneakers',
+    descKey: 'avatar.bundle.modern.desc',
     top: 'tshirt',
     bottom: 'jeans',
     shoes: 'sneakers',
@@ -139,7 +158,9 @@ const OUTFIT_BUNDLES = [
   {
     id: 'creative-artist',
     name: 'Creative Artist',
+    nameKey: 'avatar.bundle.creative',
     desc: 'Jacket + pants + boots',
+    descKey: 'avatar.bundle.creative.desc',
     top: 'jacket',
     bottom: 'pants',
     shoes: 'boots',
@@ -150,51 +171,52 @@ const OUTFIT_BUNDLES = [
 ];
 
 const TOP_ITEMS = [
-  { id: 'jacket', name: 'Jacket', desc: 'Clean tech jacket', gradient: 'from-slate-800 to-slate-600' },
-  { id: 'hoodie', name: 'Hoodie', desc: 'Street hoodie', gradient: 'from-zinc-800 to-zinc-600' },
-  { id: 'tshirt', name: 'T-shirt', desc: 'Minimal tee', gradient: 'from-gray-700 to-gray-500' },
-  { id: 'suit', name: 'Formal Suit', desc: 'Premium suit', gradient: 'from-neutral-900 to-neutral-700' },
-  { id: 'streetwear', name: 'Streetwear', desc: 'Urban fit', gradient: 'from-indigo-900 to-indigo-700' },
+  { id: 'jacket', name: 'Jacket', nameKey: 'avatar.outfit.top.jacket', desc: 'Clean tech jacket', descKey: 'avatar.outfit.top.jacket.desc', gradient: 'from-slate-800 to-slate-600' },
+  { id: 'hoodie', name: 'Hoodie', nameKey: 'avatar.outfit.top.hoodie', desc: 'Street hoodie', descKey: 'avatar.outfit.top.hoodie.desc', gradient: 'from-zinc-800 to-zinc-600' },
+  { id: 'tshirt', name: 'T-shirt', nameKey: 'avatar.outfit.top.tshirt', desc: 'Minimal tee', descKey: 'avatar.outfit.top.tshirt.desc', gradient: 'from-gray-700 to-gray-500' },
+  { id: 'suit', name: 'Formal Suit', nameKey: 'avatar.outfit.top.suit', desc: 'Premium suit', descKey: 'avatar.outfit.top.suit.desc', gradient: 'from-neutral-900 to-neutral-700' },
+  { id: 'streetwear', name: 'Streetwear', nameKey: 'avatar.outfit.top.streetwear', desc: 'Urban fit', descKey: 'avatar.outfit.top.streetwear.desc', gradient: 'from-indigo-900 to-indigo-700' },
 ];
 
 const BOTTOM_ITEMS = [
-  { id: 'jeans', name: 'Jeans', desc: 'Slim denim', gradient: 'from-blue-900 to-blue-700' },
-  { id: 'pants', name: 'Pants', desc: 'Tailored pants', gradient: 'from-stone-800 to-stone-600' },
-  { id: 'cargo', name: 'Cargo', desc: 'Utility fit', gradient: 'from-olive-900 to-olive-700' },
-  { id: 'shorts', name: 'Shorts', desc: 'Casual shorts', gradient: 'from-amber-900 to-amber-700' },
+  { id: 'jeans', name: 'Jeans', nameKey: 'avatar.outfit.bottom.jeans', desc: 'Slim denim', descKey: 'avatar.outfit.bottom.jeans.desc', gradient: 'from-blue-900 to-blue-700' },
+  { id: 'pants', name: 'Pants', nameKey: 'avatar.outfit.bottom.pants', desc: 'Tailored pants', descKey: 'avatar.outfit.bottom.pants.desc', gradient: 'from-stone-800 to-stone-600' },
+  { id: 'cargo', name: 'Cargo', nameKey: 'avatar.outfit.bottom.cargo', desc: 'Utility fit', descKey: 'avatar.outfit.bottom.cargo.desc', gradient: 'from-olive-900 to-olive-700' },
+  { id: 'shorts', name: 'Shorts', nameKey: 'avatar.outfit.bottom.shorts', desc: 'Casual shorts', descKey: 'avatar.outfit.bottom.shorts.desc', gradient: 'from-amber-900 to-amber-700' },
 ];
 
 const SHOE_ITEMS = [
-  { id: 'sneakers', name: 'Sneakers', desc: 'Sporty', gradient: 'from-emerald-900 to-emerald-700' },
-  { id: 'shoes', name: 'Shoes', desc: 'Formal leather', gradient: 'from-neutral-900 to-neutral-700' },
-  { id: 'boots', name: 'Boots', desc: 'Rugged', gradient: 'from-amber-900 to-amber-700' },
+  { id: 'sneakers', name: 'Sneakers', nameKey: 'avatar.outfit.shoes.sneakers', desc: 'Sporty', descKey: 'avatar.outfit.shoes.sneakers.desc', gradient: 'from-emerald-900 to-emerald-700' },
+  { id: 'shoes', name: 'Shoes', nameKey: 'avatar.outfit.shoes.shoes', desc: 'Formal leather', descKey: 'avatar.outfit.shoes.shoes.desc', gradient: 'from-neutral-900 to-neutral-700' },
+  { id: 'boots', name: 'Boots', nameKey: 'avatar.outfit.shoes.boots', desc: 'Rugged', descKey: 'avatar.outfit.shoes.boots.desc', gradient: 'from-amber-900 to-amber-700' },
 ];
 
 const EYEWEAR_ITEMS = [
-  { id: 'none', name: 'None', desc: 'No eyewear', gradient: 'from-gray-800 to-gray-700' },
-  { id: 'classic', name: 'Classic', desc: 'Clear frames', gradient: 'from-cyan-900 to-cyan-700' },
-  { id: 'aviator', name: 'Aviator', desc: 'Metal frame', gradient: 'from-slate-900 to-slate-700' },
-  { id: 'round', name: 'Round', desc: 'Retro round', gradient: 'from-purple-900 to-purple-700' },
-  { id: 'sport', name: 'Sport', desc: 'Active style', gradient: 'from-lime-900 to-lime-700' },
+  { id: 'none', name: 'None', nameKey: 'avatar.outfit.eyewear.none', desc: 'No eyewear', descKey: 'avatar.outfit.eyewear.none.desc', gradient: 'from-gray-800 to-gray-700' },
+  { id: 'classic', name: 'Classic', nameKey: 'avatar.outfit.eyewear.classic', desc: 'Clear frames', descKey: 'avatar.outfit.eyewear.classic.desc', gradient: 'from-cyan-900 to-cyan-700' },
+  { id: 'aviator', name: 'Aviator', nameKey: 'avatar.outfit.eyewear.aviator', desc: 'Metal frame', descKey: 'avatar.outfit.eyewear.aviator.desc', gradient: 'from-slate-900 to-slate-700' },
+  { id: 'round', name: 'Round', nameKey: 'avatar.outfit.eyewear.round', desc: 'Retro round', descKey: 'avatar.outfit.eyewear.round.desc', gradient: 'from-purple-900 to-purple-700' },
+  { id: 'sport', name: 'Sport', nameKey: 'avatar.outfit.eyewear.sport', desc: 'Active style', descKey: 'avatar.outfit.eyewear.sport.desc', gradient: 'from-lime-900 to-lime-700' },
 ];
 
 const HEADWEAR_ITEMS = [
-  { id: 'none', name: 'None', desc: 'No headwear', gradient: 'from-gray-800 to-gray-700' },
-  { id: 'cap', name: 'Cap', desc: 'Classic cap', gradient: 'from-orange-900 to-orange-700' },
-  { id: 'beanie', name: 'Beanie', desc: 'Soft beanie', gradient: 'from-pink-900 to-pink-700' },
-  { id: 'fedora', name: 'Fedora', desc: 'Elegant hat', gradient: 'from-stone-900 to-stone-700' },
-  { id: 'hood', name: 'Hood', desc: 'Hood up', gradient: 'from-violet-900 to-violet-700' },
+  { id: 'none', name: 'None', nameKey: 'avatar.outfit.headwear.none', desc: 'No headwear', descKey: 'avatar.outfit.headwear.none.desc', gradient: 'from-gray-800 to-gray-700' },
+  { id: 'cap', name: 'Cap', nameKey: 'avatar.outfit.headwear.cap', desc: 'Classic cap', descKey: 'avatar.outfit.headwear.cap.desc', gradient: 'from-orange-900 to-orange-700' },
+  { id: 'beanie', name: 'Beanie', nameKey: 'avatar.outfit.headwear.beanie', desc: 'Soft beanie', descKey: 'avatar.outfit.headwear.beanie.desc', gradient: 'from-pink-900 to-pink-700' },
+  { id: 'fedora', name: 'Fedora', nameKey: 'avatar.outfit.headwear.fedora', desc: 'Elegant hat', descKey: 'avatar.outfit.headwear.fedora.desc', gradient: 'from-stone-900 to-stone-700' },
+  { id: 'hood', name: 'Hood', nameKey: 'avatar.outfit.headwear.hood', desc: 'Hood up', descKey: 'avatar.outfit.headwear.hood.desc', gradient: 'from-violet-900 to-violet-700' },
 ];
 
 export default function AvatarBuilderPage() {
+  const { t } = useLanguage();
+  const store = useStudioStore();
   const [activeView, setActiveView] = useState<'create' | 'gallery'>('create');
   const [selectedStyle, setSelectedStyle] = useState<string>('professional');
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
-  const [generatedAvatars, setGeneratedAvatars] = useState<any[]>([]);
+  const [generatedAvatars, setGeneratedAvatars] = useState<GeneratedAvatar[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationProgress, setGenerationProgress] = useState(0);
-  const [currentAvatar, setCurrentAvatar] = useState<any | null>(null);
-  const [showUploadModal, setShowUploadModal] = useState(false);
+  const [currentAvatar, setCurrentAvatar] = useState<GeneratedAvatar | null>(null);
   const [age, setAge] = useState(28);
   const [presentation, setPresentation] = useState('Androgynous');
   const [bodyType, setBodyType] = useState('Athletic');
@@ -213,7 +235,7 @@ export default function AvatarBuilderPage() {
   const [colorway, setColorway] = useState('premium-tech');
   const [lighting, setLighting] = useState('Studio');
   const [extraDetails, setExtraDetails] = useState('');
-  const [promptSeed, setPromptSeed] = useState('Premium full-body avatar');
+  const [promptSeed, setPromptSeed] = useState('');
   const [presetName, setPresetName] = useState('');
   const [presetCategory, setPresetCategory] = useState('Professional');
   const [presetTags, setPresetTags] = useState<string[]>(['HQ']);
@@ -228,6 +250,125 @@ export default function AvatarBuilderPage() {
   const [scanStepIndex, setScanStepIndex] = useState(0);
   const [scanImages, setScanImages] = useState<string[]>([]);
   const [scanError, setScanError] = useState<string | null>(null);
+  const [savedAvatars, setSavedAvatars] = useState<Avatar[]>([]);
+  const [isLoadingAvatars, setIsLoadingAvatars] = useState(false);
+  const [avatarNameInput, setAvatarNameInput] = useState('');
+  const [saveSuccessMessage, setSaveSuccessMessage] = useState('');
+
+  // Load saved avatars from API on mount
+  useEffect(() => {
+    const loadSavedAvatars = async () => {
+      setIsLoadingAvatars(true);
+      try {
+        const headers = await getAuthHeaders();
+        const response = await fetch('/api/avatars', { headers });
+        if (response.ok) {
+          const data = await response.json();
+          setSavedAvatars(data.avatars || []);
+        }
+      } catch (error) {
+        console.error('Error loading saved avatars:', error);
+      } finally {
+        setIsLoadingAvatars(false);
+      }
+    };
+    loadSavedAvatars();
+  }, []);
+
+  // Cleanup: stop camera stream on unmount
+  useEffect(() => {
+    return () => {
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop());
+        streamRef.current = null;
+      }
+    };
+  }, []);
+
+  const presentationLabels: Record<string, string> = {
+    Feminine: t('avatar.presentation.feminine'),
+    Masculine: t('avatar.presentation.masculine'),
+    Androgynous: t('avatar.presentation.androgynous'),
+  };
+
+  const skinToneLabels: Record<string, string> = {
+    Light: t('avatar.skin.light'),
+    Medium: t('avatar.skin.medium'),
+    Tan: t('avatar.skin.tan'),
+    Deep: t('avatar.skin.deep'),
+  };
+
+  const hairStyleLabels: Record<string, string> = {
+    Short: t('avatar.hair.short'),
+    Medium: t('avatar.hair.medium'),
+    Long: t('avatar.hair.long'),
+    Curly: t('avatar.hair.curly'),
+    Buzz: t('avatar.hair.buzz'),
+  };
+
+  const hairColorLabels: Record<string, string> = {
+    Black: t('avatar.hairColor.black'),
+    Brown: t('avatar.hairColor.brown'),
+    Blonde: t('avatar.hairColor.blonde'),
+    Red: t('avatar.hairColor.red'),
+    Gray: t('avatar.hairColor.gray'),
+    White: t('avatar.hairColor.white'),
+    Blue: t('avatar.hairColor.blue'),
+  };
+
+  const eyeColorLabels: Record<string, string> = {
+    Brown: t('avatar.eyeColor.brown'),
+    Blue: t('avatar.eyeColor.blue'),
+    Green: t('avatar.eyeColor.green'),
+    Gray: t('avatar.eyeColor.gray'),
+    Amber: t('avatar.eyeColor.amber'),
+    Hazel: t('avatar.eyeColor.hazel'),
+  };
+
+  const expressionLabels: Record<string, string> = {
+    Neutral: t('avatar.expression.neutral'),
+    Smile: t('avatar.expression.smile'),
+    Serious: t('avatar.expression.serious'),
+    Confident: t('avatar.expression.confident'),
+    Friendly: t('avatar.expression.friendly'),
+  };
+
+  const accessoryLabels: Record<string, string> = {
+    Earrings: t('avatar.accessories.earrings'),
+    Necklace: t('avatar.accessories.necklace'),
+    Watch: t('avatar.accessories.watch'),
+    Bracelet: t('avatar.accessories.bracelet'),
+    Ring: t('avatar.accessories.ring'),
+  };
+
+  const lightingLabels: Record<string, string> = {
+    Studio: t('avatar.lighting.studio'),
+    Cinematic: t('avatar.lighting.cinematic'),
+    'Soft Daylight': t('avatar.lighting.softDaylight'),
+    Neon: t('avatar.lighting.neon'),
+  };
+
+  const presetCategoryLabels: Record<string, string> = {
+    Professional: t('avatar.preset.category.professional'),
+    Casual: t('avatar.preset.category.casual'),
+    Studio: t('avatar.preset.category.studio'),
+    Cinematic: t('avatar.preset.category.cinematic'),
+    Fantasy: t('avatar.preset.category.fantasy'),
+    Street: t('avatar.preset.category.street'),
+  };
+
+  const presetTagLabels: Record<string, string> = {
+    HQ: t('avatar.preset.tag.hq'),
+    Studio: t('avatar.preset.tag.studio'),
+    Street: t('avatar.preset.tag.street'),
+    Clean: t('avatar.preset.tag.clean'),
+    Futuristic: t('avatar.preset.tag.futuristic'),
+    Minimal: t('avatar.preset.tag.minimal'),
+    Warm: t('avatar.preset.tag.warm'),
+    Cool: t('avatar.preset.tag.cool'),
+  };
+
+  const suggestionLabels = SUGGESTIONS.map((key) => t(key));
 
   const toggleAccessory = (item: string) => {
     setAccessories(prev =>
@@ -403,7 +544,7 @@ export default function AvatarBuilderPage() {
         setSavedPresets(prev => [...imported, ...prev]);
       }
     } catch {
-      alert('Invalid preset file');
+      alert(t('avatar.error.invalidPreset'));
     } finally {
       if (presetImportRef.current) presetImportRef.current.value = '';
     }
@@ -416,20 +557,94 @@ export default function AvatarBuilderPage() {
   };
 
   const startFaceScan = async () => {
+    // Guard: Client-side only
+    if (typeof window === 'undefined') {
+      setScanError(t('avatar.error.clientOnly'));
+      return;
+    }
+
+    // Guard: HTTPS required (except localhost)
+    if (!window.location.protocol.startsWith('https') && !window.location.hostname.includes('localhost')) {
+      setScanError(t('avatar.error.httpsRequired') || 'Camera requires HTTPS connection');
+      return;
+    }
+
     setScanError(null);
     setScanImages([]);
     setScanStepIndex(0);
+
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      // Check if getUserMedia is available
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        setScanError(t('avatar.error.cameraNotSupported') || 'Your device does not support camera access');
+        return;
+      }
+
+      // Request camera with specific constraints for better iPad/Safari compatibility
+      const constraints = {
+        video: {
+          facingMode: 'user',
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+        },
+        audio: false,
+      };
+
+      let stream: MediaStream | null = null;
+      
+      try {
+        // Try with ideal constraints first
+        stream = await navigator.mediaDevices.getUserMedia(constraints);
+      } catch {
+        // Fallback: Try with minimal constraints for Safari
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: 'user' },
+            audio: false,
+          });
+        } catch {
+          // Last resort: Try basic video constraint
+          stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+        }
+      }
+
+      if (!stream) {
+        setScanError(t('avatar.error.cameraDenied') || 'Could not access camera');
+        return;
+      }
+
       streamRef.current = stream;
+
+      // Attach stream to video element
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
-        await videoRef.current.play();
+        
+        // Handle play promise for better error handling
+        try {
+          await videoRef.current.play();
+        } catch {
+          // Some browsers might delay play
+          setScanError(t('avatar.error.cameraPlayError') || 'Could not start camera stream');
+          stream.getTracks().forEach(track => track.stop());
+          streamRef.current = null;
+          return;
+        }
       }
+
       setIsScanning(true);
     } catch (error) {
-      setScanError('Camera access denied. Please allow camera access.');
+      const errorName = error instanceof Error ? error.name : 'UnknownError';
+      const errorMessage = error instanceof Error ? error.message : 'Camera access failed';
+      // Handle specific error types
+      if (errorName === 'NotAllowedError') {
+        setScanError(t('avatar.error.permissionDenied') || 'Camera permission was denied. Please enable it in settings.');
+      } else if (errorName === 'NotFoundError' || errorName === 'NotSupportedError') {
+        setScanError(t('avatar.error.cameraNotFound') || 'No camera device found on this device');
+      } else {
+        setScanError(t('avatar.error.cameraDenied') || 'Camera access failed. Please try again.');
+      }
       setIsScanning(false);
+      console.error('Camera error:', errorName, errorMessage);
     }
   };
 
@@ -528,8 +743,6 @@ export default function AvatarBuilderPage() {
     }, 500);
 
     try {
-      console.log('🎨 Generating avatar with prompt:', message);
-      
       // Build comprehensive prompt
       const fullPrompt = buildPrompt(message);
       const topName = getItemName(TOP_ITEMS, top);
@@ -570,12 +783,10 @@ export default function AvatarBuilderPage() {
 
       if (!response.ok) {
         const errorData = await response.json();
-        console.error('❌ API error:', errorData);
         throw new Error(errorData.error || 'Failed to generate avatar');
       }
 
       const data = await response.json();
-      console.log('✅ Avatar generated successfully!');
 
       setGenerationProgress(100);
 
@@ -588,13 +799,13 @@ export default function AvatarBuilderPage() {
 
       setCurrentAvatar({ ...newAvatar, image: data.image, isGenerating: false });
 
-    } catch (error: any) {
-      console.error('💥 Avatar generation error:', error);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : t('avatar.error.generateFailed');
       
       // Remove placeholder on error
       setGeneratedAvatars(prev => prev.filter(a => a.id !== newAvatar.id));
       
-      alert(error.message || 'Failed to generate avatar. Please check your API key and try again.');
+      alert(message);
     } finally {
       setIsGenerating(false);
       setGenerationProgress(0);
@@ -614,16 +825,15 @@ export default function AvatarBuilderPage() {
     const file = e.target.files?.[0];
     if (file) {
       if (file.size > 10 * 1024 * 1024) {
-        alert('File size must be less than 10MB');
+        alert(t('avatar.error.fileTooLarge'));
         return;
       }
       const base64 = await fileToBase64(file);
       setUploadedImage(base64);
-      setShowUploadModal(false);
     }
   };
 
-  const handleDownload = async (avatar: any) => {
+  const handleDownload = async (avatar: GeneratedAvatar) => {
     if (!avatar.image || avatar.isGenerating) return;
     
     try {
@@ -635,7 +845,7 @@ export default function AvatarBuilderPage() {
       document.body.removeChild(link);
     } catch (error) {
       console.error('Download error:', error);
-      alert('Failed to download avatar');
+      alert(t('avatar.error.downloadFailed'));
     }
   };
 
@@ -650,8 +860,8 @@ export default function AvatarBuilderPage() {
                 <User className="text-white" size={20} />
               </div>
               <div>
-                <h1 className="text-xl font-bold text-white">Avatar Builder</h1>
-                <p className="text-sm text-gray-400">AI-Powered Avatar Generation</p>
+                <h1 className="text-xl font-bold text-white">{t('avatar.builder.title')}</h1>
+                <p className="text-sm text-gray-400">{t('avatar.builder.subtitle')}</p>
               </div>
             </div>
 
@@ -662,7 +872,7 @@ export default function AvatarBuilderPage() {
                 className={activeView === 'create' ? 'bg-gradient-to-r from-purple-500 to-pink-500' : 'border-white/10'}
               >
                 <Wand2 size={16} className="mr-2" />
-                Create
+                {t('avatar.view.create')}
               </Button>
               <Button
                 variant={activeView === 'gallery' ? 'default' : 'outline'}
@@ -670,7 +880,7 @@ export default function AvatarBuilderPage() {
                 className={activeView === 'gallery' ? 'bg-gradient-to-r from-purple-500 to-pink-500' : 'border-white/10'}
               >
                 <ImageIcon size={16} className="mr-2" />
-                Gallery ({generatedAvatars.length})
+                {t('avatar.view.gallery')} ({generatedAvatars.length})
               </Button>
             </div>
           </div>
@@ -687,7 +897,7 @@ export default function AvatarBuilderPage() {
                 <Card className="p-6 bg-black/40 border-white/10">
                   <div className="flex items-center gap-2 mb-4">
                     <Sparkles className="text-purple-400" size={20} />
-                    <h3 className="text-lg font-semibold text-white">Choose Avatar Style</h3>
+                    <h3 className="text-lg font-semibold text-white">{t('avatar.styles.title')}</h3>
                   </div>
                   
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -702,8 +912,8 @@ export default function AvatarBuilderPage() {
                         }`}
                       >
                         <div className="text-3xl mb-2">{style.emoji}</div>
-                        <div className="text-sm font-semibold text-white">{style.name}</div>
-                        <div className="text-xs text-gray-400 mt-1">{style.description}</div>
+                        <div className="text-sm font-semibold text-white">{t(style.nameKey)}</div>
+                        <div className="text-xs text-gray-400 mt-1">{t(style.descriptionKey)}</div>
                       </button>
                     ))}
                   </div>
@@ -713,12 +923,12 @@ export default function AvatarBuilderPage() {
                 <Card className="p-6 bg-black/40 border-white/10">
                   <div className="flex items-center gap-2 mb-4">
                     <User className="text-cyan-400" size={20} />
-                    <h3 className="text-lg font-semibold text-white">Identity & Body</h3>
+                    <h3 className="text-lg font-semibold text-white">{t('avatar.section.identity')}</h3>
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div>
-                      <label className="text-sm text-gray-400 mb-2 block">Age: {age}</label>
+                      <label className="text-sm text-gray-400 mb-2 block">{t('avatar.label.age')}: {age}</label>
                       <Slider
                         value={[age]}
                         onValueChange={(v) => setAge(v[0])}
@@ -730,7 +940,7 @@ export default function AvatarBuilderPage() {
                     </div>
 
                     <div>
-                      <label className="text-sm text-gray-400 mb-2 block">Body Type</label>
+                      <label className="text-sm text-gray-400 mb-2 block">{t('avatar.label.bodyType')}</label>
                       <div className="grid grid-cols-2 gap-2">
                         {BODY_TYPES.map((type) => (
                           <button
@@ -742,7 +952,7 @@ export default function AvatarBuilderPage() {
                                 : 'border-white/10 text-gray-400 hover:border-white/20'
                             }`}
                           >
-                            {type}
+                            {bodyTypeLabels[type] || type}
                           </button>
                         ))}
                       </div>
@@ -750,7 +960,7 @@ export default function AvatarBuilderPage() {
                   </div>
 
                   <div className="mt-6">
-                    <label className="text-sm text-gray-400 mb-2 block">Skin Tone</label>
+                    <label className="text-sm text-gray-400 mb-2 block">{t('avatar.label.skinTone')}</label>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                       {SKIN_TONES.map((tone) => (
                         <button
@@ -762,7 +972,7 @@ export default function AvatarBuilderPage() {
                               : 'border-white/10 text-gray-400 hover:border-white/20'
                           }`}
                         >
-                          {tone}
+                          {skinToneLabels[tone] || tone}
                         </button>
                       ))}
                     </div>
@@ -770,7 +980,7 @@ export default function AvatarBuilderPage() {
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
                     <div>
-                      <label className="text-sm text-gray-400 mb-2 block">Presentation</label>
+                      <label className="text-sm text-gray-400 mb-2 block">{t('avatar.label.presentation')}</label>
                       <div className="grid grid-cols-2 gap-2">
                         {PRESENTATIONS.map((item) => (
                           <button
@@ -782,14 +992,14 @@ export default function AvatarBuilderPage() {
                                 : 'border-white/10 text-gray-400 hover:border-white/20'
                             }`}
                           >
-                            {item}
+                            {presentationLabels[item] || item}
                           </button>
                         ))}
                       </div>
                     </div>
 
                     <div>
-                      <label className="text-sm text-gray-400 mb-2 block">Pose</label>
+                      <label className="text-sm text-gray-400 mb-2 block">{t('avatar.label.pose')}</label>
                       <div className="grid grid-cols-2 gap-3">
                         {POSES.map((item) => (
                           <button
@@ -802,8 +1012,8 @@ export default function AvatarBuilderPage() {
                             }`}
                           >
                             <div className={`h-12 rounded-lg bg-gradient-to-br ${item.gradient} mb-2`} />
-                            <div className="text-sm font-semibold text-white">{item.name}</div>
-                            <div className="text-xs text-gray-400">{item.desc}</div>
+                            <div className="text-sm font-semibold text-white">{t(item.nameKey)}</div>
+                            <div className="text-xs text-gray-400">{t(item.descKey)}</div>
                           </button>
                         ))}
                       </div>
@@ -815,12 +1025,12 @@ export default function AvatarBuilderPage() {
                 <Card className="p-6 bg-black/40 border-white/10">
                   <div className="flex items-center gap-2 mb-4">
                     <Smile className="text-emerald-400" size={20} />
-                    <h3 className="text-lg font-semibold text-white">Hair & Face</h3>
+                    <h3 className="text-lg font-semibold text-white">{t('avatar.section.hairFace')}</h3>
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div>
-                      <label className="text-sm text-gray-400 mb-2 block">Hair Style</label>
+                      <label className="text-sm text-gray-400 mb-2 block">{t('avatar.label.hairStyle')}</label>
                       <div className="grid grid-cols-2 gap-2">
                         {HAIR_STYLES.map((style) => (
                           <button
@@ -832,14 +1042,14 @@ export default function AvatarBuilderPage() {
                                 : 'border-white/10 text-gray-400 hover:border-white/20'
                             }`}
                           >
-                            {style}
+                            {hairStyleLabels[style] || style}
                           </button>
                         ))}
                       </div>
                     </div>
 
                     <div>
-                      <label className="text-sm text-gray-400 mb-2 block">Hair Color</label>
+                      <label className="text-sm text-gray-400 mb-2 block">{t('avatar.label.hairColor')}</label>
                       <div className="grid grid-cols-3 gap-2">
                         {HAIR_COLORS.map((color) => (
                           <button
@@ -851,7 +1061,7 @@ export default function AvatarBuilderPage() {
                                 : 'border-white/10 text-gray-400 hover:border-white/20'
                             }`}
                           >
-                            {color}
+                            {hairColorLabels[color] || color}
                           </button>
                         ))}
                       </div>
@@ -860,7 +1070,7 @@ export default function AvatarBuilderPage() {
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
                     <div>
-                      <label className="text-sm text-gray-400 mb-2 block">Eye Color</label>
+                      <label className="text-sm text-gray-400 mb-2 block">{t('avatar.label.eyeColor')}</label>
                       <div className="grid grid-cols-3 gap-2">
                         {EYE_COLORS.map((color) => (
                           <button
@@ -872,14 +1082,14 @@ export default function AvatarBuilderPage() {
                                 : 'border-white/10 text-gray-400 hover:border-white/20'
                             }`}
                           >
-                            {color}
+                            {eyeColorLabels[color] || color}
                           </button>
                         ))}
                       </div>
                     </div>
 
                     <div>
-                      <label className="text-sm text-gray-400 mb-2 block">Expression</label>
+                      <label className="text-sm text-gray-400 mb-2 block">{t('avatar.label.expression')}</label>
                       <div className="grid grid-cols-2 gap-2">
                         {EXPRESSIONS.map((exp) => (
                           <button
@@ -891,7 +1101,7 @@ export default function AvatarBuilderPage() {
                                 : 'border-white/10 text-gray-400 hover:border-white/20'
                             }`}
                           >
-                            {exp}
+                            {expressionLabels[exp] || exp}
                           </button>
                         ))}
                       </div>
@@ -903,7 +1113,7 @@ export default function AvatarBuilderPage() {
                 <Card className="p-6 bg-black/40 border-white/10">
                   <div className="flex items-center gap-2 mb-4">
                     <Shirt className="text-yellow-400" size={20} />
-                    <h3 className="text-lg font-semibold text-white">Outfit & Accessories</h3>
+                    <h3 className="text-lg font-semibold text-white">{t('avatar.section.outfit')}</h3>
                   </div>
 
                   <div className="mb-6 flex flex-wrap gap-2">
@@ -931,12 +1141,12 @@ export default function AvatarBuilderPage() {
                       }}
                     >
                       <Download size={16} className="mr-2" />
-                      Export Outfit Pack
+                      {t('avatar.label.exportOutfit')}
                     </Button>
                   </div>
 
                   <div className="mb-6">
-                    <label className="text-sm text-gray-400 mb-2 block">Outfit Bundles</label>
+                    <label className="text-sm text-gray-400 mb-2 block">{t('avatar.label.outfitBundles')}</label>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                       {OUTFIT_BUNDLES.map((bundle) => (
                         <button
@@ -944,8 +1154,8 @@ export default function AvatarBuilderPage() {
                           onClick={() => applyOutfitBundle(bundle)}
                           className="p-4 rounded-xl border border-white/10 bg-white/5 hover:border-yellow-500/40 transition-all text-left"
                         >
-                          <div className="text-sm font-semibold text-white">{bundle.name}</div>
-                          <div className="text-xs text-gray-400 mt-1">{bundle.desc}</div>
+                          <div className="text-sm font-semibold text-white">{t(bundle.nameKey)}</div>
+                          <div className="text-xs text-gray-400 mt-1">{t(bundle.descKey)}</div>
                         </button>
                       ))}
                     </div>
@@ -953,7 +1163,7 @@ export default function AvatarBuilderPage() {
 
                   <div className="space-y-6">
                     <div>
-                      <label className="text-sm text-gray-400 mb-2 block">Top</label>
+                      <label className="text-sm text-gray-400 mb-2 block">{t('avatar.label.top')}</label>
                       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                         {TOP_ITEMS.map((item) => (
                           <button
@@ -966,15 +1176,15 @@ export default function AvatarBuilderPage() {
                             }`}
                           >
                             <div className={`h-16 rounded-lg bg-gradient-to-br ${item.gradient} mb-2`} />
-                            <div className="text-sm font-semibold text-white">{item.name}</div>
-                            <div className="text-xs text-gray-400">{item.desc}</div>
+                            <div className="text-sm font-semibold text-white">{t(item.nameKey)}</div>
+                            <div className="text-xs text-gray-400">{t(item.descKey)}</div>
                           </button>
                         ))}
                       </div>
                     </div>
 
                     <div>
-                      <label className="text-sm text-gray-400 mb-2 block">Bottom</label>
+                      <label className="text-sm text-gray-400 mb-2 block">{t('avatar.label.bottom')}</label>
                       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                         {BOTTOM_ITEMS.map((item) => (
                           <button
@@ -987,15 +1197,15 @@ export default function AvatarBuilderPage() {
                             }`}
                           >
                             <div className={`h-16 rounded-lg bg-gradient-to-br ${item.gradient} mb-2`} />
-                            <div className="text-sm font-semibold text-white">{item.name}</div>
-                            <div className="text-xs text-gray-400">{item.desc}</div>
+                            <div className="text-sm font-semibold text-white">{t(item.nameKey)}</div>
+                            <div className="text-xs text-gray-400">{t(item.descKey)}</div>
                           </button>
                         ))}
                       </div>
                     </div>
 
                     <div>
-                      <label className="text-sm text-gray-400 mb-2 block">Shoes</label>
+                      <label className="text-sm text-gray-400 mb-2 block">{t('avatar.label.shoes')}</label>
                       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                         {SHOE_ITEMS.map((item) => (
                           <button
@@ -1008,8 +1218,8 @@ export default function AvatarBuilderPage() {
                             }`}
                           >
                             <div className={`h-16 rounded-lg bg-gradient-to-br ${item.gradient} mb-2`} />
-                            <div className="text-sm font-semibold text-white">{item.name}</div>
-                            <div className="text-xs text-gray-400">{item.desc}</div>
+                            <div className="text-sm font-semibold text-white">{t(item.nameKey)}</div>
+                            <div className="text-xs text-gray-400">{t(item.descKey)}</div>
                           </button>
                         ))}
                       </div>
@@ -1017,7 +1227,7 @@ export default function AvatarBuilderPage() {
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                       <div>
-                        <label className="text-sm text-gray-400 mb-2 block">Eyewear</label>
+                        <label className="text-sm text-gray-400 mb-2 block">{t('avatar.label.eyewear')}</label>
                         <div className="grid grid-cols-2 gap-3">
                           {EYEWEAR_ITEMS.map((item) => (
                             <button
@@ -1030,15 +1240,15 @@ export default function AvatarBuilderPage() {
                               }`}
                             >
                               <div className={`h-12 rounded-lg bg-gradient-to-br ${item.gradient} mb-2`} />
-                              <div className="text-xs font-semibold text-white">{item.name}</div>
-                              <div className="text-[11px] text-gray-400">{item.desc}</div>
+                              <div className="text-xs font-semibold text-white">{t(item.nameKey)}</div>
+                              <div className="text-[11px] text-gray-400">{t(item.descKey)}</div>
                             </button>
                           ))}
                         </div>
                       </div>
 
                       <div>
-                        <label className="text-sm text-gray-400 mb-2 block">Headwear</label>
+                        <label className="text-sm text-gray-400 mb-2 block">{t('avatar.label.headwear')}</label>
                         <div className="grid grid-cols-2 gap-3">
                           {HEADWEAR_ITEMS.map((item) => (
                             <button
@@ -1051,8 +1261,8 @@ export default function AvatarBuilderPage() {
                               }`}
                             >
                               <div className={`h-12 rounded-lg bg-gradient-to-br ${item.gradient} mb-2`} />
-                              <div className="text-xs font-semibold text-white">{item.name}</div>
-                              <div className="text-[11px] text-gray-400">{item.desc}</div>
+                              <div className="text-xs font-semibold text-white">{t(item.nameKey)}</div>
+                              <div className="text-[11px] text-gray-400">{t(item.descKey)}</div>
                             </button>
                           ))}
                         </div>
@@ -1060,7 +1270,7 @@ export default function AvatarBuilderPage() {
                     </div>
 
                     <div>
-                      <label className="text-sm text-gray-400 mb-2 block">Accessories</label>
+                      <label className="text-sm text-gray-400 mb-2 block">{t('avatar.label.accessories')}</label>
                       <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
                         {ACCESSORIES.map((item) => (
                           <button
@@ -1072,7 +1282,7 @@ export default function AvatarBuilderPage() {
                                 : 'border-white/10 text-gray-400 hover:border-white/20'
                             }`}
                           >
-                            {item}
+                            {accessoryLabels[item] || item}
                           </button>
                         ))}
                       </div>
@@ -1084,7 +1294,7 @@ export default function AvatarBuilderPage() {
                 <Card className="p-6 bg-black/40 border-white/10">
                   <div className="flex items-center gap-2 mb-4">
                     <Palette className="text-pink-400" size={20} />
-                    <h3 className="text-lg font-semibold text-white">Colorway & Lighting</h3>
+                    <h3 className="text-lg font-semibold text-white">{t('avatar.section.colorway')}</h3>
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6">
@@ -1098,7 +1308,7 @@ export default function AvatarBuilderPage() {
                             : 'border-white/10 bg-white/5 hover:border-white/20'
                         }`}
                       >
-                        <div className="text-sm font-semibold text-white mb-2">{cw.name}</div>
+                        <div className="text-sm font-semibold text-white mb-2">{t(cw.nameKey)}</div>
                         <div className="flex gap-2">
                           {cw.colors.map((color) => (
                             <span
@@ -1113,7 +1323,7 @@ export default function AvatarBuilderPage() {
                   </div>
 
                   <div>
-                    <label className="text-sm text-gray-400 mb-2 block">Lighting Style</label>
+                    <label className="text-sm text-gray-400 mb-2 block">{t('avatar.label.lightingStyle')}</label>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                       {LIGHTING_STYLES.map((style) => (
                         <button
@@ -1125,7 +1335,7 @@ export default function AvatarBuilderPage() {
                               : 'border-white/10 text-gray-400 hover:border-white/20'
                           }`}
                         >
-                          {style}
+                          {lightingLabels[style] || style}
                         </button>
                       ))}
                     </div>
@@ -1136,35 +1346,35 @@ export default function AvatarBuilderPage() {
                 <Card className="p-6 bg-black/40 border-white/10">
                   <div className="flex items-center gap-2 mb-4">
                     <Wand2 className="text-blue-400" size={20} />
-                    <h3 className="text-lg font-semibold text-white">Prompt Controls</h3>
+                    <h3 className="text-lg font-semibold text-white">{t('avatar.section.prompt')}</h3>
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div>
-                      <label className="text-sm text-gray-400 mb-2 block">Prompt Seed</label>
+                      <label className="text-sm text-gray-400 mb-2 block">{t('avatar.label.promptSeed')}</label>
                       <input
                         type="text"
                         value={promptSeed}
                         onChange={(e) => setPromptSeed(e.target.value)}
                         className="w-full px-3 py-2 bg-black/20 border border-white/10 rounded-lg text-white placeholder:text-gray-500 focus:outline-none focus:border-blue-500/50"
-                        placeholder="Premium full-body avatar"
+                        placeholder={t('avatar.placeholder.promptSeed')}
                       />
-                      <p className="text-xs text-gray-500 mt-2">This is used for prompt preview only.</p>
+                      <p className="text-xs text-gray-500 mt-2">{t('avatar.hint.promptSeed')}</p>
                     </div>
 
                     <div>
-                      <label className="text-sm text-gray-400 mb-2 block">Extra Details</label>
+                      <label className="text-sm text-gray-400 mb-2 block">{t('avatar.label.extraDetails')}</label>
                       <textarea
                         value={extraDetails}
                         onChange={(e) => setExtraDetails(e.target.value)}
                         className="w-full h-24 px-3 py-2 bg-black/20 border border-white/10 rounded-lg text-white placeholder:text-gray-500 focus:outline-none focus:border-blue-500/50"
-                        placeholder="Add extra details like background, mood, or styling notes..."
+                        placeholder={t('avatar.hint.extraDetails')}
                       />
                     </div>
                   </div>
 
                   <div className="mt-4">
-                    <label className="text-sm text-gray-400 mb-2 block">Prompt Preview</label>
+                    <label className="text-sm text-gray-400 mb-2 block">{t('avatar.label.promptPreview')}</label>
                     <div className="p-3 bg-black/30 border border-white/10 rounded-lg text-xs text-gray-300 whitespace-pre-wrap">
                       {buildPrompt(promptSeed || 'premium avatar')}
                     </div>
@@ -1176,10 +1386,10 @@ export default function AvatarBuilderPage() {
                   <div className="flex items-center justify-between mb-4">
                     <div className="flex items-center gap-2">
                       <Camera className="text-cyan-400" size={20} />
-                      <h3 className="text-lg font-semibold text-white">Reference Photo (Optional)</h3>
+                      <h3 className="text-lg font-semibold text-white">{t('avatar.section.reference')}</h3>
                     </div>
                     <Badge variant="outline" className="text-xs border-cyan-500/30 text-cyan-400">
-                      Optional
+                      {t('avatar.label.referenceOptional')}
                     </Badge>
                   </div>
 
@@ -1187,7 +1397,7 @@ export default function AvatarBuilderPage() {
                     <div className="relative group">
                       <img
                         src={uploadedImage}
-                        alt="Reference"
+                        alt={t('avatar.section.reference')}
                         className="w-full h-48 object-cover rounded-lg"
                       />
                       <button
@@ -1206,8 +1416,8 @@ export default function AvatarBuilderPage() {
                         className="hidden"
                       />
                       <Upload size={32} className="text-gray-600 mb-2" />
-                      <p className="text-gray-400">Click to upload reference photo</p>
-                      <p className="text-xs text-gray-500 mt-1">JPG, PNG up to 10MB</p>
+                      <p className="text-gray-400">{t('avatar.hint.referenceUpload')}</p>
+                      <p className="text-xs text-gray-500 mt-1">{t('avatar.hint.referenceSize')}</p>
                     </label>
                   )}
                 </Card>
@@ -1217,16 +1427,24 @@ export default function AvatarBuilderPage() {
                   <div className="flex items-center justify-between mb-4">
                     <div className="flex items-center gap-2">
                       <Camera className="text-purple-400" size={20} />
-                      <h3 className="text-lg font-semibold text-white">Face Scan (Best Match)</h3>
+                      <h3 className="text-lg font-semibold text-white">{t('avatar.section.faceScan')}</h3>
                     </div>
                     <Badge variant="outline" className="text-xs border-purple-500/30 text-purple-300">
-                      Beta
+                      {t('avatar.label.faceScanBeta')}
                     </Badge>
                   </div>
 
                   {scanError && (
-                    <div className="mb-4 text-sm text-red-300 bg-red-500/10 border border-red-500/20 rounded-lg p-3">
-                      {scanError}
+                    <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 p-4">
+                      <p className="text-sm text-red-300 mb-3">{scanError}</p>
+                      <Button
+                        onClick={startFaceScan}
+                        className="w-full bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white"
+                        size="sm"
+                      >
+                        <Camera size={16} className="mr-2" />
+                        {t('avatar.label.retryScan') || 'Retry Camera'}
+                      </Button>
                     </div>
                   )}
 
@@ -1237,39 +1455,39 @@ export default function AvatarBuilderPage() {
                           <video ref={videoRef} className="w-full h-full object-cover" />
                         ) : (
                           <div className="w-full h-full flex items-center justify-center text-gray-500 text-sm">
-                            Camera preview
+                            {t('avatar.label.cameraPreview')}
                           </div>
                         )}
                       </div>
                       <div className="flex items-center justify-between mt-3">
                         <div className="text-sm text-gray-400">
-                          Step {Math.min(scanStepIndex + 1, SCAN_STEPS.length)} of {SCAN_STEPS.length}:
+                          {t('avatar.label.step')} {Math.min(scanStepIndex + 1, SCAN_STEPS.length)} {t('avatar.label.of')} {SCAN_STEPS.length}:
                           <span className="text-white ml-2">
-                            {SCAN_STEPS[Math.min(scanStepIndex, SCAN_STEPS.length - 1)].label}
+                            {t(SCAN_STEPS[Math.min(scanStepIndex, SCAN_STEPS.length - 1)].labelKey)}
                           </span>
                         </div>
                         <div className="text-xs text-gray-500">
-                          {SCAN_STEPS[Math.min(scanStepIndex, SCAN_STEPS.length - 1)].hint}
+                          {t(SCAN_STEPS[Math.min(scanStepIndex, SCAN_STEPS.length - 1)].hintKey)}
                         </div>
                       </div>
                       <div className="flex gap-2 mt-3">
                         {!isScanning ? (
                           <Button onClick={startFaceScan} className="bg-gradient-to-r from-purple-500 to-pink-500">
-                            Start Scan
+                            {t('avatar.label.startScan')}
                           </Button>
                         ) : (
                           <Button onClick={captureFaceScan} className="bg-gradient-to-r from-purple-500 to-pink-500">
-                            Capture
+                            {t('avatar.label.capture')}
                           </Button>
                         )}
                         <Button variant="outline" onClick={resetFaceScan} className="border-white/10">
-                          Reset
+                          {t('avatar.label.reset')}
                         </Button>
                       </div>
                     </div>
 
                     <div>
-                      <div className="text-sm text-gray-400 mb-2">Captured angles</div>
+                      <div className="text-sm text-gray-400 mb-2">{t('avatar.label.capturedAngles')}</div>
                       <div className="grid grid-cols-5 gap-2">
                         {SCAN_STEPS.map((step, index) => (
                           <div
@@ -1277,17 +1495,17 @@ export default function AvatarBuilderPage() {
                             className="aspect-square rounded-lg border border-white/10 bg-black/20 overflow-hidden"
                           >
                             {scanImages[index] ? (
-                              <img src={scanImages[index]} alt={step.label} className="w-full h-full object-cover" />
+                              <img src={scanImages[index]} alt={t(step.labelKey)} className="w-full h-full object-cover" />
                             ) : (
                               <div className="w-full h-full flex items-center justify-center text-[10px] text-gray-500">
-                                {step.label}
+                                {t(step.labelKey)}
                               </div>
                             )}
                           </div>
                         ))}
                       </div>
                       <p className="text-xs text-gray-500 mt-3">
-                        Face scan improves identity consistency. The first scan is used as the reference image.
+                        {t('avatar.hint.faceScan')}
                       </p>
                     </div>
                   </div>
@@ -1300,28 +1518,62 @@ export default function AvatarBuilderPage() {
                     <div className="flex items-center gap-4">
                       <Loader2 className="animate-spin text-purple-400" size={24} />
                       <div className="flex-1">
-                        <div className="text-white font-semibold mb-2">Generating your avatar...</div>
+                        <div className="text-white font-semibold mb-2">{t('avatar.label.generating')}</div>
                         <div className="w-full bg-black/20 rounded-full h-2">
                           <div 
                             className="bg-gradient-to-r from-purple-400 to-pink-500 h-2 rounded-full transition-all duration-300"
                             style={{ width: `${generationProgress}%` }}
                           />
                         </div>
-                        <div className="text-sm text-gray-300 mt-2">{generationProgress}% complete</div>
+                        <div className="text-sm text-gray-300 mt-2">{generationProgress}{t('avatar.label.complete')}</div>
                       </div>
                     </div>
                   </Card>
                 )}
 
-                {/* Chat Interface */}
-                <Card className="bg-black/40 border-white/10 h-[500px]">
-                  <ChatInterface
-                    onSendMessage={handleSendMessage}
-                    placeholder={`Describe the ${AVATAR_STYLES.find(s => s.id === selectedStyle)?.name.toLowerCase()} avatar you want...`}
-                    suggestions={SUGGESTIONS}
-                    isGenerating={isGenerating}
+                {/* Prompt Builder & Chat */}
+                <div className="space-y-4">
+                  <PromptBuilder
+                    serviceType="avatar"
+                    onApplyPrompt={(prompt) => {
+                      setPromptSeed(prompt);
+                      handleSendMessage(prompt);
+                    }}
                   />
-                </Card>
+                  <Card className="bg-black/40 border-white/10 overflow-hidden">
+                    <ChatWindow
+                      title="Avatar Assistant"
+                      serviceContext="avatar"
+                      height="md"
+                      minimizable
+                      collapsible
+                      onSendMessage={async (message, context) => {
+                        setIsChatLoading(true);
+                        try {
+                          const response = await fetch('/api/chat', {
+                            method: 'POST',
+                            headers: {
+                              'Content-Type': 'application/json',
+                              ...(await getAuthHeaders())
+                            },
+                            body: JSON.stringify({
+                              message,
+                              context,
+                              conversationId: `avatar_${Date.now()}`
+                            })
+                          });
+                          if (response.ok) {
+                            const data = await response.json();
+                            // Response is handled by ChatWindow component internally
+                          }
+                        } finally {
+                          setIsChatLoading(false);
+                        }
+                      }}
+                      isLoading={isChatLoading}
+                    />
+                  </Card>
+                </div>
               </>
             ) : (
               /* Gallery View */
@@ -1329,14 +1581,14 @@ export default function AvatarBuilderPage() {
                 {generatedAvatars.length === 0 ? (
                   <Card className="p-12 bg-black/20 border-white/10 text-center">
                     <User className="mx-auto text-gray-600 mb-4" size={48} />
-                    <h3 className="text-lg font-semibold text-white mb-2">No avatars yet</h3>
-                    <p className="text-gray-400 mb-4">Create your first avatar to get started</p>
+                    <h3 className="text-lg font-semibold text-white mb-2">{t('avatar.label.noAvatars')}</h3>
+                    <p className="text-gray-400 mb-4">{t('avatar.label.noAvatarsHint')}</p>
                     <Button
                       onClick={() => setActiveView('create')}
                       className="bg-gradient-to-r from-purple-500 to-pink-500"
                     >
                       <Wand2 size={16} className="mr-2" />
-                      Create Avatar
+                      {t('avatar.label.createAvatar')}
                     </Button>
                   </Card>
                 ) : (
@@ -1402,7 +1654,7 @@ export default function AvatarBuilderPage() {
             <Card className="p-6 bg-black/40 border-white/10">
               <h3 className="text-sm font-semibold text-gray-400 mb-4 flex items-center gap-2">
                 <Eye size={16} />
-                PREVIEW
+                {t('avatar.section.preview').toUpperCase()}
               </h3>
 
               {currentAvatar ? (
@@ -1435,7 +1687,7 @@ export default function AvatarBuilderPage() {
                         className="flex-1 bg-gradient-to-r from-purple-500 to-pink-500"
                       >
                         <Download size={16} className="mr-2" />
-                        Download
+                        {t('avatar.label.download')}
                       </Button>
                       <Button variant="outline" size="icon" className="border-white/10">
                         <Share2 size={16} />
@@ -1446,61 +1698,201 @@ export default function AvatarBuilderPage() {
               ) : (
                 <div className="text-center py-12">
                   <User className="mx-auto text-gray-600 mb-4" size={48} />
-                  <p className="text-gray-400">No avatar selected</p>
+                  <p className="text-gray-400">{t('avatar.label.noAvatarSelected')}</p>
                 </div>
               )}
             </Card>
 
+            {/* Save Avatar Panel */}
+            <Card className="p-6 bg-black/40 border-white/10">
+              <h3 className="text-sm font-semibold text-gray-400 mb-4 flex items-center gap-2">
+                <Save size={16} className="text-purple-400" />
+                {t('avatar.section.save').toUpperCase()}
+              </h3>
+              {currentAvatar && currentAvatar.image && !currentAvatar.isGenerating ? (
+                <div className="space-y-3">
+                  <input
+                    type="text"
+                    placeholder={t('avatar.label.avatarName')}
+                    value={avatarNameInput}
+                    onChange={(e) => setAvatarNameInput(e.target.value)}
+                    className="w-full px-3 py-2 bg-black/40 border border-white/10 rounded-lg text-white placeholder:text-gray-500 focus:border-purple-500 focus:outline-none"
+                  />
+                  <Button
+                    onClick={async () => {
+                      // Save avatar via API
+                      if (currentAvatar.image && avatarNameInput.trim()) {
+                        try {
+                          const headers = await getAuthHeaders();
+                          const response = await fetch('/api/avatar/save', {
+                            method: 'POST',
+                            headers,
+                            body: JSON.stringify({
+                              title: avatarNameInput.trim(),
+                              description: currentAvatar.prompt,
+                              style: currentAvatar.style,
+                              preview_image_url: currentAvatar.image
+                            })
+                          });
+                          if (response.ok) {
+                            await response.json();
+                            setSaveSuccessMessage('Avatar saved successfully!');
+                            setAvatarNameInput('');
+                            setTimeout(() => setSaveSuccessMessage(''), 3000);
+                            // Reload saved avatars list
+                            const listResponse = await fetch('/api/avatars', {
+                              headers: authToken ? { 'Authorization': `Bearer ${authToken}` } : {}
+                            });
+                            if (listResponse.ok) {
+                              const listData = await listResponse.json();
+                              setSavedAvatars(listData.avatars || []);
+                            }
+                          }
+                        } catch (error) {
+                          console.error('Error saving avatar:', error);
+                        }
+                      }
+                    }}
+                    className="w-full bg-gradient-to-r from-purple-500 to-pink-500"
+                    disabled={!avatarNameInput.trim()}
+                  >
+                    <Save size={16} className="mr-2" />
+                    {t('avatar.label.saveAvatar')}
+                  </Button>
+                  {saveSuccessMessage && (
+                    <p className="text-sm text-green-400">{saveSuccessMessage}</p>
+                  )}
+                </div>
+              ) : (
+                <p className="text-xs text-gray-500">{t('avatar.hint.selectAvatarFirst')}</p>
+              )}
+            </Card>
+
+            {/* My Avatars Panel */}
+            <Card className="p-6 bg-black/40 border-white/10">
+              <h3 className="text-sm font-semibold text-gray-400 mb-4 flex items-center gap-2">
+                <User size={16} className="text-cyan-400" />
+                {t('avatar.section.myAvatars').toUpperCase()}
+              </h3>
+              <div className="space-y-2 max-h-48 overflow-y-auto">
+                {isLoadingAvatars ? (
+                  <p className="text-xs text-gray-500">Loading...</p>
+                ) : savedAvatars.length > 0 ? (
+                  savedAvatars.map((avatar) => (
+                    <button
+                      key={avatar.id}
+                      onClick={() => {
+                        setCurrentAvatar({
+                          id: avatar.id,
+                          image: avatar.preview_image_url,
+                          prompt: avatar.title,
+                          style: avatar.style,
+                          createdAt: new Date(avatar.created_at),
+                          isGenerating: false
+                        });
+                        // Set in global store for cross-service access
+                        if (store.setAvatar) {
+                          store.setAvatar({ 
+                            id: avatar.id, 
+                            name: avatar.title,
+                            preview_url: avatar.preview_image_url,
+                            model: avatar.style,
+                            user_id: avatar.user_id
+                          });
+                        }
+                      }}
+                      className="w-full text-left p-2 rounded-lg border border-white/10 hover:border-purple-400 bg-black/20 transition-all group"
+                    >
+                      <div className="text-xs text-white font-medium truncate group-hover:text-purple-300">
+                        {avatar.title}
+                      </div>
+                      <div className="text-[10px] text-gray-500 truncate">
+                        {avatar.style} • {new Date(avatar.created_at).toLocaleDateString()}
+                      </div>
+                    </button>
+                  ))
+                ) : (
+                  <p className="text-xs text-gray-500">{t('avatar.hint.noSavedAvatars')}</p>
+                )}
+              </div>
+            </Card>
+
+            {/* Talk Panel */}
+            <Card className="p-6 bg-black/40 border-white/10">
+              <h3 className="text-sm font-semibold text-gray-400 mb-4 flex items-center gap-2">
+                <Music size={16} className="text-pink-400" />
+                {t('avatar.section.talk').toUpperCase()}
+              </h3>
+              <div className="space-y-3">
+                <textarea
+                  placeholder={t('avatar.hint.avatarSpeech')}
+                  rows={4}
+                  className="w-full px-3 py-2 bg-black/40 border border-white/10 rounded-lg text-white placeholder:text-gray-500 focus:border-pink-500 focus:outline-none text-sm resize-none"
+                />
+                <Button
+                  className="w-full bg-gradient-to-r from-pink-500 to-purple-500"
+                  disabled>
+                  <Loader2 size={16} className="mr-2" />
+                  {t('avatar.label.generateSpeech')}
+                </Button>
+                <p className="text-[10px] text-gray-500">{t('avatar.hint.ttsComingSoon')}</p>
+              </div>
+            </Card>
+
             {/* Quick Tips */}
             <Card className="p-6 bg-black/40 border-white/10">
-              <h3 className="text-sm font-semibold text-gray-400 mb-4">TIPS FOR BEST RESULTS</h3>
+              <h3 className="text-sm font-semibold text-gray-400 mb-4">{t('avatar.section.tips').toUpperCase()}</h3>
               <div className="space-y-3 text-sm text-gray-400">
                 <div className="flex items-start gap-2">
                   <Check size={16} className="text-green-400 flex-shrink-0 mt-0.5" />
-                  <span>Be specific about desired features and style</span>
+                  <span>{t('avatar.tips.1')}</span>
                 </div>
                 <div className="flex items-start gap-2">
                   <Check size={16} className="text-green-400 flex-shrink-0 mt-0.5" />
-                  <span>Reference photo improves results (optional)</span>
+                  <span>{t('avatar.tips.2')}</span>
                 </div>
                 <div className="flex items-start gap-2">
                   <Check size={16} className="text-green-400 flex-shrink-0 mt-0.5" />
-                  <span>Try different styles for variety</span>
+                  <span>{t('avatar.tips.3')}</span>
                 </div>
                 <div className="flex items-start gap-2">
                   <Check size={16} className="text-green-400 flex-shrink-0 mt-0.5" />
-                  <span>Include details like clothing, background</span>
+                  <span>{t('avatar.tips.4')}</span>
                 </div>
               </div>
             </Card>
 
             {/* Preset Manager */}
             <Card className="p-6 bg-black/40 border-white/10">
-              <h3 className="text-sm font-semibold text-gray-400 mb-4">PRESET MANAGER</h3>
+              <h3 className="text-sm font-semibold text-gray-400 mb-4">{t('avatar.section.presets').toUpperCase()}</h3>
 
               <div className="space-y-3">
                 <div className="grid grid-cols-2 gap-2">
                   <div>
-                    <label className="text-xs text-gray-500 mb-1 block">Filter Category</label>
+                    <label className="text-xs text-gray-500 mb-1 block">{t('avatar.label.filterCategory')}</label>
                     <select
                       value={presetCategoryFilter}
                       onChange={(e) => setPresetCategoryFilter(e.target.value)}
                       className="w-full px-2 py-2 bg-black/20 border border-white/10 rounded-lg text-xs text-white"
                     >
                       {['All', ...PRESET_CATEGORIES].map(item => (
-                        <option key={item} value={item}>{item}</option>
+                        <option key={item} value={item}>
+                          {item === 'All' ? t('avatar.label.all') : (presetCategoryLabels[item] || item)}
+                        </option>
                       ))}
                     </select>
                   </div>
                   <div>
-                    <label className="text-xs text-gray-500 mb-1 block">Filter Tag</label>
+                    <label className="text-xs text-gray-500 mb-1 block">{t('avatar.label.filterTag')}</label>
                     <select
                       value={presetTagFilter}
                       onChange={(e) => setPresetTagFilter(e.target.value)}
                       className="w-full px-2 py-2 bg-black/20 border border-white/10 rounded-lg text-xs text-white"
                     >
                       {['All', ...PRESET_TAGS].map(item => (
-                        <option key={item} value={item}>{item}</option>
+                        <option key={item} value={item}>
+                          {item === 'All' ? t('avatar.label.all') : (presetTagLabels[item] || item)}
+                        </option>
                       ))}
                     </select>
                   </div>
@@ -1511,19 +1903,19 @@ export default function AvatarBuilderPage() {
                     value={presetName}
                     onChange={(e) => setPresetName(e.target.value)}
                     className="flex-1 px-3 py-2 bg-black/20 border border-white/10 rounded-lg text-white placeholder:text-gray-500 focus:outline-none focus:border-purple-500/50"
-                    placeholder="Preset name"
+                    placeholder={t('avatar.label.presetName')}
                   />
                   <Button
                     onClick={handleSavePreset}
                     className="bg-gradient-to-r from-purple-500 to-pink-500"
                   >
                     <Save size={16} className="mr-2" />
-                    Save
+                    {t('avatar.label.save')}
                   </Button>
                 </div>
 
                 <div>
-                  <label className="text-xs text-gray-500 mb-2 block">Category</label>
+                  <label className="text-xs text-gray-500 mb-2 block">{t('avatar.label.category')}</label>
                   <div className="grid grid-cols-3 gap-2">
                     {PRESET_CATEGORIES.map((item) => (
                       <button
@@ -1535,14 +1927,14 @@ export default function AvatarBuilderPage() {
                             : 'border-white/10 text-gray-400 hover:border-white/20'
                         }`}
                       >
-                        {item}
+                        {presetCategoryLabels[item] || item}
                       </button>
                     ))}
                   </div>
                 </div>
 
                 <div>
-                  <label className="text-xs text-gray-500 mb-2 block">Tags</label>
+                  <label className="text-xs text-gray-500 mb-2 block">{t('avatar.label.tags')}</label>
                   <div className="flex flex-wrap gap-2">
                     {PRESET_TAGS.map((tag) => (
                       <button
@@ -1554,7 +1946,7 @@ export default function AvatarBuilderPage() {
                             : 'border-white/10 text-gray-400 hover:border-white/20'
                         }`}
                       >
-                        {tag}
+                        {presetTagLabels[tag] || tag}
                       </button>
                     ))}
                   </div>
@@ -1567,7 +1959,7 @@ export default function AvatarBuilderPage() {
                     className="border-white/10 flex-1"
                   >
                     <Download size={16} className="mr-2" />
-                    Export
+                    {t('avatar.label.export')}
                   </Button>
                   <Button
                     variant="outline"
@@ -1575,7 +1967,7 @@ export default function AvatarBuilderPage() {
                     className="border-white/10 flex-1"
                   >
                     <Upload size={16} className="mr-2" />
-                    Import
+                    {t('avatar.label.import')}
                   </Button>
                   <input
                     ref={presetImportRef}
@@ -1589,7 +1981,7 @@ export default function AvatarBuilderPage() {
 
               <div className="mt-4 space-y-2 max-h-48 overflow-y-auto">
                 {savedPresets.length === 0 ? (
-                  <p className="text-xs text-gray-500">No presets saved yet.</p>
+                  <p className="text-xs text-gray-500">{t('avatar.label.noPresets')}</p>
                 ) : (
                   savedPresets
                     .filter(preset =>
@@ -1610,12 +2002,14 @@ export default function AvatarBuilderPage() {
                         >
                           {preset.name}
                         </button>
-                        <p className="text-[11px] text-gray-500">{preset.category}</p>
+                        <p className="text-[11px] text-gray-500">
+                          {presetCategoryLabels[preset.category] || preset.category}
+                        </p>
                         {preset.tags && preset.tags.length > 0 && (
                           <div className="flex flex-wrap gap-1 mt-1">
                             {preset.tags.map(tag => (
                               <span key={tag} className="text-[10px] text-purple-200 border border-purple-500/20 rounded px-1">
-                                {tag}
+                                {presetTagLabels[tag] || tag}
                               </span>
                             ))}
                           </div>
@@ -1645,14 +2039,14 @@ export default function AvatarBuilderPage() {
 
             {/* Stats */}
             <Card className="p-6 bg-black/40 border-white/10">
-              <h3 className="text-sm font-semibold text-gray-400 mb-4">STATISTICS</h3>
+              <h3 className="text-sm font-semibold text-gray-400 mb-4">{t('avatar.section.stats').toUpperCase()}</h3>
               <div className="space-y-3">
                 <div className="flex justify-between items-center">
-                  <span className="text-gray-400 text-sm">Total Avatars</span>
+                  <span className="text-gray-400 text-sm">{t('avatar.label.totalAvatars')}</span>
                   <span className="text-white font-semibold">{generatedAvatars.length}</span>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className="text-gray-400 text-sm">This Month</span>
+                  <span className="text-gray-400 text-sm">{t('avatar.label.thisMonth')}</span>
                   <span className="text-white font-semibold">{generatedAvatars.filter(a => {
                     const now = new Date();
                     return a.createdAt.getMonth() === now.getMonth() && 
@@ -1660,10 +2054,12 @@ export default function AvatarBuilderPage() {
                   }).length}</span>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className="text-gray-400 text-sm">Favorite Style</span>
+                  <span className="text-gray-400 text-sm">{t('avatar.label.favoriteStyle')}</span>
                   <span className="text-white font-semibold capitalize">
                     {generatedAvatars.length > 0 
-                      ? generatedAvatars[0].style 
+                      ? (AVATAR_STYLES.find(s => s.id === generatedAvatars[0].style)?.nameKey
+                        ? t(AVATAR_STYLES.find(s => s.id === generatedAvatars[0].style)!.nameKey)
+                        : generatedAvatars[0].style)
                       : '-'}
                   </span>
                 </div>

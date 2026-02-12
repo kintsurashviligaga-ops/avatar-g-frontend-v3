@@ -5,7 +5,7 @@ import { IdentityProvider } from "@/lib/identity/IdentityContext";
 import { LanguageProvider } from "@/lib/i18n/LanguageContext";
 import { ToastProvider } from "@/components/ui/Toast";
 import GlobalChatbot from "@/components/GlobalChatbot";
-import Navigation from "@/components/Navigation";
+import { Navbar, Footer } from "@/components/layout/AppLayout";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -52,8 +52,18 @@ export default function RootLayout({
         <IdentityProvider>
           <LanguageProvider>
             <ToastProvider>
-              <Navigation />
-              {children}
+              {/* Global Navigation */}
+              <Navbar />
+              
+              {/* Main Content */}
+              <main className="pt-20">
+                {children}
+              </main>
+              
+              {/* Global Footer */}
+              <Footer />
+              
+              {/* Global AI Assistant */}
               <GlobalChatbot />
             </ToastProvider>
           </LanguageProvider>

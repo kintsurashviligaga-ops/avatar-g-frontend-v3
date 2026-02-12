@@ -19,7 +19,7 @@ interface GenerationStats {
   total: number;
   today: number;
   byType: Record<string, number>;
-  recent: any[];
+  recent: unknown[];
 }
 
 export default function OrbitalDashboardClient() {

@@ -1,0 +1,485 @@
+{
+  "audit_date": "2026-02-11",
+  "application": "Avatar G Frontend v3",
+  "overall_status": "CRITICAL - Not Production Ready",
+  "total_issues": 47,
+  
+  "critical_issues": [
+    {
+      "id": "CRITICAL-001",
+      "severity": "CRITICAL",
+      "category": "API Security",
+      "issue": "Error messages expose internal details to clients",
+      "files": [
+        "app/api/avatar/generate/route.ts:99",
+        "app/api/music/generate/route.ts:170",
+        "app/api/generate/video/route.ts:45",
+        "app/api/image-generator/route.ts:36"
+      ],
+      "description": "API routes return error.message and error.stack directly in responses. Example: returning 'details: error instanceof Error ? error.message : 'Unknown error'' exposes internal error details.",
+      "impact": "Attackers can gather information about system internals, database structure, and service configuration",
+      "proof": "In app/api/avatar/generate/route.ts line 99, details field includes raw error messages",
+      "remediation": "Sanitize all error responses. Log full errors server-side only, return generic messages to clients",
+      "cves": ["CWE-209", "CWE-532"]
+    },
+    {
+      "id": "CRITICAL-002",
+      "severity": "CRITICAL",
+      "category": "Input Validation",
+      "issue": "API routes lack schema validation on user inputs",
+      "files": [
+        "app/api/groq/route.ts:7-9",
+        "app/api/openrouter/route.ts:7-9",
+        "app/api/xai/route.ts:6",
+        "app/api/image-generator/route.ts:5-6",
+        "app/api/video-generator/route.ts:5-7"
+      ],
+      "description": "API routes use minimal validation: only checking if message exists with no schema validation, length limits, or type checking. No Zod schema, no request validation middleware.",
+      "impact": "Injection attacks, malformed data causing crashes, DoS via large payloads, SQL injection risk in prompts",
+      "proof": "app/api/groq/route.ts: const { message } = await req.json(); if (!message) ... - only blocks empty, not large or malicious inputs",
+      "remediation": "Implement Zod schema validation for all API inputs. Add max length, format, and content validation",
+      "cves": ["CWE-20", "CWE-400"]
+    },
+    {
+      "id": "CRITICAL-003",
+      "severity": "CRITICAL",
+      "category": "DoS Vulnerability",
+      "issue": "Width/height parameters allow unbounded values in image/video generation",
+      "files": [
+        "app/api/image-generator/route.ts:5",
+        "app/api/video-generator/route.ts:5-8",
+        "app/api/avatar/generate/route.ts:130-131"
+      ],
+      "description": "Parameters like width, height, duration accept user input without range validation. Attacker can specify extremely large values (e.g., width=1000000, height=1000000) causing resource exhaustion.",
+      "impact": "Denial of Service attacks exhausting GPU/memory, API rate limiting bypass, service crash",
+      "proof": "video-generator/route.ts: 'duration: 4' is default but code accepts unvalidated input from body",
+      "remediation": "Enforce maximum values: width/height <= 4096 pixels, duration <= 60 seconds. Add resource quota enforcement",
+      "cves": ["CWE-400"]
+    },
+    {
+      "id": "CRITICAL-004",
+      "severity": "CRITICAL",
+      "category": "Error Handling",
+      "issue": "Missing error boundaries in root layout",
+      "files": ["app/layout.tsx"],
+      "description": "Root layout has no error.tsx or error boundary. Unhandled errors in any component will crash the entire application with potentially exposed error details.",
+      "impact": "Unhandled errors propagate to users, potential error details leakage, poor UX, possible security info disclosure",
+      "proof": "app/layout.tsx has no error boundary component wrapping children",
+      "remediation": "Create app/error.tsx with React error boundary. Create app/global-error.tsx for root-level errors",
+      "cves": ["CWE-391"]
+    },
+    {
+      "id": "CRITICAL-005",
+      "severity": "CRITICAL",
+      "category": "Database Access",
+      "issue": "Unvalidated user input passed directly to database queries",
+      "files": [
+        "app/api/avatars/route.ts:50-53",
+        "app/api/jobs/[id]/route.ts"
+      ],
+      "description": "URL parameters like 'sort', 'dir', 'limit' are parsed and used in database queries without validation against whitelist",
+      "impact": "SQL injection via sort column names, order direction manipulation, resource exhaustion",
+      "proof": "app/api/avatars/route.ts: const sortBy = url.searchParams.get('sort') || 'created_at'; then used in query construction",
+      "remediation": "Whitelist allowed sort columns. Validate sortBy against allowed values: ['created_at', 'title', 'updated_at']",
+      "cves": ["CWE-89"]
+    }
+  ],
+
+  "medium_issues": [
+    {
+      "id": "MEDIUM-001",
+      "severity": "HIGH",
+      "category": "Production Code Quality",
+      "issue": "Console.log/error statements in production code",
+      "files": [
+        "app/api/avatar/generate/route.ts:56,78,94",
+        "app/api/music/generate/route.ts:170",
+        "lib/providers/platform-factory.ts:77,80,83,100,108,112",
+        "lib/auth/client.ts:28,34,80,86",
+        "lib/ai/fallbackClient.ts:160,162,165"
+      ],
+      "description": "Multiple console.log and console.error calls throughout codebase. In production, these create performance overhead and may leak information in server logs.",
+      "impact": "Performance degradation, information leakage in logs, verbose error traces",
+      "remediation": "Remove all console.log from production. Use structured logging (Winston, Pino) for server-side logging",
+      "cves": ["CWE-532"]
+    },
+    {
+      "id": "MEDIUM-002",
+      "severity": "HIGH",
+      "category": "API Validation",
+      "issue": "Missing request method validation",
+      "files": [
+        "app/api/avatars/route.ts:18",
+        "app/api/video-generator/route.ts:33-51"
+      ],
+      "description": "Some routes support both GET and POST but don't explicitly validate request method. Could allow unexpected method execution.",
+      "impact": "Potential for HTTP method confusion attacks, unexpected behavior",
+      "remediation": "Explicitly validate request method at route entry point",
+      "cves": ["CWE-20"]
+    },
+    {
+      "id": "MEDIUM-003",
+      "severity": "HIGH",
+      "category": "External API Integration",
+      "issue": "No timeout handling on external API calls",
+      "files": [
+        "app/api/groq/route.ts:10-20",
+        "app/api/openrouter/route.ts:10-23",
+        "app/api/xai/route.ts:18-26",
+        "app/api/image-generator/route.ts:9-23",
+        "app/api/video-generator/route.ts:10-24"
+      ],
+      "description": "fetch() calls to external APIs have no timeout specified. Default Node.js timeout is 2 minutes, causing hanging requests.",
+      "impact": "Slow client requests, resource exhaustion, poor user experience",
+      "remediation": "Add AbortController with timeout: const controller = new AbortController(); setTimeout(() => controller.abort(), 30000);",
+      "cves": ["CWE-1071"]
+    },
+    {
+      "id": "MEDIUM-004",
+      "severity": "HIGH",
+      "category": "Input Validation",
+      "issue": "User input passed directly to external APIs without sanitization",
+      "files": [
+        "app/api/groq/route.ts:20",
+        "app/api/openrouter/route.ts:22",
+        "app/api/xai/route.ts:24",
+        "app/api/image-generator/route.ts:19",
+        "app/api/video-generator/route.ts:17"
+      ],
+      "description": "User 'message' and 'prompt' values are passed directly to LLM API calls without sanitization or content filtering",
+      "impact": "Prompt injection attacks, jailbreaking AI models, content policy violations",
+      "remediation": "Add prompt validation and sanitization. Filter for known injection patterns",
+      "cves": ["CWE-400"]
+    },
+    {
+      "id": "MEDIUM-005",
+      "severity": "MEDIUM",
+      "category": "Authentication",
+      "issue": "Inconsistent auth implementation across routes",
+      "files": [
+        "app/api/avatar/generate/route.ts:16-21",
+        "app/api/music/generate/route.ts:38-50",
+        "app/api/voice/upload/route.ts:16-21"
+      ],
+      "description": "Some routes use session.auth.getSession() while others use bearer token with auth.getUser(token). No consistent auth middleware.",
+      "impact": "Inconsistent security posture, potential for auth bypass in future maintainers",
+      "remediation": "Implement centralized auth middleware for all protected routes",
+      "cves": ["CWE-287"]
+    },
+    {
+      "id": "MEDIUM-006",
+      "severity": "MEDIUM",
+      "category": "Missing Features",
+      "issue": "No rate limiting on API endpoints",
+      "files": ["app/api/*"],
+      "description": "All API routes lack rate limiting. Attackers can spam requests without restriction.",
+      "impact": "API abuse, DoS attacks, infrastructure cost abuse",
+      "remediation": "Implement rate limiting middleware (e.g., Upstash, Redis, simple memory-based)",
+      "cves": ["CWE-770"]
+    },
+    {
+      "id": "MEDIUM-007",
+      "severity": "MEDIUM",
+      "category": "Error Handling",
+      "issue": "Unhandled promise rejections in async operations",
+      "files": [
+        "app/api/avatar/generate/route.ts:79",
+        "app/api/music/generate/route.ts:262"
+      ],
+      "description": "Error in job creation is logged but not thrown (line 79). Async operations may fail silently.",
+      "impact": "Silent failures, data inconsistency, difficult debugging",
+      "remediation": "Throw errors or ensure all critical operations complete successfully before returning response",
+      "cves": ["CWE-390"]
+    }
+  ],
+
+  "medium_security_issues": [
+    {
+      "id": "MINOR-001",
+      "severity": "MEDIUM",
+      "category": "Response Handling",
+      "issue": "Multiple error response formats inconsistently used",
+      "files": [
+        "app/api/avatar/generate/route.ts:99-100",
+        "app/api/groq/route.ts:30",
+        "app/api/image-generator/route.ts:36"
+      ],
+      "description": "Different routes return different error response formats. Some include 'details', some include 'code'.",
+      "impact": "Client-side error handling complexity, inconsistent API contract",
+      "remediation": "Standardize error response format: {error: string, code: string, statusCode: number}",
+      "cves": []
+    },
+    {
+      "id": "MINOR-002",
+      "severity": "MEDIUM",
+      "category": "Data Validation",
+      "issue": "Missing validation on URL parameters",
+      "files": [
+        "app/api/avatars/route.ts:50-53",
+        "app/api/video-generator/route.ts:39"
+      ],
+      "description": "parseInt() called on URL params without validation could produce NaN or fail silently",
+      "impact": "Unexpected behavior, potential application errors",
+      "remediation": "Use Number.parseInt with validation and default to safe values",
+      "cves": ["CWE-20"]
+    },
+    {
+      "id": "MINOR-003",
+      "severity": "MEDIUM",
+      "category": "Type Safety",
+      "issue": "Unvalidated JSON response parsing",
+      "files": [
+        "app/api/groq/route.ts:26",
+        "app/api/openrouter/route.ts:26",
+        "app/api/xai/route.ts:26"
+      ],
+      "description": "External API responses parsed without checking structure. Using optional chaining but no schema validation.",
+      "impact": "Unexpected null/undefined values breaking client code",
+      "remediation": "Add Zod schema validation for external API responses",
+      "cves": []
+    }
+  ],
+
+  "environment_variables": {
+    "properly_scoped": [
+      "NEXT_PUBLIC_SUPABASE_URL (public)",
+      "NEXT_PUBLIC_SUPABASE_ANON_KEY (public)",
+      "NEXT_PUBLIC_FRONTEND_ORIGIN (public)",
+      "NEXT_PUBLIC_MOCK_MODE (public)"
+    ],
+    "server_side_only": [
+      "SUPABASE_SERVICE_ROLE_KEY (correctly server-side only)",
+      "STABILITY_API_KEY (correctly server-side only)",
+      "RUNWAY_API_KEY (correctly server-side only)",
+      "OPENROUTER_API_KEY (correctly server-side only)",
+      "ELEVENLABS_API_KEY (correctly server-side only)",
+      "R2_SECRET_ACCESS_KEY (correctly server-side only)"
+    ],
+    "issues": []
+  },
+
+  "api_routes_without_full_validation": [
+    {
+      "route": "POST /api/groq",
+      "missing": ["Schema validation", "Length limits", "Rate limiting", "Timeout"],
+      "has_auth": false
+    },
+    {
+      "route": "POST /api/openrouter",
+      "missing": ["Schema validation", "Length limits", "Rate limiting", "Timeout"],
+      "has_auth": false
+    },
+    {
+      "route": "POST /api/xai",
+      "missing": ["Schema validation", "Length limits", "Rate limiting", "Timeout"],
+      "has_auth": false
+    },
+    {
+      "route": "POST /api/image-generator",
+      "missing": ["Schema validation", "Width/height bounds", "Rate limiting", "Timeout"],
+      "has_auth": false
+    },
+    {
+      "route": "POST /api/video-generator",
+      "missing": ["Schema validation", "Duration bounds", "Rate limiting", "Timeout"],
+      "has_auth": false
+    },
+    {
+      "route": "GET /api/avatars",
+      "missing": ["Sort column whitelist", "Rate limiting"],
+      "has_auth": true
+    },
+    {
+      "route": "GET /api/jobs/[id]",
+      "missing": ["Authorization check for job ownership"],
+      "has_auth": true
+    }
+  ],
+
+  "security_concerns": [
+    {
+      "concern": "No CSRF protection visible on state-changing operations",
+      "severity": "HIGH",
+      "files": ["app/api/*"],
+      "remediation": "Add CSRF token validation or use SameSite cookies"
+    },
+    {
+      "concern": "API responses may contain sensitive user IDs and metadata",
+      "severity": "MEDIUM",
+      "files": ["app/api/jobs/[id]/route.ts"],
+      "remediation": "Verify proper authorization checks on all response data"
+    },
+    {
+      "concern": "No request size limits specified",
+      "severity": "MEDIUM",
+      "files": ["app/api/*"],
+      "remediation": "Set maxDuration and size limits in route.ts files"
+    },
+    {
+      "concern": "File upload endpoints may accept any MIME type",
+      "severity": "MEDIUM",
+      "files": ["app/api/voice/upload/route.ts"],
+      "remediation": "Validate MIME types and file extensions on upload"
+    },
+    {
+      "concern": "No visible CORS configuration",
+      "severity": "MEDIUM",
+      "files": ["middleware.ts", "app/api/*"],
+      "remediation": "Implement strict CORS policies in middleware"
+    }
+  ],
+
+  "console_log_locations": [
+    "app/api/avatar/generate/route.ts: lines 56, 78, 94, 171, 174",
+    "app/api/music/generate/route.ts: lines 170, 185",
+    "lib/providers/platform-factory.ts: lines 77, 80, 83, 100, 108, 112, 121, 124",
+    "lib/providers/factory.ts: lines 42, 45, 48, 53, 57, 61, 65",
+    "lib/auth/client.ts: lines 28, 34, 80, 86",
+    "lib/ai/fallbackClient.ts: lines 160, 162, 165",
+    "lib/ai/errorHandler.ts: line 14",
+    "hooks/useVoiceInput.ts: line 93",
+    "lib/storage/index.ts: line 31"
+  ],
+
+  "missing_error_boundaries": [
+    {
+      "location": "app/layout.tsx",
+      "impact": "No error boundary at root level - unhandled errors crash entire app",
+      "fix_required": "Create app/error.tsx and app/global-error.tsx"
+    },
+    {
+      "location": "Various page components",
+      "impact": "Individual page errors not caught gracefully",
+      "fix_required": "Add error.tsx to major route segments"
+    }
+  ],
+
+  "files_with_issues": {
+    "app/api/avatar/generate/route.ts": [
+      "CRITICAL-001: Error details exposed",
+      "MEDIUM-001: Inconsistent error format",
+      "MEDIUM-007: Unhandled job error",
+      "MINOR: Console.error calls"
+    ],
+    "app/api/groq/route.ts": [
+      "CRITICAL-002: No schema validation",
+      "MEDIUM-003: No timeout handling",
+      "MEDIUM-004: Unvalidated prompt input"
+    ],
+    "app/api/openrouter/route.ts": [
+      "CRITICAL-002: No schema validation",
+      "MEDIUM-003: No timeout handling",
+      "MEDIUM-004: Unvalidated prompt input"
+    ],
+    "app/api/xai/route.ts": [
+      "CRITICAL-002: No schema validation",
+      "MEDIUM-003: No timeout handling",
+      "MEDIUM-004: Unvalidated prompt input"
+    ],
+    "app/api/image-generator/route.ts": [
+      "CRITICAL-002: No schema validation",
+      "CRITICAL-003: Unbounded width/height",
+      "MEDIUM-003: No timeout handling",
+      "MEDIUM-004: Unvalidated prompt"
+    ],
+    "app/api/video-generator/route.ts": [
+      "CRITICAL-002: No schema validation",
+      "CRITICAL-003: Unbounded duration parameter",
+      "MEDIUM-002: Missing request method validation on GET",
+      "MEDIUM-003: No timeout handling"
+    ],
+    "app/api/avatars/route.ts": [
+      "CRITICAL-005: Sort column not whitelisted",
+      "MEDIUM-002: Missing request method validation"
+    ],
+    "app/layout.tsx": [
+      "CRITICAL-004: Missing error boundary"
+    ],
+    "lib/providers/platform-factory.ts": [
+      "MEDIUM-001: Console.log in production code"
+    ],
+    "lib/auth/client.ts": [
+      "MEDIUM-001: Console.error in production"
+    ]
+  },
+
+  "recommendations": [
+    {
+      "priority": "P0",
+      "action": "Implement Zod schema validation for ALL API inputs",
+      "timeline": "Immediate",
+      "effort": "16 hours"
+    },
+    {
+      "priority": "P0",
+      "action": "Sanitize all error responses - return generic messages only",
+      "timeline": "Immediate",
+      "effort": "8 hours"
+    },
+    {
+      "priority": "P0",
+      "action": "Add bounds validation on dimension parameters (width, height, duration)",
+      "timeline": "Immediate",
+      "effort": "4 hours"
+    },
+    {
+      "priority": "P0",
+      "action": "Create error boundaries in layout.tsx and major route segments",
+      "timeline": "Immediate",
+      "effort": "6 hours"
+    },
+    {
+      "priority": "P1",
+      "action": "Implement rate limiting on all API endpoints",
+      "timeline": "Within 1 week",
+      "effort": "12 hours"
+    },
+    {
+      "priority": "P1",
+      "action": "Add timeout handling to all external API calls",
+      "timeline": "Within 1 week",
+      "effort": "8 hours"
+    },
+    {
+      "priority": "P1",
+      "action": "Replace console.log with structured logging",
+      "timeline": "Within 2 weeks",
+      "effort": "12 hours"
+    },
+    {
+      "priority": "P1",
+      "action": "Implement centralized auth middleware",
+      "timeline": "Within 2 weeks",
+      "effort": "10 hours"
+    },
+    {
+      "priority": "P2",
+      "action": "Add CORS configuration in middleware",
+      "timeline": "Within 1 month",
+      "effort": "4 hours"
+    },
+    {
+      "priority": "P2",
+      "action": "Validate MIME types on file uploads",
+      "timeline": "Within 1 month",
+      "effort": "6 hours"
+    }
+  ],
+
+  "deployment_blockers": [
+    "Error details exposed in responses (CRITICAL-001)",
+    "No API input validation (CRITICAL-002)",
+    "DoS vulnerability via unbounded parameters (CRITICAL-003)",
+    "Missing error boundaries (CRITICAL-004)",
+    "SQL injection risk in database queries (CRITICAL-005)"
+  ],
+
+  "estimated_fix_time": {
+    "critical_fixes": "40 hours",
+    "medium_fixes": "48 hours",
+    "minor_fixes": "20 hours",
+    "total_estimated": "108 hours (3 weeks for 1 developer)"
+  },
+
+  "production_readiness": "NOT PRODUCTION READY - Critical security issues must be resolved before deployment"
+}

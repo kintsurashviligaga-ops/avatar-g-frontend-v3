@@ -6,7 +6,7 @@ import {
   Send, Mic, MicOff, Bot, User, X, Minimize2, Maximize2,
   Paperclip, Image as ImageIcon, Sparkles, Loader2
 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+
 import { useIdentityStore } from '@/store/identity-store';
 
 interface Message {

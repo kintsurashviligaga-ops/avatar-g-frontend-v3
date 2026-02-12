@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { motion } from "framer-motion";
@@ -15,21 +16,23 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { useIdentity } from "@/lib/identity/IdentityContext";
+import { useLanguage } from "@/lib/i18n/LanguageContext";
 
 export default function Navigation() {
   const pathname = usePathname();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const { globalAvatarId, verifyIdentity } = useIdentity();
+  const { language, setLanguage, t } = useLanguage();
   
   const hasIdentity = verifyIdentity();
 
   const navItems = [
-    { href: "/", label: "Home", icon: Home },
-    { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-    { href: "/services/avatar-builder", label: "Avatar", icon: User },
-    { href: "/services/media-production", label: "Video", icon: Film },
-    { href: "/services/photo-studio", label: "Images", icon: Camera },
-    { href: "/services/music-studio", label: "Music", icon: Music },
+    { href: "/", label: t("nav.home"), icon: Home },
+    { href: "/dashboard", label: t("nav.workspace"), icon: LayoutDashboard },
+    { href: "/services/avatar-builder", label: t("nav.avatar"), icon: User },
+    { href: "/services/media-production", label: t("nav.video"), icon: Film },
+    { href: "/services/photo-studio", label: t("nav.images"), icon: Camera },
+    { href: "/services/music-studio", label: t("nav.music"), icon: Music },
   ];
 
   return (
@@ -37,9 +40,22 @@ export default function Navigation() {
       <div className="container mx-auto px-4">
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
-          <Link href="/" className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#D4AF37] to-[#00FFFF] flex items-center justify-center">
-              <span className="text-black font-bold text-sm">G</span>
+          <Link href="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
+            <div className="w-8 h-8 flex items-center justify-center">
+              <svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg" className="w-8 h-8">
+                {/* Rocket Body */}
+                <path d="M100 20 L110 40 L90 40 Z" fill="#D4AF37" stroke="#00FFFF" strokeWidth="2"/>
+                {/* Main Body */}
+                <rect x="85" y="35" width="30" height="70" fill="#00FFFF" stroke="#D4AF37" strokeWidth="2" rx="3"/>
+                {/* Window */}
+                <circle cx="100" cy="55" r="6" fill="#0A0A0A" stroke="#D4AF37" strokeWidth="1.5"/>
+                {/* Left Fin */}
+                <path d="M85 80 L70 95 L85 85 Z" fill="#D4AF37" stroke="#00FFFF" strokeWidth="1.5"/>
+                {/* Right Fin */}
+                <path d="M115 80 L130 95 L115 85 Z" fill="#D4AF37" stroke="#00FFFF" strokeWidth="1.5"/>
+                {/* Engine Base */}
+                <rect x="90" y="95" width="20" height="15" fill="#FF6B6B" stroke="#FFA500" strokeWidth="1"/>
+              </svg>
             </div>
             <span className="font-bold text-xl bg-gradient-to-r from-[#D4AF37] to-[#00FFFF] bg-clip-text text-transparent">
               Avatar G
@@ -88,9 +104,22 @@ export default function Navigation() {
                 href="/services/avatar-builder"
                 className="px-4 py-2 bg-gradient-to-r from-[#D4AF37] to-[#00FFFF] text-black text-sm font-semibold rounded-lg"
               >
-                Create Identity
+                {t("nav.createIdentity")}
               </Link>
             )}
+
+            <div className="flex items-center rounded-lg border border-white/10 bg-white/5 px-2 py-1">
+              <select
+                value={language}
+                onChange={(e) => setLanguage(e.target.value as "ka" | "en" | "ru")}
+                className="bg-transparent text-xs text-white focus:outline-none"
+                aria-label={t("nav.language")}
+              >
+                <option value="ka">KA</option>
+                <option value="en">EN</option>
+                <option value="ru">RU</option>
+              </select>
+            </div>
           </div>
 
           {/* Mobile Menu Button */}
@@ -123,6 +152,19 @@ export default function Navigation() {
               {item.label}
             </Link>
           ))}
+
+          <div className="px-4 pt-2">
+            <label className="text-xs text-gray-500">{t("nav.language")}</label>
+            <select
+              value={language}
+              onChange={(e) => setLanguage(e.target.value as "ka" | "en" | "ru")}
+              className="mt-2 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white focus:outline-none"
+            >
+              <option value="ka">KA</option>
+              <option value="en">EN</option>
+              <option value="ru">RU</option>
+            </select>
+          </div>
         </div>
       </motion.div>
     </nav>
