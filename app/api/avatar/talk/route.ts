@@ -7,6 +7,7 @@ import { apiError, apiSuccess } from '@/lib/api/response';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 import type { GenerateTalkClipRequest } from '@/types/avatar-builder';
 
+export const dynamic = 'force-dynamic';
 export const runtime = 'edge';
 export const maxDuration = 60;
 

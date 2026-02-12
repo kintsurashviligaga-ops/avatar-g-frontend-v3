@@ -6,6 +6,7 @@ import { createRouteHandlerClient } from '@/lib/supabase/server';
 import { apiError, apiSuccess } from '@/lib/api/response';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 
+export const dynamic = 'force-dynamic';
 export const runtime = 'edge';
 
 export async function GET(

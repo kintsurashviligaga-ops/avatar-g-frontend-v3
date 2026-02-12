@@ -7,6 +7,8 @@ import { VideoJobRequestSchema, validateInput } from '@/lib/api/validation';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 import type { GenerateVideoRequest, Job } from '@/types/platform';
 
+export const dynamic = 'force-dynamic';
+
 const getSupabaseClient = () => {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;

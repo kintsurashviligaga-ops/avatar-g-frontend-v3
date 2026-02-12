@@ -4,6 +4,8 @@ import { ChatMessageSchema, validateInput } from "@/lib/api/validation";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/api/rate-limit";
 import { createClient } from "@supabase/supabase-js";
 
+export const dynamic = 'force-dynamic';
+
 export async function POST(req: NextRequest) {
   try {
     // 1. Rate limiting

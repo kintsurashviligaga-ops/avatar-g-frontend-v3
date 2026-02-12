@@ -3,6 +3,8 @@ import { apiSuccess, apiError } from "@/lib/api/response";
 import { VideoGenerationSchema, validateInput } from "@/lib/api/validation";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/api/rate-limit";
 
+export const dynamic = 'force-dynamic';
+
 export async function POST(req: NextRequest) {
   const rateLimitError = await checkRateLimit(req, RATE_LIMITS.EXPENSIVE);
   if (rateLimitError) return rateLimitError;

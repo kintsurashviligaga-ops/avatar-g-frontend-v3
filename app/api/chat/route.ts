@@ -3,6 +3,8 @@ import { z } from "zod";
 import { apiSuccess, apiError } from "@/lib/api/response";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/api/rate-limit";
 
+export const dynamic = 'force-dynamic';
+
 // Validation schemas
 const chatRequestSchema = z.object({
   message: z.string().min(1).max(2000),

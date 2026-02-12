@@ -5,6 +5,8 @@ import { createClient } from '@supabase/supabase-js';
 import { apiError, apiSuccess } from '@/lib/api/response';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 
+export const dynamic = 'force-dynamic';
+
 /**
  * System Diagnostics API
  * GET /api/diagnostics?health=1
