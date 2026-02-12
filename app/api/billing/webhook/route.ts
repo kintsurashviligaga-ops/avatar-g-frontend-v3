@@ -43,33 +43,71 @@ export async function POST(request: NextRequest) {
       );
     }
     
-    console.log(`Webhook received: ${event.type}`);
+    console.log(`Webhook received: ${event.type} (${event.id})`);
     
-    // Handle events
-    switch (event.type) {
-      case 'checkout.session.completed':
-        await handleCheckoutCompleted(event.data.object as Stripe.Checkout.Session);
-        break;
-      
-      case 'customer.subscription.created':
-      case 'customer.subscription.updated':
-        await handleSubscriptionUpdated(event.data.object as Stripe.Subscription);
-        break;
-      
-      case 'customer.subscription.deleted':
-        await handleSubscriptionDeleted(event.data.object as Stripe.Subscription);
-        break;
-      
-      case 'invoice.payment_succeeded':
-        await handlePaymentSucceeded(event.data.object as Stripe.Invoice);
-        break;
-      
-      case 'invoice.payment_failed':
-        await handlePaymentFailed(event.data.object as Stripe.Invoice);
-        break;
-      
-      default:
-        console.log(`Unhandled event type: ${event.type}`);
+    // IDEMPOTENCY CHECK: Return success if already processed
+    const supabase = createSupabaseServerClient();
+    const { data: existingEvent } = await supabase
+      .from('stripe_events')
+      .select('id')
+      .eq('stripe_event_id', event.id)
+      .single();
+    
+    if (existingEvent) {
+      console.log(`Event ${event.id} already processed, skipping`);
+      return NextResponse.json({ received: true, cached: true });
+    }
+    
+    // Process event
+    let processSuccess = true;
+    let errorMessage: string | null = null;
+    
+    try {
+      switch (event.type) {
+        case 'checkout.session.completed':
+          await handleCheckoutCompleted(event.data.object as Stripe.Checkout.Session);
+          break;
+        
+        case 'customer.subscription.created':
+        case 'customer.subscription.updated':
+          await handleSubscriptionUpdated(event.data.object as Stripe.Subscription);
+          break;
+        
+        case 'customer.subscription.deleted':
+          await handleSubscriptionDeleted(event.data.object as Stripe.Subscription);
+          break;
+        
+        case 'invoice.payment_succeeded':
+          await handlePaymentSucceeded(event.data.object as Stripe.Invoice);
+          break;
+        
+        case 'invoice.payment_failed':
+          await handlePaymentFailed(event.data.object as Stripe.Invoice);
+          break;
+        
+        default:
+          console.log(`Unhandled event type: ${event.type}`);
+      }
+    } catch (error) {
+      processSuccess = false;
+      errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.error(`Event processing error:`, error);
+    }
+    
+    // RECORD EVENT (Idempotency)
+    await supabase.from('stripe_events').insert({
+      stripe_event_id: event.id,
+      event_type: event.type,
+      event_data: event.data.object as unknown as Record<string, unknown>,
+      success: processSuccess,
+      error_message: errorMessage,
+    });
+    
+    if (!processSuccess) {
+      return NextResponse.json(
+        { error: 'Event processing failed', message: errorMessage },
+        { status: 500 }
+      );
     }
     
     return NextResponse.json({ received: true });
@@ -128,9 +166,9 @@ async function handleSubscriptionUpdated(subscription: Stripe.Subscription) {
   const customerId = subscription.customer as string;
   const subscriptionId = subscription.id;
   const status = subscription.status;
-  const currentPeriodEnd = new Date(subscription.current_period_end * 1000);
-  const currentPeriodStart = new Date(subscription.current_period_start * 1000);
-  const cancelAtPeriodEnd = subscription.cancel_at_period_end;
+  const currentPeriodEnd = subscription.current_period_end ? new Date(subscription.current_period_end * 1000) : new Date();
+  const currentPeriodStart = subscription.current_period_start ? new Date(subscription.current_period_start * 1000) : new Date();
+  const cancelAtPeriodEnd = subscription.cancel_at_period_end || false;
   
   // Determine plan from price ID
   const priceId = subscription.items.data[0]?.price.id;
@@ -177,10 +215,19 @@ async function handleSubscriptionUpdated(subscription: Stripe.Subscription) {
     return;
   }
   
-  // Update monthly allowance
+  // Update monthly allowance using database function
   try {
-    await updateMonthlyAllowance(userId, plan);
-    console.log(`Updated allowance for user ${userId} to plan ${plan}`);
+    const { data: allowanceResult, error: allowanceError } = await supabase
+      .rpc('update_monthly_allowance', {
+        p_user_id: userId,
+        p_plan: plan
+      });
+    
+    if (allowanceError) {
+      console.error('Failed to update monthly allowance:', allowanceError);
+    } else {
+      console.log(`Updated allowance for user ${userId} to plan ${plan}:`, allowanceResult);
+    }
   } catch (error) {
     console.error('Failed to update monthly allowance:', error);
   }
@@ -227,9 +274,12 @@ async function handleSubscriptionDeleted(subscription: Stripe.Subscription) {
     return;
   }
   
-  // Update monthly allowance to FREE plan
+  // Update monthly allowance to FREE plan using database function
   try {
-    await updateMonthlyAllowance(userId, 'FREE');
+    await supabase.rpc('update_monthly_allowance', {
+      p_user_id: userId,
+      p_plan: 'FREE'
+    });
     console.log(`Downgraded user ${userId} to FREE plan`);
   } catch (error) {
     console.error('Failed to update monthly allowance:', error);
