@@ -16,6 +16,7 @@ import { useLanguage } from '@/lib/i18n/LanguageContext';
 import { useStudioStore } from '@/store/useStudioStore';
 import type { Avatar } from '@/types/platform';
 import { getAuthHeaders } from '@/lib/auth/client';
+import { getOwnerId } from '@/lib/auth/identity';
 
 interface AvatarStyle {
   id: string;
@@ -798,6 +799,27 @@ export default function AvatarBuilderPage() {
       ));
 
       setCurrentAvatar({ ...newAvatar, image: data.image, isGenerating: false });
+
+      // Auto-save avatar to Supabase persistence layer
+      try {
+        const ownerId = await getOwnerId();
+        await fetch('/api/avatars/save', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            owner_id: ownerId,
+            preview_image_url: data.image || null,
+            model_url: null, // Will be populated when user exports 3D model
+            name: `Avatar ${new Date().toLocaleDateString()}`,
+          }),
+        });
+        // Success - avatar saved to Supabase
+      } catch (error) {
+        console.error('Failed to persist avatar to Supabase:', error);
+        // Non-critical: avatar still displays locally even if save fails
+      }
 
     } catch (error) {
       const message = error instanceof Error ? error.message : t('avatar.error.generateFailed');
