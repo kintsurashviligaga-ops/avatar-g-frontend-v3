@@ -235,6 +235,9 @@ export const useVideoStudio = create<VideoStudioState>()(
       reorderScenes: (fromIndex, toIndex) => set((state) => {
         const scenes = [...state.scenes];
         const [removed] = scenes.splice(fromIndex, 1);
+        if (!removed) {
+          return { scenes };
+        }
         scenes.splice(toIndex, 0, removed);
         return { scenes };
       }),

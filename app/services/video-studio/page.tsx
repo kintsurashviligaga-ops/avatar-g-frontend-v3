@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Film, Sparkles, Video, Upload, Wand2 } from 'lucide-react';
+import { Film, Sparkles, Video, Wand2 } from 'lucide-react';
 import SpaceBackground from '@/components/SpaceBackground';
 
 export default function VideoStudioPage() {

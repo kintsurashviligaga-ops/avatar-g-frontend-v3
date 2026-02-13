@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { Card } from '@/components/ui/card';
-import { Users, CreditCard, Activity, TrendingUp, DollarSign, Zap } from 'lucide-react';
+import { Users, Activity, DollarSign, Zap } from 'lucide-react';
 import SpaceBackground from '@/components/SpaceBackground';
 import { motion } from 'framer-motion';
 

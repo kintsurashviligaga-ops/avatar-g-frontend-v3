@@ -7,14 +7,16 @@ const systemPrompts: Record<string, string> = {
   executive: "You are an executive assistant."
 };
 export async function generateText(prompt: string, type: string = "general") {
+  const systemPrompt: string = systemPrompts[type] ?? systemPrompts.general ?? "You are a helpful AI assistant.";
   const response = await openai.chat.completions.create({
     model: "gpt-4",
     messages: [
-      { role: "system", content: systemPrompts[type] || systemPrompts.general },
+      { role: "system", content: systemPrompt },
       { role: "user", content: prompt }
     ],
     max_tokens: 2000,
     temperature: 0.7,
   });
-  return { text: response.choices[0].message.content, tokens: response.usage?.total_tokens, model: response.model };
+  const content = response.choices[0]?.message?.content || "";
+  return { text: content, tokens: response.usage?.total_tokens, model: response.model };
 }

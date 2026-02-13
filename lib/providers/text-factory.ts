@@ -14,11 +14,13 @@ class TextProviderFactory {
   private providers: Map<TextProviderId, ITextGenerationProvider>;
 
   constructor() {
-    this.providers = new Map([
+    const entries: Array<[TextProviderId, ITextGenerationProvider]> = [
       ['openai', new OpenAIProvider()],
       ['deepseek', new DeepSeekProvider()],
       ['mock', new MockTextProvider()],
-    ]);
+    ];
+
+    this.providers = new Map(entries);
   }
 
   /**

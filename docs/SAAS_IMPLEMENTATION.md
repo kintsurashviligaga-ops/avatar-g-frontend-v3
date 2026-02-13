@@ -9,7 +9,7 @@ This document describes the complete SaaS implementation for Avatar G, including
 ### Core Components
 
 1. **Billing System** (`/lib/billing/`)
-   - `plans.ts` - Plan definitions (FREE, PRO, PREMIUM, ENTERPRISE)
+  - `plans.ts` - Plan definitions (FREE, BASIC, PREMIUM)
    - `stripe.ts` - Stripe integration (server-only)
    - `enforce.ts` - Plan and credit enforcement
 
@@ -25,6 +25,7 @@ This document describes the complete SaaS implementation for Avatar G, including
    - `/billing/webhook` - Handle Stripe webhooks
    - `/credits/balance` - Get credit balance
    - `/agents/execute` - Execute agent with enforcement
+  - `/orchestrate` - AI agent brain (provider routing + credits)
    - `/jobs/list` - List user jobs
 
 5. **UI Components** (`/components/dashboard/`)
@@ -49,7 +50,7 @@ Stripe subscription data
 - user_id (UUID, PK, FK)
 - stripe_customer_id (TEXT, UNIQUE)
 - stripe_subscription_id (TEXT, UNIQUE)
-- plan (VARCHAR: FREE/PRO/PREMIUM/ENTERPRISE)
+- plan (VARCHAR: FREE/BASIC/PREMIUM)
 - status (VARCHAR: active/canceled/past_due)
 - current_period_start, current_period_end
 - cancel_at_period_end (BOOLEAN)
@@ -80,6 +81,46 @@ Audit log for all credit changes
 - job_id (UUID, FK, nullable)
 - agent_id (VARCHAR)
 - metadata (JSONB)
+- created_at
+```
+
+#### `stripe_events`
+Idempotency tracking for Stripe webhooks
+```sql
+- stripe_event_id (TEXT, UNIQUE)
+- event_type (VARCHAR)
+- success (BOOLEAN)
+- error_message (TEXT)
+- event_data (JSONB)
+- created_at
+```
+
+#### `orchestration_runs`
+AI orchestration logs and usage analytics
+```sql
+- id (UUID, PK)
+- user_id (UUID, FK)
+- agent_id (VARCHAR)
+- provider_id (VARCHAR)
+- task_type (VARCHAR)
+- input_hash (VARCHAR)
+- status (VARCHAR)
+- tokens_in, tokens_out (INTEGER)
+- cost_usd (DECIMAL)
+- credits_spent (INTEGER)
+- duration_ms (INTEGER)
+- created_at, completed_at
+```
+
+#### `credit_ledger` (View)
+Compatibility view mapped from credit_transactions
+```sql
+- id (UUID)
+- user_id (UUID)
+- delta (INTEGER)
+- reason (VARCHAR)
+- ref_id (UUID)
+- ref_type (VARCHAR)
 - created_at
 ```
 
@@ -131,8 +172,8 @@ Updates all user credits to monthly_allowance when next_reset_at <= NOW()
 | Plan | Credits/Month | Price | Key Features |
 |------|--------------|-------|--------------|
 | **FREE** | 100 | $0 | 1 avatar, 5 videos, 5 tracks, basic agents |
-| **PRO** | 1,000 | $29 | Unlimited creations, 3 voice slots, advanced agents |
-| **PREMIUM** | 5,000 | $99 | Avatar G Agent, multi-agent orchestration, API access |
+| **BASIC** | 1,000 | $30 | Unlimited creations, 3 voice slots, advanced agents |
+| **PREMIUM** | 5,000 | $150 | Avatar G Agent, multi-agent orchestration, API access |
 | **ENTERPRISE** | 50,000 | $499 | Dedicated infrastructure, SSO, custom integrations |
 
 ## 🤖 Agent Registry
@@ -142,14 +183,14 @@ Updates all user credits to monthly_allowance when next_reset_at <= NOW()
 1. **avatar-builder** (FREE) - 10 credits base
 2. **video-studio** (FREE) - 20 credits
 3. **music-studio** (FREE) - 15 credits
-4. **voice-lab** (PRO) - 50 credits
-5. **media-production** (PRO) - 25 credits
-6. **business-agent** (PRO) - 15 credits
+4. **voice-lab** (BASIC) - 50 credits
+5. **media-production** (BASIC) - 25 credits
+6. **business-agent** (BASIC) - 15 credits
 7. **chat** (FREE) - 1 credit
-8. **game-creator** (PRO) - 30 credits (coming soon)
+8. **game-creator** (BASIC) - 30 credits (coming soon)
 9. **image-creator** (FREE) - 8 credits
-10. **social-media** (PRO) - 5 credits (coming soon)
-11. **online-shop** (PRO) - 10 credits (coming soon)
+10. **social-media** (BASIC) - 5 credits (coming soon)
+11. **online-shop** (BASIC) - 10 credits (coming soon)
 12. **prompt-builder** (FREE) - 2 credits (coming soon)
 13. **avatar-g-agent** (PREMIUM) - 50+ credits - **Premium superhero agent**
 
@@ -219,8 +260,8 @@ psql $DATABASE_URL < supabase/migrations/004_saas_billing_credits.sql
 In Stripe Dashboard:
 
 1. Create Products:
-   - **Avatar G Pro** - $29/month recurring
-   - **Avatar G Premium** - $99/month recurring
+  - **Avatar G Basic** - $30/month recurring
+  - **Avatar G Premium** - $150/month recurring
    - **Avatar G Enterprise** - $499/month recurring
 
 2. Copy Price IDs to `.env.local`
@@ -458,8 +499,8 @@ SELECT
   plan,
   COUNT(*) as subscribers,
   CASE 
-    WHEN plan = 'PRO' THEN COUNT(*) * 29
-    WHEN plan = 'PREMIUM' THEN COUNT(*) * 99
+    WHEN plan IN ('BASIC', 'PRO') THEN COUNT(*) * 30
+    WHEN plan = 'PREMIUM' THEN COUNT(*) * 150
     WHEN plan = 'ENTERPRISE' THEN COUNT(*) * 499
     ELSE 0
   END as mrr

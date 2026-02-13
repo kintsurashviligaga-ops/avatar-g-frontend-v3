@@ -287,7 +287,7 @@ export default function PhotoStudioPage() {
                     <div 
                       className="absolute inset-0 rounded-lg pointer-events-none"
                       style={{
-                        boxShadow: `inset 0 0 ${adjustmentValues.vignette * 2}px rgba(0,0,0,0.5)`
+                        boxShadow: `inset 0 0 ${(adjustmentValues.vignette || 0) * 2}px rgba(0,0,0,0.5)`
                       }}
                     />
                   )}

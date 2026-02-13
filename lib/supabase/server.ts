@@ -1,14 +1,18 @@
 import { createClient } from "@supabase/supabase-js";
+import { publicEnv } from "@/lib/env/public";
+import { getServerEnv } from "@/lib/env/server";
 
 const getSupabaseConfig = () => {
-	const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
-	const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+	const { SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY } = getServerEnv([
+		'SUPABASE_SERVICE_ROLE_KEY',
+	]);
+	const supabaseUrl = SUPABASE_URL || publicEnv.NEXT_PUBLIC_SUPABASE_URL;
 
-	if (!supabaseUrl || !supabaseServiceKey) {
-		throw new Error("Supabase env vars are missing");
+	if (!supabaseUrl) {
+		throw new Error("SUPABASE_URL or NEXT_PUBLIC_SUPABASE_URL is missing");
 	}
 
-	return { supabaseUrl, supabaseServiceKey };
+	return { supabaseUrl, supabaseServiceKey: SUPABASE_SERVICE_ROLE_KEY as string };
 };
 
 export const createRouteHandlerClient = () => {

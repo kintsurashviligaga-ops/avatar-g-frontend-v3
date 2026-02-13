@@ -216,7 +216,10 @@ export default function OnboardingPage() {
     );
   }
 
-  const step = steps[currentStep];
+  const step = steps[currentStep] ?? steps[0];
+  if (!step) {
+    return null;
+  }
   const StepIcon = step.icon;
 
   return (

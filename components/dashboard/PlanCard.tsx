@@ -4,7 +4,7 @@
 
 'use client';
 
-import { getPlan, type PlanTier } from '@/lib/billing/plans';
+import { getPlan, normalizePlanTier, type PlanTier } from '@/lib/billing/plans';
 import { useState } from 'react';
 
 interface PlanCardProps {
@@ -15,7 +15,8 @@ interface PlanCardProps {
 }
 
 export function PlanCard({ plan, status, currentPeriodEnd, cancelAtPeriodEnd }: PlanCardProps) {
-  const planConfig = getPlan(plan);
+  const normalizedPlan = normalizePlanTier(plan);
+  const planConfig = getPlan(normalizedPlan);
   const [isUpgrading, setIsUpgrading] = useState(false);
   
   const handleUpgrade = async (targetPlan: PlanTier) => {
@@ -48,11 +49,10 @@ export function PlanCard({ plan, status, currentPeriodEnd, cancelAtPeriodEnd }: 
   };
   
   const getPlanIcon = (plan: PlanTier) => {
-    switch (plan) {
+    switch (normalizePlanTier(plan)) {
       case 'FREE': return '🌱';
-      case 'PRO': return '⚡';
+      case 'BASIC': return '⚡';
       case 'PREMIUM': return '👑';
-      case 'ENTERPRISE': return '🏢';
       default: return '📦';
     }
   };
@@ -92,11 +92,11 @@ export function PlanCard({ plan, status, currentPeriodEnd, cancelAtPeriodEnd }: 
         </div>
         
         {/* Upgrade CTA */}
-        {plan !== 'ENTERPRISE' && (
+        {normalizedPlan !== 'PREMIUM' && (
           <div className="pt-4">
             <button
               onClick={() => {
-                const nextPlan = plan === 'FREE' ? 'PRO' : plan === 'PRO' ? 'PREMIUM' : 'ENTERPRISE';
+                const nextPlan = normalizedPlan === 'FREE' ? 'BASIC' : 'PREMIUM';
                 handleUpgrade(nextPlan);
               }}
               disabled={isUpgrading}

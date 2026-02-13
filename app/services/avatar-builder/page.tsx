@@ -15,7 +15,6 @@ import { ChatWindow } from '@/components/ui/ChatWindow';
 import { PromptBuilder } from '@/components/ui/PromptBuilder';
 import { useLanguage } from '@/lib/i18n/LanguageContext';
 import { useStudioStore } from '@/store/useStudioStore';
-import type { Avatar } from '@/types/platform';
 import { getAuthHeaders } from '@/lib/auth/client';
 import { getOwnerId } from '@/lib/auth/identity';
 
@@ -63,6 +62,15 @@ type GeneratedAvatar = {
   createdAt: Date;
   isGenerating: boolean;
 };
+
+interface SavedAvatar {
+  id: string;
+  user_id: string;
+  title: string;
+  preview_image_url: string | null;
+  style?: string | null;
+  created_at: string;
+}
 
 const AVATAR_STYLES: AvatarStyle[] = [
   { id: 'professional', nameKey: 'avatar.style.professional', emoji: '💼', descriptionKey: 'avatar.style.professional.desc', prompt: 'professional business portrait, formal attire, confident expression, studio lighting' },
@@ -243,10 +251,11 @@ export default function AvatarBuilderPage() {
   const [scanStepIndex, setScanStepIndex] = useState(0);
   const [scanImages, setScanImages] = useState<string[]>([]);
   const [scanError, setScanError] = useState<string | null>(null);
-  const [savedAvatars, setSavedAvatars] = useState<Avatar[]>([]);
+  const [savedAvatars, setSavedAvatars] = useState<SavedAvatar[]>([]);
   const [isLoadingAvatars, setIsLoadingAvatars] = useState(false);
   const [avatarNameInput, setAvatarNameInput] = useState('');
   const [saveSuccessMessage, setSaveSuccessMessage] = useState('');
+  const [isChatLoading, setIsChatLoading] = useState(false);
 
   // Load saved avatars from API on mount
   useEffect(() => {
@@ -282,6 +291,14 @@ export default function AvatarBuilderPage() {
     Feminine: t('avatar.presentation.feminine'),
     Masculine: t('avatar.presentation.masculine'),
     Androgynous: t('avatar.presentation.androgynous'),
+  };
+
+  const bodyTypeLabels: Record<string, string> = {
+    Slim: t('avatar.bodyType.slim'),
+    Athletic: t('avatar.bodyType.athletic'),
+    Average: t('avatar.bodyType.average'),
+    Curvy: t('avatar.bodyType.curvy'),
+    Muscular: t('avatar.bodyType.muscular'),
   };
 
   const skinToneLabels: Record<string, string> = {
@@ -340,6 +357,14 @@ export default function AvatarBuilderPage() {
     'Soft Daylight': t('avatar.lighting.softDaylight'),
     Neon: t('avatar.lighting.neon'),
   };
+  const activeScanStep = SCAN_STEPS[Math.min(scanStepIndex, SCAN_STEPS.length - 1)] ?? SCAN_STEPS[0]!;
+  const favoriteAvatar = generatedAvatars[0];
+  const favoriteStyleKey = favoriteAvatar
+    ? AVATAR_STYLES.find((style) => style.id === favoriteAvatar.style)?.nameKey
+    : undefined;
+  const favoriteStyleLabel = favoriteAvatar
+    ? (favoriteStyleKey ? t(favoriteStyleKey) : favoriteAvatar.style)
+    : '-';
 
   const presetCategoryLabels: Record<string, string> = {
     Professional: t('avatar.preset.category.professional'),
@@ -954,7 +979,7 @@ export default function AvatarBuilderPage() {
                       <label className="text-sm text-gray-400 mb-2 block">{t('avatar.label.age')}: {age}</label>
                       <Slider
                         value={[age]}
-                        onValueChange={(v) => setAge(v[0])}
+                        onValueChange={(v) => setAge(v[0] ?? age)}
                         min={18}
                         max={65}
                         step={1}
@@ -1489,11 +1514,11 @@ export default function AvatarBuilderPage() {
                         <div className="text-sm text-gray-400">
                           {t('avatar.label.step')} {Math.min(scanStepIndex + 1, SCAN_STEPS.length)} {t('avatar.label.of')} {SCAN_STEPS.length}:
                           <span className="text-white ml-2">
-                            {t(SCAN_STEPS[Math.min(scanStepIndex, SCAN_STEPS.length - 1)].labelKey)}
+                            {t(activeScanStep.labelKey)}
                           </span>
                         </div>
                         <div className="text-xs text-gray-500">
-                          {t(SCAN_STEPS[Math.min(scanStepIndex, SCAN_STEPS.length - 1)].hintKey)}
+                          {t(activeScanStep.hintKey)}
                         </div>
                       </div>
                       <div className="flex gap-2 mt-3">
@@ -1783,9 +1808,8 @@ export default function AvatarBuilderPage() {
                             setAvatarNameInput('');
                             setTimeout(() => setSaveSuccessMessage(''), 3000);
                             // Reload saved avatars list
-                            const listResponse = await fetch('/api/avatars', {
-                              headers: authToken ? { 'Authorization': `Bearer ${authToken}` } : {}
-                            });
+                            const headers = await getAuthHeaders();
+                            const listResponse = await fetch('/api/avatars', { headers });
                             if (listResponse.ok) {
                               const listData = await listResponse.json();
                               setSavedAvatars(listData?.data?.avatars || []);
@@ -1827,22 +1851,21 @@ export default function AvatarBuilderPage() {
                       onClick={() => {
                         setCurrentAvatar({
                           id: avatar.id,
-                          image: avatar.preview_image_url,
+                          image: avatar.preview_image_url || null,
                           prompt: avatar.title,
-                          style: avatar.style,
+                          style: avatar.style || 'custom',
                           createdAt: new Date(avatar.created_at),
                           isGenerating: false
                         });
                         // Set in global store for cross-service access
-                        if (store.setAvatar) {
-                          store.setAvatar({ 
-                            id: avatar.id, 
-                            name: avatar.title,
-                            preview_url: avatar.preview_image_url,
-                            model: avatar.style,
-                            user_id: avatar.user_id
-                          });
-                        }
+                        store.setSelectedAvatar({
+                          id: avatar.id,
+                          title: avatar.title,
+                          preview_image_url: avatar.preview_image_url || undefined,
+                          user_id: avatar.user_id,
+                          created_at: avatar.created_at,
+                          updated_at: avatar.created_at,
+                        });
                       }}
                       className="w-full text-left p-2 rounded-lg border border-white/10 hover:border-purple-400 bg-black/20 transition-all group"
                     >
@@ -2099,11 +2122,7 @@ export default function AvatarBuilderPage() {
                 <div className="flex justify-between items-center">
                   <span className="text-gray-400 text-sm">{t('avatar.label.favoriteStyle')}</span>
                   <span className="text-white font-semibold capitalize">
-                    {generatedAvatars.length > 0 
-                      ? (AVATAR_STYLES.find(s => s.id === generatedAvatars[0].style)?.nameKey
-                        ? t(AVATAR_STYLES.find(s => s.id === generatedAvatars[0].style)!.nameKey)
-                        : generatedAvatars[0].style)
-                      : '-'}
+                    {favoriteStyleLabel}
                   </span>
                 </div>
               </div>

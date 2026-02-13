@@ -38,7 +38,7 @@ export default function RefundPolicyPage() {
                 <ul className="list-disc list-inside text-gray-300 space-y-2">
                   <li><strong>Service Outage:</strong> Extended service unavailability (&gt;48 hours) not caused by scheduled maintenance</li>
                   <li><strong>Billing Errors:</strong> Duplicate charges or incorrect pricing</li>
-                  <li><strong>First-Time Users:</strong> Within 7 days of first subscription if you've used less than 10% of your monthly credits</li>
+                  <li><strong>First-Time Users:</strong> Within 7 days of first subscription if you&apos;ve used less than 10% of your monthly credits</li>
                 </ul>
               </section>
 

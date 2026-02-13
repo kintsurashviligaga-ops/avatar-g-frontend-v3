@@ -85,6 +85,23 @@ CREATE POLICY orchestration_runs_user_policy ON public.orchestration_runs
 COMMENT ON TABLE public.orchestration_runs IS 'Log all AI orchestration runs for analytics and debugging';
 
 -- ============================================
+-- CREDIT LEDGER VIEW (Compatibility Alias)
+-- ============================================
+CREATE OR REPLACE VIEW public.credit_ledger AS
+SELECT
+  id,
+  user_id,
+  amount AS delta,
+  transaction_type AS reason,
+  job_id AS ref_id,
+  agent_id AS ref_type,
+  metadata,
+  created_at
+FROM public.credit_transactions;
+
+COMMENT ON VIEW public.credit_ledger IS 'Compatibility view mapping credit_transactions to credit_ledger schema';
+
+-- ============================================
 -- FUNCTION: Check and Record Stripe Event (Idempotent)
 -- ============================================
 CREATE OR REPLACE FUNCTION public.check_stripe_event_processed(

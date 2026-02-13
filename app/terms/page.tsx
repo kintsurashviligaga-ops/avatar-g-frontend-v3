@@ -26,7 +26,7 @@ export default function TermsPage() {
               <section className="mb-8">
                 <h2 className="text-2xl font-semibold text-white mb-4">1. Acceptance of Terms</h2>
                 <p className="text-gray-300 mb-4">
-                  By accessing and using Avatar G ("the Service"), you accept and agree to be bound by the terms and provision of this agreement.
+                  By accessing and using Avatar G (&quot;the Service&quot;), you accept and agree to be bound by the terms and provision of this agreement.
                 </p>
               </section>
 

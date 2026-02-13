@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Briefcase, TrendingUp, BarChart3, FileText, Sparkles } from 'lucide-react';
+import { Briefcase, TrendingUp, FileText, Sparkles } from 'lucide-react';
 import SpaceBackground from '@/components/SpaceBackground';
 
 export default function BusinessAgentPage() {

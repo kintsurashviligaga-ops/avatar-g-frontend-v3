@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { normalizePlanTier } from '@/lib/billing/plans';
 import { getAccessToken } from '@/lib/auth/server';
 
 export const dynamic = 'force-dynamic';
@@ -38,7 +39,8 @@ export async function GET() {
     if (usersError) throw usersError;
 
     const usersByPlan = users?.reduce((acc, u) => {
-      acc[u.plan] = (acc[u.plan] || 0) + 1;
+      const plan = normalizePlanTier(u.plan);
+      acc[plan] = (acc[plan] || 0) + 1;
       return acc;
     }, {} as Record<string, number>) || {};
 
@@ -73,6 +75,8 @@ export async function GET() {
     const { data: creditTxs, error: creditError } = await supabase
       .from('credit_transactions')
       .select('amount, type');
+
+    if (creditError) throw creditError;
     
     const creditsByService = creditTxs?.reduce((acc, tx) => {
       if (tx.type === 'deduct') {
@@ -84,10 +88,9 @@ export async function GET() {
 
     // Revenue calculation (simplified - in production, use Stripe data)
     const PLAN_PRICES: Record<string, number> = {
-      'FREE': 0,
-      'PRO': 30,
-      'PREMIUM': 150,
-      'ENTERPRISE': 499,
+      FREE: 0,
+      BASIC: 30,
+      PREMIUM: 150,
     };
 
     const revenueByPlan = Object.entries(usersByPlan).reduce((acc, [plan, count]) => {

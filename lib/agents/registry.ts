@@ -3,7 +3,7 @@
  * Centralized registry for all 13 AI agents with metadata and orchestration config
  */
 
-import { type PlanTier } from '@/lib/billing/plans';
+import { type PlanTier, getPlanRank } from '@/lib/billing/plans';
 
 export interface AgentConfig {
   id: string;
@@ -81,7 +81,7 @@ export const AGENT_REGISTRY: Record<string, AgentConfig> = {
     icon: '🎙️',
     category: 'creation',
     route: '/services/voice-lab',
-    requiredPlan: 'PRO',
+    requiredPlan: 'BASIC',
     baseCost: 50,
     capabilities: ['voice-cloning', 'tts', 'voice-customization', 'multilingual'],
     color: {
@@ -98,7 +98,7 @@ export const AGENT_REGISTRY: Record<string, AgentConfig> = {
     icon: '🎞️',
     category: 'studio',
     route: '/services/media-production',
-    requiredPlan: 'PRO',
+    requiredPlan: 'BASIC',
     baseCost: 25,
     capabilities: ['video-editing', 'compositing', 'effects', 'export'],
     color: {
@@ -115,7 +115,7 @@ export const AGENT_REGISTRY: Record<string, AgentConfig> = {
     icon: '💼',
     category: 'business',
     route: '/services/business-agent',
-    requiredPlan: 'PRO',
+    requiredPlan: 'BASIC',
     baseCost: 15,
     capabilities: ['market-analysis', 'strategy', 'reporting', 'insights'],
     color: {
@@ -149,7 +149,7 @@ export const AGENT_REGISTRY: Record<string, AgentConfig> = {
     icon: '🎮',
     category: 'creation',
     route: '/services/game-creator',
-    requiredPlan: 'PRO',
+    requiredPlan: 'BASIC',
     baseCost: 30,
     capabilities: ['game-design', 'asset-generation', 'mechanics', 'prototyping'],
     color: {
@@ -183,7 +183,7 @@ export const AGENT_REGISTRY: Record<string, AgentConfig> = {
     icon: '📱',
     category: 'business',
     route: '/services/social-media',
-    requiredPlan: 'PRO',
+    requiredPlan: 'BASIC',
     baseCost: 5,
     capabilities: ['content-generation', 'scheduling', 'analytics', 'multi-platform'],
     color: {
@@ -200,7 +200,7 @@ export const AGENT_REGISTRY: Record<string, AgentConfig> = {
     icon: '🛒',
     category: 'business',
     route: '/services/online-shop',
-    requiredPlan: 'PRO',
+    requiredPlan: 'BASIC',
     baseCost: 10,
     capabilities: ['shop-setup', 'product-management', 'inventory', 'payments'],
     color: {
@@ -279,11 +279,10 @@ export function getAgentsByCategory(
  * Get agents accessible by plan
  */
 export function getAgentsByPlan(plan: PlanTier): AgentConfig[] {
-  const planHierarchy: PlanTier[] = ['FREE', 'PRO', 'PREMIUM', 'ENTERPRISE'];
-  const userPlanIndex = planHierarchy.indexOf(plan);
+  const userPlanIndex = getPlanRank(plan);
   
   return getAllAgents().filter((agent) => {
-    const agentPlanIndex = planHierarchy.indexOf(agent.requiredPlan);
+    const agentPlanIndex = getPlanRank(agent.requiredPlan);
     return agentPlanIndex <= userPlanIndex && agent.enabled;
   });
 }
@@ -302,9 +301,8 @@ export function isAgentAvailable(agentId: string, userPlan: PlanTier): boolean {
   const agent = getAgent(agentId);
   if (!agent || !agent.enabled) return false;
   
-  const planHierarchy: PlanTier[] = ['FREE', 'PRO', 'PREMIUM', 'ENTERPRISE'];
-  const userPlanIndex = planHierarchy.indexOf(userPlan);
-  const agentPlanIndex = planHierarchy.indexOf(agent.requiredPlan);
+  const userPlanIndex = getPlanRank(userPlan);
+  const agentPlanIndex = getPlanRank(agent.requiredPlan);
   
   return agentPlanIndex <= userPlanIndex;
 }

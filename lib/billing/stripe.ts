@@ -4,18 +4,16 @@
  */
 
 import Stripe from 'stripe';
+import { getServerEnv } from '@/lib/env/server';
 
 // Initialize Stripe (lazy singleton)
 let stripeInstance: Stripe | null = null;
 
 export function getStripe(): Stripe {
   if (!stripeInstance) {
-    const apiKey = process.env.STRIPE_SECRET_KEY;
-    if (!apiKey) {
-      throw new Error('STRIPE_SECRET_KEY not configured');
-    }
+    const { STRIPE_SECRET_KEY } = getServerEnv(['STRIPE_SECRET_KEY']);
     
-    stripeInstance = new Stripe(apiKey, {
+    stripeInstance = new Stripe(STRIPE_SECRET_KEY as string, {
       apiVersion: '2026-01-28.clover',
       typescript: true,
     });
@@ -105,14 +103,10 @@ export function verifyWebhookSignature(
   signature: string
 ): Stripe.Event {
   const stripe = getStripe();
-  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
-  
-  if (!webhookSecret) {
-    throw new Error('STRIPE_WEBHOOK_SECRET not configured');
-  }
+  const { STRIPE_WEBHOOK_SECRET } = getServerEnv(['STRIPE_WEBHOOK_SECRET']);
   
   try {
-    return stripe.webhooks.constructEvent(payload, signature, webhookSecret);
+    return stripe.webhooks.constructEvent(payload, signature, STRIPE_WEBHOOK_SECRET as string);
   } catch (err) {
     const error = err as Error;
     throw new Error(`Webhook signature verification failed: ${error.message}`);

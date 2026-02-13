@@ -67,8 +67,6 @@ export default function MediaProductionPage() {
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
   const [motionStrength, setMotionStrength] = useState(5);
   const [resolution, setResolution] = useState('1080p');
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [currentJobId, setCurrentJobId] = useState<string | null>(null);
   const [isChatLoading, setIsChatLoading] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -109,7 +107,6 @@ export default function MediaProductionPage() {
   }, []);
 
   const handleSendMessage = async (message: string, attachments?: File[]) => {
-    setIsGenerating(true);
     setGenerationProgress(0);
 
     // Handle image upload from attachments
@@ -138,7 +135,6 @@ export default function MediaProductionPage() {
     };
 
     setProjects(prev => [newProject, ...prev]);
-    setCurrentJobId(projectId);
 
     try {
       const headers = await getAuthHeaders();
@@ -176,8 +172,6 @@ export default function MediaProductionPage() {
       console.error('💥 Video generation error:', message);
       setProjects(prev => prev.filter(p => p.id !== projectId));
       alert(message);
-      setIsGenerating(false);
-      setCurrentJobId(null);
     } finally {
       setUploadedImage(null);
     }

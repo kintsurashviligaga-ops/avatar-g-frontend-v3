@@ -1,10 +1,9 @@
 'use client';
 
-import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { ShoppingCart, Package, CreditCard, TrendingUp } from 'lucide-react';
+import { ShoppingCart } from 'lucide-react';
 import SpaceBackground from '@/components/SpaceBackground';
 
 export default function OnlineShopPage() {
@@ -37,7 +36,7 @@ export default function OnlineShopPage() {
             </div>
             <h2 className="text-2xl font-bold text-white mb-3">Coming Soon</h2>
             <p className="text-gray-400 mb-6">
-              We're creating a complete e-commerce platform with AI-powered product descriptions, inventory management, and smart pricing.
+              We&apos;re creating a complete e-commerce platform with AI-powered product descriptions, inventory management, and smart pricing.
             </p>
             <Button variant="outline" className="border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10">
               Join Waitlist

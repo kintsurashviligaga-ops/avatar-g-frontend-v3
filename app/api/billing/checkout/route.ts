@@ -6,7 +6,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { createCheckoutSession, getOrCreateCustomer } from '@/lib/billing/stripe';
-import { PLANS } from '@/lib/billing/plans';
+import { getPlan, normalizePlanTier } from '@/lib/billing/plans';
+import { getStripePriceId } from '@/lib/billing/stripe-prices';
 
 export const dynamic = 'force-dynamic';
 
@@ -29,16 +30,17 @@ export async function POST(request: NextRequest) {
     const { plan } = body;
     
     // Validate plan
-    if (!plan || !PLANS[plan as keyof typeof PLANS]) {
+    if (!plan) {
       return NextResponse.json(
         { error: 'Invalid plan' },
         { status: 400 }
       );
     }
-    
-    const planConfig = PLANS[plan as keyof typeof PLANS];
-    
-    if (!planConfig.stripePriceId) {
+
+    const normalizedPlan = normalizePlanTier(plan);
+    const priceId = getStripePriceId(normalizedPlan);
+
+    if (!priceId) {
       return NextResponse.json(
         { error: 'Plan does not require payment' },
         { status: 400 }
@@ -46,7 +48,7 @@ export async function POST(request: NextRequest) {
     }
     
     // Get or create subscription record
-    let { data: subscription } = await supabase
+    const { data: subscription } = await supabase
       .from('subscriptions')
       .select('stripe_customer_id')
       .eq('user_id', user.id)
@@ -77,7 +79,7 @@ export async function POST(request: NextRequest) {
     const origin = request.headers.get('origin') || 'http://localhost:3000';
     const checkoutUrl = await createCheckoutSession({
       customerId,
-      priceId: planConfig.stripePriceId,
+      priceId,
       successUrl: `${origin}/dashboard?checkout=success`,
       cancelUrl: `${origin}/dashboard?checkout=canceled`,
     });

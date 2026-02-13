@@ -45,8 +45,12 @@ export default function GlobalChatbot() {
       recognitionRef.current = new SpeechRecognition();
       recognitionRef.current.continuous = false;
       recognitionRef.current.interimResults = true;
-      recognitionRef.current.onresult = (e: SpeechRecognitionEventLike) =>
-        setInput(e.results[0][0].transcript);
+      recognitionRef.current.onresult = (e: SpeechRecognitionEventLike) => {
+        const transcript = e.results[0]?.[0]?.transcript;
+        if (transcript) {
+          setInput(transcript);
+        }
+      };
       recognitionRef.current.onend = () => setIsRecording(false);
     }
   }, []);

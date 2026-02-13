@@ -6,19 +6,14 @@ import { LanguageProvider } from "@/lib/i18n/LanguageContext";
 import { ToastProvider } from "@/components/ui/Toast";
 import GlobalChatbot from "@/components/GlobalChatbot";
 import { Navbar, Footer } from "@/components/layout/AppLayout";
-import { validateEnvironment } from "@/lib/server/env";
-
-if (process.env.NODE_ENV !== "test") {
-  const validation = validateEnvironment();
-  if (!validation.isValid) {
-    throw new Error("Missing required environment variables. Check server logs for details.");
-  }
-}
+import { publicEnv } from "@/lib/env/public";
 
 const inter = Inter({ subsets: ["latin"] });
 
+const metadataBaseUrl = publicEnv.NEXT_PUBLIC_APP_URL || "https://avatar-g-frontend-v3.vercel.app";
+
 export const metadata: Metadata = {
-  metadataBase: new URL("https://avatar-g-frontend-v3.vercel.app"),
+  metadataBase: new URL(metadataBaseUrl),
   title: {
     default: "Avatar G - AI Media Creation",
     template: "%s - Avatar G"
@@ -29,7 +24,7 @@ export const metadata: Metadata = {
   openGraph: {
     type: "website",
     locale: "en_US",
-    url: "https://avatar-g-frontend-v3.vercel.app",
+    url: metadataBaseUrl,
     siteName: "Avatar G",
     images: [{
       url: "/og-image.png",

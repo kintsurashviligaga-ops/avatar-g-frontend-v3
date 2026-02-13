@@ -16,7 +16,7 @@ const languages = [
 export default function LanguageSwitcher() {
   const [isOpen, setIsOpen] = useState(false);
   const { locale, setLocale } = useLanguage();
-  const currentLang = languages.find((l) => l.code === locale) || languages[0];
+  const currentLang = languages.find((l) => l.code === locale) ?? languages[0]!;
 
   const handleSelect = (code: Locale) => {
     setLocale(code);

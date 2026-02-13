@@ -6,30 +6,35 @@
 
 'use client';
 
-import { useRef, useState, useEffect } from 'react';
+import { useMemo, useRef, useState, useEffect } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
-import{ Points, PointMaterial, OrbitControls } from '@react-three/drei';
+import { Points, PointMaterial, OrbitControls } from '@react-three/drei';
+import { useReducedMotion } from 'framer-motion';
 import * as THREE from 'three';
 
-function NebulaParticles() {
+function NebulaParticles({ paused }: { paused: boolean }) {
   const ref = useRef<THREE.Points>(null);
   
-  // Generate particle positions
-  const particleCount = 500;
-  const positions = new Float32Array(particleCount * 3);
-  
-  for (let i = 0; i < particleCount; i++) {
-    const x = (Math.random() - 0.5) * 10;
-    const y = (Math.random() - 0.5) * 10;
-    const z = (Math.random() - 0.5) * 10;
-    
-    positions[i * 3] = x;
-    positions[i * 3 + 1] = y;
-    positions[i * 3 + 2] = z;
-  }
+  const positions = useMemo(() => {
+    const particleCount = 500;
+    const buffer = new Float32Array(particleCount * 3);
+
+    for (let i = 0; i < particleCount; i++) {
+      const x = (Math.random() - 0.5) * 10;
+      const y = (Math.random() - 0.5) * 10;
+      const z = (Math.random() - 0.5) * 10;
+      
+      buffer[i * 3] = x;
+      buffer[i * 3 + 1] = y;
+      buffer[i * 3 + 2] = z;
+    }
+
+    return buffer;
+  }, []);
   
   useFrame((state) => {
     if (!ref.current) return;
+    if (paused) return;
     
     // Gentle rotation
     ref.current.rotation.y += 0.0005;
@@ -50,11 +55,12 @@ function NebulaParticles() {
   );
 }
 
-function GlowRing() {
+function GlowRing({ paused }: { paused: boolean }) {
   const ref = useRef<THREE.Mesh>(null);
   
   useFrame((state) => {
     if (!ref.current) return;
+    if (paused) return;
     ref.current.rotation.z = state.clock.elapsedTime * 0.3;
   });
   
@@ -69,6 +75,7 @@ function GlowRing() {
 export default function Dashboard3DScene() {
   const [webglAvailable, setWebglAvailable] = useState(true);
   const [isVisible, setIsVisible] = useState(true);
+  const reduceMotion = useReducedMotion() ?? false;
 
   useEffect(() => {
     // Check WebGL availability
@@ -110,23 +117,26 @@ export default function Dashboard3DScene() {
     );
   }
 
+  const paused = !isVisible || reduceMotion;
+
   return (
     <div className="relative w-full h-[300px] bg-gradient-to-br from-[#05070A] via-[#1A1A1A] to-[#05070A] rounded-2xl overflow-hidden">
       {isVisible && (
         <Canvas
           camera={{ position: [0, 0, 5], fov: 50 }}
           gl={{ alpha: true, antialias: true, powerPreference: 'low-power' }}
+          frameloop={paused ? 'demand' : 'always'}
           onCreated={({ gl }) => {
             gl.setClearColor(0x000000, 0);
           }}
         >
           <ambientLight intensity={0.5} />
-          <NebulaParticles />
-          <GlowRing />
+          <NebulaParticles paused={paused} />
+          <GlowRing paused={paused} />
           <OrbitControls
             enableZoom={false}
             enablePan={false}
-            autoRotate
+            autoRotate={!paused}
             autoRotateSpeed={0.5}
             maxPolarAngle={Math.PI / 2}
             minPolarAngle={Math.PI / 2}

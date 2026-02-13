@@ -1,10 +1,9 @@
 'use client';
 
-import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Gamepad2, Sparkles, Wand2, Code } from 'lucide-react';
+import { Gamepad2 } from 'lucide-react';
 import SpaceBackground from '@/components/SpaceBackground';
 
 export default function GameCreatorPage() {
@@ -37,7 +36,7 @@ export default function GameCreatorPage() {
             </div>
             <h2 className="text-2xl font-bold text-white mb-3">Coming Soon</h2>
             <p className="text-gray-400 mb-6">
-              We're building an amazing game creation platform with AI-powered design tools, asset generation, and prototyping capabilities.
+              We&apos;re building an amazing game creation platform with AI-powered design tools, asset generation, and prototyping capabilities.
             </p>
             <Button variant="outline" className="border-violet-500/30 text-violet-400 hover:bg-violet-500/10">
               Join Waitlist

@@ -5,7 +5,7 @@
 
 import { redirect } from 'next/navigation';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
-import { getPlan, daysUntilReset } from '@/lib/billing/plans';
+import { daysUntilReset } from '@/lib/billing/plans';
 import { getRecentJobs, getJobStats } from '@/lib/jobs/jobs';
 import { DashboardHeader } from '@/components/dashboard/DashboardHeader';
 import { CreditsSummary } from '@/components/dashboard/CreditsSummary';
@@ -98,7 +98,6 @@ export default async function BillingDashboardPage() {
           <CreditsSummary
             balance={credits.balance}
             monthlyAllowance={credits.monthly_allowance}
-            nextResetAt={nextReset}
             daysLeft={daysLeft}
             totalSpent={credits.total_spent}
           />

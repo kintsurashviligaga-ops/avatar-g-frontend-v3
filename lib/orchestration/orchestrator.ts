@@ -219,6 +219,7 @@ export const PROVIDER_REGISTRY: Record<string, Record<string, ProviderConfig>> =
     generate: {
       name: 'Suno Music Generator',
       execute: async (input) => {
+        void input;
         // TODO: Implement actual Suno API call
         return {
           trackId: 'demo-track-id',
@@ -234,6 +235,7 @@ export const PROVIDER_REGISTRY: Record<string, Record<string, ProviderConfig>> =
     generate: {
       name: 'Runway Video Generator',
       execute: async (input) => {
+        void input;
         // TODO: Implement actual video generation API
         return {
           videoId: 'demo-video-id',
@@ -249,6 +251,7 @@ export const PROVIDER_REGISTRY: Record<string, Record<string, ProviderConfig>> =
     generate: {
       name: 'DALL-E Image Generator',
       execute: async (input) => {
+        void input;
         // TODO: Implement actual image generation API
         return {
           imageId: 'demo-image-id',
@@ -264,6 +267,7 @@ export const PROVIDER_REGISTRY: Record<string, Record<string, ProviderConfig>> =
     clone: {
       name: 'ElevenLabs Voice Cloner',
       execute: async (input) => {
+        void input;
         // TODO: Implement actual voice cloning API
         return {
           voiceId: 'demo-voice-id',
@@ -276,6 +280,7 @@ export const PROVIDER_REGISTRY: Record<string, Record<string, ProviderConfig>> =
     synthesize: {
       name: 'ElevenLabs TTS',
       execute: async (input) => {
+        void input;
         // TODO: Implement actual TTS API
         return {
           audioId: 'demo-audio-id',
@@ -291,6 +296,7 @@ export const PROVIDER_REGISTRY: Record<string, Record<string, ProviderConfig>> =
     message: {
       name: 'OpenAI Chat',
       execute: async (input) => {
+        void input;
         // TODO: Implement actual chat API
         return {
           messageId: 'demo-message-id',

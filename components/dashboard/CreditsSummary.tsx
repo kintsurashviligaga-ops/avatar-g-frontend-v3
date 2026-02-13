@@ -9,7 +9,6 @@ import { formatCredits } from '@/lib/billing/plans';
 interface CreditsSummaryProps {
   balance: number;
   monthlyAllowance: number;
-  nextResetAt: Date;
   daysLeft: number;
   totalSpent: number;
 }
@@ -17,7 +16,6 @@ interface CreditsSummaryProps {
 export function CreditsSummary({
   balance,
   monthlyAllowance,
-  nextResetAt,
   daysLeft,
   totalSpent,
 }: CreditsSummaryProps) {

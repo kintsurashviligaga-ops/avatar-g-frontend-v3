@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Image, Sparkles, Wand2, Palette } from 'lucide-react';
+import { Image as ImageIcon, Sparkles, Wand2, Palette } from 'lucide-react';
 import SpaceBackground from '@/components/SpaceBackground';
 
 export default function ImageCreatorPage() {
@@ -30,7 +30,7 @@ export default function ImageCreatorPage() {
             className="text-center mb-12"
           >
             <div className="inline-flex items-center gap-2 px-4 py-2 bg-amber-500/10 border border-amber-500/30 rounded-full mb-4">
-              <Image className="w-4 h-4 text-amber-400" />
+              <ImageIcon className="w-4 h-4 text-amber-400" />
               <span className="text-amber-300 text-sm font-medium">Image Creator</span>
             </div>
             <h1 className="text-5xl font-bold text-white mb-4">

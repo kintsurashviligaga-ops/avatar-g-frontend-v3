@@ -53,9 +53,13 @@ export class ReplicateAvatarProvider implements IAvatarProvider {
       if (!output || output.length === 0) {
         throw new Error('No images generated');
       }
+      const firstOutput = output[0];
+      if (!firstOutput) {
+        throw new Error('No image URL returned');
+      }
 
       return {
-        image_url: output[0],
+        image_url: firstOutput,
         turnaround_urls: output.length > 1 ? output.slice(1) : undefined,
         generation_time_ms: generationTime,
         metadata: {
@@ -100,9 +104,13 @@ export class ReplicateAvatarProvider implements IAvatarProvider {
       if (!output || output.length === 0) {
         throw new Error('No images generated');
       }
+      const firstOutput = output[0];
+      if (!firstOutput) {
+        throw new Error('No image URL returned');
+      }
 
       return {
-        image_url: output[0],
+        image_url: firstOutput,
         generation_time_ms: generationTime,
         metadata: {
           model: 'sdxl-img2img',

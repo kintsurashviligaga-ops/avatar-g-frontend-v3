@@ -37,9 +37,11 @@ export function useVoiceInput({
       if (SpeechRecognition) {
         setBrowserSupportsSpeechRecognition(true);
         
-        navigator.mediaDevices.getUserMedia({ audio: true })
-          .then(() => setIsMicrophoneAvailable(true))
-          .catch(() => setIsMicrophoneAvailable(false));
+        if (navigator.mediaDevices?.getUserMedia) {
+          navigator.mediaDevices.getUserMedia({ audio: true })
+            .then(() => setIsMicrophoneAvailable(true))
+            .catch(() => setIsMicrophoneAvailable(false));
+        }
       }
     }
   }, []);
@@ -56,6 +58,11 @@ export function useVoiceInput({
     }
 
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      onError?.('Speech recognition not available');
+      return;
+    }
+
     const recognition = new SpeechRecognition();
     
     recognition.continuous = true;
@@ -72,8 +79,11 @@ export function useVoiceInput({
       let finalTranscript = '';
 
       for (let i = event.resultIndex; i < event.results.length; i++) {
-        const transcript = event.results[i][0].transcript;
-        if (event.results[i].isFinal) {
+        const result = event.results[i];
+        const transcript = result?.[0]?.transcript;
+        if (!transcript) continue;
+
+        if (result.isFinal) {
           finalTranscript += transcript;
         } else {
           interimTranscript += transcript;

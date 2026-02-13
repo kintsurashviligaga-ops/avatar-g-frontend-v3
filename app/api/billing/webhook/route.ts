@@ -9,8 +9,7 @@ import { headers } from 'next/headers';
 import Stripe from 'stripe';
 import { verifyWebhookSignature } from '@/lib/billing/stripe';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
-import { getPlanByStripePriceId } from '@/lib/billing/plans';
-import { updateMonthlyAllowance } from '@/lib/billing/enforce';
+import { getPlanByStripePriceId } from '@/lib/billing/stripe-prices';
 
 export const dynamic = 'force-dynamic';
 
@@ -77,6 +76,7 @@ export async function POST(request: NextRequest) {
           await handleSubscriptionDeleted(event.data.object as Stripe.Subscription);
           break;
         
+        case 'invoice.paid':
         case 'invoice.payment_succeeded':
           await handlePaymentSucceeded(event.data.object as Stripe.Invoice);
           break;
@@ -95,13 +95,13 @@ export async function POST(request: NextRequest) {
     }
     
     // RECORD EVENT (Idempotency)
-    await supabase.from('stripe_events').insert({
+    await supabase.from('stripe_events').upsert({
       stripe_event_id: event.id,
       event_type: event.type,
       event_data: event.data.object as unknown as Record<string, unknown>,
       success: processSuccess,
       error_message: errorMessage,
-    });
+    }, { onConflict: 'stripe_event_id' });
     
     if (!processSuccess) {
       return NextResponse.json(
@@ -162,12 +162,17 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
  */
 async function handleSubscriptionUpdated(subscription: Stripe.Subscription) {
   const supabase = createSupabaseServerClient();
+  type SubscriptionWithPeriod = Stripe.Subscription & {
+    current_period_end?: number;
+    current_period_start?: number;
+  };
+  const periodSubscription = subscription as SubscriptionWithPeriod;
   
   const customerId = subscription.customer as string;
   const subscriptionId = subscription.id;
   const status = subscription.status;
-  const currentPeriodEnd = subscription.current_period_end ? new Date(subscription.current_period_end * 1000) : new Date();
-  const currentPeriodStart = subscription.current_period_start ? new Date(subscription.current_period_start * 1000) : new Date();
+  const currentPeriodEnd = periodSubscription.current_period_end ? new Date(periodSubscription.current_period_end * 1000) : new Date();
+  const currentPeriodStart = periodSubscription.current_period_start ? new Date(periodSubscription.current_period_start * 1000) : new Date();
   const cancelAtPeriodEnd = subscription.cancel_at_period_end || false;
   
   // Determine plan from price ID
@@ -308,8 +313,21 @@ async function handlePaymentSucceeded(invoice: Stripe.Invoice) {
   
   console.log(`Payment succeeded for user: ${subscription.user_id}`);
   
-  // Note: Credits are managed via plan updates, not per-payment
-  // This is logged for monitoring purposes
+  // Refresh monthly allowance on successful payment
+  try {
+    await supabase.rpc('update_monthly_allowance', {
+      p_user_id: subscription.user_id,
+      p_plan: subscription.plan,
+    });
+  } catch (error) {
+    console.error('Failed to refresh monthly allowance:', error);
+  }
+  
+  // Ensure subscription is active after successful payment
+  await supabase
+    .from('subscriptions')
+    .update({ status: 'active', updated_at: new Date().toISOString() })
+    .eq('user_id', subscription.user_id);
 }
 
 /**

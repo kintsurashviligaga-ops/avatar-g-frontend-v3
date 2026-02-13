@@ -30,7 +30,11 @@ const openAIProvider: AIProvider = {
     });
     if (!response.ok) throw new Error(`OpenAI error: ${response.status}`);
     const data = await response.json();
-    return data.choices[0].message.content;
+    const content = data?.choices?.[0]?.message?.content;
+    if (!content) {
+      throw new Error('OpenAI returned empty content');
+    }
+    return content;
   }
 };
 
@@ -54,7 +58,11 @@ const grokProvider: AIProvider = {
     });
     if (!response.ok) throw new Error(`Grok error: ${response.status}`);
     const data = await response.json();
-    return data.choices[0].message.content;
+    const content = data?.choices?.[0]?.message?.content;
+    if (!content) {
+      throw new Error('Grok returned empty content');
+    }
+    return content;
   }
 };
 
@@ -78,7 +86,11 @@ const deepSeekProvider: AIProvider = {
     });
     if (!response.ok) throw new Error(`DeepSeek error: ${response.status}`);
     const data = await response.json();
-    return data.choices[0].message.content;
+    const content = data?.choices?.[0]?.message?.content;
+    if (!content) {
+      throw new Error('DeepSeek returned empty content');
+    }
+    return content;
   }
 };
 
@@ -97,7 +109,11 @@ const geminiProvider: AIProvider = {
     });
     if (!response.ok) throw new Error(`Gemini error: ${response.status}`);
     const data = await response.json();
-    return data.candidates[0].content.parts[0].text;
+    const content = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!content) {
+      throw new Error('Gemini returned empty content');
+    }
+    return content;
   }
 };
 
@@ -124,7 +140,8 @@ const localProvider: AIProvider = {
     };
     const lang = options.language || "ka";
     const type = options.type || "text";
-    return responses[lang]?.[type] || responses["ka"]["text"];
+    const fallback = responses["ka"]?.["text"] || "Response unavailable";
+    return responses[lang]?.[type] || fallback;
   }
 };
 
@@ -145,7 +162,10 @@ function getSystemPrompt(type?: string, language?: string): string {
       chat: "You are Avatar G Assistant."
     }
   };
-  return prompts[language || "ka"][type || "text"] || prompts["ka"]["text"];
+  const langKey = language || "ka";
+  const typeKey = type || "text";
+  const langPrompts = prompts[langKey] || prompts["ka"];
+  return langPrompts?.[typeKey] || prompts["ka"]?.["text"] || "";
 }
 
 const providers = [openAIProvider, grokProvider, deepSeekProvider, geminiProvider, localProvider];

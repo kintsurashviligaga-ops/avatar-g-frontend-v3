@@ -1,10 +1,9 @@
 'use client';
 
-import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Wand2, Sparkles, FileText } from 'lucide-react';
+import { Wand2 } from 'lucide-react';
 import SpaceBackground from '@/components/SpaceBackground';
 
 export default function PromptBuilderPage() {
@@ -37,7 +36,7 @@ export default function PromptBuilderPage() {
             </div>
             <h2 className="text-2xl font-bold text-white mb-3">Coming Soon</h2>
             <p className="text-gray-400 mb-6">
-              We're developing an intelligent prompt optimization system with templates, refinement tools, and A/B testing capabilities.
+              We&apos;re developing an intelligent prompt optimization system with templates, refinement tools, and A/B testing capabilities.
             </p>
             <Button variant="outline" className="border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/10">
               Join Waitlist

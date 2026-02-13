@@ -9,7 +9,7 @@ import { withEnforcement } from '@/lib/billing/enforce';
 import { deductCredits } from '@/lib/billing/enforce';
 import { createJob } from '@/lib/jobs/jobs';
 import { getAgent } from '@/lib/agents/registry';
-import { getCreditCost } from '@/lib/billing/plans';
+import { AGENT_COSTS, getCreditCost } from '@/lib/billing/plans';
 
 export const dynamic = 'force-dynamic';
 
@@ -55,8 +55,10 @@ export async function POST(request: NextRequest) {
     }
     
     // Get credit cost for this action
-    const actionKey = `${agentId}.${action}` as keyof ReturnType<typeof getCreditCost>;
-    const cost = (getCreditCost(actionKey as any) as number | undefined) || agent.baseCost;
+    const actionKey = `${agentId}.${action}`;
+    const cost = actionKey in AGENT_COSTS
+      ? getCreditCost(actionKey as keyof typeof AGENT_COSTS)
+      : agent.baseCost;
     
     // Enforce plan + credits
     const result = await withEnforcement(
@@ -66,7 +68,7 @@ export async function POST(request: NextRequest) {
         cost,
         requiredPlan: agent.requiredPlan,
       },
-      async (context) => {
+      async () => {
         // Create job
         const job = await createJob({
           userId: user.id,

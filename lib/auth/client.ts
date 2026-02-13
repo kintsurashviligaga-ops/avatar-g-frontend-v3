@@ -47,17 +47,14 @@ export async function getAuthHeaders(
   additionalHeaders: HeadersInit = {}
 ): Promise<HeadersInit> {
   const token = await getAccessToken();
-  
-  const headers: HeadersInit = {
-    'Content-Type': 'application/json',
-    ...additionalHeaders,
-  };
+  const headers = new Headers(additionalHeaders);
+  headers.set('Content-Type', 'application/json');
   
   if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
+    headers.set('Authorization', `Bearer ${token}`);
   }
   
-  return headers;
+  return Object.fromEntries(headers.entries());
 }
 
 /**

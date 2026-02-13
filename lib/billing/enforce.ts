@@ -4,11 +4,11 @@
  */
 
 import { createSupabaseServerClient } from '@/lib/supabase/server';
-import { type PlanTier, getPlan, planAllowsAgent, canAfford } from './plans';
+import { type PlanTier, type CanonicalPlanTier, getPlan, getPlanRank, normalizePlanTier, planAllowsAgent, canAfford } from './plans';
 
 export interface EnforcementContext {
   userId: string;
-  plan: PlanTier;
+  plan: CanonicalPlanTier;
   credits: {
     balance: number;
     monthlyAllowance: number;
@@ -23,34 +23,33 @@ export interface EnforcementContext {
 /**
  * Get user enforcement context (plan + credits + subscription)
  */
+
 export async function getEnforcementContext(userId: string): Promise<EnforcementContext> {
   const supabase = createSupabaseServerClient();
-  
-  // Fetch subscription
+
   const { data: subscription, error: subError } = await supabase
     .from('subscriptions')
     .select('plan, status, current_period_end')
-    .eq('user_id', userId)
-    .single();
-  
+  .eq('user_id', userId)
+  .single();
+
   if (subError || !subscription) {
     throw new Error('User subscription not found');
   }
-  
-  // Fetch credits
+
   const { data: credits, error: creditsError } = await supabase
     .from('credits')
     .select('balance, monthly_allowance, next_reset_at')
-    .eq('user_id', userId)
-    .single();
-  
+  .eq('user_id', userId)
+  .single();
+
   if (creditsError || !credits) {
     throw new Error('User credits not found');
   }
-  
+
   return {
     userId,
-    plan: subscription.plan as PlanTier,
+    plan: normalizePlanTier(subscription.plan as PlanTier),
     credits: {
       balance: credits.balance,
       monthlyAllowance: credits.monthly_allowance,
@@ -58,8 +57,8 @@ export async function getEnforcementContext(userId: string): Promise<Enforcement
     },
     subscription: {
       status: subscription.status,
-      currentPeriodEnd: subscription.current_period_end 
-        ? new Date(subscription.current_period_end) 
+      currentPeriodEnd: subscription.current_period_end
+        ? new Date(subscription.current_period_end)
         : null,
     },
   };
@@ -68,14 +67,13 @@ export async function getEnforcementContext(userId: string): Promise<Enforcement
 /**
  * Assert user has required plan tier
  */
-export function assertPlanAccess(
+function assertPlanAccess(
   context: EnforcementContext,
   requiredPlan: PlanTier
 ): void {
-  const planHierarchy: PlanTier[] = ['FREE', 'PRO', 'PREMIUM', 'ENTERPRISE'];
-  const userPlanIndex = planHierarchy.indexOf(context.plan);
-  const requiredPlanIndex = planHierarchy.indexOf(requiredPlan);
-  
+  const userPlanIndex = getPlanRank(context.plan);
+  const requiredPlanIndex = getPlanRank(requiredPlan);
+
   if (userPlanIndex < requiredPlanIndex) {
     throw new EnforcementError(
       `This feature requires ${requiredPlan} plan or higher`,
@@ -89,7 +87,7 @@ export function assertPlanAccess(
 /**
  * Assert user's plan allows specific agent
  */
-export function assertAgentAccess(
+function assertAgentAccess(
   context: EnforcementContext,
   agentId: string
 ): void {
@@ -106,7 +104,7 @@ export function assertAgentAccess(
 /**
  * Assert user has sufficient credits
  */
-export function assertSufficientCredits(
+function assertSufficientCredits(
   context: EnforcementContext,
   cost: number
 ): void {
@@ -115,8 +113,8 @@ export function assertSufficientCredits(
       `Insufficient credits. Required: ${cost}, Available: ${context.credits.balance}`,
       'INSUFFICIENT_CREDITS',
       402,
-      { 
-        required: cost, 
+      {
+        required: cost,
         available: context.credits.balance,
         nextReset: context.credits.nextReset,
       }
@@ -127,7 +125,7 @@ export function assertSufficientCredits(
 /**
  * Assert subscription is active
  */
-export function assertActiveSubscription(context: EnforcementContext): void {
+function assertActiveSubscription(context: EnforcementContext): void {
   if (context.subscription.status !== 'active') {
     throw new EnforcementError(
       'Your subscription is not active',
@@ -141,6 +139,7 @@ export function assertActiveSubscription(context: EnforcementContext): void {
 /**
  * Deduct credits from user (transaction-safe via Supabase function)
  */
+
 export async function deductCredits(params: {
   userId: string;
   amount: number;
@@ -149,69 +148,65 @@ export async function deductCredits(params: {
   description: string;
 }): Promise<{ success: boolean; newBalance: number; error?: string }> {
   const supabase = createSupabaseServerClient();
-  
-  const { data, error } = await supabase.rpc('deduct_credits', {
+
+  const { data: rpcData, error: rpcError } = await supabase.rpc('deduct_credits', {
     p_user_id: params.userId,
     p_amount: params.amount,
     p_job_id: params.jobId,
     p_agent_id: params.agentId,
     p_description: params.description,
   });
-  
-  if (error) {
-    console.error('Credit deduction error:', error);
-    throw new Error(`Failed to deduct credits: ${error.message}`);
+
+  if (rpcError || !rpcData || !rpcData[0]) {
+    return {
+      success: false,
+      newBalance: 0,
+      error: rpcError?.message || 'Credit deduction failed',
+    };
   }
-  
-  const result = Array.isArray(data) ? data[0] : data;
-  
-  if (!result.success) {
-    throw new EnforcementError(
-      result.error_message || 'Credit deduction failed',
-      'DEDUCTION_FAILED',
-      402,
-      { error: result.error_message }
-    );
-  }
-  
+
   return {
-    success: true,
-    newBalance: result.new_balance,
+    success: !!rpcData[0].success,
+    newBalance: rpcData[0].new_balance || 0,
+    error: rpcData[0].error_message || undefined,
   };
 }
 
 /**
- * Add credits to user (refill/bonus)
+ * Add credits to user (transaction-safe via Supabase function)
  */
+
 export async function addCredits(params: {
   userId: string;
   amount: number;
-  description: string;
-}): Promise<{ success: boolean; newBalance: number }> {
+  description?: string;
+}): Promise<{ success: boolean; newBalance: number; error?: string }> {
   const supabase = createSupabaseServerClient();
-  
+
   const { data, error } = await supabase.rpc('add_credits', {
     p_user_id: params.userId,
     p_amount: params.amount,
-    p_description: params.description,
+    p_description: params.description || 'Credit addition',
   });
-  
-  if (error) {
-    console.error('Credit addition error:', error);
-    throw new Error(`Failed to add credits: ${error.message}`);
+
+  if (error || !data || !data[0]) {
+    return {
+      success: false,
+      newBalance: 0,
+      error: error?.message || 'Credit addition failed',
+    };
   }
-  
-  const result = Array.isArray(data) ? data[0] : data;
-  
+
   return {
-    success: true,
-    newBalance: result.new_balance,
+    success: !!data[0].success,
+    newBalance: data[0].new_balance || 0,
   };
 }
 
 /**
- * Refund credits (transaction reversal)
+ * Refund credits for a job
  */
+
 export async function refundCredits(params: {
   userId: string;
   jobId: string;
@@ -228,13 +223,14 @@ export async function refundCredits(params: {
 /**
  * Update monthly allowance based on plan
  */
+
 export async function updateMonthlyAllowance(
   userId: string,
   plan: PlanTier
 ): Promise<void> {
   const supabase = createSupabaseServerClient();
   const planConfig = getPlan(plan);
-  
+
   const { error } = await supabase
     .from('credits')
     .update({
@@ -242,7 +238,7 @@ export async function updateMonthlyAllowance(
       updated_at: new Date().toISOString(),
     })
     .eq('user_id', userId);
-  
+
   if (error) {
     console.error('Failed to update monthly allowance:', error);
     throw new Error('Failed to update credit allowance');
@@ -252,6 +248,7 @@ export async function updateMonthlyAllowance(
 /**
  * Custom enforcement error
  */
+
 export class EnforcementError extends Error {
   constructor(
     message: string,
@@ -262,7 +259,7 @@ export class EnforcementError extends Error {
     super(message);
     this.name = 'EnforcementError';
   }
-  
+
   toJSON() {
     return {
       error: this.message,
@@ -275,6 +272,7 @@ export class EnforcementError extends Error {
 /**
  * Middleware wrapper for API routes with enforcement
  */
+
 export async function withEnforcement<T>(
   userId: string,
   options: {
@@ -284,27 +282,21 @@ export async function withEnforcement<T>(
   },
   handler: (context: EnforcementContext) => Promise<T>
 ): Promise<T> {
-  // Get enforcement context
   const context = await getEnforcementContext(userId);
-  
-  // Check subscription status
+
   assertActiveSubscription(context);
-  
-  // Check plan requirements
+
   if (options.requiredPlan) {
     assertPlanAccess(context, options.requiredPlan);
   }
-  
-  // Check agent access
+
   if (options.agentId) {
     assertAgentAccess(context, options.agentId);
   }
-  
-  // Check credits
+
   if (options.cost) {
     assertSufficientCredits(context, options.cost);
   }
-  
-  // Execute handler with context
+
   return await handler(context);
 }

@@ -4,7 +4,7 @@
 
 'use client';
 
-import { type PlanTier } from '@/lib/billing/plans';
+import { getPlan, normalizePlanTier, type PlanTier } from '@/lib/billing/plans';
 
 interface DashboardHeaderProps {
   userName: string;
@@ -12,6 +12,8 @@ interface DashboardHeaderProps {
 }
 
 export function DashboardHeader({ userName, plan }: DashboardHeaderProps) {
+  const planName = getPlan(normalizePlanTier(plan)).name;
+
   return (
     <div className="flex items-center justify-between">
       <div>
@@ -19,7 +21,7 @@ export function DashboardHeader({ userName, plan }: DashboardHeaderProps) {
           Welcome back, {userName}
         </h1>
         <p className="text-gray-400 mt-2">
-          {plan} Plan • Dashboard Overview
+          {planName} Plan • Dashboard Overview
         </p>
       </div>
       

@@ -1,10 +1,9 @@
 'use client';
 
-import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Share2, TrendingUp, Calendar, BarChart } from 'lucide-react';
+import { Share2 } from 'lucide-react';
 import SpaceBackground from '@/components/SpaceBackground';
 
 export default function SocialMediaPage() {
@@ -37,7 +36,7 @@ export default function SocialMediaPage() {
             </div>
             <h2 className="text-2xl font-bold text-white mb-3">Coming Soon</h2>
             <p className="text-gray-400 mb-6">
-              We're building a powerful social media automation platform with AI content generation, multi-platform scheduling, and advanced analytics.
+              We&apos;re building a powerful social media automation platform with AI content generation, multi-platform scheduling, and advanced analytics.
             </p>
             <Button variant="outline" className="border-pink-500/30 text-pink-400 hover:bg-pink-500/10">
               Join Waitlist

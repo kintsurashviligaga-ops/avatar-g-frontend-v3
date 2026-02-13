@@ -3,10 +3,30 @@
  * Single source of truth for subscription tiers, limits, and pricing
  */
 
-export type PlanTier = 'FREE' | 'PRO' | 'PREMIUM' | 'ENTERPRISE';
+export type PlanTier = 'FREE' | 'BASIC' | 'PREMIUM' | 'PRO' | 'ENTERPRISE';
+export type CanonicalPlanTier = 'FREE' | 'BASIC' | 'PREMIUM';
+
+const PLAN_ORDER: CanonicalPlanTier[] = ['FREE', 'BASIC', 'PREMIUM'];
+
+const PLAN_ALIASES: Record<PlanTier, CanonicalPlanTier> = {
+  FREE: 'FREE',
+  BASIC: 'BASIC',
+  PREMIUM: 'PREMIUM',
+  PRO: 'BASIC',
+  ENTERPRISE: 'PREMIUM',
+};
+
+export function normalizePlanTier(plan: PlanTier | string | null | undefined): CanonicalPlanTier {
+  const key = (plan || '').toString().toUpperCase() as PlanTier;
+  return PLAN_ALIASES[key] || 'FREE';
+}
+
+export function getPlanRank(plan: PlanTier | string | null | undefined): number {
+  return PLAN_ORDER.indexOf(normalizePlanTier(plan));
+}
 
 export interface PlanConfig {
-  id: PlanTier;
+  id: CanonicalPlanTier;
   name: string;
   description: string;
   monthlyCredits: number;
@@ -14,8 +34,8 @@ export interface PlanConfig {
   maxStorageGB: number;
   features: string[];
   allowedAgents: string[]; // '*' means all
-  stripePriceId?: string; // Undefined for FREE
   monthlyPriceUSD?: number;
+  stripePriceId?: string; // Optional Stripe price ID
   // Agent-specific limits
   limits: {
     avatarBuilder: number; // Max avatars
@@ -25,7 +45,7 @@ export interface PlanConfig {
   };
 }
 
-export const PLANS: Record<PlanTier, PlanConfig> = {
+export const PLANS: Record<CanonicalPlanTier, PlanConfig> = {
   FREE: {
     id: 'FREE',
     name: 'Free',
@@ -56,14 +76,13 @@ export const PLANS: Record<PlanTier, PlanConfig> = {
     },
   },
   
-  PRO: {
-    id: 'PRO',
+  BASIC: {
+    id: 'BASIC',
     name: 'Basic',
     description: 'For creators and professionals',
     monthlyCredits: 1000,
     maxConcurrentJobs: 3,
     maxStorageGB: 10,
-    stripePriceId: process.env.STRIPE_PRICE_PRO,
     monthlyPriceUSD: 30,
     features: [
       '1,000 credits/month',
@@ -124,33 +143,6 @@ export const PLANS: Record<PlanTier, PlanConfig> = {
     },
   },
   
-  ENTERPRISE: {
-    id: 'ENTERPRISE',
-    name: 'Enterprise',
-    description: 'Custom solution for teams and organizations',
-    monthlyCredits: 50000,
-    maxConcurrentJobs: 50,
-    maxStorageGB: 500,
-    stripePriceId: process.env.STRIPE_PRICE_ENTERPRISE,
-    monthlyPriceUSD: 499,
-    features: [
-      '50,000 credits/month (scalable)',
-      'Dedicated infrastructure',
-      'Custom integrations',
-      'Team collaboration',
-      'SSO & advanced security',
-      'Custom AI training',
-      'SLA guarantee',
-      'Dedicated account manager',
-    ],
-    allowedAgents: ['*'],
-    limits: {
-      avatarBuilder: 9999,
-      videoStudio: 9999,
-      musicStudio: 9999,
-      voiceLab: 9999,
-    },
-  },
 };
 
 /**
@@ -210,15 +202,15 @@ export const AGENT_COSTS = {
 /**
  * Get plan configuration
  */
-export function getPlan(tier: PlanTier): PlanConfig {
-  return PLANS[tier];
+export function getPlan(tier: PlanTier | string): PlanConfig {
+  return PLANS[normalizePlanTier(tier)];
 }
 
 /**
  * Check if plan allows agent
  */
-export function planAllowsAgent(plan: PlanTier, agentId: string): boolean {
-  const config = PLANS[plan];
+export function planAllowsAgent(plan: PlanTier | string, agentId: string): boolean {
+  const config = getPlan(plan);
   if (config.allowedAgents.includes('*')) return true;
   return config.allowedAgents.includes(agentId);
 }
@@ -259,11 +251,3 @@ export function daysUntilReset(nextResetDate: Date): number {
 /**
  * Get plan by Stripe price ID
  */
-export function getPlanByStripePriceId(priceId: string): PlanTier | null {
-  for (const [tier, config] of Object.entries(PLANS)) {
-    if (config.stripePriceId === priceId) {
-      return tier as PlanTier;
-    }
-  }
-  return null;
-}

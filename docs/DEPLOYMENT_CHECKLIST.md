@@ -4,17 +4,18 @@
 
 ### Database
 - [ ] Run migration `004_saas_billing_credits.sql` on Supabase
-- [ ] Verify all tables created: `profiles`, `subscriptions`, `credits`, `credit_transactions`
-- [ ] Verify functions created: `deduct_credits()`, `add_credits()`, `reset_monthly_credits()`
+- [ ] Run migration `005_stripe_events_idempotency.sql` on Supabase
+- [ ] Verify all tables created: `profiles`, `subscriptions`, `credits`, `credit_transactions`, `stripe_events`, `orchestration_runs`
+- [ ] Verify views created: `credit_ledger`
+- [ ] Verify functions created: `deduct_credits()`, `add_credits()`, `reset_monthly_credits()`, `update_monthly_allowance()`
 - [ ] Check RLS policies enabled on all tables
 - [ ] Verify indexes created successfully
 - [ ] Backfill existing users with FREE plan + 100 credits
 
 ### Stripe Setup
 - [ ] Create products in Stripe Dashboard:
-  - Avatar G Pro ($29/month)
-  - Avatar G Premium ($99/month)
-  - Avatar G Enterprise ($499/month)
+  - Avatar G Basic ($30/month)
+  - Avatar G Premium ($150/month)
 - [ ] Copy Price IDs to environment variables
 - [ ] Create webhook endpoint in Stripe
 - [ ] Subscribe to events: `checkout.session.completed`, `customer.subscription.*`, `invoice.payment_*`
@@ -32,7 +33,6 @@
   NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
   STRIPE_PRICE_PRO
   STRIPE_PRICE_PREMIUM
-  STRIPE_PRICE_ENTERPRISE
   ```
 
 ### Code Quality
@@ -56,11 +56,11 @@
 
 ### Billing Flow
 - [ ] Click "Upgrade Plan" button
-- [ ] Stripe Checkout opens for PRO plan
+- [ ] Stripe Checkout opens for Basic plan
 - [ ] Complete test payment: `4242 4242 4242 4242`
 - [ ] Redirected back to dashboard with success message
 - [ ] Webhook received and processed
-- [ ] Plan updated to PRO in database
+- [ ] Plan updated to BASIC in database
 - [ ] Credits updated to 1,000
 - [ ] Dashboard reflects new plan
 
@@ -172,7 +172,7 @@
 - [ ] Gather user feedback on pricing
 
 ### Month 1
-- [ ] Analyze plan distribution (FREE/PRO/PREMIUM/ENTERPRISE)
+- [ ] Analyze plan distribution (FREE/BASIC/PREMIUM)
 - [ ] Calculate MRR (Monthly Recurring Revenue)
 - [ ] Measure churn rate
 - [ ] Review credit utilization per plan

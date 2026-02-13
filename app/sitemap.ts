@@ -1,7 +1,8 @@
 import { MetadataRoute } from "next";
+import { publicEnv } from "@/lib/env/public";
 
 export default function sitemap(): MetadataRoute.Sitemap {
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://avatar-g-frontend-v3.vercel.app";
+  const baseUrl = publicEnv.NEXT_PUBLIC_APP_URL || "https://avatar-g-frontend-v3.vercel.app";
   const now = new Date();
   
   // Core pages
@@ -22,6 +23,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
     'business-agent',
     'game-creator',
     'image-creator',
+    'photo-studio',
     'social-media',
     'online-shop',
     'prompt-builder',
@@ -57,19 +59,5 @@ export default function sitemap(): MetadataRoute.Sitemap {
       changeFrequency: page.changeFrequency,
       priority: page.priority,
     })),
-  ];
-}
-    {
-      url: `${baseUrl}/services/executive-agent`,
-      lastModified: new Date(),
-      changeFrequency: "weekly",
-      priority: 0.8,
-    },
-    {
-      url: `${baseUrl}/settings`,
-      lastModified: new Date(),
-      changeFrequency: "monthly",
-      priority: 0.5,
-    },
   ];
 }
