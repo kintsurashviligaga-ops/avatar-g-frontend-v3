@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { generateSignedPdfUrl } from '@/lib/invoice/pdf';
 
+// Force dynamic rendering (uses cookies and env vars at runtime)
+export const dynamic = 'force-dynamic';
+
 // ========================================
 // GET /api/invoices/list
 // ========================================

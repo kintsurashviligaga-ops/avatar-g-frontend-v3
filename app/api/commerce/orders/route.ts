@@ -16,6 +16,9 @@ import {
 } from '@/lib/commerce';
 import { getServerEnv } from '@/lib/env/server';
 
+// Force dynamic rendering
+export const dynamic = 'force-dynamic';
+
 // Helper: Get authenticated user
 async function getAuthUser(request: NextRequest) {
   const cookieStore = cookies();

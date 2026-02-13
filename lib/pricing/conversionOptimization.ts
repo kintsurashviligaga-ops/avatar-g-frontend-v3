@@ -222,7 +222,7 @@ export function recommendABTest(analysis: ConversionAnalysis): {
     decision: { duration: 14, sampleSize: 100 }, // Longer test, higher commitment
   };
 
-  const test = tests[analysis.bottleneck];
+  const test = tests[analysis.bottleneck] || { duration: 10, sampleSize: 50 }; // Default fallback
 
   return {
     test: `A/B test for ${analysis.bottleneck} bottleneck`,

@@ -36,8 +36,8 @@ export async function POST(request: NextRequest) {
     const { niche, country, priceRangeCents, competitorUrl } = parsed.data;
 
     // Authenticate user
-    const auth = await createSupabaseServerClient();
-    const { data: { user }, error: authError } = await auth.getUser();
+    const supabase = await createSupabaseServerClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
 
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -70,7 +70,7 @@ export async function POST(request: NextRequest) {
       const evaluated: ScannedProduct = {
         ...product,
         profitMarginBps: decision.computed.marginBps,
-        decisionEngineApproval: decision.decision,
+        decisionEngineApproval: decision.decision === 'publish' ? 'approved' : 'rejected',
         rejectionReason: decision.decision === 'reject' ? decision.reasons[0] : undefined,
         recommendedPriceCents:
           decision.decision === 'reject' ? decision.recommendedPriceCents : undefined,

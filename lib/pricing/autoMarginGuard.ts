@@ -7,6 +7,7 @@
 import { MarginSimulation, MarginScenario } from './types';
 import { computeMargin } from '@/lib/finance/margin';
 import { roundToNearest } from '@/lib/finance/money';
+import { GEORGIA_VAT_BPS } from '@/lib/finance/vat';
 
 interface WorstCaseFactors {
   maxRefundRatePct: number; // 0-100 (worst case)
@@ -34,20 +35,21 @@ export function simulateWorstCaseMargin(
   worseCaseFactors: WorstCaseFactors
 ): MarginSimulation {
   // Best case: everything goes well
-  const bestCaseMargin = computeMargin(
-    retailPriceCents,
-    supplierCostCents,
-    shippingCostCents,
-    platformFeeBps,
-    affiliateFeeBps,
-    refundReserveBps,
-    true // VAT enabled
-  );
+  const bestCaseResult = computeMargin({
+    retail_price_cents: retailPriceCents,
+    supplier_cost_cents: supplierCostCents,
+    shipping_cost_cents: shippingCostCents,
+    vat_enabled: true,
+    vat_rate_bps: GEORGIA_VAT_BPS,
+    platform_fee_bps: platformFeeBps,
+    affiliate_bps: affiliateFeeBps,
+    refund_reserve_bps: refundReserveBps,
+  });
 
   // Worst case: multiple bad things happen
   // 1. Refund rate high: Lose revenue on some orders
   const refundLoss = Math.round(
-    (retailPriceCents * worseCaseFactors.maxRefundRatePct) / 100
+    (retailPriceCents * worseCaseFactors.maxRefundRatePct) /100
   );
 
   // 2. Shipping delays increase refund requests
@@ -69,33 +71,35 @@ export function simulateWorstCaseMargin(
   const additionalCosts =
     worseCaseFactors.maxReturnShippingCostCents + worseCaseFactors.maxRefundRatePct * 10; // Rough estimate
 
-  const worstCaseMargin = computeMargin(
-    worstCaseEffectivePrice,
-    supplierCostCents + additionalCosts,
-    shippingCostCents + worseCaseFactors.maxReturnShippingCostCents / 2, // Some customers don't return
-    platformFeeBps + additionalFeesBps,
-    affiliateFeeBps + 500, // Affiliate fees increase in promotional periods
-    refundReserveBps + 500, // Need more buffer
-    true
-  );
+  const worstCaseResult = computeMargin({
+    retail_price_cents: worstCaseEffectivePrice,
+    supplier_cost_cents: supplierCostCents + additionalCosts,
+    shipping_cost_cents: shippingCostCents + worseCaseFactors.maxReturnShippingCostCents / 2, // Some customers don't return
+    vat_enabled: true,
+    vat_rate_bps: GEORGIA_VAT_BPS,
+    platform_fee_bps: platformFeeBps + additionalFeesBps,
+    affiliate_bps: affiliateFeeBps + 500, // Affiliate fees increase in promotional periods
+    refund_reserve_bps: refundReserveBps + 500, // Need more buffer
+  });
 
   // Average case: mild adverse conditions
-  const avgCaseMargin = computeMargin(
-    retailPriceCents - Math.round(retailPriceCents * (worseCaseFactors.competitorPriceCutPct / 100) * 0.3),
-    supplierCostCents + worseCaseFactors.maxReturnShippingCostCents / 4,
-    shippingCostCents,
-    platformFeeBps + additionalFeesBps * 0.5,
-    affiliateFeeBps,
-    refundReserveBps,
-    true
-  );
+  const avgCaseResult = computeMargin({
+    retail_price_cents: retailPriceCents - Math.round(retailPriceCents * (worseCaseFactors.competitorPriceCutPct / 100) * 0.3),
+    supplier_cost_cents: supplierCostCents + worseCaseFactors.maxReturnShippingCostCents / 4,
+    shipping_cost_cents: shippingCostCents,
+    vat_enabled: true,
+    vat_rate_bps: GEORGIA_VAT_BPS,
+    platform_fee_bps: platformFeeBps + additionalFeesBps * 0.5,
+    affiliate_bps: affiliateFeeBps,
+    refund_reserve_bps: refundReserveBps,
+  });
 
   // Build scenario breakdown
   const scenarios: MarginScenario[] = [
     {
       name: 'Best Case (Normal)',
       probability: 0.60, // 60% of time
-      marginBps: bestCaseMargin,
+      marginBps: Math.round(bestCaseResult.margin_percent * 100),
       assumptions: {
         refundRate: '2-3%',
         deliveryDelay: 'On-time',
@@ -106,7 +110,7 @@ export function simulateWorstCaseMargin(
     {
       name: 'Average Case (Minor Issues)',
       probability: 0.30, // 30% of time
-      marginBps: avgCaseMargin,
+      marginBps: Math.round(avgCaseResult.margin_percent * 100),
       assumptions: {
         refundRate: `${Math.round(worseCaseFactors.maxRefundRatePct / 2)}%`,
         deliveryDelay: `${Math.round(worseCaseFactors.maxShippingDelayDays * 0.5)} days`,
@@ -117,7 +121,7 @@ export function simulateWorstCaseMargin(
     {
       name: 'Worst Case (All Negatives)',
       probability: 0.10, // 10% of time (rare but possible)
-      marginBps: worstCaseMargin,
+      marginBps: Math.round(worstCaseResult.margin_percent * 100),
       assumptions: {
         refundRate: `${worseCaseFactors.maxRefundRatePct}%`,
         deliveryDelay: `${worseCaseFactors.maxShippingDelayDays} days`,
@@ -130,18 +134,19 @@ export function simulateWorstCaseMargin(
 
   // Determine approval: Worst case must be profitable
   const minAcceptableMarginBps = 500; // 5% absolute minimum
-  const isApproved = worstCaseMargin >= minAcceptableMarginBps;
+  const worstCaseMarginBps = Math.round(worstCaseResult.margin_percent * 100);
+  const isApproved = worstCaseMarginBps >= minAcceptableMarginBps;
 
   const rejectionReason = !isApproved
-    ? `Worst-case margin ${(worstCaseMargin / 100).toFixed(1)}% falls below 5% minimum. Recommended: increase price by ${Math.ceil(
-        ((minAcceptableMarginBps - worstCaseMargin) / retailPriceCents) * 10000
+    ? `Worst-case margin ${(worstCaseMarginBps / 100).toFixed(1)}% falls below 5% minimum. Recommended: increase price by ${Math.ceil(
+        ((minAcceptableMarginBps - worstCaseMarginBps) / retailPriceCents) * 10000
       )} bps`
     : undefined;
 
   return {
-    bestCaseMarginBps: bestCaseMargin,
-    worstCaseMarginBps: worstCaseMargin,
-    avgCaseMarginBps: avgCaseMargin,
+    bestCaseMarginBps: Math.round(bestCaseResult.margin_percent * 100),
+    worstCaseMarginBps: worstCaseMarginBps,
+    avgCaseMarginBps: Math.round(avgCaseResult.margin_percent * 100),
     scenarios,
     isApproved,
     rejectionReason,
@@ -188,48 +193,60 @@ export function marginSensitivity(
   shippingCostCents: number,
   platformFeeBps: number
 ): Record<string, number> {
-  const baseMargin = computeMargin(
-    retailPriceCents,
-    supplierCostCents,
-    shippingCostCents,
-    platformFeeBps,
-    0,
-    0,
-    true
-  );
+  const baseResult = computeMargin({
+    retail_price_cents: retailPriceCents,
+    supplier_cost_cents: supplierCostCents,
+    shipping_cost_cents: shippingCostCents,
+    vat_enabled: true,
+    vat_rate_bps: GEORGIA_VAT_BPS,
+    platform_fee_bps: platformFeeBps,
+    affiliate_bps: 0,
+    refund_reserve_bps: 0,
+  });
+
+  const baseMarginBps = Math.round(baseResult.margin_percent * 100);
 
   // Test each factor independently
-  const refundImpact = computeMargin(
-    Math.round(retailPriceCents * 0.95), // 5% refund rate
-    supplierCostCents,
-    shippingCostCents,
-    platformFeeBps,
-    0,
-    0,
-    true
-  ) - baseMargin;
+  const refundResult = computeMargin({
+    retail_price_cents: Math.round(retailPriceCents * 0.95), // 5% refund rate
+    supplier_cost_cents: supplierCostCents,
+    shipping_cost_cents: shippingCostCents,
+    vat_enabled: true,
+    vat_rate_bps: GEORGIA_VAT_BPS,
+    platform_fee_bps: platformFeeBps,
+    affiliate_bps: 0,
+    refund_reserve_bps: 0,
+  });
+
+  const refundImpact = Math.round(refundResult.margin_percent * 100) - baseMarginBps;
 
   const shippingDelayImpact = -100; // 1% margin per day delay (fixed estimate)
 
-  const competitorCapImpact = computeMargin(
-    Math.round(retailPriceCents * 0.9), // 10% price cut from competition
-    supplierCostCents,
-    shippingCostCents,
-    platformFeeBps,
-    0,
-    0,
-    true
-  ) - baseMargin;
+  const competitorResult = computeMargin({
+    retail_price_cents: Math.round(retailPriceCents * 0.9), // 10% price cut from competition
+    supplier_cost_cents: supplierCostCents,
+    shipping_cost_cents: shippingCostCents,
+    vat_enabled: true,
+    vat_rate_bps: GEORGIA_VAT_BPS,
+    platform_fee_bps: platformFeeBps,
+    affiliate_bps: 0,
+    refund_reserve_bps: 0,
+  });
 
-  const feesIncreaseImpact = computeMargin(
-    retailPriceCents,
-    supplierCostCents,
-    shippingCostCents,
-    platformFeeBps + 500, // +5% fee increase
-    0,
-    0,
-    true
-  ) - baseMargin;
+  const competitorCapImpact = Math.round(competitorResult.margin_percent * 100) - baseMarginBps;
+
+  const feesResult = computeMargin({
+    retail_price_cents: retailPriceCents,
+    supplier_cost_cents: supplierCostCents,
+    shipping_cost_cents: shippingCostCents,
+    vat_enabled: true,
+    vat_rate_bps: GEORGIA_VAT_BPS,
+    platform_fee_bps: platformFeeBps + 500, // +5% fee increase
+    affiliate_bps: 0,
+    refund_reserve_bps: 0,
+  });
+
+  const feesIncreaseImpact = Math.round(feesResult.margin_percent * 100) - baseMarginBps;
 
   return {
     refundRate5Pct: refundImpact,

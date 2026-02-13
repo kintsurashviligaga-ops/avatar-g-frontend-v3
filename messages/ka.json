@@ -1,1 +1,139 @@
-{"metadata":{"title":"Avatar G Executive - AI Platform","description":"პრემიუმ AI ინსტრუმენტები ბიზნესისთვის"},"navigation":{"services":"სერვისები","workspace":"ვორქსფეისი","about":"ჩვენს შესახებ","contact":"კონტაქტი"},"hero":{"title":"შექმენი მომავალი","subtitle":"AI-სთან ერთად","description":"პრემიუმ ინტელექტუალური სისტემები თანამედროვე ბიზნესისთვის","cta_primary":"დაიწყე ახლა","cta_secondary":"გაიგე მეტი"},"services":{"title":"13 სერვისი","subtitle":"შენი ციფრული გუნდი","image_generator":"ვიზუალური ინტელექტი","video_generator":"ბროდკასტი & მესეჯინგი","music_generator":"მედია პროდაქშენი","text_intelligence":"ტექსტის ინტელექტი","prompt_builder":"პრომპტის ბილდერი","image_architect":"სურათის არქიტექტორი","music_studio":"მუსიკის სტუდია","voice_lab":"ხმის ლაბორატორია","video_cine_lab":"ვიდეო კინო ლაბი","game_forge":"თამაშის ფორჯი","agent_g":"Agent G","ai_production":"AI პროდაქშენი","business_agent":"ბიზნეს აგენტი","pentagon":"პენტაგონი"},"generator":{"input_placeholder":"აღწერე რა გინდა...","button_generate":"გენერაცია","button_download":"გადმოწერა","button_save":"შენახვა","button_share":"გაზიარება","progress_text":"მუშავდება...","code_rain":"პრომპტი ოპტიმიზაცია...","complete":"მზადაა!"},"chatbot":{"title":"Agent G","subtitle":"პერსონალური ასისტენტი","placeholder":"დაწერე მესიჯი...","voice_input":"ხმოვანი შეყვანა","voice_output":"ხმოვანი პასუხი","file_upload":"ფაილის ატვირთვა","thinking":"ფიქრობს..."}}
+{
+  "metadata": {
+    "title": "Avatar G Executive - AI Platform",
+    "description": "პრემიუმ AI ინსტრუმენტები ბიზნესისთვის"
+  },
+  "navigation": {
+    "services": "სერვისები",
+    "workspace": "ვორქსფეისი",
+    "about": "ჩვენს შესახებ",
+    "contact": "კონტაქტი"
+  },
+  "hero": {
+    "title": "შექმენი მომავალი",
+    "subtitle": "AI-სთან ერთად",
+    "description": "პრემიუმ ინტელექტუალური სისტემები თანამედროვე ბიზნესისთვის",
+    "cta_primary": "დაიწყე ახლა",
+    "cta_secondary": "გაიგე მეტი"
+  },
+  "services": {
+    "title": "13 სერვისი",
+    "subtitle": "შენი ციფრული გუნდი",
+    "image_generator": "ვიზუალური ინტელექტი",
+    "video_generator": "ბროდკასტი & მესეჯინგი",
+    "music_generator": "მედია პროდაქშენი",
+    "text_intelligence": "ტექსტის ინტელექტი",
+    "prompt_builder": "პრომპტის ბილდერი",
+    "image_architect": "სურათის არქიტექტორი",
+    "music_studio": "მუსიკის სტუდია",
+    "voice_lab": "ხმის ლაბორატორია",
+    "video_cine_lab": "ვიდეო კინო ლაბი",
+    "game_forge": "თამაშის ფორჯი",
+    "agent_g": "Agent G",
+    "ai_production": "AI პროდაქშენი",
+    "business_agent": "ბიზნეს აგენტი",
+    "pentagon": "პენტაგონი"
+  },
+  "generator": {
+    "input_placeholder": "აღწერე რა გინდა...",
+    "button_generate": "გენერაცია",
+    "button_download": "გადმოწერა",
+    "button_save": "შენახვა",
+    "button_share": "გაზიარება",
+    "progress_text": "მუშავდება...",
+    "code_rain": "პრომპტი ოპტიმიზაცია...",
+    "complete": "მზადაა!"
+  },
+  "chatbot": {
+    "title": "Agent G",
+    "subtitle": "პერსონალური ასისტენტი",
+    "placeholder": "დაწერე მესიჯი...",
+    "voice_input": "ხმოვანი შეყვანა",
+    "voice_output": "ხმოვანი პასუხი",
+    "file_upload": "ფაილის ატვირთვა",
+    "thinking": "ფიქრობს..."
+  },
+  "seller": {
+    "funnel": {
+      "headline": "არ გაყიდო არამომგებიანი პროდუქტი",
+      "subheadline": "AI-თი გაანალიზე რეალური მოგება, დღგ და რისკები - დაიწყე ახლა.",
+      "cta": "დაიწყე მოგების სიმულაცია",
+      "vat_payer": "ვარ დღგ გადამხდელი (18%)",
+      "non_vat": "არ ვარ დღგ გადამხდელი",
+      "business_type": "ბიზნესის ტიპი",
+      "business_dropshipping": "Dropshipping / იმპორტი",
+      "business_own": "საკუთარი პროდუქტი",
+      "business_digital": "ციფრული პროდუქტი",
+      "target_income": "სამიზნე თვიური შემოსავალი (₾)",
+      "budget": "საწყისი ბიუჯეტი (₾)",
+      "continue": "გაგრძელება",
+      "back": "უკან",
+      "calculating": "მოგების გამოთვლა...",
+      "simulation_title": "შენი მოგების სიმულაცია",
+      "margin_warning": "⚠️ მარჟა ძალიან დაბალია!",
+      "margin_block": "მარჟა აუცილებლად უნდა იყოს მინიმუმ 20%. შეცვალე პარამეტრები.",
+      "activate": "ააქტიურე მაღაზია",
+      "activation_processing": "მაღაზიის შექმნა..."
+    },
+    "dashboard": {
+      "nav": "მთავარი პანელი",
+      "products": "პროდუქტები",
+      "finance": "ფინანსები",
+      "orders": "შეკვეთები",
+      "payouts": "გადახდები",
+      "analytics": "ანალიტიკა",
+      "settings": "პარამეტრები",
+      "forecast": "პროგნოზი"
+    },
+    "metrics": {
+      "today_sales": "დღევანდელი გაყიდვები",
+      "net_profit": "სუფთა მოგება",
+      "vat_payable": "დღგ გადასახდელი",
+      "breakeven": "Break-even პროგნოზი",
+      "risk": "Risk ინდიკატორი",
+      "recommended_price": "რეკომენდირებული ფასი",
+      "margin": "მოგების მარჟა",
+      "gmv": "GMV (ბრუტო გაყიდვები)",
+      "revenue": "პლატფორმის შემოსავალი",
+      "active_sellers": "აქტიური გამყიდველები",
+      "compliance": "მარჟის შესაბამისობა"
+    },
+    "actions": {
+      "simulate": "მოგების გამოთვლა",
+      "activate_vat": "დღგ რეჟიმის ჩართვა",
+      "request_payout": "გადახდის მოთხოვნა",
+      "launch_product": "პროდუქტის გაშვება",
+      "view_details": "დეტალების ნახვა",
+      "export_report": "რეპორტის ექსპორტი "
+    },
+    "pricing": {
+      "mode_growth": "ზრდის რეჟიმი",
+      "mode_profit": "მოგების რეჟიმი",
+      "mode_hybrid": "ჰიბრიდული რეჟიმი",
+      "platform_fee": "პლატფორმის საკომისიო",
+      "vat_rate": "დღგ განაკვეთი",
+      "margin_floor": "მინიმალური მარჟა",
+      "margin_target": "სამიზნე მარჟა"
+    },
+    "growth": {
+      "title": "ზრდის ავტომატიზაცია",
+      "dm_script": "DM სკრიპტი",
+      "tiktok_script": "TikTok სკრიპტი",
+      "email_template": "Email შაბლონი",
+      "referral": "რეფერალური პროგრამა",
+      "cac": "CAC (Customer Acquisition Cost)",
+      "ltv": "LTV (Lifetime Value)",
+      "generate_script": "სკრიპტის გენერაცია"
+    },
+    "forecast": {
+      "title": "შემოსავლის პროგნოზი",
+      "month_1": "1 თვე",
+      "month_3": "3 თვე",
+      "month_6": "6 თვე",
+      "gmv_projection": "GMV პროგნოზი",
+      "revenue_projection": "შემოსავლის პროგნოზი",
+      "net_profit_projection": "სუფთა მოგების პროგნოზი",
+      "confidence": "სანდოობის დონე"
+    }
+  }
+}

@@ -18,6 +18,9 @@ import { getServerEnv } from '@/lib/env/server';
 import { getTracking } from '@/lib/shipping';
 import { ApiResponse } from '@/lib/commerce/types';
 
+// Force dynamic rendering (uses cookies at runtime)
+export const dynamic = 'force-dynamic';
+
 async function getAuthUser(request: NextRequest) {
   const cookieStore = cookies();
   const supabase = createServerClient(

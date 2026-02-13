@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 
+// Force dynamic rendering (uses cookies and env vars at runtime)
+export const dynamic = 'force-dynamic';
+
 const KPIsQuerySchema = z.object({
   storeId: z.string().uuid(),
 });

@@ -4,6 +4,9 @@ import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { simulateScenario } from '@/lib/finance/simulator';
 import type { SimulationInput } from '@/lib/finance/simulator';
 
+// Force dynamic rendering
+export const dynamic = 'force-dynamic';
+
 const SaveScenarioSchema = z.object({
   storeId: z.string().uuid(),
   name: z.string().min(1),

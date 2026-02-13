@@ -3,6 +3,9 @@ import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import { getServerEnv } from '@/lib/env/server';
 
+// Force dynamic rendering
+export const dynamic = 'force-dynamic';
+
 const MIN_PAYOUT_CENTS = 5000; // 50.00
 const AML_REVIEW_THRESHOLD_CENTS = 500000; // 5,000.00
 

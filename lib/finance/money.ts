@@ -11,9 +11,13 @@ export function fromCents(cents: number): number {
 }
 
 export function percentageOf(amountCents: number, bps: number): number {
-  return safeRound((amountCents * bps) / 10000);
+  return safeRound((amountCents * bps) /10000);
 }
 
 export function safeRound(value: number): number {
   return Math.round(value);
+}
+
+export function roundToNearest(value: number, interval: number): number {
+  return Math.round(value / interval) * interval;
 }

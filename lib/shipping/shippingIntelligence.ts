@@ -156,7 +156,7 @@ export function shippingMarginTradeoff(
   }
 
   return costs.map((cost, idx) => {
-    const dayOption = days[idx];
+    const dayOption = days[idx] || 7; // Default to 7 days if undefined
     const costBps = Math.round((cost / 10000) * 10000); // Convert to bps
 
     // Shipping cost reduces margin

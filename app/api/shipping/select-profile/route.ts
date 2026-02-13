@@ -21,6 +21,9 @@ import { getServerEnv } from '@/lib/env/server';
 import { selectShippingProfile } from '@/lib/shipping';
 import { ApiResponse } from '@/lib/commerce/types';
 
+// Force dynamic rendering
+export const dynamic = 'force-dynamic';
+
 async function getAuthUser(request: NextRequest) {
   const cookieStore = cookies();
   const supabase = createServerClient(

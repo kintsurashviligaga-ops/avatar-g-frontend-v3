@@ -3,6 +3,9 @@ import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import { getServerEnv } from '@/lib/env/server';
 
+// Force dynamic rendering
+export const dynamic = 'force-dynamic';
+
 function getSupabaseClient() {
   const cookieStore = cookies();
   return createServerClient(

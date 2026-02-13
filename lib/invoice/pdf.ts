@@ -184,7 +184,22 @@ export function generateInvoiceHtml(snapshot: InvoiceSnapshot): string {
     <!-- Header -->
     <div class="header">
       <div class="company-info">
-        <h1>${snapshot.storeName}</h1>
+        <!-- Avatar G Logo -->
+        <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px;">
+          <div style="width: 48px; height: 48px; background: linear-gradient(135deg, #06b6d4 0%, #3b82f6 100%); border-radius: 12px; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(6, 182, 212, 0.3);">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M4.5 16.5c-1.5 1.25-2 5-2 5s3.75-.5 5-2c.625-.625 1-1.5 1-2.5v-2.5l-4 4z"></path>
+              <path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"></path>
+              <path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0"></path>
+              <path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"></path>
+            </svg>
+          </div>
+          <div>
+            <h1 style="font-size: 24px; margin: 0; font-weight: 700;">Avatar G</h1>
+            <p style="margin: 0; font-size: 12px; color: #666;">AI Commerce Platform</p>
+          </div>
+        </div>
+        <h2 style="font-size: 18px; margin: 0 0 8px 0; font-weight: 600;">${snapshot.storeName}</h2>
         <p>${snapshot.storeEmail}</p>
         ${snapshot.storeAddress ? `<p>${snapshot.storeAddress}</p>` : ''}
         ${snapshot.storeVatRegNo ? `<p><strong>VAT Reg No:</strong> ${snapshot.storeVatRegNo}</p>` : ''}

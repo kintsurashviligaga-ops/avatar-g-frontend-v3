@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { verifyWebhookSignature } from '@/lib/stripe/webhooks';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 
+// Force dynamic rendering (webhooks must run at request time)
+export const dynamic = 'force-dynamic';
+
 // ========================================
 // POST /api/webhooks/stripe
 // ========================================

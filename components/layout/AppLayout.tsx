@@ -3,9 +3,10 @@
 import { ReactNode } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import { motion } from 'framer-motion';
-import { Rocket } from 'lucide-react';
 import { colors, shadows } from '@/lib/design/tokens';
+import { Logo } from '@/components/brand/Logo';
 
 export default function AppLayout({ children }: { children: ReactNode }) {
   return (
@@ -19,12 +20,13 @@ export default function AppLayout({ children }: { children: ReactNode }) {
 
 export function Navbar() {
   const pathname = usePathname();
+  const t = useTranslations('navigation');
 
   const navItems = [
-    { label: 'Services', href: '/services' },
-    { label: 'Dashboard', href: '/dashboard' },
-    { label: 'Pricing', href: '/pricing' },
-    { label: 'About', href: '/about' },
+    { labelKey: 'services', href: '/services' },
+    { labelKey: 'workspace', href: '/dashboard' },
+    { labelKey: 'about', href: '/about' },
+    { labelKey: 'contact', href: '/contact' },
   ];
 
   return (
@@ -40,25 +42,7 @@ export function Navbar() {
     >
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between">
         {/* Logo */}
-        <Link href="/" className="flex items-center gap-3 hover:opacity-80 transition-opacity">
-          <div className="relative">
-            <div
-              className="w-12 h-12 rounded-2xl flex items-center justify-center shadow-lg"
-              style={{
-                background: colors.gradients.cyanToBlue,
-                boxShadow: shadows.glow.cyan,
-              }}
-            >
-              <Rocket className="w-6 h-6 text-white" />
-            </div>
-          </div>
-          <div>
-            <h1 className="text-xl font-bold bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent">
-              Avatar G
-            </h1>
-            <p className="text-xs text-gray-400">Singularity v4.0</p>
-          </div>
-        </Link>
+        <Logo variant="full" size="md" href="/" />
 
         {/* Desktop Nav */}
         <div className="hidden md:flex items-center gap-8">
@@ -70,7 +54,7 @@ export function Navbar() {
                 pathname === item.href ? 'text-cyan-400' : 'text-gray-400 hover:text-white'
               }`}
             >
-              {item.label}
+              {t(item.labelKey)}
               <span
                 className={`absolute bottom-0 left-0 w-0 h-0.5 bg-gradient-to-r from-cyan-400 to-blue-500 transition-all group-hover:w-full ${
                   pathname === item.href ? 'w-full' : ''
@@ -90,7 +74,7 @@ export function Navbar() {
             color: colors.text.primary,
           }}
         >
-          Get Started
+          {t('cta') || 'დაიწყე ახლა'}
         </motion.button>
       </div>
     </motion.nav>

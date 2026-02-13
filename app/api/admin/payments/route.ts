@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 
+// Force dynamic rendering (uses cookies and env vars at runtime)
+export const dynamic = 'force-dynamic';
+
 // ========================================
 // GET /api/admin/payments
 // ========================================
