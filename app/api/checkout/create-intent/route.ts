@@ -5,6 +5,8 @@ import { CreatePaymentIntentInputSchema } from '@/lib/stripe/types';
 import { computeOrderTotals } from '@/lib/finance/orderCalculation';
 import { createTaxProfileFromStore } from '@/lib/finance/taxProfile';
 
+export const dynamic = 'force-dynamic';
+
 // ========================================
 // POST /api/checkout/create-intent
 // ========================================

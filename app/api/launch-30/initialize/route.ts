@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { generateLaunch30Plan } from '@/lib/gtm/launch30';
 
+export const dynamic = 'force-dynamic';
+
 // ========================================
 // POST /api/launch-30/initialize  
 // ========================================

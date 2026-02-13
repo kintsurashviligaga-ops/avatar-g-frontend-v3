@@ -3,6 +3,8 @@ import { z } from 'zod';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { simulateScenario } from '@/lib/finance/simulator';
 
+export const dynamic = 'force-dynamic';
+
 const SimulateRequestSchema = z.object({
   currency: z.enum(['GEL', 'USD']).optional().default('GEL'),
   fxRate: z.number().positive().optional(),

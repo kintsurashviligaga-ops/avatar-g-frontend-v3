@@ -3,6 +3,8 @@ import { z } from 'zod';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { evaluateProductCandidate } from '@/lib/decision-engine/decisionEngine';
 
+export const dynamic = 'force-dynamic';
+
 const EvaluateRequestSchema = z.object({
   productType: z.enum(['standard', 'dropshipping', 'digital']),
   retailPriceCents: z.number().int().positive(),

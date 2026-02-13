@@ -15,6 +15,8 @@ import { z } from "zod";
 import { runSellerOnboarding } from "@/lib/onboarding/automationEngine";
 import type { TaxStatus, BusinessType } from "@/lib/onboarding/types";
 
+export const dynamic = 'force-dynamic';
+
 // Request validation schema
 const activationSchema = z.object({
   userId: z.string().uuid(),

@@ -13,6 +13,8 @@ import {
   generateSignedPdfUrl,
 } from '@/lib/invoice/pdf';
 
+export const dynamic = 'force-dynamic';
+
 // ========================================
 // POST /api/invoices/generate
 // ========================================

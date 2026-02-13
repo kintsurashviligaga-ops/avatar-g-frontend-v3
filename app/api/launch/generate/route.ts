@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 
+export const dynamic = 'force-dynamic';
+
 const GenerateLaunchPlanSchema = z.object({
   storeId: z.string().uuid(),
   language: z.enum(['ka', 'en', 'ru']).optional().default('en'),

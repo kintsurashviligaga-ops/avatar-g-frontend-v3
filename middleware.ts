@@ -3,7 +3,19 @@ import type { NextRequest } from "next/server";
 
 export function middleware(request: NextRequest) {
   // SECURITY FIX: CORS policy changed from "*" to whitelist
-  const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'http://localhost:3000').split(',').map(o => o.trim());
+  // Fallback includes: localhost (dev), staging, production domain
+  const defaultOrigins = [
+    'http://localhost:3000',
+    'http://localhost:3001', 
+    'https://www.myavatar.ge',
+    'https://myavatar.ge',
+    'https://staging-myavatar.ge',
+  ].join(',');
+  
+  const allowedOrigins = (process.env.ALLOWED_ORIGINS || defaultOrigins)
+    .split(',')
+    .map(o => o.trim());
+  
   const origin = request.headers.get('origin');
 
   const response = NextResponse.next();
@@ -15,8 +27,8 @@ export function middleware(request: NextRequest) {
     response.headers.set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-User-ID");
     response.headers.set("Access-Control-Max-Age", "86400");
   } else if (request.method === "OPTIONS") {
-    // Reject preflight requests from non-whitelisted origins
-    return new NextResponse(null, { status: 204 });
+    // Reject preflight requests from non-whitelisted origins  
+    return new NextResponse(null, { status: 403 });
   }
 
   // Security headers

@@ -18,11 +18,29 @@ export default function Error({
     if (process.env.NODE_ENV === 'development') {
       console.error('[App Error]', error);
     }
-    // TODO: Send to error tracking service (Sentry, LogRocket, etc)
+    
+    // Send to error tracking service if configured
+    if (typeof window !== 'undefined' && window.location.hostname === 'myavatar.ge') {
+      try {
+        // Log to error tracking in production
+        fetch('/api/log-error', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            message: error.message,
+            digest: error.digest,
+            stack: error.stack,
+            timestamp: new Date().toISOString(),
+            url: window.location.href,
+            userAgent: navigator.userAgent,
+          }),
+        }).catch(() => {}); // Silently fail
+      } catch {}
+    }
   }, [error]);
 
   return (
-    <div className="min-h-screen bg-[#05070A] flex items-center justify-center p-4">
+    <div className="min-h-screen bg-[#05070A] flex items-center justify-center p-4" dir="ltr">
       <motion.div
         initial={{ opacity: 0, scale: 0.9 }}
         animate={{ opacity: 1, scale: 1 }}
@@ -36,25 +54,25 @@ export default function Error({
           <AlertTriangle size={40} className="text-red-400" />
         </motion.div>
 
-        <h2 className="text-2xl font-bold text-red-400 mb-2">System Error</h2>
+        <h2 className="text-2xl font-bold text-red-400 mb-2">სისტემური შეცდომა</h2>
         <p className="text-gray-400 mb-2">
-          An unexpected error occurred in the Digital Twin Protocol.
+          დაფიქსირდა მოულოდელი შეცდომა. გთხოვთ სცადოთ თავიდან ან დაბრუნდით მთავარ გვერდზე.
         </p>
         {error.digest && (
-          <p className="text-xs text-gray-600 mb-6 font-mono">
-            Error ID: {error.digest}
+          <p className="text-xs text-gray-600 mb-6 font-mono break-all">
+            შეცდომის ID: {error.digest}
           </p>
         )}
 
-        <div className="flex gap-3 justify-center">
+        <div className="flex gap-3 justify-center flex-wrap">
           <Button variant="outline" onClick={reset} className="border-red-500/30 hover:bg-red-500/10">
             <RefreshCw size={18} className="mr-2" />
-            Try Again
+            სცადეთ თავიდან
           </Button>
           <Link href="/">
             <Button variant="primary">
               <Home size={18} className="mr-2" />
-              Go Home
+              მთავარი
             </Button>
           </Link>
         </div>

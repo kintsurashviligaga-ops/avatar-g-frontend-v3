@@ -3,6 +3,8 @@ import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { validateProductLaunch } from '@/lib/optimization/profitFirst';
 import { z } from 'zod';
 
+export const dynamic = 'force-dynamic';
+
 // ========================================
 // PRODUCT LAUNCH VALIDATION API
 // Blocks unprofitable products from launching
