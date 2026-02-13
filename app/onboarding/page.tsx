@@ -216,7 +216,7 @@ export default function OnboardingPage() {
     );
   }
 
-  const step = steps[currentStep] ?? steps[0];
+  const step = steps[currentStep];
   if (!step) {
     return null;
   }
