@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { generateLaunch30Plan } from '@/lib/gtm/launch30';
 
 // ========================================
@@ -9,7 +9,7 @@ import { generateLaunch30Plan } from '@/lib/gtm/launch30';
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = createClient();
+    const supabase = createSupabaseServerClient();
 
     // Get user
     const {

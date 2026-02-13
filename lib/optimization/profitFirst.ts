@@ -1,4 +1,4 @@
-import { createClient } from '@/lib/supabase/server';
+import { createSupabaseServerClient } from '@/lib/supabase/server';
 
 // ========================================
 // PROFIT FIRST GUARDRAILS

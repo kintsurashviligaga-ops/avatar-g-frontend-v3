@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyWebhookSignature } from '@/lib/stripe/webhooks';
-import { createClient } from '@/lib/supabase/server';
+import { createSupabaseServerClient } from '@/lib/supabase/server';
 
 // ========================================
 // POST /api/webhooks/stripe
@@ -27,7 +27,7 @@ export async function POST(request: NextRequest) {
     console.log('Stripe webhook received:', event.type, event.id);
 
     // 3. Idempotency check: has this event been processed?
-    const supabase = createClient();
+    const supabase = createSupabaseServerClient();
     const { data: existingEvent } = await supabase
       .from('stripe_events')
       .select('id')

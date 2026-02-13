@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { generateSignedPdfUrl } from '@/lib/invoice/pdf';
 
 // ========================================
@@ -9,7 +9,7 @@ import { generateSignedPdfUrl } from '@/lib/invoice/pdf';
 
 export async function GET(request: NextRequest) {
   try {
-    const supabase = createClient();
+    const supabase = createSupabaseServerClient();
     const { searchParams } = new URL(request.url);
     const orderId = searchParams.get('orderId');
 

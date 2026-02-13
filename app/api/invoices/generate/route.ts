@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createSupabaseServerClient } from '@/lib/supabase/server';
 import {
   generateInvoiceNumber,
   createInvoiceSnapshot,
@@ -20,7 +20,7 @@ import {
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = createClient();
+    const supabase = createSupabaseServerClient();
     const body = await request.json().catch(() => ({}));
     const { orderId } = body;
 

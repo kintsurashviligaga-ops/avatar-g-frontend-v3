@@ -1,0 +1,110 @@
+﻿
+> avatar-g-workspace@2.0.0 build
+> next build
+
+  Γû▓ Next.js 14.2.35
+  - Environments: .env.local
+
+   Creating an optimized production build ...
+node.exe :  ΓÜá Compiled with warnings
+At line:1 char:1
++ & "C:\Program Files\nodejs/node.exe" "C:\Program Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ( ΓÜá Compiled with warnings:Strin 
+   g) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+
+./app/api/admin/payments/route.ts
+Attempted import error: 'createClient' is not exported from 
+'@/lib/supabase/server' (imported as 'createClient').
+
+Import trace for requested module:
+./app/api/admin/payments/route.ts
+
+./app/api/checkout/create-intent/route.ts
+Attempted import error: 'createClient' is not exported from 
+'@/lib/supabase/server' (imported as 'createClient').
+
+Import trace for requested module:
+./app/api/checkout/create-intent/route.ts
+
+./app/api/invoices/generate/route.ts
+Attempted import error: 'createClient' is not exported from 
+'@/lib/supabase/server' (imported as 'createClient').
+
+Import trace for requested module:
+./app/api/invoices/generate/route.ts
+
+./app/api/invoices/list/route.ts
+Attempted import error: 'createClient' is not exported from 
+'@/lib/supabase/server' (imported as 'createClient').
+
+Import trace for requested module:
+./app/api/invoices/list/route.ts
+
+./app/api/invoices/route.ts
+Attempted import error: 'createClient' is not exported from 
+'@/lib/supabase/server' (imported as 'createClient').
+
+Import trace for requested module:
+./app/api/invoices/route.ts
+
+./app/api/launch-30/initialize/route.ts
+Attempted import error: 'createClient' is not exported from 
+'@/lib/supabase/server' (imported as 'createClient').
+
+Import trace for requested module:
+./app/api/launch-30/initialize/route.ts
+
+./app/api/market/scan/route.ts
+Attempted import error: 'createSupabaseServerClient' is not exported from 
+'@/lib/auth/server' (imported as 'createSupabaseServerClient').
+
+Import trace for requested module:
+./app/api/market/scan/route.ts
+
+./app/api/products/validate-launch/route.ts
+Attempted import error: 'createClient' is not exported from 
+'@/lib/supabase/server' (imported as 'createClient').
+
+Import trace for requested module:
+./app/api/products/validate-launch/route.ts
+
+./app/api/webhooks/stripe/route.ts
+Attempted import error: 'createClient' is not exported from 
+'@/lib/supabase/server' (imported as 'createClient').
+
+Import trace for requested module:
+./app/api/webhooks/stripe/route.ts
+
+./lib/invoice/pdf.ts
+Module not found: Can't resolve 'pdfkit' in 
+'C:\Users\admin\OneDrive\Desktop\avatar-g-frontend-v3\lib\invoice'
+
+Import trace for requested module:
+./lib/invoice/pdf.ts
+./app/api/invoices/route.ts
+
+./lib/optimization/profitFirst.ts
+Attempted import error: 'createClient' is not exported from 
+'@/lib/supabase/server' (imported as 'createClient').
+
+Import trace for requested module:
+./lib/optimization/profitFirst.ts
+./app/api/products/validate-launch/route.ts
+
+./lib/optimization/profitFirst.ts
+Attempted import error: 'createClient' is not exported from 
+'@/lib/supabase/server' (imported as 'createClient').
+
+Import trace for requested module:
+./lib/optimization/profitFirst.ts
+./app/api/products/validate-launch/route.ts
+
+<w> [webpack.cache.PackFileCacheStrategy] Caching failed for pack: Error: 
+ENOENT: no such file or directory, stat 'C:\Users\admin\OneDrive\Desktop\avatar
+-g-frontend-v3\.next\cache\webpack\client-production\5.pack'
+ Γ£ô Compiled successfully
+   Skipping validation of types
+   Linting ...

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { createPaymentIntent } from '@/lib/stripe/client';
 import { CreatePaymentIntentInputSchema } from '@/lib/stripe/types';
 import { computeOrderTotals } from '@/lib/finance/orderCalculation';
@@ -14,7 +14,7 @@ import { createTaxProfileFromStore } from '@/lib/finance/taxProfile';
 export async function POST(request: NextRequest) {
   try {
     // 1. Authenticate user
-    const supabase = createClient();
+    const supabase = createSupabaseServerClient();
     const {
       data: { user },
       error: authError,

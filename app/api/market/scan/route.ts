@@ -8,7 +8,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { createSupabaseServerClient } from '@/lib/auth/server';
+import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { evaluateProductCandidate } from '@/lib/decision-engine/decisionEngine';
 import { MarketScanRequest, ScannedProduct } from '@/lib/pricing/types';
 

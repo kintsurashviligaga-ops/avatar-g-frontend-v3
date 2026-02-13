@@ -32,6 +32,7 @@
     "next": "^14.2.0",
     "next-intl": "^4.8.2",
     "openai": "^6.17.0",
+    "pdfkit": "^0.17.2",
     "rate-limit-redis": "^4.1.5",
     "react": "^18.3.0",
     "react-dom": "^18.3.0",
