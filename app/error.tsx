@@ -6,6 +6,13 @@ import { AlertTriangle, RefreshCw, Home } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 
+/**
+ * PRODUCTION-SAFE ERROR BOUNDARY
+ * 
+ * Displays Georgian error UI instead of crashing.
+ * Logs errors to monitoring service.
+ * Provides safe recovery options.
+ */
 export default function Error({
   error,
   reset,
@@ -14,15 +21,14 @@ export default function Error({
   reset: () => void;
 }) {
   useEffect(() => {
-    // Only log in development, never expose errors in production
+    // Only log in development
     if (process.env.NODE_ENV === 'development') {
       console.error('[App Error]', error);
     }
     
-    // Send to error tracking service if configured
-    if (typeof window !== 'undefined' && window.location.hostname === 'myavatar.ge') {
+    // SECURITY: Send to error tracking in production only
+    if (typeof window !== 'undefined' && process.env.NODE_ENV === 'production') {
       try {
-        // Log to error tracking in production
         fetch('/api/log-error', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -34,8 +40,10 @@ export default function Error({
             url: window.location.href,
             userAgent: navigator.userAgent,
           }),
-        }).catch(() => {}); // Silently fail
-      } catch {}
+        }).catch(() => {}); // Silently fail if error logging unavailable
+      } catch {
+        // Never crash on error logging failure
+      }
     }
   }, [error]);
 
@@ -55,8 +63,8 @@ export default function Error({
         </motion.div>
 
         <h2 className="text-2xl font-bold text-red-400 mb-2">სისტემური შეცდომა</h2>
-        <p className="text-gray-400 mb-2">
-          დაფიქსირდა მოულოდელი შეცდომა. გთხოვთ სცადოთ თავიდან ან დაბრუნდით მთავარ გვერდზე.
+        <p className="text-gray-400 mb-2 text-sm">
+          სისტემაში დროებითი პრობლემა დაფიქსირდა. გთხოვთ სცადოთ ხელახლა ან დაუკავშირდეთ მხარდაჭერას.
         </p>
         {error.digest && (
           <p className="text-xs text-gray-600 mb-6 font-mono break-all">
@@ -65,7 +73,11 @@ export default function Error({
         )}
 
         <div className="flex gap-3 justify-center flex-wrap">
-          <Button variant="outline" onClick={reset} className="border-red-500/30 hover:bg-red-500/10">
+          <Button 
+            variant="outline" 
+            onClick={reset} 
+            className="border-red-500/30 hover:bg-red-500/10"
+          >
             <RefreshCw size={18} className="mr-2" />
             სცადეთ თავიდან
           </Button>
@@ -76,7 +88,11 @@ export default function Error({
             </Button>
           </Link>
         </div>
+
+        <p className="text-xs text-gray-600 mt-6">
+          თუ პრობლემა მოიცილება, გთხოვთ ხელახლა ეწვიეთ მოგვიანებით.
+        </p>
       </motion.div>
     </div>
-  )
+  );
 }

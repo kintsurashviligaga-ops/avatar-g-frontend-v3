@@ -4,6 +4,7 @@ import { createSupabaseServerClient } from '@/lib/supabase/server';
 
 // Force dynamic rendering (webhooks must run at request time)
 export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs'; // Stripe requires nodejs runtime
 
 // ========================================
 // POST /api/webhooks/stripe

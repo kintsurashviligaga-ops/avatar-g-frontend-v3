@@ -10,6 +10,7 @@ import { getPlan, normalizePlanTier } from '@/lib/billing/plans';
 import { getStripePriceId } from '@/lib/billing/stripe-prices';
 
 export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
 
 export async function POST(request: NextRequest) {
   try {

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { apiError, apiSuccess } from '@/lib/api/response';
+import { validateEnvironment } from '@/lib/config/validateEnv';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';

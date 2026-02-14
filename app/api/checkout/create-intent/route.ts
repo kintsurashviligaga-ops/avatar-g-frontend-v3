@@ -6,6 +6,7 @@ import { computeOrderTotals } from '@/lib/finance/orderCalculation';
 import { createTaxProfileFromStore } from '@/lib/finance/taxProfile';
 
 export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs'; // Stripe requires nodejs runtime
 
 // ========================================
 // POST /api/checkout/create-intent
