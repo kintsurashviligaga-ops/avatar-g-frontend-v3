@@ -3,6 +3,7 @@ import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { apiError, apiSuccess } from '@/lib/api/response';
 
 export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs'; // Error logging requires nodejs for Supabase
 
 interface ErrorLogBody {
   message: string;

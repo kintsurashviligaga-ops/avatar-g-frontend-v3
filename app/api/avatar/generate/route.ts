@@ -10,7 +10,7 @@ import { requireKey } from '@/lib/api/key-checker';
 import type { GenerateAvatarRequest } from '@/types/avatar-builder';
 
 export const dynamic = 'force-dynamic';
-export const runtime = 'edge';
+export const runtime = 'nodejs'; // Stability AI + Supabase operations require nodejs
 export const maxDuration = 30;
 
 export async function POST(request: NextRequest) {

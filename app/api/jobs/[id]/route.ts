@@ -7,7 +7,7 @@ import { apiError, apiSuccess } from '@/lib/api/response';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 
 export const dynamic = 'force-dynamic';
-export const runtime = 'edge';
+export const runtime = 'nodejs'; // Supabase operations require nodejs
 
 export async function GET(
   request: NextRequest,

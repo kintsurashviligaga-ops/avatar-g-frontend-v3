@@ -30,7 +30,7 @@ export default function GlobalError({
             color: '#f87171',
             marginBottom: '16px',
           }}>
-            Application Error
+            სისტემური შეცდომა
           </h2>
 
           {/* Only show error details in development */}
@@ -64,7 +64,7 @@ export default function GlobalError({
               maxWidth: '28rem',
               textAlign: 'center',
             }}>
-              An unexpected error occurred. Our team has been notified and will work to fix it.
+              სისტემაში დროებითი პრობლემა დაფიქსირდა. გთხოვთ სცადოთ ხელახლა ან დაუკავშირდეთ მხარდაჭერას.
             </p>
           )}
 
@@ -95,7 +95,7 @@ export default function GlobalError({
               onMouseOver={(e) => (e.currentTarget.style.background = '#1d4ed8')}
               onMouseOut={(e) => (e.currentTarget.style.background = '#2563eb')}
             >
-              Try Again
+              სცადეთ თავიდან
             </button>
             <a
               href="/"
@@ -113,7 +113,7 @@ export default function GlobalError({
               onMouseOver={(e) => (e.currentTarget.style.background = '#3f4551')}
               onMouseOut={(e) => (e.currentTarget.style.background = '#4b5563')}
             >
-              Go Home
+              მთავარი
             </a>
           </div>
         </div>

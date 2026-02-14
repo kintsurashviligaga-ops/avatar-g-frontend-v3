@@ -8,7 +8,7 @@ import { JobEnqueueRequestSchema, validateInput } from '@/lib/api/validation';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 
 export const dynamic = 'force-dynamic';
-export const runtime = 'edge';
+export const runtime = 'nodejs'; // Supabase operations require nodejs
 export const maxDuration = 30;
 
 export async function POST(request: NextRequest) {
