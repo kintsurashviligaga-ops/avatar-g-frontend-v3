@@ -1,20 +1,20 @@
 import type { Metadata } from "next";
-import { Inter, Noto_Sans_Georgian } from "next/font/google";
-import "./globals.css";
+import { Inter } from "next/font/google";
 import { IdentityProvider } from "@/lib/identity/IdentityContext";
-import { LanguageProvider } from "@/lib/i18n/LanguageContext";
 import { ToastProvider } from "@/components/ui/Toast";
 import GlobalChatbot from "@/components/GlobalChatbot";
 import { Navbar, Footer } from "@/components/layout/AppLayout";
 import { publicEnv } from "@/lib/env/public";
-import { NextIntlClientProvider } from "next-intl";
-import { getLocale, getMessages } from "next-intl/server";
+import { getMessages } from 'next-intl/server';
+import { NextIntlClientProvider } from 'next-intl';
 import { i18n } from "@/i18n.config";
 
-const inter = Inter({ subsets: ["latin"], variable: '--font-fallback' });
-const notoGeorgian = Noto_Sans_Georgian({ subsets: ["georgian", "latin"], variable: '--font-ui' });
+const inter = Inter({ subsets: ["latin"] });
 
 const metadataBaseUrl = publicEnv.NEXT_PUBLIC_APP_URL || "https://avatar-g-frontend-v3.vercel.app";
+
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 export const metadata: Metadata = {
   metadataBase: new URL(metadataBaseUrl),
@@ -49,40 +49,44 @@ export const metadata: Metadata = {
   }
 };
 
-export default async function RootLayout({
-  children,
-}: Readonly<{
+interface LocaleLayoutProps {
   children: React.ReactNode;
-}>) {
-  let locale: string = i18n.defaultLocale;
-  let messages: Record<string, unknown> = {};
+  params: { locale: string };
+}
 
+export async function generateStaticParams() {
+  return i18n.locales.map((locale) => ({ locale }));
+}
+
+export default async function LocaleLayout({
+  children,
+  params,
+}: LocaleLayoutProps) {
+  const { locale } = params;
+  const safeLocale = i18n.locales.includes(locale as (typeof i18n.locales)[number])
+    ? locale
+    : i18n.defaultLocale;
+
+  let messages: Record<string, unknown> = {};
   try {
-    const detectedLocale = await getLocale();
-    locale = i18n.locales.includes(detectedLocale as (typeof i18n.locales)[number])
-      ? detectedLocale
-      : i18n.defaultLocale;
-    messages = await getMessages();
+    messages = await getMessages({ locale: safeLocale });
   } catch {
-    locale = i18n.defaultLocale;
     messages = {};
   }
 
   return (
-    <html lang={locale} className="dark">
-      <body className={`${notoGeorgian.variable} ${inter.variable} ${notoGeorgian.className} bg-[#05070A] text-white antialiased`}>
-        <NextIntlClientProvider locale={locale} messages={messages}>
+    <html lang={safeLocale} className="dark">
+      <body className={`${inter.className} bg-[#05070A] text-white antialiased`}>
+        <NextIntlClientProvider locale={safeLocale} messages={messages}>
           <IdentityProvider>
-            <LanguageProvider>
-              <ToastProvider>
-                <Navbar />
-                <main className="pt-20">
-                  {children}
-                </main>
-                <Footer />
-                <GlobalChatbot />
-              </ToastProvider>
-            </LanguageProvider>
+            <ToastProvider>
+              <Navbar />
+              <main className="pt-20">
+                {children}
+              </main>
+              <Footer />
+              <GlobalChatbot />
+            </ToastProvider>
           </IdentityProvider>
         </NextIntlClientProvider>
       </body>
