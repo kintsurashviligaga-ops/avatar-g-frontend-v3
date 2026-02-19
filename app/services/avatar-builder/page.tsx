@@ -289,6 +289,28 @@ export default function AvatarBuilderPage() {
   const [saveSuccessMessage, setSaveSuccessMessage] = useState('');
   const [isChatLoading, setIsChatLoading] = useState(false);
 
+  useEffect(() => {
+    const intent = searchParams.get('intent');
+    const topic = searchParams.get('topic');
+    const lang = searchParams.get('lang');
+
+    if (topic || intent) {
+      const prefill = [
+        topic ? `Topic: ${topic}` : null,
+        intent ? `Intent: ${intent}` : null,
+      ]
+        .filter(Boolean)
+        .join(' | ');
+      setPromptSeed(prefill);
+    }
+
+    if (lang === 'ka') {
+      setPresentation('Feminine');
+    } else if (lang === 'en') {
+      setPresentation('Androgynous');
+    }
+  }, [searchParams]);
+
   const showCameraDebug = process.env.NODE_ENV !== 'production' || searchParams.get('debug') === '1';
 
   const loadSavedAvatars = async (currentOwnerId: string) => {

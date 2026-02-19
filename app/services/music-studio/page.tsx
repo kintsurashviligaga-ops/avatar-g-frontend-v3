@@ -1,6 +1,7 @@
 ﻿'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -89,6 +90,7 @@ const mapToPlatformTrack = (track: MusicTrack, fallbackLanguage: PlatformTrack['
 });
 
 export default function MusicStudioPage() {
+  const searchParams = useSearchParams();
   const { t } = useLanguage();
   const [voiceLabOpen, setVoiceLabOpen] = useState(true);
   const [mixLevel, setMixLevel] = useState(0.5);
@@ -112,6 +114,7 @@ export default function MusicStudioPage() {
     tempo,
     setTempo,
     language,
+    setLanguage,
     styleTags,
     useCustomVocals,
     toggleCustomVocals,
@@ -136,6 +139,28 @@ export default function MusicStudioPage() {
   } = useMusicStudio();
 
   const { setSelectedTrack } = useStudioStore();
+
+  useEffect(() => {
+    const intent = searchParams.get('intent');
+    const mood = searchParams.get('mood');
+    const topic = searchParams.get('topic');
+    const lang = searchParams.get('lang');
+
+    if (intent || mood || topic) {
+      const prefill = [
+        topic ? `Topic: ${topic}` : null,
+        intent ? `Intent: ${intent}` : null,
+        mood ? `Mood: ${mood}` : null,
+      ]
+        .filter(Boolean)
+        .join(' | ');
+      setPrompt(prefill);
+    }
+
+    if (lang === 'ka' || lang === 'en' || lang === 'ru') {
+      setLanguage(lang);
+    }
+  }, [searchParams, setLanguage, setPrompt]);
 
   const { job } = useJob({
     jobId,

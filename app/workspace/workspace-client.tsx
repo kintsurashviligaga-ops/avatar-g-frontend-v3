@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { createBrowserClient } from '@/lib/supabase/browser';
 import { Sparkles, LogOut, ArrowRight } from 'lucide-react';
 import { SERVICE_REGISTRY } from '@/lib/service-registry';
@@ -40,6 +40,7 @@ type SavedAvatar = {
 export default function WorkspaceClient({ userEmail, locale }: WorkspaceClientProps) {
   const router = useRouter();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [jobs, setJobs] = useState<WorkspaceJob[]>([]);
   const [outputs, setOutputs] = useState<WorkspaceOutput[]>([]);
@@ -52,6 +53,8 @@ export default function WorkspaceClient({ userEmail, locale }: WorkspaceClientPr
   const toLocale = (path: string) => withLocalePath(path, resolvedLocale);
 
   const isAuthenticated = Boolean(userEmail);
+  const smmSource = searchParams.get('from') === 'smm';
+  const smmProject = searchParams.get('project');
 
   const featuredServices = SERVICE_REGISTRY;
 
@@ -157,6 +160,16 @@ export default function WorkspaceClient({ userEmail, locale }: WorkspaceClientPr
                   Continue to Login
                 </Button>
               </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {smmSource && (
+          <Card className="mb-4 border-app-neon/30 bg-app-neon/5">
+            <CardContent className="pt-6">
+              <p className="text-sm text-app-text">
+                Social Media Manager context loaded{smmProject ? ` for project: ${smmProject}` : ''}.
+              </p>
             </CardContent>
           </Card>
         )}

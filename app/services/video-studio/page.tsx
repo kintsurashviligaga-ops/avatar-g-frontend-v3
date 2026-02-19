@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -8,8 +9,29 @@ import { Film, Sparkles, Video, Wand2 } from 'lucide-react';
 import SpaceBackground from '@/components/SpaceBackground';
 
 export default function VideoStudioPage() {
+  const searchParams = useSearchParams();
   const [prompt, setPrompt] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
+
+  useEffect(() => {
+    const intent = searchParams.get('intent');
+    const topic = searchParams.get('topic');
+    const lang = searchParams.get('lang');
+
+    if (!intent && !topic) {
+      return;
+    }
+
+    const prefill = [
+      topic ? `Topic: ${topic}` : null,
+      intent ? `Intent: ${intent}` : null,
+      lang ? `Language: ${lang}` : null,
+    ]
+      .filter(Boolean)
+      .join(' | ');
+
+    setPrompt(prefill || 'Create a short social reel');
+  }, [searchParams]);
 
   const handleGenerate = async () => {
     if (!prompt.trim()) return;

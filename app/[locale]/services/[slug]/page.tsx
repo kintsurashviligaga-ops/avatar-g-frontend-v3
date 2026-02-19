@@ -16,6 +16,7 @@ const SERVICE_PAGE_LOADERS: Record<string, () => Promise<{ default: ComponentTyp
   'image-creator': () => import('@/app/services/image-creator/page'),
   'agent-g': () => import('@/app/services/agent-g/page'),
   'social-media': () => import('@/app/services/social-media/page'),
+  'social-media-manager': () => import('@/app/services/social-media-manager/page'),
   'prompt-builder': () => import('@/app/services/prompt-builder/page'),
   'text-intelligence': () => import('@/app/services/text-intelligence/page'),
   'photo-studio': () => import('@/app/services/photo-studio/page'),

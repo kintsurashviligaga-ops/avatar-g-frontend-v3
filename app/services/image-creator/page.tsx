@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -8,8 +9,31 @@ import { Image as ImageIcon, Sparkles, Wand2, Palette } from 'lucide-react';
 import SpaceBackground from '@/components/SpaceBackground';
 
 export default function ImageCreatorPage() {
+  const searchParams = useSearchParams();
   const [prompt, setPrompt] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
+
+  useEffect(() => {
+    const intent = searchParams.get('intent');
+    const topic = searchParams.get('topic');
+    const style = searchParams.get('style');
+    const lang = searchParams.get('lang');
+
+    if (!intent && !topic && !style) {
+      return;
+    }
+
+    const prefill = [
+      topic ? `Topic: ${topic}` : null,
+      intent ? `Intent: ${intent}` : null,
+      style ? `Style: ${style}` : null,
+      lang ? `Language: ${lang}` : null,
+    ]
+      .filter(Boolean)
+      .join(' | ');
+
+    setPrompt(prefill || 'Generate social media post image');
+  }, [searchParams]);
 
   const handleGenerate = async () => {
     if (!prompt.trim()) return;
