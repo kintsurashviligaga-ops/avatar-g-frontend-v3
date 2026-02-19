@@ -3,9 +3,25 @@
 import { useEffect, useState } from 'react';
 import { toCents, fromCents } from '@/lib/finance/money';
 
-export default function PayoutsClient({ storeId }: { storeId: string }) {
-  const [accounts, setAccounts] = useState<any[]>([]);
-  const [requests, setRequests] = useState<any[]>([]);
+type PayoutAccount = {
+  id: string;
+  type: string;
+  status: string;
+  created_at: string;
+};
+
+type PayoutRequest = {
+  id: string;
+  amount_cents: number;
+  currency: string;
+  status: string;
+  requested_at: string;
+  review_required?: boolean;
+};
+
+export default function PayoutsClient({ storeId: _storeId }: { storeId: string }) {
+  const [accounts, setAccounts] = useState<PayoutAccount[]>([]);
+  const [requests, setRequests] = useState<PayoutRequest[]>([]);
   const [amount, setAmount] = useState(100);
   const [currency, setCurrency] = useState<'GEL' | 'USD'>('GEL');
   const [accountType, setAccountType] = useState<'stripe' | 'tbc' | 'bog' | 'payze'>('stripe');
@@ -117,7 +133,7 @@ export default function PayoutsClient({ storeId }: { storeId: string }) {
               <label className="text-sm text-gray-300">Type</label>
               <select
                 value={accountType}
-                onChange={(e) => setAccountType(e.target.value as any)}
+                onChange={(e) => setAccountType(e.target.value as 'stripe' | 'tbc' | 'bog' | 'payze')}
                 className="w-full mt-1 bg-black/40 border border-white/10 rounded px-3 py-2"
               >
                 <option value="stripe">Stripe</option>

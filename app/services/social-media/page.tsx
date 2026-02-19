@@ -20,13 +20,16 @@ export default function SocialMediaPage() {
           >
             <div className="inline-flex items-center gap-2 px-4 py-2 bg-pink-500/10 border border-pink-500/30 rounded-full mb-4">
               <Share2 className="w-4 h-4 text-pink-400" />
-              <span className="text-pink-300 text-sm font-medium">Social Media Manager</span>
+              <span className="text-pink-300 text-sm font-medium">სოციალური მედიის მენეჯერი</span>
             </div>
             <h1 className="text-5xl font-bold text-white mb-4">
-              Automate Your <span className="bg-gradient-to-r from-pink-400 to-rose-500 bg-clip-text text-transparent">Social Presence</span>
+              დაავტომატე შენი{' '}
+              <span className="bg-gradient-to-r from-pink-400 to-rose-500 bg-clip-text text-transparent">
+                სოციალური ყოფნა
+              </span>
             </h1>
             <p className="text-xl text-gray-400 max-w-2xl mx-auto">
-              Content generation, scheduling, and analytics across all platforms
+              კონტენტის გენერაცია, დაგეგმვა და ანალიტიკა ყველა პლატფორმაზე
             </p>
           </motion.div>
 
@@ -34,12 +37,13 @@ export default function SocialMediaPage() {
             <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-gradient-to-br from-pink-500/20 to-rose-500/20 border border-pink-500/30 mb-6">
               <Share2 className="w-10 h-10 text-pink-400" />
             </div>
-            <h2 className="text-2xl font-bold text-white mb-3">Coming Soon</h2>
+            <h2 className="text-2xl font-bold text-white mb-3">მალე</h2>
             <p className="text-gray-400 mb-6">
-              We&apos;re building a powerful social media automation platform with AI content generation, multi-platform scheduling, and advanced analytics.
+              ვქმნით ძლიერ სოციალური მედიის ავტომატიზაციის პლატფორმას AI კონტენტის გენერაციით,
+              მრავალპლატფორმიანი დაგეგმვით და გაფართოებული ანალიტიკით.
             </p>
             <Button variant="outline" className="border-pink-500/30 text-pink-400 hover:bg-pink-500/10">
-              Join Waitlist
+              მოლოდინის სიაში შესვლა
             </Button>
           </Card>
         </div>

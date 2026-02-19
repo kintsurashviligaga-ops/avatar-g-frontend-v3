@@ -3,8 +3,17 @@
 import { useEffect, useState } from 'react';
 import { fromCents } from '@/lib/finance/money';
 
+interface PayoutRequest {
+  id: string;
+  amount_cents: number;
+  currency: string;
+  user_id: string;
+  status: string;
+  review_required?: boolean;
+}
+
 export default function AdminPayoutsClient() {
-  const [requests, setRequests] = useState<any[]>([]);
+  const [requests, setRequests] = useState<PayoutRequest[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   async function loadRequests() {

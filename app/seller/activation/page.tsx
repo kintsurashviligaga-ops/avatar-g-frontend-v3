@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useCallback, useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Check, Loader2, Store, Shield, TrendingUp, CreditCard } from "lucide-react";
@@ -17,11 +17,7 @@ export default function SellerActivationPage() {
     { id: 5, label: "პირველი პროდუქტის რეკომენდაცია", status: "pending" },
   ]);
 
-  useEffect(() => {
-    activateShop();
-  }, []);
-
-  const activateShop = async () => {
+  const activateShop = useCallback(async () => {
     // Load onboarding data
     const stored = sessionStorage.getItem("seller_onboarding");
     if (!stored) {
@@ -29,10 +25,11 @@ export default function SellerActivationPage() {
       return;
     }
 
-    const onboardingData = JSON.parse(stored);
+    const _onboardingData = JSON.parse(stored);
 
     // Simulate activation steps
-    for (let i = 0; i < steps.length; i++) {
+    const totalSteps = 5;
+    for (let i = 0; i < totalSteps; i++) {
       await new Promise((resolve) => setTimeout(resolve, 1500));
       
       setSteps((prev) =>
@@ -42,7 +39,7 @@ export default function SellerActivationPage() {
         }))
       );
       
-      setProgress(((i + 1) / steps.length) * 100);
+      setProgress(((i + 1) / totalSteps) * 100);
     }
 
     // Activation complete
@@ -54,7 +51,11 @@ export default function SellerActivationPage() {
 
     // Clear sessionStorage
     sessionStorage.removeItem("seller_onboarding");
-  };
+  }, [router]);
+
+  useEffect(() => {
+    void activateShop();
+  }, [activateShop]);
 
   const t = {
     title: "მაღაზიის აქტივაცია",

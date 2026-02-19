@@ -1,0 +1,841 @@
+{
+  "metadata": {
+    "title": "Avatar G Executive - AI платформа",
+    "description": "Премиум инструменты ИИ для бизнеса"
+  },
+  "navigation": {
+    "services": "Услуги",
+    "workspace": "Рабочее пространство",
+    "about": "О нас",
+    "contact": "Контакты",
+    "dashboard": "Панель",
+    "pricing": "Цены",
+    "login": "Войти",
+    "signup": "Регистрация",
+    "logout": "Выйти"
+  },
+  "hero": {
+    "title": "Создай будущее",
+    "subtitle": "С помощью ИИ",
+    "description": "Премиум интеллектуальные системы для современного бизнеса",
+    "cta_primary": "Начать сейчас",
+    "cta_secondary": "Узнать больше"
+  },
+  "services": {
+    "title": "13 Услуг",
+    "subtitle": "Ваша цифровая команда",
+    "avatar_builder": "Конструктор аватаров",
+    "image_generator": "Визуальный интеллект",
+    "video_generator": "Трансляция и сообщения",
+    "music_generator": "Медиа-производство",
+    "text_intelligence": "Текстовый интеллект",
+    "prompt_builder": "Конструктор запросов",
+    "image_architect": "Архитектор изображений",
+    "music_studio": "Музыкальная студия",
+    "voice_lab": "Голосовая лаборатория",
+    "video_cine_lab": "Видео кино лаб",
+    "game_forge": "Кузница игр",
+    "agent_g": "Agent G",
+    "ai_production": "ИИ производство",
+    "business_agent": "Бизнес агент",
+    "online_shop": "Онлайн магазин",
+    "social_media": "Социальные сети",
+    "marketplace": "Маркетплейс",
+    "pentagon": "Пентагон"
+  },
+  "avatar": {
+    "title": "Конструктор аватаров",
+    "description": "Создайте свой 3D аватар с помощью ИИ",
+    "section": {
+      "faceScan": "Сканирование лица",
+      "bodyMeasurement": "Измерение тела",
+      "styleSelection": "Выбор стиля",
+      "preview": "Предпросмотр"
+    },
+    "label": {
+      "cameraPreview": "Просмотр камеры",
+      "retryScan": "Повторить сканирование",
+      "capturePhoto": "Сделать фото",
+      "startCamera": "Запустить камеру",
+      "stopCamera": "Остановить камеру",
+      "nextStep": "Следующий шаг",
+      "previousStep": "Предыдущий шаг",
+      "generate": "Генерировать",
+      "download": "Скачать",
+      "retry": "Повторить"
+    },
+    "status": {
+      "scanning": "Сканирование...",
+      "processing": "Обработка...",
+      "generating": "Генерация...",
+      "complete": "Готово!",
+      "error": "Ошибка"
+    },
+    "error": {
+      "cameraAccess": "Доступ к камере запрещен. Пожалуйста, включите разрешения.",
+      "noCamera": "Камера не найдена на этом устройстве.",
+      "uploadFailed": "Не удалось загрузить файл.",
+      "generationFailed": "Не удалось создать аватар. Пожалуйста, попробуйте снова."
+    }
+  },
+  "pay": {
+    "title": "Оплата",
+    "description": "Безопасная оплата через Stripe",
+    "label": {
+      "amount": "Сумма",
+      "serviceName": "Название услуги",
+      "payNow": "Оплатить",
+      "processing": "Обработка...",
+      "currency": "Валюта"
+    },
+    "status": {
+      "pending": "Ожидание",
+      "success": "Успешно",
+      "failed": "Не удалось"
+    },
+    "success": {
+      "title": "Оплата успешна",
+      "message": "Ваш платеж успешно завершен.",
+      "backToDashboard": "Вернуться на панель"
+    },
+    "cancel": {
+      "title": "Оплата отменена",
+      "message": "Ваш платеж был отменен.",
+      "tryAgain": "Попробовать снова"
+    }
+  },
+  "dashboard": {
+    "title": "Панель управления",
+    "welcome": "Добро пожаловать",
+    "nav": {
+      "overview": "Обзор",
+      "billing": "Биллинг",
+      "settings": "Настройки",
+      "support": "Поддержка",
+      "seller": "Продавец",
+      "admin": "Администратор"
+    },
+    "cards": {
+      "credits": "Кредиты",
+      "usage": "Использование",
+      "plan": "Тариф",
+      "nextBilling": "Следующий платеж"
+    },
+    "actions": {
+      "upgrade": "Обновить",
+      "manage": "Управление",
+      "viewDetails": "Просмотреть детали",
+      "cancel": "Отменить"
+    }
+  },
+  "subscription": {
+    "title": "Подписка",
+    "chooseYourPlan": "Выберите ваш тариф",
+    "monthly": "Месячный",
+    "annually": "Годовой",
+    "starter": "Стартовый",
+    "pro": "Профессиональный",
+    "business": "Бизнес",
+    "enterprise": "Корпоративный",
+    "pricing": {
+      "kicker": "Тарифы подписки",
+      "title": "Выберите тариф",
+      "subtitle": "Повышайте, понижайте или отменяйте в любое время.",
+      "popular": "Самый популярный",
+      "currency_note": "Цены в {currency}",
+      "approx_gel": "Примерно ₾{amount}",
+      "subscribed_notice": "Вы уже на этом тарифе"
+    },
+    "interval": {
+      "monthly": "Ежемесячно",
+      "yearly": "Ежегодно"
+    },
+    "plans": {
+      "starter": {
+        "title": "Starter",
+        "description": "Для старта",
+        "features": [
+          "10 аватаров в месяц",
+          "100 видео в месяц",
+          "10 музыкальных треков в месяц",
+          "Базовая поддержка"
+        ]
+      },
+      "pro": {
+        "title": "Pro",
+        "description": "Для растущих создателей",
+        "features": [
+          "Неограниченные аватары",
+          "Неограниченные видео",
+          "Неограниченная музыка",
+          "Приоритетная поддержка",
+          "Доступ к API"
+        ]
+      },
+      "business": {
+        "title": "Empire",
+        "description": "Для команд и масштабирования",
+        "features": [
+          "Все функции Pro",
+          "Пользовательские интеграции",
+          "Персональный менеджер",
+          "Гарантия SLA",
+          "White-label возможности"
+        ]
+      }
+    },
+    "features": {
+      "avatars": "Аватары",
+      "videos": "Видео",
+      "music": "Музыка",
+      "support": "Поддержка",
+      "api": "Доступ к API",
+      "customLicense": "Пользовательская лицензия",
+      "unlimited": "Неограниченно",
+      "priority": "Приоритет"
+    },
+    "actions": {
+      "subscribe": "Подписаться",
+      "upgrade": "Обновить",
+      "downgrade": "Понизить",
+      "cancel": "Отменить",
+      "currentPlan": "Текущий тариф",
+      "manageBilling": "Управлять биллингом",
+      "startTrial": "{days}-дневный бесплатный пробный период",
+      "loading": "Загрузка...",
+      "changePlan": "Изменить тариф"
+    },
+    "status": {
+      "active": "Активна",
+      "trialing": "Пробный период",
+      "past_due": "Просрочка оплаты",
+      "canceled": "Отменена",
+      "incomplete": "Неполная",
+      "incomplete_expired": "Истекла",
+      "unpaid": "Не оплачено",
+      "none": "Нет подписки"
+    },
+    "badge": {
+      "active": "{plan} активна",
+      "trialing": "{plan} пробный период",
+      "generic": "Premium"
+    },
+    "banner": {
+      "past_due_title": "Платеж не прошел",
+      "past_due_description": "Обновите способ оплаты, чтобы избежать остановки сервиса.",
+      "fix_payment": "Исправить оплату"
+    },
+    "errors": {
+      "loadFailed": "Не удалось загрузить данные подписки.",
+      "checkoutFailed": "Не удалось создать платежную сессию.",
+      "portalFailed": "Не удалось открыть портал биллинга."
+    }
+  },
+  "billing": {
+    "title": "Биллинг",
+    "subtitle": "Управляйте подпиской и платежами",
+    "status": {
+      "none": "Нет подписки"
+    },
+    "summary": {
+      "plan": "Тариф",
+      "status": "Статус",
+      "nextBilling": "Следующий платеж",
+      "cancelAtPeriodEnd": "Отмена в конце периода",
+      "cancelYes": "Да",
+      "cancelNo": "Нет",
+      "no_plan": "Тариф не выбран",
+      "no_date": "Недоступно"
+    },
+    "actions": {
+      "manageBilling": "Управлять биллингом",
+      "changePlan": "Изменить тариф"
+    },
+    "empty": {
+      "title": "Подписки нет",
+      "description": "Выберите тариф, чтобы начать.",
+      "cta": "Смотреть цены"
+    },
+    "history": {
+      "title": "История платежей",
+      "subtitle": "Ваши последние счета и транзакции",
+      "invoices": "Счета",
+      "payments": "Транзакции",
+      "totalPaid": "Всего оплачено",
+      "date": "Дата",
+      "invoice": "Счет",
+      "amount": "Сумма",
+      "status": "Статус",
+      "description": "Описание"
+    },
+    "errors": {
+      "loadFailed": "Не удалось загрузить данные биллинга."
+    }
+  },
+  "sell": {
+    "onboarding": {
+      "title": "Начать продажи",
+      "subtitle": "Создайте Stripe Connect аккаунт для получения выплат",
+      "steps": {
+        "create": "Создать аккаунт",
+        "verify": "Пройти проверку",
+        "payouts": "Включить выплаты"
+      },
+      "actions": {
+        "start": "Начать настройку продавца",
+        "continue": "Продолжить онбординг",
+        "refresh": "Обновить статус",
+        "dashboard": "Перейти в кабинет продавца"
+      },
+      "status": {
+        "connected": "Подключено",
+        "charges_enabled": "Платежи включены",
+        "payouts_enabled": "Выплаты включены",
+        "details_submitted": "Данные заполнены"
+      },
+      "requirements": {
+        "title": "Неполные требования",
+        "none": "Все требования выполнены",
+        "currently_due": "Текущие",
+        "eventually_due": "Будущие",
+        "past_due": "Просроченные"
+      },
+      "no_account": "У вас еще нет Stripe Connect аккаунта"
+    },
+    "dashboard": {
+      "title": "Кабинет продавца",
+      "subtitle": "Статус выплат и доход",
+      "status": {
+        "payouts": "Статус выплат",
+        "active": "Активен",
+        "pending": "В ожидании",
+        "disabled": "Отключен"
+      },
+      "actions": {
+        "open_stripe": "Открыть Stripe кабинет",
+        "payout_settings": "Настройки выплат"
+      },
+      "sections": {
+        "earnings": "Доход",
+        "products": "Продукты и услуги"
+      },
+      "placeholder": {
+        "earnings": "Аналитика скоро появится",
+        "products": "Размещение в маркетплейсе скоро"
+      }
+    }
+  },
+  "generator": {
+    "input_placeholder": "Опиши, что ты хочешь...",
+    "button_generate": "Генерировать",
+    "button_download": "Загрузить",
+    "button_save": "Сохранить",
+    "button_share": "Поделиться",
+    "progress_text": "Обработка...",
+    "code_rain": "Оптимизация запроса...",
+    "complete": "Готово!"
+  },
+  "chatbot": {
+    "title": "Agent G",
+    "subtitle": "Персональный помощник",
+    "placeholder": "Введи сообщение...",
+    "voice_input": "Голосовой ввод",
+    "voice_output": "Голосовой вывод",
+    "file_upload": "Загрузить файл",
+    "thinking": "Думаю..."
+  },
+  "seller": {
+    "funnel": {
+      "headline": "Не продавайте неприбыльные продукты",
+      "subheadline": "Анализируйте реальную прибыль, НДС и риски с помощью ИИ - Начните сейчас.",
+      "cta": "Начать симуляцию прибыли",
+      "vat_payer": "Я плательщик НДС (18%)",
+      "non_vat": "Я не плательщик НДС",
+      "business_type": "Тип бизнеса",
+      "business_dropshipping": "Дропшиппинг / Импорт",
+      "business_own": "Собственный продукт",
+      "business_digital": "Цифровой продукт",
+      "target_income": "Целевой месячный доход (₾)",
+      "budget": "Начальный бюджет (₾)",
+      "continue": "Продолжить",
+      "back": "Назад",
+      "calculating": "Расчет прибыли...",
+      "simulation_title": "Ваша симуляция прибыли",
+      "margin_warning": "⚠️ Маржа слишком низкая!",
+      "margin_block": "Маржа должна быть не менее 20%. Измените параметры.",
+      "activate": "Активировать магазин",
+      "activation_processing": "Создание магазина..."
+    },
+    "dashboard": {
+      "nav": "Панель управления",
+      "products": "Продукты",
+      "finance": "Финансы",
+      "orders": "Заказы",
+      "payouts": "Выплаты",
+      "analytics": "Аналитика",
+      "settings": "Настройки",
+      "forecast": "Прогноз"
+    },
+    "metrics": {
+      "today_sales": "Продажи сегодня",
+      "net_profit": "Чистая прибыль",
+      "vat_payable": "НДС к уплате",
+      "breakeven": "Прогноз безубыточности",
+      "risk": "Индикатор риска",
+      "recommended_price": "Рекомендуемая цена",
+      "margin": "Маржа прибыли",
+      "gmv": "GMV (Валовые продажи)",
+      "revenue": "Доход платформы",
+      "active_sellers": "Активные продавцы",
+      "compliance": "Соответствие маржи"
+    },
+    "actions": {
+      "simulate": "Рассчитать прибыль",
+      "activate_vat": "Включить режим НДС",
+      "request_payout": "Запросить выплату",
+      "launch_product": "Запустить продукт",
+      "view_details": "Просмотреть детали",
+      "export_report": "Экспортировать отчет"
+    },
+    "pricing": {
+      "mode_growth": "Режим роста",
+      "mode_profit": "Режим прибыли",
+      "mode_hybrid": "Гибридный режим",
+      "platform_fee": "Комиссия платформы",
+      "vat_rate": "Ставка НДС",
+      "margin_floor": "Минимальная маржа",
+      "margin_target": "Целевая маржа"
+    },
+    "growth": {
+      "title": "Автоматизация роста",
+      "dm_script": "Скрипт DM",
+      "tiktok_script": "Скрипт TikTok",
+      "email_template": "Шаблон Email",
+      "referral": "Реферальная программа",
+      "cac": "CAC (Стоимость привлечения клиента)",
+      "ltv": "LTV (Пожизненная ценность)",
+      "generate_script": "Генерировать скрипт"
+    },
+    "forecast": {
+      "title": "Прогноз дохода",
+      "month_1": "1 месяц",
+      "month_3": "3 месяца",
+      "month_6": "6 месяцев",
+      "gmv_projection": "Прогноз GMV",
+      "revenue_projection": "Прогноз дохода",
+      "net_profit_projection": "Прогноз чистой прибыли",
+      "confidence": "Уровень уверенности"
+    }
+  },  "affiliate": {
+    "title": "Панель партнера",
+    "badge": {
+      "label": "Партнер"
+    },
+    "status": {
+      "active": "Активный",
+      "disabled": "Отключен",
+      "pending": "В ожидании"
+    },
+    "summary": {
+      "your_code": "Ваш код",
+      "referral_link": "Реферальная ссылка",
+      "copy_code": "Копировать код",
+      "copy_link": "Копировать ссылку",
+      "copied": "Скопировано!",
+      "total_clicks": "Всего кликов",
+      "total_signups": "Регистрации",
+      "pending_commissions": "В ожидании",
+      "eligible_commissions": "Готово к выплате",
+      "paid_commissions": "Выплачено",
+      "next_payout": "Следующая выплата",
+      "earnings_chart": "График дохода",
+      "last_7_days": "Последние 7 дней",
+      "last_30_days": "Последние 30 дней",
+      "all_time": "Все время"
+    },
+    "commissions": {
+      "title": "Комиссии",
+      "date": "Дата",
+      "source_type": "Источник",
+      "source_id": "ID",
+      "amount": "Сумма",
+      "rate": "Ставка",
+      "status": "Статус",
+      "available_at": "Доступно",
+      "pending": "В ожидании",
+      "available": "Доступно",
+      "eligible": "Готово",
+      "paid": "Выплачено",
+      "reversed": "Отменено",
+      "subscription": "Подписка",
+      "marketplace": "Маркетплейс",
+      "one_time": "Разовый",
+      "filters": "Фильтры",
+      "date_range": "Диапазон дат",
+      "all_statuses": "Все статусы",
+      "all_types": "Все типы",
+      "apply_filters": "Применить",
+      "clear_filters": "Очистить",
+      "no_commissions": "Комиссии не найдены",
+      "total": "Всего"
+    },
+    "referrals": {
+      "title": "Рефералы",
+      "date": "Дата",
+      "click_id": "ID клика",
+      "landing_url": "URL",
+      "utm_source": "Источник",
+      "utm_campaign": "Кампания",
+      "status": "Статус",
+      "referred_user": "Пользователь",
+      "clicked": "Кликнул",
+      "signed_up": "Зарегистрировался",
+      "converted": "Конвертировался",
+      "no_referrals": "Рефералы не найдены",
+      "last_50": "Последние 50",
+      "linked": "Связан",
+      "visitor": "Посетитель"
+    },
+    "payouts": {
+      "title": "История выплат",
+      "subtitle": "Управление выплатами",
+      "period": "Период",
+      "date": "Дата",
+      "amount": "Сумма",
+      "method": "Метод",
+      "status": "Статус",
+      "transfer_id": "ID перевода",
+      "available_balance": "Доступный баланс",
+      "request_amount": "Сумма запроса",
+      "request_payout": "Запросить выплату",
+      "request_success": "Запрос на выплату отправлен",
+      "request_failed": "Не удалось запросить выплату",
+      "invalid_amount": "Некорректная сумма",
+      "connect_required": "Подключите Stripe для получения выплат",
+      "connect_now": "Подключить",
+      "view_history": "История выплат",
+      "requested": "Запрошено",
+      "pending": "В ожидании",
+      "processing": "Обработка",
+      "paid": "Завершено",
+      "failed": "Не удалось",
+      "canceled": "Отменено",
+      "no_payouts": "Выплаты не найдены",
+      "manual": "Вручную",
+      "stripe": "Stripe",
+      "threshold_info": "Минимальный порог: {amount}"
+    },
+    "settings": {
+      "title": "Настройки",
+      "payout_method": "Метод выплаты",
+      "connect_payout": "Подключить счет",
+      "coming_soon": "Скоро",
+      "minimum_threshold": "Минимальный порог",
+      "current_balance": "Текущий баланс"
+    }
+  },
+  "admin": {
+    "affiliates": {
+      "title": "Управление партнерами",
+      "list_title": "Партнеры",
+      "search": "Поиск по коду или ID",
+      "user_id": "ID пользователя",
+      "code": "Код",
+      "status": "Статус",
+      "clicks": "Клики",
+      "signups": "Регистрации",
+      "commissions": "Комиссии",
+      "actions": "Действия",
+      "toggle_status": "Изменить статус",
+      "view_details": "Детали",
+      "activate": "Активировать",
+      "disable": "Отключить",
+      "no_affiliates": "Партнеры не найдены"
+    },
+    "payouts": {
+      "title": "Очередь выплат",
+      "queue_title": "Готово к выплате",
+      "affiliate": "Партнер",
+      "eligible_amount": "Сумма",
+      "last_payout": "Последняя выплата",
+      "create_payout": "Создать выплату",
+      "mark_sent": "Отметить отправленным",
+      "mark_failed": "Отметить неудачным",
+      "export_csv": "Экспорт CSV",
+      "no_eligible": "Нет готовых к выплате",
+      "amount": "Сумма",
+      "notes": "Примечания",
+      "confirm_payout": "Подтвердить выплату",
+      "cancel": "Отмена",
+      "confirm": "Подтвердить",
+      "success": "Выплата успешно создана"
+    }
+  },  "common": {
+    "loading": "Загрузка...",
+    "error": "Ошибка",
+    "success": "Успешно",
+    "cancel": "Отменить",
+    "save": "Сохранить",
+    "delete": "Удалить",
+    "edit": "Редактировать",
+    "close": "Закрыть",
+    "back": "Назад",
+    "next": "Далее",
+    "submit": "Отправить",
+    "retry": "Повторить",
+    "confirm": "Подтвердить",
+    "yes": "Да",
+    "no": "Нет"
+  },
+  "errors": {
+    "generic": "Что-то пошло не так. Пожалуйста, попробуйте снова.",
+    "network": "Ошибка сети. Проверьте подключение к интернету.",
+    "unauthorized": "Доступ запрещен. Пожалуйста, войдите в систему.",
+    "notFound": "Страница не найдена.",
+    "serverError": "Ошибка сервера. Пожалуйста, попробуйте позже."
+  },
+  "admin": {
+    "finance": {
+      "title": "Финансовая аналитика",
+      "subtitle": "Финансовый обзор платформы",
+      "mrr": "Ежемесячный повторяющийся доход (MRR)",
+      "arr": "Годовой повторяющийся доход (ARR)",
+      "activeSubs": "Активные подписки",
+      "gmv": "Валовая рыночная стоимость (GMV)",
+      "revenue30d": "Доход (30 дней)",
+      "fees30d": "Комиссии платформы (30 дней)",
+      "refunds30d": "Возвраты (30 дней)",
+      "churnRate": "Коэффициент оттока",
+      "revenueSummary": "Сводка доходов (30 дней)",
+      "netRevenue": "Чистый доход",
+      "feesPayouts": "Комиссии и выплаты (30 дней)",
+      "platformFees": "Комиссии платформы",
+      "revenueTrend": "Тренд доходов",
+      "gmvFeesTrend": "Тренд GMV и комиссий",
+      "affiliateCommissionsTrend": "Тренд комиссий аффилиатов",
+      "sellerPayoutsTrend": "Тренд выплат продавцов"
+    }
+  },
+  "sell": {
+    "finance": {
+      "title": "Кабинет продавца",
+      "subtitle": "Информация о ваших продажах и доходах",
+      "totalGmv": "Всего GMV",
+      "totalFees": "Всего комиссий (30%)",
+      "netAmount": "Чистая сумма",
+      "pendingPayout": "Ожидающий платеж",
+      "financialSummary": "Финансовая сводка",
+      "grossRevenue": "Всего валовой выручки",
+      "platformFees": "Комиссии платформы (30%)",
+      "yourEarnings": "Ваш чистый доход",
+      "payoutStatus": "Статус выплаты",
+      "alreadyPaidOut": "Уже выплачено",
+      "totalOrders": "Всего заказов",
+      "totalPayouts": "Всего выплат",
+      "revenueFeesTrend": "Тренд доходов и комиссий (последние 30 дней)",
+      "netRevenueTrend": "Тренд чистого дохода (последние 30 дней)",
+      "recentOrders": "Последние заказы",
+      "orderId": "ID заказа",
+      "date": "Дата",
+      "grossAmount": "Валовая сумма",
+      "fees": "Комиссии",
+      "paymentProcessing": "Обработка платежей",
+      "paymentProcessingDescription": "Ваш ожидающий доход будет автоматически переведен на подключенный счет Stripe. Переводы обычно выполняются в течение 2-3 рабочих дней."
+    }
+  },
+  "affiliate": {
+    "finance": {
+      "title": "Доход аффилиата",
+      "subtitle": "Ваши заработки и статус",
+      "pendingEarnings": "Ожидающий доход",
+      "availableWithdraw": "Доступно для вывода",
+      "alreadyPaid": "Уже выплачено",
+      "totalEarned": "Всего заработано",
+      "referralLink": "Ваша реферальная ссылка",
+      "referralCode": "Код реферальной ссылки",
+      "shareCode": "Поделитесь этим кодом с друзьями, чтобы получить комиссию от их покупок",
+      "commissionBalance": "Баланс комиссий",
+      "pendingHold": "Ожидание (7-дневный перерыв)",
+      "readyWithdraw": "Готово к выводу",
+      "totalAvailable": "Всего доступно",
+      "statistics": "Статистика",
+      "commissionEvents": "События комиссий",
+      "payoutsReceived": "Полученные выплаты",
+      "affiliateStatus": "Статус аффилиата",
+      "commissionsByStatus": "Комиссии по статусу (последние 30 дней)",
+      "balanceBreakdown": "Разбор баланса",
+      "recentCommissionEvents": "Последние события комиссий",
+      "availableOn": "Доступно в"
+    }  },
+  "business": {
+    "profile": {
+      "title": "Деловой профиль",
+      "description": "Управляйте информацией о вашей компании и налогами",
+      "legal_name": "Юридическое название",
+      "legal_name_placeholder": "Официальное название вашей компании",
+      "tax_id": "Налоговый номер",
+      "tax_id_placeholder": "Налоговый идентификационный номер",
+      "address": "Адрес",
+      "address_placeholder": "Зарегистрированный адрес вашей компании",
+      "email": "Электронная почта",
+      "email_placeholder": "Корпоративная электронная почта",
+      "phone": "Телефон",
+      "phone_placeholder": "Корпоративный телефон",
+      "vat_payer": "Я являюсь плательщиком НДС (18%)",
+      "vat_payer_desc": "Если вы плательщик НДС, НДС будет показан в счетах",
+      "non_vat_payer_desc": "Если вы не являетесь плательщиком НДС, НДС не будет показан в счетах",
+      "fx_rate": "Обменный курс (GEL → USD)",
+      "info_box": "Эта информация будет использоваться в счетах, квитанциях и налоговых отчетах. Данные, хранящиеся здесь, не будут передаваться третьим лицам."
+    }
+  },
+  "invoices": {
+    "title": "Счета",
+    "description": "Управляйте и скачивайте ваши счета",
+    "create_new": "Новый счет",
+    "invoice_number": "Номер счета",
+    "buyer": "Покупатель",
+    "amount": "Сумма",
+    "date": "Дата",
+    "status": "Статус",
+    "filter_all": "Все",
+    "filter_issued": "Выданные",
+    "filter_paid": "Оплаченные",
+    "filter_void": "Аннулированные",
+    "status_issued": "Выданный",
+    "status_paid": "Оплачено",
+    "status_void": "Аннулировано",
+    "no_invoices": "Счета еще не созданы",
+    "create_first_invoice": "Создайте свой первый счет"
+  },
+  "tools": {
+    "margin_calculator": {
+      "title": "Калькулятор маржи",
+      "description": "Рассчитайте рекомендуемую цену и прибыль с учетом всех затрат",
+      "inputs": "Входные данные",
+      "results": "Результаты",
+      "currency": "Валюта",
+      "vat_payer": "Плательщик НДС",
+      "cost": "Стоимость",
+      "shipping": "Доставка",
+      "payment_fee": "Комиссия за обработку платежа",
+      "platform_fee": "Комиссия платформы",
+      "affiliate_fee": "Аффилиация комиссия",
+      "desired_profit": "Желаемая прибыль",
+      "recommended_price": "Рекомендуемая цена",
+      "gross_margin": "Валовая маржа",
+      "net_profit": "Чистая прибыль",
+      "breakdown": "Разбор",
+      "revenue": "Доход",
+      "vat": "НДС",
+      "enter_values": "Введите значения для расчета",
+      "calculate": "Рассчитать",
+      "fx_rate": "Обменный курс"
+    }
+  },
+  "payments": {
+    "providers": {
+      "title": "Способы платежа",
+      "description": "Выберите предпочитаемого провайдера платежей или узнайте о будущих вариантах",
+      "active": "Активный",
+      "coming_soon": "Скоро",
+      "setup_required": "Требуется настройка",
+      "stripe_details": "Детали Stripe",
+      "stripe_feature_1": "Сквозное шифрование",
+      "stripe_feature_2": "Подписки и выставление счетов",
+      "stripe_feature_3": "Быстрые выплаты",
+      "stripe_feature_4": "Предотвращение мошенничества",
+      "info_title": "Ваш провайдер платежей",
+      "info_desc": "В настоящее время наша платформа поддерживает Stripe. Интеграция с грузинскими банками (TBC, BoG, Payze) будет доступна в ближайшее время.",
+      "future_title": "Будущие интеграции",
+      "future_desc": "Грузинские системы платежей будут добавлены в будущих версиях. В настоящее время все платежи обрабатываются через Stripe.",
+      "future_note_1": "TBC Bank - Национальный банк Грузии",
+      "future_note_2": "Bank of Georgia - Крупнейший банк Грузии",
+      "future_note_3": "Payze - Грузинский платежный шлюз"
+    }
+  },
+  "common": {
+    "loading": "Загрузка...",
+    "saving": "Сохранение...",
+    "save": "Сохранить",
+    "saved_successfully": "Успешно сохранено",
+    "error": "Ошибка",
+    "view": "Просмотр",
+    "download": "Загрузить",
+    "actions": "Действия",
+    "calculating": "Расчет...",
+    "back": "Назад"
+  },
+  "returns": {
+    "myReturns": "Мои возвраты",
+    "manageYourReturnRequests": "Управление запросами на возврат",
+    "returnRequests": "Запросы на возврат",
+    "manageCustomerReturns": "Управление возвратами клиентов",
+    "noReturns": "Нет возвратов",
+    "noReturnsDescription": "У вас пока нет запросов на возврат",
+    "noReturnsFound": "Возвраты не найдены",
+    "noReturnsFoundDescription": "Возвраты с этим фильтром не найдены",
+    "orderNumber": "Заказ",
+    "requestedOn": "Запрошено",
+    "reason": "Причина",
+    "comments": "Комментарии",
+    "buyerComments": "Комментарии покупателя",
+    "refundAmount": "Сумма возврата",
+    "orderTotal": "Сумма заказа",
+    "approve": "Одобрить",
+    "reject": "Отклонить",
+    "markInTransit": "Отметить в пути",
+    "markReceived": "Отметить получено",
+    "status": {
+      "requested": "Запрошено",
+      "approved": "Одобрено",
+      "rejected": "Отклонено",
+      "label_sent": "Этикетка отправлена",
+      "in_transit": "В пути",
+      "received": "Получено",
+      "refunded": "Возвращено",
+      "closed": "Закрыто"
+    },
+    "filter": {
+      "all": "Все",
+      "requested": "Запрошено",
+      "approved": "Одобрено",
+      "in_transit": "В пути",
+      "received": "Получено",
+      "rejected": "Отклонено"
+    }
+  },
+  "refunds": {
+    "title": "Возвраты средств",
+    "subtitle": "Управление транзакциями возврата",
+    "amount": "Сумма",
+    "reason": "Причина",
+    "status": {
+      "pending": "В ожидании",
+      "succeeded": "Успешно",
+      "failed": "Не удалось",
+      "canceled": "Отменено"
+    },
+    "processing": "Возврат обрабатывается",
+    "completed": "Возврат завершен",
+    "noRefunds": "Нет возвратов"
+  },
+  "disputes": {
+    "title": "Споры",
+    "subtitle": "Управление спорами и возвратами платежей Stripe",
+    "activeDisputes": "Активные споры",
+    "won": "Выиграно",
+    "lost": "Проиграно",
+    "noDisputes": "Нет споров",
+    "noDisputesDescription": "У вас нет активных споров",
+    "orderNumber": "Заказ",
+    "amount": "Сумма",
+    "reason": "Причина",
+    "description": "Описание",
+    "payoutHold": "Блокировка выплаты",
+    "yes": "Да",
+    "no": "Нет",
+    "stripeId": "Stripe ID",
+    "actionRequired": "Требуется действие",
+    "respondInStripe": "Пожалуйста, ответьте на этот спор в панели Stripe"
+  }
+}

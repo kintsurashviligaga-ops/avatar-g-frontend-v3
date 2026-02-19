@@ -1,253 +1,154 @@
 /**
- * Avatar G - Plan Definitions
- * Single source of truth for subscription tiers, limits, and pricing
+ * Avatar G - Billing Plan Source of Truth
  */
 
-export type PlanTier = 'FREE' | 'BASIC' | 'PREMIUM' | 'PRO' | 'ENTERPRISE';
-export type CanonicalPlanTier = 'FREE' | 'BASIC' | 'PREMIUM';
+export type PlanTier = 'FREE' | 'PRO' | 'PREMIUM' | 'ENTERPRISE';
 
-const PLAN_ORDER: CanonicalPlanTier[] = ['FREE', 'BASIC', 'PREMIUM'];
-
-const PLAN_ALIASES: Record<PlanTier, CanonicalPlanTier> = {
-  FREE: 'FREE',
-  BASIC: 'BASIC',
-  PREMIUM: 'PREMIUM',
-  PRO: 'BASIC',
-  ENTERPRISE: 'PREMIUM',
-};
-
-export function normalizePlanTier(plan: PlanTier | string | null | undefined): CanonicalPlanTier {
-  const key = (plan || '').toString().toUpperCase() as PlanTier;
-  return PLAN_ALIASES[key] || 'FREE';
-}
-
-export function getPlanRank(plan: PlanTier | string | null | undefined): number {
-  return PLAN_ORDER.indexOf(normalizePlanTier(plan));
-}
-
-export interface PlanConfig {
-  id: CanonicalPlanTier;
-  name: string;
-  description: string;
+export interface PlanDefinition {
+  id: PlanTier;
+  label: string;
   monthlyCredits: number;
-  maxConcurrentJobs: number;
-  maxStorageGB: number;
-  features: string[];
-  allowedAgents: string[]; // '*' means all
-  monthlyPriceUSD?: number;
-  stripePriceId?: string; // Optional Stripe price ID
-  // Agent-specific limits
-  limits: {
-    avatarBuilder: number; // Max avatars
-    videoStudio: number; // Max videos/month
-    musicStudio: number; // Max tracks/month
-    voiceLab: number; // Max voice slots
+  requiredForPortal: boolean;
+  refillPolicy: {
+    cadence: 'monthly';
+    resetRule: 'first_day_utc_month';
   };
+  limits: {
+    maxConcurrentJobs: number;
+    maxStorageGb: number;
+  };
+  allowedAgents: string[] | '*';
+  features: string[];
 }
 
-export const PLANS: Record<CanonicalPlanTier, PlanConfig> = {
+export const PLAN_ORDER: PlanTier[] = ['FREE', 'PRO', 'PREMIUM', 'ENTERPRISE'];
+
+export const PLAN_DEFINITIONS: Record<PlanTier, PlanDefinition> = {
   FREE: {
     id: 'FREE',
-    name: 'Free',
-    description: 'Get started with Avatar G basics',
+    label: 'Free',
     monthlyCredits: 100,
-    maxConcurrentJobs: 1,
-    maxStorageGB: 1,
-    features: [
-      '100 credits/month',
-      '1 avatar',
-      '5 videos/month',
-      '5 tracks/month',
-      'Basic chat agent',
-      'Community support',
-    ],
+    requiredForPortal: false,
+    refillPolicy: { cadence: 'monthly', resetRule: 'first_day_utc_month' },
+    limits: { maxConcurrentJobs: 1, maxStorageGb: 2 },
     allowedAgents: [
       'avatar-builder',
       'video-studio',
       'music-studio',
       'chat',
       'image-creator',
+      'prompt-builder',
     ],
-    limits: {
-      avatarBuilder: 1,
-      videoStudio: 5,
-      musicStudio: 5,
-      voiceLab: 1,
-    },
+    features: ['Starter tools', 'Community support'],
   },
-  
-  BASIC: {
-    id: 'BASIC',
-    name: 'Basic',
-    description: 'For creators and professionals',
+  PRO: {
+    id: 'PRO',
+    label: 'Pro',
     monthlyCredits: 1000,
-    maxConcurrentJobs: 3,
-    maxStorageGB: 10,
-    monthlyPriceUSD: 30,
-    features: [
-      '1,000 credits/month',
-      'Unlimited avatars',
-      'Unlimited videos',
-      'Unlimited tracks',
-      '3 voice slots',
-      'Advanced agents',
-      'Priority processing',
-      'Email support',
-    ],
+    requiredForPortal: true,
+    refillPolicy: { cadence: 'monthly', resetRule: 'first_day_utc_month' },
+    limits: { maxConcurrentJobs: 4, maxStorageGb: 20 },
     allowedAgents: [
       'avatar-builder',
       'video-studio',
       'music-studio',
       'voice-lab',
-      'chat',
       'media-production',
       'business-agent',
+      'chat',
       'game-creator',
       'image-creator',
-      'social-media',
+      'prompt-builder',
+      'social-media-marketing',
       'online-shop',
     ],
-    limits: {
-      avatarBuilder: 999,
-      videoStudio: 999,
-      musicStudio: 999,
-      voiceLab: 3,
-    },
+    features: ['Priority queue', 'Expanded studio access'],
   },
-  
   PREMIUM: {
     id: 'PREMIUM',
-    name: 'Premium',
-    description: 'Unlock the Avatar G Agent with premium powers',
+    label: 'Premium',
     monthlyCredits: 5000,
-    maxConcurrentJobs: 10,
-    maxStorageGB: 50,
-    stripePriceId: process.env.STRIPE_PRICE_PREMIUM,
-    monthlyPriceUSD: 150,
-    features: [
-      '5,000 credits/month',
-      'Unlimited everything',
-      'Avatar G Agent (Premium)',
-      'Multi-agent orchestration',
-      'Custom voice cloning',
-      'API access',
-      'White-label options',
-      'Priority support + Slack',
-    ],
-    allowedAgents: ['*'], // All agents
-    limits: {
-      avatarBuilder: 999,
-      videoStudio: 999,
-      musicStudio: 999,
-      voiceLab: 999,
-    },
+    requiredForPortal: true,
+    refillPolicy: { cadence: 'monthly', resetRule: 'first_day_utc_month' },
+    limits: { maxConcurrentJobs: 10, maxStorageGb: 100 },
+    allowedAgents: '*',
+    features: ['Avatar G Agent (premium)', 'Multi-agent orchestration'],
   },
-  
+  ENTERPRISE: {
+    id: 'ENTERPRISE',
+    label: 'Enterprise',
+    monthlyCredits: 20000,
+    requiredForPortal: true,
+    refillPolicy: { cadence: 'monthly', resetRule: 'first_day_utc_month' },
+    limits: { maxConcurrentJobs: 50, maxStorageGb: 1000 },
+    allowedAgents: '*',
+    features: ['SLA', 'Custom integrations', 'Dedicated support'],
+  },
 };
 
-/**
- * Credit costs per agent action
- */
-export const AGENT_COSTS = {
-  // Avatar Builder
+export const ACTION_CREDIT_COSTS = {
   'avatar-builder.generate': 10,
-  'avatar-builder.scan': 5,
-  
-  // Video Studio
   'video-studio.generate': 20,
-  'video-studio.animate': 15,
-  
-  // Music Studio
   'music-studio.generate': 15,
-  'music-studio.remix': 10,
-  'music-studio.extend': 8,
-  
-  // Voice Lab
-  'voice-lab.clone': 50,
-  'voice-lab.synthesize': 5,
-  
-  // Media Production
-  'media-production.video': 25,
-  'media-production.composite': 20,
-  
-  // Business Agent
-  'business-agent.analyze': 10,
-  'business-agent.report': 15,
-  
-  // Chat
+  'voice-lab.clone': 40,
+  'media-production.render': 30,
+  'business-agent.strategy': 12,
   'chat.message': 1,
-  'chat.context': 2,
-  
-  // Game Creator
-  'game-creator.generate': 30,
-  'game-creator.asset': 10,
-  
-  // Image Creator
+  'game-creator.generate': 25,
   'image-creator.generate': 8,
-  'image-creator.upscale': 5,
-  
-  // Social Media
-  'social-media.post': 5,
-  'social-media.campaign': 20,
-  
-  // Online Shop
-  'online-shop.setup': 10,
-  'online-shop.product': 5,
-  
-  // Premium Agent (Avatar G)
-  'avatar-g-agent.orchestrate': 50,
-  'avatar-g-agent.complex-task': 100,
+  'prompt-builder.optimize': 3,
+  'social-media-marketing.campaign': 10,
+  'online-shop.publish': 6,
+  'avatar-g-agent-premium.orchestrate': 50,
 } as const;
 
-/**
- * Get plan configuration
- */
-export function getPlan(tier: PlanTier | string): PlanConfig {
-  return PLANS[normalizePlanTier(tier)];
-}
+export type AgentActionKey = keyof typeof ACTION_CREDIT_COSTS;
 
-/**
- * Check if plan allows agent
- */
-export function planAllowsAgent(plan: PlanTier | string, agentId: string): boolean {
-  const config = getPlan(plan);
-  if (config.allowedAgents.includes('*')) return true;
-  return config.allowedAgents.includes(agentId);
-}
-
-/**
- * Get credit cost for action
- */
-export function getCreditCost(actionKey: keyof typeof AGENT_COSTS): number {
-  return AGENT_COSTS[actionKey] || 0;
-}
-
-/**
- * Check if user can afford action
- */
-export function canAfford(balance: number, cost: number): boolean {
-  return balance >= cost;
-}
-
-/**
- * Format credits display
- */
-export function formatCredits(credits: number): string {
-  if (credits >= 1000) {
-    return `${(credits / 1000).toFixed(1)}K`;
+export function normalizePlan(plan: string | null | undefined): PlanTier {
+  const upper = (plan || '').toUpperCase();
+  if (upper === 'PRO' || upper === 'PREMIUM' || upper === 'ENTERPRISE') {
+    return upper;
   }
-  return credits.toString();
+  return 'FREE';
 }
 
-/**
- * Calculate days until reset
- */
-export function daysUntilReset(nextResetDate: Date): number {
+export const normalizePlanTier = normalizePlan;
+
+export function getPlan(plan: string | null | undefined): PlanDefinition {
+  return PLAN_DEFINITIONS[normalizePlan(plan)];
+}
+
+export function getPlanRank(plan: string | null | undefined): number {
+  return PLAN_ORDER.indexOf(normalizePlan(plan));
+}
+
+export function isPlanAtLeast(currentPlan: string | null | undefined, requiredPlan: PlanTier): boolean {
+  return getPlanRank(currentPlan) >= getPlanRank(requiredPlan);
+}
+
+export function planAllowsAgent(plan: string | null | undefined, agentId: string): boolean {
+  const definition = getPlan(plan);
+  if (definition.allowedAgents === '*') {
+    return true;
+  }
+  return definition.allowedAgents.includes(agentId);
+}
+
+export function getCreditCost(actionKey: string, fallbackCost: number): number {
+  const knownCost = ACTION_CREDIT_COSTS[actionKey as AgentActionKey];
+  return typeof knownCost === 'number' ? knownCost : fallbackCost;
+}
+
+export function formatCredits(value: number): string {
+  if (value >= 1000) {
+    return `${(value / 1000).toFixed(1)}k`;
+  }
+  return `${value}`;
+}
+
+export function daysUntilReset(nextResetDate: Date | string): number {
+  const next = typeof nextResetDate === 'string' ? new Date(nextResetDate) : nextResetDate;
   const now = new Date();
-  const diff = nextResetDate.getTime() - now.getTime();
-  return Math.ceil(diff / (1000 * 60 * 60 * 24));
+  const delta = next.getTime() - now.getTime();
+  return Math.max(0, Math.ceil(delta / (1000 * 60 * 60 * 24)));
 }
-
-/**
- * Get plan by Stripe price ID
- */

@@ -9,12 +9,14 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { Redis } from '@upstash/redis';
+import { isServerEnvValid } from '@/lib/server/env-schema';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
 interface HealthResponse {
   ok: boolean;
+  env: 'valid' | 'invalid';
   service: 'backend';
   status: 'healthy';
   ts: number;
@@ -118,12 +120,14 @@ async function verifyRedis(): Promise<
 export async function GET() {
   try {
     const redisStatus = await verifyRedis();
+    const envValid = isServerEnvValid();
     const ts = Date.now();
     const version = getVersion();
     const region = process.env.VERCEL_REGION;
 
     const response: HealthResponse = {
-      ok: redisStatus.redis === 'connected',
+      ok: envValid,
+      env: envValid ? 'valid' : 'invalid',
       service: 'backend',
       status: 'healthy',
       ts,
@@ -140,6 +144,7 @@ export async function GET() {
     return NextResponse.json(
       {
         ok: false,
+        env: 'invalid',
         service: 'backend',
         status: 'healthy',
         ts: Date.now(),

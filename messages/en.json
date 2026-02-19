@@ -1,1 +1,889 @@
-{"metadata":{"title":"Avatar G Executive - AI Platform","description":"Premium AI tools for business"},"navigation":{"services":"Services","workspace":"Workspace","about":"About","contact":"Contact"},"hero":{"title":"Create the Future","subtitle":"With AI","description":"Premium intelligent systems for modern business","cta_primary":"Start Now","cta_secondary":"Learn More"},"services":{"title":"13 Services","subtitle":"Your Digital Team","image_generator":"Visual Intelligence","video_generator":"Broadcast & Messaging","music_generator":"Media Production","text_intelligence":"Text Intelligence","prompt_builder":"Prompt Builder","image_architect":"Image Architect","music_studio":"Music Studio","voice_lab":"Voice Lab","video_cine_lab":"Video Cine Lab","game_forge":"Game Forge","agent_g":"Agent G","ai_production":"AI Production","business_agent":"Business Agent","pentagon":"Pentagon"},"generator":{"input_placeholder":"Describe what you want...","button_generate":"Generate","button_download":"Download","button_save":"Save","button_share":"Share","progress_text":"Processing...","code_rain":"Optimizing prompt...","complete":"Ready!"},"chatbot":{"title":"Agent G","subtitle":"Personal Assistant","placeholder":"Type a message...","voice_input":"Voice Input","voice_output":"Voice Output","file_upload":"Upload File","thinking":"Thinking..."}}
+{
+  "metadata": {
+    "title": "Avatar G Executive - AI Platform",
+    "description": "Premium AI tools for business"
+  },
+  "navigation": {
+    "services": "Services",
+    "workspace": "Workspace",
+    "about": "About",
+    "contact": "Contact",
+    "dashboard": "Dashboard",
+    "pricing": "Pricing",
+    "login": "Login",
+    "signup": "Sign Up",
+    "logout": "Logout"
+  },
+  "hero": {
+    "title": "Create the Future",
+    "subtitle": "With AI",
+    "description": "Premium intelligent systems for modern business",
+    "cta_primary": "Start Now",
+    "cta_secondary": "Learn More"
+  },
+  "services": {
+    "title": "13 Services",
+    "subtitle": "Your Digital Team",
+    "avatar_builder": "Avatar Builder",
+    "image_generator": "Visual Intelligence",
+    "video_generator": "Broadcast & Messaging",
+    "music_generator": "Media Production",
+    "text_intelligence": "Text Intelligence",
+    "prompt_builder": "Prompt Builder",
+    "image_architect": "Image Architect",
+    "music_studio": "Music Studio",
+    "voice_lab": "Voice Lab",
+    "video_cine_lab": "Video Cine Lab",
+    "game_forge": "Game Forge",
+    "agent_g": "Agent G",
+    "ai_production": "AI Production",
+    "business_agent": "Business Agent",
+    "online_shop": "Online Shop",
+    "social_media": "Social Media",
+    "marketplace": "Marketplace",
+    "pentagon": "Pentagon"
+  },
+  "avatar": {
+    "title": "Avatar Builder",
+    "description": "Create your 3D avatar with AI",
+    "section": {
+      "faceScan": "Face Scan",
+      "bodyMeasurement": "Body Measurement",
+      "styleSelection": "Style Selection",
+      "preview": "Preview"
+    },
+    "label": {
+      "cameraPreview": "Camera Preview",
+      "retryScan": "Retry Scan",
+      "capturePhoto": "Capture Photo",
+      "startCamera": "Start Camera",
+      "stopCamera": "Stop Camera",
+      "nextStep": "Next Step",
+      "previousStep": "Previous Step",
+      "generate": "Generate",
+      "download": "Download",
+      "retry": "Retry"
+    },
+    "status": {
+      "scanning": "Scanning...",
+      "processing": "Processing...",
+      "generating": "Generating...",
+      "complete": "Complete!",
+      "error": "Error"
+    },
+    "error": {
+      "cameraAccess": "Camera access denied. Please enable permissions.",
+      "noCamera": "No camera found on this device.",
+      "uploadFailed": "File upload failed.",
+      "generationFailed": "Avatar generation failed. Please try again."
+    }
+  },
+  "pay": {
+    "title": "Payment",
+    "description": "Secure payment with Stripe",
+    "label": {
+      "amount": "Amount",
+      "serviceName": "Service Name",
+      "payNow": "Pay Now",
+      "processing": "Processing...",
+      "currency": "Currency"
+    },
+    "status": {
+      "pending": "Pending",
+      "success": "Success",
+      "failed": "Failed"
+    },
+    "success": {
+      "title": "Payment Successful",
+      "message": "Your payment has been completed successfully.",
+      "backToDashboard": "Back to Dashboard"
+    },
+    "cancel": {
+      "title": "Payment Cancelled",
+      "message": "Your payment was cancelled.",
+      "tryAgain": "Try Again"
+    }
+  },
+  "dashboard": {
+    "title": "Dashboard",
+    "welcome": "Welcome",
+    "nav": {
+      "overview": "Overview",
+      "billing": "Billing",
+      "settings": "Settings",
+      "support": "Support",
+      "seller": "Seller",
+      "admin": "Admin"
+    },
+    "cards": {
+      "credits": "Credits",
+      "usage": "Usage",
+      "plan": "Plan",
+      "nextBilling": "Next Billing"
+    },
+    "actions": {
+      "upgrade": "Upgrade",
+      "manage": "Manage",
+      "viewDetails": "View Details",
+      "cancel": "Cancel"
+    }
+  },
+  "subscription": {
+    "title": "Subscription",
+    "chooseYourPlan": "Choose Your Plan",
+    "monthly": "Monthly",
+    "annually": "Annually",
+    "starter": "Starter",
+    "pro": "Pro",
+    "business": "Business",
+    "enterprise": "Enterprise",
+    "pricing": {
+      "kicker": "Subscription Plans",
+      "title": "Choose Your Plan",
+      "subtitle": "Upgrade, downgrade, or cancel anytime.",
+      "popular": "Most Popular",
+      "currency_note": "Prices in {currency}",
+      "approx_gel": "Approx ₾{amount}",
+      "subscribed_notice": "You're already on this plan"
+    },
+    "interval": {
+      "monthly": "Monthly",
+      "yearly": "Yearly"
+    },
+    "plans": {
+      "starter": {
+        "title": "Starter",
+        "description": "Best for getting started",
+        "features": [
+          "10 avatars per month",
+          "100 videos per month",
+          "10 music tracks per month",
+          "Basic support"
+        ]
+      },
+      "pro": {
+        "title": "Pro",
+        "description": "For growing creators",
+        "features": [
+          "Unlimited avatars",
+          "Unlimited videos",
+          "Unlimited music",
+          "Priority support",
+          "API access"
+        ]
+      },
+      "business": {
+        "title": "Empire",
+        "description": "For teams and scaling businesses",
+        "features": [
+          "All Pro features",
+          "Custom integrations",
+          "Dedicated account manager",
+          "SLA guarantee",
+          "White-label options"
+        ]
+      }
+    },
+    "features": {
+      "avatars": "Avatars",
+      "videos": "Videos",
+      "music": "Music",
+      "support": "Support",
+      "api": "API Access",
+      "customLicense": "Custom License",
+      "unlimited": "Unlimited",
+      "priority": "Priority"
+    },
+    "actions": {
+      "subscribe": "Subscribe",
+      "upgrade": "Upgrade",
+      "downgrade": "Downgrade",
+      "cancel": "Cancel",
+      "currentPlan": "Current Plan",
+      "manageBilling": "Manage billing",
+      "startTrial": "{days}-day free trial",
+      "loading": "Loading...",
+      "changePlan": "Change plan"
+    },
+    "status": {
+      "active": "Active",
+      "trialing": "Trialing",
+      "past_due": "Past due",
+      "canceled": "Canceled",
+      "incomplete": "Incomplete",
+      "incomplete_expired": "Expired",
+      "unpaid": "Unpaid",
+      "none": "No subscription"
+    },
+    "badge": {
+      "active": "{plan} active",
+      "trialing": "{plan} trial",
+      "generic": "Premium"
+    },
+    "banner": {
+      "past_due_title": "Payment failed",
+      "past_due_description": "Update your payment method to avoid service interruption.",
+      "fix_payment": "Fix payment"
+    },
+    "errors": {
+      "loadFailed": "Failed to load subscription data.",
+      "checkoutFailed": "Failed to create checkout session.",
+      "portalFailed": "Failed to open billing portal."
+    }
+  },
+  "billing": {
+    "title": "Billing",
+    "subtitle": "Manage your subscription and payments",
+    "status": {
+      "none": "No subscription"
+    },
+    "summary": {
+      "plan": "Plan",
+      "status": "Status",
+      "nextBilling": "Next billing",
+      "cancelAtPeriodEnd": "Cancels at period end",
+      "cancelYes": "Yes",
+      "cancelNo": "No",
+      "no_plan": "No plan selected",
+      "no_date": "Not available"
+    },
+    "actions": {
+      "manageBilling": "Manage billing",
+      "changePlan": "Change plan"
+    },
+    "empty": {
+      "title": "No subscription yet",
+      "description": "Choose a plan to start your subscription.",
+      "cta": "View pricing"
+    },
+    "history": {
+      "title": "Payment History",
+      "subtitle": "Your recent invoices and transactions",
+      "invoices": "Invoices",
+      "payments": "Transactions",
+      "totalPaid": "Total Paid",
+      "date": "Date",
+      "invoice": "Invoice",
+      "amount": "Amount",
+      "status": "Status",
+      "description": "Description"
+    },
+    "errors": {
+      "loadFailed": "Failed to load billing details."
+    }
+  },
+  "sell": {
+    "onboarding": {
+      "title": "Start selling",
+      "subtitle": "Create your Stripe Connect account to receive payouts",
+      "steps": {
+        "create": "Create account",
+        "verify": "Complete verification",
+        "payouts": "Enable payouts"
+      },
+      "actions": {
+        "start": "Start seller setup",
+        "continue": "Continue onboarding",
+        "refresh": "Refresh status",
+        "dashboard": "Go to seller dashboard"
+      },
+      "status": {
+        "connected": "Connected",
+        "charges_enabled": "Charges enabled",
+        "payouts_enabled": "Payouts enabled",
+        "details_submitted": "Details submitted"
+      },
+      "requirements": {
+        "title": "Missing requirements",
+        "none": "All requirements completed",
+        "currently_due": "Currently due",
+        "eventually_due": "Eventually due",
+        "past_due": "Past due"
+      },
+      "no_account": "You don't have a Stripe Connect account yet"
+    },
+    "dashboard": {
+      "title": "Seller dashboard",
+      "subtitle": "Payout status and earnings",
+      "status": {
+        "payouts": "Payout status",
+        "active": "Active",
+        "pending": "Pending",
+        "disabled": "Disabled"
+      },
+      "actions": {
+        "open_stripe": "Open Stripe dashboard",
+        "payout_settings": "Payout settings"
+      },
+      "sections": {
+        "earnings": "Earnings",
+        "products": "Products & services"
+      },
+      "placeholder": {
+        "earnings": "Analytics coming soon",
+        "products": "Marketplace listing coming soon"
+      }
+    }
+  },
+  "generator": {
+    "input_placeholder": "Describe what you want...",
+    "button_generate": "Generate",
+    "button_download": "Download",
+    "button_save": "Save",
+    "button_share": "Share",
+    "progress_text": "Processing...",
+    "code_rain": "Optimizing prompt...",
+    "complete": "Ready!"
+  },
+  "chatbot": {
+    "title": "Agent G",
+    "subtitle": "Personal Assistant",
+    "placeholder": "Type a message...",
+    "voice_input": "Voice Input",
+    "voice_output": "Voice Output",
+    "file_upload": "Upload File",
+    "thinking": "Thinking..."
+  },
+  "seller": {
+    "funnel": {
+      "headline": "Don't Sell Unprofitable Products",
+      "subheadline": "Analyze real profit, VAT and risks with AI - Start now.",
+      "cta": "Start Profit Simulation",
+      "vat_payer": "I am a VAT payer (18%)",
+      "non_vat": "I am not a VAT payer",
+      "business_type": "Business Type",
+      "business_dropshipping": "Dropshipping / Import",
+      "business_own": "Own Product",
+      "business_digital": "Digital Product",
+      "target_income": "Target Monthly Income (₾)",
+      "budget": "Initial Budget (₾)",
+      "continue": "Continue",
+      "back": "Back",
+      "calculating": "Calculating profit...",
+      "simulation_title": "Your Profit Simulation",
+      "margin_warning": "⚠️ Margin is too low!",
+      "margin_block": "Margin must be at least 20%. Adjust parameters.",
+      "activate": "Activate Shop",
+      "activation_processing": "Creating shop..."
+    },
+    "dashboard": {
+      "nav": "Dashboard",
+      "products": "Products",
+      "finance": "Finance",
+      "orders": "Orders",
+      "payouts": "Payouts",
+      "analytics": "Analytics",
+      "settings": "Settings",
+      "forecast": "Forecast"
+    },
+    "metrics": {
+      "today_sales": "Today's Sales",
+      "net_profit": "Net Profit",
+      "vat_payable": "VAT Payable",
+      "breakeven": "Breakeven Forecast",
+      "risk": "Risk Indicator",
+      "recommended_price": "Recommended Price",
+      "margin": "Profit Margin",
+      "gmv": "GMV (Gross Sales)",
+      "revenue": "Platform Revenue",
+      "active_sellers": "Active Sellers",
+      "compliance": "Margin Compliance"
+    },
+    "actions": {
+      "simulate": "Calculate Profit",
+      "activate_vat": "Enable VAT Mode",
+      "request_payout": "Request Payout",
+      "launch_product": "Launch Product",
+      "view_details": "View Details",
+      "export_report": "Export Report"
+    },
+    "pricing": {
+      "mode_growth": "Growth Mode",
+      "mode_profit": "Profit Mode",
+      "mode_hybrid": "Hybrid Mode",
+      "platform_fee": "Platform Fee",
+      "vat_rate": "VAT Rate",
+      "margin_floor": "Minimum Margin",
+      "margin_target": "Target Margin"
+    },
+    "growth": {
+      "title": "Growth Automation",
+      "dm_script": "DM Script",
+      "tiktok_script": "TikTok Script",
+      "email_template": "Email Template",
+      "referral": "Referral Program",
+      "cac": "CAC (Customer Acquisition Cost)",
+      "ltv": "LTV (Lifetime Value)",
+      "generate_script": "Generate Script"
+    },
+    "forecast": {
+      "title": "Revenue Forecast",
+      "month_1": "1 Month",
+      "month_3": "3 Months",
+      "month_6": "6 Months",
+      "gmv_projection": "GMV Projection",
+      "revenue_projection": "Revenue Projection",
+      "net_profit_projection": "Net Profit Projection",
+      "confidence": "Confidence Level"
+    }
+  },
+  "affiliate": {
+    "title": "Affiliate Dashboard",
+    "badge": {
+      "label": "Affiliate"
+    },
+    "status": {
+      "active": "Active",
+      "disabled": "Disabled",
+      "pending": "Pending"
+    },
+    "summary": {
+      "your_code": "Your Code",
+      "referral_link": "Referral Link",
+      "copy_code": "Copy Code",
+      "copy_link": "Copy Link",
+      "copied": "Copied!",
+      "total_clicks": "Total Clicks",
+      "total_signups": "Signups",
+      "pending_commissions": "Pending",
+      "eligible_commissions": "Eligible",
+      "paid_commissions": "Paid",
+      "next_payout": "Next Payout",
+      "earnings_chart": "Earnings chart",
+      "last_7_days": "Last 7 Days",
+      "last_30_days": "Last 30 Days",
+      "all_time": "All Time"
+    },
+    "commissions": {
+      "title": "Commissions",
+      "date": "Date",
+      "source_type": "Source",
+      "source_id": "ID",
+      "amount": "Amount",
+      "rate": "Rate",
+      "status": "Status",
+      "available_at": "Available",
+      "pending": "Pending",
+      "available": "Available",
+      "eligible": "Eligible",
+      "paid": "Paid",
+      "reversed": "Reversed",
+      "subscription": "Subscription",
+      "marketplace": "Marketplace",
+      "one_time": "One-time",
+      "filters": "Filters",
+      "date_range": "Date Range",
+      "all_statuses": "All Statuses",
+      "all_types": "All Types",
+      "apply_filters": "Apply",
+      "clear_filters": "Clear",
+      "no_commissions": "No commissions found",
+      "total": "Total"
+    },
+    "referrals": {
+      "title": "Referrals",
+      "date": "Date",
+      "click_id": "Click ID",
+      "landing_url": "URL",
+      "utm_source": "Source",
+      "utm_campaign": "Campaign",
+      "status": "Status",
+      "referred_user": "User",
+      "clicked": "Clicked",
+      "signed_up": "Signed Up",
+      "converted": "Converted",
+      "no_referrals": "No referrals found",
+      "last_50": "Last 50",
+      "linked": "Linked",
+      "visitor": "Visitor"
+    },
+    "payouts": {
+      "title": "Payout History",
+      "subtitle": "Manage payout requests",
+      "period": "Period",
+      "date": "Date",
+      "amount": "Amount",
+      "method": "Method",
+      "status": "Status",
+      "transfer_id": "Transfer ID",
+      "available_balance": "Available balance",
+      "request_amount": "Request amount",
+      "request_payout": "Request payout",
+      "request_success": "Payout request submitted",
+      "request_failed": "Failed to request payout",
+      "invalid_amount": "Invalid amount",
+      "connect_required": "Connect Stripe to receive payouts",
+      "connect_now": "Connect now",
+      "view_history": "View history",
+      "requested": "Requested",
+      "pending": "Pending",
+      "processing": "Processing",
+      "paid": "Completed",
+      "failed": "Failed",
+      "canceled": "Canceled",
+      "no_payouts": "No payouts found",
+      "manual": "Manual",
+      "stripe": "Stripe",
+      "threshold_info": "Minimum threshold: {amount}"
+    },
+    "settings": {
+      "title": "Settings",
+      "payout_method": "Payout Method",
+      "connect_payout": "Connect Payout Account",
+      "coming_soon": "Coming Soon",
+      "minimum_threshold": "Minimum Threshold",
+      "current_balance": "Current Balance"
+    }
+  },
+  "admin": {
+    "affiliates": {
+      "title": "Affiliate Management",
+      "list_title": "Affiliates",
+      "search": "Search by code or ID",
+      "user_id": "User ID",
+      "code": "Code",
+      "status": "Status",
+      "clicks": "Clicks",
+      "signups": "Signups",
+      "commissions": "Commissions",
+      "actions": "Actions",
+      "toggle_status": "Toggle Status",
+      "view_details": "Details",
+      "activate": "Activate",
+      "disable": "Disable",
+      "no_affiliates": "No affiliates found"
+    },
+    "payouts": {
+      "title": "Payout Queue",
+      "queue_title": "Ready for Payout",
+      "affiliate": "Affiliate",
+      "eligible_amount": "Amount",
+      "last_payout": "Last Payout",
+      "create_payout": "Create Payout",
+      "mark_sent": "Mark Sent",
+      "mark_failed": "Mark Failed",
+      "export_csv": "Export CSV",
+      "no_eligible": "No eligible affiliates",
+      "amount": "Amount",
+      "notes": "Notes",
+      "confirm_payout": "Confirm Payout",
+      "cancel": "Cancel",
+      "confirm": "Confirm",
+      "success": "Payout created successfully"
+    }
+  },
+  "common": {
+    "loading": "Loading...",
+    "error": "Error",
+    "success": "Success",
+    "cancel": "Cancel",
+    "save": "Save",
+    "delete": "Delete",
+    "edit": "Edit",
+    "close": "Close",
+    "back": "Back",
+    "next": "Next",
+    "submit": "Submit",
+    "retry": "Retry",
+    "confirm": "Confirm",
+    "yes": "Yes",
+    "no": "No"
+  },
+  "errors": {
+    "generic": "Something went wrong. Please try again.",
+    "network": "Network error. Check your internet connection.",
+    "unauthorized": "Access denied. Please log in.",
+    "notFound": "Page not found.",
+    "serverError": "Server error. Please try again later."
+  },
+  "admin": {
+    "finance": {
+      "title": "Financial Analytics",
+      "subtitle": "Platform-wide financial overview",
+      "mrr": "Monthly Recurring Revenue (MRR)",
+      "arr": "Annual Recurring Revenue (ARR)",
+      "activeSubs": "Active Subscriptions",
+      "gmv": "Gross Merchandise Value (GMV)",
+      "revenue30d": "Revenue (30 days)",
+      "fees30d": "Platform Fees (30 days)",
+      "refunds30d": "Refunds (30 days)",
+      "churnRate": "Churn Rate",
+      "revenueSummary": "Revenue Summary (30 days)",
+      "netRevenue": "Net Revenue",
+      "feesPayouts": "Fees & Payouts (30 days)",
+      "platformFees": "Platform Fees",
+      "revenueTrend": "Revenue Trend",
+      "gmvFeesTrend": "GMV & Fees Trend",
+      "affiliateCommissionsTrend": "Affiliate Commissions Trend",
+      "sellerPayoutsTrend": "Seller Payouts Trend"
+    }
+  },
+  "sell": {
+    "finance": {
+      "title": "Seller Dashboard",
+      "subtitle": "Your sales and revenue information",
+      "totalGmv": "Total GMV",
+      "totalFees": "Total Fees (30%)",
+      "netAmount": "Net Amount",
+      "pendingPayout": "Pending Payout",
+      "financialSummary": "Financial Summary",
+      "grossRevenue": "Total Gross Revenue",
+      "platformFees": "Platform Fees (30%)",
+      "yourEarnings": "Your Net Earnings",
+      "payoutStatus": "Payout Status",
+      "alreadyPaidOut": "Already Paid Out",
+      "totalOrders": "Total Orders",
+      "totalPayouts": "Total Payouts",
+      "revenueFeesTrend": "Revenue & Fees Trend (Last 30 Days)",
+      "netRevenueTrend": "Net Revenue Trend (Last 30 Days)",
+      "recentOrders": "Recent Orders",
+      "orderId": "Order ID",
+      "date": "Date",
+      "grossAmount": "Gross Amount",
+      "fees": "Fees",
+      "paymentProcessing": "Payment Processing",
+      "paymentProcessingDescription": "Your pending earnings will be automatically transferred to your connected Stripe account. Transfers typically occur within 2-3 business days."
+    }
+  },
+  "affiliate": {
+    "finance": {
+      "title": "Affiliate Earnings",
+      "subtitle": "Your referral earnings and status",
+      "pendingEarnings": "Pending Earnings",
+      "availableWithdraw": "Available to Withdraw",
+      "alreadyPaid": "Already Paid",
+      "totalEarned": "Total Earned",
+      "referralLink": "Your Referral Link",
+      "referralCode": "Referral Code",
+      "shareCode": "Share this code with friends to earn commissions on their purchases",
+      "commissionBalance": "Commission Balance",
+      "pendingHold": "Pending (7-day hold)",
+      "readyWithdraw": "Ready to Withdraw",
+      "totalAvailable": "Total Available",
+      "statistics": "Statistics",
+      "commissionEvents": "Commission Events",
+      "payoutsReceived": "Payouts Received",
+      "affiliateStatus": "Affiliate Status",
+      "commissionsByStatus": "Commissions by Status (Last 30 Days)",
+      "balanceBreakdown": "Balance Breakdown",
+      "recentCommissionEvents": "Recent Commission Events",
+      "availableOn": "Available On"
+    }
+  },
+  "business": {
+    "profile": {
+      "title": "Business Profile",
+      "description": "Manage your company and tax information",
+      "legal_name": "Legal Name",
+      "legal_name_placeholder": "Your company's official name",
+      "tax_id": "Tax ID",
+      "tax_id_placeholder": "Country tax identification number",
+      "address": "Address",
+      "address_placeholder": "Your company's registered address",
+      "email": "Email",
+      "email_placeholder": "Company email address",
+      "phone": "Phone",
+      "phone_placeholder": "Company phone number",
+      "vat_payer": "I am a VAT payer (18%)",
+      "vat_payer_desc": "If you are a VAT payer, VAT will be shown on invoices",
+      "non_vat_payer_desc": "If you are not a VAT payer, VAT will not be shown on invoices",
+      "fx_rate": "Exchange Rate (GEL → USD)",
+      "info_box": "This information will be used in invoices, receipts, and tax reports. Data stored here will not be shared with third parties."
+    }
+  },
+  "invoices": {
+    "title": "Invoices",
+    "description": "Manage and download your invoices",
+    "create_new": "New Invoice",
+    "invoice_number": "Invoice Number",
+    "buyer": "Buyer",
+    "amount": "Amount",
+    "date": "Date",
+    "status": "Status",
+    "filter_all": "All",
+    "filter_issued": "Issued",
+    "filter_paid": "Paid",
+    "filter_void": "Void",
+    "status_issued": "Issued",
+    "status_paid": "Paid",
+    "status_void": "Void",
+    "no_invoices": "No invoices yet",
+    "create_first_invoice": "Create your first invoice"
+  },
+  "tools": {
+    "margin_calculator": {
+      "title": "Margin Calculator",
+      "description": "Calculate recommended pricing and profit considering all costs",
+      "inputs": "Inputs",
+      "results": "Results",
+      "currency": "Currency",
+      "vat_payer": "VAT Payer",
+      "cost": "Cost",
+      "shipping": "Shipping",
+      "payment_fee": "Payment Processing Fee",
+      "platform_fee": "Platform Fee",
+      "affiliate_fee": "Affiliate Commission",
+      "desired_profit": "Desired Profit",
+      "recommended_price": "Recommended Price",
+      "gross_margin": "Gross Margin",
+      "net_profit": "Net Profit",
+      "breakdown": "Breakdown",
+      "revenue": "Revenue",
+      "vat": "VAT",
+      "enter_values": "Enter values to calculate",
+      "calculate": "Calculate",
+      "fx_rate": "Exchange Rate"
+    }
+  },
+  "payments": {
+    "providers": {
+      "title": "Payment Methods",
+      "description": "Select your preferred payment provider or check out future options",
+      "active": "Active",
+      "coming_soon": "Coming Soon",
+      "setup_required": "Setup Required",
+      "stripe_details": "Stripe Details",
+      "stripe_feature_1": "End-to-end encryption",
+      "stripe_feature_2": "Subscriptions and billing support",
+      "stripe_feature_3": "Fast payouts",
+      "stripe_feature_4": "Fraud prevention",
+      "info_title": "Your Payment Provider",
+      "info_desc": "Currently our platform supports Stripe. Georgian bank integrations (TBC, BoG, Payze) will be available soon.",
+      "future_title": "Future Integrations",
+      "future_desc": "Georgian bank payment systems will be added in future versions. Currently all payments are processed through Stripe.",
+      "future_note_1": "TBC Bank - Georgian national bank",
+      "future_note_2": "Bank of Georgia - Largest bank in Georgia",
+      "future_note_3": "Payze - Georgian payment gateway"
+    }
+  },
+  "shipping": {
+    "fulfillment": {
+      "title": "Fulfillment Dashboard",
+      "description": "Manage orders and shipments to deliver packages to customers",
+      "order_details": "Order Details",
+      "order_summary": "Order Summary",
+      "order_number": "Order Number",
+      "buyer": "Buyer",
+      "buyer_name": "Buyer Name",
+      "amount": "Amount",
+      "total": "Total",
+      "status": "Status",
+      "status_unfulfilled": "Unfulfilled",
+      "status_processing": "Processing",
+      "status_shipped": "Shipped",
+      "status_delivered": "Delivered",
+      "status_returned": "Returned",
+      "status_canceled": "Canceled",
+      "status_label_created": "Label Created",
+      "status_in_transit": "In Transit",
+      "status_out_for_delivery": "Out for Delivery",
+      "actions": "Actions",
+      "manage": "Manage",
+      "filter_all": "All",
+      "filter_unfulfilled": "Unfulfilled",
+      "filter_processing": "Processing",
+      "filter_shipped": "Shipped",
+      "filter_delivered": "Delivered",
+      "no_orders": "You don't have any orders yet",
+      "shipping_address": "Shipping Address",
+      "items": "Items",
+      "shipment_management": "Shipment Management",
+      "no_shipments": "This order doesn't have a shipment yet",
+      "update_tracking": "Update Tracking Information",
+      "tracking_number": "Tracking Number",
+      "enter_tracking_number": "Enter tracking number",
+      "tracking_url": "Tracking URL",
+      "enter_tracking_url": "Enter tracking URL (optional)",
+      "update_shipment": "Update Shipment",
+      "error_tracking_number": "Please enter a tracking number",
+      "error_updating": "Error updating shipment. Please try again.",
+      "timeline": "Timeline",
+      "order_not_found": "Order not found"
+    }
+  },
+  "common": {
+    "loading": "Loading...",
+    "saving": "Saving...",
+    "save": "Save",
+    "saved_successfully": "Saved successfully",
+    "error": "Error",
+    "view": "View",
+    "download": "Download",
+    "actions": "Actions",
+    "calculating": "Calculating...",
+    "back": "Back"
+  },
+  "returns": {
+    "myReturns": "My Returns",
+    "manageYourReturnRequests": "Manage your return requests",
+    "returnRequests": "Return Requests",
+    "manageCustomerReturns": "Manage customer returns",
+    "noReturns": "No Returns",
+    "noReturnsDescription": "You don't have any return requests yet",
+    "noReturnsFound": "No Returns Found",
+    "noReturnsFoundDescription": "No returns found with this filter",
+    "orderNumber": "Order",
+    "requestedOn": "Requested on",
+    "reason": "Reason",
+    "comments": "Comments",
+    "buyerComments": "Buyer Comments",
+    "refundAmount": "Refund Amount",
+    "orderTotal": "Order Total",
+    "approve": "Approve",
+    "reject": "Reject",
+    "markInTransit": "Mark In Transit",
+    "markReceived": "Mark Received",
+    "status": {
+      "requested": "Requested",
+      "approved": "Approved",
+      "rejected": "Rejected",
+      "label_sent": "Label Sent",
+      "in_transit": "In Transit",
+      "received": "Received",
+      "refunded": "Refunded",
+      "closed": "Closed"
+    },
+    "filter": {
+      "all": "All",
+      "requested": "Requested",
+      "approved": "Approved",
+      "in_transit": "In Transit",
+      "received": "Received",
+      "rejected": "Rejected"
+    }
+  },
+  "refunds": {
+    "title": "Refunds",
+    "subtitle": "Manage refund transactions",
+    "amount": "Amount",
+    "reason": "Reason",
+    "status": {
+      "pending": "Pending",
+      "succeeded": "Succeeded",
+      "failed": "Failed",
+      "canceled": "Canceled"
+    },
+    "processing": "Refund is being processed",
+    "completed": "Refund completed",
+    "noRefunds": "No refunds"
+  },
+  "disputes": {
+    "title": "Disputes",
+    "subtitle": "Manage Stripe disputes and chargebacks",
+    "activeDisputes": "Active Disputes",
+    "won": "Won",
+    "lost": "Lost",
+    "noDisputes": "No Disputes",
+    "noDisputesDescription": "You don't have any active disputes",
+    "orderNumber": "Order",
+    "amount": "Amount",
+    "reason": "Reason",
+    "description": "Description",
+    "payoutHold": "Payout Hold",
+    "yes": "Yes",
+    "no": "No",
+    "stripeId": "Stripe ID",
+    "actionRequired": "Action Required",
+    "respondInStripe": "Please respond to this dispute in your Stripe dashboard"
+  }
+}

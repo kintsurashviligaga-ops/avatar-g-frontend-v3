@@ -7,8 +7,9 @@ import dynamic from "next/dynamic";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
-import { ArrowRight, Play, Sparkles, Film, Music, Camera, User, Zap } from "lucide-react";
+import { ArrowRight, Play, Sparkles, Zap } from "lucide-react";
 import CinematicHero3D from "@/components/landing/CinematicHero3D";
+import { SERVICE_REGISTRY } from "@/lib/service-registry";
 
 // Lazy load premium form for performance
 const PremiumAgentForm = dynamic(() => import("@/components/landing/PremiumAgentForm"), {
@@ -16,39 +17,7 @@ const PremiumAgentForm = dynamic(() => import("@/components/landing/PremiumAgent
   loading: () => null,
 });
 
-const services = [
-  {
-    id: "avatar-builder",
-    name: "Avatar Builder",
-    icon: User,
-    color: "from-cyan-400 to-blue-500",
-    description: "Create your digital twin with cinematic realism.",
-  },
-  {
-    id: "music-studio",
-    name: "Music Studio",
-    icon: Music,
-    color: "from-purple-400 to-pink-500",
-    description: "Compose AI music in a Suno-like studio flow.",
-  },
-  {
-    id: "media-production",
-    name: "Video Generation",
-    icon: Film,
-    color: "from-red-400 to-orange-500",
-    description: "Generate premium video scenes and reels.",
-  },
-  {
-    id: "photo-studio",
-    name: "Photo Studio",
-    icon: Camera,
-    color: "from-yellow-400 to-amber-500",
-    description: "Create editorial-grade AI photography.",
-  },
-];
-
 const stats = [
-  { value: "4", label: "Core Studios" },
   { value: "50K+", label: "Active Creators" },
   { value: "1M+", label: "Generations" },
   { value: "99.9%", label: "Uptime" },
@@ -56,6 +25,8 @@ const stats = [
 
 export default function LandingPageClient() {
   const [showPremiumForm, setShowPremiumForm] = useState(false);
+  const enabledServices = SERVICE_REGISTRY.filter((service) => service.enabled);
+  const serviceStats = [{ value: String(enabledServices.length), label: "Active Services" }, ...stats];
 
   return (
     <div className="relative min-h-screen bg-[#05070A] text-white overflow-hidden">
@@ -119,7 +90,7 @@ export default function LandingPageClient() {
               </div>
 
               <div className="grid grid-cols-2 md:grid-cols-4 gap-6 pt-6 border-t border-white/10">
-                {stats.map((stat) => (
+                {serviceStats.map((stat) => (
                   <div key={stat.label} className="space-y-2">
                     <div className="text-2xl md:text-3xl font-bold text-cyan-300">
                       {stat.value}
@@ -141,7 +112,7 @@ export default function LandingPageClient() {
                 <Sparkles className="w-4 h-4" />
                 Your cinematic production suite
               </div>
-              <h2 className="text-4xl md:text-5xl font-bold mt-4">Core Studios</h2>
+              <h2 className="text-4xl md:text-5xl font-bold mt-4">All Services</h2>
               <p className="text-gray-400 mt-3 max-w-2xl mx-auto">
                 Launch each studio with a premium, unified workflow. No broken flows. No
                 compromises.
@@ -149,8 +120,7 @@ export default function LandingPageClient() {
             </div>
 
             <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
-              {services.map((service) => {
-                const Icon = service.icon;
+              {enabledServices.map((service) => {
                 return (
                   <motion.div
                     key={service.id}
@@ -159,15 +129,15 @@ export default function LandingPageClient() {
                   >
                     <Card className="h-full p-6 bg-black/40 border-white/10 hover:border-cyan-400/40 transition-colors">
                       <div className="space-y-4">
-                        <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${service.color} flex items-center justify-center`}>
-                          <Icon className="w-6 h-6 text-white" />
+                        <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-cyan-400 to-blue-500 flex items-center justify-center text-xl">
+                          {service.icon}
                         </div>
                         <div>
                           <h3 className="text-lg font-semibold">{service.name}</h3>
                           <p className="text-sm text-gray-400 mt-2">{service.description}</p>
                         </div>
                         <Link
-                          href={`/services/${service.id}`}
+                          href={service.route}
                           className="inline-flex items-center text-cyan-400 hover:text-cyan-300 text-sm font-medium"
                         >
                           Enter Studio

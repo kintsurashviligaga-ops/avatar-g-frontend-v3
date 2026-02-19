@@ -5,32 +5,42 @@
 
 'use server';
 
-import { createClient } from '@supabase/ssr';
+import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import { getServerEnv } from '@/lib/env/server';
 import {
   ComputeOrderSplit,
   ComputeProductMargin,
-  Order,
   CreateOrder,
 } from './validation';
+import type { ResponseCookie } from 'next/dist/compiled/@edge-runtime/cookies';
 
 /**
  * Initialize Supabase client for server operations
  */
 function getSupabaseClient() {
   const cookieStore = cookies();
-  const supabase = createClient(
-    getServerEnv().NEXT_PUBLIC_SUPABASE_URL,
-    getServerEnv().NEXT_PUBLIC_SUPABASE_ANON_KEY,
+  const env = getServerEnv();
+  const supabaseUrl = env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseAnonKey = env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+  if (!supabaseUrl || !supabaseAnonKey) {
+    throw new Error('Supabase env vars are not configured');
+  }
+
+  const supabase = createServerClient(
+    supabaseUrl,
+    supabaseAnonKey,
     {
       cookies: {
         getAll() {
           return cookieStore.getAll();
         },
-        setAll(cookiesToSet) {
+        setAll(cookiesToSet: Array<{ name: string; value: string; options?: Partial<ResponseCookie> }>) {
           try {
-            cookieStore.set(cookiesToSet);
+            cookiesToSet.forEach(({ name, value, options }) => {
+              cookieStore.set(name, value, options);
+            });
           } catch {}
         },
       },
@@ -96,7 +106,7 @@ export async function depositToWallet(
   userId: string,
   amount: number,
   description: string = 'Deposit',
-  metadata: Record<string, any> = {}
+  metadata: Record<string, unknown> = {}
 ) {
   const supabase = getSupabaseClient();
 
@@ -188,7 +198,7 @@ export async function deductFromWallet(
   amount: number,
   type: string = 'ai_spend',
   description: string,
-  metadata: Record<string, any> = {}
+  metadata: Record<string, unknown> = {}
 ) {
   const supabase = getSupabaseClient();
 

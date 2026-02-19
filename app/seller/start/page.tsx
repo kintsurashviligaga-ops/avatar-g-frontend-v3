@@ -7,7 +7,7 @@ import { ArrowRight, TrendingUp, Shield, BarChart3 } from "lucide-react";
 
 export default function SellerStartPage() {
   const router = useRouter();
-  const { language } = useLanguage();
+  const { language: _language } = useLanguage();
 
   // Load Georgian translations (ka is default)
   const t = {

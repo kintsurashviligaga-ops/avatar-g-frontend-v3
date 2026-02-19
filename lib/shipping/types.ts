@@ -4,6 +4,11 @@
  */
 
 export interface ShippingRiskFactors {
+  carrierId?: string;
+  deliveryDaysAvg?: number;
+  delayProbability?: number;
+  refundRatePct?: number;
+  fraudRate?: number;
   routeRisk: 'low' | 'medium' | 'high';
   carrierRisk: 'low' | 'medium' | 'high';
   weatherRisk: 'low' | 'medium' | 'high';
@@ -13,11 +18,14 @@ export interface ShippingRiskFactors {
 }
 
 export interface ShippingRiskScore {
-  overallScore: number; // 0-100 (higher = safer)
-  riskLevel: 'low' | 'medium' | 'high' | 'critical';
-  factors: ShippingRiskFactors;
+  riskScore?: number;
+  conversionImpact?: number;
+  recommendedMarginAdditionalBps?: number;
+  overallScore?: number; // 0-100 (higher = safer)
+  riskLevel?: 'low' | 'medium' | 'high' | 'critical';
+  factors?: ShippingRiskFactors;
   recommendation: string;
-  insuranceSuggested: boolean;
+  insuranceSuggested?: boolean;
 }
 
 export interface CarrierReliability {

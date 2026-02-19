@@ -2,6 +2,13 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --app-border: 255 255 255;
+  --app-surface: 20 20 25;
+  --app-elevated: 30 30 40;
+  --app-text: 240 240 250;
+}
+
 @layer base {
   html,
   body {

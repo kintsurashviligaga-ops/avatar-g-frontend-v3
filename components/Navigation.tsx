@@ -5,10 +5,7 @@ import { usePathname } from "next/navigation";
 import { motion } from "framer-motion";
 import { 
   Home, 
-  User, 
-  Film,
-  Camera,
-  Music,
+  Sparkles,
   LayoutDashboard, 
   Menu,
   X
@@ -16,6 +13,7 @@ import {
 import { useState } from "react";
 import { useIdentity } from "@/lib/identity/IdentityContext";
 import { useLanguage } from "@/lib/i18n/LanguageContext";
+import { SERVICE_REGISTRY } from "@/lib/service-registry";
 
 export default function Navigation() {
   const pathname = usePathname();
@@ -25,14 +23,17 @@ export default function Navigation() {
   
   const hasIdentity = verifyIdentity();
 
-  const navItems = [
+  const coreNavItems = [
     { href: "/", label: t("nav.home"), icon: Home },
     { href: "/dashboard", label: t("nav.workspace"), icon: LayoutDashboard },
-    { href: "/services/avatar-builder", label: t("nav.avatar"), icon: User },
-    { href: "/services/media-production", label: t("nav.video"), icon: Film },
-    { href: "/services/photo-studio", label: t("nav.images"), icon: Camera },
-    { href: "/services/music-studio", label: t("nav.music"), icon: Music },
+    { href: "/services", label: "Services", icon: Sparkles },
   ];
+
+  const serviceNavItems = SERVICE_REGISTRY
+    .filter((service) => service.enabled)
+    .map((service) => ({ href: service.route, label: service.name, icon: Sparkles }));
+
+  const navItems = [...coreNavItems, ...serviceNavItems];
 
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 bg-[#0A0A0A]/80 backdrop-blur-md border-b border-white/10">
@@ -62,7 +63,7 @@ export default function Navigation() {
           </Link>
 
           {/* Desktop Navigation */}
-          <div className="hidden md:flex items-center gap-1">
+          <div className="hidden md:flex items-center gap-1 overflow-x-auto max-w-[62vw]">
             {navItems.map((item) => {
               const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
               return (

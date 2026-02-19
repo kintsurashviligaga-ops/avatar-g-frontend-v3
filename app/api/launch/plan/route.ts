@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const parsed = GetLaunchPlanSchema.safeParse({
-      storeId: searchParams.get('storeId'),
+      storeId: searchParams?.get?.('storeId'),
     });
 
     if (!parsed.success) {

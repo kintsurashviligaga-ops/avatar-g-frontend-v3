@@ -6,6 +6,8 @@
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { cookies } from 'next/headers';
 
+export { createSupabaseServerClient };
+
 export interface AccessToken {
   sub: string; // User ID
   email?: string;

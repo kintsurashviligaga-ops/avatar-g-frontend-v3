@@ -67,7 +67,7 @@ export default async function BillingDashboardPage() {
   }
   
   // Fetch recent jobs
-  const jobs = await getRecentJobs(user.id, 10);
+  const jobs = await getRecentJobs({ userId: user.id, limit: 10 });
   
   // Fetch job stats
   const stats = await getJobStats(user.id);

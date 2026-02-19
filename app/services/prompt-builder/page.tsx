@@ -20,13 +20,16 @@ export default function PromptBuilderPage() {
           >
             <div className="inline-flex items-center gap-2 px-4 py-2 bg-cyan-500/10 border border-cyan-500/30 rounded-full mb-4">
               <Wand2 className="w-4 h-4 text-cyan-400" />
-              <span className="text-cyan-300 text-sm font-medium">Prompt Builder</span>
+              <span className="text-cyan-300 text-sm font-medium">პრომპტის ბილდერი</span>
             </div>
             <h1 className="text-5xl font-bold text-white mb-4">
-              Optimize Your <span className="bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent">AI Prompts</span>
+              დააოპტიმე შენი{' '}
+              <span className="bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent">
+                AI პრომპტები
+              </span>
             </h1>
             <p className="text-xl text-gray-400 max-w-2xl mx-auto">
-              Create, refine, and test prompts for better AI results
+              შექმენი, დახვეწე და დატესტე პრომპტები უკეთესი AI შედეგებისთვის
             </p>
           </motion.div>
 
@@ -34,12 +37,13 @@ export default function PromptBuilderPage() {
             <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-gradient-to-br from-cyan-500/20 to-blue-500/20 border border-cyan-500/30 mb-6">
               <Wand2 className="w-10 h-10 text-cyan-400" />
             </div>
-            <h2 className="text-2xl font-bold text-white mb-3">Coming Soon</h2>
+            <h2 className="text-2xl font-bold text-white mb-3">მალე</h2>
             <p className="text-gray-400 mb-6">
-              We&apos;re developing an intelligent prompt optimization system with templates, refinement tools, and A/B testing capabilities.
+              ვქმნით ინტელექტუალურ პრომპტების ოპტიმიზაციის სისტემას შაბლონებით,
+              დახვეწის ინსტრუმენტებით და A/B ტესტირების შესაძლებლობებით.
             </p>
             <Button variant="outline" className="border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/10">
-              Join Waitlist
+              მოლოდინის სიაში შესვლა
             </Button>
           </Card>
         </div>

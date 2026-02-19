@@ -6,7 +6,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   FileText,
   Languages,
@@ -23,7 +22,7 @@ type FeatureType = 'summarize' | 'translate' | 'seo' | 'sentiment'
 interface AnalysisResult {
   type: FeatureType
   result: string
-  metrics?: Record<string, any>
+  metrics?: Record<string, unknown>
 }
 
 export default function TextIntelligencePage() {
@@ -60,6 +59,21 @@ export default function TextIntelligencePage() {
     }
   ]
 
+  const metricLabels: Record<string, string> = {
+    originalLength: 'საწყისი სიგრძე',
+    summaryLength: 'შეჯამების სიგრძე',
+    compressionRatio: 'შეკუმშვის კოეფიციენტი',
+    sourceLanguage: 'წყაროს ენა',
+    targetLanguage: 'სამიზნე ენა',
+    confidence: 'სანდოობა',
+    keywords: 'საკვანძო სიტყვები',
+    readabilityScore: 'წაკითხვადობა',
+    seoScore: 'SEO ქულა',
+    positive: 'პოზიტიური',
+    neutral: 'ნეიტრალური',
+    negative: 'ნეგატიური',
+  }
+
   const handleAnalyze = async () => {
     if (!inputText.trim()) return
 
@@ -92,10 +106,10 @@ export default function TextIntelligencePage() {
         },
         translate: {
           type: 'translate',
-          result: 'This is the translated version of your text, processed by advanced AI translation models for natural and contextually accurate results.',
+          result: 'ეს არის შენი ტექსტის თარგმნილი ვერსია, რომელიც დამუშავებულია მოწინავე AI თარგმანის მოდელებით ბუნებრივი და კონტექსტურად ზუსტი შედეგებისთვის.',
           metrics: {
-            sourceLanguage: 'Georgian',
-            targetLanguage: 'English',
+            sourceLanguage: 'ქართული',
+            targetLanguage: 'ინგლისური',
             confidence: '96%'
           }
         },
@@ -156,7 +170,7 @@ export default function TextIntelligencePage() {
           <div className="p-3 rounded-xl bg-gradient-to-br from-purple-500 to-pink-500 text-white">
             <FileText className="w-8 h-8" />
           </div>
-          <Badge variant="secondary" className="text-sm">Beta</Badge>
+          <Badge variant="secondary" className="text-sm">ბეტა</Badge>
         </div>
         
         <h1 className="text-4xl font-bold bg-gradient-to-r from-purple-600 via-pink-600 to-blue-600 bg-clip-text text-transparent">
@@ -304,10 +318,10 @@ export default function TextIntelligencePage() {
                         key={key}
                         className="p-3 bg-secondary/30 rounded-lg text-center"
                       >
-                        <p className="text-xs text-muted-foreground capitalize mb-1">
-                          {key.replace(/([A-Z])/g, ' $1').trim()}
+                        <p className="text-xs text-muted-foreground mb-1">
+                          {metricLabels[key] || 'მაჩვენებელი'}
                         </p>
-                        <p className="font-semibold">{value}</p>
+                        <p className="font-semibold">{typeof value === 'string' || typeof value === 'number' ? value : JSON.stringify(value)}</p>
                       </div>
                     ))}
                   </div>
@@ -324,10 +338,10 @@ export default function TextIntelligencePage() {
           <Sparkles className="w-5 h-5 text-yellow-500 flex-shrink-0 mt-0.5" />
           <div className="space-y-1">
             <p className="font-semibold text-yellow-600 dark:text-yellow-500">
-              Beta ვერსია
+              ბეტა ვერსია
             </p>
             <p className="text-sm text-muted-foreground">
-              ეს სერვისი Beta ფაზაშია. ზოგიერთი ფუნქცია შეიძლება იყოს შეზღუდული ან 
+              ეს სერვისი ბეტა ფაზაშია. ზოგიერთი ფუნქცია შეიძლება იყოს შეზღუდული ან 
               მოითხოვოს დამატებითი დაყენება. სრული ანალიტიკა და API ინტეგრაცია მალე ხელმისაწვდომი იქნება.
             </p>
           </div>

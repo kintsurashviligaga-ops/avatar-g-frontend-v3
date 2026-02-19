@@ -1,340 +1,140 @@
-ï»¿
+
 > avatar-g-workspace@2.0.0 build
 > next build
 
-  Î“Ã»â–“ Next.js 14.2.35
+  Gû¦ Next.js 14.2.35
   - Environments: .env.local
 
    Creating an optimized production build ...
-node.exe : <w> [webpack.cache.PackFileCacheStrategy] Caching failed for pack: 
-Error: ENOENT: no such file or directory, rename 'C:\Users\admin\OneDrive\Deskt
-op\avatar-g-frontend-v3\.next\cache\webpack\server-production\3.pack_' -> 'C:\U
-sers\admin\OneDrive\Desktop\avatar-g-frontend-v3\.next\cache\webpack\server-pro
-duction\3.pack'
-At line:1 char:1
-+ & "C:\Program Files\nodejs/node.exe" "C:\Program Files\nodejs/node_mo ...
-+ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    + CategoryInfo          : NotSpecified: (<w> [webpack.ca...duction\3.pack' 
-   :String) [], RemoteException
-    + FullyQualifiedErrorId : NativeCommandError
- 
- Î“Â£Ã´ Compiled successfully
+ G£ô Compiled successfully
    Skipping validation of types
-   Linting ...
+   Skipping linting
+   Collecting page data ...
+ GÜá Using edge runtime on a page currently disables static generation for that page
+   Generating static pages (0/49) ...
+   Generating static pages (12/49) 
+   Generating static pages (24/49) 
+   Generating static pages (36/49) 
+ G£ô Generating static pages (49/49)
+   Finalizing page optimization ...
+   Collecting build traces ...
 
-Failed to compile.
+Route (app)                              Size     First Load JS
+Göî Gùï /                                    6.2 kB          201 kB
+Gö£ Gùï /_not-found                          151 B          87.7 kB
+Gö£ Gùï /about                               2.73 kB         126 kB
+Gö£ Gùï /admin/analytics                     3.12 kB         135 kB
+Gö£ Gùï /agent                               151 B          87.7 kB
+Gö£ ¦Æ /api/admin/analytics                 0 B                0 B
+Gö£ ¦Æ /api/admin/payments                  0 B                0 B
+Gö£ ¦Æ /api/admin/payouts                   0 B                0 B
+Gö£ ¦Æ /api/admin/payouts/approve           0 B                0 B
+Gö£ ¦Æ /api/admin/payouts/reject            0 B                0 B
+Gö£ ¦Æ /api/agents/execute                  0 B                0 B
+Gö£ ¦Æ /api/avatar/generate                 0 B                0 B
+Gö£ ¦Æ /api/avatars                         0 B                0 B
+Gö£ ¦Æ /api/avatars/latest                  0 B                0 B
+Gö£ ¦Æ /api/avatars/save                    0 B                0 B
+Gö£ ¦Æ /api/billing/checkout                0 B                0 B
+Gö£ ¦Æ /api/billing/portal                  0 B                0 B
+Gö£ ¦Æ /api/billing/webhook                 0 B                0 B
+Gö£ ¦Æ /api/chat                            0 B                0 B
+Gö£ ¦Æ /api/checkout/create-intent          0 B                0 B
+Gö£ ¦Æ /api/commerce/compliance             0 B                0 B
+Gö£ ¦Æ /api/commerce/orders                 0 B                0 B
+Gö£ ¦Æ /api/commerce/wallet                 0 B                0 B
+Gö£ ¦Æ /api/credits/balance                 0 B                0 B
+Gö£ ¦Æ /api/decision/evaluate               0 B                0 B
+Gö£ ¦Æ /api/deepseek                        0 B                0 B
+Gö£ ¦Æ /api/diagnostics                     0 B                0 B
+Gö£ ¦Æ /api/finance/scenarios               0 B                0 B
+Gö£ ¦Æ /api/finance/simulate                0 B                0 B
+Gö£ ¦Æ /api/health                          0 B                0 B
+Gö£ ¦Æ /api/invoices                        0 B                0 B
+Gö£ ¦Æ /api/invoices/generate               0 B                0 B
+Gö£ ¦Æ /api/invoices/list                   0 B                0 B
+Gö£ ¦Æ /api/jobs                            0 B                0 B
+Gö£ ¦Æ /api/jobs/[id]                       0 B                0 B
+Gö£ ¦Æ /api/jobs/list                       0 B                0 B
+Gö£ ¦Æ /api/launch-30/initialize            0 B                0 B
+Gö£ ¦Æ /api/launch/generate                 0 B                0 B
+Gö£ ¦Æ /api/launch/plan                     0 B                0 B
+Gö£ ¦Æ /api/log-error                       0 B                0 B
+Gö£ ¦Æ /api/market/scan                     0 B                0 B
+Gö£ ¦Æ /api/marketplace/kpis                0 B                0 B
+Gö£ ¦Æ /api/music/generate                  0 B                0 B
+Gö£ ¦Æ /api/music/list                      0 B                0 B
+Gö£ ¦Æ /api/orchestrate                     0 B                0 B
+Gö£ ¦Æ /api/payouts/accounts                0 B                0 B
+Gö£ ¦Æ /api/payouts/history                 0 B                0 B
+Gö£ ¦Æ /api/payouts/request                 0 B                0 B
+Gö£ ¦Æ /api/payouts/requests                0 B                0 B
+Gö£ ¦Æ /api/products/validate-launch        0 B                0 B
+Gö£ ¦Æ /api/seller/activate                 0 B                0 B
+Gö£ ¦Æ /api/seller/kpi                      0 B                0 B
+Gö£ ¦Æ /api/services/health                 0 B                0 B
+Gö£ ¦Æ /api/shipping/event                  0 B                0 B
+Gö£ ¦Æ /api/shipping/select-profile         0 B                0 B
+Gö£ ¦Æ /api/shipping/track                  0 B                0 B
+Gö£ ¦Æ /api/tests/smoke                     0 B                0 B
+Gö£ ¦Æ /api/tests/stripe-webhook            0 B                0 B
+Gö£ ¦Æ /api/user/stats                      0 B                0 B
+Gö£ ¦Æ /api/validate-env                    0 B                0 B
+Gö£ ¦Æ /api/video/generate                  0 B                0 B
+Gö£ ¦Æ /api/videos                          0 B                0 B
+Gö£ ¦Æ /api/webhooks/stripe                 0 B                0 B
+Gö£ Gùï /chat                                3.46 kB         135 kB
+Gö£ Gùï /contact                             2.85 kB         126 kB
+Gö£ Gùï /dashboard                           4.95 kB         192 kB
+Gö£ Gùï /dashboard/admin                     2.94 kB         143 kB
+Gö£ ¦Æ /dashboard/admin/payouts             1.09 kB        88.7 kB
+Gö£ Gùï /dashboard/admin/system-health       3.45 kB         135 kB
+Gö£ ¦Æ /dashboard/billing                   5.42 kB          93 kB
+Gö£ Gùï /dashboard/forecast                  4.57 kB        92.1 kB
+Gö£ ¦Æ /dashboard/marketplace/growth        1.12 kB        88.7 kB
+Gö£ Gùï /dashboard/seller                    5.02 kB        92.6 kB
+Gö£ ¦Æ /dashboard/shop/finance              1.39 kB          89 kB
+Gö£ ¦Æ /dashboard/shop/launch               1.02 kB        88.6 kB
+Gö£ ¦Æ /dashboard/shop/payouts              1.57 kB        89.1 kB
+Gö£ Gùï /diagnostics                         3.1 kB          181 kB
+Gö£ ¦Æ /icon                                0 B                0 B
+Gö£ Gùï /memory                              3.17 kB         135 kB
+Gö£ Gùï /onboarding                          6.69 kB         139 kB
+Gö£ Gùï /pricing                             2.53 kB         135 kB
+Gö£ Gùï /privacy                             2.62 kB         143 kB
+Gö£ Gùï /refund-policy                       2.76 kB         143 kB
+Gö£ Gùï /seller/activation                   3.62 kB        91.2 kB
+Gö£ Gùï /seller/onboarding                   16.1 kB         104 kB
+Gö£ Gùï /seller/simulation                   4.05 kB        91.6 kB
+Gö£ Gùï /seller/start                        3.01 kB         102 kB
+Gö£ Gùï /services                            3.88 kB         156 kB
+Gö£ Gùï /services/agent-g                    3.81 kB         144 kB
+Gö£ Gùï /services/avatar-builder             14.3 kB         229 kB
+Gö£ Gùï /services/business-agent             3.71 kB         135 kB
+Gö£ Gùï /services/game-creator               3.06 kB         135 kB
+Gö£ Gùï /services/image-creator              4.03 kB         136 kB
+Gö£ Gùï /services/media-production           5.82 kB         207 kB
+Gö£ Gùï /services/music-studio               17.7 kB         221 kB
+Gö£ Gùï /services/online-shop                2.92 kB         134 kB
+Gö£ Gùï /services/photo-studio               9.23 kB         152 kB
+Gö£ Gùï /services/prompt-builder             2.96 kB         134 kB
+Gö£ Gùï /services/social-media               2.92 kB         134 kB
+Gö£ Gùï /services/text-intelligence          5.3 kB          149 kB
+Gö£ Gùï /services/video-studio               3.89 kB         135 kB
+Gö£ Gùï /services/voice-lab                  3.88 kB         135 kB
+Gö£ Gùï /settings                            3.81 kB         127 kB
+Gö£ Gùï /sitemap.xml                         0 B                0 B
+Gö£ Gùï /terms                               2.55 kB         143 kB
+Gö£ ¦Æ /track/[orderId]                     1.85 kB        89.4 kB
+Göö Gùï /workspace                           7.52 kB         131 kB
++ First Load JS shared by all            87.6 kB
+  Gö£ chunks/2117-924eaa03f65a8120.js      31.7 kB
+  Gö£ chunks/fd9d1056-462349e6a029f87e.js  53.6 kB
+  Göö other shared chunks (total)          2.2 kB
 
-./app/api/admin/payouts/approve/route.ts
-9:50  Error: Unexpected any. Specify a different type.  
-@typescript-eslint/no-explicit-any
 
-./app/api/admin/payouts/reject/route.ts
-10:50  Error: Unexpected any. Specify a different type.  
-@typescript-eslint/no-explicit-any
+¦Æ Middleware                             27.1 kB
 
-./app/api/billing/checkout/route.ts
-9:10  Error: 'getPlan' is defined but never used.  
-@typescript-eslint/no-unused-vars
+Gùï  (Static)   prerendered as static content
+¦Æ  (Dynamic)  server-rendered on demand
 
-./app/api/commerce/compliance/route.ts
-20:28  Error: 'request' is defined but never used.  
-@typescript-eslint/no-unused-vars
-30:77  Error: Unexpected any. Specify a different type.  
-@typescript-eslint/no-explicit-any
-259:30  Error: Unexpected any. Specify a different type.  
-@typescript-eslint/no-explicit-any
-
-./app/api/commerce/orders/route.ts
-20:28  Error: 'request' is defined but never used.  
-@typescript-eslint/no-unused-vars
-30:77  Error: Unexpected any. Specify a different type.  
-@typescript-eslint/no-explicit-any
-75:43  Error: Unexpected any. Specify a different type.  
-@typescript-eslint/no-explicit-any
-
-./app/api/commerce/wallet/route.ts
-11:3  Error: 'DepositToWalletSchema' is defined but never used.  
-@typescript-eslint/no-unused-vars
-21:27  Error: 'request' is defined but never used.  
-@typescript-eslint/no-unused-vars
-33:79  Error: Unexpected any. Specify a different type.  
-@typescript-eslint/no-explicit-any
-112:79  Error: Unexpected any. Specify a different type.  
-@typescript-eslint/no-explicit-any
-
-./app/api/market/scan/route.ts
-13:10  Error: 'MarketScanRequest' is defined but never used.  
-@typescript-eslint/no-unused-vars
-40:36  Error: 'authError' is assigned a value but never used.  
-@typescript-eslint/no-unused-vars
-121:3  Error: 'competitorUrl' is defined but never used.  
-@typescript-eslint/no-unused-vars
-
-./app/api/marketplace/kpis/route.ts
-47:32  Error: Unexpected any. Specify a different type.  
-@typescript-eslint/no-explicit-any
-
-./app/api/payouts/accounts/route.ts
-16:77  Error: Unexpected any. Specify a different type.  
-@typescript-eslint/no-explicit-any
-62:107  Error: Unexpected any. Specify a different type.  
-@typescript-eslint/no-explicit-any
-
-./app/api/payouts/history/route.ts
-4:27  Error: 'request' is defined but never used.  
-@typescript-eslint/no-unused-vars
-
-./app/api/payouts/requests/route.ts
-19:77  Error: Unexpected any. Specify a different type.  
-@typescript-eslint/no-explicit-any
-
-./app/api/shipping/event/route.ts
-25:28  Error: 'request' is defined but never used.  
-@typescript-eslint/no-unused-vars
-35:77  Error: Unexpected any. Specify a different type.  
-@typescript-eslint/no-explicit-any
-58:26  Error: Unexpected any. Specify a different type.  
-@typescript-eslint/no-explicit-any
-74:26  Error: Unexpected any. Specify a different type.  
-@typescript-eslint/no-explicit-any
-94:24  Error: Unexpected any. Specify a different type.  
-@typescript-eslint/no-explicit-any
-105:26  Error: Unexpected any. Specify a different type.  
-@typescript-eslint/no-explicit-any
-115:26  Error: Unexpected any. Specify a different type.  
-@typescript-eslint/no-explicit-any
-125:24  Error: Unexpected any. Specify a different type.  
-@typescript-eslint/no-explicit-any
-
-./app/api/shipping/select-profile/route.ts
-24:28  Error: 'request' is defined but never used.  
-@typescript-eslint/no-unused-vars
-34:77  Error: Unexpected any. Specify a different type.  
-@typescript-eslint/no-explicit-any
-57:26  Error: Unexpected any. Specify a different type.  
-@typescript-eslint/no-explicit-any
-73:26  Error: Unexpected any. Specify a different type.  
-@typescript-eslint/no-explicit-any
-88:24  Error: Unexpected any. Specify a different type.  
-@typescript-eslint/no-explicit-any
-99:26  Error: Unexpected any. Specify a different type.  
-@typescript-eslint/no-explicit-any
-109:26  Error: Unexpected any. Specify a different type.  
-@typescript-eslint/no-explicit-any
-119:24  Error: Unexpected any. Specify a different type.  
-@typescript-eslint/no-explicit-any
-
-./app/api/shipping/track/route.ts
-21:28  Error: 'request' is defined but never used.  
-@typescript-eslint/no-unused-vars
-31:77  Error: Unexpected any. Specify a different type.  
-@typescript-eslint/no-explicit-any
-54:26  Error: Unexpected any. Specify a different type.  
-@typescript-eslint/no-explicit-any
-67:26  Error: Unexpected any. Specify a different type.  
-@typescript-eslint/no-explicit-any
-78:24  Error: Unexpected any. Specify a different type.  
-@typescript-eslint/no-explicit-any
-89:26  Error: Unexpected any. Specify a different type.  
-@typescript-eslint/no-explicit-any
-99:24  Error: Unexpected any. Specify a different type.  
-@typescript-eslint/no-explicit-any
-
-./app/api/webhooks/stripe/route.ts
-85:46  Error: Unexpected any. Specify a different type.  
-@typescript-eslint/no-explicit-any
-85:67  Error: Unexpected any. Specify a different type.  
-@typescript-eslint/no-explicit-any
-157:43  Error: Unexpected any. Specify a different type.  
-@typescript-eslint/no-explicit-any
-157:64  Error: Unexpected any. Specify a different type.  
-@typescript-eslint/no-explicit-any
-186:36  Error: Unexpected any. Specify a different type.  
-@typescript-eslint/no-explicit-any
-186:57  Error: Unexpected any. Specify a different type.  
-@typescript-eslint/no-explicit-any
-
-./app/dashboard/admin/payouts/AdminPayoutsClient.tsx
-7:44  Error: Unexpected any. Specify a different type.  
-@typescript-eslint/no-explicit-any
-
-./app/dashboard/marketplace/growth/GrowthClient.tsx
-17:36  Error: Unexpected any. Specify a different type.  
-@typescript-eslint/no-explicit-any
-
-./app/dashboard/marketplace/growth/GrowthKPIsClient.tsx
-32:6  Warning: React Hook useEffect has a missing dependency: 'fetchKpis'. 
-Either include it or remove the dependency array.  react-hooks/exhaustive-deps
-41:19  Error: Unexpected any. Specify a different type.  
-@typescript-eslint/no-explicit-any
-
-./app/dashboard/shop/finance/FinanceClient.tsx
-43:46  Error: Unexpected any. Specify a different type.  
-@typescript-eslint/no-explicit-any
-203:69  Error: Unexpected any. Specify a different type.  
-@typescript-eslint/no-explicit-any
-
-./app/dashboard/shop/finance/SimulatorClient.tsx
-34:50  Error: Unexpected any. Specify a different type.  
-@typescript-eslint/no-explicit-any
-54:19  Error: Unexpected any. Specify a different type.  
-@typescript-eslint/no-explicit-any
-
-./app/dashboard/shop/launch/LaunchClient.tsx
-17:36  Error: Unexpected any. Specify a different type.  
-@typescript-eslint/no-explicit-any
-114:39  Error: Unexpected any. Specify a different type.  
-@typescript-eslint/no-explicit-any
-
-./app/dashboard/shop/launch/LaunchPlanClient.tsx
-40:19  Error: Unexpected any. Specify a different type.  
-@typescript-eslint/no-explicit-any
-
-./app/dashboard/shop/payouts/PayoutsClient.tsx
-6:41  Error: 'storeId' is defined but never used.  
-@typescript-eslint/no-unused-vars
-7:44  Error: Unexpected any. Specify a different type.  
-@typescript-eslint/no-explicit-any
-8:44  Error: Unexpected any. Specify a different type.  
-@typescript-eslint/no-explicit-any
-120:67  Error: Unexpected any. Specify a different type.  
-@typescript-eslint/no-explicit-any
-
-./lib/commerce/server.ts
-14:3  Error: 'Order' is defined but never used.  
-@typescript-eslint/no-unused-vars
-99:28  Error: Unexpected any. Specify a different type.  
-@typescript-eslint/no-explicit-any
-191:28  Error: Unexpected any. Specify a different type.  
-@typescript-eslint/no-explicit-any
-
-./lib/commerce/types.ts
-30:33  Error: Unexpected any. Specify a different type.  
-@typescript-eslint/no-explicit-any
-59:35  Error: Unexpected any. Specify a different type.  
-@typescript-eslint/no-explicit-any
-80:33  Error: Unexpected any. Specify a different type.  
-@typescript-eslint/no-explicit-any
-95:33  Error: Unexpected any. Specify a different type.  
-@typescript-eslint/no-explicit-any
-113:33  Error: Unexpected any. Specify a different type.  
-@typescript-eslint/no-explicit-any
-124:33  Error: Unexpected any. Specify a different type.  
-@typescript-eslint/no-explicit-any
-152:33  Error: Unexpected any. Specify a different type.  
-@typescript-eslint/no-explicit-any
-164:33  Error: Unexpected any. Specify a different type.  
-@typescript-eslint/no-explicit-any
-177:33  Error: Unexpected any. Specify a different type.  
-@typescript-eslint/no-explicit-any
-197:33  Error: Unexpected any. Specify a different type.  
-@typescript-eslint/no-explicit-any
-209:33  Error: Unexpected any. Specify a different type.  
-@typescript-eslint/no-explicit-any
-226:30  Error: Unexpected any. Specify a different type.  
-@typescript-eslint/no-explicit-any
-228:37  Error: Unexpected any. Specify a different type.  
-@typescript-eslint/no-explicit-any
-254:33  Error: Unexpected any. Specify a different type.  
-@typescript-eslint/no-explicit-any
-274:33  Error: Unexpected any. Specify a different type.  
-@typescript-eslint/no-explicit-any
-304:33  Error: Unexpected any. Specify a different type.  
-@typescript-eslint/no-explicit-any
-353:30  Error: Unexpected any. Specify a different type.  
-@typescript-eslint/no-explicit-any
-
-./lib/decision-engine/decisionEngine.ts
-9:77  Error: 'ProductType' is defined but never used.  
-@typescript-eslint/no-unused-vars
-114:3  Error: 'thresholds' is defined but never used.  
-@typescript-eslint/no-unused-vars
-
-./lib/invoice/generator.ts
-65:19  Error: Unexpected any. Specify a different type.  
-@typescript-eslint/no-explicit-any
-
-./lib/invoice/pdf.ts
-281:25  Error: A `require()` style import is forbidden.  
-@typescript-eslint/no-require-imports
-315:19  Error: Unexpected any. Specify a different type.  
-@typescript-eslint/no-explicit-any
-345:19  Error: Unexpected any. Specify a different type.  
-@typescript-eslint/no-explicit-any
-
-./lib/optimization/launchReadiness.ts
-30:20  Error: Unexpected any. Specify a different type.  
-@typescript-eslint/no-explicit-any
-145:20  Error: Unexpected any. Specify a different type.  
-@typescript-eslint/no-explicit-any
-149:38  Error: Unexpected any. Specify a different type.  
-@typescript-eslint/no-explicit-any
-188:20  Error: Unexpected any. Specify a different type.  
-@typescript-eslint/no-explicit-any
-196:15  Error: '_err' is defined but never used.  
-@typescript-eslint/no-unused-vars
-196:21  Error: Unexpected any. Specify a different type.  
-@typescript-eslint/no-explicit-any
-
-./lib/optimization/profitFirst.ts
-1:10  Error: 'createSupabaseServerClient' is defined but never used.  
-@typescript-eslint/no-unused-vars
-65:20  Error: Unexpected any. Specify a different type.  
-@typescript-eslint/no-explicit-any
-108:20  Error: Unexpected any. Specify a different type.  
-@typescript-eslint/no-explicit-any
-288:20  Error: Unexpected any. Specify a different type.  
-@typescript-eslint/no-explicit-any
-293:9  Error: 'minMarginBps' is assigned a value but never used.  
-@typescript-eslint/no-unused-vars
-552:20  Error: Unexpected any. Specify a different type.  
-@typescript-eslint/no-explicit-any
-554:11  Error: 'productId' is assigned a value but never used.  
-@typescript-eslint/no-unused-vars
-554:31  Error: 'marketConditions' is assigned a value but never used.  
-@typescript-eslint/no-unused-vars
-559:9  Error: 'config' is assigned a value but never used.  
-@typescript-eslint/no-unused-vars
-560:9  Error: 'targetMarginBps' is assigned a value but never used.  
-@typescript-eslint/no-unused-vars
-584:5  Error: 'currentPriceCents' is assigned a value but never used.  
-@typescript-eslint/no-unused-vars
-
-./lib/pricing/autoMarginGuard.ts
-54:9  Error: 'delayMargin' is assigned a value but never used.  
-@typescript-eslint/no-unused-vars
-
-./lib/pricing/dynamicPricing.ts
-14:7  Error: 'MIN_ADJUSTMENT_BPS' is assigned a value but never used.  
-@typescript-eslint/no-unused-vars
-160:3  Error: 'minMarginBps' is defined but never used.  
-@typescript-eslint/no-unused-vars
-
-./lib/shipping/index.ts
-13:27  Error: 'ShippingEvent' is defined but never used.  
-@typescript-eslint/no-unused-vars
-28:77  Error: Unexpected any. Specify a different type.  
-@typescript-eslint/no-explicit-any
-105:29  Error: Unexpected any. Specify a different type.  
-@typescript-eslint/no-explicit-any
-165:21  Error: Unexpected any. Specify a different type.  
-@typescript-eslint/no-explicit-any
-
-./lib/stripe/client.ts
-77:7  Error: 'finalCurrency' is never reassigned. Use 'const' instead.  
-prefer-const
-
-./lib/stripe/types.ts
-71:32  Error: Unexpected any. Specify a different type.  
-@typescript-eslint/no-explicit-any
-
-./lib/stripe/webhooks.ts
-33:40  Error: 'eventId' is defined but never used.  
-@typescript-eslint/no-unused-vars
-51:27  Error: Unexpected any. Specify a different type.  
-@typescript-eslint/no-explicit-any
-78:42  Error: 'eventId' is defined but never used.  
-@typescript-eslint/no-unused-vars
-
-info  - Need to disable some ESLint rules? Learn more here: 
-https://nextjs.org/docs/basic-features/eslint#disabling-rules

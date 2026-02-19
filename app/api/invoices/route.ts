@@ -4,6 +4,7 @@ import { generateSignedPdfUrl } from '@/lib/invoice/pdf';
 
 // Force dynamic rendering
 export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
 
 // ========================================
 // GET /api/invoices?orderId=...
@@ -14,7 +15,7 @@ export async function GET(request: NextRequest) {
   try {
     const supabase = createSupabaseServerClient();
     const { searchParams } = new URL(request.url);
-    const orderId = searchParams.get('orderId');
+    const orderId = searchParams?.get?.('orderId');
 
     if (!orderId) {
       return NextResponse.json({ error: 'Missing orderId' }, { status: 400 });

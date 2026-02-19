@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
     if (rateLimitError) return rateLimitError;
 
     const { searchParams } = new URL(request.url);
-    const ownerId = searchParams.get('owner_id');
+    const ownerId = searchParams?.get?.('owner_id');
     
     if (!ownerId) {
       return apiError(new Error('owner_id is required'), 400, 'owner_id query param is required');

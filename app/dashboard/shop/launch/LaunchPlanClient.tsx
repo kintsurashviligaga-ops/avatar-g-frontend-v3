@@ -37,8 +37,8 @@ export default function LaunchPlanClient({ storeId }: { storeId: string }) {
 
       const data = await response.json();
       setPlan(data.data.plan);
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to generate plan');
     } finally {
       setLoading(false);
     }

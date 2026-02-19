@@ -32,13 +32,13 @@ export default function VideoStudioPage() {
           >
             <div className="inline-flex items-center gap-2 px-4 py-2 bg-violet-500/10 border border-violet-500/30 rounded-full mb-4">
               <Film className="w-4 h-4 text-violet-400" />
-              <span className="text-violet-300 text-sm font-medium">Video Studio</span>
+              <span className="text-violet-300 text-sm font-medium">ვიდეო სტუდია</span>
             </div>
             <h1 className="text-5xl font-bold text-white mb-4">
-              Generate <span className="bg-gradient-to-r from-violet-400 to-purple-500 bg-clip-text text-transparent">Cinematic Videos</span>
+              შექმენი <span className="bg-gradient-to-r from-violet-400 to-purple-500 bg-clip-text text-transparent">კინემატიკური ვიდეოები</span>
             </h1>
             <p className="text-xl text-gray-400 max-w-2xl mx-auto">
-              Create professional video content with AI-powered generation, animation, and lip-sync
+              შექმენი პროფესიონალური ვიდეო კონტენტი AI გენერაციით, ანიმაციით და ლიფ-სინქით
             </p>
           </motion.div>
 
@@ -46,11 +46,11 @@ export default function VideoStudioPage() {
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className="lg:col-span-2">
               <Card className="p-6 bg-white/5 border-white/10 backdrop-blur-sm">
-                <h2 className="text-xl font-semibold text-white mb-4">Describe Your Video</h2>
+                <h2 className="text-xl font-semibold text-white mb-4">აღწერე შენი ვიდეო</h2>
                 <textarea
                   value={prompt}
                   onChange={(e) => setPrompt(e.target.value)}
-                  placeholder="A cinematic shot of a hero walking through a futuristic city, neon lights reflecting off wet streets..."
+                  placeholder="კინემატიკური კადრი გმირისგან, რომელიც დადის ფუტურისტულ ქალაქში, ნეონის შუქები ირეკლება სველ ქუჩებზე..."
                   className="w-full h-32 bg-black/30 border border-white/10 rounded-lg px-4 py-3 text-white placeholder-gray-500 resize-none focus:outline-none focus:border-violet-500/50"
                 />
                 
@@ -63,12 +63,12 @@ export default function VideoStudioPage() {
                     {isGenerating ? (
                       <>
                         <Sparkles className="w-4 h-4 mr-2 animate-spin" />
-                        Generating...
+                        გენერაცია მიმდინარეობს...
                       </>
                     ) : (
                       <>
                         <Wand2 className="w-4 h-4 mr-2" />
-                        Generate Video
+                        ვიდეოს გენერაცია
                       </>
                     )}
                   </Button>
@@ -77,11 +77,11 @@ export default function VideoStudioPage() {
 
               {/* Video Preview */}
               <Card className="p-6 bg-white/5 border-white/10 backdrop-blur-sm mt-6">
-                <h2 className="text-xl font-semibold text-white mb-4">Preview</h2>
+                <h2 className="text-xl font-semibold text-white mb-4">პრევიუ</h2>
                 <div className="aspect-video bg-black/50 rounded-lg flex items-center justify-center border border-white/10">
                   <div className="text-center">
                     <Video className="w-16 h-16 text-gray-600 mx-auto mb-3" />
-                    <p className="text-gray-500">Your video will appear here</p>
+                    <p className="text-gray-500">შენი ვიდეო აქ გამოჩნდება</p>
                   </div>
                 </div>
               </Card>
@@ -90,27 +90,27 @@ export default function VideoStudioPage() {
             {/* Sidebar */}
             <div className="space-y-6">
               <Card className="p-6 bg-white/5 border-white/10 backdrop-blur-sm">
-                <h3 className="text-lg font-semibold text-white mb-4">Video Settings</h3>
+                <h3 className="text-lg font-semibold text-white mb-4">ვიდეო პარამეტრები</h3>
                 <div className="space-y-4">
                   <div>
-                    <label className="block text-sm text-gray-400 mb-2">Duration</label>
+                    <label className="block text-sm text-gray-400 mb-2">ხანგრძლივობა</label>
                     <select className="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-white">
-                      <option>5 seconds</option>
-                      <option>10 seconds</option>
-                      <option>15 seconds</option>
+                      <option>5 წამი</option>
+                      <option>10 წამი</option>
+                      <option>15 წამი</option>
                     </select>
                   </div>
                   <div>
-                    <label className="block text-sm text-gray-400 mb-2">Style</label>
+                    <label className="block text-sm text-gray-400 mb-2">სტილი</label>
                     <select className="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-white">
-                      <option>Cinematic</option>
-                      <option>Animated</option>
-                      <option>Realistic</option>
-                      <option>Artistic</option>
+                      <option>კინემატიკური</option>
+                      <option>ანიმაციური</option>
+                      <option>რეალისტური</option>
+                      <option>არტისტული</option>
                     </select>
                   </div>
                   <div>
-                    <label className="block text-sm text-gray-400 mb-2">Resolution</label>
+                    <label className="block text-sm text-gray-400 mb-2">გარჩევადობა</label>
                     <select className="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-white">
                       <option>1080p</option>
                       <option>4K</option>
@@ -120,9 +120,9 @@ export default function VideoStudioPage() {
               </Card>
 
               <Card className="p-6 bg-gradient-to-br from-violet-500/10 to-purple-500/10 border-violet-500/30 backdrop-blur-sm">
-                <h3 className="text-lg font-semibold text-white mb-2">Credits</h3>
-                <p className="text-2xl font-bold text-violet-300 mb-1">20 credits</p>
-                <p className="text-sm text-gray-400">per generation</p>
+                <h3 className="text-lg font-semibold text-white mb-2">კრედიტები</h3>
+                <p className="text-2xl font-bold text-violet-300 mb-1">20 კრედიტი</p>
+                <p className="text-sm text-gray-400">თითო გენერაციაზე</p>
               </Card>
             </div>
           </div>

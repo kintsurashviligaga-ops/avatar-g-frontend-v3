@@ -1,9 +1,32 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { apiSuccess, apiError } from '@/lib/api/response';
 import Stripe from 'stripe';
+import { createHmac } from 'crypto';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
+
+type TestStatus = 'pass' | 'fail';
+
+type StripeWebhookTest = {
+  name: string;
+  status: TestStatus;
+  details?: Record<string, unknown>;
+  error?: string;
+};
+
+type StripeWebhookTestResults = {
+  timestamp: string;
+  environment: 'production' | 'development';
+  tests: StripeWebhookTest[];
+  summary?: {
+    total_tests: number;
+    passed: number;
+    failed: number;
+    production_ready: boolean;
+    next_steps: string;
+  };
+};
 
 /**
  * Stripe Production Test
@@ -17,7 +40,7 @@ export const runtime = 'nodejs';
  * 5. Generate sample webhook payload
  * 6. Return payment flow validation results
  */
-export async function POST(request: NextRequest) {
+export async function POST(_request: NextRequest) {
   try {
     const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
     const stripeWebhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
@@ -32,7 +55,7 @@ export async function POST(request: NextRequest) {
     }
 
     const stripe = new Stripe(stripeSecretKey);
-    const results: any = {
+    const results: StripeWebhookTestResults = {
       timestamp: new Date().toISOString(),
       environment: isProduction ? 'production' : 'development',
       tests: [],
@@ -115,8 +138,7 @@ export async function POST(request: NextRequest) {
       const payload = JSON.stringify(webhookPayload);
 
       // In production webhook validation
-      const signature = require('crypto')
-        .createHmac('sha256', stripeWebhookSecret)
+      const _signature = createHmac('sha256', stripeWebhookSecret)
         .update(payload)
         .digest('hex');
 
@@ -152,7 +174,7 @@ export async function POST(request: NextRequest) {
           database_connection: process.env.NEXT_PUBLIC_SUPABASE_URL ? 'configured' : 'missing',
         },
       });
-    } catch (e) {
+    } catch (_e) {
       results.tests.push({
         name: 'Payment Confirmation',
         status: 'fail',
@@ -185,7 +207,7 @@ export async function POST(request: NextRequest) {
           test_order_format: testOrder,
         },
       });
-    } catch (e) {
+    } catch (_e) {
       results.tests.push({
         name: 'Invoice Generation',
         status: 'fail',
@@ -194,8 +216,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Summary
-    const passed = results.tests.filter((t: any) => t.status === 'pass').length;
-    const failed = results.tests.filter((t: any) => t.status === 'fail').length;
+    const passed = results.tests.filter((t) => t.status === 'pass').length;
+    const failed = results.tests.filter((t) => t.status === 'fail').length;
 
     results.summary = {
       total_tests: results.tests.length,
@@ -220,7 +242,7 @@ export async function POST(request: NextRequest) {
 /**
  * GET - Health check for webhook endpoint
  */
-export async function GET(request: NextRequest) {
+export async function GET(_request: NextRequest) {
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
   const stripeKey = process.env.STRIPE_SECRET_KEY;
 

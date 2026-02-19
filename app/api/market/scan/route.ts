@@ -10,7 +10,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { evaluateProductCandidate } from '@/lib/decision-engine/decisionEngine';
-import { MarketScanRequest, ScannedProduct } from '@/lib/pricing/types';
+import { ScannedProduct } from '@/lib/pricing/types';
 
 const MarketScanRequestSchema = z.object({
   niche: z.string().min(2).max(100),
@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
 
     // Authenticate user
     const supabase = await createSupabaseServerClient();
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    const { data: { user }, error: _authError } = await supabase.auth.getUser();
 
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -118,7 +118,7 @@ async function scanMarketNiche(
   niche: string,
   country: string,
   priceRange: [number, number],
-  competitorUrl?: string
+  _competitorUrl?: string
 ): Promise<ScannedProduct[]> {
   // Mock products for Demo & Testing
   const mockProducts: ScannedProduct[] = [

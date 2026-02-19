@@ -14,6 +14,16 @@ interface FinanceClientProps {
   stores: StoreOption[];
 }
 
+interface ScenarioItem {
+  id: string;
+  name: string;
+  created_at: string;
+  currency: 'GEL' | 'USD';
+  outputs_json?: {
+    net_profit_per_day_cents?: number;
+  };
+}
+
 export default function FinanceClient({ stores }: FinanceClientProps) {
   const [storeId, setStoreId] = useState(stores[0]?.id || '');
   const [scenarioName, setScenarioName] = useState('Baseline Scenario');
@@ -40,7 +50,7 @@ export default function FinanceClient({ stores }: FinanceClientProps) {
   const [fxQuoteCurrency, setFxQuoteCurrency] = useState<'GEL' | 'USD'>('GEL');
 
   const [outputs, setOutputs] = useState<SimulationOutputs | null>(null);
-  const [scenarios, setScenarios] = useState<any[]>([]);
+  const [scenarios, setScenarios] = useState<ScenarioItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -200,7 +210,7 @@ export default function FinanceClient({ stores }: FinanceClientProps) {
                 <label className="text-sm text-gray-300">Product Type</label>
                 <select
                   value={productType}
-                  onChange={(e) => setProductType(e.target.value as any)}
+                  onChange={(e) => setProductType(e.target.value as 'physical' | 'digital' | 'dropshipping' | 'service')}
                   className="w-full mt-1 bg-black/40 border border-white/10 rounded px-3 py-2"
                 >
                   <option value="physical">Physical</option>

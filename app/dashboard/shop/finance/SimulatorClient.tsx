@@ -31,7 +31,7 @@ export default function FinanceSimulatorClient() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const handleInputChange = (key: string, value: any) => {
+  const handleInputChange = (key: string, value: unknown) => {
     setInputs((prev) => ({ ...prev, [key]: value }));
   };
 
@@ -51,8 +51,8 @@ export default function FinanceSimulatorClient() {
 
       const data = await response.json();
       setResult(data.data);
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Simulation failed');
     } finally {
       setLoading(false);
     }

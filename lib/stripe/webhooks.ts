@@ -30,7 +30,7 @@ export function verifyWebhookSignature(args: {
 /**
  * Check if event already processed (idempotency)
  */
-export async function isEventProcessed(eventId: string): Promise<boolean> {
+export async function isEventProcessed(_eventId: string): Promise<boolean> {
   try {
     // This would check stripe_events table
     // For now, return false (not yet processed)
@@ -48,7 +48,7 @@ export async function isEventProcessed(eventId: string): Promise<boolean> {
 export async function logStripeEvent(args: {
   id: string;
   type: string;
-  payload: Record<string, any>;
+  payload: Record<string, unknown>;
 }): Promise<StripeEventRecord | null> {
   try {
     // In real implementation, use Supabase client:
@@ -75,7 +75,7 @@ export async function logStripeEvent(args: {
 /**
  * Mark event as processed
  */
-export async function markEventProcessed(eventId: string): Promise<void> {
+export async function markEventProcessed(_eventId: string): Promise<void> {
   try {
     // In real implementation, use Supabase:
     // await supabase

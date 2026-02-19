@@ -14,6 +14,14 @@ import {
 } from '@/lib/invoice/pdf';
 
 export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
+
+type OrderLineItemRow = {
+  product_title?: string | null;
+  title?: string | null;
+  quantity: number;
+  unit_price_cents: number;
+};
 
 // ========================================
 // POST /api/invoices/generate
@@ -103,8 +111,8 @@ export async function POST(request: NextRequest) {
       vatAmountCents: order.vat_amount_cents || 0,
       subtotalCents: order.subtotal_cents || 0,
       totalCents: order.total_cents || 0,
-      items: lineItems.map((item) => ({
-        title: item.product_title || item.title,
+      items: (lineItems as OrderLineItemRow[]).map((item: OrderLineItemRow) => ({
+        title: item.product_title || item.title || 'Item',
         quantity: item.quantity,
         unitPriceCents: item.unit_price_cents,
       })),
@@ -177,7 +185,7 @@ export async function POST(request: NextRequest) {
     const signedUrl = await generateSignedPdfUrl(pdfPath, supabase);
 
     // 14. Log audit event
-    await supabase
+    const { error: auditError } = await supabase
       .from('audit_logs')
       .insert([
         {
@@ -188,8 +196,11 @@ export async function POST(request: NextRequest) {
           store_id: store.id,
           user_id: store.owner_id,
         },
-      ])
-      .catch((err) => console.error('Error logging audit:', err));
+      ]);
+
+    if (auditError) {
+      console.error('Error logging audit:', auditError);
+    }
 
     return NextResponse.json(
       {

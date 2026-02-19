@@ -15,6 +15,7 @@ export interface Launch30Day {
   date: string;
   dayNumber: number;
   milestone: string;
+  category: Launch30Task['category'];
   tasks: Launch30Task[];
   targetMetrics: {
     minViews?: number;
@@ -125,16 +126,18 @@ function generatePhase1Day(day: number, date: Date, language: string): Launch30D
   };
 
   const labels = dayLabels[language as keyof typeof dayLabels] || dayLabels.en;
+  const milestone = labels[day - 1] ?? labels[0] ?? 'Day milestone';
+  const dayIso = date.toISOString().split('T')[0] ?? '';
 
   return {
-    date: date.toISOString().split('T')[0],
+    date: dayIso,
     dayNumber: day,
-    milestone: labels[day - 1],
+    milestone,
     category: 'preparation',
     tasks: [
       {
         day,
-        title: labels[day - 1],
+        title: milestone,
         description:
           'Complete today\'s ${day} of 30. Check the task list for detailed actions.',
         category: 'preparation',
@@ -186,16 +189,18 @@ function generatePhase2Day(day: number, date: Date, language: string): Launch30D
   };
 
   const labels = dayLabels[language as keyof typeof dayLabels] || dayLabels.en;
+  const milestone = labels[day - 11] ?? labels[0] ?? 'Day milestone';
+  const dayIso = date.toISOString().split('T')[0] ?? '';
 
   return {
-    date: date.toISOString().split('T')[0],
+    date: dayIso,
     dayNumber: day,
-    milestone: labels[day - 11],
+    milestone,
     category: 'content',
     tasks: [
       {
         day,
-        title: labels[day - 11],
+        title: milestone,
         description: 'Execute today\'s content and traffic strategy.',
         category: 'content',
         completed: false,
@@ -250,16 +255,18 @@ function generatePhase3Day(day: number, date: Date, language: string): Launch30D
   };
 
   const labels = dayLabels[language as keyof typeof dayLabels] || dayLabels.en;
+  const milestone = labels[day - 21] ?? labels[0] ?? 'Day milestone';
+  const dayIso = date.toISOString().split('T')[0] ?? '';
 
   return {
-    date: date.toISOString().split('T')[0],
+    date: dayIso,
     dayNumber: day,
-    milestone: labels[day - 21],
+    milestone,
     category: 'optimization',
     tasks: [
       {
         day,
-        title: labels[day - 21],
+        title: milestone,
         description: 'Focus on optimization and scaling what works.',
         category: 'optimization',
         completed: false,

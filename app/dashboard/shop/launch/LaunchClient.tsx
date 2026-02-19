@@ -11,10 +11,25 @@ interface LaunchClientProps {
   stores: StoreOption[];
 }
 
+interface LaunchWeek {
+  week: number;
+  focus: string;
+  actions: string[];
+}
+
+interface LaunchPlanData {
+  weeks?: LaunchWeek[];
+  founders_program?: {
+    goal?: string;
+    incentives?: string[];
+  };
+  influencer_outreach_templates?: string[];
+}
+
 export default function LaunchClient({ stores }: LaunchClientProps) {
   const [storeId, setStoreId] = useState(stores[0]?.id || '');
   const [language, setLanguage] = useState('en');
-  const [plan, setPlan] = useState<any | null>(null);
+  const [plan, setPlan] = useState<LaunchPlanData | null>(null);
   const [markdown, setMarkdown] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -22,9 +37,9 @@ export default function LaunchClient({ stores }: LaunchClientProps) {
     async function loadPlan() {
       if (!storeId) return;
       const response = await fetch(`/api/launch/plan?storeId=${storeId}`);
-      const data = await response.json();
+      const data = (await response.json()) as { data?: { plan_json?: LaunchPlanData } };
       if (data.data) {
-        setPlan(data.data.plan_json);
+        setPlan(data.data.plan_json || null);
       }
     }
 
@@ -39,9 +54,9 @@ export default function LaunchClient({ stores }: LaunchClientProps) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ storeId, language }),
       });
-      const data = await response.json();
+      const data = (await response.json()) as { data?: { plan_json?: LaunchPlanData }; markdown?: string };
       if (response.ok) {
-        setPlan(data.data.plan_json);
+        setPlan(data.data?.plan_json || null);
         setMarkdown(data.markdown || '');
       }
     } finally {
@@ -111,7 +126,7 @@ export default function LaunchClient({ stores }: LaunchClientProps) {
           <div className="lg:col-span-2 bg-white/5 border border-white/10 rounded-xl p-6">
             <h2 className="text-xl font-semibold mb-4">90-Day Plan</h2>
             <div className="space-y-4">
-              {plan.weeks?.map((week: any) => (
+              {plan.weeks?.map((week) => (
                 <div key={week.week} className="bg-black/30 rounded p-4">
                   <h3 className="font-semibold">Week {week.week}: {week.focus}</h3>
                   <ul className="list-disc list-inside text-sm text-gray-300 mt-2">

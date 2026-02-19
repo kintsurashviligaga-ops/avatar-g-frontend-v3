@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import type { SupabaseClient } from '@supabase/supabase-js';
 
 export const dynamic = 'force-dynamic';
 
@@ -8,7 +9,7 @@ const ApprovPayoutSchema = z.object({
   payoutRequestId: z.string().uuid(),
 });
 
-async function isAdmin(userId: string, supabase: any): Promise<boolean> {
+async function isAdmin(userId: string, supabase: SupabaseClient): Promise<boolean> {
   const { data: user } = await supabase
     .from('profiles')
     .select('role')

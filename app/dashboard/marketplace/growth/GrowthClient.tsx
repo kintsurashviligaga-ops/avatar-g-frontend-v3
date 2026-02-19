@@ -12,9 +12,18 @@ interface GrowthClientProps {
   stores: StoreOption[];
 }
 
+interface GrowthKpiRow {
+  id: string;
+  date: string;
+  impressions: number;
+  clicks: number;
+  conversions: number;
+  revenue_amount_cents: number;
+}
+
 export default function GrowthClient({ stores }: GrowthClientProps) {
   const [storeId, setStoreId] = useState(stores[0]?.id || '');
-  const [kpis, setKpis] = useState<any[]>([]);
+  const [kpis, setKpis] = useState<GrowthKpiRow[]>([]);
   const [referralCode, setReferralCode] = useState('AG-REF');
   const [baseUrl, setBaseUrl] = useState('');
 

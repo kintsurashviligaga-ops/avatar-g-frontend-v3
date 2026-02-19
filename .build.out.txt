@@ -1,0 +1,21 @@
+  ▲ Next.js 14.2.35
+  - Environments: .env.local
+
+
+> Build error occurred
+Error: EINVAL: invalid argument, readlink 'C:\Users\admin\OneDrive\Desktop\avatar-g-frontend-v3\.next\server\edge-runtime-webpack.js'
+    at async Object.readlink (node:internal/fs/promises:971:10)
+    at async C:\Users\admin\OneDrive\Desktop\avatar-g-frontend-v3\node_modules\next\dist\lib\recursive-delete.js:58:30
+    at async Promise.all (index 3)
+    at async recursiveDelete (C:\Users\admin\OneDrive\Desktop\avatar-g-frontend-v3\node_modules\next\dist\lib\recursive-delete.js:51:5)
+    at async C:\Users\admin\OneDrive\Desktop\avatar-g-frontend-v3\node_modules\next\dist\lib\recursive-delete.js:68:17
+    at async Promise.all (index 1)
+    at async recursiveDelete (C:\Users\admin\OneDrive\Desktop\avatar-g-frontend-v3\node_modules\next\dist\lib\recursive-delete.js:51:5)
+    at async C:\Users\admin\OneDrive\Desktop\avatar-g-frontend-v3\node_modules\next\dist\build\index.js:694:17
+    at async Span.traceAsyncFn (C:\Users\admin\OneDrive\Desktop\avatar-g-frontend-v3\node_modules\next\dist\trace\trace.js:154:20)
+    at async build (C:\Users\admin\OneDrive\Desktop\avatar-g-frontend-v3\node_modules\next\dist\build\index.js:368:9) {
+  errno: -4071,
+  code: 'EINVAL',
+  syscall: 'readlink',
+  path: 'C:\\Users\\admin\\OneDrive\\Desktop\\avatar-g-frontend-v3\\.next\\server\\edge-runtime-webpack.js'
+}

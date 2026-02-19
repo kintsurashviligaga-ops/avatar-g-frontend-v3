@@ -7,10 +7,8 @@ import {
   XCircle, 
   AlertTriangle, 
   Activity,
-  Database,
   Webhook,
   CreditCard,
-  Server,
   Shield,
   Clock
 } from 'lucide-react'

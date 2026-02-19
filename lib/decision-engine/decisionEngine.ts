@@ -6,7 +6,7 @@
 import { computeMargin } from '@/lib/finance/margin';
 import { computeVatInclusive, GEORGIA_VAT_BPS } from '@/lib/finance/vat';
 import { percentageOf, safeRound } from '@/lib/finance/money';
-import type { ProductCandidate, DecisionResult, Decision, MarginThresholds, ProductType } from './types';
+import type { ProductCandidate, DecisionResult, Decision, MarginThresholds } from './types';
 
 const DEFAULT_THRESHOLDS: MarginThresholds = {
   standard: 1500, // 15%
@@ -111,7 +111,7 @@ export function evaluateProductCandidate(
 function computeRecommendedPrice(
   input: ProductCandidate,
   targetMarginBps: number,
-  thresholds: MarginThresholds
+  _thresholds: MarginThresholds
 ): number {
   // Estimate total non-VAT costs
   const totalCosts =

@@ -27,7 +27,7 @@ export interface WalletTransaction {
   amount: number;
   balance_after: number;
   description: string | null;
-  metadata_json: Record<string, any> | null;
+  metadata_json: Record<string, unknown> | null;
   order_id: string | null;
   job_id: string | null;
   agent_id: string | null;
@@ -56,7 +56,7 @@ export interface Order {
   user_id: string;
   store_id: string | null;
   stripe_payment_intent_id: string | null;
-  stripe_metadata: Record<string, any> | null;
+  stripe_metadata: Record<string, unknown> | null;
   status: OrderStatus;
   subtotal_amount: number;
   vat_amount: number;
@@ -77,7 +77,7 @@ export interface Order {
   buyer_email: string | null;
   buyer_name: string | null;
   fulfillment_status: FulfillmentStatus;
-  metadata_json: Record<string, any> | null;
+  metadata_json: Record<string, unknown> | null;
   created_at: string;
   updated_at: string;
 }
@@ -92,7 +92,7 @@ export interface OrderItem {
   unit_price: number;
   line_total: number;
   is_digital: boolean;
-  metadata_json: Record<string, any> | null;
+  metadata_json: Record<string, unknown> | null;
   created_at: string;
 }
 
@@ -110,7 +110,7 @@ export interface ShippingProfile {
   estimated_days_min: number;
   estimated_days_max: number;
   is_active: boolean;
-  metadata_json: Record<string, any> | null;
+  metadata_json: Record<string, unknown> | null;
   created_at: string;
   updated_at: string;
 }
@@ -121,7 +121,7 @@ export interface ShippingEvent {
   status: ShippingStatus;
   location: string | null;
   tracking_code: string | null;
-  metadata_json: Record<string, any> | null;
+  metadata_json: Record<string, unknown> | null;
   created_at: string;
 }
 
@@ -149,7 +149,7 @@ export interface AffiliateTracking {
   minimum_payout_threshold: number;
   pending_earnings: number;
   paid_earnings: number;
-  metadata_json: Record<string, any> | null;
+  metadata_json: Record<string, unknown> | null;
   created_at: string;
   updated_at: string;
 }
@@ -161,7 +161,7 @@ export interface AffiliateClick {
   visitor_ip: string | null;
   visitor_country: string | null;
   referrer_url: string | null;
-  metadata_json: Record<string, any> | null;
+  metadata_json: Record<string, unknown> | null;
   created_at: string;
 }
 
@@ -174,7 +174,7 @@ export interface AffiliateConversion {
   commission_rate: number;
   commission_amount: number;
   status: 'pending' | 'approved' | 'paid' | 'failed';
-  metadata_json: Record<string, any> | null;
+  metadata_json: Record<string, unknown> | null;
   created_at: string;
   updated_at: string;
 }
@@ -194,7 +194,7 @@ export interface DigitalLicense {
   max_downloads: number | null;
   expires_at: string | null;
   revoked_at: string | null;
-  metadata_json: Record<string, any> | null;
+  metadata_json: Record<string, unknown> | null;
   created_at: string;
   updated_at: string;
 }
@@ -206,7 +206,7 @@ export interface DigitalLicenseTransfer {
   to_user_id: string;
   status: 'pending' | 'completed' | 'rejected' | 'revoked';
   reason: string | null;
-  metadata_json: Record<string, any> | null;
+  metadata_json: Record<string, unknown> | null;
   created_at: string;
   updated_at: string;
 }
@@ -223,9 +223,9 @@ export interface SupplierProduct {
   description: string | null;
   cost_price: number;
   currency: 'USD' | 'EUR' | 'GEL';
-  attributes: Record<string, any> | null;
+  attributes: Record<string, unknown> | null;
   categories: string[] | null;
-  supplier_metadata: Record<string, any> | null;
+  supplier_metadata: Record<string, unknown> | null;
   is_available: boolean;
   availability_updated_at: string | null;
   last_margin_check_at: string | null;
@@ -251,7 +251,7 @@ export interface ShopStore {
   prices_include_vat: boolean;
   tax_residency_country: string;
   legal_entity_type: 'individual' | 'llc' | null;
-  metadata_json: Record<string, any> | null;
+  metadata_json: Record<string, unknown> | null;
   created_at: string;
   updated_at: string;
 }
@@ -271,7 +271,7 @@ export interface Product {
   status: 'draft' | 'published' | 'archived';
   images: string[];
   video_url: string | null;
-  metadata_json: Record<string, any> | null;
+  metadata_json: Record<string, unknown> | null;
   ai_generated_at: string | null;
   ai_agent_id: string | null;
   created_at: string;
@@ -301,7 +301,7 @@ export interface AuditLog {
   resource_type: string;
   resource_id: string | null;
   description: string | null;
-  metadata_json: Record<string, any> | null;
+  metadata_json: Record<string, unknown> | null;
   is_critical: boolean;
   risk_flags: string[] | null;
   created_at: string;
@@ -350,7 +350,7 @@ export interface ApiResponse<T> {
   error?: {
     code: string;
     message: string;
-    details?: Record<string, any>;
+    details?: Record<string, unknown>;
   };
 }
 

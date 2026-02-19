@@ -3,51 +3,9 @@
 import { motion } from "framer-motion";
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
+import { SERVICE_REGISTRY } from "@/lib/service-registry";
 
-const services = [
-  {
-    id: "video-lab",
-    title: "Video Cine-Lab",
-    description: "Professional AI video generation with cinematic quality",
-    image: "🎬",
-    requiresIdentity: true
-  },
-  {
-    id: "image-generator",
-    title: "Image Forge",
-    description: "Create stunning images featuring your digital twin",
-    image: "🎨",
-    requiresIdentity: true
-  },
-  {
-    id: "music-generator",
-    title: "Music Studio",
-    description: "Original compositions with AI vocals in your voice",
-    image: "🎵",
-    requiresIdentity: true
-  },
-  {
-    id: "voice-studio",
-    title: "Voice Studio",
-    description: "Text-to-speech and voice modification tools",
-    image: "🎙️",
-    requiresIdentity: true
-  },
-  {
-    id: "text-intelligence",
-    title: "Text Intelligence",
-    description: "GPT-4 powered writing and analysis assistant",
-    image: "📝",
-    requiresIdentity: false
-  },
-  {
-    id: "code-assistant",
-    title: "Code Forge",
-    description: "AI-powered coding assistant and debugger",
-    image: "💻",
-    requiresIdentity: false
-  }
-];
+const services = SERVICE_REGISTRY.filter((service) => service.enabled);
 
 export default function ServicesSection() {
   return (
@@ -63,7 +21,7 @@ export default function ServicesSection() {
             AI <span className="text-[#00FFFF]">Services</span>
           </h2>
           <p className="text-gray-400 text-lg">
-            Professional media generation powered by your digital identity
+            {services.length} active services connected to your Avatar G workspace
           </p>
         </motion.div>
 
@@ -77,20 +35,15 @@ export default function ServicesSection() {
               transition={{ delay: idx * 0.1 }}
             >
               <Link
-                href={`/services/${service.id}`}
+                href={service.route}
                 className="group block p-6 bg-gradient-to-br from-white/10 to-transparent border border-white/10 rounded-2xl hover:border-[#00FFFF]/50 transition-all h-full"
               >
                 <div className="flex items-start justify-between mb-4">
-                  <span className="text-4xl">{service.image}</span>
-                  {service.requiresIdentity && (
-                    <span className="px-2 py-1 bg-[#D4AF37]/20 text-[#D4AF37] text-xs rounded-full">
-                      ID Required
-                    </span>
-                  )}
+                  <span className="text-4xl">{service.icon}</span>
                 </div>
                 
                 <h3 className="text-xl font-semibold mb-2 group-hover:text-[#00FFFF] transition-colors">
-                  {service.title}
+                  {service.name}
                 </h3>
                 <p className="text-gray-400 text-sm mb-4">
                   {service.description}

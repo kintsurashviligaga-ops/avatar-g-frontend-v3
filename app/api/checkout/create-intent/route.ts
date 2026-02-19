@@ -5,6 +5,11 @@ import { CreatePaymentIntentInputSchema } from '@/lib/stripe/types';
 import { computeOrderTotals } from '@/lib/finance/orderCalculation';
 import { createTaxProfileFromStore } from '@/lib/finance/taxProfile';
 
+type OrderLineItemRow = {
+  unit_price_cents: number;
+  quantity: number;
+};
+
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs'; // Stripe requires nodejs runtime
 
@@ -80,7 +85,10 @@ export async function POST(request: NextRequest) {
 
     let subtotalCents = 0;
     if (lineItems) {
-      subtotalCents = lineItems.reduce((sum, item) => sum + (item.unit_price_cents * item.quantity), 0);
+      subtotalCents = (lineItems as OrderLineItemRow[]).reduce(
+        (sum: number, item) => sum + item.unit_price_cents * item.quantity,
+        0
+      );
     }
 
     const calculatedTotals = computeOrderTotals({

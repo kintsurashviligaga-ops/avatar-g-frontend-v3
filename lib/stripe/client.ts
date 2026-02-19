@@ -16,7 +16,7 @@ export function getStripeClient(): Stripe {
       throw new Error('STRIPE_SECRET_KEY environment variable not set');
     }
     stripe = new Stripe(secretKey, {
-      apiVersion: '2024-06-20',
+      apiVersion: '2026-01-28.clover',
     });
   }
   return stripe;
@@ -74,7 +74,7 @@ export async function createPaymentIntent(args: {
   // For GEL, if not supported, we'd convert to USD for Stripe
   // In real scenario, confirm Stripe account supports GEL
   let finalAmount = args.amountCents;
-  let finalCurrency = stripeCurrency;
+  const finalCurrency = stripeCurrency;
 
   // If Stripe doesn't support GEL, convert to USD for final amount
   if (stripeCurrency === 'usd' && args.currency === 'GEL') {
@@ -129,7 +129,7 @@ export async function getPaymentIntent(paymentIntentId: string): Promise<Stripe.
 export async function refundPayment(args: {
   paymentIntentId: string;
   amountCents?: number;
-  reason?: 'requested_by_customer' | 'duplicate' | 'fraudulent' | 'abandoned';
+  reason?: 'requested_by_customer' | 'duplicate' | 'fraudulent';
 }): Promise<Stripe.Refund | null> {
   const client = getStripeClient();
   try {
@@ -151,13 +151,18 @@ export function extractCardDetails(intent: Stripe.PaymentIntent): {
   last4: string | null;
   brand: string | null;
 } {
-  if (intent.charges?.data?.[0]?.payment_method_details?.card) {
-    const cardDetails = intent.charges.data[0].payment_method_details.card;
+  const paymentMethod = intent.payment_method;
+  if (typeof paymentMethod === 'string') {
+    return { last4: null, brand: null };
+  }
+
+  if (paymentMethod && paymentMethod.type === 'card' && paymentMethod.card) {
     return {
-      last4: cardDetails.last4 || null,
-      brand: cardDetails.brand || null,
+      last4: paymentMethod.card.last4 || null,
+      brand: paymentMethod.card.brand || null,
     };
   }
+
   return { last4: null, brand: null };
 }
 

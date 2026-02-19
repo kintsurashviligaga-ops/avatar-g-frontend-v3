@@ -121,7 +121,7 @@ export default function SellerOnboardingPage() {
               ].map((option) => (
                 <button
                   key={option.value}
-                  onClick={() => setFormData({...formData, businessType: option.value as any})}
+                  onClick={() => setFormData({...formData, businessType: option.value as 'dropshipping' | 'own_product' | 'digital'})}
                   className={`p-3 rounded-xl border-2 transition-all text-sm ${
                     formData.businessType === option.value
                       ? "border-purple-500 bg-purple-500/10 text-white"

@@ -22,7 +22,7 @@ export async function GET(request: Request) {
   try {
     // Health check endpoint
     const { searchParams } = new URL(request.url);
-    if (searchParams.get('health') === '1') {
+    if ((searchParams?.get?.('health') ?? '') === '1') {
       return NextResponse.json({
         status: 'ok',
         service: 'music-list-api',
@@ -44,11 +44,11 @@ export async function GET(request: Request) {
     }
 
     // Get query params for filtering (searchParams already defined above for health check)
-    const status = searchParams.get('status');
-    const limit = parseInt(searchParams.get('limit') || '50');
-    const offset = parseInt(searchParams.get('offset') || '0');
-    const sortBy = searchParams.get('sortBy') || 'created_at';
-    const sortOrder = searchParams.get('sortOrder') || 'desc';
+    const status = searchParams?.get?.('status');
+    const limit = parseInt(searchParams?.get?.('limit') || '50');
+    const offset = parseInt(searchParams?.get?.('offset') || '0');
+    const sortBy = searchParams?.get?.('sortBy') || 'created_at';
+    const sortOrder = searchParams?.get?.('sortOrder') || 'desc';
 
     let query = supabase
       .from('tracks')

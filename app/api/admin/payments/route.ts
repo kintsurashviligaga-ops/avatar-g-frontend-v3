@@ -1,6 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 
+type StripeEventRow = {
+  processed_at: string | null;
+  error_log: string | null;
+};
+
+type PaymentAttemptRow = {
+  status: string;
+};
+
 // Force dynamic rendering (uses cookies and env vars at runtime)
 export const dynamic = 'force-dynamic';
 
@@ -28,7 +37,7 @@ export async function GET(request: NextRequest) {
     // TODO: Verify admin role
     // For now, basic auth check
 
-    const limit = Math.min(Number(searchParams.get('limit') || '50'), 100);
+    const limit = Math.min(Number(searchParams?.get?.('limit') || '50'), 100);
 
     // Fetch latest Stripe events
     const { data: events, error: eventsError } = await supabase
@@ -55,24 +64,27 @@ export async function GET(request: NextRequest) {
     }
 
     // Calculate metrics
+    const typedEvents = (events || []) as StripeEventRow[];
+    const typedAttempts = (attempts || []) as PaymentAttemptRow[];
+
     const eventMetrics = {
-      total: events?.length || 0,
-      processed: (events || []).filter((e) => e.processed_at).length,
-      failed: (events || []).filter((e) => e.error_log).length,
+      total: typedEvents.length,
+      processed: typedEvents.filter((eventRow) => eventRow.processed_at).length,
+      failed: typedEvents.filter((eventRow) => eventRow.error_log).length,
       successRate:
-        events && events.length > 0
-          ? Math.round(((events.filter((e) => e.processed_at).length / events.length) * 100))
+        typedEvents.length > 0
+          ? Math.round(((typedEvents.filter((eventRow) => eventRow.processed_at).length / typedEvents.length) * 100))
           : 0,
     };
 
     const attemptMetrics = {
-      total: attempts?.length || 0,
-      succeeded: (attempts || []).filter((a) => a.status === 'succeeded').length,
-      failed: (attempts || []).filter((a) => a.status === 'failed').length,
-      pending: (attempts || []).filter((a) => a.status === 'created' || a.status === 'requires_action').length,
+      total: typedAttempts.length,
+      succeeded: typedAttempts.filter((attemptRow) => attemptRow.status === 'succeeded').length,
+      failed: typedAttempts.filter((attemptRow) => attemptRow.status === 'failed').length,
+      pending: typedAttempts.filter((attemptRow) => attemptRow.status === 'created' || attemptRow.status === 'requires_action').length,
       successRate:
-        attempts && attempts.length > 0
-          ? Math.round(((attempts.filter((a) => a.status === 'succeeded').length / attempts.length) * 100))
+        typedAttempts.length > 0
+          ? Math.round(((typedAttempts.filter((attemptRow) => attemptRow.status === 'succeeded').length / typedAttempts.length) * 100))
           : 0,
     };
 

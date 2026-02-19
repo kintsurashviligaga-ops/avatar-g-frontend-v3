@@ -16,17 +16,18 @@ export default function sitemap(): MetadataRoute.Sitemap {
   // All 13 services
   const services = [
     'avatar-builder',
-    'video-studio',
-    'music-studio',
-    'voice-lab',
-    'media-production',
     'business-agent',
     'game-creator',
     'image-creator',
-    'photo-studio',
-    'social-media',
+    'media-production',
+    'music-studio',
     'online-shop',
+    'photo-studio',
     'prompt-builder',
+    'social-media',
+    'text-intelligence',
+    'video-studio',
+    'marketplace',
   ];
   
   const servicePages = services.map(service => ({

@@ -3,7 +3,7 @@
  */
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 interface KPI {
   id: string;
@@ -27,23 +27,23 @@ export default function GrowthKPIsClient({ storeId }: { storeId: string }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    fetchKpis();
-  }, [storeId]);
-
-  const fetchKpis = async () => {
+  const fetchKpis = useCallback(async () => {
     try {
       const response = await fetch(`/api/marketplace/kpis?storeId=${storeId}`);
       if (!response.ok) throw new Error('Failed to fetch KPIs');
       const data = await response.json();
       setKpis(data.data.kpis);
       setAggregates(data.data.aggregates);
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to fetch KPIs');
     } finally {
       setLoading(false);
     }
-  };
+  }, [storeId]);
+
+  useEffect(() => {
+    void fetchKpis();
+  }, [fetchKpis]);
 
   const formatCents = (cents: number) => {
     return `₾${(cents / 100).toFixed(2)}`;

@@ -31,24 +31,24 @@ export default function VoiceLabPage() {
           >
             <div className="inline-flex items-center gap-2 px-4 py-2 bg-amber-500/10 border border-amber-500/30 rounded-full mb-4">
               <Mic className="w-4 h-4 text-amber-400" />
-              <span className="text-amber-300 text-sm font-medium">Voice Lab</span>
+              <span className="text-amber-300 text-sm font-medium">ხმის ლაბორატორია</span>
             </div>
             <h1 className="text-5xl font-bold text-white mb-4">
-              Clone & Customize <span className="bg-gradient-to-r from-amber-400 to-orange-500 bg-clip-text text-transparent">Your Voice</span>
+              დააკლონე და მოარგე <span className="bg-gradient-to-r from-amber-400 to-orange-500 bg-clip-text text-transparent">შენი ხმა</span>
             </h1>
             <p className="text-xl text-gray-400 max-w-2xl mx-auto">
-              Professional voice cloning, text-to-speech, and multilingual synthesis
+              პროფესიონალური ხმის კლონირება, ტექსტი-ხმაში და მრავალენოვანი სინთეზი
             </p>
           </motion.div>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className="lg:col-span-2">
               <Card className="p-6 bg-white/5 border-white/10 backdrop-blur-sm">
-                <h2 className="text-xl font-semibold text-white mb-4">Text to Speech</h2>
+                <h2 className="text-xl font-semibold text-white mb-4">ტექსტი ხმაში</h2>
                 <textarea
                   value={text}
                   onChange={(e) => setText(e.target.value)}
-                  placeholder="Enter the text you want to convert to speech..."
+                  placeholder="შეიყვანე ტექსტი, რომელსაც ხმად გადააქცევ..."
                   className="w-full h-32 bg-black/30 border border-white/10 rounded-lg px-4 py-3 text-white placeholder-gray-500 resize-none focus:outline-none focus:border-amber-500/50"
                 />
                 
@@ -61,12 +61,12 @@ export default function VoiceLabPage() {
                     {isGenerating ? (
                       <>
                         <Sparkles className="w-4 h-4 mr-2 animate-spin" />
-                        Generating...
+                        გენერაცია მიმდინარეობს...
                       </>
                     ) : (
                       <>
                         <Wand2 className="w-4 h-4 mr-2" />
-                        Generate Speech
+                        ხმის გენერაცია
                       </>
                     )}
                   </Button>
@@ -74,7 +74,7 @@ export default function VoiceLabPage() {
               </Card>
 
               <Card className="p-6 bg-white/5 border-white/10 backdrop-blur-sm mt-6">
-                <h2 className="text-xl font-semibold text-white mb-4">Voice Samples</h2>
+                <h2 className="text-xl font-semibold text-white mb-4">ხმის ნიმუშები</h2>
                 <div className="space-y-3">
                   {[1, 2, 3].map((i) => (
                     <div key={i} className="flex items-center justify-between p-4 bg-black/30 border border-white/10 rounded-lg">
@@ -83,7 +83,7 @@ export default function VoiceLabPage() {
                           <Mic className="w-5 h-5 text-white" />
                         </div>
                         <div>
-                          <p className="text-white font-medium">Voice Sample {i}</p>
+                          <p className="text-white font-medium">ხმის ნიმუში {i}</p>
                           <p className="text-sm text-gray-400">2:30</p>
                         </div>
                       </div>
@@ -98,36 +98,36 @@ export default function VoiceLabPage() {
 
             <div className="space-y-6">
               <Card className="p-6 bg-white/5 border-white/10 backdrop-blur-sm">
-                <h3 className="text-lg font-semibold text-white mb-4">Voice Settings</h3>
+                <h3 className="text-lg font-semibold text-white mb-4">ხმის პარამეტრები</h3>
                 <div className="space-y-4">
                   <div>
-                    <label className="block text-sm text-gray-400 mb-2">Voice Model</label>
+                    <label className="block text-sm text-gray-400 mb-2">ხმის მოდელი</label>
                     <select className="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-white">
-                      <option>My Voice Clone</option>
-                      <option>Professional Male</option>
-                      <option>Professional Female</option>
+                      <option>ჩემი ხმის კლონი</option>
+                      <option>პროფესიონალი მამაკაცი</option>
+                      <option>პროფესიონალი ქალი</option>
                     </select>
                   </div>
                   <div>
-                    <label className="block text-sm text-gray-400 mb-2">Language</label>
+                    <label className="block text-sm text-gray-400 mb-2">ენა</label>
                     <select className="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-white">
-                      <option>English</option>
-                      <option>Spanish</option>
-                      <option>French</option>
-                      <option>German</option>
+                      <option>ინგლისური</option>
+                      <option>ესპანური</option>
+                      <option>ფრანგული</option>
+                      <option>გერმანული</option>
                     </select>
                   </div>
                   <div>
-                    <label className="block text-sm text-gray-400 mb-2">Speed</label>
+                    <label className="block text-sm text-gray-400 mb-2">სიჩქარე</label>
                     <input type="range" min="0.5" max="2" step="0.1" defaultValue="1" className="w-full" />
                   </div>
                 </div>
               </Card>
 
               <Card className="p-6 bg-gradient-to-br from-amber-500/10 to-orange-500/10 border-amber-500/30 backdrop-blur-sm">
-                <h3 className="text-lg font-semibold text-white mb-2">Credits</h3>
-                <p className="text-2xl font-bold text-amber-300 mb-1">50 credits</p>
-                <p className="text-sm text-gray-400">per voice clone</p>
+                <h3 className="text-lg font-semibold text-white mb-2">კრედიტები</h3>
+                <p className="text-2xl font-bold text-amber-300 mb-1">50 კრედიტი</p>
+                <p className="text-sm text-gray-400">თითო ხმის კლონზე</p>
               </Card>
             </div>
           </div>

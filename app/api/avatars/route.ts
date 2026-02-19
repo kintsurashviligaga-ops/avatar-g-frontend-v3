@@ -21,7 +21,7 @@ export async function GET(request: NextRequest) {
   try {
     // Health check endpoint
     const url = new URL(request.url);
-    if (url.searchParams.get('health') === '1') {
+    if ((url.searchParams?.get?.('health') ?? '') === '1') {
       return apiSuccess({
         status: 'ok',
         service: 'avatars-api',
@@ -42,10 +42,10 @@ export async function GET(request: NextRequest) {
     }
 
     // Query parameters (url already defined above for health check)
-    const limit = Math.min(parseInt(url.searchParams.get('limit') || '100'), 500);
-    const offset = parseInt(url.searchParams.get('offset') || '0');
-    const sortBy = url.searchParams.get('sort') || 'created_at'; // created_at, title, updated_at
-    const sortDir = url.searchParams.get('dir') || 'desc'; // asc, desc
+    const limit = Math.min(parseInt(url.searchParams?.get?.('limit') || '100'), 500);
+    const offset = parseInt(url.searchParams?.get?.('offset') || '0');
+    const sortBy = url.searchParams?.get?.('sort') || 'created_at'; // created_at, title, updated_at
+    const sortDir = url.searchParams?.get?.('dir') || 'desc'; // asc, desc
 
     // Build query
     const query = supabase

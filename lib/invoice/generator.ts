@@ -1,4 +1,5 @@
 import { v4 as uuidv4 } from 'uuid';
+import type { SupabaseClient } from '@supabase/supabase-js';
 
 // ========================================
 // INVOICE GENERATION ENGINE
@@ -62,7 +63,7 @@ export interface InvoiceSnapshot {
  */
 export async function generateInvoiceNumber(
   storeId: string,
-  supabaseClient: any
+  supabaseClient: SupabaseClient
 ): Promise<string> {
   const currentYear = new Date().getFullYear();
   const shortStoreId = storeId.substring(0, 6).toUpperCase();

@@ -9,8 +9,9 @@
 
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
+import type { CookieOptions } from '@supabase/ssr';
 import { getServerEnv } from '@/lib/env/server';
-import { ShippingProfile, ShippingEvent, ShippingTracking, ShippingStatus } from '@/lib/commerce/types';
+import { ShippingProfile, ShippingTracking, ShippingStatus } from '@/lib/commerce/types';
 
 /**
  * Initialize Supabase client for server operations
@@ -25,7 +26,7 @@ function getSupabaseClient() {
         getAll() {
           return cookieStore.getAll();
         },
-        setAll(cookiesToSet: Array<{ name: string; value: string; options?: any }>) {
+        setAll(cookiesToSet: Array<{ name: string; value: string; options?: CookieOptions }>) {
           try {
             cookiesToSet.forEach(({ name, value, options }) => {
               cookieStore.set(name, value, options);
@@ -102,7 +103,7 @@ export interface AddShippingEventInput {
   status: ShippingStatus;
   location?: string;
   trackingCode?: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 /**
@@ -162,7 +163,7 @@ export async function addShippingEvent(input: AddShippingEventInput) {
   }
 
   // Update order shipping status and tracking code
-  const updateData: any = {
+  const updateData: Record<string, string> = {
     shipping_status: input.status,
   };
 

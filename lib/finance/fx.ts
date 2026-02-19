@@ -3,8 +3,7 @@
  */
 
 import { safeRound } from './money';
-
-export type CurrencyCode = 'GEL' | 'USD';
+import type { CurrencyCode } from './types';
 
 export function convertCents(
   amountCents: number,

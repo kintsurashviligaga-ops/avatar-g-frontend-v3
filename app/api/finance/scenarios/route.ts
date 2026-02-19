@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
     }
 
     const { searchParams } = new URL(request.url);
-    const storeId = searchParams.get('storeId');
+    const storeId = searchParams?.get?.('storeId');
 
     let query = supabase
       .from('simulation_scenarios')

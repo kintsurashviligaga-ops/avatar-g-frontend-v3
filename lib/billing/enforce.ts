@@ -1,302 +1,167 @@
-/**
- * Avatar G - Plan & Credit Enforcement (Server-Only)
- * Used by all service API routes to validate plan access and credits
- */
+import 'server-only';
 
-import { createSupabaseServerClient } from '@/lib/supabase/server';
-import { type PlanTier, type CanonicalPlanTier, getPlan, getPlanRank, normalizePlanTier, planAllowsAgent, canAfford } from './plans';
+import { createRouteHandlerClient } from '@/lib/supabase/server';
+import { getPlan, isPlanAtLeast, normalizePlan, planAllowsAgent, type PlanTier } from './plans';
 
-export interface EnforcementContext {
+export interface BillingSnapshot {
   userId: string;
-  plan: CanonicalPlanTier;
+  plan: PlanTier;
+  status: string;
+  currentPeriodEnd: string | null;
   credits: {
     balance: number;
     monthlyAllowance: number;
-    nextReset: Date;
-  };
-  subscription: {
-    status: string;
-    currentPeriodEnd: Date | null;
+    resetAt: string;
   };
 }
 
-/**
- * Get user enforcement context (plan + credits + subscription)
- */
+export class BillingEnforcementError extends Error {
+  public readonly statusCode: number;
+  public readonly code: string;
+  public readonly details?: Record<string, unknown>;
 
-export async function getEnforcementContext(userId: string): Promise<EnforcementContext> {
-  const supabase = createSupabaseServerClient();
-
-  const { data: subscription, error: subError } = await supabase
-    .from('subscriptions')
-    .select('plan, status, current_period_end')
-  .eq('user_id', userId)
-  .single();
-
-  if (subError || !subscription) {
-    throw new Error('User subscription not found');
+  constructor(message: string, statusCode: number, code: string, details?: Record<string, unknown>) {
+    super(message);
+    this.name = 'BillingEnforcementError';
+    this.statusCode = statusCode;
+    this.code = code;
+    this.details = details;
   }
 
-  const { data: credits, error: creditsError } = await supabase
-    .from('credits')
-    .select('balance, monthly_allowance, next_reset_at')
-  .eq('user_id', userId)
-  .single();
+  toResponseBody() {
+    return {
+      error: {
+        code: this.code,
+        message: this.message,
+        details: this.details,
+      },
+    };
+  }
+}
+
+export async function getBillingSnapshot(userId: string): Promise<BillingSnapshot> {
+  const supabase = createRouteHandlerClient();
+
+  await supabase.rpc('ensure_user_billing_rows', { p_user_id: userId });
+  await supabase.rpc('reset_user_credits_if_due', { p_user_id: userId });
+
+  const [{ data: subscription, error: subscriptionError }, { data: credits, error: creditsError }] = await Promise.all([
+    supabase
+      .from('subscriptions')
+      .select('plan, status, current_period_end')
+      .eq('user_id', userId)
+      .single(),
+    supabase
+      .from('credits')
+      .select('balance, monthly_allowance, reset_at')
+      .eq('user_id', userId)
+      .single(),
+  ]);
+
+  if (subscriptionError || !subscription) {
+    throw new Error('Failed to fetch subscription state');
+  }
 
   if (creditsError || !credits) {
-    throw new Error('User credits not found');
+    throw new Error('Failed to fetch credits state');
   }
 
   return {
     userId,
-    plan: normalizePlanTier(subscription.plan as PlanTier),
+    plan: normalizePlan(subscription.plan),
+    status: subscription.status,
+    currentPeriodEnd: subscription.current_period_end,
     credits: {
       balance: credits.balance,
       monthlyAllowance: credits.monthly_allowance,
-      nextReset: new Date(credits.next_reset_at),
-    },
-    subscription: {
-      status: subscription.status,
-      currentPeriodEnd: subscription.current_period_end
-        ? new Date(subscription.current_period_end)
-        : null,
+      resetAt: credits.reset_at,
     },
   };
 }
 
-/**
- * Assert user has required plan tier
- */
-function assertPlanAccess(
-  context: EnforcementContext,
-  requiredPlan: PlanTier
-): void {
-  const userPlanIndex = getPlanRank(context.plan);
-  const requiredPlanIndex = getPlanRank(requiredPlan);
+export function assertPlan(snapshot: BillingSnapshot, requiredPlan: PlanTier, agentId?: string): void {
+  if (!isPlanAtLeast(snapshot.plan, requiredPlan)) {
+    throw new BillingEnforcementError('Plan upgrade required', 403, 'PLAN_REQUIRED', {
+      currentPlan: snapshot.plan,
+      requiredPlan,
+    });
+  }
 
-  if (userPlanIndex < requiredPlanIndex) {
-    throw new EnforcementError(
-      `This feature requires ${requiredPlan} plan or higher`,
-      'PLAN_REQUIRED',
-      403,
-      { required: requiredPlan, current: context.plan }
-    );
+  if (agentId && !planAllowsAgent(snapshot.plan, agentId)) {
+    throw new BillingEnforcementError('Agent not available for your current plan', 403, 'AGENT_FORBIDDEN', {
+      currentPlan: snapshot.plan,
+      agentId,
+    });
   }
 }
 
-/**
- * Assert user's plan allows specific agent
- */
-function assertAgentAccess(
-  context: EnforcementContext,
-  agentId: string
-): void {
-  if (!planAllowsAgent(context.plan, agentId)) {
-    throw new EnforcementError(
-      `Your ${context.plan} plan does not include access to ${agentId}`,
-      'AGENT_NOT_ALLOWED',
-      403,
-      { agentId, plan: context.plan }
-    );
+export function assertCredits(snapshot: BillingSnapshot, cost: number): void {
+  if (cost <= 0) {
+    return;
+  }
+
+  if (snapshot.credits.balance < cost) {
+    throw new BillingEnforcementError('Insufficient credits', 402, 'INSUFFICIENT_CREDITS', {
+      requiredCredits: cost,
+      currentCredits: snapshot.credits.balance,
+      nextResetAt: snapshot.credits.resetAt,
+      monthlyAllowance: snapshot.credits.monthlyAllowance,
+    });
   }
 }
 
-/**
- * Assert user has sufficient credits
- */
-function assertSufficientCredits(
-  context: EnforcementContext,
-  cost: number
-): void {
-  if (!canAfford(context.credits.balance, cost)) {
-    throw new EnforcementError(
-      `Insufficient credits. Required: ${cost}, Available: ${context.credits.balance}`,
-      'INSUFFICIENT_CREDITS',
-      402,
-      {
-        required: cost,
-        available: context.credits.balance,
-        nextReset: context.credits.nextReset,
-      }
-    );
-  }
-}
-
-/**
- * Assert subscription is active
- */
-function assertActiveSubscription(context: EnforcementContext): void {
-  if (context.subscription.status !== 'active') {
-    throw new EnforcementError(
-      'Your subscription is not active',
-      'SUBSCRIPTION_INACTIVE',
-      403,
-      { status: context.subscription.status }
-    );
-  }
-}
-
-/**
- * Deduct credits from user (transaction-safe via Supabase function)
- */
-
-export async function deductCredits(params: {
+export async function deductCreditsTransaction(params: {
   userId: string;
   amount: number;
   jobId: string;
   agentId: string;
-  description: string;
-}): Promise<{ success: boolean; newBalance: number; error?: string }> {
-  const supabase = createSupabaseServerClient();
+  reason: string;
+  idempotencyKey: string;
+}): Promise<{ newBalance: number }> {
+  const supabase = createRouteHandlerClient();
 
-  const { data: rpcData, error: rpcError } = await supabase.rpc('deduct_credits', {
+  const { data, error } = await supabase.rpc('deduct_credits_transaction', {
     p_user_id: params.userId,
     p_amount: params.amount,
     p_job_id: params.jobId,
     p_agent_id: params.agentId,
-    p_description: params.description,
+    p_reason: params.reason,
+    p_idempotency_key: params.idempotencyKey,
   });
 
-  if (rpcError || !rpcData || !rpcData[0]) {
-    return {
-      success: false,
-      newBalance: 0,
-      error: rpcError?.message || 'Credit deduction failed',
-    };
+  const result = Array.isArray(data) ? data[0] : null;
+
+  if (error || !result) {
+    throw new Error(error?.message || 'Credit deduction failed');
   }
 
-  return {
-    success: !!rpcData[0].success,
-    newBalance: rpcData[0].new_balance || 0,
-    error: rpcData[0].error_message || undefined,
-  };
+  if (!result.success) {
+    throw new BillingEnforcementError(result.error_message || 'Insufficient credits', 402, 'INSUFFICIENT_CREDITS');
+  }
+
+  return { newBalance: result.new_balance };
 }
 
-/**
- * Add credits to user (transaction-safe via Supabase function)
- */
-
-export async function addCredits(params: {
+export async function enforcePlanAndCredits(params: {
   userId: string;
-  amount: number;
-  description?: string;
-}): Promise<{ success: boolean; newBalance: number; error?: string }> {
-  const supabase = createSupabaseServerClient();
+  requiredPlan: PlanTier;
+  agentId: string;
+  cost: number;
+}): Promise<BillingSnapshot> {
+  const snapshot = await getBillingSnapshot(params.userId);
 
-  const { data, error } = await supabase.rpc('add_credits', {
-    p_user_id: params.userId,
-    p_amount: params.amount,
-    p_description: params.description || 'Credit addition',
-  });
-
-  if (error || !data || !data[0]) {
-    return {
-      success: false,
-      newBalance: 0,
-      error: error?.message || 'Credit addition failed',
-    };
+  if (snapshot.status && !['active', 'trialing'].includes(snapshot.status)) {
+    throw new BillingEnforcementError('Subscription inactive', 403, 'SUBSCRIPTION_INACTIVE', {
+      status: snapshot.status,
+    });
   }
 
-  return {
-    success: !!data[0].success,
-    newBalance: data[0].new_balance || 0,
-  };
+  assertPlan(snapshot, params.requiredPlan, params.agentId);
+  assertCredits(snapshot, params.cost);
+
+  return snapshot;
 }
 
-/**
- * Refund credits for a job
- */
-
-export async function refundCredits(params: {
-  userId: string;
-  jobId: string;
-  amount: number;
-  reason: string;
-}): Promise<void> {
-  await addCredits({
-    userId: params.userId,
-    amount: params.amount,
-    description: `Refund for job ${params.jobId}: ${params.reason}`,
-  });
-}
-
-/**
- * Update monthly allowance based on plan
- */
-
-export async function updateMonthlyAllowance(
-  userId: string,
-  plan: PlanTier
-): Promise<void> {
-  const supabase = createSupabaseServerClient();
-  const planConfig = getPlan(plan);
-
-  const { error } = await supabase
-    .from('credits')
-    .update({
-      monthly_allowance: planConfig.monthlyCredits,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('user_id', userId);
-
-  if (error) {
-    console.error('Failed to update monthly allowance:', error);
-    throw new Error('Failed to update credit allowance');
-  }
-}
-
-/**
- * Custom enforcement error
- */
-
-export class EnforcementError extends Error {
-  constructor(
-    message: string,
-    public code: string,
-    public statusCode: number,
-    public metadata?: Record<string, unknown>
-  ) {
-    super(message);
-    this.name = 'EnforcementError';
-  }
-
-  toJSON() {
-    return {
-      error: this.message,
-      code: this.code,
-      metadata: this.metadata,
-    };
-  }
-}
-
-/**
- * Middleware wrapper for API routes with enforcement
- */
-
-export async function withEnforcement<T>(
-  userId: string,
-  options: {
-    agentId?: string;
-    cost?: number;
-    requiredPlan?: PlanTier;
-  },
-  handler: (context: EnforcementContext) => Promise<T>
-): Promise<T> {
-  const context = await getEnforcementContext(userId);
-
-  assertActiveSubscription(context);
-
-  if (options.requiredPlan) {
-    assertPlanAccess(context, options.requiredPlan);
-  }
-
-  if (options.agentId) {
-    assertAgentAccess(context, options.agentId);
-  }
-
-  if (options.cost) {
-    assertSufficientCredits(context, options.cost);
-  }
-
-  return await handler(context);
+export function getPlanSummary(plan: string | null | undefined) {
+  return getPlan(plan);
 }

@@ -452,7 +452,7 @@ export default function AvatarBuilderPage() {
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const params = new URLSearchParams(window.location.search);
-    const encoded = params.get('preset');
+    const encoded = params?.get?.('preset') ?? null;
     if (!encoded) return;
     try {
       const json = atob(decodeURIComponent(encoded));
@@ -633,14 +633,29 @@ export default function AvatarBuilderPage() {
 
       // Attach stream to video element
       if (videoRef.current) {
+        // Critical: Set video element attributes for autoplay policies
+        videoRef.current.muted = true;          // Fixes autoplay policy restrictions
+        videoRef.current.playsInline = true;    // Fixes iOS/Safari fullscreen prevention
+        videoRef.current.autoplay = true;       // Explicit autoplay
         videoRef.current.srcObject = stream;
+        
+        // Ensure video element is visible
+        videoRef.current.style.display = 'block';
         
         // Handle play promise for better error handling
         try {
           await videoRef.current.play();
-        } catch {
+          // Log successful setup for diagnostics
+          console.log('[Camera] Stream started successfully', {
+            videoWidth: videoRef.current.videoWidth,
+            videoHeight: videoRef.current.videoHeight,
+            tracks: stream.getTracks().length,
+          });
+        } catch (playError) {
           // Some browsers might delay play
-          setScanError(t('avatar.error.cameraPlayError') || 'Could not start camera stream');
+          const errorMsg = playError instanceof Error ? playError.message : 'Unknown error';
+          console.error('[Camera] Play failed:', errorMsg);
+          setScanError(t('avatar.error.cameraPlayError') || `Could not start camera stream: ${errorMsg}`);
           stream.getTracks().forEach(track => track.stop());
           streamRef.current = null;
           return;
@@ -1503,7 +1518,14 @@ export default function AvatarBuilderPage() {
                     <div className="rounded-xl border border-white/10 bg-black/20 p-3">
                       <div className="relative aspect-video rounded-lg overflow-hidden bg-black">
                         {isScanning ? (
-                          <video ref={videoRef} className="w-full h-full object-cover" />
+                          <video 
+                            ref={videoRef} 
+                            className="w-full h-full object-cover block"
+                            muted
+                            autoPlay
+                            playsInline
+                            style={{ display: 'block', backgroundColor: '#000' }}
+                          />
                         ) : (
                           <div className="w-full h-full flex items-center justify-center text-gray-500 text-sm">
                             {t('avatar.label.cameraPreview')}

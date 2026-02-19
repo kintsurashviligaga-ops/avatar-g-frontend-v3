@@ -28,7 +28,6 @@ export function validateEnvironment(): EnvValidationResult {
 
   // Optional but recommended
   const RECOMMENDED = [
-    { name: 'NEXT_PUBLIC_API_URL', scope: 'public', description: 'Frontend API URL' },
     { name: 'NEXT_PUBLIC_PENTAGON_API_URL', scope: 'public', description: 'Pentagon API URL (if used)' },
     { name: 'OPENAI_API_KEY', scope: 'server', description: 'OpenAI API Key (for chat)' },
     { name: 'STABILITY_API_KEY', scope: 'server', description: 'Stability AI Key (for avatar generation)' },

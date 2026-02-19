@@ -1,4 +1,5 @@
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import type { SupabaseClient } from '@supabase/supabase-js';
 
 // ========================================
 // PROFIT FIRST GUARDRAILS
@@ -62,9 +63,9 @@ export function getProfitFirstRecommendations(goal: StoreGoal): ProfitFirstRecom
 export async function setupProfitFirstConfig(
   storeId: string,
   goal: StoreGoal,
-  supabaseClient?: any
+  supabaseClient?: SupabaseClient
 ): Promise<ProfitFirstConfig | null> {
-  const client = supabaseClient || createClient();
+  const client = supabaseClient || createSupabaseServerClient();
   const recommendations = getProfitFirstRecommendations(goal);
 
   try {
@@ -105,9 +106,9 @@ export async function setupProfitFirstConfig(
  */
 export async function getProfitFirstConfig(
   storeId: string,
-  supabaseClient?: any
+  supabaseClient?: SupabaseClient
 ): Promise<ProfitFirstConfig | null> {
-  const client = supabaseClient || createClient();
+  const client = supabaseClient || createSupabaseServerClient();
 
   try {
     const { data, error } = await client
@@ -285,12 +286,12 @@ export async function validateProductLaunch(args: {
   sellingPriceCents: number;
   shippingCostCents: number;
   storeId: string;
-  supabaseClient?: any;
+  supabaseClient?: SupabaseClient;
 }): Promise<ProductValidationResult> {
   const { productCostCents, sellingPriceCents, shippingCostCents, storeId, supabaseClient } = args;
 
   const config = await getProfitFirstConfig(storeId, supabaseClient);
-  const minMarginBps = config?.minMarginBps || 2000; // Default: 20% floor
+  const _minMarginBps = config?.minMarginBps || 2000; // Default: 20% floor
   const platformFeeBps = config?.platformFeeBps || 500; // Default: 5%
   const refundReserveBps = config?.refundReserveBps || 400; // Default: 4%
 
@@ -549,15 +550,15 @@ export async function suggestPricingAdjustments(args: {
     competitorPriceCents?: number;
     demandTrend?: 'increasing' | 'stable' | 'decreasing';
   };
-  supabaseClient?: any;
+  supabaseClient?: SupabaseClient;
 }): Promise<PricingAdjustment | null> {
-  const { productId, storeId, marketConditions, supabaseClient } = args;
+  const { productId: _productId, storeId, marketConditions: _marketConditions, supabaseClient } = args;
 
   // TODO: Fetch product details from database
   // For now, this is a framework for future implementation
 
-  const config = await getProfitFirstConfig(storeId, supabaseClient);
-  const targetMarginBps = 3000; // 30% target for safety
+  const _config = await getProfitFirstConfig(storeId, supabaseClient);
+  const _targetMarginBps = 3000; // 30% target for safety
 
   // Placeholder return
   return null;
@@ -581,7 +582,7 @@ export function validatePriceChange(args: {
   minimumAllowedPriceCents: number;
 } {
   const {
-    currentPriceCents,
+    currentPriceCents: _currentPriceCents,
     newPriceCents,
     productCostCents,
     shippingCostCents,

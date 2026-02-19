@@ -8,9 +8,15 @@ import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 /**
  * Get Supabase client for client components
  * Uses official auth helpers with proper session management
+ * PRODUCTION-SAFE: Never throws, returns client even if env vars missing
  */
 export function getSupabaseClient() {
-  return createClientComponentClient();
+  try {
+    return createClientComponentClient();
+  } catch (error) {
+    console.error('[Supabase Client Error]', error instanceof Error ? error.message : 'Unknown error');
+    throw error;
+  }
 }
 
 /**

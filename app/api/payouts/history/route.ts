@@ -1,10 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 
+type StoreIdRow = {
+  id: string;
+};
+
 // Force dynamic rendering (uses cookies and env vars at runtime)
 export const dynamic = 'force-dynamic';
 
-export async function GET(request: NextRequest) {
+export async function GET(_request: NextRequest) {
   try {
     const supabase = createSupabaseServerClient();
     const { data: { user } } = await supabase.auth.getUser();
@@ -22,7 +26,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ data: [] });
     }
 
-    const storeIds = stores.map((s) => s.id);
+    const storeIds = (stores as StoreIdRow[]).map((store: StoreIdRow) => store.id);
 
     // Get all payout requests for these stores
     const { data: payoutRequests } = await supabase

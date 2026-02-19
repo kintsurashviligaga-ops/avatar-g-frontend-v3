@@ -9,6 +9,13 @@ const KPIsQuerySchema = z.object({
   storeId: z.string().uuid(),
 });
 
+interface GrowthKpi {
+  impressions?: number;
+  clicks?: number;
+  conversions?: number;
+  revenue_cents?: number;
+}
+
 export async function GET(request: NextRequest) {
   try {
     const supabase = createSupabaseServerClient();
@@ -19,7 +26,7 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const parsed = KPIsQuerySchema.safeParse({
-      storeId: searchParams.get('storeId'),
+      storeId: searchParams?.get?.('storeId'),
     });
 
     if (!parsed.success) {
@@ -47,7 +54,7 @@ export async function GET(request: NextRequest) {
       totalRevenueCents: 0,
     };
 
-    (kpis || []).forEach((kpi: any) => {
+    (kpis as GrowthKpi[] | null || []).forEach((kpi) => {
       aggregates.totalImpressions += kpi.impressions || 0;
       aggregates.totalClicks += kpi.clicks || 0;
       aggregates.totalConversions += kpi.conversions || 0;

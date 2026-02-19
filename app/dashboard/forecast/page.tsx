@@ -6,8 +6,6 @@ import { Button } from "@/components/ui/button";
 import { ChartCard } from "@/components/dashboard/SellerWidgets";
 import {
   TrendingUp,
-  DollarSign,
-  Target,
   AlertTriangle,
   ArrowLeft,
   Download,

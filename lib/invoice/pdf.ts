@@ -1,4 +1,5 @@
 import { InvoiceSnapshot, formatPrice } from './generator';
+import type { SupabaseClient } from '@supabase/supabase-js';
 
 // ========================================
 // PDF INVOICE GENERATION
@@ -23,7 +24,7 @@ export function generateInvoiceHtml(snapshot: InvoiceSnapshot): string {
     .join('');
 
   const issueDate = new Date(snapshot.issuedAt);
-  const issueDateStr = issueDate.toLocaleDateString('en-US', {
+  const issueDateStr = issueDate.toLocaleDateString('ka-GE', {
     year: 'numeric',
     month: 'long',
     day: 'numeric',
@@ -31,14 +32,14 @@ export function generateInvoiceHtml(snapshot: InvoiceSnapshot): string {
 
   const vatLabel =
     snapshot.taxStatus === 'vat_payer'
-      ? `VAT (${(snapshot.vatRateBps / 100).toFixed(1)}%)`
-      : 'Non-VAT Payer (No VAT)';
+      ? `დღგ (${(snapshot.vatRateBps / 100).toFixed(1)}%)`
+      : 'არ არის დღგ გადამხდელი';
 
   const html = `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>Invoice ${snapshot.invoiceNumber}</title>
+  <title>ინვოისი ${snapshot.invoiceNumber}</title>
   <style>
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
@@ -196,30 +197,30 @@ export function generateInvoiceHtml(snapshot: InvoiceSnapshot): string {
           </div>
           <div>
             <h1 style="font-size: 24px; margin: 0; font-weight: 700;">Avatar G</h1>
-            <p style="margin: 0; font-size: 12px; color: #666;">AI Commerce Platform</p>
+            <p style="margin: 0; font-size: 12px; color: #666;">AI კომერციის პლატფორმა</p>
           </div>
         </div>
         <h2 style="font-size: 18px; margin: 0 0 8px 0; font-weight: 600;">${snapshot.storeName}</h2>
         <p>${snapshot.storeEmail}</p>
         ${snapshot.storeAddress ? `<p>${snapshot.storeAddress}</p>` : ''}
-        ${snapshot.storeVatRegNo ? `<p><strong>VAT Reg No:</strong> ${snapshot.storeVatRegNo}</p>` : ''}
+        ${snapshot.storeVatRegNo ? `<p><strong>დღგ რეგ. №:</strong> ${snapshot.storeVatRegNo}</p>` : ''}
       </div>
       <div class="invoice-meta">
         <h2>#${snapshot.invoiceNumber}</h2>
-        <p><strong>Invoice Date:</strong> ${issueDateStr}</p>
-        <p><strong>Order ID:</strong> ${snapshot.orderId.substring(0, 8)}</p>
+        <p><strong>ინვოისის თარიღი:</strong> ${issueDateStr}</p>
+        <p><strong>შეკვეთის ID:</strong> ${snapshot.orderId.substring(0, 8)}</p>
       </div>
     </div>
 
     <!-- Addresses -->
     <div class="addresses">
       <div class="address-section">
-        <h3>Bill To</h3>
+        <h3>მიმღები</h3>
         <p><strong>${snapshot.buyerName}</strong></p>
         <p>${snapshot.buyerEmail}</p>
       </div>
       <div class="address-section">
-        <h3>From</h3>
+        <h3>გამომგზავნი</h3>
         <p><strong>${snapshot.storeName}</strong></p>
         <p>${snapshot.storeEmail}</p>
       </div>
@@ -229,10 +230,10 @@ export function generateInvoiceHtml(snapshot: InvoiceSnapshot): string {
     <table>
       <thead>
         <tr>
-          <th>Description</th>
-          <th style="text-align: center; width: 80px;">Qty</th>
-          <th style="text-align: right; width: 100px;">Unit Price</th>
-          <th style="text-align: right; width: 100px;">Amount</th>
+          <th>აღწერა</th>
+          <th style="text-align: center; width: 80px;">რაოდენობა</th>
+          <th style="text-align: right; width: 100px;">ერთეულის ფასი</th>
+          <th style="text-align: right; width: 100px;">თანხა</th>
         </tr>
       </thead>
       <tbody>
@@ -243,7 +244,7 @@ export function generateInvoiceHtml(snapshot: InvoiceSnapshot): string {
     <!-- Totals -->
     <div class="totals">
       <div class="total-row">
-        <div class="total-row-label">Subtotal</div>
+        <div class="total-row-label">შუალედური ჯამი</div>
         <div class="total-row-value">${formatPrice(snapshot.subtotalCents, snapshot.currency)}</div>
       </div>
       <div class="total-row">
@@ -251,23 +252,23 @@ export function generateInvoiceHtml(snapshot: InvoiceSnapshot): string {
         <div class="total-row-value">${formatPrice(snapshot.vatAmountCents, snapshot.currency)}</div>
       </div>
       <div class="final-total">
-        <div class="total-row-label">Total</div>
+        <div class="total-row-label">სულ</div>
         <div class="total-row-value">${formatPrice(snapshot.totalCents, snapshot.currency)}</div>
       </div>
     </div>
 
     <!-- Tax Status -->
     <div class="vat-status ${snapshot.taxStatus === 'non_vat_payer' ? 'non-vat' : ''}">
-      <strong>Tax Status:</strong>
+      <strong>საგადასახადო სტატუსი:</strong>
       ${snapshot.taxStatus === 'vat_payer'
-        ? `VAT Payer - VAT included in total (${(snapshot.vatRateBps / 100).toFixed(1)}%)`
-        : 'Non-VAT Payer - No VAT applied'}
+        ? `დღგ გადამხდელი - დღგ შედის ჯამში (${(snapshot.vatRateBps / 100).toFixed(1)}%)`
+        : 'არ არის დღგ გადამხდელი - დღგ არ არის გათვალისწინებული'}
     </div>
 
     <!-- Footer -->
     <div class="footer">
-      <p>This is an automatically generated invoice. No signature required.</p>
-      <p>Generated on ${new Date().toLocaleDateString()} | Avatar Shop</p>
+      <p>ეს ინვოისი გენერირებულია ავტომატურად. ხელმოწერა არ არის საჭირო.</p>
+      <p>გენერაციის თარიღი: ${new Date().toLocaleDateString('ka-GE')} | Avatar G</p>
     </div>
   </div>
 </body>
@@ -293,7 +294,7 @@ export async function convertHtmlToPdf(html: string): Promise<Buffer> {
 
   try {
     // Try dynamic import of pdfkit if available
-    const PDFDocument = require('pdfkit');
+    const { default: PDFDocument } = await import('pdfkit');
     const doc = new PDFDocument({
       size: 'A4',
       margin: 50,
@@ -306,10 +307,10 @@ export async function convertHtmlToPdf(html: string): Promise<Buffer> {
       doc.on('error', reject);
 
       // Write HTML-inspired content to PDF
-      doc.fontSize(20).text('Invoice Generated', { align: 'center' });
+      doc.fontSize(20).text('ინვოისი გენერირებულია', { align: 'center' });
       doc.moveDown();
-      doc.fontSize(10).text('HTML to PDF conversion requires a PDF library.');
-      doc.text(`HTML length: ${html.length} characters`);
+      doc.fontSize(10).text('HTML-დან PDF-ში კონვერტაციისთვის საჭიროა PDF ბიბლიოთეკა.');
+      doc.text(`HTML სიგრძე: ${html.length} სიმბოლო`);
       doc.end();
     });
 
@@ -327,7 +328,7 @@ export async function convertHtmlToPdf(html: string): Promise<Buffer> {
 export async function storePdfToSupabase(
   invoiceId: string,
   pdfBuffer: Buffer,
-  supabaseClient: any
+  supabaseClient: SupabaseClient
 ): Promise<string | null> {
   try {
     const fileName = `invoice-${invoiceId}.pdf`;
@@ -357,7 +358,7 @@ export async function storePdfToSupabase(
  */
 export async function generateSignedPdfUrl(
   pdfPath: string,
-  supabaseClient: any,
+  supabaseClient: SupabaseClient,
   expiresInSeconds: number = 3600
 ): Promise<string | null> {
   try {

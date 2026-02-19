@@ -1,4 +1,5 @@
-import { createClient } from '@/lib/supabase/server';
+import { createSupabaseServerClient } from '@/lib/supabase/server';
+import type { SupabaseClient } from '@supabase/supabase-js';
 
 // ========================================
 // LAUNCH READINESS CHECKLIST
@@ -27,9 +28,9 @@ export interface LaunchReadiness {
  */
 export async function getLaunchReadinessChecklist(
   storeId: string,
-  supabaseClient?: any
+  supabaseClient?: SupabaseClient
 ): Promise<LaunchReadiness | null> {
-  const client = supabaseClient || createClient();
+  const client = supabaseClient || createSupabaseServerClient();
 
   try {
     // Load store data
@@ -142,11 +143,11 @@ export async function getLaunchReadinessChecklist(
 export async function completeChecklistItem(
   storeId: string,
   itemKey: string,
-  supabaseClient?: any
+  supabaseClient?: SupabaseClient
 ): Promise<boolean> {
-  const client = supabaseClient || createClient();
+  const client = supabaseClient || createSupabaseServerClient();
 
-  const updateFields: Record<string, any> = {};
+  const updateFields: Record<string, unknown> = {};
   updateFields[`${itemKey}_completed`] = true;
 
   // Map item keys to database fields
@@ -185,17 +186,19 @@ export async function completeChecklistItem(
  */
 export async function initializeLaunchChecklist(
   storeId: string,
-  supabaseClient?: any
+  supabaseClient?: SupabaseClient
 ): Promise<boolean> {
-  const client = supabaseClient || createClient();
+  const client = supabaseClient || createSupabaseServerClient();
 
   try {
-    await client
+    const { error } = await client
       .from('launch_readiness_checklist')
-      .insert([{ store_id: storeId }])
-      .catch((_err: any) => {
-        // Ignore if already exists
-      });
+      .insert([{ store_id: storeId }]);
+
+    if (error && error.code !== '23505') {
+      console.error('Error initializing launch checklist:', error);
+      return false;
+    }
 
     return true;
   } catch (error) {

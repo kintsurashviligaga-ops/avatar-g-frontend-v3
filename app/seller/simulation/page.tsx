@@ -18,11 +18,17 @@ interface SimulationResult {
   isViable: boolean;
 }
 
+interface OnboardingData {
+  budgetCents: number;
+  taxStatus: 'vat_payer' | 'non_vat_payer';
+  businessType: 'dropshipping' | 'digital' | 'own_product';
+}
+
 export default function SellerSimulationPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [simulation, setSimulation] = useState<SimulationResult | null>(null);
-  const [formData, setFormData] = useState<any>(null);
+  const [formData, setFormData] = useState<OnboardingData | null>(null);
 
   useEffect(() => {
     // Load onboarding data from sessionStorage
@@ -32,14 +38,24 @@ export default function SellerSimulationPage() {
       return;
     }
 
-    const data = JSON.parse(stored);
+    const parsed = JSON.parse(stored) as Partial<OnboardingData>;
+    const data: OnboardingData = {
+      budgetCents: typeof parsed.budgetCents === 'number' ? parsed.budgetCents : 0,
+      taxStatus: parsed.taxStatus === 'vat_payer' ? 'vat_payer' : 'non_vat_payer',
+      businessType:
+        parsed.businessType === 'dropshipping' ||
+        parsed.businessType === 'digital' ||
+        parsed.businessType === 'own_product'
+          ? parsed.businessType
+          : 'own_product',
+    };
     setFormData(data);
 
     // Simulate AI calculation (in production, call API)
     simulateMargin(data);
   }, [router]);
 
-  const simulateMargin = async (data: any) => {
+  const simulateMargin = async (data: OnboardingData) => {
     setLoading(true);
     
     // Simulate API delay

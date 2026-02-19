@@ -14,6 +14,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
+import type { ResponseCookie } from 'next/dist/compiled/@edge-runtime/cookies';
 import { getServerEnv } from '@/lib/env/server';
 import { getTracking } from '@/lib/shipping';
 import { ApiResponse } from '@/lib/commerce/types';
@@ -21,7 +22,7 @@ import { ApiResponse } from '@/lib/commerce/types';
 // Force dynamic rendering (uses cookies at runtime)
 export const dynamic = 'force-dynamic';
 
-async function getAuthUser(request: NextRequest) {
+async function getAuthUser(_request: NextRequest) {
   const cookieStore = cookies();
   const supabase = createServerClient(
     getServerEnv().NEXT_PUBLIC_SUPABASE_URL || '',
@@ -31,7 +32,7 @@ async function getAuthUser(request: NextRequest) {
         getAll() {
           return cookieStore.getAll();
         },
-        setAll(cookiesToSet: Array<{ name: string; value: string; options?: any }>) {
+        setAll(cookiesToSet: Array<{ name: string; value: string; options?: Partial<ResponseCookie> }>) {
           try {
             cookiesToSet.forEach(({ name, value, options }) => {
               cookieStore.set(name, value, options);
@@ -54,20 +55,20 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         {
           success: false,
           error: { code: 'UNAUTHORIZED', message: 'Not authenticated' },
-        } as ApiResponse<any>,
+        } as ApiResponse<unknown>,
         { status: 401 }
       );
     }
 
     const { searchParams } = new URL(request.url);
-    const orderId = searchParams.get('orderId');
+    const orderId = searchParams?.get?.('orderId');
 
     if (!orderId) {
       return NextResponse.json(
         {
           success: false,
           error: { code: 'INVALID_INPUT', message: 'orderId is required' },
-        } as ApiResponse<any>,
+        } as ApiResponse<unknown>,
         { status: 400 }
       );
     }
@@ -78,7 +79,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       {
         success: true,
         data: tracking,
-      } as ApiResponse<any>,
+      } as ApiResponse<unknown>,
       { status: 200 }
     );
   } catch (error) {
@@ -89,7 +90,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         {
           success: false,
           error: { code: 'NOT_FOUND', message: 'Order not found or access denied' },
-        } as ApiResponse<any>,
+        } as ApiResponse<unknown>,
         { status: 404 }
       );
     }
@@ -99,7 +100,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       {
         success: false,
         error: { code: 'INTERNAL_ERROR', message: 'Failed to fetch tracking' },
-      } as ApiResponse<any>,
+      } as ApiResponse<unknown>,
       { status: 500 }
     );
   }

@@ -17,6 +17,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
+import type { ResponseCookie } from 'next/dist/compiled/@edge-runtime/cookies';
 import { getServerEnv } from '@/lib/env/server';
 import { selectShippingProfile } from '@/lib/shipping';
 import { ApiResponse } from '@/lib/commerce/types';
@@ -24,7 +25,7 @@ import { ApiResponse } from '@/lib/commerce/types';
 // Force dynamic rendering
 export const dynamic = 'force-dynamic';
 
-async function getAuthUser(request: NextRequest) {
+async function getAuthUser(_request: NextRequest) {
   const cookieStore = cookies();
   const supabase = createServerClient(
     getServerEnv().NEXT_PUBLIC_SUPABASE_URL || '',
@@ -34,7 +35,7 @@ async function getAuthUser(request: NextRequest) {
         getAll() {
           return cookieStore.getAll();
         },
-        setAll(cookiesToSet: Array<{ name: string; value: string; options?: any }>) {
+        setAll(cookiesToSet: Array<{ name: string; value: string; options?: Partial<ResponseCookie> }>) {
           try {
             cookiesToSet.forEach(({ name, value, options }) => {
               cookieStore.set(name, value, options);
@@ -57,7 +58,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         {
           success: false,
           error: { code: 'UNAUTHORIZED', message: 'Not authenticated' },
-        } as ApiResponse<any>,
+        } as ApiResponse<unknown>,
         { status: 401 }
       );
     }
@@ -73,7 +74,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
             code: 'INVALID_INPUT',
             message: 'orderId and shippingProfileId are required',
           },
-        } as ApiResponse<any>,
+        } as ApiResponse<unknown>,
         { status: 400 }
       );
     }
@@ -88,7 +89,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       {
         success: true,
         data: result,
-      } as ApiResponse<any>,
+      } as ApiResponse<unknown>,
       { status: 200 }
     );
   } catch (error) {
@@ -99,7 +100,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         {
           success: false,
           error: { code: 'FORBIDDEN', message },
-        } as ApiResponse<any>,
+        } as ApiResponse<unknown>,
         { status: 403 }
       );
     }
@@ -109,7 +110,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         {
           success: false,
           error: { code: 'NOT_FOUND', message },
-        } as ApiResponse<any>,
+        } as ApiResponse<unknown>,
         { status: 404 }
       );
     }
@@ -119,7 +120,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       {
         success: false,
         error: { code: 'INTERNAL_ERROR', message: 'Failed to select shipping profile' },
-      } as ApiResponse<any>,
+      } as ApiResponse<unknown>,
       { status: 500 }
     );
   }

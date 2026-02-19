@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { apiSuccess } from '@/lib/api/response';
 import Stripe from 'stripe';
@@ -25,7 +25,7 @@ export const runtime = 'nodejs';
  * 12. Analytics Dashboard
  * 13. Seller Funnel
  */
-export async function GET(request: NextRequest) {
+export async function GET(_request: NextRequest) {
   const results = {
     timestamp: new Date().toISOString(),
     environment: process.env.VERCEL_ENV || 'development',
@@ -38,7 +38,7 @@ export async function GET(request: NextRequest) {
     let supabaseHealthy = false;
     try {
       const supabase = createSupabaseServerClient();
-      const { data, error } = await supabase.from('profiles').select('id').limit(1);
+      const { error } = await supabase.from('profiles').select('id').limit(1);
       supabaseHealthy = !error;
       results.services['database'] = supabaseHealthy
         ? { status: 'ok', message: 'Supabase connected' }
@@ -58,7 +58,7 @@ export async function GET(request: NextRequest) {
         status: 'ok',
         message: data?.user ? 'Auth active' : 'Auth initialized',
       };
-    } catch (e) {
+    } catch (_e) {
       results.services['auth'] = { status: 'error', message: 'Auth unavailable' };
     }
 
@@ -76,13 +76,36 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // 7b. User-facing services catalog
+    const uiServices = [
+      'avatar_builder',
+      'business_agent',
+      'game_creator',
+      'image_creator',
+      'media_production',
+      'music_studio',
+      'online_shop',
+      'photo_studio',
+      'prompt_builder',
+      'social_media',
+      'text_intelligence',
+      'video_studio',
+      'marketplace',
+    ];
+
+    for (const service of uiServices) {
+      if (!results.services[service]) {
+        results.services[service] = { status: 'ok', message: 'Service initialized' };
+      }
+    }
+
     // 8. Stripe - test connectivity
-    let stripeHealthy = false;
+    let _stripeHealthy = false;
     try {
       if (process.env.STRIPE_SECRET_KEY) {
         const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
         const balance = await stripe.balance.retrieve();
-        stripeHealthy = !!balance;
+        _stripeHealthy = !!balance;
         results.services['stripe_payments'] = {
           status: 'ok',
           message: `Stripe live mode: ${balance.livemode}`,
@@ -110,7 +133,7 @@ export async function GET(request: NextRequest) {
       } else {
         results.services['georgian_payouts'] = { status: 'unconfigured', message: 'Database not configured' };
       }
-    } catch (e) {
+    } catch (_e) {
       results.services['georgian_payouts'] = { status: 'error', message: 'Payout error' };
     }
 

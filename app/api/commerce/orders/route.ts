@@ -8,6 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
+import type { ResponseCookie } from 'next/dist/compiled/@edge-runtime/cookies';
 import {
   createOrder,
   getUserOrders,
@@ -20,7 +21,7 @@ import { getServerEnv } from '@/lib/env/server';
 export const dynamic = 'force-dynamic';
 
 // Helper: Get authenticated user
-async function getAuthUser(request: NextRequest) {
+async function getAuthUser(_request: NextRequest) {
   const cookieStore = cookies();
   const supabase = createServerClient(
     getServerEnv().NEXT_PUBLIC_SUPABASE_URL || '',
@@ -30,7 +31,7 @@ async function getAuthUser(request: NextRequest) {
         getAll() {
           return cookieStore.getAll();
         },
-        setAll(cookiesToSet: Array<{ name: string; value: string; options?: any }>) {
+        setAll(cookiesToSet: Array<{ name: string; value: string; options?: Partial<ResponseCookie> }>) {
           try {
             cookiesToSet.forEach(({ name, value, options }) => {
               cookieStore.set(name, value, options);
@@ -67,23 +68,23 @@ export async function GET(request: NextRequest) {
 
     // Get query params
     const url = new URL(request.url);
-    const limit = Math.min(parseInt(url.searchParams.get('limit') || '50'), 100);
-    const offset = parseInt(url.searchParams.get('offset') || '0');
+    const limit = Math.min(parseInt(url.searchParams?.get?.('limit') || '50'), 100);
+    const offset = parseInt(url.searchParams?.get?.('offset') || '0');
 
     const result = await getUserOrders(user.id, limit, offset);
 
     return NextResponse.json({
       success: true,
       data: {
-        orders: result.orders.map((order: any) => ({
-          id: order.id,
-          status: order.status,
-          total: order.total_amount,
-          subtotal: order.subtotal_amount,
-          vat: order.vat_amount,
-          platformFee: order.platform_fee_amount,
-          affiliateFee: order.affiliate_fee_amount,
-          createdAt: order.created_at,
+        orders: result.orders.map((order: unknown) => ({
+          id: (order as Record<string, unknown>).id,
+          status: (order as Record<string, unknown>).status,
+          total: (order as Record<string, unknown>).total_amount,
+          subtotal: (order as Record<string, unknown>).subtotal_amount,
+          vat: (order as Record<string, unknown>).vat_amount,
+          platformFee: (order as Record<string, unknown>).platform_fee_amount,
+          affiliateFee: (order as Record<string, unknown>).affiliate_fee_amount,
+          createdAt: (order as Record<string, unknown>).created_at,
         })),
         pagination: {
           limit,

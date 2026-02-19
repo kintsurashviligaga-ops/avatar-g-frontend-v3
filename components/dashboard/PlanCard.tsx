@@ -51,7 +51,7 @@ export function PlanCard({ plan, status, currentPeriodEnd, cancelAtPeriodEnd }: 
   const getPlanIcon = (plan: PlanTier) => {
     switch (normalizePlanTier(plan)) {
       case 'FREE': return '🌱';
-      case 'BASIC': return '⚡';
+      case 'PRO': return '⚡';
       case 'PREMIUM': return '👑';
       default: return '📦';
     }
@@ -67,8 +67,8 @@ export function PlanCard({ plan, status, currentPeriodEnd, cancelAtPeriodEnd }: 
       <div className="space-y-4">
         {/* Plan Name */}
         <div>
-          <h3 className="text-3xl font-bold text-white">{planConfig.name}</h3>
-          <p className="text-sm text-gray-400 mt-1">{planConfig.description}</p>
+          <h3 className="text-3xl font-bold text-white">{planConfig.label}</h3>
+          <p className="text-sm text-gray-400 mt-1">{planConfig.features[0] || 'Plan features included'}</p>
         </div>
         
         {/* Status */}
@@ -96,7 +96,7 @@ export function PlanCard({ plan, status, currentPeriodEnd, cancelAtPeriodEnd }: 
           <div className="pt-4">
             <button
               onClick={() => {
-                const nextPlan = normalizedPlan === 'FREE' ? 'BASIC' : 'PREMIUM';
+                const nextPlan: PlanTier = normalizedPlan === 'FREE' ? 'PRO' : 'PREMIUM';
                 handleUpgrade(nextPlan);
               }}
               disabled={isUpgrading}

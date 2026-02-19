@@ -12,7 +12,7 @@ interface DashboardHeaderProps {
 }
 
 export function DashboardHeader({ userName, plan }: DashboardHeaderProps) {
-  const planName = getPlan(normalizePlanTier(plan)).name;
+  const planName = getPlan(normalizePlanTier(plan)).label;
 
   return (
     <div className="flex items-center justify-between">

@@ -1,11 +1,7 @@
+const withNextIntl = require('next-intl/plugin')('./i18n/request.ts');
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  typescript: {
-    ignoreBuildErrors: true,
-  },
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
   swcMinify: true,
   images: {
     remotePatterns: [
@@ -40,6 +36,32 @@ const nextConfig = {
       },
     ];
   },
+  async redirects() {
+    const serviceRedirects = [
+      { from: 'video-factory', to: 'video-studio' },
+      { from: 'image-architect', to: 'image-creator' },
+      { from: 'script-writer', to: 'text-intelligence' },
+      { from: 'social-content-factory', to: 'social-media' },
+      { from: 'business-agents', to: 'business-agent' },
+      { from: 'tourism-agent', to: 'agent-g' },
+      { from: 'affiliate-marketplace-layer', to: 'marketplace' },
+      { from: 'auto-dropshipping-logic', to: 'online-shop' },
+      { from: 'tokenized-digital-goods-system', to: 'marketplace' },
+    ];
+
+    return serviceRedirects.flatMap(({ from, to }) => [
+      {
+        source: `/services/${from}`,
+        destination: `/services/${to}`,
+        permanent: true,
+      },
+      {
+        source: `/:locale/services/${from}`,
+        destination: `/:locale/services/${to}`,
+        permanent: true,
+      },
+    ]);
+  },
 }
 
-module.exports = nextConfig
+module.exports = withNextIntl(nextConfig)

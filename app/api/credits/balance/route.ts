@@ -3,29 +3,23 @@
  * Get user's current credit balance and allowance
  */
 
-import { NextResponse } from 'next/server';
-import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { NextRequest, NextResponse } from 'next/server';
+import { createRouteHandlerClient } from '@/lib/supabase/server';
+import { requireAuthenticatedUser } from '@/lib/supabase/auth';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const supabase = createSupabaseServerClient();
-    
-    // Get authenticated user
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    
-    if (authError || !user) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
+    const user = await requireAuthenticatedUser(request);
+    const supabase = createRouteHandlerClient();
+
+    await supabase.rpc('reset_user_credits_if_due', { p_user_id: user.id });
     
     // Get credits
     const { data: credits, error: creditsError } = await supabase
       .from('credits')
-      .select('balance, monthly_allowance, last_reset_at, next_reset_at, total_earned, total_spent')
+      .select('balance, monthly_allowance, reset_at')
       .eq('user_id', user.id)
       .single();
     
@@ -40,13 +34,14 @@ export async function GET() {
     return NextResponse.json({
       balance: credits.balance,
       monthlyAllowance: credits.monthly_allowance,
-      lastResetAt: credits.last_reset_at,
-      nextResetAt: credits.next_reset_at,
-      totalEarned: credits.total_earned,
-      totalSpent: credits.total_spent,
+      resetAt: credits.reset_at,
     });
     
   } catch (error) {
+    if (error instanceof Error && error.message === 'UNAUTHENTICATED') {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     console.error('Credits API error:', error);
     return NextResponse.json(
       { 

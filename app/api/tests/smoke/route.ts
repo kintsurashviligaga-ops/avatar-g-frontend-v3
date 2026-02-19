@@ -1,6 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
-import { apiSuccess, apiError } from '@/lib/api/response';
+import { apiSuccess } from '@/lib/api/response';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -27,7 +27,7 @@ interface SmokeTestResult {
  * 8. Admin panel - Role-based access working
  * 9. Payment processing - Stripe configured
  */
-export async function GET(request: NextRequest) {
+export async function GET(_request: NextRequest) {
   const results: SmokeTestResult[] = [];
   const supabase = createSupabaseServerClient();
 
@@ -41,7 +41,7 @@ export async function GET(request: NextRequest) {
       message: 'Static content accessible',
       duration_ms: Date.now() - start,
     });
-  } catch (e) {
+  } catch (_e) {
     results.push({
       test: '1. Homepage Loads',
       status: 'fail',
@@ -81,7 +81,7 @@ export async function GET(request: NextRequest) {
   // Test 3: Seller Onboarding (check if tables exist)
   try {
     const start = Date.now();
-    const { data, error } = await supabase
+    const { error } = await supabase
       .from('sellers')
       .select('id')
       .limit(1);
@@ -101,7 +101,7 @@ export async function GET(request: NextRequest) {
         duration_ms: Date.now() - start,
       });
     }
-  } catch (e) {
+  } catch (_e) {
     results.push({
       test: '3. Seller Onboarding',
       status: 'fail',
@@ -113,7 +113,7 @@ export async function GET(request: NextRequest) {
   // Test 4: Product Creation (API endpoint check)
   try {
     const start = Date.now();
-    const { data, error } = await supabase
+    const { error } = await supabase
       .from('products')
       .select('id')
       .limit(1);
@@ -124,7 +124,7 @@ export async function GET(request: NextRequest) {
       message: !error ? 'Products API accessible' : 'Products table error',
       duration_ms: Date.now() - start,
     });
-  } catch (e) {
+  } catch (_e) {
     results.push({
       test: '4. Product Creation',
       status: 'fail',
@@ -136,7 +136,7 @@ export async function GET(request: NextRequest) {
   // Test 5: Profit Guardrails (check guardrails schema)
   try {
     const start = Date.now();
-    const { data, error } = await supabase
+    const { error } = await supabase
       .from('guardrails_policies')
       .select('id')
       .limit(1);
@@ -147,7 +147,7 @@ export async function GET(request: NextRequest) {
       message: !error ? 'Guardrails policies accessible' : 'Guardrails table check',
       duration_ms: Date.now() - start,
     });
-  } catch (e) {
+  } catch (_e) {
     results.push({
       test: '5. Profit Guardrails',
       status: 'skip',
@@ -159,7 +159,7 @@ export async function GET(request: NextRequest) {
   // Test 6: Invoice PDF Generation
   try {
     const start = Date.now();
-    const { data, error } = await supabase
+    const { error } = await supabase
       .from('invoices')
       .select('id')
       .limit(1);
@@ -170,7 +170,7 @@ export async function GET(request: NextRequest) {
       message: !error ? 'Invoice schema accessible' : 'Invoices table check',
       duration_ms: Date.now() - start,
     });
-  } catch (e) {
+  } catch (_e) {
     results.push({
       test: '6. Invoice PDF Engine',
       status: 'fail',
@@ -182,7 +182,7 @@ export async function GET(request: NextRequest) {
   // Test 7: KPI Dashboard
   try {
     const start = Date.now();
-    const { data, error } = await supabase
+    const { error } = await supabase
       .from('marketplace_kpis')
       .select('id')
       .limit(1);
@@ -193,7 +193,7 @@ export async function GET(request: NextRequest) {
       message: !error ? 'KPI data accessible' : 'Dashboard data check',
       duration_ms: Date.now() - start,
     });
-  } catch (e) {
+  } catch (_e) {
     results.push({
       test: '7. KPI Dashboard',
       status: 'skip',
@@ -205,7 +205,7 @@ export async function GET(request: NextRequest) {
   // Test 8: Admin Panel (role check)
   try {
     const start = Date.now();
-    const { data, error } = await supabase
+    const { error } = await supabase
       .from('profiles')
       .select('role')
       .limit(1);
@@ -216,7 +216,7 @@ export async function GET(request: NextRequest) {
       message: !error ? 'Role-based access configured' : 'Admin panel check',
       duration_ms: Date.now() - start,
     });
-  } catch (e) {
+  } catch (_e) {
     results.push({
       test: '8. Admin Panel',
       status: 'fail',
@@ -243,7 +243,7 @@ export async function GET(request: NextRequest) {
         duration_ms: Date.now() - start,
       });
     }
-  } catch (e) {
+  } catch (_e) {
     results.push({
       test: '9. Payment Processing',
       status: 'fail',

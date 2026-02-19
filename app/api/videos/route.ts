@@ -21,7 +21,7 @@ export async function GET(request: NextRequest) {
   try {
     // Health check endpoint
     const url = new URL(request.url);
-    if (url.searchParams.get('health') === '1') {
+    if ((url.searchParams?.get?.('health') ?? '') === '1') {
       return NextResponse.json({
         status: 'ok',
         service: 'videos-api',
@@ -49,10 +49,10 @@ export async function GET(request: NextRequest) {
     }
 
     // Query parameters (url already defined above for health check)
-    const limit = Math.min(parseInt(url.searchParams.get('limit') || '50'), 500);
-    const offset = parseInt(url.searchParams.get('offset') || '0');
-    const status = url.searchParams.get('status');
-    const favorites = url.searchParams.get('favorites') === 'true';
+    const limit = Math.min(parseInt(url.searchParams?.get?.('limit') || '50'), 500);
+    const offset = parseInt(url.searchParams?.get?.('offset') || '0');
+    const status = url.searchParams?.get?.('status');
+    const favorites = (url.searchParams?.get?.('favorites') ?? '') === 'true';
 
     let query = supabase
       .from('video_clips')

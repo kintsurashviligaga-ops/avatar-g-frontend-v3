@@ -33,7 +33,7 @@ export interface OnboardingEvent {
   userId: string;
   eventType: OnboardingEventType;
   status: "pending" | "completed" | "failed";
-  metadataJson: Record<string, any>;
+  metadataJson: Record<string, unknown>;
   createdAt: Date;
 }
 

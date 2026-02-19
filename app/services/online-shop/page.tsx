@@ -20,13 +20,16 @@ export default function OnlineShopPage() {
           >
             <div className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-500/10 border border-emerald-500/30 rounded-full mb-4">
               <ShoppingCart className="w-4 h-4 text-emerald-400" />
-              <span className="text-emerald-300 text-sm font-medium">Online Shop Builder</span>
+              <span className="text-emerald-300 text-sm font-medium">ონლაინ მაღაზიის ბილდერი</span>
             </div>
             <h1 className="text-5xl font-bold text-white mb-4">
-              Launch Your <span className="bg-gradient-to-r from-emerald-400 to-green-500 bg-clip-text text-transparent">AI-Powered Shop</span>
+              გაუშვი შენი{' '}
+              <span className="bg-gradient-to-r from-emerald-400 to-green-500 bg-clip-text text-transparent">
+                AI-ით გაძლიერებული მაღაზია
+              </span>
             </h1>
             <p className="text-xl text-gray-400 max-w-2xl mx-auto">
-              Complete e-commerce solution with AI-powered product management and analytics
+              სრულყოფილი ელექტრონული კომერციის გადაწყვეტა AI-ით გაძლიერებული პროდუქტების მართვით და ანალიტიკით
             </p>
           </motion.div>
 
@@ -34,12 +37,13 @@ export default function OnlineShopPage() {
             <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-gradient-to-br from-emerald-500/20 to-green-500/20 border border-emerald-500/30 mb-6">
               <ShoppingCart className="w-10 h-10 text-emerald-400" />
             </div>
-            <h2 className="text-2xl font-bold text-white mb-3">Coming Soon</h2>
+            <h2 className="text-2xl font-bold text-white mb-3">მალე</h2>
             <p className="text-gray-400 mb-6">
-              We&apos;re creating a complete e-commerce platform with AI-powered product descriptions, inventory management, and smart pricing.
+              ვქმნით სრულ ელექტრონული კომერციის პლატფორმას AI-ით გაძლიერებული პროდუქტის აღწერებით,
+              მარაგების მართვით და ჭკვიანი ფასებით.
             </p>
             <Button variant="outline" className="border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10">
-              Join Waitlist
+              მოლოდინის სიაში შესვლა
             </Button>
           </Card>
         </div>

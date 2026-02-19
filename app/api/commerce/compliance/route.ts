@@ -8,6 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
+import type { ResponseCookie } from 'next/dist/compiled/@edge-runtime/cookies';
 import {
   updateUserConsent,
   requestDataExport,
@@ -20,7 +21,7 @@ import { getServerEnv } from '@/lib/env/server';
 export const dynamic = 'force-dynamic';
 
 // Helper: Get authenticated user
-async function getAuthUser(request: NextRequest) {
+async function getAuthUser(_request: NextRequest) {
   const cookieStore = cookies();
   const supabase = createServerClient(
     getServerEnv().NEXT_PUBLIC_SUPABASE_URL || '',
@@ -30,7 +31,7 @@ async function getAuthUser(request: NextRequest) {
         getAll() {
           return cookieStore.getAll();
         },
-        setAll(cookiesToSet: Array<{ name: string; value: string; options?: any }>) {
+        setAll(cookiesToSet: Array<{ name: string; value: string; options?: Partial<ResponseCookie> }>) {
           try {
             cookiesToSet.forEach(({ name, value, options }) => {
               cookieStore.set(name, value, options);
@@ -252,21 +253,21 @@ export async function GET_AUDIT_LOGS(request: NextRequest) {
     }
 
     const url = new URL(request.url);
-    const limit = Math.min(parseInt(url.searchParams.get('limit') || '100'), 500);
+    const limit = Math.min(parseInt(url.searchParams?.get?.('limit') || '100'), 500);
 
     const logs = await getUserAuditLogs(user.id, limit);
 
     return NextResponse.json({
       success: true,
       data: {
-        logs: logs.map((log: any) => ({
-          id: log.id,
-          action: log.action,
-          resourceType: log.resource_type,
-          description: log.description,
-          isCritical: log.is_critical,
-          riskFlags: log.risk_flags,
-          createdAt: log.created_at,
+        logs: logs.map((log: unknown) => ({
+          id: (log as Record<string, unknown>).id,
+          action: (log as Record<string, unknown>).action,
+          resourceType: (log as Record<string, unknown>).resource_type,
+          description: (log as Record<string, unknown>).description,
+          isCritical: (log as Record<string, unknown>).is_critical,
+          riskFlags: (log as Record<string, unknown>).risk_flags,
+          createdAt: (log as Record<string, unknown>).created_at,
         })),
       },
     });

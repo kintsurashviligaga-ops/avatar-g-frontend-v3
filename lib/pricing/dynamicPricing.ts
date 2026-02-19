@@ -11,7 +11,7 @@ import { DynamicPriceResult, PricingSignals } from './types';
 import { roundToNearest } from '@/lib/finance/money';
 
 // Pricing constants (in basis points)
-const MIN_ADJUSTMENT_BPS = 100; // 1% minimum
+const _MIN_ADJUSTMENT_BPS = 100; // 1% minimum
 const MAX_ADJUSTMENT_BPS = 1500; // 15% maximum
 const TARGET_CONVERSION_RATE = 5; // 5% target
 
@@ -157,7 +157,7 @@ export function estimateConversionAfterPriceChange(
 export function competitivePrice(
   currentPriceCents: number,
   competitorPriceCents: number,
-  minMarginBps: number
+  _minMarginBps: number
 ): number {
   // If competitor is cheaper and we can still hit margin target, match or go slightly lower
   if (competitorPriceCents < currentPriceCents) {

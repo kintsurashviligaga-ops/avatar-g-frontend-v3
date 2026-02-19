@@ -1,4 +1,4 @@
-export type Locale = "ka" | "en" | "ru";
+export type Locale = "en" | "ka";
 
-export const locales: Locale[] = ["ka", "en", "ru"];
-export const defaultLocale: Locale = "ka";
+export const locales: Locale[] = ["en", "ka"];
+export const defaultLocale: Locale = "en";

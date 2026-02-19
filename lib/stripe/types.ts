@@ -68,7 +68,7 @@ export interface StripeEventRecord {
   id: string;
   type: string;
   processed_at: string | null;
-  payload_json: Record<string, any>;
+  payload_json: Record<string, unknown>;
   created_at: string;
   error_log: string | null;
 }

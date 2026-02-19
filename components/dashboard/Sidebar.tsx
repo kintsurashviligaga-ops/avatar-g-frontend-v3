@@ -35,7 +35,7 @@ interface NavItem {
 
 export function DashboardSidebar({ userRole = 'seller', className }: SidebarProps) {
   const pathname = usePathname()
-  const t = useTranslations()
+  const _t = useTranslations()
 
   // Georgian navigation items (using translation keys)
   const navItems: NavItem[] = [

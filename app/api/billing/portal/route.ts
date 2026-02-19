@@ -4,7 +4,8 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { createRouteHandlerClient } from '@/lib/supabase/server';
+import { requireAuthenticatedUser } from '@/lib/supabase/auth';
 import { createPortalSession } from '@/lib/billing/stripe';
 
 export const dynamic = 'force-dynamic';
@@ -12,17 +13,8 @@ export const runtime = 'nodejs';
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = createSupabaseServerClient();
-    
-    // Get authenticated user
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    
-    if (authError || !user) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
+    const user = await requireAuthenticatedUser(request);
+    const supabase = createRouteHandlerClient();
     
     // Get subscription with customer ID
     const { data: subscription, error: subError } = await supabase
@@ -56,6 +48,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ url: portalUrl });
     
   } catch (error) {
+    if (error instanceof Error && error.message === 'UNAUTHENTICATED') {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     console.error('Portal error:', error);
     return NextResponse.json(
       { 

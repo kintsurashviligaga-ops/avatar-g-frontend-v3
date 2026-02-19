@@ -2,8 +2,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { generateSignedPdfUrl } from '@/lib/invoice/pdf';
 
+type InvoiceRow = {
+  pdf_path: string;
+  [key: string]: unknown;
+};
+
 // Force dynamic rendering (uses cookies and env vars at runtime)
 export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
 
 // ========================================
 // GET /api/invoices/list
@@ -14,10 +20,10 @@ export async function GET(request: NextRequest) {
   try {
     const supabase = createSupabaseServerClient();
     const { searchParams } = new URL(request.url);
-    const limit = Math.min(Number(searchParams.get('limit') || '50'), 100);
-    const offset = Number(searchParams.get('offset') || '0');
-    const storeId = searchParams.get('storeId'); // Optional: filter by store
-    const role = searchParams.get('role') || 'buyer'; // 'buyer' or 'seller'
+    const limit = Math.min(Number(searchParams?.get?.('limit') || '50'), 100);
+    const offset = Number(searchParams?.get?.('offset') || '0');
+    const storeId = searchParams?.get?.('storeId'); // Optional: filter by store
+    const role = searchParams?.get?.('role') || 'buyer'; // 'buyer' or 'seller'
 
     // Get current user
     const {
@@ -66,7 +72,7 @@ export async function GET(request: NextRequest) {
 
     // Generate signed URLs for all invoices
     const invoicesWithUrls = await Promise.all(
-      (invoices || []).map(async (invoice) => ({
+      ((invoices || []) as InvoiceRow[]).map(async (invoice) => ({
         ...invoice,
         pdfUrl: await generateSignedPdfUrl(invoice.pdf_path, supabase),
       }))

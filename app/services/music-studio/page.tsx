@@ -23,23 +23,23 @@ import { getAccessToken } from '@/lib/auth/client';
 const GEORGIAN_TEMPLATES = [
   {
     id: 1,
-    title: 'ðŸŽµ áƒšáƒ˜áƒ™áƒ˜ áƒžáƒáƒžáƒ˜ áƒ°áƒ˜áƒ¢áƒ˜',
-    prompt: 'Georgian pop song with upbeat melody, modern production, about romance and joy, featuring Georgian vocals, catchy chorus, 3 minutes'
+    title: '🎵 ქართული პოპი ჰიტი',
+    prompt: 'ქართული პოპ სიმღერა ენერგიული მელოდიით და თანამედროვე პროდაქშენით, სიყვარულსა და სიხარულზე, ქართული ვოკალით, დასამახსოვრებელი რეფრენით, 3 წუთი'
   },
   {
     id: 2,
-    title: 'ðŸŽ¤ áƒ°áƒ˜áƒž-áƒ°áƒáƒžáƒ˜',
-    prompt: 'Georgian hip-hop track with urban beats, rap verses in Georgian, strong bass, inspiring lyrics about success'
+    title: '🎤 ქართული ჰიპ-ჰოპი',
+    prompt: 'ქართული ჰიპ-ჰოპ ტრეკი ურბანული ბიტებით, რეპ-ვერსებით ქართულად, ძლიერი ბასით, მოტივაციის ტექსტით წარმატებაზე'
   },
   {
     id: 3,
-    title: 'ðŸŽ¸ áƒáƒ™áƒ£áƒ¡áƒ¢áƒ˜áƒ™áƒ£áƒ áƒ˜',
-    prompt: 'Georgian acoustic ballad with guitar, soft vocals, emotional lyrics about love and memories'
+    title: '🎸 ქართული აკუსტიკური ბალადა',
+    prompt: 'ქართული აკუსტიკური ბალადა გიტარით, რბილი ვოკალით, ემოციური ტექსტით სიყვარულზე და მოგონებებზე'
   },
   {
     id: 4,
-    title: 'ðŸ’ƒ áƒ“áƒáƒ¯áƒ” áƒ›áƒ£áƒ¡áƒ˜áƒ™áƒ',
-    prompt: 'Georgian dance/club music with energetic beats, synth production, party vibes'
+    title: '💃 ქართული საცეკვაო მუსიკა',
+    prompt: 'ქართული საცეკვაო/კლუბური მუსიკა ენერგიული ბიტებით, სინთ-პროდაქშენით, წვეულების ვაიბით'
   }
 ];
 
@@ -278,10 +278,10 @@ export default function MusicStudioPage() {
             </div>
             <div>
               <h1 className="text-4xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
-                {t('music.studio.title')}
+                {t('music.title')}
               </h1>
               <p className="text-white/60 text-sm mt-1">
-                {t('music.studio.subtitle')}
+                {t('music.description')}
               </p>
             </div>
           </div>
@@ -295,16 +295,16 @@ export default function MusicStudioPage() {
           <div className="lg:col-span-4 space-y-6">
             <div className="bg-black/20 backdrop-blur-md rounded-xl border border-white/10 p-6">
               <label className="block text-sm font-semibold mb-3">
-                {t('music.prompt.label')}
+                {t('music.prompt')}
               </label>
               <textarea
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
-                placeholder={t('music.prompt.placeholder')}
+                placeholder={t('music.prompt_placeholder')}
                 rows={6}
                 className="w-full bg-black/40 border border-white/10 rounded-lg px-4 py-3 text-white placeholder-white/30 focus:border-purple-400 focus:outline-none transition-colors resize-none"
               />
-              <p className="text-xs text-white/40 mt-2">{t('music.prompt.help')}</p>
+              <p className="text-xs text-white/40 mt-2">{t('music.prompt_help')}</p>
 
               <div className="mt-6 grid grid-cols-2 gap-2">
                 {GEORGIAN_TEMPLATES.map((tmpl) => (
@@ -329,7 +329,7 @@ export default function MusicStudioPage() {
             <div className="bg-black/20 backdrop-blur-md rounded-xl border border-white/10 p-6">
               <h3 className="text-sm font-semibold mb-4 flex items-center gap-2">
                 <Music className="w-4 h-4 text-purple-400" />
-                {t('music.lyrics.label')}
+                {t('music.lyrics')}
               </h3>
               <div className="flex items-center gap-2 mb-4">
                 <button
@@ -340,7 +340,7 @@ export default function MusicStudioPage() {
                       : 'border-white/10 text-white/50 hover:text-white'
                   }`}
                 >
-                  Instrumental
+                  {t('music.instrumental')}
                 </button>
                 <button
                   onClick={() => setLyricsMode('auto')}
@@ -350,7 +350,7 @@ export default function MusicStudioPage() {
                       : 'border-white/10 text-white/50 hover:text-white'
                   }`}
                 >
-                  Vocals
+                  {t('music.vocals')}
                 </button>
               </div>
               <LyricsEditor
@@ -364,7 +364,7 @@ export default function MusicStudioPage() {
             <div className="bg-black/20 backdrop-blur-md rounded-xl border border-white/10 p-6">
               <h3 className="text-sm font-semibold mb-4 flex items-center gap-2">
                 <Sparkles className="w-4 h-4 text-pink-400" />
-                {t('music.style.label')}
+                {t('music.style')}
               </h3>
               <StyleSelector
                 selectedGenres={genre ? [genre] : []}
@@ -387,12 +387,12 @@ export default function MusicStudioPage() {
                 {generating ? (
                   <>
                     <Loader2 className="w-5 h-5 animate-spin" />
-                    {t('music.generating')} ({progress}%)
+                    {t('common.generating')} ({progress}%)
                   </>
                 ) : (
                   <>
                     <Sparkles className="w-5 h-5" />
-                    {t('music.generate')}
+                    {t('common.generate')}
                   </>
                 )}
               </Button>
@@ -414,19 +414,19 @@ export default function MusicStudioPage() {
 
             <div className="bg-black/20 backdrop-blur-md rounded-xl border border-white/10 p-6">
               <div className="flex items-center justify-between mb-4">
-                <h3 className="font-semibold">{t('music.results', 'Results')}</h3>
+                <h3 className="font-semibold">{t('music.results')}</h3>
                 <div className="flex items-center gap-2">
-                  {['all', 'favorites', 'recent'].map((filter) => (
+                  {[{ key: 'all', label: t('music.all') }, { key: 'favorites', label: t('music.favorites') }, { key: 'recent', label: t('music.recent') }].map((filter) => (
                     <button
-                      key={filter}
-                      onClick={() => setLibraryFilter(filter as 'all' | 'favorites' | 'recent')}
+                      key={filter.key}
+                      onClick={() => setLibraryFilter(filter.key as 'all' | 'favorites' | 'recent')}
                       className={`text-xs px-2 py-1 rounded border transition ${
-                        libraryFilter === filter
+                        libraryFilter === filter.key
                           ? 'border-cyan-400/60 text-cyan-200 bg-cyan-500/10'
                           : 'border-white/10 text-white/50 hover:text-white'
                       }`}
                     >
-                      {filter}
+                      {filter.label}
                     </button>
                   ))}
                 </div>
@@ -443,7 +443,7 @@ export default function MusicStudioPage() {
                   ))
                 ) : (
                   <div className="text-center py-10 text-white/40 text-sm">
-                    {t('music.results.empty', 'Generate a track to see results here.')}
+                    {t('music.results.empty')}
                   </div>
                 )}
               </div>
@@ -465,8 +465,8 @@ export default function MusicStudioPage() {
                       onClick={() => handleTrackSelect(track)}
                       className="w-full text-left p-2 rounded-lg border border-white/10 hover:border-cyan-400/60 bg-black/20 transition"
                     >
-                      <div className="text-sm text-white truncate">{track.title || 'Untitled'}</div>
-                      <div className="text-xs text-white/50 truncate">{track.genre || 'Track'}</div>
+                      <div className="text-sm text-white truncate">{track.title || t('music.untitled')}</div>
+                      <div className="text-xs text-white/50 truncate">{track.genre || t('music.track')}</div>
                     </button>
                   ))
                 ) : (
@@ -485,7 +485,7 @@ export default function MusicStudioPage() {
                 onClick={() => setVoiceLabOpen((prev) => !prev)}
                 className="w-full flex items-center justify-between"
               >
-                <span className="text-sm font-semibold">{t('music.voice_lab', 'Voice Lab')}</span>
+                <span className="text-sm font-semibold">{t('music.voice_lab')}</span>
                 <ChevronDown
                   className={`w-4 h-4 transition-transform ${voiceLabOpen ? 'rotate-180' : ''}`}
                 />
@@ -500,7 +500,7 @@ export default function MusicStudioPage() {
                     className="mt-4 space-y-4"
                   >
                     <div className="flex items-center justify-between text-xs text-white/60">
-                      <span>Sing with my Avatar</span>
+                      <span>{t('music.avatar_vocals')}</span>
                       <button
                         onClick={() => setUseAvatarVocals((prev) => !prev)}
                         disabled={!avatarRef?.id}
@@ -510,18 +510,18 @@ export default function MusicStudioPage() {
                             : 'border-white/10 text-white/40'
                         } ${!avatarRef?.id ? 'opacity-40 cursor-not-allowed' : ''}`}
                       >
-                        {useAvatarVocals ? t('common.on', 'On') : t('common.off', 'Off')}
+                        {useAvatarVocals ? t('common.on') : t('common.off')}
                       </button>
                     </div>
 
                     {!avatarRef?.id && (
                       <p className="text-xs text-white/40">
-                        Create an avatar first to enable vocal identity.
+                        {t('music.avatar_required')}
                       </p>
                     )}
 
                     <div className="flex items-center justify-between text-xs text-white/60">
-                      <span>{t('music.custom_vocals', 'Custom Vocals')}</span>
+                      <span>{t('music.custom_vocals')}</span>
                       <button
                         onClick={toggleCustomVocals}
                         className={`px-2 py-1 rounded border ${
@@ -530,7 +530,7 @@ export default function MusicStudioPage() {
                             : 'border-white/10 text-white/40'
                         }`}
                       >
-                        {useCustomVocals ? t('common.on', 'On') : t('common.off', 'Off')}
+                        {useCustomVocals ? t('common.on') : t('common.off')}
                       </button>
                     </div>
 
@@ -560,7 +560,7 @@ export default function MusicStudioPage() {
               />
               <Card className="bg-black/40 border-white/10 overflow-hidden">
                 <ChatWindow
-                  title="Music Assistant"
+                  title={t('music.assistant')}
                   serviceContext="music"
                   height="md"
                   minimizable

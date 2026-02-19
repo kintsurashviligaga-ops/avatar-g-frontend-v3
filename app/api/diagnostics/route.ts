@@ -23,7 +23,7 @@ export async function GET(request: NextRequest) {
     }
 
     const searchParams = request.nextUrl.searchParams;
-    const healthCheck = searchParams.get('health') === '1';
+    const healthCheck = (searchParams?.get?.('health') ?? '') === '1';
 
     // Basic health check
     if (healthCheck) {

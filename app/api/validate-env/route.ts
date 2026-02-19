@@ -1,6 +1,5 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { apiError, apiSuccess } from '@/lib/api/response';
-import { validateEnvironment } from '@/lib/config/validateEnv';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -52,11 +51,11 @@ export async function GET(request: NextRequest) {
 
     // Check required variables
     const missing = requiredVars.filter(v => !process.env[v]);
-    const present = requiredVars.filter(v => !!process.env[v]);
+    const _present = requiredVars.filter(v => !!process.env[v]);
 
     // Check optional variables
-    const presentOptional = optionalVars.filter(v => !!process.env[v]);
-    const missingOptional = optionalVars.filter(v => !process.env[v]);
+    const _presentOptional = optionalVars.filter(v => !!process.env[v]);
+    const _missingOptional = optionalVars.filter(v => !process.env[v]);
 
     // Build validation response
     const required_vars: Record<string, boolean> = {};
@@ -105,7 +104,7 @@ export async function GET(request: NextRequest) {
  * POST - Detailed environment report (development only)
  * Includes more information about each variable
  */
-export async function POST(request: NextRequest) {
+export async function POST(_request: NextRequest) {
   if (process.env.NODE_ENV !== 'development') {
     return apiError('POST endpoint only available in development', 403);
   }
@@ -133,7 +132,7 @@ export async function POST(request: NextRequest) {
       avatar_related_vars: avatarRelated,
       timestamp: new Date().toISOString(),
     });
-  } catch (error) {
+  } catch (_error) {
     return apiError('Failed to generate environment report', 500);
   }
 }

@@ -5,6 +5,10 @@
 
 import { ShippingRiskFactors, ShippingRiskScore } from './types';
 
+function toNumberOrDefault(value: number | undefined, fallback: number): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+}
+
 /**
  * Calculate shipping risk score (0-100, where 100 is highest risk)
  *
@@ -23,8 +27,12 @@ export function computeShippingRiskScore(factors: ShippingRiskFactors): Shipping
   let conversionImpact = 0;
   let additionalMarginNeeded = 0;
 
+  const deliveryDaysAvg = toNumberOrDefault(factors.deliveryDaysAvg, 7);
+  const delayProbability = toNumberOrDefault(factors.delayProbability, 0.1);
+  const refundRatePct = toNumberOrDefault(factors.refundRatePct, 5);
+
   // Risk factor 1: Delivery time
-  const deliveryDelayDays = Math.max(0, factors.deliveryDaysAvg - 7); // Days over 1 week
+  const deliveryDelayDays = Math.max(0, deliveryDaysAvg - 7); // Days over 1 week
   if (deliveryDelayDays > 0) {
     // Each extra day reduces conversion by ~1%
     riskScore += Math.min(deliveryDelayDays * 5, 30); // Cap at 30 points
@@ -35,16 +43,16 @@ export function computeShippingRiskScore(factors: ShippingRiskFactors): Shipping
   // Risk factor 2: Delay probability
   // 10% chance of delay → 2 points
   // 50% chance → 10 points
-  const delayRiskPoints = factors.delayProbability * 20;
+  const delayRiskPoints = delayProbability * 20;
   riskScore += Math.min(delayRiskPoints, 25);
-  conversionImpact += Math.min(factors.delayProbability * 5, 10);
-  additionalMarginNeeded += Math.min(factors.delayProbability * 200, 500);
+  conversionImpact += Math.min(delayProbability * 5, 10);
+  additionalMarginNeeded += Math.min(delayProbability * 200, 500);
 
   // Risk factor 3: Refund rate
   // 5% refund rate is normal
   // 10% is concerning
   // 20%+ is very high
-  const excessRefundRate = Math.max(0, factors.refundRatePct - 5);
+  const excessRefundRate = Math.max(0, refundRatePct - 5);
   riskScore += Math.min(excessRefundRate * 3, 45); // 0-5% excess = 0-15 points
 
   if (excessRefundRate > 15) {
@@ -208,6 +216,12 @@ export function optimizeShippingStrategy(
     delayProbability: Math.max(0.05, maxDeliveryDays / 20), // 5% base + 5% per day
     refundRatePct: 5 + maxDeliveryDays, // 5% base + 1% per day delay
     carrierId: 'standard',
+    routeRisk: 'medium',
+    carrierRisk: 'medium',
+    weatherRisk: 'low',
+    distanceKm: 100,
+    estimatedDelayDays: Math.max(0, maxDeliveryDays - 5),
+    lossRateBps: 50,
   };
 
   const riskScore = computeShippingRiskScore(riskFactors);
@@ -215,6 +229,6 @@ export function optimizeShippingStrategy(
   return {
     recommendedCarrier: carrier,
     estimatedShippingCostCents: shippingCost,
-    estimatedRiskScore: riskScore.riskScore,
+    estimatedRiskScore: riskScore.riskScore ?? 0,
   };
 }

@@ -11,8 +11,6 @@
  * 7. Event logging
  */
 
-import { computeMargin } from "@/lib/finance/margin";
-import { simulateWorstCaseMargin } from "@/lib/pricing/autoMarginGuard";
 import type {
   OnboardingProfile,
   OnboardingEvent,
@@ -32,7 +30,7 @@ const DEFAULT_PLATFORM_FEE_BPS = 500; // 5%
 /**
  * Main onboarding automation function
  */
-export async function runSellerOnboarding(
+export async function runOnboardingAutomation(
   userId: string,
   taxStatus: TaxStatus,
   businessType: BusinessType,
@@ -153,6 +151,8 @@ export async function runSellerOnboarding(
     };
   }
 }
+
+export const runSellerOnboarding = runOnboardingAutomation;
 
 /**
  * Recommend pricing mode based on business profile
@@ -300,7 +300,7 @@ function generateGTMPlan(profile: OnboardingProfile, businessType: BusinessType)
 /**
  * Helper: Get pricing mode reasoning
  */
-function getPricingModeReasoning(mode: PricingMode, businessType: BusinessType): string {
+function getPricingModeReasoning(mode: PricingMode, _businessType: BusinessType): string {
   if (mode === "growth") {
     return "ზრდის რეჟიმი - ბაზრის წილის მოპოვება დაბალი ფასებით";
   }
@@ -318,7 +318,7 @@ function logEvent(
   userId: string,
   eventType: OnboardingEvent["eventType"],
   status: OnboardingEvent["status"],
-  metadata: Record<string, any>
+  metadata: Record<string, unknown>
 ): void {
   events.push({
     userId,

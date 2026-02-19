@@ -53,7 +53,7 @@ export function simulateWorstCaseMargin(
   );
 
   // 2. Shipping delays increase refund requests
-  const delayMargin = Math.max(0, -worseCaseFactors.maxShippingDelayDays * 100); // 100 bps per day
+  const _delayMargin = Math.max(0, -worseCaseFactors.maxShippingDelayDays * 100); // 100 bps per day
 
   // 3. Return shipping cost eats into margin
   // 4. Platform fee increases

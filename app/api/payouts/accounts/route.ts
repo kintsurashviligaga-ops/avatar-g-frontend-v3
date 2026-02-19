@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
+import type { ResponseCookie } from 'next/dist/compiled/@edge-runtime/cookies';
 import { getServerEnv } from '@/lib/env/server';
 
 // Force dynamic rendering
@@ -16,7 +17,7 @@ function getSupabaseClient() {
         getAll() {
           return cookieStore.getAll();
         },
-        setAll(cookiesToSet: Array<{ name: string; value: string; options?: any }>) {
+        setAll(cookiesToSet: Array<{ name: string; value: string; options?: Partial<ResponseCookie> }>) {
           try {
             cookiesToSet.forEach(({ name, value, options }) => {
               cookieStore.set(name, value, options);
@@ -62,7 +63,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { type, details } = body as { type: 'stripe' | 'tbc' | 'bog' | 'payze'; details: Record<string, any> };
+    const { type, details } = body as { type: 'stripe' | 'tbc' | 'bog' | 'payze'; details: Record<string, unknown> };
 
     if (!type || !details) {
       return NextResponse.json({ error: 'type and details are required' }, { status: 400 });
