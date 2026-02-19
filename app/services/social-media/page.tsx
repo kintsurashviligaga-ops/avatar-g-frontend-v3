@@ -57,6 +57,16 @@ const PERSONAS = ['business', 'cafe', 'freelancer', 'realtor', 'tourism', 'music
 const PLATFORMS: SmmPlatform[] = ['instagram', 'tiktok', 'youtube_shorts', 'facebook', 'telegram', 'linkedin'];
 const BRAND_VOICES: SmmBrandVoice[] = ['luxury', 'friendly', 'corporate', 'noir', 'energetic'];
 
+function mapBusinessGoalToSmmGoal(goal: string): SmmGoal | null {
+  const normalized = goal.trim().toLowerCase();
+  if (normalized === 'get_clients' || normalized === 'increase_sales') return 'sell_product';
+  if (normalized === 'build_brand') return 'build_brand';
+  if (normalized === 'content_plan') return 'grow_followers';
+  if (normalized === 'customer_support') return 'recruit';
+  if (normalized === 'automate_ops') return 'announce_event';
+  return null;
+}
+
 function defaultWizardState(isEn: boolean): WizardState {
   return {
     goal: 'grow_followers',
@@ -195,6 +205,23 @@ export default function SocialMediaManagerPage() {
 
       if (searchParams.get('create') === 'true') {
         setWizardOpen(true);
+      }
+
+      const businessName = searchParams.get('business_name');
+      const incomingGoals = searchParams.get('goals');
+      if (businessName || incomingGoals) {
+        setWizardOpen(true);
+        setState((current) => {
+          const nextGoal = incomingGoals
+            ? mapBusinessGoalToSmmGoal(incomingGoals.split(',')[0] || '')
+            : null;
+
+          return {
+            ...current,
+            projectTitle: businessName || current.projectTitle,
+            goal: nextGoal || current.goal,
+          };
+        });
       }
     };
 

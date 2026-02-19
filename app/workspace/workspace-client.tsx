@@ -37,6 +37,12 @@ type SavedAvatar = {
   id: string;
 };
 
+type BusinessAgentProject = {
+  id: string;
+  title: string;
+  updated_at: string;
+};
+
 export default function WorkspaceClient({ userEmail, locale }: WorkspaceClientProps) {
   const router = useRouter();
   const pathname = usePathname();
@@ -48,6 +54,7 @@ export default function WorkspaceClient({ userEmail, locale }: WorkspaceClientPr
   const [apiError, setApiError] = useState<string | null>(null);
   const [authExpired, setAuthExpired] = useState(false);
   const [hasAvatar, setHasAvatar] = useState<boolean | null>(null);
+  const [businessAgentProjects, setBusinessAgentProjects] = useState<BusinessAgentProject[]>([]);
 
   const resolvedLocale = locale || getLocaleFromPathname(pathname);
   const toLocale = (path: string) => withLocalePath(path, resolvedLocale);
@@ -55,6 +62,8 @@ export default function WorkspaceClient({ userEmail, locale }: WorkspaceClientPr
   const isAuthenticated = Boolean(userEmail);
   const smmSource = searchParams.get('from') === 'smm';
   const smmProject = searchParams.get('project');
+  const baSource = searchParams.get('from') === 'business-agent';
+  const baProject = searchParams.get('project');
 
   const featuredServices = SERVICE_REGISTRY;
 
@@ -63,6 +72,17 @@ export default function WorkspaceClient({ userEmail, locale }: WorkspaceClientPr
       setJobs([]);
       setOutputs([]);
       setHasAvatar(null);
+      const raw = localStorage.getItem('business_agent_demo_projects_v1');
+      if (raw) {
+        try {
+          const parsed = JSON.parse(raw) as BusinessAgentProject[];
+          setBusinessAgentProjects(Array.isArray(parsed) ? parsed : []);
+        } catch {
+          setBusinessAgentProjects([]);
+        }
+      } else {
+        setBusinessAgentProjects([]);
+      }
       setLoading(false);
       return;
     }
@@ -73,9 +93,10 @@ export default function WorkspaceClient({ userEmail, locale }: WorkspaceClientPr
       setAuthExpired(false);
       try {
         const ownerId = await getOwnerId();
-        const [jobsData, outputsData] = await Promise.all([
+        const [jobsData, outputsData, businessData] = await Promise.all([
           fetchJson<{ jobs: WorkspaceJob[] }>('/api/app/jobs', { cache: 'no-store' }),
           fetchJson<{ outputs: WorkspaceOutput[] }>('/api/app/outputs', { cache: 'no-store' }),
+          fetchJson<{ projects: BusinessAgentProject[] }>('/api/business-agent/projects', { cache: 'no-store' }),
         ]);
 
         const avatarData = await fetchJson<{ avatars: SavedAvatar[] }>(
@@ -85,11 +106,13 @@ export default function WorkspaceClient({ userEmail, locale }: WorkspaceClientPr
 
         setJobs(Array.isArray(jobsData.jobs) ? jobsData.jobs : []);
         setOutputs(Array.isArray(outputsData.outputs) ? outputsData.outputs : []);
+        setBusinessAgentProjects(Array.isArray(businessData.projects) ? businessData.projects : []);
         setHasAvatar(Array.isArray(avatarData.avatars) && avatarData.avatars.length > 0);
       } catch (error) {
         setJobs([]);
         setOutputs([]);
         setHasAvatar(false);
+        setBusinessAgentProjects([]);
 
         if (error instanceof ApiClientError && error.status === 401) {
           setAuthExpired(true);
@@ -169,6 +192,16 @@ export default function WorkspaceClient({ userEmail, locale }: WorkspaceClientPr
             <CardContent className="pt-6">
               <p className="text-sm text-app-text">
                 Social Media Manager context loaded{smmProject ? ` for project: ${smmProject}` : ''}.
+              </p>
+            </CardContent>
+          </Card>
+        )}
+
+        {baSource && (
+          <Card className="mb-4 border-emerald-500/30 bg-emerald-500/10">
+            <CardContent className="pt-6">
+              <p className="text-sm text-emerald-100">
+                Business Agent context loaded{baProject ? ` for project: ${baProject}` : ''}.
               </p>
             </CardContent>
           </Card>
@@ -289,6 +322,30 @@ export default function WorkspaceClient({ userEmail, locale }: WorkspaceClientPr
             <div className="mt-3 text-right">
               <Link href="/jobs" className="text-sm text-cyan-300 hover:text-cyan-200">Open jobs center</Link>
             </div>
+          </CardContent>
+        </Card>
+
+        <Card className="mt-4">
+          <CardHeader>
+            <CardTitle>Business Agent projects</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {businessAgentProjects.length === 0 ? (
+              <EmptyState title="No Business Agent projects" description="Create your first Business Agent plan and it appears here." />
+            ) : (
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                {businessAgentProjects.slice(0, 9).map((project) => (
+                  <Link
+                    key={project.id}
+                    href={`${toLocale('/services/business-agent')}?project=${encodeURIComponent(project.id)}`}
+                    className="rounded-xl border border-white/10 bg-black/20 px-3 py-2 transition hover:border-emerald-400/50"
+                  >
+                    <p className="text-sm text-app-text">{project.title}</p>
+                    <p className="text-[11px] text-app-muted">{new Date(project.updated_at).toLocaleString()}</p>
+                  </Link>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
