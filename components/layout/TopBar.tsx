@@ -1,8 +1,10 @@
 "use client";
 
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import { Globe, LogOut } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { getLocaleFromPathname, withLocalePath } from '@/lib/i18n/localePath';
 
 type TopBarProps = {
   userEmail: string;
@@ -11,6 +13,9 @@ type TopBarProps = {
 };
 
 export function TopBar({ userEmail, onLogout, isLoggingOut }: TopBarProps) {
+  const pathname = usePathname();
+  const locale = getLocaleFromPathname(pathname);
+
   return (
     <header className="sticky top-0 z-40 border-b border-app-border/20 bg-app-bg/70 px-4 py-3 backdrop-blur md:px-6">
       <div className="mx-auto flex max-w-[1600px] items-center justify-between gap-3">
@@ -20,7 +25,7 @@ export function TopBar({ userEmail, onLogout, isLoggingOut }: TopBarProps) {
         </div>
 
         <div className="flex items-center gap-2">
-          <Link href="/workspace" className="hidden rounded-lg px-3 py-2 text-sm text-app-muted hover:bg-white/10 hover:text-app-text sm:block">
+          <Link href={withLocalePath('/workspace', locale)} className="hidden rounded-lg px-3 py-2 text-sm text-app-muted hover:bg-white/10 hover:text-app-text sm:block">
             Home
           </Link>
           <Link href="/jobs" className="hidden rounded-lg px-3 py-2 text-sm text-app-muted hover:bg-white/10 hover:text-app-text sm:block">

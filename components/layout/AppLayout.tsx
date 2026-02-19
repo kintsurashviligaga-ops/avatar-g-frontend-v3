@@ -10,6 +10,7 @@ import { Logo } from '@/components/brand/Logo';
 import { useSubscriptionStatus } from '@/hooks/useSubscriptionStatus';
 import { useAffiliateStatus } from '@/hooks/useAffiliateStatus';
 import { createBrowserClient } from '@/lib/supabase/browser';
+import { getLocaleFromPathname, withLocalePath } from '@/lib/i18n/localePath';
 
 export default function AppLayout({ children }: { children: ReactNode }) {
   return (
@@ -32,6 +33,8 @@ export function Navbar() {
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [authBusy, setAuthBusy] = useState(false);
   const [supabase, setSupabase] = useState<ReturnType<typeof createBrowserClient> | null>(null);
+  const locale = getLocaleFromPathname(pathname);
+  const toLocale = (path: string) => withLocalePath(path, locale);
 
   useEffect(() => {
     try {
@@ -42,10 +45,10 @@ export function Navbar() {
   }, []);
 
   const navItems = [
-    { labelKey: 'services', href: '/services' },
-    { labelKey: 'workspace', href: '/workspace' },
-    { labelKey: 'about', href: '/about' },
-    { labelKey: 'contact', href: '/contact' },
+    { labelKey: 'services', href: toLocale('/services') },
+    { labelKey: 'workspace', href: toLocale('/workspace') },
+    { labelKey: 'about', href: toLocale('/about') },
+    { labelKey: 'contact', href: toLocale('/contact') },
   ];
 
   const subscriptionPlan = subscriptionData?.subscription?.plan || null;
@@ -58,8 +61,8 @@ export function Navbar() {
   const handleFixPayment = async () => {
     try {
       await openCustomerPortal();
-    } catch (error) {
-      console.error('[Navbar] Failed to open customer portal:', error);
+    } catch {
+      // Keep UI stable if portal cannot be opened.
     }
   };
 
@@ -67,14 +70,14 @@ export function Navbar() {
     setAuthBusy(true);
     try {
       if (!supabase) {
-        router.replace('/auth');
+        router.replace(`/auth?next=${encodeURIComponent(toLocale('/workspace'))}`);
         router.refresh();
         return;
       }
 
       await supabase.auth.signOut();
       setUserEmail(null);
-      router.replace('/auth');
+      router.replace(`/auth?next=${encodeURIComponent(toLocale('/workspace'))}`);
       router.refresh();
     } finally {
       setAuthBusy(false);
@@ -196,7 +199,7 @@ export function Navbar() {
             <motion.button
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
-              onClick={() => router.push('/auth')}
+              onClick={() => router.push(`/auth?next=${encodeURIComponent(toLocale('/workspace'))}`)}
               className="px-6 py-2 rounded-lg font-medium text-sm"
               style={{
                 background: colors.gradients.cyanToBlue,

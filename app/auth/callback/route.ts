@@ -1,16 +1,17 @@
 import { NextResponse } from 'next/server';
 import type { User } from '@supabase/supabase-js';
 import { createServerClient, createServiceRoleClient } from '@/lib/supabase/server';
+import { i18n } from '@/i18n.config';
 
 export const dynamic = 'force-dynamic';
 
 function resolveSafeNextPath(input: string | null) {
   if (!input || !input.startsWith('/')) {
-    return '/workspace';
+    return `/${i18n.defaultLocale}/workspace`;
   }
 
   if (input.startsWith('//')) {
-    return '/workspace';
+    return `/${i18n.defaultLocale}/workspace`;
   }
 
   return input;
@@ -76,5 +77,5 @@ export async function GET(request: Request) {
     await ensureProfile(user);
   }
 
-  return NextResponse.redirect(new URL(next || '/workspace', requestUrl.origin));
+  return NextResponse.redirect(new URL(next || `/${i18n.defaultLocale}/workspace`, requestUrl.origin));
 }

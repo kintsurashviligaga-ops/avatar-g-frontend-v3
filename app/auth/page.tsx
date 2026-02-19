@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Github, Mail, Smartphone, ShieldCheck, Loader2 } from 'lucide-react';
 import { createBrowserClient } from '@/lib/supabase/browser';
+import { i18n } from '@/i18n.config';
 
 type AuthMode = 'github' | 'email' | 'phone';
 
@@ -51,7 +52,7 @@ export default function AuthPage() {
     setSuccessMessage(null);
   };
 
-  const nextPath = searchParams.get('next') || '/workspace';
+  const nextPath = searchParams.get('next') || `/${i18n.defaultLocale}/workspace`;
 
   useEffect(() => {
     const callbackError = searchParams.get('error');

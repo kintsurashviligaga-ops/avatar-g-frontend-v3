@@ -138,7 +138,7 @@ export default function HomePage() {
                 </div>
               ) : (
                 <button
-                  onClick={() => router.push('/pricing')}
+                  onClick={() => router.push(`/${locale}/pricing`)}
                   className="inline-flex items-center gap-2 rounded-full border border-amber-400/40 bg-amber-500/10 px-4 py-1 text-sm text-amber-300 hover:bg-amber-500/20"
                 >
                   <Zap className="h-4 w-4" />
@@ -152,7 +152,7 @@ export default function HomePage() {
               <motion.button
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
-                  onClick={() => router.push('/workspace')}
+                  onClick={() => router.push(`/${locale}/workspace`)}
                 className="px-8 py-4 bg-gradient-to-r from-cyan-500 to-purple-500 text-white font-semibold rounded-xl shadow-lg shadow-purple-500/50 flex items-center justify-center gap-2 group"
               >
                 {t('hero.cta_primary')}

@@ -6,6 +6,8 @@ import { apiError, apiSuccess } from '@/lib/api/response';
 
 export const dynamic = 'force-dynamic';
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 const getSupabaseClient = () => {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -30,15 +32,39 @@ export async function GET(request: NextRequest) {
 
     const supabase = getSupabaseClient();
     const authHeader = request.headers.get('authorization');
-    if (!authHeader?.startsWith('Bearer ')) {
-      return apiError(new Error('Unauthorized'), 401, 'Missing or invalid authorization');
+    const ownerIdParam = url.searchParams?.get?.('owner_id')?.trim() || null;
+    let resolvedOwnerId: string | null = null;
+
+    if (authHeader?.startsWith('Bearer ')) {
+      const token = authHeader.slice(7);
+      if (token) {
+        const { data, error: authError } = await supabase.auth.getUser(token);
+        if (!authError && data.user?.id) {
+          resolvedOwnerId = data.user.id;
+        }
+      }
     }
 
-    const token = authHeader.slice(7);
-    const { data, error: authError } = await supabase.auth.getUser(token);
+    if (!resolvedOwnerId && ownerIdParam) {
+      if (!UUID_RE.test(ownerIdParam)) {
+        return apiSuccess({
+          avatars: [],
+          total: 0,
+          limit: 0,
+          offset: 0,
+        });
+      }
 
-    if (authError || !data.user) {
-      return apiError(new Error('Unauthorized'), 401, 'Unauthorized');
+      resolvedOwnerId = ownerIdParam;
+    }
+
+    if (!resolvedOwnerId) {
+      return apiSuccess({
+        avatars: [],
+        total: 0,
+        limit: 0,
+        offset: 0,
+      });
     }
 
     // Query parameters (url already defined above for health check)
@@ -51,7 +77,7 @@ export async function GET(request: NextRequest) {
     const query = supabase
       .from('avatars')
       .select('*', { count: 'exact' })
-      .eq('owner_id', data.user.id)
+      .eq('owner_id', resolvedOwnerId)
       .order(sortBy, { ascending: sortDir === 'asc' })
       .range(offset, offset + limit - 1);
 

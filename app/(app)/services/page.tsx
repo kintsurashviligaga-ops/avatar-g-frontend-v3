@@ -6,8 +6,6 @@ import { Badge } from '@/components/ui/badge';
 export default function ServicesIndexPage() {
   const services = SERVICE_REGISTRY.filter((service) => service.enabled);
 
-  console.log('SERVICE_REGISTRY.length', SERVICE_REGISTRY.length);
-
   return (
     <section className="space-y-6">
       <header>

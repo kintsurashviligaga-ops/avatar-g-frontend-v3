@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Image from 'next/image';
+import { useSearchParams } from 'next/navigation';
 import { 
   User, Camera, Sparkles, Upload, Download, Share2, Wand2, 
   Loader2, Check, X, Image as ImageIcon,
@@ -17,6 +18,7 @@ import { useLanguage } from '@/lib/i18n/LanguageContext';
 import { useStudioStore } from '@/store/useStudioStore';
 import { getAuthHeaders } from '@/lib/auth/client';
 import { getOwnerId } from '@/lib/auth/identity';
+import { fetchJson } from '@/lib/api/clientFetch';
 
 interface AvatarStyle {
   id: string;
@@ -71,6 +73,30 @@ interface SavedAvatar {
   style?: string | null;
   created_at: string;
 }
+
+type CameraState = 'idle' | 'asking' | 'granted' | 'error';
+
+type CameraDiagnostics = {
+  isSecureContext: boolean;
+  protocol: string;
+  userAgent: string;
+  mediaDevices: boolean;
+  permissionState: string;
+  getUserMediaStatus: CameraState;
+  errorName: string | null;
+  streamActive: boolean;
+  trackCount: number;
+  trackReadyStates: string[];
+  videoReadyState: number;
+  videoWidth: number;
+  videoHeight: number;
+  videoRect: string;
+  containerRect: string;
+  videoOpacity: string;
+  videoFilter: string;
+  containerOpacity: string;
+  containerFilter: string;
+};
 
 const AVATAR_STYLES: AvatarStyle[] = [
   { id: 'professional', nameKey: 'avatar.style.professional', emoji: '💼', descriptionKey: 'avatar.style.professional.desc', prompt: 'professional business portrait, formal attire, confident expression, studio lighting' },
@@ -210,6 +236,7 @@ const HEADWEAR_ITEMS = [
 
 export default function AvatarBuilderPage() {
   const { t } = useLanguage();
+  const searchParams = useSearchParams();
   const store = useStudioStore();
   const [activeView, setActiveView] = useState<'create' | 'gallery'>('create');
   const [selectedStyle, setSelectedStyle] = useState<string>('professional');
@@ -244,38 +271,65 @@ export default function AvatarBuilderPage() {
   const [presetTagFilter, setPresetTagFilter] = useState('All');
   const [savedPresets, setSavedPresets] = useState<AvatarPreset[]>([]);
   const presetImportRef = useRef<HTMLInputElement>(null);
+  const cameraContainerRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const [isScanning, setIsScanning] = useState(false);
+  const [cameraStatus, setCameraStatus] = useState<CameraState>('idle');
+  const [cameraErrorName, setCameraErrorName] = useState<string | null>(null);
+  const [cameraDiagnostics, setCameraDiagnostics] = useState<CameraDiagnostics | null>(null);
   const [scanStepIndex, setScanStepIndex] = useState(0);
   const [scanImages, setScanImages] = useState<string[]>([]);
   const [scanError, setScanError] = useState<string | null>(null);
   const [savedAvatars, setSavedAvatars] = useState<SavedAvatar[]>([]);
   const [isLoadingAvatars, setIsLoadingAvatars] = useState(false);
+  const [ownerId, setOwnerId] = useState<string | null>(null);
   const [avatarNameInput, setAvatarNameInput] = useState('');
   const [saveSuccessMessage, setSaveSuccessMessage] = useState('');
   const [isChatLoading, setIsChatLoading] = useState(false);
 
-  // Load saved avatars from API on mount
+  const showCameraDebug = process.env.NODE_ENV !== 'production' || searchParams.get('debug') === '1';
+
+  const loadSavedAvatars = async (currentOwnerId: string) => {
+    setIsLoadingAvatars(true);
+    try {
+      const data = await fetchJson<{ avatars: SavedAvatar[] }>(`/api/avatars?owner_id=${encodeURIComponent(currentOwnerId)}`, { cache: 'no-store' });
+      setSavedAvatars(Array.isArray(data.avatars) ? data.avatars : []);
+    } catch {
+      setSavedAvatars([]);
+    } finally {
+      setIsLoadingAvatars(false);
+    }
+  };
+
+  // Resolve owner identity once on mount
   useEffect(() => {
-    const loadSavedAvatars = async () => {
-      setIsLoadingAvatars(true);
-      try {
-        const headers = await getAuthHeaders();
-        const response = await fetch('/api/avatars', { headers });
-        if (response.ok) {
-          const data = await response.json();
-          setSavedAvatars(data?.data?.avatars || []);
-        }
-      } catch (error) {
-        console.error('Error loading saved avatars:', error);
-      } finally {
-        setIsLoadingAvatars(false);
+    let isMounted = true;
+
+    const initOwner = async () => {
+      const resolvedOwnerId = await getOwnerId();
+      if (isMounted) {
+        setOwnerId(resolvedOwnerId);
       }
     };
-    loadSavedAvatars();
+
+    void initOwner();
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
+
+  useEffect(() => {
+    if (!ownerId) {
+      setSavedAvatars([]);
+      setIsLoadingAvatars(false);
+      return;
+    }
+
+    void loadSavedAvatars(ownerId);
+  }, [ownerId]);
 
   // Cleanup: stop camera stream on unmount
   useEffect(() => {
@@ -572,101 +626,169 @@ export default function AvatarBuilderPage() {
     );
   };
 
+  const getCameraPermissionState = async (): Promise<string> => {
+    if (typeof navigator === 'undefined' || !('permissions' in navigator)) {
+      return 'unsupported';
+    }
+
+    try {
+      const permissionStatus = await navigator.permissions.query({ name: 'camera' as PermissionName });
+      return permissionStatus.state;
+    } catch {
+      return 'unknown';
+    }
+  };
+
+  const formatRect = (element: HTMLElement | null): string => {
+    if (!element) return 'n/a';
+    const rect = element.getBoundingClientRect();
+    return `${Math.round(rect.width)}x${Math.round(rect.height)} @ (${Math.round(rect.left)},${Math.round(rect.top)})`;
+  };
+
+  const updateCameraDiagnostics = async (status: CameraState, errorName?: string | null) => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const stream = streamRef.current;
+    const tracks = stream?.getTracks() || [];
+    const video = videoRef.current;
+    const container = cameraContainerRef.current;
+    const videoStyles = video ? window.getComputedStyle(video) : null;
+    const containerStyles = container ? window.getComputedStyle(container) : null;
+
+    setCameraDiagnostics({
+      isSecureContext: window.isSecureContext,
+      protocol: window.location.protocol,
+      userAgent: navigator.userAgent,
+      mediaDevices: Boolean(navigator.mediaDevices && navigator.mediaDevices.getUserMedia),
+      permissionState: await getCameraPermissionState(),
+      getUserMediaStatus: status,
+      errorName: errorName ?? null,
+      streamActive: Boolean(stream?.active),
+      trackCount: tracks.length,
+      trackReadyStates: tracks.map((track) => `${track.kind}:${track.readyState}`),
+      videoReadyState: video?.readyState ?? 0,
+      videoWidth: video?.videoWidth ?? 0,
+      videoHeight: video?.videoHeight ?? 0,
+      videoRect: formatRect(video),
+      containerRect: formatRect(container),
+      videoOpacity: videoStyles?.opacity ?? 'n/a',
+      videoFilter: videoStyles?.filter ?? 'n/a',
+      containerOpacity: containerStyles?.opacity ?? 'n/a',
+      containerFilter: containerStyles?.filter ?? 'n/a',
+    });
+  };
+
+  const cleanupCameraStream = () => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current = null;
+    }
+
+    if (videoRef.current) {
+      videoRef.current.pause();
+      videoRef.current.srcObject = null;
+    }
+  };
+
   const startFaceScan = async () => {
-    // Guard: Client-side only
     if (typeof window === 'undefined') {
       setScanError(t('avatar.error.clientOnly'));
       return;
     }
 
-    // Guard: HTTPS required (except localhost)
     if (!window.location.protocol.startsWith('https') && !window.location.hostname.includes('localhost')) {
       setScanError(t('avatar.error.httpsRequired') || 'Camera requires HTTPS connection');
+      setCameraStatus('error');
+      setCameraErrorName('InsecureContext');
+      await updateCameraDiagnostics('error', 'InsecureContext');
       return;
     }
 
     setScanError(null);
     setScanImages([]);
     setScanStepIndex(0);
+    setCameraStatus('asking');
+    setCameraErrorName(null);
+    cleanupCameraStream();
+    setIsScanning(true);
+    await updateCameraDiagnostics('asking');
 
     try {
-      // Check if getUserMedia is available
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         setScanError(t('avatar.error.cameraNotSupported') || 'Your device does not support camera access');
+        setIsScanning(false);
+        setCameraStatus('error');
+        setCameraErrorName('MediaDevicesUnavailable');
+        await updateCameraDiagnostics('error', 'MediaDevicesUnavailable');
         return;
       }
 
-      // Request camera with specific constraints for better iPad/Safari compatibility
-      const constraints = {
-        video: {
-          facingMode: 'user',
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
-        },
-        audio: false,
-      };
-
       let stream: MediaStream | null = null;
-      
+
       try {
-        // Try with ideal constraints first
-        stream = await navigator.mediaDevices.getUserMedia(constraints);
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: 'user' },
+          audio: false,
+        });
       } catch {
-        // Fallback: Try with minimal constraints for Safari
-        try {
-          stream = await navigator.mediaDevices.getUserMedia({
-            video: { facingMode: 'user' },
-            audio: false,
-          });
-        } catch {
-          // Last resort: Try basic video constraint
-          stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-        }
+        stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
       }
 
       if (!stream) {
         setScanError(t('avatar.error.cameraDenied') || 'Could not access camera');
+        setIsScanning(false);
+        setCameraStatus('error');
+        setCameraErrorName('NoStream');
+        await updateCameraDiagnostics('error', 'NoStream');
         return;
       }
 
       streamRef.current = stream;
 
-      // Attach stream to video element
-      if (videoRef.current) {
-        // Critical: Set video element attributes for autoplay policies
-        videoRef.current.muted = true;          // Fixes autoplay policy restrictions
-        videoRef.current.playsInline = true;    // Fixes iOS/Safari fullscreen prevention
-        videoRef.current.autoplay = true;       // Explicit autoplay
-        videoRef.current.srcObject = stream;
-        
-        // Ensure video element is visible
-        videoRef.current.style.display = 'block';
-        
-        // Handle play promise for better error handling
-        try {
-          await videoRef.current.play();
-          // Log successful setup for diagnostics
-          console.log('[Camera] Stream started successfully', {
-            videoWidth: videoRef.current.videoWidth,
-            videoHeight: videoRef.current.videoHeight,
-            tracks: stream.getTracks().length,
-          });
-        } catch (playError) {
-          // Some browsers might delay play
-          const errorMsg = playError instanceof Error ? playError.message : 'Unknown error';
-          console.error('[Camera] Play failed:', errorMsg);
-          setScanError(t('avatar.error.cameraPlayError') || `Could not start camera stream: ${errorMsg}`);
-          stream.getTracks().forEach(track => track.stop());
-          streamRef.current = null;
-          return;
-        }
+      if (!videoRef.current) {
+        cleanupCameraStream();
+        setIsScanning(false);
+        setScanError('Camera element is not mounted. Please retry.');
+        setCameraStatus('error');
+        setCameraErrorName('VideoElementMissing');
+        await updateCameraDiagnostics('error', 'VideoElementMissing');
+        return;
       }
 
-      setIsScanning(true);
+      videoRef.current.muted = true;
+      videoRef.current.playsInline = true;
+      videoRef.current.autoplay = true;
+      videoRef.current.setAttribute('playsinline', 'true');
+      videoRef.current.setAttribute('muted', 'true');
+      videoRef.current.srcObject = stream;
+
+      await videoRef.current.play();
+      await new Promise((resolve) => window.setTimeout(resolve, 1000));
+
+      const hasFrames =
+        videoRef.current.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA &&
+        videoRef.current.videoWidth > 0 &&
+        videoRef.current.videoHeight > 0;
+
+      if (!hasFrames) {
+        cleanupCameraStream();
+        setIsScanning(false);
+        setScanError('Camera stream not playing. Retry and verify camera permission.');
+        setCameraStatus('error');
+        setCameraErrorName('VideoNotPlaying');
+        await updateCameraDiagnostics('error', 'VideoNotPlaying');
+        return;
+      }
+
+      setCameraStatus('granted');
+      await updateCameraDiagnostics('granted');
+
     } catch (error) {
       const errorName = error instanceof Error ? error.name : 'UnknownError';
-      const errorMessage = error instanceof Error ? error.message : 'Camera access failed';
-      // Handle specific error types
+      cleanupCameraStream();
+
       if (errorName === 'NotAllowedError') {
         setScanError(t('avatar.error.permissionDenied') || 'Camera permission was denied. Please enable it in settings.');
       } else if (errorName === 'NotFoundError' || errorName === 'NotSupportedError') {
@@ -674,17 +796,23 @@ export default function AvatarBuilderPage() {
       } else {
         setScanError(t('avatar.error.cameraDenied') || 'Camera access failed. Please try again.');
       }
+
       setIsScanning(false);
-      console.error('Camera error:', errorName, errorMessage);
+      setCameraStatus('error');
+      setCameraErrorName(errorName);
+      await updateCameraDiagnostics('error', errorName);
+      if (process.env.NODE_ENV === 'development') {
+        console.error('Camera error:', errorName, error);
+      }
     }
   };
 
   const stopFaceScan = () => {
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop());
-    }
-    streamRef.current = null;
+    cleanupCameraStream();
     setIsScanning(false);
+    setCameraStatus('idle');
+    setCameraErrorName(null);
+    void updateCameraDiagnostics('idle');
   };
 
   const captureFaceScan = () => {
@@ -858,7 +986,9 @@ export default function AvatarBuilderPage() {
           }
         }
       } catch (error) {
-        console.error('Failed to persist avatar to Supabase:', error);
+        if (process.env.NODE_ENV === 'development') {
+          console.error('Failed to persist avatar to Supabase:', error);
+        }
         // Non-critical: avatar still displays locally even if save fails
       }
 
@@ -1500,6 +1630,17 @@ export default function AvatarBuilderPage() {
                     </Badge>
                   </div>
 
+                  {showCameraDebug && (
+                    <div className="mb-4 flex flex-wrap gap-2">
+                      <Button type="button" variant="outline" size="sm" onClick={startFaceScan} className="border-purple-500/40 text-purple-200">
+                        Test Camera
+                      </Button>
+                      <Button type="button" variant="outline" size="sm" onClick={() => void updateCameraDiagnostics(cameraStatus, cameraErrorName)} className="border-cyan-500/40 text-cyan-200">
+                        Refresh Diagnostics
+                      </Button>
+                    </div>
+                  )}
+
                   {scanError && (
                     <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 p-4">
                       <p className="text-sm text-red-300 mb-3">{scanError}</p>
@@ -1516,18 +1657,16 @@ export default function AvatarBuilderPage() {
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="rounded-xl border border-white/10 bg-black/20 p-3">
-                      <div className="relative aspect-video rounded-lg overflow-hidden bg-black">
-                        {isScanning ? (
-                          <video 
-                            ref={videoRef} 
-                            className="w-full h-full object-cover block"
-                            muted
-                            autoPlay
-                            playsInline
-                            style={{ display: 'block', backgroundColor: '#000' }}
-                          />
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center text-gray-500 text-sm">
+                      <div ref={cameraContainerRef} className="relative aspect-video min-h-[220px] rounded-lg overflow-hidden bg-black">
+                        <video
+                          ref={videoRef}
+                          className={`h-full w-full object-cover ${isScanning ? 'opacity-100' : 'opacity-0'}`}
+                          muted
+                          autoPlay
+                          playsInline
+                        />
+                        {!isScanning && (
+                          <div className="absolute inset-0 z-10 flex items-center justify-center text-gray-500 text-sm">
                             {t('avatar.label.cameraPreview')}
                           </div>
                         )}
@@ -1557,6 +1696,30 @@ export default function AvatarBuilderPage() {
                           {t('avatar.label.reset')}
                         </Button>
                       </div>
+
+                      {showCameraDebug && cameraDiagnostics && (
+                        <div className="mt-3 rounded-lg border border-white/10 bg-black/40 p-3 text-[11px] text-gray-300">
+                          <div className="font-semibold text-cyan-300 mb-2">Camera Diagnostics</div>
+                          <div className="grid grid-cols-1 gap-1">
+                            <div>secureContext: {String(cameraDiagnostics.isSecureContext)}</div>
+                            <div>protocol: {cameraDiagnostics.protocol}</div>
+                            <div>mediaDevices: {String(cameraDiagnostics.mediaDevices)}</div>
+                            <div>permission: {cameraDiagnostics.permissionState}</div>
+                            <div>gumStatus: {cameraDiagnostics.getUserMediaStatus}</div>
+                            <div>errorName: {cameraDiagnostics.errorName ?? '-'}</div>
+                            <div>streamActive: {String(cameraDiagnostics.streamActive)}</div>
+                            <div>trackCount: {cameraDiagnostics.trackCount}</div>
+                            <div>trackStates: {cameraDiagnostics.trackReadyStates.join(', ') || '-'}</div>
+                            <div>videoState: {cameraDiagnostics.videoReadyState}</div>
+                            <div>videoSize: {cameraDiagnostics.videoWidth}x{cameraDiagnostics.videoHeight}</div>
+                            <div>videoRect: {cameraDiagnostics.videoRect}</div>
+                            <div>containerRect: {cameraDiagnostics.containerRect}</div>
+                            <div>video(opacity/filter): {cameraDiagnostics.videoOpacity} / {cameraDiagnostics.videoFilter}</div>
+                            <div>container(opacity/filter): {cameraDiagnostics.containerOpacity} / {cameraDiagnostics.containerFilter}</div>
+                            <div className="break-all text-gray-500">ua: {cameraDiagnostics.userAgent}</div>
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                     <div>
@@ -1830,15 +1993,12 @@ export default function AvatarBuilderPage() {
                             setAvatarNameInput('');
                             setTimeout(() => setSaveSuccessMessage(''), 3000);
                             // Reload saved avatars list
-                            const headers = await getAuthHeaders();
-                            const listResponse = await fetch('/api/avatars', { headers });
-                            if (listResponse.ok) {
-                              const listData = await listResponse.json();
-                              setSavedAvatars(listData?.data?.avatars || []);
+                            if (ownerId) {
+                              await loadSavedAvatars(ownerId);
                             }
                           }
-                        } catch (error) {
-                          console.error('Error saving avatar:', error);
+                        } catch {
+                          // no-op
                         }
                       }
                     }}

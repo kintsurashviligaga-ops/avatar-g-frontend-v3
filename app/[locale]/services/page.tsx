@@ -1,6 +1,4 @@
 import Link from 'next/link';
-import { existsSync } from 'node:fs';
-import { join } from 'node:path';
 import { SERVICE_REGISTRY } from '@/lib/service-registry';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -14,22 +12,6 @@ export default async function LocalizedServicesPage({ params }: ServicesPageProp
   const services = SERVICE_REGISTRY.filter((service) => service.enabled);
 
   const getServiceHref = (slug: string) => `/${locale}/services/${slug}`;
-
-  console.log('SERVICE_REGISTRY.length', SERVICE_REGISTRY.length);
-
-  if (process.env.NODE_ENV !== 'production') {
-    const slugs = services.map((service) => service.slug);
-    const unresolved = services.filter((service) => {
-      const baseRoutePage = join(process.cwd(), 'app', 'services', service.slug, 'page.tsx');
-      const localeRoutePage = join(process.cwd(), 'app', '[locale]', 'services', service.slug, 'page.tsx');
-      return !existsSync(baseRoutePage) && !existsSync(localeRoutePage);
-    });
-
-    console.log('SERVICE_REGISTRY.slugs', slugs);
-    if (unresolved.length > 0) {
-      console.warn('SERVICE_REGISTRY.unresolved', unresolved.map((service) => service.slug));
-    }
-  }
 
   return (
     <section className="space-y-6 px-4 py-6 sm:px-6 lg:px-8">
