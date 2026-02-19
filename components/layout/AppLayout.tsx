@@ -1,6 +1,6 @@
 'use client';
 
-import { ReactNode, useEffect, useMemo, useState } from 'react';
+import { ReactNode, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
@@ -31,8 +31,15 @@ export function Navbar() {
   const { isAffiliate, isActive } = useAffiliateStatus();
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [authBusy, setAuthBusy] = useState(false);
+  const [supabase, setSupabase] = useState<ReturnType<typeof createBrowserClient> | null>(null);
 
-  const supabase = useMemo(() => createBrowserClient(), []);
+  useEffect(() => {
+    try {
+      setSupabase(createBrowserClient());
+    } catch {
+      setSupabase(null);
+    }
+  }, []);
 
   const navItems = [
     { labelKey: 'services', href: '/services' },
@@ -59,6 +66,12 @@ export function Navbar() {
   const handleLogout = async () => {
     setAuthBusy(true);
     try {
+      if (!supabase) {
+        router.replace('/auth');
+        router.refresh();
+        return;
+      }
+
       await supabase.auth.signOut();
       setUserEmail(null);
       router.replace('/auth');
@@ -78,6 +91,11 @@ export function Navbar() {
   };
 
   useEffect(() => {
+    if (!supabase) {
+      setUserEmail(null);
+      return;
+    }
+
     let isMounted = true;
 
     supabase.auth.getUser().then(({ data }) => {

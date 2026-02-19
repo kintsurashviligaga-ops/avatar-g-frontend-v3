@@ -1,18 +1,22 @@
-import { createBrowserClient as createSupabaseBrowserClient } from '@supabase/ssr';
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { publicEnv } from '@/lib/env/public';
 
 let browserClient: SupabaseClient | null = null;
 
-function getPublicSupabaseConfig() {
-  const supabaseUrl = publicEnv.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseAnonKey = publicEnv.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-  if (!supabaseUrl || !supabaseAnonKey) {
-    throw new Error('Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY');
-  }
-
-  return { supabaseUrl, supabaseAnonKey };
+function createFallbackClient(): SupabaseClient {
+  return {
+    auth: {
+      getUser: async () => ({ data: { user: null }, error: null }),
+      signOut: async () => ({ error: null }),
+      onAuthStateChange: () => ({
+        data: {
+          subscription: {
+            unsubscribe: () => undefined,
+          },
+        },
+      }),
+    },
+  } as unknown as SupabaseClient;
 }
 
 export function createBrowserClient() {
@@ -20,7 +24,20 @@ export function createBrowserClient() {
     return browserClient;
   }
 
-  const { supabaseUrl, supabaseAnonKey } = getPublicSupabaseConfig();
-  browserClient = createSupabaseBrowserClient(supabaseUrl, supabaseAnonKey);
+  try {
+    browserClient = createClientComponentClient();
+  } catch (error) {
+    if (process.env.NODE_ENV === 'development') {
+      throw new Error(
+        `Failed to initialize Supabase browser client. ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
+    }
+
+    console.error('[supabase/browser] Failed to initialize browser client. Falling back to noop client.');
+    browserClient = createFallbackClient();
+  }
+
   return browserClient;
 }
+
+export const supabase = createBrowserClient();
