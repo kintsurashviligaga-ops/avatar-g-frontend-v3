@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { notFound, useParams } from 'next/navigation';
+import Link from 'next/link';
+import { useParams } from 'next/navigation';
 import { ServiceHeader } from '@/components/layout/ServiceHeader';
 import { getServiceBySlug } from '@/lib/app/services';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -56,7 +57,35 @@ export default function DynamicServicePage() {
   }, [loadData]);
 
   if (!service) {
-    notFound();
+    return (
+      <div className="space-y-6">
+        <ServiceHeader
+          title="Service unavailable"
+          description="This service route is not available."
+          credits={0}
+        />
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Pick another service</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <EmptyState
+              title="Service not found"
+              description="Choose an available service or return to workspace."
+            />
+            <div className="mt-4 flex flex-wrap gap-2">
+              <Link href="/services" className="inline-flex rounded-lg border border-cyan-500/40 px-3 py-2 text-sm text-cyan-300 hover:bg-cyan-500/10">
+                Browse Services
+              </Link>
+              <Link href="/workspace" className="inline-flex rounded-lg border border-white/20 px-3 py-2 text-sm text-app-text hover:bg-white/5">
+                Go to Workspace
+              </Link>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
   }
 
   const runService = async () => {

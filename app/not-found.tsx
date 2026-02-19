@@ -24,9 +24,9 @@ export default function NotFound() {
           404
         </h1>
         
-        <p className="text-xl text-gray-400 mb-2">Digital Twin Not Found</p>
+        <p className="text-xl text-gray-400 mb-2">Page not found</p>
         <p className="text-gray-600 mb-8">
-          The requested identity does not exist in our protocol.
+          The page you requested is unavailable.
         </p>
         
         <Link

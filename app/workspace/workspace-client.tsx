@@ -13,6 +13,7 @@ import { Spinner } from '@/components/ui/Spinner';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { getLocaleFromPathname, withLocalePath } from '@/lib/i18n/localePath';
 import { ApiClientError, fetchJson, toUserMessage } from '@/lib/api/clientFetch';
+import { getOwnerId } from '@/lib/auth/identity';
 
 type WorkspaceClientProps = {
   userEmail: string | null;
@@ -32,6 +33,10 @@ type WorkspaceOutput = {
   created_at: string;
 };
 
+type SavedAvatar = {
+  id: string;
+};
+
 export default function WorkspaceClient({ userEmail, locale }: WorkspaceClientProps) {
   const router = useRouter();
   const pathname = usePathname();
@@ -41,6 +46,7 @@ export default function WorkspaceClient({ userEmail, locale }: WorkspaceClientPr
   const [loading, setLoading] = useState(Boolean(userEmail));
   const [apiError, setApiError] = useState<string | null>(null);
   const [authExpired, setAuthExpired] = useState(false);
+  const [hasAvatar, setHasAvatar] = useState<boolean | null>(null);
 
   const resolvedLocale = locale || getLocaleFromPathname(pathname);
   const toLocale = (path: string) => withLocalePath(path, resolvedLocale);
@@ -53,6 +59,7 @@ export default function WorkspaceClient({ userEmail, locale }: WorkspaceClientPr
     if (!isAuthenticated) {
       setJobs([]);
       setOutputs([]);
+      setHasAvatar(null);
       setLoading(false);
       return;
     }
@@ -62,16 +69,24 @@ export default function WorkspaceClient({ userEmail, locale }: WorkspaceClientPr
       setApiError(null);
       setAuthExpired(false);
       try {
+        const ownerId = await getOwnerId();
         const [jobsData, outputsData] = await Promise.all([
           fetchJson<{ jobs: WorkspaceJob[] }>('/api/app/jobs', { cache: 'no-store' }),
           fetchJson<{ outputs: WorkspaceOutput[] }>('/api/app/outputs', { cache: 'no-store' }),
         ]);
 
+        const avatarData = await fetchJson<{ avatars: SavedAvatar[] }>(
+          `/api/avatars?owner_id=${encodeURIComponent(ownerId)}&limit=1`,
+          { cache: 'no-store' }
+        );
+
         setJobs(Array.isArray(jobsData.jobs) ? jobsData.jobs : []);
         setOutputs(Array.isArray(outputsData.outputs) ? outputsData.outputs : []);
+        setHasAvatar(Array.isArray(avatarData.avatars) && avatarData.avatars.length > 0);
       } catch (error) {
         setJobs([]);
         setOutputs([]);
+        setHasAvatar(false);
 
         if (error instanceof ApiClientError && error.status === 401) {
           setAuthExpired(true);
@@ -141,6 +156,24 @@ export default function WorkspaceClient({ userEmail, locale }: WorkspaceClientPr
                 <Button onClick={() => router.push(`/auth?next=${encodeURIComponent(toLocale('/workspace'))}`)}>
                   Continue to Login
                 </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {isAuthenticated && hasAvatar === false && (
+          <Card className="mb-4 border-blue-500/30 bg-blue-500/5">
+            <CardContent className="pt-6">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-sm text-blue-100">No avatar found yet. Create your first avatar to unlock identity features.</p>
+                <div className="flex gap-2">
+                  <Button onClick={() => router.push(toLocale('/services/avatar-builder'))}>
+                    Create Your First Avatar
+                  </Button>
+                  <Button variant="secondary" onClick={() => router.push(`${toLocale('/workspace')}?create=true`)}>
+                    Open Create Mode
+                  </Button>
+                </div>
               </div>
             </CardContent>
           </Card>
