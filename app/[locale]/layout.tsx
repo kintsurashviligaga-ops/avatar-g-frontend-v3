@@ -1,9 +1,6 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
-import { IdentityProvider } from "@/lib/identity/IdentityContext";
-import { ToastProvider } from "@/components/ui/Toast";
-import GlobalChatbot from "@/components/GlobalChatbot";
-import { Navbar, Footer } from "@/components/layout/AppLayout";
+import { notFound } from "next/navigation";
 import { publicEnv } from "@/lib/env/public";
 import { getMessages } from 'next-intl/server';
 import { NextIntlClientProvider } from 'next-intl';
@@ -63,9 +60,12 @@ export default async function LocaleLayout({
   params,
 }: LocaleLayoutProps) {
   const { locale } = params;
-  const safeLocale = i18n.locales.includes(locale as (typeof i18n.locales)[number])
-    ? locale
-    : i18n.defaultLocale;
+  const isSupportedLocale = i18n.locales.includes(locale as (typeof i18n.locales)[number]);
+  if (!isSupportedLocale) {
+    notFound();
+  }
+
+  const safeLocale = locale;
 
   let messages: Record<string, unknown> = {};
   try {
@@ -75,21 +75,10 @@ export default async function LocaleLayout({
   }
 
   return (
-    <html lang={safeLocale} className="dark">
-      <body className={`${inter.className} bg-[#05070A] text-white antialiased`}>
-        <NextIntlClientProvider locale={safeLocale} messages={messages}>
-          <IdentityProvider>
-            <ToastProvider>
-              <Navbar />
-              <main className="pt-20">
-                {children}
-              </main>
-              <Footer />
-              <GlobalChatbot />
-            </ToastProvider>
-          </IdentityProvider>
-        </NextIntlClientProvider>
-      </body>
-    </html>
+    <div className={`${inter.className}`}>
+      <NextIntlClientProvider locale={safeLocale} messages={messages}>
+        {children}
+      </NextIntlClientProvider>
+    </div>
   );
 }
