@@ -6,15 +6,15 @@ import { LanguageProvider } from "@/lib/i18n/LanguageContext";
 import { ToastProvider } from "@/components/ui/Toast";
 import GlobalChatbot from "@/components/GlobalChatbot";
 import { Navbar, Footer } from "@/components/layout/AppLayout";
-import { publicEnv } from "@/lib/env/public";
 import { NextIntlClientProvider } from "next-intl";
 import { getLocale, getMessages } from "next-intl/server";
 import { i18n } from "@/i18n.config";
+import { logStartupEnvValidation } from "@/lib/env/startupValidation";
 
 const inter = Inter({ subsets: ["latin"], variable: '--font-fallback' });
 const notoGeorgian = Noto_Sans_Georgian({ subsets: ["georgian", "latin"], variable: '--font-ui' });
 
-const metadataBaseUrl = publicEnv.NEXT_PUBLIC_APP_URL || "https://avatar-g-frontend-v3.vercel.app";
+const metadataBaseUrl = process.env.NEXT_PUBLIC_SITE_URL || process.env.NEXT_PUBLIC_APP_URL || "https://myavatar.ge";
 
 export const metadata: Metadata = {
   metadataBase: new URL(metadataBaseUrl),
@@ -54,6 +54,12 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  try {
+    logStartupEnvValidation();
+  } catch {
+    // Never block runtime rendering because of env startup checks.
+  }
+
   let locale: string = i18n.defaultLocale;
   let messages: Record<string, unknown> = {};
 

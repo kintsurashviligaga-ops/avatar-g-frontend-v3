@@ -21,10 +21,14 @@ export default function Error({
   reset: () => void;
 }) {
   useEffect(() => {
-    // Only log in development
-    if (process.env.NODE_ENV === 'development') {
-      console.error('[App Error]', error);
-    }
+    // Always log locally so runtime bundle errors are visible in browser console
+    console.error('[App Error Boundary]', {
+      message: error?.message,
+      digest: error?.digest,
+      stack: error?.stack,
+      href: typeof window !== 'undefined' ? window.location.href : 'server',
+      timestamp: new Date().toISOString(),
+    });
     
     // SECURITY: Send to error tracking in production only
     if (typeof window !== 'undefined' && process.env.NODE_ENV === 'production') {
@@ -69,6 +73,11 @@ export default function Error({
         {error.digest && (
           <p className="text-xs text-gray-600 mb-6 font-mono break-all">
             შეცდომის ID: {error.digest}
+          </p>
+        )}
+        {error.message && (
+          <p className="text-xs text-gray-500 mb-4 font-mono break-all">
+            დეტალი: {error.message}
           </p>
         )}
 

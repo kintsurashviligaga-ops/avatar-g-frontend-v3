@@ -61,7 +61,27 @@ supabase db push
 npm run dev
 
 # 5. Open browser
-# Visit http://localhost:3000
+# Open the exact "Local" URL printed by Next.js in terminal
+# (default: http://localhost:3000)
+```
+
+### Stable local ports (Windows)
+
+Use a fixed dev port so localhost does not jump between ports:
+
+```powershell
+# Default fixed port
+npm run dev
+
+# Alternative fixed port for parallel sessions
+npm run dev:3003
+```
+
+If a port is busy:
+
+```powershell
+netstat -ano | findstr :3003
+taskkill /PID <pid> /F
 ```
 
 ### Environment Variables Required

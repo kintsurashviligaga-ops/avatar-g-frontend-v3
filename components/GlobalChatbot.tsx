@@ -35,7 +35,12 @@ export default function GlobalChatbot() {
   const [showAttach, setShowAttach] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [isClient, setIsClient] = useState(false);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
+
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
 
   useEffect(() => {
     if (typeof window !== "undefined" && "webkitSpeechRecognition" in window) {
@@ -78,7 +83,9 @@ export default function GlobalChatbot() {
       if (voiceEnabled && responseText) {
         const u = new SpeechSynthesisUtterance(responseText);
         u.lang = language === "ka" ? "ka-GE" : "en-US";
-        speechSynthesis.speak(u);
+        if ("speechSynthesis" in window) {
+          window.speechSynthesis.speak(u);
+        }
       }
     } catch {
       setMessages(prev => [...prev, { role: "assistant", content: "Error occurred" }]);
@@ -99,10 +106,16 @@ export default function GlobalChatbot() {
   };
 
   const copyMessage = (content: string, id: string) => {
-    navigator.clipboard.writeText(content);
+    if (navigator?.clipboard?.writeText) {
+      navigator.clipboard.writeText(content).catch(() => undefined);
+    }
     setCopiedId(id);
     setTimeout(() => setCopiedId(null), 2000);
   };
+
+  if (!isClient) {
+    return null;
+  }
 
   return (
     <>
