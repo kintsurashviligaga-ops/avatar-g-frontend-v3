@@ -423,6 +423,16 @@ node scripts/production-test.js
    - `FINAL_DELIVERY_REPORT.md`
    - `MARKETPLACE_QA_CHECKLIST.md`
 
+### Telegram Integration Manual QA Checklist ✅
+- [ ] Open `/settings/integrations/telegram` in production.
+- [ ] Enter `TELEGRAM_WEBHOOK_SECRET` and click **Set Webhook**.
+- [ ] Verify response shows Telegram `ok: true` and a webhook URL ending with `/api/agent-g/webhook/telegram?secret=...`.
+- [ ] Click **Check Status** and verify `telegram_ok: true`, `http_ok: true`, and a non-empty configured URL.
+- [ ] Send a Telegram message to the bot and confirm `/api/agent-g/webhook/telegram` returns fast 200 JSON `{ ok: true }`.
+- [ ] Confirm webhook rejects invalid secret query with `401`.
+- [ ] Confirm optional header secret mismatch (`x-telegram-bot-api-secret-token`) returns `401`.
+- [ ] Confirm no secrets are rendered in client logs or UI output.
+
 ### Latest Delivery Commits
 1. `2e3a80d` — docs: update final delivery report with Feb 20 addendum
 2. `450241b` — feat: launch marketplace service with listings inquiries and workspace integration

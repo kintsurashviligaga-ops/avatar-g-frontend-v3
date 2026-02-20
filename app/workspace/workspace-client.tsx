@@ -552,7 +552,10 @@ export default function WorkspaceClient({ userEmail, locale }: WorkspaceClientPr
               </div>
             )}
             <div className="mt-3 text-right">
-              <Link href={toLocale('/services/agent-g')} className="text-sm text-cyan-300 hover:text-cyan-200">Open Agent G</Link>
+              <div className="flex flex-wrap items-center justify-end gap-3">
+                <Link href={toLocale('/settings/integrations/telegram')} className="text-sm text-cyan-300 hover:text-cyan-200">Telegram integration</Link>
+                <Link href={toLocale('/services/agent-g')} className="text-sm text-cyan-300 hover:text-cyan-200">Open Agent G</Link>
+              </div>
             </div>
           </CardContent>
         </Card>

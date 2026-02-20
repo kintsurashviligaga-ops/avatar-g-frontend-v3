@@ -2,6 +2,7 @@
 
 import { motion } from "framer-motion";
 import { useState } from "react";
+import Link from "next/link";
 import { useIdentity } from "@/lib/identity/IdentityContext";
 import { 
   User, 
@@ -63,6 +64,17 @@ export default function SettingsClient() {
                   <span>{tab.label}</span>
                 </button>
               ))}
+            </div>
+
+            {/* Danger Zone */}
+            <div className="mt-6 p-4 bg-cyan-500/10 border border-cyan-500/30 rounded-2xl">
+              <h3 className="text-cyan-300 font-semibold mb-2">Integrations</h3>
+              <Link
+                href="/settings/integrations/telegram"
+                className="block w-full py-2 text-center bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-200 rounded-lg text-sm transition-colors"
+              >
+                Telegram Webhook Setup
+              </Link>
             </div>
 
             {/* Danger Zone */}
