@@ -452,6 +452,24 @@ export default function BusinessAgentPage() {
         setWizardOpen(true);
       }
 
+      const voiceProfile = searchParams.get('voice_profile');
+      const usageNotes = searchParams.get('usage_notes');
+      if (voiceProfile || usageNotes) {
+        setWizardOpen(true);
+        if (voiceProfile) {
+          setProfile((current) => ({
+            ...current,
+            business_name: current.business_name || voiceProfile,
+          }));
+        }
+        if (usageNotes) {
+          setInputs((current) => ({
+            ...current,
+            products_services_text: [current.products_services_text, `Voice notes: ${usageNotes}`].filter(Boolean).join('\n'),
+          }));
+        }
+      }
+
       await loadProjects(isAuthed);
 
       const requestedProjectId = searchParams.get('project');

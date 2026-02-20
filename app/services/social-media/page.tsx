@@ -209,6 +209,8 @@ export default function SocialMediaManagerPage() {
 
       const businessName = searchParams.get('business_name');
       const incomingGoals = searchParams.get('goals');
+      const audioAssetId = searchParams.get('audio_asset_id');
+      const captionPrefill = searchParams.get('caption');
       if (businessName || incomingGoals) {
         setWizardOpen(true);
         setState((current) => {
@@ -222,6 +224,20 @@ export default function SocialMediaManagerPage() {
             goal: nextGoal || current.goal,
           };
         });
+      }
+
+      if (audioAssetId || captionPrefill) {
+        setWizardOpen(true);
+        setState((current) => ({
+          ...current,
+          brandSample: [
+            current.brandSample,
+            captionPrefill ? `Caption: ${captionPrefill}` : '',
+            audioAssetId ? `Audio asset: ${audioAssetId}` : '',
+          ]
+            .filter(Boolean)
+            .join(' | '),
+        }));
       }
     };
 

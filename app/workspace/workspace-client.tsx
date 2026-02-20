@@ -43,6 +43,12 @@ type BusinessAgentProject = {
   updated_at: string;
 };
 
+type VoiceLabProject = {
+  id: string;
+  title: string;
+  updated_at: string;
+};
+
 export default function WorkspaceClient({ userEmail, locale }: WorkspaceClientProps) {
   const router = useRouter();
   const pathname = usePathname();
@@ -55,6 +61,7 @@ export default function WorkspaceClient({ userEmail, locale }: WorkspaceClientPr
   const [authExpired, setAuthExpired] = useState(false);
   const [hasAvatar, setHasAvatar] = useState<boolean | null>(null);
   const [businessAgentProjects, setBusinessAgentProjects] = useState<BusinessAgentProject[]>([]);
+  const [voiceLabProjects, setVoiceLabProjects] = useState<VoiceLabProject[]>([]);
 
   const resolvedLocale = locale || getLocaleFromPathname(pathname);
   const toLocale = (path: string) => withLocalePath(path, resolvedLocale);
@@ -64,6 +71,8 @@ export default function WorkspaceClient({ userEmail, locale }: WorkspaceClientPr
   const smmProject = searchParams.get('project');
   const baSource = searchParams.get('from') === 'business-agent';
   const baProject = searchParams.get('project');
+  const voiceLabSource = searchParams.get('from') === 'voice-lab';
+  const voiceLabProject = searchParams.get('project');
 
   const featuredServices = SERVICE_REGISTRY;
 
@@ -83,6 +92,17 @@ export default function WorkspaceClient({ userEmail, locale }: WorkspaceClientPr
       } else {
         setBusinessAgentProjects([]);
       }
+      const voiceRaw = localStorage.getItem('voice_lab_demo_projects_v1');
+      if (voiceRaw) {
+        try {
+          const parsed = JSON.parse(voiceRaw) as VoiceLabProject[];
+          setVoiceLabProjects(Array.isArray(parsed) ? parsed : []);
+        } catch {
+          setVoiceLabProjects([]);
+        }
+      } else {
+        setVoiceLabProjects([]);
+      }
       setLoading(false);
       return;
     }
@@ -93,10 +113,11 @@ export default function WorkspaceClient({ userEmail, locale }: WorkspaceClientPr
       setAuthExpired(false);
       try {
         const ownerId = await getOwnerId();
-        const [jobsData, outputsData, businessData] = await Promise.all([
+        const [jobsData, outputsData, businessData, voiceData] = await Promise.all([
           fetchJson<{ jobs: WorkspaceJob[] }>('/api/app/jobs', { cache: 'no-store' }),
           fetchJson<{ outputs: WorkspaceOutput[] }>('/api/app/outputs', { cache: 'no-store' }),
           fetchJson<{ projects: BusinessAgentProject[] }>('/api/business-agent/projects', { cache: 'no-store' }),
+          fetchJson<{ projects: VoiceLabProject[] }>('/api/voice-lab/projects', { cache: 'no-store' }),
         ]);
 
         const avatarData = await fetchJson<{ avatars: SavedAvatar[] }>(
@@ -107,12 +128,14 @@ export default function WorkspaceClient({ userEmail, locale }: WorkspaceClientPr
         setJobs(Array.isArray(jobsData.jobs) ? jobsData.jobs : []);
         setOutputs(Array.isArray(outputsData.outputs) ? outputsData.outputs : []);
         setBusinessAgentProjects(Array.isArray(businessData.projects) ? businessData.projects : []);
+        setVoiceLabProjects(Array.isArray(voiceData.projects) ? voiceData.projects : []);
         setHasAvatar(Array.isArray(avatarData.avatars) && avatarData.avatars.length > 0);
       } catch (error) {
         setJobs([]);
         setOutputs([]);
         setHasAvatar(false);
         setBusinessAgentProjects([]);
+        setVoiceLabProjects([]);
 
         if (error instanceof ApiClientError && error.status === 401) {
           setAuthExpired(true);
@@ -202,6 +225,16 @@ export default function WorkspaceClient({ userEmail, locale }: WorkspaceClientPr
             <CardContent className="pt-6">
               <p className="text-sm text-emerald-100">
                 Business Agent context loaded{baProject ? ` for project: ${baProject}` : ''}.
+              </p>
+            </CardContent>
+          </Card>
+        )}
+
+        {voiceLabSource && (
+          <Card className="mb-4 border-amber-500/30 bg-amber-500/10">
+            <CardContent className="pt-6">
+              <p className="text-sm text-amber-100">
+                Voice Lab context loaded{voiceLabProject ? ` for project: ${voiceLabProject}` : ''}.
               </p>
             </CardContent>
           </Card>
@@ -339,6 +372,30 @@ export default function WorkspaceClient({ userEmail, locale }: WorkspaceClientPr
                     key={project.id}
                     href={`${toLocale('/services/business-agent')}?project=${encodeURIComponent(project.id)}`}
                     className="rounded-xl border border-white/10 bg-black/20 px-3 py-2 transition hover:border-emerald-400/50"
+                  >
+                    <p className="text-sm text-app-text">{project.title}</p>
+                    <p className="text-[11px] text-app-muted">{new Date(project.updated_at).toLocaleString()}</p>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="mt-4">
+          <CardHeader>
+            <CardTitle>Voice Lab projects</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {voiceLabProjects.length === 0 ? (
+              <EmptyState title="No Voice Lab projects" description="Create your first Voice Lab project and it appears here." />
+            ) : (
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                {voiceLabProjects.slice(0, 9).map((project) => (
+                  <Link
+                    key={project.id}
+                    href={`${toLocale('/services/voice-lab')}?project=${encodeURIComponent(project.id)}`}
+                    className="rounded-xl border border-white/10 bg-black/20 px-3 py-2 transition hover:border-amber-400/50"
                   >
                     <p className="text-sm text-app-text">{project.title}</p>
                     <p className="text-[11px] text-app-muted">{new Date(project.updated_at).toLocaleString()}</p>
