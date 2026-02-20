@@ -49,6 +49,23 @@ type VoiceLabProject = {
   updated_at: string;
 };
 
+type MarketplaceListingLite = {
+  id: string;
+  title: string;
+  updated_at: string;
+};
+
+type MarketplaceInquiryLite = {
+  id: string;
+  subject: string | null;
+  updated_at: string;
+};
+
+type MarketplaceFavoriteLite = {
+  listing_id: string;
+  created_at: string;
+};
+
 export default function WorkspaceClient({ userEmail, locale }: WorkspaceClientProps) {
   const router = useRouter();
   const pathname = usePathname();
@@ -62,6 +79,9 @@ export default function WorkspaceClient({ userEmail, locale }: WorkspaceClientPr
   const [hasAvatar, setHasAvatar] = useState<boolean | null>(null);
   const [businessAgentProjects, setBusinessAgentProjects] = useState<BusinessAgentProject[]>([]);
   const [voiceLabProjects, setVoiceLabProjects] = useState<VoiceLabProject[]>([]);
+  const [marketplaceListings, setMarketplaceListings] = useState<MarketplaceListingLite[]>([]);
+  const [marketplaceInquiries, setMarketplaceInquiries] = useState<MarketplaceInquiryLite[]>([]);
+  const [marketplaceFavorites, setMarketplaceFavorites] = useState<MarketplaceFavoriteLite[]>([]);
 
   const resolvedLocale = locale || getLocaleFromPathname(pathname);
   const toLocale = (path: string) => withLocalePath(path, resolvedLocale);
@@ -73,6 +93,8 @@ export default function WorkspaceClient({ userEmail, locale }: WorkspaceClientPr
   const baProject = searchParams.get('project');
   const voiceLabSource = searchParams.get('from') === 'voice-lab';
   const voiceLabProject = searchParams.get('project');
+  const marketplaceSource = searchParams.get('from') === 'marketplace';
+  const marketplaceListing = searchParams.get('listing');
 
   const featuredServices = SERVICE_REGISTRY;
 
@@ -103,6 +125,9 @@ export default function WorkspaceClient({ userEmail, locale }: WorkspaceClientPr
       } else {
         setVoiceLabProjects([]);
       }
+      setMarketplaceListings([]);
+      setMarketplaceInquiries([]);
+      setMarketplaceFavorites([]);
       setLoading(false);
       return;
     }
@@ -113,11 +138,14 @@ export default function WorkspaceClient({ userEmail, locale }: WorkspaceClientPr
       setAuthExpired(false);
       try {
         const ownerId = await getOwnerId();
-        const [jobsData, outputsData, businessData, voiceData] = await Promise.all([
+        const [jobsData, outputsData, businessData, voiceData, marketplaceListingData, marketplaceInquiryData, marketplaceFavoriteData] = await Promise.all([
           fetchJson<{ jobs: WorkspaceJob[] }>('/api/app/jobs', { cache: 'no-store' }),
           fetchJson<{ outputs: WorkspaceOutput[] }>('/api/app/outputs', { cache: 'no-store' }),
           fetchJson<{ projects: BusinessAgentProject[] }>('/api/business-agent/projects', { cache: 'no-store' }),
           fetchJson<{ projects: VoiceLabProject[] }>('/api/voice-lab/projects', { cache: 'no-store' }),
+          fetchJson<{ listings: MarketplaceListingLite[] }>('/api/marketplace/listings?mine=1&limit=5', { cache: 'no-store' }),
+          fetchJson<{ inquiries: MarketplaceInquiryLite[] }>('/api/marketplace/inquiries?mine=1&limit=5', { cache: 'no-store' }),
+          fetchJson<{ favorites: MarketplaceFavoriteLite[] }>('/api/marketplace/favorites?limit=5', { cache: 'no-store' }),
         ]);
 
         const avatarData = await fetchJson<{ avatars: SavedAvatar[] }>(
@@ -129,6 +157,9 @@ export default function WorkspaceClient({ userEmail, locale }: WorkspaceClientPr
         setOutputs(Array.isArray(outputsData.outputs) ? outputsData.outputs : []);
         setBusinessAgentProjects(Array.isArray(businessData.projects) ? businessData.projects : []);
         setVoiceLabProjects(Array.isArray(voiceData.projects) ? voiceData.projects : []);
+        setMarketplaceListings(Array.isArray(marketplaceListingData.listings) ? marketplaceListingData.listings : []);
+        setMarketplaceInquiries(Array.isArray(marketplaceInquiryData.inquiries) ? marketplaceInquiryData.inquiries : []);
+        setMarketplaceFavorites(Array.isArray(marketplaceFavoriteData.favorites) ? marketplaceFavoriteData.favorites : []);
         setHasAvatar(Array.isArray(avatarData.avatars) && avatarData.avatars.length > 0);
       } catch (error) {
         setJobs([]);
@@ -136,6 +167,9 @@ export default function WorkspaceClient({ userEmail, locale }: WorkspaceClientPr
         setHasAvatar(false);
         setBusinessAgentProjects([]);
         setVoiceLabProjects([]);
+        setMarketplaceListings([]);
+        setMarketplaceInquiries([]);
+        setMarketplaceFavorites([]);
 
         if (error instanceof ApiClientError && error.status === 401) {
           setAuthExpired(true);
@@ -235,6 +269,16 @@ export default function WorkspaceClient({ userEmail, locale }: WorkspaceClientPr
             <CardContent className="pt-6">
               <p className="text-sm text-amber-100">
                 Voice Lab context loaded{voiceLabProject ? ` for project: ${voiceLabProject}` : ''}.
+              </p>
+            </CardContent>
+          </Card>
+        )}
+
+        {marketplaceSource && (
+          <Card className="mb-4 border-fuchsia-500/30 bg-fuchsia-500/10">
+            <CardContent className="pt-6">
+              <p className="text-sm text-fuchsia-100">
+                Marketplace context loaded{marketplaceListing ? ` for listing: ${marketplaceListing}` : ''}.
               </p>
             </CardContent>
           </Card>
@@ -403,6 +447,62 @@ export default function WorkspaceClient({ userEmail, locale }: WorkspaceClientPr
                 ))}
               </div>
             )}
+          </CardContent>
+        </Card>
+
+        <Card className="mt-4">
+          <CardHeader>
+            <CardTitle>Marketplace activity</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {marketplaceListings.length === 0 && marketplaceInquiries.length === 0 && marketplaceFavorites.length === 0 ? (
+              <EmptyState title="No Marketplace activity" description="Create listings, favorite items, or send inquiries to populate this panel." />
+            ) : (
+              <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-app-muted">My listings</p>
+                  {marketplaceListings.slice(0, 5).map((item) => (
+                    <Link
+                      key={item.id}
+                      href={`${toLocale('/services/marketplace/listings')}/${item.id}`}
+                      className="block rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-xs text-app-text transition hover:border-fuchsia-400/50"
+                    >
+                      <p>{item.title}</p>
+                      <p className="text-[11px] text-app-muted">{new Date(item.updated_at).toLocaleString()}</p>
+                    </Link>
+                  ))}
+                </div>
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-app-muted">Inquiries</p>
+                  {marketplaceInquiries.slice(0, 5).map((item) => (
+                    <Link
+                      key={item.id}
+                      href={`${toLocale('/services/marketplace/inbox')}?inquiry=${encodeURIComponent(item.id)}`}
+                      className="block rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-xs text-app-text transition hover:border-fuchsia-400/50"
+                    >
+                      <p>{item.subject || 'Inquiry'}</p>
+                      <p className="text-[11px] text-app-muted">{new Date(item.updated_at).toLocaleString()}</p>
+                    </Link>
+                  ))}
+                </div>
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-app-muted">Favorites</p>
+                  {marketplaceFavorites.slice(0, 5).map((item) => (
+                    <Link
+                      key={item.listing_id}
+                      href={`${toLocale('/services/marketplace/listings')}/${item.listing_id}`}
+                      className="block rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-xs text-app-text transition hover:border-fuchsia-400/50"
+                    >
+                      <p>{item.listing_id}</p>
+                      <p className="text-[11px] text-app-muted">{new Date(item.created_at).toLocaleString()}</p>
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            )}
+            <div className="mt-3 text-right">
+              <Link href={toLocale('/services/marketplace/my')} className="text-sm text-cyan-300 hover:text-cyan-200">Open seller dashboard</Link>
+            </div>
           </CardContent>
         </Card>
       </div>

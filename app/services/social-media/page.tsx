@@ -163,6 +163,15 @@ export default function SocialMediaManagerPage() {
           `?intent=bg-music&mood=${state.brandVoice}&lang=${locale}`,
       },
       {
+        title: 'Marketplace',
+        desc: isEn ? 'Publish campaign packs' : 'გამოაქვეყნე კამპანიის პაკეტები',
+        href:
+          withLocalePath('/services/marketplace/browse', locale) +
+          `?q=${encodeURIComponent(state.projectTitle)}&category=Social%20Packs&tags=${encodeURIComponent(
+            state.platforms.slice(0, 3).join(',') || 'social'
+          )}`,
+      },
+      {
         title: 'Workspace',
         desc: isEn ? 'Project hub & approvals' : 'პროექტების ჰაბი',
         href: withLocalePath('/workspace', locale) + `?${projectDeepLink}`,

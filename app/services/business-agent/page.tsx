@@ -282,6 +282,12 @@ export default function BusinessAgentPage() {
           `?intent=brand-visuals&style=${encodeURIComponent(mode)}&lang=${locale}`,
       },
       {
+        title: 'Marketplace',
+        href:
+          withLocalePath('/services/marketplace/browse', locale) +
+          `?q=${businessNameParam}&category=Business%20Packs&tags=${goalsParam}`,
+      },
+      {
         title: 'Workspace',
         href:
           withLocalePath('/workspace', locale) +

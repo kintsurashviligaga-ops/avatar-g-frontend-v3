@@ -162,6 +162,12 @@ export default function VoiceLabPage() {
           `?create=true&voice_profile=${profileName}&usage_notes=${encodeURIComponent(draft.notes || latestCaption)}`,
       },
       {
+        title: 'Marketplace',
+        href:
+          withLocalePath('/services/marketplace/browse', locale) +
+          `?q=${encodedCaption}&category=Voice%20Packs&tags=voice,audio`,
+      },
+      {
         title: 'Workspace',
         href:
           withLocalePath('/workspace', locale) +
