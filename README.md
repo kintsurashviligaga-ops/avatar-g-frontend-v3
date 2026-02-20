@@ -46,6 +46,25 @@
 
 ## 🚀 Quick Start
 
+### Windows repo location (important)
+
+Do not keep this repository inside OneDrive-managed folders. Use a local path such as C:/projects/avatar-g-frontend-v3 to avoid file lock issues with .next during Next.js builds.
+
+Recommended migration commands:
+
+```powershell
+mkdir C:\projects -Force
+robocopy "C:\Users\admin\OneDrive\Desktop\avatar-g-frontend-v3" "C:\projects\avatar-g-frontend-v3" /MIR /XD node_modules .next .turbo /R:1 /W:1
+```
+
+After moving, open C:/projects/avatar-g-frontend-v3 in VS Code and run:
+
+```powershell
+npm ci
+npm run typecheck
+npm run build
+```
+
 ```powershell
 # 1. Install dependencies
 npm install

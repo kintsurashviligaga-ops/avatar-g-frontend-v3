@@ -80,7 +80,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log(`[Stripe] Checkout session created`, {
+    console.info(`[Stripe] Checkout session created`, {
       sessionId: session.id,
       amount,
       currency,

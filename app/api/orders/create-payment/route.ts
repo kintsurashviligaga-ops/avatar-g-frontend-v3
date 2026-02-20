@@ -106,7 +106,7 @@ export async function POST(request: NextRequest) {
       })
       .eq('id', orderId);
 
-    console.log('[Order] Payment created:', {
+    console.info('[Order] Payment created:', {
       orderId,
       paymentIntentId: paymentResult.paymentIntent.id,
       total: amountCents,

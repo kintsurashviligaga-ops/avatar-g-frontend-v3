@@ -87,7 +87,7 @@ export async function POST(request: NextRequest) {
       // Store customer ID mapping
       await storeCustomerMapping(user.id, customerId);
       
-      console.log('[Stripe] Created new customer:', {
+      console.info('[Stripe] Created new customer:', {
         userId: user.id,
         customerId,
       });
@@ -133,7 +133,7 @@ export async function POST(request: NextRequest) {
       subscription_data: subscriptionData,
     }, { idempotencyKey: hashedKey });
 
-    console.log('[Stripe] Checkout session created:', {
+    console.info('[Stripe] Checkout session created:', {
       sessionId: session.id,
       userId: user.id,
       plan: plan || 'custom',

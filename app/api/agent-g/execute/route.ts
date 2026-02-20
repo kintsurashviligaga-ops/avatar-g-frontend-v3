@@ -6,6 +6,8 @@ import { createServiceRoleClient } from '@/lib/supabase/server';
 import { buildTaskPlan, makeTaskId } from '@/lib/agent-g/orchestrator/planner';
 import { executePlan } from '@/lib/agent-g/orchestrator/executor';
 import { aggregateResults } from '@/lib/agent-g/orchestrator/aggregator';
+import { queueAgentGCallback } from '@/lib/agent-g/voice/callback-dispatch';
+import { notifyTelegramTaskCompletion } from '@/lib/agent-g/channels/notify';
 
 export const dynamic = 'force-dynamic';
 
@@ -91,6 +93,24 @@ export async function POST(request: NextRequest) {
           output: item.output ?? { error: item.error ?? null },
         }))
       );
+
+      if (executed.status === 'completed' || executed.status === 'partial') {
+        await queueAgentGCallback({
+          userId: user.id,
+          taskId,
+          taskGoal: payload.data.goal,
+          summary: aggregated.summary,
+          subtasks: aggregated.subtasks,
+          dashboardUrl: `${request.nextUrl.origin}/services/agent-g/dashboard`,
+        });
+
+        await notifyTelegramTaskCompletion({
+          userId: user.id,
+          taskId,
+          summary: aggregated.summary,
+          origin: request.nextUrl.origin,
+        });
+      }
     }
 
     return apiSuccess({

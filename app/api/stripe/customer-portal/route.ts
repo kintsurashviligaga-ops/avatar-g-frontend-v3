@@ -48,7 +48,7 @@ export async function POST(_request: NextRequest) {
       return_url: `${appUrl}/account/billing`,
     });
 
-    console.log('[Stripe] Customer portal session created:', {
+    console.info('[Stripe] Customer portal session created:', {
       userId: user.id,
       customerId,
       sessionId: session.id,

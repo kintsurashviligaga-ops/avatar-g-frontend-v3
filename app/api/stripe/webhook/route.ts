@@ -180,13 +180,13 @@ export async function POST(request: NextRequest) {
     // 3. Check idempotency (prevent duplicate processing)
     const alreadyProcessed = await isEventProcessed(event.id);
     if (alreadyProcessed) {
-      console.log('[Stripe Webhook] Event already processed:', event.id);
+      console.info('[Stripe Webhook] Event already processed:', event.id);
       return NextResponse.json({ received: true, cached: true }, { status: 200 });
     }
 
     // 4. Log incoming event
     const requestId = request.headers.get('stripe-request-id') || 'unknown';
-    console.log('[Stripe Webhook] Event received', {
+    console.info('[Stripe Webhook] Event received', {
       eventId: event.id,
       eventType: event.type,
       mode: event.livemode ? 'live' : 'test',
@@ -252,7 +252,7 @@ export async function POST(request: NextRequest) {
 
         default:
           // Log unhandled event types for awareness
-          console.log('[Stripe Webhook] Unhandled event type:', event.type);
+          console.info('[Stripe Webhook] Unhandled event type:', event.type);
       }
 
       // Mark event as processed (idempotency)
@@ -290,7 +290,7 @@ export async function POST(request: NextRequest) {
 
 async function handleCheckoutSessionCompleted(event: Stripe.Event) {
   const session = event.data.object as Stripe.Checkout.Session;
-  console.log('[Stripe Webhook] Processing checkout.session.completed', {
+  console.info('[Stripe Webhook] Processing checkout.session.completed', {
     sessionId: session.id,
     customerId: session.customer,
     paymentStatus: session.payment_status,
@@ -326,7 +326,7 @@ async function handleCheckoutSessionCompleted(event: Stripe.Event) {
         end: new Date(),
       });
 
-      console.log('[Webhook] Subscription created from checkout:', {
+      console.info('[Webhook] Subscription created from checkout:', {
         userId,
         subscriptionId: subscription.id,
         status: subscription.status,
@@ -336,7 +336,7 @@ async function handleCheckoutSessionCompleted(event: Stripe.Event) {
     // For one-time payment sessions
     if (session.mode === 'payment') {
       // Handle one-time payment completion
-      console.log('[Webhook] One-time payment completed:', session.id);
+      console.info('[Webhook] One-time payment completed:', session.id);
 
       const userId = session.metadata?.user_id || (session.customer
         ? await getUserIdFromCustomerId(session.customer as string)
@@ -381,7 +381,7 @@ async function handleCheckoutSessionCompleted(event: Stripe.Event) {
 async function handleInvoicePaymentSucceeded(event: Stripe.Event) {
   const invoice = event.data.object as Stripe.Invoice;
   const invoiceSubscription = (invoice as Stripe.Invoice & { subscription?: string | null }).subscription;
-  console.log('[Stripe Webhook] Processing invoice.payment_succeeded', {
+  console.info('[Stripe Webhook] Processing invoice.payment_succeeded', {
     invoiceId: invoice.id,
     subscriptionId: invoiceSubscription,
     amountPaid: invoice.amount_paid,
@@ -404,7 +404,7 @@ async function handleInvoicePaymentSucceeded(event: Stripe.Event) {
       // Update subscription in database
       await upsertSubscription(subscription, userId);
 
-      console.log('[Webhook] Subscription updated from invoice payment:', {
+      console.info('[Webhook] Subscription updated from invoice payment:', {
         userId,
         subscriptionId: subscription.id,
         status: subscription.status,
@@ -418,7 +418,7 @@ async function handleInvoicePaymentSucceeded(event: Stripe.Event) {
 
 async function handleSubscriptionCreated(event: Stripe.Event) {
   const subscription = event.data.object as Stripe.Subscription;
-  console.log('[Stripe Webhook] Processing customer.subscription.created', {
+  console.info('[Stripe Webhook] Processing customer.subscription.created', {
     subscriptionId: subscription.id,
     customerId: subscription.customer,
     status: subscription.status,
@@ -433,7 +433,7 @@ async function handleSubscriptionCreated(event: Stripe.Event) {
 
     await upsertSubscription(subscription, userId);
 
-    console.log('[Webhook] Subscription created:', {
+    console.info('[Webhook] Subscription created:', {
       userId,
       subscriptionId: subscription.id,
       status: subscription.status,
@@ -446,7 +446,7 @@ async function handleSubscriptionCreated(event: Stripe.Event) {
 
 async function handleSubscriptionUpdated(event: Stripe.Event) {
   const subscription = event.data.object as Stripe.Subscription;
-  console.log('[Stripe Webhook] Processing customer.subscription.updated', {
+  console.info('[Stripe Webhook] Processing customer.subscription.updated', {
     subscriptionId: subscription.id,
     status: subscription.status,
     cancelAtPeriodEnd: subscription.cancel_at_period_end,
@@ -461,7 +461,7 @@ async function handleSubscriptionUpdated(event: Stripe.Event) {
 
     await upsertSubscription(subscription, userId);
 
-    console.log('[Webhook] Subscription updated:', {
+    console.info('[Webhook] Subscription updated:', {
       userId,
       subscriptionId: subscription.id,
       status: subscription.status,
@@ -474,14 +474,14 @@ async function handleSubscriptionUpdated(event: Stripe.Event) {
 
 async function handleSubscriptionDeleted(event: Stripe.Event) {
   const subscription = event.data.object as Stripe.Subscription;
-  console.log('[Stripe Webhook] Processing customer.subscription.deleted', {
+  console.info('[Stripe Webhook] Processing customer.subscription.deleted', {
     subscriptionId: subscription.id,
   });
 
   try {
     await updateSubscriptionStatus(subscription.id, 'canceled');
 
-    console.log('[Webhook] Subscription marked as canceled:', {
+    console.info('[Webhook] Subscription marked as canceled:', {
       subscriptionId: subscription.id,
     });
   } catch (error) {
@@ -493,7 +493,7 @@ async function handleSubscriptionDeleted(event: Stripe.Event) {
 async function handlePaymentIntentSucceeded(event: Stripe.Event) {
   const paymentIntent = event.data.object as Stripe.PaymentIntent;
   const paymentIntentInvoice = (paymentIntent as Stripe.PaymentIntent & { invoice?: string | null }).invoice;
-  console.log('[Stripe Webhook] Processing payment_intent.succeeded', {
+  console.info('[Stripe Webhook] Processing payment_intent.succeeded', {
     paymentIntentId: paymentIntent.id,
     amount: paymentIntent.amount,
     currency: paymentIntent.currency,
@@ -503,7 +503,7 @@ async function handlePaymentIntentSucceeded(event: Stripe.Event) {
   // For one-time payments (not subscriptions)
   // Subscriptions are handled via invoice events
   if (!paymentIntentInvoice) {
-    console.log('[Webhook] One-time payment intent succeeded:', paymentIntent.id);
+    console.info('[Webhook] One-time payment intent succeeded:', paymentIntent.id);
     
     // PHASE 12: Trigger automated fulfillment
     const orderId = paymentIntent.metadata?.orderId;
@@ -536,7 +536,7 @@ async function handlePaymentIntentSucceeded(event: Stripe.Event) {
           if (!fulfillmentResponse.ok) {
             console.error('[Webhook] Failed to trigger fulfillment:', await fulfillmentResponse.text());
           } else {
-            console.log('[Webhook] Fulfillment triggered for order:', orderId);
+            console.info('[Webhook] Fulfillment triggered for order:', orderId);
           }
         }
       } catch (fulfillmentError) {
@@ -563,7 +563,7 @@ async function handlePaymentIntentFailed(event: Stripe.Event) {
 
 async function handleChargeRefunded(event: Stripe.Event) {
   const charge = event.data.object as Stripe.Charge;
-  console.log('[Stripe Webhook] Processing charge.refunded', {
+  console.info('[Stripe Webhook] Processing charge.refunded', {
     chargeId: charge.id,
     refunded: charge.refunded,
     refundedAmount: charge.amount_refunded,
@@ -601,7 +601,7 @@ async function handleChargeRefunded(event: Stripe.Event) {
 async function handleInvoicePaid(event: Stripe.Event) {
   const invoice = event.data.object as Stripe.Invoice;
   const invoiceSubscription = (invoice as Stripe.Invoice & { subscription?: string | null }).subscription;
-  console.log('[Stripe Webhook] Processing invoice.paid', {
+  console.info('[Stripe Webhook] Processing invoice.paid', {
     invoiceId: invoice.id,
     subscriptionId: invoiceSubscription,
     amountPaid: invoice.amount_paid,
@@ -660,7 +660,7 @@ async function handleInvoicePaid(event: Stripe.Event) {
 
 async function handleAccountUpdated(event: Stripe.Event) {
   const account = event.data.object as Stripe.Account;
-  console.log('[Stripe Webhook] Processing account.updated', {
+  console.info('[Stripe Webhook] Processing account.updated', {
     accountId: account.id,
     chargesEnabled: account.charges_enabled,
     payoutsEnabled: account.payouts_enabled,
@@ -688,7 +688,7 @@ async function handleAccountUpdated(event: Stripe.Event) {
       await updateAccountStatus(userId, account.id);
     }
 
-    console.log('[Webhook] Account status updated:', {
+    console.info('[Webhook] Account status updated:', {
       accountId: account.id,
       userId,
     });
@@ -700,18 +700,18 @@ async function handleAccountUpdated(event: Stripe.Event) {
 
 async function handleAccountAuthorized(event: Stripe.Event) {
   const authorization = event.data.object as { account?: string };
-  console.log('[Stripe Webhook] Processing account.application.authorized', {
+  console.info('[Stripe Webhook] Processing account.application.authorized', {
     accountId: authorization.account || null,
   });
 
   // Seller has authorized the platform to access their account
   // Standard accounts don't need this, but log for audit
-  console.log('[Webhook] Account authorized:', authorization.account || null);
+  console.info('[Webhook] Account authorized:', authorization.account || null);
 }
 
 async function handleApplicationFeeCreated(event: Stripe.Event) {
   const applicationFee = event.data.object as Stripe.ApplicationFee;
-  console.log('[Stripe Webhook] Processing application_fee.created', {
+  console.info('[Stripe Webhook] Processing application_fee.created', {
     feeId: applicationFee.id,
     amount: applicationFee.amount,
     chargeId: applicationFee.charge,
@@ -724,7 +724,7 @@ async function handleApplicationFeeCreated(event: Stripe.Event) {
     
     if (charge.payment_intent) {
       await updateCommissionStatus(charge.payment_intent as string, 'collected');
-      console.log('[Webhook] Commission marked as collected:', {
+      console.info('[Webhook] Commission marked as collected:', {
         paymentIntentId: charge.payment_intent,
         feeAmount: applicationFee.amount,
       });
@@ -737,7 +737,7 @@ async function handleApplicationFeeCreated(event: Stripe.Event) {
 
 async function handleApplicationFeeRefunded(event: Stripe.Event) {
   const applicationFee = event.data.object as Stripe.ApplicationFee;
-  console.log('[Stripe Webhook] Processing application_fee.refunded', {
+  console.info('[Stripe Webhook] Processing application_fee.refunded', {
     feeId: applicationFee.id,
     refunded: applicationFee.refunded,
     refundedAmount: applicationFee.amount_refunded,
@@ -750,7 +750,7 @@ async function handleApplicationFeeRefunded(event: Stripe.Event) {
     
     if (charge.payment_intent) {
       await updateCommissionStatus(charge.payment_intent as string, 'refunded');
-      console.log('[Webhook] Commission marked as refunded:', {
+      console.info('[Webhook] Commission marked as refunded:', {
         paymentIntentId: charge.payment_intent,
       });
     }

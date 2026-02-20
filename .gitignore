@@ -1,10 +1,9 @@
 node_modules/
 .next/
+.turbo/
 out/
 .env
 .env.local
 .DS_Store
 *.log
-package-lock.json
 node_modules_old/
-node_modules/

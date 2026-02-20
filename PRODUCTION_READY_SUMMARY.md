@@ -438,8 +438,9 @@ node scripts/production-test.js
    - `TELEGRAM_BOT_TOKEN` → Telegram Bot API auth (`setWebhook`, `getWebhookInfo`).
    - `TELEGRAM_SETUP_SECRET` → admin-only auth for `/api/agent-g/telegram/set-webhook`.
    - `TELEGRAM_WEBHOOK_SECRET` → inbound webhook verification token (`x-telegram-bot-api-secret-token`).
+-  - `NEXT_PUBLIC_SITE_URL` (or `SITE_URL`) → canonical base URL for webhook registration.
 - **Exact webhook URL configured:**
-   - `https://www.myavatar.ge/api/agent-g/telegram/webhook`
+   - `${SITE_URL}/api/agent-g/telegram/webhook` (normalized, `myavatar.ge` forced to `www.myavatar.ge`).
 - **API routes (App Router):**
    - `GET /api/health`
    - `GET /api/agent-g/telegram/status`
@@ -449,7 +450,7 @@ node scripts/production-test.js
    - `curl -i "https://www.myavatar.ge/api/health"`
    - `curl -i "https://www.myavatar.ge/api/agent-g/telegram/status"`
    - `curl -i "https://www.myavatar.ge/api/agent-g/telegram/set-webhook?secret=<TELEGRAM_SETUP_SECRET>"`
-   - `curl -i -X POST "https://www.myavatar.ge/api/agent-g/telegram/set-webhook" -H "x-telegram-setup-secret: <TELEGRAM_SETUP_SECRET>" -H "Content-Type: application/json" -d "{}"`
+   - `curl -i -X POST "https://www.myavatar.ge/api/agent-g/telegram/set-webhook" -H "x-setup-secret: <TELEGRAM_SETUP_SECRET>" -H "Content-Type: application/json" -d "{}"`
 - **Security notes:**
    - Setup secret is never sent to Telegram API.
    - Webhook verifies only Telegram header `x-telegram-bot-api-secret-token` against `TELEGRAM_WEBHOOK_SECRET`.

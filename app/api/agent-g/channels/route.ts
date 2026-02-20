@@ -10,8 +10,11 @@ import { getWhatsappChannelStatus } from '@/lib/agent-g/channels/whatsapp';
 export const dynamic = 'force-dynamic';
 
 const saveSchema = z.object({
-  type: z.enum(['telegram', 'whatsapp', 'mobile']),
-  config: z.record(z.unknown()).default({}),
+  type: z.enum(['telegram', 'whatsapp', 'web']),
+  status: z.enum(['connected', 'disconnected']).default('connected'),
+  external_id: z.string().nullable().optional(),
+  username: z.string().nullable().optional(),
+  meta: z.record(z.unknown()).default({}),
 });
 
 export async function GET(request: NextRequest) {
@@ -22,7 +25,6 @@ export async function GET(request: NextRequest) {
       getWebChannelStatus(),
       getTelegramChannelStatus(),
       getWhatsappChannelStatus(),
-      { type: 'mobile' as const, connected: true, ready: true, note: 'Push-ready architecture' },
     ];
 
     if (!user) {
@@ -59,7 +61,10 @@ export async function POST(request: NextRequest) {
       .insert({
         user_id: user.id,
         type: payload.data.type,
-        config: payload.data.config,
+        status: payload.data.status,
+        external_id: payload.data.external_id ?? null,
+        username: payload.data.username ?? null,
+        meta: payload.data.meta,
       })
       .select('*')
       .single();

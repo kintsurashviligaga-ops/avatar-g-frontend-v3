@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
-import { Bot, Download, Loader2, Send, Settings2, Sparkles } from 'lucide-react';
+import { Bot, Download, Loader2, PhoneCall, Send, Settings2, Sparkles } from 'lucide-react';
 import SpaceBackground from '@/components/SpaceBackground';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -30,6 +30,13 @@ type ChannelStatusResponse = {
   runtime_status: Array<{ type: string; connected: boolean; ready: boolean; note?: string }>;
 };
 
+type CallsStateResponse = {
+  voice_connected: boolean;
+  prefs: {
+    call_me_when_finished?: boolean;
+  } | null;
+};
+
 export default function AgentGPage() {
   const pathname = usePathname();
   const params = useSearchParams();
@@ -45,6 +52,8 @@ export default function AgentGPage() {
   const [error, setError] = useState<string | null>(null);
   const [task, setTask] = useState<AgentTaskResponse | null>(null);
   const [channels, setChannels] = useState<Array<{ type: string; connected: boolean; ready: boolean; note?: string }>>([]);
+  const [callMeWhenFinished, setCallMeWhenFinished] = useState(false);
+  const [voiceConnected, setVoiceConnected] = useState(false);
 
   useEffect(() => {
     const boot = async () => {
@@ -59,6 +68,15 @@ export default function AgentGPage() {
         setChannels(status.runtime_status || []);
       } catch {
         setChannels([]);
+      }
+
+      try {
+        const callsState = await fetchJson<CallsStateResponse>('/api/agent-g/calls');
+        setCallMeWhenFinished(Boolean(callsState.prefs?.call_me_when_finished));
+        setVoiceConnected(Boolean(callsState.voice_connected));
+      } catch {
+        setCallMeWhenFinished(false);
+        setVoiceConnected(false);
       }
     };
 
@@ -89,6 +107,19 @@ export default function AgentGPage() {
     }
   };
 
+  const saveCallMePreference = async (value: boolean) => {
+    setCallMeWhenFinished(value);
+    try {
+      await fetchJson('/api/agent-g/calls', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ call_me_when_finished: value }),
+      });
+    } catch {
+      setCallMeWhenFinished(!value);
+    }
+  };
+
   const timeline = useMemo(() => task?.results?.subtasks || [], [task]);
 
   return (
@@ -106,6 +137,7 @@ export default function AgentGPage() {
             </div>
             <div className="flex gap-2">
               <Link href={withLocalePath('/services/agent-g/dashboard', locale)}><Button variant="secondary">Dashboard</Button></Link>
+              <Link href={withLocalePath('/services/agent-g/calls', locale)}><Button variant="secondary"><PhoneCall className="mr-1 h-4 w-4" />Call Agent G</Button></Link>
               <Link href={withLocalePath('/services/agent-g/settings', locale)}><Button variant="secondary"><Settings2 className="mr-1 h-4 w-4" />Settings</Button></Link>
             </div>
           </div>
@@ -122,13 +154,20 @@ export default function AgentGPage() {
             />
 
             <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-              <label className="inline-flex items-center gap-2 text-sm text-white">
-                <input type="checkbox" checked={advancedMode} onChange={(e) => setAdvancedMode(e.target.checked)} />
-                {isEn ? 'Advanced Mode' : 'Advanced რეჟიმი'}
-              </label>
+              <div className="flex flex-wrap items-center gap-4">
+                <label className="inline-flex items-center gap-2 text-sm text-white">
+                  <input type="checkbox" checked={advancedMode} onChange={(e) => setAdvancedMode(e.target.checked)} />
+                  {isEn ? 'Advanced Mode' : 'Advanced რეჟიმი'}
+                </label>
+                <label className="inline-flex items-center gap-2 text-sm text-white">
+                  <input type="checkbox" checked={callMeWhenFinished} onChange={(e) => void saveCallMePreference(e.target.checked)} />
+                  {isEn ? 'Call me when finished' : 'დასრულებისას დამირეკე'}
+                </label>
+              </div>
 
               <div className="flex items-center gap-2">
                 {!authenticated && <Badge variant="warning">{isEn ? 'Demo mode' : 'Demo რეჟიმი'}</Badge>}
+                {voiceConnected && <Badge variant="success">Voice Connected</Badge>}
                 <Button onClick={() => void execute()} disabled={running || !goal.trim()}>
                   {running ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Send className="mr-1 h-4 w-4" />} {isEn ? 'Execute' : 'გაშვება'}
                 </Button>

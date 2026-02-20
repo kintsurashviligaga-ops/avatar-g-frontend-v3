@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
 
     // Only log in production
     if (process.env.NODE_ENV !== 'production') {
-      console.log('[Client Error Logged]', body.message, 'at', body.url);
+      console.info('[Client Error Logged]', body.message, 'at', body.url);
       return apiSuccess({ logged: false, reason: 'development' });
     }
 

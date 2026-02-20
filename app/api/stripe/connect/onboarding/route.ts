@@ -75,7 +75,7 @@ export async function POST(request: NextRequest) {
       businessName
     );
 
-    console.log('[Onboarding] Created account:', {
+    console.info('[Onboarding] Created account:', {
       userId: user.id,
       accountId,
     });
