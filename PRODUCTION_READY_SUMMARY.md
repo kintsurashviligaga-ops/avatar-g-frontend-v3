@@ -425,13 +425,35 @@ node scripts/production-test.js
 
 ### Telegram Integration Manual QA Checklist ✅
 - [ ] Open `/settings/integrations/telegram` in production.
-- [ ] Enter `TELEGRAM_WEBHOOK_SECRET` and click **Set Webhook**.
-- [ ] Verify response shows Telegram `ok: true` and a webhook URL ending with `/api/agent-g/webhook/telegram?secret=...`.
+- [ ] Enter `TELEGRAM_SETUP_SECRET` and click **Set Webhook**.
+- [ ] Verify response shows Telegram `ok: true` and webhook URL `https://www.myavatar.ge/api/agent-g/telegram/webhook`.
 - [ ] Click **Check Status** and verify `telegram_ok: true`, `http_ok: true`, and a non-empty configured URL.
-- [ ] Send a Telegram message to the bot and confirm `/api/agent-g/webhook/telegram` returns fast 200 JSON `{ ok: true }`.
-- [ ] Confirm webhook rejects invalid secret query with `401`.
+- [ ] Send a Telegram message to the bot and confirm `/api/agent-g/telegram/webhook` returns fast 200 JSON `{ ok: true }`.
+- [ ] Confirm webhook rejects missing/invalid `x-telegram-bot-api-secret-token` with `401`.
 - [ ] Confirm optional header secret mismatch (`x-telegram-bot-api-secret-token`) returns `401`.
 - [ ] Confirm no secrets are rendered in client logs or UI output.
+
+### Telegram Production Contract (Feb 20, 2026) ✅
+- **Env var roles:**
+   - `TELEGRAM_BOT_TOKEN` → Telegram Bot API auth (`setWebhook`, `getWebhookInfo`).
+   - `TELEGRAM_SETUP_SECRET` → admin-only auth for `/api/agent-g/telegram/set-webhook`.
+   - `TELEGRAM_WEBHOOK_SECRET` → inbound webhook verification token (`x-telegram-bot-api-secret-token`).
+- **Exact webhook URL configured:**
+   - `https://www.myavatar.ge/api/agent-g/telegram/webhook`
+- **API routes (App Router):**
+   - `GET /api/health`
+   - `GET /api/agent-g/telegram/status`
+   - `GET|POST /api/agent-g/telegram/set-webhook`
+   - `POST /api/agent-g/telegram/webhook`
+- **Operator curl commands:**
+   - `curl -i "https://www.myavatar.ge/api/health"`
+   - `curl -i "https://www.myavatar.ge/api/agent-g/telegram/status"`
+   - `curl -i "https://www.myavatar.ge/api/agent-g/telegram/set-webhook?secret=<TELEGRAM_SETUP_SECRET>"`
+   - `curl -i -X POST "https://www.myavatar.ge/api/agent-g/telegram/set-webhook" -H "x-telegram-setup-secret: <TELEGRAM_SETUP_SECRET>" -H "Content-Type: application/json" -d "{}"`
+- **Security notes:**
+   - Setup secret is never sent to Telegram API.
+   - Webhook verifies only Telegram header `x-telegram-bot-api-secret-token` against `TELEGRAM_WEBHOOK_SECRET`.
+   - Logs include only secret source and match boolean; raw secret values are never logged.
 
 ### Latest Delivery Commits
 1. `2e3a80d` — docs: update final delivery report with Feb 20 addendum

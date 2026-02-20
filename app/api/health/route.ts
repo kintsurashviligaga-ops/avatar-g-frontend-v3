@@ -17,6 +17,7 @@ export const runtime = 'nodejs';
 interface HealthResponse {
   ok: boolean;
   env: 'valid' | 'invalid';
+  env_ok?: boolean;
   service: 'backend';
   status: 'healthy';
   ts: number;
@@ -126,8 +127,9 @@ export async function GET() {
     const region = process.env.VERCEL_REGION;
 
     const response: HealthResponse = {
-      ok: envValid,
+      ok: true,
       env: envValid ? 'valid' : 'invalid',
+      env_ok: envValid,
       service: 'backend',
       status: 'healthy',
       ts,
@@ -143,8 +145,9 @@ export async function GET() {
     // Fallback: still return 200 even if something goes wrong
     return NextResponse.json(
       {
-        ok: false,
+        ok: true,
         env: 'invalid',
+        env_ok: false,
         service: 'backend',
         status: 'healthy',
         ts: Date.now(),

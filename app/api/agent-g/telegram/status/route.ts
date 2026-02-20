@@ -1,22 +1,13 @@
-import { NextRequest } from 'next/server';
 import { apiError, apiSuccess } from '@/lib/api/response';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
-    const providedSecret = request.nextUrl.searchParams.get('secret');
-    const webhookSecret = process.env.TELEGRAM_WEBHOOK_SECRET;
-    if (webhookSecret && providedSecret && providedSecret !== webhookSecret) {
-      return apiError(new Error('Unauthorized'), 401, 'Invalid status secret');
-    }
-
     const token = process.env.TELEGRAM_BOT_TOKEN;
     if (!token) {
       return apiSuccess({
-        ok: true,
-        route: 'agent-g-telegram-status',
         configured: false,
         telegram_ok: false,
         http_ok: false,
@@ -52,8 +43,6 @@ export async function GET(request: NextRequest) {
     const result = payload?.result || {};
 
     return apiSuccess({
-      ok: true,
-      route: 'agent-g-telegram-status',
       configured: true,
       telegram_ok: Boolean(payload?.ok),
       http_ok: response.ok,

@@ -1,6 +1,5 @@
 import { NextRequest } from 'next/server';
 import { apiError, apiSuccess } from '@/lib/api/response';
-import { resolveSiteUrl } from '@/lib/url/site-url';
 
 /**
  * Request contract:
@@ -13,50 +12,60 @@ import { resolveSiteUrl } from '@/lib/url/site-url';
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
+function normalizeSecret(value: string | null | undefined): string {
+  return (value || '').trim();
+}
+
 async function handleSetWebhook(request: NextRequest, secretFromBody?: string | null) {
   try {
-    const querySecret = request.nextUrl.searchParams.get('secret');
-    const preferredHeaderSecret = request.headers.get('x-telegram-setup-secret');
-    const legacyHeaderSecret = request.headers.get('x-admin-setup-key');
+    const querySecret = normalizeSecret(request.nextUrl.searchParams.get('secret'));
+    const preferredHeaderSecret = normalizeSecret(request.headers.get('x-telegram-setup-secret'));
+    const legacyHeaderSecret = normalizeSecret(request.headers.get('x-admin-setup-key'));
+    const bodySecret = normalizeSecret(secretFromBody);
+
     const providedSecret =
-      preferredHeaderSecret ||
-      legacyHeaderSecret ||
-      querySecret ||
-      secretFromBody ||
+      (preferredHeaderSecret || null) ||
+      (legacyHeaderSecret || null) ||
+      (querySecret || null) ||
+      (bodySecret || null) ||
       null;
 
-    const setupSecret = process.env.TELEGRAM_SETUP_SECRET || process.env.TELEGRAM_WEBHOOK_SECRET;
+    const setupSecret = normalizeSecret(process.env.TELEGRAM_SETUP_SECRET);
     if (!setupSecret) {
       return apiError(new Error('Missing TELEGRAM_SETUP_SECRET'), 500, 'Server configuration error');
     }
 
-    if (providedSecret !== setupSecret) {
-      return apiError(new Error('Unauthorized'), 401, 'Invalid setup secret');
-    }
-
+    const matched = Boolean(providedSecret) && providedSecret === setupSecret;
     const secretSource = preferredHeaderSecret
       ? 'x-telegram-setup-secret'
       : legacyHeaderSecret
         ? 'x-admin-setup-key'
         : querySecret
           ? 'query:secret'
-          : secretFromBody
+          : bodySecret
             ? 'body:secret'
             : 'none';
-    console.info('[telegram/set-webhook] authorized setup request', { secretSource });
+
+    console.info('[telegram/set-webhook] setup auth check', {
+      source: secretSource,
+      matched,
+    });
+
+    if (!matched) {
+      return apiError(new Error('Unauthorized'), 401, 'Invalid setup secret');
+    }
 
     const token = process.env.TELEGRAM_BOT_TOKEN;
     if (!token) {
       return apiError(new Error('Missing TELEGRAM_BOT_TOKEN'), 500, 'Server configuration error');
     }
 
-    const baseUrl = resolveSiteUrl(request);
     const webhookSecret = process.env.TELEGRAM_WEBHOOK_SECRET;
     if (!webhookSecret) {
       return apiError(new Error('Missing TELEGRAM_WEBHOOK_SECRET'), 500, 'Server configuration error');
     }
 
-    const webhookUrl = `${baseUrl}/api/agent-g/webhook/telegram?secret=${encodeURIComponent(webhookSecret)}`;
+    const webhookUrl = 'https://www.myavatar.ge/api/agent-g/telegram/webhook';
     const body: Record<string, unknown> = {
       url: webhookUrl,
       secret_token: webhookSecret,
@@ -74,6 +83,7 @@ async function handleSetWebhook(request: NextRequest, secretFromBody?: string | 
     return apiSuccess({
       ok: response.ok,
       webhook_url: webhookUrl,
+      used_secret_header: true,
       telegram: payload,
     });
   } catch (error) {

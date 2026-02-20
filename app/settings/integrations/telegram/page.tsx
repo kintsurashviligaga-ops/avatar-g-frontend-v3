@@ -123,15 +123,15 @@ export default function TelegramIntegrationSettingsPage() {
           </div>
 
           <div className="mt-5 space-y-3">
-            <label className="block text-sm text-gray-300">Webhook secret</label>
+            <label className="block text-sm text-gray-300">Setup secret</label>
             <input
               type="password"
               value={secret}
               onChange={(event) => setSecret(event.target.value)}
-              placeholder="Enter TELEGRAM_WEBHOOK_SECRET"
+              placeholder="Enter TELEGRAM_SETUP_SECRET"
               className="w-full rounded-xl border border-white/20 bg-black/40 px-4 py-3 text-sm text-white outline-none focus:border-cyan-400"
             />
-            <p className="text-xs text-gray-500">Secret is used only for secure setup/status requests.</p>
+            <p className="text-xs text-gray-500">Secret is used only for secure setup requests and is never stored.</p>
           </div>
 
           <div className="mt-5 flex flex-wrap gap-3">
@@ -183,6 +183,24 @@ export default function TelegramIntegrationSettingsPage() {
             </div>
           </section>
         )}
+
+        <section className="rounded-2xl border border-white/10 bg-white/5 p-6">
+          <h2 className="text-lg font-semibold">Operator Commands</h2>
+          <div className="mt-3 space-y-3 text-xs text-gray-200">
+            <div className="rounded-lg bg-black/40 p-3 overflow-x-auto">
+              <p className="text-gray-400 mb-1">Set webhook (query secret):</p>
+              <code>{`curl -i "https://www.myavatar.ge/api/agent-g/telegram/set-webhook?secret=<TELEGRAM_SETUP_SECRET>"`}</code>
+            </div>
+            <div className="rounded-lg bg-black/40 p-3 overflow-x-auto">
+              <p className="text-gray-400 mb-1">Set webhook (header secret):</p>
+              <code>{`curl -i -X POST "https://www.myavatar.ge/api/agent-g/telegram/set-webhook" -H "x-telegram-setup-secret: <TELEGRAM_SETUP_SECRET>" -H "Content-Type: application/json" -d "{}"`}</code>
+            </div>
+            <div className="rounded-lg bg-black/40 p-3 overflow-x-auto">
+              <p className="text-gray-400 mb-1">Read status:</p>
+              <code>{`curl -i "https://www.myavatar.ge/api/agent-g/telegram/status"`}</code>
+            </div>
+          </div>
+        </section>
       </div>
     </main>
   );
