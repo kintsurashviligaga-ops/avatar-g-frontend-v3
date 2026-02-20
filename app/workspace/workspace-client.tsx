@@ -66,6 +66,13 @@ type MarketplaceFavoriteLite = {
   created_at: string;
 };
 
+type AgentGTaskLite = {
+  id: string;
+  goal: string;
+  status: string;
+  created_at: string;
+};
+
 export default function WorkspaceClient({ userEmail, locale }: WorkspaceClientProps) {
   const router = useRouter();
   const pathname = usePathname();
@@ -82,6 +89,7 @@ export default function WorkspaceClient({ userEmail, locale }: WorkspaceClientPr
   const [marketplaceListings, setMarketplaceListings] = useState<MarketplaceListingLite[]>([]);
   const [marketplaceInquiries, setMarketplaceInquiries] = useState<MarketplaceInquiryLite[]>([]);
   const [marketplaceFavorites, setMarketplaceFavorites] = useState<MarketplaceFavoriteLite[]>([]);
+  const [agentGTasks, setAgentGTasks] = useState<AgentGTaskLite[]>([]);
 
   const resolvedLocale = locale || getLocaleFromPathname(pathname);
   const toLocale = (path: string) => withLocalePath(path, resolvedLocale);
@@ -95,6 +103,8 @@ export default function WorkspaceClient({ userEmail, locale }: WorkspaceClientPr
   const voiceLabProject = searchParams.get('project');
   const marketplaceSource = searchParams.get('from') === 'marketplace';
   const marketplaceListing = searchParams.get('listing');
+  const agentGSource = searchParams.get('from') === 'agent-g';
+  const agentGTask = searchParams.get('task');
 
   const featuredServices = SERVICE_REGISTRY;
 
@@ -128,6 +138,7 @@ export default function WorkspaceClient({ userEmail, locale }: WorkspaceClientPr
       setMarketplaceListings([]);
       setMarketplaceInquiries([]);
       setMarketplaceFavorites([]);
+      setAgentGTasks([]);
       setLoading(false);
       return;
     }
@@ -138,7 +149,7 @@ export default function WorkspaceClient({ userEmail, locale }: WorkspaceClientPr
       setAuthExpired(false);
       try {
         const ownerId = await getOwnerId();
-        const [jobsData, outputsData, businessData, voiceData, marketplaceListingData, marketplaceInquiryData, marketplaceFavoriteData] = await Promise.all([
+        const [jobsData, outputsData, businessData, voiceData, marketplaceListingData, marketplaceInquiryData, marketplaceFavoriteData, agentGData] = await Promise.all([
           fetchJson<{ jobs: WorkspaceJob[] }>('/api/app/jobs', { cache: 'no-store' }),
           fetchJson<{ outputs: WorkspaceOutput[] }>('/api/app/outputs', { cache: 'no-store' }),
           fetchJson<{ projects: BusinessAgentProject[] }>('/api/business-agent/projects', { cache: 'no-store' }),
@@ -146,6 +157,7 @@ export default function WorkspaceClient({ userEmail, locale }: WorkspaceClientPr
           fetchJson<{ listings: MarketplaceListingLite[] }>('/api/marketplace/listings?mine=1&limit=5', { cache: 'no-store' }),
           fetchJson<{ inquiries: MarketplaceInquiryLite[] }>('/api/marketplace/inquiries?mine=1&limit=5', { cache: 'no-store' }),
           fetchJson<{ favorites: MarketplaceFavoriteLite[] }>('/api/marketplace/favorites?limit=5', { cache: 'no-store' }),
+          fetchJson<{ tasks: AgentGTaskLite[] }>('/api/agent-g/status', { cache: 'no-store' }),
         ]);
 
         const avatarData = await fetchJson<{ avatars: SavedAvatar[] }>(
@@ -160,6 +172,7 @@ export default function WorkspaceClient({ userEmail, locale }: WorkspaceClientPr
         setMarketplaceListings(Array.isArray(marketplaceListingData.listings) ? marketplaceListingData.listings : []);
         setMarketplaceInquiries(Array.isArray(marketplaceInquiryData.inquiries) ? marketplaceInquiryData.inquiries : []);
         setMarketplaceFavorites(Array.isArray(marketplaceFavoriteData.favorites) ? marketplaceFavoriteData.favorites : []);
+        setAgentGTasks(Array.isArray(agentGData.tasks) ? agentGData.tasks : []);
         setHasAvatar(Array.isArray(avatarData.avatars) && avatarData.avatars.length > 0);
       } catch (error) {
         setJobs([]);
@@ -170,6 +183,7 @@ export default function WorkspaceClient({ userEmail, locale }: WorkspaceClientPr
         setMarketplaceListings([]);
         setMarketplaceInquiries([]);
         setMarketplaceFavorites([]);
+        setAgentGTasks([]);
 
         if (error instanceof ApiClientError && error.status === 401) {
           setAuthExpired(true);
@@ -279,6 +293,16 @@ export default function WorkspaceClient({ userEmail, locale }: WorkspaceClientPr
             <CardContent className="pt-6">
               <p className="text-sm text-fuchsia-100">
                 Marketplace context loaded{marketplaceListing ? ` for listing: ${marketplaceListing}` : ''}.
+              </p>
+            </CardContent>
+          </Card>
+        )}
+
+        {agentGSource && (
+          <Card className="mb-4 border-cyan-500/30 bg-cyan-500/10">
+            <CardContent className="pt-6">
+              <p className="text-sm text-cyan-100">
+                Agent G context loaded{agentGTask ? ` for task: ${agentGTask}` : ''}.
               </p>
             </CardContent>
           </Card>
@@ -502,6 +526,33 @@ export default function WorkspaceClient({ userEmail, locale }: WorkspaceClientPr
             )}
             <div className="mt-3 text-right">
               <Link href={toLocale('/services/marketplace/my')} className="text-sm text-cyan-300 hover:text-cyan-200">Open seller dashboard</Link>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="mt-4">
+          <CardHeader>
+            <CardTitle>Agent G tasks</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {agentGTasks.length === 0 ? (
+              <EmptyState title="No Agent G tasks" description="Run Agent G orchestration and task history appears here." />
+            ) : (
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                {agentGTasks.slice(0, 9).map((task) => (
+                  <Link
+                    key={task.id}
+                    href={`${toLocale('/services/agent-g/dashboard')}?task=${encodeURIComponent(task.id)}`}
+                    className="rounded-xl border border-white/10 bg-black/20 px-3 py-2 transition hover:border-cyan-400/50"
+                  >
+                    <p className="text-sm text-app-text line-clamp-2">{task.goal}</p>
+                    <p className="text-[11px] text-app-muted">{task.status} • {new Date(task.created_at).toLocaleString()}</p>
+                  </Link>
+                ))}
+              </div>
+            )}
+            <div className="mt-3 text-right">
+              <Link href={toLocale('/services/agent-g')} className="text-sm text-cyan-300 hover:text-cyan-200">Open Agent G</Link>
             </div>
           </CardContent>
         </Card>

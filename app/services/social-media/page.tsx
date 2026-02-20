@@ -177,7 +177,7 @@ export default function SocialMediaManagerPage() {
         href: withLocalePath('/workspace', locale) + `?${projectDeepLink}`,
       },
     ],
-    [isEn, locale, projectDeepLink, state.brandVoice, state.projectTitle]
+    [isEn, locale, projectDeepLink, state.brandVoice, state.platforms, state.projectTitle]
   );
 
   const requestHeaders = useMemo<Record<string, string>>(() => {
