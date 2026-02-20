@@ -3,6 +3,7 @@
   "version": "2.0.0",
   "private": true,
   "scripts": {
+    "check:cwd": "node scripts/check-workdir.mjs",
     "dev": "next dev -p 3000",
     "dev:3003": "next dev -p 3003",
     "clean": "rimraf .next .turbo node_modules",

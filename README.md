@@ -48,16 +48,36 @@
 
 ### Windows repo location (important)
 
-Do not keep this repository inside OneDrive-managed folders. Use a local path such as C:/projects/avatar-g-frontend-v3 to avoid file lock issues with .next during Next.js builds.
+Do not use OneDrive paths for this project.
 
-Recommended migration commands:
+- Forbidden: `C:\Users\admin\OneDrive\...`
+- Required local path: `C:\Projects\avatar-g-frontend-v3`
+
+Migration steps (one-time):
 
 ```powershell
-mkdir C:\projects -Force
-robocopy "C:\Users\admin\OneDrive\Desktop\avatar-g-frontend-v3" "C:\projects\avatar-g-frontend-v3" /MIR /XD node_modules .next .turbo /R:1 /W:1
+mkdir C:\Projects -Force
+robocopy "C:\Users\admin\OneDrive\Desktop\avatar-g-frontend-v3" "C:\Projects\avatar-g-frontend-v3" /MIR /XD node_modules .next .turbo /R:1 /W:1
 ```
 
-After moving, open C:/projects/avatar-g-frontend-v3 in VS Code and run:
+Open the correct folder in VS Code (not OneDrive):
+
+```powershell
+code "C:\Projects\avatar-g-frontend-v3"
+```
+
+Verify current working directory:
+
+```powershell
+npm run check:cwd
+```
+
+Expected output:
+- `OK: Not running inside OneDrive path.`
+
+If you see a OneDrive warning, close the workspace and reopen `C:\Projects\avatar-g-frontend-v3`.
+
+After moving/opening, run:
 
 ```powershell
 npm ci
@@ -108,6 +128,9 @@ taskkill /PID <pid> /F
 NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
 SUPABASE_SERVICE_KEY=your-service-key
+TELEGRAM_BOT_TOKEN=...
+TELEGRAM_SETUP_SECRET=...
+SITE_URL=https://www.myavatar.ge
 STRIPE_SECRET_KEY=sk_test_...
 STRIPE_WEBHOOK_SECRET=whsec_...
 STRIPE_PRICE_PRO=price_... # Basic $30

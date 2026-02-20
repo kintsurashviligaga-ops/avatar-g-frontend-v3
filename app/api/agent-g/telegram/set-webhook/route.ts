@@ -52,7 +52,9 @@ async function handleSetWebhook(request: NextRequest, bodySecret?: string): Prom
     return json({ status: 'error', error: 'TELEGRAM_SETUP_SECRET missing in env' }, 500);
   }
 
-  const fromHeader = normalize(request.headers.get('x-setup-secret'));
+  const fromHeader = normalize(
+    request.headers.get('x-setup-secret') || request.headers.get('x-telegram-setup-secret')
+  );
   const fromQuery = normalize(request.nextUrl.searchParams.get('secret'));
   const fromBody = normalize(bodySecret);
 
@@ -63,7 +65,7 @@ async function handleSetWebhook(request: NextRequest, bodySecret?: string): Prom
       {
         status: 'error',
         error: 'Setup secret required',
-        how: 'Use ?secret= or header x-setup-secret',
+        how: 'Use ?secret= or header x-setup-secret (or x-telegram-setup-secret)',
       },
       401
     );
