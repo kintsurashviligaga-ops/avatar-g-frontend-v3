@@ -1,11 +1,13 @@
 import { NextRequest } from 'next/server';
 import { apiError, apiSuccess } from '@/lib/api/response';
+import { resolveSiteUrl } from '@/lib/url/site-url';
 
 export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
 
-export async function GET(request: NextRequest) {
+async function handleSetWebhook(request: NextRequest, secretFromBody?: string | null) {
   try {
-    const providedSecret = request.nextUrl.searchParams.get('secret');
+    const providedSecret = secretFromBody || request.nextUrl.searchParams.get('secret');
     const webhookSecret = process.env.TELEGRAM_WEBHOOK_SECRET;
     if (!webhookSecret) {
       return apiError(new Error('Missing TELEGRAM_WEBHOOK_SECRET'), 500, 'Server configuration error');
@@ -16,12 +18,11 @@ export async function GET(request: NextRequest) {
     }
 
     const token = process.env.TELEGRAM_BOT_TOKEN;
-    const appUrl = process.env.PUBLIC_APP_URL || process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin;
     if (!token) {
       return apiError(new Error('Missing TELEGRAM_BOT_TOKEN'), 500, 'Server configuration error');
     }
 
-    const baseUrl = appUrl.replace(/\/$/, '');
+    const baseUrl = resolveSiteUrl(request);
     const webhookUrl = `${baseUrl}/api/agent-g/webhook/telegram?secret=${encodeURIComponent(webhookSecret)}`;
     const body: Record<string, unknown> = {
       url: webhookUrl,
@@ -45,4 +46,13 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     return apiError(error, 500, 'Failed to set Telegram webhook');
   }
+}
+
+export async function GET(request: NextRequest) {
+  return handleSetWebhook(request);
+}
+
+export async function POST(request: NextRequest) {
+  const body = await request.json().catch(() => ({} as { secret?: string }));
+  return handleSetWebhook(request, typeof body.secret === 'string' ? body.secret : null);
 }

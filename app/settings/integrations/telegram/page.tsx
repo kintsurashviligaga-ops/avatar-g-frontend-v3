@@ -82,8 +82,14 @@ export default function TelegramIntegrationSettingsPage() {
     setError(null);
 
     try {
-      const response = await fetch(`/api/agent-g/telegram/set-webhook?secret=${encodeURIComponent(secret.trim())}`, {
-        method: "GET",
+      const response = await fetch(`/api/agent-g/telegram/set-webhook`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          secret: secret.trim(),
+        }),
         cache: "no-store",
       });
 
