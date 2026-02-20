@@ -1,4 +1,7 @@
 const withNextIntl = require('next-intl/plugin')('./i18n/request.ts');
+const { warnIfOneDrivePath } = require('./scripts/onedrive-warning.cjs');
+
+warnIfOneDrivePath();
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {

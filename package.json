@@ -5,8 +5,9 @@
   "scripts": {
     "dev": "next dev -p 3000",
     "dev:3003": "next dev -p 3003",
-    "clean": "rimraf .next .turbo || echo clean-skip",
-    "prebuild": "npm run clean",
+    "clean": "node scripts/clean-next.mjs --all",
+    "clean:win": "powershell -ExecutionPolicy Bypass -File scripts/win-clean-next.ps1",
+    "prebuild": "node scripts/clean-next.mjs",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
