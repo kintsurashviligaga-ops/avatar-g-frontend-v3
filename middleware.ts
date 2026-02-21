@@ -6,8 +6,14 @@ export async function middleware(request: NextRequest) {
   try {
     const { pathname } = request.nextUrl;
 
+    if (pathname.startsWith('/api')) {
+      return NextResponse.next();
+    }
+
     if (
       pathname.startsWith('/_next') ||
+      pathname === '/icon' ||
+      pathname === '/favicon.png' ||
       pathname === '/favicon.ico' ||
       pathname === '/robots.txt' ||
       pathname === '/sitemap.xml' ||
@@ -22,7 +28,7 @@ export async function middleware(request: NextRequest) {
       ? i18n.locales.includes(localeSegment.toLowerCase() as (typeof i18n.locales)[number])
       : false;
 
-    if (!hasLocale && !pathname.startsWith('/api')) {
+    if (!hasLocale) {
       const url = request.nextUrl.clone();
       url.pathname = `/${i18n.defaultLocale}${pathname === '/' ? '' : pathname}`;
       return NextResponse.redirect(url);
@@ -35,5 +41,5 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/((?!api|_next/static|_next/image|favicon.ico|robots.txt|sitemap.xml).*)'],
+  matcher: ['/((?!api|icon|favicon.ico|favicon.png|_next/static|_next/image|robots.txt|sitemap.xml).*)'],
 };
