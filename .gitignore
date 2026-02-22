@@ -12,3 +12,4 @@ logs/
 *.log
 node_modules_old/
 tsconfig.tsbuildinfo
+tsconfig.tsbuildinfo
