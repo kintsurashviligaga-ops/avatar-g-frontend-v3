@@ -165,6 +165,12 @@ export const ENV_REGISTRY: Record<string, EnvVar> = {
     required: false,
     usedBy: ['OpenRouter API referer', 'CORS headers'],
   },
+  NEXT_PUBLIC_BACKEND_URL: {
+    name: 'NEXT_PUBLIC_BACKEND_URL',
+    scope: 'public',
+    required: false,
+    usedBy: ['cross-domain API base URL', 'backend health checks'],
+  },
   NEXT_PUBLIC_MOCK_MODE: {
     name: 'NEXT_PUBLIC_MOCK_MODE',
     scope: 'public',
