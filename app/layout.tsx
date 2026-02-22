@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { Inter, Noto_Sans_Georgian } from "next/font/google";
 import "./globals.css";
 import { IdentityProvider } from "@/lib/identity/IdentityContext";
 import { LanguageProvider } from "@/lib/i18n/LanguageContext";
@@ -11,13 +10,15 @@ import { getLocale, getMessages } from "next-intl/server";
 import { i18n } from "@/i18n.config";
 import { logStartupEnvValidation } from "@/lib/env/startupValidation";
 
-const inter = Inter({ subsets: ["latin"], variable: '--font-fallback' });
-const notoGeorgian = Noto_Sans_Georgian({ subsets: ["georgian", "latin"], variable: '--font-ui' });
-
 const metadataBaseUrl = process.env.NEXT_PUBLIC_SITE_URL || process.env.NEXT_PUBLIC_APP_URL || "https://myavatar.ge";
 
 export const metadata: Metadata = {
   metadataBase: new URL(metadataBaseUrl),
+  icons: {
+    icon: '/icon',
+    shortcut: '/icon',
+    apple: '/icon',
+  },
   title: {
     default: "Avatar G - AI მედია პლატფორმა",
     template: "%s - Avatar G"
@@ -76,7 +77,7 @@ export default async function RootLayout({
 
   return (
     <html lang={locale} className="dark">
-      <body className={`${notoGeorgian.variable} ${inter.variable} ${notoGeorgian.className} bg-[#05070A] text-white antialiased`}>
+      <body className="font-sans bg-[#05070A] text-white antialiased">
         <NextIntlClientProvider locale={locale} messages={messages}>
           <IdentityProvider>
             <LanguageProvider>

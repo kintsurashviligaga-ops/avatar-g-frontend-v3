@@ -1,69 +1,106 @@
-$ErrorActionPreference = 'SilentlyContinue'
+$ErrorActionPreference = 'Stop'
 
 $root = Get-Location
-$nextPath = Join-Path $root '.next'
-$attempts = 10
+$attempts = 12
+$targets = @('.next', '.turbo', 'node_modules')
 
 function Get-BackoffMs([int]$attempt) {
-  $ms = [math]::Min(200 * [math]::Pow(2, $attempt - 1), 1500)
+  $ms = [math]::Min(200 * [math]::Pow(2, $attempt - 1), 1800)
   return [int]$ms
 }
 
-function Try-RemoveWithRetries([string]$target, [int]$maxAttempts) {
+function Stop-NodeProcesses {
+  $ancestorPids = New-Object System.Collections.Generic.HashSet[int]
+  $currentPid = $PID
+  for ($i = 0; $i -lt 8; $i++) {
+    if ($currentPid -le 0) { break }
+    [void]$ancestorPids.Add([int]$currentPid)
+    $proc = Get-CimInstance Win32_Process -Filter "ProcessId = $currentPid" -ErrorAction SilentlyContinue
+    if ($null -eq $proc) { break }
+    $currentPid = [int]$proc.ParentProcessId
+  }
+
+  $node = Get-Process -Name node -ErrorAction SilentlyContinue | Where-Object { -not $ancestorPids.Contains([int]$_.Id) }
+  if ($null -eq $node) {
+    Write-Host '[win-clean] No running node processes found.'
+    return
+  }
+
+  Write-Host "[win-clean] Stopping $($node.Count) node process(es)..."
+  $node | Stop-Process -Force -ErrorAction SilentlyContinue
+  Start-Sleep -Milliseconds 500
+}
+
+function Remove-WithRetries([string]$targetRelative, [int]$maxAttempts) {
+  $target = Join-Path $root $targetRelative
+
   if (-not (Test-Path $target)) {
-    Write-Host "[win-clean-next] .next not found"
+    Write-Host "[win-clean] $targetRelative not found"
     return $true
   }
 
   for ($i = 1; $i -le $maxAttempts; $i++) {
     try {
       Remove-Item -LiteralPath $target -Recurse -Force -ErrorAction Stop
-      Start-Sleep -Milliseconds 75
+      Start-Sleep -Milliseconds 90
       if (-not (Test-Path $target)) {
-        Write-Host "[win-clean-next] Removed .next (attempt $i)"
+        Write-Host "[win-clean] Removed $targetRelative (attempt $i)"
         return $true
       }
     } catch {
-      # retry
+      if ($i -lt $maxAttempts) {
+        Start-Sleep -Milliseconds (Get-BackoffMs $i)
+      }
     }
+  }
 
-    if ($i -lt $maxAttempts) {
-      Start-Sleep -Milliseconds (Get-BackoffMs $i)
-    }
+  Write-Warning "[win-clean] Failed to remove $targetRelative after $maxAttempts attempts"
+
+  try {
+    $target = Join-Path $root $targetRelative
+    $staleName = "$targetRelative`_stale_$([DateTimeOffset]::UtcNow.ToUnixTimeSeconds())"
+    $stalePath = Join-Path $root $staleName
+    Rename-Item -LiteralPath $target -NewName $staleName -ErrorAction Stop
+    Write-Warning "[win-clean] Applied fallback rename: $targetRelative -> $stalePath"
+    return $true
+  } catch {
+    Write-Warning "[win-clean] Fallback rename failed for $targetRelative"
   }
 
   return $false
 }
 
-Write-Host "[win-clean-next] Repo: $root"
-$ok = Try-RemoveWithRetries -target $nextPath -maxAttempts $attempts
-
-if ($ok) {
-  Write-Host "[win-clean-next] Cleanup completed"
-  exit 0
+function Clear-NpmCache {
+  Write-Host '[win-clean] Clearing npm cache (verify mode)...'
+  npm cache verify | Out-Null
+  npm cache clean --force | Out-Null
 }
 
-Write-Warning "[win-clean-next] .next appears locked after retries"
-Write-Host ""
-Write-Host "LOCK DIAGNOSTICS"
-Write-Host "- Close VS Code windows for this repo"
-Write-Host "- Close browser tabs hitting localhost"
-Write-Host "- Stop node/next dev servers manually"
-Write-Host ""
+Write-Host "[win-clean] Repo: $root"
 
 if ($root.Path -match 'OneDrive') {
-  Write-Warning "Current path is inside OneDrive. This is a common lock source for .next on Windows."
+  Write-Warning '[win-clean] Repo is inside OneDrive. This can increase lock/EPERM issues on Windows.'
 }
 
-Write-Host "Possible node processes (best-effort):"
-Get-Process node | Select-Object Id, ProcessName, Path | Format-Table -AutoSize
+Stop-NodeProcesses
 
-Write-Host ""
-Write-Host "Manual commands (not executed):"
-Write-Host "  PowerShell inspect: Get-Process node -ErrorAction SilentlyContinue | Select-Object Id,ProcessName,Path"
-Write-Host "  PowerShell OPTIONAL kill: Get-Process -Name node -ErrorAction SilentlyContinue | Stop-Process -Force"
-Write-Host "  Cmd inspect: tasklist | findstr node"
-Write-Host ""
-Write-Host "Permanent fix: move repo outside OneDrive, e.g.: C:\dev\avatar-g or C:\projects\avatar-g"
+$allRemoved = $true
+foreach ($target in $targets) {
+  $ok = Remove-WithRetries -targetRelative $target -maxAttempts $attempts
+  if (-not $ok) { $allRemoved = $false }
+}
 
-exit 1
+try {
+  Clear-NpmCache
+  Write-Host '[win-clean] npm cache cleared.'
+} catch {
+  Write-Warning '[win-clean] npm cache clear failed (non-fatal).'
+}
+
+if (-not $allRemoved) {
+  Write-Error '[win-clean] Cleanup incomplete. Close VS Code and terminal sessions, then retry.'
+  exit 1
+}
+
+Write-Host '[win-clean] Cleanup completed successfully.'
+exit 0

@@ -1,12 +1,9 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
 import { notFound } from "next/navigation";
 import { publicEnv } from "@/lib/env/public";
 import { getMessages } from 'next-intl/server';
 import { NextIntlClientProvider } from 'next-intl';
 import { i18n } from "@/i18n.config";
-
-const inter = Inter({ subsets: ["latin"] });
 
 const metadataBaseUrl = publicEnv.NEXT_PUBLIC_APP_URL || "https://avatar-g-frontend-v3.vercel.app";
 
@@ -15,6 +12,11 @@ export const revalidate = 0;
 
 export const metadata: Metadata = {
   metadataBase: new URL(metadataBaseUrl),
+  icons: {
+    icon: '/icon',
+    shortcut: '/icon',
+    apple: '/icon',
+  },
   title: {
     default: "Avatar G - AI მედია პლატფორმა",
     template: "%s - Avatar G"
@@ -75,7 +77,7 @@ export default async function LocaleLayout({
   }
 
   return (
-    <div className={`${inter.className}`}>
+    <div className="font-sans">
       <NextIntlClientProvider locale={safeLocale} messages={messages}>
         {children}
       </NextIntlClientProvider>

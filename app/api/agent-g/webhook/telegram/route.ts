@@ -1,9 +1,8 @@
-import { NextRequest } from 'next/server';
-import { handleTelegramWebhook } from '@/lib/agent-g/channels/telegram-webhook-handler';
+import { POST as canonicalTelegramPost } from '../../telegram/route';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
-export async function POST(request: NextRequest) {
-  return handleTelegramWebhook(request);
+export async function POST(req: Request) {
+  return canonicalTelegramPost(req);
 }

@@ -19,6 +19,7 @@ export async function POST(request: NextRequest) {
 
     const token = process.env.WHATSAPP_ACCESS_TOKEN;
     const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
+    const businessAccountId = process.env.WHATSAPP_BUSINESS_ACCOUNT_ID;
 
     if (!token || !phoneNumberId) {
       const supabase = createServiceRoleClient();
@@ -30,6 +31,7 @@ export async function POST(request: NextRequest) {
           direction: 'outgoing',
           to: payload.data.to,
           text: payload.data.text,
+          business_account_configured: Boolean(businessAccountId),
           reason: 'Missing WHATSAPP_ACCESS_TOKEN or WHATSAPP_PHONE_NUMBER_ID',
         },
       });
@@ -62,6 +64,7 @@ export async function POST(request: NextRequest) {
         simulated: false,
         direction: 'outgoing',
         to: payload.data.to,
+        business_account_configured: Boolean(businessAccountId),
         response_ok: response.ok,
         response: body,
       },

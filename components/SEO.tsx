@@ -36,8 +36,8 @@ export default function SEO({
       <meta name="twitter:image" content={image} />
       
       {/* Favicon */}
-      <link rel="icon" href="/favicon.ico" />
-      <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+      <link rel="icon" href="/icon" />
+      <link rel="apple-touch-icon" href="/icon" />
       
       {/* Theme Color */}
       <meta name="theme-color" content="#05070A" />

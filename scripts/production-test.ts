@@ -30,7 +30,7 @@ function log(level: 'INFO' | 'PASS' | 'FAIL' | 'WARN', msg: string) {
   console.log(`${colors[level]}[${level}]${reset} ${msg}`);
 }
 
-async function test(name: string, fn: () => Promise<void>): Promise<void> {
+async function runCase(name: string, fn: () => Promise<void>): Promise<void> {
   const start = Date.now();
   try {
     await fn();
@@ -46,7 +46,7 @@ async function test(name: string, fn: () => Promise<void>): Promise<void> {
 }
 
 async function testHealthEndpoint() {
-  await test('GET /api/health', async () => {
+  await runCase('GET /api/health', async () => {
     const res = await fetch(`${baseUrl}/api/health`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     
@@ -63,7 +63,7 @@ async function testChatEndpoint() {
   const contexts = ['global', 'avatar', 'music', 'video'];
   
   for (const context of contexts) {
-    await test(`POST /api/chat (${context})`, async () => {
+    await runCase(`POST /api/chat (${context})`, async () => {
       const res = await fetch(`${baseUrl}/api/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -92,7 +92,7 @@ async function testPages() {
   ];
   
   for (const page of pages) {
-    await test(`GET ${page.path} (${page.name})`, async () => {
+    await runCase(`GET ${page.path} (${page.name})`, async () => {
       const res = await fetch(`${baseUrl}${page.path}`, {
         redirect: 'follow',
       });
@@ -115,7 +115,7 @@ async function testPages() {
 }
 
 async function testDeployMarker() {
-  await test('Deploy Marker Visibility', async () => {
+  await runCase('Deploy Marker Visibility', async () => {
     const res = await fetch(`${baseUrl}/`);
     const html = await res.text();
     
@@ -128,7 +128,7 @@ async function testDeployMarker() {
 }
 
 async function testRateLimiting() {
-  await test('Rate Limiting', async () => {
+  await runCase('Rate Limiting', async () => {
     // Send 5 requests rapidly
     const requests = Array(5)
       .fill(null)

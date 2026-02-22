@@ -4,7 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
  * Setup checklist (required env):
  * - TELEGRAM_BOT_TOKEN: used by /api/agent-g/telegram/set-webhook and /api/agent-g/telegram/status
  * - TELEGRAM_SETUP_SECRET: used only by /api/agent-g/telegram/set-webhook auth
- * - TELEGRAM_WEBHOOK_SECRET: sent to Telegram as `secret_token`, validated by /api/agent-g/telegram/webhook
+ * - TELEGRAM_WEBHOOK_SECRET: sent to Telegram as `secret_token`, validated by /api/agent-g/telegram
  * - SITE_URL: base domain for webhook URL generation
  */
 
@@ -32,7 +32,10 @@ function json(payload: Record<string, unknown>, status = 200): NextResponse {
 }
 
 function resolveSiteUrl(): string | null {
-  const raw = normalize(process.env.SITE_URL);
+  const raw =
+    normalize(process.env.PUBLIC_APP_URL) ||
+    normalize(process.env.SITE_URL) ||
+    normalize(process.env.NEXT_PUBLIC_APP_URL);
   if (!raw) return null;
 
   try {
@@ -92,9 +95,31 @@ async function handleSetWebhook(request: NextRequest, bodySecret?: string): Prom
     return json({ status: 'error', error: 'SITE_URL missing in env' }, 500);
   }
 
-  const webhookUrl = `${siteUrl}/api/agent-g/telegram/webhook`;
+  const webhookUrl = `${siteUrl}/api/agent-g/telegram`;
 
   try {
+    const infoResponse = await fetch(`https://api.telegram.org/bot${token}/getWebhookInfo`, {
+      method: 'GET',
+      cache: 'no-store',
+    });
+
+    const infoPayload = (await infoResponse.json().catch((_error) => null)) as {
+      ok?: boolean;
+      result?: { url?: string };
+    } | null;
+
+    const currentUrl = normalize(infoPayload?.result?.url);
+    if (infoResponse.ok && infoPayload?.ok && currentUrl === webhookUrl) {
+      return json({
+        status: 'success',
+        data: {
+          webhook_url: webhookUrl,
+          configured: true,
+          already_configured: true,
+        },
+      });
+    }
+
     const telegramResponse = await fetch(`https://api.telegram.org/bot${token}/setWebhook`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

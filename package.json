@@ -6,14 +6,20 @@
     "check:cwd": "node scripts/check-workdir.mjs",
     "dev": "next dev -p 3000",
     "dev:3003": "next dev -p 3003",
-    "clean": "rimraf .next .turbo node_modules",
+    "clean": "node scripts/clean-next.mjs --all",
     "clean:next": "node scripts/clean-next.mjs --all",
     "clean:win": "powershell -ExecutionPolicy Bypass -File scripts/win-clean-next.ps1",
-    "prebuild": "node scripts/clean-next.mjs",
-    "build": "next build",
+    "reinstall:win": "powershell -ExecutionPolicy Bypass -File scripts/win-reinstall.ps1",
+    "build": "node scripts/build-safe.mjs",
+    "build:clean": "node scripts/build-safe.mjs --clean",
+    "vercel-build": "npm run build:clean",
     "start": "next start",
     "lint": "next lint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "jest --runInBand",
+    "test:unit": "jest __tests__/lib/openai.test.ts __tests__/lib/agentg.personality.test.ts __tests__/lib/agentg.memory.test.ts __tests__/api/agent-g-chat.test.ts __tests__/api/agent-g-telegram-webhook.test.ts --runInBand",
+    "test:telegram:webhook": "powershell -ExecutionPolicy Bypass -File scripts/telegram-webhook-smoke.ps1",
+    "test:webhooks": "node scripts/test-webhooks.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.983.0",
@@ -54,6 +60,8 @@
     "zustand": "^4.5.7"
   },
   "devDependencies": {
+    "@testing-library/jest-dom": "^6.9.1",
+    "@types/jest": "^30.0.0",
     "@types/node": "^20.11.0",
     "@types/react": "^18.3.0",
     "@types/react-dom": "^18.3.0",
@@ -62,6 +70,8 @@
     "autoprefixer": "^10.4.17",
     "eslint": "^8.57.0",
     "eslint-config-next": "^14.2.35",
+    "jest": "^30.2.0",
+    "jest-environment-jsdom": "^30.2.0",
     "postcss": "^8.4.33",
     "rimraf": "^6.0.1",
     "tailwindcss": "^3.4.1",

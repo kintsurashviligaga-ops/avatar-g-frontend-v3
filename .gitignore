@@ -2,8 +2,13 @@ node_modules/
 .next/
 .turbo/
 out/
+build/
+dist/
+coverage/
+logs/
 .env
 .env.local
 .DS_Store
 *.log
 node_modules_old/
+tsconfig.tsbuildinfo

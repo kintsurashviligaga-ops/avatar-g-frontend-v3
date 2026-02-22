@@ -26,6 +26,19 @@ type AgentTaskResponse = {
   };
 };
 
+type AgentGChatResponse = {
+  reply: string;
+  tone: {
+    mood: 'calm' | 'friendly' | 'excited' | 'serious' | 'humorous';
+    confidence: number;
+  };
+  meta: {
+    detectedEmotion: string;
+    styleHints: string[];
+    voiceHint: string;
+  };
+};
+
 type ChannelStatusResponse = {
   runtime_status: Array<{ type: string; connected: boolean; ready: boolean; note?: string }>;
 };
@@ -51,6 +64,7 @@ export default function AgentGPage() {
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [task, setTask] = useState<AgentTaskResponse | null>(null);
+  const [chatReply, setChatReply] = useState<AgentGChatResponse | null>(null);
   const [channels, setChannels] = useState<Array<{ type: string; connected: boolean; ready: boolean; note?: string }>>([]);
   const [callMeWhenFinished, setCallMeWhenFinished] = useState(false);
   const [voiceConnected, setVoiceConnected] = useState(false);
@@ -92,14 +106,17 @@ export default function AgentGPage() {
 
     setRunning(true);
     setError(null);
+    setChatReply(null);
 
     try {
-      const response = await fetchJson<AgentTaskResponse>('/api/agent-g/execute', {
+      const locale = pathname.startsWith('/en') ? 'en' : pathname.startsWith('/ru') ? 'ru' : 'ka';
+      const response = await fetchJson<AgentGChatResponse>('/api/agent-g/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ goal, advanced_mode: advancedMode }),
+        body: JSON.stringify({ message: goal, locale }),
       });
-      setTask(response);
+      setTask(null);
+      setChatReply(response);
     } catch (err) {
       setError(toUserMessage(err));
     } finally {
@@ -189,6 +206,16 @@ export default function AgentGPage() {
                     <a href={`/api/agent-g/output?task_id=${encodeURIComponent(task.task_id)}&format=audio`}><Button size="sm" variant="secondary"><Sparkles className="mr-1 h-3.5 w-3.5" />Audio</Button></a>
                   </div>
                 )}
+              </div>
+            )}
+
+            {chatReply && (
+              <div className="mt-4 rounded-xl border border-white/10 bg-black/20 p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-sm text-white">{isEn ? 'Agent G reply' : 'Agent G პასუხი'}</p>
+                  <Badge variant="secondary">{chatReply.tone.mood}</Badge>
+                </div>
+                <p className="mt-2 whitespace-pre-wrap text-sm text-gray-200">{chatReply.reply}</p>
               </div>
             )}
           </Card>

@@ -288,6 +288,14 @@ export default function AvatarBuilderPage() {
   const [avatarNameInput, setAvatarNameInput] = useState('');
   const [saveSuccessMessage, setSaveSuccessMessage] = useState('');
   const [isChatLoading, setIsChatLoading] = useState(false);
+  const [verifyPhone, setVerifyPhone] = useState('+995');
+  const [otpCode, setOtpCode] = useState('');
+  const [otpSending, setOtpSending] = useState(false);
+  const [otpChecking, setOtpChecking] = useState(false);
+  const [otpError, setOtpError] = useState<string | null>(null);
+  const [otpMessage, setOtpMessage] = useState<string | null>(null);
+  const [isPhoneVerified, setIsPhoneVerified] = useState(false);
+  const [otpCooldownSeconds, setOtpCooldownSeconds] = useState(0);
 
   useEffect(() => {
     const intent = searchParams.get('intent');
@@ -310,6 +318,38 @@ export default function AvatarBuilderPage() {
       setPresentation('Androgynous');
     }
   }, [searchParams]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const savedVerified = window.localStorage.getItem('avatar_builder_phone_verified') === 'true';
+    const savedPhone = window.localStorage.getItem('avatar_builder_phone_value');
+    const cooldownUntilRaw = Number(window.localStorage.getItem('avatar_builder_otp_cooldown_until') || '0');
+
+    if (savedVerified) {
+      setIsPhoneVerified(true);
+    }
+
+    if (savedPhone && savedPhone.startsWith('+')) {
+      setVerifyPhone(savedPhone);
+    }
+
+    const remaining = Math.max(0, Math.floor((cooldownUntilRaw - Date.now()) / 1000));
+    setOtpCooldownSeconds(remaining);
+  }, []);
+
+  useEffect(() => {
+    if (otpCooldownSeconds <= 0) return;
+
+    const timer = setInterval(() => {
+      setOtpCooldownSeconds((prev) => {
+        if (prev <= 1) return 0;
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [otpCooldownSeconds]);
 
   const showCameraDebug = process.env.NODE_ENV !== 'production' || searchParams.get('debug') === '1';
 
@@ -886,7 +926,117 @@ export default function AvatarBuilderPage() {
     });
   };
 
+  const startOtpCooldown = (seconds = 45) => {
+    const safeSeconds = Math.max(30, Math.min(60, seconds));
+    setOtpCooldownSeconds(safeSeconds);
+
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem('avatar_builder_otp_cooldown_until', String(Date.now() + safeSeconds * 1000));
+    }
+  };
+
+  const normalizePhoneInput = (value: string) => value.replace(/[^\d+]/g, '').slice(0, 16);
+
+  const handleSendOtp = async () => {
+    setOtpError(null);
+    setOtpMessage(null);
+
+    const phone = normalizePhoneInput(verifyPhone.trim());
+    if (!/^\+[1-9]\d{7,14}$/.test(phone)) {
+      setOtpError('გთხოვ, შეიყვანე სწორი ნომერი E.164 ფორმატით (მაგ: +995...).');
+      return;
+    }
+
+    setOtpSending(true);
+    try {
+      const response = await fetch('/api/auth/otp/send', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ phone }),
+      });
+
+      const data = (await response.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+      if (!response.ok || !data.ok) {
+        throw new Error(data.error || 'კოდის გაგზავნა ვერ მოხერხდა.');
+      }
+
+      setVerifyPhone(phone);
+      setOtpMessage('SMS კოდი გამოგზავნილია. შეამოწმე შეტყობინებები 🙌');
+      startOtpCooldown(45);
+
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem('avatar_builder_phone_value', phone);
+      }
+    } catch (error) {
+      setOtpError(error instanceof Error ? error.message : 'კოდის გაგზავნა ვერ მოხერხდა.');
+    } finally {
+      setOtpSending(false);
+    }
+  };
+
+  const handleCheckOtp = async () => {
+    setOtpError(null);
+    setOtpMessage(null);
+
+    const phone = normalizePhoneInput(verifyPhone.trim());
+    const code = otpCode.trim();
+
+    if (!/^\+[1-9]\d{7,14}$/.test(phone)) {
+      setOtpError('ტელეფონის ნომერი არასწორია.');
+      return;
+    }
+
+    if (!/^\d{4,8}$/.test(code)) {
+      setOtpError('კოდი უნდა იყოს 4-8 ციფრი.');
+      return;
+    }
+
+    setOtpChecking(true);
+    try {
+      const response = await fetch('/api/auth/otp/check', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ phone, code }),
+      });
+
+      const data = (await response.json().catch(() => ({}))) as {
+        ok?: boolean;
+        status?: string;
+        error?: string;
+      };
+
+      if (!response.ok) {
+        throw new Error(data.error || 'ვერიფიკაცია ვერ შესრულდა.');
+      }
+
+      if (data.ok && data.status === 'approved') {
+        setIsPhoneVerified(true);
+        setOtpMessage('ვერიფიკაცია წარმატებულია ✅ შეგიძლია გააგრძელო.');
+        if (typeof window !== 'undefined') {
+          window.localStorage.setItem('avatar_builder_phone_verified', 'true');
+          window.localStorage.setItem('avatar_builder_phone_value', phone);
+        }
+        return;
+      }
+
+      setOtpError(data.error || 'კოდი არასწორია. სცადე თავიდან.');
+    } catch (error) {
+      setOtpError(error instanceof Error ? error.message : 'ვერიფიკაცია ვერ შესრულდა.');
+    } finally {
+      setOtpChecking(false);
+    }
+  };
+
   const handleSendMessage = async (message: string, attachments?: File[]) => {
+    if (!isPhoneVerified) {
+      alert('გთხოვ, ჯერ გაიარე ტელეფონის ვერიფიკაცია Verify ეტაპზე.');
+      return;
+    }
+
     setIsGenerating(true);
     setGenerationProgress(0);
 
@@ -1108,6 +1258,65 @@ export default function AvatarBuilderPage() {
           <div className="lg:col-span-2 space-y-6">
             {activeView === 'create' ? (
               <>
+                <Card className="p-6 bg-black/40 border-white/10">
+                  <div className="flex items-center gap-2 mb-4">
+                    <Check className="text-green-400" size={20} />
+                    <h3 className="text-lg font-semibold text-white">Verify</h3>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-sm text-gray-400 mb-2 block">Phone (E.164)</label>
+                      <input
+                        type="tel"
+                        value={verifyPhone}
+                        onChange={(e) => setVerifyPhone(normalizePhoneInput(e.target.value))}
+                        placeholder="+995..."
+                        className="w-full px-3 py-2 bg-black/40 border border-white/10 rounded-lg text-white placeholder:text-gray-500 focus:border-green-500 focus:outline-none"
+                        disabled={otpSending || otpChecking || isPhoneVerified}
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-sm text-gray-400 mb-2 block">OTP Code</label>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        value={otpCode}
+                        onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, '').slice(0, 8))}
+                        placeholder="123456"
+                        className="w-full px-3 py-2 bg-black/40 border border-white/10 rounded-lg text-white placeholder:text-gray-500 focus:border-green-500 focus:outline-none"
+                        disabled={otpChecking || isPhoneVerified}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <Button
+                      onClick={handleSendOtp}
+                      disabled={otpSending || otpCooldownSeconds > 0 || isPhoneVerified}
+                      className="bg-gradient-to-r from-cyan-500 to-blue-500"
+                    >
+                      {otpSending ? <Loader2 size={16} className="mr-2 animate-spin" /> : null}
+                      {otpCooldownSeconds > 0 ? `Resend in ${otpCooldownSeconds}s` : 'Send code'}
+                    </Button>
+                    <Button
+                      onClick={handleCheckOtp}
+                      disabled={otpChecking || isPhoneVerified || otpCode.trim().length < 4}
+                      className="bg-gradient-to-r from-green-500 to-emerald-500"
+                    >
+                      {otpChecking ? <Loader2 size={16} className="mr-2 animate-spin" /> : null}
+                      Verify code
+                    </Button>
+                    <Badge className={isPhoneVerified ? 'bg-green-500/20 text-green-300 border-green-500/40' : 'bg-yellow-500/20 text-yellow-300 border-yellow-500/40'}>
+                      {isPhoneVerified ? 'Verified' : 'Verification required'}
+                    </Badge>
+                  </div>
+
+                  {otpError ? <p className="mt-3 text-sm text-red-400">{otpError}</p> : null}
+                  {otpMessage ? <p className="mt-3 text-sm text-green-400">{otpMessage}</p> : null}
+                </Card>
+
                 {/* Style Selection */}
                 <Card className="p-6 bg-black/40 border-white/10">
                   <div className="flex items-center gap-2 mb-4">
