@@ -5,7 +5,7 @@
 
 import { computeOrderTotals, validateOrderCalculation, formatOrderTotals } from '@/lib/finance/orderCalculation';
 import { StoreTaxProfile, getDefaultTaxProfile, validateTaxStatusConsistency, isVatEnabled } from '@/lib/finance/taxProfile';
-import { computeVatInclusive, GEORGIA_VAT_BPS } from '@/lib/finance/vat';
+import { computeVatInclusive } from '@/lib/finance/vat';
 
 describe('Tax Profile', () => {
   test('should create default non-VAT profile for new store', () => {

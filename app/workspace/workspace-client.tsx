@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { createBrowserClient } from '@/lib/supabase/browser';
-import { Sparkles, LogOut, ArrowRight } from 'lucide-react';
+import { Sparkles, LogOut, ArrowRight, Building2, Users } from 'lucide-react';
 import { SERVICE_REGISTRY } from '@/lib/service-registry';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -90,6 +90,7 @@ export default function WorkspaceClient({ userEmail, locale }: WorkspaceClientPr
   const [marketplaceInquiries, setMarketplaceInquiries] = useState<MarketplaceInquiryLite[]>([]);
   const [marketplaceFavorites, setMarketplaceFavorites] = useState<MarketplaceFavoriteLite[]>([]);
   const [agentGTasks, setAgentGTasks] = useState<AgentGTaskLite[]>([]);
+  const [demoMode, setDemoMode] = useState(false);
 
   const resolvedLocale = locale || getLocaleFromPathname(pathname);
   const toLocale = (path: string) => withLocalePath(path, resolvedLocale);
@@ -245,6 +246,58 @@ export default function WorkspaceClient({ userEmail, locale }: WorkspaceClientPr
           </div>
         </div>
 
+        <Card className="mb-4 border-emerald-500/30 bg-emerald-500/5">
+          <CardContent className="pt-6">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-xs uppercase tracking-wide text-emerald-300">Enterprise demo mode</p>
+                <h2 className="mt-1 text-lg font-semibold text-app-text flex items-center gap-2">
+                  <Building2 className="h-4 w-4 text-emerald-300" />
+                  Safe mock data for investor demos
+                </h2>
+                <p className="mt-1 text-sm text-emerald-100">
+                  Toggle on to preview an illustrative enterprise dashboard. No real tenant or billing
+                  data is ever touched.
+                </p>
+              </div>
+              <div className="flex flex-col items-start gap-1 sm:items-end">
+                <Button
+                  variant={demoMode ? 'secondary' : 'outline'}
+                  onClick={() => setDemoMode((value) => !value)}
+                >
+                  {demoMode ? 'Disable Demo Mode' : 'Enable Demo Mode'}
+                </Button>
+                <p className="text-[11px] text-emerald-200">Ideal for live walkthroughs with teams & investors.</p>
+              </div>
+            </div>
+
+            {demoMode && (
+              <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-4">
+                <div className="rounded-xl border border-emerald-400/40 bg-black/30 px-3 py-3">
+                  <p className="text-[11px] uppercase tracking-wide text-emerald-300">Demo organizations</p>
+                  <p className="mt-1 text-2xl font-semibold text-app-text">12</p>
+                  <p className="mt-1 text-[11px] text-app-muted">Mix of studios, agencies, and brands.</p>
+                </div>
+                <div className="rounded-xl border border-cyan-400/40 bg-black/30 px-3 py-3">
+                  <p className="text-[11px] uppercase tracking-wide text-cyan-300">Illustrative MRR</p>
+                  <p className="mt-1 text-2xl font-semibold text-app-text">$31.2k</p>
+                  <p className="mt-1 text-[11px] text-app-muted">Not real revenue; for demo only.</p>
+                </div>
+                <div className="rounded-xl border border-blue-400/40 bg-black/30 px-3 py-3">
+                  <p className="text-[11px] uppercase tracking-wide text-blue-300">AI jobs / month</p>
+                  <p className="mt-1 text-2xl font-semibold text-app-text">132k</p>
+                  <p className="mt-1 text-[11px] text-app-muted">Avatars, voice, and video runs.</p>
+                </div>
+                <div className="rounded-xl border border-fuchsia-400/40 bg-black/30 px-3 py-3">
+                  <p className="text-[11px] uppercase tracking-wide text-fuchsia-300">SLA target</p>
+                  <p className="mt-1 text-2xl font-semibold text-app-text">99.9%</p>
+                  <p className="mt-1 text-[11px] text-app-muted">Designed for always-on creative teams.</p>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
         {!isAuthenticated && (
           <Card className="mb-4 border-cyan-500/30 bg-cyan-500/5">
             <CardContent className="pt-6">
@@ -340,6 +393,44 @@ export default function WorkspaceClient({ userEmail, locale }: WorkspaceClientPr
                     Retry
                   </Button>
                 )}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {isAuthenticated && (
+          <Card className="mb-4 border-app-border/40 bg-app-surface/80">
+            <CardContent className="pt-6">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-xs uppercase tracking-wide text-app-muted">Growth & referrals</p>
+                  <h2 className="mt-1 text-lg font-semibold text-app-text flex items-center gap-2">
+                    <Users className="h-4 w-4 text-app-neon" />
+                    Invite teams, creators & clients
+                  </h2>
+                  <p className="mt-1 text-sm text-app-muted">
+                    Share Avatar G with your network. Use the affiliate dashboard to track referral
+                    rewards, or simply invite teammates into your workspace.
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => router.push(toLocale('/affiliate'))}
+                  >
+                    Open referral dashboard
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    onClick={() => {
+                      const subject = 'Join our Avatar G workspace';
+                      const body = `Hi,\n\nWe are using Avatar G as our AI studio for avatars, voice, and video. Join our workspace here: ${window.location.origin}${toLocale('/workspace')}\n\nBest,`;
+                      window.location.href = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+                    }}
+                  >
+                    Send workspace invite
+                  </Button>
+                </div>
               </div>
             </CardContent>
           </Card>

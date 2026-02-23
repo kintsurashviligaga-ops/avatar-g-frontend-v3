@@ -4,6 +4,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import type { PlanTier } from '@/lib/billing/plans';
 
 interface RateLimitConfig {
   maxRequests: number;
@@ -92,6 +93,28 @@ export const RATE_LIMITS = {
   // Public endpoints (generous)
   PUBLIC: { maxRequests: 1000, windowMs: 60 * 1000 } as const,
 };
+
+export function getRateLimitForPlan(
+  plan: PlanTier,
+  operation: 'read' | 'write' | 'expensive' = 'read'
+): RateLimitConfig {
+  const key = operation.toUpperCase() as 'READ' | 'WRITE' | 'EXPENSIVE';
+  const base = RATE_LIMITS[key];
+
+  if (plan === 'ENTERPRISE') {
+    return { maxRequests: Math.round(base.maxRequests * 5), windowMs: base.windowMs };
+  }
+
+  if (plan === 'PREMIUM') {
+    return { maxRequests: Math.round(base.maxRequests * 3), windowMs: base.windowMs };
+  }
+
+  if (plan === 'PRO') {
+    return { maxRequests: Math.round(base.maxRequests * 1.5), windowMs: base.windowMs };
+  }
+
+  return base;
+}
 
 /**
  * Default key generator - uses IP address

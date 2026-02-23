@@ -10,6 +10,6 @@ describe('GlobalChatbot', () => {
   it('opens chat window when clicked', () => {
     render(<GlobalChatbot />)
     fireEvent.click(screen.getByRole('button'))
-    expect(screen.getByPlaceholderText('Type a message...')).toBeInTheDocument()
+    expect(screen.getByPlaceholderText('დაწერეთ...')).toBeInTheDocument()
   })
 })

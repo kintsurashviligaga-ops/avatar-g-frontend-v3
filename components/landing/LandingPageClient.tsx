@@ -39,7 +39,12 @@ export default function LandingPageClient() {
       <div className="relative z-10">
         <section className="relative min-h-screen flex items-center pt-28 pb-16">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 w-full">
-            <div className="max-w-2xl space-y-8">
+            <motion.div
+              className="max-w-2xl space-y-8"
+              initial={{ opacity: 0, y: 24 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.7, ease: "easeOut" }}
+            >
               <div className="flex flex-wrap gap-3">
                 <Badge className="w-fit">
                   <span className="w-2 h-2 rounded-full bg-cyan-400 mr-2" />
@@ -51,28 +56,35 @@ export default function LandingPageClient() {
               </div>
 
               <div className="space-y-4">
-                <h1 className="text-5xl md:text-7xl font-bold leading-tight">
+                <p className="text-sm md:text-base text-cyan-300 tracking-[0.18em] uppercase">
+                  პრემიუმ AI სტუდია თბილისიდან
+                </p>
+                <h1 className="text-5xl md:text-7xl font-bold leading-[1.05] text-balance">
                   Build
                   <span className="bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent">
-                    {" "}Anything
+                    {" "}anything
                   </span>
                   {" "}with Avatar G
                 </h1>
-                <p className="text-lg md:text-xl text-gray-300">
-                  A cinematic AI studio for avatars, music, video, and photography. Create with a
-                  premium workflow, elite rendering, and your personal avatar at the center.
+                <p className="text-lg md:text-xl text-gray-300 text-balance max-w-xl">
+                  A calm, cinematic AI studio for avatars, music, video, and photography.
+                  Designed in Tbilisi for teams who want premium quality without chaos.
                 </p>
               </div>
 
               <div className="flex flex-col sm:flex-row gap-4">
                 <motion.div whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }}>
-                  <Button variant="primary" size="lg" className="gap-2">
+                  <Button
+                    variant="primary"
+                    size="lg"
+                    className="gap-2 shadow-[0_0_32px_rgba(34,211,238,0.35)] hover:shadow-[0_0_40px_rgba(34,211,238,0.45)]"
+                  >
                     Get Started Free
                     <ArrowRight className="w-4 h-4" />
                   </Button>
                 </motion.div>
                 <motion.div whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }}>
-                  <Button variant="secondary" size="lg" className="gap-2">
+                  <Button variant="outline" size="lg" className="gap-2 border-white/30">
                     <Play className="w-4 h-4" />
                     Watch Demo
                   </Button>
@@ -80,7 +92,7 @@ export default function LandingPageClient() {
                 <motion.div whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }}>
                   <Button 
                     onClick={() => setShowPremiumForm(true)}
-                    className="gap-2 bg-gradient-to-r from-amber-400 to-orange-500 hover:from-amber-500 hover:to-orange-600 text-black font-semibold"
+                    className="gap-2 bg-gradient-to-r from-amber-300 to-orange-500 hover:from-amber-400 hover:to-orange-600 text-black font-semibold shadow-[0_0_20px_rgba(251,191,36,0.25)] hover:shadow-[0_0_26px_rgba(251,191,36,0.35)]"
                     size="lg"
                   >
                     <Zap className="w-4 h-4" />
@@ -101,7 +113,7 @@ export default function LandingPageClient() {
                   </div>
                 ))}
               </div>
-            </div>
+            </motion.div>
           </div>
         </section>
 

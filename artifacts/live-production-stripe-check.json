@@ -1,0 +1,102 @@
+﻿{
+    "timestamp":  "2026-02-23T19:28:23.7817839+04:00",
+    "base":  "https://avatarg-backend.vercel.app",
+    "checks":  {
+                   "health":  {
+                                  "status":  200,
+                                  "raw":  "{\"ok\":true,\"service\":\"avatarg-backend\",\"env_integrity_status\":\"pass\",\"missing_vars\":[],\"malformed_vars\":[],\"redis_enabled\":true,\"redis_ping_ok\":true,\"latency_ms\":838,\"uptime\":23,\"version\":\"f0a59ae\",\"timestamp\":\"2026-02-23T15:32:27.688Z\",\"checks\":{\"redis\":{\"ok\":true,\"enabled\":true,\"latencyMs\":200},\"supabase\":{\"ok\":true,\"mode\":\"supabase\"},\"memory\":{\"ok\":true,\"mode\":\"supabase\"}},\"envIntegrity\":{\"env_integrity_status\":\"pass\",\"missing_vars\":[],\"malformed_vars\":[]},\"env\":{\"WHATSAPP_VERIFY_TOKEN\":true,\"WHATSAPP_ACCESS_TOKEN\":true,\"WHATSAPP_PHONE_NUMBER_ID\":true,\"WHATSAPP_BUSINESS_ACCOUNT_ID\":true,\"META_APP_SECRET\":true,\"TELEGRAM_BOT_TOKEN\":true,\"TELEGRAM_WEBHOOK_SECRET\":false,\"TELEGRAM_SETUP_SECRET\":false,\"UPSTASH_REDIS_REST_URL\":true,\"UPSTASH_REDIS_REST_TOKEN\":true,\"SENTRY_DSN\":false,\"ALERT_TELEGRAM_BOT_TOKEN\":false,\"ALERT_TELEGRAM_CHAT_ID\":false,\"SUPABASE_URL\":true,\"SUPABASE_SERVICE_ROLE_KEY\":true,\"CRON_SECRET\":false,\"FRONTEND_URL\":true,\"SITE_URL\":false,\"PUBLIC_APP_URL\":false}}",
+                                  "json":  {
+                                               "ok":  true,
+                                               "service":  "avatarg-backend",
+                                               "env_integrity_status":  "pass",
+                                               "missing_vars":  [
+
+                                                                ],
+                                               "malformed_vars":  [
+
+                                                                  ],
+                                               "redis_enabled":  true,
+                                               "redis_ping_ok":  true,
+                                               "latency_ms":  838,
+                                               "uptime":  23,
+                                               "version":  "f0a59ae",
+                                               "timestamp":  "2026-02-23T15:32:27.688Z",
+                                               "checks":  {
+                                                              "redis":  {
+                                                                            "ok":  true,
+                                                                            "enabled":  true,
+                                                                            "latencyMs":  200
+                                                                        },
+                                                              "supabase":  {
+                                                                               "ok":  true,
+                                                                               "mode":  "supabase"
+                                                                           },
+                                                              "memory":  {
+                                                                             "ok":  true,
+                                                                             "mode":  "supabase"
+                                                                         }
+                                                          },
+                                               "envIntegrity":  {
+                                                                    "env_integrity_status":  "pass",
+                                                                    "missing_vars":  [
+
+                                                                                     ],
+                                                                    "malformed_vars":  [
+
+                                                                                       ]
+                                                                },
+                                               "env":  {
+                                                           "WHATSAPP_VERIFY_TOKEN":  true,
+                                                           "WHATSAPP_ACCESS_TOKEN":  true,
+                                                           "WHATSAPP_PHONE_NUMBER_ID":  true,
+                                                           "WHATSAPP_BUSINESS_ACCOUNT_ID":  true,
+                                                           "META_APP_SECRET":  true,
+                                                           "TELEGRAM_BOT_TOKEN":  true,
+                                                           "TELEGRAM_WEBHOOK_SECRET":  false,
+                                                           "TELEGRAM_SETUP_SECRET":  false,
+                                                           "UPSTASH_REDIS_REST_URL":  true,
+                                                           "UPSTASH_REDIS_REST_TOKEN":  true,
+                                                           "SENTRY_DSN":  false,
+                                                           "ALERT_TELEGRAM_BOT_TOKEN":  false,
+                                                           "ALERT_TELEGRAM_CHAT_ID":  false,
+                                                           "SUPABASE_URL":  true,
+                                                           "SUPABASE_SERVICE_ROLE_KEY":  true,
+                                                           "CRON_SECRET":  false,
+                                                           "FRONTEND_URL":  true,
+                                                           "SITE_URL":  false,
+                                                           "PUBLIC_APP_URL":  false
+                                                       }
+                                           }
+                              },
+                   "stripeHealth":  {
+                                        "status":  404,
+                                        "raw":  "",
+                                        "json":  null
+                                    },
+                   "envIntegrity":  {
+                                        "status":  404,
+                                        "raw":  "",
+                                        "json":  null
+                                    },
+                   "stripeTestGet":  {
+                                         "status":  404,
+                                         "raw":  "",
+                                         "json":  null
+                                     },
+                   "stripeTestPost":  {
+                                          "status":  405,
+                                          "raw":  "",
+                                          "json":  null
+                                      },
+                   "stripeWebhookMissingSig":  {
+                                                   "status":  405,
+                                                   "raw":  "",
+                                                   "json":  null
+                                               },
+                   "stripeWebhookBadSig":  {
+                                               "status":  405,
+                                               "raw":  "",
+                                               "json":  null
+                                           }
+               }
+}

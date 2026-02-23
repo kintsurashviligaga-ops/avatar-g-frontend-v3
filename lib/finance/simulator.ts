@@ -58,7 +58,7 @@ export function simulateScenario(input: SimulationInput): SimulationOutput {
   const monthlyProfit = dailyProfit * 30;
 
   const breakEvenOrders = marginNoAd.net_profit_cents > 0
-    ? Math.ceil(adSpendPerDay / marginNoAd.net_profit_cents)
+    ? Math.max(1, Math.ceil(adSpendPerDay / marginNoAd.net_profit_cents))
     : null;
 
   return {

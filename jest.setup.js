@@ -2,6 +2,7 @@ import '@testing-library/jest-dom'
 
 if (typeof globalThis.Request === 'undefined' || typeof globalThis.fetch === 'undefined') {
   try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const undici = require('undici')
     globalThis.fetch = undici.fetch
     globalThis.Request = undici.Request
@@ -34,7 +35,11 @@ const localStorageMock = {
   removeItem: jest.fn(),
   clear: jest.fn(),
 }
-globalThis.localStorage = globalThis.localStorage || localStorageMock
+Object.defineProperty(globalThis, 'localStorage', {
+  value: localStorageMock,
+  writable: true,
+  configurable: true,
+})
 
 // Mock window.matchMedia
 if (typeof window !== 'undefined') {

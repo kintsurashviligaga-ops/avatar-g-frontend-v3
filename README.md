@@ -21,10 +21,11 @@
 12. **Prompt Builder** - Prompt engineering toolkit *(coming soon)*
 13. **Avatar G Agent** - Premium multi-agent orchestration *(Premium tier)*
 
-### Pricing Plans
-- **Free**: $0/mo - 100 credits, basic access
-- **Basic**: $30/mo - 500 credits, all features
-- **Premium**: $150/mo - 2000 credits + Avatar G Agent
+### Pricing Plans (Canonical)
+- **FREE**: $0/mo
+- **BASIC**: $39/mo
+- **PREMIUM**: $150/mo
+- **AGENT_G_FULL**: $500/mo
 
 ### SaaS Features
 - ✅ Stripe subscription billing with webhooks
@@ -173,7 +174,45 @@ npm run build
 
 # 4. Start production server
 npm run start
+
+# 5. Enterprise verification suite
+npm run test:enterprise
+npm run verify:production
 ```
+
+Verification report output:
+- `artifacts/verification-report.json`
+
+Load test hook:
+
+```powershell
+npm run load:test -- --baseUrl=http://localhost:3000 --endpoint=/api/observability/latency --requests=120 --concurrency=20
+```
+
+## 🧪 New Runtime APIs
+
+- Billing + metering:
+  - `GET /api/billing/plan`
+  - `GET /api/billing/usage?range=day|week|month`
+  - `GET /api/billing/usage/export?range=day|week|month`
+- Admin billing:
+  - `GET /api/admin/billing/plans`
+  - `GET /api/admin/billing/users/:id`
+- Tenant branding:
+  - `GET /api/org/branding`
+- AI routing:
+  - `POST /api/agent-g/router/execute`
+- Observability:
+  - `GET /api/observability/latency`
+- Investor metrics:
+  - `GET /api/metrics/kpis?range=month`
+  - `GET /api/metrics/revenue`
+  - `GET /api/metrics/conversion`
+- Growth automation:
+  - `POST /api/growth/referrals/code`
+  - `POST /api/growth/referrals/track`
+  - `POST /api/growth/events/process`
+  - `POST /api/growth/churn-risk/scan`
 
 ### Key Routes to Test
 - `/` - Landing page (3D hero + orbiting services)

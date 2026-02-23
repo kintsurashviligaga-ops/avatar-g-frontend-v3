@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Stripe from 'stripe';
-import { verifyWebhookSignature } from '@/lib/billing/stripe';
 import { getPlan, type PlanTier } from '../../../../lib/billing/plans';
 import { getPlanByStripePriceId } from '@/lib/billing/stripe-prices';
 import { createRouteHandlerClient } from '@/lib/supabase/server';
+import { BillingProviderUnavailableError, getBillingProvider } from '@/lib/monetization/provider';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -131,6 +131,18 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
 
 export async function POST(request: NextRequest) {
   try {
+    const provider = getBillingProvider();
+    if (provider.kind === 'none') {
+      return NextResponse.json(
+        {
+          error: 'Billing provider unavailable',
+          error_code: 'BILLING_PROVIDER_UNAVAILABLE',
+          message: 'Stripe is not configured. Configure STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET.',
+        },
+        { status: 503 }
+      );
+    }
+
     const signature = request.headers.get('stripe-signature');
     if (!signature) {
       return NextResponse.json({ error: 'Missing signature' }, { status: 400 });
@@ -140,7 +152,7 @@ export async function POST(request: NextRequest) {
 
     let event: Stripe.Event;
     try {
-      event = verifyWebhookSignature(payload, signature);
+      event = provider.verifyWebhook(payload, signature);
     } catch {
       return NextResponse.json({ error: 'Invalid signature' }, { status: 401 });
     }
@@ -171,6 +183,17 @@ export async function POST(request: NextRequest) {
     await markProcessed(event);
     return NextResponse.json({ received: true });
   } catch (error) {
+    if (error instanceof BillingProviderUnavailableError) {
+      return NextResponse.json(
+        {
+          error: 'Billing provider unavailable',
+          error_code: error.code,
+          message: error.message,
+        },
+        { status: 503 }
+      );
+    }
+
     return NextResponse.json(
       {
         error: 'Webhook handler failed',

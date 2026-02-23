@@ -1,0 +1,96 @@
+{
+  "timestamp": "2026-02-23T15:34:30.000Z",
+  "commit": "778cba2",
+  "status": "NOT_READY",
+  "requirements": {
+    "1_validate_stripe_runtime_in_production": {
+      "result": "failed",
+      "evidence": "GET /api/stripe/health returned mode=test and missing webhook/public key configuration"
+    },
+    "2_confirm_stripe_keys_in_vercel": {
+      "result": "failed",
+      "evidence": {
+        "STRIPE_SECRET_KEY": true,
+        "STRIPE_WEBHOOK_SECRET": false,
+        "NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY": false
+      }
+    },
+    "3_live_billing_smoke_test_test_mode": {
+      "result": "failed",
+      "evidence": "POST /api/tests/stripe-webhook returned 400 Invalid request under current production config"
+    },
+    "4_confirm_webhook_signature_verification": {
+      "result": "partial",
+      "evidence": {
+        "missing_signature_response": "400 Missing signature",
+        "bad_signature_response": "500 Webhook secret not configured",
+        "note": "Cannot validate cryptographic signature verification path until STRIPE_WEBHOOK_SECRET is set"
+      }
+    },
+    "5_confirm_billing_events_queue_processing": {
+      "result": "blocked",
+      "evidence": "Worker endpoint requires internal token and Stripe webhook signing secret is missing; queue processing cannot be validated end-to-end"
+    },
+    "6_regenerate_verification_report_with_stripe": {
+      "result": "passed",
+      "evidence": "This report includes live production Stripe endpoint evidence"
+    },
+    "7_confirm_no_build_warnings": {
+      "result": "failed",
+      "evidence": "artifacts/local-build-audit.txt contains edge-runtime static generation warning and missing STRIPE_SECRET_KEY build warning"
+    },
+    "8_confirm_no_runtime_env_missing_warnings": {
+      "result": "failed",
+      "evidence": {
+        "stripe_health_warnings": [
+          "NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY not configured",
+          "STRIPE_WEBHOOK_SECRET not configured (webhooks will fail)"
+        ]
+      }
+    },
+    "9_final_production_ready_report": {
+      "result": "passed",
+      "evidence": "Generated in artifacts/PRODUCTION_READY_REPORT.md"
+    }
+  },
+  "live_checks": {
+    "primary_domain": "https://avatar-g-frontend-v3.vercel.app",
+    "secondary_domain": "https://avatarg-backend.vercel.app",
+    "artifacts": [
+      "artifacts/live-production-stripe-check.json",
+      "artifacts/live-production-stripe-detailed.json",
+      "artifacts/local-build-audit.txt"
+    ]
+  },
+  "env_integrity_status": {
+    "implemented_in_code": true,
+    "live_route_available_on_primary_domain": false,
+    "live_route_available_on_secondary_domain": false
+  },
+  "stripe": {
+    "mode": "test",
+    "stripe_secret_key_set": true,
+    "stripe_webhook_secret_set": false,
+    "stripe_publishable_key_set": false
+  },
+  "webhooks": {
+    "stripe_missing_signature_http": 400,
+    "stripe_bad_signature_http": 500
+  },
+  "queues": {
+    "billing_events_architecture_present_in_code": true,
+    "live_processing_verified": false
+  },
+  "build": {
+    "exit_code": 0,
+    "warning_free": false
+  },
+  "runtime_env_warning_free": false,
+  "next_actions": [
+    "Set STRIPE_WEBHOOK_SECRET in Vercel production environment",
+    "Set NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY in Vercel production environment",
+    "Redeploy and rerun POST /api/tests/stripe-webhook",
+    "Send a real Stripe signed test webhook to /api/webhooks/stripe and verify 200 path",
+    "Run authenticated worker tick to confirm billing_events queue drain"
+  ]
+}

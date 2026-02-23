@@ -1,7 +1,5 @@
 // Comprehensive Avatar G Platform Types - Database Models
 
-import type { Database } from './supabase';
-
 // ============================================
 // LANGUAGE & ENUMS
 // ============================================
@@ -46,7 +44,7 @@ export interface AvatarMetadata {
     model_ref?: string;
   };
   appearance?: Record<string, string>;
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 // ============================================
@@ -71,7 +69,7 @@ export interface VoiceCharacteristics {
   tone?: string; // warm, bright, dark, neutral
   speed?: number; // 0-1 range
   accent?: string;
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 // ============================================
@@ -190,7 +188,7 @@ export interface VideoClip {
   // Background
   background_type?: BackgroundType;
   background_asset_id?: string;
-  background_config?: Record<string, any>;
+  background_config?: Record<string, unknown>;
   
   // Camera & Technical
   camera_template: CameraTemplate;
@@ -232,7 +230,7 @@ export interface LyricsStyleConfig {
   font?: string;
   position?: 'top' | 'bottom' | 'center';
   animation?: 'fade' | 'slide' | 'typewriter';
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 export interface VideoScene {
@@ -248,7 +246,7 @@ export interface VideoScene {
 export interface VideoEffect {
   id: string;
   type: string;
-  params: Record<string, any>;
+  params: Record<string, unknown>;
 }
 
 export interface TransitionConfig {
@@ -261,7 +259,7 @@ export interface FilterConfig {
   contrast?: number;
   saturation?: number;
   blur?: number;
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 // ============================================
@@ -271,8 +269,8 @@ export interface Job {
   id: string;
   user_id: string;
   type: JobType;
-  input_json: Record<string, any>;
-  output_json?: Record<string, any>;
+  input_json: Record<string, unknown>;
+  output_json?: Record<string, unknown>;
   status: JobStatus;
   progress: number;
   error?: string;
@@ -325,7 +323,7 @@ export interface Project {
   description?: string;
   cover_image_url?: string;
   status: 'active' | 'archived' | 'deleted';
-  metadata_json?: Record<string, any>;
+  metadata_json?: Record<string, unknown>;
   created_at: string;
   updated_at: string;
 }

@@ -7,12 +7,25 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createRouteHandlerClient } from '@/lib/supabase/server';
 import { requireAuthenticatedUser } from '@/lib/supabase/auth';
 import { createPortalSession } from '@/lib/billing/stripe';
+import { BillingProviderUnavailableError, getBillingProvider } from '@/lib/monetization/provider';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
 export async function POST(request: NextRequest) {
   try {
+    const provider = getBillingProvider();
+    if (provider.kind === 'none') {
+      return NextResponse.json(
+        {
+          error: 'Billing provider unavailable',
+          error_code: 'BILLING_PROVIDER_UNAVAILABLE',
+          message: 'Stripe is not configured. Set STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET.',
+        },
+        { status: 503 }
+      );
+    }
+
     const user = await requireAuthenticatedUser(request);
     const supabase = createRouteHandlerClient();
     
@@ -50,6 +63,17 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     if (error instanceof Error && error.message === 'UNAUTHENTICATED') {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    if (error instanceof BillingProviderUnavailableError) {
+      return NextResponse.json(
+        {
+          error: 'Billing provider unavailable',
+          error_code: error.code,
+          message: error.message,
+        },
+        { status: 503 }
+      );
     }
 
     console.error('Portal error:', error);

@@ -9,7 +9,7 @@
 
 import { useEffect, useState } from 'react';
 import { useTranslations } from 'next-intl';
-import { TrendingUp, Users, DollarSign, MousePointerClick, ExternalLink } from 'lucide-react';
+import { TrendingUp, Users, DollarSign, MousePointerClick, ExternalLink, Gift, Share2 } from 'lucide-react';
 import { StatCard } from '@/components/affiliate/StatCard';
 import { CopyButton } from '@/components/affiliate/CopyButton';
 import { DataTable } from '@/components/affiliate/DataTable';
@@ -118,6 +118,10 @@ export default function AffiliateDashboard() {
   const referralLink = affiliate
     ? `${process.env.NEXT_PUBLIC_APP_URL || 'https://myavatar.ge'}/?ref=${affiliate.affiliate_code}`
     : '';
+
+  const nextRewardAt = 10;
+  const currentSignups = totals.total_signups || 0;
+  const progress = Math.max(0, Math.min(100, (currentSignups / nextRewardAt) * 100));
 
   const formatCurrency = (cents: number) => {
     return `$${(cents / 100).toFixed(2)}`;
@@ -233,6 +237,82 @@ export default function AffiliateDashboard() {
                   successMessage={t('affiliate.summary.copied')}
                 />
               )}
+            </div>
+          </Card>
+        </div>
+
+        {/* Growth progress & sharing */}
+        <div className="grid md:grid-cols-[2fr,3fr] gap-6">
+          <Card className="bg-black/40 border-emerald-500/30 p-6">
+            <div className="flex items-start justify-between gap-3 mb-4">
+              <div>
+                <p className="text-xs uppercase tracking-wide text-emerald-300 mb-1">Referral progress</p>
+                <h2 className="text-lg font-semibold text-white flex items-center gap-2">
+                  <Gift className="w-4 h-4 text-emerald-300" />
+                  Next reward at {nextRewardAt} signups
+                </h2>
+              </div>
+              <span className="text-xs text-gray-400">Demo-only; final rewards defined in terms.</span>
+            </div>
+            <div className="w-full h-2 rounded-full bg-white/10 overflow-hidden">
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-emerald-400 to-cyan-400 transition-all"
+                style={{ width: `${progress}%` }}
+              />
+            </div>
+            <div className="mt-2 flex items-center justify-between text-xs text-gray-400">
+              <span>{currentSignups} / {nextRewardAt} signups reached</span>
+              <span>{Math.max(0, nextRewardAt - currentSignups)} to next bonus tier</span>
+            </div>
+          </Card>
+
+          <Card className="bg-black/40 border-white/10 p-6">
+            <div className="flex items-start justify-between gap-3 mb-4">
+              <div>
+                <p className="text-xs uppercase tracking-wide text-cyan-300 mb-1">Share Avatar G</p>
+                <h2 className="text-lg font-semibold text-white flex items-center gap-2">
+                  <Share2 className="w-4 h-4 text-cyan-300" />
+                  Invite teams, creators & founders
+                </h2>
+              </div>
+            </div>
+            <p className="text-sm text-gray-300 mb-3">
+              Share your link with clients, founders, and marketing teams. A calm, production-grade AI
+              studio from Tbilisi—with Georgian-first support.
+            </p>
+            <div className="flex flex-wrap gap-3 text-sm">
+              <button
+                type="button"
+                className="rounded-full border border-white/15 bg-white/5 px-3 py-1 text-gray-200 hover:bg-white/10"
+                onClick={() => {
+                  const text = `Testing Avatar G — a production-grade AI studio from Tbilisi. My referral link: ${referralLink}`;
+                  const url = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}`;
+                  window.open(url, '_blank', 'noopener,noreferrer');
+                }}
+              >
+                Post to X / Twitter
+              </button>
+              <button
+                type="button"
+                className="rounded-full border border-white/15 bg-white/5 px-3 py-1 text-gray-200 hover:bg-white/10"
+                onClick={() => {
+                  const text = `We are experimenting with Avatar G — a calm, production-grade AI studio from Tbilisi. Explore it with our referral link: ${referralLink}`;
+                  const url = `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(referralLink)}&text=${encodeURIComponent(text)}`;
+                  window.open(url, '_blank', 'noopener,noreferrer');
+                }}
+              >
+                Share on LinkedIn
+              </button>
+              <button
+                type="button"
+                className="rounded-full border border-white/15 bg-white/5 px-3 py-1 text-gray-200 hover:bg-white/10"
+                onClick={() => {
+                  const body = `Hi,\n\nI have been testing Avatar G, a production-ready AI studio from Tbilisi for avatars, voice, and video. Here is my referral link so you can try it: ${referralLink}\n\nBest,`;
+                  window.location.href = `mailto:?subject=${encodeURIComponent('Try Avatar G with my referral link')}&body=${encodeURIComponent(body)}`;
+                }}
+              >
+                Send email invite
+              </button>
             </div>
           </Card>
         </div>

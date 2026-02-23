@@ -93,8 +93,8 @@ export interface Job {
   id: string;
   user_id: string;
   type: JobType;
-  input_json: Record<string, any>;
-  output_json?: Record<string, any>;
+  input_json: Record<string, unknown>;
+  output_json?: Record<string, unknown>;
   status: JobStatus;
   progress: number;
   error?: string;
@@ -253,7 +253,7 @@ export interface JobStatusResponse {
   status: JobStatus;
   progress: number;
   error?: string;
-  output?: Record<string, any>;
+  output?: Record<string, unknown>;
 }
 
 // ============================================
@@ -273,20 +273,20 @@ export interface AvatarGenerationResult {
   image_url: string;
   turnaround_urls?: string[];
   generation_time_ms: number;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 export interface VoiceTrainingResult {
   model_ref: string;
   status: VoiceStatus;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 export interface TalkClipResult {
   audio_url: string;
   video_url?: string;
   duration_seconds: number;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 // ============================================
@@ -376,7 +376,7 @@ export interface UploadProgress {
 export interface ApiError {
   code: string;
   message: string;
-  details?: any;
+  details?: unknown;
 }
 
 export interface PaginatedResponse<T> {

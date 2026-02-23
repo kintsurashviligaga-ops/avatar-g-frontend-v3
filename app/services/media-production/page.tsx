@@ -95,7 +95,9 @@ export default function MediaProductionPage() {
         }
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Error loading videos';
-        console.error('Error loading videos:', message);
+        if (process.env.NODE_ENV === 'development') {
+          console.error('Error loading videos:', message);
+        }
       }
     };
     loadMyVideos();
@@ -119,7 +121,7 @@ export default function MediaProductionPage() {
       }
     }
 
-    // Create a placeholder project
+    // Create project shell while background job runs
     const projectId = Date.now().toString();
     const newProject: VideoProject = {
       id: projectId,
@@ -158,18 +160,57 @@ export default function MediaProductionPage() {
 
       const data = await response.json();
       
-      // Assume immediate completion (job polling can be added later)
+      const jobId = data.job?.id;
+      if (!jobId) {
+        throw new Error('Missing job id from video generation response');
+      }
+
+      const authHeaders = await getAuthHeaders();
+      let completedUrl = '';
+
+      for (let attempt = 0; attempt < 60; attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 2500));
+
+        const poll = await fetch(`/api/jobs/${jobId}?autoProcess=1`, {
+          headers: authHeaders,
+          cache: 'no-store',
+        });
+
+        if (!poll.ok) {
+          continue;
+        }
+
+        const pollData = await poll.json();
+        const status = pollData?.job?.status;
+
+        setGenerationProgress(Math.min(95, 30 + attempt * 2));
+
+        if (status === 'succeeded') {
+          completedUrl = String(pollData?.job?.output_json?.video_url || '');
+          break;
+        }
+
+        if (status === 'failed') {
+          throw new Error(String(pollData?.job?.error || 'Video job failed'));
+        }
+      }
+
+      if (!completedUrl) {
+        throw new Error('Video job timeout while waiting for completion');
+      }
+
       setGenerationProgress(100);
-      const videoUrl = data.video_url || data.result?.video_url || '';
-      setProjects(prev => prev.map(p => 
+      setProjects(prev => prev.map(p =>
         p.id === projectId
-          ? { ...p, url: videoUrl, isGenerating: false }
+          ? { ...p, url: completedUrl, isGenerating: false }
           : p
       ));
 
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to generate video. Please check your API keys and try again.';
-      console.error('💥 Video generation error:', message);
+      if (process.env.NODE_ENV === 'development') {
+        console.error('💥 Video generation error:', message);
+      }
       setProjects(prev => prev.filter(p => p.id !== projectId));
       alert(message);
     } finally {
@@ -218,7 +259,9 @@ export default function MediaProductionPage() {
       document.body.removeChild(a);
       window.URL.revokeObjectURL(url);
     } catch (error) {
-      console.error('Download error:', error);
+      if (process.env.NODE_ENV === 'development') {
+        console.error('Download error:', error);
+      }
       alert('Failed to download video');
     }
   };
@@ -475,7 +518,9 @@ export default function MediaProductionPage() {
                             ? { response: data.data.response, provider: data.data.provider }
                             : null;
                         } catch (error) {
-                          console.error('Chat error:', error);
+                          if (process.env.NODE_ENV === 'development') {
+                            console.error('Chat error:', error);
+                          }
                           return null;
                         } finally {
                           setIsChatLoading(false);

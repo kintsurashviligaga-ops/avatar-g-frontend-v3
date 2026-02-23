@@ -1,0 +1,20 @@
+
+> avatar-g-workspace@2.0.0 lint
+> next lint
+
+
+./app/(marketing)/investor/page.tsx
+84:65  Error: `"` can be escaped with `&quot;`, `&ldquo;`, `&#34;`, `&rdquo;`.  react/no-unescaped-entities
+84:73  Error: `"` can be escaped with `&quot;`, `&ldquo;`, `&#34;`, `&rdquo;`.  react/no-unescaped-entities
+
+./app/api/agent-g-router/route.ts
+8:28  Error: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+
+./app/workspace/workspace-client.tsx
+7:58  Error: 'Trophy' is defined but never used. Allowed unused vars must match /^_/u.  @typescript-eslint/no-unused-vars
+
+./components/pricing/PricingPageClient.tsx
+65:10  Error: 'selectedPlan' is assigned a value but never used. Allowed unused elements of array destructuring must match /^_/u.  @typescript-eslint/no-unused-vars
+65:24  Error: 'setSelectedPlan' is assigned a value but never used. Allowed unused elements of array destructuring must match /^_/u.  @typescript-eslint/no-unused-vars
+
+info  - Need to disable some ESLint rules? Learn more here: https://nextjs.org/docs/basic-features/eslint#disabling-rules

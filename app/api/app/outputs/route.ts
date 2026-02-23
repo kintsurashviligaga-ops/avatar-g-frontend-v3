@@ -1,5 +1,6 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase/server';
+import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 
 export const dynamic = 'force-dynamic';
 
@@ -8,7 +9,10 @@ type ServiceOutputRow = {
   [key: string]: unknown;
 };
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const rateLimitError = await checkRateLimit(request, RATE_LIMITS.READ);
+  if (rateLimitError) return rateLimitError;
+
   const supabase = createServerClient();
   const {
     data: { user },
@@ -26,7 +30,7 @@ export async function GET() {
     .limit(120);
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: 'Failed to load outputs' }, { status: 500 });
   }
 
   const outputsWithUrl = await Promise.all(

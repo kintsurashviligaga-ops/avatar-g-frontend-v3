@@ -355,17 +355,42 @@ export default function BusinessAgentPage() {
     });
   };
 
-  const handleFileMetaUpload = (event: ChangeEvent<HTMLInputElement>) => {
+  const handleFileMetaUpload = async (event: ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
     if (!files || files.length === 0) return;
 
-    const newMeta: BusinessAgentFileMeta[] = Array.from(files).map((file, index) => ({
+    let newMeta: BusinessAgentFileMeta[] = Array.from(files).map((file, index) => ({
       id: `${Date.now()}-${index}-${file.name}`,
       name: file.name,
       size: file.size,
       type: file.type || 'unknown',
       uploaded_at: new Date().toISOString(),
     }));
+
+    if (authenticated) {
+      try {
+        const formData = new FormData();
+        Array.from(files).forEach((file) => {
+          formData.append('files', file);
+        });
+
+        const response = await fetch('/api/business-agent/uploads', {
+          method: 'POST',
+          body: formData,
+        });
+
+        const data = await response.json() as { files?: BusinessAgentFileMeta[]; error?: string };
+        if (!response.ok) {
+          throw new Error(data?.error || 'Upload failed');
+        }
+
+        if (Array.isArray(data.files) && data.files.length > 0) {
+          newMeta = data.files;
+        }
+      } catch (error) {
+        setError(error instanceof Error ? error.message : 'Upload failed');
+      }
+    }
 
     setInputs((current) => ({
       ...current,
@@ -788,7 +813,7 @@ export default function BusinessAgentPage() {
                       {inputs.files.length > 0 ? (
                         <div className="rounded-xl border border-white/10 bg-black/20 p-3">
                           <p className="mb-2 text-xs text-amber-200">
-                            {isEn ? 'Upload backend coming soon. File metadata is saved now.' : 'Upload backend მალე დაემატება. ახლა ინახება ფაილის მეტამონაცემები.'}
+                            {isEn ? 'Uploaded files are validated and stored for Business Agent workflow processing.' : 'ატვირთული ფაილები გადის ვალიდაციას და ინახება Business Agent workflow-სთვის.'}
                           </p>
                           <div className="space-y-1">
                             {inputs.files.map((file) => (

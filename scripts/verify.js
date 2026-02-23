@@ -4,8 +4,9 @@
  * Validates environment, build, and deployment readiness
  */
 
+/* eslint-disable @typescript-eslint/no-require-imports */
+
 const fs = require('fs');
-const path = require('path');
 const { execSync } = require('child_process');
 
 const colors = {

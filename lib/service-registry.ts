@@ -12,6 +12,17 @@ export interface ServiceDefinition {
 
 export const SERVICE_REGISTRY: ServiceDefinition[] = [
   {
+    slug: 'workflow-builder',
+    title: 'Workflow Builder',
+    href: '/services/workflow-builder',
+    id: 'workflow-builder',
+    name: 'Workflow Builder',
+    description: 'Design chained automation pipelines across services with queue-based orchestration.',
+    icon: '🧭',
+    route: '/services/workflow-builder',
+    enabled: true,
+  },
+  {
     slug: 'online-shop',
     title: 'Online Shop',
     href: '/services/online-shop',

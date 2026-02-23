@@ -1,10 +1,10 @@
 /** @jest-environment node */
 
-import { POST } from '@/app/api/agent-g/telegram/webhook/route';
-import { transcribeTelegramVoice } from '@/lib/agent-g/voice/stt';
-import { synthesizeTelegramVoice } from '@/lib/agent-g/voice/tts';
+import { POST } from '../../app/api/agent-g/telegram/webhook/route';
+import { transcribeTelegramVoice } from '../../lib/agent-g/voice/stt';
+import { synthesizeTelegramVoice } from '../../lib/agent-g/voice/tts';
 
-jest.mock('@/lib/agentg/personality', () => ({
+jest.mock('../../lib/agentg/personality', () => ({
   generateAgentGPersonalityReply: jest.fn(async () => ({
     replyText: 'გაგ, მშვიდად ვართ — ერთად მოვაგვარებთ ✨',
     tone: { mood: 'calm', confidence: 0.91 },
@@ -17,11 +17,11 @@ jest.mock('@/lib/agentg/personality', () => ({
   getFallbackReply: jest.fn(() => 'გაგ, ცოტა მომეცი და ახლავე დაგიბრუნდები პასუხით 🙌'),
 }));
 
-jest.mock('@/lib/agent-g/channels/inbound-events', () => ({
+jest.mock('../../lib/agent-g/channels/inbound-events', () => ({
   storeInboundTelegramEvent: jest.fn(async () => undefined),
 }));
 
-jest.mock('@/lib/agent-g/voice/stt', () => ({
+jest.mock('../../lib/agent-g/voice/stt', () => ({
   isAgentGVoiceEnabled: jest.fn(() => true),
   transcribeTelegramVoice: jest.fn(async () => ({
     transcript: 'ვნერვიულობ და დამეხმარე რა',
@@ -29,7 +29,7 @@ jest.mock('@/lib/agent-g/voice/stt', () => ({
   })),
 }));
 
-jest.mock('@/lib/agent-g/voice/tts', () => ({
+jest.mock('../../lib/agent-g/voice/tts', () => ({
   synthesizeTelegramVoice: jest.fn(async () => ({
     audio: new Uint8Array([1, 2, 3, 4]),
     mimeType: 'audio/mpeg',

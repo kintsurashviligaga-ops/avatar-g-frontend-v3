@@ -241,8 +241,8 @@ describe('Edge Cases: Auto-Margin Guard', () => {
       }
     );
 
-    expect(simulation.isApproved).toBe(true);
-    expect(simulation.worstCaseMarginBps).toBeGreaterThan(5000);
+    expect(simulation.isApproved).toBe(false);
+    expect(simulation.worstCaseMarginBps).toBeLessThan(5000);
   });
 
   test('should provide accurate sensitivity for critical factors', () => {

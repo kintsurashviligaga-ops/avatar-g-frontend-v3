@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-require-imports */
 const withNextIntl = require('next-intl/plugin')('./i18n/request.ts');
 const { warnIfOneDrivePath } = require('./scripts/onedrive-warning.cjs');
 

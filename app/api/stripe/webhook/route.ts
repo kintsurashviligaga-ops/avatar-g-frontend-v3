@@ -11,6 +11,7 @@ import { updateAccountStatus } from '@/lib/stripe/connect';
 import { updateCommissionStatus } from '@/lib/stripe/payments';
 import { createRouteHandlerClient } from '@/lib/supabase/server';
 import { recomputeFinanceDailyAggregates } from '@/lib/finance/aggregates';
+import { enqueueQueueItem } from '@/lib/platform/queues';
 
 /**
  * POST /api/stripe/webhook
@@ -192,6 +193,15 @@ export async function POST(request: NextRequest) {
       mode: event.livemode ? 'live' : 'test',
       timestamp: new Date(event.created * 1000).toISOString(),
       requestId,
+    });
+
+    await enqueueQueueItem('billing_events', {
+      source: 'stripe',
+      request_id: requestId,
+      stripe_event_id: event.id,
+      stripe_event_type: event.type,
+      livemode: event.livemode,
+      created: event.created,
     });
 
     // 5. Handle event based on type

@@ -1,0 +1,22 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "baseUrl": "..",
+    "paths": {
+      "@/*": ["*"]
+    },
+    "noEmit": true
+  },
+  "include": [
+    "./**/*.ts",
+    "./**/*.tsx",
+    "../app/**/*.ts",
+    "../app/**/*.tsx",
+    "../lib/**/*.ts",
+    "../lib/**/*.tsx"
+  ],
+  "exclude": [
+    "../node_modules",
+    "../.next/**"
+  ]
+}

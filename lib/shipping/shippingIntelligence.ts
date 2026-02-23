@@ -107,14 +107,15 @@ export function carrierReliabilityScore(
   complaintRate: number, // 0-1
   refundRate: number // 0-1
 ): number {
-  // On-time delivery: 50% of score
-  const onTimeScore = onTimeRate * 50;
+  // On-time delivery: 45% of score
+  const onTimeScore = onTimeRate * 45;
 
-  // Complaint handling: 30% of score
-  const complaintScore = (1 - complaintRate) * 30;
+  // Complaint handling: 25% of score
+  const complaintScore = (1 - complaintRate) * 25;
 
   // Refund rate: 20% of score
-  const refundScore = (1 - Math.min(refundRate, 0.1)) * 20; // Normalize to 10% max
+  const normalizedRefund = Math.min(Math.max(refundRate, 0), 0.2) / 0.2;
+  const refundScore = (1 - normalizedRefund) * 30;
 
   return Math.round(onTimeScore + complaintScore + refundScore);
 }

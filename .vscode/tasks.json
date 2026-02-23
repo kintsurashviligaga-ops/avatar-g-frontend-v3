@@ -80,6 +80,121 @@
 				"build"
 			],
 			"isBackground": false
+		},
+		{
+			"label": "validate-tests-now",
+			"type": "shell",
+			"command": "npm",
+			"args": [
+				"test",
+				"--",
+				"--runInBand"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "validate-test-unit",
+			"type": "shell",
+			"command": "npm",
+			"args": [
+				"run",
+				"test:unit"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "validate-tests-json",
+			"type": "shell",
+			"command": "npm",
+			"args": [
+				"test",
+				"--",
+				"--runInBand",
+				"--json",
+				"--outputFile",
+				"jest-results.json"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "install-test-react",
+			"type": "shell",
+			"command": "npm",
+			"args": [
+				"install",
+				"-D",
+				"@testing-library/react"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "validate-revenue-no-cache",
+			"type": "shell",
+			"command": "npx",
+			"args": [
+				"jest",
+				"__tests__/revenue-optimization/revenuOptimization.test.ts",
+				"--runInBand",
+				"--no-cache"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "enterprise-policy-tests",
+			"type": "shell",
+			"command": "npx",
+			"args": [
+				"jest",
+				"__tests__/workflow/policy.test.ts",
+				"__tests__/billing/plan-enforcement.test.ts",
+				"--runInBand"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "cert-typecheck",
+			"type": "shell",
+			"command": "npm",
+			"args": [
+				"run",
+				"typecheck"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "cert-enterprise-tests",
+			"type": "shell",
+			"command": "npx",
+			"args": [
+				"jest",
+				"__tests__/workflow/policy.test.ts",
+				"__tests__/billing/plan-enforcement.test.ts",
+				"--runInBand",
+				"--json",
+				"--outputFile",
+				"tmp-enterprise-tests.json"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "tmp-enterprise-tests",
+			"type": "shell",
+			"command": "npm",
+			"args": [
+				"run",
+				"test:enterprise"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "hardening-typecheck",
+			"type": "shell",
+			"command": "npm",
+			"args": [
+				"run",
+				"typecheck"
+			],
+			"isBackground": false
 		}
 	]
 }

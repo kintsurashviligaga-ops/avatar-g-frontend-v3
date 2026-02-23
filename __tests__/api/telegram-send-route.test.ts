@@ -1,9 +1,9 @@
 /** @jest-environment node */
 
-import { POST } from '@/app/api/telegram/send/route';
-import { sendTelegramTextMessage } from '@/lib/server/telegram';
+import { POST } from '../../app/api/telegram/send/route';
+import { sendTelegramTextMessage } from '../../lib/server/telegram';
 
-jest.mock('@/lib/server/telegram', () => ({
+jest.mock('../../lib/server/telegram', () => ({
   sendTelegramTextMessage: jest.fn(async () => ({ ok: true, status: 200 })),
 }));
 

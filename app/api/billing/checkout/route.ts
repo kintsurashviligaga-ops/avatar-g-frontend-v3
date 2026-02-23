@@ -9,12 +9,25 @@ import { requireAuthenticatedUser } from '@/lib/supabase/auth';
 import { createCheckoutSession, getOrCreateCustomer } from '@/lib/billing/stripe';
 import { normalizePlan, type PlanTier } from '../../../../lib/billing/plans';
 import { getStripePriceId } from '@/lib/billing/stripe-prices';
+import { BillingProviderUnavailableError, getBillingProvider } from '@/lib/monetization/provider';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
 export async function POST(request: NextRequest) {
   try {
+    const provider = getBillingProvider();
+    if (provider.kind === 'none') {
+      return NextResponse.json(
+        {
+          error: 'Billing provider unavailable',
+          error_code: 'BILLING_PROVIDER_UNAVAILABLE',
+          message: 'Stripe is not configured. Set STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET.',
+        },
+        { status: 503 }
+      );
+    }
+
     const user = await requireAuthenticatedUser(request);
     const supabase = createRouteHandlerClient();
     
@@ -82,6 +95,17 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     if (error instanceof Error && error.message === 'UNAUTHENTICATED') {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    if (error instanceof BillingProviderUnavailableError) {
+      return NextResponse.json(
+        {
+          error: 'Billing provider unavailable',
+          error_code: error.code,
+          message: error.message,
+        },
+        { status: 503 }
+      );
     }
 
     console.error('Checkout error:', error);

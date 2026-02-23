@@ -39,6 +39,27 @@ export default async function DashboardPage() {
     getMonthlyUsageSummary(user.id),
   ]);
 
+  const { data: todayServiceJobs } = await supabase
+    .from('service_jobs')
+    .select('status, created_at, updated_at')
+    .eq('user_id', user.id)
+    .gte('created_at', new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), new Date().getUTCDate())).toISOString());
+
+  const jobsToday = todayServiceJobs?.length ?? 0;
+  const successToday = (todayServiceJobs ?? []).filter((job) => job.status === 'completed').length;
+  const successRateToday = jobsToday > 0 ? Math.round((successToday / jobsToday) * 100) : 100;
+  const avgExecutionTimeMs = (() => {
+    const durations = (todayServiceJobs ?? [])
+      .map((job) => {
+        if (!job.created_at || !job.updated_at) return null;
+        return new Date(job.updated_at).getTime() - new Date(job.created_at).getTime();
+      })
+      .filter((duration): duration is number => typeof duration === 'number' && duration >= 0);
+
+    if (durations.length === 0) return 0;
+    return Math.round(durations.reduce((sum, value) => sum + value, 0) / durations.length);
+  })();
+
   const plan = getPlanSummary(subscription?.plan || 'FREE');
 
   return (
@@ -69,6 +90,24 @@ export default async function DashboardPage() {
             <h2 className="mt-2 text-xl font-semibold">{monthlySummary.jobsCount} jobs</h2>
             <p className="mt-1 text-sm text-gray-300">Credits spent: {monthlySummary.creditsSpent}</p>
             <p className="text-sm text-gray-300">Auto reset policy: monthly</p>
+          </article>
+        </section>
+
+        <section className="grid gap-4 md:grid-cols-3">
+          <article className="rounded-2xl border border-cyan-500/20 bg-white/5 p-5">
+            <p className="text-xs uppercase tracking-wider text-cyan-300">User Observability</p>
+            <h2 className="mt-2 text-xl font-semibold">{credits?.balance ?? 0}</h2>
+            <p className="mt-1 text-sm text-gray-300">Credits remaining</p>
+          </article>
+          <article className="rounded-2xl border border-cyan-500/20 bg-white/5 p-5">
+            <p className="text-xs uppercase tracking-wider text-cyan-300">Today</p>
+            <h2 className="mt-2 text-xl font-semibold">{jobsToday} jobs</h2>
+            <p className="mt-1 text-sm text-gray-300">Success rate: {successRateToday}%</p>
+          </article>
+          <article className="rounded-2xl border border-cyan-500/20 bg-white/5 p-5">
+            <p className="text-xs uppercase tracking-wider text-cyan-300">Performance</p>
+            <h2 className="mt-2 text-xl font-semibold">{avgExecutionTimeMs} ms</h2>
+            <p className="mt-1 text-sm text-gray-300">Average execution time (today)</p>
           </article>
         </section>
 

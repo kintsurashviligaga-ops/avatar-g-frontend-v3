@@ -1,5 +1,8 @@
 import { NextResponse } from 'next/server';
 import { storeInboundTelegramEvent } from '@/lib/agent-g/channels/inbound-events';
+import { enqueueQueueItem } from '@/lib/platform/queues';
+import { hashIdempotencyKey, markIdempotentDuplicate } from '@/lib/platform/idempotency';
+import { recordRouteMetric } from '@/lib/platform/request-metrics';
 import {
   generateAgentGPersonalityReply,
   getFallbackReply,
@@ -69,14 +72,20 @@ function normalize(value: string | null | undefined): string {
   return (value || '').trim();
 }
 
-function json(payload: Record<string, unknown>, status = 200): NextResponse {
-  return NextResponse.json(payload, {
+function json(payload: Record<string, unknown>, status = 200, requestId?: string): NextResponse {
+  const response = NextResponse.json(payload, {
     status,
     headers: {
       'Cache-Control': 'no-store',
       'Content-Type': 'application/json',
     },
   });
+
+  if (requestId) {
+    response.headers.set('x-request-id', requestId);
+  }
+
+  return response;
 }
 
 function getUpdateType(update: TelegramUpdate): string {
@@ -299,7 +308,7 @@ function isTelegramRateLimited(ip: string): boolean {
   return existing.count > telegramRateMax;
 }
 
-async function processTelegramUpdateInBackground(params: {
+export async function processTelegramUpdateInBackground(params: {
   update: TelegramUpdate;
   requestId: string;
   startedAt: number;
@@ -506,30 +515,88 @@ export async function handleTelegramWebhook(req: Request): Promise<NextResponse>
   try {
     const clientIp = getRequestIp(req);
     if (isTelegramRateLimited(clientIp)) {
-      return json({ ok: false, error: 'rate_limited' }, 429);
+      recordRouteMetric({
+        request_id: requestId,
+        route: '/api/agent-g/telegram',
+        method: 'POST',
+        status: 429,
+        duration_ms: Date.now() - startedAt,
+        at: Date.now(),
+      });
+      return json({ ok: false, error: 'rate_limited', request_id: requestId }, 429, requestId);
     }
 
     const expectedSecret = normalize(process.env.TELEGRAM_WEBHOOK_SECRET);
     if (expectedSecret) {
       const providedSecret = normalize(req.headers.get('x-telegram-bot-api-secret-token'));
       if (!providedSecret || providedSecret !== expectedSecret) {
-        return json({ ok: false, error: 'Invalid webhook secret header' }, 403);
+        recordRouteMetric({
+          request_id: requestId,
+          route: '/api/agent-g/telegram',
+          method: 'POST',
+          status: 403,
+          duration_ms: Date.now() - startedAt,
+          at: Date.now(),
+        });
+        return json({ ok: false, error: 'Invalid webhook secret header', request_id: requestId }, 403, requestId);
       }
     }
 
     const contentLength = Number(req.headers.get('content-length') || '0');
     if (contentLength > telegramPayloadBytes) {
-      return json({ ok: false, error: 'payload_too_large' }, 413);
+      recordRouteMetric({
+        request_id: requestId,
+        route: '/api/agent-g/telegram',
+        method: 'POST',
+        status: 413,
+        duration_ms: Date.now() - startedAt,
+        at: Date.now(),
+      });
+      return json({ ok: false, error: 'payload_too_large', request_id: requestId }, 413, requestId);
     }
 
     const rawBody = await req.text();
     if (Buffer.byteLength(rawBody, 'utf8') > telegramPayloadBytes) {
-      return json({ ok: false, error: 'payload_too_large' }, 413);
+      recordRouteMetric({
+        request_id: requestId,
+        route: '/api/agent-g/telegram',
+        method: 'POST',
+        status: 413,
+        duration_ms: Date.now() - startedAt,
+        at: Date.now(),
+      });
+      return json({ ok: false, error: 'payload_too_large', request_id: requestId }, 413, requestId);
     }
 
     const update = (rawBody ? JSON.parse(rawBody) : {}) as TelegramUpdate;
     if (!update || typeof update !== 'object') {
-      return json({ ok: true, ignored: true, reason: 'invalid_payload' });
+      recordRouteMetric({
+        request_id: requestId,
+        route: '/api/agent-g/telegram',
+        method: 'POST',
+        status: 200,
+        duration_ms: Date.now() - startedAt,
+        at: Date.now(),
+      });
+      return json({ ok: true, ignored: true, reason: 'invalid_payload', request_id: requestId }, 200, requestId);
+    }
+
+    const idempotencySeed =
+      typeof update.update_id === 'number'
+        ? `telegram:update:${String(update.update_id)}`
+        : `telegram:raw:${rawBody.slice(0, 200)}`;
+    const idempotencyKey = hashIdempotencyKey(idempotencySeed);
+    const isFirstSeen = await markIdempotentDuplicate(idempotencyKey, 60 * 60 * 24);
+    if (!isFirstSeen) {
+      recordRouteMetric({
+        request_id: requestId,
+        route: '/api/agent-g/telegram',
+        method: 'POST',
+        status: 200,
+        duration_ms: Date.now() - startedAt,
+        at: Date.now(),
+      });
+      return json({ ok: true, duplicate: true, request_id: requestId, update_id: update.update_id ?? null }, 200, requestId);
     }
 
     const updateType = getUpdateType(update);
@@ -559,35 +626,49 @@ export async function handleTelegramWebhook(req: Request): Promise<NextResponse>
       execution_ms: Date.now() - startedAt,
     });
 
-    queueMicrotask(() => {
-      void processTelegramUpdateInBackground({
-        update,
-        requestId,
-        startedAt,
-      }).catch((error) => {
-        console.error('[Telegram] Background processor failed', {
-          request_id: requestId,
-          message: error instanceof Error ? error.message : 'Unknown error',
-        });
-      });
+    await enqueueQueueItem('webhooks_ingest', {
+      source: 'telegram',
+      request_id: requestId,
+      idempotency_key: idempotencyKey,
+      update,
+      started_at: startedAt,
+    });
+
+    recordRouteMetric({
+      request_id: requestId,
+      route: '/api/agent-g/telegram',
+      method: 'POST',
+      status: 200,
+      duration_ms: Date.now() - startedAt,
+      at: Date.now(),
     });
 
     return json({
       ok: true,
+      replied: false,
       received: true,
       queued: true,
       request_id: requestId,
+      idempotency_key: idempotencyKey,
       update_id: update.update_id ?? null,
       update_type: updateType,
       chat_id: chatId,
       execution_ms: Date.now() - startedAt,
-    });
+    }, 200, requestId);
   } catch (error) {
     console.error('[Telegram] Handler error', {
       request_id: requestId,
       message: error instanceof Error ? error.message : 'Unknown error',
       execution_ms: Date.now() - startedAt,
     });
-    return json({ ok: true, ignored: true, reason: 'handler_error' });
+    recordRouteMetric({
+      request_id: requestId,
+      route: '/api/agent-g/telegram',
+      method: 'POST',
+      status: 200,
+      duration_ms: Date.now() - startedAt,
+      at: Date.now(),
+    });
+    return json({ ok: true, ignored: true, reason: 'handler_error', request_id: requestId }, 200, requestId);
   }
 }

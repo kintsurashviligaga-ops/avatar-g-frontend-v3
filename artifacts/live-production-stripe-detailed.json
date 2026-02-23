@@ -1,0 +1,172 @@
+﻿{
+    "timestamp":  "2026-02-23T19:29:30.6819796+04:00",
+    "base":  "https://avatar-g-frontend-v3.vercel.app",
+    "checks":  {
+                   "stripeHealth":  {
+                                        "status":  200,
+                                        "headers":  {
+                                                        "Age":  "0",
+                                                        "Strict-Transport-Security":  "max-age=63072000; includeSubDomains; preload",
+                                                        "Vary":  "RSC, Next-Router-State-Tree, Next-Router-Prefetch",
+                                                        "X-Matched-Path":  "/api/stripe/health",
+                                                        "X-Vercel-Cache":  "MISS",
+                                                        "X-Vercel-Id":  "fra1::iad1::8lvkx-1771860813530-c3de794d1c82",
+                                                        "Transfer-Encoding":  "chunked",
+                                                        "Cache-Control":  "public, max-age=0, must-revalidate",
+                                                        "Content-Type":  "application/json",
+                                                        "Date":  "Mon, 23 Feb 2026 15:33:33 GMT",
+                                                        "Server":  "Vercel"
+                                                    },
+                                        "raw":  "{\"ok\":true,\"timestamp\":\"2026-02-23T15:33:33.604Z\",\"stripe\":{\"mode\":\"test\",\"configured\":{\"secretKey\":true,\"publishableKey\":false,\"webhookSecret\":false},\"secrets\":{\"secretKey\":\"sk_test_51...\",\"publishableKey\":null,\"webhookSecret\":null},\"appUrl\":\"not configured (defaults to https://myavatar.ge)\"},\"checks\":{\"stripeSecretKey\":\"â Set\",\"publishableKey\":\"â Missing\",\"webhookSecret\":\"â Missing\",\"appUrl\":\"â ï¸ Using default\"},\"endpoints\":{\"createCheckoutSession\":\"/api/stripe/create-checkout-session\",\"webhook\":\"/api/webhooks/stripe\",\"health\":\"/api/stripe/health\"},\"pages\":{\"pay\":\"/pay\",\"paySuccess\":\"/pay/success\",\"payCancel\":\"/pay/cancel\"},\"warnings\":[\"NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY not configured\",\"STRIPE_WEBHOOK_SECRET not configured (webhooks will fail)\"]}",
+                                        "json":  {
+                                                     "ok":  true,
+                                                     "timestamp":  "2026-02-23T15:33:33.604Z",
+                                                     "stripe":  {
+                                                                    "mode":  "test",
+                                                                    "configured":  {
+                                                                                       "secretKey":  true,
+                                                                                       "publishableKey":  false,
+                                                                                       "webhookSecret":  false
+                                                                                   },
+                                                                    "secrets":  {
+                                                                                    "secretKey":  "sk_test_51...",
+                                                                                    "publishableKey":  null,
+                                                                                    "webhookSecret":  null
+                                                                                },
+                                                                    "appUrl":  "not configured (defaults to https://myavatar.ge)"
+                                                                },
+                                                     "checks":  {
+                                                                    "stripeSecretKey":  "â Set",
+                                                                    "publishableKey":  "â Missing",
+                                                                    "webhookSecret":  "â Missing",
+                                                                    "appUrl":  "â ï¸ Using default"
+                                                                },
+                                                     "endpoints":  {
+                                                                       "createCheckoutSession":  "/api/stripe/create-checkout-session",
+                                                                       "webhook":  "/api/webhooks/stripe",
+                                                                       "health":  "/api/stripe/health"
+                                                                   },
+                                                     "pages":  {
+                                                                   "pay":  "/pay",
+                                                                   "paySuccess":  "/pay/success",
+                                                                   "payCancel":  "/pay/cancel"
+                                                               },
+                                                     "warnings":  [
+                                                                      "NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY not configured",
+                                                                      "STRIPE_WEBHOOK_SECRET not configured (webhooks will fail)"
+                                                                  ]
+                                                 }
+                                    },
+                   "stripeTestGet":  {
+                                         "status":  200,
+                                         "headers":  {
+                                                         "Age":  "0",
+                                                         "Strict-Transport-Security":  "max-age=63072000; includeSubDomains; preload",
+                                                         "Vary":  "RSC, Next-Router-State-Tree, Next-Router-Prefetch",
+                                                         "X-Matched-Path":  "/api/tests/stripe-webhook",
+                                                         "X-Vercel-Cache":  "MISS",
+                                                         "X-Vercel-Id":  "fra1::iad1::7cjs2-1771860813788-259f3e11e523",
+                                                         "Transfer-Encoding":  "chunked",
+                                                         "Cache-Control":  "public, max-age=0, must-revalidate",
+                                                         "Content-Type":  "application/json",
+                                                         "Date":  "Mon, 23 Feb 2026 15:33:33 GMT",
+                                                         "Server":  "Vercel"
+                                                     },
+                                         "raw":  "{\"status\":\"success\",\"data\":{\"webhook_configured\":false,\"stripe_configured\":true,\"endpoint\":\"/api/webhooks/stripe\",\"test_endpoint\":\"/api/tests/stripe-webhook\",\"support_currencies\":[\"GEL\",\"USD\"],\"timestamp\":\"2026-02-23T15:33:33.873Z\"},\"timestamp\":\"2026-02-23T15:33:33.873Z\"}",
+                                         "json":  {
+                                                      "status":  "success",
+                                                      "data":  {
+                                                                   "webhook_configured":  false,
+                                                                   "stripe_configured":  true,
+                                                                   "endpoint":  "/api/webhooks/stripe",
+                                                                   "test_endpoint":  "/api/tests/stripe-webhook",
+                                                                   "support_currencies":  [
+                                                                                              "GEL",
+                                                                                              "USD"
+                                                                                          ],
+                                                                   "timestamp":  "2026-02-23T15:33:33.873Z"
+                                                               },
+                                                      "timestamp":  "2026-02-23T15:33:33.873Z"
+                                                  }
+                                     },
+                   "stripeTestPost":  {
+                                          "status":  400,
+                                          "headers":  [
+                                                          "Strict-Transport-Security",
+                                                          "Vary",
+                                                          "X-Matched-Path",
+                                                          "X-Vercel-Cache",
+                                                          "X-Vercel-Id",
+                                                          "Transfer-Encoding",
+                                                          "Cache-Control",
+                                                          "Content-Type",
+                                                          "Date",
+                                                          "Server"
+                                                      ],
+                                          "raw":  "{\"status\":\"error\",\"error\":\"Invalid request\",\"code\":\"INVALID_REQUEST\",\"timestamp\":\"2026-02-23T15:33:34.119Z\"}",
+                                          "json":  {
+                                                       "status":  "error",
+                                                       "error":  "Invalid request",
+                                                       "code":  "INVALID_REQUEST",
+                                                       "timestamp":  "2026-02-23T15:33:34.119Z"
+                                                   }
+                                      },
+                   "webhookNoSignature":  {
+                                              "status":  400,
+                                              "headers":  [
+                                                              "Strict-Transport-Security",
+                                                              "Vary",
+                                                              "X-Matched-Path",
+                                                              "X-Vercel-Cache",
+                                                              "X-Vercel-Id",
+                                                              "Transfer-Encoding",
+                                                              "Cache-Control",
+                                                              "Content-Type",
+                                                              "Date",
+                                                              "Server"
+                                                          ],
+                                              "raw":  "{\"error\":\"Missing signature\"}",
+                                              "json":  {
+                                                           "error":  "Missing signature"
+                                                       }
+                                          },
+                   "webhookBadSignature":  {
+                                               "status":  500,
+                                               "headers":  [
+                                                               "Strict-Transport-Security",
+                                                               "Vary",
+                                                               "X-Matched-Path",
+                                                               "X-Vercel-Cache",
+                                                               "X-Vercel-Id",
+                                                               "Transfer-Encoding",
+                                                               "Cache-Control",
+                                                               "Content-Type",
+                                                               "Date",
+                                                               "Server"
+                                                           ],
+                                               "raw":  "{\"error\":\"Webhook secret not configured\"}",
+                                               "json":  {
+                                                            "error":  "Webhook secret not configured"
+                                                        }
+                                           },
+                   "workerTickNoToken":  {
+                                             "status":  403,
+                                             "headers":  [
+                                                             "Strict-Transport-Security",
+                                                             "Vary",
+                                                             "X-Matched-Path",
+                                                             "X-Vercel-Cache",
+                                                             "X-Vercel-Id",
+                                                             "Transfer-Encoding",
+                                                             "Cache-Control",
+                                                             "Content-Type",
+                                                             "Date",
+                                                             "Server"
+                                                         ],
+                                             "raw":  "{\"error\":\"Forbidden\"}",
+                                             "json":  {
+                                                          "error":  "Forbidden"
+                                                      }
+                                         }
+               }
+}

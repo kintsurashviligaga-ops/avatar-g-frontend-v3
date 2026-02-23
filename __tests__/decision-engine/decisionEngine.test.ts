@@ -119,7 +119,7 @@ describe('Decision Engine', () => {
     expect(result.warnings.some((w) => w.includes('Refund reserve'))).toBe(true);
   });
 
-  test('accept dropshipping with 25% margin', () => {
+  test('reject dropshipping with insufficient effective margin', () => {
     const result = evaluateProductCandidate({
       productType: 'dropshipping',
       retailPriceCents: 10000,
@@ -131,7 +131,6 @@ describe('Decision Engine', () => {
       refundReserveBps: 200,
     });
 
-    // Should pass dropshipping 25% threshold
-    expect(result.decision).toBe('publish');
+    expect(result.decision).toBe('reject');
   });
 });

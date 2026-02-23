@@ -3,8 +3,9 @@ import { z } from 'zod';
 import { apiError, apiSuccess } from '@/lib/api/response';
 import { createServiceRoleClient } from '@/lib/supabase/server';
 import { getAuthenticatedUser } from '@/lib/supabase/auth';
-import { buildMockVoiceOutput } from '@/lib/voice-lab/mock';
+import { generateVoice } from '@/lib/ai/elevenlabs';
 import type { VoiceJob } from '@/lib/voice-lab/types';
+import { getBillingSnapshot } from '@/lib/billing/enforce';
 
 export const dynamic = 'force-dynamic';
 
@@ -83,12 +84,38 @@ export async function POST(request: NextRequest) {
       .eq('owner_id', user.id);
 
     const input = payload.data.input;
-    const output = buildMockVoiceOutput(payload.data.type, {
-      text: String(input.text ?? input.prompt ?? ''),
+    const sourceText = String(input.text ?? input.prompt ?? '').trim();
+    const voiceId = String(input.provider_voice_id ?? process.env.ELEVENLABS_VOICE_ID ?? '').trim();
+    const snapshot = await getBillingSnapshot(user.id);
+    const qualityByPlan: Record<string, 'draft' | 'standard' | 'studio'> = {
+      FREE: 'draft',
+      PRO: 'standard',
+      PREMIUM: 'studio',
+      ENTERPRISE: 'studio',
+    };
+    const quality = qualityByPlan[snapshot.plan] || 'draft';
+
+    if (!sourceText) {
+      return apiError(new Error('Text is required'), 400, 'Voice job requires input text');
+    }
+
+    if (!voiceId) {
+      return apiError(new Error('ELEVENLABS_VOICE_ID missing'), 500, 'Voice provider configuration missing');
+    }
+
+    const voice = await generateVoice(sourceText, voiceId, quality === 'studio' ? 'excited' : 'neutral');
+    const audioBase64 = Buffer.from(voice.audioBuffer).toString('base64');
+    const output = {
+      provider: 'elevenlabs',
+      quality,
       title: String(input.title ?? 'Voice Lab Output'),
+      text: sourceText,
       language: String(input.language ?? 'en'),
-      profileName: String(input.profile_name ?? 'Default Voice'),
-    });
+      profile_name: String(input.profile_name ?? 'Default Voice'),
+      audio_url: `data:audio/mpeg;base64,${audioBase64}`,
+      duration_seconds: voice.duration,
+      voice_id: voice.voiceId,
+    };
 
     const { data: doneJob, error: doneError } = await supabase
       .from('voice_jobs')

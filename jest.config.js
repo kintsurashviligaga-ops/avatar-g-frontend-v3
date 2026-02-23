@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-require-imports */
 const nextJest = require('next/jest')
 
 const createJestConfig = nextJest({
@@ -10,6 +11,8 @@ const customJestConfig = {
     '^@/(.*)$': '<rootDir>/$1',
   },
   testEnvironment: 'jest-environment-jsdom',
+  testMatch: ['**/?(*.)+(test).[tj]s?(x)'],
+  testPathIgnorePatterns: ['/node_modules/', '/e2e/'],
   coverageThreshold: {
     global: {
       branches: 70,

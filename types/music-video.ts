@@ -111,7 +111,7 @@ export interface VideoScene {
 export interface SceneEffect {
   type: 'zoom' | 'pan' | 'fade' | 'blur' | 'glow' | 'beat_sync';
   intensity: number; // 0-1
-  params?: Record<string, any>;
+  params?: Record<string, unknown>;
 }
 
 export type TransitionType = 'fade' | 'slide' | 'zoom' | 'dissolve' | 'wipe' | 'none';
@@ -352,7 +352,7 @@ export interface LibraryState {
   selectedProject?: Project;
   
   // Data
-  avatars: any[];
+  avatars: string[];
   tracks: Track[];
   videos: VideoClip[];
   projects: Project[];
@@ -397,12 +397,12 @@ export interface MusicGenerationResult {
   audio_url: string;
   duration_seconds: number;
   waveform_data?: WaveformData;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 export interface CoverArtResult {
   image_url: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 // ============================================

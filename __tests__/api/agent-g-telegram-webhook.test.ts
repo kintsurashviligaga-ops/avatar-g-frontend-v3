@@ -44,7 +44,7 @@ describe('/api/agent-g/telegram/webhook', () => {
     expect(res.status).toBe(403);
   });
 
-  test('returns 200 and schedules sendMessage on valid request', async () => {
+  test('returns 200 and enqueues processing on valid request', async () => {
     const req = new Request('http://localhost:3000/api/agent-g/telegram/webhook', {
       method: 'POST',
       headers: {
@@ -69,8 +69,11 @@ describe('/api/agent-g/telegram/webhook', () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(res.status).toBe(200);
+    expect(res.headers.get('x-request-id')).toBeTruthy();
     expect(payload.ok).toBe(true);
     expect(payload.queued).toBe(true);
-    expect(global.fetch).toHaveBeenCalled();
+    expect(payload.replied).toBe(false);
+    expect(typeof payload.idempotency_key).toBe('string');
+    expect(global.fetch).not.toHaveBeenCalled();
   });
 });

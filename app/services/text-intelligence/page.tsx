@@ -1,7 +1,8 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useTranslations } from 'next-intl'
+import Link from 'next/link'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
@@ -25,12 +26,35 @@ interface AnalysisResult {
   metrics?: Record<string, unknown>
 }
 
+type ServiceJob = {
+  id: string
+  status: 'queued' | 'processing' | 'completed' | 'failed'
+  progress: number
+  error_message?: string | null
+  input_payload?: {
+    prompt?: string
+    feature?: FeatureType
+  }
+  output_payload?: {
+    text?: string
+    usage?: {
+      tokens_in?: number
+      tokens_out?: number
+      cost_usd?: number
+    }
+  }
+  created_at: string
+}
+
 export default function TextIntelligencePage() {
   const t = useTranslations('services')
   const [inputText, setInputText] = useState('')
   const [activeFeature, setActiveFeature] = useState<FeatureType>('summarize')
   const [isProcessing, setIsProcessing] = useState(false)
   const [result, setResult] = useState<AnalysisResult | null>(null)
+  const [currentJob, setCurrentJob] = useState<ServiceJob | null>(null)
+  const [history, setHistory] = useState<ServiceJob[]>([])
+  const [error, setError] = useState<string | null>(null)
 
   const features = [
     {
@@ -74,71 +98,85 @@ export default function TextIntelligencePage() {
     negative: 'ნეგატიური',
   }
 
+  const loadHistory = async () => {
+    const response = await fetch('/api/app/jobs?service=text-intelligence', { cache: 'no-store' })
+    if (!response.ok) return
+    const data = await response.json() as { jobs?: ServiceJob[] }
+    setHistory((data.jobs ?? []).slice(0, 8))
+  }
+
+  useEffect(() => {
+    void loadHistory()
+  }, [])
+
+  useEffect(() => {
+    if (!currentJob || currentJob.status === 'completed' || currentJob.status === 'failed') {
+      return
+    }
+
+    const interval = window.setInterval(async () => {
+      const response = await fetch(`/api/app/jobs/${currentJob.id}?autoProcess=1`, { cache: 'no-store' })
+      if (!response.ok) return
+
+      const data = await response.json() as { job: ServiceJob }
+      setCurrentJob(data.job)
+
+      if (data.job.status === 'completed') {
+        const text = data.job.output_payload?.text ?? ''
+        const metrics = data.job.output_payload?.usage
+        setResult({
+          type: (data.job.input_payload?.feature ?? activeFeature) as FeatureType,
+          result: text,
+          metrics: {
+            tokensIn: metrics?.tokens_in ?? 0,
+            tokensOut: metrics?.tokens_out ?? 0,
+            costUsd: metrics?.cost_usd ?? 0,
+          },
+        })
+        setIsProcessing(false)
+        void loadHistory()
+      }
+
+      if (data.job.status === 'failed') {
+        setIsProcessing(false)
+        setError(data.job.error_message || 'ანალიზი ვერ შესრულდა')
+      }
+    }, 2000)
+
+    return () => {
+      window.clearInterval(interval)
+    }
+  }, [currentJob, activeFeature])
+
   const handleAnalyze = async () => {
     if (!inputText.trim()) return
 
     setIsProcessing(true)
+    setError(null)
     
     try {
-      // TODO: Connect to actual API endpoint
-      // const response = await fetch('/api/text/analyze', {
-      //   method: 'POST',
-      //   headers: { 'Content-Type': 'application/json' },
-      //   body: JSON.stringify({
-      //     text: inputText,
-      //     feature: activeFeature
-      //   })
-      // })
-      // const data = await response.json()
+      const response = await fetch('/api/app/services/text-intelligence/run', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prompt: inputText,
+          inputPayload: {
+            feature: activeFeature,
+          },
+        }),
+      })
 
-      // Mock result for Beta phase
-      await new Promise(resolve => setTimeout(resolve, 2000))
-      
-      const mockResults: Record<FeatureType, AnalysisResult> = {
-        summarize: {
-          type: 'summarize',
-          result: 'ეს არის ტექსტის შეჯამებული ვერსია, რომელიც შეიცავს მთავარ იდეებს და ძირითად ინფორმაციას. AI-მ გამოყო ყველაზე მნიშვნელოვანი წინადადებები და შექმნა კონსპექტური ტექსტი.',
-          metrics: {
-            originalLength: inputText.length,
-            summaryLength: 180,
-            compressionRatio: '65%'
-          }
-        },
-        translate: {
-          type: 'translate',
-          result: 'ეს არის შენი ტექსტის თარგმნილი ვერსია, რომელიც დამუშავებულია მოწინავე AI თარგმანის მოდელებით ბუნებრივი და კონტექსტურად ზუსტი შედეგებისთვის.',
-          metrics: {
-            sourceLanguage: 'ქართული',
-            targetLanguage: 'ინგლისური',
-            confidence: '96%'
-          }
-        },
-        seo: {
-          type: 'seo',
-          result: 'შესაბამისი SEO ოპტიმიზირებული ტექსტი კონტენტის უკეთესი რანჟირებისთვის საძიებო სისტემებში. დამატებული სათანადო საკვანძო სიტყვები, სტრუქტურირებული ფორმატი და აღწერითი meta tags.',
-          metrics: {
-            keywords: ['AI', 'ოპტიმიზაცია', 'SEO', 'კონტენტი'],
-            readabilityScore: '89/100',
-            seoScore: '92/100'
-          }
-        },
-        sentiment: {
-          type: 'sentiment',
-          result: 'ტექსტის საერთო ტონი: დადებითი (78%). ანალიზი აჩვენებს ოპტიმისტურ და მეგობრულ ენას კომუნიკაციის დასამყარებლად.',
-          metrics: {
-            positive: '78%',
-            neutral: '15%',
-            negative: '7%',
-            confidence: '94%'
-          }
-        }
+      const data = await response.json()
+      if (!response.ok) {
+        throw new Error(data?.error?.message || data?.error || 'ანალიზი ვერ დაიწყო')
       }
 
-      setResult(mockResults[activeFeature])
+      setCurrentJob(data.job as ServiceJob)
     } catch (error) {
-      console.error('Analysis error:', error)
-    } finally {
+      setError(error instanceof Error ? error.message : 'Analysis error')
       setIsProcessing(false)
+    } finally {
+      // polling flow updates final state
     }
   }
 
@@ -262,6 +300,11 @@ export default function TextIntelligencePage() {
                 </>
               )}
             </Button>
+
+            {currentJob && (
+              <p className="text-xs text-muted-foreground">Queue status: {currentJob.status} ({currentJob.progress}%)</p>
+            )}
+            {error && <p className="text-sm text-red-500">{error}</p>}
           </CardContent>
         </Card>
 
@@ -276,6 +319,14 @@ export default function TextIntelligencePage() {
               
               {result && (
                 <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleAnalyze}
+                    disabled={isProcessing}
+                  >
+                    <Sparkles className="w-4 h-4" />
+                  </Button>
                   <Button
                     variant="outline"
                     size="sm"
@@ -332,17 +383,65 @@ export default function TextIntelligencePage() {
         </Card>
       </div>
 
-      {/* Beta Notice */}
+      <Card className="mt-8">
+        <CardHeader>
+          <CardTitle>History</CardTitle>
+          <CardDescription>ბოლო გაშვებული ტექსტური ანალიზები</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          {history.length === 0 && <p className="text-sm text-muted-foreground">ისტორია ცარიელია</p>}
+          {history.map((job) => (
+            <button
+              key={job.id}
+              type="button"
+              className="w-full rounded-lg border p-3 text-left hover:bg-secondary/40"
+              onClick={() => {
+                setInputText(job.input_payload?.prompt ?? '')
+                setActiveFeature((job.input_payload?.feature ?? 'summarize') as FeatureType)
+                if (job.output_payload?.text) {
+                  setResult({
+                    type: (job.input_payload?.feature ?? 'summarize') as FeatureType,
+                    result: job.output_payload.text,
+                  })
+                }
+              }}
+            >
+              <p className="text-sm font-medium">{(job.input_payload?.prompt ?? '').slice(0, 120) || 'Text run'}</p>
+              <p className="text-xs text-muted-foreground">{job.status} • {new Date(job.created_at).toLocaleString()}</p>
+            </button>
+          ))}
+        </CardContent>
+      </Card>
+
+      <Card className="mt-8">
+        <CardHeader>
+          <CardTitle>Send to another service</CardTitle>
+          <CardDescription>გადააგზავნე შედეგი შემდეგ ეტაპზე</CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-wrap gap-2">
+          <Link href={`/services/social-media?source=text-intelligence&text=${encodeURIComponent(result?.result || inputText)}`}>
+            <Button variant="secondary">Social Media</Button>
+          </Link>
+          <Link href={`/services/business-agent?source=text-intelligence&text=${encodeURIComponent(result?.result || inputText)}`}>
+            <Button variant="secondary">Business Agent</Button>
+          </Link>
+          <Link href={`/services/marketplace/listings/new?source=text-intelligence`}>
+            <Button variant="secondary">Marketplace</Button>
+          </Link>
+        </CardContent>
+      </Card>
+
+      {/* Service Notice */}
       <Card className="mt-8 border-yellow-500/50 bg-yellow-500/5">
         <CardContent className="flex items-start gap-3 pt-6">
           <Sparkles className="w-5 h-5 text-yellow-500 flex-shrink-0 mt-0.5" />
           <div className="space-y-1">
             <p className="font-semibold text-yellow-600 dark:text-yellow-500">
-              ბეტა ვერსია
+              რეალური პროვაიდერი
             </p>
             <p className="text-sm text-muted-foreground">
-              ეს სერვისი ბეტა ფაზაშია. ზოგიერთი ფუნქცია შეიძლება იყოს შეზღუდული ან 
-              მოითხოვოს დამატებითი დაყენება. სრული ანალიტიკა და API ინტეგრაცია მალე ხელმისაწვდომი იქნება.
+              ანალიზი სრულდება რეალურ AI პროვაიდერზე და ინახება job ისტორიაში. თუ პროვაიდერის API გასაღები არ არის კონფიგურირებული,
+              მოთხოვნა დასრულდება შეცდომით.
             </p>
           </div>
         </CardContent>

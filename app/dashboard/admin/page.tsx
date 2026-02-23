@@ -10,7 +10,8 @@ import {
   TrendingUp, 
   AlertTriangle,
   CheckCircle,
-  Activity
+  Activity,
+  Eye
 } from 'lucide-react'
 
 interface PlatformMetrics {
@@ -160,6 +161,18 @@ export default function AdminDashboardPage() {
                 <div>
                   <div className="font-semibold">Analytics</div>
                   <div className="text-sm text-gray-400">Deep insights</div>
+                </div>
+              </div>
+            </Card>
+          </Link>
+
+          <Link href="/dashboard/admin/system-health">
+            <Card className="p-6 hover:border-cyan-500/50 transition-all cursor-pointer">
+              <div className="flex items-center gap-3">
+                <Eye className="w-6 h-6 text-cyan-400" />
+                <div>
+                  <div className="font-semibold">Observability</div>
+                  <div className="text-sm text-gray-400">Live workflow + queue metrics</div>
                 </div>
               </div>
             </Card>

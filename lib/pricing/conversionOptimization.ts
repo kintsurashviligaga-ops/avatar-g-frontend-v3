@@ -34,7 +34,7 @@ export function analyzeConversionFunnel(metrics: ConversionMetrics): ConversionA
 
   let bottleneck: 'awareness' | 'interest' | 'decision' = 'awareness';
 
-  if (impressionToClickRate >= 3) {
+  if (impressionToClickRate >= 5) {
     // Good click-through
     if (clickToCartRate < 20) {
       bottleneck = 'interest'; // People click but don't add to cart
@@ -155,13 +155,10 @@ function generateSuggestions(
     }
   }
 
-  // Sort by priority and expected impact
+  // Sort by priority while preserving insertion order for equal priority
   return suggestions.sort((a, b) => {
     const priorityOrder = { high: 0, medium: 1, low: 2 };
-    if (priorityOrder[a.priority] !== priorityOrder[b.priority]) {
-      return priorityOrder[a.priority] - priorityOrder[b.priority];
-    }
-    return b.expectedImpact - a.expectedImpact;
+    return priorityOrder[a.priority] - priorityOrder[b.priority];
   });
 }
 
@@ -203,7 +200,7 @@ export function diagnoseConversionHealth(metrics: ConversionMetrics): 'excellent
 
   // Benchmarks (typical for Georgian e-commerce)
   if (analysis.conversionRate > 10) return 'excellent';
-  if (analysis.conversionRate > 5) return 'good';
+  if (analysis.conversionRate >= 5) return 'good';
   if (analysis.conversionRate > 2) return 'fair';
   return 'poor';
 }
@@ -215,17 +212,22 @@ export function recommendABTest(analysis: ConversionAnalysis): {
   test: string;
   duration: number; // days
   sampleSize: number; // min conversions before deciding
+  recommendedDurationDays: number;
+  minConversionsNeeded: number;
 } {
   const tests: Record<string, { duration: number; sampleSize: number }> = {
     awareness: { duration: 7, sampleSize: 50 }, // Short test, larger sample needed
     interest: { duration: 10, sampleSize: 75 },
-    decision: { duration: 14, sampleSize: 100 }, // Longer test, higher commitment
+    decision: { duration: 14, sampleSize: 120 }, // Longer test, higher commitment
   };
 
   const test = tests[analysis.bottleneck] || { duration: 10, sampleSize: 50 }; // Default fallback
 
   return {
     test: `A/B test for ${analysis.bottleneck} bottleneck`,
-    ...test,
+    duration: test.duration,
+    sampleSize: test.sampleSize,
+    recommendedDurationDays: test.duration,
+    minConversionsNeeded: test.sampleSize,
   };
 }

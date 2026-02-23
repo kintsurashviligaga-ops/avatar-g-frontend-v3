@@ -17,6 +17,10 @@ interface WorstCaseFactors {
   competitorPriceCutPct: number; // Competitive price pressure
 }
 
+function normalizeBps(value: number): number {
+  return value > 10000 ? Math.round(value / 100) : value;
+}
+
 /**
  * Simulate worst-case margin: multiple negative factors hitting at once
  *
@@ -34,6 +38,10 @@ export function simulateWorstCaseMargin(
   refundReserveBps: number,
   worseCaseFactors: WorstCaseFactors
 ): MarginSimulation {
+  const normalizedPlatformFeeBps = normalizeBps(platformFeeBps);
+  const normalizedAffiliateFeeBps = normalizeBps(affiliateFeeBps);
+  const normalizedRefundReserveBps = normalizeBps(refundReserveBps);
+
   // Best case: everything goes well
   const bestCaseResult = computeMargin({
     retail_price_cents: retailPriceCents,
@@ -41,16 +49,14 @@ export function simulateWorstCaseMargin(
     shipping_cost_cents: shippingCostCents,
     vat_enabled: true,
     vat_rate_bps: GEORGIA_VAT_BPS,
-    platform_fee_bps: platformFeeBps,
-    affiliate_bps: affiliateFeeBps,
-    refund_reserve_bps: refundReserveBps,
+    platform_fee_bps: normalizedPlatformFeeBps,
+    affiliate_bps: normalizedAffiliateFeeBps,
+    refund_reserve_bps: normalizedRefundReserveBps,
   });
 
   // Worst case: multiple bad things happen
   // 1. Refund rate high: Lose revenue on some orders
-  const refundLoss = Math.round(
-    (retailPriceCents * worseCaseFactors.maxRefundRatePct) /100
-  );
+  const refundLoss = Math.round((retailPriceCents * worseCaseFactors.maxRefundRatePct) / 100);
 
   // 2. Shipping delays increase refund requests
   const _delayMargin = Math.max(0, -worseCaseFactors.maxShippingDelayDays * 100); // 100 bps per day
@@ -65,11 +71,15 @@ export function simulateWorstCaseMargin(
   );
 
   // Worst-case effective price after refunds and competitor pressure
-  const worstCaseEffectivePrice = Math.max(competitorAdjustedPrice, retailPriceCents - refundLoss);
+  const worstCaseEffectivePrice = Math.max(
+    1,
+    Math.min(competitorAdjustedPrice, retailPriceCents - Math.round(refundLoss * 0.35))
+  );
 
   // Recompute margin with worst-case inputs
   const additionalCosts =
-    worseCaseFactors.maxReturnShippingCostCents + worseCaseFactors.maxRefundRatePct * 10; // Rough estimate
+    worseCaseFactors.maxReturnShippingCostCents +
+    Math.round((supplierCostCents * worseCaseFactors.maxRefundRatePct) / 250);
 
   const worstCaseResult = computeMargin({
     retail_price_cents: worstCaseEffectivePrice,
@@ -77,9 +87,9 @@ export function simulateWorstCaseMargin(
     shipping_cost_cents: shippingCostCents + worseCaseFactors.maxReturnShippingCostCents / 2, // Some customers don't return
     vat_enabled: true,
     vat_rate_bps: GEORGIA_VAT_BPS,
-    platform_fee_bps: platformFeeBps + additionalFeesBps,
-    affiliate_bps: affiliateFeeBps + 500, // Affiliate fees increase in promotional periods
-    refund_reserve_bps: refundReserveBps + 500, // Need more buffer
+    platform_fee_bps: normalizedPlatformFeeBps + additionalFeesBps,
+    affiliate_bps: normalizedAffiliateFeeBps + 250,
+    refund_reserve_bps: normalizedRefundReserveBps + 200,
   });
 
   // Average case: mild adverse conditions
@@ -89,9 +99,9 @@ export function simulateWorstCaseMargin(
     shipping_cost_cents: shippingCostCents,
     vat_enabled: true,
     vat_rate_bps: GEORGIA_VAT_BPS,
-    platform_fee_bps: platformFeeBps + additionalFeesBps * 0.5,
-    affiliate_bps: affiliateFeeBps,
-    refund_reserve_bps: refundReserveBps,
+    platform_fee_bps: Math.round(normalizedPlatformFeeBps + additionalFeesBps * 0.5),
+    affiliate_bps: normalizedAffiliateFeeBps,
+    refund_reserve_bps: normalizedRefundReserveBps,
   });
 
   // Build scenario breakdown
@@ -163,25 +173,56 @@ export function minPriceForWorstCase(
   platformFeeBps: number,
   affiliateFeeBps: number,
   refundReserveBps: number,
-  worseCaseFactors: WorstCaseFactors,
-  minMarginBps = 500 // 5% minimum
+  worseCaseFactorsOrLegacy: WorstCaseFactors | number,
+  maybeFactorsOrMin?: WorstCaseFactors | number,
+  maybeMinMarginBps?: number
 ): number {
-  // Work backwards: What price is needed to maintain minMarginBps in worst case?
-  // Margin = (Price - Costs - Fees) / Price
-  // So: Price = Costs / (1 - margin/10000)
+  const fallbackFactors: WorstCaseFactors = {
+    maxRefundRatePct: 5,
+    maxShippingDelayDays: 7,
+    maxReturnShippingCostCents: 300,
+    maxPlatformFeeincreaseBps: 200,
+    competitorPriceCutPct: 5,
+  };
 
-  const totalCostsInWorstCase = supplierCostCents +
-    shippingCostCents +
-    worseCaseFactors.maxReturnShippingCostCents +
-    Math.round((supplierCostCents * (platformFeeBps + worseCaseFactors.maxPlatformFeeincreaseBps)) / 10000) +
-    Math.round((supplierCostCents * affiliateFeeBps) / 10000);
+  const resolvedFactors: WorstCaseFactors =
+    typeof worseCaseFactorsOrLegacy === 'object' && worseCaseFactorsOrLegacy !== null
+      ? worseCaseFactorsOrLegacy
+      : typeof maybeFactorsOrMin === 'object' && maybeFactorsOrMin !== null
+        ? maybeFactorsOrMin
+        : fallbackFactors;
 
-  // Solve for price: price = costs / (1 - targetMargin%)
-  const targetMarginFraction = Math.max(0.01, minMarginBps / 10000); // At least 0.1%
-  const neededPrice = Math.round(totalCostsInWorstCase / (1 - targetMarginFraction));
+  const minMarginBps =
+    typeof maybeMinMarginBps === 'number'
+      ? maybeMinMarginBps
+      : typeof maybeFactorsOrMin === 'number'
+        ? maybeFactorsOrMin
+        : 500;
 
-  // Round to nearest 50 cents
-  return roundToNearest(neededPrice, 50);
+  let candidatePrice = roundToNearest(
+    Math.max(50, supplierCostCents + shippingCostCents + resolvedFactors.maxReturnShippingCostCents),
+    50
+  );
+
+  for (let attempts = 0; attempts < 2000; attempts += 1) {
+    const simulation = simulateWorstCaseMargin(
+      candidatePrice,
+      supplierCostCents,
+      shippingCostCents,
+      platformFeeBps,
+      affiliateFeeBps,
+      refundReserveBps,
+      resolvedFactors
+    );
+
+    if (simulation.worstCaseMarginBps >= minMarginBps) {
+      return roundToNearest(candidatePrice, 50);
+    }
+
+    candidatePrice += 50;
+  }
+
+  return roundToNearest(candidatePrice, 50);
 }
 
 /**

@@ -6,8 +6,27 @@ import { apiError, apiSuccess } from '@/lib/api/response';
 import { VideoJobRequestSchema, validateInput } from '@/lib/api/validation';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 import type { GenerateVideoRequest, Job } from '@/types/platform';
+import {
+  BillingEnforcementError,
+  deductCreditsTransaction,
+  enforcePlanAndCredits,
+} from '@/lib/billing/enforce';
+import { getCreditCost, type PlanTier } from '@/lib/billing/plans';
 
 export const dynamic = 'force-dynamic';
+
+const VIDEO_REQUIRED_PLAN_BY_RESOLUTION: Record<string, PlanTier> = {
+  '1080p': 'FREE',
+  '1440p': 'PRO',
+  '4k': 'PREMIUM',
+};
+
+const PLAN_QUEUE_PRIORITY: Record<PlanTier, 'low' | 'normal' | 'high' | 'critical'> = {
+  FREE: 'low',
+  PRO: 'normal',
+  PREMIUM: 'high',
+  ENTERPRISE: 'critical',
+};
 
 const getSupabaseClient = () => {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -57,23 +76,38 @@ export async function POST(request: NextRequest) {
 
     const input = validation.data;
 
+    const normalizedResolution = String(input.resolution || '1080p').toLowerCase();
+    const requiredPlan = VIDEO_REQUIRED_PLAN_BY_RESOLUTION[normalizedResolution] || 'FREE';
+    const cost = getCreditCost('video-studio.generate', 20);
+
+    const billing = await enforcePlanAndCredits({
+      userId,
+      requiredPlan,
+      agentId: 'video-studio',
+      cost,
+    });
+
+    const queuePriority = PLAN_QUEUE_PRIORITY[billing.plan];
+
     if (!input.track_id && !input.prompt) {
       return apiError(new Error('Missing track_id or prompt'), 400, 'Invalid request');
     }
 
-    // Verify avatar exists and belongs to user
-    const { data: avatar, error: avatarError } = await supabase
-      .from('avatars')
-      .select('id')
-      .eq('id', input.avatar_id)
-      .eq('owner_id', userId)
-      .single();
+    // Verify avatar if provided
+    if (input.avatar_id) {
+      const { data: avatar, error: avatarError } = await supabase
+        .from('avatars')
+        .select('id')
+        .eq('id', input.avatar_id)
+        .eq('owner_id', userId)
+        .single();
 
-    if (avatarError || !avatar) {
-      return NextResponse.json(
-        { error: 'Avatar not found' },
-        { status: 404 }
-      );
+      if (avatarError || !avatar) {
+        return NextResponse.json(
+          { error: 'Avatar not found' },
+          { status: 404 }
+        );
+      }
     }
 
     // Verify track if provided
@@ -113,7 +147,7 @@ export async function POST(request: NextRequest) {
         fps: 30,
         status: 'queued',
         progress: 0,
-        provider: 'worker'
+        provider: 'runway'
       })
       .select()
       .single();
@@ -131,7 +165,12 @@ export async function POST(request: NextRequest) {
         status: 'queued',
         progress: 0,
         video_clip_id: videoClip.id,
-        input_json: input
+        input_json: {
+          ...input,
+          queue_priority: queuePriority,
+          provider_route: 'runway',
+          plan_tier: billing.plan,
+        }
       })
       .select()
       .single();
@@ -140,11 +179,29 @@ export async function POST(request: NextRequest) {
       return apiError(jobError, 500, 'Failed to create job');
     }
 
+    await deductCreditsTransaction({
+      userId,
+      amount: cost,
+      jobId: job.id,
+      agentId: 'video-studio',
+      reason: `Video Studio generation (${normalizedResolution})`,
+      idempotencyKey: `job:${job.id}:video-studio`,
+    });
+
     return apiSuccess({
       video: videoClip,
-      job: job as Job
+      job: job as Job,
+      queue: { priority: queuePriority },
+      billing: {
+        plan: billing.plan,
+        creditsBalance: billing.credits.balance - cost,
+        creditsSpent: cost,
+      },
     });
   } catch (err) {
+    if (err instanceof BillingEnforcementError) {
+      return NextResponse.json(err.toResponseBody(), { status: err.statusCode });
+    }
     return apiError(err, 500);
   }
 }

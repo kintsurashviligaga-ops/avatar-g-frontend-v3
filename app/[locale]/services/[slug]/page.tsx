@@ -1,12 +1,14 @@
 import Link from 'next/link';
 import type { ComponentType } from 'react';
 import { SERVICE_REGISTRY } from '@/lib/service-registry';
+import ServiceExperienceShell from '@/components/services/ServiceExperienceShell';
 
 type ServiceDetailPageProps = {
   params: Promise<{ locale: string; slug: string }>;
 };
 
 const SERVICE_PAGE_LOADERS: Record<string, () => Promise<{ default: ComponentType }>> = {
+  'workflow-builder': () => import('@/app/services/workflow-builder/page'),
   'online-shop': () => import('@/app/services/online-shop/page'),
   'avatar-builder': () => import('@/app/services/avatar-builder/page'),
   'music-studio': () => import('@/app/services/music-studio/page'),
@@ -55,7 +57,7 @@ export default async function ServiceDetailPage({ params }: ServiceDetailPagePro
   const ServiceComponent = (await servicePageLoader()).default;
 
   return (
-    <>
+    <ServiceExperienceShell forcedSlug={slug}>
       <div className="px-4 pt-4 sm:px-6 lg:px-8">
         <Link
           href={`/${locale}/services`}
@@ -65,6 +67,6 @@ export default async function ServiceDetailPage({ params }: ServiceDetailPagePro
         </Link>
       </div>
       <ServiceComponent />
-    </>
+    </ServiceExperienceShell>
   );
 }

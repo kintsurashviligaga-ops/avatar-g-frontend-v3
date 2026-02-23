@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase/server';
+import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
+  const rateLimitError = await checkRateLimit(request, RATE_LIMITS.READ);
+  if (rateLimitError) return rateLimitError;
+
   const supabase = createServerClient();
   const {
     data: { user },
@@ -29,13 +33,16 @@ export async function GET(request: NextRequest) {
   const { data, error } = await query;
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: 'Failed to load jobs' }, { status: 500 });
   }
 
   return NextResponse.json({ jobs: data ?? [] });
 }
 
 export async function POST(request: NextRequest) {
+  const rateLimitError = await checkRateLimit(request, RATE_LIMITS.WRITE);
+  if (rateLimitError) return rateLimitError;
+
   const supabase = createServerClient();
   const {
     data: { user },
@@ -71,7 +78,7 @@ export async function POST(request: NextRequest) {
     .single();
 
   if (error || !data) {
-    return NextResponse.json({ error: error?.message ?? 'Failed to create job' }, { status: 500 });
+    return NextResponse.json({ error: 'Failed to create job' }, { status: 500 });
   }
 
   return NextResponse.json({ job: data });

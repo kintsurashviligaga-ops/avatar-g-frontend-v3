@@ -1,16 +1,16 @@
 /** @jest-environment node */
 
-import { POST as sendOtpPost } from '@/app/api/auth/otp/send/route';
-import { POST as checkOtpPost } from '@/app/api/auth/otp/check/route';
-import { checkOtpCode, normalizeOtpCode, normalizePhoneE164, sendOtpSms } from '@/lib/server/twilio-verify';
-import { sendTelegramTextMessage } from '@/lib/server/telegram';
+import { POST as sendOtpPost } from '../../app/api/auth/otp/send/route';
+import { POST as checkOtpPost } from '../../app/api/auth/otp/check/route';
+import { checkOtpCode, normalizeOtpCode, normalizePhoneE164, sendOtpSms } from '../../lib/server/twilio-verify';
+import { sendTelegramTextMessage } from '../../lib/server/telegram';
 
-jest.mock('@/lib/api/rate-limit', () => ({
+jest.mock('../../lib/api/rate-limit', () => ({
   RATE_LIMITS: { AUTH: { maxRequests: 5, windowMs: 900000 } },
   checkRateLimit: jest.fn(async () => null),
 }));
 
-jest.mock('@/lib/server/twilio-verify', () => ({
+jest.mock('../../lib/server/twilio-verify', () => ({
   normalizePhoneE164: jest.fn((value: string) => {
     if (!/^\+[1-9]\d{7,14}$/.test(value)) throw new Error('invalid_phone');
     return value;
@@ -23,7 +23,7 @@ jest.mock('@/lib/server/twilio-verify', () => ({
   checkOtpCode: jest.fn(async () => ({ ok: true, status: 'approved' })),
 }));
 
-jest.mock('@/lib/server/telegram', () => ({
+jest.mock('../../lib/server/telegram', () => ({
   sendTelegramTextMessage: jest.fn(async () => ({ ok: true, status: 200 })),
 }));
 

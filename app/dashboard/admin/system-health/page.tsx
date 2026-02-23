@@ -50,13 +50,33 @@ export default function SystemHealthPage() {
 
   const checkSystemHealth = async () => {
     try {
-      // TODO: Call real API endpoint
-      // const response = await fetch('/api/admin/system-health')
-      // const data = await response.json()
+      const response = await fetch('/api/app/observability/admin', { cache: 'no-store' })
+      if (!response.ok) {
+        throw new Error('Failed to fetch admin observability metrics')
+      }
 
-      // Mock data for now
+      const payload = (await response.json()) as {
+        metrics?: {
+          activeUsers: number
+          activeWorkflows: number
+          queueSize: number
+          failedJobsToday: number
+          revenueTodayCents: number
+          creditsConsumedToday: number
+        }
+      }
+
+      const metrics = payload.metrics ?? {
+        activeUsers: 0,
+        activeWorkflows: 0,
+        queueSize: 0,
+        failedJobsToday: 0,
+        revenueTodayCents: 0,
+        creditsConsumedToday: 0,
+      }
+
       setHealth({
-        overall: 'healthy',
+        overall: metrics.failedJobsToday > 20 ? 'degraded' : 'healthy',
         checks: [
           {
             name: 'Database Connection',
@@ -66,16 +86,16 @@ export default function SystemHealthPage() {
             responseTime: 45,
           },
           {
-            name: 'Stripe Webhooks',
-            status: 'healthy',
-            message: 'Last event received 2 minutes ago',
+            name: 'Workflow Engine',
+            status: metrics.activeWorkflows > 0 ? 'healthy' : 'degraded',
+            message: `${metrics.activeWorkflows} active workflow runs`,
             lastCheck: new Date().toISOString(),
-            responseTime: 120,
+            responseTime: 95,
           },
           {
-            name: 'Payment Processing',
+            name: 'Queue Execution',
             status: 'healthy',
-            message: 'All payment intents successful',
+            message: `${metrics.queueSize} jobs currently queued/processing`,
             lastCheck: new Date().toISOString(),
           },
           {
@@ -92,9 +112,9 @@ export default function SystemHealthPage() {
             lastCheck: new Date().toISOString(),
           },
           {
-            name: 'Margin Guardrails',
-            status: 'degraded',
-            message: '3 products below 20% floor',
+            name: 'Failed Jobs',
+            status: metrics.failedJobsToday > 20 ? 'degraded' : 'healthy',
+            message: `${metrics.failedJobsToday} failures today`,
             lastCheck: new Date().toISOString(),
           },
         ],
@@ -107,9 +127,9 @@ export default function SystemHealthPage() {
           { name: 'STRIPE_PUBLISHABLE_KEY', present: true, type: 'public' },
         ],
         metrics: {
-          marginViolations: 3,
-          webhookQueueSize: 0,
-          paymentQueueSize: 2,
+          marginViolations: metrics.failedJobsToday,
+          webhookQueueSize: metrics.activeWorkflows,
+          paymentQueueSize: metrics.queueSize,
           avgApiResponseMs: 125,
         },
       })

@@ -30,6 +30,7 @@ export type AppService = {
 };
 
 const SERVICE_META: Record<string, { icon: LucideIcon; credits: number }> = {
+  'workflow-builder': { icon: Bot, credits: 3 },
   'online-shop': { icon: Store, credits: 7 },
   'avatar-builder': { icon: User, credits: 8 },
   'music-studio': { icon: Music2, credits: 10 },

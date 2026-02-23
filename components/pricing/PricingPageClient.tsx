@@ -78,9 +78,9 @@ export default function PricingPageClient() {
             {plans.map((plan, index) => (
               <motion.div 
                 key={plan.name} 
-                initial={{ opacity: 0, y: 30 }} 
+                initial={{ opacity: 0, y: 24 }} 
                 animate={{ opacity: 1, y: 0 }} 
-                transition={{ delay: index * 0.1 }} 
+                transition={{ delay: index * 0.08, duration: 0.5, ease: "easeOut" }} 
                 className={`relative p-8 rounded-2xl ${plan.popular ? "bg-gradient-to-b from-cyan-500/20 to-blue-500/20 border-2 border-cyan-500/50 transform scale-105" : "bg-white/5 border border-white/10"} backdrop-blur-sm`}
               >
                 {plan.popular && (
@@ -116,6 +116,11 @@ export default function PricingPageClient() {
                     {plan.cta}
                   </motion.button>
                 </Link>
+                <p className="mt-3 text-xs text-gray-400 text-center">
+                  {plan.name === "Free"
+                    ? "No card required. Upgrade only when Avatar G feels essential."
+                    : "Cancel anytime. No long-term contracts or hidden fees."}
+                </p>
               </motion.div>
             ))}
           </div>

@@ -15,7 +15,7 @@ export interface VoiceIdentity {
   name: string;
   voiceId: string;
   sampleUrl: string;
-  speechPatterns: Record<string, any>;
+  speechPatterns: Record<string, unknown>;
   createdAt: string;
 }
 

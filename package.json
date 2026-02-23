@@ -18,6 +18,9 @@
     "typecheck": "tsc --noEmit",
     "test": "jest --runInBand",
     "test:unit": "jest __tests__/lib/openai.test.ts __tests__/lib/agentg.personality.test.ts __tests__/lib/agentg.memory.test.ts __tests__/api/agent-g-chat.test.ts __tests__/api/agent-g-telegram-webhook.test.ts --runInBand",
+    "test:enterprise": "jest __tests__/workflow/policy.test.ts __tests__/billing/plan-enforcement.test.ts __tests__/lib/monetization.enforcement.test.ts __tests__/lib/ai-router.test.ts __tests__/lib/tenant-isolation.test.ts __tests__/lib/rate-limit-window.test.ts __tests__/lib/metering-aggregation.test.ts __tests__/api/billing-usage-route.test.ts __tests__/api/agent-g-router-execute-route.test.ts __tests__/api/org-branding-route.test.ts --runInBand",
+    "load:test": "npx tsx scripts/load-test.ts",
+    "verify:production": "npx tsx scripts/verify-production.ts",
     "test:telegram:webhook": "powershell -ExecutionPolicy Bypass -File scripts/telegram-webhook-smoke.ps1",
     "test:webhooks": "node scripts/test-webhooks.mjs"
   },
@@ -60,7 +63,9 @@
     "zustand": "^4.5.7"
   },
   "devDependencies": {
+    "@testing-library/dom": "^10.4.1",
     "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
     "@types/jest": "^30.0.0",
     "@types/node": "^20.11.0",
     "@types/react": "^18.3.0",
@@ -75,6 +80,7 @@
     "postcss": "^8.4.33",
     "rimraf": "^6.0.1",
     "tailwindcss": "^3.4.1",
-    "typescript": "^5.3.3"
+    "typescript": "^5.3.3",
+    "undici": "^7.22.0"
   }
 }

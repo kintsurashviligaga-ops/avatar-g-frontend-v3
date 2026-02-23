@@ -46,12 +46,12 @@ declare global {
     abort(): void;
   }
 
-  var SpeechRecognition: {
+  const SpeechRecognition: {
     prototype: SpeechRecognition;
     new (): SpeechRecognition;
   };
 
-  var webkitSpeechRecognition: {
+  const webkitSpeechRecognition: {
     prototype: SpeechRecognition;
     new (): SpeechRecognition;
   };

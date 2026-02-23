@@ -1209,7 +1209,9 @@ export default function AvatarBuilderPage() {
       link.click();
       document.body.removeChild(link);
     } catch (error) {
-      console.error('Download error:', error);
+      if (process.env.NODE_ENV === 'development') {
+        console.error('Download error:', error);
+      }
       alert(t('avatar.error.downloadFailed'));
     }
   };

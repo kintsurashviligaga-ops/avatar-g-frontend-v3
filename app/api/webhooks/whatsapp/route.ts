@@ -1,6 +1,8 @@
 import crypto from 'node:crypto';
-import { createServiceRoleClient } from '@/lib/supabase/server';
-import { handleInbound } from '@/lib/agent-g/channels/handleInbound';
+import { parseWhatsAppMessageSummary } from '@/lib/agent-g/channels/whatsapp-processor';
+import { enqueueQueueItem } from '@/lib/platform/queues';
+import { hashIdempotencyKey, markIdempotentDuplicate } from '@/lib/platform/idempotency';
+import { recordRouteMetric } from '@/lib/platform/request-metrics';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -44,39 +46,6 @@ function safeLog(event: string, payload: Record<string, unknown>): void {
   });
 }
 
-function parseMessageSummary(payload: Record<string, unknown>): Array<{ from: string; text: string; id: string }> {
-  const entries = Array.isArray(payload.entry) ? payload.entry : [];
-  const messages: Array<{ from: string; text: string; id: string }> = [];
-
-  for (const entry of entries) {
-    const changes = Array.isArray((entry as Record<string, unknown>).changes)
-      ? ((entry as Record<string, unknown>).changes as Array<Record<string, unknown>>)
-      : [];
-
-    for (const change of changes) {
-      const value = ((change || {}) as Record<string, unknown>).value as Record<string, unknown> | undefined;
-      const inbound = Array.isArray(value?.messages)
-        ? (value?.messages as Array<Record<string, unknown>>)
-        : [];
-
-      for (const message of inbound) {
-        const from = normalize(String(message.from || ''));
-        const id = normalize(String(message.id || ''));
-        const textNode = (message.text || {}) as Record<string, unknown>;
-        const text = normalize(String(textNode.body || ''));
-
-        if (!from || !text) {
-          continue;
-        }
-
-        messages.push({ from, text, id });
-      }
-    }
-  }
-
-  return messages;
-}
-
 function verifyMetaSignature(rawBody: string, signatureHeader: string | null): boolean {
   const appSecret = normalize(process.env.WHATSAPP_APP_SECRET);
   if (!appSecret) {
@@ -97,60 +66,10 @@ function verifyMetaSignature(rawBody: string, signatureHeader: string | null): b
   return crypto.timingSafeEqual(Buffer.from(incoming), Buffer.from(expected));
 }
 
-async function processIncomingPayload(
-  payload: Record<string, unknown>,
-  requestId: string,
-  origin: string
-): Promise<void> {
-  const hasSupabaseServiceRole = Boolean(normalize(process.env.SUPABASE_SERVICE_ROLE_KEY));
-  const hasSupabaseUrl = Boolean(normalize(process.env.SUPABASE_URL) || normalize(process.env.NEXT_PUBLIC_SUPABASE_URL));
-  if (!hasSupabaseServiceRole || !hasSupabaseUrl) {
-    safeLog('processor_skipped_unconfigured', {
-      request_id: requestId,
-      has_supabase_service_role: hasSupabaseServiceRole,
-      has_supabase_url: hasSupabaseUrl,
-    });
-    return;
-  }
-
-  const supabase = createServiceRoleClient();
-  const messages = parseMessageSummary(payload);
-
-  await supabase.from('agent_g_channel_events').insert({
-    type: 'whatsapp_event',
-    payload: {
-      request_id: requestId,
-      object: normalize(String(payload.object || '')) || null,
-      message_count: messages.length,
-      message_ids: messages.map((message) => message.id).filter(Boolean),
-      received_at: new Date().toISOString(),
-    },
-  });
-
-  for (const message of messages) {
-    const handled = await handleInbound({
-      channel: 'whatsapp',
-      externalId: message.from,
-      text: message.text,
-      origin,
-    });
-
-    await supabase.from('agent_g_channel_events').insert({
-      user_id: handled.userId || null,
-      type: 'whatsapp_event',
-      payload: {
-        request_id: requestId,
-        direction: 'simulated_outgoing',
-        to: message.from,
-        in_reply_to: message.id || null,
-        reply_count: handled.replyMessages.length,
-        task_id: handled.taskId || null,
-      },
-    });
-  }
-}
 
 export async function GET(req: Request): Promise<Response> {
+  const startedAt = Date.now();
+  const requestId = crypto.randomUUID();
   const expected = process.env.WHATSAPP_VERIFY_TOKEN;
   const url = new URL(req.url);
   const mode = url.searchParams.get("hub.mode");
@@ -158,19 +77,50 @@ export async function GET(req: Request): Promise<Response> {
   const challenge = url.searchParams.get("hub.challenge");
 
   if (mode === "subscribe" && token === expected) {
-    return new Response(challenge, { status: 200 });
+    const response = new Response(challenge, { status: 200 });
+    response.headers.set('x-request-id', requestId);
+    recordRouteMetric({
+      request_id: requestId,
+      route: '/api/webhooks/whatsapp',
+      method: 'GET',
+      status: 200,
+      duration_ms: Date.now() - startedAt,
+      at: Date.now(),
+    });
+    return response;
   }
 
-  return new Response("Forbidden", { status: 403 });
+  const response = new Response("Forbidden", { status: 403 });
+  response.headers.set('x-request-id', requestId);
+  recordRouteMetric({
+    request_id: requestId,
+    route: '/api/webhooks/whatsapp',
+    method: 'GET',
+    status: 403,
+    duration_ms: Date.now() - startedAt,
+    at: Date.now(),
+  });
+  return response;
 }
 
 export async function POST(req: Request): Promise<Response> {
+  const startedAt = Date.now();
   const requestId = crypto.randomUUID();
   const clientIp = resolveClientIp(req);
 
   if (isRateLimited(clientIp)) {
     safeLog('rate_limited', { request_id: requestId, client_ip: clientIp });
-    return Response.json({ ok: false, error: 'rate_limited' }, { status: 429 });
+    const response = Response.json({ ok: false, error: 'rate_limited', request_id: requestId }, { status: 429 });
+    response.headers.set('x-request-id', requestId);
+    recordRouteMetric({
+      request_id: requestId,
+      route: '/api/webhooks/whatsapp',
+      method: 'POST',
+      status: 429,
+      duration_ms: Date.now() - startedAt,
+      at: Date.now(),
+    });
+    return response;
   }
 
   const contentLength = Number(req.headers.get('content-length') || '0');
@@ -180,18 +130,48 @@ export async function POST(req: Request): Promise<Response> {
       content_length: contentLength,
       client_ip: clientIp,
     });
-    return Response.json({ ok: false, error: 'payload_too_large' }, { status: 413 });
+    const response = Response.json({ ok: false, error: 'payload_too_large', request_id: requestId }, { status: 413 });
+    response.headers.set('x-request-id', requestId);
+    recordRouteMetric({
+      request_id: requestId,
+      route: '/api/webhooks/whatsapp',
+      method: 'POST',
+      status: 413,
+      duration_ms: Date.now() - startedAt,
+      at: Date.now(),
+    });
+    return response;
   }
 
   const rawBody = await req.text();
   if (Buffer.byteLength(rawBody, 'utf8') > maxPayloadBytes) {
-    return Response.json({ ok: false, error: 'payload_too_large' }, { status: 413 });
+    const response = Response.json({ ok: false, error: 'payload_too_large', request_id: requestId }, { status: 413 });
+    response.headers.set('x-request-id', requestId);
+    recordRouteMetric({
+      request_id: requestId,
+      route: '/api/webhooks/whatsapp',
+      method: 'POST',
+      status: 413,
+      duration_ms: Date.now() - startedAt,
+      at: Date.now(),
+    });
+    return response;
   }
 
   const signature = req.headers.get('x-hub-signature-256');
   if (!verifyMetaSignature(rawBody, signature)) {
     safeLog('invalid_signature', { request_id: requestId, client_ip: clientIp });
-    return new Response('Forbidden', { status: 403 });
+    const response = new Response('Forbidden', { status: 403 });
+    response.headers.set('x-request-id', requestId);
+    recordRouteMetric({
+      request_id: requestId,
+      route: '/api/webhooks/whatsapp',
+      method: 'POST',
+      status: 403,
+      duration_ms: Date.now() - startedAt,
+      at: Date.now(),
+    });
+    return response;
   }
 
   let payload: Record<string, unknown> = {};
@@ -199,25 +179,74 @@ export async function POST(req: Request): Promise<Response> {
     payload = (rawBody ? JSON.parse(rawBody) : {}) as Record<string, unknown>;
   } catch {
     safeLog('invalid_json', { request_id: requestId, client_ip: clientIp });
-    return Response.json({ ok: true, ignored: true, reason: 'invalid_json' }, { status: 200 });
+    const response = Response.json({ ok: true, ignored: true, reason: 'invalid_json', request_id: requestId }, { status: 200 });
+    response.headers.set('x-request-id', requestId);
+    recordRouteMetric({
+      request_id: requestId,
+      route: '/api/webhooks/whatsapp',
+      method: 'POST',
+      status: 200,
+      duration_ms: Date.now() - startedAt,
+      at: Date.now(),
+    });
+    return response;
   }
 
   const url = new URL(req.url);
-  queueMicrotask(() => {
-    void processIncomingPayload(payload, requestId, url.origin).catch((error) => {
-      console.error('[WhatsApp.Webhook] process_failed', {
-        request_id: requestId,
-        message: error instanceof Error ? error.message : 'unknown',
-      });
+  const messages = parseWhatsAppMessageSummary(payload);
+  const messageFingerprint = messages
+    .map((message) => message.id)
+    .filter(Boolean)
+    .sort()
+    .join(',');
+  const idempotencyKey = hashIdempotencyKey(
+    `whatsapp:${messageFingerprint || `${normalize(String(payload.object || 'unknown'))}:${rawBody.slice(0, 200)}`}`
+  );
+  const isFirstSeen = await markIdempotentDuplicate(idempotencyKey, 60 * 60 * 24);
+  if (!isFirstSeen) {
+    safeLog('duplicate_ignored', {
+      request_id: requestId,
+      idempotency_key: idempotencyKey,
+      message_count: messages.length,
     });
+    const response = Response.json({ ok: true, duplicate: true, request_id: requestId }, { status: 200 });
+    response.headers.set('x-request-id', requestId);
+    recordRouteMetric({
+      request_id: requestId,
+      route: '/api/webhooks/whatsapp',
+      method: 'POST',
+      status: 200,
+      duration_ms: Date.now() - startedAt,
+      at: Date.now(),
+    });
+    return response;
+  }
+
+  await enqueueQueueItem('webhooks_ingest', {
+    source: 'whatsapp',
+    request_id: requestId,
+    origin: url.origin,
+    idempotency_key: idempotencyKey,
+    payload,
   });
 
   safeLog('accepted', {
     request_id: requestId,
     client_ip: clientIp,
+    idempotency_key: idempotencyKey,
     object: normalize(String(payload.object || '')) || null,
     received_at: new Date().toISOString(),
   });
 
-  return Response.json({ ok: true, request_id: requestId }, { status: 200 });
+  const response = Response.json({ ok: true, request_id: requestId }, { status: 200 });
+  response.headers.set('x-request-id', requestId);
+  recordRouteMetric({
+    request_id: requestId,
+    route: '/api/webhooks/whatsapp',
+    method: 'POST',
+    status: 200,
+    duration_ms: Date.now() - startedAt,
+    at: Date.now(),
+  });
+  return response;
 }

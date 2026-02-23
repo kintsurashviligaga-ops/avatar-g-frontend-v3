@@ -41,6 +41,10 @@ export default function AgentGSettingsPage() {
   const [connectCode, setConnectCode] = useState<string | null>(null);
   const [expiresAt, setExpiresAt] = useState<string | null>(null);
   const [enableWhatsappWhenConfigured, setEnableWhatsappWhenConfigured] = useState(false);
+  const [whatsAppTo, setWhatsAppTo] = useState('');
+  const [whatsAppText, setWhatsAppText] = useState('Agent G test message');
+  const [whatsAppSending, setWhatsAppSending] = useState(false);
+  const [whatsAppResult, setWhatsAppResult] = useState<string | null>(null);
 
   useEffect(() => {
     const run = async () => {
@@ -103,6 +107,26 @@ export default function AgentGSettingsPage() {
   const telegramChannel = (data?.channels || []).find((item) => item.type === 'telegram');
   const telegramReady = (data?.runtime_status || []).find((item) => item.type === 'telegram');
   const whatsappReady = (data?.runtime_status || []).find((item) => item.type === 'whatsapp');
+
+  const sendWhatsAppTest = async () => {
+    if (!authenticated || !whatsAppTo.trim() || !whatsAppText.trim()) return;
+    setWhatsAppSending(true);
+    setWhatsAppResult(null);
+    setError(null);
+
+    try {
+      const res = await fetchJson<{ ok: boolean; simulated?: boolean }>('/api/agent-g/whatsapp/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ to: whatsAppTo.trim(), text: whatsAppText.trim() }),
+      });
+      setWhatsAppResult(res.simulated ? (isEn ? 'Sent in simulated mode.' : 'გაგზავნილია simulated რეჟიმში.') : (isEn ? 'WhatsApp message sent.' : 'WhatsApp შეტყობინება გაიგზავნა.'));
+    } catch (err) {
+      setError(toUserMessage(err));
+    } finally {
+      setWhatsAppSending(false);
+    }
+  };
 
   return (
     <main className="relative min-h-screen bg-[#05070A] px-4 pb-10 pt-24 sm:px-6 lg:px-8">
@@ -186,7 +210,9 @@ export default function AgentGSettingsPage() {
 
             <Card className="border-white/10 bg-white/5 p-4">
               <h2 className="text-sm font-semibold text-white">WhatsApp Business</h2>
-              <Badge variant="warning">Coming soon</Badge>
+              <Badge variant={whatsappReady?.ready ? 'success' : whatsappReady?.connected ? 'warning' : 'secondary'}>
+                {whatsappReady?.ready ? 'ready' : whatsappReady?.connected ? 'partial' : 'offline'}
+              </Badge>
               <div className="mt-3 space-y-1 text-xs text-gray-300">
                 <p>WHATSAPP_VERIFY_TOKEN</p>
                 <p>WHATSAPP_APP_SECRET</p>
@@ -206,6 +232,24 @@ export default function AgentGSettingsPage() {
                 />
                 {isEn ? 'Enable when configured' : 'ჩართე კონფიგურაციის შემდეგ'}
               </label>
+              <div className="mt-3 space-y-2">
+                <input
+                  value={whatsAppTo}
+                  onChange={(event) => setWhatsAppTo(event.target.value)}
+                  placeholder={isEn ? 'Recipient phone (+995...)' : 'მიმღების ნომერი (+995...)'}
+                  className="w-full rounded-lg border border-white/15 bg-black/30 px-3 py-2 text-xs text-white"
+                />
+                <textarea
+                  value={whatsAppText}
+                  onChange={(event) => setWhatsAppText(event.target.value)}
+                  className="h-20 w-full rounded-lg border border-white/15 bg-black/30 px-3 py-2 text-xs text-white"
+                />
+                <Button size="sm" onClick={() => void sendWhatsAppTest()} disabled={!authenticated || whatsAppSending}>
+                  {whatsAppSending ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : null}
+                  {isEn ? 'Send test message' : 'ტესტ შეტყობინების გაგზავნა'}
+                </Button>
+                {whatsAppResult && <p className="text-xs text-emerald-300">{whatsAppResult}</p>}
+              </div>
               <p className="mt-2 text-xs text-gray-400">{whatsappReady?.note || '-'}</p>
             </Card>
           </>

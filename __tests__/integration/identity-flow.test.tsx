@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor } from '@/__tests__/utils/render'
+import { render, screen, fireEvent } from '@/__tests__/utils/render'
 import { useIdentity } from '@/lib/identity/IdentityContext'
 
 function TestComponent() {

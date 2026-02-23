@@ -128,6 +128,8 @@ export default function SocialMediaManagerPage() {
   const [loadingProjects, setLoadingProjects] = useState(false);
   const [saving, setSaving] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [publishing, setPublishing] = useState(false);
+  const [publishStatus, setPublishStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [authenticated, setAuthenticated] = useState(false);
 
@@ -412,6 +414,38 @@ export default function SocialMediaManagerPage() {
         `| ${post.day_index} | ${post.title.replace(/\|/g, ' ')} | ${post.hook.replace(/\|/g, ' ')} | ${(post.caption || '').slice(0, 70).replace(/\|/g, ' ')} | ${post.status} |`
     );
     await navigator.clipboard.writeText([header, ...rows].join('\n'));
+  };
+
+  const publishScheduled = async () => {
+    setPublishing(true);
+    setPublishStatus(null);
+    setError(null);
+
+    try {
+      const postIds = activeProjectPosts
+        .filter((post) => post.status === 'scheduled' || post.scheduled_at)
+        .map((post) => post.id);
+
+      const data = await fetchJson<{ published: Array<{ id: string }> }>('/api/smm/publish' + (authenticated ? '' : '?demo=1'), {
+        method: 'POST',
+        headers: requestHeaders,
+        body: JSON.stringify({
+          projectId: activeProjectId || undefined,
+          postIds: postIds.length > 0 ? postIds : undefined,
+        }),
+      });
+
+      const publishedCount = data.published?.length ?? 0;
+      setPublishStatus(isEn ? `Published ${publishedCount} posts.` : `გამოქვეყნდა ${publishedCount} პოსტი.`);
+
+      if (activeProjectId) {
+        await loadProjectDashboard(activeProjectId);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Publish failed');
+    } finally {
+      setPublishing(false);
+    }
   };
 
   const openAssetTool = async (post: SmmGeneratedPost | SmmPost, type: 'image' | 'video' | 'music' | 'avatar') => {
@@ -838,7 +872,7 @@ export default function SocialMediaManagerPage() {
             {step === 7 && (
               <div className="space-y-4">
                 <h3 className="text-lg font-semibold text-white">{isEn ? 'Scheduling' : 'დაგეგმვა'}</h3>
-                <p className="text-sm text-amber-200">{isEn ? 'Publishing integrations coming soon.' : 'Publishing integrations coming soon.'}</p>
+                <p className="text-sm text-emerald-200">{isEn ? 'Publishing integration active.' : 'Publishing ინტეგრაცია აქტიურია.'}</p>
 
                 <div className="grid grid-cols-1 gap-2">
                   {posts.map((post, index) => (
@@ -858,11 +892,15 @@ export default function SocialMediaManagerPage() {
                 </div>
 
                 <div className="flex flex-wrap gap-2">
+                  <Button onClick={() => void publishScheduled()} disabled={publishing}>
+                    {publishing ? (isEn ? 'Publishing...' : 'ქვეყნდება...') : (isEn ? 'Publish Scheduled' : 'დაგეგმილების გამოქვეყნება')}
+                  </Button>
                   <Button variant="secondary" onClick={() => void exportPosts('csv')}>Export CSV</Button>
                   <Button variant="secondary" onClick={() => void exportPosts('json')}>Export JSON</Button>
                   <Button variant="secondary" onClick={exportIcal}>Export iCal</Button>
                   <Button variant="secondary" onClick={() => void copyNotionTable()}>Copy Notion Table</Button>
                 </div>
+                {publishStatus && <p className="text-sm text-emerald-300">{publishStatus}</p>}
               </div>
             )}
 

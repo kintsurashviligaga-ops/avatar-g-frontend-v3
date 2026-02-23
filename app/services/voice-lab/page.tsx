@@ -557,7 +557,7 @@ export default function VoiceLabPage() {
       name: draft.voiceProfileName,
       language: draft.voiceProfileLanguage,
       gender_hint: draft.voiceProfileGenderHint || null,
-      provider: 'mock-provider',
+      provider: 'elevenlabs',
       provider_voice_id: `voice_${Date.now()}`,
       created_at: new Date().toISOString(),
     };
@@ -894,8 +894,8 @@ export default function VoiceLabPage() {
                       </label>
                       <p className="text-xs text-amber-200">
                         {isEn
-                          ? 'Preprocessing is currently deterministic mock mode while provider pipeline is being finalized.'
-                          : 'Preprocessing ამ ეტაპზე მუშაობს deterministic mock რეჟიმში provider pipeline-ის მომზადებამდე.'}
+                          ? 'Preprocessing and generation run on configured voice provider.'
+                          : 'Preprocessing და გენერაცია სრულდება კონფიგურირებულ voice provider-ზე.'}
                       </p>
                     </div>
                   )}

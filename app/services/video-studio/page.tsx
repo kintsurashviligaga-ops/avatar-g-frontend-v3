@@ -1,16 +1,48 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Film, Sparkles, Video, Wand2 } from 'lucide-react';
+import { Film, Sparkles, Video, Wand2, Loader2, ExternalLink } from 'lucide-react';
 import SpaceBackground from '@/components/SpaceBackground';
+import { getAccessToken } from '@/lib/auth/client';
+
+type JobState = {
+  id: string;
+  status: 'queued' | 'processing' | 'succeeded' | 'failed';
+  output_json?: {
+    video_url?: string;
+  };
+  error?: string | null;
+};
+
+type VideoHistoryItem = {
+  id: string;
+  title: string;
+  video_url: string | null;
+  status: string;
+  created_at: string;
+};
+
+const SEND_TO_SERVICES = [
+  { href: '/services/social-media', label: 'Send to Social Media' },
+  { href: '/services/marketplace/listings/new', label: 'Send to Marketplace' },
+  { href: '/services/business-agent', label: 'Send to Business Agent' },
+];
 
 export default function VideoStudioPage() {
   const searchParams = useSearchParams();
   const [prompt, setPrompt] = useState('');
+  const [duration, setDuration] = useState('10');
+  const [style, setStyle] = useState('cinematic');
+  const [resolution, setResolution] = useState('1080p');
+  const [job, setJob] = useState<JobState | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [history, setHistory] = useState<VideoHistoryItem[]>([]);
+  const [error, setError] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
 
   useEffect(() => {
@@ -33,11 +65,125 @@ export default function VideoStudioPage() {
     setPrompt(prefill || 'Create a short social reel');
   }, [searchParams]);
 
+  const loadHistory = async () => {
+    const token = await getAccessToken();
+    if (!token) return;
+    const response = await fetch('/api/videos', {
+      headers: { Authorization: `Bearer ${token}` },
+      cache: 'no-store',
+    });
+    if (!response.ok) return;
+    const data = await response.json() as { videos?: VideoHistoryItem[] };
+    setHistory((data.videos ?? []).slice(0, 8));
+  };
+
+  useEffect(() => {
+    void loadHistory();
+  }, []);
+
+  useEffect(() => {
+    if (!job || job.status === 'succeeded' || job.status === 'failed') {
+      return;
+    }
+
+    const interval = window.setInterval(async () => {
+      const token = await getAccessToken();
+      if (!token) return;
+      const response = await fetch(`/api/jobs/${job.id}?autoProcess=1`, {
+        headers: { Authorization: `Bearer ${token}` },
+        cache: 'no-store',
+      });
+      if (!response.ok) return;
+      const data = await response.json() as { job: JobState };
+      setJob(data.job);
+
+      if (data.job.output_json?.video_url) {
+        setPreviewUrl(data.job.output_json.video_url);
+      }
+
+      if (data.job.status === 'succeeded') {
+        setIsGenerating(false);
+        void loadHistory();
+      }
+
+      if (data.job.status === 'failed') {
+        setIsGenerating(false);
+        setError(data.job.error || 'ვიდეოს გენერაცია ვერ შესრულდა');
+      }
+    }, 2500);
+
+    return () => {
+      window.clearInterval(interval);
+    };
+  }, [job]);
+
   const handleGenerate = async () => {
     if (!prompt.trim()) return;
+    setError(null);
     setIsGenerating(true);
-    // TODO: Connect to video generation API
-    setTimeout(() => setIsGenerating(false), 3000);
+
+    const token = await getAccessToken();
+    if (!token) {
+      setIsGenerating(false);
+      setError('ავტორიზაცია საჭიროა ვიდეოს გენერაციისთვის');
+      return;
+    }
+
+    const response = await fetch('/api/video/generate', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        prompt,
+        duration: Number(duration),
+        video_mode: 'prompt',
+        lighting_style: style,
+        resolution,
+      }),
+    });
+
+    const data = await response.json();
+    if (!response.ok) {
+      setIsGenerating(false);
+      setError(data?.error?.message || data?.error || 'ვიდეოს გენერაცია ვერ დაიწყო');
+      return;
+    }
+
+    setJob(data.job as JobState);
+  };
+
+  const cancelJob = async () => {
+    if (!job) return;
+    const token = await getAccessToken();
+    if (!token) return;
+    await fetch(`/api/jobs/${job.id}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ status: 'failed', error: 'Cancelled by user' }),
+    });
+    setIsGenerating(false);
+    setJob({ ...job, status: 'failed', error: 'Cancelled by user' });
+  };
+
+  const retryJob = async () => {
+    if (!job) return;
+    const token = await getAccessToken();
+    if (!token) return;
+    await fetch(`/api/jobs/${job.id}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ status: 'queued', error: null }),
+    });
+    setIsGenerating(true);
+    setJob({ ...job, status: 'queued', error: null });
   };
 
   return (
@@ -94,17 +240,32 @@ export default function VideoStudioPage() {
                       </>
                     )}
                   </Button>
+                  <Button variant="secondary" onClick={cancelJob} disabled={!job || job.status === 'succeeded' || job.status === 'failed'}>
+                    Cancel
+                  </Button>
+                  <Button variant="secondary" onClick={retryJob} disabled={!job || job.status !== 'failed'}>
+                    Retry
+                  </Button>
                 </div>
+
+                {job && (
+                  <p className="mt-3 text-sm text-gray-300">Queue status: {job.status}</p>
+                )}
+                {error && <p className="mt-3 text-sm text-red-300">{error}</p>}
               </Card>
 
               {/* Video Preview */}
               <Card className="p-6 bg-white/5 border-white/10 backdrop-blur-sm mt-6">
                 <h2 className="text-xl font-semibold text-white mb-4">პრევიუ</h2>
                 <div className="aspect-video bg-black/50 rounded-lg flex items-center justify-center border border-white/10">
-                  <div className="text-center">
-                    <Video className="w-16 h-16 text-gray-600 mx-auto mb-3" />
-                    <p className="text-gray-500">შენი ვიდეო აქ გამოჩნდება</p>
-                  </div>
+                  {previewUrl ? (
+                    <video src={previewUrl} controls className="h-full w-full rounded-lg object-cover" />
+                  ) : (
+                    <div className="text-center">
+                      {isGenerating ? <Loader2 className="w-16 h-16 text-violet-400 mx-auto mb-3 animate-spin" /> : <Video className="w-16 h-16 text-gray-600 mx-auto mb-3" />}
+                      <p className="text-gray-500">შენი ვიდეო აქ გამოჩნდება</p>
+                    </div>
+                  )}
                 </div>
               </Card>
             </div>
@@ -116,26 +277,27 @@ export default function VideoStudioPage() {
                 <div className="space-y-4">
                   <div>
                     <label className="block text-sm text-gray-400 mb-2">ხანგრძლივობა</label>
-                    <select className="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-white">
-                      <option>5 წამი</option>
-                      <option>10 წამი</option>
-                      <option>15 წამი</option>
+                    <select value={duration} onChange={(e) => setDuration(e.target.value)} className="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-white">
+                      <option value="5">5 წამი</option>
+                      <option value="10">10 წამი</option>
+                      <option value="15">15 წამი</option>
                     </select>
                   </div>
                   <div>
                     <label className="block text-sm text-gray-400 mb-2">სტილი</label>
-                    <select className="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-white">
-                      <option>კინემატიკური</option>
-                      <option>ანიმაციური</option>
-                      <option>რეალისტური</option>
-                      <option>არტისტული</option>
+                    <select value={style} onChange={(e) => setStyle(e.target.value)} className="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-white">
+                      <option value="cinematic">კინემატიკური</option>
+                      <option value="animated">ანიმაციური</option>
+                      <option value="realistic">რეალისტური</option>
+                      <option value="artistic">არტისტული</option>
                     </select>
                   </div>
                   <div>
-                    <label className="block text-sm text-gray-400 mb-2">გარჩევადობა</label>
-                    <select className="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-white">
-                      <option>1080p</option>
-                      <option>4K</option>
+                    <label className="block text-sm text-gray-400 mb-2">გარჩევადობა (tier-gated)</label>
+                    <select value={resolution} onChange={(e) => setResolution(e.target.value)} className="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-white">
+                      <option value="1080p">1080p (FREE+)</option>
+                      <option value="1440p">1440p (PRO+)</option>
+                      <option value="4k">4K (PREMIUM+)</option>
                     </select>
                   </div>
                 </div>
@@ -145,6 +307,38 @@ export default function VideoStudioPage() {
                 <h3 className="text-lg font-semibold text-white mb-2">კრედიტები</h3>
                 <p className="text-2xl font-bold text-violet-300 mb-1">20 კრედიტი</p>
                 <p className="text-sm text-gray-400">თითო გენერაციაზე</p>
+              </Card>
+
+              <Card className="p-6 bg-white/5 border-white/10 backdrop-blur-sm">
+                <h3 className="text-lg font-semibold text-white mb-3">Send to another service</h3>
+                <div className="space-y-2">
+                  {SEND_TO_SERVICES.map((target) => (
+                    <Link key={target.href} href={`${target.href}?source=video-studio`} className="block">
+                      <Button variant="secondary" className="w-full justify-between">
+                        <span>{target.label}</span>
+                        <ExternalLink className="h-4 w-4" />
+                      </Button>
+                    </Link>
+                  ))}
+                </div>
+              </Card>
+
+              <Card className="p-6 bg-white/5 border-white/10 backdrop-blur-sm">
+                <h3 className="text-lg font-semibold text-white mb-3">Recent Videos</h3>
+                <div className="space-y-2 text-sm">
+                  {history.length === 0 && <p className="text-gray-400">ისტორია ჯერ ცარიელია.</p>}
+                  {history.map((clip) => (
+                    <button
+                      key={clip.id}
+                      type="button"
+                      className="block w-full rounded-lg border border-white/10 bg-black/20 p-2 text-left"
+                      onClick={() => clip.video_url && setPreviewUrl(clip.video_url)}
+                    >
+                      <p className="text-white">{clip.title}</p>
+                      <p className="text-xs text-gray-400">{clip.status} • {new Date(clip.created_at).toLocaleString()}</p>
+                    </button>
+                  ))}
+                </div>
               </Card>
             </div>
           </div>

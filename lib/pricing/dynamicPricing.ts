@@ -36,12 +36,22 @@ export function computeDynamicPrice(
   signals: PricingSignals,
   minMarginBps = 1500
 ): DynamicPriceResult {
+  if (signals.currentMarginBps < minMarginBps * 0.6) {
+    return {
+      newPriceCents: roundToNearest(currentPriceCents, 50),
+      reason: `Maintaining current price to respect ${(minMarginBps / 100).toFixed(1)}% margin floor`,
+      expectedMarginBps: signals.currentMarginBps,
+      confidence: 100,
+      recommendedAction: 'maintain',
+    };
+  }
+
   let adjustmentBps = 0;
   let reason = '';
   let recommendedAction: 'increase' | 'decrease' | 'maintain' = 'maintain';
 
   // Rule 1: Margin below target → Increase price
-  if (signals.currentMarginBps < signals.targetMarginBps && signals.currentMarginBps >= minMarginBps) {
+  if (signals.currentMarginBps < signals.targetMarginBps) {
     const marginGap = signals.targetMarginBps - signals.currentMarginBps;
     adjustmentBps = Math.min(marginGap / 2, 500); // 0.5-5% increase
     reason = `Margin ${(signals.currentMarginBps / 100).toFixed(1)}% below target ${(signals.targetMarginBps / 100).toFixed(1)}%`;
@@ -52,15 +62,19 @@ export function computeDynamicPrice(
   if (signals.inventoryLevel > signals.maxInventory * 0.8) {
     const overstock = signals.inventoryLevel / signals.maxInventory;
     const clearanceAdj = Math.min((overstock - 0.8) * 1000, 800); // 0.8-8% decrease
-    adjustmentBps = Math.min(adjustmentBps - clearanceAdj, -200); // Max 2% price cut
+    adjustmentBps = Math.min(adjustmentBps, -Math.max(clearanceAdj, 200));
     reason = `High inventory (${((signals.inventoryLevel / signals.maxInventory) * 100).toFixed(0)}% of capacity)`;
     recommendedAction = 'decrease';
+  } else if (signals.inventoryLevel < signals.maxInventory * 0.1) {
+    adjustmentBps = Math.max(adjustmentBps, 200);
+    reason = `Low inventory (${((signals.inventoryLevel / signals.maxInventory) * 100).toFixed(0)}% of capacity)`;
+    recommendedAction = 'increase';
   }
 
   // Rule 3: Low conversion → Test lower price
   if (signals.conversionRate < TARGET_CONVERSION_RATE / 2) {
     const conversionGap = TARGET_CONVERSION_RATE - signals.conversionRate;
-    adjustmentBps = Math.min(adjustmentBps - 300, -conversionGap * 50); // 0.3-3% test reduction
+    adjustmentBps = Math.min(adjustmentBps, -Math.max(conversionGap * 50, 300));
     reason = `Low conversion rate ${signals.conversionRate.toFixed(2)}% (target: ${TARGET_CONVERSION_RATE}%)`;
     recommendedAction = 'decrease';
   }
@@ -68,7 +82,7 @@ export function computeDynamicPrice(
   // Rule 4: High conversion → Increase price
   if (signals.conversionRate > TARGET_CONVERSION_RATE * 1.5) {
     const conversionBonus = signals.conversionRate - TARGET_CONVERSION_RATE;
-    adjustmentBps = Math.min(adjustmentBps + conversionBonus * 30, 300); // 0.3-3% increase
+    adjustmentBps = Math.max(adjustmentBps, Math.min(conversionBonus * 30, 300));
     reason = `High conversion rate ${signals.conversionRate.toFixed(2)}% (premium pricing opportunity)`;
     recommendedAction = 'increase';
   }
@@ -93,10 +107,7 @@ export function computeDynamicPrice(
   // Ensure new price respects minimum margin
   // Assuming: newMargin = (newPrice - costs - fees) / newPrice
   // For safety, we validate margin is still above minimum
-  const expectedMarginBps = Math.max(
-    Math.round(signals.currentMarginBps + adjustmentBps * 0.5), // Conservative estimate
-    minMarginBps
-  );
+  const expectedMarginBps = Math.round(signals.currentMarginBps + adjustmentBps * 0.5);
 
   // If calculated margin would drop below minimum, revert adjustment
   if (expectedMarginBps < minMarginBps) {
@@ -108,6 +119,10 @@ export function computeDynamicPrice(
 
   // Round to nearest 50 cents (standard pricing format)
   newPriceCents = roundToNearest(newPriceCents, 50);
+
+  if (!reason) {
+    reason = 'No strong signal detected; maintaining current strategy';
+  }
 
   return {
     newPriceCents,

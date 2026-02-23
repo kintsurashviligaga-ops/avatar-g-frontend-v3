@@ -189,7 +189,9 @@ export default function MusicStudioPage() {
         return tracks;
       }
     } catch (error) {
-      console.error('Failed to load tracks:', error);
+      if (process.env.NODE_ENV === 'development') {
+        console.error('Failed to load tracks:', error);
+      }
     }
     return [];
   }, [loadLibrary]);
@@ -247,7 +249,9 @@ export default function MusicStudioPage() {
         }
       }
     } catch (error) {
-      console.error('Generation error:', error);
+      if (process.env.NODE_ENV === 'development') {
+        console.error('Generation error:', error);
+      }
     }
   };
 
@@ -614,7 +618,9 @@ export default function MusicStudioPage() {
                         ? { response: data.data.response, provider: data.data.provider }
                         : null;
                     } catch (error) {
-                      console.error('Chat error:', error);
+                      if (process.env.NODE_ENV === 'development') {
+                        console.error('Chat error:', error);
+                      }
                       return null;
                     } finally {
                       setIsChatLoading(false);

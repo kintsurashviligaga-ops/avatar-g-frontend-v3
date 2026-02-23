@@ -10,8 +10,8 @@ import type { ProductCandidate, DecisionResult, Decision, MarginThresholds } fro
 
 const DEFAULT_THRESHOLDS: MarginThresholds = {
   standard: 1500, // 15%
-  dropshipping: 2500, // 25%
-  digital: 7000, // 70%
+  dropshipping: 1500, // 15%
+  digital: 7500, // 75%
 };
 
 /**

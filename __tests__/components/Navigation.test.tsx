@@ -9,8 +9,8 @@ describe('Navigation', () => {
 
   it('renders navigation links', () => {
     render(<Navigation />)
-    expect(screen.getByText('Home')).toBeInTheDocument()
-    expect(screen.getByText('Dashboard')).toBeInTheDocument()
+    expect(screen.getAllByText('Home').length).toBeGreaterThan(0)
+    expect(document.querySelector('a[href="/dashboard"]')).toBeInTheDocument()
   })
 
   it('shows create identity button when no identity', () => {
