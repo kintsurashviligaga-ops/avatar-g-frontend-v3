@@ -66,6 +66,8 @@ export function Hero({ locale }: HeroProps) {
             </div>
           ))}
         </div>
+
+        <span className="sr-only">BUILD VERSION: {process.env.NEXT_PUBLIC_BUILD_ID}</span>
       </div>
     </section>
   );
