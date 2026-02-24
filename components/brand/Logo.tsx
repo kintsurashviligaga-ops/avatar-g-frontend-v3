@@ -1,7 +1,6 @@
-import { Rocket } from 'lucide-react'
 import Link from 'next/link'
+import Image from 'next/image'
 import { cn } from '@/lib/utils'
-import { colors, shadows } from '@/lib/design/tokens'
 
 interface LogoProps {
   variant?: 'full' | 'icon' | 'text'
@@ -13,28 +12,24 @@ interface LogoProps {
 
 const sizeConfig = {
   sm: {
-    icon: 'w-6 h-6',
     container: 'w-8 h-8',
     text: 'text-sm',
     tagline: 'text-[10px]',
     gap: 'gap-2'
   },
   md: {
-    icon: 'w-6 h-6',
     container: 'w-12 h-12',
     text: 'text-xl',
     tagline: 'text-xs',
     gap: 'gap-3'
   },
   lg: {
-    icon: 'w-8 h-8',
     container: 'w-16 h-16',
     text: 'text-2xl',
     tagline: 'text-sm',
     gap: 'gap-4'
   },
   xl: {
-    icon: 'w-10 h-10',
     container: 'w-20 h-20',
     text: 'text-3xl',
     tagline: 'text-base',
@@ -52,19 +47,15 @@ export function Logo({
   const config = sizeConfig[size]
 
   const LogoIcon = () => (
-    <div className="relative">
-      <div
-        className={cn(
-          config.container,
-          'rounded-2xl flex items-center justify-center shadow-lg transition-all duration-300 hover:shadow-2xl'
-        )}
-        style={{
-          background: colors.gradients.cyanToBlue,
-          boxShadow: shadows.glow.cyan,
-        }}
-      >
-        <Rocket className={cn(config.icon, 'text-white')} />
-      </div>
+    <div className={cn(config.container, 'relative overflow-hidden rounded-xl')}>
+      <Image
+        src="/brand/logo.png"
+        alt="Avatar G"
+        fill
+        className="object-contain"
+        sizes="80px"
+        priority
+      />
     </div>
   )
 

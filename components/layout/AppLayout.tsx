@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { motion } from 'framer-motion';
+import { Menu, X } from 'lucide-react';
 import { colors } from '@/lib/design/tokens';
 import { Logo } from '@/components/brand/Logo';
 import { useSubscriptionStatus } from '@/hooks/useSubscriptionStatus';
@@ -35,6 +36,21 @@ export function Navbar() {
   const [supabase, setSupabase] = useState<ReturnType<typeof createBrowserClient> | null>(null);
   const locale = getLocaleFromPathname(pathname);
   const toLocale = (path: string) => withLocalePath(path, locale);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+  const languageOptions: Array<{ code: 'ka' | 'ru' | 'en'; label: string }> = [
+    { code: 'ka', label: 'KA' },
+    { code: 'ru', label: 'RU' },
+    { code: 'en', label: 'EN' },
+  ];
+
+  const switchLocale = (nextLocale: 'ka' | 'ru' | 'en') => {
+    const normalizedPath = pathname || '/';
+    const withoutLocale = normalizedPath.replace(/^\/(en|ka|ru)(?=\/|$)/, '');
+    const targetPath = `/${nextLocale}${withoutLocale || ''}`;
+    router.push(targetPath);
+    setIsMobileMenuOpen(false);
+  };
 
   useEffect(() => {
     try {
@@ -141,7 +157,7 @@ export function Navbar() {
     >
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between">
         {/* Logo */}
-        <Logo variant="full" size="md" href="/" />
+        <Logo variant="full" size="md" href={toLocale('/')} />
 
         {/* Desktop Nav */}
         <div className="hidden md:flex items-center gap-8">
@@ -164,6 +180,23 @@ export function Navbar() {
         </div>
 
         <div className="hidden md:flex items-center gap-3">
+          <div className="flex items-center rounded-lg border border-white/10 bg-white/5 p-1">
+            {languageOptions.map((language) => (
+              <button
+                key={language.code}
+                onClick={() => switchLocale(language.code)}
+                className={`rounded-md px-2 py-1 text-xs font-semibold transition ${
+                  locale === language.code
+                    ? 'bg-cyan-500/30 text-cyan-100'
+                    : 'text-gray-300 hover:text-white'
+                }`}
+                aria-label={`Switch language to ${language.label}`}
+              >
+                {language.label}
+              </button>
+            ))}
+          </div>
+
           {isAffiliate && (
             <span className={`px-3 py-1 rounded-full text-xs font-semibold border ${
               isActive
@@ -192,7 +225,7 @@ export function Navbar() {
                 className="px-6 py-2 rounded-lg font-medium text-sm border border-white/20 bg-white/10 disabled:opacity-60"
                 style={{ color: colors.text.primary }}
               >
-                {authBusy ? 'Signing out...' : 'Logout'}
+                {authBusy ? `${t('logout')}...` : t('logout')}
               </motion.button>
             </>
           ) : (
@@ -206,11 +239,79 @@ export function Navbar() {
                 color: colors.text.primary,
               }}
             >
-              Login
+              {t('login')}
             </motion.button>
           )}
         </div>
+
+        <button
+          onClick={() => setIsMobileMenuOpen((prev) => !prev)}
+          className="md:hidden p-2 text-gray-300 hover:text-white"
+          aria-label="Toggle navigation menu"
+        >
+          {isMobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
+        </button>
       </div>
+
+      {isMobileMenuOpen && (
+        <div className="md:hidden border-t border-white/10 bg-[#05070A]/95 px-4 py-4">
+          <div className="mb-4 flex items-center gap-2">
+            {languageOptions.map((language) => (
+              <button
+                key={language.code}
+                onClick={() => switchLocale(language.code)}
+                className={`rounded-md px-3 py-1.5 text-xs font-semibold transition ${
+                  locale === language.code
+                    ? 'bg-cyan-500/30 text-cyan-100'
+                    : 'bg-white/5 text-gray-300 hover:text-white'
+                }`}
+              >
+                {language.label}
+              </button>
+            ))}
+          </div>
+
+          <div className="space-y-2">
+            {navItems.map((item) => (
+              <Link
+                key={item.href}
+                href={item.href}
+                onClick={() => setIsMobileMenuOpen(false)}
+                className={`block rounded-lg px-3 py-2 text-sm transition ${
+                  pathname === item.href ? 'bg-cyan-500/20 text-cyan-200' : 'text-gray-300 hover:bg-white/5 hover:text-white'
+                }`}
+              >
+                {t(item.labelKey)}
+              </Link>
+            ))}
+          </div>
+
+          <div className="mt-4 border-t border-white/10 pt-4">
+            {userEmail ? (
+              <div className="space-y-2">
+                <div className="truncate text-xs text-gray-300">{userEmail}</div>
+                <button
+                  onClick={handleLogout}
+                  disabled={authBusy}
+                  className="w-full rounded-lg border border-white/20 bg-white/10 px-4 py-2 text-sm"
+                >
+                  {authBusy ? `${t('logout')}...` : t('logout')}
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => {
+                  setIsMobileMenuOpen(false);
+                  router.push(`/auth?next=${encodeURIComponent(toLocale('/workspace'))}`);
+                }}
+                className="w-full rounded-lg bg-gradient-to-r from-cyan-500 to-blue-600 px-4 py-2 text-sm font-semibold text-white"
+              >
+                {t('login')}
+              </button>
+            )}
+          </div>
+        </div>
+      )}
 
       {isPastDue && (
         <div className="border-t border-amber-500/30 bg-amber-500/10 px-4 py-3">
@@ -237,6 +338,44 @@ export function Navbar() {
 }
 
 export function Footer() {
+  const pathname = usePathname();
+  const locale = getLocaleFromPathname(pathname);
+
+  const footerContent = {
+    en: {
+      sections: [
+        { title: 'Product', links: ['Features', 'Pricing', 'API'] },
+        { title: 'Company', links: ['About', 'Blog', 'Careers'] },
+        { title: 'Legal', links: ['Privacy', 'Terms', 'Security'] },
+        { title: 'Follow', links: ['Twitter', 'GitHub', 'Discord'] },
+      ],
+      copyright: '© 2024 Avatar G. All rights reserved.',
+      builtFor: 'Built with ❤️ for creators',
+    },
+    ka: {
+      sections: [
+        { title: 'პროდუქტი', links: ['ფუნქციები', 'ფასები', 'API'] },
+        { title: 'კომპანია', links: ['ჩვენს შესახებ', 'ბლოგი', 'ვაკანსიები'] },
+        { title: 'იურიდიული', links: ['კონფიდენციალურობა', 'წესები', 'უსაფრთხოება'] },
+        { title: 'გამოგვყევი', links: ['Twitter', 'GitHub', 'Discord'] },
+      ],
+      copyright: '© 2024 Avatar G. ყველა უფლება დაცულია.',
+      builtFor: 'შექმნილია ❤️ შემქმნელებისთვის',
+    },
+    ru: {
+      sections: [
+        { title: 'Продукт', links: ['Функции', 'Тарифы', 'API'] },
+        { title: 'Компания', links: ['О нас', 'Блог', 'Карьера'] },
+        { title: 'Право', links: ['Конфиденциальность', 'Условия', 'Безопасность'] },
+        { title: 'Соцсети', links: ['Twitter', 'GitHub', 'Discord'] },
+      ],
+      copyright: '© 2024 Avatar G. Все права защищены.',
+      builtFor: 'Создано с ❤️ для креаторов',
+    },
+  };
+
+  const content = footerContent[locale as 'en' | 'ka' | 'ru'] ?? footerContent.ka;
+
   return (
     <footer
       className="border-t mt-20 py-12"
@@ -244,94 +383,28 @@ export function Footer() {
     >
       <div className="max-w-7xl mx-auto px-4 sm:px-6">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-8 mb-8">
-          <div>
-            <h3 className="font-semibold mb-4">პროდუქტი</h3>
-            <ul className="space-y-2 text-sm text-gray-400">
-              <li>
-                <a href="#" className="hover:text-white transition-colors">
-                  ფუნქციები
-                </a>
-              </li>
-              <li>
-                <a href="#" className="hover:text-white transition-colors">
-                  ფასები
-                </a>
-              </li>
-              <li>
-                <a href="#" className="hover:text-white transition-colors">
-                  API
-                </a>
-              </li>
-            </ul>
-          </div>
-          <div>
-            <h3 className="font-semibold mb-4">კომპანია</h3>
-            <ul className="space-y-2 text-sm text-gray-400">
-              <li>
-                <a href="#" className="hover:text-white transition-colors">
-                  ჩვენს შესახებ
-                </a>
-              </li>
-              <li>
-                <a href="#" className="hover:text-white transition-colors">
-                  ბლოგი
-                </a>
-              </li>
-              <li>
-                <a href="#" className="hover:text-white transition-colors">
-                  ვაკანსიები
-                </a>
-              </li>
-            </ul>
-          </div>
-          <div>
-            <h3 className="font-semibold mb-4">იურიდიული</h3>
-            <ul className="space-y-2 text-sm text-gray-400">
-              <li>
-                <a href="#" className="hover:text-white transition-colors">
-                  კონფიდენციალურობა
-                </a>
-              </li>
-              <li>
-                <a href="#" className="hover:text-white transition-colors">
-                  წესები
-                </a>
-              </li>
-              <li>
-                <a href="#" className="hover:text-white transition-colors">
-                  უსაფრთხოება
-                </a>
-              </li>
-            </ul>
-          </div>
-          <div>
-            <h3 className="font-semibold mb-4">გამოგვყევი</h3>
-            <ul className="space-y-2 text-sm text-gray-400">
-              <li>
-                <a href="#" className="hover:text-white transition-colors">
-                  Twitter
-                </a>
-              </li>
-              <li>
-                <a href="#" className="hover:text-white transition-colors">
-                  GitHub
-                </a>
-              </li>
-              <li>
-                <a href="#" className="hover:text-white transition-colors">
-                  Discord
-                </a>
-              </li>
-            </ul>
-          </div>
+          {content.sections.map((section) => (
+            <div key={section.title}>
+              <h3 className="font-semibold mb-4">{section.title}</h3>
+              <ul className="space-y-2 text-sm text-gray-400">
+                {section.links.map((link) => (
+                  <li key={link}>
+                    <a href="#" className="hover:text-white transition-colors">
+                      {link}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
         </div>
 
         <div
           className="border-t pt-8 flex flex-col md:flex-row items-center justify-between text-sm text-gray-400"
           style={{ borderColor: colors.border.light }}
         >
-          <p>&copy; 2024 Avatar G. ყველა უფლება დაცულია.</p>
-          <p>შექმნილია ❤️ შემქმნელებისთვის</p>
+          <p>{content.copyright}</p>
+          <p>{content.builtFor}</p>
         </div>
       </div>
     </footer>

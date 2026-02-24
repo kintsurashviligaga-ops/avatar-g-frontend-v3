@@ -19,7 +19,7 @@ export const metadata: Metadata = {
     url: metadataBaseUrl,
     siteName: "Avatar G",
     images: [{
-      url: "/og-image.png",
+      url: "/brand/logo.png",
       width: 1200,
       height: 630,
       alt: "Avatar G - Premium AI Studio",
@@ -29,7 +29,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "Avatar G - Premium AI Studio",
     description: "Cinematic AI studio for avatars, video, music, and voice.",
-    images: ["/og-image.png"],
+    images: ["/brand/logo.png"],
   },
 };
 

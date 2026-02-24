@@ -8,6 +8,11 @@ export interface ServiceDefinition {
   icon: string;
   route: string;
   enabled: boolean;
+  localized?: {
+    en: { name: string; description: string };
+    ka: { name: string; description: string };
+    ru: { name: string; description: string };
+  };
 }
 
 export const SERVICE_REGISTRY: ServiceDefinition[] = [
@@ -21,6 +26,20 @@ export const SERVICE_REGISTRY: ServiceDefinition[] = [
     icon: '🧭',
     route: '/services/workflow-builder',
     enabled: true,
+    localized: {
+      en: {
+        name: 'Workflow Builder',
+        description: 'Design chained automation pipelines across services with queue-based orchestration.',
+      },
+      ka: {
+        name: 'Workflow Builder',
+        description: 'დაგეგმე მრავალსაფეხურიანი ავტომატიზაციები ერთიან სამუშაო ნაკადად.',
+      },
+      ru: {
+        name: 'Workflow Builder',
+        description: 'Проектируйте многошаговые автоматизации в едином рабочем потоке.',
+      },
+    },
   },
   {
     slug: 'online-shop',
@@ -32,6 +51,20 @@ export const SERVICE_REGISTRY: ServiceDefinition[] = [
     icon: '🛍️',
     route: '/services/online-shop',
     enabled: true,
+    localized: {
+      en: {
+        name: 'Online Shop',
+        description: 'Launch and operate your commerce storefront with fulfillment-ready workflows.',
+      },
+      ka: {
+        name: 'Online Shop',
+        description: 'გაუშვი ონლაინ მაღაზია და მართე შეკვეთები მზა პროცესებით.',
+      },
+      ru: {
+        name: 'Online Shop',
+        description: 'Запустите онлайн-магазин и управляйте заказами через готовые процессы.',
+      },
+    },
   },
   {
     slug: 'avatar-builder',
@@ -43,6 +76,20 @@ export const SERVICE_REGISTRY: ServiceDefinition[] = [
     icon: '🧑',
     route: '/services/avatar-builder',
     enabled: true,
+    localized: {
+      en: {
+        name: 'Avatar Builder',
+        description: 'Create and manage your premium digital identity.',
+      },
+      ka: {
+        name: 'Avatar Builder',
+        description: 'შექმენი და მართე შენი პრემიუმ ციფრული იდენტობა.',
+      },
+      ru: {
+        name: 'Avatar Builder',
+        description: 'Создавайте и управляйте своей цифровой идентичностью.',
+      },
+    },
   },
   {
     slug: 'music-studio',
@@ -54,6 +101,20 @@ export const SERVICE_REGISTRY: ServiceDefinition[] = [
     icon: '🎵',
     route: '/services/music-studio',
     enabled: true,
+    localized: {
+      en: {
+        name: 'Music Studio',
+        description: 'Generate songs, stems, and production-ready audio drafts.',
+      },
+      ka: {
+        name: 'Music Studio',
+        description: 'შექმენი მუსიკა, სტემები და სტუდიური ხარისხის აუდიო.',
+      },
+      ru: {
+        name: 'Music Studio',
+        description: 'Создавайте музыку, стемы и аудио-заготовки студийного уровня.',
+      },
+    },
   },
   {
     slug: 'video-studio',
@@ -65,6 +126,20 @@ export const SERVICE_REGISTRY: ServiceDefinition[] = [
     icon: '🎬',
     route: '/services/video-studio',
     enabled: true,
+    localized: {
+      en: {
+        name: 'Video Studio',
+        description: 'Produce cinematic video sequences from guided prompts.',
+      },
+      ka: {
+        name: 'Video Studio',
+        description: 'შექმენი კინემატოგრაფიული ვიდეო სცენები ტექსტური მითითებებით.',
+      },
+      ru: {
+        name: 'Video Studio',
+        description: 'Создавайте кинематографичные видеосцены по текстовым инструкциям.',
+      },
+    },
   },
   {
     slug: 'media-production',
@@ -76,6 +151,20 @@ export const SERVICE_REGISTRY: ServiceDefinition[] = [
     icon: '📽️',
     route: '/services/media-production',
     enabled: true,
+    localized: {
+      en: {
+        name: 'Media Production',
+        description: 'Build complete multimedia outputs for campaigns and storytelling.',
+      },
+      ka: {
+        name: 'Media Production',
+        description: 'მოამზადე სრულფასოვანი მედია-კონტენტი კამპანიებისთვის.',
+      },
+      ru: {
+        name: 'Media Production',
+        description: 'Создавайте полноценный медиаконтент для кампаний и сторителлинга.',
+      },
+    },
   },
   {
     slug: 'visual-intelligence',
@@ -87,6 +176,20 @@ export const SERVICE_REGISTRY: ServiceDefinition[] = [
     icon: '🧠',
     route: '/services/visual-intelligence',
     enabled: true,
+    localized: {
+      en: {
+        name: 'Visual Intelligence',
+        description: 'Analyze and orchestrate visual assets with AI-assisted decision support.',
+      },
+      ka: {
+        name: 'Visual Intelligence',
+        description: 'გააანალიზე ვიზუალური მასალები და მიიღე AI-ზე დაფუძნებული გადაწყვეტილებები.',
+      },
+      ru: {
+        name: 'Visual Intelligence',
+        description: 'Анализируйте визуальные материалы и принимайте решения с помощью AI.',
+      },
+    },
   },
   {
     slug: 'image-creator',
@@ -98,6 +201,20 @@ export const SERVICE_REGISTRY: ServiceDefinition[] = [
     icon: '🖼️',
     route: '/services/image-creator',
     enabled: true,
+    localized: {
+      en: {
+        name: 'Image Creator',
+        description: 'Generate design-ready visuals and concept imagery at scale.',
+      },
+      ka: {
+        name: 'Image Creator',
+        description: 'შექმენი დიზაინისთვის მზა ვიზუალები და კონცეპტ-გამოსახულებები.',
+      },
+      ru: {
+        name: 'Image Creator',
+        description: 'Генерируйте готовые к дизайну визуалы и концепт-изображения.',
+      },
+    },
   },
   {
     slug: 'agent-g',
@@ -109,6 +226,20 @@ export const SERVICE_REGISTRY: ServiceDefinition[] = [
     icon: '🤖',
     route: '/services/agent-g',
     enabled: true,
+    localized: {
+      en: {
+        name: 'Agent G',
+        description: 'Coordinate autonomous workflows across your AI workspace.',
+      },
+      ka: {
+        name: 'Agent G',
+        description: 'მართე ავტონომიური პროცესები შენს AI სამუშაო გარემოში.',
+      },
+      ru: {
+        name: 'Agent G',
+        description: 'Координируйте автономные процессы в вашем AI-рабочем пространстве.',
+      },
+    },
   },
   {
     slug: 'social-media-manager',
@@ -120,6 +251,20 @@ export const SERVICE_REGISTRY: ServiceDefinition[] = [
     icon: '📣',
     route: '/services/social-media-manager',
     enabled: true,
+    localized: {
+      en: {
+        name: 'Social Media Manager',
+        description: 'Create social content pipelines and publishing-ready outputs.',
+      },
+      ka: {
+        name: 'Social Media Manager',
+        description: 'შექმენი სოციალური მედიის კონტენტი და გამოაქვეყნე ავტომატურად.',
+      },
+      ru: {
+        name: 'Social Media Manager',
+        description: 'Создавайте контент для соцсетей и публикуйте его автоматически.',
+      },
+    },
   },
   {
     slug: 'prompt-builder',
@@ -131,6 +276,20 @@ export const SERVICE_REGISTRY: ServiceDefinition[] = [
     icon: '🧩',
     route: '/services/prompt-builder',
     enabled: true,
+    localized: {
+      en: {
+        name: 'Prompt Builder',
+        description: 'Design reusable prompt systems for consistent AI performance.',
+      },
+      ka: {
+        name: 'Prompt Builder',
+        description: 'ააგე მრავალჯერ გამოყენებადი prompt სისტემები სტაბილური შედეგებისთვის.',
+      },
+      ru: {
+        name: 'Prompt Builder',
+        description: 'Создавайте переиспользуемые промпт-системы для стабильных результатов.',
+      },
+    },
   },
   {
     slug: 'text-intelligence',
@@ -142,6 +301,20 @@ export const SERVICE_REGISTRY: ServiceDefinition[] = [
     icon: '📝',
     route: '/services/text-intelligence',
     enabled: true,
+    localized: {
+      en: {
+        name: 'Text Intelligence',
+        description: 'Generate, optimize, and analyze strategic text content.',
+      },
+      ka: {
+        name: 'Text Intelligence',
+        description: 'შექმენი, გააუმჯობესე და გააანალიზე სტრატეგიული ტექსტური კონტენტი.',
+      },
+      ru: {
+        name: 'Text Intelligence',
+        description: 'Создавайте, оптимизируйте и анализируйте стратегический текстовый контент.',
+      },
+    },
   },
   {
     slug: 'photo-studio',
@@ -153,49 +326,39 @@ export const SERVICE_REGISTRY: ServiceDefinition[] = [
     icon: '📸',
     route: '/services/photo-studio',
     enabled: true,
-  },
-  {
-    slug: 'marketplace',
-    title: 'Marketplace',
-    href: '/services/marketplace',
-    id: 'marketplace',
-    name: 'Marketplace',
-    description: 'Manage listings, discovery, and conversion paths in one place.',
-    icon: '🏪',
-    route: '/services/marketplace',
-    enabled: true,
-  },
-  {
-    slug: 'business-agent',
-    title: 'Business Agent',
-    href: '/services/business-agent',
-    id: 'business-agent',
-    name: 'Business Agent',
-    description: 'Automate business operations and growth workflows.',
-    icon: '💼',
-    route: '/services/business-agent',
-    enabled: true,
-  },
-  {
-    slug: 'game-creator',
-    title: 'Game Creator',
-    href: '/services/game-creator',
-    id: 'game-creator',
-    name: 'Game Creator',
-    description: 'Prototype playable interactive concepts with AI assistance.',
-    icon: '🎮',
-    route: '/services/game-creator',
-    enabled: true,
-  },
-  {
-    slug: 'voice-lab',
-    title: 'Voice Lab',
-    href: '/services/voice-lab',
-    id: 'voice-lab',
-    name: 'Voice Lab',
-    description: 'Build speech outputs, voice clones, and audio narration flows.',
-    icon: '🎙️',
-    route: '/services/voice-lab',
-    enabled: true,
+    localized: {
+      en: {
+        name: 'Photo Studio',
+        description: 'Create editorial photo outputs and campaign image sets.',
+      },
+      ka: {
+        name: 'Photo Studio',
+        description: 'დაამზადე სარედაქციო ფოტოკონტენტი და კამპანიური ვიზუალები.',
+      },
+      ru: {
+        name: 'Photo Studio',
+        description: 'Создавайте редакционный фотоконтент и визуалы для кампаний.',
+      },
+    },
   },
 ];
+
+export function getLocalizedServices(locale: string): ServiceDefinition[] {
+  if (!['en', 'ka', 'ru'].includes(locale)) {
+    return SERVICE_REGISTRY;
+  }
+
+  return SERVICE_REGISTRY.map((service) => {
+    const localizedEntry = service.localized?.[locale as 'en' | 'ka' | 'ru'];
+    if (!localizedEntry) {
+      return service;
+    }
+
+    return {
+      ...service,
+      title: localizedEntry.name,
+      name: localizedEntry.name,
+      description: localizedEntry.description,
+    };
+  });
+}

@@ -24,61 +24,189 @@ type Plan = {
   popular?: boolean;
 };
 
-const finalPlanOrder: [Plan, Plan, Plan, Plan] = [
-  {
-    id: 'free',
-    icon: '🟢',
-    name: 'უფასო',
-    priceMonthly: 0,
-    tag: 'დასაწყებად',
-    features: ['ძირითადი ფუნქციები', 'შეზღუდული გამოყენება', 'სტანდარტული სიჩქარე'],
-    cta: 'უფასოდ დაწყება',
-    reassurance: 'არ არის საჭირო ბარათი',
-  },
-  {
-    id: 'basic',
-    icon: '🔵',
-    name: 'Basic',
-    priceMonthly: 39,
-    tag: 'ყოველდღიური გამოყენებისთვის',
-    features: ['გაზრდილი ლიმიტები', 'სწრაფი დამუშავება', 'მეტი სერვისი', 'ელფოსტით მხარდაჭერა'],
-    cta: 'არჩევა',
-    reassurance: 'საუკეთესო არჩევანი მცირე ბიზნესისთვის',
-    popular: true,
-  },
-  {
-    id: 'premium',
-    icon: '🟣',
-    name: 'Premium',
-    priceMonthly: 150,
-    tag: 'პროფესიონალებისთვის',
-    features: ['მაღალი ლიმიტები', 'პრიორიტეტული სიჩქარე', 'გაფართოებული შესაძლებლობები', 'პრიორიტეტული მხარდაჭერა'],
-    cta: 'Premium არჩევა',
-  },
-  {
-    id: 'agentg',
-    icon: '🟡',
-    name: 'Agent G Full',
-    priceMonthly: 500,
-    tag: 'სრული ავტომატიზაცია',
-    features: ['შეუზღუდავი გამოყენება', 'სრული AI აგენტი', 'მაქსიმალური წარმადობა', 'ინდივიდუალური მხარდაჭერა'],
-    cta: 'სრული პაკეტის არჩევა',
-  },
-];
-
-const anchorPlanOrder: Plan[] = [
-  finalPlanOrder.find((plan) => plan.id === 'agentg')!,
-  finalPlanOrder.find((plan) => plan.id === 'premium')!,
-  finalPlanOrder.find((plan) => plan.id === 'basic')!,
-  finalPlanOrder.find((plan) => plan.id === 'free')!,
-];
-
 export default function HomePage() {
   const router = useRouter();
   const params = useParams<{ locale: string }>();
   const locale = params.locale;
   const [interval, setInterval] = useState<'monthly' | 'yearly'>('monthly');
   const [showAnchorOrder, setShowAnchorOrder] = useState(true);
+
+  const pageContent = {
+    en: {
+      painTitle: 'Time gets wasted. Results are inconsistent.',
+      painText: 'Too many manual steps, fragmented workflows, and unstable quality.',
+      solutionTitle: 'Solution',
+      solutionText: 'Avatar G automates and orchestrates your process so you can focus on outcomes.',
+      socialProofTitle: 'Used by professionals',
+      socialProofItems: ['Businesses', 'Agencies', 'Creators', 'Startups'],
+      metrics: ['1000+ completed projects', '95% customer satisfaction'],
+      safeStartTitle: 'Start safely',
+      safeStartItems: ['Free to start', 'Easy cancellation', 'Data protection', 'Transparent pricing'],
+      pricingTitle: 'Choose your plan',
+      pricingSubtitle: 'Start free and scale features as needed.',
+      monthly: 'Monthly',
+      yearly: 'Yearly (save 20%)',
+      yearlySavings: 'Yearly savings are applied compared to monthly pricing.',
+      cycleMonthly: 'month',
+      cycleYearly: 'year',
+      anchorHint: 'Higher-tier package appears first for comparison context.',
+      popular: 'Most popular',
+      agentTitle: 'Agent G — your personal AI partner',
+      agentText: 'Plans, creates, and manages workflows for you. Built for business growth.',
+      agentCta: 'Use Agent G',
+      agentSteps: ['Task planning', 'Automatic content creation', 'Result management and optimization'],
+      enterpriseTitle: 'Enterprise solution for businesses',
+      enterpriseText: 'Scalable AI infrastructure with multi-user support and high performance.',
+      enterpriseItems: ['Multi-tenant architecture', 'White-label support', 'High-load operations', 'Security standards'],
+      plans: {
+        free: {
+          name: 'Free', tag: 'To get started', features: ['Core features', 'Limited usage', 'Standard speed'], cta: 'Start free', reassurance: 'No card required'
+        },
+        basic: {
+          name: 'Basic', tag: 'For daily use', features: ['Higher limits', 'Faster processing', 'More services', 'Email support'], cta: 'Choose Basic', reassurance: 'Best for small businesses'
+        },
+        premium: {
+          name: 'Premium', tag: 'For professionals', features: ['High limits', 'Priority speed', 'Advanced capabilities', 'Priority support'], cta: 'Choose Premium'
+        },
+        agentg: {
+          name: 'Agent G Full', tag: 'Full automation', features: ['Unlimited usage', 'Full AI agent', 'Maximum performance', 'Dedicated support'], cta: 'Choose full package'
+        },
+      },
+    },
+    ka: {
+      painTitle: 'დრო იკარგება. შედეგი არ არის საკმარისი.',
+      painText: 'ბევრი ნაბიჯი ხელით კეთდება, პროცესები იშლება და ხარისხი სტაბილური არ არის.',
+      solutionTitle: 'გამოსავალი',
+      solutionText: 'Avatar G ავტომატურად ქმნის და მართავს პროცესებს, რომ შენ კონცენტრირდე მთავარზე.',
+      socialProofTitle: 'გამოიყენება პროფესიონალების მიერ',
+      socialProofItems: ['ბიზნესები', 'სააგენტოები', 'კონტენტის შემქმნელები', 'სტარტაპები'],
+      metrics: ['1000+ შექმნილი პროექტი', '95% კმაყოფილი მომხმარებელი'],
+      safeStartTitle: 'დაიწყე უსაფრთხოდ',
+      safeStartItems: ['უფასო დაწყება', 'მარტივი გაუქმება', 'მონაცემთა დაცვა', 'გამჭვირვალე ტარიფები'],
+      pricingTitle: 'აირჩიე შენი ტარიფი',
+      pricingSubtitle: 'დაიწყე უფასოდ და გაზარდე შესაძლებლობები საჭიროების მიხედვით.',
+      monthly: 'თვეში',
+      yearly: 'წლიურად (დაზოგე 20%)',
+      yearlySavings: 'თვიურ გეგმასთან შედარებით წლიური დაზოგვა გათვალისწინებულია.',
+      cycleMonthly: 'თვეში',
+      cycleYearly: 'წელიწადში',
+      anchorHint: 'საწყისი შედარებისთვის პირველ რიგში ნაჩვენებია მაღალი პაკეტი.',
+      popular: 'ყველაზე პოპულარული',
+      agentTitle: 'Agent G — შენი პირადი AI პარტნიორი',
+      agentText: 'გეგმავს, ქმნის და მართავს პროცესებს შენს მაგივრად. შექმნილია ბიზნესის ზრდისთვის.',
+      agentCta: 'Agent G-ის გამოყენება',
+      agentSteps: ['დავალების დაგეგმვა', 'კონტენტის ავტომატური შექმნა', 'შედეგების მართვა და გაუმჯობესება'],
+      enterpriseTitle: 'Enterprise გადაწყვეტილება ბიზნესებისთვის',
+      enterpriseText: 'მასშტაბირებადი AI ინფრასტრუქტურა მრავალმომხმარებლიანი მხარდაჭერით და მაღალი წარმადობით.',
+      enterpriseItems: ['Multi-tenant არქიტექტურა', 'White-label მხარდაჭერა', 'მაღალი დატვირთვის მართვა', 'უსაფრთხოების სტანდარტები'],
+      plans: {
+        free: {
+          name: 'უფასო', tag: 'დასაწყებად', features: ['ძირითადი ფუნქციები', 'შეზღუდული გამოყენება', 'სტანდარტული სიჩქარე'], cta: 'უფასოდ დაწყება', reassurance: 'არ არის საჭირო ბარათი'
+        },
+        basic: {
+          name: 'Basic', tag: 'ყოველდღიური გამოყენებისთვის', features: ['გაზრდილი ლიმიტები', 'სწრაფი დამუშავება', 'მეტი სერვისი', 'ელფოსტით მხარდაჭერა'], cta: 'არჩევა', reassurance: 'საუკეთესო არჩევანი მცირე ბიზნესისთვის'
+        },
+        premium: {
+          name: 'Premium', tag: 'პროფესიონალებისთვის', features: ['მაღალი ლიმიტები', 'პრიორიტეტული სიჩქარე', 'გაფართოებული შესაძლებლობები', 'პრიორიტეტული მხარდაჭერა'], cta: 'Premium არჩევა'
+        },
+        agentg: {
+          name: 'Agent G Full', tag: 'სრული ავტომატიზაცია', features: ['შეუზღუდავი გამოყენება', 'სრული AI აგენტი', 'მაქსიმალური წარმადობა', 'ინდივიდუალური მხარდაჭერა'], cta: 'სრული პაკეტის არჩევა'
+        },
+      },
+    },
+    ru: {
+      painTitle: 'Время теряется. Результат нестабилен.',
+      painText: 'Слишком много ручных шагов, процессы распадаются, качество нестабильно.',
+      solutionTitle: 'Решение',
+      solutionText: 'Avatar G автоматизирует и управляет процессами, чтобы вы фокусировались на главном.',
+      socialProofTitle: 'Используется профессионалами',
+      socialProofItems: ['Бизнесы', 'Агентства', 'Креаторы', 'Стартапы'],
+      metrics: ['1000+ реализованных проектов', '95% довольных клиентов'],
+      safeStartTitle: 'Начните безопасно',
+      safeStartItems: ['Бесплатный старт', 'Простая отмена', 'Защита данных', 'Прозрачные тарифы'],
+      pricingTitle: 'Выберите тариф',
+      pricingSubtitle: 'Начните бесплатно и масштабируйте возможности по мере роста.',
+      monthly: 'В месяц',
+      yearly: 'В год (экономия 20%)',
+      yearlySavings: 'Годовая экономия уже учтена относительно помесячного тарифа.',
+      cycleMonthly: 'месяц',
+      cycleYearly: 'год',
+      anchorHint: 'Для сравнения сначала показан тариф более высокого уровня.',
+      popular: 'Самый популярный',
+      agentTitle: 'Agent G — ваш персональный AI-партнёр',
+      agentText: 'Планирует, создаёт и управляет процессами вместо вас. Создан для роста бизнеса.',
+      agentCta: 'Использовать Agent G',
+      agentSteps: ['Планирование задач', 'Автоматическое создание контента', 'Управление и оптимизация результатов'],
+      enterpriseTitle: 'Enterprise-решение для бизнеса',
+      enterpriseText: 'Масштабируемая AI-инфраструктура с поддержкой командной работы и высокой производительностью.',
+      enterpriseItems: ['Multi-tenant архитектура', 'Поддержка white-label', 'Работа под высокой нагрузкой', 'Стандарты безопасности'],
+      plans: {
+        free: {
+          name: 'Бесплатный', tag: 'Для старта', features: ['Базовые функции', 'Ограниченное использование', 'Стандартная скорость'], cta: 'Начать бесплатно', reassurance: 'Карта не требуется'
+        },
+        basic: {
+          name: 'Basic', tag: 'Для ежедневной работы', features: ['Больше лимитов', 'Быстрая обработка', 'Больше сервисов', 'Поддержка по email'], cta: 'Выбрать Basic', reassurance: 'Оптимально для малого бизнеса'
+        },
+        premium: {
+          name: 'Premium', tag: 'Для профессионалов', features: ['Высокие лимиты', 'Приоритетная скорость', 'Расширенные возможности', 'Приоритетная поддержка'], cta: 'Выбрать Premium'
+        },
+        agentg: {
+          name: 'Agent G Full', tag: 'Полная автоматизация', features: ['Неограниченное использование', 'Полный AI-агент', 'Максимальная производительность', 'Выделенная поддержка'], cta: 'Выбрать полный пакет'
+        },
+      },
+    },
+  };
+
+  const copy = pageContent[locale as 'en' | 'ka' | 'ru'] ?? pageContent.ka;
+
+  const finalPlanOrder: [Plan, Plan, Plan, Plan] = [
+    {
+      id: 'free',
+      icon: '🟢',
+      name: copy.plans.free.name,
+      priceMonthly: 0,
+      tag: copy.plans.free.tag,
+      features: copy.plans.free.features,
+      cta: copy.plans.free.cta,
+      reassurance: copy.plans.free.reassurance,
+    },
+    {
+      id: 'basic',
+      icon: '🔵',
+      name: copy.plans.basic.name,
+      priceMonthly: 39,
+      tag: copy.plans.basic.tag,
+      features: copy.plans.basic.features,
+      cta: copy.plans.basic.cta,
+      reassurance: copy.plans.basic.reassurance,
+      popular: true,
+    },
+    {
+      id: 'premium',
+      icon: '🟣',
+      name: copy.plans.premium.name,
+      priceMonthly: 150,
+      tag: copy.plans.premium.tag,
+      features: copy.plans.premium.features,
+      cta: copy.plans.premium.cta,
+    },
+    {
+      id: 'agentg',
+      icon: '🟡',
+      name: copy.plans.agentg.name,
+      priceMonthly: 500,
+      tag: copy.plans.agentg.tag,
+      features: copy.plans.agentg.features,
+      cta: copy.plans.agentg.cta,
+    },
+  ];
+
+  const anchorPlanOrder: Plan[] = [
+    finalPlanOrder.find((plan) => plan.id === 'agentg')!,
+    finalPlanOrder.find((plan) => plan.id === 'premium')!,
+    finalPlanOrder.find((plan) => plan.id === 'basic')!,
+    finalPlanOrder.find((plan) => plan.id === 'free')!,
+  ];
 
   useEffect(() => {
     const timer = setTimeout(() => setShowAnchorOrder(false), 850);
@@ -94,7 +222,7 @@ export default function HomePage() {
     return Math.round(priceMonthly * 12 * 0.8);
   };
 
-  const resolveCycleLabel = interval === 'monthly' ? 'თვეში' : 'წელიწადში';
+  const resolveCycleLabel = interval === 'monthly' ? copy.cycleMonthly : copy.cycleYearly;
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-slate-950 text-white">
@@ -123,15 +251,15 @@ export default function HomePage() {
           className="mx-auto grid max-w-6xl gap-6 rounded-3xl border border-white/10 bg-white/5 p-6 backdrop-blur md:grid-cols-2 md:p-10"
         >
           <div className="rounded-2xl border border-white/10 bg-slate-900/50 p-6">
-            <h2 className="text-2xl font-bold text-white">დრო იკარგება. შედეგი არ არის საკმარისი.</h2>
+            <h2 className="text-2xl font-bold text-white">{copy.painTitle}</h2>
             <p className="mt-4 text-slate-300">
-              ბევრი ნაბიჯი ხელით კეთდება, პროცესები იშლება და ხარისხი სტაბილური არ არის.
+              {copy.painText}
             </p>
           </div>
           <div className="rounded-2xl border border-cyan-400/30 bg-cyan-500/10 p-6">
-            <h3 className="text-2xl font-bold text-white">გამოსავალი</h3>
+            <h3 className="text-2xl font-bold text-white">{copy.solutionTitle}</h3>
             <p className="mt-4 text-slate-200">
-              Avatar G ავტომატურად ქმნის და მართავს პროცესებს, რომ შენ კონცენტრირდე მთავარზე.
+              {copy.solutionText}
             </p>
           </div>
         </motion.div>
@@ -139,16 +267,16 @@ export default function HomePage() {
 
       <section className="px-4 py-14">
         <div className="mx-auto max-w-6xl">
-          <h2 className="text-center text-3xl font-bold text-white md:text-4xl">გამოიყენება პროფესიონალების მიერ</h2>
+          <h2 className="text-center text-3xl font-bold text-white md:text-4xl">{copy.socialProofTitle}</h2>
           <div className="mt-8 grid grid-cols-2 gap-4 md:grid-cols-4">
-            {['ბიზნესები', 'სააგენტოები', 'კონტენტის შემქმნელები', 'სტარტაპები'].map((item) => (
+            {copy.socialProofItems.map((item) => (
               <div key={item} className="rounded-2xl border border-white/10 bg-white/5 p-5 text-center text-slate-100 backdrop-blur">
                 {item}
               </div>
             ))}
           </div>
           <div className="mt-6 grid gap-4 md:grid-cols-2">
-            {['1000+ შექმნილი პროექტი', '95% კმაყოფილი მომხმარებელი'].map((metric) => (
+            {copy.metrics.map((metric) => (
               <div key={metric} className="rounded-2xl border border-cyan-400/30 bg-slate-900/70 p-6 text-center text-xl font-semibold text-cyan-200 shadow-lg shadow-cyan-500/10">
                 {metric}
               </div>
@@ -159,9 +287,9 @@ export default function HomePage() {
 
       <section className="px-4 py-14">
         <div className="mx-auto max-w-6xl rounded-3xl border border-white/10 bg-white/5 p-6 backdrop-blur md:p-10">
-          <h2 className="text-3xl font-bold text-white">დაიწყე უსაფრთხოდ</h2>
+          <h2 className="text-3xl font-bold text-white">{copy.safeStartTitle}</h2>
           <div className="mt-6 grid gap-4 md:grid-cols-2">
-            {['უფასო დაწყება', 'მარტივი გაუქმება', 'მონაცემთა დაცვა', 'გამჭვირვალე ტარიფები'].map((point) => (
+            {copy.safeStartItems.map((point) => (
               <div key={point} className="flex items-center gap-3 rounded-xl border border-white/10 bg-slate-900/50 px-4 py-3">
                 <Shield className="h-4 w-4 text-cyan-300" />
                 <span className="text-slate-200">{point}</span>
@@ -174,9 +302,9 @@ export default function HomePage() {
       <section className="px-4 py-16" id="pricing">
         <div className="mx-auto max-w-6xl">
           <div className="text-center">
-            <h2 className="text-3xl font-bold text-white md:text-4xl">აირჩიე შენი ტარიფი</h2>
+            <h2 className="text-3xl font-bold text-white md:text-4xl">{copy.pricingTitle}</h2>
             <p className="mx-auto mt-3 max-w-2xl text-slate-300">
-              დაიწყე უფასოდ და გაზარდე შესაძლებლობები საჭიროების მიხედვით.
+              {copy.pricingSubtitle}
             </p>
           </div>
 
@@ -188,7 +316,7 @@ export default function HomePage() {
                   interval === 'monthly' ? 'bg-cyan-500/25 text-cyan-100' : 'text-slate-300'
                 }`}
               >
-                თვეში
+                {copy.monthly}
               </button>
               <button
                 onClick={() => setInterval('yearly')}
@@ -196,12 +324,12 @@ export default function HomePage() {
                   interval === 'yearly' ? 'bg-cyan-500/25 text-cyan-100' : 'text-slate-300'
                 }`}
               >
-                წლიურად (დაზოგე 20%)
+                {copy.yearly}
               </button>
             </div>
           </div>
 
-          <p className="mt-3 text-center text-xs text-slate-400">საწყისი შედარებისთვის პირველ რიგში ნაჩვენებია მაღალი პაკეტი.</p>
+          <p className="mt-3 text-center text-xs text-slate-400">{copy.anchorHint}</p>
 
           <div className="mt-8 grid gap-5 lg:grid-cols-4">
             {plans.map((plan) => {
@@ -220,7 +348,7 @@ export default function HomePage() {
                 >
                   {isPopular && (
                     <div className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-gradient-to-r from-cyan-500 to-blue-600 px-4 py-1 text-xs font-semibold text-white">
-                      ყველაზე პოპულარული
+                      {copy.popular}
                     </div>
                   )}
 
@@ -236,7 +364,7 @@ export default function HomePage() {
                       <span className="pb-1 text-sm text-slate-400">/{resolveCycleLabel}</span>
                     </div>
                     {interval === 'yearly' && (
-                      <p className="mt-1 text-xs text-cyan-200">თვიურ გეგმასთან შედარებით წლიური დაზოგვა გათვალისწინებულია.</p>
+                      <p className="mt-1 text-xs text-cyan-200">{copy.yearlySavings}</p>
                     )}
                   </div>
 
@@ -271,15 +399,15 @@ export default function HomePage() {
       <section className="px-4 py-16">
         <div className="mx-auto grid max-w-6xl items-center gap-8 rounded-3xl border border-cyan-400/30 bg-cyan-500/10 p-6 backdrop-blur md:grid-cols-2 md:p-10">
           <div>
-            <h2 className="text-3xl font-bold text-white">Agent G — შენი პირადი AI პარტნიორი</h2>
+            <h2 className="text-3xl font-bold text-white">{copy.agentTitle}</h2>
             <p className="mt-4 text-slate-200">
-              გეგმავს, ქმნის და მართავს პროცესებს შენს მაგივრად. შექმნილია ბიზნესის ზრდისთვის.
+              {copy.agentText}
             </p>
             <button
               onClick={() => router.push(`/${locale}/services/agent-g`)}
               className="mt-6 inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 px-6 py-3 font-semibold text-white"
             >
-              Agent G-ის გამოყენება
+              {copy.agentCta}
               <ArrowRight className="h-4 w-4" />
             </button>
           </div>
@@ -287,9 +415,9 @@ export default function HomePage() {
           <div className="relative rounded-2xl border border-white/10 bg-slate-900/70 p-6">
             <div className="pointer-events-none absolute inset-0 rounded-2xl bg-[radial-gradient(circle_at_center,rgba(56,189,248,0.18),transparent_60%)]" />
             <div className="relative space-y-3">
-              <div className="rounded-lg border border-white/10 bg-white/5 p-3">დავალების დაგეგმვა</div>
-              <div className="rounded-lg border border-white/10 bg-white/5 p-3">კონტენტის ავტომატური შექმნა</div>
-              <div className="rounded-lg border border-white/10 bg-white/5 p-3">შედეგების მართვა და გაუმჯობესება</div>
+              {copy.agentSteps.map((step) => (
+                <div key={step} className="rounded-lg border border-white/10 bg-white/5 p-3">{step}</div>
+              ))}
             </div>
             <div className="absolute -right-3 -top-3 rounded-full border border-cyan-300/40 bg-cyan-500/20 p-2 text-cyan-100">
               <Sparkles className="h-4 w-4" />
@@ -300,12 +428,12 @@ export default function HomePage() {
 
       <section className="px-4 pb-20 pt-10">
         <div className="mx-auto max-w-6xl rounded-3xl border border-white/10 bg-black/40 p-6 md:p-10">
-          <h2 className="text-3xl font-bold text-white">Enterprise გადაწყვეტილება ბიზნესებისთვის</h2>
+          <h2 className="text-3xl font-bold text-white">{copy.enterpriseTitle}</h2>
           <p className="mt-4 max-w-3xl text-slate-300">
-            მასშტაბირებადი AI ინფრასტრუქტურა მრავალმომხმარებლიანი მხარდაჭერით და მაღალი წარმადობით.
+            {copy.enterpriseText}
           </p>
           <div className="mt-6 grid gap-3 md:grid-cols-2">
-            {['Multi-tenant არქიტექტურა', 'White-label მხარდაჭერა', 'მაღალი დატვირთვის მართვა', 'უსაფრთხოების სტანდარტები'].map((point) => (
+            {copy.enterpriseItems.map((point) => (
               <div key={point} className="rounded-xl border border-white/10 bg-slate-900/60 px-4 py-3 text-slate-200">
                 {point}
               </div>

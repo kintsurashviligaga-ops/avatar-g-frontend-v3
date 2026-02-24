@@ -1,5 +1,5 @@
 const nextIntlConfig = {
-  locales: ['en', 'ka'],
+  locales: ['en', 'ka', 'ru'],
   defaultLocale: 'ka'
 } as const;
 
