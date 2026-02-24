@@ -4,14 +4,19 @@ import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { ArrowRight, PlayCircle } from 'lucide-react';
 import { RocketLogo } from '@/components/ui/RocketLogo';
+import { useEffect } from 'react';
 
 type HeroProps = {
   locale: string;
 };
 
 export function Hero({ locale }: HeroProps) {
+  useEffect(() => {
+    console.log('BUILD VERSION:', process.env.NEXT_PUBLIC_BUILD_ID);
+  }, []);
+
   return (
-    <section className="relative px-4 pb-20 pt-28">
+    <section className="relative px-4 pb-20 pt-28" data-build-id={process.env.NEXT_PUBLIC_BUILD_ID}>
       {/* Route sanity check: edit this shared hero for /en and /ka (root / redirects to default locale). */}
       <div className="mx-auto max-w-6xl text-center">
         <div className="mb-6 flex items-center justify-center gap-3">

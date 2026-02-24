@@ -3,10 +3,14 @@ const withNextIntl = require('next-intl/plugin')('./i18n/request.ts');
 const { warnIfOneDrivePath } = require('./scripts/onedrive-warning.cjs');
 
 warnIfOneDrivePath();
+const buildVersion = process.env.NEXT_PUBLIC_BUILD_ID || String(Date.now());
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   swcMinify: true,
+  env: {
+    NEXT_PUBLIC_BUILD_ID: buildVersion,
+  },
   images: {
     remotePatterns: [
       { protocol: 'https', hostname: '**.supabase.co' },
