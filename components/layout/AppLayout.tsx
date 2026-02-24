@@ -179,7 +179,7 @@ export function Navbar() {
           ))}
         </div>
 
-        <div className="hidden md:flex items-center gap-3">
+        <div className="flex items-center gap-3">
           <div className="flex items-center rounded-lg border border-white/10 bg-white/5 p-1">
             {languageOptions.map((language) => (
               <button
@@ -196,6 +196,8 @@ export function Navbar() {
               </button>
             ))}
           </div>
+
+          <div className="hidden md:flex items-center gap-3">
 
           {isAffiliate && (
             <span className={`px-3 py-1 rounded-full text-xs font-semibold border ${
@@ -242,6 +244,8 @@ export function Navbar() {
               {t('login')}
             </motion.button>
           )}
+
+          </div>
         </div>
 
         <button

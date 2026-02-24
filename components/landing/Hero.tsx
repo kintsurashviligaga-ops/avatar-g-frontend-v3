@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { ArrowRight, PlayCircle } from 'lucide-react';
-import { RocketLogo } from '@/components/ui/RocketLogo';
+import { Logo } from '@/components/brand/Logo';
 
 type HeroProps = {
   locale: string;
@@ -47,7 +47,7 @@ export function Hero({ locale }: HeroProps) {
       {/* Route sanity check: edit this shared hero for /en, /ka, and /ru (root / redirects to default locale). */}
       <div className="mx-auto max-w-6xl text-center">
         <div className="mb-6 flex items-center justify-center gap-3">
-          <RocketLogo size="md" animated glow />
+          <Logo variant="icon" size="md" href={`/${locale}`} className="pointer-events-none" />
           <span className="rounded-full border border-cyan-400/30 bg-cyan-500/10 px-4 py-1 text-sm text-cyan-200">
             {text.badge}
           </span>

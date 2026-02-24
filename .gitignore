@@ -13,3 +13,5 @@ logs/
 node_modules_old/
 tsconfig.tsbuildinfo
 tsconfig.tsbuildinfo
+.vercel
+.env*.local

@@ -32,11 +32,11 @@ export const SERVICE_REGISTRY: ServiceDefinition[] = [
         description: 'Design chained automation pipelines across services with queue-based orchestration.',
       },
       ka: {
-        name: 'Workflow Builder',
+        name: 'სამუშაო პროცესების კონსტრუქტორი',
         description: 'დაგეგმე მრავალსაფეხურიანი ავტომატიზაციები ერთიან სამუშაო ნაკადად.',
       },
       ru: {
-        name: 'Workflow Builder',
+        name: 'Конструктор процессов',
         description: 'Проектируйте многошаговые автоматизации в едином рабочем потоке.',
       },
     },
@@ -57,11 +57,11 @@ export const SERVICE_REGISTRY: ServiceDefinition[] = [
         description: 'Launch and operate your commerce storefront with fulfillment-ready workflows.',
       },
       ka: {
-        name: 'Online Shop',
+        name: 'ონლაინ მაღაზია',
         description: 'გაუშვი ონლაინ მაღაზია და მართე შეკვეთები მზა პროცესებით.',
       },
       ru: {
-        name: 'Online Shop',
+        name: 'Онлайн-магазин',
         description: 'Запустите онлайн-магазин и управляйте заказами через готовые процессы.',
       },
     },
@@ -82,11 +82,11 @@ export const SERVICE_REGISTRY: ServiceDefinition[] = [
         description: 'Create and manage your premium digital identity.',
       },
       ka: {
-        name: 'Avatar Builder',
+        name: 'ავატარის კონსტრუქტორი',
         description: 'შექმენი და მართე შენი პრემიუმ ციფრული იდენტობა.',
       },
       ru: {
-        name: 'Avatar Builder',
+        name: 'Конструктор аватаров',
         description: 'Создавайте и управляйте своей цифровой идентичностью.',
       },
     },
@@ -107,11 +107,11 @@ export const SERVICE_REGISTRY: ServiceDefinition[] = [
         description: 'Generate songs, stems, and production-ready audio drafts.',
       },
       ka: {
-        name: 'Music Studio',
+        name: 'მუსიკის სტუდია',
         description: 'შექმენი მუსიკა, სტემები და სტუდიური ხარისხის აუდიო.',
       },
       ru: {
-        name: 'Music Studio',
+        name: 'Музыкальная студия',
         description: 'Создавайте музыку, стемы и аудио-заготовки студийного уровня.',
       },
     },
@@ -132,11 +132,11 @@ export const SERVICE_REGISTRY: ServiceDefinition[] = [
         description: 'Produce cinematic video sequences from guided prompts.',
       },
       ka: {
-        name: 'Video Studio',
+        name: 'ვიდეო სტუდია',
         description: 'შექმენი კინემატოგრაფიული ვიდეო სცენები ტექსტური მითითებებით.',
       },
       ru: {
-        name: 'Video Studio',
+        name: 'Видеостудия',
         description: 'Создавайте кинематографичные видеосцены по текстовым инструкциям.',
       },
     },
@@ -157,11 +157,11 @@ export const SERVICE_REGISTRY: ServiceDefinition[] = [
         description: 'Build complete multimedia outputs for campaigns and storytelling.',
       },
       ka: {
-        name: 'Media Production',
+        name: 'მედია წარმოება',
         description: 'მოამზადე სრულფასოვანი მედია-კონტენტი კამპანიებისთვის.',
       },
       ru: {
-        name: 'Media Production',
+        name: 'Медиапроизводство',
         description: 'Создавайте полноценный медиаконтент для кампаний и сторителлинга.',
       },
     },
@@ -182,11 +182,11 @@ export const SERVICE_REGISTRY: ServiceDefinition[] = [
         description: 'Analyze and orchestrate visual assets with AI-assisted decision support.',
       },
       ka: {
-        name: 'Visual Intelligence',
+        name: 'ვიზუალური ინტელექტი',
         description: 'გააანალიზე ვიზუალური მასალები და მიიღე AI-ზე დაფუძნებული გადაწყვეტილებები.',
       },
       ru: {
-        name: 'Visual Intelligence',
+        name: 'Визуальный интеллект',
         description: 'Анализируйте визуальные материалы и принимайте решения с помощью AI.',
       },
     },
@@ -207,11 +207,11 @@ export const SERVICE_REGISTRY: ServiceDefinition[] = [
         description: 'Generate design-ready visuals and concept imagery at scale.',
       },
       ka: {
-        name: 'Image Creator',
+        name: 'სურათების გენერატორი',
         description: 'შექმენი დიზაინისთვის მზა ვიზუალები და კონცეპტ-გამოსახულებები.',
       },
       ru: {
-        name: 'Image Creator',
+        name: 'Генератор изображений',
         description: 'Генерируйте готовые к дизайну визуалы и концепт-изображения.',
       },
     },
@@ -232,11 +232,11 @@ export const SERVICE_REGISTRY: ServiceDefinition[] = [
         description: 'Coordinate autonomous workflows across your AI workspace.',
       },
       ka: {
-        name: 'Agent G',
+        name: 'აგენტი G',
         description: 'მართე ავტონომიური პროცესები შენს AI სამუშაო გარემოში.',
       },
       ru: {
-        name: 'Agent G',
+        name: 'Агент G',
         description: 'Координируйте автономные процессы в вашем AI-рабочем пространстве.',
       },
     },
@@ -257,11 +257,11 @@ export const SERVICE_REGISTRY: ServiceDefinition[] = [
         description: 'Create social content pipelines and publishing-ready outputs.',
       },
       ka: {
-        name: 'Social Media Manager',
+        name: 'სოციალური მედიის მენეჯერი',
         description: 'შექმენი სოციალური მედიის კონტენტი და გამოაქვეყნე ავტომატურად.',
       },
       ru: {
-        name: 'Social Media Manager',
+        name: 'Менеджер соцсетей',
         description: 'Создавайте контент для соцсетей и публикуйте его автоматически.',
       },
     },
@@ -282,11 +282,11 @@ export const SERVICE_REGISTRY: ServiceDefinition[] = [
         description: 'Design reusable prompt systems for consistent AI performance.',
       },
       ka: {
-        name: 'Prompt Builder',
+        name: 'პრომპტების კონსტრუქტორი',
         description: 'ააგე მრავალჯერ გამოყენებადი prompt სისტემები სტაბილური შედეგებისთვის.',
       },
       ru: {
-        name: 'Prompt Builder',
+        name: 'Конструктор промптов',
         description: 'Создавайте переиспользуемые промпт-системы для стабильных результатов.',
       },
     },
@@ -307,11 +307,11 @@ export const SERVICE_REGISTRY: ServiceDefinition[] = [
         description: 'Generate, optimize, and analyze strategic text content.',
       },
       ka: {
-        name: 'Text Intelligence',
+        name: 'ტექსტური ინტელექტი',
         description: 'შექმენი, გააუმჯობესე და გააანალიზე სტრატეგიული ტექსტური კონტენტი.',
       },
       ru: {
-        name: 'Text Intelligence',
+        name: 'Текстовый интеллект',
         description: 'Создавайте, оптимизируйте и анализируйте стратегический текстовый контент.',
       },
     },
@@ -332,11 +332,11 @@ export const SERVICE_REGISTRY: ServiceDefinition[] = [
         description: 'Create editorial photo outputs and campaign image sets.',
       },
       ka: {
-        name: 'Photo Studio',
+        name: 'ფოტო სტუდია',
         description: 'დაამზადე სარედაქციო ფოტოკონტენტი და კამპანიური ვიზუალები.',
       },
       ru: {
-        name: 'Photo Studio',
+        name: 'Фотостудия',
         description: 'Создавайте редакционный фотоконтент и визуалы для кампаний.',
       },
     },
