@@ -67,6 +67,8 @@ export function Hero({ locale }: HeroProps) {
           ))}
         </div>
 
+        <div className="mt-4 text-xs font-semibold tracking-wide text-cyan-300">BUILD MARKER</div>
+
         <span className="sr-only">BUILD VERSION: {process.env.NEXT_PUBLIC_BUILD_ID}</span>
       </div>
     </section>
