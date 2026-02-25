@@ -55,6 +55,13 @@ const config: Config = {
         'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
         'float': 'float 6s ease-in-out infinite',
         'fade-in': 'fade-in 240ms ease-out',
+        orbitSlow: 'orbit 40s linear infinite',
+        orbitMid: 'orbit 28s linear infinite',
+        orbitSlowRev: 'orbitReverse 44s linear infinite',
+        orbitSlowMobile: 'orbit 80s linear infinite',
+        orbitMidMobile: 'orbit 56s linear infinite',
+        orbitSlowRevMobile: 'orbitReverse 88s linear infinite',
+        floatSoft: 'floatSoft 5s ease-in-out infinite',
       },
       keyframes: {
         float: {
@@ -64,6 +71,18 @@ const config: Config = {
         'fade-in': {
           '0%': { opacity: '0', transform: 'translateY(8px)' },
           '100%': { opacity: '1', transform: 'translateY(0)' },
+        },
+        orbit: {
+          '0%': { transform: 'rotate(0deg)' },
+          '100%': { transform: 'rotate(360deg)' },
+        },
+        orbitReverse: {
+          '0%': { transform: 'rotate(360deg)' },
+          '100%': { transform: 'rotate(0deg)' },
+        },
+        floatSoft: {
+          '0%, 100%': { transform: 'translateY(0px)' },
+          '50%': { transform: 'translateY(-8px)' },
         },
       },
     },

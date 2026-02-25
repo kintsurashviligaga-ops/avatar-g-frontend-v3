@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server';
 import { apiError, apiSuccess } from '@/lib/api/response';
+import { getEnvWarnings, isStripeEnabled } from '@/lib/env/schema';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -36,11 +37,20 @@ export async function GET(request: NextRequest) {
       'NEXT_PUBLIC_SUPABASE_URL',
       'NEXT_PUBLIC_SUPABASE_ANON_KEY',
       'SUPABASE_SERVICE_ROLE_KEY',
-      'STRIPE_SECRET_KEY',
-      'STRIPE_WEBHOOK_SECRET',
-      'NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY',
-      'NEXT_PUBLIC_BASE_URL',
     ];
+
+    const hasBaseUrl = Boolean(process.env.NEXT_PUBLIC_BASE_URL || process.env.BASE_URL);
+    if (!hasBaseUrl) {
+      requiredVars.push('NEXT_PUBLIC_BASE_URL|BASE_URL');
+    }
+
+    if (isStripeEnabled()) {
+      requiredVars.push(
+        'STRIPE_SECRET_KEY',
+        'STRIPE_WEBHOOK_SECRET',
+        'NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY'
+      );
+    }
 
     const optionalVars = [
       'ALLOWED_ORIGINS',
@@ -51,15 +61,19 @@ export async function GET(request: NextRequest) {
 
     // Check required variables
     const missing = requiredVars.filter(v => !process.env[v]);
-    const _present = requiredVars.filter(v => !!process.env[v]);
-
-    // Check optional variables
-    const _presentOptional = optionalVars.filter(v => !!process.env[v]);
-    const _missingOptional = optionalVars.filter(v => !process.env[v]);
 
     // Build validation response
     const required_vars: Record<string, boolean> = {};
     requiredVars.forEach(v => {
+      required_vars[v] = !!process.env[v];
+    });
+    required_vars['NEXT_PUBLIC_BASE_URL|BASE_URL'] = hasBaseUrl;
+
+    if (!hasBaseUrl) {
+      missing.push('NEXT_PUBLIC_BASE_URL|BASE_URL');
+    }
+
+    optionalVars.forEach(v => {
       required_vars[v] = !!process.env[v];
     });
 
@@ -75,9 +89,7 @@ export async function GET(request: NextRequest) {
       warnings.push('ALLOWED_ORIGINS not set - using localhost defaults (may block production requests)');
     }
 
-    if (!process.env.SENTRY_DSN) {
-      warnings.push('Error tracking (SENTRY) not configured - production errors may not be logged');
-    }
+    warnings.push(...getEnvWarnings());
 
     const response: EnvValidationResponse = {
       valid: missing.length === 0,

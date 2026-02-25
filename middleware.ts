@@ -1,45 +1,28 @@
-import { NextResponse } from "next/server";
-import type { NextRequest } from "next/server";
-import { i18n } from "@/i18n.config";
+import createMiddleware from 'next-intl/middleware';
+import { NextResponse, type NextRequest } from 'next/server';
+import { routing } from '@/i18n/routing';
 
-export async function middleware(request: NextRequest) {
-  try {
-    const { pathname } = request.nextUrl;
+const intlMiddleware = createMiddleware(routing);
 
-    if (pathname.startsWith('/api')) {
-      return NextResponse.next();
-    }
+const legacyPathMap: Record<string, string> = {
+  '/avatar-builder': '/services/avatar-builder',
+  '/music-studio': '/services/music-studio',
+  '/video-studio': '/services/video-studio',
+  '/voice-lab': '/services/voice-lab',
+  '/marketplace': '/services/marketplace',
+};
 
-    if (
-      pathname.startsWith('/_next') ||
-      pathname === '/icon' ||
-      pathname === '/favicon.png' ||
-      pathname === '/favicon.ico' ||
-      pathname === '/robots.txt' ||
-      pathname === '/sitemap.xml' ||
-      /\.[a-zA-Z0-9]+$/.test(pathname)
-    ) {
-      return NextResponse.next();
-    }
-
-    const localeMatch = pathname.match(/^\/([a-zA-Z-]{2,5})(\/|$)/);
-    const localeSegment = localeMatch?.[1];
-    const hasLocale = localeSegment
-      ? i18n.locales.includes(localeSegment.toLowerCase() as (typeof i18n.locales)[number])
-      : false;
-
-    if (!hasLocale) {
-      const url = request.nextUrl.clone();
-      url.pathname = `/${i18n.defaultLocale}${pathname === '/' ? '' : pathname}`;
-      return NextResponse.redirect(url);
-    }
-
-    return NextResponse.next();
-  } catch {
-    return NextResponse.next();
+export default function middleware(request: NextRequest) {
+  const mappedPath = legacyPathMap[request.nextUrl.pathname];
+  if (mappedPath) {
+    const url = request.nextUrl.clone();
+    url.pathname = `/${routing.defaultLocale}${mappedPath}`;
+    return NextResponse.redirect(url);
   }
+
+  return intlMiddleware(request);
 }
 
 export const config = {
-  matcher: ['/((?!api|icon|favicon.ico|favicon.png|_next/static|_next/image|robots.txt|sitemap.xml).*)'],
+  matcher: ['/((?!api|_next|_vercel|.*\\..*).*)'],
 };

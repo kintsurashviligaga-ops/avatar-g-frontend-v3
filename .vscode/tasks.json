@@ -195,6 +195,49 @@
 				"typecheck"
 			],
 			"isBackground": false
+		},
+		{
+			"label": "install-deps-ci",
+			"type": "shell",
+			"command": "npm",
+			"args": [
+				"ci"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "cleanup-node-modules",
+			"type": "shell",
+			"command": "npx",
+			"args": [
+				"--yes",
+				"rimraf",
+				"node_modules"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "repair-install",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-Command",
+				"if (Test-Path node_modules) { Remove-Item -Recurse -Force node_modules -ErrorAction SilentlyContinue }; npm cache clean --force; npm ci"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "cleanup-node-modules-yes",
+			"type": "shell",
+			"command": "npm",
+			"args": [
+				"exec",
+				"--yes",
+				"rimraf",
+				"node_modules"
+			],
+			"isBackground": false
 		}
 	]
 }

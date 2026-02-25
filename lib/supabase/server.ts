@@ -1,6 +1,7 @@
 import 'server-only';
 
 import { cookies } from 'next/headers';
+import type { User } from '@supabase/supabase-js';
 import {
 	createServerClient as createSsrServerClient,
 	type CookieOptions,
@@ -66,6 +67,36 @@ export function createServiceRoleClient() {
 	return createSupabaseJsClient(supabaseUrl, serviceRoleKey, {
 		auth: { autoRefreshToken: false, persistSession: false },
 	});
+}
+
+export async function requireUser(): Promise<User> {
+	const supabase = createServerClient();
+	const {
+		data: { user },
+		error,
+	} = await supabase.auth.getUser();
+
+	if (error || !user) {
+		throw new Error('UNAUTHENTICATED');
+	}
+
+	return user;
+}
+
+export async function getProfile(userId?: string) {
+	const targetUserId = userId ?? (await requireUser()).id;
+	const supabase = createServerClient();
+	const { data, error } = await supabase
+		.from('profiles')
+		.select('*')
+		.eq('id', targetUserId)
+		.maybeSingle();
+
+	if (error) {
+		throw error;
+	}
+
+	return data;
 }
 
 export const createRouteHandlerClient = () => createServerClient();

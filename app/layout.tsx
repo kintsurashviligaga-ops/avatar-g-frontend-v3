@@ -5,12 +5,14 @@ import { LanguageProvider } from "@/lib/i18n/LanguageContext";
 import { ToastProvider } from "@/components/ui/Toast";
 import GlobalChatbot from "@/components/GlobalChatbot";
 import { Navbar, Footer } from "@/components/layout/AppLayout";
-import { NextIntlClientProvider } from "next-intl";
-import { getLocale, getMessages } from "next-intl/server";
-import { i18n } from "@/i18n.config";
 import { logStartupEnvValidation } from "@/lib/env/startupValidation";
 
-const metadataBaseUrl = process.env.NEXT_PUBLIC_SITE_URL || process.env.NEXT_PUBLIC_APP_URL || "https://myavatar.ge";
+const metadataBaseUrl =
+  process.env.NEXT_PUBLIC_BASE_URL ||
+  process.env.BASE_URL ||
+  process.env.NEXT_PUBLIC_SITE_URL ||
+  process.env.NEXT_PUBLIC_APP_URL ||
+  "https://myavatar.ge";
 
 export const metadata: Metadata = {
   metadataBase: new URL(metadataBaseUrl),
@@ -61,37 +63,21 @@ export default async function RootLayout({
     // Never block runtime rendering because of env startup checks.
   }
 
-  let locale: string = i18n.defaultLocale;
-  let messages: Record<string, unknown> = {};
-
-  try {
-    const detectedLocale = await getLocale();
-    locale = i18n.locales.includes(detectedLocale as (typeof i18n.locales)[number])
-      ? detectedLocale
-      : i18n.defaultLocale;
-    messages = await getMessages();
-  } catch {
-    locale = i18n.defaultLocale;
-    messages = {};
-  }
-
   return (
-    <html lang={locale} className="dark">
+    <html lang="en" className="dark">
       <body className="font-sans bg-[#05070A] text-white antialiased">
-        <NextIntlClientProvider locale={locale} messages={messages}>
-          <IdentityProvider>
-            <LanguageProvider>
-              <ToastProvider>
-                <Navbar />
-                <main className="pt-20">
-                  {children}
-                </main>
-                <Footer />
-                <GlobalChatbot />
-              </ToastProvider>
-            </LanguageProvider>
-          </IdentityProvider>
-        </NextIntlClientProvider>
+        <IdentityProvider>
+          <LanguageProvider>
+            <ToastProvider>
+              <Navbar />
+              <main className="pt-20">
+                {children}
+              </main>
+              <Footer />
+              <GlobalChatbot />
+            </ToastProvider>
+          </LanguageProvider>
+        </IdentityProvider>
       </body>
     </html>
   );

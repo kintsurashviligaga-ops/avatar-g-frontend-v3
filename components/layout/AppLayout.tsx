@@ -61,10 +61,11 @@ export function Navbar() {
   }, []);
 
   const navItems = [
-    { labelKey: 'services', href: toLocale('/services') },
-    { labelKey: 'workspace', href: toLocale('/workspace') },
-    { labelKey: 'about', href: toLocale('/about') },
-    { labelKey: 'contact', href: toLocale('/contact') },
+    { label: 'Product', href: `${toLocale('/')}#product` },
+    { label: 'Services', href: toLocale('/services') },
+    { label: 'Pricing', href: `${toLocale('/')}#pricing` },
+    { label: 'Security', href: `${toLocale('/')}#security` },
+    { label: 'FAQ', href: `${toLocale('/')}#faq` },
   ];
 
   const subscriptionPlan = subscriptionData?.subscription?.plan || null;
@@ -166,12 +167,12 @@ export function Navbar() {
               key={item.href}
               href={item.href}
               className={`text-sm transition-colors relative group ${
-                pathname === item.href ? 'text-cyan-400' : 'text-gray-400 hover:text-white'
+                pathname === item.href ? 'text-white' : 'text-gray-300 hover:text-white'
               }`}
             >
-              {t(item.labelKey)}
+              {item.label}
               <span
-                className={`absolute bottom-0 left-0 w-0 h-0.5 bg-gradient-to-r from-cyan-400 to-blue-500 transition-all group-hover:w-full ${
+                className={`absolute bottom-0 left-0 w-0 h-0.5 bg-white transition-all group-hover:w-full ${
                   pathname === item.href ? 'w-full' : ''
                 }`}
               />
@@ -231,18 +232,24 @@ export function Navbar() {
               </motion.button>
             </>
           ) : (
-            <motion.button
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              onClick={() => router.push(`/auth?next=${encodeURIComponent(toLocale('/workspace'))}`)}
-              className="px-6 py-2 rounded-lg font-medium text-sm"
-              style={{
-                background: colors.gradients.cyanToBlue,
-                color: colors.text.primary,
-              }}
-            >
-              {t('login')}
-            </motion.button>
+            <div className="flex items-center gap-2">
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={() => router.push(`/auth?next=${encodeURIComponent(toLocale('/workspace'))}`)}
+                className="rounded-lg border border-white/20 bg-white/5 px-4 py-2 text-sm font-medium text-white"
+              >
+                Sign in
+              </motion.button>
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={() => router.push(toLocale('/services/avatar-builder'))}
+                className="rounded-lg bg-white px-4 py-2 text-sm font-semibold text-slate-900"
+              >
+                Get Started
+              </motion.button>
+            </div>
           )}
 
           </div>
@@ -285,7 +292,7 @@ export function Navbar() {
                   pathname === item.href ? 'bg-cyan-500/20 text-cyan-200' : 'text-gray-300 hover:bg-white/5 hover:text-white'
                 }`}
               >
-                {t(item.labelKey)}
+                {item.label}
               </Link>
             ))}
           </div>
@@ -303,15 +310,26 @@ export function Navbar() {
                 </button>
               </div>
             ) : (
-              <button
-                onClick={() => {
-                  setIsMobileMenuOpen(false);
-                  router.push(`/auth?next=${encodeURIComponent(toLocale('/workspace'))}`);
-                }}
-                className="w-full rounded-lg bg-gradient-to-r from-cyan-500 to-blue-600 px-4 py-2 text-sm font-semibold text-white"
-              >
-                {t('login')}
-              </button>
+              <div className="space-y-2">
+                <button
+                  onClick={() => {
+                    setIsMobileMenuOpen(false);
+                    router.push(`/auth?next=${encodeURIComponent(toLocale('/workspace'))}`);
+                  }}
+                  className="w-full rounded-lg border border-white/20 bg-white/5 px-4 py-2 text-sm font-medium text-white"
+                >
+                  Sign in
+                </button>
+                <button
+                  onClick={() => {
+                    setIsMobileMenuOpen(false);
+                    router.push(toLocale('/services/avatar-builder'));
+                  }}
+                  className="w-full rounded-lg bg-white px-4 py-2 text-sm font-semibold text-slate-900"
+                >
+                  Get Started
+                </button>
+              </div>
             )}
           </div>
         </div>
@@ -348,30 +366,30 @@ export function Footer() {
   const footerContent = {
     en: {
       sections: [
-        { title: 'Product', links: ['Features', 'Pricing', 'API'] },
-        { title: 'Company', links: ['About', 'Blog', 'Careers'] },
+        { title: 'Company', links: ['About', 'Services', 'Pricing'] },
         { title: 'Legal', links: ['Privacy', 'Terms', 'Security'] },
-        { title: 'Follow', links: ['Twitter', 'GitHub', 'Discord'] },
+        { title: 'Contact', links: ['Support', 'Contact Form', 'Status'] },
+        { title: 'Socials', links: ['X', 'LinkedIn', 'GitHub'] },
       ],
       copyright: '© 2024 Avatar G. All rights reserved.',
       builtFor: 'Built with ❤️ for creators',
     },
     ka: {
       sections: [
-        { title: 'პროდუქტი', links: ['ფუნქციები', 'ფასები', 'API'] },
-        { title: 'კომპანია', links: ['ჩვენს შესახებ', 'ბლოგი', 'ვაკანსიები'] },
+        { title: 'კომპანია', links: ['ჩვენს შესახებ', 'სერვისები', 'ფასები'] },
         { title: 'იურიდიული', links: ['კონფიდენციალურობა', 'წესები', 'უსაფრთხოება'] },
-        { title: 'გამოგვყევი', links: ['Twitter', 'GitHub', 'Discord'] },
+        { title: 'კონტაქტი', links: ['მხარდაჭერა', 'კონტაქტის ფორმა', 'სტატუსი'] },
+        { title: 'სოციალური არხები', links: ['X', 'LinkedIn', 'GitHub'] },
       ],
       copyright: '© 2024 Avatar G. ყველა უფლება დაცულია.',
       builtFor: 'შექმნილია ❤️ შემქმნელებისთვის',
     },
     ru: {
       sections: [
-        { title: 'Продукт', links: ['Функции', 'Тарифы', 'API'] },
-        { title: 'Компания', links: ['О нас', 'Блог', 'Карьера'] },
+        { title: 'Компания', links: ['О нас', 'Сервисы', 'Тарифы'] },
         { title: 'Право', links: ['Конфиденциальность', 'Условия', 'Безопасность'] },
-        { title: 'Соцсети', links: ['Twitter', 'GitHub', 'Discord'] },
+        { title: 'Контакты', links: ['Поддержка', 'Форма связи', 'Статус'] },
+        { title: 'Соцсети', links: ['X', 'LinkedIn', 'GitHub'] },
       ],
       copyright: '© 2024 Avatar G. Все права защищены.',
       builtFor: 'Создано с ❤️ для креаторов',

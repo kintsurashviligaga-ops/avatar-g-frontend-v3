@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="900" viewBox="0 0 1200 900" fill="none">
+  <rect width="1200" height="900" fill="#05070A"/>
+  <circle cx="820" cy="190" r="120" fill="#22D3EE" fill-opacity="0.18"/>
+  <circle cx="300" cy="300" r="180" fill="#3B82F6" fill-opacity="0.14"/>
+  <rect x="180" y="120" width="840" height="660" rx="28" fill="#0B1222" stroke="#22D3EE" stroke-opacity="0.4"/>
+  <path d="M598 300C541.8 300 496 345.8 496 402V502C496 558.2 541.8 604 598 604H602C658.2 604 704 558.2 704 502V402C704 345.8 658.2 300 602 300H598Z" fill="#1E293B"/>
+  <path d="M530 676C530 619.8 575.8 574 632 574H568C624.2 574 670 619.8 670 676V710H530V676Z" fill="#1E293B"/>
+  <text x="600" y="760" text-anchor="middle" fill="#CFFAFE" font-size="30" font-family="Arial, sans-serif">Avatar Placeholder</text>
+</svg>

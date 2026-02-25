@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { publicEnv } from "@/lib/env/public";
-import { getMessages } from 'next-intl/server';
+import { getMessages, setRequestLocale } from 'next-intl/server';
 import { NextIntlClientProvider } from 'next-intl';
 import { i18n } from "@/i18n.config";
 
@@ -66,6 +66,8 @@ export default async function LocaleLayout({
   if (!isSupportedLocale) {
     notFound();
   }
+
+  setRequestLocale(locale);
 
   const safeLocale = locale;
 
