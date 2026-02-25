@@ -238,6 +238,109 @@
 				"node_modules"
 			],
 			"isBackground": false
+		},
+		{
+			"label": "final-status-after-trigger",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"status",
+				"--short"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "git-add-marker-fix",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"add",
+				"app/[locale]/page.tsx",
+				"app/[locale]/layout.tsx"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "git-commit-marker-fix",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"commit",
+				"-m",
+				"fix(home): add prod marker proof and enforce localized homepage rendering"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "git-push-marker-fix",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"push",
+				"origin",
+				"main"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "git-head-after-marker",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"rev-parse",
+				"HEAD"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "git-origin-main-after-marker",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"ls-remote",
+				"origin",
+				"refs/heads/main"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "vercel-ls-marker-commit",
+			"type": "shell",
+			"command": "vercel",
+			"args": [
+				"ls",
+				"avatar-g-frontend-v3",
+				"--meta",
+				"githubCommitRef=main",
+				"--yes"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "vercel-ls-by-new-sha",
+			"type": "shell",
+			"command": "vercel",
+			"args": [
+				"ls",
+				"avatar-g-frontend-v3",
+				"--meta",
+				"githubCommitSha=f6055874552ee9f144497c59cff299a2fef7b2c9",
+				"--yes"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "vercel-ls-new-sha-ready-check",
+			"type": "shell",
+			"command": "vercel",
+			"args": [
+				"ls",
+				"avatar-g-frontend-v3",
+				"--meta",
+				"githubCommitSha=f6055874552ee9f144497c59cff299a2fef7b2c9",
+				"--yes"
+			],
+			"isBackground": false
 		}
 	]
 }
