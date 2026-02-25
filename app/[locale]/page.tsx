@@ -121,6 +121,11 @@ export default function LocaleLandingPage({ params }: PageProps) {
 
   return (
     <>
+      <div className="mx-auto mt-6 w-full max-w-6xl px-4 sm:px-6">
+        <div className="rounded-lg border border-amber-300/40 bg-amber-400/10 px-3 py-2 text-xs font-semibold text-amber-100">
+          PROD MARKER: 20260225-1530
+        </div>
+      </div>
       <Hero locale={locale} />
 
       <div className="mx-auto w-full max-w-6xl px-4 pb-16 sm:px-6">
