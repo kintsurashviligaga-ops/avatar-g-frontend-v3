@@ -16,6 +16,8 @@ export const runtime = 'nodejs';
 
 interface HealthResponse {
   ok: boolean;
+  commit: string;
+  time: string;
   env: 'valid' | 'invalid';
   env_ok?: boolean;
   service: 'backend';
@@ -128,6 +130,8 @@ export async function GET() {
 
     const response: HealthResponse = {
       ok: true,
+      commit: version,
+      time: new Date(ts).toISOString(),
       env: envValid ? 'valid' : 'invalid',
       env_ok: envValid,
       service: 'backend',
@@ -146,6 +150,8 @@ export async function GET() {
     return NextResponse.json(
       {
         ok: true,
+        commit: getVersion(),
+        time: new Date().toISOString(),
         env: 'invalid',
         env_ok: false,
         service: 'backend',
