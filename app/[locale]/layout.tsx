@@ -1,8 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { publicEnv } from "@/lib/env/public";
-import { getMessages, setRequestLocale } from 'next-intl/server';
-import { NextIntlClientProvider } from 'next-intl';
 import { i18n } from "@/i18n.config";
 
 const metadataBaseUrl = publicEnv.NEXT_PUBLIC_APP_URL || "https://avatar-g-frontend-v3.vercel.app";
@@ -67,27 +65,14 @@ export default async function LocaleLayout({
     notFound();
   }
 
-  setRequestLocale(locale);
-
-  const safeLocale = locale;
-
-  let messages: Record<string, unknown> = {};
-  try {
-    messages = await getMessages({ locale: safeLocale });
-  } catch {
-    messages = {};
-  }
-
   return (
     <div className="font-sans">
-      <NextIntlClientProvider locale={safeLocale} messages={messages}>
-        <div className="mx-auto w-full max-w-6xl px-4 pt-2 sm:px-6">
-          <div className="rounded-lg border border-fuchsia-300/40 bg-fuchsia-400/10 px-3 py-2 text-xs font-semibold text-fuchsia-100">
-            PROD MARKER: 20260225-1900 (layout)
-          </div>
+      <div className="mx-auto w-full max-w-6xl px-4 pt-2 sm:px-6">
+        <div className="rounded-lg border border-fuchsia-300/40 bg-fuchsia-400/10 px-3 py-2 text-xs font-semibold text-fuchsia-100">
+          PROD MARKER: 20260225-1900 (layout)
         </div>
-        {children}
-      </NextIntlClientProvider>
+      </div>
+      {children}
     </div>
   );
 }
