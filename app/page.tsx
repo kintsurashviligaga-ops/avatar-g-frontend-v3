@@ -1,7 +1,6 @@
-export default function Page() {
-return (
-<div style={{color:'white',fontSize:'60px'}}>
-ROOT HOMEPAGE WORKING
-</div>
-)
+import { redirect } from 'next/navigation';
+import { i18n } from '@/i18n.config';
+
+export default function RootPage() {
+	redirect(`/${i18n.defaultLocale}`);
 }
