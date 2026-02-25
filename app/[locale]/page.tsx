@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
-import Image from 'next/image';
 import Link from 'next/link';
+import { Hero } from '@/components/landing/Hero';
 import { SERVICE_REGISTRY } from '@/lib/service-registry';
 import { i18n } from '@/i18n.config';
 
@@ -117,39 +117,13 @@ export default function LocaleLandingPage({ params }: PageProps) {
     : i18n.defaultLocale;
   const services = SERVICE_REGISTRY.slice(0, 13);
   const homePath = `/${locale}`;
+  const buildStamp = process.env.NEXT_PUBLIC_BUILD_STAMP ?? 'local-dev';
 
   return (
-    <div className="mx-auto w-full max-w-6xl px-4 pb-16 pt-10 sm:px-6">
-      <section className="rounded-2xl border border-white/10 bg-slate-900/70 p-8 sm:p-10" aria-labelledby="hero-heading">
-        <div className="mb-6 flex items-center gap-3">
-          <Image src="/brand/logo.png" alt="Myavatar" width={40} height={40} priority />
-          <p className="text-sm font-semibold text-slate-200">Myavatar</p>
-        </div>
-        <div className="space-y-6">
-          <h1 id="hero-heading" className="text-3xl font-semibold tracking-tight text-white sm:text-4xl">
-            Trusted AI workflows for creators and businesses
-          </h1>
-          <p className="max-w-3xl text-base text-slate-300">
-            Build avatars, media, and service operations with a clear, stable, and transparent platform designed for long-term reliability.
-          </p>
-          <div className="flex flex-wrap gap-3">
-            <Link
-              href={`/${locale}/services/avatar-builder`}
-              className="rounded-lg bg-white px-5 py-2.5 text-sm font-medium text-slate-900 transition hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-white"
-              aria-label="Create Avatar"
-            >
-              Create Avatar
-            </Link>
-            <Link
-              href={`/${locale}/services`}
-              className="rounded-lg border border-slate-400/40 px-5 py-2.5 text-sm font-medium text-slate-100 transition hover:border-slate-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-200"
-              aria-label="View Services"
-            >
-              View Services
-            </Link>
-          </div>
-        </div>
-      </section>
+    <>
+      <Hero locale={locale} />
+
+      <div className="mx-auto w-full max-w-6xl px-4 pb-16 sm:px-6">
 
       <section id="product" className="mt-12" aria-labelledby="benefits-heading">
         <h2 id="benefits-heading" className="text-2xl font-semibold text-white">Key Benefits</h2>
@@ -270,8 +244,10 @@ export default function LocaleLandingPage({ params }: PageProps) {
           <Link href={`${homePath}#pricing`} className="hover:text-slate-100">Pricing</Link>
           <Link href={`${homePath}#security`} className="hover:text-slate-100">Security</Link>
           <Link href={`${homePath}#faq`} className="hover:text-slate-100">FAQ</Link>
+          <span className="ml-auto">Build: {buildStamp}</span>
         </div>
       </section>
-    </div>
+      </div>
+    </>
   );
 }
