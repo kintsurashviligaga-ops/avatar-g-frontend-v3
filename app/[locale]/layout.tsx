@@ -71,7 +71,23 @@ export default async function LocaleLayout({
   setRequestLocale(locale);
 
   const safeLocale = locale;
-  const messages = await getMessages({ locale: safeLocale });
+  let messages: any = null;
+  let messageError = false;
+  try {
+    messages = await getMessages({ locale: safeLocale });
+  } catch (err) {
+    messageError = true;
+  }
+
+  if (messageError || !messages) {
+    // Minimal SSR fallback if translations fail
+    return (
+      <div className="font-sans min-h-screen flex flex-col items-center justify-center bg-gray-900 text-white">
+        <h1 className="text-2xl font-bold mb-2">Avatar G</h1>
+        <p>Sorry, the site is temporarily unavailable in this language.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="font-sans">
