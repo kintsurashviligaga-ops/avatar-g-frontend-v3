@@ -2,18 +2,21 @@ import * as React from 'react';
 import { cva, type VariantProps } from 'class-variance-authority';
 import { cn } from '@/lib/utils';
 
-const cardVariants = cva('rounded-2xl border p-5', {
-  variants: {
-    variant: {
-      glass: 'ag-glass border-app-border/30',
-      soft: 'border-white/10 bg-app-surface/70',
-      solid: 'border-app-border/40 bg-app-elevated/85',
+const cardVariants = cva(
+  'radius-3xl border spacing-xl md:spacing-2xl shadow-glass bg-gradient-to-br from-white/5 via-white/2 to-white/0 backdrop-blur-lg transition-all duration-200 hover:shadow-xl',
+  {
+    variants: {
+      variant: {
+        glass: 'ag-glass border-app-border/30 shadow-glass backdrop-blur-lg',
+        soft: 'border-white/10 bg-app-surface/70 shadow-md',
+        solid: 'border-app-border/40 bg-app-elevated/85 shadow-lg',
+      },
     },
-  },
-  defaultVariants: {
-    variant: 'glass',
-  },
-});
+    defaultVariants: {
+      variant: 'glass',
+    },
+  }
+);
 
 export interface CardProps
   extends React.HTMLAttributes<HTMLDivElement>,
@@ -29,7 +32,7 @@ const Card = React.forwardRef<HTMLDivElement, CardProps>(
       className={cn(
         cardVariants({ variant }),
         'relative overflow-hidden',
-        glow && 'shadow-[0_0_40px_rgba(6,182,212,0.15)]',
+        glow && 'shadow-[0_0_64px_rgba(6,182,212,0.18)]',
         className
       )}
       {...props}
@@ -50,7 +53,7 @@ CardHeader.displayName = 'CardHeader';
 
 const CardTitle = React.forwardRef<HTMLHeadingElement, React.HTMLAttributes<HTMLHeadingElement>>(
   ({ className, ...props }, ref) => (
-    <h3 ref={ref} className={cn('text-lg font-semibold text-app-text', className)} {...props} />
+    <h3 ref={ref} className={cn('text-2xl md:text-3xl font-bold text-app-text tracking-tight', className)} {...props} />
   )
 );
 CardTitle.displayName = 'CardTitle';

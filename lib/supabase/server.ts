@@ -101,4 +101,3 @@ export async function getProfile(userId?: string) {
 
 export const createRouteHandlerClient = () => createServerClient();
 export const createSupabaseServerClient = () => createServerClient();
-export const createClient = () => createServerClient();

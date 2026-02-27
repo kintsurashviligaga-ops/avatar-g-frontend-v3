@@ -3,10 +3,11 @@
  * Create a new invoice with PDF generation
  */
 
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
-import { cookies } from 'next/headers';
+
+import { createServerClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 import { v4 as uuidv4 } from 'uuid';
+import { z } from 'zod';
 import {
   calculateTax,
   getBusinessProfile,
@@ -14,25 +15,29 @@ import {
 } from '@/lib/tax/georgia';
 import { generateAndSaveInvoicePdf } from '@/lib/invoices/pdfGenerator';
 
-interface CreateInvoiceRequest {
-  buyerName: string;
-  buyerTaxId?: string;
-  buyerAddress?: string;
-  buyerEmail?: string;
-  currency: 'GEL' | 'USD';
-  items: Array<{
-    title: string;
-    quantity: number;
-    unitPriceCents: number;
-    description?: string;
-  }>;
-  notes?: string;
-  stripeObjectId?: string;
-}
+
+const InvoiceItemSchema = z.object({
+  title: z.string().min(1),
+  quantity: z.number().int().positive(),
+  unitPriceCents: z.number().int().nonnegative(),
+  description: z.string().optional(),
+});
+
+const CreateInvoiceSchema = z.object({
+  buyerName: z.string().min(1),
+  buyerTaxId: z.string().optional(),
+  buyerAddress: z.string().optional(),
+  buyerEmail: z.string().email().optional(),
+  currency: z.enum(['GEL', 'USD']),
+  items: z.array(InvoiceItemSchema).min(1),
+  notes: z.string().optional(),
+  stripeObjectId: z.string().optional(),
+});
 
 export async function POST(req: NextRequest) {
+
   try {
-    const supabase = createRouteHandlerClient({ cookies });
+    const supabase = createServerClient();
 
     // Get current user
     const {
@@ -44,19 +49,19 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Parse request body
-    const body: CreateInvoiceRequest = await req.json();
-
-    const { buyerName, buyerTaxId, buyerAddress, buyerEmail, currency, items, notes, stripeObjectId } =
-      body;
-
-    // Validate required fields
-    if (!buyerName || !currency || !items || items.length === 0) {
+    // Parse and validate request body
+    let body;
+    try {
+      const json = await req.json();
+      body = CreateInvoiceSchema.parse(json);
+    } catch (validationError) {
       return NextResponse.json(
-        { error: 'Missing required fields: buyerName, currency, items' },
+        { error: 'Invalid request body', details: validationError instanceof z.ZodError ? validationError.errors : validationError },
         { status: 400 },
       );
     }
+
+    const { buyerName, buyerTaxId, buyerAddress, buyerEmail, currency, items, notes, stripeObjectId } = body;
 
     // Get user business profile
     const profile = await getBusinessProfile(supabase, user.id);

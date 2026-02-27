@@ -1,13 +1,13 @@
 // API: List disputes (admin/seller view)
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { DisputeService } from '@/lib/disputes/DisputeService';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
   try {
-    const supabase = await createClient();
+    const supabase = await createSupabaseServerClient();
 
     // Get authenticated user
     const {

@@ -1,6 +1,6 @@
 // API: Get refund details
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { RefundService } from '@/lib/refunds/RefundService';
 import { getStripe } from '@/lib/billing/stripe';
 
@@ -9,7 +9,7 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   try {
-    const supabase = await createClient();
+    const supabase = await createSupabaseServerClient();
 
     // Get authenticated user
     const {

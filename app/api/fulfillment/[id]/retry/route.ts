@@ -1,6 +1,6 @@
 // API: Retry failed fulfillment job
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createServerClient } from '@/lib/supabase/server';
 import { FulfillmentService } from '@/lib/fulfillment/FulfillmentService';
 
 export async function POST(
@@ -8,7 +8,7 @@ export async function POST(
   { params }: { params: { id: string } }
 ) {
   try {
-    const supabase = await createClient();
+    const supabase = await createServerClient();
 
     // Get authenticated user (admin/seller only)
     const {

@@ -1,11 +1,11 @@
 // API: Create return request
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { ReturnRequestService } from '@/lib/returns/ReturnRequestService';
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = await createClient();
+    const supabase = await createSupabaseServerClient();
 
     // Get authenticated user
     const {

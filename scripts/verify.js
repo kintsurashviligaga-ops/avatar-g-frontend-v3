@@ -6,8 +6,8 @@
 
 /* eslint-disable @typescript-eslint/no-require-imports */
 
-const fs = require('fs');
-const { execSync } = require('child_process');
+import fs from 'fs';
+import { execSync } from 'child_process';
 
 const colors = {
   reset: '\x1b[0m',

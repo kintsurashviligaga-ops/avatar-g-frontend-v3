@@ -1,11 +1,11 @@
 // API: Sync tracking (manual trigger or cron)
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { TrackingSyncService } from '@/lib/fulfillment/TrackingSyncService';
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = await createClient();
+    const supabase = await createSupabaseServerClient();
 
     // Verify authorization (admin only or cron secret)
     const authHeader = request.headers.get('authorization');

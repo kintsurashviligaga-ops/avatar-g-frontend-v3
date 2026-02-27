@@ -8,8 +8,16 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { ArrowRight, Play, Sparkles, Zap } from "lucide-react";
-import CinematicHero3D from "@/components/landing/CinematicHero3D";
 import { SERVICE_REGISTRY } from "@/lib/service-registry";
+
+// Lazy load 3D hero — keeps Three.js out of the critical bundle and
+// ensures a WebGL failure stays contained inside <Suspense>.
+const CinematicHero3D = dynamic(() => import("@/components/landing/CinematicHero3D"), {
+  ssr: false,
+  loading: () => (
+    <div className="w-full h-screen bg-[#05070A]" />
+  ),
+});
 
 // Lazy load premium form for performance
 const PremiumAgentForm = dynamic(() => import("@/components/landing/PremiumAgentForm"), {

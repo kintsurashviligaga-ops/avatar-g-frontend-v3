@@ -1,6 +1,6 @@
 // API: Get/update return request
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { ReturnRequestService } from '@/lib/returns/ReturnRequestService';
 
 export async function GET(
@@ -8,7 +8,7 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   try {
-    const supabase = await createClient();
+    const supabase = await createSupabaseServerClient();
 
     // Get authenticated user
     const {
@@ -39,7 +39,7 @@ export async function PUT(
   { params }: { params: { id: string } }
 ) {
   try {
-    const supabase = await createClient();
+    const supabase = await createSupabaseServerClient();
 
     // Get authenticated user
     const {

@@ -4,9 +4,10 @@ type StepperProps = {
   steps: string[];
   currentStep: number;
   onStepChange: (nextStep: number) => void;
+  className?: string;
 };
 
-export function Stepper({ steps, currentStep, onStepChange }: StepperProps) {
+export function Stepper({ steps, currentStep, onStepChange, className }: StepperProps) {
   const onKeyDown = (event: KeyboardEvent<HTMLButtonElement>, index: number) => {
     if (event.key === 'ArrowRight') {
       const next = Math.min(index + 1, steps.length - 1);
@@ -25,7 +26,7 @@ export function Stepper({ steps, currentStep, onStepChange }: StepperProps) {
   };
 
   return (
-    <div aria-label="Avatar Builder Progress" role="tablist" className="grid gap-2 md:grid-cols-7">
+    <div aria-label="Avatar Builder Progress" role="tablist" className={`grid gap-2 md:grid-cols-7 ${className ?? ''}`}> 
       {steps.map((step, index) => {
         const isActive = currentStep === index;
         const isPast = index < currentStep;

@@ -71,12 +71,13 @@ export default async function LocaleLayout({
   setRequestLocale(locale);
 
   const safeLocale = locale;
-  let messages: any = null;
+  let messages: Record<string, unknown> | null = null;
   let messageError = false;
   try {
     messages = await getMessages({ locale: safeLocale });
-  } catch (err) {
+  } catch (err: unknown) {
     messageError = true;
+    console.error(err);
   }
 
   if (messageError || !messages) {

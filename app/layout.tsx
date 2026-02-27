@@ -1,8 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
-import { IdentityProvider } from "@/lib/identity/IdentityContext";
-import { LanguageProvider } from "@/lib/i18n/LanguageContext";
-import { ToastProvider } from "@/components/ui/Toast";
+import Providers from "@/app/providers";
 import GlobalChatbot from "@/components/GlobalChatbot";
 import { logStartupEnvValidation } from "@/lib/env/startupValidation";
 
@@ -65,14 +63,10 @@ export default async function RootLayout({
 	return (
 		<html lang="en" className="dark">
 			<body className="font-sans bg-[#05070A] text-white antialiased">
-				<IdentityProvider>
-					<LanguageProvider>
-						<ToastProvider>
-							{children}
-							<GlobalChatbot />
-						</ToastProvider>
-					</LanguageProvider>
-				</IdentityProvider>
+				<Providers>
+					{children}
+					<GlobalChatbot />
+				</Providers>
 			</body>
 		</html>
 	);

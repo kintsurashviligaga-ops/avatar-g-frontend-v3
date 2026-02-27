@@ -14,7 +14,7 @@ export function getStripe(): Stripe {
     const { STRIPE_SECRET_KEY } = getServerEnv(['STRIPE_SECRET_KEY']);
     
     stripeInstance = new Stripe(STRIPE_SECRET_KEY as string, {
-      apiVersion: '2026-01-28.clover',
+      apiVersion: '2026-02-25.clover',
       typescript: true,
     });
   }

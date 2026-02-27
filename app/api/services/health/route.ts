@@ -100,7 +100,7 @@ export async function GET(_request: NextRequest) {
     }
 
     // 8. Stripe - test connectivity
-    let _stripeHealthy = false;
+      let _stripeHealthy = false;
     try {
       if (process.env.STRIPE_SECRET_KEY) {
         const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);

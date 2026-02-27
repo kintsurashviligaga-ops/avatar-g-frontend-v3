@@ -59,8 +59,8 @@ export async function POST(request: NextRequest) {
           environment: process.env.VERCEL_ENV || 'unknown',
         });
 
-      if (insertError && insertError.code !== 'PGRST116') {
-        // PGRST116 = table doesn't exist (OK during setup)
+      if (insertError) {
+        // If table doesn't exist or any DB error, log to console and return safe response
         console.error('[Error Log Insert Failed]', insertError);
         return apiSuccess({ logged: false, reason: 'database_unavailable' });
       }

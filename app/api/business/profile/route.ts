@@ -3,14 +3,13 @@
  * GET, PUT, POST - Manage user business profile
  */
 
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
-import { cookies } from 'next/headers';
+import { createServerClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 import { getBusinessProfile, createOrUpdateBusinessProfile } from '@/lib/tax/georgia';
 
 export async function GET(_req: NextRequest) {
   try {
-    const supabase = createRouteHandlerClient({ cookies });
+    const supabase = createServerClient();
 
     // Get current user
     const {
@@ -44,7 +43,7 @@ export async function GET(_req: NextRequest) {
 
 export async function PUT(req: NextRequest) {
   try {
-    const supabase = createRouteHandlerClient({ cookies });
+    const supabase = createServerClient();
 
     // Get current user
     const {
@@ -104,7 +103,7 @@ export async function PUT(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const supabase = createRouteHandlerClient({ cookies });
+    const supabase = createServerClient();
 
     // Get current user
     const {

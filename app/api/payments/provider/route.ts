@@ -3,15 +3,15 @@
  * GET, PUT - Manage payment provider configuration
  */
 
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
-import { cookies } from 'next/headers';
+import { createServerClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(_req: NextRequest) {
   try {
-    const supabase = createRouteHandlerClient({ cookies });
+    const supabase = createServerClient();
 
     // Get current user
     const {
@@ -65,8 +65,9 @@ export async function GET(_req: NextRequest) {
 }
 
 export async function PUT(req: NextRequest) {
+
   try {
-    const supabase = createRouteHandlerClient({ cookies });
+    const supabase = createServerClient();
 
     // Get current user
     const {
@@ -78,17 +79,21 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Parse request body
-    const body = await req.json();
-    const { activeProvider } = body;
-
-    // Validate active provider
-    if (!['stripe', 'tbc', 'bog', 'payze'].includes(activeProvider)) {
+    // Parse and validate request body
+    const ProviderSchema = z.object({
+      activeProvider: z.enum(['stripe', 'tbc', 'bog', 'payze']),
+    });
+    let body;
+    try {
+      const json = await req.json();
+      body = ProviderSchema.parse(json);
+    } catch (validationError) {
       return NextResponse.json(
-        { error: 'Invalid provider' },
+        { error: 'Invalid request body', details: validationError instanceof z.ZodError ? validationError.errors : validationError },
         { status: 400 },
       );
     }
+    const { activeProvider } = body;
 
     // Update payment provider config
     const { data, error } = await supabase

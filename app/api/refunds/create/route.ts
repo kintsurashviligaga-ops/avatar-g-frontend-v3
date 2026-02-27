@@ -1,12 +1,12 @@
 // API: Create refund (admin/seller action)
 import { NextRequest, NextResponse } from 'next/server';
 import Stripe from 'stripe';
-import { createClient } from '@/lib/supabase/server';
+import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { RefundService } from '@/lib/refunds/RefundService';
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = await createClient();
+    const supabase = await createSupabaseServerClient();
 
     // Get authenticated user
     const {

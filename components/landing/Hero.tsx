@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { motion } from 'framer-motion';
-import { ArrowRight, PlayCircle } from 'lucide-react';
+import { PlayCircle } from 'lucide-react';
 import { Logo } from '@/components/brand/Logo';
 
 type HeroProps = {
@@ -43,12 +43,11 @@ export function Hero({ locale }: HeroProps) {
   const text = content[locale as 'en' | 'ka' | 'ru'] ?? content.ka;
 
   return (
-    <section className="relative px-4 pb-20 pt-28">
-      {/* Route sanity check: edit this shared hero for /en, /ka, and /ru (root / redirects to default locale). */}
-      <div className="mx-auto max-w-6xl text-center">
-        <div className="mb-6 flex items-center justify-center gap-3">
-          <Logo variant="icon" size="md" href={`/${locale}`} className="pointer-events-none" />
-          <span className="rounded-full border border-cyan-400/30 bg-cyan-500/10 px-4 py-1 text-sm text-cyan-200">
+    <section className="relative px-4 pb-20 pt-28 md:pb-24 md:pt-40">
+      <div className="mx-auto max-w-[92vw] sm:max-w-2xl md:max-w-4xl lg:max-w-6xl text-center">
+        <div className="mb-8 flex items-center justify-center gap-4">
+          <Logo variant="icon" size="lg" href={`/${locale}`} className="pointer-events-none drop-shadow-xl" />
+          <span className="rounded-full border border-cyan-400/30 bg-cyan-500/10 px-6 py-2 text-base md:text-lg text-cyan-200 font-semibold tracking-wide">
             {text.badge}
           </span>
         </div>
@@ -57,40 +56,37 @@ export function Hero({ locale }: HeroProps) {
           initial={{ opacity: 0, y: 18 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.55 }}
-          className="mx-auto max-w-4xl text-4xl font-bold leading-tight text-white md:text-6xl"
+          className="mx-auto max-w-2xl sm:max-w-3xl md:max-w-4xl text-3xl sm:text-4xl md:text-6xl lg:text-7xl font-extrabold leading-tight md:leading-[1.1] text-white tracking-tight"
         >
-          {text.titleStart}{' '}
-          <span className="bg-gradient-to-r from-cyan-300 via-blue-300 to-cyan-300 bg-[length:200%_200%] bg-clip-text text-transparent animate-pulse">
+          <span className="block text-gradient bg-gradient-to-r from-cyan-400 via-blue-400 to-indigo-500 bg-clip-text text-transparent">
+            {text.titleStart}
+          </span>
+          <span className="block mt-3 text-gradient bg-gradient-to-r from-indigo-400 via-cyan-400 to-blue-500 bg-clip-text text-transparent">
             {text.titleAccent}
           </span>
         </motion.h1>
 
-        <p className="mx-auto mt-6 max-w-3xl text-lg text-slate-300 md:text-xl">
+        <p className="mx-auto mt-8 max-w-xl text-base sm:text-lg md:text-2xl text-gray-300 font-medium">
           {text.description}
         </p>
 
-        <div className="mt-10 flex flex-col justify-center gap-4 sm:flex-row">
-          <Link
-            href={`/${locale}/workspace`}
-            className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 px-8 py-4 font-semibold text-white shadow-lg shadow-cyan-500/20 transition hover:scale-[1.02]"
-          >
-            {text.ctaPrimary}
-            <ArrowRight className="h-4 w-4" />
+        <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4 sm:gap-5">
+          <Link href={`/${locale}/signup`}>
+            <button className="ag-btn-primary px-10 py-4 text-lg md:text-xl rounded-2xl font-bold shadow-xl focus-visible:ring-2 focus-visible:ring-cyan-400/70">
+              {text.ctaPrimary}
+            </button>
           </Link>
-          <Link
-            href={`/${locale}/services`}
-            className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/15 bg-white/5 px-8 py-4 font-semibold text-white transition hover:bg-white/10"
-          >
+          <Link href={`#how`} className="inline-flex items-center gap-2 px-8 py-4 rounded-2xl border border-cyan-400/30 text-cyan-200 hover:bg-cyan-400/10 focus-visible:ring-2 focus-visible:ring-cyan-400/70 text-lg md:text-xl font-semibold">
+            <PlayCircle className="w-6 h-6" />
             {text.ctaSecondary}
-            <PlayCircle className="h-4 w-4" />
           </Link>
         </div>
 
-        <div className="mx-auto mt-8 grid max-w-3xl grid-cols-1 gap-3 sm:grid-cols-3">
-          {text.highlights.map((item) => (
-            <div key={item} className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-200 backdrop-blur">
-              {item}
-            </div>
+        <div className="mt-12 flex flex-wrap justify-center gap-3 sm:gap-5">
+          {text.highlights.map((h, i) => (
+            <span key={i} className="inline-block rounded-full bg-white/10 border border-cyan-400/20 px-6 py-2 text-base md:text-lg text-cyan-100 font-medium backdrop-blur-md">
+              {h}
+            </span>
           ))}
         </div>
       </div>

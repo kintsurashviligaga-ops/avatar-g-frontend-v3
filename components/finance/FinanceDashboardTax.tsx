@@ -5,7 +5,6 @@
  * Displays VAT-aware or income-tax-aware reporting based on store tax status
  */
 
-import React from 'react';
 import { StoreTaxProfile } from '@/lib/finance/taxProfile';
 
 interface FinanceReportData {

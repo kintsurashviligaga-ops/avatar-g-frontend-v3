@@ -12,8 +12,11 @@
  */
 
 import React, { useEffect, useState, Suspense } from 'react';
+import Image from 'next/image';
 import dynamic from 'next/dynamic';
 import { getOwnerId } from '@/lib/auth/identity';
+import ErrorBoundary from './ErrorBoundary';
+import { WebGLFeatureDetect } from './WebGLFeatureDetect';
 
 // Lazy load Three.js components
 const CinematicScene = dynamic(() => import('./CinematicScene'), {
@@ -131,9 +134,43 @@ export default function CinematicHero3D() {
     loadUserAvatar();
   }, []);
 
+  // Use next/image for logo for LCP and optimization
+  const LogoImage = (props: { className?: string }) => (
+    <Image
+      src="/brand/logo.png"
+      alt="Avatar G Logo"
+      className={props.className}
+      width={96}
+      height={96}
+      priority
+    />
+  );
+
   return (
-    <Suspense fallback={<div className="w-full h-screen bg-[#05070A]" />}>
-      <CinematicScene userAvatar={loadingState.userAvatar} />
-    </Suspense>
+    <ErrorBoundary
+      fallback={
+        <div className="w-full h-screen flex items-center justify-center bg-[#05070A]">
+          <div className="text-center">
+            <LogoImage className="w-24 h-24 mx-auto mb-4" />
+            <p className="text-cyan-400 font-mono text-lg">Avatar preview failed.<br />Try reloading or use 2D preview.</p>
+          </div>
+        </div>
+      }
+    >
+      <WebGLFeatureDetect
+        fallback={
+          <div className="w-full h-screen flex items-center justify-center bg-[#05070A]">
+            <div className="text-center">
+              <LogoImage className="w-24 h-24 mx-auto mb-4" />
+              <p className="text-cyan-400 font-mono text-lg">Your device/browser can’t render 3D preview.<br />Use 2D preview or try Chrome/Edge.</p>
+            </div>
+          </div>
+        }
+      >
+        <Suspense fallback={<div className="w-full h-screen bg-[#05070A]" />}>
+          <CinematicScene userAvatar={loadingState.userAvatar} />
+        </Suspense>
+      </WebGLFeatureDetect>
+    </ErrorBoundary>
   );
 }

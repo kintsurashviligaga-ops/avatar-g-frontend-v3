@@ -60,7 +60,7 @@ export default async function DashboardPage() {
     return Math.round(durations.reduce((sum, value) => sum + value, 0) / durations.length);
   })();
 
-  const plan = getPlanSummary(subscription?.plan || 'FREE');
+  const plan = await getPlanSummary(subscription?.plan || 'FREE');
 
   return (
     <main className="min-h-screen bg-gradient-to-br from-[#05070A] via-[#0A0F1C] to-[#05070A] px-4 py-10 text-white">

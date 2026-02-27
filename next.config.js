@@ -7,7 +7,6 @@ const buildVersion = process.env.NEXT_PUBLIC_BUILD_ID || String(Date.now());
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  swcMinify: true,
   env: {
     NEXT_PUBLIC_BUILD_ID: buildVersion,
   },
@@ -20,15 +19,26 @@ const nextConfig = {
     ],
   },
   experimental: {
-    optimizePackageImports: ['lucide-react'],
+    optimizePackageImports: ['lucide-react', 'framer-motion', '@supabase/supabase-js'],
   },
   async headers() {
     return [
       {
+        // Only disable caching for API routes - let Next.js manage SSG/ISR caching
+        source: '/api/:path*',
+        headers: [
+          { key: 'Cache-Control', value: 'no-store, max-age=0' },
+          { key: 'x-build-id', value: buildVersion },
+        ],
+      },
+      {
         source: '/(.*)',
         headers: [
-          { key: 'Cache-Control', value: 'no-store' },
           { key: 'x-build-id', value: buildVersion },
+          { key: 'X-Frame-Options', value: 'DENY' },
+          { key: 'X-Content-Type-Options', value: 'nosniff' },
+          { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+          { key: 'Permissions-Policy', value: 'camera=(self), microphone=(self), geolocation=()' },
         ],
       },
     ];

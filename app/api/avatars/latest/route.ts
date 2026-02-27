@@ -8,7 +8,7 @@
 
 import { NextRequest } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { apiError, apiSuccess } from '@/lib/api/response';
+import { apiSuccess } from '@/lib/api/response';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 
 export const dynamic = 'force-dynamic';
@@ -20,35 +20,36 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const ownerId = searchParams?.get?.('owner_id');
-    
     if (!ownerId) {
-      return apiError(new Error('owner_id is required'), 400, 'owner_id query param is required');
+      return apiSuccess({ avatar: null });
     }
-    
+
     // Get Supabase service role client (server-side only)
     const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!
     );
-    
-    // Query latest avatar for this owner
-    const { data, error } = await supabase
-      .from('avatars')
-      .select('*')
-      .eq('owner_id', ownerId)
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    
-    if (error) {
-      return apiError(error, 500, 'Failed to fetch avatar');
+
+    let data = null;
+    try {
+      const result = await supabase
+        .from('avatars')
+        .select('*')
+        .eq('owner_id', ownerId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      data = result.data || null;
+    } catch (dbError) {
+      // Log error but never crash endpoint
+      console.error('[avatars/latest] DB error:', dbError);
+      data = null;
     }
 
-    return apiSuccess({
-      success: true,
-      avatar: data || null,
-    });
+    return apiSuccess({ avatar: data });
   } catch (error) {
-    return apiError(error, 500, 'Failed to fetch avatar');
+    // Log error but never crash endpoint
+    console.error('[avatars/latest] Handler error:', error);
+    return apiSuccess({ avatar: null });
   }
 }

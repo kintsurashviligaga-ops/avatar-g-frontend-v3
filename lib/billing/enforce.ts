@@ -1,7 +1,13 @@
 import 'server-only';
 
+
 import { createRouteHandlerClient } from '@/lib/supabase/server';
-import { getPlan, isPlanAtLeast, normalizePlan, planAllowsAgent, type PlanTier } from './plans';
+import { getPlan, isPlanAtLeast, normalizePlan, planAllowsAgent, type PlanTier, type PlanDefinition } from './plans';
+// Returns the plan definition for a given plan tier string (async for future extensibility)
+export async function getPlanSummary(plan: string | null | undefined): Promise<PlanDefinition> {
+  // In future, could fetch from DB or API
+  return getPlan(plan);
+}
 
 export interface BillingSnapshot {
   userId: string;
@@ -162,6 +168,4 @@ export async function enforcePlanAndCredits(params: {
   return snapshot;
 }
 
-export function getPlanSummary(plan: string | null | undefined) {
-  return getPlan(plan);
-}
+

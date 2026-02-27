@@ -1,6 +1,7 @@
-import { redirect } from 'next/navigation';
-import { i18n } from '@/i18n.config';
+
+import LandingPageClient from '@/components/landing/LandingPageClient';
 
 export default function RootPage() {
-	redirect(`/${i18n.defaultLocale}`);
+	// Server component by default, renders client homepage
+	return <LandingPageClient />;
 }

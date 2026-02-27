@@ -53,7 +53,7 @@ class StripeBillingProvider implements BillingProvider {
   constructor(secretKey: string, webhookSecret: string) {
     this.webhookSecret = webhookSecret;
     this.stripe = new Stripe(secretKey, {
-      apiVersion: '2026-01-28.clover',
+      apiVersion: '2026-02-25.clover',
       typescript: true,
     });
   }

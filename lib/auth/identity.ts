@@ -6,7 +6,7 @@
  * - If anonymous → generate and persist UUID in localStorage
  */
 
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { createClient } from '@supabase/supabase-js';
 import { v4 as uuidv4 } from 'uuid';
 
 const ANON_ID_KEY = 'avatar_g_anon_id';
@@ -26,7 +26,12 @@ const ANON_ID_KEY = 'avatar_g_anon_id';
 export async function getOwnerId(): Promise<string> {
   try {
     // Step 1: Try to get authenticated user
-    const supabase = createClientComponentClient();
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    if (!supabaseUrl || !supabaseAnonKey) {
+      throw new Error('Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY');
+    }
+    const supabase = createClient(supabaseUrl, supabaseAnonKey);
     const { data: { user }, error } = await supabase.auth.getUser();
     
     if (!error && user && user.id) {
@@ -65,7 +70,9 @@ export async function getOwnerId(): Promise<string> {
  */
 export async function isAuthenticated(): Promise<boolean> {
   try {
-    const supabase = createClientComponentClient();
+    // Use browser Supabase client
+    const { getSupabaseClient } = await import('./client');
+    const supabase = getSupabaseClient();
     const { data: { user } } = await supabase.auth.getUser();
     return !!user;
   } catch {
@@ -80,7 +87,9 @@ export async function isAuthenticated(): Promise<boolean> {
  */
 export async function getCurrentUser() {
   try {
-    const supabase = createClientComponentClient();
+    // Use browser Supabase client
+    const { getSupabaseClient } = await import('./client');
+    const supabase = getSupabaseClient();
     const { data: { user } } = await supabase.auth.getUser();
     return user;
   } catch {

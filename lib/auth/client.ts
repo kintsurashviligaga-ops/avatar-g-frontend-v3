@@ -3,7 +3,7 @@
  * SECURE: Uses official Supabase session management instead of localStorage hacks
  */
 
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { createClient } from '@supabase/supabase-js';
 
 /**
  * Get Supabase client for client components
@@ -11,13 +11,14 @@ import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
  * PRODUCTION-SAFE: Never throws, returns client even if env vars missing
  */
 export function getSupabaseClient() {
-  try {
-    return createClientComponentClient();
-  } catch (error) {
-    console.error('[Supabase Client Error]', error instanceof Error ? error.message : 'Unknown error');
-    throw error;
-  }
+	const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+	const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+	if (!supabaseUrl || !supabaseAnonKey) {
+		throw new Error('Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY');
+	}
+	return createClient(supabaseUrl, supabaseAnonKey);
 }
+
 
 /**
  * SECURE: Get access token from Supabase session

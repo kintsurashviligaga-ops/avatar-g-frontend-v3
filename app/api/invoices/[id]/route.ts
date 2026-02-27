@@ -3,8 +3,7 @@
  * Get invoice details with items
  */
 
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
-import { cookies } from 'next/headers';
+import { createServerClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 
 export async function GET(
@@ -12,7 +11,7 @@ export async function GET(
   { params }: { params: { id: string } },
 ) {
   try {
-    const supabase = createRouteHandlerClient({ cookies });
+    const supabase = createServerClient();
 
     // Get current user
     const {
@@ -71,7 +70,7 @@ export async function PUT(
   { params }: { params: { id: string } },
 ) {
   try {
-    const supabase = createRouteHandlerClient({ cookies });
+    const supabase = createServerClient();
 
     // Get current user
     const {
