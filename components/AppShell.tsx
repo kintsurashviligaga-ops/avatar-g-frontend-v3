@@ -6,16 +6,13 @@ import { ClientErrorBoundary } from './ClientErrorBoundary'
  * THIS COMPONENT WRAPS ALL CHILDREN IN THE ROOT LAYOUT.
  * NO PAGE-LEVEL LAYOUT MAY OVERRIDE THE NAVBAR.
  * NO PAGE MAY RENDER WITHOUT THE AVATAR G LOGO IN TOP-LEFT.
+ *
+ * GlobalNavbar: ALWAYS FIRST, ALWAYS PRESENT, NEVER REMOVABLE
  */
-interface AppShellProps {
-  children: React.ReactNode
-  variant?: 'light' | 'dark' | 'transparent'
-}
-
-export function AppShell({ children, variant = 'dark' }: AppShellProps) {
+export function AppShell({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-screen flex flex-col">
-      <GlobalNavbar variant={variant} />
+    <div className="min-h-screen flex flex-col bg-[#050510]">
+      <GlobalNavbar />
       <main className="flex-1 pt-16">
         <ClientErrorBoundary>
           {children}

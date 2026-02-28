@@ -62,8 +62,8 @@ export default async function RootLayout({
 	}
 
 	return (
-		<html lang="en" className="dark">
-			<body className="font-sans bg-[#05070A] text-white antialiased">
+		<html lang="ka" className="dark">
+			<body className="font-sans bg-[#050510] text-white antialiased">
 				<Providers>
 					<AppShell>
 						{children}

@@ -12,7 +12,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createRouteHandlerClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { structuredLog } from '@/lib/logger'
-import type { CreateJobRequest, CreateJobResponse, JobRecord } from '@/types/jobs'
+import type { CreateJobRequest, CreateJobResponse } from '@/types/jobs'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
