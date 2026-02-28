@@ -928,5 +928,29 @@
     "get_started": "Get Started",
     "contact_us": "Contact Us",
     "popular": "Most Popular"
+  },
+  "credits": {
+    "balance_label": "Credit Balance",
+    "credits_label": "credits",
+    "soft_cap_warning": "Near limit",
+    "topup_label": "Top Up",
+    "fetch_error": "Could not load balance",
+    "topup_error": "Top-up failed"
+  },
+  "executive": {
+    "title": "Agent G Executive",
+    "subtitle": "Your personal AI assistant — assign a task, get results",
+    "input_placeholder": "What would you like Agent G to do?",
+    "button_run": "Run Task",
+    "button_running": "Running...",
+    "button_call": "Call",
+    "error_generic": "An error occurred",
+    "history_title": "Task History",
+    "no_tasks": "No tasks yet",
+    "credits_used_label": "credits",
+    "status_queued": "Queued",
+    "status_running": "Running",
+    "status_completed": "Completed",
+    "status_failed": "Failed"
   }
 }

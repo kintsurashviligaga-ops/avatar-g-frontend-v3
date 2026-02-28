@@ -880,5 +880,29 @@
     "get_started": "Начать",
     "contact_us": "Связаться",
     "popular": "Самый популярный"
+  },
+  "credits": {
+    "balance_label": "Баланс кредитов",
+    "credits_label": "кредиты",
+    "soft_cap_warning": "Близко к лимиту",
+    "topup_label": "Пополнить",
+    "fetch_error": "Не удалось загрузить баланс",
+    "topup_error": "Ошибка пополнения"
+  },
+  "executive": {
+    "title": "Agent G Executive",
+    "subtitle": "Ваш личный AI-ассистент — поставьте задачу, получите результат",
+    "input_placeholder": "Что вы хотите, чтобы Agent G сделал?",
+    "button_run": "Запустить задачу",
+    "button_running": "Выполняется...",
+    "button_call": "Позвонить",
+    "error_generic": "Произошла ошибка",
+    "history_title": "История задач",
+    "no_tasks": "Задач пока нет",
+    "credits_used_label": "кредитов",
+    "status_queued": "В очереди",
+    "status_running": "Выполняется",
+    "status_completed": "Завершено",
+    "status_failed": "Ошибка"
   }
 }

@@ -930,5 +930,29 @@
     "get_started": "დაიწყე",
     "contact_us": "დაგვიკავშირდი",
     "popular": "პოპულარული"
+  },
+  "credits": {
+    "balance_label": "კრედიტ ბალანსი",
+    "credits_label": "კრედიტი",
+    "soft_cap_warning": "ლიმიტთან ახლოს",
+    "topup_label": "შეავსე",
+    "fetch_error": "ბალანსი ვერ ჩაიტვირთა",
+    "topup_error": "შევსება ვერ მოხერხდა"
+  },
+  "executive": {
+    "title": "Agent G Executive",
+    "subtitle": "თქვენი პირადი AI ასისტენტი — დანიშნეთ დავალება, მიიღეთ შედეგი",
+    "input_placeholder": "რა გსურთ რომ Agent G შეასრულოს?",
+    "button_run": "დავალების გაშვება",
+    "button_running": "მიმდინარეობს...",
+    "button_call": "ზარი",
+    "error_generic": "შეცდომა მოხდა",
+    "history_title": "დავალებების ისტორია",
+    "no_tasks": "ჯერ არ არის დავალებები",
+    "credits_used_label": "კრედიტი",
+    "status_queued": "რიგში",
+    "status_running": "მიმდინარე",
+    "status_completed": "დასრულებული",
+    "status_failed": "შეცდომა"
   }
 }
