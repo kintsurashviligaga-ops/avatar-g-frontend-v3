@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import Providers from "@/app/providers";
 import GlobalChatbot from "@/components/GlobalChatbot";
-import { ClientErrorBoundary } from "@/components/ClientErrorBoundary";
+import { AppShell } from "@/components/AppShell";
 import { logStartupEnvValidation } from "@/lib/env/startupValidation";
 
 const metadataBaseUrl =
@@ -64,12 +64,12 @@ export default async function RootLayout({
 	return (
 		<html lang="en" className="dark">
 			<body className="font-sans bg-[#05070A] text-white antialiased">
-				<ClientErrorBoundary>
-					<Providers>
+				<Providers>
+					<AppShell>
 						{children}
 						<GlobalChatbot />
-					</Providers>
-				</ClientErrorBoundary>
+					</AppShell>
+				</Providers>
 			</body>
 		</html>
 	);
