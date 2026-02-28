@@ -2,6 +2,7 @@
 
 import Image from 'next/image'
 import Link from 'next/link'
+import ErrorBoundary from '@/components/landing/ErrorBoundary'
 import LanguageSwitcher from './LanguageSwitcher'
 
 // ─── LOGO ENFORCEMENT RULES ─────────────────────────────────────────────────
@@ -68,7 +69,9 @@ export function GlobalNavbar() {
 
       {/* Right */}
       <div className="flex items-center gap-2 sm:gap-3">
-        <LanguageSwitcher />
+        <ErrorBoundary fallback={<span className="text-xs text-white/30">🌐</span>}>
+          <LanguageSwitcher />
+        </ErrorBoundary>
         <Link
           href="/login"
           className="text-sm text-white/60 hover:text-white transition-colors px-3 py-1.5"

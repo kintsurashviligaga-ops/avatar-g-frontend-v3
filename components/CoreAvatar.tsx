@@ -72,6 +72,7 @@ export function CoreAvatar({ className, pollMs = 4000 }: CoreAvatarProps) {
   const [data, setData] = useState<CoreAvatarResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [viewerReady, setViewerReady] = useState(false);
+  const [scriptFailed, setScriptFailed] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -105,12 +106,21 @@ export function CoreAvatar({ className, pollMs = 4000 }: CoreAvatarProps) {
       return;
     }
 
-    const script = document.createElement('script');
-    script.type = 'module';
-    script.src = 'https://unpkg.com/@google/model-viewer/dist/model-viewer.min.js';
-    script.setAttribute('data-model-viewer', 'true');
-    script.onload = () => setViewerReady(true);
-    document.head.appendChild(script);
+    try {
+      const script = document.createElement('script');
+      script.type = 'module';
+      script.src = 'https://unpkg.com/@google/model-viewer/dist/model-viewer.min.js';
+      script.setAttribute('data-model-viewer', 'true');
+      script.onload = () => setViewerReady(true);
+      script.onerror = () => {
+        console.warn('[CoreAvatar] model-viewer script failed to load');
+        setScriptFailed(true);
+      };
+      document.head.appendChild(script);
+    } catch (e) {
+      console.warn('[CoreAvatar] model-viewer script injection failed', e);
+      setScriptFailed(true);
+    }
 
     return () => {
       setViewerReady(false);
@@ -176,15 +186,20 @@ export function CoreAvatar({ className, pollMs = 4000 }: CoreAvatarProps) {
     );
   }
 
-  if (data.status === 'ready' && data.model_glb_url && modelViewerProps && viewerReady) {
-    return (
-      <div className={`overflow-hidden rounded-full border border-cyan-400/50 bg-black ${className ?? 'h-24 w-24 sm:h-32 sm:w-32 lg:h-40 lg:w-40'}`}>
-        {createElement('model-viewer', {
-          id: 'core-avatar-model-viewer',
-          ...modelViewerProps,
-        })}
-      </div>
-    );
+  if (data.status === 'ready' && data.model_glb_url && modelViewerProps && viewerReady && !scriptFailed) {
+    try {
+      return (
+        <div className={`overflow-hidden rounded-full border border-cyan-400/50 bg-black ${className ?? 'h-24 w-24 sm:h-32 sm:w-32 lg:h-40 lg:w-40'}`}>
+          {createElement('model-viewer', {
+            id: 'core-avatar-model-viewer',
+            ...modelViewerProps,
+          })}
+        </div>
+      );
+    } catch (e) {
+      console.warn('[CoreAvatar] model-viewer render failed, using poster fallback', e);
+      // Fall through to poster/fallback below
+    }
   }
 
   return (

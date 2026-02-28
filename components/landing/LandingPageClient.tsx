@@ -6,6 +6,7 @@ import { SERVICE_REGISTRY } from "@/lib/service-registry";
 import { OrbitSolarSystem } from "@/components/OrbitSolarSystem";
 import { HeroSection } from "@/components/HeroSection";
 import { PricingSection } from "@/components/PricingSection";
+import ErrorBoundary from "@/components/landing/ErrorBoundary";
 
 // Lazy load premium form for performance
 const PremiumAgentForm = dynamic(() => import("@/components/landing/PremiumAgentForm"), {
@@ -19,6 +20,20 @@ const stats = [
   { value: "99.9%", label: "Uptime" },
 ];
 
+/**
+ * Minimal fallback when a section crashes.
+ * Shows nothing disruptive — the rest of the page continues rendering.
+ */
+function SectionFallback({ label }: { label: string }) {
+  return (
+    <div className="py-16 text-center">
+      <p className="text-gray-500 text-sm">
+        [{label}] ამ სექციის ჩატვირთვა ვერ მოხერხდა.
+      </p>
+    </div>
+  );
+}
+
 export default function LandingPageClient() {
   const [showPremiumForm, setShowPremiumForm] = useState(false);
   const enabledServices = SERVICE_REGISTRY.filter((s) => s.enabled);
@@ -27,12 +42,16 @@ export default function LandingPageClient() {
   return (
     <div className="relative min-h-screen bg-[#050510] text-white overflow-hidden">
       {/* ── Hero section ─────────────────────────────────────── */}
-      <HeroSection onPremiumClick={() => setShowPremiumForm(true)} />
+      <ErrorBoundary fallback={<SectionFallback label="Hero" />}>
+        <HeroSection onPremiumClick={() => setShowPremiumForm(true)} />
+      </ErrorBoundary>
 
       {/* ── Orbit Solar System — THE hero visual ────────────── */}
-      <section className="relative pb-12 px-4 sm:px-6">
-        <OrbitSolarSystem />
-      </section>
+      <ErrorBoundary fallback={<SectionFallback label="Orbit" />}>
+        <section className="relative pb-12 px-4 sm:px-6">
+          <OrbitSolarSystem />
+        </section>
+      </ErrorBoundary>
 
       {/* ── Stats bar ────────────────────────────────────────── */}
       <section className="relative pb-20 px-4 sm:px-6">
@@ -47,14 +66,18 @@ export default function LandingPageClient() {
       </section>
 
       {/* ── Pricing Section ──────────────────────────────────── */}
-      <PricingSection />
+      <ErrorBoundary fallback={<SectionFallback label="Pricing" />}>
+        <PricingSection />
+      </ErrorBoundary>
 
       {/* ── Footer ───────────────────────────────────────────── */}
       <footer className="border-t border-white/10 py-8 px-4 sm:px-6 text-center">
         <p className="text-sm text-gray-500">© {new Date().getFullYear()} MyAvatar.ge — All rights reserved</p>
       </footer>
 
-      <PremiumAgentForm isOpen={showPremiumForm} onClose={() => setShowPremiumForm(false)} />
+      <ErrorBoundary fallback={null}>
+        <PremiumAgentForm isOpen={showPremiumForm} onClose={() => setShowPremiumForm(false)} />
+      </ErrorBoundary>
     </div>
   );
 }
