@@ -54,7 +54,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ project: data }, { status: 201 })
   } catch (err) {
     if (err instanceof z.ZodError) {
-      return NextResponse.json({ error: err.errors[0].message }, { status: 400 })
+      return NextResponse.json({ error: err.errors[0]?.message ?? 'Validation error' }, { status: 400 })
     }
     const message = err instanceof Error ? err.message : 'Unknown error'
     if (message === 'UNAUTHENTICATED') {

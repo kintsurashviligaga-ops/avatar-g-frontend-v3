@@ -37,7 +37,7 @@ export async function POST(req: Request) {
     }
 
     // Get or create conversation
-    let conversationId = body.conversation_id
+    let conversationId: string = body.conversation_id ?? ''
     if (!conversationId) {
       const { data: conv, error } = await supabase
         .from('conversations')
@@ -74,7 +74,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ conversationId, jobId })
   } catch (err) {
     if (err instanceof z.ZodError) {
-      return NextResponse.json({ error: err.errors[0].message }, { status: 400 })
+      return NextResponse.json({ error: err.errors[0]?.message ?? 'Validation error' }, { status: 400 })
     }
     const message = err instanceof Error ? err.message : 'Unknown error'
     if (message === 'UNAUTHENTICATED') {

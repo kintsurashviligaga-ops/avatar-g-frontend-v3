@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
-import type { ServiceId } from '@/lib/services/registry'
 
 interface Message {
   role: 'user' | 'assistant'
@@ -11,10 +10,12 @@ interface Message {
 interface Props {
   agentId: string
   userId: string
-  serviceId: ServiceId
+  serviceId: string
+  injectedMessage?: string
+  onInjectedMessageConsumed?: () => void
 }
 
-export function ServiceChatPanel({ agentId, userId: _userId, serviceId: _serviceId }: Props) {
+export function ServiceChatPanel({ agentId, userId: _userId, serviceId: _serviceId, injectedMessage, onInjectedMessageConsumed }: Props) {
   const [messages, setMessages] = useState<Message[]>([
     { role: 'assistant', content: 'Hello! How can I help with your project?' },
   ])
@@ -25,6 +26,13 @@ export function ServiceChatPanel({ agentId, userId: _userId, serviceId: _service
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
   }, [messages])
+
+  useEffect(() => {
+    if (injectedMessage) {
+      setInput(injectedMessage)
+      onInjectedMessageConsumed?.()
+    }
+  }, [injectedMessage, onInjectedMessageConsumed])
 
   const send = async () => {
     if (!input.trim() || sending) return

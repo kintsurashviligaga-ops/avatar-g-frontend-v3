@@ -8,6 +8,9 @@ import type { JobStatus, ArtifactRef, QAReport } from './core'
 
 // Re-export for convenience
 export type { JobStatus } from './core'
+/** @deprecated Use ArtifactRef from types/core instead */
+export type ArtifactReference = ArtifactRef
+export { type ArtifactRef } from './core'
 
 // ─── Job Record ──────────────────────────────────────────
 export interface JobRecord {
@@ -75,4 +78,41 @@ export interface JobLogEntry {
   message: string
   data: Record<string, unknown> | null
   created_at: string
+}
+
+// ─── Job Status Response (polling endpoint) ──────────────
+export interface JobStatusResponse {
+  id: string
+  status: JobStatus
+  result: Record<string, unknown> | null
+  error_message: string | null
+  created_at: string
+  updated_at: string
+}
+
+// ─── Editing Agent Types ─────────────────────────────────
+export interface EditingJobPayload {
+  source_assets: Array<{ bucket: string; path: string }>
+  operations: Array<{ op: string; [key: string]: unknown }>
+  export_formats: string[]
+  output_path_prefix: string
+}
+
+export interface EditingJobResult {
+  exports: Array<{
+    format: string
+    bucket: string
+    path: string
+    size_bytes: number
+    duration_sec: number
+    resolution: string
+    codec: string
+  }>
+  metadata: {
+    pipeline_version: string
+    total_duration_sec: number
+    steps_completed: string[]
+    processing_time_ms: number
+    gpu_utilized: boolean
+  }
 }

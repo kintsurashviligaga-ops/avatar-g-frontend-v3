@@ -689,6 +689,16 @@
       "non_vat_payer_desc": "If you are not a VAT payer, VAT will not be shown on invoices",
       "fx_rate": "Exchange Rate (GEL → USD)",
       "info_box": "This information will be used in invoices, receipts, and tax reports. Data stored here will not be shared with third parties."
+    },
+    "hub_title": "Business Hub",
+    "hub_subtitle": "Business automation powered by Agent G",
+    "nav_label": "Business",
+    "compliance": {
+      "title": "Compliance Notice",
+      "rule_1": "This system does not scrape platforms — only user-provided data is used.",
+      "rule_2": "API integrations require official keys provided by you.",
+      "rule_3": "Prohibited or exploitative product categories are blocked.",
+      "rule_4": "All calculations are for guidance only — not financial advice."
     }
   },
   "invoices": {

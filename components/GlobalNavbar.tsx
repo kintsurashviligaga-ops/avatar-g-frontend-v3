@@ -52,6 +52,12 @@ export function GlobalNavbar() {
             {s}
           </Link>
         ))}
+        <Link
+          href="/business"
+          className="px-3 py-1.5 text-sm text-white/50 hover:text-white hover:bg-white/[0.06] rounded-lg transition-all"
+        >
+          Business
+        </Link>
       </div>
 
       {/* Right */}

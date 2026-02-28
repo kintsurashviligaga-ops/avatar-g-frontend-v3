@@ -20,6 +20,27 @@ class AgentGRouter {
     attachments: unknown[]
   }): Promise<{ jobId: string }> {
     const db = supabase()
+
+    // Detect business intent from message (lightweight keyword scan)
+    // Full NLP classification is done inside the business-agent worker.
+    const BUSINESS_INTENTS: Record<string, string[]> = {
+      business_plan: ['business plan', 'business strategy', 'ბიზნეს გეგმა', 'бизнес-план'],
+      product_analysis: ['analyze product', 'product analysis', 'პროდუქტის ანალიზი', 'анализ товара'],
+      resell_pipeline: ['resell', 'resale', 'pipeline', 'გადაყიდვა', 'перепродажа'],
+      marketplace_listing_pack: ['listing', 'create listing', 'marketplace', 'ლისტინგი', 'листинг'],
+    }
+
+    let detectedIntent: string | undefined
+    if (params.agentId === 'business-agent') {
+      const msg = params.message.toLowerCase()
+      for (const [intent, keywords] of Object.entries(BUSINESS_INTENTS)) {
+        if (keywords.some(k => msg.includes(k))) {
+          detectedIntent = intent
+          break
+        }
+      }
+    }
+
     const { data: job, error } = await db
       .from('jobs')
       .insert({
@@ -28,7 +49,8 @@ class AgentGRouter {
         status: 'queued',
         priority: 5,
         payload: {
-          type: 'chat',
+          type: detectedIntent ? 'business_intent' : 'chat',
+          business_intent: detectedIntent,
           conversation_id: params.conversationId,
           project_id: params.projectId ?? null,
           message: params.message,
@@ -165,6 +187,46 @@ class AgentGRouter {
     const service = SERVICE_REGISTRY.find(s => s.id === serviceId)
     if (!service) throw new Error(`Unknown service: ${serviceId}`)
     return [{ agentId: service.agentId, label: `Run ${service.name}` }]
+  }
+
+  // ─── Business intent routing ─────────────────────────────────────────────────
+  // MUST be called through /api/agents/chat only (which calls routeChat).
+  // Agent G creates the job. No other code creates queued jobs for business-agent.
+
+  private BUSINESS_INTENT_STEPS: Record<string, Array<{ agentId: string; label: string }>> = {
+    business_plan: [
+      { agentId: 'business-agent', label: 'Generate business plan structure' },
+      { agentId: 'text-agent', label: 'Write plan document (KA/EN/RU)' },
+      { agentId: 'image-agent', label: 'Generate brand kit visuals' },
+    ],
+    product_analysis: [
+      { agentId: 'business-agent', label: 'Analyse product + profit model' },
+      { agentId: 'text-agent', label: 'Write product brief' },
+    ],
+    resell_pipeline: [
+      { agentId: 'business-agent', label: 'Build sourcing + logistics plan' },
+      { agentId: 'workflow-agent', label: 'Create automation workflow' },
+      { agentId: 'text-agent', label: 'Write channel-specific listing copy' },
+      { agentId: 'image-agent', label: 'Generate listing visuals' },
+      { agentId: 'shop-agent', label: 'Configure marketplace listing slots' },
+    ],
+    marketplace_listing_pack: [
+      { agentId: 'business-agent', label: 'Compliance check + pricing strategy' },
+      { agentId: 'text-agent', label: 'Write listing copy (title, desc, tags)' },
+      { agentId: 'image-agent', label: 'Generate product images (ad-safe)' },
+      { agentId: 'editing-agent', label: 'Produce short product video' },
+      { agentId: 'shop-agent', label: 'Finalise listing package' },
+    ],
+  }
+
+  isBusinessIntent(agentId: string): boolean {
+    return agentId === 'business-agent'
+  }
+
+  getBusinessSteps(intent: string): Array<{ agentId: string; label: string }> {
+    return this.BUSINESS_INTENT_STEPS[intent] ?? [
+      { agentId: 'business-agent', label: `Handle: ${intent}` },
+    ]
   }
 }
 
