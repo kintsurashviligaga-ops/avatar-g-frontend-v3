@@ -341,6 +341,756 @@
 				"--yes"
 			],
 			"isBackground": false
+		},
+		{
+			"label": "deploy-vercel-prod-yes",
+			"type": "shell",
+			"command": "npx",
+			"args": [
+				"vercel",
+				"--prod",
+				"--yes"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "agent-task-test",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-File",
+				"tmp_probe_urls.ps1"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "deploy-prod-now-vercel",
+			"type": "shell",
+			"command": "npx",
+			"args": [
+				"vercel",
+				"--prod",
+				"--yes"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "vercel-ls-latest-prod",
+			"type": "shell",
+			"command": "vercel",
+			"args": [
+				"ls",
+				"avatar-g-frontend-v3",
+				"--yes"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "probe-vercel-homepage-markers",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-File",
+				"tmp_probe_urls.ps1"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "probe-vercel-homepage-markers-file",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"tmp_probe_urls.ps1"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "research-latest-commit-files",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-Command",
+				"git log -1 --oneline; Write-Host ''; git show --name-only --pretty=\"\" -1"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "research-latest-commit-files-cmd",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/d",
+				"/c",
+				"git log -1 --oneline & echo. & git show --name-only --pretty=\"\" -1"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "agent-git-add-localized-home",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"add",
+				"app/[locale]/page.tsx"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "agent-git-commit-restore-home",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"commit",
+				"-m",
+				"fix(home): restore localized homepage after render isolation test"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "agent-git-push-main-after-restore",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"push",
+				"origin",
+				"main"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "agent-final-log-oneline",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"log",
+				"-1",
+				"--oneline"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "agent-final-log-oneline-cmd",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/d",
+				"/c",
+				"git log -1 --oneline"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "generate-app-tree-exact",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"$appRoot=(Resolve-Path app).Path; $paths=Get-ChildItem app -Recurse -Force | ForEach-Object { if ($_.PSIsContainer) { $_.FullName.Substring($appRoot.Length+1).Replace('\\\\','/') + '/' } else { $_.FullName.Substring($appRoot.Length+1).Replace('\\\\','/') } } | Sort-Object; $paths | Set-Content app-tree-exact.txt -Encoding utf8; Get-Content app-tree-exact.txt | Select-Object -First 20; \"TOTAL_LINES=$((Get-Content app-tree-exact.txt).Count)\""
+			],
+			"isBackground": false
+		},
+		{
+			"label": "tmp-echo-hello",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-Command",
+				"echo hello"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "research-show-layout-fb79fae",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/d",
+				"/c",
+				"git show fb79fae:app/[locale]/layout.tsx"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "research-export-layout-fb79fae",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/d",
+				"/c",
+				"git show fb79fae:app/[locale]/layout.tsx > tmp_layout_fb79fae.tsx"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "agent-vercel-ls-by-sha",
+			"type": "shell",
+			"command": "vercel",
+			"args": [
+				"ls",
+				"avatar-g-frontend-v3",
+				"--meta",
+				"githubCommitSha=8a2e1e5c41109647478e0a7bbc2f7c07ac498317",
+				"--yes"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "agent-print-app-tree-30",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"$lines=Get-Content app-tree-exact.txt; \"TOTAL_LINES=$($lines.Count)\"; \"FIRST_30_START\"; $lines | Select-Object -First 30; \"FIRST_30_END\""
+			],
+			"isBackground": false
+		},
+		{
+			"label": "agent-git-status-short-now",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"status",
+				"--short"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "agent-req-status-short-20260225",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"status",
+				"--short"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "agent-req-log-oneline-20260225",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"log",
+				"-1",
+				"--oneline"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "agent-req-show-names-20260225",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"show",
+				"--name-only",
+				"--pretty=",
+				"-1"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "agent-req-lsremote-main-20260225",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"ls-remote",
+				"origin",
+				"refs/heads/main"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "agent-req-commitpush-if-needed-20260225",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/d",
+				"/c",
+				"git add app/page.tsx middleware.ts && git commit -m \"chore(debug): hard isolate root homepage by disabling middleware\" && git push origin main"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "agent-req-run-git-output-script-20260225",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"tmp_user_req_git_outputs.ps1"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "agent-run-tmp-user-req-git-outputs",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"tmp_user_req_git_outputs.ps1"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "agent-layout-probe-commit-20260225",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/d",
+				"/c",
+				"git add app/layout.tsx && git commit -m \"chore(debug): temporary root layout probe marker\" && git push origin main"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "agent-layout-probe-commit-ps-20260225",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"git add app/layout.tsx; git commit -m 'chore(debug): temporary root layout probe marker'; git push origin main"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "agent-git-add-layout-probe-20260225",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"add",
+				"app/layout.tsx"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "agent-run-capture-layout-probe-outputs-20260225",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"tmp_capture_layout_probe_outputs.ps1"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "agent-run-capture-layout-probe-outputs-20260225-v2",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"c:\\Projects\\avatar-g-frontend-v3\\tmp_capture_layout_probe_outputs.ps1"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "agent-unique-log-20260225-1",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"log",
+				"-1",
+				"--oneline"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "agent-write-log-file-20260225",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/d",
+				"/c",
+				"git log -1 --oneline > tmp_exact_git_log_oneline.txt"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "agent-write-show-file-20260225",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/d",
+				"/c",
+				"git show --name-only --pretty=\"\" -1 > tmp_exact_git_show_names.txt"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "agent-write-lsremote-file-20260225",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/d",
+				"/c",
+				"git ls-remote origin refs/heads/main > tmp_exact_git_lsremote_main.txt"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "agent-research-vercel-root-20260225",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"$ErrorActionPreference='Stop'; Write-Output 'STEP1_VERCEL_JSON_BEGIN'; if (Test-Path -LiteralPath 'vercel.json') { Write-Output 'EXISTS'; Get-Content -LiteralPath 'vercel.json' -Raw } else { Write-Output 'MISSING' }; Write-Output 'STEP1_VERCEL_JSON_END'; Write-Output 'STEP2_NEXT_CONFIG_RELEVANT_BEGIN'; Select-String -Path 'next.config.js' -Pattern 'rootDir|distDir|output|module\\.exports|nextConfig|withNextIntl|swcMinify|experimental' -CaseSensitive:$false | ForEach-Object { '{0}:{1}' -f $_.LineNumber, $_.Line.TrimEnd() }; Write-Output 'STEP2_NEXT_CONFIG_RELEVANT_END'; Write-Output 'STEP2_PACKAGE_SCRIPTS_AND_ROOTDIR_BEGIN'; $pkg = Get-Content -LiteralPath 'package.json' -Raw | ConvertFrom-Json; Write-Output 'SCRIPTS:'; $pkg.scripts.PSObject.Properties | Sort-Object Name | ForEach-Object { '{0}={1}' -f $_.Name, $_.Value }; Write-Output 'ROOTDIR_MATCH_LINES:'; Select-String -Path 'package.json' -Pattern 'rootDir' -CaseSensitive:$false | ForEach-Object { '{0}:{1}' -f $_.LineNumber, $_.Line.TrimEnd() }; Write-Output 'STEP2_PACKAGE_SCRIPTS_AND_ROOTDIR_END'; Write-Output 'STEP3_APP_DIRS_BEGIN'; Get-ChildItem -Path . -Directory -Recurse -Filter 'app' | Where-Object { $_.FullName -notmatch '\\\\node_modules\\\\|\\\\\\.git\\\\|\\\\\\.next\\\\' } | ForEach-Object { (Resolve-Path -Relative $_.FullName) -replace '\\\\','/' } | Sort-Object -Unique; Write-Output 'STEP3_APP_DIRS_END'; Write-Output 'STEP4_SRC_APP_BEGIN'; if (Test-Path -LiteralPath 'src/app') { Write-Output 'src/app EXISTS' } else { Write-Output 'src/app MISSING' }; Write-Output 'STEP4_SRC_APP_END'; Write-Output 'STEP5_VERCEL_INSPECT_BEGIN'; $inspect = vercel project inspect avatar-g-frontend-v3 --yes 2>&1 | Out-String; Write-Output $inspect.TrimEnd(); Write-Output 'ROOT_DIRECTORY_EXTRACT:'; (($inspect -split \"`r?`n\") | Where-Object { $_ -match 'Root Directory' } | Select-Object -First 1); Write-Output 'STEP5_VERCEL_INSPECT_END'; Write-Output 'STEP6_REPO_TREE_BEGIN'; $exclude = @('.git','node_modules','.next'); $entries = New-Object System.Collections.Generic.List[string]; function Add-Tree([string]$abs,[string]$rel){ $children = Get-ChildItem -LiteralPath $abs -Force | Sort-Object Name; foreach($child in $children){ if($exclude -contains $child.Name){ continue }; $childRel = if([string]::IsNullOrEmpty($rel)) { $child.Name } else { \"$rel/$($child.Name)\" }; if($child.PSIsContainer){ $entries.Add(\"$childRel/\"); Add-Tree -abs $child.FullName -rel $childRel } else { $entries.Add($childRel) } } }; Add-Tree -abs (Get-Location).Path -rel ''; Set-Content -LiteralPath 'repo-tree-full.txt' -Value $entries; Write-Output ('REPO_TREE_TOTAL_LINES=' + $entries.Count); Write-Output 'REPO_TREE_FIRST_40_BEGIN'; $entries | Select-Object -First 40; Write-Output 'REPO_TREE_FIRST_40_END'; Write-Output 'STEP6_REPO_TREE_END'"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "agent-step1-vercel-json-20260225",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/d",
+				"/c",
+				"if exist vercel.json (echo EXISTS & type vercel.json) else echo MISSING"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "agent-step5-vercel-inspect-20260225",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/d",
+				"/c",
+				"vercel project inspect avatar-g-frontend-v3 --yes"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "agent-step6-generate-repo-tree-20260225",
+			"type": "shell",
+			"command": "node",
+			"args": [
+				"-e",
+				"const fs=require('fs');const path=require('path');const root=process.cwd();const out=path.join(root,'repo-tree-full.txt');const exclude=new Set(['.git','node_modules','.next']);const entries=[];function walk(abs,rel){const kids=fs.readdirSync(abs,{withFileTypes:true}).sort((a,b)=>a.name.localeCompare(b.name));for(const d of kids){if(exclude.has(d.name)) continue;const childRel=rel?`${rel}/${d.name}`:d.name;const childAbs=path.join(abs,d.name);if(d.isDirectory()){entries.push(`${childRel}/`);walk(childAbs,childRel);}else{entries.push(childRel);}}}walk(root,'');fs.writeFileSync(out,entries.join('\\n')+(entries.length?'\\n':''));console.log('REPO_TREE_TOTAL_LINES='+entries.length);console.log('REPO_TREE_FIRST_40_BEGIN');for(const line of entries.slice(0,40)) console.log(line);console.log('REPO_TREE_FIRST_40_END');"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "agent-step6-generate-repo-tree-20260225-v2",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/d",
+				"/c",
+				"node -e \"const fs=require('fs');const path=require('path');const root=process.cwd();const out=path.join(root,'repo-tree-full.txt');const exclude=new Set(['.git','node_modules','.next']);const entries=[];function walk(abs,rel){const kids=fs.readdirSync(abs,{withFileTypes:true}).sort((a,b)=>a.name.localeCompare(b.name));for(const d of kids){if(exclude.has(d.name)) continue;const childRel=rel?rel+'/'+d.name:d.name;const childAbs=path.join(abs,d.name);if(d.isDirectory()){entries.push(childRel+'/');walk(childAbs,childRel);}else{entries.push(childRel);}}}walk(root,'');fs.writeFileSync(out,entries.join('\\n')+(entries.length?'\\n':''));console.log('REPO_TREE_TOTAL_LINES='+entries.length);console.log('REPO_TREE_FIRST_40_BEGIN');entries.slice(0,40).forEach(l=>console.log(l));console.log('REPO_TREE_FIRST_40_END');\""
+			],
+			"isBackground": false
+		},
+		{
+			"label": "agent-step6-generate-repo-tree-20260225-v3",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"$exclude=@(\".git\",\"node_modules\",\".next\"); $entries=New-Object System.Collections.Generic.List[string]; function AddTree([string]$abs,[string]$rel){ $children=Get-ChildItem -LiteralPath $abs -Force | Sort-Object Name; foreach($child in $children){ if($exclude -contains $child.Name){ continue }; $childRel=if([string]::IsNullOrEmpty($rel)){ $child.Name } else { $rel + \"/\" + $child.Name }; if($child.PSIsContainer){ $entries.Add($childRel + \"/\"); AddTree -abs $child.FullName -rel $childRel } else { $entries.Add($childRel) } } }; AddTree -abs (Get-Location).Path -rel \"\"; Set-Content -LiteralPath \"repo-tree-full.txt\" -Value $entries; Write-Output (\"REPO_TREE_TOTAL_LINES=\" + $entries.Count); Write-Output \"REPO_TREE_FIRST_40_BEGIN\"; $entries | Select-Object -First 40; Write-Output \"REPO_TREE_FIRST_40_END\""
+			],
+			"isBackground": false
+		},
+		{
+			"label": "agent-step6-generate-repo-tree-20260225-v4",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"$exclude=@(\".git\",\"node_modules\",\".next\"); $entries=New-Object System.Collections.Generic.List[string]; function AddTree([string]$abs,[string]$rel){ $children=Get-ChildItem -LiteralPath $abs -Force | Sort-Object Name; foreach($child in $children){ if($exclude -contains $child.Name){ continue }; $childRel=if([string]::IsNullOrEmpty($rel)){ $child.Name } else { [string]::Concat($rel,[char]47,$child.Name) }; if($child.PSIsContainer){ $entries.Add([string]::Concat($childRel,[char]47)); AddTree -abs $child.FullName -rel $childRel } else { $entries.Add($childRel) } } }; AddTree -abs (Get-Location).Path -rel \"\"; Set-Content -LiteralPath \"repo-tree-full.txt\" -Value $entries; Write-Output (\"REPO_TREE_TOTAL_LINES=\" + $entries.Count); Write-Output \"REPO_TREE_FIRST_40_BEGIN\"; $entries | Select-Object -First 40; Write-Output \"REPO_TREE_FIRST_40_END\""
+			],
+			"isBackground": false
+		},
+		{
+			"label": "agent-step6-generate-repo-tree-gitls-20260225",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/d",
+				"/c",
+				"git ls-files > repo-tree-full.txt & powershell -NoProfile -Command \"$lines=Get-Content repo-tree-full.txt; Write-Output ('REPO_TREE_TOTAL_LINES=' + $lines.Count); Write-Output 'REPO_TREE_FIRST_40_BEGIN'; $lines | Select-Object -First 40; Write-Output 'REPO_TREE_FIRST_40_END'\""
+			],
+			"isBackground": false
+		},
+		{
+			"label": "agent-step6-write-repo-tree-file-20260225",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/d",
+				"/c",
+				"git ls-files > repo-tree-full.txt"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "tmp-vercel-project-inspect-root",
+			"type": "shell",
+			"command": "vercel project inspect avatar-g-frontend-v3 --yes",
+			"isBackground": false
+		},
+		{
+			"label": "tmp-vercel-inspect-to-file",
+			"type": "shell",
+			"command": "cmd /d /c \"vercel project inspect avatar-g-frontend-v3 --yes > tmp_vercel_project_inspect.txt 2>&1\"",
+			"isBackground": false
+		},
+		{
+			"label": "tmp-npx-vercel-inspect-to-file",
+			"type": "shell",
+			"command": "cmd /d /c \"npx vercel project inspect avatar-g-frontend-v3 --yes > tmp_vercel_project_inspect.txt 2>&1 & echo EXITCODE=%ERRORLEVEL%>> tmp_vercel_project_inspect.txt\"",
+			"isBackground": false
+		},
+		{
+			"label": "agent-user-commit-only-3-files-20260226",
+			"type": "shell",
+			"command": "git reset; git add -- 'app/layout.tsx' 'app/page.tsx' 'app/[locale]/page.tsx'; git commit -m 'fix(prod): restore app shell and add temporary homepage marker'; git push origin main",
+			"isBackground": false
+		},
+		{
+			"label": "agent-user-commit-push-and-capture-20260226",
+			"type": "shell",
+			"command": "cmd /d /c \"git reset && git add -- app/layout.tsx app/page.tsx app/[locale]/page.tsx && git commit -m \"\"fix(prod): restore app shell and add temporary homepage marker\"\" && git push origin main && git log -1 --oneline > __out1.txt && git show --name-only --pretty=format: -1 > __out2.txt && git ls-remote origin refs/heads/main > __out3.txt\"",
+			"isBackground": false
+		},
+		{
+			"label": "agent-run-tmp-user-req-git-outputs-v2",
+			"type": "shell",
+			"command": "cmd /d /c tmp_user_commit_push.cmd",
+			"isBackground": false
+		},
+		{
+			"label": "agent-probe-task-write-file-20260226",
+			"type": "shell",
+			"command": "cmd /d /c \"echo TASK_OK> __task_probe.txt\"",
+			"isBackground": false
+		},
+		{
+			"label": "agent-user-lsremote-main-20260226",
+			"type": "shell",
+			"command": "git ls-remote origin refs/heads/main",
+			"isBackground": false
+		},
+		{
+			"label": "agent-user-write-lsremote-file-20260226",
+			"type": "shell",
+			"command": "cmd /d /c \"git ls-remote origin refs/heads/main > tmp_lsremote_user.txt\"",
+			"isBackground": false
+		},
+		{
+			"label": "agent-capture-vercel-ls-file",
+			"type": "shell",
+			"command": "cmd /d /c \"vercel ls avatar-g-frontend-v3 --yes > tmp_vercel_ls_capture.txt 2>&1\"",
+			"isBackground": false
+		},
+		{
+			"label": "agent-myavatar-research-checks-20260226",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"$ErrorActionPreference='Continue'; $urls=@('https://www.myavatar.ge/','https://www.myavatar.ge/en','https://www.myavatar.ge/ka','https://www.myavatar.ge/ru','https://www.myavatar.ge/api/health'); Write-Output 'PAGE_CHECKS_START'; foreach($u in $urls){ try { $r=Invoke-WebRequest -Uri $u -MaximumRedirection 10 -ErrorAction Stop; $c=[string]$r.Content; $status=[int]$r.StatusCode; $ok=$c.Contains('MYAVATAR OK'); $aiEn=$c.Contains('AI platform'); $aiKa=$c.Contains('AI პლატფორმა'); Write-Output (\"$u`t$status`t$ok`t$aiEn`t$aiKa\"); } catch { $s='ERR'; if($_.Exception.Response -and $_.Exception.Response.StatusCode){ $s=[int]$_.Exception.Response.StatusCode }; Write-Output (\"$u`t$s`tFalse`tFalse`tFalse\"); } }; Write-Output 'PAGE_CHECKS_END'; $ua='Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1'; Write-Output 'MOBILE_SAFARI_START'; try { $r2=Invoke-WebRequest -Uri 'https://www.myavatar.ge/' -MaximumRedirection 10 -UserAgent $ua -ErrorAction Stop; $c2=[string]$r2.Content; $s2=[int]$r2.StatusCode; $ok2=$c2.Contains('MYAVATAR OK'); Write-Output (\"https://www.myavatar.ge/`t$s2`t$ok2\"); } catch { $s2='ERR'; if($_.Exception.Response -and $_.Exception.Response.StatusCode){ $s2=[int]$_.Exception.Response.StatusCode }; Write-Output (\"https://www.myavatar.ge/`t$s2`tFalse\"); }; Write-Output 'MOBILE_SAFARI_END'"
+			]
+		},
+		{
+			"label": "agent-myavatar-research-checks-20260226",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"tmp_myavatar_research_check.ps1"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "agent-user-commit-push-final-20260226",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"git add -- \":(literal)app/layout.tsx\" \":(literal)app/page.tsx\" \":(literal)app/[locale]/layout.tsx\" \":(literal)app/[locale]/page.tsx\" \":(literal)app/api/health/route.ts\"; git commit -m \"fix(prod): restore homepage rendering and finalize health endpoint\" -- \":(literal)app/layout.tsx\" \":(literal)app/page.tsx\" \":(literal)app/[locale]/layout.tsx\" \":(literal)app/[locale]/page.tsx\" \":(literal)app/api/health/route.ts\"; if ($LASTEXITCODE -eq 0) { git push origin main }; git log -1 --oneline > __req_git_out_1.txt; git show --name-only --pretty=\"\" -1 > __req_git_out_2.txt; git ls-remote origin refs/heads/main > __req_git_out_3.txt"
+			]
+		},
+		{
+			"label": "agent-user-commit-push-final-20260226-v2",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"tmp_user_commit_push_final.ps1"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "build-prod-check",
+			"type": "shell",
+			"command": "npm",
+			"args": [
+				"run",
+				"build"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "build-prod-check",
+			"type": "shell",
+			"command": "npm",
+			"args": [
+				"run",
+				"build"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "build-prod-check",
+			"type": "shell",
+			"command": "npm",
+			"args": [
+				"run",
+				"build"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "build-prod-check",
+			"type": "shell",
+			"command": "npm",
+			"args": [
+				"run",
+				"build"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "lint-check",
+			"type": "shell",
+			"command": "npm",
+			"args": [
+				"run",
+				"lint"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "start-check",
+			"type": "shell",
+			"command": "npm",
+			"args": [
+				"run",
+				"start"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "build-prod-check",
+			"type": "shell",
+			"command": "npm",
+			"args": [
+				"run",
+				"build"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "final-clean-build",
+			"type": "shell",
+			"command": "npx next build"
+		},
+		{
+			"label": "build-verify-cleanup",
+			"type": "shell",
+			"command": "npx next build"
+		},
+		{
+			"label": "build-after-cleanup",
+			"type": "shell",
+			"command": "npx next build 2>&1 | Out-String; echo \"EXIT:$LASTEXITCODE\""
+		},
+		{
+			"label": "build-prod-check",
+			"type": "shell",
+			"command": "npx next build"
+		},
+		{
+			"label": "build-prod-check",
+			"type": "shell",
+			"command": "npx next build"
+		},
+		{
+			"label": "final-build",
+			"type": "shell",
+			"command": "npx next build"
+		},
+		{
+			"label": "final-build-2",
+			"type": "shell",
+			"command": "npx next build"
+		},
+		{
+			"label": "lint-check",
+			"type": "shell",
+			"command": "npx next lint"
+		},
+		{
+			"label": "build-prod-check",
+			"type": "shell",
+			"command": "npx next build"
+		},
+		{
+			"label": "start-check",
+			"type": "shell",
+			"command": "Get-Process node -ErrorAction SilentlyContinue | Stop-Process -Force; Start-Sleep 5; if (Test-Path .next) { Remove-Item -Recurse -Force .next }; npm run build"
+		},
+		{
+			"label": "build-prod-check",
+			"type": "shell",
+			"command": "node -e \"const{spawnSync}=require('child_process');spawnSync('taskkill',['/F','/IM','node.exe'],{stdio:'ignore'});setTimeout(()=>{const fs=require('fs');try{fs.rmSync('.next',{recursive:true,force:true})}catch{}const r=spawnSync('npx',['next','build'],{stdio:'inherit',shell:true});process.exit(r.status||0)},5000)\""
 		}
 	]
 }

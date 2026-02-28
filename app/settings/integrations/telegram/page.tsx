@@ -109,7 +109,7 @@ export default function TelegramIntegrationSettingsPage() {
   };
 
   return (
-    <main className="min-h-screen bg-[#05070A] text-white pt-20 px-4 pb-10">
+    <main className="min-h-screen bg-[#050510] text-white pt-20 px-4 pb-10">
       <div className="mx-auto max-w-3xl space-y-6">
         <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
           <div className="flex items-center justify-between gap-3">

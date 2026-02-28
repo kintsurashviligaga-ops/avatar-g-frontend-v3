@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { createServerClient, createServiceRoleClient } from '@/lib/supabase/server';
 import { structuredLog } from '@/lib/logger';
 import type { ExecutiveTaskLog } from '@/types/billing';

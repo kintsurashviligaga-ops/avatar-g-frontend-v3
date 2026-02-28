@@ -63,7 +63,7 @@ export default async function DashboardPage() {
   const plan = await getPlanSummary(subscription?.plan || 'FREE');
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-[#05070A] via-[#0A0F1C] to-[#05070A] px-4 py-10 text-white">
+    <main className="min-h-screen bg-gradient-to-br from-[#050510] via-[#0A0F1C] to-[#050510] px-4 py-10 text-white">
       <div className="mx-auto max-w-7xl space-y-6">
         <header className="rounded-2xl border border-cyan-500/20 bg-white/5 p-6 backdrop-blur-sm">
           <h1 className="text-2xl font-semibold">Dashboard</h1>

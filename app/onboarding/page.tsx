@@ -8,7 +8,7 @@ import dynamic from "next/dynamic";
 
 const SpaceBackground = dynamic(
   () => import("@/components/SpaceSingularityBackground"),
-  { ssr: false, loading: () => <div className="fixed inset-0 bg-[#05070A]" /> }
+  { ssr: false, loading: () => <div className="fixed inset-0 bg-[#050510]" /> }
 );
 
 // ONBOARDING STEPS - EXACT 5 STEPS
@@ -186,7 +186,7 @@ export default function OnboardingPage() {
 
   if (isCompleted) {
     return (
-      <div className="relative min-h-screen bg-[#05070A] flex items-center justify-center">
+      <div className="relative min-h-screen bg-[#050510] flex items-center justify-center">
         <SpaceBackground />
         <motion.div
           initial={{ opacity: 0, scale: 0.9 }}
@@ -223,7 +223,7 @@ export default function OnboardingPage() {
   const StepIcon = step.icon;
 
   return (
-    <div className="relative min-h-screen bg-[#05070A] overflow-hidden">
+    <div className="relative min-h-screen bg-[#050510] overflow-hidden">
       <SpaceBackground />
 
       {/* Skip Button - Top Right */}

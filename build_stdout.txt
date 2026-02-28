@@ -1,0 +1,15 @@
+  ▲ Next.js 14.2.35
+  - Environments: .env.local
+
+   Creating an optimized production build ...
+<w> [webpack.cache.PackFileCacheStrategy] Caching failed for pack: Error: ENOENT: no such file or directory, rename 'C:\Projects\avatar-g-frontend-v3\.next\cache\webpack\server-production\0.pack_' -> 'C:\Projects\avatar-g-frontend-v3\.next\cache\webpack\server-production\0.pack'
+<w> [webpack.cache.PackFileCacheStrategy] Serializing big strings (133kiB) impacts deserialization performance (consider using Buffer instead and decode when needed)
+ ✓ Compiled successfully
+   Linting and checking validity of types ...
+   Collecting page data ...
+ ⚠ Sending SIGTERM signal to Next.js build worker due to timeout of 60 seconds. Subsequent errors may be a result of the worker exiting.
+ ⨯ Next.js build worker exited with code: null and signal: SIGTERM
+ ⚠ Restarted collecting page data for /_app because it took more than 60 seconds
+ ⚠ See more info here https://nextjs.org/docs/messages/static-page-generation-timeout
+ ⚠ Restarted collecting page data for /_app because it took more than 60 seconds
+Terminate batch job (Y/N)? Terminate batch job (Y/N)? 

@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 
 export default function InvestorPage() {
   return (
-    <main className="min-h-screen bg-[#05070A] text-white">
+    <main className="min-h-screen bg-[#050510] text-white">
       <section className="pt-32 pb-24">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} className="text-center mb-16">

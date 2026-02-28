@@ -13,7 +13,7 @@ export default function Icon(): ImageResponse {
       <div
         style={{
           fontSize: 24,
-          background: 'linear-gradient(to bottom right, #05070A, #0A0A0A)',
+          background: 'linear-gradient(to bottom right, #050510, #0A0A0A)',
           width: '100%',
           height: '100%',
           display: 'flex',

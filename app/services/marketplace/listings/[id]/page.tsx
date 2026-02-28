@@ -78,7 +78,7 @@ export default function MarketplaceListingDetailPage() {
   };
 
   return (
-    <main className="relative min-h-screen bg-[#05070A] px-4 pb-10 pt-24 sm:px-6 lg:px-8">
+    <main className="relative min-h-screen bg-[#050510] px-4 pb-10 pt-24 sm:px-6 lg:px-8">
       <SpaceBackground />
       <div className="relative z-10 mx-auto max-w-6xl space-y-4">
         {loading ? (

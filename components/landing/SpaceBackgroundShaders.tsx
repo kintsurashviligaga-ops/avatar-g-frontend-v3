@@ -205,7 +205,7 @@ export default function SpaceBackgroundShaders() {
       <StarField />
 
       {/* Fog for depth */}
-      <fog attach="fog" args={['#05070A', 5, 100]} />
+      <fog attach="fog" args={['#050510', 5, 100]} />
     </group>
   );
 }

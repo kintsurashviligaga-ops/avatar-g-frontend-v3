@@ -39,7 +39,7 @@ export default function SubscriptionTestPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-[#05070A] via-[#0A0F1C] to-[#05070A] flex items-center justify-center">
+      <div className="min-h-screen bg-gradient-to-br from-[#050510] via-[#0A0F1C] to-[#050510] flex items-center justify-center">
         <div className="flex items-center gap-2 text-white">
           <Loader2 className="w-6 h-6 animate-spin" />
           <span>Loading subscription status...</span>
@@ -49,7 +49,7 @@ export default function SubscriptionTestPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#05070A] via-[#0A0F1C] to-[#05070A] py-12 px-4">
+    <div className="min-h-screen bg-gradient-to-br from-[#050510] via-[#0A0F1C] to-[#050510] py-12 px-4">
       <div className="max-w-4xl mx-auto">
         <h1 className="text-4xl font-bold text-white mb-2">Subscription Test</h1>
         <p className="text-gray-400 mb-8">Test Stripe subscription integration</p>

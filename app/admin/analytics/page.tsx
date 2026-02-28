@@ -53,7 +53,7 @@ export default function AdminPanelPage() {
 
   if (isLoading) {
     return (
-      <main className="relative min-h-screen bg-[#05070A]">
+      <main className="relative min-h-screen bg-[#050510]">
         <SpaceBackground />
         <div className="relative z-10 pt-24 flex items-center justify-center min-h-screen">
           <div className="text-center">
@@ -67,7 +67,7 @@ export default function AdminPanelPage() {
 
   if (error || !analytics) {
     return (
-      <main className="relative min-h-screen bg-[#05070A]">
+      <main className="relative min-h-screen bg-[#050510]">
         <SpaceBackground />
         <div className="relative z-10 pt-24 px-4">
           <div className="max-w-7xl mx-auto">
@@ -112,7 +112,7 @@ export default function AdminPanelPage() {
   ];
 
   return (
-    <main className="relative min-h-screen bg-[#05070A]">
+    <main className="relative min-h-screen bg-[#050510]">
       <SpaceBackground />
       
       <div className="relative z-10 pt-24 pb-16 px-4">

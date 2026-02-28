@@ -171,7 +171,7 @@ export default function SystemHealthPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#05070A] text-white p-8">
+    <div className="min-h-screen bg-[#050510] text-white p-8">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
         <div className="mb-8">

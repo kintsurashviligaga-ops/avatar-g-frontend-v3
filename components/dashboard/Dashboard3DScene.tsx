@@ -101,7 +101,7 @@ export default function Dashboard3DScene() {
   // Fallback UI if WebGL unavailable
   if (!webglAvailable) {
     return (
-      <div className="relative w-full h-[300px] bg-gradient-to-br from-[#05070A] via-[#1A1A1A] to-[#05070A] rounded-2xl overflow-hidden">
+      <div className="relative w-full h-[300px] bg-gradient-to-br from-[#050510] via-[#1A1A1A] to-[#050510] rounded-2xl overflow-hidden">
         <div className="absolute inset-0 flex items-center justify-center">
           <div className="w-32 h-32 rounded-full bg-gradient-to-r from-[#D4AF37]/20 via-[#00FFFF]/20 to-[#D4AF37]/20 blur-xl" />
         </div>
@@ -120,7 +120,7 @@ export default function Dashboard3DScene() {
   const paused = !isVisible || reduceMotion;
 
   return (
-    <div className="relative w-full h-[300px] bg-gradient-to-br from-[#05070A] via-[#1A1A1A] to-[#05070A] rounded-2xl overflow-hidden">
+    <div className="relative w-full h-[300px] bg-gradient-to-br from-[#050510] via-[#1A1A1A] to-[#050510] rounded-2xl overflow-hidden">
       {isVisible && (
         <Canvas
           camera={{ position: [0, 0, 5], fov: 50 }}

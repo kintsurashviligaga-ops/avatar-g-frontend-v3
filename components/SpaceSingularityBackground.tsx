@@ -36,7 +36,7 @@ export default function SpaceSingularityBackground() {
     };
 
     const draw = () => {
-      ctx.fillStyle = "#05070A";
+      ctx.fillStyle = "#050510";
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
       const gradient = ctx.createRadialGradient(canvas.width / 2, canvas.height / 2, 0, canvas.width / 2, canvas.height / 2, canvas.width * 0.8);
@@ -79,5 +79,5 @@ export default function SpaceSingularityBackground() {
     };
   }, []);
 
-  return <canvas ref={canvasRef} className="fixed inset-0 z-0 pointer-events-none" style={{ background: "#05070A" }} />;
+  return <canvas ref={canvasRef} className="fixed inset-0 z-0 pointer-events-none" style={{ background: "#050510" }} />;
 }

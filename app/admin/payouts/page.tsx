@@ -134,7 +134,7 @@ export default function AdminPayoutsPage() {
 
   if (error && error.includes('Unauthorized')) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-[#05070A] via-[#0A0F1C] to-[#05070A] flex items-center justify-center p-4">
+      <div className="min-h-screen bg-gradient-to-br from-[#050510] via-[#0A0F1C] to-[#050510] flex items-center justify-center p-4">
         <Card className="bg-red-500/10 border-red-500/30 p-6 max-w-md">
           <h2 className="text-xl font-bold text-red-400 mb-2">
             {t('common.error')}
@@ -146,7 +146,7 @@ export default function AdminPayoutsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#05070A] via-[#0A0F1C] to-[#05070A] py-12 px-4">
+    <div className="min-h-screen bg-gradient-to-br from-[#050510] via-[#0A0F1C] to-[#050510] py-12 px-4">
       <div className="max-w-7xl mx-auto space-y-8">
         {/* Header */}
         <div className="flex items-center justify-between">

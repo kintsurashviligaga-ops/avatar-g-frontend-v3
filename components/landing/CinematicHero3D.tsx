@@ -22,7 +22,7 @@ import { WebGLFeatureDetect } from './WebGLFeatureDetect';
 const CinematicScene = dynamic(() => import('./CinematicScene'), {
   ssr: false,
   loading: () => (
-    <div className="w-full h-screen flex items-center justify-center bg-[#05070A]">
+    <div className="w-full h-screen flex items-center justify-center bg-[#050510]">
       <div className="text-center">
         <div className="w-16 h-16 mx-auto mb-4 rounded-full border-2 border-transparent border-t-cyan-400 border-r-blue-500 animate-spin" />
         <p className="text-cyan-400 font-mono text-sm">Initializing quantum dimension...</p>
@@ -149,7 +149,7 @@ export default function CinematicHero3D() {
   return (
     <ErrorBoundary
       fallback={
-        <div className="w-full h-screen flex items-center justify-center bg-[#05070A]">
+        <div className="w-full h-screen flex items-center justify-center bg-[#050510]">
           <div className="text-center">
             <LogoImage className="w-24 h-24 mx-auto mb-4" />
             <p className="text-cyan-400 font-mono text-lg">Avatar preview failed.<br />Try reloading or use 2D preview.</p>
@@ -159,7 +159,7 @@ export default function CinematicHero3D() {
     >
       <WebGLFeatureDetect
         fallback={
-          <div className="w-full h-screen flex items-center justify-center bg-[#05070A]">
+          <div className="w-full h-screen flex items-center justify-center bg-[#050510]">
             <div className="text-center">
               <LogoImage className="w-24 h-24 mx-auto mb-4" />
               <p className="text-cyan-400 font-mono text-lg">Your device/browser can’t render 3D preview.<br />Use 2D preview or try Chrome/Edge.</p>
@@ -167,7 +167,7 @@ export default function CinematicHero3D() {
           </div>
         }
       >
-        <Suspense fallback={<div className="w-full h-screen bg-[#05070A]" />}>
+        <Suspense fallback={<div className="w-full h-screen bg-[#050510]" />}>
           <CinematicScene userAvatar={loadingState.userAvatar} />
         </Suspense>
       </WebGLFeatureDetect>

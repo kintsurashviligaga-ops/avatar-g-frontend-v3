@@ -3,17 +3,17 @@
 @tailwind utilities;
 
 :root {
-  --app-bg: 5 7 12;
+  --app-bg: 5 5 16;
   --app-surface: 20 20 25;
   --app-elevated: 30 30 40;
   --app-border: 255 255 255;
   --app-text: 240 240 250;
   --app-muted: 161 172 198;
-  --app-accent: 129 140 248;
+  --app-accent: 124 92 252;
   --app-neon: 34 211 238;
   --app-success: 34 197 94;
-  --app-warning: 251 191 36;
-  --app-danger: 239 68 68;
+  --app-warning: 245 158 11;
+  --app-danger: 255 68 102;
 }
 
 * {
@@ -34,10 +34,10 @@ body {
   font-family: var(--font-ui), 'Noto Sans Georgian', Inter, system-ui, sans-serif;
   color: rgb(var(--app-text));
   background:
-    radial-gradient(circle at 15% 20%, rgba(129, 140, 248, 0.24), transparent 35%),
-    radial-gradient(circle at 80% 10%, rgba(34, 211, 238, 0.16), transparent 32%),
-    radial-gradient(circle at 90% 80%, rgba(168, 85, 247, 0.14), transparent 38%),
-    linear-gradient(180deg, #05070c 0%, #070b14 52%, #05070c 100%);
+    radial-gradient(circle at 15% 20%, rgba(124, 92, 252, 0.18), transparent 35%),
+    radial-gradient(circle at 80% 10%, rgba(34, 211, 238, 0.12), transparent 32%),
+    radial-gradient(circle at 90% 80%, rgba(168, 85, 247, 0.10), transparent 38%),
+    linear-gradient(180deg, #050510 0%, #070b14 52%, #050510 100%);
 }
 
 a {
@@ -70,7 +70,7 @@ a {
 
 @layer components {
   .ag-glass {
-    border: 1px solid rgba(129, 140, 248, 0.24);
+    border: 1px solid rgba(124, 92, 252, 0.20);
     background: linear-gradient(135deg, rgba(20, 28, 46, 0.72), rgba(14, 20, 36, 0.5));
     backdrop-filter: blur(18px);
     box-shadow: 0 8px 40px rgba(0, 0, 0, 0.35);
@@ -85,8 +85,27 @@ a {
   }
 
   .ag-input:focus {
-    border-color: rgba(34, 211, 238, 0.65);
-    box-shadow: 0 0 0 2px rgba(34, 211, 238, 0.18);
+    border-color: rgba(124, 92, 252, 0.65);
+    box-shadow: 0 0 0 2px rgba(124, 92, 252, 0.18);
+  }
+
+  .ag-panel {
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 1rem;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  }
+
+  .ag-panel:hover {
+    border-color: rgba(255, 255, 255, 0.18);
+  }
+
+  .ag-section-header {
+    @apply text-2xl font-bold tracking-tight text-white sm:text-3xl;
+  }
+
+  .ag-section-sub {
+    @apply mt-3 max-w-2xl text-base text-white/60;
   }
 }
 
@@ -96,8 +115,54 @@ a {
   }
 
   .ag-neon-ring {
-    box-shadow: 0 0 0 1px rgba(34, 211, 238, 0.25), 0 0 30px rgba(34, 211, 238, 0.16);
+    box-shadow: 0 0 0 1px rgba(124, 92, 252, 0.25), 0 0 30px rgba(124, 92, 252, 0.16);
   }
+
+  .ag-hover-lift {
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+  }
+
+  .ag-hover-lift:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.3);
+  }
+
+  .ag-border-glow {
+    position: relative;
+  }
+
+  .ag-border-glow::after {
+    content: '';
+    position: absolute;
+    inset: -1px;
+    border-radius: inherit;
+    background: linear-gradient(135deg, rgba(124, 92, 252, 0.4), rgba(34, 211, 238, 0.2));
+    z-index: -1;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+  }
+
+  .ag-border-glow:hover::after {
+    opacity: 1;
+  }
+
+  .ag-fade-in {
+    animation: agFadeIn 0.3s ease-out forwards;
+  }
+
+  .ag-slide-up {
+    animation: agSlideUp 0.4s ease-out forwards;
+  }
+}
+
+@keyframes agFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes agSlideUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 @media (prefers-reduced-motion: reduce) {

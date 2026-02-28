@@ -206,7 +206,7 @@ export default function ImageCreatorPage() {
   };
 
   return (
-    <main className="relative min-h-screen bg-[#05070A]">
+    <main className="relative min-h-screen bg-[#050510]">
       <SpaceBackground />
       
       <div className="relative z-10 pt-24 pb-16 px-4">

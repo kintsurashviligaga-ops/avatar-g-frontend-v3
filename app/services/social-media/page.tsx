@@ -474,7 +474,7 @@ export default function SocialMediaManagerPage() {
   };
 
   return (
-    <main className="relative min-h-screen bg-[#05070A]">
+    <main className="relative min-h-screen bg-[#050510]">
       <SpaceBackground />
 
       <div className="relative z-10 px-4 pb-16 pt-24">

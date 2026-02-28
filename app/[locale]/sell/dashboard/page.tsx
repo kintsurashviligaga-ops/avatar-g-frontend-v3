@@ -62,7 +62,7 @@ export default function SellerDashboardPage() {
   const payoutStatus = status?.payoutsEnabled ? t('status.active') : t('status.pending');
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#05070A] via-[#0A0F1C] to-[#05070A] py-16 px-4">
+    <div className="min-h-screen bg-gradient-to-br from-[#050510] via-[#0A0F1C] to-[#050510] py-16 px-4">
       <div className="max-w-6xl mx-auto space-y-8">
         <div>
           <h1 className="text-4xl font-bold text-white mb-3">{t('title')}</h1>

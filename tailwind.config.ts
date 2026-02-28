@@ -24,7 +24,7 @@ const config: Config = {
         'app-warning': 'rgb(var(--app-warning) / <alpha-value>)',
         'app-danger': 'rgb(var(--app-danger) / <alpha-value>)',
         space: {
-          black: '#05070A',
+          black: '#050510',
           dark: '#0A1423',
         },
         cyan: {

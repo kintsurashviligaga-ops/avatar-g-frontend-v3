@@ -40,7 +40,7 @@ export default function SEO({
       <link rel="apple-touch-icon" href="/icon" />
       
       {/* Theme Color */}
-      <meta name="theme-color" content="#05070A" />
+      <meta name="theme-color" content="#050510" />
     </Head>
   );
 }

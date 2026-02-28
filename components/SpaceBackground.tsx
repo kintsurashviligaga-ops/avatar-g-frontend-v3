@@ -58,7 +58,7 @@ export default function SpaceBackground() {
     <canvas
       ref={canvasRef}
       className="fixed inset-0 z-0"
-      style={{ background: "linear-gradient(to bottom, #05070A, #0a0e17)" }}
+      style={{ background: "linear-gradient(to bottom, #050510, #0a0e17)" }}
     />
   );
 }

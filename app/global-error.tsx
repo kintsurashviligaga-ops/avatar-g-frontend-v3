@@ -66,7 +66,7 @@ export default function GlobalError({
       justifyContent: 'center',
       padding: '24px',
       fontFamily: 'system-ui, -apple-system, sans-serif',
-      background: '#05070A',
+      background: '#050510',
       color: 'white',
     }}>
           <div style={{

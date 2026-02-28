@@ -35,7 +35,7 @@ export default function SettingsClient() {
   };
 
   return (
-    <div className="min-h-screen bg-[#05070A] text-white pt-20">
+    <div className="min-h-screen bg-[#050510] text-white pt-20">
       <div className="container mx-auto px-4 py-8 max-w-6xl">
         <motion.div
           initial={{ opacity: 0, y: 20 }}

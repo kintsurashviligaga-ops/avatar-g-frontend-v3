@@ -171,7 +171,7 @@ export default function AffiliateDashboard() {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-[#05070A] via-[#0A0F1C] to-[#05070A] py-12 px-4">
+      <div className="min-h-screen bg-gradient-to-br from-[#050510] via-[#0A0F1C] to-[#050510] py-12 px-4">
         <div className="max-w-7xl mx-auto">
           <Card className="bg-red-500/10 border-red-500/30 p-6">
             <p className="text-red-400">{t('common.error')}: {error}</p>
@@ -185,7 +185,7 @@ export default function AffiliateDashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#05070A] via-[#0A0F1C] to-[#05070A] py-12 px-4">
+    <div className="min-h-screen bg-gradient-to-br from-[#050510] via-[#0A0F1C] to-[#050510] py-12 px-4">
       <div className="max-w-7xl mx-auto space-y-8">
         {/* Header */}
         <div>

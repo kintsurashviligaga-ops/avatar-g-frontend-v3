@@ -34,7 +34,7 @@ export default function SellerStartPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-[#05070A] via-[#0A0E1A] to-[#05070A] flex items-center justify-center px-4 py-12">
+    <div className="min-h-screen bg-gradient-to-b from-[#050510] via-[#0A0E1A] to-[#050510] flex items-center justify-center px-4 py-12">
       <div className="max-w-4xl w-full">
         
         {/* Hero Section */}

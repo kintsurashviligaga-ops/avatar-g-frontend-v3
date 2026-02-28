@@ -88,7 +88,7 @@ export default function SellerDashboardPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-[#05070A] via-[#0A0E1A] to-[#05070A] flex items-center justify-center">
+      <div className="min-h-screen bg-gradient-to-b from-[#050510] via-[#0A0E1A] to-[#050510] flex items-center justify-center">
         <div className="text-center space-y-4">
           <div className="w-16 h-16 border-4 border-purple-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
           <p className="text-xl text-gray-400">იტვირთება...</p>
@@ -103,7 +103,7 @@ export default function SellerDashboardPage() {
   const isMarginHealthy = kpi.currentMarginBps >= 2000;
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-[#05070A] via-[#0A0E1A] to-[#05070A] px-4 py-12">
+    <div className="min-h-screen bg-gradient-to-b from-[#050510] via-[#0A0E1A] to-[#050510] px-4 py-12">
       <div className="max-w-7xl mx-auto">
         
         {/* Header */}

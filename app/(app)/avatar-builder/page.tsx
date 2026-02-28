@@ -420,7 +420,7 @@ import { createBrowserClient } from '@/lib/supabase/browser';
               }
 
               return (
-                <div className="min-h-screen bg-[#05070A] px-4 py-24 text-white">
+                <div className="min-h-screen bg-[#050510] px-4 py-24 text-white">
                   <div className="mx-auto max-w-6xl space-y-6">
                     <div>
                       <h1 className="text-3xl font-bold">Avatar Builder Wizard</h1>

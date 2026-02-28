@@ -273,56 +273,30 @@
     }
   },
   "sell": {
-    "onboarding": {
-      "title": "Начать продажи",
-      "subtitle": "Создайте Stripe Connect аккаунт для получения выплат",
-      "steps": {
-        "create": "Создать аккаунт",
-        "verify": "Пройти проверку",
-        "payouts": "Включить выплаты"
-      },
-      "actions": {
-        "start": "Начать настройку продавца",
-        "continue": "Продолжить онбординг",
-        "refresh": "Обновить статус",
-        "dashboard": "Перейти в кабинет продавца"
-      },
-      "status": {
-        "connected": "Подключено",
-        "charges_enabled": "Платежи включены",
-        "payouts_enabled": "Выплаты включены",
-        "details_submitted": "Данные заполнены"
-      },
-      "requirements": {
-        "title": "Неполные требования",
-        "none": "Все требования выполнены",
-        "currently_due": "Текущие",
-        "eventually_due": "Будущие",
-        "past_due": "Просроченные"
-      },
-      "no_account": "У вас еще нет Stripe Connect аккаунта"
-    },
-    "dashboard": {
+    "finance": {
       "title": "Кабинет продавца",
-      "subtitle": "Статус выплат и доход",
-      "status": {
-        "payouts": "Статус выплат",
-        "active": "Активен",
-        "pending": "В ожидании",
-        "disabled": "Отключен"
-      },
-      "actions": {
-        "open_stripe": "Открыть Stripe кабинет",
-        "payout_settings": "Настройки выплат"
-      },
-      "sections": {
-        "earnings": "Доход",
-        "products": "Продукты и услуги"
-      },
-      "placeholder": {
-        "earnings": "Аналитика скоро появится",
-        "products": "Размещение в маркетплейсе скоро"
-      }
+      "subtitle": "Информация о ваших продажах и доходах",
+      "totalGmv": "Всего GMV",
+      "totalFees": "Всего комиссий (30%)",
+      "netAmount": "Чистая сумма",
+      "pendingPayout": "Ожидающий платеж",
+      "financialSummary": "Финансовая сводка",
+      "grossRevenue": "Всего валовой выручки",
+      "platformFees": "Комиссии платформы (30%)",
+      "yourEarnings": "Ваш чистый доход",
+      "payoutStatus": "Статус выплаты",
+      "alreadyPaidOut": "Уже выплачено",
+      "totalOrders": "Всего заказов",
+      "totalPayouts": "Всего выплат",
+      "revenueFeesTrend": "Тренд доходов и комиссий (последние 30 дней)",
+      "netRevenueTrend": "Тренд чистого дохода (последние 30 дней)",
+      "recentOrders": "Последние заказы",
+      "orderId": "ID заказа",
+      "date": "Дата",
+      "grossAmount": "Валовая сумма",
+      "fees": "Комиссии",
+      "paymentProcessing": "Обработка платежей",
+      "paymentProcessingDescription": "Ваш ожидающий доход будет автоматически переведен на подключенный счет Stripe. Переводы обычно выполняются в течение 2-3 рабочих дней."
     }
   },
   "generator": {
@@ -426,222 +400,6 @@
       "net_profit_projection": "Прогноз чистой прибыли",
       "confidence": "Уровень уверенности"
     }
-  },  "affiliate": {
-    "title": "Панель партнера",
-    "badge": {
-      "label": "Партнер"
-    },
-    "status": {
-      "active": "Активный",
-      "disabled": "Отключен",
-      "pending": "В ожидании"
-    },
-    "summary": {
-      "your_code": "Ваш код",
-      "referral_link": "Реферальная ссылка",
-      "copy_code": "Копировать код",
-      "copy_link": "Копировать ссылку",
-      "copied": "Скопировано!",
-      "total_clicks": "Всего кликов",
-      "total_signups": "Регистрации",
-      "pending_commissions": "В ожидании",
-      "eligible_commissions": "Готово к выплате",
-      "paid_commissions": "Выплачено",
-      "next_payout": "Следующая выплата",
-      "earnings_chart": "График дохода",
-      "last_7_days": "Последние 7 дней",
-      "last_30_days": "Последние 30 дней",
-      "all_time": "Все время"
-    },
-    "commissions": {
-      "title": "Комиссии",
-      "date": "Дата",
-      "source_type": "Источник",
-      "source_id": "ID",
-      "amount": "Сумма",
-      "rate": "Ставка",
-      "status": "Статус",
-      "available_at": "Доступно",
-      "pending": "В ожидании",
-      "available": "Доступно",
-      "eligible": "Готово",
-      "paid": "Выплачено",
-      "reversed": "Отменено",
-      "subscription": "Подписка",
-      "marketplace": "Маркетплейс",
-      "one_time": "Разовый",
-      "filters": "Фильтры",
-      "date_range": "Диапазон дат",
-      "all_statuses": "Все статусы",
-      "all_types": "Все типы",
-      "apply_filters": "Применить",
-      "clear_filters": "Очистить",
-      "no_commissions": "Комиссии не найдены",
-      "total": "Всего"
-    },
-    "referrals": {
-      "title": "Рефералы",
-      "date": "Дата",
-      "click_id": "ID клика",
-      "landing_url": "URL",
-      "utm_source": "Источник",
-      "utm_campaign": "Кампания",
-      "status": "Статус",
-      "referred_user": "Пользователь",
-      "clicked": "Кликнул",
-      "signed_up": "Зарегистрировался",
-      "converted": "Конвертировался",
-      "no_referrals": "Рефералы не найдены",
-      "last_50": "Последние 50",
-      "linked": "Связан",
-      "visitor": "Посетитель"
-    },
-    "payouts": {
-      "title": "История выплат",
-      "subtitle": "Управление выплатами",
-      "period": "Период",
-      "date": "Дата",
-      "amount": "Сумма",
-      "method": "Метод",
-      "status": "Статус",
-      "transfer_id": "ID перевода",
-      "available_balance": "Доступный баланс",
-      "request_amount": "Сумма запроса",
-      "request_payout": "Запросить выплату",
-      "request_success": "Запрос на выплату отправлен",
-      "request_failed": "Не удалось запросить выплату",
-      "invalid_amount": "Некорректная сумма",
-      "connect_required": "Подключите Stripe для получения выплат",
-      "connect_now": "Подключить",
-      "view_history": "История выплат",
-      "requested": "Запрошено",
-      "pending": "В ожидании",
-      "processing": "Обработка",
-      "paid": "Завершено",
-      "failed": "Не удалось",
-      "canceled": "Отменено",
-      "no_payouts": "Выплаты не найдены",
-      "manual": "Вручную",
-      "stripe": "Stripe",
-      "threshold_info": "Минимальный порог: {amount}"
-    },
-    "settings": {
-      "title": "Настройки",
-      "payout_method": "Метод выплаты",
-      "connect_payout": "Подключить счет",
-      "coming_soon": "Скоро",
-      "minimum_threshold": "Минимальный порог",
-      "current_balance": "Текущий баланс"
-    }
-  },
-  "admin": {
-    "affiliates": {
-      "title": "Управление партнерами",
-      "list_title": "Партнеры",
-      "search": "Поиск по коду или ID",
-      "user_id": "ID пользователя",
-      "code": "Код",
-      "status": "Статус",
-      "clicks": "Клики",
-      "signups": "Регистрации",
-      "commissions": "Комиссии",
-      "actions": "Действия",
-      "toggle_status": "Изменить статус",
-      "view_details": "Детали",
-      "activate": "Активировать",
-      "disable": "Отключить",
-      "no_affiliates": "Партнеры не найдены"
-    },
-    "payouts": {
-      "title": "Очередь выплат",
-      "queue_title": "Готово к выплате",
-      "affiliate": "Партнер",
-      "eligible_amount": "Сумма",
-      "last_payout": "Последняя выплата",
-      "create_payout": "Создать выплату",
-      "mark_sent": "Отметить отправленным",
-      "mark_failed": "Отметить неудачным",
-      "export_csv": "Экспорт CSV",
-      "no_eligible": "Нет готовых к выплате",
-      "amount": "Сумма",
-      "notes": "Примечания",
-      "confirm_payout": "Подтвердить выплату",
-      "cancel": "Отмена",
-      "confirm": "Подтвердить",
-      "success": "Выплата успешно создана"
-    }
-  },  "common": {
-    "loading": "Загрузка...",
-    "error": "Ошибка",
-    "success": "Успешно",
-    "cancel": "Отменить",
-    "save": "Сохранить",
-    "delete": "Удалить",
-    "edit": "Редактировать",
-    "close": "Закрыть",
-    "back": "Назад",
-    "next": "Далее",
-    "submit": "Отправить",
-    "retry": "Повторить",
-    "confirm": "Подтвердить",
-    "yes": "Да",
-    "no": "Нет"
-  },
-  "errors": {
-    "generic": "Что-то пошло не так. Пожалуйста, попробуйте снова.",
-    "network": "Ошибка сети. Проверьте подключение к интернету.",
-    "unauthorized": "Доступ запрещен. Пожалуйста, войдите в систему.",
-    "notFound": "Страница не найдена.",
-    "serverError": "Ошибка сервера. Пожалуйста, попробуйте позже."
-  },
-  "admin": {
-    "finance": {
-      "title": "Финансовая аналитика",
-      "subtitle": "Финансовый обзор платформы",
-      "mrr": "Ежемесячный повторяющийся доход (MRR)",
-      "arr": "Годовой повторяющийся доход (ARR)",
-      "activeSubs": "Активные подписки",
-      "gmv": "Валовая рыночная стоимость (GMV)",
-      "revenue30d": "Доход (30 дней)",
-      "fees30d": "Комиссии платформы (30 дней)",
-      "refunds30d": "Возвраты (30 дней)",
-      "churnRate": "Коэффициент оттока",
-      "revenueSummary": "Сводка доходов (30 дней)",
-      "netRevenue": "Чистый доход",
-      "feesPayouts": "Комиссии и выплаты (30 дней)",
-      "platformFees": "Комиссии платформы",
-      "revenueTrend": "Тренд доходов",
-      "gmvFeesTrend": "Тренд GMV и комиссий",
-      "affiliateCommissionsTrend": "Тренд комиссий аффилиатов",
-      "sellerPayoutsTrend": "Тренд выплат продавцов"
-    }
-  },
-  "sell": {
-    "finance": {
-      "title": "Кабинет продавца",
-      "subtitle": "Информация о ваших продажах и доходах",
-      "totalGmv": "Всего GMV",
-      "totalFees": "Всего комиссий (30%)",
-      "netAmount": "Чистая сумма",
-      "pendingPayout": "Ожидающий платеж",
-      "financialSummary": "Финансовая сводка",
-      "grossRevenue": "Всего валовой выручки",
-      "platformFees": "Комиссии платформы (30%)",
-      "yourEarnings": "Ваш чистый доход",
-      "payoutStatus": "Статус выплаты",
-      "alreadyPaidOut": "Уже выплачено",
-      "totalOrders": "Всего заказов",
-      "totalPayouts": "Всего выплат",
-      "revenueFeesTrend": "Тренд доходов и комиссий (последние 30 дней)",
-      "netRevenueTrend": "Тренд чистого дохода (последние 30 дней)",
-      "recentOrders": "Последние заказы",
-      "orderId": "ID заказа",
-      "date": "Дата",
-      "grossAmount": "Валовая сумма",
-      "fees": "Комиссии",
-      "paymentProcessing": "Обработка платежей",
-      "paymentProcessingDescription": "Ваш ожидающий доход будет автоматически переведен на подключенный счет Stripe. Переводы обычно выполняются в течение 2-3 рабочих дней."
-    }
   },
   "affiliate": {
     "finance": {
@@ -666,7 +424,49 @@
       "balanceBreakdown": "Разбор баланса",
       "recentCommissionEvents": "Последние события комиссий",
       "availableOn": "Доступно в"
-    }  },
+    }
+  },
+  "admin": {
+    "finance": {
+      "title": "Финансовая аналитика",
+      "subtitle": "Финансовый обзор платформы",
+      "mrr": "Ежемесячный повторяющийся доход (MRR)",
+      "arr": "Годовой повторяющийся доход (ARR)",
+      "activeSubs": "Активные подписки",
+      "gmv": "Валовая рыночная стоимость (GMV)",
+      "revenue30d": "Доход (30 дней)",
+      "fees30d": "Комиссии платформы (30 дней)",
+      "refunds30d": "Возвраты (30 дней)",
+      "churnRate": "Коэффициент оттока",
+      "revenueSummary": "Сводка доходов (30 дней)",
+      "netRevenue": "Чистый доход",
+      "feesPayouts": "Комиссии и выплаты (30 дней)",
+      "platformFees": "Комиссии платформы",
+      "revenueTrend": "Тренд доходов",
+      "gmvFeesTrend": "Тренд GMV и комиссий",
+      "affiliateCommissionsTrend": "Тренд комиссий аффилиатов",
+      "sellerPayoutsTrend": "Тренд выплат продавцов"
+    }
+  },
+  "common": {
+    "loading": "Загрузка...",
+    "saving": "Сохранение...",
+    "save": "Сохранить",
+    "saved_successfully": "Успешно сохранено",
+    "error": "Ошибка",
+    "view": "Просмотр",
+    "download": "Загрузить",
+    "actions": "Действия",
+    "calculating": "Расчет...",
+    "back": "Назад"
+  },
+  "errors": {
+    "generic": "Что-то пошло не так. Пожалуйста, попробуйте снова.",
+    "network": "Ошибка сети. Проверьте подключение к интернету.",
+    "unauthorized": "Доступ запрещен. Пожалуйста, войдите в систему.",
+    "notFound": "Страница не найдена.",
+    "serverError": "Ошибка сервера. Пожалуйста, попробуйте позже."
+  },
   "business": {
     "profile": {
       "title": "Деловой профиль",
@@ -762,18 +562,6 @@
       "future_note_2": "Bank of Georgia - Крупнейший банк Грузии",
       "future_note_3": "Payze - Грузинский платежный шлюз"
     }
-  },
-  "common": {
-    "loading": "Загрузка...",
-    "saving": "Сохранение...",
-    "save": "Сохранить",
-    "saved_successfully": "Успешно сохранено",
-    "error": "Ошибка",
-    "view": "Просмотр",
-    "download": "Загрузить",
-    "actions": "Действия",
-    "calculating": "Расчет...",
-    "back": "Назад"
   },
   "returns": {
     "myReturns": "Мои возвраты",
@@ -904,5 +692,50 @@
     "status_running": "Выполняется",
     "status_completed": "Завершено",
     "status_failed": "Ошибка"
+  },
+  "shipping": {
+    "fulfillment": {
+      "title": "Панель управления выполнением",
+      "description": "Управляйте заказами и доставками для отправки клиентам",
+      "order_details": "Детали заказа",
+      "order_summary": "Сводка заказа",
+      "order_number": "Номер заказа",
+      "buyer": "Покупатель",
+      "buyer_name": "Имя покупателя",
+      "amount": "Сумма",
+      "total": "Итого",
+      "status": "Статус",
+      "status_unfulfilled": "Не выполнено",
+      "status_processing": "В обработке",
+      "status_shipped": "Отправлено",
+      "status_delivered": "Доставлено",
+      "status_returned": "Возвращено",
+      "status_canceled": "Отменено",
+      "status_label_created": "Этикетка создана",
+      "status_in_transit": "В пути",
+      "status_out_for_delivery": "Доставляется",
+      "actions": "Действия",
+      "manage": "Управлять",
+      "filter_all": "Все",
+      "filter_unfulfilled": "Не выполнено",
+      "filter_processing": "В обработке",
+      "filter_shipped": "Отправлено",
+      "filter_delivered": "Доставлено",
+      "no_orders": "У вас пока нет заказов",
+      "shipping_address": "Адрес доставки",
+      "items": "Товары",
+      "shipment_management": "Управление доставкой",
+      "no_shipments": "У этого заказа пока нет доставки",
+      "update_tracking": "Обновить информацию об отслеживании",
+      "tracking_number": "Номер отслеживания",
+      "enter_tracking_number": "Введите номер отслеживания",
+      "tracking_url": "URL отслеживания",
+      "enter_tracking_url": "Введите URL отслеживания (необязательно)",
+      "update_shipment": "Обновить доставку",
+      "error_tracking_number": "Пожалуйста, введите номер отслеживания",
+      "error_updating": "Ошибка при обновлении доставки. Попробуйте снова.",
+      "timeline": "Хронология",
+      "order_not_found": "Заказ не найден"
+    }
   }
 }

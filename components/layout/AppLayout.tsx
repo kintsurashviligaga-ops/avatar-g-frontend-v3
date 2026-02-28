@@ -67,7 +67,7 @@ function isSupportedLocale(v: unknown): v is SupportedLocale {
 
 export function Navbar() {
   return (
-    <nav className="fixed top-0 left-0 right-0 z-50 h-16 border-b border-white/10 bg-[#05070A]/95 backdrop-blur-md">
+    <nav className="fixed top-0 left-0 right-0 z-50 h-16 border-b border-white/10 bg-[#050510]/95 backdrop-blur-md">
       <div className="mx-auto flex h-full max-w-7xl items-center justify-between px-4 sm:px-6">
         <span className="text-lg font-bold text-white">Avatar G</span>
       </div>
@@ -140,7 +140,7 @@ export function PageHeader({
 
 export default function AppLayout({ children }: { children: ReactNode }) {
   return (
-    <div className="min-h-screen bg-[#05070A] text-white">
+    <div className="min-h-screen bg-[#050510] text-white">
       <Navbar />
       <main className="pt-20">{children}</main>
       <Footer />

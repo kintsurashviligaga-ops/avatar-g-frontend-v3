@@ -1,0 +1,548 @@
+  ▲ Next.js 14.2.35
+  - Environments: .env.local
+
+   Creating an optimized production build ...
+<w> [webpack.cache.PackFileCacheStrategy] Serializing big strings (133kiB) impacts deserialization performance (consider using Buffer instead and decode when needed)
+ ✓ Compiled successfully
+   Linting and checking validity of types ...
+   Collecting page data ...
+ ⚠ Sending SIGTERM signal to Next.js build worker due to timeout of 60 seconds. Subsequent errors may be a result of the worker exiting.
+ ⚠ Restarted collecting page data for /_app because it took more than 60 seconds
+ ⚠ See more info here https://nextjs.org/docs/messages/static-page-generation-timeout
+ ⚠ Restarted collecting page data for /_app because it took more than 60 seconds
+ ⚠ Using edge runtime on a page currently disables static generation for that page
+   Generating static pages (0/258) ...
+[env] Missing optional env variables: STRIPE_WEBHOOK_SECRET, NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY, NEXT_PUBLIC_BASE_URL, BASE_URL, ALLOWED_ORIGINS, SENTRY_DSN, VERCEL_ANALYTICS_ID
+[env] SENTRY_DSN is not configured. Production error tracing is disabled.
+[env] VERCEL_ANALYTICS_ID is not configured. Analytics telemetry is disabled.
+[env] ALLOWED_ORIGINS is not configured. Using localhost defaults.
+   Generating static pages (64/258) 
+   Generating static pages (128/258) 
+   Generating static pages (193/258) 
+ ✓ Generating static pages (258/258)
+   Finalizing page optimization ...
+   Collecting build traces ...
+
+Route (app)                                               Size     First Load JS
+┌ ○ /                                                     7.63 kB         158 kB
+├ ○ /_not-found                                           162 B          87.8 kB
+├ ● /[locale]                                             3.38 kB         150 kB
+├   ├ /en
+├   ├ /ka
+├   └ /ru
+├ ● /[locale]/about                                       2.73 kB         127 kB
+├   ├ /en/about
+├   ├ /ka/about
+├   └ /ru/about
+├ ● /[locale]/account/billing                             4.58 kB         172 kB
+├   ├ /en/account/billing
+├   ├ /ka/account/billing
+├   └ /ru/account/billing
+├ ● /[locale]/account/business                            1.91 kB         142 kB
+├   ├ /en/account/business
+├   ├ /ka/account/business
+├   └ /ru/account/business
+├ ● /[locale]/account/invoices                            1.97 kB         151 kB
+├   ├ /en/account/invoices
+├   ├ /ka/account/invoices
+├   └ /ru/account/invoices
+├ ● /[locale]/account/payments                            1.87 kB         142 kB
+├   ├ /en/account/payments
+├   ├ /ka/account/payments
+├   └ /ru/account/payments
+├ ● /[locale]/account/returns                             2.51 kB         147 kB
+├   ├ /en/account/returns
+├   ├ /ka/account/returns
+├   └ /ru/account/returns
+├ ● /[locale]/admin/disputes                              2.67 kB         148 kB
+├   ├ /en/admin/disputes
+├   ├ /ka/admin/disputes
+├   └ /ru/admin/disputes
+├ ƒ /[locale]/avatar/[id]                                 194 B           102 kB
+├ ƒ /[locale]/config/[[...path]]                          204 B          96.5 kB
+├ ● /[locale]/contact                                     180 B           127 kB
+├   ├ /en/contact
+├   ├ /ka/contact
+├   └ /ru/contact
+├ ● /[locale]/dashboard/fulfillment                       2.54 kB         139 kB
+├   ├ /en/dashboard/fulfillment
+├   ├ /ka/dashboard/fulfillment
+├   └ /ru/dashboard/fulfillment
+├ ƒ /[locale]/icon                                        0 B                0 B
+├ ● /[locale]/sell/dashboard                              3.19 kB         111 kB
+├   ├ /en/sell/dashboard
+├   ├ /ka/sell/dashboard
+├   └ /ru/sell/dashboard
+├ ● /[locale]/sell/fulfillment                            1.95 kB         198 kB
+├   ├ /en/sell/fulfillment
+├   ├ /ka/sell/fulfillment
+├   └ /ru/sell/fulfillment
+├ ƒ /[locale]/sell/fulfillment/[id]                       2.98 kB         190 kB
+├ ● /[locale]/sell/onboarding                             3.84 kB         121 kB
+├   ├ /en/sell/onboarding
+├   ├ /ka/sell/onboarding
+├   └ /ru/sell/onboarding
+├ ● /[locale]/sell/returns                                3.04 kB         148 kB
+├   ├ /en/sell/returns
+├   ├ /ka/sell/returns
+├   └ /ru/sell/returns
+├ ● /[locale]/services                                    207 B          96.5 kB
+├   ├ /en/services
+├   ├ /ka/services
+├   └ /ru/services
+├ ● /[locale]/services/[slug]                             9.11 kB         341 kB
+├   ├ /en/services/workflow-builder
+├   ├ /en/services/online-shop
+├   ├ /en/services/avatar-builder
+├   └ [+36 more paths]
+├ ● /[locale]/services/agent-g                            4.51 kB         163 kB
+├   ├ /en/services/agent-g
+├   ├ /ka/services/agent-g
+├   └ /ru/services/agent-g
+├ ● /[locale]/services/agent-g/calls                      187 B           162 kB
+├   ├ /en/services/agent-g/calls
+├   ├ /ka/services/agent-g/calls
+├   └ /ru/services/agent-g/calls
+├ ● /[locale]/services/agent-g/dashboard                  187 B           160 kB
+├   ├ /en/services/agent-g/dashboard
+├   ├ /ka/services/agent-g/dashboard
+├   └ /ru/services/agent-g/dashboard
+├ ● /[locale]/services/agent-g/settings                   184 B           162 kB
+├   ├ /en/services/agent-g/settings
+├   ├ /ka/services/agent-g/settings
+├   └ /ru/services/agent-g/settings
+├ ● /[locale]/services/avatar-builder                     3.44 kB         230 kB
+├   ├ /en/services/avatar-builder
+├   ├ /ka/services/avatar-builder
+├   └ /ru/services/avatar-builder
+├ ● /[locale]/services/business-agent                     4.77 kB         171 kB
+├   ├ /en/services/business-agent
+├   ├ /ka/services/business-agent
+├   └ /ru/services/business-agent
+├ ● /[locale]/services/game-creator                       3.52 kB         136 kB
+├   ├ /en/services/game-creator
+├   ├ /ka/services/game-creator
+├   └ /ru/services/game-creator
+├ ● /[locale]/services/image-architect                    2.17 kB         153 kB
+├   ├ /en/services/image-architect
+├   ├ /ka/services/image-architect
+├   └ /ru/services/image-architect
+├ ● /[locale]/services/image-creator                      2.18 kB         153 kB
+├   ├ /en/services/image-creator
+├   ├ /ka/services/image-creator
+├   └ /ru/services/image-creator
+├ ● /[locale]/services/marketplace                        4.81 kB         109 kB
+├   ├ /en/services/marketplace
+├   ├ /ka/services/marketplace
+├   └ /ru/services/marketplace
+├ ● /[locale]/services/marketplace/browse                 187 B           162 kB
+├   ├ /en/services/marketplace/browse
+├   ├ /ka/services/marketplace/browse
+├   └ /ru/services/marketplace/browse
+├ ● /[locale]/services/marketplace/inbox                  184 B           152 kB
+├   ├ /en/services/marketplace/inbox
+├   ├ /ka/services/marketplace/inbox
+├   └ /ru/services/marketplace/inbox
+├ ƒ /[locale]/services/marketplace/listings/[id]          187 B           162 kB
+├ ● /[locale]/services/marketplace/listings/new           186 B           163 kB
+├   ├ /en/services/marketplace/listings/new
+├   ├ /ka/services/marketplace/listings/new
+├   └ /ru/services/marketplace/listings/new
+├ ● /[locale]/services/marketplace/my                     186 B           160 kB
+├   ├ /en/services/marketplace/my
+├   ├ /ka/services/marketplace/my
+├   └ /ru/services/marketplace/my
+├ ● /[locale]/services/marketplace/orders                 3.61 kB         150 kB
+├   ├ /en/services/marketplace/orders
+├   ├ /ka/services/marketplace/orders
+├   └ /ru/services/marketplace/orders
+├ ● /[locale]/services/media-production                   3.35 kB         205 kB
+├   ├ /en/services/media-production
+├   ├ /ka/services/media-production
+├   └ /ru/services/media-production
+├ ● /[locale]/services/music-studio                       2.82 kB         220 kB
+├   ├ /en/services/music-studio
+├   ├ /ka/services/music-studio
+├   └ /ru/services/music-studio
+├ ● /[locale]/services/online-shop                        204 B          96.5 kB
+├   ├ /en/services/online-shop
+├   ├ /ka/services/online-shop
+├   └ /ru/services/online-shop
+├ ● /[locale]/services/online-shop/import                 204 B          96.5 kB
+├   ├ /en/services/online-shop/import
+├   ├ /ka/services/online-shop/import
+├   └ /ru/services/online-shop/import
+├ ● /[locale]/services/online-shop/orders                 204 B          96.5 kB
+├   ├ /en/services/online-shop/orders
+├   ├ /ka/services/online-shop/orders
+├   └ /ru/services/online-shop/orders
+├ ● /[locale]/services/online-shop/products               206 B          96.5 kB
+├   ├ /en/services/online-shop/products
+├   ├ /ka/services/online-shop/products
+├   └ /ru/services/online-shop/products
+├ ● /[locale]/services/online-shop/settings               204 B          96.5 kB
+├   ├ /en/services/online-shop/settings
+├   ├ /ka/services/online-shop/settings
+├   └ /ru/services/online-shop/settings
+├ ● /[locale]/services/online-shop/suppliers              204 B          96.5 kB
+├   ├ /en/services/online-shop/suppliers
+├   ├ /ka/services/online-shop/suppliers
+├   └ /ru/services/online-shop/suppliers
+├ ● /[locale]/services/photo-studio                       3.58 kB         154 kB
+├   ├ /en/services/photo-studio
+├   ├ /ka/services/photo-studio
+├   └ /ru/services/photo-studio
+├ ● /[locale]/services/prompt-builder                     3.44 kB         136 kB
+├   ├ /en/services/prompt-builder
+├   ├ /ka/services/prompt-builder
+├   └ /ru/services/prompt-builder
+├ ● /[locale]/services/social-media                       3.55 kB         170 kB
+├   ├ /en/services/social-media
+├   ├ /ka/services/social-media
+├   └ /ru/services/social-media
+├ ● /[locale]/services/social-media-manager               3.55 kB         170 kB
+├   ├ /en/services/social-media-manager
+├   ├ /ka/services/social-media-manager
+├   └ /ru/services/social-media-manager
+├ ● /[locale]/services/text-intelligence                  3.08 kB         124 kB
+├   ├ /en/services/text-intelligence
+├   ├ /ka/services/text-intelligence
+├   └ /ru/services/text-intelligence
+├ ● /[locale]/services/video-studio                       3.89 kB         199 kB
+├   ├ /en/services/video-studio
+├   ├ /ka/services/video-studio
+├   └ /ru/services/video-studio
+├ ● /[locale]/services/visual-intelligence                2.17 kB         153 kB
+├   ├ /en/services/visual-intelligence
+├   ├ /ka/services/visual-intelligence
+├   └ /ru/services/visual-intelligence
+├ ● /[locale]/services/voice-lab                          5.1 kB          169 kB
+├   ├ /en/services/voice-lab
+├   ├ /ka/services/voice-lab
+├   └ /ru/services/voice-lab
+├ ● /[locale]/tools/margin-calculator                     2.28 kB         142 kB
+├   ├ /en/tools/margin-calculator
+├   ├ /ka/tools/margin-calculator
+├   └ /ru/tools/margin-calculator
+├ ƒ /[locale]/tracking/[orderId]                          2.38 kB         126 kB
+├ ● /[locale]/workspace                                   7.1 kB          168 kB
+├   ├ /en/workspace
+├   ├ /ka/workspace
+├   └ /ru/workspace
+├ ○ /about                                                2.73 kB         127 kB
+├ ○ /admin/affiliates                                     4.86 kB         113 kB
+├ ○ /admin/analytics                                      3.67 kB         136 kB
+├ ○ /admin/finance                                        2.95 kB         139 kB
+├ ƒ /admin/jobs                                           2.8 kB         98.7 kB
+├ ○ /admin/payouts                                        4.68 kB         113 kB
+├ ○ /affiliate                                            8.21 kB         116 kB
+├ ○ /affiliate/finance                                    3.41 kB         140 kB
+├ ○ /affiliate/payouts                                    3.98 kB         112 kB
+├ ○ /agent                                                162 B          87.8 kB
+├ ƒ /api/admin/affiliates                                 0 B                0 B
+├ ƒ /api/admin/analytics                                  0 B                0 B
+├ ƒ /api/admin/billing/plans                              0 B                0 B
+├ ƒ /api/admin/billing/users/[id]                         0 B                0 B
+├ ƒ /api/admin/payments                                   0 B                0 B
+├ ƒ /api/admin/payouts                                    0 B                0 B
+├ ƒ /api/admin/payouts/approve                            0 B                0 B
+├ ƒ /api/admin/payouts/eligible                           0 B                0 B
+├ ƒ /api/admin/payouts/reject                             0 B                0 B
+├ ƒ /api/admin/stats                                      0 B                0 B
+├ ƒ /api/affiliate/analytics                              0 B                0 B
+├ ƒ /api/affiliate/balance                                0 B                0 B
+├ ƒ /api/affiliate/claim                                  0 B                0 B
+├ ƒ /api/affiliate/commissions                            0 B                0 B
+├ ƒ /api/affiliate/dashboard                              0 B                0 B
+├ ƒ /api/affiliate/me                                     0 B                0 B
+├ ƒ /api/affiliate/payout/request                         0 B                0 B
+├ ƒ /api/affiliate/payouts                                0 B                0 B
+├ ƒ /api/agent-g/admin/memory                             0 B                0 B
+├ ƒ /api/agent-g/calls                                    0 B                0 B
+├ ƒ /api/agent-g/calls/callback                           0 B                0 B
+├ ƒ /api/agent-g/calls/start                              0 B                0 B
+├ ƒ /api/agent-g/calls/transcribe                         0 B                0 B
+├ ƒ /api/agent-g/calls/tts                                0 B                0 B
+├ ƒ /api/agent-g/calls/webhook/inbound                    0 B                0 B
+├ ƒ /api/agent-g/calls/webhook/status                     0 B                0 B
+├ ƒ /api/agent-g/channels                                 0 B                0 B
+├ ƒ /api/agent-g/chat                                     0 B                0 B
+├ ƒ /api/agent-g/delegate                                 0 B                0 B
+├ ƒ /api/agent-g/execute                                  0 B                0 B
+├ ƒ /api/agent-g/output                                   0 B                0 B
+├ ƒ /api/agent-g/plan                                     0 B                0 B
+├ ƒ /api/agent-g/router/execute                           0 B                0 B
+├ ƒ /api/agent-g/status                                   0 B                0 B
+├ ƒ /api/agent-g/telegram                                 0 B                0 B
+├ ƒ /api/agent-g/telegram/connect-code                    0 B                0 B
+├ ƒ /api/agent-g/telegram/send                            0 B                0 B
+├ ƒ /api/agent-g/telegram/set-webhook                     0 B                0 B
+├ ƒ /api/agent-g/telegram/status                          0 B                0 B
+├ ƒ /api/agent-g/telegram/webhook                         0 B                0 B
+├ ƒ /api/agent-g/webhook/telegram                         0 B                0 B
+├ ƒ /api/agent-g/webhook/whatsapp                         0 B                0 B
+├ ƒ /api/agent-g/whatsapp/send                            0 B                0 B
+├ ƒ /api/agents/chat                                      0 B                0 B
+├ ƒ /api/agents/execute                                   0 B                0 B
+├ ƒ /api/analytics/revenue                                0 B                0 B
+├ ƒ /api/app/admin/jobs                                   0 B                0 B
+├ ƒ /api/app/jobs                                         0 B                0 B
+├ ƒ /api/app/jobs/[id]                                    0 B                0 B
+├ ƒ /api/app/observability/admin                          0 B                0 B
+├ ƒ /api/app/observability/me                             0 B                0 B
+├ ƒ /api/app/outputs                                      0 B                0 B
+├ ƒ /api/app/services/[slug]/run                          0 B                0 B
+├ ƒ /api/app/worker/tick                                  0 B                0 B
+├ ƒ /api/app/workflow-runs/[id]                           0 B                0 B
+├ ƒ /api/app/workflow-runs/[id]/steps/[stepId]            0 B                0 B
+├ ƒ /api/app/workflow-runs/[id]/tick                      0 B                0 B
+├ ƒ /api/app/workflows                                    0 B                0 B
+├ ƒ /api/app/workflows/[id]                               0 B                0 B
+├ ƒ /api/app/workflows/[id]/run                           0 B                0 B
+├ ƒ /api/auth/otp/check                                   0 B                0 B
+├ ƒ /api/auth/otp/send                                    0 B                0 B
+├ ƒ /api/avatar/core                                      0 B                0 B
+├ ƒ /api/avatar/create                                    0 B                0 B
+├ ƒ /api/avatar/generate                                  0 B                0 B
+├ ƒ /api/avatar/mark-ready                                0 B                0 B
+├ ƒ /api/avatar/set-core                                  0 B                0 B
+├ ƒ /api/avatar/upload-complete                           0 B                0 B
+├ ƒ /api/avatars                                          0 B                0 B
+├ ƒ /api/avatars/latest                                   0 B                0 B
+├ ƒ /api/avatars/save                                     0 B                0 B
+├ ƒ /api/billing/checkout                                 0 B                0 B
+├ ƒ /api/billing/plan                                     0 B                0 B
+├ ƒ /api/billing/portal                                   0 B                0 B
+├ ƒ /api/billing/usage                                    0 B                0 B
+├ ƒ /api/billing/usage/export                             0 B                0 B
+├ ƒ /api/billing/webhook                                  0 B                0 B
+├ ƒ /api/business-agent/projects                          0 B                0 B
+├ ƒ /api/business-agent/projects/[id]                     0 B                0 B
+├ ƒ /api/business-agent/run                               0 B                0 B
+├ ƒ /api/business-agent/uploads                           0 B                0 B
+├ ƒ /api/business/calc                                    0 B                0 B
+├ ƒ /api/business/items                                   0 B                0 B
+├ ƒ /api/business/items/[id]                              0 B                0 B
+├ ƒ /api/business/items/[id]/events                       0 B                0 B
+├ ƒ /api/business/profile                                 0 B                0 B
+├ ƒ /api/business/projects                                0 B                0 B
+├ ƒ /api/business/projects/[id]                           0 B                0 B
+├ ƒ /api/chat                                             0 B                0 B
+├ ƒ /api/checkout/create-intent                           0 B                0 B
+├ ƒ /api/commerce/compliance                              0 B                0 B
+├ ƒ /api/commerce/orders                                  0 B                0 B
+├ ƒ /api/commerce/wallet                                  0 B                0 B
+├ ƒ /api/credits/balance                                  0 B                0 B
+├ ƒ /api/decision/evaluate                                0 B                0 B
+├ ƒ /api/deepseek                                         0 B                0 B
+├ ƒ /api/diagnostics                                      0 B                0 B
+├ ƒ /api/disputes                                         0 B                0 B
+├ ƒ /api/env_integrity_status                             0 B                0 B
+├ ƒ /api/finance/admin/summary                            0 B                0 B
+├ ƒ /api/finance/admin/timeseries                         0 B                0 B
+├ ƒ /api/finance/affiliate/summary                        0 B                0 B
+├ ƒ /api/finance/me/summary                               0 B                0 B
+├ ƒ /api/finance/scenarios                                0 B                0 B
+├ ƒ /api/finance/seller/summary                           0 B                0 B
+├ ƒ /api/finance/simulate                                 0 B                0 B
+├ ƒ /api/fulfillment                                      0 B                0 B
+├ ƒ /api/fulfillment/[id]/retry                           0 B                0 B
+├ ƒ /api/growth/churn-risk/scan                           0 B                0 B
+├ ƒ /api/growth/events/process                            0 B                0 B
+├ ƒ /api/growth/referrals/code                            0 B                0 B
+├ ƒ /api/growth/referrals/track                           0 B                0 B
+├ ƒ /api/health                                           0 B                0 B
+├ ƒ /api/invite                                           0 B                0 B
+├ ƒ /api/invoices                                         0 B                0 B
+├ ƒ /api/invoices/[id]                                    0 B                0 B
+├ ƒ /api/invoices/create                                  0 B                0 B
+├ ƒ /api/invoices/generate                                0 B                0 B
+├ ƒ /api/invoices/list                                    0 B                0 B
+├ ƒ /api/jobs                                             0 B                0 B
+├ ƒ /api/jobs/[id]                                        0 B                0 B
+├ ƒ /api/jobs/[id]/status                                 0 B                0 B
+├ ƒ /api/jobs/create                                      0 B                0 B
+├ ƒ /api/jobs/list                                        0 B                0 B
+├ ƒ /api/launch-30/initialize                             0 B                0 B
+├ ƒ /api/launch/generate                                  0 B                0 B
+├ ƒ /api/launch/plan                                      0 B                0 B
+├ ƒ /api/lead-capture                                     0 B                0 B
+├ ƒ /api/log-error                                        0 B                0 B
+├ ƒ /api/market/scan                                      0 B                0 B
+├ ƒ /api/marketplace/favorites                            0 B                0 B
+├ ƒ /api/marketplace/health                               0 B                0 B
+├ ƒ /api/marketplace/inquiries                            0 B                0 B
+├ ƒ /api/marketplace/inquiries/[id]/messages              0 B                0 B
+├ ƒ /api/marketplace/kpis                                 0 B                0 B
+├ ƒ /api/marketplace/listings                             0 B                0 B
+├ ƒ /api/marketplace/listings/[id]                        0 B                0 B
+├ ƒ /api/marketplace/metrics                              0 B                0 B
+├ ƒ /api/marketplace/orders                               0 B                0 B
+├ ƒ /api/marketplace/search                               0 B                0 B
+├ ƒ /api/metrics/conversion                               0 B                0 B
+├ ƒ /api/metrics/kpis                                     0 B                0 B
+├ ƒ /api/metrics/revenue                                  0 B                0 B
+├ ƒ /api/music/generate                                   0 B                0 B
+├ ƒ /api/music/list                                       0 B                0 B
+├ ƒ /api/observability/dashboard                          0 B                0 B
+├ ƒ /api/observability/latency                            0 B                0 B
+├ ƒ /api/orchestrate                                      0 B                0 B
+├ ƒ /api/orders/create-payment                            0 B                0 B
+├ ƒ /api/org/branding                                     0 B                0 B
+├ ƒ /api/payments/provider                                0 B                0 B
+├ ƒ /api/payouts/accounts                                 0 B                0 B
+├ ƒ /api/payouts/history                                  0 B                0 B
+├ ƒ /api/payouts/request                                  0 B                0 B
+├ ƒ /api/payouts/requests                                 0 B                0 B
+├ ƒ /api/products/validate-launch                         0 B                0 B
+├ ƒ /api/profile/landing                                  0 B                0 B
+├ ƒ /api/projects                                         0 B                0 B
+├ ƒ /api/projects/[projectId]                             0 B                0 B
+├ ƒ /api/projects/[projectId]/versions                    0 B                0 B
+├ ƒ /api/projects/[projectId]/versions/[versionId]/rerun  0 B                0 B
+├ ƒ /api/referral                                         0 B                0 B
+├ ƒ /api/refunds/[id]                                     0 B                0 B
+├ ƒ /api/refunds/create                                   0 B                0 B
+├ ƒ /api/returns                                          0 B                0 B
+├ ƒ /api/returns/[id]                                     0 B                0 B
+├ ƒ /api/returns/create                                   0 B                0 B
+├ ƒ /api/seller/activate                                  0 B                0 B
+├ ƒ /api/seller/kpi                                       0 B                0 B
+├ ƒ /api/services/health                                  0 B                0 B
+├ ƒ /api/share-event                                      0 B                0 B
+├ ƒ /api/shipments/[id]                                   0 B                0 B
+├ ƒ /api/shipping/event                                   0 B                0 B
+├ ƒ /api/shipping/quote                                   0 B                0 B
+├ ƒ /api/shipping/select-profile                          0 B                0 B
+├ ƒ /api/shipping/track                                   0 B                0 B
+├ ƒ /api/shop/create                                      0 B                0 B
+├ ƒ /api/shop/fulfill                                     0 B                0 B
+├ ƒ /api/shop/import                                      0 B                0 B
+├ ƒ /api/shop/orders                                      0 B                0 B
+├ ƒ /api/shop/products                                    0 B                0 B
+├ ƒ /api/shop/suppliers                                   0 B                0 B
+├ ƒ /api/smm/export                                       0 B                0 B
+├ ƒ /api/smm/posts/[id]/assets                            0 B                0 B
+├ ƒ /api/smm/projects                                     0 B                0 B
+├ ƒ /api/smm/projects/[id]                                0 B                0 B
+├ ƒ /api/smm/projects/[id]/posts                          0 B                0 B
+├ ƒ /api/smm/publish                                      0 B                0 B
+├ ƒ /api/stripe/connect/account-status                    0 B                0 B
+├ ƒ /api/stripe/connect/create-account                    0 B                0 B
+├ ƒ /api/stripe/connect/create-account-link               0 B                0 B
+├ ƒ /api/stripe/connect/login-link                        0 B                0 B
+├ ƒ /api/stripe/connect/onboarding                        0 B                0 B
+├ ƒ /api/stripe/connect/status                            0 B                0 B
+├ ƒ /api/stripe/create-checkout-session                   0 B                0 B
+├ ƒ /api/stripe/customer-portal                           0 B                0 B
+├ ƒ /api/stripe/health                                    0 B                0 B
+├ ƒ /api/stripe/subscription/create-checkout              0 B                0 B
+├ ƒ /api/stripe/subscription/get-status                   0 B                0 B
+├ ƒ /api/stripe/webhook                                   0 B                0 B
+├ ƒ /api/telegram/send                                    0 B                0 B
+├ ƒ /api/tests/smoke                                      0 B                0 B
+├ ƒ /api/tests/stripe-webhook                             0 B                0 B
+├ ƒ /api/tools/margin-calculator                          0 B                0 B
+├ ƒ /api/tracking/[id]                                    0 B                0 B
+├ ƒ /api/tracking/sync                                    0 B                0 B
+├ ƒ /api/user/stats                                       0 B                0 B
+├ ƒ /api/validate-env                                     0 B                0 B
+├ ƒ /api/video/generate                                   0 B                0 B
+├ ƒ /api/videos                                           0 B                0 B
+├ ƒ /api/voice-lab/assets                                 0 B                0 B
+├ ƒ /api/voice-lab/health                                 0 B                0 B
+├ ƒ /api/voice-lab/jobs                                   0 B                0 B
+├ ƒ /api/voice-lab/profiles                               0 B                0 B
+├ ƒ /api/voice-lab/projects                               0 B                0 B
+├ ƒ /api/voice-lab/projects/[id]                          0 B                0 B
+├ ƒ /api/webhooks/stripe                                  0 B                0 B
+├ ƒ /api/webhooks/whatsapp                                0 B                0 B
+├ ○ /auth                                                 4.5 kB          143 kB
+├ ƒ /auth/callback                                        0 B                0 B
+├ ƒ /avatar-builder                                       9.76 kB         211 kB
+├ ƒ /avatar/[id]                                          194 B           102 kB
+├ ƒ /billing                                              3.41 kB        99.3 kB
+├ ƒ /business                                             18.3 kB         182 kB
+├ ○ /chat                                                 3.77 kB         136 kB
+├ ○ /contact                                              180 B           127 kB
+├ ƒ /dashboard                                            162 B          87.8 kB
+├ ○ /dashboard/admin                                      3.64 kB         108 kB
+├ ƒ /dashboard/admin/payouts                              1.1 kB         88.7 kB
+├ ○ /dashboard/admin/system-health                        4.22 kB         100 kB
+├ ƒ /dashboard/billing                                    4.03 kB        91.6 kB
+├ ○ /dashboard/forecast                                   4.62 kB         101 kB
+├ ƒ /dashboard/marketplace/growth                         1.15 kB        88.7 kB
+├ ○ /dashboard/seller                                     5.09 kB         101 kB
+├ ƒ /dashboard/shop/finance                               1.42 kB          89 kB
+├ ƒ /dashboard/shop/launch                                1.05 kB        88.6 kB
+├ ƒ /dashboard/shop/payouts                               1.57 kB        89.2 kB
+├ ○ /diagnostics                                          3.39 kB         178 kB
+├ ƒ /favicon.png                                          0 B                0 B
+├ ƒ /icon                                                 0 B                0 B
+├ ○ /investor                                             4.17 kB         136 kB
+├ ƒ /jobs                                                 3.67 kB        99.6 kB
+├ ƒ /library                                              4.15 kB         105 kB
+├ ○ /memory                                               3.19 kB         136 kB
+├ ○ /onboarding                                           6.75 kB         139 kB
+├ ○ /pay                                                  1.89 kB        98.2 kB
+├ ○ /pay/cancel                                           1.05 kB        97.4 kB
+├ ○ /pay/success                                          1.33 kB        97.6 kB
+├ ○ /pricing                                              3.09 kB         136 kB
+├ ○ /privacy                                              3.26 kB         144 kB
+├ ○ /refund-policy                                        3.39 kB         144 kB
+├ ○ /robots.txt                                           0 B                0 B
+├ ○ /sell/finance                                         3.22 kB         139 kB
+├ ○ /seller/activation                                    3.65 kB        99.6 kB
+├ ○ /seller/onboarding                                    3.2 kB          112 kB
+├ ○ /seller/simulation                                    4.15 kB         100 kB
+├ ○ /seller/start                                         3.04 kB         110 kB
+├ ƒ /services                                             204 B          96.5 kB
+├ ƒ /services/[slug]                                      9.64 kB         114 kB
+├ ○ /services/agent-g                                     4.51 kB         163 kB
+├ ○ /services/agent-g/calls                               187 B           162 kB
+├ ○ /services/agent-g/dashboard                           187 B           160 kB
+├ ○ /services/agent-g/settings                            185 B           162 kB
+├ ○ /services/avatar-builder                              3.44 kB         230 kB
+├ ○ /services/business-agent                              4.77 kB         171 kB
+├ ○ /services/game-creator                                3.52 kB         136 kB
+├ ○ /services/image-architect                             2.17 kB         153 kB
+├ ○ /services/image-creator                               2.17 kB         153 kB
+├ ○ /services/marketplace                                 4.81 kB         109 kB
+├ ○ /services/marketplace/browse                          188 B           162 kB
+├ ○ /services/marketplace/inbox                           184 B           152 kB
+├ ƒ /services/marketplace/listings/[id]                   187 B           162 kB
+├ ○ /services/marketplace/listings/new                    186 B           163 kB
+├ ○ /services/marketplace/my                              187 B           160 kB
+├ ○ /services/marketplace/orders                          3.61 kB         150 kB
+├ ○ /services/media-production                            3.35 kB         205 kB
+├ ○ /services/music-studio                                2.82 kB         220 kB
+├ ○ /services/online-shop                                 3.41 kB         136 kB
+├ ○ /services/photo-studio                                3.58 kB         154 kB
+├ ○ /services/prompt-builder                              3.44 kB         136 kB
+├ ○ /services/social-media                                3.54 kB         170 kB
+├ ○ /services/social-media-manager                        3.55 kB         170 kB
+├ ○ /services/text-intelligence                           3.07 kB         124 kB
+├ ○ /services/video-studio                                3.89 kB         199 kB
+├ ○ /services/visual-intelligence                         2.17 kB         153 kB
+├ ○ /services/voice-lab                                   5.09 kB         169 kB
+├ ○ /services/workflow-builder                            2.06 kB         104 kB
+├ ○ /settings                                             3.95 kB         137 kB
+├ ○ /settings/integrations/telegram                       1.95 kB        98.3 kB
+├ ƒ /shop                                                 3.52 kB        99.4 kB
+├ ○ /sitemap.xml                                          0 B                0 B
+├ ○ /terms                                                3.18 kB         144 kB
+├ ○ /test/subscription                                    4.7 kB          151 kB
+├ ƒ /track/[id]                                           1.98 kB         126 kB
+└ ƒ /workspace                                            162 B          87.8 kB
++ First Load JS shared by all                             87.6 kB
+  ├ chunks/2117-b4672fdd08fdbd97.js                       31.9 kB
+  ├ chunks/fd9d1056-f55b45486acd3345.js                   53.6 kB
+  └ other shared chunks (total)                           2.05 kB
+
+
+ƒ Middleware                                              75 kB
+
+○  (Static)   prerendered as static content
+●  (SSG)      prerendered as static HTML (uses getStaticProps)
+ƒ  (Dynamic)  server-rendered on demand
+

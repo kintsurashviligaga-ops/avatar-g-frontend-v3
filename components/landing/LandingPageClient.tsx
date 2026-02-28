@@ -25,7 +25,7 @@ export default function LandingPageClient() {
   const serviceStats = [{ value: String(enabledServices.length), label: "Active Services" }, ...stats];
 
   return (
-    <div className="relative min-h-screen bg-[#05070A] text-white overflow-hidden">
+    <div className="relative min-h-screen bg-[#050510] text-white overflow-hidden">
       {/* ── Hero section ─────────────────────────────────────── */}
       <HeroSection onPremiumClick={() => setShowPremiumForm(true)} />
 

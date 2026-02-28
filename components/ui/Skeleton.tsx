@@ -30,7 +30,7 @@ export function CardSkeleton() {
 
 export function DashboardSkeleton() {
   return (
-    <div className="min-h-screen bg-[#05070A] pt-20 p-6">
+    <div className="min-h-screen bg-[#050510] pt-20 p-6">
       <div className="max-w-7xl mx-auto space-y-8">
         <Skeleton className="h-32 w-full rounded-3xl" />
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">

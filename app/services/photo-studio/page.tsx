@@ -343,7 +343,7 @@ export default function PhotoStudioPage() {
             {/* Canvas Toolbar */}
             {selectedImage && (
               <div className="absolute top-4 left-4 right-4 flex items-center justify-between">
-                <div className="flex items-center gap-2 bg-[#05070A]/90 backdrop-blur rounded-lg p-1 border border-white/10">
+                <div className="flex items-center gap-2 bg-[#050510]/90 backdrop-blur rounded-lg p-1 border border-white/10">
                   <button 
                     onClick={undo}
                     disabled={historyIndex <= 0}
@@ -379,7 +379,7 @@ export default function PhotoStudioPage() {
                   </button>
                 </div>
 
-                <div className="flex items-center gap-2 bg-[#05070A]/90 backdrop-blur rounded-lg p-1 border border-white/10">
+                <div className="flex items-center gap-2 bg-[#050510]/90 backdrop-blur rounded-lg p-1 border border-white/10">
                   <button 
                     onClick={() => setZoom(Math.max(10, zoom - 10))}
                     className="p-2 hover:bg-white/10 rounded-lg"
@@ -435,7 +435,7 @@ export default function PhotoStudioPage() {
                     whileTap={{ scale: 0.98 }}
                     onClick={() => processImage(tool.name)}
                     disabled={isProcessing || !selectedImage}
-                    className="p-4 rounded-xl bg-[#05070A] hover:bg-white/5 border border-white/10 hover:border-yellow-500/30 transition-all text-left group disabled:opacity-50"
+                    className="p-4 rounded-xl bg-[#050510] hover:bg-white/5 border border-white/10 hover:border-yellow-500/30 transition-all text-left group disabled:opacity-50"
                   >
                     <div className="w-10 h-10 rounded-lg bg-yellow-500/20 flex items-center justify-center mb-3 group-hover:bg-yellow-500/30 transition-colors">
                       <Icon size={20} className="text-yellow-400" />
@@ -530,7 +530,7 @@ export default function PhotoStudioPage() {
             </h3>
             <div className="space-y-2">
               {recentEdits.map((edit) => (
-                <div key={edit.id} className="flex items-center gap-3 p-2 rounded-lg bg-[#05070A] hover:bg-white/5 transition-colors cursor-pointer">
+                <div key={edit.id} className="flex items-center gap-3 p-2 rounded-lg bg-[#050510] hover:bg-white/5 transition-colors cursor-pointer">
                   <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-yellow-400/20 to-orange-500/20 flex items-center justify-center text-xl">
                     {edit.thumbnail}
                   </div>
@@ -552,7 +552,7 @@ export default function PhotoStudioPage() {
               <Download size={20} className="text-yellow-400" /> Export
             </h3>
             <div className="space-y-3">
-              <div className="flex items-center justify-between p-3 bg-[#05070A] rounded-lg">
+              <div className="flex items-center justify-between p-3 bg-[#050510] rounded-lg">
                 <span className="text-sm">Format</span>
                 <select className="bg-gray-800 rounded px-3 py-1 text-sm">
                   <option>PNG</option>
@@ -561,7 +561,7 @@ export default function PhotoStudioPage() {
                   <option>TIFF</option>
                 </select>
               </div>
-              <div className="flex items-center justify-between p-3 bg-[#05070A] rounded-lg">
+              <div className="flex items-center justify-between p-3 bg-[#050510] rounded-lg">
                 <span className="text-sm">Quality</span>
                 <select className="bg-gray-800 rounded px-3 py-1 text-sm">
                   <option>High (100%)</option>
@@ -569,7 +569,7 @@ export default function PhotoStudioPage() {
                   <option>Low (60%)</option>
                 </select>
               </div>
-              <div className="flex items-center justify-between p-3 bg-[#05070A] rounded-lg">
+              <div className="flex items-center justify-between p-3 bg-[#050510] rounded-lg">
                 <span className="text-sm">Size</span>
                 <select className="bg-gray-800 rounded px-3 py-1 text-sm">
                   <option>Original</option>
@@ -621,7 +621,7 @@ export default function PhotoStudioPage() {
             </div>
 
             <div className="space-y-4">
-              <div className="p-4 bg-[#05070A] rounded-lg">
+              <div className="p-4 bg-[#050510] rounded-lg">
                 <h4 className="font-semibold mb-3">Enhancement Options</h4>
                 <div className="space-y-3">
                   {[
@@ -651,7 +651,7 @@ export default function PhotoStudioPage() {
                 </div>
               </div>
 
-              <div className="p-4 bg-[#05070A] rounded-lg">
+              <div className="p-4 bg-[#050510] rounded-lg">
                 <h4 className="font-semibold mb-3">Before / After</h4>
                 <div className="grid grid-cols-2 gap-2">
                   <div className="aspect-square bg-gray-800 rounded-lg flex items-center justify-center text-gray-600">
@@ -691,7 +691,7 @@ export default function PhotoStudioPage() {
             </div>
 
             <div className="space-y-4">
-              <div className="p-4 bg-[#05070A] rounded-lg">
+              <div className="p-4 bg-[#050510] rounded-lg">
                 <h4 className="font-semibold mb-3">Transform</h4>
                 <div className="grid grid-cols-2 gap-2">
                   <button className="p-3 bg-gray-800/50 rounded-lg hover:bg-white/5 transition-colors">
@@ -713,7 +713,7 @@ export default function PhotoStudioPage() {
                 </div>
               </div>
 
-              <div className="p-4 bg-[#05070A] rounded-lg">
+              <div className="p-4 bg-[#050510] rounded-lg">
                 <h4 className="font-semibold mb-3">Advanced</h4>
                 <div className="space-y-2">
                   <button className="w-full p-3 bg-gray-800/50 rounded-lg hover:bg-white/5 transition-colors text-left flex items-center gap-3">
@@ -748,7 +748,7 @@ export default function PhotoStudioPage() {
             </div>
 
             <div className="space-y-4">
-              <div className="p-4 bg-[#05070A] rounded-lg">
+              <div className="p-4 bg-[#050510] rounded-lg">
                 <h4 className="font-semibold mb-3">Background Options</h4>
                 <div className="space-y-2">
                   <button className="w-full p-3 bg-purple-500/20 border border-purple-500/50 rounded-lg text-left">
@@ -766,7 +766,7 @@ export default function PhotoStudioPage() {
                 </div>
               </div>
 
-              <div className="p-4 bg-[#05070A] rounded-lg">
+              <div className="p-4 bg-[#050510] rounded-lg">
                 <h4 className="font-semibold mb-3">Background Presets</h4>
                 <div className="grid grid-cols-3 gap-2">
                   {['⬜', '⬛', '🔲', '🌅', '🏙️', '🌿'].map((bg, i) => (
@@ -799,7 +799,7 @@ export default function PhotoStudioPage() {
             </div>
 
             <div className="space-y-4">
-              <div className="p-4 bg-[#05070A] rounded-lg">
+              <div className="p-4 bg-[#050510] rounded-lg">
                 <h4 className="font-semibold mb-3">Stickers</h4>
                 <div className="space-y-3">
                   {stickers.map((category) => (
@@ -817,7 +817,7 @@ export default function PhotoStudioPage() {
                 </div>
               </div>
 
-              <div className="p-4 bg-[#05070A] rounded-lg">
+              <div className="p-4 bg-[#050510] rounded-lg">
                 <h4 className="font-semibold mb-3">Overlays</h4>
                 <div className="grid grid-cols-2 gap-2">
                   <button className="p-3 bg-gray-800/50 rounded-lg text-sm hover:bg-white/5">Light Leaks</button>

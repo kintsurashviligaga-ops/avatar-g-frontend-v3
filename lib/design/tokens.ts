@@ -49,7 +49,7 @@ export const colors = {
 
   // Background
   bg: {
-    dark: '#05070A',
+    dark: '#050510',
     darker: '#020304',
     card: '#0F1419',
     hover: '#1A1F2E',
@@ -60,7 +60,7 @@ export const colors = {
     primary: '#FFFFFF',
     secondary: '#A0AEC0',
     muted: '#718096',
-    inverse: '#05070A',
+    inverse: '#050510',
   },
 
   // Borders

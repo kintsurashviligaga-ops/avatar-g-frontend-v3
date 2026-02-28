@@ -32,7 +32,7 @@ const UsageAnalytics = dynamic(
 
 function DashboardSceneFallback() {
   return (
-    <div className="w-full h-[300px] bg-gradient-to-br from-[#05070A] via-[#1A1A1A] to-[#05070A] rounded-2xl animate-pulse" />
+    <div className="w-full h-[300px] bg-gradient-to-br from-[#050510] via-[#1A1A1A] to-[#050510] rounded-2xl animate-pulse" />
   );
 }
 
@@ -101,7 +101,7 @@ export default function OrbitalDashboardClient() {
   ];
 
   return (
-    <div className="min-h-screen bg-[#05070A] text-white pt-20">
+    <div className="min-h-screen bg-[#050510] text-white pt-20">
       {/* Minimal Background Effects */}
       <div className="fixed inset-0 pointer-events-none">
         <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-purple-500/5 rounded-full blur-3xl" />
@@ -181,7 +181,7 @@ export default function OrbitalDashboardClient() {
                   whileHover={{ y: -5, boxShadow: "0 0 30px rgba(0, 255, 255, 0.3)" }}
                   className={`h-40 rounded-xl bg-gradient-to-br ${service.color} p-0.5 cursor-pointer`}
                 >
-                  <div className="w-full h-full rounded-xl bg-[#05070A] flex flex-col items-center justify-center gap-3 hover:bg-opacity-80 transition-all">
+                  <div className="w-full h-full rounded-xl bg-[#050510] flex flex-col items-center justify-center gap-3 hover:bg-opacity-80 transition-all">
                     <service.icon className="w-10 h-10 text-white" />
                     <span className="text-white font-semibold text-center text-sm">{service.name}</span>
                   </div>

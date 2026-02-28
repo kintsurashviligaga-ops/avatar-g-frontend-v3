@@ -8,7 +8,7 @@ interface ExecutiveDashboardProps {
   userId: string;
 }
 
-export default function ExecutiveDashboard({ userId }: ExecutiveDashboardProps) {
+export default function ExecutiveDashboard({ userId: _userId }: ExecutiveDashboardProps) {
   const t = useTranslations('executive');
 
   /* ── State ─────────────────────────────────────────────────────────────── */

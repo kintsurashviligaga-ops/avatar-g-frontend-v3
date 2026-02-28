@@ -105,7 +105,7 @@ export function TabsOld({ tabs, defaultTab, onChange }: TabsOldProps) {
   };
 
   return (
-    <div className="flex gap-2 rounded-xl border border-white/10 bg-[#05070A] p-1">
+    <div className="flex gap-2 rounded-xl border border-white/10 bg-[#050510] p-1">
       {tabs.map((tab) => (
         <button
           key={tab.id}
@@ -134,7 +134,7 @@ export function TabsOld({ tabs, defaultTab, onChange }: TabsOldProps) {
 }
 
 export function TabsList({ children, className }: { children: React.ReactNode; className?: string }) {
-  return <div className={cn('flex gap-2 rounded-xl border border-white/10 bg-[#05070A] p-1', className)}>{children}</div>;
+  return <div className={cn('flex gap-2 rounded-xl border border-white/10 bg-[#050510] p-1', className)}>{children}</div>;
 }
 
 export function TabsTrigger({
