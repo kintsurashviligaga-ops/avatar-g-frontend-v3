@@ -837,5 +837,38 @@
     "stripeId": "Stripe ID",
     "actionRequired": "Требуется действие",
     "respondInStripe": "Пожалуйста, ответьте на этот спор в панели Stripe"
+  },
+  "nav": {
+    "home": "Главная",
+    "pricing": "Цены",
+    "login": "Войти",
+    "signup": "Регистрация",
+    "dashboard": "Панель",
+    "avatarBuilder": "Конструктор аватаров"
+  },
+  "orbit": {
+    "title": "Orbit Solar System",
+    "subtitle": "13 модулей на орбите вокруг вашего Core Avatar."
+  },
+  "avatar_core": {
+    "builder_title": "Конструктор аватаров",
+    "use_as_core": "Использовать как Core Avatar",
+    "generating": "Генерация...",
+    "no_avatar": "G"
+  },
+  "footer": {
+    "rights": "© {year} MyAvatar.ge — Все права защищены"
+  },
+  "pricing": {
+    "title": "Выберите план",
+    "subtitle": "Обновляйте, понижайте или отменяйте в любое время.",
+    "free": "Бесплатно",
+    "pro": "Pro",
+    "premium": "Premium",
+    "enterprise": "Enterprise",
+    "month": "месяц",
+    "get_started": "Начать",
+    "contact_us": "Связаться",
+    "popular": "Самый популярный"
   }
 }

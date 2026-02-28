@@ -887,5 +887,38 @@
     "stripeId": "Stripe ID",
     "actionRequired": "საჭიროა ქმედება",
     "respondInStripe": "გთხოვთ უპასუხოთ ამ დავას Stripe-ის პანელში"
+  },
+  "nav": {
+    "home": "მთავარი",
+    "pricing": "ფასები",
+    "login": "შესვლა",
+    "signup": "რეგისტრაცია",
+    "dashboard": "პანელი",
+    "avatarBuilder": "ავატარის კონსტრუქტორი"
+  },
+  "orbit": {
+    "title": "Orbit Solar System",
+    "subtitle": "13 მოდული ორბიტაზე — შენი ცოცხალი Core Avatar-ის გარშემო."
+  },
+  "avatar_core": {
+    "builder_title": "ავატარის კონსტრუქტორი",
+    "use_as_core": "გამოიყენე როგორც Core Avatar",
+    "generating": "გენერაცია...",
+    "no_avatar": "G"
+  },
+  "footer": {
+    "rights": "© {year} MyAvatar.ge — ყველა უფლება დაცულია"
+  },
+  "pricing": {
+    "title": "აირჩიე გეგმა",
+    "subtitle": "განახლება, შემცირება ან გაუქმება ნებისმიერ დროს.",
+    "free": "უფასო",
+    "pro": "Pro",
+    "premium": "Premium",
+    "enterprise": "Enterprise",
+    "month": "თვეში",
+    "get_started": "დაიწყე",
+    "contact_us": "დაგვიკავშირდი",
+    "popular": "პოპულარული"
   }
 }

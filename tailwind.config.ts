@@ -88,5 +88,14 @@ const config: Config = {
     },
   },
   plugins: [],
+  safelist: [
+    'animate-[orbit_28s_linear_infinite]',
+    'animate-[orbit_40s_linear_infinite]',
+    'animate-[orbit_56s_linear_infinite]',
+    'animate-[orbit_80s_linear_infinite]',
+    'animate-[orbitReverse_44s_linear_infinite]',
+    'animate-[orbitReverse_88s_linear_infinite]',
+    'motion-reduce:animate-none',
+  ],
 }
 export default config

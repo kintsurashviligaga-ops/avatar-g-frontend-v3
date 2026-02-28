@@ -885,5 +885,38 @@
     "stripeId": "Stripe ID",
     "actionRequired": "Action Required",
     "respondInStripe": "Please respond to this dispute in your Stripe dashboard"
+  },
+  "nav": {
+    "home": "Home",
+    "pricing": "Pricing",
+    "login": "Login",
+    "signup": "Sign Up",
+    "dashboard": "Dashboard",
+    "avatarBuilder": "Avatar Builder"
+  },
+  "orbit": {
+    "title": "Orbit Solar System",
+    "subtitle": "13 modules orbiting around your live Core Avatar."
+  },
+  "avatar_core": {
+    "builder_title": "Avatar Builder",
+    "use_as_core": "Use as Core Avatar",
+    "generating": "Generating...",
+    "no_avatar": "G"
+  },
+  "footer": {
+    "rights": "© {year} MyAvatar.ge — All rights reserved"
+  },
+  "pricing": {
+    "title": "Choose Your Plan",
+    "subtitle": "Upgrade, downgrade, or cancel anytime.",
+    "free": "Free",
+    "pro": "Pro",
+    "premium": "Premium",
+    "enterprise": "Enterprise",
+    "month": "month",
+    "get_started": "Get Started",
+    "contact_us": "Contact Us",
+    "popular": "Most Popular"
   }
 }

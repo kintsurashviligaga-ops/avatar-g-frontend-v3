@@ -5,9 +5,11 @@ import { motion } from "framer-motion";
 import dynamic from "next/dynamic";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { ArrowRight, Play, Zap } from "lucide-react";
+import { ArrowRight, Play, Zap, Check, Sparkles } from "lucide-react";
 import { SERVICE_REGISTRY } from "@/lib/service-registry";
 import { OrbitSolarSystem } from "@/components/OrbitSolarSystem";
+import { PRICING_PLANS } from "@/lib/pricing/canonicalPricing";
+import Link from "next/link";
 
 // Lazy load premium form for performance
 const PremiumAgentForm = dynamic(() => import("@/components/landing/PremiumAgentForm"), {
@@ -110,6 +112,71 @@ export default function LandingPageClient() {
           ))}
         </div>
       </section>
+
+      {/* ── Pricing Section ──────────────────────────────────── */}
+      <section id="pricing" className="relative py-20 px-4 sm:px-6">
+        <div className="mx-auto max-w-6xl">
+          <div className="text-center mb-14">
+            <h2 className="text-3xl md:text-5xl font-bold text-white mb-4">
+              Choose Your <span className="text-cyan-400">Plan</span>
+            </h2>
+            <p className="text-lg text-gray-400 max-w-xl mx-auto">
+              Upgrade, downgrade, or cancel anytime.
+            </p>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            {PRICING_PLANS.map((plan, index) => (
+              <motion.div
+                key={plan.name}
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ delay: index * 0.08 }}
+                className={`relative flex flex-col rounded-2xl border p-6 backdrop-blur-lg ${
+                  plan.popular
+                    ? "bg-gradient-to-b from-cyan-500/20 to-blue-500/20 border-cyan-400/60 ring-2 ring-cyan-400/30"
+                    : "bg-white/5 border-white/15"
+                }`}
+              >
+                {plan.popular && (
+                  <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-0.5 bg-gradient-to-r from-cyan-500 to-blue-600 text-white text-xs font-medium rounded-full flex items-center gap-1">
+                    <Sparkles className="w-3 h-3" /> Most Popular
+                  </div>
+                )}
+                <h3 className="text-xl font-bold text-white">{plan.name}</h3>
+                <p className="text-sm text-gray-400 mt-1">{plan.description}</p>
+                <div className="flex items-baseline gap-1 mt-4 mb-6">
+                  <span className="text-4xl font-extrabold text-cyan-300">${plan.price}</span>
+                  <span className="text-gray-400 text-sm">/mo</span>
+                </div>
+                <ul className="space-y-2 mb-6 flex-1">
+                  {plan.features.map((f) => (
+                    <li key={f} className="flex items-start gap-2 text-sm text-gray-300">
+                      <Check className="w-4 h-4 text-cyan-400 mt-0.5 shrink-0" />
+                      {f}
+                    </li>
+                  ))}
+                </ul>
+                <Link
+                  href={plan.price === 0 ? "/signup" : `/signup?plan=${plan.name.toLowerCase()}`}
+                  className={`block text-center py-2.5 rounded-xl font-semibold text-sm transition-colors ${
+                    plan.popular
+                      ? "bg-cyan-500 hover:bg-cyan-400 text-black"
+                      : "bg-white/10 hover:bg-white/20 text-white"
+                  }`}
+                >
+                  {plan.cta}
+                </Link>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── Footer ───────────────────────────────────────────── */}
+      <footer className="border-t border-white/10 py-8 px-4 sm:px-6 text-center">
+        <p className="text-sm text-gray-500">© {new Date().getFullYear()} MyAvatar.ge — All rights reserved</p>
+      </footer>
 
       <PremiumAgentForm isOpen={showPremiumForm} onClose={() => setShowPremiumForm(false)} />
     </div>
