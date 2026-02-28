@@ -17,7 +17,7 @@ const MODULES: OrbitModule[] = [
   { title: 'Agent G', description: 'AI operator that routes and orchestrates tasks.', href: '/services/agent-g', ring: 0 },
   { title: 'Workflow Builder', description: 'Compose chained automations across services.', href: '/services/workflow-builder', ring: 0 },
   { title: 'Video Studio', description: 'Generate cinematic videos from guided input.', href: '/services/video-studio', ring: 0 },
-  { title: 'Media Production', description: 'Produce campaign-ready multimedia outputs.', href: '/services/media-production', ring: 0 },
+  { title: 'Media Production', description: 'Produce campaign-ready multimedia outputs.', href: '/services/media-production', ring: 1 },
   { title: 'Music Studio', description: 'Generate tracks and production-ready stems.', href: '/services/music-studio', ring: 1 },
   { title: 'Photo Studio', description: 'Create editorial-grade photo outputs.', href: '/services/photo-studio', ring: 1 },
   { title: 'Social Media Manager', description: 'Plan and publish social content workflows.', href: '/services/social-media-manager', ring: 1 },
@@ -29,9 +29,9 @@ const MODULES: OrbitModule[] = [
 ];
 
 const RING_CONFIG = [
-  { className: 'animate-orbitSlow md:animate-orbitSlow' },
-  { className: 'animate-orbitMid md:animate-orbitMid' },
-  { className: 'animate-orbitSlowRev md:animate-orbitSlowRev' },
+  { className: 'animate-orbitSlowMobile sm:animate-orbitSlow' },
+  { className: 'animate-orbitMidMobile sm:animate-orbitMid' },
+  { className: 'animate-orbitSlowRevMobile sm:animate-orbitSlowRev' },
 ] as const;
 
 function groupByRing(modules: OrbitModule[]): OrbitModule[][] {
@@ -52,12 +52,11 @@ export function OrbitSolarSystem() {
       <div className="relative mx-auto h-[320px] w-full max-w-[320px] md:h-[560px] md:max-w-[560px]">
         {grouped.map((ringModules, ringIndex) => {
           const config = RING_CONFIG[ringIndex] ?? RING_CONFIG[0];
-          const mobileAnimationClass = ringIndex === 0 ? 'max-md:animate-orbitSlowMobile' : ringIndex === 1 ? 'max-md:animate-orbitMidMobile' : 'max-md:animate-orbitSlowRevMobile';
 
           return (
             <div
               key={`ring-${ringIndex}`}
-              className={`absolute inset-0 rounded-full border border-cyan-400/20 motion-reduce:animate-none ${config.className} ${mobileAnimationClass}`}
+              className={`absolute inset-0 rounded-full border border-cyan-400/20 motion-reduce:animate-none ${config.className}`}
             >
               {ringModules.map((module, index) => {
                 const angle = (360 / ringModules.length) * index;
@@ -86,7 +85,7 @@ export function OrbitSolarSystem() {
                       {module.title}
                     </button>
 
-                    <div className="pointer-events-none absolute left-1/2 top-[calc(100%+10px)] z-20 hidden w-64 -translate-x-1/2 rounded-xl border border-white/15 bg-[#060B18]/95 p-3 text-left opacity-0 transition group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100 md:block">
+                    <div className="pointer-events-none absolute left-1/2 top-[calc(100%+10px)] z-20 hidden w-64 -translate-x-1/2 rounded-xl border border-white/15 bg-[#060B18]/95 backdrop-blur-md p-3 text-left opacity-0 transition group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100 md:block">
                       <Image src="/previews/services.png" alt="Service preview" width={256} height={96} className="h-24 w-full rounded-md object-cover" />
                       <h3 className="mt-2 text-sm font-semibold text-white">{module.title}</h3>
                       <p className="mt-1 text-xs text-slate-300">{module.description}</p>
@@ -102,7 +101,7 @@ export function OrbitSolarSystem() {
         })}
 
         <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 animate-floatSoft motion-reduce:animate-none">
-          <CoreAvatar className="h-24 w-24 md:h-36 md:w-36" />
+          <CoreAvatar className="h-24 w-24 sm:h-32 sm:w-32 lg:h-40 lg:w-40" />
         </div>
       </div>
 

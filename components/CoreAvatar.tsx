@@ -20,8 +20,9 @@ async function fetchCoreAvatar(): Promise<CoreAvatarResponse | null> {
   try {
     const response = await fetch('/api/avatar/core', { cache: 'no-store' });
     if (!response.ok) return null;
-    const payload = (await response.json()) as CoreAvatarResponse;
-    return payload;
+    const json = (await response.json()) as { status: string; data?: CoreAvatarResponse };
+    // apiSuccess wraps payload in { status, data, timestamp } — unwrap
+    return (json.data as CoreAvatarResponse) ?? null;
   } catch {
     return null;
   }
@@ -31,6 +32,8 @@ function computeCameraSettings(modelViewer: HTMLElement): {
   cameraTarget: string;
   cameraOrbit: string;
   fieldOfView: string;
+  minCameraOrbit: string;
+  maxCameraOrbit: string;
 } {
   const anyViewer = modelViewer as unknown as {
     model?: {
@@ -46,18 +49,22 @@ function computeCameraSettings(modelViewer: HTMLElement): {
     return {
       cameraTarget: '0m 0.85m 0m',
       cameraOrbit: '0deg 78deg 2.8m',
-      fieldOfView: '28deg',
+      fieldOfView: '30deg',
+      minCameraOrbit: 'auto 60deg auto',
+      maxCameraOrbit: 'auto 90deg auto',
     };
   }
 
-  const maxDim = Math.max(dimensions.x, dimensions.y, dimensions.z, 1);
-  const orbitDistance = (maxDim * 2.1).toFixed(2);
-  const targetY = Math.max(center.y - dimensions.y * 0.08, 0.35).toFixed(2);
+  const height = Math.max(dimensions.y, 0.5);
+  const targetY = (height * 0.52).toFixed(2);
+  const radius = Math.max(2.3, height * 1.9).toFixed(2);
 
   return {
     cameraTarget: `${center.x.toFixed(2)}m ${targetY}m ${center.z.toFixed(2)}m`,
-    cameraOrbit: `0deg 78deg ${orbitDistance}m`,
-    fieldOfView: '26deg',
+    cameraOrbit: `0deg 78deg ${radius}m`,
+    fieldOfView: '30deg',
+    minCameraOrbit: 'auto 60deg auto',
+    maxCameraOrbit: 'auto 90deg auto',
   };
 }
 
@@ -137,6 +144,8 @@ export function CoreAvatar({ className, pollMs = 4000 }: CoreAvatarProps) {
       viewer.setAttribute('camera-target', settings.cameraTarget);
       viewer.setAttribute('camera-orbit', settings.cameraOrbit);
       viewer.setAttribute('field-of-view', settings.fieldOfView);
+      viewer.setAttribute('min-camera-orbit', settings.minCameraOrbit);
+      viewer.setAttribute('max-camera-orbit', settings.maxCameraOrbit);
     }, 400);
 
     return () => clearTimeout(timer);
@@ -144,7 +153,7 @@ export function CoreAvatar({ className, pollMs = 4000 }: CoreAvatarProps) {
 
   if (loading) {
     return (
-      <div className={`flex h-36 w-36 items-center justify-center rounded-full border border-white/10 bg-white/5 ${className ?? ''}`}>
+      <div className={`flex items-center justify-center rounded-full border border-white/10 bg-white/5 ${className ?? 'h-24 w-24 sm:h-32 sm:w-32 lg:h-40 lg:w-40'}`}>
         <span className="text-xs text-slate-300">Loading...</span>
       </div>
     );
@@ -152,7 +161,7 @@ export function CoreAvatar({ className, pollMs = 4000 }: CoreAvatarProps) {
 
   if (!data || data.status === 'none' || !data.core_avatar_id) {
     return (
-      <div className={`flex h-36 w-36 items-center justify-center rounded-full border border-cyan-400/40 bg-cyan-500/10 text-4xl font-bold text-cyan-200 ${className ?? ''}`}>
+      <div className={`flex items-center justify-center rounded-full border border-cyan-400/40 bg-cyan-500/10 text-4xl font-bold text-cyan-200 ${className ?? 'h-24 w-24 sm:h-32 sm:w-32 lg:h-40 lg:w-40'}`}>
         G
       </div>
     );
@@ -160,7 +169,7 @@ export function CoreAvatar({ className, pollMs = 4000 }: CoreAvatarProps) {
 
   if (data.status === 'processing') {
     return (
-      <div className={`flex h-36 w-36 flex-col items-center justify-center rounded-full border border-cyan-400/50 bg-cyan-500/10 ${className ?? ''}`}>
+      <div className={`flex flex-col items-center justify-center rounded-full border border-cyan-400/50 bg-cyan-500/10 ${className ?? 'h-24 w-24 sm:h-32 sm:w-32 lg:h-40 lg:w-40'}`}>
         <div className="h-8 w-8 animate-spin rounded-full border-2 border-cyan-300 border-t-transparent" />
         <p className="mt-3 text-xs text-cyan-100">Generating...</p>
       </div>
@@ -169,7 +178,7 @@ export function CoreAvatar({ className, pollMs = 4000 }: CoreAvatarProps) {
 
   if (data.status === 'ready' && data.model_glb_url && modelViewerProps && viewerReady) {
     return (
-      <div className={`h-36 w-36 overflow-hidden rounded-full border border-cyan-400/50 bg-black ${className ?? ''}`}>
+      <div className={`overflow-hidden rounded-full border border-cyan-400/50 bg-black ${className ?? 'h-24 w-24 sm:h-32 sm:w-32 lg:h-40 lg:w-40'}`}>
         {createElement('model-viewer', {
           id: 'core-avatar-model-viewer',
           ...modelViewerProps,
@@ -179,7 +188,7 @@ export function CoreAvatar({ className, pollMs = 4000 }: CoreAvatarProps) {
   }
 
   return (
-    <div className={`relative h-36 w-36 overflow-hidden rounded-full border border-white/15 bg-white/5 ${className ?? ''}`}>
+    <div className={`relative overflow-hidden rounded-full border border-white/15 bg-white/5 ${className ?? 'h-24 w-24 sm:h-32 sm:w-32 lg:h-40 lg:w-40'}`}>
       <Image
         src={data.poster_url ?? '/brand/logo.png'}
         alt="Core avatar poster"
