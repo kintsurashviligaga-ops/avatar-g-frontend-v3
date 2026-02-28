@@ -852,6 +852,18 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
   const [language, setLanguageState] = useState<Language>("ka");
 
   useEffect(() => {
+    // Priority: cookie > localStorage > browser language
+    const cookieLocale = document.cookie
+      .split(';')
+      .find((c) => c.trim().startsWith('NEXT_LOCALE='))
+      ?.split('=')[1] as Language | undefined;
+
+    if (cookieLocale && ["ka", "en", "ru"].includes(cookieLocale)) {
+      setLanguageState(cookieLocale);
+      localStorage.setItem("avatar-g-language", cookieLocale);
+      return;
+    }
+
     const saved = localStorage.getItem("avatar-g-language") as Language | null;
     if (saved && ["ka", "en", "ru"].includes(saved)) {
       setLanguageState(saved);
@@ -870,6 +882,7 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
   const setLanguage = useCallback((lang: Language) => {
     setLanguageState(lang);
     localStorage.setItem("avatar-g-language", lang);
+    document.cookie = `NEXT_LOCALE=${lang}; path=/; max-age=31536000; SameSite=Lax`;
   }, []);
 
   const locale = language;
