@@ -1,79 +1,43 @@
-import Link from 'next/link';
-import { getLocalizedServices } from '@/lib/service-registry';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
+﻿import Link from 'next/link';
+import { SERVICE_META } from '@/lib/services/metadata';
 
 type ServicesPageProps = {
   params: Promise<{ locale: string }>;
 };
 
+const SERVICE_ORDER = [
+  'avatar', 'video', 'editing', 'music', 'photo', 'image',
+  'media', 'text', 'prompt', 'visual-intel', 'workflow', 'shop', 'agent-g',
+] as const;
+
+const PAGE_TEXT: Record<string, { title: string; subtitle: string }> = {
+  en: { title: 'All Services', subtitle: '13 AI-powered modules.' },
+  ka: { title: 'ყველა სერვისი', subtitle: '13 AI მოდული.' },
+  ru: { title: 'Все сервисы', subtitle: '13 AI-модулей.' },
+};
+
 export default async function LocalizedServicesPage({ params }: ServicesPageProps) {
   const { locale } = await params;
-  const services = getLocalizedServices(locale).filter((service) => service.enabled);
-
-  const content = {
-    en: {
-      title: '13 Services',
-      subtitle: 'Browse 13 active services.',
-      active: 'Active',
-      open: 'Open',
-      ariaOpenPrefix: 'Open',
-    },
-    ka: {
-      title: '13 სერვისი',
-      subtitle: 'დაათვალიერე 13 აქტიური სერვისი.',
-      active: 'აქტიური',
-      open: 'გახსნა',
-      ariaOpenPrefix: 'გახსენი',
-    },
-    ru: {
-      title: '13 сервисов',
-      subtitle: 'Просмотрите 13 активных сервисов.',
-      active: 'Активно',
-      open: 'Открыть',
-      ariaOpenPrefix: 'Открыть',
-    },
-  };
-
-  const pageText = content[locale as 'en' | 'ka' | 'ru'] ?? content.ka;
-
-  const getServiceHref = (slug: string) => `/${locale}/services/${slug}`;
-
+  const text = PAGE_TEXT[locale] ?? PAGE_TEXT['ka']!;
   return (
-    <section className="space-y-6 px-4 py-6 sm:px-6 lg:px-8">
-      <header>
-        <h1 className="text-2xl font-semibold text-app-text">{pageText.title}</h1>
-        <p className="text-sm text-app-muted">{pageText.subtitle}</p>
-      </header>
-
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-        {services.map((service) => (
-          <Card key={service.id} className="relative transition hover:border-app-neon/40">
-            <Link
-              href={getServiceHref(service.slug)}
-              aria-label={`${pageText.ariaOpenPrefix} ${service.name}`}
-              className="absolute inset-0 z-10 rounded-2xl pointer-events-auto"
-            />
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-base">
-                <span className="text-base">{service.icon}</span>
-                {service.name}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <p className="text-sm text-app-muted">{service.description}</p>
-              <div className="flex items-center justify-between">
-                <Badge variant="success">{pageText.active}</Badge>
-                <Link
-                  href={getServiceHref(service.slug)}
-                  className="relative z-20 pointer-events-auto text-sm text-cyan-300 hover:text-cyan-200"
-                >
-                  {pageText.open}
-                </Link>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
+    <section className="min-h-screen bg-[#050510] text-white py-24 px-4 sm:px-6 lg:px-10">
+      <div className="mx-auto max-w-6xl">
+        <h1 className="text-4xl md:text-5xl font-bold text-center mb-4">{text.title}</h1>
+        <p className="text-center text-gray-400 max-w-2xl mx-auto mb-16">{text.subtitle}</p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+          {SERVICE_ORDER.map((id) => {
+            const meta = SERVICE_META[id];
+            if (!meta) return null;
+            return (
+              <Link key={id} href={`/${locale}/services/${id}`}
+                className="group relative overflow-hidden rounded-2xl border border-white/[0.08] bg-white/[0.03] p-6 transition-all duration-300 hover:border-cyan-400/30 hover:bg-white/[0.06]">
+                <div className="text-3xl mb-4">{meta.icon}</div>
+                <h2 className="text-lg font-semibold text-white mb-2 group-hover:text-cyan-300 transition-colors">{meta.headline}</h2>
+                <p className="text-sm text-gray-400 leading-relaxed mb-4">{meta.description}</p>
+              </Link>
+            );
+          })}
+        </div>
       </div>
     </section>
   );

@@ -3,7 +3,6 @@ import { notFound } from "next/navigation";
 import { publicEnv } from "@/lib/env/public";
 import { getMessages, setRequestLocale } from 'next-intl/server';
 import { NextIntlClientProvider } from 'next-intl';
-import { Navbar, Footer } from "@/components/layout/AppLayout";
 import { i18n } from "@/i18n.config";
 
 const metadataBaseUrl = publicEnv.NEXT_PUBLIC_APP_URL || "https://avatar-g-frontend-v3.vercel.app";
@@ -93,11 +92,7 @@ export default async function LocaleLayout({
   return (
     <div className="font-sans">
       <NextIntlClientProvider locale={safeLocale} messages={messages}>
-        <Navbar />
-        <main className="pt-20">
-          {children}
-        </main>
-        <Footer />
+        {children}
       </NextIntlClientProvider>
     </div>
   );
