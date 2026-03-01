@@ -5,7 +5,7 @@ import { defineConfig, devices } from '@playwright/test';
  * Usage: npx playwright test e2e/smoke.spec.ts --config=playwright.prod.config.ts
  */
 export default defineConfig({
-  testDir: './e2e',
+  testDir: './tests',
   timeout: 30_000,
   expect: { timeout: 10_000 },
   fullyParallel: true,
