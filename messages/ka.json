@@ -1,4 +1,29 @@
 {
+  "auth": {
+    "login": "შესვლა",
+    "signup": "ანგარიშის შექმნა",
+    "logout": "გასვლა",
+    "email": "ელ-ფოსტა",
+    "password": "პაროლი",
+    "forgotPassword": "დაგავიწყდათ პაროლი?",
+    "noAccount": "არ გაქვთ ანგარიში?",
+    "hasAccount": "უკვე გაქვთ ანგარიში?",
+    "continueWithGithub": "გააგრძელეთ GitHub-ით",
+    "or": "ან",
+    "welcomeBack": "კეთილი იყოს თქვენი დაბრუნება",
+    "signInTo": "შედით MyAvatar.ge-ზე",
+    "createYourAccount": "შექმენით თქვენი ანგარიში",
+    "joinMyAvatar": "შემოუერთდით MyAvatar.ge-ს — დაიწყეთ შექმნა AI-ით",
+    "checkEmail": "შეამოწმეთ ელ-ფოსტა",
+    "confirmationSent": "გამოგზავნილია დადასტურების ბმული. დააჭირეთ ანგარიშის გასააქტიურებლად."
+  },
+  "home": {
+    "heroTitle": "AI კრეატიული პლატფორმა",
+    "heroSubtitle": "შექმენი ავატარები, ვიდეო, სურათები და მუსიკა AI-ით",
+    "getStarted": "დაწყება",
+    "viewPlans": "პაკეტების ნახვა",
+    "poweredBy": "იმართება Agent G-ით"
+  },
   "metadata": {
     "title": "Avatar G Executive - AI Platform",
     "description": "პრემიუმ AI ინსტრუმენტები ბიზნესისთვის"

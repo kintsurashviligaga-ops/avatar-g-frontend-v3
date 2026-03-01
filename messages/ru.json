@@ -1,4 +1,29 @@
 {
+  "auth": {
+    "login": "Войти",
+    "signup": "Создать аккаунт",
+    "logout": "Выйти",
+    "email": "Электронная почта",
+    "password": "Пароль",
+    "forgotPassword": "Забыли пароль?",
+    "noAccount": "Нет аккаунта?",
+    "hasAccount": "Уже есть аккаунт?",
+    "continueWithGithub": "Продолжить с GitHub",
+    "or": "или",
+    "welcomeBack": "С возвращением",
+    "signInTo": "Войдите в MyAvatar.ge",
+    "createYourAccount": "Создайте свой аккаунт",
+    "joinMyAvatar": "Присоединяйтесь к MyAvatar.ge — начните создавать с ИИ",
+    "checkEmail": "Проверьте почту",
+    "confirmationSent": "Мы отправили ссылку для подтверждения. Нажмите на неё, чтобы активировать аккаунт."
+  },
+  "home": {
+    "heroTitle": "AI Креативная Платформа",
+    "heroSubtitle": "Создавайте аватары, видео, изображения и музыку с ИИ",
+    "getStarted": "Начать",
+    "viewPlans": "Смотреть планы",
+    "poweredBy": "Работает на Agent G"
+  },
   "metadata": {
     "title": "Avatar G Executive - AI платформа",
     "description": "Премиум инструменты ИИ для бизнеса"

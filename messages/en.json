@@ -1,4 +1,29 @@
 {
+  "auth": {
+    "login": "Sign In",
+    "signup": "Create Account",
+    "logout": "Sign Out",
+    "email": "Email",
+    "password": "Password",
+    "forgotPassword": "Forgot password?",
+    "noAccount": "No account?",
+    "hasAccount": "Already have an account?",
+    "continueWithGithub": "Continue with GitHub",
+    "or": "or",
+    "welcomeBack": "Welcome back",
+    "signInTo": "Sign in to MyAvatar.ge",
+    "createYourAccount": "Create your account",
+    "joinMyAvatar": "Join MyAvatar.ge — start creating with AI",
+    "checkEmail": "Check your email",
+    "confirmationSent": "We sent a confirmation link. Click it to activate your account."
+  },
+  "home": {
+    "heroTitle": "AI Creative Platform",
+    "heroSubtitle": "Create avatars, videos, images, and music with AI",
+    "getStarted": "Get Started",
+    "viewPlans": "View Plans",
+    "poweredBy": "Powered by Agent G"
+  },
   "metadata": {
     "title": "Avatar G Executive - AI Platform",
     "description": "Premium AI tools for business"
