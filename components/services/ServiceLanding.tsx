@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import ServiceChatWidget from '@/components/services/ServiceChatWidget'
 
 interface ServiceLandingProps {
   icon: string
@@ -6,9 +7,26 @@ interface ServiceLandingProps {
   description: string
   features: string[]
   serviceName: string
+  locale?: string
+  agentId?: string
 }
 
-export default function ServiceLanding({ icon, headline, description, features, serviceName }: ServiceLandingProps) {
+const CTA_TEXT: Record<string, { start: string; plans: string; tryNow: string }> = {
+  en: { start: 'Start Free', plans: 'View Plans', tryNow: 'Try Now' },
+  ka: { start: 'დაწყება უფასოდ', plans: 'გეგმების ნახვა', tryNow: 'სცადე ახლა' },
+  ru: { start: 'Начать бесплатно', plans: 'Тарифы', tryNow: 'Попробовать' },
+}
+
+const AGENT_LABEL: Record<string, string> = {
+  en: 'Powered by Agent G',
+  ka: 'აგენტი G-ით მართული',
+  ru: 'На базе Агента G',
+}
+
+export default function ServiceLanding({ icon, headline, description, features, serviceName, locale = 'ka', agentId = 'main-assistant' }: ServiceLandingProps) {
+  const cta = CTA_TEXT[locale] ?? CTA_TEXT['en']!
+  const agentLabel = AGENT_LABEL[locale] ?? AGENT_LABEL['en']!
+
   return (
     <div className="min-h-screen bg-[#050510] text-white">
       {/* Hero */}
@@ -26,20 +44,22 @@ export default function ServiceLanding({ icon, headline, description, features, 
           {description}
         </p>
         <div className="flex flex-wrap gap-4">
-          <Link href="/signup"
+          <Link href={`/${locale}/signup`}
             className="bg-white text-[#050510] font-semibold text-sm px-6 py-3 rounded-2xl hover:bg-white/90 transition-all">
-            Start Free
+            {cta.start}
           </Link>
-          <Link href="/pricing"
+          <Link href={`/${locale}/pricing`}
             className="border border-white/20 text-white font-semibold text-sm px-6 py-3 rounded-2xl hover:bg-white/[0.06] transition-all">
-            View Plans
+            {cta.plans}
           </Link>
         </div>
       </section>
 
       {/* Features */}
       <section className="border-t border-white/[0.06] px-4 sm:px-6 lg:px-10 py-14 max-w-5xl mx-auto">
-        <p className="text-xs text-white/30 uppercase tracking-widest mb-8">Capabilities</p>
+        <p className="text-xs text-white/30 uppercase tracking-widest mb-8">
+          {locale === 'ka' ? 'შესაძლებლობები' : locale === 'ru' ? 'Возможности' : 'Capabilities'}
+        </p>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {features.map((f) => (
             <div key={f}
@@ -58,13 +78,20 @@ export default function ServiceLanding({ icon, headline, description, features, 
             <span className="text-white/60 text-lg">◈</span>
           </div>
           <div>
-            <p className="text-sm font-semibold text-white">Powered by Agent G</p>
+            <p className="text-sm font-semibold text-white">{agentLabel}</p>
             <p className="text-xs text-white/40 mt-0.5">
-              Every {serviceName} job is orchestrated, quality-checked, and delivered by Agent G.
+              {locale === 'ka'
+                ? `ყველა ${serviceName} სამუშაო ორკესტრირდება, კონტროლდება და მიწოდდება აგენტი G-ით.`
+                : locale === 'ru'
+                ? `Каждая задача ${serviceName} оркестрируется, проверяется и доставляется Агентом G.`
+                : `Every ${serviceName} job is orchestrated, quality-checked, and delivered by Agent G.`}
             </p>
           </div>
         </div>
       </section>
+
+      {/* Service Chat Widget */}
+      <ServiceChatWidget serviceName={serviceName} agentId={agentId} locale={locale} />
     </div>
   )
 }

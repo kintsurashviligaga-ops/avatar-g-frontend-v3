@@ -1,5 +1,5 @@
 ﻿import Link from 'next/link';
-import { SERVICE_META } from '@/lib/services/metadata';
+import { getLocalizedMeta } from '@/lib/services/metadata';
 
 type ServicesPageProps = {
   params: Promise<{ locale: string }>;
@@ -26,7 +26,7 @@ export default async function LocalizedServicesPage({ params }: ServicesPageProp
         <p className="text-center text-gray-400 max-w-2xl mx-auto mb-16">{text.subtitle}</p>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
           {SERVICE_ORDER.map((id) => {
-            const meta = SERVICE_META[id];
+            const meta = getLocalizedMeta(id, locale);
             if (!meta) return null;
             return (
               <Link key={id} href={`/${locale}/services/${id}`}

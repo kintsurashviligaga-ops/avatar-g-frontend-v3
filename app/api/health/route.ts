@@ -25,8 +25,20 @@ interface HealthResponse {
   ts: number;
   version: string;
   redis: 'connected' | 'unconfigured' | 'error';
+  missing: string[];
   message?: string;
   region?: string;
+}
+
+const CRITICAL_ENV = [
+  'OPENAI_API_KEY',
+  'NEXT_PUBLIC_SUPABASE_URL',
+  'NEXT_PUBLIC_SUPABASE_ANON_KEY',
+  'SUPABASE_SERVICE_ROLE_KEY',
+] as const;
+
+function getMissingEnvVars(): string[] {
+  return CRITICAL_ENV.filter(k => !process.env[k]) as unknown as string[];
 }
 
 /**
@@ -139,6 +151,7 @@ export async function GET() {
       ts,
       version,
       redis: redisStatus.redis,
+      missing: getMissingEnvVars(),
       ...(redisStatus.message && { message: redisStatus.message }),
       ...(region && { region }),
     };

@@ -12,7 +12,7 @@ import { useLanguage } from '@/lib/i18n/LanguageContext'
  * Plans: Free/$0, Pro/$39, Business/$150, Enterprise/$500.
  */
 export function PricingSection() {
-  const { t } = useLanguage()
+  const { t, language: locale } = useLanguage()
 
   return (
     <section id="pricing" className="relative py-20 px-4 sm:px-6">
@@ -66,8 +66,8 @@ export function PricingSection() {
               <Link
                 href={
                   plan.price === 0
-                    ? '/signup'
-                    : `/signup?plan=${plan.name.toLowerCase()}`
+                    ? `/${locale}/signup`
+                    : `/${locale}/signup?plan=${plan.name.toLowerCase()}`
                 }
                 className={`block text-center py-2.5 rounded-xl font-semibold text-sm transition-colors ${
                   plan.popular

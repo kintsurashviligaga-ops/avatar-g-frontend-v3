@@ -4,6 +4,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { useMemo, useState } from 'react';
 import { CoreAvatar } from '@/components/CoreAvatar';
+import { useLanguage } from '@/lib/i18n/LanguageContext';
 
 type OrbitModule = {
   title: string;
@@ -41,6 +42,8 @@ function groupByRing(modules: OrbitModule[]): OrbitModule[][] {
 export function OrbitSolarSystem() {
   const [activeMobile, setActiveMobile] = useState<OrbitModule | null>(null);
   const grouped = useMemo(() => groupByRing(MODULES), []);
+  const { language: locale } = useLanguage();
+  const localeHref = (path: string) => `/${locale}${path}`;
 
   return (
     <section className="mx-auto w-full max-w-5xl rounded-3xl border border-white/10 bg-white/5 p-4 md:p-8">
@@ -89,7 +92,7 @@ export function OrbitSolarSystem() {
                       <Image src="/previews/services.png" alt="Service preview" width={256} height={96} className="h-24 w-full rounded-md object-cover" />
                       <h3 className="mt-2 text-sm font-semibold text-white">{module.title}</h3>
                       <p className="mt-1 text-xs text-slate-300">{module.description}</p>
-                      <Link href={module.href} className="mt-2 inline-block text-xs font-semibold text-cyan-300 hover:text-cyan-200">
+                      <Link href={localeHref(module.href)} className="mt-2 inline-block text-xs font-semibold text-cyan-300 hover:text-cyan-200">
                         Open module
                       </Link>
                     </div>
@@ -112,7 +115,7 @@ export function OrbitSolarSystem() {
             <h3 className="mt-3 text-base font-semibold text-white">{activeMobile.title}</h3>
             <p className="mt-2 text-sm text-slate-300">{activeMobile.description}</p>
             <div className="mt-4 flex items-center justify-between">
-              <Link href={activeMobile.href} className="text-sm font-semibold text-cyan-300">
+              <Link href={localeHref(activeMobile.href)} className="text-sm font-semibold text-cyan-300">
                 Open module
               </Link>
               <button type="button" onClick={() => setActiveMobile(null)} className="rounded-md border border-white/15 px-3 py-1.5 text-xs text-slate-200">

@@ -1,6 +1,6 @@
 ﻿import Link from 'next/link';
 import ServiceLanding from '@/components/services/ServiceLanding';
-import { SERVICE_META } from '@/lib/services/metadata';
+import { getLocalizedMeta, getAgentIdForService } from '@/lib/services/metadata';
 
 type ServiceDetailPageProps = {
   params: Promise<{ locale: string; slug: string }>;
@@ -17,7 +17,7 @@ export async function generateStaticParams() {
 
 export default async function ServiceDetailPage({ params }: ServiceDetailPageProps) {
   const { locale, slug } = await params;
-  const meta = SERVICE_META[slug];
+  const meta = getLocalizedMeta(slug, locale);
 
   if (!meta) {
     return (
@@ -30,5 +30,7 @@ export default async function ServiceDetailPage({ params }: ServiceDetailPagePro
     );
   }
 
-  return <ServiceLanding icon={meta.icon} headline={meta.headline} description={meta.description} features={meta.features} serviceName={slug} />;
+  const agentId = getAgentIdForService(slug);
+
+  return <ServiceLanding icon={meta.icon} headline={meta.headline} description={meta.description} features={meta.features} serviceName={slug} locale={locale} agentId={agentId} />;
 }
