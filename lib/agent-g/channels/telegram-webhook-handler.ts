@@ -13,6 +13,7 @@ import { detectTone, type AgentGTone } from '@/lib/agent-g/tone';
 import { getUserMemory, recordEvent, upsertUserMemory } from '@/lib/agent-g/memory';
 import { isAgentGVoiceEnabled, transcribeTelegramVoice } from '@/lib/agent-g/voice/stt';
 import { synthesizeTelegramVoice } from '@/lib/agent-g/voice/tts';
+import { generateChannelReply } from '@/lib/ai/channelBridge';
 
 type TelegramMessage = {
   message_id?: number;
@@ -379,20 +380,41 @@ export async function processTelegramUpdateInBackground(params: {
     let personalityOutput: PersonalityOutput | null = null;
     let usedFallback = false;
 
+    // ─── Primary: route through chatEngine for centralized AI ───────
     try {
-      personalityOutput = await withTimeout(
-        generateAgentGPersonalityReply({
-          userText: normalizedText,
+      const aiReply = await withTimeout(
+        generateChannelReply({
           channel: 'telegram',
-          userId: effectiveUserId ?? undefined,
-          locale,
-          sessionId: `${chatId}:${requestId}`,
-          systemRules,
+          userId: effectiveUserId || chatId,
+          externalId: chatId,
+          text: normalizedText,
+          locale: locale as 'en' | 'ka' | 'ru',
+          agentId: 'executive-agent-g',
+          sessionId: `telegram:${chatId}`,
         }),
-        1_800
+        3_000
       );
+      personalityOutput = {
+        replyText: aiReply.reply,
+        meta: { detectedEmotion: tone.tone, model: aiReply.model },
+      } as unknown as PersonalityOutput;
     } catch {
-      usedFallback = true;
+      // ─── Fallback: personality system ──────────────────────────────
+      try {
+        personalityOutput = await withTimeout(
+          generateAgentGPersonalityReply({
+            userText: normalizedText,
+            channel: 'telegram',
+            userId: effectiveUserId ?? undefined,
+            locale,
+            sessionId: `${chatId}:${requestId}`,
+            systemRules,
+          }),
+          1_800
+        );
+      } catch {
+        usedFallback = true;
+      }
     }
 
     const fallbackText = getFallbackReply(locale);

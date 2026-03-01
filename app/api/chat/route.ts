@@ -1,143 +1,38 @@
-import { NextRequest } from "next/server";
-import { z } from "zod";
-import { apiSuccess, apiError } from "@/lib/api/response";
-import { checkRateLimit, RATE_LIMITS } from "@/lib/api/rate-limit";
+import { NextRequest } from 'next/server';
+import { z } from 'zod';
+import { apiSuccess, apiError } from '@/lib/api/response';
+import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
+import { execute } from '@/lib/ai/chatEngine';
+import { getAllAgents } from '@/lib/agents/agentRegistry';
+import { getAuthContext, checkDailyBudget, sanitizePrompt } from '@/lib/security/apiGuard';
 
 export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
 
-// Validation schemas
+// ─── Context → Agent mapping (backwards compat) ────────────────────────────
+const CONTEXT_TO_AGENT: Record<string, string> = {
+  global: 'main-assistant',
+  music: 'audio-agent',
+  video: 'video-agent',
+  avatar: 'image-agent',
+  voice: 'audio-agent',
+  business: 'business-agent',
+};
+
 const chatRequestSchema = z.object({
-  message: z.string().min(1).max(2000),
-  context: z.enum(["global", "music", "video", "avatar", "voice", "business"]).default("global"),
+  message: z.string().min(1).max(4000),
+  agentId: z.string().optional(),
+  context: z.enum(['global', 'music', 'video', 'avatar', 'voice', 'business']).default('global'),
   conversationId: z.string().optional(),
-  language: z.string().default("en"),
-  metadata: z.record(z.any()).optional(),
+  sessionId: z.string().optional(),
+  history: z.array(z.object({
+    role: z.enum(['user', 'assistant']),
+    content: z.string(),
+  })).optional(),
+  language: z.string().default('en'),
+  channel: z.enum(['web', 'whatsapp', 'telegram', 'phone', 'api']).default('web'),
+  metadata: z.record(z.unknown()).optional(),
 });
-
-type ChatRequest = z.infer<typeof chatRequestSchema>;
-type ChatContext = ChatRequest["context"];
-
-// Service-specific prompt engineering
-const systemPrompts = {
-  global: "You are Avatar G Assistant - a helpful AI for creating digital content. Be concise, creative, and professional.",
-  music: "You are a Music Studio Assistant powered by Suno.ai. Help users create and generate amazing music. Provide lyrics suggestions, style advice, and production tips.",
-  video: "You are a Video Studio Assistant. Help users conceptualize and generate video content using Runway AI technology. Be creative and technical.",
-  avatar: "You are an Avatar Builder Assistant. Help users create and customize their digital avatars. Discuss styles, features, and personalization options.",
-  voice: "You are a Voice Lab Assistant powered by ElevenLabs and Google TTS. Help users generate and customize voice content with attention to tone and emotion.",
-  business: "You are the Avatar G Business Agent. Provide admin insights, usage analytics, billing information, and system status updates.",
-};
-
-const PROVIDER_TIMEOUT_MS = 12000;
-
-const fetchWithTimeout = async (url: string, options: RequestInit, timeoutMs: number) => {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-
-  try {
-    return await fetch(url, { ...options, signal: controller.signal });
-  } finally {
-    clearTimeout(timeoutId);
-  }
-};
-
-// Handler for each service context
-async function handleServiceChat(
-  message: string,
-  context: ChatContext
-): Promise<{ text: string; provider: string }> {
-  // Try OpenAI GPT-4 FIRST (if configured)
-  if (process.env.OPENAI_API_KEY) {
-    try {
-      const response = await fetchWithTimeout("https://api.openai.com/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "gpt-4-turbo",
-          messages: [
-            {
-              role: "system",
-              content: systemPrompts[context],
-            },
-            {
-              role: "user",
-              content: message,
-            },
-          ],
-          max_tokens: 1500,
-          temperature: 0.7,
-        }),
-      }, PROVIDER_TIMEOUT_MS);
-
-      if (response.ok) {
-        const data = await response.json();
-        const text = data.choices?.[0]?.message?.content;
-        if (text) {
-          return { text, provider: "OpenAI GPT-4" };
-        }
-      }
-    } catch (error) {
-      console.warn("[Chat API] OpenAI fallback triggered", error);
-    }
-  }
-
-  // Try Groq (faster, cheaper)
-  if (process.env.GROQ_API_KEY) {
-    try {
-      const response = await fetchWithTimeout("https://api.groq.com/openai/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${process.env.GROQ_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "mixtral-8x7b-32768",
-          messages: [
-            {
-              role: "system",
-              content: systemPrompts[context],
-            },
-            {
-              role: "user",
-              content: message,
-            },
-          ],
-          max_tokens: 1000,
-          temperature: 0.7,
-        }),
-      }, PROVIDER_TIMEOUT_MS);
-
-      if (response.ok) {
-        const data = await response.json();
-        const text = data.choices?.[0]?.message?.content;
-        if (text) {
-          return { text, provider: "Groq Mixtral" };
-        }
-      }
-    } catch (error) {
-      console.warn("[Chat API] Groq fallback triggered", error);
-    }
-  }
-
-  // Local fallback
-  const fallbackResponses: Record<ChatContext, string> = {
-    global: "Hello! I'm Avatar G Assistant. I'm here to help you create amazing digital content. What would you like to build today?",
-    music: "I'm your Music Studio Assistant! I can help you generate melodies, suggest lyrics, and discuss music styles. What kind of music are you thinking about?",
-    video: "Welcome to Video Studio! Let's create something visual. What kind of video content interests you?",
-    avatar: "I'm here to help you build your perfect digital avatar. What style or look are you going for?",
-    voice: "Voice Lab ready! I can help generate custom voice content. What voice characteristics are you looking for?",
-    business: "Business Agent ready. I can provide system status, usage reports, and analytics.",
-  };
-
-  const fallbackText = fallbackResponses[context];
-
-  return {
-    text: fallbackText,
-    provider: "Local Fallback",
-  };
-}
 
 export async function POST(req: NextRequest) {
   // Rate limiting
@@ -145,45 +40,86 @@ export async function POST(req: NextRequest) {
   if (rateLimitError) return rateLimitError;
 
   try {
-    // Parse and validate request body
     const body = await req.json();
-    const parsedRequest = chatRequestSchema.safeParse(body);
+    const parsed = chatRequestSchema.safeParse(body);
 
-    if (!parsedRequest.success) {
-      return apiError(
-        new Error("Validation failed"),
-        400,
-        "Invalid request format"
-      );
+    if (!parsed.success) {
+      return apiError(new Error('Validation failed'), 400, 'Invalid request format');
     }
 
-    const { message, context, conversationId, language, metadata } = parsedRequest.data;
+    const { message, agentId, context, conversationId, sessionId, history, language, channel, metadata } = parsed.data;
 
-    // Get response from appropriate handler
-    const { text, provider } = await handleServiceChat(message, context);
+    // Security: sanitize prompt
+    const sanitizedMessage = sanitizePrompt(message);
 
-    // TODO: Store conversation history in Supabase
-    // TODO: Track tokens for billing
-    // TODO: Log to analytics
+    // Auth context (optional — allows unauthenticated for public chat)
+    const auth = await getAuthContext();
+    const userId = auth?.userId || 'anonymous';
+
+    // Budget check for authenticated users
+    if (auth) {
+      const budget = checkDailyBudget(auth.userId);
+      if (!budget.allowed) {
+        return apiError(new Error('Daily AI limit reached'), 429, `Daily limit of ${budget.limit} requests reached. Resets in 24h.`);
+      }
+    }
+
+    // Resolve agent: explicit agentId > context mapping > default
+    const resolvedAgentId = agentId || CONTEXT_TO_AGENT[context] || 'main-assistant';
+
+    // Build message history
+    const messages = [
+      ...(history || []).map(h => ({ role: h.role as 'user' | 'assistant', content: h.content })),
+      { role: 'user' as const, content: sanitizedMessage },
+    ];
+
+    // Execute through central chatEngine
+    const result = await execute({
+      agentId: resolvedAgentId,
+      userId,
+      sessionId: sessionId || conversationId || `chat_${Date.now()}`,
+      channel,
+      messages,
+    });
 
     return apiSuccess({
-      response: text,
-      provider,
+      response: result.text,
+      provider: result.model,
+      model: result.model,
+      agentId: result.agentId,
+      tokensIn: result.tokensIn,
+      tokensOut: result.tokensOut,
+      costEstimate: result.costEstimate,
+      durationMs: result.durationMs,
+      dualStage: result.dualStage,
       context,
       conversationId: conversationId || `conv_${Date.now()}`,
       language,
       metadata,
     });
   } catch (error) {
-    console.error("[Chat API Error]", error);
-    return apiError(error, 500, "Chat service error");
+    console.error('[Chat API Error]', error);
+
+    // Graceful fallback if chatEngine fails entirely
+    if (error instanceof Error && error.message.includes('ENV_MISSING')) {
+      return apiSuccess({
+        response: 'AI service is being configured. Please try again shortly.',
+        provider: 'fallback',
+        model: 'none',
+        agentId: 'main-assistant',
+      });
+    }
+
+    return apiError(error, 500, 'Chat service error');
   }
 }
 
 export async function GET() {
+  const agents = getAllAgents();
   return apiSuccess({
-    status: "ok",
-    service: "Avatar G Chat API",
-    contexts: ["global", "music", "video", "avatar", "voice", "business"],
+    status: 'ok',
+    service: 'Avatar G Chat API (chatEngine)',
+    agents: agents.map(a => ({ id: a.id, name: a.name, icon: a.icon, service: a.service })),
+    contexts: ['global', 'music', 'video', 'avatar', 'voice', 'business'],
   });
 }

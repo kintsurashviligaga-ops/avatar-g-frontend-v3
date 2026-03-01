@@ -3,6 +3,7 @@ import { buildTaskPlan, makeTaskId } from '@/lib/agent-g/orchestrator/planner';
 import { executePlan } from '@/lib/agent-g/orchestrator/executor';
 import { aggregateResults } from '@/lib/agent-g/orchestrator/aggregator';
 import { inferAssistantMode } from '@/lib/agent-g/voice/mode-router';
+import { generateChannelReply } from '@/lib/ai/channelBridge';
 
 export type InboundChannel = 'telegram' | 'whatsapp' | 'web';
 
@@ -61,6 +62,28 @@ export async function handleInbound(input: HandleInboundInput): Promise<HandleIn
       return { replyMessages: ['Please send a task description.'] };
     }
 
+    // ─── Conversational path: simple messages go through chatEngine ───
+    const assistantMode = inferAssistantMode(goal);
+    if (assistantMode === 'general') {
+      try {
+        const aiReply = await generateChannelReply({
+          channel: input.channel,
+          userId: resolvedUserId,
+          externalId: input.externalId,
+          text: goal,
+          locale: resolvedLocale,
+        });
+        return {
+          userId: resolvedUserId,
+          assistantMode: 'general',
+          replyMessages: [aiReply.reply],
+        };
+      } catch {
+        // Fall through to task orchestrator on chatEngine failure
+      }
+    }
+
+    // ─── Task orchestrator path: complex requests ────────────────────
     const plan = buildTaskPlan(goal);
     const taskId = makeTaskId();
 
