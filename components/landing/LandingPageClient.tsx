@@ -7,18 +7,13 @@ import { OrbitSolarSystem } from "@/components/OrbitSolarSystem";
 import { HeroSection } from "@/components/HeroSection";
 import { PricingSection } from "@/components/PricingSection";
 import ErrorBoundary from "@/components/landing/ErrorBoundary";
+import { useLanguage } from "@/lib/i18n/LanguageContext";
 
 // Lazy load premium form for performance
 const PremiumAgentForm = dynamic(() => import("@/components/landing/PremiumAgentForm"), {
   ssr: false,
   loading: () => null,
 });
-
-const stats = [
-  { value: "50K+", label: "Active Creators" },
-  { value: "1M+", label: "Generations" },
-  { value: "99.9%", label: "Uptime" },
-];
 
 /**
  * Minimal fallback when a section crashes.
@@ -36,8 +31,14 @@ function SectionFallback({ label }: { label: string }) {
 
 export default function LandingPageClient() {
   const [showPremiumForm, setShowPremiumForm] = useState(false);
+  const { t } = useLanguage();
   const enabledServices = SERVICE_REGISTRY.filter((s) => s.enabled);
-  const serviceStats = [{ value: String(enabledServices.length), label: "Active Services" }, ...stats];
+  const serviceStats = [
+    { value: String(enabledServices.length), label: t('stats.services') },
+    { value: "50K+", label: t('stats.creators') },
+    { value: "1M+", label: t('stats.generations') },
+    { value: "99.9%", label: t('stats.uptime') },
+  ];
 
   return (
     <div className="relative min-h-screen bg-[#050510] text-white overflow-hidden">
@@ -71,8 +72,11 @@ export default function LandingPageClient() {
       </ErrorBoundary>
 
       {/* ── Footer ───────────────────────────────────────────── */}
-      <footer className="border-t border-white/10 py-8 px-4 sm:px-6 text-center">
+      <footer className="border-t border-white/10 py-8 px-4 sm:px-6 text-center space-y-2">
         <p className="text-sm text-gray-500">© {new Date().getFullYear()} MyAvatar.ge — All rights reserved</p>
+        <p className="text-[10px] text-gray-600 font-mono">
+          Build: {process.env.NEXT_PUBLIC_BUILD_ID?.slice(0, 7) ?? 'dev'} · {process.env.NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA?.slice(0, 7) ?? ''}
+        </p>
       </footer>
 
       <ErrorBoundary fallback={null}>

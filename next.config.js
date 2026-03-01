@@ -45,15 +45,29 @@ const nextConfig = {
   },
   async redirects() {
     const serviceRedirects = [
-      { from: 'video-factory', to: 'video-studio' },
-      { from: 'image-architect', to: 'image-creator' },
-      { from: 'script-writer', to: 'text-intelligence' },
-      { from: 'social-content-factory', to: 'social-media' },
-      { from: 'business-agents', to: 'business-agent' },
+      // Legacy full-slug → canonical short-slug
+      { from: 'avatar-builder', to: 'avatar' },
+      { from: 'video-studio', to: 'video' },
+      { from: 'music-studio', to: 'music' },
+      { from: 'photo-studio', to: 'photo' },
+      { from: 'image-creator', to: 'image' },
+      { from: 'text-intelligence', to: 'text' },
+      { from: 'prompt-builder', to: 'prompt' },
+      { from: 'online-shop', to: 'shop' },
+      { from: 'workflow-builder', to: 'workflow' },
+      { from: 'media-production', to: 'media' },
+      { from: 'visual-intelligence', to: 'visual-intel' },
+      { from: 'social-media-manager', to: 'editing' },
+      // Older legacy names
+      { from: 'video-factory', to: 'video' },
+      { from: 'image-architect', to: 'image' },
+      { from: 'script-writer', to: 'text' },
+      { from: 'social-content-factory', to: 'editing' },
+      { from: 'business-agents', to: 'agent-g' },
       { from: 'tourism-agent', to: 'agent-g' },
-      { from: 'affiliate-marketplace-layer', to: 'marketplace' },
-      { from: 'auto-dropshipping-logic', to: 'online-shop' },
-      { from: 'tokenized-digital-goods-system', to: 'marketplace' },
+      { from: 'affiliate-marketplace-layer', to: 'shop' },
+      { from: 'auto-dropshipping-logic', to: 'shop' },
+      { from: 'tokenized-digital-goods-system', to: 'shop' },
     ];
 
     return serviceRedirects.flatMap(({ from, to }) => [

@@ -13,19 +13,19 @@ type OrbitModule = {
 };
 
 const MODULES: OrbitModule[] = [
-  { title: 'Avatar Builder', description: 'Build and manage your digital avatar pipeline.', href: '/services/avatar-builder', ring: 0 },
+  { title: 'Avatar', description: 'Build and manage your digital avatar pipeline.', href: '/services/avatar', ring: 0 },
   { title: 'Agent G', description: 'AI operator that routes and orchestrates tasks.', href: '/services/agent-g', ring: 0 },
-  { title: 'Workflow Builder', description: 'Compose chained automations across services.', href: '/services/workflow-builder', ring: 0 },
-  { title: 'Video Studio', description: 'Generate cinematic videos from guided input.', href: '/services/video-studio', ring: 0 },
-  { title: 'Media Production', description: 'Produce campaign-ready multimedia outputs.', href: '/services/media-production', ring: 1 },
-  { title: 'Music Studio', description: 'Generate tracks and production-ready stems.', href: '/services/music-studio', ring: 1 },
-  { title: 'Photo Studio', description: 'Create editorial-grade photo outputs.', href: '/services/photo-studio', ring: 1 },
-  { title: 'Social Media Manager', description: 'Plan and publish social content workflows.', href: '/services/social-media-manager', ring: 1 },
-  { title: 'Visual Intelligence', description: 'Analyze and optimize visual creative assets.', href: '/services/visual-intelligence', ring: 1 },
-  { title: 'Image Creator', description: 'Generate design-ready image concepts.', href: '/services/image-creator', ring: 2 },
-  { title: 'Text Intelligence', description: 'Generate and optimize strategic copy.', href: '/services/text-intelligence', ring: 2 },
-  { title: 'Prompt Builder', description: 'Design reusable high-performing prompt systems.', href: '/services/prompt-builder', ring: 2 },
-  { title: 'Online Shop', description: 'Launch and manage your commerce storefront.', href: '/services/online-shop', ring: 2 },
+  { title: 'Workflow', description: 'Compose chained automations across services.', href: '/services/workflow', ring: 0 },
+  { title: 'Video', description: 'Generate cinematic videos from guided input.', href: '/services/video', ring: 0 },
+  { title: 'Media', description: 'Produce campaign-ready multimedia outputs.', href: '/services/media', ring: 1 },
+  { title: 'Music', description: 'Generate tracks and production-ready stems.', href: '/services/music', ring: 1 },
+  { title: 'Photo', description: 'Create editorial-grade photo outputs.', href: '/services/photo', ring: 1 },
+  { title: 'Editing', description: 'Universal video editing powered by AI.', href: '/services/editing', ring: 1 },
+  { title: 'Visual Intel', description: 'Analyze and optimize visual creative assets.', href: '/services/visual-intel', ring: 1 },
+  { title: 'Image', description: 'Generate design-ready image concepts.', href: '/services/image', ring: 2 },
+  { title: 'Text', description: 'Generate and optimize strategic copy.', href: '/services/text', ring: 2 },
+  { title: 'Prompt', description: 'Design reusable high-performing prompt systems.', href: '/services/prompt', ring: 2 },
+  { title: 'Shop', description: 'Launch and manage your commerce storefront.', href: '/services/shop', ring: 2 },
 ];
 
 const RING_CONFIG = [

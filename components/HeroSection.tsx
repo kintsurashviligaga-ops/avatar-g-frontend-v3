@@ -4,6 +4,7 @@ import { motion } from 'framer-motion'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { ArrowRight, Play, Zap } from 'lucide-react'
+import { useLanguage } from '@/lib/i18n/LanguageContext'
 
 interface HeroSectionProps {
   onPremiumClick?: () => void
@@ -12,8 +13,11 @@ interface HeroSectionProps {
 /**
  * HeroSection — Landing page hero with CTAs.
  * Renders badges, headline, subtext, and 3 action buttons.
+ * All visible text is driven by LanguageContext translations.
  */
 export function HeroSection({ onPremiumClick }: HeroSectionProps) {
+  const { t } = useLanguage()
+
   return (
     <section className="relative pt-28 pb-10 px-4 sm:px-6 text-center">
       <motion.div
@@ -28,25 +32,24 @@ export function HeroSection({ onPremiumClick }: HeroSectionProps) {
             Orbit Experience v5.0
           </Badge>
           <Badge variant="primary" className="w-fit">
-            premium AI creation suite
+            {t('hero.badge')}
           </Badge>
         </div>
 
         <p className="text-sm md:text-base text-cyan-300 tracking-[0.18em] uppercase">
-          პრემიუმ AI სტუდია თბილისიდან
+          {t('hero.subtitle')}
         </p>
 
         <h1 className="text-5xl md:text-7xl font-bold leading-[1.05] text-balance">
-          Your Universe.
+          {t('hero.title')}
           <br />
           <span className="bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent">
-            Your Avatar.
+            {t('hero.titleAccent')}
           </span>
         </h1>
 
         <p className="text-lg md:text-xl text-gray-300 text-balance max-w-xl mx-auto">
-          13 AI modules orbit around your live avatar — video, music,
-          images, social & more. Everything in one workspace.
+          {t('hero.description')}
         </p>
 
         <div className="flex flex-col sm:flex-row justify-center gap-4 pt-2">
@@ -56,7 +59,7 @@ export function HeroSection({ onPremiumClick }: HeroSectionProps) {
               size="lg"
               className="gap-2 shadow-[0_0_32px_rgba(34,211,238,0.35)] hover:shadow-[0_0_40px_rgba(34,211,238,0.45)]"
             >
-              Get Started Free
+              {t('hero.cta')}
               <ArrowRight className="w-4 h-4" />
             </Button>
           </motion.div>
@@ -67,7 +70,7 @@ export function HeroSection({ onPremiumClick }: HeroSectionProps) {
               className="gap-2 border-white/30"
             >
               <Play className="w-4 h-4" />
-              Watch Demo
+              {t('hero.ctaDemo')}
             </Button>
           </motion.div>
           {onPremiumClick && (
@@ -78,7 +81,7 @@ export function HeroSection({ onPremiumClick }: HeroSectionProps) {
                 size="lg"
               >
                 <Zap className="w-4 h-4" />
-                Premium Agent
+                {t('hero.ctaPremium')}
               </Button>
             </motion.div>
           )}

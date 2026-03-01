@@ -4,6 +4,7 @@ import { motion } from 'framer-motion'
 import { Check, Sparkles } from 'lucide-react'
 import Link from 'next/link'
 import { PRICING_PLANS } from '@/lib/pricing/canonicalPricing'
+import { useLanguage } from '@/lib/i18n/LanguageContext'
 
 /**
  * PricingSection — Renders the 4-plan pricing grid.
@@ -11,15 +12,17 @@ import { PRICING_PLANS } from '@/lib/pricing/canonicalPricing'
  * Plans: Free/$0, Pro/$39, Business/$150, Enterprise/$500.
  */
 export function PricingSection() {
+  const { t } = useLanguage()
+
   return (
     <section id="pricing" className="relative py-20 px-4 sm:px-6">
       <div className="mx-auto max-w-6xl">
         <div className="text-center mb-14">
           <h2 className="text-3xl md:text-5xl font-bold text-white mb-4">
-            Choose Your <span className="text-cyan-400">Plan</span>
+            {t('pricing.title')} <span className="text-cyan-400">{t('pricing.titleAccent')}</span>
           </h2>
           <p className="text-lg text-gray-400 max-w-xl mx-auto">
-            Upgrade, downgrade, or cancel anytime.
+            {t('pricing.subtitle')}
           </p>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -38,7 +41,7 @@ export function PricingSection() {
             >
               {plan.popular && (
                 <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-0.5 bg-gradient-to-r from-cyan-500 to-blue-600 text-white text-xs font-medium rounded-full flex items-center gap-1">
-                  <Sparkles className="w-3 h-3" /> Most Popular
+                  <Sparkles className="w-3 h-3" /> {t('pricing.popular')}
                 </div>
               )}
               <h3 className="text-xl font-bold text-white">{plan.name}</h3>

@@ -4,22 +4,16 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useState } from 'react'
+import { useLanguage } from '@/lib/i18n/LanguageContext'
 
-// ─── LOGO SPEC ────────────────────────────────────────────────────────────────
-// Desktop: height 40px (h-10), auto width
-// Mobile: height 32px (h-8), auto width
-// Position: fixed top-0 left-0, z-50, always visible on scroll
-// Clickable: navigates to home
-// File: /public/logo.png — ensure file exists before deploying
-// ─────────────────────────────────────────────────────────────────────────────
-
-const PRIMARY_LINKS = [
-  { href: '/services/avatar', label: 'Avatar' },
-  { href: '/services/video', label: 'Video' },
-  { href: '/services/editing', label: 'Editing' },
-  { href: '/services/music', label: 'Music' },
-  { href: '/business', label: 'Business' },
-  { href: '/pricing', label: 'Pricing' },
+const NAV_ITEMS = [
+  { href: '/services', key: 'nav.services' },
+  { href: '/services/avatar', key: 'nav.avatar' },
+  { href: '/services/video', key: 'nav.video' },
+  { href: '/services/editing', key: 'nav.editing' },
+  { href: '/services/music', key: 'nav.music' },
+  { href: '/business', key: 'nav.business' },
+  { href: '/pricing', key: 'nav.pricing' },
 ] as const
 
 const LOCALES = [
@@ -28,23 +22,14 @@ const LOCALES = [
   { code: 'ru', label: 'РУС' },
 ] as const
 
-function getStoredLocale(): string {
-  if (typeof document === 'undefined') return 'ka'
-  return document.cookie
-    .split(';')
-    .find(c => c.trim().startsWith('NEXT_LOCALE='))
-    ?.split('=')[1]?.trim() ?? 'ka'
-}
-
 export function GlobalNavbar() {
   const pathname = usePathname()
   const router = useRouter()
   const [open, setOpen] = useState(false)
-  const [locale, setLocale] = useState<string>(getStoredLocale)
+  const { language: locale, setLanguage, t } = useLanguage()
 
   const switchLocale = (code: string) => {
-    document.cookie = `NEXT_LOCALE=${code}; path=/; max-age=31536000; SameSite=Lax`
-    setLocale(code)
+    setLanguage(code as 'ka' | 'en' | 'ru')
     router.refresh()
   }
 
@@ -78,7 +63,7 @@ export function GlobalNavbar() {
 
         {/* Desktop links */}
         <div className="hidden lg:flex items-center gap-0.5">
-          {PRIMARY_LINKS.map(({ href, label }) => (
+          {NAV_ITEMS.map(({ href, key }) => (
             <Link
               key={href}
               href={href}
@@ -89,7 +74,7 @@ export function GlobalNavbar() {
                   : 'text-white/50 hover:text-white hover:bg-white/[0.06]'}
               `}
             >
-              {label}
+              {t(key)}
             </Link>
           ))}
         </div>
@@ -118,11 +103,11 @@ export function GlobalNavbar() {
           <div className="hidden sm:flex items-center gap-2">
             <Link href="/login"
               className="text-[13px] text-white/55 hover:text-white transition-colors px-3 py-1.5">
-              Login
+              {t('nav.login')}
             </Link>
             <Link href="/signup"
               className="text-[13px] font-semibold bg-white text-[#050510] px-4 py-2 rounded-xl hover:bg-white/90 transition-all">
-              Get Started
+              {t('nav.getStarted')}
             </Link>
           </div>
 
@@ -151,7 +136,7 @@ export function GlobalNavbar() {
           px-4 py-4 space-y-1
           lg:hidden
         ">
-          {PRIMARY_LINKS.map(({ href, label }) => (
+          {NAV_ITEMS.map(({ href, key }) => (
             <Link
               key={href}
               href={href}
@@ -163,17 +148,17 @@ export function GlobalNavbar() {
                   : 'text-white/60 hover:text-white hover:bg-white/[0.06]'}
               `}
             >
-              {label}
+              {t(key)}
             </Link>
           ))}
           <div className="border-t border-white/[0.06] pt-3 mt-1 grid grid-cols-2 gap-2">
             <Link href="/login" onClick={() => setOpen(false)}
               className="text-center text-sm text-white/60 border border-white/[0.1] py-2.5 rounded-xl hover:bg-white/[0.05]">
-              Login
+              {t('nav.login')}
             </Link>
             <Link href="/signup" onClick={() => setOpen(false)}
               className="text-center text-sm font-semibold bg-white text-[#050510] py-2.5 rounded-xl hover:bg-white/90">
-              Sign Up
+              {t('nav.signup')}
             </Link>
           </div>
         </div>
