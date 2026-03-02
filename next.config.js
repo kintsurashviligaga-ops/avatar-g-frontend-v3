@@ -21,6 +21,11 @@ const nextConfig = {
   experimental: {
     optimizePackageImports: ['lucide-react', 'framer-motion', '@supabase/supabase-js'],
   },
+  eslint: {
+    // Lint is run separately in CI; skip during `next build` to avoid OOM on large codebases
+    ignoreDuringBuilds: true,
+  },
+  staticPageGenerationTimeout: 180,
   async headers() {
     return [
       {
@@ -64,7 +69,11 @@ const nextConfig = {
       { from: 'script-writer', to: 'text' },
       { from: 'social-content-factory', to: 'editing' },
       { from: 'business-agents', to: 'agent-g' },
+      { from: 'business-agent', to: 'agent-g' },
       { from: 'tourism-agent', to: 'agent-g' },
+      { from: 'voice-lab', to: 'agent-g' },
+      { from: 'game-creator', to: 'agent-g' },
+      { from: 'social-media', to: 'editing' },
       { from: 'affiliate-marketplace-layer', to: 'shop' },
       { from: 'auto-dropshipping-logic', to: 'shop' },
       { from: 'tokenized-digital-goods-system', to: 'shop' },

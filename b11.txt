@@ -1,0 +1,32 @@
+﻿  Γû▓ Next.js 14.2.35
+  - Environments: .env.local
+
+   Creating an optimized production build ...
+node.exe : <w> [webpack.cache.PackFileCacheStrategy] 
+Serializing big strings (133kiB) impacts deserialization 
+performance (consider using Buffer instead and decode when 
+needed)
+At line:1 char:1
++ & "C:\Program Files\nodejs/node.exe" "C:\Program 
+Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (<w> [webpack.ca. 
+   ..de when needed):String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+ Γ£ô Compiled successfully
+   Skipping linting
+   Checking validity of types ...
+   Collecting page data ...
+ ΓÜá Sending SIGTERM signal to Next.js build worker due to 
+timeout of 60 seconds. Subsequent errors may be a result of 
+the worker exiting.
+ Γ¿» Next.js build worker exited with code: null and signal: 
+SIGTERM
+ ΓÜá Restarted collecting page data for /_app because it took 
+more than 60 seconds
+ ΓÜá See more info here https://nextjs.org/docs/messages/stati
+c-page-generation-timeout
+ ΓÜá Restarted collecting page data for /_app because it took 
+more than 60 seconds
