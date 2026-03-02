@@ -12,7 +12,7 @@ const DEFAULT_LOCALE = 'ka';
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // Skip locale redirect for API routes, static assets, and files with extensions
+  // Skip locale redirect for API routes, static assets, auth callbacks, and files with extensions
   const isSkipped =
     pathname.startsWith('/api/') ||
     pathname.startsWith('/_next/') ||
@@ -20,6 +20,7 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith('/brand/') ||
     pathname.startsWith('/placeholders/') ||
     pathname.startsWith('/previews/') ||
+    pathname.startsWith('/auth/callback') ||
     /\.\w{2,5}$/.test(pathname);
 
   if (!isSkipped) {

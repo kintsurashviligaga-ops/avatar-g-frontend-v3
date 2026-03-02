@@ -55,17 +55,17 @@ export function GlobalNavbar() {
         border-b border-white/[0.06]
       ">
         {/* Logo */}
-        <Link href={localeHref('/')} className="flex items-center gap-2.5 flex-shrink-0 group" aria-label="MyAvatar.ge home">
-          <div className="relative h-10 sm:h-12 w-10 sm:w-12 flex-shrink-0">
+        <Link href={localeHref('/')} className="flex items-center gap-3 flex-shrink-0 group" aria-label="MyAvatar.ge home">
+          <div className="relative h-12 w-12 sm:h-14 sm:w-14 flex-shrink-0">
             <Image
-              src="/logo.png"
+              src="/brand/logo.png"
               alt="Avatar G logo"
               fill
               priority
-              className="object-contain"
+              className="object-contain drop-shadow-[0_0_12px_rgba(6,182,212,0.25)]"
             />
           </div>
-          <span className="hidden sm:block font-bold text-[15px] text-white tracking-tight">
+          <span className="hidden sm:block font-bold text-base text-white tracking-tight">
             MyAvatar<span className="text-white/35">.ge</span>
           </span>
         </Link>
