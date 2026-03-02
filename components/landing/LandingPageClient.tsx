@@ -75,7 +75,7 @@ export default function LandingPageClient() {
       <footer className="border-t border-white/10 py-8 px-4 sm:px-6 text-center space-y-2">
         <p className="text-sm text-gray-500">© {new Date().getFullYear()} MyAvatar.ge — All rights reserved</p>
         <p className="text-[10px] text-gray-600 font-mono">
-          BUILD v3.1.0 | {process.env.NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA?.slice(0, 7) || 'dev'} | {new Date().toISOString().slice(0, 10)} | {process.env.NEXT_PUBLIC_VERCEL_ENV || process.env.NODE_ENV || 'local'}
+          BUILD v3.2.0 | {process.env.NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA?.slice(0, 7) || 'dev'} | {new Date().toISOString().slice(0, 10)} | {process.env.NEXT_PUBLIC_VERCEL_ENV || process.env.NODE_ENV || 'local'}
         </p>
       </footer>
 

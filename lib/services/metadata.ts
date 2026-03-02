@@ -275,6 +275,63 @@ const LOCALIZED_SERVICE_META: Record<string, LocalizedServiceMeta> = {
       ru: ['Создание + оптимизация листингов', 'Настройка подписок', 'Партнёрская система', 'Аудит магазина'],
     },
   },
+  'software': {
+    icon: '💻',
+    agentId: 'dev-agent',
+    headline: {
+      en: 'Software Development',
+      ka: 'პროგრამული უზრუნველყოფა',
+      ru: 'Разработка ПО',
+    },
+    description: {
+      en: 'AI-assisted code generation, review, refactoring, and deployment pipelines for any stack.',
+      ka: 'AI-ით კოდის გენერაცია, მიმოხილვა, რეფაქტორინგი და დეპლოი ნებისმიერი სტეკისთვის.',
+      ru: 'AI-генерация кода, ревью, рефакторинг и деплой-пайплайны для любого стека.',
+    },
+    features: {
+      en: ['Code generation (any language)', 'PR review + refactor', 'CI/CD pipeline builder', 'Architecture diagrams'],
+      ka: ['კოდის გენერაცია (ნებისმიერი ენა)', 'PR მიმოხილვა + რეფაქტორინგი', 'CI/CD პაიპლაინი', 'არქიტექტურის დიაგრამები'],
+      ru: ['Генерация кода (любой язык)', 'Ревью PR + рефакторинг', 'CI/CD пайплайн', 'Архитектурные диаграммы'],
+    },
+  },
+  'business': {
+    icon: '💼',
+    agentId: 'business-agent',
+    headline: {
+      en: 'Business Agent',
+      ka: 'ბიზნეს აგენტი',
+      ru: 'Бизнес-агент',
+    },
+    description: {
+      en: 'Market research, competitive analysis, pitch decks, financial modeling, and strategy reports — automated.',
+      ka: 'ბაზრის კვლევა, კონკურენტული ანალიზი, პრეზენტაციები, ფინანსური მოდელირება — ავტომატურად.',
+      ru: 'Исследование рынка, конкурентный анализ, питч-деки, финансовое моделирование — автоматически.',
+    },
+    features: {
+      en: ['Market research reports', 'Pitch deck generator', 'Financial projections', 'Competitor analysis'],
+      ka: ['ბაზრის კვლევის ანგარიშები', 'პრეზენტაციის გენერატორი', 'ფინანსური პროგნოზები', 'კონკურენტის ანალიზი'],
+      ru: ['Отчёты маркетинговых исследований', 'Генератор питч-деков', 'Финансовые прогнозы', 'Анализ конкурентов'],
+    },
+  },
+  'tourism': {
+    icon: '✈️',
+    agentId: 'tourism-agent',
+    headline: {
+      en: 'Tourism AI',
+      ka: 'ტურიზმი AI',
+      ru: 'Туризм AI',
+    },
+    description: {
+      en: 'AI-powered travel planning, smart itineraries, local dining & culture guides, and booking optimization.',
+      ka: 'AI მოგზაურობის დაგეგმვა, ჭკვიანი მარშრუტები, ადგილობრივი გიდი და ჯავშნის ოპტიმიზაცია.',
+      ru: 'AI-планирование путешествий, умные маршруты, местные гиды и оптимизация бронирований.',
+    },
+    features: {
+      en: ['Smart itinerary builder', 'Local dining & culture guide', 'Booking price optimizer', 'Multi-city planner'],
+      ka: ['ჭკვიანი მარშრუტის შემქმნელი', 'ადგილობრივი კულტურის გიდი', 'ჯავშნის ფასის ოპტიმიზატორი', 'მრავალქალაქიანი დაგეგმვა'],
+      ru: ['Умный планировщик маршрутов', 'Гид по местной культуре', 'Оптимизатор цен бронирования', 'Мультигородской планировщик'],
+    },
+  },
 };
 
 // Legacy flat English-only format for backward compatibility

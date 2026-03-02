@@ -56,16 +56,17 @@ export function GlobalNavbar() {
       ">
         {/* Logo */}
         <Link href={localeHref('/')} className="flex items-center gap-3 flex-shrink-0 group" aria-label="MyAvatar.ge home">
-          <div className="relative h-12 w-12 sm:h-14 sm:w-14 flex-shrink-0">
+          <div className="relative h-12 w-12 sm:h-[48px] sm:w-[48px] md:h-[52px] md:w-[52px] flex-shrink-0">
             <Image
               src="/brand/logo.png"
               alt="Avatar G logo"
               fill
+              sizes="52px"
               priority
-              className="object-contain drop-shadow-[0_0_12px_rgba(6,182,212,0.25)]"
+              className="object-contain drop-shadow-[0_0_14px_rgba(6,182,212,0.3)]"
             />
           </div>
-          <span className="hidden sm:block font-bold text-base text-white tracking-tight">
+          <span className="hidden sm:block font-bold text-[17px] text-white tracking-tight">
             MyAvatar<span className="text-white/35">.ge</span>
           </span>
         </Link>

@@ -30,23 +30,22 @@ export type AppService = {
 };
 
 const SERVICE_META: Record<string, { icon: LucideIcon; credits: number }> = {
-  'workflow-builder': { icon: Bot, credits: 3 },
-  'online-shop': { icon: Store, credits: 7 },
-  'avatar-builder': { icon: User, credits: 8 },
-  'music-studio': { icon: Music2, credits: 10 },
-  'video-studio': { icon: Film, credits: 12 },
-  'media-production': { icon: Clapperboard, credits: 14 },
-  'visual-intelligence': { icon: Brain, credits: 9 },
-  'image-creator': { icon: ImageIcon, credits: 6 },
+  'avatar': { icon: User, credits: 8 },
   'agent-g': { icon: Bot, credits: 9 },
-  'social-media': { icon: Megaphone, credits: 5 },
-  'prompt-builder': { icon: ScrollText, credits: 4 },
-  'text-intelligence': { icon: ScrollText, credits: 4 },
-  'photo-studio': { icon: Camera, credits: 6 },
-  marketplace: { icon: ShoppingBag, credits: 7 },
-  'business-agent': { icon: Briefcase, credits: 8 },
-  'game-creator': { icon: Gamepad2, credits: 10 },
-  'voice-lab': { icon: Mic, credits: 8 },
+  'workflow': { icon: Bot, credits: 3 },
+  'video': { icon: Film, credits: 12 },
+  'editing': { icon: Clapperboard, credits: 10 },
+  'music': { icon: Music2, credits: 10 },
+  'photo': { icon: Camera, credits: 6 },
+  'image': { icon: ImageIcon, credits: 6 },
+  'media': { icon: Clapperboard, credits: 14 },
+  'text': { icon: ScrollText, credits: 4 },
+  'prompt': { icon: ScrollText, credits: 4 },
+  'visual-intel': { icon: Brain, credits: 9 },
+  'shop': { icon: Store, credits: 7 },
+  'software': { icon: Sparkles, credits: 8 },
+  'business': { icon: Briefcase, credits: 8 },
+  'tourism': { icon: Sparkles, credits: 6 },
 };
 
 export const APP_SERVICES: AppService[] = SERVICE_REGISTRY.map((service) => ({

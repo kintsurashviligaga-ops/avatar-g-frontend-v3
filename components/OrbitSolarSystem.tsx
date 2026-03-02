@@ -18,15 +18,18 @@ const MODULES: OrbitModule[] = [
   { title: 'Agent G', description: 'AI operator that routes and orchestrates tasks.', href: '/services/agent-g', ring: 0 },
   { title: 'Workflow', description: 'Compose chained automations across services.', href: '/services/workflow', ring: 0 },
   { title: 'Video', description: 'Generate cinematic videos from guided input.', href: '/services/video', ring: 0 },
+  { title: 'Software', description: 'AI-assisted code generation and deployment.', href: '/services/software', ring: 0 },
   { title: 'Media', description: 'Produce campaign-ready multimedia outputs.', href: '/services/media', ring: 1 },
   { title: 'Music', description: 'Generate tracks and production-ready stems.', href: '/services/music', ring: 1 },
   { title: 'Photo', description: 'Create editorial-grade photo outputs.', href: '/services/photo', ring: 1 },
   { title: 'Editing', description: 'Universal video editing powered by AI.', href: '/services/editing', ring: 1 },
   { title: 'Visual Intel', description: 'Analyze and optimize visual creative assets.', href: '/services/visual-intel', ring: 1 },
+  { title: 'Business', description: 'Market research, decks, and financial modeling.', href: '/services/business', ring: 1 },
   { title: 'Image', description: 'Generate design-ready image concepts.', href: '/services/image', ring: 2 },
   { title: 'Text', description: 'Generate and optimize strategic copy.', href: '/services/text', ring: 2 },
   { title: 'Prompt', description: 'Design reusable high-performing prompt systems.', href: '/services/prompt', ring: 2 },
   { title: 'Shop', description: 'Launch and manage your commerce storefront.', href: '/services/shop', ring: 2 },
+  { title: 'Tourism', description: 'AI-powered travel planning and local guides.', href: '/services/tourism', ring: 2 },
 ];
 
 const RING_CONFIG = [
@@ -49,7 +52,7 @@ export function OrbitSolarSystem() {
     <section className="mx-auto w-full max-w-5xl rounded-3xl border border-white/10 bg-white/5 p-4 md:p-8">
       <div className="mb-4 text-center">
         <h2 className="text-xl font-bold text-white md:text-2xl">Orbit Solar System</h2>
-        <p className="mt-1 text-sm text-slate-300">13 modules orbiting around your live Core Avatar.</p>
+        <p className="mt-1 text-sm text-slate-300">16 modules orbiting around your live Core Avatar.</p>
       </div>
 
       <div className="relative mx-auto h-[320px] w-full max-w-[320px] md:h-[560px] md:max-w-[560px]">

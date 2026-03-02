@@ -1,0 +1,900 @@
+﻿node.exe : Vercel CLI 50.13.2
+At line:1 char:1
++ & "C:\Program Files\nodejs/node.exe" "C:\Program 
+Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (Vercel CLI 50.13 
+   .2:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+Retrieving projectΓÇª
+Deploying kintsurashviligaga-ops-projects/avatar-g-frontend-v3
+Uploading [--------------------] (0.0B/3MB)
+Uploading [=====---------------] (763.8KB/3MB)
+Uploading [==========----------] (1.5MB/3MB)
+Uploading [===============-----] (2.2MB/3MB)
+Uploading [====================] (3.0MB/3MB)
+Inspect: https://vercel.com/kintsurashviligaga-ops-projects/av
+atar-g-frontend-v3/8WQuQL4fSG6QNQr9WdAD8BEq4q6f [1m]
+Production: https://avatar-g-frontend-v3-kkpq54gmz-kintsurashv
+iligaga-ops-projects.vercel.app [1m]
+Building...
+Building...
+Building: Running build in Portland, USA (West) ΓÇô pdx1
+Building: Build machine configuration: 2 cores, 8 GB
+Building: Retrieving list of deployment files...
+Building: Downloading 4947 deployment files...
+Building: Restored build cache from previous deployment 
+(HLue1k9QHBy9nmgyC1VUFezZeGAW)
+Building: Warning: Detected "engines": { "node": ">=20" } in 
+your `package.json` that will automatically upgrade when a 
+new major Node.js Version is released. Learn More: 
+https://vercel.link/node-version
+Building: Running "vercel build"
+Building: Vercel CLI 50.23.2
+Building: Warning: Detected "engines": { "node": ">=20" } in 
+your `package.json` that will automatically upgrade when a 
+new major Node.js Version is released. Learn More: 
+https://vercel.link/node-version
+Building: Installing dependencies...
+Building: up to date in 2s
+Building: 203 packages are looking for funding
+Building: run `npm fund` for details
+Building: Detected Next.js version: 14.2.35
+Building: Running "npm run vercel-build"
+Building: > avatar-g-workspace@2.0.0 vercel-build
+Building: > npm run build:clean
+Building: > avatar-g-workspace@2.0.0 build:clean
+Building: > node scripts/build-safe.mjs --clean
+Building: [clean-next] Starting cleanup in: /vercel/path0
+Building: [clean-next] Targets: .next, .turbo, 
+node_modules/.cache
+Building: [clean-next] Cleanup summary:
+Building: - .next: removed (attempt 1)
+Building: - .turbo: not found
+Building: - node_modules/.cache: not found
+Building: [clean-next] Fallback rename used: no
+Building: [clean-next] Cleanup completed successfully.
+Building: Attention: Next.js now collects completely 
+anonymous telemetry regarding usage.
+Building: This information is used to shape Next.js' roadmap 
+and prioritize features.
+Building: You can learn more, including how to opt-out if 
+you'd not like to participate in this anonymous program, by 
+visiting the following URL:
+Building: https://nextjs.org/telemetry
+Building: Γû▓ Next.js 14.2.35
+Building: Creating an optimized production build ...
+Building: <w> [webpack.cache.PackFileCacheStrategy] 
+Serializing big strings (133kiB) impacts deserialization 
+performance (consider using Buffer instead and decode when 
+needed)
+Building: Γ£ô Compiled successfully
+Building: Skipping linting
+Building: Checking validity of types ...
+Building: Collecting page data ...
+Building: ΓÜá Using edge runtime on a page currently disables 
+static generation for that page
+Building: Generating static pages (0/228) ...
+Building: [env] Missing optional env variables: 
+STRIPE_WEBHOOK_SECRET, NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY, 
+NEXT_PUBLIC_BASE_URL, BASE_URL, ALLOWED_ORIGINS, SENTRY_DSN, 
+VERCEL_ANALYTICS_ID
+Building: [env] SENTRY_DSN is not configured. Production 
+error tracing is disabled.
+Building: [env] VERCEL_ANALYTICS_ID is not configured. 
+Analytics telemetry is disabled.
+Building: [env] ALLOWED_ORIGINS is not configured. Using 
+localhost defaults.
+Building: Generating static pages (57/228)
+Building: Generating static pages (114/228)
+Building: Generating static pages (171/228)
+Building: Γ£ô Generating static pages (228/228)
+Building: Finalizing page optimization ...
+Building: Collecting build traces ...
+Building: Route (app)                                         
+      Size     First Load JS
+Building: Γöî Γùï /_not-found                                 
+          158 B          87.7 kB
+Building: Γö£ ΓùÅ /[locale]                                   
+          7.48 kB         171 kB
+Building: Γö£   Γö£ /en
+Building: Γö£   Γö£ /ka
+Building: Γö£   Γöö /ru
+Building: Γö£ ΓùÅ /[locale]/about                             
+          2.73 kB         127 kB
+Building: Γö£   Γö£ /en/about
+Building: Γö£   Γö£ /ka/about
+Building: Γö£   Γöö /ru/about
+Building: Γö£ ΓùÅ /[locale]/account/billing                   
+          4.43 kB         172 kB
+Building: Γö£   Γö£ /en/account/billing
+Building: Γö£   Γö£ /ka/account/billing
+Building: Γö£   Γöö /ru/account/billing
+Building: Γö£ ΓùÅ /[locale]/account/business                  
+          1.91 kB         142 kB
+Building: Γö£   Γö£ /en/account/business
+Building: Γö£   Γö£ /ka/account/business
+Building: Γö£   Γöö /ru/account/business
+Building: Γö£ ΓùÅ /[locale]/account/invoices                  
+          1.97 kB         151 kB
+Building: Γö£   Γö£ /en/account/invoices
+Building: Γö£   Γö£ /ka/account/invoices
+Building: Γö£   Γöö /ru/account/invoices
+Building: Γö£ ΓùÅ /[locale]/account/payments                  
+          1.87 kB         142 kB
+Building: Γö£   Γö£ /en/account/payments
+Building: Γö£   Γö£ /ka/account/payments
+Building: Γö£   Γöö /ru/account/payments
+Building: Γö£ ΓùÅ /[locale]/account/returns                   
+          2.51 kB         147 kB
+Building: Γö£   Γö£ /en/account/returns
+Building: Γö£   Γö£ /ka/account/returns
+Building: Γö£   Γöö /ru/account/returns
+Building: Γö£ ΓùÅ /[locale]/admin/disputes                    
+          2.67 kB         148 kB
+Building: Γö£   Γö£ /en/admin/disputes
+Building: Γö£   Γö£ /ka/admin/disputes
+Building: Γö£   Γöö /ru/admin/disputes
+Building: Γö£ ╞Æ /[locale]/avatar/[id]                        
+         194 B           102 kB
+Building: Γö£ ΓùÅ /[locale]/business                          
+          1.78 kB         110 kB
+Building: Γö£   Γö£ /en/business
+Building: Γö£   Γö£ /ka/business
+Building: Γö£   Γöö /ru/business
+Building: Γö£ ╞Æ /[locale]/config/[[...path]]                 
+         197 B          96.5 kB
+Building: Γö£ ΓùÅ /[locale]/contact                           
+          179 B           127 kB
+Building: Γö£   Γö£ /en/contact
+Building: Γö£   Γö£ /ka/contact
+Building: Γö£   Γöö /ru/contact
+Building: Γö£ ΓùÅ /[locale]/dashboard/fulfillment             
+          2.54 kB         139 kB
+Building: Γö£   Γö£ /en/dashboard/fulfillment
+Building: Γö£   Γö£ /ka/dashboard/fulfillment
+Building: Γö£   Γöö /ru/dashboard/fulfillment
+Building: Γö£ ╞Æ /[locale]/icon                               
+         0 B                0 B
+Building: Γö£ ΓùÅ /[locale]/login                             
+          2.84 kB         150 kB
+Building: Γö£   Γö£ /en/login
+Building: Γö£   Γö£ /ka/login
+Building: Γö£   Γöö /ru/login
+Building: Γö£ ΓùÅ /[locale]/pricing                           
+          2.36 kB         147 kB
+Building: Γö£   Γö£ /en/pricing
+Building: Γö£   Γö£ /ka/pricing
+Building: Γö£   Γöö /ru/pricing
+Building: Γö£ ΓùÅ /[locale]/sell/dashboard                    
+          3.04 kB         111 kB
+Building: Γö£   Γö£ /en/sell/dashboard
+Building: Γö£   Γö£ /ka/sell/dashboard
+Building: Γö£   Γöö /ru/sell/dashboard
+Building: Γö£ ΓùÅ /[locale]/sell/fulfillment                  
+          1.95 kB         198 kB
+Building: Γö£   Γö£ /en/sell/fulfillment
+Building: Γö£   Γö£ /ka/sell/fulfillment
+Building: Γö£   Γöö /ru/sell/fulfillment
+Building: Γö£ ╞Æ /[locale]/sell/fulfillment/[id]              
+         2.98 kB         190 kB
+Building: Γö£ ΓùÅ /[locale]/sell/onboarding                   
+          3.69 kB         121 kB
+Building: Γö£   Γö£ /en/sell/onboarding
+Building: Γö£   Γö£ /ka/sell/onboarding
+Building: Γö£   Γöö /ru/sell/onboarding
+Building: Γö£ ΓùÅ /[locale]/sell/returns                      
+          3.04 kB         148 kB
+Building: Γö£   Γö£ /en/sell/returns
+Building: Γö£   Γö£ /ka/sell/returns
+Building: Γö£   Γöö /ru/sell/returns
+Building: Γö£ ΓùÅ /[locale]/services                          
+          197 B          96.5 kB
+Building: Γö£   Γö£ /en/services
+Building: Γö£   Γö£ /ka/services
+Building: Γö£   Γöö /ru/services
+Building: Γö£ ΓùÅ /[locale]/services/[slug]                   
+          11.2 kB         170 kB
+Building: Γö£   Γö£ /en/services/avatar
+Building: Γö£   Γö£ /en/services/video
+Building: Γö£   Γö£ /en/services/editing
+Building: Γö£   Γöö [+36 more paths]
+Building: Γö£ ΓùÅ /[locale]/services/agent-g                  
+          6.84 kB         163 kB
+Building: Γö£   Γö£ /en/services/agent-g
+Building: Γö£   Γö£ /ka/services/agent-g
+Building: Γö£   Γöö /ru/services/agent-g
+Building: Γö£ ΓùÅ /[locale]/services/agent-g/calls            
+          5.05 kB         110 kB
+Building: Γö£   Γö£ /en/services/agent-g/calls
+Building: Γö£   Γö£ /ka/services/agent-g/calls
+Building: Γö£   Γöö /ru/services/agent-g/calls
+Building: Γö£ ΓùÅ /[locale]/services/agent-g/dashboard        
+          4.31 kB         109 kB
+Building: Γö£   Γö£ /en/services/agent-g/dashboard
+Building: Γö£   Γö£ /ka/services/agent-g/dashboard
+Building: Γö£   Γöö /ru/services/agent-g/dashboard
+Building: Γö£ ΓùÅ /[locale]/services/agent-g/settings         
+          5.08 kB         110 kB
+Building: Γö£   Γö£ /en/services/agent-g/settings
+Building: Γö£   Γö£ /ka/services/agent-g/settings
+Building: Γö£   Γöö /ru/services/agent-g/settings
+Building: Γö£ ΓùÅ /[locale]/services/marketplace              
+          3.92 kB         109 kB
+Building: Γö£   Γö£ /en/services/marketplace
+Building: Γö£   Γö£ /ka/services/marketplace
+Building: Γö£   Γöö /ru/services/marketplace
+Building: Γö£ ΓùÅ /[locale]/services/marketplace/browse       
+          4.59 kB         110 kB
+Building: Γö£   Γö£ /en/services/marketplace/browse
+Building: Γö£   Γö£ /ka/services/marketplace/browse
+Building: Γö£   Γöö /ru/services/marketplace/browse
+Building: Γö£ ΓùÅ /[locale]/services/marketplace/inbox        
+          4.26 kB         109 kB
+Building: Γö£   Γö£ /en/services/marketplace/inbox
+Building: Γö£   Γö£ /ka/services/marketplace/inbox
+Building: Γö£   Γöö /ru/services/marketplace/inbox
+Building: Γö£ ╞Æ /[locale]/services/marketplace/listings/[id] 
+         4.72 kB         110 kB
+Building: Γö£ ΓùÅ /[locale]/services/marketplace/listings/new 
+          5.06 kB         110 kB
+Building: Γö£   Γö£ /en/services/marketplace/listings/new
+Building: Γö£   Γö£ /ka/services/marketplace/listings/new
+Building: Γö£   Γöö /ru/services/marketplace/listings/new
+Building: Γö£ ΓùÅ /[locale]/services/marketplace/my           
+          4.57 kB         110 kB
+Building: Γö£   Γö£ /en/services/marketplace/my
+Building: Γö£   Γö£ /ka/services/marketplace/my
+Building: Γö£   Γöö /ru/services/marketplace/my
+Building: Γö£ ΓùÅ /[locale]/services/marketplace/orders       
+          4.35 kB         109 kB
+Building: Γö£   Γö£ /en/services/marketplace/orders
+Building: Γö£   Γö£ /ka/services/marketplace/orders
+Building: Γö£   Γöö /ru/services/marketplace/orders
+Building: Γö£ ΓùÅ /[locale]/services/online-shop              
+          197 B          96.5 kB
+Building: Γö£   Γö£ /en/services/online-shop
+Building: Γö£   Γö£ /ka/services/online-shop
+Building: Γö£   Γöö /ru/services/online-shop
+Building: Γö£ ΓùÅ /[locale]/services/online-shop/import       
+          197 B          96.5 kB
+Building: Γö£   Γö£ /en/services/online-shop/import
+Building: Γö£   Γö£ /ka/services/online-shop/import
+Building: Γö£   Γöö /ru/services/online-shop/import
+Building: Γö£ ΓùÅ /[locale]/services/online-shop/orders       
+          197 B          96.5 kB
+Building: Γö£   Γö£ /en/services/online-shop/orders
+Building: Γö£   Γö£ /ka/services/online-shop/orders
+Building: Γö£   Γöö /ru/services/online-shop/orders
+Building: Γö£ ΓùÅ /[locale]/services/online-shop/products     
+          203 B          96.5 kB
+Building: Γö£   Γö£ /en/services/online-shop/products
+Building: Γö£   Γö£ /ka/services/online-shop/products
+Building: Γö£   Γöö /ru/services/online-shop/products
+Building: Γö£ ΓùÅ /[locale]/services/online-shop/settings     
+          203 B          96.5 kB
+Building: Γö£   Γö£ /en/services/online-shop/settings
+Building: Γö£   Γö£ /ka/services/online-shop/settings
+Building: Γö£   Γöö /ru/services/online-shop/settings
+Building: Γö£ ΓùÅ /[locale]/services/online-shop/suppliers    
+          197 B          96.5 kB
+Building: Γö£   Γö£ /en/services/online-shop/suppliers
+Building: Γö£   Γö£ /ka/services/online-shop/suppliers
+Building: Γö£   Γöö /ru/services/online-shop/suppliers
+Building: Γö£ ΓùÅ /[locale]/signup                            
+          2.87 kB         150 kB
+Building: Γö£   Γö£ /en/signup
+Building: Γö£   Γö£ /ka/signup
+Building: Γö£   Γöö /ru/signup
+Building: Γö£ ΓùÅ /[locale]/tools/margin-calculator           
+          2.28 kB         142 kB
+Building: Γö£   Γö£ /en/tools/margin-calculator
+Building: Γö£   Γö£ /ka/tools/margin-calculator
+Building: Γö£   Γöö /ru/tools/margin-calculator
+Building: Γö£ ╞Æ /[locale]/tracking/[orderId]                 
+         2.38 kB         126 kB
+Building: Γö£ ΓùÅ /[locale]/workspace                         
+          7.07 kB         168 kB
+Building: Γö£   Γö£ /en/workspace
+Building: Γö£   Γö£ /ka/workspace
+Building: Γö£   Γöö /ru/workspace
+Building: Γö£ Γùï /about                                      
+          2.73 kB         127 kB
+Building: Γö£ Γùï /admin/affiliates                           
+          4.6 kB          113 kB
+Building: Γö£ Γùï /admin/analytics                            
+          3.36 kB         136 kB
+Building: Γö£ Γùï /admin/finance                              
+          2.95 kB         139 kB
+Building: Γö£ Γùï /admin/payouts                              
+          4.45 kB         113 kB
+Building: Γö£ Γùï /affiliate                                  
+          7.98 kB         116 kB
+Building: Γö£ Γùï /affiliate/finance                          
+          3.41 kB         140 kB
+Building: Γö£ Γùï /affiliate/payouts                          
+          3.81 kB         112 kB
+Building: Γö£ Γùï /agent                                      
+          158 B          87.7 kB
+Building: Γö£ ╞Æ /api/admin/affiliates                        
+         0 B                0 B
+Building: Γö£ ╞Æ /api/admin/analytics                         
+         0 B                0 B
+Building: Γö£ ╞Æ /api/admin/billing/plans                     
+         0 B                0 B
+Building: Γö£ ╞Æ /api/admin/billing/users/[id]                
+         0 B                0 B
+Building: Γö£ ╞Æ /api/admin/payments                          
+         0 B                0 B
+Building: Γö£ ╞Æ /api/admin/payouts                           
+         0 B                0 B
+Building: Γö£ ╞Æ /api/admin/payouts/approve                   
+         0 B                0 B
+Building: Γö£ ╞Æ /api/admin/payouts/eligible                  
+         0 B                0 B
+Building: Γö£ ╞Æ /api/admin/payouts/reject                    
+         0 B                0 B
+Building: Γö£ ╞Æ /api/admin/stats                             
+         0 B                0 B
+Building: Γö£ ╞Æ /api/affiliate/analytics                     
+         0 B                0 B
+Building: Γö£ ╞Æ /api/affiliate/balance                       
+         0 B                0 B
+Building: Γö£ ╞Æ /api/affiliate/claim                         
+         0 B                0 B
+Building: Γö£ ╞Æ /api/affiliate/commissions                   
+         0 B                0 B
+Building: Γö£ ╞Æ /api/affiliate/dashboard                     
+         0 B                0 B
+Building: Γö£ ╞Æ /api/affiliate/me                            
+         0 B                0 B
+Building: Γö£ ╞Æ /api/affiliate/payout/request                
+         0 B                0 B
+Building: Γö£ ╞Æ /api/affiliate/payouts                       
+         0 B                0 B
+Building: Γö£ ╞Æ /api/agent-g/admin/memory                    
+         0 B                0 B
+Building: Γö£ ╞Æ /api/agent-g/calls                           
+         0 B                0 B
+Building: Γö£ ╞Æ /api/agent-g/calls/callback                  
+         0 B                0 B
+Building: Γö£ ╞Æ /api/agent-g/calls/start                     
+         0 B                0 B
+Building: Γö£ ╞Æ /api/agent-g/calls/transcribe                
+         0 B                0 B
+Building: Γö£ ╞Æ /api/agent-g/calls/tts                       
+         0 B                0 B
+Building: Γö£ ╞Æ /api/agent-g/calls/webhook/inbound           
+         0 B                0 B
+Building: Γö£ ╞Æ /api/agent-g/calls/webhook/status            
+         0 B                0 B
+Building: Γö£ ╞Æ /api/agent-g/channels                        
+         0 B                0 B
+Building: Γö£ ╞Æ /api/agent-g/chat                            
+         0 B                0 B
+Building: Γö£ ╞Æ /api/agent-g/delegate                        
+         0 B                0 B
+Building: Γö£ ╞Æ /api/agent-g/execute                         
+         0 B                0 B
+Building: Γö£ ╞Æ /api/agent-g/output                          
+         0 B                0 B
+Building: Γö£ ╞Æ /api/agent-g/plan                            
+         0 B                0 B
+Building: Γö£ ╞Æ /api/agent-g/router/execute                  
+         0 B                0 B
+Building: Γö£ ╞Æ /api/agent-g/status                          
+         0 B                0 B
+Building: Γö£ ╞Æ /api/agent-g/telegram                        
+         0 B                0 B
+Building: Γö£ ╞Æ /api/agent-g/telegram/connect-code           
+         0 B                0 B
+Building: Γö£ ╞Æ /api/agent-g/telegram/send                   
+         0 B                0 B
+Building: Γö£ ╞Æ /api/agent-g/telegram/set-webhook            
+         0 B                0 B
+Building: Γö£ ╞Æ /api/agent-g/telegram/status                 
+         0 B                0 B
+Building: Γö£ ╞Æ /api/agent-g/telegram/webhook                
+         0 B                0 B
+Building: Γö£ ╞Æ /api/agent-g/webhook/telegram                
+         0 B                0 B
+Building: Γö£ ╞Æ /api/agent-g/webhook/whatsapp                
+         0 B                0 B
+Building: Γö£ ╞Æ /api/agent-g/whatsapp/send                   
+         0 B                0 B
+Building: Γö£ ╞Æ /api/agents/chat                             
+         0 B                0 B
+Building: Γö£ ╞Æ /api/agents/execute                          
+         0 B                0 B
+Building: Γö£ ╞Æ /api/agents/status                           
+         0 B                0 B
+Building: Γö£ ╞Æ /api/analytics/revenue                       
+         0 B                0 B
+Building: Γö£ ╞Æ /api/app/admin/jobs                          
+         0 B                0 B
+Building: Γö£ ╞Æ /api/app/jobs                                
+         0 B                0 B
+Building: Γö£ ╞Æ /api/app/jobs/[id]                           
+         0 B                0 B
+Building: Γö£ ╞Æ /api/app/observability/admin                 
+         0 B                0 B
+Building: Γö£ ╞Æ /api/app/observability/me                    
+         0 B                0 B
+Building: Γö£ ╞Æ /api/app/outputs                             
+         0 B                0 B
+Building: Γö£ ╞Æ /api/app/services/[slug]/run                 
+         0 B                0 B
+Building: Γö£ ╞Æ /api/app/worker/tick                         
+         0 B                0 B
+Building: Γö£ ╞Æ /api/app/workflow-runs/[id]                  
+         0 B                0 B
+Building: Γö£ ╞Æ /api/app/workflow-runs/[id]/steps/[stepId]   
+         0 B                0 B
+Building: Γö£ ╞Æ /api/app/workflow-runs/[id]/tick             
+         0 B                0 B
+Building: Γö£ ╞Æ /api/app/workflows                           
+         0 B                0 B
+Building: Γö£ ╞Æ /api/app/workflows/[id]                      
+         0 B                0 B
+Building: Γö£ ╞Æ /api/app/workflows/[id]/run                  
+         0 B                0 B
+Building: Γö£ ╞Æ /api/auth/otp/check                          
+         0 B                0 B
+Building: Γö£ ╞Æ /api/auth/otp/send                           
+         0 B                0 B
+Building: Γö£ ╞Æ /api/automation                              
+         0 B                0 B
+Building: Γö£ ╞Æ /api/avatar/core                             
+         0 B                0 B
+Building: Γö£ ╞Æ /api/avatar/create                           
+         0 B                0 B
+Building: Γö£ ╞Æ /api/avatar/generate                         
+         0 B                0 B
+Building: Γö£ ╞Æ /api/avatar/mark-ready                       
+         0 B                0 B
+Building: Γö£ ╞Æ /api/avatar/set-core                         
+         0 B                0 B
+Building: Γö£ ╞Æ /api/avatar/upload-complete                  
+         0 B                0 B
+Building: Γö£ ╞Æ /api/avatars                                 
+         0 B                0 B
+Building: Γö£ ╞Æ /api/avatars/latest                          
+         0 B                0 B
+Building: Γö£ ╞Æ /api/avatars/save                            
+         0 B                0 B
+Building: Γö£ ╞Æ /api/billing/checkout                        
+         0 B                0 B
+Building: Γö£ ╞Æ /api/billing/credits                         
+         0 B                0 B
+Building: Γö£ ╞Æ /api/billing/plan                            
+         0 B                0 B
+Building: Γö£ ╞Æ /api/billing/portal                          
+         0 B                0 B
+Building: Γö£ ╞Æ /api/billing/topup                           
+         0 B                0 B
+Building: Γö£ ╞Æ /api/billing/usage                           
+         0 B                0 B
+Building: Γö£ ╞Æ /api/billing/usage/export                    
+         0 B                0 B
+Building: Γö£ ╞Æ /api/billing/use                             
+         0 B                0 B
+Building: Γö£ ╞Æ /api/billing/webhook                         
+         0 B                0 B
+Building: Γö£ ╞Æ /api/business-agent/projects                 
+         0 B                0 B
+Building: Γö£ ╞Æ /api/business-agent/projects/[id]            
+         0 B                0 B
+Building: Γö£ ╞Æ /api/business-agent/run                      
+         0 B                0 B
+Building: Γö£ ╞Æ /api/business-agent/uploads                  
+         0 B                0 B
+Building: Γö£ ╞Æ /api/business/calc                           
+         0 B                0 B
+Building: Γö£ ╞Æ /api/business/items                          
+         0 B                0 B
+Building: Γö£ ╞Æ /api/business/items/[id]                     
+         0 B                0 B
+Building: Γö£ ╞Æ /api/business/items/[id]/events              
+         0 B                0 B
+Building: Γö£ ╞Æ /api/business/profile                        
+         0 B                0 B
+Building: Γö£ ╞Æ /api/business/projects                       
+         0 B                0 B
+Building: Γö£ ╞Æ /api/business/projects/[id]                  
+         0 B                0 B
+Building: Γö£ ╞Æ /api/chat                                    
+         0 B                0 B
+Building: Γö£ ╞Æ /api/chat/stream                             
+         0 B                0 B
+Building: Γö£ ╞Æ /api/checkout/create-intent                  
+         0 B                0 B
+Building: Γö£ ╞Æ /api/commerce/compliance                     
+         0 B                0 B
+Building: Γö£ ╞Æ /api/commerce/orders                         
+         0 B                0 B
+Building: Γö£ ╞Æ /api/commerce/wallet                         
+         0 B                0 B
+Building: Γö£ ╞Æ /api/credits/balance                         
+         0 B                0 B
+Building: Γö£ ╞Æ /api/decision/evaluate                       
+         0 B                0 B
+Building: Γö£ ╞Æ /api/deepseek                                
+         0 B                0 B
+Building: Γö£ ╞Æ /api/diagnostics                             
+         0 B                0 B
+Building: Γö£ ╞Æ /api/diagnostics/env                         
+         0 B                0 B
+Building: Γö£ ╞Æ /api/disputes                                
+         0 B                0 B
+Building: Γö£ ╞Æ /api/env_integrity_status                    
+         0 B                0 B
+Building: Γö£ ╞Æ /api/env-check                               
+         0 B                0 B
+Building: Γö£ ╞Æ /api/executive/task                          
+         0 B                0 B
+Building: Γö£ ╞Æ /api/executive/tasks                         
+         0 B                0 B
+Building: Γö£ ╞Æ /api/finance/admin/summary                   
+         0 B                0 B
+Building: Γö£ ╞Æ /api/finance/admin/timeseries                
+         0 B                0 B
+Building: Γö£ ╞Æ /api/finance/affiliate/summary               
+         0 B                0 B
+Building: Γö£ ╞Æ /api/finance/me/summary                      
+         0 B                0 B
+Building: Γö£ ╞Æ /api/finance/scenarios                       
+         0 B                0 B
+Building: Γö£ ╞Æ /api/finance/seller/summary                  
+         0 B                0 B
+Building: Γö£ ╞Æ /api/finance/simulate                        
+         0 B                0 B
+Building: Γö£ ╞Æ /api/fulfillment                             
+         0 B                0 B
+Building: Γö£ ╞Æ /api/fulfillment/[id]/retry                  
+         0 B                0 B
+Building: Γö£ ╞Æ /api/growth/churn-risk/scan                  
+         0 B                0 B
+Building: Γö£ ╞Æ /api/growth/events/process                   
+         0 B                0 B
+Building: Γö£ ╞Æ /api/growth/referrals/code                   
+         0 B                0 B
+Building: Γö£ ╞Æ /api/growth/referrals/track                  
+         0 B                0 B
+Building: Γö£ ╞Æ /api/health                                  
+         0 B                0 B
+Building: Γö£ ╞Æ /api/invite                                  
+         0 B                0 B
+Building: Γö£ ╞Æ /api/invoices                                
+         0 B                0 B
+Building: Γö£ ╞Æ /api/invoices/[id]                           
+         0 B                0 B
+Building: Γö£ ╞Æ /api/invoices/create                         
+         0 B                0 B
+Building: Γö£ ╞Æ /api/invoices/generate                       
+         0 B                0 B
+Building: Γö£ ╞Æ /api/invoices/list                           
+         0 B                0 B
+Building: Γö£ ╞Æ /api/jobs                                    
+         0 B                0 B
+Building: Γö£ ╞Æ /api/jobs/[id]                               
+         0 B                0 B
+Building: Γö£ ╞Æ /api/jobs/[id]/status                        
+         0 B                0 B
+Building: Γö£ ╞Æ /api/jobs/create                             
+         0 B                0 B
+Building: Γö£ ╞Æ /api/jobs/list                               
+         0 B                0 B
+Building: Γö£ ╞Æ /api/launch-30/initialize                    
+         0 B                0 B
+Building: Γö£ ╞Æ /api/launch/generate                         
+         0 B                0 B
+Building: Γö£ ╞Æ /api/launch/plan                             
+         0 B                0 B
+Building: Γö£ ╞Æ /api/lead-capture                            
+         0 B                0 B
+Building: Γö£ ╞Æ /api/log-error                               
+         0 B                0 B
+Building: Γö£ ╞Æ /api/market/scan                             
+         0 B                0 B
+Building: Γö£ ╞Æ /api/marketplace/favorites                   
+         0 B                0 B
+Building: Γö£ ╞Æ /api/marketplace/health                      
+         0 B                0 B
+Building: Γö£ ╞Æ /api/marketplace/inquiries                   
+         0 B                0 B
+Building: Γö£ ╞Æ /api/marketplace/inquiries/[id]/messages     
+         0 B                0 B
+Building: Γö£ ╞Æ /api/marketplace/kpis                        
+         0 B                0 B
+Building: Γö£ ╞Æ /api/marketplace/listings                    
+         0 B                0 B
+Building: Γö£ ╞Æ /api/marketplace/listings/[id]               
+         0 B                0 B
+Building: Γö£ ╞Æ /api/marketplace/metrics                     
+         0 B                0 B
+Building: Γö£ ╞Æ /api/marketplace/orders                      
+         0 B                0 B
+Building: Γö£ ╞Æ /api/marketplace/search                      
+         0 B                0 B
+Building: Γö£ ╞Æ /api/metrics/conversion                      
+         0 B                0 B
+Building: Γö£ ╞Æ /api/metrics/kpis                            
+         0 B                0 B
+Building: Γö£ ╞Æ /api/metrics/revenue                         
+         0 B                0 B
+Building: Γö£ ╞Æ /api/music/generate                          
+         0 B                0 B
+Building: Γö£ ╞Æ /api/music/list                              
+         0 B                0 B
+Building: Γö£ ╞Æ /api/observability/dashboard                 
+         0 B                0 B
+Building: Γö£ ╞Æ /api/observability/latency                   
+         0 B                0 B
+Building: Γö£ ╞Æ /api/orchestrate                             
+         0 B                0 B
+Building: Γö£ ╞Æ /api/orders/create-payment                   
+         0 B                0 B
+Building: Γö£ ╞Æ /api/org/branding                            
+         0 B                0 B
+Building: Γö£ ╞Æ /api/payments/provider                       
+         0 B                0 B
+Building: Γö£ ╞Æ /api/payouts/accounts                        
+         0 B                0 B
+Building: Γö£ ╞Æ /api/payouts/history                         
+         0 B                0 B
+Building: Γö£ ╞Æ /api/payouts/request                         
+         0 B                0 B
+Building: Γö£ ╞Æ /api/payouts/requests                        
+         0 B                0 B
+Building: Γö£ ╞Æ /api/products/validate-launch                
+         0 B                0 B
+Building: Γö£ ╞Æ /api/profile/landing                         
+         0 B                0 B
+Building: Γö£ ╞Æ /api/projects                                
+         0 B                0 B
+Building: Γö£ ╞Æ /api/projects/[projectId]                    
+         0 B                0 B
+Building: Γö£ ╞Æ /api/projects/[projectId]/versions           
+         0 B                0 B
+Building: Γö£ ╞Æ 
+/api/projects/[projectId]/versions/[versionId]/rerun  0 B     
+           0 B
+Building: Γö£ ╞Æ /api/referral                                
+         0 B                0 B
+Building: Γö£ ╞Æ /api/refunds/[id]                            
+         0 B                0 B
+Building: Γö£ ╞Æ /api/refunds/create                          
+         0 B                0 B
+Building: Γö£ ╞Æ /api/replicate/generate                      
+         0 B                0 B
+Building: Γö£ ╞Æ /api/returns                                 
+         0 B                0 B
+Building: Γö£ ╞Æ /api/returns/[id]                            
+         0 B                0 B
+Building: Γö£ ╞Æ /api/returns/create                          
+         0 B                0 B
+Building: Γö£ ╞Æ /api/router                                  
+         0 B                0 B
+Building: Γö£ ╞Æ /api/seller/activate                         
+         0 B                0 B
+Building: Γö£ ╞Æ /api/seller/kpi                              
+         0 B                0 B
+Building: Γö£ ╞Æ /api/services/health                         
+         0 B                0 B
+Building: Γö£ ╞Æ /api/share-event                             
+         0 B                0 B
+Building: Γö£ ╞Æ /api/shipments/[id]                          
+         0 B                0 B
+Building: Γö£ ╞Æ /api/shipping/event                          
+         0 B                0 B
+Building: Γö£ ╞Æ /api/shipping/quote                          
+         0 B                0 B
+Building: Γö£ ╞Æ /api/shipping/select-profile                 
+         0 B                0 B
+Building: Γö£ ╞Æ /api/shipping/track                          
+         0 B                0 B
+Building: Γö£ ╞Æ /api/shop/create                             
+         0 B                0 B
+Building: Γö£ ╞Æ /api/shop/fulfill                            
+         0 B                0 B
+Building: Γö£ ╞Æ /api/shop/import                             
+         0 B                0 B
+Building: Γö£ ╞Æ /api/shop/orders                             
+         0 B                0 B
+Building: Γö£ ╞Æ /api/shop/products                           
+         0 B                0 B
+Building: Γö£ ╞Æ /api/shop/suppliers                          
+         0 B                0 B
+Building: Γö£ ╞Æ /api/smm/export                              
+         0 B                0 B
+Building: Γö£ ╞Æ /api/smm/posts/[id]/assets                   
+         0 B                0 B
+Building: Γö£ ╞Æ /api/smm/projects                            
+         0 B                0 B
+Building: Γö£ ╞Æ /api/smm/projects/[id]                       
+         0 B                0 B
+Building: Γö£ ╞Æ /api/smm/projects/[id]/posts                 
+         0 B                0 B
+Building: Γö£ ╞Æ /api/smm/publish                             
+         0 B                0 B
+Building: Γö£ ╞Æ /api/stripe/connect/account-status           
+         0 B                0 B
+Building: Γö£ ╞Æ /api/stripe/connect/create-account           
+         0 B                0 B
+Building: Γö£ ╞Æ /api/stripe/connect/create-account-link      
+         0 B                0 B
+Building: Γö£ ╞Æ /api/stripe/connect/login-link               
+         0 B                0 B
+Building: Γö£ ╞Æ /api/stripe/connect/onboarding               
+         0 B                0 B
+Building: Γö£ ╞Æ /api/stripe/connect/status                   
+         0 B                0 B
+Building: Γö£ ╞Æ /api/stripe/create-checkout-session          
+         0 B                0 B
+Building: Γö£ ╞Æ /api/stripe/customer-portal                  
+         0 B                0 B
+Building: Γö£ ╞Æ /api/stripe/health                           
+         0 B                0 B
+Building: Γö£ ╞Æ /api/stripe/subscription/create-checkout     
+         0 B                0 B
+Building: Γö£ ╞Æ /api/stripe/subscription/get-status          
+         0 B                0 B
+Building: Γö£ ╞Æ /api/stripe/webhook                          
+         0 B                0 B
+Building: Γö£ ╞Æ /api/telegram/send                           
+         0 B                0 B
+Building: Γö£ ╞Æ /api/tests/smoke                             
+         0 B                0 B
+Building: Γö£ ╞Æ /api/tests/stripe-webhook                    
+         0 B                0 B
+Building: Γö£ ╞Æ /api/tools/margin-calculator                 
+         0 B                0 B
+Building: Γö£ ╞Æ /api/tracking/[id]                           
+         0 B                0 B
+Building: Γö£ ╞Æ /api/tracking/sync                           
+         0 B                0 B
+Building: Γö£ ╞Æ /api/user/stats                              
+         0 B                0 B
+Building: Γö£ ╞Æ /api/validate-env                            
+         0 B                0 B
+Building: Γö£ Γùï /api/version                                
+          0 B                0 B
+Building: Γö£ ╞Æ /api/video/generate                          
+         0 B                0 B
+Building: Γö£ ╞Æ /api/videos                                  
+         0 B                0 B
+Building: Γö£ ╞Æ /api/voice-lab/assets                        
+         0 B                0 B
+Building: Γö£ ╞Æ /api/voice-lab/health                        
+         0 B                0 B
+Building: Γö£ ╞Æ /api/voice-lab/jobs                          
+         0 B                0 B
+Building: Γö£ ╞Æ /api/voice-lab/profiles                      
+         0 B                0 B
+Building: Γö£ ╞Æ /api/voice-lab/projects                      
+         0 B                0 B
+Building: Γö£ ╞Æ /api/voice-lab/projects/[id]                 
+         0 B                0 B
+Building: Γö£ ╞Æ /api/voice/incoming                          
+         0 B                0 B
+Building: Γö£ ╞Æ /api/voice/outgoing                          
+         0 B                0 B
+Building: Γö£ ╞Æ /api/webhooks/phone                          
+         0 B                0 B
+Building: Γö£ ╞Æ /api/webhooks/stripe                         
+         0 B                0 B
+Building: Γö£ ╞Æ /api/webhooks/whatsapp                       
+         0 B                0 B
+Building: Γö£ Γùï /auth                                       
+          4.44 kB         143 kB
+Building: Γö£ ╞Æ /auth/callback                               
+         0 B                0 B
+Building: Γö£ ╞Æ /avatar/[id]                                 
+         194 B           102 kB
+Building: Γö£ ╞Æ /business                                    
+         18.3 kB         182 kB
+Building: Γö£ Γùï /chat                                       
+          3.62 kB         136 kB
+Building: Γö£ Γùï /contact                                    
+          179 B           127 kB
+Building: Γö£ ╞Æ /dashboard                                   
+         158 B          87.7 kB
+Building: Γö£ Γùï /dashboard/admin                            
+          3.32 kB         108 kB
+Building: Γö£ ╞Æ /dashboard/admin/payouts                     
+         1.1 kB         88.7 kB
+Building: Γö£ Γùï /dashboard/admin/system-health              
+          3.9 kB          100 kB
+Building: Γö£ ╞Æ /dashboard/billing                           
+         4.03 kB        91.6 kB
+Building: Γö£ Γùï /dashboard/forecast                         
+          4.44 kB         101 kB
+Building: Γö£ ╞Æ /dashboard/marketplace/growth                
+         1.15 kB        88.7 kB
+Building: Γö£ Γùï /dashboard/seller                           
+          4.9 kB          101 kB
+Building: Γö£ ╞Æ /dashboard/shop/finance                      
+         1.42 kB          89 kB
+Building: Γö£ ╞Æ /dashboard/shop/launch                       
+         1.05 kB        88.6 kB
+Building: Γö£ ╞Æ /dashboard/shop/payouts                      
+         1.57 kB        89.2 kB
+Building: Γö£ Γùï /diagnostics                                
+          3.3 kB          178 kB
+Building: Γö£ ╞Æ /executive                                   
+         1.96 kB         102 kB
+Building: Γö£ ╞Æ /favicon.png                                 
+         0 B                0 B
+Building: Γö£ ╞Æ /icon                                        
+         0 B                0 B
+Building: Γö£ Γùï /login                                      
+          2.81 kB         150 kB
+Building: Γö£ Γùï /memory                                     
+          3.18 kB         136 kB
+Building: Γö£ Γùï /onboarding                                 
+          6.75 kB         139 kB
+Building: Γö£ Γùï /pay                                        
+          1.89 kB        98.2 kB
+Building: Γö£ Γùï /pay/cancel                                 
+          1.05 kB        97.4 kB
+Building: Γö£ Γùï /pay/success                                
+          1.32 kB        97.6 kB
+Building: Γö£ Γùï /privacy                                    
+          2.92 kB         144 kB
+Building: Γö£ Γùï /refund-policy                              
+          3.06 kB         144 kB
+Building: Γö£ Γùï /robots.txt                                 
+          0 B                0 B
+Building: Γö£ Γùï /sell/finance                               
+          3.22 kB         139 kB
+Building: Γö£ Γùï /seller/activation                          
+          3.49 kB        99.7 kB
+Building: Γö£ Γùï /seller/onboarding                          
+          3.04 kB         112 kB
+Building: Γö£ Γùï /seller/simulation                          
+          3.99 kB         100 kB
+Building: Γö£ Γùï /seller/start                               
+          2.87 kB         111 kB
+Building: Γö£ Γùï /settings                                   
+          3.94 kB         137 kB
+Building: Γö£ Γùï /settings/integrations/telegram             
+          1.95 kB        98.3 kB
+Building: Γö£ Γùï /signup                                     
+          2.87 kB         150 kB
+Building: Γö£ Γùï /sitemap.xml                                
+          0 B                0 B
+Building: Γö£ Γùï /terms                                      
+          2.85 kB         144 kB
+Building: Γö£ Γùï /test/subscription                          
+          4.54 kB         152 kB
+Building: Γö£ ╞Æ /track/[id]                                  
+         1.98 kB         126 kB
+Building: Γöö ╞Æ /workspace                                   
+         158 B          87.7 kB
+Building: + First Load JS shared by all                       
+      87.6 kB
+Building: Γö£ chunks/2117-9e9f23874d8e9665.js                 
+      31.9 kB
+Building: Γö£ chunks/fd9d1056-270721ac51469ce4.js             
+      53.6 kB
+Building: Γöö other shared chunks (total)                     
+      2.04 kB
+Building: ╞Æ Middleware                                       
+       75.1 kB
+Building: Γùï  (Static)   prerendered as static content
+Building: ΓùÅ  (SSG)      prerendered as static HTML (uses 
+getStaticProps)
+Building: ╞Æ  (Dynamic)  server-rendered on demand
+Building: Traced Next.js server files in: 30.685ms
+Building: Created all serverless functions in: 628.539ms
+Building: Collected static files (public/, static/, 
+.next/static): 24.796ms
+Building: Build Completed in /vercel/output [1m]
+Building: Deploying outputs...
+[2K[1A[2K[GProduction: https://avatar-g-frontend-v3-kkpq54
+gmz-kintsurashviligaga-ops-projects.vercel.app [4m]
+Completing...
+Aliased: https://www.myavatar.ge [4m]
+https://avatar-g-frontend-v3-kkpq54gmz-kintsurashviligaga-ops-projects.vercel.app
