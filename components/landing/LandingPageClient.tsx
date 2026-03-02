@@ -34,7 +34,7 @@ export default function LandingPageClient() {
   const [showPremiumForm, setShowPremiumForm] = useState(false);
 
   return (
-    <div className="relative min-h-screen bg-[#050510] text-white overflow-hidden">
+    <div className="relative min-h-screen bg-transparent text-white overflow-hidden">
       {/* ── Hero section ─────────────────────────────────────── */}
       <ErrorBoundary fallback={<SectionFallback label="Hero" />}>
         <HeroSection onPremiumClick={() => setShowPremiumForm(true)} />

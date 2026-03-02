@@ -57,7 +57,7 @@ export default function SignupPage() {
 
   if (success) {
     return (
-      <div className="min-h-screen bg-[#050510] flex items-center justify-center px-4">
+      <div className="min-h-screen bg-transparent flex items-center justify-center px-4">
         <div className="w-full max-w-sm text-center">
           <div className="w-16 h-16 mx-auto mb-6 rounded-full bg-green-500/20 flex items-center justify-center">
             <span className="text-3xl">✉️</span>
@@ -78,7 +78,7 @@ export default function SignupPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#050510] flex items-center justify-center px-4">
+    <div className="min-h-screen bg-transparent flex items-center justify-center px-4">
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
           <h1 className="text-2xl font-bold text-white">Create your account</h1>
@@ -108,7 +108,7 @@ export default function SignupPage() {
               <div className="w-full border-t border-white/[0.08]" />
             </div>
             <div className="relative flex justify-center text-xs text-white/30">
-              <span className="px-3 bg-[#050510] rounded">or sign up with email</span>
+              <span className="px-3 bg-transparent rounded">or sign up with email</span>
             </div>
           </div>
 
@@ -162,3 +162,4 @@ export default function SignupPage() {
     </div>
   );
 }
+

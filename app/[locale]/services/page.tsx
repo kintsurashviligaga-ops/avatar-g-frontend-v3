@@ -21,7 +21,7 @@ export default async function LocalizedServicesPage({ params }: ServicesPageProp
   const { locale } = await params;
   const text = PAGE_TEXT[locale] ?? PAGE_TEXT['ka']!;
   return (
-    <section className="min-h-screen bg-[#050510] text-white py-24 px-4 sm:px-6 lg:px-10">
+    <section className="min-h-screen bg-transparent text-white py-24 px-4 sm:px-6 lg:px-10">
       <div className="mx-auto max-w-6xl">
         <h1 className="text-4xl md:text-5xl font-bold text-center mb-4">{text.title}</h1>
         <p className="text-center text-gray-400 max-w-2xl mx-auto mb-16">{text.subtitle}</p>

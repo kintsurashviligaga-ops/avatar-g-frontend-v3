@@ -19,7 +19,7 @@ export default function LocaleNotFound() {
   if (!t) return null;
 
   return (
-    <div className="min-h-screen bg-[#050510] text-white flex items-center justify-center p-6">
+    <div className="min-h-screen bg-transparent text-white flex items-center justify-center p-6">
       <div className="text-center">
         <div className="w-32 h-32 mx-auto mb-8 rounded-full bg-gradient-to-br from-[#D4AF37]/20 to-[#00FFFF]/20 flex items-center justify-center">
           <Ghost className="w-16 h-16 text-gray-400" />

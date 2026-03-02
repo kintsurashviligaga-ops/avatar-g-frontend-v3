@@ -28,7 +28,7 @@ export default function ServiceLanding({ icon, headline, description, features, 
   const agentLabel = AGENT_LABEL[locale] ?? AGENT_LABEL['en']!
 
   return (
-    <div className="min-h-screen bg-[#050510] text-white">
+    <div className="min-h-screen bg-transparent text-white">
       {/* Hero */}
       <section className="px-4 sm:px-6 lg:px-10 py-20 max-w-5xl mx-auto">
         <div className="flex items-center gap-3 mb-6">
@@ -95,3 +95,4 @@ export default function ServiceLanding({ icon, headline, description, features, 
     </div>
   )
 }
+

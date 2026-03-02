@@ -44,7 +44,7 @@ export default function Error({
   }, [error]);
 
   return (
-    <div className="min-h-screen bg-[#050510] flex items-center justify-center p-4">
+    <div className="min-h-screen bg-transparent flex items-center justify-center p-4">
       <div className="max-w-md w-full bg-[#0A0F1C] border border-red-500/30 rounded-2xl p-8 text-center">
         <div className="w-20 h-20 mx-auto rounded-full bg-red-500/20 flex items-center justify-center mb-6">
           <span className="text-4xl">⚠️</span>
@@ -83,3 +83,4 @@ export default function Error({
     </div>
   );
 }
+

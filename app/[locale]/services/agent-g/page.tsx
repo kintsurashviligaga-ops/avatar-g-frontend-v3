@@ -140,7 +140,7 @@ export default function AgentGPage() {
   const timeline = useMemo(() => task?.results?.subtasks || [], [task]);
 
   return (
-    <main className="relative min-h-screen bg-[#050510] px-4 pb-10 pt-24 sm:px-6 lg:px-8">
+    <main className="relative min-h-screen bg-transparent px-4 pb-10 pt-24 sm:px-6 lg:px-8">
       <SpaceBackground />
       <div className="relative z-10 mx-auto max-w-7xl space-y-4">
         <Card className="border-white/10 bg-white/5 p-5">

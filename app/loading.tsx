@@ -4,7 +4,7 @@ import { motion } from "framer-motion";
 
 export default function Loading() {
   return (
-    <div className="min-h-screen bg-[#050510] text-white flex items-center justify-center">
+    <div className="min-h-screen bg-transparent text-white flex items-center justify-center">
       <div className="text-center">
         <motion.div
           animate={{ 
@@ -28,3 +28,4 @@ export default function Loading() {
     </div>
   );
 }
+

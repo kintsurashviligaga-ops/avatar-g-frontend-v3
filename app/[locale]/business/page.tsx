@@ -50,7 +50,7 @@ export default function BusinessPage() {
   const c = CONTENT[locale] ?? CONTENT['en']!;
 
   return (
-    <div className="min-h-screen bg-[#050510] text-white">
+    <div className="min-h-screen bg-transparent text-white">
       <section className="max-w-4xl mx-auto px-4 sm:px-6 py-20 text-center">
         <h1 className="text-4xl sm:text-5xl font-bold mb-6">{c.title}</h1>
         <p className="text-lg text-white/50 max-w-2xl mx-auto mb-12">{c.subtitle}</p>

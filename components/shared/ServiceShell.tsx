@@ -15,7 +15,7 @@ interface ServiceShellProps {
 
 export function ServiceShell({ title, subtitle, gradient, children, actions }: ServiceShellProps) {
   return (
-    <div className="min-h-screen bg-[#050510] text-white">
+    <div className="min-h-screen bg-transparent text-white">
       {/* Header */}
       <header className="sticky top-0 z-40 bg-[#050510]/80 backdrop-blur-xl border-b border-white/5">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -64,3 +64,4 @@ export function ServiceShell({ title, subtitle, gradient, children, actions }: S
     </div>
   )
 }
+

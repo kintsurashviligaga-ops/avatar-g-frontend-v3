@@ -62,7 +62,7 @@ export default function ExecutiveDashboard({ userId: _userId }: ExecutiveDashboa
 
   /* ── Render ────────────────────────────────────────────────────────────── */
   return (
-    <div className="min-h-screen bg-[#050510] px-4 py-8 text-white sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-transparent px-4 py-8 text-white sm:px-6 lg:px-8">
       <div className="mx-auto max-w-4xl space-y-8">
 
         {/* ── Header ─────────────────────────────────────────────────────── */}
@@ -206,3 +206,4 @@ function TaskCard({ task }: { task: ExecutiveTaskLog }) {
     </li>
   );
 }
+

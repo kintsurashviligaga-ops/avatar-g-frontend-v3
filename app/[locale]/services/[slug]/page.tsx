@@ -29,7 +29,7 @@ export default async function ServiceDetailPage({ params }: ServiceDetailPagePro
   if (!meta) {
     const text = NOT_FOUND_TEXT[locale] ?? NOT_FOUND_TEXT['en']!;
     return (
-      <section className="min-h-screen bg-[#050510] text-white flex items-center justify-center">
+      <section className="min-h-screen bg-transparent text-white flex items-center justify-center">
         <div className="text-center space-y-4">
           <div className="w-20 h-20 mx-auto bg-white/[0.03] border border-white/[0.08] rounded-2xl flex items-center justify-center mb-4">
             <span className="text-3xl opacity-30">?</span>

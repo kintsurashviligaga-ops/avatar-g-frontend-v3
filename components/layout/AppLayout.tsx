@@ -140,7 +140,7 @@ export function PageHeader({
 
 export default function AppLayout({ children }: { children: ReactNode }) {
   return (
-    <div className="min-h-screen bg-[#050510] text-white">
+    <div className="min-h-screen bg-transparent text-white">
       <Navbar />
       <main className="pt-20">{children}</main>
       <Footer />

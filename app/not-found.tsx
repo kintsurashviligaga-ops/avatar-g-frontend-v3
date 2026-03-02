@@ -6,7 +6,7 @@ import { Ghost, ArrowLeft } from "lucide-react";
 
 export default function NotFound() {
   return (
-    <div className="min-h-screen bg-[#050510] text-white flex items-center justify-center p-6">
+    <div className="min-h-screen bg-transparent text-white flex items-center justify-center p-6">
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -40,3 +40,4 @@ export default function NotFound() {
     </div>
   );
 }
+

@@ -22,7 +22,7 @@ export function BusinessHub({ userId }: { userId: string }) {
   const t = useTranslations('business')
 
   return (
-    <div className="min-h-screen bg-[#050510] text-white">
+    <div className="min-h-screen bg-transparent text-white">
       {/* Header */}
       <div className="border-b border-white/[0.06] px-6 py-6">
         <div className="flex items-center justify-between">
@@ -72,3 +72,4 @@ export function BusinessHub({ userId }: { userId: string }) {
     </div>
   )
 }
+

@@ -54,7 +54,7 @@ export default function AgentGDashboardPage() {
   }, []);
 
   return (
-    <main className="relative min-h-screen bg-[#050510] px-4 pb-10 pt-24 sm:px-6 lg:px-8">
+    <main className="relative min-h-screen bg-transparent px-4 pb-10 pt-24 sm:px-6 lg:px-8">
       <SpaceBackground />
       <div className="relative z-10 mx-auto max-w-5xl space-y-4">
         <div className="flex items-center gap-3 text-sm">

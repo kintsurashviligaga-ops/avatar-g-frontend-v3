@@ -282,7 +282,7 @@ export default function UnifiedServiceLayout({
 
   // ─── Render ──────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-[#050510] text-white">
+    <div className="min-h-screen bg-transparent text-white">
       {/* ── Header ──────────────────────────────────────────────────────── */}
       <header className="border-b border-white/[0.06] px-4 sm:px-6 py-4">
         <div className="max-w-7xl mx-auto flex items-center justify-between">

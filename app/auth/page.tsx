@@ -193,7 +193,7 @@ export default function AuthPage() {
   };
 
   return (
-    <main className="min-h-screen bg-[#050510] text-white flex items-center justify-center px-4 py-12">
+    <main className="min-h-screen bg-transparent text-white flex items-center justify-center px-4 py-12">
       <div className="w-full max-w-xl rounded-2xl border border-cyan-500/20 bg-gradient-to-b from-[#0A1020] to-[#080C18] p-6 sm:p-8 shadow-[0_0_60px_rgba(6,182,212,0.18)]">
         <div className="mb-6">
           <p className="text-cyan-300 text-xs uppercase tracking-[0.2em]">Avatar G Secure Access</p>
