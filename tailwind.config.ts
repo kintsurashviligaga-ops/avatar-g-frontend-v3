@@ -62,6 +62,23 @@ const config: Config = {
         orbitMidMobile: 'orbit 56s linear infinite',
         orbitSlowRevMobile: 'orbitReverse 88s linear infinite',
         floatSoft: 'floatSoft 5s ease-in-out infinite',
+        'gradient-x': 'gradient-x 8s ease infinite',
+        'shimmer': 'shimmer 2.5s ease-in-out infinite',
+        'glow-pulse': 'glow-pulse 3s ease-in-out infinite',
+        'slide-up': 'slide-up 0.6s ease-out forwards',
+        'slide-up-delay-1': 'slide-up 0.6s ease-out 0.1s forwards',
+        'slide-up-delay-2': 'slide-up 0.6s ease-out 0.2s forwards',
+        'slide-up-delay-3': 'slide-up 0.6s ease-out 0.3s forwards',
+        'slide-up-delay-4': 'slide-up 0.6s ease-out 0.4s forwards',
+        'scale-in': 'scale-in 0.5s ease-out forwards',
+        'aurora': 'aurora 12s ease-in-out infinite alternate',
+        'float-slow': 'floatSlow 8s ease-in-out infinite',
+        'particle-drift': 'particle-drift 20s linear infinite',
+        'ring-pulse': 'ring-pulse 4s ease-in-out infinite',
+        'text-glow': 'text-glow 3s ease-in-out infinite',
+        'border-glow': 'border-glow 4s ease-in-out infinite',
+        'meteor': 'meteor 8s linear infinite',
+        'spin-slow': 'spin 12s linear infinite',
       },
       keyframes: {
         float: {
@@ -83,6 +100,60 @@ const config: Config = {
         floatSoft: {
           '0%, 100%': { transform: 'translateY(0px)' },
           '50%': { transform: 'translateY(-8px)' },
+        },
+        'gradient-x': {
+          '0%, 100%': { backgroundPosition: '0% 50%' },
+          '50%': { backgroundPosition: '100% 50%' },
+        },
+        shimmer: {
+          '0%': { backgroundPosition: '-200% 0' },
+          '100%': { backgroundPosition: '200% 0' },
+        },
+        'glow-pulse': {
+          '0%, 100%': { boxShadow: '0 0 20px rgba(34,211,238,0.15), 0 0 60px rgba(34,211,238,0.05)' },
+          '50%': { boxShadow: '0 0 40px rgba(34,211,238,0.3), 0 0 80px rgba(34,211,238,0.12)' },
+        },
+        'slide-up': {
+          '0%': { opacity: '0', transform: 'translateY(30px)' },
+          '100%': { opacity: '1', transform: 'translateY(0)' },
+        },
+        'scale-in': {
+          '0%': { opacity: '0', transform: 'scale(0.9)' },
+          '100%': { opacity: '1', transform: 'scale(1)' },
+        },
+        aurora: {
+          '0%': { backgroundPosition: '0% 50%', opacity: '0.5' },
+          '50%': { backgroundPosition: '100% 50%', opacity: '0.8' },
+          '100%': { backgroundPosition: '0% 50%', opacity: '0.5' },
+        },
+        floatSlow: {
+          '0%, 100%': { transform: 'translateY(0) rotate(0deg)' },
+          '33%': { transform: 'translateY(-12px) rotate(1deg)' },
+          '66%': { transform: 'translateY(4px) rotate(-1deg)' },
+        },
+        'particle-drift': {
+          '0%': { transform: 'translateY(0) translateX(0)', opacity: '0' },
+          '10%': { opacity: '1' },
+          '90%': { opacity: '1' },
+          '100%': { transform: 'translateY(-100vh) translateX(100px)', opacity: '0' },
+        },
+        'ring-pulse': {
+          '0%, 100%': { opacity: '0.3', transform: 'scale(1)' },
+          '50%': { opacity: '0.6', transform: 'scale(1.02)' },
+        },
+        'text-glow': {
+          '0%, 100%': { textShadow: '0 0 20px rgba(34,211,238,0.3), 0 0 40px rgba(34,211,238,0.1)' },
+          '50%': { textShadow: '0 0 30px rgba(34,211,238,0.5), 0 0 60px rgba(34,211,238,0.2)' },
+        },
+        'border-glow': {
+          '0%, 100%': { borderColor: 'rgba(34,211,238,0.2)' },
+          '50%': { borderColor: 'rgba(34,211,238,0.5)' },
+        },
+        meteor: {
+          '0%': { transform: 'translateX(-100%) translateY(-100%) rotate(45deg)', opacity: '0' },
+          '5%': { opacity: '1' },
+          '15%': { transform: 'translateX(100vw) translateY(100vh) rotate(45deg)', opacity: '0' },
+          '100%': { transform: 'translateX(100vw) translateY(100vh) rotate(45deg)', opacity: '0' },
         },
       },
     },

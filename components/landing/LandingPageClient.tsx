@@ -2,12 +2,13 @@
 
 import { useState } from "react";
 import dynamic from "next/dynamic";
-import { SERVICE_REGISTRY } from "@/lib/service-registry";
 import { OrbitSolarSystem } from "@/components/OrbitSolarSystem";
 import { HeroSection } from "@/components/HeroSection";
 import { PricingSection } from "@/components/PricingSection";
+import { FeaturesShowcase } from "@/components/landing/FeaturesShowcase";
+import { StatsSection } from "@/components/landing/StatsSection";
+import { CTABanner } from "@/components/landing/CTABanner";
 import ErrorBoundary from "@/components/landing/ErrorBoundary";
-import { useLanguage } from "@/lib/i18n/LanguageContext";
 
 // Lazy load premium form for performance
 const PremiumAgentForm = dynamic(() => import("@/components/landing/PremiumAgentForm"), {
@@ -31,20 +32,17 @@ function SectionFallback({ label }: { label: string }) {
 
 export default function LandingPageClient() {
   const [showPremiumForm, setShowPremiumForm] = useState(false);
-  const { t } = useLanguage();
-  const enabledServices = SERVICE_REGISTRY.filter((s) => s.enabled);
-  const serviceStats = [
-    { value: String(enabledServices.length), label: t('stats.services') },
-    { value: "50K+", label: t('stats.creators') },
-    { value: "1M+", label: t('stats.generations') },
-    { value: "99.9%", label: t('stats.uptime') },
-  ];
 
   return (
     <div className="relative min-h-screen bg-[#050510] text-white overflow-hidden">
       {/* ── Hero section ─────────────────────────────────────── */}
       <ErrorBoundary fallback={<SectionFallback label="Hero" />}>
         <HeroSection onPremiumClick={() => setShowPremiumForm(true)} />
+      </ErrorBoundary>
+
+      {/* ── Stats bar — animated counters ────────────────────── */}
+      <ErrorBoundary fallback={<SectionFallback label="Stats" />}>
+        <StatsSection />
       </ErrorBoundary>
 
       {/* ── Orbit Solar System — THE hero visual ────────────── */}
@@ -54,29 +52,34 @@ export default function LandingPageClient() {
         </section>
       </ErrorBoundary>
 
-      {/* ── Stats bar ────────────────────────────────────────── */}
-      <section className="relative pb-20 px-4 sm:px-6">
-        <div className="mx-auto max-w-4xl grid grid-cols-2 md:grid-cols-4 gap-6 border-t border-white/10 pt-8">
-          {serviceStats.map((stat) => (
-            <div key={stat.label} className="text-center space-y-2">
-              <div className="text-2xl md:text-3xl font-bold text-cyan-300">{stat.value}</div>
-              <div className="text-xs text-gray-400 uppercase tracking-widest">{stat.label}</div>
-            </div>
-          ))}
-        </div>
-      </section>
+      {/* ── Features Showcase — capabilities grid ────────────── */}
+      <ErrorBoundary fallback={<SectionFallback label="Features" />}>
+        <FeaturesShowcase />
+      </ErrorBoundary>
 
       {/* ── Pricing Section ──────────────────────────────────── */}
       <ErrorBoundary fallback={<SectionFallback label="Pricing" />}>
         <PricingSection />
       </ErrorBoundary>
 
+      {/* ── CTA Banner — final call to action ────────────────── */}
+      <ErrorBoundary fallback={<SectionFallback label="CTA" />}>
+        <CTABanner />
+      </ErrorBoundary>
+
       {/* ── Footer ───────────────────────────────────────────── */}
-      <footer className="border-t border-white/10 py-8 px-4 sm:px-6 text-center space-y-2">
-        <p className="text-sm text-gray-500">© {new Date().getFullYear()} MyAvatar.ge — All rights reserved</p>
-        <p className="text-[10px] text-gray-600 font-mono">
-          BUILD v3.2.0 | {process.env.NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA?.slice(0, 7) || 'dev'} | {new Date().toISOString().slice(0, 10)} | {process.env.NEXT_PUBLIC_VERCEL_ENV || process.env.NODE_ENV || 'local'}
-        </p>
+      <footer className="relative border-t border-white/[0.06] py-10 px-4 sm:px-6">
+        <div className="mx-auto max-w-6xl flex flex-col md:flex-row items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center">
+              <span className="text-white text-xs font-bold">M</span>
+            </div>
+            <span className="text-sm text-gray-400">© {new Date().getFullYear()} MyAvatar.ge — All rights reserved</span>
+          </div>
+          <p className="text-[10px] text-gray-600 font-mono">
+            BUILD v3.3.0 | {process.env.NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA?.slice(0, 7) || 'dev'} | {new Date().toISOString().slice(0, 10)} | {process.env.NEXT_PUBLIC_VERCEL_ENV || process.env.NODE_ENV || 'local'}
+          </p>
+        </div>
       </footer>
 
       <ErrorBoundary fallback={null}>
