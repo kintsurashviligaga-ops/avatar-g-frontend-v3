@@ -12,7 +12,7 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
     <input
       ref={ref}
       className={cn(
-        'ag-input',
+        'ag-input ag-glass ag-hover-lift focus-visible:ring-2 focus-visible:ring-app-neon/70 focus-visible:ring-offset-2 focus-visible:ring-offset-app-bg',
         hasError && 'border-app-danger/60 focus:border-app-danger/70 focus:shadow-[0_0_0_2px_rgba(239,68,68,0.15)]',
         className
       )}

@@ -5,8 +5,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   MessageCircle, X, Send, Mic, MicOff, Bot,
   Paperclip, Trash2, Copy, Check, StopCircle, ChevronDown,
+  Camera, Sparkles 
 } from "lucide-react";
-
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 interface AgentInfo {
@@ -199,7 +199,15 @@ export default function GlobalChatbot() {
                   <span className="text-sm font-medium text-white truncate max-w-[160px]">{activeAgent.name}</span>
                   <ChevronDown className={`w-4 h-4 text-white/50 transition-transform ${showAgentPicker ? "rotate-180" : ""}`} />
                 </button>
-                <button onClick={clearHistory} className="p-2 rounded-lg hover:bg-white/10 text-white/50 hover:text-red-400 transition-colors" title="Clear history"><Trash2 className="w-4 h-4" /></button>
+                <div className="flex items-center gap-1">
+                  <button onClick={() => navigator.mediaDevices.getUserMedia({ video: true }).catch(() => alert('Access denied'))} className="p-2 rounded-lg hover:bg-white/10 text-white/50 hover:text-cyan-400 transition-colors" title="Camera Access">
+                    <Camera className="w-4 h-4" />
+                  </button>
+                  <button onClick={() => window.location.href = '/services/agent-g'} className="p-2 rounded-lg hover:bg-white/10 text-white/50 hover:text-cyan-400 transition-colors" title="Agent Service">
+                    <Sparkles className="w-4 h-4" />
+                  </button>
+                  <button onClick={clearHistory} className="p-2 rounded-lg hover:bg-white/10 text-white/50 hover:text-red-400 transition-colors" title="Clear history"><Trash2 className="w-4 h-4" /></button>
+                </div>
               </div>
             </div>
             {/* Agent Picker */}

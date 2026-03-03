@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
+import { Camera, Sparkles } from 'lucide-react'
 
 interface ServiceChatWidgetProps {
   serviceName: string
@@ -84,7 +85,23 @@ export default function ServiceChatWidget({ serviceName, agentId, locale = 'ka' 
               <span className="text-cyan-400">◈</span>
               <span className="text-sm font-semibold text-white">{label.agent} — {serviceName}</span>
             </div>
-            <button onClick={() => setOpen(false)} className="text-white/40 hover:text-white text-lg">✕</button>
+            <div className="flex items-center gap-3">
+              <button 
+                onClick={() => navigator.mediaDevices.getUserMedia({ video: true }).catch(() => alert('Access denied'))}
+                className="text-white/40 hover:text-cyan-400 transition-colors"
+                title="Camera Access"
+              >
+                <Camera size={16} />
+              </button>
+              <button 
+                 onClick={() => window.open('/services/agent-g', '_blank')}
+                 className="text-white/40 hover:text-cyan-400 transition-colors"
+                 title="Agent G Service"
+              >
+                <Sparkles size={16} />
+              </button>
+              <button onClick={() => setOpen(false)} className="text-white/40 hover:text-white text-lg leading-none">✕</button>
+            </div>
           </div>
 
           {/* Messages */}

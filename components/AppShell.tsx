@@ -1,6 +1,8 @@
 import { GlobalNavbar } from './GlobalNavbar'
 import { ClientErrorBoundary } from './ClientErrorBoundary'
-import CinematicSpaceBackground from './CinematicSpaceBackground'
+import dynamic from 'next/dynamic'
+
+const SolarSystemBackground = dynamic(() => import('./SolarSystemBackground'), { ssr: false })
 
 /**
  * AppShell — Root enforcement component.
@@ -13,9 +15,9 @@ import CinematicSpaceBackground from './CinematicSpaceBackground'
 export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="relative min-h-screen flex flex-col text-white isolation-auto">
-      <CinematicSpaceBackground />
+      <SolarSystemBackground />
       <GlobalNavbar />
-      <main className="relative flex-1 pt-16 z-10 w-full">
+      <main className="relative flex-1 pt-16 md:pt-24 z-10 w-full">
         <ClientErrorBoundary>
           {children}
         </ClientErrorBoundary>

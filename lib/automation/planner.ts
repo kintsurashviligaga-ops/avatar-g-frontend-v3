@@ -49,18 +49,6 @@ const AGENT_MAP: Record<string, string> = {
   'agent-g': 'executive-agent-g',
 };
 
-// Provider routing: which provider for which task type
-const PROVIDER_MAP: Record<string, 'gpt' | 'replicate' | 'claude'> = {
-  'image-agent': 'replicate',
-  'video-agent': 'replicate',
-  'audio-agent': 'replicate',
-  'content-agent': 'gpt',
-  'research-agent': 'gpt',
-  'automation-agent': 'gpt',
-  'marketplace-agent': 'gpt',
-  'executive-agent-g': 'gpt',
-};
-
 // Credit costs per action type
 const CREDIT_COSTS: Record<string, number> = {
   'generate_image': 5,

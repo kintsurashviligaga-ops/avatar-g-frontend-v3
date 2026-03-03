@@ -115,6 +115,7 @@ export function HeroSection({ onPremiumClick }: HeroSectionProps) {
           </Link>
           <Link
             href={'/' + (language || 'ka') + '/services'}
+            onClick={(e) => { if (onPremiumClick) { e.preventDefault(); onPremiumClick(); } }}
             className="inline-flex items-center justify-center gap-2 px-8 py-3.5 rounded-xl border border-white/15 text-white/80 font-medium text-sm hover:bg-white/[0.06] transition-all backdrop-blur-sm"
           >
             {text.secondary}

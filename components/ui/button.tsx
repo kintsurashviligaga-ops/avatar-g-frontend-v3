@@ -5,22 +5,22 @@ import { cva, type VariantProps } from 'class-variance-authority';
 import { cn } from '@/lib/utils';
 
 const buttonVariants = cva(
-  'inline-flex items-center justify-center rounded-lg text-base font-semibold transition-all duration-200 disabled:pointer-events-none disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent/60 focus-visible:ring-offset-2 focus-visible:ring-offset-app-bg',
+  'inline-flex items-center justify-center rounded-xl text-base font-semibold transition-all duration-200 disabled:pointer-events-none disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-neon/70 focus-visible:ring-offset-2 focus-visible:ring-offset-app-bg ag-glass ag-hover-lift',
   {
     variants: {
       variant: {
         default:
-          'border border-app-border/40 bg-app-surface/80 text-app-text hover:bg-app-elevated/90 active:scale-[0.98]',
+          'border border-app-border/30 bg-app-surface/80 text-app-text hover:bg-app-elevated/90 active:scale-[0.98] ag-border-glow',
         primary:
-          'bg-gradient-to-r from-[#7c5cfc] via-[#6366f1] to-[#4f46e5] text-white shadow-lg hover:brightness-110 active:scale-[0.98]',
+          'bg-gradient-to-r from-cyan-400 via-indigo-400 to-purple-500 text-white shadow-lg hover:brightness-110 active:scale-[0.98] ag-border-glow',
         secondary:
-          'border border-app-border/40 bg-app-surface/80 text-app-text hover:bg-app-elevated/90 active:scale-[0.98]',
+          'border border-app-border/30 bg-app-surface/80 text-app-text hover:bg-app-elevated/90 active:scale-[0.98] ag-border-glow',
         outline:
-          'border border-white/20 bg-transparent text-app-text hover:bg-app-surface/70 active:scale-[0.98]',
+          'border border-white/20 bg-transparent text-app-text hover:bg-app-surface/70 active:scale-[0.98] ag-border-glow',
         ghost:
-          'text-app-muted hover:text-app-text hover:bg-app-surface/70 active:scale-[0.98]',
+          'text-app-muted hover:text-app-text hover:bg-app-surface/70 active:scale-[0.98] ag-border-glow',
         glow:
-          'bg-gradient-to-r from-[#7c5cfc] via-[#6366f1] to-[#4f46e5] text-white shadow-lg hover:brightness-110 active:scale-[0.98] shadow-[0_0_20px_rgba(124,92,252,0.3)]',
+          'bg-gradient-to-r from-cyan-400 via-indigo-400 to-purple-500 text-white shadow-lg hover:brightness-110 active:scale-[0.98] shadow-[0_0_20px_rgba(124,92,252,0.3)] ag-border-glow',
         danger:
           'bg-app-danger/20 text-red-100 border border-app-danger/40 hover:bg-app-danger/30 active:scale-[0.98]',
         destructive:

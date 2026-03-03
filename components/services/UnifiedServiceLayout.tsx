@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback, type DragEvent, type ChangeEvent } from 'react';
-import { useLanguage } from '@/lib/i18n/LanguageContext';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -138,7 +137,6 @@ export default function UnifiedServiceLayout({
   onAuthRequired,
   isAuthenticated = false,
 }: UnifiedServiceLayoutProps) {
-  const { t: globalT } = useLanguage();
   const t = T[locale] ?? T['en']!;
   const quickActions = QUICK_ACTIONS[serviceId] ?? QUICK_ACTIONS['agent-g']!;
 
@@ -168,12 +166,11 @@ export default function UnifiedServiceLayout({
     const msg = (text ?? input).trim();
     if (!msg || sending) return;
 
-    // Auth check bypassed for testing
-    // if (!isAuthenticated) {
-    //   setShowLoginModal(true);
-    //   onAuthRequired?.();
-    //   return;
-    // }
+    if (!isAuthenticated) {
+      setShowLoginModal(true);
+      onAuthRequired?.();
+      return;
+    }
 
     setInput('');
     const userMessage: Message = {
