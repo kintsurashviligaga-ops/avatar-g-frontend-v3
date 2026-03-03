@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import { OrbitSolarSystem } from "@/components/OrbitSolarSystem";
 import { HeroSection } from "@/components/HeroSection";
 import { PricingSection } from "@/components/PricingSection";
+import { WorkflowCinematicSection } from "@/components/WorkflowCinematicSection";
 import { FeaturesShowcase } from "@/components/landing/FeaturesShowcase";
 import { StatsSection } from "@/components/landing/StatsSection";
 import { CTABanner } from "@/components/landing/CTABanner";
@@ -60,6 +61,10 @@ export default function LandingPageClient() {
       {/* ── Pricing Section ──────────────────────────────────── */}
       <ErrorBoundary fallback={<SectionFallback label="Pricing" />}>
         <PricingSection />
+      </ErrorBoundary>
+
+      <ErrorBoundary fallback={<SectionFallback label="Cinematic" />}>
+        <WorkflowCinematicSection />
       </ErrorBoundary>
 
       {/* ── CTA Banner — final call to action ────────────────── */}

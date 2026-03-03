@@ -206,7 +206,7 @@ export function HeroSection({ onPremiumClick }: HeroSectionProps) {
         </motion.div>
 
         <motion.p
-          className="text-sm md:text-base font-medium tracking-[0.25em] uppercase text-cyan-400/80"
+          className="hidden"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, delay: 0.2 }}
@@ -221,13 +221,13 @@ export function HeroSection({ onPremiumClick }: HeroSectionProps) {
           transition={{ duration: 0.8, delay: 0.3 }}
         >
           <span className="block text-white drop-shadow-[0_0_30px_rgba(255,255,255,0.1)]">
-            {t('hero.title')}
+            შენი AI ქარხანა
           </span>
           <span
-            className="block mt-2 bg-gradient-to-r from-cyan-400 via-blue-400 to-purple-500 bg-clip-text text-transparent"
+            className="block mt-2 bg-gradient-to-r from-cyan-400 via-blue-400 to-purple-500 bg-clip-text text-transparent text-3xl sm:text-4xl md:text-5xl tracking-normal"
             style={{ backgroundSize: '200% auto', animation: 'gradient-x 5s ease infinite' }}
           >
-            {t('hero.titleAccent')}
+            ყველაფერი ერთ სივრცეში.
           </span>
         </motion.h1>
 

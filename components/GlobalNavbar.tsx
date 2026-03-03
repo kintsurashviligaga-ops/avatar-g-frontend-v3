@@ -56,16 +56,23 @@ export function GlobalNavbar() {
       ">
         {/* Logo */}
         <Link href={localeHref('/')} className="flex items-center gap-3 flex-shrink-0 group" aria-label="MyAvatar.ge home">
-          <div className="relative h-14 w-14 sm:h-[60px] sm:w-[60px] md:h-[68px] md:w-[68px] flex-shrink-0">
+          <div className="relative h-11 w-11 md:h-14 md:w-14 flex-shrink-0 transition-transform duration-500 md:group-hover:scale-105">
             <Image
               src="/brand/logo.png"
               alt="Avatar G logo"
               fill
-              sizes="68px"
+              sizes="(min-width: 768px) 56px, 44px"
               priority
-              className="object-contain drop-shadow-[0_0_18px_rgba(6,182,212,0.4)]"
+              className="object-contain drop-shadow-[0_0_12px_rgba(6,182,212,0.25)] animate-pulse-slow"
+              style={{ animation: 'breath-glow 5s ease-in-out infinite' }}
             />
           </div>
+          <style jsx>{`
+            @keyframes breath-glow {
+              0%, 100% { filter: drop-shadow(0 0 10px rgba(6,182,212,0.15)); }
+              50% { filter: drop-shadow(0 0 25px rgba(6,182,212,0.35)); }
+            }
+          `}</style>
           <span className="hidden sm:block font-bold text-[17px] text-white tracking-tight">
             MyAvatar<span className="text-white/35">.ge</span>
           </span>
