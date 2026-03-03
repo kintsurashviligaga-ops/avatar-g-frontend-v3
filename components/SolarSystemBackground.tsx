@@ -116,7 +116,7 @@ function AsteroidBelt({ count = 400, radius = 42 }) {
   });
 
   return (
-    <instancedMesh ref={asteroidRef} args={[undefined, undefined, count]}>
+    <instancedMesh ref={asteroidRef} args={[null as any, null as any, count]}>
       <dodecahedronGeometry args={[1, 0]} />
       <meshStandardMaterial color="#888888" roughness={0.8} />
     </instancedMesh>

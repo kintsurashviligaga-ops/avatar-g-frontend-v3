@@ -15,7 +15,9 @@ const SolarSystemBackground = dynamic(() => import('./SolarSystemBackground'), {
 export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="relative min-h-screen flex flex-col text-white isolation-auto">
-      <SolarSystemBackground />
+      <ClientErrorBoundary>
+        <SolarSystemBackground />
+      </ClientErrorBoundary>
       <GlobalNavbar />
       <main className="relative flex-1 pt-16 md:pt-24 z-10 w-full">
         <ClientErrorBoundary>
