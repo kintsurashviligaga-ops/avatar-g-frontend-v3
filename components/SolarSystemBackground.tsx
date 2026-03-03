@@ -4,7 +4,6 @@ import React, { useRef, useMemo, useState, useEffect } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { OrbitControls, Stars } from '@react-three/drei';
 import * as THREE from 'three';
-import { EffectComposer, Bloom, Vignette, Noise } from '@react-three/postprocessing';
 
 // Planet Data
 const PLANETS = [
@@ -148,13 +147,6 @@ function SceneContent() {
       {!isLowPerf && <AsteroidBelt />}
       
       <Stars radius={300} depth={50} count={isLowPerf ? 1000 : 5000} factor={4} saturation={0} fade speed={1} />
-      
-      {/* Post Processing */}
-      <EffectComposer>
-        <Bloom luminanceThreshold={0.2} mipmapBlur intensity={1.5} radius={0.5} />
-        <Noise opacity={0.05} />
-        <Vignette eskil={false} offset={0.1} darkness={1.1} />
-      </EffectComposer>
       
       <OrbitControls 
         enableZoom={false} 
