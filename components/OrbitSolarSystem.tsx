@@ -24,7 +24,6 @@ const ORBIT_SERVICES = [
 ]
 
 export function OrbitSolarSystem() {
-  const [isHovered, setIsHovered] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
 
   return (
@@ -66,7 +65,8 @@ export function OrbitSolarSystem() {
                 key={service.id}
                 className="absolute top-1/2 left-1/2 -ml-6 -mt-6 md:-ml-7 md:-mt-7"
                 style={{
-                  transform: \otate(\deg) translateX(\px) rotate(-\deg)\,
+                  transform: \
+otate(\deg) translateX(\px) rotate(-\deg)\,
                 }}
               >
                 {/* Counter-rotate to keep icons upright relative to the screen */}
@@ -77,8 +77,8 @@ export function OrbitSolarSystem() {
                   <a
                     href={\/ka/services/\\}
                     className="group relative flex w-12 h-12 md:w-14 md:h-14 items-center justify-center rounded-full bg-[#11111a] border border-white/10 hover:border-cyan-400/50 hover:bg-[#1a1a2e] transition-all shadow-xl backdrop-blur-sm z-30"
-                    onMouseEnter={() => { setIsHovered(true); setActiveId(service.id); }}
-                    onMouseLeave={() => { setIsHovered(false); setActiveId(null); }}
+                    onMouseEnter={() => { setActiveId(service.id); }}
+                    onMouseLeave={() => { setActiveId(null); }}
                   >
                     <service.icon className="w-5 h-5 md:w-6 md:h-6 text-white/70 group-hover:text-cyan-300 transition-colors" />
                     
