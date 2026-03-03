@@ -894,7 +894,16 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
   const [language, setLanguageState] = useState<Language>("ka");
 
   useEffect(() => {
-    // Priority: cookie > localStorage > browser language
+    // Priority: URL pathname locale > cookie > localStorage > browser language
+    const pathSegments = window.location.pathname.split('/').filter(Boolean);
+    const urlLocale = pathSegments[0] as Language | undefined;
+    if (urlLocale && ["ka", "en", "ru"].includes(urlLocale)) {
+      setLanguageState(urlLocale);
+      localStorage.setItem("avatar-g-language", urlLocale);
+      document.cookie = 'NEXT_LOCALE=' + urlLocale + '; path=/; max-age=31536000; SameSite=Lax';
+      return;
+    }
+
     const cookieLocale = document.cookie
       .split(';')
       .find((c) => c.trim().startsWith('NEXT_LOCALE='))

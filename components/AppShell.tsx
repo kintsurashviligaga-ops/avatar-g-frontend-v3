@@ -1,6 +1,6 @@
 import { GlobalNavbar } from './GlobalNavbar'
 import { ClientErrorBoundary } from './ClientErrorBoundary'
-import CosmicSingularityBackground from './CosmicSingularityBackground'
+import CinematicSpaceBackground from './CinematicSpaceBackground'
 
 /**
  * AppShell — Root enforcement component.
@@ -13,7 +13,7 @@ import CosmicSingularityBackground from './CosmicSingularityBackground'
 export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="relative min-h-screen flex flex-col text-white isolation-auto">
-      <CosmicSingularityBackground />
+      <CinematicSpaceBackground />
       <GlobalNavbar />
       <main className="relative flex-1 pt-16 z-10 w-full">
         <ClientErrorBoundary>

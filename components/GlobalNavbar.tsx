@@ -28,92 +28,82 @@ export function GlobalNavbar() {
   const [open, setOpen] = useState(false)
   const { language: locale, setLanguage, t } = useLanguage()
 
-  // Extract current path without locale prefix for navigation
   const pathWithoutLocale = pathname.replace(/^\/(ka|en|ru)/, '') || '/'
 
   const switchLocale = (code: string) => {
     setLanguage(code as 'ka' | 'en' | 'ru')
-    // Actually navigate to the new locale URL
-    router.push(`/${code}${pathWithoutLocale}`)
+    router.push('/' + code + pathWithoutLocale)
   }
 
-  // Build locale-aware href
-  const localeHref = (path: string) => `/${locale}${path}`
+  const localeHref = (path: string) => '/' + locale + path
 
   const isActive = (path: string) => {
-    const full = `/${locale}${path}`
+    const full = '/' + locale + path
     return pathname === full || pathname.startsWith(full + '/')
   }
 
   return (
     <>
-      <nav className="
-        fixed top-0 inset-x-0 z-50 h-16
-        flex items-center justify-between
-        px-4 sm:px-6 lg:px-10
-        bg-[#050510]/95 backdrop-blur-xl
-        border-b border-white/[0.06]
-      ">
-        {/* Logo */}
+      <nav className="fixed top-0 inset-x-0 z-50 h-16 flex items-center justify-between px-4 sm:px-6 lg:px-10 bg-white/[0.03] backdrop-blur-2xl border-b border-white/[0.08]">
+
+        {/* Logo — 48px desktop, 34px mobile */}
         <Link href={localeHref('/')} className="flex items-center gap-3 flex-shrink-0 group" aria-label="MyAvatar.ge home">
-          <div className="relative h-11 w-11 md:h-14 md:w-14 flex-shrink-0 transition-transform duration-500 md:group-hover:scale-105">
+          <div className="relative w-[34px] h-[34px] md:w-12 md:h-12 flex-shrink-0">
             <Image
               src="/brand/logo.png"
               alt="Avatar G logo"
               fill
-              sizes="(min-width: 768px) 56px, 44px"
+              sizes="(min-width:768px) 48px, 34px"
               priority
-              className="object-contain drop-shadow-[0_0_12px_rgba(6,182,212,0.25)] animate-pulse-slow"
-              style={{ animation: 'breath-glow 5s ease-in-out infinite' }}
+              className="object-contain drop-shadow-[0_0_8px_rgba(34,211,238,0.2)]"
             />
           </div>
-          <style jsx>{`
-            @keyframes breath-glow {
-              0%, 100% { filter: drop-shadow(0 0 10px rgba(6,182,212,0.15)); }
-              50% { filter: drop-shadow(0 0 25px rgba(6,182,212,0.35)); }
-            }
-          `}</style>
-          <span className="hidden sm:block font-bold text-[17px] text-white tracking-tight">
-            MyAvatar<span className="text-white/35">.ge</span>
+          <span className="hidden sm:block font-semibold text-[16px] text-white tracking-tight">
+            {'MyAvatar'}
+            <span className="text-white/30">{'.ge'}</span>
           </span>
         </Link>
 
         {/* Desktop links */}
         <div className="hidden lg:flex items-center gap-0.5">
-          {NAV_ITEMS.map(({ path, key }) => (
-            <Link
-              key={path}
-              href={localeHref(path)}
-              className={`
-                px-3 py-1.5 text-[13px] font-medium rounded-lg transition-all
-                ${isActive(path)
-                  ? 'text-white bg-white/[0.09]'
-                  : 'text-white/50 hover:text-white hover:bg-white/[0.06]'}
-              `}
-            >
-              {t(key)}
-            </Link>
-          ))}
+          {NAV_ITEMS.map(function(item) {
+            return (
+              <Link
+                key={item.path}
+                href={localeHref(item.path)}
+                className={
+                  'px-3 py-1.5 text-[13px] font-medium rounded-lg transition-all ' +
+                  (isActive(item.path)
+                    ? 'text-white bg-white/[0.09]'
+                    : 'text-white/50 hover:text-white hover:bg-white/[0.06]')
+                }
+              >
+                {t(item.key)}
+              </Link>
+            )
+          })}
         </div>
 
         {/* Right section */}
         <div className="flex items-center gap-2">
           {/* Language switcher */}
           <div className="flex items-center gap-0.5 bg-white/[0.04] border border-white/[0.08] rounded-full px-1 py-0.5">
-            {LOCALES.map(({ code, label }) => (
-              <button
-                key={code}
-                onClick={() => switchLocale(code)}
-                className={`
-                  text-[11px] font-semibold px-2 py-1 rounded-full transition-all
-                  ${locale === code
-                    ? 'bg-white text-[#050510]'
-                    : 'text-white/40 hover:text-white'}
-                `}
-              >
-                {label}
-              </button>
-            ))}
+            {LOCALES.map(function(loc) {
+              return (
+                <button
+                  key={loc.code}
+                  onClick={function() { switchLocale(loc.code) }}
+                  className={
+                    'text-[11px] font-semibold px-2 py-1 rounded-full transition-all ' +
+                    (locale === loc.code
+                      ? 'bg-white text-[#050510]'
+                      : 'text-white/40 hover:text-white')
+                  }
+                >
+                  {loc.label}
+                </button>
+              )
+            })}
           </div>
 
           {/* Auth — desktop */}
@@ -130,7 +120,7 @@ export function GlobalNavbar() {
 
           {/* Mobile hamburger */}
           <button
-            onClick={() => setOpen(v => !v)}
+            onClick={function() { setOpen(function(v) { return !v }) }}
             className="lg:hidden p-2 text-white/50 hover:text-white transition-colors"
             aria-label={open ? 'Close menu' : 'Open menu'}
           >
@@ -146,34 +136,30 @@ export function GlobalNavbar() {
 
       {/* Mobile drawer */}
       {open && (
-        <div className="
-          fixed top-16 inset-x-0 z-40
-          bg-[#050510]/98 backdrop-blur-xl
-          border-b border-white/[0.06]
-          px-4 py-4 space-y-1
-          lg:hidden
-        ">
-          {NAV_ITEMS.map(({ path, key }) => (
-            <Link
-              key={path}
-              href={localeHref(path)}
-              onClick={() => setOpen(false)}
-              className={`
-                block px-3 py-3 text-sm rounded-xl transition-all
-                ${isActive(path)
-                  ? 'text-white bg-white/[0.09]'
-                  : 'text-white/60 hover:text-white hover:bg-white/[0.06]'}
-              `}
-            >
-              {t(key)}
-            </Link>
-          ))}
+        <div className="fixed top-16 inset-x-0 z-40 bg-black/90 backdrop-blur-2xl border-b border-white/[0.08] px-4 py-4 space-y-1 lg:hidden">
+          {NAV_ITEMS.map(function(item) {
+            return (
+              <Link
+                key={item.path}
+                href={localeHref(item.path)}
+                onClick={function() { setOpen(false) }}
+                className={
+                  'block px-3 py-3 text-sm rounded-xl transition-all ' +
+                  (isActive(item.path)
+                    ? 'text-white bg-white/[0.09]'
+                    : 'text-white/60 hover:text-white hover:bg-white/[0.06]')
+                }
+              >
+                {t(item.key)}
+              </Link>
+            )
+          })}
           <div className="border-t border-white/[0.06] pt-3 mt-1 grid grid-cols-2 gap-2">
-            <Link href={localeHref('/login')} onClick={() => setOpen(false)}
+            <Link href={localeHref('/login')} onClick={function() { setOpen(false) }}
               className="text-center text-sm text-white/60 border border-white/[0.1] py-2.5 rounded-xl hover:bg-white/[0.05]">
               {t('nav.login')}
             </Link>
-            <Link href={localeHref('/signup')} onClick={() => setOpen(false)}
+            <Link href={localeHref('/signup')} onClick={function() { setOpen(false) }}
               className="text-center text-sm font-semibold bg-white text-[#050510] py-2.5 rounded-xl hover:bg-white/90">
               {t('nav.signup')}
             </Link>
