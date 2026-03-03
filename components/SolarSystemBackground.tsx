@@ -114,28 +114,43 @@ function AsteroidBelt({ count = 400, radius = 42 }) {
     asteroidRef.current.instanceMatrix.needsUpdate = true;
   });
 
+return null;
+  /*
   return (
-    // @ts-expect-error - React-Three-Fiber types mismatch for instancedMesh args
-    <instancedMesh ref={asteroidRef} args={[null, null, count]}>
+    <instancedMesh ref={asteroidRef} args={[undefined as any, undefined as any, count]}>
       <dodecahedronGeometry args={[1, 0]} />
-      <meshStandardMaterial color="#888888" roughness={0.8} />
+      <meshStandardMaterial color="#888888" roughness={0.8} /> 
     </instancedMesh>
   );
+  */
 }
 
 function SceneContent() {
+  const [isLowPerf, setIsLowPerf] = useState(false);
+
+  useEffect(() => {
+    // Basic perf detection logic
+    const pixelRatio = window.devicePixelRatio;
+    if (pixelRatio < 1 || /Mobi|Android/i.test(navigator.userAgent)) {
+      setIsLowPerf(true);
+    }
+  }, []);
+
   return (
     <>
       <color attach="background" args={['#050510']} />
       <ambientLight intensity={0.1} />
-
+      
       <Sun />
-
+      
       {PLANETS.map((planet) => (
-        <Planet key={planet.name} planet={planet} isLowPerf={false} />      
+        <Planet key={planet.name} planet={planet} isLowPerf={isLowPerf} />
       ))}
-
-      <Stars radius={300} depth={50} count={2000} factor={4} saturation={0} fade speed={1} />
+      
+      {!isLowPerf && <AsteroidBelt />}
+      
+      <Stars key={isLowPerf ? 'low' : 'high'} radius={300} depth={50} count={isLowPerf ? 1000 : 5000} factor={4} saturation={0} fade speed={1} />
+      
       <OrbitControls 
         enableZoom={false} 
         enablePan={false} 
