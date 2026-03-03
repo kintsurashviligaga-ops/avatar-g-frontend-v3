@@ -1,26 +1,26 @@
-﻿'use client'
+'use client'
 
 import React, { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { Brain, Sparkles, Video, Music, Image as ImageIcon, MessageSquare, Bot, Cpu, Monitor, Zap, LayoutTemplate, PenTool, Database, Users, Mic, Layers } from 'lucide-react'
 
 const ORBIT_SERVICES = [
-  { id: 'video', label: 'ვიდეო სტუდია', icon: Video, color: '#3b82f6', slug: 'video-studio' },
-  { id: 'music', label: 'მუსიკის სტუდია', icon: Music, color: '#8b5cf6', slug: 'music-studio' },
-  { id: 'photo', label: 'ფოტო სტუდია', icon: ImageIcon, color: '#ec4899', slug: 'photo-studio' },
-  { id: 'image', label: 'ვიზუალების ექმნა', icon: PenTool, color: '#f43f5e', slug: 'image-creator' },
-  { id: 'social', label: 'სოც. მედია', icon: Users, color: '#f59e0b', slug: 'social-media' },
-  { id: 'voice', label: 'ხმის ლაბორატორია', icon: Mic, color: '#10b981', slug: 'voice-lab' },
-  { id: 'business', label: 'ბიზნეს აგენტი', icon: Bot, color: '#06b6d4', slug: 'business-agent' },
-  { id: 'text', label: 'ტექსტის გენერაცია', icon: MessageSquare, color: '#6366f1', slug: 'text-intelligence' },
-  { id: 'automation', label: 'ავტომატიზაცია', icon: Zap, color: '#eab308', slug: 'workflow-builder' },
-  { id: 'layout', label: 'დიზაინი', icon: LayoutTemplate, color: '#f97316', slug: 'image-architect' },
-  { id: 'media', label: 'მედია პროდუქცია', icon: Monitor, color: '#84cc16', slug: 'media-production' },
-  { id: 'data', label: 'მონაცემები', icon: Database, color: '#0ea5e9', slug: 'prompt-builder' },
-  { id: 'logic', label: 'AI ლოგიკა', icon: Cpu, color: '#d946ef', slug: 'visual-intelligence' },
-  { id: 'game', label: 'ამაების ექმნა', icon: Layers, color: '#14b8a6', slug: 'game-creator' },
+  { id: 'video', label: '????? ??????', icon: Video, color: '#3b82f6', slug: 'video-studio' },
+  { id: 'music', label: '??????? ??????', icon: Music, color: '#8b5cf6', slug: 'music-studio' },
+  { id: 'photo', label: '???? ??????', icon: ImageIcon, color: '#ec4899', slug: 'photo-studio' },
+  { id: 'image', label: '?????????? ?????', icon: PenTool, color: '#f43f5e', slug: 'image-creator' },
+  { id: 'social', label: '???. ?????', icon: Users, color: '#f59e0b', slug: 'social-media' },
+  { id: 'voice', label: '???? ???????????', icon: Mic, color: '#10b981', slug: 'voice-lab' },
+  { id: 'business', label: '?????? ??????', icon: Bot, color: '#06b6d4', slug: 'business-agent' },
+  { id: 'text', label: '??????? ?????????', icon: MessageSquare, color: '#6366f1', slug: 'text-intelligence' },
+  { id: 'automation', label: '?????????????', icon: Zap, color: '#eab308', slug: 'workflow-builder' },
+  { id: 'layout', label: '???????', icon: LayoutTemplate, color: '#f97316', slug: 'image-architect' },
+  { id: 'media', label: '????? ?????????', icon: Monitor, color: '#84cc16', slug: 'media-production' },
+  { id: 'data', label: '??????????', icon: Database, color: '#0ea5e9', slug: 'prompt-builder' },
+  { id: 'logic', label: 'AI ??????', icon: Cpu, color: '#d946ef', slug: 'visual-intelligence' },
+  { id: 'game', label: '??????? ?????', icon: Layers, color: '#14b8a6', slug: 'game-creator' },
   { id: 'core', label: 'Core AI', icon: Brain, color: '#64748b', slug: 'avatar-builder' },
-  { id: 'special', label: 'სპეციალური', icon: Sparkles, color: '#f43f5e', slug: 'social-media-manager' },
+  { id: 'special', label: '??????????', icon: Sparkles, color: '#f43f5e', slug: 'social-media-manager' },
 ]
 
 export function OrbitSolarSystem() {
@@ -40,7 +40,7 @@ export function OrbitSolarSystem() {
           </div>
           <div className="mt-4 text-center">
             <h3 className="text-white font-bold text-lg md:text-xl tracking-tight">Core AI</h3>
-            <p className="text-cyan-400/80 text-xs md:text-sm">ენი ციფრული იდენტობა</p>
+            <p className="text-cyan-400/80 text-xs md:text-sm">??? ??????? ????????</p>
           </div>
         </div>
 
@@ -65,7 +65,8 @@ export function OrbitSolarSystem() {
                 key={service.id}
                 className="absolute top-1/2 left-1/2 -ml-6 -mt-6 md:-ml-7 md:-mt-7"
                 style={{
-                  transform: \otate(\deg) translateX(\px) rotate(-\deg)\,
+                  transform: \
+otate(\deg) translateX(\px) rotate(-\deg)\,
                 }}
               >
                 {/* Counter-rotate to keep icons upright relative to the screen */}
@@ -95,3 +96,4 @@ export function OrbitSolarSystem() {
     </section>
   );
 }
+
