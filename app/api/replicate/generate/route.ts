@@ -10,18 +10,49 @@ const REPLICATE_MODELS: Record<string, string> = {
 
 type ReplicateType = 'image' | 'video' | 'music';
 
+function parseCandidates(...raw: Array<string | undefined>): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const value of raw) {
+    if (!value) continue;
+    const chunks = value
+      .split(',')
+      .map((item) => item.trim())
+      .filter(Boolean);
+    for (const chunk of chunks) {
+      if (seen.has(chunk)) continue;
+      seen.add(chunk);
+      out.push(chunk);
+    }
+  }
+  return out;
+}
+
+function resolveVersionCandidates(type: ReplicateType): string[] {
+  const defaults = REPLICATE_MODELS[type];
+  const envCommon = process.env.REPLICATE_VERSION_FALLBACKS;
+
+  if (type === 'image') {
+    return parseCandidates(process.env.REPLICATE_IMAGE_VERSIONS, process.env.REPLICATE_IMAGE_VERSION, envCommon, defaults);
+  }
+
+  if (type === 'video') {
+    return parseCandidates(process.env.REPLICATE_VIDEO_VERSIONS, process.env.REPLICATE_VIDEO_VERSION, envCommon, defaults);
+  }
+
+  return parseCandidates(process.env.REPLICATE_AUDIO_VERSIONS, process.env.REPLICATE_AUDIO_VERSION, process.env.REPLICATE_MUSIC_VERSIONS, process.env.REPLICATE_MUSIC_VERSION, envCommon, defaults);
+}
+
 async function createPrediction(type: ReplicateType, prompt: string) {
   const token = process.env.REPLICATE_API_TOKEN;
   if (!token) {
     throw new Error('REPLICATE_API_TOKEN not configured');
   }
 
-  const model = REPLICATE_MODELS[type];
-  if (!model) {
-    throw new Error(`Unknown type: ${type}`);
+  const versions = resolveVersionCandidates(type);
+  if (!versions.length) {
+    throw new Error(`No model versions configured for type: ${type}`);
   }
-
-  const [, version] = model.split(':');
 
   const inputMap: Record<ReplicateType, Record<string, unknown>> = {
     image: { prompt, width: 1024, height: 1024, num_outputs: 1 },
@@ -29,24 +60,38 @@ async function createPrediction(type: ReplicateType, prompt: string) {
     music: { prompt, duration: 8, output_format: 'mp3' },
   };
 
-  const res = await fetch('https://api.replicate.com/v1/predictions', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      version,
-      input: inputMap[type],
-    }),
-  });
+  let lastError = 'Unknown error';
+  for (const modelRef of versions) {
+    const version = modelRef.includes(':') ? modelRef.split(':')[1] : modelRef;
 
-  if (!res.ok) {
+    const res = await fetch('https://api.replicate.com/v1/predictions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        version,
+        input: inputMap[type],
+      }),
+    });
+
+    if (res.ok) {
+      const payload = await res.json() as { id: string; status: string; output?: unknown; urls?: { get: string } };
+      return { ...payload, selectedVersion: version };
+    }
+
     const err = await res.text();
-    throw new Error(`Replicate API error ${res.status}: ${err}`);
+    lastError = `Replicate API error ${res.status}: ${err}`;
+
+    if (res.status === 422 || res.status === 404) {
+      continue;
+    }
+
+    throw new Error(lastError);
   }
 
-  return res.json() as Promise<{ id: string; status: string; output?: unknown; urls?: { get: string } }>;
+  throw new Error(lastError);
 }
 
 async function getPrediction(id: string) {
@@ -98,6 +143,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       id: prediction.id,
       status: prediction.status,
+      version: prediction.selectedVersion,
       message: `${type} generation started. Poll with predictionId to check status.`,
     });
   } catch (err) {
