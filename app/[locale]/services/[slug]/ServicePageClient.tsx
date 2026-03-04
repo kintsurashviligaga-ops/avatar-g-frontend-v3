@@ -15,7 +15,7 @@ interface ServicePageClientProps {
 }
 
 export default function ServicePageClient(props: ServicePageClientProps) {
-  const demoMode = process.env.NEXT_PUBLIC_DEMO_MODE === 'true';
+  const demoMode = (process.env.NEXT_PUBLIC_DEMO_MODE ?? '').trim().toLowerCase() === 'true';
   const [isAuthenticated, setIsAuthenticated] = useState(demoMode);
 
   useEffect(() => {
