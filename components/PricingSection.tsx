@@ -13,8 +13,15 @@ const PLAN_ACCENTS = [
   { gradient: 'from-amber-400 to-orange-500', glow: 'rgba(245,158,11,0.25)', icon: Building },
 ]
 
+const PRICING_LABELS = {
+  en: { badge: 'Pricing', month: '/mo' },
+  ka: { badge: 'ფასები', month: '/თვე' },
+  ru: { badge: 'Тарифы', month: '/мес' },
+} as const
+
 export function PricingSection() {
   const { t, language: locale } = useLanguage()
+  const labels = PRICING_LABELS[locale as keyof typeof PRICING_LABELS] || PRICING_LABELS.ka
 
   return (
     <section id="pricing" className="relative py-24 px-4 sm:px-6 overflow-hidden">
@@ -33,7 +40,7 @@ export function PricingSection() {
         >
           <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-cyan-400/20 bg-cyan-400/[0.05] mb-5">
             <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
-            <span className="text-xs font-medium text-cyan-300 tracking-wider uppercase">Pricing</span>
+            <span className="text-xs font-medium text-cyan-300 tracking-wider uppercase">{labels.badge}</span>
           </div>
           <h2 className="text-3xl md:text-5xl font-bold text-white mb-4">
             {t('pricing.title')}{' '}
@@ -101,7 +108,7 @@ export function PricingSection() {
                     <span className={`text-4xl font-extrabold bg-gradient-to-br ${accent.gradient} bg-clip-text text-transparent`}>
                       ${plan.price}
                     </span>
-                    <span className="text-gray-500 text-sm font-medium">/mo</span>
+                    <span className="text-gray-500 text-sm font-medium">{labels.month}</span>
                   </div>
 
                   <div className="h-px bg-gradient-to-r from-transparent via-white/10 to-transparent mb-6" />

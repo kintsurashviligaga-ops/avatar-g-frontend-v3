@@ -5,6 +5,7 @@ import { useRef, MouseEvent } from 'react'
 import {
   Cpu, Wand2, Layers, Zap, Shield, Globe,
 } from 'lucide-react'
+import { useLanguage } from '@/lib/i18n/LanguageContext'
 
 const FEATURES = [
   {
@@ -51,6 +52,105 @@ const FEATURES = [
   },
 ]
 
+const FEATURES_COPY = {
+  en: {
+    badge: 'Platform Capabilities',
+    title: 'Everything You Need.',
+    titleAccent: "Nothing You Don't.",
+    subtitle: 'A unified AI platform designed for creators, agencies, and enterprises.',
+    cards: [
+      {
+        title: '16 AI Modules',
+        description: 'From video generation to music, photography, text — a full creative studio powered by AI.',
+      },
+      {
+        title: 'One-Click Workflows',
+        description: 'Chain modules into automated pipelines. Define once, run infinitely with Agent G orchestrating.',
+      },
+      {
+        title: 'Your Digital Avatar',
+        description: 'A persistent 3D identity that represents you across all platforms and creative outputs.',
+      },
+      {
+        title: 'Blazing Performance',
+        description: 'Edge-deployed infrastructure with 99.9% uptime. Optimized for real-time creative production.',
+      },
+      {
+        title: 'Enterprise Security',
+        description: 'SOC-2 aligned infrastructure with end-to-end encryption and granular access controls.',
+      },
+      {
+        title: 'Global & Localized',
+        description: 'Multi-language support with Georgian, English, and Russian — built for global creative teams.',
+      },
+    ],
+  },
+  ka: {
+    badge: 'პლატფორმის შესაძლებლობები',
+    title: 'ყველაფერი, რაც გჭირდება.',
+    titleAccent: 'არაფერი ზედმეტი.',
+    subtitle: 'ერთიანი AI პლატფორმა შემქმნელებისთვის, სააგენტოებისთვის და კომპანიებისთვის.',
+    cards: [
+      {
+        title: '16 AI მოდული',
+        description: 'ვიდეოდან მუსიკამდე, ფოტოდან ტექსტამდე — სრულფასოვანი AI შემოქმედებითი სტუდია.',
+      },
+      {
+        title: 'ერთი დაწკაპებით პროცესები',
+        description: 'შეუკარი მოდულები ავტომატიზებულ ჯაჭვში და გაუშვი უსასრულოდ Agent G-ით.',
+      },
+      {
+        title: 'შენი ციფრული ავატარი',
+        description: 'მდგრადი ციფრული იდენტობა, რომელიც შენს კონტენტსა და პლატფორმებს აერთიანებს.',
+      },
+      {
+        title: 'მაქსიმალური წარმადობა',
+        description: 'Edge ინფრასტრუქტურა 99.9% ხელმისაწვდომობით რეალურ დროში სამუშაოსთვის.',
+      },
+      {
+        title: 'Enterprise უსაფრთხოება',
+        description: 'დაშიფვრა ბოლომდე, წვდომების კონტროლი და ბიზნეს დონის უსაფრთხოების არქიტექტურა.',
+      },
+      {
+        title: 'გლობალური და ლოკალური',
+        description: 'ქართული, ინგლისური და რუსული ენის მხარდაჭერა საერთაშორისო გუნდებისთვის.',
+      },
+    ],
+  },
+  ru: {
+    badge: 'Возможности платформы',
+    title: 'Всё, что нужно.',
+    titleAccent: 'Ничего лишнего.',
+    subtitle: 'Единая AI-платформа для креаторов, агентств и компаний.',
+    cards: [
+      {
+        title: '16 AI-модулей',
+        description: 'От генерации видео до музыки, фото и текста — полноценная AI-студия.',
+      },
+      {
+        title: 'Процессы в один клик',
+        description: 'Соединяйте модули в автоматизированные цепочки и запускайте их с Agent G.',
+      },
+      {
+        title: 'Ваш цифровой аватар',
+        description: 'Постоянная цифровая идентичность для всех платформ и контента.',
+      },
+      {
+        title: 'Максимальная скорость',
+        description: 'Edge-инфраструктура с доступностью 99.9% для работы в реальном времени.',
+      },
+      {
+        title: 'Безопасность Enterprise',
+        description: 'Сквозное шифрование, контроль доступа и корпоративный уровень защиты.',
+      },
+      {
+        title: 'Глобально и локально',
+        description: 'Поддержка грузинского, английского и русского языков для международных команд.',
+      },
+    ],
+  },
+} as const
+
 function TiltCard({
   children,
   className,
@@ -90,6 +190,9 @@ function TiltCard({
 }
 
 export function FeaturesShowcase() {
+  const { language } = useLanguage()
+  const copy = FEATURES_COPY[language as keyof typeof FEATURES_COPY] || FEATURES_COPY.ka
+
   return (
     <section className="relative py-24 px-4 sm:px-6 overflow-hidden">
       {/* Background decoration */}
@@ -108,16 +211,16 @@ export function FeaturesShowcase() {
         >
           <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-purple-400/20 bg-purple-400/[0.05] mb-5">
             <Layers className="w-3.5 h-3.5 text-purple-400" />
-            <span className="text-xs font-medium text-purple-300 tracking-wider uppercase">Platform Capabilities</span>
+            <span className="text-xs font-medium text-purple-300 tracking-wider uppercase">{copy.badge}</span>
           </div>
           <h2 className="text-3xl md:text-5xl font-bold text-white mb-4">
-            Everything You Need.{' '}
+            {copy.title}{' '}
             <span className="bg-gradient-to-r from-cyan-400 via-blue-400 to-purple-400 bg-clip-text text-transparent">
-              Nothing You Don&apos;t.
+              {copy.titleAccent}
             </span>
           </h2>
           <p className="text-gray-400 max-w-xl mx-auto text-base md:text-lg">
-            A unified AI platform designed for creators, agencies, and enterprises.
+            {copy.subtitle}
           </p>
         </motion.div>
 
@@ -145,8 +248,8 @@ export function FeaturesShowcase() {
                     <div className={`inline-flex p-3 rounded-xl bg-gradient-to-br ${feature.gradient} mb-4`}>
                       <feature.icon className="w-5 h-5 text-white" />
                     </div>
-                    <h3 className="text-lg font-bold text-white mb-2">{feature.title}</h3>
-                    <p className="text-sm text-gray-400 leading-relaxed">{feature.description}</p>
+                    <h3 className="text-lg font-bold text-white mb-2">{copy.cards[index]?.title || feature.title}</h3>
+                    <p className="text-sm text-gray-400 leading-relaxed">{copy.cards[index]?.description || feature.description}</p>
                   </div>
                 </div>
               </TiltCard>
