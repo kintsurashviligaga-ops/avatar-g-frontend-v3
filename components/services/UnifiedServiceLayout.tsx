@@ -246,6 +246,13 @@ export default function UnifiedServiceLayout({
     };
   }, []);
 
+  useEffect(() => {
+    if (!cameraOn) return;
+    if (!cameraVideoRef.current) return;
+    if (!cameraStreamRef.current) return;
+    cameraVideoRef.current.srcObject = cameraStreamRef.current;
+  }, [cameraOn]);
+
   // ─── Send message ────────────────────────────────────────────────────────
   const sendMessage = useCallback(async (text?: string) => {
     const msg = (text ?? input).trim();
@@ -402,6 +409,9 @@ export default function UnifiedServiceLayout({
     if (cameraOn) {
       cameraStreamRef.current?.getTracks().forEach(track => track.stop());
       cameraStreamRef.current = null;
+      if (cameraVideoRef.current) {
+        cameraVideoRef.current.srcObject = null;
+      }
       setCameraOn(false);
       return;
     }
@@ -414,12 +424,20 @@ export default function UnifiedServiceLayout({
         cameraVideoRef.current.srcObject = stream;
       }
       setCameraOn(true);
-    } catch {
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '';
+      const denied = /denied|permission|notallowed/i.test(message);
       setCameraError(locale === 'ka'
-        ? 'კამერაზე წვდომა ვერ მოხერხდა.'
+        ? denied
+          ? 'კამერის ნებართვა უარყოფილია. გადაამოწმე ბრაუზერის ნებართვები.'
+          : 'კამერაზე წვდომა ვერ მოხერხდა.'
         : locale === 'ru'
-          ? 'Не удалось получить доступ к камере.'
-          : 'Unable to access camera.');
+          ? denied
+            ? 'Доступ к камере запрещён. Проверьте разрешения браузера.'
+            : 'Не удалось получить доступ к камере.'
+          : denied
+            ? 'Camera permission was denied. Please check browser permissions.'
+            : 'Unable to access camera.');
     }
   };
 

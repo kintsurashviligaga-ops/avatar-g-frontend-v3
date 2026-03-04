@@ -12,8 +12,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </ClientErrorBoundary>
       <GlobalNavbar />
       <main className='relative flex-1 pt-16 md:pt-24 z-10 w-full'>
+        <div
+          className='pointer-events-none absolute inset-0 bg-cover bg-center opacity-22'
+          style={{ backgroundImage: "url('/brand/background-main.svg')" }}
+        />
+        <div className='pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_18%_15%,rgba(34,211,238,0.12),transparent_50%),radial-gradient(circle_at_82%_82%,rgba(139,92,246,0.12),transparent_52%)]' />
         <ClientErrorBoundary>
-          {children}
+          <div className='relative z-10'>
+            {children}
+          </div>
         </ClientErrorBoundary>
       </main>
     </div>

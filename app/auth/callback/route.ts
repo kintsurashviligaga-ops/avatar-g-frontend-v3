@@ -7,11 +7,11 @@ export const dynamic = 'force-dynamic';
 
 function resolveSafeNextPath(input: string | null) {
   if (!input || !input.startsWith('/')) {
-    return `/${i18n.defaultLocale}/workspace`;
+    return `/${i18n.defaultLocale}/services`;
   }
 
   if (input.startsWith('//')) {
-    return `/${i18n.defaultLocale}/workspace`;
+    return `/${i18n.defaultLocale}/services`;
   }
 
   return input;
@@ -48,7 +48,8 @@ async function ensureProfile(user: User) {
 export async function GET(request: Request) {
   const requestUrl = new URL(request.url);
   const code = requestUrl.searchParams.get('code');
-  const next = resolveSafeNextPath(requestUrl.searchParams.get('next'));
+  const nextParam = requestUrl.searchParams.get('next') || requestUrl.searchParams.get('redirect');
+  const next = resolveSafeNextPath(nextParam);
   const callbackError =
     requestUrl.searchParams.get('error_description') || requestUrl.searchParams.get('error');
 
@@ -77,5 +78,5 @@ export async function GET(request: Request) {
     await ensureProfile(user);
   }
 
-  return NextResponse.redirect(new URL(next || `/${i18n.defaultLocale}/workspace`, requestUrl.origin));
+  return NextResponse.redirect(new URL(next || `/${i18n.defaultLocale}/services`, requestUrl.origin));
 }
