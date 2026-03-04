@@ -30,7 +30,7 @@ export function BrandLogo({ href, size = 'md', showText = true, className = '' }
           fill
           sizes={`${s.img}px`}
           priority
-          className="object-contain drop-shadow-[0_0_12px_rgba(34,211,238,0.35)]"
+          className="object-contain drop-shadow-[0_0_12px_rgba(34,211,238,0.35)] mix-blend-screen"
         />
       </div>
       {showText && (

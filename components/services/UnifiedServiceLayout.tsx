@@ -336,7 +336,11 @@ export default function UnifiedServiceLayout({
 
   // ─── Render ──────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-transparent text-white">
+    <div className="relative min-h-screen bg-transparent text-white">
+      <div
+        className="absolute inset-0 bg-cover bg-center opacity-10"
+        style={{ backgroundImage: `url('https://placeholders.dev/assets/images/1600x900.png?text=${serviceId}')` }}
+      />
       {/* ── Header ──────────────────────────────────────────────────────── */}
       <header className="border-b border-white/[0.06] px-4 sm:px-6 py-4">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
@@ -411,29 +415,6 @@ export default function UnifiedServiceLayout({
                     </div>
                   ))}
                 </div>
-
-                {/* Use Agent Button */}
-                <button
-                  onClick={() => {
-                    if (!isAuthenticated) {
-                      setShowLoginModal(true);
-                      onAuthRequired?.();
-                      return;
-                    }
-                    if (!input.trim()) {
-                      const defaultPrompt = locale === 'ka'
-                        ? `${serviceName} - დავალება: შექმენი შედეგი ნაბიჯ-ნაბიჯ.`
-                        : locale === 'ru'
-                          ? `${serviceName} — задача: создай результат пошагово.`
-                          : `${serviceName} task: create output step by step.`;
-                      setInput(defaultPrompt);
-                    }
-                    promptInputRef.current?.focus();
-                  }}
-                  className="mt-6 px-8 py-3 bg-gradient-to-r from-cyan-500 to-blue-600 text-white font-bold rounded-2xl shadow-lg shadow-cyan-500/25 hover:shadow-cyan-500/40 transition-all hover:scale-105"
-                >
-                  {t.useAgent}
-                </button>
               </div>
             )}
 
@@ -504,6 +485,28 @@ export default function UnifiedServiceLayout({
                 }`}
               >
                 {cameraOn ? t.closeCamera : t.camera}
+              </button>
+
+              <button
+                onClick={() => {
+                  if (!isAuthenticated) {
+                    setShowLoginModal(true);
+                    onAuthRequired?.();
+                    return;
+                  }
+                  if (!input.trim()) {
+                    const defaultPrompt = locale === 'ka'
+                      ? `${serviceName} - დავალება: შექმენი შედეგი ნაბიჯ-ნაბიჯ.`
+                      : locale === 'ru'
+                        ? `${serviceName} — задача: создай результат пошагово.`
+                        : `${serviceName} task: create output step by step.`;
+                    setInput(defaultPrompt);
+                  }
+                  promptInputRef.current?.focus();
+                }}
+                className="px-3 py-1.5 text-xs border border-white/10 rounded-lg hover:bg-white/5 transition-colors"
+              >
+                {t.useAgent}
               </button>
             </div>
 

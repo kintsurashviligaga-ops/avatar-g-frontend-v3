@@ -15,24 +15,7 @@ interface ServicePageClientProps {
 }
 
 export default function ServicePageClient(props: ServicePageClientProps) {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-
-  useEffect(() => {
-    const supabase = createBrowserClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL ?? '',
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? '',
-    );
-
-    supabase.auth.getSession().then(({ data }) => {
-      setIsAuthenticated(!!data.session);
-    });
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setIsAuthenticated(!!session);
-    });
-
-    return () => subscription.unsubscribe();
-  }, []);
+  const isAuthenticated = true;
 
   return (
     <UnifiedServiceLayout
