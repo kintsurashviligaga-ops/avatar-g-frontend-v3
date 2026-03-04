@@ -12,25 +12,25 @@ interface LogoProps {
 
 const sizeConfig = {
   sm: {
-    container: 'w-8 h-8',
+    container: 'w-10 h-10',
     text: 'text-sm',
     tagline: 'text-[10px]',
     gap: 'gap-2'
   },
   md: {
-    container: 'w-12 h-12',
+    container: 'w-14 h-14',
     text: 'text-xl',
     tagline: 'text-xs',
     gap: 'gap-3'
   },
   lg: {
-    container: 'w-16 h-16',
+    container: 'w-20 h-20',
     text: 'text-2xl',
     tagline: 'text-sm',
     gap: 'gap-4'
   },
   xl: {
-    container: 'w-20 h-20',
+    container: 'w-24 h-24',
     text: 'text-3xl',
     tagline: 'text-base',
     gap: 'gap-4'
@@ -49,10 +49,10 @@ export function Logo({
   const LogoIcon = () => (
     <div className={cn(config.container, 'relative overflow-hidden rounded-xl')}>
       <Image
-        src="/brand/logo.png"
+        src="/brand/logo-rocket.svg"
         alt="Avatar G"
         fill
-        className="object-contain"
+        className="object-contain drop-shadow-[0_0_16px_rgba(34,211,238,0.45)]"
         sizes="80px"
         priority
       />
