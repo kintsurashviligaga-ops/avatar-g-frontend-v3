@@ -39,6 +39,13 @@ type SpeechRecognitionLike = {
   stop: () => void;
 };
 
+function extractRetryAfterSeconds(input: string): number | null {
+  const match = input.match(/retry(?:_after)?[^\d]*(\d+)/i);
+  if (!match) return null;
+  const parsed = Number(match[1]);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 // ─── Agent List (matches agentRegistry) ─────────────────────────────────────
 
 const AGENTS: AgentInfo[] = [
@@ -70,6 +77,7 @@ export default function GlobalChatbot() {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [isClient, setIsClient] = useState(false);
   const [streamAbort, setStreamAbort] = useState<AbortController | null>(null);
+  const [rateLimitNotice, setRateLimitNotice] = useState<string | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -136,19 +144,51 @@ export default function GlobalChatbot() {
             const data = JSON.parse(line.slice(6));
             if (data.token) { fullText += data.token; setSessions(prev => ({ ...prev, [agentId]: (prev[agentId] || []).map(m => m.id === assistantId ? { ...m, content: fullText } : m) })); }
             if (data.done) model = data.model || "";
-            if (data.error) throw new Error(data.error);
+            if (data.error) {
+              const errorText = String(data.error);
+              const loweredError = errorText.toLowerCase();
+              if (loweredError.includes('throttled') || loweredError.includes('rate limit') || loweredError.includes('quota')) {
+                const retryAfterSeconds = extractRetryAfterSeconds(errorText);
+                const suffix = retryAfterSeconds ? ` ${retryAfterSeconds}s.` : '.';
+                setRateLimitNotice(`Provider is rate-limited. Please retry in${suffix}`);
+              }
+              throw new Error(errorText);
+            }
           } catch { /* skip */ }
         }
       }
       setSessions(prev => ({ ...prev, [agentId]: (prev[agentId] || []).map(m => m.id === assistantId ? { ...m, content: fullText, model, isStreaming: false } : m) }));
+
+      const loweredText = fullText.toLowerCase();
+      if (loweredText.includes('throttled') || loweredText.includes('rate limit') || loweredText.includes('quota')) {
+        const retryAfterSeconds = extractRetryAfterSeconds(fullText);
+        const suffix = retryAfterSeconds ? ` ${retryAfterSeconds}s.` : '.';
+        setRateLimitNotice(`Provider is rate-limited. Please retry in${suffix}`);
+      } else {
+        setRateLimitNotice(null);
+      }
     } catch (err) {
       if ((err as Error).name === "AbortError") {
         setSessions(prev => ({ ...prev, [agentId]: (prev[agentId] || []).map(m => m.id === assistantId ? { ...m, content: m.content || "[Stopped]", isStreaming: false } : m) }));
       } else {
+        const baseError = err instanceof Error ? err.message : 'Connection error.';
+        const loweredBaseError = baseError.toLowerCase();
+        if (loweredBaseError.includes('throttled') || loweredBaseError.includes('rate limit') || loweredBaseError.includes('quota')) {
+          const retryAfterSeconds = extractRetryAfterSeconds(baseError);
+          const suffix = retryAfterSeconds ? ` ${retryAfterSeconds}s.` : '.';
+          setRateLimitNotice(`Provider is rate-limited. Please retry in${suffix}`);
+        }
+
         try {
           const fb = await fetch("/api/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message: input.trim(), agentId, history, channel: "web" }) });
           const d = await fb.json();
           const text = d?.data?.response || d?.response || "Error occurred.";
+          const loweredText = String(text).toLowerCase();
+          if (loweredText.includes('throttled') || loweredText.includes('rate limit') || loweredText.includes('quota')) {
+            const retryAfterSeconds = extractRetryAfterSeconds(String(text));
+            const suffix = retryAfterSeconds ? ` ${retryAfterSeconds}s.` : '.';
+            setRateLimitNotice(`Provider is rate-limited. Please retry in${suffix}`);
+          }
           setSessions(prev => ({ ...prev, [agentId]: (prev[agentId] || []).map(m => m.id === assistantId ? { ...m, content: text, model: d?.data?.model || "", isStreaming: false } : m) }));
         } catch {
           setSessions(prev => ({ ...prev, [agentId]: (prev[agentId] || []).map(m => m.id === assistantId ? { ...m, content: "Connection error.", isStreaming: false } : m) }));
@@ -247,6 +287,12 @@ export default function GlobalChatbot() {
             </div>
             {/* Input */}
             <div className="p-3 border-t border-white/[0.08]">
+              {rateLimitNotice && (
+                <div className="mb-2 flex items-center justify-between gap-3 rounded-xl border border-amber-400/40 bg-amber-500/15 px-3 py-2">
+                  <p className="text-xs text-amber-100">{rateLimitNotice}</p>
+                  <button onClick={() => setRateLimitNotice(null)} className="text-[11px] text-amber-100/80 hover:text-amber-50">Dismiss</button>
+                </div>
+              )}
               <div className="flex gap-2 items-end">
                 <input ref={fileInputRef} type="file" className="hidden" accept=".txt,.pdf,.doc,.docx,.json,.csv,image/*" onChange={handleFile} />
                 <button onClick={() => fileInputRef.current?.click()} className="p-2 rounded-lg bg-white/5 hover:bg-white/10 text-white/40 transition-colors flex-shrink-0" title="Attach file"><Paperclip className="w-4 h-4" /></button>
