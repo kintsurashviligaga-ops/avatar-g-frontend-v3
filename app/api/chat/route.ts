@@ -58,6 +58,8 @@ export async function POST(req: NextRequest) {
   const rateLimitError = await checkRateLimit(req, RATE_LIMITS.WRITE);
   if (rateLimitError) return rateLimitError;
 
+  let demoModeRequested = false;
+
   try {
     const body = await req.json();
     const parsed = chatRequestSchema.safeParse(body);
@@ -82,6 +84,7 @@ export async function POST(req: NextRequest) {
       channel,
       metadata,
     } = parsed.data;
+    demoModeRequested = flags?.demoMode ?? false;
 
     const incomingMessages = messages ?? [];
     const lastUserFromMessages = [...incomingMessages].reverse().find((m) => m.role === 'user')?.content;
@@ -152,6 +155,15 @@ export async function POST(req: NextRequest) {
     });
   } catch (error) {
     console.error('[Chat API Error]', error);
+
+    if (demoModeRequested) {
+      return apiSuccess({
+        response: 'Demo mode response: request accepted. AI provider is temporarily unavailable, but chat flow is active.',
+        provider: 'demo-fallback',
+        model: 'fallback',
+        agentId: 'main-assistant',
+      });
+    }
 
     // Graceful fallback if chatEngine fails entirely
     if (error instanceof Error && error.message.includes('ENV_MISSING')) {
