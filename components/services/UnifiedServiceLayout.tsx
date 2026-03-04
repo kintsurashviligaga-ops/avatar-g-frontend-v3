@@ -427,12 +427,13 @@ export default function UnifiedServiceLayout({
   return (
     <div className="relative min-h-screen bg-transparent text-white">
       <div
-        className="pointer-events-none absolute inset-0 bg-cover bg-center opacity-65"
+        className="pointer-events-none absolute inset-0 bg-cover bg-center opacity-70"
         style={{ backgroundImage: `url('${serviceBackgroundImage}')` }}
       />
-      <div className="pointer-events-none absolute inset-0 opacity-85" style={{ backgroundImage: serviceBackground }} />
+      <div className="pointer-events-none absolute inset-0 opacity-90" style={{ backgroundImage: serviceBackground }} />
+      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(to_bottom,rgba(2,6,23,0.55),rgba(2,6,23,0.36)_28%,rgba(2,6,23,0.58)_100%)]" />
       {/* ── Header ──────────────────────────────────────────────────────── */}
-      <header className="relative z-10 border-b border-white/[0.06] px-4 sm:px-6 py-4">
+      <header className="relative z-10 border-b border-white/[0.08] bg-black/20 backdrop-blur-md px-4 sm:px-6 py-4">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">
             <span className="text-2xl">{serviceIcon}</span>
@@ -468,7 +469,7 @@ export default function UnifiedServiceLayout({
 
         {/* ── Chat Window (70%) ─────────────────────────────────────────── */}
         <div
-          className="flex-1 lg:w-[70%] flex flex-col border-r border-white/[0.06]"
+          className="flex-1 lg:w-[70%] flex flex-col border-r border-white/[0.08] bg-black/10"
           onDragEnter={handleDrag}
           onDragOver={handleDrag}
           onDragLeave={handleDrag}
@@ -482,12 +483,12 @@ export default function UnifiedServiceLayout({
           )}
 
           {/* Quick Action Chips */}
-          <div className="px-4 py-3 border-b border-white/[0.04] flex gap-2 overflow-x-auto scrollbar-hide">
+          <div className="px-4 py-3 border-b border-white/[0.06] bg-black/15 flex gap-2 overflow-x-auto scrollbar-hide">
             {quickActions.map(action => (
               <button
                 key={action}
                 onClick={() => sendMessage(action)}
-                className="flex-shrink-0 px-3 py-1.5 text-xs bg-white/[0.04] border border-white/[0.08] rounded-full hover:bg-white/[0.08] hover:border-cyan-500/30 transition-all whitespace-nowrap"
+                className="flex-shrink-0 px-3 py-1.5 text-xs bg-white/[0.06] border border-white/[0.12] rounded-full hover:bg-white/[0.1] hover:border-cyan-400/45 transition-all whitespace-nowrap"
               >
                 {action}
               </button>
@@ -495,18 +496,18 @@ export default function UnifiedServiceLayout({
           </div>
 
           {/* Message list */}
-          <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-4">
+          <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 md:p-5 space-y-4">
             {messages.length === 0 && (
               <div className="flex flex-col items-center justify-center h-full space-y-4 text-center py-20">
                 <span className="text-5xl">{serviceIcon}</span>
                 <h2 className="text-xl font-bold">{serviceName}</h2>
-                <p className="text-sm text-white/40 max-w-md">{description}</p>
+                <p className="text-sm text-white/65 max-w-md">{description}</p>
 
                 {/* Features grid */}
                 <div className="grid grid-cols-2 gap-2 mt-4 max-w-lg">
                   {features.map(f => (
-                    <div key={f} className="text-xs text-white/30 bg-white/[0.03] border border-white/[0.06] rounded-lg px-3 py-2 flex items-center gap-2">
-                      <span className="text-white/20">✦</span> {f}
+                    <div key={f} className="text-xs text-white/55 bg-white/[0.05] border border-white/[0.1] rounded-lg px-3 py-2 flex items-center gap-2">
+                      <span className="text-white/35">✦</span> {f}
                     </div>
                   ))}
                 </div>
@@ -519,7 +520,7 @@ export default function UnifiedServiceLayout({
                   <div className={`px-4 py-3 rounded-2xl text-sm leading-relaxed ${
                     msg.role === 'user'
                       ? 'bg-gradient-to-r from-cyan-500/20 to-blue-500/20 border border-cyan-500/20 text-white'
-                      : 'bg-white/[0.04] border border-white/[0.08] text-white/80'
+                        : 'bg-white/[0.06] border border-white/[0.12] text-white/90'
                   }`}>
                     {msg.content}
                   </div>
@@ -529,13 +530,13 @@ export default function UnifiedServiceLayout({
                     <button
                       key={i}
                       onClick={() => setPreviewArtifact(art)}
-                      className="block w-full text-left bg-white/[0.03] border border-white/[0.08] rounded-xl p-3 hover:border-cyan-500/30 transition-colors"
+                      className="block w-full text-left bg-white/[0.04] border border-white/[0.12] rounded-xl p-3 hover:border-cyan-400/45 hover:bg-white/[0.08] transition-colors"
                     >
                       <div className="flex items-center gap-2">
                         <span className="text-xs">
                           {art.type === 'image' ? '🖼️' : art.type === 'video' ? '🎬' : art.type === 'audio' ? '🎵' : '📄'}
                         </span>
-                        <span className="text-xs text-white/60">{art.label}</span>
+                        <span className="text-xs text-white/75">{art.label}</span>
                       </div>
                     </button>
                   ))}
@@ -555,7 +556,7 @@ export default function UnifiedServiceLayout({
           </div>
 
           {/* ── Sticky Action Bar ───────────────────────────────────────── */}
-          <div className="border-t border-white/[0.06] p-4 space-y-3">
+          <div className="border-t border-white/[0.08] bg-black/20 backdrop-blur-sm p-4 space-y-3">
             {rateLimitNotice && (
               <div className="flex items-center justify-between gap-3 rounded-xl border border-amber-400/40 bg-amber-500/15 px-3 py-2">
                 <p className="text-xs text-amber-100">{rateLimitNotice}</p>
@@ -580,7 +581,7 @@ export default function UnifiedServiceLayout({
                 <div className="w-8 h-4 bg-white/10 rounded-full peer-checked:bg-cyan-500/50 transition-colors relative">
                   <div className="absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full transition-transform peer-checked:translate-x-4" />
                 </div>
-                <span className="text-xs text-white/40">{t.automation}</span>
+                <span className="text-xs text-white/60">{t.automation}</span>
               </label>
 
               <button
@@ -588,7 +589,7 @@ export default function UnifiedServiceLayout({
                 className={`px-3 py-1.5 text-xs border rounded-lg transition-colors ${
                   cameraOn
                     ? 'border-cyan-500/50 bg-cyan-500/20 text-cyan-300'
-                    : 'border-white/10 text-white/60 hover:bg-white/5'
+                    : 'border-white/15 text-white/75 hover:bg-white/10'
                 }`}
               >
                 {cameraOn ? t.closeCamera : t.camera}
@@ -611,7 +612,7 @@ export default function UnifiedServiceLayout({
                   }
                   promptInputRef.current?.focus();
                 }}
-                className="px-3 py-1.5 text-xs border border-cyan-400/40 bg-cyan-500/10 rounded-lg hover:bg-cyan-500/20 transition-colors"
+                className="px-3 py-1.5 text-xs border border-cyan-300/50 bg-cyan-500/15 rounded-lg hover:bg-cyan-500/25 hover:border-cyan-200/70 transition-colors"
               >
                 {agentButtonLabel}
               </button>
@@ -633,12 +634,12 @@ export default function UnifiedServiceLayout({
             )}
 
             <div className="flex items-center gap-2 overflow-x-auto">
-              <span className="text-[11px] text-white/35 uppercase tracking-wider pr-1">{t.support}</span>
+              <span className="text-[11px] text-white/50 uppercase tracking-wider pr-1">{t.support}</span>
               <a
                 href="https://wa.me/995000000000"
                 target="_blank"
                 rel="noreferrer"
-                className="px-2.5 py-1 text-xs rounded-full border border-white/[0.1] bg-white/[0.03] hover:bg-white/[0.08]"
+                className="px-2.5 py-1 text-xs rounded-full border border-white/[0.14] bg-white/[0.05] hover:bg-white/[0.1]"
               >
                 {t.whatsapp}
               </a>
@@ -646,13 +647,13 @@ export default function UnifiedServiceLayout({
                 href="https://t.me/myavatar_ge"
                 target="_blank"
                 rel="noreferrer"
-                className="px-2.5 py-1 text-xs rounded-full border border-white/[0.1] bg-white/[0.03] hover:bg-white/[0.08]"
+                className="px-2.5 py-1 text-xs rounded-full border border-white/[0.14] bg-white/[0.05] hover:bg-white/[0.1]"
               >
                 {t.telegram}
               </a>
               <a
                 href="tel:+995000000000"
-                className="px-2.5 py-1 text-xs rounded-full border border-white/[0.1] bg-white/[0.03] hover:bg-white/[0.08]"
+                className="px-2.5 py-1 text-xs rounded-full border border-white/[0.14] bg-white/[0.05] hover:bg-white/[0.1]"
               >
                 {t.phone}
               </a>
@@ -670,7 +671,7 @@ export default function UnifiedServiceLayout({
 
               <button
                 onClick={() => fileInputRef.current?.click()}
-                className="flex-shrink-0 p-2.5 bg-white/[0.04] border border-white/[0.08] rounded-xl hover:bg-white/[0.08] transition-colors"
+                className="flex-shrink-0 p-2.5 bg-white/[0.06] border border-white/[0.12] rounded-xl hover:bg-white/[0.1] transition-colors"
                 title={t.upload}
               >
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-white/40"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
@@ -681,7 +682,7 @@ export default function UnifiedServiceLayout({
                 className={`flex-shrink-0 p-2.5 border rounded-xl transition-colors ${
                   isRecording
                     ? 'bg-red-500/20 border-red-500/50 text-red-400'
-                    : 'bg-white/[0.04] border-white/[0.08] hover:bg-white/[0.08] text-white/40'
+                    : 'bg-white/[0.06] border-white/[0.12] hover:bg-white/[0.1] text-white/60'
                 }`}
                 title={isRecording ? t.stopRecord : t.record}
               >
@@ -701,7 +702,7 @@ export default function UnifiedServiceLayout({
                   }}
                   placeholder={t.placeholder}
                   rows={1}
-                  className="w-full bg-white/[0.04] border border-white/[0.08] rounded-xl px-4 py-2.5 text-sm text-white placeholder-white/20 focus:outline-none focus:border-cyan-500/40 resize-none"
+                  className="w-full bg-white/[0.06] border border-white/[0.12] rounded-xl px-4 py-2.5 text-sm text-white placeholder-white/35 focus:outline-none focus:border-cyan-400/60 resize-none"
                 />
               </div>
 
@@ -717,11 +718,11 @@ export default function UnifiedServiceLayout({
         </div>
 
         {/* ── Preview/Tools Panel (30%) ─────────────────────────────────── */}
-        <div className="lg:w-[30%] border-t lg:border-t-0 border-white/[0.06] flex flex-col">
+        <div className="lg:w-[30%] border-t lg:border-t-0 border-white/[0.08] bg-black/15 flex flex-col">
           {/* Panel header */}
-          <div className="px-4 py-3 border-b border-white/[0.04] flex items-center justify-between">
-            <span className="text-xs font-semibold text-white/40 uppercase tracking-wider">{t.preview}</span>
-            <span className="text-xs text-white/20">{t.tools}</span>
+          <div className="px-4 py-3 border-b border-white/[0.06] bg-black/20 flex items-center justify-between">
+            <span className="text-xs font-semibold text-white/55 uppercase tracking-wider">{t.preview}</span>
+            <span className="text-xs text-white/35">{t.tools}</span>
           </div>
 
           {/* Preview content */}
@@ -739,18 +740,18 @@ export default function UnifiedServiceLayout({
                   <audio src={previewArtifact.url} controls className="w-full" />
                 )}
                 {previewArtifact.type === 'text' && (
-                  <pre className="text-xs text-white/60 whitespace-pre-wrap bg-white/[0.02] p-4 rounded-xl border border-white/[0.06]">
+                  <pre className="text-xs text-white/75 whitespace-pre-wrap bg-white/[0.04] p-4 rounded-xl border border-white/[0.1]">
                     {previewArtifact.content ?? ''}
                   </pre>
                 )}
-                <p className="text-xs text-white/30 text-center">{previewArtifact.label}</p>
+                <p className="text-xs text-white/45 text-center">{previewArtifact.label}</p>
               </div>
             ) : (
               <div className="text-center space-y-3">
-                <div className="w-16 h-16 mx-auto bg-white/[0.03] border border-white/[0.06] rounded-2xl flex items-center justify-center">
+                <div className="w-16 h-16 mx-auto bg-white/[0.05] border border-white/[0.1] rounded-2xl flex items-center justify-center">
                   <span className="text-2xl opacity-20">{serviceIcon}</span>
                 </div>
-                <p className="text-xs text-white/20">{t.noPreview}</p>
+                <p className="text-xs text-white/35">{t.noPreview}</p>
               </div>
             )}
           </div>

@@ -15,9 +15,9 @@ const metadataBaseUrl =
 export const metadata: Metadata = {
 	metadataBase: new URL(metadataBaseUrl),
 	icons: {
-		icon: '/brand/logo.png',
-		shortcut: '/brand/logo.png',
-		apple: '/brand/logo.png',
+		icon: '/brand/logo-rocket.svg',
+		shortcut: '/brand/logo-rocket.svg',
+		apple: '/brand/logo-rocket.svg',
 	},
 	title: {
 		default: "Avatar G - AI მედია პლატფორმა",
@@ -32,7 +32,7 @@ export const metadata: Metadata = {
 		url: metadataBaseUrl,
 		siteName: "Avatar G",
 		images: [{
-			url: "/brand/logo.png",
+			url: "/brand/logo-rocket.svg",
 			width: 1200,
 			height: 630,
 			alt: "Avatar G - AI მედია პლატფორმა"
@@ -42,7 +42,7 @@ export const metadata: Metadata = {
 		card: "summary_large_image",
 		title: "Avatar G - AI მედია პლატფორმა",
 		description: "AI მედიის შექმნა Avatar G-სთან ერთად",
-		images: ["/brand/logo.png"]
+		images: ["/brand/logo-rocket.svg"]
 	},
 	robots: {
 		index: true,

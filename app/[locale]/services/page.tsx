@@ -21,25 +21,27 @@ export default async function LocalizedServicesPage({ params }: ServicesPageProp
   const { locale } = await params;
   const text = PAGE_TEXT[locale] ?? PAGE_TEXT['ka']!;
   return (
-    <section className="relative min-h-screen bg-transparent text-white py-24 px-4 sm:px-6 lg:px-10 overflow-hidden">
+    <section className="relative min-h-screen bg-transparent text-white py-20 md:py-24 px-4 sm:px-6 lg:px-10 overflow-hidden">
       <div
         className="pointer-events-none absolute inset-0 bg-cover bg-center opacity-45"
         style={{ backgroundImage: "url('/backgrounds/services/agent-g.svg')" }}
       />
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_20%_18%,rgba(34,211,238,0.16),transparent_50%),radial-gradient(circle_at_80%_82%,rgba(139,92,246,0.16),transparent_50%)]" />
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_20%_18%,rgba(34,211,238,0.18),transparent_50%),radial-gradient(circle_at_80%_82%,rgba(139,92,246,0.18),transparent_50%)]" />
+      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(to_bottom,rgba(2,6,23,0.58),rgba(2,6,23,0.4)_30%,rgba(2,6,23,0.62)_100%)]" />
       <div className="relative mx-auto max-w-6xl">
-        <h1 className="text-4xl md:text-5xl font-bold text-center mb-4">{text.title}</h1>
-        <p className="text-center text-gray-400 max-w-2xl mx-auto mb-16">{text.subtitle}</p>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+        <h1 className="text-4xl md:text-5xl font-bold text-center mb-4 tracking-tight">{text.title}</h1>
+        <p className="text-center text-gray-300/85 max-w-2xl mx-auto mb-12 md:mb-14">{text.subtitle}</p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 md:gap-6">
           {SERVICE_ORDER.map((id) => {
             const meta = getLocalizedMeta(id, locale);
             if (!meta) return null;
             return (
               <Link key={id} href={`/${locale}/services/${id}`}
-                className="group relative overflow-hidden rounded-2xl border border-white/[0.08] bg-white/[0.03] p-6 transition-all duration-300 hover:border-cyan-400/30 hover:bg-white/[0.06]">
-                <div className="text-3xl mb-4">{meta.icon}</div>
-                <h2 className="text-lg font-semibold text-white mb-2 group-hover:text-cyan-300 transition-colors">{meta.headline}</h2>
-                <p className="text-sm text-gray-400 leading-relaxed mb-4">{meta.description}</p>
+                className="group relative overflow-hidden rounded-2xl border border-white/[0.12] bg-white/[0.05] p-5 md:p-6 transition-all duration-300 hover:-translate-y-0.5 hover:border-cyan-300/45 hover:bg-white/[0.09] hover:shadow-[0_12px_40px_rgba(6,182,212,0.18)]">
+                <div className="pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-300 group-hover:opacity-100 bg-[radial-gradient(circle_at_18%_18%,rgba(34,211,238,0.18),transparent_50%)]" />
+                <div className="relative text-3xl mb-3">{meta.icon}</div>
+                <h2 className="relative text-lg font-semibold text-white mb-2 group-hover:text-cyan-200 transition-colors">{meta.headline}</h2>
+                <p className="relative text-sm text-gray-300/85 leading-relaxed">{meta.description}</p>
               </Link>
             );
           })}

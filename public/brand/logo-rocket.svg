@@ -1,20 +1,44 @@
-<svg width="720" height="220" viewBox="0 0 720 220" fill="none" xmlns="http://www.w3.org/2000/svg">
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <linearGradient id="rocketGlow" x1="24" y1="18" x2="170" y2="170" gradientUnits="userSpaceOnUse">
+    <radialGradient id="bgCore" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(512 512) rotate(90) scale(430)">
+      <stop stop-color="#0B1F3D"/>
+      <stop offset="0.62" stop-color="#090F23"/>
+      <stop offset="1" stop-color="#060913"/>
+    </radialGradient>
+    <radialGradient id="aura" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(512 512) rotate(90) scale(500)">
+      <stop stop-color="#22D3EE" stop-opacity="0.34"/>
+      <stop offset="0.52" stop-color="#8B5CF6" stop-opacity="0.26"/>
+      <stop offset="1" stop-color="#8B5CF6" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="ringStroke" x1="212" y1="196" x2="816" y2="836" gradientUnits="userSpaceOnUse">
       <stop stop-color="#67E8F9"/>
-      <stop offset="1" stop-color="#8B5CF6"/>
+      <stop offset="0.5" stop-color="#60A5FA"/>
+      <stop offset="1" stop-color="#A78BFA"/>
     </linearGradient>
-    <linearGradient id="rocketBody" x1="0" y1="0" x2="1" y2="1">
-      <stop stop-color="#E2E8F0"/>
+    <linearGradient id="rocketBody" x1="512" y1="254" x2="512" y2="680" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F8FAFC"/>
+      <stop offset="0.42" stop-color="#DCE7F5"/>
       <stop offset="1" stop-color="#94A3B8"/>
     </linearGradient>
-    <linearGradient id="flame" x1="95" y1="140" x2="95" y2="195" gradientUnits="userSpaceOnUse">
+    <linearGradient id="rocketAccent" x1="396" y1="486" x2="628" y2="486" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#22D3EE"/>
+      <stop offset="1" stop-color="#6366F1"/>
+    </linearGradient>
+    <linearGradient id="fin" x1="326" y1="544" x2="698" y2="758" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#334155"/>
+      <stop offset="1" stop-color="#0F172A"/>
+    </linearGradient>
+    <linearGradient id="flameOuter" x1="512" y1="638" x2="512" y2="860" gradientUnits="userSpaceOnUse">
       <stop stop-color="#FDE68A"/>
-      <stop offset="0.5" stop-color="#F97316"/>
+      <stop offset="0.45" stop-color="#FB923C"/>
       <stop offset="1" stop-color="#EF4444"/>
     </linearGradient>
-    <filter id="softGlow" x="0" y="0" width="220" height="220" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
-      <feGaussianBlur stdDeviation="10" result="blur"/>
+    <radialGradient id="flameInner" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(512 724) rotate(90) scale(126 78)">
+      <stop stop-color="#FEF9C3"/>
+      <stop offset="1" stop-color="#F97316" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="softGlow" x="128" y="128" width="768" height="768" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="18" result="blur"/>
       <feMerge>
         <feMergeNode in="blur"/>
         <feMergeNode in="SourceGraphic"/>
@@ -22,17 +46,28 @@
     </filter>
   </defs>
 
-  <g filter="url(#softGlow)">
-    <circle cx="95" cy="95" r="74" fill="url(#rocketGlow)" fill-opacity="0.16"/>
-    <path d="M95 35C118 54 125 81 125 110C115 120 75 120 65 110C65 81 72 54 95 35Z" fill="url(#rocketBody)" stroke="#CBD5E1" stroke-width="3"/>
-    <ellipse cx="95" cy="86" rx="12" ry="12" fill="#0EA5E9" stroke="#67E8F9" stroke-width="3"/>
-    <path d="M65 98L42 115L60 122L65 110V98Z" fill="#64748B"/>
-    <path d="M125 98L148 115L130 122L125 110V98Z" fill="#64748B"/>
-    <path d="M83 120C83 148 90 172 95 186C100 172 107 148 107 120H83Z" fill="url(#flame)"/>
-  </g>
+  <circle cx="512" cy="512" r="468" fill="url(#bgCore)"/>
+  <circle cx="512" cy="512" r="468" fill="url(#aura)"/>
 
-  <g>
-    <text x="188" y="118" fill="#F8FAFC" font-size="68" font-family="Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif" font-weight="700" letter-spacing="-1.5">Avatar G</text>
-    <text x="192" y="156" fill="#94A3B8" font-size="20" font-family="Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif" font-weight="500" letter-spacing="0.5">AI Creative Platform</text>
+  <g filter="url(#softGlow)">
+    <circle cx="512" cy="512" r="344" stroke="url(#ringStroke)" stroke-opacity="0.44" stroke-width="20"/>
+    <circle cx="512" cy="512" r="284" stroke="url(#ringStroke)" stroke-opacity="0.26" stroke-width="10"/>
+
+    <path d="M512 254C606 322 642 430 642 560C607 597 417 597 382 560C382 430 418 322 512 254Z" fill="url(#rocketBody)" stroke="#E2E8F0" stroke-width="10"/>
+    <path d="M446 454C487 472 537 472 578 454V534C537 552 487 552 446 534V454Z" fill="url(#rocketAccent)" fill-opacity="0.75"/>
+
+    <ellipse cx="512" cy="444" rx="54" ry="54" fill="#0EA5E9"/>
+    <ellipse cx="512" cy="444" rx="40" ry="40" fill="#38BDF8"/>
+    <ellipse cx="494" cy="426" rx="11" ry="11" fill="#E0F2FE"/>
+
+    <path d="M382 506L298 572L366 596L390 558L382 506Z" fill="url(#fin)"/>
+    <path d="M642 506L726 572L658 596L634 558L642 506Z" fill="url(#fin)"/>
+
+    <path d="M466 594C466 700 496 784 512 822C528 784 558 700 558 594H466Z" fill="url(#flameOuter)"/>
+    <path d="M488 612C488 686 504 742 512 766C520 742 536 686 536 612H488Z" fill="url(#flameInner)"/>
+
+    <circle cx="742" cy="360" r="12" fill="#67E8F9" fill-opacity="0.85"/>
+    <circle cx="286" cy="672" r="10" fill="#A78BFA" fill-opacity="0.85"/>
+    <circle cx="250" cy="410" r="8" fill="#7DD3FC" fill-opacity="0.8"/>
   </g>
 </svg>

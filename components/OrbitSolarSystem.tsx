@@ -72,11 +72,13 @@ export function OrbitSolarSystem() {
   }, [])
 
   return (
-    <section className="relative w-full py-24 md:py-32 overflow-hidden bg-transparent flex items-center justify-center min-h-[600px] md:min-h-[800px] pointer-events-none">
+    <section className="relative w-full py-24 md:py-32 overflow-hidden bg-transparent flex items-center justify-center min-h-[620px] md:min-h-[820px] pointer-events-none">
       <style dangerouslySetInnerHTML={{ __html: ORBIT_CSS }} />
 
       {/* Container for Orbit visual elements */}
       <div className="relative w-[340px] h-[340px] md:w-[600px] md:h-[600px] flex items-center justify-center pointer-events-auto">
+
+        <div className="pointer-events-none absolute inset-0 rounded-full bg-[radial-gradient(circle,rgba(6,182,212,0.14)_0%,rgba(6,182,212,0.04)_42%,transparent_68%)]" />
 
         {/* Core Center */}
         <div className="absolute z-20 flex flex-col items-center justify-center select-none">
@@ -91,8 +93,8 @@ export function OrbitSolarSystem() {
         </div>
 
         {/* Outer Orbit Rings */}
-        <div className="absolute inset-0 rounded-full border border-white/[0.1] shadow-[0_0_30px_rgba(255,255,255,0.05)]" />
-        <div className="absolute inset-[15%] rounded-full border border-white/[0.05]" />
+        <div className="absolute inset-0 rounded-full border border-white/[0.14] shadow-[0_0_38px_rgba(255,255,255,0.08)]" />
+        <div className="absolute inset-[15%] rounded-full border border-white/[0.08]" />
 
         {/* Orbit Rotating Container */}
         <div className={`absolute inset-0 w-full h-full orbit-container ${isPaused ? 'orbit-paused' : 'orbit-running'}`}>
@@ -138,11 +140,11 @@ function OrbitNodeContent({ service, locale, isActive, onEnter, onLeave }: { ser
     <Link
       href={'/' + locale + '/services/' + service.slug}
       className={`group relative flex items-center justify-center rounded-full transition-all duration-300 z-30
-        ${isActive ? 'w-16 h-16 md:w-20 md:h-20 scale-110 shadow-[0_0_28px_rgba(6,182,212,0.45)]' : 'w-14 h-14 md:w-16 md:h-16 hover:scale-105'}
+        ${isActive ? 'w-16 h-16 md:w-20 md:h-20 scale-110 shadow-[0_0_30px_rgba(6,182,212,0.5)]' : 'w-14 h-14 md:w-16 md:h-16 hover:scale-105'}
         border border-white/20 backdrop-blur-md
       `}
       style={{
-        background: `radial-gradient(circle at 30% 30%, rgba(255,255,255,0.42), rgba(255,255,255,0.08) 35%, ${service.color}35 82%)`,
+        background: `radial-gradient(circle at 30% 30%, rgba(255,255,255,0.5), rgba(255,255,255,0.1) 35%, ${service.color}45 82%)`,
         boxShadow: isActive ? `0 0 24px ${service.color}90, inset 0 2px 10px rgba(255,255,255,0.2)` : `0 0 14px ${service.color}66, inset 0 2px 8px rgba(255,255,255,0.16)`,
       }}
       onMouseEnter={onEnter}
@@ -158,16 +160,16 @@ function OrbitNodeContent({ service, locale, isActive, onEnter, onLeave }: { ser
 
       {/* Tooltip */}
       <div
-        className={`absolute top-full mt-4 left-1/2 -translate-x-1/2 w-[240px] px-4 py-3 rounded-2xl bg-[#0f0f1a]/92 border border-white/15 text-white shadow-2xl backdrop-blur-xl transition-all duration-200 z-50
+        className={`absolute top-full mt-4 left-1/2 -translate-x-1/2 w-[252px] px-4 py-3 rounded-2xl bg-[#0b1020]/94 border border-white/20 text-white shadow-2xl backdrop-blur-xl transition-all duration-200 z-50
           ${isActive ? 'opacity-100 translate-y-0 visible' : 'opacity-0 translate-y-2 invisible'}
         `}
       >
         <p className="text-sm font-semibold text-white">{displayLabel}</p>
-        <p className="mt-1 text-[11px] text-white/65 leading-relaxed">{displayDescription}</p>
-        <span className="mt-3 inline-flex items-center rounded-lg border border-cyan-400/40 bg-cyan-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-cyan-200">
+        <p className="mt-1 text-[11px] text-white/78 leading-relaxed">{displayDescription}</p>
+        <span className="mt-3 inline-flex items-center rounded-lg border border-cyan-300/55 bg-cyan-500/18 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-cyan-100">
           {openLabel}
         </span>
-        <div className="absolute -top-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-[#0f0f1a]/95 border-t border-l border-white/10 transform rotate-45" />
+        <div className="absolute -top-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-[#0b1020]/95 border-t border-l border-white/15 transform rotate-45" />
       </div>
     </Link>
   )

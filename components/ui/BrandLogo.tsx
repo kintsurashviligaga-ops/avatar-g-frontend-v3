@@ -12,10 +12,10 @@ interface BrandLogoProps {
 }
 
 const sizeMap = {
-  sm: { img: 52, cls: 'w-[52px] h-[52px]' },
-  md: { img: 78, cls: 'w-[78px] h-[78px]' },
-  lg: { img: 116, cls: 'w-[116px] h-[116px]' },
-  xl: { img: 156, cls: 'w-[156px] h-[156px]' },
+  sm: { img: 64, cls: 'w-[64px] h-[64px]' },
+  md: { img: 92, cls: 'w-[92px] h-[92px]' },
+  lg: { img: 132, cls: 'w-[132px] h-[132px]' },
+  xl: { img: 172, cls: 'w-[172px] h-[172px]' },
 }
 
 export function BrandLogo({ href, size = 'md', showText = true, className = '' }: BrandLogoProps) {
@@ -30,11 +30,11 @@ export function BrandLogo({ href, size = 'md', showText = true, className = '' }
           fill
           sizes={`${s.img}px`}
           priority
-          className="object-contain animate-[pulse_4s_ease-in-out_infinite] drop-shadow-[0_0_16px_rgba(34,211,238,0.45)]"
+          className="object-contain animate-[pulse_4s_ease-in-out_infinite] drop-shadow-[0_0_20px_rgba(34,211,238,0.52)]"
         />
       </div>
       {showText && (
-        <span className="font-bold text-white tracking-tight text-xl">
+        <span className="font-bold text-white tracking-tight text-[1.28rem] md:text-[1.34rem]">
           MyAvatar<span className="text-white/30">.ge</span>
         </span>
       )}
