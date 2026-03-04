@@ -30,7 +30,7 @@ export function BrandLogo({ href, size = 'md', showText = true, className = '' }
           fill
           sizes={`${s.img}px`}
           priority
-          className="object-contain animate-[pulse_4s_ease-in-out_infinite] drop-shadow-[0_0_20px_rgba(34,211,238,0.52)]"
+          className="object-contain animate-[pulse_4s_ease-in-out_infinite] drop-shadow-[0_0_10px_rgba(34,211,238,0.38)] md:drop-shadow-[0_0_16px_rgba(34,211,238,0.46)] lg:drop-shadow-[0_0_22px_rgba(34,211,238,0.55)]"
         />
       </div>
       {showText && (

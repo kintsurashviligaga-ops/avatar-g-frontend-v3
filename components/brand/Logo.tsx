@@ -52,7 +52,7 @@ export function Logo({
         src="/brand/logo-rocket.svg"
         alt="Avatar G"
         fill
-        className="object-contain drop-shadow-[0_0_16px_rgba(34,211,238,0.45)]"
+        className="object-contain drop-shadow-[0_0_10px_rgba(34,211,238,0.36)] md:drop-shadow-[0_0_14px_rgba(34,211,238,0.44)] lg:drop-shadow-[0_0_20px_rgba(34,211,238,0.52)]"
         sizes="80px"
         priority
       />
