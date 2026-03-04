@@ -18,6 +18,9 @@ interface Artifact {
   content?: string;
   label: string;
   mimeType: string;
+  generationStatus?: 'running' | 'succeeded' | 'failed';
+  generationPrompt?: string;
+  generationContext?: ServiceContext;
 }
 
 interface UnifiedServiceLayoutProps {
@@ -34,6 +37,7 @@ interface UnifiedServiceLayoutProps {
 }
 
 type LocaleCode = 'en' | 'ka' | 'ru';
+type ServiceContext = 'global' | 'music' | 'video' | 'avatar' | 'voice' | 'business';
 
 // ─── Translations ────────────────────────────────────────────────────────────
 
@@ -186,7 +190,7 @@ const QUICK_ACTIONS: Record<string, string[]> = {
   'agent-g': ['Plan Task', 'Execute Pipeline', 'Quality Check', 'Bundle Run'],
 };
 
-const SERVICE_CONTEXT: Record<string, 'global' | 'music' | 'video' | 'avatar' | 'voice' | 'business'> = {
+const SERVICE_CONTEXT: Record<string, ServiceContext> = {
   music: 'music',
   video: 'video',
   editing: 'video',
@@ -247,6 +251,7 @@ export default function UnifiedServiceLayout({
   const [cameraOn, setCameraOn] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [rateLimitNotice, setRateLimitNotice] = useState<string | null>(null);
+  const [retryingArtifactPrompt, setRetryingArtifactPrompt] = useState<string | null>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -277,6 +282,178 @@ export default function UnifiedServiceLayout({
     if (!cameraStreamRef.current) return;
     cameraVideoRef.current.srcObject = cameraStreamRef.current;
   }, [cameraOn]);
+
+  const generationStartedLabel = locale === 'ka'
+    ? 'გენერაცია დაიწყო, დაელოდე რამდენიმე წამი...'
+    : locale === 'ru'
+      ? 'Генерация запущена, подождите несколько секунд...'
+      : 'Generation started, please wait a few seconds...';
+  const generationCompleteLabel = locale === 'ka'
+    ? 'გენერაცია დასრულდა ✅'
+    : locale === 'ru'
+      ? 'Генерация завершена ✅'
+      : 'Generation completed ✅';
+  const generationFailedLabel = locale === 'ka'
+    ? 'გენერაცია ვერ დასრულდა. ხელახლა სცადე.'
+    : locale === 'ru'
+      ? 'Генерация не завершилась. Повторите попытку.'
+      : 'Generation did not complete. Please retry.';
+
+  const decorateGeneratedArtifacts = useCallback((artifacts: Artifact[], prompt: string, context: ServiceContext, status: 'succeeded' | 'failed'): Artifact[] => {
+    return artifacts.map((artifact) => ({
+      ...artifact,
+      generationStatus: status,
+      generationPrompt: prompt,
+      generationContext: context,
+    }));
+  }, []);
+
+  const runDirectGeneration = useCallback(async (prompt: string, context: ServiceContext) => {
+    const endpoint = resolveReplicateEndpoint(context);
+    const statusArtifact: Artifact = {
+      type: 'text',
+      label: locale === 'ka' ? 'გენერაციის სტატუსი' : locale === 'ru' ? 'Статус генерации' : 'Generation status',
+      content: generationStartedLabel,
+      mimeType: 'text/plain',
+      generationStatus: 'running',
+      generationPrompt: prompt,
+      generationContext: context,
+    };
+
+    setMessages(prev => [...prev, {
+      id: `msg_${Date.now()}_gen_wait`,
+      role: 'assistant',
+      content: generationStartedLabel,
+      artifacts: [statusArtifact],
+      timestamp: new Date(),
+    }]);
+
+    try {
+      const startRes = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt }),
+      });
+      const startData = await startRes.json() as {
+        id?: string;
+        status?: string;
+        message?: string;
+        error?: string;
+        output?: unknown;
+      };
+
+      if (!startRes.ok) {
+        throw new Error(startData.error ?? 'Generation start failed');
+      }
+
+      if (startData.status === 'throttled' || startData.status === 'model_unavailable') {
+        const hint = startData.message ?? startData.error ?? generationFailedLabel;
+        const retryAfterSeconds = extractRetryAfterSeconds(hint);
+        const suffix = retryAfterSeconds ? ` ${retryAfterSeconds} ${t.seconds}.` : '.';
+        setRateLimitNotice(`${t.retryNotice}${suffix}`);
+        setMessages(prev => [...prev, {
+          id: `msg_${Date.now()}_gen_hint`,
+          role: 'assistant',
+          content: hint,
+          artifacts: decorateGeneratedArtifacts([{
+            type: 'text',
+            label: locale === 'ka' ? 'გენერაცია ვერ შესრულდა' : locale === 'ru' ? 'Ошибка генерации' : 'Generation failed',
+            content: hint,
+            mimeType: 'text/plain',
+          }], prompt, context, 'failed'),
+          timestamp: new Date(),
+        }]);
+        return;
+      }
+
+      const predictionId = startData.id;
+      if (!predictionId) {
+        if (startData.output) {
+          const directArtifacts = decorateGeneratedArtifacts(mapOutputToArtifacts(context, startData.output), prompt, context, 'succeeded');
+          if (directArtifacts.length) {
+            setMessages(prev => [...prev, {
+              id: `msg_${Date.now()}_direct_artifact`,
+              role: 'assistant',
+              content: generationCompleteLabel,
+              artifacts: directArtifacts,
+              timestamp: new Date(),
+            }]);
+            setPreviewArtifact(directArtifacts[0]!);
+          }
+          return;
+        }
+        throw new Error(generationFailedLabel);
+      }
+
+      let finalArtifacts: Artifact[] = [];
+      for (let attempt = 0; attempt < 16; attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+        const pollRes = await fetch('/api/replicate/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ predictionId }),
+        });
+        if (!pollRes.ok) continue;
+        const pollData = await pollRes.json() as { status?: string; output?: unknown; error?: string };
+        if (pollData.status === 'succeeded') {
+          finalArtifacts = decorateGeneratedArtifacts(mapOutputToArtifacts(context, pollData.output), prompt, context, 'succeeded');
+          break;
+        }
+        if (pollData.status === 'failed' || pollData.error) {
+          throw new Error(pollData.error ?? generationFailedLabel);
+        }
+      }
+
+      if (!finalArtifacts.length) {
+        throw new Error(generationFailedLabel);
+      }
+
+      setMessages(prev => [...prev, {
+        id: `msg_${Date.now()}_gen_done`,
+        role: 'assistant',
+        content: generationCompleteLabel,
+        artifacts: finalArtifacts,
+        timestamp: new Date(),
+      }]);
+      setPreviewArtifact(finalArtifacts[0]!);
+    } catch (error) {
+      const errorText = error instanceof Error ? error.message : generationFailedLabel;
+      const loweredError = errorText.toLowerCase();
+      if (loweredError.includes('throttled') || loweredError.includes('rate limit') || loweredError.includes('quota')) {
+        const retryAfterSeconds = extractRetryAfterSeconds(errorText);
+        const suffix = retryAfterSeconds ? ` ${retryAfterSeconds} ${t.seconds}.` : '.';
+        setRateLimitNotice(`${t.retryNotice}${suffix}`);
+      }
+
+      const failedArtifacts = decorateGeneratedArtifacts([{
+        type: 'text',
+        label: locale === 'ka' ? 'გენერაცია ვერ შესრულდა' : locale === 'ru' ? 'Ошибка генерации' : 'Generation failed',
+        content: errorText,
+        mimeType: 'text/plain',
+      }], prompt, context, 'failed');
+
+      setMessages(prev => [...prev, {
+        id: `msg_${Date.now()}_gen_fail`,
+        role: 'assistant',
+        content: errorText,
+        artifacts: failedArtifacts,
+        timestamp: new Date(),
+      }]);
+    }
+  }, [decorateGeneratedArtifacts, generationCompleteLabel, generationFailedLabel, generationStartedLabel, locale, t.retryNotice, t.seconds]);
+
+  const retryArtifactGeneration = useCallback(async (artifact: Artifact) => {
+    if (!artifact.generationPrompt) return;
+    const context = artifact.generationContext ?? serviceContext;
+    if (!['avatar', 'video', 'music'].includes(context)) return;
+
+    setRetryingArtifactPrompt(artifact.generationPrompt);
+    try {
+      await runDirectGeneration(artifact.generationPrompt, context);
+    } finally {
+      setRetryingArtifactPrompt(null);
+    }
+  }, [runDirectGeneration, serviceContext]);
 
   // ─── Send message ────────────────────────────────────────────────────────
   const sendMessage = useCallback(async (text?: string) => {
@@ -359,93 +536,7 @@ export default function UnifiedServiceLayout({
 
       const shouldGenerate = shouldTriggerGeneration(serviceContext, msg);
       if (shouldGenerate) {
-        const endpoint = resolveReplicateEndpoint(serviceContext);
-        const startRes = await fetch(endpoint, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ prompt: msg }),
-        });
-        const startData = await startRes.json() as {
-          id?: string;
-          status?: string;
-          message?: string;
-          error?: string;
-          output?: unknown;
-        };
-
-        if (!startRes.ok) {
-          throw new Error(startData.error ?? 'Generation start failed');
-        }
-
-        if (startData.status === 'throttled' || startData.status === 'model_unavailable') {
-          const hint = startData.message ?? startData.error ?? 'Generation unavailable';
-          setMessages(prev => [...prev, {
-            id: `msg_${Date.now()}_gen_hint`,
-            role: 'assistant',
-            content: hint,
-            timestamp: new Date(),
-          }]);
-          return;
-        }
-
-        const predictionId = startData.id;
-        if (!predictionId) {
-          if (startData.output) {
-            const directArtifacts = mapOutputToArtifacts(serviceContext, startData.output);
-            if (directArtifacts.length) {
-              setMessages(prev => [...prev, {
-                id: `msg_${Date.now()}_direct_artifact`,
-                role: 'assistant',
-                content: locale === 'ka' ? 'გენერაცია დასრულდა.' : locale === 'ru' ? 'Генерация завершена.' : 'Generation completed.',
-                artifacts: directArtifacts,
-                timestamp: new Date(),
-              }]);
-              setPreviewArtifact(directArtifacts[0]!);
-            }
-          }
-          return;
-        }
-
-        setMessages(prev => [...prev, {
-          id: `msg_${Date.now()}_gen_wait`,
-          role: 'assistant',
-          content: locale === 'ka'
-            ? 'გენერაცია დაიწყო, დაელოდე რამდენიმე წამი...'
-            : locale === 'ru'
-              ? 'Генерация запущена, подождите несколько секунд...'
-              : 'Generation started, please wait a few seconds...',
-          timestamp: new Date(),
-        }]);
-
-        let finalArtifacts: Artifact[] = [];
-        for (let attempt = 0; attempt < 16; attempt += 1) {
-          await new Promise((resolve) => setTimeout(resolve, 2000));
-          const pollRes = await fetch('/api/replicate/generate', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ predictionId }),
-          });
-          if (!pollRes.ok) continue;
-          const pollData = await pollRes.json() as { status?: string; output?: unknown; error?: string };
-          if (pollData.status === 'succeeded') {
-            finalArtifacts = mapOutputToArtifacts(serviceContext, pollData.output);
-            break;
-          }
-          if (pollData.status === 'failed' || pollData.error) {
-            throw new Error(pollData.error ?? 'Generation failed');
-          }
-        }
-
-        if (finalArtifacts.length) {
-          setMessages(prev => [...prev, {
-            id: `msg_${Date.now()}_gen_done`,
-            role: 'assistant',
-            content: locale === 'ka' ? 'გენერაცია დასრულდა ✅' : locale === 'ru' ? 'Генерация завершена ✅' : 'Generation completed ✅',
-            artifacts: finalArtifacts,
-            timestamp: new Date(),
-          }]);
-          setPreviewArtifact(finalArtifacts[0]!);
-        }
+        await runDirectGeneration(msg, serviceContext);
       }
     } catch (err) {
       const errorText = err instanceof Error ? err.message : 'Unknown error';
@@ -465,7 +556,7 @@ export default function UnifiedServiceLayout({
     } finally {
       setSending(false);
     }
-  }, [input, sending, demoMode, isAuthenticated, agentId, locale, serviceId, serviceContext, messages, onAuthRequired, t.retryNotice, t.seconds]);
+  }, [input, sending, demoMode, isAuthenticated, agentId, locale, serviceId, serviceContext, messages, onAuthRequired, t.retryNotice, t.seconds, runDirectGeneration]);
 
   // ─── File upload ─────────────────────────────────────────────────────────
   const handleFileUpload = (e: ChangeEvent<HTMLInputElement>) => {
@@ -660,20 +751,62 @@ export default function UnifiedServiceLayout({
                   </div>
 
                   {/* Artifact preview cards */}
-                  {msg.artifacts?.map((art, i) => (
-                    <button
-                      key={i}
-                      onClick={() => setPreviewArtifact(art)}
-                      className="block w-full text-left bg-white/[0.04] border border-white/[0.12] rounded-xl p-3 hover:border-cyan-400/45 hover:bg-white/[0.08] transition-colors"
-                    >
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs">
-                          {art.type === 'image' ? '🖼️' : art.type === 'video' ? '🎬' : art.type === 'audio' ? '🎵' : '📄'}
-                        </span>
-                        <span className="text-xs text-white/75">{art.label}</span>
+                  {msg.artifacts?.map((art, i) => {
+                    const canRetry = Boolean(art.generationPrompt);
+                    const retryBusy = retryingArtifactPrompt === art.generationPrompt;
+                    const badgeText = art.generationStatus === 'running'
+                      ? (locale === 'ka' ? 'მიმდინარეობს' : locale === 'ru' ? 'В процессе' : 'Running')
+                      : art.generationStatus === 'succeeded'
+                        ? (locale === 'ka' ? 'მზადაა' : locale === 'ru' ? 'Готово' : 'Ready')
+                        : art.generationStatus === 'failed'
+                          ? (locale === 'ka' ? 'შეცდომა' : locale === 'ru' ? 'Ошибка' : 'Failed')
+                          : null;
+
+                    return (
+                      <div
+                        key={i}
+                        className="w-full bg-white/[0.04] border border-white/[0.12] rounded-xl p-3 hover:border-cyan-400/45 hover:bg-white/[0.08] transition-colors"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <button
+                            onClick={() => setPreviewArtifact(art)}
+                            className="flex items-center gap-2 text-left min-w-0"
+                          >
+                            <span className="text-xs">
+                              {art.type === 'image' ? '🖼️' : art.type === 'video' ? '🎬' : art.type === 'audio' ? '🎵' : '📄'}
+                            </span>
+                            <span className="text-xs text-white/75 truncate">{art.label}</span>
+                          </button>
+
+                          <div className="flex items-center gap-2">
+                            {badgeText && (
+                              <span className={`text-[10px] px-2 py-0.5 rounded-full border ${
+                                art.generationStatus === 'running'
+                                  ? 'border-cyan-400/40 bg-cyan-500/20 text-cyan-100'
+                                  : art.generationStatus === 'succeeded'
+                                    ? 'border-emerald-400/40 bg-emerald-500/20 text-emerald-100'
+                                    : 'border-rose-400/40 bg-rose-500/20 text-rose-100'
+                              }`}>
+                                {badgeText}
+                              </span>
+                            )}
+
+                            {canRetry && (
+                              <button
+                                onClick={() => retryArtifactGeneration(art)}
+                                disabled={retryBusy || sending || art.generationStatus === 'running'}
+                                className="text-[11px] px-2 py-1 rounded-md border border-white/20 bg-white/10 hover:bg-white/20 disabled:opacity-40 disabled:cursor-not-allowed"
+                              >
+                                {retryBusy
+                                  ? (locale === 'ka' ? 'ცდა...' : locale === 'ru' ? 'Повтор...' : 'Retrying...')
+                                  : (locale === 'ka' ? 'თავიდან' : locale === 'ru' ? 'Повтор' : 'Retry')}
+                              </button>
+                            )}
+                          </div>
+                        </div>
                       </div>
-                    </button>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             ))}
