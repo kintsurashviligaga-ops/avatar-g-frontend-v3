@@ -143,6 +143,31 @@ function extractRetryAfterSeconds(input: string): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function shouldTriggerGeneration(serviceContext: string, prompt: string) {
+  if (!['avatar', 'video', 'music'].includes(serviceContext)) return false;
+  return /generate|create|make|render|avatar|video|music|song|audio|image|შექმ|გენერ|созд|генер/i.test(prompt);
+}
+
+function resolveReplicateEndpoint(serviceContext: string) {
+  if (serviceContext === 'avatar') return '/api/replicate/image';
+  if (serviceContext === 'video') return '/api/replicate/video';
+  return '/api/replicate/audio';
+}
+
+function mapOutputToArtifacts(serviceContext: string, output: unknown): Artifact[] {
+  const outputValue = Array.isArray(output) ? output[0] : output;
+  const url = typeof outputValue === 'string' ? outputValue : '';
+  if (!url) return [];
+
+  if (serviceContext === 'avatar') {
+    return [{ type: 'image', url, label: 'Generated Avatar', mimeType: 'image/*' }];
+  }
+  if (serviceContext === 'video') {
+    return [{ type: 'video', url, label: 'Generated Video', mimeType: 'video/*' }];
+  }
+  return [{ type: 'audio', url, label: 'Generated Music', mimeType: 'audio/*' }];
+}
+
 // ─── Quick Action Chips ──────────────────────────────────────────────────────
 
 const QUICK_ACTIONS: Record<string, string[]> = {
@@ -330,6 +355,97 @@ export default function UnifiedServiceLayout({
       // Auto-preview first artifact
       if (artifacts?.length) {
         setPreviewArtifact(artifacts[0]!);
+      }
+
+      const shouldGenerate = shouldTriggerGeneration(serviceContext, msg);
+      if (shouldGenerate) {
+        const endpoint = resolveReplicateEndpoint(serviceContext);
+        const startRes = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prompt: msg }),
+        });
+        const startData = await startRes.json() as {
+          id?: string;
+          status?: string;
+          message?: string;
+          error?: string;
+          output?: unknown;
+        };
+
+        if (!startRes.ok) {
+          throw new Error(startData.error ?? 'Generation start failed');
+        }
+
+        if (startData.status === 'throttled' || startData.status === 'model_unavailable') {
+          const hint = startData.message ?? startData.error ?? 'Generation unavailable';
+          setMessages(prev => [...prev, {
+            id: `msg_${Date.now()}_gen_hint`,
+            role: 'assistant',
+            content: hint,
+            timestamp: new Date(),
+          }]);
+          return;
+        }
+
+        const predictionId = startData.id;
+        if (!predictionId) {
+          if (startData.output) {
+            const directArtifacts = mapOutputToArtifacts(serviceContext, startData.output);
+            if (directArtifacts.length) {
+              setMessages(prev => [...prev, {
+                id: `msg_${Date.now()}_direct_artifact`,
+                role: 'assistant',
+                content: locale === 'ka' ? 'გენერაცია დასრულდა.' : locale === 'ru' ? 'Генерация завершена.' : 'Generation completed.',
+                artifacts: directArtifacts,
+                timestamp: new Date(),
+              }]);
+              setPreviewArtifact(directArtifacts[0]!);
+            }
+          }
+          return;
+        }
+
+        setMessages(prev => [...prev, {
+          id: `msg_${Date.now()}_gen_wait`,
+          role: 'assistant',
+          content: locale === 'ka'
+            ? 'გენერაცია დაიწყო, დაელოდე რამდენიმე წამი...'
+            : locale === 'ru'
+              ? 'Генерация запущена, подождите несколько секунд...'
+              : 'Generation started, please wait a few seconds...',
+          timestamp: new Date(),
+        }]);
+
+        let finalArtifacts: Artifact[] = [];
+        for (let attempt = 0; attempt < 16; attempt += 1) {
+          await new Promise((resolve) => setTimeout(resolve, 2000));
+          const pollRes = await fetch('/api/replicate/generate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ predictionId }),
+          });
+          if (!pollRes.ok) continue;
+          const pollData = await pollRes.json() as { status?: string; output?: unknown; error?: string };
+          if (pollData.status === 'succeeded') {
+            finalArtifacts = mapOutputToArtifacts(serviceContext, pollData.output);
+            break;
+          }
+          if (pollData.status === 'failed' || pollData.error) {
+            throw new Error(pollData.error ?? 'Generation failed');
+          }
+        }
+
+        if (finalArtifacts.length) {
+          setMessages(prev => [...prev, {
+            id: `msg_${Date.now()}_gen_done`,
+            role: 'assistant',
+            content: locale === 'ka' ? 'გენერაცია დასრულდა ✅' : locale === 'ru' ? 'Генерация завершена ✅' : 'Generation completed ✅',
+            artifacts: finalArtifacts,
+            timestamp: new Date(),
+          }]);
+          setPreviewArtifact(finalArtifacts[0]!);
+        }
       }
     } catch (err) {
       const errorText = err instanceof Error ? err.message : 'Unknown error';
