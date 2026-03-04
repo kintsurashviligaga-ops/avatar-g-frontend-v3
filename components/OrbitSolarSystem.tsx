@@ -1,7 +1,7 @@
 'use client'
 
-import React, { useState } from 'react'
-import { Brain, Sparkles, Video, Music, Image as ImageIcon, MessageSquare, Bot, Cpu, Monitor, Zap, LayoutTemplate, PenTool, Database, Users, Mic, Layers } from 'lucide-react'
+import React, { useState, useEffect } from 'react'
+import { Brain, Sparkles, Video, Music, Image as ImageIcon, MessageSquare, Bot, Cpu, Monitor, Zap, LayoutTemplate, PenTool, Database, Users, Mic, Layers, type LucideIcon } from 'lucide-react'
 import Link from 'next/link'
 
 const ORBIT_SERVICES = [
@@ -23,41 +23,57 @@ const ORBIT_SERVICES = [
   { id: 'special', label: 'სპეციალური', icon: Sparkles, color: '#f43f5e', slug: 'social-media-manager' },
 ]
 
-type OrbitService = typeof ORBIT_SERVICES[number]
+interface OrbitService {
+  id: string
+  label: string
+  icon: LucideIcon
+  color: string
+  slug: string
+}
+
+const ORBIT_CSS = `
+@keyframes orbit-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+@keyframes orbit-counter-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(-360deg); }
+}
+.orbit-container {
+  animation: orbit-spin 60s linear infinite;
+}
+.orbit-item-counter {
+  animation: orbit-counter-spin 60s linear infinite;
+}
+.orbit-paused {
+  animation-play-state: paused !important;
+}
+.orbit-running {
+  animation-play-state: running;
+}
+`
 
 export function OrbitSolarSystem() {
   const [activeId, setActiveId] = useState<string | null>(null)
+  const [radius, setRadius] = useState(165)
   const isPaused = activeId !== null
   const total = ORBIT_SERVICES.length
 
+  useEffect(() => {
+    const update = () => setRadius(window.innerWidth >= 768 ? 290 : 165)
+    update()
+    window.addEventListener('resize', update)
+    return () => window.removeEventListener('resize', update)
+  }, [])
+
   return (
     <section className="relative w-full py-24 md:py-32 overflow-hidden bg-transparent flex items-center justify-center min-h-[600px] md:min-h-[800px] pointer-events-none">
-      <style jsx global>{`
-        @keyframes orbit-spin { 
-          from { transform: rotate(0deg); } 
-          to { transform: rotate(360deg); } 
-        }
-        @keyframes orbit-counter-spin { 
-          from { transform: rotate(0deg); } 
-          to { transform: rotate(-360deg); } 
-        }
-        .orbit-container {
-          animation: orbit-spin 60s linear infinite;
-        }
-        .orbit-item-counter {
-          animation: orbit-counter-spin 60s linear infinite;
-        }
-        .paused {
-          animation-play-state: paused !important;
-        }
-        .running {
-          animation-play-state: running;
-        }
-      `}</style>
-      
+      <style dangerouslySetInnerHTML={{ __html: ORBIT_CSS }} />
+
       {/* Container for Orbit visual elements */}
       <div className="relative w-[340px] h-[340px] md:w-[600px] md:h-[600px] flex items-center justify-center pointer-events-auto">
-        
+
         {/* Core Center */}
         <div className="absolute z-20 flex flex-col items-center justify-center select-none">
           <div className="relative w-24 h-24 md:w-32 md:h-32 rounded-full border border-white/10 bg-black/20 shadow-[0_0_40px_rgba(6,182,212,0.1)] flex items-center justify-center backdrop-blur-sm">
@@ -75,21 +91,24 @@ export function OrbitSolarSystem() {
         <div className="absolute inset-[15%] rounded-full border border-white/[0.05]" />
 
         {/* Orbit Rotating Container */}
-        <div className={`absolute inset-0 w-full h-full orbit-container ${isPaused ? 'paused' : 'running'}`}>
+        <div className={`absolute inset-0 w-full h-full orbit-container ${isPaused ? 'orbit-paused' : 'orbit-running'}`}>
           {ORBIT_SERVICES.map((service, i) => {
             const angle = (360 / total) * i
-            
+            const rad = (angle * Math.PI) / 180
+            const x = Math.cos(rad) * radius
+            const y = Math.sin(rad) * radius
+
             return (
               <div
                 key={service.id}
-                className="orbit-item-wrapper absolute top-1/2 left-1/2 w-0 h-0"
-                style={{ 
-                  '--angle': `${angle}deg` 
-                } as React.CSSProperties}
+                className="absolute top-1/2 left-1/2"
+                style={{
+                  transform: `translate(${x - 24}px, ${y - 24}px)`,
+                }}
               >
-                <div className={`orbit-item-counter flex items-center justify-center -translate-x-1/2 -translate-y-1/2 ${isPaused ? 'paused' : 'running'}`}>
-                  <OrbitNodeContent 
-                    service={service} 
+                <div className={`orbit-item-counter flex items-center justify-center ${isPaused ? 'orbit-paused' : 'orbit-running'}`}>
+                  <OrbitNodeContent
+                    service={service}
                     isActive={activeId === service.id}
                     onEnter={() => setActiveId(service.id)}
                     onLeave={() => setActiveId(null)}
@@ -100,22 +119,12 @@ export function OrbitSolarSystem() {
           })}
         </div>
       </div>
-      
-      <style jsx>{`
-        .orbit-item-wrapper {
-          transform: rotate(var(--angle)) translateX(165px) rotate(calc(var(--angle) * -1));
-        }
-        @media (min-width: 768px) {
-          .orbit-item-wrapper {
-            transform: rotate(var(--angle)) translateX(290px) rotate(calc(var(--angle) * -1));
-          }
-        }
-      `}</style>
     </section>
   )
 }
 
 function OrbitNodeContent({ service, isActive, onEnter, onLeave }: { service: OrbitService; isActive: boolean; onEnter: () => void; onLeave: () => void }) {
+  const Icon = service.icon
   return (
     <Link
       href={'/services/' + service.slug}
@@ -127,13 +136,13 @@ function OrbitNodeContent({ service, isActive, onEnter, onLeave }: { service: Or
       onMouseLeave={onLeave}
       aria-label={service.label}
     >
-      <service.icon 
+      <Icon
         className={`w-5 h-5 md:w-6 md:h-6 transition-colors relative z-10 ${isActive ? 'text-white' : 'text-white/70 group-hover:text-white'}`}
         style={{ color: isActive ? service.color : undefined }}
       />
-      
+
       {/* Tooltip */}
-      <div 
+      <div
         className={`absolute pointer-events-none top-full mt-4 left-1/2 -translate-x-1/2 whitespace-nowrap px-4 py-2 rounded-xl bg-[#0f0f1a]/95 border border-white/10 text-sm font-medium text-white shadow-2xl backdrop-blur-md transition-all duration-200 z-50
           ${isActive ? 'opacity-100 translate-y-0 visible' : 'opacity-0 translate-y-2 invisible'}
         `}

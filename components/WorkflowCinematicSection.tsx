@@ -3,6 +3,19 @@
 import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 
+const WORKFLOW_CSS = `
+@keyframes slide-right {
+  0% { transform: translateX(-100%); opacity: 0; }
+  40%, 60% { opacity: 1; }
+  100% { transform: translateX(400%); opacity: 0; }
+}
+@keyframes slide-down {
+  0% { transform: translateY(-100%); opacity: 0; }
+  40%, 60% { opacity: 1; }
+  100% { transform: translateY(400%); opacity: 0; }
+}
+`;
+
 // simplified performance safe fallback for WebGL per 90+ lighthouse spec
 export function WorkflowCinematicSection() {
   const [mounted, setMounted] = useState(false);
@@ -12,6 +25,7 @@ export function WorkflowCinematicSection() {
 
   return (
     <section id="workflow-cinematic" className="relative w-full py-24 bg-[#030308] border-t border-white/[0.05] overflow-hidden min-h-[600px] flex flex-col items-center">
+      <style dangerouslySetInnerHTML={{ __html: WORKFLOW_CSS }} />
       {/* Background gradients */}
       <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgba(34,211,238,0.05)_0%,transparent_70%)] pointer-events-none" />
 
@@ -93,19 +107,6 @@ export function WorkflowCinematicSection() {
 
         </div>
       </div>
-
-      <style jsx>{`
-        @keyframes slide-right {
-          0% { transform: translateX(-100%); opacity: 0; }
-          40%, 60% { opacity: 1; }
-          100% { transform: translateX(400%); opacity: 0; }
-        }
-        @keyframes slide-down {
-          0% { transform: translateY(-100%); opacity: 0; }
-          40%, 60% { opacity: 1; }
-          100% { transform: translateY(400%); opacity: 0; }
-        }
-      `}</style>
     </section>
   );
 }
