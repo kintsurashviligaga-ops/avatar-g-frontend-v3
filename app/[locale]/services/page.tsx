@@ -21,8 +21,13 @@ export default async function LocalizedServicesPage({ params }: ServicesPageProp
   const { locale } = await params;
   const text = PAGE_TEXT[locale] ?? PAGE_TEXT['ka']!;
   return (
-    <section className="min-h-screen bg-transparent text-white py-24 px-4 sm:px-6 lg:px-10">
-      <div className="mx-auto max-w-6xl">
+    <section className="relative min-h-screen bg-transparent text-white py-24 px-4 sm:px-6 lg:px-10 overflow-hidden">
+      <div
+        className="pointer-events-none absolute inset-0 bg-cover bg-center opacity-45"
+        style={{ backgroundImage: "url('/backgrounds/services/agent-g.svg')" }}
+      />
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_20%_18%,rgba(34,211,238,0.16),transparent_50%),radial-gradient(circle_at_80%_82%,rgba(139,92,246,0.16),transparent_50%)]" />
+      <div className="relative mx-auto max-w-6xl">
         <h1 className="text-4xl md:text-5xl font-bold text-center mb-4">{text.title}</h1>
         <p className="text-center text-gray-400 max-w-2xl mx-auto mb-16">{text.subtitle}</p>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">

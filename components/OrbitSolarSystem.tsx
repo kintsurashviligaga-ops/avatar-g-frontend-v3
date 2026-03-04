@@ -133,25 +133,32 @@ function OrbitNodeContent({ service, locale, isActive, onEnter, onLeave }: { ser
   const displayLabel = service.label[locale] || service.label.ka
   const displayDescription = service.description[locale] || service.description.ka
   const openLabel = locale === 'ka' ? 'სერვისის გახსნა' : locale === 'ru' ? 'Открыть сервис' : 'Open service'
+  const orbitGlyph = service.id === 'video' ? '🎬' : service.id === 'music' ? '🎵' : service.id === 'photo' ? '📸' : service.id === 'image' ? '🖼️' : service.id === 'editing' ? '✂️' : service.id === 'agent-g' ? '🤖' : service.id === 'text' ? '📝' : service.id === 'workflow' ? '⚙️' : service.id === 'prompt' ? '🧩' : service.id === 'visual-intel' ? '🧠' : service.id === 'media' ? '📽️' : service.id === 'software' ? '💻' : service.id === 'business' ? '💼' : service.id === 'tourism' ? '✈️' : service.id === 'avatar' ? '🧑' : '🛍️'
   return (
     <Link
       href={'/' + locale + '/services/' + service.slug}
       className={`group relative flex items-center justify-center rounded-full transition-all duration-300 z-30
-        ${isActive ? 'w-14 h-14 md:w-16 md:h-16 bg-[#1a1a2e] border-cyan-400 scale-110 shadow-[0_0_20px_rgba(6,182,212,0.4)]' : 'w-12 h-12 md:w-14 md:h-14 bg-[#11111a]/80 border-white/10 hover:bg-[#1a1a2e] hover:scale-105'}
-        border backdrop-blur-sm
+        ${isActive ? 'w-16 h-16 md:w-20 md:h-20 scale-110 shadow-[0_0_28px_rgba(6,182,212,0.45)]' : 'w-14 h-14 md:w-16 md:h-16 hover:scale-105'}
+        border border-white/20 backdrop-blur-md
       `}
+      style={{
+        background: `radial-gradient(circle at 30% 30%, rgba(255,255,255,0.42), rgba(255,255,255,0.08) 35%, ${service.color}35 82%)`,
+        boxShadow: isActive ? `0 0 24px ${service.color}90, inset 0 2px 10px rgba(255,255,255,0.2)` : `0 0 14px ${service.color}66, inset 0 2px 8px rgba(255,255,255,0.16)`,
+      }}
       onMouseEnter={onEnter}
       onMouseLeave={onLeave}
       aria-label={displayLabel}
     >
+      <span className="absolute inset-0 rounded-full border border-white/20" />
+      <span className="absolute -top-1 -left-1 text-sm md:text-base drop-shadow-[0_2px_6px_rgba(0,0,0,0.7)]">{orbitGlyph}</span>
       <Icon
-        className={`w-5 h-5 md:w-6 md:h-6 transition-colors relative z-10 ${isActive ? 'text-white' : 'text-white/70 group-hover:text-white'}`}
+        className={`w-5 h-5 md:w-6 md:h-6 transition-colors relative z-10 ${isActive ? 'text-white' : 'text-white/80 group-hover:text-white'}`}
         style={{ color: isActive ? service.color : undefined }}
       />
 
       {/* Tooltip */}
       <div
-        className={`absolute top-full mt-4 left-1/2 -translate-x-1/2 w-[220px] px-4 py-3 rounded-2xl bg-[#0f0f1a]/90 border border-white/15 text-white shadow-2xl backdrop-blur-xl transition-all duration-200 z-50
+        className={`absolute top-full mt-4 left-1/2 -translate-x-1/2 w-[240px] px-4 py-3 rounded-2xl bg-[#0f0f1a]/92 border border-white/15 text-white shadow-2xl backdrop-blur-xl transition-all duration-200 z-50
           ${isActive ? 'opacity-100 translate-y-0 visible' : 'opacity-0 translate-y-2 invisible'}
         `}
       >

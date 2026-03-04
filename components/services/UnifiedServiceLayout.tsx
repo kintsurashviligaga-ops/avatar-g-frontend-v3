@@ -231,6 +231,7 @@ export default function UnifiedServiceLayout({
   const promptInputRef = useRef<HTMLTextAreaElement>(null);
   const serviceContext = SERVICE_CONTEXT[serviceId] ?? 'global';
   const serviceBackground = SERVICE_BACKGROUNDS[serviceId] ?? SERVICE_BACKGROUNDS['agent-g']!;
+  const serviceBackgroundImage = `/backgrounds/services/${serviceId}.svg`;
   const agentButtonLabel = `${t.useAgent} — ${serviceName}`;
 
   // ─── Auto-scroll ─────────────────────────────────────────────────────────
@@ -425,7 +426,11 @@ export default function UnifiedServiceLayout({
   // ─── Render ──────────────────────────────────────────────────────────────
   return (
     <div className="relative min-h-screen bg-transparent text-white">
-      <div className="pointer-events-none absolute inset-0 opacity-95" style={{ backgroundImage: serviceBackground }} />
+      <div
+        className="pointer-events-none absolute inset-0 bg-cover bg-center opacity-65"
+        style={{ backgroundImage: `url('${serviceBackgroundImage}')` }}
+      />
+      <div className="pointer-events-none absolute inset-0 opacity-85" style={{ backgroundImage: serviceBackground }} />
       {/* ── Header ──────────────────────────────────────────────────────── */}
       <header className="relative z-10 border-b border-white/[0.06] px-4 sm:px-6 py-4">
         <div className="max-w-7xl mx-auto flex items-center justify-between">

@@ -31,9 +31,10 @@ export default function LandingPageClient() {
   return (
     <div className="relative min-h-screen bg-transparent text-white overflow-hidden">
       <div
-        className="absolute inset-0 bg-cover bg-center opacity-35"
+        className="absolute inset-0 bg-cover bg-center opacity-55"
         style={{ backgroundImage: "url('/brand/background-main.svg')" }}
       />
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_14%_12%,rgba(34,211,238,0.2),transparent_46%),radial-gradient(circle_at_86%_84%,rgba(139,92,246,0.2),transparent_52%)]" />
       <div className="pointer-events-none absolute inset-0">
         <div className="absolute top-[-180px] left-1/2 -translate-x-1/2 w-[980px] h-[460px] bg-cyan-500/[0.06] blur-3xl rounded-full" />
         <div className="absolute bottom-[15%] right-[-120px] w-[420px] h-[420px] bg-violet-500/[0.08] blur-3xl rounded-full" />
