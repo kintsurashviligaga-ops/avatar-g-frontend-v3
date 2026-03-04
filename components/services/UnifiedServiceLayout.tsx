@@ -66,6 +66,9 @@ const T: Record<string, Record<string, string>> = {
     whatsapp: 'WhatsApp',
     telegram: 'Telegram',
     phone: 'Phone',
+    retryNotice: 'Provider is rate-limited. Please retry in',
+    seconds: 'seconds',
+    dismiss: 'Dismiss',
   },
   ka: {
     useAgent: 'აგენტის გამოყენება',
@@ -95,6 +98,9 @@ const T: Record<string, Record<string, string>> = {
     whatsapp: 'WhatsApp',
     telegram: 'Telegram',
     phone: 'ტელეფონი',
+    retryNotice: 'პროვაიდერზე ლიმიტია. თავიდან სცადე',
+    seconds: 'წამში',
+    dismiss: 'დახურვა',
   },
   ru: {
     useAgent: 'Использовать агента',
@@ -124,8 +130,18 @@ const T: Record<string, Record<string, string>> = {
     whatsapp: 'WhatsApp',
     telegram: 'Telegram',
     phone: 'Телефон',
+    retryNotice: 'Провайдер ограничен по лимиту. Повторите через',
+    seconds: 'секунд',
+    dismiss: 'Закрыть',
   },
 };
+
+function extractRetryAfterSeconds(input: string): number | null {
+  const match = input.match(/retry(?:_after)?[^\d]*(\d+)/i);
+  if (!match) return null;
+  const parsed = Number(match[1]);
+  return Number.isFinite(parsed) ? parsed : null;
+}
 
 // ─── Quick Action Chips ──────────────────────────────────────────────────────
 
@@ -205,6 +221,7 @@ export default function UnifiedServiceLayout({
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [cameraOn, setCameraOn] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
+  const [rateLimitNotice, setRateLimitNotice] = useState<string | null>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -284,6 +301,15 @@ export default function UnifiedServiceLayout({
       const reply = data.data?.response ?? data.response ?? 'Processing...';
       const artifacts = data.data?.artifacts ?? data.artifacts;
 
+      const loweredReply = reply.toLowerCase();
+      if (loweredReply.includes('throttled') || loweredReply.includes('rate limit') || loweredReply.includes('quota')) {
+        const retryAfterSeconds = extractRetryAfterSeconds(reply);
+        const suffix = retryAfterSeconds ? ` ${retryAfterSeconds} ${t.seconds}.` : '.';
+        setRateLimitNotice(`${t.retryNotice}${suffix}`);
+      } else {
+        setRateLimitNotice(null);
+      }
+
       const assistantMessage: Message = {
         id: `msg_${Date.now()}_reply`,
         role: 'assistant',
@@ -298,16 +324,24 @@ export default function UnifiedServiceLayout({
         setPreviewArtifact(artifacts[0]!);
       }
     } catch (err) {
+      const errorText = err instanceof Error ? err.message : 'Unknown error';
+      const loweredError = errorText.toLowerCase();
+      if (loweredError.includes('throttled') || loweredError.includes('rate limit') || loweredError.includes('quota')) {
+        const retryAfterSeconds = extractRetryAfterSeconds(errorText);
+        const suffix = retryAfterSeconds ? ` ${retryAfterSeconds} ${t.seconds}.` : '.';
+        setRateLimitNotice(`${t.retryNotice}${suffix}`);
+      }
+
       setMessages(prev => [...prev, {
         id: `msg_${Date.now()}_err`,
         role: 'assistant',
-        content: `Error: ${err instanceof Error ? err.message : 'Unknown error'}`,
+        content: `Error: ${errorText}`,
         timestamp: new Date(),
       }]);
     } finally {
       setSending(false);
     }
-  }, [input, sending, demoMode, isAuthenticated, agentId, locale, serviceId, serviceContext, messages, onAuthRequired]);
+  }, [input, sending, demoMode, isAuthenticated, agentId, locale, serviceId, serviceContext, messages, onAuthRequired, t.retryNotice, t.seconds]);
 
   // ─── File upload ─────────────────────────────────────────────────────────
   const handleFileUpload = (e: ChangeEvent<HTMLInputElement>) => {
@@ -517,6 +551,18 @@ export default function UnifiedServiceLayout({
 
           {/* ── Sticky Action Bar ───────────────────────────────────────── */}
           <div className="border-t border-white/[0.06] p-4 space-y-3">
+            {rateLimitNotice && (
+              <div className="flex items-center justify-between gap-3 rounded-xl border border-amber-400/40 bg-amber-500/15 px-3 py-2">
+                <p className="text-xs text-amber-100">{rateLimitNotice}</p>
+                <button
+                  onClick={() => setRateLimitNotice(null)}
+                  className="text-[11px] text-amber-100/80 hover:text-amber-50"
+                >
+                  {t.dismiss}
+                </button>
+              </div>
+            )}
+
             {/* Automation toggle */}
             <div className="flex items-center gap-3">
               <label className="flex items-center gap-2 cursor-pointer">
