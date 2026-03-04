@@ -9,7 +9,6 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { Redis } from '@upstash/redis';
-import { isServerEnvValid } from '@/lib/server/env-schema';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -31,7 +30,6 @@ interface HealthResponse {
 }
 
 const CRITICAL_ENV = [
-  'OPENAI_API_KEY',
   'NEXT_PUBLIC_SUPABASE_URL',
   'NEXT_PUBLIC_SUPABASE_ANON_KEY',
   'SUPABASE_SERVICE_ROLE_KEY',
@@ -39,6 +37,16 @@ const CRITICAL_ENV = [
 
 function getMissingEnvVars(): string[] {
   return CRITICAL_ENV.filter(k => !process.env[k]) as unknown as string[];
+}
+
+function hasBaseUrlConfigured(): boolean {
+  return Boolean(
+    process.env.NEXT_PUBLIC_BASE_URL ||
+      process.env.BASE_URL ||
+      process.env.NEXT_PUBLIC_SITE_URL ||
+      process.env.NEXT_PUBLIC_APP_URL ||
+      process.env.VERCEL_URL
+  );
 }
 
 /**
@@ -135,7 +143,8 @@ async function verifyRedis(): Promise<
 export async function GET() {
   try {
     const redisStatus = await verifyRedis();
-    const envValid = isServerEnvValid();
+    const missing = getMissingEnvVars();
+    const envValid = missing.length === 0 && hasBaseUrlConfigured();
     const ts = Date.now();
     const version = getVersion();
     const region = process.env.VERCEL_REGION;
@@ -151,7 +160,7 @@ export async function GET() {
       ts,
       version,
       redis: redisStatus.redis,
-      missing: getMissingEnvVars(),
+      missing,
       ...(redisStatus.message && { message: redisStatus.message }),
       ...(region && { region }),
     };

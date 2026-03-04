@@ -3,7 +3,10 @@ import { z } from 'zod';
 
 const coreEnvSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
-  NEXT_PUBLIC_BASE_URL: z.string().url(),
+  NEXT_PUBLIC_BASE_URL: z.string().url().optional(),
+  BASE_URL: z.string().url().optional(),
+  NEXT_PUBLIC_SITE_URL: z.string().url().optional(),
+  NEXT_PUBLIC_APP_URL: z.string().url().optional(),
   SENTRY_DSN: z.string().optional(),
   VERCEL_ANALYTICS_ID: z.string().optional(),
 });
