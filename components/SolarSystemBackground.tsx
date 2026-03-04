@@ -29,6 +29,28 @@ function detectWebGLSupport(): boolean {
 
     if (!gl) return false;
 
+    try {
+      const ctx = gl as WebGLRenderingContext;
+      const debugExt = ctx.getExtension('WEBGL_debug_renderer_info');
+      const renderer = debugExt
+        ? String(ctx.getParameter(debugExt.UNMASKED_RENDERER_WEBGL) || '')
+        : String(ctx.getParameter(ctx.RENDERER) || '');
+      const version = String(ctx.getParameter(ctx.VERSION) || '');
+      const combined = `${renderer} ${version}`.toLowerCase();
+
+      const blockedPatterns = [
+        /geforce\s*9500\s*gt/,
+        /d3d11\s*vs_4_0\s*ps_4_0/,
+        /9\.18\.13\./,
+      ];
+
+      if (blockedPatterns.some((pattern) => pattern.test(combined))) {
+        return false;
+      }
+    } catch {
+      return false;
+    }
+
     const loseContext = (gl as WebGLRenderingContext).getExtension('WEBGL_lose_context');
     loseContext?.loseContext();
 
