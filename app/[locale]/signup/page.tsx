@@ -2,12 +2,15 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import { useParams } from 'next/navigation';
 import { createBrowserClient } from '@/lib/supabase/browser';
 
 export default function LocaleSignupPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const params = useParams<{ locale?: string }>();
+  const locale = params?.locale || 'ka';
   const supabase = createBrowserClient();
 
   const signUpWithGitHub = async () => {
@@ -64,7 +67,7 @@ export default function LocaleSignupPage() {
           </div>
           <h2 className="text-xl font-bold text-white">Check your email</h2>
           <p className="text-sm text-white/50">We sent a confirmation link to your email. Click it to activate your account.</p>
-          <Link href="/login" className="text-sm text-cyan-300 hover:text-cyan-200 transition-colors">
+          <Link href={`/${locale}/login`} className="text-sm text-cyan-300 hover:text-cyan-200 transition-colors">
             ← Back to Login
           </Link>
         </div>
@@ -130,7 +133,7 @@ export default function LocaleSignupPage() {
 
           <p className="text-center text-xs text-white/30">
             Already have an account?{' '}
-            <Link href="/login" className="text-white/60 hover:text-white underline">
+            <Link href={`/${locale}/login`} className="text-white/60 hover:text-white underline">
               Sign in
             </Link>
           </p>

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, Suspense } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useParams, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { createBrowserClient } from '@/lib/supabase/browser';
 
@@ -10,6 +10,8 @@ function LoginForm() {
   const [error, setError] = useState<string | null>(null);
   const supabase = createBrowserClient();
   const searchParams = useSearchParams();
+  const params = useParams<{ locale?: string }>();
+  const locale = params?.locale || 'ka';
   const redirectTo = searchParams.get('redirect') ?? '/';
 
   const loginWithGitHub = async () => {
@@ -105,7 +107,7 @@ function LoginForm() {
 
           <p className="text-center text-xs text-white/30">
             No account?{' '}
-            <Link href="/signup" className="text-white/60 hover:text-white underline">
+            <Link href={`/${locale}/signup`} className="text-white/60 hover:text-white underline">
               Sign up
             </Link>
           </p>
