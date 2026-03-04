@@ -2,7 +2,7 @@
 
 import React from 'react'
 import { motion } from 'framer-motion'
-import { Upload, BrainCircuit, WandSparkles, ShieldCheck, Download, ArrowRight, Image as ImageIcon, Video, Music, FileText } from 'lucide-react'
+import { Upload, BrainCircuit, Sparkles, ShieldCheck, Download, ArrowRight, Image as ImageIcon, Video, Music, FileText } from 'lucide-react'
 
 const steps = [
   {
@@ -26,7 +26,7 @@ const steps = [
     title: '3) Generation',
     subtitle: 'AI modules produce output',
     detail: 'Avatar, video, music, image and text modules run in sequence.',
-    icon: WandSparkles,
+    icon: Sparkles,
     tone: 'from-violet-500/25 to-fuchsia-300/10 border-violet-300/35',
   },
   {
