@@ -1,7 +1,4 @@
-'use client'
-
 import React from 'react'
-import { motion } from 'framer-motion'
 import { Upload, BrainCircuit, Sparkles, ShieldCheck, Download, ArrowRight, Image as ImageIcon, Video, Music, FileText } from 'lucide-react'
 
 const steps = [
@@ -73,20 +70,14 @@ export function WorkflowCinematicSection() {
             const Icon = step.icon
             return (
               <div key={step.id} className="relative">
-                <motion.div
-                  initial={{ opacity: 0, y: 20 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true }}
-                  transition={{ duration: 0.45, delay: index * 0.07 }}
-                  className={`h-full rounded-2xl border bg-gradient-to-b ${step.tone} backdrop-blur-sm p-4 md:p-5`}
-                >
+                <div className={`h-full rounded-2xl border bg-gradient-to-b ${step.tone} backdrop-blur-sm p-4 md:p-5`}>
                   <div className="w-11 h-11 rounded-xl border border-white/20 bg-black/25 flex items-center justify-center mb-3">
                     <Icon className="w-5 h-5 text-white" />
                   </div>
                   <p className="text-sm font-semibold text-white">{step.title}</p>
                   <p className="text-xs text-cyan-200/90 mt-1">{step.subtitle}</p>
                   <p className="text-xs text-white/70 leading-relaxed mt-3">{step.detail}</p>
-                </motion.div>
+                </div>
 
                 {index < steps.length - 1 && (
                   <div className="hidden lg:flex absolute top-1/2 -right-2 -translate-y-1/2 z-20 w-4 h-4 items-center justify-center">
@@ -98,13 +89,7 @@ export function WorkflowCinematicSection() {
           })}
         </div>
 
-        <motion.div
-          initial={{ opacity: 0, y: 16 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-          transition={{ duration: 0.45, delay: 0.25 }}
-          className="mt-10 rounded-2xl border border-white/[0.12] bg-white/[0.04] backdrop-blur-sm p-4 md:p-5"
-        >
+        <div className="mt-10 rounded-2xl border border-white/[0.12] bg-white/[0.04] backdrop-blur-sm p-4 md:p-5">
           <p className="text-xs uppercase tracking-[0.22em] text-white/55 mb-3">Output Artifacts</p>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             {artifacts.map((item) => {
@@ -117,7 +102,7 @@ export function WorkflowCinematicSection() {
               )
             })}
           </div>
-        </motion.div>
+        </div>
       </div>
     </section>
   )
