@@ -46,7 +46,12 @@ export function GlobalNavbar() {
     <>
       <nav className="fixed top-0 inset-x-0 z-50 h-16 md:h-24 transition-[height] duration-300 flex items-center justify-between px-4 sm:px-6 lg:px-10 bg-white/[0.03] backdrop-blur-2xl border-b border-white/[0.08]">
 
-        <BrandLogo href={localeHref('/')} size="lg" />
+        <div className="md:hidden">
+          <BrandLogo href={localeHref('/')} size="sm" showText={false} />
+        </div>
+        <div className="hidden md:block">
+          <BrandLogo href={localeHref('/')} size="lg" />
+        </div>
 
         {/* Desktop links */}
         <div className="hidden lg:flex items-center gap-0.5">
