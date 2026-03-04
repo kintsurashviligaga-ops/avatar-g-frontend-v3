@@ -102,6 +102,23 @@ export async function POST(req: NextRequest) {
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error';
+
+    if (message.includes('Replicate API error 429')) {
+      return NextResponse.json({
+        status: 'throttled',
+        error: message,
+        message: 'Replicate rate limit reached for current account credit. Retry shortly or increase account credit.',
+      }, { status: 200 });
+    }
+
+    if (message.includes('Replicate API error 422')) {
+      return NextResponse.json({
+        status: 'model_unavailable',
+        error: message,
+        message: 'Selected Replicate model/version is unavailable for this account. Update model version or permissions.',
+      }, { status: 200 });
+    }
+
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
