@@ -3,29 +3,31 @@
 import React, { useState, useEffect } from 'react'
 import { Brain, Sparkles, Video, Music, Image as ImageIcon, MessageSquare, Bot, Cpu, Monitor, Zap, LayoutTemplate, PenTool, Database, Users, Mic, Layers, type LucideIcon } from 'lucide-react'
 import Link from 'next/link'
+import { useLanguage } from '@/lib/i18n/LanguageContext'
 
+/* ── Slug map: use SHORT slugs that match app/[locale]/services/[slug]/page.tsx ── */
 const ORBIT_SERVICES = [
-  { id: 'video', label: 'ვიდეო სტუდია', icon: Video, color: '#3b82f6', slug: 'video-studio' },
-  { id: 'music', label: 'მუსიკის სტუდია', icon: Music, color: '#8b5cf6', slug: 'music-studio' },
-  { id: 'photo', label: 'ფოტო სტუდია', icon: ImageIcon, color: '#ec4899', slug: 'photo-studio' },
-  { id: 'image', label: 'ვიზუალების შექმნა', icon: PenTool, color: '#f43f5e', slug: 'image-creator' },
-  { id: 'social', label: 'სოც. მედია', icon: Users, color: '#f59e0b', slug: 'social-media' },
-  { id: 'voice', label: 'ხმის ლაბორატორია', icon: Mic, color: '#10b981', slug: 'voice-lab' },
-  { id: 'business', label: 'ბიზნეს აგენტი', icon: Bot, color: '#06b6d4', slug: 'business-agent' },
-  { id: 'text', label: 'ტექსტის გენერაცია', icon: MessageSquare, color: '#6366f1', slug: 'text-intelligence' },
-  { id: 'automation', label: 'ავტომატიზაცია', icon: Zap, color: '#eab308', slug: 'workflow-builder' },
-  { id: 'layout', label: 'დიზაინი', icon: LayoutTemplate, color: '#f97316', slug: 'image-architect' },
-  { id: 'media', label: 'მედია პროდუქცია', icon: Monitor, color: '#84cc16', slug: 'media-production' },
-  { id: 'data', label: 'მონაცემები', icon: Database, color: '#0ea5e9', slug: 'prompt-builder' },
-  { id: 'logic', label: 'AI ლოგიკა', icon: Cpu, color: '#d946ef', slug: 'visual-intelligence' },
-  { id: 'game', label: 'თამაშების შექმნა', icon: Layers, color: '#14b8a6', slug: 'game-creator' },
-  { id: 'core', label: 'Core AI', icon: Brain, color: '#64748b', slug: 'avatar-builder' },
-  { id: 'special', label: 'სპეციალური', icon: Sparkles, color: '#f43f5e', slug: 'social-media-manager' },
+  { id: 'video', label: { ka: 'ვიდეო სტუდია', en: 'Video Studio', ru: 'Видеостудия' }, icon: Video, color: '#3b82f6', slug: 'video' },
+  { id: 'music', label: { ka: 'მუსიკის სტუდია', en: 'Music Studio', ru: 'Музстудия' }, icon: Music, color: '#8b5cf6', slug: 'music' },
+  { id: 'photo', label: { ka: 'ფოტო სტუდია', en: 'Photo Studio', ru: 'Фотостудия' }, icon: ImageIcon, color: '#ec4899', slug: 'photo' },
+  { id: 'image', label: { ka: 'სურათების შექმნა', en: 'Image Creator', ru: 'Генератор' }, icon: PenTool, color: '#f43f5e', slug: 'image' },
+  { id: 'editing', label: { ka: 'ვიდეო რედაქტირება', en: 'Video Editing', ru: 'Редактор' }, icon: Users, color: '#f59e0b', slug: 'editing' },
+  { id: 'agent-g', label: { ka: 'აგენტი G', en: 'Agent G', ru: 'Агент G' }, icon: Bot, color: '#06b6d4', slug: 'agent-g' },
+  { id: 'text', label: { ka: 'ტექსტის გენერაცია', en: 'Text AI', ru: 'Текст AI' }, icon: MessageSquare, color: '#6366f1', slug: 'text' },
+  { id: 'workflow', label: { ka: 'ავტომატიზაცია', en: 'Workflows', ru: 'Процессы' }, icon: Zap, color: '#eab308', slug: 'workflow' },
+  { id: 'prompt', label: { ka: 'პრომპტ ბილდერი', en: 'Prompt Builder', ru: 'Промпт' }, icon: Database, color: '#0ea5e9', slug: 'prompt' },
+  { id: 'visual-intel', label: { ka: 'ვიზუალური AI', en: 'Visual Intel', ru: 'Визуальный AI' }, icon: Cpu, color: '#d946ef', slug: 'visual-intel' },
+  { id: 'media', label: { ka: 'მედია პროდუქცია', en: 'Media', ru: 'Медиа' }, icon: Monitor, color: '#84cc16', slug: 'media' },
+  { id: 'software', label: { ka: 'პროგრამირება', en: 'Software', ru: 'Софт' }, icon: LayoutTemplate, color: '#f97316', slug: 'software' },
+  { id: 'business', label: { ka: 'ბიზნესი', en: 'Business', ru: 'Бизнес' }, icon: Layers, color: '#14b8a6', slug: 'business' },
+  { id: 'tourism', label: { ka: 'ტურიზმი', en: 'Tourism', ru: 'Туризм' }, icon: Mic, color: '#10b981', slug: 'tourism' },
+  { id: 'avatar', label: { ka: 'ავატარი', en: 'Avatar', ru: 'Аватар' }, icon: Brain, color: '#64748b', slug: 'avatar' },
+  { id: 'shop', label: { ka: 'მაღაზია', en: 'Shop', ru: 'Магазин' }, icon: Sparkles, color: '#f43f5e', slug: 'shop' },
 ]
 
 interface OrbitService {
   id: string
-  label: string
+  label: Record<string, string>
   icon: LucideIcon
   color: string
   slug: string
@@ -57,6 +59,7 @@ const ORBIT_CSS = `
 export function OrbitSolarSystem() {
   const [activeId, setActiveId] = useState<string | null>(null)
   const [radius, setRadius] = useState(165)
+  const { language: locale } = useLanguage()
   const isPaused = activeId !== null
   const total = ORBIT_SERVICES.length
 
@@ -109,6 +112,7 @@ export function OrbitSolarSystem() {
                 <div className={`orbit-item-counter flex items-center justify-center ${isPaused ? 'orbit-paused' : 'orbit-running'}`}>
                   <OrbitNodeContent
                     service={service}
+                    locale={locale || 'ka'}
                     isActive={activeId === service.id}
                     onEnter={() => setActiveId(service.id)}
                     onLeave={() => setActiveId(null)}
@@ -123,18 +127,19 @@ export function OrbitSolarSystem() {
   )
 }
 
-function OrbitNodeContent({ service, isActive, onEnter, onLeave }: { service: OrbitService; isActive: boolean; onEnter: () => void; onLeave: () => void }) {
+function OrbitNodeContent({ service, locale, isActive, onEnter, onLeave }: { service: OrbitService; locale: string; isActive: boolean; onEnter: () => void; onLeave: () => void }) {
   const Icon = service.icon
+  const displayLabel = service.label[locale] || service.label.ka
   return (
     <Link
-      href={'/services/' + service.slug}
+      href={'/' + locale + '/services/' + service.slug}
       className={`group relative flex items-center justify-center rounded-full transition-all duration-300 z-30
         ${isActive ? 'w-14 h-14 md:w-16 md:h-16 bg-[#1a1a2e] border-cyan-400 scale-110 shadow-[0_0_20px_rgba(6,182,212,0.4)]' : 'w-12 h-12 md:w-14 md:h-14 bg-[#11111a]/80 border-white/10 hover:bg-[#1a1a2e] hover:scale-105'}
         border backdrop-blur-sm
       `}
       onMouseEnter={onEnter}
       onMouseLeave={onLeave}
-      aria-label={service.label}
+      aria-label={displayLabel}
     >
       <Icon
         className={`w-5 h-5 md:w-6 md:h-6 transition-colors relative z-10 ${isActive ? 'text-white' : 'text-white/70 group-hover:text-white'}`}
@@ -147,7 +152,7 @@ function OrbitNodeContent({ service, isActive, onEnter, onLeave }: { service: Or
           ${isActive ? 'opacity-100 translate-y-0 visible' : 'opacity-0 translate-y-2 invisible'}
         `}
       >
-        {service.label}
+        {displayLabel}
         {/* Triangle arrow */}
         <div className="absolute -top-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-[#0f0f1a]/95 border-t border-l border-white/10 transform rotate-45" />
       </div>

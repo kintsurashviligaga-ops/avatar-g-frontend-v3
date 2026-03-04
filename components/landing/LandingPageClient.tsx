@@ -10,6 +10,7 @@ import { FeaturesShowcase } from "@/components/landing/FeaturesShowcase";
 import { StatsSection } from "@/components/landing/StatsSection";
 import { CTABanner } from "@/components/landing/CTABanner";
 import ErrorBoundary from "@/components/landing/ErrorBoundary";
+import { BrandLogo } from "@/components/ui/BrandLogo";
 
 const PremiumAgentForm = dynamic(() => import("@/components/landing/PremiumAgentForm"), {
   ssr: false,
@@ -29,6 +30,11 @@ export default function LandingPageClient() {
 
   return (
     <div className="relative min-h-screen bg-transparent text-white overflow-hidden">
+      <div className="pointer-events-none absolute inset-0">
+        <div className="absolute top-[-180px] left-1/2 -translate-x-1/2 w-[980px] h-[460px] bg-cyan-500/[0.06] blur-3xl rounded-full" />
+        <div className="absolute bottom-[15%] right-[-120px] w-[420px] h-[420px] bg-violet-500/[0.08] blur-3xl rounded-full" />
+      </div>
+
       <ErrorBoundary fallback={<SectionFallback label="Hero" />}>
         <HeroSection onPremiumClick={() => setShowPremiumForm(true)} />
       </ErrorBoundary>
@@ -63,9 +69,7 @@ export default function LandingPageClient() {
       <footer className="relative border-t border-white/[0.06] py-10 px-4 sm:px-6">
         <div className="mx-auto max-w-6xl flex flex-col md:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center">
-              <span className="text-white text-xs font-bold">M</span>
-            </div>
+            <BrandLogo href="/ka" size="sm" showText={false} />
             <span className="text-sm text-gray-400">&copy; {new Date().getFullYear()} MyAvatar.ge</span>
           </div>
           <p className="text-[10px] text-gray-600 font-mono">

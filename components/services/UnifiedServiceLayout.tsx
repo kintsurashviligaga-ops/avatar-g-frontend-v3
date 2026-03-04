@@ -32,6 +32,8 @@ interface UnifiedServiceLayoutProps {
   isAuthenticated?: boolean;
 }
 
+type LocaleCode = 'en' | 'ka' | 'ru';
+
 // ─── Translations ────────────────────────────────────────────────────────────
 
 const T: Record<string, Record<string, string>> = {
@@ -57,6 +59,12 @@ const T: Record<string, Record<string, string>> = {
     recording: 'Recording...',
     stopRecord: 'Stop',
     noPreview: 'Run a task to see preview',
+    camera: 'Camera',
+    closeCamera: 'Close Camera',
+    support: 'Support',
+    whatsapp: 'WhatsApp',
+    telegram: 'Telegram',
+    phone: 'Phone',
   },
   ka: {
     useAgent: 'აგენტის გამოყენება',
@@ -80,6 +88,12 @@ const T: Record<string, Record<string, string>> = {
     recording: 'ჩაწერა...',
     stopRecord: 'შეჩერება',
     noPreview: 'გაუშვი დავალება გადახედვისთვის',
+    camera: 'კამერა',
+    closeCamera: 'კამერის დახურვა',
+    support: 'კონტაქტი',
+    whatsapp: 'WhatsApp',
+    telegram: 'Telegram',
+    phone: 'ტელეფონი',
   },
   ru: {
     useAgent: 'Использовать агента',
@@ -103,6 +117,12 @@ const T: Record<string, Record<string, string>> = {
     recording: 'Запись...',
     stopRecord: 'Стоп',
     noPreview: 'Запустите задачу для просмотра',
+    camera: 'Камера',
+    closeCamera: 'Закрыть камеру',
+    support: 'Контакты',
+    whatsapp: 'WhatsApp',
+    telegram: 'Telegram',
+    phone: 'Телефон',
   },
 };
 
@@ -137,7 +157,7 @@ export default function UnifiedServiceLayout({
   onAuthRequired,
   isAuthenticated = false,
 }: UnifiedServiceLayoutProps) {
-  const t = T[locale] ?? T['en']!;
+  const t = T[(locale as LocaleCode)] ?? T['en']!;
   const quickActions = QUICK_ACTIONS[serviceId] ?? QUICK_ACTIONS['agent-g']!;
 
   // ─── State ───────────────────────────────────────────────────────────────
@@ -151,15 +171,27 @@ export default function UnifiedServiceLayout({
   const [showHistory, setShowHistory] = useState(false);
   const [showExport, setShowExport] = useState(false);
   const [showLoginModal, setShowLoginModal] = useState(false);
+  const [cameraOn, setCameraOn] = useState(false);
+  const [cameraError, setCameraError] = useState<string | null>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const cameraStreamRef = useRef<MediaStream | null>(null);
+  const cameraVideoRef = useRef<HTMLVideoElement>(null);
+  const promptInputRef = useRef<HTMLTextAreaElement>(null);
 
   // ─── Auto-scroll ─────────────────────────────────────────────────────────
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
   }, [messages]);
+
+  useEffect(() => {
+    return () => {
+      cameraStreamRef.current?.getTracks().forEach(track => track.stop());
+      cameraStreamRef.current = null;
+    };
+  }, []);
 
   // ─── Send message ────────────────────────────────────────────────────────
   const sendMessage = useCallback(async (text?: string) => {
@@ -277,6 +309,31 @@ export default function UnifiedServiceLayout({
     }
   };
 
+  const toggleCamera = async () => {
+    if (cameraOn) {
+      cameraStreamRef.current?.getTracks().forEach(track => track.stop());
+      cameraStreamRef.current = null;
+      setCameraOn(false);
+      return;
+    }
+
+    try {
+      setCameraError(null);
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+      cameraStreamRef.current = stream;
+      if (cameraVideoRef.current) {
+        cameraVideoRef.current.srcObject = stream;
+      }
+      setCameraOn(true);
+    } catch {
+      setCameraError(locale === 'ka'
+        ? 'კამერაზე წვდომა ვერ მოხერხდა.'
+        : locale === 'ru'
+          ? 'Не удалось получить доступ к камере.'
+          : 'Unable to access camera.');
+    }
+  };
+
   // ─── Render ──────────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-transparent text-white">
@@ -358,7 +415,20 @@ export default function UnifiedServiceLayout({
                 {/* Use Agent Button */}
                 <button
                   onClick={() => {
-                    // Auth check bypassed for testing
+                    if (!isAuthenticated) {
+                      setShowLoginModal(true);
+                      onAuthRequired?.();
+                      return;
+                    }
+                    if (!input.trim()) {
+                      const defaultPrompt = locale === 'ka'
+                        ? `${serviceName} - დავალება: შექმენი შედეგი ნაბიჯ-ნაბიჯ.`
+                        : locale === 'ru'
+                          ? `${serviceName} — задача: создай результат пошагово.`
+                          : `${serviceName} task: create output step by step.`;
+                      setInput(defaultPrompt);
+                    }
+                    promptInputRef.current?.focus();
                   }}
                   className="mt-6 px-8 py-3 bg-gradient-to-r from-cyan-500 to-blue-600 text-white font-bold rounded-2xl shadow-lg shadow-cyan-500/25 hover:shadow-cyan-500/40 transition-all hover:scale-105"
                 >
@@ -424,6 +494,58 @@ export default function UnifiedServiceLayout({
                 </div>
                 <span className="text-xs text-white/40">{t.automation}</span>
               </label>
+
+              <button
+                onClick={toggleCamera}
+                className={`px-3 py-1.5 text-xs border rounded-lg transition-colors ${
+                  cameraOn
+                    ? 'border-cyan-500/50 bg-cyan-500/20 text-cyan-300'
+                    : 'border-white/10 text-white/60 hover:bg-white/5'
+                }`}
+              >
+                {cameraOn ? t.closeCamera : t.camera}
+              </button>
+            </div>
+
+            {(cameraOn || cameraError) && (
+              <div className="rounded-xl border border-white/[0.08] bg-white/[0.03] p-2">
+                {cameraOn ? (
+                  <video
+                    ref={cameraVideoRef}
+                    autoPlay
+                    muted
+                    playsInline
+                    className="w-full max-h-44 rounded-lg object-cover border border-white/[0.08]"
+                  />
+                ) : null}
+                {cameraError ? <p className="text-xs text-red-300 mt-1">{cameraError}</p> : null}
+              </div>
+            )}
+
+            <div className="flex items-center gap-2 overflow-x-auto">
+              <span className="text-[11px] text-white/35 uppercase tracking-wider pr-1">{t.support}</span>
+              <a
+                href="https://wa.me/995000000000"
+                target="_blank"
+                rel="noreferrer"
+                className="px-2.5 py-1 text-xs rounded-full border border-white/[0.1] bg-white/[0.03] hover:bg-white/[0.08]"
+              >
+                {t.whatsapp}
+              </a>
+              <a
+                href="https://t.me/myavatar_ge"
+                target="_blank"
+                rel="noreferrer"
+                className="px-2.5 py-1 text-xs rounded-full border border-white/[0.1] bg-white/[0.03] hover:bg-white/[0.08]"
+              >
+                {t.telegram}
+              </a>
+              <a
+                href="tel:+995000000000"
+                className="px-2.5 py-1 text-xs rounded-full border border-white/[0.1] bg-white/[0.03] hover:bg-white/[0.08]"
+              >
+                {t.phone}
+              </a>
             </div>
 
             {/* Input row */}
@@ -458,6 +580,7 @@ export default function UnifiedServiceLayout({
 
               <div className="flex-1 relative">
                 <textarea
+                  ref={promptInputRef}
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   onKeyDown={(e) => {

@@ -1,10 +1,10 @@
 'use client'
 
-import Image from 'next/image'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useState } from 'react'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
+import { BrandLogo } from '@/components/ui/BrandLogo'
 
 const NAV_ITEMS = [
   { path: '/services', key: 'nav.services' },
@@ -46,23 +46,7 @@ export function GlobalNavbar() {
     <>
       <nav className="fixed top-0 inset-x-0 z-50 h-16 md:h-24 transition-[height] duration-300 flex items-center justify-between px-4 sm:px-6 lg:px-10 bg-white/[0.03] backdrop-blur-2xl border-b border-white/[0.08]">
 
-        {/* Logo — 96px desktop, 68px mobile */}
-        <Link href={localeHref('/')} className="flex items-center gap-3 flex-shrink-0 group" aria-label="MyAvatar.ge home">
-          <div className="relative w-[68px] h-[68px] md:w-[96px] md:h-[96px] flex-shrink-0">
-            <Image
-              src="/brand/logo.png"
-              alt="Avatar G logo"
-              fill
-              sizes="(min-width:768px) 96px, 68px"
-              priority
-              className="object-contain drop-shadow-[0_0_8px_rgba(34,211,238,0.3)]"
-            />
-          </div>
-          <span className="hidden sm:block font-semibold text-[20px] text-white tracking-tight">
-            {'MyAvatar'}
-            <span className="text-white/30">{'.ge'}</span>
-          </span>
-        </Link>
+        <BrandLogo href={localeHref('/')} size="lg" className="scale-[0.7] md:scale-100 origin-left" />
 
         {/* Desktop links */}
         <div className="hidden lg:flex items-center gap-0.5">
