@@ -332,6 +332,25 @@ const LOCALIZED_SERVICE_META: Record<string, LocalizedServiceMeta> = {
       ru: ['Умный планировщик маршрутов', 'Гид по местной культуре', 'Оптимизатор цен бронирования', 'Мультигородской планировщик'],
     },
   },
+  'next': {
+    icon: '🚀',
+    agentId: 'main-assistant',
+    headline: {
+      en: 'Expansion Slot',
+      ka: 'გაფართოების სლოტი',
+      ru: 'Слот расширения',
+    },
+    description: {
+      en: 'Reserved route for the next enterprise-ready service module with full chat and media integrations.',
+      ka: 'რეზერვირებული მარშრუტი შემდეგი სერვის მოდულისთვის სრული ჩათის და მედია ინტეგრაციებით.',
+      ru: 'Резервный маршрут для следующего сервисного модуля с чатом и медиа-интеграциями.',
+    },
+    features: {
+      en: ['Route reserved and active', 'Unified service shell ready', 'Agent integration ready', 'Localization ready (KA/EN/RU)'],
+      ka: ['მარშრუტი რეზერვირებულია', 'Unified service shell მზადაა', 'აგენტის ინტეგრაცია მზადაა', 'ლოკალიზაცია მზადაა (KA/EN/RU)'],
+      ru: ['Маршрут зарезервирован', 'Unified service shell готов', 'Готова интеграция агента', 'Готова локализация (KA/EN/RU)'],
+    },
+  },
 };
 
 // Legacy flat English-only format for backward compatibility

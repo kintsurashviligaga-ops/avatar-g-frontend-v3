@@ -1,0 +1,38 @@
+<svg width="720" height="220" viewBox="0 0 720 220" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="rocketGlow" x1="24" y1="18" x2="170" y2="170" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#67E8F9"/>
+      <stop offset="1" stop-color="#8B5CF6"/>
+    </linearGradient>
+    <linearGradient id="rocketBody" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#E2E8F0"/>
+      <stop offset="1" stop-color="#94A3B8"/>
+    </linearGradient>
+    <linearGradient id="flame" x1="95" y1="140" x2="95" y2="195" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FDE68A"/>
+      <stop offset="0.5" stop-color="#F97316"/>
+      <stop offset="1" stop-color="#EF4444"/>
+    </linearGradient>
+    <filter id="softGlow" x="0" y="0" width="220" height="220" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="10" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <g filter="url(#softGlow)">
+    <circle cx="95" cy="95" r="74" fill="url(#rocketGlow)" fill-opacity="0.16"/>
+    <path d="M95 35C118 54 125 81 125 110C115 120 75 120 65 110C65 81 72 54 95 35Z" fill="url(#rocketBody)" stroke="#CBD5E1" stroke-width="3"/>
+    <ellipse cx="95" cy="86" rx="12" ry="12" fill="#0EA5E9" stroke="#67E8F9" stroke-width="3"/>
+    <path d="M65 98L42 115L60 122L65 110V98Z" fill="#64748B"/>
+    <path d="M125 98L148 115L130 122L125 110V98Z" fill="#64748B"/>
+    <path d="M83 120C83 148 90 172 95 186C100 172 107 148 107 120H83Z" fill="url(#flame)"/>
+  </g>
+
+  <g>
+    <text x="188" y="118" fill="#F8FAFC" font-size="68" font-family="Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif" font-weight="700" letter-spacing="-1.5">Avatar G</text>
+    <text x="192" y="156" fill="#94A3B8" font-size="20" font-family="Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif" font-weight="500" letter-spacing="0.5">AI Creative Platform</text>
+  </g>
+</svg>

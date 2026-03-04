@@ -12,10 +12,10 @@ interface BrandLogoProps {
 }
 
 const sizeMap = {
-  sm: { img: 40, cls: 'w-[40px] h-[40px]' },
-  md: { img: 64, cls: 'w-[64px] h-[64px]' },
-  lg: { img: 96, cls: 'w-[96px] h-[96px]' },
-  xl: { img: 140, cls: 'w-[140px] h-[140px]' },
+  sm: { img: 52, cls: 'w-[52px] h-[52px]' },
+  md: { img: 78, cls: 'w-[78px] h-[78px]' },
+  lg: { img: 116, cls: 'w-[116px] h-[116px]' },
+  xl: { img: 156, cls: 'w-[156px] h-[156px]' },
 }
 
 export function BrandLogo({ href, size = 'md', showText = true, className = '' }: BrandLogoProps) {
@@ -25,12 +25,12 @@ export function BrandLogo({ href, size = 'md', showText = true, className = '' }
     <div className={`flex items-center gap-3 ${className}`}>
       <div className={`relative ${s.cls} flex-shrink-0`}>
         <Image
-          src="/brand/logo.png"
+          src="/brand/logo-rocket.svg"
           alt="MyAvatar.ge"
           fill
           sizes={`${s.img}px`}
           priority
-          className="object-contain drop-shadow-[0_0_12px_rgba(34,211,238,0.35)] mix-blend-screen"
+          className="object-contain animate-[pulse_4s_ease-in-out_infinite] drop-shadow-[0_0_16px_rgba(34,211,238,0.45)]"
         />
       </div>
       {showText && (

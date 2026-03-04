@@ -181,6 +181,16 @@ export const SERVICE_REGISTRY: ServiceDefinition[] = [
       ru: { name: 'Туризм AI', description: 'AI-планирование путешествий, маршруты и местный гид.' },
     },
   },
+  {
+    slug: 'next', title: 'Expansion Slot', href: '/services/next', id: 'next',
+    name: 'Expansion Slot', description: 'Reserved route for the next enterprise service module.',
+    icon: '🚀', route: '/services/next', enabled: true,
+    localized: {
+      en: { name: 'Expansion Slot', description: 'Reserved route for the next enterprise service module.' },
+      ka: { name: 'გაფართოების სლოტი', description: 'რეზერვირებული მარშრუტი შემდეგი enterprise სერვისისთვის.' },
+      ru: { name: 'Слот расширения', description: 'Резервный маршрут для следующего enterprise-сервиса.' },
+    },
+  },
 ];
 
 export function getLocalizedServices(locale: string): ServiceDefinition[] {

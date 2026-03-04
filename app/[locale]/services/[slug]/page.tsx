@@ -9,7 +9,7 @@ type ServiceDetailPageProps = {
 const SHORT_SLUGS = [
   'avatar', 'video', 'editing', 'music', 'photo', 'image',
   'media', 'text', 'prompt', 'visual-intel', 'workflow', 'shop', 'agent-g',
-  'software', 'business', 'tourism',
+  'software', 'business', 'tourism', 'next',
 ] as const;
 
 export async function generateStaticParams() {

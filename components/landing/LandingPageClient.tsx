@@ -31,8 +31,8 @@ export default function LandingPageClient() {
   return (
     <div className="relative min-h-screen bg-transparent text-white overflow-hidden">
       <div
-        className="absolute inset-0 bg-cover bg-center opacity-10"
-        style={{ backgroundImage: "url('https://placeholders.dev/assets/images/1600x900.png')" }}
+        className="absolute inset-0 bg-cover bg-center opacity-35"
+        style={{ backgroundImage: "url('/brand/background-main.svg')" }}
       />
       <div className="pointer-events-none absolute inset-0">
         <div className="absolute top-[-180px] left-1/2 -translate-x-1/2 w-[980px] h-[460px] bg-cyan-500/[0.06] blur-3xl rounded-full" />

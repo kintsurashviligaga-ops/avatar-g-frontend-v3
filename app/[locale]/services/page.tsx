@@ -8,13 +8,13 @@ type ServicesPageProps = {
 const SERVICE_ORDER = [
   'avatar', 'video', 'editing', 'music', 'photo', 'image',
   'media', 'text', 'prompt', 'visual-intel', 'workflow', 'shop', 'agent-g',
-  'software', 'business', 'tourism',
+  'software', 'business', 'tourism', 'next',
 ] as const;
 
 const PAGE_TEXT: Record<string, { title: string; subtitle: string }> = {
-  en: { title: 'All Services', subtitle: '16 AI-powered modules.' },
-  ka: { title: 'ყველა სერვისი', subtitle: '16 AI მოდული.' },
-  ru: { title: 'Все сервисы', subtitle: '16 AI-модулей.' },
+  en: { title: 'All Services', subtitle: '17 AI-powered modules.' },
+  ka: { title: 'ყველა სერვისი', subtitle: '17 AI მოდული.' },
+  ru: { title: 'Все сервисы', subtitle: '17 AI-модулей.' },
 };
 
 export default async function LocalizedServicesPage({ params }: ServicesPageProps) {

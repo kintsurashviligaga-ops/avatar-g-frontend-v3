@@ -7,27 +7,28 @@ import { useLanguage } from '@/lib/i18n/LanguageContext'
 
 /* ── Slug map: use SHORT slugs that match app/[locale]/services/[slug]/page.tsx ── */
 const ORBIT_SERVICES = [
-  { id: 'video', label: { ka: 'ვიდეო სტუდია', en: 'Video Studio', ru: 'Видеостудия' }, icon: Video, color: '#3b82f6', slug: 'video' },
-  { id: 'music', label: { ka: 'მუსიკის სტუდია', en: 'Music Studio', ru: 'Музстудия' }, icon: Music, color: '#8b5cf6', slug: 'music' },
-  { id: 'photo', label: { ka: 'ფოტო სტუდია', en: 'Photo Studio', ru: 'Фотостудия' }, icon: ImageIcon, color: '#ec4899', slug: 'photo' },
-  { id: 'image', label: { ka: 'სურათების შექმნა', en: 'Image Creator', ru: 'Генератор' }, icon: PenTool, color: '#f43f5e', slug: 'image' },
-  { id: 'editing', label: { ka: 'ვიდეო რედაქტირება', en: 'Video Editing', ru: 'Редактор' }, icon: Users, color: '#f59e0b', slug: 'editing' },
-  { id: 'agent-g', label: { ka: 'აგენტი G', en: 'Agent G', ru: 'Агент G' }, icon: Bot, color: '#06b6d4', slug: 'agent-g' },
-  { id: 'text', label: { ka: 'ტექსტის გენერაცია', en: 'Text AI', ru: 'Текст AI' }, icon: MessageSquare, color: '#6366f1', slug: 'text' },
-  { id: 'workflow', label: { ka: 'ავტომატიზაცია', en: 'Workflows', ru: 'Процессы' }, icon: Zap, color: '#eab308', slug: 'workflow' },
-  { id: 'prompt', label: { ka: 'პრომპტ ბილდერი', en: 'Prompt Builder', ru: 'Промпт' }, icon: Database, color: '#0ea5e9', slug: 'prompt' },
-  { id: 'visual-intel', label: { ka: 'ვიზუალური AI', en: 'Visual Intel', ru: 'Визуальный AI' }, icon: Cpu, color: '#d946ef', slug: 'visual-intel' },
-  { id: 'media', label: { ka: 'მედია პროდუქცია', en: 'Media', ru: 'Медиа' }, icon: Monitor, color: '#84cc16', slug: 'media' },
-  { id: 'software', label: { ka: 'პროგრამირება', en: 'Software', ru: 'Софт' }, icon: LayoutTemplate, color: '#f97316', slug: 'software' },
-  { id: 'business', label: { ka: 'ბიზნესი', en: 'Business', ru: 'Бизнес' }, icon: Layers, color: '#14b8a6', slug: 'business' },
-  { id: 'tourism', label: { ka: 'ტურიზმი', en: 'Tourism', ru: 'Туризм' }, icon: Mic, color: '#10b981', slug: 'tourism' },
-  { id: 'avatar', label: { ka: 'ავატარი', en: 'Avatar', ru: 'Аватар' }, icon: Brain, color: '#64748b', slug: 'avatar' },
-  { id: 'shop', label: { ka: 'მაღაზია', en: 'Shop', ru: 'Магазин' }, icon: Sparkles, color: '#f43f5e', slug: 'shop' },
+  { id: 'video', label: { ka: 'ვიდეო სტუდია', en: 'Video Studio', ru: 'Видеостудия' }, description: { ka: 'კინემატიკური ვიდეო გენერაცია', en: 'Cinematic video generation', ru: 'Кинематографичная генерация видео' }, icon: Video, color: '#3b82f6', slug: 'video' },
+  { id: 'music', label: { ka: 'მუსიკის სტუდია', en: 'Music Studio', ru: 'Музстудия' }, description: { ka: 'ბითები, ვოკალი, მასტერინგი', en: 'Beats, vocals, mastering', ru: 'Биты, вокал и мастеринг' }, icon: Music, color: '#8b5cf6', slug: 'music' },
+  { id: 'photo', label: { ka: 'ფოტო სტუდია', en: 'Photo Studio', ru: 'Фотостудия' }, description: { ka: 'რეტუში და batch დამუშავება', en: 'Retouch and batch processing', ru: 'Ретушь и пакетная обработка' }, icon: ImageIcon, color: '#ec4899', slug: 'photo' },
+  { id: 'image', label: { ka: 'სურათების შექმნა', en: 'Image Creator', ru: 'Генератор' }, description: { ka: 'პოსტერები და რეკლამები', en: 'Posters and ad creatives', ru: 'Постеры и рекламные креативы' }, icon: PenTool, color: '#f43f5e', slug: 'image' },
+  { id: 'editing', label: { ka: 'ვიდეო რედაქტირება', en: 'Video Editing', ru: 'Редактор' }, description: { ka: 'AI მონტაჟი და subtitle', en: 'AI editing and subtitles', ru: 'AI-монтаж и субтитры' }, icon: Users, color: '#f59e0b', slug: 'editing' },
+  { id: 'agent-g', label: { ka: 'აგენტი G', en: 'Agent G', ru: 'Агент G' }, description: { ka: 'ორკესტრაციის მთავარი აგენტი', en: 'Primary orchestration agent', ru: 'Главный агент оркестрации' }, icon: Bot, color: '#06b6d4', slug: 'agent-g' },
+  { id: 'text', label: { ka: 'ტექსტის გენერაცია', en: 'Text AI', ru: 'Текст AI' }, description: { ka: 'რეკლამა, SEO და კონტენტი', en: 'Ads, SEO and content', ru: 'Реклама, SEO и контент' }, icon: MessageSquare, color: '#6366f1', slug: 'text' },
+  { id: 'workflow', label: { ka: 'ავტომატიზაცია', en: 'Workflows', ru: 'Процессы' }, description: { ka: 'პროცესების ავტომატიზაცია', en: 'Pipeline automation', ru: 'Автоматизация процессов' }, icon: Zap, color: '#eab308', slug: 'workflow' },
+  { id: 'prompt', label: { ka: 'პრომპტ ბილდერი', en: 'Prompt Builder', ru: 'Промпт' }, description: { ka: 'სტაბილური prompt სისტემები', en: 'Reusable prompt systems', ru: 'Переиспользуемые промпты' }, icon: Database, color: '#0ea5e9', slug: 'prompt' },
+  { id: 'visual-intel', label: { ka: 'ვიზუალური AI', en: 'Visual Intel', ru: 'Визуальный AI' }, description: { ka: 'ვიზუალების ანალიზი', en: 'Visual quality analysis', ru: 'Анализ визуального качества' }, icon: Cpu, color: '#d946ef', slug: 'visual-intel' },
+  { id: 'media', label: { ka: 'მედია პროდუქცია', en: 'Media', ru: 'Медиа' }, description: { ka: 'სრული კამპანიის პაკეტი', en: 'Full campaign pack', ru: 'Полный пакет кампании' }, icon: Monitor, color: '#84cc16', slug: 'media' },
+  { id: 'software', label: { ka: 'პროგრამირება', en: 'Software', ru: 'Софт' }, description: { ka: 'აპების/საიტების შექმნა', en: 'Build apps and sites', ru: 'Создание приложений и сайтов' }, icon: LayoutTemplate, color: '#f97316', slug: 'software' },
+  { id: 'business', label: { ka: 'ბიზნესი', en: 'Business', ru: 'Бизнес' }, description: { ka: 'სტრატეგია და CRM', en: 'Strategy and CRM flows', ru: 'Стратегия и CRM-процессы' }, icon: Layers, color: '#14b8a6', slug: 'business' },
+  { id: 'tourism', label: { ka: 'ტურიზმი', en: 'Tourism', ru: 'Туризм' }, description: { ka: 'მოგზაურობის AI გეგმები', en: 'AI travel planning', ru: 'AI-планирование путешествий' }, icon: Mic, color: '#10b981', slug: 'tourism' },
+  { id: 'avatar', label: { ka: 'ავატარი', en: 'Avatar', ru: 'Аватар' }, description: { ka: 'ციფრული იდენტობის შექმნა', en: 'Digital identity creation', ru: 'Создание цифровой идентичности' }, icon: Brain, color: '#64748b', slug: 'avatar' },
+  { id: 'shop', label: { ka: 'მაღაზია', en: 'Shop', ru: 'Магазин' }, description: { ka: 'მონეტიზაცია და გაყიდვები', en: 'Monetization and storefront', ru: 'Монетизация и витрина' }, icon: Sparkles, color: '#f43f5e', slug: 'shop' },
 ]
 
 interface OrbitService {
   id: string
   label: Record<string, string>
+  description: Record<string, string>
   icon: LucideIcon
   color: string
   slug: string
@@ -130,6 +131,8 @@ export function OrbitSolarSystem() {
 function OrbitNodeContent({ service, locale, isActive, onEnter, onLeave }: { service: OrbitService; locale: string; isActive: boolean; onEnter: () => void; onLeave: () => void }) {
   const Icon = service.icon
   const displayLabel = service.label[locale] || service.label.ka
+  const displayDescription = service.description[locale] || service.description.ka
+  const openLabel = locale === 'ka' ? 'სერვისის გახსნა' : locale === 'ru' ? 'Открыть сервис' : 'Open service'
   return (
     <Link
       href={'/' + locale + '/services/' + service.slug}
@@ -148,12 +151,15 @@ function OrbitNodeContent({ service, locale, isActive, onEnter, onLeave }: { ser
 
       {/* Tooltip */}
       <div
-        className={`absolute pointer-events-none top-full mt-4 left-1/2 -translate-x-1/2 whitespace-nowrap px-4 py-2 rounded-xl bg-[#0f0f1a]/95 border border-white/10 text-sm font-medium text-white shadow-2xl backdrop-blur-md transition-all duration-200 z-50
+        className={`absolute top-full mt-4 left-1/2 -translate-x-1/2 w-[220px] px-4 py-3 rounded-2xl bg-[#0f0f1a]/90 border border-white/15 text-white shadow-2xl backdrop-blur-xl transition-all duration-200 z-50
           ${isActive ? 'opacity-100 translate-y-0 visible' : 'opacity-0 translate-y-2 invisible'}
         `}
       >
-        {displayLabel}
-        {/* Triangle arrow */}
+        <p className="text-sm font-semibold text-white">{displayLabel}</p>
+        <p className="mt-1 text-[11px] text-white/65 leading-relaxed">{displayDescription}</p>
+        <span className="mt-3 inline-flex items-center rounded-lg border border-cyan-400/40 bg-cyan-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-cyan-200">
+          {openLabel}
+        </span>
         <div className="absolute -top-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-[#0f0f1a]/95 border-t border-l border-white/10 transform rotate-45" />
       </div>
     </Link>

@@ -30,6 +30,7 @@ interface UnifiedServiceLayoutProps {
   description: string;
   onAuthRequired?: () => void;
   isAuthenticated?: boolean;
+  demoMode?: boolean;
 }
 
 type LocaleCode = 'en' | 'ka' | 'ru';
@@ -144,6 +145,36 @@ const QUICK_ACTIONS: Record<string, string[]> = {
   'agent-g': ['Plan Task', 'Execute Pipeline', 'Quality Check', 'Bundle Run'],
 };
 
+const SERVICE_CONTEXT: Record<string, 'global' | 'music' | 'video' | 'avatar' | 'voice' | 'business'> = {
+  music: 'music',
+  video: 'video',
+  editing: 'video',
+  avatar: 'avatar',
+  photo: 'avatar',
+  image: 'avatar',
+  software: 'business',
+  business: 'business',
+};
+
+const SERVICE_BACKGROUNDS: Record<string, string> = {
+  avatar: 'radial-gradient(1200px 650px at 18% 12%, rgba(56,189,248,0.24), transparent 55%), radial-gradient(850px 520px at 85% 85%, rgba(168,85,247,0.22), transparent 52%), linear-gradient(180deg, #050814 0%, #03050f 100%)',
+  video: 'radial-gradient(1200px 650px at 25% 20%, rgba(59,130,246,0.22), transparent 55%), radial-gradient(850px 520px at 82% 78%, rgba(236,72,153,0.2), transparent 52%), linear-gradient(180deg, #070b1a 0%, #040711 100%)',
+  editing: 'radial-gradient(1200px 650px at 22% 18%, rgba(251,191,36,0.2), transparent 55%), radial-gradient(850px 520px at 84% 82%, rgba(99,102,241,0.22), transparent 52%), linear-gradient(180deg, #0b0c17 0%, #060712 100%)',
+  music: 'radial-gradient(1200px 650px at 18% 12%, rgba(139,92,246,0.24), transparent 55%), radial-gradient(850px 520px at 85% 85%, rgba(20,184,166,0.2), transparent 52%), linear-gradient(180deg, #070616 0%, #04030e 100%)',
+  photo: 'radial-gradient(1200px 650px at 18% 12%, rgba(34,211,238,0.2), transparent 55%), radial-gradient(850px 520px at 85% 85%, rgba(251,113,133,0.2), transparent 52%), linear-gradient(180deg, #060913 0%, #04060f 100%)',
+  image: 'radial-gradient(1200px 650px at 18% 12%, rgba(99,102,241,0.2), transparent 55%), radial-gradient(850px 520px at 85% 85%, rgba(244,63,94,0.22), transparent 52%), linear-gradient(180deg, #060813 0%, #04060e 100%)',
+  media: 'radial-gradient(1200px 650px at 18% 12%, rgba(132,204,22,0.22), transparent 55%), radial-gradient(850px 520px at 85% 85%, rgba(6,182,212,0.2), transparent 52%), linear-gradient(180deg, #050b13 0%, #03060d 100%)',
+  text: 'radial-gradient(1200px 650px at 18% 12%, rgba(96,165,250,0.2), transparent 55%), radial-gradient(850px 520px at 85% 85%, rgba(167,139,250,0.2), transparent 52%), linear-gradient(180deg, #080c17 0%, #05070f 100%)',
+  prompt: 'radial-gradient(1200px 650px at 18% 12%, rgba(14,165,233,0.22), transparent 55%), radial-gradient(850px 520px at 85% 85%, rgba(217,70,239,0.2), transparent 52%), linear-gradient(180deg, #060a14 0%, #04060f 100%)',
+  'visual-intel': 'radial-gradient(1200px 650px at 18% 12%, rgba(168,85,247,0.22), transparent 55%), radial-gradient(850px 520px at 85% 85%, rgba(16,185,129,0.2), transparent 52%), linear-gradient(180deg, #060913 0%, #04060f 100%)',
+  workflow: 'radial-gradient(1200px 650px at 18% 12%, rgba(234,179,8,0.2), transparent 55%), radial-gradient(850px 520px at 85% 85%, rgba(6,182,212,0.2), transparent 52%), linear-gradient(180deg, #090b14 0%, #05070f 100%)',
+  shop: 'radial-gradient(1200px 650px at 18% 12%, rgba(244,63,94,0.2), transparent 55%), radial-gradient(850px 520px at 85% 85%, rgba(14,165,233,0.2), transparent 52%), linear-gradient(180deg, #0a0814 0%, #06050f 100%)',
+  software: 'radial-gradient(1200px 650px at 18% 12%, rgba(249,115,22,0.2), transparent 55%), radial-gradient(850px 520px at 85% 85%, rgba(59,130,246,0.2), transparent 52%), linear-gradient(180deg, #090914 0%, #06070f 100%)',
+  business: 'radial-gradient(1200px 650px at 18% 12%, rgba(20,184,166,0.2), transparent 55%), radial-gradient(850px 520px at 85% 85%, rgba(96,165,250,0.2), transparent 52%), linear-gradient(180deg, #070b13 0%, #04060f 100%)',
+  tourism: 'radial-gradient(1200px 650px at 18% 12%, rgba(16,185,129,0.2), transparent 55%), radial-gradient(850px 520px at 85% 85%, rgba(56,189,248,0.2), transparent 52%), linear-gradient(180deg, #060a13 0%, #04060f 100%)',
+  'agent-g': 'radial-gradient(1200px 650px at 18% 12%, rgba(6,182,212,0.25), transparent 55%), radial-gradient(850px 520px at 85% 85%, rgba(99,102,241,0.22), transparent 52%), linear-gradient(180deg, #050914 0%, #03060e 100%)',
+};
+
 // ─── Component ───────────────────────────────────────────────────────────────
 
 export default function UnifiedServiceLayout({
@@ -156,6 +187,7 @@ export default function UnifiedServiceLayout({
   description,
   onAuthRequired,
   isAuthenticated = false,
+  demoMode = false,
 }: UnifiedServiceLayoutProps) {
   const t = T[(locale as LocaleCode)] ?? T['en']!;
   const quickActions = QUICK_ACTIONS[serviceId] ?? QUICK_ACTIONS['agent-g']!;
@@ -180,6 +212,9 @@ export default function UnifiedServiceLayout({
   const cameraStreamRef = useRef<MediaStream | null>(null);
   const cameraVideoRef = useRef<HTMLVideoElement>(null);
   const promptInputRef = useRef<HTMLTextAreaElement>(null);
+  const serviceContext = SERVICE_CONTEXT[serviceId] ?? 'global';
+  const serviceBackground = SERVICE_BACKGROUNDS[serviceId] ?? SERVICE_BACKGROUNDS['agent-g']!;
+  const agentButtonLabel = `${t.useAgent} — ${serviceName}`;
 
   // ─── Auto-scroll ─────────────────────────────────────────────────────────
   useEffect(() => {
@@ -198,7 +233,7 @@ export default function UnifiedServiceLayout({
     const msg = (text ?? input).trim();
     if (!msg || sending) return;
 
-    if (!isAuthenticated) {
+    if (!demoMode && !isAuthenticated) {
       setShowLoginModal(true);
       onAuthRequired?.();
       return;
@@ -215,33 +250,52 @@ export default function UnifiedServiceLayout({
     setSending(true);
 
     try {
+      const history = messages
+        .filter((m) => m.role === 'user' || m.role === 'assistant')
+        .slice(-8)
+        .map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content }));
+
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          messages: [{ role: 'user', content: msg }],
+          message: msg,
           agentId,
-          locale,
-          context: serviceId,
+          language: locale,
+          context: serviceContext,
+          history,
+          metadata: {
+            serviceId,
+            demoMode,
+            agentEnabled: true,
+          },
         }),
       });
 
-      const data = await res.json() as { reply?: string; artifacts?: Artifact[]; error?: string };
+      const data = await res.json() as {
+        data?: { response?: string; artifacts?: Artifact[] };
+        response?: string;
+        artifacts?: Artifact[];
+        error?: string;
+      };
 
       if (!res.ok) throw new Error(data.error ?? 'Failed');
+
+      const reply = data.data?.response ?? data.response ?? 'Processing...';
+      const artifacts = data.data?.artifacts ?? data.artifacts;
 
       const assistantMessage: Message = {
         id: `msg_${Date.now()}_reply`,
         role: 'assistant',
-        content: data.reply ?? 'Processing...',
-        artifacts: data.artifacts,
+        content: reply,
+        artifacts,
         timestamp: new Date(),
       };
       setMessages(prev => [...prev, assistantMessage]);
 
       // Auto-preview first artifact
-      if (data.artifacts?.length) {
-        setPreviewArtifact(data.artifacts[0]!);
+      if (artifacts?.length) {
+        setPreviewArtifact(artifacts[0]!);
       }
     } catch (err) {
       setMessages(prev => [...prev, {
@@ -253,7 +307,7 @@ export default function UnifiedServiceLayout({
     } finally {
       setSending(false);
     }
-  }, [input, sending, isAuthenticated, agentId, locale, serviceId, onAuthRequired]);
+  }, [input, sending, demoMode, isAuthenticated, agentId, locale, serviceId, serviceContext, messages, onAuthRequired]);
 
   // ─── File upload ─────────────────────────────────────────────────────────
   const handleFileUpload = (e: ChangeEvent<HTMLInputElement>) => {
@@ -337,12 +391,9 @@ export default function UnifiedServiceLayout({
   // ─── Render ──────────────────────────────────────────────────────────────
   return (
     <div className="relative min-h-screen bg-transparent text-white">
-      <div
-        className="absolute inset-0 bg-cover bg-center opacity-10"
-        style={{ backgroundImage: `url('https://placeholders.dev/assets/images/1600x900.png?text=${serviceId}')` }}
-      />
+      <div className="pointer-events-none absolute inset-0 opacity-95" style={{ backgroundImage: serviceBackground }} />
       {/* ── Header ──────────────────────────────────────────────────────── */}
-      <header className="border-b border-white/[0.06] px-4 sm:px-6 py-4">
+      <header className="relative z-10 border-b border-white/[0.06] px-4 sm:px-6 py-4">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">
             <span className="text-2xl">{serviceIcon}</span>
@@ -352,6 +403,11 @@ export default function UnifiedServiceLayout({
             </div>
           </div>
           <div className="flex items-center gap-2">
+            {demoMode && (
+              <span className="px-2.5 py-1 text-[10px] uppercase tracking-wider rounded-full border border-emerald-400/40 bg-emerald-500/15 text-emerald-200">
+                Demo Mode
+              </span>
+            )}
             <button
               onClick={() => setShowHistory(!showHistory)}
               className="px-3 py-1.5 text-xs border border-white/10 rounded-lg hover:bg-white/5 transition-colors"
@@ -369,7 +425,7 @@ export default function UnifiedServiceLayout({
       </header>
 
       {/* ── Main Layout: Chat (70%) + Preview (30%) ─────────────────────── */}
-      <div className="max-w-7xl mx-auto flex flex-col lg:flex-row min-h-[calc(100vh-64px)]">
+      <div className="relative z-10 max-w-7xl mx-auto flex flex-col lg:flex-row min-h-[calc(100vh-64px)]">
 
         {/* ── Chat Window (70%) ─────────────────────────────────────────── */}
         <div
@@ -489,7 +545,7 @@ export default function UnifiedServiceLayout({
 
               <button
                 onClick={() => {
-                  if (!isAuthenticated) {
+                  if (!demoMode && !isAuthenticated) {
                     setShowLoginModal(true);
                     onAuthRequired?.();
                     return;
@@ -504,9 +560,9 @@ export default function UnifiedServiceLayout({
                   }
                   promptInputRef.current?.focus();
                 }}
-                className="px-3 py-1.5 text-xs border border-white/10 rounded-lg hover:bg-white/5 transition-colors"
+                className="px-3 py-1.5 text-xs border border-cyan-400/40 bg-cyan-500/10 rounded-lg hover:bg-cyan-500/20 transition-colors"
               >
-                {t.useAgent}
+                {agentButtonLabel}
               </button>
             </div>
 

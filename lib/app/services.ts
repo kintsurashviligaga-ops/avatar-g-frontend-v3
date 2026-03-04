@@ -42,6 +42,7 @@ const SERVICE_META: Record<string, { icon: LucideIcon; credits: number }> = {
   'software': { icon: Sparkles, credits: 8 },
   'business': { icon: Briefcase, credits: 8 },
   'tourism': { icon: Sparkles, credits: 6 },
+  'next': { icon: Sparkles, credits: 5 },
 };
 
 export const APP_SERVICES: AppService[] = SERVICE_REGISTRY.map((service) => ({

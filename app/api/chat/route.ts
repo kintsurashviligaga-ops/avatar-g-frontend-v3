@@ -20,19 +20,38 @@ const CONTEXT_TO_AGENT: Record<string, string> = {
 };
 
 const chatRequestSchema = z.object({
-  message: z.string().min(1).max(4000),
+  message: z.string().min(1).max(4000).optional(),
+  messages: z.array(z.object({
+    role: z.enum(['user', 'assistant']),
+    content: z.string(),
+  })).optional(),
   agentId: z.string().optional(),
   context: z.enum(['global', 'music', 'video', 'avatar', 'voice', 'business']).default('global'),
+  serviceId: z.string().optional(),
   conversationId: z.string().optional(),
   sessionId: z.string().optional(),
   history: z.array(z.object({
     role: z.enum(['user', 'assistant']),
     content: z.string(),
   })).optional(),
+  attachments: z.array(z.object({
+    name: z.string(),
+    type: z.string().optional(),
+    content: z.string().optional(),
+  })).optional(),
+  flags: z.object({
+    demoMode: z.boolean().optional(),
+    agentEnabled: z.boolean().optional(),
+  }).optional(),
+  locale: z.string().optional(),
   language: z.string().default('en'),
   channel: z.enum(['web', 'whatsapp', 'telegram', 'phone', 'api']).default('web'),
   metadata: z.record(z.unknown()).optional(),
-});
+}).refine((value) => {
+  if (value.message && value.message.trim().length > 0) return true;
+  const list = value.messages ?? [];
+  return list.some((m) => m.role === 'user' && m.content.trim().length > 0);
+}, { message: 'message or messages[] is required' });
 
 export async function POST(req: NextRequest) {
   // Rate limiting
@@ -47,10 +66,32 @@ export async function POST(req: NextRequest) {
       return apiError(new Error('Validation failed'), 400, 'Invalid request format');
     }
 
-    const { message, agentId, context, conversationId, sessionId, history, language, channel, metadata } = parsed.data;
+    const {
+      message,
+      messages,
+      agentId,
+      context,
+      serviceId,
+      conversationId,
+      sessionId,
+      history,
+      attachments,
+      flags,
+      locale,
+      language,
+      channel,
+      metadata,
+    } = parsed.data;
+
+    const incomingMessages = messages ?? [];
+    const lastUserFromMessages = [...incomingMessages].reverse().find((m) => m.role === 'user')?.content;
+    const effectiveMessage = (message ?? lastUserFromMessages ?? '').trim();
+    if (!effectiveMessage) {
+      return apiError(new Error('Validation failed'), 400, 'Missing user message');
+    }
 
     // Security: sanitize prompt
-    const sanitizedMessage = sanitizePrompt(message);
+    const sanitizedMessage = sanitizePrompt(effectiveMessage);
 
     // Auth context (optional — allows unauthenticated for public chat)
     const auth = await getAuthContext();
@@ -68,8 +109,9 @@ export async function POST(req: NextRequest) {
     const resolvedAgentId = agentId || CONTEXT_TO_AGENT[context] || 'main-assistant';
 
     // Build message history
-    const messages = [
-      ...(history || []).map(h => ({ role: h.role as 'user' | 'assistant', content: h.content })),
+    const mergedHistory = history?.length ? history : incomingMessages.slice(0, -1);
+    const messageHistory = [
+      ...(mergedHistory || []).map(h => ({ role: h.role as 'user' | 'assistant', content: h.content })),
       { role: 'user' as const, content: sanitizedMessage },
     ];
 
@@ -79,7 +121,12 @@ export async function POST(req: NextRequest) {
       userId,
       sessionId: sessionId || conversationId || `chat_${Date.now()}`,
       channel,
-      messages,
+      messages: messageHistory,
+      files: attachments?.map((file) => ({
+        name: file.name,
+        type: file.type || 'application/octet-stream',
+        content: file.content || '',
+      })),
     });
 
     return apiSuccess({
@@ -93,9 +140,15 @@ export async function POST(req: NextRequest) {
       durationMs: result.durationMs,
       dualStage: result.dualStage,
       context,
+      serviceId,
+      demoMode: flags?.demoMode ?? false,
+      agentEnabled: flags?.agentEnabled ?? true,
       conversationId: conversationId || `conv_${Date.now()}`,
-      language,
-      metadata,
+      language: locale || language,
+      metadata: {
+        ...(metadata || {}),
+        serviceId,
+      },
     });
   } catch (error) {
     console.error('[Chat API Error]', error);
