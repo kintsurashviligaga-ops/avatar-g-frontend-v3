@@ -653,7 +653,11 @@ export default function UnifiedServiceLayout({
     <div className="relative min-h-screen bg-transparent text-white">
       <div
         className="pointer-events-none absolute inset-0 bg-cover bg-center opacity-70"
-        style={{ backgroundImage: `url('${serviceBackgroundImage}')` }}
+        style={{
+          backgroundImage: `url('${serviceBackgroundImage}'), url('/backgrounds/services/agent-g.svg')`,
+          backgroundSize: 'cover, cover',
+          backgroundPosition: 'center, center',
+        }}
       />
       <div className="pointer-events-none absolute inset-0 opacity-90" style={{ backgroundImage: serviceBackground }} />
       <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(to_bottom,rgba(2,6,23,0.55),rgba(2,6,23,0.36)_28%,rgba(2,6,23,0.58)_100%)]" />
