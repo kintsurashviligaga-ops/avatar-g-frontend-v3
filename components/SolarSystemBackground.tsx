@@ -5,6 +5,39 @@ import { Canvas, useFrame } from '@react-three/fiber';
 import { OrbitControls, Stars } from '@react-three/drei';
 import * as THREE from 'three';
 
+type WebGLStatus = 'checking' | 'enabled' | 'disabled';
+
+function detectWebGLSupport(): boolean {
+  if (typeof window === 'undefined') return false;
+
+  try {
+    const canvas = document.createElement('canvas');
+    const attributes: WebGLContextAttributes = {
+      antialias: false,
+      alpha: true,
+      depth: true,
+      stencil: false,
+      preserveDrawingBuffer: false,
+      powerPreference: 'low-power',
+      failIfMajorPerformanceCaveat: true,
+    };
+
+    const gl =
+      canvas.getContext('webgl2', attributes) ||
+      canvas.getContext('webgl', attributes) ||
+      canvas.getContext('experimental-webgl', attributes);
+
+    if (!gl) return false;
+
+    const loseContext = (gl as WebGLRenderingContext).getExtension('WEBGL_lose_context');
+    loseContext?.loseContext();
+
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 // Planet Data
 const PLANETS = [
   { name: 'Mercury', color: '#B5A7A7', size: 0.8, distance: 12, speed: 0.8, description: 'The Swift Planet' },
@@ -164,12 +197,29 @@ function SceneContent() {
 }
 
 export default function SolarSystemBackground() {
+  const [webglStatus, setWebglStatus] = useState<WebGLStatus>('checking');
+
+  useEffect(() => {
+    const supported = detectWebGLSupport();
+    setWebglStatus(supported ? 'enabled' : 'disabled');
+  }, []);
+
+  if (webglStatus !== 'enabled') {
+    return (
+      <div className="fixed inset-0 z-0 bg-[#050510]" aria-hidden="true">
+        <div className="absolute inset-0 bg-gradient-to-b from-[#050510]/80 via-transparent to-[#050510]/80 pointer-events-none" />
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_transparent_0%,_#050510_100%)] opacity-60 pointer-events-none" />
+      </div>
+    );
+  }
+
   return (
     <div className="fixed inset-0 z-0 bg-[#050510]" aria-hidden="true">
       <Canvas
         camera={{ position: [0, 60, 90], fov: 45 }}
-        gl={{ antialias: false, powerPreference: "high-performance" }}
-        dpr={[1, 2]}
+        gl={{ antialias: false, powerPreference: 'low-power', failIfMajorPerformanceCaveat: true }}
+        dpr={[1, 1.5]}
+        fallback={null}
       >
         <SceneContent />
       </Canvas>
