@@ -60,8 +60,14 @@ export default function LocaleSignupPage() {
 
   if (success) {
     return (
-      <div className="min-h-screen bg-transparent flex items-center justify-center px-4">
-        <div className="w-full max-w-sm text-center space-y-4">
+      <div className="relative min-h-screen bg-transparent flex items-center justify-center px-4 overflow-hidden">
+        <div
+          className="pointer-events-none absolute inset-0 bg-cover bg-center opacity-42"
+          style={{ backgroundImage: "url('/brand/background-main.svg')" }}
+        />
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_20%_18%,rgba(34,211,238,0.16),transparent_52%),radial-gradient(circle_at_80%_82%,rgba(139,92,246,0.16),transparent_52%)]" />
+        <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(to_bottom,rgba(2,6,23,0.62),rgba(2,6,23,0.4)_35%,rgba(2,6,23,0.66)_100%)]" />
+        <div className="relative z-10 w-full max-w-sm text-center space-y-4 bg-white/[0.03] border border-white/[0.08] rounded-3xl p-6">
           <div className="w-16 h-16 mx-auto bg-emerald-500/10 border border-emerald-500/20 rounded-2xl flex items-center justify-center">
             <span className="text-2xl">✓</span>
           </div>

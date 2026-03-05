@@ -771,10 +771,10 @@ export default function UnifiedServiceLayout({
                         key={i}
                         className="w-full bg-white/[0.04] border border-white/[0.12] rounded-xl p-3 hover:border-cyan-400/45 hover:bg-white/[0.08] transition-colors"
                       >
-                        <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center justify-between gap-2 flex-wrap sm:flex-nowrap">
                           <button
                             onClick={() => setPreviewArtifact(art)}
-                            className="flex items-center gap-2 text-left min-w-0"
+                            className="flex items-center gap-2 text-left min-w-0 flex-1"
                           >
                             <span className="text-xs">
                               {art.type === 'image' ? '🖼️' : art.type === 'video' ? '🎬' : art.type === 'audio' ? '🎵' : '📄'}
@@ -782,7 +782,7 @@ export default function UnifiedServiceLayout({
                             <span className="text-xs text-white/75 truncate">{art.label}</span>
                           </button>
 
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
                             {badgeText && (
                               <span className={`text-[10px] px-2 py-0.5 rounded-full border ${
                                 art.generationStatus === 'running'
@@ -841,7 +841,7 @@ export default function UnifiedServiceLayout({
             )}
 
             {/* Automation toggle */}
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 flex-wrap">
               <label className="flex items-center gap-2 cursor-pointer">
                 <input
                   type="checkbox"
@@ -883,7 +883,7 @@ export default function UnifiedServiceLayout({
                   }
                   promptInputRef.current?.focus();
                 }}
-                className="px-3 py-1.5 text-xs border border-cyan-300/50 bg-cyan-500/15 rounded-lg hover:bg-cyan-500/25 hover:border-cyan-200/70 transition-colors"
+                className="px-3 py-1.5 text-xs border border-cyan-300/50 bg-cyan-500/15 rounded-lg hover:bg-cyan-500/25 hover:border-cyan-200/70 transition-colors max-w-full truncate"
               >
                 {agentButtonLabel}
               </button>
@@ -931,7 +931,7 @@ export default function UnifiedServiceLayout({
             </div>
 
             {/* Input row */}
-            <div className="flex gap-2 items-end">
+            <div className="flex gap-2 items-end min-w-0">
               <input
                 type="file"
                 ref={fileInputRef}
@@ -980,7 +980,7 @@ export default function UnifiedServiceLayout({
               <button
                 onClick={() => sendMessage()}
                 disabled={sending || !input.trim()}
-                className="flex-shrink-0 px-5 py-2.5 bg-gradient-to-r from-cyan-500 to-blue-600 text-white text-sm font-semibold rounded-xl hover:shadow-lg hover:shadow-cyan-500/25 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                className="flex-shrink-0 px-3 sm:px-5 py-2.5 bg-gradient-to-r from-cyan-500 to-blue-600 text-white text-xs sm:text-sm font-semibold rounded-xl hover:shadow-lg hover:shadow-cyan-500/25 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 {t.send}
               </button>
