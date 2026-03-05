@@ -416,6 +416,16 @@ export default function UnifiedServiceLayout({
         timestamp: new Date(),
       }]);
       setPreviewArtifact(finalArtifacts[0]!);
+
+      // Save avatar to localStorage for homepage display
+      if (context === 'avatar' && finalArtifacts.length > 0 && finalArtifacts[0]?.url) {
+        try {
+          localStorage.setItem('GENERATED_AVATAR_URL', finalArtifacts[0].url);
+          localStorage.setItem('GENERATED_AVATAR_TIMESTAMP', new Date().toISOString());
+        } catch (e) {
+          // Ignore localStorage errors
+        }
+      }
     } catch (error) {
       const errorText = error instanceof Error ? error.message : generationFailedLabel;
       const loweredError = errorText.toLowerCase();

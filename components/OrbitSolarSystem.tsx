@@ -60,6 +60,7 @@ const ORBIT_CSS = `
 export function OrbitSolarSystem() {
   const [activeId, setActiveId] = useState<string | null>(null)
   const [radius, setRadius] = useState(165)
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
   const { language: locale } = useLanguage()
   const isPaused = activeId !== null
   const total = ORBIT_SERVICES.length
@@ -69,6 +70,27 @@ export function OrbitSolarSystem() {
     update()
     window.addEventListener('resize', update)
     return () => window.removeEventListener('resize', update)
+  }, [])
+
+  useEffect(() => {
+    // Check for generated avatar in localStorage
+    try {
+      const storedUrl = localStorage.getItem('GENERATED_AVATAR_URL')
+      if (storedUrl) {
+        setAvatarUrl(storedUrl)
+      }
+    } catch (e) {
+      // Ignore localStorage errors
+    }
+
+    // Listen for storage events from other tabs/windows
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key === 'GENERATED_AVATAR_URL') {
+        setAvatarUrl(e.newValue)
+      }
+    }
+    window.addEventListener('storage', handleStorage)
+    return () => window.removeEventListener('storage', handleStorage)
   }, [])
 
   return (
@@ -82,13 +104,23 @@ export function OrbitSolarSystem() {
 
         {/* Core Center */}
         <div className="absolute z-20 flex flex-col items-center justify-center select-none">
-          <div className="relative w-24 h-24 md:w-32 md:h-32 rounded-full border border-white/10 bg-black/20 shadow-[0_0_40px_rgba(6,182,212,0.1)] flex items-center justify-center backdrop-blur-sm">
-            <Brain className="w-10 h-10 md:w-12 md:h-12 text-cyan-400 drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]" />
+          <div className="relative w-24 h-24 md:w-32 md:h-32 rounded-full border border-white/10 bg-black/20 shadow-[0_0_40px_rgba(6,182,212,0.1)] flex items-center justify-center backdrop-blur-sm overflow-hidden">
+            {avatarUrl ? (
+              /* eslint-disable-next-line @next/next/no-img-element */
+              <img
+                src={avatarUrl}
+                alt="Generated Avatar"
+                className="w-full h-full object-cover rounded-full"
+                onError={() => setAvatarUrl(null)}
+              />
+            ) : (
+              <Brain className="w-10 h-10 md:w-12 md:h-12 text-cyan-400 drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]" />
+            )}
             <div className="absolute inset-0 rounded-full border-2 border-cyan-400/30 animate-ping" style={{ animationDuration: '3s' }} />
           </div>
           <div className="mt-4 text-center">
-            <h3 className="text-white font-bold text-lg md:text-xl tracking-tight drop-shadow-lg" style={{ textShadow: '0 2px 4px rgba(0,0,0,0.8)' }}>Core AI</h3>
-            <p className="text-cyan-400/80 text-xs md:text-sm font-medium drop-shadow-md">შენი ციფრული იდენტობა</p>
+            <h3 className="text-white font-bold text-lg md:text-xl tracking-tight drop-shadow-lg" style={{ textShadow: '0 2px 4px rgba(0,0,0,0.8)' }}>{avatarUrl ? 'Your Avatar' : 'Core AI'}</h3>
+            <p className="text-cyan-400/80 text-xs md:text-sm font-medium drop-shadow-md">{avatarUrl ? (locale === 'ka' ? 'შენი ციფრული იდენტობა' : locale === 'ru' ? 'Твоя цифровая идентичность' : 'Your digital identity') : 'შენი ციფრული იდენტობა'}</p>
           </div>
         </div>
 
