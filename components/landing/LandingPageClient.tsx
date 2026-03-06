@@ -155,23 +155,33 @@ export default function LandingPageClient() {
           <StatsSection />
         </ErrorBoundary>
 
+        <div className="ag-divider-strong mx-auto max-w-6xl opacity-80" />
+
         <ErrorBoundary fallback={<SectionFallback label="Orbit" />}>
           <section className="relative pb-10 md:pb-14 px-4 sm:px-6">
             <OrbitSolarSystem />
           </section>
         </ErrorBoundary>
 
+        <div className="ag-divider-strong mx-auto max-w-6xl opacity-80" />
+
         <ErrorBoundary fallback={<SectionFallback label="Features" />}>
           <FeaturesShowcase />
         </ErrorBoundary>
+
+        <div className="ag-divider-strong mx-auto max-w-6xl opacity-80" />
 
         <ErrorBoundary fallback={<SectionFallback label="Pricing" />}>
           <PricingSection />
         </ErrorBoundary>
 
+        <div className="ag-divider-strong mx-auto max-w-6xl opacity-80" />
+
         <ErrorBoundary fallback={<SectionFallback label="Cinematic" />}>
           <WorkflowCinematicSection />
         </ErrorBoundary>
+
+        <div className="ag-divider-strong mx-auto max-w-6xl opacity-80" />
 
         <ErrorBoundary fallback={<SectionFallback label="CTA" />}>
           <CTABanner />

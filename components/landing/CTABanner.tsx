@@ -34,11 +34,11 @@ export function CTABanner() {
   const text = CTA_COPY[locale as keyof typeof CTA_COPY] || CTA_COPY.ka
 
   return (
-    <section className="relative py-28 px-4 sm:px-6 overflow-hidden border-t border-white/[0.04]">
+    <section className="relative py-28 px-4 sm:px-6 overflow-hidden border-t border-cyan-300/[0.22]">
       {/* Refined background */}
       <div className="absolute inset-0">
-        <div className="absolute inset-0 bg-gradient-to-br from-cyan-600/[0.05] via-transparent to-violet-600/[0.05]" />
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[900px] h-[900px] bg-gradient-to-r from-cyan-500/[0.06] to-violet-500/[0.06] rounded-full blur-[120px] animate-glow-pulse" />
+        <div className="absolute inset-0 bg-gradient-to-br from-cyan-600/[0.1] via-transparent to-violet-600/[0.1]" />
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[980px] h-[980px] bg-gradient-to-r from-cyan-500/[0.12] to-violet-500/[0.12] rounded-full blur-[130px] animate-glow-pulse" />
         {/* Grid pattern */}
         <div
           className="absolute inset-0 opacity-[0.025]"
@@ -81,7 +81,7 @@ export function CTABanner() {
             href={`/${locale}/signup`}
             size="lg"
             variant="ghost"
-            className="group relative bg-gradient-to-r from-cyan-500 to-blue-600 text-white font-semibold shadow-[0_0_40px_rgba(6,182,212,0.2)] hover:shadow-[0_0_60px_rgba(6,182,212,0.35)] hover:brightness-110"
+            className="group relative bg-gradient-to-r from-cyan-400 via-blue-500 to-violet-500 text-white font-semibold border border-cyan-300/40 shadow-[0_0_55px_rgba(6,182,212,0.34)] hover:shadow-[0_0_78px_rgba(6,182,212,0.5)] hover:brightness-110"
           >
             <span>{text.primary}</span>
             <ArrowRight className="relative w-4 h-4 group-hover:translate-x-1 transition-transform duration-300" />

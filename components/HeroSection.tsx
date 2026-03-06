@@ -79,9 +79,9 @@ export function HeroSection({ onPremiumClick }: HeroSectionProps) {
     <section className="relative min-h-[92vh] flex flex-col items-center justify-center overflow-hidden px-4 sm:px-6 pt-20 md:pt-24 pb-16">
       {/* Cinematic aurora overlays */}
       <div className="absolute inset-0 pointer-events-none">
-        <div className="absolute top-[-20%] left-1/2 -translate-x-1/2 w-[900px] h-[500px] bg-gradient-to-b from-cyan-500/[0.08] via-cyan-400/[0.04] to-transparent rounded-full blur-3xl" />
-        <div className="absolute top-[10%] right-[-10%] w-[400px] h-[400px] bg-gradient-to-bl from-violet-500/[0.07] to-transparent rounded-full blur-3xl" />
-        <div className="absolute bottom-[15%] left-[-5%] w-[350px] h-[350px] bg-gradient-to-tr from-blue-500/[0.06] to-transparent rounded-full blur-3xl" />
+        <div className="absolute top-[-20%] left-1/2 -translate-x-1/2 w-[980px] h-[560px] bg-gradient-to-b from-cyan-400/[0.14] via-cyan-400/[0.08] to-transparent rounded-full blur-3xl" />
+        <div className="absolute top-[8%] right-[-10%] w-[440px] h-[440px] bg-gradient-to-bl from-violet-400/[0.13] to-transparent rounded-full blur-3xl" />
+        <div className="absolute bottom-[12%] left-[-5%] w-[390px] h-[390px] bg-gradient-to-tr from-blue-400/[0.12] to-transparent rounded-full blur-3xl" />
       </div>
 
       <motion.div
@@ -136,7 +136,7 @@ export function HeroSection({ onPremiumClick }: HeroSectionProps) {
             href={'/' + (language || 'ka') + '/services'}
             size="lg"
             variant="primary"
-            className="shadow-[0_0_40px_rgba(255,255,255,0.08)] hover:shadow-[0_0_60px_rgba(255,255,255,0.14)]"
+            className="bg-gradient-to-r from-cyan-400 via-blue-500 to-violet-500 text-white border border-cyan-300/30 shadow-[0_0_44px_rgba(34,211,238,0.34)] hover:shadow-[0_0_74px_rgba(34,211,238,0.48)]"
           >
             {text.cta}
             <ArrowRight className="w-4 h-4" />
@@ -161,7 +161,7 @@ export function HeroSection({ onPremiumClick }: HeroSectionProps) {
       </motion.div>
 
       {/* Bottom fade into next section */}
-      <div className="absolute bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-[#030712] to-transparent pointer-events-none" />
+      <div className="absolute bottom-0 left-0 right-0 h-36 bg-gradient-to-t from-[#030712] via-[#030712]/90 to-transparent pointer-events-none" />
     </section>
   )
 }
