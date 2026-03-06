@@ -104,14 +104,14 @@ export default function GlobalChatbot() {
       recognitionRef.current.onresult = (e) => { const t = e.results[0]?.[0]?.transcript; if (t) setInput(t); };
       recognitionRef.current.onend = () => setIsRecording(false);
     }
-  }, []);
+  }, [cameraOn]);
 
   useEffect(() => {
     return () => {
       cameraStreamRef.current?.getTracks().forEach((track) => track.stop());
       cameraStreamRef.current = null;
     };
-  }, []);
+  }, [cameraOn]);
 
   const switchAgent = useCallback((agent: AgentInfo) => {
     setActiveAgent(agent);
@@ -302,7 +302,7 @@ export default function GlobalChatbot() {
     } finally {
       setCameraCaptureBusy(false);
     }
-  }, []);
+  }, [cameraOn]);
 
   const clearHistory = useCallback(() => { setSessions(prev => ({ ...prev, [activeAgent.id]: [] })); }, [activeAgent.id]);
   const copyMsg = useCallback((content: string, id: string) => { navigator.clipboard?.writeText(content).catch(() => undefined); setCopiedId(id); setTimeout(() => setCopiedId(null), 2000); }, []);

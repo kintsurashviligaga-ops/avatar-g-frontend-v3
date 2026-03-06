@@ -85,7 +85,7 @@ export function OrbitSolarSystem() {
       if (storedUrl) {
         setAvatarUrl(storedUrl)
       }
-    } catch (e) {
+    } catch {
       // Ignore localStorage errors
     }
 

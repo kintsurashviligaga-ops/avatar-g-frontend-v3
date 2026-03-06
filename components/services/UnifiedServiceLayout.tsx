@@ -718,7 +718,7 @@ export default function UnifiedServiceLayout({
     } finally {
       setCameraCaptureBusy(false);
     }
-  }, [locale, serviceContext, serviceName, t.scanHint]);
+  }, [cameraOn, locale, serviceContext, serviceName, t.scanHint]);
 
   const downloadArtifact = useCallback(async (artifact: Artifact) => {
     if (!artifact.url) return;
