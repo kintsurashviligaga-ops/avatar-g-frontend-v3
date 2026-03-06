@@ -76,7 +76,7 @@ export function HeroSection({ onPremiumClick }: HeroSectionProps) {
   const text = HERO_TEXT[language as keyof typeof HERO_TEXT] || HERO_TEXT.ka
 
   return (
-    <section className="relative min-h-[92vh] flex flex-col items-center justify-center overflow-hidden px-4 sm:px-6 pt-20 md:pt-24 pb-16">
+    <section className="relative min-h-[86vh] md:min-h-[92vh] flex flex-col items-center justify-center overflow-hidden px-4 sm:px-6 pt-16 md:pt-24 pb-14 md:pb-16">
       {/* Cinematic aurora overlays */}
       <div className="absolute inset-0 pointer-events-none">
         <div className="absolute top-[-20%] left-1/2 -translate-x-1/2 w-[980px] h-[560px] bg-gradient-to-b from-cyan-400/[0.14] via-cyan-400/[0.08] to-transparent rounded-full blur-3xl" />
@@ -85,7 +85,7 @@ export function HeroSection({ onPremiumClick }: HeroSectionProps) {
       </div>
 
       <motion.div
-        className="relative z-10 mx-auto max-w-5xl text-center ag-surface-hero rounded-[2rem] px-5 py-12 sm:px-8 sm:py-14 md:px-12 shadow-[0_30px_120px_rgba(2,6,18,0.68),0_0_80px_rgba(34,211,238,0.18)]"
+        className="relative z-10 mx-auto max-w-5xl text-center ag-surface-hero rounded-[1.5rem] sm:rounded-[2rem] px-4 sm:px-8 md:px-12 py-9 sm:py-14 shadow-[0_30px_120px_rgba(2,6,18,0.68),0_0_80px_rgba(34,211,238,0.18)]"
         variants={containerVariants}
         initial="hidden"
         animate="visible"
@@ -98,7 +98,7 @@ export function HeroSection({ onPremiumClick }: HeroSectionProps) {
 
         {/* H1 — split with gradient accent */}
         <motion.h1
-          className="mt-8 text-5xl sm:text-6xl md:text-7xl lg:text-[5.6rem] font-extrabold leading-[1.02] tracking-[-0.035em] text-white"
+          className="mt-6 sm:mt-8 text-[2.35rem] xs:text-5xl sm:text-6xl md:text-7xl lg:text-[5.6rem] font-extrabold leading-[1.03] tracking-[-0.03em] sm:tracking-[-0.035em] text-white"
           variants={itemVariants}
         >
           {text.title}{' '}
@@ -109,7 +109,7 @@ export function HeroSection({ onPremiumClick }: HeroSectionProps) {
 
         {/* Subtitle */}
         <motion.p
-          className="mt-5 text-xl sm:text-2xl md:text-3xl font-medium bg-gradient-to-r from-white/60 to-white/40 bg-clip-text text-transparent tracking-[-0.01em]"
+          className="mt-4 sm:mt-5 text-lg sm:text-2xl md:text-3xl font-medium bg-gradient-to-r from-white/60 to-white/40 bg-clip-text text-transparent tracking-[-0.01em]"
           variants={itemVariants}
         >
           {text.subtitle}
@@ -117,7 +117,7 @@ export function HeroSection({ onPremiumClick }: HeroSectionProps) {
 
         {/* Description */}
         <motion.p
-          className="mt-6 text-base md:text-lg text-white/40 max-w-2xl mx-auto leading-relaxed"
+          className="mt-5 sm:mt-6 text-[15px] sm:text-base md:text-lg text-white/45 max-w-2xl mx-auto leading-relaxed"
           variants={itemVariants}
         >
           {text.description}
@@ -131,12 +131,12 @@ export function HeroSection({ onPremiumClick }: HeroSectionProps) {
         </motion.div>
 
         {/* CTAs */}
-        <motion.div className="mt-10 flex flex-col sm:flex-row sm:flex-wrap justify-center gap-3 sm:gap-4" variants={itemVariants}>
+        <motion.div className="mt-8 sm:mt-10 flex flex-col sm:flex-row sm:flex-wrap justify-center gap-3 sm:gap-4" variants={itemVariants}>
           <GlassButton
             href={'/' + (language || 'ka') + '/services'}
             size="lg"
             variant="primary"
-            className="bg-gradient-to-r from-cyan-400 via-blue-500 to-violet-500 text-white border border-cyan-300/30 shadow-[0_0_44px_rgba(34,211,238,0.34)] hover:shadow-[0_0_74px_rgba(34,211,238,0.48)]"
+            className="w-full sm:w-auto bg-gradient-to-r from-cyan-400 via-blue-500 to-violet-500 text-white border border-cyan-300/30 shadow-[0_0_44px_rgba(34,211,238,0.34)] hover:shadow-[0_0_74px_rgba(34,211,238,0.48)]"
           >
             {text.cta}
             <ArrowRight className="w-4 h-4" />
@@ -144,7 +144,7 @@ export function HeroSection({ onPremiumClick }: HeroSectionProps) {
 
           <Link
             href={'/' + (language || 'ka') + '/services'}
-            className="inline-flex items-center justify-center gap-2 px-8 py-4 rounded-2xl border border-white/[0.16] text-white/75 font-medium text-sm hover:bg-white/[0.08] hover:border-white/[0.24] hover:text-white transition-all duration-300 backdrop-blur-sm"
+            className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-8 py-4 rounded-2xl border border-white/[0.16] text-white/75 font-medium text-sm hover:bg-white/[0.08] hover:border-white/[0.24] hover:text-white transition-all duration-300 backdrop-blur-sm"
           >
             {text.secondary}
           </Link>
@@ -152,7 +152,7 @@ export function HeroSection({ onPremiumClick }: HeroSectionProps) {
           <Link
             href={'/' + (language || 'ka') + '/services/agent-g'}
             onClick={(e) => { if (onPremiumClick) { e.preventDefault(); onPremiumClick(); } }}
-            className="group relative inline-flex items-center justify-center gap-2.5 px-7 py-4 rounded-2xl border border-cyan-400/25 bg-gradient-to-r from-cyan-500/15 via-blue-500/10 to-violet-500/15 text-cyan-100 font-semibold text-sm shadow-[0_0_24px_rgba(34,211,238,0.15)] hover:shadow-[0_0_40px_rgba(34,211,238,0.25)] hover:border-cyan-400/40 transition-all duration-300"
+            className="w-full sm:w-auto group relative inline-flex items-center justify-center gap-2.5 px-7 py-4 rounded-2xl border border-cyan-400/25 bg-gradient-to-r from-cyan-500/15 via-blue-500/10 to-violet-500/15 text-cyan-100 font-semibold text-sm shadow-[0_0_24px_rgba(34,211,238,0.15)] hover:shadow-[0_0_40px_rgba(34,211,238,0.25)] hover:border-cyan-400/40 transition-all duration-300"
           >
             <PhoneCall className="w-4 h-4 text-cyan-300 group-hover:text-cyan-200 transition-colors" />
             {text.agent}

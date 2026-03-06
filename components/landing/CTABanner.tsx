@@ -34,7 +34,7 @@ export function CTABanner() {
   const text = CTA_COPY[locale as keyof typeof CTA_COPY] || CTA_COPY.ka
 
   return (
-    <section className="relative py-28 px-4 sm:px-6 overflow-hidden border-t border-cyan-300/[0.22]">
+    <section className="relative py-20 sm:py-28 px-4 sm:px-6 overflow-hidden border-t border-cyan-300/[0.22]">
       {/* Refined background */}
       <div className="absolute inset-0">
         <div className="absolute inset-0 bg-gradient-to-br from-cyan-600/[0.1] via-transparent to-violet-600/[0.1]" />
@@ -65,14 +65,14 @@ export function CTABanner() {
           <span className="text-sm font-medium text-cyan-300/80">{text.badge}</span>
         </motion.div>
 
-        <h2 className="text-3xl md:text-5xl lg:text-6xl font-bold text-white mb-7 leading-tight tracking-[-0.02em]">
+        <h2 className="text-[2rem] sm:text-5xl lg:text-6xl font-bold text-white mb-6 sm:mb-7 leading-tight tracking-[-0.02em]">
           {text.title}{' '}
           <span className="bg-gradient-to-r from-cyan-300 via-blue-400 to-violet-400 bg-clip-text text-transparent">
             {text.titleAccent}
           </span>
         </h2>
 
-        <p className="text-white/35 text-base md:text-lg max-w-xl mx-auto mb-12 leading-relaxed">
+        <p className="text-white/40 text-[15px] sm:text-base md:text-lg max-w-xl mx-auto mb-10 sm:mb-12 leading-relaxed">
           {text.subtitle}
         </p>
 
@@ -81,7 +81,7 @@ export function CTABanner() {
             href={`/${locale}/signup`}
             size="lg"
             variant="ghost"
-            className="group relative bg-gradient-to-r from-cyan-400 via-blue-500 to-violet-500 text-white font-semibold border border-cyan-300/40 shadow-[0_0_55px_rgba(6,182,212,0.34)] hover:shadow-[0_0_78px_rgba(6,182,212,0.5)] hover:brightness-110"
+            className="group relative w-full sm:w-auto bg-gradient-to-r from-cyan-400 via-blue-500 to-violet-500 text-white font-semibold border border-cyan-300/40 shadow-[0_0_55px_rgba(6,182,212,0.34)] hover:shadow-[0_0_78px_rgba(6,182,212,0.5)] hover:brightness-110"
           >
             <span>{text.primary}</span>
             <ArrowRight className="relative w-4 h-4 group-hover:translate-x-1 transition-transform duration-300" />
