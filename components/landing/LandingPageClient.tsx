@@ -2,7 +2,6 @@
 
 import { useMemo, useState } from "react";
 import dynamic from "next/dynamic";
-import Image from "next/image";
 import Link from "next/link";
 import { OrbitSolarSystem } from "@/components/OrbitSolarSystem";
 import { HeroSection } from "@/components/HeroSection";
@@ -76,17 +75,15 @@ export default function LandingPageClient() {
   return (
     <div className="relative min-h-screen bg-[#030712] text-white overflow-hidden ag-noise">
       {/* Background Image Layer */}
-      <div className="pointer-events-none absolute inset-0 z-0">
-        <Image
-          src="/brand/background-aurora-v2.svg?v=20260306"
-          alt="Space Background"
-          fill
-          priority
-          sizes="100vw"
-          className="object-cover object-center brightness-[1.22] contrast-[1.16] saturate-[1.22]"
-          quality={90}
-        />
-      </div>
+      <div
+        className="pointer-events-none absolute inset-0 z-0 brightness-[1.22] contrast-[1.16] saturate-[1.22]"
+        style={{
+          backgroundImage: "url('/brand/background-aurora-v2.svg?v=20260306')",
+          backgroundSize: 'cover',
+          backgroundPosition: 'center center',
+          backgroundRepeat: 'no-repeat',
+        }}
+      />
 
       {/* Color Overlay — warm cinematic grade */}
       <div
