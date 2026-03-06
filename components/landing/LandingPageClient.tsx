@@ -78,12 +78,12 @@ export default function LandingPageClient() {
       {/* Background Image Layer */}
       <div className="pointer-events-none absolute inset-0 z-0">
         <Image
-          src="/brand/background-space-hq.webp?v=20260306b"
+          src="/brand/background-space.jpg?v=20260306c"
           alt="Space Background"
           fill
           priority
           sizes="100vw"
-          className="object-cover object-center brightness-[1.1] contrast-[1.04] saturate-[1.1]"
+          className="object-cover object-center brightness-[1.22] contrast-[1.16] saturate-[1.22]"
           quality={90}
         />
       </div>
@@ -93,14 +93,14 @@ export default function LandingPageClient() {
         className="pointer-events-none absolute inset-0 z-0"
         style={{
           backgroundImage:
-            'radial-gradient(ellipse 900px 500px at 20% 15%, rgba(34,211,238,0.14), transparent 55%),' +
-            'radial-gradient(ellipse 700px 400px at 82% 80%, rgba(124,92,252,0.12), transparent 50%),' +
-            'linear-gradient(180deg, rgba(3,7,18,0.15) 0%, rgba(3,7,18,0.05) 50%, rgba(3,7,18,0.25) 100%)',
+            'radial-gradient(ellipse 980px 560px at 20% 14%, rgba(34,211,238,0.2), transparent 58%),' +
+            'radial-gradient(ellipse 760px 430px at 84% 80%, rgba(124,92,252,0.18), transparent 52%),' +
+            'linear-gradient(180deg, rgba(3,7,18,0.28) 0%, rgba(3,7,18,0.10) 50%, rgba(3,7,18,0.36) 100%)',
         }}
       />
 
       {/* Vignette */}
-      <div className="pointer-events-none absolute inset-0 z-0 bg-[radial-gradient(ellipse_at_center,transparent_50%,rgba(3,7,18,0.5)_100%)]" />
+      <div className="pointer-events-none absolute inset-0 z-0 bg-[radial-gradient(ellipse_at_center,transparent_46%,rgba(3,7,18,0.64)_100%)]" />
 
       {/* Nebula + Stars */}
       <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden">

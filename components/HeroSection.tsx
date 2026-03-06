@@ -85,7 +85,7 @@ export function HeroSection({ onPremiumClick }: HeroSectionProps) {
       </div>
 
       <motion.div
-        className="relative z-10 mx-auto max-w-5xl text-center ag-surface-hero rounded-[2rem] px-5 py-12 sm:px-8 sm:py-14 md:px-12"
+        className="relative z-10 mx-auto max-w-5xl text-center ag-surface-hero rounded-[2rem] px-5 py-12 sm:px-8 sm:py-14 md:px-12 shadow-[0_30px_120px_rgba(2,6,18,0.68),0_0_80px_rgba(34,211,238,0.18)]"
         variants={containerVariants}
         initial="hidden"
         animate="visible"
@@ -98,7 +98,7 @@ export function HeroSection({ onPremiumClick }: HeroSectionProps) {
 
         {/* H1 — split with gradient accent */}
         <motion.h1
-          className="mt-8 text-5xl sm:text-6xl md:text-7xl lg:text-[5.5rem] font-bold leading-[1.05] tracking-[-0.03em] text-white"
+          className="mt-8 text-5xl sm:text-6xl md:text-7xl lg:text-[5.6rem] font-extrabold leading-[1.02] tracking-[-0.035em] text-white"
           variants={itemVariants}
         >
           {text.title}{' '}
