@@ -3,7 +3,7 @@
  * SECURE: Uses official Supabase session management instead of localStorage hacks
  */
 
-import { createClient } from '@supabase/supabase-js';
+import { createBrowserClient } from '@/lib/supabase/browser';
 
 /**
  * Get Supabase client for client components
@@ -11,12 +11,7 @@ import { createClient } from '@supabase/supabase-js';
  * PRODUCTION-SAFE: Never throws, returns client even if env vars missing
  */
 export function getSupabaseClient() {
-	const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-	const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-	if (!supabaseUrl || !supabaseAnonKey) {
-		throw new Error('Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY');
-	}
-	return createClient(supabaseUrl, supabaseAnonKey);
+	return createBrowserClient();
 }
 
 

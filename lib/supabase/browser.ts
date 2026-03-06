@@ -7,12 +7,37 @@ if (!supabaseUrl || !supabaseAnonKey) {
   throw new Error('Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY');
 }
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+let browserClient: ReturnType<typeof createClient> | null = null;
+
+function getOrCreateBrowserClient() {
+  if (browserClient) {
+    return browserClient;
+  }
+
+  if (typeof window !== 'undefined') {
+    const globalKey = '__avatarg_supabase_browser_client__' as const;
+    const globalWithClient = window as typeof window & {
+      [globalKey]?: ReturnType<typeof createClient>;
+    };
+
+    if (!globalWithClient[globalKey]) {
+      globalWithClient[globalKey] = createClient(supabaseUrl!, supabaseAnonKey!);
+    }
+
+    browserClient = globalWithClient[globalKey]!;
+    return browserClient;
+  }
+
+  browserClient = createClient(supabaseUrl!, supabaseAnonKey!);
+  return browserClient;
+}
+
+export const supabase = getOrCreateBrowserClient();
 
 /**
  * Returns a new Supabase client instance for browser usage
  * Matches legacy createBrowserClient API for compatibility
  */
 export function createBrowserClient() {
-  return createClient(supabaseUrl as string, supabaseAnonKey as string);
+  return getOrCreateBrowserClient();
 }

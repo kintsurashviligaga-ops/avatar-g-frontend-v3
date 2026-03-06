@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import UnifiedServiceLayout from '@/components/services/UnifiedServiceLayout';
-import { createBrowserClient } from '@supabase/ssr';
+import { createBrowserClient } from '@/lib/supabase/browser';
 
 interface ServicePageClientProps {
   serviceId: string;
@@ -24,10 +24,7 @@ export default function ServicePageClient(props: ServicePageClientProps) {
       return;
     }
 
-    const supabase = createBrowserClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL ?? '',
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? '',
-    );
+    const supabase = createBrowserClient();
 
     supabase.auth.getSession().then(({ data }) => {
       setIsAuthenticated(!!data.session);
