@@ -78,7 +78,7 @@ export default function LandingPageClient() {
       <div
         className="pointer-events-none absolute inset-0 z-0 brightness-[1.22] contrast-[1.16] saturate-[1.22]"
         style={{
-          backgroundImage: "url('/brand/background-aurora-v2.svg?v=20260306')",
+          backgroundImage: "url('/brand/background-aurora-v2.svg?v=20260306e')",
           backgroundSize: 'cover',
           backgroundPosition: 'center center',
           backgroundRepeat: 'no-repeat',
@@ -186,7 +186,7 @@ export default function LandingPageClient() {
 
         {/* ═══ Footer ═══ */}
         <footer className="relative mt-12">
-          <div className="mx-auto max-w-6xl px-4 sm:px-6 py-12 md:py-16 ag-surface-secondary rounded-t-3xl border-x border-white/[0.08] !border-t-0">
+          <div className="mx-auto max-w-6xl px-4 sm:px-6 py-12 md:py-16 rounded-t-3xl border-x border-b border-white/[0.08] border-t-0 bg-[linear-gradient(140deg,rgba(8,14,30,0.78),rgba(5,10,24,0.66))] backdrop-blur-[18px] shadow-[0_14px_46px_rgba(0,0,0,0.42)]">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-10 md:gap-8">
               {/* Brand Column */}
               <div className="col-span-2 md:col-span-1">
