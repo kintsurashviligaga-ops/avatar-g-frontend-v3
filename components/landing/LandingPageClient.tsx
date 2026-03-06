@@ -186,12 +186,11 @@ export default function LandingPageClient() {
 
         {/* ═══ Footer ═══ */}
         <footer className="relative mt-12">
-          <div className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-cyan-400/[0.04] via-transparent to-transparent" />
-          <div className="mx-auto max-w-6xl px-4 sm:px-6 py-12 md:py-16 ag-surface-secondary rounded-t-3xl border-x border-white/[0.08]">
+          <div className="mx-auto max-w-6xl px-4 sm:px-6 py-12 md:py-16 ag-surface-secondary rounded-t-3xl border-x border-white/[0.08] !border-t-0">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-10 md:gap-8">
               {/* Brand Column */}
               <div className="col-span-2 md:col-span-1">
-                <BrandLogo href={`/${locale}`} size="sm" showText />
+                <BrandLogo href={`/${locale}`} size="sm" showText className="origin-left scale-[1.2]" />
                 <p className="mt-4 text-sm text-white/35 leading-relaxed max-w-xs">
                   {locale === 'ka' ? 'AI-ზე დაფუძნებული შემოქმედებითი პლატფორმა. 16 მოდული, ერთი ინტელექტუალური სივრცე.' :
                    locale === 'ru' ? 'Креативная платформа на основе AI. 16 модулей, одно интеллектуальное пространство.' :
