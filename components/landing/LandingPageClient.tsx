@@ -74,7 +74,7 @@ export default function LandingPageClient() {
   );
 
   return (
-    <div className="relative min-h-screen bg-[#030712] text-white overflow-hidden">
+    <div className="relative min-h-screen bg-[#030712] text-white overflow-hidden ag-noise">
       {/* Background Image Layer */}
       <div className="pointer-events-none absolute inset-0 z-0">
         <Image
@@ -178,8 +178,9 @@ export default function LandingPageClient() {
         </ErrorBoundary>
 
         {/* ═══ Footer ═══ */}
-        <footer className="relative border-t border-white/[0.06] mt-12">
-          <div className="mx-auto max-w-6xl px-4 sm:px-6 py-12 md:py-16">
+        <footer className="relative border-t border-white/[0.10] mt-12">
+          <div className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-cyan-400/[0.04] via-transparent to-transparent" />
+          <div className="mx-auto max-w-6xl px-4 sm:px-6 py-12 md:py-16 ag-surface-secondary rounded-t-3xl border-x border-white/[0.08]">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-10 md:gap-8">
               {/* Brand Column */}
               <div className="col-span-2 md:col-span-1">
@@ -248,7 +249,7 @@ export default function LandingPageClient() {
             </div>
 
             {/* Bottom bar */}
-            <div className="mt-12 pt-6 border-t border-white/[0.05] flex flex-col md:flex-row items-center justify-between gap-3">
+            <div className="mt-12 pt-6 border-t border-white/[0.10] flex flex-col md:flex-row items-center justify-between gap-3">
               <span className="text-xs text-white/25">
                 &copy; {new Date().getFullYear()} MyAvatar.ge — {locale === 'ka' ? 'ყველა უფლება დაცულია.' : locale === 'ru' ? 'Все права защищены.' : 'All rights reserved.'}
               </span>

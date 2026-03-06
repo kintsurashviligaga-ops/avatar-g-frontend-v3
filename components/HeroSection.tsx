@@ -85,13 +85,13 @@ export function HeroSection({ onPremiumClick }: HeroSectionProps) {
       </div>
 
       <motion.div
-        className="relative z-10 mx-auto max-w-5xl text-center"
+        className="relative z-10 mx-auto max-w-5xl text-center ag-surface-hero rounded-[2rem] px-5 py-12 sm:px-8 sm:py-14 md:px-12"
         variants={containerVariants}
         initial="hidden"
         animate="visible"
       >
         {/* Badge */}
-        <motion.div className="inline-flex items-center gap-2.5 px-5 py-2 rounded-full border border-white/[0.08] bg-white/[0.03] backdrop-blur-xl shadow-[0_2px_12px_rgba(0,0,0,0.2)]" variants={itemVariants}>
+        <motion.div className="inline-flex items-center gap-2.5 px-5 py-2 rounded-full border border-white/[0.14] bg-white/[0.05] backdrop-blur-xl shadow-[0_2px_12px_rgba(0,0,0,0.2)]" variants={itemVariants}>
           <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
           <span className="text-[11px] font-medium text-white/60 tracking-[0.14em] uppercase">{text.badge}</span>
         </motion.div>
@@ -144,7 +144,7 @@ export function HeroSection({ onPremiumClick }: HeroSectionProps) {
 
           <Link
             href={'/' + (language || 'ka') + '/services'}
-            className="inline-flex items-center justify-center gap-2 px-8 py-4 rounded-2xl border border-white/[0.10] text-white/70 font-medium text-sm hover:bg-white/[0.05] hover:border-white/[0.18] hover:text-white transition-all duration-300 backdrop-blur-sm"
+            className="inline-flex items-center justify-center gap-2 px-8 py-4 rounded-2xl border border-white/[0.16] text-white/75 font-medium text-sm hover:bg-white/[0.08] hover:border-white/[0.24] hover:text-white transition-all duration-300 backdrop-blur-sm"
           >
             {text.secondary}
           </Link>

@@ -24,7 +24,7 @@ export function PricingSection() {
   const labels = PRICING_LABELS[locale as keyof typeof PRICING_LABELS] || PRICING_LABELS.ka
 
   return (
-    <section id="pricing" className="relative py-28 px-4 sm:px-6 overflow-hidden border-t border-white/[0.04]">
+    <section id="pricing" className="relative py-28 px-4 sm:px-6 overflow-hidden border-t border-white/[0.08]">
       {/* Background decoration */}
       <div className="absolute inset-0 pointer-events-none">
         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[700px] h-[700px] bg-gradient-to-b from-cyan-500/[0.03] to-transparent rounded-full blur-[120px]" />
@@ -83,8 +83,8 @@ export function PricingSection() {
                 <div
                   className={`relative flex flex-col h-full rounded-2xl border p-7 backdrop-blur-xl transition-all duration-500 ${
                     isPopular
-                      ? 'border-cyan-400/30 bg-[#060B18]/95 shadow-[0_0_60px_rgba(6,182,212,0.10)]'
-                      : 'border-white/[0.06] bg-[#060B18]/80 hover:border-white/[0.12]'
+                      ? 'border-cyan-400/35 bg-[#060B18]/95 shadow-[0_0_60px_rgba(6,182,212,0.16)]'
+                      : 'border-white/[0.10] bg-[#060B18]/82 hover:border-white/[0.18]'
                   }`}
                 >
                   {isPopular && (

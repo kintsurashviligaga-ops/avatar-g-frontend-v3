@@ -194,7 +194,7 @@ export function FeaturesShowcase() {
   const copy = FEATURES_COPY[language as keyof typeof FEATURES_COPY] || FEATURES_COPY.ka
 
   return (
-    <section className="relative py-28 px-4 sm:px-6 overflow-hidden border-t border-white/[0.04]">
+    <section className="relative py-28 px-4 sm:px-6 overflow-hidden border-t border-white/[0.08]">
       {/* Background decoration */}
       <div className="absolute inset-0 pointer-events-none">
         <div className="absolute top-1/4 left-0 w-[500px] h-[500px] bg-cyan-500/[0.03] rounded-full blur-[120px]" />
@@ -235,7 +235,7 @@ export function FeaturesShowcase() {
             >
               <TiltCard className="h-full">
                 <div
-                  className="group relative h-full rounded-2xl border border-white/[0.06] bg-[#060B18]/80 backdrop-blur-sm p-7 transition-all duration-500 hover:border-white/[0.12] hover:bg-[#0D1528]/90"
+                  className="group relative h-full rounded-2xl ag-surface-secondary p-7 transition-all duration-500 hover:border-white/[0.16]"
                   style={{ ['--card-glow' as string]: feature.glow }}
                 >
                   {/* Glow on hover */}

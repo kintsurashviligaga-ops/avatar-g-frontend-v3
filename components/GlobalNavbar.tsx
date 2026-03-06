@@ -42,9 +42,9 @@ export function GlobalNavbar() {
     return pathname === full || pathname.startsWith(full + '/')
   }
 
-  const navCls = 'fixed top-0 inset-x-0 z-50 h-16 md:h-20 transition-all duration-500 flex items-center justify-between px-4 sm:px-6 lg:px-10 bg-[#030712]/60 backdrop-blur-2xl backdrop-saturate-150 border-b border-white/[0.06]'
+  const navCls = 'fixed top-0 inset-x-0 z-50 h-16 md:h-20 transition-all duration-500 flex items-center justify-between px-4 sm:px-6 lg:px-10 bg-[#020612]/72 backdrop-blur-2xl backdrop-saturate-150 border-b border-white/[0.10] shadow-[0_10px_40px_rgba(0,0,0,0.42)]'
 
-  const drawerBase = 'fixed top-16 inset-x-0 z-40 bg-[#030712]/95 backdrop-blur-2xl border-b border-white/[0.08] px-4 py-4 space-y-1 lg:hidden transition-all duration-300 origin-top'
+  const drawerBase = 'fixed top-16 inset-x-0 z-40 bg-[#020612]/95 backdrop-blur-2xl border-b border-white/[0.10] px-4 py-4 space-y-1 lg:hidden transition-all duration-300 origin-top shadow-[0_22px_60px_rgba(0,0,0,0.5)]'
 
   const drawerState = open
     ? 'opacity-100 scale-y-100 translate-y-0'
@@ -64,8 +64,8 @@ export function GlobalNavbar() {
         <div className="hidden lg:flex items-center gap-0.5">
           {NAV_ITEMS.map(function(item) {
             const cls = isActive(item.path)
-              ? 'px-3 py-1.5 text-[13px] font-medium rounded-lg transition-all text-white bg-white/[0.09]'
-              : 'px-3 py-1.5 text-[13px] font-medium rounded-lg transition-all text-white/50 hover:text-white hover:bg-white/[0.06]'
+              ? 'px-3 py-1.5 text-[13px] font-semibold rounded-lg transition-all text-white bg-white/[0.12] border border-white/[0.16]'
+              : 'px-3 py-1.5 text-[13px] font-medium rounded-lg transition-all text-white/55 hover:text-white hover:bg-white/[0.08] hover:border hover:border-white/[0.10]'
             return (
               <Link key={item.path} href={localeHref(item.path)} className={cls}>
                 {t(item.key)}
@@ -80,8 +80,8 @@ export function GlobalNavbar() {
           <div className="flex items-center gap-0.5 bg-white/[0.03] border border-white/[0.06] rounded-full px-1 py-0.5">
             {LOCALES.map(function(loc) {
               const cls = locale === loc.code
-                ? 'text-[11px] font-semibold px-2.5 py-1 rounded-full transition-all duration-300 bg-white text-[#030712] shadow-sm'
-                : 'text-[11px] font-semibold px-2.5 py-1 rounded-full transition-all duration-300 text-white/35 hover:text-white/70'
+                ? 'text-[11px] font-semibold px-2.5 py-1 rounded-full transition-all duration-300 bg-white text-[#030712] shadow-[0_3px_10px_rgba(255,255,255,0.22)]'
+                : 'text-[11px] font-semibold px-2.5 py-1 rounded-full transition-all duration-300 text-white/45 hover:text-white/80 hover:bg-white/[0.07]'
               return (
                 <button
                   key={loc.code}
@@ -104,7 +104,7 @@ export function GlobalNavbar() {
             </Link>
             <Link
               href={localeHref('/signup')}
-              className="text-[13px] font-semibold bg-white text-[#030712] px-5 py-2.5 rounded-xl hover:bg-white/90 transition-all duration-300 shadow-[0_2px_12px_rgba(255,255,255,0.08)]"
+              className="text-[13px] font-semibold bg-white text-[#030712] px-5 py-2.5 rounded-xl hover:bg-white/90 transition-all duration-300 shadow-[0_8px_24px_rgba(255,255,255,0.16)]"
             >
               {t('nav.getStarted')}
             </Link>
@@ -138,8 +138,8 @@ export function GlobalNavbar() {
       <div className={drawerBase + ' ' + drawerState}>
         {NAV_ITEMS.map(function(item) {
           const cls = isActive(item.path)
-            ? 'block px-3 py-3 text-sm rounded-xl transition-all text-white bg-white/[0.09]'
-            : 'block px-3 py-3 text-sm rounded-xl transition-all text-white/60 hover:text-white hover:bg-white/[0.06]'
+            ? 'block px-3 py-3 text-sm rounded-xl transition-all text-white bg-white/[0.11] border border-white/[0.14]'
+            : 'block px-3 py-3 text-sm rounded-xl transition-all text-white/65 hover:text-white hover:bg-white/[0.08] hover:border hover:border-white/[0.10]'
           return (
             <Link
               key={item.path}

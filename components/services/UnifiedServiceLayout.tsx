@@ -1039,19 +1039,19 @@ export default function UnifiedServiceLayout({
 
   // ─── Render ──────────────────────────────────────────────────────────────
   return (
-    <div className="relative min-h-screen bg-transparent text-white">
+    <div className="relative min-h-screen bg-transparent text-white ag-noise overflow-hidden">
       <div
-        className="pointer-events-none absolute inset-0 bg-cover bg-center opacity-70"
+        className="pointer-events-none absolute inset-0 bg-cover bg-center opacity-78"
         style={{
           backgroundImage: `url('${serviceBackgroundImage}'), url('/backgrounds/services/agent-g.svg')`,
           backgroundSize: 'cover, cover',
           backgroundPosition: 'center, center',
         }}
       />
-      <div className="pointer-events-none absolute inset-0 opacity-90" style={{ backgroundImage: serviceBackground }} />
-      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(to_bottom,rgba(2,6,23,0.55),rgba(2,6,23,0.36)_28%,rgba(2,6,23,0.58)_100%)]" />
+      <div className="pointer-events-none absolute inset-0 opacity-95" style={{ backgroundImage: serviceBackground }} />
+      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(to_bottom,rgba(2,6,23,0.62),rgba(2,6,23,0.34)_28%,rgba(2,6,23,0.64)_100%)]" />
       {/* ── Header ──────────────────────────────────────────────────────── */}
-      <header className="relative z-10 border-b border-white/[0.08] bg-black/20 backdrop-blur-md px-3 sm:px-5 lg:px-6 py-3.5 sm:py-4">
+      <header className="relative z-10 border-b border-white/[0.12] bg-black/30 backdrop-blur-xl px-3 sm:px-5 lg:px-6 py-3.5 sm:py-4 shadow-[0_10px_32px_rgba(0,0,0,0.35)]">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">
             <span className="text-2xl">{serviceIcon}</span>
@@ -1068,13 +1068,13 @@ export default function UnifiedServiceLayout({
             )}
             <button
               onClick={() => setShowHistory(!showHistory)}
-              className="px-3 py-1.5 text-xs border border-white/10 rounded-lg hover:bg-white/5 transition-colors"
+              className="px-3 py-1.5 text-xs border border-white/15 rounded-lg bg-white/[0.03] hover:bg-white/[0.10] transition-colors"
             >
               {t.history}
             </button>
             <button
               onClick={() => setShowExport(!showExport)}
-              className="px-3 py-1.5 text-xs border border-white/10 rounded-lg hover:bg-white/5 transition-colors"
+              className="px-3 py-1.5 text-xs border border-white/15 rounded-lg bg-white/[0.03] hover:bg-white/[0.10] transition-colors"
             >
               {t.export}
             </button>
@@ -1083,11 +1083,11 @@ export default function UnifiedServiceLayout({
       </header>
 
       {/* ── Main Layout: Chat (70%) + Preview (30%) ─────────────────────── */}
-      <div className="relative z-10 max-w-[94rem] mx-auto flex flex-col lg:flex-row min-h-[calc(100vh-60px)] sm:min-h-[calc(100vh-64px)] px-2 sm:px-3 md:px-4 lg:px-6">
+      <div className="relative z-10 max-w-[94rem] mx-auto flex flex-col lg:flex-row min-h-[calc(100vh-60px)] sm:min-h-[calc(100vh-64px)] px-2 sm:px-3 md:px-4 lg:px-6 py-2 sm:py-3 gap-2 lg:gap-3">
 
         {/* ── Chat Window (70%) ─────────────────────────────────────────── */}
         <div
-          className="flex-1 lg:w-[68%] flex flex-col border-r border-cyan-400/20 bg-black/10 shadow-[inset_0_0_0_1px_rgba(34,211,238,0.18),0_0_34px_rgba(34,211,238,0.16)]"
+          className="flex-1 lg:w-[68%] flex flex-col rounded-2xl border border-white/[0.12] bg-[linear-gradient(160deg,rgba(7,14,30,0.78),rgba(4,10,24,0.7))] shadow-[inset_0_0_0_1px_rgba(34,211,238,0.14),0_24px_72px_rgba(0,0,0,0.42)]"
           onDragEnter={handleDrag}
           onDragOver={handleDrag}
           onDragLeave={handleDrag}
@@ -1101,7 +1101,7 @@ export default function UnifiedServiceLayout({
           )}
 
           {/* Quick Action Chips */}
-          <div className="px-3 sm:px-4 py-3 border-b border-white/[0.06] bg-black/15 space-y-3">
+          <div className="px-3 sm:px-4 py-3 border-b border-white/[0.10] bg-black/20 space-y-3 rounded-t-2xl">
             <div className="flex items-center justify-between gap-2">
               <p className="text-[11px] uppercase tracking-wider text-white/45">{t.quickActions}</p>
               <button
@@ -1122,11 +1122,11 @@ export default function UnifiedServiceLayout({
                 </button>
               ))}
             </div>
-            <div className="rounded-xl border border-white/[0.08] bg-black/20 p-3 space-y-2">
+            <div className="rounded-xl border border-white/[0.12] bg-black/25 p-3 space-y-2">
               <p className="text-[11px] uppercase tracking-wider text-white/45">{t.workspaceOptions}</p>
               <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2">
                 {optionSets.map((set) => (
-                  <div key={set.key} className="rounded-lg border border-white/[0.08] bg-white/[0.02] p-2 space-y-2">
+                  <div key={set.key} className="rounded-lg border border-white/[0.12] bg-white/[0.04] p-2 space-y-2">
                     <p className="text-[11px] text-white/65">{set.label}</p>
                     <div className="flex flex-wrap gap-1.5">
                       {set.values.map((value) => {
@@ -1177,7 +1177,7 @@ export default function UnifiedServiceLayout({
                   <div className={`px-4 py-3 rounded-2xl text-sm leading-relaxed ${
                     msg.role === 'user'
                       ? 'bg-gradient-to-r from-cyan-500/20 to-blue-500/20 border border-cyan-500/20 text-white'
-                        : 'bg-white/[0.06] border border-white/[0.12] text-white/90'
+                        : 'bg-white/[0.08] border border-white/[0.14] text-white/90'
                   }`}>
                     {msg.content}
                   </div>
@@ -1198,7 +1198,7 @@ export default function UnifiedServiceLayout({
                     return (
                       <div
                         key={i}
-                        className="w-full bg-white/[0.04] border border-white/[0.12] rounded-xl p-3 hover:border-cyan-400/45 hover:bg-white/[0.08] transition-colors"
+                        className="w-full bg-white/[0.06] border border-white/[0.14] rounded-xl p-3 hover:border-cyan-400/45 hover:bg-white/[0.10] transition-colors"
                       >
                         <div className="flex items-center justify-between gap-2 flex-wrap sm:flex-nowrap">
                           <button
@@ -1273,7 +1273,7 @@ export default function UnifiedServiceLayout({
             {/* Generating indicator */}
             {sending && (
               <div className="flex justify-start">
-                <div className="bg-white/[0.04] border border-white/[0.08] rounded-2xl px-4 py-3 text-sm text-white/40 flex items-center gap-2">
+                <div className="bg-white/[0.06] border border-white/[0.10] rounded-2xl px-4 py-3 text-sm text-white/45 flex items-center gap-2">
                   <div className="w-2 h-2 bg-cyan-400 rounded-full animate-pulse" />
                   {t.generating}
                 </div>
@@ -1282,7 +1282,7 @@ export default function UnifiedServiceLayout({
           </div>
 
           {/* ── Sticky Action Bar ───────────────────────────────────────── */}
-          <div className="sticky bottom-0 border-t border-white/[0.08] bg-black/35 backdrop-blur-md p-3 md:p-4 pb-[calc(0.75rem+env(safe-area-inset-bottom))] space-y-3 max-md:[@media(orientation:landscape)]:space-y-1.5 max-md:[@media(orientation:landscape)]:py-1.5 focus-within:shadow-[0_0_0_1px_rgba(34,211,238,0.5),0_0_24px_rgba(34,211,238,0.28)] transition-shadow">
+          <div className="sticky bottom-0 border-t border-white/[0.12] bg-black/45 backdrop-blur-xl p-3 md:p-4 pb-[calc(0.75rem+env(safe-area-inset-bottom))] space-y-3 max-md:[@media(orientation:landscape)]:space-y-1.5 max-md:[@media(orientation:landscape)]:py-1.5 focus-within:shadow-[0_0_0_1px_rgba(34,211,238,0.5),0_0_24px_rgba(34,211,238,0.28)] transition-shadow rounded-b-2xl">
             {rateLimitNotice && (
               <div className="flex items-center justify-between gap-3 rounded-xl border border-amber-400/40 bg-amber-500/15 px-3 py-2">
                 <p className="text-xs text-amber-100">{rateLimitNotice}</p>
@@ -1461,7 +1461,7 @@ export default function UnifiedServiceLayout({
                   }}
                   placeholder={t.placeholder}
                   rows={2}
-                  className="w-full min-h-[82px] sm:min-h-[74px] max-md:[@media(orientation:landscape)]:min-h-[48px] bg-white/[0.06] border border-white/[0.12] rounded-xl px-4 py-2.5 text-sm text-white placeholder-white/35 focus:outline-none focus:border-cyan-400/70 focus:shadow-[0_0_20px_rgba(34,211,238,0.25)] resize-y"
+                  className="w-full min-h-[82px] sm:min-h-[74px] max-md:[@media(orientation:landscape)]:min-h-[48px] bg-white/[0.08] border border-white/[0.16] rounded-xl px-4 py-2.5 text-sm text-white placeholder-white/35 focus:outline-none focus:border-cyan-400/70 focus:shadow-[0_0_20px_rgba(34,211,238,0.25)] resize-y"
                 />
               </div>
 
@@ -1477,9 +1477,9 @@ export default function UnifiedServiceLayout({
         </div>
 
         {/* ── Preview/Tools Panel (30%) ─────────────────────────────────── */}
-        <div className="lg:w-[32%] border-t lg:border-t-0 border-white/[0.08] bg-black/15 flex flex-col md:max-h-[50vh] lg:max-h-none">
+        <div className="lg:w-[32%] border border-white/[0.12] bg-[linear-gradient(160deg,rgba(7,14,30,0.74),rgba(5,11,26,0.68))] rounded-2xl flex flex-col md:max-h-[50vh] lg:max-h-none overflow-hidden">
           {/* Panel header */}
-          <div className="px-4 py-3 border-b border-white/[0.06] bg-black/20 flex items-center justify-between">
+          <div className="px-4 py-3 border-b border-white/[0.10] bg-black/25 flex items-center justify-between">
             <span className="text-xs font-semibold text-white/55 uppercase tracking-wider">{t.preview}</span>
             <span className="text-xs text-white/35">{t.tools}</span>
           </div>
@@ -1555,7 +1555,7 @@ export default function UnifiedServiceLayout({
       {/* ── Login Modal (NOT redirect) ──────────────────────────────────── */}
       {showLoginModal && (
         <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setShowLoginModal(false)}>
-          <div className="bg-[#0a0a1a] border border-white/[0.1] rounded-2xl p-8 max-w-sm w-full space-y-4" onClick={e => e.stopPropagation()}>
+          <div className="ag-surface-primary border-white/[0.14] rounded-2xl p-8 max-w-sm w-full space-y-4" onClick={e => e.stopPropagation()}>
             <h2 className="text-lg font-bold text-white">{t.loginRequired}</h2>
             <p className="text-sm text-white/40">
               {locale === 'ka' ? 'სერვისის გამოსაყენებლად გთხოვთ შეხვიდეთ ანგარიშში.' :
