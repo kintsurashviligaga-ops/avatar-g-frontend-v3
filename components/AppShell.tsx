@@ -25,7 +25,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <div
               className='pointer-events-none absolute inset-0 opacity-60'
               style={{
-                backgroundImage: "url('/brand/background-space.jpg?v=20260306c')",
+                backgroundImage: "url('/brand/background-aurora-v2.svg?v=20260306')",
                 backgroundSize: 'cover',
                 backgroundPosition: 'center center',
                 backgroundRepeat: 'no-repeat',

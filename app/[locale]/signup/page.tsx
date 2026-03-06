@@ -64,10 +64,10 @@ export default function LocaleSignupPage() {
         <div
           className="pointer-events-none absolute inset-0 bg-cover bg-center opacity-64"
           style={{
-            backgroundImage: "url('/brand/background-space.jpg'), url('/brand/background-main.svg')",
-            backgroundSize: 'cover, cover',
-            backgroundPosition: 'center 34%, center center',
-            backgroundRepeat: 'no-repeat, no-repeat',
+            backgroundImage: "url('/brand/background-aurora-v2.svg')",
+            backgroundSize: 'cover',
+            backgroundPosition: 'center center',
+            backgroundRepeat: 'no-repeat',
           }}
         />
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_20%_18%,rgba(34,211,238,0.14),transparent_52%),radial-gradient(circle_at_80%_82%,rgba(139,92,246,0.14),transparent_52%)]" />
@@ -91,10 +91,10 @@ export default function LocaleSignupPage() {
       <div
         className="pointer-events-none absolute inset-0 bg-cover bg-center opacity-64"
         style={{
-          backgroundImage: "url('/brand/background-space.jpg'), url('/brand/background-main.svg')",
-          backgroundSize: 'cover, cover',
-          backgroundPosition: 'center 34%, center center',
-          backgroundRepeat: 'no-repeat, no-repeat',
+          backgroundImage: "url('/brand/background-aurora-v2.svg')",
+          backgroundSize: 'cover',
+          backgroundPosition: 'center center',
+          backgroundRepeat: 'no-repeat',
         }}
       />
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_20%_18%,rgba(34,211,238,0.14),transparent_52%),radial-gradient(circle_at_80%_82%,rgba(139,92,246,0.14),transparent_52%)]" />

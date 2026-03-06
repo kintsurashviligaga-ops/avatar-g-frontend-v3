@@ -74,7 +74,7 @@ export function WorkflowCinematicSection() {
       <div className="relative z-10 max-w-6xl mx-auto px-4 sm:px-6">
         <div className="text-center max-w-3xl mx-auto mb-16">
           <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-cyan-300/15 bg-cyan-500/[0.05] text-cyan-200/80 text-[10px] uppercase tracking-[0.16em] font-semibold">
-            <Rocket className="w-3.5 h-3.5" /> {copy.rail}
+            <Rocket className="w-[1.05rem] h-[1.05rem]" /> {copy.rail}
           </div>
           <h2 className="mt-6 text-3xl md:text-5xl font-bold text-white tracking-[-0.02em]">{copy.title}</h2>
           <p className="mt-5 text-sm md:text-base text-white/40 leading-relaxed">{copy.subtitle}</p>
