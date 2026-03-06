@@ -25,7 +25,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <div
               className='pointer-events-none absolute inset-0 opacity-55'
               style={{
-                backgroundImage: "url('/brand/background-space-hq.webp')",
+                backgroundImage: "url('/brand/background-space-hq.webp?v=20260306b')",
                 backgroundSize: 'cover',
                 backgroundPosition: 'center center',
                 backgroundRepeat: 'no-repeat',

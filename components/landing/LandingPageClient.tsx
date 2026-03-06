@@ -78,7 +78,7 @@ export default function LandingPageClient() {
       {/* Background Image Layer */}
       <div className="pointer-events-none absolute inset-0 z-0">
         <Image
-          src="/brand/background-space-hq.webp"
+          src="/brand/background-space-hq.webp?v=20260306b"
           alt="Space Background"
           fill
           priority
