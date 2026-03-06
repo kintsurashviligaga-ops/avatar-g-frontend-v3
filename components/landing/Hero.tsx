@@ -46,7 +46,7 @@ export function Hero({ locale }: HeroProps) {
     <section className="relative px-4 pb-20 pt-28 md:pb-24 md:pt-40">
       <div className="mx-auto max-w-[92vw] sm:max-w-2xl md:max-w-4xl lg:max-w-6xl text-center">
         <div className="mb-8 flex items-center justify-center gap-4">
-          <Logo variant="icon" size="lg" href={`/${locale}`} className="pointer-events-none drop-shadow-xl" />
+          <Logo variant="icon" size="lg" href={`/${locale}`} className="pointer-events-none" />
           <span className="rounded-full border border-cyan-400/30 bg-cyan-500/10 px-6 py-2 text-base md:text-lg text-cyan-200 font-semibold tracking-wide">
             {text.badge}
           </span>

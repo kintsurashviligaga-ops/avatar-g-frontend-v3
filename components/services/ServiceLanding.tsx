@@ -81,10 +81,10 @@ export default function ServiceLanding({ icon, headline, description, features, 
             <p className="text-sm font-semibold text-white">{agentLabel}</p>
             <p className="text-xs text-white/40 mt-0.5">
               {locale === 'ka'
-                ? `ყველა ${serviceName} სამუშაო ორკესტრირდება, კონტროლდება და მიწოდდება აგენტი G-ით.`
+                ? `ყველა ${serviceName} სამუშაო კოორდინირდება, კონტროლდება და მიწოდდება აგენტი G-ით.`
                 : locale === 'ru'
-                ? `Каждая задача ${serviceName} оркестрируется, проверяется и доставляется Агентом G.`
-                : `Every ${serviceName} job is orchestrated, quality-checked, and delivered by Agent G.`}
+                ? `Каждая задача ${serviceName} координируется, проверяется и доставляется Агентом G.`
+                : `Every ${serviceName} job is coordinated, quality-checked, and delivered by Agent G.`}
             </p>
           </div>
         </div>

@@ -12,25 +12,25 @@ interface LogoProps {
 
 const sizeConfig = {
   sm: {
-    container: 'w-10 h-10',
+    container: 'w-[44px] h-[44px]',
     text: 'text-sm',
     tagline: 'text-[10px]',
     gap: 'gap-2'
   },
   md: {
-    container: 'w-14 h-14',
+    container: 'w-[60px] h-[60px]',
     text: 'text-xl',
     tagline: 'text-xs',
     gap: 'gap-3'
   },
   lg: {
-    container: 'w-20 h-20',
+    container: 'w-[82px] h-[82px]',
     text: 'text-2xl',
     tagline: 'text-sm',
     gap: 'gap-4'
   },
   xl: {
-    container: 'w-24 h-24',
+    container: 'w-[102px] h-[102px]',
     text: 'text-3xl',
     tagline: 'text-base',
     gap: 'gap-4'
@@ -47,12 +47,13 @@ export function Logo({
   const config = sizeConfig[size]
 
   const LogoIcon = () => (
-    <div className={cn(config.container, 'relative overflow-hidden rounded-xl')}>
+    <div className={cn(config.container, 'relative overflow-hidden')}>
+      <div className="absolute inset-[10%] rounded-full bg-cyan-400/8 blur-xl" />
       <Image
-        src="/brand/logo-rocket.svg"
+        src="/brand/logo-exact-transparent.png"
         alt="Avatar G"
         fill
-        className="object-contain drop-shadow-[0_0_10px_rgba(34,211,238,0.36)] md:drop-shadow-[0_0_14px_rgba(34,211,238,0.44)] lg:drop-shadow-[0_0_20px_rgba(34,211,238,0.52)]"
+        className="object-contain object-center scale-[0.96] saturate-105 contrast-110 brightness-110 drop-shadow-[0_8px_18px_rgba(34,211,238,0.32)] md:drop-shadow-[0_10px_24px_rgba(34,211,238,0.36)] lg:drop-shadow-[0_12px_28px_rgba(34,211,238,0.40)]"
         sizes="80px"
         priority
       />
@@ -64,13 +65,13 @@ export function Logo({
       <h1
         className={cn(
           config.text,
-          'font-bold bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent'
+          'font-extrabold tracking-[-0.01em] bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent'
         )}
       >
         Avatar G
       </h1>
       {showTagline && (
-        <p className={cn(config.tagline, 'text-gray-400')}>Singularity v4.0</p>
+        <p className={cn(config.tagline, 'text-gray-400 tracking-[0.01em]')}>Singularity v4.0</p>
       )}
     </div>
   )

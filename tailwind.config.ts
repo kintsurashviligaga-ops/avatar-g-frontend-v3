@@ -10,6 +10,7 @@ const config: Config = {
     extend: {
       fontFamily: {
         sans: ['var(--font-ui)', 'Noto Sans Georgian', 'Inter', 'system-ui', 'sans-serif'],
+        display: ['var(--font-ui)', 'Inter', 'system-ui', 'sans-serif'],
       },
       colors: {
         'app-bg': 'rgb(var(--app-bg) / <alpha-value>)',
@@ -24,16 +25,19 @@ const config: Config = {
         'app-warning': 'rgb(var(--app-warning) / <alpha-value>)',
         'app-danger': 'rgb(var(--app-danger) / <alpha-value>)',
         space: {
-          black: '#050510',
+          black: '#030712',
           dark: '#0A1423',
+          deep: '#060B18',
         },
         cyan: {
+          300: '#67E8F9',
           400: '#22D3EE',
           500: '#06B6D4',
           600: '#0891B2',
         },
         silver: {
           100: '#F5F5F5',
+          200: '#E5E5E5',
           300: '#C0C0C0',
           400: '#A0A0A0',
           500: '#808080',
@@ -43,8 +47,12 @@ const config: Config = {
         xs: '2px',
       },
       boxShadow: {
-        glass: '0 8px 40px rgba(0,0,0,0.35)',
+        glass: '0 8px 40px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.06)',
+        'glass-lg': '0 16px 64px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.08)',
         neon: '0 0 0 1px rgba(34, 211, 238, 0.25), 0 0 32px rgba(34, 211, 238, 0.2)',
+        'neon-strong': '0 0 0 1px rgba(34,211,238,0.35), 0 0 48px rgba(34,211,238,0.25), 0 0 96px rgba(34,211,238,0.08)',
+        'premium': '0 20px 60px -12px rgba(0,0,0,0.6), 0 0 1px rgba(255,255,255,0.1)',
+        'card-hover': '0 24px 80px -16px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.12)',
       },
       borderRadius: {
         xl: '0.9rem',

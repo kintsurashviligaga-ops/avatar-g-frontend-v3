@@ -45,20 +45,20 @@ export function StatsSection() {
   ]
 
   return (
-    <section className="relative py-16 px-4 sm:px-6">
+    <section className="relative py-20 px-4 sm:px-6 border-t border-white/[0.04]">
       <div className="mx-auto max-w-5xl">
         <motion.div
-          className="relative rounded-3xl border border-white/[0.08] bg-gradient-to-br from-[#0A0F1E]/90 via-[#0D1528]/80 to-[#0A0F1E]/90 backdrop-blur-xl p-8 md:p-12 overflow-hidden"
+          className="relative rounded-2xl border border-white/[0.06] bg-gradient-to-br from-[#060B18]/90 via-[#0D1528]/80 to-[#060B18]/90 backdrop-blur-xl p-8 md:p-14 overflow-hidden"
           initial={{ opacity: 0, y: 20 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
           transition={{ duration: 0.6 }}
         >
           {/* Decorative gradient orbs */}
-          <div className="absolute top-0 left-1/4 w-64 h-64 bg-cyan-500/[0.06] rounded-full blur-3xl" />
-          <div className="absolute bottom-0 right-1/4 w-64 h-64 bg-purple-500/[0.06] rounded-full blur-3xl" />
+          <div className="absolute top-0 left-1/4 w-72 h-72 bg-cyan-500/[0.04] rounded-full blur-[120px]" />
+          <div className="absolute bottom-0 right-1/4 w-72 h-72 bg-violet-500/[0.04] rounded-full blur-[120px]" />
 
-          <div className="relative grid grid-cols-2 md:grid-cols-4 gap-8">
+          <div className="relative grid grid-cols-2 md:grid-cols-4 gap-8 md:gap-10">
             {stats.map((stat, i) => (
               <motion.div
                 key={stat.label}
@@ -68,13 +68,13 @@ export function StatsSection() {
                 viewport={{ once: true }}
                 transition={{ delay: i * 0.1 }}
               >
-                <div className={`text-3xl md:text-4xl lg:text-5xl font-extrabold bg-gradient-to-br ${stat.color} bg-clip-text text-transparent`}>
+                <div className={`text-3xl md:text-4xl lg:text-5xl font-extrabold bg-gradient-to-br ${stat.color} bg-clip-text text-transparent tracking-tight`}>
                   <AnimatedCounter
                     target={stat.value}
                     suffix={stat.suffix}
                   />
                 </div>
-                <div className="mt-2 text-xs md:text-sm text-gray-400 uppercase tracking-widest font-medium">
+                <div className="mt-3 text-[10px] md:text-xs text-white/35 uppercase tracking-[0.2em] font-medium">
                   {stat.label}
                 </div>
               </motion.div>

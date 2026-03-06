@@ -72,7 +72,7 @@ export const PLAN_DEFINITIONS: Record<PlanTier, PlanDefinition> = {
     refillPolicy: { cadence: 'monthly', resetRule: 'first_day_utc_month' },
     limits: { maxConcurrentJobs: 10, maxStorageGb: 100 },
     allowedAgents: '*',
-    features: ['Avatar G Agent (premium)', 'Multi-agent orchestration'],
+    features: ['Avatar G Agent (premium)', 'Multi-agent coordination'],
   },
   ENTERPRISE: {
     id: 'ENTERPRISE',

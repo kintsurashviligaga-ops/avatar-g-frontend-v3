@@ -2,7 +2,6 @@
 
 import { motion } from 'framer-motion'
 import { ArrowRight, Sparkles } from 'lucide-react'
-import Link from 'next/link'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
 import { GlassButton } from '@/components/ui/GlassButton'
 
@@ -13,7 +12,6 @@ const CTA_COPY = {
     titleAccent: 'Something Amazing?',
     subtitle: 'Join thousands of creators using MyAvatar to produce professional content with AI — no technical skills required.',
     primary: 'Get Started Free',
-    secondary: 'Talk to Agent G',
   },
   ka: {
     badge: 'დაიწყე უფასოდ დღესვე',
@@ -21,7 +19,6 @@ const CTA_COPY = {
     titleAccent: 'განსაკუთრებული რამ?',
     subtitle: 'შემოუერთდი ათასობით შემქმნელს, ვინც MyAvatar-ით პროფესიონალურ კონტენტს ქმნის AI-ს დახმარებით.',
     primary: 'დაიწყე უფასოდ',
-    secondary: 'ესაუბრე Agent G-ს',
   },
   ru: {
     badge: 'Начните бесплатно уже сегодня',
@@ -29,7 +26,6 @@ const CTA_COPY = {
     titleAccent: 'что-то впечатляющее?',
     subtitle: 'Присоединяйтесь к тысячам креаторов, которые создают профессиональный контент с помощью MyAvatar и AI.',
     primary: 'Начать бесплатно',
-    secondary: 'Поговорить с Agent G',
   },
 } as const
 
@@ -38,17 +34,17 @@ export function CTABanner() {
   const text = CTA_COPY[locale as keyof typeof CTA_COPY] || CTA_COPY.ka
 
   return (
-    <section className="relative py-24 px-4 sm:px-6 overflow-hidden">
-      {/* Animated background */}
+    <section className="relative py-28 px-4 sm:px-6 overflow-hidden border-t border-white/[0.04]">
+      {/* Refined background */}
       <div className="absolute inset-0">
-        <div className="absolute inset-0 bg-gradient-to-br from-cyan-600/[0.08] via-blue-600/[0.06] to-purple-600/[0.08]" />
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-gradient-to-r from-cyan-500/[0.08] to-purple-500/[0.08] rounded-full blur-3xl animate-glow-pulse" />
+        <div className="absolute inset-0 bg-gradient-to-br from-cyan-600/[0.05] via-transparent to-violet-600/[0.05]" />
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[900px] h-[900px] bg-gradient-to-r from-cyan-500/[0.06] to-violet-500/[0.06] rounded-full blur-[120px] animate-glow-pulse" />
         {/* Grid pattern */}
         <div
-          className="absolute inset-0 opacity-[0.04]"
+          className="absolute inset-0 opacity-[0.025]"
           style={{
-            backgroundImage: 'linear-gradient(rgba(255,255,255,0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.1) 1px, transparent 1px)',
-            backgroundSize: '40px 40px',
+            backgroundImage: 'linear-gradient(rgba(255,255,255,0.08) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.08) 1px, transparent 1px)',
+            backgroundSize: '48px 48px',
           }}
         />
       </div>
@@ -61,41 +57,35 @@ export function CTABanner() {
         transition={{ duration: 0.7 }}
       >
         <motion.div
-          className="inline-flex items-center gap-2 px-5 py-2 rounded-full border border-cyan-400/30 bg-cyan-400/[0.08] backdrop-blur-sm mb-6"
-          animate={{ boxShadow: ['0 0 0 rgba(6,182,212,0)', '0 0 30px rgba(6,182,212,0.15)', '0 0 0 rgba(6,182,212,0)'] }}
-          transition={{ duration: 3, repeat: Infinity }}
+          className="inline-flex items-center gap-2 px-5 py-2 rounded-full border border-cyan-400/15 bg-cyan-400/[0.05] backdrop-blur-sm mb-8"
+          animate={{ boxShadow: ['0 0 0 rgba(6,182,212,0)', '0 0 40px rgba(6,182,212,0.1)', '0 0 0 rgba(6,182,212,0)'] }}
+          transition={{ duration: 4, repeat: Infinity }}
         >
           <Sparkles className="w-4 h-4 text-cyan-400" />
-          <span className="text-sm font-medium text-cyan-300">{text.badge}</span>
+          <span className="text-sm font-medium text-cyan-300/80">{text.badge}</span>
         </motion.div>
 
-        <h2 className="text-3xl md:text-5xl lg:text-6xl font-bold text-white mb-6 leading-tight">
+        <h2 className="text-3xl md:text-5xl lg:text-6xl font-bold text-white mb-7 leading-tight tracking-[-0.02em]">
           {text.title}{' '}
-          <span className="bg-gradient-to-r from-cyan-400 via-blue-400 to-purple-400 bg-clip-text text-transparent animate-gradient-x">
+          <span className="bg-gradient-to-r from-cyan-300 via-blue-400 to-violet-400 bg-clip-text text-transparent">
             {text.titleAccent}
           </span>
         </h2>
 
-        <p className="text-gray-400 text-base md:text-lg max-w-xl mx-auto mb-10 leading-relaxed">
+        <p className="text-white/35 text-base md:text-lg max-w-xl mx-auto mb-12 leading-relaxed">
           {text.subtitle}
         </p>
 
-        <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+        <div className="flex items-center justify-center">
           <GlassButton
             href={`/${locale}/signup`}
             size="lg"
-            className="group relative bg-gradient-to-r from-cyan-500 to-blue-600 text-white shadow-[0_0_40px_rgba(6,182,212,0.3)] hover:shadow-[0_0_60px_rgba(6,182,212,0.45)]"
+            variant="ghost"
+            className="group relative bg-gradient-to-r from-cyan-500 to-blue-600 text-white font-semibold shadow-[0_0_40px_rgba(6,182,212,0.2)] hover:shadow-[0_0_60px_rgba(6,182,212,0.35)] hover:brightness-110"
           >
             <span>{text.primary}</span>
-            <ArrowRight className="relative w-4 h-4 group-hover:translate-x-1 transition-transform" />
+            <ArrowRight className="relative w-4 h-4 group-hover:translate-x-1 transition-transform duration-300" />
           </GlassButton>
-
-          <Link
-            href={`/${locale}/services/agent-g`}
-            className="inline-flex items-center gap-2 px-8 py-4 rounded-2xl border border-white/[0.12] bg-white/[0.03] backdrop-blur-sm text-white font-semibold text-base hover:bg-white/[0.08] hover:border-white/[0.2] transition-all duration-300"
-          >
-            {text.secondary}
-          </Link>
         </div>
       </motion.div>
     </section>

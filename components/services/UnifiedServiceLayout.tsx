@@ -39,6 +39,27 @@ interface UnifiedServiceLayoutProps {
 type LocaleCode = 'en' | 'ka' | 'ru';
 type ServiceContext = 'global' | 'music' | 'video' | 'avatar' | 'voice' | 'business';
 
+type GenerationStage = 'idle' | 'starting' | 'polling' | 'finalizing' | 'done' | 'failed';
+
+interface GenerationProgressState {
+  percent: number;
+  stage: GenerationStage;
+  context: ServiceContext;
+}
+
+interface DownloadMetric {
+  status: 'downloading' | 'complete' | 'failed';
+  percent: number;
+  receivedBytes: number;
+  totalBytes: number | null;
+}
+
+interface OptionSet {
+  key: string;
+  label: string;
+  values: string[];
+}
+
 // ─── Translations ────────────────────────────────────────────────────────────
 
 const T: Record<string, Record<string, string>> = {
@@ -73,6 +94,15 @@ const T: Record<string, Record<string, string>> = {
     retryNotice: 'Provider is rate-limited. Please retry in',
     seconds: 'seconds',
     dismiss: 'Dismiss',
+    capture: 'Capture',
+    scan: 'Scan',
+    scanHint: 'Frame captured. Adjust prompt and send when ready.',
+    workspaceOptions: 'Workspace Options',
+    clearChat: 'Clear Chat',
+    progress: 'Progress',
+    download: 'Download',
+    downloading: 'Downloading',
+    ready: 'Ready',
   },
   ka: {
     useAgent: 'აგენტის გამოყენება',
@@ -105,6 +135,15 @@ const T: Record<string, Record<string, string>> = {
     retryNotice: 'პროვაიდერზე ლიმიტია. თავიდან სცადე',
     seconds: 'წამში',
     dismiss: 'დახურვა',
+    capture: 'დაფიქსირება',
+    scan: 'სკანი',
+    scanHint: 'კადრი დაფიქსირდა. შეცვალე ტექსტი და გაგზავნე.',
+    workspaceOptions: 'სამუშაო პარამეტრები',
+    clearChat: 'ჩატის გასუფთავება',
+    progress: 'პროგრესი',
+    download: 'ჩამოტვირთვა',
+    downloading: 'იტვირთება',
+    ready: 'მზადაა',
   },
   ru: {
     useAgent: 'Использовать агента',
@@ -137,6 +176,15 @@ const T: Record<string, Record<string, string>> = {
     retryNotice: 'Провайдер ограничен по лимиту. Повторите через',
     seconds: 'секунд',
     dismiss: 'Закрыть',
+    capture: 'Снимок',
+    scan: 'Скан',
+    scanHint: 'Кадр сохранён. Уточните запрос и отправьте.',
+    workspaceOptions: 'Параметры рабочей зоны',
+    clearChat: 'Очистить чат',
+    progress: 'Прогресс',
+    download: 'Скачать',
+    downloading: 'Загрузка',
+    ready: 'Готово',
   },
 };
 
@@ -172,6 +220,35 @@ function mapOutputToArtifacts(serviceContext: string, output: unknown): Artifact
   return [{ type: 'audio', url, label: 'Generated Music', mimeType: 'audio/*' }];
 }
 
+function formatBytes(bytes: number | null): string {
+  if (!bytes || bytes <= 0) return '—';
+  if (bytes < 1024) return `${bytes} B`;
+  const kb = bytes / 1024;
+  if (kb < 1024) return `${kb.toFixed(1)} KB`;
+  const mb = kb / 1024;
+  if (mb < 1024) return `${mb.toFixed(1)} MB`;
+  const gb = mb / 1024;
+  return `${gb.toFixed(1)} GB`;
+}
+
+function extensionForArtifact(artifact: Artifact): string {
+  if (artifact.type === 'image') return 'png';
+  if (artifact.type === 'video') return 'mp4';
+  if (artifact.type === 'audio') return 'mp3';
+  if (artifact.type === 'text') return 'txt';
+  return 'bin';
+}
+
+function buildScanPrompt(locale: string, serviceName: string, serviceContext: ServiceContext): string {
+  if (locale === 'ka') {
+    return `კამერით სკანი (${serviceName}/${serviceContext}): გააანალიზე კადრი, აღწერე დეტალები და შემომთავაზე შემდეგი 3 მოქმედება.`;
+  }
+  if (locale === 'ru') {
+    return `Скан с камеры (${serviceName}/${serviceContext}): проанализируй кадр, опиши детали и предложи 3 следующих действия.`;
+  }
+  return `Camera scan (${serviceName}/${serviceContext}): analyze this frame, summarize key details, and propose 3 next actions.`;
+}
+
 // ─── Quick Action Chips ──────────────────────────────────────────────────────
 
 const QUICK_ACTIONS: Record<string, string[]> = {
@@ -187,6 +264,10 @@ const QUICK_ACTIONS: Record<string, string[]> = {
   'visual-intel': ['Score Creative', 'Brand Audit', 'Improve Suggest', 'Report'],
   workflow: ['Build Pipeline', 'Set Schedule', 'Add Gate', 'Template'],
   shop: ['Create Listing', 'Optimize SEO', 'Affiliate Setup', 'Store Audit'],
+  software: ['Generate App Spec', 'Review Architecture', 'Create Tasks', 'Export Roadmap'],
+  business: ['Build Strategy', 'Revenue Plan', 'Risk Scan', 'Executive Summary'],
+  tourism: ['Create Itinerary', 'Build Travel Promo', 'Translate Offer', 'Export Guide'],
+  next: ['Research Next Steps', 'Create Upgrade Plan', 'Generate Checklist', 'Export Brief'],
   'agent-g': ['Plan Task', 'Execute Pipeline', 'Quality Check', 'Bundle Run'],
 };
 
@@ -217,7 +298,56 @@ const SERVICE_BACKGROUNDS: Record<string, string> = {
   software: 'radial-gradient(1200px 650px at 18% 12%, rgba(249,115,22,0.2), transparent 55%), radial-gradient(850px 520px at 85% 85%, rgba(59,130,246,0.2), transparent 52%), linear-gradient(180deg, #090914 0%, #06070f 100%)',
   business: 'radial-gradient(1200px 650px at 18% 12%, rgba(20,184,166,0.2), transparent 55%), radial-gradient(850px 520px at 85% 85%, rgba(96,165,250,0.2), transparent 52%), linear-gradient(180deg, #070b13 0%, #04060f 100%)',
   tourism: 'radial-gradient(1200px 650px at 18% 12%, rgba(16,185,129,0.2), transparent 55%), radial-gradient(850px 520px at 85% 85%, rgba(56,189,248,0.2), transparent 52%), linear-gradient(180deg, #060a13 0%, #04060f 100%)',
+  next: 'radial-gradient(1200px 650px at 18% 12%, rgba(99,102,241,0.23), transparent 55%), radial-gradient(850px 520px at 85% 85%, rgba(16,185,129,0.2), transparent 52%), linear-gradient(180deg, #050a13 0%, #04060f 100%)',
   'agent-g': 'radial-gradient(1200px 650px at 18% 12%, rgba(6,182,212,0.25), transparent 55%), radial-gradient(850px 520px at 85% 85%, rgba(99,102,241,0.22), transparent 52%), linear-gradient(180deg, #050914 0%, #03060e 100%)',
+};
+
+const SERVICE_OPTION_SETS: Record<string, OptionSet[]> = {
+  avatar: [
+    { key: 'quality', label: 'Quality', values: ['Standard', 'High', 'Ultra'] },
+    { key: 'style', label: 'Style', values: ['Realistic', 'Cinematic', 'Stylized'] },
+    { key: 'output', label: 'Output', values: ['Portrait', 'Full Body', 'Pack'] },
+  ],
+  video: [
+    { key: 'quality', label: 'Quality', values: ['HD', 'Full HD', '4K'] },
+    { key: 'ratio', label: 'Ratio', values: ['16:9', '9:16', '1:1'] },
+    { key: 'speed', label: 'Speed', values: ['Fast', 'Balanced', 'Premium'] },
+  ],
+  music: [
+    { key: 'length', label: 'Length', values: ['15s', '30s', '60s'] },
+    { key: 'mood', label: 'Mood', values: ['Chill', 'Epic', 'Energetic'] },
+    { key: 'mix', label: 'Mix', values: ['Draft', 'Studio', 'Mastered'] },
+  ],
+  business: [
+    { key: 'detail', label: 'Detail', values: ['Summary', 'Balanced', 'Deep Dive'] },
+    { key: 'tone', label: 'Tone', values: ['Formal', 'Executive', 'Persuasive'] },
+    { key: 'output', label: 'Output', values: ['Plan', 'Report', 'Deck Outline'] },
+  ],
+  global: [
+    { key: 'quality', label: 'Quality', values: ['Fast', 'Balanced', 'Premium'] },
+    { key: 'format', label: 'Format', values: ['Concise', 'Structured', 'Detailed'] },
+    { key: 'focus', label: 'Focus', values: ['Creative', 'Accuracy', 'Conversion'] },
+  ],
+};
+
+const SERVICE_BACKGROUND_IMAGES: Record<string, string> = {
+  avatar: '/backgrounds/services/avatar.svg',
+  video: '/backgrounds/services/video.svg',
+  editing: '/backgrounds/services/editing.svg',
+  music: '/backgrounds/services/music.svg',
+  photo: '/backgrounds/services/photo.svg',
+  image: '/backgrounds/services/image.svg',
+  media: '/backgrounds/services/media.svg',
+  text: '/backgrounds/services/text.svg',
+  prompt: '/backgrounds/services/prompt.svg',
+  'visual-intel': '/backgrounds/services/visual-intel.svg',
+  workflow: '/backgrounds/services/workflow.svg',
+  shop: '/backgrounds/services/shop.svg',
+  software: '/backgrounds/services/software.svg',
+  business: '/backgrounds/services/business.svg',
+  tourism: '/backgrounds/services/tourism.svg',
+  next: '/backgrounds/services/next.svg',
+  'agent-g': '/backgrounds/services/agent-g.svg',
 };
 
 // ─── Component ───────────────────────────────────────────────────────────────
@@ -252,6 +382,11 @@ export default function UnifiedServiceLayout({
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [rateLimitNotice, setRateLimitNotice] = useState<string | null>(null);
   const [retryingArtifactPrompt, setRetryingArtifactPrompt] = useState<string | null>(null);
+  const [generationProgress, setGenerationProgress] = useState<GenerationProgressState | null>(null);
+  const [downloadMetrics, setDownloadMetrics] = useState<Record<string, DownloadMetric>>({});
+  const [selectedOptions, setSelectedOptions] = useState<Record<string, string>>({});
+  const [cameraCaptureBusy, setCameraCaptureBusy] = useState(false);
+  const [chatInputFocused, setChatInputFocused] = useState(false);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -260,9 +395,18 @@ export default function UnifiedServiceLayout({
   const cameraVideoRef = useRef<HTMLVideoElement>(null);
   const promptInputRef = useRef<HTMLTextAreaElement>(null);
   const serviceContext = SERVICE_CONTEXT[serviceId] ?? 'global';
+  const optionSets = SERVICE_OPTION_SETS[serviceContext] ?? SERVICE_OPTION_SETS['global']!;
   const serviceBackground = SERVICE_BACKGROUNDS[serviceId] ?? SERVICE_BACKGROUNDS['agent-g']!;
-  const serviceBackgroundImage = `/backgrounds/services/${serviceId}.svg`;
+  const serviceBackgroundImage = SERVICE_BACKGROUND_IMAGES[serviceId] ?? SERVICE_BACKGROUND_IMAGES['agent-g']!;
   const agentButtonLabel = `${t.useAgent} — ${serviceName}`;
+
+  useEffect(() => {
+    const defaults: Record<string, string> = {};
+    optionSets.forEach((set) => {
+      defaults[set.key] = set.values[0] ?? '';
+    });
+    setSelectedOptions(defaults);
+  }, [serviceId, optionSets]);
 
   // ─── Auto-scroll ─────────────────────────────────────────────────────────
   useEffect(() => {
@@ -281,6 +425,7 @@ export default function UnifiedServiceLayout({
     if (!cameraVideoRef.current) return;
     if (!cameraStreamRef.current) return;
     cameraVideoRef.current.srcObject = cameraStreamRef.current;
+    cameraVideoRef.current.play().catch(() => undefined);
   }, [cameraOn]);
 
   const generationStartedLabel = locale === 'ka'
@@ -299,6 +444,18 @@ export default function UnifiedServiceLayout({
       ? 'Генерация не завершилась. Повторите попытку.'
       : 'Generation did not complete. Please retry.';
 
+  const generationStageLabel = generationProgress?.stage === 'starting'
+    ? (locale === 'ka' ? 'დაწყება' : locale === 'ru' ? 'Запуск' : 'Starting')
+    : generationProgress?.stage === 'polling'
+      ? (locale === 'ka' ? 'მიმდინარეობს' : locale === 'ru' ? 'Выполняется' : 'In progress')
+      : generationProgress?.stage === 'finalizing'
+        ? (locale === 'ka' ? 'დასრულება' : locale === 'ru' ? 'Финализация' : 'Finalizing')
+        : generationProgress?.stage === 'done'
+          ? t.ready
+          : generationProgress?.stage === 'failed'
+            ? (locale === 'ka' ? 'შეცდომა' : locale === 'ru' ? 'Ошибка' : 'Failed')
+            : '';
+
   const decorateGeneratedArtifacts = useCallback((artifacts: Artifact[], prompt: string, context: ServiceContext, status: 'succeeded' | 'failed'): Artifact[] => {
     return artifacts.map((artifact) => ({
       ...artifact,
@@ -309,6 +466,8 @@ export default function UnifiedServiceLayout({
   }, []);
 
   const runDirectGeneration = useCallback(async (prompt: string, context: ServiceContext) => {
+    setGenerationProgress({ percent: 8, stage: 'starting', context });
+
     const endpoint = resolveReplicateEndpoint(context);
     const statusArtifact: Artifact = {
       type: 'text',
@@ -347,6 +506,7 @@ export default function UnifiedServiceLayout({
       }
 
       if (startData.status === 'throttled' || startData.status === 'model_unavailable') {
+        setGenerationProgress({ percent: 100, stage: 'failed', context });
         const hint = startData.message ?? startData.error ?? generationFailedLabel;
         const retryAfterSeconds = extractRetryAfterSeconds(hint);
         const suffix = retryAfterSeconds ? ` ${retryAfterSeconds} ${t.seconds}.` : '.';
@@ -369,6 +529,7 @@ export default function UnifiedServiceLayout({
       const predictionId = startData.id;
       if (!predictionId) {
         if (startData.output) {
+          setGenerationProgress({ percent: 96, stage: 'finalizing', context });
           const directArtifacts = decorateGeneratedArtifacts(mapOutputToArtifacts(context, startData.output), prompt, context, 'succeeded');
           if (directArtifacts.length) {
             setMessages(prev => [...prev, {
@@ -379,7 +540,17 @@ export default function UnifiedServiceLayout({
               timestamp: new Date(),
             }]);
             setPreviewArtifact(directArtifacts[0]!);
+
+            if (context === 'avatar' && directArtifacts[0]?.url) {
+              try {
+                localStorage.setItem('GENERATED_AVATAR_URL', directArtifacts[0].url);
+                localStorage.setItem('GENERATED_AVATAR_TIMESTAMP', new Date().toISOString());
+              } catch {
+                // Ignore localStorage errors
+              }
+            }
           }
+          setGenerationProgress({ percent: 100, stage: 'done', context });
           return;
         }
         throw new Error(generationFailedLabel);
@@ -387,6 +558,11 @@ export default function UnifiedServiceLayout({
 
       let finalArtifacts: Artifact[] = [];
       for (let attempt = 0; attempt < 16; attempt += 1) {
+        setGenerationProgress({
+          percent: Math.min(92, 14 + (attempt * 5)),
+          stage: 'polling',
+          context,
+        });
         await new Promise((resolve) => setTimeout(resolve, 2000));
         const pollRes = await fetch('/api/replicate/generate', {
           method: 'POST',
@@ -408,6 +584,8 @@ export default function UnifiedServiceLayout({
         throw new Error(generationFailedLabel);
       }
 
+      setGenerationProgress({ percent: 97, stage: 'finalizing', context });
+
       setMessages(prev => [...prev, {
         id: `msg_${Date.now()}_gen_done`,
         role: 'assistant',
@@ -422,12 +600,15 @@ export default function UnifiedServiceLayout({
         try {
           localStorage.setItem('GENERATED_AVATAR_URL', finalArtifacts[0].url);
           localStorage.setItem('GENERATED_AVATAR_TIMESTAMP', new Date().toISOString());
-        } catch (e) {
+        } catch {
           // Ignore localStorage errors
         }
       }
+
+      setGenerationProgress({ percent: 100, stage: 'done', context });
     } catch (error) {
       const errorText = error instanceof Error ? error.message : generationFailedLabel;
+      setGenerationProgress({ percent: 100, stage: 'failed', context });
       const loweredError = errorText.toLowerCase();
       if (loweredError.includes('throttled') || loweredError.includes('rate limit') || loweredError.includes('quota')) {
         const retryAfterSeconds = extractRetryAfterSeconds(errorText);
@@ -465,10 +646,179 @@ export default function UnifiedServiceLayout({
     }
   }, [runDirectGeneration, serviceContext]);
 
+  const clearChat = useCallback(() => {
+    setMessages([]);
+    setPreviewArtifact(null);
+    setGenerationProgress(null);
+    setRateLimitNotice(null);
+  }, []);
+
+  const captureFrame = useCallback((scanMode: boolean) => {
+    if (!cameraVideoRef.current) return;
+    const video = cameraVideoRef.current;
+    if (!cameraOn) {
+      setCameraError(locale === 'ka' ? 'კამერა გამორთულია.' : locale === 'ru' ? 'Камера выключена.' : 'Camera is off.');
+      return;
+    }
+    if (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
+      setCameraError(locale === 'ka' ? 'კამერა იტვირთება, სცადე რამდენიმე წამში.' : locale === 'ru' ? 'Камера загружается, повторите через пару секунд.' : 'Camera is still loading, please retry in a moment.');
+      return;
+    }
+    const width = video.videoWidth || Math.max(960, video.clientWidth * 2);
+    const height = video.videoHeight || Math.max(540, video.clientHeight * 2);
+    if (width <= 0 || height <= 0) {
+      setCameraError(locale === 'ka' ? 'კადრი ჯერ მზად არ არის.' : locale === 'ru' ? 'Кадр пока не готов.' : 'Frame is not ready yet.');
+      return;
+    }
+
+    setCameraCaptureBusy(true);
+    try {
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        setCameraError(locale === 'ka' ? 'კადრის დაფიქსირება ვერ მოხერხდა.' : locale === 'ru' ? 'Не удалось захватить кадр.' : 'Unable to capture camera frame.');
+        return;
+      }
+      ctx.drawImage(video, 0, 0, width, height);
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+      setCameraError(null);
+
+      const artifact: Artifact = {
+        type: 'image',
+        url: dataUrl,
+        label: scanMode ? `${serviceName} Scan Frame` : `${serviceName} Camera Capture`,
+        mimeType: 'image/jpeg',
+        generationStatus: 'succeeded',
+      };
+
+      setPreviewArtifact(artifact);
+      const scanPrompt = buildScanPrompt(locale, serviceName, serviceContext);
+      setInput((prev) => {
+        if (scanMode) return prev ? `${prev}\n${scanPrompt}` : scanPrompt;
+        const note = locale === 'ka'
+          ? '[კამერის კადრი დაფიქსირდა]'
+          : locale === 'ru'
+            ? '[Кадр с камеры сохранён]'
+            : '[Camera frame captured]';
+        return prev ? `${prev} ${note}` : note;
+      });
+
+      if (scanMode) {
+        const scanHintMessage = t.scanHint ?? 'Frame captured. Adjust prompt and send when ready.';
+        setMessages(prev => [...prev, {
+          id: `msg_${Date.now()}_scan_frame`,
+          role: 'assistant',
+          content: scanHintMessage,
+          artifacts: [artifact],
+          timestamp: new Date(),
+        }]);
+      }
+    } finally {
+      setCameraCaptureBusy(false);
+    }
+  }, [locale, serviceContext, serviceName, t.scanHint]);
+
+  const downloadArtifact = useCallback(async (artifact: Artifact) => {
+    if (!artifact.url) return;
+    const url = artifact.url;
+
+    setDownloadMetrics(prev => ({
+      ...prev,
+      [url]: {
+        status: 'downloading',
+        percent: 2,
+        receivedBytes: 0,
+        totalBytes: null,
+      },
+    }));
+
+    try {
+      const response = await fetch(url);
+      if (!response.ok || !response.body) {
+        window.open(url, '_blank', 'noopener,noreferrer');
+        setDownloadMetrics(prev => ({
+          ...prev,
+          [url]: {
+            status: 'complete',
+            percent: 100,
+            receivedBytes: 0,
+            totalBytes: null,
+          },
+        }));
+        return;
+      }
+
+      const reader = response.body.getReader();
+      const totalHeader = response.headers.get('content-length');
+      const totalBytes = totalHeader ? Number(totalHeader) : null;
+      let receivedBytes = 0;
+      const chunks: Uint8Array[] = [];
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (!value) continue;
+        chunks.push(value);
+        receivedBytes += value.length;
+        const percent = totalBytes ? Math.min(99, Math.round((receivedBytes / totalBytes) * 100)) : 75;
+        setDownloadMetrics(prev => ({
+          ...prev,
+          [url]: {
+            status: 'downloading',
+            percent,
+            receivedBytes,
+            totalBytes,
+          },
+        }));
+      }
+
+      const blobParts = chunks.map((chunk) => chunk.buffer as ArrayBuffer);
+      const blob = new Blob(blobParts, { type: artifact.mimeType || 'application/octet-stream' });
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const filenameBase = artifact.label?.trim().replace(/\s+/g, '-').toLowerCase() || 'asset';
+      a.href = blobUrl;
+      a.download = `${filenameBase}.${extensionForArtifact(artifact)}`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(blobUrl);
+
+      setDownloadMetrics(prev => ({
+        ...prev,
+        [url]: {
+          status: 'complete',
+          percent: 100,
+          receivedBytes: receivedBytes || (totalBytes ?? 0),
+          totalBytes,
+        },
+      }));
+    } catch {
+      setDownloadMetrics(prev => ({
+        ...prev,
+        [url]: {
+          status: 'failed',
+          percent: 100,
+          receivedBytes: prev[url]?.receivedBytes ?? 0,
+          totalBytes: prev[url]?.totalBytes ?? null,
+        },
+      }));
+      window.open(url, '_blank', 'noopener,noreferrer');
+    }
+  }, []);
+
   // ─── Send message ────────────────────────────────────────────────────────
   const sendMessage = useCallback(async (text?: string) => {
     const msg = (text ?? input).trim();
     if (!msg || sending) return;
+
+    const selectedOptionEntries = Object.entries(selectedOptions).filter(([, value]) => value);
+    const optionsSuffix = selectedOptionEntries.length
+      ? `\nOptions: ${selectedOptionEntries.map(([key, value]) => `${key}=${value}`).join('; ')}`
+      : '';
+    const finalMessage = `${msg}${optionsSuffix}`;
 
     if (!demoMode && !isAuthenticated) {
       setShowLoginModal(true);
@@ -480,7 +830,7 @@ export default function UnifiedServiceLayout({
     const userMessage: Message = {
       id: `msg_${Date.now()}`,
       role: 'user',
-      content: msg,
+      content: finalMessage,
       timestamp: new Date(),
     };
     setMessages(prev => [...prev, userMessage]);
@@ -566,7 +916,7 @@ export default function UnifiedServiceLayout({
     } finally {
       setSending(false);
     }
-  }, [input, sending, demoMode, isAuthenticated, agentId, locale, serviceId, serviceContext, messages, onAuthRequired, t.retryNotice, t.seconds, runDirectGeneration]);
+  }, [input, sending, demoMode, isAuthenticated, selectedOptions, agentId, locale, serviceId, serviceContext, messages, onAuthRequired, t.retryNotice, t.seconds, runDirectGeneration]);
 
   // ─── File upload ─────────────────────────────────────────────────────────
   const handleFileUpload = (e: ChangeEvent<HTMLInputElement>) => {
@@ -634,11 +984,38 @@ export default function UnifiedServiceLayout({
     }
 
     try {
+      if (!window.isSecureContext) {
+        setCameraError(locale === 'ka'
+          ? 'კამერისთვის საჭიროა უსაფრთხო (HTTPS) გარემო.'
+          : locale === 'ru'
+            ? 'Для камеры требуется защищённое соединение (HTTPS).'
+            : 'Camera requires a secure HTTPS context.');
+        return;
+      }
+      if (!navigator.mediaDevices?.getUserMedia) {
+        setCameraError(locale === 'ka'
+          ? 'ამ ბრაუზერში კამერა არ არის მხარდაჭერილი.'
+          : locale === 'ru'
+            ? 'Камера не поддерживается в этом браузере.'
+            : 'Camera is not supported in this browser.');
+        return;
+      }
+
       setCameraError(null);
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: 'user',
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+        },
+        audio: false,
+      });
       cameraStreamRef.current = stream;
       if (cameraVideoRef.current) {
         cameraVideoRef.current.srcObject = stream;
+        cameraVideoRef.current.onloadedmetadata = () => {
+          cameraVideoRef.current?.play().catch(() => undefined);
+        };
       }
       setCameraOn(true);
     } catch (error) {
@@ -658,6 +1035,8 @@ export default function UnifiedServiceLayout({
     }
   };
 
+  const previewDownloadMetric = previewArtifact?.url ? downloadMetrics[previewArtifact.url] : undefined;
+
   // ─── Render ──────────────────────────────────────────────────────────────
   return (
     <div className="relative min-h-screen bg-transparent text-white">
@@ -672,7 +1051,7 @@ export default function UnifiedServiceLayout({
       <div className="pointer-events-none absolute inset-0 opacity-90" style={{ backgroundImage: serviceBackground }} />
       <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(to_bottom,rgba(2,6,23,0.55),rgba(2,6,23,0.36)_28%,rgba(2,6,23,0.58)_100%)]" />
       {/* ── Header ──────────────────────────────────────────────────────── */}
-      <header className="relative z-10 border-b border-white/[0.08] bg-black/20 backdrop-blur-md px-4 sm:px-6 py-4">
+      <header className="relative z-10 border-b border-white/[0.08] bg-black/20 backdrop-blur-md px-3 sm:px-5 lg:px-6 py-3.5 sm:py-4">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">
             <span className="text-2xl">{serviceIcon}</span>
@@ -704,11 +1083,11 @@ export default function UnifiedServiceLayout({
       </header>
 
       {/* ── Main Layout: Chat (70%) + Preview (30%) ─────────────────────── */}
-      <div className="relative z-10 max-w-7xl mx-auto flex flex-col lg:flex-row min-h-[calc(100vh-64px)]">
+      <div className="relative z-10 max-w-[94rem] mx-auto flex flex-col lg:flex-row min-h-[calc(100vh-60px)] sm:min-h-[calc(100vh-64px)] px-2 sm:px-3 md:px-4 lg:px-6">
 
         {/* ── Chat Window (70%) ─────────────────────────────────────────── */}
         <div
-          className="flex-1 lg:w-[70%] flex flex-col border-r border-white/[0.08] bg-black/10"
+          className="flex-1 lg:w-[68%] flex flex-col border-r border-cyan-400/20 bg-black/10 shadow-[inset_0_0_0_1px_rgba(34,211,238,0.18),0_0_34px_rgba(34,211,238,0.16)]"
           onDragEnter={handleDrag}
           onDragOver={handleDrag}
           onDragLeave={handleDrag}
@@ -722,20 +1101,59 @@ export default function UnifiedServiceLayout({
           )}
 
           {/* Quick Action Chips */}
-          <div className="px-4 py-3 border-b border-white/[0.06] bg-black/15 flex gap-2 overflow-x-auto scrollbar-hide">
-            {quickActions.map(action => (
+          <div className="px-3 sm:px-4 py-3 border-b border-white/[0.06] bg-black/15 space-y-3">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-[11px] uppercase tracking-wider text-white/45">{t.quickActions}</p>
               <button
-                key={action}
-                onClick={() => sendMessage(action)}
-                className="flex-shrink-0 px-3 py-1.5 text-xs bg-white/[0.06] border border-white/[0.12] rounded-full hover:bg-white/[0.1] hover:border-cyan-400/45 transition-all whitespace-nowrap"
+                onClick={clearChat}
+                className="text-[11px] px-2.5 py-1 rounded-md border border-white/15 bg-white/5 hover:bg-white/10"
               >
-                {action}
+                {t.clearChat}
               </button>
-            ))}
+            </div>
+            <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-1 snap-x snap-mandatory">
+              {quickActions.map(action => (
+                <button
+                  key={action}
+                  onClick={() => sendMessage(action)}
+                  className="snap-start flex-shrink-0 px-3 py-2 text-xs bg-white/[0.06] border border-white/[0.12] rounded-full hover:bg-white/[0.1] hover:border-cyan-400/45 transition-all whitespace-nowrap"
+                >
+                  {action}
+                </button>
+              ))}
+            </div>
+            <div className="rounded-xl border border-white/[0.08] bg-black/20 p-3 space-y-2">
+              <p className="text-[11px] uppercase tracking-wider text-white/45">{t.workspaceOptions}</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2">
+                {optionSets.map((set) => (
+                  <div key={set.key} className="rounded-lg border border-white/[0.08] bg-white/[0.02] p-2 space-y-2">
+                    <p className="text-[11px] text-white/65">{set.label}</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {set.values.map((value) => {
+                        const active = selectedOptions[set.key] === value;
+                        return (
+                          <button
+                            key={value}
+                            onClick={() => setSelectedOptions((prev) => ({ ...prev, [set.key]: value }))}
+                            className={`px-2 py-1 text-[11px] rounded-full border transition-colors ${
+                              active
+                                ? 'border-cyan-400/60 bg-cyan-500/25 text-cyan-100'
+                                : 'border-white/15 bg-white/5 text-white/70 hover:bg-white/10'
+                            }`}
+                          >
+                            {value}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
 
           {/* Message list */}
-          <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 md:p-5 space-y-4">
+          <div ref={scrollRef} className="flex-1 overflow-y-auto p-3 sm:p-4 md:p-5 space-y-4">
             {messages.length === 0 && (
               <div className="flex flex-col items-center justify-center h-full space-y-4 text-center py-12 md:py-16">
                 <span className="text-5xl">{serviceIcon}</span>
@@ -755,7 +1173,7 @@ export default function UnifiedServiceLayout({
 
             {messages.map(msg => (
               <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                <div className={`max-w-[92%] sm:max-w-[86%] lg:max-w-[80%] space-y-2 ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
+                  <div className={`max-w-[96%] sm:max-w-[88%] lg:max-w-[80%] space-y-2 ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
                   <div className={`px-4 py-3 rounded-2xl text-sm leading-relaxed ${
                     msg.role === 'user'
                       ? 'bg-gradient-to-r from-cyan-500/20 to-blue-500/20 border border-cyan-500/20 text-white'
@@ -768,6 +1186,7 @@ export default function UnifiedServiceLayout({
                   {msg.artifacts?.map((art, i) => {
                     const canRetry = Boolean(art.generationPrompt);
                     const retryBusy = retryingArtifactPrompt === art.generationPrompt;
+                    const artifactDownloadMetric = art.url ? downloadMetrics[art.url] : undefined;
                     const badgeText = art.generationStatus === 'running'
                       ? (locale === 'ka' ? 'მიმდინარეობს' : locale === 'ru' ? 'В процессе' : 'Running')
                       : art.generationStatus === 'succeeded'
@@ -816,8 +1235,34 @@ export default function UnifiedServiceLayout({
                                   : (locale === 'ka' ? 'თავიდან' : locale === 'ru' ? 'Повтор' : 'Retry')}
                               </button>
                             )}
+
+                            {art.url && (
+                              <button
+                                onClick={() => downloadArtifact(art)}
+                                className="text-[11px] px-2 py-1 rounded-md border border-cyan-400/30 bg-cyan-500/15 hover:bg-cyan-500/25"
+                              >
+                                {t.download}
+                              </button>
+                            )}
                           </div>
                         </div>
+
+                        {art.url && artifactDownloadMetric && (
+                          <div className="mt-2 space-y-1">
+                            <div className="h-1.5 rounded-full bg-white/10 overflow-hidden">
+                              <div
+                                className={`h-full transition-all ${artifactDownloadMetric.status === 'failed' ? 'bg-rose-400' : 'bg-cyan-400'}`}
+                                style={{ width: `${artifactDownloadMetric.percent}%` }}
+                              />
+                            </div>
+                            <p className="text-[10px] text-white/55">
+                              {artifactDownloadMetric.status === 'downloading' ? t.downloading : artifactDownloadMetric.status === 'failed' ? 'Failed' : t.ready}
+                              {' · '}{artifactDownloadMetric.percent}%
+                              {' · '}{formatBytes(artifactDownloadMetric.receivedBytes)}
+                              {artifactDownloadMetric.totalBytes ? ` / ${formatBytes(artifactDownloadMetric.totalBytes)}` : ''}
+                            </p>
+                          </div>
+                        )}
                       </div>
                     );
                   })}
@@ -837,7 +1282,7 @@ export default function UnifiedServiceLayout({
           </div>
 
           {/* ── Sticky Action Bar ───────────────────────────────────────── */}
-          <div className="border-t border-white/[0.08] bg-black/20 backdrop-blur-sm p-3 md:p-4 space-y-3">
+          <div className="sticky bottom-0 border-t border-white/[0.08] bg-black/35 backdrop-blur-md p-3 md:p-4 pb-[calc(0.75rem+env(safe-area-inset-bottom))] space-y-3 max-md:[@media(orientation:landscape)]:space-y-1.5 max-md:[@media(orientation:landscape)]:py-1.5 focus-within:shadow-[0_0_0_1px_rgba(34,211,238,0.5),0_0_24px_rgba(34,211,238,0.28)] transition-shadow">
             {rateLimitNotice && (
               <div className="flex items-center justify-between gap-3 rounded-xl border border-amber-400/40 bg-amber-500/15 px-3 py-2">
                 <p className="text-xs text-amber-100">{rateLimitNotice}</p>
@@ -850,8 +1295,21 @@ export default function UnifiedServiceLayout({
               </div>
             )}
 
+            {generationProgress && (
+              <div className="rounded-xl border border-cyan-400/30 bg-cyan-500/10 px-3 py-2.5 space-y-1.5">
+                <div className="flex items-center justify-between text-[11px] text-cyan-100">
+                  <span>{t.progress} · {generationProgress.context}</span>
+                  <span>{generationProgress.percent}%</span>
+                </div>
+                <div className="h-2 rounded-full bg-cyan-900/30 overflow-hidden">
+                  <div className="h-full bg-cyan-400 transition-all" style={{ width: `${generationProgress.percent}%` }} />
+                </div>
+                <p className="text-[11px] text-cyan-100/80">{generationStageLabel}</p>
+              </div>
+            )}
+
             {/* Automation toggle */}
-            <div className="flex items-center gap-3 flex-wrap">
+            <div className="flex items-center gap-2 sm:gap-3 flex-wrap max-md:[@media(orientation:landscape)]:flex-nowrap max-md:[@media(orientation:landscape)]:overflow-x-auto">
               <label className="flex items-center gap-2 cursor-pointer">
                 <input
                   type="checkbox"
@@ -867,7 +1325,7 @@ export default function UnifiedServiceLayout({
 
               <button
                 onClick={toggleCamera}
-                className={`px-3 py-1.5 text-xs border rounded-lg transition-colors ${
+                className={`px-3 py-2 text-xs border rounded-lg transition-colors ${
                   cameraOn
                     ? 'border-cyan-500/50 bg-cyan-500/20 text-cyan-300'
                     : 'border-white/15 text-white/75 hover:bg-white/10'
@@ -893,22 +1351,40 @@ export default function UnifiedServiceLayout({
                   }
                   promptInputRef.current?.focus();
                 }}
-                className="px-3 py-1.5 text-xs border border-cyan-300/50 bg-cyan-500/15 rounded-lg hover:bg-cyan-500/25 hover:border-cyan-200/70 transition-colors max-w-full truncate"
+                className="px-3 py-2 text-xs border border-cyan-300/50 bg-cyan-500/15 rounded-lg hover:bg-cyan-500/25 hover:border-cyan-200/70 transition-colors max-w-full truncate"
               >
                 {agentButtonLabel}
               </button>
             </div>
 
             {(cameraOn || cameraError) && (
-              <div className="rounded-xl border border-white/[0.08] bg-white/[0.03] p-2">
+              <div className="rounded-xl border border-cyan-400/30 bg-cyan-500/10 shadow-[0_0_20px_rgba(34,211,238,0.16)] p-2">
                 {cameraOn ? (
-                  <video
-                    ref={cameraVideoRef}
-                    autoPlay
-                    muted
-                    playsInline
-                    className="w-full max-h-44 rounded-lg object-cover border border-white/[0.08]"
-                  />
+                  <div className="space-y-2">
+                    <video
+                      ref={cameraVideoRef}
+                      autoPlay
+                      muted
+                      playsInline
+                      className="w-full max-h-52 max-md:[@media(orientation:landscape)]:max-h-28 rounded-lg object-cover border border-white/[0.08]"
+                    />
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <button
+                        onClick={() => captureFrame(false)}
+                        disabled={cameraCaptureBusy}
+                        className="w-full px-3 py-2 text-xs rounded-lg border border-white/20 bg-white/10 hover:bg-white/20 disabled:opacity-40"
+                      >
+                        {t.capture}
+                      </button>
+                      <button
+                        onClick={() => captureFrame(true)}
+                        disabled={cameraCaptureBusy}
+                        className="w-full px-3 py-2 text-xs rounded-lg border border-cyan-400/45 bg-cyan-500/20 text-cyan-100 hover:bg-cyan-500/30 disabled:opacity-40"
+                      >
+                        {t.scan}
+                      </button>
+                    </div>
+                  </div>
                 ) : null}
                 {cameraError ? <p className="text-xs text-red-300 mt-1">{cameraError}</p> : null}
               </div>
@@ -941,7 +1417,7 @@ export default function UnifiedServiceLayout({
             </div>
 
             {/* Input row */}
-            <div className="flex gap-2 items-end min-w-0">
+            <div className="flex flex-wrap sm:flex-nowrap gap-2 items-end min-w-0 max-md:[@media(orientation:landscape)]:flex-nowrap">
               <input
                 type="file"
                 ref={fileInputRef}
@@ -952,7 +1428,7 @@ export default function UnifiedServiceLayout({
 
               <button
                 onClick={() => fileInputRef.current?.click()}
-                className="flex-shrink-0 p-2.5 bg-white/[0.06] border border-white/[0.12] rounded-xl hover:bg-white/[0.1] transition-colors"
+                className="h-11 w-11 flex-shrink-0 flex items-center justify-center bg-white/[0.06] border border-white/[0.12] rounded-xl hover:bg-white/[0.1] transition-colors"
                 title={t.upload}
               >
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-white/40"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
@@ -960,7 +1436,7 @@ export default function UnifiedServiceLayout({
 
               <button
                 onClick={toggleRecording}
-                className={`flex-shrink-0 p-2.5 border rounded-xl transition-colors ${
+                className={`h-11 w-11 flex-shrink-0 flex items-center justify-center border rounded-xl transition-colors ${
                   isRecording
                     ? 'bg-red-500/20 border-red-500/50 text-red-400'
                     : 'bg-white/[0.06] border-white/[0.12] hover:bg-white/[0.1] text-white/60'
@@ -970,11 +1446,13 @@ export default function UnifiedServiceLayout({
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
               </button>
 
-              <div className="flex-1 relative">
+              <div className={`order-3 sm:order-none basis-full sm:basis-auto flex-1 relative rounded-xl transition-all ${chatInputFocused ? 'ring-2 ring-cyan-400/70 shadow-[0_0_24px_rgba(34,211,238,0.35)]' : ''}`}>
                 <textarea
                   ref={promptInputRef}
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
+                  onFocus={() => setChatInputFocused(true)}
+                  onBlur={() => setChatInputFocused(false)}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && !e.shiftKey) {
                       e.preventDefault();
@@ -982,15 +1460,15 @@ export default function UnifiedServiceLayout({
                     }
                   }}
                   placeholder={t.placeholder}
-                  rows={1}
-                  className="w-full bg-white/[0.06] border border-white/[0.12] rounded-xl px-4 py-2.5 text-sm text-white placeholder-white/35 focus:outline-none focus:border-cyan-400/60 resize-none"
+                  rows={2}
+                  className="w-full min-h-[82px] sm:min-h-[74px] max-md:[@media(orientation:landscape)]:min-h-[48px] bg-white/[0.06] border border-white/[0.12] rounded-xl px-4 py-2.5 text-sm text-white placeholder-white/35 focus:outline-none focus:border-cyan-400/70 focus:shadow-[0_0_20px_rgba(34,211,238,0.25)] resize-y"
                 />
               </div>
 
               <button
                 onClick={() => sendMessage()}
                 disabled={sending || !input.trim()}
-                className="flex-shrink-0 px-3 sm:px-5 py-2.5 bg-gradient-to-r from-cyan-500 to-blue-600 text-white text-xs sm:text-sm font-semibold rounded-xl hover:shadow-lg hover:shadow-cyan-500/25 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                className="order-4 sm:order-none w-full sm:w-auto max-md:[@media(orientation:landscape)]:w-auto flex-shrink-0 px-4 sm:px-5 py-2.5 bg-gradient-to-r from-cyan-500 to-blue-600 text-white text-xs sm:text-sm font-semibold rounded-xl hover:shadow-lg hover:shadow-cyan-500/25 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 {t.send}
               </button>
@@ -999,7 +1477,7 @@ export default function UnifiedServiceLayout({
         </div>
 
         {/* ── Preview/Tools Panel (30%) ─────────────────────────────────── */}
-        <div className="lg:w-[30%] border-t lg:border-t-0 border-white/[0.08] bg-black/15 flex flex-col md:max-h-[42vh] lg:max-h-none">
+        <div className="lg:w-[32%] border-t lg:border-t-0 border-white/[0.08] bg-black/15 flex flex-col md:max-h-[50vh] lg:max-h-none">
           {/* Panel header */}
           <div className="px-4 py-3 border-b border-white/[0.06] bg-black/20 flex items-center justify-between">
             <span className="text-xs font-semibold text-white/55 uppercase tracking-wider">{t.preview}</span>
@@ -1007,7 +1485,7 @@ export default function UnifiedServiceLayout({
           </div>
 
           {/* Preview content */}
-          <div className="flex-1 p-4 flex items-center justify-center overflow-auto">
+          <div className="flex-1 p-3 sm:p-4 flex items-center justify-center overflow-auto">
             {previewArtifact ? (
               <div className="w-full space-y-4">
                 {previewArtifact.type === 'image' && previewArtifact.url && (
@@ -1026,6 +1504,27 @@ export default function UnifiedServiceLayout({
                   </pre>
                 )}
                 <p className="text-xs text-white/45 text-center">{previewArtifact.label}</p>
+                {previewArtifact.url && (
+                  <div className="space-y-2">
+                    <button
+                      onClick={() => downloadArtifact(previewArtifact)}
+                      className="w-full px-3 py-2 text-xs rounded-lg border border-cyan-400/35 bg-cyan-500/15 hover:bg-cyan-500/25"
+                    >
+                      {t.download}
+                    </button>
+                    {previewDownloadMetric && (
+                      <div className="space-y-1">
+                        <div className="h-1.5 rounded-full bg-white/10 overflow-hidden">
+                          <div className="h-full bg-cyan-400 transition-all" style={{ width: `${previewDownloadMetric.percent}%` }} />
+                        </div>
+                        <p className="text-[10px] text-white/55 text-center">
+                          {previewDownloadMetric.status === 'downloading' ? t.downloading : previewDownloadMetric.status === 'failed' ? 'Failed' : t.ready}
+                          {' · '}{previewDownloadMetric.percent}%
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             ) : (
               <div className="text-center space-y-3">

@@ -24,36 +24,36 @@ export function PricingSection() {
   const labels = PRICING_LABELS[locale as keyof typeof PRICING_LABELS] || PRICING_LABELS.ka
 
   return (
-    <section id="pricing" className="relative py-24 px-4 sm:px-6 overflow-hidden">
+    <section id="pricing" className="relative py-28 px-4 sm:px-6 overflow-hidden border-t border-white/[0.04]">
       {/* Background decoration */}
       <div className="absolute inset-0 pointer-events-none">
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[600px] bg-gradient-to-b from-cyan-500/[0.04] to-transparent rounded-full blur-3xl" />
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[700px] h-[700px] bg-gradient-to-b from-cyan-500/[0.03] to-transparent rounded-full blur-[120px]" />
       </div>
 
       <div className="relative mx-auto max-w-6xl">
         <motion.div
-          className="text-center mb-16"
+          className="text-center mb-20"
           initial={{ opacity: 0, y: 30 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
           transition={{ duration: 0.7 }}
         >
-          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-cyan-400/20 bg-cyan-400/[0.05] mb-5">
+          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-cyan-400/15 bg-cyan-400/[0.04] mb-6">
             <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
-            <span className="text-xs font-medium text-cyan-300 tracking-wider uppercase">{labels.badge}</span>
+            <span className="text-[10px] font-semibold text-cyan-300/80 tracking-[0.12em] uppercase">{labels.badge}</span>
           </div>
-          <h2 className="text-3xl md:text-5xl font-bold text-white mb-4">
+          <h2 className="text-3xl md:text-5xl lg:text-[3.5rem] font-bold text-white mb-5 tracking-[-0.02em]">
             {t('pricing.title')}{' '}
-            <span className="bg-gradient-to-r from-cyan-400 to-blue-400 bg-clip-text text-transparent">
+            <span className="bg-gradient-to-r from-cyan-300 to-blue-400 bg-clip-text text-transparent">
               {t('pricing.titleAccent')}
             </span>
           </h2>
-          <p className="text-gray-400 max-w-xl mx-auto text-base md:text-lg">
+          <p className="text-white/40 max-w-xl mx-auto text-base md:text-lg leading-relaxed">
             {t('pricing.subtitle')}
           </p>
         </motion.div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
           {PRICING_PLANS.map((plan, index) => {
             const accentRaw = PLAN_ACCENTS[index] ?? PLAN_ACCENTS[0]
             if (!accentRaw) return null
@@ -81,10 +81,10 @@ export function PricingSection() {
                 />
 
                 <div
-                  className={`relative flex flex-col h-full rounded-2xl border p-6 backdrop-blur-xl transition-all duration-500 ${
+                  className={`relative flex flex-col h-full rounded-2xl border p-7 backdrop-blur-xl transition-all duration-500 ${
                     isPopular
-                      ? 'border-cyan-400/40 bg-[#0A0F1E]/95 shadow-[0_0_50px_rgba(6,182,212,0.12)]'
-                      : 'border-white/[0.08] bg-[#0A0F1E]/80 hover:border-white/[0.15]'
+                      ? 'border-cyan-400/30 bg-[#060B18]/95 shadow-[0_0_60px_rgba(6,182,212,0.10)]'
+                      : 'border-white/[0.06] bg-[#060B18]/80 hover:border-white/[0.12]'
                   }`}
                 >
                   {isPopular && (
@@ -102,20 +102,20 @@ export function PricingSection() {
                   </div>
 
                   <h3 className="text-xl font-bold text-white">{plan.name}</h3>
-                  <p className="text-sm text-gray-400 mt-1">{plan.description}</p>
+                  <p className="text-sm text-white/40 mt-1">{plan.description}</p>
 
                   <div className="flex items-baseline gap-1.5 mt-5 mb-6">
                     <span className={`text-4xl font-extrabold bg-gradient-to-br ${accent.gradient} bg-clip-text text-transparent`}>
                       ${plan.price}
                     </span>
-                    <span className="text-gray-500 text-sm font-medium">{labels.month}</span>
+                    <span className="text-white/35 text-sm font-medium">{labels.month}</span>
                   </div>
 
                   <div className="h-px bg-gradient-to-r from-transparent via-white/10 to-transparent mb-6" />
 
                   <ul className="space-y-3 mb-8 flex-1">
                     {plan.features.map((f) => (
-                      <li key={f} className="flex items-start gap-2.5 text-sm text-gray-300">
+                      <li key={f} className="flex items-start gap-2.5 text-sm text-white/70">
                         <div className={`mt-0.5 flex-shrink-0 w-4 h-4 rounded-full bg-gradient-to-br ${accent.gradient} flex items-center justify-center`}>
                           <Check className="w-2.5 h-2.5 text-white" strokeWidth={3} />
                         </div>
@@ -130,10 +130,10 @@ export function PricingSection() {
                         ? `/${locale}/signup`
                         : `/${locale}/signup?plan=${plan.name.toLowerCase()}`
                     }
-                    className={`block text-center py-3 rounded-xl font-bold text-sm transition-all duration-300 ${
+                    className={`block text-center py-3.5 rounded-xl font-bold text-sm transition-all duration-300 ${
                       isPopular
-                        ? 'bg-gradient-to-r from-cyan-500 to-blue-600 text-white hover:shadow-[0_0_30px_rgba(6,182,212,0.35)] hover:brightness-110'
-                        : 'bg-white/[0.06] border border-white/[0.08] text-white hover:bg-white/[0.12] hover:border-white/[0.15]'
+                        ? 'bg-gradient-to-r from-cyan-500 to-blue-600 text-white hover:shadow-[0_0_40px_rgba(6,182,212,0.3)] hover:brightness-110'
+                        : 'bg-white/[0.05] border border-white/[0.08] text-white/80 hover:bg-white/[0.10] hover:border-white/[0.15]'
                     }`}
                   >
                     {plan.cta}

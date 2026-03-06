@@ -147,9 +147,9 @@ export default function AgentGPage() {
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <div className="inline-flex items-center gap-2 rounded-full border border-cyan-500/30 bg-cyan-500/10 px-3 py-1 text-xs text-cyan-200">
-                <Bot className="h-3.5 w-3.5" /> Agent G Orchestrator
+                <Bot className="h-3.5 w-3.5" /> Agent G Coordinator
               </div>
-              <h1 className="mt-3 text-3xl font-semibold text-white">{isEn ? 'Agent G Master Orchestration' : 'Agent G Master ორკესტრაცია'}</h1>
+              <h1 className="mt-3 text-3xl font-semibold text-white">{isEn ? 'Agent G Master Coordination' : 'Agent G Master კოორდინაცია'}</h1>
               <p className="mt-1 text-sm text-gray-300">{isEn ? 'From one goal to multi-agent execution, aggregation, and unified output delivery.' : 'ერთი მიზნიდან მრავალ-აგენტურ შესრულებამდე, აგრეგაციამდე და ერთიან შედეგამდე.'}</p>
             </div>
             <div className="flex gap-2">

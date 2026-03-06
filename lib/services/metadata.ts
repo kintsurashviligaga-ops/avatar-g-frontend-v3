@@ -56,14 +56,14 @@ const LOCALIZED_SERVICE_META: Record<string, LocalizedServiceMeta> = {
       ru: 'Агент G — Ваш AI-директор',
     },
     description: {
-      en: 'The orchestration brain behind every service. Give it a goal, it builds the plan and executes it end-to-end.',
-      ka: 'ორკესტრაციის ტვინი ყველა სერვისის უკან. მიეცით მიზანი, ის აგებს გეგმას და ასრულებს ბოლომდე.',
-      ru: 'Мозг оркестровки за каждым сервисом. Дайте цель — он составит план и выполнит его от начала до конца.',
+      en: 'The coordination brain behind every service. Give it a goal, it builds the plan and executes it end-to-end.',
+      ka: 'კოორდინაციის ტვინი ყველა სერვისის უკან. მიეცით მიზანი, ის აგებს გეგმას და ასრულებს ბოლომდე.',
+      ru: 'Координационный мозг за каждым сервисом. Дайте цель — он составит план и выполнит его от начала до конца.',
     },
     features: {
-      en: ['Multi-step pipeline orchestration', 'Quality gate enforcement', 'Multi-language output', 'One-click bundle execution'],
-      ka: ['მრავალეტაპიანი ორკესტრაცია', 'ხარისხის კონტროლი', 'მრავალენოვანი გამომავალი', 'ერთი დაწკაპუნებით შესრულება'],
-      ru: ['Многоэтапная оркестровка', 'Контроль качества', 'Многоязычный вывод', 'Выполнение в один клик'],
+      en: ['Multi-step pipeline coordination', 'Quality gate enforcement', 'Multi-language output', 'One-click bundle execution'],
+      ka: ['მრავალეტაპიანი კოორდინაცია', 'ხარისხის კონტროლი', 'მრავალენოვანი გამომავალი', 'ერთი დაწკაპუნებით შესრულება'],
+      ru: ['Многоэтапная координация', 'Контроль качества', 'Многоязычный вывод', 'Выполнение в один клик'],
     },
   },
   'workflow': {

@@ -12,7 +12,7 @@ const ORBIT_SERVICES = [
   { id: 'photo', label: { ka: 'ფოტო სტუდია', en: 'Photo Studio', ru: 'Фотостудия' }, description: { ka: 'რეტუში და batch დამუშავება', en: 'Retouch and batch processing', ru: 'Ретушь и пакетная обработка' }, icon: ImageIcon, color: '#ec4899', slug: 'photo' },
   { id: 'image', label: { ka: 'სურათების შექმნა', en: 'Image Creator', ru: 'Генератор' }, description: { ka: 'პოსტერები და რეკლამები', en: 'Posters and ad creatives', ru: 'Постеры и рекламные креативы' }, icon: PenTool, color: '#f43f5e', slug: 'image' },
   { id: 'editing', label: { ka: 'ვიდეო რედაქტირება', en: 'Video Editing', ru: 'Редактор' }, description: { ka: 'AI მონტაჟი და subtitle', en: 'AI editing and subtitles', ru: 'AI-монтаж и субтитры' }, icon: Users, color: '#f59e0b', slug: 'editing' },
-  { id: 'agent-g', label: { ka: 'აგენტი G', en: 'Agent G', ru: 'Агент G' }, description: { ka: 'ორკესტრაციის მთავარი აგენტი', en: 'Primary orchestration agent', ru: 'Главный агент оркестрации' }, icon: Bot, color: '#06b6d4', slug: 'agent-g' },
+  { id: 'agent-g', label: { ka: 'აგენტი G', en: 'Agent G', ru: 'Агент G' }, description: { ka: 'კოორდინაციის მთავარი აგენტი', en: 'Primary coordination agent', ru: 'Главный агент координации' }, icon: Bot, color: '#06b6d4', slug: 'agent-g' },
   { id: 'text', label: { ka: 'ტექსტის გენერაცია', en: 'Text AI', ru: 'Текст AI' }, description: { ka: 'რეკლამა, SEO და კონტენტი', en: 'Ads, SEO and content', ru: 'Реклама, SEO и контент' }, icon: MessageSquare, color: '#6366f1', slug: 'text' },
   { id: 'workflow', label: { ka: 'ავტომატიზაცია', en: 'Workflows', ru: 'Процессы' }, description: { ka: 'პროცესების ავტომატიზაცია', en: 'Pipeline automation', ru: 'Автоматизация процессов' }, icon: Zap, color: '#eab308', slug: 'workflow' },
   { id: 'prompt', label: { ka: 'პრომპტ ბილდერი', en: 'Prompt Builder', ru: 'Промпт' }, description: { ka: 'სტაბილური prompt სისტემები', en: 'Reusable prompt systems', ru: 'Переиспользуемые промпты' }, icon: Database, color: '#0ea5e9', slug: 'prompt' },
@@ -66,7 +66,13 @@ export function OrbitSolarSystem() {
   const total = ORBIT_SERVICES.length
 
   useEffect(() => {
-    const update = () => setRadius(window.innerWidth >= 768 ? 290 : 165)
+    const update = () => {
+      if (window.innerWidth >= 768) {
+        setRadius(290)
+        return
+      }
+      setRadius(window.innerWidth < 390 ? 150 : 165)
+    }
     update()
     window.addEventListener('resize', update)
     return () => window.removeEventListener('resize', update)
@@ -94,11 +100,11 @@ export function OrbitSolarSystem() {
   }, [])
 
   return (
-    <section className="relative w-full py-24 md:py-32 overflow-hidden bg-transparent flex items-center justify-center min-h-[620px] md:min-h-[820px] pointer-events-none">
+    <section className="relative w-full py-20 md:py-32 overflow-hidden bg-transparent flex items-center justify-center min-h-[560px] md:min-h-[820px] max-md:[@media(orientation:landscape)]:min-h-[420px] pointer-events-none">
       <style dangerouslySetInnerHTML={{ __html: ORBIT_CSS }} />
 
       {/* Container for Orbit visual elements */}
-      <div className="relative w-[340px] h-[340px] md:w-[600px] md:h-[600px] flex items-center justify-center pointer-events-auto">
+      <div className="relative w-[320px] h-[320px] sm:w-[340px] sm:h-[340px] md:w-[600px] md:h-[600px] max-md:[@media(orientation:landscape)]:w-[300px] max-md:[@media(orientation:landscape)]:h-[300px] flex items-center justify-center pointer-events-auto">
 
         <div className="pointer-events-none absolute inset-0 rounded-full bg-[radial-gradient(circle,rgba(6,182,212,0.14)_0%,rgba(6,182,212,0.04)_42%,transparent_68%)]" />
 
@@ -125,8 +131,8 @@ export function OrbitSolarSystem() {
         </div>
 
         {/* Outer Orbit Rings */}
-        <div className="absolute inset-0 rounded-full border border-white/[0.14] shadow-[0_0_38px_rgba(255,255,255,0.08)]" />
-        <div className="absolute inset-[15%] rounded-full border border-white/[0.08]" />
+        <div className="absolute inset-0 rounded-full border border-cyan-200/[0.2] shadow-[0_0_38px_rgba(34,211,238,0.14)]" />
+        <div className="absolute inset-[15%] rounded-full border border-cyan-200/[0.14] shadow-[0_0_24px_rgba(34,211,238,0.1)]" />
 
         {/* Orbit Rotating Container */}
         <div className={`absolute inset-0 w-full h-full orbit-container ${isPaused ? 'orbit-paused' : 'orbit-running'}`}>
@@ -141,7 +147,7 @@ export function OrbitSolarSystem() {
                 key={service.id}
                 className="absolute top-1/2 left-1/2"
                 style={{
-                  transform: `translate(${x - 24}px, ${y - 24}px)`,
+                  transform: `translate(${x - 28}px, ${y - 28}px)`,
                 }}
               >
                 <div className={`orbit-item-counter flex items-center justify-center ${isPaused ? 'orbit-paused' : 'orbit-running'}`}>
@@ -172,27 +178,28 @@ function OrbitNodeContent({ service, locale, isActive, onEnter, onLeave }: { ser
     <Link
       href={'/' + locale + '/services/' + service.slug}
       className={`group relative flex items-center justify-center rounded-full transition-all duration-300 z-30
-        ${isActive ? 'w-16 h-16 md:w-20 md:h-20 scale-110 shadow-[0_0_30px_rgba(6,182,212,0.5)]' : 'w-14 h-14 md:w-16 md:h-16 hover:scale-105'}
-        border border-white/20 backdrop-blur-md
+        ${isActive ? 'w-[4.4rem] h-[4.4rem] md:w-24 md:h-24 scale-110 shadow-[0_0_36px_rgba(6,182,212,0.55)]' : 'w-16 h-16 md:w-20 md:h-20 hover:scale-105'}
+        border border-cyan-300/35 backdrop-blur-md
       `}
       style={{
         background: `radial-gradient(circle at 30% 30%, rgba(255,255,255,0.5), rgba(255,255,255,0.1) 35%, ${service.color}45 82%)`,
-        boxShadow: isActive ? `0 0 24px ${service.color}90, inset 0 2px 10px rgba(255,255,255,0.2)` : `0 0 14px ${service.color}66, inset 0 2px 8px rgba(255,255,255,0.16)`,
+        boxShadow: isActive ? `0 0 30px ${service.color}AA, 0 0 52px ${service.color}55, inset 0 2px 10px rgba(255,255,255,0.24)` : `0 0 20px ${service.color}80, inset 0 2px 8px rgba(255,255,255,0.16)`,
       }}
       onMouseEnter={onEnter}
       onMouseLeave={onLeave}
       aria-label={displayLabel}
     >
-      <span className="absolute inset-0 rounded-full border border-white/20" />
-      <span className="absolute -top-1 -left-1 text-sm md:text-base drop-shadow-[0_2px_6px_rgba(0,0,0,0.7)]">{orbitGlyph}</span>
+      <span className="absolute inset-0 rounded-full border border-cyan-300/50 shadow-[0_0_14px_rgba(34,211,238,0.45)]" />
+      {isActive && <span className="absolute inset-0 rounded-full border border-cyan-200/40 animate-pulse" />}
+      <span className="absolute -top-1.5 -left-1.5 text-base md:text-lg drop-shadow-[0_2px_6px_rgba(0,0,0,0.7)]">{orbitGlyph}</span>
       <Icon
-        className={`w-5 h-5 md:w-6 md:h-6 transition-colors relative z-10 ${isActive ? 'text-white' : 'text-white/80 group-hover:text-white'}`}
+        className={`w-6 h-6 md:w-7 md:h-7 transition-colors relative z-10 ${isActive ? 'text-white' : 'text-white/85 group-hover:text-white'}`}
         style={{ color: isActive ? service.color : undefined }}
       />
 
       {/* Tooltip */}
       <div
-        className={`absolute top-full mt-4 left-1/2 -translate-x-1/2 w-[252px] px-4 py-3 rounded-2xl bg-[#0b1020]/94 border border-white/20 text-white shadow-2xl backdrop-blur-xl transition-all duration-200 z-50
+        className={`absolute top-full mt-4 left-1/2 -translate-x-1/2 w-[220px] sm:w-[252px] px-4 py-3 rounded-2xl bg-[#0b1020]/94 border border-white/20 text-white shadow-2xl backdrop-blur-xl transition-all duration-200 z-50
           ${isActive ? 'opacity-100 translate-y-0 visible' : 'opacity-0 translate-y-2 invisible'}
         `}
       >

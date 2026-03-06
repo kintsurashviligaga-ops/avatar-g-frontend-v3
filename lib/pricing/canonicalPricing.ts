@@ -50,7 +50,7 @@ export const PRICING_PLANS = [
       '5,000 credits/month',
       'Unlimited everything',
       'Avatar G Agent (Premium)',
-      'Multi-agent orchestration',
+      'Multi-agent coordination',
       'Custom voice cloning',
       'API access',
       'White-label options',

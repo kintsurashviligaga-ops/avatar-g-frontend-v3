@@ -137,7 +137,7 @@ export default function CinematicHero3D() {
   // Use next/image for logo for LCP and optimization
   const LogoImage = (props: { className?: string }) => (
     <Image
-      src="/brand/logo-rocket.svg"
+      src="/brand/logo-primary-transparent.png"
       alt="Avatar G Logo"
       className={props.className}
       width={96}

@@ -14,13 +14,13 @@ export function GlassCard({ children, className = '', hover = true, onClick }: G
     <div
       onClick={onClick}
       className={`
-        rounded-3xl
-        bg-white/[0.04]
-        backdrop-blur-[18px]
-        border border-white/[0.10]
-        shadow-[0_8px_32px_rgba(0,0,0,0.4)]
-        transition-all duration-300 ease-out
-        ${hover ? 'hover:border-white/[0.18] hover:shadow-[0_12px_40px_rgba(0,0,0,0.5)] hover:-translate-y-[2px]' : ''}
+        rounded-2xl
+        bg-white/[0.03]
+        backdrop-blur-2xl
+        border border-white/[0.08]
+        shadow-[0_8px_40px_rgba(0,0,0,0.35),inset_0_1px_0_rgba(255,255,255,0.04)]
+        transition-all duration-[400ms]
+        ${hover ? 'hover:border-white/[0.15] hover:shadow-[0_16px_64px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.06)] hover:-translate-y-[3px]' : ''}
         ${onClick ? 'cursor-pointer' : ''}
         ${className}
       `}

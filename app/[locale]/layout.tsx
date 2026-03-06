@@ -12,10 +12,11 @@ export const revalidate = 0;
 
 export const metadata: Metadata = {
   metadataBase: new URL(metadataBaseUrl),
+  manifest: '/manifest.json',
   icons: {
-    icon: '/brand/logo-rocket.svg',
-    shortcut: '/brand/logo-rocket.svg',
-    apple: '/brand/logo-rocket.svg',
+    icon: '/icons/favicon.ico',
+    shortcut: '/icons/favicon.ico',
+    apple: '/icons/icon-180x180.png',
   },
   title: {
     default: "Avatar G - AI მედია პლატფორმა",
@@ -30,9 +31,9 @@ export const metadata: Metadata = {
     url: metadataBaseUrl,
     siteName: "Avatar G",
     images: [{
-      url: "/brand/logo-rocket.svg",
-      width: 1200,
-      height: 630,
+      url: "/brand/logo-primary-transparent.png",
+      width: 512,
+      height: 512,
       alt: "Avatar G - AI მედია პლატფორმა"
     }]
   },
@@ -40,7 +41,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "Avatar G - AI მედია პლატფორმა",
     description: "AI მედიის შექმნა Avatar G-სთან ერთად",
-    images: ["/brand/logo-rocket.svg"]
+    images: ["/brand/logo-primary-transparent.png"]
   },
   robots: {
     index: true,

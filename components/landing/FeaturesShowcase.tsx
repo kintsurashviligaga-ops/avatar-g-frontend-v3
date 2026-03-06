@@ -18,7 +18,7 @@ const FEATURES = [
   {
     icon: Wand2,
     title: 'One-Click Workflows',
-    description: 'Chain modules into automated pipelines. Define once, run infinitely with Agent G orchestrating.',
+    description: 'Chain modules into automated pipelines. Define once, run infinitely with Agent G coordinating.',
     gradient: 'from-purple-500 to-indigo-600',
     glow: 'rgba(139,92,246,0.25)',
   },
@@ -65,7 +65,7 @@ const FEATURES_COPY = {
       },
       {
         title: 'One-Click Workflows',
-        description: 'Chain modules into automated pipelines. Define once, run infinitely with Agent G orchestrating.',
+        description: 'Chain modules into automated pipelines. Define once, run infinitely with Agent G coordinating.',
       },
       {
         title: 'Your Digital Avatar',
@@ -194,62 +194,62 @@ export function FeaturesShowcase() {
   const copy = FEATURES_COPY[language as keyof typeof FEATURES_COPY] || FEATURES_COPY.ka
 
   return (
-    <section className="relative py-24 px-4 sm:px-6 overflow-hidden">
+    <section className="relative py-28 px-4 sm:px-6 overflow-hidden border-t border-white/[0.04]">
       {/* Background decoration */}
       <div className="absolute inset-0 pointer-events-none">
-        <div className="absolute top-1/4 left-0 w-96 h-96 bg-cyan-500/[0.04] rounded-full blur-3xl" />
-        <div className="absolute bottom-1/4 right-0 w-96 h-96 bg-purple-500/[0.04] rounded-full blur-3xl" />
+        <div className="absolute top-1/4 left-0 w-[500px] h-[500px] bg-cyan-500/[0.03] rounded-full blur-[120px]" />
+        <div className="absolute bottom-1/4 right-0 w-[500px] h-[500px] bg-violet-500/[0.03] rounded-full blur-[120px]" />
       </div>
 
       <div className="relative mx-auto max-w-6xl">
         <motion.div
-          className="text-center mb-16"
+          className="text-center mb-20"
           initial={{ opacity: 0, y: 30 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
           transition={{ duration: 0.7 }}
         >
-          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-purple-400/20 bg-purple-400/[0.05] mb-5">
-            <Layers className="w-3.5 h-3.5 text-purple-400" />
-            <span className="text-xs font-medium text-purple-300 tracking-wider uppercase">{copy.badge}</span>
+          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-violet-400/15 bg-violet-400/[0.04] mb-6">
+            <Layers className="w-3.5 h-3.5 text-violet-400" />
+            <span className="text-[10px] font-semibold text-violet-300/80 tracking-[0.12em] uppercase">{copy.badge}</span>
           </div>
-          <h2 className="text-3xl md:text-5xl font-bold text-white mb-4">
+          <h2 className="text-3xl md:text-5xl lg:text-[3.5rem] font-bold text-white mb-5 tracking-[-0.02em]">
             {copy.title}{' '}
-            <span className="bg-gradient-to-r from-cyan-400 via-blue-400 to-purple-400 bg-clip-text text-transparent">
+            <span className="bg-gradient-to-r from-cyan-300 via-blue-400 to-violet-400 bg-clip-text text-transparent">
               {copy.titleAccent}
             </span>
           </h2>
-          <p className="text-gray-400 max-w-xl mx-auto text-base md:text-lg">
+          <p className="text-white/40 max-w-xl mx-auto text-base md:text-lg leading-relaxed">
             {copy.subtitle}
           </p>
         </motion.div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
           {FEATURES.map((feature, index) => (
             <motion.div
               key={feature.title}
               initial={{ opacity: 0, y: 30 }}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
-              transition={{ duration: 0.5, delay: index * 0.1 }}
+              transition={{ duration: 0.5, delay: index * 0.08 }}
             >
               <TiltCard className="h-full">
                 <div
-                  className="group relative h-full rounded-2xl border border-white/[0.08] bg-[#0A0F1E]/80 backdrop-blur-sm p-6 transition-all duration-500 hover:border-white/[0.15] hover:bg-[#0D1528]/90"
+                  className="group relative h-full rounded-2xl border border-white/[0.06] bg-[#060B18]/80 backdrop-blur-sm p-7 transition-all duration-500 hover:border-white/[0.12] hover:bg-[#0D1528]/90"
                   style={{ ['--card-glow' as string]: feature.glow }}
                 >
                   {/* Glow on hover */}
                   <div
-                    className="absolute -inset-px rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-500 blur-xl"
+                    className="absolute -inset-px rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-700 blur-2xl"
                     style={{ background: feature.glow }}
                   />
 
                   <div className="relative">
-                    <div className={`inline-flex p-3 rounded-xl bg-gradient-to-br ${feature.gradient} mb-4`}>
+                    <div className={`inline-flex p-3 rounded-xl bg-gradient-to-br ${feature.gradient} mb-5 shadow-lg`}>
                       <feature.icon className="w-5 h-5 text-white" />
                     </div>
-                    <h3 className="text-lg font-bold text-white mb-2">{copy.cards[index]?.title || feature.title}</h3>
-                    <p className="text-sm text-gray-400 leading-relaxed">{copy.cards[index]?.description || feature.description}</p>
+                    <h3 className="text-lg font-bold text-white mb-2.5 tracking-[-0.01em]">{copy.cards[index]?.title || feature.title}</h3>
+                    <p className="text-sm text-white/35 leading-relaxed">{copy.cards[index]?.description || feature.description}</p>
                   </div>
                 </div>
               </TiltCard>

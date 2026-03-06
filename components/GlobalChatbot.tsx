@@ -78,10 +78,15 @@ export default function GlobalChatbot() {
   const [isClient, setIsClient] = useState(false);
   const [streamAbort, setStreamAbort] = useState<AbortController | null>(null);
   const [rateLimitNotice, setRateLimitNotice] = useState<string | null>(null);
+  const [cameraOn, setCameraOn] = useState(false);
+  const [cameraError, setCameraError] = useState<string | null>(null);
+  const [cameraCaptureBusy, setCameraCaptureBusy] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
+  const cameraVideoRef = useRef<HTMLVideoElement>(null);
+  const cameraStreamRef = useRef<MediaStream | null>(null);
 
   const messages = sessions[activeAgent.id] || [];
   const messageCount = messages.length;
@@ -99,6 +104,13 @@ export default function GlobalChatbot() {
       recognitionRef.current.onresult = (e) => { const t = e.results[0]?.[0]?.transcript; if (t) setInput(t); };
       recognitionRef.current.onend = () => setIsRecording(false);
     }
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      cameraStreamRef.current?.getTracks().forEach((track) => track.stop());
+      cameraStreamRef.current = null;
+    };
   }, []);
 
   const switchAgent = useCallback((agent: AgentInfo) => {
@@ -218,6 +230,80 @@ export default function GlobalChatbot() {
     else { recognitionRef.current.lang = "ka-GE"; recognitionRef.current.start(); setIsRecording(true); }
   }, [isRecording]);
 
+  const toggleCamera = useCallback(async () => {
+    if (cameraOn) {
+      cameraStreamRef.current?.getTracks().forEach((track) => track.stop());
+      cameraStreamRef.current = null;
+      if (cameraVideoRef.current) cameraVideoRef.current.srcObject = null;
+      setCameraOn(false);
+      return;
+    }
+
+    try {
+      if (!window.isSecureContext) {
+        setCameraError('Camera requires a secure HTTPS context.');
+        return;
+      }
+      if (!navigator.mediaDevices?.getUserMedia) {
+        setCameraError('Camera is not supported in this browser.');
+        return;
+      }
+      setCameraError(null);
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: 'user',
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+        },
+        audio: false,
+      });
+      cameraStreamRef.current = stream;
+      if (cameraVideoRef.current) {
+        cameraVideoRef.current.srcObject = stream;
+        cameraVideoRef.current.onloadedmetadata = () => {
+          cameraVideoRef.current?.play().catch(() => undefined);
+        };
+      }
+      setCameraOn(true);
+    } catch {
+      setCameraError('Unable to access camera. Please check browser permission.');
+    }
+  }, [cameraOn]);
+
+  const captureCameraFrame = useCallback(() => {
+    if (!cameraVideoRef.current) return;
+    const video = cameraVideoRef.current;
+    if (!cameraOn) {
+      setCameraError('Camera is off. Turn it on before capture.');
+      return;
+    }
+    if (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
+      setCameraError('Camera is still loading. Please wait a moment and retry.');
+      return;
+    }
+    const width = video.videoWidth || Math.max(960, video.clientWidth * 2);
+    const height = video.videoHeight || Math.max(540, video.clientHeight * 2);
+    if (width <= 0 || height <= 0) {
+      setCameraError('Camera frame is not ready yet. Please retry.');
+      return;
+    }
+
+    setCameraCaptureBusy(true);
+    try {
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+      ctx.drawImage(video, 0, 0, width, height);
+      canvas.toDataURL('image/jpeg', 0.92);
+      setCameraError(null);
+      setInput((prev) => `${prev}${prev ? '\n' : ''}[Camera frame captured. Analyze composition, lighting and key objects.]`);
+    } finally {
+      setCameraCaptureBusy(false);
+    }
+  }, []);
+
   const clearHistory = useCallback(() => { setSessions(prev => ({ ...prev, [activeAgent.id]: [] })); }, [activeAgent.id]);
   const copyMsg = useCallback((content: string, id: string) => { navigator.clipboard?.writeText(content).catch(() => undefined); setCopiedId(id); setTimeout(() => setCopiedId(null), 2000); }, []);
 
@@ -230,7 +316,7 @@ export default function GlobalChatbot() {
       </button>
       <AnimatePresence>
         {isOpen && (
-          <motion.div initial={{ opacity: 0, y: 20, scale: 0.95 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 20, scale: 0.95 }} className="fixed bottom-24 right-4 sm:right-6 z-50 w-[calc(100vw-32px)] sm:w-[420px] h-[70vh] max-h-[640px] bg-[#0A0A0A] border border-white/10 rounded-2xl flex flex-col overflow-hidden">
+          <motion.div initial={{ opacity: 0, y: 20, scale: 0.95 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 20, scale: 0.95 }} className="fixed bottom-24 right-4 sm:right-6 z-50 w-[calc(100vw-32px)] sm:w-[420px] h-[70vh] max-h-[640px] max-md:[@media(orientation:landscape)]:bottom-2 max-md:[@media(orientation:landscape)]:right-2 max-md:[@media(orientation:landscape)]:h-[88vh] max-md:[@media(orientation:landscape)]:w-[calc(100vw-16px)] bg-[#0A0A0A] border border-cyan-300/35 rounded-2xl flex flex-col overflow-hidden shadow-[0_0_0_1px_rgba(34,211,238,0.2),0_0_28px_rgba(34,211,238,0.22),inset_0_0_24px_rgba(34,211,238,0.08)] focus-within:border-cyan-300/70 focus-within:shadow-[0_0_0_1px_rgba(34,211,238,0.45),0_0_38px_rgba(34,211,238,0.34),inset_0_0_26px_rgba(34,211,238,0.12)] transition-all">
             {/* Header with Agent Selector */}
             <div className="p-3 border-b border-white/10 bg-gradient-to-r from-cyan-600/10 to-blue-600/10">
               <div className="flex items-center justify-between">
@@ -240,7 +326,7 @@ export default function GlobalChatbot() {
                   <ChevronDown className={`w-4 h-4 text-white/50 transition-transform ${showAgentPicker ? "rotate-180" : ""}`} />
                 </button>
                 <div className="flex items-center gap-1">
-                  <button onClick={() => navigator.mediaDevices.getUserMedia({ video: true }).catch(() => alert('Access denied'))} className="p-2 rounded-lg hover:bg-white/10 text-white/50 hover:text-cyan-400 transition-colors" title="Camera Access">
+                  <button onClick={() => void toggleCamera()} className={`p-2 rounded-lg transition-colors ${cameraOn ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-400/50' : 'hover:bg-white/10 text-white/50 hover:text-cyan-400'}`} title="Camera Access">
                     <Camera className="w-4 h-4" />
                   </button>
                   <button onClick={() => window.location.href = '/services/agent-g'} className="p-2 rounded-lg hover:bg-white/10 text-white/50 hover:text-cyan-400 transition-colors" title="Agent Service">
@@ -267,7 +353,7 @@ export default function GlobalChatbot() {
               )}
             </AnimatePresence>
             {/* Messages */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-3">
+            <div className="flex-1 overflow-y-auto p-4 max-md:[@media(orientation:landscape)]:p-2.5 space-y-3">
               {messages.length === 0 && <div className="text-center text-gray-500 mt-8"><Bot className="w-10 h-10 mx-auto mb-2 opacity-40" /><p className="text-sm">{activeAgent.icon} {activeAgent.name}</p><p className="text-xs text-white/20 mt-1">How can I help?</p></div>}
               {messages.map(m => (
                 <div key={m.id} className={`group flex gap-2 ${m.role === "user" ? "justify-end" : ""}`}>
@@ -293,13 +379,37 @@ export default function GlobalChatbot() {
                   <button onClick={() => setRateLimitNotice(null)} className="text-[11px] text-amber-100/80 hover:text-amber-50">Dismiss</button>
                 </div>
               )}
-              <div className="flex gap-2 items-end">
+              {(cameraOn || cameraError) && (
+                <div className="mb-2 rounded-xl border border-cyan-400/30 bg-cyan-500/10 p-2 space-y-2">
+                  {cameraOn ? (
+                    <>
+                      <video
+                        ref={cameraVideoRef}
+                        autoPlay
+                        muted
+                        playsInline
+                        className="w-full max-h-44 rounded-lg object-cover border border-cyan-300/35"
+                      />
+                      <button
+                        onClick={captureCameraFrame}
+                        disabled={cameraCaptureBusy}
+                        className="w-full px-3 py-2 text-xs rounded-lg border border-cyan-300/55 bg-cyan-500/20 text-cyan-100 hover:bg-cyan-500/30 disabled:opacity-40"
+                      >
+                        Capture
+                      </button>
+                    </>
+                  ) : null}
+                  {cameraError ? <p className="text-xs text-red-300">{cameraError}</p> : null}
+                </div>
+              )}
+
+              <div className="flex gap-2 items-end rounded-xl border border-white/10 bg-white/[0.03] p-2 focus-within:border-cyan-400/65 focus-within:shadow-[0_0_24px_rgba(34,211,238,0.35)] transition-all">
                 <input ref={fileInputRef} type="file" className="hidden" accept=".txt,.pdf,.doc,.docx,.json,.csv,image/*" onChange={handleFile} />
                 <button onClick={() => fileInputRef.current?.click()} className="p-2 rounded-lg bg-white/5 hover:bg-white/10 text-white/40 transition-colors flex-shrink-0" title="Attach file"><Paperclip className="w-4 h-4" /></button>
                 <button onClick={toggleRecording} className={`p-2 rounded-lg flex-shrink-0 transition-colors ${isRecording ? "bg-red-500 animate-pulse" : "bg-white/5 hover:bg-white/10 text-white/40"}`} title="Voice">
                   {isRecording ? <MicOff className="w-4 h-4 text-white" /> : <Mic className="w-4 h-4" />}
                 </button>
-                <textarea value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); } }} rows={1} className="flex-1 bg-white/[0.04] border border-white/[0.08] rounded-xl px-3 py-2 text-white text-sm resize-none focus:outline-none focus:border-cyan-500/50 placeholder:text-white/20" placeholder="Message..." style={{ maxHeight: "120px" }} />
+                <textarea value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); } }} rows={1} className="flex-1 bg-white/[0.04] border border-white/[0.08] rounded-xl px-3 py-2 text-white text-sm resize-none focus:outline-none focus:border-cyan-500/70 placeholder:text-white/20" placeholder="Message..." style={{ maxHeight: "120px" }} />
                 {isLoading ? (
                   <button onClick={stopGeneration} className="p-2 rounded-lg bg-red-500/20 text-red-400 hover:bg-red-500/30 flex-shrink-0 transition-colors" title="Stop"><StopCircle className="w-5 h-5" /></button>
                 ) : (
