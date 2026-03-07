@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { OrbitSolarSystem } from "@/components/OrbitSolarSystem";
@@ -19,6 +19,11 @@ const PremiumAgentForm = dynamic(() => import("@/components/landing/PremiumAgent
   loading: () => null,
 });
 
+const CosmicSingularityBackground = dynamic(() => import("@/components/CosmicSingularityBackground"), {
+  ssr: false,
+  loading: () => null,
+});
+
 function SectionFallback({ label }: { label: string }) {
   return (
     <div className="py-16 text-center">
@@ -30,60 +35,10 @@ function SectionFallback({ label }: { label: string }) {
 export default function LandingPageClient() {
   const [showPremiumForm, setShowPremiumForm] = useState(false);
   const { language: locale } = useLanguage();
-  const stars = useMemo(
-    () =>
-      Array.from({ length: 60 }, (_, index) => ({
-        id: index,
-        left: `${(index * 17) % 100}%`,
-        top: `${(index * 29) % 100}%`,
-        size: index % 9 === 0 ? 2.5 : index % 5 === 0 ? 1.5 : 1,
-        opacity: index % 7 === 0 ? 0.7 : index % 3 === 0 ? 0.45 : 0.25,
-        blur: index % 11 === 0 ? 0.8 : 0,
-      })),
-    []
-  );
-  const nebulaBands = useMemo(
-    () => [
-      {
-        left: '2%',
-        top: '5%',
-        width: '42%',
-        height: '35%',
-        background:
-          'radial-gradient(circle at 35% 35%, rgba(34,211,238,0.12), rgba(34,211,238,0.04) 30%, transparent 65%)',
-      },
-      {
-        left: '55%',
-        top: '10%',
-        width: '38%',
-        height: '30%',
-        background:
-          'radial-gradient(circle at 55% 45%, rgba(124,92,252,0.10), rgba(99,102,241,0.04) 32%, transparent 65%)',
-      },
-      {
-        left: '15%',
-        top: '55%',
-        width: '48%',
-        height: '32%',
-        background:
-          'radial-gradient(circle at 50% 50%, rgba(6,182,212,0.08), rgba(34,211,238,0.03) 28%, transparent 60%)',
-      },
-    ],
-    []
-  );
 
   return (
     <div className="relative min-h-screen bg-[#030712] text-white overflow-hidden ag-noise">
-      {/* Background Image Layer */}
-      <div
-        className="pointer-events-none absolute inset-0 z-0 brightness-[1.22] contrast-[1.16] saturate-[1.22]"
-        style={{
-          backgroundImage: "url('/brand/gaga.jpg?v=20260307a')",
-          backgroundSize: 'cover',
-          backgroundPosition: 'center center',
-          backgroundRepeat: 'no-repeat',
-        }}
-      />
+      <CosmicSingularityBackground />
 
       {/* Color Overlay — warm cinematic grade */}
       <div
@@ -98,42 +53,6 @@ export default function LandingPageClient() {
 
       {/* Vignette */}
       <div className="pointer-events-none absolute inset-0 z-0 bg-[radial-gradient(ellipse_at_center,transparent_46%,rgba(3,7,18,0.64)_100%)]" />
-
-      {/* Nebula + Stars */}
-      <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden">
-        {nebulaBands.map((band, index) => (
-          <div
-            key={index}
-            className="absolute rounded-full blur-3xl"
-            style={{
-              left: band.left,
-              top: band.top,
-              width: band.width,
-              height: band.height,
-              background: band.background,
-            }}
-          />
-        ))}
-        {stars.map((star) => (
-          <span
-            key={star.id}
-            className="absolute rounded-full bg-white"
-            style={{
-              left: star.left,
-              top: star.top,
-              width: `${star.size}px`,
-              height: `${star.size}px`,
-              opacity: star.opacity,
-              filter: `blur(${star.blur}px)`,
-              boxShadow: star.size > 2 ? '0 0 8px rgba(255,255,255,0.6)' : 'none',
-            }}
-          />
-        ))}
-
-        {/* Subtle crossing lines */}
-        <div className="absolute inset-x-[10%] top-[14%] h-px rotate-[6deg] bg-gradient-to-r from-transparent via-cyan-300/20 to-transparent" />
-        <div className="absolute right-[15%] top-[28%] h-px w-[22%] -rotate-[10deg] bg-gradient-to-r from-transparent via-violet-300/20 to-transparent" />
-      </div>
 
       {/* Ambient glow orbs */}
       <div className="pointer-events-none absolute inset-0 z-0">

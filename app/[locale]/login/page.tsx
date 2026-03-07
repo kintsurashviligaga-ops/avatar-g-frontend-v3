@@ -51,15 +51,6 @@ function LoginForm() {
 
   return (
     <div className="relative min-h-screen bg-transparent flex items-center justify-center px-4 overflow-hidden">
-      <div
-        className="pointer-events-none absolute inset-0 bg-cover bg-center opacity-64"
-        style={{
-          backgroundImage: "url('/brand/gaga.jpg?v=20260307a')",
-          backgroundSize: 'cover',
-          backgroundPosition: 'center center',
-          backgroundRepeat: 'no-repeat',
-        }}
-      />
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_20%_18%,rgba(34,211,238,0.14),transparent_52%),radial-gradient(circle_at_80%_82%,rgba(139,92,246,0.14),transparent_52%)]" />
       <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(to_bottom,rgba(2,6,23,0.74),rgba(2,6,23,0.5)_35%,rgba(2,6,23,0.74)_100%)]" />
       <div className="w-full max-w-sm">
