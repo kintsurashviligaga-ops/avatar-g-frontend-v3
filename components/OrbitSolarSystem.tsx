@@ -43,6 +43,18 @@ const ORBIT_CSS = `
   from { transform: rotate(0deg); }
   to { transform: rotate(-360deg); }
 }
+@keyframes orbit-node-float {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-3px); }
+}
+@keyframes orbit-pulse-glow {
+  0%, 100% { opacity: 0.35; filter: blur(8px); }
+  50% { opacity: 0.9; filter: blur(12px); }
+}
+@keyframes orbit-chip-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
 .orbit-container {
   animation: orbit-spin 60s linear infinite;
 }
@@ -54,6 +66,18 @@ const ORBIT_CSS = `
 }
 .orbit-running {
   animation-play-state: running;
+}
+.orbit-node-shell {
+  animation: orbit-node-float 3.2s ease-in-out infinite;
+}
+.orbit-node-shell:hover {
+  animation-duration: 1.9s;
+}
+.orbit-node-active-glow {
+  animation: orbit-pulse-glow 1.8s ease-in-out infinite;
+}
+.orbit-node-chip {
+  animation: orbit-chip-spin 7s linear infinite;
 }
 `
 
@@ -173,29 +197,46 @@ function OrbitNodeContent({ service, locale, isActive, onEnter, onLeave }: { ser
   const displayLabel = service.label[locale] || service.label.ka
   const displayDescription = service.description[locale] || service.description.ka
   const openLabel = locale === 'ka' ? 'სერვისის გახსნა' : locale === 'ru' ? 'Открыть сервис' : 'Open service'
-  const orbitGlyph = service.id === 'video' ? '🎬' : service.id === 'music' ? '🎵' : service.id === 'photo' ? '📸' : service.id === 'image' ? '🖼️' : service.id === 'editing' ? '✂️' : service.id === 'agent-g' ? '🤖' : service.id === 'text' ? '📝' : service.id === 'workflow' ? '⚙️' : service.id === 'prompt' ? '🧩' : service.id === 'visual-intel' ? '🧠' : service.id === 'media' ? '📽️' : service.id === 'software' ? '💻' : service.id === 'business' ? '💼' : service.id === 'tourism' ? '✈️' : service.id === 'avatar' ? '🧑' : '🛍️'
+  const accent = service.color
+  const microCode = service.id.slice(0, 2).toUpperCase()
   return (
     <Link
       href={'/' + locale + '/services/' + service.slug}
-      className={`group relative flex items-center justify-center rounded-full transition-all duration-300 z-30
-        ${isActive ? 'w-[4.4rem] h-[4.4rem] md:w-24 md:h-24 scale-110 shadow-[0_0_36px_rgba(6,182,212,0.55)]' : 'w-16 h-16 md:w-20 md:h-20 hover:scale-105'}
-        border border-cyan-300/35 backdrop-blur-md
+      className={`orbit-node-shell group relative flex items-center justify-center rounded-full transition-all duration-300 z-30
+        ${isActive ? 'w-[4.4rem] h-[4.4rem] md:w-24 md:h-24 scale-[1.14]' : 'w-16 h-16 md:w-20 md:h-20 hover:scale-110'}
+        border border-cyan-300/35 backdrop-blur-md overflow-hidden
       `}
       style={{
-        background: `radial-gradient(circle at 30% 30%, rgba(255,255,255,0.5), rgba(255,255,255,0.1) 35%, ${service.color}45 82%)`,
-        boxShadow: isActive ? `0 0 30px ${service.color}AA, 0 0 52px ${service.color}55, inset 0 2px 10px rgba(255,255,255,0.24)` : `0 0 20px ${service.color}80, inset 0 2px 8px rgba(255,255,255,0.16)`,
+        background: `radial-gradient(circle at 28% 24%, rgba(255,255,255,0.7), rgba(255,255,255,0.08) 38%, ${accent}4a 84%), linear-gradient(150deg, rgba(10,20,40,0.78), rgba(4,10,24,0.86))`,
+        boxShadow: isActive
+          ? `0 0 30px ${accent}cc, 0 0 64px ${accent}70, inset 0 2px 12px rgba(255,255,255,0.28)`
+          : `0 0 18px ${accent}7f, 0 0 36px ${accent}3f, inset 0 2px 8px rgba(255,255,255,0.14)`,
       }}
       onMouseEnter={onEnter}
       onMouseLeave={onLeave}
       aria-label={displayLabel}
     >
-      <span className="absolute inset-0 rounded-full border border-cyan-300/50 shadow-[0_0_14px_rgba(34,211,238,0.45)]" />
-      {isActive && <span className="absolute inset-0 rounded-full border border-cyan-200/40 animate-pulse" />}
-      <span className="absolute -top-1.5 -left-1.5 text-base md:text-lg drop-shadow-[0_2px_6px_rgba(0,0,0,0.7)]">{orbitGlyph}</span>
-      <Icon
-        className={`w-6 h-6 md:w-7 md:h-7 transition-colors relative z-10 ${isActive ? 'text-white' : 'text-white/85 group-hover:text-white'}`}
-        style={{ color: isActive ? service.color : undefined }}
+      <span className="absolute inset-[3px] rounded-full border border-white/30" />
+      <span className="absolute inset-0 rounded-full border border-cyan-300/45 shadow-[0_0_14px_rgba(34,211,238,0.45)]" />
+      <span
+        className={`absolute inset-[-16%] rounded-full orbit-node-active-glow ${isActive ? 'opacity-100' : 'opacity-35'}`}
+        style={{ background: `radial-gradient(circle, ${accent}66 0%, transparent 62%)` }}
       />
+      <span className="absolute inset-[8%] rounded-full border border-white/15 border-dashed orbit-node-chip" />
+
+      <span className="absolute top-[7px] right-[7px] z-20 rounded-full border border-white/35 bg-black/45 px-1.5 py-0.5 text-[8px] font-semibold tracking-[0.14em] text-cyan-100/90">
+        {microCode}
+      </span>
+
+      <div
+        className="relative z-10 flex h-[56%] w-[56%] items-center justify-center rounded-full border border-white/22 bg-black/30"
+        style={{ boxShadow: `inset 0 0 14px ${accent}44, 0 0 14px ${accent}44` }}
+      >
+      <Icon
+        className={`w-6 h-6 md:w-7 md:h-7 transition-colors ${isActive ? 'text-white' : 'text-white/85 group-hover:text-white'}`}
+        style={{ color: isActive ? accent : undefined }}
+      />
+      </div>
 
       {/* Tooltip */}
       <div
@@ -203,6 +244,9 @@ function OrbitNodeContent({ service, locale, isActive, onEnter, onLeave }: { ser
           ${isActive ? 'opacity-100 translate-y-0 visible' : 'opacity-0 translate-y-2 invisible'}
         `}
       >
+        <div className="mb-2 inline-flex items-center rounded-full border border-cyan-300/35 bg-cyan-500/12 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.16em] text-cyan-100/90">
+          Orbital Module
+        </div>
         <p className="text-sm font-semibold text-white">{displayLabel}</p>
         <p className="mt-1 text-[11px] text-white/78 leading-relaxed">{displayDescription}</p>
         <span className="mt-3 inline-flex items-center rounded-lg border border-cyan-300/55 bg-cyan-500/18 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-cyan-100">
