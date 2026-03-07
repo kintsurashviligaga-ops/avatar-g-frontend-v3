@@ -6,7 +6,7 @@ import Link from 'next/link'
 
 interface BrandLogoProps {
   href?: string
-  size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl'
+  size?: 'xs' | 'sm' | 'sm20' | 'md' | 'lg' | 'xl'
   showText?: boolean
   className?: string
 }
@@ -14,6 +14,7 @@ interface BrandLogoProps {
 const sizeMap = {
   xs: { img: 44, cls: 'w-[44px] h-[44px]' },
   sm: { img: 64, cls: 'w-[64px] h-[64px]' },
+  sm20: { img: 77, cls: 'w-[77px] h-[77px]' },
   md: { img: 84, cls: 'w-[84px] h-[84px]' },
   lg: { img: 112, cls: 'w-[112px] h-[112px]' },
   xl: { img: 144, cls: 'w-[144px] h-[144px]' },
