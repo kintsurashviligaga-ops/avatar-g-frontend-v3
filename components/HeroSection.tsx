@@ -85,7 +85,7 @@ export function HeroSection({ onPremiumClick }: HeroSectionProps) {
       </div>
 
       <motion.div
-        className="relative z-10 mx-auto max-w-5xl text-center ag-surface-hero rounded-[1.5rem] sm:rounded-[2rem] px-4 sm:px-8 md:px-12 py-9 sm:py-14 shadow-[0_30px_120px_rgba(2,6,18,0.68),0_0_80px_rgba(34,211,238,0.18)]"
+        className="relative z-10 mx-auto max-w-5xl text-center ag-surface-hero ag-lux-outline-30 rounded-[1.5rem] sm:rounded-[2rem] px-4 sm:px-8 md:px-12 py-9 sm:py-14 shadow-[0_30px_120px_rgba(2,6,18,0.68),0_0_80px_rgba(34,211,238,0.18)]"
         variants={containerVariants}
         initial="hidden"
         animate="visible"
@@ -98,7 +98,7 @@ export function HeroSection({ onPremiumClick }: HeroSectionProps) {
 
         {/* H1 — split with gradient accent */}
         <motion.h1
-          className="mt-6 sm:mt-8 text-[2.35rem] xs:text-5xl sm:text-6xl md:text-7xl lg:text-[5.6rem] font-extrabold leading-[1.03] tracking-[-0.03em] sm:tracking-[-0.035em] text-white"
+          className="mt-6 sm:mt-8 text-[2.35rem] xs:text-5xl sm:text-6xl md:text-7xl lg:text-[5.6rem] font-extrabold leading-[1.03] tracking-[-0.03em] sm:tracking-[-0.035em] text-white ag-lux-type-h"
           variants={itemVariants}
         >
           {text.title}{' '}
@@ -109,7 +109,7 @@ export function HeroSection({ onPremiumClick }: HeroSectionProps) {
 
         {/* Subtitle */}
         <motion.p
-          className="mt-4 sm:mt-5 text-lg sm:text-2xl md:text-3xl font-medium bg-gradient-to-r from-white/60 to-white/40 bg-clip-text text-transparent tracking-[-0.01em]"
+          className="mt-4 sm:mt-5 text-lg sm:text-2xl md:text-3xl font-medium bg-gradient-to-r from-white/70 to-white/45 bg-clip-text text-transparent tracking-[-0.012em]"
           variants={itemVariants}
         >
           {text.subtitle}
@@ -117,7 +117,7 @@ export function HeroSection({ onPremiumClick }: HeroSectionProps) {
 
         {/* Description */}
         <motion.p
-          className="mt-5 sm:mt-6 text-[15px] sm:text-base md:text-lg text-white/45 max-w-2xl mx-auto leading-relaxed"
+          className="mt-5 sm:mt-6 text-[15px] sm:text-base md:text-lg text-white/52 max-w-2xl mx-auto leading-relaxed"
           variants={itemVariants}
         >
           {text.description}

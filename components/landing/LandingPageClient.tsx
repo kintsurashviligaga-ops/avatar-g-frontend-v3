@@ -69,7 +69,7 @@ function SectionFallback({ label }: { label: string }) {
 
 function LandingSection({ children }: { children: React.ReactNode }) {
   return (
-    <section className="relative ag-slide-up" style={{ contentVisibility: "auto", containIntrinsicSize: "1px 900px" }}>
+    <section className="relative ag-slide-up py-1 md:py-2" style={{ contentVisibility: "auto", containIntrinsicSize: "1px 860px" }}>
       {children}
     </section>
   );
@@ -124,10 +124,10 @@ export default function LandingPageClient() {
       </div>
 
       {/* Neon contour rails */}
-      <div className="pointer-events-none absolute inset-0 z-[2] opacity-70">
-        <div className="absolute inset-y-0 left-[6%] w-px bg-gradient-to-b from-transparent via-cyan-300/40 to-transparent" />
-        <div className="absolute inset-y-0 right-[6%] w-px bg-gradient-to-b from-transparent via-violet-300/40 to-transparent" />
-        <div className="absolute top-[14%] left-0 right-0 h-px bg-gradient-to-r from-transparent via-cyan-300/35 to-transparent" />
+      <div className="pointer-events-none absolute inset-0 z-[2] opacity-75">
+        <div className="absolute inset-y-0 left-[6%] w-px bg-gradient-to-b from-transparent via-white/35 to-transparent" />
+        <div className="absolute inset-y-0 right-[6%] w-px bg-gradient-to-b from-transparent via-white/35 to-transparent" />
+        <div className="absolute top-[14%] left-0 right-0 h-px bg-gradient-to-r from-transparent via-white/30 to-transparent" />
       </div>
 
       {/* Content */}
@@ -144,22 +144,22 @@ export default function LandingPageClient() {
           </ErrorBoundary>
         </LandingSection>
 
-        <div className="ag-divider-strong mx-auto max-w-6xl opacity-50 sm:opacity-80" />
+        <div className="ag-lux-line mx-auto max-w-6xl opacity-70" />
 
         <LandingSection>
           <ErrorBoundary fallback={<SectionFallback label="Orbit" />}>
             <section className="relative pb-10 md:pb-14 px-4 sm:px-6">
               <div className="mx-auto max-w-4xl text-center pt-10 md:pt-14">
-                <p className="text-[10px] uppercase tracking-[0.18em] text-cyan-200/70">Interactive AI Ecosystem</p>
-                <h2 className="mt-3 text-3xl md:text-5xl font-bold tracking-tight text-white">AI System Orbit</h2>
-                <p className="mt-3 text-sm md:text-base text-white/60">Core AI center with connected module nodes, live hover detail, and service entry points.</p>
+                <p className="text-[10px] uppercase tracking-[0.2em] text-white/72">Interactive AI Ecosystem</p>
+                <h2 className="mt-3 text-3xl md:text-5xl font-bold tracking-tight text-white ag-lux-type-h">AI System Orbit</h2>
+                <p className="mt-3 text-sm md:text-base ag-lux-type-body">Core AI center with connected module nodes, live hover detail, and service entry points.</p>
               </div>
               <OrbitSolarSystem />
             </section>
           </ErrorBoundary>
         </LandingSection>
 
-        <div className="ag-divider-strong mx-auto max-w-6xl opacity-50 sm:opacity-80" />
+        <div className="ag-lux-line mx-auto max-w-6xl opacity-70" />
 
         <LandingSection>
           <ErrorBoundary fallback={<SectionFallback label="Features" />}>
@@ -167,7 +167,7 @@ export default function LandingPageClient() {
           </ErrorBoundary>
         </LandingSection>
 
-        <div className="ag-divider-strong mx-auto max-w-6xl opacity-50 sm:opacity-80" />
+        <div className="ag-lux-line mx-auto max-w-6xl opacity-70" />
 
         <LandingSection>
           <ErrorBoundary fallback={<SectionFallback label="Cinematic" />}>
@@ -175,7 +175,7 @@ export default function LandingPageClient() {
           </ErrorBoundary>
         </LandingSection>
 
-        <div className="ag-divider-strong mx-auto max-w-6xl opacity-50 sm:opacity-80" />
+        <div className="ag-lux-line mx-auto max-w-6xl opacity-70" />
 
         <LandingSection>
           <ErrorBoundary fallback={<SectionFallback label="Avatar Demo" />}>
@@ -183,7 +183,7 @@ export default function LandingPageClient() {
           </ErrorBoundary>
         </LandingSection>
 
-        <div className="ag-divider-strong mx-auto max-w-6xl opacity-50 sm:opacity-80" />
+        <div className="ag-lux-line mx-auto max-w-6xl opacity-70" />
 
         <LandingSection>
           <ErrorBoundary fallback={<SectionFallback label="Pricing" />}>
@@ -191,7 +191,7 @@ export default function LandingPageClient() {
           </ErrorBoundary>
         </LandingSection>
 
-        <div className="ag-divider-strong mx-auto max-w-6xl opacity-50 sm:opacity-80" />
+        <div className="ag-lux-line mx-auto max-w-6xl opacity-70" />
 
         <LandingSection>
           <ErrorBoundary fallback={<SectionFallback label="CTA" />}>
@@ -201,7 +201,7 @@ export default function LandingPageClient() {
 
         {/* ═══ Footer ═══ */}
         <footer className="relative mt-12">
-          <div className="mx-auto max-w-6xl px-4 sm:px-6 py-12 md:py-16 rounded-t-3xl border-0 bg-[linear-gradient(140deg,rgba(8,14,30,0.78),rgba(5,10,24,0.66))] backdrop-blur-[18px] shadow-[0_14px_46px_rgba(0,0,0,0.42)]">
+          <div className="mx-auto max-w-6xl px-4 sm:px-6 py-12 md:py-16 rounded-t-3xl bg-[linear-gradient(140deg,rgba(8,14,30,0.78),rgba(5,10,24,0.66))] backdrop-blur-[18px] shadow-[0_14px_46px_rgba(0,0,0,0.42)] ag-lux-outline-30">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-10 md:gap-8">
               {/* Brand Column */}
               <div className="col-span-2 md:col-span-1">

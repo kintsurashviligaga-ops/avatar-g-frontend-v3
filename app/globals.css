@@ -493,6 +493,31 @@ a {
     opacity: 0.72;
   }
 
+  .ag-lux-outline-30 {
+    border: 1px solid rgba(255,255,255,0.3);
+    box-shadow:
+      0 0 0 1px rgba(255,255,255,0.16),
+      0 0 26px rgba(255,255,255,0.12),
+      inset 0 1px 0 rgba(255,255,255,0.16);
+  }
+
+  .ag-lux-type-h {
+    letter-spacing: -0.02em;
+    text-shadow: 0 2px 18px rgba(255,255,255,0.12);
+  }
+
+  .ag-lux-type-body {
+    letter-spacing: 0.01em;
+    line-height: 1.72;
+    color: rgba(226,232,240,0.78);
+  }
+
+  .ag-lux-line {
+    height: 1px;
+    background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.2) 18%, rgba(255,255,255,0.3) 50%, rgba(255,255,255,0.2) 82%, transparent 100%);
+    box-shadow: 0 0 12px rgba(255,255,255,0.16);
+  }
+
   .ag-hover-lift {
     transition: transform 0.4s var(--ease-premium), box-shadow 0.4s var(--ease-premium);
     will-change: transform;
