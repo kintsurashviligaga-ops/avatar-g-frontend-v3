@@ -7,16 +7,30 @@ interface Star {
   y: number
   z: number
   size: number
-  twinkle: number
+  pulse: number
   hue: number
+  speed: number
 }
 
-interface Dust {
-  angle: number
-  radius: number
-  speed: number
-  size: number
-  alpha: number
+interface Planet {
+  phase: number
+  orbitRadiusX: number
+  orbitRadiusY: number
+  orbitSpeed: number
+  baseRadius: number
+  hueA: string
+  hueB: string
+  z: number
+  ring: boolean
+}
+
+interface Comet {
+  x: number
+  y: number
+  vx: number
+  vy: number
+  life: number
+  maxLife: number
 }
 
 export default function CosmicSingularityBackground() {
@@ -34,14 +48,18 @@ export default function CosmicSingularityBackground() {
     let viewportW = 0
     let viewportH = 0
     let dpr = 1
+    let reducedMotion = false
 
     const stars: Star[] = []
-    const dustParticles: Dust[] = []
+    const planets: Planet[] = []
+    const comets: Comet[] = []
 
     const initScene = () => {
       dpr = Math.min(window.devicePixelRatio || 1, 2)
       viewportW = window.innerWidth
       viewportH = window.innerHeight
+      reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+
       canvas.width = Math.floor(viewportW * dpr)
       canvas.height = Math.floor(viewportH * dpr)
       canvas.style.width = `${viewportW}px`
@@ -49,183 +67,247 @@ export default function CosmicSingularityBackground() {
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
 
       const isSmall = viewportW < 900
-      const starCount = isSmall ? 320 : 520
-      const dustCount = isSmall ? 90 : 170
+      const starCount = isSmall ? 400 : 720
+      const cometCount = isSmall ? 2 : 4
 
       stars.length = 0
-      dustParticles.length = 0
+      planets.length = 0
+      comets.length = 0
 
       for (let i = 0; i < starCount; i++) {
         stars.push({
-          x: (Math.random() - 0.5) * 2600,
-          y: (Math.random() - 0.5) * 1800,
-          z: Math.random() * 2200 + 80,
-          size: Math.random() * 1.7 + 0.4,
-          twinkle: Math.random() * Math.PI * 2,
-          hue: 190 + Math.random() * 90,
+          x: (Math.random() - 0.5) * 3200,
+          y: (Math.random() - 0.5) * 2200,
+          z: Math.random() * 2600 + 120,
+          size: Math.random() * 1.8 + 0.35,
+          pulse: Math.random() * Math.PI * 2,
+          hue: 190 + Math.random() * 70,
+          speed: Math.random() * 10 + 4,
         })
       }
 
-      for (let i = 0; i < dustCount; i++) {
-        dustParticles.push({
-          angle: Math.random() * Math.PI * 2,
-          radius: Math.random() * 460 + 90,
-          speed: (Math.random() * 0.003 + 0.0012) * (Math.random() > 0.5 ? 1 : -1),
-          size: Math.random() * 24 + 10,
-          alpha: Math.random() * 0.22 + 0.08,
+      const scaleFactor = Math.min(viewportW, viewportH)
+      planets.push(
+        {
+          phase: Math.random() * Math.PI * 2,
+          orbitRadiusX: scaleFactor * 0.4,
+          orbitRadiusY: scaleFactor * 0.2,
+          orbitSpeed: 0.0008,
+          baseRadius: Math.max(34, scaleFactor * 0.055),
+          hueA: 'rgba(244,220,183,0.95)',
+          hueB: 'rgba(157,119,255,0.45)',
+          z: 980,
+          ring: true,
+        },
+        {
+          phase: Math.random() * Math.PI * 2,
+          orbitRadiusX: scaleFactor * 0.31,
+          orbitRadiusY: scaleFactor * 0.15,
+          orbitSpeed: -0.0011,
+          baseRadius: Math.max(20, scaleFactor * 0.035),
+          hueA: 'rgba(173,239,255,0.95)',
+          hueB: 'rgba(54,130,255,0.4)',
+          z: 1250,
+          ring: false,
+        },
+        {
+          phase: Math.random() * Math.PI * 2,
+          orbitRadiusX: scaleFactor * 0.47,
+          orbitRadiusY: scaleFactor * 0.24,
+          orbitSpeed: 0.00055,
+          baseRadius: Math.max(18, scaleFactor * 0.03),
+          hueA: 'rgba(251,212,255,0.9)',
+          hueB: 'rgba(160,74,255,0.38)',
+          z: 1450,
+          ring: true,
+        }
+      )
+
+      for (let i = 0; i < cometCount; i++) {
+        comets.push({
+          x: Math.random() * viewportW,
+          y: Math.random() * viewportH * 0.6,
+          vx: -(Math.random() * 2.2 + 1.4),
+          vy: Math.random() * 0.35 + 0.08,
+          life: Math.random() * 220,
+          maxLife: Math.random() * 220 + 120,
         })
       }
     }
 
-    const drawPlanet = (x: number, y: number, radius: number, tint: [string, string]) => {
-      const glow = ctx.createRadialGradient(x - radius * 0.4, y - radius * 0.5, radius * 0.08, x, y, radius)
-      glow.addColorStop(0, tint[0])
-      glow.addColorStop(0.55, tint[1])
-      glow.addColorStop(1, 'rgba(0,0,0,0)')
+    const drawPlanet = (planet: Planet, cx: number, cy: number, tick: number, fov: number) => {
+      const phase = planet.phase + tick * planet.orbitSpeed
+      const px = cx + Math.cos(phase) * planet.orbitRadiusX
+      const py = cy + Math.sin(phase * 1.08) * planet.orbitRadiusY
+      const scale = fov / planet.z
+      const radius = planet.baseRadius * (0.85 + scale * 1.75)
+      if (radius < 5) return
+
+      const halo = ctx.createRadialGradient(px, py, radius * 0.2, px, py, radius * 2.5)
+      halo.addColorStop(0, 'rgba(255,255,255,0.17)')
+      halo.addColorStop(0.5, 'rgba(175,210,255,0.08)')
+      halo.addColorStop(1, 'rgba(0,0,0,0)')
+      ctx.beginPath()
+      ctx.arc(px, py, radius * 2.5, 0, Math.PI * 2)
+      ctx.fillStyle = halo
+      ctx.fill()
+
+      const sphere = ctx.createRadialGradient(px - radius * 0.34, py - radius * 0.42, radius * 0.12, px, py, radius)
+      sphere.addColorStop(0, planet.hueA)
+      sphere.addColorStop(0.55, planet.hueB)
+      sphere.addColorStop(1, 'rgba(12,18,40,0.92)')
 
       ctx.beginPath()
-      ctx.arc(x, y, radius, 0, Math.PI * 2)
-      ctx.fillStyle = glow
+      ctx.arc(px, py, radius, 0, Math.PI * 2)
+      ctx.fillStyle = sphere
       ctx.fill()
+
+      ctx.beginPath()
+      ctx.arc(px - radius * 0.26, py - radius * 0.28, radius * 0.34, 0, Math.PI * 2)
+      ctx.fillStyle = 'rgba(255,255,255,0.24)'
+      ctx.fill()
+
+      if (planet.ring) {
+        ctx.save()
+        ctx.translate(px, py)
+        ctx.rotate(Math.sin(phase * 0.8) * 0.2 + 0.24)
+        ctx.beginPath()
+        ctx.ellipse(0, 0, radius * 1.75, radius * 0.38, 0, 0, Math.PI * 2)
+        ctx.strokeStyle = 'rgba(255,255,255,0.32)'
+        ctx.lineWidth = Math.max(1, radius * 0.075)
+        ctx.shadowBlur = radius * 0.5
+        ctx.shadowColor = 'rgba(214,228,255,0.3)'
+        ctx.stroke()
+        ctx.restore()
+      }
     }
 
     const draw = () => {
-      time += 0.008
+      time += reducedMotion ? 0.0022 : 0.009
 
-      const cx = viewportW * 0.52
-      const cy = viewportH * 0.44
-      const singularityRadius = Math.min(viewportW, viewportH) * 0.09
+      const cx = viewportW * 0.5
+      const cy = viewportH * 0.45
+      const fov = 360
 
       const deepSpace = ctx.createLinearGradient(0, 0, viewportW, viewportH)
-      deepSpace.addColorStop(0, '#01030b')
-      deepSpace.addColorStop(0.5, '#040917')
-      deepSpace.addColorStop(1, '#02030a')
+      deepSpace.addColorStop(0, '#02040a')
+      deepSpace.addColorStop(0.35, '#050911')
+      deepSpace.addColorStop(1, '#010207')
       ctx.fillStyle = deepSpace
       ctx.fillRect(0, 0, viewportW, viewportH)
 
-      const nebula = ctx.createRadialGradient(cx, cy, singularityRadius * 0.6, cx, cy, Math.max(viewportW, viewportH) * 0.7)
-      nebula.addColorStop(0, 'rgba(42,225,255,0.27)')
-      nebula.addColorStop(0.35, 'rgba(58,104,255,0.2)')
-      nebula.addColorStop(0.7, 'rgba(148,72,255,0.15)')
+      const nebula = ctx.createRadialGradient(cx, cy, 40, cx, cy, Math.max(viewportW, viewportH) * 0.72)
+      nebula.addColorStop(0, 'rgba(72,158,255,0.2)')
+      nebula.addColorStop(0.35, 'rgba(93,117,255,0.16)')
+      nebula.addColorStop(0.68, 'rgba(143,89,255,0.12)')
       nebula.addColorStop(1, 'rgba(0,0,0,0)')
       ctx.fillStyle = nebula
       ctx.fillRect(0, 0, viewportW, viewportH)
 
-      drawPlanet(
-        cx - viewportW * 0.34 + Math.cos(time * 0.23) * 24,
-        cy + viewportH * 0.22 + Math.sin(time * 0.2) * 10,
-        Math.max(36, viewportW * 0.03),
-        ['rgba(255,234,196,0.86)', 'rgba(140,78,255,0.3)']
-      )
-
-      drawPlanet(
-        cx + viewportW * 0.28 + Math.sin(time * 0.2 + 1.4) * 18,
-        cy - viewportH * 0.26 + Math.cos(time * 0.24 + 0.8) * 14,
-        Math.max(24, viewportW * 0.02),
-        ['rgba(193,255,250,0.92)', 'rgba(29,143,222,0.28)']
-      )
-
-      ctx.globalCompositeOperation = 'screen'
-      for (const dust of dustParticles) {
-        dust.angle += dust.speed
-        dust.radius -= 0.46
-        if (dust.radius < singularityRadius * 1.6) {
-          dust.radius = Math.random() * 440 + 260
-          dust.alpha = Math.random() * 0.24 + 0.06
-        }
-
-        const swirlX = cx + Math.cos(dust.angle) * dust.radius * 1.35
-        const swirlY = cy + Math.sin(dust.angle * 0.92) * dust.radius * 0.62
-        const haze = ctx.createRadialGradient(swirlX, swirlY, 0, swirlX, swirlY, dust.size)
-        haze.addColorStop(0, `rgba(120,229,255,${dust.alpha})`)
-        haze.addColorStop(0.55, `rgba(113,102,255,${dust.alpha * 0.7})`)
-        haze.addColorStop(1, 'rgba(0,0,0,0)')
-
-        ctx.beginPath()
-        ctx.arc(swirlX, swirlY, dust.size, 0, Math.PI * 2)
-        ctx.fillStyle = haze
-        ctx.fill()
+      // Layered nebula clouds for classy depth.
+      for (let i = 0; i < 3; i++) {
+        const cloudX = viewportW * (0.2 + i * 0.31) + Math.sin(time * (0.25 + i * 0.08)) * 18
+        const cloudY = viewportH * (0.24 + i * 0.2) + Math.cos(time * (0.2 + i * 0.06)) * 14
+        const cloud = ctx.createRadialGradient(cloudX, cloudY, 30, cloudX, cloudY, Math.max(viewportW, viewportH) * 0.3)
+        cloud.addColorStop(0, i % 2 === 0 ? 'rgba(132,203,255,0.12)' : 'rgba(197,161,255,0.11)')
+        cloud.addColorStop(1, 'rgba(0,0,0,0)')
+        ctx.fillStyle = cloud
+        ctx.fillRect(0, 0, viewportW, viewportH)
       }
-      ctx.globalCompositeOperation = 'source-over'
 
-      const diskOuter = singularityRadius * 4.8
-      const disk = ctx.createRadialGradient(cx, cy, singularityRadius * 0.8, cx, cy, diskOuter)
-      disk.addColorStop(0, 'rgba(255,255,255,0)')
-      disk.addColorStop(0.2, 'rgba(88,240,255,0.34)')
-      disk.addColorStop(0.45, 'rgba(80,136,255,0.28)')
-      disk.addColorStop(0.68, 'rgba(173,107,255,0.2)')
-      disk.addColorStop(1, 'rgba(0,0,0,0)')
-      ctx.fillStyle = disk
-      ctx.beginPath()
-      ctx.ellipse(cx, cy, diskOuter, diskOuter * 0.45, Math.sin(time * 0.18) * 0.12, 0, Math.PI * 2)
-      ctx.fill()
-
-      ctx.globalCompositeOperation = 'lighter'
-      const lensing = ctx.createRadialGradient(cx, cy, singularityRadius * 0.5, cx, cy, singularityRadius * 2.1)
-      lensing.addColorStop(0, 'rgba(255,255,255,0.68)')
-      lensing.addColorStop(0.32, 'rgba(89,219,255,0.52)')
-      lensing.addColorStop(0.68, 'rgba(94,92,255,0.3)')
-      lensing.addColorStop(1, 'rgba(0,0,0,0)')
-      ctx.fillStyle = lensing
-      ctx.beginPath()
-      ctx.arc(cx, cy, singularityRadius * 2.1, 0, Math.PI * 2)
-      ctx.fill()
-      ctx.globalCompositeOperation = 'source-over'
-
-      // Event horizon: a dark core to keep the black-hole silhouette crisp and visible.
-      ctx.beginPath()
-      ctx.arc(cx, cy, singularityRadius * 0.74, 0, Math.PI * 2)
-      ctx.fillStyle = '#010108'
-      ctx.fill()
-
-      ctx.beginPath()
-      ctx.arc(cx, cy, singularityRadius * 0.9, 0, Math.PI * 2)
-      ctx.strokeStyle = `rgba(145,242,255,${0.78 + Math.sin(time * 2.7) * 0.12})`
-      ctx.lineWidth = Math.max(2.8, singularityRadius * 0.038)
-      ctx.stroke()
-
-      const fov = 320
       for (const star of stars) {
-        star.z -= 12
-        if (star.z < 12) {
-          star.x = (Math.random() - 0.5) * 2600
-          star.y = (Math.random() - 0.5) * 1800
-          star.z = 2200
-          star.twinkle = Math.random() * Math.PI * 2
+        star.z -= (reducedMotion ? 2.4 : star.speed)
+        if (star.z < 20) {
+          star.x = (Math.random() - 0.5) * 3200
+          star.y = (Math.random() - 0.5) * 2200
+          star.z = 2600
+          star.pulse = Math.random() * Math.PI * 2
         }
 
         const scale = fov / star.z
         const px = star.x * scale + cx
         const py = star.y * scale + cy
-        if (px < -10 || px > viewportW + 10 || py < -10 || py > viewportH + 10) continue
+        if (px < -12 || px > viewportW + 12 || py < -12 || py > viewportH + 12) continue
 
-        const prevScale = fov / (star.z + 12)
-        const ppx = star.x * prevScale + cx
-        const ppy = star.y * prevScale + cy
-        const alpha = Math.max(0.2, 1 - star.z / 2200)
-        const twinkle = 0.7 + Math.sin(time * 2.1 + star.twinkle) * 0.3
-
-        ctx.strokeStyle = `hsla(${star.hue}, 95%, 80%, ${alpha * twinkle})`
-        ctx.lineWidth = Math.max(0.4, star.size * scale * 1.35)
+        const lum = (0.65 + Math.sin(time * 2.2 + star.pulse) * 0.35) * Math.max(0.28, 1 - star.z / 2600)
+        const radius = Math.max(0.4, star.size * scale * 1.8)
+        const glow = ctx.createRadialGradient(px, py, 0, px, py, radius * 7)
+        glow.addColorStop(0, `hsla(${star.hue}, 100%, 84%, ${lum})`)
+        glow.addColorStop(0.6, `hsla(${star.hue}, 100%, 74%, ${lum * 0.35})`)
+        glow.addColorStop(1, 'rgba(0,0,0,0)')
         ctx.beginPath()
-        ctx.moveTo(ppx, ppy)
-        ctx.lineTo(px, py)
-        ctx.stroke()
+        ctx.arc(px, py, radius * 1.6, 0, Math.PI * 2)
+        ctx.fillStyle = glow
+        ctx.fill()
+
+        ctx.beginPath()
+        ctx.arc(px, py, radius, 0, Math.PI * 2)
+        ctx.fillStyle = `rgba(255,255,255,${Math.min(1, lum + 0.12)})`
+        ctx.fill()
       }
 
-      const vignette = ctx.createRadialGradient(viewportW * 0.5, viewportH * 0.5, Math.min(viewportW, viewportH) * 0.25, viewportW * 0.5, viewportH * 0.5, Math.max(viewportW, viewportH) * 0.72)
+      planets.sort((a, b) => b.z - a.z)
+      for (const planet of planets) {
+        drawPlanet(planet, cx, cy, time * 1000, fov)
+      }
+
+      for (const comet of comets) {
+        comet.life += reducedMotion ? 0.24 : 1
+        if (comet.life > comet.maxLife) {
+          comet.x = viewportW + Math.random() * viewportW * 0.35
+          comet.y = Math.random() * viewportH * 0.65
+          comet.vx = -(Math.random() * 2.2 + 1.4)
+          comet.vy = Math.random() * 0.35 + 0.08
+          comet.life = 0
+          comet.maxLife = Math.random() * 220 + 120
+        }
+
+        comet.x += comet.vx * (reducedMotion ? 0.3 : 1)
+        comet.y += comet.vy * (reducedMotion ? 0.3 : 1)
+        const alpha = Math.max(0, 1 - comet.life / comet.maxLife)
+        const tailLength = 120
+        const trail = ctx.createLinearGradient(comet.x, comet.y, comet.x + tailLength, comet.y - tailLength * 0.14)
+        trail.addColorStop(0, `rgba(255,255,255,${alpha * 0.85})`)
+        trail.addColorStop(1, 'rgba(255,255,255,0)')
+
+        ctx.strokeStyle = trail
+        ctx.lineWidth = 1.5
+        ctx.beginPath()
+        ctx.moveTo(comet.x, comet.y)
+        ctx.lineTo(comet.x + tailLength, comet.y - tailLength * 0.14)
+        ctx.stroke()
+
+        ctx.beginPath()
+        ctx.arc(comet.x, comet.y, 1.8, 0, Math.PI * 2)
+        ctx.fillStyle = `rgba(255,255,255,${alpha})`
+        ctx.fill()
+      }
+
+      const vignette = ctx.createRadialGradient(
+        viewportW * 0.5,
+        viewportH * 0.5,
+        Math.min(viewportW, viewportH) * 0.28,
+        viewportW * 0.5,
+        viewportH * 0.5,
+        Math.max(viewportW, viewportH) * 0.74
+      )
       vignette.addColorStop(0, 'rgba(0,0,0,0)')
-      vignette.addColorStop(1, 'rgba(0,0,0,0.38)')
+      vignette.addColorStop(1, 'rgba(0,0,0,0.46)')
       ctx.fillStyle = vignette
       ctx.fillRect(0, 0, viewportW, viewportH)
 
-      animationId = requestAnimationFrame(draw)
+      if (!reducedMotion) {
+        animationId = requestAnimationFrame(draw)
+      }
     }
 
     initScene()
     draw()
 
-    const onResize = () => initScene()
+    const onResize = () => {
+      initScene()
+      if (reducedMotion) draw()
+    }
     window.addEventListener('resize', onResize)
 
     return () => {
@@ -237,7 +319,7 @@ export default function CosmicSingularityBackground() {
   return (
     <div className='fixed inset-0 z-0 pointer-events-none'>
       <canvas ref={canvasRef} className='block h-full w-full' />
-      <div className='absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_0%,rgba(1,3,11,0.2)_58%,rgba(0,0,0,0.42)_100%)]' />
+      <div className='absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_0%,rgba(2,6,16,0.26)_56%,rgba(0,0,0,0.5)_100%)]' />
     </div>
   )
 }
