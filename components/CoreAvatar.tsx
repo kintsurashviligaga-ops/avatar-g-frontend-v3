@@ -132,7 +132,7 @@ export function CoreAvatar({ className, pollMs = 4000 }: CoreAvatarProps) {
 
     return {
       src: data.model_glb_url,
-      poster: data.poster_url ?? '/brand/logo-primary-transparent.png',
+      poster: data.poster_url ?? '/brand/rocket-3d-hq.svg',
       style: { width: '100%', height: '100%', background: '#060B18', borderRadius: '999px' },
       ar: true,
       autoplay: true,
@@ -205,7 +205,7 @@ export function CoreAvatar({ className, pollMs = 4000 }: CoreAvatarProps) {
   return (
     <div className={`relative overflow-hidden rounded-full border border-white/15 bg-white/5 ${className ?? 'h-24 w-24 sm:h-32 sm:w-32 lg:h-40 lg:w-40'}`}>
       <Image
-        src={data.poster_url ?? '/brand/logo-primary-transparent.png'}
+        src={data.poster_url ?? '/brand/rocket-3d-hq.svg'}
         alt="Core avatar poster"
         fill
         sizes="144px"

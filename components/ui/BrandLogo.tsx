@@ -28,12 +28,12 @@ export function BrandLogo({ href, size = 'md', showText = true, className = '' }
       <div className={`relative ${s.cls} flex-shrink-0`}>
         <div className="absolute inset-[15%] rounded-full bg-cyan-400/[0.06] blur-2xl" />
         <Image
-          src="/brand/logo-exact-transparent.png"
-          alt="MyAvatar.ge"
+          src="/brand/rocket-3d-hq.svg"
+          alt="MyAvatar.ge Rocket"
           fill
           sizes={`${s.img}px`}
           priority
-          className="object-contain object-center scale-[1.12] drop-shadow-[0_4px_16px_rgba(34,211,238,0.25)]"
+          className="object-contain object-center drop-shadow-[0_8px_24px_rgba(34,211,238,0.32)]"
         />
       </div>
       {showText && (
