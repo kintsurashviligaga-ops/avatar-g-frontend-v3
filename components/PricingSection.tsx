@@ -14,9 +14,9 @@ const PLAN_ACCENTS = [
 ]
 
 const PRICING_LABELS = {
-  en: { badge: 'Pricing', month: '/mo' },
-  ka: { badge: 'ფასები', month: '/თვე' },
-  ru: { badge: 'Тарифы', month: '/мес' },
+  en: { badge: 'Pricing', month: '/mo', focus: 'აირჩიე გეგმა რომელიც შენს workflow-ს შეესაბამება', popular: 'Most Popular' },
+  ka: { badge: 'ფასები', month: '/თვე', focus: 'აირჩიე გეგმა რომელიც შენს workflow-ს შეესაბამება', popular: 'Most Popular' },
+  ru: { badge: 'Тарифы', month: '/мес', focus: 'აირჩიე გეგმა რომელიც შენს workflow-ს შეესაბამება', popular: 'Most Popular' },
 } as const
 
 export function PricingSection() {
@@ -51,6 +51,9 @@ export function PricingSection() {
           <p className="text-white/40 max-w-xl mx-auto text-base md:text-lg leading-relaxed">
             {t('pricing.subtitle')}
           </p>
+          <p className="mt-5 text-cyan-100/85 text-sm md:text-base font-medium">
+            {labels.focus}
+          </p>
         </motion.div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
@@ -59,7 +62,7 @@ export function PricingSection() {
             if (!accentRaw) return null
             const accent = accentRaw
             const AccentIcon = accent.icon
-            const isPopular = !!plan.popular
+            const isPopular = !!plan.popular || /pro/i.test(plan.name)
 
             return (
               <motion.div
@@ -93,7 +96,7 @@ export function PricingSection() {
                       animate={{ y: [0, -3, 0] }}
                       transition={{ duration: 2, repeat: Infinity }}
                     >
-                      <Sparkles className="w-3 h-3" /> {t('pricing.popular')}
+                      <Sparkles className="w-3 h-3" /> {labels.popular}
                     </motion.div>
                   )}
 

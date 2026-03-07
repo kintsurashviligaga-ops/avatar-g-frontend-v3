@@ -7,25 +7,25 @@ import { GlassButton } from '@/components/ui/GlassButton'
 
 const CTA_COPY = {
   en: {
-    badge: 'Start building for free today',
-    title: 'Ready to Create',
-    titleAccent: 'Something Amazing?',
-    subtitle: 'Join thousands of creators using MyAvatar to produce professional content with AI — no technical skills required.',
-    primary: 'Get Started Free',
+    badge: 'START YOUR WORKFLOW',
+    title: 'შენი AI სისტემა',
+    titleAccent: 'მზად არის.',
+    subtitle: 'დაიწყე უფასოდ და შექმენი შენი პირველი AI workflow.',
+    primary: 'დაიწყე უფასოდ',
   },
   ka: {
-    badge: 'დაიწყე უფასოდ დღესვე',
-    title: 'მზად ხარ შექმნა',
-    titleAccent: 'განსაკუთრებული რამ?',
-    subtitle: 'შემოუერთდი ათასობით შემქმნელს, ვინც MyAvatar-ით პროფესიონალურ კონტენტს ქმნის AI-ს დახმარებით.',
+    badge: 'START YOUR WORKFLOW',
+    title: 'შენი AI სისტემა',
+    titleAccent: 'მზად არის.',
+    subtitle: 'დაიწყე უფასოდ და შექმენი შენი პირველი AI workflow.',
     primary: 'დაიწყე უფასოდ',
   },
   ru: {
-    badge: 'Начните бесплатно уже сегодня',
-    title: 'Готовы создать',
-    titleAccent: 'что-то впечатляющее?',
-    subtitle: 'Присоединяйтесь к тысячам креаторов, которые создают профессиональный контент с помощью MyAvatar и AI.',
-    primary: 'Начать бесплатно',
+    badge: 'START YOUR WORKFLOW',
+    title: 'შენი AI სისტემა',
+    titleAccent: 'მზად არის.',
+    subtitle: 'დაიწყე უფასოდ და შექმენი შენი პირველი AI workflow.',
+    primary: 'დაიწყე უფასოდ',
   },
 } as const
 

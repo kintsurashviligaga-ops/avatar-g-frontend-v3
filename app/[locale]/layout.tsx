@@ -83,15 +83,17 @@ export default async function LocaleLayout({
   if (messageError || !messages) {
     // Minimal SSR fallback if translations fail
     return (
-      <div className="font-sans min-h-screen flex flex-col items-center justify-center bg-gray-900 text-white">
-        <h1 className="text-2xl font-bold mb-2">Avatar G</h1>
-        <p>Sorry, the site is temporarily unavailable in this language.</p>
+      <div className="font-sans min-h-screen flex flex-col items-center justify-center bg-transparent text-white px-6 ag-noise">
+        <div className="ag-surface-hero rounded-3xl px-8 py-10 text-center max-w-xl border border-white/15">
+          <h1 className="text-2xl font-bold mb-2">Avatar G</h1>
+          <p className="text-white/70">Sorry, the site is temporarily unavailable in this language.</p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="font-sans">
+    <div className="font-sans ag-noise">
       <NextIntlClientProvider locale={safeLocale} messages={messages}>
         {children}
       </NextIntlClientProvider>

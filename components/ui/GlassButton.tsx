@@ -42,7 +42,7 @@ export function GlassButton({
   className = '',
   type = 'button',
 }: GlassButtonProps) {
-  const base = `inline-flex items-center justify-center gap-2 font-medium transition-all duration-300 
+  const base = `inline-flex items-center justify-center gap-2 font-medium transition-all duration-300 ag-neon-button
     hover:scale-[1.015] active:scale-[0.985] disabled:opacity-40 disabled:pointer-events-none`
 
   const cls = `${base} ${variants[variant]} ${sizes[size]} ${className}`

@@ -15,6 +15,7 @@ export function GlassCard({ children, className = '', hover = true, onClick }: G
       onClick={onClick}
       className={`
         rounded-2xl
+        ag-neon-contour
         bg-white/[0.03]
         backdrop-blur-2xl
         border border-white/[0.08]

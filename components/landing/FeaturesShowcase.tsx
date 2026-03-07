@@ -3,149 +3,111 @@
 import { motion, useMotionValue, useSpring, useTransform } from 'framer-motion'
 import { useRef, MouseEvent } from 'react'
 import {
-  Cpu, Wand2, Layers, Zap, Shield, Globe,
+  Cpu, Wand2, Layers, Shield,
 } from 'lucide-react'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
 
 const FEATURES = [
   {
     icon: Cpu,
-    title: '16 AI Modules',
-    description: 'From video generation to music, photography, text — a full creative studio powered by AI.',
+    title: '17 AI Modules',
+    description: 'Create avatars, videos, music, designs, and text from one connected platform layer.',
     gradient: 'from-cyan-500 to-blue-600',
     glow: 'rgba(6,182,212,0.25)',
   },
   {
     icon: Wand2,
-    title: 'One-Click Workflows',
-    description: 'Chain modules into automated pipelines. Define once, run infinitely with Agent G coordinating.',
+    title: 'AI Automation',
+    description: 'Connect tools into intelligent workflows that run with consistency and speed.',
     gradient: 'from-purple-500 to-indigo-600',
     glow: 'rgba(139,92,246,0.25)',
   },
   {
     icon: Layers,
-    title: 'Your Digital Avatar',
-    description: 'A persistent 3D identity that represents you across all platforms and creative outputs.',
+    title: 'Agent G',
+    description: 'Your AI director coordinating tasks across services and teams in one system.',
     gradient: 'from-rose-500 to-pink-600',
     glow: 'rgba(244,63,94,0.25)',
   },
   {
-    icon: Zap,
-    title: 'Blazing Performance',
-    description: 'Edge-deployed infrastructure with 99.9% uptime. Optimized for real-time creative production.',
-    gradient: 'from-amber-400 to-orange-500',
-    glow: 'rgba(245,158,11,0.25)',
-  },
-  {
     icon: Shield,
     title: 'Enterprise Security',
-    description: 'SOC-2 aligned infrastructure with end-to-end encryption and granular access controls.',
+    description: '99.9% uptime and stable infrastructure for production-grade platform reliability.',
     gradient: 'from-emerald-500 to-teal-600',
     glow: 'rgba(16,185,129,0.25)',
-  },
-  {
-    icon: Globe,
-    title: 'Global & Localized',
-    description: 'Multi-language support with Georgian, English, and Russian — built for global creative teams.',
-    gradient: 'from-sky-400 to-cyan-500',
-    glow: 'rgba(56,189,248,0.25)',
   },
 ]
 
 const FEATURES_COPY = {
   en: {
     badge: 'Platform Capabilities',
-    title: 'Everything You Need.',
-    titleAccent: "Nothing You Don't.",
-    subtitle: 'A unified AI platform designed for creators, agencies, and enterprises.',
+    title: 'AI Platform',
+    titleAccent: 'Capabilities',
+    subtitle: 'Core capabilities that power your full AI factory workflow.',
     cards: [
       {
-        title: '16 AI Modules',
-        description: 'From video generation to music, photography, text — a full creative studio powered by AI.',
+        title: '17 AI Modules',
+        description: 'Create avatars, videos, music, designs, and text.',
       },
       {
-        title: 'One-Click Workflows',
-        description: 'Chain modules into automated pipelines. Define once, run infinitely with Agent G coordinating.',
+        title: 'AI Automation',
+        description: 'Connect tools into intelligent workflows.',
       },
       {
-        title: 'Your Digital Avatar',
-        description: 'A persistent 3D identity that represents you across all platforms and creative outputs.',
-      },
-      {
-        title: 'Blazing Performance',
-        description: 'Edge-deployed infrastructure with 99.9% uptime. Optimized for real-time creative production.',
+        title: 'Agent G',
+        description: 'Your AI director coordinating tasks.',
       },
       {
         title: 'Enterprise Security',
-        description: 'SOC-2 aligned infrastructure with end-to-end encryption and granular access controls.',
-      },
-      {
-        title: 'Global & Localized',
-        description: 'Multi-language support with Georgian, English, and Russian — built for global creative teams.',
+        description: '99.9% uptime and stable infrastructure.',
       },
     ],
   },
   ka: {
-    badge: 'პლატფორმის შესაძლებლობები',
-    title: 'ყველაფერი, რაც გჭირდება.',
-    titleAccent: 'არაფერი ზედმეტი.',
-    subtitle: 'ერთიანი AI პლატფორმა შემქმნელებისთვის, სააგენტოებისთვის და კომპანიებისთვის.',
+    badge: 'Platform Capabilities',
+    title: 'AI Platform',
+    titleAccent: 'Capabilities',
+    subtitle: 'ძირითადი შესაძლებლობები შენი AI ქარხნის workflow-სთვის.',
     cards: [
       {
-        title: '16 AI მოდული',
-        description: 'ვიდეოდან მუსიკამდე, ფოტოდან ტექსტამდე — სრულფასოვანი AI შემოქმედებითი სტუდია.',
+        title: '17 AI Modules',
+        description: 'Create avatars, videos, music, designs, and text.',
       },
       {
-        title: 'ერთი დაწკაპებით პროცესები',
-        description: 'შეუკარი მოდულები ავტომატიზებულ ჯაჭვში და გაუშვი უსასრულოდ Agent G-ით.',
+        title: 'AI Automation',
+        description: 'Connect tools into intelligent workflows.',
       },
       {
-        title: 'შენი ციფრული ავატარი',
-        description: 'მდგრადი ციფრული იდენტობა, რომელიც შენს კონტენტსა და პლატფორმებს აერთიანებს.',
-      },
-      {
-        title: 'მაქსიმალური წარმადობა',
-        description: 'Edge ინფრასტრუქტურა 99.9% ხელმისაწვდომობით რეალურ დროში სამუშაოსთვის.',
+        title: 'Agent G',
+        description: 'Your AI director coordinating tasks.',
       },
       {
         title: 'Enterprise უსაფრთხოება',
-        description: 'დაშიფვრა ბოლომდე, წვდომების კონტროლი და ბიზნეს დონის უსაფრთხოების არქიტექტურა.',
-      },
-      {
-        title: 'გლობალური და ლოკალური',
-        description: 'ქართული, ინგლისური და რუსული ენის მხარდაჭერა საერთაშორისო გუნდებისთვის.',
+        description: '99.9% uptime and stable infrastructure.',
       },
     ],
   },
   ru: {
-    badge: 'Возможности платформы',
-    title: 'Всё, что нужно.',
-    titleAccent: 'Ничего лишнего.',
-    subtitle: 'Единая AI-платформа для креаторов, агентств и компаний.',
+    badge: 'Platform Capabilities',
+    title: 'AI Platform',
+    titleAccent: 'Capabilities',
+    subtitle: 'Ключевые возможности для полного AI factory workflow.',
     cards: [
       {
-        title: '16 AI-модулей',
-        description: 'От генерации видео до музыки, фото и текста — полноценная AI-студия.',
+        title: '17 AI Modules',
+        description: 'Create avatars, videos, music, designs, and text.',
       },
       {
-        title: 'Процессы в один клик',
-        description: 'Соединяйте модули в автоматизированные цепочки и запускайте их с Agent G.',
+        title: 'AI Automation',
+        description: 'Connect tools into intelligent workflows.',
       },
       {
-        title: 'Ваш цифровой аватар',
-        description: 'Постоянная цифровая идентичность для всех платформ и контента.',
-      },
-      {
-        title: 'Максимальная скорость',
-        description: 'Edge-инфраструктура с доступностью 99.9% для работы в реальном времени.',
+        title: 'Agent G',
+        description: 'Your AI director coordinating tasks.',
       },
       {
         title: 'Безопасность Enterprise',
-        description: 'Сквозное шифрование, контроль доступа и корпоративный уровень защиты.',
-      },
-      {
-        title: 'Глобально и локально',
-        description: 'Поддержка грузинского, английского и русского языков для международных команд.',
+        description: '99.9% uptime and stable infrastructure.',
       },
     ],
   },

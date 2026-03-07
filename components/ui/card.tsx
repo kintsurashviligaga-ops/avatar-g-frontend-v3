@@ -3,7 +3,7 @@ import { cva, type VariantProps } from 'class-variance-authority';
 import { cn } from '@/lib/utils';
 
 const cardVariants = cva(
-  'rounded-3xl border spacing-xl md:spacing-2xl shadow-glass bg-gradient-to-br from-cyan-100/5 via-indigo-100/2 to-purple-100/0 backdrop-blur-2xl transition-all duration-300 hover:shadow-2xl ag-surface-secondary ag-hover-lift ag-border-glow',
+  'rounded-3xl border spacing-xl md:spacing-2xl shadow-glass bg-gradient-to-br from-cyan-100/5 via-indigo-100/2 to-purple-100/0 backdrop-blur-2xl transition-all duration-300 hover:shadow-2xl ag-surface-secondary ag-hover-lift ag-border-glow ag-neon-contour',
   {
     variants: {
       variant: {

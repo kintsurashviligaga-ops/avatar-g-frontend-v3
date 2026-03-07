@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect, useCallback, type DragEvent, type ChangeEvent } from 'react';
+import { useState, useRef, useEffect, useCallback, type DragEvent, type ChangeEvent, type ReactNode } from 'react';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -60,6 +60,30 @@ interface OptionSet {
   values: string[];
 }
 
+interface WorkspacePreset {
+  id: string;
+  title: string;
+  prompt: string;
+}
+
+interface PremiumCardProps {
+  title?: string;
+  className?: string;
+  children: ReactNode;
+}
+
+interface OptionChipProps {
+  active: boolean;
+  label: string;
+  onClick: () => void;
+}
+
+interface GoldCTAButtonProps {
+  label: string;
+  disabled?: boolean;
+  onClick: () => void;
+}
+
 // ─── Translations ────────────────────────────────────────────────────────────
 
 const T: Record<string, Record<string, string>> = {
@@ -103,6 +127,12 @@ const T: Record<string, Record<string, string>> = {
     download: 'Download',
     downloading: 'Downloading',
     ready: 'Ready',
+    workspaceFlow: 'Workspace Flow',
+    pipelineModes: 'Pipeline Modes',
+    premiumAction: 'Run Premium Pipeline',
+    premiumHint: 'Use Agent G orchestration for production-ready output',
+    liveChat: 'Live Premium Chatbox',
+    exportCenter: 'Export Center',
   },
   ka: {
     useAgent: 'აგენტის გამოყენება',
@@ -144,6 +174,12 @@ const T: Record<string, Record<string, string>> = {
     download: 'ჩამოტვირთვა',
     downloading: 'იტვირთება',
     ready: 'მზადაა',
+    workspaceFlow: 'სამუშაო ნაკადი',
+    pipelineModes: 'Pipeline რეჟიმები',
+    premiumAction: 'პრემიუმ Pipeline-ის გაშვება',
+    premiumHint: 'აგენტი G კოორდინაციას უკეთებს production-ready შედეგს',
+    liveChat: 'პრემიუმ Live ჩატი',
+    exportCenter: 'ექსპორტის ცენტრი',
   },
   ru: {
     useAgent: 'Использовать агента',
@@ -185,6 +221,12 @@ const T: Record<string, Record<string, string>> = {
     download: 'Скачать',
     downloading: 'Загрузка',
     ready: 'Готово',
+    workspaceFlow: 'Поток рабочей зоны',
+    pipelineModes: 'Режимы Pipeline',
+    premiumAction: 'Запустить Premium Pipeline',
+    premiumHint: 'Agent G координирует production-ready результат',
+    liveChat: 'Premium Live чат',
+    exportCenter: 'Центр экспорта',
   },
 };
 
@@ -303,20 +345,43 @@ const SERVICE_BACKGROUNDS: Record<string, string> = {
 };
 
 const SERVICE_OPTION_SETS: Record<string, OptionSet[]> = {
+  editing: [
+    { key: 'source', label: 'Source', values: ['Vertical Reels', 'Podcast', 'Interview', 'Course'] },
+    { key: 'delivery', label: 'Delivery', values: ['Social Pack', 'Brand Edit', 'Broadcast'] },
+    { key: 'assist', label: 'Assist', values: ['Auto-Cut', 'Smart Captions', 'Scene Match'] },
+  ],
   avatar: [
     { key: 'quality', label: 'Quality', values: ['Standard', 'High', 'Ultra'] },
     { key: 'style', label: 'Style', values: ['Realistic', 'Cinematic', 'Stylized'] },
-    { key: 'output', label: 'Output', values: ['Portrait', 'Full Body', 'Pack'] },
+    { key: 'pose', label: 'Pose', values: ['Portrait', 'Half Body', 'Full Body'] },
+    { key: 'lighting', label: 'Lighting', values: ['Studio', 'Natural', 'Dramatic'] },
   ],
   video: [
     { key: 'quality', label: 'Quality', values: ['HD', 'Full HD', '4K'] },
     { key: 'ratio', label: 'Ratio', values: ['16:9', '9:16', '1:1'] },
+    { key: 'camera', label: 'Camera Motion', values: ['Static', 'Dolly', 'Orbit'] },
     { key: 'speed', label: 'Speed', values: ['Fast', 'Balanced', 'Premium'] },
   ],
   music: [
     { key: 'length', label: 'Length', values: ['15s', '30s', '60s'] },
+    { key: 'genre', label: 'Genre', values: ['Ambient', 'Cinematic', 'Trap', 'House'] },
     { key: 'mood', label: 'Mood', values: ['Chill', 'Epic', 'Energetic'] },
     { key: 'mix', label: 'Mix', values: ['Draft', 'Studio', 'Mastered'] },
+  ],
+  photo: [
+    { key: 'retouch', label: 'Retouch Level', values: ['Natural', 'Editorial', 'High Fashion'] },
+    { key: 'background', label: 'Background', values: ['Original', 'Clean Studio', 'AI Scene'] },
+    { key: 'delivery', label: 'Delivery', values: ['JPG', 'PNG', 'WebP Pack'] },
+  ],
+  image: [
+    { key: 'model', label: 'Model', values: ['Fast Concept', 'Balanced', 'Detail Pro'] },
+    { key: 'style', label: 'Style', values: ['Brand Poster', 'Photoreal', '3D Render'] },
+    { key: 'size', label: 'Size', values: ['1024', '1536', '2048'] },
+  ],
+  media: [
+    { key: 'package', label: 'Package', values: ['Launch Kit', 'Social Kit', 'Omni Campaign'] },
+    { key: 'channels', label: 'Channels', values: ['Instagram', 'YouTube', 'Cross-platform'] },
+    { key: 'strategy', label: 'Strategy', values: ['Awareness', 'Conversion', 'Retention'] },
   ],
   business: [
     { key: 'detail', label: 'Detail', values: ['Summary', 'Balanced', 'Deep Dive'] },
@@ -327,6 +392,44 @@ const SERVICE_OPTION_SETS: Record<string, OptionSet[]> = {
     { key: 'quality', label: 'Quality', values: ['Fast', 'Balanced', 'Premium'] },
     { key: 'format', label: 'Format', values: ['Concise', 'Structured', 'Detailed'] },
     { key: 'focus', label: 'Focus', values: ['Creative', 'Accuracy', 'Conversion'] },
+  ],
+};
+
+const SERVICE_PRESETS: Record<string, WorkspacePreset[]> = {
+  avatar: [
+    { id: 'avatar-brand-shot', title: 'Brand Hero Avatar', prompt: 'Create a premium brand-ready avatar with cinematic lighting and clean studio background.' },
+    { id: 'avatar-streamer-pack', title: 'Streamer Pack', prompt: 'Generate a multi-pose avatar pack for livestream overlays and profile usage.' },
+    { id: 'avatar-linkedin', title: 'Executive Portrait', prompt: 'Create an executive portrait with realistic face detail and professional styling.' },
+  ],
+  video: [
+    { id: 'video-launch', title: 'Product Launch Reel', prompt: 'Build a 20-second product launch video with hook, proof, and CTA.' },
+    { id: 'video-story', title: 'Story Sequence', prompt: 'Generate a cinematic 3-scene story sequence with transitions.' },
+    { id: 'video-ads', title: 'Ad Variations', prompt: 'Create three ad variations optimized for 9:16 social channels.' },
+  ],
+  editing: [
+    { id: 'edit-subtitles', title: 'Subtitle Ready', prompt: 'Edit my source into short clips with accurate auto subtitles and bold hooks.' },
+    { id: 'edit-color', title: 'Color Grade Pass', prompt: 'Apply polished cinematic color grade while preserving skin tones.' },
+    { id: 'edit-batch', title: 'Batch Export', prompt: 'Prepare social batch exports in 16:9, 9:16 and 1:1 with correct trims.' },
+  ],
+  music: [
+    { id: 'music-trailer', title: 'Trailer Score', prompt: 'Compose an epic trailer score with rising tension and punchy finale.' },
+    { id: 'music-brand', title: 'Brand Sonic Logo', prompt: 'Create a short sonic logo and matching 30-second brand loop.' },
+    { id: 'music-social', title: 'Social Beat Pack', prompt: 'Generate upbeat short-form beats in multiple tempo variations.' },
+  ],
+  image: [
+    { id: 'image-campaign', title: 'Campaign Poster', prompt: 'Generate a high-impact campaign poster with modern typography cues.' },
+    { id: 'image-thumbnail', title: 'Thumbnail Set', prompt: 'Create a thumbnail set with strong contrast and high click-through focus.' },
+    { id: 'image-packshot', title: 'Packshot Visual', prompt: 'Produce clean e-commerce packshot visuals on brand background.' },
+  ],
+  media: [
+    { id: 'media-full', title: 'Omni Campaign', prompt: 'Assemble a full campaign pack: visuals, copy variants, and distribution notes.' },
+    { id: 'media-influencer', title: 'Influencer Bundle', prompt: 'Generate an influencer-ready content bundle for launch week.' },
+    { id: 'media-calendar', title: '30-Day Calendar', prompt: 'Build a 30-day content calendar with themes and asset checklist.' },
+  ],
+  global: [
+    { id: 'global-brief', title: 'Smart Brief', prompt: 'Turn this idea into a structured execution brief with milestones.' },
+    { id: 'global-qa', title: 'Quality Pass', prompt: 'Run a quality check and provide improvements for output readiness.' },
+    { id: 'global-export', title: 'Delivery Bundle', prompt: 'Package outputs and provide handoff checklist for the team.' },
   ],
 };
 
@@ -349,6 +452,42 @@ const SERVICE_BACKGROUND_IMAGES: Record<string, string> = {
   next: '/backgrounds/services/next.svg',
   'agent-g': '/backgrounds/services/agent-g.svg',
 };
+
+function PremiumCard({ title, className = '', children }: PremiumCardProps) {
+  return (
+    <div className={`rounded-xl border border-white/[0.12] bg-black/25 p-3 space-y-2 ${className}`.trim()}>
+      {title ? <p className="text-[11px] uppercase tracking-wider text-white/45">{title}</p> : null}
+      {children}
+    </div>
+  );
+}
+
+function OptionChip({ active, label, onClick }: OptionChipProps) {
+  return (
+    <button
+      onClick={onClick}
+      className={`px-2 py-1 text-[11px] rounded-full border transition-colors ${
+        active
+          ? 'border-cyan-400/60 bg-cyan-500/25 text-cyan-100'
+          : 'border-white/15 bg-white/5 text-white/70 hover:bg-white/10'
+      }`}
+    >
+      {label}
+    </button>
+  );
+}
+
+function GoldCTAButton({ label, disabled, onClick }: GoldCTAButtonProps) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className="order-4 sm:order-none w-full sm:w-auto max-md:[@media(orientation:landscape)]:w-auto flex-shrink-0 px-4 sm:px-5 py-2.5 bg-gradient-to-r from-amber-300 via-yellow-400 to-amber-500 text-black text-xs sm:text-sm font-semibold rounded-xl hover:shadow-[0_0_24px_rgba(251,191,36,0.45)] transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+    >
+      {label}
+    </button>
+  );
+}
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
@@ -395,10 +534,17 @@ export default function UnifiedServiceLayout({
   const cameraVideoRef = useRef<HTMLVideoElement>(null);
   const promptInputRef = useRef<HTMLTextAreaElement>(null);
   const serviceContext = SERVICE_CONTEXT[serviceId] ?? 'global';
-  const optionSets = SERVICE_OPTION_SETS[serviceContext] ?? SERVICE_OPTION_SETS['global']!;
+  const optionSets = SERVICE_OPTION_SETS[serviceId] ?? SERVICE_OPTION_SETS[serviceContext] ?? SERVICE_OPTION_SETS['global']!;
+  const workspacePresets = SERVICE_PRESETS[serviceId] ?? SERVICE_PRESETS[serviceContext] ?? SERVICE_PRESETS['global']!;
   const serviceBackground = SERVICE_BACKGROUNDS[serviceId] ?? SERVICE_BACKGROUNDS['agent-g']!;
   const serviceBackgroundImage = SERVICE_BACKGROUND_IMAGES[serviceId] ?? SERVICE_BACKGROUND_IMAGES['agent-g']!;
   const agentButtonLabel = `${t.useAgent} — ${serviceName}`;
+  const workspaceFlowLabels = [
+    locale === 'ka' ? 'Prompt' : locale === 'ru' ? 'Промпт' : 'Prompt',
+    locale === 'ka' ? 'გენერაცია' : locale === 'ru' ? 'Генерация' : 'Generation',
+    locale === 'ka' ? 'რევიუ' : locale === 'ru' ? 'Ревью' : 'Review',
+    locale === 'ka' ? 'ექსპორტი' : locale === 'ru' ? 'Экспорт' : 'Export',
+  ];
 
   useEffect(() => {
     const defaults: Record<string, string> = {};
@@ -1111,6 +1257,7 @@ export default function UnifiedServiceLayout({
                 {t.clearChat}
               </button>
             </div>
+
             <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-1 snap-x snap-mandatory">
               {quickActions.map(action => (
                 <button
@@ -1122,8 +1269,27 @@ export default function UnifiedServiceLayout({
                 </button>
               ))}
             </div>
-            <div className="rounded-xl border border-white/[0.12] bg-black/25 p-3 space-y-2">
-              <p className="text-[11px] uppercase tracking-wider text-white/45">{t.workspaceOptions}</p>
+
+            <PremiumCard className="border-amber-300/30 bg-[linear-gradient(145deg,rgba(251,191,36,0.18),rgba(245,158,11,0.08))]">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-[11px] uppercase tracking-wider text-amber-100/90">{t.pipelineModes}</p>
+                <span className="text-[10px] text-amber-100/70">Agent G Premium</span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                {workspacePresets.map((preset) => (
+                  <button
+                    key={preset.id}
+                    onClick={() => setInput(preset.prompt)}
+                    className="text-left rounded-lg border border-amber-200/30 bg-black/25 hover:bg-black/35 px-2.5 py-2 transition-colors"
+                  >
+                    <p className="text-[11px] font-semibold text-amber-100">{preset.title}</p>
+                    <p className="text-[10px] text-amber-50/75 truncate">{preset.prompt}</p>
+                  </button>
+                ))}
+              </div>
+            </PremiumCard>
+
+            <PremiumCard title={t.workspaceOptions}>
               <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2">
                 {optionSets.map((set) => (
                   <div key={set.key} className="rounded-lg border border-white/[0.12] bg-white/[0.04] p-2 space-y-2">
@@ -1132,24 +1298,19 @@ export default function UnifiedServiceLayout({
                       {set.values.map((value) => {
                         const active = selectedOptions[set.key] === value;
                         return (
-                          <button
+                          <OptionChip
                             key={value}
+                            active={active}
+                            label={value}
                             onClick={() => setSelectedOptions((prev) => ({ ...prev, [set.key]: value }))}
-                            className={`px-2 py-1 text-[11px] rounded-full border transition-colors ${
-                              active
-                                ? 'border-cyan-400/60 bg-cyan-500/25 text-cyan-100'
-                                : 'border-white/15 bg-white/5 text-white/70 hover:bg-white/10'
-                            }`}
-                          >
-                            {value}
-                          </button>
+                          />
                         );
                       })}
                     </div>
                   </div>
                 ))}
               </div>
-            </div>
+            </PremiumCard>
           </div>
 
           {/* Message list */}
@@ -1160,7 +1321,17 @@ export default function UnifiedServiceLayout({
                 <h2 className="text-xl font-bold">{serviceName}</h2>
                 <p className="text-sm text-white/65 max-w-md">{description}</p>
 
-                {/* Features grid */}
+                <div className="w-full max-w-lg rounded-xl border border-cyan-400/25 bg-cyan-500/10 p-3 space-y-2">
+                  <p className="text-[11px] uppercase tracking-wider text-cyan-100/90">{t.workspaceFlow}</p>
+                  <div className="grid grid-cols-4 gap-2">
+                    {workspaceFlowLabels.map((label) => (
+                      <div key={label} className="text-[11px] rounded-lg border border-cyan-200/25 bg-black/20 px-2 py-1.5 text-cyan-50/85">
+                        {label}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
                 <div className="grid grid-cols-2 gap-2 mt-4 max-w-lg">
                   {features.map(f => (
                     <div key={f} className="text-xs text-white/55 bg-white/[0.05] border border-white/[0.1] rounded-lg px-3 py-2 flex items-center gap-2">
@@ -1307,6 +1478,11 @@ export default function UnifiedServiceLayout({
                 <p className="text-[11px] text-cyan-100/80">{generationStageLabel}</p>
               </div>
             )}
+
+            <PremiumCard className="border-amber-300/35 bg-[linear-gradient(145deg,rgba(251,191,36,0.16),rgba(120,53,15,0.08))] px-3 py-2">
+              <p className="text-[11px] text-amber-100 font-medium">{t.liveChat}</p>
+              <p className="text-[10px] text-amber-100/75">{t.premiumHint}</p>
+            </PremiumCard>
 
             {/* Automation toggle */}
             <div className="flex items-center gap-2 sm:gap-3 flex-wrap max-md:[@media(orientation:landscape)]:flex-nowrap max-md:[@media(orientation:landscape)]:overflow-x-auto">
@@ -1465,6 +1641,12 @@ export default function UnifiedServiceLayout({
                 />
               </div>
 
+              <GoldCTAButton
+                label={t.premiumAction ?? 'Run Premium Pipeline'}
+                disabled={sending}
+                onClick={() => sendMessage(`${serviceName}: ${t.premiumAction ?? 'Run Premium Pipeline'}. ${t.premiumHint ?? ''}.`)}
+              />
+
               <button
                 onClick={() => sendMessage()}
                 disabled={sending || !input.trim()}
@@ -1481,7 +1663,7 @@ export default function UnifiedServiceLayout({
           {/* Panel header */}
           <div className="px-4 py-3 border-b border-white/[0.10] bg-black/25 flex items-center justify-between">
             <span className="text-xs font-semibold text-white/55 uppercase tracking-wider">{t.preview}</span>
-            <span className="text-xs text-white/35">{t.tools}</span>
+            <span className="text-xs text-white/35">{t.exportCenter}</span>
           </div>
 
           {/* Preview content */}

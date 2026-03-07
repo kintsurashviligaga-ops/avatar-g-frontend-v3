@@ -10,6 +10,7 @@ import { WorkflowCinematicSection } from "@/components/WorkflowCinematicSection"
 import { FeaturesShowcase } from "@/components/landing/FeaturesShowcase";
 import { StatsSection } from "@/components/landing/StatsSection";
 import { CTABanner } from "@/components/landing/CTABanner";
+import { LiveAvatarDemoSection } from "@/components/landing/LiveAvatarDemoSection";
 import ErrorBoundary from "@/components/landing/ErrorBoundary";
 import { BrandLogo } from "@/components/ui/BrandLogo";
 import { useLanguage } from "@/lib/i18n/LanguageContext";
@@ -37,28 +38,28 @@ export default function LandingPageClient() {
   const { language: locale } = useLanguage();
 
   return (
-    <div className="relative min-h-screen bg-[#030712] text-white overflow-hidden ag-noise">
+    <div className="relative min-h-screen bg-transparent text-white overflow-hidden ag-noise">
       <CosmicSingularityBackground />
 
       {/* Color Overlay — warm cinematic grade */}
       <div
-        className="pointer-events-none absolute inset-0 z-0"
+        className="pointer-events-none absolute inset-0 z-[1]"
         style={{
           backgroundImage:
-            'radial-gradient(ellipse 980px 560px at 20% 14%, rgba(34,211,238,0.2), transparent 58%),' +
-            'radial-gradient(ellipse 760px 430px at 84% 80%, rgba(124,92,252,0.18), transparent 52%),' +
-            'linear-gradient(180deg, rgba(3,7,18,0.28) 0%, rgba(3,7,18,0.10) 50%, rgba(3,7,18,0.36) 100%)',
+            'radial-gradient(ellipse 980px 560px at 20% 14%, rgba(34,211,238,0.28), transparent 58%),' +
+            'radial-gradient(ellipse 760px 430px at 84% 80%, rgba(124,92,252,0.24), transparent 52%),' +
+            'linear-gradient(180deg, rgba(3,7,18,0.14) 0%, rgba(3,7,18,0.04) 50%, rgba(3,7,18,0.18) 100%)',
         }}
       />
 
       {/* Vignette */}
-      <div className="pointer-events-none absolute inset-0 z-0 bg-[radial-gradient(ellipse_at_center,transparent_46%,rgba(3,7,18,0.64)_100%)]" />
+      <div className="pointer-events-none absolute inset-0 z-[1] bg-[radial-gradient(ellipse_at_center,transparent_48%,rgba(3,7,18,0.32)_100%)]" />
 
       {/* Ambient glow orbs */}
-      <div className="pointer-events-none absolute inset-0 z-0">
-        <div className="absolute top-[-150px] left-1/2 -translate-x-1/2 w-[800px] h-[400px] bg-cyan-500/[0.06] blur-[120px] rounded-full" />
-        <div className="absolute bottom-[20%] right-[-80px] w-[350px] h-[350px] bg-violet-500/[0.06] blur-[120px] rounded-full" />
-        <div className="absolute left-[-60px] top-[35%] w-[250px] h-[250px] rounded-full bg-blue-500/[0.05] blur-[120px]" />
+      <div className="pointer-events-none absolute inset-0 z-[1]">
+        <div className="absolute top-[-150px] left-1/2 -translate-x-1/2 w-[900px] h-[450px] bg-cyan-500/[0.1] blur-[120px] rounded-full" />
+        <div className="absolute bottom-[20%] right-[-80px] w-[380px] h-[380px] bg-violet-500/[0.1] blur-[120px] rounded-full" />
+        <div className="absolute left-[-60px] top-[35%] w-[280px] h-[280px] rounded-full bg-blue-500/[0.09] blur-[120px]" />
       </div>
 
       {/* Content */}
@@ -75,6 +76,11 @@ export default function LandingPageClient() {
 
         <ErrorBoundary fallback={<SectionFallback label="Orbit" />}>
           <section className="relative pb-10 md:pb-14 px-4 sm:px-6">
+            <div className="mx-auto max-w-4xl text-center pt-10 md:pt-14">
+              <p className="text-[10px] uppercase tracking-[0.18em] text-cyan-200/70">Interactive AI Ecosystem</p>
+              <h2 className="mt-3 text-3xl md:text-5xl font-bold tracking-tight text-white">AI System Orbit</h2>
+              <p className="mt-3 text-sm md:text-base text-white/60">Core AI center with connected module nodes, live hover detail, and service entry points.</p>
+            </div>
             <OrbitSolarSystem />
           </section>
         </ErrorBoundary>
@@ -87,14 +93,20 @@ export default function LandingPageClient() {
 
         <div className="ag-divider-strong mx-auto max-w-6xl opacity-50 sm:opacity-80" />
 
-        <ErrorBoundary fallback={<SectionFallback label="Pricing" />}>
-          <PricingSection />
+        <ErrorBoundary fallback={<SectionFallback label="Cinematic" />}>
+          <WorkflowCinematicSection />
         </ErrorBoundary>
 
         <div className="ag-divider-strong mx-auto max-w-6xl opacity-50 sm:opacity-80" />
 
-        <ErrorBoundary fallback={<SectionFallback label="Cinematic" />}>
-          <WorkflowCinematicSection />
+        <ErrorBoundary fallback={<SectionFallback label="Avatar Demo" />}>
+          <LiveAvatarDemoSection />
+        </ErrorBoundary>
+
+        <div className="ag-divider-strong mx-auto max-w-6xl opacity-50 sm:opacity-80" />
+
+        <ErrorBoundary fallback={<SectionFallback label="Pricing" />}>
+          <PricingSection />
         </ErrorBoundary>
 
         <div className="ag-divider-strong mx-auto max-w-6xl opacity-50 sm:opacity-80" />

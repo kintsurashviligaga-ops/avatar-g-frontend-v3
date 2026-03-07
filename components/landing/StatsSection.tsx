@@ -2,7 +2,6 @@
 
 import { motion, useInView } from 'framer-motion'
 import { useRef, useEffect, useState, useCallback } from 'react'
-import { SERVICE_REGISTRY } from '@/lib/service-registry'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
 
 function AnimatedCounter({ target, suffix = '' }: { target: number; suffix?: string }) {
@@ -34,14 +33,21 @@ function AnimatedCounter({ target, suffix = '' }: { target: number; suffix?: str
 }
 
 export function StatsSection() {
-  const { t } = useLanguage()
-  const enabledServices = SERVICE_REGISTRY.filter((s) => s.enabled)
+  const { language } = useLanguage()
+
+  const labels = {
+    en: ['AI modules', 'generated outputs', 'interactions', 'workflow automation'],
+    ka: ['AI მოდული', 'გენერირებული შედეგი', 'ინტერაქცია', 'workflow ავტომატიზაცია'],
+    ru: ['AI модулей', 'сгенерированных результатов', 'интеракций', 'автоматизация workflow'],
+  } as const
+
+  const localLabels = labels[language as keyof typeof labels] || labels.ka
 
   const stats = [
-    { value: enabledServices.length, suffix: '', label: t('stats.services'), color: 'from-cyan-400 to-blue-500' },
-    { value: 50, suffix: 'K+', label: t('stats.creators'), color: 'from-purple-400 to-indigo-500' },
-    { value: 1, suffix: 'M+', label: t('stats.generations'), color: 'from-rose-400 to-pink-500' },
-    { value: 99.9, suffix: '%', label: t('stats.uptime'), color: 'from-emerald-400 to-teal-500' },
+    { value: 17, suffix: '', label: localLabels[0], color: 'from-cyan-400 to-blue-500' },
+    { value: 50, suffix: 'K+', label: localLabels[1], color: 'from-purple-400 to-indigo-500' },
+    { value: 1, suffix: 'M+', label: localLabels[2], color: 'from-rose-400 to-pink-500' },
+    { value: 100, suffix: '%', label: localLabels[3], color: 'from-emerald-400 to-teal-500' },
   ]
 
   return (

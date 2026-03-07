@@ -27,11 +27,11 @@ export function Modal({ open, onClose, title, children, className }: ModalProps)
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
       <button
-        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+        className="ag-no-neon absolute inset-0 bg-black/60 backdrop-blur-sm"
         onClick={onClose}
         aria-label="Close modal overlay"
       />
-      <div className={cn('relative z-10 w-full max-w-xl ag-card ag-neon-ring animate-fade-in', className)}>
+      <div className={cn('relative z-10 w-full max-w-xl ag-card ag-neon-ring ag-neon-window animate-fade-in', className)}>
         <div className="mb-4 flex items-start justify-between gap-3">
           <h3 className="text-lg font-semibold text-app-text">{title}</h3>
           <button

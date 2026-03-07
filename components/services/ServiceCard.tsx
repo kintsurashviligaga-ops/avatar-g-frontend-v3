@@ -11,7 +11,7 @@ type ServiceCardProps = {
 
 export function ServiceCard({ title, description, children, actions, className }: ServiceCardProps) {
   return (
-    <Card className={className}>
+    <Card className={`ag-neon-window ${className ?? ''}`.trim()}>
       <CardHeader className="pb-3">
         <div className="flex items-start justify-between gap-3">
           <div>

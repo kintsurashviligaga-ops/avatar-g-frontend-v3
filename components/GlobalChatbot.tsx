@@ -306,6 +306,10 @@ export default function GlobalChatbot() {
 
   const clearHistory = useCallback(() => { setSessions(prev => ({ ...prev, [activeAgent.id]: [] })); }, [activeAgent.id]);
   const copyMsg = useCallback((content: string, id: string) => { navigator.clipboard?.writeText(content).catch(() => undefined); setCopiedId(id); setTimeout(() => setCopiedId(null), 2000); }, []);
+  const applyQuickAction = useCallback((prompt: string) => {
+    setInput(prompt);
+    setShowAgentPicker(false);
+  }, []);
 
   if (!isClient) return null;
 
@@ -354,7 +358,31 @@ export default function GlobalChatbot() {
             </AnimatePresence>
             {/* Messages */}
             <div className="flex-1 overflow-y-auto p-4 max-md:[@media(orientation:landscape)]:p-2.5 space-y-3">
-              {messages.length === 0 && <div className="text-center text-gray-500 mt-8"><Bot className="w-10 h-10 mx-auto mb-2 opacity-40" /><p className="text-sm">{activeAgent.icon} {activeAgent.name}</p><p className="text-xs text-white/20 mt-1">How can I help?</p></div>}
+              {messages.length === 0 && (
+                <div className="mt-6 rounded-2xl border border-cyan-300/25 bg-cyan-500/10 p-4">
+                  <div className="text-center text-gray-500">
+                    <Bot className="mx-auto mb-2 h-10 w-10 opacity-50" />
+                    <p className="text-sm text-white/85">Hi 👋 I'm Agent G.</p>
+                    <p className="mt-1 text-xs text-white/55">Want me to show how the platform works?</p>
+                  </div>
+                  <div className="mt-4 grid grid-cols-2 gap-2">
+                    {[
+                      'Show AI Tools',
+                      'Build Workflow',
+                      'Create Avatar',
+                      'See Pricing',
+                    ].map((item) => (
+                      <button
+                        key={item}
+                        onClick={() => applyQuickAction(item)}
+                        className="rounded-xl border border-cyan-300/35 bg-white/[0.05] px-2.5 py-2 text-xs font-semibold text-cyan-100 transition hover:bg-cyan-500/20"
+                      >
+                        {item}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
               {messages.map(m => (
                 <div key={m.id} className={`group flex gap-2 ${m.role === "user" ? "justify-end" : ""}`}>
                   <div className={`max-w-[85%] p-3 rounded-xl text-sm leading-relaxed ${m.role === "user" ? "bg-cyan-600 text-white" : "bg-white/[0.06] text-gray-200 border border-white/[0.06]"}`}>
