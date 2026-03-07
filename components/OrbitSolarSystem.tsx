@@ -55,6 +55,10 @@ const ORBIT_CSS = `
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
 }
+@keyframes orbit-lux-flicker {
+  0%, 100% { opacity: 0.62; }
+  50% { opacity: 0.98; }
+}
 .orbit-container {
   animation: orbit-spin 60s linear infinite;
 }
@@ -78,6 +82,9 @@ const ORBIT_CSS = `
 }
 .orbit-node-chip {
   animation: orbit-chip-spin 7s linear infinite;
+}
+.orbit-lux-frame {
+  animation: orbit-lux-flicker 3.6s ease-in-out infinite;
 }
 `
 
@@ -155,8 +162,8 @@ export function OrbitSolarSystem() {
         </div>
 
         {/* Outer Orbit Rings */}
-        <div className="absolute inset-0 rounded-full border border-cyan-200/[0.2] shadow-[0_0_38px_rgba(34,211,238,0.14)]" />
-        <div className="absolute inset-[15%] rounded-full border border-cyan-200/[0.14] shadow-[0_0_24px_rgba(34,211,238,0.1)]" />
+        <div className="absolute inset-0 rounded-full border border-white/30 shadow-[0_0_42px_rgba(255,255,255,0.16)] orbit-lux-frame" />
+        <div className="absolute inset-[15%] rounded-full border border-white/20 shadow-[0_0_26px_rgba(255,255,255,0.12)]" />
 
         {/* Orbit Rotating Container */}
         <div className={`absolute inset-0 w-full h-full orbit-container ${isPaused ? 'orbit-paused' : 'orbit-running'}`}>
@@ -204,32 +211,32 @@ function OrbitNodeContent({ service, locale, isActive, onEnter, onLeave }: { ser
       href={'/' + locale + '/services/' + service.slug}
       className={`orbit-node-shell group relative flex items-center justify-center rounded-full transition-all duration-300 z-30
         ${isActive ? 'w-[4.4rem] h-[4.4rem] md:w-24 md:h-24 scale-[1.14]' : 'w-16 h-16 md:w-20 md:h-20 hover:scale-110'}
-        border border-cyan-300/35 backdrop-blur-md overflow-hidden
+        border border-white/30 backdrop-blur-md overflow-hidden
       `}
       style={{
         background: `radial-gradient(circle at 28% 24%, rgba(255,255,255,0.7), rgba(255,255,255,0.08) 38%, ${accent}4a 84%), linear-gradient(150deg, rgba(10,20,40,0.78), rgba(4,10,24,0.86))`,
         boxShadow: isActive
-          ? `0 0 30px ${accent}cc, 0 0 64px ${accent}70, inset 0 2px 12px rgba(255,255,255,0.28)`
-          : `0 0 18px ${accent}7f, 0 0 36px ${accent}3f, inset 0 2px 8px rgba(255,255,255,0.14)`,
+          ? `0 0 0 1px rgba(255,255,255,0.32), 0 0 28px rgba(255,255,255,0.24), 0 0 30px ${accent}99, 0 0 64px ${accent}59, inset 0 2px 12px rgba(255,255,255,0.3)`
+          : `0 0 0 1px rgba(255,255,255,0.2), 0 0 16px rgba(255,255,255,0.14), 0 0 16px ${accent}66, 0 0 32px ${accent}33, inset 0 2px 8px rgba(255,255,255,0.14)`,
       }}
       onMouseEnter={onEnter}
       onMouseLeave={onLeave}
       aria-label={displayLabel}
     >
       <span className="absolute inset-[3px] rounded-full border border-white/30" />
-      <span className="absolute inset-0 rounded-full border border-cyan-300/45 shadow-[0_0_14px_rgba(34,211,238,0.45)]" />
+      <span className="absolute inset-0 rounded-full border border-white/30 shadow-[0_0_18px_rgba(255,255,255,0.22)] orbit-lux-frame" />
       <span
         className={`absolute inset-[-16%] rounded-full orbit-node-active-glow ${isActive ? 'opacity-100' : 'opacity-35'}`}
         style={{ background: `radial-gradient(circle, ${accent}66 0%, transparent 62%)` }}
       />
-      <span className="absolute inset-[8%] rounded-full border border-white/15 border-dashed orbit-node-chip" />
+      <span className="absolute inset-[8%] rounded-full border border-white/20 border-dashed orbit-node-chip" />
 
-      <span className="absolute top-[7px] right-[7px] z-20 rounded-full border border-white/35 bg-black/45 px-1.5 py-0.5 text-[8px] font-semibold tracking-[0.14em] text-cyan-100/90">
+      <span className="absolute top-[7px] right-[7px] z-20 rounded-full border border-white/35 bg-black/45 px-1.5 py-0.5 text-[8px] font-semibold tracking-[0.14em] text-white/90">
         {microCode}
       </span>
 
       <div
-        className="relative z-10 flex h-[56%] w-[56%] items-center justify-center rounded-full border border-white/22 bg-black/30"
+        className="relative z-10 flex h-[56%] w-[56%] items-center justify-center rounded-full border border-white/30 bg-black/30"
         style={{ boxShadow: `inset 0 0 14px ${accent}44, 0 0 14px ${accent}44` }}
       >
       <Icon
@@ -240,16 +247,17 @@ function OrbitNodeContent({ service, locale, isActive, onEnter, onLeave }: { ser
 
       {/* Tooltip */}
       <div
-        className={`absolute top-full mt-4 left-1/2 -translate-x-1/2 w-[220px] sm:w-[252px] px-4 py-3 rounded-2xl bg-[#0b1020]/94 border border-white/20 text-white shadow-2xl backdrop-blur-xl transition-all duration-200 z-50
+        className={`absolute top-full mt-4 left-1/2 -translate-x-1/2 w-[220px] sm:w-[252px] px-4 py-3 rounded-2xl bg-[#0b1020]/95 border border-white/30 text-white shadow-2xl backdrop-blur-xl transition-all duration-200 z-50
           ${isActive ? 'opacity-100 translate-y-0 visible' : 'opacity-0 translate-y-2 invisible'}
         `}
+        style={{ boxShadow: '0 0 0 1px rgba(255,255,255,0.22), 0 0 26px rgba(255,255,255,0.18), 0 30px 60px rgba(0,0,0,0.55)' }}
       >
-        <div className="mb-2 inline-flex items-center rounded-full border border-cyan-300/35 bg-cyan-500/12 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.16em] text-cyan-100/90">
+        <div className="mb-2 inline-flex items-center rounded-full border border-white/30 bg-white/10 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.16em] text-white/90">
           Orbital Module
         </div>
         <p className="text-sm font-semibold text-white">{displayLabel}</p>
         <p className="mt-1 text-[11px] text-white/78 leading-relaxed">{displayDescription}</p>
-        <span className="mt-3 inline-flex items-center rounded-lg border border-cyan-300/55 bg-cyan-500/18 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-cyan-100">
+        <span className="mt-3 inline-flex items-center rounded-lg border border-white/30 bg-white/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-white/90">
           {openLabel}
         </span>
         <div className="absolute -top-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-[#0b1020]/95 border-t border-l border-white/15 transform rotate-45" />
