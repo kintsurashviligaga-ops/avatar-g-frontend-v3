@@ -21,6 +21,8 @@
   --app-danger: 255 68 102;
   --app-gold: 251 191 36;
   --app-rose: 244 63 94;
+  --app-line-cyan: 34 211 238;
+  --app-line-violet: 124 92 252;
 
   /* Premium spacing scale */
   --section-py: clamp(4rem, 8vw, 7rem);
@@ -76,8 +78,24 @@ body::before {
   inset: 0;
   pointer-events: none;
   background:
+    repeating-linear-gradient(90deg, rgba(34,211,238,0.045) 0 1px, transparent 1px 108px),
+    repeating-linear-gradient(0deg, rgba(99,102,241,0.04) 0 1px, transparent 1px 108px),
     radial-gradient(circle at 12% 18%, rgba(34,211,238,0.06), transparent 32%),
     radial-gradient(circle at 85% 78%, rgba(124,92,252,0.07), transparent 34%);
+  mask-image: radial-gradient(ellipse at 50% 44%, rgba(0,0,0,0.86) 30%, rgba(0,0,0,0.26) 72%, transparent 100%);
+  z-index: 0;
+}
+
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(118deg, transparent 0%, rgba(34,211,238,0.08) 34%, transparent 37%, transparent 63%, rgba(124,92,252,0.08) 66%, transparent 69%),
+    radial-gradient(ellipse 72% 58% at 50% 8%, rgba(34,211,238,0.08), transparent 64%),
+    radial-gradient(ellipse 60% 42% at 78% 90%, rgba(124,92,252,0.09), transparent 68%);
+  opacity: 0.75;
   z-index: 0;
 }
 
@@ -191,7 +209,21 @@ a {
   }
 
   .ag-premium-page {
-    @apply relative;
+    @apply relative overflow-hidden;
+  }
+
+  .ag-premium-page::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background:
+      repeating-linear-gradient(90deg, rgba(34,211,238,0.05) 0 1px, transparent 1px 90px),
+      repeating-linear-gradient(0deg, rgba(124,92,252,0.045) 0 1px, transparent 1px 90px),
+      linear-gradient(122deg, transparent 0%, rgba(34,211,238,0.12) 37%, transparent 39%, transparent 61%, rgba(124,92,252,0.12) 63%, transparent 65%);
+    mask-image: radial-gradient(ellipse at 50% 45%, rgba(0,0,0,0.88) 28%, rgba(0,0,0,0.24) 70%, transparent 100%);
+    opacity: 0.7;
+    z-index: 0;
   }
 
   .ag-premium-page::after {
@@ -202,7 +234,7 @@ a {
     background:
       radial-gradient(circle at 10% 14%, rgba(34,211,238,0.08), transparent 36%),
       radial-gradient(circle at 84% 86%, rgba(124,92,252,0.09), transparent 38%);
-    z-index: 0;
+    z-index: 1;
   }
 
   .ag-section {
@@ -410,6 +442,25 @@ a {
       0 0 110px rgba(124, 92, 252, 0.36),
       inset 0 0 0 1px rgba(34, 211, 238, 0.26),
       0 24px 90px rgba(0, 0, 0, 0.56);
+  }
+
+  .ag-neon-grid-lines {
+    position: relative;
+    isolation: isolate;
+  }
+
+  .ag-neon-grid-lines::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 1;
+    background:
+      repeating-linear-gradient(90deg, rgba(34,211,238,0.055) 0 1px, transparent 1px 82px),
+      repeating-linear-gradient(0deg, rgba(99,102,241,0.05) 0 1px, transparent 1px 82px),
+      linear-gradient(116deg, transparent 0%, rgba(34,211,238,0.11) 35%, transparent 37%, transparent 63%, rgba(124,92,252,0.11) 65%, transparent 67%);
+    mask-image: radial-gradient(ellipse at 50% 46%, rgba(0,0,0,0.88) 28%, rgba(0,0,0,0.2) 72%, transparent 100%);
+    opacity: 0.72;
   }
 
   .ag-hover-lift {

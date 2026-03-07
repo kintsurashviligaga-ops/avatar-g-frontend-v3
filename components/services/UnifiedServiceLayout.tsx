@@ -1185,7 +1185,7 @@ export default function UnifiedServiceLayout({
 
   // ─── Render ──────────────────────────────────────────────────────────────
   return (
-    <div className="relative min-h-screen bg-transparent text-white ag-noise overflow-hidden">
+    <div className="relative min-h-screen bg-transparent text-white ag-noise ag-neon-grid-lines overflow-hidden">
       <div
         className="pointer-events-none absolute inset-0 bg-cover bg-center opacity-78"
         style={{

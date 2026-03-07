@@ -1,19 +1,51 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { OrbitSolarSystem } from "@/components/OrbitSolarSystem";
-import { HeroSection } from "@/components/HeroSection";
-import { PricingSection } from "@/components/PricingSection";
-import { WorkflowCinematicSection } from "@/components/WorkflowCinematicSection";
-import { FeaturesShowcase } from "@/components/landing/FeaturesShowcase";
-import { StatsSection } from "@/components/landing/StatsSection";
-import { CTABanner } from "@/components/landing/CTABanner";
-import { LiveAvatarDemoSection } from "@/components/landing/LiveAvatarDemoSection";
 import ErrorBoundary from "@/components/landing/ErrorBoundary";
 import { BrandLogo } from "@/components/ui/BrandLogo";
 import { useLanguage } from "@/lib/i18n/LanguageContext";
+
+const HeroSection = dynamic(() => import("@/components/HeroSection").then((m) => m.HeroSection), {
+  ssr: true,
+  loading: () => <SectionFallback label="Hero" />,
+});
+
+const StatsSection = dynamic(() => import("@/components/landing/StatsSection").then((m) => m.StatsSection), {
+  ssr: true,
+  loading: () => <SectionFallback label="Stats" />,
+});
+
+const OrbitSolarSystem = dynamic(() => import("@/components/OrbitSolarSystem").then((m) => m.OrbitSolarSystem), {
+  ssr: false,
+  loading: () => <SectionFallback label="Orbit" />,
+});
+
+const FeaturesShowcase = dynamic(() => import("@/components/landing/FeaturesShowcase").then((m) => m.FeaturesShowcase), {
+  ssr: true,
+  loading: () => <SectionFallback label="Features" />,
+});
+
+const WorkflowCinematicSection = dynamic(() => import("@/components/WorkflowCinematicSection").then((m) => m.WorkflowCinematicSection), {
+  ssr: true,
+  loading: () => <SectionFallback label="Cinematic" />,
+});
+
+const LiveAvatarDemoSection = dynamic(() => import("@/components/landing/LiveAvatarDemoSection").then((m) => m.LiveAvatarDemoSection), {
+  ssr: true,
+  loading: () => <SectionFallback label="Avatar Demo" />,
+});
+
+const PricingSection = dynamic(() => import("@/components/PricingSection").then((m) => m.PricingSection), {
+  ssr: true,
+  loading: () => <SectionFallback label="Pricing" />,
+});
+
+const CTABanner = dynamic(() => import("@/components/landing/CTABanner").then((m) => m.CTABanner), {
+  ssr: true,
+  loading: () => <SectionFallback label="CTA" />,
+});
 
 const PremiumAgentForm = dynamic(() => import("@/components/landing/PremiumAgentForm"), {
   ssr: false,
@@ -27,19 +59,48 @@ const CosmicSingularityBackground = dynamic(() => import("@/components/CosmicSin
 
 function SectionFallback({ label }: { label: string }) {
   return (
-    <div className="py-16 text-center">
-      <p className="text-gray-500 text-sm">[{label}] section loading failed.</p>
+    <div className="mx-auto max-w-6xl px-4 sm:px-6 py-14 md:py-16 text-center">
+      <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-5 py-10 backdrop-blur-sm">
+        <p className="text-cyan-100/50 text-xs uppercase tracking-[0.18em]">{label}</p>
+      </div>
     </div>
+  );
+}
+
+function LandingSection({ children }: { children: React.ReactNode }) {
+  return (
+    <section className="relative ag-slide-up" style={{ contentVisibility: "auto", containIntrinsicSize: "1px 900px" }}>
+      {children}
+    </section>
   );
 }
 
 export default function LandingPageClient() {
   const [showPremiumForm, setShowPremiumForm] = useState(false);
+  const [enableHeavyFx, setEnableHeavyFx] = useState(false);
   const { language: locale } = useLanguage();
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const screenMedia = window.matchMedia("(min-width: 768px)");
+    const motionMedia = window.matchMedia("(prefers-reduced-motion: reduce)");
+
+    const syncEffects = () => {
+      setEnableHeavyFx(screenMedia.matches && !motionMedia.matches);
+    };
+
+    syncEffects();
+    screenMedia.addEventListener("change", syncEffects);
+    motionMedia.addEventListener("change", syncEffects);
+    return () => {
+      screenMedia.removeEventListener("change", syncEffects);
+      motionMedia.removeEventListener("change", syncEffects);
+    };
+  }, []);
+
   return (
-    <div className="relative min-h-screen bg-transparent text-white overflow-hidden ag-noise">
-      <CosmicSingularityBackground />
+    <div className="relative min-h-screen bg-transparent text-white overflow-hidden ag-noise ag-neon-grid-lines">
+      {enableHeavyFx && <CosmicSingularityBackground />}
 
       {/* Color Overlay — warm cinematic grade */}
       <div
@@ -57,63 +118,86 @@ export default function LandingPageClient() {
 
       {/* Ambient glow orbs */}
       <div className="pointer-events-none absolute inset-0 z-[1]">
-        <div className="absolute top-[-150px] left-1/2 -translate-x-1/2 w-[900px] h-[450px] bg-cyan-500/[0.1] blur-[120px] rounded-full" />
-        <div className="absolute bottom-[20%] right-[-80px] w-[380px] h-[380px] bg-violet-500/[0.1] blur-[120px] rounded-full" />
-        <div className="absolute left-[-60px] top-[35%] w-[280px] h-[280px] rounded-full bg-blue-500/[0.09] blur-[120px]" />
+        <div className="absolute top-[-110px] left-1/2 -translate-x-1/2 w-[680px] h-[340px] sm:w-[900px] sm:h-[450px] bg-cyan-500/[0.08] sm:bg-cyan-500/[0.1] blur-[80px] sm:blur-[120px] rounded-full" />
+        <div className="hidden sm:block absolute bottom-[20%] right-[-80px] w-[380px] h-[380px] bg-violet-500/[0.1] blur-[120px] rounded-full" />
+        <div className="hidden md:block absolute left-[-60px] top-[35%] w-[280px] h-[280px] rounded-full bg-blue-500/[0.09] blur-[120px]" />
+      </div>
+
+      {/* Neon contour rails */}
+      <div className="pointer-events-none absolute inset-0 z-[2] opacity-70">
+        <div className="absolute inset-y-0 left-[6%] w-px bg-gradient-to-b from-transparent via-cyan-300/40 to-transparent" />
+        <div className="absolute inset-y-0 right-[6%] w-px bg-gradient-to-b from-transparent via-violet-300/40 to-transparent" />
+        <div className="absolute top-[14%] left-0 right-0 h-px bg-gradient-to-r from-transparent via-cyan-300/35 to-transparent" />
       </div>
 
       {/* Content */}
       <div className="relative z-10">
-        <ErrorBoundary fallback={<SectionFallback label="Hero" />}>
-          <HeroSection onPremiumClick={() => setShowPremiumForm(true)} />
-        </ErrorBoundary>
+        <LandingSection>
+          <ErrorBoundary fallback={<SectionFallback label="Hero" />}>
+            <HeroSection onPremiumClick={() => setShowPremiumForm(true)} />
+          </ErrorBoundary>
+        </LandingSection>
 
-        <ErrorBoundary fallback={<SectionFallback label="Stats" />}>
-          <StatsSection />
-        </ErrorBoundary>
-
-        <div className="ag-divider-strong mx-auto max-w-6xl opacity-50 sm:opacity-80" />
-
-        <ErrorBoundary fallback={<SectionFallback label="Orbit" />}>
-          <section className="relative pb-10 md:pb-14 px-4 sm:px-6">
-            <div className="mx-auto max-w-4xl text-center pt-10 md:pt-14">
-              <p className="text-[10px] uppercase tracking-[0.18em] text-cyan-200/70">Interactive AI Ecosystem</p>
-              <h2 className="mt-3 text-3xl md:text-5xl font-bold tracking-tight text-white">AI System Orbit</h2>
-              <p className="mt-3 text-sm md:text-base text-white/60">Core AI center with connected module nodes, live hover detail, and service entry points.</p>
-            </div>
-            <OrbitSolarSystem />
-          </section>
-        </ErrorBoundary>
+        <LandingSection>
+          <ErrorBoundary fallback={<SectionFallback label="Stats" />}>
+            <StatsSection />
+          </ErrorBoundary>
+        </LandingSection>
 
         <div className="ag-divider-strong mx-auto max-w-6xl opacity-50 sm:opacity-80" />
 
-        <ErrorBoundary fallback={<SectionFallback label="Features" />}>
-          <FeaturesShowcase />
-        </ErrorBoundary>
+        <LandingSection>
+          <ErrorBoundary fallback={<SectionFallback label="Orbit" />}>
+            <section className="relative pb-10 md:pb-14 px-4 sm:px-6">
+              <div className="mx-auto max-w-4xl text-center pt-10 md:pt-14">
+                <p className="text-[10px] uppercase tracking-[0.18em] text-cyan-200/70">Interactive AI Ecosystem</p>
+                <h2 className="mt-3 text-3xl md:text-5xl font-bold tracking-tight text-white">AI System Orbit</h2>
+                <p className="mt-3 text-sm md:text-base text-white/60">Core AI center with connected module nodes, live hover detail, and service entry points.</p>
+              </div>
+              <OrbitSolarSystem />
+            </section>
+          </ErrorBoundary>
+        </LandingSection>
 
         <div className="ag-divider-strong mx-auto max-w-6xl opacity-50 sm:opacity-80" />
 
-        <ErrorBoundary fallback={<SectionFallback label="Cinematic" />}>
-          <WorkflowCinematicSection />
-        </ErrorBoundary>
+        <LandingSection>
+          <ErrorBoundary fallback={<SectionFallback label="Features" />}>
+            <FeaturesShowcase />
+          </ErrorBoundary>
+        </LandingSection>
 
         <div className="ag-divider-strong mx-auto max-w-6xl opacity-50 sm:opacity-80" />
 
-        <ErrorBoundary fallback={<SectionFallback label="Avatar Demo" />}>
-          <LiveAvatarDemoSection />
-        </ErrorBoundary>
+        <LandingSection>
+          <ErrorBoundary fallback={<SectionFallback label="Cinematic" />}>
+            <WorkflowCinematicSection />
+          </ErrorBoundary>
+        </LandingSection>
 
         <div className="ag-divider-strong mx-auto max-w-6xl opacity-50 sm:opacity-80" />
 
-        <ErrorBoundary fallback={<SectionFallback label="Pricing" />}>
-          <PricingSection />
-        </ErrorBoundary>
+        <LandingSection>
+          <ErrorBoundary fallback={<SectionFallback label="Avatar Demo" />}>
+            <LiveAvatarDemoSection />
+          </ErrorBoundary>
+        </LandingSection>
 
         <div className="ag-divider-strong mx-auto max-w-6xl opacity-50 sm:opacity-80" />
 
-        <ErrorBoundary fallback={<SectionFallback label="CTA" />}>
-          <CTABanner />
-        </ErrorBoundary>
+        <LandingSection>
+          <ErrorBoundary fallback={<SectionFallback label="Pricing" />}>
+            <PricingSection />
+          </ErrorBoundary>
+        </LandingSection>
+
+        <div className="ag-divider-strong mx-auto max-w-6xl opacity-50 sm:opacity-80" />
+
+        <LandingSection>
+          <ErrorBoundary fallback={<SectionFallback label="CTA" />}>
+            <CTABanner />
+          </ErrorBoundary>
+        </LandingSection>
 
         {/* ═══ Footer ═══ */}
         <footer className="relative mt-12">
