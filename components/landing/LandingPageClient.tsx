@@ -78,7 +78,7 @@ export default function LandingPageClient() {
       <div
         className="pointer-events-none absolute inset-0 z-0 brightness-[1.22] contrast-[1.16] saturate-[1.22]"
         style={{
-          backgroundImage: "url('/brand/background-aurora-v2.svg?v=20260306e')",
+          backgroundImage: "url('/brand/gaga.jpg?v=20260307a')",
           backgroundSize: 'cover',
           backgroundPosition: 'center center',
           backgroundRepeat: 'no-repeat',

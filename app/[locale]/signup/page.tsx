@@ -64,7 +64,7 @@ export default function LocaleSignupPage() {
         <div
           className="pointer-events-none absolute inset-0 bg-cover bg-center opacity-64"
           style={{
-            backgroundImage: "url('/brand/background-aurora-v2.svg')",
+            backgroundImage: "url('/brand/gaga.jpg?v=20260307a')",
             backgroundSize: 'cover',
             backgroundPosition: 'center center',
             backgroundRepeat: 'no-repeat',
@@ -91,7 +91,7 @@ export default function LocaleSignupPage() {
       <div
         className="pointer-events-none absolute inset-0 bg-cover bg-center opacity-64"
         style={{
-          backgroundImage: "url('/brand/background-aurora-v2.svg')",
+          backgroundImage: "url('/brand/gaga.jpg?v=20260307a')",
           backgroundSize: 'cover',
           backgroundPosition: 'center center',
           backgroundRepeat: 'no-repeat',
