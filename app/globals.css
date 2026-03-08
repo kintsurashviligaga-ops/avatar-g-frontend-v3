@@ -107,6 +107,12 @@ button {
   transition: all 0.2s var(--ease-premium);
 }
 
+a,
+button,
+[role='button'] {
+  touch-action: manipulation;
+}
+
 input:not([type='checkbox']):not([type='radio']):not([type='range']),
 textarea,
 select {
@@ -532,6 +538,7 @@ a {
     content: '';
     position: absolute;
     inset: 0;
+    pointer-events: none;
     background: linear-gradient(110deg, transparent 0%, rgba(255,255,255,0.35) 45%, rgba(255,229,163,0.34) 52%, transparent 60%);
     transform: translateX(-130%);
     animation: agMetalFlow 9.8s linear infinite;

@@ -107,7 +107,7 @@ function SectionFallback({ label }: { label: string }) {
 
 function LandingSection({ children }: { children: React.ReactNode }) {
   return (
-    <section className="relative ag-slide-up py-1 md:py-2" style={{ contentVisibility: "auto", containIntrinsicSize: "1px 860px" }}>
+    <section className="relative ag-slide-up py-1 md:py-2">
       {children}
     </section>
   );

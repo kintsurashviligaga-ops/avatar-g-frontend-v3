@@ -2,7 +2,6 @@
 
 import React from 'react'
 import Image from 'next/image'
-import Link from 'next/link'
 
 interface BrandLogoProps {
   href?: string
@@ -46,9 +45,9 @@ export function BrandLogo({ href, size = 'md', showText = true, className = '' }
 
   if (href) {
     return (
-      <Link href={href} aria-label="MyAvatar.ge home" className="group flex-shrink-0 hover:opacity-90 transition-opacity">
+      <a href={href} aria-label="MyAvatar.ge home" className="group flex-shrink-0 hover:opacity-90 transition-opacity">
         {logo}
-      </Link>
+      </a>
     )
   }
 
