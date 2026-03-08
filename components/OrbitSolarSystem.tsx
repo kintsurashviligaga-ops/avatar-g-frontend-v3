@@ -163,11 +163,11 @@ export function OrbitSolarSystem() {
   }, [])
 
   return (
-    <section className="relative w-full py-20 md:py-32 overflow-hidden bg-transparent flex items-center justify-center min-h-[560px] md:min-h-[820px] max-md:[@media(orientation:landscape)]:min-h-[420px] pointer-events-none">
+    <section className="relative w-full py-20 md:py-32 overflow-hidden bg-transparent flex items-center justify-center min-h-[560px] md:min-h-[820px] max-md:[@media(orientation:landscape)]:min-h-[420px]">
       <style dangerouslySetInnerHTML={{ __html: ORBIT_CSS }} />
 
       {/* Container for Orbit visual elements */}
-      <div className="relative w-[320px] h-[320px] sm:w-[340px] sm:h-[340px] md:w-[600px] md:h-[600px] max-md:[@media(orientation:landscape)]:w-[300px] max-md:[@media(orientation:landscape)]:h-[300px] flex items-center justify-center pointer-events-auto">
+      <div className="relative w-[320px] h-[320px] sm:w-[340px] sm:h-[340px] md:w-[600px] md:h-[600px] max-md:[@media(orientation:landscape)]:w-[300px] max-md:[@media(orientation:landscape)]:h-[300px] flex items-center justify-center">
 
         <div className="pointer-events-none absolute inset-0 rounded-full bg-[radial-gradient(circle,rgba(6,182,212,0.14)_0%,rgba(6,182,212,0.04)_42%,transparent_68%)]" />
 
@@ -197,8 +197,8 @@ export function OrbitSolarSystem() {
         </div>
 
         {/* Outer Orbit Rings */}
-        <div className="absolute inset-0 rounded-full border border-white/30 shadow-[0_0_42px_rgba(255,255,255,0.16)] orbit-lux-frame" />
-        <div className="absolute inset-[15%] rounded-full border border-white/20 shadow-[0_0_26px_rgba(255,255,255,0.12)]" />
+        <div className="pointer-events-none absolute inset-0 rounded-full border border-white/30 shadow-[0_0_42px_rgba(255,255,255,0.16)] orbit-lux-frame" />
+        <div className="pointer-events-none absolute inset-[15%] rounded-full border border-white/20 shadow-[0_0_26px_rgba(255,255,255,0.12)]" />
 
         {/* Orbit Rotating Container */}
         <div className={`absolute inset-0 w-full h-full orbit-container ${isPaused ? 'orbit-paused' : 'orbit-running'}`}>

@@ -318,8 +318,8 @@ export default function CosmicSingularityBackground() {
 
   return (
     <div className='fixed inset-0 z-0 pointer-events-none'>
-      <canvas ref={canvasRef} className='block h-full w-full' />
-      <div className='absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_0%,rgba(2,6,16,0.26)_56%,rgba(0,0,0,0.5)_100%)]' />
+      <canvas ref={canvasRef} className='block h-full w-full pointer-events-none' />
+      <div className='absolute inset-0 pointer-events-none bg-[radial-gradient(ellipse_at_center,transparent_0%,rgba(2,6,16,0.26)_56%,rgba(0,0,0,0.5)_100%)]' />
     </div>
   )
 }

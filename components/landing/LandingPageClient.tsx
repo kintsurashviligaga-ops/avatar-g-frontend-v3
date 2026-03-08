@@ -403,7 +403,7 @@ export default function LandingPageClient() {
   }, []);
 
   return (
-    <div className="relative min-h-screen bg-transparent text-white overflow-hidden ag-noise ag-neon-grid-lines">
+    <div className="relative min-h-screen bg-transparent text-white overflow-x-hidden">
       {enableHeavyFx && <CosmicSingularityBackground />}
 
       {/* Color Overlay — warm cinematic grade */}
@@ -435,7 +435,7 @@ export default function LandingPageClient() {
       </div>
 
       {/* Content */}
-      <div className="relative z-10 pointer-events-auto">
+      <div className="relative pointer-events-auto" style={{ zIndex: 10 }}>
         <LandingSection>
           <ErrorBoundary fallback={<SectionFallback label="Hero" />}>
             <HeroSection onPremiumClick={() => setShowPremiumForm(true)} />

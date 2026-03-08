@@ -647,7 +647,6 @@ a {
 
   .ag-noise > * {
     position: relative;
-    z-index: 2;
   }
 
   .ag-noise::before {
@@ -670,7 +669,6 @@ a {
 
   .ag-silver-neon-overlay > * {
     position: relative;
-    z-index: 3;
   }
 
   .ag-silver-neon-overlay::after {
