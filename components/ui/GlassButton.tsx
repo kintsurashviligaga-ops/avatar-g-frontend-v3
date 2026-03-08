@@ -1,7 +1,6 @@
 'use client'
 
 import React from 'react'
-import Link from 'next/link'
 
 type Variant = 'primary' | 'secondary' | 'ghost'
 type Size = 'sm' | 'md' | 'lg'
@@ -49,9 +48,9 @@ export function GlassButton({
 
   if (href) {
     return (
-      <Link href={href} className={cls}>
+      <a href={href} className={cls}>
         {children}
-      </Link>
+      </a>
     )
   }
 

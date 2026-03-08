@@ -245,7 +245,8 @@ function OrbitNodeContent({ service, locale, isActive, onEnter, onLeave }: { ser
     <Link
       href={'/' + locale + '/services/' + service.slug}
       className={`orbit-node-shell group relative flex items-center justify-center rounded-full transition-all duration-300 z-30
-        ${isActive ? 'w-[4.4rem] h-[4.4rem] md:w-24 md:h-24 scale-[1.14]' : 'w-16 h-16 md:w-20 md:h-20 hover:scale-110'}
+        w-16 h-16 md:w-20 md:h-20
+        ${isActive ? 'scale-[1.14]' : 'hover:scale-110'}
         border border-white/30 backdrop-blur-md overflow-hidden
       `}
       style={{

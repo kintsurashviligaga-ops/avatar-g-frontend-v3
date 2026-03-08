@@ -1,7 +1,6 @@
 'use client'
 
 import { motion } from 'framer-motion'
-import Link from 'next/link'
 import { ArrowRight, Sparkles, Shield, Zap, PhoneCall } from 'lucide-react'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
 import { GlassButton } from '@/components/ui/GlassButton'
@@ -62,10 +61,9 @@ const containerVariants = {
 }
 
 const itemVariants = {
-  hidden: { opacity: 0, y: 24 },
+  hidden: { opacity: 0 },
   visible: {
     opacity: 1,
-    y: 0,
     transition: { duration: 0.7, ease: [0.16, 1, 0.3, 1] },
   },
 }
@@ -141,21 +139,20 @@ export function HeroSection({ onPremiumClick }: HeroSectionProps) {
             <ArrowRight className="w-4 h-4" />
           </GlassButton>
 
-          <Link
+          <a
             href={'/' + (language || 'ka') + '/services'}
             className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-8 py-4 rounded-2xl border border-white/[0.16] text-white/75 font-medium text-sm hover:bg-white/[0.08] hover:border-white/[0.24] hover:text-white transition-all duration-300 backdrop-blur-sm"
           >
             {text.secondary}
-          </Link>
+          </a>
 
-          <Link
+          <a
             href={'/' + (language || 'ka') + '/services/agent-g'}
-            onClick={(e) => { if (onPremiumClick) { e.preventDefault(); onPremiumClick(); } }}
             className="w-full sm:w-auto group relative inline-flex items-center justify-center gap-2.5 px-7 py-4 rounded-2xl border border-cyan-400/25 bg-gradient-to-r from-cyan-500/15 via-blue-500/10 to-violet-500/15 text-cyan-100 font-semibold text-sm shadow-[0_0_24px_rgba(34,211,238,0.15)] hover:shadow-[0_0_40px_rgba(34,211,238,0.25)] hover:border-cyan-400/40 transition-all duration-300"
           >
             <PhoneCall className="w-4 h-4 text-cyan-300 group-hover:text-cyan-200 transition-colors" />
             {text.agent}
-          </Link>
+          </a>
         </motion.div>
       </motion.div>
 
