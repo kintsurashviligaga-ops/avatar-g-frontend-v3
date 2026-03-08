@@ -1,28 +1,27 @@
-'use client'
+﻿'use client'
 
 import React, { useState, useEffect } from 'react'
 import { Brain, Sparkles, Video, Music, Image as ImageIcon, MessageSquare, Bot, Cpu, Monitor, Zap, LayoutTemplate, PenTool, Database, Users, Mic, Layers, type LucideIcon } from 'lucide-react'
-import Link from 'next/link'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
 
-/* ── Slug map: use SHORT slugs that match app/[locale]/services/[slug]/page.tsx ── */
+/* â”€â”€ Slug map: use SHORT slugs that match app/[locale]/services/[slug]/page.tsx â”€â”€ */
 const ORBIT_SERVICES = [
-  { id: 'video', label: { ka: 'ვიდეო სტუდია', en: 'Video Studio', ru: 'Видеостудия' }, description: { ka: 'კინემატიკური ვიდეო გენერაცია', en: 'Cinematic video generation', ru: 'Кинематографичная генерация видео' }, icon: Video, color: '#3b82f6', slug: 'video' },
-  { id: 'music', label: { ka: 'მუსიკის სტუდია', en: 'Music Studio', ru: 'Музстудия' }, description: { ka: 'ბითები, ვოკალი, მასტერინგი', en: 'Beats, vocals, mastering', ru: 'Биты, вокал и мастеринг' }, icon: Music, color: '#8b5cf6', slug: 'music' },
-  { id: 'photo', label: { ka: 'ფოტო სტუდია', en: 'Photo Studio', ru: 'Фотостудия' }, description: { ka: 'რეტუში და batch დამუშავება', en: 'Retouch and batch processing', ru: 'Ретушь и пакетная обработка' }, icon: ImageIcon, color: '#ec4899', slug: 'photo' },
-  { id: 'image', label: { ka: 'სურათების შექმნა', en: 'Image Creator', ru: 'Генератор' }, description: { ka: 'პოსტერები და რეკლამები', en: 'Posters and ad creatives', ru: 'Постеры и рекламные креативы' }, icon: PenTool, color: '#f43f5e', slug: 'image' },
-  { id: 'editing', label: { ka: 'ვიდეო რედაქტირება', en: 'Video Editing', ru: 'Редактор' }, description: { ka: 'AI მონტაჟი და subtitle', en: 'AI editing and subtitles', ru: 'AI-монтаж и субтитры' }, icon: Users, color: '#f59e0b', slug: 'editing' },
-  { id: 'agent-g', label: { ka: 'აგენტი G', en: 'Agent G', ru: 'Агент G' }, description: { ka: 'კოორდინაციის მთავარი აგენტი', en: 'Primary coordination agent', ru: 'Главный агент координации' }, icon: Bot, color: '#06b6d4', slug: 'agent-g' },
-  { id: 'text', label: { ka: 'ტექსტის გენერაცია', en: 'Text AI', ru: 'Текст AI' }, description: { ka: 'რეკლამა, SEO და კონტენტი', en: 'Ads, SEO and content', ru: 'Реклама, SEO и контент' }, icon: MessageSquare, color: '#6366f1', slug: 'text' },
-  { id: 'workflow', label: { ka: 'ავტომატიზაცია', en: 'Workflows', ru: 'Процессы' }, description: { ka: 'პროცესების ავტომატიზაცია', en: 'Pipeline automation', ru: 'Автоматизация процессов' }, icon: Zap, color: '#eab308', slug: 'workflow' },
-  { id: 'prompt', label: { ka: 'პრომპტ ბილდერი', en: 'Prompt Builder', ru: 'Промпт' }, description: { ka: 'სტაბილური prompt სისტემები', en: 'Reusable prompt systems', ru: 'Переиспользуемые промпты' }, icon: Database, color: '#0ea5e9', slug: 'prompt' },
-  { id: 'visual-intel', label: { ka: 'ვიზუალური AI', en: 'Visual Intel', ru: 'Визуальный AI' }, description: { ka: 'ვიზუალების ანალიზი', en: 'Visual quality analysis', ru: 'Анализ визуального качества' }, icon: Cpu, color: '#d946ef', slug: 'visual-intel' },
-  { id: 'media', label: { ka: 'მედია პროდუქცია', en: 'Media', ru: 'Медиа' }, description: { ka: 'სრული კამპანიის პაკეტი', en: 'Full campaign pack', ru: 'Полный пакет кампании' }, icon: Monitor, color: '#84cc16', slug: 'media' },
-  { id: 'software', label: { ka: 'პროგრამირება', en: 'Software', ru: 'Софт' }, description: { ka: 'აპების/საიტების შექმნა', en: 'Build apps and sites', ru: 'Создание приложений и сайтов' }, icon: LayoutTemplate, color: '#f97316', slug: 'software' },
-  { id: 'business', label: { ka: 'ბიზნესი', en: 'Business', ru: 'Бизнес' }, description: { ka: 'სტრატეგია და CRM', en: 'Strategy and CRM flows', ru: 'Стратегия и CRM-процессы' }, icon: Layers, color: '#14b8a6', slug: 'business' },
-  { id: 'tourism', label: { ka: 'ტურიზმი', en: 'Tourism', ru: 'Туризм' }, description: { ka: 'მოგზაურობის AI გეგმები', en: 'AI travel planning', ru: 'AI-планирование путешествий' }, icon: Mic, color: '#10b981', slug: 'tourism' },
-  { id: 'avatar', label: { ka: 'ავატარი', en: 'Avatar', ru: 'Аватар' }, description: { ka: 'ციფრული იდენტობის შექმნა', en: 'Digital identity creation', ru: 'Создание цифровой идентичности' }, icon: Brain, color: '#64748b', slug: 'avatar' },
-  { id: 'shop', label: { ka: 'მაღაზია', en: 'Shop', ru: 'Магазин' }, description: { ka: 'მონეტიზაცია და გაყიდვები', en: 'Monetization and storefront', ru: 'Монетизация и витрина' }, icon: Sparkles, color: '#f43f5e', slug: 'shop' },
+  { id: 'video', label: { ka: 'áƒ•áƒ˜áƒ“áƒ”áƒ áƒ¡áƒ¢áƒ£áƒ“áƒ˜áƒ', en: 'Video Studio', ru: 'Ð’Ð¸Ð´ÐµÐ¾ÑÑ‚ÑƒÐ´Ð¸Ñ' }, description: { ka: 'áƒ™áƒ˜áƒœáƒ”áƒ›áƒáƒ¢áƒ˜áƒ™áƒ£áƒ áƒ˜ áƒ•áƒ˜áƒ“áƒ”áƒ áƒ’áƒ”áƒœáƒ”áƒ áƒáƒªáƒ˜áƒ', en: 'Cinematic video generation', ru: 'ÐšÐ¸Ð½ÐµÐ¼Ð°Ñ‚Ð¾Ð³Ñ€Ð°Ñ„Ð¸Ñ‡Ð½Ð°Ñ Ð³ÐµÐ½ÐµÑ€Ð°Ñ†Ð¸Ñ Ð²Ð¸Ð´ÐµÐ¾' }, icon: Video, color: '#3b82f6', slug: 'video' },
+  { id: 'music', label: { ka: 'áƒ›áƒ£áƒ¡áƒ˜áƒ™áƒ˜áƒ¡ áƒ¡áƒ¢áƒ£áƒ“áƒ˜áƒ', en: 'Music Studio', ru: 'ÐœÑƒÐ·ÑÑ‚ÑƒÐ´Ð¸Ñ' }, description: { ka: 'áƒ‘áƒ˜áƒ—áƒ”áƒ‘áƒ˜, áƒ•áƒáƒ™áƒáƒšáƒ˜, áƒ›áƒáƒ¡áƒ¢áƒ”áƒ áƒ˜áƒœáƒ’áƒ˜', en: 'Beats, vocals, mastering', ru: 'Ð‘Ð¸Ñ‚Ñ‹, Ð²Ð¾ÐºÐ°Ð» Ð¸ Ð¼Ð°ÑÑ‚ÐµÑ€Ð¸Ð½Ð³' }, icon: Music, color: '#8b5cf6', slug: 'music' },
+  { id: 'photo', label: { ka: 'áƒ¤áƒáƒ¢áƒ áƒ¡áƒ¢áƒ£áƒ“áƒ˜áƒ', en: 'Photo Studio', ru: 'Ð¤Ð¾Ñ‚Ð¾ÑÑ‚ÑƒÐ´Ð¸Ñ' }, description: { ka: 'áƒ áƒ”áƒ¢áƒ£áƒ¨áƒ˜ áƒ“áƒ batch áƒ“áƒáƒ›áƒ£áƒ¨áƒáƒ•áƒ”áƒ‘áƒ', en: 'Retouch and batch processing', ru: 'Ð ÐµÑ‚ÑƒÑˆÑŒ Ð¸ Ð¿Ð°ÐºÐµÑ‚Ð½Ð°Ñ Ð¾Ð±Ñ€Ð°Ð±Ð¾Ñ‚ÐºÐ°' }, icon: ImageIcon, color: '#ec4899', slug: 'photo' },
+  { id: 'image', label: { ka: 'áƒ¡áƒ£áƒ áƒáƒ—áƒ”áƒ‘áƒ˜áƒ¡ áƒ¨áƒ”áƒ¥áƒ›áƒœáƒ', en: 'Image Creator', ru: 'Ð“ÐµÐ½ÐµÑ€Ð°Ñ‚Ð¾Ñ€' }, description: { ka: 'áƒžáƒáƒ¡áƒ¢áƒ”áƒ áƒ”áƒ‘áƒ˜ áƒ“áƒ áƒ áƒ”áƒ™áƒšáƒáƒ›áƒ”áƒ‘áƒ˜', en: 'Posters and ad creatives', ru: 'ÐŸÐ¾ÑÑ‚ÐµÑ€Ñ‹ Ð¸ Ñ€ÐµÐºÐ»Ð°Ð¼Ð½Ñ‹Ðµ ÐºÑ€ÐµÐ°Ñ‚Ð¸Ð²Ñ‹' }, icon: PenTool, color: '#f43f5e', slug: 'image' },
+  { id: 'editing', label: { ka: 'áƒ•áƒ˜áƒ“áƒ”áƒ áƒ áƒ”áƒ“áƒáƒ¥áƒ¢áƒ˜áƒ áƒ”áƒ‘áƒ', en: 'Video Editing', ru: 'Ð ÐµÐ´Ð°ÐºÑ‚Ð¾Ñ€' }, description: { ka: 'AI áƒ›áƒáƒœáƒ¢áƒáƒŸáƒ˜ áƒ“áƒ subtitle', en: 'AI editing and subtitles', ru: 'AI-Ð¼Ð¾Ð½Ñ‚Ð°Ð¶ Ð¸ ÑÑƒÐ±Ñ‚Ð¸Ñ‚Ñ€Ñ‹' }, icon: Users, color: '#f59e0b', slug: 'editing' },
+  { id: 'agent-g', label: { ka: 'áƒáƒ’áƒ”áƒœáƒ¢áƒ˜ G', en: 'Agent G', ru: 'ÐÐ³ÐµÐ½Ñ‚ G' }, description: { ka: 'áƒ™áƒáƒáƒ áƒ“áƒ˜áƒœáƒáƒªáƒ˜áƒ˜áƒ¡ áƒ›áƒ—áƒáƒ•áƒáƒ áƒ˜ áƒáƒ’áƒ”áƒœáƒ¢áƒ˜', en: 'Primary coordination agent', ru: 'Ð“Ð»Ð°Ð²Ð½Ñ‹Ð¹ Ð°Ð³ÐµÐ½Ñ‚ ÐºÐ¾Ð¾Ñ€Ð´Ð¸Ð½Ð°Ñ†Ð¸Ð¸' }, icon: Bot, color: '#06b6d4', slug: 'agent-g' },
+  { id: 'text', label: { ka: 'áƒ¢áƒ”áƒ¥áƒ¡áƒ¢áƒ˜áƒ¡ áƒ’áƒ”áƒœáƒ”áƒ áƒáƒªáƒ˜áƒ', en: 'Text AI', ru: 'Ð¢ÐµÐºÑÑ‚ AI' }, description: { ka: 'áƒ áƒ”áƒ™áƒšáƒáƒ›áƒ, SEO áƒ“áƒ áƒ™áƒáƒœáƒ¢áƒ”áƒœáƒ¢áƒ˜', en: 'Ads, SEO and content', ru: 'Ð ÐµÐºÐ»Ð°Ð¼Ð°, SEO Ð¸ ÐºÐ¾Ð½Ñ‚ÐµÐ½Ñ‚' }, icon: MessageSquare, color: '#6366f1', slug: 'text' },
+  { id: 'workflow', label: { ka: 'áƒáƒ•áƒ¢áƒáƒ›áƒáƒ¢áƒ˜áƒ–áƒáƒªáƒ˜áƒ', en: 'Workflows', ru: 'ÐŸÑ€Ð¾Ñ†ÐµÑÑÑ‹' }, description: { ka: 'áƒžáƒ áƒáƒªáƒ”áƒ¡áƒ”áƒ‘áƒ˜áƒ¡ áƒáƒ•áƒ¢áƒáƒ›áƒáƒ¢áƒ˜áƒ–áƒáƒªáƒ˜áƒ', en: 'Pipeline automation', ru: 'ÐÐ²Ñ‚Ð¾Ð¼Ð°Ñ‚Ð¸Ð·Ð°Ñ†Ð¸Ñ Ð¿Ñ€Ð¾Ñ†ÐµÑÑÐ¾Ð²' }, icon: Zap, color: '#eab308', slug: 'workflow' },
+  { id: 'prompt', label: { ka: 'áƒžáƒ áƒáƒ›áƒžáƒ¢ áƒ‘áƒ˜áƒšáƒ“áƒ”áƒ áƒ˜', en: 'Prompt Builder', ru: 'ÐŸÑ€Ð¾Ð¼Ð¿Ñ‚' }, description: { ka: 'áƒ¡áƒ¢áƒáƒ‘áƒ˜áƒšáƒ£áƒ áƒ˜ prompt áƒ¡áƒ˜áƒ¡áƒ¢áƒ”áƒ›áƒ”áƒ‘áƒ˜', en: 'Reusable prompt systems', ru: 'ÐŸÐµÑ€ÐµÐ¸ÑÐ¿Ð¾Ð»ÑŒÐ·ÑƒÐµÐ¼Ñ‹Ðµ Ð¿Ñ€Ð¾Ð¼Ð¿Ñ‚Ñ‹' }, icon: Database, color: '#0ea5e9', slug: 'prompt' },
+  { id: 'visual-intel', label: { ka: 'áƒ•áƒ˜áƒ–áƒ£áƒáƒšáƒ£áƒ áƒ˜ AI', en: 'Visual Intel', ru: 'Ð’Ð¸Ð·ÑƒÐ°Ð»ÑŒÐ½Ñ‹Ð¹ AI' }, description: { ka: 'áƒ•áƒ˜áƒ–áƒ£áƒáƒšáƒ”áƒ‘áƒ˜áƒ¡ áƒáƒœáƒáƒšáƒ˜áƒ–áƒ˜', en: 'Visual quality analysis', ru: 'ÐÐ½Ð°Ð»Ð¸Ð· Ð²Ð¸Ð·ÑƒÐ°Ð»ÑŒÐ½Ð¾Ð³Ð¾ ÐºÐ°Ñ‡ÐµÑÑ‚Ð²Ð°' }, icon: Cpu, color: '#d946ef', slug: 'visual-intel' },
+  { id: 'media', label: { ka: 'áƒ›áƒ”áƒ“áƒ˜áƒ áƒžáƒ áƒáƒ“áƒ£áƒ¥áƒªáƒ˜áƒ', en: 'Media', ru: 'ÐœÐµÐ´Ð¸Ð°' }, description: { ka: 'áƒ¡áƒ áƒ£áƒšáƒ˜ áƒ™áƒáƒ›áƒžáƒáƒœáƒ˜áƒ˜áƒ¡ áƒžáƒáƒ™áƒ”áƒ¢áƒ˜', en: 'Full campaign pack', ru: 'ÐŸÐ¾Ð»Ð½Ñ‹Ð¹ Ð¿Ð°ÐºÐµÑ‚ ÐºÐ°Ð¼Ð¿Ð°Ð½Ð¸Ð¸' }, icon: Monitor, color: '#84cc16', slug: 'media' },
+  { id: 'software', label: { ka: 'áƒžáƒ áƒáƒ’áƒ áƒáƒ›áƒ˜áƒ áƒ”áƒ‘áƒ', en: 'Software', ru: 'Ð¡Ð¾Ñ„Ñ‚' }, description: { ka: 'áƒáƒžáƒ”áƒ‘áƒ˜áƒ¡/áƒ¡áƒáƒ˜áƒ¢áƒ”áƒ‘áƒ˜áƒ¡ áƒ¨áƒ”áƒ¥áƒ›áƒœáƒ', en: 'Build apps and sites', ru: 'Ð¡Ð¾Ð·Ð´Ð°Ð½Ð¸Ðµ Ð¿Ñ€Ð¸Ð»Ð¾Ð¶ÐµÐ½Ð¸Ð¹ Ð¸ ÑÐ°Ð¹Ñ‚Ð¾Ð²' }, icon: LayoutTemplate, color: '#f97316', slug: 'software' },
+  { id: 'business', label: { ka: 'áƒ‘áƒ˜áƒ–áƒœáƒ”áƒ¡áƒ˜', en: 'Business', ru: 'Ð‘Ð¸Ð·Ð½ÐµÑ' }, description: { ka: 'áƒ¡áƒ¢áƒ áƒáƒ¢áƒ”áƒ’áƒ˜áƒ áƒ“áƒ CRM', en: 'Strategy and CRM flows', ru: 'Ð¡Ñ‚Ñ€Ð°Ñ‚ÐµÐ³Ð¸Ñ Ð¸ CRM-Ð¿Ñ€Ð¾Ñ†ÐµÑÑÑ‹' }, icon: Layers, color: '#14b8a6', slug: 'business' },
+  { id: 'tourism', label: { ka: 'áƒ¢áƒ£áƒ áƒ˜áƒ–áƒ›áƒ˜', en: 'Tourism', ru: 'Ð¢ÑƒÑ€Ð¸Ð·Ð¼' }, description: { ka: 'áƒ›áƒáƒ’áƒ–áƒáƒ£áƒ áƒáƒ‘áƒ˜áƒ¡ AI áƒ’áƒ”áƒ’áƒ›áƒ”áƒ‘áƒ˜', en: 'AI travel planning', ru: 'AI-Ð¿Ð»Ð°Ð½Ð¸Ñ€Ð¾Ð²Ð°Ð½Ð¸Ðµ Ð¿ÑƒÑ‚ÐµÑˆÐµÑÑ‚Ð²Ð¸Ð¹' }, icon: Mic, color: '#10b981', slug: 'tourism' },
+  { id: 'avatar', label: { ka: 'áƒáƒ•áƒáƒ¢áƒáƒ áƒ˜', en: 'Avatar', ru: 'ÐÐ²Ð°Ñ‚Ð°Ñ€' }, description: { ka: 'áƒªáƒ˜áƒ¤áƒ áƒ£áƒšáƒ˜ áƒ˜áƒ“áƒ”áƒœáƒ¢áƒáƒ‘áƒ˜áƒ¡ áƒ¨áƒ”áƒ¥áƒ›áƒœáƒ', en: 'Digital identity creation', ru: 'Ð¡Ð¾Ð·Ð´Ð°Ð½Ð¸Ðµ Ñ†Ð¸Ñ„Ñ€Ð¾Ð²Ð¾Ð¹ Ð¸Ð´ÐµÐ½Ñ‚Ð¸Ñ‡Ð½Ð¾ÑÑ‚Ð¸' }, icon: Brain, color: '#64748b', slug: 'avatar' },
+  { id: 'shop', label: { ka: 'áƒ›áƒáƒ¦áƒáƒ–áƒ˜áƒ', en: 'Shop', ru: 'ÐœÐ°Ð³Ð°Ð·Ð¸Ð½' }, description: { ka: 'áƒ›áƒáƒœáƒ”áƒ¢áƒ˜áƒ–áƒáƒªáƒ˜áƒ áƒ“áƒ áƒ’áƒáƒ§áƒ˜áƒ“áƒ•áƒ”áƒ‘áƒ˜', en: 'Monetization and storefront', ru: 'ÐœÐ¾Ð½ÐµÑ‚Ð¸Ð·Ð°Ñ†Ð¸Ñ Ð¸ Ð²Ð¸Ñ‚Ñ€Ð¸Ð½Ð°' }, icon: Sparkles, color: '#f43f5e', slug: 'shop' },
 ]
 
 interface OrbitService {
@@ -108,11 +107,10 @@ const ORBIT_CSS = `
 `
 
 export function OrbitSolarSystem() {
-  const [activeId, setActiveId] = useState<string | null>(null)
+  const [isPaused, setIsPaused] = useState(false)
   const [radius, setRadius] = useState(165)
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
   const { language: locale } = useLanguage()
-  const isPaused = activeId !== null
   const total = ORBIT_SERVICES.length
 
   useEffect(() => {
@@ -129,31 +127,18 @@ export function OrbitSolarSystem() {
   }, [])
 
   useEffect(() => {
-    // Check for generated avatar in localStorage
     try {
       const storedUrl = localStorage.getItem('GENERATED_AVATAR_URL')
-      if (storedUrl) {
-        setAvatarUrl(storedUrl)
-      }
-    } catch {
-      // Ignore localStorage errors
-    }
+      if (storedUrl) setAvatarUrl(storedUrl)
+    } catch { /* ignore */ }
 
-    // Listen for storage events from other tabs/windows
     const handleStorage = (e: StorageEvent) => {
-      if (e.key === 'GENERATED_AVATAR_URL') {
-        setAvatarUrl(e.newValue)
-      }
+      if (e.key === 'GENERATED_AVATAR_URL') setAvatarUrl(e.newValue)
     }
-
     const handleAvatarUpdate = (event: Event) => {
-      const customEvent = event as CustomEvent<{ url?: string }>
-      const nextUrl = customEvent.detail?.url
-      if (nextUrl) {
-        setAvatarUrl(nextUrl)
-      }
+      const url = (event as CustomEvent<{ url?: string }>).detail?.url
+      if (url) setAvatarUrl(url)
     }
-
     window.addEventListener('storage', handleStorage)
     window.addEventListener('generated-avatar-updated', handleAvatarUpdate)
     return () => {
@@ -166,23 +151,17 @@ export function OrbitSolarSystem() {
     <section className="relative w-full py-20 md:py-32 overflow-hidden bg-transparent flex items-center justify-center min-h-[560px] md:min-h-[820px] max-md:[@media(orientation:landscape)]:min-h-[420px]">
       <style dangerouslySetInnerHTML={{ __html: ORBIT_CSS }} />
 
-      {/* Container for Orbit visual elements */}
       <div className="relative w-[320px] h-[320px] sm:w-[340px] sm:h-[340px] md:w-[600px] md:h-[600px] max-md:[@media(orientation:landscape)]:w-[300px] max-md:[@media(orientation:landscape)]:h-[300px] flex items-center justify-center">
 
         <div className="pointer-events-none absolute inset-0 rounded-full bg-[radial-gradient(circle,rgba(6,182,212,0.14)_0%,rgba(6,182,212,0.04)_42%,transparent_68%)]" />
 
         {/* Core Center */}
-        <div className="absolute z-20 flex flex-col items-center justify-center select-none">
+        <div className="absolute z-20 flex flex-col items-center justify-center select-none pointer-events-none">
           <div className="orbit-avatar-stage relative w-28 h-36 md:w-44 md:h-56 rounded-[40%] border border-white/15 bg-black/25 shadow-[0_0_40px_rgba(6,182,212,0.15)] flex items-center justify-center backdrop-blur-sm overflow-hidden">
             {avatarUrl ? (
               <div className="orbit-avatar-turn absolute inset-0 flex items-center justify-center px-1.5 md:px-2">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={avatarUrl}
-                  alt="Generated Avatar"
-                  className="w-full h-full object-contain"
-                  onError={() => setAvatarUrl(null)}
-                />
+                <img src={avatarUrl} alt="Generated Avatar" className="w-full h-full object-contain" onError={() => setAvatarUrl(null)} />
               </div>
             ) : (
               <Brain className="w-10 h-10 md:w-12 md:h-12 text-cyan-400 drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]" />
@@ -192,7 +171,7 @@ export function OrbitSolarSystem() {
           </div>
           <div className="mt-3 text-center">
             <h3 className="text-white font-bold text-lg md:text-xl tracking-tight drop-shadow-lg" style={{ textShadow: '0 2px 4px rgba(0,0,0,0.8)' }}>{avatarUrl ? 'Your Avatar' : 'Core AI'}</h3>
-            <p className="text-cyan-400/80 text-xs md:text-sm font-medium drop-shadow-md">{avatarUrl ? (locale === 'ka' ? 'შენი ციფრული იდენტობა' : locale === 'ru' ? 'Твоя цифровая идентичность' : 'Your digital identity') : 'შენი ციფრული იდენტობა'}</p>
+            <p className="text-cyan-400/80 text-xs md:text-sm font-medium drop-shadow-md">{avatarUrl ? (locale === 'ka' ? 'áƒ¨áƒ”áƒœáƒ˜ áƒªáƒ˜áƒ¤áƒ áƒ£áƒšáƒ˜ áƒ˜áƒ“áƒ”áƒœáƒ¢áƒáƒ‘áƒ' : locale === 'ru' ? 'Ð¢Ð²Ð¾Ñ Ñ†Ð¸Ñ„Ñ€Ð¾Ð²Ð°Ñ Ð¸Ð´ÐµÐ½Ñ‚Ð¸Ñ‡Ð½Ð¾ÑÑ‚ÑŒ' : 'Your digital identity') : 'áƒ¨áƒ”áƒœáƒ˜ áƒªáƒ˜áƒ¤áƒ áƒ£áƒšáƒ˜ áƒ˜áƒ“áƒ”áƒœáƒ¢áƒáƒ‘áƒ'}</p>
           </div>
         </div>
 
@@ -200,8 +179,12 @@ export function OrbitSolarSystem() {
         <div className="pointer-events-none absolute inset-0 rounded-full border border-white/30 shadow-[0_0_42px_rgba(255,255,255,0.16)] orbit-lux-frame" />
         <div className="pointer-events-none absolute inset-[15%] rounded-full border border-white/20 shadow-[0_0_26px_rgba(255,255,255,0.12)]" />
 
-        {/* Orbit Rotating Container */}
-        <div className={`absolute inset-0 w-full h-full orbit-container ${isPaused ? 'orbit-paused' : 'orbit-running'}`}>
+        {/* Orbit Rotating Container â€” pause on hover at container level only */}
+        <div
+          className={`absolute inset-0 w-full h-full orbit-container ${isPaused ? 'orbit-paused' : 'orbit-running'}`}
+          onMouseEnter={() => setIsPaused(true)}
+          onMouseLeave={() => setIsPaused(false)}
+        >
           {ORBIT_SERVICES.map((service, i) => {
             const angle = (360 / total) * i
             const rad = (angle * Math.PI) / 180
@@ -212,18 +195,10 @@ export function OrbitSolarSystem() {
               <div
                 key={service.id}
                 className="absolute top-1/2 left-1/2"
-                style={{
-                  transform: `translate(${x - 28}px, ${y - 28}px)`,
-                }}
+                style={{ transform: `translate(${x - 28}px, ${y - 28}px)` }}
               >
                 <div className={`orbit-item-counter flex items-center justify-center ${isPaused ? 'orbit-paused' : 'orbit-running'}`}>
-                  <OrbitNodeContent
-                    service={service}
-                    locale={locale || 'ka'}
-                    isActive={activeId === service.id}
-                    onEnter={() => setActiveId(service.id)}
-                    onLeave={() => setActiveId(null)}
-                  />
+                  <OrbitNodeContent service={service} locale={locale || 'ka'} />
                 </div>
               </div>
             )
@@ -234,35 +209,32 @@ export function OrbitSolarSystem() {
   )
 }
 
-function OrbitNodeContent({ service, locale, isActive, onEnter, onLeave }: { service: OrbitService; locale: string; isActive: boolean; onEnter: () => void; onLeave: () => void }) {
+function OrbitNodeContent({ service, locale }: { service: OrbitService; locale: string }) {
   const Icon = service.icon
   const displayLabel = service.label[locale] || service.label.ka
   const displayDescription = service.description[locale] || service.description.ka
-  const openLabel = locale === 'ka' ? 'სერვისის გახსნა' : locale === 'ru' ? 'Открыть сервис' : 'Open service'
+  const openLabel = locale === 'ka' ? 'áƒ¡áƒ”áƒ áƒ•áƒ˜áƒ¡áƒ˜áƒ¡ áƒ’áƒáƒ®áƒ¡áƒœáƒ' : locale === 'ru' ? 'ÐžÑ‚ÐºÑ€Ñ‹Ñ‚ÑŒ ÑÐµÑ€Ð²Ð¸Ñ' : 'Open service'
   const accent = service.color
   const microCode = service.id.slice(0, 2).toUpperCase()
+
   return (
-    <Link
+    <a
       href={'/' + locale + '/services/' + service.slug}
-      className={`orbit-node-shell group relative flex items-center justify-center rounded-full transition-all duration-300 z-30
+      className="orbit-node-shell group relative flex items-center justify-center rounded-full transition-all duration-300 z-30
         w-16 h-16 md:w-20 md:h-20
-        ${isActive ? 'scale-[1.14]' : 'hover:scale-110'}
+        hover:scale-110
         border border-white/30 backdrop-blur-md overflow-hidden
-      `}
+      "
       style={{
         background: `radial-gradient(circle at 28% 24%, rgba(255,255,255,0.7), rgba(255,255,255,0.08) 38%, ${accent}4a 84%), linear-gradient(150deg, rgba(10,20,40,0.78), rgba(4,10,24,0.86))`,
-        boxShadow: isActive
-          ? `0 0 0 1px rgba(255,255,255,0.32), 0 0 28px rgba(255,255,255,0.24), 0 0 30px ${accent}99, 0 0 64px ${accent}59, inset 0 2px 12px rgba(255,255,255,0.3)`
-          : `0 0 0 1px rgba(255,255,255,0.2), 0 0 16px rgba(255,255,255,0.14), 0 0 16px ${accent}66, 0 0 32px ${accent}33, inset 0 2px 8px rgba(255,255,255,0.14)`,
+        boxShadow: `0 0 0 1px rgba(255,255,255,0.2), 0 0 16px rgba(255,255,255,0.14), 0 0 16px ${accent}66, 0 0 32px ${accent}33, inset 0 2px 8px rgba(255,255,255,0.14)`,
       }}
-      onMouseEnter={onEnter}
-      onMouseLeave={onLeave}
       aria-label={displayLabel}
     >
       <span className="absolute inset-[3px] rounded-full border border-white/30" />
       <span className="absolute inset-0 rounded-full border border-white/30 shadow-[0_0_18px_rgba(255,255,255,0.22)] orbit-lux-frame" />
       <span
-        className={`absolute inset-[-16%] rounded-full orbit-node-active-glow ${isActive ? 'opacity-100' : 'opacity-35'}`}
+        className="absolute inset-[-16%] rounded-full orbit-node-active-glow opacity-35 group-hover:opacity-100 transition-opacity duration-300"
         style={{ background: `radial-gradient(circle, ${accent}66 0%, transparent 62%)` }}
       />
       <span className="absolute inset-[8%] rounded-full border border-white/20 border-dashed orbit-node-chip" />
@@ -275,17 +247,16 @@ function OrbitNodeContent({ service, locale, isActive, onEnter, onLeave }: { ser
         className="relative z-10 flex h-[56%] w-[56%] items-center justify-center rounded-full border border-white/30 bg-black/30"
         style={{ boxShadow: `inset 0 0 14px ${accent}44, 0 0 14px ${accent}44` }}
       >
-      <Icon
-        className={`w-6 h-6 md:w-7 md:h-7 transition-colors ${isActive ? 'text-white' : 'text-white/85 group-hover:text-white'}`}
-        style={{ color: isActive ? accent : undefined }}
-      />
+        <Icon className="w-6 h-6 md:w-7 md:h-7 text-white/85 group-hover:text-white transition-colors" />
       </div>
 
-      {/* Tooltip */}
+      {/* Tooltip â€” pure CSS hover via group-hover, no JS state */}
       <div
-        className={`absolute top-full mt-4 left-1/2 -translate-x-1/2 w-[220px] sm:w-[252px] px-4 py-3 rounded-2xl bg-[#0b1020]/95 border border-white/30 text-white shadow-2xl backdrop-blur-xl transition-all duration-200 z-50
-          ${isActive ? 'opacity-100 translate-y-0 visible' : 'opacity-0 translate-y-2 invisible'}
-        `}
+        className="absolute top-full mt-4 left-1/2 -translate-x-1/2 w-[220px] sm:w-[252px] px-4 py-3 rounded-2xl bg-[#0b1020]/95 border border-white/30 text-white shadow-2xl backdrop-blur-xl
+          opacity-0 translate-y-2 invisible
+          group-hover:opacity-100 group-hover:translate-y-0 group-hover:visible
+          transition-all duration-200 z-50
+        "
         style={{ boxShadow: '0 0 0 1px rgba(255,255,255,0.22), 0 0 26px rgba(255,255,255,0.18), 0 30px 60px rgba(0,0,0,0.55)' }}
       >
         <div className="mb-2 inline-flex items-center rounded-full border border-white/30 bg-white/10 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.16em] text-white/90">
@@ -298,6 +269,7 @@ function OrbitNodeContent({ service, locale, isActive, onEnter, onLeave }: { ser
         </span>
         <div className="absolute -top-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-[#0b1020]/95 border-t border-l border-white/15 transform rotate-45" />
       </div>
-    </Link>
+    </a>
   )
 }
+
