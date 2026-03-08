@@ -381,11 +381,24 @@ export default function LandingPageClient() {
     };
 
     syncEffects();
-    screenMedia.addEventListener("change", syncEffects);
-    motionMedia.addEventListener("change", syncEffects);
+
+    // Safari compatibility: older MediaQueryList only supports addListener/removeListener.
+    if (typeof screenMedia.addEventListener === "function" && typeof motionMedia.addEventListener === "function") {
+      screenMedia.addEventListener("change", syncEffects);
+      motionMedia.addEventListener("change", syncEffects);
+    } else {
+      screenMedia.addListener(syncEffects);
+      motionMedia.addListener(syncEffects);
+    }
+
     return () => {
-      screenMedia.removeEventListener("change", syncEffects);
-      motionMedia.removeEventListener("change", syncEffects);
+      if (typeof screenMedia.removeEventListener === "function" && typeof motionMedia.removeEventListener === "function") {
+        screenMedia.removeEventListener("change", syncEffects);
+        motionMedia.removeEventListener("change", syncEffects);
+      } else {
+        screenMedia.removeListener(syncEffects);
+        motionMedia.removeListener(syncEffects);
+      }
     };
   }, []);
 
@@ -422,7 +435,7 @@ export default function LandingPageClient() {
       </div>
 
       {/* Content */}
-      <div className="relative z-10">
+      <div className="relative z-10 pointer-events-auto">
         <LandingSection>
           <ErrorBoundary fallback={<SectionFallback label="Hero" />}>
             <HeroSection onPremiumClick={() => setShowPremiumForm(true)} />
