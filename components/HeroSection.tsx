@@ -85,7 +85,7 @@ export function HeroSection({ onPremiumClick }: HeroSectionProps) {
       </div>
 
       <motion.div
-        className="relative z-10 mx-auto max-w-5xl text-center ag-surface-hero ag-lux-outline-30 rounded-[1.5rem] sm:rounded-[2rem] px-4 sm:px-8 md:px-12 py-9 sm:py-14 shadow-[0_30px_120px_rgba(2,6,18,0.68),0_0_80px_rgba(34,211,238,0.18)]"
+        className="relative z-10 mx-auto max-w-5xl text-center ag-surface-hero ag-lux-outline-30 ag-mirror-panel rounded-[1.5rem] sm:rounded-[2rem] px-4 sm:px-8 md:px-12 py-9 sm:py-14 shadow-[0_30px_120px_rgba(2,6,18,0.68),0_0_80px_rgba(34,211,238,0.18)]"
         variants={containerVariants}
         initial="hidden"
         animate="visible"

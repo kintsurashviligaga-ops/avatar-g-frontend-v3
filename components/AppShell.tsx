@@ -19,7 +19,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </ClientErrorBoundary>
       )}
       <GlobalNavbar />
-      <main className='relative flex-1 pt-16 md:pt-20 z-10 w-full ag-premium-page ag-neon-grid-lines'>
+      <main className='relative flex-1 pt-16 md:pt-20 z-10 w-full ag-premium-page ag-neon-grid-lines ag-metal-rails'>
         {!isLocaleHome && (
           <>
             <div className='pointer-events-none absolute inset-0 z-[1] bg-[radial-gradient(circle_at_18%_15%,rgba(34,211,238,0.18),transparent_50%),radial-gradient(circle_at_82%_82%,rgba(124,92,252,0.2),transparent_52%)]' />

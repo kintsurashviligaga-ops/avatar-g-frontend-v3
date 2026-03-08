@@ -25,6 +25,8 @@
   --app-line-violet: 124 92 252;
   --app-white-neon: 255 255 255;
   --app-white-neon-alpha: 0.3;
+  --app-silver: 214 223 238;
+  --app-gold-soft: 243 199 98;
 
   /* Premium spacing scale */
   --section-py: clamp(4rem, 8vw, 7rem);
@@ -518,6 +520,69 @@ a {
     box-shadow: 0 0 12px rgba(255,255,255,0.16);
   }
 
+  .ag-presidential-line {
+    position: relative;
+    overflow: hidden;
+    height: 1px;
+    background: linear-gradient(90deg, transparent 0%, rgba(214,223,238,0.32) 24%, rgba(243,199,98,0.4) 50%, rgba(214,223,238,0.32) 76%, transparent 100%);
+    box-shadow: 0 0 12px rgba(214,223,238,0.18), 0 0 14px rgba(243,199,98,0.14);
+  }
+
+  .ag-presidential-line::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(110deg, transparent 0%, rgba(255,255,255,0.35) 45%, rgba(255,229,163,0.34) 52%, transparent 60%);
+    transform: translateX(-130%);
+    animation: agMetalFlow 9.8s linear infinite;
+  }
+
+  .ag-mirror-panel {
+    position: relative;
+    overflow: hidden;
+  }
+
+  .ag-mirror-panel::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background:
+      linear-gradient(155deg, rgba(255,255,255,0.16) 0%, rgba(255,255,255,0.06) 18%, rgba(255,255,255,0.015) 38%, transparent 58%),
+      linear-gradient(25deg, transparent 62%, rgba(255,255,255,0.1) 72%, rgba(243,199,98,0.09) 84%, transparent 94%);
+    mix-blend-mode: screen;
+    opacity: 0.75;
+  }
+
+  .ag-mirror-panel::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: linear-gradient(105deg, transparent 0%, rgba(255,255,255,0.28) 48%, rgba(255,255,255,0.08) 54%, transparent 62%);
+    transform: translateX(-125%);
+    animation: agMirrorSweep 11s ease-in-out infinite;
+    opacity: 0.44;
+  }
+
+  .ag-metal-rails {
+    position: relative;
+  }
+
+  .ag-metal-rails::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 2;
+    background:
+      linear-gradient(90deg, transparent 0%, rgba(214,223,238,0.22) 6%, transparent 11%),
+      linear-gradient(90deg, transparent 89%, rgba(243,199,98,0.24) 94%, transparent 100%),
+      linear-gradient(180deg, rgba(214,223,238,0.18) 0%, transparent 18%, transparent 82%, rgba(243,199,98,0.2) 100%);
+    mask-image: radial-gradient(ellipse at 50% 45%, rgba(0,0,0,0.95) 32%, rgba(0,0,0,0.32) 72%, transparent 100%);
+    opacity: 0.62;
+  }
+
   .ag-hover-lift {
     transition: transform 0.4s var(--ease-premium), box-shadow 0.4s var(--ease-premium);
     will-change: transform;
@@ -608,6 +673,18 @@ a {
     background-position: 0% 50%;
     opacity: 0.72;
   }
+}
+
+@keyframes agMirrorSweep {
+  0% { transform: translateX(-125%); opacity: 0; }
+  14% { opacity: 0.5; }
+  42% { transform: translateX(130%); opacity: 0.22; }
+  100% { transform: translateX(130%); opacity: 0; }
+}
+
+@keyframes agMetalFlow {
+  0% { transform: translateX(-130%); }
+  100% { transform: translateX(130%); }
 }
 
 @media (prefers-reduced-motion: reduce) {
