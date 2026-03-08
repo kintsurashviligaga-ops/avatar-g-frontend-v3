@@ -1,6 +1,8 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback, type DragEvent, type ChangeEvent, type ReactNode } from 'react';
+import { useSearchParams } from 'next/navigation';
+import { getOwnerId } from '@/lib/auth/identity';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -60,10 +62,30 @@ interface OptionSet {
   values: string[];
 }
 
+interface WorkspaceSection {
+  id: string;
+  title: string;
+  description: string;
+  metric: number;
+  steps: string[];
+}
+
 interface WorkspacePreset {
   id: string;
   title: string;
   prompt: string;
+}
+
+type AvatarScanTarget = 'face' | 'fullbody';
+type AvatarRenderProfile = 'realistic' | 'cinematic' | 'anime' | 'studio';
+
+interface AvatarBuilderProfile {
+  heightCm: string;
+  weightKg: string;
+  footSize: string;
+  scanTarget: AvatarScanTarget;
+  faceRecognition: boolean;
+  renderProfile: AvatarRenderProfile;
 }
 
 interface PremiumCardProps {
@@ -133,6 +155,31 @@ const T: Record<string, Record<string, string>> = {
     premiumHint: 'Use Agent G orchestration for production-ready output',
     liveChat: 'Live Premium Chatbox',
     exportCenter: 'Export Center',
+    fullscreen: 'Fullscreen Chat',
+    exitFullscreen: 'Exit Fullscreen',
+    workspaceSections: 'Workspace Sections',
+    selectionChart: 'Selection Chart',
+    applySection: 'Apply Section',
+    loadedPreset: 'Preset from landing applied',
+    optionsCoverage: 'Options Coverage',
+    sectionReadiness: 'Section Readiness',
+    completionScore: 'Completion Score',
+    avatarBuilderTitle: 'Avatar Builder Pro',
+    avatarHeight: 'Height (cm)',
+    avatarWeight: 'Weight (kg)',
+    avatarFootSize: 'Foot Size',
+    avatarScanMode: 'Scan Mode',
+    avatarFullBody: 'Full Body',
+    avatarFace: 'Face',
+    avatarCameraRender: 'Camera Render',
+    avatarFaceRecognition: 'Enable Face Recognition',
+    avatarPresetAnimeFace: 'Anime Face Preset',
+    avatarPresetFullBody: 'Fullbody Pro Preset',
+    importAvatar: 'Import Ready Avatar',
+    clearImportedAvatar: 'Clear Imported Avatar',
+    avatarImported: 'Avatar imported and ready in this service',
+    avatarImportFailed: 'No ready avatar found. Create one in Avatar service first.',
+    importingAvatar: 'Importing avatar...',
   },
   ka: {
     useAgent: 'აგენტის გამოყენება',
@@ -180,6 +227,31 @@ const T: Record<string, Record<string, string>> = {
     premiumHint: 'აგენტი G კოორდინაციას უკეთებს production-ready შედეგს',
     liveChat: 'პრემიუმ Live ჩატი',
     exportCenter: 'ექსპორტის ცენტრი',
+    fullscreen: 'სრული ეკრანის ჩატი',
+    exitFullscreen: 'სრული ეკრანიდან გამოსვლა',
+    workspaceSections: 'სამუშაო სექციები',
+    selectionChart: 'არჩევის დიაგრამა',
+    applySection: 'სექციის გამოყენება',
+    loadedPreset: 'Landing-დან არჩეული პრესეტი ჩაიტვირთა',
+    optionsCoverage: 'პარამეტრების დაფარვა',
+    sectionReadiness: 'სექციების მზადყოფნა',
+    completionScore: 'შესრულების ქულა',
+    avatarBuilderTitle: 'Avatar Builder Pro',
+    avatarHeight: 'სიმაღლე (cm)',
+    avatarWeight: 'წონა (kg)',
+    avatarFootSize: 'ფეხის ზომა',
+    avatarScanMode: 'სკანის რეჟიმი',
+    avatarFullBody: 'სრული ტანი',
+    avatarFace: 'სახე',
+    avatarCameraRender: 'კამერის Render',
+    avatarFaceRecognition: 'Face Recognition ჩართული',
+    avatarPresetAnimeFace: 'Anime Face Preset',
+    avatarPresetFullBody: 'Fullbody Pro Preset',
+    importAvatar: 'მზა ავატარის შემოტანა',
+    clearImportedAvatar: 'შემოტანილი ავატარის გასუფთავება',
+    avatarImported: 'ავატარი შემოტანილია და სერვისში მზადაა',
+    avatarImportFailed: 'მზა ავატარი ვერ მოიძებნა. ჯერ Avatar სერვისში შექმენი.',
+    importingAvatar: 'ავატარის შემოტანა...',
   },
   ru: {
     useAgent: 'Использовать агента',
@@ -227,8 +299,47 @@ const T: Record<string, Record<string, string>> = {
     premiumHint: 'Agent G координирует production-ready результат',
     liveChat: 'Premium Live чат',
     exportCenter: 'Центр экспорта',
+    fullscreen: 'Чат на весь экран',
+    exitFullscreen: 'Выйти из полноэкранного',
+    workspaceSections: 'Секции рабочей зоны',
+    selectionChart: 'Диаграмма выбора',
+    applySection: 'Применить секцию',
+    loadedPreset: 'Пресет с landing применен',
+    optionsCoverage: 'Покрытие параметров',
+    sectionReadiness: 'Готовность секций',
+    completionScore: 'Оценка выполнения',
+    avatarBuilderTitle: 'Avatar Builder Pro',
+    avatarHeight: 'Рост (см)',
+    avatarWeight: 'Вес (кг)',
+    avatarFootSize: 'Размер обуви',
+    avatarScanMode: 'Режим скана',
+    avatarFullBody: 'Полное тело',
+    avatarFace: 'Лицо',
+    avatarCameraRender: 'Render камеры',
+    avatarFaceRecognition: 'Включить распознавание лица',
+    avatarPresetAnimeFace: 'Anime Face Preset',
+    avatarPresetFullBody: 'Fullbody Pro Preset',
+    importAvatar: 'Импорт готового аватара',
+    clearImportedAvatar: 'Очистить импортированный аватар',
+    avatarImported: 'Аватар импортирован и готов в этом сервисе',
+    avatarImportFailed: 'Готовый аватар не найден. Сначала создайте его в Avatar сервисе.',
+    importingAvatar: 'Импорт аватара...',
   },
 };
+
+function parseOptionsParam(raw: string): Record<string, string> {
+  if (!raw) return {};
+  return raw
+    .split(',')
+    .map((pair) => pair.trim())
+    .filter(Boolean)
+    .reduce<Record<string, string>>((acc, pair) => {
+      const [key, ...rest] = pair.split(':');
+      if (!key || !rest.length) return acc;
+      acc[key.trim()] = rest.join(':').trim();
+      return acc;
+    }, {});
+}
 
 function extractRetryAfterSeconds(input: string): number | null {
   const match = input.match(/retry(?:_after)?[^\d]*(\d+)/i);
@@ -281,14 +392,44 @@ function extensionForArtifact(artifact: Artifact): string {
   return 'bin';
 }
 
-function buildScanPrompt(locale: string, serviceName: string, serviceContext: ServiceContext): string {
+function buildScanPrompt(
+  locale: string,
+  serviceName: string,
+  serviceContext: ServiceContext,
+  scanTarget: AvatarScanTarget,
+  renderProfile: AvatarRenderProfile,
+  faceRecognition: boolean,
+): string {
+  const scanLabel = scanTarget === 'fullbody' ? 'full-body' : 'face';
+  const faceLock = faceRecognition ? 'enabled' : 'disabled';
+
   if (locale === 'ka') {
-    return `კამერით სკანი (${serviceName}/${serviceContext}): გააანალიზე კადრი, აღწერე დეტალები და შემომთავაზე შემდეგი 3 მოქმედება.`;
+    const scanLabelKa = scanTarget === 'fullbody' ? 'სრული ტანი' : 'სახე';
+    const faceLockKa = faceRecognition ? 'ჩართულია' : 'გამორთულია';
+    return `კამერით სკანი (${serviceName}/${serviceContext}): რეჟიმი=${scanLabelKa}, render=${renderProfile}, სახის ამოცნობა=${faceLockKa}. გააანალიზე კადრი, აღწერე დეტალები და შემომთავაზე შემდეგი 3 მოქმედება.`;
   }
   if (locale === 'ru') {
-    return `Скан с камеры (${serviceName}/${serviceContext}): проанализируй кадр, опиши детали и предложи 3 следующих действия.`;
+    const scanLabelRu = scanTarget === 'fullbody' ? 'полное тело' : 'лицо';
+    const faceLockRu = faceRecognition ? 'включено' : 'выключено';
+    return `Скан с камеры (${serviceName}/${serviceContext}): режим=${scanLabelRu}, render=${renderProfile}, распознавание лица=${faceLockRu}. Проанализируй кадр, опиши детали и предложи 3 следующих действия.`;
   }
-  return `Camera scan (${serviceName}/${serviceContext}): analyze this frame, summarize key details, and propose 3 next actions.`;
+  return `Camera scan (${serviceName}/${serviceContext}): mode=${scanLabel}, render=${renderProfile}, face-recognition=${faceLock}. Analyze this frame, summarize key details, and propose 3 next actions.`;
+}
+
+function buildAvatarSpecSuffix(locale: string, profile: AvatarBuilderProfile): string {
+  const scan = profile.scanTarget === 'fullbody'
+    ? (locale === 'ka' ? 'სრული ტანი' : locale === 'ru' ? 'полное тело' : 'full-body')
+    : (locale === 'ka' ? 'სახე' : locale === 'ru' ? 'лицо' : 'face');
+
+  const faceRec = profile.faceRecognition
+    ? (locale === 'ka' ? 'ჩართულია' : locale === 'ru' ? 'вкл' : 'on')
+    : (locale === 'ka' ? 'გამორთულია' : locale === 'ru' ? 'выкл' : 'off');
+
+  return locale === 'ka'
+    ? `\nAvatar Spec: სიმაღლე=${profile.heightCm || '-'}cm; წონა=${profile.weightKg || '-'}kg; ფეხის ზომა=${profile.footSize || '-'}; სკანი=${scan}; სახის ამოცნობა=${faceRec}; render=${profile.renderProfile}`
+    : locale === 'ru'
+      ? `\nAvatar Spec: рост=${profile.heightCm || '-'}см; вес=${profile.weightKg || '-'}кг; размер обуви=${profile.footSize || '-'}; скан=${scan}; распознавание лица=${faceRec}; render=${profile.renderProfile}`
+      : `\nAvatar Spec: height=${profile.heightCm || '-'}cm; weight=${profile.weightKg || '-'}kg; foot-size=${profile.footSize || '-'}; scan=${scan}; face-recognition=${faceRec}; render=${profile.renderProfile}`;
 }
 
 // ─── Quick Action Chips ──────────────────────────────────────────────────────
@@ -351,22 +492,28 @@ const SERVICE_OPTION_SETS: Record<string, OptionSet[]> = {
     { key: 'assist', label: 'Assist', values: ['Auto-Cut', 'Smart Captions', 'Scene Match'] },
   ],
   avatar: [
-    { key: 'quality', label: 'Quality', values: ['Standard', 'High', 'Ultra'] },
-    { key: 'style', label: 'Style', values: ['Realistic', 'Cinematic', 'Stylized'] },
-    { key: 'pose', label: 'Pose', values: ['Portrait', 'Half Body', 'Full Body'] },
-    { key: 'lighting', label: 'Lighting', values: ['Studio', 'Natural', 'Dramatic'] },
+    { key: 'quality', label: 'Quality', values: ['Standard', 'High', 'Ultra', 'Studio Max'] },
+    { key: 'style', label: 'Style', values: ['Realistic', 'Cinematic', 'Stylized', 'Luxury Editorial'] },
+    { key: 'pose', label: 'Pose', values: ['Portrait', 'Half Body', 'Full Body', 'Dynamic Motion'] },
+    { key: 'lighting', label: 'Lighting', values: ['Studio', 'Natural', 'Dramatic', 'Golden Hour'] },
+    { key: 'outfit', label: 'Outfit', values: ['Business', 'Casual', 'Fashion', 'Custom'] },
+    { key: 'render', label: 'Render Pass', values: ['Single Shot', 'Variation Pack', 'Multi-angle'] },
   ],
   video: [
-    { key: 'quality', label: 'Quality', values: ['HD', 'Full HD', '4K'] },
-    { key: 'ratio', label: 'Ratio', values: ['16:9', '9:16', '1:1'] },
+    { key: 'quality', label: 'Quality', values: ['HD', 'Full HD', '4K', '6K Master'] },
+    { key: 'ratio', label: 'Ratio', values: ['16:9', '9:16', '1:1', '4:5'] },
     { key: 'camera', label: 'Camera Motion', values: ['Static', 'Dolly', 'Orbit'] },
     { key: 'speed', label: 'Speed', values: ['Fast', 'Balanced', 'Premium'] },
+    { key: 'narrative', label: 'Narrative', values: ['Hook-Proof-CTA', 'Story Arc', 'Demo-first'] },
+    { key: 'delivery', label: 'Delivery', values: ['Draft', 'Approved', 'Launch-ready'] },
   ],
   music: [
-    { key: 'length', label: 'Length', values: ['15s', '30s', '60s'] },
-    { key: 'genre', label: 'Genre', values: ['Ambient', 'Cinematic', 'Trap', 'House'] },
-    { key: 'mood', label: 'Mood', values: ['Chill', 'Epic', 'Energetic'] },
+    { key: 'length', label: 'Length', values: ['15s', '30s', '60s', '90s'] },
+    { key: 'genre', label: 'Genre', values: ['Ambient', 'Cinematic', 'Trap', 'House', 'Hybrid Orchestral'] },
+    { key: 'mood', label: 'Mood', values: ['Chill', 'Epic', 'Energetic', 'Luxury'] },
     { key: 'mix', label: 'Mix', values: ['Draft', 'Studio', 'Mastered'] },
+    { key: 'vocal', label: 'Vocal Layer', values: ['Instrumental', 'Hook Vox', 'Full Vocal'] },
+    { key: 'delivery', label: 'Delivery', values: ['Master', 'Stems', 'Master + Stems'] },
   ],
   photo: [
     { key: 'retouch', label: 'Retouch Level', values: ['Natural', 'Editorial', 'High Fashion'] },
@@ -384,14 +531,45 @@ const SERVICE_OPTION_SETS: Record<string, OptionSet[]> = {
     { key: 'strategy', label: 'Strategy', values: ['Awareness', 'Conversion', 'Retention'] },
   ],
   business: [
-    { key: 'detail', label: 'Detail', values: ['Summary', 'Balanced', 'Deep Dive'] },
+    { key: 'detail', label: 'Detail', values: ['Summary', 'Balanced', 'Deep Dive', 'Board-ready'] },
     { key: 'tone', label: 'Tone', values: ['Formal', 'Executive', 'Persuasive'] },
-    { key: 'output', label: 'Output', values: ['Plan', 'Report', 'Deck Outline'] },
+    { key: 'output', label: 'Output', values: ['Plan', 'Report', 'Deck Outline', 'Investor Memo'] },
+    { key: 'risk', label: 'Risk Lens', values: ['Low', 'Balanced', 'Aggressive'] },
+    { key: 'timeframe', label: 'Timeframe', values: ['30 Days', '90 Days', '12 Months'] },
   ],
   global: [
-    { key: 'quality', label: 'Quality', values: ['Fast', 'Balanced', 'Premium'] },
+    { key: 'quality', label: 'Quality', values: ['Fast', 'Balanced', 'Premium', 'Enterprise'] },
     { key: 'format', label: 'Format', values: ['Concise', 'Structured', 'Detailed'] },
-    { key: 'focus', label: 'Focus', values: ['Creative', 'Accuracy', 'Conversion'] },
+    { key: 'focus', label: 'Focus', values: ['Creative', 'Accuracy', 'Conversion', 'Scalability'] },
+    { key: 'validation', label: 'Validation', values: ['Basic', 'Advanced', 'Strict'] },
+  ],
+};
+
+const SERVICE_WORKSPACE_SECTIONS: Record<string, WorkspaceSection[]> = {
+  avatar: [
+    { id: 'brief', title: 'Avatar Brief', description: 'Identity, audience, and use-case framing.', metric: 82, steps: ['Profile', 'Audience', 'Platform'] },
+    { id: 'style', title: 'Style Direction', description: 'Visual language, lighting, and outfit.', metric: 88, steps: ['Moodboard', 'Look', 'Lighting'] },
+    { id: 'delivery', title: 'Delivery Pack', description: 'Export strategy for all channels.', metric: 76, steps: ['Formats', 'Variants', 'QC'] },
+  ],
+  video: [
+    { id: 'strategy', title: 'Video Strategy', description: 'Narrative shape and conversion intent.', metric: 84, steps: ['Hook', 'Body', 'CTA'] },
+    { id: 'production', title: 'Production Flow', description: 'Scene plan, shot logic, and timing.', metric: 81, steps: ['Scenes', 'Timing', 'Transitions'] },
+    { id: 'delivery', title: 'Distribution', description: 'Platform-tailored exports and captions.', metric: 79, steps: ['Ratios', 'Captions', 'A/B'] },
+  ],
+  music: [
+    { id: 'concept', title: 'Music Concept', description: 'Mood, genre blend, and reference zone.', metric: 80, steps: ['Mood', 'Genre', 'References'] },
+    { id: 'composition', title: 'Composition', description: 'Structure, motifs, and progression.', metric: 86, steps: ['Intro', 'Drop', 'Resolve'] },
+    { id: 'mix', title: 'Mix & Delivery', description: 'Balance, polish, and export packaging.', metric: 78, steps: ['Balance', 'Master', 'Stems'] },
+  ],
+  business: [
+    { id: 'analysis', title: 'Business Analysis', description: 'Current-state, constraints, and opportunities.', metric: 83, steps: ['State', 'Gaps', 'Opportunities'] },
+    { id: 'strategy', title: 'Strategy Layer', description: 'Action plan with priorities and risks.', metric: 87, steps: ['Priorities', 'KPIs', 'Risk'] },
+    { id: 'executive', title: 'Executive Delivery', description: 'Board-ready narrative and next steps.', metric: 74, steps: ['Summary', 'Roadmap', 'Review'] },
+  ],
+  global: [
+    { id: 'plan', title: 'Plan Section', description: 'Set objective, constraints, and scope.', metric: 79, steps: ['Goal', 'Scope', 'Constraints'] },
+    { id: 'execution', title: 'Execution Section', description: 'Generate output with quality gates.', metric: 85, steps: ['Draft', 'QA', 'Refine'] },
+    { id: 'handoff', title: 'Handoff Section', description: 'Finalize assets and export package.', metric: 77, steps: ['Bundle', 'Checklist', 'Owner'] },
   ],
 };
 
@@ -470,7 +648,7 @@ function OptionChip({ active, label, onClick }: OptionChipProps) {
         active
           ? 'border-cyan-400/60 bg-cyan-500/25 text-cyan-100'
           : 'border-white/15 bg-white/5 text-white/70 hover:bg-white/10'
-      }`}
+      } min-h-[34px] sm:min-h-[30px] px-2.5 sm:px-2`}
     >
       {label}
     </button>
@@ -487,6 +665,16 @@ function GoldCTAButton({ label, disabled, onClick }: GoldCTAButtonProps) {
       {label}
     </button>
   );
+}
+
+function buildSectionPrompt(locale: string, serviceName: string, sectionTitle: string) {
+  if (locale === 'ka') {
+    return `${serviceName}: გამოიყენე "${sectionTitle}" სექცია და შექმენი დეტალური ნაბიჯ-ნაბიჯ შედეგი.`;
+  }
+  if (locale === 'ru') {
+    return `${serviceName}: используй секцию "${sectionTitle}" и создай пошаговый детальный результат.`;
+  }
+  return `${serviceName}: use the "${sectionTitle}" section and produce a detailed step-by-step output.`;
 }
 
 // ─── Component ───────────────────────────────────────────────────────────────
@@ -526,6 +714,20 @@ export default function UnifiedServiceLayout({
   const [selectedOptions, setSelectedOptions] = useState<Record<string, string>>({});
   const [cameraCaptureBusy, setCameraCaptureBusy] = useState(false);
   const [chatInputFocused, setChatInputFocused] = useState(false);
+  const [activeSectionId, setActiveSectionId] = useState<string>('');
+  const [chatFullscreen, setChatFullscreen] = useState(false);
+  const [landingPresetNote, setLandingPresetNote] = useState<string | null>(null);
+  const [importedAvatarUrl, setImportedAvatarUrl] = useState<string | null>(null);
+  const [avatarImporting, setAvatarImporting] = useState(false);
+  const [avatarImportNotice, setAvatarImportNotice] = useState<string | null>(null);
+  const [avatarProfile, setAvatarProfile] = useState<AvatarBuilderProfile>({
+    heightCm: '',
+    weightKg: '',
+    footSize: '',
+    scanTarget: 'fullbody',
+    faceRecognition: true,
+    renderProfile: 'realistic',
+  });
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -533,9 +735,12 @@ export default function UnifiedServiceLayout({
   const cameraStreamRef = useRef<MediaStream | null>(null);
   const cameraVideoRef = useRef<HTMLVideoElement>(null);
   const promptInputRef = useRef<HTMLTextAreaElement>(null);
+  const chatPanelRef = useRef<HTMLDivElement>(null);
+  const searchParams = useSearchParams();
   const serviceContext = SERVICE_CONTEXT[serviceId] ?? 'global';
   const optionSets = SERVICE_OPTION_SETS[serviceId] ?? SERVICE_OPTION_SETS[serviceContext] ?? SERVICE_OPTION_SETS['global']!;
   const workspacePresets = SERVICE_PRESETS[serviceId] ?? SERVICE_PRESETS[serviceContext] ?? SERVICE_PRESETS['global']!;
+  const workspaceSections = SERVICE_WORKSPACE_SECTIONS[serviceId] ?? SERVICE_WORKSPACE_SECTIONS[serviceContext] ?? SERVICE_WORKSPACE_SECTIONS['global']!;
   const serviceBackground = SERVICE_BACKGROUNDS[serviceId] ?? SERVICE_BACKGROUNDS['agent-g']!;
   const serviceBackgroundImage = SERVICE_BACKGROUND_IMAGES[serviceId] ?? SERVICE_BACKGROUND_IMAGES['agent-g']!;
   const agentButtonLabel = `${t.useAgent} — ${serviceName}`;
@@ -553,6 +758,59 @@ export default function UnifiedServiceLayout({
     });
     setSelectedOptions(defaults);
   }, [serviceId, optionSets]);
+
+  useEffect(() => {
+    setActiveSectionId(workspaceSections[0]?.id ?? '');
+  }, [serviceId, workspaceSections]);
+
+  useEffect(() => {
+    if (serviceContext !== 'avatar') return;
+    setAvatarProfile((prev) => ({
+      ...prev,
+      scanTarget: 'fullbody',
+      faceRecognition: true,
+      renderProfile: 'realistic',
+    }));
+  }, [serviceContext, serviceId]);
+
+  useEffect(() => {
+    const prompt = searchParams.get('prompt');
+    const section = searchParams.get('section');
+    const optionsRaw = searchParams.get('options');
+
+    let applied = false;
+
+    if (prompt) {
+      setInput(prompt);
+      applied = true;
+    }
+
+    if (section) {
+      const found = workspaceSections.find((item) => item.id === section);
+      if (found) {
+        setActiveSectionId(found.id);
+        applied = true;
+      }
+    }
+
+    if (optionsRaw) {
+      const parsed = parseOptionsParam(optionsRaw);
+      const optionKeySet = new Set(optionSets.map((set) => set.key));
+      const filtered = Object.entries(parsed).filter(([key]) => optionKeySet.has(key));
+      if (filtered.length) {
+        setSelectedOptions((prev) => ({
+          ...prev,
+          ...Object.fromEntries(filtered),
+        }));
+        applied = true;
+      }
+    }
+
+    if (applied) {
+      setLandingPresetNote(t.loadedPreset ?? 'Preset from landing applied');
+      promptInputRef.current?.focus();
+    }
+  }, [searchParams, optionSets, workspaceSections, t.loadedPreset]);
 
   // ─── Auto-scroll ─────────────────────────────────────────────────────────
   useEffect(() => {
@@ -573,6 +831,127 @@ export default function UnifiedServiceLayout({
     cameraVideoRef.current.srcObject = cameraStreamRef.current;
     cameraVideoRef.current.play().catch(() => undefined);
   }, [cameraOn]);
+
+  useEffect(() => {
+    const onFullscreenChange = () => {
+      const isFullscreen = Boolean(document.fullscreenElement && chatPanelRef.current && document.fullscreenElement.contains(chatPanelRef.current));
+      setChatFullscreen(isFullscreen);
+    };
+    document.addEventListener('fullscreenchange', onFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', onFullscreenChange);
+  }, []);
+
+  const toggleChatFullscreen = useCallback(async () => {
+    const panel = chatPanelRef.current;
+    if (!panel) return;
+    if (document.fullscreenElement) {
+      await document.exitFullscreen();
+      return;
+    }
+    await panel.requestFullscreen();
+  }, []);
+
+  const activeSection = workspaceSections.find((section) => section.id === activeSectionId) ?? workspaceSections[0] ?? null;
+  const selectionCoverage = optionSets.length
+    ? Math.round((Object.values(selectedOptions).filter(Boolean).length / optionSets.length) * 100)
+    : 0;
+  const sectionReadiness = activeSection?.metric ?? 0;
+  const completionScore = Math.round((selectionCoverage * 0.55) + (sectionReadiness * 0.45));
+
+  const broadcastAvatarUpdate = useCallback((url: string) => {
+    if (typeof window === 'undefined') return;
+    try {
+      localStorage.setItem('GENERATED_AVATAR_URL', url);
+      localStorage.setItem('GENERATED_AVATAR_TIMESTAMP', new Date().toISOString());
+      window.dispatchEvent(new CustomEvent('generated-avatar-updated', { detail: { url } }));
+    } catch {
+      // Ignore localStorage errors
+    }
+  }, []);
+
+  const importReadyAvatar = useCallback(async () => {
+    setAvatarImporting(true);
+    setAvatarImportNotice(null);
+
+    try {
+      // 1) Fast local cache path
+      if (typeof window !== 'undefined') {
+        const cachedUrl = localStorage.getItem('GENERATED_AVATAR_URL');
+        if (cachedUrl) {
+          setImportedAvatarUrl(cachedUrl);
+          setPreviewArtifact({
+            type: 'image',
+            url: cachedUrl,
+            label: locale === 'ka' ? 'შემოტანილი ავატარი' : locale === 'ru' ? 'Импортированный аватар' : 'Imported Avatar',
+            mimeType: 'image/jpeg',
+            generationStatus: 'succeeded',
+          });
+          setAvatarImportNotice(t.avatarImported ?? 'Avatar imported and ready in this service');
+          return;
+        }
+      }
+
+      // 2) Auth core avatar endpoint
+      const coreRes = await fetch('/api/avatar/core', { method: 'GET' }).catch(() => null);
+      if (coreRes?.ok) {
+        const coreJson = await coreRes.json().catch(() => null) as {
+          data?: { status?: string; poster_url?: string | null; model_glb_url?: string | null };
+        } | null;
+        const coreData = coreJson?.data;
+        const coreUrl = coreData?.poster_url || coreData?.model_glb_url || null;
+        if (coreData?.status === 'ready' && coreUrl) {
+          setImportedAvatarUrl(coreUrl);
+          if (coreData.poster_url) {
+            setPreviewArtifact({
+              type: 'image',
+              url: coreData.poster_url,
+              label: locale === 'ka' ? 'Core ავატარი' : locale === 'ru' ? 'Core аватар' : 'Core Avatar',
+              mimeType: 'image/jpeg',
+              generationStatus: 'succeeded',
+            });
+          }
+          setAvatarImportNotice(t.avatarImported ?? 'Avatar imported and ready in this service');
+          return;
+        }
+      }
+
+      // 3) Owner-based latest avatar endpoint (auth or anon)
+      const ownerId = await getOwnerId();
+      const latestRes = await fetch(`/api/avatars/latest?owner_id=${encodeURIComponent(ownerId)}`);
+      if (latestRes.ok) {
+        const latestJson = await latestRes.json() as {
+          data?: {
+            avatar?: {
+              preview_image_url?: string | null;
+              model_url?: string | null;
+            } | null;
+          };
+        };
+        const avatar = latestJson?.data?.avatar;
+        const latestUrl = avatar?.preview_image_url || avatar?.model_url || null;
+        if (latestUrl) {
+          setImportedAvatarUrl(latestUrl);
+          if (avatar?.preview_image_url) {
+            setPreviewArtifact({
+              type: 'image',
+              url: avatar.preview_image_url,
+              label: locale === 'ka' ? 'შემოტანილი ავატარი' : locale === 'ru' ? 'Импортированный аватар' : 'Imported Avatar',
+              mimeType: 'image/jpeg',
+              generationStatus: 'succeeded',
+            });
+          }
+          setAvatarImportNotice(t.avatarImported ?? 'Avatar imported and ready in this service');
+          return;
+        }
+      }
+
+      setAvatarImportNotice(t.avatarImportFailed ?? 'No ready avatar found. Create one in Avatar service first.');
+    } catch {
+      setAvatarImportNotice(t.avatarImportFailed ?? 'No ready avatar found. Create one in Avatar service first.');
+    } finally {
+      setAvatarImporting(false);
+    }
+  }, [locale, t.avatarImportFailed, t.avatarImported]);
 
   const generationStartedLabel = locale === 'ka'
     ? 'გენერაცია დაიწყო, დაელოდე რამდენიმე წამი...'
@@ -688,12 +1067,7 @@ export default function UnifiedServiceLayout({
             setPreviewArtifact(directArtifacts[0]!);
 
             if (context === 'avatar' && directArtifacts[0]?.url) {
-              try {
-                localStorage.setItem('GENERATED_AVATAR_URL', directArtifacts[0].url);
-                localStorage.setItem('GENERATED_AVATAR_TIMESTAMP', new Date().toISOString());
-              } catch {
-                // Ignore localStorage errors
-              }
+              broadcastAvatarUpdate(directArtifacts[0].url);
             }
           }
           setGenerationProgress({ percent: 100, stage: 'done', context });
@@ -743,12 +1117,7 @@ export default function UnifiedServiceLayout({
 
       // Save avatar to localStorage for homepage display
       if (context === 'avatar' && finalArtifacts.length > 0 && finalArtifacts[0]?.url) {
-        try {
-          localStorage.setItem('GENERATED_AVATAR_URL', finalArtifacts[0].url);
-          localStorage.setItem('GENERATED_AVATAR_TIMESTAMP', new Date().toISOString());
-        } catch {
-          // Ignore localStorage errors
-        }
+        broadcastAvatarUpdate(finalArtifacts[0].url);
       }
 
       setGenerationProgress({ percent: 100, stage: 'done', context });
@@ -777,7 +1146,7 @@ export default function UnifiedServiceLayout({
         timestamp: new Date(),
       }]);
     }
-  }, [decorateGeneratedArtifacts, generationCompleteLabel, generationFailedLabel, generationStartedLabel, locale, t.retryNotice, t.seconds]);
+  }, [broadcastAvatarUpdate, decorateGeneratedArtifacts, generationCompleteLabel, generationFailedLabel, generationStartedLabel, locale, t.retryNotice, t.seconds]);
 
   const retryArtifactGeneration = useCallback(async (artifact: Artifact) => {
     if (!artifact.generationPrompt) return;
@@ -827,22 +1196,49 @@ export default function UnifiedServiceLayout({
         setCameraError(locale === 'ka' ? 'კადრის დაფიქსირება ვერ მოხერხდა.' : locale === 'ru' ? 'Не удалось захватить кадр.' : 'Unable to capture camera frame.');
         return;
       }
+      if (avatarProfile.renderProfile === 'cinematic') {
+        ctx.filter = 'contrast(1.12) saturate(1.08) brightness(0.96)';
+      } else if (avatarProfile.renderProfile === 'anime') {
+        ctx.filter = 'contrast(1.18) saturate(1.22) brightness(1.02)';
+      } else if (avatarProfile.renderProfile === 'studio') {
+        ctx.filter = 'contrast(1.08) saturate(1.02) brightness(1.03)';
+      } else {
+        ctx.filter = 'none';
+      }
+
       ctx.drawImage(video, 0, 0, width, height);
       const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
       setCameraError(null);
 
+      const scanTargetLabel = avatarProfile.scanTarget === 'fullbody'
+        ? (locale === 'ka' ? 'სრული ტანი' : locale === 'ru' ? 'полное тело' : 'Full Body')
+        : (locale === 'ka' ? 'სახე' : locale === 'ru' ? 'Лицо' : 'Face');
+
       const artifact: Artifact = {
         type: 'image',
         url: dataUrl,
-        label: scanMode ? `${serviceName} Scan Frame` : `${serviceName} Camera Capture`,
+        label: scanMode
+          ? `${serviceName} ${scanTargetLabel} Scan (${avatarProfile.renderProfile})`
+          : `${serviceName} Camera Capture`,
         mimeType: 'image/jpeg',
         generationStatus: 'succeeded',
       };
 
       setPreviewArtifact(artifact);
-      const scanPrompt = buildScanPrompt(locale, serviceName, serviceContext);
+      const scanPrompt = buildScanPrompt(
+        locale,
+        serviceName,
+        serviceContext,
+        avatarProfile.scanTarget,
+        avatarProfile.renderProfile,
+        avatarProfile.faceRecognition,
+      );
       setInput((prev) => {
-        if (scanMode) return prev ? `${prev}\n${scanPrompt}` : scanPrompt;
+        if (scanMode) {
+          const spec = serviceContext === 'avatar' ? buildAvatarSpecSuffix(locale, avatarProfile) : '';
+          const combined = `${scanPrompt}${spec}`;
+          return prev ? `${prev}\n${combined}` : combined;
+        }
         const note = locale === 'ka'
           ? '[კამერის კადრი დაფიქსირდა]'
           : locale === 'ru'
@@ -864,7 +1260,7 @@ export default function UnifiedServiceLayout({
     } finally {
       setCameraCaptureBusy(false);
     }
-  }, [cameraOn, locale, serviceContext, serviceName, t.scanHint]);
+  }, [avatarProfile, cameraOn, locale, serviceContext, serviceName, t.scanHint]);
 
   const downloadArtifact = useCallback(async (artifact: Artifact) => {
     if (!artifact.url) return;
@@ -964,7 +1360,14 @@ export default function UnifiedServiceLayout({
     const optionsSuffix = selectedOptionEntries.length
       ? `\nOptions: ${selectedOptionEntries.map(([key, value]) => `${key}=${value}`).join('; ')}`
       : '';
-    const finalMessage = `${msg}${optionsSuffix}`;
+    const sectionSuffix = activeSection
+      ? `\nSection: ${activeSection.title} (${activeSection.steps.join(' > ')})`
+      : '';
+    const avatarSuffix = serviceContext === 'avatar' ? buildAvatarSpecSuffix(locale, avatarProfile) : '';
+    const importedAvatarSuffix = importedAvatarUrl
+      ? `\nImported Avatar URL: ${importedAvatarUrl}`
+      : '';
+    const finalMessage = `${msg}${optionsSuffix}${sectionSuffix}${avatarSuffix}${importedAvatarSuffix}`;
 
     if (!demoMode && !isAuthenticated) {
       setShowLoginModal(true);
@@ -1001,6 +1404,11 @@ export default function UnifiedServiceLayout({
             serviceId,
             demoMode,
             agentEnabled: true,
+            selectedOptions,
+            activeSectionId,
+            completionScore,
+            importedAvatarUrl,
+            hasImportedAvatar: Boolean(importedAvatarUrl),
           },
         }),
       });
@@ -1062,7 +1470,7 @@ export default function UnifiedServiceLayout({
     } finally {
       setSending(false);
     }
-  }, [input, sending, demoMode, isAuthenticated, selectedOptions, agentId, locale, serviceId, serviceContext, messages, onAuthRequired, t.retryNotice, t.seconds, runDirectGeneration]);
+  }, [input, sending, demoMode, isAuthenticated, selectedOptions, activeSection, activeSectionId, completionScore, agentId, avatarProfile, importedAvatarUrl, locale, serviceId, serviceContext, messages, onAuthRequired, t.retryNotice, t.seconds, runDirectGeneration]);
 
   // ─── File upload ─────────────────────────────────────────────────────────
   const handleFileUpload = (e: ChangeEvent<HTMLInputElement>) => {
@@ -1151,8 +1559,8 @@ export default function UnifiedServiceLayout({
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
           facingMode: 'user',
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
+          width: { ideal: avatarProfile.scanTarget === 'fullbody' ? 1920 : 1280 },
+          height: { ideal: avatarProfile.scanTarget === 'fullbody' ? 1080 : 960 },
         },
         audio: false,
       });
@@ -1224,15 +1632,22 @@ export default function UnifiedServiceLayout({
             >
               {t.export}
             </button>
+            <button
+              onClick={toggleChatFullscreen}
+              className="px-3 py-1.5 text-xs border border-cyan-400/30 rounded-lg bg-cyan-500/12 hover:bg-cyan-500/20 transition-colors"
+            >
+              {chatFullscreen ? t.exitFullscreen : t.fullscreen}
+            </button>
           </div>
         </div>
       </header>
 
       {/* ── Main Layout: Chat (70%) + Preview (30%) ─────────────────────── */}
-      <div className="relative z-10 max-w-[94rem] mx-auto flex flex-col lg:flex-row min-h-[calc(100vh-60px)] sm:min-h-[calc(100vh-64px)] px-2 sm:px-3 md:px-4 lg:px-6 py-2 sm:py-3 gap-2 lg:gap-3">
+      <div className={`relative z-10 max-w-[94rem] mx-auto flex flex-col lg:flex-row min-h-[calc(100vh-60px)] sm:min-h-[calc(100vh-64px)] px-2 sm:px-3 md:px-4 lg:px-6 py-2 sm:py-3 gap-2 lg:gap-3 ${chatFullscreen ? 'max-w-full px-1 sm:px-2 md:px-3 lg:px-3' : ''}`}>
 
         {/* ── Chat Window (70%) ─────────────────────────────────────────── */}
         <div
+          ref={chatPanelRef}
           className="flex-1 lg:w-[68%] flex flex-col rounded-2xl border border-white/[0.12] bg-[linear-gradient(160deg,rgba(7,14,30,0.78),rgba(4,10,24,0.7))] shadow-[inset_0_0_0_1px_rgba(34,211,238,0.14),0_24px_72px_rgba(0,0,0,0.42)]"
           onDragEnter={handleDrag}
           onDragOver={handleDrag}
@@ -1309,6 +1724,190 @@ export default function UnifiedServiceLayout({
                     </div>
                   </div>
                 ))}
+              </div>
+            </PremiumCard>
+
+            {serviceContext === 'avatar' && (
+              <PremiumCard title={t.avatarBuilderTitle} className="border-cyan-300/35 bg-[linear-gradient(145deg,rgba(34,211,238,0.14),rgba(8,47,73,0.08))] p-2.5 sm:p-3">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-2.5">
+                  <label className="text-[11px] text-white/70 space-y-1">
+                    <span>{t.avatarHeight}</span>
+                    <input
+                      type="number"
+                      min={120}
+                      max={240}
+                      value={avatarProfile.heightCm}
+                      onChange={(e) => setAvatarProfile((prev) => ({ ...prev, heightCm: e.target.value }))}
+                      className="w-full rounded-lg border border-white/20 bg-black/35 px-2.5 py-2 text-sm sm:text-xs text-white placeholder-white/30 focus:outline-none focus:border-cyan-300/65"
+                      placeholder="172"
+                    />
+                  </label>
+                  <label className="text-[11px] text-white/70 space-y-1">
+                    <span>{t.avatarWeight}</span>
+                    <input
+                      type="number"
+                      min={30}
+                      max={220}
+                      value={avatarProfile.weightKg}
+                      onChange={(e) => setAvatarProfile((prev) => ({ ...prev, weightKg: e.target.value }))}
+                      className="w-full rounded-lg border border-white/20 bg-black/35 px-2.5 py-2 text-sm sm:text-xs text-white placeholder-white/30 focus:outline-none focus:border-cyan-300/65"
+                      placeholder="68"
+                    />
+                  </label>
+                  <label className="text-[11px] text-white/70 space-y-1">
+                    <span>{t.avatarFootSize}</span>
+                    <input
+                      type="number"
+                      min={20}
+                      max={55}
+                      step={0.5}
+                      value={avatarProfile.footSize}
+                      onChange={(e) => setAvatarProfile((prev) => ({ ...prev, footSize: e.target.value }))}
+                      className="w-full rounded-lg border border-white/20 bg-black/35 px-2.5 py-2 text-sm sm:text-xs text-white placeholder-white/30 focus:outline-none focus:border-cyan-300/65"
+                      placeholder="42"
+                    />
+                  </label>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-2.5">
+                  <div className="rounded-lg border border-white/15 bg-black/20 p-2.5">
+                    <p className="text-[11px] text-white/70 mb-1.5">{t.avatarScanMode}</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      <OptionChip
+                        active={avatarProfile.scanTarget === 'fullbody'}
+                        label={t.avatarFullBody ?? 'Full Body'}
+                        onClick={() => setAvatarProfile((prev) => ({ ...prev, scanTarget: 'fullbody' }))}
+                      />
+                      <OptionChip
+                        active={avatarProfile.scanTarget === 'face'}
+                        label={t.avatarFace ?? 'Face'}
+                        onClick={() => setAvatarProfile((prev) => ({ ...prev, scanTarget: 'face' }))}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="rounded-lg border border-white/15 bg-black/20 p-2.5">
+                    <p className="text-[11px] text-white/70 mb-1.5">{t.avatarCameraRender}</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {(['realistic', 'cinematic', 'anime', 'studio'] as AvatarRenderProfile[]).map((mode) => (
+                        <OptionChip
+                          key={mode}
+                          active={avatarProfile.renderProfile === mode}
+                          label={mode}
+                          onClick={() => setAvatarProfile((prev) => ({ ...prev, renderProfile: mode }))}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                <label className="flex items-center gap-2 cursor-pointer text-[12px] sm:text-[11px] text-white/80 py-1">
+                  <input
+                    type="checkbox"
+                    checked={avatarProfile.faceRecognition}
+                    onChange={() => setAvatarProfile((prev) => ({ ...prev, faceRecognition: !prev.faceRecognition }))}
+                    className="h-4 w-4"
+                  />
+                  <span>{t.avatarFaceRecognition}</span>
+                </label>
+
+                <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-1 snap-x snap-mandatory">
+                  <button
+                    onClick={() => {
+                      setAvatarProfile((prev) => ({ ...prev, scanTarget: 'face', faceRecognition: true, renderProfile: 'anime' }));
+                      setInput((prev) => `${prev ? `${prev}\n` : ''}${locale === 'ka' ? 'შექმენი თანამედროვე anime avatar profile.' : locale === 'ru' ? 'Создай современный anime avatar profile.' : 'Create a modern anime avatar profile.'}`);
+                    }}
+                    className="snap-start flex-shrink-0 min-h-[40px] text-[12px] sm:text-[11px] px-3 py-2 rounded-lg border border-amber-300/40 bg-amber-500/15 hover:bg-amber-500/25"
+                  >
+                    {t.avatarPresetAnimeFace}
+                  </button>
+                  <button
+                    onClick={() => {
+                      setAvatarProfile((prev) => ({ ...prev, scanTarget: 'fullbody', renderProfile: 'cinematic' }));
+                      setInput((prev) => `${prev ? `${prev}\n` : ''}${locale === 'ka' ? 'შექმენი სრული ტანის cinematic avatar სტუდიური ხარისხით.' : locale === 'ru' ? 'Создай full-body cinematic avatar студийного качества.' : 'Create a studio-quality full-body cinematic avatar.'}`);
+                    }}
+                    className="snap-start flex-shrink-0 min-h-[40px] text-[12px] sm:text-[11px] px-3 py-2 rounded-lg border border-cyan-300/40 bg-cyan-500/15 hover:bg-cyan-500/25"
+                  >
+                    {t.avatarPresetFullBody}
+                  </button>
+                </div>
+              </PremiumCard>
+            )}
+
+            <PremiumCard title={t.workspaceSections}>
+              <div className="grid grid-cols-1 xl:grid-cols-3 gap-2">
+                {workspaceSections.map((section) => {
+                  const active = section.id === activeSectionId;
+                  return (
+                    <button
+                      key={section.id}
+                      onClick={() => setActiveSectionId(section.id)}
+                      className={`text-left rounded-lg border p-2.5 transition-colors ${active ? 'border-cyan-300/55 bg-cyan-500/16' : 'border-white/15 bg-white/[0.03] hover:bg-white/[0.07]'}`}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-[11px] font-semibold text-white/90">{section.title}</p>
+                        <span className="text-[10px] text-cyan-100/85">{section.metric}%</span>
+                      </div>
+                      <p className="text-[10px] text-white/65 mt-1">{section.description}</p>
+                      <div className="mt-2 h-1.5 rounded-full bg-white/10 overflow-hidden">
+                        <div className="h-full bg-cyan-400" style={{ width: `${section.metric}%` }} />
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {activeSection && (
+                <div className="rounded-lg border border-white/15 bg-black/20 p-2.5 space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-[11px] text-white/80">{activeSection.title}</p>
+                    <button
+                      onClick={() => setInput(buildSectionPrompt(locale, serviceName, activeSection.title))}
+                      className="text-[10px] px-2 py-1 rounded-md border border-amber-300/40 bg-amber-500/15 text-amber-100 hover:bg-amber-500/25"
+                    >
+                      {t.applySection}
+                    </button>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {activeSection.steps.map((step) => (
+                      <span key={step} className="text-[10px] px-2 py-1 rounded-full border border-white/15 bg-white/5 text-white/70">
+                        {step}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </PremiumCard>
+
+            <PremiumCard title={t.selectionChart} className="border-cyan-300/35 bg-[linear-gradient(145deg,rgba(34,211,238,0.14),rgba(8,47,73,0.08))]">
+              <div className="space-y-2">
+                <div>
+                  <div className="flex items-center justify-between text-[11px] text-cyan-100/90">
+                    <span>{t.optionsCoverage}</span>
+                    <span>{selectionCoverage}%</span>
+                  </div>
+                  <div className="h-1.5 rounded-full bg-cyan-950/35 overflow-hidden mt-1">
+                    <div className="h-full bg-cyan-300" style={{ width: `${selectionCoverage}%` }} />
+                  </div>
+                </div>
+                <div>
+                  <div className="flex items-center justify-between text-[11px] text-cyan-100/90">
+                    <span>{t.sectionReadiness}</span>
+                    <span>{sectionReadiness}%</span>
+                  </div>
+                  <div className="h-1.5 rounded-full bg-cyan-950/35 overflow-hidden mt-1">
+                    <div className="h-full bg-sky-300" style={{ width: `${sectionReadiness}%` }} />
+                  </div>
+                </div>
+                <div>
+                  <div className="flex items-center justify-between text-[11px] font-semibold text-cyan-50">
+                    <span>{t.completionScore}</span>
+                    <span>{completionScore}%</span>
+                  </div>
+                  <div className="h-1.5 rounded-full bg-cyan-950/35 overflow-hidden mt-1">
+                    <div className="h-full bg-gradient-to-r from-cyan-300 to-blue-300" style={{ width: `${completionScore}%` }} />
+                  </div>
+                </div>
               </div>
             </PremiumCard>
           </div>
@@ -1466,6 +2065,18 @@ export default function UnifiedServiceLayout({
               </div>
             )}
 
+            {landingPresetNote && (
+              <div className="flex items-center justify-between gap-3 rounded-xl border border-cyan-300/40 bg-cyan-500/15 px-3 py-2">
+                <p className="text-xs text-cyan-100">{landingPresetNote}</p>
+                <button
+                  onClick={() => setLandingPresetNote(null)}
+                  className="text-[11px] text-cyan-100/80 hover:text-cyan-50"
+                >
+                  {t.dismiss}
+                </button>
+              </div>
+            )}
+
             {generationProgress && (
               <div className="rounded-xl border border-cyan-400/30 bg-cyan-500/10 px-3 py-2.5 space-y-1.5">
                 <div className="flex items-center justify-between text-[11px] text-cyan-100">
@@ -1557,12 +2168,42 @@ export default function UnifiedServiceLayout({
                         disabled={cameraCaptureBusy}
                         className="w-full px-3 py-2 text-xs rounded-lg border border-cyan-400/45 bg-cyan-500/20 text-cyan-100 hover:bg-cyan-500/30 disabled:opacity-40"
                       >
-                        {t.scan}
+                        {serviceContext === 'avatar'
+                          ? `${t.scan} (${avatarProfile.scanTarget === 'fullbody' ? (locale === 'ka' ? 'სრული ტანი' : locale === 'ru' ? 'тело' : 'full-body') : (locale === 'ka' ? 'სახე' : locale === 'ru' ? 'лицо' : 'face')})`
+                          : t.scan}
                       </button>
                     </div>
                   </div>
                 ) : null}
                 {cameraError ? <p className="text-xs text-red-300 mt-1">{cameraError}</p> : null}
+              </div>
+            )}
+
+            <div className="flex items-center gap-2 flex-wrap">
+              <button
+                onClick={importReadyAvatar}
+                disabled={avatarImporting}
+                className="px-3 py-2 text-xs border border-cyan-300/45 bg-cyan-500/15 rounded-lg hover:bg-cyan-500/25 disabled:opacity-40"
+              >
+                {avatarImporting ? (t.importingAvatar ?? 'Importing avatar...') : (t.importAvatar ?? 'Import Ready Avatar')}
+              </button>
+
+              {importedAvatarUrl && (
+                <button
+                  onClick={() => {
+                    setImportedAvatarUrl(null);
+                    setAvatarImportNotice(null);
+                  }}
+                  className="px-3 py-2 text-xs border border-white/20 bg-white/10 rounded-lg hover:bg-white/20"
+                >
+                  {t.clearImportedAvatar ?? 'Clear Imported Avatar'}
+                </button>
+              )}
+            </div>
+
+            {avatarImportNotice && (
+              <div className="rounded-xl border border-cyan-300/35 bg-cyan-500/12 px-3 py-2">
+                <p className="text-xs text-cyan-100">{avatarImportNotice}</p>
               </div>
             )}
 
@@ -1659,6 +2300,7 @@ export default function UnifiedServiceLayout({
         </div>
 
         {/* ── Preview/Tools Panel (30%) ─────────────────────────────────── */}
+        {!chatFullscreen && (
         <div className="lg:w-[32%] border border-white/[0.12] bg-[linear-gradient(160deg,rgba(7,14,30,0.74),rgba(5,11,26,0.68))] rounded-2xl flex flex-col md:max-h-[50vh] lg:max-h-none overflow-hidden">
           {/* Panel header */}
           <div className="px-4 py-3 border-b border-white/[0.10] bg-black/25 flex items-center justify-between">
@@ -1732,6 +2374,7 @@ export default function UnifiedServiceLayout({
             </div>
           )}
         </div>
+        )}
       </div>
 
       {/* ── Login Modal (NOT redirect) ──────────────────────────────────── */}

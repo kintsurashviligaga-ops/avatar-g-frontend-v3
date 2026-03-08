@@ -59,6 +59,17 @@ const ORBIT_CSS = `
   0%, 100% { opacity: 0.62; }
   50% { opacity: 0.98; }
 }
+@keyframes orbit-avatar-turn-360 {
+  0% { transform: rotateY(0deg) rotateZ(0deg); }
+  25% { transform: rotateY(90deg) rotateZ(0.8deg); }
+  50% { transform: rotateY(180deg) rotateZ(0deg); }
+  75% { transform: rotateY(270deg) rotateZ(-0.8deg); }
+  100% { transform: rotateY(360deg) rotateZ(0deg); }
+}
+@keyframes orbit-avatar-float {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-4px); }
+}
 .orbit-container {
   animation: orbit-spin 60s linear infinite;
 }
@@ -85,6 +96,14 @@ const ORBIT_CSS = `
 }
 .orbit-lux-frame {
   animation: orbit-lux-flicker 3.6s ease-in-out infinite;
+}
+.orbit-avatar-stage {
+  perspective: 1200px;
+  animation: orbit-avatar-float 3.4s ease-in-out infinite;
+}
+.orbit-avatar-turn {
+  transform-style: preserve-3d;
+  animation: orbit-avatar-turn-360 16s linear infinite;
 }
 `
 
@@ -126,8 +145,21 @@ export function OrbitSolarSystem() {
         setAvatarUrl(e.newValue)
       }
     }
+
+    const handleAvatarUpdate = (event: Event) => {
+      const customEvent = event as CustomEvent<{ url?: string }>
+      const nextUrl = customEvent.detail?.url
+      if (nextUrl) {
+        setAvatarUrl(nextUrl)
+      }
+    }
+
     window.addEventListener('storage', handleStorage)
-    return () => window.removeEventListener('storage', handleStorage)
+    window.addEventListener('generated-avatar-updated', handleAvatarUpdate)
+    return () => {
+      window.removeEventListener('storage', handleStorage)
+      window.removeEventListener('generated-avatar-updated', handleAvatarUpdate)
+    }
   }, [])
 
   return (
@@ -141,21 +173,24 @@ export function OrbitSolarSystem() {
 
         {/* Core Center */}
         <div className="absolute z-20 flex flex-col items-center justify-center select-none">
-          <div className="relative w-24 h-24 md:w-32 md:h-32 rounded-full border border-white/10 bg-black/20 shadow-[0_0_40px_rgba(6,182,212,0.1)] flex items-center justify-center backdrop-blur-sm overflow-hidden">
+          <div className="orbit-avatar-stage relative w-28 h-36 md:w-44 md:h-56 rounded-[40%] border border-white/15 bg-black/25 shadow-[0_0_40px_rgba(6,182,212,0.15)] flex items-center justify-center backdrop-blur-sm overflow-hidden">
             {avatarUrl ? (
-              /* eslint-disable-next-line @next/next/no-img-element */
-              <img
-                src={avatarUrl}
-                alt="Generated Avatar"
-                className="w-full h-full object-cover rounded-full"
-                onError={() => setAvatarUrl(null)}
-              />
+              <div className="orbit-avatar-turn absolute inset-0 flex items-center justify-center px-1.5 md:px-2">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={avatarUrl}
+                  alt="Generated Avatar"
+                  className="w-full h-full object-contain"
+                  onError={() => setAvatarUrl(null)}
+                />
+              </div>
             ) : (
               <Brain className="w-10 h-10 md:w-12 md:h-12 text-cyan-400 drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]" />
             )}
-            <div className="absolute inset-0 rounded-full border-2 border-cyan-400/30 animate-ping" style={{ animationDuration: '3s' }} />
+            <div className="absolute inset-0 rounded-[40%] border border-cyan-300/35" />
+            <div className="absolute inset-0 rounded-[40%] border-2 border-cyan-400/24 animate-ping" style={{ animationDuration: '3.2s' }} />
           </div>
-          <div className="mt-4 text-center">
+          <div className="mt-3 text-center">
             <h3 className="text-white font-bold text-lg md:text-xl tracking-tight drop-shadow-lg" style={{ textShadow: '0 2px 4px rgba(0,0,0,0.8)' }}>{avatarUrl ? 'Your Avatar' : 'Core AI'}</h3>
             <p className="text-cyan-400/80 text-xs md:text-sm font-medium drop-shadow-md">{avatarUrl ? (locale === 'ka' ? 'შენი ციფრული იდენტობა' : locale === 'ru' ? 'Твоя цифровая идентичность' : 'Your digital identity') : 'შენი ციფრული იდენტობა'}</p>
           </div>

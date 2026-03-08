@@ -648,6 +648,37 @@ a {
     pointer-events: none;
     z-index: 1;
   }
+
+  /* Global silver-neon fashion overlay at ~20% intensity */
+  .ag-silver-neon-overlay {
+    position: relative;
+    isolation: isolate;
+  }
+
+  .ag-silver-neon-overlay::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 2;
+    background:
+      radial-gradient(1200px 680px at 14% 12%, rgba(226, 232, 240, 0.24) 0%, transparent 52%),
+      radial-gradient(980px 620px at 86% 88%, rgba(148, 163, 184, 0.2) 0%, transparent 56%),
+      linear-gradient(118deg, transparent 0%, rgba(192, 197, 203, 0.18) 33%, transparent 36%, transparent 62%, rgba(34, 211, 238, 0.14) 66%, transparent 70%);
+    mix-blend-mode: screen;
+    opacity: 0.2;
+  }
+
+  @media (max-width: 768px) {
+    .ag-silver-neon-overlay::after {
+      /* Soften overlay on mobile to keep text crisp and reduce visual fatigue */
+      opacity: 0.14;
+      background:
+        radial-gradient(860px 520px at 12% 10%, rgba(226, 232, 240, 0.2) 0%, transparent 54%),
+        radial-gradient(700px 460px at 88% 90%, rgba(148, 163, 184, 0.16) 0%, transparent 58%),
+        linear-gradient(122deg, transparent 0%, rgba(192, 197, 203, 0.14) 34%, transparent 39%, transparent 64%, rgba(34, 211, 238, 0.12) 68%, transparent 73%);
+    }
+  }
 }
 
 @keyframes agFadeIn {

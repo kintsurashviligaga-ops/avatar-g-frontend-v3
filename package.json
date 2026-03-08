@@ -25,6 +25,7 @@
     "test:enterprise": "jest __tests__/workflow/policy.test.ts __tests__/billing/plan-enforcement.test.ts __tests__/lib/monetization.enforcement.test.ts __tests__/lib/ai-router.test.ts __tests__/lib/tenant-isolation.test.ts __tests__/lib/rate-limit-window.test.ts __tests__/lib/metering-aggregation.test.ts __tests__/api/billing-usage-route.test.ts __tests__/api/agent-g-router-execute-route.test.ts __tests__/api/org-branding-route.test.ts --runInBand",
     "load:test": "npx tsx scripts/load-test.ts",
     "verify:production": "npx tsx scripts/verify-production.ts",
+    "verify:i18n:hydrated": "node scripts/verify-i18n-hydrated.mjs",
     "test:telegram:webhook": "powershell -ExecutionPolicy Bypass -File scripts/telegram-webhook-smoke.ps1",
     "test:webhooks": "node scripts/test-webhooks.mjs"
   },
