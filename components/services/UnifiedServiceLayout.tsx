@@ -2170,7 +2170,7 @@ export default function UnifiedServiceLayout({
               <div className="rounded-xl border border-cyan-400/30 bg-cyan-500/10 shadow-[0_0_24px_rgba(34,211,238,0.16)] p-2">
                 {cameraOn ? (
                   <div className="space-y-2">
-                    <div className="relative rounded-xl overflow-hidden border border-cyan-400/[0.22] shadow-[0_0_20px_rgba(34,211,238,0.12)]">
+                    <div className="relative rounded-xl overflow-hidden border border-cyan-400/[0.28] shadow-[0_0_28px_rgba(34,211,238,0.22),0_0_0_1px_rgba(34,211,238,0.08)]">
                       <video
                         ref={cameraVideoRef}
                         autoPlay
@@ -2178,24 +2178,36 @@ export default function UnifiedServiceLayout({
                         playsInline
                         className="w-full max-h-52 max-md:[@media(orientation:landscape)]:max-h-28 rounded-xl object-cover"
                       />
-                      {/* REC badge */}
-                      <span className="absolute top-2 left-2 inline-flex items-center gap-1.5 rounded-full bg-black/70 border border-red-400/40 px-2 py-0.5 text-[9px] font-semibold text-red-200 backdrop-blur-sm">
-                        <span className="w-1 h-1 rounded-full bg-red-400 animate-pulse" />
-                        REC
-                      </span>
+                      {/* Premium scanner overlay */}
+                      <div className="absolute inset-0 pointer-events-none">
+                        <div className="ag-cam-scan-line" />
+                        <div
+                          className="ag-cam-face-ring absolute inset-[12%] rounded-[20%] border border-cyan-400/35"
+                          style={{ boxShadow: '0 0 18px rgba(34,211,238,0.14) inset' }}
+                        />
+                        <div className="ag-cam-corner absolute top-2 left-2 w-4 h-4 border-t-2 border-l-2 border-cyan-300 rounded-tl-lg" />
+                        <div className="ag-cam-corner absolute top-2 right-2 w-4 h-4 border-t-2 border-r-2 border-cyan-300 rounded-tr-lg" />
+                        <div className="ag-cam-corner absolute bottom-2 left-2 w-4 h-4 border-b-2 border-l-2 border-cyan-300 rounded-bl-lg" />
+                        <div className="ag-cam-corner absolute bottom-2 right-2 w-4 h-4 border-b-2 border-r-2 border-cyan-300 rounded-br-lg" />
+                        {/* REC badge */}
+                        <span className="absolute top-2 left-1/2 -translate-x-1/2 inline-flex items-center gap-1 rounded-full bg-black/75 border border-red-400/50 px-2 py-0.5 text-[9px] font-bold text-red-200 backdrop-blur-sm tracking-wide">
+                          <span className="w-1.5 h-1.5 rounded-full bg-red-400 animate-pulse" />
+                          REC
+                        </span>
+                      </div>
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                       <button
                         onClick={() => captureFrame(false)}
                         disabled={cameraCaptureBusy}
-                        className="w-full px-3 py-2 text-xs rounded-lg border border-white/20 bg-white/10 hover:bg-white/20 disabled:opacity-40"
+                        className="w-full px-3 py-2 text-xs rounded-lg bg-gradient-to-r from-cyan-500/20 to-blue-500/15 border border-cyan-400/45 text-cyan-100 hover:from-cyan-500/30 hover:to-blue-500/25 disabled:opacity-40 transition-colors"
                       >
                         {t.capture}
                       </button>
                       <button
                         onClick={() => captureFrame(true)}
                         disabled={cameraCaptureBusy}
-                        className="w-full px-3 py-2 text-xs rounded-lg border border-cyan-400/45 bg-cyan-500/20 text-cyan-100 hover:bg-cyan-500/30 disabled:opacity-40"
+                        className="w-full px-3 py-2 text-xs rounded-lg bg-gradient-to-r from-violet-500/20 to-cyan-500/15 border border-violet-400/40 text-violet-100 hover:from-violet-500/30 hover:to-cyan-500/25 disabled:opacity-40 transition-colors"
                       >
                         {serviceContext === 'avatar'
                           ? `${t.scan} (${avatarProfile.scanTarget === 'fullbody' ? (locale === 'ka' ? 'სრული ტანი' : locale === 'ru' ? 'тело' : 'full-body') : (locale === 'ka' ? 'სახე' : locale === 'ru' ? 'лицо' : 'face')})`

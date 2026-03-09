@@ -789,6 +789,21 @@ a:focus-visible {
   100% { transform: translateY(100%);  opacity: 0; }
 }
 
+@keyframes ag-scan-sweep {
+  0%   { top: 4%;  opacity: 1; }
+  48%  { top: 92%; opacity: 0.7; }
+  52%  { top: 92%; opacity: 0.7; }
+  100% { top: 4%;  opacity: 1; }
+}
+@keyframes ag-face-pulse {
+  0%, 100% { opacity: 0.42; transform: scale(1); }
+  50%       { opacity: 0.88; transform: scale(1.03); }
+}
+@keyframes ag-corner-blink {
+  0%, 100% { opacity: 1; }
+  45%       { opacity: 0.2; }
+}
+
 @layer components {
 
   /* ── Navigation bar glass (used in Navigation.tsx, TopBar.tsx) */
@@ -830,6 +845,16 @@ a:focus-visible {
     backdrop-filter: blur(16px);
     -webkit-backdrop-filter: blur(16px);
   }
+
+  /* ── Camera scanner overlay classes (used in UnifiedServiceLayout, GlobalChatbot, CameraComponent) */
+  .ag-cam-scan-line {
+    position: absolute; left: 6%; right: 6%; height: 2px; border-radius: 9999px;
+    background: linear-gradient(90deg, transparent, rgba(34,211,238,0.8), rgba(34,211,238,1), rgba(34,211,238,0.8), transparent);
+    box-shadow: 0 0 10px 3px rgba(34,211,238,0.60), 0 0 24px 6px rgba(34,211,238,0.28);
+    animation: ag-scan-sweep 2s ease-in-out infinite;
+  }
+  .ag-cam-face-ring { animation: ag-face-pulse 1.8s ease-in-out infinite; }
+  .ag-cam-corner    { animation: ag-corner-blink 1.5s ease-in-out infinite; }
 
   /* ── ag-btn-primary — main CTA button (Hero, CTABanner, Navigation, ServiceLanding) */
   .ag-btn-primary {

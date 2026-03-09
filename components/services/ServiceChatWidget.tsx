@@ -163,7 +163,7 @@ export default function ServiceChatWidget({ serviceName, agentId, locale = 'ka' 
           {(cameraOn || cameraError) && (
             <div className="border-b border-white/[0.08] p-2 space-y-2">
               {cameraOn && (
-                <div className="relative rounded-xl overflow-hidden border border-cyan-400/[0.22] shadow-[0_0_20px_rgba(34,211,238,0.10)]">
+                <div className="relative rounded-xl overflow-hidden border border-cyan-400/[0.28] shadow-[0_0_24px_rgba(34,211,238,0.20),0_0_0_1px_rgba(34,211,238,0.08)]">
                   <video
                     ref={cameraVideoRef}
                     autoPlay
@@ -171,16 +171,28 @@ export default function ServiceChatWidget({ serviceName, agentId, locale = 'ka' 
                     playsInline
                     className="w-full max-h-36 object-cover rounded-xl"
                   />
+                  {/* Scanner overlay */}
+                  <div className="absolute inset-0 pointer-events-none">
+                    <div className="ag-cam-scan-line" />
+                    <div
+                      className="ag-cam-face-ring absolute inset-[14%] rounded-[22%] border border-cyan-400/35"
+                      style={{ boxShadow: '0 0 14px rgba(34,211,238,0.14) inset' }}
+                    />
+                    <div className="ag-cam-corner absolute top-2 left-2 w-3.5 h-3.5 border-t-2 border-l-2 border-cyan-300 rounded-tl-md" />
+                    <div className="ag-cam-corner absolute top-2 right-8 w-3.5 h-3.5 border-t-2 border-r-2 border-cyan-300 rounded-tr-md" />
+                    <div className="ag-cam-corner absolute bottom-2 left-2 w-3.5 h-3.5 border-b-2 border-l-2 border-cyan-300 rounded-bl-md" />
+                    <div className="ag-cam-corner absolute bottom-2 right-2 w-3.5 h-3.5 border-b-2 border-r-2 border-cyan-300 rounded-br-md" />
+                    <span className="absolute top-2 left-1/2 -translate-x-1/2 inline-flex items-center gap-1 rounded-full bg-black/75 border border-red-400/50 px-2 py-0.5 text-[9px] font-bold text-red-200 backdrop-blur-sm tracking-wide">
+                      <span className="w-1.5 h-1.5 rounded-full bg-red-400 animate-pulse" />
+                      REC
+                    </span>
+                  </div>
                   <button
                     onClick={stopCamera}
-                    className="absolute top-2 right-2 w-6 h-6 rounded-full bg-black/70 border border-white/20 flex items-center justify-center text-white/70 hover:text-white transition-colors backdrop-blur-sm"
+                    className="absolute top-2 right-2 z-10 w-6 h-6 rounded-full bg-black/70 border border-white/20 flex items-center justify-center text-white/70 hover:text-white transition-colors backdrop-blur-sm"
                   >
                     <X className="w-3 h-3" />
                   </button>
-                  <span className="absolute top-2 left-2 inline-flex items-center gap-1 rounded-full bg-black/70 border border-red-400/40 px-2 py-0.5 text-[9px] font-semibold text-red-200 backdrop-blur-sm">
-                    <span className="w-1 h-1 rounded-full bg-red-400 animate-pulse" />
-                    REC
-                  </span>
                 </div>
               )}
               {cameraError && (
