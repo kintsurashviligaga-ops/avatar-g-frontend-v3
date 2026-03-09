@@ -23,7 +23,7 @@ export function MetricWidget({
   variant = "default",
 }: MetricWidgetProps) {
   const variantStyles = {
-    default: "from-gray-900 to-gray-800/50 border-gray-700/50",
+    default: "from-[rgba(7,14,30,0.90)] to-[rgba(4,9,22,0.80)] border-white/[0.08]",
     success: "from-green-900/30 to-green-800/10 border-green-500/50",
     danger: "from-red-900/30 to-red-800/10 border-red-500/50",
     warning: "from-yellow-900/30 to-yellow-800/10 border-yellow-500/50",

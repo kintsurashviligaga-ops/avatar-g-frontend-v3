@@ -28,7 +28,7 @@ export function RecentJobs({ jobs }: RecentJobsProps) {
       case 'processing': return 'bg-blue-500/20 text-blue-400 border-blue-500/30';
       case 'queued': return 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30';
       case 'error': return 'bg-red-500/20 text-red-400 border-red-500/30';
-      default: return 'bg-gray-500/20 text-gray-400 border-gray-500/30';
+      default: return 'bg-white/[0.05] text-white/40 border-white/[0.10]';
     }
   };
   
@@ -44,17 +44,19 @@ case 'processing': return '⟳';
   
   if (jobs.length === 0) {
     return (
-      <div className="bg-gradient-to-br from-gray-800/50 to-gray-900/50 border border-cyan-500/20 rounded-xl p-8 backdrop-blur-sm text-center">
-        <span className="text-6xl mb-4 block">📋</span>
-        <h3 className="text-xl font-semibold text-white mb-2">No Jobs Yet</h3>
-        <p className="text-gray-400">Start using agents to see your job history here</p>
+      <div className="relative rounded-2xl border border-white/[0.08] bg-[linear-gradient(155deg,rgba(7,14,30,0.90),rgba(4,9,22,0.80))] backdrop-blur-2xl p-8 text-center overflow-hidden">
+        <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-white/[0.09] to-transparent" />
+        <span className="text-5xl mb-4 block">📋</span>
+        <h3 className="text-lg font-bold text-white mb-2">No Jobs Yet</h3>
+        <p className="text-white/40 text-sm">Start using agents to see your job history here</p>
       </div>
     );
   }
   
   return (
-    <div className="bg-gradient-to-br from-gray-800/50 to-gray-900/50 border border-cyan-500/20 rounded-xl p-6 backdrop-blur-sm">
-      <h2 className="text-xl font-semibold text-white mb-4">Recent Jobs</h2>
+    <div className="relative rounded-2xl border border-white/[0.08] bg-[linear-gradient(155deg,rgba(7,14,30,0.90),rgba(4,9,22,0.80))] backdrop-blur-2xl p-6 overflow-hidden">
+      <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-white/[0.09] to-transparent" />
+      <h2 className="text-lg font-bold text-white mb-4 tracking-tight">Recent Jobs</h2>
       
       <div className="space-y-3">
         {jobs.map((job) => {
@@ -62,7 +64,7 @@ case 'processing': return '⟳';
           return (
             <div
               key={job.id}
-              className="flex items-center justify-between p-4 bg-gray-800/30 rounded-lg border border-gray-700 hover:border-cyan-500/30 transition"
+              className="flex items-center justify-between p-4 rounded-xl border border-white/[0.07] bg-white/[0.02] hover:border-cyan-400/25 hover:bg-cyan-400/[0.03] transition-all"
             >
               {/* Left: Agent + Type */}
               <div className="flex items-center gap-3 flex-1 min-w-0">
@@ -71,7 +73,7 @@ case 'processing': return '⟳';
                   <h4 className="text-white font-medium truncate">
                     {agent?.name || job.agent_id}
                   </h4>
-                  <p className="text-sm text-gray-400 truncate">{job.type || job.agent_id}</p>
+                  <p className="text-sm text-white/40 truncate">{job.type || job.agent_id}</p>
                 </div>
               </div>
               
@@ -83,7 +85,7 @@ case 'processing': return '⟳';
               {/* Right: Cost + Time */}
               <div className="text-right ml-4">
                 <p className="text-sm font-medium text-white">{formatCredits(job.cost_credits ?? job.cost ?? 0)} cr</p>
-                <p className="text-xs text-gray-400">
+                <p className="text-xs text-white/35">
                   {new Date(job.created_at).toLocaleDateString()}
                 </p>
               </div>

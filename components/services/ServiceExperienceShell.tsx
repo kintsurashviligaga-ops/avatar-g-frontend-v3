@@ -200,19 +200,7 @@ export default function ServiceExperienceShell({ children, forcedSlug }: Service
               aria-label="History filter"
               value={filter}
               onChange={(event) => setFilter(event.target.value as FilterMode)}
-              className="h-10 rounded-md border border-app-border/40 bg-app-surface px-3 text-sm"
-            >
-              <option value="all">All</option>
-              <option value="queued">Queued</option>
-              <option value="processing">Processing</option>
-              <option value="completed">Completed</option>
-              <option value="failed">Failed</option>
-            </select>
-            <select
-              aria-label="History sort"
-              value={sort}
-              onChange={(event) => setSort(event.target.value as SortMode)}
-              className="h-10 rounded-md border border-app-border/40 bg-app-surface px-3 text-sm"
+              className="h-10 rounded-xl border border-white/[0.10] bg-[linear-gradient(135deg,rgba(7,14,30,0.85),rgba(4,9,22,0.75))] px-3 text-sm text-white/80 backdrop-blur-sm focus:border-cyan-400/35 focus:outline-none transition-all"
             >
               <option value="newest">Newest</option>
               <option value="oldest">Oldest</option>
@@ -223,7 +211,7 @@ export default function ServiceExperienceShell({ children, forcedSlug }: Service
       </div>
 
       {error ? (
-        <Card className="border-app-danger/50">
+        <Card className="border-red-400/30">
           <CardContent className="flex flex-wrap items-center justify-between gap-3 pt-6">
             <p className="text-sm text-red-200">{error}</p>
             <RetryButton onClick={() => void loadJobs()} loading={loading} />
@@ -240,7 +228,7 @@ export default function ServiceExperienceShell({ children, forcedSlug }: Service
               <Skeleton className="h-14 w-full" />
             </div>
           ) : visibleJobs.length === 0 ? (
-            <div className="rounded-lg border border-app-border/40 bg-app-surface/50 p-4 text-sm text-app-muted">
+            <div className="rounded-xl border border-white/[0.07] bg-white/[0.02] p-3 text-sm text-white/40">
               No execution history yet for this service.
             </div>
           ) : (
@@ -249,14 +237,14 @@ export default function ServiceExperienceShell({ children, forcedSlug }: Service
               const isActive = job.status === 'queued' || job.status === 'processing';
 
               return (
-                <div key={job.id} className="grid gap-3 rounded-lg border border-app-border/40 bg-app-surface/40 p-3 sm:grid-cols-[1fr_auto]">
+                <div key={job.id} className="grid gap-3 rounded-xl border border-white/[0.07] bg-[linear-gradient(135deg,rgba(7,14,30,0.70),rgba(4,9,22,0.60))] p-3 sm:grid-cols-[1fr_auto] hover:border-white/[0.12] transition-all">
                   <div className="space-y-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <StatusBadge status={job.status} />
-                      <span className="text-xs text-app-muted">{formatDuration(jobDurationMs(job))}</span>
+                      <span className="text-xs text-white/35">{formatDuration(jobDurationMs(job))}</span>
                       <CostBadge credits={service?.app?.credits ?? 0} compact />
                     </div>
-                    <p className="text-sm text-app-text">{job.title}</p>
+                    <p className="text-sm text-white/80">{job.title}</p>
                     {job.error_message ? <p className="text-xs text-red-200">{job.error_message}</p> : null}
                   </div>
                   <div className="flex items-center justify-end gap-2">

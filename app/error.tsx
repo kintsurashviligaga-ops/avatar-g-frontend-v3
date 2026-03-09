@@ -45,7 +45,8 @@ export default function Error({
 
   return (
     <div className="min-h-screen bg-transparent flex items-center justify-center p-4">
-      <div className="max-w-md w-full bg-[#0A0F1C] border border-red-500/30 rounded-2xl p-8 text-center">
+      <div className="max-w-md w-full rounded-2xl border border-red-400/25 bg-[linear-gradient(155deg,rgba(20,5,5,0.92),rgba(10,3,3,0.88))] backdrop-blur-2xl p-8 text-center shadow-[0_0_32px_rgba(239,68,68,0.12)]">
+        <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-red-500/30 to-transparent rounded-t-2xl" />
         <div className="w-20 h-20 mx-auto rounded-full bg-red-500/20 flex items-center justify-center mb-6">
           <span className="text-4xl">⚠️</span>
         </div>

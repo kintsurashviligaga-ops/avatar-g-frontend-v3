@@ -169,7 +169,7 @@ export function ChatWindow({
 
   return (
     <motion.div
-      className={`flex flex-col rounded-lg border border-gray-700 overflow-hidden transition-all duration-300 ${config.bgColor} ${
+      className={`flex flex-col rounded-2xl border border-white/[0.09] overflow-hidden transition-all duration-300 bg-[linear-gradient(170deg,rgba(7,14,30,0.92),rgba(3,7,18,0.88))] backdrop-blur-2xl shadow-[0_0_0_1px_rgba(34,211,238,0.06),0_16px_48px_rgba(0,0,0,0.5)] ${
         isMinimized ? "h-12" : heightClass
       }`}
       layout
@@ -220,7 +220,7 @@ export function ChatWindow({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-900/50"
+            className="flex-1 overflow-y-auto p-4 space-y-4 bg-transparent"
           >
             {messages.map((msg) => (
               <motion.div
@@ -235,12 +235,12 @@ export function ChatWindow({
                       ? `bg-gradient-to-r ${config.color} text-white`
                       : msg.isError
                         ? "bg-red-500/20 text-red-300 border border-red-500/30"
-                        : "bg-slate-800 text-gray-100"
+                        : "bg-[rgba(7,14,30,0.85)] border border-white/[0.07] text-white/80"
                   }`}
                 >
                   {msg.content}
                   {msg.provider && (
-                    <div className="mt-1 text-xs text-gray-400">via {msg.provider}</div>
+                    <div className="mt-1 text-[10px] text-white/30">via {msg.provider}</div>
                   )}
                 </div>
               </motion.div>
@@ -249,7 +249,7 @@ export function ChatWindow({
               <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
-                className="flex items-center gap-2 text-gray-400"
+                className="flex items-center gap-2 text-white/35"
               >
                 <div className="flex gap-1">
                   <div className="w-2 h-2 bg-cyan-400 rounded-full animate-bounce" />
@@ -267,11 +267,11 @@ export function ChatWindow({
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          className="border-t border-gray-700 p-3 bg-slate-900"
+          className="border-t border-white/[0.07] p-3 bg-[rgba(3,7,18,0.60)] backdrop-blur-sm"
         >
           <div className="flex gap-2 items-end">
-            <button className="p-2 hover:bg-gray-800 rounded-lg transition-colors">
-              <Paperclip className="w-4 h-4 text-gray-400" />
+            <button className="p-2 hover:bg-white/[0.07] rounded-xl transition-colors">
+              <Paperclip className="w-4 h-4 text-white/35" />
             </button>
             <input
               ref={inputRef}
@@ -281,7 +281,7 @@ export function ChatWindow({
               onChange={(e) => setInput(e.target.value)}
               onKeyPress={(e) => e.key === "Enter" && handleSend()}
               disabled={isLoading}
-              className="flex-1 bg-gray-800 text-white placeholder-gray-500 rounded-lg px-3 py-2 text-sm outline-none border border-gray-700 focus:border-cyan-500/50 transition-colors"
+              className="flex-1 bg-white/[0.04] text-white placeholder-white/20 rounded-xl px-3.5 py-2 text-sm outline-none border border-white/[0.08] focus:border-cyan-400/35 transition-colors"
             />
             <Button
               onClick={handleSend}

@@ -44,7 +44,7 @@ export function PlanCard({ plan, status, currentPeriodEnd, cancelAtPeriodEnd }: 
       case 'active': return 'text-green-400';
       case 'canceled': return 'text-red-400';
       case 'past_due': return 'text-yellow-400';
-      default: return 'text-gray-400';
+      default: return 'text-white/45';
     }
   };
   
@@ -58,7 +58,8 @@ export function PlanCard({ plan, status, currentPeriodEnd, cancelAtPeriodEnd }: 
   };
   
   return (
-    <div className="bg-gradient-to-br from-gray-800/50 to-gray-900/50 border border-cyan-500/20 rounded-xl p-6 backdrop-blur-sm">
+    <div className="relative rounded-2xl border border-white/[0.08] bg-[linear-gradient(155deg,rgba(7,14,30,0.90),rgba(4,9,22,0.80))] backdrop-blur-2xl p-6 overflow-hidden">
+      <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-white/[0.09] to-transparent" />
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-xl font-semibold text-white">Current Plan</h2>
         <div className="text-4xl">{getPlanIcon(plan)}</div>
@@ -68,7 +69,7 @@ export function PlanCard({ plan, status, currentPeriodEnd, cancelAtPeriodEnd }: 
         {/* Plan Name */}
         <div>
           <h3 className="text-3xl font-bold text-white">{planConfig.label}</h3>
-          <p className="text-sm text-gray-400 mt-1">{planConfig.features[0] || 'Plan features included'}</p>
+          <p className="text-sm text-white/40 mt-1">{planConfig.features[0] || 'Plan features included'}</p>
         </div>
         
         {/* Status */}
@@ -82,9 +83,9 @@ export function PlanCard({ plan, status, currentPeriodEnd, cancelAtPeriodEnd }: 
         </div>
         
         {/* Features */}
-        <div className="space-y-2 pt-2 border-t border-gray-700">
+        <div className="space-y-2 pt-2 border-t border-white/[0.07]">
           {planConfig.features.slice(0, 4).map((feature, i) => (
-            <div key={i} className="flex items-center gap-2 text-sm text-gray-300">
+            <div key={i} className="flex items-center gap-2 text-sm text-white/65">
               <span className="text-cyan-400">✓</span>
               <span>{feature}</span>
             </div>

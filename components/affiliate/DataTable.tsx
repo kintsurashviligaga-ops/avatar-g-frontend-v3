@@ -57,7 +57,7 @@ export function DataTable<T>({
             {columns.map((column) => (
               <th
                 key={column.key}
-                className="text-left text-xs font-medium text-gray-400 uppercase tracking-wider py-3 px-4"
+                className="text-left text-[10px] font-bold text-white/35 uppercase tracking-[0.08em] py-3 px-4"
                 style={{ width: column.width }}
               >
                 {column.header}
@@ -72,7 +72,7 @@ export function DataTable<T>({
               className="hover:bg-white/5 transition-colors"
             >
               {columns.map((column) => (
-                <td key={column.key} className="py-4 px-4 text-sm text-gray-300">
+                <td key={column.key} className="py-4 px-4 text-sm text-white/70">
                   {column.render(item)}
                 </td>
               ))}

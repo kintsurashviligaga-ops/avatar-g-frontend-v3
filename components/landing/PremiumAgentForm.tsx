@@ -80,7 +80,7 @@ export default function PremiumAgentForm({ isOpen, onClose }: PremiumAgentFormPr
                     <Sparkles className="w-6 h-6 text-cyan-400 drop-shadow-lg" />
                     Premium Agent
                   </h2>
-                  <p className="text-sm text-gray-400 mt-1">Enterprise-level AI superpowers</p>
+                  <p className="text-sm text-white/40 mt-1">Enterprise-level AI superpowers</p>
                 </div>
                 <button
                   onClick={onClose}
@@ -106,7 +106,7 @@ export default function PremiumAgentForm({ isOpen, onClose }: PremiumAgentFormPr
                       >
                         <Icon className="w-5 h-5 text-cyan-400 mb-2" />
                         <h3 className="font-semibold text-sm">{feature.title}</h3>
-                        <p className="text-xs text-gray-400 mt-1">{feature.description}</p>
+                        <p className="text-xs text-white/40 mt-1">{feature.description}</p>
                       </motion.div>
                     );
                   })}
@@ -116,9 +116,9 @@ export default function PremiumAgentForm({ isOpen, onClose }: PremiumAgentFormPr
                 <div className="bg-gradient-to-r from-cyan-500/10 to-blue-500/10 border border-cyan-500/20 rounded-lg p-4">
                   <div className="flex items-baseline gap-2">
                     <span className="text-3xl font-bold">$99</span>
-                    <span className="text-gray-400">/month or $999/year</span>
+                    <span className="text-white/45">/month or $999/year</span>
                   </div>
-                  <p className="text-sm text-gray-400 mt-2">Billed monthly. Cancel anytime.</p>
+                  <p className="text-sm text-white/40 mt-2">Billed monthly. Cancel anytime.</p>
                 </div>
 
                 {/* Form */}
@@ -147,7 +147,7 @@ export default function PremiumAgentForm({ isOpen, onClose }: PremiumAgentFormPr
                   <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-3">
                     <label className="flex items-center gap-3 cursor-pointer">
                       <input type="checkbox" className="w-4 h-4" defaultChecked />
-                      <span className="text-sm text-gray-300">
+                      <span className="text-sm text-white/75">
                         I agree to the Premium Terms and will receive product updates
                       </span>
                     </label>

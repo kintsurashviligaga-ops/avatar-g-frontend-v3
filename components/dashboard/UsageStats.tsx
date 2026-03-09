@@ -28,39 +28,40 @@ export function UsageStats({ stats }: UsageStatsProps) {
     .slice(0, 5);
   
   return (
-    <div className="bg-gradient-to-br from-gray-800/50 to-gray-900/50 border border-cyan-500/20 rounded-xl p-6 backdrop-blur-sm">
-      <h2 className="text-xl font-semibold text-white mb-6">Usage This Month</h2>
+    <div className="relative rounded-2xl border border-white/[0.08] bg-[linear-gradient(155deg,rgba(7,14,30,0.90),rgba(4,9,22,0.80))] backdrop-blur-2xl p-6 overflow-hidden">
+      <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-white/[0.09] to-transparent" />
+      <h2 className="text-lg font-bold text-white mb-6 tracking-tight">Usage This Month</h2>
       
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
         {/* Total Jobs */}
-        <div className="bg-gray-800/50 rounded-lg p-4 border border-gray-700">
-          <p className="text-gray-400 text-sm mb-1">Total Jobs</p>
-          <p className="text-2xl font-bold text-white">{stats.totalJobs}</p>
+        <div className="rounded-xl border border-white/[0.07] bg-white/[0.03] p-4">
+          <p className="text-white/45 text-xs font-medium mb-1.5 tracking-wide">Total Jobs</p>
+          <p className="text-2xl font-black text-white">{stats.totalJobs}</p>
         </div>
         
         {/* Completed */}
-        <div className="bg-gray-800/50 rounded-lg p-4 border border-gray-700">
-          <p className="text-gray-400 text-sm mb-1">Completed</p>
-          <p className="text-2xl font-bold text-green-400">{stats.completedJobs}</p>
+        <div className="rounded-xl border border-emerald-400/20 bg-emerald-400/[0.05] p-4">
+          <p className="text-white/45 text-xs font-medium mb-1.5 tracking-wide">Completed</p>
+          <p className="text-2xl font-black text-emerald-300">{stats.completedJobs}</p>
         </div>
         
         {/* Success Rate */}
-        <div className="bg-gray-800/50 rounded-lg p-4 border border-gray-700">
-          <p className="text-gray-400 text-sm mb-1">Success Rate</p>
-          <p className="text-2xl font-bold text-cyan-400">{successRate}%</p>
+        <div className="rounded-xl border border-cyan-400/20 bg-cyan-400/[0.05] p-4">
+          <p className="text-white/45 text-xs font-medium mb-1.5 tracking-wide">Success Rate</p>
+          <p className="text-2xl font-black text-cyan-300">{successRate}%</p>
         </div>
         
         {/* Credits Spent */}
-        <div className="bg-gray-800/50 rounded-lg p-4 border border-gray-700">
-          <p className="text-gray-400 text-sm mb-1">Credits Spent</p>
-          <p className="text-2xl font-bold text-white">{formatCredits(stats.totalCreditsSpent)}</p>
+        <div className="rounded-xl border border-violet-400/20 bg-violet-400/[0.05] p-4">
+          <p className="text-white/45 text-xs font-medium mb-1.5 tracking-wide">Credits Spent</p>
+          <p className="text-2xl font-black text-white">{formatCredits(stats.totalCreditsSpent)}</p>
         </div>
       </div>
       
       {/* Top Agents */}
       {topAgents.length > 0 && (
         <div>
-          <h3 className="text-sm font-semibold text-gray-400 mb-3 uppercase tracking-wider">
+          <h3 className="text-xs font-bold text-white/40 mb-3 uppercase tracking-[0.08em]">
             Most Used Agents
           </h3>
           <div className="space-y-2">
@@ -76,9 +77,9 @@ export function UsageStats({ stats }: UsageStatsProps) {
                       <span className="text-sm text-white truncate">
                         {agent?.name || agentId}
                       </span>
-                      <span className="text-sm text-gray-400">{count} jobs</span>
+                      <span className="text-sm text-white/40">{count} jobs</span>
                     </div>
-                    <div className="h-2 bg-gray-700 rounded-full overflow-hidden">
+                    <div className="h-1.5 bg-white/[0.06] rounded-full overflow-hidden border border-white/[0.05]">
                       <div
                         className="h-full bg-gradient-to-r from-cyan-500 to-blue-500"
                         style={{ width: `${percentage}%` }}

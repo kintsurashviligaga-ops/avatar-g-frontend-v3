@@ -367,7 +367,7 @@ export default function GlobalChatbot() {
             <div className="flex-1 overflow-y-auto p-4 max-md:[@media(orientation:landscape)]:p-2.5 space-y-3">
               {messages.length === 0 && (
                 <div className="mt-6 rounded-2xl border border-cyan-300/25 bg-cyan-500/10 p-4">
-                  <div className="text-center text-gray-500">
+                  <div className="text-center text-white/30">
                     <Bot className="mx-auto mb-2 h-10 w-10 opacity-50" />
                     <p className="text-sm text-white/85">Hi 👋 I'm Agent G.</p>
                     <p className="mt-1 text-xs text-white/55">Want me to show how the platform works?</p>

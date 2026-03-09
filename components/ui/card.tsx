@@ -3,13 +3,13 @@ import { cva, type VariantProps } from 'class-variance-authority';
 import { cn } from '@/lib/utils';
 
 const cardVariants = cva(
-  'rounded-3xl border spacing-xl md:spacing-2xl shadow-glass bg-gradient-to-br from-cyan-100/5 via-indigo-100/2 to-purple-100/0 backdrop-blur-2xl transition-all duration-300 hover:shadow-2xl ag-surface-secondary ag-hover-lift ag-border-glow ag-neon-contour',
+  'rounded-2xl border border-white/[0.08] bg-[linear-gradient(155deg,rgba(7,14,30,0.90),rgba(4,9,22,0.80))] backdrop-blur-2xl transition-all duration-300',
   {
     variants: {
       variant: {
-        glass: 'ag-surface-primary border-app-border/30 shadow-glass backdrop-blur-2xl ag-border-glow',
-        soft: 'border-white/10 bg-app-surface/80 shadow-lg ag-border-glow',
-        solid: 'border-app-border/40 bg-app-elevated/90 shadow-2xl ag-border-glow',
+        glass: 'border-white/[0.08] shadow-[0_0_0_1px_rgba(34,211,238,0.04),inset_0_0_32px_rgba(34,211,238,0.02)]',
+        soft: 'border-white/[0.06] bg-white/[0.03] shadow-lg',
+        solid: 'border-white/[0.10] bg-[linear-gradient(135deg,rgba(10,18,40,0.95),rgba(5,10,25,0.90))] shadow-2xl',
       },
     },
     defaultVariants: {
