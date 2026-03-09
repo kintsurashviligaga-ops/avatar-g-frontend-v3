@@ -206,15 +206,20 @@ export function FeaturesShowcase() {
   const copy = FEATURES_COPY[language as keyof typeof FEATURES_COPY] || FEATURES_COPY.en
 
   return (
-    <section className="relative py-28 px-4 sm:px-6 overflow-hidden border-t border-white/[0.07]">
-      {/* Background */}
+    <section className="relative py-28 px-4 sm:px-6 overflow-hidden">
+      {/* Section top separator */}
+      <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-white/[0.07] to-transparent" />
+
+      {/* Background atmosphere */}
       <div className="absolute inset-0 pointer-events-none">
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[400px] bg-cyan-500/[0.025] rounded-full blur-[130px]" />
-        <div className="absolute bottom-0 right-0 w-[600px] h-[400px] bg-violet-500/[0.025] rounded-full blur-[130px]" />
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[900px] h-[500px] bg-cyan-500/[0.04] rounded-full blur-[160px]" />
+        <div className="absolute bottom-0 right-0 w-[700px] h-[500px] bg-violet-500/[0.04] rounded-full blur-[160px]" />
+        <div className="absolute bottom-0 left-0 w-[500px] h-[400px] bg-blue-500/[0.03] rounded-full blur-[120px]" />
+        {/* Dot matrix */}
         <div
-          className="absolute inset-0 opacity-[0.018]"
+          className="absolute inset-0 opacity-[0.016]"
           style={{
-            backgroundImage: 'radial-gradient(circle, rgba(255,255,255,0.4) 1px, transparent 1px)',
+            backgroundImage: 'radial-gradient(circle, rgba(148,163,184,0.6) 1px, transparent 1px)',
             backgroundSize: '44px 44px',
           }}
         />
@@ -229,17 +234,18 @@ export function FeaturesShowcase() {
           viewport={{ once: true }}
           transition={{ duration: 0.65 }}
         >
-          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-violet-400/18 bg-violet-400/[0.05] mb-6">
-            <span className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-pulse" />
-            <span className="text-[10px] font-semibold text-violet-300/80 tracking-[0.14em] uppercase">{copy.badge}</span>
+          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-violet-400/20 bg-violet-400/[0.06] mb-6 shadow-[0_0_20px_rgba(139,92,246,0.10)]">
+            <span className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-pulse shadow-[0_0_6px_rgba(139,92,246,0.8)]" />
+            <span className="text-[10px] font-bold text-violet-300/80 tracking-[0.16em] uppercase">{copy.badge}</span>
           </div>
           <h2 className="text-3xl md:text-5xl lg:text-[3.4rem] font-extrabold text-white mb-5 tracking-[-0.025em] leading-[1.06]">
             {copy.title}{' '}
-            <span className="bg-gradient-to-r from-cyan-300 via-blue-400 to-violet-400 bg-clip-text text-transparent">
+            <span className="bg-gradient-to-r from-cyan-300 via-blue-400 to-violet-400 bg-clip-text text-transparent drop-shadow-[0_0_30px_rgba(34,211,238,0.2)]">
               {copy.titleAccent}
             </span>
           </h2>
-          <p className="text-white/42 max-w-2xl mx-auto text-base md:text-lg leading-relaxed">
+          <span className="section-accent-line" />
+          <p className="text-white/40 max-w-xl mx-auto text-base md:text-lg leading-relaxed mt-4">
             {copy.subtitle}
           </p>
         </motion.div>
@@ -260,44 +266,59 @@ export function FeaturesShowcase() {
               >
                 <TiltCard className="h-full">
                   <div
-                    className="group relative h-full rounded-2xl border border-white/[0.09] bg-[linear-gradient(150deg,rgba(8,14,32,0.88),rgba(4,8,20,0.72))] backdrop-blur-xl p-6 md:p-7 transition-all duration-500 hover:border-white/[0.18] overflow-hidden"
+                    className="group relative h-full rounded-3xl border border-white/[0.08] bg-[linear-gradient(155deg,rgba(7,14,30,0.92)_0%,rgba(4,9,22,0.82)_100%)] backdrop-blur-2xl p-6 md:p-7 overflow-hidden shadow-[0_24px_60px_rgba(0,0,0,0.5)]"
+                    style={{ transition: 'border-color 0.3s, box-shadow 0.3s' }}
                   >
-                    {/* Hover glow */}
+                    {/* Inner top shine */}
+                    <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-white/[0.10] to-transparent" />
+
+                    {/* Corner neon glow on hover */}
                     <div
-                      className="absolute -inset-px rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-700 blur-2xl pointer-events-none"
-                      style={{ background: feature.glowFull }}
+                      className="absolute top-0 right-0 w-48 h-48 opacity-0 group-hover:opacity-100 transition-opacity duration-700 pointer-events-none"
+                      style={{ background: `radial-gradient(circle at 100% 0%, ${feature.glow}, transparent 65%)` }}
                     />
-                    {/* Corner accent */}
+                    {/* Full card ambient glow on hover */}
                     <div
-                      className="absolute top-0 right-0 w-32 h-32 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none"
-                      style={{ background: `radial-gradient(circle at 100% 0%, ${feature.glow}, transparent 70%)` }}
+                      className="absolute inset-0 rounded-3xl opacity-0 group-hover:opacity-100 transition-opacity duration-700 pointer-events-none"
+                      style={{ boxShadow: `0 0 60px ${feature.glow}, inset 0 0 40px ${feature.glowFull}` }}
                     />
 
                     <div className="relative z-10 flex flex-col h-full gap-4">
                       {/* Icon + tag row */}
                       <div className="flex items-start justify-between gap-3">
-                        <div className={`inline-flex p-3 rounded-xl bg-gradient-to-br ${feature.gradient} shadow-lg flex-shrink-0`}>
-                          <Icon className="w-5 h-5 text-white" />
+                        <div
+                          className={`icon-container w-12 h-12 bg-gradient-to-br ${feature.gradient} shadow-lg flex-shrink-0`}
+                          style={{ boxShadow: `0 0 20px ${feature.glow}` }}
+                        >
+                          <Icon className="w-5.5 h-5.5 text-white relative z-10" />
                         </div>
-                        <span className="mt-1 text-[10px] font-semibold tracking-[0.1em] uppercase text-white/35 border border-white/10 rounded-full px-2.5 py-1 bg-white/[0.03]">
+                        <span
+                          className="mt-1 text-[9px] font-bold tracking-[0.14em] uppercase rounded-full px-3 py-1 border"
+                          style={{
+                            color: feature.glow.replace('0.28', '0.75'),
+                            borderColor: feature.glow.replace('0.28', '0.3'),
+                            background: feature.glow.replace('0.28', '0.07'),
+                          }}
+                        >
                           {card.tag}
                         </span>
                       </div>
 
                       {/* Text */}
-                      <div>
-                        <h3 className="text-[1.05rem] font-bold text-white mb-2 tracking-[-0.01em] group-hover:text-white transition-colors">
+                      <div className="flex-1">
+                        <h3 className="text-[1.05rem] font-bold text-white/90 mb-2.5 tracking-[-0.01em] group-hover:text-white transition-colors leading-tight">
                           {card.title}
                         </h3>
-                        <p className="text-sm text-white/38 leading-relaxed group-hover:text-white/52 transition-colors">
+                        <p className="text-sm text-white/37 leading-relaxed group-hover:text-white/55 transition-colors">
                           {card.description}
                         </p>
                       </div>
 
-                      {/* Bottom accent line */}
-                      <div className="mt-auto">
+                      {/* Bottom accent neon line */}
+                      <div className="mt-2">
                         <div
-                          className={`h-[2px] w-10 rounded-full opacity-0 group-hover:opacity-100 group-hover:w-20 bg-gradient-to-r ${feature.gradient} transition-all duration-500`}
+                          className={`h-[2px] w-8 rounded-full bg-gradient-to-r ${feature.gradient} opacity-0 group-hover:opacity-100 group-hover:w-16 transition-all duration-500`}
+                          style={{ boxShadow: `0 0 8px ${feature.glow}` }}
                         />
                       </div>
                     </div>

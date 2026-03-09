@@ -51,44 +51,57 @@ export function StatsSection() {
   ]
 
   return (
-    <section className="relative py-16 md:py-20 px-4 sm:px-6 border-t border-white/[0.05]">
+    <section className="relative py-16 md:py-20 px-4 sm:px-6 overflow-hidden">
+      {/* Section separator */}
+      <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-white/[0.06] to-transparent" />
       <div className="mx-auto max-w-5xl">
         <motion.div
-          className="relative rounded-2xl border border-white/[0.08] bg-gradient-to-br from-[#04070F]/90 via-[#0A1222]/80 to-[#04070F]/90 backdrop-blur-xl p-8 md:p-14 overflow-hidden"
+          className="relative rounded-3xl border border-white/[0.07] bg-gradient-to-br from-[#040810]/95 via-[#080e20]/90 to-[#040810]/95 backdrop-blur-2xl p-0 overflow-hidden shadow-[0_40px_120px_rgba(0,0,0,0.7),inset_0_1px_0_rgba(255,255,255,0.07)]"
           initial={{ opacity: 0, y: 20 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
           transition={{ duration: 0.6 }}
         >
-          {/* Decorative gradient orbs */}
-          <div className="absolute top-0 left-1/4 w-80 h-80 bg-cyan-500/[0.05] rounded-full blur-[120px] pointer-events-none" />
-          <div className="absolute bottom-0 right-1/4 w-80 h-80 bg-violet-500/[0.05] rounded-full blur-[120px] pointer-events-none" />
-          {/* Subtle grid */}
+          {/* Neon top edge */}
+          <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-cyan-400/40 to-transparent" />
+          {/* Neon bottom edge */}
+          <div className="absolute bottom-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-violet-500/30 to-transparent" />
+          {/* Ambient glows */}
+          <div className="absolute -top-20 left-1/4 w-96 h-96 bg-cyan-500/[0.06] rounded-full blur-[140px] pointer-events-none" />
+          <div className="absolute -bottom-20 right-1/4 w-96 h-96 bg-violet-500/[0.06] rounded-full blur-[140px] pointer-events-none" />
+          {/* Scan line animation */}
+          <div className="absolute inset-x-0 h-px bg-gradient-to-r from-transparent via-cyan-300/25 to-transparent animate-neon-scan pointer-events-none" />
+          {/* Fine grid */}
           <div
-            className="absolute inset-0 opacity-[0.016] pointer-events-none"
+            className="absolute inset-0 opacity-[0.016] pointer-events-none rounded-2xl overflow-hidden"
             style={{
-              backgroundImage: 'linear-gradient(rgba(255,255,255,0.3) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.3) 1px, transparent 1px)',
-              backgroundSize: '48px 48px',
+              backgroundImage: 'linear-gradient(rgba(148,163,184,0.4) 1px, transparent 1px), linear-gradient(90deg, rgba(148,163,184,0.4) 1px, transparent 1px)',
+              backgroundSize: '52px 52px',
             }}
           />
 
-          <div className="relative grid grid-cols-2 md:grid-cols-4 gap-8 md:gap-10">
+          <div className="relative grid grid-cols-2 md:grid-cols-4 gap-1">
             {stats.map((stat, i) => (
               <motion.div
                 key={stat.label}
-                className="text-center"
+                className="relative text-center py-8 px-4 group"
                 initial={{ opacity: 0, y: 20 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
                 transition={{ delay: i * 0.1 }}
               >
-                <div className={`text-3xl md:text-4xl lg:text-5xl font-extrabold bg-gradient-to-br ${stat.color} bg-clip-text text-transparent tracking-tight`}>
-                  <AnimatedCounter
-                    target={stat.value}
-                    suffix={stat.suffix}
-                  />
+                {/* Vertical separator */}
+                {i < stats.length - 1 && (
+                  <div className="hidden md:block absolute right-0 top-1/4 bottom-1/4 w-px bg-gradient-to-b from-transparent via-white/[0.08] to-transparent" />
+                )}
+                {/* Hover glow */}
+                <div className={`absolute inset-0 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-500 bg-gradient-to-br ${stat.color} blur-2xl`} style={{ opacity: 0 }} />
+                <div
+                  className={`text-4xl md:text-5xl lg:text-[3.5rem] font-black bg-gradient-to-br ${stat.color} bg-clip-text text-transparent tracking-tight leading-none group-hover:drop-shadow-[0_0_20px_rgba(34,211,238,0.3)] transition-all`}
+                >
+                  <AnimatedCounter target={stat.value} suffix={stat.suffix} />
                 </div>
-                <div className="mt-3 text-[10px] md:text-xs text-white/38 uppercase tracking-[0.2em] font-medium">
+                <div className="mt-3 text-[10px] text-white/35 uppercase tracking-[0.22em] font-semibold group-hover:text-white/55 transition-colors">
                   {stat.label}
                 </div>
               </motion.div>

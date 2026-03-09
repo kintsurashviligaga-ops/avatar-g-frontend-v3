@@ -18,17 +18,17 @@ interface GlassButtonProps {
 
 const variants: Record<Variant, string> = {
   primary:
-    'bg-white text-[#030712] font-semibold hover:bg-white/[0.92] shadow-[0_2px_16px_rgba(255,255,255,0.1)] hover:shadow-[0_4px_24px_rgba(255,255,255,0.15)]',
+    'bg-gradient-to-r from-cyan-500 via-blue-500 to-violet-600 text-white font-bold border border-white/[0.18] shadow-[0_8px_32px_rgba(34,211,238,0.38),inset_0_1px_0_rgba(255,255,255,0.2)] hover:shadow-[0_14px_50px_rgba(34,211,238,0.50),inset_0_1px_0_rgba(255,255,255,0.25)] hover:brightness-110',
   secondary:
-    'bg-white/[0.05] text-white/85 border border-white/[0.10] backdrop-blur-xl hover:bg-white/[0.08] hover:border-white/[0.18]',
+    'bg-white/[0.055] text-white/85 border border-white/[0.11] backdrop-blur-xl hover:bg-white/[0.095] hover:border-white/[0.20] shadow-[0_4px_20px_rgba(0,0,0,0.3)]',
   ghost:
-    'text-white/50 hover:text-white hover:bg-white/[0.05]',
+    'text-white/55 hover:text-white hover:bg-white/[0.06] backdrop-blur-md',
 }
 
 const sizes: Record<Size, string> = {
-  sm: 'text-xs px-3.5 py-1.5 rounded-lg',
-  md: 'text-sm px-6 py-2.5 rounded-xl',
-  lg: 'text-sm px-10 py-4 rounded-2xl',
+  sm: 'text-xs px-3.5 py-1.5 rounded-xl',
+  md: 'text-sm px-6 py-2.5 rounded-2xl',
+  lg: 'text-[0.9375rem] px-10 py-4 rounded-2xl',
 }
 
 export function GlassButton({
@@ -41,8 +41,11 @@ export function GlassButton({
   className = '',
   type = 'button',
 }: GlassButtonProps) {
-  const base = `inline-flex items-center justify-center gap-2 font-medium transition-all duration-300 ag-neon-button
-    hover:scale-[1.015] active:scale-[0.985] disabled:opacity-40 disabled:pointer-events-none`
+  const base = `relative inline-flex items-center justify-center gap-2 font-semibold
+    transition-all duration-300 overflow-hidden
+    hover:scale-[1.02] active:scale-[0.99]
+    disabled:opacity-40 disabled:pointer-events-none
+    cursor-pointer`
 
   const cls = `${base} ${variants[variant]} ${sizes[size]} ${className}`
 
