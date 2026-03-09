@@ -728,6 +728,8 @@ export default function UnifiedServiceLayout({
     faceRecognition: true,
     renderProfile: 'realistic',
   });
+  const [showOptionsPanel, setShowOptionsPanel] = useState(false);
+  const [optionsPanelTab, setOptionsPanelTab] = useState<'pipeline' | 'params' | 'builder' | 'sections'>('params');
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -1661,255 +1663,276 @@ export default function UnifiedServiceLayout({
             </div>
           )}
 
-          {/* Quick Action Chips */}
-          <div className="px-3 sm:px-4 py-3 border-b border-white/[0.10] bg-black/20 space-y-3 rounded-t-2xl">
-            <div className="flex items-center justify-between gap-2">
-              <p className="text-[11px] uppercase tracking-wider text-white/45">{t.quickActions}</p>
+          {/* ── Smart Toolbar: Quick Actions + Options Dropdown ─────────── */}
+          <div className="px-3 sm:px-4 pt-3 pb-2.5 border-b border-white/[0.10] bg-black/20 rounded-t-2xl space-y-2">
+
+            {/* Row 1: Quick actions + Options button + Clear */}
+            <div className="flex items-center gap-2">
+              {/* Compact quick action chips — horizontal scroll */}
+              <div className="flex flex-1 gap-1.5 overflow-x-auto scrollbar-hide min-w-0">
+                {quickActions.map(action => (
+                  <button
+                    key={action}
+                    onClick={() => sendMessage(action)}
+                    className="flex-shrink-0 px-2.5 py-1.5 text-[11px] bg-white/[0.05] border border-white/[0.10] rounded-full hover:bg-white/[0.10] hover:border-cyan-400/35 transition-all whitespace-nowrap"
+                  >
+                    {action}
+                  </button>
+                ))}
+              </div>
+
+              {/* Options Dropdown Button */}
+              <div className="relative flex-shrink-0">
+                <button
+                  onClick={() => setShowOptionsPanel(v => !v)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 text-[11px] border rounded-xl transition-all select-none ${
+                    showOptionsPanel
+                      ? 'border-cyan-400/55 bg-cyan-500/18 text-cyan-200 shadow-[0_0_12px_rgba(34,211,238,0.22)]'
+                      : 'border-white/20 bg-white/[0.05] text-white/70 hover:bg-white/[0.10] hover:border-white/30'
+                  }`}
+                >
+                  {/* Settings gear SVG */}
+                  <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+                  <span className="hidden sm:inline">{t.workspaceOptions}</span>
+                  {/* Score badge */}
+                  <span className={`inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full text-[10px] font-semibold ${completionScore >= 70 ? 'bg-cyan-500/30 text-cyan-200' : 'bg-white/10 text-white/60'}`}>
+                    {completionScore}%
+                  </span>
+                  {/* Chevron */}
+                  <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={`transition-transform duration-200 ${showOptionsPanel ? 'rotate-180' : ''}`}><polyline points="6 9 12 15 18 9"/></svg>
+                </button>
+
+                {/* ── Dropdown panel ─────────────────────────────────────── */}
+                {showOptionsPanel && (
+                  <>
+                    {/* Backdrop */}
+                    <div className="fixed inset-0 z-[55]" onClick={() => setShowOptionsPanel(false)} />
+
+                    <div className="absolute right-0 sm:right-auto sm:left-0 top-full mt-2 w-[min(660px,calc(100vw-20px))] z-[60] rounded-2xl border border-white/[0.15] bg-[rgba(6,12,26,0.97)] shadow-[0_24px_64px_rgba(0,0,0,0.75),0_0_0_1px_rgba(34,211,238,0.12)] backdrop-blur-xl overflow-hidden">
+                      {/* Tab navigation */}
+                      <div className="flex border-b border-white/[0.10] bg-black/25">
+                        {([
+                          { id: 'pipeline', label: locale === 'ka' ? '⚡ Pipeline' : locale === 'ru' ? '⚡ Pipeline' : '⚡ Pipeline' },
+                          { id: 'params',   label: locale === 'ka' ? '🎛 პარამეტრები' : locale === 'ru' ? '🎛 Параметры' : '🎛 Params' },
+                          ...(serviceContext === 'avatar' ? [{ id: 'builder', label: '🧬 Builder' }] : []),
+                          { id: 'sections', label: locale === 'ka' ? '📐 სექციები' : locale === 'ru' ? '📐 Секции' : '📐 Sections' },
+                        ] as { id: string; label: string }[]).map(tab => (
+                          <button
+                            key={tab.id}
+                            onClick={() => setOptionsPanelTab(tab.id as typeof optionsPanelTab)}
+                            className={`flex-1 px-3 py-2.5 text-[11px] font-medium transition-colors border-b-2 ${
+                              optionsPanelTab === tab.id
+                                ? 'border-cyan-400 text-cyan-200 bg-cyan-500/10'
+                                : 'border-transparent text-white/50 hover:text-white/80 hover:bg-white/[0.04]'
+                            }`}
+                          >
+                            {tab.label}
+                          </button>
+                        ))}
+                      </div>
+
+                      {/* Tab content */}
+                      <div className="p-3 max-h-[58vh] overflow-y-auto space-y-3">
+
+                        {/* ── Pipeline tab ── */}
+                        {optionsPanelTab === 'pipeline' && (
+                          <div className="space-y-3">
+                            <div className="flex items-center justify-between">
+                              <p className="text-[11px] uppercase tracking-wider text-amber-100/80">{t.pipelineModes}</p>
+                              <span className="text-[10px] text-amber-100/55 border border-amber-300/20 bg-amber-500/10 px-2 py-0.5 rounded-full">Agent G Premium</span>
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                              {workspacePresets.map((preset) => (
+                                <button
+                                  key={preset.id}
+                                  onClick={() => { setInput(preset.prompt); setShowOptionsPanel(false); promptInputRef.current?.focus(); }}
+                                  className="text-left rounded-xl border border-amber-200/20 bg-[linear-gradient(145deg,rgba(251,191,36,0.10),rgba(120,53,15,0.06))] hover:bg-[linear-gradient(145deg,rgba(251,191,36,0.18),rgba(120,53,15,0.10))] px-3 py-2.5 transition-all"
+                                >
+                                  <p className="text-[11px] font-semibold text-amber-100">{preset.title}</p>
+                                  <p className="text-[10px] text-amber-50/60 mt-0.5 line-clamp-2">{preset.prompt}</p>
+                                </button>
+                              ))}
+                            </div>
+                            <button
+                              onClick={() => { sendMessage(`${serviceName}: ${t.premiumAction ?? 'Run Premium Pipeline'}. ${t.premiumHint ?? ''}.`); setShowOptionsPanel(false); }}
+                              disabled={sending}
+                              className="w-full px-4 py-2.5 bg-gradient-to-r from-amber-300 via-yellow-400 to-amber-500 text-black text-xs font-semibold rounded-xl hover:shadow-[0_0_24px_rgba(251,191,36,0.45)] transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                            >
+                              {t.premiumAction ?? 'Run Premium Pipeline'}
+                            </button>
+                          </div>
+                        )}
+
+                        {/* ── Params tab ── */}
+                        {optionsPanelTab === 'params' && (
+                          <div className="space-y-3">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                              {optionSets.map((set) => (
+                                <div key={set.key} className="rounded-xl border border-white/[0.10] bg-white/[0.03] p-2.5 space-y-2">
+                                  <p className="text-[11px] font-medium text-white/65">{set.label}</p>
+                                  <div className="flex flex-wrap gap-1.5">
+                                    {set.values.map((value) => (
+                                      <OptionChip
+                                        key={value}
+                                        active={selectedOptions[set.key] === value}
+                                        label={value}
+                                        onClick={() => setSelectedOptions((prev) => ({ ...prev, [set.key]: value }))}
+                                      />
+                                    ))}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                            {/* Inline metrics summary */}
+                            <div className="grid grid-cols-3 gap-2 p-2.5 rounded-xl border border-white/[0.08] bg-white/[0.02]">
+                              {[
+                                { label: t.optionsCoverage, value: selectionCoverage, color: 'bg-cyan-300' },
+                                { label: t.sectionReadiness, value: sectionReadiness, color: 'bg-sky-300' },
+                                { label: t.completionScore, value: completionScore, color: 'bg-gradient-to-r from-cyan-300 to-blue-300' },
+                              ].map(m => (
+                                <div key={m.label} className="space-y-1">
+                                  <div className="flex items-center justify-between text-[10px] text-white/50">
+                                    <span className="truncate">{m.label}</span>
+                                    <span className="ml-1 font-semibold text-white/70">{m.value}%</span>
+                                  </div>
+                                  <div className="h-1.5 rounded-full bg-white/10 overflow-hidden">
+                                    <div className={`h-full ${m.color}`} style={{ width: `${m.value}%` }} />
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* ── Builder tab (avatar only) ── */}
+                        {optionsPanelTab === 'builder' && serviceContext === 'avatar' && (
+                          <div className="space-y-3">
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                              <label className="text-[11px] text-white/65 space-y-1.5">
+                                <span className="block">{t.avatarHeight}</span>
+                                <input type="number" min={120} max={240} value={avatarProfile.heightCm} onChange={(e) => setAvatarProfile((prev) => ({ ...prev, heightCm: e.target.value }))} className="w-full rounded-xl border border-white/20 bg-black/35 px-3 py-2 text-sm text-white placeholder-white/30 focus:outline-none focus:border-cyan-300/65" placeholder="172" />
+                              </label>
+                              <label className="text-[11px] text-white/65 space-y-1.5">
+                                <span className="block">{t.avatarWeight}</span>
+                                <input type="number" min={30} max={220} value={avatarProfile.weightKg} onChange={(e) => setAvatarProfile((prev) => ({ ...prev, weightKg: e.target.value }))} className="w-full rounded-xl border border-white/20 bg-black/35 px-3 py-2 text-sm text-white placeholder-white/30 focus:outline-none focus:border-cyan-300/65" placeholder="68" />
+                              </label>
+                              <label className="text-[11px] text-white/65 space-y-1.5">
+                                <span className="block">{t.avatarFootSize}</span>
+                                <input type="number" min={20} max={55} step={0.5} value={avatarProfile.footSize} onChange={(e) => setAvatarProfile((prev) => ({ ...prev, footSize: e.target.value }))} className="w-full rounded-xl border border-white/20 bg-black/35 px-3 py-2 text-sm text-white placeholder-white/30 focus:outline-none focus:border-cyan-300/65" placeholder="42" />
+                              </label>
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                              <div className="rounded-xl border border-white/[0.10] bg-black/20 p-2.5">
+                                <p className="text-[11px] text-white/65 mb-2">{t.avatarScanMode}</p>
+                                <div className="flex gap-2">
+                                  <OptionChip active={avatarProfile.scanTarget === 'fullbody'} label={t.avatarFullBody ?? 'Full Body'} onClick={() => setAvatarProfile((prev) => ({ ...prev, scanTarget: 'fullbody' }))} />
+                                  <OptionChip active={avatarProfile.scanTarget === 'face'} label={t.avatarFace ?? 'Face'} onClick={() => setAvatarProfile((prev) => ({ ...prev, scanTarget: 'face' }))} />
+                                </div>
+                              </div>
+                              <div className="rounded-xl border border-white/[0.10] bg-black/20 p-2.5">
+                                <p className="text-[11px] text-white/65 mb-2">{t.avatarCameraRender}</p>
+                                <div className="flex flex-wrap gap-1.5">
+                                  {(['realistic', 'cinematic', 'anime', 'studio'] as AvatarRenderProfile[]).map((mode) => (
+                                    <OptionChip key={mode} active={avatarProfile.renderProfile === mode} label={mode} onClick={() => setAvatarProfile((prev) => ({ ...prev, renderProfile: mode }))} />
+                                  ))}
+                                </div>
+                              </div>
+                            </div>
+                            <label className="flex items-center gap-2 cursor-pointer text-[12px] text-white/75">
+                              <input type="checkbox" checked={avatarProfile.faceRecognition} onChange={() => setAvatarProfile((prev) => ({ ...prev, faceRecognition: !prev.faceRecognition }))} className="h-4 w-4 accent-cyan-400" />
+                              <span>{t.avatarFaceRecognition}</span>
+                            </label>
+                            <div className="flex gap-2">
+                              <button onClick={() => { setAvatarProfile((prev) => ({ ...prev, scanTarget: 'face', faceRecognition: true, renderProfile: 'anime' })); setInput((prev) => `${prev ? `${prev}\n` : ''}${locale === 'ka' ? 'შექმენი თანამედროვე anime avatar profile.' : locale === 'ru' ? 'Создай современный anime avatar profile.' : 'Create a modern anime avatar profile.'}`); setShowOptionsPanel(false); }} className="text-[11px] px-3 py-2 rounded-xl border border-amber-300/40 bg-amber-500/15 hover:bg-amber-500/25 transition-colors">{t.avatarPresetAnimeFace}</button>
+                              <button onClick={() => { setAvatarProfile((prev) => ({ ...prev, scanTarget: 'fullbody', renderProfile: 'cinematic' })); setInput((prev) => `${prev ? `${prev}\n` : ''}${locale === 'ka' ? 'შექმენი სრული ტანის cinematic avatar სტუდიური ხარისხით.' : locale === 'ru' ? 'Создай full-body cinematic avatar студийного качества.' : 'Create a studio-quality full-body cinematic avatar.'}`); setShowOptionsPanel(false); }} className="text-[11px] px-3 py-2 rounded-xl border border-cyan-300/40 bg-cyan-500/15 hover:bg-cyan-500/25 transition-colors">{t.avatarPresetFullBody}</button>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* ── Sections tab ── */}
+                        {optionsPanelTab === 'sections' && (
+                          <div className="space-y-3">
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                              {workspaceSections.map((section) => {
+                                const active = section.id === activeSectionId;
+                                return (
+                                  <button
+                                    key={section.id}
+                                    onClick={() => setActiveSectionId(section.id)}
+                                    className={`text-left rounded-xl border p-2.5 transition-colors ${active ? 'border-cyan-300/55 bg-cyan-500/16' : 'border-white/[0.10] bg-white/[0.03] hover:bg-white/[0.07]'}`}
+                                  >
+                                    <div className="flex items-center justify-between gap-1 mb-1">
+                                      <p className="text-[11px] font-semibold text-white/90 truncate">{section.title}</p>
+                                      <span className="flex-shrink-0 text-[10px] text-cyan-200/80">{section.metric}%</span>
+                                    </div>
+                                    <p className="text-[10px] text-white/55 line-clamp-2">{section.description}</p>
+                                    <div className="mt-2 h-1 rounded-full bg-white/10 overflow-hidden">
+                                      <div className="h-full bg-cyan-400" style={{ width: `${section.metric}%` }} />
+                                    </div>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                            {activeSection && (
+                              <div className="rounded-xl border border-white/[0.12] bg-black/20 p-3 space-y-2">
+                                <div className="flex items-center justify-between gap-2">
+                                  <p className="text-[11px] font-medium text-white/80">{activeSection.title}</p>
+                                  <button
+                                    onClick={() => { setInput(buildSectionPrompt(locale, serviceName, activeSection.title)); setShowOptionsPanel(false); promptInputRef.current?.focus(); }}
+                                    className="text-[10px] px-2.5 py-1 rounded-lg border border-amber-300/40 bg-amber-500/15 text-amber-100 hover:bg-amber-500/25 transition-colors"
+                                  >
+                                    {t.applySection}
+                                  </button>
+                                </div>
+                                <div className="flex flex-wrap gap-1.5">
+                                  {activeSection.steps.map((step) => (
+                                    <span key={step} className="text-[10px] px-2 py-1 rounded-full border border-white/15 bg-white/5 text-white/65">{step}</span>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                            {/* Inline support links in sections tab */}
+                            <div className="pt-1 border-t border-white/[0.08]">
+                              <p className="text-[10px] uppercase tracking-wider text-white/35 mb-2">{t.support}</p>
+                              <div className="flex gap-2">
+                                <a href="https://wa.me/995000000000" target="_blank" rel="noreferrer" className="px-3 py-1.5 text-[11px] rounded-lg border border-white/[0.12] bg-white/[0.04] hover:bg-white/[0.09] transition-colors">{t.whatsapp}</a>
+                                <a href="https://t.me/myavatar_ge" target="_blank" rel="noreferrer" className="px-3 py-1.5 text-[11px] rounded-lg border border-white/[0.12] bg-white/[0.04] hover:bg-white/[0.09] transition-colors">{t.telegram}</a>
+                                <a href="tel:+995000000000" className="px-3 py-1.5 text-[11px] rounded-lg border border-white/[0.12] bg-white/[0.04] hover:bg-white/[0.09] transition-colors">{t.phone}</a>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {/* Clear Chat */}
               <button
                 onClick={clearChat}
-                className="text-[11px] px-2.5 py-1 rounded-md border border-white/15 bg-white/5 hover:bg-white/10"
+                className="flex-shrink-0 px-2.5 py-1.5 text-[11px] border border-white/15 rounded-xl bg-white/[0.04] hover:bg-white/[0.09] transition-colors"
               >
                 {t.clearChat}
               </button>
             </div>
 
-            <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-1 snap-x snap-mandatory">
-              {quickActions.map(action => (
-                <button
-                  key={action}
-                  onClick={() => sendMessage(action)}
-                  className="snap-start flex-shrink-0 px-3 py-2 text-xs bg-white/[0.06] border border-white/[0.12] rounded-full hover:bg-white/[0.1] hover:border-cyan-400/45 transition-all whitespace-nowrap"
-                >
-                  {action}
-                </button>
-              ))}
-            </div>
-
-            <PremiumCard className="border-amber-300/30 bg-[linear-gradient(145deg,rgba(251,191,36,0.18),rgba(245,158,11,0.08))]">
-              <div className="flex items-center justify-between gap-2">
-                <p className="text-[11px] uppercase tracking-wider text-amber-100/90">{t.pipelineModes}</p>
-                <span className="text-[10px] text-amber-100/70">Agent G Premium</span>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                {workspacePresets.map((preset) => (
-                  <button
-                    key={preset.id}
-                    onClick={() => setInput(preset.prompt)}
-                    className="text-left rounded-lg border border-amber-200/30 bg-black/25 hover:bg-black/35 px-2.5 py-2 transition-colors"
-                  >
-                    <p className="text-[11px] font-semibold text-amber-100">{preset.title}</p>
-                    <p className="text-[10px] text-amber-50/75 truncate">{preset.prompt}</p>
-                  </button>
+            {/* Row 2: Active state pills */}
+            {(activeSection || Object.values(selectedOptions).some(Boolean)) && (
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {activeSection && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border border-white/[0.10] bg-white/[0.04] text-[10px] text-white/45">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 3h18v4H3z"/><path d="M3 10h18v4H3z"/><path d="M3 17h18v4H3z"/></svg>
+                    {activeSection.title}
+                  </span>
+                )}
+                {Object.entries(selectedOptions).filter(([, v]) => v).slice(0, 4).map(([k, v]) => (
+                  <span key={k} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border border-cyan-400/20 bg-cyan-500/[0.07] text-[10px] text-cyan-300/70">
+                    {v}
+                  </span>
                 ))}
               </div>
-            </PremiumCard>
-
-            <PremiumCard title={t.workspaceOptions}>
-              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2">
-                {optionSets.map((set) => (
-                  <div key={set.key} className="rounded-lg border border-white/[0.12] bg-white/[0.04] p-2 space-y-2">
-                    <p className="text-[11px] text-white/65">{set.label}</p>
-                    <div className="flex flex-wrap gap-1.5">
-                      {set.values.map((value) => {
-                        const active = selectedOptions[set.key] === value;
-                        return (
-                          <OptionChip
-                            key={value}
-                            active={active}
-                            label={value}
-                            onClick={() => setSelectedOptions((prev) => ({ ...prev, [set.key]: value }))}
-                          />
-                        );
-                      })}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </PremiumCard>
-
-            {serviceContext === 'avatar' && (
-              <PremiumCard title={t.avatarBuilderTitle} className="border-cyan-300/35 bg-[linear-gradient(145deg,rgba(34,211,238,0.14),rgba(8,47,73,0.08))] p-2.5 sm:p-3">
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-2.5">
-                  <label className="text-[11px] text-white/70 space-y-1">
-                    <span>{t.avatarHeight}</span>
-                    <input
-                      type="number"
-                      min={120}
-                      max={240}
-                      value={avatarProfile.heightCm}
-                      onChange={(e) => setAvatarProfile((prev) => ({ ...prev, heightCm: e.target.value }))}
-                      className="w-full rounded-lg border border-white/20 bg-black/35 px-2.5 py-2 text-sm sm:text-xs text-white placeholder-white/30 focus:outline-none focus:border-cyan-300/65"
-                      placeholder="172"
-                    />
-                  </label>
-                  <label className="text-[11px] text-white/70 space-y-1">
-                    <span>{t.avatarWeight}</span>
-                    <input
-                      type="number"
-                      min={30}
-                      max={220}
-                      value={avatarProfile.weightKg}
-                      onChange={(e) => setAvatarProfile((prev) => ({ ...prev, weightKg: e.target.value }))}
-                      className="w-full rounded-lg border border-white/20 bg-black/35 px-2.5 py-2 text-sm sm:text-xs text-white placeholder-white/30 focus:outline-none focus:border-cyan-300/65"
-                      placeholder="68"
-                    />
-                  </label>
-                  <label className="text-[11px] text-white/70 space-y-1">
-                    <span>{t.avatarFootSize}</span>
-                    <input
-                      type="number"
-                      min={20}
-                      max={55}
-                      step={0.5}
-                      value={avatarProfile.footSize}
-                      onChange={(e) => setAvatarProfile((prev) => ({ ...prev, footSize: e.target.value }))}
-                      className="w-full rounded-lg border border-white/20 bg-black/35 px-2.5 py-2 text-sm sm:text-xs text-white placeholder-white/30 focus:outline-none focus:border-cyan-300/65"
-                      placeholder="42"
-                    />
-                  </label>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-2.5">
-                  <div className="rounded-lg border border-white/15 bg-black/20 p-2.5">
-                    <p className="text-[11px] text-white/70 mb-1.5">{t.avatarScanMode}</p>
-                    <div className="flex flex-wrap gap-1.5">
-                      <OptionChip
-                        active={avatarProfile.scanTarget === 'fullbody'}
-                        label={t.avatarFullBody ?? 'Full Body'}
-                        onClick={() => setAvatarProfile((prev) => ({ ...prev, scanTarget: 'fullbody' }))}
-                      />
-                      <OptionChip
-                        active={avatarProfile.scanTarget === 'face'}
-                        label={t.avatarFace ?? 'Face'}
-                        onClick={() => setAvatarProfile((prev) => ({ ...prev, scanTarget: 'face' }))}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="rounded-lg border border-white/15 bg-black/20 p-2.5">
-                    <p className="text-[11px] text-white/70 mb-1.5">{t.avatarCameraRender}</p>
-                    <div className="flex flex-wrap gap-1.5">
-                      {(['realistic', 'cinematic', 'anime', 'studio'] as AvatarRenderProfile[]).map((mode) => (
-                        <OptionChip
-                          key={mode}
-                          active={avatarProfile.renderProfile === mode}
-                          label={mode}
-                          onClick={() => setAvatarProfile((prev) => ({ ...prev, renderProfile: mode }))}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                </div>
-
-                <label className="flex items-center gap-2 cursor-pointer text-[12px] sm:text-[11px] text-white/80 py-1">
-                  <input
-                    type="checkbox"
-                    checked={avatarProfile.faceRecognition}
-                    onChange={() => setAvatarProfile((prev) => ({ ...prev, faceRecognition: !prev.faceRecognition }))}
-                    className="h-4 w-4"
-                  />
-                  <span>{t.avatarFaceRecognition}</span>
-                </label>
-
-                <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-1 snap-x snap-mandatory">
-                  <button
-                    onClick={() => {
-                      setAvatarProfile((prev) => ({ ...prev, scanTarget: 'face', faceRecognition: true, renderProfile: 'anime' }));
-                      setInput((prev) => `${prev ? `${prev}\n` : ''}${locale === 'ka' ? 'შექმენი თანამედროვე anime avatar profile.' : locale === 'ru' ? 'Создай современный anime avatar profile.' : 'Create a modern anime avatar profile.'}`);
-                    }}
-                    className="snap-start flex-shrink-0 min-h-[40px] text-[12px] sm:text-[11px] px-3 py-2 rounded-lg border border-amber-300/40 bg-amber-500/15 hover:bg-amber-500/25"
-                  >
-                    {t.avatarPresetAnimeFace}
-                  </button>
-                  <button
-                    onClick={() => {
-                      setAvatarProfile((prev) => ({ ...prev, scanTarget: 'fullbody', renderProfile: 'cinematic' }));
-                      setInput((prev) => `${prev ? `${prev}\n` : ''}${locale === 'ka' ? 'შექმენი სრული ტანის cinematic avatar სტუდიური ხარისხით.' : locale === 'ru' ? 'Создай full-body cinematic avatar студийного качества.' : 'Create a studio-quality full-body cinematic avatar.'}`);
-                    }}
-                    className="snap-start flex-shrink-0 min-h-[40px] text-[12px] sm:text-[11px] px-3 py-2 rounded-lg border border-cyan-300/40 bg-cyan-500/15 hover:bg-cyan-500/25"
-                  >
-                    {t.avatarPresetFullBody}
-                  </button>
-                </div>
-              </PremiumCard>
             )}
-
-            <PremiumCard title={t.workspaceSections}>
-              <div className="grid grid-cols-1 xl:grid-cols-3 gap-2">
-                {workspaceSections.map((section) => {
-                  const active = section.id === activeSectionId;
-                  return (
-                    <button
-                      key={section.id}
-                      onClick={() => setActiveSectionId(section.id)}
-                      className={`text-left rounded-lg border p-2.5 transition-colors ${active ? 'border-cyan-300/55 bg-cyan-500/16' : 'border-white/15 bg-white/[0.03] hover:bg-white/[0.07]'}`}
-                    >
-                      <div className="flex items-center justify-between gap-2">
-                        <p className="text-[11px] font-semibold text-white/90">{section.title}</p>
-                        <span className="text-[10px] text-cyan-100/85">{section.metric}%</span>
-                      </div>
-                      <p className="text-[10px] text-white/65 mt-1">{section.description}</p>
-                      <div className="mt-2 h-1.5 rounded-full bg-white/10 overflow-hidden">
-                        <div className="h-full bg-cyan-400" style={{ width: `${section.metric}%` }} />
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-
-              {activeSection && (
-                <div className="rounded-lg border border-white/15 bg-black/20 p-2.5 space-y-2">
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="text-[11px] text-white/80">{activeSection.title}</p>
-                    <button
-                      onClick={() => setInput(buildSectionPrompt(locale, serviceName, activeSection.title))}
-                      className="text-[10px] px-2 py-1 rounded-md border border-amber-300/40 bg-amber-500/15 text-amber-100 hover:bg-amber-500/25"
-                    >
-                      {t.applySection}
-                    </button>
-                  </div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {activeSection.steps.map((step) => (
-                      <span key={step} className="text-[10px] px-2 py-1 rounded-full border border-white/15 bg-white/5 text-white/70">
-                        {step}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </PremiumCard>
-
-            <PremiumCard title={t.selectionChart} className="border-cyan-300/35 bg-[linear-gradient(145deg,rgba(34,211,238,0.14),rgba(8,47,73,0.08))]">
-              <div className="space-y-2">
-                <div>
-                  <div className="flex items-center justify-between text-[11px] text-cyan-100/90">
-                    <span>{t.optionsCoverage}</span>
-                    <span>{selectionCoverage}%</span>
-                  </div>
-                  <div className="h-1.5 rounded-full bg-cyan-950/35 overflow-hidden mt-1">
-                    <div className="h-full bg-cyan-300" style={{ width: `${selectionCoverage}%` }} />
-                  </div>
-                </div>
-                <div>
-                  <div className="flex items-center justify-between text-[11px] text-cyan-100/90">
-                    <span>{t.sectionReadiness}</span>
-                    <span>{sectionReadiness}%</span>
-                  </div>
-                  <div className="h-1.5 rounded-full bg-cyan-950/35 overflow-hidden mt-1">
-                    <div className="h-full bg-sky-300" style={{ width: `${sectionReadiness}%` }} />
-                  </div>
-                </div>
-                <div>
-                  <div className="flex items-center justify-between text-[11px] font-semibold text-cyan-50">
-                    <span>{t.completionScore}</span>
-                    <span>{completionScore}%</span>
-                  </div>
-                  <div className="h-1.5 rounded-full bg-cyan-950/35 overflow-hidden mt-1">
-                    <div className="h-full bg-gradient-to-r from-cyan-300 to-blue-300" style={{ width: `${completionScore}%` }} />
-                  </div>
-                </div>
-              </div>
-            </PremiumCard>
           </div>
 
           {/* Message list */}
@@ -2096,8 +2119,7 @@ export default function UnifiedServiceLayout({
             </PremiumCard>
 
             {/* Automation toggle */}
-            <div className="flex items-center gap-2 sm:gap-3 flex-wrap max-md:[@media(orientation:landscape)]:flex-nowrap max-md:[@media(orientation:landscape)]:overflow-x-auto">
-              <label className="flex items-center gap-2 cursor-pointer">
+            <div className="flex items-center gap-2 sm:gap-3 flex-wrap max-md:[@media(orientation:landscape)]:flex-nowrap max-md:[@media(orientation:landscape)]:overflow-x-auto">              <label className="flex items-center gap-2 cursor-pointer">
                 <input
                   type="checkbox"
                   checked={showAutomation}
@@ -2207,32 +2229,6 @@ export default function UnifiedServiceLayout({
               </div>
             )}
 
-            <div className="flex items-center gap-2 overflow-x-auto">
-              <span className="text-[11px] text-white/50 uppercase tracking-wider pr-1">{t.support}</span>
-              <a
-                href="https://wa.me/995000000000"
-                target="_blank"
-                rel="noreferrer"
-                className="px-2.5 py-1 text-xs rounded-full border border-white/[0.14] bg-white/[0.05] hover:bg-white/[0.1]"
-              >
-                {t.whatsapp}
-              </a>
-              <a
-                href="https://t.me/myavatar_ge"
-                target="_blank"
-                rel="noreferrer"
-                className="px-2.5 py-1 text-xs rounded-full border border-white/[0.14] bg-white/[0.05] hover:bg-white/[0.1]"
-              >
-                {t.telegram}
-              </a>
-              <a
-                href="tel:+995000000000"
-                className="px-2.5 py-1 text-xs rounded-full border border-white/[0.14] bg-white/[0.05] hover:bg-white/[0.1]"
-              >
-                {t.phone}
-              </a>
-            </div>
-
             {/* Input row */}
             <div className="flex flex-wrap sm:flex-nowrap gap-2 items-end min-w-0 max-md:[@media(orientation:landscape)]:flex-nowrap">
               <input
@@ -2288,8 +2284,7 @@ export default function UnifiedServiceLayout({
                 onClick={() => sendMessage(`${serviceName}: ${t.premiumAction ?? 'Run Premium Pipeline'}. ${t.premiumHint ?? ''}.`)}
               />
 
-              <button
-                onClick={() => sendMessage()}
+              <button                onClick={() => sendMessage()}
                 disabled={sending || !input.trim()}
                 className="order-4 sm:order-none w-full sm:w-auto max-md:[@media(orientation:landscape)]:w-auto flex-shrink-0 px-4 sm:px-5 py-2.5 bg-gradient-to-r from-cyan-500 to-blue-600 text-white text-xs sm:text-sm font-semibold rounded-xl hover:shadow-lg hover:shadow-cyan-500/25 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
               >
