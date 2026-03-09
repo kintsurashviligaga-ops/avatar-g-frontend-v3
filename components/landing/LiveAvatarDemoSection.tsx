@@ -1,18 +1,55 @@
 'use client'
 
 import { useRef, useState, useCallback, useEffect } from 'react'
-import { motion } from 'framer-motion'
-import { Camera, Upload, Wand2, Sparkles, X, RefreshCw, Download, CameraOff } from 'lucide-react'
+import { motion, AnimatePresence } from 'framer-motion'
+import Link from 'next/link'
+import {
+  Camera, Upload, Wand2, Sparkles, X, RefreshCw, Download, CameraOff,
+  Video, Music2, FileText, Globe, Bot, ShoppingCart, CheckCircle2,
+  Users, Zap,
+} from 'lucide-react'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
 
 type Stage = 'idle' | 'uploading' | 'analyzing' | 'building' | 'rendering' | 'done'
 type ActiveInput = 'none' | 'camera'
+type StyleId = 'realistic' | 'cinematic' | 'anime' | 'professional' | 'artistic' | 'gaming'
+
+// ─── Avatar Styles ────────────────────────────────────────────
+const AVATAR_STYLES: {
+  id: StyleId; emoji: string
+  en: string; ka: string; ru: string
+  grad: string; border: string; activeBorder: string; glow: string
+}[] = [
+  { id: 'realistic',    emoji: '🎭', en: 'Realistic',    ka: 'რეალისტური', ru: 'Реализм',   grad: 'from-slate-500/25 to-blue-600/25',    border: 'border-blue-400/20',    activeBorder: 'border-blue-400/60',    glow: 'rgba(59,130,246,0.3)' },
+  { id: 'cinematic',    emoji: '🎬', en: 'Cinematic',    ka: 'კინო-სტილი', ru: 'Кино',      grad: 'from-violet-500/25 to-indigo-600/25', border: 'border-violet-400/20',  activeBorder: 'border-violet-400/60',  glow: 'rgba(139,92,246,0.3)' },
+  { id: 'anime',        emoji: '⚡', en: 'Anime',        ka: 'ანიმე',      ru: 'Аниме',     grad: 'from-pink-500/25 to-rose-600/25',     border: 'border-pink-400/20',    activeBorder: 'border-pink-400/60',    glow: 'rgba(236,72,153,0.3)' },
+  { id: 'professional', emoji: '💼', en: 'Professional', ka: 'პროფ.',      ru: 'Профი',     grad: 'from-cyan-500/25 to-teal-600/25',     border: 'border-cyan-400/20',    activeBorder: 'border-cyan-400/60',    glow: 'rgba(34,211,238,0.3)' },
+  { id: 'artistic',     emoji: '🎨', en: 'Artistic',     ka: 'მხატვრული',  ru: 'Арт',       grad: 'from-amber-500/25 to-orange-600/25',  border: 'border-amber-400/20',   activeBorder: 'border-amber-400/60',   glow: 'rgba(245,158,11,0.3)' },
+  { id: 'gaming',       emoji: '🎮', en: 'Gaming',       ka: 'გეიმინგი',   ru: 'Гейминг',   grad: 'from-green-500/25 to-emerald-600/25', border: 'border-emerald-400/20', activeBorder: 'border-emerald-400/60', glow: 'rgba(16,185,129,0.3)' },
+]
+
+// ─── Avatar Powers & Deploy CTAs ─────────────────────────────
+const AVATAR_POWERS = [
+  { icon: Video,        en: 'AI Video',   ka: 'AI ვიდეო',   ru: 'AI Видео',   href: 'video',    color: 'text-violet-300' },
+  { icon: Music2,       en: 'AI Voice',   ka: 'AI ხმა',     ru: 'AI Голос',   href: 'music',    color: 'text-pink-300' },
+  { icon: FileText,     en: 'AI Script',  ka: 'სკრიპტი',    ru: 'Сценарий',   href: 'text',     color: 'text-lime-300' },
+  { icon: Globe,        en: 'Brand Kit',  ka: 'ბრენდ კიტი', ru: 'Бренд',      href: 'image',    color: 'text-teal-300' },
+  { icon: Bot,          en: 'Agent G',    ka: 'Agent G',    ru: 'Agent G',    href: 'agent-g',  color: 'text-cyan-300' },
+  { icon: ShoppingCart, en: 'AI Shop',    ka: 'AI მაღ.',    ru: 'AI Магазин', href: 'shop',     color: 'text-amber-300' },
+]
+
+const DEPLOY_SERVICES = [
+  { icon: Video,   en: 'Video AI',  ka: 'ვიდეო AI', ru: 'Видео AI', href: 'video',   grad: 'from-violet-500/15 to-violet-600/10', border: 'border-violet-400/30' },
+  { icon: Music2,  en: 'Voice AI',  ka: 'ხმა AI',   ru: 'Голос AI', href: 'music',   grad: 'from-pink-500/15 to-pink-600/10',     border: 'border-pink-400/30' },
+  { icon: Globe,   en: 'Brand Kit', ka: 'ბრენდი',   ru: 'Бренд',    href: 'image',   grad: 'from-teal-500/15 to-teal-600/10',     border: 'border-teal-400/30' },
+  { icon: Bot,     en: 'Agent G',   ka: 'Agent G',  ru: 'Agent G',  href: 'agent-g', grad: 'from-cyan-500/15 to-cyan-600/10',     border: 'border-cyan-400/30' },
+]
 
 const COPY = {
   en: {
-    badge: 'AI Avatar Builder',
-    title: 'Create Your AI Avatar',
-    subtitle: 'Upload a photo or use your camera — our AI will analyze your face and generate a stunning digital identity.',
+    badge: 'AI Avatar Studio',
+    title: 'Create. Style. Deploy.',
+    subtitle: 'Upload a photo or use your camera — choose a style, watch AI build your digital identity, then deploy across 17 services.',
     upload: 'Upload Photo',
     camera: 'Open Camera',
     capture: 'Capture',
@@ -29,18 +66,26 @@ const COPY = {
       done: 'Avatar Ready!',
     },
     cameraHint: 'Position your face in the frame',
-    cameraError: 'Camera unavailable — use Upload instead',
+    cameraError: 'Camera unavailable — use Upload',
     resultLabel: 'Your avatar is ready!',
-    fullService: 'Open Full Avatar Service',
+    fullService: 'Open Full Avatar Studio',
     tryAgain: 'Try Again',
     scanLabel: 'Scanning face…',
     idle: 'Waiting for input',
     capturing: 'Live Camera',
+    styleLabel: 'Choose Style',
+    statsAvatars: 'Avatars Created',
+    statsStyles: 'Style Modes',
+    statsTime: 'Real-time',
+    statsServices: 'AI Services',
+    deployLabel: 'Deploy Your Avatar To:',
+    powersLabel: 'What Your Avatar Unlocks',
+    cancelBtn: 'Cancel',
   },
   ka: {
-    badge: 'AI ავატარის შემქმნელი',
-    title: 'შექმენი შენი AI ავატარი',
-    subtitle: 'ატვირთე ფოტო ან გამოიყენე კამერა — AI გაანალიზებს შენს სახეს და შექმნის ციფრულ იდენტობას.',
+    badge: 'AI ავატარ სტუდია',
+    title: 'შექმენი. სტილი. განათავსე.',
+    subtitle: 'ატვირთე ფოტო ან კამერა — AI გენერირებს ციფრულ იდენტობას. შემდეგ განათავსე 17 სერვისში.',
     upload: 'ფოტოს ატვირთვა',
     camera: 'კამერის გახსნა',
     capture: 'გადაღება',
@@ -57,18 +102,26 @@ const COPY = {
       done: 'ავატარი მზადაა!',
     },
     cameraHint: 'განათავსე სახე ჩარჩოში',
-    cameraError: 'კამერა მიუწვდომელია — გამოიყენე ატვირთვა',
+    cameraError: 'კამერა მიუწვდომელია — ატვირთვა',
     resultLabel: 'შენი ავატარი მზადაა!',
-    fullService: 'სრული ავატარ სერვისი',
+    fullService: 'სრული ავატარ სტუდია',
     tryAgain: 'ხელახლა ცდა',
     scanLabel: 'სახის სკანირება…',
     idle: 'ატვირთვის მოლოდინი',
     capturing: 'პირდაპირი კამერა',
+    styleLabel: 'აირჩიე სტილი',
+    statsAvatars: 'ავატარი',
+    statsStyles: 'სტილი',
+    statsTime: 'რეალ-დრო',
+    statsServices: 'AI სერვისი',
+    deployLabel: 'ავატარის განსახლება:',
+    powersLabel: 'რა შეგიძლია ავატარით',
+    cancelBtn: 'გაუქმება',
   },
   ru: {
-    badge: 'AI-конструктор аватаров',
-    title: 'Создай свой AI-аватар',
-    subtitle: 'Загрузи фото или открой камеру — AI проанализирует лицо и создаст цифровую идентичность.',
+    badge: 'AI Avatar Studio',
+    title: 'Создай. Стиль. Деплой.',
+    subtitle: 'Загрузи фото или открой камеру — AI создаст цифровую идентичность, затем разверни в 17 сервисах.',
     upload: 'Загрузить фото',
     camera: 'Открыть камеру',
     capture: 'Снимок',
@@ -80,18 +133,26 @@ const COPY = {
     stages: {
       uploading: 'Загрузка',
       analyzing: 'Анализ лица',
-      building: 'Создание аватара',
-      rendering: 'Рендер стиля',
+      building: 'Создание',
+      rendering: 'Рендер',
       done: 'Аватар готов!',
     },
     cameraHint: 'Расположите лицо в кадре',
-    cameraError: 'Камера недоступна — используйте загрузку',
+    cameraError: 'Камера недоступна — загрузите фото',
     resultLabel: 'Ваш аватар готов!',
-    fullService: 'Открыть полный сервис',
+    fullService: 'Открыть Avatar Studio',
     tryAgain: 'Попробовать снова',
     scanLabel: 'Сканирование лица…',
     idle: 'Ожидание загрузки',
-    capturing: 'Прямая камера',
+    capturing: 'Прямая трансляция',
+    styleLabel: 'Выбрать стиль',
+    statsAvatars: 'Аватаров создано',
+    statsStyles: 'Стилей',
+    statsTime: 'Реал-тайм',
+    statsServices: 'AI Сервисов',
+    deployLabel: 'Развернуть аватар в:',
+    powersLabel: 'Возможности аватара',
+    cancelBtn: 'Отмена',
   },
 } as const
 
@@ -131,6 +192,7 @@ const SCAN_CSS = `
 export function LiveAvatarDemoSection() {
   const { language } = useLanguage()
   const text = COPY[language as keyof typeof COPY] ?? COPY.ka
+  const locale = language || 'ka'
 
   const [stage, setStage] = useState<Stage>('idle')
   const [activeInput, setActiveInput] = useState<ActiveInput>('none')
@@ -138,6 +200,7 @@ export function LiveAvatarDemoSection() {
   const [resultImage, setResultImage] = useState<string | null>(null)
   const [cameraError, setCameraError] = useState(false)
   const [cameraReady, setCameraReady] = useState(false)
+  const [selectedStyle, setSelectedStyle] = useState<StyleId>('realistic')
 
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -249,32 +312,106 @@ export function LiveAvatarDemoSection() {
   const showResult = stage === 'done' && !!resultImage
   const showEmpty = !showCameraStream && !showCaptured && !showAnalyzing && !showResult
 
+  const activeStyle = AVATAR_STYLES.find(s => s.id === selectedStyle)!
+
   return (
-    <section className="relative border-t border-white/[0.08] px-4 py-20 sm:px-6">
+    <section className="relative px-4 py-16 sm:px-6 md:py-20">
       <style dangerouslySetInnerHTML={{ __html: SCAN_CSS }} />
 
-      <div className="mx-auto max-w-6xl rounded-3xl border border-white/[0.1] bg-[linear-gradient(155deg,rgba(7,14,30,0.92),rgba(4,9,22,0.82))] shadow-[0_32px_80px_rgba(0,0,0,0.5)] p-5 sm:p-7 lg:p-9">
+      <div className="mx-auto max-w-6xl">
 
-        {/* Header */}
+        {/* ─── Header ───────────────────────────────────────── */}
         <motion.div
-          initial={{ opacity: 0 }}
-          whileInView={{ opacity: 1 }}
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
-          className="text-center mb-7 sm:mb-9"
+          transition={{ duration: 0.6 }}
+          className="text-center mb-8"
         >
           <span className="inline-flex items-center gap-2 rounded-full border border-cyan-300/30 bg-cyan-300/10 px-4 py-1.5 text-[11px] font-semibold tracking-[0.15em] text-cyan-100">
             <Sparkles className="h-3.5 w-3.5" />
             {text.badge}
           </span>
-          <h2 className="mt-4 text-2xl font-bold tracking-tight text-white sm:text-3xl lg:text-4xl">{text.title}</h2>
-          <p className="mx-auto mt-3 max-w-2xl text-sm leading-relaxed text-white/60 sm:text-base">{text.subtitle}</p>
+          <h2 className="mt-4 text-3xl font-bold tracking-tight text-white sm:text-4xl lg:text-5xl">{text.title}</h2>
+          <p className="mx-auto mt-3 max-w-2xl text-sm leading-relaxed text-white/55 sm:text-base">{text.subtitle}</p>
         </motion.div>
 
-        {/* Main 2-col grid */}
-        <div className="grid gap-5 lg:grid-cols-2">
+        {/* ─── Stats Strip ──────────────────────────────────── */}
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          transition={{ duration: 0.5, delay: 0.1 }}
+          className="flex flex-wrap justify-center gap-3 mb-8"
+        >
+          {([
+            { icon: Users,    value: '47,231+', label: text.statsAvatars,  color: 'text-cyan-300' },
+            { icon: Sparkles, value: '6',       label: text.statsStyles,   color: 'text-violet-300' },
+            { icon: Zap,      value: '<10s',    label: text.statsTime,     color: 'text-amber-300' },
+            { icon: Bot,      value: '17',      label: text.statsServices, color: 'text-emerald-300' },
+          ] as const).map((stat, i) => {
+            const Icon = stat.icon
+            return (
+              <div key={i} className="flex items-center gap-2 px-4 py-2 rounded-2xl border border-white/[0.08] bg-white/[0.03]">
+                <Icon className={`w-3.5 h-3.5 ${stat.color}`} />
+                <span className="text-sm font-bold text-white">{stat.value}</span>
+                <span className="text-xs text-white/40">{stat.label}</span>
+              </div>
+            )
+          })}
+        </motion.div>
 
-          {/* LEFT: Input + controls */}
-          <div className="flex flex-col gap-4">
+        {/* ─── Style Selector ───────────────────────────────── */}
+        <div className="mb-6">
+          <p className="text-[10px] uppercase tracking-[0.2em] text-white/40 mb-3 text-center">{text.styleLabel}</p>
+          <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 max-w-xl mx-auto">
+            {AVATAR_STYLES.map(style => {
+              const isActive = selectedStyle === style.id
+              const label = locale === 'ka' ? style.ka : locale === 'ru' ? style.ru : style.en
+              return (
+                <motion.button
+                  key={style.id}
+                  onClick={() => setSelectedStyle(style.id)}
+                  whileTap={{ scale: 0.95 }}
+                  className={`relative flex flex-col items-center gap-1.5 p-3 rounded-xl border transition-all duration-200 bg-gradient-to-br ${style.grad} ${
+                    isActive
+                      ? `${style.activeBorder} scale-[1.04]`
+                      : `${style.border} opacity-65 hover:opacity-90`
+                  }`}
+                  style={isActive ? { boxShadow: `0 0 18px ${style.glow}` } : {}}
+                >
+                  <span className="text-2xl leading-none">{style.emoji}</span>
+                  <span className={`text-[10px] font-medium leading-tight text-center ${isActive ? 'text-white' : 'text-white/55'}`}>{label}</span>
+                  {isActive && (
+                    <span className="absolute top-1.5 right-1.5">
+                      <CheckCircle2 className="w-3 h-3 text-white/80" />
+                    </span>
+                  )}
+                </motion.button>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* ─── Main Card ────────────────────────────────────── */}
+        <div className="rounded-3xl border border-white/[0.10] bg-[linear-gradient(155deg,rgba(7,14,30,0.92),rgba(4,9,22,0.82))] shadow-[0_32px_80px_rgba(0,0,0,0.5)] p-5 sm:p-6 lg:p-8">
+
+          {/* Style indicator pill */}
+          <div
+            className={`inline-flex items-center gap-2 px-3 py-1 rounded-full border bg-gradient-to-r ${activeStyle.grad} mb-5 text-[11px] text-white/80 font-medium`}
+            style={{ borderColor: activeStyle.activeBorder.replace('border-', '') }}
+          >
+            <span>{activeStyle.emoji}</span>
+            <span>
+              {locale === 'ka' ? activeStyle.ka : locale === 'ru' ? activeStyle.ru : activeStyle.en}
+              {locale === 'ka' ? ' რეჟიმი' : locale === 'ru' ? ' режим' : ' Mode'}
+            </span>
+          </div>
+
+          <div className="grid gap-5 lg:grid-cols-2">
+
+            {/* ══ LEFT: Camera / Upload / Controls ══ */}
+            <div className="flex flex-col gap-4">
 
             {/* Preview window */}
             <div className="relative aspect-[4/3] overflow-hidden rounded-2xl bg-[#050b1c] border border-white/[0.09]">
@@ -365,10 +502,13 @@ export function LiveAvatarDemoSection() {
 
               {/* Empty state */}
               {showEmpty && (
-                <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-white/25">
-                  <Camera className="w-12 h-12" />
-                  <p className="text-sm font-medium">
-                    {language === 'ka' ? 'ფოტო ან კამერა' : language === 'ru' ? 'Фото или камера' : 'Photo or camera'}
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
+                  <span className="text-5xl">{activeStyle.emoji}</span>
+                  <p className="text-sm font-medium text-white/30">
+                    {locale === 'ka' ? `${activeStyle.ka} სტილი` : locale === 'ru' ? `Стиль: ${activeStyle.ru}` : `${activeStyle.en} style`}
+                  </p>
+                  <p className="text-xs text-white/20">
+                    {locale === 'ka' ? 'ფოტო ან კამერა' : locale === 'ru' ? 'Фото или камера' : 'Photo or camera'}
                   </p>
                 </div>
               )}
@@ -379,23 +519,21 @@ export function LiveAvatarDemoSection() {
             {/* Controls */}
             <div className="flex flex-wrap gap-2.5">
               {showCameraStream ? (
-                <>
-                  <button
-                    onClick={capturePhoto}
-                    disabled={!cameraReady}
-                    className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-500 text-white px-4 py-2.5 text-sm font-semibold hover:bg-cyan-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors active:scale-[0.97]"
-                  >
-                    <Camera className="w-4 h-4" />
-                    {text.capture}
-                  </button>
-                  <button
-                    onClick={stopCamera}
-                    className="inline-flex items-center gap-1.5 rounded-xl border border-white/20 bg-white/[0.05] px-4 py-2.5 text-sm text-white/70 hover:text-white transition-colors"
-                  >
-                    <X className="w-4 h-4" />
-                    {language === 'ka' ? 'გახსნა' : language === 'ru' ? 'Отмена' : 'Cancel'}
-                  </button>
-                </>
+                  <>
+                    <button
+                      onClick={capturePhoto}
+                      disabled={!cameraReady}
+                      className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-500 text-white px-4 py-2.5 text-sm font-semibold hover:bg-cyan-400 disabled:opacity-50 transition-colors"
+                    >
+                      <Camera className="w-4 h-4" /> {text.capture}
+                    </button>
+                    <button
+                      onClick={stopCamera}
+                      className="inline-flex items-center gap-1.5 rounded-xl border border-white/20 bg-white/[0.05] px-4 py-2.5 text-sm text-white/70 hover:text-white transition-colors"
+                    >
+                      <X className="w-4 h-4" /> {text.cancelBtn}
+                    </button>
+                  </>
               ) : isGenerating ? (
                 <div className="flex-1 flex items-center justify-center gap-3 py-2">
                   <Wand2 className="w-5 h-5 text-cyan-300 animate-spin" style={{ animationDuration: '1.5s' }} />
@@ -434,8 +572,7 @@ export function LiveAvatarDemoSection() {
                     onClick={() => setCapturedImage('/brand/gaga.jpg')}
                     className="ml-auto inline-flex items-center gap-1.5 rounded-xl border border-violet-400/25 bg-violet-400/10 px-3.5 py-2 text-sm font-medium text-violet-200/80 hover:bg-violet-400/18 hover:text-violet-100 transition-colors"
                   >
-                    <Sparkles className="w-3.5 h-3.5" />
-                    {text.demo}
+                    <Sparkles className="w-3.5 h-3.5" /> {text.demo}
                   </button>
                 </>
               )}
@@ -447,10 +584,10 @@ export function LiveAvatarDemoSection() {
                 initial={{ opacity: 0, y: 6 }}
                 animate={{ opacity: 1, y: 0 }}
                 onClick={() => runPipeline(capturedImage)}
-                className="w-full inline-flex items-center justify-center gap-2.5 rounded-xl bg-gradient-to-r from-cyan-500 via-blue-500 to-violet-600 text-white px-5 py-3 text-sm font-bold hover:brightness-110 active:scale-[0.98] transition-all shadow-[0_4px_24px_rgba(34,211,238,0.28),0_2px_8px_rgba(99,102,241,0.18)]"
+                className="w-full inline-flex items-center justify-center gap-2.5 rounded-xl bg-gradient-to-r from-cyan-500 via-blue-500 to-violet-600 text-white px-5 py-3 text-sm font-bold hover:brightness-110 transition-all shadow-[0_4px_24px_rgba(34,211,238,0.28)]"
               >
                 <Wand2 className="w-4 h-4" />
-                {text.generate}
+                {text.generate} — {locale === 'ka' ? activeStyle.ka : locale === 'ru' ? activeStyle.ru : activeStyle.en}
               </motion.button>
             )}
 
@@ -466,7 +603,7 @@ export function LiveAvatarDemoSection() {
             )}
           </div>
 
-          {/* RIGHT: Progress + before/after */}
+          {/* ══ RIGHT: Progress + Before/After + CTA panels ══ */}
           <div className="flex flex-col gap-4">
 
             {/* Progress panel */}
@@ -506,13 +643,13 @@ export function LiveAvatarDemoSection() {
             <div className="grid grid-cols-2 gap-3 flex-1">
               <div className="rounded-2xl border border-white/[0.09] bg-white/[0.025] p-3 flex flex-col">
                 <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-white/45">{text.before}</p>
-                <div className="flex-1 min-h-[140px] rounded-xl overflow-hidden bg-[#050b1c] border border-white/[0.07] flex items-center justify-center">
+                <div className="flex-1 min-h-[120px] rounded-xl overflow-hidden bg-[#050b1c] border border-white/[0.07] flex items-center justify-center">
                   {capturedImage ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img src={capturedImage} alt="Before" className="w-full h-full object-cover" />
                   ) : (
                     <span className="text-[11px] text-white/20">
-                      {language === 'ka' ? 'ატვირთე' : language === 'ru' ? 'Загрузить' : 'Upload'}
+                      {locale === 'ka' ? 'ატვირთე' : locale === 'ru' ? 'Загрузить' : 'Upload'}
                     </span>
                   )}
                 </div>
@@ -520,7 +657,7 @@ export function LiveAvatarDemoSection() {
 
               <div className="rounded-2xl border border-cyan-300/20 bg-white/[0.025] p-3 flex flex-col">
                 <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-cyan-100/60">{text.after}</p>
-                <div className="flex-1 min-h-[140px] rounded-xl overflow-hidden bg-[#050b1c] border border-cyan-400/20 flex items-center justify-center relative">
+                <div className="min-h-[120px] rounded-xl overflow-hidden bg-[#050b1c] border border-cyan-400/20 flex items-center justify-center relative">
                   {resultImage ? (
                     <>
                       {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -541,33 +678,78 @@ export function LiveAvatarDemoSection() {
                     </div>
                   ) : (
                     <span className="text-[11px] text-cyan-200/20 text-center px-2">
-                      {language === 'ka' ? 'შედეგი' : language === 'ru' ? 'Результат' : 'Result'}
+                      {locale === 'ka' ? 'შედეგი' : locale === 'ru' ? 'Резუльтат' : 'Result'}
                     </span>
                   )}
                 </div>
               </div>
             </div>
 
-            {/* Done CTA */}
-            {stage === 'done' && (
-              <motion.div
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="rounded-2xl border border-cyan-400/25 bg-[linear-gradient(135deg,rgba(34,211,238,0.1),rgba(99,102,241,0.07))] p-4 text-center"
-              >
-                <p className="text-sm font-semibold text-white mb-3">{text.resultLabel}</p>
-                <a
-                  href={`/${language ?? 'ka'}/services/avatar`}
-                  className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-cyan-500 to-violet-600 text-white px-5 py-2.5 text-sm font-semibold hover:brightness-110 active:scale-[0.97] transition-all shadow-[0_4px_20px_rgba(34,211,238,0.22)]"
+            {/* Deploy CTA (done) OR Powers panel (idle) */}
+            <AnimatePresence mode="wait">
+              {stage === 'done' ? (
+                <motion.div
+                  key="deploy"
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0 }}
+                  className="rounded-2xl border border-cyan-400/25 bg-[linear-gradient(135deg,rgba(34,211,238,0.08),rgba(99,102,241,0.06))] p-4 space-y-3"
                 >
-                  <Sparkles className="w-4 h-4" />
-                  {text.fullService}
-                </a>
-              </motion.div>
-            )}
+                  <p className="text-xs font-semibold text-white/75">{text.deployLabel}</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {DEPLOY_SERVICES.map(svc => {
+                      const Icon = svc.icon
+                      const label = locale === 'ka' ? svc.ka : locale === 'ru' ? svc.ru : svc.en
+                      return (
+                        <Link
+                          key={svc.href}
+                          href={`/${locale}/services/${svc.href}`}
+                          className={`flex items-center gap-2 px-3 py-2.5 rounded-xl border bg-gradient-to-br ${svc.grad} ${svc.border} text-white/80 hover:text-white text-[11px] font-medium transition-all hover:scale-[1.02]`}
+                        >
+                          <Icon className="w-3.5 h-3.5 shrink-0" /> {label}
+                        </Link>
+                      )
+                    })}
+                  </div>
+                  <Link
+                    href={`/${locale}/services/avatar`}
+                    className="w-full flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 text-white py-2.5 text-sm font-bold hover:brightness-110 transition-all"
+                  >
+                    <Sparkles className="w-4 h-4" /> {text.fullService}
+                  </Link>
+                </motion.div>
+              ) : (
+                <motion.div
+                  key="powers"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-4"
+                >
+                  <p className="text-[10px] uppercase tracking-[0.18em] text-white/35 mb-3">{text.powersLabel}</p>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    {AVATAR_POWERS.map(power => {
+                      const Icon = power.icon
+                      const label = locale === 'ka' ? power.ka : locale === 'ru' ? power.ru : power.en
+                      return (
+                        <Link
+                          key={power.href}
+                          href={`/${locale}/services/${power.href}`}
+                          className="flex flex-col items-center gap-1.5 p-2.5 rounded-xl border border-white/[0.08] bg-white/[0.02] hover:border-white/[0.20] hover:bg-white/[0.05] transition-all group"
+                        >
+                          <Icon className={`w-4 h-4 ${power.color} group-hover:scale-110 transition-transform`} />
+                          <span className="text-[9px] text-white/50 group-hover:text-white/70 text-center leading-tight transition-colors">{label}</span>
+                        </Link>
+                      )
+                    })}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
         </div>
       </div>
+    </div>
     </section>
   )
 }

@@ -27,11 +27,6 @@ const FeaturesShowcase = dynamic(() => import("@/components/landing/FeaturesShow
   loading: () => <SectionFallback label="Features" />,
 });
 
-const WorkflowCinematicSection = dynamic(() => import("@/components/WorkflowCinematicSection").then((m) => m.WorkflowCinematicSection), {
-  ssr: true,
-  loading: () => <SectionFallback label="Cinematic" />,
-});
-
 const LiveAvatarDemoSection = dynamic(() => import("@/components/landing/LiveAvatarDemoSection").then((m) => m.LiveAvatarDemoSection), {
   ssr: true,
   loading: () => <SectionFallback label="Avatar Demo" />,
@@ -211,14 +206,6 @@ export default function LandingPageClient() {
         <LandingSection>
           <ErrorBoundary fallback={<SectionFallback label="Features" />}>
             <FeaturesShowcase />
-          </ErrorBoundary>
-        </LandingSection>
-
-        <div className="ag-lux-line mx-auto max-w-6xl opacity-70" />
-
-        <LandingSection>
-          <ErrorBoundary fallback={<SectionFallback label="Cinematic" />}>
-            <WorkflowCinematicSection />
           </ErrorBoundary>
         </LandingSection>
 
