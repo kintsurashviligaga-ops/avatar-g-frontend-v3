@@ -73,11 +73,12 @@ export function WorkflowCinematicSection() {
 
       <div className="relative z-10 max-w-6xl mx-auto px-4 sm:px-6">
         <div className="text-center max-w-3xl mx-auto mb-16">
-          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-cyan-300/15 bg-cyan-500/[0.05] text-cyan-200/80 text-[10px] uppercase tracking-[0.16em] font-semibold">
+          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-cyan-400/30 bg-cyan-400/[0.08] text-cyan-200 text-[10px] uppercase tracking-[0.16em] font-semibold shadow-[0_0_16px_rgba(34,211,238,0.12)]">
             <Rocket className="w-[1.05rem] h-[1.05rem]" /> {copy.rail}
           </div>
-          <h2 className="mt-6 text-3xl md:text-5xl font-bold text-white tracking-[-0.02em]">{copy.title}</h2>
-          <p className="mt-5 text-sm md:text-base text-white/40 leading-relaxed">{copy.subtitle}</p>
+          <h2 className="mt-6 text-3xl md:text-5xl font-black text-white tracking-[-0.02em]">{copy.title}</h2>
+          <div className="mx-auto mt-2 h-0.5 w-14 rounded-full bg-gradient-to-r from-cyan-400 to-blue-500 opacity-55" />
+          <p className="mt-5 text-sm md:text-base text-white/45 leading-relaxed">{copy.subtitle}</p>
         </div>
 
         <div className="relative">
@@ -88,8 +89,9 @@ export function WorkflowCinematicSection() {
               const rotation = index % 2 === 0 ? '-rotate-y-3' : 'rotate-y-3'
               return (
                 <div key={step.id} className="relative">
-                  <div className={`h-full rounded-2xl border bg-gradient-to-b ${step.tone} backdrop-blur-sm p-5 md:p-6 transform-gpu ${rotation} hover:rotate-y-0 transition-transform duration-[400ms]`}>
-                    <div className="w-11 h-11 rounded-xl border border-white/15 bg-black/20 flex items-center justify-center mb-4">
+                  <div className={`relative h-full rounded-2xl border bg-gradient-to-b ${step.tone} backdrop-blur-sm p-5 md:p-6 transform-gpu ${rotation} hover:rotate-y-0 transition-transform duration-[400ms] overflow-hidden`}>
+                    <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-white/[0.12] to-transparent" />
+                    <div className="w-11 h-11 rounded-xl border border-white/15 bg-black/25 flex items-center justify-center mb-4 shadow-[0_0_14px_rgba(255,255,255,0.06)]">
                       <Icon className="w-5 h-5 text-white/90" />
                     </div>
                     <p className="text-sm font-semibold text-white">{step.title}</p>
@@ -109,25 +111,27 @@ export function WorkflowCinematicSection() {
         </div>
 
         <div className="mt-12 grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <div className="rounded-2xl border border-white/[0.08] bg-white/[0.03] backdrop-blur-sm p-5 md:p-6">
-            <p className="text-[10px] uppercase tracking-[0.2em] text-white/40 font-semibold mb-4">{copy.loopTitle}</p>
+          <div className="rounded-2xl border border-white/[0.09] bg-[linear-gradient(135deg,rgba(7,14,30,0.85),rgba(4,9,22,0.70))] backdrop-blur-xl p-5 md:p-6 shadow-[0_8px_32px_rgba(0,0,0,0.3)] overflow-hidden relative">
+            <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-cyan-400/20 to-transparent" />
+            <p className="text-[10px] uppercase tracking-[0.2em] text-white/45 font-semibold mb-4">{copy.loopTitle}</p>
             <div className="flex flex-wrap gap-2">
               {copy.loop.map((item) => (
-                <span key={item} className="inline-flex items-center rounded-xl border border-cyan-300/15 bg-cyan-500/[0.05] px-3.5 py-2 text-xs text-cyan-100/70">
+                <span key={item} className="inline-flex items-center rounded-xl border border-cyan-400/20 bg-cyan-400/[0.07] px-3.5 py-2 text-xs text-cyan-200/80 font-medium">
                   {item}
                 </span>
               ))}
             </div>
           </div>
 
-          <div className="rounded-2xl border border-white/[0.08] bg-white/[0.03] backdrop-blur-sm p-5 md:p-6">
-            <p className="text-[10px] uppercase tracking-[0.2em] text-white/40 font-semibold mb-4">{copy.artifacts}</p>
+          <div className="rounded-2xl border border-white/[0.09] bg-[linear-gradient(135deg,rgba(7,14,30,0.85),rgba(4,9,22,0.70))] backdrop-blur-xl p-5 md:p-6 shadow-[0_8px_32px_rgba(0,0,0,0.3)] overflow-hidden relative">
+            <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-violet-400/15 to-transparent" />
+            <p className="text-[10px] uppercase tracking-[0.2em] text-white/45 font-semibold mb-4">{copy.artifacts}</p>
             <div className="grid grid-cols-2 gap-3">
               {artifacts.map((item) => {
                 const Icon = item.icon
                 return (
-                  <div key={item.label} className="rounded-xl border border-white/[0.08] bg-white/[0.03] px-3.5 py-3 flex items-center gap-2.5">
-                    <Icon className="w-4 h-4 text-cyan-300/70" />
+                  <div key={item.label} className="rounded-xl border border-white/[0.09] bg-white/[0.04] px-3.5 py-3 flex items-center gap-2.5 hover:border-cyan-400/20 transition-colors">
+                    <Icon className="w-4 h-4 text-cyan-300/80" />
                     <span className="text-sm text-white/70">{item.label}</span>
                   </div>
                 )

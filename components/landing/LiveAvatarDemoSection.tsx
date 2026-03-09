@@ -315,7 +315,10 @@ export function LiveAvatarDemoSection() {
   const activeStyle = AVATAR_STYLES.find(s => s.id === selectedStyle)!
 
   return (
-    <section className="relative px-4 py-16 sm:px-6 md:py-20">
+    <section className="relative px-4 py-16 sm:px-6 md:py-24">
+      {/* section neon edges */}
+      <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-cyan-400/20 to-transparent" />
+      <div className="absolute bottom-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-violet-400/15 to-transparent" />
       <style dangerouslySetInnerHTML={{ __html: SCAN_CSS }} />
 
       <div className="mx-auto max-w-6xl">
@@ -328,12 +331,18 @@ export function LiveAvatarDemoSection() {
           transition={{ duration: 0.6 }}
           className="text-center mb-8"
         >
-          <span className="inline-flex items-center gap-2 rounded-full border border-cyan-300/30 bg-cyan-300/10 px-4 py-1.5 text-[11px] font-semibold tracking-[0.15em] text-cyan-100">
-            <Sparkles className="h-3.5 w-3.5" />
+          <span className="inline-flex items-center gap-2 rounded-full border border-cyan-400/30 bg-cyan-400/[0.08] px-4 py-1.5 text-[11px] font-semibold tracking-[0.15em] text-cyan-200 shadow-[0_0_16px_rgba(34,211,238,0.12)]">
+            <span className="relative flex h-2 w-2">
+              <span className="absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-70 animate-ping" />
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-cyan-400" />
+            </span>
             {text.badge}
           </span>
-          <h2 className="mt-4 text-3xl font-bold tracking-tight text-white sm:text-4xl lg:text-5xl">{text.title}</h2>
-          <p className="mx-auto mt-3 max-w-2xl text-sm leading-relaxed text-white/55 sm:text-base">{text.subtitle}</p>
+          <h2 className="mt-5 text-3xl font-black tracking-tight text-white sm:text-4xl lg:text-5xl leading-[1.08]">
+            {text.title}
+          </h2>
+          <div className="mx-auto mt-1.5 h-0.5 w-16 rounded-full bg-gradient-to-r from-cyan-400 to-blue-500 opacity-60" />
+          <p className="mx-auto mt-4 max-w-2xl text-sm leading-relaxed text-white/55 sm:text-base">{text.subtitle}</p>
         </motion.div>
 
         {/* ─── Stats Strip ──────────────────────────────────── */}
@@ -345,16 +354,20 @@ export function LiveAvatarDemoSection() {
           className="flex flex-wrap justify-center gap-3 mb-8"
         >
           {([
-            { icon: Users,    value: '47,231+', label: text.statsAvatars,  color: 'text-cyan-300' },
-            { icon: Sparkles, value: '6',       label: text.statsStyles,   color: 'text-violet-300' },
-            { icon: Zap,      value: '<10s',    label: text.statsTime,     color: 'text-amber-300' },
-            { icon: Bot,      value: '17',      label: text.statsServices, color: 'text-emerald-300' },
+            { icon: Users,    value: '47,231+', label: text.statsAvatars,  color: 'text-cyan-300',    glow: 'rgba(34,211,238,0.10)' },
+            { icon: Sparkles, value: '6',       label: text.statsStyles,   color: 'text-violet-300',  glow: 'rgba(139,92,246,0.10)' },
+            { icon: Zap,      value: '<10s',    label: text.statsTime,     color: 'text-amber-300',   glow: 'rgba(245,158,11,0.10)' },
+            { icon: Bot,      value: '17',      label: text.statsServices, color: 'text-emerald-300', glow: 'rgba(52,211,153,0.10)' },
           ] as const).map((stat, i) => {
             const Icon = stat.icon
             return (
-              <div key={i} className="flex items-center gap-2 px-4 py-2 rounded-2xl border border-white/[0.08] bg-white/[0.03]">
+              <div
+                key={i}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-2xl border border-white/[0.09] bg-white/[0.04] backdrop-blur"
+                style={{ boxShadow: `0 0 20px ${stat.glow}` }}
+              >
                 <Icon className={`w-3.5 h-3.5 ${stat.color}`} />
-                <span className="text-sm font-bold text-white">{stat.value}</span>
+                <span className={`text-sm font-bold ${stat.color}`}>{stat.value}</span>
                 <span className="text-xs text-white/40">{stat.label}</span>
               </div>
             )

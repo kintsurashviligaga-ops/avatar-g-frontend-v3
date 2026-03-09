@@ -33,26 +33,36 @@ export default function ServiceLanding({ icon, headline, description, features, 
 
       {/* Hero */}
       <section className="relative ag-section px-4 sm:px-6 lg:px-10 max-w-6xl mx-auto pt-24 md:pt-28">
-        <div className="ag-surface-hero rounded-3xl p-7 sm:p-10 md:p-12">
-          <div className="flex items-center gap-3 mb-6">
+        <div className="relative rounded-3xl border border-white/[0.10] bg-[linear-gradient(155deg,rgba(7,14,30,0.92),rgba(4,9,22,0.82))] backdrop-blur-2xl shadow-[0_32px_80px_rgba(0,0,0,0.55)] p-7 sm:p-10 md:p-12 overflow-hidden">
+          {/* neon top edge */}
+          <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-cyan-400/35 to-transparent" />
+          {/* corner orbs */}
+          <div className="absolute -top-16 -right-16 w-48 h-48 rounded-full bg-gradient-to-br from-cyan-500/12 to-blue-600/8 blur-3xl pointer-events-none" />
+          <div className="absolute -bottom-16 -left-16 w-40 h-40 rounded-full bg-gradient-to-br from-violet-500/10 to-indigo-600/6 blur-3xl pointer-events-none" />
+
+          <div className="relative flex items-center gap-3 mb-6">
             <span className="text-3xl">{icon}</span>
-            <span className="text-xs text-white/40 uppercase tracking-widest border border-white/[0.12] bg-white/[0.04] px-3 py-1 rounded-full">
-            AI Service
+            <span className="text-[10px] text-cyan-300/80 uppercase tracking-[0.15em] border border-cyan-400/25 bg-cyan-400/[0.07] px-3 py-1 rounded-full font-semibold">
+              AI Service
             </span>
           </div>
-          <h1 className="text-4xl sm:text-5xl lg:text-6xl font-black text-white leading-[1.04] tracking-[-0.02em] mb-5">
+          <h1 className="relative text-4xl sm:text-5xl lg:text-6xl font-black text-white leading-[1.04] tracking-[-0.02em] mb-5">
             {headline}
           </h1>
-          <p className="text-white/65 text-lg max-w-2xl leading-relaxed mb-10">
+          <p className="relative text-white/60 text-lg max-w-2xl leading-relaxed mb-10">
             {description}
           </p>
-          <div className="flex flex-wrap gap-4">
-            <Link href={`/${locale}/signup`}
-              className="bg-white text-[#050510] font-semibold text-sm px-6 py-3 rounded-2xl hover:bg-white/90 transition-all shadow-[0_12px_30px_rgba(255,255,255,0.15)]">
+          <div className="relative flex flex-wrap gap-4">
+            <Link
+              href={`/${locale}/signup`}
+              className="ag-btn-primary px-7 py-3 rounded-2xl text-sm"
+            >
               {cta.start}
             </Link>
-            <Link href={`/${locale}/pricing`}
-              className="border border-white/25 text-white font-semibold text-sm px-6 py-3 rounded-2xl hover:bg-white/[0.08] transition-all">
+            <Link
+              href={`/${locale}/pricing`}
+              className="btn-ghost px-7 py-3 rounded-2xl text-sm"
+            >
               {cta.plans}
             </Link>
           </div>
@@ -66,10 +76,13 @@ export default function ServiceLanding({ icon, headline, description, features, 
         </p>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {features.map((f) => (
-            <div key={f}
-              className="ag-surface-secondary rounded-2xl p-5 flex items-start gap-3 hover:border-cyan-300/30 transition-all duration-300">
-              <span className="text-white/20 mt-0.5 flex-shrink-0">✦</span>
-              <span className="text-sm text-white/75">{f}</span>
+            <div
+              key={f}
+              className="relative rounded-2xl border border-white/[0.08] bg-[linear-gradient(135deg,rgba(7,14,30,0.80),rgba(4,9,22,0.65))] backdrop-blur-xl p-5 flex items-start gap-3 hover:border-cyan-400/25 hover:shadow-[0_0_24px_rgba(34,211,238,0.07)] transition-all duration-300 overflow-hidden group"
+            >
+              <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-white/[0.07] to-transparent" />
+              <span className="text-cyan-400/60 mt-0.5 flex-shrink-0 group-hover:text-cyan-400/90 transition-colors">✦</span>
+              <span className="text-sm text-white/70 leading-relaxed">{f}</span>
             </div>
           ))}
         </div>
