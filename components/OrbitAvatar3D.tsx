@@ -5,12 +5,239 @@
  * Built with @react-three/fiber + Three.js
  * Auto-rotates 360° showing real depth from all angles
  * Premium neon/holographic aesthetic
+ * Graceful CSS fallback when WebGL is unavailable
  */
 
-import { useRef, useMemo, useEffect } from 'react';
+import { useRef, useMemo, useEffect, useState, Component, type ReactNode } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { Points, PointMaterial } from '@react-three/drei';
 import * as THREE from 'three';
+
+// ─────────────────────────────────────────────────────────────────
+// WebGL availability check
+// ─────────────────────────────────────────────────────────────────
+function isWebGLAvailable(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    const canvas = document.createElement('canvas');
+    const ctx =
+      (canvas.getContext('webgl') as WebGLRenderingContext | null) ||
+      (canvas.getContext('experimental-webgl') as WebGLRenderingContext | null);
+    if (!ctx) return false;
+    const ext = ctx.getExtension('WEBGL_lose_context');
+    if (ext) ext.loseContext();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Error boundary — catches WebGL context errors from three.js Canvas
+// ─────────────────────────────────────────────────────────────────
+interface EBProps { children: ReactNode; fallback: ReactNode }
+interface EBState { crashed: boolean }
+class CanvasErrorBoundary extends Component<EBProps, EBState> {
+  constructor(props: EBProps) {
+    super(props);
+    this.state = { crashed: false };
+  }
+  static getDerivedStateFromError(): EBState { return { crashed: true }; }
+  render() {
+    if (this.state.crashed) return this.props.fallback;
+    return this.props.children;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────
+// CSS-only holographic fallback (no WebGL required)
+// ─────────────────────────────────────────────────────────────────
+function AvatarCSSFallback() {
+  return (
+    <div
+      className="w-full h-full relative flex items-end justify-center overflow-hidden"
+      style={{ background: 'transparent' }}
+    >
+      <style>{`
+        @keyframes css3d-spin {
+          from { transform: rotateY(0deg); }
+          to   { transform: rotateY(360deg); }
+        }
+        @keyframes css3d-float {
+          0%,100% { transform: translateY(0px); }
+          50%      { transform: translateY(-7px); }
+        }
+        @keyframes css3d-scan {
+          0%   { top: 8%; opacity:0.18; }
+          50%  { top: 88%; opacity:0.10; }
+          100% { top: 8%; opacity:0.18; }
+        }
+        @keyframes css3d-ring1 {
+          0%   { transform: rotateZ(0deg) rotateX(65deg); }
+          100% { transform: rotateZ(360deg) rotateX(65deg); }
+        }
+        @keyframes css3d-ring2 {
+          0%   { transform: rotateZ(0deg) rotateX(30deg); }
+          100% { transform: rotateZ(-360deg) rotateX(30deg); }
+        }
+        @keyframes css3d-pulse {
+          0%,100% { opacity:0.55; transform:scale(1); }
+          50%      { opacity:0.85; transform:scale(1.06); }
+        }
+        .css3d-body { animation: css3d-float 3.6s ease-in-out infinite; }
+        .css3d-figure { animation: css3d-spin 12s linear infinite; transform-style: preserve-3d; }
+      `}</style>
+
+      {/* Outer orbit rings */}
+      <div className="pointer-events-none absolute inset-[8%]" style={{ perspective: '600px' }}>
+        <div style={{
+          position:'absolute', inset:0,
+          border: '1.5px solid rgba(34,211,238,0.35)',
+          borderRadius: '50%',
+          animation: 'css3d-ring1 7s linear infinite',
+        }} />
+        <div style={{
+          position:'absolute', inset:'12%',
+          border: '1px solid rgba(139,92,246,0.28)',
+          borderRadius: '50%',
+          animation: 'css3d-ring2 10s linear infinite',
+        }} />
+      </div>
+
+      {/* Holographic scan line */}
+      <div className="pointer-events-none absolute left-[15%] right-[15%]" style={{
+        height: '2px',
+        background: 'linear-gradient(90deg,transparent,rgba(34,211,238,0.7),transparent)',
+        animation: 'css3d-scan 3s ease-in-out infinite',
+        zIndex: 10,
+      }} />
+
+      {/* Body */}
+      <div className="css3d-body absolute inset-0 flex items-center justify-center" style={{ perspective: '300px' }}>
+        <div className="css3d-figure flex flex-col items-center" style={{ gap: 0 }}>
+          {/* Head */}
+          <div style={{
+            width:'32%', paddingTop:'32%', borderRadius:'50%',
+            background:'linear-gradient(145deg,rgba(56,189,248,0.25),rgba(6,182,212,0.08))',
+            border:'1.5px solid rgba(34,211,238,0.60)',
+            boxShadow:'0 0 14px rgba(34,211,238,0.35), inset 0 0 10px rgba(34,211,238,0.12)',
+            marginBottom:'2%',
+          }} />
+          {/* Neck */}
+          <div style={{
+            width:'12%', height:'5%',
+            background:'rgba(34,211,238,0.18)',
+            border:'1px solid rgba(34,211,238,0.35)',
+          }} />
+          {/* Shoulders + torso row */}
+          <div style={{ display:'flex', alignItems:'flex-start', width:'100%', justifyContent:'center' }}>
+            {/* Left shoulder */}
+            <div style={{
+              width:'22%', height:'10%', borderRadius:'50% 50% 0 0',
+              background:'linear-gradient(180deg,rgba(139,92,246,0.30),rgba(6,182,212,0.12))',
+              border:'1px solid rgba(139,92,246,0.50)',
+              marginTop:'1%', alignSelf:'flex-start',
+            }} />
+            {/* Torso */}
+            <div style={{
+              width:'44%', height: undefined,
+              flex:'0 0 44%',
+              background:'linear-gradient(180deg,rgba(6,182,212,0.20),rgba(6,182,212,0.07))',
+              border:'1px solid rgba(34,211,238,0.50)',
+              boxShadow:'0 0 20px rgba(34,211,238,0.18), inset 0 0 12px rgba(34,211,238,0.08)',
+              padding:'3% 0 5%',
+              position:'relative', overflow:'hidden',
+            }}>
+              {/* Chest reactor */}
+              <div style={{
+                width:'25%', paddingTop:'25%', borderRadius:'50%',
+                background:'rgba(139,92,246,0.55)',
+                border:'1px solid rgba(139,92,246,0.90)',
+                boxShadow:'0 0 10px rgba(139,92,246,0.70)',
+                margin:'0 auto',
+                animation:'css3d-pulse 2s ease-in-out infinite',
+              }} />
+              {/* Horizontal lines */}
+              {[30,55,75].map(top => (
+                <div key={top} style={{
+                  position:'absolute', left:'10%', right:'10%', top:`${top}%`,
+                  height:'1px', background:'rgba(34,211,238,0.25)',
+                }} />
+              ))}
+            </div>
+            {/* Right shoulder */}
+            <div style={{
+              width:'22%', height:'10%', borderRadius:'50% 50% 0 0',
+              background:'linear-gradient(180deg,rgba(139,92,246,0.30),rgba(6,182,212,0.12))',
+              border:'1px solid rgba(139,92,246,0.50)',
+              marginTop:'1%', alignSelf:'flex-start',
+            }} />
+          </div>
+          {/* Arms + Hip row */}
+          <div style={{ display:'flex', width:'100%', justifyContent:'center' }}>
+            {/* Left arm */}
+            <div style={{
+              width:'16%', height:'22%',
+              background:'rgba(6,182,212,0.15)',
+              border:'1px solid rgba(34,211,238,0.35)',
+              borderRadius:'0 0 4px 4px',
+            }} />
+            {/* Hips */}
+            <div style={{
+              width:'44%',
+              background:'linear-gradient(180deg,rgba(6,182,212,0.15),rgba(6,182,212,0.06))',
+              border:'1px solid rgba(34,211,238,0.40)',
+            }} />
+            {/* Right arm */}
+            <div style={{
+              width:'16%', height:'22%',
+              background:'rgba(6,182,212,0.15)',
+              border:'1px solid rgba(34,211,238,0.35)',
+              borderRadius:'0 0 4px 4px',
+            }} />
+          </div>
+          {/* Legs */}
+          <div style={{ display:'flex', width:'44%', justifyContent:'space-around' }}>
+            {[0,1].map(i => (
+              <div key={i} style={{
+                width:'44%',
+                background:'rgba(6,182,212,0.13)',
+                border:'1px solid rgba(34,211,238,0.32)',
+                borderRadius:'0 0 3px 3px',
+              }}>
+                {/* Knee accent */}
+                <div style={{
+                  width:'80%', height:'3px', margin:'35% auto 0',
+                  background:'rgba(139,92,246,0.60)',
+                  borderRadius:'2px',
+                }} />
+              </div>
+            ))}
+          </div>
+          {/* Feet */}
+          <div style={{ display:'flex', width:'44%', justifyContent:'space-around', marginTop:'1%' }}>
+            {[0,1].map(i => (
+              <div key={i} style={{
+                width:'50%', height:'4px',
+                background:'rgba(34,211,238,0.50)',
+                border:'1px solid rgba(34,211,238,0.70)',
+                borderRadius:'2px',
+                boxShadow:'0 0 8px rgba(34,211,238,0.40)',
+              }} />
+            ))}
+          </div>
+          {/* Platform */}
+          <div style={{
+            width:'60%', height:'3px', marginTop:'4%',
+            background:'rgba(34,211,238,0.40)',
+            borderRadius:'50%',
+            boxShadow:'0 0 14px rgba(34,211,238,0.50)',
+          }} />
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // ─────────────────────────────────────────────────────────────────
 // Shared material factory
@@ -449,7 +676,10 @@ function ScanPlane() {
 // ─────────────────────────────────────────────────────────────────
 // Main exported 3D canvas
 // ─────────────────────────────────────────────────────────────────
-export function OrbitAvatar3D({ avatarUrl }: { avatarUrl: string | null }) {
+// ─────────────────────────────────────────────────────────────────
+// Three.js Canvas (only mounted when WebGL is confirmed available)
+// ─────────────────────────────────────────────────────────────────
+function Avatar3DCanvas({ avatarUrl }: { avatarUrl: string | null }) {
   return (
     <Canvas
       camera={{ position: [0, -0.04, 2.58], fov: 40 }}
@@ -457,18 +687,50 @@ export function OrbitAvatar3D({ avatarUrl }: { avatarUrl: string | null }) {
       dpr={[1, 1.5]}
       style={{ background: 'transparent', width: '100%', height: '100%' }}
     >
-      {/* Three coloured lights — create dynamic specular highlights as figure rotates */}
       <ambientLight intensity={0.28} />
       <pointLight position={[1.5, 2.4, 2.0]}  intensity={3.2} color="#22d3ee" />
       <pointLight position={[-1.8, 1.2, -1.4]} intensity={2.6} color="#8b5cf6" />
       <pointLight position={[0.5, -1.6, 2.4]}  intensity={2.0} color="#3b82f6" />
       <pointLight position={[0, 0.6, -2.8]}    intensity={1.2} color="#7c3aed" />
-
       <HumanFigure avatarUrl={avatarUrl} />
       <NeonOrbitRings />
       <HologramParticles />
       <ScanPlane />
     </Canvas>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Main export — WebGL check → error boundary → CSS fallback
+// ─────────────────────────────────────────────────────────────────
+export function OrbitAvatar3D({ avatarUrl }: { avatarUrl: string | null }) {
+  const [webglOk, setWebglOk] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    setWebglOk(isWebGLAvailable());
+  }, []);
+
+  // Not yet checked (SSR / first paint) — render nothing to avoid flash
+  if (webglOk === null) {
+    return (
+      <div
+        className="w-full h-full"
+        style={{ background: 'transparent' }}
+      />
+    );
+  }
+
+  // WebGL unavailable — show CSS holographic fallback
+  if (!webglOk) {
+    return <AvatarCSSFallback />;
+  }
+
+  // WebGL available — mount Canvas inside error boundary so any runtime
+  // context-creation failure (e.g. GPU resets) still renders the fallback
+  return (
+    <CanvasErrorBoundary fallback={<AvatarCSSFallback />}>
+      <Avatar3DCanvas avatarUrl={avatarUrl} />
+    </CanvasErrorBoundary>
   );
 }
 
