@@ -10,11 +10,11 @@ const buttonVariants = cva(
     variants: {
       variant: {
         default:
-          'border border-white/[0.10] bg-[linear-gradient(135deg,rgba(7,14,30,0.85),rgba(4,9,22,0.75))] text-white/80 hover:border-white/[0.18] hover:text-white hover:bg-[linear-gradient(135deg,rgba(12,22,48,0.90),rgba(7,15,35,0.85))] active:scale-[0.985] backdrop-blur-xl',
+          'border border-white/[0.14] bg-[linear-gradient(135deg,rgba(14,26,52,0.90),rgba(8,16,38,0.80))] text-white/85 shadow-[0_0_0_1px_rgba(255,255,255,0.12),0_8px_24px_rgba(0,0,0,0.40)] hover:border-white/[0.26] hover:text-white hover:bg-[linear-gradient(135deg,rgba(20,36,70,0.92),rgba(12,22,50,0.88))] hover:shadow-[0_0_0_1px_rgba(255,255,255,0.22),0_0_24px_rgba(34,211,238,0.18),0_8px_28px_rgba(0,0,0,0.50)] active:scale-[0.985] backdrop-blur-xl',
         primary:
           'bg-gradient-to-r from-cyan-400 via-blue-500 to-violet-500 text-white shadow-[0_0_20px_rgba(34,211,238,0.25),0_8px_24px_rgba(0,0,0,0.4)] hover:brightness-110 hover:shadow-[0_0_28px_rgba(34,211,238,0.38),0_8px_28px_rgba(0,0,0,0.5)] active:scale-[0.985]',
         secondary:
-          'border border-white/[0.10] bg-[linear-gradient(135deg,rgba(7,14,30,0.85),rgba(4,9,22,0.75))] text-white/75 hover:border-white/[0.18] hover:text-white active:scale-[0.985] backdrop-blur-xl',
+          'border border-white/[0.14] bg-[linear-gradient(135deg,rgba(14,26,52,0.90),rgba(8,16,38,0.80))] text-white/80 shadow-[0_0_0_1px_rgba(255,255,255,0.12),0_8px_24px_rgba(0,0,0,0.40)] hover:border-white/[0.24] hover:text-white hover:shadow-[0_0_0_1px_rgba(255,255,255,0.20),0_0_24px_rgba(34,211,238,0.14)] active:scale-[0.985] backdrop-blur-xl',
         outline:
           'border border-white/[0.18] bg-transparent text-white/75 hover:bg-white/[0.06] hover:border-white/[0.30] hover:text-white active:scale-[0.985]',
         ghost:

@@ -111,7 +111,7 @@ export function WorkflowCinematicSection() {
         </div>
 
         <div className="mt-12 grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <div className="rounded-2xl border border-white/[0.09] bg-[linear-gradient(135deg,rgba(7,14,30,0.85),rgba(4,9,22,0.70))] backdrop-blur-xl p-5 md:p-6 shadow-[0_8px_32px_rgba(0,0,0,0.3)] overflow-hidden relative">
+          <div className="rounded-2xl border border-white/[0.12] bg-[linear-gradient(135deg,rgba(12,22,46,0.85),rgba(7,14,32,0.72))] backdrop-blur-xl p-5 md:p-6 shadow-[0_0_0_1px_rgba(255,255,255,0.10),0_8px_32px_rgba(0,0,0,0.3)] overflow-hidden relative">
             <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-cyan-400/20 to-transparent" />
             <p className="text-[10px] uppercase tracking-[0.2em] text-white/45 font-semibold mb-4">{copy.loopTitle}</p>
             <div className="flex flex-wrap gap-2">
@@ -123,7 +123,7 @@ export function WorkflowCinematicSection() {
             </div>
           </div>
 
-          <div className="rounded-2xl border border-white/[0.09] bg-[linear-gradient(135deg,rgba(7,14,30,0.85),rgba(4,9,22,0.70))] backdrop-blur-xl p-5 md:p-6 shadow-[0_8px_32px_rgba(0,0,0,0.3)] overflow-hidden relative">
+          <div className="rounded-2xl border border-white/[0.12] bg-[linear-gradient(135deg,rgba(12,22,46,0.85),rgba(7,14,32,0.72))] backdrop-blur-xl p-5 md:p-6 shadow-[0_0_0_1px_rgba(255,255,255,0.10),0_8px_32px_rgba(0,0,0,0.3)] overflow-hidden relative">
             <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-violet-400/15 to-transparent" />
             <p className="text-[10px] uppercase tracking-[0.2em] text-white/45 font-semibold mb-4">{copy.artifacts}</p>
             <div className="grid grid-cols-2 gap-3">

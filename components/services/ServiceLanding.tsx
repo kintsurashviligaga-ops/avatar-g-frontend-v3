@@ -33,7 +33,7 @@ export default function ServiceLanding({ icon, headline, description, features, 
 
       {/* Hero */}
       <section className="relative ag-section px-4 sm:px-6 lg:px-10 max-w-6xl mx-auto pt-24 md:pt-28">
-        <div className="relative rounded-3xl border border-white/[0.10] bg-[linear-gradient(155deg,rgba(7,14,30,0.92),rgba(4,9,22,0.82))] backdrop-blur-2xl shadow-[0_32px_80px_rgba(0,0,0,0.55)] p-7 sm:p-10 md:p-12 overflow-hidden">
+        <div className="relative rounded-3xl border border-white/[0.12] bg-[linear-gradient(155deg,rgba(12,22,46,0.90),rgba(7,14,32,0.82))] backdrop-blur-xl shadow-[0_0_0_1px_rgba(255,255,255,0.10),0_32px_80px_rgba(0,0,0,0.55),inset_0_1px_0_rgba(255,255,255,0.07)] p-7 sm:p-10 md:p-12 overflow-hidden">
           {/* neon top edge */}
           <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-cyan-400/35 to-transparent" />
           {/* corner orbs */}

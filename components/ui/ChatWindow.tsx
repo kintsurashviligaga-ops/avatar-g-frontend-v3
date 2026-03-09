@@ -169,7 +169,7 @@ export function ChatWindow({
 
   return (
     <motion.div
-      className={`flex flex-col rounded-2xl border border-white/[0.09] overflow-hidden transition-all duration-300 bg-[linear-gradient(170deg,rgba(7,14,30,0.92),rgba(3,7,18,0.88))] backdrop-blur-2xl shadow-[0_0_0_1px_rgba(34,211,238,0.06),0_16px_48px_rgba(0,0,0,0.5)] ${
+      className={`flex flex-col rounded-2xl border border-white/[0.12] overflow-hidden transition-all duration-300 bg-[linear-gradient(170deg,rgba(12,22,46,0.92),rgba(6,12,28,0.88))] backdrop-blur-2xl shadow-[0_0_0_1px_rgba(34,211,238,0.10),0_16px_48px_rgba(0,0,0,0.5)] ${
         isMinimized ? "h-12" : heightClass
       }`}
       layout

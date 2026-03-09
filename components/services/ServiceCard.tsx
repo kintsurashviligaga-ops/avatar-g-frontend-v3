@@ -11,7 +11,7 @@ type ServiceCardProps = {
 export function ServiceCard({ title, description, children, actions, className }: ServiceCardProps) {
   return (
     <div
-      className={`relative rounded-2xl border border-white/[0.09] bg-[linear-gradient(155deg,rgba(7,14,30,0.90),rgba(4,9,22,0.80))] backdrop-blur-2xl shadow-[0_16px_48px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.05)] overflow-hidden ${className ?? ''}`}
+      className={`relative rounded-2xl border border-white/[0.12] bg-[linear-gradient(155deg,rgba(12,22,46,0.88),rgba(7,14,32,0.80))] backdrop-blur-xl shadow-[0_0_0_1px_rgba(255,255,255,0.10),0_16px_48px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.07)] overflow-hidden ${className ?? ''}`}
     >
       {/* top shine */}
       <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-white/[0.10] to-transparent" />

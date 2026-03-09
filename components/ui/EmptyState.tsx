@@ -13,7 +13,7 @@ export function EmptyState({ icon, title, description, action, className }: Empt
   return (
     <div
       className={cn(
-        'relative rounded-2xl border border-white/[0.08] bg-[linear-gradient(155deg,rgba(7,14,30,0.85),rgba(4,9,22,0.75))] backdrop-blur-2xl p-8 text-center overflow-hidden',
+        'relative rounded-2xl border border-white/[0.12] bg-[linear-gradient(155deg,rgba(12,22,46,0.85),rgba(7,14,32,0.75))] backdrop-blur-xl p-8 text-center overflow-hidden shadow-[0_0_0_1px_rgba(255,255,255,0.10),0_16px_48px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.06)]',
         className
       )}
     >

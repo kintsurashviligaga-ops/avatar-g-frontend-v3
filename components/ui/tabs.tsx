@@ -49,7 +49,7 @@ function isSegmentedTabsProps(props: TabsProps): props is SegmentedTabsProps {
 
 function SegmentedTabs({ items, value, onChange, className }: SegmentedTabsProps) {
   return (
-    <div className={cn('inline-flex rounded-xl border border-white/[0.09] bg-[linear-gradient(135deg,rgba(7,14,30,0.80),rgba(4,9,22,0.70))] backdrop-blur-xl p-1', className)}>
+    <div className={cn('inline-flex rounded-xl border border-white/[0.12] bg-[linear-gradient(135deg,rgba(12,22,46,0.80),rgba(7,14,32,0.72))] backdrop-blur-xl p-1 shadow-[0_0_0_1px_rgba(255,255,255,0.08)]', className)}>
       {items.map((item) => {
         const active = item.id === value;
         return (

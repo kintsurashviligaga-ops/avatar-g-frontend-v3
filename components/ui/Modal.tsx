@@ -33,7 +33,7 @@ export function Modal({ open, onClose, title, children, className }: ModalProps)
       />
       <div
         className={cn(
-          'relative z-10 w-full max-w-xl rounded-3xl border border-white/[0.10] bg-[linear-gradient(155deg,rgba(7,14,30,0.96),rgba(4,9,22,0.92))] backdrop-blur-2xl shadow-[0_48px_120px_rgba(0,0,0,0.65),inset_0_1px_0_rgba(255,255,255,0.07)] overflow-hidden animate-scale-in',
+          'relative z-10 w-full max-w-xl rounded-3xl border border-white/[0.12] bg-[linear-gradient(155deg,rgba(12,22,46,0.96),rgba(7,14,32,0.92))] backdrop-blur-2xl shadow-[0_0_0_1px_rgba(255,255,255,0.12),0_48px_120px_rgba(0,0,0,0.65),inset_0_1px_0_rgba(255,255,255,0.09)] overflow-hidden animate-scale-in',
           className
         )}
       >

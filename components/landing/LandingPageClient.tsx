@@ -60,7 +60,7 @@ const CosmicSingularityBackground = dynamic(() => import("@/components/CosmicSin
 function SectionFallback({ label }: { label: string }) {
   return (
     <div className="mx-auto max-w-6xl px-4 sm:px-6 py-14 md:py-16 text-center">
-      <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-5 py-10 backdrop-blur-sm">
+      <div className="rounded-2xl border border-white/[0.12] bg-white/[0.04] px-5 py-10 backdrop-blur-sm shadow-[0_0_0_1px_rgba(255,255,255,0.08)]">
         <p className="text-cyan-100/50 text-xs uppercase tracking-[0.18em]">{label}</p>
       </div>
     </div>

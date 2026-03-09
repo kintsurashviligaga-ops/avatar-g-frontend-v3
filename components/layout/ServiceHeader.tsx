@@ -9,7 +9,7 @@ type ServiceHeaderProps = {
 
 export function ServiceHeader({ title, description, credits, action }: ServiceHeaderProps) {
   return (
-    <div className="mb-5 flex flex-col gap-3 rounded-2xl border border-white/[0.08] bg-[linear-gradient(155deg,rgba(7,14,30,0.88),rgba(4,9,22,0.78))] backdrop-blur-2xl p-5 md:flex-row md:items-center md:justify-between">
+    <div className="mb-5 flex flex-col gap-3 rounded-2xl border border-white/[0.12] bg-[linear-gradient(155deg,rgba(12,22,46,0.88),rgba(7,14,32,0.78))] backdrop-blur-xl p-5 md:flex-row md:items-center md:justify-between shadow-[0_0_0_1px_rgba(255,255,255,0.10),0_8px_32px_rgba(0,0,0,0.40),inset_0_1px_0_rgba(255,255,255,0.07)]">
       <div>
         <div className="mb-2 flex items-center gap-2">
           <Badge variant="accent">Service</Badge>

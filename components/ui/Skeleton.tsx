@@ -19,7 +19,7 @@ export function Skeleton({ className }: SkeletonProps) {
 
 export function CardSkeleton() {
   return (
-    <div className="relative p-6 border border-white/[0.08] bg-[linear-gradient(155deg,rgba(7,14,30,0.85),rgba(4,9,22,0.70))] rounded-2xl space-y-4 overflow-hidden">
+    <div className="relative p-6 border border-white/[0.12] bg-[linear-gradient(155deg,rgba(12,22,46,0.85),rgba(7,14,32,0.72))] rounded-2xl space-y-4 overflow-hidden shadow-[0_0_0_1px_rgba(255,255,255,0.08),0_8px_24px_rgba(0,0,0,0.40)]">
       <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-white/[0.08] to-transparent" />
       <Skeleton className="h-12 w-12 rounded-xl" />
       <Skeleton className="h-6 w-3/4" />

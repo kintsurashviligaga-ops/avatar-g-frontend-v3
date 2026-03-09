@@ -266,7 +266,7 @@ export function FeaturesShowcase() {
               >
                 <TiltCard className="h-full">
                   <div
-                    className="group relative h-full rounded-3xl border border-white/[0.08] bg-[linear-gradient(155deg,rgba(7,14,30,0.92)_0%,rgba(4,9,22,0.82)_100%)] backdrop-blur-2xl p-6 md:p-7 overflow-hidden shadow-[0_24px_60px_rgba(0,0,0,0.5)]"
+                    className="group relative h-full rounded-3xl border border-white/[0.12] bg-[linear-gradient(155deg,rgba(12,22,46,0.90)_0%,rgba(7,14,32,0.82)_100%)] backdrop-blur-xl p-6 md:p-7 overflow-hidden shadow-[0_0_0_1px_rgba(255,255,255,0.10),0_24px_60px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.07)]"
                     style={{ transition: 'border-color 0.3s, box-shadow 0.3s' }}
                   >
                     {/* Inner top shine */}
