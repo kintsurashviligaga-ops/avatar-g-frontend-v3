@@ -207,35 +207,6 @@ export default function LandingPageClient() {
         </LandingSection>
 
         <div className="ag-lux-line mx-auto max-w-6xl opacity-70" />
-        <LandingSection>
-          <ErrorBoundary fallback={<SectionFallback label="Orbit" />}>
-            <section className="relative pb-10 md:pb-14 px-4 sm:px-6">
-              <div className="mx-auto max-w-4xl text-center pt-10 md:pt-14">
-                <p className="text-[10px] uppercase tracking-[0.2em] text-white/72">{currentOrbit.orbitEyebrow}</p>
-                <h2 className="mt-3 text-3xl md:text-5xl font-bold tracking-tight text-white ag-lux-type-h">{currentOrbit.orbitTitle}</h2>
-                <p className="mt-3 text-sm md:text-base ag-lux-type-body">{currentOrbit.orbitDescription}</p>
-              </div>
-              <OrbitSolarSystem />
-            </section>
-          </ErrorBoundary>
-        </LandingSection>
-
-        <div className="ag-lux-line mx-auto max-w-6xl opacity-70" />
-
-        <LandingSection>
-          <ErrorBoundary fallback={<SectionFallback label="Orbit" />}>
-            <section className="relative pb-10 md:pb-14 px-4 sm:px-6">
-              <div className="mx-auto max-w-4xl text-center pt-10 md:pt-14">
-                <p className="text-[10px] uppercase tracking-[0.2em] text-white/72">{currentOrbit.orbitEyebrow}</p>
-                <h2 className="mt-3 text-3xl md:text-5xl font-bold tracking-tight text-white ag-lux-type-h">{currentOrbit.orbitTitle}</h2>
-                <p className="mt-3 text-sm md:text-base ag-lux-type-body">{currentOrbit.orbitDescription}</p>
-              </div>
-              <OrbitSolarSystem />
-            </section>
-          </ErrorBoundary>
-        </LandingSection>
-
-        <div className="ag-lux-line mx-auto max-w-6xl opacity-70" />
 
         <LandingSection>
           <ErrorBoundary fallback={<SectionFallback label="Features" />}>
