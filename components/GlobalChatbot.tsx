@@ -315,14 +315,21 @@ export default function GlobalChatbot() {
 
   return (
     <>
-      <button onClick={() => setIsOpen(!isOpen)} className={`fixed bottom-6 right-6 z-50 w-14 h-14 rounded-full shadow-2xl flex items-center justify-center transition-all ${isOpen ? "bg-red-500 hover:bg-red-600" : "bg-gradient-to-r from-cyan-500 to-blue-600 hover:scale-110"}`}>
-        {isOpen ? <X className="w-6 h-6 text-white" /> : <MessageCircle className="w-6 h-6 text-white" />}
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className={`fixed bottom-6 right-6 z-50 w-14 h-14 rounded-2xl flex items-center justify-center transition-all duration-300 ${
+          isOpen
+            ? 'bg-red-500/80 hover:bg-red-500 border border-red-400/40 shadow-[0_0_20px_rgba(239,68,68,0.30)]'
+            : 'bg-gradient-to-br from-cyan-500 to-blue-600 border border-cyan-400/40 shadow-[0_0_28px_rgba(34,211,238,0.40),0_8px_24px_rgba(0,0,0,0.5)] hover:scale-105 hover:shadow-[0_0_40px_rgba(34,211,238,0.55)]'
+        }`}
+      >
+        {isOpen ? <X className="w-5 h-5 text-white" /> : <MessageCircle className="w-5 h-5 text-white" />}
       </button>
       <AnimatePresence>
         {isOpen && (
-          <motion.div initial={{ opacity: 0, y: 20, scale: 0.95 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 20, scale: 0.95 }} className="fixed bottom-24 right-4 sm:right-6 z-50 w-[calc(100vw-32px)] sm:w-[420px] h-[70vh] max-h-[640px] max-md:[@media(orientation:landscape)]:bottom-2 max-md:[@media(orientation:landscape)]:right-2 max-md:[@media(orientation:landscape)]:h-[88vh] max-md:[@media(orientation:landscape)]:w-[calc(100vw-16px)] bg-[#0A0A0A] border border-cyan-300/35 rounded-2xl flex flex-col overflow-hidden shadow-[0_0_0_1px_rgba(34,211,238,0.2),0_0_28px_rgba(34,211,238,0.22),inset_0_0_24px_rgba(34,211,238,0.08)] focus-within:border-cyan-300/70 focus-within:shadow-[0_0_0_1px_rgba(34,211,238,0.45),0_0_38px_rgba(34,211,238,0.34),inset_0_0_26px_rgba(34,211,238,0.12)] transition-all">
+          <motion.div initial={{ opacity: 0, y: 20, scale: 0.95 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 20, scale: 0.95 }} className="fixed bottom-24 right-4 sm:right-6 z-50 w-[calc(100vw-32px)] sm:w-[420px] h-[70vh] max-h-[640px] max-md:[@media(orientation:landscape)]:bottom-2 max-md:[@media(orientation:landscape)]:right-2 max-md:[@media(orientation:landscape)]:h-[88vh] max-md:[@media(orientation:landscape)]:w-[calc(100vw-16px)] bg-[linear-gradient(180deg,rgba(3,7,18,0.97),rgba(4,9,22,0.95))] border border-cyan-400/[0.25] rounded-2xl flex flex-col overflow-hidden shadow-[0_0_0_1px_rgba(34,211,238,0.12),0_0_40px_rgba(34,211,238,0.18),inset_0_0_24px_rgba(34,211,238,0.04)] focus-within:border-cyan-400/[0.45] focus-within:shadow-[0_0_0_1px_rgba(34,211,238,0.30),0_0_50px_rgba(34,211,238,0.25)] transition-all backdrop-blur-2xl">
             {/* Header with Agent Selector */}
-            <div className="p-3 border-b border-white/10 bg-gradient-to-r from-cyan-600/10 to-blue-600/10">
+            <div className="p-3 border-b border-white/[0.07] bg-gradient-to-r from-cyan-500/[0.06] to-blue-500/[0.04]">
               <div className="flex items-center justify-between">
                 <button onClick={() => setShowAgentPicker(!showAgentPicker)} className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 transition-colors">
                   <span className="text-lg">{activeAgent.icon}</span>

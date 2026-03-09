@@ -38,11 +38,11 @@ export function PricingSection() {
           viewport={{ once: true }}
           transition={{ duration: 0.7 }}
         >
-          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-cyan-400/15 bg-cyan-400/[0.04] mb-6">
-            <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
-            <span className="text-[10px] font-semibold text-cyan-300/80 tracking-[0.12em] uppercase">{labels.badge}</span>
+          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-cyan-400/30 bg-cyan-400/[0.08] mb-6 shadow-[0_0_16px_rgba(34,211,238,0.12)] backdrop-blur-sm">
+            <Sparkles className="w-3.5 h-3.5 text-cyan-300" />
+            <span className="text-[10px] font-bold text-cyan-200 tracking-[0.12em] uppercase">{labels.badge}</span>
           </div>
-          <h2 className="text-3xl md:text-5xl lg:text-[3.5rem] font-bold text-white mb-5 tracking-[-0.02em]">
+          <h2 className="text-3xl md:text-5xl lg:text-[3.5rem] font-black text-white mb-5 tracking-[-0.02em]">
             {t('pricing.title')}{' '}
             <span className="bg-gradient-to-r from-cyan-300 to-blue-400 bg-clip-text text-transparent">
               {t('pricing.titleAccent')}

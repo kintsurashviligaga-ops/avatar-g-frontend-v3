@@ -10,9 +10,14 @@ export function ExecutionProgress({ progress, label = 'Execution Progress' }: Ex
 
   return (
     <div className="space-y-2">
-      <div className="flex items-center justify-between text-xs text-app-muted">
-        <span>{label}</span>
-        <span>{safe}%</span>
+      <div className="flex items-center justify-between">
+        <span className="text-[11px] font-medium text-white/50 tracking-wide">{label}</span>
+        <span
+          className="text-[11px] font-bold tabular-nums"
+          style={{ color: safe === 100 ? '#34d399' : '#22d3ee' }}
+        >
+          {safe}%
+        </span>
       </div>
       <Progress value={safe} />
     </div>

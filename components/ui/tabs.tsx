@@ -49,7 +49,7 @@ function isSegmentedTabsProps(props: TabsProps): props is SegmentedTabsProps {
 
 function SegmentedTabs({ items, value, onChange, className }: SegmentedTabsProps) {
   return (
-    <div className={cn('inline-flex rounded-xl border border-app-border/30 bg-app-surface/70 p-1', className)}>
+    <div className={cn('inline-flex rounded-xl border border-white/[0.09] bg-[linear-gradient(135deg,rgba(7,14,30,0.80),rgba(4,9,22,0.70))] backdrop-blur-xl p-1', className)}>
       {items.map((item) => {
         const active = item.id === value;
         return (
@@ -58,10 +58,10 @@ function SegmentedTabs({ items, value, onChange, className }: SegmentedTabsProps
             type="button"
             onClick={() => onChange(item.id)}
             className={cn(
-              'rounded-lg px-3.5 py-2 text-sm font-medium transition',
+              'rounded-lg px-3.5 py-2 text-sm font-medium transition-all',
               active
-                ? 'bg-gradient-to-r from-indigo-500/90 to-cyan-500/90 text-white'
-                : 'text-app-muted hover:text-app-text hover:bg-white/10'
+                ? 'bg-gradient-to-r from-cyan-500/25 to-blue-500/20 text-white border border-cyan-400/30 shadow-[0_0_10px_rgba(34,211,238,0.12)]'
+                : 'text-white/45 hover:text-white/80 hover:bg-white/[0.07]'
             )}
           >
             {item.label}
@@ -134,7 +134,7 @@ export function TabsOld({ tabs, defaultTab, onChange }: TabsOldProps) {
 }
 
 export function TabsList({ children, className }: { children: React.ReactNode; className?: string }) {
-  return <div className={cn('flex gap-2 rounded-xl border border-white/10 bg-[#050510] p-1', className)}>{children}</div>;
+  return <div className={cn('flex gap-2 rounded-xl border border-white/[0.09] bg-[linear-gradient(135deg,rgba(3,7,18,0.90),rgba(5,10,25,0.80))] backdrop-blur-xl p-1', className)}>{children}</div>;
 }
 
 export function TabsTrigger({
@@ -154,15 +154,15 @@ export function TabsTrigger({
       type="button"
       onClick={() => onValueChange(value)}
       className={cn(
-        'relative flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors',
-        isActive ? 'text-white' : 'text-gray-500 hover:text-gray-300',
+        'relative flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-all',
+        isActive ? 'text-white' : 'text-white/40 hover:text-white/75',
         className
       )}
     >
       {isActive ? (
         <motion.div
           layoutId="activeTabCompound"
-          className="absolute inset-0 rounded-lg bg-cyan-500/20"
+          className="absolute inset-0 rounded-lg bg-gradient-to-r from-cyan-500/20 to-blue-500/15 border border-cyan-400/25 shadow-[0_0_10px_rgba(34,211,238,0.10)]"
           transition={{ type: 'spring', bounce: 0.2, duration: 0.6 }}
         />
       ) : null}

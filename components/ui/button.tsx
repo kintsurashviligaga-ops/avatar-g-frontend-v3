@@ -5,26 +5,26 @@ import { cva, type VariantProps } from 'class-variance-authority';
 import { cn } from '@/lib/utils';
 
 const buttonVariants = cva(
-  'inline-flex items-center justify-center rounded-xl text-base font-semibold tracking-[0.01em] transition-all duration-300 disabled:pointer-events-none disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-neon/70 focus-visible:ring-offset-2 focus-visible:ring-offset-app-bg ag-glass ag-hover-lift ag-neon-button',
+  'inline-flex items-center justify-center rounded-xl text-base font-semibold tracking-[0.01em] transition-all duration-300 disabled:pointer-events-none disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#020816]',
   {
     variants: {
       variant: {
         default:
-          'border border-app-border/30 bg-app-surface/80 text-app-text hover:bg-app-elevated/95 active:scale-[0.985] ag-border-glow',
+          'border border-white/[0.10] bg-[linear-gradient(135deg,rgba(7,14,30,0.85),rgba(4,9,22,0.75))] text-white/80 hover:border-white/[0.18] hover:text-white hover:bg-[linear-gradient(135deg,rgba(12,22,48,0.90),rgba(7,15,35,0.85))] active:scale-[0.985] backdrop-blur-xl',
         primary:
-          'bg-gradient-to-r from-cyan-400 via-indigo-400 to-purple-500 text-white shadow-[0_12px_30px_rgba(34,211,238,0.22)] hover:brightness-110 hover:shadow-[0_18px_40px_rgba(34,211,238,0.30)] active:scale-[0.985] ag-border-glow',
+          'bg-gradient-to-r from-cyan-400 via-blue-500 to-violet-500 text-white shadow-[0_0_20px_rgba(34,211,238,0.25),0_8px_24px_rgba(0,0,0,0.4)] hover:brightness-110 hover:shadow-[0_0_28px_rgba(34,211,238,0.38),0_8px_28px_rgba(0,0,0,0.5)] active:scale-[0.985]',
         secondary:
-          'border border-app-border/30 bg-app-surface/80 text-app-text hover:bg-app-elevated/95 active:scale-[0.985] ag-border-glow',
+          'border border-white/[0.10] bg-[linear-gradient(135deg,rgba(7,14,30,0.85),rgba(4,9,22,0.75))] text-white/75 hover:border-white/[0.18] hover:text-white active:scale-[0.985] backdrop-blur-xl',
         outline:
-          'border border-white/20 bg-transparent text-app-text hover:bg-app-surface/70 hover:border-white/35 active:scale-[0.985] ag-border-glow',
+          'border border-white/[0.18] bg-transparent text-white/75 hover:bg-white/[0.06] hover:border-white/[0.30] hover:text-white active:scale-[0.985]',
         ghost:
-          'text-app-muted hover:text-app-text hover:bg-app-surface/70 active:scale-[0.985] ag-border-glow',
+          'text-white/50 hover:text-white/85 hover:bg-white/[0.06] active:scale-[0.985]',
         glow:
-          'bg-gradient-to-r from-cyan-400 via-indigo-400 to-purple-500 text-white shadow-[0_0_28px_rgba(124,92,252,0.36)] hover:brightness-110 hover:shadow-[0_0_36px_rgba(124,92,252,0.48)] active:scale-[0.985] ag-border-glow',
+          'bg-gradient-to-r from-cyan-400 via-blue-500 to-violet-500 text-white shadow-[0_0_28px_rgba(139,92,246,0.36)] hover:brightness-110 hover:shadow-[0_0_40px_rgba(139,92,246,0.50)] active:scale-[0.985]',
         danger:
-          'bg-app-danger/20 text-red-100 border border-app-danger/40 hover:bg-app-danger/30 active:scale-[0.98]',
+          'bg-red-500/[0.12] text-red-200 border border-red-400/[0.30] hover:bg-red-500/[0.20] active:scale-[0.98]',
         destructive:
-          'bg-app-danger/20 text-red-100 border border-app-danger/40 hover:bg-app-danger/30 active:scale-[0.98]',
+          'bg-red-500/[0.12] text-red-200 border border-red-400/[0.30] hover:bg-red-500/[0.20] active:scale-[0.98]',
       },
       size: {
         default: 'h-11 px-6 gap-2',
