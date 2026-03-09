@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
-import { Camera, Sparkles } from 'lucide-react'
+import { useState, useRef, useEffect, useCallback } from 'react'
+import { Camera, Sparkles, X } from 'lucide-react'
 
 interface ServiceChatWidgetProps {
   serviceName: string
@@ -22,7 +22,11 @@ export default function ServiceChatWidget({ serviceName, agentId, locale = 'ka' 
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
+  const [cameraOn, setCameraOn] = useState(false)
+  const [cameraError, setCameraError] = useState<string | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
+  const cameraVideoRef = useRef<HTMLVideoElement>(null)
+  const cameraStreamRef = useRef<MediaStream | null>(null)
   const label = LABELS[locale] ?? LABELS['en']!
 
   useEffect(() => {
@@ -30,6 +34,53 @@ export default function ServiceChatWidget({ serviceName, agentId, locale = 'ka' 
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight
     }
   }, [messages])
+
+  const stopCamera = useCallback(() => {
+    cameraStreamRef.current?.getTracks().forEach(t => t.stop())
+    cameraStreamRef.current = null
+    setCameraOn(false)
+  }, [])
+
+  useEffect(() => { return () => { stopCamera() } }, [stopCamera])
+
+  const toggleCamera = useCallback(async () => {
+    if (cameraOn) { stopCamera(); return }
+    setCameraError(null)
+    try {
+      if (typeof window !== 'undefined' && !window.isSecureContext && !window.location.hostname.includes('localhost')) {
+        setCameraError('Camera requires a secure (HTTPS) connection.')
+        return
+      }
+      if (!navigator.mediaDevices?.getUserMedia) {
+        setCameraError('Camera is not supported in this browser.')
+        return
+      }
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } },
+        audio: false,
+      })
+      cameraStreamRef.current = stream
+      setCameraOn(true)
+      setTimeout(() => {
+        const vid = cameraVideoRef.current
+        if (vid) {
+          vid.muted = true
+          vid.playsInline = true
+          vid.srcObject = stream
+          vid.play().catch(() => undefined)
+        }
+      }, 0)
+    } catch (err) {
+      const name = err instanceof DOMException ? err.name : ''
+      if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
+        setCameraError('Camera permission denied. Enable it in your browser settings.')
+      } else if (name === 'NotFoundError') {
+        setCameraError('No camera found on this device.')
+      } else {
+        setCameraError('Camera unavailable. Please try again.')
+      }
+    }
+  }, [cameraOn, stopCamera])
 
   const send = async () => {
     const text = input.trim()
@@ -87,9 +138,13 @@ export default function ServiceChatWidget({ serviceName, agentId, locale = 'ka' 
             </div>
             <div className="flex items-center gap-3">
               <button 
-                onClick={() => navigator.mediaDevices.getUserMedia({ video: true }).catch(() => alert('Access denied'))}
-                className="text-white/40 hover:text-cyan-400 transition-colors"
-                title="Camera Access"
+                onClick={() => void toggleCamera()}
+                className={`transition-colors ${
+                  cameraOn
+                    ? 'text-cyan-400'
+                    : 'text-white/40 hover:text-cyan-400'
+                }`}
+                title={cameraOn ? 'Close Camera' : 'Camera'}
               >
                 <Camera size={16} />
               </button>
@@ -103,6 +158,36 @@ export default function ServiceChatWidget({ serviceName, agentId, locale = 'ka' 
               <button onClick={() => setOpen(false)} className="text-white/40 hover:text-white text-lg leading-none">✕</button>
             </div>
           </div>
+
+          {/* Camera panel */}
+          {(cameraOn || cameraError) && (
+            <div className="border-b border-white/[0.08] p-2 space-y-2">
+              {cameraOn && (
+                <div className="relative rounded-xl overflow-hidden border border-cyan-400/[0.22] shadow-[0_0_20px_rgba(34,211,238,0.10)]">
+                  <video
+                    ref={cameraVideoRef}
+                    autoPlay
+                    muted
+                    playsInline
+                    className="w-full max-h-36 object-cover rounded-xl"
+                  />
+                  <button
+                    onClick={stopCamera}
+                    className="absolute top-2 right-2 w-6 h-6 rounded-full bg-black/70 border border-white/20 flex items-center justify-center text-white/70 hover:text-white transition-colors backdrop-blur-sm"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                  <span className="absolute top-2 left-2 inline-flex items-center gap-1 rounded-full bg-black/70 border border-red-400/40 px-2 py-0.5 text-[9px] font-semibold text-red-200 backdrop-blur-sm">
+                    <span className="w-1 h-1 rounded-full bg-red-400 animate-pulse" />
+                    REC
+                  </span>
+                </div>
+              )}
+              {cameraError && (
+                <p className="text-xs text-red-300/80 px-1">{cameraError}</p>
+              )}
+            </div>
+          )}
 
           {/* Messages */}
           <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-3 min-h-[200px] max-h-[340px]">

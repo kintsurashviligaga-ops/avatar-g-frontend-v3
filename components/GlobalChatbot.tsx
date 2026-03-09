@@ -418,13 +418,19 @@ export default function GlobalChatbot() {
                 <div className="mb-2 rounded-xl border border-cyan-400/30 bg-cyan-500/10 p-2 space-y-2">
                   {cameraOn ? (
                     <>
-                      <video
-                        ref={cameraVideoRef}
-                        autoPlay
-                        muted
-                        playsInline
-                        className="w-full max-h-44 rounded-lg object-cover border border-cyan-300/35"
-                      />
+                      <div className="relative rounded-lg overflow-hidden border border-cyan-400/[0.22] shadow-[0_0_18px_rgba(34,211,238,0.12)]">
+                        <video
+                          ref={cameraVideoRef}
+                          autoPlay
+                          muted
+                          playsInline
+                          className="w-full max-h-44 rounded-lg object-cover"
+                        />
+                        <span className="absolute top-2 left-2 inline-flex items-center gap-1 rounded-full bg-black/70 border border-red-400/40 px-2 py-0.5 text-[9px] font-semibold text-red-200 backdrop-blur-sm">
+                          <span className="w-1 h-1 rounded-full bg-red-400 animate-pulse" />
+                          REC
+                        </span>
+                      </div>
                       <button
                         onClick={captureCameraFrame}
                         disabled={cameraCaptureBusy}

@@ -227,8 +227,12 @@ export function LiveAvatarDemoSection() {
       setActiveInput('camera')
       setTimeout(() => {
         if (videoRef.current) {
-          videoRef.current.srcObject = stream
-          videoRef.current.play()
+          const videoEl = videoRef.current
+          videoEl.muted = true
+          videoEl.playsInline = true
+          videoEl.autoplay = true
+          videoEl.srcObject = stream
+          videoEl.play()
             .then(() => setCameraReady(true))
             .catch(() => setCameraReady(true))
         }
@@ -427,7 +431,7 @@ export function LiveAvatarDemoSection() {
             <div className="flex flex-col gap-4">
 
             {/* Preview window */}
-            <div className="relative aspect-[4/3] overflow-hidden rounded-2xl bg-[#050b1c] border border-white/[0.09]">
+            <div className="relative aspect-[4/3] overflow-hidden rounded-2xl bg-[#050b1c] border border-cyan-400/[0.18] shadow-[0_0_28px_rgba(34,211,238,0.09),0_0_0_1px_rgba(34,211,238,0.05)]">
 
               {/* Camera stream */}
               {showCameraStream && (
@@ -536,7 +540,7 @@ export function LiveAvatarDemoSection() {
                     <button
                       onClick={capturePhoto}
                       disabled={!cameraReady}
-                      className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-500 text-white px-4 py-2.5 text-sm font-semibold hover:bg-cyan-400 disabled:opacity-50 transition-colors"
+                      className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-cyan-500 via-blue-500 to-violet-500 text-white px-4 py-2.5 text-sm font-semibold hover:opacity-90 disabled:opacity-50 transition-opacity shadow-[0_0_20px_rgba(34,211,238,0.28)]"
                     >
                       <Camera className="w-4 h-4" /> {text.capture}
                     </button>

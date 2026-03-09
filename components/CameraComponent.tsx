@@ -373,8 +373,34 @@ export const CameraComponent = React.forwardRef<
 
     return (
       <div className={`camera-container ${className}`}>
+        {/* Premium camera scan animation keyframes */}
+        <style dangerouslySetInnerHTML={{ __html: `
+          @keyframes cam-scan-sweep {
+            0%   { top: 4%;  opacity: 1; }
+            48%  { top: 92%; opacity: 0.7; }
+            52%  { top: 92%; opacity: 0.7; }
+            100% { top: 4%;  opacity: 1; }
+          }
+          @keyframes cam-face-pulse {
+            0%, 100% { opacity: 0.40; transform: scale(1); }
+            50%       { opacity: 0.85; transform: scale(1.03); }
+          }
+          @keyframes cam-corner-blink {
+            0%, 100% { opacity: 1; }
+            45%       { opacity: 0.25; }
+          }
+          .cam-scan-line {
+            position: absolute; left: 6%; right: 6%; height: 2px; border-radius: 9999px;
+            background: linear-gradient(90deg, transparent, rgba(34,211,238,0.8), rgba(34,211,238,1), rgba(34,211,238,0.8), transparent);
+            box-shadow: 0 0 10px 3px rgba(34,211,238,0.55), 0 0 22px 6px rgba(34,211,238,0.25);
+            animation: cam-scan-sweep 2s ease-in-out infinite;
+          }
+          .cam-face-ring { animation: cam-face-pulse 1.8s ease-in-out infinite; }
+          .cam-corner    { animation: cam-corner-blink 1.5s ease-in-out infinite; }
+        ` }} />
+
         {/* Video Stream Container */}
-        <div className="relative aspect-video rounded-lg overflow-hidden bg-black border border-white/10">
+        <div className="relative aspect-video rounded-2xl overflow-hidden bg-[#050b1c] border border-cyan-400/[0.20] shadow-[0_0_32px_rgba(34,211,238,0.10),0_0_0_1px_rgba(34,211,238,0.06)]">
           <video
             ref={videoRef}
             className="w-full h-full object-cover"
@@ -384,34 +410,56 @@ export const CameraComponent = React.forwardRef<
             }}
           />
 
+          {/* Scanner overlay — visible when camera is streaming */}
+          {cameraState.isActive && (
+            <div className="absolute inset-0 pointer-events-none">
+              <div className="cam-scan-line" />
+              <div
+                className="cam-face-ring absolute inset-[14%] rounded-[22%] border border-cyan-400/35"
+                style={{ boxShadow: '0 0 20px rgba(34,211,238,0.12) inset' }}
+              />
+              <div className="cam-corner absolute top-3 left-3 w-5 h-5 border-t-2 border-l-2 border-cyan-300 rounded-tl-xl" />
+              <div className="cam-corner absolute top-3 right-3 w-5 h-5 border-t-2 border-r-2 border-cyan-300 rounded-tr-xl" />
+              <div className="cam-corner absolute bottom-3 left-3 w-5 h-5 border-b-2 border-l-2 border-cyan-300 rounded-bl-xl" />
+              <div className="cam-corner absolute bottom-3 right-3 w-5 h-5 border-b-2 border-r-2 border-cyan-300 rounded-br-xl" />
+              {/* REC indicator */}
+              <span className="absolute top-3 left-1/2 -translate-x-1/2 inline-flex items-center gap-1.5 rounded-full bg-black/70 border border-red-400/40 px-2.5 py-1 text-[10px] font-semibold text-red-200 backdrop-blur-sm">
+                <span className="w-1.5 h-1.5 rounded-full bg-red-400 animate-pulse" />
+                REC
+              </span>
+            </div>
+          )}
+
           {/* Loading State */}
           {cameraState.isLoading && (
-            <div className="absolute inset-0 flex items-center justify-center bg-black/80">
+            <div className="absolute inset-0 flex items-center justify-center bg-[#050b1c]/90 backdrop-blur-sm">
               <div className="text-center">
-                <div className="animate-spin rounded-full h-12 w-12 border-2 border-purple-500 border-t-transparent mx-auto mb-3" />
-                <p className="text-gray-400 text-sm">Initializing camera...</p>
+                <div className="w-12 h-12 rounded-full border-2 border-cyan-400/30 border-t-cyan-400 animate-spin mx-auto mb-3" />
+                <p className="text-cyan-200/60 text-sm">Initializing camera…</p>
               </div>
             </div>
           )}
 
           {/* Placeholder when inactive */}
           {!cameraState.isActive && !cameraState.isLoading && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/50">
-              <Camera className="w-12 h-12 text-gray-500 mb-3" />
-              <p className="text-gray-400 text-sm">{stepLabel}</p>
+            <div className="absolute inset-0 flex flex-col items-center justify-center">
+              <div className="p-4 rounded-2xl bg-cyan-500/[0.06] border border-cyan-400/[0.12] mb-4">
+                <Camera className="w-10 h-10 text-cyan-400/50" />
+              </div>
+              <p className="text-cyan-100/40 text-sm font-medium">{stepLabel}</p>
             </div>
           )}
         </div>
 
         {/* Error Message */}
         {cameraState.error && (
-          <div className="mt-4 p-3 bg-red-500/10 border border-red-500/30 rounded-lg">
+          <div className="mt-3 p-3 rounded-xl bg-[rgba(239,68,68,0.08)] border border-red-400/[0.25] shadow-[0_0_20px_rgba(239,68,68,0.06)]">
             <div className="flex gap-3">
               <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
               <div>
-                <p className="text-sm text-red-300">{cameraState.error}</p>
-                <p className="text-xs text-red-400 mt-1">
-                  If this persists, please check your camera permissions in browser settings.
+                <p className="text-sm text-red-300/90">{cameraState.error}</p>
+                <p className="text-xs text-red-400/60 mt-1">
+                  Check camera permissions in your browser settings.
                 </p>
               </div>
             </div>
@@ -420,7 +468,7 @@ export const CameraComponent = React.forwardRef<
 
         {/* Diagnostics (Dev Mode) */}
         {showDiagnostics && diagnostics && (
-          <div className="mt-4 p-3 bg-blue-500/10 border border-blue-500/30 rounded-lg font-mono text-xs text-blue-300">
+          <div className="mt-3 p-3 bg-blue-500/10 border border-blue-500/30 rounded-xl font-mono text-xs text-blue-300">
             <p className="font-bold mb-2">📊 Camera Diagnostics</p>
             <p>Permission: {diagnostics.permissionState}</p>
             <p>Devices: {diagnostics.devicesCount}</p>
@@ -437,7 +485,7 @@ export const CameraComponent = React.forwardRef<
             <Button
               onClick={startCamera}
               disabled={cameraState.isLoading}
-              className="flex-1 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600"
+              className="flex-1 bg-gradient-to-r from-cyan-500 via-blue-500 to-violet-500 hover:opacity-90 text-white border-0 shadow-[0_0_20px_rgba(34,211,238,0.30)] transition-opacity"
             >
               <Camera size={16} className="mr-2" />
               Start Camera
@@ -446,14 +494,15 @@ export const CameraComponent = React.forwardRef<
             <>
               <Button
                 onClick={capturePhoto}
-                className="flex-1 bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600"
+                className="flex-1 bg-gradient-to-r from-cyan-500 via-blue-500 to-violet-500 hover:opacity-90 text-white border-0 shadow-[0_0_20px_rgba(34,211,238,0.30)] transition-opacity"
               >
-                📷 Capture
+                <Camera size={16} className="mr-2" />
+                Capture
               </Button>
               <Button
                 onClick={stopCamera}
                 variant="outline"
-                className="flex-1 border-white/10"
+                className="flex-1 border-white/[0.12] text-white/60 hover:bg-white/[0.06] hover:text-white"
               >
                 Stop
               </Button>
@@ -465,7 +514,7 @@ export const CameraComponent = React.forwardRef<
               onClick={startCamera}
               disabled={cameraState.isLoading}
               variant="outline"
-              className="flex-1 border-red-500/30 text-red-400 hover:bg-red-500/10"
+              className="flex-1 border-red-400/30 text-red-400 hover:bg-red-500/10 hover:border-red-400/50"
             >
               <RotateCcw size={16} className="mr-2" />
               {retryLabel}
