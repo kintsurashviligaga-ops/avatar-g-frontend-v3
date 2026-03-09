@@ -12,43 +12,43 @@ interface HeroSectionProps {
 
 const HERO_TEXT = {
   ka: {
-    badge: 'AI PLATFORM',
+    badge: 'MYAVATAR.GE · ALL-IN-ONE AI FACTORY',
     title: 'შენი AI',
     titleAccent: 'ქარხანა',
-    subtitle: 'ავატარი, ვიდეო, მუსიკა, დიზაინი და ავტომატიზაცია — ყველაფერი ერთ ინტელექტუალურ პლატფორმაში.',
-    description: '17 AI modules working together.',
+    subtitle: 'ავატარი, ვიდეო, მუსიკა, დიზაინი, ავტომატიზაცია და ბიზნეს-ინელიგენცია — ყველაფერი ერთ ინტელექტუალურ პლატფორმაში.',
+    description: '17 AI მოდული ერთ connected workspace-ში. Zero vendor lock-in.',
     cta: 'დაიწყე უფასოდ',
-    secondary: 'ნახე შესაძლებლობები',
+    secondary: 'ნახე სერვისები',
     agent: 'ესაუბრე Agent G-ს',
-    badgeModules: '17 მოდული',
-    badgeUptime: '99.9% აქტიურობა',
+    badgeModules: '17+ მოდული',
+    badgeUptime: '99.9% SLA',
     badgeEnterprise: 'Enterprise Ready',
   },
   en: {
-    badge: 'AI PLATFORM',
+    badge: 'MYAVATAR.GE · ALL-IN-ONE AI FACTORY',
     title: 'Your AI',
     titleAccent: 'Factory',
-    subtitle: 'Avatar, video, music, design, and automation in one intelligent platform.',
-    description: '17 AI modules working together.',
+    subtitle: 'Avatar, video, music, design, automation, and business intelligence — all in one intelligent platform built for scale.',
+    description: '17 AI modules in one connected workspace. Zero vendor lock-in.',
     cta: 'Start Free',
-    secondary: 'See Capabilities',
+    secondary: 'Explore Services',
     agent: 'Talk to Agent G',
-    badgeModules: '17 Modules',
-    badgeUptime: '99.9% Uptime',
+    badgeModules: '17+ Modules',
+    badgeUptime: '99.9% SLA',
     badgeEnterprise: 'Enterprise Ready',
   },
   ru: {
-    badge: 'AI PLATFORM',
-    title: 'Твоя AI',
+    badge: 'MYAVATAR.GE · ALL-IN-ONE AI FACTORY',
+    title: 'Ваша AI',
     titleAccent: 'Фабрика',
-    subtitle: 'Аватар, видео, музыка, дизайн и автоматизация в одной интеллектуальной платформе.',
-    description: '17 AI modules working together.',
-    cta: 'Начать',
-    secondary: 'Возможности',
+    subtitle: 'Аватар, видео, музыка, дизайн, автоматизация и бизнес-аналитика — всё в одной интеллектуальной платформе.',
+    description: '17 AI-модулей в едином подключённом пространстве. Без vendor lock-in.',
+    cta: 'Начать бесплатно',
+    secondary: 'Все сервисы',
     agent: 'Поговорить с Agent G',
-    badgeModules: '17 Модулей',
-    badgeUptime: '99.9% Аптайм',
-    badgeEnterprise: 'Для бизнеса',
+    badgeModules: '17+ Модулей',
+    badgeUptime: '99.9% SLA',
+    badgeEnterprise: 'Enterprise Ready',
   },
 }
 
@@ -130,10 +130,10 @@ export function HeroSection({ onPremiumClick }: HeroSectionProps) {
         {/* CTAs */}
         <motion.div className="mt-8 sm:mt-10 flex flex-col sm:flex-row sm:flex-wrap justify-center gap-3 sm:gap-4" variants={itemVariants}>
           <GlassButton
-            href={'/' + (language || 'ka') + '/services'}
+            href={'/' + (language || 'ka') + '/signup'}
             size="lg"
             variant="primary"
-            className="w-full sm:w-auto bg-gradient-to-r from-cyan-400 via-blue-500 to-violet-500 text-white border border-cyan-300/30 shadow-[0_0_44px_rgba(34,211,238,0.34)] hover:shadow-[0_0_74px_rgba(34,211,238,0.48)]"
+            className="w-full sm:w-auto bg-gradient-to-r from-cyan-400 via-blue-500 to-violet-500 text-white border border-cyan-300/30 shadow-[0_0_44px_rgba(34,211,238,0.34)] hover:shadow-[0_0_74px_rgba(34,211,238,0.48)] font-bold"
           >
             {text.cta}
             <ArrowRight className="w-4 h-4" />
@@ -153,6 +153,24 @@ export function HeroSection({ onPremiumClick }: HeroSectionProps) {
             <PhoneCall className="w-4 h-4 text-cyan-300 group-hover:text-cyan-200 transition-colors" />
             {text.agent}
           </a>
+        </motion.div>
+
+        {/* Trust strip */}
+        <motion.div
+          className="mt-10 pt-8 border-t border-white/[0.07] flex flex-wrap items-center justify-center gap-x-7 gap-y-3"
+          variants={itemVariants}
+        >
+          {[
+            { icon: '✦', label: language === 'ka' ? 'ავატარი · ვიდეო · მუსიკა' : language === 'ru' ? 'Аватар · Видео · Музыка' : 'Avatar · Video · Music' },
+            { icon: '✦', label: language === 'ka' ? 'Workflow ავტომატიზაცია' : language === 'ru' ? 'Автоматизация workflow' : 'Workflow Automation' },
+            { icon: '✦', label: language === 'ka' ? 'Agent G ორკესტრაცია' : language === 'ru' ? 'Оркестрация Agent G' : 'Agent G Orchestration' },
+            { icon: '✦', label: language === 'ka' ? 'ბიზნეს ინელიგენცია' : language === 'ru' ? 'Бизнес-аналитика' : 'Business Intelligence' },
+          ].map((item, i) => (
+            <span key={i} className="flex items-center gap-2 text-[11px] text-white/28 font-medium tracking-[0.06em]">
+              <span className="text-cyan-500/50 text-[8px]">{item.icon}</span>
+              {item.label}
+            </span>
+          ))}
         </motion.div>
       </motion.div>
 

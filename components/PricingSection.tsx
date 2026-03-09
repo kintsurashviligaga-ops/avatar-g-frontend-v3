@@ -14,9 +14,9 @@ const PLAN_ACCENTS = [
 ]
 
 const PRICING_LABELS = {
-  en: { badge: 'Pricing', month: '/mo', focus: 'აირჩიე გეგმა რომელიც შენს workflow-ს შეესაბამება', popular: 'Most Popular' },
-  ka: { badge: 'ფასები', month: '/თვე', focus: 'აირჩიე გეგმა რომელიც შენს workflow-ს შეესაბამება', popular: 'Most Popular' },
-  ru: { badge: 'Тарифы', month: '/мес', focus: 'აირჩიე გეგმა რომელიც შენს workflow-ს შეესაბამება', popular: 'Most Popular' },
+  en: { badge: 'Pricing', month: '/mo', focus: 'Choose the plan that fits your workflow and scale.', popular: 'Most Popular' },
+  ka: { badge: 'ფასები', month: '/თვე', focus: 'აირჩიე გეგმა, რომელიც შენს workflow-ს შეესაბამება.', popular: 'ყველაზე პოპულარული' },
+  ru: { badge: 'Тарифы', month: '/мес', focus: 'Выберите план, который подходит вашему workflow и масштабу.', popular: 'Самый популярный' },
 } as const
 
 export function PricingSection() {

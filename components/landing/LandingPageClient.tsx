@@ -125,9 +125,9 @@ export default function LandingPageClient() {
 
   const controlCenterCopy = {
     en: {
-      badge: "Guided Setup",
-      title: "Landing Control Center",
-      subtitle: "Pick your direction, get a structured AI plan, and launch faster with clean execution flow.",
+      badge: "Strategy Planner",
+      title: "AI Command Center",
+      subtitle: "Pick your direction, get a structured AI plan, and launch faster with a clean execution flow.",
       optionsTitle: "Planning Options",
       chartTitle: "Readiness Chart",
       chartHint: "Interactive planning score based on your selected options.",
@@ -153,8 +153,8 @@ export default function LandingPageClient() {
       orbitDescription: "Core AI center with connected module nodes, live hover detail, and service entry points.",
     },
     ka: {
-      badge: "მიმართული სტარტი",
-      title: "Landing მართვის ცენტრი",
+      badge: "სტრატეგიის გეგმარი",
+      title: "AI სარდლობის ცენტრი",
       subtitle: "აირჩიე მიმართულება, მიიღე სტრუქტურირებული AI გეგმა და გაუშვი სწრაფად.",
       optionsTitle: "დაგეგმვის პარამეტრები",
       chartTitle: "მზადყოფნის გრაფიკი",
@@ -181,8 +181,8 @@ export default function LandingPageClient() {
       orbitDescription: "AI ბირთვი დაკავშირებული მოდულებით, hover-დეტალებით და სერვისებზე პირდაპირი წვდომით.",
     },
     ru: {
-      badge: "Пошаговый старт",
-      title: "Центр управления Landing",
+      badge: "Стратегический планировщик",
+      title: "AI Командный центр",
       subtitle: "Выберите направление, получите структурированный AI-план и запускайтесь быстрее.",
       optionsTitle: "Параметры планирования",
       chartTitle: "График готовности",

@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
 import { BrandLogo } from '@/components/ui/BrandLogo'
 
@@ -26,7 +26,14 @@ export function GlobalNavbar() {
   const pathname = usePathname()
   const router = useRouter()
   const [open, setOpen] = useState(false)
+  const [scrolled, setScrolled] = useState(false)
   const { language: locale, setLanguage, t } = useLanguage()
+
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 15)
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => window.removeEventListener('scroll', onScroll)
+  }, [])
 
   const pathWithoutLocale = pathname.replace(/^\/(ka|en|ru)/, '') || '/'
 
@@ -42,7 +49,7 @@ export function GlobalNavbar() {
     return pathname === full || pathname.startsWith(full + '/')
   }
 
-  const navCls = 'fixed top-0 inset-x-0 z-[200] h-16 md:h-20 transition-all duration-500 flex items-center justify-between px-4 sm:px-6 lg:px-10 bg-[linear-gradient(135deg,rgba(3,8,20,0.88),rgba(6,14,34,0.78))] backdrop-blur-2xl backdrop-saturate-150 border-b border-white/20 shadow-[0_14px_50px_rgba(0,0,0,0.52),inset_0_1px_0_rgba(255,255,255,0.08)] ag-mirror-panel pointer-events-auto'
+  const navCls = `fixed top-0 inset-x-0 z-[200] h-16 md:h-20 transition-all duration-300 flex items-center justify-between px-4 sm:px-6 lg:px-10 backdrop-blur-2xl backdrop-saturate-150 ag-mirror-panel pointer-events-auto border-b ${scrolled ? 'bg-[linear-gradient(135deg,rgba(2,5,14,0.97),rgba(3,9,22,0.96))] border-white/25 shadow-[0_16px_56px_rgba(0,0,0,0.72),inset_0_1px_0_rgba(255,255,255,0.10)]' : 'bg-[linear-gradient(135deg,rgba(3,8,20,0.88),rgba(6,14,34,0.78))] border-white/20 shadow-[0_14px_50px_rgba(0,0,0,0.52),inset_0_1px_0_rgba(255,255,255,0.08)]'}`
 
   const drawerBase = 'fixed top-16 inset-x-0 z-[199] bg-[linear-gradient(145deg,rgba(3,9,22,0.95),rgba(6,13,30,0.92))] backdrop-blur-2xl border-b border-white/18 px-4 py-4 space-y-1 lg:hidden transition-all duration-300 origin-top shadow-[0_26px_70px_rgba(0,0,0,0.56)] ag-mirror-panel pointer-events-auto'
 
@@ -54,7 +61,7 @@ export function GlobalNavbar() {
     <>
       <nav className={navCls}>
         <div className="md:hidden">
-          <BrandLogo href={localeHref('/')} size="xs" showText={false} />
+          <BrandLogo href={localeHref('/')} size="xs" showText={true} />
         </div>
         <div className="hidden md:block">
           <BrandLogo href={localeHref('/')} size="sm" />

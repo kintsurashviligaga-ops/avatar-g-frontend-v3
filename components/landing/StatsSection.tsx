@@ -36,33 +36,41 @@ export function StatsSection() {
   const { language } = useLanguage()
 
   const labels = {
-    en: ['AI modules', 'generated outputs', 'interactions', 'workflow automation'],
-    ka: ['AI მოდული', 'გენერირებული შედეგი', 'ინტერაქცია', 'workflow ავტომატიზაცია'],
-    ru: ['AI модулей', 'сгенерированных результатов', 'интеракций', 'автоматизация workflow'],
+    en: ['AI modules active', 'outputs generated', 'platform interactions', 'uptime guarantee'],
+    ka: ['AI მოდული', 'გენერირებული შედეგი', 'ინტერაქცია', 'uptime გარანტია'],
+    ru: ['AI модулей активно', 'результатов создано', 'взаимодействий', 'гарантия аптайма'],
   } as const
 
-  const localLabels = labels[language as keyof typeof labels] || labels.ka
+  const localLabels = labels[language as keyof typeof labels] || labels.en
 
   const stats = [
-    { value: 17, suffix: '', label: localLabels[0], color: 'from-cyan-400 to-blue-500' },
-    { value: 50, suffix: 'K+', label: localLabels[1], color: 'from-purple-400 to-indigo-500' },
-    { value: 1, suffix: 'M+', label: localLabels[2], color: 'from-rose-400 to-pink-500' },
-    { value: 100, suffix: '%', label: localLabels[3], color: 'from-emerald-400 to-teal-500' },
+    { value: 17, suffix: '+', label: localLabels[0], color: 'from-cyan-400 to-blue-500' },
+    { value: 250, suffix: 'K+', label: localLabels[1], color: 'from-violet-400 to-indigo-500' },
+    { value: 5, suffix: 'M+', label: localLabels[2], color: 'from-rose-400 to-pink-500' },
+    { value: 99, suffix: '.9%', label: localLabels[3], color: 'from-emerald-400 to-teal-500' },
   ]
 
   return (
-    <section className="relative py-20 px-4 sm:px-6 border-t border-white/[0.04]">
+    <section className="relative py-16 md:py-20 px-4 sm:px-6 border-t border-white/[0.05]">
       <div className="mx-auto max-w-5xl">
         <motion.div
-          className="relative rounded-2xl border border-white/[0.06] bg-gradient-to-br from-[#060B18]/90 via-[#0D1528]/80 to-[#060B18]/90 backdrop-blur-xl p-8 md:p-14 overflow-hidden"
+          className="relative rounded-2xl border border-white/[0.08] bg-gradient-to-br from-[#04070F]/90 via-[#0A1222]/80 to-[#04070F]/90 backdrop-blur-xl p-8 md:p-14 overflow-hidden"
           initial={{ opacity: 0, y: 20 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
           transition={{ duration: 0.6 }}
         >
           {/* Decorative gradient orbs */}
-          <div className="absolute top-0 left-1/4 w-72 h-72 bg-cyan-500/[0.04] rounded-full blur-[120px]" />
-          <div className="absolute bottom-0 right-1/4 w-72 h-72 bg-violet-500/[0.04] rounded-full blur-[120px]" />
+          <div className="absolute top-0 left-1/4 w-80 h-80 bg-cyan-500/[0.05] rounded-full blur-[120px] pointer-events-none" />
+          <div className="absolute bottom-0 right-1/4 w-80 h-80 bg-violet-500/[0.05] rounded-full blur-[120px] pointer-events-none" />
+          {/* Subtle grid */}
+          <div
+            className="absolute inset-0 opacity-[0.016] pointer-events-none"
+            style={{
+              backgroundImage: 'linear-gradient(rgba(255,255,255,0.3) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.3) 1px, transparent 1px)',
+              backgroundSize: '48px 48px',
+            }}
+          />
 
           <div className="relative grid grid-cols-2 md:grid-cols-4 gap-8 md:gap-10">
             {stats.map((stat, i) => (
@@ -80,7 +88,7 @@ export function StatsSection() {
                     suffix={stat.suffix}
                   />
                 </div>
-                <div className="mt-3 text-[10px] md:text-xs text-white/35 uppercase tracking-[0.2em] font-medium">
+                <div className="mt-3 text-[10px] md:text-xs text-white/38 uppercase tracking-[0.2em] font-medium">
                   {stat.label}
                 </div>
               </motion.div>
