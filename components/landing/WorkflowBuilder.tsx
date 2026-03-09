@@ -38,6 +38,14 @@ interface Category {
   accent: string
 }
 
+const CATEGORY_LABELS: Record<CategoryId, { en: string; ka: string; ru: string }> = {
+  create:   { en: 'Create',   ka: 'შექმნა',     ru: 'Создание' },
+  edit:     { en: 'Edit',     ka: 'რედაქტირება', ru: 'Редактура' },
+  automate: { en: 'Automate', ka: 'ავტომატიზ.', ru: 'Автоматиз.' },
+  analyze:  { en: 'Analyze',  ka: 'ანალიზი',    ru: 'Анализ' },
+  scale:    { en: 'Scale',    ka: 'მასშტაბი',   ru: 'Масштаб' },
+}
+
 const CATEGORIES: Category[] = [
   { id: 'create',   label: 'Create',   icon: Sparkles, accent: 'text-cyan-300' },
   { id: 'edit',     label: 'Edit',     icon: Scissors, accent: 'text-violet-300' },
@@ -172,17 +180,95 @@ interface ChatMsg {
   text: string
 }
 
+// Agent tips by context keyword
+const AGENT_TIPS = {
+  optimize: {
+    en: 'Tip: placing Agent G last in the pipeline lets it review and enhance every previous output automatically.',
+    ka: 'რჩევა: Agent G-ის პაიფლაინის ბოლოს განთავსება საშუალებას იძლევა ავტომატურად გააუმჯობესოს ყველა წინა შედეგი.',
+    ru: 'Совет: поместите Agent G в конец — он автоматически улучшит все предыдущие результаты.',
+  },
+  time: {
+    en: 'Estimated processing: ~2–4 min per service. Your pipeline will take roughly {{min}}–{{max}} minutes end-to-end.',
+    ka: 'სავარაუდო დრო: ~2–4 წუთი თითო სერვისზე. პაიფლაინი დაახლ. {{min}}–{{max}} წუთი.',
+    ru: 'Ориентировочное время: ~2–4 мин. на сервис. Весь pipeline займёт ~{{min}}–{{max}} мин.',
+  },
+  best: {
+    en: 'For the best output: define a clear task name, keep the pipeline under 6 services, and let Agent G orchestrate.',
+    ka: 'საუკეთესო შედეგისთვის: მიუთითე დავალება, შეინარჩუნე 6-მდე სერვისი, Agent G გამოიყენე ოქმად.',
+    ru: 'Лучший результат: чёткая задача, не более 6 сервисов, Agent G в качестве оркестратора.',
+  },
+} satisfies Record<string, { en: string; ka: string; ru: string }>
+
 function generateAgentResponse(pipeline: ServiceId[], task: string, locale: string): string {
   const count = pipeline.length
+  const loc = locale as 'ka' | 'en' | 'ru'
+
+  // Empty pipeline welcome
   if (count === 0) {
-    if (locale === 'ka') return 'გამარჯობა! მე ვარ Agent G. გადადი სერვისების პანელზე, დაამატე სასურველი სერვისები პაიფლაინში და მე დაგეხმარები საუკეთესო შედეგის მიღწევაში.'
-    if (locale === 'ru') return 'Привет! Я Agent G. Добавьте сервисы в пайплайн, и я помогу вам получить лучший результат.'
-    return "Hello! I'm Agent G. Add services to your pipeline and I'll help you build the optimal workflow for your goal."
+    const msgs = {
+      ka: 'გამარჯობა! მე ვარ Agent G — შენი AI დირექტორი. მარცხნივ სერვისები დაამატე, შაბლონი გამოიყენე ან სახელი ჩაწერე და "გაშვება" დააჭირე.',
+      ru: 'Привет! Я Agent G — ваш AI директор. Добавьте сервисы, выберите шаблон или введите задачу и нажмите «Запустить».',
+      en: "Hi! I'm Agent G — your AI director. Add services on the left, pick a template, or type your task and hit Launch.",
+    }
+    return msgs[loc] ?? msgs.en
   }
+
   const names = pipeline.map(id => BY_ID.get(id)?.shortLabel || id).join(' → ')
-  if (locale === 'ka') return `შენი პაიფლაინი: ${names}. ${task ? `"${task}" — ` : ''}სერვისების კომბინაცია ოპტიმალურია. დააჭირე "გაშვება" შედეგის მისაღებად.`
-  if (locale === 'ru') return `Ваш пайплайн: ${names}. ${task ? `Задача: "${task}" — ` : ''}Отличная комбинация. Нажмите "Запустить" для получения результата.`
-  return `Pipeline: ${names}. ${task ? `Task: "${task}" — ` : ''}Great combination! This flow will produce a complete output. Hit Launch when ready.`
+  const tl = task.toLowerCase()
+
+  const getLoc = (obj: { en: string; ka: string; ru: string }) =>
+    loc === 'ka' ? obj.ka : loc === 'ru' ? obj.ru : obj.en
+
+  // Context-aware: user asked about time / estimate
+  if (tl.includes('time') || tl.includes('დრო') || tl.includes('время') || tl.includes('minute') || tl.includes('long')) {
+    const min = count * 2
+    const max = count * 4
+    return getLoc(AGENT_TIPS.time).replace('{{min}}', String(min)).replace('{{max}}', String(max))
+  }
+
+  // Context-aware: user asked about best output
+  if (tl.includes('best') || tl.includes('optimal') || tl.includes('საუკეთ') || tl.includes('лучш') || tl.includes('оптим')) {
+    return getLoc(AGENT_TIPS.best)
+  }
+
+  // Context-aware: user asked about optimise
+  if (tl.includes('optim') || tl.includes('optimiz') || tl.includes('improve') || tl.includes('оптим') || tl.includes('улучш')) {
+    return getLoc(AGENT_TIPS.optimize)
+  }
+
+  // Pipeline-aware launch response
+  const hasAgentG = pipeline.includes('agent-g')
+  const hasMusic  = pipeline.includes('music')
+  const hasVideo  = pipeline.includes('video') || pipeline.includes('editing')
+
+  if (loc === 'ka') {
+    let resp = `პაიფლაინი: ${names}.`
+    if (task) resp += ` პროექტი: "${task}".`
+    if (hasAgentG) resp += ' Agent G ავტომატურად გააკოორდინირებს ყველა სერვისს.'
+    else if (hasVideo && hasMusic) resp += ' ვიდეო + მუსიკა — ძლიერი კომბინაცია პროდაქშენისთვის.'
+    else if (count >= 4) resp += ` ${count}-სერვისიანი წყება გამართულია. დააჭირე გაშვება.`
+    else resp += ' კარგი კომბინაცია! გაუშვი.'
+    return resp
+  }
+
+  if (loc === 'ru') {
+    let resp = `Pipeline: ${names}.`
+    if (task) resp += ` Задача: «${task}».`
+    if (hasAgentG) resp += ' Agent G автоматически скоординирует все сервисы.'
+    else if (hasVideo && hasMusic) resp += ' Видео + музыка — мощная комбинация для продакшена.'
+    else if (count >= 4) resp += ` Цепочка из ${count} сервисов настроена. Нажмите «Запустить».`
+    else resp += ' Отличная комбинация! Запускайте.'
+    return resp
+  }
+
+  // English default
+  let resp = `Pipeline: ${names}.`
+  if (task) resp += ` Task: "${task}".`
+  if (hasAgentG) resp += ' Agent G will orchestrate every service and auto-enhance the final output.'
+  else if (hasVideo && hasMusic) resp += ' Video + Music is a powerful combo — great for brand production.'
+  else if (count >= 4) resp += ` ${count}-service chain configured and ready. Hit Launch.`
+  else resp += ' Solid combination! Launch when ready.'
+  return resp
 }
 
 function getPipelineOutput(pipeline: ServiceId[]): string {
@@ -228,6 +314,10 @@ export function WorkflowBuilder() {
       stepLabel: 'Step',
       clearPipeline: 'Clear pipeline',
       openWorkspace: 'Open Full Workspace →',
+      allCategories: 'All',
+      onlineStatus: 'Online',
+      avatarNode: 'Avatar',
+      stepsReady: 'steps ready',
     },
     ka: {
       badge: 'სამართავი პანელი',
@@ -249,6 +339,10 @@ export function WorkflowBuilder() {
       stepLabel: 'ნაბიჯი',
       clearPipeline: 'პაიფლაინის გასუფთავება',
       openWorkspace: 'სამუშაო სივრცის გახსნა →',
+      allCategories: 'ყველა',
+      onlineStatus: 'ონლაინ',
+      avatarNode: 'ავატარი',
+      stepsReady: 'ნაბიჯი მზადაა',
     },
     ru: {
       badge: 'ЦЕНТР УПРАВЛЕНИЯ',
@@ -270,6 +364,10 @@ export function WorkflowBuilder() {
       stepLabel: 'Шаг',
       clearPipeline: 'Очистить pipeline',
       openWorkspace: 'Открыть рабочее место →',
+      allCategories: 'Все',
+      onlineStatus: 'Онлайн',
+      avatarNode: 'Аватар',
+      stepsReady: 'шагов готово',
     },
   } as const
   const c = copy[locale as keyof typeof copy] ?? copy.en
@@ -456,11 +554,12 @@ export function WorkflowBuilder() {
                         : 'border-white/[0.12] text-white/55 hover:text-white/80 hover:border-white/25'
                     }`}
                   >
-                    All
+                    {c.allCategories}
                   </button>
                   {CATEGORIES.map(cat => {
                     const CIcon = cat.icon
                     const active = activeCategory === cat.id
+                    const catLabel = CATEGORY_LABELS[cat.id][locale as keyof (typeof CATEGORY_LABELS)[typeof cat.id]] ?? cat.label
                     return (
                       <button
                         key={cat.id}
@@ -472,7 +571,7 @@ export function WorkflowBuilder() {
                         }`}
                       >
                         <CIcon className="w-3 h-3" />
-                        {cat.label}
+                        {catLabel}
                       </button>
                     )
                   })}
@@ -563,7 +662,7 @@ export function WorkflowBuilder() {
                         <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${selectedAvatarDef.color} flex items-center justify-center border-2 border-cyan-300/60 shadow-[0_0_14px_rgba(34,211,238,0.35)]`}>
                           <UserCircle2 className="w-5 h-5 text-white" />
                         </div>
-                        <span className="text-[8px] text-cyan-300/80 font-medium">Avatar</span>
+                        <span className="text-[8px] text-cyan-300/80 font-medium">{c.avatarNode}</span>
                       </div>
 
                       {pipeline.map((id, idx) => {
@@ -581,7 +680,7 @@ export function WorkflowBuilder() {
                                   className={`w-10 h-10 rounded-xl bg-gradient-to-br ${svc.color} flex items-center justify-center cursor-pointer`}
                                   style={{ boxShadow: `0 0 10px ${svc.glow}` }}
                                 >
-                                  <SIcon className="w-4.5 h-4.5 text-white" />
+                                  <SIcon className="w-[18px] h-[18px] text-white" />
                                 </div>
                                 <button
                                   onClick={() => removeFromPipeline(id)}
@@ -631,7 +730,7 @@ export function WorkflowBuilder() {
                     }`}
                   >
                     {launched ? (
-                      <><CheckCircle2 className="w-4 h-4" /> {c.stepLabel} {pipeline.length} ready</>
+                      <><CheckCircle2 className="w-4 h-4" /> {pipeline.length} {c.stepsReady}</>
                     ) : (
                       <><Play className="w-4 h-4" /> {c.launchBtn}</>
                     )}
@@ -667,7 +766,7 @@ export function WorkflowBuilder() {
                   <p className="text-xs font-bold text-white">{c.chatLabel}</p>
                   <p className="text-[10px] text-emerald-300/80 flex items-center gap-1">
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse inline-block" />
-                    Online
+                    {c.onlineStatus}
                   </p>
                 </div>
 
@@ -782,7 +881,8 @@ export function WorkflowBuilder() {
               <div className="px-3 pb-3 grid grid-cols-2 gap-1.5">
                 <Link href={`/${locale}/workspace`}
                   className="flex items-center justify-center gap-1.5 rounded-xl border border-cyan-400/20 bg-cyan-400/[0.06] px-3 py-2.5 text-[11px] font-semibold text-cyan-200/90 hover:border-cyan-400/40 hover:bg-cyan-400/10 transition-all">
-                  <Cpu className="w-3.5 h-3.5" /> Workspace
+                  <Cpu className="w-3.5 h-3.5" />
+                  {locale === 'ka' ? 'სამუშაო სივრცე' : locale === 'ru' ? 'Рабочее место' : 'Workspace'}
                 </Link>
                 <Link href={`/${locale}/services`}
                   className="flex items-center justify-center gap-1.5 rounded-xl border border-white/[0.10] bg-white/[0.03] px-3 py-2.5 text-[11px] font-semibold text-white/60 hover:border-white/20 hover:bg-white/[0.06] transition-all">
