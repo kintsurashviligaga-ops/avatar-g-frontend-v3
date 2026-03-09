@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react'
 import { Brain, Sparkles, Video, Music, Image as ImageIcon, MessageSquare, Bot, Cpu, Monitor, Zap, LayoutTemplate, PenTool, Database, Users, Mic, Layers, type LucideIcon } from 'lucide-react'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
+import { OrbitAvatar3D } from '@/components/OrbitAvatar3D'
 
 /* â”€â”€ Slug map: use SHORT slugs that match app/[locale]/services/[slug]/page.tsx â”€â”€ */
 const ORBIT_SERVICES = [
@@ -155,23 +156,21 @@ export function OrbitSolarSystem() {
 
         <div className="pointer-events-none absolute inset-0 rounded-full bg-[radial-gradient(circle,rgba(6,182,212,0.14)_0%,rgba(6,182,212,0.04)_42%,transparent_68%)]" />
 
-        {/* Core Center */}
-        <div className="absolute z-20 flex flex-col items-center justify-center select-none pointer-events-none">
-          <div className="orbit-avatar-stage relative w-28 h-36 md:w-44 md:h-56 rounded-[40%] border border-white/15 bg-black/25 shadow-[0_0_40px_rgba(6,182,212,0.15)] flex items-center justify-center backdrop-blur-sm overflow-hidden">
-            {avatarUrl ? (
-              <div className="orbit-avatar-turn absolute inset-0 flex items-center justify-center px-1.5 md:px-2">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={avatarUrl} alt="Generated Avatar" className="w-full h-full object-contain" onError={() => setAvatarUrl(null)} />
-              </div>
-            ) : (
-              <Brain className="w-10 h-10 md:w-12 md:h-12 text-cyan-400 drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]" />
-            )}
-            <div className="absolute inset-0 rounded-[40%] border border-cyan-300/35" />
-            <div className="absolute inset-0 rounded-[40%] border-2 border-cyan-400/24 animate-ping" style={{ animationDuration: '3.2s' }} />
+        {/* Core Center — Real 3D Avatar */}
+        <div className="absolute z-20 flex flex-col items-center justify-center select-none">
+          <div className="relative w-36 h-48 md:w-52 md:h-72 rounded-2xl overflow-hidden shadow-[0_0_56px_rgba(6,182,212,0.28)]">
+            <OrbitAvatar3D avatarUrl={avatarUrl} />
+            {/* Neon border overlay */}
+            <div className="pointer-events-none absolute inset-0 rounded-2xl border border-cyan-300/30" />
+            <div className="pointer-events-none absolute inset-0 rounded-2xl border-2 border-cyan-400/14 animate-ping" style={{ animationDuration: '3.6s' }} />
           </div>
           <div className="mt-3 text-center">
-            <h3 className="text-white font-bold text-lg md:text-xl tracking-tight drop-shadow-lg" style={{ textShadow: '0 2px 4px rgba(0,0,0,0.8)' }}>{avatarUrl ? 'Your Avatar' : 'Core AI'}</h3>
-            <p className="text-cyan-400/80 text-xs md:text-sm font-medium drop-shadow-md">{avatarUrl ? (locale === 'ka' ? 'áƒ¨áƒ”áƒœáƒ˜ áƒªáƒ˜áƒ¤áƒ áƒ£áƒšáƒ˜ áƒ˜áƒ“áƒ”áƒœáƒ¢áƒáƒ‘áƒ' : locale === 'ru' ? 'Ð¢Ð²Ð¾Ñ Ñ†Ð¸Ñ„Ñ€Ð¾Ð²Ð°Ñ Ð¸Ð´ÐµÐ½Ñ‚Ð¸Ñ‡Ð½Ð¾ÑÑ‚ÑŒ' : 'Your digital identity') : 'áƒ¨áƒ”áƒœáƒ˜ áƒªáƒ˜áƒ¤áƒ áƒ£áƒšáƒ˜ áƒ˜áƒ“áƒ”áƒœáƒ¢áƒáƒ‘áƒ'}</p>
+            <h3 className="text-white font-bold text-lg md:text-xl tracking-tight drop-shadow-lg" style={{ textShadow: '0 2px 4px rgba(0,0,0,0.8)' }}>
+              {locale === 'ka' ? '3D ავატარი' : locale === 'ru' ? '3D Аватар' : 'Avatar 3D'}
+            </h3>
+            <p className="text-cyan-400/80 text-xs md:text-sm font-medium drop-shadow-md">
+              {locale === 'ka' ? 'ინტერაქტიული 3D' : locale === 'ru' ? 'Наглядный 3D' : 'Interactive 3D Model'}
+            </p>
           </div>
         </div>
 
