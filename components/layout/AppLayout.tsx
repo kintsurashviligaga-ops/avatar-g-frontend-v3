@@ -2,6 +2,7 @@
 
 import { ReactNode } from 'react';
 import { useParams } from 'next/navigation';
+import { BrandLogo } from '@/components/ui/BrandLogo';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -68,8 +69,9 @@ function isSupportedLocale(v: unknown): v is SupportedLocale {
 export function Navbar() {
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 h-16 border-b border-white/10 bg-[#050510]/95 backdrop-blur-md">
+      <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-cyan-400/25 to-transparent" />
       <div className="mx-auto flex h-full max-w-7xl items-center justify-between px-4 sm:px-6">
-        <span className="text-lg font-bold text-white">Avatar G</span>
+        <BrandLogo href="/" size="nav" showText={true} />
       </div>
     </nav>
   );

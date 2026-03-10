@@ -49,9 +49,9 @@ export function GlobalNavbar() {
     return pathname === full || pathname.startsWith(full + '/')
   }
 
-  const navCls = `fixed top-0 inset-x-0 z-[200] h-16 md:h-20 transition-all duration-300 flex items-center justify-between px-4 sm:px-6 lg:px-10 backdrop-blur-2xl backdrop-saturate-150 ag-mirror-panel pointer-events-auto border-b ${scrolled ? 'bg-[linear-gradient(135deg,rgba(2,5,14,0.97),rgba(3,9,22,0.96))] border-white/25 shadow-[0_16px_56px_rgba(0,0,0,0.72),inset_0_1px_0_rgba(255,255,255,0.10)]' : 'bg-[linear-gradient(135deg,rgba(3,8,20,0.88),rgba(6,14,34,0.78))] border-white/20 shadow-[0_14px_50px_rgba(0,0,0,0.52),inset_0_1px_0_rgba(255,255,255,0.08)]'}`
+  const navCls = `fixed top-0 inset-x-0 z-[200] ${scrolled ? 'h-14 md:h-16' : 'h-16 md:h-20'} transition-all duration-300 flex items-center justify-between px-4 sm:px-6 lg:px-10 backdrop-blur-2xl backdrop-saturate-150 ag-mirror-panel pointer-events-auto border-b ${scrolled ? 'bg-[linear-gradient(135deg,rgba(2,5,14,0.97),rgba(3,9,22,0.96))] border-white/25 shadow-[0_16px_56px_rgba(0,0,0,0.72),inset_0_1px_0_rgba(255,255,255,0.10)]' : 'bg-[linear-gradient(135deg,rgba(3,8,20,0.88),rgba(6,14,34,0.78))] border-white/20 shadow-[0_14px_50px_rgba(0,0,0,0.52),inset_0_1px_0_rgba(255,255,255,0.08)]'}`
 
-  const drawerBase = 'fixed top-16 inset-x-0 z-[199] bg-[linear-gradient(145deg,rgba(3,9,22,0.95),rgba(6,13,30,0.92))] backdrop-blur-2xl border-b border-white/18 px-4 py-4 space-y-1 lg:hidden transition-all duration-300 origin-top shadow-[0_26px_70px_rgba(0,0,0,0.56)] ag-mirror-panel pointer-events-auto'
+  const drawerBase = `fixed ${scrolled ? 'top-14' : 'top-16'} inset-x-0 z-[199] bg-[linear-gradient(145deg,rgba(3,9,22,0.95),rgba(6,13,30,0.92))] backdrop-blur-2xl border-b border-white/18 px-4 py-4 space-y-1 lg:hidden transition-all duration-300 origin-top shadow-[0_26px_70px_rgba(0,0,0,0.56)] ag-mirror-panel pointer-events-auto`
 
   const drawerState = open
     ? 'opacity-100 scale-y-100 translate-y-0'
@@ -61,10 +61,10 @@ export function GlobalNavbar() {
     <>
       <nav className={navCls}>
         <div className="md:hidden">
-          <BrandLogo href={localeHref('/')} size="xs" showText={true} />
+          <BrandLogo href={localeHref('/')} size="nav" showText={true} compact={scrolled} />
         </div>
         <div className="hidden md:block">
-          <BrandLogo href={localeHref('/')} size="sm" />
+          <BrandLogo href={localeHref('/')} size="xs" showText={true} compact={scrolled} />
         </div>
 
         {/* Desktop links */}
@@ -176,7 +176,7 @@ export function GlobalNavbar() {
         </div>
       </div>
 
-      <div className="pointer-events-none fixed top-16 left-0 right-0 z-[39] ag-presidential-line opacity-80" />
+      <div className={`pointer-events-none fixed ${scrolled ? 'top-14' : 'top-16'} left-0 right-0 z-[39] ag-presidential-line opacity-80 transition-all duration-300`} />
     </>
   )
 }
