@@ -1,5 +1,6 @@
 ﻿import Link from 'next/link';
 import type { ComponentType } from 'react';
+import { ServiceCardVisual } from '@/components/ui/ServiceCardVisual';
 import {
   Briefcase,
   Camera,
@@ -287,10 +288,11 @@ function ServiceCard({ service, locale, isCore = false }: { service: ServiceItem
   return (
     <Link
       href={`/${locale}/services/${service.id}`}
-      className='group relative overflow-hidden rounded-2xl p-5 md:p-6 transition-all duration-200 hover:-translate-y-0.5'
+      className='group relative flex flex-col overflow-hidden rounded-2xl transition-all duration-200 hover:-translate-y-0.5'
       style={{ backgroundColor: 'var(--card-bg)', border: isCore ? '1px solid var(--color-accent)' : '1px solid var(--color-border)' }}
     >
-      <div className='relative z-10 flex h-full flex-col'>
+      <ServiceCardVisual serviceId={service.id} variant="card" className="rounded-t-2xl" />
+      <div className='relative z-10 flex flex-1 flex-col p-5 md:p-6'>
         {isCore && (
           <span className='mb-3 inline-flex w-fit rounded-full px-3 py-1 text-[10px] font-semibold tracking-[0.16em]' style={{ backgroundColor: 'var(--color-accent-soft)', color: 'var(--color-accent)', border: '1px solid var(--color-accent)' }}>
             CORE ORCHESTRATOR
@@ -306,7 +308,10 @@ function ServiceCard({ service, locale, isCore = false }: { service: ServiceItem
         </div>
         <h3 className='mb-2 text-lg font-semibold leading-tight' style={{ color: 'var(--color-text)' }}>{service.title}</h3>
         <p className='text-sm leading-relaxed' style={{ color: 'var(--color-text-secondary)' }}>{service.description}</p>
-        <div className='mt-auto pt-5 text-xs font-medium' style={{ color: 'var(--color-accent)' }}>{openLabel}</div>
+        <div className='mt-auto pt-5 flex items-center gap-1.5 text-xs font-medium' style={{ color: 'var(--color-accent)' }}>
+          {openLabel}
+          <ArrowRight className='h-3 w-3 transition-transform group-hover:translate-x-0.5' />
+        </div>
       </div>
     </Link>
   );
@@ -329,10 +334,11 @@ function AgentGCoreCard({ service, locale }: { service: ServiceItem; locale: str
   return (
     <Link
       href={`/${locale}/services/${service.id}`}
-      className='group relative block overflow-hidden rounded-2xl p-6 transition-all duration-200 hover:-translate-y-0.5'
+      className='group relative block overflow-hidden rounded-2xl transition-all duration-200 hover:-translate-y-0.5'
       style={{ backgroundColor: 'var(--card-bg)', border: '2px solid var(--color-accent)' }}
     >
-      <div className='relative z-10'>
+      <ServiceCardVisual serviceId="agent-g" variant="banner" className="rounded-t-2xl" />
+      <div className='relative z-10 p-6'>
         <span className='mb-3 inline-flex rounded-full px-3 py-1 text-[10px] font-semibold tracking-[0.18em]' style={{ backgroundColor: 'var(--color-accent-soft)', color: 'var(--color-accent)', border: '1px solid var(--color-accent)' }}>
           CORE ORCHESTRATOR
         </span>

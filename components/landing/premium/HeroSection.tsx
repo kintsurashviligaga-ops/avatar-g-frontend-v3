@@ -1,6 +1,7 @@
 'use client'
 
 import { useLanguage } from '@/lib/i18n/LanguageContext'
+import { ServiceCardVisual } from '@/components/ui/ServiceCardVisual'
 
 const COPY = {
   en: {
@@ -29,15 +30,9 @@ export function HeroSection() {
 
   return (
     <section className="flex flex-col items-center justify-center text-center px-6 pt-20 pb-6 sm:pt-28 sm:pb-10 lg:pt-32 lg:pb-12">
-      {/* Centered 3D avatar placeholder */}
-      <div
-        className="w-20 h-20 sm:w-24 sm:h-24 rounded-3xl mb-6 sm:mb-8 flex items-center justify-center"
-        style={{
-          background: 'linear-gradient(135deg, var(--color-accent), rgba(99,102,241,0.6))',
-          boxShadow: '0 8px 32px rgba(99,102,241,0.25)',
-        }}
-      >
-        <span className="text-3xl sm:text-4xl text-white font-bold">G</span>
+      {/* Premium hero visual — Agent G command center */}
+      <div className="w-28 h-28 sm:w-36 sm:h-36 rounded-3xl mb-6 sm:mb-8 overflow-hidden relative" style={{ boxShadow: '0 8px 40px rgba(99,102,241,0.2)' }}>
+        <ServiceCardVisual serviceId="agent-g" variant="card" className="!h-full" />
       </div>
 
       {/* Badge */}

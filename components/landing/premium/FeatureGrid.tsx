@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
+import { ServiceCardVisual } from '@/components/ui/ServiceCardVisual'
 
 interface Service {
   slug: string
@@ -74,14 +75,17 @@ export function FeatureGrid() {
                     <Link
                       key={s.slug}
                       href={`/${language}/services/${s.slug}`}
-                      className="group flex flex-col gap-2 p-3.5 rounded-xl transition-all duration-200 hover:-translate-y-0.5"
+                      className="group flex flex-col overflow-hidden rounded-xl transition-all duration-200 hover:-translate-y-0.5"
                       style={{ backgroundColor: 'var(--card-bg)', border: '1px solid var(--color-border)' }}
                     >
-                      <div className="flex items-center gap-2.5">
-                        <span className="text-sm shrink-0" style={{ color: 'var(--color-text-tertiary)' }}>{s.icon}</span>
-                        <h3 className="text-[13px] font-semibold truncate" style={{ color: 'var(--color-text-secondary)' }}>{s.title[language] || s.title.en}</h3>
+                      <ServiceCardVisual serviceId={s.slug} variant="thumb" />
+                      <div className="flex flex-col gap-2 p-3.5">
+                        <div className="flex items-center gap-2.5">
+                          <span className="text-sm shrink-0" style={{ color: 'var(--color-text-tertiary)' }}>{s.icon}</span>
+                          <h3 className="text-[13px] font-semibold truncate" style={{ color: 'var(--color-text-secondary)' }}>{s.title[language] || s.title.en}</h3>
+                        </div>
+                        <p className="text-[11px] leading-relaxed" style={{ color: 'var(--color-text-tertiary)' }}>{s.desc[language] || s.desc.en}</p>
                       </div>
-                      <p className="text-[11px] leading-relaxed" style={{ color: 'var(--color-text-tertiary)' }}>{s.desc[language] || s.desc.en}</p>
                     </Link>
                   ))}
                 </div>
