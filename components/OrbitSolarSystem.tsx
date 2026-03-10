@@ -120,7 +120,9 @@ export function OrbitSolarSystem() {
         setRadius(290)
         return
       }
-      setRadius(window.innerWidth < 390 ? 150 : 165)
+      if (window.innerWidth >= 640) { setRadius(175); return }
+      if (window.innerWidth >= 380) { setRadius(155); return }
+      setRadius(140)
     }
     update()
     window.addEventListener('resize', update)
@@ -149,26 +151,26 @@ export function OrbitSolarSystem() {
   }, [])
 
   return (
-    <section className="relative w-full py-20 md:py-32 overflow-hidden bg-transparent flex items-center justify-center min-h-[560px] md:min-h-[820px] max-md:[@media(orientation:landscape)]:min-h-[420px]">
+    <section className="relative w-full py-14 md:py-32 overflow-hidden bg-transparent flex items-center justify-center min-h-[480px] md:min-h-[820px] max-md:[@media(orientation:landscape)]:min-h-[360px]">
       <style dangerouslySetInnerHTML={{ __html: ORBIT_CSS }} />
 
-      <div className="relative w-[320px] h-[320px] sm:w-[340px] sm:h-[340px] md:w-[600px] md:h-[600px] max-md:[@media(orientation:landscape)]:w-[300px] max-md:[@media(orientation:landscape)]:h-[300px] flex items-center justify-center">
+      <div className="relative w-[300px] h-[300px] min-[380px]:w-[320px] min-[380px]:h-[320px] sm:w-[360px] sm:h-[360px] md:w-[600px] md:h-[600px] max-md:[@media(orientation:landscape)]:w-[280px] max-md:[@media(orientation:landscape)]:h-[280px] flex items-center justify-center max-w-[calc(100vw-28px)]">
 
         <div className="pointer-events-none absolute inset-0 rounded-full bg-[radial-gradient(circle,rgba(6,182,212,0.14)_0%,rgba(6,182,212,0.04)_42%,transparent_68%)]" />
 
         {/* Core Center — Real 3D Avatar */}
         <div className="absolute z-20 flex flex-col items-center justify-center select-none">
-          <div className="relative w-36 h-48 md:w-52 md:h-72 rounded-2xl overflow-hidden shadow-[0_0_56px_rgba(6,182,212,0.28)]">
+          <div className="relative w-20 h-28 min-[380px]:w-24 min-[380px]:h-32 sm:w-28 sm:h-36 md:w-52 md:h-72 rounded-2xl overflow-hidden shadow-[0_0_56px_rgba(6,182,212,0.28)]">
             <OrbitAvatar3D avatarUrl={avatarUrl} />
             {/* Neon border overlay */}
             <div className="pointer-events-none absolute inset-0 rounded-2xl border border-cyan-300/30" />
             <div className="pointer-events-none absolute inset-0 rounded-2xl border-2 border-cyan-400/14 animate-ping" style={{ animationDuration: '3.6s' }} />
           </div>
-          <div className="mt-3 text-center">
-            <h3 className="text-white font-bold text-lg md:text-xl tracking-tight drop-shadow-lg" style={{ textShadow: '0 2px 4px rgba(0,0,0,0.8)' }}>
+          <div className="mt-2 md:mt-3 text-center">
+            <h3 className="text-white font-bold text-sm sm:text-base md:text-xl tracking-tight drop-shadow-lg" style={{ textShadow: '0 2px 4px rgba(0,0,0,0.8)' }}>
               {locale === 'ka' ? '3D ავატარი' : locale === 'ru' ? '3D Аватар' : 'Avatar 3D'}
             </h3>
-            <p className="text-cyan-400/80 text-xs md:text-sm font-medium drop-shadow-md">
+            <p className="text-cyan-400/80 text-[10px] sm:text-xs md:text-sm font-medium drop-shadow-md">
               {locale === 'ka' ? 'ინტერაქტიული 3D' : locale === 'ru' ? 'Наглядный 3D' : 'Interactive 3D Model'}
             </p>
           </div>

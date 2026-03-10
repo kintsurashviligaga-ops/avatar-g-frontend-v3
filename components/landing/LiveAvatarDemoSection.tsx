@@ -219,28 +219,44 @@ export function LiveAvatarDemoSection() {
     setCameraError(false)
     setCameraReady(false)
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
-        audio: false,
-      })
+      let stream: MediaStream
+      try {
+        // Preferred: front-facing with ideal resolution
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
+          audio: false,
+        })
+      } catch {
+        // Fallback: some Android devices reject specific constraints — retry minimal
+        stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false })
+      }
       streamRef.current = stream
       setActiveInput('camera')
-      setTimeout(() => {
-        if (videoRef.current) {
-          const videoEl = videoRef.current
-          videoEl.muted = true
-          videoEl.playsInline = true
-          videoEl.autoplay = true
-          videoEl.srcObject = stream
-          videoEl.play()
-            .then(() => setCameraReady(true))
-            .catch(() => setCameraReady(true))
-        }
-      }, 0)
+      // srcObject is attached in useEffect below, after the <video> element mounts
     } catch {
       setCameraError(true)
     }
   }, [])
+
+  /* ── Attach stream to <video> once React renders it into the DOM ── */
+  /* iOS Safari requires srcObject + play() to be called synchronously  */
+  /* after the element exists — a useEffect guarantees that timing.      */
+  useEffect(() => {
+    if (activeInput !== 'camera') return
+    const videoEl = videoRef.current
+    if (!videoEl || !streamRef.current) return
+    videoEl.srcObject = streamRef.current
+    const tryPlay = () => {
+      videoEl.play()
+        .then(() => setCameraReady(true))
+        .catch(() => setCameraReady(true)) // autoPlay attribute handles it on most mobile
+    }
+    if (videoEl.readyState >= 2) {
+      tryPlay()
+    } else {
+      videoEl.addEventListener('loadedmetadata', tryPlay, { once: true })
+    }
+  }, [activeInput])
 
   /* ── Capture photo from camera ── */
   const capturePhoto = useCallback(() => {
@@ -319,7 +335,7 @@ export function LiveAvatarDemoSection() {
   const activeStyle = AVATAR_STYLES.find(s => s.id === selectedStyle)!
 
   return (
-    <section className="relative px-4 py-16 sm:px-6 md:py-24">
+    <section className="relative px-4 py-12 sm:px-6 sm:py-16 md:py-24">
       {/* section neon edges */}
       <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-cyan-400/20 to-transparent" />
       <div className="absolute bottom-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-violet-400/15 to-transparent" />
@@ -411,7 +427,7 @@ export function LiveAvatarDemoSection() {
         </div>
 
         {/* ─── Main Card ────────────────────────────────────── */}
-        <div className="rounded-3xl border border-white/[0.12] bg-[linear-gradient(155deg,rgba(12,22,46,0.90),rgba(7,14,32,0.82))] shadow-[0_0_0_1px_rgba(255,255,255,0.10),0_32px_80px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.07)] p-5 sm:p-6 lg:p-8">
+<div className="rounded-3xl border border-white/[0.12] bg-[linear-gradient(155deg,rgba(12,22,46,0.90),rgba(7,14,32,0.82))] shadow-[0_0_0_1px_rgba(255,255,255,0.10),0_32px_80px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.07)] p-4 sm:p-5 lg:p-8">
 
           {/* Style indicator pill */}
           <div
@@ -540,13 +556,13 @@ export function LiveAvatarDemoSection() {
                     <button
                       onClick={capturePhoto}
                       disabled={!cameraReady}
-                      className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-cyan-500 via-blue-500 to-violet-500 text-white px-4 py-2.5 text-sm font-semibold hover:opacity-90 disabled:opacity-50 transition-opacity shadow-[0_0_20px_rgba(34,211,238,0.28)]"
+                      className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-cyan-500 via-blue-500 to-violet-500 text-white px-4 py-3 sm:py-2.5 text-sm font-semibold hover:opacity-90 disabled:opacity-50 transition-opacity shadow-[0_0_20px_rgba(34,211,238,0.28)] min-h-[44px]"
                     >
                       <Camera className="w-4 h-4" /> {text.capture}
                     </button>
                     <button
                       onClick={stopCamera}
-                      className="inline-flex items-center gap-1.5 rounded-xl border border-white/20 bg-white/[0.05] px-4 py-2.5 text-sm text-white/70 hover:text-white transition-colors"
+                      className="inline-flex items-center gap-1.5 rounded-xl border border-white/20 bg-white/[0.05] px-4 py-3 sm:py-2.5 text-sm text-white/70 hover:text-white transition-colors min-h-[44px]"
                     >
                       <X className="w-4 h-4" /> {text.cancelBtn}
                     </button>
@@ -558,7 +574,7 @@ export function LiveAvatarDemoSection() {
                 </div>
               ) : (
                 <>
-                  <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-cyan-300/40 bg-cyan-300/10 px-4 py-2.5 text-sm font-semibold text-cyan-100 hover:bg-cyan-300/20 transition-colors active:scale-[0.97]">
+                  <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-cyan-300/40 bg-cyan-300/10 px-4 py-3 sm:py-2.5 text-sm font-semibold text-cyan-100 hover:bg-cyan-300/20 transition-colors active:scale-[0.97] min-h-[44px]">
                     <Upload className="w-4 h-4" />
                     {text.upload}
                     <input
@@ -570,7 +586,7 @@ export function LiveAvatarDemoSection() {
                   </label>
 
                   {cameraError ? (
-                    <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-xl border border-orange-400/40 bg-orange-400/10 px-3 py-2 text-[11px] text-orange-200 hover:bg-orange-400/18 transition-colors">
+                    <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-xl border border-orange-400/40 bg-orange-400/10 px-3 py-3 sm:py-2 text-[11px] text-orange-200 hover:bg-orange-400/18 transition-colors min-h-[44px]">
                       <CameraOff className="w-3.5 h-3.5 shrink-0" />
                       <span>{text.cameraError}</span>
                       <input type="file" accept="image/*" capture="user" className="hidden" onChange={e => onFileUpload(e.target.files?.[0] ?? null)} />
@@ -578,7 +594,7 @@ export function LiveAvatarDemoSection() {
                   ) : (
                     <button
                       onClick={startCamera}
-                      className="inline-flex items-center gap-2 rounded-xl border border-white/20 bg-white/[0.05] px-4 py-2.5 text-sm font-semibold text-white/80 hover:text-white hover:border-white/35 transition-colors active:scale-[0.97]"
+                      className="inline-flex items-center gap-2 rounded-xl border border-white/20 bg-white/[0.05] px-4 py-3 sm:py-2.5 text-sm font-semibold text-white/80 hover:text-white hover:border-white/35 transition-colors active:scale-[0.97] min-h-[44px]"
                     >
                       <Camera className="w-4 h-4" />
                       {text.camera}
