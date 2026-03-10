@@ -33,23 +33,23 @@ export function ValueStrip() {
     <section className="px-4 sm:px-6 lg:px-10 py-12 sm:py-16">
       <div className="max-w-3xl mx-auto">
         {/* Header */}
-        <div className="text-center mb-10">
-          <h2 className="text-xl sm:text-2xl font-semibold text-white/80 tracking-tight">
+        <div className="text-center mb-8">
+          <h2 className="text-xl sm:text-2xl font-semibold tracking-tight" style={{ color: 'var(--color-text)' }}>
             {{ en: 'Why MyAvatar.ge', ka: 'რატომ MyAvatar.ge', ru: 'Почему MyAvatar.ge' }[language] || 'Why MyAvatar.ge'}
           </h2>
         </div>
 
         {/* Values */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 sm:gap-8">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 sm:gap-6">
           {VALUES.map((v, i) => (
             <div key={i} className="flex flex-col gap-2">
               <div className="flex items-center gap-3">
-                <div className="w-1 h-1 rounded-full bg-white/20" />
-                <h3 className="text-[14px] sm:text-[15px] font-semibold text-white/60">
+                <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: 'var(--color-accent)' }} />
+                <h3 className="text-[14px] sm:text-[15px] font-semibold" style={{ color: 'var(--color-text-secondary)' }}>
                   {v.label[language] || v.label.en}
                 </h3>
               </div>
-              <p className="text-[13px] text-white/25 leading-relaxed pl-4">
+              <p className="text-[13px] leading-relaxed pl-4" style={{ color: 'var(--color-text-tertiary)' }}>
                 {v.desc[language] || v.desc.en}
               </p>
             </div>

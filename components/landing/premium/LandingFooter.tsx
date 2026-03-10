@@ -15,43 +15,43 @@ export function LandingFooter() {
   const lh = (p: string) => `/${language}${p}`
 
   return (
-    <footer className="px-4 sm:px-6 lg:px-10 pt-10 pb-8 border-t border-white/[0.04]">
+    <footer className="px-4 sm:px-6 lg:px-10 pt-10 pb-8" style={{ borderTop: '1px solid var(--color-border)' }}>
       <div className="max-w-3xl mx-auto">
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-8 text-[12px] text-white/25">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-8 text-[12px]" style={{ color: 'var(--color-text-tertiary)' }}>
           <div>
-            <p className="text-white/40 font-medium mb-3 text-[11px] uppercase tracking-wider">{c.services}</p>
+            <p className="font-medium mb-3 text-[11px] uppercase tracking-wider" style={{ color: 'var(--color-text-secondary)' }}>{c.services}</p>
             <div className="space-y-2">
-              <Link href={lh('/services/avatar')} className="block hover:text-white/50 transition-colors">Avatar</Link>
-              <Link href={lh('/services/video')} className="block hover:text-white/50 transition-colors">Video</Link>
-              <Link href={lh('/services/image')} className="block hover:text-white/50 transition-colors">Image</Link>
-              <Link href={lh('/services/music')} className="block hover:text-white/50 transition-colors">Music</Link>
+              <Link href={lh('/services/avatar')} className="block transition-colors hover:opacity-70">Avatar</Link>
+              <Link href={lh('/services/video')} className="block transition-colors hover:opacity-70">Video</Link>
+              <Link href={lh('/services/image')} className="block transition-colors hover:opacity-70">Image</Link>
+              <Link href={lh('/services/music')} className="block transition-colors hover:opacity-70">Music</Link>
             </div>
           </div>
           <div>
-            <p className="text-white/40 font-medium mb-3 text-[11px] uppercase tracking-wider">{c.platform}</p>
+            <p className="font-medium mb-3 text-[11px] uppercase tracking-wider" style={{ color: 'var(--color-text-secondary)' }}>{c.platform}</p>
             <div className="space-y-2">
-              <Link href={lh('/services')} className="block hover:text-white/50 transition-colors">{c.services}</Link>
-              <Link href={lh('/pricing')} className="block hover:text-white/50 transition-colors">Pricing</Link>
-              <Link href={lh('/business')} className="block hover:text-white/50 transition-colors">Business</Link>
+              <Link href={lh('/services')} className="block transition-colors hover:opacity-70">{c.services}</Link>
+              <Link href={lh('/pricing')} className="block transition-colors hover:opacity-70">Pricing</Link>
+              <Link href={lh('/business')} className="block transition-colors hover:opacity-70">Business</Link>
             </div>
           </div>
           <div>
-            <p className="text-white/40 font-medium mb-3 text-[11px] uppercase tracking-wider">{c.company}</p>
+            <p className="font-medium mb-3 text-[11px] uppercase tracking-wider" style={{ color: 'var(--color-text-secondary)' }}>{c.company}</p>
             <div className="space-y-2">
-              <Link href={lh('/about')} className="block hover:text-white/50 transition-colors">About</Link>
-              <Link href={lh('/contact')} className="block hover:text-white/50 transition-colors">Contact</Link>
+              <Link href={lh('/about')} className="block transition-colors hover:opacity-70">About</Link>
+              <Link href={lh('/contact')} className="block transition-colors hover:opacity-70">Contact</Link>
             </div>
           </div>
           <div>
-            <p className="text-white/40 font-medium mb-3 text-[11px] uppercase tracking-wider">{c.legal}</p>
+            <p className="font-medium mb-3 text-[11px] uppercase tracking-wider" style={{ color: 'var(--color-text-secondary)' }}>{c.legal}</p>
             <div className="space-y-2">
-              <Link href={lh('/privacy')} className="block hover:text-white/50 transition-colors">Privacy</Link>
-              <Link href={lh('/terms')} className="block hover:text-white/50 transition-colors">Terms</Link>
+              <Link href={lh('/privacy')} className="block transition-colors hover:opacity-70">Privacy</Link>
+              <Link href={lh('/terms')} className="block transition-colors hover:opacity-70">Terms</Link>
             </div>
           </div>
         </div>
 
-        <div className="mt-10 pt-6 border-t border-white/[0.04] flex flex-col sm:flex-row items-center justify-between gap-2 text-[11px] text-white/15">
+        <div className="mt-10 pt-6 flex flex-col sm:flex-row items-center justify-between gap-2 text-[11px]" style={{ borderTop: '1px solid var(--color-border)', color: 'var(--color-text-tertiary)' }}>
           <span>© {new Date().getFullYear()} MyAvatar.ge</span>
           <span>{c.rights}</span>
         </div>

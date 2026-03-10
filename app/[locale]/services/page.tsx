@@ -287,34 +287,26 @@ function ServiceCard({ service, locale, isCore = false }: { service: ServiceItem
   return (
     <Link
       href={`/${locale}/services/${service.id}`}
-      className={[
-        'group relative overflow-hidden rounded-2xl border p-5 md:p-6 transition-all duration-300',
-        'bg-[linear-gradient(150deg,rgba(9,18,38,0.88),rgba(5,10,24,0.72))] backdrop-blur-xl',
-        'hover:-translate-y-1 hover:border-cyan-300/55 hover:shadow-[0_18px_56px_rgba(14,165,233,0.24)]',
-        'ag-neon-contour',
-        isCore
-          ? 'min-h-[230px] border-cyan-300/60 shadow-[0_26px_80px_rgba(14,165,233,0.34)] ring-1 ring-cyan-300/35'
-          : 'min-h-[185px] border-white/[0.14]',
-      ].join(' ')}
+      className='group relative overflow-hidden rounded-2xl p-5 md:p-6 transition-all duration-200 hover:-translate-y-0.5'
+      style={{ backgroundColor: 'var(--card-bg)', border: isCore ? '1px solid var(--color-accent)' : '1px solid var(--color-border)' }}
     >
-      <div className='pointer-events-none absolute inset-0 opacity-80 [background:radial-gradient(circle_at_15%_15%,rgba(34,211,238,0.16),transparent_45%),radial-gradient(circle_at_85%_85%,rgba(124,92,252,0.14),transparent_50%)]' />
       <div className='relative z-10 flex h-full flex-col'>
         {isCore && (
-          <span className='mb-3 inline-flex w-fit rounded-full border border-cyan-300/40 bg-cyan-300/12 px-3 py-1 text-[10px] font-semibold tracking-[0.16em] text-cyan-100'>
+          <span className='mb-3 inline-flex w-fit rounded-full px-3 py-1 text-[10px] font-semibold tracking-[0.16em]' style={{ backgroundColor: 'var(--color-accent-soft)', color: 'var(--color-accent)', border: '1px solid var(--color-accent)' }}>
             CORE ORCHESTRATOR
           </span>
         )}
         <div className='mb-4 flex items-center justify-between gap-3'>
-          <div className='inline-flex h-11 w-11 items-center justify-center rounded-xl border border-cyan-300/35 bg-cyan-300/10 text-cyan-100 shadow-[0_0_22px_rgba(34,211,238,0.24)]'>
+          <div className='inline-flex h-11 w-11 items-center justify-center rounded-xl' style={{ backgroundColor: 'var(--color-accent-soft)', color: 'var(--color-accent)' }}>
             <Icon className='h-5 w-5' />
           </div>
-          <span className='rounded-full border border-white/15 bg-white/5 px-2.5 py-1 text-[10px] font-medium tracking-[0.08em] text-white/75'>
+          <span className='rounded-full px-2.5 py-1 text-[10px] font-medium tracking-[0.08em]' style={{ backgroundColor: 'var(--color-surface)', color: 'var(--color-text-secondary)', border: '1px solid var(--color-border)' }}>
             {service.tag}
           </span>
         </div>
-        <h3 className='mb-2 text-lg font-semibold leading-tight text-white group-hover:text-cyan-100'>{service.title}</h3>
-        <p className='text-sm leading-relaxed text-white/68'>{service.description}</p>
-        <div className='mt-auto pt-5 text-xs font-medium text-cyan-200/90'>{openLabel}</div>
+        <h3 className='mb-2 text-lg font-semibold leading-tight' style={{ color: 'var(--color-text)' }}>{service.title}</h3>
+        <p className='text-sm leading-relaxed' style={{ color: 'var(--color-text-secondary)' }}>{service.description}</p>
+        <div className='mt-auto pt-5 text-xs font-medium' style={{ color: 'var(--color-accent)' }}>{openLabel}</div>
       </div>
     </Link>
   );
@@ -323,11 +315,8 @@ function ServiceCard({ service, locale, isCore = false }: { service: ServiceItem
 function EcosystemNode({ label, className = '' }: { label: string; className?: string }) {
   return (
     <div
-      className={[
-        'rounded-2xl border border-white/14 bg-[linear-gradient(145deg,rgba(255,255,255,0.045),rgba(255,255,255,0.02))]',
-        'px-4 py-3 text-center text-sm font-medium text-white/84 backdrop-blur-md',
-        className,
-      ].join(' ')}
+      className={`rounded-2xl px-4 py-3 text-center text-sm font-medium ${className}`}
+      style={{ backgroundColor: 'var(--color-surface)', border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)' }}
     >
       {label}
     </div>
@@ -340,20 +329,20 @@ function AgentGCoreCard({ service, locale }: { service: ServiceItem; locale: str
   return (
     <Link
       href={`/${locale}/services/${service.id}`}
-      className='group relative block overflow-hidden rounded-2xl border border-cyan-300/56 bg-[linear-gradient(150deg,rgba(8,21,40,0.96),rgba(5,12,26,0.9))] p-6 shadow-[0_26px_90px_rgba(14,165,233,0.36)] ring-1 ring-cyan-300/36 transition-all duration-300 hover:-translate-y-1 hover:border-cyan-200/75 hover:shadow-[0_30px_110px_rgba(14,165,233,0.44)]'
+      className='group relative block overflow-hidden rounded-2xl p-6 transition-all duration-200 hover:-translate-y-0.5'
+      style={{ backgroundColor: 'var(--card-bg)', border: '2px solid var(--color-accent)' }}
     >
-      <div className='pointer-events-none absolute inset-0 [background:radial-gradient(circle_at_50%_35%,rgba(34,211,238,0.24),transparent_52%)]' />
       <div className='relative z-10'>
-        <span className='mb-3 inline-flex rounded-full border border-cyan-200/45 bg-cyan-300/14 px-3 py-1 text-[10px] font-semibold tracking-[0.18em] text-cyan-100'>
+        <span className='mb-3 inline-flex rounded-full px-3 py-1 text-[10px] font-semibold tracking-[0.18em]' style={{ backgroundColor: 'var(--color-accent-soft)', color: 'var(--color-accent)', border: '1px solid var(--color-accent)' }}>
           CORE ORCHESTRATOR
         </span>
-        <div className='mb-4 inline-flex h-12 w-12 items-center justify-center rounded-xl border border-cyan-300/45 bg-cyan-300/14 text-cyan-100 shadow-[0_0_28px_rgba(34,211,238,0.28)]'>
+        <div className='mb-4 inline-flex h-12 w-12 items-center justify-center rounded-xl' style={{ backgroundColor: 'var(--color-accent-soft)', color: 'var(--color-accent)' }}>
           <Icon className='h-5 w-5' />
         </div>
-        <p className='mb-1 text-[11px] uppercase tracking-[0.12em] text-cyan-100/85'>Coordinate</p>
-        <h3 className='text-xl font-semibold leading-tight text-white'>{service.title}</h3>
-        <p className='mt-3 text-sm leading-relaxed text-white/76'>{service.description}</p>
-        <div className='mt-5 inline-flex items-center rounded-lg border border-cyan-300/40 bg-cyan-300/12 px-3 py-1.5 text-xs font-semibold text-cyan-100'>
+        <p className='mb-1 text-[11px] uppercase tracking-[0.12em]' style={{ color: 'var(--color-accent)' }}>Coordinate</p>
+        <h3 className='text-xl font-semibold leading-tight' style={{ color: 'var(--color-text)' }}>{service.title}</h3>
+        <p className='mt-3 text-sm leading-relaxed' style={{ color: 'var(--color-text-secondary)' }}>{service.description}</p>
+        <div className='mt-5 inline-flex items-center rounded-lg px-3 py-1.5 text-xs font-semibold' style={{ backgroundColor: 'var(--color-accent)', color: '#fff' }}>
           {openLabel}
         </div>
       </div>
@@ -371,23 +360,18 @@ export default async function LocalizedServicesPage({ params }: ServicesPageProp
   }
 
   return (
-    <section className='relative overflow-hidden px-4 py-16 text-white sm:px-6 md:py-20 lg:px-10 lg:py-24'>
-      <div className='pointer-events-none absolute inset-0 [background:radial-gradient(circle_at_12%_14%,rgba(34,211,238,0.16),transparent_34%),radial-gradient(circle_at_84%_82%,rgba(124,92,252,0.16),transparent_34%)]' />
-      <div className='pointer-events-none absolute inset-0 opacity-40 [background-image:linear-gradient(to_right,rgba(148,163,184,0.08)_1px,transparent_1px),linear-gradient(to_bottom,rgba(148,163,184,0.08)_1px,transparent_1px)] [background-size:56px_56px]' />
-      <div className='pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(2,6,23,0.6),rgba(2,6,23,0.2)_26%,rgba(2,6,23,0.68)_100%)]' />
-
+    <section className='relative overflow-hidden px-4 py-16 sm:px-6 md:py-20 lg:px-10 lg:py-24' style={{ backgroundColor: 'var(--color-bg)', color: 'var(--color-text)' }}>
       <div className='relative mx-auto flex w-full max-w-7xl flex-col gap-12 md:gap-16'>
         <header className='mx-auto max-w-4xl text-center'>
-          <p className='mb-3 inline-flex rounded-full border border-cyan-300/35 bg-cyan-300/10 px-4 py-1.5 text-xs font-semibold tracking-[0.2em] text-cyan-100'>
+          <p className='mb-3 inline-flex rounded-full px-4 py-1.5 text-xs font-semibold tracking-[0.2em]' style={{ backgroundColor: 'var(--color-accent-soft)', color: 'var(--color-accent)', border: '1px solid var(--color-accent)' }}>
             {text.eyebrow}
           </p>
-          <h1 className='text-4xl font-semibold tracking-tight text-white sm:text-5xl lg:text-6xl'>{text.title}</h1>
-          <p className='mx-auto mt-4 max-w-3xl text-lg text-white/82 sm:text-xl'>{text.subtitle}</p>
-          <p className='mx-auto mt-5 max-w-3xl text-sm leading-relaxed text-white/68 sm:text-base'>{text.description}</p>
+          <h1 className='text-4xl font-semibold tracking-tight sm:text-5xl lg:text-6xl' style={{ color: 'var(--color-text)' }}>{text.title}</h1>
+          <p className='mx-auto mt-4 max-w-3xl text-lg sm:text-xl' style={{ color: 'var(--color-text-secondary)' }}>{text.subtitle}</p>
+          <p className='mx-auto mt-5 max-w-3xl text-sm leading-relaxed sm:text-base' style={{ color: 'var(--color-text-tertiary)' }}>{text.description}</p>
         </header>
 
-        <section className='relative overflow-hidden rounded-3xl border border-white/12 bg-[linear-gradient(165deg,rgba(7,14,30,0.92),rgba(5,10,24,0.84))] p-5 sm:p-6 lg:p-10 ag-neon-window'>
-          <div className='pointer-events-none absolute inset-0 [background:radial-gradient(circle_at_50%_50%,rgba(34,211,238,0.14),transparent_38%)]' />
+        <section className='relative overflow-hidden rounded-3xl p-5 sm:p-6 lg:p-10' style={{ backgroundColor: 'var(--color-surface)', border: '1px solid var(--color-border)' }}>
           <div className='relative grid gap-4 md:grid-cols-3 md:grid-rows-5 md:gap-5'>
             <EcosystemNode label='Avatar & Creative Generation' className='md:col-start-2 md:row-start-1' />
             <EcosystemNode label='Creative Intelligence Layer' className='md:col-start-1 md:row-start-2' />
@@ -398,17 +382,17 @@ export default async function LocalizedServicesPage({ params }: ServicesPageProp
             <EcosystemNode label='Commerce, Business & Development' className='md:col-start-2 md:row-start-4' />
             <EcosystemNode label='Vertical & Future Modules' className='md:col-start-2 md:row-start-5' />
 
-            <div className='pointer-events-none absolute left-1/2 top-[12%] hidden h-[76%] w-px -translate-x-1/2 bg-gradient-to-b from-cyan-300/0 via-cyan-300/34 to-cyan-300/0 md:block' />
-            <div className='pointer-events-none absolute left-[16%] top-[34%] hidden h-px w-[68%] bg-gradient-to-r from-cyan-300/0 via-cyan-300/34 to-cyan-300/0 md:block' />
+            <div className='pointer-events-none absolute left-1/2 top-[12%] hidden h-[76%] w-px -translate-x-1/2 md:block' style={{ background: 'linear-gradient(to bottom, transparent, var(--color-border), transparent)' }} />
+            <div className='pointer-events-none absolute left-[16%] top-[34%] hidden h-px w-[68%] md:block' style={{ background: 'linear-gradient(to right, transparent, var(--color-border), transparent)' }} />
           </div>
         </section>
 
         <section className='space-y-8 md:space-y-10'>
           {CATEGORIES.map((category) => (
-            <article key={category.id} className='rounded-3xl border border-white/12 bg-[linear-gradient(160deg,rgba(8,14,30,0.86),rgba(5,10,24,0.72))] p-5 sm:p-6 md:p-8'>
+            <article key={category.id} className='rounded-3xl p-5 sm:p-6 md:p-8' style={{ backgroundColor: 'var(--color-surface)', border: '1px solid var(--color-border)' }}>
               <div className='mb-5 md:mb-6'>
-                <h2 className='text-2xl font-semibold tracking-tight text-white md:text-3xl'>{category.title}</h2>
-                <p className='mt-2 max-w-3xl text-sm leading-relaxed text-white/68 md:text-base'>{category.summary}</p>
+                <h2 className='text-2xl font-semibold tracking-tight md:text-3xl' style={{ color: 'var(--color-text)' }}>{category.title}</h2>
+                <p className='mt-2 max-w-3xl text-sm leading-relaxed md:text-base' style={{ color: 'var(--color-text-secondary)' }}>{category.summary}</p>
               </div>
               <div className='grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3'>
                 {category.serviceIds.map((serviceId) => {
@@ -422,33 +406,35 @@ export default async function LocalizedServicesPage({ params }: ServicesPageProp
           ))}
         </section>
 
-        <section className='rounded-3xl border border-white/12 bg-[linear-gradient(160deg,rgba(7,13,29,0.86),rgba(5,9,22,0.72))] p-5 sm:p-6 md:p-8'>
-          <p className='text-center text-base font-semibold tracking-[0.06em] text-cyan-100 md:text-lg'>{text.workflowLabel}</p>
-          <p className='mx-auto mt-3 max-w-3xl text-center text-sm leading-relaxed text-white/70 md:text-base'>{text.workflowSub}</p>
-          <div className='mt-6 grid grid-cols-1 gap-3 text-sm text-white/80 sm:grid-cols-2 lg:grid-cols-5'>
+        <section className='rounded-3xl p-5 sm:p-6 md:p-8' style={{ backgroundColor: 'var(--color-surface)', border: '1px solid var(--color-border)' }}>
+          <p className='text-center text-base font-semibold tracking-[0.06em] md:text-lg' style={{ color: 'var(--color-accent)' }}>{text.workflowLabel}</p>
+          <p className='mx-auto mt-3 max-w-3xl text-center text-sm leading-relaxed md:text-base' style={{ color: 'var(--color-text-secondary)' }}>{text.workflowSub}</p>
+          <div className='mt-6 grid grid-cols-1 gap-3 text-sm sm:grid-cols-2 lg:grid-cols-5' style={{ color: 'var(--color-text-secondary)' }}>
             {['Avatar / Media', 'Intelligence', 'Workflows', 'Business', 'Expansion'].map((step) => (
-              <div key={step} className='rounded-xl border border-white/12 bg-white/[0.03] px-4 py-3 text-center'>
+              <div key={step} className='rounded-xl px-4 py-3 text-center' style={{ backgroundColor: 'var(--card-bg)', border: '1px solid var(--color-border)' }}>
                 {step}
               </div>
             ))}
           </div>
         </section>
 
-        <section className='rounded-3xl border border-cyan-300/26 bg-[linear-gradient(145deg,rgba(8,17,36,0.9),rgba(5,11,25,0.84))] p-6 sm:p-7 md:p-10 ag-neon-window'>
-          <p className='mb-3 text-xs font-semibold tracking-[0.2em] text-cyan-100'>{text.ctaEyebrow}</p>
-          <h2 className='max-w-3xl text-2xl font-semibold tracking-tight text-white sm:text-3xl md:text-4xl'>{text.ctaTitle}</h2>
-          <p className='mt-3 max-w-3xl text-sm leading-relaxed text-white/72 md:text-base'>{text.ctaDescription}</p>
+        <section className='rounded-3xl p-6 sm:p-7 md:p-10' style={{ backgroundColor: 'var(--color-surface)', border: '1px solid var(--color-accent)' }}>
+          <p className='mb-3 text-xs font-semibold tracking-[0.2em]' style={{ color: 'var(--color-accent)' }}>{text.ctaEyebrow}</p>
+          <h2 className='max-w-3xl text-2xl font-semibold tracking-tight sm:text-3xl md:text-4xl' style={{ color: 'var(--color-text)' }}>{text.ctaTitle}</h2>
+          <p className='mt-3 max-w-3xl text-sm leading-relaxed md:text-base' style={{ color: 'var(--color-text-secondary)' }}>{text.ctaDescription}</p>
           <div className='mt-6 flex flex-wrap items-center gap-3'>
             <Link
               href={`/${locale}/services`}
-              className='inline-flex items-center gap-2 rounded-xl border border-cyan-300/45 bg-cyan-300/14 px-5 py-3 text-sm font-semibold text-cyan-100 transition hover:-translate-y-0.5 hover:bg-cyan-300/22'
+              className='inline-flex items-center gap-2 rounded-xl px-5 py-3 text-sm font-semibold transition hover:-translate-y-0.5'
+              style={{ backgroundColor: 'var(--color-accent)', color: '#fff' }}
             >
               {text.exploreCta}
               <ArrowRight className='h-4 w-4' />
             </Link>
             <Link
               href={`/${locale}/signup`}
-              className='inline-flex items-center gap-2 rounded-xl border border-white/20 bg-white/[0.06] px-5 py-3 text-sm font-semibold text-white transition hover:-translate-y-0.5 hover:border-cyan-300/45 hover:text-cyan-100'
+              className='inline-flex items-center gap-2 rounded-xl px-5 py-3 text-sm font-semibold transition hover:-translate-y-0.5'
+              style={{ backgroundColor: 'var(--color-surface)', color: 'var(--color-text)', border: '1px solid var(--color-border)' }}
             >
               {text.startCta}
             </Link>

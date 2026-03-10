@@ -29,13 +29,13 @@ export default async function ServiceDetailPage({ params }: ServiceDetailPagePro
   if (!meta) {
     const text = NOT_FOUND_TEXT[locale] ?? NOT_FOUND_TEXT['en']!;
     return (
-      <section className="min-h-screen bg-transparent text-white flex items-center justify-center">
+      <section className="min-h-screen flex items-center justify-center" style={{ backgroundColor: 'var(--color-bg)', color: 'var(--color-text)' }}>
         <div className="text-center space-y-4">
-          <div className="w-20 h-20 mx-auto bg-white/[0.03] border border-white/[0.08] rounded-2xl flex items-center justify-center mb-4">
-            <span className="text-3xl opacity-30">?</span>
+          <div className="w-20 h-20 mx-auto rounded-2xl flex items-center justify-center mb-4" style={{ backgroundColor: 'var(--card-bg)', border: '1px solid var(--color-border)' }}>
+            <span className="text-3xl" style={{ color: 'var(--color-text-tertiary)' }}>?</span>
           </div>
           <h1 className="text-2xl font-semibold">{text.title}</h1>
-          <Link href={`/${locale}/services`} className="text-sm text-cyan-300 hover:text-cyan-200 transition-colors">
+          <Link href={`/${locale}/services`} className="text-sm transition-colors" style={{ color: 'var(--color-accent)' }}>
             ← {text.back}
           </Link>
         </div>

@@ -31,13 +31,20 @@ export function ChatInputDock() {
   }
 
   return (
-    <section className="px-4 sm:px-6 lg:px-10 pb-10 sm:pb-14 animate-[fadeIn_1s_ease-out_0.4s_both]">
+    <section className="px-4 sm:px-6 lg:px-10 pb-10 sm:pb-14">
       <div className="max-w-2xl mx-auto">
-        <div className="relative flex items-center bg-white/[0.035] border border-white/[0.07] rounded-2xl transition-all duration-300 focus-within:border-white/[0.18] focus-within:bg-white/[0.05] focus-within:shadow-[0_0_60px_rgba(255,255,255,0.025)]">
+        <div
+          className="relative flex items-center rounded-xl transition-all duration-200"
+          style={{
+            backgroundColor: 'var(--input-bg)',
+            border: '1px solid var(--input-border)',
+          }}
+        >
           {/* Attach button */}
           <button
             type="button"
-            className="flex-shrink-0 ml-2 p-2 text-white/20 hover:text-white/40 transition-colors rounded-lg hover:bg-white/[0.04]"
+            className="flex-shrink-0 ml-2 p-2 rounded-lg transition-colors"
+            style={{ color: 'var(--color-text-tertiary)' }}
             aria-label="Attach"
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -54,7 +61,8 @@ export function ChatInputDock() {
             onChange={(e) => setValue(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder={PLACEHOLDERS[language] || PLACEHOLDERS.en}
-            className="flex-1 bg-transparent text-white/80 placeholder:text-white/20 text-[14px] sm:text-[15px] py-3.5 sm:py-4 px-3 outline-none"
+            className="flex-1 bg-transparent text-sm sm:text-[15px] py-3.5 sm:py-4 px-3 outline-none"
+            style={{ color: 'var(--color-text)', border: 'none', boxShadow: 'none' }}
           />
 
           {/* Send button */}
@@ -62,7 +70,8 @@ export function ChatInputDock() {
             type="button"
             onClick={handleSubmit}
             disabled={!value.trim()}
-            className="flex-shrink-0 mr-2 p-2 rounded-lg transition-all duration-200 disabled:opacity-20 disabled:cursor-default text-white/30 hover:text-white/60 hover:bg-white/[0.06] active:scale-95"
+            className="flex-shrink-0 mr-2 p-2 rounded-lg transition-all duration-200 disabled:opacity-20 active:scale-95"
+            style={{ color: value.trim() ? 'var(--color-accent)' : 'var(--color-text-tertiary)' }}
             aria-label="Send"
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">

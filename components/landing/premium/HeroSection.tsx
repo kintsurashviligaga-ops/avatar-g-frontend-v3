@@ -4,22 +4,22 @@ import { useLanguage } from '@/lib/i18n/LanguageContext'
 
 const COPY = {
   en: {
-    greeting: 'Welcome to',
+    greeting: 'Your AI Workspace',
     brand: 'MyAvatar',
     brandDot: '.ge',
-    tagline: 'Your all-in-one AI workspace for avatars, video, images, music, and media production.',
+    tagline: 'Create avatars, videos, images, music, and media — all in one intelligent platform.',
   },
   ka: {
-    greeting: 'კეთილი იყოს თქვენი მობრძანება',
+    greeting: 'თქვენი AI სამუშაო სივრცე',
     brand: 'MyAvatar',
     brandDot: '.ge',
-    tagline: 'AI სამუშაო სივრცე ავატარების, ვიდეო, სურათების, მუსიკისა და მედია წარმოებისთვის.',
+    tagline: 'შექმენით ავატარები, ვიდეო, სურათები, მუსიკა და მედია — ერთ ინტელექტუალურ პლატფორმაზე.',
   },
   ru: {
-    greeting: 'Добро пожаловать в',
+    greeting: 'Ваше AI-пространство',
     brand: 'MyAvatar',
     brandDot: '.ge',
-    tagline: 'Универсальное AI-пространство для аватаров, видео, изображений, музыки и медиа.',
+    tagline: 'Создавайте аватары, видео, изображения, музыку и медиа — на одной интеллектуальной платформе.',
   },
 } as const
 
@@ -28,23 +28,37 @@ export function HeroSection() {
   const c = COPY[language] || COPY.en
 
   return (
-    <section className="flex flex-col items-center justify-center text-center px-6 pt-24 pb-8 sm:pt-32 sm:pb-12 lg:pt-40 lg:pb-16 animate-[fadeIn_0.8s_ease-out]">
-      {/* Subtle ambient glow */}
-      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[400px] bg-[radial-gradient(ellipse_at_center,rgba(255,255,255,0.02),transparent_70%)] pointer-events-none" />
+    <section className="flex flex-col items-center justify-center text-center px-6 pt-20 pb-6 sm:pt-28 sm:pb-10 lg:pt-32 lg:pb-12">
+      {/* Centered 3D avatar placeholder */}
+      <div
+        className="w-20 h-20 sm:w-24 sm:h-24 rounded-3xl mb-6 sm:mb-8 flex items-center justify-center"
+        style={{
+          background: 'linear-gradient(135deg, var(--color-accent), rgba(99,102,241,0.6))',
+          boxShadow: '0 8px 32px rgba(99,102,241,0.25)',
+        }}
+      >
+        <span className="text-3xl sm:text-4xl text-white font-bold">G</span>
+      </div>
 
-      {/* Greeting */}
-      <p className="text-[13px] sm:text-sm tracking-[0.2em] uppercase text-white/20 font-medium mb-6 sm:mb-8">
+      {/* Badge */}
+      <p
+        className="text-[11px] sm:text-xs tracking-[0.2em] uppercase font-medium mb-4 sm:mb-5"
+        style={{ color: 'var(--color-text-tertiary)' }}
+      >
         {c.greeting}
       </p>
 
       {/* Brand name */}
-      <h1 className="text-[2.75rem] sm:text-6xl lg:text-7xl font-bold tracking-tight leading-[1.05]">
-        <span className="text-white">{c.brand}</span>
-        <span className="text-white/25">{c.brandDot}</span>
+      <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight leading-[1.08]" style={{ color: 'var(--color-text)' }}>
+        {c.brand}
+        <span style={{ color: 'var(--color-accent)', opacity: 0.6 }}>{c.brandDot}</span>
       </h1>
 
       {/* Tagline */}
-      <p className="mt-5 sm:mt-7 text-[15px] sm:text-base lg:text-lg text-white/30 max-w-md lg:max-w-xl leading-relaxed font-light">
+      <p
+        className="mt-4 sm:mt-5 text-[15px] sm:text-base lg:text-lg max-w-lg lg:max-w-xl leading-relaxed font-normal"
+        style={{ color: 'var(--color-text-secondary)' }}
+      >
         {c.tagline}
       </p>
     </section>

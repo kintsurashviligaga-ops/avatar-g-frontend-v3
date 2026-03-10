@@ -14,20 +14,18 @@ export function LandingCTA() {
   const c = CTA_COPY[language] || CTA_COPY.en
 
   return (
-    <section className="px-4 sm:px-6 lg:px-10 py-16 sm:py-24">
+    <section className="px-4 sm:px-6 lg:px-10 py-14 sm:py-20">
       <div className="max-w-md mx-auto text-center flex flex-col items-center gap-6">
-        <h2 className="text-2xl sm:text-3xl font-semibold text-white/85 tracking-tight">
+        <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight" style={{ color: 'var(--color-text)' }}>
           {c.title}
         </h2>
         <Link
           href={`/${language}/signup`}
-          className="inline-flex items-center gap-2 bg-white text-black text-[14px] font-semibold px-8 py-3.5 rounded-full hover:bg-white/90 hover:shadow-[0_0_40px_rgba(255,255,255,0.12)] transition-all duration-300 active:scale-[0.97]"
+          className="inline-flex items-center gap-2 text-[14px] font-semibold px-8 py-3.5 rounded-full transition-all duration-200 active:scale-[0.97]"
+          style={{ backgroundColor: 'var(--color-accent)', color: '#fff' }}
         >
           {c.button}
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <line x1="5" y1="12" x2="19" y2="12" />
-            <polyline points="12 5 19 12 12 19" />
-          </svg>
+          <span className="ml-1">→</span>
         </Link>
       </div>
     </section>

@@ -657,8 +657,8 @@ const SERVICE_BACKGROUND_IMAGES: Record<string, string> = {
 
 function PremiumCard({ title, className = '', children }: PremiumCardProps) {
   return (
-    <div className={`rounded-xl border border-white/[0.12] bg-black/25 p-3 space-y-2 ${className}`.trim()}>
-      {title ? <p className="text-[11px] uppercase tracking-wider text-white/45">{title}</p> : null}
+    <div className={`rounded-xl p-3 space-y-2 ${className}`.trim()} style={{ backgroundColor: 'var(--color-surface)', border: '1px solid var(--color-border)' }}>
+      {title ? <p className="text-[11px] uppercase tracking-wider" style={{ color: 'var(--color-text-tertiary)' }}>{title}</p> : null}
       {children}
     </div>
   );
@@ -668,11 +668,8 @@ function OptionChip({ active, label, onClick }: OptionChipProps) {
   return (
     <button
       onClick={onClick}
-      className={`px-2 py-1 text-[11px] rounded-full border transition-colors ${
-        active
-          ? 'border-cyan-400/60 bg-cyan-500/25 text-cyan-100'
-          : 'border-white/15 bg-white/5 text-white/70 hover:bg-white/10'
-      } min-h-[34px] sm:min-h-[30px] px-2.5 sm:px-2`}
+      className='px-2 py-1 text-[11px] rounded-full transition-colors min-h-[34px] sm:min-h-[30px] px-2.5 sm:px-2'
+      style={active ? { backgroundColor: 'var(--color-accent-soft)', color: 'var(--color-accent)', border: '1px solid var(--color-accent)' } : { backgroundColor: 'var(--card-bg)', color: 'var(--color-text-secondary)', border: '1px solid var(--color-border)' }}
     >
       {label}
     </button>
@@ -684,7 +681,8 @@ function GoldCTAButton({ label, disabled, onClick }: GoldCTAButtonProps) {
     <button
       onClick={onClick}
       disabled={disabled}
-      className="order-4 sm:order-none w-full sm:w-auto max-md:[@media(orientation:landscape)]:w-auto flex-shrink-0 px-4 sm:px-5 py-2.5 bg-gradient-to-r from-amber-300 via-yellow-400 to-amber-500 text-black text-xs sm:text-sm font-semibold rounded-xl hover:shadow-[0_0_24px_rgba(251,191,36,0.45)] transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+      className="order-4 sm:order-none w-full sm:w-auto max-md:[@media(orientation:landscape)]:w-auto flex-shrink-0 px-4 sm:px-5 py-2.5 text-xs sm:text-sm font-semibold rounded-xl transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+      style={{ backgroundColor: 'var(--color-accent)', color: '#fff' }}
     >
       {label}
     </button>
@@ -1748,25 +1746,15 @@ export default function UnifiedServiceLayout({
 
   // ─── Render ──────────────────────────────────────────────────────────────
   return (
-    <div className="relative min-h-screen bg-transparent text-white ag-noise ag-neon-grid-lines overflow-hidden">
-      <div
-        className="pointer-events-none absolute inset-0 bg-cover bg-center opacity-78"
-        style={{
-          backgroundImage: `url('${serviceBackgroundImage}'), url('/backgrounds/services/agent-g.svg')`,
-          backgroundSize: 'cover, cover',
-          backgroundPosition: 'center, center',
-        }}
-      />
-      <div className="pointer-events-none absolute inset-0 opacity-95" style={{ backgroundImage: serviceBackground }} />
-      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(to_bottom,rgba(2,6,23,0.62),rgba(2,6,23,0.34)_28%,rgba(2,6,23,0.64)_100%)]" />
+    <div className="relative min-h-screen overflow-hidden" style={{ backgroundColor: 'var(--color-bg)', color: 'var(--color-text)' }}>
       {/* ── Header ──────────────────────────────────────────────────────── */}
-      <header className="relative z-10 border-b border-white/[0.12] bg-black/30 backdrop-blur-xl px-3 sm:px-5 lg:px-6 py-3.5 sm:py-4 shadow-[0_10px_32px_rgba(0,0,0,0.35)]">
+      <header className="relative z-10 px-3 sm:px-5 lg:px-6 py-3.5 sm:py-4" style={{ borderBottom: '1px solid var(--color-border)', backgroundColor: 'var(--nav-bg)', backdropFilter: 'blur(20px)' }}>
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">
             <span className="text-2xl">{serviceIcon}</span>
             <div>
-              <h1 className="text-lg font-bold">{serviceName}</h1>
-              <p className="text-xs text-white/40">{t.powered}</p>
+              <h1 className="text-lg font-bold" style={{ color: 'var(--color-text)' }}>{serviceName}</h1>
+              <p className="text-xs" style={{ color: 'var(--color-text-tertiary)' }}>{t.powered}</p>
             </div>
           </div>
           <div className="flex items-center gap-2 flex-wrap justify-end">
@@ -1777,19 +1765,22 @@ export default function UnifiedServiceLayout({
             )}
             <button
               onClick={() => setShowHistory(!showHistory)}
-              className="px-3 py-1.5 text-xs border border-white/15 rounded-lg bg-white/[0.03] hover:bg-white/[0.10] transition-colors"
+              className="px-3 py-1.5 text-xs rounded-lg transition-colors"
+              style={{ border: '1px solid var(--color-border)', backgroundColor: 'var(--card-bg)', color: 'var(--color-text-secondary)' }}
             >
               {t.history}
             </button>
             <button
               onClick={() => setShowExport(!showExport)}
-              className="px-3 py-1.5 text-xs border border-white/15 rounded-lg bg-white/[0.03] hover:bg-white/[0.10] transition-colors"
+              className="px-3 py-1.5 text-xs rounded-lg transition-colors"
+              style={{ border: '1px solid var(--color-border)', backgroundColor: 'var(--card-bg)', color: 'var(--color-text-secondary)' }}
             >
               {t.export}
             </button>
             <button
               onClick={toggleChatFullscreen}
-              className="px-3 py-1.5 text-xs border border-cyan-400/30 rounded-lg bg-cyan-500/12 hover:bg-cyan-500/20 transition-colors"
+              className="px-3 py-1.5 text-xs rounded-lg transition-colors"
+              style={{ backgroundColor: 'var(--color-accent-soft)', color: 'var(--color-accent)', border: '1px solid var(--color-accent)' }}
             >
               {chatFullscreen ? t.exitFullscreen : t.fullscreen}
             </button>
@@ -1803,7 +1794,8 @@ export default function UnifiedServiceLayout({
         {/* ── Chat Window (70%) ─────────────────────────────────────────── */}
         <div
           ref={chatPanelRef}
-          className="flex-1 lg:w-[68%] flex flex-col rounded-2xl border border-white/[0.12] bg-[linear-gradient(160deg,rgba(7,14,30,0.78),rgba(4,10,24,0.7))] shadow-[inset_0_0_0_1px_rgba(34,211,238,0.14),0_24px_72px_rgba(0,0,0,0.42)]"
+          className="flex-1 lg:w-[68%] flex flex-col rounded-2xl"
+          style={{ backgroundColor: 'var(--color-surface)', border: '1px solid var(--color-border)' }}
           onDragEnter={handleDrag}
           onDragOver={handleDrag}
           onDragLeave={handleDrag}
@@ -1811,13 +1803,13 @@ export default function UnifiedServiceLayout({
         >
           {/* Drag overlay */}
           {isDragging && (
-            <div className="absolute inset-0 z-50 bg-cyan-500/10 border-2 border-dashed border-cyan-500/50 rounded-xl flex items-center justify-center">
-              <p className="text-cyan-300 font-semibold">{t.dragDrop}</p>
+            <div className="absolute inset-0 z-50 border-2 border-dashed rounded-xl flex items-center justify-center" style={{ backgroundColor: 'var(--color-accent-soft)', borderColor: 'var(--color-accent)' }}>
+              <p className="font-semibold" style={{ color: 'var(--color-accent)' }}>{t.dragDrop}</p>
             </div>
           )}
 
           {/* ── Smart Toolbar: Quick Actions + Options Dropdown ─────────── */}
-          <div className="px-3 sm:px-4 pt-3 pb-2.5 border-b border-white/[0.10] bg-black/20 rounded-t-2xl space-y-2">
+          <div className="px-3 sm:px-4 pt-3 pb-2.5 rounded-t-2xl space-y-2" style={{ borderBottom: '1px solid var(--color-border)', backgroundColor: 'var(--color-surface)' }}>
 
             {/* Row 1: Quick actions + Options button + Clear */}
             <div className="flex items-center gap-2">
@@ -1827,7 +1819,8 @@ export default function UnifiedServiceLayout({
                   <button
                     key={action}
                     onClick={() => sendMessage(action)}
-                    className="flex-shrink-0 px-2.5 py-1.5 text-[11px] bg-white/[0.05] border border-white/[0.10] rounded-full hover:bg-white/[0.10] hover:border-cyan-400/35 transition-all whitespace-nowrap"
+                    className="flex-shrink-0 px-2.5 py-1.5 text-[11px] rounded-full transition-all whitespace-nowrap"
+                    style={{ backgroundColor: 'var(--card-bg)', border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)' }}
                   >
                     {action}
                   </button>
@@ -1838,17 +1831,14 @@ export default function UnifiedServiceLayout({
               <div className="relative flex-shrink-0">
                 <button
                   onClick={() => setShowOptionsPanel(v => !v)}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 text-[11px] border rounded-xl transition-all select-none ${
-                    showOptionsPanel
-                      ? 'border-cyan-400/55 bg-cyan-500/18 text-cyan-200 shadow-[0_0_12px_rgba(34,211,238,0.22)]'
-                      : 'border-white/20 bg-white/[0.05] text-white/70 hover:bg-white/[0.10] hover:border-white/30'
-                  }`}
+                  className='flex items-center gap-1.5 px-3 py-1.5 text-[11px] rounded-xl transition-all select-none'
+                  style={showOptionsPanel ? { backgroundColor: 'var(--color-accent-soft)', color: 'var(--color-accent)', border: '1px solid var(--color-accent)' } : { backgroundColor: 'var(--card-bg)', color: 'var(--color-text-secondary)', border: '1px solid var(--color-border)' }}
                 >
                   {/* Settings gear SVG */}
                   <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
                   <span className="hidden sm:inline">{t.workspaceOptions}</span>
                   {/* Score badge */}
-                  <span className={`inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full text-[10px] font-semibold ${completionScore >= 70 ? 'bg-cyan-500/30 text-cyan-200' : 'bg-white/10 text-white/60'}`}>
+                  <span className='inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full text-[10px] font-semibold' style={completionScore >= 70 ? { backgroundColor: 'var(--color-accent-soft)', color: 'var(--color-accent)' } : { backgroundColor: 'var(--card-bg)', color: 'var(--color-text-tertiary)' }}>
                     {completionScore}%
                   </span>
                   {/* Chevron */}
@@ -1861,9 +1851,9 @@ export default function UnifiedServiceLayout({
                     {/* Backdrop */}
                     <div className="fixed inset-0 z-[55]" onClick={() => setShowOptionsPanel(false)} />
 
-                    <div className="absolute right-0 sm:right-auto sm:left-0 top-full mt-2 w-[min(660px,calc(100vw-20px))] z-[60] rounded-2xl border border-white/[0.15] bg-[rgba(6,12,26,0.97)] shadow-[0_24px_64px_rgba(0,0,0,0.75),0_0_0_1px_rgba(34,211,238,0.12)] backdrop-blur-xl overflow-hidden">
+                    <div className="absolute right-0 sm:right-auto sm:left-0 top-full mt-2 w-[min(660px,calc(100vw-20px))] z-[60] rounded-2xl backdrop-blur-xl overflow-hidden" style={{ border: '1px solid var(--color-border)', backgroundColor: 'var(--color-elevated)', boxShadow: '0 24px 64px rgba(0,0,0,0.4)' }}>
                       {/* Tab navigation */}
-                      <div className="flex border-b border-white/[0.10] bg-black/25">
+                      <div className="flex" style={{ borderBottom: '1px solid var(--color-border)', backgroundColor: 'var(--color-surface)' }}>
                         {([
                           { id: 'pipeline', label: locale === 'ka' ? '⚡ Pipeline' : locale === 'ru' ? '⚡ Pipeline' : '⚡ Pipeline' },
                           { id: 'params',   label: locale === 'ka' ? '🎛 პარამეტრები' : locale === 'ru' ? '🎛 Параметры' : '🎛 Params' },
@@ -1873,11 +1863,8 @@ export default function UnifiedServiceLayout({
                           <button
                             key={tab.id}
                             onClick={() => setOptionsPanelTab(tab.id as typeof optionsPanelTab)}
-                            className={`flex-1 px-3 py-2.5 text-[11px] font-medium transition-colors border-b-2 ${
-                              optionsPanelTab === tab.id
-                                ? 'border-cyan-400 text-cyan-200 bg-cyan-500/10'
-                                : 'border-transparent text-white/50 hover:text-white/80 hover:bg-white/[0.04]'
-                            }`}
+                            className='flex-1 px-3 py-2.5 text-[11px] font-medium transition-colors border-b-2'
+                            style={optionsPanelTab === tab.id ? { borderColor: 'var(--color-accent)', color: 'var(--color-accent)', backgroundColor: 'var(--color-accent-soft)' } : { borderColor: 'transparent', color: 'var(--color-text-secondary)' }}
                           >
                             {tab.label}
                           </button>
@@ -1891,25 +1878,27 @@ export default function UnifiedServiceLayout({
                         {optionsPanelTab === 'pipeline' && (
                           <div className="space-y-3">
                             <div className="flex items-center justify-between">
-                              <p className="text-[11px] uppercase tracking-wider text-amber-100/80">{t.pipelineModes}</p>
-                              <span className="text-[10px] text-amber-100/55 border border-amber-300/20 bg-amber-500/10 px-2 py-0.5 rounded-full">Agent G Premium</span>
+                              <p className="text-[11px] uppercase tracking-wider" style={{ color: 'var(--color-text-secondary)' }}>{t.pipelineModes}</p>
+                              <span className="text-[10px] px-2 py-0.5 rounded-full" style={{ color: 'var(--color-accent)', border: '1px solid var(--color-accent-soft)', backgroundColor: 'var(--color-accent-soft)' }}>Agent G Premium</span>
                             </div>
                             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                               {workspacePresets.map((preset) => (
                                 <button
                                   key={preset.id}
                                   onClick={() => { setInput(preset.prompt); setShowOptionsPanel(false); promptInputRef.current?.focus(); }}
-                                  className="text-left rounded-xl border border-amber-200/20 bg-[linear-gradient(145deg,rgba(251,191,36,0.10),rgba(120,53,15,0.06))] hover:bg-[linear-gradient(145deg,rgba(251,191,36,0.18),rgba(120,53,15,0.10))] px-3 py-2.5 transition-all"
+                                  className="text-left rounded-xl px-3 py-2.5 transition-all"
+                                  style={{ border: '1px solid var(--color-border)', backgroundColor: 'var(--card-bg)' }}
                                 >
-                                  <p className="text-[11px] font-semibold text-amber-100">{preset.title}</p>
-                                  <p className="text-[10px] text-amber-50/60 mt-0.5 line-clamp-2">{preset.prompt}</p>
+                                  <p className="text-[11px] font-semibold" style={{ color: 'var(--color-text)' }}>{preset.title}</p>
+                                  <p className="text-[10px] mt-0.5 line-clamp-2" style={{ color: 'var(--color-text-tertiary)' }}>{preset.prompt}</p>
                                 </button>
                               ))}
                             </div>
                             <button
                               onClick={() => { sendMessage(`${serviceName}: ${t.premiumAction ?? 'Run Premium Pipeline'}. ${t.premiumHint ?? ''}.`); setShowOptionsPanel(false); }}
                               disabled={sending}
-                              className="w-full px-4 py-2.5 bg-gradient-to-r from-amber-300 via-yellow-400 to-amber-500 text-black text-xs font-semibold rounded-xl hover:shadow-[0_0_24px_rgba(251,191,36,0.45)] transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                              className="w-full px-4 py-2.5 text-xs font-semibold rounded-xl transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                              style={{ backgroundColor: 'var(--color-accent)', color: '#fff' }}
                             >
                               {t.premiumAction ?? 'Run Premium Pipeline'}
                             </button>
@@ -1921,8 +1910,8 @@ export default function UnifiedServiceLayout({
                           <div className="space-y-3">
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                               {optionSets.map((set) => (
-                                <div key={set.key} className="rounded-xl border border-white/[0.10] bg-white/[0.03] p-2.5 space-y-2">
-                                  <p className="text-[11px] font-medium text-white/65">{set.label}</p>
+                                <div key={set.key} className="rounded-xl p-2.5 space-y-2" style={{ backgroundColor: 'var(--card-bg)', border: '1px solid var(--color-border)' }}>
+                                  <p className="text-[11px] font-medium" style={{ color: 'var(--color-text-secondary)' }}>{set.label}</p>
                                   <div className="flex flex-wrap gap-1.5">
                                     {set.values.map((value) => (
                                       <OptionChip
@@ -1937,19 +1926,19 @@ export default function UnifiedServiceLayout({
                               ))}
                             </div>
                             {/* Inline metrics summary */}
-                            <div className="grid grid-cols-3 gap-2 p-2.5 rounded-xl border border-white/[0.08] bg-white/[0.02]">
+                            <div className="grid grid-cols-3 gap-2 p-2.5 rounded-xl" style={{ border: '1px solid var(--color-border)', backgroundColor: 'var(--card-bg)' }}>
                               {[
-                                { label: t.optionsCoverage, value: selectionCoverage, color: 'bg-cyan-300' },
-                                { label: t.sectionReadiness, value: sectionReadiness, color: 'bg-sky-300' },
-                                { label: t.completionScore, value: completionScore, color: 'bg-gradient-to-r from-cyan-300 to-blue-300' },
+                                { label: t.optionsCoverage, value: selectionCoverage, bg: 'var(--color-accent)' },
+                                { label: t.sectionReadiness, value: sectionReadiness, bg: 'var(--color-accent)' },
+                                { label: t.completionScore, value: completionScore, bg: 'var(--color-accent)' },
                               ].map(m => (
                                 <div key={m.label} className="space-y-1">
-                                  <div className="flex items-center justify-between text-[10px] text-white/50">
+                                  <div className="flex items-center justify-between text-[10px]" style={{ color: 'var(--color-text-tertiary)' }}>
                                     <span className="truncate">{m.label}</span>
-                                    <span className="ml-1 font-semibold text-white/70">{m.value}%</span>
+                                    <span className="ml-1 font-semibold" style={{ color: 'var(--color-text-secondary)' }}>{m.value}%</span>
                                   </div>
-                                  <div className="h-1.5 rounded-full bg-white/10 overflow-hidden">
-                                    <div className={`h-full ${m.color}`} style={{ width: `${m.value}%` }} />
+                                  <div className="h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: 'var(--color-border)' }}>
+                                    <div className="h-full rounded-full" style={{ width: `${m.value}%`, backgroundColor: m.bg }} />
                                   </div>
                                 </div>
                               ))}
@@ -1961,29 +1950,29 @@ export default function UnifiedServiceLayout({
                         {optionsPanelTab === 'builder' && serviceContext === 'avatar' && (
                           <div className="space-y-3">
                             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                              <label className="text-[11px] text-white/65 space-y-1.5">
+                              <label className="text-[11px] space-y-1.5" style={{ color: 'var(--color-text-secondary)' }}>
                                 <span className="block">{t.avatarHeight}</span>
-                                <input type="number" min={120} max={240} value={avatarProfile.heightCm} onChange={(e) => setAvatarProfile((prev) => ({ ...prev, heightCm: e.target.value }))} className="w-full rounded-xl border border-white/20 bg-black/35 px-3 py-2 text-sm text-white placeholder-white/30 focus:outline-none focus:border-cyan-300/65" placeholder="172" />
+                                <input type="number" min={120} max={240} value={avatarProfile.heightCm} onChange={(e) => setAvatarProfile((prev) => ({ ...prev, heightCm: e.target.value }))} className="w-full rounded-xl px-3 py-2 text-sm focus:outline-none" style={{ border: '1px solid var(--input-border)', backgroundColor: 'var(--input-bg)', color: 'var(--color-text)' }} placeholder="172" />
                               </label>
-                              <label className="text-[11px] text-white/65 space-y-1.5">
+                              <label className="text-[11px] space-y-1.5" style={{ color: 'var(--color-text-secondary)' }}>
                                 <span className="block">{t.avatarWeight}</span>
-                                <input type="number" min={30} max={220} value={avatarProfile.weightKg} onChange={(e) => setAvatarProfile((prev) => ({ ...prev, weightKg: e.target.value }))} className="w-full rounded-xl border border-white/20 bg-black/35 px-3 py-2 text-sm text-white placeholder-white/30 focus:outline-none focus:border-cyan-300/65" placeholder="68" />
+                                <input type="number" min={30} max={220} value={avatarProfile.weightKg} onChange={(e) => setAvatarProfile((prev) => ({ ...prev, weightKg: e.target.value }))} className="w-full rounded-xl px-3 py-2 text-sm focus:outline-none" style={{ border: '1px solid var(--input-border)', backgroundColor: 'var(--input-bg)', color: 'var(--color-text)' }} placeholder="68" />
                               </label>
-                              <label className="text-[11px] text-white/65 space-y-1.5">
+                              <label className="text-[11px] space-y-1.5" style={{ color: 'var(--color-text-secondary)' }}>
                                 <span className="block">{t.avatarFootSize}</span>
-                                <input type="number" min={20} max={55} step={0.5} value={avatarProfile.footSize} onChange={(e) => setAvatarProfile((prev) => ({ ...prev, footSize: e.target.value }))} className="w-full rounded-xl border border-white/20 bg-black/35 px-3 py-2 text-sm text-white placeholder-white/30 focus:outline-none focus:border-cyan-300/65" placeholder="42" />
+                                <input type="number" min={20} max={55} step={0.5} value={avatarProfile.footSize} onChange={(e) => setAvatarProfile((prev) => ({ ...prev, footSize: e.target.value }))} className="w-full rounded-xl px-3 py-2 text-sm focus:outline-none" style={{ border: '1px solid var(--input-border)', backgroundColor: 'var(--input-bg)', color: 'var(--color-text)' }} placeholder="42" />
                               </label>
                             </div>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                              <div className="rounded-xl border border-white/[0.10] bg-black/20 p-2.5">
-                                <p className="text-[11px] text-white/65 mb-2">{t.avatarScanMode}</p>
+                              <div className="rounded-xl p-2.5" style={{ border: '1px solid var(--color-border)', backgroundColor: 'var(--card-bg)' }}>
+                                <p className="text-[11px] mb-2" style={{ color: 'var(--color-text-secondary)' }}>{t.avatarScanMode}</p>
                                 <div className="flex gap-2">
                                   <OptionChip active={avatarProfile.scanTarget === 'fullbody'} label={t.avatarFullBody ?? 'Full Body'} onClick={() => setAvatarProfile((prev) => ({ ...prev, scanTarget: 'fullbody' }))} />
                                   <OptionChip active={avatarProfile.scanTarget === 'face'} label={t.avatarFace ?? 'Face'} onClick={() => setAvatarProfile((prev) => ({ ...prev, scanTarget: 'face' }))} />
                                 </div>
                               </div>
-                              <div className="rounded-xl border border-white/[0.10] bg-black/20 p-2.5">
-                                <p className="text-[11px] text-white/65 mb-2">{t.avatarCameraRender}</p>
+                              <div className="rounded-xl p-2.5" style={{ border: '1px solid var(--color-border)', backgroundColor: 'var(--card-bg)' }}>
+                                <p className="text-[11px] mb-2" style={{ color: 'var(--color-text-secondary)' }}>{t.avatarCameraRender}</p>
                                 <div className="flex flex-wrap gap-1.5">
                                   {(['realistic', 'cinematic', 'anime', 'studio'] as AvatarRenderProfile[]).map((mode) => (
                                     <OptionChip key={mode} active={avatarProfile.renderProfile === mode} label={mode} onClick={() => setAvatarProfile((prev) => ({ ...prev, renderProfile: mode }))} />
@@ -1991,13 +1980,13 @@ export default function UnifiedServiceLayout({
                                 </div>
                               </div>
                             </div>
-                            <label className="flex items-center gap-2 cursor-pointer text-[12px] text-white/75">
-                              <input type="checkbox" checked={avatarProfile.faceRecognition} onChange={() => setAvatarProfile((prev) => ({ ...prev, faceRecognition: !prev.faceRecognition }))} className="h-4 w-4 accent-cyan-400" />
+                            <label className="flex items-center gap-2 cursor-pointer text-[12px]" style={{ color: 'var(--color-text-secondary)' }}>
+                              <input type="checkbox" checked={avatarProfile.faceRecognition} onChange={() => setAvatarProfile((prev) => ({ ...prev, faceRecognition: !prev.faceRecognition }))} className="h-4 w-4" style={{ accentColor: 'var(--color-accent)' }} />
                               <span>{t.avatarFaceRecognition}</span>
                             </label>
                             <div className="flex gap-2">
-                              <button onClick={() => { setAvatarProfile((prev) => ({ ...prev, scanTarget: 'face', faceRecognition: true, renderProfile: 'anime' })); setInput((prev) => `${prev ? `${prev}\n` : ''}${locale === 'ka' ? 'შექმენი თანამედროვე anime avatar profile.' : locale === 'ru' ? 'Создай современный anime avatar profile.' : 'Create a modern anime avatar profile.'}`); setShowOptionsPanel(false); }} className="text-[11px] px-3 py-2 rounded-xl border border-amber-300/40 bg-amber-500/15 hover:bg-amber-500/25 transition-colors">{t.avatarPresetAnimeFace}</button>
-                              <button onClick={() => { setAvatarProfile((prev) => ({ ...prev, scanTarget: 'fullbody', renderProfile: 'cinematic' })); setInput((prev) => `${prev ? `${prev}\n` : ''}${locale === 'ka' ? 'შექმენი სრული ტანის cinematic avatar სტუდიური ხარისხით.' : locale === 'ru' ? 'Создай full-body cinematic avatar студийного качества.' : 'Create a studio-quality full-body cinematic avatar.'}`); setShowOptionsPanel(false); }} className="text-[11px] px-3 py-2 rounded-xl border border-cyan-300/40 bg-cyan-500/15 hover:bg-cyan-500/25 transition-colors">{t.avatarPresetFullBody}</button>
+                              <button onClick={() => { setAvatarProfile((prev) => ({ ...prev, scanTarget: 'face', faceRecognition: true, renderProfile: 'anime' })); setInput((prev) => `${prev ? `${prev}\n` : ''}${locale === 'ka' ? 'შექმენი თანამედროვე anime avatar profile.' : locale === 'ru' ? 'Создай современный anime avatar profile.' : 'Create a modern anime avatar profile.'}`); setShowOptionsPanel(false); }} className="text-[11px] px-3 py-2 rounded-xl transition-colors" style={{ border: '1px solid var(--color-accent-soft)', backgroundColor: 'var(--color-accent-soft)', color: 'var(--color-accent)' }}>{t.avatarPresetAnimeFace}</button>
+                              <button onClick={() => { setAvatarProfile((prev) => ({ ...prev, scanTarget: 'fullbody', renderProfile: 'cinematic' })); setInput((prev) => `${prev ? `${prev}\n` : ''}${locale === 'ka' ? 'შექმენი სრული ტანის cinematic avatar სტუდიური ხარისხით.' : locale === 'ru' ? 'Создай full-body cinematic avatar студийного качества.' : 'Create a studio-quality full-body cinematic avatar.'}`); setShowOptionsPanel(false); }} className="text-[11px] px-3 py-2 rounded-xl transition-colors" style={{ border: '1px solid var(--color-accent-soft)', backgroundColor: 'var(--color-accent-soft)', color: 'var(--color-accent)' }}>{t.avatarPresetFullBody}</button>
                             </div>
                           </div>
                         )}
@@ -2012,45 +2001,47 @@ export default function UnifiedServiceLayout({
                                   <button
                                     key={section.id}
                                     onClick={() => setActiveSectionId(section.id)}
-                                    className={`text-left rounded-xl border p-2.5 transition-colors ${active ? 'border-cyan-300/55 bg-cyan-500/16' : 'border-white/[0.10] bg-white/[0.03] hover:bg-white/[0.07]'}`}
+                                    className='text-left rounded-xl border p-2.5 transition-colors'
+                                    style={active ? { borderColor: 'var(--color-accent)', backgroundColor: 'var(--color-accent-soft)' } : { borderColor: 'var(--color-border)', backgroundColor: 'var(--card-bg)' }}
                                   >
                                     <div className="flex items-center justify-between gap-1 mb-1">
-                                      <p className="text-[11px] font-semibold text-white/90 truncate">{section.title}</p>
-                                      <span className="flex-shrink-0 text-[10px] text-cyan-200/80">{section.metric}%</span>
+                                      <p className="text-[11px] font-semibold truncate" style={{ color: 'var(--color-text)' }}>{section.title}</p>
+                                      <span className="flex-shrink-0 text-[10px]" style={{ color: 'var(--color-accent)' }}>{section.metric}%</span>
                                     </div>
-                                    <p className="text-[10px] text-white/55 line-clamp-2">{section.description}</p>
-                                    <div className="mt-2 h-1 rounded-full bg-white/10 overflow-hidden">
-                                      <div className="h-full bg-cyan-400" style={{ width: `${section.metric}%` }} />
+                                    <p className="text-[10px] line-clamp-2" style={{ color: 'var(--color-text-tertiary)' }}>{section.description}</p>
+                                    <div className="mt-2 h-1 rounded-full overflow-hidden" style={{ backgroundColor: 'var(--color-border)' }}>
+                                      <div className="h-full rounded-full" style={{ width: `${section.metric}%`, backgroundColor: 'var(--color-accent)' }} />
                                     </div>
                                   </button>
                                 );
                               })}
                             </div>
                             {activeSection && (
-                              <div className="rounded-xl border border-white/[0.12] bg-black/20 p-3 space-y-2">
+                              <div className="rounded-xl p-3 space-y-2" style={{ border: '1px solid var(--color-border)', backgroundColor: 'var(--card-bg)' }}>
                                 <div className="flex items-center justify-between gap-2">
-                                  <p className="text-[11px] font-medium text-white/80">{activeSection.title}</p>
+                                  <p className="text-[11px] font-medium" style={{ color: 'var(--color-text)' }}>{activeSection.title}</p>
                                   <button
                                     onClick={() => { setInput(buildSectionPrompt(locale, serviceName, activeSection.title)); setShowOptionsPanel(false); promptInputRef.current?.focus(); }}
-                                    className="text-[10px] px-2.5 py-1 rounded-lg border border-amber-300/40 bg-amber-500/15 text-amber-100 hover:bg-amber-500/25 transition-colors"
+                                    className="text-[10px] px-2.5 py-1 rounded-lg transition-colors"
+                                    style={{ border: '1px solid var(--color-accent-soft)', backgroundColor: 'var(--color-accent-soft)', color: 'var(--color-accent)' }}
                                   >
                                     {t.applySection}
                                   </button>
                                 </div>
                                 <div className="flex flex-wrap gap-1.5">
                                   {activeSection.steps.map((step) => (
-                                    <span key={step} className="text-[10px] px-2 py-1 rounded-full border border-white/15 bg-white/5 text-white/65">{step}</span>
+                                    <span key={step} className="text-[10px] px-2 py-1 rounded-full" style={{ border: '1px solid var(--color-border)', backgroundColor: 'var(--color-surface)', color: 'var(--color-text-secondary)' }}>{step}</span>
                                   ))}
                                 </div>
                               </div>
                             )}
                             {/* Inline support links in sections tab */}
-                            <div className="pt-1 border-t border-white/[0.08]">
-                              <p className="text-[10px] uppercase tracking-wider text-white/35 mb-2">{t.support}</p>
+                            <div className="pt-1" style={{ borderTop: '1px solid var(--color-border)' }}>
+                              <p className="text-[10px] uppercase tracking-wider mb-2" style={{ color: 'var(--color-text-tertiary)' }}>{t.support}</p>
                               <div className="flex gap-2">
-                                <a href="https://wa.me/995000000000" target="_blank" rel="noreferrer" className="px-3 py-1.5 text-[11px] rounded-lg border border-white/[0.12] bg-white/[0.04] hover:bg-white/[0.09] transition-colors">{t.whatsapp}</a>
-                                <a href="https://t.me/myavatar_ge" target="_blank" rel="noreferrer" className="px-3 py-1.5 text-[11px] rounded-lg border border-white/[0.12] bg-white/[0.04] hover:bg-white/[0.09] transition-colors">{t.telegram}</a>
-                                <a href="tel:+995000000000" className="px-3 py-1.5 text-[11px] rounded-lg border border-white/[0.12] bg-white/[0.04] hover:bg-white/[0.09] transition-colors">{t.phone}</a>
+                                <a href="https://wa.me/995000000000" target="_blank" rel="noreferrer" className="px-3 py-1.5 text-[11px] rounded-lg transition-colors" style={{ border: '1px solid var(--color-border)', backgroundColor: 'var(--card-bg)', color: 'var(--color-text-secondary)' }}>{t.whatsapp}</a>
+                                <a href="https://t.me/myavatar_ge" target="_blank" rel="noreferrer" className="px-3 py-1.5 text-[11px] rounded-lg transition-colors" style={{ border: '1px solid var(--color-border)', backgroundColor: 'var(--card-bg)', color: 'var(--color-text-secondary)' }}>{t.telegram}</a>
+                                <a href="tel:+995000000000" className="px-3 py-1.5 text-[11px] rounded-lg transition-colors" style={{ border: '1px solid var(--color-border)', backgroundColor: 'var(--card-bg)', color: 'var(--color-text-secondary)' }}>{t.phone}</a>
                               </div>
                             </div>
                           </div>
@@ -2064,7 +2055,8 @@ export default function UnifiedServiceLayout({
               {/* Clear Chat */}
               <button
                 onClick={clearChat}
-                className="flex-shrink-0 px-2.5 py-1.5 text-[11px] border border-white/15 rounded-xl bg-white/[0.04] hover:bg-white/[0.09] transition-colors"
+                className="flex-shrink-0 px-2.5 py-1.5 text-[11px] rounded-xl transition-colors"
+                style={{ border: '1px solid var(--color-border)', backgroundColor: 'var(--card-bg)', color: 'var(--color-text-secondary)' }}
               >
                 {t.clearChat}
               </button>
@@ -2074,13 +2066,13 @@ export default function UnifiedServiceLayout({
             {(activeSection || Object.values(selectedOptions).some(Boolean)) && (
               <div className="flex items-center gap-1.5 flex-wrap">
                 {activeSection && (
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border border-white/[0.10] bg-white/[0.04] text-[10px] text-white/45">
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px]" style={{ border: '1px solid var(--color-border)', backgroundColor: 'var(--card-bg)', color: 'var(--color-text-tertiary)' }}>
                     <svg xmlns="http://www.w3.org/2000/svg" width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 3h18v4H3z"/><path d="M3 10h18v4H3z"/><path d="M3 17h18v4H3z"/></svg>
                     {activeSection.title}
                   </span>
                 )}
                 {Object.entries(selectedOptions).filter(([, v]) => v).slice(0, 4).map(([k, v]) => (
-                  <span key={k} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border border-cyan-400/20 bg-cyan-500/[0.07] text-[10px] text-cyan-300/70">
+                  <span key={k} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px]" style={{ border: '1px solid var(--color-accent-soft)', backgroundColor: 'var(--color-accent-soft)', color: 'var(--color-accent)' }}>
                     {v}
                   </span>
                 ))}
@@ -2094,13 +2086,13 @@ export default function UnifiedServiceLayout({
               <div className="flex flex-col items-center justify-center h-full space-y-4 text-center py-12 md:py-16">
                 <span className="text-5xl">{serviceIcon}</span>
                 <h2 className="text-xl font-bold">{serviceName}</h2>
-                <p className="text-sm text-white/65 max-w-md">{description}</p>
+                <p className="text-sm max-w-md" style={{ color: 'var(--color-text-secondary)' }}>{description}</p>
 
-                <div className="w-full max-w-lg rounded-xl border border-cyan-400/25 bg-cyan-500/10 p-3 space-y-2">
-                  <p className="text-[11px] uppercase tracking-wider text-cyan-100/90">{t.workspaceFlow}</p>
+                <div className="w-full max-w-lg rounded-xl p-3 space-y-2" style={{ border: '1px solid var(--color-accent-soft)', backgroundColor: 'var(--color-accent-soft)' }}>
+                  <p className="text-[11px] uppercase tracking-wider" style={{ color: 'var(--color-accent)' }}>{t.workspaceFlow}</p>
                   <div className="grid grid-cols-4 gap-2">
                     {workspaceFlowLabels.map((label) => (
-                      <div key={label} className="text-[11px] rounded-lg border border-cyan-200/25 bg-black/20 px-2 py-1.5 text-cyan-50/85">
+                      <div key={label} className="text-[11px] rounded-lg px-2 py-1.5" style={{ border: '1px solid var(--color-border)', backgroundColor: 'var(--card-bg)', color: 'var(--color-text-secondary)' }}>
                         {label}
                       </div>
                     ))}
@@ -2109,8 +2101,8 @@ export default function UnifiedServiceLayout({
 
                 <div className="grid grid-cols-2 gap-2 mt-4 max-w-lg">
                   {features.map(f => (
-                    <div key={f} className="text-xs text-white/55 bg-white/[0.05] border border-white/[0.1] rounded-lg px-3 py-2 flex items-center gap-2">
-                      <span className="text-white/35">✦</span> {f}
+                    <div key={f} className="text-xs rounded-lg px-3 py-2 flex items-center gap-2" style={{ backgroundColor: 'var(--card-bg)', border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)' }}>
+                      <span style={{ color: 'var(--color-text-tertiary)' }}>✦</span> {f}
                     </div>
                   ))}
                 </div>
@@ -2120,11 +2112,13 @@ export default function UnifiedServiceLayout({
             {messages.map(msg => (
               <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                   <div className={`max-w-[96%] sm:max-w-[88%] lg:max-w-[80%] space-y-2 ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
-                  <div className={`px-4 py-3 rounded-2xl text-sm leading-relaxed ${
-                    msg.role === 'user'
-                      ? 'bg-gradient-to-r from-cyan-500/20 to-blue-500/20 border border-cyan-500/20 text-white'
-                        : 'bg-white/[0.08] border border-white/[0.14] text-white/90'
-                  }`}>
+                  <div
+                    className='px-4 py-3 rounded-2xl text-sm leading-relaxed'
+                    style={msg.role === 'user'
+                      ? { backgroundColor: 'var(--color-accent)', color: '#fff' }
+                      : { backgroundColor: 'var(--color-surface)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }
+                    }
+                  >
                     {msg.content}
                   </div>
 
@@ -2144,7 +2138,8 @@ export default function UnifiedServiceLayout({
                     return (
                       <div
                         key={i}
-                        className="w-full bg-white/[0.06] border border-white/[0.14] rounded-xl p-3 hover:border-cyan-400/45 hover:bg-white/[0.10] transition-colors"
+                        className="w-full rounded-xl p-3 transition-colors"
+                        style={{ backgroundColor: 'var(--card-bg)', border: '1px solid var(--color-border)' }}
                       >
                         <div className="flex items-center justify-between gap-2 flex-wrap sm:flex-nowrap">
                           <button
@@ -2154,18 +2149,20 @@ export default function UnifiedServiceLayout({
                             <span className="text-xs">
                               {art.type === 'image' ? '🖼️' : art.type === 'video' ? '🎬' : art.type === 'audio' ? '🎵' : '📄'}
                             </span>
-                            <span className="text-xs text-white/75 truncate">{art.label}</span>
+                            <span className="text-xs truncate" style={{ color: 'var(--color-text-secondary)' }}>{art.label}</span>
                           </button>
 
                           <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
                             {badgeText && (
-                              <span className={`text-[10px] px-2 py-0.5 rounded-full border ${
-                                art.generationStatus === 'running'
-                                  ? 'border-cyan-400/40 bg-cyan-500/20 text-cyan-100'
+                              <span
+                                className='text-[10px] px-2 py-0.5 rounded-full border'
+                                style={art.generationStatus === 'running'
+                                  ? { borderColor: 'var(--color-accent)', backgroundColor: 'var(--color-accent-soft)', color: 'var(--color-accent)' }
                                   : art.generationStatus === 'succeeded'
-                                    ? 'border-emerald-400/40 bg-emerald-500/20 text-emerald-100'
-                                    : 'border-rose-400/40 bg-rose-500/20 text-rose-100'
-                              }`}>
+                                    ? { borderColor: '#34d399', backgroundColor: 'rgba(52,211,153,0.15)', color: '#6ee7b7' }
+                                    : { borderColor: '#fb7185', backgroundColor: 'rgba(251,113,133,0.15)', color: '#fda4af' }
+                                }
+                              >
                                 {badgeText}
                               </span>
                             )}
@@ -2174,7 +2171,8 @@ export default function UnifiedServiceLayout({
                               <button
                                 onClick={() => retryArtifactGeneration(art)}
                                 disabled={retryBusy || sending || art.generationStatus === 'running'}
-                                className="text-[11px] px-2 py-1 rounded-md border border-white/20 bg-white/10 hover:bg-white/20 disabled:opacity-40 disabled:cursor-not-allowed"
+                                className="text-[11px] px-2 py-1 rounded-md disabled:opacity-40 disabled:cursor-not-allowed"
+                                style={{ border: '1px solid var(--color-border)', backgroundColor: 'var(--card-bg)', color: 'var(--color-text-secondary)' }}
                               >
                                 {retryBusy
                                   ? (locale === 'ka' ? 'ცდა...' : locale === 'ru' ? 'Повтор...' : 'Retrying...')
@@ -2185,7 +2183,8 @@ export default function UnifiedServiceLayout({
                             {art.url && (
                               <button
                                 onClick={() => downloadArtifact(art)}
-                                className="text-[11px] px-2 py-1 rounded-md border border-cyan-400/30 bg-cyan-500/15 hover:bg-cyan-500/25"
+                                className="text-[11px] px-2 py-1 rounded-md"
+                                style={{ border: '1px solid var(--color-accent-soft)', backgroundColor: 'var(--color-accent-soft)', color: 'var(--color-accent)' }}
                               >
                                 {t.download}
                               </button>
@@ -2195,13 +2194,13 @@ export default function UnifiedServiceLayout({
 
                         {art.url && artifactDownloadMetric && (
                           <div className="mt-2 space-y-1">
-                            <div className="h-1.5 rounded-full bg-white/10 overflow-hidden">
+                            <div className="h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: 'var(--color-border)' }}>
                               <div
-                                className={`h-full transition-all ${artifactDownloadMetric.status === 'failed' ? 'bg-rose-400' : 'bg-cyan-400'}`}
-                                style={{ width: `${artifactDownloadMetric.percent}%` }}
+                                className="h-full transition-all"
+                                style={{ width: `${artifactDownloadMetric.percent}%`, backgroundColor: artifactDownloadMetric.status === 'failed' ? '#f87171' : 'var(--color-accent)' }}
                               />
                             </div>
-                            <p className="text-[10px] text-white/55">
+                            <p className="text-[10px]" style={{ color: 'var(--color-text-tertiary)' }}>
                               {artifactDownloadMetric.status === 'downloading' ? t.downloading : artifactDownloadMetric.status === 'failed' ? 'Failed' : t.ready}
                               {' · '}{artifactDownloadMetric.percent}%
                               {' · '}{formatBytes(artifactDownloadMetric.receivedBytes)}
@@ -2219,8 +2218,8 @@ export default function UnifiedServiceLayout({
             {/* Generating indicator */}
             {sending && (
               <div className="flex justify-start">
-                <div className="bg-white/[0.06] border border-white/[0.10] rounded-2xl px-4 py-3 text-sm text-white/45 flex items-center gap-2">
-                  <div className="w-2 h-2 bg-cyan-400 rounded-full animate-pulse" />
+                <div className="rounded-2xl px-4 py-3 text-sm flex items-center gap-2" style={{ backgroundColor: 'var(--color-surface)', border: '1px solid var(--color-border)', color: 'var(--color-text-tertiary)' }}>
+                  <div className="w-2 h-2 rounded-full animate-pulse" style={{ backgroundColor: 'var(--color-accent)' }} />
                   {t.generating}
                 </div>
               </div>
@@ -2228,13 +2227,13 @@ export default function UnifiedServiceLayout({
           </div>
 
           {/* ── Sticky Action Bar ───────────────────────────────────────── */}
-          <div className="sticky bottom-0 border-t border-white/[0.12] bg-black/45 backdrop-blur-xl p-3 md:p-4 pb-[calc(0.75rem+env(safe-area-inset-bottom))] space-y-3 max-md:[@media(orientation:landscape)]:space-y-1.5 max-md:[@media(orientation:landscape)]:py-1.5 focus-within:shadow-[0_0_0_1px_rgba(34,211,238,0.5),0_0_24px_rgba(34,211,238,0.28)] transition-shadow rounded-b-2xl">
+          <div className="sticky bottom-0 backdrop-blur-xl p-3 md:p-4 pb-[calc(0.75rem+env(safe-area-inset-bottom))] space-y-3 max-md:[@media(orientation:landscape)]:space-y-1.5 max-md:[@media(orientation:landscape)]:py-1.5 transition-shadow rounded-b-2xl" style={{ borderTop: '1px solid var(--color-border)', backgroundColor: 'var(--color-elevated)' }}>
             {rateLimitNotice && (
-              <div className="flex items-center justify-between gap-3 rounded-xl border border-amber-400/40 bg-amber-500/15 px-3 py-2">
-                <p className="text-xs text-amber-100">{rateLimitNotice}</p>
+              <div className="flex items-center justify-between gap-3 rounded-xl px-3 py-2" style={{ border: '1px solid var(--color-border)', backgroundColor: 'var(--color-surface)' }}>
+                <p className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>{rateLimitNotice}</p>
                 <button
                   onClick={() => setRateLimitNotice(null)}
-                  className="text-[11px] text-amber-100/80 hover:text-amber-50"
+                  className="text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}
                 >
                   {t.dismiss}
                 </button>
@@ -2242,11 +2241,11 @@ export default function UnifiedServiceLayout({
             )}
 
             {landingPresetNote && (
-              <div className="flex items-center justify-between gap-3 rounded-xl border border-cyan-300/40 bg-cyan-500/15 px-3 py-2">
-                <p className="text-xs text-cyan-100">{landingPresetNote}</p>
+              <div className="flex items-center justify-between gap-3 rounded-xl px-3 py-2" style={{ border: '1px solid var(--color-accent-soft)', backgroundColor: 'var(--color-accent-soft)' }}>
+                <p className="text-xs" style={{ color: 'var(--color-accent)' }}>{landingPresetNote}</p>
                 <button
                   onClick={() => setLandingPresetNote(null)}
-                  className="text-[11px] text-cyan-100/80 hover:text-cyan-50"
+                  className="text-[11px]" style={{ color: 'var(--color-accent)' }}
                 >
                   {t.dismiss}
                 </button>
@@ -2254,21 +2253,21 @@ export default function UnifiedServiceLayout({
             )}
 
             {generationProgress && (
-              <div className="rounded-xl border border-cyan-400/30 bg-cyan-500/10 px-3 py-2.5 space-y-1.5">
-                <div className="flex items-center justify-between text-[11px] text-cyan-100">
+              <div className="rounded-xl px-3 py-2.5 space-y-1.5" style={{ border: '1px solid var(--color-accent-soft)', backgroundColor: 'var(--color-accent-soft)' }}>
+                <div className="flex items-center justify-between text-[11px]" style={{ color: 'var(--color-accent)' }}>
                   <span>{t.progress} · {generationProgress.context}</span>
                   <span>{generationProgress.percent}%</span>
                 </div>
-                <div className="h-2 rounded-full bg-cyan-900/30 overflow-hidden">
-                  <div className="h-full bg-cyan-400 transition-all" style={{ width: `${generationProgress.percent}%` }} />
+                <div className="h-2 rounded-full overflow-hidden" style={{ backgroundColor: 'var(--color-border)' }}>
+                  <div className="h-full transition-all" style={{ width: `${generationProgress.percent}%`, backgroundColor: 'var(--color-accent)' }} />
                 </div>
-                <p className="text-[11px] text-cyan-100/80">{generationStageLabel}</p>
+                <p className="text-[11px]" style={{ color: 'var(--color-accent)' }}>{generationStageLabel}</p>
               </div>
             )}
 
-            <PremiumCard className="border-amber-300/35 bg-[linear-gradient(145deg,rgba(251,191,36,0.16),rgba(120,53,15,0.08))] px-3 py-2">
-              <p className="text-[11px] text-amber-100 font-medium">{t.liveChat}</p>
-              <p className="text-[10px] text-amber-100/75">{t.premiumHint}</p>
+            <PremiumCard className="px-3 py-2">
+              <p className="text-[11px] font-medium" style={{ color: 'var(--color-accent)' }}>{t.liveChat}</p>
+              <p className="text-[10px]" style={{ color: 'var(--color-text-tertiary)' }}>{t.premiumHint}</p>
             </PremiumCard>
 
             {/* Automation toggle */}
@@ -2279,19 +2278,19 @@ export default function UnifiedServiceLayout({
                   onChange={() => setShowAutomation(!showAutomation)}
                   className="sr-only peer"
                 />
-                <div className="w-8 h-4 bg-white/10 rounded-full peer-checked:bg-cyan-500/50 transition-colors relative">
+                <div className="w-8 h-4 rounded-full transition-colors relative" style={{ backgroundColor: showAutomation ? 'var(--color-accent)' : 'var(--color-border)' }}>
                   <div className="absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full transition-transform peer-checked:translate-x-4" />
                 </div>
-                <span className="text-xs text-white/60">{t.automation}</span>
+                <span className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>{t.automation}</span>
               </label>
 
               <button
                 onClick={toggleCamera}
-                className={`px-3 py-2 text-xs border rounded-lg transition-colors ${
-                  cameraOn
-                    ? 'border-cyan-500/50 bg-cyan-500/20 text-cyan-300'
-                    : 'border-white/15 text-white/75 hover:bg-white/10'
-                }`}
+                className='px-3 py-2 text-xs border rounded-lg transition-colors'
+                style={cameraOn
+                  ? { borderColor: 'var(--color-accent)', backgroundColor: 'var(--color-accent-soft)', color: 'var(--color-accent)' }
+                  : { borderColor: 'var(--color-border)', color: 'var(--color-text-secondary)' }
+                }
               >
                 {cameraOn ? t.closeCamera : t.camera}
               </button>
@@ -2313,17 +2312,18 @@ export default function UnifiedServiceLayout({
                   }
                   promptInputRef.current?.focus();
                 }}
-                className="px-3 py-2 text-xs border border-cyan-300/50 bg-cyan-500/15 rounded-lg hover:bg-cyan-500/25 hover:border-cyan-200/70 transition-colors max-w-full truncate"
+                className="px-3 py-2 text-xs border rounded-lg transition-colors max-w-full truncate"
+                style={{ borderColor: 'var(--color-accent-soft)', backgroundColor: 'var(--color-accent-soft)', color: 'var(--color-accent)' }}
               >
                 {agentButtonLabel}
               </button>
             </div>
 
             {(cameraOn || cameraError) && (
-              <div className="rounded-xl border border-cyan-400/30 bg-cyan-500/10 shadow-[0_0_24px_rgba(34,211,238,0.16)] p-2">
+              <div className="rounded-xl p-2" style={{ border: '1px solid var(--color-border)', backgroundColor: 'var(--color-surface)' }}>
                 {cameraOn ? (
                   <div className="space-y-2">
-                    <div className="relative rounded-xl overflow-hidden border border-cyan-400/[0.28] shadow-[0_0_28px_rgba(34,211,238,0.22),0_0_0_1px_rgba(34,211,238,0.08)]">
+                    <div className="relative rounded-xl overflow-hidden" style={{ border: '1px solid var(--color-border)' }}>
                       <video
                         ref={cameraVideoRef}
                         autoPlay
@@ -2331,18 +2331,8 @@ export default function UnifiedServiceLayout({
                         playsInline
                         className="w-full max-h-52 max-md:[@media(orientation:landscape)]:max-h-28 rounded-xl object-cover"
                       />
-                      {/* Premium scanner overlay */}
+                      {/* Minimal overlay */}
                       <div className="absolute inset-0 pointer-events-none">
-                        <div className="ag-cam-scan-line" />
-                        <div
-                          className="ag-cam-face-ring absolute inset-[12%] rounded-[20%] border border-cyan-400/35"
-                          style={{ boxShadow: '0 0 18px rgba(34,211,238,0.14) inset' }}
-                        />
-                        <div className="ag-cam-corner absolute top-2 left-2 w-4 h-4 border-t-2 border-l-2 border-cyan-300 rounded-tl-lg" />
-                        <div className="ag-cam-corner absolute top-2 right-2 w-4 h-4 border-t-2 border-r-2 border-cyan-300 rounded-tr-lg" />
-                        <div className="ag-cam-corner absolute bottom-2 left-2 w-4 h-4 border-b-2 border-l-2 border-cyan-300 rounded-bl-lg" />
-                        <div className="ag-cam-corner absolute bottom-2 right-2 w-4 h-4 border-b-2 border-r-2 border-cyan-300 rounded-br-lg" />
-                        {/* REC badge */}
                         <span className="absolute top-2 left-1/2 -translate-x-1/2 inline-flex items-center gap-1 rounded-full bg-black/75 border border-red-400/50 px-2 py-0.5 text-[9px] font-bold text-red-200 backdrop-blur-sm tracking-wide">
                           <span className="w-1.5 h-1.5 rounded-full bg-red-400 animate-pulse" />
                           REC
@@ -2353,14 +2343,16 @@ export default function UnifiedServiceLayout({
                       <button
                         onClick={() => captureFrame(false)}
                         disabled={cameraCaptureBusy}
-                        className="w-full px-3 py-2 text-xs rounded-lg bg-gradient-to-r from-cyan-500/20 to-blue-500/15 border border-cyan-400/45 text-cyan-100 hover:from-cyan-500/30 hover:to-blue-500/25 disabled:opacity-40 transition-colors"
+                        className="w-full px-3 py-2 text-xs rounded-lg disabled:opacity-40 transition-colors"
+                        style={{ backgroundColor: 'var(--color-accent-soft)', border: '1px solid var(--color-accent-soft)', color: 'var(--color-accent)' }}
                       >
                         {t.capture}
                       </button>
                       <button
                         onClick={() => captureFrame(true)}
                         disabled={cameraCaptureBusy}
-                        className="w-full px-3 py-2 text-xs rounded-lg bg-gradient-to-r from-violet-500/20 to-cyan-500/15 border border-violet-400/40 text-violet-100 hover:from-violet-500/30 hover:to-cyan-500/25 disabled:opacity-40 transition-colors"
+                        className="w-full px-3 py-2 text-xs rounded-lg disabled:opacity-40 transition-colors"
+                        style={{ backgroundColor: 'var(--color-accent-soft)', border: '1px solid var(--color-accent-soft)', color: 'var(--color-accent)' }}
                       >
                         {serviceContext === 'avatar'
                           ? `${t.scan} (${avatarProfile.scanTarget === 'fullbody' ? (locale === 'ka' ? 'სრული ტანი' : locale === 'ru' ? 'тело' : 'full-body') : (locale === 'ka' ? 'სახე' : locale === 'ru' ? 'лицо' : 'face')})`
@@ -2377,7 +2369,8 @@ export default function UnifiedServiceLayout({
               <button
                 onClick={importReadyAvatar}
                 disabled={avatarImporting}
-                className="px-3 py-2 text-xs border border-cyan-300/45 bg-cyan-500/15 rounded-lg hover:bg-cyan-500/25 disabled:opacity-40"
+                className="px-3 py-2 text-xs rounded-lg disabled:opacity-40"
+                style={{ border: '1px solid var(--color-accent-soft)', backgroundColor: 'var(--color-accent-soft)', color: 'var(--color-accent)' }}
               >
                 {avatarImporting ? (t.importingAvatar ?? 'Importing avatar...') : (t.importAvatar ?? 'Import Ready Avatar')}
               </button>
@@ -2388,7 +2381,8 @@ export default function UnifiedServiceLayout({
                     setImportedAvatarUrl(null);
                     setAvatarImportNotice(null);
                   }}
-                  className="px-3 py-2 text-xs border border-white/20 bg-white/10 rounded-lg hover:bg-white/20"
+                  className="px-3 py-2 text-xs rounded-lg"
+                  style={{ border: '1px solid var(--color-border)', backgroundColor: 'var(--card-bg)', color: 'var(--color-text-secondary)' }}
                 >
                   {t.clearImportedAvatar ?? 'Clear Imported Avatar'}
                 </button>
@@ -2396,8 +2390,8 @@ export default function UnifiedServiceLayout({
             </div>
 
             {avatarImportNotice && (
-              <div className="rounded-xl border border-cyan-300/35 bg-cyan-500/12 px-3 py-2">
-                <p className="text-xs text-cyan-100">{avatarImportNotice}</p>
+              <div className="rounded-xl px-3 py-2" style={{ border: '1px solid var(--color-accent-soft)', backgroundColor: 'var(--color-accent-soft)' }}>
+                <p className="text-xs" style={{ color: 'var(--color-accent)' }}>{avatarImportNotice}</p>
               </div>
             )}
 
@@ -2413,10 +2407,11 @@ export default function UnifiedServiceLayout({
 
               <button
                 onClick={() => fileInputRef.current?.click()}
-                className="h-11 w-11 flex-shrink-0 flex items-center justify-center bg-white/[0.06] border border-white/[0.12] rounded-xl hover:bg-white/[0.1] transition-colors"
+                className="h-11 w-11 flex-shrink-0 flex items-center justify-center rounded-xl transition-colors"
+                style={{ backgroundColor: 'var(--card-bg)', border: '1px solid var(--color-border)' }}
                 title={t.upload}
               >
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-white/40"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--color-text-tertiary)' }}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
               </button>
 
               <button
@@ -2424,14 +2419,15 @@ export default function UnifiedServiceLayout({
                 className={`h-11 w-11 flex-shrink-0 flex items-center justify-center border rounded-xl transition-colors ${
                   isRecording
                     ? 'bg-red-500/20 border-red-500/50 text-red-400'
-                    : 'bg-white/[0.06] border-white/[0.12] hover:bg-white/[0.1] text-white/60'
+                    : ''
                 }`}
+                style={isRecording ? {} : { backgroundColor: 'var(--card-bg)', borderColor: 'var(--color-border)', color: 'var(--color-text-secondary)' }}
                 title={isRecording ? t.stopRecord : t.record}
               >
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
               </button>
 
-              <div className={`order-3 sm:order-none basis-full sm:basis-auto flex-1 relative rounded-xl transition-all ${chatInputFocused ? 'ring-2 ring-cyan-400/70 shadow-[0_0_24px_rgba(34,211,238,0.35)]' : ''}`}>
+              <div className={`order-3 sm:order-none basis-full sm:basis-auto flex-1 relative rounded-xl transition-all ${chatInputFocused ? 'ring-2' : ''}`} style={chatInputFocused ? { '--tw-ring-color': 'var(--color-accent)' } as React.CSSProperties : {}}>
                 <textarea
                   ref={promptInputRef}
                   value={input}
@@ -2446,7 +2442,8 @@ export default function UnifiedServiceLayout({
                   }}
                   placeholder={t.placeholder}
                   rows={2}
-                  className="w-full min-h-[82px] sm:min-h-[74px] max-md:[@media(orientation:landscape)]:min-h-[48px] bg-white/[0.08] border border-white/[0.16] rounded-xl px-4 py-2.5 text-sm text-white placeholder-white/35 focus:outline-none focus:border-cyan-400/70 focus:shadow-[0_0_20px_rgba(34,211,238,0.25)] resize-y"
+                  className="w-full min-h-[82px] sm:min-h-[74px] max-md:[@media(orientation:landscape)]:min-h-[48px] rounded-xl px-4 py-2.5 text-sm focus:outline-none resize-y"
+                  style={{ backgroundColor: 'var(--input-bg)', border: '1px solid var(--input-border)', color: 'var(--color-text)' }}
                 />
               </div>
 
@@ -2458,7 +2455,8 @@ export default function UnifiedServiceLayout({
 
               <button                onClick={() => sendMessage()}
                 disabled={sending || !input.trim()}
-                className="order-4 sm:order-none w-full sm:w-auto max-md:[@media(orientation:landscape)]:w-auto flex-shrink-0 px-4 sm:px-5 py-2.5 bg-gradient-to-r from-cyan-500 to-blue-600 text-white text-xs sm:text-sm font-semibold rounded-xl hover:shadow-lg hover:shadow-cyan-500/25 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                className="order-4 sm:order-none w-full sm:w-auto max-md:[@media(orientation:landscape)]:w-auto flex-shrink-0 px-4 sm:px-5 py-2.5 text-xs sm:text-sm font-semibold rounded-xl transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                style={{ backgroundColor: 'var(--color-accent)', color: '#fff' }}
               >
                 {t.send}
               </button>
@@ -2468,11 +2466,11 @@ export default function UnifiedServiceLayout({
 
         {/* ── Preview/Tools Panel (30%) ─────────────────────────────────── */}
         {!chatFullscreen && (
-        <div className="lg:w-[32%] border border-white/[0.12] bg-[linear-gradient(160deg,rgba(7,14,30,0.74),rgba(5,11,26,0.68))] rounded-2xl flex flex-col md:max-h-[50vh] lg:max-h-none overflow-hidden">
+        <div className="lg:w-[32%] rounded-2xl flex flex-col md:max-h-[50vh] lg:max-h-none overflow-hidden" style={{ border: '1px solid var(--color-border)', backgroundColor: 'var(--color-surface)' }}>
           {/* Panel header */}
-          <div className="px-4 py-3 border-b border-white/[0.10] bg-black/25 flex items-center justify-between">
-            <span className="text-xs font-semibold text-white/55 uppercase tracking-wider">{t.preview}</span>
-            <span className="text-xs text-white/35">{t.exportCenter}</span>
+          <div className="px-4 py-3 flex items-center justify-between" style={{ borderBottom: '1px solid var(--color-border)', backgroundColor: 'var(--color-elevated)' }}>
+            <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--color-text-tertiary)' }}>{t.preview}</span>
+            <span className="text-xs" style={{ color: 'var(--color-text-tertiary)' }}>{t.exportCenter}</span>
           </div>
 
           {/* Preview content */}
@@ -2481,34 +2479,35 @@ export default function UnifiedServiceLayout({
               <div className="w-full space-y-4">
                 {previewArtifact.type === 'image' && previewArtifact.url && (
                   /* eslint-disable-next-line @next/next/no-img-element */
-                  <img src={previewArtifact.url} alt={previewArtifact.label} className="w-full rounded-xl border border-white/[0.08]" />
+                  <img src={previewArtifact.url} alt={previewArtifact.label} className="w-full rounded-xl" style={{ border: '1px solid var(--color-border)' }} />
                 )}
                 {previewArtifact.type === 'video' && previewArtifact.url && (
-                  <video src={previewArtifact.url} controls className="w-full rounded-xl border border-white/[0.08]" />
+                  <video src={previewArtifact.url} controls className="w-full rounded-xl" style={{ border: '1px solid var(--color-border)' }} />
                 )}
                 {previewArtifact.type === 'audio' && previewArtifact.url && (
                   <audio src={previewArtifact.url} controls className="w-full" />
                 )}
                 {previewArtifact.type === 'text' && (
-                  <pre className="text-xs text-white/75 whitespace-pre-wrap bg-white/[0.04] p-4 rounded-xl border border-white/[0.1]">
+                  <pre className="text-xs whitespace-pre-wrap p-4 rounded-xl" style={{ color: 'var(--color-text-secondary)', backgroundColor: 'var(--card-bg)', border: '1px solid var(--color-border)' }}>
                     {previewArtifact.content ?? ''}
                   </pre>
                 )}
-                <p className="text-xs text-white/45 text-center">{previewArtifact.label}</p>
+                <p className="text-xs text-center" style={{ color: 'var(--color-text-tertiary)' }}>{previewArtifact.label}</p>
                 {previewArtifact.url && (
                   <div className="space-y-2">
                     <button
                       onClick={() => downloadArtifact(previewArtifact)}
-                      className="w-full px-3 py-2 text-xs rounded-lg border border-cyan-400/35 bg-cyan-500/15 hover:bg-cyan-500/25"
+                      className="w-full px-3 py-2 text-xs rounded-lg"
+                      style={{ border: '1px solid var(--color-accent-soft)', backgroundColor: 'var(--color-accent-soft)', color: 'var(--color-accent)' }}
                     >
                       {t.download}
                     </button>
                     {previewDownloadMetric && (
                       <div className="space-y-1">
-                        <div className="h-1.5 rounded-full bg-white/10 overflow-hidden">
-                          <div className="h-full bg-cyan-400 transition-all" style={{ width: `${previewDownloadMetric.percent}%` }} />
+                        <div className="h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: 'var(--color-border)' }}>
+                          <div className="h-full transition-all" style={{ width: `${previewDownloadMetric.percent}%`, backgroundColor: 'var(--color-accent)' }} />
                         </div>
-                        <p className="text-[10px] text-white/55 text-center">
+                        <p className="text-[10px] text-center" style={{ color: 'var(--color-text-tertiary)' }}>
                           {previewDownloadMetric.status === 'downloading' ? t.downloading : previewDownloadMetric.status === 'failed' ? 'Failed' : t.ready}
                           {' · '}{previewDownloadMetric.percent}%
                         </p>
@@ -2519,21 +2518,22 @@ export default function UnifiedServiceLayout({
               </div>
             ) : (
               <div className="text-center space-y-3">
-                <div className="w-16 h-16 mx-auto bg-white/[0.05] border border-white/[0.1] rounded-2xl flex items-center justify-center">
+                <div className="w-16 h-16 mx-auto rounded-2xl flex items-center justify-center" style={{ backgroundColor: 'var(--card-bg)', border: '1px solid var(--color-border)' }}>
                   <span className="text-2xl opacity-20">{serviceIcon}</span>
                 </div>
-                <p className="text-xs text-white/35">{t.noPreview}</p>
+                <p className="text-xs" style={{ color: 'var(--color-text-tertiary)' }}>{t.noPreview}</p>
               </div>
             )}
           </div>
 
           {/* Export menu */}
           {showExport && (
-            <div className="border-t border-white/[0.04] p-4 space-y-2">
+            <div className="p-4 space-y-2" style={{ borderTop: '1px solid var(--color-border)' }}>
               {['PNG', 'MP4', 'MP3', 'JSON', 'PDF'].map(fmt => (
                 <button
                   key={fmt}
-                  className="w-full text-left px-3 py-2 text-xs bg-white/[0.03] border border-white/[0.06] rounded-lg hover:bg-white/[0.06] transition-colors"
+                  className="w-full text-left px-3 py-2 text-xs rounded-lg transition-colors"
+                  style={{ backgroundColor: 'var(--card-bg)', border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)' }}
                 >
                   Export as {fmt}
                 </button>
@@ -2547,9 +2547,9 @@ export default function UnifiedServiceLayout({
       {/* ── Login Modal (NOT redirect) ──────────────────────────────────── */}
       {showLoginModal && (
         <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setShowLoginModal(false)}>
-          <div className="ag-surface-primary border-white/[0.14] rounded-2xl p-8 max-w-sm w-full space-y-4" onClick={e => e.stopPropagation()}>
-            <h2 className="text-lg font-bold text-white">{t.loginRequired}</h2>
-            <p className="text-sm text-white/40">
+          <div className="rounded-2xl p-8 max-w-sm w-full space-y-4" style={{ backgroundColor: 'var(--color-elevated)', border: '1px solid var(--color-border)' }} onClick={e => e.stopPropagation()}>
+            <h2 className="text-lg font-bold" style={{ color: 'var(--color-text)' }}>{t.loginRequired}</h2>
+            <p className="text-sm" style={{ color: 'var(--color-text-tertiary)' }}>
               {locale === 'ka' ? 'სერვისის გამოსაყენებლად გთხოვთ შეხვიდეთ ანგარიშში.' :
                locale === 'ru' ? 'Для использования сервиса войдите в аккаунт.' :
                'Please log in to use this service.'}
@@ -2557,13 +2557,15 @@ export default function UnifiedServiceLayout({
             <div className="flex gap-3">
               <a
                 href={`/${locale}/login?redirect=/${locale}/services/${serviceId}`}
-                className="flex-1 text-center px-4 py-2.5 bg-gradient-to-r from-cyan-500 to-blue-600 text-white font-semibold rounded-xl hover:shadow-lg transition-all"
+                className="flex-1 text-center px-4 py-2.5 font-semibold rounded-xl transition-all"
+                style={{ backgroundColor: 'var(--color-accent)', color: '#fff' }}
               >
                 {t.login}
               </a>
               <button
                 onClick={() => setShowLoginModal(false)}
-                className="px-4 py-2.5 border border-white/10 rounded-xl text-white/60 hover:bg-white/5 transition-colors"
+                className="px-4 py-2.5 rounded-xl transition-colors"
+                style={{ border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)' }}
               >
                 ✕
               </button>

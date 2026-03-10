@@ -63,8 +63,8 @@ export default async function RootLayout({
 	}
 
 	return (
-		<html lang="ka" className="dark">
-			<body className="font-sans text-white antialiased ag-noise">
+		<html lang="ka" data-theme="dark" suppressHydrationWarning>
+			<body className="font-sans antialiased">
 				<Providers>
 					<AppShell>
 						{children}
