@@ -8,8 +8,10 @@ export async function POST(req: NextRequest) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      type: 'music',
+      service: 'music',
       prompt: body?.prompt,
+      predictionId: body?.predictionId,
+      quality: body?.quality,
     }),
   });
 

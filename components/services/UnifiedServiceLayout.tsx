@@ -39,7 +39,7 @@ interface UnifiedServiceLayoutProps {
 }
 
 type LocaleCode = 'en' | 'ka' | 'ru';
-type ServiceContext = 'global' | 'music' | 'video' | 'avatar' | 'voice' | 'business';
+type ServiceContext = 'global' | 'music' | 'video' | 'avatar' | 'voice' | 'business' | 'image' | 'photo' | 'visual-ai';
 
 type GenerationStage = 'idle' | 'starting' | 'polling' | 'finalizing' | 'done' | 'failed';
 
@@ -349,23 +349,39 @@ function extractRetryAfterSeconds(input: string): number | null {
 }
 
 function shouldTriggerGeneration(serviceContext: string, prompt: string) {
-  if (!['avatar', 'video', 'music'].includes(serviceContext)) return false;
-  return /generate|create|make|render|avatar|video|music|song|audio|image|შექმ|გენერ|созд|генер/i.test(prompt);
+  if (!['avatar', 'video', 'music', 'image', 'photo', 'visual-ai'].includes(serviceContext)) return false;
+  return /generate|create|make|render|avatar|video|music|song|audio|image|photo|enhance|upscale|remove.*bg|caption|analyze|describe|შექმ|გენერ|созд|генер/i.test(prompt);
 }
 
 function resolveReplicateEndpoint(serviceContext: string) {
-  if (serviceContext === 'avatar') return '/api/replicate/image';
+  if (serviceContext === 'avatar') return '/api/replicate/avatar';
+  if (serviceContext === 'image') return '/api/replicate/image';
+  if (serviceContext === 'photo') return '/api/replicate/photo';
   if (serviceContext === 'video') return '/api/replicate/video';
+  if (serviceContext === 'visual-ai') return '/api/replicate/visual-ai';
   return '/api/replicate/audio';
 }
 
 function mapOutputToArtifacts(serviceContext: string, output: unknown): Artifact[] {
   const outputValue = Array.isArray(output) ? output[0] : output;
+
+  // Text-based output (visual-ai captioning)
+  if (serviceContext === 'visual-ai') {
+    const text = typeof outputValue === 'string' ? outputValue : typeof output === 'string' ? output : JSON.stringify(output);
+    return [{ type: 'text', label: 'AI Analysis', content: text, mimeType: 'text/plain' }];
+  }
+
   const url = typeof outputValue === 'string' ? outputValue : '';
   if (!url) return [];
 
   if (serviceContext === 'avatar') {
     return [{ type: 'image', url, label: 'Generated Avatar', mimeType: 'image/*' }];
+  }
+  if (serviceContext === 'image') {
+    return [{ type: 'image', url, label: 'Generated Image', mimeType: 'image/*' }];
+  }
+  if (serviceContext === 'photo') {
+    return [{ type: 'image', url, label: 'Enhanced Photo', mimeType: 'image/*' }];
   }
   if (serviceContext === 'video') {
     return [{ type: 'video', url, label: 'Generated Video', mimeType: 'video/*' }];
@@ -459,8 +475,9 @@ const SERVICE_CONTEXT: Record<string, ServiceContext> = {
   video: 'video',
   editing: 'video',
   avatar: 'avatar',
-  photo: 'avatar',
-  image: 'avatar',
+  photo: 'photo',
+  image: 'image',
+  'visual-intel': 'visual-ai',
   software: 'business',
   business: 'business',
 };
@@ -516,14 +533,21 @@ const SERVICE_OPTION_SETS: Record<string, OptionSet[]> = {
     { key: 'delivery', label: 'Delivery', values: ['Master', 'Stems', 'Master + Stems'] },
   ],
   photo: [
+    { key: 'quality', label: 'Quality', values: ['Standard', 'High', 'Ultra'] },
+    { key: 'variant', label: 'Mode', values: ['Upscale', 'Remove Background', 'Enhance'] },
     { key: 'retouch', label: 'Retouch Level', values: ['Natural', 'Editorial', 'High Fashion'] },
     { key: 'background', label: 'Background', values: ['Original', 'Clean Studio', 'AI Scene'] },
     { key: 'delivery', label: 'Delivery', values: ['JPG', 'PNG', 'WebP Pack'] },
   ],
   image: [
-    { key: 'model', label: 'Model', values: ['Fast Concept', 'Balanced', 'Detail Pro'] },
+    { key: 'quality', label: 'Quality', values: ['Standard', 'High', 'Ultra'] },
+    { key: 'variant', label: 'Model', values: ['Fast', 'Premium', 'Realistic', 'General'] },
     { key: 'style', label: 'Style', values: ['Brand Poster', 'Photoreal', '3D Render'] },
-    { key: 'size', label: 'Size', values: ['1024', '1536', '2048'] },
+    { key: 'aspectRatio', label: 'Aspect Ratio', values: ['1:1', '16:9', '9:16', '4:3'] },
+  ],
+  'visual-intel': [
+    { key: 'variant', label: 'Analysis', values: ['Caption', 'Quality Check', 'Brand Audit'] },
+    { key: 'detail', label: 'Detail', values: ['Summary', 'Detailed', 'Expert'] },
   ],
   media: [
     { key: 'package', label: 'Package', values: ['Launch Kit', 'Social Kit', 'Omni Campaign'] },
@@ -1018,7 +1042,13 @@ export default function UnifiedServiceLayout({
       const startRes = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt }),
+        body: JSON.stringify({
+          prompt,
+          quality: selectedOptions.quality?.toLowerCase(),
+          variant: selectedOptions.style?.toLowerCase(),
+          style: selectedOptions.style?.toLowerCase(),
+          aspectRatio: selectedOptions.ratio || selectedOptions.aspectRatio,
+        }),
       });
       const startData = await startRes.json() as {
         id?: string;
@@ -1148,12 +1178,12 @@ export default function UnifiedServiceLayout({
         timestamp: new Date(),
       }]);
     }
-  }, [broadcastAvatarUpdate, decorateGeneratedArtifacts, generationCompleteLabel, generationFailedLabel, generationStartedLabel, locale, t.retryNotice, t.seconds]);
+  }, [broadcastAvatarUpdate, decorateGeneratedArtifacts, generationCompleteLabel, generationFailedLabel, generationStartedLabel, locale, selectedOptions, t.retryNotice, t.seconds]);
 
   const retryArtifactGeneration = useCallback(async (artifact: Artifact) => {
     if (!artifact.generationPrompt) return;
     const context = artifact.generationContext ?? serviceContext;
-    if (!['avatar', 'video', 'music'].includes(context)) return;
+    if (!['avatar', 'video', 'music', 'image', 'photo', 'visual-ai'].includes(context)) return;
 
     setRetryingArtifactPrompt(artifact.generationPrompt);
     try {
@@ -1393,40 +1423,52 @@ export default function UnifiedServiceLayout({
         .slice(-8)
         .map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content }));
 
-      const res = await fetch('/api/chat', {
+      // ── Unified orchestration call ──────────────────────────────────
+      const res = await fetch('/api/chat/orchestrate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: msg,
+          serviceContext,
           agentId,
-          language: locale,
-          context: serviceContext,
+          locale,
           history,
+          selectedOptions,
+          imageUrl: importedAvatarUrl || undefined,
+          serviceId,
+          demoMode,
           metadata: {
             serviceId,
-            demoMode,
-            agentEnabled: true,
-            selectedOptions,
             activeSectionId,
             completionScore,
-            importedAvatarUrl,
-            hasImportedAvatar: Boolean(importedAvatarUrl),
           },
         }),
       });
 
-      const data = await res.json() as {
+      const chatResp = await res.json() as {
+        success?: boolean;
+        intent?: string;
+        responseType?: string;
+        message?: string;
+        assetUrl?: string | null;
+        assetType?: string;
+        predictionId?: string;
+        predictionStatus?: string;
+        metadata?: Record<string, unknown>;
+        // Legacy fallback fields
         data?: { response?: string; artifacts?: Artifact[] };
         response?: string;
-        artifacts?: Artifact[];
         error?: string;
       };
 
-      if (!res.ok) throw new Error(data.error ?? 'Failed');
+      if (!res.ok && !chatResp.success) {
+        throw new Error(chatResp.error || chatResp.message || 'Request failed');
+      }
 
-      const reply = data.data?.response ?? data.response ?? 'Processing...';
-      const artifacts = data.data?.artifacts ?? data.artifacts;
+      // ── Extract reply text ──────────────────────────────────────────
+      const reply = chatResp.message || chatResp.data?.response || chatResp.response || 'Processing…';
 
+      // ── Check throttle / rate limit ─────────────────────────────────
       const loweredReply = reply.toLowerCase();
       if (loweredReply.includes('throttled') || loweredReply.includes('rate limit') || loweredReply.includes('quota')) {
         const retryAfterSeconds = extractRetryAfterSeconds(reply);
@@ -1436,23 +1478,133 @@ export default function UnifiedServiceLayout({
         setRateLimitNotice(null);
       }
 
+      // ── Build assistant message ─────────────────────────────────────
+      const assistantArtifacts: Artifact[] = [];
+
+      // If an asset URL came back immediately (sync model), create artifact
+      if (chatResp.assetUrl) {
+        const artType = chatResp.responseType === 'video' ? 'video'
+          : chatResp.responseType === 'audio' ? 'audio'
+          : chatResp.responseType === 'analysis' ? 'text'
+          : 'image';
+        assistantArtifacts.push({
+          type: artType,
+          url: chatResp.assetUrl,
+          label: reply,
+          mimeType: artType === 'image' ? 'image/*' : artType === 'video' ? 'video/*' : artType === 'audio' ? 'audio/*' : 'text/plain',
+          ...(artType === 'text' ? { content: reply } : {}),
+        });
+      }
+
+      // Add any legacy artifacts from the response
+      const legacyArtifacts = chatResp.data?.artifacts;
+      if (legacyArtifacts?.length) {
+        assistantArtifacts.push(...legacyArtifacts);
+      }
+
       const assistantMessage: Message = {
         id: `msg_${Date.now()}_reply`,
         role: 'assistant',
         content: reply,
-        artifacts,
+        artifacts: assistantArtifacts.length ? assistantArtifacts : undefined,
         timestamp: new Date(),
       };
       setMessages(prev => [...prev, assistantMessage]);
 
-      // Auto-preview first artifact
-      if (artifacts?.length) {
-        setPreviewArtifact(artifacts[0]!);
+      if (assistantArtifacts.length) {
+        setPreviewArtifact(assistantArtifacts[0]!);
       }
 
-      const shouldGenerate = shouldTriggerGeneration(serviceContext, msg);
-      if (shouldGenerate) {
-        await runDirectGeneration(msg, serviceContext);
+      // ── If prediction is async, poll for result ─────────────────────
+      if (chatResp.predictionId && chatResp.predictionStatus !== 'succeeded') {
+        setGenerationProgress({ percent: 10, stage: 'starting', context: serviceContext });
+
+        let finalArtifacts: Artifact[] = [];
+        for (let attempt = 0; attempt < 30; attempt += 1) {
+          setGenerationProgress({
+            percent: Math.min(92, 14 + attempt * 2.8),
+            stage: 'polling',
+            context: serviceContext,
+          });
+          await new Promise((r) => setTimeout(r, 2000));
+
+          const pollRes = await fetch('/api/chat/orchestrate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              message: msg,
+              serviceContext,
+              predictionId: chatResp.predictionId,
+            }),
+          });
+          if (!pollRes.ok) continue;
+
+          const pollData = await pollRes.json() as {
+            predictionStatus?: string;
+            assetUrl?: string | null;
+            message?: string;
+            responseType?: string;
+          };
+
+          if (pollData.predictionStatus === 'succeeded') {
+            const artType = pollData.responseType === 'video' ? 'video'
+              : pollData.responseType === 'audio' ? 'audio'
+              : pollData.responseType === 'analysis' ? 'text'
+              : 'image';
+
+            if (pollData.assetUrl) {
+              finalArtifacts = decorateGeneratedArtifacts([{
+                type: artType,
+                url: pollData.assetUrl,
+                label: pollData.message || generationCompleteLabel,
+                mimeType: artType === 'image' ? 'image/*' : artType === 'video' ? 'video/*' : artType === 'audio' ? 'audio/*' : 'text/plain',
+              }], msg, serviceContext, 'succeeded');
+            } else if (pollData.message && artType === 'text') {
+              finalArtifacts = decorateGeneratedArtifacts([{
+                type: 'text',
+                label: 'AI Analysis',
+                content: pollData.message,
+                mimeType: 'text/plain',
+              }], msg, serviceContext, 'succeeded');
+            }
+            break;
+          }
+
+          if (pollData.predictionStatus === 'failed' || pollData.predictionStatus === 'error') {
+            throw new Error(pollData.message || generationFailedLabel);
+          }
+        }
+
+        if (finalArtifacts.length) {
+          setGenerationProgress({ percent: 97, stage: 'finalizing', context: serviceContext });
+          setMessages(prev => [...prev, {
+            id: `msg_${Date.now()}_gen_done`,
+            role: 'assistant',
+            content: generationCompleteLabel,
+            artifacts: finalArtifacts,
+            timestamp: new Date(),
+          }]);
+          setPreviewArtifact(finalArtifacts[0]!);
+
+          if (serviceContext === 'avatar' && finalArtifacts[0]?.url) {
+            broadcastAvatarUpdate(finalArtifacts[0].url);
+          }
+          setGenerationProgress({ percent: 100, stage: 'done', context: serviceContext });
+        } else {
+          setGenerationProgress({ percent: 100, stage: 'failed', context: serviceContext });
+          setMessages(prev => [...prev, {
+            id: `msg_${Date.now()}_gen_timeout`,
+            role: 'assistant',
+            content: generationFailedLabel,
+            artifacts: decorateGeneratedArtifacts([{
+              type: 'text',
+              label: locale === 'ka' ? 'დრო ამოიწურა' : locale === 'ru' ? 'Тайм-аут' : 'Timed out',
+              content: generationFailedLabel,
+              mimeType: 'text/plain',
+            }], msg, serviceContext, 'failed'),
+            timestamp: new Date(),
+          }]);
+        }
       }
     } catch (err) {
       const errorText = err instanceof Error ? err.message : 'Unknown error';
@@ -1463,6 +1615,7 @@ export default function UnifiedServiceLayout({
         setRateLimitNotice(`${t.retryNotice}${suffix}`);
       }
 
+      setGenerationProgress(prev => prev ? { ...prev, percent: 100, stage: 'failed' } : null);
       setMessages(prev => [...prev, {
         id: `msg_${Date.now()}_err`,
         role: 'assistant',
@@ -1472,7 +1625,7 @@ export default function UnifiedServiceLayout({
     } finally {
       setSending(false);
     }
-  }, [input, sending, demoMode, isAuthenticated, selectedOptions, activeSection, activeSectionId, completionScore, agentId, avatarProfile, importedAvatarUrl, locale, serviceId, serviceContext, messages, onAuthRequired, t.retryNotice, t.seconds, runDirectGeneration]);
+  }, [input, sending, demoMode, isAuthenticated, selectedOptions, activeSection, activeSectionId, completionScore, agentId, avatarProfile, importedAvatarUrl, locale, serviceId, serviceContext, messages, onAuthRequired, t.retryNotice, t.seconds, broadcastAvatarUpdate, decorateGeneratedArtifacts, generationCompleteLabel, generationFailedLabel]);
 
   // ─── File upload ─────────────────────────────────────────────────────────
   const handleFileUpload = (e: ChangeEvent<HTMLInputElement>) => {

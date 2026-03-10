@@ -8,8 +8,13 @@ export async function POST(req: NextRequest) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      type: 'video',
+      service: 'video',
       prompt: body?.prompt,
+      predictionId: body?.predictionId,
+      quality: body?.quality,
+      variant: body?.variant,
+      negativePrompt: body?.negativePrompt,
+      imageUrl: body?.imageUrl,
     }),
   });
 

@@ -15,14 +15,17 @@ const CONTEXT_TO_AGENT: Record<string, string> = {
   music: 'audio-agent',
   video: 'video-agent',
   avatar: 'image-agent',
+  image: 'image-agent',
+  photo: 'image-agent',
   voice: 'audio-agent',
   business: 'business-agent',
+  'visual-ai': 'research-agent',
 };
 
 function shouldProduceArtifact(message: string, context: string) {
   if (!message) return false;
-  if (!['avatar', 'video', 'music', 'voice'].includes(context)) return false;
-  return /generate|create|make|render|avatar|video|music|audio|image|შექმ|генер|созд/i.test(message);
+  if (!['avatar', 'video', 'music', 'voice', 'image', 'photo', 'visual-ai'].includes(context)) return false;
+  return /generate|create|make|render|avatar|video|music|audio|image|photo|enhance|upscale|remove.*bg|caption|analyze|describe|შექმ|გენერ|генер|созд/i.test(message);
 }
 
 function demoImageUrl(title: string) {
@@ -78,7 +81,7 @@ const chatRequestSchema = z.object({
     content: z.string(),
   })).optional(),
   agentId: z.string().optional(),
-  context: z.enum(['global', 'music', 'video', 'avatar', 'voice', 'business']).default('global'),
+  context: z.enum(['global', 'music', 'video', 'avatar', 'voice', 'business', 'image', 'photo', 'visual-ai']).default('global'),
   serviceId: z.string().optional(),
   conversationId: z.string().optional(),
   sessionId: z.string().optional(),

@@ -8,14 +8,12 @@ export async function POST(req: NextRequest) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      service: 'image',
+      service: 'photo',
       prompt: body?.prompt,
       predictionId: body?.predictionId,
       quality: body?.quality,
-      variant: body?.variant,
-      aspectRatio: body?.aspectRatio,
-      negativePrompt: body?.negativePrompt,
-      style: body?.style,
+      variant: body?.variant || (body?.removeBackground ? 'remove-bg' : 'upscale'),
+      imageUrl: body?.imageUrl,
     }),
   });
 
