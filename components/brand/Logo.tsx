@@ -48,12 +48,12 @@ export function Logo({
 
   const LogoIcon = () => (
     <div className={cn(config.container, 'relative overflow-hidden')}>
-      <div className="absolute inset-[10%] rounded-full bg-cyan-400/8 blur-xl" />
+      <div className="absolute inset-[10%] rounded-full bg-indigo-400/[0.06] blur-xl" />
       <Image
         src="/brand/rocket-3d-hq.svg"
-        alt="Avatar G Rocket"
+        alt="MyAvatar.ge Rocket"
         fill
-        className="object-contain object-center saturate-110 contrast-110 brightness-110 drop-shadow-[0_10px_24px_rgba(34,211,238,0.35)] md:drop-shadow-[0_12px_28px_rgba(34,211,238,0.38)] lg:drop-shadow-[0_14px_32px_rgba(34,211,238,0.42)]"
+        className="object-contain object-center drop-shadow-[0_8px_20px_rgba(99,102,241,0.28)] md:drop-shadow-[0_10px_24px_rgba(99,102,241,0.30)] lg:drop-shadow-[0_12px_28px_rgba(99,102,241,0.32)]"
         sizes="80px"
         priority
       />
@@ -65,7 +65,7 @@ export function Logo({
       <h1
         className={cn(
           config.text,
-          'font-extrabold tracking-[-0.01em] bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent'
+          'font-extrabold tracking-[-0.01em] bg-gradient-to-r from-cyan-400 via-indigo-400 to-violet-400 bg-clip-text text-transparent'
         )}
       >
         Avatar G

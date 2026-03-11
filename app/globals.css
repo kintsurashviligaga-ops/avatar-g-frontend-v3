@@ -1049,4 +1049,26 @@ a:focus-visible {
     animation: pulse-slow 4s ease-in-out infinite;
   }
 
+  /* ── Hero logo: gentle floating motion */
+  .logo-hero-float {
+    animation: logo-float 6s ease-in-out infinite;
+  }
+
+  /* ── Hero logo: glow breathing */
+  .logo-glow-breathe {
+    animation: logo-glow-breathe 5s ease-in-out infinite;
+  }
+
+}
+
+/* ── Logo float keyframe (hero only, subtle 2px) */
+@keyframes logo-float {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-3px); }
+}
+
+/* ── Logo glow breathing keyframe */
+@keyframes logo-glow-breathe {
+  0%, 100% { opacity: 0.6; transform: scale(1); }
+  50%      { opacity: 1; transform: scale(1.08); }
 }

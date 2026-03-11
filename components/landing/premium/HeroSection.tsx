@@ -117,19 +117,9 @@ export function HeroSection() {
         }}
       />
 
-      {/* === Logo with animated glow ring === */}
+      {/* === Logo with premium glow === */}
       <div className="relative z-10 mb-8 sm:mb-10">
-        <div className="relative">
-          {/* Pulsing glow behind logo */}
-          <div
-            className="absolute inset-0 -m-6 sm:-m-8 rounded-full animate-pulse-slow"
-            style={{
-              background: 'radial-gradient(circle, rgba(99,102,241,0.2) 0%, transparent 70%)',
-              filter: 'blur(20px)',
-            }}
-          />
-          <BrandLogo size="lg" showText={false} />
-        </div>
+        <BrandLogo size="lg" showText={false} glow />
       </div>
 
       {/* Badge */}
