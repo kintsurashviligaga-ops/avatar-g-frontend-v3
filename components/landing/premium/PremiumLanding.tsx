@@ -12,6 +12,7 @@ import { SuggestionCards } from './SuggestionCards'
 import { ChatInputDock } from './ChatInputDock'
 import FeatureGrid from './FeatureGrid'
 import { AgentGHero } from './AgentGHero'
+import { WorkflowPipelineSection } from './WorkflowPipelineSection'
 import { LandingCTA } from './LandingCTA'
 import { LandingFooter } from './LandingFooter'
 
@@ -24,7 +25,10 @@ export default function PremiumLanding() {
       <div className="relative">
         <SuggestionCards />
         <ChatInputDock />
+        <Separator />
         <AgentGHero />
+        <Separator />
+        <WorkflowPipelineSection />
         <Separator />
         <FeatureGrid />
         <LandingCTA />

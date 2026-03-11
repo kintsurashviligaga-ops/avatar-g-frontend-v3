@@ -158,7 +158,7 @@ export function WorkspaceDashboard({ locale }: { locale: string }) {
     loc === 'ka' ? obj.ka : loc === 'ru' ? obj.ru : obj.en
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(ellipse_at_top,rgba(6,182,212,0.06)_0%,transparent_60%),radial-gradient(ellipse_at_bottom-right,rgba(139,92,246,0.06)_0%,transparent_60%)] px-4 py-8 sm:px-6 lg:px-8">
+    <div className="min-h-screen px-4 py-8 sm:px-6 lg:px-8" style={{ background: 'radial-gradient(ellipse at top, var(--color-accent-soft) 0%, transparent 60%)' }}>
       <div className="mx-auto max-w-7xl space-y-6">
 
         {/* ─── Welcome Header ─────────────────────────────────── */}
@@ -171,17 +171,17 @@ export function WorkspaceDashboard({ locale }: { locale: string }) {
           <div className="flex items-center gap-4">
             {/* Avatar glow ring */}
             <div className="relative shrink-0">
-              <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center shadow-[0_0_24px_rgba(34,211,238,0.5)]">
+              <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center shadow-lg">
                 <UserCircle2 className="w-8 h-8 text-white" />
               </div>
-              <span className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-[#060d1e] bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]" />
+              <span className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 bg-emerald-400 shadow-sm" style={{ borderColor: 'var(--color-bg)' }} />
             </div>
             <div>
-              <p className="text-xs text-white/45 font-medium tracking-wide mb-0.5">{t.greeting(hour)}</p>
-              <h1 className="text-2xl sm:text-3xl font-bold text-white">
-                Avatar G <span className="text-cyan-300">Workspace</span>
+              <p className="text-xs font-medium tracking-wide mb-0.5" style={{ color: 'var(--color-text-tertiary)' }}>{t.greeting(hour)}</p>
+              <h1 className="text-2xl sm:text-3xl font-bold" style={{ color: 'var(--color-text)' }}>
+                Avatar G <span style={{ color: 'var(--color-accent)' }}>Workspace</span>
               </h1>
-              <p className="text-sm text-white/45 mt-0.5">{t.subtitle}</p>
+              <p className="text-sm mt-0.5" style={{ color: 'var(--color-text-tertiary)' }}>{t.subtitle}</p>
             </div>
           </div>
 
@@ -215,10 +215,10 @@ export function WorkspaceDashboard({ locale }: { locale: string }) {
                   <div className={`w-9 h-9 rounded-xl bg-gradient-to-br ${stat.bg} flex items-center justify-center border ${stat.border}`}>
                     <Icon className={`w-4.5 h-4.5 ${stat.color}`} />
                   </div>
-                  <TrendingUp className="w-3.5 h-3.5 text-white/20" />
+                  <TrendingUp className="w-3.5 h-3.5" style={{ color: 'var(--color-text-tertiary)' }} />
                 </div>
                 <p className={`text-3xl font-bold ${stat.color} mb-0.5`}>{stat.value}</p>
-                <p className="text-xs text-white/45">{getLabel(stat.label)}</p>
+                <p className="text-xs" style={{ color: 'var(--color-text-tertiary)' }}>{getLabel(stat.label)}</p>
                 {/* ambient glow */}
                 <div className={`absolute -bottom-4 -right-4 w-16 h-16 rounded-full blur-2xl opacity-20 bg-gradient-to-br ${stat.bg}`} />
               </motion.div>
@@ -227,7 +227,7 @@ export function WorkspaceDashboard({ locale }: { locale: string }) {
         </div>
 
         {/* ─── Tab Navigation ─────────────────────────────────── */}
-        <div className="flex items-center gap-1 p-1 rounded-2xl bg-white/[0.03] border border-white/[0.07] w-fit">
+        <div className="flex items-center gap-1 p-1 rounded-2xl w-fit" style={{ backgroundColor: 'var(--card-bg)', border: '1px solid var(--color-border)' }}>
           {(['overview', 'services', 'activity'] as const).map(tab => {
             const labels = {
               overview: { en: 'Overview', ka: 'მიმოხილვა', ru: 'Обзор' },
@@ -238,18 +238,20 @@ export function WorkspaceDashboard({ locale }: { locale: string }) {
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
-                className={`relative px-5 py-2 rounded-xl text-xs font-semibold transition-all duration-200 ${
-                  activeTab === tab
-                    ? 'bg-white/[0.10] text-white shadow-sm'
-                    : 'text-white/40 hover:text-white/70'
-                }`}
+                className="relative px-5 py-2 rounded-xl text-xs font-semibold transition-all duration-200"
+                style={activeTab === tab ? {
+                  backgroundColor: 'var(--card-hover)',
+                  color: 'var(--color-text)',
+                } : {
+                  color: 'var(--color-text-tertiary)',
+                }}
               >
                 {getLabel(labels[tab])}
                 {activeTab === tab && (
                   <motion.div
                     layoutId="activeTab"
-                    className="absolute inset-0 rounded-xl bg-white/[0.08] border border-white/[0.12]"
-                    style={{ zIndex: -1 }}
+                    className="absolute inset-0 rounded-xl"
+                    style={{ zIndex: -1, backgroundColor: 'var(--card-hover)', border: '1px solid var(--color-border)' }}
                   />
                 )}
               </button>
@@ -274,10 +276,10 @@ export function WorkspaceDashboard({ locale }: { locale: string }) {
               {/* ── Quick Pipelines (2/3 wide) */}
               <div className="lg:col-span-2 space-y-4">
                 <div className="flex items-center justify-between">
-                  <h2 className="text-sm font-bold text-white/80 flex items-center gap-2">
+                  <h2 className="text-sm font-bold flex items-center gap-2" style={{ color: 'var(--color-text-secondary)' }}>
                     <Layers className="w-4 h-4 text-cyan-400" /> {t.quickPipelines}
                   </h2>
-                  <Link href={`/${locale}/services`} className="text-[11px] text-cyan-300/70 hover:text-cyan-200 transition-colors">
+                  <Link href={`/${locale}/services`} className="text-[11px] hover:opacity-80 transition-colors" style={{ color: 'var(--color-accent)' }}>
                     {t.allServices}
                   </Link>
                 </div>
@@ -298,8 +300,8 @@ export function WorkspaceDashboard({ locale }: { locale: string }) {
                         <div className="flex items-center gap-2">
                           <span className="text-2xl">{pipe.icon}</span>
                           <div>
-                            <p className="text-sm font-bold text-white leading-tight">{getLabel(pipe.label)}</p>
-                            <p className="text-[10px] text-white/40">{t.pipelineServices(pipe.services.length)}</p>
+                            <p className="text-sm font-bold leading-tight" style={{ color: 'var(--color-text)' }}>{getLabel(pipe.label)}</p>
+                            <p className="text-[10px]" style={{ color: 'var(--color-text-tertiary)' }}>{t.pipelineServices(pipe.services.length)}</p>
                           </div>
                         </div>
 
@@ -308,8 +310,8 @@ export function WorkspaceDashboard({ locale }: { locale: string }) {
                           {serviceIcons.map((svc, idx) => {
                             const SIcon = svc.icon
                             return (
-                              <div key={svc.id} className="flex items-center gap-1">
-                                {idx > 0 && <ChevronRight className="w-2.5 h-2.5 text-white/30" />}
+                                <div key={svc.id} className="flex items-center gap-1">
+                                {idx > 0 && <ChevronRight className="w-2.5 h-2.5" style={{ color: 'var(--color-text-tertiary)' }} />}
                                 <div className={`w-6 h-6 rounded-lg bg-gradient-to-br ${svc.color} flex items-center justify-center`}
                                   style={{ boxShadow: `0 0 8px ${svc.glow}` }}>
                                   <SIcon className="w-3 h-3 text-white" />
@@ -318,7 +320,7 @@ export function WorkspaceDashboard({ locale }: { locale: string }) {
                             )
                           })}
                           {pipe.services.length > 3 && (
-                            <span className="ml-1 text-[10px] text-white/35">+{pipe.services.length - 3}</span>
+                            <span className="ml-1 text-[10px]" style={{ color: 'var(--color-text-tertiary)' }}>+{pipe.services.length - 3}</span>
                           )}
                         </div>
 
@@ -327,8 +329,13 @@ export function WorkspaceDashboard({ locale }: { locale: string }) {
                           className={`w-full flex items-center justify-center gap-1.5 rounded-xl py-2 text-xs font-bold transition-all ${
                             isLaunched
                               ? 'bg-emerald-500/20 border border-emerald-400/40 text-emerald-300'
-                              : 'bg-white/[0.08] border border-white/[0.15] text-white/80 hover:bg-white/[0.14] hover:text-white'
+                              : ''
                           }`}
+                          style={!isLaunched ? {
+                            backgroundColor: 'var(--card-bg)',
+                            border: '1px solid var(--color-border)',
+                            color: 'var(--color-text-secondary)',
+                          } : undefined}
                         >
                           {isLaunched ? <><CheckCircle2 className="w-3.5 h-3.5" /> Ready!</> : <><Play className="w-3.5 h-3.5" /> {t.launchBtn}</>}
                         </button>
@@ -340,7 +347,12 @@ export function WorkspaceDashboard({ locale }: { locale: string }) {
                 {/* Build custom pipeline link */}
                 <Link
                   href={`/${locale}#workflow-builder`}
-                  className="flex items-center justify-center gap-2 w-full rounded-2xl border border-dashed border-white/[0.12] bg-white/[0.02] py-3 text-[11px] text-white/40 hover:text-white/70 hover:border-white/25 hover:bg-white/[0.04] transition-all"
+                  className="flex items-center justify-center gap-2 w-full rounded-2xl border border-dashed py-3 text-[11px] transition-all"
+                  style={{
+                    borderColor: 'var(--color-border)',
+                    backgroundColor: 'var(--card-bg)',
+                    color: 'var(--color-text-tertiary)',
+                  }}
                 >
                   <Plus className="w-3.5 h-3.5" /> {t.buildCustom}
                 </Link>
@@ -349,17 +361,17 @@ export function WorkspaceDashboard({ locale }: { locale: string }) {
               {/* ── Recent Activity (1/3 wide) */}
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
-                  <h2 className="text-sm font-bold text-white/80 flex items-center gap-2">
+                  <h2 className="text-sm font-bold flex items-center gap-2" style={{ color: 'var(--color-text-secondary)' }}>
                     <Activity className="w-4 h-4 text-violet-400" /> {t.recentActivity}
                   </h2>
-                  <button className="text-[11px] text-white/35 hover:text-white/60 transition-colors">{t.viewAll}</button>
+                  <button className="text-[11px] transition-colors" style={{ color: 'var(--color-text-tertiary)' }}>{t.viewAll}</button>
                 </div>
 
-                <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] divide-y divide-white/[0.05] overflow-hidden">
+                <div className="rounded-2xl overflow-hidden" style={{ border: '1px solid var(--color-border)', backgroundColor: 'var(--card-bg)' }}>
                   {RECENT_ACTIVITY.map((item, i) => {
                     const statusColor = item.status === 'done' ? 'text-emerald-400 bg-emerald-500/12 border-emerald-400/25' :
                       item.status === 'running' ? 'text-cyan-300 bg-cyan-500/12 border-cyan-400/25 animate-pulse' :
-                      'text-white/35 bg-white/[0.04] border-white/[0.10]'
+                      'bg-transparent'
                     const statusLabel = item.status === 'done' ? t.statusDone : item.status === 'running' ? t.statusRunning : t.statusQueued
                     return (
                       <motion.div
@@ -372,10 +384,11 @@ export function WorkspaceDashboard({ locale }: { locale: string }) {
                       >
                         <span className="text-xl shrink-0">{item.icon}</span>
                         <div className="flex-1 min-w-0">
-                          <p className="text-[11px] font-semibold text-white/80 truncate">{getLabel(item.label)}</p>
-                          <p className="text-[10px] text-white/35">{getLabel(item.when)}</p>
+                          <p className="text-[11px] font-semibold truncate" style={{ color: 'var(--color-text-secondary)' }}>{getLabel(item.label)}</p>
+                          <p className="text-[10px]" style={{ color: 'var(--color-text-tertiary)' }}>{getLabel(item.when)}</p>
                         </div>
-                        <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full border ${statusColor} shrink-0`}>
+                        <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full border ${statusColor} shrink-0`}
+                          style={item.status === 'queued' ? { color: 'var(--color-text-tertiary)', borderColor: 'var(--color-border)', backgroundColor: 'var(--card-bg)' } : undefined}>
                           {statusLabel}
                         </span>
                       </motion.div>
@@ -390,18 +403,18 @@ export function WorkspaceDashboard({ locale }: { locale: string }) {
                   transition={{ delay: 0.4, duration: 0.4 }}
                   className="rounded-2xl border border-cyan-400/20 bg-[linear-gradient(135deg,rgba(34,211,238,0.07),rgba(99,102,241,0.05))] p-4 text-center space-y-3"
                 >
-                  <div className="w-10 h-10 mx-auto rounded-2xl bg-gradient-to-br from-cyan-400 to-blue-600 flex items-center justify-center shadow-[0_0_20px_rgba(34,211,238,0.45)]">
+                  <div className="w-10 h-10 mx-auto rounded-2xl bg-gradient-to-br from-cyan-400 to-blue-600 flex items-center justify-center shadow-lg">
                     <Cpu className="w-5 h-5 text-white" />
                   </div>
                   <div>
-                    <p className="text-xs font-bold text-white">Agent G</p>
-                    <p className="text-[10px] text-white/40 mt-0.5">
+                    <p className="text-xs font-bold" style={{ color: 'var(--color-text)' }}>Agent G</p>
+                    <p className="text-[10px] mt-0.5" style={{ color: 'var(--color-text-tertiary)' }}>
                       {loc === 'ka' ? 'AI director · ონლაინ' : loc === 'ru' ? 'AI директор · онлайн' : 'AI director · online'}
                     </p>
                   </div>
                   <Link
                     href={`/${locale}/services/agent-g`}
-                    className="flex items-center justify-center gap-1.5 w-full rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 text-white text-xs font-bold py-2.5 hover:brightness-110 transition-all shadow-[0_0_16px_rgba(34,211,238,0.3)]"
+                    className="flex items-center justify-center gap-1.5 w-full rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 text-white text-xs font-bold py-2.5 hover:brightness-110 transition-all"
                   >
                     <Zap className="w-3.5 h-3.5" />
                     {loc === 'ka' ? 'გაშვება' : loc === 'ru' ? 'Запустить' : 'Launch Agent G'}
@@ -435,19 +448,22 @@ export function WorkspaceDashboard({ locale }: { locale: string }) {
                     >
                       <Link
                         href={`/${locale}/services/${svc.id}`}
-                        className="group flex flex-col items-center gap-3 rounded-2xl border border-white/[0.09] bg-white/[0.025] p-4 text-center hover:border-white/[0.20] hover:bg-white/[0.05] hover:scale-[1.03] transition-all duration-200"
+                        className="group flex flex-col items-center gap-3 rounded-2xl p-4 text-center transition-all duration-200 hover:scale-[1.03]"
+                        style={{
+                          border: '1px solid var(--color-border)',
+                          backgroundColor: 'var(--card-bg)',
+                        }}
                       >
                         <div
                           className={`w-12 h-12 rounded-2xl bg-gradient-to-br ${svc.color} flex items-center justify-center`}
-                          style={{ boxShadow: `0 0 16px ${svc.glow}` }}
                         >
                           <Icon className="w-6 h-6 text-white" />
                         </div>
                         <div>
-                          <p className="text-xs font-bold text-white/85 leading-tight">{svc.shortLabel}</p>
-                          <p className="text-[9px] text-white/35 mt-0.5 leading-tight line-clamp-2">{svc.label}</p>
+                          <p className="text-xs font-bold leading-tight" style={{ color: 'var(--color-text)' }}>{svc.shortLabel}</p>
+                          <p className="text-[9px] mt-0.5 leading-tight line-clamp-2" style={{ color: 'var(--color-text-tertiary)' }}>{svc.label}</p>
                         </div>
-                        <div className="flex items-center gap-1 text-[9px] text-white/30 group-hover:text-cyan-300/70 transition-colors">
+                        <div className="flex items-center gap-1 text-[9px] transition-colors" style={{ color: 'var(--color-text-tertiary)' }}>
                           <span>{t.openBtn}</span> <ArrowRight className="w-3 h-3" />
                         </div>
                       </Link>
@@ -459,7 +475,12 @@ export function WorkspaceDashboard({ locale }: { locale: string }) {
               <div className="mt-4 flex justify-center">
                 <Link
                   href={`/${locale}/services`}
-                  className="inline-flex items-center gap-2 px-6 py-3 rounded-2xl border border-white/[0.12] bg-white/[0.04] text-sm font-semibold text-white/70 hover:text-white hover:border-white/25 hover:bg-white/[0.07] transition-all"
+                  className="inline-flex items-center gap-2 px-6 py-3 rounded-2xl text-sm font-semibold transition-all"
+                  style={{
+                    border: '1px solid var(--color-border)',
+                    backgroundColor: 'var(--card-bg)',
+                    color: 'var(--color-text-secondary)',
+                  }}
                 >
                   <Package className="w-4 h-4" /> {t.browseServices}
                 </Link>
@@ -477,12 +498,13 @@ export function WorkspaceDashboard({ locale }: { locale: string }) {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.3 }}
-              className="rounded-3xl border border-white/[0.08] bg-white/[0.02] overflow-hidden"
+              className="rounded-3xl overflow-hidden"
+              style={{ border: '1px solid var(--color-border)', backgroundColor: 'var(--card-bg)' }}
             >
               {/* Header row */}
-              <div className="flex items-center gap-3 px-5 py-4 border-b border-white/[0.07]">
+              <div className="flex items-center gap-3 px-5 py-4" style={{ borderBottom: '1px solid var(--color-border)' }}>
                 <Radio className="w-4 h-4 text-violet-400" />
-                <h2 className="text-sm font-bold text-white/80">{t.recentActivity}</h2>
+                <h2 className="text-sm font-bold" style={{ color: 'var(--color-text-secondary)' }}>{t.recentActivity}</h2>
                 <span className="ml-auto flex items-center gap-1.5 text-[10px] text-emerald-300/70">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
                   {loc === 'ka' ? 'ლაივი' : loc === 'ru' ? 'Онлайн' : 'Live'}
@@ -492,7 +514,7 @@ export function WorkspaceDashboard({ locale }: { locale: string }) {
               {[...RECENT_ACTIVITY, ...RECENT_ACTIVITY].map((item, i) => {
                 const statusColor = item.status === 'done' ? 'text-emerald-400 bg-emerald-500/12 border-emerald-400/25' :
                   item.status === 'running' ? 'text-cyan-300 bg-cyan-500/12 border-cyan-400/25' :
-                  'text-white/35 bg-white/[0.04] border-white/[0.10]'
+                  'bg-transparent'
                 const statusLabel = item.status === 'done' ? t.statusDone : item.status === 'running' ? t.statusRunning : t.statusQueued
                 const svc = SERVICES.find(s => item.label.en.toLowerCase().includes(s.shortLabel.toLowerCase()))
                 return (
@@ -502,23 +524,26 @@ export function WorkspaceDashboard({ locale }: { locale: string }) {
                     initial="hidden"
                     animate="visible"
                     variants={fadeUp}
-                    className="flex items-center gap-4 px-5 py-4 border-b border-white/[0.05] hover:bg-white/[0.02] transition-colors"
+                    className="flex items-center gap-4 px-5 py-4 transition-colors"
+                    style={{ borderBottom: '1px solid var(--color-border)' }}
                   >
                     <div className="relative shrink-0">
-                      <div className={`w-9 h-9 rounded-xl ${svc ? `bg-gradient-to-br ${svc.color}` : 'bg-white/10'} flex items-center justify-center text-lg`}>
+                      <div className={`w-9 h-9 rounded-xl ${svc ? `bg-gradient-to-br ${svc.color}` : ''} flex items-center justify-center text-lg`}
+                        style={!svc ? { backgroundColor: 'var(--card-hover)' } : undefined}>
                         {item.icon}
                       </div>
                       {item.status === 'running' && (
-                        <span className="absolute -top-0.5 -right-0.5 w-3 h-3 rounded-full bg-cyan-400 border-2 border-[#060d1e] animate-pulse" />
+                        <span className="absolute -top-0.5 -right-0.5 w-3 h-3 rounded-full bg-cyan-400 border-2 animate-pulse" style={{ borderColor: 'var(--color-bg)' }} />
                       )}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-white/85 truncate">{getLabel(item.label)}</p>
-                      <p className="text-[10px] text-white/35 flex items-center gap-1 mt-0.5">
+                      <p className="text-sm font-semibold truncate" style={{ color: 'var(--color-text)' }}>{getLabel(item.label)}</p>
+                      <p className="text-[10px] flex items-center gap-1 mt-0.5" style={{ color: 'var(--color-text-tertiary)' }}>
                         <Clock className="w-3 h-3" /> {getLabel(item.when)}
                       </p>
                     </div>
-                    <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full border ${statusColor} shrink-0`}>
+                    <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full border ${statusColor} shrink-0`}
+                      style={item.status === 'queued' ? { color: 'var(--color-text-tertiary)', borderColor: 'var(--color-border)', backgroundColor: 'var(--card-bg)' } : undefined}>
                       {statusLabel}
                     </span>
                   </motion.div>
@@ -536,21 +561,21 @@ export function WorkspaceDashboard({ locale }: { locale: string }) {
           className="rounded-3xl border border-cyan-400/15 bg-[linear-gradient(135deg,rgba(6,182,212,0.06),rgba(99,102,241,0.04))] p-5 flex flex-col sm:flex-row items-center justify-between gap-4"
         >
           <div className="flex items-center gap-4">
-            <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-amber-400 to-orange-600 flex items-center justify-center shadow-[0_0_20px_rgba(251,146,60,0.5)]">
+            <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-amber-400 to-orange-600 flex items-center justify-center shadow-lg">
               <Flame className="w-5 h-5 text-white" />
             </div>
             <div>
-              <p className="text-sm font-bold text-white">
+              <p className="text-sm font-bold" style={{ color: 'var(--color-text)' }}>
                 {loc === 'ka' ? '17 AI სერვისი — ერთ workspace-ში' : loc === 'ru' ? '17 AI-сервисов в одном пространстве' : '17 AI Services — one workspace'}
               </p>
-              <p className="text-xs text-white/40">
+              <p className="text-xs" style={{ color: 'var(--color-text-tertiary)' }}>
                 {loc === 'ka' ? 'ყველა სერვისი კავშირში. Zero vendor lock-in.' : loc === 'ru' ? 'Все сервисы соединены. Без привязки к поставщику.' : 'All services connected. Zero vendor lock-in.'}
               </p>
             </div>
           </div>
           <Link
             href={`/${locale}/services`}
-            className="shrink-0 inline-flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-gradient-to-r from-cyan-500 to-blue-600 text-white text-sm font-bold hover:brightness-110 transition-all shadow-[0_0_20px_rgba(34,211,238,0.3)]"
+            className="shrink-0 inline-flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-gradient-to-r from-cyan-500 to-blue-600 text-white text-sm font-bold hover:brightness-110 transition-all"
           >
             <Sparkles className="w-4 h-4" />
             {loc === 'ka' ? 'სრული სერვისები' : loc === 'ru' ? 'Все сервисы' : 'Explore Services'}

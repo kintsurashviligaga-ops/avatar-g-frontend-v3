@@ -33,18 +33,24 @@ export function Modal({ open, onClose, title, children, className }: ModalProps)
       />
       <div
         className={cn(
-          'relative z-10 w-full max-w-xl rounded-3xl border border-white/[0.12] bg-[linear-gradient(155deg,rgba(12,22,46,0.96),rgba(7,14,32,0.92))] backdrop-blur-2xl shadow-[0_0_0_1px_rgba(255,255,255,0.12),0_48px_120px_rgba(0,0,0,0.65),inset_0_1px_0_rgba(255,255,255,0.09)] overflow-hidden animate-scale-in',
+          'relative z-10 w-full max-w-xl rounded-3xl backdrop-blur-2xl overflow-hidden animate-scale-in',
           className
         )}
+        style={{
+          border: '1px solid var(--color-border)',
+          backgroundColor: 'var(--color-surface)',
+          boxShadow: '0 48px 120px rgba(0,0,0,0.25)',
+        }}
       >
-        {/* Top neon edge */}
-        <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-cyan-400/30 to-transparent" />
+        {/* Top accent edge */}
+        <div className="absolute top-0 inset-x-0 h-px" style={{ background: 'linear-gradient(to right, transparent, var(--color-accent-soft), transparent)' }} />
         <div className="p-6">
           <div className="mb-5 flex items-start justify-between gap-3">
-            <h3 className="text-lg font-bold text-white tracking-tight">{title}</h3>
+            <h3 className="text-lg font-bold tracking-tight" style={{ color: 'var(--color-text)' }}>{title}</h3>
             <button
               onClick={onClose}
-              className="rounded-xl p-1.5 text-white/40 hover:bg-white/[0.08] hover:text-white transition-all border border-transparent hover:border-white/[0.10]"
+              className="rounded-xl p-1.5 transition-all"
+              style={{ color: 'var(--color-text-tertiary)', border: '1px solid transparent' }}
               aria-label="Close"
             >
               <X className="h-4 w-4" />

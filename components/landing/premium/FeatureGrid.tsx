@@ -95,7 +95,7 @@ export default function FeatureGrid() {
                       <div
                         className="absolute inset-0 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"
                         style={{
-                          boxShadow: `inset 0 0 0 1px var(--color-accent), 0 0 20px rgba(99,102,241,0.15), 0 8px 32px rgba(0,0,0,0.3)`,
+                          boxShadow: `inset 0 0 0 1px var(--color-accent), 0 0 20px rgba(99,102,241,0.12)`,
                         }}
                       />
                     </Link>
