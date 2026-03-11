@@ -17,7 +17,7 @@ export function SuggestionCards() {
 
   return (
     <section className="px-4 sm:px-6 lg:px-10 pb-8 sm:pb-12">
-      <div className="max-w-3xl mx-auto grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3">
+      <div className="max-w-3xl mx-auto grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5 sm:gap-3">
         {SUGGESTION_SERVICES.map(service => (
           <button
             key={service.slug}

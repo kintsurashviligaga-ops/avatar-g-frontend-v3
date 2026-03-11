@@ -19,12 +19,17 @@ export default function PremiumLanding() {
   return (
     <div className="relative min-h-screen overflow-x-hidden" style={{ backgroundColor: 'var(--color-bg)', color: 'var(--color-text)' }}>
       <HeroSection />
-      <SuggestionCards />
-      <ChatInputDock />
-      <AgentGHero />
-      <Separator />
-      <FeatureGrid />
-      <LandingCTA />
+
+      {/* Content sections with consistent max-width and padding */}
+      <div className="relative">
+        <SuggestionCards />
+        <ChatInputDock />
+        <AgentGHero />
+        <Separator />
+        <FeatureGrid />
+        <LandingCTA />
+      </div>
+
       <LandingFooter />
     </div>
   )

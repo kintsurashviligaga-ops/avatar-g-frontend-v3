@@ -1,19 +1,25 @@
 "use client";
 
 import { useState } from 'react';
-import { usePathname } from 'next/navigation';
 import { TopNavbar, SidebarMenu, BottomNavigation } from './shell/ModernShell';
 import { ClientErrorBoundary } from './ClientErrorBoundary';
 
 export function AppShell({ children }: { children: React.ReactNode }) {
-  const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   return (
     <div className='relative min-h-screen flex flex-col' style={{ color: 'var(--color-text)' }}>
+      {/* Skip to content — accessibility */}
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-[999] focus:px-4 focus:py-2 focus:rounded-lg focus:text-sm focus:font-semibold"
+        style={{ backgroundColor: 'var(--color-accent)', color: '#fff' }}
+      >
+        Skip to content
+      </a>
       <TopNavbar onMenuToggle={() => setSidebarOpen(v => !v)} menuOpen={sidebarOpen} />
       <SidebarMenu open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
-      <main className="relative flex-1 z-10 w-full pt-16">
+      <main id="main-content" className="relative flex-1 z-10 w-full pt-16">
         <ClientErrorBoundary>
           <div className='relative z-10'>
             {children}

@@ -135,7 +135,7 @@ export function TopNavbar({ onMenuToggle, menuOpen }: { onMenuToggle: () => void
         >
           {menuOpen ? <IconX /> : <IconMenu />}
         </button>
-        <BrandLogo href={lh('/')} size="nav" showText={!scrolled || typeof window !== 'undefined' && window.innerWidth >= 640} compact={scrolled} />
+        <BrandLogo href={lh('/')} size="nav" showText={!scrolled} compact={scrolled} />
       </div>
 
       {/* Center: Search (desktop) */}

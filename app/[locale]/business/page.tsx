@@ -50,16 +50,16 @@ export default function BusinessPage() {
   const c = CONTENT[locale] ?? CONTENT['en']!;
 
   return (
-    <div className="min-h-screen bg-transparent text-white">
+    <div className="min-h-screen bg-transparent" style={{ color: 'var(--color-text)' }}>
       <section className="max-w-4xl mx-auto px-4 sm:px-6 py-20 text-center">
         <h1 className="text-4xl sm:text-5xl font-bold mb-6">{c.title}</h1>
-        <p className="text-lg text-white/50 max-w-2xl mx-auto mb-12">{c.subtitle}</p>
+        <p className="text-lg max-w-2xl mx-auto mb-12" style={{ color: 'var(--color-text-secondary)' }}>{c.subtitle}</p>
 
         <div className="grid sm:grid-cols-2 gap-4 text-left mb-12">
           {c.features.map((f, i) => (
-            <div key={i} className="flex items-start gap-3 bg-white/[0.03] border border-white/[0.06] rounded-2xl p-4">
-              <span className="text-cyan-400 mt-0.5">◈</span>
-              <span className="text-sm text-white/70">{f}</span>
+            <div key={i} className="flex items-start gap-3 rounded-2xl p-4" style={{ backgroundColor: 'var(--card-bg)', border: '1px solid var(--color-border)' }}>
+              <span style={{ color: 'var(--color-accent)' }} className="mt-0.5">◈</span>
+              <span className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>{f}</span>
             </div>
           ))}
         </div>
@@ -67,13 +67,15 @@ export default function BusinessPage() {
         <div className="flex items-center justify-center gap-4">
           <Link
             href={`/${locale}/pricing`}
-            className="bg-white text-[#050510] font-semibold px-8 py-3 rounded-xl hover:bg-white/90 transition-all"
+            className="font-semibold px-8 py-3 rounded-xl hover:opacity-90 transition-all"
+            style={{ backgroundColor: 'var(--color-accent)', color: '#fff' }}
           >
             {c.cta}
           </Link>
           <Link
             href={`/${locale}/contact`}
-            className="border border-white/10 text-white/60 px-8 py-3 rounded-xl hover:bg-white/[0.05] transition-all"
+            className="px-8 py-3 rounded-xl transition-all hover:opacity-80"
+            style={{ border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)' }}
           >
             Contact Sales
           </Link>

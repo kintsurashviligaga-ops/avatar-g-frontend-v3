@@ -24,7 +24,7 @@ export function PricingSection() {
   const labels = PRICING_LABELS[locale as keyof typeof PRICING_LABELS] || PRICING_LABELS.ka
 
   return (
-    <section id="pricing" className="relative py-28 px-4 sm:px-6 overflow-hidden border-t border-white/[0.08]">
+    <section id="pricing" className="relative py-28 px-4 sm:px-6 overflow-hidden" style={{ borderTop: '1px solid var(--color-border)' }}>
       {/* Background decoration */}
       <div className="absolute inset-0 pointer-events-none">
         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[700px] h-[700px] bg-gradient-to-b from-cyan-500/[0.03] to-transparent rounded-full blur-[120px]" />
@@ -42,13 +42,13 @@ export function PricingSection() {
             <Sparkles className="w-3.5 h-3.5 text-cyan-300" />
             <span className="text-[10px] font-bold text-cyan-200 tracking-[0.12em] uppercase">{labels.badge}</span>
           </div>
-          <h2 className="text-3xl md:text-5xl lg:text-[3.5rem] font-black text-white mb-5 tracking-[-0.02em]">
+          <h2 className="text-3xl md:text-5xl lg:text-[3.5rem] font-black mb-5 tracking-[-0.02em]" style={{ color: 'var(--color-text)' }}>
             {t('pricing.title')}{' '}
             <span className="bg-gradient-to-r from-cyan-300 to-blue-400 bg-clip-text text-transparent">
               {t('pricing.titleAccent')}
             </span>
           </h2>
-          <p className="text-white/40 max-w-xl mx-auto text-base md:text-lg leading-relaxed">
+          <p className="max-w-xl mx-auto text-base md:text-lg leading-relaxed" style={{ color: 'var(--color-text-secondary)' }}>
             {t('pricing.subtitle')}
           </p>
           <p className="mt-5 text-cyan-100/85 text-sm md:text-base font-medium">
@@ -86,9 +86,13 @@ export function PricingSection() {
                 <div
                   className={`relative flex flex-col h-full rounded-2xl border p-7 backdrop-blur-xl transition-all duration-500 ${
                     isPopular
-                      ? 'border-cyan-400/35 bg-[#060B18]/95 shadow-[0_0_60px_rgba(6,182,212,0.16)]'
-                      : 'border-white/[0.10] bg-[#060B18]/82 hover:border-white/[0.18]'
+                      ? 'border-cyan-400/35 shadow-[0_0_60px_rgba(6,182,212,0.16)]'
+                      : 'hover:border-opacity-20'
                   }`}
+                  style={{
+                    backgroundColor: 'var(--card-bg)',
+                    border: isPopular ? undefined : '1px solid var(--color-border)',
+                  }}
                 >
                   {isPopular && (
                     <motion.div
@@ -104,21 +108,21 @@ export function PricingSection() {
                     <AccentIcon className="w-5 h-5 text-white" />
                   </div>
 
-                  <h3 className="text-xl font-bold text-white">{plan.name}</h3>
-                  <p className="text-sm text-white/40 mt-1">{plan.description}</p>
+                  <h3 className="text-xl font-bold" style={{ color: 'var(--color-text)' }}>{plan.name}</h3>
+                  <p className="text-sm mt-1" style={{ color: 'var(--color-text-secondary)' }}>{plan.description}</p>
 
                   <div className="flex items-baseline gap-1.5 mt-5 mb-6">
                     <span className={`text-4xl font-extrabold bg-gradient-to-br ${accent.gradient} bg-clip-text text-transparent`}>
                       ${plan.price}
                     </span>
-                    <span className="text-white/35 text-sm font-medium">{labels.month}</span>
+                    <span className="text-sm font-medium" style={{ color: 'var(--color-text-tertiary)' }}>{labels.month}</span>
                   </div>
 
-                  <div className="h-px bg-gradient-to-r from-transparent via-white/10 to-transparent mb-6" />
+                  <div className="h-px mb-6" style={{ background: 'linear-gradient(to right, transparent, var(--color-border), transparent)' }} />
 
                   <ul className="space-y-3 mb-8 flex-1">
                     {plan.features.map((f) => (
-                      <li key={f} className="flex items-start gap-2.5 text-sm text-white/70">
+                      <li key={f} className="flex items-start gap-2.5 text-sm" style={{ color: 'var(--color-text-secondary)' }}>
                         <div className={`mt-0.5 flex-shrink-0 w-4 h-4 rounded-full bg-gradient-to-br ${accent.gradient} flex items-center justify-center`}>
                           <Check className="w-2.5 h-2.5 text-white" strokeWidth={3} />
                         </div>
@@ -136,8 +140,13 @@ export function PricingSection() {
                     className={`block text-center py-3.5 rounded-xl font-bold text-sm transition-all duration-300 ${
                       isPopular
                         ? 'bg-gradient-to-r from-cyan-500 to-blue-600 text-white hover:shadow-[0_0_40px_rgba(6,182,212,0.3)] hover:brightness-110'
-                        : 'bg-white/[0.05] border border-white/[0.08] text-white/80 hover:bg-white/[0.10] hover:border-white/[0.15]'
+                        : 'hover:opacity-80'
                     }`}
+                    style={isPopular ? undefined : {
+                      backgroundColor: 'var(--card-hover)',
+                      border: '1px solid var(--color-border)',
+                      color: 'var(--color-text-secondary)',
+                    }}
                   >
                     {plan.cta}
                   </Link>

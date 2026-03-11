@@ -24,11 +24,11 @@ export default async function TermsPage({ params }: { params: Promise<{ locale: 
   const t = copy[lang];
 
   return (
-    <section className="min-h-screen bg-transparent text-white flex items-center justify-center px-6">
+    <section className="min-h-screen bg-transparent flex items-center justify-center px-6" style={{ color: 'var(--color-text)' }}>
       <div className="max-w-3xl space-y-6 text-center">
         <h1 className="text-3xl md:text-4xl font-bold">{t.title}</h1>
-        <p className="text-white/70 leading-relaxed">{t.body}</p>
-        <Link href={`/${locale}`} className="inline-block text-cyan-300 hover:text-cyan-200 text-sm">
+        <p className="leading-relaxed" style={{ color: 'var(--color-text-secondary)' }}>{t.body}</p>
+        <Link href={`/${locale}`} className="inline-block text-sm transition-colors" style={{ color: 'var(--color-accent)' }}>
           {t.back}
         </Link>
       </div>
