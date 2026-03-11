@@ -6,6 +6,7 @@ import { ServiceCardVisual } from '@/components/ui/ServiceCardVisual'
 import { SERVICES, SUGGESTION_SLUGS, type ServiceDefinition } from '@/lib/services/catalog'
 
 const SUGGESTION_SERVICES: ServiceDefinition[] = SUGGESTION_SLUGS
+  .filter(slug => slug !== 'agent-g')
   .map(slug => SERVICES.find(s => s.slug === slug)!)
   .filter(Boolean)
 
