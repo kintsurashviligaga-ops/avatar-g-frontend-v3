@@ -187,8 +187,8 @@ select:focus {
   inset: -1px;
   border-radius: inherit;
   pointer-events: none;
-  border: 1px solid rgba(255,255,255,var(--app-white-neon-alpha));
-  box-shadow: 0 0 20px rgba(255,255,255,0.16), 0 0 44px rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.06);
+  box-shadow: 0 0 20px rgba(255,255,255,0.06), 0 0 44px rgba(255,255,255,0.03);
 }
 
 .glass-panel:hover {
@@ -415,7 +415,7 @@ a {
     position: relative;
     border-width: 1.5px;
     border-style: solid;
-    border-color: rgba(255, 255, 255, var(--app-white-neon-alpha)) !important;
+    border-color: rgba(255, 255, 255, 0.06) !important;
     box-shadow:
       0 0 0 1px rgba(255, 255, 255, 0.3),
       0 0 34px rgba(255, 255, 255, 0.2),
@@ -453,7 +453,7 @@ a {
   }
 
   .ag-white-neon-contour {
-    border-color: rgba(255,255,255,var(--app-white-neon-alpha)) !important;
+    border-color: rgba(255,255,255,0.06) !important;
     box-shadow:
       0 0 0 1px rgba(255,255,255,0.28),
       0 0 28px rgba(255,255,255,0.16),

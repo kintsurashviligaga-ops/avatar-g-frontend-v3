@@ -29,20 +29,20 @@ export function BrandLogo({ href, size = 'md', showText = true, className = '', 
   const logo = (
     <div className={`flex items-center gap-2.5 ${className}`}>
       <div className={`relative flex-shrink-0 transition-all duration-300 ${compact ? 'scale-90' : 'scale-100'} ${s.cls}`}>
-        <div className="absolute inset-[15%] rounded-full bg-cyan-400/[0.06] blur-xl" />
+        <div className="absolute inset-[15%] rounded-full bg-[var(--color-accent)]/[0.08] blur-xl" />
         <Image
           src="/brand/rocket-3d-hq.svg"
           alt="MyAvatar.ge"
           fill
           sizes={`${s.img}px`}
           priority
-          className="object-contain object-center drop-shadow-[0_6px_18px_rgba(34,211,238,0.30)]"
+          className="object-contain object-center drop-shadow-[0_4px_12px_rgba(99,102,241,0.25)]"
         />
       </div>
       {showText && (
         <div className={`flex flex-col leading-none transition-all duration-300 ${compact ? 'opacity-90' : 'opacity-100'}`}>
-          <span className="font-extrabold text-white tracking-[-0.03em] text-[1.05rem] md:text-[1.1rem] leading-none">
-            MyAvatar<span className="text-cyan-300/70 font-semibold">.ge</span>
+          <span className="font-extrabold tracking-[-0.03em] text-[1.05rem] md:text-[1.1rem] leading-none" style={{ color: 'var(--color-text)' }}>
+            MyAvatar<span className="font-semibold" style={{ color: 'var(--color-accent)', opacity: 0.7 }}>.ge</span>
           </span>
         </div>
       )}

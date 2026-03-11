@@ -16,7 +16,7 @@ export function LandingFooter() {
 
   return (
     <footer className="px-4 sm:px-6 lg:px-10 pt-10 pb-8" style={{ borderTop: '1px solid var(--color-border)' }}>
-      <div className="max-w-3xl mx-auto">
+      <div className="max-w-4xl mx-auto">
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-8 text-[12px]" style={{ color: 'var(--color-text-tertiary)' }}>
           <div>
             <p className="font-medium mb-3 text-[11px] uppercase tracking-wider" style={{ color: 'var(--color-text-secondary)' }}>{c.services}</p>

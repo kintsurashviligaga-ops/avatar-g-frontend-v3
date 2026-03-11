@@ -3,78 +3,24 @@
 import { useRouter } from 'next/navigation'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
 import { ServiceCardVisual } from '@/components/ui/ServiceCardVisual'
+import { SERVICES, SUGGESTION_SLUGS, type ServiceDefinition } from '@/lib/services/catalog'
 
-interface Card {
-  icon: string
-  label: Record<string, string>
-  href: string
-}
-
-const CARDS: Card[] = [
-  {
-    icon: '✦',
-    label: { en: 'Create My Avatar', ka: 'ავატარის შექმნა', ru: 'Создать аватар' },
-    href: '/services/avatar',
-  },
-  {
-    icon: '◆',
-    label: { en: 'Generate an Image', ka: 'სურათის გენერაცია', ru: 'Сгенерировать изображение' },
-    href: '/services/image',
-  },
-  {
-    icon: '▶',
-    label: { en: 'Make a Short Video', ka: 'მოკლე ვიდეოს შექმნა', ru: 'Создать короткое видео' },
-    href: '/services/video',
-  },
-  {
-    icon: '♪',
-    label: { en: 'Compose a Beat', ka: 'მუსიკის შექმნა', ru: 'Сочинить бит' },
-    href: '/services/music',
-  },
-  {
-    icon: '◈',
-    label: { en: 'Enhance My Photo', ka: 'ფოტოს გაუმჯობესება', ru: 'Улучить фото' },
-    href: '/services/photo',
-  },
-  {
-    icon: '⬡',
-    label: { en: 'Media Production', ka: 'მედია პროდაქშენი', ru: 'Медиа-продакшн' },
-    href: '/services/media',
-  },
-  {
-    icon: '◎',
-    label: { en: 'Business Content', ka: 'ბიზნეს კონტენტი', ru: 'Бизнес-контент' },
-    href: '/services/business',
-  },
-  {
-    icon: 'G',
-    label: { en: 'Ask Agent G', ka: 'Agent G-სთან საუბარი', ru: 'Спросить Agent G' },
-    href: '/services/agent-g',
-  },
-]
+const SUGGESTION_SERVICES: ServiceDefinition[] = SUGGESTION_SLUGS
+  .map(slug => SERVICES.find(s => s.slug === slug)!)
+  .filter(Boolean)
 
 export function SuggestionCards() {
   const { language } = useLanguage()
   const router = useRouter()
-
-  const SLUG_MAP: Record<string, string> = {
-    '/services/avatar': 'avatar',
-    '/services/image': 'image',
-    '/services/video': 'video',
-    '/services/music': 'music',
-    '/services/photo': 'photo',
-    '/services/media': 'media',
-    '/services/business': 'business',
-    '/services/agent-g': 'agent-g',
-  }
+  const lang = language as 'en' | 'ka' | 'ru'
 
   return (
     <section className="px-4 sm:px-6 lg:px-10 pb-6 sm:pb-10">
       <div className="max-w-2xl mx-auto grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
-        {CARDS.map((card, i) => (
+        {SUGGESTION_SERVICES.map(service => (
           <button
-            key={i}
-            onClick={() => router.push('/' + language + card.href)}
+            key={service.slug}
+            onClick={() => router.push(`/${language}/services/${service.slug}`)}
             className="group flex flex-col overflow-hidden rounded-xl transition-all duration-200 text-left cursor-pointer active:scale-[0.98] hover:-translate-y-0.5"
             style={{
               backgroundColor: 'var(--card-bg)',
@@ -89,10 +35,11 @@ export function SuggestionCards() {
               e.currentTarget.style.borderColor = 'var(--color-border)'
             }}
           >
-            <ServiceCardVisual serviceId={SLUG_MAP[card.href] || ''} variant="thumb" />
-            <div className="flex flex-col items-start gap-2 p-3.5 sm:p-4">
+            <ServiceCardVisual serviceId={service.slug} variant="thumb" />
+            <div className="flex items-center gap-2 p-3.5 sm:p-4">
+              <span className="text-base leading-none">{service.icon}</span>
               <span className="text-[13px] leading-snug font-medium" style={{ color: 'var(--color-text-secondary)' }}>
-                {card.label[language] || card.label.en}
+                {service.title[lang] || service.title.en}
               </span>
             </div>
           </button>

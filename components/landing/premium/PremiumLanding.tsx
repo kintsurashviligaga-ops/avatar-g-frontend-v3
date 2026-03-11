@@ -7,11 +7,10 @@
  * Theme-aware, clean layout, premium feel.
  */
 
-import dynamic from 'next/dynamic'
 import { HeroSection } from './HeroSection'
 import { SuggestionCards } from './SuggestionCards'
 import { ChatInputDock } from './ChatInputDock'
-import { FeatureGrid } from './FeatureGrid'
+import FeatureGrid from './FeatureGrid'
 import { ValueStrip } from './ValueStrip'
 import { LandingCTA } from './LandingCTA'
 import { LandingFooter } from './LandingFooter'
