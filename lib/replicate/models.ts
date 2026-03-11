@@ -91,8 +91,9 @@ export interface RouteConfig {
 
 const SERVICE_ROUTES: Record<ServiceType, RouteConfig> = {
   avatar: {
-    defaultModel: 'sdxl',
+    defaultModel: 'flux',
     variants: {
+      fast: 'flux',
       realistic: 'sdxl',
       identity: 'instant-id',
       stylized: 'face-to-many',
@@ -157,7 +158,7 @@ export interface QualityParams {
 }
 
 const QUALITY_PRESETS: Record<QualityTier, QualityParams> = {
-  standard: { width: 768, height: 768, num_inference_steps: 20, guidance_scale: 7, scale: 2, duration: 8 },
+  standard: { width: 512, height: 512, num_inference_steps: 15, guidance_scale: 7, scale: 2, duration: 8 },
   high: { width: 1024, height: 1024, num_inference_steps: 30, guidance_scale: 7.5, scale: 4, duration: 15 },
   ultra: { width: 1024, height: 1024, num_inference_steps: 50, guidance_scale: 8, scale: 4, duration: 30 },
 };

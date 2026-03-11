@@ -6,7 +6,7 @@ export interface GenerateInput {
   variant?: string;
   quality?: QualityTier;
   negativePrompt?: string;
-  aspectRatio?: '1:1' | '16:9' | '9:16' | '4:3' | '3:4';
+  aspectRatio?: '1:1' | '4:5' | '16:9' | '9:16' | '4:3' | '3:4';
   imageUrl?: string;
   style?: string;
 }
@@ -19,6 +19,7 @@ export interface ValidationResult {
 
 const ASPECT_RATIOS: Record<string, { width: number; height: number }> = {
   '1:1': { width: 1024, height: 1024 },
+  '4:5': { width: 896, height: 1152 },
   '16:9': { width: 1344, height: 768 },
   '9:16': { width: 768, height: 1344 },
   '4:3': { width: 1152, height: 896 },
@@ -43,7 +44,7 @@ export function validateInput(raw: Record<string, unknown>): ValidationResult {
     service: service as ServiceType,
     prompt: prompt.slice(0, 2000),
     variant: raw.variant ? String(raw.variant).trim() : undefined,
-    quality: (['standard', 'high', 'ultra'].includes(String(raw.quality)) ? raw.quality : 'high') as QualityTier,
+    quality: (['standard', 'high', 'ultra'].includes(String(raw.quality)) ? raw.quality : 'standard') as QualityTier,
     negativePrompt: raw.negativePrompt ? String(raw.negativePrompt).slice(0, 500) : undefined,
     aspectRatio: raw.aspectRatio && Object.keys(ASPECT_RATIOS).includes(String(raw.aspectRatio))
       ? (raw.aspectRatio as GenerateInput['aspectRatio'])
@@ -65,8 +66,8 @@ export function buildModelInput(input: GenerateInput): Record<string, unknown> {
   switch (input.service) {
     case 'avatar':
       return {
-        prompt: input.prompt,
-        negative_prompt: input.negativePrompt || 'blurry, low quality, distorted face, extra limbs',
+        prompt: `photorealistic premium AI avatar portrait, ${input.prompt}, cinematic lighting, realistic skin texture, elegant studio background`,
+        ...(input.negativePrompt ? { negative_prompt: input.negativePrompt } : { negative_prompt: 'blurry, low quality, distorted face, extra limbs, watermark' }),
         width: dims.width,
         height: dims.height,
         num_inference_steps: input.quality === 'ultra' ? 50 : input.quality === 'high' ? 30 : 20,
@@ -77,7 +78,7 @@ export function buildModelInput(input: GenerateInput): Record<string, unknown> {
     case 'image':
       return {
         prompt: input.prompt,
-        negative_prompt: input.negativePrompt || 'blurry, low quality, watermark',
+        ...(input.negativePrompt ? { negative_prompt: input.negativePrompt } : { negative_prompt: 'blurry, low quality, watermark, text overlay' }),
         width: dims.width,
         height: dims.height,
         num_inference_steps: input.quality === 'ultra' ? 50 : input.quality === 'high' ? 30 : 20,

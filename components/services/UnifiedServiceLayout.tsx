@@ -509,12 +509,11 @@ const SERVICE_OPTION_SETS: Record<string, OptionSet[]> = {
     { key: 'assist', label: 'Assist', values: ['Auto-Cut', 'Smart Captions', 'Scene Match'] },
   ],
   avatar: [
-    { key: 'quality', label: 'Quality', values: ['Standard', 'High', 'Ultra', 'Studio Max'] },
-    { key: 'style', label: 'Style', values: ['Realistic', 'Cinematic', 'Stylized', 'Luxury Editorial'] },
-    { key: 'pose', label: 'Pose', values: ['Portrait', 'Half Body', 'Full Body', 'Dynamic Motion'] },
+    { key: 'quality', label: 'Quality', values: ['Standard', 'High'] },
+    { key: 'style', label: 'Style', values: ['Realistic', 'Cinematic', 'Stylized'] },
+    { key: 'ratio', label: 'Aspect Ratio', values: ['1:1', '4:5', '9:16'] },
+    { key: 'pose', label: 'Pose', values: ['Portrait', 'Half Body', 'Full Body'] },
     { key: 'lighting', label: 'Lighting', values: ['Studio', 'Natural', 'Dramatic', 'Golden Hour'] },
-    { key: 'outfit', label: 'Outfit', values: ['Business', 'Casual', 'Fashion', 'Custom'] },
-    { key: 'render', label: 'Render Pass', values: ['Single Shot', 'Variation Pack', 'Multi-angle'] },
   ],
   video: [
     { key: 'quality', label: 'Quality', values: ['HD', 'Full HD', '4K', '6K Master'] },
@@ -540,10 +539,10 @@ const SERVICE_OPTION_SETS: Record<string, OptionSet[]> = {
     { key: 'delivery', label: 'Delivery', values: ['JPG', 'PNG', 'WebP Pack'] },
   ],
   image: [
-    { key: 'quality', label: 'Quality', values: ['Standard', 'High', 'Ultra'] },
-    { key: 'variant', label: 'Model', values: ['Fast', 'Premium', 'Realistic', 'General'] },
-    { key: 'style', label: 'Style', values: ['Brand Poster', 'Photoreal', '3D Render'] },
-    { key: 'aspectRatio', label: 'Aspect Ratio', values: ['1:1', '16:9', '9:16', '4:3'] },
+    { key: 'quality', label: 'Quality', values: ['Standard', 'High'] },
+    { key: 'variant', label: 'Model', values: ['Fast', 'Premium', 'Realistic'] },
+    { key: 'style', label: 'Style', values: ['Photoreal', '3D Render', 'Commercial'] },
+    { key: 'ratio', label: 'Aspect Ratio', values: ['1:1', '4:5', '16:9', '9:16'] },
   ],
   'visual-intel': [
     { key: 'variant', label: 'Analysis', values: ['Caption', 'Quality Check', 'Brand Audit'] },
@@ -1043,21 +1042,30 @@ export default function UnifiedServiceLayout({
         body: JSON.stringify({
           prompt,
           quality: selectedOptions.quality?.toLowerCase(),
-          variant: selectedOptions.style?.toLowerCase(),
+          variant: selectedOptions.style?.toLowerCase() || selectedOptions.variant?.toLowerCase(),
           style: selectedOptions.style?.toLowerCase(),
           aspectRatio: selectedOptions.ratio || selectedOptions.aspectRatio,
         }),
       });
       const startData = await startRes.json() as {
+        // New NormalizedOutput shape from direct routes
+        success?: boolean;
+        url?: string | null;
+        service?: string;
+        outputType?: string;
+        model?: string;
+        text?: string;
+        error?: string;
+        metadata?: { predictionId?: string; durationMs?: number; [key: string]: unknown };
+        // Legacy shape from /api/replicate/generate
         id?: string;
         status?: string;
         message?: string;
-        error?: string;
         output?: unknown;
       };
 
       if (!startRes.ok) {
-        throw new Error(startData.error ?? 'Generation start failed');
+        throw new Error(startData.error ?? startData.message ?? 'Generation start failed');
       }
 
       if (startData.status === 'throttled' || startData.status === 'model_unavailable') {
@@ -1081,7 +1089,42 @@ export default function UnifiedServiceLayout({
         return;
       }
 
-      const predictionId = startData.id;
+      // ── Handle NormalizedOutput (from new direct avatar/image routes) ──
+      if (startData.success && startData.url) {
+        setGenerationProgress({ percent: 96, stage: 'finalizing', context });
+        const artType = startData.outputType === 'video' ? 'video' as const
+          : startData.outputType === 'audio' ? 'audio' as const
+          : 'image' as const;
+        const directArtifacts = decorateGeneratedArtifacts([{
+          type: artType,
+          url: startData.url,
+          label: artType === 'image' && context === 'avatar' ? 'Generated Avatar' : 'Generated Image',
+          mimeType: artType === 'image' ? 'image/*' : artType === 'video' ? 'video/*' : 'audio/*',
+        }], prompt, context, 'succeeded');
+
+        setMessages(prev => [...prev, {
+          id: `msg_${Date.now()}_direct_artifact`,
+          role: 'assistant',
+          content: generationCompleteLabel,
+          artifacts: directArtifacts,
+          timestamp: new Date(),
+        }]);
+        setPreviewArtifact(directArtifacts[0]!);
+
+        if (context === 'avatar' && directArtifacts[0]?.url) {
+          broadcastAvatarUpdate(directArtifacts[0].url);
+        }
+        setGenerationProgress({ percent: 100, stage: 'done', context });
+        return;
+      }
+
+      // ── Handle NormalizedOutput with error ──
+      if (startData.success === false && startData.error) {
+        throw new Error(startData.error);
+      }
+
+      // ── Legacy flow: predictionId-based polling ──
+      const predictionId = startData.id || startData.metadata?.predictionId;
       if (!predictionId) {
         if (startData.output) {
           setGenerationProgress({ percent: 96, stage: 'finalizing', context });
