@@ -15,30 +15,22 @@ export function SuggestionCards() {
   const lang = language as 'en' | 'ka' | 'ru'
 
   return (
-    <section className="px-4 sm:px-6 lg:px-10 pb-6 sm:pb-10">
-      <div className="max-w-2xl mx-auto grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
+    <section className="px-4 sm:px-6 lg:px-10 pb-8 sm:pb-12">
+      <div className="max-w-3xl mx-auto grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3">
         {SUGGESTION_SERVICES.map(service => (
           <button
             key={service.slug}
             onClick={() => router.push(`/${language}/services/${service.slug}`)}
-            className="group flex flex-col overflow-hidden rounded-xl transition-all duration-200 text-left cursor-pointer active:scale-[0.98] hover:-translate-y-0.5"
+            className="service-card group flex flex-col overflow-hidden rounded-xl transition-all duration-300 text-left cursor-pointer active:scale-[0.97] hover:-translate-y-1"
             style={{
               backgroundColor: 'var(--card-bg)',
               border: '1px solid var(--color-border)',
             }}
-            onMouseEnter={e => {
-              e.currentTarget.style.backgroundColor = 'var(--card-hover)'
-              e.currentTarget.style.borderColor = 'var(--color-border-hover)'
-            }}
-            onMouseLeave={e => {
-              e.currentTarget.style.backgroundColor = 'var(--card-bg)'
-              e.currentTarget.style.borderColor = 'var(--color-border)'
-            }}
           >
             <ServiceCardVisual serviceId={service.slug} variant="thumb" />
-            <div className="flex items-center gap-2 p-3.5 sm:p-4">
+            <div className="relative flex items-center gap-2 p-3.5 sm:p-4">
               <span className="text-base leading-none">{service.icon}</span>
-              <span className="text-[13px] leading-snug font-medium" style={{ color: 'var(--color-text-secondary)' }}>
+              <span className="text-[13px] leading-snug font-semibold" style={{ color: 'var(--color-text)' }}>
                 {service.title[lang] || service.title.en}
               </span>
             </div>

@@ -1,10 +1,14 @@
 /**
  * Premium visual header for service cards.
  *
- * Renders a service-specific gradient background with a unique inline-SVG
- * illustration for each of the 17 services. Zero external images — the visuals
- * are entirely CSS/SVG, theme-aware, and resolution-independent.
+ * Loads photorealistic images from /services/{slug}.webp when available,
+ * otherwise renders a rich multi-layered gradient mesh with ambient particles
+ * and cinematic SVG accents. Hover-responsive with zoom + glow.
  */
+'use client'
+
+import { useState } from 'react';
+import Image from 'next/image';
 import { SERVICE_VISUALS } from '@/lib/services/visuals';
 
 type Variant = 'card' | 'thumb' | 'hero' | 'banner';
@@ -16,43 +20,106 @@ type Props = {
 };
 
 const HEIGHTS: Record<Variant, string> = {
-  thumb: 'h-14',
-  card: 'h-40',
-  banner: 'h-48',
-  hero: 'h-64',
+  thumb: 'h-28 sm:h-32',
+  card: 'h-44',
+  banner: 'h-52',
+  hero: 'h-72',
 };
 
 /* ─── Main component ──────────────────────────────────────────────────── */
 
 export function ServiceCardVisual({ serviceId, variant = 'card', className = '' }: Props) {
   const config = SERVICE_VISUALS[serviceId];
+  const [imgError, setImgError] = useState(false);
   if (!config) return null;
+
+  const imageSrc = `/services/${serviceId}.webp`;
 
   return (
     <div
-      className={`relative overflow-hidden ${HEIGHTS[variant]} ${className}`}
+      className={`service-card-visual group/visual relative overflow-hidden ${HEIGHTS[variant]} ${className}`}
       style={{ background: config.gradient }}
     >
-      {/* ambient glow */}
+      {/* === Layer 0: Gradient mesh background (always visible) === */}
+      <div className="absolute inset-0" style={{
+        background: `
+          radial-gradient(ellipse 70% 60% at 20% 20%, ${config.accent}18, transparent 70%),
+          radial-gradient(ellipse 50% 70% at 80% 80%, ${config.accentSecondary}15, transparent 60%),
+          radial-gradient(ellipse 80% 40% at 50% 50%, ${config.accent}0a, transparent 80%)
+        `,
+      }} />
+
+      {/* === Layer 1: Real image (when generated) === */}
+      {!imgError && (
+        <Image
+          src={imageSrc}
+          alt=""
+          fill
+          sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 20vw"
+          className="object-cover transition-transform duration-700 ease-out group-hover/visual:scale-110 opacity-0 data-[loaded=true]:opacity-100"
+          onLoad={(e) => { (e.target as HTMLImageElement).dataset.loaded = 'true'; }}
+          onError={() => setImgError(true)}
+          loading="lazy"
+          quality={80}
+        />
+      )}
+
+      {/* === Layer 2: SVG scene (CSS fallback when no image) === */}
+      {imgError && (
+        <svg
+          className="absolute inset-0 w-full h-full transition-transform duration-700 ease-out group-hover/visual:scale-105"
+          viewBox="0 0 400 200"
+          preserveAspectRatio="xMidYMid slice"
+          fill="none"
+          xmlns="http://www.w3.org/2000/svg"
+          aria-hidden="true"
+        >
+          {renderScene(serviceId, config.accent, config.accentSecondary)}
+        </svg>
+      )}
+
+      {/* === Layer 3: Ambient floating particles === */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        {[...Array(5)].map((_, i) => (
+          <div
+            key={i}
+            className="absolute rounded-full animate-float-particle"
+            style={{
+              width: `${2 + i}px`,
+              height: `${2 + i}px`,
+              background: config.accent,
+              opacity: 0.15 + i * 0.05,
+              left: `${15 + i * 18}%`,
+              top: `${20 + (i % 3) * 25}%`,
+              animationDelay: `${i * 1.2}s`,
+              animationDuration: `${4 + i * 0.8}s`,
+            }}
+          />
+        ))}
+      </div>
+
+      {/* === Layer 4: Cinematic glow (hover intensifies) === */}
       <div
-        className="absolute inset-0 opacity-20"
+        className="absolute inset-0 opacity-0 group-hover/visual:opacity-100 transition-opacity duration-500"
         style={{
-          background: `radial-gradient(ellipse 60% 80% at 50% 40%, ${config.accent}33, transparent)`,
+          background: `radial-gradient(ellipse 60% 50% at 50% 50%, ${config.accent}20, transparent 70%)`,
         }}
       />
-      {/* scene SVG */}
-      <svg
-        className="absolute inset-0 w-full h-full"
-        viewBox="0 0 400 200"
-        preserveAspectRatio="xMidYMid slice"
-        fill="none"
-        xmlns="http://www.w3.org/2000/svg"
-        aria-hidden="true"
-      >
-        {renderScene(serviceId, config.accent, config.accentSecondary)}
-      </svg>
-      {/* bottom fade for text overlay */}
-      <div className="absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-[var(--color-bg)]/60 to-transparent" />
+
+      {/* === Layer 5: Bottom fade for text readability === */}
+      <div
+        className="absolute inset-x-0 bottom-0 h-16"
+        style={{
+          background: `linear-gradient(to top, var(--card-bg, rgba(0,0,0,0.8)) 0%, transparent 100%)`,
+        }}
+      />
+
+      {/* === Layer 6: Subtle scan line effect === */}
+      <div className="absolute inset-0 pointer-events-none opacity-[0.02]"
+        style={{
+          backgroundImage: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(255,255,255,0.03) 2px, rgba(255,255,255,0.03) 4px)',
+        }}
+      />
     </div>
   );
 }

@@ -58,14 +58,14 @@ export function ValueStrip() {
           {VALUES.map((v, i) => (
             <div
               key={i}
-              className="flex items-start gap-4 p-5 rounded-2xl transition-colors duration-200"
+              className="group flex items-start gap-4 p-5 rounded-2xl transition-all duration-300 hover:-translate-y-0.5"
               style={{
                 backgroundColor: 'var(--card-bg)',
                 border: '1px solid var(--color-border)',
               }}
             >
               <div
-                className="flex-shrink-0 w-10 h-10 flex items-center justify-center rounded-xl"
+                className="flex-shrink-0 w-10 h-10 flex items-center justify-center rounded-xl transition-shadow duration-300 group-hover:shadow-[0_0_12px_rgba(99,102,241,0.2)]"
                 style={{ backgroundColor: 'var(--color-accent-soft)', color: 'var(--color-accent)' }}
               >
                 {VALUE_ICONS[i]}

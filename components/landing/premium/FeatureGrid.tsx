@@ -20,18 +20,18 @@ export default function FeatureGrid() {
   const lh = (p: string) => '/' + language + p
 
   return (
-    <section className="px-4 sm:px-6 lg:px-10 py-12 sm:py-16">
-      <div className="max-w-6xl mx-auto">
+    <section className="px-4 sm:px-6 lg:px-10 py-14 sm:py-20">
+      <div className="max-w-7xl mx-auto">
         {/* Section header */}
-        <div className="text-center mb-10 sm:mb-14">
+        <div className="text-center mb-12 sm:mb-16">
           <p
-            className="text-[11px] tracking-[0.2em] uppercase font-medium mb-2"
-            style={{ color: 'var(--color-text-tertiary)' }}
+            className="text-[11px] tracking-[0.25em] uppercase font-medium mb-3"
+            style={{ color: 'var(--color-accent)' }}
           >
             {copy.title}
           </p>
           <h2
-            className="text-2xl sm:text-3xl lg:text-4xl font-semibold tracking-tight"
+            className="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight"
             style={{ color: 'var(--color-text)' }}
           >
             {copy.subtitle}
@@ -39,22 +39,22 @@ export default function FeatureGrid() {
         </div>
 
         {/* Category groups */}
-        <div className="space-y-10">
+        <div className="space-y-12">
           {CATEGORY_ORDER.map(cat => {
             const services = SERVICES.filter(s => s.category === cat)
             const catLabel = CATEGORY_LABELS[cat]
             return (
               <div key={cat}>
                 {/* Category label */}
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: 'var(--color-accent)' }} />
+                <div className="flex items-center gap-3 mb-5">
+                  <div className="w-2 h-2 rounded-full" style={{ backgroundColor: 'var(--color-accent)', boxShadow: '0 0 8px var(--color-accent)' }} />
                   <h3
-                    className="text-xs tracking-[0.15em] uppercase font-semibold"
-                    style={{ color: 'var(--color-text-tertiary)' }}
+                    className="text-xs tracking-[0.2em] uppercase font-bold"
+                    style={{ color: 'var(--color-text-secondary)' }}
                   >
                     {catLabel[lang] || catLabel.en}
                   </h3>
-                  <div className="flex-1 h-px" style={{ backgroundColor: 'var(--color-border)' }} />
+                  <div className="flex-1 h-px" style={{ background: 'linear-gradient(to right, var(--color-border), transparent)' }} />
                 </div>
 
                 {/* Service cards */}
@@ -63,7 +63,7 @@ export default function FeatureGrid() {
                     <Link
                       key={svc.slug}
                       href={lh(`/services/${svc.slug}`)}
-                      className="group flex flex-col overflow-hidden rounded-xl transition-all duration-200 hover:-translate-y-0.5 active:scale-[0.98]"
+                      className="service-card group relative flex flex-col overflow-hidden rounded-xl transition-all duration-300 hover:-translate-y-1 active:scale-[0.98]"
                       style={{
                         backgroundColor: 'var(--card-bg)',
                         border: '1px solid var(--color-border)',
@@ -73,9 +73,9 @@ export default function FeatureGrid() {
                       <ServiceCardVisual serviceId={svc.slug} variant="thumb" />
 
                       {/* Text content */}
-                      <div className="flex flex-col gap-1.5 p-3.5 sm:p-4">
+                      <div className="relative flex flex-col gap-1.5 p-3.5 sm:p-4">
                         <div className="flex items-center gap-2">
-                          <span className="text-sm">{svc.icon}</span>
+                          <span className="text-base">{svc.icon}</span>
                           <h4
                             className="text-[13px] sm:text-sm font-semibold leading-snug truncate"
                             style={{ color: 'var(--color-text)' }}
@@ -90,6 +90,14 @@ export default function FeatureGrid() {
                           {svc.description[lang] || svc.description.en}
                         </p>
                       </div>
+
+                      {/* Hover glow border overlay */}
+                      <div
+                        className="absolute inset-0 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"
+                        style={{
+                          boxShadow: `inset 0 0 0 1px var(--color-accent), 0 0 20px rgba(99,102,241,0.15), 0 8px 32px rgba(0,0,0,0.3)`,
+                        }}
+                      />
                     </Link>
                   ))}
                 </div>
