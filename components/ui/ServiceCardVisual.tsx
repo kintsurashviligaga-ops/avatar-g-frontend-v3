@@ -236,7 +236,7 @@ function ImageScene({ c1, c2 }: SceneProps) {
       <path d="M130,90 Q160,60 200,75 Q240,90 270,65" fill="none" stroke={c1} strokeOpacity={0.25} strokeWidth={2} strokeLinecap="round" />
       <path d="M140,120 Q175,100 210,110 Q250,120 280,100" fill="none" stroke={c2} strokeOpacity={0.15} strokeWidth={1.5} strokeLinecap="round" />
       {/* AI sparkle elements */}
-      {([[290, 50], [305, 75], [100, 60], [310, 120], [95, 130]] as const).map(([x, y], i) => (
+      {([[290, 50], [305, 75], [100, 60], [310, 120], [95, 130]] as [number, number][]).map(([x, y], i) => (
         <g key={i}>
           <line x1={x - 5} y1={y} x2={x + 5} y2={y} stroke={c1} strokeOpacity={0.3} strokeWidth={0.8} />
           <line x1={x} y1={y - 5} x2={x} y2={y + 5} stroke={c1} strokeOpacity={0.3} strokeWidth={0.8} />
@@ -480,14 +480,14 @@ function BusinessScene({ c1, c2 }: SceneProps) {
       {/* bar chart */}
       {([
         [85, 45], [110, 65], [135, 55], [160, 80], [185, 70], [210, 90], [235, 75],
-      ] as const).map(([x, barH], i) => {
+      ] as [number, number][]).map(([x, barH], i) => {
         const h = 20 + barH;
         return <rect key={x} x={x} y={145 - h} width={16} height={h} rx={2} fill={c1} fillOpacity={0.08 + i * 0.02} />;
       })}
       {/* trend line */}
       <path d="M85,110 L110,90 L135,95 L160,70 L185,78 L210,55 L235,60" fill="none" stroke={c1} strokeOpacity={0.35} strokeWidth={1.5} />
       {/* trend dots */}
-      {([[85, 110], [110, 90], [135, 95], [160, 70], [185, 78], [210, 55], [235, 60]] as const).map(([cx, cy], i) => (
+      {([[85, 110], [110, 90], [135, 95], [160, 70], [185, 78], [210, 55], [235, 60]] as [number, number][]).map(([cx, cy], i) => (
         <circle key={i} cx={cx} cy={cy} r={2.5} fill={c1} fillOpacity={0.4} />
       ))}
       {/* chart axis */}
