@@ -3,15 +3,18 @@
 /**
  * PremiumLanding.tsx
  * ==================
- * MyAvatar.ge modern landing page.
- * Theme-aware, clean layout, premium feel.
+ * MyAvatar.ge world-class landing page.
+ * Sections: Hero → Trust → Services → Agent G → Workflow → Features → Use Cases → Workspace/Templates → CTA → Footer
  */
 
 import { HeroSection } from './HeroSection'
-import { SuggestionCards } from './SuggestionCards'
-import { ChatInputDock } from './ChatInputDock'
-import FeatureGrid from './FeatureGrid'
-import { WorkflowPipelineSection } from './WorkflowPipelineSection'
+import { TrustStrip } from './TrustStrip'
+import { ServicesOverview } from './ServicesOverview'
+import { AgentGSection } from './AgentGSection'
+import { WorkflowDemo } from './WorkflowDemo'
+import { FeatureHighlights } from './FeatureHighlights'
+import { UseCases } from './UseCases'
+import { WorkspaceTemplates } from './WorkspaceTemplates'
 import { LandingCTA } from './LandingCTA'
 import { LandingFooter } from './LandingFooter'
 
@@ -19,18 +22,20 @@ export default function PremiumLanding() {
   return (
     <div className="relative min-h-screen overflow-x-hidden" style={{ backgroundColor: 'var(--color-bg)', color: 'var(--color-text)' }}>
       <HeroSection />
-
-      {/* Content sections with consistent max-width and padding */}
-      <div className="relative">
-        <SuggestionCards />
-        <ChatInputDock />
-        <Separator />
-        <FeatureGrid />
-        <Separator />
-        <WorkflowPipelineSection />
-        <LandingCTA />
-      </div>
-
+      <TrustStrip />
+      <Separator />
+      <ServicesOverview />
+      <Separator />
+      <AgentGSection />
+      <Separator />
+      <WorkflowDemo />
+      <Separator />
+      <FeatureHighlights />
+      <Separator />
+      <UseCases />
+      <Separator />
+      <WorkspaceTemplates />
+      <LandingCTA />
       <LandingFooter />
     </div>
   )
