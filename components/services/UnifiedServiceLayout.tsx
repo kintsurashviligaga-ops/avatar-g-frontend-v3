@@ -182,6 +182,17 @@ const T: Record<string, Record<string, string>> = {
     avatarImported: 'Avatar imported and ready in this service',
     avatarImportFailed: 'No ready avatar found. Create one in Avatar service first.',
     importingAvatar: 'Importing avatar...',
+    noPreviewHint: 'Send a prompt to generate your first output',
+    tryExample: 'Try an example',
+    regenerate: 'Regenerate',
+    startCreating: 'Start creating',
+    examplePrompts: 'Example Prompts',
+    inputTypes: 'Accepts',
+    outputTypes: 'Outputs',
+    orTry: 'Or try one of these',
+    quickStart: 'Quick Start',
+    copyOutput: 'Copy',
+    shareOutput: 'Share',
   },
   ka: {
     useAgent: 'აგენტის გამოყენება',
@@ -254,6 +265,17 @@ const T: Record<string, Record<string, string>> = {
     avatarImported: 'ავატარი შემოტანილია და სერვისში მზადაა',
     avatarImportFailed: 'მზა ავატარი ვერ მოიძებნა. ჯერ Avatar სერვისში შექმენი.',
     importingAvatar: 'ავატარის შემოტანა...',
+    noPreviewHint: 'გაგზავნე ტექსტი შედეგის სანახავად',
+    tryExample: 'სცადე მაგალითი',
+    regenerate: 'თავიდან გენერაცია',
+    startCreating: 'დაიწყე შექმნა',
+    examplePrompts: 'მაგალითები',
+    inputTypes: 'მიღება',
+    outputTypes: 'გამოტანა',
+    orTry: 'ან სცადე ერთ-ერთი მათგანი',
+    quickStart: 'სწრაფი დაწყება',
+    copyOutput: 'კოპირება',
+    shareOutput: 'გაზიარება',
   },
   ru: {
     useAgent: 'Использовать агента',
@@ -326,6 +348,17 @@ const T: Record<string, Record<string, string>> = {
     avatarImported: 'Аватар импортирован и готов в этом сервисе',
     avatarImportFailed: 'Готовый аватар не найден. Сначала создайте его в Avatar сервисе.',
     importingAvatar: 'Импорт аватара...',
+    noPreviewHint: 'Отправьте запрос для создания первого результата',
+    tryExample: 'Попробуйте пример',
+    regenerate: 'Перегенерировать',
+    startCreating: 'Начать создание',
+    examplePrompts: 'Примеры',
+    inputTypes: 'Принимает',
+    outputTypes: 'Создаёт',
+    orTry: 'Или попробуйте один из этих',
+    quickStart: 'Быстрый старт',
+    copyOutput: 'Копировать',
+    shareOutput: 'Поделиться',
   },
 };
 
@@ -509,58 +542,100 @@ const SERVICE_OPTION_SETS: Record<string, OptionSet[]> = {
     { key: 'source', label: 'Source', values: ['Vertical Reels', 'Podcast', 'Interview', 'Course'] },
     { key: 'delivery', label: 'Delivery', values: ['Social Pack', 'Brand Edit', 'Broadcast'] },
     { key: 'assist', label: 'Assist', values: ['Auto-Cut', 'Smart Captions', 'Scene Match'] },
+    { key: 'subtitles', label: 'Subtitles', values: ['Off', 'English', 'Georgian', 'Russian', 'Auto-Detect'] },
   ],
   avatar: [
     { key: 'quality', label: 'Quality', values: ['Standard', 'High'] },
-    { key: 'style', label: 'Style', values: ['Realistic', 'Cinematic', 'Stylized'] },
+    { key: 'style', label: 'Style', values: ['Realistic', 'Cinematic', 'Stylized', 'Anime'] },
     { key: 'ratio', label: 'Aspect Ratio', values: ['1:1', '4:5', '9:16'] },
-    { key: 'pose', label: 'Pose', values: ['Portrait', 'Half Body', 'Full Body'] },
-    { key: 'lighting', label: 'Lighting', values: ['Studio', 'Natural', 'Dramatic', 'Golden Hour'] },
+    { key: 'pose', label: 'Pose', values: ['Portrait', 'Half Body', 'Full Body', 'Action'] },
+    { key: 'lighting', label: 'Lighting', values: ['Studio', 'Natural', 'Dramatic', 'Golden Hour', 'Neon'] },
+    { key: 'clothing', label: 'Clothing', values: ['Casual', 'Formal', 'Streetwear', 'Custom'] },
+    { key: 'background', label: 'Background', values: ['Clean Studio', 'Gradient', 'Scene AI', 'Transparent'] },
   ],
   video: [
     { key: 'quality', label: 'Quality', values: ['HD', 'Full HD', '4K', '6K Master'] },
     { key: 'ratio', label: 'Ratio', values: ['16:9', '9:16', '1:1', '4:5'] },
-    { key: 'camera', label: 'Camera Motion', values: ['Static', 'Dolly', 'Orbit'] },
+    { key: 'camera', label: 'Camera Motion', values: ['Static', 'Dolly', 'Orbit', 'Drone', 'Handheld'] },
     { key: 'speed', label: 'Speed', values: ['Fast', 'Balanced', 'Premium'] },
     { key: 'narrative', label: 'Narrative', values: ['Hook-Proof-CTA', 'Story Arc', 'Demo-first'] },
+    { key: 'duration', label: 'Duration', values: ['15s', '30s', '60s', '90s'] },
     { key: 'delivery', label: 'Delivery', values: ['Draft', 'Approved', 'Launch-ready'] },
   ],
   music: [
-    { key: 'length', label: 'Length', values: ['15s', '30s', '60s', '90s'] },
-    { key: 'genre', label: 'Genre', values: ['Ambient', 'Cinematic', 'Trap', 'House', 'Hybrid Orchestral'] },
-    { key: 'mood', label: 'Mood', values: ['Chill', 'Epic', 'Energetic', 'Luxury'] },
+    { key: 'length', label: 'Length', values: ['15s', '30s', '60s', '90s', '3min'] },
+    { key: 'genre', label: 'Genre', values: ['Ambient', 'Cinematic', 'Trap', 'House', 'Hybrid Orchestral', 'Lo-fi', 'Rock'] },
+    { key: 'mood', label: 'Mood', values: ['Chill', 'Epic', 'Energetic', 'Luxury', 'Dark', 'Hopeful'] },
+    { key: 'instrument', label: 'Lead Instrument', values: ['Piano', 'Guitar', 'Synth', 'Orchestra', 'Auto'] },
     { key: 'mix', label: 'Mix', values: ['Draft', 'Studio', 'Mastered'] },
     { key: 'vocal', label: 'Vocal Layer', values: ['Instrumental', 'Hook Vox', 'Full Vocal'] },
     { key: 'delivery', label: 'Delivery', values: ['Master', 'Stems', 'Master + Stems'] },
   ],
   photo: [
     { key: 'quality', label: 'Quality', values: ['Standard', 'High', 'Ultra'] },
-    { key: 'variant', label: 'Mode', values: ['Upscale', 'Remove Background', 'Enhance'] },
+    { key: 'variant', label: 'Mode', values: ['Upscale', 'Remove Background', 'Enhance', 'Restore'] },
     { key: 'retouch', label: 'Retouch Level', values: ['Natural', 'Editorial', 'High Fashion'] },
-    { key: 'background', label: 'Background', values: ['Original', 'Clean Studio', 'AI Scene'] },
+    { key: 'background', label: 'Background', values: ['Original', 'Clean Studio', 'AI Scene', 'Transparent'] },
     { key: 'delivery', label: 'Delivery', values: ['JPG', 'PNG', 'WebP Pack'] },
   ],
   image: [
     { key: 'quality', label: 'Quality', values: ['Standard', 'High'] },
     { key: 'variant', label: 'Model', values: ['Fast', 'Premium', 'Realistic'] },
-    { key: 'style', label: 'Style', values: ['Photoreal', '3D Render', 'Commercial'] },
+    { key: 'style', label: 'Style', values: ['Photoreal', '3D Render', 'Commercial', 'Illustration'] },
     { key: 'ratio', label: 'Aspect Ratio', values: ['1:1', '4:5', '16:9', '9:16'] },
+    { key: 'composition', label: 'Composition', values: ['Auto', 'Center', 'Rule of Thirds', 'Golden Ratio'] },
   ],
   'visual-intel': [
-    { key: 'variant', label: 'Analysis', values: ['Caption', 'Quality Check', 'Brand Audit'] },
+    { key: 'variant', label: 'Analysis', values: ['Caption', 'Quality Check', 'Brand Audit', 'Competitor Compare'] },
     { key: 'detail', label: 'Detail', values: ['Summary', 'Detailed', 'Expert'] },
+    { key: 'output', label: 'Output', values: ['Report', 'Scorecard', 'Suggestions'] },
   ],
   media: [
     { key: 'package', label: 'Package', values: ['Launch Kit', 'Social Kit', 'Omni Campaign'] },
-    { key: 'channels', label: 'Channels', values: ['Instagram', 'YouTube', 'Cross-platform'] },
+    { key: 'channels', label: 'Channels', values: ['Instagram', 'YouTube', 'TikTok', 'LinkedIn', 'Cross-platform'] },
     { key: 'strategy', label: 'Strategy', values: ['Awareness', 'Conversion', 'Retention'] },
+    { key: 'tone', label: 'Brand Tone', values: ['Professional', 'Casual', 'Bold', 'Luxury'] },
+  ],
+  text: [
+    { key: 'type', label: 'Content Type', values: ['Ad Copy', 'Landing Page', 'Blog', 'Email', 'Social'] },
+    { key: 'tone', label: 'Tone', values: ['Professional', 'Conversational', 'Persuasive', 'Luxury'] },
+    { key: 'length', label: 'Length', values: ['Short', 'Medium', 'Long', 'Detailed'] },
+    { key: 'seo', label: 'SEO', values: ['Off', 'Basic', 'Full Optimization'] },
+    { key: 'language', label: 'Target Language', values: ['English', 'Georgian', 'Russian', 'Multi-lang'] },
+  ],
+  prompt: [
+    { key: 'model', label: 'Target Model', values: ['DALL-E', 'Midjourney', 'Stable Diffusion', 'Flux', 'Universal'] },
+    { key: 'style', label: 'Prompt Style', values: ['Concise', 'Detailed', 'Negative Set', 'Template'] },
+    { key: 'format', label: 'Output', values: ['Text', 'JSON', 'Batch Set'] },
+  ],
+  shop: [
+    { key: 'action', label: 'Action', values: ['Create Listing', 'SEO Optimize', 'Affiliate Setup', 'Store Audit'] },
+    { key: 'platform', label: 'Platform', values: ['Shopify', 'WooCommerce', 'Custom', 'Multi-platform'] },
+    { key: 'detail', label: 'Detail', values: ['Quick', 'Standard', 'Comprehensive'] },
+    { key: 'market', label: 'Market', values: ['Local', 'Regional', 'Global'] },
+  ],
+  software: [
+    { key: 'output', label: 'Output', values: ['App Spec', 'Architecture', 'Tasks', 'CI/CD Setup', 'Roadmap'] },
+    { key: 'stack', label: 'Stack', values: ['React', 'Next.js', 'Python', 'Mobile', 'Full-Stack'] },
+    { key: 'detail', label: 'Detail', values: ['Overview', 'Detailed', 'Production-Ready'] },
   ],
   business: [
     { key: 'detail', label: 'Detail', values: ['Summary', 'Balanced', 'Deep Dive', 'Board-ready'] },
     { key: 'tone', label: 'Tone', values: ['Formal', 'Executive', 'Persuasive'] },
     { key: 'output', label: 'Output', values: ['Plan', 'Report', 'Deck Outline', 'Investor Memo'] },
     { key: 'risk', label: 'Risk Lens', values: ['Low', 'Balanced', 'Aggressive'] },
-    { key: 'timeframe', label: 'Timeframe', values: ['30 Days', '90 Days', '12 Months'] },
+    { key: 'timeframe', label: 'Timeframe', values: ['30 Days', '90 Days', '12 Months', '3 Years'] },
+  ],
+  tourism: [
+    { key: 'type', label: 'Type', values: ['Itinerary', 'Promo Video Script', 'Travel Guide', 'Tour Package'] },
+    { key: 'audience', label: 'Audience', values: ['Solo', 'Couples', 'Family', 'Group', 'Business'] },
+    { key: 'duration', label: 'Duration', values: ['Day Trip', '3 Days', 'Week', '2 Weeks'] },
+    { key: 'style', label: 'Style', values: ['Adventure', 'Cultural', 'Luxury', 'Budget'] },
+  ],
+  workflow: [
+    { key: 'type', label: 'Type', values: ['Pipeline', 'Schedule', 'Quality Gate', 'Template'] },
+    { key: 'complexity', label: 'Complexity', values: ['Simple', 'Multi-step', 'Enterprise'] },
+    { key: 'trigger', label: 'Trigger', values: ['Manual', 'Scheduled', 'Event-based'] },
   ],
   global: [
     { key: 'quality', label: 'Quality', values: ['Fast', 'Balanced', 'Premium', 'Enterprise'] },
@@ -585,6 +660,41 @@ const SERVICE_WORKSPACE_SECTIONS: Record<string, WorkspaceSection[]> = {
     { id: 'concept', title: 'Music Concept', description: 'Mood, genre blend, and reference zone.', metric: 80, steps: ['Mood', 'Genre', 'References'] },
     { id: 'composition', title: 'Composition', description: 'Structure, motifs, and progression.', metric: 86, steps: ['Intro', 'Drop', 'Resolve'] },
     { id: 'mix', title: 'Mix & Delivery', description: 'Balance, polish, and export packaging.', metric: 78, steps: ['Balance', 'Master', 'Stems'] },
+  ],
+  editing: [
+    { id: 'source', title: 'Source Analysis', description: 'Analyze input footage and plan edits.', metric: 85, steps: ['Import', 'Review', 'Tags'] },
+    { id: 'edit', title: 'Edit Pipeline', description: 'Auto-cut, captions, and color grading.', metric: 82, steps: ['Cut', 'Caption', 'Grade'] },
+    { id: 'export', title: 'Export Suite', description: 'Multi-format batch export and QC.', metric: 77, steps: ['Formats', 'Batch', 'Review'] },
+  ],
+  image: [
+    { id: 'concept', title: 'Visual Concept', description: 'Style, composition, and brand alignment.', metric: 83, steps: ['Style', 'Layout', 'Brand'] },
+    { id: 'generation', title: 'Generation', description: 'Prompt, generate, and iterate.', metric: 88, steps: ['Prompt', 'Generate', 'Refine'] },
+    { id: 'delivery', title: 'Asset Delivery', description: 'Export in all needed formats.', metric: 75, steps: ['Resize', 'Format', 'QC'] },
+  ],
+  photo: [
+    { id: 'input', title: 'Photo Input', description: 'Upload and analysis of source photos.', metric: 84, steps: ['Upload', 'Analyze', 'Tag'] },
+    { id: 'enhance', title: 'Enhancement', description: 'AI upscale, retouch, and background.', metric: 87, steps: ['Upscale', 'Retouch', 'BG'] },
+    { id: 'output', title: 'Output Pack', description: 'Export ready for web and print.', metric: 79, steps: ['Web', 'Print', 'Pack'] },
+  ],
+  shop: [
+    { id: 'setup', title: 'Store Setup', description: 'Product catalog and listing optimization.', metric: 81, steps: ['Products', 'SEO', 'Images'] },
+    { id: 'marketing', title: 'Marketing Engine', description: 'Affiliate, pricing, and promotions.', metric: 78, steps: ['Affiliate', 'Pricing', 'Promo'] },
+    { id: 'analytics', title: 'Store Analytics', description: 'Performance audit and recommendations.', metric: 74, steps: ['Traffic', 'Conv.', 'Revenue'] },
+  ],
+  software: [
+    { id: 'spec', title: 'App Specification', description: 'Define features, flows, and requirements.', metric: 83, steps: ['Features', 'Flows', 'API'] },
+    { id: 'architecture', title: 'Architecture', description: 'System design and tech stack.', metric: 86, steps: ['Design', 'Stack', 'Infra'] },
+    { id: 'delivery', title: 'Dev Delivery', description: 'Tasks, timeline, and CI/CD.', metric: 76, steps: ['Tasks', 'Timeline', 'Deploy'] },
+  ],
+  text: [
+    { id: 'brief', title: 'Content Brief', description: 'Define audience, tone, and goals.', metric: 82, steps: ['Audience', 'Tone', 'Goals'] },
+    { id: 'write', title: 'Writing', description: 'Generate and refine content.', metric: 87, steps: ['Draft', 'Edit', 'SEO'] },
+    { id: 'publish', title: 'Publish Pack', description: 'Multi-format and localized export.', metric: 78, steps: ['Format', 'Localize', 'QC'] },
+  ],
+  tourism: [
+    { id: 'plan', title: 'Trip Planning', description: 'Destination, duration, and audience.', metric: 80, steps: ['Dest.', 'Duration', 'Audience'] },
+    { id: 'content', title: 'Content Pack', description: 'Itinerary, promo, and guides.', metric: 84, steps: ['Itinerary', 'Promo', 'Guide'] },
+    { id: 'localize', title: 'Localization', description: 'Multi-language and market adapting.', metric: 76, steps: ['Translate', 'Adapt', 'Review'] },
   ],
   business: [
     { id: 'analysis', title: 'Business Analysis', description: 'Current-state, constraints, and opportunities.', metric: 83, steps: ['State', 'Gaps', 'Opportunities'] },
@@ -624,10 +734,50 @@ const SERVICE_PRESETS: Record<string, WorkspacePreset[]> = {
     { id: 'image-thumbnail', title: 'Thumbnail Set', prompt: 'Create a thumbnail set with strong contrast and high click-through focus.' },
     { id: 'image-packshot', title: 'Packshot Visual', prompt: 'Produce clean e-commerce packshot visuals on brand background.' },
   ],
+  photo: [
+    { id: 'photo-portrait', title: 'Portrait Retouch', prompt: 'Enhance portrait with natural retouch, clean skin, and studio lighting.' },
+    { id: 'photo-product', title: 'Product Enhance', prompt: 'Upscale product photo, remove background, place on clean studio scene.' },
+    { id: 'photo-batch', title: 'Batch Process', prompt: 'Process batch of photos: upscale, enhance colors, and export in web-ready formats.' },
+  ],
   media: [
     { id: 'media-full', title: 'Omni Campaign', prompt: 'Assemble a full campaign pack: visuals, copy variants, and distribution notes.' },
     { id: 'media-influencer', title: 'Influencer Bundle', prompt: 'Generate an influencer-ready content bundle for launch week.' },
     { id: 'media-calendar', title: '30-Day Calendar', prompt: 'Build a 30-day content calendar with themes and asset checklist.' },
+  ],
+  text: [
+    { id: 'text-landing', title: 'Landing Page Copy', prompt: 'Write high-converting landing page copy with H1, subtitle, features, and CTA.' },
+    { id: 'text-seo', title: 'SEO Blog Article', prompt: 'Generate a 1500-word SEO-optimized blog article with meta tags and headers.' },
+    { id: 'text-email', title: 'Email Sequence', prompt: 'Create a 5-email marketing sequence for product launch with subject lines.' },
+  ],
+  prompt: [
+    { id: 'prompt-avatar', title: 'Avatar Prompt Kit', prompt: 'Design an optimized prompt set for realistic avatar generation across styles.' },
+    { id: 'prompt-negative', title: 'Negative Prompt Set', prompt: 'Build comprehensive negative prompt library for commercial photography.' },
+    { id: 'prompt-batch', title: 'Batch Prompt Generator', prompt: 'Generate 20 prompt variations for A/B testing creative outputs.' },
+  ],
+  shop: [
+    { id: 'shop-listings', title: 'Product Listings', prompt: 'Generate optimized product listings with SEO titles, descriptions, and tags.' },
+    { id: 'shop-audit', title: 'Store Audit', prompt: 'Run complete store audit with conversion rate optimization recommendations.' },
+    { id: 'shop-affiliate', title: 'Affiliate Setup', prompt: 'Create affiliate marketing program structure with commission tiers and tracking.' },
+  ],
+  software: [
+    { id: 'software-spec', title: 'App Specification', prompt: 'Generate full application specification from feature description with user flows.' },
+    { id: 'software-arch', title: 'Architecture Review', prompt: 'Review system architecture and suggest improvements for scalability.' },
+    { id: 'software-tasks', title: 'Sprint Planning', prompt: 'Break down features into development tasks with time estimates and priorities.' },
+  ],
+  business: [
+    { id: 'business-strategy', title: 'Growth Strategy', prompt: 'Build comprehensive growth strategy with revenue projections and risk analysis.' },
+    { id: 'business-investor', title: 'Investor Deck', prompt: 'Create investor-ready executive summary with market analysis and financial model.' },
+    { id: 'business-validate', title: 'Idea Validation', prompt: 'Validate business idea with market sizing, competitor analysis, and feasibility score.' },
+  ],
+  tourism: [
+    { id: 'tourism-itinerary', title: 'Travel Itinerary', prompt: 'Create detailed day-by-day travel itinerary with activities, transport, and costs.' },
+    { id: 'tourism-promo', title: 'Tourism Promo', prompt: 'Build tourism promotional content package with visuals script and copy.' },
+    { id: 'tourism-guide', title: 'Travel Guide', prompt: 'Generate comprehensive travel guide with local tips, maps, and photo suggestions.' },
+  ],
+  workflow: [
+    { id: 'workflow-pipeline', title: 'Content Pipeline', prompt: 'Build automated content creation pipeline from brief to published assets.' },
+    { id: 'workflow-template', title: 'Workflow Template', prompt: 'Create reusable workflow template with quality gates and approval steps.' },
+    { id: 'workflow-multi', title: 'Multi-Service Flow', prompt: 'Design multi-service workflow connecting avatar, video, music, and text services.' },
   ],
   global: [
     { id: 'global-brief', title: 'Smart Brief', prompt: 'Turn this idea into a structured execution brief with milestones.' },
@@ -654,6 +804,113 @@ const SERVICE_BACKGROUND_IMAGES: Record<string, string> = {
   tourism: '/backgrounds/services/tourism.svg',
   next: '/backgrounds/services/next.svg',
   'agent-g': '/backgrounds/services/agent-g.svg',
+};
+
+// ─── Per-Service Example Prompts (Smart Empty State) ─────────────────────────
+
+const SERVICE_EXAMPLE_PROMPTS: Record<string, { icon: string; text: Record<string, string> }[]> = {
+  avatar: [
+    { icon: '🎭', text: { en: 'Create a cinematic avatar with neon cyberpunk lighting', ka: 'შექმენი კინემატოგრაფიული ავატარი ნეონის კიბერპანკ განათებით', ru: 'Создай кинематографический аватар с неоновым кибер-освещением' } },
+    { icon: '👔', text: { en: 'Generate a professional LinkedIn portrait with studio lighting', ka: 'შექმენი პროფესიული LinkedIn პორტრეტი სტუდიური განათებით', ru: 'Создай профессиональный портрет для LinkedIn со студийным освещением' } },
+    { icon: '🎮', text: { en: 'Design an anime-style avatar for streaming overlays', ka: 'შექმენი anime სტილის ავატარი სტრიმინგისთვის', ru: 'Создай аватар в стиле аниме для стриминга' } },
+    { icon: '✨', text: { en: 'Create a full-body avatar with realistic face detail', ka: 'შექმენი სრული ტანის ავატარი რეალისტური სახის დეტალებით', ru: 'Создай аватар в полный рост с реалистичной детализацией лица' } },
+  ],
+  video: [
+    { icon: '🎬', text: { en: 'Create a 20-second product launch video with cinematic transitions', ka: 'შექმენი 20-წამიანი პროდუქტის ვიდეო კინემატოგრაფიული გადასვლებით', ru: 'Создай 20-секундный лаунч видео с кинематографическими переходами' } },
+    { icon: '📱', text: { en: 'Generate a vertical reel for Instagram with hook-proof-CTA structure', ka: 'შექმენი ვერტიკალური Reel Instagram-ისთვის Hook-Proof-CTA სტრუქტურით', ru: 'Создай вертикальный Reel для Instagram со структурой Hook-Proof-CTA' } },
+    { icon: '🎥', text: { en: 'Build a 3-scene story sequence with dramatic lighting', ka: 'შექმენი 3-სცენიანი ამბავი დრამატული განათებით', ru: 'Создай 3-сценарную историю с драматическим освещением' } },
+    { icon: '📺', text: { en: 'Create ad variations optimized for multiple platforms', ka: 'შექმენი რეკლამის ვარიაციები მრავალი პლატფორმისთვის', ru: 'Создай вариации рекламы для нескольких платформ' } },
+  ],
+  music: [
+    { icon: '🎵', text: { en: 'Compose an epic cinematic trailer score with rising tension', ka: 'შექმენი ეპიკური კინემატოგრაფიული თრეილერის მუსიკა', ru: 'Создай эпический кинематографический трейлер с нарастающим напряжением' } },
+    { icon: '🎹', text: { en: 'Generate a chill lo-fi beat for study background', ka: 'შექმენი lo-fi ბითი სწავლის ფონისთვის', ru: 'Создай чилл lo-fi бит для фона учёбы' } },
+    { icon: '🎸', text: { en: 'Create a brand sonic logo with matching 30-second loop', ka: 'შექმენი ბრენდის ხმოვანი ლოგო 30-წამიანი ლუპით', ru: 'Создай звуковой логотип бренда с 30-секундным лупом' } },
+    { icon: '🎤', text: { en: 'Produce upbeat trap beats for social media content', ka: 'შექმენი ენერგიული trap ბითები სოციალური მედიისთვის', ru: 'Создай энергичные trap биты для соцсетей' } },
+  ],
+  image: [
+    { icon: '🖼️', text: { en: 'Generate a high-impact campaign poster with modern typography', ka: 'შექმენი მძლავრი კამპანიის პოსტერი თანამედროვე ტიპოგრაფიით', ru: 'Создай мощный рекламный постер с современной типографикой' } },
+    { icon: '📐', text: { en: 'Create thumbnail designs with strong contrast and CTR focus', ka: 'შექმენი თამბნეილები ძლიერი კონტრასტით', ru: 'Создай превью с сильным контрастом и фокусом на CTR' } },
+    { icon: '🛒', text: { en: 'Produce clean e-commerce product shots on white background', ka: 'შექმენი პროდუქტის სურათები თეთრ ფონზე', ru: 'Создай чистые фото товаров на белом фоне' } },
+    { icon: '🎨', text: { en: 'Design a social media visual pack in brand colors', ka: 'შექმენი სოციალური მედიის ვიზუალური პაკეტი ბრენდის ფერებში', ru: 'Создай визуальный пакет для соцсетей в фирменных цветах' } },
+  ],
+  photo: [
+    { icon: '✨', text: { en: 'Remove background and place subject in AI studio scene', ka: 'წაშალე ფონი და მოათავსე AI სტუდიურ სცენაში', ru: 'Убери фон и помести субъект в AI-студийную сцену' } },
+    { icon: '📸', text: { en: 'Upscale photo to ultra resolution with detail enhancement', ka: 'გაადიდე ფოტო ულტრა გაფართოებით', ru: 'Увеличь фото до ультра-разрешения с улучшением деталей' } },
+    { icon: '💄', text: { en: 'Apply editorial retouch while preserving natural skin tones', ka: 'გააკეთე რედაქტორული რეტუში ბუნებრივი ტონალობით', ru: 'Примени редакционную ретушь с сохранением естественных тонов кожи' } },
+    { icon: '🎭', text: { en: 'Create before/after comparison with batch processing', ka: 'შექმენი მანამდე/შემდეგ შედარება ჯგუფური დამუშავებით', ru: 'Создай сравнение до/после с пакетной обработкой' } },
+  ],
+  editing: [
+    { icon: '✂️', text: { en: 'Auto-cut source video into short clips with smart captions', ka: 'ავტო-დაჭრა წყაროს ვიდეო მოკლე კლიპებად ჭკვიანი სუბტიტრებით', ru: 'Авто-нарезка видео на короткие клипы с умными субтитрами' } },
+    { icon: '🎨', text: { en: 'Apply cinematic color grade while preserving skin tones', ka: 'გააკეთე კინემატოგრაფიული ფერების კორექცია', ru: 'Примени кинематографическую цветокоррекцию' } },
+    { icon: '📦', text: { en: 'Batch export in 16:9, 9:16 and 1:1 with correct trims', ka: 'ჯგუფური ექსპორტი 16:9, 9:16 და 1:1 ფორმატებში', ru: 'Пакетный экспорт в 16:9, 9:16 и 1:1 с правильной обрезкой' } },
+    { icon: '👄', text: { en: 'Add lip sync to talking head video with AI voice', ka: 'დაამატე ტუჩის სინქრონიზაცია AI ხმით', ru: 'Добавь синхронизацию губ с AI-голосом' } },
+  ],
+  shop: [
+    { icon: '🛍️', text: { en: 'Generate optimized product listings with SEO copy', ka: 'შექმენი ოპტიმიზებული პროდუქტის ჩამონათვალი SEO ტექსტით', ru: 'Создай оптимизированные карточки товаров с SEO-текстом' } },
+    { icon: '📊', text: { en: 'Create an affiliate marketing setup for my store', ka: 'შექმენი აფილიატ მარკეტინგის სისტემა ჩემი მაღაზიისთვის', ru: 'Создай партнёрскую систему для моего магазина' } },
+    { icon: '🔍', text: { en: 'Run a full store audit with conversion recommendations', ka: 'გაუკეთე სრული აუდიტი მაღაზიას კონვერსიის რეკომენდაციებით', ru: 'Проведи полный аудит магазина с рекомендациями по конверсии' } },
+    { icon: '📈', text: { en: 'Build automated pricing and inventory strategy', ka: 'შექმენი ავტომატიზებული ფასების და მარაგის სტრატეგია', ru: 'Создай автоматическую стратегию ценообразования и инвентаря' } },
+  ],
+  business: [
+    { icon: '📋', text: { en: 'Build a comprehensive business strategy with revenue projections', ka: 'შექმენი სრული ბიზნეს სტრატეგია შემოსავლის პროგნოზებით', ru: 'Создай комплексную бизнес-стратегию с прогнозом доходов' } },
+    { icon: '⚠️', text: { en: 'Run a risk analysis scan on my business plan', ka: 'გაუკეთე რისკის ანალიზი ჩემს ბიზნეს გეგმას', ru: 'Проведи анализ рисков моего бизнес-плана' } },
+    { icon: '💰', text: { en: 'Create an investor-ready executive summary', ka: 'შექმენი ინვესტორისთვის მზა აღმასრულებელი შეჯამება', ru: 'Создай резюме для инвесторов' } },
+    { icon: '🎯', text: { en: 'Validate my startup idea with market analysis', ka: 'შეამოწმე ჩემი სტარტაპის იდეა ბაზრის ანალიზით', ru: 'Валидируй мою идею стартапа с анализом рынка' } },
+  ],
+  software: [
+    { icon: '💻', text: { en: 'Generate a full app specification from my idea description', ka: 'შექმენი აპლიკაციის სრული სპეციფიკაცია ჩემი იდეიდან', ru: 'Создай полную спецификацию приложения из описания идеи' } },
+    { icon: '🏗️', text: { en: 'Review and improve my system architecture design', ka: 'გადახედე და გააუმჯობესე სისტემის არქიტექტურა', ru: 'Проверь и улучши архитектуру моей системы' } },
+    { icon: '📝', text: { en: 'Break down features into development tasks with estimates', ka: 'დაშალე ფუნქციონალი დავალებებად შეფასებებით', ru: 'Разбей фичи на задачи разработки с оценками' } },
+    { icon: '🚀', text: { en: 'Generate CI/CD pipeline setup and deployment checklist', ka: 'შექმენი CI/CD პაიპლაინი და deploy ჩეკლისტი', ru: 'Создай CI/CD пайплайн и чеклист деплоя' } },
+  ],
+  media: [
+    { icon: '📱', text: { en: 'Assemble a full omni-channel campaign pack', ka: 'შექმენი სრული ომნი-არხიანი კამპანიის პაკეტი', ru: 'Собери полный омни-канальный пакет кампании' } },
+    { icon: '📅', text: { en: 'Build a 30-day content calendar with themes and assets', ka: 'შექმენი 30-დღიანი კონტენტ კალენდარი თემებით', ru: 'Создай 30-дневный контент-календарь с темами и ассетами' } },
+    { icon: '🤝', text: { en: 'Generate an influencer-ready content bundle for launch week', ka: 'შექმენი ინფლუენსერისთვის მზა კონტენტ პაკეტი', ru: 'Создай контент-пакет для инфлюенсеров на неделю запуска' } },
+    { icon: '🎯', text: { en: 'Create targeted ad copy and visuals for A/B testing', ka: 'შექმენი მიზნობრივი რეკლამა A/B ტესტირებისთვის', ru: 'Создай таргетированную рекламу и визуалы для A/B тестирования' } },
+  ],
+  text: [
+    { icon: '✍️', text: { en: 'Write high-converting landing page copy in 3 languages', ka: 'დაწერე მაღალი კონვერსიის Landing Page ტექსტი 3 ენაზე', ru: 'Напиши конвертирующий текст лендинга на 3 языках' } },
+    { icon: '📝', text: { en: 'Generate SEO-optimized blog article with meta tags', ka: 'შექმენი SEO-ოპტიმიზებული ბლოგ სტატია მეტა ტეგებით', ru: 'Создай SEO-оптимизированную статью для блога с мета-тегами' } },
+    { icon: '💡', text: { en: 'Create social media ad copy pack with variations', ka: 'შექმენი სოციალური მედიის რეკლამის ტექსტის პაკეტი', ru: 'Создай пакет текстов для рекламы в соцсетях с вариациями' } },
+    { icon: '📧', text: { en: 'Write email marketing sequence for product launch', ka: 'დაწერე ელ-ფოსტის მარკეტინგის თანმიმდევრობა პროდუქტის გაშვებისთვის', ru: 'Напиши серию email-рассылок для запуска продукта' } },
+  ],
+  prompt: [
+    { icon: '🧪', text: { en: 'Design an optimized prompt for realistic avatar generation', ka: 'შექმენი ოპტიმიზებული prompt რეალისტური ავატარისთვის', ru: 'Создай оптимизированный промпт для реалистичного аватара' } },
+    { icon: '🎯', text: { en: 'Build a negative prompt set for commercial photography', ka: 'შექმენი negative prompt სეტი კომერციული ფოტოგრაფიისთვის', ru: 'Создай набор негативных промптов для коммерческой фотографии' } },
+    { icon: '📋', text: { en: 'Generate a prompt template library for my brand', ka: 'შექმენი prompt-ების ბიბლიოთეკა ჩემი ბრენდისთვის', ru: 'Создай библиотеку шаблонов промптов для моего бренда' } },
+    { icon: '🔄', text: { en: 'Test and compare prompt variations for best output', ka: 'შეამოწმე და შეადარე prompt ვარიაციები საუკეთესო შედეგისთვის', ru: 'Протестируй и сравни вариации промптов для лучшего результата' } },
+  ],
+  'visual-intel': [
+    { icon: '🔍', text: { en: 'Score my creative assets for brand consistency', ka: 'შეაფასე ჩემი ვიზუალები ბრენდის თანმიმდევრულობისთვის', ru: 'Оцени мои креативы на соответствие бренду' } },
+    { icon: '📊', text: { en: 'Run a full brand visual audit with improvement suggestions', ka: 'გაუკეთე სრული ბრენდის ვიზუალური აუდიტი გაუმჯობესებებით', ru: 'Проведи полный визуальный аудит бренда с предложениями' } },
+    { icon: '🎨', text: { en: 'Analyze image quality and suggest AI enhancements', ka: 'გააანალიზე სურათის ხარისხი და შემოთავაზე AI გაუმჯობესებები', ru: 'Анализируй качество изображений и предложи AI-улучшения' } },
+    { icon: '🏆', text: { en: 'Compare my visuals against competitor benchmarks', ka: 'შეადარე ჩემი ვიზუალები კონკურენტების სტანდარტებს', ru: 'Сравни мои визуалы с бенчмарками конкурентов' } },
+  ],
+  workflow: [
+    { icon: '⚡', text: { en: 'Build an automated content pipeline for weekly publishing', ka: 'შექმენი ავტომატიზებული კონტენტ პაიპლაინი ყოველკვირეული გამოქვეყნებისთვის', ru: 'Создай автоматический пайплайн контента для еженедельной публикации' } },
+    { icon: '🔗', text: { en: 'Create a multi-service workflow: avatar → video → music', ka: 'შექმენი მულტი-სერვისის ნაკადი: ავატარი → ვიდეო → მუსიკა', ru: 'Создай мульти-сервисный воркфлоу: аватар → видео → музыка' } },
+    { icon: '📋', text: { en: 'Set up quality gates and approval flow for team output', ka: 'დააყენე ხარისხის კონტროლი და დამტკიცების ნაკადი', ru: 'Настрой контроль качества и поток утверждений для командного выхода' } },
+    { icon: '📦', text: { en: 'Generate a reusable workflow template for brand content', ka: 'შექმენი მრავალჯერადი workflow შაბლონი ბრენდის კონტენტისთვის', ru: 'Создай переиспользуемый шаблон воркфлоу для контента бренда' } },
+  ],
+  tourism: [
+    { icon: '🗺️', text: { en: 'Create a detailed travel itinerary for Georgian wine region', ka: 'შექმენი დეტალური მოგზაურობის გეგმა საქართველოს ღვინის რეგიონისთვის', ru: 'Создай подробный маршрут по винному региону Грузии' } },
+    { icon: '🏔️', text: { en: 'Build a travel promo video script for Tbilisi sightseeing', ka: 'შექმენი თბილისის ტურისტული ვიდეოს სცენარი', ru: 'Создай сценарий промо-видео для достопримечательностей Тбилиси' } },
+    { icon: '🌍', text: { en: 'Translate and localize a tourism offer for 3 markets', ka: 'თარგმნე და ლოკალიზე ტურისტული შეთავაზება 3 ბაზრისთვის', ru: 'Переведи и локализуй туристическое предложение для 3 рынков' } },
+    { icon: '📸', text: { en: 'Generate a visual travel guide with AI-enhanced photos', ka: 'შექმენი ვიზუალური მოგზაურობის გზამკვლევი AI ფოტოებით', ru: 'Создай визуальный путеводитель с AI-улучшенными фото' } },
+  ],
+  next: [
+    { icon: '🔮', text: { en: 'Research next steps and create an upgrade plan', ka: 'შეისწავლე შემდეგი ნაბიჯები და შექმენი განახლების გეგმა', ru: 'Исследуй следующие шаги и создай план обновления' } },
+    { icon: '📋', text: { en: 'Generate a comprehensive project checklist', ka: 'შექმენი სრული პროექტის ჩეკლისტი', ru: 'Создай полный чеклист проекта' } },
+    { icon: '🚀', text: { en: 'Create an export brief for handoff to team', ka: 'შექმენი ექსპორტის ბრიფი გუნდისთვის გადასაცემად', ru: 'Создай экспортный бриф для передачи команде' } },
+    { icon: '💡', text: { en: 'Brainstorm ideas and validate with market data', ka: 'მოიფიქრე იდეები და შეამოწმე ბაზრის მონაცემებით', ru: 'Придумай идеи и валидируй рыночными данными' } },
+  ],
+  'agent-g': [
+    { icon: '🤖', text: { en: 'Plan and execute a multi-service creative pipeline', ka: 'დაგეგმე და შეასრულე მულტი-სერვისის კრეატიული პაიპლაინი', ru: 'Спланируй и выполни мульти-сервисный креативный пайплайн' } },
+    { icon: '🎯', text: { en: 'Run quality check on all my generated assets', ka: 'გაუკეთე ხარისხის შემოწმება ყველა ჩემს შექმნილ ასეტს', ru: 'Проведи проверку качества всех моих сгенерированных ассетов' } },
+    { icon: '📦', text: { en: 'Bundle my assets into a production-ready delivery pack', ka: 'შეკრიბე ჩემი ასეტები production-ready მიწოდების პაკეტში', ru: 'Собери мои ассеты в готовый к продакшену пакет' } },
+    { icon: '⚡', text: { en: 'Execute a full brand content creation workflow', ka: 'შეასრულე სრული ბრენდის კონტენტის შექმნის ნაკადი', ru: 'Выполни полный воркфлоу создания контента бренда' } },
+  ],
 };
 
 function PremiumCard({ title, className = '', children }: PremiumCardProps) {
@@ -1799,41 +2056,64 @@ export default function UnifiedServiceLayout({
   return (
     <div className="relative min-h-screen overflow-hidden" style={{ backgroundColor: 'var(--color-bg)', color: 'var(--color-text)' }}>
       {/* ── Header ──────────────────────────────────────────────────────── */}
-      <header className="relative z-10 px-3 sm:px-5 lg:px-6 py-3.5 sm:py-4" style={{ borderBottom: '1px solid var(--color-border)', backgroundColor: 'var(--nav-bg)', backdropFilter: 'blur(20px)' }}>
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <span className="text-2xl">{serviceIcon}</span>
-            <div>
-              <h1 className="text-lg font-bold" style={{ color: 'var(--color-text)' }}>{serviceName}</h1>
-              <p className="text-xs" style={{ color: 'var(--color-text-tertiary)' }}>{t.powered}</p>
+      <header className="relative z-10 px-3 sm:px-5 lg:px-6 py-4 sm:py-5" style={{ borderBottom: '1px solid var(--color-border)', backgroundColor: 'var(--nav-bg)', backdropFilter: 'blur(20px)' }}>
+        <div className="max-w-[94rem] mx-auto flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3 sm:gap-4 min-w-0">
+            <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl flex items-center justify-center flex-shrink-0" style={{ background: 'linear-gradient(135deg, var(--color-accent), rgba(139,92,246,0.8))', boxShadow: '0 4px 16px rgba(99,102,241,0.25)' }}>
+              <span className="text-xl sm:text-2xl filter drop-shadow">{serviceIcon}</span>
+            </div>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h1 className="text-lg sm:text-xl font-bold tracking-tight" style={{ color: 'var(--color-text)' }}>{serviceName}</h1>
+                <span className="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium rounded-full" style={{ backgroundColor: 'var(--color-accent-soft)', color: 'var(--color-accent)', border: '1px solid var(--color-accent)' }}>
+                  <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+                  {t.powered}
+                </span>
+              </div>
+              <p className="text-xs truncate max-w-xs sm:max-w-md" style={{ color: 'var(--color-text-secondary)' }}>{description}</p>
             </div>
           </div>
-          <div className="flex items-center gap-2 flex-wrap justify-end">
+          <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
             {demoMode && (
               <span className="px-2.5 py-1 text-[10px] uppercase tracking-wider rounded-full border border-emerald-400/40 bg-emerald-500/15 text-emerald-200">
-                Demo Mode
+                Demo
               </span>
+            )}
+            {/* Input/Output type badges (advanced mode) */}
+            {userMode === 'advanced' && contract && (
+              <div className="hidden md:flex items-center gap-1.5">
+                <span className="px-2 py-0.5 text-[10px] rounded-md" style={{ backgroundColor: 'var(--color-surface)', color: 'var(--color-text-tertiary)', border: '1px solid var(--color-border)' }}>
+                  {t.inputTypes}: {contract.inputTypes.slice(0, 2).join(', ')}
+                </span>
+                <span className="text-[10px]" style={{ color: 'var(--color-text-tertiary)' }}>→</span>
+                <span className="px-2 py-0.5 text-[10px] rounded-md" style={{ backgroundColor: 'var(--color-accent-soft)', color: 'var(--color-accent)', border: '1px solid var(--color-accent)' }}>
+                  {t.outputTypes}: {contract.outputTypes.slice(0, 2).join(', ')}
+                </span>
+              </div>
             )}
             <button
               onClick={() => setShowHistory(!showHistory)}
-              className="px-3 py-1.5 text-xs rounded-lg transition-colors"
+              className="p-2 rounded-lg transition-colors"
               style={{ border: '1px solid var(--color-border)', backgroundColor: 'var(--card-bg)', color: 'var(--color-text-secondary)' }}
+              title={t.history}
             >
-              {t.history}
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg>
             </button>
             <button
               onClick={() => setShowExport(!showExport)}
-              className="px-3 py-1.5 text-xs rounded-lg transition-colors"
+              className="p-2 rounded-lg transition-colors"
               style={{ border: '1px solid var(--color-border)', backgroundColor: 'var(--card-bg)', color: 'var(--color-text-secondary)' }}
+              title={t.export}
             >
-              {t.export}
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
             </button>
             <button
               onClick={toggleChatFullscreen}
-              className="px-3 py-1.5 text-xs rounded-lg transition-colors"
+              className="p-2 rounded-lg transition-colors"
               style={{ backgroundColor: 'var(--color-accent-soft)', color: 'var(--color-accent)', border: '1px solid var(--color-accent)' }}
+              title={chatFullscreen ? t.exitFullscreen : t.fullscreen}
             >
-              {chatFullscreen ? t.exitFullscreen : t.fullscreen}
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{chatFullscreen ? <><path d="M8 3v3a2 2 0 0 1-2 2H3"/><path d="M21 8h-3a2 2 0 0 1-2-2V3"/><path d="M3 16h3a2 2 0 0 1 2 2v3"/><path d="M16 21v-3a2 2 0 0 1 2-2h3"/></> : <><path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/></>}</svg>
             </button>
           </div>
         </div>
@@ -2185,27 +2465,61 @@ export default function UnifiedServiceLayout({
           {/* Message list */}
           <div ref={scrollRef} className="flex-1 overflow-y-auto p-3 sm:p-4 md:p-5 space-y-4">
             {messages.length === 0 && (
-              <div className="flex flex-col items-center justify-center h-full space-y-4 text-center py-12 md:py-16">
-                <span className="text-5xl">{serviceIcon}</span>
-                <h2 className="text-xl font-bold">{serviceName}</h2>
-                <p className="text-sm max-w-md" style={{ color: 'var(--color-text-secondary)' }}>{description}</p>
+              <div className="flex flex-col items-center justify-center h-full space-y-6 text-center py-8 md:py-12">
+                {/* Icon with glow effect */}
+                <div className="relative">
+                  <div className="absolute inset-0 rounded-3xl blur-2xl opacity-20" style={{ backgroundColor: 'var(--color-accent)' }} />
+                  <div className="relative w-20 h-20 rounded-3xl flex items-center justify-center" style={{ background: 'linear-gradient(135deg, var(--color-accent), rgba(139,92,246,0.8))', boxShadow: '0 8px 32px rgba(99,102,241,0.2)' }}>
+                    <span className="text-4xl filter drop-shadow">{serviceIcon}</span>
+                  </div>
+                </div>
 
-                <div className="w-full max-w-lg rounded-xl p-3 space-y-2" style={{ border: '1px solid var(--color-accent-soft)', backgroundColor: 'var(--color-accent-soft)' }}>
-                  <p className="text-[11px] uppercase tracking-wider" style={{ color: 'var(--color-accent)' }}>{t.workspaceFlow}</p>
-                  <div className="grid grid-cols-4 gap-2">
-                    {workspaceFlowLabels.map((label) => (
-                      <div key={label} className="text-[11px] rounded-lg px-2 py-1.5" style={{ border: '1px solid var(--color-border)', backgroundColor: 'var(--card-bg)', color: 'var(--color-text-secondary)' }}>
+                {/* Title + Description */}
+                <div className="space-y-2">
+                  <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">{serviceName}</h2>
+                  <p className="text-sm max-w-md mx-auto leading-relaxed" style={{ color: 'var(--color-text-secondary)' }}>{description}</p>
+                </div>
+
+                {/* Workspace flow (compact) */}
+                <div className="flex items-center gap-1.5 sm:gap-2">
+                  {workspaceFlowLabels.map((label, idx) => (
+                    <div key={label} className="flex items-center gap-1.5 sm:gap-2">
+                      <span className="text-[11px] sm:text-xs px-2.5 py-1 rounded-lg" style={{ backgroundColor: 'var(--color-accent-soft)', color: 'var(--color-accent)', border: '1px solid var(--color-accent)' }}>
                         {label}
-                      </div>
+                      </span>
+                      {idx < workspaceFlowLabels.length - 1 && (
+                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--color-text-tertiary)' }}><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                {/* Example prompts grid */}
+                <div className="w-full max-w-xl space-y-3">
+                  <p className="text-[11px] uppercase tracking-widest font-medium" style={{ color: 'var(--color-text-tertiary)' }}>{t.orTry}</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {(SERVICE_EXAMPLE_PROMPTS[serviceId] ?? SERVICE_EXAMPLE_PROMPTS['agent-g'] ?? []).slice(0, 4).map((ep, idx) => (
+                      <button
+                        key={idx}
+                        onClick={() => { setInput(ep.text[locale] ?? ep.text.en ?? ''); promptInputRef.current?.focus(); }}
+                        className="group text-left rounded-xl p-3 sm:p-3.5 transition-all hover:scale-[1.01]"
+                        style={{ backgroundColor: 'var(--card-bg)', border: '1px solid var(--color-border)' }}
+                      >
+                        <div className="flex items-start gap-2.5">
+                          <span className="text-base flex-shrink-0 mt-0.5">{ep.icon}</span>
+                          <span className="text-xs leading-relaxed line-clamp-2" style={{ color: 'var(--color-text-secondary)' }}>{ep.text[locale] ?? ep.text.en ?? ''}</span>
+                        </div>
+                      </button>
                     ))}
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-2 mt-4 max-w-lg">
-                  {features.map(f => (
-                    <div key={f} className="text-xs rounded-lg px-3 py-2 flex items-center gap-2" style={{ backgroundColor: 'var(--card-bg)', border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)' }}>
-                      <span style={{ color: 'var(--color-text-tertiary)' }}>✦</span> {f}
-                    </div>
+                {/* Features row */}
+                <div className="flex flex-wrap justify-center gap-1.5 max-w-lg">
+                  {features.slice(0, 6).map(f => (
+                    <span key={f} className="text-[10px] sm:text-[11px] rounded-full px-2.5 py-1 flex items-center gap-1.5" style={{ backgroundColor: 'var(--color-surface)', border: '1px solid var(--color-border)', color: 'var(--color-text-tertiary)' }}>
+                      <span style={{ color: 'var(--color-accent)' }}>✦</span> {f}
+                    </span>
                   ))}
                 </div>
               </div>
@@ -2498,7 +2812,7 @@ export default function UnifiedServiceLayout({
             )}
 
             {/* Input row */}
-            <div className="flex flex-wrap sm:flex-nowrap gap-2 items-end min-w-0 max-md:[@media(orientation:landscape)]:flex-nowrap">
+            <div className="space-y-2">
               <input
                 type="file"
                 ref={fileInputRef}
@@ -2507,29 +2821,7 @@ export default function UnifiedServiceLayout({
                 multiple
               />
 
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                className="h-11 w-11 flex-shrink-0 flex items-center justify-center rounded-xl transition-colors"
-                style={{ backgroundColor: 'var(--card-bg)', border: '1px solid var(--color-border)' }}
-                title={t.upload}
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--color-text-tertiary)' }}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-              </button>
-
-              <button
-                onClick={toggleRecording}
-                className={`h-11 w-11 flex-shrink-0 flex items-center justify-center border rounded-xl transition-colors ${
-                  isRecording
-                    ? 'bg-red-500/20 border-red-500/50 text-red-400'
-                    : ''
-                }`}
-                style={isRecording ? {} : { backgroundColor: 'var(--card-bg)', borderColor: 'var(--color-border)', color: 'var(--color-text-secondary)' }}
-                title={isRecording ? t.stopRecord : t.record}
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
-              </button>
-
-              <div className={`order-3 sm:order-none basis-full sm:basis-auto flex-1 relative rounded-xl transition-all ${chatInputFocused ? 'ring-2' : ''}`} style={chatInputFocused ? { '--tw-ring-color': 'var(--color-accent)' } as React.CSSProperties : {}}>
+              <div className={`relative rounded-2xl transition-all ${chatInputFocused ? 'ring-2' : ''}`} style={chatInputFocused ? { '--tw-ring-color': 'var(--color-accent)', backgroundColor: 'var(--input-bg)', border: '1px solid var(--color-accent)' } as React.CSSProperties : { backgroundColor: 'var(--input-bg)', border: '1px solid var(--input-border)' }}>
                 <textarea
                   ref={promptInputRef}
                   value={input}
@@ -2544,24 +2836,62 @@ export default function UnifiedServiceLayout({
                   }}
                   placeholder={t.placeholder}
                   rows={2}
-                  className="w-full min-h-[82px] sm:min-h-[74px] max-md:[@media(orientation:landscape)]:min-h-[48px] rounded-xl px-4 py-2.5 text-sm focus:outline-none resize-y"
-                  style={{ backgroundColor: 'var(--input-bg)', border: '1px solid var(--input-border)', color: 'var(--color-text)' }}
+                  className="w-full min-h-[72px] sm:min-h-[64px] max-md:[@media(orientation:landscape)]:min-h-[44px] rounded-t-2xl px-4 pt-3 pb-1 text-sm focus:outline-none resize-none bg-transparent"
+                  style={{ color: 'var(--color-text)' }}
                 />
+                {/* Integrated input toolbar */}
+                <div className="flex items-center justify-between gap-2 px-3 pb-2.5 pt-1">
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => fileInputRef.current?.click()}
+                      className="p-1.5 rounded-lg transition-colors hover:bg-white/5"
+                      style={{ color: 'var(--color-text-tertiary)' }}
+                      title={t.upload}
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+                    </button>
+                    <button
+                      onClick={toggleRecording}
+                      className={`p-1.5 rounded-lg transition-colors ${isRecording ? 'bg-red-500/20 text-red-400' : 'hover:bg-white/5'}`}
+                      style={isRecording ? {} : { color: 'var(--color-text-tertiary)' }}
+                      title={isRecording ? t.stopRecord : t.record}
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
+                    </button>
+                    {userMode === 'advanced' && (
+                      <span className="text-[10px] px-2 py-0.5 rounded-md" style={{ color: 'var(--color-text-tertiary)', backgroundColor: 'var(--color-surface)', border: '1px solid var(--color-border)' }}>
+                        {Object.values(selectedOptions).filter(Boolean).length}/{optionSets.length} options
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      onClick={() => sendMessage(`${serviceName}: ${t.premiumAction ?? 'Run Premium Pipeline'}. ${t.premiumHint ?? ''}.`)}
+                      disabled={sending}
+                      className="px-3 py-1.5 text-[11px] font-medium rounded-lg transition-all disabled:opacity-40"
+                      style={{ backgroundColor: 'var(--color-surface)', color: 'var(--color-accent)', border: '1px solid var(--color-accent)' }}
+                    >
+                      <span className="flex items-center gap-1">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+                        {locale === 'ka' ? 'პრემიუმ' : locale === 'ru' ? 'Премиум' : 'Premium'}
+                      </span>
+                    </button>
+                    <button
+                      onClick={() => sendMessage()}
+                      disabled={sending || !input.trim()}
+                      className="px-4 py-1.5 text-xs font-semibold rounded-lg transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                      style={{ backgroundColor: 'var(--color-accent)', color: '#fff' }}
+                    >
+                      {sending ? (
+                        <span className="flex items-center gap-1.5">
+                          <div className="w-3 h-3 rounded-full border-2 border-white/30 border-t-white animate-spin" />
+                          {t.generating}
+                        </span>
+                      ) : t.send}
+                    </button>
+                  </div>
+                </div>
               </div>
-
-              <GoldCTAButton
-                label={t.premiumAction ?? 'Run Premium Pipeline'}
-                disabled={sending}
-                onClick={() => sendMessage(`${serviceName}: ${t.premiumAction ?? 'Run Premium Pipeline'}. ${t.premiumHint ?? ''}.`)}
-              />
-
-              <button                onClick={() => sendMessage()}
-                disabled={sending || !input.trim()}
-                className="order-4 sm:order-none w-full sm:w-auto max-md:[@media(orientation:landscape)]:w-auto flex-shrink-0 px-4 sm:px-5 py-2.5 text-xs sm:text-sm font-semibold rounded-xl transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-                style={{ backgroundColor: 'var(--color-accent)', color: '#fff' }}
-              >
-                {t.send}
-              </button>
             </div>
           </div>
         </div>
@@ -2571,66 +2901,147 @@ export default function UnifiedServiceLayout({
         <div className="lg:w-[32%] rounded-2xl flex flex-col md:max-h-[50vh] lg:max-h-none overflow-hidden" style={{ border: '1px solid var(--color-border)', backgroundColor: 'var(--color-surface)' }}>
           {/* Panel header */}
           <div className="px-4 py-3 flex items-center justify-between" style={{ borderBottom: '1px solid var(--color-border)', backgroundColor: 'var(--color-elevated)' }}>
-            <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--color-text-tertiary)' }}>{t.preview}</span>
-            <span className="text-xs" style={{ color: 'var(--color-text-tertiary)' }}>{t.exportCenter}</span>
+            <div className="flex items-center gap-2">
+              <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: previewArtifact ? '#34d399' : 'var(--color-text-tertiary)' }} />
+              <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--color-text-tertiary)' }}>{t.preview}</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              {previewArtifact && (
+                <button
+                  onClick={() => setShowExport(!showExport)}
+                  className="px-2 py-1 text-[10px] rounded-md transition-colors"
+                  style={{ backgroundColor: 'var(--color-accent-soft)', color: 'var(--color-accent)', border: '1px solid var(--color-accent)' }}
+                >
+                  {t.exportCenter}
+                </button>
+              )}
+            </div>
           </div>
 
           {/* Preview content */}
-          <div className="flex-1 p-3 sm:p-4 flex items-center justify-center overflow-auto">
+          <div className="flex-1 p-3 sm:p-4 flex flex-col overflow-auto">
             {previewArtifact ? (
-              <div className="w-full space-y-4">
-                {previewArtifact.type === 'image' && previewArtifact.url && (
-                  /* eslint-disable-next-line @next/next/no-img-element */
-                  <img src={previewArtifact.url} alt={previewArtifact.label} className="w-full rounded-xl" style={{ border: '1px solid var(--color-border)' }} />
-                )}
-                {previewArtifact.type === 'video' && previewArtifact.url && (
-                  <video src={previewArtifact.url} controls className="w-full rounded-xl" style={{ border: '1px solid var(--color-border)' }} />
-                )}
-                {previewArtifact.type === 'audio' && previewArtifact.url && (
-                  <audio src={previewArtifact.url} controls className="w-full" />
-                )}
-                {previewArtifact.type === 'text' && (
-                  <pre className="text-xs whitespace-pre-wrap p-4 rounded-xl" style={{ color: 'var(--color-text-secondary)', backgroundColor: 'var(--card-bg)', border: '1px solid var(--color-border)' }}>
-                    {previewArtifact.content ?? ''}
-                  </pre>
-                )}
-                <p className="text-xs text-center" style={{ color: 'var(--color-text-tertiary)' }}>{previewArtifact.label}</p>
-                {previewArtifact.url && (
-                  <div className="space-y-2">
+              <div className="w-full space-y-3 flex-1">
+                {/* Media preview */}
+                <div className="rounded-xl overflow-hidden" style={{ border: '1px solid var(--color-border)' }}>
+                  {previewArtifact.type === 'image' && previewArtifact.url && (
+                    /* eslint-disable-next-line @next/next/no-img-element */
+                    <img src={previewArtifact.url} alt={previewArtifact.label} className="w-full" />
+                  )}
+                  {previewArtifact.type === 'video' && previewArtifact.url && (
+                    <video src={previewArtifact.url} controls className="w-full" />
+                  )}
+                  {previewArtifact.type === 'audio' && previewArtifact.url && (
+                    <div className="p-4" style={{ backgroundColor: 'var(--card-bg)' }}>
+                      <audio src={previewArtifact.url} controls className="w-full" />
+                    </div>
+                  )}
+                  {previewArtifact.type === 'text' && (
+                    <pre className="text-xs whitespace-pre-wrap p-4 max-h-64 overflow-y-auto" style={{ color: 'var(--color-text-secondary)', backgroundColor: 'var(--card-bg)' }}>
+                      {previewArtifact.content ?? ''}
+                    </pre>
+                  )}
+                </div>
+
+                {/* Label */}
+                <p className="text-xs text-center truncate" style={{ color: 'var(--color-text-tertiary)' }}>{previewArtifact.label}</p>
+
+                {/* Action buttons row */}
+                <div className="grid grid-cols-2 gap-2">
+                  {previewArtifact.url && (
                     <button
                       onClick={() => downloadArtifact(previewArtifact)}
-                      className="w-full px-3 py-2 text-xs rounded-lg"
-                      style={{ border: '1px solid var(--color-accent-soft)', backgroundColor: 'var(--color-accent-soft)', color: 'var(--color-accent)' }}
+                      className="flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium rounded-lg transition-all"
+                      style={{ backgroundColor: 'var(--color-accent)', color: '#fff' }}
                     >
+                      <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                       {t.download}
                     </button>
-                    {previewDownloadMetric && (
-                      <div className="space-y-1">
-                        <div className="h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: 'var(--color-border)' }}>
-                          <div className="h-full transition-all" style={{ width: `${previewDownloadMetric.percent}%`, backgroundColor: 'var(--color-accent)' }} />
-                        </div>
-                        <p className="text-[10px] text-center" style={{ color: 'var(--color-text-tertiary)' }}>
-                          {previewDownloadMetric.status === 'downloading' ? t.downloading : previewDownloadMetric.status === 'failed' ? 'Failed' : t.ready}
-                          {' · '}{previewDownloadMetric.percent}%
-                        </p>
-                      </div>
-                    )}
+                  )}
+                  {previewArtifact.generationPrompt && (
+                    <button
+                      onClick={() => retryArtifactGeneration(previewArtifact)}
+                      disabled={sending}
+                      className="flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium rounded-lg transition-all disabled:opacity-40"
+                      style={{ backgroundColor: 'var(--color-surface)', color: 'var(--color-text-secondary)', border: '1px solid var(--color-border)' }}
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
+                      {t.regenerate}
+                    </button>
+                  )}
+                </div>
+
+                {/* Download progress */}
+                {previewDownloadMetric && (
+                  <div className="space-y-1">
+                    <div className="h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: 'var(--color-border)' }}>
+                      <div className="h-full transition-all rounded-full" style={{ width: `${previewDownloadMetric.percent}%`, backgroundColor: previewDownloadMetric.status === 'failed' ? '#f87171' : 'var(--color-accent)' }} />
+                    </div>
+                    <p className="text-[10px] text-center" style={{ color: 'var(--color-text-tertiary)' }}>
+                      {previewDownloadMetric.status === 'downloading' ? t.downloading : previewDownloadMetric.status === 'failed' ? 'Failed' : t.ready}
+                      {' · '}{previewDownloadMetric.percent}%
+                    </p>
+                  </div>
+                )}
+
+                {/* Export format chips */}
+                {showExport && contract && (
+                  <div className="space-y-2 pt-2" style={{ borderTop: '1px solid var(--color-border)' }}>
+                    <p className="text-[10px] uppercase tracking-wider" style={{ color: 'var(--color-text-tertiary)' }}>{t.exportCenter}</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {(contract.exportFormats ?? []).map(fmt => (
+                        <button
+                          key={fmt}
+                          className="px-2.5 py-1.5 text-[11px] rounded-lg transition-colors"
+                          style={{ backgroundColor: 'var(--card-bg)', border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)' }}
+                        >
+                          {fmt.toUpperCase()}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 )}
               </div>
             ) : (
-              <div className="text-center space-y-3">
-                <div className="w-16 h-16 mx-auto rounded-2xl flex items-center justify-center" style={{ backgroundColor: 'var(--card-bg)', border: '1px solid var(--color-border)' }}>
-                  <span className="text-2xl opacity-20">{serviceIcon}</span>
+              /* Smart Empty State */
+              <div className="flex flex-col items-center justify-center flex-1 text-center space-y-4 py-6">
+                <div className="relative">
+                  <div className="absolute inset-0 rounded-2xl opacity-10 animate-pulse" style={{ backgroundColor: 'var(--color-accent)' }} />
+                  <div className="relative w-16 h-16 rounded-2xl flex items-center justify-center" style={{ backgroundColor: 'var(--card-bg)', border: '1px solid var(--color-border)' }}>
+                    <span className="text-2xl opacity-40">{serviceIcon}</span>
+                  </div>
                 </div>
-                <p className="text-xs" style={{ color: 'var(--color-text-tertiary)' }}>{t.noPreview}</p>
+                <div className="space-y-1.5">
+                  <p className="text-sm font-medium" style={{ color: 'var(--color-text-secondary)' }}>{t.noPreview}</p>
+                  <p className="text-[11px] max-w-[200px]" style={{ color: 'var(--color-text-tertiary)' }}>{t.noPreviewHint}</p>
+                </div>
+                <button
+                  onClick={() => promptInputRef.current?.focus()}
+                  className="text-[11px] font-medium px-4 py-2 rounded-lg transition-all"
+                  style={{ backgroundColor: 'var(--color-accent-soft)', color: 'var(--color-accent)', border: '1px solid var(--color-accent)' }}
+                >
+                  {t.startCreating} →
+                </button>
+                {/* Export format preview */}
+                {contract && (
+                  <div className="pt-3 space-y-1.5" style={{ borderTop: '1px solid var(--color-border)' }}>
+                    <p className="text-[10px] uppercase tracking-wider" style={{ color: 'var(--color-text-tertiary)' }}>{t.outputTypes}</p>
+                    <div className="flex flex-wrap justify-center gap-1">
+                      {contract.exportFormats.slice(0, 5).map(fmt => (
+                        <span key={fmt} className="px-2 py-0.5 text-[10px] rounded-md" style={{ backgroundColor: 'var(--color-surface)', color: 'var(--color-text-tertiary)', border: '1px solid var(--color-border)' }}>
+                          {fmt}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
 
-          {/* Export menu */}
-          {showExport && (
-            <div className="p-4 space-y-2" style={{ borderTop: '1px solid var(--color-border)' }}>
+          {/* Export menu (legacy fallback) */}
+          {showExport && !previewArtifact && (
+            <div className="p-3 space-y-1.5" style={{ borderTop: '1px solid var(--color-border)' }}>
               {(contract?.exportFormats ?? ['PNG', 'MP4', 'MP3', 'JSON', 'PDF']).map(fmt => (
                 <button
                   key={fmt}
@@ -2644,7 +3055,7 @@ export default function UnifiedServiceLayout({
           )}
 
           {/* Cross-service Next Steps */}
-          {contract && contract.nextTools.length > 0 && previewArtifact && (
+          {contract && contract.nextTools.length > 0 && (
             <div className="p-3 space-y-2" style={{ borderTop: '1px solid var(--color-border)' }}>
               <p className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--color-text-tertiary)' }}>
                 {locale === 'ka' ? 'შემდეგი ნაბიჯი' : locale === 'ru' ? 'Следующий шаг' : 'Next Step'}
@@ -2654,10 +3065,11 @@ export default function UnifiedServiceLayout({
                   <Link
                     key={tool.slug}
                     href={`/${locale}/services/${tool.slug}`}
-                    className="px-3 py-1.5 text-[11px] font-medium rounded-lg transition-all hover:opacity-80"
-                    style={{ backgroundColor: 'var(--color-accent-soft)', color: 'var(--color-accent)', border: '1px solid var(--color-accent)' }}
+                    className="flex items-center gap-1 px-3 py-1.5 text-[11px] font-medium rounded-lg transition-all hover:scale-[1.02]"
+                    style={{ backgroundColor: previewArtifact ? 'var(--color-accent)' : 'var(--color-accent-soft)', color: previewArtifact ? '#fff' : 'var(--color-accent)', border: '1px solid var(--color-accent)' }}
                   >
-                    {tool.label[locale as 'ka' | 'en' | 'ru'] || tool.label.en} →
+                    {tool.label[locale as 'ka' | 'en' | 'ru'] || tool.label.en}
+                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
                   </Link>
                 ))}
               </div>

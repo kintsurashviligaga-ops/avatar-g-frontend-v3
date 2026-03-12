@@ -289,7 +289,7 @@ function ServiceCard({ service, locale, isCore = false }: { service: ServiceItem
   return (
     <Link
       href={`/${locale}/services/${service.id}`}
-      className='group relative flex flex-col overflow-hidden rounded-2xl transition-all duration-200 hover:-translate-y-0.5'
+      className='group relative flex flex-col overflow-hidden rounded-2xl transition-all duration-300 hover:-translate-y-1 hover:shadow-lg hover:shadow-indigo-500/5'
       style={{ backgroundColor: 'var(--card-bg)', border: isCore ? '1px solid var(--color-accent)' : '1px solid var(--color-border)' }}
     >
       <ServiceCardVisual serviceId={service.id} variant="card" className="rounded-t-2xl" />
@@ -300,7 +300,7 @@ function ServiceCard({ service, locale, isCore = false }: { service: ServiceItem
           </span>
         )}
         <div className='mb-4 flex items-center justify-between gap-3'>
-          <div className='inline-flex h-11 w-11 items-center justify-center rounded-xl' style={{ backgroundColor: 'var(--color-accent-soft)', color: 'var(--color-accent)' }}>
+          <div className='inline-flex h-11 w-11 items-center justify-center rounded-xl transition-all group-hover:scale-110' style={{ background: isCore ? 'linear-gradient(135deg, var(--color-accent), rgba(139,92,246,0.8))' : 'var(--color-accent-soft)', color: isCore ? '#fff' : 'var(--color-accent)' }}>
             <Icon className='h-5 w-5' />
           </div>
           <span className='rounded-full px-2.5 py-1 text-[10px] font-medium tracking-[0.08em]' style={{ backgroundColor: 'var(--color-surface)', color: 'var(--color-text-secondary)', border: '1px solid var(--color-border)' }}>
@@ -309,9 +309,9 @@ function ServiceCard({ service, locale, isCore = false }: { service: ServiceItem
         </div>
         <h3 className='mb-2 text-lg font-semibold leading-tight' style={{ color: 'var(--color-text)' }}>{service.title}</h3>
         <p className='text-sm leading-relaxed' style={{ color: 'var(--color-text-secondary)' }}>{service.description}</p>
-        <div className='mt-auto pt-5 flex items-center gap-1.5 text-xs font-medium' style={{ color: 'var(--color-accent)' }}>
+        <div className='mt-auto pt-5 flex items-center gap-1.5 text-xs font-medium transition-transform group-hover:translate-x-1' style={{ color: 'var(--color-accent)' }}>
           {openLabel}
-          <ArrowRight className='h-3 w-3 transition-transform group-hover:translate-x-0.5' />
+          <ArrowRight className='h-3 w-3' />
         </div>
       </div>
     </Link>
@@ -324,7 +324,7 @@ function AgentGFeaturedCard({ service, locale }: { service: ServiceItem; locale:
   return (
     <Link
       href={`/${locale}/services/${service.id}`}
-      className='group relative block overflow-hidden rounded-2xl transition-all duration-200 hover:-translate-y-0.5'
+      className='group relative block overflow-hidden rounded-2xl transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-indigo-500/10'
       style={{ backgroundColor: 'var(--card-bg)', border: '1px solid var(--color-accent)' }}
     >
       <div className='grid grid-cols-1 md:grid-cols-[1fr_1.4fr]'>
@@ -334,15 +334,15 @@ function AgentGFeaturedCard({ service, locale }: { service: ServiceItem; locale:
             CORE ORCHESTRATOR
           </span>
           <div className='flex items-center gap-3 mb-2'>
-            <div className='inline-flex h-10 w-10 items-center justify-center rounded-xl' style={{ backgroundColor: 'var(--color-accent-soft)', color: 'var(--color-accent)' }}>
-              <Icon className='h-5 w-5' />
+            <div className='inline-flex h-12 w-12 items-center justify-center rounded-xl transition-transform group-hover:scale-110' style={{ background: 'linear-gradient(135deg, var(--color-accent), rgba(139,92,246,0.8))', color: '#fff' }}>
+              <Icon className='h-6 w-6' />
             </div>
             <h3 className='text-xl md:text-2xl font-semibold leading-tight' style={{ color: 'var(--color-text)' }}>{service.title}</h3>
           </div>
           <p className='mt-2 text-sm leading-relaxed max-w-lg' style={{ color: 'var(--color-text-secondary)' }}>{service.description}</p>
-          <div className='mt-5 inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-xs font-semibold w-fit transition-transform group-hover:translate-x-0.5' style={{ backgroundColor: 'var(--color-accent)', color: '#fff' }}>
+          <div className='mt-5 inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-xs font-semibold w-fit transition-all group-hover:translate-x-1 group-hover:shadow-lg group-hover:shadow-indigo-500/20' style={{ backgroundColor: 'var(--color-accent)', color: '#fff' }}>
             {openLabel}
-            <ArrowRight className='h-3 w-3' />
+            <ArrowRight className='h-3.5 w-3.5' />
           </div>
         </div>
       </div>
@@ -409,10 +409,13 @@ export default async function LocalizedServicesPage({ params }: ServicesPageProp
         <section className='rounded-3xl p-5 sm:p-6 md:p-8' style={{ backgroundColor: 'var(--color-surface)', border: '1px solid var(--color-border)' }}>
           <p className='text-center text-base font-semibold tracking-[0.06em] md:text-lg' style={{ color: 'var(--color-accent)' }}>{text.workflowLabel}</p>
           <p className='mx-auto mt-3 max-w-3xl text-center text-sm leading-relaxed md:text-base' style={{ color: 'var(--color-text-secondary)' }}>{text.workflowSub}</p>
-          <div className='mt-6 grid grid-cols-1 gap-3 text-sm sm:grid-cols-2 lg:grid-cols-5' style={{ color: 'var(--color-text-secondary)' }}>
-            {['Avatar / Media', 'Intelligence', 'Workflows', 'Business', 'Expansion'].map((step) => (
-              <div key={step} className='rounded-xl px-4 py-3 text-center' style={{ backgroundColor: 'var(--card-bg)', border: '1px solid var(--color-border)' }}>
-                {step}
+          <div className='mt-6 flex flex-wrap items-center justify-center gap-2 text-sm' style={{ color: 'var(--color-text-secondary)' }}>
+            {['🎭 Avatar / Media', '🧠 Intelligence', '⚡ Workflows', '💼 Business', '🌍 Expansion'].map((step, i) => (
+              <div key={step} className='flex items-center gap-2'>
+                <div className='rounded-xl px-4 py-2.5 text-center font-medium transition-colors hover:border-[var(--color-accent)]' style={{ backgroundColor: 'var(--card-bg)', border: '1px solid var(--color-border)' }}>
+                  {step}
+                </div>
+                {i < 4 && <ArrowRight className='h-3.5 w-3.5 hidden sm:block' style={{ color: 'var(--color-text-tertiary)' }} />}
               </div>
             ))}
           </div>
