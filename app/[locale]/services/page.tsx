@@ -1,4 +1,5 @@
 ﻿import Link from 'next/link';
+import Image from 'next/image';
 import type { ComponentType } from 'react';
 import { ServiceCardVisual } from '@/components/ui/ServiceCardVisual';
 import {
@@ -317,39 +318,32 @@ function ServiceCard({ service, locale, isCore = false }: { service: ServiceItem
   );
 }
 
-function EcosystemNode({ label, className = '' }: { label: string; className?: string }) {
-  return (
-    <div
-      className={`rounded-2xl px-4 py-3 text-center text-sm font-medium ${className}`}
-      style={{ backgroundColor: 'var(--color-surface)', border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)' }}
-    >
-      {label}
-    </div>
-  );
-}
-
-function AgentGCoreCard({ service, locale }: { service: ServiceItem; locale: string }) {
+function AgentGFeaturedCard({ service, locale }: { service: ServiceItem; locale: string }) {
   const Icon = service.icon;
   const openLabel = locale === 'ka' ? 'მოდულის გახსნა' : locale === 'ru' ? 'Открыть модуль' : 'Open Module';
   return (
     <Link
       href={`/${locale}/services/${service.id}`}
       className='group relative block overflow-hidden rounded-2xl transition-all duration-200 hover:-translate-y-0.5'
-      style={{ backgroundColor: 'var(--card-bg)', border: '2px solid var(--color-accent)' }}
+      style={{ backgroundColor: 'var(--card-bg)', border: '1px solid var(--color-accent)' }}
     >
-      <ServiceCardVisual serviceId="agent-g" variant="banner" className="rounded-t-2xl" />
-      <div className='relative z-10 p-6'>
-        <span className='mb-3 inline-flex rounded-full px-3 py-1 text-[10px] font-semibold tracking-[0.18em]' style={{ backgroundColor: 'var(--color-accent-soft)', color: 'var(--color-accent)', border: '1px solid var(--color-accent)' }}>
-          CORE ORCHESTRATOR
-        </span>
-        <div className='mb-4 inline-flex h-12 w-12 items-center justify-center rounded-xl' style={{ backgroundColor: 'var(--color-accent-soft)', color: 'var(--color-accent)' }}>
-          <Icon className='h-5 w-5' />
-        </div>
-        <p className='mb-1 text-[11px] uppercase tracking-[0.12em]' style={{ color: 'var(--color-accent)' }}>Coordinate</p>
-        <h3 className='text-xl font-semibold leading-tight' style={{ color: 'var(--color-text)' }}>{service.title}</h3>
-        <p className='mt-3 text-sm leading-relaxed' style={{ color: 'var(--color-text-secondary)' }}>{service.description}</p>
-        <div className='mt-5 inline-flex items-center rounded-lg px-3 py-1.5 text-xs font-semibold' style={{ backgroundColor: 'var(--color-accent)', color: '#fff' }}>
-          {openLabel}
+      <div className='grid grid-cols-1 md:grid-cols-[1fr_1.4fr]'>
+        <ServiceCardVisual serviceId="agent-g" variant="banner" className="rounded-t-2xl md:rounded-l-2xl md:rounded-tr-none min-h-[180px]" />
+        <div className='relative z-10 flex flex-col justify-center p-6 md:p-8'>
+          <span className='mb-3 inline-flex w-fit rounded-full px-3 py-1 text-[10px] font-semibold tracking-[0.18em]' style={{ backgroundColor: 'var(--color-accent-soft)', color: 'var(--color-accent)', border: '1px solid var(--color-accent)' }}>
+            CORE ORCHESTRATOR
+          </span>
+          <div className='flex items-center gap-3 mb-2'>
+            <div className='inline-flex h-10 w-10 items-center justify-center rounded-xl' style={{ backgroundColor: 'var(--color-accent-soft)', color: 'var(--color-accent)' }}>
+              <Icon className='h-5 w-5' />
+            </div>
+            <h3 className='text-xl md:text-2xl font-semibold leading-tight' style={{ color: 'var(--color-text)' }}>{service.title}</h3>
+          </div>
+          <p className='mt-2 text-sm leading-relaxed max-w-lg' style={{ color: 'var(--color-text-secondary)' }}>{service.description}</p>
+          <div className='mt-5 inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-xs font-semibold w-fit transition-transform group-hover:translate-x-0.5' style={{ backgroundColor: 'var(--color-accent)', color: '#fff' }}>
+            {openLabel}
+            <ArrowRight className='h-3 w-3' />
+          </div>
         </div>
       </div>
     </Link>
@@ -369,6 +363,17 @@ export default async function LocalizedServicesPage({ params }: ServicesPageProp
     <section className='relative overflow-hidden px-4 py-16 sm:px-6 md:py-20 lg:px-10 lg:py-24' style={{ backgroundColor: 'var(--color-bg)', color: 'var(--color-text)' }}>
       <div className='relative mx-auto flex w-full max-w-7xl flex-col gap-12 md:gap-16'>
         <header className='mx-auto max-w-4xl text-center'>
+          <div className='mx-auto mb-5 relative w-16 h-16 sm:w-20 sm:h-20'>
+            <div className='absolute inset-[10%] rounded-full' style={{ background: 'radial-gradient(circle, rgba(99,102,241,0.08) 0%, transparent 70%)', filter: 'blur(8px)' }} />
+            <Image
+              src="/brand/rocket-3d-hq.svg"
+              alt="MyAvatar.ge"
+              fill
+              sizes="80px"
+              priority
+              className='object-contain drop-shadow-[0_4px_16px_rgba(99,102,241,0.22)]'
+            />
+          </div>
           <p className='mb-3 inline-flex rounded-full px-4 py-1.5 text-xs font-semibold tracking-[0.2em]' style={{ backgroundColor: 'var(--color-accent-soft)', color: 'var(--color-accent)', border: '1px solid var(--color-accent)' }}>
             {text.eyebrow}
           </p>
@@ -377,20 +382,9 @@ export default async function LocalizedServicesPage({ params }: ServicesPageProp
           <p className='mx-auto mt-5 max-w-3xl text-sm leading-relaxed sm:text-base' style={{ color: 'var(--color-text-tertiary)' }}>{text.description}</p>
         </header>
 
-        <section className='relative overflow-hidden rounded-3xl p-5 sm:p-6 lg:p-10' style={{ backgroundColor: 'var(--color-surface)', border: '1px solid var(--color-border)' }}>
-          <div className='relative grid gap-4 md:grid-cols-3 md:grid-rows-5 md:gap-5'>
-            <EcosystemNode label='Avatar & Creative Generation' className='md:col-start-2 md:row-start-1' />
-            <EcosystemNode label='Creative Intelligence Layer' className='md:col-start-1 md:row-start-2' />
-            <div className='order-first md:order-none md:col-start-2 md:row-start-2 md:row-span-2'>
-              <AgentGCoreCard service={agentG} locale={locale} />
-            </div>
-            <EcosystemNode label='Automation & Orchestration' className='md:col-start-3 md:row-start-2' />
-            <EcosystemNode label='Commerce, Business & Development' className='md:col-start-2 md:row-start-4' />
-            <EcosystemNode label='Vertical & Future Modules' className='md:col-start-2 md:row-start-5' />
-
-            <div className='pointer-events-none absolute left-1/2 top-[12%] hidden h-[76%] w-px -translate-x-1/2 md:block' style={{ background: 'linear-gradient(to bottom, transparent, var(--color-border), transparent)' }} />
-            <div className='pointer-events-none absolute left-[16%] top-[34%] hidden h-px w-[68%] md:block' style={{ background: 'linear-gradient(to right, transparent, var(--color-border), transparent)' }} />
-          </div>
+        {/* Agent G — Featured orchestrator card */}
+        <section>
+          <AgentGFeaturedCard service={agentG} locale={locale} />
         </section>
 
         <section className='space-y-8 md:space-y-10'>
