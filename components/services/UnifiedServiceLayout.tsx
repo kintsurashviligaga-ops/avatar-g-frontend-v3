@@ -2,7 +2,9 @@
 
 import { useState, useRef, useEffect, useCallback, type DragEvent, type ChangeEvent, type ReactNode } from 'react';
 import { useSearchParams } from 'next/navigation';
+import Link from 'next/link';
 import { getOwnerId } from '@/lib/auth/identity';
+import { SERVICE_CONTRACTS, SERVICE_PRESETS as CATALOG_PRESETS, type ServicePreset } from '@/lib/services/catalog';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -751,6 +753,8 @@ export default function UnifiedServiceLayout({
   });
   const [showOptionsPanel, setShowOptionsPanel] = useState(false);
   const [optionsPanelTab, setOptionsPanelTab] = useState<'pipeline' | 'params' | 'builder' | 'sections'>('params');
+  const [userMode, setUserMode] = useState<'beginner' | 'advanced'>('beginner');
+  const [activePresetId, setActivePresetId] = useState<string | null>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -767,6 +771,10 @@ export default function UnifiedServiceLayout({
   const serviceBackground = SERVICE_BACKGROUNDS[serviceId] ?? SERVICE_BACKGROUNDS['agent-g']!;
   const serviceBackgroundImage = SERVICE_BACKGROUND_IMAGES[serviceId] ?? SERVICE_BACKGROUND_IMAGES['agent-g']!;
   const agentButtonLabel = `${t.useAgent} — ${serviceName}`;
+  const contract = SERVICE_CONTRACTS[serviceId];
+  const catalogPresets = (CATALOG_PRESETS[serviceId] ?? []).filter(
+    p => p.mode === 'both' || p.mode === userMode
+  );
   const workspaceFlowLabels = [
     locale === 'ka' ? 'Prompt' : locale === 'ru' ? 'Промпт' : 'Prompt',
     locale === 'ka' ? 'გენერაცია' : locale === 'ru' ? 'Генерация' : 'Generation',
@@ -1831,6 +1839,57 @@ export default function UnifiedServiceLayout({
         </div>
       </header>
 
+      {/* ── Mode Toggle + Quick Presets Bar ─────────────────────────────── */}
+      <div className="relative z-10 max-w-[94rem] mx-auto px-2 sm:px-3 md:px-4 lg:px-6 pt-2 sm:pt-3">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-3">
+          {/* Beginner / Advanced toggle */}
+          <div className="flex items-center rounded-lg overflow-hidden shrink-0" style={{ border: '1px solid var(--color-border)' }}>
+            <button
+              onClick={() => setUserMode('beginner')}
+              className="text-[11px] font-medium px-3 py-1.5 transition-all"
+              style={{
+                color: userMode === 'beginner' ? '#fff' : 'var(--color-text-tertiary)',
+                backgroundColor: userMode === 'beginner' ? 'var(--color-accent)' : 'transparent',
+              }}
+            >
+              {locale === 'ka' ? 'დამწყები' : locale === 'ru' ? 'Базовый' : 'Beginner'}
+            </button>
+            <button
+              onClick={() => setUserMode('advanced')}
+              className="text-[11px] font-medium px-3 py-1.5 transition-all"
+              style={{
+                color: userMode === 'advanced' ? '#fff' : 'var(--color-text-tertiary)',
+                backgroundColor: userMode === 'advanced' ? 'var(--color-accent)' : 'transparent',
+              }}
+            >
+              {locale === 'ka' ? 'გაფართოებული' : locale === 'ru' ? 'Продвинутый' : 'Advanced'}
+            </button>
+          </div>
+          {/* Quick preset tags */}
+          {catalogPresets.length > 0 && (
+            <div className="flex flex-1 gap-1.5 overflow-x-auto scrollbar-hide min-w-0">
+              {catalogPresets.map(preset => (
+                <button
+                  key={preset.id}
+                  onClick={() => {
+                    setActivePresetId(preset.id);
+                    setInput(preset.prompt);
+                  }}
+                  className="flex-shrink-0 px-3 py-1.5 text-[11px] rounded-full transition-all whitespace-nowrap"
+                  style={
+                    activePresetId === preset.id
+                      ? { backgroundColor: 'var(--color-accent)', color: '#fff', border: '1px solid var(--color-accent)' }
+                      : { backgroundColor: 'var(--card-bg)', border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)' }
+                  }
+                >
+                  {preset.label[locale as 'ka' | 'en' | 'ru'] || preset.label.en}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
       {/* ── Main Layout: Chat (70%) + Preview (30%) ─────────────────────── */}
       <div className={`relative z-10 max-w-[94rem] mx-auto flex flex-col lg:flex-row min-h-[calc(100vh-60px)] sm:min-h-[calc(100vh-64px)] px-2 sm:px-3 md:px-4 lg:px-6 py-2 sm:py-3 gap-2 lg:gap-3 ${chatFullscreen ? 'max-w-full px-1 sm:px-2 md:px-3 lg:px-3' : ''}`}>
 
@@ -2572,15 +2631,36 @@ export default function UnifiedServiceLayout({
           {/* Export menu */}
           {showExport && (
             <div className="p-4 space-y-2" style={{ borderTop: '1px solid var(--color-border)' }}>
-              {['PNG', 'MP4', 'MP3', 'JSON', 'PDF'].map(fmt => (
+              {(contract?.exportFormats ?? ['PNG', 'MP4', 'MP3', 'JSON', 'PDF']).map(fmt => (
                 <button
                   key={fmt}
                   className="w-full text-left px-3 py-2 text-xs rounded-lg transition-colors"
                   style={{ backgroundColor: 'var(--card-bg)', border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)' }}
                 >
-                  Export as {fmt}
+                  Export as {fmt.toUpperCase()}
                 </button>
               ))}
+            </div>
+          )}
+
+          {/* Cross-service Next Steps */}
+          {contract && contract.nextTools.length > 0 && previewArtifact && (
+            <div className="p-3 space-y-2" style={{ borderTop: '1px solid var(--color-border)' }}>
+              <p className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--color-text-tertiary)' }}>
+                {locale === 'ka' ? 'შემდეგი ნაბიჯი' : locale === 'ru' ? 'Следующий шаг' : 'Next Step'}
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {contract.nextTools.map(tool => (
+                  <Link
+                    key={tool.slug}
+                    href={`/${locale}/services/${tool.slug}`}
+                    className="px-3 py-1.5 text-[11px] font-medium rounded-lg transition-all hover:opacity-80"
+                    style={{ backgroundColor: 'var(--color-accent-soft)', color: 'var(--color-accent)', border: '1px solid var(--color-accent)' }}
+                  >
+                    {tool.label[locale as 'ka' | 'en' | 'ru'] || tool.label.en} →
+                  </Link>
+                ))}
+              </div>
             </div>
           )}
         </div>

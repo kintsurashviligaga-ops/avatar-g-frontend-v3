@@ -6,14 +6,12 @@ import { useState, useEffect } from 'react'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
 import { BrandLogo } from '@/components/ui/BrandLogo'
 
+import { NAV_GROUPS, getServiceBySlug } from '@/lib/services/catalog'
+
 const NAV_ITEMS = [
-  { path: '/services', key: 'nav.services' },
-  { path: '/services/avatar', key: 'nav.avatar' },
-  { path: '/services/video', key: 'nav.video' },
-  { path: '/services/editing', key: 'nav.editing' },
-  { path: '/services/music', key: 'nav.music' },
-  { path: '/business', key: 'nav.business' },
-  { path: '/pricing', key: 'nav.pricing' },
+  { path: '/services/agent-g', label: { en: 'Agent G', ka: 'Agent G', ru: 'Agent G' }, accent: true },
+  { path: '/services', label: { en: 'Services', ka: 'სერვისები', ru: 'Сервисы' }, accent: false },
+  { path: '/pricing', label: { en: 'Pricing', ka: 'ფასები', ru: 'Цены' }, accent: false },
 ] as const
 
 const LOCALES = [
@@ -80,12 +78,32 @@ export function GlobalNavbar() {
                   active ? 'font-semibold' : 'font-medium hover:opacity-80'
                 }`}
                 style={{
-                  color: active ? 'var(--color-text)' : 'var(--color-text-secondary)',
+                  color: item.accent && !active ? 'var(--color-accent)' : active ? 'var(--color-text)' : 'var(--color-text-secondary)',
                   backgroundColor: active ? 'var(--color-accent-soft)' : 'transparent',
                   border: active ? '1px solid var(--color-border-hover)' : '1px solid transparent',
                 }}
               >
-                {t(item.key)}
+                {item.label[locale as 'ka' | 'en' | 'ru'] || item.label.en}
+              </Link>
+            )
+          })}
+          {/* Group shortcuts */}
+          {NAV_GROUPS.slice(0, 3).map(function(group) {
+            const anyActive = group.services.some(function(s) { return isActive('/services/' + s) })
+            return (
+              <Link
+                key={group.id}
+                href={localeHref('/services/' + group.services[0])}
+                className={`px-3 py-1.5 text-[13px] rounded-lg transition-all duration-200 ${
+                  anyActive ? 'font-semibold' : 'font-medium hover:opacity-80'
+                }`}
+                style={{
+                  color: anyActive ? 'var(--color-text)' : 'var(--color-text-secondary)',
+                  backgroundColor: anyActive ? 'var(--color-accent-soft)' : 'transparent',
+                  border: anyActive ? '1px solid var(--color-border-hover)' : '1px solid transparent',
+                }}
+              >
+                {group.icon} {group.label[locale as 'ka' | 'en' | 'ru'] || group.label.en}
               </Link>
             )
           })}
@@ -168,15 +186,31 @@ export function GlobalNavbar() {
                 active ? 'font-semibold' : 'font-medium'
               }`}
               style={{
-                color: active ? 'var(--color-text)' : 'var(--color-text-secondary)',
+                color: item.accent && !active ? 'var(--color-accent)' : active ? 'var(--color-text)' : 'var(--color-text-secondary)',
                 backgroundColor: active ? 'var(--color-accent-soft)' : 'transparent',
                 border: active ? '1px solid var(--color-border-hover)' : '1px solid transparent',
               }}
             >
-              {t(item.key)}
+              {item.label[locale as 'ka' | 'en' | 'ru'] || item.label.en}
             </Link>
           )
         })}
+        {/* Mobile group links */}
+        <div className="pt-2 mt-1 space-y-1" style={{ borderTop: '1px solid var(--color-border)' }}>
+          {NAV_GROUPS.map(function(group) {
+            return (
+              <Link
+                key={group.id}
+                href={localeHref('/services/' + group.services[0])}
+                onClick={function() { setOpen(false) }}
+                className="block px-3 py-2.5 text-sm font-medium rounded-xl transition-all"
+                style={{ color: 'var(--color-text-secondary)' }}
+              >
+                {group.icon} {group.label[locale as 'ka' | 'en' | 'ru'] || group.label.en}
+              </Link>
+            )
+          })}
+        </div>
         <div className="pt-3 mt-1 grid grid-cols-2 gap-2" style={{ borderTop: '1px solid var(--color-border)' }}>
           <Link
             href={localeHref('/login')}

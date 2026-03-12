@@ -6,7 +6,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
 import { useTheme } from '@/lib/theme/ThemeContext'
 import { BrandLogo } from '@/components/ui/BrandLogo'
-import { SERVICES, NAV_CATEGORIES } from '@/lib/services/catalog'
+import { SERVICES, NAV_CATEGORIES, NAV_GROUPS, getServiceBySlug } from '@/lib/services/catalog'
 
 /* ─── Icons (inline SVGs for zero dependency) ─── */
 function IconMenu() {
@@ -299,24 +299,80 @@ export function SidebarMenu({ open, onClose }: { open: boolean; onClose: () => v
           </button>
         </div>
 
-        {/* Navigation */}
-        <div className="flex-1 overflow-y-auto py-3 px-3 space-y-0.5">
-          {NAV_CATEGORIES.map(item => (
-            <Link
-              key={item.slug}
-              href={lh(item.href)}
-              onClick={onClose}
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-[13px] font-medium transition-all duration-200 ${
-                isActive(item.href) ? 'font-semibold' : ''
-              }`}
-              style={{
-                color: isActive(item.href) ? 'var(--color-text)' : 'var(--color-text-secondary)',
-                backgroundColor: isActive(item.href) ? 'var(--color-accent-soft)' : 'transparent',
-              }}
-            >
-              {item.label[locale as 'ka' | 'en' | 'ru'] || item.label.en}
-            </Link>
-          ))}
+        {/* Navigation — Grouped */}
+        <div className="flex-1 overflow-y-auto py-3 px-3 space-y-1">
+          {/* Agent G — Always on top */}
+          <Link
+            href={lh('/services/agent-g')}
+            onClick={onClose}
+            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-[13px] font-semibold transition-all duration-200`}
+            style={{
+              color: isActive('/services/agent-g') ? '#fff' : 'var(--color-accent)',
+              backgroundColor: isActive('/services/agent-g') ? 'var(--color-accent)' : 'var(--color-accent-soft)',
+              border: `1px solid ${isActive('/services/agent-g') ? 'var(--color-accent)' : 'transparent'}`,
+            }}
+          >
+            <span className="text-base">🤖</span>
+            Agent G
+          </Link>
+          {/* All Services link */}
+          <Link
+            href={lh('/services')}
+            onClick={onClose}
+            className="flex items-center gap-3 px-3 py-2 rounded-lg text-[13px] font-medium transition-all duration-200"
+            style={{
+              color: isActive('/services') && !pathname.includes('/services/') ? 'var(--color-text)' : 'var(--color-text-secondary)',
+              backgroundColor: isActive('/services') && !pathname.includes('/services/') ? 'var(--color-accent-soft)' : 'transparent',
+            }}
+          >
+            {locale === 'ka' ? '📋 ყველა სერვისი' : locale === 'ru' ? '📋 Все сервисы' : '📋 All Services'}
+          </Link>
+          <div className="h-px my-2" style={{ backgroundColor: 'var(--color-border)' }} />
+          {/* Service Groups */}
+          {NAV_GROUPS.map(group => {
+            const groupServices = group.services.map(slug => getServiceBySlug(slug)).filter(Boolean)
+            const anyActive = group.services.some(slug => isActive(`/services/${slug}`))
+            return (
+              <div key={group.id} className="space-y-0.5">
+                <div className="flex items-center gap-2 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider" style={{ color: anyActive ? 'var(--color-accent)' : 'var(--color-text-tertiary)' }}>
+                  <span>{group.icon}</span>
+                  {group.label[locale as 'ka' | 'en' | 'ru'] || group.label.en}
+                </div>
+                {groupServices.map(svc => {
+                  if (!svc) return null
+                  const active = isActive(`/services/${svc.slug}`)
+                  return (
+                    <Link
+                      key={svc.slug}
+                      href={lh(`/services/${svc.slug}`)}
+                      onClick={onClose}
+                      className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13px] font-medium transition-all duration-200 ml-2"
+                      style={{
+                        color: active ? 'var(--color-text)' : 'var(--color-text-secondary)',
+                        backgroundColor: active ? 'var(--color-accent-soft)' : 'transparent',
+                      }}
+                    >
+                      <span className="text-sm">{svc.icon}</span>
+                      {svc.title[locale as 'ka' | 'en' | 'ru'] || svc.title.en}
+                    </Link>
+                  )
+                })}
+              </div>
+            )
+          })}
+          <div className="h-px my-2" style={{ backgroundColor: 'var(--color-border)' }} />
+          {/* Extra nav items */}
+          <Link
+            href={lh('/pricing')}
+            onClick={onClose}
+            className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-[13px] font-medium transition-all duration-200"
+            style={{
+              color: isActive('/pricing') ? 'var(--color-text)' : 'var(--color-text-secondary)',
+              backgroundColor: isActive('/pricing') ? 'var(--color-accent-soft)' : 'transparent',
+            }}
+          >
+            {locale === 'ka' ? '💰 ფასები' : locale === 'ru' ? '💰 Цены' : '💰 Pricing'}
+          </Link>
         </div>
 
         {/* Bottom section — settings */}
