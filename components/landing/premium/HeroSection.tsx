@@ -155,7 +155,7 @@ export function HeroSection() {
         )}
         <span className="relative whitespace-nowrap">
           {c.brand}
-          <span className="bg-gradient-to-r from-blue-400 via-indigo-400 to-violet-400 bg-clip-text text-transparent">{c.brandDot}</span>
+          <span className="bg-gradient-to-r from-blue-500 via-indigo-500 to-violet-500 bg-clip-text text-transparent">{c.brandDot}</span>
           {/* Accent underline */}
           <span
             className="absolute -bottom-1.5 left-0 right-0 h-[2px] rounded-full opacity-60"
@@ -188,8 +188,8 @@ export function HeroSection() {
 
       {/* ── Trust signal ── */}
       <p
-        className="relative z-10 mt-8 text-[11px] sm:text-xs tracking-wide font-medium uppercase opacity-50"
-        style={{ color: 'var(--color-text-secondary)' }}
+        className="relative z-10 mt-8 text-[11px] sm:text-xs tracking-wide font-medium uppercase"
+        style={{ color: 'var(--color-text-tertiary)' }}
       >
         {c.badge}
       </p>

@@ -85,8 +85,8 @@ export default function FeatureGrid() {
             />
 
             <div className="relative flex flex-col items-center gap-3.5">
-              <span className="flex items-center gap-1.5 text-[10px] font-medium" style={{ color: '#4ade80' }}>
-                <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+              <span className="flex items-center gap-1.5 text-[10px] font-medium" style={{ color: '#16a34a' }}>
+                <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
                 {ag.status}
               </span>
               <div

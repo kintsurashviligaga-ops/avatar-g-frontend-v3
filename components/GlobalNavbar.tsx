@@ -49,9 +49,10 @@ export function GlobalNavbar() {
     return pathname === full || pathname.startsWith(full + '/')
   }
 
-  const navCls = `fixed top-0 inset-x-0 z-[200] ${scrolled ? 'h-14 md:h-16' : 'h-16 md:h-20'} transition-all duration-300 flex items-center justify-between px-4 sm:px-6 lg:px-10 backdrop-blur-2xl backdrop-saturate-150 ag-mirror-panel pointer-events-auto border-b ${scrolled ? 'bg-[linear-gradient(135deg,rgba(2,5,14,0.97),rgba(3,9,22,0.96))] border-white/25 shadow-[0_16px_56px_rgba(0,0,0,0.72),inset_0_1px_0_rgba(255,255,255,0.10)]' : 'bg-[linear-gradient(135deg,rgba(3,8,20,0.88),rgba(6,14,34,0.78))] border-white/20 shadow-[0_14px_50px_rgba(0,0,0,0.52),inset_0_1px_0_rgba(255,255,255,0.08)]'}`
+  const navCls = `fixed top-0 inset-x-0 z-[200] ${scrolled ? 'h-14 md:h-16' : 'h-16 md:h-20'} transition-all duration-300 flex items-center justify-between px-4 sm:px-6 lg:px-10 backdrop-blur-2xl backdrop-saturate-150 pointer-events-auto border-b`
+    + ` ${scrolled ? 'shadow-[0_4px_24px_rgba(0,0,0,0.08)]' : 'shadow-[0_2px_16px_rgba(0,0,0,0.04)]'}`
 
-  const drawerBase = `fixed ${scrolled ? 'top-14' : 'top-16'} inset-x-0 z-[199] bg-[linear-gradient(145deg,rgba(3,9,22,0.95),rgba(6,13,30,0.92))] backdrop-blur-2xl border-b border-white/18 px-4 py-4 space-y-1 lg:hidden transition-all duration-300 origin-top shadow-[0_26px_70px_rgba(0,0,0,0.56)] ag-mirror-panel pointer-events-auto`
+  const drawerBase = `fixed ${scrolled ? 'top-14' : 'top-16'} inset-x-0 z-[199] backdrop-blur-2xl px-4 py-4 space-y-1 lg:hidden transition-all duration-300 origin-top pointer-events-auto`
 
   const drawerState = open
     ? 'opacity-100 scale-y-100 translate-y-0'
@@ -59,7 +60,7 @@ export function GlobalNavbar() {
 
   return (
     <>
-      <nav className={navCls}>
+      <nav className={navCls} style={{ backgroundColor: 'var(--nav-bg)', borderColor: 'var(--nav-border)' }}>
         <div className="md:hidden">
           <BrandLogo href={localeHref('/')} size="nav" showText={true} compact={scrolled} />
         </div>
@@ -70,11 +71,20 @@ export function GlobalNavbar() {
         {/* Desktop links */}
         <div className="hidden lg:flex items-center gap-0.5">
           {NAV_ITEMS.map(function(item) {
-            const cls = isActive(item.path)
-              ? 'px-3 py-1.5 text-[13px] font-semibold rounded-lg transition-all text-white bg-white/10 border border-white/30 shadow-[0_0_24px_rgba(255,255,255,0.16)]'
-              : 'px-3 py-1.5 text-[13px] font-medium rounded-lg transition-all text-white/60 hover:text-white hover:bg-white/[0.08] hover:border hover:border-white/24'
+            const active = isActive(item.path)
             return (
-              <Link key={item.path} href={localeHref(item.path)} className={cls}>
+              <Link
+                key={item.path}
+                href={localeHref(item.path)}
+                className={`px-3 py-1.5 text-[13px] rounded-lg transition-all duration-200 ${
+                  active ? 'font-semibold' : 'font-medium hover:opacity-80'
+                }`}
+                style={{
+                  color: active ? 'var(--color-text)' : 'var(--color-text-secondary)',
+                  backgroundColor: active ? 'var(--color-accent-soft)' : 'transparent',
+                  border: active ? '1px solid var(--color-border-hover)' : '1px solid transparent',
+                }}
+              >
                 {t(item.key)}
               </Link>
             )
@@ -84,16 +94,18 @@ export function GlobalNavbar() {
         {/* Right section */}
         <div className="flex items-center gap-2">
           {/* Language switcher */}
-          <div className="flex items-center gap-0.5 bg-white/[0.03] border border-white/18 rounded-full px-1 py-0.5 shadow-[0_0_20px_rgba(255,255,255,0.08)]">
+          <div className="flex items-center gap-0.5 rounded-full px-1 py-0.5" style={{ backgroundColor: 'var(--card-bg)', border: '1px solid var(--color-border)' }}>
             {LOCALES.map(function(loc) {
-              const cls = locale === loc.code
-                ? 'text-[11px] font-semibold px-2.5 py-1 rounded-full transition-all duration-300 bg-white text-[#041020] shadow-[0_6px_18px_rgba(255,255,255,0.24)]'
-                : 'text-[11px] font-semibold px-2.5 py-1 rounded-full transition-all duration-300 text-white/45 hover:text-white/85 hover:bg-white/[0.07]'
+              const isActive = locale === loc.code
               return (
                 <button
                   key={loc.code}
                   onClick={function() { switchLocale(loc.code) }}
-                  className={cls}
+                  className="text-[11px] font-semibold px-2.5 py-1 rounded-full transition-all duration-300"
+                  style={{
+                    backgroundColor: isActive ? 'var(--color-accent)' : 'transparent',
+                    color: isActive ? '#fff' : 'var(--color-text-tertiary)',
+                  }}
                 >
                   {loc.label}
                 </button>
@@ -105,13 +117,14 @@ export function GlobalNavbar() {
           <div className="hidden sm:flex items-center gap-2">
             <Link
               href={localeHref('/login')}
-              className="text-[13px] text-white/45 hover:text-white transition-colors duration-300 px-3 py-1.5"
+              className="text-[13px] transition-colors duration-300 px-3 py-1.5"
+              style={{ color: 'var(--color-text-secondary)' }}
             >
               {t('nav.login')}
             </Link>
             <Link
               href={localeHref('/signup')}
-              className="text-[13px] font-semibold bg-gradient-to-r from-slate-100 via-white to-amber-200 text-[#1b1200] px-5 py-2.5 rounded-xl hover:brightness-105 transition-all duration-300 shadow-[0_12px_28px_rgba(251,191,36,0.26),0_0_18px_rgba(255,255,255,0.22)]"
+              className="text-[13px] font-semibold px-5 py-2.5 rounded-xl transition-all duration-300 ag-btn-primary"
             >
               {t('nav.getStarted')}
             </Link>
@@ -120,7 +133,8 @@ export function GlobalNavbar() {
           {/* Mobile hamburger */}
           <button
             onClick={function() { setOpen(function(v) { return !v }) }}
-            className="lg:hidden p-2.5 text-white/60 hover:text-white hover:bg-white/[0.06] rounded-lg transition-all duration-200"
+            className="lg:hidden p-2.5 rounded-lg transition-all duration-200"
+            style={{ color: 'var(--color-text-secondary)' }}
             aria-label={open ? 'Close menu' : 'Open menu'}
           >
             <svg width="22" height="22" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round">
@@ -142,41 +156,47 @@ export function GlobalNavbar() {
       </nav>
 
       {/* Mobile drawer */}
-      <div className={drawerBase + ' ' + drawerState}>
+      <div className={drawerBase + ' ' + drawerState} style={{ backgroundColor: 'var(--nav-bg)', borderBottom: '1px solid var(--nav-border)' }}>
         {NAV_ITEMS.map(function(item) {
-          const cls = isActive(item.path)
-            ? 'block px-3 py-3 text-sm rounded-xl transition-all text-white bg-white/10 border border-white/30 shadow-[0_0_22px_rgba(255,255,255,0.16)]'
-            : 'block px-3 py-3 text-sm rounded-xl transition-all text-white/65 hover:text-white hover:bg-white/[0.08] hover:border hover:border-white/24'
+          const active = isActive(item.path)
           return (
             <Link
               key={item.path}
               href={localeHref(item.path)}
               onClick={function() { setOpen(false) }}
-              className={cls}
+              className={`block px-3 py-3 text-sm rounded-xl transition-all ${
+                active ? 'font-semibold' : 'font-medium'
+              }`}
+              style={{
+                color: active ? 'var(--color-text)' : 'var(--color-text-secondary)',
+                backgroundColor: active ? 'var(--color-accent-soft)' : 'transparent',
+                border: active ? '1px solid var(--color-border-hover)' : '1px solid transparent',
+              }}
             >
               {t(item.key)}
             </Link>
           )
         })}
-        <div className="border-t border-white/[0.06] pt-3 mt-1 grid grid-cols-2 gap-2">
+        <div className="pt-3 mt-1 grid grid-cols-2 gap-2" style={{ borderTop: '1px solid var(--color-border)' }}>
           <Link
             href={localeHref('/login')}
             onClick={function() { setOpen(false) }}
-            className="text-center text-sm text-white/60 border border-white/[0.1] py-2.5 rounded-xl hover:bg-white/[0.05] transition-all duration-200"
+            className="text-center text-sm py-2.5 rounded-xl transition-all duration-200"
+            style={{ color: 'var(--color-text-secondary)', border: '1px solid var(--color-border)' }}
           >
             {t('nav.login')}
           </Link>
           <Link
             href={localeHref('/signup')}
             onClick={function() { setOpen(false) }}
-            className="text-center text-sm font-semibold bg-gradient-to-r from-slate-100 via-white to-amber-200 text-[#1b1200] py-2.5 rounded-xl hover:brightness-105 transition-all duration-200"
+            className="text-center text-sm font-semibold py-2.5 rounded-xl ag-btn-primary"
           >
             {t('nav.signup')}
           </Link>
         </div>
       </div>
 
-      <div className={`pointer-events-none fixed ${scrolled ? 'top-14' : 'top-16'} left-0 right-0 z-[39] ag-presidential-line opacity-80 transition-all duration-300`} />
+      <div className={`pointer-events-none fixed ${scrolled ? 'top-14' : 'top-16'} left-0 right-0 z-[39] ag-divider opacity-60 transition-all duration-300`} />
     </>
   )
 }

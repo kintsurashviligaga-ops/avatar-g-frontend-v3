@@ -28,8 +28,8 @@
   --color-border: rgba(255,255,255,0.08);
   --color-border-hover: rgba(255,255,255,0.16);
   --color-text: #f0f0f5;
-  --color-text-secondary: #a0a0af;
-  --color-text-tertiary: rgba(255,255,255,0.35);
+  --color-text-secondary: #b0b0bf;
+  --color-text-tertiary: rgba(255,255,255,0.45);
   --color-accent: #6366f1;
   --color-accent-soft: rgba(99,102,241,0.12);
   --nav-bg: rgba(10,10,12,0.85);
@@ -56,8 +56,8 @@
   --color-border: rgba(0,0,0,0.08);
   --color-border-hover: rgba(0,0,0,0.16);
   --color-text: #0f0f14;
-  --color-text-secondary: #64648b;
-  --color-text-tertiary: rgba(0,0,0,0.4);
+  --color-text-secondary: #4a4a6a;
+  --color-text-tertiary: rgba(0,0,0,0.50);
   --color-accent: #6366f1;
   --color-accent-soft: rgba(99,102,241,0.08);
   --nav-bg: rgba(255,255,255,0.85);
