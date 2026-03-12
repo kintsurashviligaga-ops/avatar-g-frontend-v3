@@ -50,7 +50,7 @@ export function Logo({
     <div className={cn(config.container, 'relative overflow-hidden')}>
       <div className="absolute inset-[10%] rounded-full bg-indigo-400/[0.06] blur-xl" />
       <Image
-        src="/brand/rocket-3d-hq.svg"
+        src="/brand/rocket-brain.svg"
         alt="MyAvatar.ge Rocket"
         fill
         className="object-contain object-center drop-shadow-[0_8px_20px_rgba(99,102,241,0.28)] md:drop-shadow-[0_10px_24px_rgba(99,102,241,0.30)] lg:drop-shadow-[0_12px_28px_rgba(99,102,241,0.32)]"

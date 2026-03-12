@@ -366,7 +366,7 @@ export default async function LocalizedServicesPage({ params }: ServicesPageProp
           <div className='mx-auto mb-5 relative w-16 h-16 sm:w-20 sm:h-20'>
             <div className='absolute inset-[10%] rounded-full' style={{ background: 'radial-gradient(circle, rgba(99,102,241,0.08) 0%, transparent 70%)', filter: 'blur(8px)' }} />
             <Image
-              src="/brand/rocket-3d-hq.svg"
+              src="/brand/rocket-brain.svg"
               alt="MyAvatar.ge"
               fill
               sizes="80px"

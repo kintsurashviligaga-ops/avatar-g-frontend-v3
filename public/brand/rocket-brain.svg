@@ -1,0 +1,56 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bodyGrad" x1="150" y1="80" x2="380" y2="420" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#4A90D9"/>
+      <stop offset="1" stop-color="#2B5EA7"/>
+    </linearGradient>
+    <linearGradient id="finGrad" x1="100" y1="280" x2="220" y2="400" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#3B7DD8"/>
+      <stop offset="1" stop-color="#2B5EA7"/>
+    </linearGradient>
+    <linearGradient id="flameGrad" x1="160" y1="370" x2="220" y2="460" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#4DD8E8"/>
+      <stop offset="0.5" stop-color="#00C4E0"/>
+      <stop offset="1" stop-color="#00A8C6"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Rocket group – rotated -45° for upper-right diagonal -->
+  <g transform="translate(256,256) rotate(-45) translate(-256,-256)">
+
+    <!-- Rocket body (elongated teardrop pointing up) -->
+    <path d="M256 60 C216 120, 186 200, 186 310 C186 370, 210 410, 256 440 C302 410, 326 370, 326 310 C326 200, 296 120, 256 60Z" fill="url(#bodyGrad)"/>
+
+    <!-- Left fin -->
+    <path d="M186 310 C150 330, 120 380, 115 430 C160 425, 195 400, 210 370Z" fill="url(#finGrad)"/>
+
+    <!-- Right fin -->
+    <path d="M326 310 C362 330, 392 380, 397 430 C352 425, 317 400, 302 370Z" fill="url(#finGrad)"/>
+
+    <!-- Nozzle -->
+    <rect x="230" y="430" width="52" height="20" rx="4" fill="#C0D4E8"/>
+
+    <!-- Flame -->
+    <path d="M256 450 C236 476, 228 508, 256 550 C284 508, 276 476, 256 450Z" fill="url(#flameGrad)"/>
+    <path d="M256 455 C244 474, 240 496, 256 525 C272 496, 268 474, 256 455Z" fill="#B0F0FF" opacity="0.7"/>
+
+    <!-- Brain icon inside rocket body -->
+    <g transform="translate(256,250)" fill="#1E4A80" opacity="0.65">
+      <!-- Brain – left hemisphere -->
+      <path d="M-4,-32 C-18,-32 -30,-24 -30,-12 C-36,-10 -40,-2 -38,6 C-42,10 -42,20 -36,26 C-36,32 -30,36 -22,36 C-16,36 -10,34 -6,30 L-4,30 L-4,-32Z" fill="#1E4A80"/>
+      <!-- Brain – right hemisphere -->
+      <path d="M4,-32 C18,-32 30,-24 30,-12 C36,-10 40,-2 38,6 C42,10 42,20 36,26 C36,32 30,36 22,36 C16,36 10,34 6,30 L4,30 L4,-32Z" fill="#1E4A80"/>
+      <!-- Brain center line -->
+      <line x1="0" y1="-28" x2="0" y2="30" stroke="#2B5EA7" stroke-width="3"/>
+      <!-- Brain folds – left -->
+      <path d="M-4,-10 C-14,-12 -22,-8 -28,-2" stroke="#2B5EA7" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+      <path d="M-4,6 C-12,4 -22,8 -30,14" stroke="#2B5EA7" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+      <path d="M-4,20 C-10,18 -18,22 -24,28" stroke="#2B5EA7" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+      <!-- Brain folds – right -->
+      <path d="M4,-10 C14,-12 22,-8 28,-2" stroke="#2B5EA7" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+      <path d="M4,6 C12,4 22,8 30,14" stroke="#2B5EA7" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+      <path d="M4,20 C10,18 18,22 24,28" stroke="#2B5EA7" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+    </g>
+
+  </g>
+</svg>

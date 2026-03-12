@@ -56,7 +56,7 @@ export function BrandLogo({ href, size = 'md', showText = true, className = '', 
           <div className="absolute inset-[10%] rounded-full" style={{ background: 'radial-gradient(circle, rgba(99,102,241,0.05) 0%, transparent 70%)', filter: 'blur(6px)' }} />
         )}
         <Image
-          src="/brand/rocket-3d-hq.svg"
+          src="/brand/rocket-brain.svg"
           alt="MyAvatar.ge"
           fill
           sizes={`${s.img}px`}
