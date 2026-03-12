@@ -32,26 +32,28 @@ export function BrandLogo({ href, size = 'md', showText = true, className = '', 
   const logo = (
     <div className={`flex items-center gap-3 ${className}`}>
       <div className={`relative flex-shrink-0 transition-all duration-300 ${compact ? 'scale-90' : 'scale-100'} ${isHero ? 'logo-hero-float' : ''} ${s.cls}`}>
-        {/* Ambient glow — stronger for hero, subtle for header */}
+        {/* Ambient glow — layered for hero, crisp for header */}
         {isHero ? (
           <>
+            {/* Outer breathing halo */}
             <div
-              className="absolute -inset-4 rounded-full logo-glow-breathe"
+              className="absolute -inset-6 rounded-full logo-glow-breathe"
               style={{
-                background: 'radial-gradient(circle, rgba(99,102,241,0.18) 0%, rgba(139,92,246,0.08) 50%, transparent 70%)',
-                filter: 'blur(16px)',
+                background: 'radial-gradient(circle, rgba(129,140,248,0.16) 0%, rgba(139,92,246,0.06) 50%, transparent 70%)',
+                filter: 'blur(20px)',
               }}
             />
+            {/* Inner blue accent ring */}
             <div
-              className="absolute -inset-2 rounded-full"
+              className="absolute -inset-3 rounded-full"
               style={{
-                background: 'radial-gradient(circle, rgba(34,211,238,0.10) 0%, transparent 60%)',
-                filter: 'blur(10px)',
+                background: 'radial-gradient(circle, rgba(99,130,241,0.12) 0%, transparent 60%)',
+                filter: 'blur(12px)',
               }}
             />
           </>
         ) : (
-          <div className="absolute inset-[12%] rounded-full" style={{ background: 'radial-gradient(circle, rgba(99,102,241,0.06) 0%, transparent 70%)', filter: 'blur(8px)' }} />
+          <div className="absolute inset-[10%] rounded-full" style={{ background: 'radial-gradient(circle, rgba(99,102,241,0.05) 0%, transparent 70%)', filter: 'blur(6px)' }} />
         )}
         <Image
           src="/brand/rocket-3d-hq.svg"
@@ -61,8 +63,8 @@ export function BrandLogo({ href, size = 'md', showText = true, className = '', 
           priority
           className={`object-contain object-center ${
             isHero
-              ? 'drop-shadow-[0_6px_20px_rgba(99,102,241,0.30)]'
-              : 'drop-shadow-[0_3px_10px_rgba(99,102,241,0.20)]'
+              ? 'drop-shadow-[0_8px_24px_rgba(99,102,241,0.28)] drop-shadow-[0_2px_6px_rgba(139,92,246,0.18)]'
+              : 'drop-shadow-[0_2px_8px_rgba(99,102,241,0.15)]'
           }`}
         />
       </div>
@@ -70,7 +72,7 @@ export function BrandLogo({ href, size = 'md', showText = true, className = '', 
         <div className={`flex flex-col leading-none transition-all duration-300 ${compact ? 'opacity-90' : 'opacity-100'}`}>
           <span className="font-extrabold tracking-[-0.02em] text-[1.05rem] md:text-[1.1rem] leading-none" style={{ color: 'var(--color-text)' }}>
             MyAvatar<span
-              className="font-semibold bg-gradient-to-r from-indigo-400 to-violet-400 bg-clip-text text-transparent"
+              className="font-semibold bg-gradient-to-r from-blue-400 via-indigo-400 to-violet-400 bg-clip-text text-transparent"
             >.ge</span>
           </span>
         </div>

@@ -40,6 +40,7 @@
   --input-border: rgba(255,255,255,0.08);
   --input-focus: rgba(99,102,241,0.5);
   --sidebar-bg: rgba(16,16,20,0.98);
+  --hero-glow-primary: rgba(99,102,241,0.10);
 }
 
 [data-theme='light'] {
@@ -67,6 +68,7 @@
   --input-border: rgba(0,0,0,0.1);
   --input-focus: rgba(99,102,241,0.5);
   --sidebar-bg: rgba(255,255,255,0.98);
+  --hero-glow-primary: rgba(99,102,241,0.06);
 }
 
 /* Premium spacing scale */
@@ -854,9 +856,9 @@ a:focus-visible {
 /* ── Float-particle keyframe (Hero.tsx background particles) */
 @keyframes float-particle {
   0%   { transform: translate(0, 0) scale(1);    opacity: 0; }
-  10%  { opacity: 0.8; }
-  90%  { opacity: 0.8; }
-  100% { transform: translate(var(--tx, 40px), var(--ty, -80px)) scale(0.4); opacity: 0; }
+  15%  { opacity: 0.6; }
+  85%  { opacity: 0.6; }
+  100% { transform: translate(var(--tx, 30px), var(--ty, -60px)) scale(0.3); opacity: 0; }
 }
 
 /* ── Border-glow keyframe (btn-neon animation) */
@@ -1160,6 +1162,6 @@ a:focus-visible {
 
 /* ── Logo glow breathing keyframe */
 @keyframes logo-glow-breathe {
-  0%, 100% { opacity: 0.6; transform: scale(1); }
-  50%      { opacity: 1; transform: scale(1.08); }
+  0%, 100% { opacity: 0.5; transform: scale(1); }
+  50%      { opacity: 0.85; transform: scale(1.06); }
 }

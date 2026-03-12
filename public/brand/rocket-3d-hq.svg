@@ -8,34 +8,36 @@
       <stop offset="1" stop-color="#8B5CF6" stop-opacity="0"/>
     </radialGradient>
 
-    <!-- Body: cyan → blue → violet -->
+    <!-- Body: refined cyan → blue → violet (smoother, less saturated) -->
     <linearGradient id="bodyMain" x1="420" y1="180" x2="620" y2="750" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#E0F7FF"/>
-      <stop offset="0.25" stop-color="#7DD3FC"/>
-      <stop offset="0.55" stop-color="#6366F1"/>
-      <stop offset="0.80" stop-color="#7C3AED"/>
-      <stop offset="1" stop-color="#5B21B6"/>
+      <stop offset="0" stop-color="#E8F4FF"/>
+      <stop offset="0.18" stop-color="#93C5FD"/>
+      <stop offset="0.40" stop-color="#6B8AFF"/>
+      <stop offset="0.62" stop-color="#7C6CF0"/>
+      <stop offset="0.82" stop-color="#8B5CF6"/>
+      <stop offset="1" stop-color="#6D28D9"/>
     </linearGradient>
 
     <!-- Body edge stroke -->
     <linearGradient id="bodyEdge" x1="380" y1="200" x2="670" y2="760" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#A5F3FC" stop-opacity="0.6"/>
-      <stop offset="0.5" stop-color="#818CF8" stop-opacity="0.35"/>
-      <stop offset="1" stop-color="#6D28D9" stop-opacity="0.25"/>
+      <stop offset="0" stop-color="#BAE6FD" stop-opacity="0.55"/>
+      <stop offset="0.5" stop-color="#818CF8" stop-opacity="0.30"/>
+      <stop offset="1" stop-color="#7C3AED" stop-opacity="0.20"/>
     </linearGradient>
 
     <!-- Specular highlight on upper body -->
     <linearGradient id="bodyHighlight" x1="460" y1="200" x2="530" y2="480" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.38"/>
-      <stop offset="0.4" stop-color="#FFFFFF" stop-opacity="0.12"/>
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.42"/>
+      <stop offset="0.35" stop-color="#FFFFFF" stop-opacity="0.15"/>
+      <stop offset="0.7" stop-color="#FFFFFF" stop-opacity="0.04"/>
       <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
     </linearGradient>
 
     <!-- Glass viewport -->
     <linearGradient id="glass" x1="448" y1="300" x2="576" y2="430" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#67E8F9"/>
-      <stop offset="0.5" stop-color="#6366F1"/>
-      <stop offset="1" stop-color="#7C3AED"/>
+      <stop offset="0" stop-color="#7DD3FC"/>
+      <stop offset="0.45" stop-color="#818CF8"/>
+      <stop offset="1" stop-color="#8B5CF6"/>
     </linearGradient>
 
     <!-- Glass specular -->
@@ -46,15 +48,15 @@
 
     <!-- Left fin -->
     <linearGradient id="fin" x1="328" y1="540" x2="470" y2="710" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#818CF8"/>
-      <stop offset="0.5" stop-color="#6366F1"/>
+      <stop offset="0" stop-color="#93A3F8"/>
+      <stop offset="0.5" stop-color="#6B6CF0"/>
       <stop offset="1" stop-color="#4C1D95"/>
     </linearGradient>
 
     <!-- Right fin -->
     <linearGradient id="finRight" x1="696" y1="540" x2="554" y2="710" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#818CF8"/>
-      <stop offset="0.5" stop-color="#6366F1"/>
+      <stop offset="0" stop-color="#93A3F8"/>
+      <stop offset="0.5" stop-color="#6B6CF0"/>
       <stop offset="1" stop-color="#4C1D95"/>
     </linearGradient>
 
@@ -74,8 +76,8 @@
 
     <!-- Composite drop shadow + color glow -->
     <filter id="shadow" x="180" y="110" width="664" height="848" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
-      <feDropShadow dx="0" dy="14" stdDeviation="18" flood-color="#020617" flood-opacity="0.50"/>
-      <feDropShadow dx="0" dy="3" stdDeviation="8" flood-color="#6366F1" flood-opacity="0.18"/>
+      <feDropShadow dx="0" dy="12" stdDeviation="16" flood-color="#020617" flood-opacity="0.45"/>
+      <feDropShadow dx="0" dy="4" stdDeviation="10" flood-color="#818CF8" flood-opacity="0.22"/>
     </filter>
 
     <!-- Ambient edge glow -->
