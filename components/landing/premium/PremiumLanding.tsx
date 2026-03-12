@@ -11,7 +11,6 @@ import { HeroSection } from './HeroSection'
 import { SuggestionCards } from './SuggestionCards'
 import { ChatInputDock } from './ChatInputDock'
 import FeatureGrid from './FeatureGrid'
-import { AgentGHero } from './AgentGHero'
 import { WorkflowPipelineSection } from './WorkflowPipelineSection'
 import { LandingCTA } from './LandingCTA'
 import { LandingFooter } from './LandingFooter'
@@ -26,11 +25,9 @@ export default function PremiumLanding() {
         <SuggestionCards />
         <ChatInputDock />
         <Separator />
-        <AgentGHero />
+        <FeatureGrid />
         <Separator />
         <WorkflowPipelineSection />
-        <Separator />
-        <FeatureGrid />
         <LandingCTA />
       </div>
 

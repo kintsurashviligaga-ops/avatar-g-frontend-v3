@@ -13,7 +13,6 @@ const COPY = {
     brandDot: '.ge',
     tagline: 'Avatars, videos, images, music, marketing content, and business intelligence — powered by multi-modal AI, in one premium workspace.',
     cta: 'Start Creating',
-    ctaSecondary: 'Explore Services',
   },
   ka: {
     eyebrow: 'AI-ზე დაფუძნებული კრეატიული პლატფორმა',
@@ -24,7 +23,6 @@ const COPY = {
     brandDot: '.ge',
     tagline: 'ავატარები, ვიდეო, სურათები, მუსიკა, მარკეტინგული კონტენტი და ბიზნეს ინტელექტი — მულტი-მოდალური AI-ით, ერთ პრემიუმ პლატფორმაზე.',
     cta: 'შექმნის დაწყება',
-    ctaSecondary: 'სერვისების ნახვა',
   },
   ru: {
     eyebrow: 'AI-платформа для создания контента',
@@ -35,7 +33,6 @@ const COPY = {
     brandDot: '.ge',
     tagline: 'Аватары, видео, изображения, музыка, маркетинговый контент и бизнес-аналитика — на базе мультимодального AI, в одной премиум-платформе.',
     cta: 'Начать создание',
-    ctaSecondary: 'Все сервисы',
   },
 } as const
 
@@ -178,7 +175,7 @@ export function HeroSection() {
       </p>
 
       {/* ── CTAs ── */}
-      <div className="relative z-10 flex flex-col sm:flex-row items-center gap-3.5 mt-10 sm:mt-12">
+      <div className="relative z-10 flex items-center justify-center mt-10 sm:mt-12">
         {/* Primary CTA */}
         <a
           href={lh('/signup')}
@@ -186,13 +183,6 @@ export function HeroSection() {
         >
           {c.cta}
           <svg className="w-4 h-4 transition-transform duration-200 group-hover:translate-x-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
-        </a>
-        {/* Secondary CTA */}
-        <a
-          href={lh('/services')}
-          className="btn-ghost text-[14px] px-7 py-3.5 rounded-xl"
-        >
-          {c.ctaSecondary}
         </a>
       </div>
 
