@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import Providers from "@/app/providers";
-import GlobalChatbot from "@/components/GlobalChatbot";
+import UniversalChat from "@/components/chat/UniversalChat";
 import { AppShell } from "@/components/AppShell";
 import { logStartupEnvValidation } from "@/lib/env/startupValidation";
 
@@ -68,7 +68,7 @@ export default async function RootLayout({
 				<Providers>
 					<AppShell>
 						{children}
-						<GlobalChatbot />
+						<UniversalChat />
 					</AppShell>
 				</Providers>
 			</body>
