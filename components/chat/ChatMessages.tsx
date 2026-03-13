@@ -17,9 +17,9 @@ import {
 import type {
   ChatMessage, SuggestionChip, WorkflowStep, HandoffInfo,
   ResultCard, ErrorInfo, ClarificationOption,
-} from '@/lib/chat/types';
+} from '@/lib/chat/types.legacy';
 import { getAgentContract } from '@/lib/agents/contracts';
-import { getChatLabels } from '@/lib/chat/constants';
+import { getChatLabels } from '@/lib/chat/constants.legacy';
 
 interface Props {
   messages: ChatMessage[];

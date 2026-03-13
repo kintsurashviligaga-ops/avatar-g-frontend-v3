@@ -11,9 +11,9 @@ import {
   ChevronDown, Maximize2, Minimize2, X, RotateCcw,
   Sparkles, Zap, FolderOpen, Bot, User,
 } from 'lucide-react';
-import type { ChatMode } from '@/lib/chat/types';
+import type { ChatMode } from '@/lib/chat/types.legacy';
 import { getAgentContract } from '@/lib/agents/contracts';
-import { getChatLabels } from '@/lib/chat/constants';
+import { getChatLabels } from '@/lib/chat/constants.legacy';
 
 interface Props {
   activeAgentId: string;

@@ -9,7 +9,7 @@
 
 import { motion } from 'framer-motion';
 import { ALL_AGENTS, type AgentContract } from '@/lib/agents/contracts';
-import { getChatLabels } from '@/lib/chat/constants';
+import { getChatLabels } from '@/lib/chat/constants.legacy';
 
 interface Props {
   activeAgentId: string;

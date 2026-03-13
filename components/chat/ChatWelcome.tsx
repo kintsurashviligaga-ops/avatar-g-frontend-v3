@@ -9,8 +9,8 @@
  */
 
 import { Sparkles } from 'lucide-react';
-import { QUICK_ACTIONS, SERVICE_SHORTCUTS, getChatLabels } from '@/lib/chat/constants';
-import type { QuickAction } from '@/lib/chat/types';
+import { QUICK_ACTIONS, SERVICE_SHORTCUTS, getChatLabels } from '@/lib/chat/constants.legacy';
+import type { QuickAction } from '@/lib/chat/types.legacy';
 
 interface Props {
   language: string;

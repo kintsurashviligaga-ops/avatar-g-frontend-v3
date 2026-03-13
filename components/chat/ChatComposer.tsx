@@ -9,8 +9,8 @@
 
 import { useRef, useCallback, useEffect, useState } from 'react';
 import { Paperclip, Mic, MicOff, Send, StopCircle, X } from 'lucide-react';
-import type { ChatAttachment } from '@/lib/chat/types';
-import { getPlaceholder } from '@/lib/chat/constants';
+import type { ChatAttachment } from '@/lib/chat/types.legacy';
+import { getPlaceholder } from '@/lib/chat/constants.legacy';
 
 interface Props {
   value: string;
