@@ -5,6 +5,9 @@ import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { getOwnerId } from '@/lib/auth/identity';
 import { SERVICE_CONTRACTS, SERVICE_PRESETS as CATALOG_PRESETS, type ServicePreset } from '@/lib/services/catalog';
+import AgentBadge from '@/components/agents/AgentBadge';
+import AgentHandoffSuggestions from '@/components/agents/AgentHandoffSuggestions';
+import { getPrimaryAgentForService } from '@/lib/agents/contracts';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -2065,10 +2068,7 @@ export default function UnifiedServiceLayout({
             <div className="min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
                 <h1 className="text-lg sm:text-xl font-bold tracking-tight" style={{ color: 'var(--color-text)' }}>{serviceName}</h1>
-                <span className="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium rounded-full" style={{ backgroundColor: 'var(--color-accent-soft)', color: 'var(--color-accent)', border: '1px solid var(--color-accent)' }}>
-                  <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
-                  {t.powered}
-                </span>
+                <AgentBadge serviceSlug={serviceId} locale={locale} size="sm" />
               </div>
               <p className="text-xs truncate max-w-xs sm:max-w-md" style={{ color: 'var(--color-text-secondary)' }}>{description}</p>
             </div>

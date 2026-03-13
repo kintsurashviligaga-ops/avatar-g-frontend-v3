@@ -25,6 +25,7 @@ import { Badge } from '@/components/ui/badge';
 import { createBrowserClient } from '@/lib/supabase/browser';
 import { fetchJson, toUserMessage } from '@/lib/api/clientFetch';
 import { getLocaleFromPathname, withLocalePath } from '@/lib/i18n/localePath';
+import AgentGControlPanel from '@/components/agents/AgentGControlPanel';
 
 /* ── Type contracts ── */
 type AgentTaskResponse = {
@@ -451,6 +452,9 @@ export default function AgentGPage() {
                 )}
               </div>
             </div>
+
+            {/* ── Agent G Control Panel ── */}
+            <AgentGControlPanel locale={locale} />
           </div>
 
           {/* ── Right column: Sidebar panels ── */}
