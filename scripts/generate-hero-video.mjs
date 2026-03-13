@@ -62,22 +62,46 @@ async function main() {
   console.log('[hero-video] Starting video generation on Replicate...');
   console.log('[hero-video] This may take several minutes.\n');
 
-  // Use minimax/video-01-live — high-quality video generation model
-  // Falls back to other models if unavailable
+  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+  // Models to try, in order — text-to-video models that don't require image input
   const models = [
-    { id: 'minimax/video-01-live', input: { prompt: PROMPT, prompt_optimizer: true } },
-    { id: 'luma/ray', input: { prompt: PROMPT } },
+    {
+      id: 'luma/ray',
+      input: { prompt: PROMPT },
+    },
+    {
+      id: 'minimax/video-01',
+      input: { prompt: PROMPT, prompt_optimizer: true },
+    },
+    {
+      id: 'tencent/hunyuan-video',
+      input: { prompt: PROMPT, width: 1280, height: 720 },
+    },
   ];
 
   let output = null;
   for (const model of models) {
-    try {
-      console.log(`[hero-video] Trying model: ${model.id}`);
-      output = await replicate.run(model.id, { input: model.input });
-      if (output) break;
-    } catch (err) {
-      console.warn(`[hero-video] Model ${model.id} failed: ${err.message}`);
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        if (attempt > 0) {
+          console.log(`[hero-video] Retry ${attempt} for ${model.id} (waiting 15s)...`);
+          await sleep(15000);
+        }
+        console.log(`[hero-video] Trying model: ${model.id}`);
+        output = await replicate.run(model.id, { input: model.input });
+        if (output) break;
+      } catch (err) {
+        const msg = err.message || String(err);
+        if (msg.includes('429') || msg.includes('rate limit') || msg.includes('throttled')) {
+          console.warn(`[hero-video] Rate limited on ${model.id}, will retry...`);
+          continue;
+        }
+        console.warn(`[hero-video] Model ${model.id} failed: ${msg}`);
+        break; // Non-retryable error, skip to next model
+      }
     }
+    if (output) break;
   }
 
   if (!output) {
@@ -85,10 +109,45 @@ async function main() {
     process.exit(1);
   }
 
-  // Replicate returns either a URL string or an object with .url
-  const videoUrl = typeof output === 'string' ? output : (output.url || output[0]);
+  // Replicate returns either a URL string, FileOutput object, ReadableStream, or an array
+  let videoUrl;
+  if (typeof output === 'string') {
+    videoUrl = output;
+  } else if (output instanceof URL) {
+    videoUrl = output.href;
+  } else if (output && typeof output.url === 'function') {
+    // Replicate FileOutput — has .url() method
+    videoUrl = output.url().href || output.url().toString();
+  } else if (output && typeof output.url === 'string') {
+    videoUrl = output.url;
+  } else if (output && typeof output.toString === 'function' && output.toString().startsWith('http')) {
+    videoUrl = output.toString();
+  } else if (Array.isArray(output) && output.length > 0) {
+    const first = output[0];
+    if (typeof first === 'string') videoUrl = first;
+    else if (first instanceof URL) videoUrl = first.href;
+    else if (first && typeof first.url === 'function') videoUrl = first.url().href;
+    else if (first && typeof first.url === 'string') videoUrl = first.url;
+    else if (first && typeof first.toString === 'function' && first.toString().startsWith('http')) videoUrl = first.toString();
+  }
+
   if (!videoUrl) {
-    console.error('[hero-video] No video URL in output:', output);
+    // Some models return a ReadableStream — save directly
+    if (output && typeof output[Symbol.asyncIterator] === 'function') {
+      console.log('[hero-video] Receiving stream output...');
+      await mkdir(OUTPUT_DIR, { recursive: true });
+      const chunks = [];
+      for await (const chunk of output) {
+        chunks.push(chunk);
+      }
+      const buffer = Buffer.concat(chunks);
+      await writeFile(VIDEO_PATH, buffer);
+      console.log(`[hero-video] Saved: ${VIDEO_PATH}`);
+      console.log(`[hero-video] Size: ${(buffer.length / 1024 / 1024).toFixed(2)} MB`);
+      console.log('[hero-video] Done!');
+      process.exit(0);
+    }
+    console.error('[hero-video] No video URL in output:', JSON.stringify(output).slice(0, 500));
     process.exit(1);
   }
 
