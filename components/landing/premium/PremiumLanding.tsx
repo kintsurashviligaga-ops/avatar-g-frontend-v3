@@ -11,6 +11,7 @@ import { HeroSection } from './HeroSection'
 import { TrustStrip } from './TrustStrip'
 import { ServicesOverview } from './ServicesOverview'
 import { AgentGSection } from './AgentGSection'
+import { PromoVideo } from './PromoVideo'
 import { WorkflowDemo } from './WorkflowDemo'
 import { FeatureHighlights } from './FeatureHighlights'
 import { UseCases } from './UseCases'
@@ -27,6 +28,8 @@ export default function PremiumLanding() {
       <ServicesOverview />
       <Separator />
       <AgentGSection />
+      <Separator />
+      <PromoVideo />
       <Separator />
       <WorkflowDemo />
       <Separator />
