@@ -1148,6 +1148,14 @@ a:focus-visible {
     border-color: rgba(34,211,238,0.25) !important;
   }
 
+  /* ── Bottom chat bar: quick-action chips + no-scrollbar ── */
+  .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .quick-action-chip:hover {
+    background-color: rgba(34,211,238,0.06) !important;
+    border-color: rgba(34,211,238,0.25) !important;
+  }
+
   /* ── Slow pulse for ambient glows */
   .animate-pulse-slow {
     animation: pulse-slow 4s ease-in-out infinite;

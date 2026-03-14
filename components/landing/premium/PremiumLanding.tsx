@@ -4,7 +4,7 @@
  * PremiumLanding.tsx
  * ==================
  * MyAvatar.ge world-class landing page.
- * Sections: Hero → Trust → Services → Agent G → Workflow → Features → Use Cases → Workspace/Templates → CTA → Footer
+ * Sections: Hero → Trust → Services → Agent G → Workflow → Features → Use Cases → Workspace/Templates → ChatBar → CTA → Footer
  */
 
 import { HeroSection } from './HeroSection'
@@ -18,6 +18,7 @@ import { UseCases } from './UseCases'
 import { WorkspaceTemplates } from './WorkspaceTemplates'
 import { LandingCTA } from './LandingCTA'
 import { LandingFooter } from './LandingFooter'
+import { BottomChatBar } from '@/components/chat/bottom/BottomChatBar'
 
 export default function PremiumLanding() {
   return (
@@ -38,6 +39,11 @@ export default function PremiumLanding() {
       <UseCases />
       <Separator />
       <WorkspaceTemplates />
+      <Separator />
+      {/* ── Bottom Chat Bar: "You've seen what we can do — now start creating" ── */}
+      <section className="relative px-4 sm:px-6 lg:px-10 py-16 sm:py-20">
+        <BottomChatBar mode="landing" />
+      </section>
       <LandingCTA />
       <LandingFooter />
     </div>
