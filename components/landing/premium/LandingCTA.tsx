@@ -16,8 +16,8 @@ export function LandingCTA() {
   return (
     <section className="relative px-4 sm:px-6 lg:px-10 py-24 sm:py-32 overflow-hidden">
       {/* Background glow */}
-      <div className="absolute inset-0 pointer-events-none" style={{ background: 'radial-gradient(ellipse 70% 60% at 50% 50%, rgba(99,102,241,0.10) 0%, transparent 70%)' }} />
-      <div className="absolute inset-0 pointer-events-none" style={{ background: 'radial-gradient(ellipse 40% 40% at 30% 80%, rgba(139,92,246,0.08) 0%, transparent 60%)' }} />
+      <div className="absolute inset-0 pointer-events-none" style={{ background: 'radial-gradient(ellipse 70% 60% at 50% 50%, rgba(34,211,238,0.10) 0%, transparent 70%)' }} />
+      <div className="absolute inset-0 pointer-events-none" style={{ background: 'radial-gradient(ellipse 40% 40% at 30% 80%, rgba(6,182,212,0.08) 0%, transparent 60%)' }} />
 
       <div className="relative max-w-3xl mx-auto text-center flex flex-col items-center gap-6">
         <h2 className="text-3xl sm:text-4xl lg:text-5xl xl:text-6xl font-bold tracking-tight" style={{ color: 'var(--color-text)' }}>
@@ -29,7 +29,7 @@ export function LandingCTA() {
         <div className="flex flex-wrap items-center justify-center gap-3 mt-2">
           <Link
             href={`/${language}/signup`}
-            className="inline-flex items-center gap-2 text-sm font-semibold px-8 py-4 rounded-xl transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-indigo-500/20"
+            className="inline-flex items-center gap-2 text-sm font-semibold px-8 py-4 rounded-xl transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-cyan-500/20"
             style={{ backgroundColor: 'var(--color-accent)', color: '#fff' }}
           >
             {c.cta1}

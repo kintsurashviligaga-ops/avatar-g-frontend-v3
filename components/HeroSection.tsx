@@ -77,7 +77,7 @@ export function HeroSection({ onPremiumClick }: HeroSectionProps) {
       {/* Cinematic aurora overlays */}
       <div className="absolute inset-0 pointer-events-none">
         <div className="absolute top-[-20%] left-1/2 -translate-x-1/2 w-[980px] h-[560px] bg-gradient-to-b from-cyan-400/[0.14] via-cyan-400/[0.08] to-transparent rounded-full blur-3xl" />
-        <div className="absolute top-[8%] right-[-10%] w-[440px] h-[440px] bg-gradient-to-bl from-violet-400/[0.13] to-transparent rounded-full blur-3xl" />
+        <div className="absolute top-[8%] right-[-10%] w-[440px] h-[440px] bg-gradient-to-bl from-cyan-500/[0.13] to-transparent rounded-full blur-3xl" />
         <div className="absolute bottom-[12%] left-[-5%] w-[390px] h-[390px] bg-gradient-to-tr from-blue-400/[0.12] to-transparent rounded-full blur-3xl" />
       </div>
 
@@ -99,7 +99,7 @@ export function HeroSection({ onPremiumClick }: HeroSectionProps) {
           variants={itemVariants}
         >
           {text.title}{' '}
-          <span className="bg-gradient-to-r from-cyan-300 via-blue-400 to-violet-400 bg-clip-text text-transparent">
+          <span className="bg-gradient-to-r from-cyan-300 via-cyan-400 to-blue-400 bg-clip-text text-transparent">
             {text.titleAccent}
           </span>
         </motion.h1>
@@ -133,7 +133,7 @@ export function HeroSection({ onPremiumClick }: HeroSectionProps) {
             href={'/' + (language || 'ka') + '/signup'}
             size="lg"
             variant="primary"
-            className="w-full sm:w-auto bg-gradient-to-r from-cyan-400 via-blue-500 to-violet-500 text-white border border-cyan-300/30 shadow-[0_0_44px_rgba(34,211,238,0.34)] hover:shadow-[0_0_74px_rgba(34,211,238,0.48)] font-bold"
+            className="w-full sm:w-auto bg-gradient-to-r from-cyan-400 via-cyan-500 to-blue-500 text-white border border-cyan-300/30 shadow-[0_0_44px_rgba(34,211,238,0.34)] hover:shadow-[0_0_74px_rgba(34,211,238,0.48)] font-bold"
           >
             {text.cta}
             <ArrowRight className="w-4 h-4" />
@@ -148,7 +148,7 @@ export function HeroSection({ onPremiumClick }: HeroSectionProps) {
 
           <a
             href={'/' + (language || 'ka') + '/services/agent-g'}
-            className="w-full sm:w-auto group relative inline-flex items-center justify-center gap-2.5 px-7 py-4 rounded-2xl border border-cyan-400/25 bg-gradient-to-r from-cyan-500/15 via-blue-500/10 to-violet-500/15 text-cyan-100 font-semibold text-sm shadow-[0_0_24px_rgba(34,211,238,0.15)] hover:shadow-[0_0_40px_rgba(34,211,238,0.25)] hover:border-cyan-400/40 transition-all duration-300"
+            className="w-full sm:w-auto group relative inline-flex items-center justify-center gap-2.5 px-7 py-4 rounded-2xl border border-cyan-400/25 bg-gradient-to-r from-cyan-500/15 via-blue-500/10 to-cyan-500/15 text-cyan-100 font-semibold text-sm shadow-[0_0_24px_rgba(34,211,238,0.15)] hover:shadow-[0_0_40px_rgba(34,211,238,0.25)] hover:border-cyan-400/40 transition-all duration-300"
           >
             <PhoneCall className="w-4 h-4 text-cyan-300 group-hover:text-cyan-200 transition-colors" />
             {text.agent}

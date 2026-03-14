@@ -72,7 +72,7 @@ export function Sidebar() {
             >
               {active && (
                 <>
-                  <span className="absolute left-0 top-1/4 bottom-1/4 w-0.5 rounded-full bg-gradient-to-b from-cyan-400 to-violet-500" />
+                  <span className="absolute left-0 top-1/4 bottom-1/4 w-0.5 rounded-full bg-gradient-to-b from-cyan-400 to-blue-500" />
                   <span className="absolute inset-0 pointer-events-none" style={{ background: 'radial-gradient(ellipse at left, var(--color-accent-soft), transparent 70%)' }} />
                 </>
               )}
@@ -81,7 +81,7 @@ export function Sidebar() {
                   'w-7 h-7 rounded-lg flex items-center justify-center shrink-0 transition-all',
                 )}
                 style={active ? {
-                  background: 'linear-gradient(135deg, var(--color-accent), #6366f1)',
+                  background: 'linear-gradient(135deg, var(--color-accent), #0891b2)',
                 } : {
                   backgroundColor: 'var(--card-bg)',
                 }}

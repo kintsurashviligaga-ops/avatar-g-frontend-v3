@@ -121,9 +121,9 @@ export default function AgentGControlPanel({ locale, activePipeline, onLaunchPip
   return (
     <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: 'var(--color-surface)', border: '1px solid var(--color-border)' }}>
       {/* Header */}
-      <div className="px-5 py-4 flex items-center justify-between" style={{ borderBottom: '1px solid var(--color-border)', background: 'linear-gradient(135deg, rgba(99,102,241,0.08), rgba(139,92,246,0.05))' }}>
+      <div className="px-5 py-4 flex items-center justify-between" style={{ borderBottom: '1px solid var(--color-border)', background: 'linear-gradient(135deg, rgba(34,211,238,0.08), rgba(6,182,212,0.05))' }}>
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl flex items-center justify-center text-xl" style={{ background: 'linear-gradient(135deg, var(--color-accent), rgba(139,92,246,0.8))', boxShadow: '0 4px 16px rgba(99,102,241,0.3)' }}>
+          <div className="w-10 h-10 rounded-xl flex items-center justify-center text-xl" style={{ background: 'linear-gradient(135deg, var(--color-accent), rgba(6,182,212,0.8))', boxShadow: '0 4px 16px rgba(34,211,238,0.3)' }}>
             ⬢
           </div>
           <div>
@@ -238,9 +238,9 @@ function PipelineLauncher({ locale, onLaunch }: { locale: string; onLaunch?: (ty
                     onClick={() => onLaunch?.(pipeline.type)}
                     className="px-3 py-1.5 text-[10px] font-semibold rounded-lg transition-all hover:scale-105"
                     style={{
-                      background: 'linear-gradient(135deg, var(--color-accent), rgba(139,92,246,0.8))',
+                      background: 'linear-gradient(135deg, var(--color-accent), rgba(6,182,212,0.8))',
                       color: 'white',
-                      boxShadow: '0 2px 8px rgba(99,102,241,0.2)',
+                      boxShadow: '0 2px 8px rgba(34,211,238,0.2)',
                     }}
                   >
                     {t.launch}
@@ -291,7 +291,7 @@ function PipelineStatusView({ locale, pipeline }: { locale: string; pipeline?: P
               width: `${progressPercent}%`,
               background: pipeline.overallStatus === 'failed'
                 ? 'linear-gradient(90deg, #ef4444, #dc2626)'
-                : 'linear-gradient(90deg, var(--color-accent), rgba(139,92,246,0.8))',
+                : 'linear-gradient(90deg, var(--color-accent), rgba(6,182,212,0.8))',
             }}
           />
         </div>

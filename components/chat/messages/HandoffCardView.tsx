@@ -21,7 +21,7 @@ export function HandoffCardView({ fromAgent, toAgent, taskSummary, status }: Pro
   return (
     <div
       className="rounded-2xl p-3.5"
-      style={{ backgroundColor: 'rgba(99,102,241,0.05)', border: '1px solid rgba(99,102,241,0.12)' }}
+      style={{ backgroundColor: 'rgba(34,211,238,0.05)', border: '1px solid rgba(34,211,238,0.12)' }}
     >
       <div className="flex items-center gap-2 mb-2">
         <AgentBadge agentId={fromAgent} size="sm" showName />

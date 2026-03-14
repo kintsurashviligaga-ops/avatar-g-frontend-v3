@@ -18,7 +18,7 @@ interface GlassButtonProps {
 
 const variants: Record<Variant, string> = {
   primary:
-    'bg-gradient-to-r from-cyan-500 via-blue-500 to-violet-600 text-white font-bold border border-white/[0.18] shadow-[0_8px_32px_rgba(34,211,238,0.38),inset_0_1px_0_rgba(255,255,255,0.2)] hover:shadow-[0_14px_50px_rgba(34,211,238,0.50),inset_0_1px_0_rgba(255,255,255,0.25)] hover:brightness-110',
+    'bg-gradient-to-r from-cyan-500 via-cyan-400 to-blue-500 text-white font-bold border border-white/[0.18] shadow-[0_8px_32px_rgba(34,211,238,0.38),inset_0_1px_0_rgba(255,255,255,0.2)] hover:shadow-[0_14px_50px_rgba(34,211,238,0.50),inset_0_1px_0_rgba(255,255,255,0.25)] hover:brightness-110',
   secondary:
     'bg-white/[0.055] text-white/85 border border-white/[0.11] backdrop-blur-xl hover:bg-white/[0.095] hover:border-white/[0.20] shadow-[0_4px_20px_rgba(0,0,0,0.3)]',
   ghost:

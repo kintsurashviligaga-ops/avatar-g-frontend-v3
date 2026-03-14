@@ -51,7 +51,7 @@ function LoginForm() {
 
   return (
     <div className="relative min-h-screen bg-transparent flex items-center justify-center px-4 overflow-hidden">
-      <div className="pointer-events-none absolute inset-0" style={{ background: 'radial-gradient(circle at 20% 18%, rgba(99,102,241,0.08), transparent 52%), radial-gradient(circle at 80% 82%, rgba(139,92,246,0.08), transparent 52%)' }} />
+      <div className="pointer-events-none absolute inset-0" style={{ background: 'radial-gradient(circle at 20% 18%, rgba(34,211,238,0.08), transparent 52%), radial-gradient(circle at 80% 82%, rgba(6,182,212,0.08), transparent 52%)' }} />
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
           <h1 className="text-2xl font-bold" style={{ color: 'var(--color-text)' }}>Welcome back</h1>

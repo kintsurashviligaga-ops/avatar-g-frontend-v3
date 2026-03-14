@@ -48,7 +48,7 @@ const CATEGORY_LABELS: Record<CategoryId, { en: string; ka: string; ru: string }
 
 const CATEGORIES: Category[] = [
   { id: 'create',   label: 'Create',   icon: Sparkles, accent: 'text-cyan-300' },
-  { id: 'edit',     label: 'Edit',     icon: Scissors, accent: 'text-violet-300' },
+  { id: 'edit',     label: 'Edit',     icon: Scissors, accent: 'text-sky-300' },
   { id: 'automate', label: 'Automate', icon: Zap,      accent: 'text-amber-300' },
   { id: 'analyze',  label: 'Analyze',  icon: Eye,      accent: 'text-emerald-300' },
   { id: 'scale',    label: 'Scale',    icon: BarChart3, accent: 'text-rose-300' },
@@ -56,8 +56,8 @@ const CATEGORIES: Category[] = [
 
 const SERVICES: ServiceDef[] = [
   { id: 'avatar',       label: 'AI Avatar',           shortLabel: 'Avatar',     icon: UserCircle2,  color: 'from-cyan-500 to-sky-600',       glow: 'rgba(6,182,212,0.45)',   category: 'create',   outputType: 'Avatar Identity' },
-  { id: 'video',        label: 'AI Video Studio',      shortLabel: 'Video',      icon: Clapperboard, color: 'from-violet-500 to-indigo-600',   glow: 'rgba(139,92,246,0.45)',  category: 'create',   outputType: 'Video Clip' },
-  { id: 'editing',      label: 'Video Editing',        shortLabel: 'Edit',       icon: Scissors,     color: 'from-purple-500 to-violet-600',   glow: 'rgba(168,85,247,0.45)',  category: 'edit',     outputType: 'Edited Video' },
+  { id: 'video',        label: 'AI Video Studio',      shortLabel: 'Video',      icon: Clapperboard, color: 'from-sky-500 to-blue-600',       glow: 'rgba(14,165,233,0.45)',  category: 'create',   outputType: 'Video Clip' },
+  { id: 'editing',      label: 'Video Editing',        shortLabel: 'Edit',       icon: Scissors,     color: 'from-slate-500 to-blue-600',     glow: 'rgba(100,116,139,0.45)', category: 'edit',     outputType: 'Edited Video' },
   { id: 'music',        label: 'AI Music Studio',      shortLabel: 'Music',      icon: Music2,       color: 'from-pink-500 to-rose-600',       glow: 'rgba(236,72,153,0.45)',  category: 'create',   outputType: 'Song / Score' },
   { id: 'photo',        label: 'AI Photo Studio',      shortLabel: 'Photo',      icon: Camera,       color: 'from-sky-500 to-blue-600',        glow: 'rgba(14,165,233,0.45)',  category: 'create',   outputType: 'Photo Asset' },
   { id: 'image',        label: 'AI Image Creator',     shortLabel: 'Image',      icon: ImageIcon,    color: 'from-teal-500 to-emerald-600',    glow: 'rgba(20,184,166,0.45)',  category: 'create',   outputType: 'Visual Asset' },
@@ -70,7 +70,7 @@ const SERVICES: ServiceDef[] = [
   { id: 'agent-g',      label: 'Agent G Director',     shortLabel: 'Agent G',    icon: Cpu,          color: 'from-cyan-400 to-blue-500',       glow: 'rgba(34,211,238,0.55)',  category: 'automate', outputType: 'Full Orchestration' },
   { id: 'software',     label: 'Software Dev',         shortLabel: 'Dev',        icon: Code2,        color: 'from-slate-500 to-gray-600',      glow: 'rgba(100,116,139,0.45)', category: 'scale',    outputType: 'App / Integration' },
   { id: 'business',     label: 'Business Agent',       shortLabel: 'Business',   icon: Briefcase,    color: 'from-yellow-500 to-amber-600',    glow: 'rgba(234,179,8,0.45)',   category: 'scale',    outputType: 'Business Plan' },
-  { id: 'tourism',      label: 'Tourism AI',           shortLabel: 'Tourism',    icon: Plane,        color: 'from-sky-600 to-indigo-600',      glow: 'rgba(14,165,233,0.45)',  category: 'scale',    outputType: 'Tourism Content' },
+  { id: 'tourism',      label: 'Tourism AI',           shortLabel: 'Tourism',    icon: Plane,        color: 'from-sky-600 to-blue-600',        glow: 'rgba(14,165,233,0.45)',  category: 'scale',    outputType: 'Tourism Content' },
 ]
 
 const BY_ID = new Map(SERVICES.map(s => [s.id, s]))
@@ -168,7 +168,7 @@ const TEMPLATES: Template[] = [
 // ─── Avatar Presets ────────────────────────────────────────────
 const AVATAR_PRESETS = [
   { id: 'custom', label: 'My Avatar', icon: UserCircle2, color: 'from-cyan-500 to-blue-600' },
-  { id: 'pro-male', label: 'Pro Male', icon: UserCircle2, color: 'from-indigo-500 to-violet-600' },
+  { id: 'pro-male', label: 'Pro Male', icon: UserCircle2, color: 'from-blue-500 to-sky-600' },
   { id: 'pro-female', label: 'Pro Female', icon: UserCircle2, color: 'from-pink-500 to-rose-600' },
   { id: 'brand-voice', label: 'Brand Voice', icon: Mic, color: 'from-amber-500 to-orange-600' },
   { id: 'narrator', label: 'Narrator', icon: Video, color: 'from-teal-500 to-emerald-600' },

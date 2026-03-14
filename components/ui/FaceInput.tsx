@@ -203,7 +203,7 @@ export function FaceInput({ onCapture, onSkip, isLoading = false }: FaceInputPro
               <Button
                 onClick={requestCamera}
                 disabled={isLoading}
-                className="w-full bg-gradient-to-r from-cyan-500 via-blue-500 to-violet-500 hover:opacity-90 text-white border-0 shadow-[0_0_20px_rgba(34,211,238,0.30)] transition-opacity"
+                className="w-full bg-gradient-to-r from-cyan-500 via-blue-500 to-sky-500 hover:opacity-90 text-white border-0 shadow-[0_0_20px_rgba(34,211,238,0.30)] transition-opacity"
                 size="lg"
               >
                 <Camera className="w-4 h-4 mr-2" />
@@ -307,7 +307,7 @@ export function FaceInput({ onCapture, onSkip, isLoading = false }: FaceInputPro
               </div>
               <Button
                 onClick={captureFrame}
-                className="w-full bg-gradient-to-r from-cyan-500 via-blue-500 to-violet-500 hover:opacity-90 text-white border-0 shadow-[0_0_20px_rgba(34,211,238,0.30)] transition-opacity"
+                className="w-full bg-gradient-to-r from-cyan-500 via-blue-500 to-sky-500 hover:opacity-90 text-white border-0 shadow-[0_0_20px_rgba(34,211,238,0.30)] transition-opacity"
                 size="lg"
               >
                 <Camera className="w-4 h-4 mr-2" />
@@ -355,7 +355,7 @@ export function FaceInput({ onCapture, onSkip, isLoading = false }: FaceInputPro
                 <Button
                   onClick={confirmCapture}
                   disabled={isLoading}
-                  className="flex-1 bg-gradient-to-r from-cyan-500 via-blue-500 to-violet-500 hover:opacity-90 text-white border-0 shadow-[0_0_20px_rgba(34,211,238,0.30)] transition-opacity"
+                  className="flex-1 bg-gradient-to-r from-cyan-500 via-blue-500 to-sky-500 hover:opacity-90 text-white border-0 shadow-[0_0_20px_rgba(34,211,238,0.30)] transition-opacity"
                   size="lg"
                 >
                   <Check className="w-4 h-4 mr-2" />
@@ -391,7 +391,7 @@ export function FaceInput({ onCapture, onSkip, isLoading = false }: FaceInputPro
 
               <Button
                 onClick={requestCamera}
-                className="w-full bg-gradient-to-r from-cyan-500 via-blue-500 to-violet-500 hover:opacity-90 text-white border-0 shadow-[0_0_20px_rgba(34,211,238,0.30)] transition-opacity"
+                className="w-full bg-gradient-to-r from-cyan-500 via-blue-500 to-sky-500 hover:opacity-90 text-white border-0 shadow-[0_0_20px_rgba(34,211,238,0.30)] transition-opacity"
                 size="lg"
                 disabled={!hasMediaSupport}
               >

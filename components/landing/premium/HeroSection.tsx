@@ -42,9 +42,9 @@ export function HeroSection() {
     <section className="relative overflow-hidden px-4 sm:px-6 lg:px-10 pt-24 pb-16 sm:pt-32 sm:pb-20 lg:pt-40 lg:pb-28">
 
       {/* Ambient gradients */}
-      <div className="absolute inset-0 pointer-events-none" style={{ background: 'radial-gradient(ellipse 80% 60% at 50% 0%, rgba(99,102,241,0.10) 0%, transparent 70%)' }} />
-      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[500px] pointer-events-none" style={{ background: 'radial-gradient(ellipse 50% 50% at 50% 30%, rgba(99,102,241,0.10) 0%, transparent 70%)', filter: 'blur(60px)' }} />
-      <div className="absolute top-16 left-1/4 w-[400px] h-[300px] pointer-events-none" style={{ background: 'radial-gradient(ellipse 60% 50% at 40% 45%, rgba(139,92,246,0.06) 0%, transparent 70%)', filter: 'blur(50px)' }} />
+      <div className="absolute inset-0 pointer-events-none" style={{ background: 'radial-gradient(ellipse 80% 60% at 50% 0%, rgba(34,211,238,0.10) 0%, transparent 70%)' }} />
+      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[500px] pointer-events-none" style={{ background: 'radial-gradient(ellipse 50% 50% at 50% 30%, rgba(34,211,238,0.10) 0%, transparent 70%)', filter: 'blur(60px)' }} />
+      <div className="absolute top-16 left-1/4 w-[400px] h-[300px] pointer-events-none" style={{ background: 'radial-gradient(ellipse 60% 50% at 40% 45%, rgba(6,182,212,0.06) 0%, transparent 70%)', filter: 'blur(50px)' }} />
 
       {/* Dot grid */}
       <div className="absolute inset-0 pointer-events-none opacity-[0.03]" style={{ backgroundImage: 'radial-gradient(var(--color-text) 0.5px, transparent 0.5px)', backgroundSize: '24px 24px' }} />
@@ -56,7 +56,7 @@ export function HeroSection() {
           <div className="relative w-9 h-9">
             <Image src="/brand/rocket-brain.svg" alt="MyAvatar.ge" fill sizes="36px" className="object-contain" />
           </div>
-          <span className="text-[11px] tracking-[0.18em] uppercase font-medium px-3 py-1.5 rounded-full" style={{ color: 'var(--color-accent)', backgroundColor: 'var(--color-accent-soft)', border: '1px solid rgba(99,102,241,0.15)' }}>
+          <span className="text-[11px] tracking-[0.18em] uppercase font-medium px-3 py-1.5 rounded-full" style={{ color: 'var(--color-accent)', backgroundColor: 'var(--color-accent-soft)', border: '1px solid rgba(34,211,238,0.15)' }}>
             AI Creation Platform
           </span>
         </div>
@@ -64,7 +64,7 @@ export function HeroSection() {
         {/* Headline */}
         <h1 className="text-4xl sm:text-5xl lg:text-6xl xl:text-7xl font-bold tracking-[-0.03em] leading-[1.08]" style={{ color: 'var(--color-text)' }}>
           {c.headline.split(' ').slice(0, -1).join(' ')}{' '}
-          <span className="bg-gradient-to-r from-blue-500 via-indigo-500 to-violet-500 bg-clip-text text-transparent">
+          <span className="bg-gradient-to-r from-cyan-300 via-cyan-400 to-blue-400 bg-clip-text text-transparent">
             {c.headline.split(' ').slice(-1)}
           </span>
         </h1>
@@ -83,7 +83,7 @@ export function HeroSection() {
         <div className="flex flex-col sm:flex-row flex-wrap items-center justify-center gap-3">
           <Link
             href={lh('/signup')}
-            className="inline-flex items-center gap-2 text-sm font-semibold px-8 py-3.5 rounded-xl transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-indigo-500/20"
+            className="inline-flex items-center gap-2 text-sm font-semibold px-8 py-3.5 rounded-xl transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-cyan-500/20"
             style={{ backgroundColor: 'var(--color-accent)', color: '#fff' }}
           >
             {c.cta1}

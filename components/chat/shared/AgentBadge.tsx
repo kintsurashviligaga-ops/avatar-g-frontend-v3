@@ -32,7 +32,7 @@ export function AgentBadge({ agentId, size = 'md', showName = false, className =
         className={`${s.icon} rounded-xl flex items-center justify-center flex-shrink-0`}
         style={{
           background: agentId === 'agent-g'
-            ? 'linear-gradient(135deg, var(--color-accent), #8b5cf6)'
+            ? 'linear-gradient(135deg, var(--color-accent), #0891b2)'
             : 'var(--color-surface)',
           border: agentId === 'agent-g' ? 'none' : '1px solid var(--color-border)',
           boxShadow: agentId === 'agent-g' ? '0 0 12px var(--color-accent-soft)' : 'none',

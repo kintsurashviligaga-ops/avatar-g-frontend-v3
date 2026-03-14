@@ -289,7 +289,7 @@ function ServiceCard({ service, locale, isCore = false }: { service: ServiceItem
   return (
     <Link
       href={`/${locale}/services/${service.id}`}
-      className='group relative flex flex-col overflow-hidden rounded-2xl transition-all duration-300 hover:-translate-y-1 hover:shadow-lg hover:shadow-indigo-500/5'
+      className='group relative flex flex-col overflow-hidden rounded-2xl transition-all duration-300 hover:-translate-y-1 hover:shadow-lg hover:shadow-cyan-500/5'
       style={{ backgroundColor: 'var(--card-bg)', border: isCore ? '1px solid var(--color-accent)' : '1px solid var(--color-border)' }}
     >
       <ServiceCardVisual serviceId={service.id} variant="card" className="rounded-t-2xl" />
@@ -300,7 +300,7 @@ function ServiceCard({ service, locale, isCore = false }: { service: ServiceItem
           </span>
         )}
         <div className='mb-4 flex items-center justify-between gap-3'>
-          <div className='inline-flex h-11 w-11 items-center justify-center rounded-xl transition-all group-hover:scale-110' style={{ background: isCore ? 'linear-gradient(135deg, var(--color-accent), rgba(139,92,246,0.8))' : 'var(--color-accent-soft)', color: isCore ? '#fff' : 'var(--color-accent)' }}>
+          <div className='inline-flex h-11 w-11 items-center justify-center rounded-xl transition-all group-hover:scale-110' style={{ background: isCore ? 'linear-gradient(135deg, var(--color-accent), rgba(34,211,238,0.8))' : 'var(--color-accent-soft)', color: isCore ? '#fff' : 'var(--color-accent)' }}>
             <Icon className='h-5 w-5' />
           </div>
           <span className='rounded-full px-2.5 py-1 text-[10px] font-medium tracking-[0.08em]' style={{ backgroundColor: 'var(--color-surface)', color: 'var(--color-text-secondary)', border: '1px solid var(--color-border)' }}>
@@ -324,7 +324,7 @@ function AgentGFeaturedCard({ service, locale }: { service: ServiceItem; locale:
   return (
     <Link
       href={`/${locale}/services/${service.id}`}
-      className='group relative block overflow-hidden rounded-2xl transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-indigo-500/10'
+      className='group relative block overflow-hidden rounded-2xl transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-cyan-500/10'
       style={{ backgroundColor: 'var(--card-bg)', border: '1px solid var(--color-accent)' }}
     >
       <div className='grid grid-cols-1 md:grid-cols-[1fr_1.4fr]'>
@@ -334,13 +334,13 @@ function AgentGFeaturedCard({ service, locale }: { service: ServiceItem; locale:
             CORE ORCHESTRATOR
           </span>
           <div className='flex items-center gap-3 mb-2'>
-            <div className='inline-flex h-12 w-12 items-center justify-center rounded-xl transition-transform group-hover:scale-110' style={{ background: 'linear-gradient(135deg, var(--color-accent), rgba(139,92,246,0.8))', color: '#fff' }}>
+            <div className='inline-flex h-12 w-12 items-center justify-center rounded-xl transition-transform group-hover:scale-110' style={{ background: 'linear-gradient(135deg, var(--color-accent), rgba(34,211,238,0.8))', color: '#fff' }}>
               <Icon className='h-6 w-6' />
             </div>
             <h3 className='text-xl md:text-2xl font-semibold leading-tight' style={{ color: 'var(--color-text)' }}>{service.title}</h3>
           </div>
           <p className='mt-2 text-sm leading-relaxed max-w-lg' style={{ color: 'var(--color-text-secondary)' }}>{service.description}</p>
-          <div className='mt-5 inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-xs font-semibold w-fit transition-all group-hover:translate-x-1 group-hover:shadow-lg group-hover:shadow-indigo-500/20' style={{ backgroundColor: 'var(--color-accent)', color: '#fff' }}>
+          <div className='mt-5 inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-xs font-semibold w-fit transition-all group-hover:translate-x-1 group-hover:shadow-lg group-hover:shadow-cyan-500/20' style={{ backgroundColor: 'var(--color-accent)', color: '#fff' }}>
             {openLabel}
             <ArrowRight className='h-3.5 w-3.5' />
           </div>

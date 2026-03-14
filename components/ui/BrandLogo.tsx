@@ -39,7 +39,7 @@ export function BrandLogo({ href, size = 'md', showText = true, className = '', 
             <div
               className="absolute -inset-6 rounded-full logo-glow-breathe"
               style={{
-                background: 'radial-gradient(circle, rgba(129,140,248,0.16) 0%, rgba(139,92,246,0.06) 50%, transparent 70%)',
+                background: 'radial-gradient(circle, rgba(34,211,238,0.16) 0%, rgba(6,182,212,0.06) 50%, transparent 70%)',
                 filter: 'blur(20px)',
               }}
             />
@@ -53,7 +53,7 @@ export function BrandLogo({ href, size = 'md', showText = true, className = '', 
             />
           </>
         ) : (
-          <div className="absolute inset-[10%] rounded-full" style={{ background: 'radial-gradient(circle, rgba(99,102,241,0.05) 0%, transparent 70%)', filter: 'blur(6px)' }} />
+          <div className="absolute inset-[10%] rounded-full" style={{ background: 'radial-gradient(circle, rgba(34,211,238,0.05) 0%, transparent 70%)', filter: 'blur(6px)' }} />
         )}
         <Image
           src="/brand/rocket-brain.svg"
@@ -63,8 +63,8 @@ export function BrandLogo({ href, size = 'md', showText = true, className = '', 
           priority
           className={`object-contain object-center ${
             isHero
-              ? 'drop-shadow-[0_8px_24px_rgba(99,102,241,0.28)] drop-shadow-[0_2px_6px_rgba(139,92,246,0.18)]'
-              : 'drop-shadow-[0_2px_8px_rgba(99,102,241,0.15)]'
+              ? 'drop-shadow-[0_8px_24px_rgba(34,211,238,0.28)] drop-shadow-[0_2px_6px_rgba(6,182,212,0.18)]'
+              : 'drop-shadow-[0_2px_8px_rgba(34,211,238,0.15)]'
           }`}
         />
       </div>
@@ -72,7 +72,7 @@ export function BrandLogo({ href, size = 'md', showText = true, className = '', 
         <div className={`flex flex-col leading-none transition-all duration-300 ${compact ? 'opacity-90' : 'opacity-100'}`}>
           <span className="font-extrabold tracking-[-0.02em] text-[1.05rem] md:text-[1.1rem] leading-none" style={{ color: 'var(--color-text)' }}>
             MyAvatar<span
-              className="font-semibold bg-gradient-to-r from-blue-400 via-indigo-400 to-violet-400 bg-clip-text text-transparent"
+              className="font-semibold bg-gradient-to-r from-cyan-300 via-cyan-400 to-blue-400 bg-clip-text text-transparent"
             >.ge</span>
           </span>
         </div>

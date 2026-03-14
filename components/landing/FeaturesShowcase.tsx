@@ -16,9 +16,9 @@ const FEATURES = [
   },
   {
     icon: Film,
-    gradient: 'from-violet-500 to-indigo-600',
-    glow: 'rgba(139,92,246,0.28)',
-    glowFull: 'rgba(139,92,246,0.08)',
+    gradient: 'from-sky-500 to-blue-600',
+    glow: 'rgba(14,165,233,0.28)',
+    glowFull: 'rgba(14,165,233,0.08)',
   },
   {
     icon: Workflow,
@@ -213,7 +213,7 @@ export function FeaturesShowcase() {
       {/* Background atmosphere */}
       <div className="absolute inset-0 pointer-events-none">
         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[900px] h-[500px] bg-cyan-500/[0.04] rounded-full blur-[160px]" />
-        <div className="absolute bottom-0 right-0 w-[700px] h-[500px] bg-violet-500/[0.04] rounded-full blur-[160px]" />
+        <div className="absolute bottom-0 right-0 w-[700px] h-[500px] bg-sky-500/[0.04] rounded-full blur-[160px]" />
         <div className="absolute bottom-0 left-0 w-[500px] h-[400px] bg-blue-500/[0.03] rounded-full blur-[120px]" />
         {/* Dot matrix */}
         <div
@@ -234,13 +234,13 @@ export function FeaturesShowcase() {
           viewport={{ once: true }}
           transition={{ duration: 0.65 }}
         >
-          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-violet-400/20 bg-violet-400/[0.06] mb-6 shadow-[0_0_20px_rgba(139,92,246,0.10)]">
-            <span className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-pulse shadow-[0_0_6px_rgba(139,92,246,0.8)]" />
-            <span className="text-[10px] font-bold text-violet-300/80 tracking-[0.16em] uppercase">{copy.badge}</span>
+          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-cyan-400/20 bg-cyan-400/[0.06] mb-6 shadow-[0_0_20px_rgba(34,211,238,0.10)]">
+            <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse shadow-[0_0_6px_rgba(34,211,238,0.8)]" />
+            <span className="text-[10px] font-bold text-cyan-300/80 tracking-[0.16em] uppercase">{copy.badge}</span>
           </div>
           <h2 className="text-3xl md:text-5xl lg:text-[3.4rem] font-extrabold text-white mb-5 tracking-[-0.025em] leading-[1.06]">
             {copy.title}{' '}
-            <span className="bg-gradient-to-r from-cyan-300 via-blue-400 to-violet-400 bg-clip-text text-transparent drop-shadow-[0_0_30px_rgba(34,211,238,0.2)]">
+            <span className="bg-gradient-to-r from-cyan-300 via-blue-400 to-sky-400 bg-clip-text text-transparent drop-shadow-[0_0_30px_rgba(34,211,238,0.2)]">
               {copy.titleAccent}
             </span>
           </h2>

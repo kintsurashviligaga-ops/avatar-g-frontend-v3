@@ -120,7 +120,7 @@ function MessageRenderer({ message, onSuggestionClick, onClarificationSelect, on
       return (
         <div className="flex items-center gap-2 px-3 py-2 rounded-xl" style={{
           backgroundColor: message.severity === 'warning' ? 'rgba(251,191,36,0.06)'
-            : 'rgba(99,102,241,0.05)',
+            : 'rgba(34,211,238,0.05)',
         }}>
           <span className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
             {message.severity === 'warning' ? '⚡' : message.severity === 'success' ? '✅' : 'ℹ️'} {message.text}

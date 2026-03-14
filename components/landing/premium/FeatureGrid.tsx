@@ -32,7 +32,7 @@ export default function FeatureGrid() {
       <div
         className="absolute inset-0 pointer-events-none"
         style={{
-          background: 'radial-gradient(ellipse 70% 50% at 50% 40%, rgba(99,102,241,0.05) 0%, transparent 70%)',
+          background: 'radial-gradient(ellipse 70% 50% at 50% 40%, rgba(34,211,238,0.05) 0%, transparent 70%)',
         }}
       />
 
@@ -70,13 +70,13 @@ export default function FeatureGrid() {
             style={{
               backgroundColor: 'var(--card-bg)',
               border: '1px solid var(--color-border)',
-              boxShadow: '0 0 40px rgba(99,102,241,0.08), 0 8px 32px rgba(0,0,0,0.08)',
+              boxShadow: '0 0 40px rgba(34,211,238,0.08), 0 8px 32px rgba(0,0,0,0.08)',
             }}
           >
             {/* Hover glow rim */}
             <div
               className="absolute inset-0 rounded-2xl pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-300"
-              style={{ boxShadow: 'inset 0 0 0 1px var(--color-accent), 0 0 30px rgba(99,102,241,0.12)' }}
+              style={{ boxShadow: 'inset 0 0 0 1px var(--color-accent), 0 0 30px rgba(34,211,238,0.12)' }}
             />
             {/* Top accent glow */}
             <div
@@ -137,7 +137,7 @@ export default function FeatureGrid() {
                 {/* Hover glow */}
                 <div
                   className="absolute inset-0 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"
-                  style={{ boxShadow: 'inset 0 0 0 1px var(--color-accent), 0 0 12px rgba(99,102,241,0.08)' }}
+                  style={{ boxShadow: 'inset 0 0 0 1px var(--color-accent), 0 0 12px rgba(34,211,238,0.08)' }}
                 />
               </Link>
             ))}

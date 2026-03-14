@@ -33,7 +33,7 @@ const MOCK_COVER = 'data:image/svg+xml;base64,' + btoa(`
 <svg width="400" height="400" xmlns="http://www.w3.org/2000/svg">
   <defs>
     <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#6366f1;stop-opacity:1" />
+      <stop offset="0%" style="stop-color:#06b6d4;stop-opacity:1" />
       <stop offset="100%" style="stop-color:#ec4899;stop-opacity:1" />
     </linearGradient>
   </defs>

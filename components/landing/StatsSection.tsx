@@ -45,7 +45,7 @@ export function StatsSection() {
 
   const stats = [
     { value: 17, suffix: '+', label: localLabels[0], color: 'from-cyan-400 to-blue-500' },
-    { value: 250, suffix: 'K+', label: localLabels[1], color: 'from-violet-400 to-indigo-500' },
+    { value: 250, suffix: 'K+', label: localLabels[1], color: 'from-sky-400 to-blue-500' },
     { value: 5, suffix: 'M+', label: localLabels[2], color: 'from-rose-400 to-pink-500' },
     { value: 99, suffix: '.9%', label: localLabels[3], color: 'from-emerald-400 to-teal-500' },
   ]
@@ -65,10 +65,10 @@ export function StatsSection() {
           {/* Neon top edge */}
           <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-cyan-400/40 to-transparent" />
           {/* Neon bottom edge */}
-          <div className="absolute bottom-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-violet-500/30 to-transparent" />
+          <div className="absolute bottom-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-cyan-500/30 to-transparent" />
           {/* Ambient glows */}
           <div className="absolute -top-20 left-1/4 w-96 h-96 bg-cyan-500/[0.06] rounded-full blur-[140px] pointer-events-none" />
-          <div className="absolute -bottom-20 right-1/4 w-96 h-96 bg-violet-500/[0.06] rounded-full blur-[140px] pointer-events-none" />
+          <div className="absolute -bottom-20 right-1/4 w-96 h-96 bg-cyan-500/[0.06] rounded-full blur-[140px] pointer-events-none" />
           {/* Scan line animation */}
           <div className="absolute inset-x-0 h-px bg-gradient-to-r from-transparent via-cyan-300/25 to-transparent animate-neon-scan pointer-events-none" />
           {/* Fine grid */}

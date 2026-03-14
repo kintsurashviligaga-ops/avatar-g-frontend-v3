@@ -16,7 +16,7 @@ type ServiceId = 'avatar' | 'video' | 'editing' | 'music' | 'photo' | 'image' | 
 
 const SERVICES: { id: ServiceId; label: string; shortLabel: string; icon: React.ElementType; color: string; glow: string; category: string }[] = [
   { id: 'avatar',       label: 'AI Avatar',          shortLabel: 'Avatar',     icon: UserCircle2,  color: 'from-cyan-500 to-sky-600',      glow: 'rgba(6,182,212,0.5)' ,   category: 'create' },
-  { id: 'video',        label: 'AI Video Studio',     shortLabel: 'Video',      icon: Video,        color: 'from-violet-500 to-indigo-600', glow: 'rgba(139,92,246,0.5)',   category: 'create' },
+  { id: 'video',        label: 'AI Video Studio',     shortLabel: 'Video',      icon: Video,        color: 'from-sky-500 to-blue-600',      glow: 'rgba(14,165,233,0.5)',   category: 'create' },
   { id: 'music',        label: 'AI Music Studio',     shortLabel: 'Music',      icon: Music2,       color: 'from-pink-500 to-rose-600',     glow: 'rgba(236,72,153,0.5)',   category: 'create' },
   { id: 'image',        label: 'AI Image Creator',    shortLabel: 'Image',      icon: ImageIcon,    color: 'from-teal-500 to-emerald-600',  glow: 'rgba(20,184,166,0.5)',   category: 'create' },
   { id: 'text',         label: 'Text Intelligence',   shortLabel: 'Text',       icon: FileText,     color: 'from-lime-500 to-green-600',    glow: 'rgba(132,204,22,0.5)',   category: 'analyze' },
@@ -24,7 +24,7 @@ const SERVICES: { id: ServiceId; label: string; shortLabel: string; icon: React.
   { id: 'workflow',     label: 'Workflow Automation', shortLabel: 'Workflow',   icon: Workflow,     color: 'from-orange-500 to-amber-600',  glow: 'rgba(249,115,22,0.5)',   category: 'automate' },
   { id: 'shop',         label: 'Online Shop',         shortLabel: 'Shop',       icon: ShoppingCart, color: 'from-rose-500 to-pink-600',     glow: 'rgba(244,63,94,0.5)',    category: 'scale' },
   { id: 'photo',        label: 'AI Photo Studio',     shortLabel: 'Photo',      icon: Camera,       color: 'from-sky-500 to-blue-600',      glow: 'rgba(14,165,233,0.5)',   category: 'create' },
-  { id: 'editing',      label: 'Video Editing',       shortLabel: 'Edit',       icon: Scissors,     color: 'from-purple-500 to-violet-600', glow: 'rgba(168,85,247,0.5)',   category: 'edit' },
+  { id: 'editing',      label: 'Video Editing',       shortLabel: 'Edit',       icon: Scissors,     color: 'from-slate-500 to-blue-600',    glow: 'rgba(100,116,139,0.5)',  category: 'edit' },
   { id: 'prompt',       label: 'Prompt Builder',      shortLabel: 'Prompt',     icon: Wand2,        color: 'from-amber-500 to-orange-600',  glow: 'rgba(245,158,11,0.5)',   category: 'analyze' },
   { id: 'business',     label: 'Business Agent',      shortLabel: 'Business',   icon: Briefcase,    color: 'from-yellow-500 to-amber-600',  glow: 'rgba(234,179,8,0.5)',    category: 'scale' },
 ]
@@ -35,7 +35,7 @@ const QUICK_PIPELINES: { id: string; icon: string; label: { en: string; ka: stri
     icon: '🎬',
     label: { en: 'Brand Video', ka: 'ბრენდ ვიდეო', ru: 'Бренд-видео' },
     services: ['avatar', 'video', 'editing'],
-    accent: 'from-violet-500/15 to-indigo-600/10 border-violet-400/25',
+    accent: 'from-sky-500/15 to-blue-600/10 border-sky-400/25',
   },
   {
     id: 'music-clip',
@@ -62,7 +62,7 @@ const QUICK_PIPELINES: { id: string; icon: string; label: { en: string; ka: stri
 
 const STATS = [
   { icon: UserCircle2, valueKey: 'statsAvatars',  value: '12',    label: { en: 'Avatars',       ka: 'ავატარი',   ru: 'Аватаров' },     color: 'text-cyan-300',    bg: 'from-cyan-500/10 to-sky-600/5',       border: 'border-cyan-400/20' },
-  { icon: Play,        valueKey: 'statsPipelines', value: '7',     label: { en: 'Pipelines Run', ka: 'გაშვება',   ru: 'Pipeline' },     color: 'text-violet-300',  bg: 'from-violet-500/10 to-indigo-600/5',  border: 'border-violet-400/20' },
+  { icon: Play,        valueKey: 'statsPipelines', value: '7',     label: { en: 'Pipelines Run', ka: 'გაშვება',   ru: 'Pipeline' },     color: 'text-sky-300',     bg: 'from-sky-500/10 to-blue-600/5',       border: 'border-sky-400/20' },
   { icon: Zap,         valueKey: 'statsServices',  value: '17',    label: { en: 'Services',      ka: 'სერვისი',   ru: 'Сервисов' },     color: 'text-amber-300',   bg: 'from-amber-500/10 to-orange-600/5',   border: 'border-amber-400/20' },
   { icon: TrendingUp,  valueKey: 'statsOutput',    value: '98%',   label: { en: 'Success Rate',  ka: 'წარმატება', ru: 'Успех' },        color: 'text-emerald-300', bg: 'from-emerald-500/10 to-teal-600/5',   border: 'border-emerald-400/20' },
 ]
@@ -362,7 +362,7 @@ export function WorkspaceDashboard({ locale }: { locale: string }) {
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <h2 className="text-sm font-bold flex items-center gap-2" style={{ color: 'var(--color-text-secondary)' }}>
-                    <Activity className="w-4 h-4 text-violet-400" /> {t.recentActivity}
+                    <Activity className="w-4 h-4 text-cyan-400" /> {t.recentActivity}
                   </h2>
                   <button className="text-[11px] transition-colors" style={{ color: 'var(--color-text-tertiary)' }}>{t.viewAll}</button>
                 </div>
@@ -401,7 +401,7 @@ export function WorkspaceDashboard({ locale }: { locale: string }) {
                   initial={{ opacity: 0, scale: 0.97 }}
                   animate={{ opacity: 1, scale: 1 }}
                   transition={{ delay: 0.4, duration: 0.4 }}
-                  className="rounded-2xl border border-cyan-400/20 bg-[linear-gradient(135deg,rgba(34,211,238,0.07),rgba(99,102,241,0.05))] p-4 text-center space-y-3"
+                  className="rounded-2xl border border-cyan-400/20 bg-[linear-gradient(135deg,rgba(34,211,238,0.07),rgba(34,211,238,0.05))] p-4 text-center space-y-3"
                 >
                   <div className="w-10 h-10 mx-auto rounded-2xl bg-gradient-to-br from-cyan-400 to-blue-600 flex items-center justify-center shadow-lg">
                     <Cpu className="w-5 h-5 text-white" />
@@ -503,7 +503,7 @@ export function WorkspaceDashboard({ locale }: { locale: string }) {
             >
               {/* Header row */}
               <div className="flex items-center gap-3 px-5 py-4" style={{ borderBottom: '1px solid var(--color-border)' }}>
-                <Radio className="w-4 h-4 text-violet-400" />
+                <Radio className="w-4 h-4 text-cyan-400" />
                 <h2 className="text-sm font-bold" style={{ color: 'var(--color-text-secondary)' }}>{t.recentActivity}</h2>
                 <span className="ml-auto flex items-center gap-1.5 text-[10px] text-emerald-300/70">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
@@ -558,7 +558,7 @@ export function WorkspaceDashboard({ locale }: { locale: string }) {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.6, duration: 0.5 }}
-          className="rounded-3xl border border-cyan-400/15 bg-[linear-gradient(135deg,rgba(6,182,212,0.06),rgba(99,102,241,0.04))] p-5 flex flex-col sm:flex-row items-center justify-between gap-4"
+          className="rounded-3xl border border-cyan-400/15 bg-[linear-gradient(135deg,rgba(6,182,212,0.06),rgba(34,211,238,0.04))] p-5 flex flex-col sm:flex-row items-center justify-between gap-4"
         >
           <div className="flex items-center gap-4">
             <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-amber-400 to-orange-600 flex items-center justify-center shadow-lg">

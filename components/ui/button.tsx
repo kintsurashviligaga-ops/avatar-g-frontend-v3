@@ -12,7 +12,7 @@ const buttonVariants = cva(
         default:
           'border border-white/[0.14] bg-[linear-gradient(135deg,rgba(14,26,52,0.90),rgba(8,16,38,0.80))] text-white/85 shadow-[0_0_0_1px_rgba(255,255,255,0.12),0_8px_24px_rgba(0,0,0,0.40)] hover:border-white/[0.26] hover:text-white hover:bg-[linear-gradient(135deg,rgba(20,36,70,0.92),rgba(12,22,50,0.88))] hover:shadow-[0_0_0_1px_rgba(255,255,255,0.22),0_0_24px_rgba(34,211,238,0.18),0_8px_28px_rgba(0,0,0,0.50)] active:scale-[0.985] backdrop-blur-xl',
         primary:
-          'bg-gradient-to-r from-cyan-400 via-blue-500 to-violet-500 text-white shadow-[0_0_20px_rgba(34,211,238,0.25),0_8px_24px_rgba(0,0,0,0.4)] hover:brightness-110 hover:shadow-[0_0_28px_rgba(34,211,238,0.38),0_8px_28px_rgba(0,0,0,0.5)] active:scale-[0.985]',
+          'bg-gradient-to-r from-cyan-400 via-blue-500 to-sky-500 text-white shadow-[0_0_20px_rgba(34,211,238,0.25),0_8px_24px_rgba(0,0,0,0.4)] hover:brightness-110 hover:shadow-[0_0_28px_rgba(34,211,238,0.38),0_8px_28px_rgba(0,0,0,0.5)] active:scale-[0.985]',
         secondary:
           'border border-white/[0.14] bg-[linear-gradient(135deg,rgba(14,26,52,0.90),rgba(8,16,38,0.80))] text-white/80 shadow-[0_0_0_1px_rgba(255,255,255,0.12),0_8px_24px_rgba(0,0,0,0.40)] hover:border-white/[0.24] hover:text-white hover:shadow-[0_0_0_1px_rgba(255,255,255,0.20),0_0_24px_rgba(34,211,238,0.14)] active:scale-[0.985] backdrop-blur-xl',
         outline:
@@ -20,7 +20,7 @@ const buttonVariants = cva(
         ghost:
           'text-white/50 hover:text-white/85 hover:bg-white/[0.06] active:scale-[0.985]',
         glow:
-          'bg-gradient-to-r from-cyan-400 via-blue-500 to-violet-500 text-white shadow-[0_0_28px_rgba(139,92,246,0.36)] hover:brightness-110 hover:shadow-[0_0_40px_rgba(139,92,246,0.50)] active:scale-[0.985]',
+          'bg-gradient-to-r from-cyan-400 via-blue-500 to-sky-500 text-white shadow-[0_0_28px_rgba(34,211,238,0.36)] hover:brightness-110 hover:shadow-[0_0_40px_rgba(34,211,238,0.50)] active:scale-[0.985]',
         danger:
           'bg-red-500/[0.12] text-red-200 border border-red-400/[0.30] hover:bg-red-500/[0.20] active:scale-[0.98]',
         destructive:

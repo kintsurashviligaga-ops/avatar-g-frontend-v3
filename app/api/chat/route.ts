@@ -38,7 +38,7 @@ function demoImageUrl(title: string) {
   </defs>
   <rect width='100%' height='100%' fill='url(#bg)'/>
   <circle cx='512' cy='390' r='190' fill='#22d3ee' fill-opacity='0.16'/>
-  <circle cx='512' cy='390' r='120' fill='#8b5cf6' fill-opacity='0.2'/>
+  <circle cx='512' cy='390' r='120' fill='#22d3ee' fill-opacity='0.2'/>
   <text x='50%' y='66%' dominant-baseline='middle' text-anchor='middle' fill='#e2e8f0' font-family='Inter, Arial, sans-serif' font-size='44' font-weight='700'>${title}</text>
   <text x='50%' y='74%' dominant-baseline='middle' text-anchor='middle' fill='#94a3b8' font-family='Inter, Arial, sans-serif' font-size='22'>Demo preview artifact</text>
 </svg>`;

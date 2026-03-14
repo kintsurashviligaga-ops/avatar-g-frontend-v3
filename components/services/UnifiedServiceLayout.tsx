@@ -523,10 +523,10 @@ const SERVICE_CONTEXT: Record<string, ServiceContext> = {
 const SERVICE_BACKGROUNDS: Record<string, string> = {
   avatar: 'radial-gradient(1200px 650px at 18% 12%, rgba(56,189,248,0.24), transparent 55%), radial-gradient(850px 520px at 85% 85%, rgba(168,85,247,0.22), transparent 52%), linear-gradient(180deg, #050814 0%, #03050f 100%)',
   video: 'radial-gradient(1200px 650px at 25% 20%, rgba(59,130,246,0.22), transparent 55%), radial-gradient(850px 520px at 82% 78%, rgba(236,72,153,0.2), transparent 52%), linear-gradient(180deg, #070b1a 0%, #040711 100%)',
-  editing: 'radial-gradient(1200px 650px at 22% 18%, rgba(251,191,36,0.2), transparent 55%), radial-gradient(850px 520px at 84% 82%, rgba(99,102,241,0.22), transparent 52%), linear-gradient(180deg, #0b0c17 0%, #060712 100%)',
-  music: 'radial-gradient(1200px 650px at 18% 12%, rgba(139,92,246,0.24), transparent 55%), radial-gradient(850px 520px at 85% 85%, rgba(20,184,166,0.2), transparent 52%), linear-gradient(180deg, #070616 0%, #04030e 100%)',
+  editing: 'radial-gradient(1200px 650px at 22% 18%, rgba(251,191,36,0.2), transparent 55%), radial-gradient(850px 520px at 84% 82%, rgba(34,211,238,0.22), transparent 52%), linear-gradient(180deg, #0b0c17 0%, #060712 100%)',
+  music: 'radial-gradient(1200px 650px at 18% 12%, rgba(6,182,212,0.24), transparent 55%), radial-gradient(850px 520px at 85% 85%, rgba(20,184,166,0.2), transparent 52%), linear-gradient(180deg, #070616 0%, #04030e 100%)',
   photo: 'radial-gradient(1200px 650px at 18% 12%, rgba(34,211,238,0.2), transparent 55%), radial-gradient(850px 520px at 85% 85%, rgba(251,113,133,0.2), transparent 52%), linear-gradient(180deg, #060913 0%, #04060f 100%)',
-  image: 'radial-gradient(1200px 650px at 18% 12%, rgba(99,102,241,0.2), transparent 55%), radial-gradient(850px 520px at 85% 85%, rgba(244,63,94,0.22), transparent 52%), linear-gradient(180deg, #060813 0%, #04060e 100%)',
+  image: 'radial-gradient(1200px 650px at 18% 12%, rgba(34,211,238,0.2), transparent 55%), radial-gradient(850px 520px at 85% 85%, rgba(244,63,94,0.22), transparent 52%), linear-gradient(180deg, #060813 0%, #04060e 100%)',
   media: 'radial-gradient(1200px 650px at 18% 12%, rgba(132,204,22,0.22), transparent 55%), radial-gradient(850px 520px at 85% 85%, rgba(6,182,212,0.2), transparent 52%), linear-gradient(180deg, #050b13 0%, #03060d 100%)',
   text: 'radial-gradient(1200px 650px at 18% 12%, rgba(96,165,250,0.2), transparent 55%), radial-gradient(850px 520px at 85% 85%, rgba(167,139,250,0.2), transparent 52%), linear-gradient(180deg, #080c17 0%, #05070f 100%)',
   prompt: 'radial-gradient(1200px 650px at 18% 12%, rgba(14,165,233,0.22), transparent 55%), radial-gradient(850px 520px at 85% 85%, rgba(217,70,239,0.2), transparent 52%), linear-gradient(180deg, #060a14 0%, #04060f 100%)',
@@ -536,8 +536,8 @@ const SERVICE_BACKGROUNDS: Record<string, string> = {
   software: 'radial-gradient(1200px 650px at 18% 12%, rgba(249,115,22,0.2), transparent 55%), radial-gradient(850px 520px at 85% 85%, rgba(59,130,246,0.2), transparent 52%), linear-gradient(180deg, #090914 0%, #06070f 100%)',
   business: 'radial-gradient(1200px 650px at 18% 12%, rgba(20,184,166,0.2), transparent 55%), radial-gradient(850px 520px at 85% 85%, rgba(96,165,250,0.2), transparent 52%), linear-gradient(180deg, #070b13 0%, #04060f 100%)',
   tourism: 'radial-gradient(1200px 650px at 18% 12%, rgba(16,185,129,0.2), transparent 55%), radial-gradient(850px 520px at 85% 85%, rgba(56,189,248,0.2), transparent 52%), linear-gradient(180deg, #060a13 0%, #04060f 100%)',
-  next: 'radial-gradient(1200px 650px at 18% 12%, rgba(99,102,241,0.23), transparent 55%), radial-gradient(850px 520px at 85% 85%, rgba(16,185,129,0.2), transparent 52%), linear-gradient(180deg, #050a13 0%, #04060f 100%)',
-  'agent-g': 'radial-gradient(1200px 650px at 18% 12%, rgba(6,182,212,0.25), transparent 55%), radial-gradient(850px 520px at 85% 85%, rgba(99,102,241,0.22), transparent 52%), linear-gradient(180deg, #050914 0%, #03060e 100%)',
+  next: 'radial-gradient(1200px 650px at 18% 12%, rgba(34,211,238,0.23), transparent 55%), radial-gradient(850px 520px at 85% 85%, rgba(16,185,129,0.2), transparent 52%), linear-gradient(180deg, #050a13 0%, #04060f 100%)',
+  'agent-g': 'radial-gradient(1200px 650px at 18% 12%, rgba(6,182,212,0.25), transparent 55%), radial-gradient(850px 520px at 85% 85%, rgba(34,211,238,0.22), transparent 52%), linear-gradient(180deg, #050914 0%, #03060e 100%)',
 };
 
 const SERVICE_OPTION_SETS: Record<string, OptionSet[]> = {
@@ -2062,7 +2062,7 @@ export default function UnifiedServiceLayout({
       <header className="relative z-10 px-3 sm:px-5 lg:px-6 py-4 sm:py-5" style={{ borderBottom: '1px solid var(--color-border)', backgroundColor: 'var(--nav-bg)', backdropFilter: 'blur(20px)' }}>
         <div className="max-w-[94rem] mx-auto flex items-center justify-between gap-3">
           <div className="flex items-center gap-3 sm:gap-4 min-w-0">
-            <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl flex items-center justify-center flex-shrink-0" style={{ background: 'linear-gradient(135deg, var(--color-accent), rgba(139,92,246,0.8))', boxShadow: '0 4px 16px rgba(99,102,241,0.25)' }}>
+            <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl flex items-center justify-center flex-shrink-0" style={{ background: 'linear-gradient(135deg, var(--color-accent), rgba(6,182,212,0.8))', boxShadow: '0 4px 16px rgba(34,211,238,0.25)' }}>
               <span className="text-xl sm:text-2xl filter drop-shadow">{serviceIcon}</span>
             </div>
             <div className="min-w-0">
@@ -2469,7 +2469,7 @@ export default function UnifiedServiceLayout({
                 {/* Icon with glow effect */}
                 <div className="relative">
                   <div className="absolute inset-0 rounded-3xl blur-2xl opacity-20" style={{ backgroundColor: 'var(--color-accent)' }} />
-                  <div className="relative w-20 h-20 rounded-3xl flex items-center justify-center" style={{ background: 'linear-gradient(135deg, var(--color-accent), rgba(139,92,246,0.8))', boxShadow: '0 8px 32px rgba(99,102,241,0.2)' }}>
+                  <div className="relative w-20 h-20 rounded-3xl flex items-center justify-center" style={{ background: 'linear-gradient(135deg, var(--color-accent), rgba(6,182,212,0.8))', boxShadow: '0 8px 32px rgba(34,211,238,0.2)' }}>
                     <span className="text-4xl filter drop-shadow">{serviceIcon}</span>
                   </div>
                 </div>

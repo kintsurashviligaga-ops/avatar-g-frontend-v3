@@ -47,7 +47,7 @@ export default function UsageAnalytics({ data }: Props) {
       label: 'Credits Used',
       value: data.credits_spent_today,
       icon: Zap,
-      color: 'text-purple-400',
+      color: 'text-cyan-400',
       change: data.credits_spent_today,
     },
   ];

@@ -41,9 +41,9 @@ export function AgentGHero() {
         className="absolute inset-0 pointer-events-none"
         style={{
           background: `
-            radial-gradient(ellipse 70% 50% at 50% 50%, rgba(99,102,241,0.06) 0%, transparent 70%),
-            radial-gradient(ellipse 40% 40% at 30% 70%, rgba(139,92,246,0.04) 0%, transparent 60%),
-            radial-gradient(ellipse 40% 40% at 70% 30%, rgba(99,102,241,0.03) 0%, transparent 60%)
+            radial-gradient(ellipse 70% 50% at 50% 50%, rgba(34,211,238,0.06) 0%, transparent 70%),
+            radial-gradient(ellipse 40% 40% at 30% 70%, rgba(6,182,212,0.04) 0%, transparent 60%),
+            radial-gradient(ellipse 40% 40% at 70% 30%, rgba(34,211,238,0.03) 0%, transparent 60%)
           `,
         }}
       />
@@ -118,7 +118,7 @@ export function AgentGHero() {
             {/* CTA */}
             <Link
               href={`/${language}/services/agent-g`}
-              className="group inline-flex items-center gap-2 text-[14px] font-semibold px-8 py-3 rounded-full transition-all duration-300 active:scale-[0.97] hover:shadow-[0_0_30px_rgba(99,102,241,0.2)]"
+              className="group inline-flex items-center gap-2 text-[14px] font-semibold px-8 py-3 rounded-full transition-all duration-300 active:scale-[0.97] hover:shadow-[0_0_30px_rgba(34,211,238,0.2)]"
               style={{
                 backgroundColor: 'var(--color-accent)',
                 color: '#fff',

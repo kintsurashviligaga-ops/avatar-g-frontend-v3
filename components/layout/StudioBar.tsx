@@ -89,10 +89,10 @@ export function StudioBar({ className }: StudioBarProps) {
                   href="/services/avatar-builder"
                   className={cn(
                     'flex items-center gap-2 px-3 py-1.5 rounded-full',
-                    'bg-gradient-to-r from-purple-500/20 to-purple-600/20 border border-purple-400/40',
-                    'hover:from-purple-500/30 hover:to-purple-600/30 hover:border-purple-400/60',
+                    'bg-gradient-to-r from-cyan-500/20 to-cyan-600/20 border border-cyan-400/40',
+                    'hover:from-cyan-500/30 hover:to-cyan-600/30 hover:border-cyan-400/60',
                     'transition duration-200',
-                    'group-hover:shadow-lg group-hover:shadow-purple-500/20'
+                    'group-hover:shadow-lg group-hover:shadow-cyan-500/20'
                   )}
                 >
                   {selectedAvatarPreviewUrl && (
@@ -105,9 +105,9 @@ export function StudioBar({ className }: StudioBarProps) {
                     />
                   )}
                   {!selectedAvatarPreviewUrl && (
-                    <User size={16} className="text-purple-400" />
+                    <User size={16} className="text-cyan-400" />
                   )}
-                  <span className="text-xs font-medium text-purple-200 truncate max-w-[100px]">
+                  <span className="text-xs font-medium text-cyan-200 truncate max-w-[100px]">
                     {t('studio.avatar')}
                   </span>
                 </Link>

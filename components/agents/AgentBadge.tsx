@@ -33,7 +33,7 @@ export default function AgentBadge({ serviceSlug, locale, size = 'sm' }: AgentBa
   if (size === 'md') {
     return (
       <div className="flex items-center gap-2.5 px-3 py-2 rounded-xl" style={{ backgroundColor: 'var(--color-surface)', border: '1px solid var(--color-border)' }}>
-        <div className="w-8 h-8 rounded-lg flex items-center justify-center text-base" style={{ background: 'linear-gradient(135deg, var(--color-accent), rgba(139,92,246,0.7))' }}>
+        <div className="w-8 h-8 rounded-lg flex items-center justify-center text-base" style={{ background: 'linear-gradient(135deg, var(--color-accent), rgba(6,182,212,0.7))' }}>
           {primary.icon}
         </div>
         <div className="min-w-0">

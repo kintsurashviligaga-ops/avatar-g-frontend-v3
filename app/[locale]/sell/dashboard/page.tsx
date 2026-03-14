@@ -96,7 +96,7 @@ export default function SellerDashboardPage() {
           </Card>
           <Card className="bg-black/40 border-white/10 p-6">
             <div className="flex items-center gap-3">
-              <ShieldCheck className="w-6 h-6 text-purple-400" />
+              <ShieldCheck className="w-6 h-6 text-cyan-400" />
               <div>
                 <p className="text-sm text-gray-400">{t('sections.products')}</p>
                 <p className="text-white font-semibold">{t('placeholder.products')}</p>

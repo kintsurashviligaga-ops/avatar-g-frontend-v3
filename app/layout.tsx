@@ -1,9 +1,16 @@
 import type { Metadata } from "next";
+import { Inter } from "next/font/google";
 import "./globals.css";
 import Providers from "@/app/providers";
 import ChatShell from "@/components/chat/ChatShell";
 import { AppShell } from "@/components/AppShell";
 import { logStartupEnvValidation } from "@/lib/env/startupValidation";
+
+const inter = Inter({
+	subsets: ["latin", "cyrillic"],
+	variable: "--font-ui",
+	display: "swap",
+});
 
 const metadataBaseUrl =
 	process.env.NEXT_PUBLIC_BASE_URL ||
@@ -63,7 +70,7 @@ export default async function RootLayout({
 	}
 
 	return (
-		<html lang="ka" data-theme="dark" suppressHydrationWarning>
+		<html lang="ka" data-theme="dark" suppressHydrationWarning className={inter.variable}>
 			<body className="font-sans antialiased">
 				<Providers>
 					<AppShell>

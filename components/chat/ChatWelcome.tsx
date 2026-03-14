@@ -33,7 +33,7 @@ export function ChatWelcome({ language, onAction, onServiceSelect }: Props) {
       <div className="text-center mb-8">
         <div className="w-16 h-16 rounded-2xl mx-auto mb-4 flex items-center justify-center"
           style={{
-            background: 'linear-gradient(135deg, var(--color-accent), #8b5cf6)',
+            background: 'linear-gradient(135deg, var(--color-accent), #0891b2)',
             boxShadow: '0 8px 32px var(--color-accent-soft)',
           }}>
           <span className="text-white text-2xl font-bold">G</span>

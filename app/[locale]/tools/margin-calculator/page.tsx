@@ -289,11 +289,11 @@ export default function MarginCalculatorPage() {
                       {result.grossMarginPct.toFixed(1)}%
                     </p>
                   </div>
-                  <div className="bg-purple-50 p-4 rounded-lg">
+                  <div className="bg-cyan-50 p-4 rounded-lg">
                     <p className="text-xs text-gray-600 mb-1">
                       {t('tools.margin_calculator.net_profit')}
                     </p>
-                    <p className="text-2xl font-bold text-purple-700">
+                    <p className="text-2xl font-bold text-cyan-700">
                       {formatPrice(result.netProfitCents, currency)}
                     </p>
                   </div>

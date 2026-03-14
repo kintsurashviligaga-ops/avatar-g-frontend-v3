@@ -23,7 +23,7 @@ export const colors = {
     orange: '#F97316',
     yellow: '#FBBF24',
     green: '#10B981',
-    purple: '#A855F7',
+    purple: '#22D3EE',
     pink: '#EC4899',
   },
 
@@ -73,7 +73,7 @@ export const colors = {
   // Gradients
   gradients: {
     cyanToBlue: 'linear-gradient(135deg, #06B6D4 0%, #3B82F6 100%)',
-    purpleToBlue: 'linear-gradient(135deg, #A855F7 0%, #3B82F6 100%)',
+    purpleToBlue: 'linear-gradient(135deg, #22D3EE 0%, #3B82F6 100%)',
     orangeToRed: 'linear-gradient(135deg, #F97316 0%, #EF4444 100%)',
     greenToEmerald: 'linear-gradient(135deg, #10B981 0%, #059669 100%)',
   },
@@ -222,7 +222,7 @@ export const shadows = {
   glow: {
     cyan: '0 0 30px rgba(6, 182, 212, 0.3)',
     blue: '0 0 30px rgba(59, 130, 246, 0.3)',
-    purple: '0 0 30px rgba(168, 85, 247, 0.3)',
+    purple: '0 0 30px rgba(34, 211, 238, 0.3)',
   },
 
   // Glass morphism

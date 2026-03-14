@@ -78,7 +78,7 @@ export default function ExecutiveDashboard({ userId: _userId }: ExecutiveDashboa
             onChange={(e) => setInput(e.target.value)}
             placeholder={t('input_placeholder')}
             rows={3}
-            className="w-full resize-none rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder-white/30 outline-none transition focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/30"
+            className="w-full resize-none rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder-white/30 outline-none transition focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/30"
             disabled={running}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
@@ -95,7 +95,7 @@ export default function ExecutiveDashboard({ userId: _userId }: ExecutiveDashboa
               <button
                 onClick={handleSubmit}
                 disabled={running || !input.trim()}
-                className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-40"
+                className="rounded-lg bg-cyan-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-cyan-500 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 {running ? t('button_running') : t('button_run')}
               </button>
@@ -180,7 +180,7 @@ function TaskCard({ task }: { task: ExecutiveTaskLog }) {
                   href={a.url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="rounded bg-indigo-900/30 px-2 py-0.5 text-xs text-indigo-300 transition hover:bg-indigo-900/50"
+                  className="rounded bg-cyan-900/30 px-2 py-0.5 text-xs text-cyan-300 transition hover:bg-cyan-900/50"
                 >
                   {a.label} ({a.type})
                 </a>

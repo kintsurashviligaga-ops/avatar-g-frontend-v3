@@ -10,10 +10,10 @@ type HeroProps = {
 
 const PARTICLES = [
   { x: '15%', y: '25%', size: 2.5,  delay: 0,    color: '#22d3ee', tx: '20px',  ty: '-90px'  },
-  { x: '72%', y: '18%', size: 1.5,  delay: 0.8,  color: '#8b5cf6', tx: '-30px', ty: '-70px'  },
+  { x: '72%', y: '18%', size: 1.5,  delay: 0.8,  color: '#22d3ee', tx: '-30px', ty: '-70px'  },
   { x: '85%', y: '60%', size: 2,    delay: 1.6,  color: '#22d3ee', tx: '-20px', ty: '-80px'  },
   { x: '8%',  y: '70%', size: 1.5,  delay: 2.4,  color: '#f472b6', tx: '30px',  ty: '-60px'  },
-  { x: '55%', y: '82%', size: 2,    delay: 3.2,  color: '#8b5cf6', tx: '10px',  ty: '-100px' },
+  { x: '55%', y: '82%', size: 2,    delay: 3.2,  color: '#22d3ee', tx: '10px',  ty: '-100px' },
   { x: '30%', y: '12%', size: 1.5,  delay: 0.4,  color: '#34d399', tx: '-15px', ty: '-75px'  },
 ]
 
@@ -75,7 +75,7 @@ export function Hero({ locale }: HeroProps) {
       <div className="absolute inset-0 pointer-events-none">
         {/* Deep space base */}
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_110%_80%_at_50%_-10%,rgba(34,211,238,0.10)_0%,transparent_55%)]" />
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_80%_60%_at_80%_90%,rgba(139,92,246,0.09)_0%,transparent_55%)]" />
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_80%_60%_at_80%_90%,rgba(34,211,238,0.09)_0%,transparent_55%)]" />
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_60%_40%_at_10%_60%,rgba(59,130,246,0.07)_0%,transparent_55%)]" />
 
         {/* Neon horizon line */}
@@ -88,7 +88,7 @@ export function Hero({ locale }: HeroProps) {
           style={{ boxShadow: '0 0 120px rgba(34,211,238,0.06) inset' }}
         />
         <div
-          className="absolute -top-32 left-1/2 -translate-x-1/2 w-[700px] h-[350px] rounded-[100%] border border-violet-400/[0.08]"
+          className="absolute -top-32 left-1/2 -translate-x-1/2 w-[700px] h-[350px] rounded-[100%] border border-cyan-400/[0.08]"
         />
 
         {/* Fine grid */}
@@ -156,7 +156,7 @@ export function Hero({ locale }: HeroProps) {
           <span className="block bg-gradient-to-r from-white via-blue-100 to-white bg-clip-text text-transparent">
             {text.titleLine1}
           </span>
-          <span className="block mt-2 bg-gradient-to-r from-cyan-300 via-blue-400 to-violet-400 bg-clip-text text-transparent drop-shadow-[0_0_40px_rgba(34,211,238,0.35)]">
+          <span className="block mt-2 bg-gradient-to-r from-cyan-300 via-blue-400 to-sky-400 bg-clip-text text-transparent drop-shadow-[0_0_40px_rgba(34,211,238,0.35)]">
             {text.titleLine2}
           </span>
         </motion.h1>

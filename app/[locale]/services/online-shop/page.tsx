@@ -39,7 +39,7 @@ export default async function OnlineShopDashboardPage({ params }: OnlineShopDash
 					<CardHeader>
 						<CardTitle className="text-white">Orders</CardTitle>
 					</CardHeader>
-					<CardContent className="text-2xl font-semibold text-violet-300">{orders.length}</CardContent>
+					<CardContent className="text-2xl font-semibold text-sky-300">{orders.length}</CardContent>
 				</Card>
 			</div>
 
@@ -54,7 +54,7 @@ export default async function OnlineShopDashboardPage({ params }: OnlineShopDash
 					<Link href={`/${locale}/services/online-shop/products`} className="rounded-lg border border-cyan-500/30 px-4 py-2 text-sm text-cyan-300 hover:bg-cyan-500/10">
 						Manage products
 					</Link>
-					<Link href={`/${locale}/services/online-shop/orders`} className="rounded-lg border border-violet-500/30 px-4 py-2 text-sm text-violet-300 hover:bg-violet-500/10">
+					<Link href={`/${locale}/services/online-shop/orders`} className="rounded-lg border border-sky-500/30 px-4 py-2 text-sm text-sky-300 hover:bg-sky-500/10">
 						Process orders
 					</Link>
 				</CardContent>

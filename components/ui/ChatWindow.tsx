@@ -53,8 +53,8 @@ const contextConfig = {
   },
   voice: {
     title: "Voice Lab Assistant",
-    color: "from-purple-500 to-pink-500",
-    bgColor: "bg-purple-500/5",
+    color: "from-sky-500 to-pink-500",
+    bgColor: "bg-sky-500/5",
   },
   business: {
     title: "Business Agent",

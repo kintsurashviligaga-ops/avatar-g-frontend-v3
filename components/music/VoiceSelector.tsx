@@ -233,13 +233,13 @@ export function VoiceSelector({
         animate={{ opacity: 1, y: 0 }}
         className={cn(
           'p-3 rounded-lg',
-          'bg-gradient-to-br from-purple-500/10 to-pink-600/10 border border-purple-400/20'
+          'bg-gradient-to-br from-cyan-500/10 to-blue-600/10 border border-cyan-400/20'
         )}
       >
-        <p className="text-xs text-purple-200">
+        <p className="text-xs text-cyan-200">
           💡 {t('music.voice_tip', 'Choose a voice mode to control your vocal blend.')}
         </p>
-        <p className="text-xs text-purple-200 mt-1">
+        <p className="text-xs text-cyan-200 mt-1">
           🔐 {t('music.voice_consent', 'Only your own voice samples can be used.')}
         </p>
       </motion.div>
@@ -248,7 +248,7 @@ export function VoiceSelector({
       <Button
         size="sm"
         variant="outline"
-        className="w-full border-purple-400/40 text-purple-300 hover:bg-purple-500/20 flex items-center justify-center gap-2"
+        className="w-full border-cyan-400/40 text-cyan-300 hover:bg-cyan-500/20 flex items-center justify-center gap-2"
         onClick={() => onTrainVoice?.('A')}
       >
         <Plus size={16} />

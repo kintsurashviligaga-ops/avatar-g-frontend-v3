@@ -81,7 +81,7 @@ export function HeroVideo() {
         <div
           className="absolute -inset-px rounded-[17px] pointer-events-none z-10"
           style={{
-            background: 'linear-gradient(135deg, rgba(99,102,241,0.25), rgba(139,92,246,0.15), rgba(99,102,241,0.10))',
+            background: 'linear-gradient(135deg, rgba(34,211,238,0.25), rgba(6,182,212,0.15), rgba(34,211,238,0.10))',
             padding: 1,
             mask: 'linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)',
             maskComposite: 'exclude',
@@ -151,17 +151,17 @@ function CinematicPoster() {
     <div className="absolute inset-0 rounded-2xl flex flex-col items-center justify-center gap-6"
       style={{
         background: 'linear-gradient(135deg, #0a0a1a 0%, #0d1025 30%, #111340 60%, #0a0a1a 100%)',
-        border: '1px solid rgba(99,102,241,0.15)',
+        border: '1px solid rgba(34,211,238,0.15)',
       }}>
       {/* Ambient glow */}
-      <div className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[300px] pointer-events-none" style={{ background: 'radial-gradient(ellipse, rgba(99,102,241,0.15) 0%, transparent 70%)', filter: 'blur(60px)' }} />
-      <div className="absolute bottom-1/4 right-1/4 w-[300px] h-[200px] pointer-events-none" style={{ background: 'radial-gradient(ellipse, rgba(139,92,246,0.10) 0%, transparent 70%)', filter: 'blur(50px)' }} />
+      <div className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[300px] pointer-events-none" style={{ background: 'radial-gradient(ellipse, rgba(34,211,238,0.15) 0%, transparent 70%)', filter: 'blur(60px)' }} />
+      <div className="absolute bottom-1/4 right-1/4 w-[300px] h-[200px] pointer-events-none" style={{ background: 'radial-gradient(ellipse, rgba(6,182,212,0.10) 0%, transparent 70%)', filter: 'blur(50px)' }} />
 
       {/* Content */}
       <div className="relative z-10 flex flex-col items-center gap-4 px-6 text-center">
         {/* Agent G Icon */}
         <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl flex items-center justify-center"
-          style={{ background: 'linear-gradient(135deg, rgba(99,102,241,0.9), rgba(139,92,246,0.9))', boxShadow: '0 0 60px rgba(99,102,241,0.3), 0 0 120px rgba(139,92,246,0.15)' }}>
+          style={{ background: 'linear-gradient(135deg, rgba(34,211,238,0.9), rgba(6,182,212,0.9))', boxShadow: '0 0 60px rgba(34,211,238,0.3), 0 0 120px rgba(6,182,212,0.15)' }}>
           <Sparkles className="w-8 h-8 sm:w-10 sm:h-10 text-white" />
         </div>
 
@@ -184,9 +184,9 @@ function CinematicPoster() {
 
         {/* Cinematic bar overlay */}
         <div className="flex items-center gap-2 mt-4">
-          <div className="w-16 h-1 rounded-full" style={{ background: 'linear-gradient(to right, rgba(99,102,241,0.6), rgba(139,92,246,0.3))' }} />
+          <div className="w-16 h-1 rounded-full" style={{ background: 'linear-gradient(to right, rgba(34,211,238,0.6), rgba(6,182,212,0.3))' }} />
           <span className="text-[10px] font-medium text-white/30 tracking-wider uppercase">Cinematic Preview</span>
-          <div className="w-16 h-1 rounded-full" style={{ background: 'linear-gradient(to left, rgba(99,102,241,0.6), rgba(139,92,246,0.3))' }} />
+          <div className="w-16 h-1 rounded-full" style={{ background: 'linear-gradient(to left, rgba(34,211,238,0.6), rgba(6,182,212,0.3))' }} />
         </div>
       </div>
     </div>

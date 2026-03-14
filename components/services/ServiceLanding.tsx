@@ -29,7 +29,7 @@ export default function ServiceLanding({ icon, headline, description, features, 
 
   return (
     <div className="relative min-h-screen overflow-hidden" style={{ backgroundColor: 'var(--color-bg)', color: 'var(--color-text)' }}>
-      <div className="pointer-events-none absolute inset-0" style={{ background: 'radial-gradient(ellipse 900px 420px at 18% 8%, var(--color-accent-soft), transparent 62%), radial-gradient(ellipse 760px 400px at 86% 84%, rgba(124,92,252,0.08), transparent 58%)' }} />
+      <div className="pointer-events-none absolute inset-0" style={{ background: 'radial-gradient(ellipse 900px 420px at 18% 8%, var(--color-accent-soft), transparent 62%), radial-gradient(ellipse 760px 400px at 86% 84%, rgba(8,145,178,0.08), transparent 58%)' }} />
 
       {/* Hero */}
       <section className="relative ag-section px-4 sm:px-6 lg:px-10 max-w-6xl mx-auto pt-24 md:pt-28">
@@ -45,7 +45,7 @@ export default function ServiceLanding({ icon, headline, description, features, 
           <div className="absolute top-0 inset-x-0 h-px" style={{ background: 'linear-gradient(to right, transparent, var(--color-accent-soft), transparent)' }} />
           {/* corner orbs */}
           <div className="absolute -top-16 -right-16 w-48 h-48 rounded-full blur-3xl pointer-events-none" style={{ background: 'var(--color-accent-soft)' }} />
-          <div className="absolute -bottom-16 -left-16 w-40 h-40 rounded-full blur-3xl pointer-events-none" style={{ background: 'rgba(139,92,246,0.06)' }} />
+          <div className="absolute -bottom-16 -left-16 w-40 h-40 rounded-full blur-3xl pointer-events-none" style={{ background: 'rgba(6,182,212,0.06)' }} />
 
           <div className="relative flex items-center gap-3 mb-6">
             <span className="text-3xl">{icon}</span>

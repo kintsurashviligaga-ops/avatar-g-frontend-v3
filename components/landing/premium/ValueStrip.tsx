@@ -65,7 +65,7 @@ export function ValueStrip() {
               }}
             >
               <div
-                className="flex-shrink-0 w-10 h-10 flex items-center justify-center rounded-xl transition-shadow duration-300 group-hover:shadow-[0_0_12px_rgba(99,102,241,0.2)]"
+                className="flex-shrink-0 w-10 h-10 flex items-center justify-center rounded-xl transition-shadow duration-300 group-hover:shadow-[0_0_12px_rgba(34,211,238,0.2)]"
                 style={{ backgroundColor: 'var(--color-accent-soft)', color: 'var(--color-accent)' }}
               >
                 {VALUE_ICONS[i]}

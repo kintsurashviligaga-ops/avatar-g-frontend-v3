@@ -1,0 +1,507 @@
+﻿  Γû▓ Next.js 14.2.35
+  - Environments: .env.local
+
+   Creating an optimized production build ...
+ Γ£ô Compiled successfully
+   Skipping linting
+   Checking validity of types ...
+   Collecting page data ...
+node.exe :  ΓÜá Using edge runtime on a page 
+currently disables static generation for that 
+page
+At line:1 char:1
++ & "C:\Program Files\nodejs/node.exe" 
+"C:\Program Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ( 
+    ΓÜá Using edge...n for that page:String)  
+   [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandEr 
+   ror
+ 
+   Generating static pages (0/228) ...
+[env] Missing optional env variables: 
+STRIPE_WEBHOOK_SECRET, 
+NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY, 
+NEXT_PUBLIC_BASE_URL, BASE_URL, 
+ALLOWED_ORIGINS, SENTRY_DSN, 
+VERCEL_ANALYTICS_ID
+[env] SENTRY_DSN is not configured. 
+Production error tracing is disabled.
+[env] VERCEL_ANALYTICS_ID is not configured. 
+Analytics telemetry is disabled.
+[env] ALLOWED_ORIGINS is not configured. 
+Using localhost defaults.
+   Generating static pages (57/228) 
+   Generating static pages (114/228) 
+   Generating static pages (171/228) 
+ Γ£ô Generating static pages (228/228)
+   Finalizing page optimization ...
+   Collecting build traces ...
+
+Route (app)                                               Size     First Load JS
+Γöî Γùï /                                                     168 B          87.5 kB
+Γö£ Γùï /_not-found                                           168 B          87.5 kB
+Γö£ ΓùÅ /[locale]                                             18.2 kB         131 kB
+Γö£   Γö£ /en
+Γö£   Γö£ /ka
+Γö£   Γöö /ru
+Γö£ ΓùÅ /[locale]/about                                       224 B          96.2 kB
+Γö£   Γö£ /en/about
+Γö£   Γö£ /ka/about
+Γö£   Γöö /ru/about
+Γö£ ΓùÅ /[locale]/account/billing                             4.36 kB         172 kB
+Γö£   Γö£ /en/account/billing
+Γö£   Γö£ /ka/account/billing
+Γö£   Γöö /ru/account/billing
+Γö£ ΓùÅ /[locale]/account/business                            1.9 kB          141 kB
+Γö£   Γö£ /en/account/business
+Γö£   Γö£ /ka/account/business
+Γö£   Γöö /ru/account/business
+Γö£ ΓùÅ /[locale]/account/invoices                            1.97 kB         150 kB
+Γö£   Γö£ /en/account/invoices
+Γö£   Γö£ /ka/account/invoices
+Γö£   Γöö /ru/account/invoices
+Γö£ ΓùÅ /[locale]/account/payments                            1.86 kB         141 kB
+Γö£   Γö£ /en/account/payments
+Γö£   Γö£ /ka/account/payments
+Γö£   Γöö /ru/account/payments
+Γö£ ΓùÅ /[locale]/account/returns                             2.5 kB          147 kB
+Γö£   Γö£ /en/account/returns
+Γö£   Γö£ /ka/account/returns
+Γö£   Γöö /ru/account/returns
+Γö£ ΓùÅ /[locale]/admin/disputes                              2.66 kB         147 kB
+Γö£   Γö£ /en/admin/disputes
+Γö£   Γö£ /ka/admin/disputes
+Γö£   Γöö /ru/admin/disputes
+Γö£ ΓùÅ /[locale]/auth                                        3.08 kB         150 kB
+Γö£   Γö£ /en/auth
+Γö£   Γö£ /ka/auth
+Γö£   Γöö /ru/auth
+Γö£ ╞Æ /[locale]/auth/callback                               0 B                0 B
+Γö£ ╞Æ /[locale]/avatar/[id]                                 224 B          96.2 kB
+Γö£ ΓùÅ /[locale]/blog                                        224 B          96.2 kB
+Γö£   Γö£ /en/blog
+Γö£   Γö£ /ka/blog
+Γö£   Γöö /ru/blog
+Γö£ ΓùÅ /[locale]/business                                    1.77 kB         110 kB
+Γö£   Γö£ /en/business
+Γö£   Γö£ /ka/business
+Γö£   Γöö /ru/business
+Γö£ ΓùÅ /[locale]/careers                                     224 B          96.2 kB
+Γö£   Γö£ /en/careers
+Γö£   Γö£ /ka/careers
+Γö£   Γöö /ru/careers
+Γö£ ╞Æ /[locale]/config/[[...path]]                          224 B          96.2 kB
+Γö£ ΓùÅ /[locale]/contact                                     224 B          96.2 kB
+Γö£   Γö£ /en/contact
+Γö£   Γö£ /ka/contact
+Γö£   Γöö /ru/contact
+Γö£ ΓùÅ /[locale]/cookies                                     224 B          96.2 kB
+Γö£   Γö£ /en/cookies
+Γö£   Γö£ /ka/cookies
+Γö£   Γöö /ru/cookies
+Γö£ ΓùÅ /[locale]/dashboard/fulfillment                       2.53 kB         138 kB
+Γö£   Γö£ /en/dashboard/fulfillment
+Γö£   Γö£ /ka/dashboard/fulfillment
+Γö£   Γöö /ru/dashboard/fulfillment
+Γö£ ΓùÅ /[locale]/executive                                   1.96 kB         101 kB
+Γö£   Γö£ /en/executive
+Γö£   Γö£ /ka/executive
+Γö£   Γöö /ru/executive
+Γö£ ╞Æ /[locale]/icon                                        0 B                0 B
+Γö£ ΓùÅ /[locale]/licenses                                    224 B          96.2 kB
+Γö£   Γö£ /en/licenses
+Γö£   Γö£ /ka/licenses
+Γö£   Γöö /ru/licenses
+Γö£ ΓùÅ /[locale]/login                                       3.08 kB         150 kB
+Γö£   Γö£ /en/login
+Γö£   Γö£ /ka/login
+Γö£   Γöö /ru/login
+Γö£ ΓùÅ /[locale]/pricing                                     3.8 kB          148 kB
+Γö£   Γö£ /en/pricing
+Γö£   Γö£ /ka/pricing
+Γö£   Γöö /ru/pricing
+Γö£ ΓùÅ /[locale]/privacy                                     224 B          96.2 kB
+Γö£   Γö£ /en/privacy
+Γö£   Γö£ /ka/privacy
+Γö£   Γöö /ru/privacy
+Γö£ ΓùÅ /[locale]/sell/dashboard                              2.96 kB         111 kB
+Γö£   Γö£ /en/sell/dashboard
+Γö£   Γö£ /ka/sell/dashboard
+Γö£   Γöö /ru/sell/dashboard
+Γö£ ΓùÅ /[locale]/sell/fulfillment                            1.94 kB         197 kB
+Γö£   Γö£ /en/sell/fulfillment
+Γö£   Γö£ /ka/sell/fulfillment
+Γö£   Γöö /ru/sell/fulfillment
+Γö£ ╞Æ /[locale]/sell/fulfillment/[id]                       2.97 kB         190 kB
+Γö£ ΓùÅ /[locale]/sell/onboarding                             3.6 kB          121 kB
+Γö£   Γö£ /en/sell/onboarding
+Γö£   Γö£ /ka/sell/onboarding
+Γö£   Γöö /ru/sell/onboarding
+Γö£ ΓùÅ /[locale]/sell/returns                                3.02 kB         148 kB
+Γö£   Γö£ /en/sell/returns
+Γö£   Γö£ /ka/sell/returns
+Γö£   Γöö /ru/sell/returns
+Γö£ ΓùÅ /[locale]/services                                    224 B          96.2 kB
+Γö£   Γö£ /en/services
+Γö£   Γö£ /ka/services
+Γö£   Γöö /ru/services
+Γö£ ΓùÅ /[locale]/services/[slug]                             25.2 kB         172 kB
+Γö£   Γö£ /en/services/avatar
+Γö£   Γö£ /en/services/video
+Γö£   Γö£ /en/services/editing
+Γö£   Γöö [+48 more paths]
+Γö£ ΓùÅ /[locale]/services/agent-g                            6.82 kB         163 kB
+Γö£   Γö£ /en/services/agent-g
+Γö£   Γö£ /ka/services/agent-g
+Γö£   Γöö /ru/services/agent-g
+Γö£ ΓùÅ /[locale]/services/agent-g/calls                      4.96 kB         110 kB
+Γö£   Γö£ /en/services/agent-g/calls
+Γö£   Γö£ /ka/services/agent-g/calls
+Γö£   Γöö /ru/services/agent-g/calls
+Γö£ ΓùÅ /[locale]/services/agent-g/dashboard                  4.22 kB         109 kB
+Γö£   Γö£ /en/services/agent-g/dashboard
+Γö£   Γö£ /ka/services/agent-g/dashboard
+Γö£   Γöö /ru/services/agent-g/dashboard
+Γö£ ΓùÅ /[locale]/services/agent-g/settings                   5 kB            110 kB
+Γö£   Γö£ /en/services/agent-g/settings
+Γö£   Γö£ /ka/services/agent-g/settings
+Γö£   Γöö /ru/services/agent-g/settings
+Γö£ ΓùÅ /[locale]/services/marketplace                        3.56 kB         109 kB
+Γö£   Γö£ /en/services/marketplace
+Γö£   Γö£ /ka/services/marketplace
+Γö£   Γöö /ru/services/marketplace
+Γö£ ΓùÅ /[locale]/services/marketplace/browse                 4.5 kB          110 kB
+Γö£   Γö£ /en/services/marketplace/browse
+Γö£   Γö£ /ka/services/marketplace/browse
+Γö£   Γöö /ru/services/marketplace/browse
+Γö£ ΓùÅ /[locale]/services/marketplace/inbox                  4.17 kB         109 kB
+Γö£   Γö£ /en/services/marketplace/inbox
+Γö£   Γö£ /ka/services/marketplace/inbox
+Γö£   Γöö /ru/services/marketplace/inbox
+Γö£ ╞Æ /[locale]/services/marketplace/listings/[id]          4.63 kB         110 kB
+Γö£ ΓùÅ /[locale]/services/marketplace/listings/new           4.89 kB         110 kB
+Γö£   Γö£ /en/services/marketplace/listings/new
+Γö£   Γö£ /ka/services/marketplace/listings/new
+Γö£   Γöö /ru/services/marketplace/listings/new
+Γö£ ΓùÅ /[locale]/services/marketplace/my                     4.49 kB         109 kB
+Γö£   Γö£ /en/services/marketplace/my
+Γö£   Γö£ /ka/services/marketplace/my
+Γö£   Γöö /ru/services/marketplace/my
+Γö£ ΓùÅ /[locale]/services/marketplace/orders                 4.26 kB         109 kB
+Γö£   Γö£ /en/services/marketplace/orders
+Γö£   Γö£ /ka/services/marketplace/orders
+Γö£   Γöö /ru/services/marketplace/orders
+Γö£ ΓùÅ /[locale]/services/online-shop                        224 B          96.2 kB
+Γö£   Γö£ /en/services/online-shop
+Γö£   Γö£ /ka/services/online-shop
+Γö£   Γöö /ru/services/online-shop
+Γö£ ΓùÅ /[locale]/services/online-shop/import                 224 B          96.2 kB
+Γö£   Γö£ /en/services/online-shop/import
+Γö£   Γö£ /ka/services/online-shop/import
+Γö£   Γöö /ru/services/online-shop/import
+Γö£ ΓùÅ /[locale]/services/online-shop/orders                 224 B          96.2 kB
+Γö£   Γö£ /en/services/online-shop/orders
+Γö£   Γö£ /ka/services/online-shop/orders
+Γö£   Γöö /ru/services/online-shop/orders
+Γö£ ΓùÅ /[locale]/services/online-shop/products               227 B          96.2 kB
+Γö£   Γö£ /en/services/online-shop/products
+Γö£   Γö£ /ka/services/online-shop/products
+Γö£   Γöö /ru/services/online-shop/products
+Γö£ ΓùÅ /[locale]/services/online-shop/settings               227 B          96.2 kB
+Γö£   Γö£ /en/services/online-shop/settings
+Γö£   Γö£ /ka/services/online-shop/settings
+Γö£   Γöö /ru/services/online-shop/settings
+Γö£ ΓùÅ /[locale]/services/online-shop/suppliers              224 B          96.2 kB
+Γö£   Γö£ /en/services/online-shop/suppliers
+Γö£   Γö£ /ka/services/online-shop/suppliers
+Γö£   Γöö /ru/services/online-shop/suppliers
+Γö£ ΓùÅ /[locale]/services/workflow                           24 kB           162 kB
+Γö£   Γö£ /en/services/workflow
+Γö£   Γö£ /ka/services/workflow
+Γö£   Γöö /ru/services/workflow
+Γö£ ΓùÅ /[locale]/signup                                      3.24 kB         150 kB
+Γö£   Γö£ /en/signup
+Γö£   Γö£ /ka/signup
+Γö£   Γöö /ru/signup
+Γö£ ΓùÅ /[locale]/terms                                       224 B          96.2 kB
+Γö£   Γö£ /en/terms
+Γö£   Γö£ /ka/terms
+Γö£   Γöö /ru/terms
+Γö£ ΓùÅ /[locale]/tools/margin-calculator                     2.28 kB         142 kB
+Γö£   Γö£ /en/tools/margin-calculator
+Γö£   Γö£ /ka/tools/margin-calculator
+Γö£   Γöö /ru/tools/margin-calculator
+Γö£ ╞Æ /[locale]/tracking/[orderId]                          2.38 kB         126 kB
+Γö£ ΓùÅ /[locale]/workspace                                   10.2 kB         143 kB
+Γö£   Γö£ /en/workspace
+Γö£   Γö£ /ka/workspace
+Γö£   Γöö /ru/workspace
+Γö£ ╞Æ /api/admin/affiliates                                 0 B                0 B
+Γö£ ╞Æ /api/admin/analytics                                  0 B                0 B
+Γö£ ╞Æ /api/admin/billing/plans                              0 B                0 B
+Γö£ ╞Æ /api/admin/billing/users/[id]                         0 B                0 B
+Γö£ ╞Æ /api/admin/payments                                   0 B                0 B
+Γö£ ╞Æ /api/admin/payouts                                    0 B                0 B
+Γö£ ╞Æ /api/admin/payouts/approve                            0 B                0 B
+Γö£ ╞Æ /api/admin/payouts/eligible                           0 B                0 B
+Γö£ ╞Æ /api/admin/payouts/reject                             0 B                0 B
+Γö£ ╞Æ /api/admin/stats                                      0 B                0 B
+Γö£ ╞Æ /api/affiliate/analytics                              0 B                0 B
+Γö£ ╞Æ /api/affiliate/balance                                0 B                0 B
+Γö£ ╞Æ /api/affiliate/claim                                  0 B                0 B
+Γö£ ╞Æ /api/affiliate/commissions                            0 B                0 B
+Γö£ ╞Æ /api/affiliate/dashboard                              0 B                0 B
+Γö£ ╞Æ /api/affiliate/me                                     0 B                0 B
+Γö£ ╞Æ /api/affiliate/payout/request                         0 B                0 B
+Γö£ ╞Æ /api/affiliate/payouts                                0 B                0 B
+Γö£ ╞Æ /api/agent-g/admin/memory                             0 B                0 B
+Γö£ ╞Æ /api/agent-g/calls                                    0 B                0 B
+Γö£ ╞Æ /api/agent-g/calls/callback                           0 B                0 B
+Γö£ ╞Æ /api/agent-g/calls/start                              0 B                0 B
+Γö£ ╞Æ /api/agent-g/calls/transcribe                         0 B                0 B
+Γö£ ╞Æ /api/agent-g/calls/tts                                0 B                0 B
+Γö£ ╞Æ /api/agent-g/calls/webhook/inbound                    0 B                0 B
+Γö£ ╞Æ /api/agent-g/calls/webhook/status                     0 B                0 B
+Γö£ ╞Æ /api/agent-g/channels                                 0 B                0 B
+Γö£ ╞Æ /api/agent-g/chat                                     0 B                0 B
+Γö£ ╞Æ /api/agent-g/delegate                                 0 B                0 B
+Γö£ ╞Æ /api/agent-g/execute                                  0 B                0 B
+Γö£ ╞Æ /api/agent-g/output                                   0 B                0 B
+Γö£ ╞Æ /api/agent-g/plan                                     0 B                0 B
+Γö£ ╞Æ /api/agent-g/router/execute                           0 B                0 B
+Γö£ ╞Æ /api/agent-g/status                                   0 B                0 B
+Γö£ ╞Æ /api/agent-g/telegram                                 0 B                0 B
+Γö£ ╞Æ /api/agent-g/telegram/connect-code                    0 B                0 B
+Γö£ ╞Æ /api/agent-g/telegram/send                            0 B                0 B
+Γö£ ╞Æ /api/agent-g/telegram/set-webhook                     0 B                0 B
+Γö£ ╞Æ /api/agent-g/telegram/status                          0 B                0 B
+Γö£ ╞Æ /api/agent-g/telegram/webhook                         0 B                0 B
+Γö£ ╞Æ /api/agent-g/webhook/telegram                         0 B                0 B
+Γö£ ╞Æ /api/agent-g/webhook/whatsapp                         0 B                0 B
+Γö£ ╞Æ /api/agent-g/whatsapp/send                            0 B                0 B
+Γö£ ╞Æ /api/agents/chat                                      0 B                0 B
+Γö£ ╞Æ /api/agents/execute                                   0 B                0 B
+Γö£ ╞Æ /api/agents/status                                    0 B                0 B
+Γö£ ╞Æ /api/ai/chat                                          0 B                0 B
+Γö£ ╞Æ /api/analytics/events                                 0 B                0 B
+Γö£ ╞Æ /api/analytics/revenue                                0 B                0 B
+Γö£ ╞Æ /api/app/admin/jobs                                   0 B                0 B
+Γö£ ╞Æ /api/app/jobs                                         0 B                0 B
+Γö£ ╞Æ /api/app/jobs/[id]                                    0 B                0 B
+Γö£ ╞Æ /api/app/observability/admin                          0 B                0 B
+Γö£ ╞Æ /api/app/observability/me                             0 B                0 B
+Γö£ ╞Æ /api/app/outputs                                      0 B                0 B
+Γö£ ╞Æ /api/app/services/[slug]/run                          0 B                0 B
+Γö£ ╞Æ /api/app/worker/tick                                  0 B                0 B
+Γö£ ╞Æ /api/app/workflow-runs/[id]                           0 B                0 B
+Γö£ ╞Æ /api/app/workflow-runs/[id]/steps/[stepId]            0 B                0 B
+Γö£ ╞Æ /api/app/workflow-runs/[id]/tick                      0 B                0 B
+Γö£ ╞Æ /api/app/workflows                                    0 B                0 B
+Γö£ ╞Æ /api/app/workflows/[id]                               0 B                0 B
+Γö£ ╞Æ /api/app/workflows/[id]/run                           0 B                0 B
+Γö£ ╞Æ /api/auth/otp/check                                   0 B                0 B
+Γö£ ╞Æ /api/auth/otp/send                                    0 B                0 B
+Γö£ ╞Æ /api/automation                                       0 B                0 B
+Γö£ ╞Æ /api/avatar/core                                      0 B                0 B
+Γö£ ╞Æ /api/avatar/create                                    0 B                0 B
+Γö£ ╞Æ /api/avatar/generate                                  0 B                0 B
+Γö£ ╞Æ /api/avatar/mark-ready                                0 B                0 B
+Γö£ ╞Æ /api/avatar/set-core                                  0 B                0 B
+Γö£ ╞Æ /api/avatar/upload-complete                           0 B                0 B
+Γö£ ╞Æ /api/avatars                                          0 B                0 B
+Γö£ ╞Æ /api/avatars/latest                                   0 B                0 B
+Γö£ ╞Æ /api/avatars/save                                     0 B                0 B
+Γö£ ╞Æ /api/billing/checkout                                 0 B                0 B
+Γö£ ╞Æ /api/billing/credits                                  0 B                0 B
+Γö£ ╞Æ /api/billing/plan                                     0 B                0 B
+Γö£ ╞Æ /api/billing/portal                                   0 B                0 B
+Γö£ ╞Æ /api/billing/topup                                    0 B                0 B
+Γö£ ╞Æ /api/billing/usage                                    0 B                0 B
+Γö£ ╞Æ /api/billing/usage/export                             0 B                0 B
+Γö£ ╞Æ /api/billing/use                                      0 B                0 B
+Γö£ ╞Æ /api/billing/webhook                                  0 B                0 B
+Γö£ ╞Æ /api/business-agent/projects                          0 B                0 B
+Γö£ ╞Æ /api/business-agent/projects/[id]                     0 B                0 B
+Γö£ ╞Æ /api/business-agent/run                               0 B                0 B
+Γö£ ╞Æ /api/business-agent/uploads                           0 B                0 B
+Γö£ ╞Æ /api/business/calc                                    0 B                0 B
+Γö£ ╞Æ /api/business/items                                   0 B                0 B
+Γö£ ╞Æ /api/business/items/[id]                              0 B                0 B
+Γö£ ╞Æ /api/business/items/[id]/events                       0 B                0 B
+Γö£ ╞Æ /api/business/profile                                 0 B                0 B
+Γö£ ╞Æ /api/business/projects                                0 B                0 B
+Γö£ ╞Æ /api/business/projects/[id]                           0 B                0 B
+Γö£ ╞Æ /api/chat                                             0 B                0 B
+Γö£ ╞Æ /api/chat/orchestrate                                 0 B                0 B
+Γö£ ╞Æ /api/chat/stream                                      0 B                0 B
+Γö£ ╞Æ /api/checkout/create-intent                           0 B                0 B
+Γö£ ╞Æ /api/commerce/compliance                              0 B                0 B
+Γö£ ╞Æ /api/commerce/orders                                  0 B                0 B
+Γö£ ╞Æ /api/commerce/wallet                                  0 B                0 B
+Γö£ ╞Æ /api/credits/balance                                  0 B                0 B
+Γö£ ╞Æ /api/decision/evaluate                                0 B                0 B
+Γö£ ╞Æ /api/deepseek                                         0 B                0 B
+Γö£ ╞Æ /api/diagnostics                                      0 B                0 B
+Γö£ ╞Æ /api/diagnostics/env                                  0 B                0 B
+Γö£ ╞Æ /api/disputes                                         0 B                0 B
+Γö£ ╞Æ /api/env_integrity_status                             0 B                0 B
+Γö£ ╞Æ /api/env-check                                        0 B                0 B
+Γö£ ╞Æ /api/executive/task                                   0 B                0 B
+Γö£ ╞Æ /api/executive/tasks                                  0 B                0 B
+Γö£ ╞Æ /api/finance/admin/summary                            0 B                0 B
+Γö£ ╞Æ /api/finance/admin/timeseries                         0 B                0 B
+Γö£ ╞Æ /api/finance/affiliate/summary                        0 B                0 B
+Γö£ ╞Æ /api/finance/me/summary                               0 B                0 B
+Γö£ ╞Æ /api/finance/scenarios                                0 B                0 B
+Γö£ ╞Æ /api/finance/seller/summary                           0 B                0 B
+Γö£ ╞Æ /api/finance/simulate                                 0 B                0 B
+Γö£ ╞Æ /api/fulfillment                                      0 B                0 B
+Γö£ ╞Æ /api/fulfillment/[id]/retry                           0 B                0 B
+Γö£ ╞Æ /api/growth/churn-risk/scan                           0 B                0 B
+Γö£ ╞Æ /api/growth/events/process                            0 B                0 B
+Γö£ ╞Æ /api/growth/referrals/code                            0 B                0 B
+Γö£ ╞Æ /api/growth/referrals/track                           0 B                0 B
+Γö£ ╞Æ /api/health                                           0 B                0 B
+Γö£ ╞Æ /api/invite                                           0 B                0 B
+Γö£ ╞Æ /api/invoices                                         0 B                0 B
+Γö£ ╞Æ /api/invoices/[id]                                    0 B                0 B
+Γö£ ╞Æ /api/invoices/create                                  0 B                0 B
+Γö£ ╞Æ /api/invoices/generate                                0 B                0 B
+Γö£ ╞Æ /api/invoices/list                                    0 B                0 B
+Γö£ ╞Æ /api/jobs                                             0 B                0 B
+Γö£ ╞Æ /api/jobs/[id]                                        0 B                0 B
+Γö£ ╞Æ /api/jobs/[id]/status                                 0 B                0 B
+Γö£ ╞Æ /api/jobs/create                                      0 B                0 B
+Γö£ ╞Æ /api/jobs/list                                        0 B                0 B
+Γö£ ╞Æ /api/launch-30/initialize                             0 B                0 B
+Γö£ ╞Æ /api/launch/generate                                  0 B                0 B
+Γö£ ╞Æ /api/launch/plan                                      0 B                0 B
+Γö£ ╞Æ /api/lead-capture                                     0 B                0 B
+Γö£ ╞Æ /api/log-error                                        0 B                0 B
+Γö£ ╞Æ /api/market/scan                                      0 B                0 B
+Γö£ ╞Æ /api/marketplace/favorites                            0 B                0 B
+Γö£ ╞Æ /api/marketplace/health                               0 B                0 B
+Γö£ ╞Æ /api/marketplace/inquiries                            0 B                0 B
+Γö£ ╞Æ /api/marketplace/inquiries/[id]/messages              0 B                0 B
+Γö£ ╞Æ /api/marketplace/kpis                                 0 B                0 B
+Γö£ ╞Æ /api/marketplace/listings                             0 B                0 B
+Γö£ ╞Æ /api/marketplace/listings/[id]                        0 B                0 B
+Γö£ ╞Æ /api/marketplace/metrics                              0 B                0 B
+Γö£ ╞Æ /api/marketplace/orders                               0 B                0 B
+Γö£ ╞Æ /api/marketplace/search                               0 B                0 B
+Γö£ ╞Æ /api/metrics/conversion                               0 B                0 B
+Γö£ ╞Æ /api/metrics/kpis                                     0 B                0 B
+Γö£ ╞Æ /api/metrics/revenue                                  0 B                0 B
+Γö£ ╞Æ /api/music/generate                                   0 B                0 B
+Γö£ ╞Æ /api/music/list                                       0 B                0 B
+Γö£ ╞Æ /api/observability/dashboard                          0 B                0 B
+Γö£ ╞Æ /api/observability/latency                            0 B                0 B
+Γö£ ╞Æ /api/orchestrate                                      0 B                0 B
+Γö£ ╞Æ /api/orders/create-payment                            0 B                0 B
+Γö£ ╞Æ /api/org/branding                                     0 B                0 B
+Γö£ ╞Æ /api/payments/provider                                0 B                0 B
+Γö£ ╞Æ /api/payouts/accounts                                 0 B                0 B
+Γö£ ╞Æ /api/payouts/history                                  0 B                0 B
+Γö£ ╞Æ /api/payouts/request                                  0 B                0 B
+Γö£ ╞Æ /api/payouts/requests                                 0 B                0 B
+Γö£ ╞Æ /api/products/validate-launch                         0 B                0 B
+Γö£ ╞Æ /api/profile/landing                                  0 B                0 B
+Γö£ ╞Æ /api/projects                                         0 B                0 B
+Γö£ ╞Æ /api/projects/[projectId]                             0 B                0 B
+Γö£ ╞Æ /api/projects/[projectId]/versions                    0 B                0 B
+Γö£ ╞Æ /api/projects/[projectId]/versions/[versionId]/rerun  0 B                0 B
+Γö£ ╞Æ /api/referral                                         0 B                0 B
+Γö£ ╞Æ /api/refunds/[id]                                     0 B                0 B
+Γö£ ╞Æ /api/refunds/create                                   0 B                0 B
+Γö£ ╞Æ /api/replicate/audio                                  0 B                0 B
+Γö£ ╞Æ /api/replicate/avatar                                 0 B                0 B
+Γö£ ╞Æ /api/replicate/generate                               0 B                0 B
+Γö£ ╞Æ /api/replicate/image                                  0 B                0 B
+Γö£ ╞Æ /api/replicate/photo                                  0 B                0 B
+Γö£ ╞Æ /api/replicate/run                                    0 B                0 B
+Γö£ ╞Æ /api/replicate/video                                  0 B                0 B
+Γö£ ╞Æ /api/replicate/visual-ai                              0 B                0 B
+Γö£ ╞Æ /api/returns                                          0 B                0 B
+Γö£ ╞Æ /api/returns/[id]                                     0 B                0 B
+Γö£ ╞Æ /api/returns/create                                   0 B                0 B
+Γö£ ╞Æ /api/router                                           0 B                0 B
+Γö£ ╞Æ /api/seller/activate                                  0 B                0 B
+Γö£ ╞Æ /api/seller/kpi                                       0 B                0 B
+Γö£ ╞Æ /api/services/health                                  0 B                0 B
+Γö£ ╞Æ /api/share-event                                      0 B                0 B
+Γö£ ╞Æ /api/shipments/[id]                                   0 B                0 B
+Γö£ ╞Æ /api/shipping/event                                   0 B                0 B
+Γö£ ╞Æ /api/shipping/quote                                   0 B                0 B
+Γö£ ╞Æ /api/shipping/select-profile                          0 B                0 B
+Γö£ ╞Æ /api/shipping/track                                   0 B                0 B
+Γö£ ╞Æ /api/shop/create                                      0 B                0 B
+Γö£ ╞Æ /api/shop/fulfill                                     0 B                0 B
+Γö£ ╞Æ /api/shop/import                                      0 B                0 B
+Γö£ ╞Æ /api/shop/orders                                      0 B                0 B
+Γö£ ╞Æ /api/shop/products                                    0 B                0 B
+Γö£ ╞Æ /api/shop/suppliers                                   0 B                0 B
+Γö£ ╞Æ /api/smm/export                                       0 B                0 B
+Γö£ ╞Æ /api/smm/posts/[id]/assets                            0 B                0 B
+Γö£ ╞Æ /api/smm/projects                                     0 B                0 B
+Γö£ ╞Æ /api/smm/projects/[id]                                0 B                0 B
+Γö£ ╞Æ /api/smm/projects/[id]/posts                          0 B                0 B
+Γö£ ╞Æ /api/smm/publish                                      0 B                0 B
+Γö£ ╞Æ /api/stripe/connect/account-status                    0 B                0 B
+Γö£ ╞Æ /api/stripe/connect/create-account                    0 B                0 B
+Γö£ ╞Æ /api/stripe/connect/create-account-link               0 B                0 B
+Γö£ ╞Æ /api/stripe/connect/login-link                        0 B                0 B
+Γö£ ╞Æ /api/stripe/connect/onboarding                        0 B                0 B
+Γö£ ╞Æ /api/stripe/connect/status                            0 B                0 B
+Γö£ ╞Æ /api/stripe/create-checkout-session                   0 B                0 B
+Γö£ ╞Æ /api/stripe/customer-portal                           0 B                0 B
+Γö£ ╞Æ /api/stripe/health                                    0 B                0 B
+Γö£ ╞Æ /api/stripe/subscription/create-checkout              0 B                0 B
+Γö£ ╞Æ /api/stripe/subscription/get-status                   0 B                0 B
+Γö£ ╞Æ /api/stripe/webhook                                   0 B                0 B
+Γö£ ╞Æ /api/telegram/send                                    0 B                0 B
+Γö£ ╞Æ /api/tests/smoke                                      0 B                0 B
+Γö£ ╞Æ /api/tests/stripe-webhook                             0 B                0 B
+Γö£ ╞Æ /api/tools/margin-calculator                          0 B                0 B
+Γö£ ╞Æ /api/tracking/[id]                                    0 B                0 B
+Γö£ ╞Æ /api/tracking/sync                                    0 B                0 B
+Γö£ ╞Æ /api/user/stats                                       0 B                0 B
+Γö£ ╞Æ /api/validate-env                                     0 B                0 B
+Γö£ Γùï /api/version                                          0 B                0 B
+Γö£ ╞Æ /api/video/generate                                   0 B                0 B
+Γö£ ╞Æ /api/videos                                           0 B                0 B
+Γö£ ╞Æ /api/voice-lab/assets                                 0 B                0 B
+Γö£ ╞Æ /api/voice-lab/health                                 0 B                0 B
+Γö£ ╞Æ /api/voice-lab/jobs                                   0 B                0 B
+Γö£ ╞Æ /api/voice-lab/profiles                               0 B                0 B
+Γö£ ╞Æ /api/voice-lab/projects                               0 B                0 B
+Γö£ ╞Æ /api/voice-lab/projects/[id]                          0 B                0 B
+Γö£ ╞Æ /api/voice/incoming                                   0 B                0 B
+Γö£ ╞Æ /api/voice/outgoing                                   0 B                0 B
+Γö£ ╞Æ /api/webhooks/phone                                   0 B                0 B
+Γö£ ╞Æ /api/webhooks/stripe                                  0 B                0 B
+Γö£ ╞Æ /api/webhooks/whatsapp                                0 B                0 B
+Γö£ Γùï /auth                                                 168 B          87.5 kB
+Γö£ ╞Æ /auth/callback                                        0 B                0 B
+Γö£ Γùï /business                                             168 B          87.5 kB
+Γö£ Γùï /executive                                            168 B          87.5 kB
+Γö£ ╞Æ /favicon.png                                          0 B                0 B
+Γö£ ╞Æ /icon                                                 0 B                0 B
+Γö£ Γùï /login                                                168 B          87.5 kB
+Γö£ Γùï /robots.txt                                           0 B                0 B
+Γö£ Γùï /signup                                               168 B          87.5 kB
+Γöö Γùï /sitemap.xml                                          0 B                0 B
++ First Load JS shared by all                             87.3 kB
+  Γö£ chunks/2117-d48e311361c14e1c.js                       31.7 kB
+  Γö£ chunks/fd9d1056-22513e251f27d5e3.js                   53.6 kB
+  Γöö other shared chunks (total)                           1.95 kB
+
+
+╞Æ Middleware                                              75.1 kB
+
+Γùï  (Static)   prerendered as static content
+ΓùÅ  (SSG)      prerendered as static HTML (uses getStaticProps)
+╞Æ  (Dynamic)  server-rendered on demand
+

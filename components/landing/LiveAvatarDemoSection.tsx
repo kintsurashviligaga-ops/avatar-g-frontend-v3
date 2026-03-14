@@ -21,7 +21,7 @@ const AVATAR_STYLES: {
   grad: string; border: string; activeBorder: string; glow: string
 }[] = [
   { id: 'realistic',    emoji: '🎭', en: 'Realistic',    ka: 'რეალისტური', ru: 'Реализм',   grad: 'from-slate-500/25 to-blue-600/25',    border: 'border-blue-400/20',    activeBorder: 'border-blue-400/60',    glow: 'rgba(59,130,246,0.3)' },
-  { id: 'cinematic',    emoji: '🎬', en: 'Cinematic',    ka: 'კინო-სტილი', ru: 'Кино',      grad: 'from-violet-500/25 to-indigo-600/25', border: 'border-violet-400/20',  activeBorder: 'border-violet-400/60',  glow: 'rgba(139,92,246,0.3)' },
+  { id: 'cinematic',    emoji: '🎬', en: 'Cinematic',    ka: 'კინო-სტილი', ru: 'Кино',      grad: 'from-sky-500/25 to-blue-600/25', border: 'border-sky-400/20',  activeBorder: 'border-sky-400/60',  glow: 'rgba(6,182,212,0.3)' },
   { id: 'anime',        emoji: '⚡', en: 'Anime',        ka: 'ანიმე',      ru: 'Аниме',     grad: 'from-pink-500/25 to-rose-600/25',     border: 'border-pink-400/20',    activeBorder: 'border-pink-400/60',    glow: 'rgba(236,72,153,0.3)' },
   { id: 'professional', emoji: '💼', en: 'Professional', ka: 'პროფ.',      ru: 'Профი',     grad: 'from-cyan-500/25 to-teal-600/25',     border: 'border-cyan-400/20',    activeBorder: 'border-cyan-400/60',    glow: 'rgba(34,211,238,0.3)' },
   { id: 'artistic',     emoji: '🎨', en: 'Artistic',     ka: 'მხატვრული',  ru: 'Арт',       grad: 'from-amber-500/25 to-orange-600/25',  border: 'border-amber-400/20',   activeBorder: 'border-amber-400/60',   glow: 'rgba(245,158,11,0.3)' },
@@ -30,7 +30,7 @@ const AVATAR_STYLES: {
 
 // ─── Avatar Powers & Deploy CTAs ─────────────────────────────
 const AVATAR_POWERS = [
-  { icon: Video,        en: 'AI Video',   ka: 'AI ვიდეო',   ru: 'AI Видео',   href: 'video',    color: 'text-violet-300' },
+  { icon: Video,        en: 'AI Video',   ka: 'AI ვიდეო',   ru: 'AI Видео',   href: 'video',    color: 'text-sky-300' },
   { icon: Music2,       en: 'AI Voice',   ka: 'AI ხმა',     ru: 'AI Голос',   href: 'music',    color: 'text-pink-300' },
   { icon: FileText,     en: 'AI Script',  ka: 'სკრიპტი',    ru: 'Сценарий',   href: 'text',     color: 'text-lime-300' },
   { icon: Globe,        en: 'Brand Kit',  ka: 'ბრენდ კიტი', ru: 'Бренд',      href: 'image',    color: 'text-teal-300' },
@@ -39,7 +39,7 @@ const AVATAR_POWERS = [
 ]
 
 const DEPLOY_SERVICES = [
-  { icon: Video,   en: 'Video AI',  ka: 'ვიდეო AI', ru: 'Видео AI', href: 'video',   grad: 'from-violet-500/15 to-violet-600/10', border: 'border-violet-400/30' },
+  { icon: Video,   en: 'Video AI',  ka: 'ვიდეო AI', ru: 'Видео AI', href: 'video',   grad: 'from-sky-500/15 to-sky-600/10', border: 'border-sky-400/30' },
   { icon: Music2,  en: 'Voice AI',  ka: 'ხმა AI',   ru: 'Голос AI', href: 'music',   grad: 'from-pink-500/15 to-pink-600/10',     border: 'border-pink-400/30' },
   { icon: Globe,   en: 'Brand Kit', ka: 'ბრენდი',   ru: 'Бренд',    href: 'image',   grad: 'from-teal-500/15 to-teal-600/10',     border: 'border-teal-400/30' },
   { icon: Bot,     en: 'Agent G',   ka: 'Agent G',  ru: 'Agent G',  href: 'agent-g', grad: 'from-cyan-500/15 to-cyan-600/10',     border: 'border-cyan-400/30' },
@@ -338,7 +338,7 @@ export function LiveAvatarDemoSection() {
     <section className="relative px-4 py-12 sm:px-6 sm:py-16 md:py-24">
       {/* section neon edges */}
       <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-cyan-400/20 to-transparent" />
-      <div className="absolute bottom-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-violet-400/15 to-transparent" />
+      <div className="absolute bottom-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-cyan-400/15 to-transparent" />
       <style dangerouslySetInnerHTML={{ __html: SCAN_CSS }} />
 
       <div className="mx-auto max-w-6xl">
@@ -375,7 +375,7 @@ export function LiveAvatarDemoSection() {
         >
           {([
             { icon: Users,    value: '47,231+', label: text.statsAvatars,  color: 'text-cyan-300',    glow: 'rgba(34,211,238,0.10)' },
-            { icon: Sparkles, value: '6',       label: text.statsStyles,   color: 'text-violet-300',  glow: 'rgba(139,92,246,0.10)' },
+            { icon: Sparkles, value: '6',       label: text.statsStyles,   color: 'text-sky-300',  glow: 'rgba(6,182,212,0.10)' },
             { icon: Zap,      value: '<10s',    label: text.statsTime,     color: 'text-amber-300',   glow: 'rgba(245,158,11,0.10)' },
             { icon: Bot,      value: '17',      label: text.statsServices, color: 'text-emerald-300', glow: 'rgba(52,211,153,0.10)' },
           ] as const).map((stat, i) => {
@@ -518,8 +518,8 @@ export function LiveAvatarDemoSection() {
                     {stage === 'rendering' && (
                       <div className="absolute inset-0 flex items-center justify-center bg-black/20">
                         <div className="flex flex-col items-center gap-2">
-                          <div className="w-10 h-10 rounded-full border-2 border-violet-400/30 border-t-violet-400 animate-spin" />
-                          <span className="text-xs text-violet-200/80 font-medium">{text.stages.rendering}</span>
+                          <div className="w-10 h-10 rounded-full border-2 border-cyan-400/30 border-t-cyan-400 animate-spin" />
+                          <span className="text-xs text-cyan-200/80 font-medium">{text.stages.rendering}</span>
                         </div>
                       </div>
                     )}
@@ -556,7 +556,7 @@ export function LiveAvatarDemoSection() {
                     <button
                       onClick={capturePhoto}
                       disabled={!cameraReady}
-                      className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-cyan-500 via-blue-500 to-violet-500 text-white px-4 py-3 sm:py-2.5 text-sm font-semibold hover:opacity-90 disabled:opacity-50 transition-opacity shadow-[0_0_20px_rgba(34,211,238,0.28)] min-h-[44px]"
+                      className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-cyan-500 via-cyan-400 to-blue-500 text-white px-4 py-3 sm:py-2.5 text-sm font-semibold hover:opacity-90 disabled:opacity-50 transition-opacity shadow-[0_0_20px_rgba(34,211,238,0.28)] min-h-[44px]"
                     >
                       <Camera className="w-4 h-4" /> {text.capture}
                     </button>
@@ -603,7 +603,7 @@ export function LiveAvatarDemoSection() {
 
                   <button
                     onClick={() => setCapturedImage('/brand/gaga.jpg')}
-                    className="ml-auto inline-flex items-center gap-1.5 rounded-xl border border-violet-400/25 bg-violet-400/10 px-3.5 py-2 text-sm font-medium text-violet-200/80 hover:bg-violet-400/18 hover:text-violet-100 transition-colors"
+                    className="ml-auto inline-flex items-center gap-1.5 rounded-xl border border-cyan-400/25 bg-cyan-400/10 px-3.5 py-2 text-sm font-medium text-cyan-200/80 hover:bg-cyan-400/18 hover:text-cyan-100 transition-colors"
                   >
                     <Sparkles className="w-3.5 h-3.5" /> {text.demo}
                   </button>
@@ -617,7 +617,7 @@ export function LiveAvatarDemoSection() {
                 initial={{ opacity: 0, y: 6 }}
                 animate={{ opacity: 1, y: 0 }}
                 onClick={() => runPipeline(capturedImage)}
-                className="w-full inline-flex items-center justify-center gap-2.5 rounded-xl bg-gradient-to-r from-cyan-500 via-blue-500 to-violet-600 text-white px-5 py-3 text-sm font-bold hover:brightness-110 transition-all shadow-[0_4px_24px_rgba(34,211,238,0.28)]"
+                className="w-full inline-flex items-center justify-center gap-2.5 rounded-xl bg-gradient-to-r from-cyan-500 via-cyan-400 to-blue-500 text-white px-5 py-3 text-sm font-bold hover:brightness-110 transition-all shadow-[0_4px_24px_rgba(34,211,238,0.28)]"
               >
                 <Wand2 className="w-4 h-4" />
                 {text.generate} — {locale === 'ka' ? activeStyle.ka : locale === 'ru' ? activeStyle.ru : activeStyle.en}
@@ -647,7 +647,7 @@ export function LiveAvatarDemoSection() {
               </div>
               <div className="h-1.5 rounded-full bg-white/10 overflow-hidden">
                 <motion.div
-                  className="h-full rounded-full bg-gradient-to-r from-cyan-400 via-blue-500 to-violet-500"
+                  className="h-full rounded-full bg-gradient-to-r from-cyan-400 via-cyan-500 to-blue-500"
                   animate={{ width: `${progress}%` }}
                   transition={{ duration: 0.55, ease: 'easeOut' }}
                 />
@@ -726,7 +726,7 @@ export function LiveAvatarDemoSection() {
                   initial={{ opacity: 0, y: 8 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0 }}
-                  className="rounded-2xl border border-cyan-400/25 bg-[linear-gradient(135deg,rgba(34,211,238,0.08),rgba(99,102,241,0.06))] p-4 space-y-3"
+                  className="rounded-2xl border border-cyan-400/25 bg-[linear-gradient(135deg,rgba(34,211,238,0.08),rgba(34,211,238,0.06))] p-4 space-y-3"
                 >
                   <p className="text-xs font-semibold text-white/75">{text.deployLabel}</p>
                   <div className="grid grid-cols-2 gap-2">

@@ -485,7 +485,7 @@ export const CameraComponent = React.forwardRef<
             <Button
               onClick={startCamera}
               disabled={cameraState.isLoading}
-              className="flex-1 bg-gradient-to-r from-cyan-500 via-blue-500 to-violet-500 hover:opacity-90 text-white border-0 shadow-[0_0_20px_rgba(34,211,238,0.30)] transition-opacity"
+              className="flex-1 bg-gradient-to-r from-cyan-500 via-blue-500 to-sky-500 hover:opacity-90 text-white border-0 shadow-[0_0_20px_rgba(34,211,238,0.30)] transition-opacity"
             >
               <Camera size={16} className="mr-2" />
               Start Camera
@@ -494,7 +494,7 @@ export const CameraComponent = React.forwardRef<
             <>
               <Button
                 onClick={capturePhoto}
-                className="flex-1 bg-gradient-to-r from-cyan-500 via-blue-500 to-violet-500 hover:opacity-90 text-white border-0 shadow-[0_0_20px_rgba(34,211,238,0.30)] transition-opacity"
+                className="flex-1 bg-gradient-to-r from-cyan-500 via-blue-500 to-sky-500 hover:opacity-90 text-white border-0 shadow-[0_0_20px_rgba(34,211,238,0.30)] transition-opacity"
               >
                 <Camera size={16} className="mr-2" />
                 Capture

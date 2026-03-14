@@ -265,7 +265,7 @@ export default function AgentGPage() {
     <main className="relative min-h-screen px-4 pb-16 pt-20 sm:px-6 lg:px-8" style={{ backgroundColor: 'var(--color-bg)' }}>
       {/* Ambient glow */}
       <div className="pointer-events-none absolute inset-0 overflow-hidden">
-        <div className="absolute left-1/2 top-0 h-[500px] w-[800px] -translate-x-1/2" style={{ background: 'radial-gradient(ellipse 50% 50% at 50% 20%, rgba(99,102,241,0.10) 0%, transparent 70%)', filter: 'blur(60px)' }} />
+        <div className="absolute left-1/2 top-0 h-[500px] w-[800px] -translate-x-1/2" style={{ background: 'radial-gradient(ellipse 50% 50% at 50% 20%, rgba(34,211,238,0.10) 0%, transparent 70%)', filter: 'blur(60px)' }} />
       </div>
 
       <div className="relative z-10 mx-auto max-w-6xl">
@@ -357,7 +357,7 @@ export default function AgentGPage() {
                   className="inline-flex items-center gap-2 rounded-xl px-6 py-2.5 text-[14px] font-semibold text-white transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.97]"
                   style={{
                     backgroundColor: 'var(--color-accent)',
-                    boxShadow: '0 4px 16px rgba(99,102,241,0.25)',
+                    boxShadow: '0 4px 16px rgba(34,211,238,0.25)',
                   }}
                 >
                   {running ? (

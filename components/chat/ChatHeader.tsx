@@ -56,7 +56,7 @@ export function ChatHeader({
           {/* Agent G logo */}
           <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
             style={{
-              background: 'linear-gradient(135deg, var(--color-accent), #8b5cf6)',
+              background: 'linear-gradient(135deg, var(--color-accent), #0891b2)',
               boxShadow: '0 0 20px var(--color-accent-soft)',
             }}>
             <span className="text-white text-sm font-bold">G</span>

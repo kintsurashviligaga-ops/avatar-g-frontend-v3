@@ -35,7 +35,7 @@ export function WorkflowDemo() {
 
   return (
     <section className="relative px-4 sm:px-6 lg:px-10 py-20 sm:py-28 overflow-hidden">
-      <div className="absolute inset-0 pointer-events-none" style={{ background: 'radial-gradient(ellipse 60% 40% at 50% 50%, rgba(99,102,241,0.04) 0%, transparent 70%)' }} />
+      <div className="absolute inset-0 pointer-events-none" style={{ background: 'radial-gradient(ellipse 60% 40% at 50% 50%, rgba(34,211,238,0.04) 0%, transparent 70%)' }} />
 
       <div className="relative max-w-5xl mx-auto text-center">
         <p className="text-[11px] tracking-[0.25em] uppercase font-medium mb-3" style={{ color: 'var(--color-accent)' }}>{c.eyebrow}</p>
@@ -59,7 +59,7 @@ export function WorkflowDemo() {
                       ? '1px solid var(--color-accent)'
                       : '1px solid var(--color-border)',
                     boxShadow: i === 0 || i === PIPELINE.length - 1
-                      ? '0 0 30px rgba(99,102,241,0.15)'
+                      ? '0 0 30px rgba(34,211,238,0.15)'
                       : 'none',
                   }}
                 >

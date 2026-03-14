@@ -34,9 +34,9 @@ export function ClarificationCardView({ question, options, onSelect }: Props) {
             onClick={() => onSelect(opt.value)}
             className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-2 rounded-xl transition-all hover:scale-[1.02] active:scale-[0.98]"
             style={{
-              backgroundColor: 'rgba(99,102,241,0.08)',
+              backgroundColor: 'rgba(34,211,238,0.08)',
               color: 'var(--color-accent)',
-              border: '1px solid rgba(99,102,241,0.2)',
+              border: '1px solid rgba(34,211,238,0.2)',
             }}
           >
             {opt.icon && <span>{opt.icon}</span>}

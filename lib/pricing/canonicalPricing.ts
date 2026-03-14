@@ -58,7 +58,7 @@ export const PRICING_PLANS = [
     ],
     cta: 'Contact Sales',
     popular: false,
-    gradient: 'from-purple-500 to-pink-600',
+    gradient: 'from-sky-500 to-pink-600',
   },
   {
     name: 'Enterprise',

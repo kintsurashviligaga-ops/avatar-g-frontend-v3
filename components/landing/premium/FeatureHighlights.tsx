@@ -61,7 +61,7 @@ export function FeatureHighlights() {
               className="group relative p-6 sm:p-7 rounded-2xl transition-all duration-300 hover:-translate-y-1"
               style={{ backgroundColor: 'var(--card-bg)', border: '1px solid var(--color-border)' }}
             >
-              <div className="absolute inset-0 rounded-2xl pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-300" style={{ boxShadow: 'inset 0 0 0 1px var(--color-accent), 0 0 20px rgba(99,102,241,0.06)' }} />
+              <div className="absolute inset-0 rounded-2xl pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-300" style={{ boxShadow: 'inset 0 0 0 1px var(--color-accent), 0 0 20px rgba(34,211,238,0.06)' }} />
               <span className="text-2xl mb-4 block">{f.icon}</span>
               <h3 className="text-base font-semibold mb-2" style={{ color: 'var(--color-text)' }}>{f.title[lang] || f.title.en}</h3>
               <p className="text-sm leading-relaxed" style={{ color: 'var(--color-text-tertiary)' }}>{f.desc[lang] || f.desc.en}</p>

@@ -334,7 +334,7 @@ export default function UniversalChat() {
         style={{
           background: isOpen
             ? 'rgba(239,68,68,0.85)'
-            : 'linear-gradient(135deg, var(--color-accent), #8b5cf6)',
+            : 'linear-gradient(135deg, var(--color-accent), #0891b2)',
           color: '#fff',
           boxShadow: isOpen
             ? '0 4px 20px rgba(239,68,68,0.3)'

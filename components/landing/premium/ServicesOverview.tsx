@@ -19,7 +19,7 @@ export function ServicesOverview() {
   return (
     <section className="relative px-4 sm:px-6 lg:px-10 py-20 sm:py-28 overflow-hidden">
       {/* Ambient glow */}
-      <div className="absolute inset-0 pointer-events-none" style={{ background: 'radial-gradient(ellipse 70% 50% at 50% 30%, rgba(99,102,241,0.04) 0%, transparent 70%)' }} />
+      <div className="absolute inset-0 pointer-events-none" style={{ background: 'radial-gradient(ellipse 70% 50% at 50% 30%, rgba(34,211,238,0.04) 0%, transparent 70%)' }} />
 
       <div className="relative max-w-6xl mx-auto">
         {/* Header */}
@@ -35,11 +35,11 @@ export function ServicesOverview() {
             <Link
               key={svc.slug}
               href={lh(`/services/${svc.slug}`)}
-              className="group relative flex flex-col items-start gap-3 p-5 sm:p-6 rounded-2xl transition-all duration-300 hover:-translate-y-1 hover:shadow-lg hover:shadow-indigo-500/5"
+              className="group relative flex flex-col items-start gap-3 p-5 sm:p-6 rounded-2xl transition-all duration-300 hover:-translate-y-1 hover:shadow-lg hover:shadow-cyan-500/5"
               style={{ backgroundColor: 'var(--card-bg)', border: '1px solid var(--color-border)' }}
             >
               {/* Hover glow */}
-              <div className="absolute inset-0 rounded-2xl pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-300" style={{ boxShadow: 'inset 0 0 0 1px var(--color-accent), 0 0 20px rgba(99,102,241,0.08)' }} />
+              <div className="absolute inset-0 rounded-2xl pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-300" style={{ boxShadow: 'inset 0 0 0 1px var(--color-accent), 0 0 20px rgba(34,211,238,0.08)' }} />
               <span className="text-2xl transition-transform duration-300 group-hover:scale-110">{svc.icon}</span>
               <div>
                 <h3 className="text-sm font-semibold mb-1 transition-colors group-hover:text-[var(--color-accent)]" style={{ color: 'var(--color-text)' }}>

@@ -35,7 +35,7 @@ export function WelcomePanel({ language, hasProject, onAction, onServiceSelect }
         <div
           className="w-14 h-14 mx-auto mb-4 rounded-2xl flex items-center justify-center"
           style={{
-            background: 'linear-gradient(135deg, var(--color-accent), #8b5cf6)',
+            background: 'linear-gradient(135deg, var(--color-accent), #0891b2)',
             boxShadow: '0 0 32px var(--color-accent-soft)',
           }}
         >

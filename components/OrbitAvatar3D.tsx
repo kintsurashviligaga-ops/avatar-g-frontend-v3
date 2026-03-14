@@ -98,7 +98,7 @@ function AvatarCSSFallback() {
         }} />
         <div style={{
           position:'absolute', inset:'12%',
-          border: '1px solid rgba(139,92,246,0.28)',
+          border: '1px solid rgba(6,182,212,0.28)',
           borderRadius: '50%',
           animation: 'css3d-ring2 10s linear infinite',
         }} />
@@ -134,8 +134,8 @@ function AvatarCSSFallback() {
             {/* Left shoulder */}
             <div style={{
               width:'22%', height:'10%', borderRadius:'50% 50% 0 0',
-              background:'linear-gradient(180deg,rgba(139,92,246,0.30),rgba(6,182,212,0.12))',
-              border:'1px solid rgba(139,92,246,0.50)',
+              background:'linear-gradient(180deg,rgba(6,182,212,0.30),rgba(6,182,212,0.12))',
+              border:'1px solid rgba(6,182,212,0.50)',
               marginTop:'1%', alignSelf:'flex-start',
             }} />
             {/* Torso */}
@@ -151,9 +151,9 @@ function AvatarCSSFallback() {
               {/* Chest reactor */}
               <div style={{
                 width:'25%', paddingTop:'25%', borderRadius:'50%',
-                background:'rgba(139,92,246,0.55)',
-                border:'1px solid rgba(139,92,246,0.90)',
-                boxShadow:'0 0 10px rgba(139,92,246,0.70)',
+                background:'rgba(6,182,212,0.55)',
+                border:'1px solid rgba(6,182,212,0.90)',
+                boxShadow:'0 0 10px rgba(6,182,212,0.70)',
                 margin:'0 auto',
                 animation:'css3d-pulse 2s ease-in-out infinite',
               }} />
@@ -168,8 +168,8 @@ function AvatarCSSFallback() {
             {/* Right shoulder */}
             <div style={{
               width:'22%', height:'10%', borderRadius:'50% 50% 0 0',
-              background:'linear-gradient(180deg,rgba(139,92,246,0.30),rgba(6,182,212,0.12))',
-              border:'1px solid rgba(139,92,246,0.50)',
+              background:'linear-gradient(180deg,rgba(6,182,212,0.30),rgba(6,182,212,0.12))',
+              border:'1px solid rgba(6,182,212,0.50)',
               marginTop:'1%', alignSelf:'flex-start',
             }} />
           </div>
@@ -208,7 +208,7 @@ function AvatarCSSFallback() {
                 {/* Knee accent */}
                 <div style={{
                   width:'80%', height:'3px', margin:'35% auto 0',
-                  background:'rgba(139,92,246,0.60)',
+                  background:'rgba(6,182,212,0.60)',
                   borderRadius:'2px',
                 }} />
               </div>
@@ -270,7 +270,7 @@ function HumanFigure({ avatarUrl }: { avatarUrl: string | null }) {
   // Materials — created once, disposed on unmount
   const M = useMemo(() => ({
     B: makeMat('#060c1a', '#22d3ee', 0.55),      // Body — dark blue + cyan emissive
-    A: makeMat('#0a0520', '#8b5cf6', 0.88),      // Accent — dark + violet emissive
+    A: makeMat('#0a0520', '#22d3ee', 0.88),      // Accent — dark + cyan emissive
     H: makeMat('#081426', '#38bdf8', 0.70),      // Head — sky-blue emissive
     GW: new THREE.MeshBasicMaterial({            // Ghost wireframe overlay
       color: new THREE.Color('#22d3ee'),
@@ -325,7 +325,7 @@ function HumanFigure({ avatarUrl }: { avatarUrl: string | null }) {
       {/* Platform secondary ring */}
       <mesh position={[0, -1.02, 0]} rotation={[Math.PI / 2, 0, 0]}>
         <torusGeometry args={[0.38, 0.008, 6, 64]} />
-        <meshBasicMaterial color="#8b5cf6" transparent opacity={0.25} />
+        <meshBasicMaterial color="#22d3ee" transparent opacity={0.25} />
       </mesh>
 
       {/* ══ HEAD ══ */}
@@ -599,7 +599,7 @@ function NeonOrbitRings() {
       </mesh>
       <mesh ref={ring2}>
         <torusGeometry args={[0.88, 0.005, 6, 64]} />
-        <meshBasicMaterial color="#8b5cf6" transparent opacity={0.28} />
+        <meshBasicMaterial color="#22d3ee" transparent opacity={0.28} />
       </mesh>
       <mesh ref={ring3}>
         <torusGeometry args={[0.60, 0.004, 6, 48]} />
@@ -689,9 +689,9 @@ function Avatar3DCanvas({ avatarUrl }: { avatarUrl: string | null }) {
     >
       <ambientLight intensity={0.28} />
       <pointLight position={[1.5, 2.4, 2.0]}  intensity={3.2} color="#22d3ee" />
-      <pointLight position={[-1.8, 1.2, -1.4]} intensity={2.6} color="#8b5cf6" />
+      <pointLight position={[-1.8, 1.2, -1.4]} intensity={2.6} color="#22d3ee" />
       <pointLight position={[0.5, -1.6, 2.4]}  intensity={2.0} color="#3b82f6" />
-      <pointLight position={[0, 0.6, -2.8]}    intensity={1.2} color="#7c3aed" />
+      <pointLight position={[0, 0.6, -2.8]}    intensity={1.2} color="#1d4ed8" />
       <HumanFigure avatarUrl={avatarUrl} />
       <NeonOrbitRings />
       <HologramParticles />

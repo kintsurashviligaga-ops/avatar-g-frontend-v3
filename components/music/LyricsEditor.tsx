@@ -104,7 +104,7 @@ export function LyricsEditor({
                 <Button
                   size="sm"
                   variant="outline"
-                  className="border-purple-400/40 text-purple-300 hover:bg-purple-500/20 flex items-center gap-1"
+                  className="border-cyan-400/40 text-cyan-300 hover:bg-cyan-500/20 flex items-center gap-1"
                   onClick={onGenerate}
                 >
                   <Wand2 size={14} />

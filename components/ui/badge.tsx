@@ -13,7 +13,7 @@ const badgeVariants = cva(
         warning:     'border-amber-400/35 bg-amber-400/[0.12] text-amber-200 shadow-[0_0_12px_rgba(251,191,36,0.15)]',
         danger:      'border-red-400/35 bg-red-400/[0.12] text-red-200 shadow-[0_0_12px_rgba(248,113,113,0.15)]',
         error:       'border-red-400/35 bg-red-400/[0.12] text-red-200 shadow-[0_0_12px_rgba(248,113,113,0.15)]',
-        accent:      'border-violet-400/35 bg-violet-400/[0.12] text-violet-200 shadow-[0_0_12px_rgba(167,139,250,0.15)]',
+        accent:      'border-cyan-400/35 bg-cyan-400/[0.12] text-cyan-200 shadow-[0_0_12px_rgba(34,211,238,0.15)]',
         primary:     'border-cyan-400/35 bg-cyan-400/[0.12] text-cyan-200 shadow-[0_0_12px_rgba(34,211,238,0.15)]',
         secondary:   'border-white/[0.12] bg-white/[0.05] text-white/70',
         outline:     'border-white/[0.15] bg-transparent text-white/60',

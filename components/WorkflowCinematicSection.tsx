@@ -32,22 +32,22 @@ const COPY = {
 const STEPS = {
   en: [
     { id: 'idea', title: '1) Idea', subtitle: 'Goal + brief', detail: 'Define what you want to create and the target outcome.', icon: Upload, tone: 'from-cyan-500/25 to-cyan-300/10 border-cyan-300/35' },
-    { id: 'plan', title: '2) Agent G', subtitle: 'Direction + planning', detail: 'Agent G selects modules, assigns tasks, and builds the execution plan.', icon: BrainCircuit, tone: 'from-blue-500/25 to-indigo-300/10 border-blue-300/35' },
-    { id: 'create', title: '3) Creation', subtitle: 'AI production', detail: 'Avatar, video, music, image and text modules generate assets in parallel.', icon: Sparkles, tone: 'from-violet-500/25 to-fuchsia-300/10 border-violet-300/35' },
+    { id: 'plan', title: '2) Agent G', subtitle: 'Direction + planning', detail: 'Agent G selects modules, assigns tasks, and builds the execution plan.', icon: BrainCircuit, tone: 'from-blue-500/25 to-sky-300/10 border-blue-300/35' },
+    { id: 'create', title: '3) Creation', subtitle: 'AI production', detail: 'Avatar, video, music, image and text modules generate assets in parallel.', icon: Sparkles, tone: 'from-sky-500/25 to-cyan-300/10 border-sky-300/35' },
     { id: 'automate', title: '4) Automation', subtitle: 'Workflow execution', detail: 'Rules and workflows handle optimization, delivery, and repetition.', icon: ShieldCheck, tone: 'from-emerald-500/25 to-emerald-300/10 border-emerald-300/35' },
     { id: 'result', title: '5) Result', subtitle: 'Launch-ready output', detail: 'Receive polished assets ready for publish, sales, and scale.', icon: Download, tone: 'from-amber-500/25 to-orange-300/10 border-amber-300/35' },
   ],
   ka: [
     { id: 'idea', title: '1) Idea', subtitle: 'მიზანი + ბრიფი', detail: 'დააფიქსირე რა უნდა შეიქმნას და რა შედეგზე ხარ ორიენტირებული.', icon: Upload, tone: 'from-cyan-500/25 to-cyan-300/10 border-cyan-300/35' },
-    { id: 'plan', title: '2) Agent G', subtitle: 'გეგმა + კოორდინაცია', detail: 'Agent G არჩევს მოდულებს, ანაწილებს ამოცანებს და აწყობს გეგმას.', icon: BrainCircuit, tone: 'from-blue-500/25 to-indigo-300/10 border-blue-300/35' },
-    { id: 'create', title: '3) Creation', subtitle: 'AI წარმოება', detail: 'ავატარი, ვიდეო, მუსიკა, სურათი და ტექსტი პარალელურად გენერირდება.', icon: Sparkles, tone: 'from-violet-500/25 to-fuchsia-300/10 border-violet-300/35' },
+    { id: 'plan', title: '2) Agent G', subtitle: 'გეგმა + კოორდინაცია', detail: 'Agent G არჩევს მოდულებს, ანაწილებს ამოცანებს და აწყობს გეგმას.', icon: BrainCircuit, tone: 'from-blue-500/25 to-sky-300/10 border-blue-300/35' },
+    { id: 'create', title: '3) Creation', subtitle: 'AI წარმოება', detail: 'ავატარი, ვიდეო, მუსიკა, სურათი და ტექსტი პარალელურად გენერირდება.', icon: Sparkles, tone: 'from-sky-500/25 to-cyan-300/10 border-sky-300/35' },
     { id: 'automate', title: '4) Automation', subtitle: 'workflow შესრულება', detail: 'ავტომატიზაცია მართავს ოპტიმიზაციას, მიწოდებას და გამეორებად პროცესებს.', icon: ShieldCheck, tone: 'from-emerald-500/25 to-emerald-300/10 border-emerald-300/35' },
     { id: 'result', title: '5) Result', subtitle: 'მზად შედეგი', detail: 'იღებ გამოქვეყნებისა და მასშტაბირებისთვის მზა საბოლოო შედეგს.', icon: Download, tone: 'from-amber-500/25 to-orange-300/10 border-amber-300/35' },
   ],
   ru: [
     { id: 'idea', title: '1) Idea', subtitle: 'цель + бриф', detail: 'Определите задачу и ожидаемый конечный результат.', icon: Upload, tone: 'from-cyan-500/25 to-cyan-300/10 border-cyan-300/35' },
-    { id: 'plan', title: '2) Agent G', subtitle: 'план + координация', detail: 'Agent G подбирает модули, распределяет задачи и строит план.', icon: BrainCircuit, tone: 'from-blue-500/25 to-indigo-300/10 border-blue-300/35' },
-    { id: 'create', title: '3) Creation', subtitle: 'AI production', detail: 'Модули аватара, видео, музыки, изображения и текста работают вместе.', icon: Sparkles, tone: 'from-violet-500/25 to-fuchsia-300/10 border-violet-300/35' },
+    { id: 'plan', title: '2) Agent G', subtitle: 'план + координация', detail: 'Agent G подбирает модули, распределяет задачи и строит план.', icon: BrainCircuit, tone: 'from-blue-500/25 to-sky-300/10 border-blue-300/35' },
+    { id: 'create', title: '3) Creation', subtitle: 'AI production', detail: 'Модули аватара, видео, музыки, изображения и текста работают вместе.', icon: Sparkles, tone: 'from-sky-500/25 to-cyan-300/10 border-sky-300/35' },
     { id: 'automate', title: '4) Automation', subtitle: 'выполнение workflow', detail: 'Автоматизация управляет оптимизацией, доставкой и повторяемостью.', icon: ShieldCheck, tone: 'from-emerald-500/25 to-emerald-300/10 border-emerald-300/35' },
     { id: 'result', title: '5) Result', subtitle: 'готовый итог', detail: 'Получайте финальные материалы для публикации и масштабирования.', icon: Download, tone: 'from-amber-500/25 to-orange-300/10 border-amber-300/35' },
   ],
@@ -68,7 +68,7 @@ export function WorkflowCinematicSection() {
 
   return (
     <section id="workflow-cinematic" className="relative w-full py-28 border-t border-white/[0.04] overflow-hidden bg-transparent">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_18%_16%,rgba(34,211,238,0.10),transparent_50%),radial-gradient(circle_at_84%_84%,rgba(124,92,252,0.12),transparent_52%)]" />
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_18%_16%,rgba(34,211,238,0.10),transparent_50%),radial-gradient(circle_at_84%_84%,rgba(8,145,178,0.12),transparent_52%)]" />
       <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(to_bottom,rgba(3,7,18,0.7),rgba(3,7,18,0.4)_42%,rgba(3,7,18,0.7)_100%)]" />
 
       <div className="relative z-10 max-w-6xl mx-auto px-4 sm:px-6">
@@ -124,7 +124,7 @@ export function WorkflowCinematicSection() {
           </div>
 
           <div className="rounded-2xl border border-white/[0.12] bg-[linear-gradient(135deg,rgba(12,22,46,0.85),rgba(7,14,32,0.72))] backdrop-blur-xl p-5 md:p-6 shadow-[0_0_0_1px_rgba(255,255,255,0.10),0_8px_32px_rgba(0,0,0,0.3)] overflow-hidden relative">
-            <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-violet-400/15 to-transparent" />
+            <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-cyan-400/15 to-transparent" />
             <p className="text-[10px] uppercase tracking-[0.2em] text-white/45 font-semibold mb-4">{copy.artifacts}</p>
             <div className="grid grid-cols-2 gap-3">
               {artifacts.map((item) => {

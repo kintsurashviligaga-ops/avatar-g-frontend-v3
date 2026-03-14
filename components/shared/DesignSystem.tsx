@@ -47,7 +47,7 @@ const gradients = {
   cyan: "from-cyan-400 to-blue-500",
   green: "from-green-400 to-emerald-500",
   red: "from-red-400 to-orange-500",
-  purple: "from-purple-400 to-pink-500",
+  purple: "from-cyan-400 to-blue-500",
   blue: "from-blue-400 to-cyan-500",
 };
 
@@ -328,7 +328,7 @@ export function AnimatedBackground() {
           y: [0, -30, 0],
         }}
         transition={{ duration: 10, repeat: Infinity, ease: "easeInOut" }}
-        className="absolute -bottom-40 -right-40 w-80 h-80 bg-gradient-to-l from-purple-500/30 to-pink-500/20 rounded-full blur-3xl"
+        className="absolute -bottom-40 -right-40 w-80 h-80 bg-gradient-to-l from-cyan-500/30 to-blue-500/20 rounded-full blur-3xl"
       />
     </div>
   );

@@ -61,7 +61,7 @@ export default function LocaleSignupPage() {
   if (success) {
     return (
       <div className="relative min-h-screen bg-transparent flex items-center justify-center px-4 overflow-hidden">
-        <div className="pointer-events-none absolute inset-0" style={{ background: 'radial-gradient(circle at 20% 18%, rgba(99,102,241,0.08), transparent 52%), radial-gradient(circle at 80% 82%, rgba(139,92,246,0.08), transparent 52%)' }} />
+        <div className="pointer-events-none absolute inset-0" style={{ background: 'radial-gradient(circle at 20% 18%, rgba(34,211,238,0.08), transparent 52%), radial-gradient(circle at 80% 82%, rgba(6,182,212,0.08), transparent 52%)' }} />
         <div className="relative z-10 w-full max-w-sm text-center space-y-4 rounded-3xl p-6" style={{ backgroundColor: 'var(--card-bg)', border: '1px solid var(--color-border)' }}>
           <div className="w-16 h-16 mx-auto bg-emerald-500/10 border border-emerald-500/20 rounded-2xl flex items-center justify-center">
             <span className="text-2xl">✓</span>
@@ -78,7 +78,7 @@ export default function LocaleSignupPage() {
 
   return (
     <div className="relative min-h-screen bg-transparent flex items-center justify-center px-4 overflow-hidden">
-      <div className="pointer-events-none absolute inset-0" style={{ background: 'radial-gradient(circle at 20% 18%, rgba(99,102,241,0.08), transparent 52%), radial-gradient(circle at 80% 82%, rgba(139,92,246,0.08), transparent 52%)' }} />
+      <div className="pointer-events-none absolute inset-0" style={{ background: 'radial-gradient(circle at 20% 18%, rgba(34,211,238,0.08), transparent 52%), radial-gradient(circle at 80% 82%, rgba(6,182,212,0.08), transparent 52%)' }} />
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
           <h1 className="text-2xl font-bold" style={{ color: 'var(--color-text)' }}>Create account</h1>

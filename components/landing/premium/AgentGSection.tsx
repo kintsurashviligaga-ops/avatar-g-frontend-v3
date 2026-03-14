@@ -50,7 +50,7 @@ export function AgentGSection() {
   return (
     <section className="relative px-4 sm:px-6 lg:px-10 py-20 sm:py-28 overflow-hidden">
       {/* Ambient */}
-      <div className="absolute inset-0 pointer-events-none" style={{ background: 'radial-gradient(ellipse 60% 40% at 50% 50%, rgba(139,92,246,0.06) 0%, transparent 70%)' }} />
+      <div className="absolute inset-0 pointer-events-none" style={{ background: 'radial-gradient(ellipse 60% 40% at 50% 50%, rgba(6,182,212,0.06) 0%, transparent 70%)' }} />
 
       <div className="relative max-w-6xl mx-auto">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-20 items-center">
@@ -58,12 +58,12 @@ export function AgentGSection() {
           <div className="flex items-center justify-center">
             <div className="relative w-[280px] h-[280px] sm:w-[340px] sm:h-[340px]">
               {/* Glow rings */}
-              <div className="absolute inset-0 rounded-full" style={{ border: '1px solid rgba(99,102,241,0.08)' }} />
-              <div className="absolute inset-8 rounded-full" style={{ border: '1px solid rgba(99,102,241,0.12)' }} />
-              <div className="absolute inset-16 rounded-full" style={{ border: '1px solid rgba(99,102,241,0.16)' }} />
+              <div className="absolute inset-0 rounded-full" style={{ border: '1px solid rgba(34,211,238,0.08)' }} />
+              <div className="absolute inset-8 rounded-full" style={{ border: '1px solid rgba(34,211,238,0.12)' }} />
+              <div className="absolute inset-16 rounded-full" style={{ border: '1px solid rgba(34,211,238,0.16)' }} />
               {/* Center */}
               <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2">
-                <div className="w-24 h-24 rounded-3xl flex items-center justify-center text-5xl" style={{ background: 'linear-gradient(135deg, var(--color-accent), rgba(139,92,246,0.9))', boxShadow: '0 0 80px rgba(99,102,241,0.35), 0 0 160px rgba(139,92,246,0.15)' }}>
+                <div className="w-24 h-24 rounded-3xl flex items-center justify-center text-5xl" style={{ background: 'linear-gradient(135deg, var(--color-accent), rgba(6,182,212,0.9))', boxShadow: '0 0 80px rgba(34,211,238,0.35), 0 0 160px rgba(6,182,212,0.15)' }}>
                   🤖
                 </div>
               </div>
@@ -74,7 +74,7 @@ export function AgentGSection() {
                 const x = 50 + r * Math.cos(a)
                 const y = 50 + r * Math.sin(a)
                 return (
-                  <div key={i} className="absolute w-3 h-3 rounded-full -translate-x-1/2 -translate-y-1/2" style={{ left: `${x}%`, top: `${y}%`, backgroundColor: 'var(--color-accent)', opacity: 0.3 + (i * 0.1), boxShadow: '0 0 12px rgba(99,102,241,0.3)' }} />
+                  <div key={i} className="absolute w-3 h-3 rounded-full -translate-x-1/2 -translate-y-1/2" style={{ left: `${x}%`, top: `${y}%`, backgroundColor: 'var(--color-accent)', opacity: 0.3 + (i * 0.1), boxShadow: '0 0 12px rgba(34,211,238,0.3)' }} />
                 )
               })}
             </div>
@@ -100,7 +100,7 @@ export function AgentGSection() {
 
             <Link
               href={lh('/services/agent-g')}
-              className="inline-flex items-center gap-2 text-sm font-semibold px-7 py-3.5 rounded-xl transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-indigo-500/20"
+              className="inline-flex items-center gap-2 text-sm font-semibold px-7 py-3.5 rounded-xl transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-cyan-500/20"
               style={{ backgroundColor: 'var(--color-accent)', color: '#fff' }}
             >
               {c.cta}

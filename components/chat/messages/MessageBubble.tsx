@@ -27,7 +27,7 @@ export function UserBubble({ content, attachments }: UserBubbleProps) {
         className="px-4 py-2.5 rounded-2xl rounded-br-md"
         style={{
           maxWidth: config.maxWidth,
-          background: 'linear-gradient(135deg, var(--color-accent), #8b5cf6)',
+          background: 'linear-gradient(135deg, var(--color-accent), #0891b2)',
           color: '#fff',
         }}
       >

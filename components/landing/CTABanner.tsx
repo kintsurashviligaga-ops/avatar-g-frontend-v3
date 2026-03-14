@@ -43,9 +43,9 @@ export function CTABanner() {
 
       {/* Layered background */}
       <div className="absolute inset-0 pointer-events-none">
-        <div className="absolute inset-0 bg-gradient-to-br from-cyan-600/[0.06] via-transparent to-violet-600/[0.07]" />
+        <div className="absolute inset-0 bg-gradient-to-br from-cyan-600/[0.06] via-transparent to-cyan-500/[0.07]" />
         {/* Central radial */}
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[1200px] h-[700px] bg-gradient-to-r from-cyan-500/[0.07] to-violet-500/[0.07] rounded-full blur-[160px] animate-glow-pulse" />
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[1200px] h-[700px] bg-gradient-to-r from-cyan-500/[0.07] to-cyan-600/[0.07] rounded-full blur-[160px] animate-glow-pulse" />
         {/* Corner glow */}
         <div className="absolute bottom-0 left-0 w-80 h-80 bg-blue-500/[0.06] rounded-full blur-[100px]" />
         <div className="absolute top-0 right-0 w-80 h-80 bg-rose-500/[0.04] rounded-full blur-[100px]" />
@@ -85,12 +85,12 @@ export function CTABanner() {
         <h2 className="text-[2.2rem] sm:text-5xl lg:text-[4rem] font-extrabold text-white mb-6 leading-[1.06] tracking-[-0.03em]">
           {text.title}{' '}
           <span className="relative inline-block">
-            <span className="bg-gradient-to-r from-cyan-300 via-blue-400 to-violet-400 bg-clip-text text-transparent">
+            <span className="bg-gradient-to-r from-cyan-300 via-cyan-400 to-blue-400 bg-clip-text text-transparent">
               {text.titleAccent}
             </span>
             {/* Neon underline */}
             <motion.span
-              className="absolute -bottom-1 left-0 right-0 h-0.5 bg-gradient-to-r from-cyan-400 via-blue-400 to-violet-500 rounded-full"
+              className="absolute -bottom-1 left-0 right-0 h-0.5 bg-gradient-to-r from-cyan-400 via-cyan-300 to-blue-400 rounded-full"
               style={{ boxShadow: '0 0 12px rgba(34,211,238,0.6)' }}
               initial={{ scaleX: 0 }}
               whileInView={{ scaleX: 1 }}
@@ -145,7 +145,7 @@ export function CTABanner() {
       </motion.div>
 
       {/* Bottom border */}
-      <div className="absolute bottom-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-violet-500/20 to-transparent" />
+      <div className="absolute bottom-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-cyan-500/20 to-transparent" />
     </section>
   )
 }

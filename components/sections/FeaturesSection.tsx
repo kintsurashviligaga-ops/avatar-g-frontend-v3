@@ -29,13 +29,13 @@ const features = [
     icon: Video,
     title: "Video Generation",
     description: "Generate professional videos with your avatar as the presenter",
-    color: "from-purple-500 to-pink-600"
+    color: "from-sky-500 to-pink-600"
   },
   {
     icon: ImageIcon,
     title: "Image Forge",
     description: "Create stunning images featuring your digital twin",
-    color: "from-blue-500 to-indigo-600"
+    color: "from-blue-500 to-cyan-600"
   },
   {
     icon: Music,

@@ -9,7 +9,7 @@ import { useLanguage } from '@/lib/i18n/LanguageContext'
 const PLAN_ACCENTS = [
   { gradient: 'from-gray-400 to-slate-500', glow: 'rgba(148,163,184,0.15)', icon: Zap },
   { gradient: 'from-cyan-400 to-blue-500', glow: 'rgba(6,182,212,0.25)', icon: Sparkles },
-  { gradient: 'from-purple-400 to-indigo-500', glow: 'rgba(139,92,246,0.25)', icon: Crown },
+  { gradient: 'from-cyan-400 to-blue-500', glow: 'rgba(34,211,238,0.25)', icon: Crown },
   { gradient: 'from-amber-400 to-orange-500', glow: 'rgba(245,158,11,0.25)', icon: Building },
 ]
 

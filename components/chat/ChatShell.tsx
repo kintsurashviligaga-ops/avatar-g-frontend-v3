@@ -299,7 +299,7 @@ export default function ChatShell() {
           style={{
             background: panel.isOpen
               ? 'rgba(239,68,68,0.85)'
-              : 'linear-gradient(135deg, var(--color-accent), #8b5cf6)',
+              : 'linear-gradient(135deg, var(--color-accent), #0891b2)',
             color: '#fff',
             boxShadow: panel.isOpen
               ? '0 4px 20px rgba(239,68,68,0.3)'

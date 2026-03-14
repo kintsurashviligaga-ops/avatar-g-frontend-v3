@@ -52,7 +52,7 @@ export function UsageStats({ stats }: UsageStatsProps) {
         </div>
         
         {/* Credits Spent */}
-        <div className="rounded-xl border border-violet-400/20 bg-violet-400/[0.05] p-4">
+        <div className="rounded-xl border border-cyan-400/20 bg-cyan-400/[0.05] p-4">
           <p className="text-white/45 text-xs font-medium mb-1.5 tracking-wide">Credits Spent</p>
           <p className="text-2xl font-black text-white">{formatCredits(stats.totalCreditsSpent)}</p>
         </div>
