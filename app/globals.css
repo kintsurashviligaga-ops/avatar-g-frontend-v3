@@ -1137,6 +1137,17 @@ a:focus-visible {
     animation: float-particle 5s ease-in-out infinite;
   }
 
+  /* ── Service cards: premium hover shadow + lift ── */
+  .svc-card {
+    transition: transform 0.4s cubic-bezier(0.22, 1, 0.36, 1),
+                box-shadow 0.4s cubic-bezier(0.22, 1, 0.36, 1),
+                border-color 0.3s ease;
+  }
+  .svc-card:hover {
+    box-shadow: 0 12px 40px rgba(0,0,0,0.35), 0 0 20px rgba(34,211,238,0.06) !important;
+    border-color: rgba(34,211,238,0.25) !important;
+  }
+
   /* ── Slow pulse for ambient glows */
   .animate-pulse-slow {
     animation: pulse-slow 4s ease-in-out infinite;
