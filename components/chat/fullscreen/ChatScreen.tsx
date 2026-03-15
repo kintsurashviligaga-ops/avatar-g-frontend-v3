@@ -287,19 +287,23 @@ export function ChatScreen() {
 
   return (
     <div
-      className="w-full flex items-center justify-center"
+      className="
+        fixed inset-0 z-[100] flex items-center justify-center
+        md:relative md:inset-auto md:z-auto md:w-full
+      "
       style={{
-        height: '100dvh',
+        height: undefined,
         backgroundColor: 'var(--color-bg)',
       }}
     >
-      {/* 9:16 phone frame on desktop, full viewport on mobile */}
+      {/* True fullscreen on mobile, 9:16 phone frame on desktop */}
       <div
         className="
           flex flex-col w-full h-full
-          md:w-[420px] md:max-h-[calc(100dvh-48px)] md:h-[746px]
+          md:w-[420px] md:h-[746px] md:max-h-[calc(100dvh-120px)]
           md:rounded-3xl md:overflow-hidden
           md:shadow-[0_16px_80px_rgba(0,0,0,0.45),0_0_1px_rgba(255,255,255,0.1)_inset]
+          md:my-8
         "
         style={{
           backgroundColor: 'var(--color-bg)',

@@ -16,13 +16,11 @@ import { UseCases } from './UseCases'
 import { WorkspaceTemplates } from './WorkspaceTemplates'
 import { LandingCTA } from './LandingCTA'
 import { LandingFooter } from './LandingFooter'
-import { LandingChatSection } from '@/components/chat/fullscreen/LandingChatSection'
 
 export default function PremiumLanding() {
   return (
     <div className="relative min-h-screen overflow-x-hidden" style={{ backgroundColor: 'var(--color-bg)', color: 'var(--color-text)' }}>
       <HeroSection />
-      <LandingChatSection />
       <Separator />
       <TrustStrip />
       <Separator />

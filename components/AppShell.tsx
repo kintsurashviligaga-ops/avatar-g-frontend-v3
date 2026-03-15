@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { TopNavbar, SidebarMenu, BottomNavigation } from './shell/ModernShell';
 import { ClientErrorBoundary } from './ClientErrorBoundary';
+import { FloatingChatButton } from './chat/FloatingChatButton';
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -27,6 +28,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </ClientErrorBoundary>
       </main>
       <BottomNavigation />
+      <FloatingChatButton />
       {/* Bottom nav spacer for mobile */}
       <div className="h-16 md:hidden shrink-0" />
     </div>

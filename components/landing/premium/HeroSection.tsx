@@ -8,7 +8,7 @@ import { HeroVideo } from './HeroVideo'
 /* ─── Copy ──────────────────────────────────────────────── */
 const COPY = {
   en: {
-    headline: 'Create Anything With AI',
+    headline: 'Create Everything With AI, In One Space.',
     sub: 'MyAvatar.ge — The AI Creation Platform powered by Agent G.',
     desc: 'Create avatars, videos, music, posters and full AI workflows with a powerful multi-agent system.',
     cta1: 'Start Creating',
@@ -16,7 +16,7 @@ const COPY = {
     trust: 'Trusted by creators, businesses and developers worldwide',
   },
   ka: {
-    headline: 'შექმენი ყველაფერი AI-ით',
+    headline: 'შექმენი ყველაფერი AI-ით ერთ სივრცეში.',
     sub: 'MyAvatar.ge — AI შექმნის პლატფორმა Agent G-ის ძალით.',
     desc: 'შექმენით ავატარები, ვიდეოები, მუსიკა, პოსტერები და სრული AI სამუშაო ნაკადები მძლავრი მულტი-აგენტური სისტემით.',
     cta1: 'შექმნის დაწყება',
@@ -24,7 +24,7 @@ const COPY = {
     trust: 'კრეატორების, ბიზნესისა და დეველოპერების ნდობით მსოფლიოში',
   },
   ru: {
-    headline: 'Создавайте всё с AI',
+    headline: 'Создавайте всё с AI. В одном пространстве.',
     sub: 'MyAvatar.ge — AI-платформа для создания контента на базе Agent G.',
     desc: 'Создавайте аватары, видео, музыку, постеры и полные AI-воркфлоу с мощной мультиагентной системой.',
     cta1: 'Начать создание',
