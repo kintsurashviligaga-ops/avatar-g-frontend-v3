@@ -70,7 +70,7 @@ export function ServicesOverview() {
           <button
             onClick={() => scroll('left')}
             disabled={!canScrollLeft}
-            className="p-2 rounded-lg transition-all duration-200 disabled:opacity-30"
+            className="p-3 rounded-xl transition-all duration-200 disabled:opacity-30 active:scale-95"
             style={{ backgroundColor: 'var(--color-surface)', border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)' }}
             aria-label="Scroll left"
           >
@@ -79,7 +79,7 @@ export function ServicesOverview() {
           <button
             onClick={() => scroll('right')}
             disabled={!canScrollRight}
-            className="p-2 rounded-lg transition-all duration-200 disabled:opacity-30"
+            className="p-3 rounded-xl transition-all duration-200 disabled:opacity-30 active:scale-95"
             style={{ backgroundColor: 'var(--color-surface)', border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)' }}
             aria-label="Scroll right"
           >

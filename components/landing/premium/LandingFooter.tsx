@@ -16,7 +16,7 @@ export function LandingFooter() {
   const lh = (p: string) => `/${language}${p}`
 
   return (
-    <footer className="px-4 sm:px-6 lg:px-10 pt-16 pb-8" style={{ borderTop: '1px solid var(--color-border)' }}>
+    <footer className="px-4 sm:px-6 lg:px-10 pt-16 pb-8" style={{ borderTop: '1px solid var(--color-border)', paddingBottom: 'calc(2rem + env(safe-area-inset-bottom, 0px))' }}>
       <div className="max-w-6xl mx-auto">
         {/* Top: Logo + columns */}
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-8 mb-12">
@@ -35,40 +35,40 @@ export function LandingFooter() {
 
           <div>
             <p className="font-medium mb-3 text-[11px] uppercase tracking-wider" style={{ color: 'var(--color-text-secondary)' }}>{c.services}</p>
-            <div className="space-y-2 text-[12px]" style={{ color: 'var(--color-text-tertiary)' }}>
-              <Link href={lh('/services/avatar')} className="block transition-colors hover:opacity-70">Avatar Studio</Link>
-              <Link href={lh('/services/video')} className="block transition-colors hover:opacity-70">Video</Link>
-              <Link href={lh('/services/image')} className="block transition-colors hover:opacity-70">Image</Link>
-              <Link href={lh('/services/music')} className="block transition-colors hover:opacity-70">Music</Link>
-              <Link href={lh('/services/text')} className="block transition-colors hover:opacity-70">Text &amp; Copy</Link>
-              <Link href={lh('/services/agent-g')} className="block transition-colors hover:opacity-70">Agent G</Link>
+            <div className="space-y-2.5 text-[13px]" style={{ color: 'var(--color-text-tertiary)' }}>
+              <Link href={lh('/services/avatar')} className="block py-0.5 transition-colors hover:opacity-70">Avatar Studio</Link>
+              <Link href={lh('/services/video')} className="block py-0.5 transition-colors hover:opacity-70">Video</Link>
+              <Link href={lh('/services/image')} className="block py-0.5 transition-colors hover:opacity-70">Image</Link>
+              <Link href={lh('/services/music')} className="block py-0.5 transition-colors hover:opacity-70">Music</Link>
+              <Link href={lh('/services/text')} className="block py-0.5 transition-colors hover:opacity-70">Text &amp; Copy</Link>
+              <Link href={lh('/services/agent-g')} className="block py-0.5 transition-colors hover:opacity-70">Agent G</Link>
             </div>
           </div>
           <div>
             <p className="font-medium mb-3 text-[11px] uppercase tracking-wider" style={{ color: 'var(--color-text-secondary)' }}>{c.platform}</p>
-            <div className="space-y-2 text-[12px]" style={{ color: 'var(--color-text-tertiary)' }}>
-              <Link href={lh('/services')} className="block transition-colors hover:opacity-70">{c.services}</Link>
-              <Link href={lh('/pricing')} className="block transition-colors hover:opacity-70">Pricing</Link>
-              <Link href={lh('/workspace')} className="block transition-colors hover:opacity-70">Workspace</Link>
-              <Link href={lh('/business')} className="block transition-colors hover:opacity-70">Business</Link>
+            <div className="space-y-2.5 text-[13px]" style={{ color: 'var(--color-text-tertiary)' }}>
+              <Link href={lh('/services')} className="block py-0.5 transition-colors hover:opacity-70">{c.services}</Link>
+              <Link href={lh('/pricing')} className="block py-0.5 transition-colors hover:opacity-70">Pricing</Link>
+              <Link href={lh('/workspace')} className="block py-0.5 transition-colors hover:opacity-70">Workspace</Link>
+              <Link href={lh('/business')} className="block py-0.5 transition-colors hover:opacity-70">Business</Link>
             </div>
           </div>
           <div>
             <p className="font-medium mb-3 text-[11px] uppercase tracking-wider" style={{ color: 'var(--color-text-secondary)' }}>{c.resources}</p>
-            <div className="space-y-2 text-[12px]" style={{ color: 'var(--color-text-tertiary)' }}>
-              <Link href={lh('/about')} className="block transition-colors hover:opacity-70">About</Link>
-              <Link href={lh('/contact')} className="block transition-colors hover:opacity-70">Contact</Link>
-              <Link href={lh('/blog')} className="block transition-colors hover:opacity-70">Blog</Link>
-              <Link href={lh('/careers')} className="block transition-colors hover:opacity-70">Careers</Link>
+            <div className="space-y-2.5 text-[13px]" style={{ color: 'var(--color-text-tertiary)' }}>
+              <Link href={lh('/about')} className="block py-0.5 transition-colors hover:opacity-70">About</Link>
+              <Link href={lh('/contact')} className="block py-0.5 transition-colors hover:opacity-70">Contact</Link>
+              <Link href={lh('/blog')} className="block py-0.5 transition-colors hover:opacity-70">Blog</Link>
+              <Link href={lh('/careers')} className="block py-0.5 transition-colors hover:opacity-70">Careers</Link>
             </div>
           </div>
           <div>
             <p className="font-medium mb-3 text-[11px] uppercase tracking-wider" style={{ color: 'var(--color-text-secondary)' }}>{c.legal}</p>
-            <div className="space-y-2 text-[12px]" style={{ color: 'var(--color-text-tertiary)' }}>
-              <Link href={lh('/privacy')} className="block transition-colors hover:opacity-70">Privacy</Link>
-              <Link href={lh('/terms')} className="block transition-colors hover:opacity-70">Terms</Link>
-              <Link href={lh('/cookies')} className="block transition-colors hover:opacity-70">Cookies</Link>
-              <Link href={lh('/licenses')} className="block transition-colors hover:opacity-70">Licenses</Link>
+            <div className="space-y-2.5 text-[13px]" style={{ color: 'var(--color-text-tertiary)' }}>
+              <Link href={lh('/privacy')} className="block py-0.5 transition-colors hover:opacity-70">Privacy</Link>
+              <Link href={lh('/terms')} className="block py-0.5 transition-colors hover:opacity-70">Terms</Link>
+              <Link href={lh('/cookies')} className="block py-0.5 transition-colors hover:opacity-70">Cookies</Link>
+              <Link href={lh('/licenses')} className="block py-0.5 transition-colors hover:opacity-70">Licenses</Link>
             </div>
           </div>
         </div>

@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import Providers from "@/app/providers";
@@ -18,6 +18,14 @@ const metadataBaseUrl =
 	process.env.NEXT_PUBLIC_SITE_URL ||
 	process.env.NEXT_PUBLIC_APP_URL ||
 	"https://myavatar.ge";
+
+export const viewport: Viewport = {
+	width: 'device-width',
+	initialScale: 1,
+	maximumScale: 5,
+	viewportFit: 'cover',
+	themeColor: '#0a0a0c',
+};
 
 export const metadata: Metadata = {
 	metadataBase: new URL(metadataBaseUrl),

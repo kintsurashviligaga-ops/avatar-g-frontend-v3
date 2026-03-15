@@ -57,8 +57,8 @@ export function BottomChatComposer({ value, onChange, onSend, onAttach, onMic, d
         <button
           type="button"
           onClick={onAttach}
-          className="shrink-0 ml-2 mb-2.5 p-2 rounded-xl transition-colors duration-200 hover:bg-white/5 active:scale-95"
-          style={{ color: 'var(--color-text-tertiary)' }}
+          className="shrink-0 ml-1.5 mb-2 p-2.5 rounded-xl transition-colors duration-200 hover:bg-white/5 active:scale-95"
+          style={{ color: 'var(--color-text-tertiary)', minWidth: '44px', minHeight: '44px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
           aria-label="Attach file"
         >
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
@@ -88,8 +88,8 @@ export function BottomChatComposer({ value, onChange, onSend, onAttach, onMic, d
           <button
             type="button"
             onClick={onMic}
-            className="p-2 rounded-xl transition-colors duration-200 hover:bg-white/5 active:scale-95"
-            style={{ color: 'var(--color-text-tertiary)' }}
+            className="p-2.5 rounded-xl transition-colors duration-200 hover:bg-white/5 active:scale-95"
+            style={{ color: 'var(--color-text-tertiary)', minWidth: '44px', minHeight: '44px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
             aria-label="Voice input"
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
@@ -105,11 +105,16 @@ export function BottomChatComposer({ value, onChange, onSend, onAttach, onMic, d
           type="button"
           onClick={onSend}
           disabled={!canSend}
-          className="p-2 rounded-xl transition-all duration-200 active:scale-90"
+          className="p-2.5 rounded-xl transition-all duration-200 active:scale-90"
           style={{
             color: canSend ? '#fff' : 'var(--color-text-tertiary)',
             backgroundColor: canSend ? 'var(--color-accent)' : 'transparent',
             opacity: canSend ? 1 : 0.3,
+            minWidth: '44px',
+            minHeight: '44px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
           }}
           aria-label="Send message"
         >

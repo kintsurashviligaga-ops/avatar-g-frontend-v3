@@ -19,7 +19,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </a>
       <TopNavbar onMenuToggle={() => setSidebarOpen(v => !v)} menuOpen={sidebarOpen} />
       <SidebarMenu open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
-      <main id="main-content" className="relative flex-1 z-10 w-full pt-16">
+      <main id="main-content" className="relative flex-1 z-10 w-full" style={{ paddingTop: 'calc(4rem + env(safe-area-inset-top, 0px))' }}>
         <ClientErrorBoundary>
           <div className='relative z-10'>
             {children}
@@ -28,7 +28,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </main>
       <BottomNavigation />
       {/* Bottom nav spacer for mobile */}
-      <div className="h-14 md:hidden shrink-0" />
+      <div className="h-16 md:hidden shrink-0" />
     </div>
   );
 }

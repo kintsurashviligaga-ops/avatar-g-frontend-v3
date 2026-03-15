@@ -43,11 +43,11 @@ export default function PremiumLanding() {
       <LandingCTA />
       <LandingFooter />
 
-      {/* Spacer for the fixed bottom chat bar */}
-      <div className="h-36 md:h-32" />
+      {/* Spacer for the fixed bottom chat bar + bottom nav */}
+      <div className="h-44 md:h-36" />
 
-      {/* Sticky bottom chat bar — always visible */}
-      <BottomChatBar mode="landing" className="fixed bottom-0 inset-x-0 z-[190] md:pb-3 pb-[calc(3.5rem+env(safe-area-inset-bottom,0px))]" />
+      {/* Sticky bottom chat bar — always visible, sits above bottom nav on mobile */}
+      <BottomChatBar mode="landing" className="fixed bottom-0 inset-x-0 z-[190] pb-[calc(3.75rem+env(safe-area-inset-bottom,0px))] md:pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))]" />
     </div>
   )
 }

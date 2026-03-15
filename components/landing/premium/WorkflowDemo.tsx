@@ -42,10 +42,10 @@ export function WorkflowDemo() {
         <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight" style={{ color: 'var(--color-text)' }}>{c.title}</h2>
         <p className="mt-4 text-base sm:text-lg max-w-2xl mx-auto mb-14" style={{ color: 'var(--color-text-secondary)' }}>{c.sub}</p>
 
-        {/* Pipeline visual */}
-        <div className="flex flex-wrap items-center justify-center gap-3 sm:gap-4">
+        {/* Pipeline visual — horizontal scroll on mobile */}
+        <div className="flex items-center justify-start sm:justify-center gap-3 sm:gap-4 overflow-x-auto no-scrollbar px-2 pb-2">
           {PIPELINE.map((step, i) => (
-            <div key={i} className="flex items-center gap-3 sm:gap-4">
+            <div key={i} className="flex items-center gap-3 sm:gap-4 shrink-0">
               <div className="flex flex-col items-center gap-2">
                 <div
                   className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl flex items-center justify-center text-2xl sm:text-3xl transition-transform hover:scale-105"

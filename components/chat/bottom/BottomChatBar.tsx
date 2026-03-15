@@ -64,16 +64,18 @@ export function BottomChatBar({ mode = 'landing', className = '' }: Props) {
       className={`bottom-chat-bar ${className}`}
       style={{
         backgroundColor: 'var(--nav-bg)',
-        borderTop: '1px solid var(--color-border)',
         backdropFilter: 'blur(20px) saturate(1.2)',
         WebkitBackdropFilter: 'blur(20px) saturate(1.2)',
       }}
     >
-      <div className="relative max-w-2xl mx-auto px-4 pt-3 pb-2">
+      <div
+        className="relative max-w-2xl mx-auto px-4 pt-3 pb-3"
+        style={{ borderTop: '1px solid var(--color-border)' }}
+      >
 
         {/* Agent G identity badge */}
         <div className="flex items-center justify-center gap-2 mb-2">
-          <div className="flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] tracking-wide font-medium"
+          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] tracking-wide font-medium"
             style={{ backgroundColor: 'rgba(34,211,238,0.06)', color: 'var(--color-accent)', border: '1px solid rgba(34,211,238,0.12)' }}
           >
             <span className="relative flex h-1.5 w-1.5">

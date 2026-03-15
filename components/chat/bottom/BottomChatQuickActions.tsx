@@ -38,11 +38,12 @@ export function BottomChatQuickActions({ onAction, mode = 'landing' }: Props) {
         <button
           key={a.id}
           onClick={() => onAction(a)}
-          className="quick-action-chip group flex items-center gap-1.5 shrink-0 px-3.5 py-2 rounded-xl text-[13px] font-medium whitespace-nowrap transition-all duration-300 hover:-translate-y-0.5 active:scale-95"
+          className="quick-action-chip group flex items-center gap-1.5 shrink-0 px-3.5 py-2.5 rounded-xl text-[13px] sm:text-[14px] font-medium whitespace-nowrap transition-all duration-300 hover:-translate-y-0.5 active:scale-95"
           style={{
             backgroundColor: 'var(--color-surface)',
             color: 'var(--color-text-secondary)',
             border: '1px solid var(--color-border)',
+            minHeight: '40px',
           }}
         >
           <span className="text-sm transition-transform duration-300 group-hover:scale-110">{a.icon}</span>

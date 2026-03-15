@@ -114,6 +114,7 @@ export function TopNavbar({ onMenuToggle, menuOpen }: { onMenuToggle: () => void
   }, [locale, router])
 
   return (
+    <>
     <nav
       className={`fixed top-0 inset-x-0 z-[200] flex items-center justify-between px-4 sm:px-6 transition-all duration-300 ${
         scrolled ? 'h-14' : 'h-16'
@@ -123,6 +124,7 @@ export function TopNavbar({ onMenuToggle, menuOpen }: { onMenuToggle: () => void
         borderBottom: '1px solid var(--nav-border)',
         backdropFilter: 'blur(20px) saturate(1.2)',
         WebkitBackdropFilter: 'blur(20px) saturate(1.2)',
+        paddingTop: 'env(safe-area-inset-top, 0px)',
       }}
     >
       {/* Left: Hamburger + Brand Logo */}
@@ -196,7 +198,7 @@ export function TopNavbar({ onMenuToggle, menuOpen }: { onMenuToggle: () => void
         {/* Mini search for mobile */}
         <button
           onClick={() => setSearchOpen(!searchOpen)}
-          className="md:hidden p-2 rounded-lg transition-colors hover:bg-[var(--card-hover)]"
+          className="md:hidden p-2.5 rounded-xl transition-colors hover:bg-[var(--card-hover)] active:scale-95"
           style={{ color: 'var(--color-text-secondary)' }}
           aria-label="Search"
         >
@@ -246,13 +248,66 @@ export function TopNavbar({ onMenuToggle, menuOpen }: { onMenuToggle: () => void
         {/* Get Started */}
         <Link
           href={lh('/signup')}
-          className="text-[13px] font-semibold px-4 py-2 rounded-lg transition-all duration-200 hover:opacity-90"
+          className="text-[13px] font-semibold px-4 py-2.5 rounded-xl transition-all duration-200 hover:opacity-90 active:scale-95"
           style={{ backgroundColor: 'var(--color-accent)', color: '#fff' }}
         >
           {locale === 'ka' ? 'დაწყება' : locale === 'ru' ? 'Начать' : 'Get Started'}
         </Link>
       </div>
     </nav>
+
+    {/* Mobile search overlay */}
+    {searchOpen && (
+      <div className="fixed inset-x-0 top-0 z-[201] md:hidden mobile-search-overlay" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
+        <div className="px-3 pt-2 pb-3" style={{ backgroundColor: 'var(--nav-bg)', backdropFilter: 'blur(20px) saturate(1.2)', WebkitBackdropFilter: 'blur(20px) saturate(1.2)', borderBottom: '1px solid var(--nav-border)' }}>
+          <div className="flex items-center gap-2">
+            <div className="flex-1 flex items-center gap-2 rounded-xl px-3 py-2.5" style={{ backgroundColor: 'var(--input-bg)', border: '1px solid var(--input-border)' }}>
+              <span style={{ color: 'var(--color-accent)' }}><IconSearch /></span>
+              <input
+                ref={searchRef}
+                type="text"
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                placeholder={
+                  locale === 'ka' ? 'ჰკითხე Agent G-ს...' :
+                  locale === 'ru' ? 'Спросите Agent G...' :
+                  'Ask Agent G…'
+                }
+                className="flex-1 bg-transparent text-sm outline-none"
+                style={{ color: 'var(--color-text)', border: 'none', boxShadow: 'none' }}
+                autoFocus
+              />
+            </div>
+            <button
+              onClick={() => { setSearchOpen(false); setSearchQuery('') }}
+              className="p-2.5 rounded-xl transition-colors hover:bg-[var(--card-hover)]"
+              style={{ color: 'var(--color-text-secondary)' }}
+            >
+              <IconX />
+            </button>
+          </div>
+          {/* Mobile search results */}
+          {filtered.length > 0 && (
+            <div className="mt-2 rounded-xl overflow-hidden" style={{ backgroundColor: 'var(--color-surface)', border: '1px solid var(--color-border)' }}>
+              {filtered.slice(0, 6).map(s => (
+                <button
+                  key={s.slug}
+                  onMouseDown={() => handleSearchSelect(s.slug)}
+                  className="w-full flex items-center gap-3 px-4 py-3 text-sm text-left transition-colors hover:bg-[var(--card-hover)] active:bg-[var(--card-hover)]"
+                  style={{ color: 'var(--color-text)' }}
+                >
+                  <span className="text-base">{s.icon}</span>
+                  {s.title[locale as 'ka' | 'en' | 'ru'] || s.title.en}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+        {/* Backdrop */}
+        <div className="fixed inset-0 -z-10" onClick={() => { setSearchOpen(false); setSearchQuery('') }} />
+      </div>
+    )}
+    </>
   )
 }
 
@@ -289,6 +344,7 @@ export function SidebarMenu({ open, onClose }: { open: boolean; onClose: () => v
         style={{
           backgroundColor: 'var(--sidebar-bg)',
           borderRight: '1px solid var(--color-border)',
+          paddingTop: 'env(safe-area-inset-top, 0px)',
         }}
       >
         {/* Header */}
@@ -348,7 +404,7 @@ export function SidebarMenu({ open, onClose }: { open: boolean; onClose: () => v
         </div>
 
         {/* Bottom section — settings */}
-        <div className="shrink-0 px-3 pb-4 space-y-1.5" style={{ borderTop: '1px solid var(--color-border)', paddingTop: '0.75rem' }}>
+        <div className="shrink-0 px-3 pb-4 space-y-1.5" style={{ borderTop: '1px solid var(--color-border)', paddingTop: '0.75rem', paddingBottom: 'calc(1rem + env(safe-area-inset-bottom, 0px))' }}>
           {/* Language */}
           <div className="flex items-center gap-3 px-3 py-2">
             <span style={{ color: 'var(--color-text-tertiary)' }}><IconGlobe /></span>
@@ -439,7 +495,7 @@ export function BottomNavigation() {
         backdropFilter: 'blur(20px) saturate(1.2)',
         WebkitBackdropFilter: 'blur(20px) saturate(1.2)',
         paddingBottom: 'env(safe-area-inset-bottom, 0px)',
-        height: 'calc(56px + env(safe-area-inset-bottom, 0px))',
+        height: 'calc(60px + env(safe-area-inset-bottom, 0px))',
       }}
     >
       {BOTTOM_NAV.map(item => {
@@ -449,11 +505,11 @@ export function BottomNavigation() {
           <Link
             key={item.path}
             href={lh(item.path)}
-            className="flex flex-col items-center justify-center gap-0.5 py-1.5 px-3 rounded-lg transition-colors"
+            className="flex flex-col items-center justify-center gap-0.5 py-2 px-4 min-w-[56px] min-h-[44px] rounded-lg transition-colors active:scale-95"
             style={{ color: active ? 'var(--color-accent)' : 'var(--color-text-tertiary)' }}
           >
             <Icon />
-            <span className="text-[10px] font-medium">
+            <span className="text-[11px] font-medium">
               {item.label[locale as keyof typeof item.label] || item.label.en}
             </span>
           </Link>
