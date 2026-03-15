@@ -10,14 +10,13 @@
 import { HeroSection } from './HeroSection'
 import { TrustStrip } from './TrustStrip'
 import { ServicesOverview } from './ServicesOverview'
-import { AgentGSection } from './AgentGSection'
 import { WorkflowDemo } from './WorkflowDemo'
 import { FeatureHighlights } from './FeatureHighlights'
 import { UseCases } from './UseCases'
 import { WorkspaceTemplates } from './WorkspaceTemplates'
 import { LandingCTA } from './LandingCTA'
 import { LandingFooter } from './LandingFooter'
-import { BottomChatBar } from '@/components/chat/bottom/BottomChatBar'
+import { LandingChatSection } from '@/components/chat/fullscreen/LandingChatSection'
 
 export default function PremiumLanding() {
   return (
@@ -27,7 +26,7 @@ export default function PremiumLanding() {
       <Separator />
       <ServicesOverview />
       <Separator />
-      <AgentGSection />
+      <LandingChatSection />
       <Separator />
       <WorkflowDemo />
       <Separator />
@@ -39,12 +38,6 @@ export default function PremiumLanding() {
       <Separator />
       <LandingCTA />
       <LandingFooter />
-
-      {/* Spacer for the fixed bottom chat bar + bottom nav */}
-      <div className="h-44 md:h-36" />
-
-      {/* Sticky bottom chat bar — always visible, sits above bottom nav on mobile */}
-      <BottomChatBar mode="landing" className="fixed bottom-0 inset-x-0 z-[190] pb-[calc(3.75rem+env(safe-area-inset-bottom,0px))] md:pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))]" />
     </div>
   )
 }
