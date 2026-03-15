@@ -9,10 +9,23 @@ import { readAgentGMemory, writeAgentGMemory } from '@/lib/agentg/memory';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
+const contextSchema = z.object({
+  currentPage: z.string().max(200).optional(),
+  activeService: z.string().max(100).optional(),
+  selectedMode: z.string().max(100).optional(),
+}).optional();
+
+const historyTurnSchema = z.object({
+  role: z.enum(['user', 'assistant']),
+  content: z.string().max(4000),
+});
+
 const schema = z.object({
   message: z.string().min(1).max(4000),
   locale: z.enum(['ka', 'en', 'ru']).optional(),
   sessionId: z.string().min(1).max(128).optional(),
+  context: contextSchema,
+  history: z.array(historyTurnSchema).max(20).optional(),
 });
 
 function resolveLocale(locale: unknown): AgentGLocale {
@@ -51,6 +64,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       channel: 'web',
       locale,
       sessionId: parsed.data.sessionId,
+      context: parsed.data.context,
+      history: parsed.data.history,
     });
 
     void writeAgentGMemory({

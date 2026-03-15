@@ -21,6 +21,17 @@ export type PersonalityOutput = {
   meta: PersonalityMeta;
 };
 
+export type ChatContext = {
+  currentPage?: string;
+  activeService?: string;
+  selectedMode?: string;
+};
+
+export type ConversationTurn = {
+  role: 'user' | 'assistant';
+  content: string;
+};
+
 export type PersonalityInput = {
   userText: string;
   channel: AgentGChannel;
@@ -28,6 +39,8 @@ export type PersonalityInput = {
   locale?: AgentGLocale;
   sessionId?: string;
   systemRules?: string[];
+  context?: ChatContext;
+  history?: ConversationTurn[];
 };
 
 type DetectedEmotion =
@@ -151,12 +164,22 @@ export function mapEmotionToTone(detection: EmotionDetectionResult): { tone: Ton
   }
 }
 
+const SERVICE_CONTEXT_MAP: Record<string, string> = {
+  avatar: 'The user is in the Avatar Studio. Help them create, customize, or refine their AI avatar. Guide them through styles, expressions, backgrounds, and output formats.',
+  video: 'The user is in the Video Generation section. Help them create AI-generated videos, set up prompts, choose styles, duration, and resolution.',
+  image: 'The user is in the Image Creation section. Help them generate AI images, posters, or artwork. Guide them through prompts, styles, aspect ratios, and quality settings.',
+  music: 'The user is in the Music Production section. Help them produce AI music tracks, choose genres, moods, instruments, and duration.',
+  text: 'The user is in the Content Writing section. Help them write scripts, captions, marketing copy, or other text content using AI.',
+  workflow: 'The user is in the Workflow Builder. Help them chain multiple AI services together into automated multi-step workflows.',
+};
+
 function buildSystemPrompt(params: {
   locale: AgentGLocale;
   channel: AgentGChannel;
   detection: EmotionDetectionResult;
   styleHints: string[];
   systemRules?: string[];
+  context?: ChatContext;
 }): string {
   const languageRule =
     params.locale === 'ka'
@@ -165,19 +188,56 @@ function buildSystemPrompt(params: {
         ? 'Respond in clear Russian.'
         : 'Respond in clear English.';
 
+  const serviceHint = params.context?.activeService
+    ? SERVICE_CONTEXT_MAP[params.context.activeService] || ''
+    : '';
+
+  const pageHint = params.context?.currentPage
+    ? `The user is currently on the ${params.context.currentPage} page.`
+    : '';
+
   return [
-    'You are Agent G for Avatar G.',
+    'You are Agent G — the main AI assistant of MyAvatar.ge, a cutting-edge AI creation platform.',
+    '',
+    '## Platform Overview',
+    'MyAvatar.ge lets users create professional AI content: avatars, videos, images, music, text/copy, and multi-step AI workflows. It is powered by Agent G — you.',
+    '',
+    '## Available Services',
+    '- **Avatar Studio**: Create photorealistic or stylized AI avatars from selfies or from scratch.',
+    '- **Video Generation**: Generate short AI videos with custom prompts, styles, and effects.',
+    '- **Image Creation**: Create AI-generated images, posters, artwork, and marketing visuals.',
+    '- **Music Production**: Produce AI music tracks across genres, moods, and durations.',
+    '- **Content Writing**: Generate scripts, captions, marketing copy, blog posts, and any text content.',
+    '- **Workflow Builder**: Chain multiple AI services into automated multi-step creation pipelines.',
+    '',
+    '## Your Personality',
     languageRule,
-    'Conversation style: friendly, empathetic, short and clear, slang-lite rhythm when natural.',
-    'You can use light non-offensive humor when it helps.',
+    'Be friendly, empathetic, concise, and clear. Use a natural conversational tone with light humor when appropriate.',
+    'Never be verbose — keep answers short and actionable unless the user asks for detail.',
+    'Guide users to the right MyAvatar service based on what they want to create.',
+    'If a user is confused, help them discover what MyAvatar.ge can do for them.',
+    '',
+    '## Service Routing',
+    'When a user wants to create something, route them to the correct service:',
+    '- Avatar creation → Avatar Studio',
+    '- Video generation → Video Generation',
+    '- Image/poster/artwork → Image Creation', 
+    '- Music/audio → Music Production',
+    '- Text/scripts/copy → Content Writing',
+    '- Combine services → Workflow Builder',
+    '',
+    '## Rules',
+    'IMPORTANT: Never call the owner Gio or გიო — always use "გაგ".',
+    'Never provide hate speech, harassment, dangerous instructions, or leak personal data.',
     'Ask clarifying questions only when absolutely needed to proceed.',
-    'IMPORTANT naming rule: never call the owner Gio or გიო. Only use the owner name "გაგ" when naming the owner.',
-    'Safety rules: do not provide hate, harassment, dangerous instructions, or personal data leaks.',
-    `Detected emotion: ${params.detection.detectedEmotion}.`,
+    '',
+    `Detected user emotion: ${params.detection.detectedEmotion}.`,
     `Style hints: ${params.styleHints.join(', ')}.`,
     `Channel: ${params.channel}.`,
+    serviceHint,
+    pageHint,
     ...(params.systemRules ?? []),
-  ].join(' ');
+  ].filter(Boolean).join('\n');
 }
 
 function resolveOpenAIConstructor(): new (options: { apiKey: string }) => OpenAIChatClient {
@@ -242,10 +302,27 @@ async function generateWithRetry(args: {
   locale: AgentGLocale;
   userText: string;
   systemPrompt: string;
+  history?: ConversationTurn[];
 }): Promise<string> {
   const client = getOpenAIClient();
   let attempt = 0;
   let lastError: unknown = null;
+
+  // Build messages array with conversation history
+  const messages: Array<{ role: string; content: string }> = [
+    { role: 'system', content: args.systemPrompt },
+  ];
+
+  // Include last few turns for context (max 10 turns to control token usage)
+  if (args.history && args.history.length > 0) {
+    const recentHistory = args.history.slice(-10);
+    for (const turn of recentHistory) {
+      messages.push({ role: turn.role, content: turn.content });
+    }
+  }
+
+  // Always add the current user message last
+  messages.push({ role: 'user', content: args.userText });
 
   while (attempt < MAX_RETRIES) {
     attempt += 1;
@@ -254,10 +331,7 @@ async function generateWithRetry(args: {
         {
           model: MODEL,
           temperature: 0.55,
-          messages: [
-            { role: 'system', content: args.systemPrompt },
-            { role: 'user', content: args.userText },
-          ],
+          messages,
         },
         {
           timeout: OPENAI_TIMEOUT_MS,
@@ -333,10 +407,11 @@ export async function generateAgentGPersonalityReply(input: PersonalityInput): P
     detection,
     styleHints: mapped.styleHints,
     systemRules: input.systemRules,
+    context: input.context,
   });
 
   try {
-    const reply = await generateWithRetry({ locale, userText, systemPrompt });
+    const reply = await generateWithRetry({ locale, userText, systemPrompt, history: input.history });
     memory.lastAssistantReply = reply;
     return {
       replyText: reply,
