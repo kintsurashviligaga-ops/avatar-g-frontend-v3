@@ -287,42 +287,62 @@ export function ChatScreen() {
 
   return (
     <div
-      className="flex flex-col w-full"
+      className="w-full flex items-center justify-center"
       style={{
         height: '100dvh',
         backgroundColor: 'var(--color-bg)',
       }}
     >
-      <ChatHeader />
+      {/* 9:16 phone frame on desktop, full viewport on mobile */}
+      <div
+        className="
+          flex flex-col w-full h-full
+          md:w-[420px] md:max-h-[calc(100dvh-48px)] md:h-[746px]
+          md:rounded-3xl md:overflow-hidden
+          md:shadow-[0_16px_80px_rgba(0,0,0,0.45),0_0_1px_rgba(255,255,255,0.1)_inset]
+        "
+        style={{
+          backgroundColor: 'var(--color-bg)',
+          border: undefined,
+        }}
+      >
+        {/* Visible border only on desktop frame */}
+        <div
+          className="flex flex-col w-full h-full md:border md:rounded-3xl md:overflow-hidden"
+          style={{ borderColor: 'var(--color-border)' }}
+        >
+          <ChatHeader />
 
-      {/* Body */}
-      <div className="flex-1 min-h-0 overflow-y-auto">
-        {messages.length === 0 ? (
-          <ChatWelcome onQuickAction={handleQuickAction} />
-        ) : (
-          <MessageList messages={messages} />
-        )}
+          {/* Body */}
+          <div className="flex-1 min-h-0 overflow-y-auto">
+            {messages.length === 0 ? (
+              <ChatWelcome onQuickAction={handleQuickAction} />
+            ) : (
+              <MessageList messages={messages} />
+            )}
+          </div>
+
+          {/* Upload preview tray */}
+          {attachments.length > 0 && (
+            <UploadPreviewTray attachments={attachments} onRemove={handleRemoveAttachment} />
+          )}
+
+          {/* Composer */}
+          <ChatComposer
+            value={composerText}
+            onChange={setComposerText}
+            onSend={handleSend}
+            onAttach={handleAttach}
+            onCamera={handleCamera}
+            onVoice={handleVoice}
+            onSpeechModeToggle={handleSpeechModeToggle}
+            isSubmitting={isSubmitting}
+            voiceStatus={voiceStatus}
+            speechModeOn={speechModeOn}
+            attachments={attachments}
+          />
+        </div>
       </div>
-
-      {/* Upload preview tray */}
-      {attachments.length > 0 && (
-        <UploadPreviewTray attachments={attachments} onRemove={handleRemoveAttachment} />
-      )}
-
-      {/* Composer */}
-      <ChatComposer
-        value={composerText}
-        onChange={setComposerText}
-        onSend={handleSend}
-        onAttach={handleAttach}
-        onCamera={handleCamera}
-        onVoice={handleVoice}
-        onSpeechModeToggle={handleSpeechModeToggle}
-        isSubmitting={isSubmitting}
-        voiceStatus={voiceStatus}
-        speechModeOn={speechModeOn}
-        attachments={attachments}
-      />
 
       {/* Hidden file inputs */}
       <input
