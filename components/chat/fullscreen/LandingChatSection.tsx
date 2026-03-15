@@ -25,6 +25,7 @@ import type {
 import { MessageList } from './MessageList'
 import { UploadPreviewTray } from './UploadPreviewTray'
 import { ChatComposer } from './ChatComposer'
+import { SERVICE_ICONS } from './ChatWelcome'
 
 /* ── helpers ── */
 const uid = () => crypto.randomUUID()
@@ -277,15 +278,17 @@ export function LandingChatSection() {
                 <div className="flex flex-wrap gap-2">
                   {QUICK_ACTIONS.map(action => {
                     const label = action.label[lang] || action.label.en
-                    const prefill = action.prefillPrompt?.[lang] || action.prefillPrompt?.en
+                    const prefill = action.prefillPrompt[lang] || action.prefillPrompt.en
                     return (
                       <button
                         key={action.id}
                         onClick={() => handleQuickAction(action.intent, prefill)}
-                        className="flex items-center gap-1.5 px-3.5 py-2 rounded-full text-[12px] sm:text-[13px] font-medium transition-all duration-200 active:scale-[0.97]"
+                        className="flex items-center gap-2 px-3.5 py-2 rounded-2xl text-[12px] sm:text-[13px] font-medium transition-all duration-200 active:scale-[0.97]"
                         style={{ backgroundColor: 'var(--color-surface)', color: 'var(--color-text)', border: '1px solid var(--color-border)' }}
                       >
-                        <span className="text-sm">{action.icon}</span>
+                        <span className="shrink-0" style={{ color: 'var(--color-accent)' }}>
+                          {SERVICE_ICONS[action.icon] ?? null}
+                        </span>
                         {label}
                       </button>
                     )
