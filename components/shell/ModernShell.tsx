@@ -6,7 +6,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
 import { useTheme } from '@/lib/theme/ThemeContext'
 import { BrandLogo } from '@/components/ui/BrandLogo'
-import { SERVICES, NAV_CATEGORIES, NAV_GROUPS, getServiceBySlug } from '@/lib/services/catalog'
+import { SERVICES } from '@/lib/services/catalog'
 
 /* ─── Icons (inline SVGs for zero dependency) ─── */
 function IconMenu() {
@@ -138,16 +138,16 @@ export function TopNavbar({ onMenuToggle, menuOpen }: { onMenuToggle: () => void
         <BrandLogo href={lh('/')} size="nav" showText={!scrolled} compact={scrolled} />
       </div>
 
-      {/* Center: Search (desktop) */}
-      <div className="hidden md:flex items-center flex-1 max-w-md mx-8 relative">
+      {/* Center: Command bar (desktop) */}
+      <div className="hidden md:flex items-center flex-1 max-w-lg mx-8 relative">
         <div
-          className="w-full flex items-center gap-2 rounded-xl px-3 py-2 transition-all duration-200"
+          className="w-full flex items-center gap-2.5 rounded-xl px-4 py-2.5 transition-all duration-200"
           style={{
             backgroundColor: 'var(--input-bg)',
             border: '1px solid var(--input-border)',
           }}
         >
-          <span style={{ color: 'var(--color-text-tertiary)' }}><IconSearch /></span>
+          <span style={{ color: 'var(--color-accent)' }}><IconSearch /></span>
           <input
             ref={searchRef}
             type="text"
@@ -156,9 +156,9 @@ export function TopNavbar({ onMenuToggle, menuOpen }: { onMenuToggle: () => void
             onFocus={() => setSearchOpen(true)}
             onBlur={() => setTimeout(() => setSearchOpen(false), 200)}
             placeholder={
-              locale === 'ka' ? 'სერვისების ძიება...' :
-              locale === 'ru' ? 'Поиск сервисов...' :
-              'Search services...'
+              locale === 'ka' ? 'ჰკითხე Agent G-ს რისი შექმნა გინდა...' :
+              locale === 'ru' ? 'Спросите Agent G, что создать...' :
+              'Ask Agent G what to create…'
             }
             className="flex-1 bg-transparent text-sm outline-none"
             style={{ color: 'var(--color-text)', border: 'none', boxShadow: 'none' }}
@@ -299,84 +299,56 @@ export function SidebarMenu({ open, onClose }: { open: boolean; onClose: () => v
           </button>
         </div>
 
-        {/* Navigation — Grouped */}
-        <div className="flex-1 overflow-y-auto py-3 px-3 space-y-1">
-          {/* Agent G — Always on top */}
+        {/* Navigation — Simplified */}
+        <div className="flex-1 overflow-y-auto py-4 px-3 space-y-1.5">
+          {/* Agent G — Primary CTA */}
           <Link
             href={lh('/services/agent-g')}
             onClick={onClose}
-            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-[13px] font-semibold transition-all duration-200`}
+            className="flex items-center gap-3 px-4 py-3 rounded-xl text-[15px] font-semibold transition-all duration-200"
             style={{
               color: isActive('/services/agent-g') ? '#fff' : 'var(--color-accent)',
               backgroundColor: isActive('/services/agent-g') ? 'var(--color-accent)' : 'var(--color-accent-soft)',
-              border: `1px solid ${isActive('/services/agent-g') ? 'var(--color-accent)' : 'transparent'}`,
+              border: `1px solid ${isActive('/services/agent-g') ? 'var(--color-accent)' : 'rgba(34,211,238,0.15)'}`,
             }}
           >
-            <span className="text-base">🤖</span>
+            <span className="text-lg">🤖</span>
             Agent G
           </Link>
-          {/* All Services link */}
+
+          {/* All Services */}
           <Link
             href={lh('/services')}
             onClick={onClose}
-            className="flex items-center gap-3 px-3 py-2 rounded-lg text-[13px] font-medium transition-all duration-200"
+            className="flex items-center gap-3 px-4 py-3 rounded-xl text-[15px] font-medium transition-all duration-200"
             style={{
-              color: isActive('/services') && !pathname.includes('/services/') ? 'var(--color-text)' : 'var(--color-text-secondary)',
-              backgroundColor: isActive('/services') && !pathname.includes('/services/') ? 'var(--color-accent-soft)' : 'transparent',
+              color: isActive('/services') ? 'var(--color-text)' : 'var(--color-text-secondary)',
+              backgroundColor: isActive('/services') ? 'var(--color-accent-soft)' : 'transparent',
             }}
           >
-            {locale === 'ka' ? '📋 ყველა სერვისი' : locale === 'ru' ? '📋 Все сервисы' : '📋 All Services'}
+            <span className="text-lg">📋</span>
+            {locale === 'ka' ? 'ყველა სერვისი' : locale === 'ru' ? 'Все сервисы' : 'All Services'}
           </Link>
-          <div className="h-px my-2" style={{ backgroundColor: 'var(--color-border)' }} />
-          {/* Service Groups */}
-          {NAV_GROUPS.map(group => {
-            const groupServices = group.services.map(slug => getServiceBySlug(slug)).filter(Boolean)
-            const anyActive = group.services.some(slug => isActive(`/services/${slug}`))
-            return (
-              <div key={group.id} className="space-y-0.5">
-                <div className="flex items-center gap-2 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider" style={{ color: anyActive ? 'var(--color-accent)' : 'var(--color-text-tertiary)' }}>
-                  <span>{group.icon}</span>
-                  {group.label[locale as 'ka' | 'en' | 'ru'] || group.label.en}
-                </div>
-                {groupServices.map(svc => {
-                  if (!svc) return null
-                  const active = isActive(`/services/${svc.slug}`)
-                  return (
-                    <Link
-                      key={svc.slug}
-                      href={lh(`/services/${svc.slug}`)}
-                      onClick={onClose}
-                      className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13px] font-medium transition-all duration-200 ml-2"
-                      style={{
-                        color: active ? 'var(--color-text)' : 'var(--color-text-secondary)',
-                        backgroundColor: active ? 'var(--color-accent-soft)' : 'transparent',
-                      }}
-                    >
-                      <span className="text-sm">{svc.icon}</span>
-                      {svc.title[locale as 'ka' | 'en' | 'ru'] || svc.title.en}
-                    </Link>
-                  )
-                })}
-              </div>
-            )
-          })}
-          <div className="h-px my-2" style={{ backgroundColor: 'var(--color-border)' }} />
-          {/* Extra nav items */}
+
+          <div className="h-px my-3" style={{ backgroundColor: 'var(--color-border)' }} />
+
+          {/* Pricing */}
           <Link
             href={lh('/pricing')}
             onClick={onClose}
-            className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-[13px] font-medium transition-all duration-200"
+            className="flex items-center gap-3 px-4 py-3 rounded-xl text-[15px] font-medium transition-all duration-200"
             style={{
               color: isActive('/pricing') ? 'var(--color-text)' : 'var(--color-text-secondary)',
               backgroundColor: isActive('/pricing') ? 'var(--color-accent-soft)' : 'transparent',
             }}
           >
-            {locale === 'ka' ? '💰 ფასები' : locale === 'ru' ? '💰 Цены' : '💰 Pricing'}
+            <span className="text-lg">💰</span>
+            {locale === 'ka' ? 'ფასები' : locale === 'ru' ? 'Цены' : 'Pricing'}
           </Link>
         </div>
 
         {/* Bottom section — settings */}
-        <div className="shrink-0 px-3 pb-4 space-y-1" style={{ borderTop: '1px solid var(--color-border)', paddingTop: '0.75rem' }}>
+        <div className="shrink-0 px-3 pb-4 space-y-1.5" style={{ borderTop: '1px solid var(--color-border)', paddingTop: '0.75rem' }}>
           {/* Language */}
           <div className="flex items-center gap-3 px-3 py-2">
             <span style={{ color: 'var(--color-text-tertiary)' }}><IconGlobe /></span>
@@ -403,7 +375,7 @@ export function SidebarMenu({ open, onClose }: { open: boolean; onClose: () => v
           {/* Theme */}
           <button
             onClick={toggleTheme}
-            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-[13px] font-medium transition-colors hover:bg-[var(--card-hover)]"
+            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-[14px] font-medium transition-colors hover:bg-[var(--card-hover)]"
             style={{ color: 'var(--color-text-secondary)' }}
           >
             <span style={{ color: 'var(--color-text-tertiary)' }}><IconPalette /></span>
@@ -419,7 +391,7 @@ export function SidebarMenu({ open, onClose }: { open: boolean; onClose: () => v
           <Link
             href={lh('/settings')}
             onClick={onClose}
-            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-[13px] font-medium transition-colors hover:bg-[var(--card-hover)]"
+            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-[14px] font-medium transition-colors hover:bg-[var(--card-hover)]"
             style={{ color: 'var(--color-text-secondary)' }}
           >
             <span style={{ color: 'var(--color-text-tertiary)' }}><IconSettings /></span>
@@ -431,7 +403,7 @@ export function SidebarMenu({ open, onClose }: { open: boolean; onClose: () => v
           <Link
             href={lh('/login')}
             onClick={onClose}
-            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-[13px] font-medium transition-colors hover:bg-[var(--card-hover)]"
+            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-[14px] font-medium transition-colors hover:bg-[var(--card-hover)]"
             style={{ color: 'var(--color-text-secondary)' }}
           >
             <span style={{ color: 'var(--color-text-tertiary)' }}><IconUser /></span>

@@ -40,12 +40,14 @@ export default function PremiumLanding() {
       <Separator />
       <WorkspaceTemplates />
       <Separator />
-      {/* ── Bottom Chat Bar: "You've seen what we can do — now start creating" ── */}
-      <section className="relative px-4 sm:px-6 lg:px-10 py-16 sm:py-20">
-        <BottomChatBar mode="landing" />
-      </section>
       <LandingCTA />
       <LandingFooter />
+
+      {/* Spacer for the fixed bottom chat bar */}
+      <div className="h-36 md:h-32" />
+
+      {/* Sticky bottom chat bar — always visible */}
+      <BottomChatBar mode="landing" className="fixed bottom-0 inset-x-0 z-[190] md:pb-3 pb-[calc(3.5rem+env(safe-area-inset-bottom,0px))]" />
     </div>
   )
 }

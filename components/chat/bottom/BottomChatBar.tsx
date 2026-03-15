@@ -60,11 +60,19 @@ export function BottomChatBar({ mode = 'landing', className = '' }: Props) {
   }, [value, navigateToService])
 
   return (
-    <div className={`bottom-chat-bar ${className}`}>
-      <div className="relative max-w-2xl mx-auto">
+    <div
+      className={`bottom-chat-bar ${className}`}
+      style={{
+        backgroundColor: 'var(--nav-bg)',
+        borderTop: '1px solid var(--color-border)',
+        backdropFilter: 'blur(20px) saturate(1.2)',
+        WebkitBackdropFilter: 'blur(20px) saturate(1.2)',
+      }}
+    >
+      <div className="relative max-w-2xl mx-auto px-4 pt-3 pb-2">
 
         {/* Agent G identity badge */}
-        <div className="flex items-center justify-center gap-2 mb-3">
+        <div className="flex items-center justify-center gap-2 mb-2">
           <div className="flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] tracking-wide font-medium"
             style={{ backgroundColor: 'rgba(34,211,238,0.06)', color: 'var(--color-accent)', border: '1px solid rgba(34,211,238,0.12)' }}
           >
@@ -76,15 +84,8 @@ export function BottomChatBar({ mode = 'landing', className = '' }: Props) {
           </div>
         </div>
 
-        {/* Greeting text — landing only */}
-        {mode === 'landing' && (
-          <p className="text-center text-sm sm:text-base mb-4 font-medium" style={{ color: 'var(--color-text-secondary)' }}>
-            {labels.greeting}
-          </p>
-        )}
-
         {/* Quick actions */}
-        <div className="mb-3">
+        <div className="mb-2">
           <BottomChatQuickActions onAction={handleAction} mode={mode} />
         </div>
 
@@ -96,15 +97,6 @@ export function BottomChatBar({ mode = 'landing', className = '' }: Props) {
           onAttach={mode === 'app' ? () => {} : undefined}
           onMic={() => {}}
         />
-
-        {/* Subtle legal / helper text */}
-        {mode === 'landing' && (
-          <p className="text-center text-[10px] mt-2.5 tracking-wide" style={{ color: 'var(--color-text-tertiary)', opacity: 0.6 }}>
-            {lang === 'ka' ? 'Agent G დაგეხმარებათ ნებისმიერი AI სერვისის გამოყენებაში'
-              : lang === 'ru' ? 'Agent G поможет с любым AI-сервисом'
-              : 'Agent G will help you use any AI service'}
-          </p>
-        )}
       </div>
     </div>
   )
