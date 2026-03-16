@@ -16,13 +16,13 @@ interface BrandLogoProps {
 }
 
 const sizeMap = {
-  nav:  { img: 32, cls: 'w-8 h-8' },
-  xs:   { img: 40, cls: 'w-10 h-10' },
-  sm:   { img: 52, cls: 'w-[52px] h-[52px]' },
-  sm20: { img: 77, cls: 'w-[77px] h-[77px]' },
-  md:   { img: 84, cls: 'w-[84px] h-[84px]' },
-  lg:   { img: 112, cls: 'w-[112px] h-[112px]' },
-  xl:   { img: 144, cls: 'w-[144px] h-[144px]' },
+  nav:  { img: 42, cls: 'w-[42px] h-[42px]' },
+  xs:   { img: 52, cls: 'w-[52px] h-[52px]' },
+  sm:   { img: 68, cls: 'w-[68px] h-[68px]' },
+  sm20: { img: 100, cls: 'w-[100px] h-[100px]' },
+  md:   { img: 109, cls: 'w-[109px] h-[109px]' },
+  lg:   { img: 146, cls: 'w-[146px] h-[146px]' },
+  xl:   { img: 187, cls: 'w-[187px] h-[187px]' },
 }
 
 export function BrandLogo({ href, size = 'md', showText = true, className = '', compact = false, glow = false }: BrandLogoProps) {
@@ -56,7 +56,7 @@ export function BrandLogo({ href, size = 'md', showText = true, className = '', 
           <div className="absolute inset-[10%] rounded-full" style={{ background: 'radial-gradient(circle, rgba(34,211,238,0.05) 0%, transparent 70%)', filter: 'blur(6px)' }} />
         )}
         <Image
-          src="/brand/gemini-rocket.png"
+          src="/brand/gemini-rocket-clean.png"
           alt="MyAvatar.ge"
           fill
           sizes={`${s.img}px`}

@@ -9,6 +9,7 @@
 
 import { HeroSection } from './HeroSection'
 import { WorkflowPipelineBuilder } from './WorkflowPipelineBuilder'
+import { AppDownloadSection } from './AppDownloadSection'
 import { LandingFooter } from './LandingFooter'
 
 export default function PremiumLanding() {
@@ -17,6 +18,8 @@ export default function PremiumLanding() {
       <HeroSection />
       <Separator />
       <WorkflowPipelineBuilder />
+      <Separator />
+      <AppDownloadSection />
       <LandingFooter />
     </div>
   )

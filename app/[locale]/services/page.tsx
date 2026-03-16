@@ -363,13 +363,13 @@ export default async function LocalizedServicesPage({ params }: ServicesPageProp
     <section className='relative overflow-hidden px-4 py-16 sm:px-6 md:py-20 lg:px-10 lg:py-24' style={{ backgroundColor: 'var(--color-bg)', color: 'var(--color-text)' }}>
       <div className='relative mx-auto flex w-full max-w-7xl flex-col gap-12 md:gap-16'>
         <header className='mx-auto max-w-4xl text-center'>
-          <div className='mx-auto mb-5 relative w-16 h-16 sm:w-20 sm:h-20'>
+          <div className='mx-auto mb-5 relative w-[83px] h-[83px] sm:w-[104px] sm:h-[104px]'>
             <div className='absolute inset-[10%] rounded-full' style={{ background: 'radial-gradient(circle, rgba(99,102,241,0.08) 0%, transparent 70%)', filter: 'blur(8px)' }} />
             <Image
-              src="/brand/gemini-rocket.png"
+              src="/brand/gemini-rocket-clean.png"
               alt="MyAvatar.ge"
               fill
-              sizes="80px"
+              sizes="104px"
               priority
               className='object-contain drop-shadow-[0_4px_16px_rgba(99,102,241,0.22)]'
             />
