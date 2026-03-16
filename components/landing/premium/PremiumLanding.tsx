@@ -11,7 +11,6 @@ import { HeroSection } from './HeroSection'
 import { TrustStrip } from './TrustStrip'
 import { ServicesOverview } from './ServicesOverview'
 import { WorkflowDemo } from './WorkflowDemo'
-import { FeatureHighlights } from './FeatureHighlights'
 import { UseCases } from './UseCases'
 import { WorkspaceTemplates } from './WorkspaceTemplates'
 import { LandingCTA } from './LandingCTA'
@@ -27,8 +26,6 @@ export default function PremiumLanding() {
       <ServicesOverview />
       <Separator />
       <WorkflowDemo />
-      <Separator />
-      <FeatureHighlights />
       <Separator />
       <UseCases />
       <Separator />

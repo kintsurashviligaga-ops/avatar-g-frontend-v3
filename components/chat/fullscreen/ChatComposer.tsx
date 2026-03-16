@@ -66,13 +66,13 @@ export function ChatComposer({
 
   return (
     <div
-      className="sticky bottom-0 z-30 shrink-0 w-full"
+      className="fixed bottom-0 left-0 right-0 z-30"
       style={{
         backgroundColor: 'var(--color-bg)',
         paddingBottom: 'env(safe-area-inset-bottom, 0px)',
       }}
     >
-      <div className="max-w-2xl mx-auto px-3 sm:px-4 pt-2 pb-2">
+      <div className="max-w-3xl mx-auto px-3 sm:px-4 pt-2 pb-2">
         {/* Composer container */}
         <div
           className="flex items-end gap-1 rounded-[24px] px-2 py-1.5 transition-all duration-200"

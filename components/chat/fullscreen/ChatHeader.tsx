@@ -17,7 +17,7 @@ export function ChatHeader() {
 
   return (
     <header
-      className="sticky top-0 z-40 flex items-center justify-between px-4 sm:px-6 shrink-0"
+      className="fixed top-0 left-0 right-0 z-40 flex items-center justify-between px-4 sm:px-6"
       style={{
         height: 'calc(56px + env(safe-area-inset-top, 0px))',
         paddingTop: 'env(safe-area-inset-top, 0px)',

@@ -76,7 +76,7 @@ type OpenAIChatClient = {
 };
 
 const MODEL = 'gpt-4o-mini';
-const OPENAI_TIMEOUT_MS = 10_000;
+const OPENAI_TIMEOUT_MS = 25_000;
 const MAX_REPLY_CHARS = 1500;
 const MAX_RETRIES = 2;
 
@@ -345,6 +345,7 @@ async function generateWithRetry(args: {
 
       return trimReply(sanitizeOwnerNaming(text));
     } catch (error) {
+      console.error('[AgentG.Personality] OpenAI attempt', attempt, 'failed:', error instanceof Error ? error.message : error);
       lastError = error;
       if (attempt >= MAX_RETRIES) {
         break;
@@ -422,7 +423,8 @@ export async function generateAgentGPersonalityReply(input: PersonalityInput): P
         voiceHint: mapped.voiceHint,
       },
     };
-  } catch {
+  } catch (err) {
+    console.error('[AgentG.Personality] generateWithRetry failed:', err instanceof Error ? err.message : err);
     const fallback = fallbackReply(locale);
     memory.lastAssistantReply = fallback;
     return {

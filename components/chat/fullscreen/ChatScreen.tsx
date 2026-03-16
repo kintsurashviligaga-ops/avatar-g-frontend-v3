@@ -309,46 +309,53 @@ export function ChatScreen() {
 
   return (
     <div
-      className="fixed inset-0 z-[100] flex flex-col"
-      style={{
-        backgroundColor: 'var(--color-bg)',
-      }}
+      className="fixed inset-0 z-[100]"
+      style={{ backgroundColor: 'var(--color-bg)' }}
     >
-      {/* True fullscreen on ALL devices */}
-      <div className="flex flex-col w-full h-full">
-        <ChatHeader />
+      {/* Fixed header */}
+      <ChatHeader />
 
-        {/* Body */}
-        <div className="flex-1 min-h-0 overflow-y-auto">
-          <div className="max-w-3xl mx-auto w-full">
-            {messages.length === 0 ? (
-              <ChatWelcome onQuickAction={handleQuickAction} />
-            ) : (
-              <MessageList messages={messages} />
-            )}
-          </div>
+      {/* Scrollable body — between fixed header and fixed composer */}
+      <div
+        className="absolute left-0 right-0 overflow-y-auto overflow-x-hidden overscroll-contain"
+        style={{
+          top: 'calc(56px + env(safe-area-inset-top, 0px))',
+          bottom: 'calc(68px + env(safe-area-inset-bottom, 0px))',
+        }}
+      >
+        <div className="max-w-3xl mx-auto w-full">
+          {messages.length === 0 ? (
+            <ChatWelcome onQuickAction={handleQuickAction} />
+          ) : (
+            <MessageList messages={messages} />
+          )}
         </div>
-
-        {/* Upload preview tray */}
-        {attachments.length > 0 && (
-          <UploadPreviewTray attachments={attachments} onRemove={handleRemoveAttachment} />
-        )}
-
-        {/* Composer */}
-        <ChatComposer
-          value={composerText}
-          onChange={setComposerText}
-          onSend={handleSend}
-          onAttach={handleAttach}
-          onCamera={handleCamera}
-          onVoice={handleVoice}
-          onSpeechModeToggle={handleSpeechModeToggle}
-          isSubmitting={isSubmitting}
-          voiceStatus={voiceStatus}
-          speechModeOn={speechModeOn}
-          attachments={attachments}
-        />
       </div>
+
+      {/* Upload preview tray — above composer */}
+      {attachments.length > 0 && (
+        <div
+          className="absolute left-0 right-0 z-20"
+          style={{ bottom: 'calc(68px + env(safe-area-inset-bottom, 0px))' }}
+        >
+          <UploadPreviewTray attachments={attachments} onRemove={handleRemoveAttachment} />
+        </div>
+      )}
+
+      {/* Fixed composer */}
+      <ChatComposer
+        value={composerText}
+        onChange={setComposerText}
+        onSend={handleSend}
+        onAttach={handleAttach}
+        onCamera={handleCamera}
+        onVoice={handleVoice}
+        onSpeechModeToggle={handleSpeechModeToggle}
+        isSubmitting={isSubmitting}
+        voiceStatus={voiceStatus}
+        speechModeOn={speechModeOn}
+        attachments={attachments}
+      />
 
       {/* Hidden file inputs */}
       <input
