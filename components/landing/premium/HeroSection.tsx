@@ -48,7 +48,7 @@ export function HeroSection() {
         {/* Badge */}
         <div className="flex items-center gap-3">
           <div className="relative w-9 h-9">
-            <Image src="/brand/rocket-brain.svg" alt="MyAvatar.ge" fill sizes="36px" className="object-contain" />
+            <Image src="/brand/gemini-rocket.png" alt="MyAvatar.ge" fill sizes="36px" className="object-contain" />
           </div>
           <span className="text-[11px] tracking-[0.18em] uppercase font-medium px-3 py-1.5 rounded-full" style={{ color: 'var(--color-accent)', backgroundColor: 'var(--color-accent-soft)', border: '1px solid rgba(34,211,238,0.15)' }}>
             AI Creation Platform

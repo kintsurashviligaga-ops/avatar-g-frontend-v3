@@ -24,7 +24,7 @@ export function LandingFooter() {
           <div className="col-span-2 sm:col-span-1">
             <div className="flex items-center gap-2 mb-3">
               <div className="relative w-7 h-7">
-                <Image src="/brand/rocket-brain.svg" alt="MyAvatar.ge" fill sizes="28px" className="object-contain" />
+                <Image src="/brand/gemini-rocket.png" alt="MyAvatar.ge" fill sizes="28px" className="object-contain" />
               </div>
               <span className="text-sm font-bold" style={{ color: 'var(--color-text)' }}>MyAvatar.ge</span>
             </div>

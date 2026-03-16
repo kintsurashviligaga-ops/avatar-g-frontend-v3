@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import UnifiedServiceLayout from '@/components/services/UnifiedServiceLayout';
+import ServiceChatLayout from '@/components/services/workspace/ServiceChatLayout';
 import { createBrowserClient } from '@/lib/supabase/browser';
 
 interface ServicePageClientProps {
@@ -38,7 +38,7 @@ export default function ServicePageClient(props: ServicePageClientProps) {
   }, [demoMode]);
 
   return (
-    <UnifiedServiceLayout
+    <ServiceChatLayout
       {...props}
       isAuthenticated={isAuthenticated}
       demoMode={demoMode}

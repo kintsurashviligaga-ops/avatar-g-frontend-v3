@@ -9,7 +9,7 @@ import { FloatingChatButton } from './chat/FloatingChatButton';
 export function AppShell({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const pathname = usePathname();
-  const isFullscreenChat = !!pathname && /\/services\/agent-g\/?$/.test(pathname);
+  const isFullscreenChat = !!pathname && /\/services\/[a-z0-9-]+\/?$/.test(pathname);
 
   return (
     <div className='relative min-h-screen flex flex-col' style={{ color: 'var(--color-text)' }}>
