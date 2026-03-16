@@ -95,7 +95,7 @@ export function AppDownloadSection() {
   const c = COPY[lang] || COPY.en
 
   return (
-    <section className="relative px-4 sm:px-6 lg:px-10 py-16 sm:py-20 overflow-hidden">
+    <section className="cinematic-section relative px-4 sm:px-6 lg:px-10 py-16 sm:py-20 overflow-hidden">
       {/* Subtle ambient light */}
       <div
         className="absolute inset-0 pointer-events-none"

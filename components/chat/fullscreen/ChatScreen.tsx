@@ -317,6 +317,12 @@ export function ChatScreen() {
       className="fixed inset-0 z-[9999]"
       style={{ backgroundColor: '#0a0a0c' }}
     >
+      {/* Cinematic ambient for chat environment */}
+      <div className="absolute inset-0 pointer-events-none" aria-hidden="true">
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[300px]" style={{ background: 'radial-gradient(ellipse 60% 50% at 50% 0%, rgba(34,211,238,0.04) 0%, transparent 70%)', filter: 'blur(60px)' }} />
+        <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-full h-[200px]" style={{ background: 'radial-gradient(ellipse 80% 60% at 50% 100%, rgba(6,182,212,0.03) 0%, transparent 70%)', filter: 'blur(40px)' }} />
+      </div>
+
       {/* Fixed header */}
       <ChatHeader />
 

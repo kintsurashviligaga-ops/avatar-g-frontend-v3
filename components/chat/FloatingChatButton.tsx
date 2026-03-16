@@ -20,16 +20,16 @@ export function FloatingChatButton() {
       className="
         fixed z-50 flex items-center justify-center
         w-14 h-14 rounded-full
-        shadow-lg shadow-cyan-500/25
-        transition-all duration-200
-        hover:scale-105 hover:shadow-xl hover:shadow-cyan-500/30
+        transition-all duration-300
+        hover:scale-105 hover:-translate-y-0.5
         active:scale-95
       "
       style={{
         bottom: 'calc(5rem + env(safe-area-inset-bottom, 0px))',
         right: '1rem',
-        backgroundColor: 'var(--color-accent)',
+        background: 'linear-gradient(135deg, #22d3ee 0%, #06b6d4 50%, #0891b2 100%)',
         color: '#fff',
+        boxShadow: '0 4px 24px rgba(34,211,238,0.35), 0 8px 40px rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.2)',
       }}
     >
       {/* Chat bubble icon */}
@@ -39,8 +39,8 @@ export function FloatingChatButton() {
 
       {/* Subtle pulse ring */}
       <span
-        className="absolute inset-0 rounded-full animate-ping opacity-20"
-        style={{ backgroundColor: 'var(--color-accent)' }}
+        className="absolute inset-[-3px] rounded-full animate-ping"
+        style={{ backgroundColor: 'rgba(34,211,238,0.15)' }}
       />
     </Link>
   )

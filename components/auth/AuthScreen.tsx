@@ -292,7 +292,7 @@ export default function AuthScreen({ mode: initialMode, locale, redirectTo = '/'
     return (
       <div className="relative min-h-screen flex items-center justify-center px-4 overflow-hidden" style={{ backgroundColor: 'var(--color-bg)' }}>
         <BgGlow />
-        <div className="relative z-10 w-full max-w-[420px] text-center p-8 rounded-2xl" style={{ backgroundColor: 'var(--color-surface)', border: '1px solid var(--color-border)' }}>
+        <div className="relative z-10 w-full max-w-[420px] text-center p-8 rounded-2xl holo-panel">
           <div className="w-16 h-16 mx-auto mb-5 rounded-2xl flex items-center justify-center" style={{ backgroundColor: 'rgba(34,211,238,0.1)', border: '1px solid rgba(34,211,238,0.2)' }}>
             <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#22D3EE" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <path d="M22 11.08V12a10 10 0 11-5.93-9.14" />
@@ -348,7 +348,7 @@ export default function AuthScreen({ mode: initialMode, locale, redirectTo = '/'
         </div>
 
         {/* Auth Card */}
-        <div className="rounded-2xl p-6 sm:p-8" style={{ backgroundColor: 'var(--color-surface)', border: '1px solid var(--color-border)', boxShadow: '0 0 80px rgba(34,211,238,0.03), 0 4px 24px rgba(0,0,0,0.3)' }}>
+        <div className="rounded-2xl p-6 sm:p-8 holo-panel">
 
           {/* Primary Social Providers */}
           <div className="space-y-3">
@@ -536,12 +536,7 @@ export default function AuthScreen({ mode: initialMode, locale, redirectTo = '/'
             <button
               type="submit"
               disabled={loading}
-              className="w-full h-12 font-semibold text-[15px] rounded-xl transition-all duration-200 disabled:opacity-50"
-              style={{
-                background: 'linear-gradient(135deg, #22D3EE 0%, #06B6D4 100%)',
-                color: '#000',
-                boxShadow: '0 2px 12px rgba(34,211,238,0.25)',
-              }}
+              className="cinematic-btn cinematic-btn-primary w-full h-12 text-[15px] rounded-xl disabled:opacity-50"
             >
               {loading && loadingProvider === 'email' ? (
                 <span className="flex items-center justify-center gap-2">
@@ -604,10 +599,15 @@ function BgGlow() {
   return (
     <>
       <div className="pointer-events-none absolute inset-0" style={{
-        background: 'radial-gradient(ellipse 60% 50% at 50% 0%, rgba(34,211,238,0.06) 0%, transparent 60%)',
+        background: 'radial-gradient(ellipse 60% 50% at 50% 0%, rgba(34,211,238,0.05) 0%, transparent 60%)',
       }} />
-      <div className="pointer-events-none absolute inset-0" style={{
-        background: 'radial-gradient(circle at 20% 80%, rgba(6,182,212,0.04) 0%, transparent 40%), radial-gradient(circle at 80% 20%, rgba(34,211,238,0.03) 0%, transparent 40%)',
+      <div className="pointer-events-none absolute inset-0 glow-drift" style={{
+        background: 'radial-gradient(circle at 20% 80%, rgba(6,182,212,0.03) 0%, transparent 40%), radial-gradient(circle at 80% 20%, rgba(34,211,238,0.025) 0%, transparent 40%)',
+      }} />
+      {/* Structural grid hint */}
+      <div className="pointer-events-none absolute inset-0 opacity-[0.015]" style={{
+        backgroundImage: 'radial-gradient(rgba(255,255,255,0.3) 0.5px, transparent 0.5px)',
+        backgroundSize: '32px 32px',
       }} />
     </>
   );

@@ -1206,3 +1206,214 @@ a:focus-visible {
   0%, 100% { opacity: 0.5; transform: scale(1); }
   50%      { opacity: 0.85; transform: scale(1.06); }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   CINEMATIC AI ENVIRONMENT SYSTEM v3
+   Deep space • 4D geometry • Holographic panels • Atmospheric lighting
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Cinematic Particles — sparse, slow, atmospheric ── */
+.cinematic-particle {
+  position: absolute;
+  width: 2px;
+  height: 2px;
+  border-radius: 50%;
+  background: rgba(34, 211, 238, 0.5);
+  box-shadow: 0 0 6px rgba(34, 211, 238, 0.3);
+  animation: cinematic-float linear infinite;
+}
+
+@keyframes cinematic-float {
+  0% {
+    transform: translate(0, 0) scale(1);
+    opacity: 0;
+  }
+  10% { opacity: 0.6; }
+  50% { opacity: 0.3; }
+  90% { opacity: 0.5; }
+  100% {
+    transform: translate(var(--tx, 40px), var(--ty, -80px)) scale(0.5);
+    opacity: 0;
+  }
+}
+
+.cinematic-particle:nth-child(1) { --tx: 30px; --ty: -60px; }
+.cinematic-particle:nth-child(2) { --tx: -20px; --ty: -90px; }
+.cinematic-particle:nth-child(3) { --tx: 50px; --ty: -40px; }
+.cinematic-particle:nth-child(4) { --tx: -40px; --ty: -70px; }
+.cinematic-particle:nth-child(5) { --tx: 25px; --ty: -55px; }
+.cinematic-particle:nth-child(6) { --tx: -35px; --ty: -85px; }
+
+/* ── Holographic Panel — premium floating glass surface ── */
+@layer components {
+  .holo-panel {
+    position: relative;
+    background: linear-gradient(
+      165deg,
+      rgba(10, 18, 36, 0.85) 0%,
+      rgba(8, 14, 28, 0.78) 40%,
+      rgba(6, 12, 24, 0.82) 100%
+    );
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 1.25rem;
+    backdrop-filter: blur(32px) saturate(1.2);
+    -webkit-backdrop-filter: blur(32px) saturate(1.2);
+    box-shadow:
+      0 20px 60px rgba(0, 0, 0, 0.45),
+      0 4px 16px rgba(0, 0, 0, 0.3),
+      inset 0 1px 0 rgba(255, 255, 255, 0.06),
+      0 0 0 0.5px rgba(255, 255, 255, 0.05);
+    transition:
+      border-color 0.4s var(--ease-premium),
+      box-shadow 0.4s var(--ease-premium),
+      transform 0.4s var(--ease-premium);
+  }
+
+  .holo-panel::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    background: linear-gradient(
+      135deg,
+      rgba(34, 211, 238, 0.04) 0%,
+      transparent 40%,
+      transparent 60%,
+      rgba(6, 182, 212, 0.03) 100%
+    );
+  }
+
+  .holo-panel:hover {
+    border-color: rgba(34, 211, 238, 0.12);
+    box-shadow:
+      0 24px 72px rgba(0, 0, 0, 0.5),
+      0 6px 20px rgba(0, 0, 0, 0.35),
+      0 0 40px rgba(34, 211, 238, 0.04),
+      inset 0 1px 0 rgba(255, 255, 255, 0.08),
+      0 0 0 0.5px rgba(34, 211, 238, 0.08);
+    transform: translateY(-1px);
+  }
+
+  [data-theme='light'] .holo-panel {
+    background: linear-gradient(165deg, rgba(255,255,255,0.88) 0%, rgba(248,250,255,0.82) 100%);
+    border: 1px solid rgba(0,0,0,0.06);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.06), 0 2px 8px rgba(0,0,0,0.03);
+  }
+
+  /* ── Cinematic Button — primary action with depth ── */
+  .cinematic-btn {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    font-weight: 600;
+    font-size: 0.9375rem;
+    letter-spacing: 0.01em;
+    border-radius: 0.875rem;
+    border: none;
+    cursor: pointer;
+    overflow: hidden;
+    transition: all 0.3s var(--ease-premium);
+  }
+
+  .cinematic-btn-primary {
+    background: linear-gradient(135deg, #22d3ee 0%, #06b6d4 50%, #0891b2 100%);
+    color: #000;
+    box-shadow:
+      0 4px 16px rgba(34, 211, 238, 0.3),
+      0 1px 4px rgba(0, 0, 0, 0.2),
+      inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  }
+
+  .cinematic-btn-primary:hover {
+    transform: translateY(-2px);
+    box-shadow:
+      0 8px 28px rgba(34, 211, 238, 0.4),
+      0 2px 8px rgba(0, 0, 0, 0.25),
+      inset 0 1px 0 rgba(255, 255, 255, 0.25);
+  }
+
+  .cinematic-btn-primary::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.15), transparent);
+    transform: translateX(-100%);
+    transition: transform 0.5s ease;
+  }
+
+  .cinematic-btn-primary:hover::after {
+    transform: translateX(100%);
+  }
+
+  .cinematic-btn-secondary {
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--color-text);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  }
+
+  .cinematic-btn-secondary:hover {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(34, 211, 238, 0.2);
+    transform: translateY(-1px);
+  }
+
+  /* ── Cinematic Section container ── */
+  .cinematic-section {
+    position: relative;
+    isolation: isolate;
+    z-index: 1;
+  }
+
+  /* ── Edge Light — subtle cyan edge illumination for panels ── */
+  .edge-light {
+    position: relative;
+  }
+
+  .edge-light::after {
+    content: '';
+    position: absolute;
+    inset: -1px;
+    border-radius: inherit;
+    pointer-events: none;
+    background: linear-gradient(
+      135deg,
+      rgba(34, 211, 238, 0.12) 0%,
+      transparent 25%,
+      transparent 75%,
+      rgba(6, 182, 212, 0.08) 100%
+    );
+    mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    mask-composite: exclude;
+    -webkit-mask-composite: xor;
+    padding: 1px;
+    opacity: 0;
+    transition: opacity 0.4s var(--ease-premium);
+  }
+
+  .edge-light:hover::after {
+    opacity: 1;
+  }
+}
+
+/* ── Holographic breathing — very subtle scale animation ── */
+@keyframes holo-breathe {
+  0%, 100% { transform: scale(1); opacity: 0.7; }
+  50% { transform: scale(1.002); opacity: 0.85; }
+}
+
+/* ── Slow ambient glow drift ── */
+@keyframes glow-drift {
+  0% { transform: translate(0, 0); }
+  33% { transform: translate(10px, -5px); }
+  66% { transform: translate(-5px, 8px); }
+  100% { transform: translate(0, 0); }
+}
+
+.glow-drift {
+  animation: glow-drift 20s ease-in-out infinite;
+}

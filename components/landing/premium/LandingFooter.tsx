@@ -16,7 +16,7 @@ export function LandingFooter() {
   const lh = (p: string) => `/${language}${p}`
 
   return (
-    <footer className="px-4 sm:px-6 lg:px-10 pt-16 pb-8" style={{ borderTop: '1px solid var(--color-border)', paddingBottom: 'calc(2rem + env(safe-area-inset-bottom, 0px))' }}>
+    <footer className="cinematic-section px-4 sm:px-6 lg:px-10 pt-16 pb-8" style={{ borderTop: '1px solid rgba(255,255,255,0.06)', paddingBottom: 'calc(2rem + env(safe-area-inset-bottom, 0px))' }}>
       <div className="max-w-6xl mx-auto">
         {/* Top: Logo + columns */}
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-8 mb-12">

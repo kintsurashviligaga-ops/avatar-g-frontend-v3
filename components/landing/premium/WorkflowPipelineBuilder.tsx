@@ -261,7 +261,7 @@ export function WorkflowPipelineBuilder() {
   const pipelineSlugs = new Set(pipeline.map(s => s.slug))
 
   return (
-    <section className="relative px-4 sm:px-6 lg:px-10 py-20 sm:py-28 overflow-hidden">
+    <section className="cinematic-section relative px-4 sm:px-6 lg:px-10 py-20 sm:py-28 overflow-hidden">
       {/* Background textures */}
       <div className="absolute inset-0 pointer-events-none" style={{ background: 'radial-gradient(ellipse 70% 50% at 50% 30%, rgba(34,211,238,0.04) 0%, transparent 70%)' }} />
       <div className="absolute inset-0 pointer-events-none opacity-[0.015]" style={{ backgroundImage: 'radial-gradient(rgba(255,255,255,0.3) 1px, transparent 1px)', backgroundSize: '20px 20px' }} />
@@ -292,17 +292,14 @@ export function WorkflowPipelineBuilder() {
 
         {/* ── Main operational window ── */}
         <div
-          className="relative rounded-3xl p-[1px] overflow-hidden"
+          className="holo-panel relative !rounded-3xl overflow-hidden"
           style={{
-            background: 'linear-gradient(160deg, rgba(34,211,238,0.25) 0%, rgba(255,255,255,0.06) 30%, rgba(34,211,238,0.1) 70%, rgba(255,255,255,0.03) 100%)',
+            background: 'linear-gradient(170deg, #0b1219 0%, #080e14 40%, #0a1018 100%)',
+            boxShadow: '0 8px 60px rgba(0,0,0,0.5), 0 0 80px rgba(34,211,238,0.04), inset 0 1px 0 rgba(255,255,255,0.04)',
           }}
         >
           <div
             className="rounded-3xl overflow-hidden"
-            style={{
-              background: 'linear-gradient(170deg, #0b1219 0%, #080e14 40%, #0a1018 100%)',
-              boxShadow: '0 8px 60px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.04)',
-            }}
           >
             {/* Window title bar — metallic */}
             <div
@@ -462,19 +459,8 @@ export function WorkflowPipelineBuilder() {
                       <Link
                         href={'/' + language + '/services/workflow'}
                         onClick={runPipeline}
-                        className="flex-1 relative group overflow-hidden rounded-xl py-3 text-center transition-all duration-200 hover:-translate-y-0.5 active:scale-[0.98]"
-                        style={{
-                          background: 'linear-gradient(135deg, #0e7490 0%, #0891b2 30%, #22d3ee 70%, #06b6d4 100%)',
-                          boxShadow: '0 4px 20px rgba(34,211,238,0.3), inset 0 1px 0 rgba(255,255,255,0.2), inset 0 -1px 2px rgba(0,0,0,0.2)',
-                        }}
+                        className="cinematic-btn cinematic-btn-primary flex-1 rounded-xl py-3 text-center"
                       >
-                        {/* Metal shine sweep */}
-                        <div
-                          className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none"
-                          style={{
-                            background: 'linear-gradient(105deg, transparent 30%, rgba(255,255,255,0.15) 45%, rgba(255,255,255,0.25) 50%, rgba(255,255,255,0.15) 55%, transparent 70%)',
-                          }}
-                        />
                         <span className="relative text-sm font-black tracking-wider text-white uppercase">
                           {runAnimation ? '⏳ ...' : `⚡ ${c.run}`}
                         </span>

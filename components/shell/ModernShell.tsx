@@ -122,9 +122,10 @@ export function TopNavbar({ onMenuToggle, menuOpen }: { onMenuToggle: () => void
       style={{
         backgroundColor: 'var(--nav-bg)',
         borderBottom: '1px solid var(--nav-border)',
-        backdropFilter: 'blur(20px) saturate(1.2)',
-        WebkitBackdropFilter: 'blur(20px) saturate(1.2)',
+        backdropFilter: 'blur(28px) saturate(1.3)',
+        WebkitBackdropFilter: 'blur(28px) saturate(1.3)',
         paddingTop: 'env(safe-area-inset-top, 0px)',
+        boxShadow: '0 4px 24px rgba(0,0,0,0.2), 0 0 40px rgba(34,211,238,0.02)',
       }}
     >
       {/* Left: Hamburger + Brand Logo */}
@@ -248,8 +249,7 @@ export function TopNavbar({ onMenuToggle, menuOpen }: { onMenuToggle: () => void
         {/* Get Started */}
         <Link
           href={lh('/signup')}
-          className="text-[13px] font-semibold px-4 py-2.5 rounded-xl transition-all duration-200 hover:opacity-90 active:scale-95"
-          style={{ backgroundColor: 'var(--color-accent)', color: '#fff' }}
+          className="cinematic-btn cinematic-btn-primary text-[13px] px-4 py-2.5 rounded-xl"
         >
           {locale === 'ka' ? 'დაწყება' : locale === 'ru' ? 'Начать' : 'Get Started'}
         </Link>
@@ -343,8 +343,11 @@ export function SidebarMenu({ open, onClose }: { open: boolean; onClose: () => v
         }`}
         style={{
           backgroundColor: 'var(--sidebar-bg)',
-          borderRight: '1px solid var(--color-border)',
+          borderRight: '1px solid rgba(255,255,255,0.06)',
           paddingTop: 'env(safe-area-inset-top, 0px)',
+          boxShadow: '4px 0 40px rgba(0,0,0,0.3), 0 0 60px rgba(34,211,238,0.02)',
+          backdropFilter: 'blur(24px) saturate(1.2)',
+          WebkitBackdropFilter: 'blur(24px) saturate(1.2)',
         }}
       >
         {/* Header */}
@@ -492,10 +495,11 @@ export function BottomNavigation() {
       style={{
         backgroundColor: 'var(--nav-bg)',
         borderTop: '1px solid var(--nav-border)',
-        backdropFilter: 'blur(20px) saturate(1.2)',
-        WebkitBackdropFilter: 'blur(20px) saturate(1.2)',
+        backdropFilter: 'blur(28px) saturate(1.3)',
+        WebkitBackdropFilter: 'blur(28px) saturate(1.3)',
         paddingBottom: 'env(safe-area-inset-bottom, 0px)',
         height: 'calc(60px + env(safe-area-inset-bottom, 0px))',
+        boxShadow: '0 -4px 24px rgba(0,0,0,0.2), 0 0 40px rgba(34,211,238,0.02)',
       }}
     >
       {BOTTOM_NAV.map(item => {
