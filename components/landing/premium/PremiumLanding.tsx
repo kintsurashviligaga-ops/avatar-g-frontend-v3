@@ -4,13 +4,11 @@
  * PremiumLanding.tsx
  * ==================
  * MyAvatar.ge world-class landing page.
- * Sections: Hero → Trust → Services → Agent G → Workflow → Features → Use Cases → Workspace/Templates → ChatBar → CTA → Footer
+ * Sections: Hero → Workflow Pipeline Builder → CTA → Footer
  */
 
 import { HeroSection } from './HeroSection'
-import { WorkflowDemo } from './WorkflowDemo'
-import { UseCases } from './UseCases'
-import { WorkspaceTemplates } from './WorkspaceTemplates'
+import { WorkflowPipelineBuilder } from './WorkflowPipelineBuilder'
 import { LandingCTA } from './LandingCTA'
 import { LandingFooter } from './LandingFooter'
 
@@ -19,11 +17,7 @@ export default function PremiumLanding() {
     <div className="relative min-h-screen overflow-x-hidden" style={{ backgroundColor: 'var(--color-bg)', color: 'var(--color-text)' }}>
       <HeroSection />
       <Separator />
-      <WorkflowDemo />
-      <Separator />
-      <UseCases />
-      <Separator />
-      <WorkspaceTemplates />
+      <WorkflowPipelineBuilder />
       <Separator />
       <LandingCTA />
       <LandingFooter />
