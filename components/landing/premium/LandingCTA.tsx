@@ -4,9 +4,9 @@ import Link from 'next/link'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
 
 const CTA_COPY = {
-  en: { title: 'Start building with AI today', cta1: 'Create Free Account', cta2: 'Explore Platform', sub: 'Free to start. No credit card required. All 17 services available.' },
-  ka: { title: 'დაიწყეთ AI-თ შენება დღესვე', cta1: 'უფასო ანგარიშის შექმნა', cta2: 'პლატფორმის ნახვა', sub: 'უფასო დაწყება. საკრედიტო ბარათი არ არის საჭირო. ყველა 17 სერვისი ხელმისაწვდომია.' },
-  ru: { title: 'Начните создавать с AI сегодня', cta1: 'Создать бесплатный аккаунт', cta2: 'Обзор платформы', sub: 'Бесплатный старт. Кредитная карта не нужна. Все 17 сервисов доступны.' },
+  en: { title: 'Start building with AI today', cta1: 'Create Free Account', cta2: 'Explore Platform' },
+  ka: { title: 'დაიწყეთ AI-თ შენება დღესვე', cta1: 'უფასო ანგარიშის შექმნა', cta2: 'პლატფორმის ნახვა' },
+  ru: { title: 'Начните создавать с AI сегодня', cta1: 'Создать бесплатный аккаунт', cta2: 'Обзор платформы' },
 } as const
 
 export function LandingCTA() {
@@ -23,9 +23,6 @@ export function LandingCTA() {
         <h2 className="text-3xl sm:text-4xl lg:text-5xl xl:text-6xl font-bold tracking-tight" style={{ color: 'var(--color-text)' }}>
           {c.title}
         </h2>
-        <p className="text-sm sm:text-base max-w-xl" style={{ color: 'var(--color-text-secondary)' }}>
-          {c.sub}
-        </p>
         <div className="flex flex-wrap items-center justify-center gap-3 mt-2">
           <Link
             href={`/${language}/signup`}
