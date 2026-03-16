@@ -8,8 +8,6 @@
  */
 
 import { HeroSection } from './HeroSection'
-import { TrustStrip } from './TrustStrip'
-import { ServicesOverview } from './ServicesOverview'
 import { WorkflowDemo } from './WorkflowDemo'
 import { UseCases } from './UseCases'
 import { WorkspaceTemplates } from './WorkspaceTemplates'
@@ -20,10 +18,6 @@ export default function PremiumLanding() {
   return (
     <div className="relative min-h-screen overflow-x-hidden" style={{ backgroundColor: 'var(--color-bg)', color: 'var(--color-text)' }}>
       <HeroSection />
-      <Separator />
-      <TrustStrip />
-      <Separator />
-      <ServicesOverview />
       <Separator />
       <WorkflowDemo />
       <Separator />

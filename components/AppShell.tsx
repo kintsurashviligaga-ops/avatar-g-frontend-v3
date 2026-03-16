@@ -1,12 +1,15 @@
 "use client";
 
 import { useState } from 'react';
+import { usePathname } from 'next/navigation';
 import { TopNavbar, SidebarMenu, BottomNavigation } from './shell/ModernShell';
 import { ClientErrorBoundary } from './ClientErrorBoundary';
 import { FloatingChatButton } from './chat/FloatingChatButton';
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const pathname = usePathname();
+  const isFullscreenChat = !!pathname && /\/services\/agent-g\/?$/.test(pathname);
 
   return (
     <div className='relative min-h-screen flex flex-col' style={{ color: 'var(--color-text)' }}>
@@ -18,19 +21,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       >
         Skip to content
       </a>
-      <TopNavbar onMenuToggle={() => setSidebarOpen(v => !v)} menuOpen={sidebarOpen} />
-      <SidebarMenu open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
-      <main id="main-content" className="relative flex-1 z-10 w-full" style={{ paddingTop: 'calc(4rem + env(safe-area-inset-top, 0px))' }}>
+      {!isFullscreenChat && <TopNavbar onMenuToggle={() => setSidebarOpen(v => !v)} menuOpen={sidebarOpen} />}
+      {!isFullscreenChat && <SidebarMenu open={sidebarOpen} onClose={() => setSidebarOpen(false)} />}
+      <main id="main-content" className="relative flex-1 w-full" style={isFullscreenChat ? undefined : { paddingTop: 'calc(4rem + env(safe-area-inset-top, 0px))' }}>
         <ClientErrorBoundary>
-          <div className='relative z-10'>
-            {children}
-          </div>
+          {children}
         </ClientErrorBoundary>
       </main>
-      <BottomNavigation />
-      <FloatingChatButton />
-      {/* Bottom nav spacer for mobile */}
-      <div className="h-16 md:hidden shrink-0" />
+      {!isFullscreenChat && <BottomNavigation />}
+      {!isFullscreenChat && <FloatingChatButton />}
+      {!isFullscreenChat && <div className="h-16 md:hidden shrink-0" />}
     </div>
   );
 }

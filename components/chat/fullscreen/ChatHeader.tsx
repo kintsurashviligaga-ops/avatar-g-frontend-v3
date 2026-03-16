@@ -21,10 +21,8 @@ export function ChatHeader() {
       style={{
         height: 'calc(56px + env(safe-area-inset-top, 0px))',
         paddingTop: 'env(safe-area-inset-top, 0px)',
-        backgroundColor: 'var(--color-bg)',
+        backgroundColor: '#0a0a0c',
         borderBottom: '1px solid var(--color-border)',
-        backdropFilter: 'blur(16px)',
-        WebkitBackdropFilter: 'blur(16px)',
       }}
     >
       {/* Left: Back button */}

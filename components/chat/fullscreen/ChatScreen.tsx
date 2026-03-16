@@ -8,6 +8,7 @@
  */
 
 import { useState, useCallback, useRef, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { usePathname } from 'next/navigation'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
 import { CHAT_LABELS, type ChatLocale } from './config'
@@ -296,6 +297,10 @@ export function ChatScreen() {
     })
   }, [speechSynth])
 
+  /* ── Portal target — render at document.body to escape stacking contexts ── */
+  const [portalTarget, setPortalTarget] = useState<HTMLElement | null>(null)
+  useEffect(() => { setPortalTarget(document.body) }, [])
+
   /* ── Clean up preview URLs on unmount ── */
   useEffect(() => {
     return () => {
@@ -307,10 +312,10 @@ export function ChatScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  return (
+  const chatUI = (
     <div
-      className="fixed inset-0 z-[100]"
-      style={{ backgroundColor: 'var(--color-bg)' }}
+      className="fixed inset-0 z-[9999]"
+      style={{ backgroundColor: '#0a0a0c' }}
     >
       {/* Fixed header */}
       <ChatHeader />
@@ -376,4 +381,7 @@ export function ChatScreen() {
       />
     </div>
   )
+
+  if (!portalTarget) return null
+  return createPortal(chatUI, portalTarget)
 }

@@ -68,7 +68,7 @@ export function ChatComposer({
     <div
       className="fixed bottom-0 left-0 right-0 z-30"
       style={{
-        backgroundColor: 'var(--color-bg)',
+        backgroundColor: '#0a0a0c',
         paddingBottom: 'env(safe-area-inset-bottom, 0px)',
       }}
     >

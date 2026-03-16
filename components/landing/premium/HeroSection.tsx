@@ -8,25 +8,19 @@ import { HeroVideo } from './HeroVideo'
 /* ─── Copy ──────────────────────────────────────────────── */
 const COPY = {
   en: {
-    headline: 'Create Everything With AI, In One Space.',
-    sub: 'MyAvatar.ge — The AI Creation Platform powered by Agent G.',
-    desc: 'Create avatars, videos, music, posters and full AI workflows with a powerful multi-agent system.',
+    headline: 'all in one place.',
     cta1: 'Start Creating',
     cta2: 'Explore Tools',
     trust: 'Trusted by creators, businesses and developers worldwide',
   },
   ka: {
-    headline: 'შექმენი ყველაფერი AI-ით ერთ სივრცეში.',
-    sub: 'MyAvatar.ge — AI შექმნის პლატფორმა Agent G-ის ძალით.',
-    desc: 'შექმენით ავატარები, ვიდეოები, მუსიკა, პოსტერები და სრული AI სამუშაო ნაკადები მძლავრი მულტი-აგენტური სისტემით.',
+    headline: 'all in one place.',
     cta1: 'შექმნის დაწყება',
     cta2: 'ინსტრუმენტების ნახვა',
     trust: 'კრეატორების, ბიზნესისა და დეველოპერების ნდობით მსოფლიოში',
   },
   ru: {
-    headline: 'Создавайте всё с AI. В одном пространстве.',
-    sub: 'MyAvatar.ge — AI-платформа для создания контента на базе Agent G.',
-    desc: 'Создавайте аватары, видео, музыку, постеры и полные AI-воркфлоу с мощной мультиагентной системой.',
+    headline: 'all in one place.',
     cta1: 'Начать создание',
     cta2: 'Обзор инструментов',
     trust: 'Доверяют создатели, бизнесы и разработчики по всему миру',
@@ -63,21 +57,8 @@ export function HeroSection() {
 
         {/* Headline */}
         <h1 className="text-4xl sm:text-5xl lg:text-6xl xl:text-7xl font-bold tracking-[-0.03em] leading-[1.08]" style={{ color: 'var(--color-text)' }}>
-          {c.headline.split(' ').slice(0, -1).join(' ')}{' '}
-          <span className="bg-gradient-to-r from-cyan-300 via-cyan-400 to-blue-400 bg-clip-text text-transparent">
-            {c.headline.split(' ').slice(-1)}
-          </span>
+          {c.headline}
         </h1>
-
-        {/* Subheadline */}
-        <p className="text-lg sm:text-xl lg:text-2xl font-medium max-w-2xl" style={{ color: 'var(--color-text-secondary)' }}>
-          {c.sub}
-        </p>
-
-        {/* Supporting text */}
-        <p className="text-sm sm:text-base max-w-xl leading-relaxed" style={{ color: 'var(--color-text-tertiary)' }}>
-          {c.desc}
-        </p>
 
         {/* CTA Buttons */}
         <div className="flex flex-col sm:flex-row flex-wrap items-center justify-center gap-3">
