@@ -13,7 +13,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const isFullscreenChat = !!pathname && /\/services\/[a-z0-9-]+\/?$/.test(pathname);
 
   return (
-    <div className='relative min-h-screen flex flex-col' style={{ color: 'var(--color-text)' }}>
+    <div className='relative min-h-screen flex flex-col' style={{ color: 'var(--color-text)', isolation: 'isolate' }}>
       {/* Cinematic AI environment — immersive background layers */}
       <CinematicEnvironment
         intensity={isFullscreenChat ? 'subtle' : 'full'}
@@ -30,7 +30,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </a>
       {!isFullscreenChat && <TopNavbar onMenuToggle={() => setSidebarOpen(v => !v)} menuOpen={sidebarOpen} />}
       {!isFullscreenChat && <SidebarMenu open={sidebarOpen} onClose={() => setSidebarOpen(false)} />}
-      <main id="main-content" className="relative flex-1 w-full" style={isFullscreenChat ? undefined : { paddingTop: 'calc(4rem + env(safe-area-inset-top, 0px))' }}>
+      <main id="main-content" className="relative flex-1 w-full" style={isFullscreenChat ? { zIndex: 2 } : { paddingTop: 'calc(4rem + env(safe-area-inset-top, 0px))', zIndex: 2 }}>
         <ClientErrorBoundary>
           {children}
         </ClientErrorBoundary>

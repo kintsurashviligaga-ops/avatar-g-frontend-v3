@@ -14,7 +14,7 @@ import { LandingFooter } from './LandingFooter'
 
 export default function PremiumLanding() {
   return (
-    <div className="relative min-h-screen overflow-x-hidden" style={{ backgroundColor: 'var(--color-bg)', color: 'var(--color-text)' }}>
+    <div className="relative min-h-screen overflow-x-hidden" style={{ color: 'var(--color-text)' }}>
       <HeroSection />
       <Separator />
       <WorkflowPipelineBuilder />

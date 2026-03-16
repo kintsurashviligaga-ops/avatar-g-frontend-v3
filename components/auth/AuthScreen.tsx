@@ -290,7 +290,7 @@ export default function AuthScreen({ mode: initialMode, locale, redirectTo = '/'
   if (success) {
     const isForgot = loadingProvider === 'forgot';
     return (
-      <div className="relative min-h-screen flex items-center justify-center px-4 overflow-hidden" style={{ backgroundColor: 'var(--color-bg)' }}>
+      <div className="relative min-h-screen flex items-center justify-center px-4 overflow-hidden">
         <BgGlow />
         <div className="relative z-10 w-full max-w-[420px] text-center p-8 rounded-2xl holo-panel">
           <div className="w-16 h-16 mx-auto mb-5 rounded-2xl flex items-center justify-center" style={{ backgroundColor: 'rgba(34,211,238,0.1)', border: '1px solid rgba(34,211,238,0.2)' }}>
@@ -322,7 +322,7 @@ export default function AuthScreen({ mode: initialMode, locale, redirectTo = '/'
   // ─── Main auth screen ────────────────────────────────────────────────────
 
   return (
-    <div className="relative min-h-screen flex items-center justify-center px-4 py-12 overflow-hidden" style={{ backgroundColor: 'var(--color-bg)' }}>
+    <div className="relative min-h-screen flex items-center justify-center px-4 py-12 overflow-hidden">
       <BgGlow />
 
       <div className="relative z-10 w-full max-w-[420px]">

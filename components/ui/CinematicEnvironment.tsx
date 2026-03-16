@@ -32,7 +32,7 @@ export const CinematicEnvironment = memo(function CinematicEnvironment({
   const isFull = intensity === 'full';
 
   return (
-    <div className="fixed inset-0 pointer-events-none overflow-hidden" style={{ zIndex: 0 }}>
+    <div className="fixed inset-0 pointer-events-none overflow-hidden" style={{ zIndex: 1 }}>
       {/* ═══ LAYER 1: Deep Base Space ═══ */}
       <div
         className="absolute inset-0"
