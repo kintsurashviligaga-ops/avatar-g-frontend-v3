@@ -9,7 +9,6 @@
 
 import { HeroSection } from './HeroSection'
 import { WorkflowPipelineBuilder } from './WorkflowPipelineBuilder'
-import { LandingCTA } from './LandingCTA'
 import { LandingFooter } from './LandingFooter'
 
 export default function PremiumLanding() {
@@ -18,8 +17,6 @@ export default function PremiumLanding() {
       <HeroSection />
       <Separator />
       <WorkflowPipelineBuilder />
-      <Separator />
-      <LandingCTA />
       <LandingFooter />
     </div>
   )
