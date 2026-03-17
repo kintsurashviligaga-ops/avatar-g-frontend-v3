@@ -1,285 +1,497 @@
 'use client'
 
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
 import Link from 'next/link'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
 import { SERVICES, type ServiceDefinition } from '@/lib/services/catalog'
 
-/* ── i18n ── */
+/* ══════════════════════════════════════════════════════════════════
+ *  ACCENT COLOURS  — one per service, matching PageEnvironment moods
+ * ══════════════════════════════════════════════════════════════════ */
+const ACCENT: Record<string, string> = {
+  avatar: '#a78bfa', video: '#f59e0b', image: '#f472b6',
+  music: '#34d399', text: '#818cf8', editing: '#06b6d4',
+  photo: '#fb923c', workflow: '#fb923c', 'agent-g': '#22d3ee',
+  'visual-intel': '#3b82f6', prompt: '#fbbf24', media: '#ec4899',
+  business: '#8b5cf6', shop: '#10b981', software: '#6366f1',
+  tourism: '#14b8a6',
+}
+const ac = (slug: string) => ACCENT[slug] || '#22d3ee'
+
+/* Services shown in the builder — the 7 core creative + automation services */
+const BUILDER_SLUGS = new Set(['avatar', 'video', 'image', 'music', 'text', 'workflow', 'agent-g'])
+const BUILDER_SERVICES = SERVICES.filter(s => BUILDER_SLUGS.has(s.slug))
+
+/* ══════════════════════════════════════════════════════════════════
+ *  TYPES
+ * ══════════════════════════════════════════════════════════════════ */
+interface PNode {
+  id: string
+  service: ServiceDefinition
+  prompt: string
+  status: 'idle' | 'running' | 'complete'
+}
+
+interface Tpl {
+  id: string
+  icon: string
+  name: { en: string; ka: string; ru: string }
+  desc: { en: string; ka: string; ru: string }
+  slugs: string[]
+}
+
+type Lang = 'en' | 'ka' | 'ru'
+
+/* ══════════════════════════════════════════════════════════════════
+ *  i18n
+ * ══════════════════════════════════════════════════════════════════ */
 const COPY = {
   en: {
-    eyebrow: 'WORKFLOW PIPELINE BUILDER',
+    eyebrow: 'AI WORKFLOW ENGINE',
     title: 'Build Your AI Pipeline',
-    sub: 'Drag services into the chain. Connect them. Run the entire workflow with one click.',
-    available: 'Available Services',
-    pipeline: 'Your Pipeline',
-    emptyHint: 'Tap a service to add it to the pipeline →',
-    run: 'Execute Pipeline',
-    clear: 'Clear',
+    sub: 'Connect services into automated workflows. Choose a template or build your own — run everything with one click.',
+    templates: 'Quick Start',
+    agentPlaceholder: 'Describe what you want to create\u2026',
+    agentBtn: 'Build',
+    services: 'Services',
+    pipeline: 'Pipeline',
     step: 'STEP',
-    output: 'Output feeds into next step',
-    ready: 'Pipeline ready — click Execute to run',
-    addMore: '+ Add Step',
+    emptyTitle: 'Start Building',
+    emptyHint: 'Click a service on the left or pick a template above',
+    run: 'Run Pipeline',
+    reset: 'Reset',
+    exportBtn: 'Export',
+    processing: 'Processing\u2026',
+    complete: 'Complete!',
+    ready: 'Ready',
+    settings: 'Node Settings',
+    promptLabel: 'Prompt',
+    promptPlaceholder: 'What should this step produce?',
+    previewLabel: 'Preview',
+    noSelection: 'Select a node to configure',
+    previewHint: '\u2728 Preview will appear here',
+    tryService: 'Try this service \u2192',
   },
   ka: {
-    eyebrow: 'WORKFLOW PIPELINE BUILDER',
-    title: 'ააწყვე შენი AI პაიპლაინი',
-    sub: 'აირჩიე სერვისები, დააკავშირე ჯაჭვში და გაუშვი მთლიანი ნაკადი ერთი კლიკით.',
-    available: 'ხელმისაწვდომი სერვისები',
-    pipeline: 'შენი პაიპლაინი',
-    emptyHint: 'დააჭირე სერვისს პაიპლაინში დასამატებლად →',
-    run: 'გაშვება',
-    clear: 'გასუფთავება',
-    step: 'ნაბიჯი',
-    output: 'შედეგი გადადის შემდეგ ნაბიჯზე',
-    ready: 'პაიპლაინი მზადაა — დააჭირე გაშვებას',
-    addMore: '+ ნაბიჯის დამატება',
+    eyebrow: 'AI WORKFLOW ENGINE',
+    title: '\u10d0\u10d0\u10ec\u10e7\u10d5\u10d4 \u10e8\u10d4\u10dc\u10d8 AI \u10de\u10d0\u10d8\u10de\u10da\u10d0\u10d8\u10dc\u10d8',
+    sub: '\u10d3\u10d0\u10d0\u10d9\u10d0\u10d5\u10e8\u10d8\u10e0\u10d4 \u10e1\u10d4\u10e0\u10d5\u10d8\u10e1\u10d4\u10d1\u10d8 \u10d0\u10d5\u10e2\u10dd\u10db\u10d0\u10e2\u10d8\u10d6\u10d8\u10e0\u10d4\u10d1\u10e3\u10da \u10dc\u10d0\u10d9\u10d0\u10d3\u10d4\u10d1\u10e8\u10d8. \u10d0\u10d8\u10e0\u10e9\u10d8\u10d4 \u10e8\u10d0\u10d1\u10da\u10dd\u10dc\u10d8 \u10d0\u10dc \u10d0\u10d0\u10ec\u10e7\u10d5\u10d4 \u10d7\u10d0\u10d5\u10d0\u10d3 \u2014 \u10d2\u10d0\u10e3\u10e8\u10d5\u10d8 \u10e7\u10d5\u10d4\u10da\u10d0\u10e4\u10d4\u10e0\u10d8 \u10d4\u10e0\u10d7\u10d8 \u10d9\u10da\u10d8\u10d9\u10d8\u10d7.',
+    templates: '\u10e1\u10ec\u10e0\u10d0\u10e4\u10d8 \u10d3\u10d0\u10ec\u10e7\u10d4\u10d1\u10d0',
+    agentPlaceholder: '\u10d0\u10e6\u10ec\u10d4\u10e0\u10d4 \u10e0\u10d8\u10e1\u10d8 \u10e8\u10d4\u10e5\u10db\u10dc\u10d0 \u10d2\u10d8\u10dc\u10d3\u10d0\u2026',
+    agentBtn: '\u10d0\u10ec\u10e7\u10dd\u10d1\u10d0',
+    services: '\u10e1\u10d4\u10e0\u10d5\u10d8\u10e1\u10d4\u10d1\u10d8',
+    pipeline: '\u10de\u10d0\u10d8\u10de\u10da\u10d0\u10d8\u10dc\u10d8',
+    step: '\u10dc\u10d0\u10d1\u10d8\u10ef\u10d8',
+    emptyTitle: '\u10d3\u10d0\u10d0\u10db\u10d0\u10e2\u10d4 \u10e1\u10d4\u10e0\u10d5\u10d8\u10e1\u10d4\u10d1\u10d8',
+    emptyHint: '\u10d3\u10d0\u10d0\u10ed\u10d8\u10e0\u10d4 \u10e1\u10d4\u10e0\u10d5\u10d8\u10e1\u10e1 \u10db\u10d0\u10e0\u10ea\u10ee\u10dc\u10d8\u10d5 \u10d0\u10dc \u10d0\u10d8\u10e0\u10e9\u10d8\u10d4 \u10e8\u10d0\u10d1\u10da\u10dd\u10dc\u10d8',
+    run: '\u10d2\u10d0\u10e8\u10d5\u10d4\u10d1\u10d0',
+    reset: '\u10d2\u10d0\u10e1\u10e3\u10e4\u10d7\u10d0\u10d5\u10d4\u10d1\u10d0',
+    exportBtn: '\u10d4\u10e5\u10e1\u10de\u10dd\u10e0\u10e2\u10d8',
+    processing: '\u10db\u10e3\u10e8\u10d0\u10d5\u10d3\u10d4\u10d1\u10d0\u2026',
+    complete: '\u10d3\u10d0\u10e1\u10e0\u10e3\u10da\u10d3\u10d0!',
+    ready: '\u10db\u10d6\u10d0\u10d3\u10d0\u10d0',
+    settings: '\u10dc\u10dd\u10d3\u10d8\u10e1 \u10de\u10d0\u10e0\u10d0\u10db\u10d4\u10e2\u10e0\u10d4\u10d1\u10d8',
+    promptLabel: '\u10de\u10e0\u10dd\u10db\u10de\u10e2\u10d8',
+    promptPlaceholder: '\u10e0\u10d0 \u10e3\u10dc\u10d3\u10d0 \u10e8\u10d4\u10e5\u10db\u10dc\u10d0\u10e1 \u10d0\u10db \u10dc\u10d0\u10d1\u10d8\u10ef\u10db\u10d0?',
+    previewLabel: '\u10de\u10e0\u10d4\u10d5\u10d8\u10e3',
+    noSelection: '\u10d0\u10d8\u10e0\u10e9\u10d8\u10d4 \u10dc\u10dd\u10d3\u10d8 \u10d9\u10dd\u10dc\u10e4\u10d8\u10d2\u10e3\u10e0\u10d0\u10ea\u10d8\u10d8\u10e1\u10d7\u10d5\u10d8\u10e1',
+    previewHint: '\u2728 \u10de\u10e0\u10d4\u10d5\u10d8\u10e3 \u10d0\u10e5 \u10d2\u10d0\u10db\u10dd\u10e9\u10dc\u10d3\u10d4\u10d1\u10d0',
+    tryService: '\u10e1\u10ea\u10d0\u10d3\u10d4 \u10e1\u10d4\u10e0\u10d5\u10d8\u10e1\u10d8 \u2192',
   },
   ru: {
-    eyebrow: 'WORKFLOW PIPELINE BUILDER',
-    title: 'Построй свой AI-пайплайн',
-    sub: 'Выбирай сервисы, соединяй в цепочку и запускай весь поток одним кликом.',
-    available: 'Доступные сервисы',
-    pipeline: 'Ваш пайплайн',
-    emptyHint: 'Нажмите на сервис, чтобы добавить в пайплайн →',
-    run: 'Запустить',
-    clear: 'Очистить',
-    step: 'ШАГ',
-    output: 'Результат передаётся на следующий шаг',
-    ready: 'Пайплайн готов — нажмите Запустить',
-    addMore: '+ Добавить шаг',
+    eyebrow: 'AI WORKFLOW ENGINE',
+    title: '\u041f\u043e\u0441\u0442\u0440\u043e\u0439 \u0441\u0432\u043e\u0439 AI-\u043f\u0430\u0439\u043f\u043b\u0430\u0439\u043d',
+    sub: '\u0421\u043e\u0435\u0434\u0438\u043d\u044f\u0439 \u0441\u0435\u0440\u0432\u0438\u0441\u044b \u0432 \u0430\u0432\u0442\u043e\u043c\u0430\u0442\u0438\u0437\u0438\u0440\u043e\u0432\u0430\u043d\u043d\u044b\u0435 \u043f\u043e\u0442\u043e\u043a\u0438. \u0412\u044b\u0431\u0435\u0440\u0438 \u0448\u0430\u0431\u043b\u043e\u043d \u0438\u043b\u0438 \u043f\u043e\u0441\u0442\u0440\u043e\u0439 \u0441\u0430\u043c \u2014 \u0437\u0430\u043f\u0443\u0441\u0442\u0438 \u0432\u0441\u0451 \u043e\u0434\u043d\u0438\u043c \u043a\u043b\u0438\u043a\u043e\u043c.',
+    templates: '\u0411\u044b\u0441\u0442\u0440\u044b\u0439 \u0441\u0442\u0430\u0440\u0442',
+    agentPlaceholder: '\u041e\u043f\u0438\u0448\u0438, \u0447\u0442\u043e \u0445\u043e\u0447\u0435\u0448\u044c \u0441\u043e\u0437\u0434\u0430\u0442\u044c\u2026',
+    agentBtn: '\u0421\u043e\u0431\u0440\u0430\u0442\u044c',
+    services: '\u0421\u0435\u0440\u0432\u0438\u0441\u044b',
+    pipeline: '\u041f\u0430\u0439\u043f\u043b\u0430\u0439\u043d',
+    step: '\u0428\u0410\u0413',
+    emptyTitle: '\u0414\u043e\u0431\u0430\u0432\u044c \u0441\u0435\u0440\u0432\u0438\u0441\u044b',
+    emptyHint: '\u041d\u0430\u0436\u043c\u0438 \u043d\u0430 \u0441\u0435\u0440\u0432\u0438\u0441 \u0441\u043b\u0435\u0432\u0430 \u0438\u043b\u0438 \u0432\u044b\u0431\u0435\u0440\u0438 \u0448\u0430\u0431\u043b\u043e\u043d',
+    run: '\u0417\u0430\u043f\u0443\u0441\u0442\u0438\u0442\u044c',
+    reset: '\u0421\u0431\u0440\u043e\u0441',
+    exportBtn: '\u042d\u043a\u0441\u043f\u043e\u0440\u0442',
+    processing: '\u041e\u0431\u0440\u0430\u0431\u043e\u0442\u043a\u0430\u2026',
+    complete: '\u0413\u043e\u0442\u043e\u0432\u043e!',
+    ready: '\u0413\u043e\u0442\u043e\u0432',
+    settings: '\u041d\u0430\u0441\u0442\u0440\u043e\u0439\u043a\u0438 \u0443\u0437\u043b\u0430',
+    promptLabel: '\u041f\u0440\u043e\u043c\u043f\u0442',
+    promptPlaceholder: '\u0427\u0442\u043e \u0434\u043e\u043b\u0436\u0435\u043d \u0441\u043e\u0437\u0434\u0430\u0442\u044c \u044d\u0442\u043e\u0442 \u0448\u0430\u0433?',
+    previewLabel: '\u041f\u0440\u0435\u0432\u044c\u044e',
+    noSelection: '\u0412\u044b\u0431\u0435\u0440\u0438 \u0443\u0437\u0435\u043b \u0434\u043b\u044f \u043d\u0430\u0441\u0442\u0440\u043e\u0439\u043a\u0438',
+    previewHint: '\u2728 \u041f\u0440\u0435\u0432\u044c\u044e \u043f\u043e\u044f\u0432\u0438\u0442\u0441\u044f \u0437\u0434\u0435\u0441\u044c',
+    tryService: '\u041f\u043e\u043f\u0440\u043e\u0431\u043e\u0432\u0430\u0442\u044c \u0441\u0435\u0440\u0432\u0438\u0441 \u2192',
   },
 } as const
 
-/* ── Metallic connector SVG between pipeline steps ── */
-function PipelineConnector() {
+/* ══════════════════════════════════════════════════════════════════
+ *  PIPELINE TEMPLATES
+ * ══════════════════════════════════════════════════════════════════ */
+const TEMPLATES: Tpl[] = [
+  {
+    id: 'social',
+    icon: '\uD83D\uDCF1',
+    name: { en: 'Social Content', ka: '\u10e1\u10dd\u10ea\u10d8\u10d0\u10da\u10e3\u10e0\u10d8 \u10d9\u10dd\u10dc\u10e2\u10d4\u10dc\u10e2\u10d8', ru: '\u0421\u043e\u0446\u0441\u0435\u0442\u0438' },
+    desc: { en: 'Write \u2192 Design \u2192 Produce', ka: '\u10e2\u10d4\u10e5\u10e1\u10e2\u10d8 \u2192 \u10d3\u10d8\u10d6\u10d0\u10d8\u10dc\u10d8 \u2192 \u10d5\u10d8\u10d3\u10d4\u10dd', ru: '\u0422\u0435\u043a\u0441\u0442 \u2192 \u0414\u0438\u0437\u0430\u0439\u043d \u2192 \u0412\u0438\u0434\u0435\u043e' },
+    slugs: ['text', 'image', 'video'],
+  },
+  {
+    id: 'music-video',
+    icon: '\uD83C\uDFB5',
+    name: { en: 'Music Video', ka: '\u10db\u10e3\u10e1\u10d8\u10d9\u10d0\u10da\u10e3\u10e0\u10d8 \u10d5\u10d8\u10d3\u10d4\u10dd', ru: '\u041a\u043b\u0438\u043f' },
+    desc: { en: 'Compose \u2192 Visualize \u2192 Render', ka: '\u10d9\u10dd\u10db\u10de\u10dd\u10d6\u10d8\u10ea\u10d8\u10d0 \u2192 \u10d5\u10d8\u10d6\u10e3\u10d0\u10da\u10d8 \u2192 \u10e0\u10d4\u10dc\u10d3\u10d4\u10e0\u10d8', ru: '\u041c\u0443\u0437\u044b\u043a\u0430 \u2192 \u0412\u0438\u0437\u0443\u0430\u043b \u2192 \u0420\u0435\u043d\u0434\u0435\u0440' },
+    slugs: ['text', 'music', 'image', 'video'],
+  },
+  {
+    id: 'brand',
+    icon: '\u2728',
+    name: { en: 'Brand Identity', ka: '\u10d1\u10e0\u10d4\u10dc\u10d3\u10d8', ru: '\u0411\u0440\u0435\u043d\u0434' },
+    desc: { en: 'Avatar \u2192 Visuals \u2192 Copy', ka: '\u10d0\u10d5\u10d0\u10e2\u10d0\u10e0\u10d8 \u2192 \u10d5\u10d8\u10d6\u10e3\u10d0\u10da\u10d8 \u2192 \u10d9\u10dd\u10de\u10d8', ru: '\u0410\u0432\u0430\u0442\u0430\u0440 \u2192 \u0412\u0438\u0437\u0443\u0430\u043b \u2192 \u0422\u0435\u043a\u0441\u0442' },
+    slugs: ['avatar', 'image', 'text'],
+  },
+  {
+    id: 'full',
+    icon: '\uD83D\uDE80',
+    name: { en: 'Full Production', ka: '\u10e1\u10e0\u10e3\u10da\u10d8 \u10de\u10e0\u10dd\u10d3\u10d0\u10e5\u10e8\u10d4\u10dc\u10d8', ru: '\u041f\u043e\u043b\u043d\u044b\u0439 \u043f\u0440\u043e\u0434\u0430\u043a\u0448\u043d' },
+    desc: { en: 'End-to-end content pipeline', ka: '\u10e1\u10e0\u10e3\u10da\u10d8 \u10d9\u10dd\u10dc\u10e2\u10d4\u10dc\u10e2 \u10de\u10d0\u10d8\u10de\u10da\u10d0\u10d8\u10dc\u10d8', ru: '\u041f\u043e\u043b\u043d\u044b\u0439 \u043a\u043e\u043d\u0442\u0435\u043d\u0442-\u043f\u0430\u0439\u043f\u043b\u0430\u0439\u043d' },
+    slugs: ['text', 'avatar', 'image', 'music', 'video'],
+  },
+]
+
+/* ══════════════════════════════════════════════════════════════════
+ *  HELPERS
+ * ══════════════════════════════════════════════════════════════════ */
+let _nodeId = 0
+const uid = (slug: string) => `${slug}-${++_nodeId}-${Date.now()}`
+
+const matchTemplate = (prompt: string): string => {
+  const l = prompt.toLowerCase()
+  if (l.includes('music') && (l.includes('video') || l.includes('clip'))) return 'music-video'
+  if (l.includes('social') || l.includes('post') || l.includes('instagram') || l.includes('tiktok')) return 'social'
+  if (l.includes('brand') || l.includes('identity') || l.includes('logo')) return 'brand'
+  return 'full'
+}
+
+/* ══════════════════════════════════════════════════════════════════
+ *  SUB-COMPONENTS
+ * ══════════════════════════════════════════════════════════════════ */
+
+/* ── Template card ── */
+function TplCard({ t, lang, active, onPick }: { t: Tpl; lang: Lang; active: boolean; onPick: () => void }) {
   return (
-    <div className="flex items-center justify-center py-1">
-      <svg width="36" height="28" viewBox="0 0 36 28" fill="none">
-        <defs>
-          <linearGradient id="connGrad" x1="18" y1="0" x2="18" y2="28" gradientUnits="userSpaceOnUse">
-            <stop offset="0%" stopColor="#22d3ee" stopOpacity="0.8" />
-            <stop offset="100%" stopColor="#0891b2" stopOpacity="0.4" />
-          </linearGradient>
-        </defs>
-        <line x1="18" y1="2" x2="18" y2="26" stroke="url(#connGrad)" strokeWidth="2" strokeDasharray="4 3" />
-        <polygon points="12,20 18,28 24,20" fill="#22d3ee" opacity="0.7" />
-      </svg>
-    </div>
+    <button
+      onClick={onPick}
+      className="shrink-0 flex items-center gap-2.5 px-4 py-2.5 rounded-xl transition-all duration-200 active:scale-[0.97] select-none whitespace-nowrap"
+      style={{
+        background: active
+          ? 'linear-gradient(135deg, rgba(34,211,238,0.18), rgba(6,182,212,0.08))'
+          : 'linear-gradient(135deg, rgba(255,255,255,0.04), rgba(255,255,255,0.01))',
+        border: active ? '1px solid rgba(34,211,238,0.4)' : '1px solid rgba(255,255,255,0.08)',
+        boxShadow: active ? '0 0 24px rgba(34,211,238,0.1)' : 'none',
+      }}
+    >
+      <span className="text-base">{t.icon}</span>
+      <div className="text-left">
+        <div className="text-xs font-bold" style={{ color: active ? '#22d3ee' : 'rgba(255,255,255,0.85)' }}>
+          {t.name[lang]}
+        </div>
+        <div className="text-[10px]" style={{ color: 'rgba(255,255,255,0.35)' }}>
+          {t.desc[lang]}
+        </div>
+      </div>
+    </button>
   )
 }
 
-/* ── Metallic service card in the available panel ── */
-function ServiceChip({
-  service,
-  lang,
-  onAdd,
-  inPipeline,
-}: {
-  service: ServiceDefinition
-  lang: 'en' | 'ka' | 'ru'
-  onAdd: () => void
-  inPipeline: boolean
+/* ── Service chip (sidebar) ── */
+function SvcChip({ s, lang, inPipeline, onAdd }: {
+  s: ServiceDefinition; lang: Lang; inPipeline: boolean; onAdd: () => void
 }) {
+  const color = ac(s.slug)
   return (
     <button
       onClick={onAdd}
-      className="group relative flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl text-left transition-all duration-200 active:scale-[0.97] select-none"
+      className="group relative shrink-0 lg:w-full flex items-center gap-2 px-3 py-2 lg:py-2.5 rounded-xl text-left transition-all duration-200 active:scale-[0.97] select-none"
       style={{
         background: inPipeline
-          ? 'linear-gradient(135deg, rgba(34,211,238,0.15) 0%, rgba(6,182,212,0.08) 100%)'
-          : 'linear-gradient(135deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.01) 100%)',
-        border: inPipeline
-          ? '1px solid rgba(34,211,238,0.4)'
-          : '1px solid rgba(255,255,255,0.08)',
-        boxShadow: inPipeline
-          ? '0 0 20px rgba(34,211,238,0.1), inset 0 1px 0 rgba(255,255,255,0.06)'
-          : 'inset 0 1px 0 rgba(255,255,255,0.04), 0 1px 3px rgba(0,0,0,0.3)',
+          ? `linear-gradient(135deg, ${color}22, ${color}0a)`
+          : 'linear-gradient(135deg, rgba(255,255,255,0.04), rgba(255,255,255,0.01))',
+        border: inPipeline ? `1px solid ${color}55` : '1px solid rgba(255,255,255,0.06)',
       }}
     >
-      {/* Metal shine strip */}
-      <div
-        className="absolute inset-0 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"
-        style={{
-          background: 'linear-gradient(105deg, transparent 40%, rgba(255,255,255,0.05) 45%, rgba(255,255,255,0.08) 50%, rgba(255,255,255,0.05) 55%, transparent 60%)',
-        }}
-      />
-      <span className="text-lg shrink-0">{service.icon}</span>
-      <div className="min-w-0">
-        <div className="text-xs font-bold truncate" style={{ color: inPipeline ? '#22d3ee' : 'rgba(255,255,255,0.85)' }}>
-          {service.title[lang] || service.title.en}
+      <span className="text-lg shrink-0">{s.icon}</span>
+      <div className="min-w-0 flex-1">
+        <div className="text-[11px] font-bold truncate" style={{ color: inPipeline ? color : 'rgba(255,255,255,0.8)' }}>
+          {s.title[lang] || s.title.en}
+        </div>
+        <div className="text-[10px] truncate hidden lg:block" style={{ color: 'rgba(255,255,255,0.3)' }}>
+          {s.description[lang] || s.description.en}
         </div>
       </div>
-      {!inPipeline && (
-        <span className="ml-auto text-[10px] font-bold opacity-0 group-hover:opacity-60 transition-opacity" style={{ color: '#22d3ee' }}>
-          + ADD
-        </span>
-      )}
-      {inPipeline && (
-        <span className="ml-auto w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: '#22d3ee', boxShadow: '0 0 6px #22d3ee' }} />
+      {inPipeline ? (
+        <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: color, boxShadow: `0 0 8px ${color}` }} />
+      ) : (
+        <span className="text-[9px] font-bold opacity-0 group-hover:opacity-60 transition-opacity" style={{ color }}>+</span>
       )}
     </button>
   )
 }
 
-/* ── Pipeline step card — bold metallic robotic design ── */
-function PipelineStep({
-  service,
-  lang,
-  index,
-  stepLabel,
-  outputLabel,
-  isLast,
-  onRemove,
-}: {
-  service: ServiceDefinition
-  lang: 'en' | 'ka' | 'ru'
-  index: number
-  stepLabel: string
-  outputLabel: string
-  isLast: boolean
-  onRemove: () => void
+/* ── Pipeline node card ── */
+function NodeCard({ node, lang, index, stepLabel, selected, onSelect, onRemove }: {
+  node: PNode; lang: Lang; index: number; stepLabel: string
+  selected: boolean; onSelect: () => void; onRemove: () => void
 }) {
+  const color = ac(node.service.slug)
+  const running = node.status === 'running'
+  const done = node.status === 'complete'
+
   return (
-    <div className="relative">
+    <motion.div
+      layout
+      initial={{ opacity: 0, scale: 0.85 }}
+      animate={{ opacity: 1, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.8 }}
+      transition={{ duration: 0.25 }}
+      onClick={onSelect}
+      className="shrink-0 cursor-pointer group w-[240px] lg:w-[160px]"
+    >
       <div
-        className="relative rounded-2xl p-[1px] overflow-hidden"
+        className="relative rounded-2xl p-[1px] overflow-hidden transition-all duration-300"
         style={{
-          background: 'linear-gradient(135deg, rgba(34,211,238,0.3) 0%, rgba(255,255,255,0.06) 40%, rgba(34,211,238,0.15) 100%)',
+          background: selected
+            ? `linear-gradient(135deg, ${color}88, ${color}33)`
+            : running
+              ? `linear-gradient(135deg, ${color}55, ${color}22)`
+              : 'linear-gradient(135deg, rgba(255,255,255,0.1), rgba(255,255,255,0.03))',
+          boxShadow: running
+            ? `0 0 30px ${color}33`
+            : selected
+              ? `0 0 20px ${color}22`
+              : 'none',
         }}
       >
         <div
-          className="rounded-2xl px-4 py-3 sm:px-5 sm:py-4"
-          style={{
-            background: 'linear-gradient(165deg, #0f1923 0%, #0a1018 50%, #0c1520 100%)',
-            boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.05), 0 4px 24px rgba(0,0,0,0.4)',
-          }}
+          className="rounded-2xl p-3"
+          style={{ background: 'linear-gradient(165deg, #0f1923, #0a1018)' }}
         >
-          {/* Step badge */}
+          {/* Header */}
           <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-2">
-              <span
-                className="text-[9px] font-black tracking-[0.2em] px-2 py-0.5 rounded"
-                style={{
-                  background: 'linear-gradient(135deg, rgba(34,211,238,0.2), rgba(6,182,212,0.1))',
-                  border: '1px solid rgba(34,211,238,0.25)',
-                  color: '#22d3ee',
-                }}
-              >
-                {stepLabel} {index + 1}
-              </span>
-              <div className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ backgroundColor: '#22d3ee', boxShadow: '0 0 8px #22d3ee' }} />
-            </div>
-            <button
-              onClick={onRemove}
-              className="w-6 h-6 flex items-center justify-center rounded-lg transition-all hover:scale-110 active:scale-95"
+            <span
+              className="text-[8px] font-black tracking-[0.15em] px-1.5 py-0.5 rounded"
               style={{
-                background: 'linear-gradient(135deg, rgba(255,70,70,0.15), rgba(255,70,70,0.05))',
+                background: `${color}22`,
+                border: `1px solid ${color}33`,
+                color,
+              }}
+            >
+              {stepLabel} {index + 1}
+            </span>
+            <button
+              onClick={(e) => { e.stopPropagation(); onRemove() }}
+              className="w-5 h-5 flex items-center justify-center rounded-md opacity-0 group-hover:opacity-100 transition-all hover:scale-110"
+              style={{
+                background: 'rgba(255,70,70,0.15)',
                 border: '1px solid rgba(255,70,70,0.2)',
                 color: 'rgba(255,120,120,0.8)',
               }}
-              aria-label="Remove step"
+              aria-label="Remove"
             >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+              <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round">
                 <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
               </svg>
             </button>
           </div>
 
-          {/* Service row */}
-          <div className="flex items-center gap-3">
-            <div
-              className="w-11 h-11 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center text-xl shrink-0"
-              style={{
-                background: 'linear-gradient(135deg, rgba(34,211,238,0.12), rgba(6,182,212,0.06))',
-                border: '1px solid rgba(34,211,238,0.2)',
-                boxShadow: '0 0 16px rgba(34,211,238,0.08), inset 0 1px 0 rgba(255,255,255,0.04)',
-              }}
-            >
-              {service.icon}
-            </div>
-            <div className="min-w-0">
-              <div className="text-sm font-bold truncate" style={{ color: 'rgba(255,255,255,0.92)' }}>
-                {service.title[lang] || service.title.en}
-              </div>
-              <div className="text-[11px] truncate mt-0.5" style={{ color: 'rgba(255,255,255,0.4)' }}>
-                {service.description[lang] || service.description.en}
-              </div>
-            </div>
+          {/* Icon */}
+          <div
+            className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl mx-auto mb-2"
+            style={{
+              background: `linear-gradient(135deg, ${color}18, ${color}08)`,
+              border: `1px solid ${color}25`,
+            }}
+          >
+            {node.service.icon}
           </div>
 
-          {/* Output line */}
-          {!isLast && (
-            <div className="mt-2 text-[10px] font-medium flex items-center gap-1.5" style={{ color: 'rgba(34,211,238,0.5)' }}>
-              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                <polyline points="6 9 12 15 18 9" />
-              </svg>
-              {outputLabel}
-            </div>
-          )}
+          {/* Name */}
+          <div className="text-[11px] font-bold text-center truncate" style={{ color: 'rgba(255,255,255,0.9)' }}>
+            {node.service.title[lang] || node.service.title.en}
+          </div>
+
+          {/* Status */}
+          <div className="flex items-center justify-center gap-1.5 mt-2">
+            <div
+              className="w-1.5 h-1.5 rounded-full"
+              style={{
+                backgroundColor: done ? '#34d399' : running ? '#fbbf24' : `${color}88`,
+                boxShadow: running ? '0 0 8px #fbbf24' : done ? '0 0 8px #34d399' : `0 0 4px ${color}44`,
+                animation: running ? 'pulse 0.8s ease-in-out infinite' : undefined,
+              }}
+            />
+            <span className="text-[9px]" style={{ color: done ? '#34d399' : running ? '#fbbf24' : 'rgba(255,255,255,0.25)' }}>
+              {done ? '\u2713' : running ? '\u23F3' : node.prompt ? '\u25CF' : '\u25CB'}
+            </span>
+          </div>
         </div>
       </div>
+    </motion.div>
+  )
+}
+
+/* ── Horizontal arrow connector (desktop) ── */
+function HArrow({ color, active }: { color: string; active: boolean }) {
+  return (
+    <div className="hidden lg:flex items-center shrink-0 px-0.5">
+      <svg width="32" height="20" viewBox="0 0 32 20" fill="none">
+        <line x1="0" y1="10" x2="24" y2="10" stroke={active ? color : 'rgba(255,255,255,0.12)'} strokeWidth="1.5" strokeDasharray="4 3">
+          {active && <animate attributeName="stroke-dashoffset" from="14" to="0" dur="0.8s" repeatCount="indefinite" />}
+        </line>
+        <polygon points="24,5 32,10 24,15" fill={active ? color : 'rgba(255,255,255,0.1)'} />
+      </svg>
     </div>
   )
 }
 
-/* ════════════════════════════════════════════════════════════════════
+/* ── Vertical arrow connector (mobile) ── */
+function VArrow({ color, active }: { color: string; active: boolean }) {
+  return (
+    <div className="flex lg:hidden items-center justify-center py-1">
+      <svg width="20" height="24" viewBox="0 0 20 24" fill="none">
+        <line x1="10" y1="0" x2="10" y2="18" stroke={active ? color : 'rgba(255,255,255,0.12)'} strokeWidth="1.5" strokeDasharray="4 3">
+          {active && <animate attributeName="stroke-dashoffset" from="14" to="0" dur="0.8s" repeatCount="indefinite" />}
+        </line>
+        <polygon points="5,18 10,24 15,18" fill={active ? color : 'rgba(255,255,255,0.1)'} />
+      </svg>
+    </div>
+  )
+}
+
+/* ══════════════════════════════════════════════════════════════════════
  *  MAIN EXPORT — WorkflowPipelineBuilder
- * ════════════════════════════════════════════════════════════════════ */
+ * ══════════════════════════════════════════════════════════════════════ */
 export function WorkflowPipelineBuilder() {
   const { language } = useLanguage()
-  const lang = (language as 'en' | 'ka' | 'ru') || 'en'
+  const lang = (language as Lang) || 'en'
   const c = COPY[lang] || COPY.en
 
-  const [pipeline, setPipeline] = useState<ServiceDefinition[]>([])
-  const [runAnimation, setRunAnimation] = useState(false)
-  const pipelineRef = useRef<HTMLDivElement>(null)
+  /* ── State ── */
+  const [pipeline, setPipeline] = useState<PNode[]>([])
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [isRunning, setIsRunning] = useState(false)
+  const [isComplete, setIsComplete] = useState(false)
+  const [agentPrompt, setAgentPrompt] = useState('')
+  const [agentThinking, setAgentThinking] = useState(false)
+  const [activeTpl, setActiveTpl] = useState<string | null>(null)
+  const canvasRef = useRef<HTMLDivElement>(null)
+  const timers = useRef<number[]>([])
 
-  const addService = useCallback((service: ServiceDefinition) => {
-    setPipeline(prev => [...prev, service])
-    // Scroll pipeline to bottom after adding
-    setTimeout(() => {
-      pipelineRef.current?.scrollTo({ top: pipelineRef.current.scrollHeight, behavior: 'smooth' })
-    }, 100)
+  const selected = pipeline.find(n => n.id === selectedId) || null
+  const slugsUsed = new Set(pipeline.map(n => n.service.slug))
+
+  /* Cleanup timers on unmount */
+  useEffect(() => {
+    return () => { timers.current.forEach(clearTimeout) }
   }, [])
 
-  const removeStep = useCallback((index: number) => {
-    setPipeline(prev => prev.filter((_, i) => i !== index))
+  /* ── Actions ── */
+  const addService = useCallback((svc: ServiceDefinition) => {
+    const id = uid(svc.slug)
+    setPipeline(prev => [...prev, { id, service: svc, prompt: '', status: 'idle' }])
+    setSelectedId(id)
+    setIsComplete(false)
+    setActiveTpl(null)
+    setTimeout(() => canvasRef.current?.scrollTo({ left: canvasRef.current.scrollWidth, behavior: 'smooth' }), 80)
   }, [])
 
-  const clearPipeline = useCallback(() => {
-    setPipeline([])
-    setRunAnimation(false)
+  const removeNode = useCallback((id: string) => {
+    setPipeline(prev => prev.filter(n => n.id !== id))
+    setSelectedId(prev => prev === id ? null : prev)
+    setIsComplete(false)
+  }, [])
+
+  const updatePrompt = useCallback((id: string, prompt: string) => {
+    setPipeline(prev => prev.map(n => n.id === id ? { ...n, prompt } : n))
+  }, [])
+
+  const loadTemplate = useCallback((tpl: Tpl) => {
+    const nodes: PNode[] = tpl.slugs
+      .map(slug => {
+        const svc = SERVICES.find(s => s.slug === slug)
+        return svc ? { id: uid(slug), service: svc, prompt: '', status: 'idle' as const } : null
+      })
+      .filter(Boolean) as PNode[]
+    setPipeline(nodes)
+    setSelectedId(null)
+    setActiveTpl(tpl.id)
+    setIsComplete(false)
+    setIsRunning(false)
   }, [])
 
   const runPipeline = useCallback(() => {
-    if (pipeline.length === 0) return
-    setRunAnimation(true)
-    setTimeout(() => setRunAnimation(false), 2500)
-  }, [pipeline])
+    if (!pipeline.length || isRunning) return
+    setIsRunning(true)
+    setIsComplete(false)
+    setPipeline(prev => prev.map(n => ({ ...n, status: 'idle' as const })))
 
-  const pipelineSlugs = new Set(pipeline.map(s => s.slug))
+    timers.current.forEach(clearTimeout)
+    timers.current = []
 
+    pipeline.forEach((_, i) => {
+      timers.current.push(
+        window.setTimeout(() => {
+          setPipeline(prev => prev.map((n, j) => j === i ? { ...n, status: 'running' as const } : n))
+        }, i * 900),
+        window.setTimeout(() => {
+          setPipeline(prev => prev.map((n, j) => j === i ? { ...n, status: 'complete' as const } : n))
+        }, i * 900 + 650),
+      )
+    })
+
+    timers.current.push(
+      window.setTimeout(() => { setIsRunning(false); setIsComplete(true) }, pipeline.length * 900 + 650),
+    )
+  }, [pipeline, isRunning])
+
+  const resetPipeline = useCallback(() => {
+    timers.current.forEach(clearTimeout)
+    timers.current = []
+    setPipeline([])
+    setSelectedId(null)
+    setIsRunning(false)
+    setIsComplete(false)
+    setActiveTpl(null)
+  }, [])
+
+  const handleAgentBuild = useCallback(() => {
+    if (!agentPrompt.trim() || agentThinking) return
+    setAgentThinking(true)
+    const tplId = matchTemplate(agentPrompt)
+    setTimeout(() => {
+      const tpl = TEMPLATES.find(t => t.id === tplId)
+      if (tpl) loadTemplate(tpl)
+      setAgentPrompt('')
+      setAgentThinking(false)
+    }, 600)
+  }, [agentPrompt, agentThinking, loadTemplate])
+
+  /* ── Render ── */
   return (
     <section className="cinematic-section relative px-4 sm:px-6 lg:px-10 py-20 sm:py-28 overflow-hidden">
       {/* Background textures */}
       <div className="absolute inset-0 pointer-events-none" style={{ background: 'radial-gradient(ellipse 70% 50% at 50% 30%, rgba(34,211,238,0.04) 0%, transparent 70%)' }} />
-      <div className="absolute inset-0 pointer-events-none opacity-[0.015]" style={{ backgroundImage: 'radial-gradient(rgba(255,255,255,0.3) 1px, transparent 1px)', backgroundSize: '20px 20px' }} />
-
-      {/* Ambient light sweeps */}
-      <div className="absolute top-0 left-0 w-96 h-96 pointer-events-none" style={{ background: 'radial-gradient(circle at 30% 20%, rgba(34,211,238,0.06), transparent 60%)', filter: 'blur(80px)' }} />
-      <div className="absolute bottom-0 right-0 w-96 h-96 pointer-events-none" style={{ background: 'radial-gradient(circle at 70% 80%, rgba(6,182,212,0.05), transparent 60%)', filter: 'blur(80px)' }} />
+      <div className="absolute inset-0 pointer-events-none opacity-[0.012]" style={{ backgroundImage: 'radial-gradient(rgba(255,255,255,0.3) 1px, transparent 1px)', backgroundSize: '24px 24px' }} />
+      <div className="absolute top-0 left-0 w-[500px] h-[500px] pointer-events-none" style={{ background: 'radial-gradient(circle at 20% 20%, rgba(34,211,238,0.06), transparent 60%)', filter: 'blur(100px)' }} />
+      <div className="absolute bottom-0 right-0 w-[500px] h-[500px] pointer-events-none" style={{ background: 'radial-gradient(circle at 80% 80%, rgba(6,182,212,0.05), transparent 60%)', filter: 'blur(100px)' }} />
 
       <div className="relative max-w-6xl mx-auto">
-        {/* Header */}
-        <div className="text-center mb-12 sm:mb-16">
-          <p
-            className="text-[10px] sm:text-[11px] tracking-[0.3em] uppercase font-black mb-3"
-            style={{
-              color: '#22d3ee',
-              textShadow: '0 0 20px rgba(34,211,238,0.3)',
-            }}
-          >
+
+        {/* ═══════════ HEADER ═══════════ */}
+        <div className="text-center mb-10 sm:mb-14">
+          <p className="text-[10px] sm:text-[11px] tracking-[0.3em] uppercase font-black mb-3" style={{ color: '#22d3ee', textShadow: '0 0 20px rgba(34,211,238,0.3)' }}>
             {c.eyebrow}
           </p>
           <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight" style={{ color: 'rgba(255,255,255,0.95)' }}>
@@ -290,185 +502,329 @@ export function WorkflowPipelineBuilder() {
           </p>
         </div>
 
-        {/* ── Main operational window ── */}
+        {/* ═══════════ TEMPLATES BAR ═══════════ */}
+        <div className="mb-4">
+          <div className="flex items-center gap-2 mb-3">
+            <span className="text-[10px] font-black tracking-[0.15em] uppercase" style={{ color: 'rgba(255,255,255,0.35)' }}>
+              {c.templates}
+            </span>
+          </div>
+          <div className="flex gap-2 overflow-x-auto pb-2" style={{ scrollbarWidth: 'none' }}>
+            {TEMPLATES.map(t => (
+              <TplCard key={t.id} t={t} lang={lang} active={activeTpl === t.id} onPick={() => loadTemplate(t)} />
+            ))}
+          </div>
+        </div>
+
+        {/* ═══════════ AGENT G PROMPT BAR ═══════════ */}
+        <div className="mb-6">
+          <div
+            className="flex items-center gap-3 rounded-xl px-4 py-3"
+            style={{
+              background: 'linear-gradient(135deg, rgba(255,255,255,0.04), rgba(255,255,255,0.01))',
+              border: '1px solid rgba(255,255,255,0.08)',
+            }}
+          >
+            <span className="text-lg shrink-0">{agentThinking ? '\u23F3' : '\uD83E\uDD16'}</span>
+            <input
+              type="text"
+              value={agentPrompt}
+              onChange={e => setAgentPrompt(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleAgentBuild()}
+              placeholder={c.agentPlaceholder}
+              className="flex-1 bg-transparent text-sm outline-none"
+              style={{ color: 'rgba(255,255,255,0.8)' }}
+            />
+            <button
+              onClick={handleAgentBuild}
+              disabled={!agentPrompt.trim() || agentThinking}
+              className="shrink-0 text-xs font-bold px-4 py-2 rounded-lg transition-all active:scale-95 disabled:opacity-30"
+              style={{
+                background: 'linear-gradient(135deg, rgba(34,211,238,0.2), rgba(6,182,212,0.1))',
+                border: '1px solid rgba(34,211,238,0.3)',
+                color: '#22d3ee',
+              }}
+            >
+              {agentThinking ? '\u23F3' : c.agentBtn}
+            </button>
+          </div>
+        </div>
+
+        {/* ═══════════ MAIN PANEL ═══════════ */}
         <div
           className="holo-panel relative !rounded-3xl overflow-hidden"
           style={{
-            background: 'linear-gradient(170deg, #0b1219 0%, #080e14 40%, #0a1018 100%)',
+            background: 'linear-gradient(170deg, #0b1219, #080e14 40%, #0a1018)',
             boxShadow: '0 8px 60px rgba(0,0,0,0.5), 0 0 80px rgba(34,211,238,0.04), inset 0 1px 0 rgba(255,255,255,0.04)',
           }}
         >
+          {/* Window chrome */}
           <div
-            className="rounded-3xl overflow-hidden"
+            className="flex items-center justify-between px-4 sm:px-6 py-3"
+            style={{
+              background: 'linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.01))',
+              borderBottom: '1px solid rgba(255,255,255,0.06)',
+            }}
           >
-            {/* Window title bar — metallic */}
+            <div className="flex items-center gap-2">
+              <div className="flex gap-1.5">
+                <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: 'rgba(255,95,87,0.7)' }} />
+                <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: 'rgba(255,189,46,0.7)' }} />
+                <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: 'rgba(39,201,63,0.7)' }} />
+              </div>
+              <span className="ml-3 text-[10px] font-bold tracking-[0.15em] uppercase" style={{ color: 'rgba(255,255,255,0.3)' }}>
+                PIPELINE STUDIO
+              </span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <div
+                className="w-1.5 h-1.5 rounded-full animate-pulse"
+                style={{
+                  backgroundColor: isRunning ? '#fbbf24' : isComplete ? '#34d399' : '#22d3ee',
+                  boxShadow: `0 0 6px ${isRunning ? '#fbbf24' : isComplete ? '#34d399' : '#22d3ee'}`,
+                }}
+              />
+              <span className="text-[9px] font-bold" style={{ color: isRunning ? 'rgba(251,191,36,0.7)' : isComplete ? 'rgba(52,211,153,0.7)' : 'rgba(34,211,238,0.6)' }}>
+                {isRunning ? c.processing : isComplete ? c.complete : 'ONLINE'}
+              </span>
+            </div>
+          </div>
+
+          {/* ── Inner layout: sidebar + canvas ── */}
+          <div className="flex flex-col lg:flex-row min-h-[480px]">
+
+            {/* LEFT — Services Library */}
             <div
-              className="flex items-center justify-between px-4 sm:px-6 py-3"
-              style={{
-                background: 'linear-gradient(180deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.01) 100%)',
-                borderBottom: '1px solid rgba(255,255,255,0.06)',
-              }}
+              className="lg:w-[200px] shrink-0 p-4 overflow-x-auto lg:overflow-y-auto border-b lg:border-b-0 lg:border-r"
+              style={{ borderColor: 'rgba(255,255,255,0.04)', maxHeight: '600px' }}
             >
-              <div className="flex items-center gap-2">
-                <div className="flex gap-1.5">
-                  <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: 'rgba(255,95,87,0.7)' }} />
-                  <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: 'rgba(255,189,46,0.7)' }} />
-                  <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: 'rgba(39,201,63,0.7)' }} />
-                </div>
-                <span className="ml-3 text-[10px] font-bold tracking-[0.15em] uppercase" style={{ color: 'rgba(255,255,255,0.3)' }}>
-                  PIPELINE CONTROL
+              <div className="flex items-center gap-2 mb-3">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#22d3ee" strokeWidth="2">
+                  <rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" />
+                  <rect x="3" y="14" width="7" height="7" /><rect x="14" y="14" width="7" height="7" />
+                </svg>
+                <span className="text-[10px] font-bold tracking-[0.1em] uppercase" style={{ color: 'rgba(255,255,255,0.4)' }}>
+                  {c.services}
                 </span>
               </div>
-              <div className="flex items-center gap-1.5">
-                <div className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ backgroundColor: '#22d3ee', boxShadow: '0 0 6px #22d3ee' }} />
-                <span className="text-[9px] font-bold" style={{ color: 'rgba(34,211,238,0.6)' }}>ONLINE</span>
+              <div className="flex lg:flex-col gap-2 lg:gap-1.5">
+                {BUILDER_SERVICES.map(s => (
+                  <SvcChip key={s.slug} s={s} lang={lang} inPipeline={slugsUsed.has(s.slug)} onAdd={() => addService(s)} />
+                ))}
               </div>
             </div>
 
-            {/* Main grid: services panel + pipeline panel */}
-            <div className="grid grid-cols-1 lg:grid-cols-[1fr_1.2fr] min-h-[520px]">
-
-              {/* ── LEFT: Available Services ── */}
-              <div
-                className="p-4 sm:p-6 overflow-y-auto"
-                style={{
-                  borderRight: '1px solid rgba(255,255,255,0.04)',
-                  maxHeight: '600px',
-                }}
-              >
-                <div className="flex items-center gap-2 mb-4">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#22d3ee" strokeWidth="2" strokeLinecap="round">
-                    <rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" />
-                    <rect x="3" y="14" width="7" height="7" /><rect x="14" y="14" width="7" height="7" />
-                  </svg>
-                  <span className="text-xs font-bold tracking-[0.1em] uppercase" style={{ color: 'rgba(255,255,255,0.5)' }}>
-                    {c.available}
+            {/* CENTER — Canvas + Inspector + Action Bar */}
+            <div className="flex-1 flex flex-col p-4 sm:p-5 min-w-0">
+              {/* Pipeline header */}
+              <div className="flex items-center gap-2 mb-3">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#22d3ee" strokeWidth="2" strokeLinecap="round">
+                  <path d="M13 2 3 14h9l-1 8 10-12h-9l1-8Z" />
+                </svg>
+                <span className="text-[10px] font-bold tracking-[0.1em] uppercase" style={{ color: 'rgba(255,255,255,0.4)' }}>
+                  {c.pipeline}
+                </span>
+                {pipeline.length > 0 && (
+                  <span
+                    className="text-[10px] font-black px-2 py-0.5 rounded-full"
+                    style={{ background: 'rgba(34,211,238,0.15)', border: '1px solid rgba(34,211,238,0.2)', color: '#22d3ee' }}
+                  >
+                    {pipeline.length}
                   </span>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 gap-2">
-                  {SERVICES.map(s => (
-                    <ServiceChip
-                      key={s.slug}
-                      service={s}
-                      lang={lang}
-                      onAdd={() => addService(s)}
-                      inPipeline={pipelineSlugs.has(s.slug)}
-                    />
-                  ))}
-                </div>
+                )}
               </div>
 
-              {/* ── RIGHT: Pipeline Chain ── */}
-              <div className="relative p-4 sm:p-6 flex flex-col">
-                {/* Panel header */}
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center gap-2">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#22d3ee" strokeWidth="2" strokeLinecap="round">
-                      <path d="M13 2 3 14h9l-1 8 10-12h-9l1-8Z" />
-                    </svg>
-                    <span className="text-xs font-bold tracking-[0.1em] uppercase" style={{ color: 'rgba(255,255,255,0.5)' }}>
-                      {c.pipeline}
-                    </span>
-                    {pipeline.length > 0 && (
-                      <span
-                        className="text-[10px] font-black px-2 py-0.5 rounded-full"
-                        style={{
-                          background: 'linear-gradient(135deg, rgba(34,211,238,0.2), rgba(6,182,212,0.08))',
-                          border: '1px solid rgba(34,211,238,0.2)',
-                          color: '#22d3ee',
-                        }}
+              {/* ── Pipeline canvas ── */}
+              <div
+                ref={canvasRef}
+                className="flex-1 min-h-[240px] overflow-x-auto overflow-y-auto rounded-xl p-4"
+                style={{
+                  background: 'linear-gradient(135deg, rgba(255,255,255,0.015), rgba(255,255,255,0.005))',
+                  border: '1px solid rgba(255,255,255,0.04)',
+                  backgroundImage: 'linear-gradient(rgba(255,255,255,0.015) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.015) 1px, transparent 1px)',
+                  backgroundSize: '28px 28px',
+                }}
+              >
+                {pipeline.length === 0 ? (
+                  /* Empty state */
+                  <div className="flex items-center justify-center h-full min-h-[200px]">
+                    <div className="text-center">
+                      <div
+                        className="w-16 h-16 rounded-2xl mx-auto mb-3 flex items-center justify-center"
+                        style={{ background: 'rgba(255,255,255,0.03)', border: '1px dashed rgba(255,255,255,0.1)' }}
                       >
-                        {pipeline.length}
-                      </span>
-                    )}
-                  </div>
-                  {pipeline.length > 0 && (
-                    <button
-                      onClick={clearPipeline}
-                      className="text-[10px] font-bold tracking-wider uppercase px-3 py-1 rounded-lg transition-all hover:scale-105 active:scale-95"
-                      style={{
-                        background: 'linear-gradient(135deg, rgba(255,70,70,0.1), rgba(255,70,70,0.04))',
-                        border: '1px solid rgba(255,70,70,0.15)',
-                        color: 'rgba(255,120,120,0.7)',
-                      }}
-                    >
-                      {c.clear}
-                    </button>
-                  )}
-                </div>
-
-                {/* Pipeline steps */}
-                <div ref={pipelineRef} className="flex-1 overflow-y-auto pr-1 space-y-0" style={{ maxHeight: '420px' }}>
-                  {pipeline.length === 0 ? (
-                    <div className="flex-1 flex items-center justify-center min-h-[300px]">
-                      <div className="text-center">
-                        <div
-                          className="w-16 h-16 rounded-2xl mx-auto mb-4 flex items-center justify-center"
-                          style={{
-                            background: 'linear-gradient(135deg, rgba(255,255,255,0.03), rgba(255,255,255,0.01))',
-                            border: '1px dashed rgba(255,255,255,0.1)',
-                          }}
-                        >
-                          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.2)" strokeWidth="1.5" strokeLinecap="round">
-                            <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
-                          </svg>
-                        </div>
-                        <p className="text-xs" style={{ color: 'rgba(255,255,255,0.25)' }}>{c.emptyHint}</p>
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.15)" strokeWidth="1.5" strokeLinecap="round">
+                          <line x1="12" y1="5" x2="12" y2="19" />
+                          <line x1="5" y1="12" x2="19" y2="12" />
+                        </svg>
                       </div>
+                      <p className="text-sm font-medium mb-1" style={{ color: 'rgba(255,255,255,0.3)' }}>{c.emptyTitle}</p>
+                      <p className="text-[11px]" style={{ color: 'rgba(255,255,255,0.18)' }}>{c.emptyHint}</p>
                     </div>
-                  ) : (
-                    <>
-                      {pipeline.map((service, i) => (
-                        <div key={`${service.slug}-${i}`}>
-                          <PipelineStep
-                            service={service}
+                  </div>
+                ) : (
+                  /* Node flow — horizontal on desktop, vertical on mobile */
+                  <div className="flex flex-col lg:flex-row items-center">
+                    <AnimatePresence mode="popLayout">
+                      {pipeline.map((node, i) => (
+                        <div key={node.id} className="flex flex-col lg:flex-row items-center">
+                          <NodeCard
+                            node={node}
                             lang={lang}
                             index={i}
                             stepLabel={c.step}
-                            outputLabel={c.output}
-                            isLast={i === pipeline.length - 1}
-                            onRemove={() => removeStep(i)}
+                            selected={selectedId === node.id}
+                            onSelect={() => setSelectedId(selectedId === node.id ? null : node.id)}
+                            onRemove={() => removeNode(node.id)}
                           />
-                          {i < pipeline.length - 1 && <PipelineConnector />}
+                          {i < pipeline.length - 1 && (
+                            <>
+                              <HArrow
+                                color={ac(node.service.slug)}
+                                active={node.status === 'complete' && pipeline[i + 1]?.status === 'running'}
+                              />
+                              <VArrow
+                                color={ac(node.service.slug)}
+                                active={node.status === 'complete' && pipeline[i + 1]?.status === 'running'}
+                              />
+                            </>
+                          )}
                         </div>
                       ))}
-                    </>
-                  )}
-                </div>
-
-                {/* Action bar — metallic buttons */}
-                {pipeline.length > 0 && (
-                  <div className="mt-4 pt-4" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-                    {/* Status line */}
-                    <div className="flex items-center gap-2 mb-3">
-                      <div
-                        className="w-1.5 h-1.5 rounded-full"
-                        style={{
-                          backgroundColor: runAnimation ? '#fbbf24' : '#22d3ee',
-                          boxShadow: runAnimation ? '0 0 8px #fbbf24' : '0 0 8px #22d3ee',
-                          animation: runAnimation ? 'pulse 0.6s ease-in-out infinite' : undefined,
-                        }}
-                      />
-                      <span className="text-[10px] font-medium" style={{ color: 'rgba(255,255,255,0.35)' }}>
-                        {runAnimation ? 'PROCESSING...' : c.ready}
-                      </span>
-                    </div>
-
-                    <div className="flex gap-3">
-                      {/* Execute button — bold metallic */}
-                      <Link
-                        href={'/' + language + '/services/workflow'}
-                        onClick={runPipeline}
-                        className="cinematic-btn cinematic-btn-primary flex-1 rounded-xl py-3 text-center"
-                      >
-                        <span className="relative text-sm font-black tracking-wider text-white uppercase">
-                          {runAnimation ? '⏳ ...' : `⚡ ${c.run}`}
-                        </span>
-                      </Link>
-                    </div>
+                    </AnimatePresence>
                   </div>
                 )}
               </div>
+
+              {/* ── Node inspector (slides in when a node is selected) ── */}
+              <AnimatePresence>
+                {selected && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    exit={{ opacity: 0, height: 0 }}
+                    transition={{ duration: 0.25 }}
+                    className="overflow-hidden"
+                  >
+                    <div
+                      className="mt-3 rounded-xl p-4"
+                      style={{
+                        background: 'linear-gradient(135deg, rgba(255,255,255,0.03), rgba(255,255,255,0.01))',
+                        border: `1px solid ${ac(selected.service.slug)}33`,
+                      }}
+                    >
+                      {/* Inspector header */}
+                      <div className="flex items-center gap-2 mb-3">
+                        <span className="text-base">{selected.service.icon}</span>
+                        <span className="text-xs font-bold" style={{ color: ac(selected.service.slug) }}>
+                          {selected.service.title[lang] || selected.service.title.en}
+                        </span>
+                        <span className="text-[10px] font-bold tracking-[0.1em] uppercase" style={{ color: 'rgba(255,255,255,0.3)' }}>
+                          \u2014 {c.settings}
+                        </span>
+                      </div>
+
+                      {/* Prompt input */}
+                      <label className="block text-[10px] font-bold uppercase tracking-wide mb-1.5" style={{ color: 'rgba(255,255,255,0.35)' }}>
+                        {c.promptLabel}
+                      </label>
+                      <textarea
+                        value={selected.prompt}
+                        onChange={e => updatePrompt(selected.id, e.target.value)}
+                        placeholder={c.promptPlaceholder}
+                        rows={2}
+                        className="w-full bg-transparent rounded-lg px-3 py-2 text-sm outline-none resize-none"
+                        style={{
+                          color: 'rgba(255,255,255,0.8)',
+                          border: '1px solid rgba(255,255,255,0.08)',
+                          background: 'rgba(0,0,0,0.2)',
+                        }}
+                      />
+
+                      {/* Mock preview area */}
+                      <div className="mt-3">
+                        <span className="text-[10px] font-bold uppercase tracking-wide" style={{ color: 'rgba(255,255,255,0.3)' }}>
+                          {c.previewLabel}
+                        </span>
+                        <div
+                          className="mt-1.5 rounded-lg h-16 flex items-center justify-center"
+                          style={{
+                            background: `linear-gradient(135deg, ${ac(selected.service.slug)}08, ${ac(selected.service.slug)}03)`,
+                            border: `1px solid ${ac(selected.service.slug)}15`,
+                          }}
+                        >
+                          <span className="text-[10px]" style={{ color: 'rgba(255,255,255,0.2)' }}>
+                            {selected.prompt ? c.previewHint : c.noSelection}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* CTA to actual service */}
+                      <Link
+                        href={`/${language}/services/${selected.service.slug}`}
+                        className="inline-flex items-center gap-1 mt-3 text-[11px] font-bold transition-opacity hover:opacity-80"
+                        style={{ color: ac(selected.service.slug) }}
+                      >
+                        {c.tryService}
+                      </Link>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              {/* ── Action bar ── */}
+              {pipeline.length > 0 && (
+                <div className="mt-4 pt-4 flex flex-wrap items-center gap-2" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                  {/* Status */}
+                  <div className="flex items-center gap-1.5 mr-auto">
+                    <div
+                      className="w-1.5 h-1.5 rounded-full"
+                      style={{
+                        backgroundColor: isComplete ? '#34d399' : isRunning ? '#fbbf24' : '#22d3ee',
+                        boxShadow: `0 0 8px ${isComplete ? '#34d399' : isRunning ? '#fbbf24' : '#22d3ee'}`,
+                        animation: isRunning ? 'pulse 0.6s ease-in-out infinite' : undefined,
+                      }}
+                    />
+                    <span className="text-[10px] font-medium" style={{ color: 'rgba(255,255,255,0.35)' }}>
+                      {isRunning ? c.processing : isComplete ? c.complete : c.ready}
+                    </span>
+                  </div>
+
+                  {/* Run */}
+                  <button
+                    onClick={runPipeline}
+                    disabled={isRunning}
+                    className="cinematic-btn cinematic-btn-primary rounded-xl px-6 py-2.5 disabled:opacity-40"
+                  >
+                    <span className="relative text-xs font-black tracking-wider text-white uppercase">
+                      {isRunning ? `\u23F3 ${c.processing}` : `\u26A1 ${c.run}`}
+                    </span>
+                  </button>
+
+                  {/* Export */}
+                  <button
+                    onClick={() => {
+                      const desc = pipeline.map((n, i) => `${i + 1}. ${n.service.title.en}${n.prompt ? ': ' + n.prompt : ''}`).join('\n')
+                      if (navigator.clipboard) {
+                        navigator.clipboard.writeText(desc).catch(() => {})
+                      }
+                    }}
+                    className="rounded-xl px-4 py-2.5 text-xs font-bold tracking-wider uppercase transition-all active:scale-95"
+                    style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.5)' }}
+                  >
+                    {c.exportBtn}
+                  </button>
+
+                  {/* Reset */}
+                  <button
+                    onClick={resetPipeline}
+                    className="rounded-xl px-4 py-2.5 text-xs font-bold tracking-wider uppercase transition-all active:scale-95"
+                    style={{ background: 'rgba(255,70,70,0.08)', border: '1px solid rgba(255,70,70,0.15)', color: 'rgba(255,120,120,0.6)' }}
+                  >
+                    {c.reset}
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>
