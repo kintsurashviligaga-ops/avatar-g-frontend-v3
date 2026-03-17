@@ -29,7 +29,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const { email, name, company, size, note, source } = parsed.data;
 
     // Placeholder: send to CRM or persist in leads table.
-    console.log('[growth] lead-capture', {
+    console.info('[growth] lead-capture', {
       email,
       name,
       company,

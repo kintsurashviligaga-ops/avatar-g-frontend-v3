@@ -105,7 +105,7 @@ export function logValidationResults(result: EnvValidationResult): void {
   }
 
   if (result.valid && result.warnings.length === 0) {
-    console.log('✅ Environment variables validated successfully');
+    console.info('✅ Environment variables validated successfully');
   }
 }
 

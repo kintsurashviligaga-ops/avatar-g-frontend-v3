@@ -57,11 +57,11 @@ export class TrackingSyncService {
         .not('supplier_order_id', 'is', null);
 
       if (!jobs || jobs.length === 0) {
-        console.log('No jobs to sync');
+        console.info('No jobs to sync');
         return { synced, errors };
       }
 
-      console.log(`Syncing tracking for ${jobs.length} jobs`);
+      console.info(`Syncing tracking for ${jobs.length} jobs`);
 
       for (const job of jobs) {
         try {

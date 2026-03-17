@@ -119,7 +119,7 @@ export async function createPaymentWithFee(
     commissionPercentage: effectiveRate,
   });
 
-  console.log('[Payment] Created with fee:', {
+  console.info('[Payment] Created with fee:', {
     paymentIntentId: paymentIntent.id,
     total: amountCents,
     platformFee: applicationFeeCents,
@@ -178,7 +178,7 @@ export async function createDirectPayment(
     ...(customerId && { customer: customerId }),
   });
 
-  console.log('[Payment] Direct payment created:', {
+  console.info('[Payment] Direct payment created:', {
     paymentIntentId: paymentIntent.id,
     amount: amountCents,
     sellerId,

@@ -315,7 +315,11 @@ export function ChatScreen() {
   const chatUI = (
     <div
       className="fixed inset-0 z-[9999]"
-      style={{ backgroundColor: '#0a0a0c' }}
+      style={{
+        backgroundColor: '#060c1a',
+        height: '100dvh',
+        WebkitOverflowScrolling: 'touch',
+      }}
     >
       {/* Cinematic ambient for chat environment */}
       <div className="absolute inset-0 pointer-events-none" aria-hidden="true">

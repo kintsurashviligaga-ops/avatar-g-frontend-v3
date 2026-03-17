@@ -27,7 +27,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const { channel, context, userId, metadata } = parsed.data;
 
     // Placeholder: send to analytics/queue.
-    console.log('[growth] share-event', {
+    console.info('[growth] share-event', {
       channel,
       context: context || 'unknown',
       userId: userId || 'anonymous',

@@ -115,7 +115,7 @@ export async function upsertSubscription(
     throw new Error('Failed to upsert subscription');
   }
 
-  console.log('[DB] Subscription upserted:', {
+  console.info('[DB] Subscription upserted:', {
     userId,
     subscriptionId: subscription.id,
     status: subscription.status,
@@ -151,7 +151,7 @@ export async function updateSubscriptionStatus(
     throw new Error('Failed to update subscription status');
   }
 
-  console.log('[DB] Subscription status updated:', {
+  console.info('[DB] Subscription status updated:', {
     subscriptionId: stripeSubscriptionId,
     status,
   });

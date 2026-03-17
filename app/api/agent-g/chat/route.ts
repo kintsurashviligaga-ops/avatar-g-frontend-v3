@@ -109,18 +109,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     return NextResponse.json(
       {
-        reply: 'გაგ, ცოტა მომეცი და ახლავე დაგიბრუნდები პასუხით 🙌',
-        tone: {
-          mood: 'calm',
-          confidence: 0.5,
-        },
-        meta: {
-          detectedEmotion: 'neutral',
-          styleHints: ['fallback'],
-          voiceHint: 'calmer, slower pace, reassuring',
-        },
+        error: 'AI service temporarily unavailable',
+        requestId,
       },
-      { status: 200 }
+      { status: 503 }
     );
   }
 }

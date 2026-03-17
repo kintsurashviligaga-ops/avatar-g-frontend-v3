@@ -1,8 +1,6 @@
 /* eslint-disable @typescript-eslint/no-require-imports */
 const withNextIntl = require('next-intl/plugin')('./i18n/request.ts');
-const { warnIfOneDrivePath } = require('./scripts/onedrive-warning.cjs');
 
-warnIfOneDrivePath();
 const buildVersion = process.env.NEXT_PUBLIC_BUILD_ID || String(Date.now());
 
 /** @type {import('next').NextConfig} */

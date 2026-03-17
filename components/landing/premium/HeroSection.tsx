@@ -8,19 +8,22 @@ import { HeroVideo } from './HeroVideo'
 /* ─── Copy ──────────────────────────────────────────────── */
 const COPY = {
   en: {
-    headline: 'all in one place.',
+    headline1: 'Create Everything with AI',
+    headline2: 'All in One Place.',
     cta1: 'Start Creating',
     cta2: 'Explore Tools',
     trust: 'Trusted by creators, businesses and developers worldwide',
   },
   ka: {
-    headline: 'all in one place.',
+    headline1: 'შექმენი ყველაფერი AI-ით',
+    headline2: 'ერთ სივრცეში.',
     cta1: 'შექმნის დაწყება',
     cta2: 'ინსტრუმენტების ნახვა',
     trust: 'კრეატორების, ბიზნესისა და დეველოპერების ნდობით მსოფლიოში',
   },
   ru: {
-    headline: 'all in one place.',
+    headline1: 'Создавайте всё с помощью AI',
+    headline2: 'В одном месте.',
     cta1: 'Начать создание',
     cta2: 'Обзор инструментов',
     trust: 'Доверяют создатели, бизнесы и разработчики по всему миру',
@@ -57,7 +60,9 @@ export function HeroSection() {
 
         {/* Headline — cinematic type */}
         <h1 className="text-4xl sm:text-5xl lg:text-6xl xl:text-7xl font-bold tracking-[-0.03em] leading-[1.08]" style={{ color: 'var(--color-text)' }}>
-          {c.headline}
+          {c.headline1}
+          <br />
+          <span style={{ color: 'var(--color-accent)' }}>{c.headline2}</span>
         </h1>
 
         {/* CTA Buttons — cinematic treatment */}

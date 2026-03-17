@@ -27,7 +27,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     // Placeholder: in production this should write to referral_events /
     // analytics tables or enqueue an event for processing.
-    console.log('[growth] referral event', {
+    console.info('[growth] referral event', {
       userId,
       referralCode,
       source: source || 'unknown',

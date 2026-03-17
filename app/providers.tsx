@@ -3,7 +3,7 @@
 import { IdentityProvider } from "@/lib/identity/IdentityContext";
 import { LanguageProvider } from "@/components/LanguageProvider";
 import { ThemeProvider } from "@/lib/theme/ThemeContext";
-import { ToastProvider } from "@/components/Toast";
+import { ToastProvider } from "@/components/ui/Toast";
 
 export default function Providers({ children }: { children: React.ReactNode }) {
   return (

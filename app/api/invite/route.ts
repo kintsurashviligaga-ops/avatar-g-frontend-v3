@@ -28,7 +28,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const { email, invitedBy, role, channel, note } = parsed.data;
 
     // Placeholder: enqueue invite email or persist invite in DB.
-    console.log('[growth] invite requested', {
+    console.info('[growth] invite requested', {
       email,
       invitedBy: invitedBy || 'unknown',
       role: role || 'member',
