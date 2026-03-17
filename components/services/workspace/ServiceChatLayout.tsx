@@ -22,6 +22,7 @@ import { ServiceWelcome } from './ServiceWelcome'
 import { ServiceComposer } from './ServiceComposer'
 import { ServiceToolPanel } from './ServiceToolPanel'
 import { CrossServiceTransfer } from './CrossServiceTransfer'
+import { ServiceOutputCard } from './ServiceOutputCard'
 
 /* ── helpers ── */
 const uid = () => crypto.randomUUID()
@@ -35,6 +36,10 @@ export interface ServiceMessage {
   createdAt: string
   status?: 'sending' | 'sent' | 'failed'
   isStreaming?: boolean
+  /** Service routing hint from Agent G */
+  suggestedService?: string
+  /** Output type hint */
+  outputType?: 'avatar' | 'image' | 'video' | 'music' | 'text' | 'workflow' | 'result'
 }
 
 /* ── props ── */
@@ -114,17 +119,24 @@ export default function ServiceChatLayout({
         .slice(-10)
         .map(m => ({ role: m.role as 'user' | 'assistant', content: m.content }))
 
+      // Build tool context string
+      const toolContext = Object.entries(toolValues)
+        .filter(([, v]) => v)
+        .map(([k, v]) => `${k}: ${v}`)
+        .join(', ')
+
       const res = await fetch('/api/agent-g/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          message: text.trim(),
+          message: toolContext
+            ? `[Service: ${serviceId}] [Settings: ${toolContext}] ${text.trim()}`
+            : `[Service: ${serviceId}] ${text.trim()}`,
           locale,
           sessionId,
           context: {
             currentPage: pathname || undefined,
             activeService: serviceId,
-            toolValues,
           },
           history,
         }),
@@ -139,6 +151,8 @@ export default function ServiceChatLayout({
         role: 'assistant',
         content: data.reply || data.message || 'Done.',
         createdAt: now(),
+        suggestedService: data.meta?.suggestedService,
+        outputType: data.meta?.outputType,
       }
 
       setMessages(prev =>
@@ -177,10 +191,10 @@ export default function ServiceChatLayout({
     } else if (item.action === 'navigate' && item.target) {
       router.push(`/${locale}/services/${item.target}`)
     } else if (item.action === 'transfer' && item.target) {
-      router.push(`/${locale}/services/${item.target}?from=${serviceId}&transfer=true`)
+      router.push(`/${locale}/services/${item.target}`)
     }
     setMenuOpen(false)
-  }, [config, sendMessage, router, locale, serviceId])
+  }, [config, sendMessage, router, locale])
 
   const handleToolChange = useCallback((toolId: string, value: string) => {
     setToolValues(prev => ({ ...prev, [toolId]: value }))
@@ -189,13 +203,31 @@ export default function ServiceChatLayout({
   const handleAttach = useCallback(() => { fileInputRef.current?.click() }, [])
   const handleCamera = useCallback(() => { cameraInputRef.current?.click() }, [])
 
+  const handleTransferNavigate = useCallback((targetSlug: string) => {
+    router.push(`/${locale}/services/${targetSlug}`)
+  }, [router, locale])
+
   /* ═══════════════════════════════════════════════════
      RENDER
      ═══════════════════════════════════════════════════ */
   if (!config) return null
 
+  const isAgentG = serviceId === 'agent-g'
+
   const chatUI = (
-    <div className="fixed inset-0 z-[9999]" style={{ backgroundColor: '#0a0a0c' }}>
+    <div
+      className="fixed inset-0 z-[9999]"
+      style={{ backgroundColor: '#060c1a', height: '100dvh', WebkitOverflowScrolling: 'touch' }}
+    >
+      {/* Cinematic ambient background */}
+      <div className="absolute inset-0 pointer-events-none" aria-hidden="true">
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[300px]" style={{ background: 'radial-gradient(ellipse 60% 50% at 50% 0%, rgba(34,211,238,0.04) 0%, transparent 70%)', filter: 'blur(60px)' }} />
+        <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-full h-[200px]" style={{ background: 'radial-gradient(ellipse 80% 60% at 50% 100%, rgba(6,182,212,0.03) 0%, transparent 70%)', filter: 'blur(40px)' }} />
+        {/* Subtle side gradients */}
+        <div className="absolute top-1/3 -left-20 w-[250px] h-[350px] opacity-50" style={{ background: 'radial-gradient(ellipse at center, rgba(34,211,238,0.02) 0%, transparent 70%)', filter: 'blur(50px)' }} />
+        <div className="absolute top-1/2 -right-20 w-[250px] h-[350px] opacity-50" style={{ background: 'radial-gradient(ellipse at center, rgba(6,182,212,0.02) 0%, transparent 70%)', filter: 'blur(50px)' }} />
+      </div>
+
       {/* Header */}
       <ServiceHeader
         serviceId={serviceId}
@@ -229,32 +261,98 @@ export default function ServiceChatLayout({
             /* Welcome state */
             <ServiceWelcome config={config} serviceName={serviceName} serviceIcon={serviceIcon} onSend={handleQuickAction} />
           ) : (
-            /* Chat messages */
-            <div className="flex-1 px-4 py-3 space-y-4">
-              {/* Quick actions bar */}
+            /* Chat messages + tools */
+            <div className="flex-1 px-4 py-3 space-y-3">
+              {/* Quick actions bar at top */}
               <ServiceQuickActions actions={config.quickActions} onAction={handleQuickAction} />
 
               {/* Messages */}
-              {messages.map(msg => (
-                <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                  <div
-                    className={`max-w-[85%] sm:max-w-[75%] rounded-2xl px-4 py-3 text-[13px] leading-relaxed ${
-                      msg.role === 'user' ? 'rounded-br-md' : 'rounded-bl-md'
-                    }`}
-                    style={
-                      msg.role === 'user'
-                        ? { backgroundColor: 'var(--color-accent)', color: '#000' }
-                        : msg.role === 'system'
-                        ? { backgroundColor: 'rgba(255,255,255,0.03)', color: 'var(--color-text-tertiary)' }
-                        : { backgroundColor: 'rgba(255,255,255,0.06)', color: 'var(--color-text-primary)' }
-                    }
-                  >
-                    {msg.content}
-                  </div>
-                </div>
-              ))}
+              {messages.map((msg, idx) => {
+                const isLastAssistant = msg.role === 'assistant' && idx === messages.length - 1
 
-              {/* Tool panel */}
+                if (msg.role === 'user') {
+                  return (
+                    <div key={msg.id} className="flex justify-end">
+                      <div
+                        className="max-w-[85%] sm:max-w-[75%] rounded-2xl rounded-br-md px-4 py-3 text-[13px] sm:text-[14px] leading-relaxed"
+                        style={{ backgroundColor: 'var(--color-accent)', color: '#000', fontWeight: 500 }}
+                      >
+                        {msg.content}
+                        {msg.status === 'failed' && (
+                          <span className="block text-[10px] mt-1 opacity-60">⚠ Failed to send</span>
+                        )}
+                      </div>
+                    </div>
+                  )
+                }
+
+                if (msg.role === 'system') {
+                  return (
+                    <div key={msg.id} className="flex justify-start">
+                      <div
+                        className="flex items-center gap-2 px-4 py-2.5 rounded-2xl text-[13px]"
+                        style={{ backgroundColor: 'rgba(255,255,255,0.03)', color: 'var(--color-text-tertiary)' }}
+                      >
+                        {msg.content === '⏳' ? (
+                          <>
+                            <div className="w-4 h-4 border-2 border-cyan-400/60 border-t-transparent rounded-full animate-spin" />
+                            <span className="animate-pulse">
+                              {isAgentG ? 'Agent G is thinking…' : `${serviceName} is processing…`}
+                            </span>
+                          </>
+                        ) : (
+                          msg.content
+                        )}
+                      </div>
+                    </div>
+                  )
+                }
+
+                if (msg.role === 'assistant') {
+                  return (
+                    <div key={msg.id} className="flex justify-start gap-2.5">
+                      {/* Agent avatar */}
+                      <div
+                        className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 mt-0.5"
+                        style={{
+                          background: 'linear-gradient(135deg, rgba(34,211,238,0.2), rgba(6,182,212,0.1))',
+                          border: '1px solid rgba(34,211,238,0.15)',
+                        }}
+                      >
+                        <span className="text-xs">{serviceIcon}</span>
+                      </div>
+                      <div className="max-w-[85%] sm:max-w-[75%] space-y-2">
+                        <div
+                          className="rounded-2xl rounded-bl-md px-4 py-3 text-[13px] sm:text-[14px] leading-relaxed whitespace-pre-wrap"
+                          style={{
+                            backgroundColor: 'rgba(255,255,255,0.05)',
+                            color: 'var(--color-text)',
+                            border: '1px solid rgba(255,255,255,0.06)',
+                          }}
+                        >
+                          {msg.content}
+                        </div>
+
+                        {/* Output card for completed results */}
+                        {isLastAssistant && outputReady && (
+                          <ServiceOutputCard
+                            serviceId={serviceId}
+                            serviceName={serviceName}
+                            serviceIcon={serviceIcon}
+                            onNavigate={handleTransferNavigate}
+                            transfers={config.transfers}
+                            locale={locale}
+                          />
+                        )}
+                      </div>
+                    </div>
+                  )
+                }
+
+                return null
+              })}
+
+              {/* Tool panel — always visible when tools exist */}
               {config.tools.length > 0 && (
                 <ServiceToolPanel
                   tools={config.tools}
@@ -264,13 +362,6 @@ export default function ServiceChatLayout({
                   onCamera={handleCamera}
                 />
               )}
-
-              {/* Cross-service transfers */}
-              <CrossServiceTransfer
-                transfers={config.transfers}
-                outputReady={outputReady}
-                locale={locale}
-              />
             </div>
           )}
         </div>
@@ -284,7 +375,7 @@ export default function ServiceChatLayout({
         onAttach={handleAttach}
         onCamera={handleCamera}
         isSubmitting={isSubmitting}
-        placeholder={config.welcomeHint.en}
+        placeholder={config.welcomeHint[language as 'en' | 'ka' | 'ru'] || config.welcomeHint.en}
       />
 
       {/* Hidden file inputs */}

@@ -67,7 +67,9 @@ export function ServiceHamburgerMenu({ open, onClose, config, serviceName, servi
         ref={panelRef}
         className={`fixed top-0 right-0 bottom-0 z-[9999] w-[300px] sm:w-[340px] transition-transform duration-300 ease-out ${open ? 'translate-x-0' : 'translate-x-full'}`}
         style={{
-          backgroundColor: '#0c0c10',
+          backgroundColor: 'rgba(8,12,24,0.97)',
+          backdropFilter: 'blur(20px) saturate(1.2)',
+          WebkitBackdropFilter: 'blur(20px) saturate(1.2)',
           borderLeft: '1px solid rgba(255,255,255,0.06)',
           paddingTop: 'env(safe-area-inset-top, 0px)',
         }}

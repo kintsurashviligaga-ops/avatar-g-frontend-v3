@@ -2,7 +2,7 @@
 
 /**
  * ServiceWelcome — Shown when the service chat has no messages yet.
- * Displays service icon, name, description, hint, and quick actions.
+ * Displays service icon, name, description, hint, quick actions, and tool preview.
  */
 
 import { useLanguage } from '@/lib/i18n/LanguageContext'
@@ -32,6 +32,7 @@ export function ServiceWelcome({ config, serviceName, serviceIcon, onSend }: Ser
         style={{
           background: 'linear-gradient(135deg, rgba(34,211,238,0.15) 0%, rgba(34,211,238,0.05) 100%)',
           border: '1px solid rgba(34,211,238,0.15)',
+          boxShadow: '0 0 30px rgba(34,211,238,0.06)',
         }}
       >
         {serviceIcon}
@@ -43,7 +44,7 @@ export function ServiceWelcome({ config, serviceName, serviceIcon, onSend }: Ser
       </h2>
 
       {/* Hint */}
-      <p className="text-[13px] max-w-[280px] leading-relaxed mb-1" style={{ color: 'var(--color-text-secondary)' }}>
+      <p className="text-[13px] max-w-[300px] leading-relaxed mb-1" style={{ color: 'var(--color-text-secondary)' }}>
         {hint}
       </p>
 
@@ -58,35 +59,48 @@ export function ServiceWelcome({ config, serviceName, serviceIcon, onSend }: Ser
           <p className="text-[10px] uppercase tracking-wider font-semibold mb-2" style={{ color: 'var(--color-text-tertiary)' }}>
             {lang === 'ka' ? 'სწრაფი მოქმედებები' : lang === 'ru' ? 'Быстрые действия' : 'Quick Actions'}
           </p>
-          <div className="grid grid-cols-1 gap-2">
-            {config.quickActions.slice(0, 4).map((qa) => {
+          <div className="grid grid-cols-2 gap-2">
+            {config.quickActions.slice(0, 6).map((qa) => {
               const qaLabel = qa.label[lang] || qa.label.en
               return (
                 <button
                   key={qa.id}
                   onClick={() => onSend(qa.prompt)}
-                  className="group flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all"
+                  className="group flex flex-col items-center gap-2 px-3 py-3.5 rounded-xl text-center transition-all"
                   style={{
                     backgroundColor: 'rgba(255,255,255,0.03)',
                     border: '1px solid rgba(255,255,255,0.06)',
                   }}
+                  onMouseEnter={e => {
+                    (e.currentTarget as HTMLElement).style.borderColor = 'rgba(34,211,238,0.2)'
+                    ;(e.currentTarget as HTMLElement).style.backgroundColor = 'rgba(34,211,238,0.04)'
+                  }}
+                  onMouseLeave={e => {
+                    (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.06)'
+                    ;(e.currentTarget as HTMLElement).style.backgroundColor = 'rgba(255,255,255,0.03)'
+                  }}
                 >
-                  <span className="text-lg">{qa.icon}</span>
-                  <span className="text-[12px] font-medium flex-1" style={{ color: 'var(--color-text-secondary)' }}>
+                  <span className="text-xl">{qa.icon}</span>
+                  <span className="text-[11px] font-medium leading-tight" style={{ color: 'var(--color-text-secondary)' }}>
                     {qaLabel}
                   </span>
-                  <svg
-                    width="14" height="14" viewBox="0 0 24 24" fill="none"
-                    stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"
-                    className="opacity-0 group-hover:opacity-60 transition-opacity"
-                    style={{ color: 'var(--color-accent)' }}
-                  >
-                    <path d="M5 12h14" /><path d="m12 5 7 7-7 7" />
-                  </svg>
                 </button>
               )
             })}
           </div>
+        </div>
+      )}
+
+      {/* Tools preview hint */}
+      {config.tools.length > 0 && (
+        <div className="mt-5 flex items-center gap-2 px-3 py-2 rounded-lg" style={{ backgroundColor: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.04)' }}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--color-accent)', opacity: 0.6 }}>
+            <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
+            <circle cx="12" cy="12" r="3" />
+          </svg>
+          <span className="text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
+            {config.tools.length} {lang === 'ka' ? 'ხელსაწყო ხელმისაწვდომია' : lang === 'ru' ? 'инструментов доступно' : 'tools available'}
+          </span>
         </div>
       )}
     </div>

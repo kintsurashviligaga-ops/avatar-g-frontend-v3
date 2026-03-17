@@ -1,0 +1,47 @@
+'use client'
+
+import { useEffect, useState } from 'react'
+import ServiceChatLayout from '@/components/services/workspace/ServiceChatLayout'
+import { createBrowserClient } from '@/lib/supabase/browser'
+
+interface AgentGPageClientProps {
+  serviceId: string
+  serviceName: string
+  serviceIcon: string
+  agentId: string
+  locale: string
+  features: string[]
+  description: string
+}
+
+export default function AgentGPageClient(props: AgentGPageClientProps) {
+  const demoMode = (process.env.NEXT_PUBLIC_DEMO_MODE ?? '').trim().toLowerCase() === 'true'
+  const [isAuthenticated, setIsAuthenticated] = useState(demoMode)
+
+  useEffect(() => {
+    if (demoMode) {
+      setIsAuthenticated(true)
+      return
+    }
+
+    const supabase = createBrowserClient()
+
+    supabase.auth.getSession().then(({ data }) => {
+      setIsAuthenticated(!!data.session)
+    })
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setIsAuthenticated(!!session)
+    })
+
+    return () => subscription.unsubscribe()
+  }, [demoMode])
+
+  return (
+    <ServiceChatLayout
+      {...props}
+      isAuthenticated={isAuthenticated}
+      demoMode={demoMode}
+    />
+  )
+}

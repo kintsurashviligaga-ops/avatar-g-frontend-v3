@@ -24,7 +24,9 @@ export function ServiceHeader({ serviceId, serviceName, serviceIcon, onMenuToggl
     <header
       className="fixed top-0 left-0 right-0 z-40 flex items-center justify-between gap-3 px-3 sm:px-4"
       style={{
-        backgroundColor: '#0a0a0c',
+        backgroundColor: 'rgba(6,12,26,0.85)',
+        backdropFilter: 'blur(16px) saturate(1.3)',
+        WebkitBackdropFilter: 'blur(16px) saturate(1.3)',
         borderBottom: '1px solid rgba(255,255,255,0.06)',
         height: 'calc(56px + env(safe-area-inset-top, 0px))',
         paddingTop: 'env(safe-area-inset-top, 0px)',
