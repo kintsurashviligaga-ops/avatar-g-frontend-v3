@@ -1110,12 +1110,23 @@ a:focus-visible {
    Deep space • 4D geometry • Holographic panels • Atmospheric lighting
    ═══════════════════════════════════════════════════════════════════════════ */
 
-/* ── Cinematic Particles — sparse, slow, atmospheric ── */
+/* ── Environment Glow — slow breathing animation ── */
+.env-glow-breathe {
+  animation: env-glow-pulse 8s ease-in-out infinite;
+}
+
+@keyframes env-glow-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+/* ── Cinematic Particles — sparse, slow, mood-colored via inline styles ── */
 .cinematic-particle {
   position: absolute;
   width: 4px;
   height: 4px;
   border-radius: 50%;
+  /* Default fallback; overridden by inline styles per mood */
   background: rgba(34, 211, 238, 0.7);
   box-shadow: 0 0 10px rgba(34, 211, 238, 0.5), 0 0 20px rgba(34, 211, 238, 0.2);
   animation: cinematic-float linear infinite;

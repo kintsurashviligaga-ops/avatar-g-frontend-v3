@@ -221,10 +221,10 @@ export default function FulfillmentDetail({
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center">
+      <div className="min-h-screen bg-transparent flex items-center justify-center">
         <div className="text-center">
           <div className="inline-block animate-spin">
-            <div className="w-12 h-12 border-4 border-blue-200 border-t-blue-600 rounded-full" />
+            <div className="w-12 h-12 border-4 border-cyan-900/30 border-t-cyan-400 rounded-full" />
           </div>
           <p className="mt-4 text-gray-600">{t('common.loading')}</p>
         </div>
@@ -234,8 +234,8 @@ export default function FulfillmentDetail({
 
   if (!order) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center">
-        <p className="text-gray-600">{t('shipping.fulfillment.order_not_found')}</p>
+      <div className="min-h-screen bg-transparent flex items-center justify-center">
+        <p style={{ color: 'var(--color-text-muted)' }}>{t('shipping.fulfillment.order_not_found')}</p>
       </div>
     );
   }
@@ -244,7 +244,7 @@ export default function FulfillmentDetail({
   const firstShipment = shipments[0];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-6">
+    <div className="min-h-screen bg-transparent p-6">
       <div className="max-w-4xl mx-auto">
         {/* Header */}
         <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="mb-8">
