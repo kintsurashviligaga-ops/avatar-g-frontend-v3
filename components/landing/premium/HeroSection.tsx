@@ -36,9 +36,9 @@ export function HeroSection() {
     <section className="cinematic-section relative overflow-hidden px-4 sm:px-6 lg:px-10 pt-24 pb-16 sm:pt-32 sm:pb-20 lg:pt-40 lg:pb-28">
 
       {/* Ambient gradients — enhanced for cinematic depth */}
-      <div className="absolute inset-0 pointer-events-none" style={{ background: 'radial-gradient(ellipse 80% 60% at 50% 0%, rgba(34,211,238,0.08) 0%, transparent 70%)' }} />
-      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[500px] pointer-events-none glow-drift" style={{ background: 'radial-gradient(ellipse 50% 50% at 50% 30%, rgba(34,211,238,0.07) 0%, transparent 70%)', filter: 'blur(80px)' }} />
-      <div className="absolute top-16 left-1/4 w-[400px] h-[300px] pointer-events-none" style={{ background: 'radial-gradient(ellipse 60% 50% at 40% 45%, rgba(6,182,212,0.04) 0%, transparent 70%)', filter: 'blur(60px)' }} />
+      <div className="absolute inset-0 pointer-events-none" style={{ background: 'radial-gradient(ellipse 80% 60% at 50% 0%, rgba(34,211,238,0.15) 0%, transparent 70%)' }} />
+      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[500px] pointer-events-none glow-drift" style={{ background: 'radial-gradient(ellipse 50% 50% at 50% 30%, rgba(34,211,238,0.12) 0%, transparent 70%)', filter: 'blur(80px)' }} />
+      <div className="absolute top-16 left-1/4 w-[400px] h-[300px] pointer-events-none" style={{ background: 'radial-gradient(ellipse 60% 50% at 40% 45%, rgba(6,182,212,0.08) 0%, transparent 70%)', filter: 'blur(60px)' }} />
 
       {/* Structural grid — holographic plane */}
       <div className="absolute inset-0 pointer-events-none opacity-[0.025]" style={{ backgroundImage: 'radial-gradient(var(--color-text) 0.5px, transparent 0.5px)', backgroundSize: '24px 24px' }} />
