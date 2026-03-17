@@ -4,7 +4,6 @@ import Link from 'next/link'
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
-import { useTheme } from '@/lib/theme/ThemeContext'
 import { BrandLogo } from '@/components/ui/BrandLogo'
 import { SERVICES } from '@/lib/services/catalog'
 
@@ -17,12 +16,6 @@ function IconX() {
 }
 function IconSearch() {
   return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-}
-function IconSun() {
-  return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
-}
-function IconMoon() {
-  return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
 }
 function IconUser() {
   return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
@@ -44,9 +37,6 @@ function IconSettings() {
 }
 function IconGlobe() {
   return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
-}
-function IconPalette() {
-  return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="13.5" cy="6.5" r="0.5" fill="currentColor"/><circle cx="17.5" cy="10.5" r="0.5" fill="currentColor"/><circle cx="8.5" cy="7.5" r="0.5" fill="currentColor"/><circle cx="6.5" cy="12.5" r="0.5" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/></svg>
 }
 function IconChevronRight() {
   return <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="9 18 15 12 9 6"/></svg>
@@ -72,7 +62,6 @@ const BOTTOM_NAV = [
    ═══════════════════════════════════════════════════════════════════ */
 export function TopNavbar({ onMenuToggle, menuOpen }: { onMenuToggle: () => void; menuOpen: boolean }) {
   const { language: locale, setLanguage, t } = useLanguage()
-  const { theme, toggleTheme } = useTheme()
   const router = useRouter()
   const pathname = usePathname()
   const [scrolled, setScrolled] = useState(false)
@@ -226,16 +215,6 @@ export function TopNavbar({ onMenuToggle, menuOpen }: { onMenuToggle: () => void
           ))}
         </div>
 
-        {/* Theme toggle */}
-        <button
-          onClick={toggleTheme}
-          className="p-2 rounded-lg transition-colors hover:bg-[var(--card-hover)]"
-          style={{ color: 'var(--color-text-secondary)' }}
-          aria-label="Toggle theme"
-        >
-          {theme === 'dark' ? <IconSun /> : <IconMoon />}
-        </button>
-
         {/* Login/Account */}
         <Link
           href={lh('/login')}
@@ -316,7 +295,6 @@ export function TopNavbar({ onMenuToggle, menuOpen }: { onMenuToggle: () => void
    ═══════════════════════════════════════════════════════════════════ */
 export function SidebarMenu({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { language: locale, setLanguage } = useLanguage()
-  const { theme, toggleTheme } = useTheme()
   const pathname = usePathname()
   const router = useRouter()
 
@@ -430,21 +408,6 @@ export function SidebarMenu({ open, onClose }: { open: boolean; onClose: () => v
               ))}
             </div>
           </div>
-
-          {/* Theme */}
-          <button
-            onClick={toggleTheme}
-            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-[14px] font-medium transition-colors hover:bg-[var(--card-hover)]"
-            style={{ color: 'var(--color-text-secondary)' }}
-          >
-            <span style={{ color: 'var(--color-text-tertiary)' }}><IconPalette /></span>
-            {theme === 'dark'
-              ? (locale === 'ka' ? 'ღია თემა' : locale === 'ru' ? 'Светлая тема' : 'Light Mode')
-              : (locale === 'ka' ? 'მუქი თემა' : locale === 'ru' ? 'Тёмная тема' : 'Dark Mode')}
-            <span className="ml-auto" style={{ color: 'var(--color-text-tertiary)' }}>
-              {theme === 'dark' ? <IconSun /> : <IconMoon />}
-            </span>
-          </button>
 
           {/* Settings */}
           <Link

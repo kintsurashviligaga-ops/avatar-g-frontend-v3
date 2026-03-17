@@ -29,7 +29,7 @@ export default async function ServiceDetailPage({ params }: ServiceDetailPagePro
   if (!meta) {
     const text = NOT_FOUND_TEXT[locale] ?? NOT_FOUND_TEXT['en']!;
     return (
-      <section className="min-h-screen flex items-center justify-center" style={{ backgroundColor: 'var(--color-bg)', color: 'var(--color-text)' }}>
+      <section className="min-h-screen flex items-center justify-center bg-transparent" style={{ color: 'var(--color-text)' }}>
         <div className="text-center space-y-4">
           <div className="w-20 h-20 mx-auto rounded-2xl flex items-center justify-center mb-4" style={{ backgroundColor: 'var(--card-bg)', border: '1px solid var(--color-border)' }}>
             <span className="text-3xl" style={{ color: 'var(--color-text-tertiary)' }}>?</span>

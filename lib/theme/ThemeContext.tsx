@@ -1,8 +1,8 @@
 'use client'
 
-import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, type ReactNode } from 'react'
 
-type Theme = 'dark' | 'light'
+type Theme = 'dark'
 
 interface ThemeContextValue {
   theme: Theme
@@ -17,30 +17,15 @@ const ThemeContext = createContext<ThemeContextValue>({
 })
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [theme, setThemeState] = useState<Theme>('dark')
-
   useEffect(() => {
-    const stored = localStorage.getItem('myavatar-theme') as Theme | null
-    if (stored === 'light' || stored === 'dark') {
-      setThemeState(stored)
-      document.documentElement.setAttribute('data-theme', stored)
-      document.documentElement.classList.toggle('dark', stored === 'dark')
-    }
+    // Force dark — cinematic AI environment requires dark mode
+    document.documentElement.setAttribute('data-theme', 'dark')
+    document.documentElement.classList.add('dark')
+    localStorage.setItem('myavatar-theme', 'dark')
   }, [])
-
-  const setTheme = useCallback((t: Theme) => {
-    setThemeState(t)
-    localStorage.setItem('myavatar-theme', t)
-    document.documentElement.setAttribute('data-theme', t)
-    document.documentElement.classList.toggle('dark', t === 'dark')
-  }, [])
-
-  const toggleTheme = useCallback(() => {
-    setTheme(theme === 'dark' ? 'light' : 'dark')
-  }, [theme, setTheme])
 
   return (
-    <ThemeContext.Provider value={{ theme, toggleTheme, setTheme }}>
+    <ThemeContext.Provider value={{ theme: 'dark', toggleTheme: () => {}, setTheme: () => {} }}>
       {children}
     </ThemeContext.Provider>
   )

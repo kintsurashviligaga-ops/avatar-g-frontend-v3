@@ -35,7 +35,7 @@ export default function WorkflowPageClient({ locale }: WorkflowPageClientProps) 
   }, [demoMode]);
 
   return (
-    <div className="h-screen w-full" style={{ backgroundColor: 'var(--color-bg)' }}>
+    <div className="h-screen w-full bg-transparent">
       <PipelineBuilder
         locale={locale}
         isAuthenticated={isAuthenticated}

@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation';
 import { TopNavbar, SidebarMenu, BottomNavigation } from './shell/ModernShell';
 import { ClientErrorBoundary } from './ClientErrorBoundary';
 import { FloatingChatButton } from './chat/FloatingChatButton';
-import { CinematicEnvironment } from './ui/CinematicEnvironment';
+import { PageEnvironment } from './ui/PageEnvironment';
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -14,12 +14,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className='relative min-h-screen flex flex-col' style={{ color: 'var(--color-text)', isolation: 'isolate' }}>
-      {/* Cinematic AI environment — immersive background layers */}
-      <CinematicEnvironment
-        intensity={isFullscreenChat ? 'subtle' : 'full'}
-        showGeometry={!isFullscreenChat}
-        showParticles={!isFullscreenChat}
-      />
+      {/* Page-aware 4D AI environment — adapts mood per route */}
+      <PageEnvironment reduced={isFullscreenChat} />
       {/* Skip to content — accessibility */}
       <a
         href="#main-content"

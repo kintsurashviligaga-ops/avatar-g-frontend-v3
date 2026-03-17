@@ -16,7 +16,7 @@ function LoginForm() {
 export default function LocaleLoginPage() {
   return (
     <Suspense fallback={
-      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: 'var(--color-bg)' }}>
+      <div className="min-h-screen flex items-center justify-center bg-transparent">
         <div className="text-white/40 text-sm">Loading...</div>
       </div>
     }>

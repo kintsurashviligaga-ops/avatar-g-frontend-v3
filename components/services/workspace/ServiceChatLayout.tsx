@@ -23,6 +23,7 @@ import { ServiceComposer } from './ServiceComposer'
 import { ServiceToolPanel } from './ServiceToolPanel'
 import { CrossServiceTransfer } from './CrossServiceTransfer'
 import { ServiceOutputCard } from './ServiceOutputCard'
+import { getServiceEnvironmentStyle } from '@/components/ui/PageEnvironment'
 
 /* ── helpers ── */
 const uid = () => crypto.randomUUID()
@@ -213,19 +214,19 @@ export default function ServiceChatLayout({
   if (!config) return null
 
   const isAgentG = serviceId === 'agent-g'
+  const serviceEnvStyle = getServiceEnvironmentStyle(serviceId)
 
   const chatUI = (
     <div
       className="fixed inset-0 z-[9999]"
-      style={{ backgroundColor: '#060c1a', height: '100dvh', WebkitOverflowScrolling: 'touch' }}
+      style={{ ...serviceEnvStyle, height: '100dvh', WebkitOverflowScrolling: 'touch' }}
     >
-      {/* Cinematic ambient background */}
+      {/* Service-specific cinematic environment */}
       <div className="absolute inset-0 pointer-events-none" aria-hidden="true">
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[300px]" style={{ background: 'radial-gradient(ellipse 60% 50% at 50% 0%, rgba(34,211,238,0.04) 0%, transparent 70%)', filter: 'blur(60px)' }} />
-        <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-full h-[200px]" style={{ background: 'radial-gradient(ellipse 80% 60% at 50% 100%, rgba(6,182,212,0.03) 0%, transparent 70%)', filter: 'blur(40px)' }} />
-        {/* Subtle side gradients */}
-        <div className="absolute top-1/3 -left-20 w-[250px] h-[350px] opacity-50" style={{ background: 'radial-gradient(ellipse at center, rgba(34,211,238,0.02) 0%, transparent 70%)', filter: 'blur(50px)' }} />
-        <div className="absolute top-1/2 -right-20 w-[250px] h-[350px] opacity-50" style={{ background: 'radial-gradient(ellipse at center, rgba(6,182,212,0.02) 0%, transparent 70%)', filter: 'blur(50px)' }} />
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[300px]" style={{ background: 'radial-gradient(ellipse 60% 50% at 50% 0%, rgba(34,211,238,0.05) 0%, transparent 70%)', filter: 'blur(60px)' }} />
+        <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-full h-[200px]" style={{ background: 'radial-gradient(ellipse 80% 60% at 50% 100%, rgba(6,182,212,0.04) 0%, transparent 70%)', filter: 'blur(40px)' }} />
+        <div className="absolute top-1/3 -left-20 w-[250px] h-[350px] opacity-50" style={{ background: 'radial-gradient(ellipse at center, rgba(34,211,238,0.03) 0%, transparent 70%)', filter: 'blur(50px)' }} />
+        <div className="absolute top-1/2 -right-20 w-[250px] h-[350px] opacity-50" style={{ background: 'radial-gradient(ellipse at center, rgba(6,182,212,0.03) 0%, transparent 70%)', filter: 'blur(50px)' }} />
       </div>
 
       {/* Header */}
