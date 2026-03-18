@@ -26,18 +26,13 @@ export function QuickActions({ language, hasProject, onAction }: Props) {
         <button
           key={qa.id}
           onClick={() => onAction(qa.intent)}
-          className="w-full flex items-center gap-3 p-3 rounded-2xl text-left transition-all hover:scale-[1.005] active:scale-[0.995]"
-          style={{
-            backgroundColor: 'var(--color-surface)',
-            border: '1px solid var(--color-border)',
-          }}
+          className="chat-chip"
+          style={{ width: '100%', justifyContent: 'flex-start' }}
         >
           <span className="text-lg flex-shrink-0">{qa.icon}</span>
-          <div className="min-w-0">
-            <p className="text-xs font-semibold truncate" style={{ color: 'var(--color-text)' }}>
-              {qa.label[lang]}
-            </p>
-          </div>
+          <span className="text-xs font-semibold truncate" style={{ color: 'var(--color-text)' }}>
+            {qa.label[lang]}
+          </span>
         </button>
       ))}
     </div>

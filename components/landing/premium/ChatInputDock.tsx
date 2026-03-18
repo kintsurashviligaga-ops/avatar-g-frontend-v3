@@ -34,18 +34,12 @@ export function ChatInputDock() {
     <section className="px-4 sm:px-6 lg:px-10 pb-10 sm:pb-14">
       <div className="max-w-2xl mx-auto">
         <div
-          className="relative flex items-center rounded-2xl transition-all duration-200"
-          style={{
-            backgroundColor: 'var(--input-bg)',
-            border: `1px solid ${focused ? 'var(--input-focus)' : 'var(--input-border)'}`,
-            boxShadow: focused ? '0 0 0 3px var(--color-accent-soft)' : 'none',
-          }}
+          className="chat-composer"
         >
           {/* Attach button (paperclip) */}
           <button
             type="button"
-            className="flex-shrink-0 ml-3 p-1.5 rounded-lg transition-colors hover:opacity-70"
-            style={{ color: 'var(--color-text-tertiary)' }}
+            className="chat-action-btn"
             aria-label="Attach"
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -71,11 +65,7 @@ export function ChatInputDock() {
             type="button"
             onClick={handleSubmit}
             disabled={!value.trim()}
-            className="flex-shrink-0 mr-3 p-2 rounded-xl transition-all duration-200 disabled:opacity-20 active:scale-95"
-            style={{
-              color: value.trim() ? '#fff' : 'var(--color-text-tertiary)',
-              backgroundColor: value.trim() ? 'var(--color-accent)' : 'transparent',
-            }}
+            className="chat-send-btn"
             aria-label="Send"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

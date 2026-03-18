@@ -19,10 +19,7 @@ export function ResultCardView({ card, onAction }: Props) {
   const isMedia = ['avatar', 'video', 'image', 'poster', 'thumbnail', 'music'].includes(card.resultType);
 
   return (
-    <div
-      className="rounded-2xl overflow-hidden"
-      style={{ backgroundColor: 'var(--color-surface)', border: '1px solid var(--color-border)' }}
-    >
+    <div className="chat-result-card">
       {/* Preview */}
       {card.preview && isMedia && (
         <div className="relative aspect-video bg-black/20">
@@ -74,12 +71,7 @@ export function ResultCardView({ card, onAction }: Props) {
             <button
               key={action.label}
               onClick={() => onAction(action.action)}
-              className="inline-flex items-center gap-1 text-[11px] font-medium px-2.5 py-1.5 rounded-xl transition-colors"
-              style={{
-                backgroundColor: action.variant === 'primary' ? 'var(--color-accent)' : 'var(--color-surface)',
-                color: action.variant === 'primary' ? '#fff' : 'var(--color-text-secondary)',
-                border: action.variant === 'primary' ? 'none' : '1px solid var(--color-border)',
-              }}
+              className={`chat-suggestion ${action.variant === 'primary' ? 'primary' : 'secondary'}`}
             >
               {action.icon && <span>{action.icon}</span>}
               {action.label}
@@ -91,12 +83,7 @@ export function ResultCardView({ card, onAction }: Props) {
             <button
               key={sug.label}
               onClick={() => onAction(sug.action)}
-              className="inline-flex items-center gap-1 text-[11px] font-medium px-2.5 py-1.5 rounded-xl transition-colors"
-              style={{
-                backgroundColor: 'var(--color-surface)',
-                color: 'var(--color-text-secondary)',
-                border: '1px solid var(--color-border)',
-              }}
+              className="chat-suggestion secondary"
             >
               {sug.icon && <span>{sug.icon}</span>}
               {sug.label}

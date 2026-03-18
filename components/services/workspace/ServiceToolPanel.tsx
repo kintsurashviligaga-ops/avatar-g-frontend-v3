@@ -27,10 +27,7 @@ export function ServiceToolPanel({ tools, values, onChange, onUpload, onCamera }
   if (tools.length === 0) return null
 
   return (
-    <div
-      className="rounded-xl overflow-hidden transition-all duration-200"
-      style={{ backgroundColor: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}
-    >
+    <div className="chat-panel" style={{ position: 'relative', borderRadius: '12px' }}>
       {/* Toggle */}
       <button
         onClick={() => setExpanded(!expanded)}
@@ -75,11 +72,7 @@ export function ServiceToolPanel({ tools, values, onChange, onUpload, onCamera }
                         <button
                           key={opt.value}
                           onClick={() => onChange(tool.id, opt.value)}
-                          className="px-2.5 py-1.5 text-[11px] rounded-lg transition-all font-medium"
-                          style={isActive
-                            ? { backgroundColor: 'var(--color-accent)', color: '#000', border: '1px solid var(--color-accent)' }
-                            : { backgroundColor: 'rgba(255,255,255,0.04)', color: 'var(--color-text-secondary)', border: '1px solid rgba(255,255,255,0.06)' }
-                          }
+                          className={`chat-tool-pill${isActive ? ' selected' : ''}`}
                         >
                           {optLabel}
                         </button>

@@ -25,53 +25,27 @@ export function ResultCard({ message }: Props) {
 
   return (
     <div className="flex justify-start">
-      <div
-        className="max-w-[85%] sm:max-w-[75%] md:max-w-[70%] rounded-2xl overflow-hidden"
-        style={{
-          backgroundColor: 'var(--color-surface)',
-          border: '1px solid var(--color-border)',
-        }}
-      >
-        {/* Preview image if available */}
+      <div className="chat-result-card">
         {message.previewUrl && (
           <div className="relative h-40 sm:h-48 overflow-hidden">
-            <img
-              src={message.previewUrl}
-              alt={message.title}
-              className="w-full h-full object-cover"
-            />
+            <img src={message.previewUrl} alt={message.title} className="w-full h-full object-cover" />
             <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
           </div>
         )}
-
         <div className="p-4">
-          {/* Title row */}
           <div className="flex items-center gap-2 mb-1.5">
             <span className="text-lg">{icon}</span>
-            <h4 className="text-sm sm:text-base font-semibold" style={{ color: 'var(--color-text)' }}>
-              {message.title}
-            </h4>
+            <h4 className="text-sm sm:text-base font-semibold" style={{ color: 'var(--color-text)' }}>{message.title}</h4>
           </div>
-
-          {/* Description */}
           {message.description && (
-            <p className="text-xs sm:text-sm mb-3 leading-relaxed" style={{ color: 'var(--color-text-tertiary)' }}>
-              {message.description}
-            </p>
+            <p className="text-xs sm:text-sm mb-3 leading-relaxed" style={{ color: 'var(--color-text-tertiary)' }}>{message.description}</p>
           )}
-
-          {/* Action buttons */}
           {message.actions && message.actions.length > 0 && (
             <div className="flex flex-wrap gap-2">
               {message.actions.map((action, i) => (
-                <button
-                  key={i}
-                  className="px-3 py-1.5 rounded-lg text-xs sm:text-sm font-medium transition-all active:scale-[0.97]"
-                  style={{
-                    backgroundColor: i === 0 ? 'var(--color-accent)' : 'transparent',
-                    color: i === 0 ? '#fff' : 'var(--color-accent)',
-                    border: i === 0 ? 'none' : '1px solid var(--color-border)',
-                  }}
+                <button key={i}
+                  className={i === 0 ? 'chat-send-btn' : 'chat-transfer-btn'}
+                  style={i === 0 ? { width: 'auto', padding: '6px 14px', fontSize: '13px', fontWeight: 600, borderRadius: '10px' } : undefined}
                 >
                   {action.label}
                 </button>

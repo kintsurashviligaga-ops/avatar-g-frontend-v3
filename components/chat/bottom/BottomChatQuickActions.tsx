@@ -38,18 +38,10 @@ export function BottomChatQuickActions({ onAction, mode = 'landing' }: Props) {
         <button
           key={a.id}
           onClick={() => onAction(a)}
-          className="quick-action-chip group flex items-center gap-1.5 shrink-0 px-3.5 py-2.5 rounded-xl text-[13px] sm:text-[14px] font-medium whitespace-nowrap transition-all duration-300 hover:-translate-y-0.5 active:scale-95"
-          style={{
-            backgroundColor: 'var(--color-surface)',
-            color: 'var(--color-text-secondary)',
-            border: '1px solid var(--color-border)',
-            minHeight: '40px',
-          }}
+          className="chat-chip"
         >
-          <span className="text-sm transition-transform duration-300 group-hover:scale-110">{a.icon}</span>
-          <span className="transition-colors duration-200 group-hover:text-[var(--color-accent)]">
-            {a.label[lang] || a.label.en}
-          </span>
+          <span className="text-sm">{a.icon}</span>
+          <span>{a.label[lang] || a.label.en}</span>
         </button>
       ))}
     </div>

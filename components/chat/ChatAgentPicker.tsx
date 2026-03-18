@@ -75,11 +75,7 @@ function AgentGroup({ agents, activeId, lang, onSelect }: {
           <button
             key={agent.agentId}
             onClick={() => onSelect(agent.agentId)}
-            className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-left transition-all"
-            style={{
-              backgroundColor: isActive ? 'var(--color-accent-soft)' : 'transparent',
-              color: isActive ? 'var(--color-accent)' : 'var(--color-text-secondary)',
-            }}
+            className={`chat-agent-item${isActive ? ' selected' : ''}`}
           >
             <span className="text-base w-6 text-center flex-shrink-0">{agent.icon}</span>
             <div className="flex-1 min-w-0">

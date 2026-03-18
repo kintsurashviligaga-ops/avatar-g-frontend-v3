@@ -23,21 +23,13 @@ export function UserBubble({ content, attachments }: UserBubbleProps) {
 
   return (
     <div className={`flex ${config.alignment === 'right' ? 'justify-end' : 'justify-start'}`}>
-      <div
-        className="px-4 py-2.5 rounded-2xl rounded-br-md"
-        style={{
-          maxWidth: config.maxWidth,
-          background: 'linear-gradient(135deg, var(--color-accent), #0891b2)',
-          color: '#fff',
-        }}
-      >
+      <div className="chat-bubble-user">
         {attachments && attachments.length > 0 && (
           <div className="flex gap-1.5 mb-2">
             {attachments.map((att, i) => (
-              <div key={i} className="w-12 h-12 rounded-lg overflow-hidden flex-shrink-0"
-                style={{ border: '1px solid rgba(255,255,255,0.2)' }}>
+              <div key={i} className="chat-attachment" style={{ width: 48, height: 48 }}>
                 {att.preview ? (
-                  <img src={att.preview} alt={att.name} className="w-full h-full object-cover" />
+                  <img src={att.preview} alt={att.name} />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center text-xs bg-white/10">
                     {att.type === 'video' ? '🎬' : att.type === 'audio' ? '🎵' : '📄'}
@@ -47,7 +39,7 @@ export function UserBubble({ content, attachments }: UserBubbleProps) {
             ))}
           </div>
         )}
-        <p className="text-sm leading-relaxed whitespace-pre-wrap">{content}</p>
+        <p className="whitespace-pre-wrap">{content}</p>
       </div>
     </div>
   );
@@ -72,32 +64,15 @@ export function AssistantBubble({ content, agentId, isStreaming }: AssistantBubb
 
   return (
     <div className="flex gap-2.5 items-start">
-      {config.showAvatar && <AgentBadge agentId={agentId || 'agent-g'} size="sm" />}
-      <div className="flex-1 min-w-0" style={{ maxWidth: config.maxWidth }}>
-        <div
-          className="px-4 py-2.5 rounded-2xl rounded-tl-md relative group"
-          style={{
-            backgroundColor: 'var(--color-surface)',
-            border: '1px solid var(--color-border)',
-          }}
-        >
-          <p className="text-sm leading-relaxed whitespace-pre-wrap" style={{ color: 'var(--color-text)' }}>
+      {config.showAvatar && <div className="chat-agent-avatar"><AgentBadge agentId={agentId || 'agent-g'} size="sm" /></div>}
+      <div className="flex-1 min-w-0">
+        <div className="chat-bubble-agent group">
+          <p className="whitespace-pre-wrap" style={{ color: 'var(--color-text)' }}>
             {content}
-            {isStreaming && (
-              <motion.span
-                animate={{ opacity: [1, 0.3, 1] }}
-                transition={{ duration: 0.8, repeat: Infinity }}
-                className="inline-block w-1.5 h-4 ml-0.5 rounded-sm align-middle"
-                style={{ backgroundColor: 'var(--color-accent)' }}
-              />
-            )}
+            {isStreaming && <span className="chat-cursor" />}
           </p>
           {!isStreaming && content.length > 0 && (
-            <button
-              onClick={handleCopy}
-              className="absolute top-2 right-2 p-1 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"
-              style={{ color: 'var(--color-text-tertiary)' }}
-            >
+            <button onClick={handleCopy} className="copy-btn">
               {copied ? <Check className="w-3.5 h-3.5 text-green-400" /> : <Copy className="w-3.5 h-3.5" />}
             </button>
           )}

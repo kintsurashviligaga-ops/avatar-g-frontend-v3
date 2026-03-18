@@ -66,19 +66,8 @@ export function ServiceWelcome({ config, serviceName, serviceIcon, onSend }: Ser
                 <button
                   key={qa.id}
                   onClick={() => onSend(qa.prompt)}
-                  className="group flex flex-col items-center gap-2 px-3 py-3.5 rounded-xl text-center transition-all"
-                  style={{
-                    backgroundColor: 'rgba(255,255,255,0.03)',
-                    border: '1px solid rgba(255,255,255,0.06)',
-                  }}
-                  onMouseEnter={e => {
-                    (e.currentTarget as HTMLElement).style.borderColor = 'rgba(34,211,238,0.2)'
-                    ;(e.currentTarget as HTMLElement).style.backgroundColor = 'rgba(34,211,238,0.04)'
-                  }}
-                  onMouseLeave={e => {
-                    (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.06)'
-                    ;(e.currentTarget as HTMLElement).style.backgroundColor = 'rgba(255,255,255,0.03)'
-                  }}
+                  className="chat-chip"
+                  style={{ flexDirection: 'column', padding: '14px 12px' }}
                 >
                   <span className="text-xl">{qa.icon}</span>
                   <span className="text-[11px] font-medium leading-tight" style={{ color: 'var(--color-text-secondary)' }}>

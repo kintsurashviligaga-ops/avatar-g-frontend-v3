@@ -21,19 +21,9 @@ export function SystemStatusCard({ message }: Props) {
 
   return (
     <div className="flex justify-center">
-      <div
-        className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-medium"
-        style={{
-          backgroundColor: 'var(--color-surface)',
-          color: 'var(--color-text-secondary)',
-          border: '1px solid var(--color-border)',
-        }}
-      >
+      <div className="chat-status-badge">
         {isActive ? (
-          <span className="relative flex h-2 w-2">
-            <span className="absolute inline-flex h-full w-full rounded-full opacity-75 animate-ping" style={{ backgroundColor: 'var(--color-accent)' }} />
-            <span className="relative inline-flex h-2 w-2 rounded-full" style={{ backgroundColor: 'var(--color-accent)' }} />
-          </span>
+          <span className="pulse-dot" />
         ) : (
           <span>{icon}</span>
         )}

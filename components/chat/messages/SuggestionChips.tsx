@@ -22,12 +22,7 @@ export function SuggestionChips({ chips, onSelect }: Props) {
         <button
           key={`${chip.label}-${i}`}
           onClick={() => onSelect(chip.action)}
-          className="inline-flex items-center gap-1 text-[11px] font-medium px-3 py-1.5 rounded-full transition-all hover:scale-[1.02] active:scale-[0.98]"
-          style={{
-            backgroundColor: chip.variant === 'primary' ? 'var(--color-accent-soft)' : 'var(--color-surface)',
-            color: chip.variant === 'primary' ? 'var(--color-accent)' : 'var(--color-text-secondary)',
-            border: `1px solid ${chip.variant === 'primary' ? 'var(--color-accent)' : 'var(--color-border)'}`,
-          }}
+          className={`chat-suggestion ${chip.variant === 'primary' ? 'primary' : 'secondary'}`}
         >
           {chip.icon && <span>{chip.icon}</span>}
           {chip.label}

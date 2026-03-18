@@ -108,14 +108,7 @@ export function ChatComposer({
       )}
 
       {/* Input row */}
-      <div
-        className="flex items-end gap-1.5 rounded-2xl px-2 py-1.5 transition-all duration-200"
-        style={{
-          backgroundColor: 'var(--color-surface)',
-          border: `1px solid ${focused ? 'var(--color-accent)' : 'var(--color-border)'}`,
-          boxShadow: focused ? '0 0 0 3px var(--color-accent-soft)' : 'none',
-        }}
-      >
+      <div className="chat-composer">
         {/* Hidden file input */}
         <input ref={fileInputRef} type="file" className="hidden"
           accept="image/*,video/*,audio/*,.txt,.pdf,.json,.csv,.doc,.docx"
@@ -123,19 +116,17 @@ export function ChatComposer({
 
         {/* Attach button */}
         <button onClick={() => fileInputRef.current?.click()}
-          className="p-2 rounded-xl transition-colors flex-shrink-0 hover:bg-white/5"
-          style={{ color: 'var(--color-text-tertiary)' }}
-          title="Attach file">
-          <Paperclip className="w-4 h-4" />
+          className="chat-action-btn" title="Attach file">
+          <Paperclip className="w-[18px] h-[18px]" />
         </button>
 
         {/* Voice button */}
         {onToggleRecording && (
           <button onClick={onToggleRecording}
-            className={`p-2 rounded-xl flex-shrink-0 transition-colors ${isRecording ? 'bg-red-500/20' : 'hover:bg-white/5'}`}
-            style={{ color: isRecording ? '#ef4444' : 'var(--color-text-tertiary)' }}
+            className={`chat-action-btn ${isRecording ? 'active' : ''}`}
+            style={isRecording ? { color: '#ef4444', background: 'rgba(239,68,68,0.12)' } : undefined}
             title="Voice input">
-            {isRecording ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+            {isRecording ? <MicOff className="w-[18px] h-[18px]" /> : <Mic className="w-[18px] h-[18px]" />}
           </button>
         )}
 
@@ -149,24 +140,22 @@ export function ChatComposer({
           onBlur={() => setFocused(false)}
           rows={1}
           placeholder={placeholder}
-          className="flex-1 py-2 px-1 text-sm resize-none focus:outline-none bg-transparent min-h-[36px] max-h-[160px]"
-          style={{ color: 'var(--color-text)' }}
+          className="chat-textarea"
         />
 
         {/* Send / Stop button */}
         {isLoading ? (
           <button onClick={onStop}
-            className="p-2 rounded-xl flex-shrink-0 bg-red-500/15 hover:bg-red-500/25 transition-colors"
+            className="chat-action-btn" style={{ color: '#ef4444', background: 'rgba(239,68,68,0.1)' }}
             title="Stop generation">
-            <StopCircle className="w-5 h-5 text-red-400" />
+            <StopCircle className="w-[18px] h-[18px]" />
           </button>
         ) : (
           <button onClick={onSend}
             disabled={!value.trim()}
-            className="p-2 rounded-xl flex-shrink-0 transition-all duration-150 disabled:opacity-25 hover:scale-105 active:scale-95"
-            style={{ backgroundColor: value.trim() ? 'var(--color-accent)' : 'transparent', color: value.trim() ? '#fff' : 'var(--color-text-tertiary)' }}
+            className="chat-send-btn"
             title="Send message">
-            <Send className="w-5 h-5" />
+            <Send className="w-[18px] h-[18px]" />
           </button>
         )}
       </div>

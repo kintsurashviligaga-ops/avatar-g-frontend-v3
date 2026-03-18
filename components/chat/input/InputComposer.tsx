@@ -81,14 +81,7 @@ export function InputComposer({
     <div className="px-3 pb-3 pt-2">
       <AttachmentTray attachments={attachments} onRemove={onRemoveAttachment} />
 
-      <div
-        className="flex items-end gap-1.5 rounded-2xl px-2 py-1.5 transition-all duration-200"
-        style={{
-          backgroundColor: 'var(--color-surface)',
-          border: `1px solid ${focused ? 'var(--color-accent)' : 'var(--color-border)'}`,
-          boxShadow: focused ? '0 0 0 3px var(--color-accent-soft)' : 'none',
-        }}
-      >
+      <div className="chat-composer">
         {/* File input */}
         <input
           ref={fileInputRef}
@@ -99,10 +92,9 @@ export function InputComposer({
         />
         <button
           onClick={() => fileInputRef.current?.click()}
-          className="p-2 rounded-xl transition-colors hover:bg-white/5 flex-shrink-0"
-          style={{ color: 'var(--color-text-tertiary)' }}
+          className="chat-action-btn"
         >
-          <Paperclip className="w-4 h-4" />
+          <Paperclip className="w-[18px] h-[18px]" />
         </button>
 
         {/* Textarea */}
@@ -115,44 +107,32 @@ export function InputComposer({
           onBlur={() => setFocused(false)}
           placeholder={placeholder}
           rows={1}
-          className="flex-1 bg-transparent text-sm resize-none outline-none py-2 leading-5"
-          style={{
-            color: 'var(--color-text)',
-            maxHeight: '160px',
-            scrollbarWidth: 'thin',
-          }}
+          className="chat-textarea"
         />
 
         {/* Voice */}
         {onToggleRecording && (
           <button
             onClick={onToggleRecording}
-            className="p-2 rounded-xl transition-colors hover:bg-white/5 flex-shrink-0"
-            style={{ color: isRecording ? '#ef4444' : 'var(--color-text-tertiary)' }}
+            className={`chat-action-btn ${isRecording ? 'active' : ''}`}
+            style={isRecording ? { color: '#ef4444', background: 'rgba(239,68,68,0.12)' } : undefined}
           >
-            {isRecording ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+            {isRecording ? <MicOff className="w-[18px] h-[18px]" /> : <Mic className="w-[18px] h-[18px]" />}
           </button>
         )}
 
         {/* Send / Stop */}
         {isLoading ? (
-          <button
-            onClick={onStop}
-            className="p-2 rounded-xl flex-shrink-0"
-            style={{ color: '#ef4444' }}
-          >
-            <StopCircle className="w-4 h-4" />
+          <button onClick={onStop} className="chat-action-btn" style={{ color: '#ef4444' }}>
+            <StopCircle className="w-[18px] h-[18px]" />
           </button>
         ) : (
           <button
             onClick={onSend}
             disabled={!value.trim()}
-            className="p-2 rounded-xl transition-all flex-shrink-0 disabled:opacity-30"
-            style={{
-              color: value.trim() ? 'var(--color-accent)' : 'var(--color-text-tertiary)',
-            }}
+            className="chat-send-btn"
           >
-            <Send className="w-4 h-4" />
+            <Send className="w-[18px] h-[18px]" />
           </button>
         )}
       </div>
