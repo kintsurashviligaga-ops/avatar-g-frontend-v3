@@ -1707,13 +1707,16 @@ a:focus-visible {
   border-radius: 12px;
   text-align: left;
   transition: all 0.15s ease;
+  color: var(--color-text-secondary);
+  border: 1px solid transparent;
 }
 .chat-agent-item:hover {
   background: rgba(255,255,255,0.04);
 }
 .chat-agent-item.selected {
   background: var(--color-accent-soft);
-  border: 1px solid rgba(34,211,238,0.15);
+  border-color: rgba(34,211,238,0.15);
+  color: var(--color-accent);
 }
 
 /* ── Streaming Cursor ── */

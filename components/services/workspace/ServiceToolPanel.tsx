@@ -88,8 +88,8 @@ export function ServiceToolPanel({ tools, values, onChange, onUpload, onCamera }
                 <button
                   key={tool.id}
                   onClick={onUpload}
-                  className="flex items-center gap-2 px-3 py-2 rounded-lg text-[11px] font-medium transition-colors w-full"
-                  style={{ backgroundColor: 'rgba(255,255,255,0.04)', color: 'var(--color-text-secondary)', border: '1px solid rgba(255,255,255,0.06)' }}
+                  className="chat-tool-pill"
+                  style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '8px' }}
                 >
                   <span>{tool.icon}</span> {label}
                 </button>
@@ -101,8 +101,8 @@ export function ServiceToolPanel({ tools, values, onChange, onUpload, onCamera }
                 <button
                   key={tool.id}
                   onClick={onCamera}
-                  className="flex items-center gap-2 px-3 py-2 rounded-lg text-[11px] font-medium transition-colors w-full"
-                  style={{ backgroundColor: 'rgba(255,255,255,0.04)', color: 'var(--color-text-secondary)', border: '1px solid rgba(255,255,255,0.06)' }}
+                  className="chat-tool-pill"
+                  style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '8px' }}
                 >
                   <span>{tool.icon}</span> {label}
                 </button>
@@ -115,14 +115,14 @@ export function ServiceToolPanel({ tools, values, onChange, onUpload, onCamera }
                 <button
                   key={tool.id}
                   onClick={() => onChange(tool.id, isOn ? 'off' : 'on')}
-                  className="flex items-center justify-between px-3 py-2 rounded-lg text-[11px] font-medium transition-colors w-full"
-                  style={{ backgroundColor: 'rgba(255,255,255,0.04)', color: 'var(--color-text-secondary)', border: '1px solid rgba(255,255,255,0.06)' }}
+                  className={`chat-tool-pill${isOn ? ' selected' : ''}`}
+                  style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
                 >
                   <span className="flex items-center gap-2">
                     <span>{tool.icon}</span> {label}
                   </span>
                   <div
-                    className="w-8 h-4.5 rounded-full transition-colors relative"
+                    className="w-8 h-[18px] rounded-full transition-colors relative"
                     style={{ backgroundColor: isOn ? 'var(--color-accent)' : 'rgba(255,255,255,0.1)' }}
                   >
                     <div
