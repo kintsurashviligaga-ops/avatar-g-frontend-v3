@@ -590,7 +590,7 @@ export function WorkflowPipelineBuilder() {
             </div>
           </div>
 
-          {/* ── Inner layout: sidebar + canvas ── */}
+          {/* ── Inner layout: sidebar + canvas + preview ── */}
           <div className="flex flex-col lg:flex-row min-h-[480px]">
 
             {/* LEFT — Services Library */}
@@ -696,82 +696,6 @@ export function WorkflowPipelineBuilder() {
                 )}
               </div>
 
-              {/* ── Node inspector (slides in when a node is selected) ── */}
-              <AnimatePresence>
-                {selected && (
-                  <motion.div
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: 'auto' }}
-                    exit={{ opacity: 0, height: 0 }}
-                    transition={{ duration: 0.25 }}
-                    className="overflow-hidden"
-                  >
-                    <div
-                      className="mt-3 rounded-xl p-4"
-                      style={{
-                        background: 'linear-gradient(135deg, rgba(255,255,255,0.03), rgba(255,255,255,0.01))',
-                        border: `1px solid ${ac(selected.service.slug)}33`,
-                      }}
-                    >
-                      {/* Inspector header */}
-                      <div className="flex items-center gap-2 mb-3">
-                        <span className="text-base">{selected.service.icon}</span>
-                        <span className="text-xs font-bold" style={{ color: ac(selected.service.slug) }}>
-                          {selected.service.title[lang] || selected.service.title.en}
-                        </span>
-                        <span className="text-[10px] font-bold tracking-[0.1em] uppercase" style={{ color: 'rgba(255,255,255,0.3)' }}>
-                          \u2014 {c.settings}
-                        </span>
-                      </div>
-
-                      {/* Prompt input */}
-                      <label className="block text-[10px] font-bold uppercase tracking-wide mb-1.5" style={{ color: 'rgba(255,255,255,0.35)' }}>
-                        {c.promptLabel}
-                      </label>
-                      <textarea
-                        value={selected.prompt}
-                        onChange={e => updatePrompt(selected.id, e.target.value)}
-                        placeholder={c.promptPlaceholder}
-                        rows={2}
-                        className="w-full bg-transparent rounded-lg px-3 py-2 text-sm outline-none resize-none"
-                        style={{
-                          color: 'rgba(255,255,255,0.8)',
-                          border: '1px solid rgba(255,255,255,0.08)',
-                          background: 'rgba(0,0,0,0.2)',
-                        }}
-                      />
-
-                      {/* Mock preview area */}
-                      <div className="mt-3">
-                        <span className="text-[10px] font-bold uppercase tracking-wide" style={{ color: 'rgba(255,255,255,0.3)' }}>
-                          {c.previewLabel}
-                        </span>
-                        <div
-                          className="mt-1.5 rounded-lg h-16 flex items-center justify-center"
-                          style={{
-                            background: `linear-gradient(135deg, ${ac(selected.service.slug)}08, ${ac(selected.service.slug)}03)`,
-                            border: `1px solid ${ac(selected.service.slug)}15`,
-                          }}
-                        >
-                          <span className="text-[10px]" style={{ color: 'rgba(255,255,255,0.2)' }}>
-                            {selected.prompt ? c.previewHint : c.noSelection}
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* CTA to actual service */}
-                      <Link
-                        href={`/${language}/services/${selected.service.slug}`}
-                        className="inline-flex items-center gap-1 mt-3 text-[11px] font-bold transition-opacity hover:opacity-80"
-                        style={{ color: ac(selected.service.slug) }}
-                      >
-                        {c.tryService}
-                      </Link>
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-
               {/* ── Action bar ── */}
               {pipeline.length > 0 && (
                 <div className="mt-4 pt-4 flex flex-wrap items-center gap-2" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
@@ -823,6 +747,90 @@ export function WorkflowPipelineBuilder() {
                   >
                     {c.reset}
                   </button>
+                </div>
+              )}
+            </div>
+
+            {/* RIGHT — Preview / Settings Panel (desktop) */}
+            <div
+              className="hidden lg:flex lg:w-[220px] shrink-0 flex-col p-4 border-l overflow-y-auto"
+              style={{ borderColor: 'rgba(255,255,255,0.04)', maxHeight: '600px' }}
+            >
+              <div className="flex items-center gap-2 mb-3">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#22d3ee" strokeWidth="2" strokeLinecap="round">
+                  <rect x="3" y="3" width="18" height="18" rx="2" /><path d="M3 9h18" />
+                </svg>
+                <span className="text-[10px] font-bold tracking-[0.1em] uppercase" style={{ color: 'rgba(255,255,255,0.4)' }}>
+                  {c.settings}
+                </span>
+              </div>
+
+              {selected ? (
+                <div className="flex-1 flex flex-col">
+                  {/* Selected node header */}
+                  <div className="flex items-center gap-2 mb-3">
+                    <div
+                      className="w-9 h-9 rounded-lg flex items-center justify-center text-lg"
+                      style={{ background: `${ac(selected.service.slug)}15`, border: `1px solid ${ac(selected.service.slug)}25` }}
+                    >
+                      {selected.service.icon}
+                    </div>
+                    <div>
+                      <div className="text-[11px] font-bold" style={{ color: ac(selected.service.slug) }}>
+                        {selected.service.title[lang] || selected.service.title.en}
+                      </div>
+                      <div className="text-[9px]" style={{ color: 'rgba(255,255,255,0.3)' }}>
+                        {c.step} {pipeline.findIndex(n => n.id === selected.id) + 1}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Prompt */}
+                  <label className="text-[9px] font-bold uppercase tracking-wide mb-1" style={{ color: 'rgba(255,255,255,0.3)' }}>
+                    {c.promptLabel}
+                  </label>
+                  <textarea
+                    value={selected.prompt}
+                    onChange={e => updatePrompt(selected.id, e.target.value)}
+                    placeholder={c.promptPlaceholder}
+                    rows={3}
+                    className="w-full bg-transparent rounded-lg px-2.5 py-2 text-[11px] outline-none resize-none mb-3"
+                    style={{ color: 'rgba(255,255,255,0.8)', border: '1px solid rgba(255,255,255,0.08)', background: 'rgba(0,0,0,0.2)' }}
+                  />
+
+                  {/* Preview */}
+                  <label className="text-[9px] font-bold uppercase tracking-wide mb-1" style={{ color: 'rgba(255,255,255,0.3)' }}>
+                    {c.previewLabel}
+                  </label>
+                  <div
+                    className="flex-1 rounded-lg min-h-[80px] flex items-center justify-center mb-3"
+                    style={{ background: `linear-gradient(135deg, ${ac(selected.service.slug)}08, ${ac(selected.service.slug)}03)`, border: `1px solid ${ac(selected.service.slug)}15` }}
+                  >
+                    <div className="text-center p-2">
+                      <div className="text-2xl mb-1">{selected.service.icon}</div>
+                      <span className="text-[9px]" style={{ color: 'rgba(255,255,255,0.2)' }}>
+                        {selected.prompt ? c.previewHint : c.noSelection}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Actions */}
+                  <div className="space-y-1.5">
+                    <Link
+                      href={`/${language}/services/${selected.service.slug}`}
+                      className="w-full flex items-center justify-center gap-1 px-3 py-2 rounded-lg text-[10px] font-bold transition-all active:scale-95"
+                      style={{ background: `${ac(selected.service.slug)}15`, border: `1px solid ${ac(selected.service.slug)}25`, color: ac(selected.service.slug) }}
+                    >
+                      {c.tryService}
+                    </Link>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex-1 flex items-center justify-center">
+                  <div className="text-center">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth="1.5" className="mx-auto mb-2"><rect x="3" y="3" width="18" height="18" rx="2" /><path d="M3 9h18" /></svg>
+                    <p className="text-[10px]" style={{ color: 'rgba(255,255,255,0.18)' }}>{c.noSelection}</p>
+                  </div>
                 </div>
               )}
             </div>

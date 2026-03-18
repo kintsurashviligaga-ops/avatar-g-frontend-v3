@@ -4,11 +4,13 @@
  * PremiumLanding.tsx
  * ==================
  * MyAvatar.ge world-class landing page.
- * Sections: Hero → Workflow Pipeline Builder → CTA → Footer
+ * Sections: Hero → Workflow Pipeline Builder → Services → Demo/Preview → CTA → Footer
  */
 
 import { HeroSection } from './HeroSection'
 import { WorkflowPipelineBuilder } from './WorkflowPipelineBuilder'
+import { ServicesShowcase } from './ServicesShowcase'
+import { DemoPreviewSection } from './DemoPreviewSection'
 import { AppDownloadSection } from './AppDownloadSection'
 import { LandingFooter } from './LandingFooter'
 
@@ -18,6 +20,10 @@ export default function PremiumLanding() {
       <HeroSection />
       <Separator />
       <WorkflowPipelineBuilder />
+      <Separator />
+      <ServicesShowcase />
+      <Separator />
+      <DemoPreviewSection />
       <Separator />
       <AppDownloadSection />
       <LandingFooter />
