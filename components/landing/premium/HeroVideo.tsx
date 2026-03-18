@@ -40,6 +40,7 @@ export function HeroVideo() {
     const v = videoRef.current
     if (!v) return
     const onCanPlay = () => { setHasVideo(true); setLoaded(true); setDuration(v.duration || 0) }
+    const onLoadedData = () => { setHasVideo(true); setLoaded(true); setDuration(v.duration || 0) }
     const onError = () => { setHasVideo(false); setLoaded(true) }
     const onPlay = () => setPlaying(true)
     const onPause = () => setPlaying(false)
@@ -49,15 +50,23 @@ export function HeroVideo() {
       setProgress((v.currentTime / v.duration) * 100)
     }
     const onDurationChange = () => setDuration(v.duration || 0)
+    // If video is already loaded (cached), detect immediately
+    if (v.readyState >= 2) {
+      setHasVideo(true); setLoaded(true); setDuration(v.duration || 0)
+    }
     v.addEventListener('canplay', onCanPlay)
+    v.addEventListener('loadeddata', onLoadedData)
     v.addEventListener('error', onError)
     v.addEventListener('play', onPlay)
     v.addEventListener('pause', onPause)
     v.addEventListener('timeupdate', onTime)
     v.addEventListener('durationchange', onDurationChange)
-    const timer = setTimeout(() => { if (!hasVideo) setLoaded(true) }, 3000)
+    // Try to play (muted autoplay is allowed on most browsers)
+    v.play().catch(() => {})
+    const timer = setTimeout(() => { if (!hasVideo) setLoaded(true) }, 5000)
     return () => {
       v.removeEventListener('canplay', onCanPlay)
+      v.removeEventListener('loadeddata', onLoadedData)
       v.removeEventListener('error', onError)
       v.removeEventListener('play', onPlay)
       v.removeEventListener('pause', onPause)

@@ -274,10 +274,7 @@ export default function ServiceChatLayout({
                 if (msg.role === 'user') {
                   return (
                     <div key={msg.id} className="flex justify-end">
-                      <div
-                        className="max-w-[85%] sm:max-w-[75%] rounded-2xl rounded-br-md px-4 py-3 text-[13px] sm:text-[14px] leading-relaxed"
-                        style={{ backgroundColor: 'var(--color-accent)', color: '#000', fontWeight: 500 }}
-                      >
+                      <div className="chat-bubble-user">
                         {msg.content}
                         {msg.status === 'failed' && (
                           <span className="block text-[10px] mt-1 opacity-60">⚠ Failed to send</span>
@@ -313,24 +310,11 @@ export default function ServiceChatLayout({
                   return (
                     <div key={msg.id} className="flex justify-start gap-2.5">
                       {/* Agent avatar */}
-                      <div
-                        className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 mt-0.5"
-                        style={{
-                          background: 'linear-gradient(135deg, rgba(34,211,238,0.2), rgba(6,182,212,0.1))',
-                          border: '1px solid rgba(34,211,238,0.15)',
-                        }}
-                      >
-                        <span className="text-xs">{serviceIcon}</span>
+                      <div className="chat-agent-avatar mt-0.5">
+                        <span>{serviceIcon}</span>
                       </div>
-                      <div className="max-w-[85%] sm:max-w-[75%] space-y-2">
-                        <div
-                          className="rounded-2xl rounded-bl-md px-4 py-3 text-[13px] sm:text-[14px] leading-relaxed whitespace-pre-wrap"
-                          style={{
-                            backgroundColor: 'rgba(255,255,255,0.05)',
-                            color: 'var(--color-text)',
-                            border: '1px solid rgba(255,255,255,0.06)',
-                          }}
-                        >
+                      <div className="space-y-2" style={{ maxWidth: '85%' }}>
+                        <div className="chat-bubble-agent whitespace-pre-wrap">
                           {msg.content}
                         </div>
 
