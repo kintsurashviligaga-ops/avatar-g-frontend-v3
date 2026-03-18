@@ -61,8 +61,9 @@ export function BottomChatBar({ mode = 'landing', className = '' }: Props) {
 
   return (
     <div
-      className={`bottom-chat-bar ${className}`}
+      className={`chat-bottom-bar ${className}`}
       style={{
+        ...(mode === 'landing' ? { position: 'relative', zIndex: 1 } : {}),
         backgroundColor: 'var(--nav-bg)',
         backdropFilter: 'blur(20px) saturate(1.2)',
         WebkitBackdropFilter: 'blur(20px) saturate(1.2)',
