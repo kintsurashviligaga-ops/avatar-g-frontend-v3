@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, memo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
 
@@ -75,7 +75,7 @@ const TYPE_LABELS: Record<string, { en: string; ka: string; ru: string; icon: st
   text: { en: 'Text Output', ka: 'ტექსტის შედეგი', ru: 'Текст', icon: '✍️' },
 }
 
-function DemoCard({ item, lang, active, onSelect }: { item: DemoItem; lang: Lang; active: boolean; onSelect: () => void }) {
+const DemoCard = memo(function DemoCard({ item, lang, active, onSelect }: { item: DemoItem; lang: Lang; active: boolean; onSelect: () => void }) {
   return (
     <button
       onClick={onSelect}
@@ -94,7 +94,7 @@ function DemoCard({ item, lang, active, onSelect }: { item: DemoItem; lang: Lang
       </span>
     </button>
   )
-}
+})
 
 export function DemoPreviewSection() {
   const { language } = useLanguage()

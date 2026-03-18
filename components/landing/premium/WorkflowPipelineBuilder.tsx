@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useRef, useEffect } from 'react'
+import { useState, useCallback, useRef, useEffect, memo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import Link from 'next/link'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
@@ -180,7 +180,7 @@ const matchTemplate = (prompt: string): string => {
  * ══════════════════════════════════════════════════════════════════ */
 
 /* ── Template card ── */
-function TplCard({ t, lang, active, onPick }: { t: Tpl; lang: Lang; active: boolean; onPick: () => void }) {
+const TplCard = memo(function TplCard({ t, lang, active, onPick }: { t: Tpl; lang: Lang; active: boolean; onPick: () => void }) {
   return (
     <button
       onClick={onPick}
@@ -204,10 +204,10 @@ function TplCard({ t, lang, active, onPick }: { t: Tpl; lang: Lang; active: bool
       </div>
     </button>
   )
-}
+})
 
 /* ── Service chip (sidebar) ── */
-function SvcChip({ s, lang, inPipeline, onAdd }: {
+const SvcChip = memo(function SvcChip({ s, lang, inPipeline, onAdd }: {
   s: ServiceDefinition; lang: Lang; inPipeline: boolean; onAdd: () => void
 }) {
   const color = ac(s.slug)
@@ -238,10 +238,10 @@ function SvcChip({ s, lang, inPipeline, onAdd }: {
       )}
     </button>
   )
-}
+})
 
 /* ── Pipeline node card ── */
-function NodeCard({ node, lang, index, stepLabel, selected, onSelect, onRemove }: {
+const NodeCard = memo(function NodeCard({ node, lang, index, stepLabel, selected, onSelect, onRemove }: {
   node: PNode; lang: Lang; index: number; stepLabel: string
   selected: boolean; onSelect: () => void; onRemove: () => void
 }) {
@@ -340,10 +340,10 @@ function NodeCard({ node, lang, index, stepLabel, selected, onSelect, onRemove }
       </div>
     </motion.div>
   )
-}
+})
 
 /* ── Horizontal arrow connector (desktop) ── */
-function HArrow({ color, active }: { color: string; active: boolean }) {
+const HArrow = memo(function HArrow({ color, active }: { color: string; active: boolean }) {
   return (
     <div className="hidden lg:flex items-center shrink-0 px-0.5">
       <svg width="32" height="20" viewBox="0 0 32 20" fill="none">
@@ -354,10 +354,10 @@ function HArrow({ color, active }: { color: string; active: boolean }) {
       </svg>
     </div>
   )
-}
+})
 
 /* ── Vertical arrow connector (mobile) ── */
-function VArrow({ color, active }: { color: string; active: boolean }) {
+const VArrow = memo(function VArrow({ color, active }: { color: string; active: boolean }) {
   return (
     <div className="flex lg:hidden items-center justify-center py-1">
       <svg width="20" height="24" viewBox="0 0 20 24" fill="none">
@@ -368,7 +368,7 @@ function VArrow({ color, active }: { color: string; active: boolean }) {
       </svg>
     </div>
   )
-}
+})
 
 /* ══════════════════════════════════════════════════════════════════════
  *  MAIN EXPORT — WorkflowPipelineBuilder

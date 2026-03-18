@@ -1,5 +1,6 @@
 'use client'
 
+import { memo } from 'react'
 import Link from 'next/link'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
 
@@ -59,7 +60,7 @@ const CARDS: SvcCard[] = [
   },
 ]
 
-function ServiceCard({ card, lang }: { card: SvcCard; lang: Lang }) {
+const ServiceCard = memo(function ServiceCard({ card, lang }: { card: SvcCard; lang: Lang }) {
   const { language } = useLanguage()
   return (
     <Link
@@ -121,7 +122,7 @@ function ServiceCard({ card, lang }: { card: SvcCard; lang: Lang }) {
       </div>
     </Link>
   )
-}
+})
 
 export function ServicesShowcase() {
   const { language } = useLanguage()

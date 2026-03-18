@@ -13,6 +13,7 @@ import { ServicesShowcase } from './ServicesShowcase'
 import { DemoPreviewSection } from './DemoPreviewSection'
 import { AppDownloadSection } from './AppDownloadSection'
 import { LandingFooter } from './LandingFooter'
+import { BottomChatBar } from '@/components/chat/bottom/BottomChatBar'
 
 export default function PremiumLanding() {
   return (
@@ -26,6 +27,8 @@ export default function PremiumLanding() {
       <DemoPreviewSection />
       <Separator />
       <AppDownloadSection />
+      <Separator />
+      <BottomChatBar mode="landing" />
       <LandingFooter />
     </div>
   )

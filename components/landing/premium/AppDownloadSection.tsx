@@ -26,10 +26,12 @@ const COPY: Record<Locale, { heading: string; sub: string }> = {
 
 /* ─── Apple App Store Badge (Official Style SVG) ──────────────── */
 function AppStoreBadge() {
+  const { language } = useLanguage()
+  const lang = (language as Locale) || 'en'
   return (
     <a
       href="#"
-      aria-label="Download on the App Store"
+      aria-label={lang === 'ka' ? 'App Store-დან გადმოწერა' : lang === 'ru' ? 'Скачать в App Store' : 'Download on the App Store'}
       className="inline-block transition-transform duration-200 hover:scale-[1.03] active:scale-[0.98]"
     >
       <svg width="160" height="53" viewBox="0 0 160 53" xmlns="http://www.w3.org/2000/svg" role="img" aria-hidden="true">
@@ -53,10 +55,12 @@ function AppStoreBadge() {
 
 /* ─── Google Play Badge (Official Style SVG) ──────────────────── */
 function GooglePlayBadge() {
+  const { language } = useLanguage()
+  const lang = (language as Locale) || 'en'
   return (
     <a
       href="#"
-      aria-label="Get it on Google Play"
+      aria-label={lang === 'ka' ? 'Google Play-დან გადმოწერა' : lang === 'ru' ? 'Скачать в Google Play' : 'Get it on Google Play'}
       className="inline-block transition-transform duration-200 hover:scale-[1.03] active:scale-[0.98]"
     >
       <svg width="180" height="53" viewBox="0 0 180 53" xmlns="http://www.w3.org/2000/svg" role="img" aria-hidden="true">

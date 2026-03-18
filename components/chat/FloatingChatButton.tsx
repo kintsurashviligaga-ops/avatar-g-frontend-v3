@@ -16,7 +16,7 @@ export function FloatingChatButton() {
   return (
     <Link
       href={href}
-      aria-label="Open Agent G Chat"
+      aria-label={language === 'ka' ? 'Agent G ჩატი' : language === 'ru' ? 'Открыть Agent G' : 'Open Agent G Chat'}
       className="
         fixed z-50 flex items-center justify-center
         w-14 h-14 rounded-full

@@ -45,7 +45,7 @@ export function BottomChatComposer({ value, onChange, onSend, onAttach, onMic, d
     <div className="chat-composer">
       {/* Attach */}
       {onAttach && (
-        <button type="button" onClick={onAttach} className="chat-action-btn" aria-label="Attach file">
+        <button type="button" onClick={onAttach} className="chat-action-btn" aria-label={lang === 'ka' ? 'ფაილის მიმაგრება' : lang === 'ru' ? 'Прикрепить файл' : 'Attach file'}>
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
             <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
           </svg>
@@ -69,7 +69,7 @@ export function BottomChatComposer({ value, onChange, onSend, onAttach, onMic, d
       <div className="flex items-center shrink-0">
         {/* Mic */}
         {onMic && (
-          <button type="button" onClick={onMic} className="chat-action-btn" aria-label="Voice input">
+          <button type="button" onClick={onMic} className="chat-action-btn" aria-label={lang === 'ka' ? 'ხმოვანი შეტანა' : lang === 'ru' ? 'Голосовой ввод' : 'Voice input'}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
               <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/>
               <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
@@ -79,7 +79,7 @@ export function BottomChatComposer({ value, onChange, onSend, onAttach, onMic, d
         )}
 
         {/* Send */}
-        <button type="button" onClick={onSend} disabled={!canSend} className="chat-send-btn" aria-label="Send message">
+        <button type="button" onClick={onSend} disabled={!canSend} className="chat-send-btn" aria-label={lang === 'ka' ? 'შეტყობინების გაგზავნა' : lang === 'ru' ? 'Отправить сообщение' : 'Send message'}>
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="m5 12 14 0"/>
             <path d="m12 5 7 7-7 7"/>
