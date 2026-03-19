@@ -83,7 +83,7 @@ export function HeroSection() {
         </div>
 
         {/* ── Cinematic Hero Video ── */}
-        <div className="w-full mt-4 sm:mt-6">
+        <div className="w-full mt-6 sm:mt-8 lg:mt-10" style={{ maxWidth: 1100, margin: '24px auto 0' }}>
           <HeroVideo />
         </div>
 

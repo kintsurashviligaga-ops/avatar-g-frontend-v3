@@ -178,6 +178,7 @@ export function HeroVideo() {
           className="absolute inset-0 w-full h-full object-cover rounded-2xl"
           style={{ display: hasVideo ? undefined : 'none' }}
           src={VIDEO_SRC}
+          poster={POSTER_SRC}
           autoPlay
           muted
           loop

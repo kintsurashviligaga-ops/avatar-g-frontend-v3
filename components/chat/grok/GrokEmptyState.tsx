@@ -1,5 +1,7 @@
 'use client'
 
+import Image from 'next/image'
+
 interface GrokEmptyStateProps {
   serviceIcon: string
   onSuggestionClick?: (text: string) => void
@@ -18,7 +20,13 @@ export function GrokEmptyState({ serviceIcon, onSuggestionClick }: GrokEmptyStat
       {/* Animated logo with 4D glow */}
       <div className="grok-empty-logo">
         <div className="grok-empty-glow" />
-        <span className="text-[56px] relative z-10">{serviceIcon}</span>
+        <Image
+          src="/brand/gemini-rocket-clean.png"
+          alt="MyAvatar.ge"
+          width={64}
+          height={64}
+          className="object-contain relative z-10"
+        />
       </div>
 
       {/* Welcome text */}

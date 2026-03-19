@@ -42,6 +42,9 @@ import { ImagineTab } from '@/components/chat/grok/ImagineTab'
 import { ImagineComposer } from '@/components/chat/grok/ImagineComposer'
 import { SettingsSheet, type SettingsConfig } from '@/components/chat/grok/SettingsSheet'
 import { ActionSheet } from '@/components/chat/grok/ActionSheet'
+import { ChatHistoryPanel, type Conversation } from '@/components/chat/grok/ChatHistoryPanel'
+import { CallScreen } from '@/components/chat/grok/CallScreen'
+import Image from 'next/image'
 
 /* ── helpers ── */
 const uid = () => crypto.randomUUID()
@@ -106,6 +109,14 @@ export default function ServiceChatLayout({
   /* ── Grok-style state (Agent G only) ── */
   const [chatMode, setChatMode] = useState<ChatMode>('fast')
   const [chatTab, setChatTab] = useState<ChatTab>('ask')
+
+  /* ── Chat history state ── */
+  const [historyOpen, setHistoryOpen] = useState(false)
+  const [conversations, setConversations] = useState<Conversation[]>([])
+  const [activeConversationId, setActiveConversationId] = useState<string | null>(null)
+
+  /* ── Call state ── */
+  const [callOpen, setCallOpen] = useState(false)
   const [sendTimestamp, setSendTimestamp] = useState<number>(0)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [actionSheetOpen, setActionSheetOpen] = useState(false)
@@ -227,6 +238,42 @@ export default function ServiceChatLayout({
   const handleQuickAction = useCallback((prompt: string) => { sendMessage(prompt) }, [sendMessage])
   const handleBack = useCallback(() => { router.push(`/${locale}/services`) }, [router, locale])
 
+  /* ── conversation management ── */
+  const handleNewChat = useCallback(() => {
+    // Save current conversation if it has messages
+    if (messages.length > 0) {
+      const firstUserMsg = messages.find(m => m.role === 'user')
+      const lastMsg = [...messages].reverse().find(m => m.role === 'assistant' || m.role === 'user')
+      const conv: Conversation = {
+        id: activeConversationId || uid(),
+        title: firstUserMsg?.content.slice(0, 60) || 'New conversation',
+        lastMessage: lastMsg?.content.slice(0, 80) || '',
+        updatedAt: now(),
+        messageCount: messages.filter(m => m.role !== 'system').length,
+      }
+      setConversations(prev => {
+        const exists = prev.findIndex(c => c.id === conv.id)
+        if (exists >= 0) {
+          const copy = [...prev]
+          copy[exists] = conv
+          return copy
+        }
+        return [conv, ...prev]
+      })
+    }
+    setMessages([])
+    setActiveConversationId(uid())
+    setOutputReady(false)
+    setHistoryOpen(false)
+  }, [messages, activeConversationId])
+
+  const handleSelectConversation = useCallback((id: string) => {
+    setActiveConversationId(id)
+    // In a real app, load messages from storage. For now, start fresh with the selected conversation.
+    setMessages([])
+    setOutputReady(false)
+  }, [])
+
   const handleMenuItemClick = useCallback((itemId: string) => {
     if (!config) return
     const item = config.menuItems.find(m => m.id === itemId)
@@ -313,6 +360,24 @@ export default function ServiceChatLayout({
           onMenuToggle={() => setMenuOpen(true)}
           onBack={handleBack}
           serviceIcon={serviceIcon}
+          onHistoryToggle={() => setHistoryOpen(true)}
+          onCallStart={() => setCallOpen(true)}
+        />
+
+        {/* Chat History Panel */}
+        <ChatHistoryPanel
+          open={historyOpen}
+          onClose={() => setHistoryOpen(false)}
+          conversations={conversations}
+          activeConversationId={activeConversationId}
+          onSelectConversation={handleSelectConversation}
+          onNewChat={handleNewChat}
+        />
+
+        {/* Call Screen */}
+        <CallScreen
+          open={callOpen}
+          onClose={() => setCallOpen(false)}
         />
 
         {/* Hamburger menu */}
@@ -387,7 +452,7 @@ export default function ServiceChatLayout({
                         <div className="flex gap-3">
                           {/* Agent avatar */}
                           <div className="chat-agent-avatar mt-0.5">
-                            <span>{serviceIcon}</span>
+                            <Image src="/brand/gemini-rocket-clean.png" alt="Agent G" width={24} height={24} className="object-contain" />
                           </div>
                           <div className="flex-1 min-w-0">
                             <div className="chat-bubble-agent whitespace-pre-wrap">
