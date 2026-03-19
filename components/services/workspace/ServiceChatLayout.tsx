@@ -301,9 +301,9 @@ export default function ServiceChatLayout({
         className="fixed inset-0 z-[9999] grok-chat-root"
         style={{ height: '100dvh', WebkitOverflowScrolling: 'touch' }}
       >
-        {/* Subtle ambient glow */}
-        <div className="absolute inset-0 pointer-events-none" aria-hidden="true">
-          <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[500px] h-[250px]" style={{ background: 'radial-gradient(ellipse 60% 50% at 50% 0%, rgba(255,255,255,0.015) 0%, transparent 70%)', filter: 'blur(60px)' }} />
+        {/* 4D Environment Layer */}
+        <div className="grok-4d-environment" aria-hidden="true">
+          <div className="grok-4d-grid" />
         </div>
 
         {/* Grok Header */}
@@ -311,6 +311,7 @@ export default function ServiceChatLayout({
           activeTab={chatTab}
           onTabChange={setChatTab}
           onMenuToggle={() => setMenuOpen(true)}
+          onBack={handleBack}
           serviceIcon={serviceIcon}
         />
 
@@ -343,7 +344,7 @@ export default function ServiceChatLayout({
               />
             ) : messages.length === 0 ? (
               /* Grok empty state — centered logo */
-              <GrokEmptyState serviceIcon={serviceIcon} />
+              <GrokEmptyState serviceIcon={serviceIcon} onSuggestionClick={sendMessage} />
             ) : (
               /* Chat messages */
               <div className="flex-1 px-4 py-3 space-y-4">

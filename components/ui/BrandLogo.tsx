@@ -63,7 +63,7 @@ export function BrandLogo({ href, size = 'md', showText = true, className = '', 
           priority
           className={`object-contain object-center ${
             isHero
-              ? 'drop-shadow-[0_8px_24px_rgba(34,211,238,0.28)] drop-shadow-[0_2px_6px_rgba(6,182,212,0.18)]'
+              ? 'drop-shadow-[0_8px_24px_rgba(34,211,238,0.28)]'
               : 'drop-shadow-[0_2px_8px_rgba(34,211,238,0.15)]'
           }`}
         />

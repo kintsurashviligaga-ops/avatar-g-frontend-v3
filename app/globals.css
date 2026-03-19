@@ -2,10 +2,10 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   MyAvatar.ge — Premium Design System v3
-   Modern AI application · Dark/Light theme · Clean, calm, premium
-   ═══════════════════════════════════════════════════════════════════════════ */
+/* =Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â
+   MyAvatar.ge Ã¢â‚¬â€ Premium Design System v3
+   Modern AI application Ã‚Â· Dark/Light theme Ã‚Â· Clean, calm, premium
+   =Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â */
 
 :root,
 [data-theme='dark'] {
@@ -43,7 +43,7 @@
   --hero-glow-primary: rgba(34,211,238,0.10);
 }
 
-/* Light theme removed — unified dark cinematic environment */
+/* Light theme removed Ã¢â‚¬â€ unified dark cinematic environment */
 
 /* Premium spacing scale */
 :root {
@@ -81,7 +81,7 @@ h3,
   letter-spacing: -0.022em;
 }
 
-/* ── Typography scale — headings ── */
+/* Ã¢â€â‚¬Ã¢â€â‚¬ Typography scale Ã¢â‚¬â€ headings Ã¢â€â‚¬Ã¢â€â‚¬ */
 h1 {
   font-size: clamp(2rem, 5vw, 3.5rem);
   font-weight: 700;
@@ -117,7 +117,7 @@ body {
   transition: background-color 0.3s ease, color 0.3s ease;
 }
 
-/* Subtle ambient — fallback only when CinematicEnvironment is not present */
+/* Subtle ambient Ã¢â‚¬â€ fallback only when CinematicEnvironment is not present */
 /* (CinematicEnvironment replaces body::before for dark theme) */
 
 button {
@@ -216,7 +216,7 @@ a {
   opacity: 0.8;
 }
 
-/* ═══════════════ Component Layer ═══════════════ */
+/* =Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â Component Layer =Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â */
 
 @layer components {
   .ag-shell {
@@ -387,7 +387,7 @@ a {
   }
 }
 
-/* ═══════════════ Utility Layer ═══════════════ */
+/* =Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â Utility Layer =Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â */
 
 @layer utilities {
   .ag-text-muted {
@@ -771,13 +771,13 @@ a:focus-visible {
   outline-offset: 2px;
 }
 
-/* ═══════════════════════════════════════════════════════════════
-   MISSING CLASSES — imported by components but were only defined
+/* =Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â
+   MISSING CLASSES Ã¢â‚¬â€ imported by components but were only defined
    in the root globals.css (which is NOT imported by app/layout.tsx).
    Moving all required classes here so they actually take effect.
-═══════════════════════════════════════════════════════════════ */
+=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â */
 
-/* ── Float-particle keyframe (Hero.tsx background particles) */
+/* Ã¢â€â‚¬Ã¢â€â‚¬ Float-particle keyframe (Hero.tsx background particles) */
 @keyframes float-particle {
   0%   { transform: translate(0, 0) scale(1);    opacity: 0; }
   15%  { opacity: 0.6; }
@@ -785,25 +785,25 @@ a:focus-visible {
   100% { transform: translate(var(--tx, 30px), var(--ty, -60px)) scale(0.3); opacity: 0; }
 }
 
-/* ── Border-glow keyframe (btn-neon animation) */
+/* Ã¢â€â‚¬Ã¢â€â‚¬ Border-glow keyframe (btn-neon animation) */
 @keyframes border-glow {
   0%, 100% { border-color: rgba(34,211,238,0.15); box-shadow: 0 0 16px rgba(34,211,238,0.06); }
   50%       { border-color: rgba(34,211,238,0.45); box-shadow: 0 0 32px rgba(34,211,238,0.18); }
 }
 
-/* ── Badge-appear keyframe */
+/* Ã¢â€â‚¬Ã¢â€â‚¬ Badge-appear keyframe */
 @keyframes badge-appear {
   from { opacity: 0; transform: scale(0.88) translateY(4px); }
   to   { opacity: 1; transform: scale(1) translateY(0); }
 }
 
-/* ── Pulse-slow keyframe (ambient glows, hero section) */
+/* Ã¢â€â‚¬Ã¢â€â‚¬ Pulse-slow keyframe (ambient glows, hero section) */
 @keyframes pulse-slow {
   0%, 100% { opacity: 0.7; transform: scale(1); }
   50%      { opacity: 1; transform: scale(1.05); }
 }
 
-/* ── Service card premium hover effects */
+/* Ã¢â€â‚¬Ã¢â€â‚¬ Service card premium hover effects */
 .service-card {
   transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1),
               box-shadow 0.3s cubic-bezier(0.16, 1, 0.3, 1),
@@ -813,7 +813,7 @@ a:focus-visible {
   box-shadow: 0 12px 40px rgba(0,0,0,0.4), 0 0 0 1px rgba(34,211,238,0.15);
 }
 
-/* ── Neon-scan keyframe */
+/* Ã¢â€â‚¬Ã¢â€â‚¬ Neon-scan keyframe */
 @keyframes neon-scan {
   0%   { transform: translateY(-100%); opacity: 0; }
   10%  { opacity: 0.6; }
@@ -838,21 +838,21 @@ a:focus-visible {
 
 @layer components {
 
-  /* ── Navigation bar glass (used in Navigation.tsx, TopBar.tsx) */
+  /* Ã¢â€â‚¬Ã¢â€â‚¬ Navigation bar glass (used in Navigation.tsx, TopBar.tsx) */
   .glass-nav {
     background: rgba(3,7,16,0.82);
     border-bottom: 1px solid rgba(255,255,255,0.07);
     backdrop-filter: blur(32px) saturate(180%);
     -webkit-backdrop-filter: blur(32px) saturate(180%);
   }
-  /* ── Sidebar glass (used in Sidebar.tsx) */
+  /* Ã¢â€â‚¬Ã¢â€â‚¬ Sidebar glass (used in Sidebar.tsx) */
   .glass-sidebar {
     background: linear-gradient(180deg, rgba(5,10,24,0.97) 0%, rgba(3,7,16,0.99) 100%);
     border-right: 1px solid rgba(255,255,255,0.06);
     backdrop-filter: blur(40px);
     -webkit-backdrop-filter: blur(40px);
   }
-  /* ── Glass card variants (used in several components) */
+  /* Ã¢â€â‚¬Ã¢â€â‚¬ Glass card variants (used in several components) */
   .glass-card {
     background: linear-gradient(155deg, rgba(12,22,46,0.88) 0%, rgba(7,14,32,0.80) 100%);
     border: 1px solid rgba(255,255,255,0.09);
@@ -876,7 +876,7 @@ a:focus-visible {
     -webkit-backdrop-filter: blur(16px);
   }
 
-  /* ── Camera scanner overlay classes (used in UnifiedServiceLayout, GlobalChatbot, CameraComponent) */
+  /* Ã¢â€â‚¬Ã¢â€â‚¬ Camera scanner overlay classes (used in UnifiedServiceLayout, GlobalChatbot, CameraComponent) */
   .ag-cam-scan-line {
     position: absolute; left: 6%; right: 6%; height: 2px; border-radius: 9999px;
     background: linear-gradient(90deg, transparent, rgba(34,211,238,0.8), rgba(34,211,238,1), rgba(34,211,238,0.8), transparent);
@@ -886,7 +886,7 @@ a:focus-visible {
   .ag-cam-face-ring { animation: ag-face-pulse 1.8s ease-in-out infinite; }
   .ag-cam-corner    { animation: ag-corner-blink 1.5s ease-in-out infinite; }
 
-  /* ── ag-btn-primary — main CTA button (Hero, CTABanner, Navigation, ServiceLanding) */
+  /* Ã¢â€â‚¬Ã¢â€â‚¬ ag-btn-primary Ã¢â‚¬â€ main CTA button (Hero, CTABanner, Navigation, ServiceLanding) */
   .ag-btn-primary {
     display: inline-flex;
     align-items: center;
@@ -921,7 +921,7 @@ a:focus-visible {
   .ag-btn-primary:hover::after { left: 140%; }
   .ag-btn-primary:active { transform: translateY(-1px) scale(1.01); }
 
-  /* ── btn-ghost — secondary/ghost CTA button (Hero "See how it works") */
+  /* Ã¢â€â‚¬Ã¢â€â‚¬ btn-ghost Ã¢â‚¬â€ secondary/ghost CTA button (Hero "See how it works") */
   .btn-ghost {
     display: inline-flex;
     align-items: center;
@@ -944,7 +944,7 @@ a:focus-visible {
     transform: translateY(-1px);
   }
 
-  /* ── btn-neon — neon animated button */
+  /* Ã¢â€â‚¬Ã¢â€â‚¬ btn-neon Ã¢â‚¬â€ neon animated button */
   .btn-neon {
     display: inline-flex;
     align-items: center;
@@ -972,7 +972,7 @@ a:focus-visible {
     animation: none;
   }
 
-  /* ── Neon border utilities */
+  /* Ã¢â€â‚¬Ã¢â€â‚¬ Neon border utilities */
   .neon-border-cyan {
     border-color: rgba(34,211,238,0.25) !important;
     box-shadow: 0 0 0 1px rgba(34,211,238,0.08) inset, 0 0 20px rgba(34,211,238,0.08);
@@ -982,7 +982,7 @@ a:focus-visible {
     box-shadow: 0 0 0 1px rgba(8,145,178,0.08) inset, 0 0 20px rgba(8,145,178,0.08);
   }
 
-  /* ── Nav item (sidebar navigation links) */
+  /* Ã¢â€â‚¬Ã¢â€â‚¬ Nav item (sidebar navigation links) */
   .nav-item {
     display: flex;
     align-items: center;
@@ -1019,23 +1019,23 @@ a:focus-visible {
 
 @layer utilities {
 
-  /* ── Hide scrollbar (Navigation tabs, Sidebar scroll area) */
+  /* Ã¢â€â‚¬Ã¢â€â‚¬ Hide scrollbar (Navigation tabs, Sidebar scroll area) */
   .hide-scrollbar::-webkit-scrollbar { display: none; }
   .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 
-  /* ── Focus ring for keyboard accessibility */
+  /* Ã¢â€â‚¬Ã¢â€â‚¬ Focus ring for keyboard accessibility */
   .focus-ring:focus-visible {
     outline: 2px solid rgba(34,211,238,0.6);
     outline-offset: 3px;
     border-radius: 0.5rem;
   }
 
-  /* ── Floating particle animation (Hero.tsx) */
+  /* Ã¢â€â‚¬Ã¢â€â‚¬ Floating particle animation (Hero.tsx) */
   .animate-float-particle {
     animation: float-particle 5s ease-in-out infinite;
   }
 
-  /* ── Service cards: premium hover shadow + lift ── */
+  /* Ã¢â€â‚¬Ã¢â€â‚¬ Service cards: premium hover shadow + lift Ã¢â€â‚¬Ã¢â€â‚¬ */
   .svc-card {
     transition: transform 0.4s cubic-bezier(0.22, 1, 0.36, 1),
                 box-shadow 0.4s cubic-bezier(0.22, 1, 0.36, 1),
@@ -1046,7 +1046,7 @@ a:focus-visible {
     border-color: rgba(34,211,238,0.25) !important;
   }
 
-  /* ── Bottom chat bar: quick-action chips + no-scrollbar ── */
+  /* Ã¢â€â‚¬Ã¢â€â‚¬ Bottom chat bar: quick-action chips + no-scrollbar Ã¢â€â‚¬Ã¢â€â‚¬ */
   .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
   .no-scrollbar::-webkit-scrollbar { display: none; }
   .quick-action-chip:hover {
@@ -1054,20 +1054,20 @@ a:focus-visible {
     border-color: rgba(34,211,238,0.25) !important;
   }
 
-  /* ── Safe area utilities ── */
+  /* Ã¢â€â‚¬Ã¢â€â‚¬ Safe area utilities Ã¢â€â‚¬Ã¢â€â‚¬ */
   .pt-safe { padding-top: env(safe-area-inset-top, 0px); }
   .pb-safe { padding-bottom: env(safe-area-inset-bottom, 0px); }
   .pl-safe { padding-left: env(safe-area-inset-left, 0px); }
   .pr-safe { padding-right: env(safe-area-inset-right, 0px); }
 
-  /* ── Touch-friendly tap highlights ── */
+  /* Ã¢â€â‚¬Ã¢â€â‚¬ Touch-friendly tap highlights Ã¢â€â‚¬Ã¢â€â‚¬ */
   @media (hover: none) and (pointer: coarse) {
     button, a, [role="button"] {
       -webkit-tap-highlight-color: rgba(34, 211, 238, 0.08);
     }
   }
 
-  /* ── Mobile search overlay ── */
+  /* Ã¢â€â‚¬Ã¢â€â‚¬ Mobile search overlay Ã¢â€â‚¬Ã¢â€â‚¬ */
   .mobile-search-overlay {
     animation: mobile-search-in 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   }
@@ -1076,41 +1076,41 @@ a:focus-visible {
     to { opacity: 1; transform: translateY(0); }
   }
 
-  /* ── Slow pulse for ambient glows */
+  /* Ã¢â€â‚¬Ã¢â€â‚¬ Slow pulse for ambient glows */
   .animate-pulse-slow {
     animation: pulse-slow 4s ease-in-out infinite;
   }
 
-  /* ── Hero logo: gentle floating motion */
+  /* Ã¢â€â‚¬Ã¢â€â‚¬ Hero logo: gentle floating motion */
   .logo-hero-float {
     animation: logo-float 6s ease-in-out infinite;
   }
 
-  /* ── Hero logo: glow breathing */
+  /* Ã¢â€â‚¬Ã¢â€â‚¬ Hero logo: glow breathing */
   .logo-glow-breathe {
     animation: logo-glow-breathe 5s ease-in-out infinite;
   }
 
 }
 
-/* ── Logo float keyframe (hero only, subtle 2px) */
+/* Ã¢â€â‚¬Ã¢â€â‚¬ Logo float keyframe (hero only, subtle 2px) */
 @keyframes logo-float {
   0%, 100% { transform: translateY(0); }
   50%      { transform: translateY(-3px); }
 }
 
-/* ── Logo glow breathing keyframe */
+/* Ã¢â€â‚¬Ã¢â€â‚¬ Logo glow breathing keyframe */
 @keyframes logo-glow-breathe {
   0%, 100% { opacity: 0.5; transform: scale(1); }
   50%      { opacity: 0.85; transform: scale(1.06); }
 }
 
-/* ═══════════════════════════════════════════════════════════════════════════
+/* =Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â
    CINEMATIC AI ENVIRONMENT SYSTEM v3
-   Deep space • 4D geometry • Holographic panels • Atmospheric lighting
-   ═══════════════════════════════════════════════════════════════════════════ */
+   Deep space Ã¢â‚¬Â¢ 4D geometry Ã¢â‚¬Â¢ Holographic panels Ã¢â‚¬Â¢ Atmospheric lighting
+   =Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â */
 
-/* ── Environment Glow — slow breathing animation ── */
+/* Ã¢â€â‚¬Ã¢â€â‚¬ Environment Glow Ã¢â‚¬â€ slow breathing animation Ã¢â€â‚¬Ã¢â€â‚¬ */
 .env-glow-breathe {
   animation: env-glow-pulse 8s ease-in-out infinite;
 }
@@ -1120,7 +1120,7 @@ a:focus-visible {
   50% { opacity: 0.7; }
 }
 
-/* ── Cinematic Particles — sparse, slow, mood-colored via inline styles ── */
+/* Ã¢â€â‚¬Ã¢â€â‚¬ Cinematic Particles Ã¢â‚¬â€ sparse, slow, mood-colored via inline styles Ã¢â€â‚¬Ã¢â€â‚¬ */
 .cinematic-particle {
   position: absolute;
   width: 4px;
@@ -1153,7 +1153,7 @@ a:focus-visible {
 .cinematic-particle:nth-child(5) { --tx: 25px; --ty: -55px; }
 .cinematic-particle:nth-child(6) { --tx: -35px; --ty: -85px; }
 
-/* ── Holographic Panel — premium floating glass surface ── */
+/* Ã¢â€â‚¬Ã¢â€â‚¬ Holographic Panel Ã¢â‚¬â€ premium floating glass surface Ã¢â€â‚¬Ã¢â€â‚¬ */
 @layer components {
   .holo-panel {
     position: relative;
@@ -1205,7 +1205,7 @@ a:focus-visible {
     transform: translateY(-1px);
   }
 
-  /* ── Cinematic Button — primary action with depth ── */
+  /* Ã¢â€â‚¬Ã¢â€â‚¬ Cinematic Button Ã¢â‚¬â€ primary action with depth Ã¢â€â‚¬Ã¢â€â‚¬ */
   .cinematic-btn {
     position: relative;
     display: inline-flex;
@@ -1267,14 +1267,14 @@ a:focus-visible {
     transform: translateY(-1px);
   }
 
-  /* ── Cinematic Section container ── */
+  /* Ã¢â€â‚¬Ã¢â€â‚¬ Cinematic Section container Ã¢â€â‚¬Ã¢â€â‚¬ */
   .cinematic-section {
     position: relative;
     isolation: isolate;
     z-index: 1;
   }
 
-  /* ── Edge Light — subtle cyan edge illumination for panels ── */
+  /* Ã¢â€â‚¬Ã¢â€â‚¬ Edge Light Ã¢â‚¬â€ subtle cyan edge illumination for panels Ã¢â€â‚¬Ã¢â€â‚¬ */
   .edge-light {
     position: relative;
   }
@@ -1306,13 +1306,13 @@ a:focus-visible {
   }
 }
 
-/* ── Holographic breathing — very subtle scale animation ── */
+/* Ã¢â€â‚¬Ã¢â€â‚¬ Holographic breathing Ã¢â‚¬â€ very subtle scale animation Ã¢â€â‚¬Ã¢â€â‚¬ */
 @keyframes holo-breathe {
   0%, 100% { transform: scale(1); opacity: 0.7; }
   50% { transform: scale(1.002); opacity: 0.85; }
 }
 
-/* ── Slow ambient glow drift ── */
+/* Ã¢â€â‚¬Ã¢â€â‚¬ Slow ambient glow drift Ã¢â€â‚¬Ã¢â€â‚¬ */
 @keyframes glow-drift {
   0% { transform: translate(0, 0); }
   33% { transform: translate(10px, -5px); }
@@ -1324,12 +1324,12 @@ a:focus-visible {
   animation: glow-drift 20s ease-in-out infinite;
 }
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   UNIFIED CHAT DESIGN SYSTEM — Premium AI Chat UI
+/* =Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â
+   UNIFIED CHAT DESIGN SYSTEM Ã¢â‚¬â€ Premium AI Chat UI
    Consistent across all composers, bubbles, panels, popups, chips
-   ═══════════════════════════════════════════════════════════════════════════ */
+   =Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â */
 
-/* ── Chat Composer Shell ── */
+/* Ã¢â€â‚¬Ã¢â€â‚¬ Chat Composer Shell Ã¢â€â‚¬Ã¢â€â‚¬ */
 .chat-composer {
   display: flex;
   align-items: flex-end;
@@ -1346,7 +1346,7 @@ a:focus-visible {
   box-shadow: 0 0 0 3px rgba(34,211,238,0.08), 0 4px 28px rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.04);
 }
 
-/* ── Chat Action Button (icon buttons inside composer) ── */
+/* Ã¢â€â‚¬Ã¢â€â‚¬ Chat Action Button (icon buttons inside composer) Ã¢â€â‚¬Ã¢â€â‚¬ */
 .chat-action-btn {
   display: flex;
   align-items: center;
@@ -1370,7 +1370,7 @@ a:focus-visible {
   background: var(--color-accent-soft);
 }
 
-/* ── Chat Send Button ── */
+/* Ã¢â€â‚¬Ã¢â€â‚¬ Chat Send Button Ã¢â€â‚¬Ã¢â€â‚¬ */
 .chat-send-btn {
   display: flex;
   align-items: center;
@@ -1399,7 +1399,7 @@ a:focus-visible {
   transform: scale(0.9);
 }
 
-/* ── Chat Textarea ── */
+/* Ã¢â€â‚¬Ã¢â€â‚¬ Chat Textarea Ã¢â€â‚¬Ã¢â€â‚¬ */
 .chat-textarea {
   flex: 1;
   min-width: 0;
@@ -1419,7 +1419,7 @@ a:focus-visible {
   font-weight: 400;
 }
 
-/* ── User Bubble ── */
+/* Ã¢â€â‚¬Ã¢â€â‚¬ User Bubble Ã¢â€â‚¬Ã¢â€â‚¬ */
 .chat-bubble-user {
   max-width: 85%;
   border-radius: 20px 20px 6px 20px;
@@ -1434,7 +1434,7 @@ a:focus-visible {
   .chat-bubble-user { max-width: 75%; font-size: 15px; }
 }
 
-/* ── Agent Bubble ── */
+/* Ã¢â€â‚¬Ã¢â€â‚¬ Agent Bubble Ã¢â€â‚¬Ã¢â€â‚¬ */
 .chat-bubble-agent {
   max-width: 85%;
   border-radius: 20px 20px 20px 6px;
@@ -1463,7 +1463,7 @@ a:focus-visible {
   opacity: 1;
 }
 
-/* ── Agent Avatar ── */
+/* Ã¢â€â‚¬Ã¢â€â‚¬ Agent Avatar Ã¢â€â‚¬Ã¢â€â‚¬ */
 .chat-agent-avatar {
   width: 32px;
   height: 32px;
@@ -1478,7 +1478,7 @@ a:focus-visible {
   box-shadow: 0 0 16px rgba(34,211,238,0.06);
 }
 
-/* ── Result Card ── */
+/* Ã¢â€â‚¬Ã¢â€â‚¬ Result Card Ã¢â€â‚¬Ã¢â€â‚¬ */
 .chat-result-card {
   max-width: 85%;
   border-radius: 16px;
@@ -1495,7 +1495,7 @@ a:focus-visible {
   .chat-result-card { max-width: 75%; }
 }
 
-/* ── Quick Action Chip ── */
+/* Ã¢â€â‚¬Ã¢â€â‚¬ Quick Action Chip Ã¢â€â‚¬Ã¢â€â‚¬ */
 .chat-chip {
   display: inline-flex;
   align-items: center;
@@ -1529,7 +1529,7 @@ a:focus-visible {
   transform: scale(1.15);
 }
 
-/* ── Panel / Popup / Drawer ── */
+/* Ã¢â€â‚¬Ã¢â€â‚¬ Panel / Popup / Drawer Ã¢â€â‚¬Ã¢â€â‚¬ */
 .chat-panel {
   background: rgba(12,14,22,0.95);
   backdrop-filter: blur(24px) saturate(1.3);
@@ -1540,7 +1540,7 @@ a:focus-visible {
   overflow: hidden;
 }
 
-/* ── Tool Select Pill ── */
+/* Ã¢â€â‚¬Ã¢â€â‚¬ Tool Select Pill Ã¢â€â‚¬Ã¢â€â‚¬ */
 .chat-tool-pill {
   padding: 6px 12px;
   border-radius: 10px;
@@ -1563,7 +1563,7 @@ a:focus-visible {
   box-shadow: 0 0 12px rgba(34,211,238,0.2);
 }
 
-/* ── Status Badge (streaming, processing) ── */
+/* Ã¢â€â‚¬Ã¢â€â‚¬ Status Badge (streaming, processing) Ã¢â€â‚¬Ã¢â€â‚¬ */
 .chat-status-badge {
   display: inline-flex;
   align-items: center;
@@ -1588,7 +1588,7 @@ a:focus-visible {
   50% { opacity: 0.5; transform: scale(0.85); }
 }
 
-/* ── Suggestion Chip (inline after messages) ── */
+/* Ã¢â€â‚¬Ã¢â€â‚¬ Suggestion Chip (inline after messages) Ã¢â€â‚¬Ã¢â€â‚¬ */
 .chat-suggestion {
   display: inline-flex;
   align-items: center;
@@ -1619,7 +1619,7 @@ a:focus-visible {
   border-color: rgba(255,255,255,0.12);
 }
 
-/* ── Transfer / Continue Card ── */
+/* Ã¢â€â‚¬Ã¢â€â‚¬ Transfer / Continue Card Ã¢â€â‚¬Ã¢â€â‚¬ */
 .chat-transfer-card {
   border-radius: 14px;
   overflow: hidden;
@@ -1646,7 +1646,7 @@ a:focus-visible {
   color: var(--color-accent);
 }
 
-/* ── Attachment Preview ── */
+/* Ã¢â€â‚¬Ã¢â€â‚¬ Attachment Preview Ã¢â€â‚¬Ã¢â€â‚¬ */
 .chat-attachment {
   width: 64px;
   height: 64px;
@@ -1683,7 +1683,7 @@ a:focus-visible {
   opacity: 1;
 }
 
-/* ── Fixed Bottom Composer Bar ── */
+/* Ã¢â€â‚¬Ã¢â€â‚¬ Fixed Bottom Composer Bar Ã¢â€â‚¬Ã¢â€â‚¬ */
 .chat-bottom-bar {
   position: fixed;
   bottom: 0;
@@ -1697,7 +1697,7 @@ a:focus-visible {
   padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
-/* ── Agent Picker Item ── */
+/* Ã¢â€â‚¬Ã¢â€â‚¬ Agent Picker Item Ã¢â€â‚¬Ã¢â€â‚¬ */
 .chat-agent-item {
   width: 100%;
   display: flex;
@@ -1719,7 +1719,7 @@ a:focus-visible {
   color: var(--color-accent);
 }
 
-/* ── Streaming Cursor ── */
+/* Ã¢â€â‚¬Ã¢â€â‚¬ Streaming Cursor Ã¢â€â‚¬Ã¢â€â‚¬ */
 .chat-cursor {
   display: inline-block;
   width: 6px;
@@ -1735,7 +1735,7 @@ a:focus-visible {
   50% { opacity: 0.2; }
 }
 
-/* ── Bounce dots (loading) ── */
+/* Ã¢â€â‚¬Ã¢â€â‚¬ Bounce dots (loading) Ã¢â€â‚¬Ã¢â€â‚¬ */
 .chat-bounce-dots {
   display: flex;
   align-items: center;
@@ -1756,7 +1756,7 @@ a:focus-visible {
   30% { transform: translateY(-6px); }
 }
 
-/* ── Preview Panel ── */
+/* Ã¢â€â‚¬Ã¢â€â‚¬ Preview Panel Ã¢â€â‚¬Ã¢â€â‚¬ */
 .chat-preview-panel {
   background: rgba(10,12,20,0.6);
   border: 1px solid rgba(255,255,255,0.06);
@@ -1787,19 +1787,71 @@ a:focus-visible {
   flex-wrap: wrap;
 }
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   GROK-STYLE CHAT DESIGN SYSTEM — Premium AI Chat (Agent G)
-   Matches Grok's dark, minimal, high-performance aesthetic
-   ═══════════════════════════════════════════════════════════════════════════ */
+/* =Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â
+   GROK-STYLE CHAT DESIGN SYSTEM Ã¢â‚¬â€ Premium 4D AI Chat (Agent G)
+   MyAvatar.ge branded | Cinematic depth | High-performance
+   =Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â */
 
-/* ── Root ── */
+/* Ã¢â€â‚¬Ã¢â€â‚¬ Root Ã¢â€â‚¬Ã¢â€â‚¬ */
 .grok-chat-root {
-  background: #000;
+  background: linear-gradient(180deg, #020608 0%, #000 15%, #010204 50%, #000 100%);
   color: #e7e9ea;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 
-/* ── Header ── */
+/* Ã¢â€â‚¬Ã¢â€â‚¬ 4D Ambient Environment Layer (inside chat root) Ã¢â€â‚¬Ã¢â€â‚¬ */
+.grok-4d-environment {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.grok-4d-environment::before {
+  content: '';
+  position: absolute;
+  top: -20%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 800px;
+  height: 400px;
+  background: radial-gradient(ellipse 80% 60% at 50% 30%, rgba(34,211,238,0.06) 0%, transparent 70%);
+  filter: blur(80px);
+  animation: grok4dFloat 12s ease-in-out infinite;
+}
+
+.grok-4d-environment::after {
+  content: '';
+  position: absolute;
+  bottom: -10%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 600px;
+  height: 300px;
+  background: radial-gradient(ellipse 70% 50% at 50% 70%, rgba(6,182,212,0.04) 0%, transparent 70%);
+  filter: blur(60px);
+  animation: grok4dFloat 15s ease-in-out infinite reverse;
+}
+
+@keyframes grok4dFloat {
+  0%, 100% { transform: translateX(-50%) translateY(0); }
+  50% { transform: translateX(-50%) translateY(-15px); }
+}
+
+/* Geometric grid overlay */
+.grok-4d-grid {
+  position: absolute;
+  inset: 0;
+  opacity: 0.015;
+  background-image:
+    linear-gradient(rgba(34,211,238,0.3) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(34,211,238,0.3) 1px, transparent 1px);
+  background-size: 60px 60px;
+  mask-image: radial-gradient(ellipse 80% 60% at 50% 50%, black 20%, transparent 70%);
+  -webkit-mask-image: radial-gradient(ellipse 80% 60% at 50% 50%, black 20%, transparent 70%);
+}
+
+/* Ã¢â€â‚¬Ã¢â€â‚¬ Header Ã¢â€â‚¬Ã¢â€â‚¬ */
 .grok-header {
   position: fixed;
   top: 0;
@@ -1812,73 +1864,135 @@ a:focus-visible {
   padding: 0 12px;
   height: calc(56px + env(safe-area-inset-top, 0px));
   padding-top: env(safe-area-inset-top, 0px);
-  background: rgba(0,0,0,0.85);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border-bottom: 1px solid rgba(255,255,255,0.06);
+  background: rgba(2,6,8,0.88);
+  backdrop-filter: blur(24px) saturate(1.3);
+  -webkit-backdrop-filter: blur(24px) saturate(1.3);
+  border-bottom: 1px solid rgba(34,211,238,0.06);
 }
 
 .grok-header-btn {
   width: 40px;
   height: 40px;
-  border-radius: 50%;
+  border-radius: 12px;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #d6d9db;
-  background: rgba(255,255,255,0.06);
-  transition: background 0.2s;
+  color: rgba(255,255,255,0.6);
+  background: rgba(255,255,255,0.04);
+  transition: all 0.2s;
 }
-.grok-header-btn:hover { background: rgba(255,255,255,0.1); }
+.grok-header-btn:hover { background: rgba(34,211,238,0.08); color: #fff; }
 .grok-header-btn:active { transform: scale(0.95); }
 
 .grok-header-tabs {
   display: flex;
   align-items: center;
-  gap: 0;
-  background: transparent;
+  gap: 4px;
+  padding: 3px;
+  border-radius: 14px;
+  background: rgba(255,255,255,0.04);
 }
 
 .grok-header-tab {
-  padding: 8px 18px;
-  font-size: 15px;
+  padding: 7px 18px;
+  font-size: 14px;
   font-weight: 600;
-  color: rgba(255,255,255,0.45);
-  border-radius: 20px;
-  transition: all 0.2s;
+  color: rgba(255,255,255,0.4);
+  border-radius: 11px;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   position: relative;
+  display: inline-flex;
+  align-items: center;
 }
 .grok-header-tab.active {
   color: #fff;
-  background: rgba(255,255,255,0.1);
+  background: rgba(34,211,238,0.12);
+  box-shadow: 0 0 12px rgba(34,211,238,0.08);
 }
 .grok-header-tab:hover:not(.active) {
   color: rgba(255,255,255,0.7);
+  background: rgba(255,255,255,0.04);
 }
 
 .grok-header-avatar {
   width: 36px;
   height: 36px;
-  border-radius: 50%;
+  border-radius: 12px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(255,255,255,0.06);
-  border: 1px solid rgba(255,255,255,0.1);
-  transition: background 0.2s;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(34,211,238,0.1);
+  transition: all 0.2s;
+  position: relative;
 }
-.grok-header-avatar:hover { background: rgba(255,255,255,0.1); }
+.grok-header-avatar:hover { background: rgba(34,211,238,0.08); border-color: rgba(34,211,238,0.2); }
 
-/* ── Empty State ── */
+.grok-avatar-status {
+  position: absolute;
+  bottom: -1px;
+  right: -1px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #22d3ee;
+  border: 2px solid #020608;
+  box-shadow: 0 0 6px rgba(34,211,238,0.4);
+}
+
+/* Ã¢â€â‚¬Ã¢â€â‚¬ Empty State Ã¢â€â‚¬Ã¢â€â‚¬ */
 .grok-empty-logo {
   width: 120px;
   height: 120px;
   display: flex;
   align-items: center;
   justify-content: center;
+  position: relative;
 }
 
-/* ── Action Chips (horizontal scroll) ── */
+.grok-empty-glow {
+  position: absolute;
+  inset: -20px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(34,211,238,0.12) 0%, rgba(34,211,238,0.04) 40%, transparent 70%);
+  animation: grokEmptyPulse 4s ease-in-out infinite;
+}
+
+@keyframes grokEmptyPulse {
+  0%, 100% { opacity: 0.6; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.08); }
+}
+
+/* Suggestion pills */
+.grok-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+  max-width: 400px;
+}
+
+.grok-suggestion-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 18px;
+  border-radius: 14px;
+  font-size: 13px;
+  font-weight: 500;
+  color: rgba(255,255,255,0.6);
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.06);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.grok-suggestion-pill:hover {
+  background: rgba(34,211,238,0.06);
+  border-color: rgba(34,211,238,0.15);
+  color: rgba(255,255,255,0.85);
+}
+
+/* Ã¢â€â‚¬Ã¢â€â‚¬ Action Chips (horizontal scroll) Ã¢â€â‚¬Ã¢â€â‚¬ */
 .grok-action-chips-scroll {
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
@@ -1898,32 +2012,33 @@ a:focus-visible {
   align-items: center;
   gap: 8px;
   padding: 10px 18px;
-  border-radius: 16px;
+  border-radius: 14px;
   font-size: 14px;
   font-weight: 500;
-  color: #d6d9db;
-  background: rgba(255,255,255,0.06);
-  border: 1px solid rgba(255,255,255,0.08);
+  color: rgba(255,255,255,0.6);
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.06);
   transition: all 0.2s;
   flex-shrink: 0;
 }
 .grok-action-chip:hover {
-  background: rgba(255,255,255,0.1);
-  border-color: rgba(255,255,255,0.15);
+  background: rgba(34,211,238,0.08);
+  border-color: rgba(34,211,238,0.15);
+  color: #fff;
 }
 .grok-action-chip:active { transform: scale(0.97); }
 
-/* ── Bottom Bar (Composer Area) ── */
+/* Ã¢â€â‚¬Ã¢â€â‚¬ Bottom Bar (Composer Area) Ã¢â€â‚¬Ã¢â€â‚¬ */
 .grok-bottom-bar {
   position: fixed;
   bottom: 0;
   left: 0;
   right: 0;
   z-index: 30;
-  background: rgba(0,0,0,0.92);
+  background: linear-gradient(to top, rgba(2,6,8,0.98) 0%, rgba(2,6,8,0.92) 70%, transparent 100%);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  border-top: 1px solid rgba(255,255,255,0.06);
+  border-top: 1px solid rgba(34,211,238,0.04);
   padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
@@ -1931,15 +2046,15 @@ a:focus-visible {
   display: flex;
   align-items: flex-end;
   gap: 8px;
-  border-radius: 20px;
+  border-radius: 18px;
   padding: 10px 14px;
-  background: rgba(255,255,255,0.06);
-  border: 1px solid rgba(255,255,255,0.08);
-  transition: border-color 0.2s, box-shadow 0.2s;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.06);
+  transition: border-color 0.25s, box-shadow 0.25s;
 }
 .grok-composer:focus-within {
-  border-color: rgba(255,255,255,0.18);
-  box-shadow: 0 0 0 2px rgba(255,255,255,0.04);
+  border-color: rgba(34,211,238,0.2);
+  box-shadow: 0 0 0 3px rgba(34,211,238,0.04), 0 0 24px rgba(34,211,238,0.03);
 }
 
 .grok-textarea {
@@ -1957,27 +2072,28 @@ a:focus-visible {
   max-height: 140px;
 }
 .grok-textarea::placeholder {
-  color: rgba(255,255,255,0.35);
+  color: rgba(255,255,255,0.3);
   font-weight: 400;
 }
 
 .grok-send-btn {
   width: 36px;
   height: 36px;
-  border-radius: 50%;
+  border-radius: 12px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #fff;
+  background: linear-gradient(135deg, #22d3ee, #06b6d4);
   color: #000;
   flex-shrink: 0;
   transition: all 0.2s;
+  box-shadow: 0 0 12px rgba(34,211,238,0.2);
 }
-.grok-send-btn:hover { background: #d6d9db; }
+.grok-send-btn:hover { filter: brightness(1.15); box-shadow: 0 0 20px rgba(34,211,238,0.3); }
 .grok-send-btn:active { transform: scale(0.92); }
-.grok-send-btn:disabled { opacity: 0.3; }
+.grok-send-btn:disabled { opacity: 0.3; box-shadow: none; }
 
-/* ── Controls Row (below input) ── */
+/* Ã¢â€â‚¬Ã¢â€â‚¬ Controls Row (below input) Ã¢â€â‚¬Ã¢â€â‚¬ */
 .grok-controls-row {
   display: flex;
   align-items: center;
@@ -1988,69 +2104,75 @@ a:focus-visible {
 .grok-control-btn {
   width: 36px;
   height: 36px;
-  border-radius: 50%;
+  border-radius: 10px;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: rgba(255,255,255,0.5);
+  color: rgba(255,255,255,0.4);
   transition: all 0.2s;
 }
-.grok-control-btn:hover { color: #fff; background: rgba(255,255,255,0.06); }
+.grok-control-btn:hover { color: #fff; background: rgba(34,211,238,0.08); }
 .grok-control-btn:active { transform: scale(0.92); }
 .grok-control-btn.active { color: #22d3ee; }
 
-/* ── Mode Chip ── */
+/* Ã¢â€â‚¬Ã¢â€â‚¬ Mode Chip & Dropdown Ã¢â€â‚¬Ã¢â€â‚¬ */
 .grok-mode-chip {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   padding: 6px 14px;
-  border-radius: 20px;
+  border-radius: 10px;
   font-size: 13px;
   font-weight: 600;
-  color: #d6d9db;
-  background: rgba(255,255,255,0.08);
-  border: 1px solid rgba(255,255,255,0.1);
+  color: rgba(255,255,255,0.6);
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.06);
   transition: all 0.2s;
   cursor: pointer;
+  position: relative;
 }
-.grok-mode-chip:hover { background: rgba(255,255,255,0.12); }
-.grok-mode-chip-icon { display: flex; align-items: center; color: rgba(255,255,255,0.6); }
+.grok-mode-chip:hover { border-color: rgba(34,211,238,0.2); color: #fff; }
 
-/* ── Mode Dropdown ── */
+.grok-mode-chip-icon { font-size: 14px; display: flex; align-items: center; color: rgba(255,255,255,0.6); }
+
 .grok-mode-dropdown {
   position: absolute;
   bottom: calc(100% + 8px);
   left: 0;
+  min-width: 200px;
   width: 260px;
-  padding: 8px;
+  padding: 6px;
   border-radius: 16px;
-  background: rgba(22,24,28,0.98);
+  background: rgba(15,15,18,0.98);
+  border: 1px solid rgba(255,255,255,0.08);
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
-  border: 1px solid rgba(255,255,255,0.1);
-  box-shadow: 0 12px 48px rgba(0,0,0,0.5);
+  box-shadow: 0 16px 48px rgba(0,0,0,0.5), 0 0 0 1px rgba(34,211,238,0.04);
   z-index: 100;
-  animation: grok-dropdown-in 0.15s ease-out;
+  animation: grokDropIn 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
-@keyframes grok-dropdown-in {
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
+
+@keyframes grokDropIn {
+  from { opacity: 0; transform: translateY(8px) scale(0.96); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
 }
 
 .grok-mode-option {
-  width: 100%;
   display: flex;
   align-items: center;
   gap: 12px;
   padding: 12px 14px;
   border-radius: 12px;
+  font-size: 14px;
+  font-weight: 500;
+  color: rgba(255,255,255,0.7);
+  width: 100%;
   text-align: left;
-  transition: background 0.15s;
-  color: #e7e9ea;
+  transition: all 0.15s;
 }
-.grok-mode-option:hover { background: rgba(255,255,255,0.06); }
-.grok-mode-option.selected { background: rgba(255,255,255,0.08); }
+.grok-mode-option:hover { background: rgba(34,211,238,0.06); color: #fff; }
+.grok-mode-option.active,
+.grok-mode-option.selected { background: rgba(34,211,238,0.1); color: #22d3ee; }
 .grok-mode-option-icon {
   width: 32px;
   height: 32px;
@@ -2061,42 +2183,43 @@ a:focus-visible {
   flex-shrink: 0;
 }
 
-/* ── Speak Button ── */
+/* Ã¢â€â‚¬Ã¢â€â‚¬ Speak Button Ã¢â€â‚¬Ã¢â€â‚¬ */
 .grok-speak-btn {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   padding: 8px 16px;
-  border-radius: 20px;
+  border-radius: 12px;
   font-size: 14px;
   font-weight: 600;
   color: #000;
-  background: #fff;
+  background: linear-gradient(135deg, #22d3ee, #06b6d4);
   transition: all 0.2s;
 }
-.grok-speak-btn:hover { background: #d6d9db; }
+.grok-speak-btn:hover { filter: brightness(1.1); }
 .grok-speak-btn:active { transform: scale(0.95); }
 
-/* ── System Message ── */
+/* Ã¢â€â‚¬Ã¢â€â‚¬ System Message Ã¢â€â‚¬Ã¢â€â‚¬ */
 .grok-system-msg {
   display: flex;
   align-items: center;
   gap: 8px;
   padding: 10px 16px;
-  border-radius: 16px;
+  border-radius: 14px;
   font-size: 13px;
   color: rgba(255,255,255,0.45);
-  background: rgba(255,255,255,0.03);
+  background: rgba(34,211,238,0.03);
+  border: 1px solid rgba(34,211,238,0.04);
 }
 
-/* ── Assistant Block ── */
+/* Ã¢â€â‚¬Ã¢â€â‚¬ Assistant Block Ã¢â€â‚¬Ã¢â€â‚¬ */
 .grok-assistant-block {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
 }
 
-/* ── Response Toolbar ── */
+/* Ã¢â€â‚¬Ã¢â€â‚¬ Response Toolbar Ã¢â€â‚¬Ã¢â€â‚¬ */
 .grok-response-toolbar {
   display: flex;
   align-items: center;
@@ -2117,52 +2240,63 @@ a:focus-visible {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: rgba(255,255,255,0.35);
+  color: rgba(255,255,255,0.3);
   transition: all 0.15s;
 }
-.grok-toolbar-btn:hover { color: rgba(255,255,255,0.7); background: rgba(255,255,255,0.06); }
+.grok-toolbar-btn:hover { color: rgba(255,255,255,0.7); background: rgba(34,211,238,0.06); }
 .grok-toolbar-btn:active { transform: scale(0.9); }
 .grok-toolbar-btn.active { color: #22d3ee; }
 
 .grok-response-meta {
   font-size: 12px;
   font-weight: 500;
-  color: rgba(255,255,255,0.3);
+  color: rgba(34,211,238,0.4);
   white-space: nowrap;
 }
 
-/* ═══════════════════════════════════════════════════════════
-   IMAGINE / CREATE TAB — Premium creative discovery system
-   MyAvatar.ge branded (cyan / dark)
-   ═══════════════════════════════════════════════════════════ */
+/* =Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â
+   IMAGINE / CREATE TAB Ã¢â‚¬â€ Premium creative discovery system
+   MyAvatar.ge branded (cyan / dark) Ã¢â‚¬â€ 4D visual depth
+   =Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â=Â */
 
-/* ── Featured Hero Card ── */
+/* Ã¢â€â‚¬Ã¢â€â‚¬ Featured Hero Card Ã¢â€â‚¬Ã¢â€â‚¬ */
 .ma-featured-card {
-  margin: 24px 16px 20px;
+  margin: 20px 16px 16px;
   padding: 20px;
   border-radius: 20px;
-  background: linear-gradient(145deg, rgba(6,182,212,0.12) 0%, rgba(34,211,238,0.06) 50%, rgba(0,0,0,0.3) 100%);
-  border: 1px solid rgba(34,211,238,0.15);
+  background: linear-gradient(145deg, rgba(6,182,212,0.1) 0%, rgba(34,211,238,0.04) 50%, rgba(0,0,0,0.3) 100%);
+  border: 1px solid rgba(34,211,238,0.12);
   backdrop-filter: blur(20px);
+  position: relative;
+  overflow: hidden;
+  cursor: pointer;
+  transition: border-color 0.3s, box-shadow 0.3s;
+}
+.ma-featured-card:hover {
+  border-color: rgba(34,211,238,0.25);
+  box-shadow: 0 0 32px rgba(34,211,238,0.06);
 }
 
-.ma-featured-card h3 {
-  font-size: 20px;
-  font-weight: 700;
-  color: #fff;
-  margin-bottom: 4px;
+/* 4D shimmer on featured card */
+.ma-featured-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(34,211,238,0.04), transparent);
+  animation: maCardShimmer 6s ease-in-out infinite;
 }
 
-.ma-featured-card p {
-  font-size: 13px;
-  color: rgba(255,255,255,0.5);
-  margin-bottom: 16px;
+@keyframes maCardShimmer {
+  0%, 100% { left: -100%; }
+  50% { left: 100%; }
 }
 
 .ma-featured-thumbnails {
   display: flex;
   gap: 10px;
-  margin-bottom: 16px;
   overflow-x: auto;
   scrollbar-width: none;
 }
@@ -2174,13 +2308,13 @@ a:focus-visible {
   height: 100px;
   border-radius: 12px;
   overflow: hidden;
-  border: 1.5px solid rgba(34,211,238,0.2);
-  transition: border-color 0.2s, transform 0.15s;
+  border: 1.5px solid rgba(34,211,238,0.15);
+  transition: border-color 0.2s, transform 0.2s;
   cursor: pointer;
 }
 .ma-featured-thumb:hover {
-  border-color: rgba(34,211,238,0.5);
-  transform: translateY(-2px);
+  border-color: rgba(34,211,238,0.4);
+  transform: translateY(-3px);
 }
 
 .ma-featured-cta {
@@ -2189,23 +2323,23 @@ a:focus-visible {
   justify-content: center;
   gap: 8px;
   width: 100%;
-  padding: 12px 0;
+  padding: 13px 0;
   border-radius: 14px;
   font-size: 15px;
-  font-weight: 600;
+  font-weight: 700;
   color: #000;
   background: linear-gradient(135deg, #22d3ee, #06b6d4);
   transition: all 0.2s;
+  box-shadow: 0 4px 16px rgba(34,211,238,0.2);
 }
-.ma-featured-cta:hover { filter: brightness(1.1); }
+.ma-featured-cta:hover { filter: brightness(1.12); box-shadow: 0 6px 24px rgba(34,211,238,0.3); }
 .ma-featured-cta:active { transform: scale(0.97); }
 
-/* ── Template Grid ── */
+/* Ã¢â€â‚¬Ã¢â€â‚¬ Template Grid Ã¢â€â‚¬Ã¢â€â‚¬ */
 .ma-template-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: 12px;
-  padding: 0 16px 16px;
 }
 
 .ma-template-card {
@@ -2213,33 +2347,34 @@ a:focus-visible {
   border-radius: 16px;
   overflow: hidden;
   aspect-ratio: 3 / 4;
-  border: 1px solid rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.05);
   cursor: pointer;
-  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
 }
 .ma-template-card:hover {
-  border-color: rgba(34,211,238,0.3);
-  transform: translateY(-3px);
-  box-shadow: 0 12px 32px rgba(0,0,0,0.4);
+  border-color: rgba(34,211,238,0.2);
+  transform: translateY(-4px);
+  box-shadow: 0 16px 40px rgba(0,0,0,0.5), 0 0 0 1px rgba(34,211,238,0.06);
 }
-.ma-template-card:active { transform: scale(0.96); }
+.ma-template-card:active { transform: scale(0.97); }
 
 .ma-template-card-bg {
   position: absolute;
   inset: 0;
-  transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: transform 0.5s cubic-bezier(0.4, 0, 0.2, 1);
 }
 .ma-template-card:hover .ma-template-card-bg {
-  transform: scale(1.05);
+  transform: scale(1.06);
 }
 
 .ma-template-card-info {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  padding: 32px 14px 14px;
-  background: linear-gradient(to top, rgba(0,0,0,0.85) 0%, transparent 100%);
+  position: relative;
+  z-index: 2;
+  padding: 36px 14px 14px;
+  background: linear-gradient(to top, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0.4) 60%, transparent 100%);
 }
 
 .ma-template-card-info h4 {
@@ -2251,10 +2386,18 @@ a:focus-visible {
 
 .ma-template-card-info span {
   font-size: 11px;
-  color: rgba(255,255,255,0.5);
+  color: rgba(255,255,255,0.45);
 }
 
-/* ── Quick Tool Buttons ── */
+/* Ã¢â€â‚¬Ã¢â€â‚¬ Section Heading Ã¢â€â‚¬Ã¢â€â‚¬ */
+.ma-section-heading {
+  font-size: 16px;
+  font-weight: 700;
+  color: #fff;
+  margin-bottom: 12px;
+}
+
+/* Ã¢â€â‚¬Ã¢â€â‚¬ Quick Tool Buttons Ã¢â€â‚¬Ã¢â€â‚¬ */
 .ma-quick-tools {
   display: flex;
   gap: 10px;
@@ -2267,36 +2410,29 @@ a:focus-visible {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  padding: 14px 0;
+  padding: 13px 0;
   border-radius: 14px;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
-  color: #fff;
-  background: rgba(255,255,255,0.06);
-  border: 1px solid rgba(255,255,255,0.08);
+  color: rgba(255,255,255,0.7);
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.06);
   transition: all 0.2s;
 }
 .ma-quick-tool:hover {
-  background: rgba(34,211,238,0.1);
-  border-color: rgba(34,211,238,0.25);
+  background: rgba(34,211,238,0.08);
+  border-color: rgba(34,211,238,0.2);
+  color: #fff;
 }
 .ma-quick-tool:active { transform: scale(0.96); }
 
-/* section heading */
-.ma-section-heading {
-  font-size: 16px;
-  font-weight: 700;
-  color: #fff;
-  padding: 0 16px 12px;
-}
-
-/* ── Settings Sheet / Action Sheet ── */
+/* Ã¢â€â‚¬Ã¢â€â‚¬ Settings Sheet / Action Sheet Ã¢â€â‚¬Ã¢â€â‚¬ */
 .ma-sheet-backdrop {
   position: fixed;
   inset: 0;
   z-index: 10050;
-  background: rgba(0,0,0,0.55);
-  backdrop-filter: blur(6px);
+  background: rgba(0,0,0,0.6);
+  backdrop-filter: blur(8px);
   animation: maFadeIn 0.2s ease;
 }
 
@@ -2309,16 +2445,16 @@ a:focus-visible {
   z-index: 10051;
   max-height: 85vh;
   border-radius: 24px 24px 0 0;
-  background: rgba(20,20,22,0.97);
-  border-top: 1px solid rgba(255,255,255,0.08);
+  background: rgba(12,14,18,0.98);
+  border-top: 1px solid rgba(34,211,238,0.08);
   backdrop-filter: blur(40px);
   overflow-y: auto;
   animation: maSlideUp 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 @keyframes maSlideUp {
-  from { transform: translateY(100%); }
-  to   { transform: translateY(0); }
+  from { transform: translateY(100%); opacity: 0.8; }
+  to   { transform: translateY(0); opacity: 1; }
 }
 @keyframes maFadeIn {
   from { opacity: 0; }
@@ -2329,7 +2465,7 @@ a:focus-visible {
   width: 36px;
   height: 4px;
   border-radius: 2px;
-  background: rgba(255,255,255,0.15);
+  background: rgba(255,255,255,0.12);
   margin: 10px auto 0;
 }
 
@@ -2352,7 +2488,7 @@ a:focus-visible {
 }
 .ma-sheet-close:hover { background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.7); }
 
-/* ── Settings Rows ── */
+/* Ã¢â€â‚¬Ã¢â€â‚¬ Settings Rows Ã¢â€â‚¬Ã¢â€â‚¬ */
 .ma-setting-row {
   display: flex;
   align-items: center;
@@ -2364,7 +2500,7 @@ a:focus-visible {
 .ma-setting-label {
   font-size: 14px;
   font-weight: 600;
-  color: rgba(255,255,255,0.8);
+  color: rgba(255,255,255,0.75);
   white-space: nowrap;
 }
 
@@ -2378,19 +2514,20 @@ a:focus-visible {
   border-radius: 10px;
   font-size: 13px;
   font-weight: 600;
-  color: rgba(255,255,255,0.5);
-  background: rgba(255,255,255,0.05);
+  color: rgba(255,255,255,0.45);
+  background: rgba(255,255,255,0.04);
   border: 1px solid rgba(255,255,255,0.06);
   transition: all 0.2s;
 }
-.ma-setting-pill:hover { border-color: rgba(34,211,238,0.3); }
+.ma-setting-pill:hover { border-color: rgba(34,211,238,0.2); }
 .ma-setting-pill.active {
   color: #000;
   background: linear-gradient(135deg, #22d3ee, #06b6d4);
   border-color: transparent;
+  box-shadow: 0 2px 10px rgba(34,211,238,0.2);
 }
 
-/* ── Aspect Ratio Selector ── */
+/* Ã¢â€â‚¬Ã¢â€â‚¬ Aspect Ratio Ã¢â€â‚¬Ã¢â€â‚¬ */
 .ma-aspect-options {
   display: flex;
   gap: 8px;
@@ -2407,36 +2544,33 @@ a:focus-visible {
   border-radius: 10px;
   font-size: 11px;
   font-weight: 600;
-  color: rgba(255,255,255,0.4);
-  background: rgba(255,255,255,0.04);
-  border: 1px solid rgba(255,255,255,0.06);
+  color: rgba(255,255,255,0.35);
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.05);
   transition: all 0.2s;
 }
-.ma-aspect-btn:hover { border-color: rgba(34,211,238,0.3); }
+.ma-aspect-btn:hover { border-color: rgba(34,211,238,0.2); }
 .ma-aspect-btn.active {
   color: #22d3ee;
-  background: rgba(34,211,238,0.1);
-  border-color: rgba(34,211,238,0.4);
+  background: rgba(34,211,238,0.08);
+  border-color: rgba(34,211,238,0.3);
 }
 
-.ma-aspect-icon {
-  border: 1.5px solid currentColor;
-  border-radius: 3px;
-}
+.ma-aspect-icon { border: 1.5px solid currentColor; border-radius: 3px; }
 .ma-aspect-portrait { width: 14px; height: 20px; }
 .ma-aspect-landscape { width: 20px; height: 14px; }
 .ma-aspect-square { width: 16px; height: 16px; }
 .ma-aspect-tall { width: 12px; height: 22px; }
 .ma-aspect-wide { width: 22px; height: 12px; }
 
-/* ── Toggle Switch ── */
+/* Ã¢â€â‚¬Ã¢â€â‚¬ Toggle Switch Ã¢â€â‚¬Ã¢â€â‚¬ */
 .ma-toggle {
   width: 48px;
   height: 28px;
   border-radius: 14px;
-  background: rgba(255,255,255,0.1);
+  background: rgba(255,255,255,0.08);
   position: relative;
-  transition: background 0.2s;
+  transition: background 0.25s;
   flex-shrink: 0;
 }
 .ma-toggle.active { background: linear-gradient(135deg, #22d3ee, #06b6d4); }
@@ -2449,11 +2583,12 @@ a:focus-visible {
   height: 22px;
   border-radius: 11px;
   background: #fff;
-  transition: transform 0.2s;
+  transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
 }
 .ma-toggle.active .ma-toggle-thumb { transform: translateX(20px); }
 
-/* ── Action Sheet Items ── */
+/* Ã¢â€â‚¬Ã¢â€â‚¬ Action Sheet Items Ã¢â€â‚¬Ã¢â€â‚¬ */
 .ma-action-list {
   padding: 4px 12px 20px;
 }
@@ -2466,20 +2601,21 @@ a:focus-visible {
   border-radius: 14px;
   width: 100%;
   text-align: left;
-  transition: background 0.15s;
+  transition: all 0.15s;
 }
-.ma-action-item:hover { background: rgba(255,255,255,0.05); }
+.ma-action-item:hover { background: rgba(34,211,238,0.04); }
 .ma-action-item:active { background: rgba(34,211,238,0.08); }
 
 .ma-action-icon {
-  width: 40px;
-  height: 40px;
+  width: 42px;
+  height: 42px;
   border-radius: 12px;
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 20px;
-  background: rgba(255,255,255,0.06);
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.05);
   flex-shrink: 0;
 }
 
@@ -2498,16 +2634,13 @@ a:focus-visible {
 
 .ma-action-desc {
   font-size: 12px;
-  color: rgba(255,255,255,0.4);
-  margin-top: 1px;
+  color: rgba(255,255,255,0.35);
+  margin-top: 2px;
 }
 
-.ma-action-item > svg {
-  color: rgba(255,255,255,0.2);
-  flex-shrink: 0;
-}
+.ma-action-item > svg { color: rgba(255,255,255,0.15); flex-shrink: 0; }
 
-/* ── Imagine Composer ── */
+/* Ã¢â€â‚¬Ã¢â€â‚¬ Imagine Composer Ã¢â€â‚¬Ã¢â€â‚¬ */
 .ma-imagine-bar {
   position: absolute;
   left: 0;
@@ -2515,7 +2648,7 @@ a:focus-visible {
   bottom: 0;
   z-index: 30;
   padding: 12px 16px calc(12px + env(safe-area-inset-bottom, 0px));
-  background: linear-gradient(to top, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.8) 60%, transparent 100%);
+  background: linear-gradient(to top, rgba(2,6,8,0.98) 0%, rgba(2,6,8,0.85) 70%, transparent 100%);
 }
 
 .ma-imagine-composer {
@@ -2525,9 +2658,14 @@ a:focus-visible {
   max-width: 720px;
   margin: 0 auto;
   padding: 8px 8px 8px 12px;
-  border-radius: 20px;
-  background: rgba(255,255,255,0.06);
-  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 18px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.06);
+  transition: border-color 0.25s, box-shadow 0.25s;
+}
+.ma-imagine-composer:focus-within {
+  border-color: rgba(34,211,238,0.2);
+  box-shadow: 0 0 0 3px rgba(34,211,238,0.04);
 }
 
 .ma-imagine-input {
@@ -2543,7 +2681,7 @@ a:focus-visible {
   color: #fff;
   padding: 8px 0;
 }
-.ma-imagine-input::placeholder { color: rgba(255,255,255,0.3); }
+.ma-imagine-input::placeholder { color: rgba(255,255,255,0.28); }
 
 .ma-imagine-action-btn {
   width: 36px;
@@ -2552,11 +2690,11 @@ a:focus-visible {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: rgba(255,255,255,0.4);
+  color: rgba(255,255,255,0.35);
   transition: all 0.15s;
   flex-shrink: 0;
 }
-.ma-imagine-action-btn:hover { color: rgba(255,255,255,0.7); background: rgba(255,255,255,0.06); }
+.ma-imagine-action-btn:hover { color: rgba(255,255,255,0.7); background: rgba(34,211,238,0.06); }
 
 .ma-imagine-send {
   width: 36px;
@@ -2565,14 +2703,46 @@ a:focus-visible {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: rgba(255,255,255,0.2);
+  color: rgba(255,255,255,0.15);
   transition: all 0.2s;
   flex-shrink: 0;
 }
 .ma-imagine-send.active {
   color: #000;
   background: linear-gradient(135deg, #22d3ee, #06b6d4);
+  box-shadow: 0 2px 10px rgba(34,211,238,0.2);
 }
 .ma-imagine-send:disabled { opacity: 0.3; cursor: not-allowed; }
-.ma-imagine-send.active:hover { filter: brightness(1.1); }
+.ma-imagine-send.active:hover { filter: brightness(1.12); }
 .ma-imagine-send.active:active { transform: scale(0.9); }
+
+/* Ã¢â€â‚¬Ã¢â€â‚¬ Chat Bubbles Enhancement (4D glass effect) Ã¢â€â‚¬Ã¢â€â‚¬ */
+.chat-bubble-user {
+  position: relative;
+  overflow: hidden;
+}
+.chat-bubble-agent {
+  position: relative;
+}
+
+/* -- Grok Chat Bubble Overrides (4D glass) -- */
+.grok-chat-root .chat-bubble-user {
+  background: linear-gradient(135deg, rgba(34,211,238,0.2) 0%, rgba(6,182,212,0.12) 100%);
+  border: 1px solid rgba(34,211,238,0.15);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 2px 16px rgba(34,211,238,0.08), inset 0 1px 0 rgba(255,255,255,0.06);
+  color: #fff;
+}
+
+.grok-chat-root .chat-bubble-agent {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.06);
+  color: #e7e9ea;
+  backdrop-filter: blur(8px);
+}
+
+.grok-chat-root .chat-agent-avatar {
+  background: rgba(34,211,238,0.08);
+  border-color: rgba(34,211,238,0.15);
+  box-shadow: 0 0 12px rgba(34,211,238,0.1);
+}
