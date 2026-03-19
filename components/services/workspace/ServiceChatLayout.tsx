@@ -38,6 +38,10 @@ import { GrokEmptyState } from '@/components/chat/grok/GrokEmptyState'
 import { ChatActionChips } from '@/components/chat/grok/ChatActionChips'
 import { ChatResponseToolbar } from '@/components/chat/grok/ChatResponseToolbar'
 import type { ChatMode } from '@/components/chat/grok/ChatModeSelector'
+import { ImagineTab } from '@/components/chat/grok/ImagineTab'
+import { ImagineComposer } from '@/components/chat/grok/ImagineComposer'
+import { SettingsSheet, type SettingsConfig } from '@/components/chat/grok/SettingsSheet'
+import { ActionSheet } from '@/components/chat/grok/ActionSheet'
 
 /* ── helpers ── */
 const uid = () => crypto.randomUUID()
@@ -103,6 +107,23 @@ export default function ServiceChatLayout({
   const [chatMode, setChatMode] = useState<ChatMode>('fast')
   const [chatTab, setChatTab] = useState<ChatTab>('ask')
   const [sendTimestamp, setSendTimestamp] = useState<number>(0)
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [actionSheetOpen, setActionSheetOpen] = useState(false)
+  const [imagineSettings, setImagineSettings] = useState<SettingsConfig>({
+    duration: { options: ['6s', '10s'], value: '6s' },
+    resolution: { options: ['480p', '720p', '1080p'], value: '720p' },
+    aspectRatio: {
+      options: [
+        { label: '2:3', value: '2:3', icon: 'portrait' },
+        { label: '3:2', value: '3:2', icon: 'landscape' },
+        { label: '1:1', value: '1:1', icon: 'square' },
+        { label: '9:16', value: '9:16', icon: 'tall' },
+        { label: '16:9', value: '16:9', icon: 'wide' },
+      ],
+      value: '1:1',
+    },
+    speakToCreate: false,
+  })
 
   /* ── portal target ── */
   const [portalTarget, setPortalTarget] = useState<HTMLElement | null>(null)
@@ -241,6 +262,28 @@ export default function ServiceChatLayout({
     else if (action === 'code') sendMessage('Help me write code')
   }, [handleCamera, handleAttach, sendMessage])
 
+  const handleImagineSettingChange = useCallback((key: string, value: string) => {
+    setImagineSettings(prev => {
+      const copy = { ...prev }
+      if (key === 'duration' && copy.duration) copy.duration = { ...copy.duration, value }
+      if (key === 'resolution' && copy.resolution) copy.resolution = { ...copy.resolution, value }
+      if (key === 'aspectRatio' && copy.aspectRatio) copy.aspectRatio = { ...copy.aspectRatio, value }
+      return copy
+    })
+  }, [])
+
+  const handleCreateAction = useCallback((templateId: string) => {
+    sendMessage(`Create using template: ${templateId}`)
+  }, [sendMessage])
+
+  const handleImagineSubmit = useCallback((prompt: string) => {
+    sendMessage(`[Imagine] ${prompt}`)
+  }, [sendMessage])
+
+  const handleActionSheetAction = useCallback((actionId: string) => {
+    sendMessage(`[Action: ${actionId}]`)
+  }, [sendMessage])
+
   /* ═══════════════════════════════════════════════════
      RENDER
      ═══════════════════════════════════════════════════ */
@@ -291,7 +334,14 @@ export default function ServiceChatLayout({
           }}
         >
           <div className="max-w-3xl mx-auto w-full flex flex-col min-h-full">
-            {messages.length === 0 ? (
+            {chatTab === 'create' ? (
+              /* Imagine / Create tab — template gallery + featured cards */
+              <ImagineTab
+                onCreateAction={handleCreateAction}
+                onOpenSettings={() => setSettingsOpen(true)}
+                onFeaturedAction={() => sendMessage('Animate my photos')}
+              />
+            ) : messages.length === 0 ? (
               /* Grok empty state — centered logo */
               <GrokEmptyState serviceIcon={serviceIcon} />
             ) : (
@@ -374,8 +424,8 @@ export default function ServiceChatLayout({
           </div>
         </div>
 
-        {/* Action chips (above composer, shown in empty state) */}
-        {messages.length === 0 && (
+        {/* Action chips (above composer, shown in ask tab empty state) */}
+        {chatTab === 'ask' && messages.length === 0 && (
           <div className="absolute left-0 right-0 z-20" style={{ bottom: 'calc(140px + env(safe-area-inset-bottom, 0px))' }}>
             <div className="max-w-3xl mx-auto">
               <ChatActionChips onAction={handleActionChip} />
@@ -383,17 +433,42 @@ export default function ServiceChatLayout({
           </div>
         )}
 
-        {/* Grok Composer */}
-        <GrokComposer
-          value={composerText}
-          onChange={setComposerText}
-          onSend={handleSend}
-          onAttach={handleAttach}
-          onCamera={handleCamera}
-          isSubmitting={isSubmitting}
-          placeholder={chatTab === 'ask' ? 'Ask Anything' : 'Describe what to create…'}
-          mode={chatMode}
-          onModeChange={setChatMode}
+        {/* Bottom composer — switches between Ask and Imagine */}
+        {chatTab === 'create' ? (
+          <ImagineComposer
+            onSubmit={handleImagineSubmit}
+            onOpenSettings={() => setSettingsOpen(true)}
+            onOpenActions={() => setActionSheetOpen(true)}
+            disabled={isSubmitting}
+          />
+        ) : (
+          <GrokComposer
+            value={composerText}
+            onChange={setComposerText}
+            onSend={handleSend}
+            onAttach={handleAttach}
+            onCamera={handleCamera}
+            isSubmitting={isSubmitting}
+            placeholder={chatTab === 'ask' ? 'Ask Anything' : 'Describe what to create…'}
+            mode={chatMode}
+            onModeChange={setChatMode}
+          />
+        )}
+
+        {/* Settings bottom sheet */}
+        <SettingsSheet
+          open={settingsOpen}
+          onClose={() => setSettingsOpen(false)}
+          settings={imagineSettings}
+          onSettingChange={handleImagineSettingChange}
+          onToggleSpeakToCreate={() => setImagineSettings(prev => ({ ...prev, speakToCreate: !prev.speakToCreate }))}
+        />
+
+        {/* Action sheet */}
+        <ActionSheet
+          open={actionSheetOpen}
+          onClose={() => setActionSheetOpen(false)}
+          onAction={handleActionSheetAction}
         />
 
         {/* Hidden file inputs */}
