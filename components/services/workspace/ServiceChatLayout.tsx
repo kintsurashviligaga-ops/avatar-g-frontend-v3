@@ -3,10 +3,16 @@
 /**
  * ServiceChatLayout — Main orchestrator for every service workspace.
  *
- * Manages: messages[], toolValues, menu state, API calls.
- * Renders: ServiceHeader → ServiceQuickActions | ServiceWelcome | MessageList
- *          → ServiceToolPanel → CrossServiceTransfer → ServiceComposer
- * Portal-rendered at z-[9999] to escape stacking contexts (matching ChatScreen pattern).
+ * Agent G gets the premium Grok-style UI with:
+ *   - GrokHeader (Ask/Create tabs, hamburger, avatar)
+ *   - GrokComposer (bottom bar with mode chip, speak button)
+ *   - ChatModeSelector (Deep/Expert/Fast/Auto)
+ *   - ChatResponseToolbar (copy/share/like/dislike/audio/regen)
+ *   - ChatActionChips (Image, Voice Mode, Open Camera)
+ *   - GrokEmptyState (centered large logo)
+ *
+ * Other services keep the standard layout.
+ * Portal-rendered at z-[9999].
  */
 
 import { useState, useCallback, useRef, useEffect } from 'react'
@@ -14,7 +20,7 @@ import { createPortal } from 'react-dom'
 import { useRouter, usePathname } from 'next/navigation'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
 
-import { getServiceWorkspaceConfig, type ServiceWorkspaceConfig } from '@/lib/services/workspace-config'
+import { getServiceWorkspaceConfig } from '@/lib/services/workspace-config'
 import { ServiceHeader } from './ServiceHeader'
 import { ServiceHamburgerMenu } from './ServiceHamburgerMenu'
 import { ServiceQuickActions } from './ServiceQuickActions'
@@ -24,6 +30,14 @@ import { ServiceToolPanel } from './ServiceToolPanel'
 import { CrossServiceTransfer } from './CrossServiceTransfer'
 import { ServiceOutputCard } from './ServiceOutputCard'
 import { getServiceEnvironmentStyle } from '@/components/ui/PageEnvironment'
+
+/* Grok-style components for Agent G */
+import { GrokHeader, type ChatTab } from '@/components/chat/grok/GrokHeader'
+import { GrokComposer } from '@/components/chat/grok/GrokComposer'
+import { GrokEmptyState } from '@/components/chat/grok/GrokEmptyState'
+import { ChatActionChips } from '@/components/chat/grok/ChatActionChips'
+import { ChatResponseToolbar } from '@/components/chat/grok/ChatResponseToolbar'
+import type { ChatMode } from '@/components/chat/grok/ChatModeSelector'
 
 /* ── helpers ── */
 const uid = () => crypto.randomUUID()
@@ -41,6 +55,8 @@ export interface ServiceMessage {
   suggestedService?: string
   /** Output type hint */
   outputType?: 'avatar' | 'image' | 'video' | 'music' | 'text' | 'workflow' | 'result'
+  /** Response time in seconds */
+  responseTime?: number
 }
 
 /* ── props ── */
@@ -83,6 +99,11 @@ export default function ServiceChatLayout({
   const [outputReady, setOutputReady] = useState(false)
   const [sessionId] = useState(() => uid())
 
+  /* ── Grok-style state (Agent G only) ── */
+  const [chatMode, setChatMode] = useState<ChatMode>('fast')
+  const [chatTab, setChatTab] = useState<ChatTab>('ask')
+  const [sendTimestamp, setSendTimestamp] = useState<number>(0)
+
   /* ── portal target ── */
   const [portalTarget, setPortalTarget] = useState<HTMLElement | null>(null)
   useEffect(() => { setPortalTarget(document.body) }, [])
@@ -107,10 +128,12 @@ export default function ServiceChatLayout({
 
     const userMsg: ServiceMessage = { id: uid(), role: 'user', content: text.trim(), createdAt: now(), status: 'sending' }
     const sysMsg: ServiceMessage = { id: uid(), role: 'system', content: '⏳', createdAt: now() }
+    const startTime = performance.now()
 
     setMessages(prev => [...prev, userMsg, sysMsg])
     setComposerText('')
     setIsSubmitting(true)
+    setSendTimestamp(startTime)
     scrollToBottom()
 
     try {
@@ -154,6 +177,7 @@ export default function ServiceChatLayout({
         createdAt: now(),
         suggestedService: data.meta?.suggestedService,
         outputType: data.meta?.outputType,
+        responseTime: (performance.now() - startTime) / 1000,
       }
 
       setMessages(prev =>
@@ -208,6 +232,15 @@ export default function ServiceChatLayout({
     router.push(`/${locale}/services/${targetSlug}`)
   }, [router, locale])
 
+  const handleActionChip = useCallback((action: string) => {
+    if (action === 'camera') handleCamera()
+    else if (action === 'image') handleAttach()
+    else if (action === 'voice') {
+      /* Voice mode handled by composer */
+    } else if (action === 'document') handleAttach()
+    else if (action === 'code') sendMessage('Help me write code')
+  }, [handleCamera, handleAttach, sendMessage])
+
   /* ═══════════════════════════════════════════════════
      RENDER
      ═══════════════════════════════════════════════════ */
@@ -216,6 +249,166 @@ export default function ServiceChatLayout({
   const isAgentG = serviceId === 'agent-g'
   const serviceEnvStyle = getServiceEnvironmentStyle(serviceId)
 
+  /* ──────────────────────────────────────────────────
+     GROK-STYLE UI — Agent G gets the premium experience
+     ────────────────────────────────────────────────── */
+  if (isAgentG) {
+    const grokUI = (
+      <div
+        className="fixed inset-0 z-[9999] grok-chat-root"
+        style={{ height: '100dvh', WebkitOverflowScrolling: 'touch' }}
+      >
+        {/* Subtle ambient glow */}
+        <div className="absolute inset-0 pointer-events-none" aria-hidden="true">
+          <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[500px] h-[250px]" style={{ background: 'radial-gradient(ellipse 60% 50% at 50% 0%, rgba(255,255,255,0.015) 0%, transparent 70%)', filter: 'blur(60px)' }} />
+        </div>
+
+        {/* Grok Header */}
+        <GrokHeader
+          activeTab={chatTab}
+          onTabChange={setChatTab}
+          onMenuToggle={() => setMenuOpen(true)}
+          serviceIcon={serviceIcon}
+        />
+
+        {/* Hamburger menu */}
+        <ServiceHamburgerMenu
+          open={menuOpen}
+          onClose={() => setMenuOpen(false)}
+          config={config}
+          serviceName={serviceName}
+          serviceIcon={serviceIcon}
+          onMenuAction={(item) => handleMenuItemClick(item.id)}
+        />
+
+        {/* Scrollable body */}
+        <div
+          ref={scrollRef}
+          className="absolute left-0 right-0 overflow-y-auto overflow-x-hidden overscroll-contain"
+          style={{
+            top: 'calc(56px + env(safe-area-inset-top, 0px))',
+            bottom: 'calc(140px + env(safe-area-inset-bottom, 0px))',
+          }}
+        >
+          <div className="max-w-3xl mx-auto w-full flex flex-col min-h-full">
+            {messages.length === 0 ? (
+              /* Grok empty state — centered logo */
+              <GrokEmptyState serviceIcon={serviceIcon} />
+            ) : (
+              /* Chat messages */
+              <div className="flex-1 px-4 py-3 space-y-4">
+                {messages.map((msg, idx) => {
+                  const isLastAssistant = msg.role === 'assistant' && idx === messages.length - 1
+
+                  if (msg.role === 'user') {
+                    return (
+                      <div key={msg.id} className="flex justify-end">
+                        <div className="chat-bubble-user">
+                          {msg.content}
+                          {msg.status === 'failed' && (
+                            <span className="block text-[10px] mt-1 opacity-60">⚠ Failed to send</span>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  }
+
+                  if (msg.role === 'system') {
+                    return (
+                      <div key={msg.id} className="flex justify-start">
+                        <div className="grok-system-msg">
+                          {msg.content === '⏳' ? (
+                            <>
+                              <div className="w-4 h-4 border-2 border-white/30 border-t-transparent rounded-full animate-spin" />
+                              <span className="animate-pulse">Agent G is thinking…</span>
+                            </>
+                          ) : (
+                            msg.content
+                          )}
+                        </div>
+                      </div>
+                    )
+                  }
+
+                  if (msg.role === 'assistant') {
+                    return (
+                      <div key={msg.id} className="grok-assistant-block">
+                        <div className="flex gap-3">
+                          {/* Agent avatar */}
+                          <div className="chat-agent-avatar mt-0.5">
+                            <span>{serviceIcon}</span>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="chat-bubble-agent whitespace-pre-wrap">
+                              {msg.content}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Grok-style response toolbar */}
+                        <ChatResponseToolbar
+                          content={msg.content}
+                          mode={chatMode}
+                          responseTime={msg.responseTime}
+                        />
+
+                        {/* Output card for completed results */}
+                        {isLastAssistant && outputReady && (
+                          <ServiceOutputCard
+                            serviceId={serviceId}
+                            serviceName={serviceName}
+                            serviceIcon={serviceIcon}
+                            onNavigate={handleTransferNavigate}
+                            transfers={config.transfers}
+                            locale={locale}
+                          />
+                        )}
+                      </div>
+                    )
+                  }
+
+                  return null
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Action chips (above composer, shown in empty state) */}
+        {messages.length === 0 && (
+          <div className="absolute left-0 right-0 z-20" style={{ bottom: 'calc(140px + env(safe-area-inset-bottom, 0px))' }}>
+            <div className="max-w-3xl mx-auto">
+              <ChatActionChips onAction={handleActionChip} />
+            </div>
+          </div>
+        )}
+
+        {/* Grok Composer */}
+        <GrokComposer
+          value={composerText}
+          onChange={setComposerText}
+          onSend={handleSend}
+          onAttach={handleAttach}
+          onCamera={handleCamera}
+          isSubmitting={isSubmitting}
+          placeholder={chatTab === 'ask' ? 'Ask Anything' : 'Describe what to create…'}
+          mode={chatMode}
+          onModeChange={setChatMode}
+        />
+
+        {/* Hidden file inputs */}
+        <input ref={fileInputRef} type="file" className="hidden" multiple accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.txt" onChange={() => {}} />
+        <input ref={cameraInputRef} type="file" className="hidden" accept="image/*" capture="environment" onChange={() => {}} />
+      </div>
+    )
+
+    if (!portalTarget) return null
+    return createPortal(grokUI, portalTarget)
+  }
+
+  /* ──────────────────────────────────────────────────
+     STANDARD UI — All other services
+     ────────────────────────────────────────────────── */
   const chatUI = (
     <div
       className="fixed inset-0 z-[9999]"
@@ -259,93 +452,53 @@ export default function ServiceChatLayout({
       >
         <div className="max-w-3xl mx-auto w-full flex flex-col min-h-full">
           {messages.length === 0 ? (
-            /* Welcome state */
             <ServiceWelcome config={config} serviceName={serviceName} serviceIcon={serviceIcon} onSend={handleQuickAction} />
           ) : (
-            /* Chat messages + tools */
             <div className="flex-1 px-4 py-3 space-y-3">
-              {/* Quick actions bar at top */}
               <ServiceQuickActions actions={config.quickActions} onAction={handleQuickAction} />
-
-              {/* Messages */}
               {messages.map((msg, idx) => {
                 const isLastAssistant = msg.role === 'assistant' && idx === messages.length - 1
-
                 if (msg.role === 'user') {
                   return (
                     <div key={msg.id} className="flex justify-end">
                       <div className="chat-bubble-user">
                         {msg.content}
-                        {msg.status === 'failed' && (
-                          <span className="block text-[10px] mt-1 opacity-60">⚠ Failed to send</span>
-                        )}
+                        {msg.status === 'failed' && <span className="block text-[10px] mt-1 opacity-60">⚠ Failed to send</span>}
                       </div>
                     </div>
                   )
                 }
-
                 if (msg.role === 'system') {
                   return (
                     <div key={msg.id} className="flex justify-start">
-                      <div
-                        className="flex items-center gap-2 px-4 py-2.5 rounded-2xl text-[13px]"
-                        style={{ backgroundColor: 'rgba(255,255,255,0.03)', color: 'var(--color-text-tertiary)' }}
-                      >
+                      <div className="flex items-center gap-2 px-4 py-2.5 rounded-2xl text-[13px]" style={{ backgroundColor: 'rgba(255,255,255,0.03)', color: 'var(--color-text-tertiary)' }}>
                         {msg.content === '⏳' ? (
                           <>
                             <div className="w-4 h-4 border-2 border-cyan-400/60 border-t-transparent rounded-full animate-spin" />
-                            <span className="animate-pulse">
-                              {isAgentG ? 'Agent G is thinking…' : `${serviceName} is processing…`}
-                            </span>
+                            <span className="animate-pulse">{`${serviceName} is processing…`}</span>
                           </>
-                        ) : (
-                          msg.content
-                        )}
+                        ) : msg.content}
                       </div>
                     </div>
                   )
                 }
-
                 if (msg.role === 'assistant') {
                   return (
                     <div key={msg.id} className="flex justify-start gap-2.5">
-                      {/* Agent avatar */}
-                      <div className="chat-agent-avatar mt-0.5">
-                        <span>{serviceIcon}</span>
-                      </div>
+                      <div className="chat-agent-avatar mt-0.5"><span>{serviceIcon}</span></div>
                       <div className="space-y-2" style={{ maxWidth: '85%' }}>
-                        <div className="chat-bubble-agent whitespace-pre-wrap">
-                          {msg.content}
-                        </div>
-
-                        {/* Output card for completed results */}
+                        <div className="chat-bubble-agent whitespace-pre-wrap">{msg.content}</div>
                         {isLastAssistant && outputReady && (
-                          <ServiceOutputCard
-                            serviceId={serviceId}
-                            serviceName={serviceName}
-                            serviceIcon={serviceIcon}
-                            onNavigate={handleTransferNavigate}
-                            transfers={config.transfers}
-                            locale={locale}
-                          />
+                          <ServiceOutputCard serviceId={serviceId} serviceName={serviceName} serviceIcon={serviceIcon} onNavigate={handleTransferNavigate} transfers={config.transfers} locale={locale} />
                         )}
                       </div>
                     </div>
                   )
                 }
-
                 return null
               })}
-
-              {/* Tool panel — always visible when tools exist */}
               {config.tools.length > 0 && (
-                <ServiceToolPanel
-                  tools={config.tools}
-                  values={toolValues}
-                  onChange={handleToolChange}
-                  onUpload={handleAttach}
-                  onCamera={handleCamera}
-                />
+                <ServiceToolPanel tools={config.tools} values={toolValues} onChange={handleToolChange} onUpload={handleAttach} onCamera={handleCamera} />
               )}
             </div>
           )}
@@ -364,22 +517,8 @@ export default function ServiceChatLayout({
       />
 
       {/* Hidden file inputs */}
-      <input
-        ref={fileInputRef}
-        type="file"
-        className="hidden"
-        multiple
-        accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.txt"
-        onChange={() => {}}
-      />
-      <input
-        ref={cameraInputRef}
-        type="file"
-        className="hidden"
-        accept="image/*"
-        capture="environment"
-        onChange={() => {}}
-      />
+      <input ref={fileInputRef} type="file" className="hidden" multiple accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.txt" onChange={() => {}} />
+      <input ref={cameraInputRef} type="file" className="hidden" accept="image/*" capture="environment" onChange={() => {}} />
     </div>
   )
 

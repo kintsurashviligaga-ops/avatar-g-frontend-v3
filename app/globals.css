@@ -1786,3 +1786,347 @@ a:focus-visible {
   gap: 8px;
   flex-wrap: wrap;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   GROK-STYLE CHAT DESIGN SYSTEM — Premium AI Chat (Agent G)
+   Matches Grok's dark, minimal, high-performance aesthetic
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Root ── */
+.grok-chat-root {
+  background: #000;
+  color: #e7e9ea;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+/* ── Header ── */
+.grok-header {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 12px;
+  height: calc(56px + env(safe-area-inset-top, 0px));
+  padding-top: env(safe-area-inset-top, 0px);
+  background: rgba(0,0,0,0.85);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+
+.grok-header-btn {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #d6d9db;
+  background: rgba(255,255,255,0.06);
+  transition: background 0.2s;
+}
+.grok-header-btn:hover { background: rgba(255,255,255,0.1); }
+.grok-header-btn:active { transform: scale(0.95); }
+
+.grok-header-tabs {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  background: transparent;
+}
+
+.grok-header-tab {
+  padding: 8px 18px;
+  font-size: 15px;
+  font-weight: 600;
+  color: rgba(255,255,255,0.45);
+  border-radius: 20px;
+  transition: all 0.2s;
+  position: relative;
+}
+.grok-header-tab.active {
+  color: #fff;
+  background: rgba(255,255,255,0.1);
+}
+.grok-header-tab:hover:not(.active) {
+  color: rgba(255,255,255,0.7);
+}
+
+.grok-header-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.1);
+  transition: background 0.2s;
+}
+.grok-header-avatar:hover { background: rgba(255,255,255,0.1); }
+
+/* ── Empty State ── */
+.grok-empty-logo {
+  width: 120px;
+  height: 120px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ── Action Chips (horizontal scroll) ── */
+.grok-action-chips-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  padding: 0 16px 12px;
+}
+.grok-action-chips-scroll::-webkit-scrollbar { display: none; }
+
+.grok-action-chips {
+  display: flex;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.grok-action-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 18px;
+  border-radius: 16px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #d6d9db;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.08);
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+.grok-action-chip:hover {
+  background: rgba(255,255,255,0.1);
+  border-color: rgba(255,255,255,0.15);
+}
+.grok-action-chip:active { transform: scale(0.97); }
+
+/* ── Bottom Bar (Composer Area) ── */
+.grok-bottom-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 30;
+  background: rgba(0,0,0,0.92);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-top: 1px solid rgba(255,255,255,0.06);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.grok-composer {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  border-radius: 20px;
+  padding: 10px 14px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.08);
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.grok-composer:focus-within {
+  border-color: rgba(255,255,255,0.18);
+  box-shadow: 0 0 0 2px rgba(255,255,255,0.04);
+}
+
+.grok-textarea {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  outline: none;
+  resize: none;
+  font-size: 16px;
+  line-height: 1.5;
+  padding: 2px 0;
+  color: #e7e9ea;
+  min-height: 24px;
+  max-height: 140px;
+}
+.grok-textarea::placeholder {
+  color: rgba(255,255,255,0.35);
+  font-weight: 400;
+}
+
+.grok-send-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #fff;
+  color: #000;
+  flex-shrink: 0;
+  transition: all 0.2s;
+}
+.grok-send-btn:hover { background: #d6d9db; }
+.grok-send-btn:active { transform: scale(0.92); }
+.grok-send-btn:disabled { opacity: 0.3; }
+
+/* ── Controls Row (below input) ── */
+.grok-controls-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 4px 6px;
+}
+
+.grok-control-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255,255,255,0.5);
+  transition: all 0.2s;
+}
+.grok-control-btn:hover { color: #fff; background: rgba(255,255,255,0.06); }
+.grok-control-btn:active { transform: scale(0.92); }
+.grok-control-btn.active { color: #22d3ee; }
+
+/* ── Mode Chip ── */
+.grok-mode-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #d6d9db;
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.1);
+  transition: all 0.2s;
+  cursor: pointer;
+}
+.grok-mode-chip:hover { background: rgba(255,255,255,0.12); }
+.grok-mode-chip-icon { display: flex; align-items: center; color: rgba(255,255,255,0.6); }
+
+/* ── Mode Dropdown ── */
+.grok-mode-dropdown {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  width: 260px;
+  padding: 8px;
+  border-radius: 16px;
+  background: rgba(22,24,28,0.98);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(255,255,255,0.1);
+  box-shadow: 0 12px 48px rgba(0,0,0,0.5);
+  z-index: 100;
+  animation: grok-dropdown-in 0.15s ease-out;
+}
+@keyframes grok-dropdown-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.grok-mode-option {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  text-align: left;
+  transition: background 0.15s;
+  color: #e7e9ea;
+}
+.grok-mode-option:hover { background: rgba(255,255,255,0.06); }
+.grok-mode-option.selected { background: rgba(255,255,255,0.08); }
+.grok-mode-option-icon {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255,255,255,0.6);
+  flex-shrink: 0;
+}
+
+/* ── Speak Button ── */
+.grok-speak-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-radius: 20px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #000;
+  background: #fff;
+  transition: all 0.2s;
+}
+.grok-speak-btn:hover { background: #d6d9db; }
+.grok-speak-btn:active { transform: scale(0.95); }
+
+/* ── System Message ── */
+.grok-system-msg {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border-radius: 16px;
+  font-size: 13px;
+  color: rgba(255,255,255,0.45);
+  background: rgba(255,255,255,0.03);
+}
+
+/* ── Assistant Block ── */
+.grok-assistant-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* ── Response Toolbar ── */
+.grok-response-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 0 4px 44px;
+}
+
+.grok-response-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.grok-toolbar-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255,255,255,0.35);
+  transition: all 0.15s;
+}
+.grok-toolbar-btn:hover { color: rgba(255,255,255,0.7); background: rgba(255,255,255,0.06); }
+.grok-toolbar-btn:active { transform: scale(0.9); }
+.grok-toolbar-btn.active { color: #22d3ee; }
+
+.grok-response-meta {
+  font-size: 12px;
+  font-weight: 500;
+  color: rgba(255,255,255,0.3);
+  white-space: nowrap;
+}
