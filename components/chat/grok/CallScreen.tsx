@@ -16,11 +16,14 @@ export function CallScreen({ open, onClose, onSendVoiceMessage }: CallScreenProp
   const [isSpeaker, setIsSpeaker] = useState(false)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  /* Auto-connect after 2s ring */
+  /* Reset state when opened/closed */
   useEffect(() => {
     if (!open) {
       setCallState('ringing')
       setDuration(0)
+      setIsMuted(false)
+      setIsSpeaker(false)
+      if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null }
       return
     }
     const ring = setTimeout(() => setCallState('connected'), 2000)
@@ -32,12 +35,12 @@ export function CallScreen({ open, onClose, onSendVoiceMessage }: CallScreenProp
     if (callState === 'connected') {
       timerRef.current = setInterval(() => setDuration(d => d + 1), 1000)
     }
-    return () => { if (timerRef.current) clearInterval(timerRef.current) }
+    return () => { if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null } }
   }, [callState])
 
   const handleEndCall = useCallback(() => {
     setCallState('ended')
-    if (timerRef.current) clearInterval(timerRef.current)
+    if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null }
     setTimeout(onClose, 600)
   }, [onClose])
 
@@ -51,6 +54,19 @@ export function CallScreen({ open, onClose, onSendVoiceMessage }: CallScreenProp
 
   return (
     <div className="call-screen-overlay">
+      {/* Close / minimize button */}
+      <button
+        onClick={handleEndCall}
+        className="absolute top-6 right-6 z-10 w-10 h-10 rounded-full flex items-center justify-center"
+        style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)' }}
+        aria-label="Close"
+        type="button"
+      >
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.6)" strokeWidth="2" strokeLinecap="round">
+          <path d="M18 6 6 18M6 6l12 12" />
+        </svg>
+      </button>
+
       <div className="call-screen">
         {/* Background effects */}
         <div className="call-screen-bg" aria-hidden="true">
@@ -75,8 +91,8 @@ export function CallScreen({ open, onClose, onSendVoiceMessage }: CallScreenProp
 
         {/* Status */}
         <div className="call-screen-info">
-          <h3 className="text-[20px] font-bold text-white">Agent G</h3>
-          <p className="text-[13px] mt-1" style={{ color: 'rgba(255,255,255,0.5)' }}>
+          <h3 className="text-[22px] font-bold text-white tracking-tight">Agent G</h3>
+          <p className="text-[13px] mt-1" style={{ color: 'rgba(255,255,255,0.45)' }}>
             MyAvatar.ge AI Assistant
           </p>
           <div className="call-screen-status">
@@ -84,7 +100,10 @@ export function CallScreen({ open, onClose, onSendVoiceMessage }: CallScreenProp
               <span className="text-[14px] text-cyan-400 animate-pulse">Connecting…</span>
             )}
             {callState === 'connected' && (
-              <span className="text-[14px] text-emerald-400">{formatDuration(duration)}</span>
+              <div className="flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                <span className="text-[15px] font-mono text-emerald-400 tabular-nums">{formatDuration(duration)}</span>
+              </div>
             )}
             {callState === 'ended' && (
               <span className="text-[14px] text-white/40">Call ended</span>
@@ -95,11 +114,11 @@ export function CallScreen({ open, onClose, onSendVoiceMessage }: CallScreenProp
         {/* Voice waveform visualization */}
         {callState === 'connected' && (
           <div className="call-screen-waveform">
-            {Array.from({ length: 5 }).map((_, i) => (
+            {Array.from({ length: 7 }).map((_, i) => (
               <div
                 key={i}
                 className="call-screen-wave-bar"
-                style={{ animationDelay: `${i * 0.15}s` }}
+                style={{ animationDelay: `${i * 0.12}s` }}
               />
             ))}
           </div>
@@ -129,7 +148,7 @@ export function CallScreen({ open, onClose, onSendVoiceMessage }: CallScreenProp
                 </>
               )}
             </svg>
-            <span className="text-[10px] mt-1">Mute</span>
+            <span className="text-[10px] mt-1 opacity-60">{isMuted ? 'Unmute' : 'Mute'}</span>
           </button>
 
           <button
@@ -141,36 +160,30 @@ export function CallScreen({ open, onClose, onSendVoiceMessage }: CallScreenProp
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
               <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
               <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
-              <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
+              {isSpeaker && <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />}
             </svg>
-            <span className="text-[10px] mt-1">Speaker</span>
+            <span className="text-[10px] mt-1 opacity-60">Speaker</span>
           </button>
 
-          {/* End call */}
+          {/* End call — prominent red button */}
           <button
             onClick={handleEndCall}
             className="call-end-btn"
             type="button"
             aria-label="End call"
           >
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
               <path d="M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7 2 2 0 0 1 1.72 2v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.42 19.42 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91" />
             </svg>
           </button>
 
           <button className="call-control-btn" type="button" aria-label="Keypad">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-              <rect x="4" y="4" width="4" height="4" rx="1" />
-              <rect x="10" y="4" width="4" height="4" rx="1" />
-              <rect x="16" y="4" width="4" height="4" rx="1" />
-              <rect x="4" y="10" width="4" height="4" rx="1" />
-              <rect x="10" y="10" width="4" height="4" rx="1" />
-              <rect x="16" y="10" width="4" height="4" rx="1" />
-              <rect x="4" y="16" width="4" height="4" rx="1" />
-              <rect x="10" y="16" width="4" height="4" rx="1" />
-              <rect x="16" y="16" width="4" height="4" rx="1" />
+              <circle cx="6" cy="6" r="1.5" /><circle cx="12" cy="6" r="1.5" /><circle cx="18" cy="6" r="1.5" />
+              <circle cx="6" cy="12" r="1.5" /><circle cx="12" cy="12" r="1.5" /><circle cx="18" cy="12" r="1.5" />
+              <circle cx="6" cy="18" r="1.5" /><circle cx="12" cy="18" r="1.5" /><circle cx="18" cy="18" r="1.5" />
             </svg>
-            <span className="text-[10px] mt-1">Keypad</span>
+            <span className="text-[10px] mt-1 opacity-60">Keypad</span>
           </button>
         </div>
       </div>
