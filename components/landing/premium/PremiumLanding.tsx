@@ -9,8 +9,6 @@
 
 import { HeroSection } from './HeroSection'
 import { WorkflowPipelineBuilder } from './WorkflowPipelineBuilder'
-import { ServicesShowcase } from './ServicesShowcase'
-import { DemoPreviewSection } from './DemoPreviewSection'
 import { AppDownloadSection } from './AppDownloadSection'
 import { LandingFooter } from './LandingFooter'
 import { BottomChatBar } from '@/components/chat/bottom/BottomChatBar'
@@ -21,10 +19,6 @@ export default function PremiumLanding() {
       <HeroSection />
       <Separator />
       <WorkflowPipelineBuilder />
-      <Separator />
-      <ServicesShowcase />
-      <Separator />
-      <DemoPreviewSection />
       <Separator />
       <AppDownloadSection />
       <Separator />
