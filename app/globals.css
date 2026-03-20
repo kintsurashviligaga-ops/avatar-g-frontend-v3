@@ -1333,10 +1333,10 @@ a:focus-visible {
 .chat-composer {
   display: flex;
   align-items: flex-end;
-  gap: 4px;
+  gap: 6px;
   border-radius: 24px;
-  padding: 6px 8px;
-  background: rgba(255,255,255,0.035);
+  padding: 8px 10px;
+  background: rgba(255,255,255,0.04);
   border: 1px solid rgba(255,255,255,0.08);
   box-shadow: 0 2px 20px rgba(0,0,0,0.15), inset 0 1px 0 rgba(255,255,255,0.03);
   transition: border-color 0.25s ease, box-shadow 0.25s ease;
@@ -1500,7 +1500,7 @@ a:focus-visible {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 8px 14px;
+  padding: 8px 16px;
   border-radius: 14px;
   font-size: 13px;
   font-weight: 500;
@@ -1695,6 +1695,26 @@ a:focus-visible {
   -webkit-backdrop-filter: blur(20px) saturate(1.3);
   border-top: 1px solid rgba(255,255,255,0.06);
   padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* Landing-specific: floating panel, not fixed to bottom */
+.chat-bottom-bar.chat-bottom-bar-landing {
+  position: relative;
+  bottom: auto;
+  left: auto;
+  right: auto;
+  max-width: 720px;
+  margin: 0 auto;
+  border-radius: 20px;
+  border: 1px solid rgba(34,211,238,0.1);
+  background: rgba(8,14,28,0.7);
+  backdrop-filter: blur(24px) saturate(1.4);
+  -webkit-backdrop-filter: blur(24px) saturate(1.4);
+  box-shadow:
+    0 0 40px rgba(34,211,238,0.06),
+    0 8px 32px rgba(0,0,0,0.3),
+    0 2px 8px rgba(0,0,0,0.15),
+    inset 0 1px 0 rgba(255,255,255,0.04);
 }
 
 /* Ã¢â€â‚¬Ã¢â€â‚¬ Agent Picker Item Ã¢â€â‚¬Ã¢â€â‚¬ */

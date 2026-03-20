@@ -33,7 +33,7 @@ export function BottomChatQuickActions({ onAction, mode = 'landing' }: Props) {
   const items = mode === 'landing' ? ACTIONS.slice(0, 6) : ACTIONS
 
   return (
-    <div className="flex gap-2 overflow-x-auto no-scrollbar px-1 pb-1">
+    <div className="flex gap-2.5 overflow-x-auto no-scrollbar px-1 pb-1 justify-center flex-wrap">
       {items.map(a => (
         <button
           key={a.id}

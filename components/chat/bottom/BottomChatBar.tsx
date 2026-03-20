@@ -57,21 +57,12 @@ export function BottomChatBar({ mode = 'landing', className = '' }: Props) {
 
   return (
       <div
-        className={`chat-bottom-bar ${className}`}
-        style={{
-          ...(mode === 'landing' ? { position: 'relative', zIndex: 1 } : {}),
-          backgroundColor: 'var(--nav-bg)',
-          backdropFilter: 'blur(20px) saturate(1.2)',
-          WebkitBackdropFilter: 'blur(20px) saturate(1.2)',
-        }}
+        className={`chat-bottom-bar ${mode === 'landing' ? 'chat-bottom-bar-landing' : ''} ${className}`}
       >
-        <div
-          className="relative max-w-2xl mx-auto px-4 pt-3 pb-3"
-          style={{ borderTop: '1px solid var(--color-border)' }}
-        >
+        <div className="relative max-w-2xl mx-auto px-5 pt-5 pb-5">
 
           {/* Agent G identity badge */}
-          <div className="flex items-center justify-center mb-2">
+          <div className="flex items-center justify-center mb-3">
             <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] tracking-wide font-medium"
               style={{ backgroundColor: 'rgba(34,211,238,0.06)', color: 'var(--color-accent)', border: '1px solid rgba(34,211,238,0.12)' }}
             >
@@ -84,7 +75,7 @@ export function BottomChatBar({ mode = 'landing', className = '' }: Props) {
           </div>
 
           {/* Quick actions */}
-          <div className="mb-2">
+          <div className="mb-3">
             <BottomChatQuickActions onAction={handleAction} mode={mode} />
           </div>
 

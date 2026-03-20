@@ -28,7 +28,9 @@ export default function PremiumLanding() {
       <Separator />
       <AppDownloadSection />
       <Separator />
-      <BottomChatBar mode="landing" />
+      <div className="px-4 sm:px-6 py-10 sm:py-14 lg:py-16">
+        <BottomChatBar mode="landing" />
+      </div>
       <LandingFooter />
     </div>
   )
