@@ -290,7 +290,7 @@ export function HeroVideo() {
 
         {/* Center play button when paused */}
         {hasVideo && !playing && (
-          <div className="absolute inset-0 z-25 flex items-center justify-center pointer-events-none">
+          <div className="absolute inset-0 z-[25] flex items-center justify-center pointer-events-none">
             <div
               className="w-16 h-16 sm:w-20 sm:h-20 rounded-full flex items-center justify-center"
               style={{
