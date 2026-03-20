@@ -21,7 +21,6 @@ import type {
   VoiceStatus,
 } from './types'
 import { ChatHeader } from './ChatHeader'
-import { ChatWelcome } from './ChatWelcome'
 import { MessageList } from './MessageList'
 import { UploadPreviewTray } from './UploadPreviewTray'
 import { ChatComposer } from './ChatComposer'
@@ -179,17 +178,6 @@ export function ChatScreen() {
     sendMessage(composerText, attachments)
   }, [composerText, attachments, sendMessage])
 
-  /* ── QUICK ACTION ── */
-  const handleQuickAction = useCallback((intent: string, prefill?: string) => {
-    if (prefill) {
-      // Directly send the prefill prompt
-      sendMessage(prefill, [])
-    } else {
-      // Just set the composer text for the intent (text + workflow)
-      setComposerText(intent.replace(/_/g, ' '))
-    }
-  }, [sendMessage])
-
   /* ── ATTACH FILE ── */
   const handleAttach = useCallback(() => {
     fileInputRef.current?.click()
@@ -203,8 +191,9 @@ export function ChatScreen() {
       kind: detectAttachmentKind(f.type),
       fileName: f.name,
       mimeType: f.type,
-      localPreviewUrl: f.type.startsWith('image/') ? URL.createObjectURL(f) : undefined,
+      localPreviewUrl: f.type.startsWith('image/') || f.type.startsWith('video/') ? URL.createObjectURL(f) : undefined,
       size: f.size,
+      file: f,
     }))
     setAttachments(prev => [...prev, ...newAttachments])
     // Reset input so same file can be re-selected
@@ -228,6 +217,7 @@ export function ChatScreen() {
       mimeType: f.type || 'image/jpeg',
       localPreviewUrl: URL.createObjectURL(f),
       size: f.size,
+      file: f,
     }
     setAttachments(prev => [...prev, att])
     e.target.value = ''
@@ -339,11 +329,7 @@ export function ChatScreen() {
         }}
       >
         <div className="max-w-3xl mx-auto w-full">
-          {messages.length === 0 ? (
-            <ChatWelcome onQuickAction={handleQuickAction} />
-          ) : (
-            <MessageList messages={messages} />
-          )}
+          <MessageList messages={messages} />
         </div>
       </div>
 

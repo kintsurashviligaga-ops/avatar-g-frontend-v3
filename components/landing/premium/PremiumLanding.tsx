@@ -11,7 +11,7 @@ import { HeroSection } from './HeroSection'
 import { WorkflowPipelineBuilder } from './WorkflowPipelineBuilder'
 import { AppDownloadSection } from './AppDownloadSection'
 import { LandingFooter } from './LandingFooter'
-import { BottomChatBar } from '@/components/chat/bottom/BottomChatBar'
+import { AvatarBuilderWindow } from './AvatarBuilderWindow'
 
 export default function PremiumLanding() {
   return (
@@ -20,11 +20,11 @@ export default function PremiumLanding() {
       <Separator />
       <WorkflowPipelineBuilder />
       <Separator />
-      <AppDownloadSection />
-      <Separator />
       <div className="px-4 sm:px-6 py-10 sm:py-14 lg:py-16">
-        <BottomChatBar mode="landing" />
+        <AvatarBuilderWindow />
       </div>
+      <Separator />
+      <AppDownloadSection />
       <LandingFooter />
     </div>
   )

@@ -52,6 +52,7 @@ export type FCAttachment = {
   mimeType: string
   localPreviewUrl?: string
   size?: number
+  file?: File
 }
 
 export type VoiceStatus = 'idle' | 'requesting_permission' | 'listening' | 'processing' | 'error'

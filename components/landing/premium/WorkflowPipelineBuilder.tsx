@@ -50,10 +50,11 @@ const COPY = {
     title: 'One Platform.\nEvery Creative Tool.',
     sub: 'Chain AI services into automated pipelines. Pick a workflow or build your own — launch everything with a single click.',
     servicesLabel: 'AVAILABLE SERVICES',
-    pipelineLabel: 'PIPELINE',
+    pipelineLabel: 'Pipeline',
+    steps: 'steps',
     runBtn: 'Run Pipeline',
-    tryBuilder: 'Open the Builder',
-    templates: 'QUICK START',
+    tryBuilder: 'Quick Start',
+    templates: 'TEMPLATES',
     processing: 'Processing…',
     complete: 'Complete!',
     ready: 'Ready',
@@ -64,9 +65,10 @@ const COPY = {
     sub: 'დააკავშირე AI სერვისები ავტომატიზირებულ პაიპლაინებში. აირჩიე შაბლონი ან ააწყვე თავად — გაუშვი ყველაფერი ერთი კლიკით.',
     servicesLabel: 'ხელმისაწვდომი სერვისები',
     pipelineLabel: 'პაიპლაინი',
+    steps: 'ნაბიჯი',
     runBtn: 'გაშვება',
-    tryBuilder: 'გახსენი ბილდერი',
-    templates: 'სწრაფი დაწყება',
+    tryBuilder: 'სწრაფი დაწყება',
+    templates: 'შაბლონები',
     processing: 'მუშავდება…',
     complete: 'დასრულდა!',
     ready: 'მზადაა',
@@ -77,9 +79,10 @@ const COPY = {
     sub: 'Соединяй AI-сервисы в автоматизированные потоки. Выбери шаблон или построй сам — запусти всё одним кликом.',
     servicesLabel: 'Доступные сервисы',
     pipelineLabel: 'Пайплайн',
+    steps: 'шагов',
     runBtn: 'Запустить',
-    tryBuilder: 'Открыть билдер',
-    templates: 'Быстрый старт',
+    tryBuilder: 'Быстрый старт',
+    templates: 'Шаблоны',
     processing: 'Обработка…',
     complete: 'Готово!',
     ready: 'Готов',
@@ -660,14 +663,14 @@ export function WorkflowPipelineBuilder() {
                 </span>
                 {pipeline.length > 0 && (
                   <span
-                    className="text-[10px] font-black px-2 py-0.5 rounded-full"
+                    className="text-[10px] font-medium px-2 py-0.5 rounded-full"
                     style={{
-                      background: 'rgba(34,211,238,0.15)',
-                      border: '1px solid rgba(34,211,238,0.2)',
-                      color: '#22d3ee',
+                      background: 'rgba(34,211,238,0.1)',
+                      border: '1px solid rgba(34,211,238,0.15)',
+                      color: 'rgba(34,211,238,0.8)',
                     }}
                   >
-                    {pipeline.length}
+                    {pipeline.length} {c.steps}
                   </span>
                 )}
               </div>
@@ -746,7 +749,7 @@ export function WorkflowPipelineBuilder() {
                       boxShadow: '0 0 20px rgba(34,211,238,0.1)',
                     }}
                   >
-                    {isRunning ? `⏳ ${c.processing}` : `⚡ ${c.runBtn}`}
+                    {isRunning ? c.processing : c.runBtn}
                   </button>
 
                   {/* Open Builder CTA */}
