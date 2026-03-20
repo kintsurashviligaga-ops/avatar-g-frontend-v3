@@ -89,10 +89,6 @@ export function AvatarBuilderWindow() {
         video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
       })
       streamRef.current = stream
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream
-        videoRef.current.play().catch(() => {})
-      }
       setState('scanning')
     } catch (err) {
       const msg = err instanceof DOMException && err.name === 'NotAllowedError'
@@ -101,6 +97,14 @@ export function AvatarBuilderWindow() {
       setCameraError(msg)
     }
   }, [c])
+
+  /* ── Attach stream to video element after it renders ── */
+  useEffect(() => {
+    if (state === 'scanning' && streamRef.current && videoRef.current) {
+      videoRef.current.srcObject = streamRef.current
+      videoRef.current.play().catch(() => {})
+    }
+  }, [state])
 
   /* ── Capture from camera ── */
   const capturePhoto = useCallback(() => {

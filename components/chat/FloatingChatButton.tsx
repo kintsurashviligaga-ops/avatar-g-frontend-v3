@@ -25,7 +25,7 @@ export function FloatingChatButton() {
         onClick={() => setCallOpen(true)}
         aria-label={callLabel}
         type="button"
-        className="floating-call-btn fixed bottom-20 md:bottom-6 left-4 z-[9999] flex items-center justify-center w-14 h-14 rounded-full transition-all duration-300 hover:scale-105 hover:-translate-y-0.5 active:scale-95"
+        className="floating-call-btn fixed bottom-20 md:bottom-6 left-4 z-[9999] flex items-center justify-center w-14 h-14 rounded-full transition-all duration-300 hover:scale-105 hover:-translate-y-0.5 active:scale-95 pointer-events-auto"
         style={{
           background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 50%, #b91c1c 100%)',
           color: '#fff',
@@ -43,7 +43,7 @@ export function FloatingChatButton() {
       <Link
         href={chatHref}
         aria-label={chatLabel}
-        className="floating-chat-btn fixed bottom-20 md:bottom-6 right-4 z-[9999] flex items-center justify-center w-14 h-14 rounded-full transition-all duration-300 hover:scale-105 hover:-translate-y-0.5 active:scale-95"
+        className="floating-chat-btn fixed bottom-20 md:bottom-6 right-4 z-[9999] flex items-center justify-center w-14 h-14 rounded-full transition-all duration-300 hover:scale-105 hover:-translate-y-0.5 active:scale-95 pointer-events-auto"
         style={{
           background: 'linear-gradient(135deg, #22d3ee 0%, #06b6d4 50%, #0891b2 100%)',
           color: '#fff',

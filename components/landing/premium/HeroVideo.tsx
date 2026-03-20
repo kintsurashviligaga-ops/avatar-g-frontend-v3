@@ -177,11 +177,13 @@ export function HeroVideo() {
           preload="auto"
         />
 
-        {/* Click-to-play overlay area */}
-        <div
-          className="absolute inset-0 z-20 cursor-pointer"
-          onClick={togglePlay}
-        />
+        {/* Click-to-play overlay area — only active when video is visible */}
+        {videoReady && !videoError && (
+          <div
+            className="absolute inset-0 z-20 cursor-pointer"
+            onClick={togglePlay}
+          />
+        )}
 
         {/* ── Controls bar ── */}
         <div
