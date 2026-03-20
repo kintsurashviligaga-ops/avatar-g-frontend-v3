@@ -38,6 +38,10 @@ export function HeroVideo() {
   useEffect(() => {
     const v = videoRef.current
     if (!v) return
+    // Force muted attribute via DOM — React JSX `muted` prop has a known bug
+    // where it doesn't always set the HTML attribute, causing autoplay to fail
+    v.muted = true
+    v.setAttribute('muted', '')
     const markReady = () => { setVideoReady(true); setDuration(v.duration || 0) }
     const onError = () => setVideoError(true)
     const onPlay = () => setPlaying(true)
