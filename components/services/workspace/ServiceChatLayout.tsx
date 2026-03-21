@@ -351,6 +351,9 @@ export default function ServiceChatLayout({
         {/* 4D Environment Layer */}
         <div className="grok-4d-environment" aria-hidden="true">
           <div className="grok-4d-grid" />
+          <div className="grok-4d-particles" />
+          <div className="grok-4d-side-glow-left" />
+          <div className="grok-4d-side-glow-right" />
         </div>
 
         {/* Grok Header */}

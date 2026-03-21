@@ -306,7 +306,11 @@ const TemplatePill = memo(function TemplatePill({
 /* ══════════════════════════════════════════════════════════════════
  *  MAIN EXPORT
  * ══════════════════════════════════════════════════════════════════ */
-export function WorkflowPipelineBuilder() {
+interface WorkflowPipelineBuilderProps {
+  createdAvatar?: string | null
+}
+
+export function WorkflowPipelineBuilder({ createdAvatar }: WorkflowPipelineBuilderProps) {
   const { language } = useLanguage()
   const lang = (language as Lang) || 'en'
   const c = COPY[lang] || COPY.en
@@ -393,7 +397,7 @@ export function WorkflowPipelineBuilder() {
 
   /* ── Render ── */
   return (
-    <section className="relative px-4 sm:px-6 lg:px-10 py-20 sm:py-28 overflow-hidden">
+    <section id="workflow-builder" className="relative px-4 sm:px-6 lg:px-10 py-20 sm:py-28 overflow-hidden">
       {/* ── Background atmosphere ── */}
       <div
         className="absolute inset-0 pointer-events-none"
@@ -458,6 +462,30 @@ export function WorkflowPipelineBuilder() {
             >
               {c.sub}
             </motion.p>
+            {createdAvatar && (
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.4 }}
+                className="mt-4 flex items-center gap-3 px-4 py-2.5 rounded-xl"
+                style={{
+                  background: 'linear-gradient(135deg, rgba(34,211,238,0.12), rgba(6,182,212,0.06))',
+                  border: '1px solid rgba(34,211,238,0.25)',
+                }}
+              >
+                <img
+                  src={createdAvatar}
+                  alt="Your avatar"
+                  className="w-9 h-9 rounded-lg object-cover"
+                  style={{ border: '1px solid rgba(34,211,238,0.4)' }}
+                />
+                <div>
+                  <div className="text-xs font-bold" style={{ color: '#22d3ee' }}>Avatar loaded into pipeline</div>
+                  <div className="text-[10px]" style={{ color: 'rgba(255,255,255,0.4)' }}>Ready for workflow processing</div>
+                </div>
+                <div className="w-2 h-2 rounded-full ml-auto" style={{ backgroundColor: '#34d399', boxShadow: '0 0 8px #34d399' }} />
+              </motion.div>
+            )}
           </div>
 
           {/* Status badge */}

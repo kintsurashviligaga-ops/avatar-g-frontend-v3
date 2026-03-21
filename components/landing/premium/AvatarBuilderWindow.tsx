@@ -56,7 +56,11 @@ const COPY = {
 type BuilderState = 'idle' | 'scanning' | 'processing' | 'result'
 type Lang = 'en' | 'ka' | 'ru'
 
-export function AvatarBuilderWindow() {
+interface AvatarBuilderWindowProps {
+  onAvatarCreated?: (avatarSrc: string) => void
+}
+
+export function AvatarBuilderWindow({ onAvatarCreated }: AvatarBuilderWindowProps) {
   const { language } = useLanguage()
   const router = useRouter()
   const lang = (language as Lang) || 'en'
@@ -128,8 +132,11 @@ export function AvatarBuilderWindow() {
 
     setState('processing')
     // Simulate generation
-    setTimeout(() => setState('result'), 2500)
-  }, [])
+    setTimeout(() => {
+      setState('result')
+      if (dataUrl) onAvatarCreated?.(dataUrl)
+    }, 2500)
+  }, [onAvatarCreated])
 
   /* ── Upload photo ── */
   const handleUpload = useCallback(() => {
@@ -144,9 +151,12 @@ export function AvatarBuilderWindow() {
     const url = URL.createObjectURL(file)
     setPreviewSrc(url)
     setState('processing')
-    setTimeout(() => setState('result'), 2500)
+    setTimeout(() => {
+      setState('result')
+      onAvatarCreated?.(url)
+    }, 2500)
     e.target.value = ''
-  }, [])
+  }, [onAvatarCreated])
 
   /* ── Regenerate ── */
   const handleRegenerate = useCallback(() => {
@@ -160,6 +170,12 @@ export function AvatarBuilderWindow() {
     const base = `/${language}/services/avatar`
     router.push(prompt ? `${base}?prompt=${encodeURIComponent(prompt)}` : base)
   }, [language, router, stylePrompt])
+
+  /* ── Scroll to Workflow Builder section below ── */
+  const goToWorkflow = useCallback(() => {
+    const el = document.getElementById('workflow-builder')
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }, [])
 
   /* ── Reset to idle ── */
   const reset = useCallback(() => {
@@ -380,6 +396,13 @@ export function AvatarBuilderWindow() {
                   <button
                     onClick={goToStudio}
                     className="px-4 py-2 rounded-xl text-[11px] font-bold tracking-wide transition-all active:scale-95"
+                    style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.15)', color: 'rgba(255,255,255,0.8)', backdropFilter: 'blur(8px)' }}
+                  >
+                    {c.useInStudio}
+                  </button>
+                  <button
+                    onClick={goToWorkflow}
+                    className="px-4 py-2 rounded-xl text-[11px] font-bold tracking-wide transition-all active:scale-95"
                     style={{
                       background: 'linear-gradient(135deg, rgba(34,211,238,0.25), rgba(6,182,212,0.15))',
                       border: '1px solid rgba(34,211,238,0.4)',
@@ -387,7 +410,7 @@ export function AvatarBuilderWindow() {
                       boxShadow: '0 0 16px rgba(34,211,238,0.15)',
                     }}
                   >
-                    {c.useInStudio}
+                    ⚡ Use in Workflow
                   </button>
                 </div>
               </div>
