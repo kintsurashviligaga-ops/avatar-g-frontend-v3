@@ -3,15 +3,11 @@
 /**
  * ServiceChatLayout — Main orchestrator for every service workspace.
  *
- * Agent G gets the premium Grok-style UI with:
- *   - GrokHeader (Ask/Create tabs, hamburger, avatar)
- *   - GrokComposer (bottom bar with mode chip, speak button)
- *   - ChatModeSelector (Deep/Expert/Fast/Auto)
- *   - ChatResponseToolbar (copy/share/like/dislike/audio/regen)
- *   - ChatActionChips (Image, Voice Mode, Open Camera)
- *   - GrokEmptyState (centered large logo)
+ * Agent G = premium Grok-style UI (GrokHeader, GrokComposer, tabs, etc.)
+ * Other services = standard chat layout.
  *
- * Other services keep the standard layout.
+ * Service-aware: Chat understands the current service context, can trigger
+ * platform actions, navigate between services, and hand off outputs.
  * Portal-rendered at z-[9999].
  */
 
@@ -19,6 +15,7 @@ import { useState, useCallback, useRef, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { useRouter, usePathname } from 'next/navigation'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
+import { useServiceContext, type ServiceOutput } from '@/lib/services/ServiceContext'
 
 import { getServiceWorkspaceConfig } from '@/lib/services/workspace-config'
 import { ServiceHeader } from './ServiceHeader'
@@ -93,6 +90,12 @@ export default function ServiceChatLayout({
   const router = useRouter()
   const pathname = usePathname()
   const { language } = useLanguage()
+  const serviceCtx = useServiceContext()
+
+  /* ── Register active service in global context ── */
+  useEffect(() => {
+    serviceCtx.setActiveService(serviceId)
+  }, [serviceId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   /* ── workspace config ── */
   const config = getServiceWorkspaceConfig(serviceId)
@@ -193,6 +196,11 @@ export default function ServiceChatLayout({
           context: {
             currentPage: pathname || undefined,
             activeService: serviceId,
+            serviceName,
+            previousService: serviceCtx.previousService,
+            recentOutputs: serviceCtx.recentOutputs.slice(0, 5).map(o => ({
+              serviceId: o.serviceId, type: o.type, label: o.label,
+            })),
           },
           history,
         }),
@@ -219,6 +227,18 @@ export default function ServiceChatLayout({
           .concat(assistantMsg)
       )
       setOutputReady(true)
+
+      // Track output in global service context
+      if (assistantMsg.outputType) {
+        const output: ServiceOutput = {
+          id: assistantMsg.id,
+          serviceId,
+          type: assistantMsg.outputType,
+          label: assistantMsg.content.slice(0, 80),
+          createdAt: assistantMsg.createdAt
+        }
+        serviceCtx.addOutput(output)
+      }
     } catch {
       const errMsg: ServiceMessage = { id: uid(), role: 'system', content: '❌ Error — please try again.', createdAt: now() }
       setMessages(prev =>
@@ -231,7 +251,7 @@ export default function ServiceChatLayout({
       setIsSubmitting(false)
       scrollToBottom()
     }
-  }, [locale, sessionId, pathname, serviceId, toolValues, messages, scrollToBottom])
+  }, [locale, sessionId, pathname, serviceId, serviceName, toolValues, messages, scrollToBottom, serviceCtx])
 
   /* ── handlers ── */
   const handleSend = useCallback(() => { sendMessage(composerText) }, [composerText, sendMessage])
@@ -411,8 +431,8 @@ export default function ServiceChatLayout({
                 onFeaturedAction={() => sendMessage('Animate my photos')}
               />
             ) : messages.length === 0 ? (
-              /* Grok empty state — centered logo */
-              <GrokEmptyState serviceIcon={serviceIcon} onSuggestionClick={sendMessage} />
+              /* Grok empty state — centered logo + quick actions */
+              <GrokEmptyState serviceIcon={serviceIcon} onSuggestionClick={sendMessage} activeService={serviceId} />
             ) : (
               /* Chat messages */
               <div className="flex-1 px-4 py-3 space-y-4">

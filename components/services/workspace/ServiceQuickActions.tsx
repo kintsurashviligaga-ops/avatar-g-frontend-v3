@@ -22,7 +22,7 @@ export function ServiceQuickActions({ actions, onAction }: ServiceQuickActionsPr
   if (actions.length === 0) return null
 
   return (
-    <div className="flex gap-2 overflow-x-auto scrollbar-hide py-1 px-1">
+    <div className="flex gap-2 overflow-x-auto no-scrollbar py-1 px-1">
       {actions.map(action => {
         const label = action.label[lang] || action.label.en
         return (

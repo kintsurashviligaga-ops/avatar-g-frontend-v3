@@ -4,11 +4,12 @@
  * PremiumLanding.tsx
  * ==================
  * MyAvatar.ge world-class landing page.
- * Flow: Hero → Avatar Creation → Workflow Builder → App Download → Footer
+ * Flow: Hero → Services → Avatar Creation → Workflow Builder → App Download → Footer
  */
 
 import { useState, useCallback } from 'react'
 import { HeroSection } from './HeroSection'
+import { ServicesSlider } from './ServicesSlider'
 import { WorkflowPipelineBuilder } from './WorkflowPipelineBuilder'
 import { AppDownloadSection } from './AppDownloadSection'
 import { LandingFooter } from './LandingFooter'
@@ -24,6 +25,8 @@ export default function PremiumLanding() {
   return (
     <div className="relative min-h-screen overflow-x-hidden" style={{ color: 'var(--color-text)' }}>
       <HeroSection />
+      <Separator />
+      <ServicesSlider />
       <Separator />
       <div className="px-4 sm:px-6 py-10 sm:py-14 lg:py-16">
         <AvatarBuilderWindow onAvatarCreated={handleAvatarCreated} />
