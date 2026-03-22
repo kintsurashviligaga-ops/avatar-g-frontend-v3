@@ -152,6 +152,22 @@ export const SERVICE_VISUALS: Record<string, ServiceVisualConfig> = {
     visualIntent: 'Smart travel planning with destination previews and intelligent guides',
     imagePrompt: 'Premium travel planning dashboard, interactive destination map, luxury hotel previews, itinerary planner, local experience cards, modern tourism intelligence interface, upscale travel tech platform',
   },
+  game: {
+    gradient: 'linear-gradient(135deg, #0d0a20 0%, #1a1240 50%, #130d30 100%)',
+    gradientLight: 'linear-gradient(135deg, #ede9fe 0%, #e0e7ff 50%, #dbeafe 100%)',
+    accent: '#8b5cf6',
+    accentSecondary: '#6366f1',
+    visualIntent: 'Immersive game creation with 3D world building and interactive simulation',
+    imagePrompt: 'Premium AI game creation scene, immersive 3D game world materializing from particles, holographic game controller, neon-lit futuristic environment, interactive simulation workspace, vibrant gaming atmosphere, cinematic game design studio',
+  },
+  interior: {
+    gradient: 'linear-gradient(135deg, #1a140d 0%, #2a2015 50%, #1f1a10 100%)',
+    gradientLight: 'linear-gradient(135deg, #fef3c7 0%, #fde68a 50%, #fed7aa 100%)',
+    accent: '#f59e0b',
+    accentSecondary: '#d97706',
+    visualIntent: 'Premium AI interior design transformation with luxury room redesign',
+    imagePrompt: 'Premium AI interior design scene, luxury modern living room being redesigned, holographic furniture and material options floating, before-after transformation, architectural blueprint lines, warm elegant ambiance, professional design studio feel',
+  },
   next: {
     gradient: 'linear-gradient(135deg, #131316 0%, #1e1e24 50%, #18181c 100%)',
     gradientLight: 'linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 50%, #f8fafc 100%)',
