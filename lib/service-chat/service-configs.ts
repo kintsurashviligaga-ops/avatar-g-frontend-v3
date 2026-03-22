@@ -521,6 +521,515 @@ export const editingConfig: ServiceChatConfig = {
 };
 
 /* ═══════════════════════════════════════════════════════════════════
+   AGENT G SERVICE
+   ═══════════════════════════════════════════════════════════════════ */
+export const agentGConfig: ServiceChatConfig = {
+  slug: 'agent-g',
+  agentId: 'agent-g',
+  icon: '🤖',
+  name: { en: 'Agent G', ka: 'აგენტი G', ru: 'Агент G' },
+  description: {
+    en: 'Coordinate autonomous workflows across your AI workspace',
+    ka: 'მართე ავტონომიური პროცესები შენს AI სამუშაო გარემოში',
+    ru: 'Координируйте автономные процессы в вашем AI-рабочем пространстве',
+  },
+  accentColor: '#22D3EE',
+  accentGlow: 'rgba(34,211,238,0.15)',
+  welcomeMessage: {
+    en: "I'm Agent G — your AI orchestrator. I can coordinate tasks across all services, manage workflows, and help you achieve complex goals autonomously.",
+    ka: 'მე ვარ აგენტი G — თქვენი AI ორკესტრატორი. შემიძლია ყველა სერვისის კოორდინაცია.',
+    ru: 'Я Агент G — ваш AI-оркестратор. Координирую задачи между всеми сервисами.',
+  },
+  agentModeLabel: { en: 'Full Autonomy', ka: 'სრული ავტონომია', ru: 'Полная автономия' },
+  placeholders: {
+    default: { en: 'Tell Agent G what you need...', ka: 'უთხარი აგენტ G-ს რა გჭირდება...', ru: 'Скажите Агенту G, что вам нужно...' },
+    agent: { en: 'Agent G autonomous mode — describe your goal', ka: 'აგენტი G ავტონომიურ რეჟიმში', ru: 'Агент G в автономном режиме — опишите цель' },
+  },
+  previewType: 'text',
+  quickActions: [
+    { id: 'new-workflow', label: { en: 'New Workflow', ka: 'ახალი პროცესი', ru: 'Новый процесс' }, icon: 'GitBranch', action: 'new-workflow', category: 'create' },
+    { id: 'multi-service', label: { en: 'Multi-Service Task', ka: 'მრავალ-სერვისი', ru: 'Мульти-сервис' }, icon: 'Layers', action: 'multi-service', category: 'create' },
+    { id: 'analyze', label: { en: 'Analyze Project', ka: 'პროექტის ანალიზი', ru: 'Анализ проекта' }, icon: 'Brain', action: 'analyze', category: 'tools' },
+    { id: 'automate', label: { en: 'Automate', ka: 'ავტომატიზაცია', ru: 'Автоматизация' }, icon: 'Zap', action: 'automate', category: 'tools' },
+    { id: 'status', label: { en: 'Task Status', ka: 'ამოცანის სტატუსი', ru: 'Статус задачи' }, icon: 'BarChart3', action: 'status', category: 'manage' },
+    { id: 'delegate', label: { en: 'Delegate', ka: 'დელეგირება', ru: 'Делегировать' }, icon: 'ArrowRight', action: 'delegate', category: 'manage' },
+  ],
+  hamburgerMenu: [
+    { id: 'new-session', label: { en: 'New Session', ka: 'ახალი სესია', ru: 'Новая сессия' }, icon: 'Plus', action: 'new-session' },
+    { id: 'my-tasks', label: { en: 'My Tasks', ka: 'ჩემი ამოცანები', ru: 'Мои задачи' }, icon: 'List', action: 'my-tasks' },
+    { id: 'active-workflows', label: { en: 'Active Workflows', ka: 'აქტიური პროცესები', ru: 'Активные процессы' }, icon: 'GitBranch', action: 'active-workflows' },
+    { id: 'service-status', label: { en: 'Service Status', ka: 'სერვისების სტატუსი', ru: 'Статус сервисов' }, icon: 'BarChart3', action: 'service-status', divider: true },
+    { id: 'orchestration-log', label: { en: 'Orchestration Log', ka: 'ორკესტრაციის ლოგი', ru: 'Лог оркестрации' }, icon: 'FileText', action: 'orchestration-log' },
+    { id: 'settings', label: { en: 'Agent Settings', ka: 'აგენტის პარამეტრები', ru: 'Настройки агента' }, icon: 'Settings2', action: 'settings' },
+  ],
+  toolPanels: [
+    {
+      id: 'orchestration', label: { en: 'Orchestration', ka: 'ორკესტრაცია', ru: 'Оркестрация' }, icon: 'Settings2',
+      options: [
+        { id: 'autonomy', label: { en: 'Autonomy Level', ka: 'ავტონომიის დონე', ru: 'Уровень автономии' }, type: 'slider', min: 1, max: 5, step: 1, defaultValue: 3 },
+        { id: 'confirm-actions', label: { en: 'Confirm Actions', ka: 'მოქმედებების დადასტურება', ru: 'Подтверждать действия' }, type: 'toggle', defaultValue: true },
+        { id: 'parallel', label: { en: 'Parallel Execution', ka: 'პარალელური შესრულება', ru: 'Параллельное выполнение' }, type: 'toggle', defaultValue: false },
+      ],
+    },
+  ],
+  transferActions: [
+    { id: 'to-workflow', label: { en: 'Open Workflow Builder', ka: 'გახსენი Workflow', ru: 'Открыть Workflow' }, icon: 'GitBranch', targetService: 'workflow', description: { en: 'Design this as a reusable workflow', ka: 'მრავალჯერადი workflow-ის შექმნა', ru: 'Создать переиспользуемый workflow' } },
+    { id: 'to-business', label: { en: 'Business Analysis', ka: 'ბიზნეს ანალიზი', ru: 'Бизнес-анализ' }, icon: 'Briefcase', targetService: 'business', description: { en: 'Send to Business Agent for analysis', ka: 'გაგზავნე ბიზნეს აგენტთან', ru: 'Отправить бизнес-агенту' } },
+  ],
+};
+
+/* ═══════════════════════════════════════════════════════════════════
+   PHOTO SERVICE
+   ═══════════════════════════════════════════════════════════════════ */
+export const photoConfig: ServiceChatConfig = {
+  slug: 'photo',
+  agentId: 'photo-agent',
+  icon: '📸',
+  name: { en: 'Photo Studio', ka: 'ფოტო სტუდია', ru: 'Фотостудия' },
+  description: {
+    en: 'Create editorial photo outputs and campaign image sets',
+    ka: 'შექმენი სარედაქციო ფოტოები და კამპანიური ვიზუალები',
+    ru: 'Создавайте фотоконтент и визуалы для кампаний',
+  },
+  accentColor: '#FB923C',
+  accentGlow: 'rgba(251,146,60,0.15)',
+  welcomeMessage: {
+    en: "Welcome to Photo Studio! I can enhance, retouch, and create stunning editorial photos. Upload a photo or describe what you need.",
+    ka: 'კეთილი იყოს თქვენი მობრძანება ფოტო სტუდიაში! ატვირთეთ ფოტო ან აღწერეთ რა გჭირდებათ.',
+    ru: 'Добро пожаловать в Фотостудию! Загрузите фото или опишите, что хотите создать.',
+  },
+  agentModeLabel: { en: 'Photo Agent', ka: 'ფოტო აგენტი', ru: 'Фото агент' },
+  placeholders: {
+    default: { en: 'Describe your photo or upload an image...', ka: 'აღწერეთ ფოტო ან ატვირთეთ სურათი...', ru: 'Опишите фото или загрузите изображение...' },
+    agent: { en: 'Photo Agent ready — what should I create?', ka: 'ფოტო აგენტი მზადაა', ru: 'Фото агент готов — что создать?' },
+  },
+  previewType: 'image',
+  quickActions: [
+    { id: 'upload-photo', label: { en: 'Upload Photo', ka: 'ფოტოს ატვირთვა', ru: 'Загрузить фото' }, icon: 'Upload', action: 'upload-photo', category: 'create' },
+    { id: 'enhance', label: { en: 'AI Enhance', ka: 'AI გაუმჯობესება', ru: 'AI улучшение' }, icon: 'Sparkles', action: 'enhance', category: 'edit' },
+    { id: 'retouch', label: { en: 'Retouch', ka: 'რეტუში', ru: 'Ретушь' }, icon: 'Wand2', action: 'retouch', category: 'edit' },
+    { id: 'portrait-mode', label: { en: 'Portrait', ka: 'პორტრეტი', ru: 'Портрет' }, icon: 'Camera', action: 'portrait-mode', category: 'style' },
+    { id: 'background-remove', label: { en: 'Remove BG', ka: 'ფონის წაშლა', ru: 'Удалить фон' }, icon: 'Eraser', action: 'background-remove', category: 'edit' },
+    { id: 'batch-edit', label: { en: 'Batch Edit', ka: 'პაკეტური რედაქტირება', ru: 'Пакетная обработка' }, icon: 'Layers', action: 'batch-edit', category: 'tools' },
+  ],
+  hamburgerMenu: [
+    { id: 'new-session', label: { en: 'New Session', ka: 'ახალი სესია', ru: 'Новая сессия' }, icon: 'Plus', action: 'new-session' },
+    { id: 'my-photos', label: { en: 'My Photos', ka: 'ჩემი ფოტოები', ru: 'Мои фото' }, icon: 'FolderOpen', action: 'my-photos' },
+    { id: 'camera-capture', label: { en: 'Camera Capture', ka: 'კამერის გადაღება', ru: 'Снять с камеры' }, icon: 'Camera', action: 'camera-capture' },
+    { id: 'filters', label: { en: 'Filter Presets', ka: 'ფილტრის პრესეტები', ru: 'Пресеты фильтров' }, icon: 'Aperture', action: 'filters', divider: true },
+    { id: 'export', label: { en: 'Export', ka: 'ექსპორტი', ru: 'Экспорт' }, icon: 'Download', action: 'export' },
+    { id: 'to-image', label: { en: 'Edit in Image Creator', ka: 'Image Creator-ში', ru: 'В Image Creator' }, icon: 'ImagePlus', action: 'transfer-image', divider: true },
+    { id: 'to-agentg', label: { en: 'Continue with Agent G', ka: 'გაგრძელება Agent G-ით', ru: 'Продолжить с Agent G' }, icon: 'Bot', action: 'transfer-agentg' },
+  ],
+  toolPanels: [
+    {
+      id: 'photo-tools', label: { en: 'Photo Tools', ka: 'ფოტო ხელსაწყოები', ru: 'Фото-инструменты' }, icon: 'Aperture',
+      options: [
+        { id: 'enhancement', label: { en: 'Enhancement', ka: 'გაუმჯობესება', ru: 'Улучшение' }, type: 'chips', options: [
+          { value: 'auto', label: { en: 'Auto', ka: 'ავტო', ru: 'Авто' } },
+          { value: 'portrait', label: { en: 'Portrait', ka: 'პორტრეტი', ru: 'Портрет' } },
+          { value: 'landscape', label: { en: 'Landscape', ka: 'ლანდშაფტი', ru: 'Пейзаж' } },
+          { value: 'product', label: { en: 'Product', ka: 'პროდუქტი', ru: 'Продукт' } },
+        ], defaultValue: 'auto' },
+        { id: 'quality-boost', label: { en: 'Quality Boost', ka: 'ხარისხის ამაღლება', ru: 'Повышение качества' }, type: 'slider', min: 1, max: 4, step: 1, defaultValue: 2 },
+        { id: 'preserve-original', label: { en: 'Preserve Original', ka: 'ორიგინალის შენახვა', ru: 'Сохранить оригинал' }, type: 'toggle', defaultValue: true },
+      ],
+    },
+  ],
+  transferActions: [
+    { id: 'to-image', label: { en: 'Edit in Image Creator', ka: 'სურათის რედაქტირება', ru: 'В Image Creator' }, icon: 'ImagePlus', targetService: 'image', description: { en: 'Continue editing in Image Creator', ka: 'გააგრძელე Image Creator-ში', ru: 'Продолжить в Image Creator' } },
+    { id: 'to-video', label: { en: 'Use in Video', ka: 'ვიდეოში გამოყენება', ru: 'В видео' }, icon: 'Video', targetService: 'video', description: { en: 'Use this photo in a video project', ka: 'გამოიყენე ეს ფოტო ვიდეოში', ru: 'Использовать фото в видео' } },
+    { id: 'to-avatar', label: { en: 'Create Avatar', ka: 'ავატარის შექმნა', ru: 'Создать аватар' }, icon: 'UserCircle', targetService: 'avatar', description: { en: 'Create avatar from this photo', ka: 'შექმენი ავატარი ამ ფოტოდან', ru: 'Создать аватар из этого фото' } },
+  ],
+};
+
+/* ═══════════════════════════════════════════════════════════════════
+   MEDIA PRODUCTION SERVICE
+   ═══════════════════════════════════════════════════════════════════ */
+export const mediaConfig: ServiceChatConfig = {
+  slug: 'media',
+  agentId: 'media-agent',
+  icon: '📽️',
+  name: { en: 'Media Production', ka: 'მედია წარმოება', ru: 'Медиапроизводство' },
+  description: {
+    en: 'Build complete multimedia outputs for campaigns',
+    ka: 'მოამზადე სრულფასოვანი მედია-კონტენტი',
+    ru: 'Создавайте медиаконтент для кампаний',
+  },
+  accentColor: '#E879F9',
+  accentGlow: 'rgba(232,121,249,0.15)',
+  welcomeMessage: {
+    en: "Welcome to Media Production! I can help you create complete multimedia campaigns — combining video, audio, images, and text into unified media outputs.",
+    ka: 'კეთილი იყოს თქვენი მობრძანება მედია წარმოებაში! შევქმნით სრულფასოვან მედია-კამპანიებს.',
+    ru: 'Добро пожаловать в Медиапроизводство! Создавайте мультимедийные кампании.',
+  },
+  agentModeLabel: { en: 'Media Agent', ka: 'მედია აგენტი', ru: 'Медиа агент' },
+  placeholders: {
+    default: { en: 'Describe your media project or upload assets...', ka: 'აღწერეთ მედია პროექტი...', ru: 'Опишите медиа-проект или загрузите материалы...' },
+    agent: { en: 'Media Agent active — describe your campaign', ka: 'მედია აგენტი აქტიურია', ru: 'Медиа агент активен — опишите кампанию' },
+  },
+  previewType: 'video',
+  quickActions: [
+    { id: 'new-campaign', label: { en: 'New Campaign', ka: 'ახალი კამპანია', ru: 'Новая кампания' }, icon: 'Megaphone', action: 'new-campaign', category: 'create' },
+    { id: 'upload-assets', label: { en: 'Upload Assets', ka: 'მასალის ატვირთვა', ru: 'Загрузить материалы' }, icon: 'Upload', action: 'upload-assets', category: 'create' },
+    { id: 'combine-media', label: { en: 'Combine Media', ka: 'მედიის გაერთიანება', ru: 'Объединить медиа' }, icon: 'Combine', action: 'combine-media', category: 'tools' },
+    { id: 'social-format', label: { en: 'Social Formats', ka: 'სოციალური ფორმატები', ru: 'Соцсети форматы' }, icon: 'Share2', action: 'social-format', category: 'tools' },
+    { id: 'brand-kit', label: { en: 'Brand Kit', ka: 'ბრენდ კიტი', ru: 'Brand Kit' }, icon: 'Palette', action: 'brand-kit', category: 'tools' },
+    { id: 'publish', label: { en: 'Publish', ka: 'გამოქვეყნება', ru: 'Публикация' }, icon: 'ExternalLink', action: 'publish', category: 'manage' },
+  ],
+  hamburgerMenu: [
+    { id: 'new-session', label: { en: 'New Project', ka: 'ახალი პროექტი', ru: 'Новый проект' }, icon: 'Plus', action: 'new-session' },
+    { id: 'my-projects', label: { en: 'My Projects', ka: 'ჩემი პროექტები', ru: 'Мои проекты' }, icon: 'FolderOpen', action: 'my-projects' },
+    { id: 'templates', label: { en: 'Campaign Templates', ka: 'კამპანიის შაბლონები', ru: 'Шаблоны' }, icon: 'LayoutTemplate', action: 'templates' },
+    { id: 'asset-library', label: { en: 'Asset Library', ka: 'მასალების ბიბლიოთეკა', ru: 'Библиотека' }, icon: 'FolderOpen', action: 'asset-library', divider: true },
+    { id: 'export-all', label: { en: 'Export All', ka: 'ყველას ექსპორტი', ru: 'Экспорт всего' }, icon: 'Download', action: 'export-all' },
+    { id: 'to-agentg', label: { en: 'Continue with Agent G', ka: 'გაგრძელება Agent G-ით', ru: 'Продолжить с Agent G' }, icon: 'Bot', action: 'transfer-agentg', divider: true },
+  ],
+  toolPanels: [
+    {
+      id: 'media-settings', label: { en: 'Media Settings', ka: 'მედია პარამეტრები', ru: 'Настройки медиа' }, icon: 'Settings2',
+      options: [
+        { id: 'output-format', label: { en: 'Output', ka: 'ფორმატი', ru: 'Формат' }, type: 'chips', options: [
+          { value: 'social', label: { en: 'Social', ka: 'სოციალური', ru: 'Соцсети' } },
+          { value: 'web', label: { en: 'Web', ka: 'ვებ', ru: 'Веб' } },
+          { value: 'print', label: { en: 'Print', ka: 'ბეჭდვა', ru: 'Печать' } },
+          { value: 'broadcast', label: { en: 'Broadcast', ka: 'ტელევიზია', ru: 'ТВ' } },
+        ], defaultValue: 'social' },
+        { id: 'quality', label: { en: 'Quality', ka: 'ხარისხი', ru: 'Качество' }, type: 'slider', min: 1, max: 4, step: 1, defaultValue: 3 },
+      ],
+    },
+  ],
+  transferActions: [
+    { id: 'to-video', label: { en: 'Edit Video', ka: 'ვიდეოს რედაქტირება', ru: 'Редактировать видео' }, icon: 'Video', targetService: 'video', description: { en: 'Edit video component separately', ka: 'ვიდეო კომპონენტის რედაქტირება', ru: 'Редактировать видео отдельно' } },
+    { id: 'to-image', label: { en: 'Edit Images', ka: 'სურათების რედაქტირება', ru: 'Редактировать изображения' }, icon: 'ImagePlus', targetService: 'image', description: { en: 'Edit image assets in Image Creator', ka: 'სურათების რედაქტირება', ru: 'Редактировать изображения' } },
+    { id: 'to-music', label: { en: 'Create Audio', ka: 'აუდიოს შექმნა', ru: 'Создать аудио' }, icon: 'Music', targetService: 'music', description: { en: 'Create audio track for this campaign', ka: 'აუდიო ტრეკის შექმნა', ru: 'Создать аудиотрек' } },
+  ],
+};
+
+/* ═══════════════════════════════════════════════════════════════════
+   PROMPT BUILDER SERVICE
+   ═══════════════════════════════════════════════════════════════════ */
+export const promptConfig: ServiceChatConfig = {
+  slug: 'prompt',
+  agentId: 'prompt-agent',
+  icon: '🧩',
+  name: { en: 'Prompt Builder', ka: 'პრომპტების კონსტრუქტორი', ru: 'Конструктор промптов' },
+  description: {
+    en: 'Design reusable prompt systems for consistent AI results',
+    ka: 'ააგე prompt სისტემები სტაბილური შედეგებისთვის',
+    ru: 'Создавайте промпт-системы для стабильных результатов',
+  },
+  accentColor: '#FBBF24',
+  accentGlow: 'rgba(251,191,36,0.15)',
+  welcomeMessage: {
+    en: "Welcome to Prompt Builder! I'll help you design, test, and refine reusable prompts for all AI services. Describe what you want to achieve.",
+    ka: 'კეთილი იყოს თქვენი მობრძანება! დავეხმარები prompt-ების შექმნაში ყველა სერვისისთვის.',
+    ru: 'Добро пожаловать! Помогу создать, протестировать и улучшить промпты для всех сервисов.',
+  },
+  agentModeLabel: { en: 'Prompt Agent', ka: 'პრომპტის აგენტი', ru: 'Промпт агент' },
+  placeholders: {
+    default: { en: 'Describe your prompt goal or paste an existing prompt...', ka: 'აღწერეთ prompt-ის მიზანი...', ru: 'Опишите цель промпта или вставьте существующий...' },
+    agent: { en: 'Prompt Agent active — describe the AI task', ka: 'პრომპტის აგენტი აქტიურია', ru: 'Промпт агент активен — опишите задачу' },
+  },
+  previewType: 'text',
+  quickActions: [
+    { id: 'new-prompt', label: { en: 'New Prompt', ka: 'ახალი პრომპტი', ru: 'Новый промпт' }, icon: 'Plus', action: 'new-prompt', category: 'create' },
+    { id: 'optimize', label: { en: 'Optimize Prompt', ka: 'ოპტიმიზაცია', ru: 'Оптимизировать' }, icon: 'Sparkles', action: 'optimize', category: 'tools' },
+    { id: 'test-prompt', label: { en: 'Test Run', ka: 'ტესტი', ru: 'Тест-запуск' }, icon: 'Play', action: 'test-prompt', category: 'tools' },
+    { id: 'templates', label: { en: 'Templates', ka: 'შაბლონები', ru: 'Шаблоны' }, icon: 'LayoutTemplate', action: 'templates', category: 'create' },
+    { id: 'chain', label: { en: 'Prompt Chain', ka: 'ჯაჭვი', ru: 'Цепь промптов' }, icon: 'GitBranch', action: 'chain', category: 'tools' },
+    { id: 'variables', label: { en: 'Variables', ka: 'ცვლადები', ru: 'Переменные' }, icon: 'Puzzle', action: 'variables', category: 'tools' },
+  ],
+  hamburgerMenu: [
+    { id: 'new-session', label: { en: 'New Prompt', ka: 'ახალი პრომპტი', ru: 'Новый промпт' }, icon: 'Plus', action: 'new-session' },
+    { id: 'my-prompts', label: { en: 'My Prompts', ka: 'ჩემი პრომპტები', ru: 'Мои промпты' }, icon: 'FolderOpen', action: 'my-prompts' },
+    { id: 'prompt-library', label: { en: 'Prompt Library', ka: 'ბიბლიოთეკა', ru: 'Библиотека промптов' }, icon: 'BookOpen', action: 'prompt-library' },
+    { id: 'test-history', label: { en: 'Test History', ka: 'ტესტის ისტორია', ru: 'История тестов' }, icon: 'Clock', action: 'test-history', divider: true },
+    { id: 'export', label: { en: 'Export Prompt', ka: 'ექსპორტი', ru: 'Экспорт' }, icon: 'Download', action: 'export' },
+    { id: 'to-agentg', label: { en: 'Continue with Agent G', ka: 'გაგრძელება Agent G-ით', ru: 'Продолжить с Agent G' }, icon: 'Bot', action: 'transfer-agentg', divider: true },
+  ],
+  toolPanels: [
+    {
+      id: 'prompt-settings', label: { en: 'Prompt Settings', ka: 'პრომპტის პარამეტრები', ru: 'Настройки промпта' }, icon: 'Settings2',
+      options: [
+        { id: 'target-service', label: { en: 'Target Service', ka: 'სამიზნე სერვისი', ru: 'Целевой сервис' }, type: 'chips', options: [
+          { value: 'general', label: { en: 'General', ka: 'ზოგადი', ru: 'Общий' } },
+          { value: 'image', label: { en: 'Image', ka: 'სურათი', ru: 'Изображение' } },
+          { value: 'video', label: { en: 'Video', ka: 'ვიდეო', ru: 'Видео' } },
+          { value: 'text', label: { en: 'Text', ka: 'ტექსტი', ru: 'Текст' } },
+        ], defaultValue: 'general' },
+        { id: 'creativity', label: { en: 'Creativity', ka: 'კრეატიულობა', ru: 'Креативность' }, type: 'slider', min: 1, max: 5, step: 1, defaultValue: 3 },
+        { id: 'include-examples', label: { en: 'Include Examples', ka: 'მაგალითების ჩართვა', ru: 'Включить примеры' }, type: 'toggle', defaultValue: true },
+      ],
+    },
+  ],
+  transferActions: [
+    { id: 'to-text', label: { en: 'Use in Text', ka: 'ტექსტში გამოყენება', ru: 'В текст' }, icon: 'Type', targetService: 'text', description: { en: 'Apply this prompt in Text Intelligence', ka: 'გამოიყენე ტექსტში', ru: 'Применить в Text Intelligence' } },
+    { id: 'to-image', label: { en: 'Use for Images', ka: 'სურათებისთვის', ru: 'Для изображений' }, icon: 'ImagePlus', targetService: 'image', description: { en: 'Use this prompt for image generation', ka: 'გამოიყენე სურათების გენერაციისთვის', ru: 'Для генерации изображений' } },
+    { id: 'to-workflow', label: { en: 'Add to Workflow', ka: 'Workflow-ში', ru: 'В Workflow' }, icon: 'GitBranch', targetService: 'workflow', description: { en: 'Add prompt to an automation workflow', ka: 'დაამატე workflow-ში', ru: 'Добавить в автопроцесс' } },
+  ],
+};
+
+/* ═══════════════════════════════════════════════════════════════════
+   VISUAL INTELLIGENCE SERVICE
+   ═══════════════════════════════════════════════════════════════════ */
+export const visualIntelConfig: ServiceChatConfig = {
+  slug: 'visual-intel',
+  agentId: 'visual-intel-agent',
+  icon: '🧠',
+  name: { en: 'Visual Intelligence', ka: 'ვიზუალური ინტელექტი', ru: 'Визуальный интеллект' },
+  description: {
+    en: 'Analyze and optimize visual creative assets',
+    ka: 'გააანალიზე ვიზუალური მასალები AI-ით',
+    ru: 'Анализируйте визуальные материалы с помощью AI',
+  },
+  accentColor: '#34D399',
+  accentGlow: 'rgba(52,211,153,0.15)',
+  welcomeMessage: {
+    en: "Welcome to Visual Intelligence! I can analyze images, detect objects, extract text, assess composition quality, and provide creative insights.",
+    ka: 'კეთილი იყოს თქვენი მობრძანება! გავაანალიზებ სურათებს, გამოვავლენ ობიექტებს და ამოვიცნობ ტექსტს.',
+    ru: 'Добро пожаловать! Анализирую изображения, определяю объекты, извлекаю текст.',
+  },
+  agentModeLabel: { en: 'Vision Agent', ka: 'ვიჟენ აგენტი', ru: 'Визуальный агент' },
+  placeholders: {
+    default: { en: 'Upload an image to analyze or describe your task...', ka: 'ატვირთეთ სურათი ანალიზისთვის...', ru: 'Загрузите изображение для анализа...' },
+    agent: { en: 'Vision Agent active — upload an image', ka: 'ვიჟენ აგენტი აქტიურია', ru: 'Визуальный агент активен — загрузите изображение' },
+  },
+  previewType: 'image',
+  quickActions: [
+    { id: 'upload-analyze', label: { en: 'Upload & Analyze', ka: 'ატვირთე და გააანალიზე', ru: 'Загрузить и анализировать' }, icon: 'Upload', action: 'upload-analyze', category: 'create' },
+    { id: 'detect-objects', label: { en: 'Detect Objects', ka: 'ობიექტების გამოვლენა', ru: 'Обнаружить объекты' }, icon: 'Search', action: 'detect-objects', category: 'tools' },
+    { id: 'extract-text', label: { en: 'Extract Text (OCR)', ka: 'ტექსტის ამოცნობა', ru: 'Извлечь текст (OCR)' }, icon: 'Type', action: 'extract-text', category: 'tools' },
+    { id: 'composition', label: { en: 'Composition Check', ka: 'კომპოზიციის შემოწმება', ru: 'Проверка композиции' }, icon: 'Focus', action: 'composition', category: 'tools' },
+    { id: 'color-analysis', label: { en: 'Color Analysis', ka: 'ფერების ანალიზი', ru: 'Анализ цвета' }, icon: 'Palette', action: 'color-analysis', category: 'tools' },
+    { id: 'compare', label: { en: 'Compare Images', ka: 'სურათების შედარება', ru: 'Сравнить изображения' }, icon: 'Combine', action: 'compare', category: 'tools' },
+  ],
+  hamburgerMenu: [
+    { id: 'new-session', label: { en: 'New Analysis', ka: 'ახალი ანალიზი', ru: 'Новый анализ' }, icon: 'Plus', action: 'new-session' },
+    { id: 'my-analyses', label: { en: 'My Analyses', ka: 'ჩემი ანალიზები', ru: 'Мои анализы' }, icon: 'FolderOpen', action: 'my-analyses' },
+    { id: 'batch-analyze', label: { en: 'Batch Analyze', ka: 'პაკეტური ანალიზი', ru: 'Пакетный анализ' }, icon: 'Layers', action: 'batch-analyze' },
+    { id: 'report', label: { en: 'Generate Report', ka: 'ანგარიშის შექმნა', ru: 'Создать отчёт' }, icon: 'FileText', action: 'report', divider: true },
+    { id: 'export', label: { en: 'Export Results', ka: 'შედეგების ექსპორტი', ru: 'Экспорт результатов' }, icon: 'Download', action: 'export' },
+    { id: 'to-agentg', label: { en: 'Continue with Agent G', ka: 'გაგრძელება Agent G-ით', ru: 'Продолжить с Agent G' }, icon: 'Bot', action: 'transfer-agentg', divider: true },
+  ],
+  toolPanels: [
+    {
+      id: 'analysis-settings', label: { en: 'Analysis Settings', ka: 'ანალიზის პარამეტრები', ru: 'Настройки анализа' }, icon: 'Settings2',
+      options: [
+        { id: 'depth', label: { en: 'Analysis Depth', ka: 'ანალიზის სიღრმე', ru: 'Глубина анализа' }, type: 'chips', options: [
+          { value: 'quick', label: { en: 'Quick', ka: 'სწრაფი', ru: 'Быстрый' } },
+          { value: 'standard', label: { en: 'Standard', ka: 'სტანდარტული', ru: 'Стандартный' } },
+          { value: 'deep', label: { en: 'Deep', ka: 'ღრმა', ru: 'Глубокий' } },
+        ], defaultValue: 'standard' },
+        { id: 'include-suggestions', label: { en: 'Include Suggestions', ka: 'რეკომენდაციები', ru: 'Включить рекомендации' }, type: 'toggle', defaultValue: true },
+      ],
+    },
+  ],
+  transferActions: [
+    { id: 'to-image', label: { en: 'Edit Image', ka: 'სურათის რედაქტირება', ru: 'Редактировать' }, icon: 'ImagePlus', targetService: 'image', description: { en: 'Edit this image based on analysis', ka: 'სურათის რედაქტირება ანალიზის მიხედვით', ru: 'Редактировать по результатам анализа' } },
+    { id: 'to-photo', label: { en: 'Photo Enhance', ka: 'ფოტოს გაუმჯობესება', ru: 'Улучшить фото' }, icon: 'Camera', targetService: 'photo', description: { en: 'Enhance in Photo Studio', ka: 'გააუმჯობესე ფოტო სტუდიაში', ru: 'Улучшить в Фотостудии' } },
+    { id: 'to-text', label: { en: 'Extract to Text', ka: 'ტექსტში ექსტრაქცია', ru: 'Извлечь в текст' }, icon: 'Type', targetService: 'text', description: { en: 'Send extracted text to Text Intelligence', ka: 'ტექსტის გაგზავნა', ru: 'Отправить текст в Text Intelligence' } },
+  ],
+};
+
+/* ═══════════════════════════════════════════════════════════════════
+   SOFTWARE DEV SERVICE
+   ═══════════════════════════════════════════════════════════════════ */
+export const softwareConfig: ServiceChatConfig = {
+  slug: 'software',
+  agentId: 'software-agent',
+  icon: '💻',
+  name: { en: 'Software Dev', ka: 'პროგრამული უზრუნველყოფა', ru: 'Разработка ПО' },
+  description: {
+    en: 'AI-assisted code generation, review, and deployment',
+    ka: 'AI-ით კოდის გენერაცია, მიმოხილვა და დეპლოი',
+    ru: 'Генерация кода, ревью и деплой с помощью AI',
+  },
+  accentColor: '#60A5FA',
+  accentGlow: 'rgba(96,165,250,0.15)',
+  welcomeMessage: {
+    en: "Welcome to Software Dev! I can generate code, review pull requests, debug issues, and help deploy your applications. What are you building?",
+    ka: 'კეთილი იყოს თქვენი მობრძანება! შემიძლია კოდის გენერაცია, PR-ების მიმოხილვა და დეპლოი.',
+    ru: 'Добро пожаловать! Генерация кода, ревью PR, отладка и помощь с деплоем.',
+  },
+  agentModeLabel: { en: 'Dev Agent', ka: 'დეველოპერ აგენტი', ru: 'Агент разработки' },
+  placeholders: {
+    default: { en: 'Describe what you want to build or paste code...', ka: 'აღწერეთ რა გსურთ აშენოთ ან ჩასვით კოდი...', ru: 'Опишите задачу или вставьте код...' },
+    agent: { en: 'Dev Agent active — describe the project', ka: 'დეველოპერ აგენტი აქტიურია', ru: 'Агент разработки активен — опишите проект' },
+  },
+  previewType: 'text',
+  quickActions: [
+    { id: 'generate-code', label: { en: 'Generate Code', ka: 'კოდის გენერაცია', ru: 'Сгенерировать код' }, icon: 'Code', action: 'generate-code', category: 'create' },
+    { id: 'review', label: { en: 'Code Review', ka: 'კოდის მიმოხილვა', ru: 'Ревью кода' }, icon: 'Search', action: 'review', category: 'tools' },
+    { id: 'debug', label: { en: 'Debug', ka: 'დებაგი', ru: 'Отладить' }, icon: 'Bug', action: 'debug', category: 'tools' },
+    { id: 'deploy', label: { en: 'Deploy', ka: 'დეპლოი', ru: 'Деплой' }, icon: 'Rocket', action: 'deploy', category: 'manage' },
+    { id: 'terminal', label: { en: 'Terminal', ka: 'ტერმინალი', ru: 'Терминал' }, icon: 'Terminal', action: 'terminal', category: 'tools' },
+    { id: 'api-design', label: { en: 'API Design', ka: 'API დიზაინი', ru: 'Дизайн API' }, icon: 'Globe', action: 'api-design', category: 'create' },
+  ],
+  hamburgerMenu: [
+    { id: 'new-session', label: { en: 'New Project', ka: 'ახალი პროექტი', ru: 'Новый проект' }, icon: 'Plus', action: 'new-session' },
+    { id: 'my-projects', label: { en: 'My Projects', ka: 'ჩემი პროექტები', ru: 'Мои проекты' }, icon: 'FolderOpen', action: 'my-projects' },
+    { id: 'git-repos', label: { en: 'Git Repositories', ka: 'Git რეპოზიტორიები', ru: 'Git репозитории' }, icon: 'GitBranch', action: 'git-repos' },
+    { id: 'snippets', label: { en: 'Code Snippets', ka: 'კოდის ფრაგმენტები', ru: 'Сниппеты' }, icon: 'Code', action: 'snippets', divider: true },
+    { id: 'database', label: { en: 'Database', ka: 'მონაცემთა ბაზა', ru: 'База данных' }, icon: 'Database', action: 'database' },
+    { id: 'cloud', label: { en: 'Cloud Services', ka: 'ღრუბლოვანი სერვისები', ru: 'Облачные сервисы' }, icon: 'Cloud', action: 'cloud' },
+    { id: 'to-agentg', label: { en: 'Continue with Agent G', ka: 'გაგრძელება Agent G-ით', ru: 'Продолжить с Agent G' }, icon: 'Bot', action: 'transfer-agentg', divider: true },
+  ],
+  toolPanels: [
+    {
+      id: 'dev-settings', label: { en: 'Dev Settings', ka: 'პარამეტრები', ru: 'Настройки' }, icon: 'Settings2',
+      options: [
+        { id: 'language', label: { en: 'Language', ka: 'ენა', ru: 'Язык' }, type: 'chips', options: [
+          { value: 'typescript', label: { en: 'TypeScript', ka: 'TypeScript', ru: 'TypeScript' } },
+          { value: 'python', label: { en: 'Python', ka: 'Python', ru: 'Python' } },
+          { value: 'rust', label: { en: 'Rust', ka: 'Rust', ru: 'Rust' } },
+          { value: 'go', label: { en: 'Go', ka: 'Go', ru: 'Go' } },
+        ], defaultValue: 'typescript' },
+        { id: 'framework', label: { en: 'Framework', ka: 'ფრეიმვორკი', ru: 'Фреймворк' }, type: 'chips', options: [
+          { value: 'nextjs', label: { en: 'Next.js', ka: 'Next.js', ru: 'Next.js' } },
+          { value: 'react', label: { en: 'React', ka: 'React', ru: 'React' } },
+          { value: 'node', label: { en: 'Node.js', ka: 'Node.js', ru: 'Node.js' } },
+          { value: 'fastapi', label: { en: 'FastAPI', ka: 'FastAPI', ru: 'FastAPI' } },
+        ], defaultValue: 'nextjs' },
+        { id: 'auto-deploy', label: { en: 'Auto Deploy', ka: 'ავტო-დეპლოი', ru: 'Авто-деплой' }, type: 'toggle', defaultValue: false },
+      ],
+    },
+  ],
+  transferActions: [
+    { id: 'to-workflow', label: { en: 'Add to Workflow', ka: 'Workflow-ში', ru: 'В Workflow' }, icon: 'GitBranch', targetService: 'workflow', description: { en: 'Add as a step in a workflow', ka: 'დაამატე workflow-ს ნაბიჯად', ru: 'Добавить как шаг в workflow' } },
+    { id: 'to-text', label: { en: 'Generate Docs', ka: 'დოკუმენტაცია', ru: 'Документация' }, icon: 'FileText', targetService: 'text', description: { en: 'Generate documentation in Text Intelligence', ka: 'დოკუმენტაციის შექმნა', ru: 'Создать документацию' } },
+  ],
+};
+
+/* ═══════════════════════════════════════════════════════════════════
+   BUSINESS AGENT SERVICE
+   ═══════════════════════════════════════════════════════════════════ */
+export const businessConfig: ServiceChatConfig = {
+  slug: 'business',
+  agentId: 'business-agent',
+  icon: '💼',
+  name: { en: 'Business Agent', ka: 'ბიზნეს აგენტი', ru: 'Бизнес-агент' },
+  description: {
+    en: 'Market research, pitch decks, and financial modeling',
+    ka: 'ბაზრის კვლევა, პრეზენტაციები და ფინანსური მოდელირება',
+    ru: 'Исследование рынка, питч-деки и финансовое моделирование',
+  },
+  accentColor: '#818CF8',
+  accentGlow: 'rgba(129,140,248,0.15)',
+  welcomeMessage: {
+    en: "Welcome to Business Agent! I can conduct market research, create pitch decks, build financial models, and develop business strategies. What do you need?",
+    ka: 'კეთილი იყოს თქვენი მობრძანება! ვატარებ ბაზრის კვლევას, ვქმნი პრეზენტაციებს და ფინანსურ მოდელებს.',
+    ru: 'Добро пожаловать! Маркетинговые исследования, питч-деки, финансовые модели и бизнес-стратегии.',
+  },
+  agentModeLabel: { en: 'Business Agent', ka: 'ბიზნეს აგენტი', ru: 'Бизнес-агент' },
+  placeholders: {
+    default: { en: 'Describe your business question or goal...', ka: 'აღწერეთ ბიზნეს კითხვა ან მიზანი...', ru: 'Опишите бизнес-задачу или цель...' },
+    agent: { en: 'Business Agent active — what should I research?', ka: 'ბიზნეს აგენტი აქტიურია', ru: 'Бизнес-агент активен — что исследовать?' },
+  },
+  previewType: 'text',
+  quickActions: [
+    { id: 'market-research', label: { en: 'Market Research', ka: 'ბაზრის კვლევა', ru: 'Исследование рынка' }, icon: 'Search', action: 'market-research', category: 'create' },
+    { id: 'pitch-deck', label: { en: 'Pitch Deck', ka: 'პრეზენტაცია', ru: 'Питч-дек' }, icon: 'Presentation', action: 'pitch-deck', category: 'create' },
+    { id: 'financial-model', label: { en: 'Financial Model', ka: 'ფინანსური მოდელი', ru: 'Финансовая модель' }, icon: 'TrendingUp', action: 'financial-model', category: 'create' },
+    { id: 'competitor', label: { en: 'Competitor Analysis', ka: 'კონკურენტის ანალიზი', ru: 'Анализ конкурентов' }, icon: 'Target', action: 'competitor', category: 'tools' },
+    { id: 'strategy', label: { en: 'Strategy', ka: 'სტრატეგია', ru: 'Стратегия' }, icon: 'Lightbulb', action: 'strategy', category: 'tools' },
+    { id: 'report', label: { en: 'Generate Report', ka: 'ანგარიში', ru: 'Создать отчёт' }, icon: 'FileSpreadsheet', action: 'report', category: 'manage' },
+  ],
+  hamburgerMenu: [
+    { id: 'new-session', label: { en: 'New Analysis', ka: 'ახალი ანალიზი', ru: 'Новый анализ' }, icon: 'Plus', action: 'new-session' },
+    { id: 'my-projects', label: { en: 'My Projects', ka: 'ჩემი პროექტები', ru: 'Мои проекты' }, icon: 'FolderOpen', action: 'my-projects' },
+    { id: 'templates', label: { en: 'Business Templates', ka: 'ბიზნეს შაბლონები', ru: 'Бизнес-шаблоны' }, icon: 'LayoutTemplate', action: 'templates' },
+    { id: 'data-sources', label: { en: 'Data Sources', ka: 'მონაცემთა წყაროები', ru: 'Источники данных' }, icon: 'Database', action: 'data-sources', divider: true },
+    { id: 'export', label: { en: 'Export Report', ka: 'ანგარიშის ექსპორტი', ru: 'Экспорт отчёта' }, icon: 'Download', action: 'export' },
+    { id: 'to-agentg', label: { en: 'Continue with Agent G', ka: 'გაგრძელება Agent G-ით', ru: 'Продолжить с Agent G' }, icon: 'Bot', action: 'transfer-agentg', divider: true },
+  ],
+  toolPanels: [
+    {
+      id: 'business-settings', label: { en: 'Business Settings', ka: 'ბიზნეს პარამეტრები', ru: 'Настройки' }, icon: 'Briefcase',
+      options: [
+        { id: 'industry', label: { en: 'Industry', ka: 'ინდუსტრია', ru: 'Отрасль' }, type: 'chips', options: [
+          { value: 'tech', label: { en: 'Tech', ka: 'ტექ', ru: 'Тех' } },
+          { value: 'finance', label: { en: 'Finance', ka: 'ფინანსები', ru: 'Финансы' } },
+          { value: 'retail', label: { en: 'Retail', ka: 'საცალო', ru: 'Ритейл' } },
+          { value: 'saas', label: { en: 'SaaS', ka: 'SaaS', ru: 'SaaS' } },
+        ], defaultValue: 'tech' },
+        { id: 'detail-level', label: { en: 'Detail Level', ka: 'დეტალურობა', ru: 'Уровень деталей' }, type: 'slider', min: 1, max: 5, step: 1, defaultValue: 3 },
+        { id: 'include-charts', label: { en: 'Include Charts', ka: 'გრაფიკების ჩართვა', ru: 'Включить графики' }, type: 'toggle', defaultValue: true },
+      ],
+    },
+  ],
+  transferActions: [
+    { id: 'to-text', label: { en: 'Create Content', ka: 'კონტენტის შექმნა', ru: 'Создать контент' }, icon: 'Type', targetService: 'text', description: { en: 'Create marketing content from business insights', ka: 'კონტენტის შექმნა ბიზნეს ინსაიტებიდან', ru: 'Создать контент из бизнес-инсайтов' } },
+    { id: 'to-media', label: { en: 'Create Campaign', ka: 'კამპანიის შექმნა', ru: 'Создать кампанию' }, icon: 'Megaphone', targetService: 'media', description: { en: 'Launch a media campaign from strategy', ka: 'მედია კამპანიის გაშვება', ru: 'Запустить кампанию из стратегии' } },
+    { id: 'to-workflow', label: { en: 'Automate Process', ka: 'პროცესის ავტომატიზაცია', ru: 'Автоматизировать' }, icon: 'GitBranch', targetService: 'workflow', description: { en: 'Automate this business process', ka: 'ბიზნეს პროცესის ავტომატიზაცია', ru: 'Автоматизировать бизнес-процесс' } },
+  ],
+};
+
+/* ═══════════════════════════════════════════════════════════════════
+   TOURISM AI SERVICE
+   ═══════════════════════════════════════════════════════════════════ */
+export const tourismConfig: ServiceChatConfig = {
+  slug: 'tourism',
+  agentId: 'tourism-agent',
+  icon: '✈️',
+  name: { en: 'Tourism AI', ka: 'ტურიზმი AI', ru: 'Туризм AI' },
+  description: {
+    en: 'AI-powered travel planning, itinerary building, and local guide',
+    ka: 'AI მოგზაურობის დაგეგმვა, მარშრუტი და ადგილობრივი გიდი',
+    ru: 'AI-планирование путешествий, маршруты и местный гид',
+  },
+  accentColor: '#2DD4BF',
+  accentGlow: 'rgba(45,212,191,0.15)',
+  welcomeMessage: {
+    en: "Welcome to Tourism AI! I can plan trips, build itineraries, recommend destinations, find accommodations, and serve as your personal travel guide.",
+    ka: 'კეთილი იყოს თქვენი მობრძანება! დავგეგმავ მოგზაურობას, ავაშენებ მარშრუტს და ვიქნები თქვენი გიდი.',
+    ru: 'Добро пожаловать! Планирование путешествий, маршруты, рекомендации и личный гид.',
+  },
+  agentModeLabel: { en: 'Travel Agent', ka: 'ტურისტული აგენტი', ru: 'Турагент' },
+  placeholders: {
+    default: { en: 'Where would you like to go? Describe your trip...', ka: 'სად გსურთ წასვლა? აღწერეთ მოგზაურობა...', ru: 'Куда хотите поехать? Опишите поездку...' },
+    agent: { en: 'Travel Agent active — plan your perfect trip', ka: 'ტურისტული აგენტი აქტიურია', ru: 'Турагент активен — спланируем идеальную поездку' },
+  },
+  previewType: 'image',
+  quickActions: [
+    { id: 'plan-trip', label: { en: 'Plan Trip', ka: 'მოგზაურობის დაგეგმვა', ru: 'Спланировать поездку' }, icon: 'Plane', action: 'plan-trip', category: 'create' },
+    { id: 'itinerary', label: { en: 'Build Itinerary', ka: 'მარშრუტის აშენება', ru: 'Составить маршрут' }, icon: 'Map', action: 'itinerary', category: 'create' },
+    { id: 'find-hotels', label: { en: 'Find Hotels', ka: 'სასტუმროები', ru: 'Найти отели' }, icon: 'Building', action: 'find-hotels', category: 'tools' },
+    { id: 'local-guide', label: { en: 'Local Guide', ka: 'ადგილობრივი გიდი', ru: 'Местный гид' }, icon: 'MapPin', action: 'local-guide', category: 'tools' },
+    { id: 'budget', label: { en: 'Budget Planner', ka: 'ბიუჯეტის დაგეგმვა', ru: 'Бюджет поездки' }, icon: 'DollarSign', action: 'budget', category: 'manage' },
+    { id: 'explore', label: { en: 'Explore', ka: 'აღმოაჩინე', ru: 'Исследовать' }, icon: 'Compass', action: 'explore', category: 'tools' },
+  ],
+  hamburgerMenu: [
+    { id: 'new-session', label: { en: 'New Trip', ka: 'ახალი მოგზაურობა', ru: 'Новая поездка' }, icon: 'Plus', action: 'new-session' },
+    { id: 'my-trips', label: { en: 'My Trips', ka: 'ჩემი მოგზაურობები', ru: 'Мои поездки' }, icon: 'FolderOpen', action: 'my-trips' },
+    { id: 'saved-places', label: { en: 'Saved Places', ka: 'შენახული ადგილები', ru: 'Сохранённые места' }, icon: 'Bookmark', action: 'saved-places' },
+    { id: 'calendar', label: { en: 'Travel Calendar', ka: 'კალენდარი', ru: 'Календарь' }, icon: 'CalendarDays', action: 'calendar', divider: true },
+    { id: 'export-itinerary', label: { en: 'Export Itinerary', ka: 'მარშრუტის ექსპორტი', ru: 'Экспорт маршрута' }, icon: 'Download', action: 'export-itinerary' },
+    { id: 'to-agentg', label: { en: 'Continue with Agent G', ka: 'გაგრძელება Agent G-ით', ru: 'Продолжить с Agent G' }, icon: 'Bot', action: 'transfer-agentg', divider: true },
+  ],
+  toolPanels: [
+    {
+      id: 'travel-settings', label: { en: 'Travel Preferences', ka: 'მოგზაურობის პარამეტრები', ru: 'Настройки путешествия' }, icon: 'Compass',
+      options: [
+        { id: 'travel-style', label: { en: 'Style', ka: 'სტილი', ru: 'Стиль' }, type: 'chips', options: [
+          { value: 'budget', label: { en: 'Budget', ka: 'ეკონომ', ru: 'Бюджет' } },
+          { value: 'comfort', label: { en: 'Comfort', ka: 'კომფორტი', ru: 'Комфорт' } },
+          { value: 'luxury', label: { en: 'Luxury', ka: 'ლუქსი', ru: 'Люкс' } },
+          { value: 'adventure', label: { en: 'Adventure', ka: 'თავგადასავალი', ru: 'Приключения' } },
+        ], defaultValue: 'comfort' },
+        { id: 'trip-duration', label: { en: 'Duration (days)', ka: 'ხანგრძლივობა (დღე)', ru: 'Длительность (дни)' }, type: 'slider', min: 1, max: 30, step: 1, defaultValue: 7 },
+        { id: 'include-local-food', label: { en: 'Local Cuisine', ka: 'ადგილობრივი სამზარეულო', ru: 'Местная кухня' }, type: 'toggle', defaultValue: true },
+      ],
+    },
+  ],
+  transferActions: [
+    { id: 'to-media', label: { en: 'Create Travel Content', ka: 'კონტენტის შექმნა', ru: 'Создать контент' }, icon: 'Megaphone', targetService: 'media', description: { en: 'Create travel content for social media', ka: 'სოციალური მედიის კონტენტი', ru: 'Создать контент для соцсетей' } },
+    { id: 'to-image', label: { en: 'Generate Visuals', ka: 'ვიზუალების შექმნა', ru: 'Создать визуалы' }, icon: 'ImagePlus', targetService: 'image', description: { en: 'Generate destination visuals', ka: 'დეზინაციის ვიზუალები', ru: 'Создать визуалы направлений' } },
+    { id: 'to-text', label: { en: 'Travel Guide Text', ka: 'გიდის ტექსტი', ru: 'Текст гида' }, icon: 'FileText', targetService: 'text', description: { en: 'Generate detailed travel guide text', ka: 'გიდის ტექსტის შექმნა', ru: 'Создать текст путеводителя' } },
+  ],
+};
+
+/* ═══════════════════════════════════════════════════════════════════
    CONFIG REGISTRY
    ═══════════════════════════════════════════════════════════════════ */
 
@@ -533,6 +1042,14 @@ export const SERVICE_CONFIGS: Record<string, ServiceChatConfig> = {
   workflow: workflowConfig,
   shop: shopConfig,
   editing: editingConfig,
+  'agent-g': agentGConfig,
+  photo: photoConfig,
+  media: mediaConfig,
+  prompt: promptConfig,
+  'visual-intel': visualIntelConfig,
+  software: softwareConfig,
+  business: businessConfig,
+  tourism: tourismConfig,
 };
 
 export function getServiceConfig(slug: string): ServiceChatConfig | undefined {
