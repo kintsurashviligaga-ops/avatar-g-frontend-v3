@@ -351,6 +351,25 @@ const LOCALIZED_SERVICE_META: Record<string, LocalizedServiceMeta> = {
       ru: ['Конструктор сцен с AI', 'Аватар → игровой персонаж', 'AI-логика игры и поведение NPC', 'Играйте, тестируйте и делитесь'],
     },
   },
+  'interior': {
+    icon: '🏠',
+    agentId: 'interior-designer',
+    headline: {
+      en: 'AI Interior Designer',
+      ka: 'AI ინტერიერის დიზაინერი',
+      ru: 'AI-дизайнер интерьеров',
+    },
+    description: {
+      en: 'Upload photos or video of any room and redesign it with AI. Choose from dozens of styles, compare variations, refine details, and export professional interior concepts.',
+      ka: 'ატვირთეთ ოთახის ფოტო ან ვიდეო და გადააპროექტეთ AI-ით. აირჩიეთ სტილი, შეადარეთ ვარიაციები, დახვეწეთ დეტალები.',
+      ru: 'Загрузите фото или видео комнаты и переоформите её с AI. Выбирайте стили, сравнивайте вариации, уточняйте детали.',
+    },
+    features: {
+      en: ['Photo/video upload & live camera capture', '13+ design styles (Modern, Luxury, Scandinavian...)', 'Before/after comparison & variations', 'Room-type aware AI (bedroom, kitchen, office...)'],
+      ka: ['ფოტო/ვიდეო ატვირთვა და კამერით გადაღება', '13+ დიზაინის სტილი', 'შედარება და ვარიაციები', 'ოთახის ტიპის მიხედვით AI'],
+      ru: ['Загрузка фото/видео и съёмка с камеры', '13+ стилей дизайна', 'Сравнение до/после и вариации', 'AI с учётом типа комнаты'],
+    },
+  },
   'next': {
     icon: '🚀',
     agentId: 'main-assistant',

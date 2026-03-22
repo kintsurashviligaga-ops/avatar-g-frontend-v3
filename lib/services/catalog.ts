@@ -206,9 +206,20 @@ export const SERVICES: ServiceDefinition[] = [
     },
     category: 'create',
   },
+  {
+    slug: 'interior',
+    icon: '🏠',
+    title: { en: 'Interior Designer', ka: 'ინტერიერის დიზაინერი', ru: 'Дизайнер интерьеров' },
+    description: {
+      en: 'Redesign rooms and spaces with AI-powered interior design',
+      ka: 'გადააპროექტე ოთახები და სივრცეები AI ინტერიერის დიზაინით',
+      ru: 'Переоформите комнаты и пространства с AI-дизайном интерьеров',
+    },
+    category: 'create',
+  },
 ];
 
-/* ─── Category labels ─────────────────────────────────────────────── */
+/* ─── Category labels ───────────────────────────────────────────────── */
 
 export const CATEGORY_LABELS: Record<ServiceCategory, { en: string; ka: string; ru: string }> = {
   create:   { en: 'Create',   ka: 'შექმნა',     ru: 'Создание'     },
@@ -246,7 +257,7 @@ export const NAV_CATEGORIES = [
 
 /* ─── Navigation Groups (Grouped sidebar) ─────────────────────────── */
 
-export type NavGroupId = 'creative' | 'content' | 'commerce' | 'business' | 'developer' | 'gaming';
+export type NavGroupId = 'creative' | 'content' | 'commerce' | 'business' | 'developer' | 'gaming' | 'lifestyle';
 
 export interface NavGroup {
   id: NavGroupId;
@@ -291,6 +302,12 @@ export const NAV_GROUPS: NavGroup[] = [
     label: { en: 'Gaming', ka: 'გეიმინგი', ru: 'Игры' },
     icon: '🎮',
     services: ['game'],
+  },
+  {
+    id: 'lifestyle',
+    label: { en: 'Lifestyle & Design', ka: 'ლაიფსტაილი & დიზაინი', ru: 'Лайфстайл и дизайн' },
+    icon: '🏠',
+    services: ['interior'],
   },
 ];
 
@@ -490,6 +507,18 @@ export const SERVICE_CONTRACTS: Record<string, ServiceContract> = {
     ],
     exportFormats: ['json', 'glb', 'png', 'mp4'],
   },
+  interior: {
+    serviceId: 'interior',
+    inputTypes: ['text', 'image', 'video'],
+    outputTypes: ['image', 'text', 'video'],
+    nextTools: [
+      { slug: 'image', label: { en: 'Create Mood Board', ka: 'მუდ-ბორდის შექმნა', ru: 'Создать муд-борд' } },
+      { slug: 'video', label: { en: 'Room Walkthrough', ka: 'ოთახის ტური', ru: 'Обзор комнаты' } },
+      { slug: 'text', label: { en: 'Design Brief', ka: 'დიზაინის ბრიფი', ru: 'Дизайн-бриф' } },
+      { slug: 'shop', label: { en: 'Shop Furniture', ka: 'ავეჯის შეძენა', ru: 'Купить мебель' } },
+    ],
+    exportFormats: ['png', 'jpg', 'pdf', 'json'],
+  },
 };
 
 /* ─── Quick Presets (per service) ─────────────────────────────────── */
@@ -591,6 +620,12 @@ export const SERVICE_PRESETS: Record<string, ServicePreset[]> = {
     { id: 'character-design', label: { en: 'Game Character', ka: 'თამაშის პერსონაჟი', ru: 'Персонаж игры' }, prompt: 'Create a game character from my avatar with abilities, stats, and animations', mode: 'both' },
     { id: 'game-logic', label: { en: 'Game Logic AI', ka: 'თამაშის ლოგიკა', ru: 'Логика игры' }, prompt: 'Set up game rules, win/lose conditions, scoring system, and NPC behavior', mode: 'advanced' },
     { id: 'quick-simulation', label: { en: 'Quick Simulation', ka: 'სწრაფი სიმულაცია', ru: 'Быстрая симуляция' }, prompt: 'Generate a simple playable simulation with physics and basic interactions', mode: 'beginner' },
+  ],
+  interior: [
+    { id: 'modern-redesign', label: { en: 'Modern Redesign', ka: 'თანამედროვე გადაკეთება', ru: 'Современный редизайн' }, prompt: 'Redesign this room in a clean modern style with minimal furniture and neutral tones', mode: 'both' },
+    { id: 'luxury-makeover', label: { en: 'Luxury Makeover', ka: 'ლაქს გადაკეთება', ru: 'Люкс-преобразование' }, prompt: 'Transform this space into a luxury interior with premium materials, statement lighting, and rich textures', mode: 'both' },
+    { id: 'scandinavian-cozy', label: { en: 'Scandinavian Cozy', ka: 'სკანდინავიური კოზი', ru: 'Скандинавский уют' }, prompt: 'Redesign with Scandinavian warmth: light wood, soft textiles, plants, and hygge atmosphere', mode: 'beginner' },
+    { id: 'smart-home-office', label: { en: 'Smart Home Office', ka: 'სმარტ საშინაო ოფისი', ru: 'Умный домашний офис' }, prompt: 'Create a productive, stylish home office with ergonomic layout, tech integration, and ambient lighting', mode: 'advanced' },
   ],
 };
 

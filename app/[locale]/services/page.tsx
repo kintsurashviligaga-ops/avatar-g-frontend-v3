@@ -18,6 +18,7 @@ import {
   Puzzle,
   Scissors,
   ShoppingCart,
+  Sofa,
   UserCircle2,
   Wand2,
   Workflow,
@@ -46,6 +47,7 @@ type ServiceId =
   | 'business'
   | 'tourism'
   | 'game'
+  | 'interior'
   | 'next';
 
 type ServiceItem = {
@@ -177,6 +179,13 @@ const SERVICE_ITEMS: ServiceItem[] = [
     icon: Gamepad2,
   },
   {
+    id: 'interior',
+    title: 'AI Interior Designer',
+    description: 'Redesign rooms and spaces with professional AI-powered interior design tools.',
+    tag: 'Design',
+    icon: Sofa,
+  },
+  {
     id: 'next',
     title: 'Expansion Slot',
     description: 'Reserve capacity for next-generation modules and enterprise extension layers.',
@@ -199,7 +208,7 @@ const CATEGORIES: Category[] = [
     id: 'creative-generation',
     title: 'Avatar & Creative Generation',
     summary: 'Create, render, edit, and export visual, audio, and avatar-driven assets.',
-    serviceIds: ['avatar', 'video', 'editing', 'music', 'photo', 'image', 'game'],
+    serviceIds: ['avatar', 'video', 'editing', 'music', 'photo', 'image', 'game', 'interior'],
   },
   {
     id: 'creative-intelligence',
@@ -245,7 +254,7 @@ const PAGE_TEXT: Record<string, PageText> = {
   en: {
     eyebrow: 'AI ECOSYSTEM',
     title: 'Your AI Factory',
-    subtitle: '18 connected AI-powered modules working together in one ecosystem.',
+    subtitle: '19 connected AI-powered modules working together in one ecosystem.',
     description:
       'From avatar creation to content production, automation, software, commerce, and business execution — MyAvatar.ge connects every service into one intelligent workflow.',
     workflowLabel: 'Create → Optimize → Automate → Sell → Scale',
@@ -261,7 +270,7 @@ const PAGE_TEXT: Record<string, PageText> = {
   ka: {
     eyebrow: 'AI ეკოსისტემა',
     title: 'შენი AI ქარხანა',
-    subtitle: '18 ურთიერთდაკავშირებული AI-ით მართული მოდული — ერთ ეკოსისტემაში.',
+    subtitle: '19 ურთიერთდაკავშირებული AI-ით მართული მოდული — ერთ ეკოსისტემაში.',
     description:
       'ავატარის შექმნიდან კონტენტ-წარმოებამდე, ავტომატიზაცია, პროგრამული უზრუნველყოფა, კომერცია და ბიზნეს-ოპერაციები — MyAvatar.ge-ი ყველა სერვისს ერთ ინტელექტუალურ workflow-ში აერთიანებს.',
     workflowLabel: 'შექმნა → ოპტიმიზაცია → ავტომატიზაცია → გაყიდვა → მასშტაბი',
@@ -277,7 +286,7 @@ const PAGE_TEXT: Record<string, PageText> = {
   ru: {
     eyebrow: 'AI ЭКОСИСТЕМА',
     title: 'Ваша AI Фабрика',
-    subtitle: '18 взаимосвязанных AI-модулей, работающих вместе в единой экосистеме.',
+    subtitle: '19 взаимосвязанных AI-модулей, работающих вместе в единой экосистеме.',
     description:
       'От создания аватаров до производства контента, автоматизации, разработки ПО, коммерции и бизнес-операций — MyAvatar.ge объединяет все сервисы в один интеллектуальный workflow.',
     workflowLabel: 'Создать → Оптимизировать → Автоматизировать → Продать → Масштабировать',

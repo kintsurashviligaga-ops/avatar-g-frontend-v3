@@ -1114,6 +1114,127 @@ export const gameConfig: ServiceChatConfig = {
 };
 
 /* ═══════════════════════════════════════════════════════════════════
+   INTERIOR DESIGNER SERVICE
+   ═══════════════════════════════════════════════════════════════════ */
+export const interiorConfig: ServiceChatConfig = {
+  slug: 'interior',
+  agentId: 'interior-designer',
+  icon: '🏠',
+  name: { en: 'Interior Designer', ka: 'ინტერიერის დიზაინერი', ru: 'Дизайнер интерьеров' },
+  description: {
+    en: 'Redesign rooms and spaces with AI-powered interior design',
+    ka: 'გადააპროექტე ოთახები და სივრცეები AI ინტერიერის დიზაინით',
+    ru: 'Переоформите комнаты и пространства с AI-дизайном интерьеров',
+  },
+  accentColor: '#F59E0B',
+  accentGlow: 'rgba(245,158,11,0.15)',
+  welcomeMessage: {
+    en: "Welcome to Interior Designer! Upload a photo or video of any room, and I'll help you redesign it professionally. Choose a style, compare variations, refine every detail — from wall colors to furniture, lighting to decor. Let's transform your space.",
+    ka: 'კეთილი იყოს თქვენი მობრძანება ინტერიერის დიზაინერში! ატვირთეთ ოთახის ფოტო ან ვიდეო და დაგეხმარებით პროფესიონალურ გადაპროექტებაში.',
+    ru: 'Добро пожаловать в Дизайнер интерьеров! Загрузите фото или видео комнаты, и я помогу профессионально её переоформить.',
+  },
+  agentModeLabel: { en: 'Design Agent', ka: 'დიზაინის აგენტი', ru: 'Агент дизайна' },
+  placeholders: {
+    default: { en: 'Describe how you want to redesign this space...', ka: 'აღწერეთ როგორ გსურთ ამ სივრცის გადაპროექტება...', ru: 'Опишите, как хотите переоформить это пространство...' },
+    agent: { en: 'Design Agent ready — upload a room photo or describe your vision', ka: 'დიზაინის აგენტი მზადაა — ატვირთეთ ფოტო ან აღწერეთ ხედვა', ru: 'Агент дизайна готов — загрузите фото или опишите видение' },
+  },
+  previewType: 'image',
+  quickActions: [
+    { id: 'upload-room', label: { en: 'Upload Room Photo', ka: 'ოთახის ფოტოს ატვირთვა', ru: 'Загрузить фото комнаты' }, icon: 'Upload', action: 'upload-room', category: 'input' },
+    { id: 'capture-room', label: { en: 'Capture Room', ka: 'ოთახის გადაღება', ru: 'Снять комнату' }, icon: 'Camera', action: 'capture-room', category: 'input' },
+    { id: 'redesign', label: { en: 'Redesign Space', ka: 'სივრცის გადაპროექტება', ru: 'Переоформить' }, icon: 'Paintbrush', action: 'redesign', category: 'create' },
+    { id: 'change-style', label: { en: 'Change Style', ka: 'სტილის შეცვლა', ru: 'Сменить стиль' }, icon: 'Palette', action: 'change-style', category: 'create' },
+    { id: 'compare', label: { en: 'Compare Versions', ka: 'ვერსიების შედარება', ru: 'Сравнить версии' }, icon: 'Layers', action: 'compare', category: 'review' },
+    { id: 'export-design', label: { en: 'Export Design', ka: 'დიზაინის ექსპორტი', ru: 'Экспорт дизайна' }, icon: 'Download', action: 'export-design', category: 'export' },
+  ],
+  hamburgerMenu: [
+    { id: 'new-project', label: { en: 'New Project', ka: 'ახალი პროექტი', ru: 'Новый проект' }, icon: 'Plus', action: 'new-session' },
+    { id: 'my-designs', label: { en: 'My Interior Designs', ka: 'ჩემი ინტერიერის დიზაინები', ru: 'Мои дизайны интерьеров' }, icon: 'FolderOpen', action: 'my-designs' },
+    { id: 'upload-photo-menu', label: { en: 'Upload Photo', ka: 'ფოტოს ატვირთვა', ru: 'Загрузить фото' }, icon: 'Upload', action: 'upload-photo' },
+    { id: 'upload-video-menu', label: { en: 'Upload Video', ka: 'ვიდეოს ატვირთვა', ru: 'Загрузить видео' }, icon: 'Video', action: 'upload-video' },
+    { id: 'live-scan', label: { en: 'Live Scan', ka: 'პირდაპირი სკანირება', ru: 'Живое сканирование' }, icon: 'Camera', action: 'live-scan', divider: true },
+    { id: 'style-presets-menu', label: { en: 'Style Presets', ka: 'სტილის პრესეტები', ru: 'Стиль-пресеты' }, icon: 'Palette', action: 'style-presets' },
+    { id: 'room-type-menu', label: { en: 'Room Type', ka: 'ოთახის ტიპი', ru: 'Тип комнаты' }, icon: 'Home', action: 'room-type' },
+    { id: 'saved-variations', label: { en: 'Saved Variations', ka: 'შენახული ვარიაციები', ru: 'Сохранённые вариации' }, icon: 'Bookmark', action: 'saved-variations', divider: true },
+    { id: 'simulation-view', label: { en: 'Simulation View', ka: 'სიმულაციის ხედი', ru: 'Вид симуляции' }, icon: 'Maximize', action: 'simulation-view' },
+    { id: 'export-menu', label: { en: 'Export', ka: 'ექსპორტი', ru: 'Экспорт' }, icon: 'Download', action: 'export' },
+    { id: 'share-menu', label: { en: 'Share', ka: 'გაზიარება', ru: 'Поделиться' }, icon: 'Share2', action: 'share' },
+    { id: 'continue-agentg', label: { en: 'Continue with Agent G', ka: 'გაგრძელება Agent G-ით', ru: 'Продолжить с Agent G' }, icon: 'Bot', action: 'transfer-agentg' },
+  ],
+  toolPanels: [
+    {
+      id: 'design-style', label: { en: 'Design Style', ka: 'დიზაინის სტილი', ru: 'Стиль дизайна' }, icon: 'Palette',
+      options: [
+        { id: 'style', label: { en: 'Style', ka: 'სტილი', ru: 'Стиль' }, type: 'chips', options: [
+          { value: 'modern', label: { en: 'Modern', ka: 'თანამედროვე', ru: 'Современный' } },
+          { value: 'minimalist', label: { en: 'Minimalist', ka: 'მინიმალისტური', ru: 'Минимализм' } },
+          { value: 'luxury', label: { en: 'Luxury', ka: 'ლაქს', ru: 'Люкс' } },
+          { value: 'scandinavian', label: { en: 'Scandinavian', ka: 'სკანდინავიური', ru: 'Скандинавский' } },
+          { value: 'japandi', label: { en: 'Japandi', ka: 'ჯაპანდი', ru: 'Джапанди' } },
+          { value: 'industrial', label: { en: 'Industrial', ka: 'ინდუსტრიული', ru: 'Индустриальный' } },
+          { value: 'futuristic', label: { en: 'Futuristic', ka: 'ფუტურისტული', ru: 'Футуристичный' } },
+          { value: 'classic', label: { en: 'Classic', ka: 'კლასიკური', ru: 'Классический' } },
+          { value: 'cozy', label: { en: 'Cozy', ka: 'კოზი', ru: 'Уютный' } },
+          { value: 'dark-elegant', label: { en: 'Dark Elegant', ka: 'მუქი ელეგანტური', ru: 'Тёмный элегантный' } },
+          { value: 'family-warm', label: { en: 'Family Warm', ka: 'ოჯახური თბილი', ru: 'Семейный тёплый' } },
+          { value: 'smart-home', label: { en: 'Smart Home', ka: 'სმარტ სახლი', ru: 'Умный дом' } },
+          { value: 'office', label: { en: 'Office / Productivity', ka: 'ოფისი / პროდუქტიულობა', ru: 'Офис / Продуктивность' } },
+        ], defaultValue: 'modern' },
+        { id: 'intensity', label: { en: 'Redesign Intensity', ka: 'გადაპროექტების ინტენსივობა', ru: 'Интенсивность' }, type: 'slider', min: 1, max: 5, step: 1, defaultValue: 3 },
+      ],
+    },
+    {
+      id: 'room-settings', label: { en: 'Room Settings', ka: 'ოთახის პარამეტრები', ru: 'Настройки комнаты' }, icon: 'Home',
+      options: [
+        { id: 'room-type', label: { en: 'Room Type', ka: 'ოთახის ტიპი', ru: 'Тип комнаты' }, type: 'chips', options: [
+          { value: 'bedroom', label: { en: 'Bedroom', ka: 'საძინებელი', ru: 'Спальня' } },
+          { value: 'living-room', label: { en: 'Living Room', ka: 'მისაღები', ru: 'Гостиная' } },
+          { value: 'kitchen', label: { en: 'Kitchen', ka: 'სამზარეულო', ru: 'Кухня' } },
+          { value: 'bathroom', label: { en: 'Bathroom', ka: 'აბაზანა', ru: 'Ванная' } },
+          { value: 'dining', label: { en: 'Dining Area', ka: 'სასადილო', ru: 'Столовая' } },
+          { value: 'office', label: { en: 'Office', ka: 'ოფისი', ru: 'Кабинет' } },
+          { value: 'studio', label: { en: 'Studio Apartment', ka: 'სტუდიო-ბინა', ru: 'Студия' } },
+          { value: 'hallway', label: { en: 'Hallway', ka: 'დერეფანი', ru: 'Прихожая' } },
+          { value: 'balcony', label: { en: 'Balcony', ka: 'აივანი', ru: 'Балкон' } },
+          { value: 'full-apartment', label: { en: 'Full Apartment', ka: 'სრული ბინა', ru: 'Вся квартира' } },
+        ], defaultValue: 'living-room' },
+        { id: 'lighting-mood', label: { en: 'Lighting Mood', ka: 'განათების განწყობა', ru: 'Настроение освещения' }, type: 'chips', options: [
+          { value: 'bright', label: { en: 'Bright & Airy', ka: 'ნათელი', ru: 'Светлый' } },
+          { value: 'warm', label: { en: 'Warm Ambient', ka: 'თბილი', ru: 'Тёплый' } },
+          { value: 'dramatic', label: { en: 'Dramatic', ka: 'დრამატული', ru: 'Драматичный' } },
+          { value: 'natural', label: { en: 'Natural Light', ka: 'ბუნებრივი', ru: 'Естественный' } },
+        ], defaultValue: 'warm' },
+      ],
+    },
+    {
+      id: 'detail-controls', label: { en: 'Detail Controls', ka: 'დეტალების კონტროლი', ru: 'Управление деталями' }, icon: 'SlidersHorizontal',
+      options: [
+        { id: 'wall-treatment', label: { en: 'Wall Treatment', ka: 'კედლის მოპირკეთება', ru: 'Отделка стен' }, type: 'chips', options: [
+          { value: 'paint', label: { en: 'Paint', ka: 'საღებავი', ru: 'Краска' } },
+          { value: 'wallpaper', label: { en: 'Wallpaper', ka: 'შპალერი', ru: 'Обои' } },
+          { value: 'wood-panel', label: { en: 'Wood Panel', ka: 'ხის პანელი', ru: 'Деревянные панели' } },
+          { value: 'stone', label: { en: 'Stone / Brick', ka: 'ქვა / აგური', ru: 'Камень / Кирпич' } },
+        ], defaultValue: 'paint' },
+        { id: 'floor-type', label: { en: 'Floor Type', ka: 'იატაკის ტიპი', ru: 'Тип пола' }, type: 'chips', options: [
+          { value: 'hardwood', label: { en: 'Hardwood', ka: 'ხის იატაკი', ru: 'Паркет' } },
+          { value: 'tile', label: { en: 'Tile', ka: 'ფილა', ru: 'Плитка' } },
+          { value: 'carpet', label: { en: 'Carpet', ka: 'ხალიჩა', ru: 'Ковёр' } },
+          { value: 'concrete', label: { en: 'Polished Concrete', ka: 'ბეტონი', ru: 'Бетон' } },
+        ], defaultValue: 'hardwood' },
+        { id: 'decor-level', label: { en: 'Decor Intensity', ka: 'დეკორის ინტენსივობა', ru: 'Интенсивность декора' }, type: 'slider', min: 1, max: 5, step: 1, defaultValue: 3 },
+        { id: 'color-temp', label: { en: 'Color Temperature', ka: 'ფერის ტემპერატურა', ru: 'Цветовая температура' }, type: 'slider', min: 1, max: 5, step: 1, defaultValue: 3 },
+      ],
+    },
+  ],
+  transferActions: [
+    { id: 'to-image', label: { en: 'Create Mood Board', ka: 'მუდ-ბორდის შექმნა', ru: 'Создать муд-борд' }, icon: 'ImagePlus', targetService: 'image', description: { en: 'Generate mood board visuals from your design', ka: 'ვიზუალური მუდ-ბორდის გენერაცია', ru: 'Создать визуалы муд-борда' } },
+    { id: 'to-video', label: { en: 'Room Walkthrough', ka: 'ოთახის ტური', ru: 'Обзор комнаты' }, icon: 'Video', targetService: 'video', description: { en: 'Generate a walkthrough video of the redesigned space', ka: 'გადაპროექტებული სივრცის ვიდეო-ტურის გენერაცია', ru: 'Создать видео-обзор переоформленного пространства' } },
+    { id: 'to-text', label: { en: 'Design Brief', ka: 'დიზაინის ბრიფი', ru: 'Дизайн-бриф' }, icon: 'FileText', targetService: 'text', description: { en: 'Generate a professional design brief document', ka: 'პროფესიონალური დიზაინ-ბრიფის გენერაცია', ru: 'Создать профессиональный дизайн-бриф' } },
+    { id: 'to-shop', label: { en: 'Shop Furniture', ka: 'ავეჯის შეძენა', ru: 'Купить мебель' }, icon: 'ShoppingCart', targetService: 'shop', description: { en: 'Find and shop furniture matching your design', ka: 'მოძებნეთ და შეიძინეთ ავეჯი', ru: 'Найти и купить мебель по вашему дизайну' } },
+  ],
+};
+
+/* ═══════════════════════════════════════════════════════════════════
    CONFIG REGISTRY
    ═══════════════════════════════════════════════════════════════════ */
 
@@ -1135,6 +1256,7 @@ export const SERVICE_CONFIGS: Record<string, ServiceChatConfig> = {
   business: businessConfig,
   tourism: tourismConfig,
   game: gameConfig,
+  interior: interiorConfig,
 };
 
 export function getServiceConfig(slug: string): ServiceChatConfig | undefined {

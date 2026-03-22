@@ -25,6 +25,8 @@ import {
   Brain, Search, Lightbulb, Puzzle, MessageSquare, PenTool,
   Monitor, Headphones, Radio, Share2, Tv, FileImage,
   Gamepad2, Joystick, Sword, Trophy, Dices, Shapes,
+  Sofa, Lamp, PaintBucket, Ruler, Home, SlidersHorizontal,
+  RectangleHorizontal, SunMedium, Paintbrush, Armchair,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
@@ -139,6 +141,16 @@ export const ICON_MAP: Record<string, LucideIcon> = {
   Trophy,
   Dices,
   Shapes,
+  Sofa,
+  Lamp,
+  PaintBucket,
+  Ruler,
+  Home,
+  SlidersHorizontal,
+  RectangleHorizontal,
+  SunMedium,
+  Paintbrush,
+  Armchair,
 };
 
 export function getIcon(name: string): LucideIcon | undefined {

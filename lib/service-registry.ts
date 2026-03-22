@@ -192,6 +192,16 @@ export const SERVICE_REGISTRY: ServiceDefinition[] = [
     },
   },
   {
+    slug: 'interior', title: 'Interior Designer', href: '/services/interior', id: 'interior',
+    name: 'Interior Designer', description: 'Redesign rooms and spaces with AI-powered interior design.',
+    icon: '🏠', route: '/services/interior', enabled: true,
+    localized: {
+      en: { name: 'Interior Designer', description: 'Redesign rooms and spaces with AI-powered interior design.' },
+      ka: { name: 'ინტერიერის დიზაინერი', description: 'გადააპროექტე ოთახები და სივრცეები AI ინტერიერის დიზაინით.' },
+      ru: { name: 'Дизайнер интерьеров', description: 'Переоформите комнаты и пространства с AI-дизайном интерьеров.' },
+    },
+  },
+  {
     slug: 'next', title: 'Expansion Slot', href: '/services/next', id: 'next',
     name: 'Expansion Slot', description: 'Reserved route for the next enterprise service module.',
     icon: '🚀', route: '/services/next', enabled: true,
