@@ -15,13 +15,14 @@ interface ServiceComposerProps {
   onCamera: () => void
   isSubmitting: boolean
   placeholder: string
+  attachCount?: number
 }
 
-export function ServiceComposer({ value, onChange, onSend, onAttach, onCamera, isSubmitting, placeholder }: ServiceComposerProps) {
+export function ServiceComposer({ value, onChange, onSend, onAttach, onCamera, isSubmitting, placeholder, attachCount = 0 }: ServiceComposerProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const [isListening, setIsListening] = useState(false)
   const recognitionRef = useRef<SpeechRecognition | null>(null)
-  const canSend = value.trim().length > 0 && !isSubmitting
+  const canSend = (value.trim().length > 0 || attachCount > 0) && !isSubmitting
 
   // Auto-resize textarea
   useEffect(() => {

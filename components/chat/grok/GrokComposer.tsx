@@ -13,16 +13,17 @@ interface GrokComposerProps {
   placeholder: string
   mode: ChatMode
   onModeChange: (mode: ChatMode) => void
+  attachCount?: number
 }
 
 export function GrokComposer({
   value, onChange, onSend, onAttach, onCamera,
-  isSubmitting, placeholder, mode, onModeChange,
+  isSubmitting, placeholder, mode, onModeChange, attachCount = 0,
 }: GrokComposerProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const [isListening, setIsListening] = useState(false)
   const recognitionRef = useRef<SpeechRecognition | null>(null)
-  const canSend = value.trim().length > 0 && !isSubmitting
+  const canSend = (value.trim().length > 0 || attachCount > 0) && !isSubmitting
 
   useEffect(() => {
     const ta = textareaRef.current

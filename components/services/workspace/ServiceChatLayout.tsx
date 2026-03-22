@@ -61,6 +61,19 @@ export interface ServiceMessage {
   outputType?: 'avatar' | 'image' | 'video' | 'music' | 'text' | 'workflow' | 'result'
   /** Response time in seconds */
   responseTime?: number
+  /** Attachments */
+  attachments?: ChatFileAttachment[]
+}
+
+/* ── file attachment ── */
+interface ChatFileAttachment {
+  id: string
+  name: string
+  type: string
+  size: number
+  kind: 'image' | 'video' | 'audio' | 'document'
+  previewUrl?: string
+  dataUrl?: string
 }
 
 /* ── props ── */
@@ -108,6 +121,7 @@ export default function ServiceChatLayout({
   const [toolValues, setToolValues] = useState<Record<string, string>>({})
   const [outputReady, setOutputReady] = useState(false)
   const [sessionId] = useState(() => uid())
+  const [attachments, setAttachments] = useState<ChatFileAttachment[]>([])
 
   /* ── Grok-style state (Agent G only) ── */
   const [chatMode, setChatMode] = useState<ChatMode>('fast')
@@ -158,15 +172,22 @@ export default function ServiceChatLayout({
   /* ═══════════════════════════════════════════════════
      SEND MESSAGE
      ═══════════════════════════════════════════════════ */
-  const sendMessage = useCallback(async (text: string) => {
-    if (!text.trim()) return
+  const sendMessage = useCallback(async (text: string, files?: ChatFileAttachment[]) => {
+    if (!text.trim() && (!files || files.length === 0)) return
 
-    const userMsg: ServiceMessage = { id: uid(), role: 'user', content: text.trim(), createdAt: now(), status: 'sending' }
+    const userMsg: ServiceMessage = {
+      id: uid(), role: 'user', content: text.trim(), createdAt: now(), status: 'sending',
+      attachments: files && files.length > 0 ? files : undefined,
+    }
     const sysMsg: ServiceMessage = { id: uid(), role: 'system', content: '⏳', createdAt: now() }
     const startTime = performance.now()
 
+    // Revoke preview URLs after capturing them in the message
+    const filesCopy = files ? [...files] : []
+
     setMessages(prev => [...prev, userMsg, sysMsg])
     setComposerText('')
+    setAttachments([])
     setIsSubmitting(true)
     setSendTimestamp(startTime)
     scrollToBottom()
@@ -184,13 +205,18 @@ export default function ServiceChatLayout({
         .map(([k, v]) => `${k}: ${v}`)
         .join(', ')
 
+      // Build attachment context for the AI
+      const attachInfo = filesCopy.length > 0
+        ? filesCopy.map(f => `[Attached: ${f.name} (${f.kind})]`).join(' ') + ' '
+        : ''
+
       const res = await fetch('/api/agent-g/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: toolContext
-            ? `[Service: ${serviceId}] [Settings: ${toolContext}] ${text.trim()}`
-            : `[Service: ${serviceId}] ${text.trim()}`,
+            ? `[Service: ${serviceId}] [Settings: ${toolContext}] ${attachInfo}${text.trim()}`
+            : `[Service: ${serviceId}] ${attachInfo}${text.trim()}`,
           locale,
           sessionId,
           context: {
@@ -254,7 +280,7 @@ export default function ServiceChatLayout({
   }, [locale, sessionId, pathname, serviceId, serviceName, toolValues, messages, scrollToBottom, serviceCtx])
 
   /* ── handlers ── */
-  const handleSend = useCallback(() => { sendMessage(composerText) }, [composerText, sendMessage])
+  const handleSend = useCallback(() => { sendMessage(composerText, attachments) }, [composerText, attachments, sendMessage])
   const handleQuickAction = useCallback((prompt: string) => { sendMessage(prompt) }, [sendMessage])
   const handleBack = useCallback(() => { router.push(`/${locale}/services`) }, [router, locale])
 
@@ -315,6 +341,56 @@ export default function ServiceChatLayout({
 
   const handleAttach = useCallback(() => { fileInputRef.current?.click() }, [])
   const handleCamera = useCallback(() => { cameraInputRef.current?.click() }, [])
+
+  const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files
+    if (!files) return
+    Array.from(files).forEach(f => {
+      if (f.size > 10 * 1024 * 1024) return // 10MB limit
+      const kind: ChatFileAttachment['kind'] = f.type.startsWith('image/') ? 'image'
+        : f.type.startsWith('video/') ? 'video'
+        : f.type.startsWith('audio/') ? 'audio'
+        : 'document'
+      const att: ChatFileAttachment = {
+        id: uid(), name: f.name, type: f.type, size: f.size, kind,
+        previewUrl: (f.type.startsWith('image/') || f.type.startsWith('video/')) ? URL.createObjectURL(f) : undefined,
+      }
+      // Base64 encode images for AI vision
+      if (f.type.startsWith('image/') && f.size < 4 * 1024 * 1024) {
+        const reader = new FileReader()
+        reader.onload = () => {
+          setAttachments(prev => prev.map(a => a.id === att.id ? { ...a, dataUrl: reader.result as string } : a))
+        }
+        reader.readAsDataURL(f)
+      }
+      setAttachments(prev => [...prev, att])
+    })
+    e.target.value = ''
+  }, [])
+
+  const handleCameraChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0]
+    if (!f) return
+    const att: ChatFileAttachment = {
+      id: uid(), name: f.name || 'camera-photo.jpg', type: f.type || 'image/jpeg',
+      size: f.size, kind: 'image', previewUrl: URL.createObjectURL(f),
+    }
+    const reader = new FileReader()
+    reader.onload = () => {
+      setAttachments(prev => prev.map(a => a.id === att.id ? { ...a, dataUrl: reader.result as string } : a))
+    }
+    reader.readAsDataURL(f)
+    setAttachments(prev => [...prev, att])
+    e.target.value = ''
+  }, [])
+
+  const handleRemoveAttachment = useCallback((id: string) => {
+    setAttachments(prev => {
+      const removed = prev.find(a => a.id === id)
+      if (removed?.previewUrl) URL.revokeObjectURL(removed.previewUrl)
+      return prev.filter(a => a.id !== id)
+    })
+  }, [])
 
   const handleTransferNavigate = useCallback((targetSlug: string) => {
     router.push(`/${locale}/services/${targetSlug}`)
@@ -443,6 +519,20 @@ export default function ServiceChatLayout({
                     return (
                       <div key={msg.id} className="flex justify-end">
                         <div className="chat-bubble-user">
+                          {msg.attachments && msg.attachments.length > 0 && (
+                            <div className="flex gap-1.5 mb-2 flex-wrap">
+                              {msg.attachments.map(att => (
+                                att.kind === 'image' && (att.previewUrl || att.dataUrl) ? (
+                                  <img key={att.id} src={att.previewUrl || att.dataUrl} alt={att.name} className="w-20 h-20 rounded-lg object-cover" />
+                                ) : (
+                                  <div key={att.id} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs" style={{ backgroundColor: 'rgba(255,255,255,0.1)' }}>
+                                    <span>{att.kind === 'video' ? '🎬' : att.kind === 'audio' ? '🎵' : '📎'}</span>
+                                    <span className="truncate max-w-[120px]">{att.name}</span>
+                                  </div>
+                                )
+                              ))}
+                            </div>
+                          )}
                           {msg.content}
                           {msg.status === 'failed' && (
                             <span className="block text-[10px] mt-1 opacity-60">⚠ Failed to send</span>
@@ -541,7 +631,30 @@ export default function ServiceChatLayout({
             placeholder={chatTab === 'ask' ? 'Ask Anything' : 'Describe what to create…'}
             mode={chatMode}
             onModeChange={setChatMode}
+            attachCount={attachments.length}
           />
+        )}
+
+        {/* Attachment preview tray */}
+        {attachments.length > 0 && (
+          <div className="absolute left-0 right-0 z-30" style={{ bottom: 'calc(140px + env(safe-area-inset-bottom, 0px))' }}>
+            <div className="max-w-3xl mx-auto px-4">
+              <div className="flex gap-2 py-2 overflow-x-auto no-scrollbar" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                {attachments.map(att => (
+                  <div key={att.id} className="relative flex-shrink-0 group">
+                    {att.kind === 'image' && att.previewUrl ? (
+                      <img src={att.previewUrl} alt={att.name} className="w-14 h-14 rounded-xl object-cover" style={{ border: '1px solid rgba(255,255,255,0.1)' }} />
+                    ) : (
+                      <div className="w-14 h-14 rounded-xl flex items-center justify-center text-xs" style={{ backgroundColor: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.5)' }}>
+                        {att.kind === 'video' ? '🎬' : att.kind === 'audio' ? '🎵' : '📎'}
+                      </div>
+                    )}
+                    <button onClick={() => handleRemoveAttachment(att.id)} className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full flex items-center justify-center text-white text-[10px] opacity-0 group-hover:opacity-100 transition-opacity" style={{ backgroundColor: '#ef4444' }}>✕</button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
         )}
 
         {/* Settings bottom sheet */}
@@ -561,8 +674,8 @@ export default function ServiceChatLayout({
         />
 
         {/* Hidden file inputs */}
-        <input ref={fileInputRef} type="file" className="hidden" multiple accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.txt" onChange={() => {}} />
-        <input ref={cameraInputRef} type="file" className="hidden" accept="image/*" capture="environment" onChange={() => {}} />
+        <input ref={fileInputRef} type="file" className="hidden" multiple accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.txt" onChange={handleFileChange} />
+        <input ref={cameraInputRef} type="file" className="hidden" accept="image/*" capture="environment" onChange={handleCameraChange} />
       </div>
     )
 
@@ -626,6 +739,20 @@ export default function ServiceChatLayout({
                   return (
                     <div key={msg.id} className="flex justify-end">
                       <div className="chat-bubble-user">
+                        {msg.attachments && msg.attachments.length > 0 && (
+                          <div className="flex gap-1.5 mb-2 flex-wrap">
+                            {msg.attachments.map(att => (
+                              att.kind === 'image' && (att.previewUrl || att.dataUrl) ? (
+                                <img key={att.id} src={att.previewUrl || att.dataUrl} alt={att.name} className="w-20 h-20 rounded-lg object-cover" />
+                              ) : (
+                                <div key={att.id} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs" style={{ backgroundColor: 'rgba(255,255,255,0.1)' }}>
+                                  <span>{att.kind === 'video' ? '🎬' : att.kind === 'audio' ? '🎵' : '📎'}</span>
+                                  <span className="truncate max-w-[120px]">{att.name}</span>
+                                </div>
+                              )
+                            ))}
+                          </div>
+                        )}
                         {msg.content}
                         {msg.status === 'failed' && <span className="block text-[10px] mt-1 opacity-60">⚠ Failed to send</span>}
                       </div>
@@ -669,6 +796,28 @@ export default function ServiceChatLayout({
         </div>
       </div>
 
+      {/* Attachment preview tray */}
+      {attachments.length > 0 && (
+        <div className="absolute left-0 right-0 z-20" style={{ bottom: 'calc(68px + env(safe-area-inset-bottom, 0px))' }}>
+          <div className="max-w-3xl mx-auto px-4">
+            <div className="flex gap-2 py-2 overflow-x-auto no-scrollbar" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+              {attachments.map(att => (
+                <div key={att.id} className="relative flex-shrink-0 group">
+                  {att.kind === 'image' && att.previewUrl ? (
+                    <img src={att.previewUrl} alt={att.name} className="w-14 h-14 rounded-xl object-cover" style={{ border: '1px solid rgba(255,255,255,0.1)' }} />
+                  ) : (
+                    <div className="w-14 h-14 rounded-xl flex items-center justify-center text-xs" style={{ backgroundColor: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.5)' }}>
+                      {att.kind === 'video' ? '🎬' : att.kind === 'audio' ? '🎵' : '📎'}
+                    </div>
+                  )}
+                  <button onClick={() => handleRemoveAttachment(att.id)} className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full flex items-center justify-center text-white text-[10px] opacity-0 group-hover:opacity-100 transition-opacity" style={{ backgroundColor: '#ef4444' }}>✕</button>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Composer */}
       <ServiceComposer
         value={composerText}
@@ -678,11 +827,12 @@ export default function ServiceChatLayout({
         onCamera={handleCamera}
         isSubmitting={isSubmitting}
         placeholder={config.welcomeHint[language as 'en' | 'ka' | 'ru'] || config.welcomeHint.en}
+        attachCount={attachments.length}
       />
 
       {/* Hidden file inputs */}
-      <input ref={fileInputRef} type="file" className="hidden" multiple accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.txt" onChange={() => {}} />
-      <input ref={cameraInputRef} type="file" className="hidden" accept="image/*" capture="environment" onChange={() => {}} />
+      <input ref={fileInputRef} type="file" className="hidden" multiple accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.txt" onChange={handleFileChange} />
+      <input ref={cameraInputRef} type="file" className="hidden" accept="image/*" capture="environment" onChange={handleCameraChange} />
     </div>
   )
 
