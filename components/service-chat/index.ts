@@ -15,6 +15,7 @@ export { ServiceTransferBar } from './ServiceTransferBar';
 export { ServiceComposer } from './ServiceComposer';
 export { ServiceWelcome } from './ServiceWelcome';
 export { AgentModeButton } from './AgentModeButton';
+export { CameraModal } from './CameraModal';
 
 export type {
   ServiceSlug,

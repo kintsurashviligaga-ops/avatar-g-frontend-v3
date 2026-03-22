@@ -1030,6 +1030,90 @@ export const tourismConfig: ServiceChatConfig = {
 };
 
 /* ═══════════════════════════════════════════════════════════════════
+   GAME CREATION SERVICE
+   ═══════════════════════════════════════════════════════════════════ */
+export const gameConfig: ServiceChatConfig = {
+  slug: 'game',
+  agentId: 'game-creator',
+  icon: '🎮',
+  name: { en: 'Game Creator', ka: 'თამაშის შემქმნელი', ru: 'Создатель игр' },
+  description: {
+    en: 'Build AI-powered games, simulations, and interactive experiences',
+    ka: 'შექმენი AI თამაშები, სიმულაციები და ინტერაქტიული გამოცდილებები',
+    ru: 'Создавайте AI-игры, симуляции и интерактивные сцены',
+  },
+  accentColor: '#34D399',
+  accentGlow: 'rgba(52,211,153,0.15)',
+  welcomeMessage: {
+    en: "Welcome to Game Creator! Build interactive games and simulations with AI. Design scenes, turn your avatars into game characters, generate soundtracks, and share playable experiences.",
+    ka: 'კეთილი იყოს თქვენი მობრძანება თამაშის შემქმნელში! შექმენით ინტერაქტიული თამაშები AI-ით.',
+    ru: 'Добро пожаловать в Создатель игр! Создавайте интерактивные игры и симуляции с помощью AI.',
+  },
+  agentModeLabel: { en: 'Game Agent', ka: 'თამაშის აგენტი', ru: 'Агент игр' },
+  placeholders: {
+    default: { en: 'Describe your game idea or scene...', ka: 'აღწერეთ თქვენი თამაშის იდეა ან სცენა...', ru: 'Опишите идею игры или сцену...' },
+    agent: { en: 'Game Agent ready — what should we build?', ka: 'თამაშის აგენტი მზადაა — რა შევქმნათ?', ru: 'Агент игр готов — что создадим?' },
+  },
+  previewType: 'image',
+  quickActions: [
+    { id: 'new-scene', label: { en: 'New Scene', ka: 'ახალი სცენა', ru: 'Новая сцена' }, icon: 'Layers', action: 'new-scene', category: 'create' },
+    { id: 'import-avatar', label: { en: 'Import Avatar', ka: 'ავატარის იმპორტი', ru: 'Импорт аватара' }, icon: 'User', action: 'import-avatar', category: 'create' },
+    { id: 'add-character', label: { en: 'Add Character', ka: 'პერსონაჟის დამატება', ru: 'Добавить персонажа' }, icon: 'Gamepad2', action: 'add-character', category: 'create' },
+    { id: 'game-logic', label: { en: 'Game Logic', ka: 'თამაშის ლოგიკა', ru: 'Логика игры' }, icon: 'Brain', action: 'game-logic', category: 'configure' },
+    { id: 'play-test', label: { en: 'Play Test', ka: 'ტესტის გაშვება', ru: 'Тест-игра' }, icon: 'Play', action: 'play-test', category: 'test' },
+    { id: 'share-game', label: { en: 'Share Game', ka: 'თამაშის გაზიარება', ru: 'Поделиться' }, icon: 'Share2', action: 'share-game', category: 'export' },
+  ],
+  hamburgerMenu: [
+    { id: 'new-game', label: { en: 'New Game', ka: 'ახალი თამაში', ru: 'Новая игра' }, icon: 'Plus', action: 'new-session' },
+    { id: 'my-games', label: { en: 'My Games', ka: 'ჩემი თამაშები', ru: 'Мои игры' }, icon: 'FolderOpen', action: 'my-games' },
+    { id: 'scene-builder', label: { en: 'Scene Builder', ka: 'სცენის შემქმნელი', ru: 'Конструктор сцен' }, icon: 'Layers', action: 'scene-builder' },
+    { id: 'character-editor', label: { en: 'Character Editor', ka: 'პერსონაჟის რედაქტორი', ru: 'Редактор персонажей' }, icon: 'Gamepad2', action: 'character-editor' },
+    { id: 'game-logic-menu', label: { en: 'Game Logic', ka: 'თამაშის ლოგიკა', ru: 'Логика игры' }, icon: 'Brain', action: 'game-logic', divider: true },
+    { id: 'soundtrack-gen', label: { en: 'Generate Soundtrack', ka: 'საუნდტრეკის გენერაცია', ru: 'Сгенерировать саундтрек' }, icon: 'Music', action: 'generate-soundtrack' },
+    { id: 'play-online', label: { en: 'Play Online', ka: 'ონლაინ თამაში', ru: 'Играть онлайн' }, icon: 'Globe', action: 'play-online', divider: true },
+    { id: 'continue-agentg', label: { en: 'Continue with Agent G', ka: 'გაგრძელება Agent G-ით', ru: 'Продолжить с Agent G' }, icon: 'Bot', action: 'transfer-agentg' },
+  ],
+  toolPanels: [
+    {
+      id: 'scene-settings', label: { en: 'Scene Settings', ka: 'სცენის პარამეტრები', ru: 'Настройки сцены' }, icon: 'Layers',
+      options: [
+        { id: 'environment', label: { en: 'Environment', ka: 'გარემო', ru: 'Окружение' }, type: 'chips', options: [
+          { value: 'fantasy', label: { en: 'Fantasy', ka: 'ფენტეზი', ru: 'Фэнтези' } },
+          { value: 'sci-fi', label: { en: 'Sci-Fi', ka: 'სай-ფაი', ru: 'Научная фантастика' } },
+          { value: 'realistic', label: { en: 'Realistic', ka: 'რეალისტური', ru: 'Реалистичное' } },
+          { value: 'abstract', label: { en: 'Abstract', ka: 'აბსტრაქტული', ru: 'Абстрактное' } },
+        ], defaultValue: 'fantasy' },
+        { id: 'lighting', label: { en: 'Lighting', ka: 'განათება', ru: 'Освещение' }, type: 'chips', options: [
+          { value: 'day', label: { en: 'Day', ka: 'დღე', ru: 'День' } },
+          { value: 'night', label: { en: 'Night', ka: 'ღამე', ru: 'Ночь' } },
+          { value: 'sunset', label: { en: 'Sunset', ka: 'მზის ჩასვლა', ru: 'Закат' } },
+          { value: 'neon', label: { en: 'Neon', ka: 'ნეონი', ru: 'Неон' } },
+        ], defaultValue: 'day' },
+        { id: 'complexity', label: { en: 'Complexity', ka: 'სირთულე', ru: 'Сложность' }, type: 'slider', min: 1, max: 5, step: 1, defaultValue: 3 },
+      ],
+    },
+    {
+      id: 'game-rules', label: { en: 'Game Rules', ka: 'თამაშის წესები', ru: 'Правила игры' }, icon: 'Brain',
+      options: [
+        { id: 'game-type', label: { en: 'Game Type', ka: 'თამაშის ტიპი', ru: 'Тип игры' }, type: 'chips', options: [
+          { value: 'adventure', label: { en: 'Adventure', ka: 'თავგადასავალი', ru: 'Приключение' } },
+          { value: 'puzzle', label: { en: 'Puzzle', ka: 'თავსატეხი', ru: 'Головоломка' } },
+          { value: 'simulation', label: { en: 'Simulation', ka: 'სიმულაცია', ru: 'Симуляция' } },
+          { value: 'arcade', label: { en: 'Arcade', ka: 'არქეიდი', ru: 'Аркада' } },
+        ], defaultValue: 'adventure' },
+        { id: 'difficulty', label: { en: 'Difficulty', ka: 'სირთულე', ru: 'Сложность' }, type: 'slider', min: 1, max: 5, step: 1, defaultValue: 2 },
+      ],
+    },
+  ],
+  transferActions: [
+    { id: 'to-avatar', label: { en: 'Import Avatar', ka: 'ავატარის იმპორტი', ru: 'Импорт аватара' }, icon: 'ScanFace', targetService: 'avatar', description: { en: 'Import your avatar as a game character', ka: 'იმპორტირე ავატარი როგორც თამაშის პერსონაჟი', ru: 'Импортировать аватар как персонажа' } },
+    { id: 'to-music', label: { en: 'Create Soundtrack', ka: 'საუნდტრეკის შექმნა', ru: 'Создать саундтрек' }, icon: 'Music', targetService: 'music', description: { en: 'Generate a custom game soundtrack', ka: 'არჩიე საუნდტრეკის გენერაცია', ru: 'Сгенерировать саундтрек' } },
+    { id: 'to-image', label: { en: 'Create Game Assets', ka: 'ასეტების შექმნა', ru: 'Создать ассеты' }, icon: 'ImagePlus', targetService: 'image', description: { en: 'Generate textures and sprites for your game', ka: 'ტექსტურების და სპრაიტების გენერაცია', ru: 'Создать текстуры и спрайты' } },
+    { id: 'to-video', label: { en: 'Create Trailer', ka: 'ტრეილერის შექმნა', ru: 'Создать трейлер' }, icon: 'Video', targetService: 'video', description: { en: 'Generate a cinematic game trailer', ka: 'კინემატოგრაფიული ტრეილერის გენერაცია', ru: 'Создать кинематографичный трейлер' } },
+  ],
+};
+
+/* ═══════════════════════════════════════════════════════════════════
    CONFIG REGISTRY
    ═══════════════════════════════════════════════════════════════════ */
 
@@ -1050,6 +1134,7 @@ export const SERVICE_CONFIGS: Record<string, ServiceChatConfig> = {
   software: softwareConfig,
   business: businessConfig,
   tourism: tourismConfig,
+  game: gameConfig,
 };
 
 export function getServiceConfig(slug: string): ServiceChatConfig | undefined {

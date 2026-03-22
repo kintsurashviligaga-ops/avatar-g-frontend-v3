@@ -24,6 +24,7 @@ import {
   Plane, Map, MapPin, Compass, Building, CalendarDays,
   Brain, Search, Lightbulb, Puzzle, MessageSquare, PenTool,
   Monitor, Headphones, Radio, Share2, Tv, FileImage,
+  Gamepad2, Joystick, Sword, Trophy, Dices, Shapes,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
@@ -132,6 +133,12 @@ export const ICON_MAP: Record<string, LucideIcon> = {
   Share2,
   Tv,
   FileImage,
+  Gamepad2,
+  Joystick,
+  Sword,
+  Trophy,
+  Dices,
+  Shapes,
 };
 
 export function getIcon(name: string): LucideIcon | undefined {

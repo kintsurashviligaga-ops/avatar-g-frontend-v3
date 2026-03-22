@@ -182,6 +182,16 @@ export const SERVICE_REGISTRY: ServiceDefinition[] = [
     },
   },
   {
+    slug: 'game', title: 'Game Creator', href: '/services/game', id: 'game',
+    name: 'Game Creator', description: 'Build AI-powered games, simulations, and interactive experiences.',
+    icon: '🎮', route: '/services/game', enabled: true,
+    localized: {
+      en: { name: 'Game Creator', description: 'Build AI-powered games, simulations, and interactive experiences.' },
+      ka: { name: 'თამაშის შემქმნელი', description: 'შექმენი AI თამაშები, სიმულაციები და ინტერაქტიული გამოცდილებები.' },
+      ru: { name: 'Создатель игр', description: 'Создавайте AI-игры, симуляции и интерактивные сцены.' },
+    },
+  },
+  {
     slug: 'next', title: 'Expansion Slot', href: '/services/next', id: 'next',
     name: 'Expansion Slot', description: 'Reserved route for the next enterprise service module.',
     icon: '🚀', route: '/services/next', enabled: true,

@@ -9,7 +9,8 @@
  */
 
 import { useRef, useCallback, useEffect, useState } from 'react';
-import { Paperclip, Mic, MicOff, Send, StopCircle, Sparkles } from 'lucide-react';
+import { Paperclip, Camera, Mic, MicOff, Send, StopCircle, Sparkles } from 'lucide-react';
+import { CameraModal } from './CameraModal';
 import type { ServiceChatConfig, ServiceChatAttachment, AgentMode } from './types';
 
 interface Props {
@@ -36,6 +37,7 @@ export function ServiceComposer({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [focused, setFocused] = useState(false);
+  const [showCamera, setShowCamera] = useState(false);
 
   const lang = (language || 'en') as 'en' | 'ka' | 'ru';
   const isAgent = agentMode === 'agent';
@@ -141,6 +143,14 @@ export function ServiceComposer({
           <Paperclip className="w-[18px] h-[18px]" />
         </button>
 
+        {/* Camera */}
+        <button
+          onClick={() => setShowCamera(true)}
+          className="chat-action-btn"
+        >
+          <Camera className="w-[18px] h-[18px]" />
+        </button>
+
         {/* Textarea */}
         <textarea
           ref={textareaRef}
@@ -188,6 +198,15 @@ export function ServiceComposer({
           </button>
         )}
       </div>
+
+      {/* Camera Modal */}
+      <CameraModal
+        isOpen={showCamera}
+        accentColor={config.accentColor}
+        onClose={() => setShowCamera(false)}
+        onAttach={(att) => { onAddAttachment(att); setShowCamera(false); }}
+        showFaceGuide={config.slug === 'avatar'}
+      />
     </div>
   );
 }

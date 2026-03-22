@@ -332,6 +332,25 @@ const LOCALIZED_SERVICE_META: Record<string, LocalizedServiceMeta> = {
       ru: ['Умный планировщик маршрутов', 'Гид по местной культуре', 'Оптимизатор цен бронирования', 'Мультигородской планировщик'],
     },
   },
+  'game': {
+    icon: '🎮',
+    agentId: 'game-creator',
+    headline: {
+      en: 'AI Game Creator',
+      ka: 'AI თამაშის შემქმნელი',
+      ru: 'AI-создатель игр',
+    },
+    description: {
+      en: 'Build interactive games, simulations, and playable experiences using AI. Design scenes, import avatars as characters, generate soundtracks, and share your creations.',
+      ka: 'შექმენი ინტერაქტიული თამაშები, სიმულაციები და გამოცდილებები AI-ით. დააპროექტე სცენები, იმპორტირე ავატარები პერსონაჟებად და გააზიარე.',
+      ru: 'Создавайте интерактивные игры, симуляции и играбельные сцены с помощью AI. Проектируйте сцены, импортируйте аватары как персонажей и делитесь.',
+    },
+    features: {
+      en: ['Scene builder with AI generation', 'Avatar → game character conversion', 'AI-powered game logic & NPC behavior', 'Play, test & share instantly'],
+      ka: ['სცენის შემქმნელი AI გენერაციით', 'ავატარი → თამაშის პერსონაჟი', 'AI თამაშის ლოგიკა და NPC', 'ითამაშე, ტესტირე და გააზიარე'],
+      ru: ['Конструктор сцен с AI', 'Аватар → игровой персонаж', 'AI-логика игры и поведение NPC', 'Играйте, тестируйте и делитесь'],
+    },
+  },
   'next': {
     icon: '🚀',
     agentId: 'main-assistant',

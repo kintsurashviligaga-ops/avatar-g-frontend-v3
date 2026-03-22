@@ -12,7 +12,7 @@ export type ServiceSlug =
   | 'avatar' | 'video' | 'image' | 'music' | 'text'
   | 'editing' | 'photo' | 'visual-intel' | 'prompt'
   | 'media' | 'workflow' | 'agent-g' | 'business'
-  | 'shop' | 'software' | 'tourism';
+  | 'shop' | 'software' | 'tourism' | 'game';
 
 export type AgentMode = 'chat' | 'agent';
 

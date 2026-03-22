@@ -195,6 +195,17 @@ export const SERVICES: ServiceDefinition[] = [
     },
     category: 'scale',
   },
+  {
+    slug: 'game',
+    icon: '🎮',
+    title: { en: 'Game Creator', ka: 'თამაშის შემქმნელი', ru: 'Создатель игр' },
+    description: {
+      en: 'Build AI-powered games, simulations, and interactive experiences',
+      ka: 'შექმენი AI თამაშები, სიმულაციები და ინტერაქტიული გამოცდილებები',
+      ru: 'Создавайте AI-игры, симуляции и интерактивные сцены',
+    },
+    category: 'create',
+  },
 ];
 
 /* ─── Category labels ─────────────────────────────────────────────── */
@@ -235,7 +246,7 @@ export const NAV_CATEGORIES = [
 
 /* ─── Navigation Groups (Grouped sidebar) ─────────────────────────── */
 
-export type NavGroupId = 'creative' | 'content' | 'commerce' | 'business' | 'developer';
+export type NavGroupId = 'creative' | 'content' | 'commerce' | 'business' | 'developer' | 'gaming';
 
 export interface NavGroup {
   id: NavGroupId;
@@ -274,6 +285,12 @@ export const NAV_GROUPS: NavGroup[] = [
     label: { en: 'Developer Tools', ka: 'დეველოპერის ხელსაწყოები', ru: 'Инструменты разработчика' },
     icon: '💻',
     services: ['software', 'workflow', 'prompt', 'visual-intel'],
+  },
+  {
+    id: 'gaming',
+    label: { en: 'Gaming', ka: 'გეიმინგი', ru: 'Игры' },
+    icon: '🎮',
+    services: ['game'],
   },
 ];
 
@@ -461,6 +478,18 @@ export const SERVICE_CONTRACTS: Record<string, ServiceContract> = {
     ],
     exportFormats: ['pdf', 'json', 'txt'],
   },
+  game: {
+    serviceId: 'game',
+    inputTypes: ['text', 'image', 'audio', '3d-model'],
+    outputTypes: ['text', 'image', '3d-model', 'video'],
+    nextTools: [
+      { slug: 'avatar', label: { en: 'Import Avatar', ka: 'ავატარის იმპორტი', ru: 'Импорт аватара' } },
+      { slug: 'image', label: { en: 'Create Assets', ka: 'ასეტების შექმნა', ru: 'Создать ассеты' } },
+      { slug: 'music', label: { en: 'Game Soundtrack', ka: 'საუნდტრეკი', ru: 'Саундтрек' } },
+      { slug: 'video', label: { en: 'Trailer', ka: 'ტრეილერი', ru: 'Трейлер' } },
+    ],
+    exportFormats: ['json', 'glb', 'png', 'mp4'],
+  },
 };
 
 /* ─── Quick Presets (per service) ─────────────────────────────────── */
@@ -556,6 +585,12 @@ export const SERVICE_PRESETS: Record<string, ServicePreset[]> = {
   tourism: [
     { id: 'itinerary', label: { en: 'Smart Itinerary', ka: 'ჭკვიანი მარშრუტი', ru: 'Умный маршрут' }, prompt: 'Create a detailed travel itinerary with activities, dining, and local tips', mode: 'both' },
     { id: 'destination-promo', label: { en: 'Destination Promo', ka: 'დესტინაციის პრომო', ru: 'Промо направления' }, prompt: 'Generate promotional content for a travel destination with visuals and copy', mode: 'beginner' },
+  ],
+  game: [
+    { id: 'scene-builder', label: { en: 'Scene Builder', ka: 'სცენის აწყობა', ru: 'Конструктор сцен' }, prompt: 'Design a 3D game scene with terrain, lighting, and objects. Describe the environment theme and mood.', mode: 'both' },
+    { id: 'character-design', label: { en: 'Game Character', ka: 'თამაშის პერსონაჟი', ru: 'Персонаж игры' }, prompt: 'Create a game character from my avatar with abilities, stats, and animations', mode: 'both' },
+    { id: 'game-logic', label: { en: 'Game Logic AI', ka: 'თამაშის ლოგიკა', ru: 'Логика игры' }, prompt: 'Set up game rules, win/lose conditions, scoring system, and NPC behavior', mode: 'advanced' },
+    { id: 'quick-simulation', label: { en: 'Quick Simulation', ka: 'სწრაფი სიმულაცია', ru: 'Быстрая симуляция' }, prompt: 'Generate a simple playable simulation with physics and basic interactions', mode: 'beginner' },
   ],
 };
 
