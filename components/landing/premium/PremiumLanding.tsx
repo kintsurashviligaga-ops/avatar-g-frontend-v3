@@ -28,9 +28,7 @@ export default function PremiumLanding() {
       <Separator />
       <ServicesSlider />
       <Separator />
-      <div className="px-4 sm:px-6 py-10 sm:py-14 lg:py-16">
-        <AvatarBuilderWindow onAvatarCreated={handleAvatarCreated} />
-      </div>
+      <AvatarBuilderWindow onAvatarCreated={handleAvatarCreated} />
       <Separator />
       <WorkflowPipelineBuilder createdAvatar={createdAvatar} />
       <Separator />
