@@ -424,41 +424,87 @@ export default async function LocalizedServicesPage({ params }: ServicesPageProp
           ))}
         </section>
 
-        <section className='rounded-3xl p-5 sm:p-6 md:p-8' style={{ backgroundColor: 'var(--color-surface)', border: '1px solid var(--color-border)' }}>
-          <p className='text-center text-base font-semibold tracking-[0.06em] md:text-lg' style={{ color: 'var(--color-accent)' }}>{text.workflowLabel}</p>
-          <p className='mx-auto mt-3 max-w-3xl text-center text-sm leading-relaxed md:text-base' style={{ color: 'var(--color-text-secondary)' }}>{text.workflowSub}</p>
-          <div className='mt-6 flex flex-wrap items-center justify-center gap-2 text-sm' style={{ color: 'var(--color-text-secondary)' }}>
-            {['🎭 Avatar / Media', '🧠 Intelligence', '⚡ Workflows', '💼 Business', '🌍 Expansion'].map((step, i) => (
-              <div key={step} className='flex items-center gap-2'>
-                <div className='rounded-xl px-4 py-2.5 text-center font-medium transition-colors hover:border-[var(--color-accent)]' style={{ backgroundColor: 'var(--card-bg)', border: '1px solid var(--color-border)' }}>
-                  {step}
-                </div>
-                {i < 4 && <ArrowRight className='h-3.5 w-3.5 hidden sm:block' style={{ color: 'var(--color-text-tertiary)' }} />}
-              </div>
-            ))}
+        {/* ═══ CINEMATIC POSTER ═══ */}
+        <section
+          className='relative overflow-hidden rounded-3xl'
+          style={{
+            background: 'linear-gradient(170deg, #080e18 0%, #0a0f1a 30%, #06111d 60%, #030a14 100%)',
+            border: '1px solid rgba(34,211,238,0.15)',
+            boxShadow: '0 0 80px rgba(34,211,238,0.06), 0 20px 60px rgba(0,0,0,0.5)',
+          }}
+        >
+          {/* Ambient glow layers */}
+          <div className='absolute inset-0 pointer-events-none' aria-hidden='true'>
+            <div className='absolute top-0 left-1/2 -translate-x-1/2 w-[700px] h-[400px]' style={{ background: 'radial-gradient(ellipse 70% 50% at 50% 0%, rgba(34,211,238,0.08) 0%, transparent 70%)', filter: 'blur(60px)' }} />
+            <div className='absolute bottom-0 right-0 w-[500px] h-[300px]' style={{ background: 'radial-gradient(ellipse at 80% 100%, rgba(99,102,241,0.06) 0%, transparent 70%)', filter: 'blur(50px)' }} />
+            <div className='absolute top-1/2 left-0 w-[400px] h-[400px] -translate-y-1/2' style={{ background: 'radial-gradient(ellipse at 0% 50%, rgba(168,85,247,0.05) 0%, transparent 70%)', filter: 'blur(60px)' }} />
+            {/* Grid overlay */}
+            <div className='absolute inset-0 opacity-[0.03]' style={{ backgroundImage: 'linear-gradient(rgba(255,255,255,0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.1) 1px, transparent 1px)', backgroundSize: '60px 60px' }} />
+            {/* Scan line */}
+            <div className='absolute left-0 right-0 h-px opacity-20' style={{ top: '40%', background: 'linear-gradient(90deg, transparent, rgba(34,211,238,0.4), transparent)' }} />
           </div>
-        </section>
 
-        <section className='rounded-3xl p-6 sm:p-7 md:p-10' style={{ backgroundColor: 'var(--color-surface)', border: '1px solid var(--color-accent)' }}>
-          <p className='mb-3 text-xs font-semibold tracking-[0.2em]' style={{ color: 'var(--color-accent)' }}>{text.ctaEyebrow}</p>
-          <h2 className='max-w-3xl text-2xl font-semibold tracking-tight sm:text-3xl md:text-4xl' style={{ color: 'var(--color-text)' }}>{text.ctaTitle}</h2>
-          <p className='mt-3 max-w-3xl text-sm leading-relaxed md:text-base' style={{ color: 'var(--color-text-secondary)' }}>{text.ctaDescription}</p>
-          <div className='mt-6 flex flex-wrap items-center gap-3'>
-            <Link
-              href={`/${locale}/services`}
-              className='inline-flex items-center gap-2 rounded-xl px-5 py-3 text-sm font-semibold transition hover:-translate-y-0.5'
-              style={{ backgroundColor: 'var(--color-accent)', color: '#fff' }}
-            >
-              {text.exploreCta}
-              <ArrowRight className='h-4 w-4' />
-            </Link>
-            <Link
-              href={`/${locale}/signup`}
-              className='inline-flex items-center gap-2 rounded-xl px-5 py-3 text-sm font-semibold transition hover:-translate-y-0.5'
-              style={{ backgroundColor: 'var(--color-surface)', color: 'var(--color-text)', border: '1px solid var(--color-border)' }}
-            >
-              {text.startCta}
-            </Link>
+          <div className='relative z-10 flex flex-col items-center text-center px-6 sm:px-10 py-16 sm:py-20 lg:py-28'>
+            {/* Brand mark */}
+            <div className='relative w-[72px] h-[72px] sm:w-[96px] sm:h-[96px] mb-8'>
+              <div className='absolute inset-[-20%] rounded-full' style={{ background: 'radial-gradient(circle, rgba(34,211,238,0.12) 0%, transparent 70%)', filter: 'blur(16px)' }} />
+              <Image src="/brand/gemini-rocket-clean.png" alt="MyAvatar.ge" fill sizes="96px" className='object-contain drop-shadow-[0_4px_24px_rgba(34,211,238,0.3)]' />
+            </div>
+
+            {/* Eyebrow */}
+            <p className='mb-4 text-[10px] sm:text-xs font-black tracking-[0.35em] uppercase' style={{ color: 'rgba(34,211,238,0.7)' }}>AI-POWERED CREATIVE ECOSYSTEM</p>
+
+            {/* Headline */}
+            <h2 className='max-w-3xl text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight leading-[1.1]'>
+              <span style={{ color: '#fff' }}>The Future of </span>
+              <span style={{ background: 'linear-gradient(135deg, #22d3ee, #818cf8, #a78bfa)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>AI Creation</span>
+            </h2>
+
+            {/* Sub */}
+            <p className='mt-5 max-w-xl text-sm sm:text-base leading-relaxed' style={{ color: 'rgba(255,255,255,0.45)' }}>
+              {text.ctaDescription}
+            </p>
+
+            {/* Service orbit — floating icons */}
+            <div className='mt-10 flex flex-wrap items-center justify-center gap-3 max-w-lg'>
+              {['🎭', '🎬', '🎵', '📸', '🖼️', '✍️', '🔍', '⚡', '🛒', '🤖', '💻', '💼', '✈️', '🎮', '🛋️'].map((emoji, i) => (
+                <div
+                  key={i}
+                  className='flex items-center justify-center w-10 h-10 sm:w-11 sm:h-11 rounded-xl text-lg sm:text-xl transition-transform hover:scale-125'
+                  style={{
+                    background: 'rgba(255,255,255,0.03)',
+                    border: '1px solid rgba(255,255,255,0.06)',
+                    boxShadow: '0 2px 12px rgba(0,0,0,0.3)',
+                  }}
+                >
+                  {emoji}
+                </div>
+              ))}
+            </div>
+
+            {/* CTA row */}
+            <div className='mt-10 flex flex-wrap items-center justify-center gap-3'>
+              <Link
+                href={`/${locale}/signup`}
+                className='inline-flex items-center gap-2 rounded-xl px-7 py-3.5 text-sm font-bold transition-all hover:-translate-y-0.5 hover:shadow-lg hover:shadow-cyan-500/20'
+                style={{ background: 'linear-gradient(135deg, #22d3ee, #06b6d4)', color: '#fff' }}
+              >
+                {text.startCta}
+                <ArrowRight className='h-4 w-4' />
+              </Link>
+              <Link
+                href={`/${locale}/services`}
+                className='inline-flex items-center gap-2 rounded-xl px-7 py-3.5 text-sm font-semibold transition-all hover:-translate-y-0.5'
+                style={{ background: 'rgba(255,255,255,0.04)', color: '#fff', border: '1px solid rgba(255,255,255,0.1)' }}
+              >
+                {text.exploreCta}
+              </Link>
+            </div>
+
+            {/* Bottom tagline */}
+            <p className='mt-12 text-[11px] tracking-[0.15em] font-medium' style={{ color: 'rgba(255,255,255,0.2)' }}>
+              {text.workflowLabel}
+            </p>
           </div>
         </section>
       </div>

@@ -45,12 +45,12 @@ export default function ServicePageClient(props: ServicePageClientProps) {
 
   if (serviceChatConfig && isAuthenticated) {
     return (
-      <div className="h-[calc(100vh-64px)] w-full max-w-5xl mx-auto p-2 sm:p-4">
+      <div className="fixed inset-0 z-[9999] flex flex-col" style={{ height: '100dvh', background: 'var(--color-bg)' }}>
         <Suspense fallback={<ServiceChatShellFallback />}>
           <ServiceChatShell
             config={serviceChatConfig}
             language={props.locale}
-            className="h-full border border-[rgba(255,255,255,0.06)] shadow-2xl"
+            className="flex-1 min-h-0"
           />
         </Suspense>
       </div>
@@ -68,7 +68,7 @@ export default function ServicePageClient(props: ServicePageClientProps) {
 
 function ServiceChatShellFallback() {
   return (
-    <div className="h-full rounded-xl flex items-center justify-center" style={{ background: 'var(--color-bg)', border: '1px solid var(--color-border)' }}>
+    <div className="flex-1 flex items-center justify-center" style={{ background: 'var(--color-bg)' }}>
       <div className="flex items-center gap-2">
         <div className="w-5 h-5 rounded-full border-2 animate-spin" style={{ borderColor: 'var(--color-accent)', borderTopColor: 'transparent' }} />
         <span className="text-sm" style={{ color: 'var(--color-text-tertiary)' }}>Loading...</span>

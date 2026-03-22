@@ -10,6 +10,7 @@
 
 import { useRef, useState, useCallback, useEffect } from 'react'
 import Link from 'next/link'
+import Image from 'next/image'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
 import { SERVICES } from '@/lib/services/catalog'
 
@@ -26,7 +27,7 @@ const ACCENTS: Record<string, string> = {
   text: '#818cf8', editing: '#06b6d4', photo: '#fb923c', workflow: '#fb923c',
   'agent-g': '#22d3ee', 'visual-intel': '#3b82f6', prompt: '#fbbf24',
   media: '#ec4899', business: '#8b5cf6', shop: '#10b981', software: '#6366f1',
-  tourism: '#14b8a6',
+  tourism: '#14b8a6', game: '#f97316', interior: '#d946ef',
 }
 
 const AUTO_MS = 8000
@@ -111,37 +112,55 @@ export function ServicesSlider() {
           }}
         >
           {/* Slide content */}
-          <div className="relative flex flex-col items-center justify-center text-center px-6 sm:px-10 py-16 sm:py-20 lg:py-24 min-h-[360px]">
-            {/* Glow orb */}
-            <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[400px] h-[300px] pointer-events-none transition-all duration-700" style={{ background: `radial-gradient(ellipse, ${accent}18 0%, transparent 70%)`, filter: 'blur(60px)' }} />
-
-            {/* Icon */}
-            <div
-              className="relative z-10 w-20 h-20 sm:w-24 sm:h-24 rounded-3xl flex items-center justify-center text-4xl sm:text-5xl mb-6 transition-all duration-500"
-              style={{ background: `linear-gradient(135deg, ${accent}20, ${accent}08)`, border: `1px solid ${accent}35`, boxShadow: `0 0 40px ${accent}15` }}
-            >
-              {svc.icon}
+          <div className="relative flex flex-col sm:flex-row items-center sm:items-stretch overflow-hidden min-h-[360px]">
+            {/* Card image — cinematic generated artwork */}
+            <div className="relative w-full sm:w-1/2 min-h-[200px] sm:min-h-[360px] flex-shrink-0">
+              <Image
+                src={`/services/${svc.slug}.webp`}
+                alt={svc.title[lang] || svc.title.en}
+                fill
+                sizes="(max-width: 640px) 100vw, 50vw"
+                className="object-cover"
+                priority={active < 3}
+              />
+              {/* Bottom gradient fade (mobile) / right fade (desktop) */}
+              <div className="absolute inset-0 sm:hidden" style={{ background: 'linear-gradient(to top, #080e14 0%, transparent 60%)' }} />
+              <div className="absolute inset-0 hidden sm:block" style={{ background: 'linear-gradient(to left, #080e14 0%, transparent 50%)' }} />
             </div>
 
-            {/* Name */}
-            <h3 className="relative z-10 text-2xl sm:text-3xl lg:text-4xl font-bold mb-3 transition-colors duration-500" style={{ color: accent }}>
-              {svc.title[lang] || svc.title.en}
-            </h3>
+            {/* Text + CTA panel */}
+            <div className="relative z-10 flex flex-col justify-center px-6 sm:px-10 py-8 sm:py-12 w-full sm:w-1/2">
+              {/* Glow orb */}
+              <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[300px] h-[200px] pointer-events-none transition-all duration-700" style={{ background: `radial-gradient(ellipse, ${accent}15 0%, transparent 70%)`, filter: 'blur(50px)' }} />
 
-            {/* Description */}
-            <p className="relative z-10 text-sm sm:text-base max-w-md mb-8" style={{ color: 'rgba(255,255,255,0.5)' }}>
-              {svc.description[lang] || svc.description.en}
-            </p>
+              {/* Icon badge */}
+              <div
+                className="relative z-10 w-14 h-14 rounded-2xl flex items-center justify-center text-2xl mb-5 transition-all duration-500"
+                style={{ background: `linear-gradient(135deg, ${accent}20, ${accent}08)`, border: `1px solid ${accent}30`, boxShadow: `0 0 24px ${accent}10` }}
+              >
+                {svc.icon}
+              </div>
 
-            {/* CTA */}
-            <Link
-              href={`/${language}/services/${svc.slug}`}
-              className="relative z-10 inline-flex items-center gap-2 px-7 py-3 rounded-xl text-sm font-bold transition-all duration-300 active:scale-95 hover:-translate-y-0.5"
-              style={{ background: `linear-gradient(135deg, ${accent}25, ${accent}10)`, border: `1px solid ${accent}40`, color: accent, boxShadow: `0 0 24px ${accent}15` }}
-            >
-              {c.cta}
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M5 12h14" /><polyline points="12 5 19 12 12 19" /></svg>
-            </Link>
+              {/* Name */}
+              <h3 className="relative z-10 text-2xl sm:text-3xl lg:text-4xl font-bold mb-3 transition-colors duration-500" style={{ color: accent }}>
+                {svc.title[lang] || svc.title.en}
+              </h3>
+
+              {/* Description */}
+              <p className="relative z-10 text-sm sm:text-base max-w-md mb-8" style={{ color: 'rgba(255,255,255,0.5)' }}>
+                {svc.description[lang] || svc.description.en}
+              </p>
+
+              {/* CTA */}
+              <Link
+                href={`/${language}/services/${svc.slug}`}
+                className="relative z-10 inline-flex items-center gap-2 px-7 py-3 rounded-xl text-sm font-bold transition-all duration-300 active:scale-95 hover:-translate-y-0.5 w-fit"
+                style={{ background: `linear-gradient(135deg, ${accent}25, ${accent}10)`, border: `1px solid ${accent}40`, color: accent, boxShadow: `0 0 24px ${accent}15` }}
+              >
+                {c.cta}
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M5 12h14" /><polyline points="12 5 19 12 12 19" /></svg>
+              </Link>
+            </div>
 
             {/* Counter */}
             <div className="absolute top-4 right-5 z-10 text-[11px] font-bold tracking-wider" style={{ color: 'rgba(255,255,255,0.2)' }}>

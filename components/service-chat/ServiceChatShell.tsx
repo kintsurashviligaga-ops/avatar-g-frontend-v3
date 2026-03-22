@@ -282,7 +282,6 @@ export default function ServiceChatShell({ config, language = 'en', className = 
       className={`relative flex flex-col h-full overflow-hidden ${className}`}
       style={{
         background: 'var(--color-bg)',
-        borderRadius: 'var(--radius-xl)',
       }}
     >
       {/* Header */}
