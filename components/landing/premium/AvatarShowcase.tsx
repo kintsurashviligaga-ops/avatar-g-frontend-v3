@@ -378,7 +378,6 @@ function FallbackState({ locale, onAction }: { locale: string; onAction: () => v
     </div>
   )
 }
-}
 
 /**
  * Main Avatar Showcase Component
