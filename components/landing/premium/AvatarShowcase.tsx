@@ -4,15 +4,14 @@
  * AvatarShowcase — Premium 3D Avatar Studio Section
  * ================================================
  * Full-body avatar showcase on futuristic pedestal.
- * Shows user's created avatar or beautiful fallback state.
+ * Shows placeholder state by default with graceful WebGL fallback.
  */
 
 import { useEffect, useState, useRef, Suspense } from 'react'
 import { Canvas, useFrame } from '@react-three/fiber'
-import { PresentationControls, Environment, useGLTF } from '@react-three/drei'
+import { PresentationControls, Environment } from '@react-three/drei'
 import * as THREE from 'three'
 import Link from 'next/link'
-import Image from 'next/image'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
 
 type Lang = 'en' | 'ka' | 'ru'
@@ -46,21 +45,6 @@ const COPY = {
     demo: 'Посмотреть премиум',
   },
 } as const
-
-interface AvatarData {
-  id: string
-  status: 'creating' | 'processing' | 'ready' | 'failed'
-  modelUrl?: string
-  previewUrl?: string
-  style?: string
-  createdAt: string
-}
-
-interface ShowcaseProps {
-  userAvatarUrl?: string
-  userId?: string
-  locale: string
-}
 
 /**
  * Premium futuristic pedestal — glowing base
@@ -258,14 +242,56 @@ function Lights() {
 
 /**
  * Main 3D Scene — avatar on pedestal
+ * Falls back gracefully if WebGL unavailable
  */
 function ShowcaseScene() {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const [webglAvailable, setWebglAvailable] = useState(true)
+
+  useEffect(() => {
+    // Test WebGL availability
+    try {
+      const canvas = document.createElement('canvas')
+      const gl = canvas.getContext('webgl') || canvas.getContext('webgl2')
+      if (!gl) setWebglAvailable(false)
+    } catch {
+      setWebglAvailable(false)
+    }
+  }, [])
+
+  if (!webglAvailable) {
+    return (
+      <div ref={containerRef} className="w-full h-full flex items-center justify-center">
+        {/* Beautiful static fallback */}
+        <div className="text-center px-6">
+          <div className="w-24 h-24 mx-auto mb-6 rounded-full flex items-center justify-center text-5xl" style={{ background: 'radial-gradient(circle, rgba(34,211,238,0.2) 0%, transparent 70%)' }}>
+            👤
+          </div>
+          <h3 className="text-xl font-bold mb-2" style={{ color: '#fff' }}>
+            3D Preview Not Available
+          </h3>
+          <p className="text-sm text-gray-400">
+            Your system doesn't support WebGL. Click below to create your avatar.
+          </p>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <Canvas
+      ref={containerRef as any}
       camera={{ position: [0, 1.2, 4], fov: 50, near: 0.1, far: 1000 }}
       style={{ width: '100%', height: '100%' }}
       gl={{ antialias: true, alpha: true }}
       shadows
+      onCreated={(state) => {
+        try {
+          state.gl.context.getExtension('OES_standard_derivatives')
+        } catch (e) {
+          console.warn('WebGL extension unavailable')
+        }
+      }}
     >
       <Lights />
       <Environment preset="studio" />
@@ -352,51 +378,15 @@ function FallbackState({ locale, onAction }: { locale: string; onAction: () => v
     </div>
   )
 }
+}
 
 /**
  * Main Avatar Showcase Component
  */
-export function AvatarShowcase({ userAvatarUrl, userId, locale }: ShowcaseProps) {
+export function AvatarShowcase({ locale }: { locale: string }) {
   const { language } = useLanguage()
   const lang = (language as Lang) || 'en'
   const c = COPY[lang] || COPY.en
-
-  const [hasAvatar, setHasAvatar] = useState(false)
-  const [loading, setLoading] = useState(true)
-  const [showFallback, setShowFallback] = useState(false)
-
-  // Fetch user avatar on mount
-  useEffect(() => {
-    const checkAvatar = async () => {
-      try {
-        if (!userId) {
-          setShowFallback(true)
-          setLoading(false)
-          return
-        }
-
-        const res = await fetch('/api/avatar/core')
-        if (res.ok) {
-          const data = (await res.json()) as AvatarData
-          if (data.status === 'ready' && data.modelUrl) {
-            setHasAvatar(true)
-            setShowFallback(false)
-          } else {
-            setShowFallback(true)
-          }
-        } else {
-          setShowFallback(true)
-        }
-      } catch (err) {
-        console.error('Failed to fetch avatar:', err)
-        setShowFallback(true)
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    checkAvatar()
-  }, [userId])
 
   const handleCreateClick = () => {
     window.location.href = `/${language}/services/avatar`
@@ -438,73 +428,37 @@ export function AvatarShowcase({ userAvatarUrl, userId, locale }: ShowcaseProps)
             <ShowcaseScene />
           </Suspense>
 
-          {/* Fallback State Overlay */}
-          {showFallback && <FallbackState locale={locale} onAction={handleCreateClick} />}
-
           {/* Border */}
           <div className="absolute inset-0 rounded-3xl border border-cyan-500/20 pointer-events-none" />
         </div>
 
         {/* Action row */}
         <div className="flex flex-wrap items-center justify-center gap-3">
-          {hasAvatar ? (
-            <>
-              <Link
-                href={`/${language}/services/avatar`}
-                className="inline-flex items-center gap-2 px-7 py-3 rounded-xl text-sm font-bold transition-all hover:-translate-y-0.5"
-                style={{
-                  background: 'linear-gradient(135deg, #22d3ee, #0ea5e9)',
-                  color: '#fff',
-                  boxShadow: '0 0 24px rgba(34,211,238,0.3)',
-                }}
-              >
-                {c.edit}
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                  <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-                </svg>
-              </Link>
-              <Link
-                href={`/${language}/services/video`}
-                className="inline-flex items-center gap-2 px-7 py-3 rounded-xl text-sm font-bold transition-all hover:-translate-y-0.5"
-                style={{
-                  background: 'rgba(255,255,255,0.05)',
-                  color: '#fff',
-                  border: '1px solid rgba(255,255,255,0.1)',
-                }}
-              >
-                {c.use}
-              </Link>
-            </>
-          ) : (
-            <>
-              <button
-                onClick={handleCreateClick}
-                className="inline-flex items-center gap-2 px-7 py-3 rounded-xl text-sm font-bold transition-all hover:scale-105 active:scale-95"
-                style={{
-                  background: 'linear-gradient(135deg, #22d3ee, #0ea5e9)',
-                  color: '#fff',
-                  boxShadow: '0 0 24px rgba(34,211,238,0.3)',
-                }}
-              >
-                {c.create}
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M12 5v14M5 12h14" />
-                </svg>
-              </button>
-              <Link
-                href={`/${language}/services`}
-                className="inline-flex items-center gap-2 px-7 py-3 rounded-xl text-sm font-bold transition-all"
-                style={{
-                  background: 'rgba(255,255,255,0.05)',
-                  color: '#fff',
-                  border: '1px solid rgba(255,255,255,0.1)',
-                }}
-              >
-                {c.demo}
-              </Link>
-            </>
-          )}
+          <button
+            onClick={handleCreateClick}
+            className="inline-flex items-center gap-2 px-7 py-3 rounded-xl text-sm font-bold transition-all hover:scale-105 active:scale-95"
+            style={{
+              background: 'linear-gradient(135deg, #22d3ee, #0ea5e9)',
+              color: '#fff',
+              boxShadow: '0 0 24px rgba(34,211,238,0.3)',
+            }}
+          >
+            {c.create}
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+          </button>
+          <Link
+            href={`/${language}/services`}
+            className="inline-flex items-center gap-2 px-7 py-3 rounded-xl text-sm font-bold transition-all hover:-translate-y-0.5"
+            style={{
+              background: 'rgba(255,255,255,0.05)',
+              color: '#fff',
+              border: '1px solid rgba(255,255,255,0.1)',
+            }}
+          >
+            {c.demo}
+          </Link>
         </div>
       </div>
     </section>
