@@ -7,30 +7,23 @@
  * Flow: Hero → Services → Avatar Creation → Workflow Builder → App Download → Footer
  */
 
-import { useState, useCallback } from 'react'
 import { HeroSection } from './HeroSection'
 import { ServicesSlider } from './ServicesSlider'
+import { AvatarShowcase } from './AvatarShowcase'
 import { WorkflowPipelineBuilder } from './WorkflowPipelineBuilder'
 import { AppDownloadSection } from './AppDownloadSection'
 import { LandingFooter } from './LandingFooter'
-import { AvatarBuilderWindow } from './AvatarBuilderWindow'
 
 export default function PremiumLanding() {
-  const [createdAvatar, setCreatedAvatar] = useState<string | null>(null)
-
-  const handleAvatarCreated = useCallback((avatarSrc: string) => {
-    setCreatedAvatar(avatarSrc)
-  }, [])
-
   return (
     <div className="relative min-h-screen overflow-x-hidden" style={{ color: 'var(--color-text)' }}>
       <HeroSection />
       <Separator />
       <ServicesSlider />
       <Separator />
-      <AvatarBuilderWindow onAvatarCreated={handleAvatarCreated} />
+      <AvatarShowcase locale="en" />
       <Separator />
-      <WorkflowPipelineBuilder createdAvatar={createdAvatar} />
+      <WorkflowPipelineBuilder createdAvatar={null} />
       <Separator />
       <AppDownloadSection />
       <LandingFooter />

@@ -1,81 +1,92 @@
 'use client'
 
+/**
+ * AvatarBuilderWindow — Premium 3D Avatar Showcase Section.
+ *
+ * Shows the user's personal avatar on a futuristic pedestal
+ * with cinematic lighting and slow rotation.
+ *
+ * Flow:
+ *  - Authenticated + avatar ready → 3D showcase with user's GLB model
+ *  - Authenticated + avatar processing → processing state
+ *  - No avatar / not authenticated → premium CTA placeholder with holographic silhouette
+ *
+ * Camera/upload creation flow accessible via CTA buttons.
+ */
+
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
+import dynamic from 'next/dynamic'
+
+/* Lazy-load the 3D showcase to avoid SSR issues with Three.js */
+const AvatarShowcase3D = dynamic(
+  () => import('./AvatarShowcase3D').then(m => ({ default: m.AvatarShowcase3D })),
+  { ssr: false }
+)
 
 /* ── i18n ── */
 const COPY = {
   en: {
     eyebrow: 'AVATAR STUDIO',
-    title: 'Create Your Digital Avatar',
-    sub: 'Use your camera or upload a photo — our AI transforms it into a stunning avatar in seconds.',
-    startScan: 'Start Camera',
-    uploadPhoto: 'Upload Photo',
-    scanning: 'Align your face in the oval',
-    capture: 'Capture',
-    processing: 'Generating your avatar…',
-    regenerate: 'Regenerate',
-    newScan: 'New Scan',
-    useInStudio: 'Open in Studio',
+    title: 'Your Digital Identity',
+    titleCreate: 'Create Your Digital Avatar',
+    sub: 'Your personal AI avatar — alive inside the platform, ready for video, workflow, and every creative experience.',
+    subCreate: 'Use your camera or upload a photo — our AI transforms it into a stunning full-body avatar in seconds.',
+    createAvatar: 'Create Avatar',
+    openStudio: 'Open Studio',
+    editAvatar: 'Edit Avatar',
+    useInVideo: 'Use in Video',
     useInWorkflow: 'Use in Workflow',
-    inputPlaceholder: 'Describe your avatar style…',
-    inputHint: 'e.g. Cyberpunk, realistic, cinematic lighting',
-    cameraError: 'Camera not available',
-    permissionDenied: 'Camera permission denied',
-    fullscreen: 'Fullscreen',
-    exitFullscreen: 'Exit Fullscreen',
-    switchCamera: 'Switch Camera',
-    features: ['AI Face Scan', 'Style Transfer', 'HD Export', 'Multi-Format'],
+    uploadPhoto: 'Upload Photo',
+    processing: 'Your avatar is being generated…',
+    livePreview: 'LIVE PREVIEW',
+    readyStatus: 'Avatar Ready',
+    features: ['AI Face Scan', 'Full Body 3D', 'Style Transfer', 'HD Export'],
   },
   ka: {
     eyebrow: 'ავატარ სტუდია',
-    title: 'შექმენი შენი ციფრული ავატარი',
-    sub: 'გამოიყენე კამერა ან ატვირთე ფოტო — AI გარდაქმნის წამებში.',
-    startScan: 'კამერის დაწყება',
-    uploadPhoto: 'ფოტოს ატვირთვა',
-    scanning: 'გაასწორე სახე ოვალში',
-    capture: 'გადაღება',
-    processing: 'ავატარი იქმნება…',
-    regenerate: 'თავიდან',
-    newScan: 'ახალი სკანი',
-    useInStudio: 'სტუდიაში',
+    title: 'შენი ციფრული იდენტობა',
+    titleCreate: 'შექმენი შენი ციფრული ავატარი',
+    sub: 'შენი პერსონალური AI ავატარი — ცოცხალი პლატფორმაში, მზად ვიდეოსთვის, workflow-სთვის და ყველა კრეატიული გამოცდილებისთვის.',
+    subCreate: 'გამოიყენე კამერა ან ატვირთე ფოტო — AI გარდაქმნის სრულ 3D ავატარად წამებში.',
+    createAvatar: 'შექმენი ავატარი',
+    openStudio: 'გახსენი სტუდია',
+    editAvatar: 'დაარედაქტირე',
+    useInVideo: 'ვიდეოში',
     useInWorkflow: 'Workflow-ში',
-    inputPlaceholder: 'აღწერე ავატარის სტილი…',
-    inputHint: 'მაგ: კიბერპანკი, რეალისტური, კინემატოგრაფიული',
-    cameraError: 'კამერა მიუწვდომელია',
-    permissionDenied: 'კამერაზე წვდომა უარყოფილია',
-    fullscreen: 'სრული ეკრანი',
-    exitFullscreen: 'გასვლა',
-    switchCamera: 'კამერის შეცვლა',
-    features: ['AI სკანი', 'სტილი', 'HD ექსპორტი', 'მულტი-ფორმატი'],
+    uploadPhoto: 'ფოტოს ატვირთვა',
+    processing: 'ავატარი იქმნება…',
+    livePreview: 'პირდაპირი ხედი',
+    readyStatus: 'ავატარი მზადაა',
+    features: ['AI სკანი', 'სრული 3D', 'სტილი', 'HD ექსპორტი'],
   },
   ru: {
     eyebrow: 'АВАТАР СТУДИЯ',
-    title: 'Создайте цифровой аватар',
-    sub: 'Используйте камеру или загрузите фото — AI создаст потрясающий аватар за секунды.',
-    startScan: 'Камера',
-    uploadPhoto: 'Загрузить фото',
-    scanning: 'Выровняйте лицо в овале',
-    capture: 'Снять',
-    processing: 'Генерация аватара…',
-    regenerate: 'Заново',
-    newScan: 'Новый скан',
-    useInStudio: 'В студию',
+    title: 'Ваша Цифровая Личность',
+    titleCreate: 'Создайте цифровой аватар',
+    sub: 'Ваш персональный AI-аватар — живёт внутри платформы, готов для видео, воркфлоу и любого креативного опыта.',
+    subCreate: 'Используйте камеру или загрузите фото — AI создаст полноценный 3D-аватар за секунды.',
+    createAvatar: 'Создать аватар',
+    openStudio: 'Открыть студию',
+    editAvatar: 'Редактировать',
+    useInVideo: 'В видео',
     useInWorkflow: 'В Workflow',
-    inputPlaceholder: 'Опишите стиль аватара…',
-    inputHint: 'напр: Киберпанк, реалистичный, кинематографичный',
-    cameraError: 'Камера недоступна',
-    permissionDenied: 'Доступ к камере запрещён',
-    fullscreen: 'Полный экран',
-    exitFullscreen: 'Выход',
-    switchCamera: 'Сменить камеру',
-    features: ['AI скан', 'Стиль', 'HD экспорт', 'Мульти-формат'],
+    uploadPhoto: 'Загрузить фото',
+    processing: 'Аватар генерируется…',
+    livePreview: 'ПРЕДПРОСМОТР',
+    readyStatus: 'Аватар готов',
+    features: ['AI скан', 'Полный 3D', 'Стиль', 'HD экспорт'],
   },
 } as const
 
-type BuilderState = 'idle' | 'scanning' | 'processing' | 'result'
 type Lang = 'en' | 'ka' | 'ru'
+
+type AvatarState = {
+  status: 'none' | 'processing' | 'ready' | 'failed'
+  modelUrl: string | null
+  posterUrl: string | null
+}
 
 interface AvatarBuilderWindowProps {
   onAvatarCreated?: (avatarSrc: string) => void
@@ -87,190 +98,89 @@ export function AvatarBuilderWindow({ onAvatarCreated }: AvatarBuilderWindowProp
   const lang = (language as Lang) || 'en'
   const c = COPY[lang] || COPY.en
 
-  const [state, setState] = useState<BuilderState>('idle')
-  const [stylePrompt, setStylePrompt] = useState('')
-  const [previewSrc, setPreviewSrc] = useState<string | null>(null)
-  const [cameraError, setCameraError] = useState<string | null>(null)
-  const [isFullscreen, setIsFullscreen] = useState(false)
-  const [facingMode, setFacingMode] = useState<'user' | 'environment'>('user')
-
-  const videoRef = useRef<HTMLVideoElement>(null)
-  const canvasRef = useRef<HTMLCanvasElement>(null)
-  const streamRef = useRef<MediaStream | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const containerRef = useRef<HTMLDivElement>(null)
 
-  /* ── Cleanup camera on unmount ── */
+  /* ── Avatar state from backend ── */
+  const [avatar, setAvatar] = useState<AvatarState>({ status: 'none', modelUrl: null, posterUrl: null })
+
+  /* ── Fetch user's core avatar on mount ── */
   useEffect(() => {
-    return () => {
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach(t => t.stop())
+    let cancelled = false
+    async function fetchAvatar() {
+      try {
+        const res = await fetch('/api/avatar/core')
+        if (!res.ok) return
+        const data = await res.json()
+        if (cancelled) return
+        setAvatar({
+          status: data.status || 'none',
+          modelUrl: data.model_glb_url || null,
+          posterUrl: data.poster_url || null,
+        })
+      } catch {
+        // Not authenticated or network error — stay in "none" state
       }
     }
+    fetchAvatar()
+    return () => { cancelled = true }
   }, [])
 
-  /* ── Fullscreen change listener ── */
-  useEffect(() => {
-    const handler = () => setIsFullscreen(!!document.fullscreenElement)
-    document.addEventListener('fullscreenchange', handler)
-    return () => document.removeEventListener('fullscreenchange', handler)
-  }, [])
+  const hasAvatar = avatar.status === 'ready'
+  const isProcessing = avatar.status === 'processing'
 
-  /* ── Start camera scan ── */
-  const startScan = useCallback(async (facing?: 'user' | 'environment') => {
-    setCameraError(null)
-    // Stop previous stream
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(t => t.stop())
-      streamRef.current = null
-    }
-    const mode = facing || facingMode
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: mode, width: { ideal: 1280 }, height: { ideal: 960 } },
-      })
-      streamRef.current = stream
-      setState('scanning')
-    } catch (err) {
-      const msg = err instanceof DOMException && err.name === 'NotAllowedError'
-        ? c.permissionDenied
-        : c.cameraError
-      setCameraError(msg)
-    }
-  }, [c, facingMode])
+  /* ── Navigation ── */
+  const goToStudio = useCallback(() => {
+    router.push(`/${language}/services/avatar`)
+  }, [language, router])
 
-  /* ── Attach stream to video element after it renders ── */
-  useEffect(() => {
-    if (state === 'scanning' && streamRef.current && videoRef.current) {
-      videoRef.current.srcObject = streamRef.current
-      videoRef.current.play().catch(() => {})
-    }
-  }, [state])
+  const goToVideo = useCallback(() => {
+    router.push(`/${language}/services/video`)
+  }, [language, router])
 
-  /* ── Toggle fullscreen ── */
-  const toggleFullscreen = useCallback(async () => {
-    if (!containerRef.current) return
-    if (!document.fullscreenElement) {
-      await containerRef.current.requestFullscreen().catch(() => {})
-    } else {
-      await document.exitFullscreen().catch(() => {})
-    }
-  }, [])
+  const goToWorkflow = useCallback(() => {
+    const el = document.getElementById('workflow-builder')
+    if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'start' }); return }
+    router.push(`/${language}/services/workflow`)
+  }, [language, router])
 
-  /* ── Switch camera (front/back) ── */
-  const switchCamera = useCallback(() => {
-    const next = facingMode === 'user' ? 'environment' : 'user'
-    setFacingMode(next)
-    if (state === 'scanning') startScan(next)
-  }, [facingMode, state, startScan])
-
-  /* ── Capture from camera ── */
-  const capturePhoto = useCallback(() => {
-    const video = videoRef.current
-    const canvas = canvasRef.current
-    if (!video || !canvas) return
-
-    canvas.width = video.videoWidth || 1280
-    canvas.height = video.videoHeight || 960
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return
-    ctx.drawImage(video, 0, 0)
-    const dataUrl = canvas.toDataURL('image/jpeg', 0.92)
-    setPreviewSrc(dataUrl)
-
-    // Stop camera
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(t => t.stop())
-      streamRef.current = null
-    }
-
-    setState('processing')
-    setTimeout(() => {
-      setState('result')
-      if (dataUrl) onAvatarCreated?.(dataUrl)
-    }, 2500)
-  }, [onAvatarCreated])
-
-  /* ── Upload photo ── */
+  /* ── Upload photo shortcut ── */
   const handleUpload = useCallback(() => {
     fileInputRef.current?.click()
   }, [])
 
   const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
-    if (!file) return
-    if (!file.type.startsWith('image/')) return
-
+    if (!file || !file.type.startsWith('image/')) return
     const url = URL.createObjectURL(file)
-    setPreviewSrc(url)
-    setState('processing')
-    setTimeout(() => {
-      setState('result')
-      onAvatarCreated?.(url)
-    }, 2500)
+    onAvatarCreated?.(url)
     e.target.value = ''
-  }, [onAvatarCreated])
+    router.push(`/${language}/services/avatar`)
+  }, [language, router, onAvatarCreated])
 
-  /* ── Regenerate ── */
-  const handleRegenerate = useCallback(() => {
-    setState('processing')
-    setTimeout(() => setState('result'), 2500)
-  }, [])
-
-  /* ── Navigate to full studio ── */
-  const goToStudio = useCallback(() => {
-    // Exit fullscreen first
-    if (document.fullscreenElement) document.exitFullscreen().catch(() => {})
-    const prompt = stylePrompt.trim()
-    const base = `/${language}/services/avatar`
-    router.push(prompt ? `${base}?prompt=${encodeURIComponent(prompt)}` : base)
-  }, [language, router, stylePrompt])
-
-  /* ── Scroll to Workflow Builder section below ── */
-  const goToWorkflow = useCallback(() => {
-    if (document.fullscreenElement) document.exitFullscreen().catch(() => {})
-    const el = document.getElementById('workflow-builder')
-    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
-  }, [])
-
-  /* ── Reset to idle ── */
-  const reset = useCallback(() => {
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(t => t.stop())
-      streamRef.current = null
-    }
-    if (previewSrc && previewSrc.startsWith('blob:')) {
-      URL.revokeObjectURL(previewSrc)
-    }
-    setPreviewSrc(null)
-    setState('idle')
-    setCameraError(null)
-  }, [previewSrc])
-
-  /* ── Shared button style ── */
-  const btnPrimary: React.CSSProperties = {
-    background: 'linear-gradient(135deg, rgba(167,139,250,0.2), rgba(139,92,246,0.1))',
-    border: '1px solid rgba(167,139,250,0.35)',
-    color: '#a78bfa',
-    boxShadow: '0 0 20px rgba(167,139,250,0.1)',
-  }
-  const btnGhost: React.CSSProperties = {
-    background: 'rgba(255,255,255,0.04)',
-    border: '1px solid rgba(255,255,255,0.1)',
-    color: 'rgba(255,255,255,0.6)',
-  }
+  /* ── Determine 3D model URL ── */
+  const modelUrl = hasAvatar ? avatar.modelUrl : null
 
   return (
-    <section className="relative px-4 sm:px-6 lg:px-10 py-20 sm:py-28 overflow-hidden">
-      {/* Background accent */}
-      <div className="absolute inset-0 pointer-events-none" style={{ background: 'radial-gradient(ellipse 60% 40% at 50% 40%, rgba(167,139,250,0.04) 0%, transparent 70%)' }} />
+    <section className="relative px-4 sm:px-6 lg:px-10 py-20 sm:py-28 lg:py-36 overflow-hidden">
+      {/* ── Deep ambient background ── */}
+      <div className="absolute inset-0 pointer-events-none" aria-hidden="true">
+        <div className="absolute inset-0" style={{ background: 'radial-gradient(ellipse 70% 50% at 50% 50%, rgba(167,139,250,0.04) 0%, transparent 70%)' }} />
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[500px]" style={{ background: 'radial-gradient(ellipse 60% 40% at 50% 0%, rgba(34,211,238,0.03) 0%, transparent 70%)', filter: 'blur(60px)' }} />
+        <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-full h-[300px]" style={{ background: 'radial-gradient(ellipse 80% 60% at 50% 100%, rgba(139,92,246,0.04) 0%, transparent 70%)', filter: 'blur(40px)' }} />
+      </div>
 
-      <div className="relative max-w-5xl mx-auto">
+      <div className="relative max-w-6xl mx-auto">
         {/* ─── HEADER ─── */}
-        <div className="text-center mb-12 sm:mb-16">
-          <p className="text-[10px] sm:text-[11px] tracking-[0.3em] uppercase font-black mb-3" style={{ color: '#a78bfa' }}>{c.eyebrow}</p>
-          <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight mb-4" style={{ color: 'var(--color-text)' }}>{c.title}</h2>
-          <p className="text-sm sm:text-base max-w-lg mx-auto" style={{ color: 'rgba(255,255,255,0.45)' }}>{c.sub}</p>
+        <div className="text-center mb-10 sm:mb-14">
+          <p className="text-[10px] sm:text-[11px] tracking-[0.3em] uppercase font-black mb-3" style={{ color: '#a78bfa' }}>
+            {c.eyebrow}
+          </p>
+          <h2 className="text-3xl sm:text-4xl lg:text-5xl xl:text-6xl font-bold tracking-tight mb-4">
+            <span style={{ color: 'var(--color-text)' }}>{hasAvatar ? c.title : c.titleCreate}</span>
+          </h2>
+          <p className="text-sm sm:text-base max-w-xl mx-auto leading-relaxed" style={{ color: 'rgba(255,255,255,0.45)' }}>
+            {hasAvatar ? c.sub : c.subCreate}
+          </p>
           {/* Feature pills */}
           <div className="flex items-center justify-center gap-2 mt-5 flex-wrap">
             {c.features.map((f, i) => (
@@ -281,255 +191,122 @@ export function AvatarBuilderWindow({ onAvatarCreated }: AvatarBuilderWindowProp
           </div>
         </div>
 
-        {/* ─── TWO-COLUMN LAYOUT ─── */}
-        <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 items-start">
-          {/* ── Left: Style prompt + info (2 cols) ── */}
-          <div className="lg:col-span-2 space-y-6">
-            {/* Style prompt card */}
-            <div className="rounded-2xl p-5" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
-              <p className="text-[10px] font-bold tracking-[0.12em] uppercase mb-3" style={{ color: 'rgba(255,255,255,0.3)' }}>STYLE PROMPT</p>
-              <textarea
-                value={stylePrompt}
-                onChange={e => setStylePrompt(e.target.value)}
-                placeholder={c.inputPlaceholder}
-                rows={3}
-                className="w-full bg-transparent text-sm outline-none resize-none"
-                style={{ color: 'rgba(255,255,255,0.8)' }}
-              />
-              <p className="text-[10px] mt-2" style={{ color: 'rgba(255,255,255,0.2)' }}>{c.inputHint}</p>
+        {/* ─── MAIN SHOWCASE ─── */}
+        <div
+          className="relative max-w-4xl mx-auto rounded-3xl overflow-hidden"
+          style={{
+            background: 'linear-gradient(170deg, #0b1219, #080e14 40%, #060c16)',
+            border: '1px solid rgba(167,139,250,0.12)',
+            boxShadow: '0 8px 80px rgba(0,0,0,0.5), 0 0 120px rgba(167,139,250,0.05), inset 0 1px 0 rgba(255,255,255,0.03)',
+          }}
+        >
+          {/* Top bar */}
+          <div className="flex items-center justify-between px-5 py-3" style={{ background: 'linear-gradient(180deg, rgba(255,255,255,0.03), transparent)', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+            <div className="flex items-center gap-2">
+              <div className="flex gap-1.5">
+                <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: 'rgba(255,95,87,0.7)' }} />
+                <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: 'rgba(255,189,46,0.7)' }} />
+                <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: 'rgba(39,201,63,0.7)' }} />
+              </div>
+              <span className="ml-3 text-[10px] font-bold tracking-[0.15em] uppercase" style={{ color: 'rgba(255,255,255,0.25)' }}>AVATAR STUDIO</span>
             </div>
-
-            {/* Quick action buttons */}
-            <div className="space-y-2">
-              <button
-                onClick={() => startScan()}
-                className="w-full flex items-center gap-3 px-5 py-3.5 rounded-xl text-sm font-bold tracking-wide transition-all duration-200 active:scale-[0.98]"
-                style={btnPrimary}
-              >
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#a78bfa" strokeWidth="1.5" strokeLinecap="round">
-                  <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
-                  <circle cx="12" cy="13" r="4" />
-                </svg>
-                {c.startScan}
-              </button>
-              <button
-                onClick={handleUpload}
-                className="w-full flex items-center gap-3 px-5 py-3.5 rounded-xl text-sm font-bold tracking-wide transition-all duration-200 active:scale-[0.98]"
-                style={btnGhost}
-              >
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth="1.5" strokeLinecap="round">
-                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                  <polyline points="17 8 12 3 7 8" />
-                  <line x1="12" y1="3" x2="12" y2="15" />
-                </svg>
-                {c.uploadPhoto}
-              </button>
+            <div className="flex items-center gap-1.5">
+              <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: hasAvatar ? '#34d399' : isProcessing ? '#fbbf24' : '#a78bfa', boxShadow: `0 0 6px ${hasAvatar ? '#34d399' : isProcessing ? '#fbbf24' : '#a78bfa'}` }} />
+              <span className="text-[9px] font-bold" style={{ color: hasAvatar ? 'rgba(52,211,153,0.7)' : isProcessing ? 'rgba(251,191,36,0.7)' : 'rgba(167,139,250,0.5)' }}>
+                {hasAvatar ? c.readyStatus.toUpperCase() : isProcessing ? 'PROCESSING' : c.livePreview}
+              </span>
             </div>
-
-            {cameraError && (
-              <p className="text-xs text-center py-2" style={{ color: '#f87171' }}>{cameraError}</p>
-            )}
           </div>
 
-          {/* ── Right: Camera viewport (3 cols) ── */}
-          <div className="lg:col-span-3" ref={containerRef} style={isFullscreen ? { background: '#000', display: 'flex', alignItems: 'center', justifyContent: 'center' } : undefined}>
-            <div
-              className="rounded-3xl overflow-hidden"
-              style={{
-                background: 'linear-gradient(170deg, #0b1219, #080e14 40%, #0a1018)',
-                boxShadow: '0 8px 60px rgba(0,0,0,0.5), 0 0 80px rgba(167,139,250,0.06), inset 0 1px 0 rgba(255,255,255,0.04)',
-                border: '1px solid rgba(167,139,250,0.12)',
-                ...(isFullscreen ? { width: '100%', maxWidth: 1200, borderRadius: 0 } : {}),
-              }}
-            >
-              {/* Title bar */}
-              <div className="flex items-center justify-between px-5 py-3" style={{ background: 'linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.01))', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-                <div className="flex items-center gap-2">
-                  <div className="flex gap-1.5">
-                    <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: 'rgba(255,95,87,0.7)' }} />
-                    <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: 'rgba(255,189,46,0.7)' }} />
-                    <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: 'rgba(39,201,63,0.7)' }} />
-                  </div>
-                  <span className="ml-3 text-[10px] font-bold tracking-[0.15em] uppercase" style={{ color: 'rgba(255,255,255,0.3)' }}>AVATAR STUDIO</span>
+          {/* ── 3D Viewport ── */}
+          <div className="relative" style={{ minHeight: 420 }}>
+            {/* 3D Canvas */}
+            <AvatarShowcase3D modelUrl={modelUrl} className="w-full" />
+
+            {/* Processing overlay */}
+            {isProcessing && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center z-10" style={{ background: 'rgba(8,14,20,0.7)', backdropFilter: 'blur(4px)' }}>
+                <div className="w-14 h-14 rounded-full border-2 animate-spin mb-4" style={{ borderColor: 'rgba(167,139,250,0.15)', borderTopColor: '#a78bfa' }} />
+                <p className="text-sm font-medium" style={{ color: 'rgba(255,255,255,0.6)' }}>{c.processing}</p>
+                <div className="flex gap-1.5 mt-3">
+                  {[0, 1, 2, 3].map(i => (
+                    <div key={i} className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: '#a78bfa', opacity: 0.3, animation: `pulse 1.2s ease-in-out ${i * 0.3}s infinite` }} />
+                  ))}
                 </div>
-                <div className="flex items-center gap-3">
-                  {/* Fullscreen toggle */}
+              </div>
+            )}
+
+            {/* Bottom gradient overlay for text readability */}
+            <div className="absolute bottom-0 left-0 right-0 h-32 pointer-events-none" style={{ background: 'linear-gradient(to top, #080e14, transparent)' }} />
+          </div>
+
+          {/* ── Action Bar ── */}
+          <div className="relative z-10 px-5 sm:px-8 pb-6 -mt-8">
+            <div className="flex flex-wrap items-center justify-center gap-3">
+              {hasAvatar ? (
+                <>
                   <button
-                    onClick={toggleFullscreen}
-                    className="text-[9px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-lg transition-all active:scale-95"
-                    style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.4)' }}
-                  >
-                    {isFullscreen ? c.exitFullscreen : c.fullscreen}
-                  </button>
-                  <div className="flex items-center gap-1.5">
-                    <div className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ backgroundColor: '#a78bfa', boxShadow: '0 0 6px #a78bfa' }} />
-                    <span className="text-[9px] font-bold" style={{ color: 'rgba(167,139,250,0.6)' }}>
-                      {state === 'scanning' ? 'LIVE' : state === 'processing' ? 'PROCESSING' : state === 'result' ? 'READY' : 'ONLINE'}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Camera viewport */}
-              <div className="relative p-4 sm:p-5">
-                <div
-                  className="relative w-full rounded-2xl overflow-hidden"
-                  style={{
-                    aspectRatio: isFullscreen ? '16 / 9' : '4 / 3',
-                    background: 'linear-gradient(135deg, #0a0e1a, #0d1225)',
-                    border: '1px solid rgba(167,139,250,0.08)',
-                    boxShadow: 'inset 0 2px 20px rgba(0,0,0,0.4)',
-                  }}
-                >
-                  {/* Glow border */}
-                  <div
-                    className="absolute -inset-px rounded-2xl pointer-events-none z-10"
+                    onClick={goToStudio}
+                    className="inline-flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-bold tracking-wide transition-all duration-200 active:scale-[0.97] hover:-translate-y-0.5"
                     style={{
-                      background: 'linear-gradient(135deg, rgba(167,139,250,0.2), transparent 50%, rgba(139,92,246,0.15))',
-                      padding: 1,
-                      mask: 'linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)',
-                      maskComposite: 'exclude',
-                      WebkitMaskComposite: 'xor',
+                      background: 'linear-gradient(135deg, rgba(167,139,250,0.25), rgba(139,92,246,0.12))',
+                      border: '1px solid rgba(167,139,250,0.4)',
+                      color: '#a78bfa',
+                      boxShadow: '0 0 24px rgba(167,139,250,0.1)',
                     }}
-                  />
-
-                  {/* STATE: IDLE */}
-                  {state === 'idle' && (
-                    <div className="absolute inset-0 flex flex-col items-center justify-center gap-5 px-6 z-[5]">
-                      <div className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[300px] h-[200px] pointer-events-none" style={{ background: 'radial-gradient(ellipse, rgba(167,139,250,0.12) 0%, transparent 70%)', filter: 'blur(50px)' }} />
-                      <div className="w-20 h-20 rounded-full flex items-center justify-center" style={{ background: 'linear-gradient(135deg, rgba(167,139,250,0.15), rgba(139,92,246,0.08))', border: '1px solid rgba(167,139,250,0.25)' }}>
-                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#a78bfa" strokeWidth="1.5" strokeLinecap="round">
-                          <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
-                          <circle cx="12" cy="13" r="4" />
-                        </svg>
-                      </div>
-                      <p className="text-sm text-center font-medium" style={{ color: 'rgba(255,255,255,0.4)' }}>
-                        {c.scanning.replace('oval', '').trim() || 'Point camera at your face'}
-                      </p>
-                    </div>
-                  )}
-
-                  {/* STATE: SCANNING — camera live feed */}
-                  {state === 'scanning' && (
-                    <div className="absolute inset-0 z-[5]">
-                      <video ref={videoRef} className="w-full h-full object-cover" autoPlay muted playsInline />
-                      {/* Face alignment oval */}
-                      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                        <div
-                          className="w-48 h-60 sm:w-56 sm:h-72 rounded-[50%] border-2"
-                          style={{ borderColor: 'rgba(167,139,250,0.5)', boxShadow: '0 0 30px rgba(167,139,250,0.15), inset 0 0 30px rgba(167,139,250,0.05)', animation: 'pulse 2s ease-in-out infinite' }}
-                        />
-                      </div>
-                      {/* Corner crosshairs */}
-                      {[{ top: 16, left: 16 }, { top: 16, right: 16 }, { bottom: 80, left: 16 }, { bottom: 80, right: 16 }].map((pos, i) => (
-                        <div key={i} className="absolute w-5 h-5 pointer-events-none z-10" style={pos as React.CSSProperties}>
-                          <div className="absolute top-0 left-0 w-5 h-0.5" style={{ backgroundColor: 'rgba(167,139,250,0.5)' }} />
-                          <div className="absolute top-0 left-0 w-0.5 h-5" style={{ backgroundColor: 'rgba(167,139,250,0.5)' }} />
-                        </div>
-                      ))}
-                      {/* Bottom controls */}
-                      <div className="absolute bottom-4 left-0 right-0 flex flex-col items-center gap-3 z-10">
-                        <span className="text-xs font-medium px-3 py-1 rounded-full" style={{ background: 'rgba(0,0,0,0.6)', color: '#a78bfa', backdropFilter: 'blur(8px)' }}>
-                          {c.scanning}
-                        </span>
-                        <div className="flex items-center gap-5">
-                          {/* Switch camera */}
-                          <button
-                            onClick={switchCamera}
-                            className="w-10 h-10 rounded-full flex items-center justify-center transition-all active:scale-90"
-                            style={{ background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.15)', backdropFilter: 'blur(8px)' }}
-                            title={c.switchCamera}
-                          >
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.7)" strokeWidth="1.5" strokeLinecap="round">
-                              <path d="M1 4v6h6M23 20v-6h-6" />
-                              <path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4-4.64 4.36A9 9 0 0 1 3.51 15" />
-                            </svg>
-                          </button>
-                          {/* Capture */}
-                          <button
-                            onClick={capturePhoto}
-                            className="w-16 h-16 rounded-full flex items-center justify-center transition-all active:scale-90"
-                            style={{
-                              background: 'linear-gradient(135deg, #a78bfa, #8b5cf6)',
-                              boxShadow: '0 0 30px rgba(167,139,250,0.4)',
-                              border: '3px solid rgba(255,255,255,0.3)',
-                            }}
-                          >
-                            <div className="w-11 h-11 rounded-full" style={{ border: '2px solid rgba(255,255,255,0.8)' }} />
-                          </button>
-                          {/* Fullscreen */}
-                          <button
-                            onClick={toggleFullscreen}
-                            className="w-10 h-10 rounded-full flex items-center justify-center transition-all active:scale-90"
-                            style={{ background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.15)', backdropFilter: 'blur(8px)' }}
-                          >
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.7)" strokeWidth="1.5" strokeLinecap="round">
-                              {isFullscreen ? (
-                                <>
-                                  <polyline points="4 14 10 14 10 20" /><polyline points="20 10 14 10 14 4" />
-                                  <line x1="14" y1="10" x2="21" y2="3" /><line x1="3" y1="21" x2="10" y2="14" />
-                                </>
-                              ) : (
-                                <>
-                                  <polyline points="15 3 21 3 21 9" /><polyline points="9 21 3 21 3 15" />
-                                  <line x1="21" y1="3" x2="14" y2="10" /><line x1="3" y1="21" x2="10" y2="14" />
-                                </>
-                              )}
-                            </svg>
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* STATE: PROCESSING */}
-                  {state === 'processing' && (
-                    <div className="absolute inset-0 flex flex-col items-center justify-center gap-5 z-[5]">
-                      {previewSrc && <img src={previewSrc} alt="" className="absolute inset-0 w-full h-full object-cover opacity-25 blur-sm" />}
-                      <div className="relative z-10 flex flex-col items-center gap-4">
-                        <div className="w-16 h-16 rounded-full border-2 animate-spin" style={{ borderColor: 'rgba(167,139,250,0.15)', borderTopColor: '#a78bfa' }} />
-                        <p className="text-sm font-medium" style={{ color: 'rgba(255,255,255,0.6)' }}>{c.processing}</p>
-                        {/* Progress dots */}
-                        <div className="flex gap-1.5">
-                          {[0, 1, 2, 3].map(i => (
-                            <div key={i} className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: '#a78bfa', opacity: 0.3, animation: `pulse 1.2s ease-in-out ${i * 0.3}s infinite` }} />
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* STATE: RESULT */}
-                  {state === 'result' && (
-                    <div className="absolute inset-0 z-[5]">
-                      {previewSrc && <img src={previewSrc} alt="Avatar preview" className="w-full h-full object-cover" />}
-                      <div className="absolute inset-0" style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.75) 0%, transparent 50%)' }} />
-                      {/* Success badge */}
-                      <div className="absolute top-4 right-4 flex items-center gap-2 px-3 py-1.5 rounded-full z-10" style={{ background: 'rgba(52,211,153,0.15)', border: '1px solid rgba(52,211,153,0.3)', backdropFilter: 'blur(8px)' }}>
-                        <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: '#34d399', boxShadow: '0 0 6px #34d399' }} />
-                        <span className="text-[10px] font-bold" style={{ color: '#34d399' }}>GENERATED</span>
-                      </div>
-                      {/* Actions */}
-                      <div className="absolute bottom-4 left-0 right-0 flex flex-wrap items-center justify-center gap-2.5 z-10 px-4">
-                        <button onClick={handleRegenerate} className="px-4 py-2.5 rounded-xl text-[11px] font-bold tracking-wide transition-all active:scale-95" style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.15)', color: 'rgba(255,255,255,0.8)', backdropFilter: 'blur(8px)' }}>
-                          {c.regenerate}
-                        </button>
-                        <button onClick={reset} className="px-4 py-2.5 rounded-xl text-[11px] font-bold tracking-wide transition-all active:scale-95" style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.15)', color: 'rgba(255,255,255,0.8)', backdropFilter: 'blur(8px)' }}>
-                          {c.newScan}
-                        </button>
-                        <button onClick={goToStudio} className="px-4 py-2.5 rounded-xl text-[11px] font-bold tracking-wide transition-all active:scale-95" style={{ background: 'rgba(167,139,250,0.2)', border: '1px solid rgba(167,139,250,0.35)', color: '#a78bfa', backdropFilter: 'blur(8px)' }}>
-                          {c.useInStudio} →
-                        </button>
-                        <button onClick={goToWorkflow} className="px-4 py-2.5 rounded-xl text-[11px] font-bold tracking-wide transition-all active:scale-95" style={{ background: 'linear-gradient(135deg, rgba(34,211,238,0.2), rgba(6,182,212,0.1))', border: '1px solid rgba(34,211,238,0.35)', color: '#22d3ee', backdropFilter: 'blur(8px)' }}>
-                          ⚡ {c.useInWorkflow}
-                        </button>
-                      </div>
-                    </div>
-                  )}
-
-                  <canvas ref={canvasRef} className="hidden" />
-                </div>
-              </div>
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>
+                    {c.editAvatar}
+                  </button>
+                  <button
+                    onClick={goToVideo}
+                    className="inline-flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-bold tracking-wide transition-all duration-200 active:scale-[0.97] hover:-translate-y-0.5"
+                    style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.7)' }}
+                  >
+                    🎬 {c.useInVideo}
+                  </button>
+                  <button
+                    onClick={goToWorkflow}
+                    className="inline-flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-bold tracking-wide transition-all duration-200 active:scale-[0.97] hover:-translate-y-0.5"
+                    style={{
+                      background: 'linear-gradient(135deg, rgba(34,211,238,0.12), rgba(6,182,212,0.06))',
+                      border: '1px solid rgba(34,211,238,0.25)',
+                      color: '#22d3ee',
+                    }}
+                  >
+                    ⚡ {c.useInWorkflow}
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    onClick={goToStudio}
+                    className="inline-flex items-center gap-2.5 px-7 py-3.5 rounded-xl text-sm font-bold tracking-wide transition-all duration-200 active:scale-[0.97] hover:-translate-y-0.5 hover:shadow-lg hover:shadow-purple-500/15"
+                    style={{
+                      background: 'linear-gradient(135deg, #a78bfa, #8b5cf6)',
+                      color: '#fff',
+                      boxShadow: '0 0 30px rgba(167,139,250,0.2)',
+                    }}
+                  >
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                      <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+                      <circle cx="12" cy="13" r="4" />
+                    </svg>
+                    {c.createAvatar}
+                  </button>
+                  <button
+                    onClick={handleUpload}
+                    className="inline-flex items-center gap-2 px-6 py-3.5 rounded-xl text-sm font-bold tracking-wide transition-all duration-200 active:scale-[0.97] hover:-translate-y-0.5"
+                    style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.6)' }}
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                      <polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" />
+                    </svg>
+                    {c.uploadPhoto}
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>
