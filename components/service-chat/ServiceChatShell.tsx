@@ -36,6 +36,7 @@ import { ServiceMessageList } from './ServiceMessageList';
 import { ServicePreviewPanel } from './ServicePreviewPanel';
 import { ServiceTransferBar } from './ServiceTransferBar';
 import { ServiceComposer } from './ServiceComposer';
+import WorkflowBuilder from '@/components/workflow/WorkflowBuilder';
 
 interface Props {
   config: ServiceChatConfig;
@@ -308,7 +309,11 @@ export default function ServiceChatShell({ config, language = 'en', className = 
       />
 
       {/* Main Content Area — clean, breathable */}
-      {!hasMessages ? (
+      {config.slug === 'workflow' ? (
+        <div className="flex-1 overflow-hidden">
+          <WorkflowBuilder />
+        </div>
+      ) : !hasMessages ? (
         <ServiceWelcome
           config={config}
           agentMode={agentMode}

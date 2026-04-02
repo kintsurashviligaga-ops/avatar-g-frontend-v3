@@ -1,13 +1,15 @@
 /**
- * Stripe Subscription Hook
+ * Stripe Subscription Hook + Credit Tier System
  * 
- * Client-side React hook for subscription management
+ * Client-side React hook for subscription and tier management
  */
 
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
 import { createBrowserClient } from '@/lib/supabase/browser';
+import { useGlobalStore } from '@/lib/store';
+import { SUBSCRIPTION_TIERS } from '@/lib/monetization/credits';
 
 export interface SubscriptionStatus {
   hasSubscription: boolean;
@@ -26,6 +28,9 @@ export function useSubscription() {
   const [status, setStatus] = useState<SubscriptionStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const { tier, credits, setTier } = useGlobalStore();
+  const tierInfo = SUBSCRIPTION_TIERS[tier];
 
   const fetchStatus = useCallback(async () => {
     try {
@@ -115,9 +120,15 @@ export function useSubscription() {
     status,
     loading,
     error,
+    tier,
+    tierInfo,
+    creditsRemaining: credits,
     refetch: fetchStatus,
     createCheckoutSession,
     openCustomerPortal,
+    canAccessFeature: (feature: string) => tierInfo?.features.includes(feature) ?? false,
+    getUsagePercentage: () => Math.round((credits / (tierInfo?.creditsPerMonth || 100)) * 100),
+    upgrade: (newTier: 'creator' | 'pro' | 'enterprise') => setTier(newTier),
   };
 }
 

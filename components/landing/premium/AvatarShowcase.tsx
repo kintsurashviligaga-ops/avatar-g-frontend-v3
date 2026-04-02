@@ -19,7 +19,7 @@ type Lang = 'en' | 'ka' | 'ru'
 const COPY = {
   en: {
     eyebrow: 'AVATAR STUDIO',
-    title: 'Create Your Digital Avatar',
+    title: 'Create Everything with AI in One Space',
     subtitle: 'Own your digital identity. Bring your avatar to life in every workflow.',
     create: 'Create Avatar',
     edit: 'Edit Avatar',
@@ -28,7 +28,7 @@ const COPY = {
   },
   ka: {
     eyebrow: 'ავატარ სტუდია',
-    title: 'შექმენი შენი ციფრული ავატარი',
+    title: 'შექმენი ყველაფერი AI-ით ერთ სივრცეში',
     subtitle: 'იყავი შენი ციფრული კმედობის მბე აბი ყველა workflow-ში.',
     create: 'შექმენი ავატარი',
     edit: 'რედაქტირე',
@@ -37,7 +37,7 @@ const COPY = {
   },
   ru: {
     eyebrow: 'СТУДИЯ АВАТАРОВ',
-    title: 'Создайте свой цифровой аватар',
+    title: 'Создайте всё с помощью ИИ в одном пространстве',
     subtitle: 'Владейте своей цифровой идентичностью. Оживите вашего аватара в каждом workflow.',
     create: 'Создать аватар',
     edit: 'Редактировать',
@@ -287,7 +287,8 @@ function ShowcaseScene() {
       shadows
       onCreated={(state) => {
         try {
-          state.gl.context.getExtension('OES_standard_derivatives')
+          const ctx = (state.gl as unknown as THREE.WebGLRenderer).getContext?.()
+          ctx?.getExtension('OES_standard_derivatives')
         } catch (e) {
           console.warn('WebGL extension unavailable')
         }
