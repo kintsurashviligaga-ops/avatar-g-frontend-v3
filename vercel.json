@@ -8,7 +8,7 @@
   "outputDirectory": ".next",
   "devCommand": "next dev -p 3000",
 
-  "regions": ["cdg1", "iad1"],
+  "regions": ["iad1"],
 
   "functions": {
     "app/api/ai/route.ts": {
