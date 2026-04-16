@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { apiError, apiSuccess } from '@/lib/api/response';
+import { structuredLog } from '@/lib/logger';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -60,7 +61,7 @@ export async function POST(request: NextRequest) {
 
     const telegramPayload = await telegramResponse.json().catch((_error) => null);
 
-    console.info('[Telegram Send Debug] telegram_send_status', {
+    structuredLog('info', 'telegram_send_status', {
       request_id: requestId,
       chat_id: payload.data.chat_id,
       telegram_send_status: telegramResponse.status,

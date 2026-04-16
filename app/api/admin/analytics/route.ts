@@ -36,15 +36,14 @@ export async function GET() {
 
     const supabase = createSupabaseServerClient();
 
-    // TODO: Add admin role check
-    // const { data: profile } = await supabase
-    //   .from('profiles')
-    //   .select('role')
-    //   .eq('id', token.sub)
-    //   .single();
-    // if (profile?.role !== 'admin') {
-    //   return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    // }
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', token.sub)
+      .single();
+    if (profile?.role !== 'admin') {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
 
     // Fetch users stats
     const { data: users, error: usersError } = await supabase

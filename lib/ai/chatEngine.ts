@@ -19,6 +19,7 @@
 import OpenAI from 'openai';
 import type { ChatCompletionMessageParam } from 'openai/resources/chat/completions';
 import { getAgent, type AgentDefinition } from '@/lib/agents/agentRegistry';
+import { shouldUseRealProvider } from '@/lib/server/provider-mode';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -67,6 +68,8 @@ export interface ChatEngineStreamCallbacks {
 
 const MODEL_GPT41 = process.env.EXECUTIVE_MODEL || 'gpt-4.1';
 const MODEL_GPT4O = process.env.DEFAULT_MODEL || 'gpt-4o';
+const MODEL_OPENROUTER = process.env.OPENROUTER_MODEL || 'claude-opus-4.6-fast';
+const OPENROUTER_API_URL = process.env.OPENROUTER_API_URL?.replace(/\/+$/, '') || 'https://api.openrouter.ai/v1';
 const DAILY_AI_LIMIT = parseInt(process.env.DAILY_AI_LIMIT || '500', 10);
 const MAX_CONTEXT_TOKENS = 120000;
 const COST_PER_1K_INPUT_41 = 0.03;
@@ -85,6 +88,108 @@ function getClient(): OpenAI {
     _client = new OpenAI({ apiKey, timeout: 30000 });
   }
   return _client;
+}
+
+function openRouterEnabled(): boolean {
+  return shouldUseRealProvider('openrouter');
+}
+
+async function createOpenRouterCompletion(
+  model: string,
+  messages: ChatCompletionMessageParam[],
+  maxTokens: number,
+  temperature: number,
+): Promise<{ text: string; tokensIn: number; tokensOut: number; model: string }> {
+  const response = await fetch(`${OPENROUTER_API_URL}/chat/completions`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
+    },
+    body: JSON.stringify({
+      model,
+      messages,
+      max_tokens: maxTokens,
+      temperature,
+      stream: false,
+    }),
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new ChatEngineError(`OpenRouter request failed: ${response.status} ${text}`, 'OPENROUTER_ERROR');
+  }
+
+  const data = await response.json();
+  const message = data.choices?.[0]?.message?.content || '';
+  const tokensIn = data.usage?.prompt_tokens || 0;
+  const tokensOut = data.usage?.completion_tokens || 0;
+
+  return { text: message, tokensIn, tokensOut, model };
+}
+
+async function* createOpenRouterStream(
+  model: string,
+  messages: ChatCompletionMessageParam[],
+  maxTokens: number,
+  temperature: number,
+): AsyncGenerator<string> {
+  const response = await fetch(`${OPENROUTER_API_URL}/chat/completions`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
+    },
+    body: JSON.stringify({
+      model,
+      messages,
+      max_tokens: maxTokens,
+      temperature,
+      stream: true,
+    }),
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new ChatEngineError(`OpenRouter stream failed: ${response.status} ${text}`, 'OPENROUTER_ERROR');
+  }
+
+  if (!response.body) {
+    throw new ChatEngineError('OpenRouter streaming response body not available', 'OPENROUTER_ERROR');
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() ?? '';
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed || !trimmed.startsWith('data:')) continue;
+        const payloadText = trimmed.replace(/^data:\s*/, '');
+        if (payloadText === '[DONE]') continue;
+
+        try {
+          const chunk = JSON.parse(payloadText);
+          const delta = chunk.choices?.[0]?.delta?.content;
+          if (typeof delta === 'string') {
+            yield delta;
+          }
+        } catch {
+          // Ignore parse errors for non-JSON event lines.
+        }
+      }
+    }
+  } finally {
+    reader.releaseLock();
+  }
 }
 
 // ─── Error Class ─────────────────────────────────────────────────────────────
@@ -245,15 +350,28 @@ export async function execute(req: ChatEngineRequest): Promise<ChatEngineRespons
   const client = getClient();
 
   try {
-    // Decide: dual-stage for executive/business-complex, single for rest
-    const useDualStage = agent.modelPreference === 'gpt-4.1' && req.messages.length > 3;
+    const useOpenRouter = openRouterEnabled();
+    const useDualStage = !useOpenRouter && agent.modelPreference === 'gpt-4.1' && req.messages.length > 3;
 
     let text: string;
     let tokensIn: number;
     let tokensOut: number;
     let dualStage = false;
+    let selectedModel = model;
 
-    if (useDualStage) {
+    if (useOpenRouter) {
+      const result = await createOpenRouterCompletion(
+        MODEL_OPENROUTER,
+        openaiMessages,
+        maxTokens,
+        0.7,
+      );
+
+      text = result.text;
+      tokensIn = result.tokensIn;
+      tokensOut = result.tokensOut;
+      selectedModel = result.model;
+    } else if (useDualStage) {
       const result = await dualStageProcess(client, model, openaiMessages, maxTokens);
       text = result.text;
       tokensIn = result.tokensIn;
@@ -272,11 +390,11 @@ export async function execute(req: ChatEngineRequest): Promise<ChatEngineRespons
       tokensOut = completion.usage?.completion_tokens || 0;
     }
 
-    const costEstimate = estimateCost(model, tokensIn, tokensOut);
+    const costEstimate = estimateCost(selectedModel, tokensIn, tokensOut);
 
     return {
       text,
-      model,
+      model: selectedModel,
       tokensIn,
       tokensOut,
       costEstimate,
@@ -343,30 +461,43 @@ export async function executeStream(
     content: m.content,
   }));
 
-  const client = getClient();
+  const useOpenRouter = openRouterEnabled();
   let fullText = '';
   let tokensIn = 0;
   let tokensOut = 0;
 
   try {
-    const stream = await client.chat.completions.create({
-      model,
-      messages: openaiMessages,
-      max_tokens: req.maxTokens || 2000,
-      temperature: 0.7,
-      stream: true,
-    });
-
-    for await (const chunk of stream) {
-      const delta = chunk.choices[0]?.delta?.content;
-      if (delta) {
+    if (useOpenRouter) {
+      for await (const delta of createOpenRouterStream(
+        MODEL_OPENROUTER,
+        openaiMessages,
+        req.maxTokens || 2000,
+        0.7,
+      )) {
         fullText += delta;
-        tokensOut++;
         callbacks.onToken(delta);
       }
-      if (chunk.usage) {
-        tokensIn = chunk.usage.prompt_tokens || 0;
-        tokensOut = chunk.usage.completion_tokens || tokensOut;
+    } else {
+      const client = getClient();
+      const stream = await client.chat.completions.create({
+        model,
+        messages: openaiMessages,
+        max_tokens: req.maxTokens || 2000,
+        temperature: 0.7,
+        stream: true,
+      });
+
+      for await (const chunk of stream) {
+        const delta = chunk.choices[0]?.delta?.content;
+        if (delta) {
+          fullText += delta;
+          tokensOut++;
+          callbacks.onToken(delta);
+        }
+        if (chunk.usage) {
+          tokensIn = chunk.usage.prompt_tokens || 0;
+          tokensOut = chunk.usage.completion_tokens || tokensOut;
+        }
       }
     }
 

@@ -5,6 +5,7 @@ import {
   type AgentGLocale,
 } from '@/lib/agentg/personality';
 import { readAgentGMemory, writeAgentGMemory } from '@/lib/agentg/memory';
+import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -34,6 +35,9 @@ function resolveLocale(locale: unknown): AgentGLocale {
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
+  const limited = await checkRateLimit(request, RATE_LIMITS.AI);
+  if (limited) return limited;
+
   const requestId = crypto.randomUUID();
   const startedAt = Date.now();
 

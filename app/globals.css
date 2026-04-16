@@ -1223,31 +1223,38 @@ a:focus-visible {
   }
 
   .cinematic-btn-primary {
-    background: linear-gradient(135deg, #22d3ee 0%, #06b6d4 50%, #0891b2 100%);
+    background: linear-gradient(135deg, #22d3ee 0%, #06b6d4 40%, #0891b2 70%, #06b6d4 100%);
+    background-size: 120% 120%;
+    animation: gradient-shift 8s ease infinite;
     color: #000;
     box-shadow:
-      0 4px 20px rgba(34, 211, 238, 0.45),
-      0 1px 4px rgba(0, 0, 0, 0.25),
-      0 0 40px rgba(34, 211, 238, 0.15),
-      inset 0 1px 0 rgba(255, 255, 255, 0.25);
+      0 8px 32px rgba(34, 211, 238, 0.5),
+      0 2px 8px rgba(0, 0, 0, 0.25),
+      0 0 60px rgba(34, 211, 238, 0.25),
+      inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  }
+
+  @keyframes gradient-shift {
+    0%, 100% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
   }
 
   .cinematic-btn-primary:hover {
-    transform: translateY(-2px);
+    transform: translateY(-3px);
     box-shadow:
-      0 8px 32px rgba(34, 211, 238, 0.55),
-      0 2px 8px rgba(0, 0, 0, 0.3),
-      0 0 60px rgba(34, 211, 238, 0.2),
-      inset 0 1px 0 rgba(255, 255, 255, 0.3);
+      0 12px 48px rgba(34, 211, 238, 0.65),
+      0 4px 12px rgba(0, 0, 0, 0.4),
+      0 0 80px rgba(34, 211, 238, 0.3),
+      inset 0 1px 0 rgba(255, 255, 255, 0.4);
   }
 
   .cinematic-btn-primary::after {
     content: '';
     position: absolute;
     inset: 0;
-    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.15), transparent);
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
     transform: translateX(-100%);
-    transition: transform 0.5s ease;
+    transition: transform 0.6s ease;
   }
 
   .cinematic-btn-primary:hover::after {
@@ -1255,16 +1262,21 @@ a:focus-visible {
   }
 
   .cinematic-btn-secondary {
-    background: rgba(255, 255, 255, 0.04);
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.06), rgba(34, 211, 238, 0.05));
     color: var(--color-text);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    border: 1.5px solid rgba(34, 211, 238, 0.25);
+    box-shadow: 
+      inset 0 1px 0 rgba(255, 255, 255, 0.06),
+      0 4px 20px rgba(34, 211, 238, 0.1);
   }
 
   .cinematic-btn-secondary:hover {
-    background: rgba(255, 255, 255, 0.08);
-    border-color: rgba(34, 211, 238, 0.2);
-    transform: translateY(-1px);
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.1), rgba(34, 211, 238, 0.1));
+    border-color: rgba(34, 211, 238, 0.4);
+    transform: translateY(-2px);
+    box-shadow: 
+      inset 0 1px 0 rgba(255, 255, 255, 0.08),
+      0 8px 32px rgba(34, 211, 238, 0.2);
   }
 
   /* Ã¢â€â‚¬Ã¢â€â‚¬ Cinematic Section container Ã¢â€â‚¬Ã¢â€â‚¬ */
@@ -1397,6 +1409,120 @@ a:focus-visible {
 }
 .chat-send-btn:not(:disabled):active {
   transform: scale(0.9);
+}
+
+/* ─── GLASSMORPHISM DESIGN SYSTEM PREMIUM ── */
+/* High-end glass effect for chat & UI components */
+
+.glass-panel {
+  background: linear-gradient(135deg, rgba(255,255,255,0.08), rgba(255,255,255,0.02));
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 16px;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.2),
+    0 8px 32px rgba(0,0,0,0.3),
+    0 0 20px rgba(34,211,238,0.08);
+}
+
+.glass-panel:hover {
+  background: linear-gradient(135deg, rgba(255,255,255,0.12), rgba(255,255,255,0.04));
+  border-color: rgba(34,211,238,0.25);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.25),
+    0 12px 48px rgba(0,0,0,0.4),
+    0 0 30px rgba(34,211,238,0.15);
+}
+
+.glass-panel-compact {
+  background: linear-gradient(135deg, rgba(255,255,255,0.05), rgba(255,255,255,0.01));
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 12px;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.12),
+    0 4px 16px rgba(0,0,0,0.2);
+}
+
+.glass-panel-compact:hover {
+  border-color: rgba(34,211,238,0.15);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.15),
+    0 6px 24px rgba(0,0,0,0.3),
+    0 0 16px rgba(34,211,238,0.08);
+}
+
+.glass-input {
+  background: rgba(255,255,255,0.06);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 10px;
+  padding: 12px 16px;
+  color: var(--color-text);
+  transition: all 0.3s ease;
+  font-size: 0.95rem;
+}
+
+.glass-input::placeholder {
+  color: rgba(var(--color-text-rgb), 0.4);
+}
+
+.glass-input:focus {
+  outline: none;
+  background: rgba(255,255,255,0.1);
+  border-color: rgba(34,211,238,0.3);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.15),
+    0 0 24px rgba(34,211,238,0.2),
+    0 0 1px rgba(34,211,238,0.4);
+}
+
+.glass-button {
+  background: linear-gradient(135deg, rgba(34,211,238,0.15), rgba(168,85,247,0.1));
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(34,211,238,0.25);
+  color: var(--color-text);
+  border-radius: 10px;
+  padding: 10px 20px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow:
+    0 4px 16px rgba(34,211,238,0.1),
+    inset 0 1px 0 rgba(255,255,255,0.15);
+}
+
+.glass-button:hover {
+  background: linear-gradient(135deg, rgba(34,211,238,0.25), rgba(168,85,247,0.15));
+  border-color: rgba(34,211,238,0.4);
+  box-shadow:
+    0 8px 28px rgba(34,211,238,0.2),
+    inset 0 1px 0 rgba(255,255,255,0.2),
+    0 0 20px rgba(34,211,238,0.15);
+  transform: translateY(-2px);
+}
+
+.glass-button:active {
+  transform: translateY(0);
+}
+
+.glass-backdrop {
+  background: rgba(10,18,36,0.7);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+/* ─── Premium Color Palette Variables ── */
+:root {
+  --glass-cyan: rgba(34,211,238,0.2);
+  --glass-purple: rgba(168,85,247,0.15);
+  --glass-blue: rgba(59,130,246,0.15);
+  --glow-cyan: rgba(34,211,238,0.4);
+  --glow-purple: rgba(168,85,247,0.3);
 }
 
 /* Ã¢â€â‚¬Ã¢â€â‚¬ Chat Textarea Ã¢â€â‚¬Ã¢â€â‚¬ */

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase/server';
 import { StabilityAvatarProvider } from '@/lib/providers/stability';
 import { OpenAIProvider } from '@/lib/providers/openai';
+import { OpenRouterProvider } from '@/lib/providers/openrouter';
 import { DeepSeekProvider } from '@/lib/providers/deepseek';
 import { recordMeteringEvent } from '@/lib/monetization/metering';
 import { logJobExecution } from '@/lib/observability/runtime';
@@ -237,9 +238,16 @@ async function processTextIntelligenceJob(input: {
   const feature = String(claimed.data.input_payload?.feature ?? 'summarize');
   const prompt = String(claimed.data.input_payload?.prompt ?? '').trim();
 
+  const openrouter = new OpenRouterProvider();
   const openai = new OpenAIProvider();
   const deepseek = new DeepSeekProvider();
-  const provider = openai.isAvailable() ? openai : deepseek.isAvailable() ? deepseek : null;
+  const provider = openrouter.isAvailable()
+    ? openrouter
+    : openai.isAvailable()
+    ? openai
+    : deepseek.isAvailable()
+    ? deepseek
+    : null;
 
   if (!provider) {
     const { data: failedJob } = await input.supabase
@@ -247,7 +255,7 @@ async function processTextIntelligenceJob(input: {
       .update({
         status: 'failed',
         progress: 100,
-        error_message: 'No real text provider configured (OPENAI_API_KEY or DEEPSEEK_API_KEY required)',
+        error_message: 'No real text provider configured (OPENROUTER_API_KEY, OPENAI_API_KEY or DEEPSEEK_API_KEY required)',
         heartbeat_at: new Date().toISOString(),
       })
       .eq('id', input.job.id)

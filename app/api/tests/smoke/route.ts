@@ -1,4 +1,4 @@
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { apiSuccess } from '@/lib/api/response';
 
@@ -28,6 +28,10 @@ interface SmokeTestResult {
  * 9. Payment processing - Stripe configured
  */
 export async function GET(_request: NextRequest) {
+  if (process.env.NODE_ENV === 'production') {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  }
+
   const results: SmokeTestResult[] = [];
   const supabase = createSupabaseServerClient();
 

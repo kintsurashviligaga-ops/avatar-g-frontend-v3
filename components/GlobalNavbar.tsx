@@ -20,6 +20,7 @@ const PRIMARY_LINKS = [
   { href: '/services/music',    label: 'Music'    },
   { href: '/business',          label: 'Business' },
   { href: '/pricing',           label: 'Pricing'  },
+  { href: '/hub',               label: '✦ Studio' },
 ] as const
 
 const LOCALES = [
@@ -120,9 +121,9 @@ export function GlobalNavbar() {
               className="text-[13px] text-white/55 hover:text-white transition-colors px-3 py-1.5">
               Login
             </Link>
-            <Link href="/signup"
-              className="text-[13px] font-semibold bg-white text-[#050510] px-4 py-2 rounded-xl hover:bg-white/90 transition-all">
-              Get Started
+            <Link href="/hub"
+              className="text-[13px] font-semibold bg-gradient-to-r from-cyan-400 to-sky-500 text-[#050510] px-4 py-2 rounded-xl hover:opacity-90 transition-all">
+              Open Studio
             </Link>
           </div>
 

@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { devtools, persist } from 'zustand/middleware';
 
 export interface AvatarIdentity {
   id: string;
@@ -28,14 +28,17 @@ interface IdentityState {
 }
 
 export const useIdentityStore = create<IdentityState>()(
-  persist(
-    (set) => ({
-      avatar: null,
-      voice: null,
-      setAvatar: (avatar) => set({ avatar }),
-      setVoice: (voice) => set({ voice }),
-      clearIdentity: () => set({ avatar: null, voice: null }),
-    }),
-    { name: 'avatar-g-identity' }
+  devtools(
+    persist(
+      (set) => ({
+        avatar: null,
+        voice: null,
+        setAvatar: (avatar) => set({ avatar }, false, 'identity/setAvatar'),
+        setVoice: (voice) => set({ voice }, false, 'identity/setVoice'),
+        clearIdentity: () => set({ avatar: null, voice: null }, false, 'identity/clear'),
+      }),
+      { name: 'avatar-g-identity' }
+    ),
+    { name: 'IdentityStore', enabled: process.env.NODE_ENV === 'development' }
   )
 );

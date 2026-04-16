@@ -2,7 +2,7 @@
 // This store manages selections across Avatar Builder, Music Studio, and Video Studio
 
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { devtools, persist } from 'zustand/middleware';
 import type { Avatar, Track, VideoClip, Language } from '@/types/platform';
 
 interface StudioStore {
@@ -79,6 +79,7 @@ interface StudioStore {
 }
 
 export const useStudioStore = create<StudioStore>()(
+  devtools(
   persist(
     (set) => ({
       // ============================================
@@ -246,7 +247,6 @@ export const useStudioStore = create<StudioStore>()(
     {
       name: 'avatar-g-studio-store',
       version: 1,
-      // Persist selected language, avatar, track, video; also history
       partialize: (state) => ({
         language: state.language,
         selectedAvatarId: state.selectedAvatarId,
@@ -258,8 +258,10 @@ export const useStudioStore = create<StudioStore>()(
         selectedVideoThumbnailUrl: state.selectedVideoThumbnailUrl,
         recentAvatars: state.recentAvatars,
         recentTracks: state.recentTracks,
-        recentVideos: state.recentVideos
-      })
+        recentVideos: state.recentVideos,
+      }),
     }
+  ),
+  { name: 'StudioStore', enabled: process.env.NODE_ENV === 'development' }
   )
 );

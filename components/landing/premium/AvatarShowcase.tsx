@@ -290,7 +290,7 @@ function ShowcaseScene() {
           const ctx = (state.gl as unknown as THREE.WebGLRenderer).getContext?.()
           ctx?.getExtension('OES_standard_derivatives')
         } catch (e) {
-          console.warn('WebGL extension unavailable')
+          // silently ignore missing WebGL extension
         }
       }}
     >

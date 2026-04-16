@@ -1,7 +1,43 @@
 /* eslint-disable @typescript-eslint/no-require-imports */
 const withNextIntl = require('next-intl/plugin')('./i18n/request.ts');
+const withBundleAnalyzer = require('@next/bundle-analyzer')({
+  enabled: process.env.ANALYZE === 'true',
+  openAnalyzer: false,
+});
 
 const buildVersion = process.env.NEXT_PUBLIC_BUILD_ID || String(Date.now());
+const isDev = process.env.NODE_ENV === 'development';
+
+// ─── Content Security Policy ─────────────────────────────────────────────────
+// Tightly scoped to prevent XSS, clickjacking, and data exfiltration.
+// Supabase, Stripe, OpenAI CDN, Google Fonts, and self-hosted assets allowed.
+const CSP_DIRECTIVES = [
+  "default-src 'self'",
+  // Scripts: self + Stripe.js + Google Tag Manager
+  "script-src 'self' 'unsafe-eval' 'unsafe-inline' https://js.stripe.com https://www.googletagmanager.com https://www.google-analytics.com",
+  // Styles: self + Google Fonts + inline (required by Tailwind & framer-motion)
+  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+  // Fonts: self + Google Fonts CDN
+  "font-src 'self' https://fonts.gstatic.com data:",
+  // Images: self + Supabase storage + Cloudflare R2 + Stripe + placehold.co
+  "img-src 'self' blob: data: https://*.supabase.co https://*.r2.cloudflarestorage.com https://placehold.co https://js.stripe.com",
+  // Connect: API calls — self + Supabase + OpenAI + Replicate + ElevenLabs + Stripe + Upstash
+  "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.openai.com https://api.replicate.com https://api.elevenlabs.io https://api.stripe.com https://*.upstash.io https://www.google-analytics.com",
+  // Frames: only Stripe iframes allowed (for Stripe Elements)
+  "frame-src 'self' https://js.stripe.com https://hooks.stripe.com",
+  // Media: self + blob (for audio/video previews)
+  "media-src 'self' blob: https://*.supabase.co https://*.r2.cloudflarestorage.com",
+  // Workers: self (for service workers)
+  "worker-src 'self' blob:",
+  // Manifests
+  "manifest-src 'self'",
+  // Form actions: self only
+  "form-action 'self'",
+  // Base URI: prevent base tag injection
+  "base-uri 'self'",
+  // Object/embed: disallow plugins
+  "object-src 'none'",
+].join('; ');
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
@@ -15,15 +51,29 @@ const nextConfig = {
       { protocol: 'https', hostname: '*.r2.cloudflarestorage.com' },
       { protocol: 'https', hostname: 'example.com' },
     ],
+    formats: ['image/avif', 'image/webp'],
+    minimumCacheTTL: 86400, // 24h
   },
   experimental: {
-    optimizePackageImports: ['lucide-react', 'framer-motion', '@supabase/supabase-js'],
+    optimizePackageImports: [
+      'lucide-react',
+      'framer-motion',
+      '@supabase/supabase-js',
+      '@tanstack/react-query',
+      'three',
+      '@react-three/fiber',
+      '@react-three/drei',
+    ],
   },
   eslint: {
     // Lint is run separately in CI; skip during `next build` to avoid OOM on large codebases
     ignoreDuringBuilds: true,
   },
   staticPageGenerationTimeout: 180,
+  // Compress responses
+  compress: true,
+  // Power by header leaks server info
+  poweredByHeader: false,
   async headers() {
     return [
       {
@@ -38,10 +88,21 @@ const nextConfig = {
         source: '/(.*)',
         headers: [
           { key: 'x-build-id', value: buildVersion },
+          // Prevent embedding in iframes (clickjacking)
           { key: 'X-Frame-Options', value: 'DENY' },
+          // Prevent MIME sniffing
           { key: 'X-Content-Type-Options', value: 'nosniff' },
+          // Referrer policy
           { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+          // Restrict browser features
           { key: 'Permissions-Policy', value: 'camera=(self), microphone=(self), geolocation=()' },
+          // HSTS — enforce HTTPS for 1 year (enable after confirming HTTPS-only)
+          { key: 'Strict-Transport-Security', value: 'max-age=31536000; includeSubDomains; preload' },
+          // Content Security Policy
+          ...(!isDev ? [{ key: 'Content-Security-Policy', value: CSP_DIRECTIVES }] : []),
+          // Cross-origin isolation for SharedArrayBuffer (required for WASM/video workers)
+          { key: 'Cross-Origin-Opener-Policy', value: 'same-origin-allow-popups' },
+          { key: 'Cross-Origin-Resource-Policy', value: 'same-origin' },
         ],
       },
     ];
@@ -90,6 +151,6 @@ const nextConfig = {
       },
     ]);
   },
-}
+};
 
-module.exports = withNextIntl(nextConfig)
+module.exports = withBundleAnalyzer(withNextIntl(nextConfig));

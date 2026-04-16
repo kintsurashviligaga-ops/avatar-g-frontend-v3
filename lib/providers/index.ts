@@ -9,6 +9,7 @@ export * from './factory';
 // Text generation providers
 export * from './openai';
 export * from './deepseek';
+export * from './openrouter';
 export * from './text-mock';
 export * from './text-factory';
 

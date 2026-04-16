@@ -12,7 +12,6 @@ export async function POST(request: NextRequest) {
     const cronSecret = process.env.CRON_SECRET;
 
     if (authHeader !== `Bearer ${cronSecret}`) {
-      // Check if user is admin
       const {
         data: { user },
       } = await supabase.auth.getUser();
@@ -21,7 +20,14 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
       }
 
-      // TODO: Check if user is admin
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single();
+      if (profile?.role !== 'admin') {
+        return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+      }
     }
 
     const trackingService = new TrackingSyncService(supabase);

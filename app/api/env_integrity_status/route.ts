@@ -11,6 +11,10 @@ function hasValue(name: string): boolean {
 }
 
 export async function GET(): Promise<NextResponse> {
+  if (process.env.NODE_ENV === 'production') {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  }
+
   const startedAt = Date.now();
   const requestId = crypto.randomUUID();
 

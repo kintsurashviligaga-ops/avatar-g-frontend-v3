@@ -1,12 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { compose } from '@/lib/api/compose';
+import { RATE_LIMITS } from '@/lib/api/rate-limit';
 
 /**
  * POST /api/ai/chat
  * GPT chat completions endpoint.
  * Body: { messages: Array<{ role: string; content: string }>, model?: string }
  */
-export async function POST(req: NextRequest) {
-  try {
+export const POST = compose()
+  .withRateLimit(RATE_LIMITS.AI)
+  .handle(async (req: NextRequest) => {
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) {
       return NextResponse.json({ error: 'OPENAI_API_KEY not configured' }, { status: 500 });
@@ -38,7 +41,7 @@ export async function POST(req: NextRequest) {
       const errorText = await response.text();
       return NextResponse.json(
         { error: 'OpenAI API error', details: errorText },
-        { status: response.status },
+        { status: response.status }
       );
     }
 
@@ -50,8 +53,4 @@ export async function POST(req: NextRequest) {
       model: data.model,
       usage: data.usage,
     });
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'Unknown error';
-    return NextResponse.json({ error: message }, { status: 500 });
-  }
-}
+  });

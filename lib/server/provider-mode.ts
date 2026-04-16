@@ -113,6 +113,7 @@ export function validateProviderConfig(): {
   if (mode === 'real') {
     // Check if at least one provider is configured
     const hasAnyProvider = 
+      !!process.env.OPENROUTER_API_KEY ||
       !!process.env.STABILITY_API_KEY ||
       !!process.env.REPLICATE_API_TOKEN ||
       !!process.env.RUNWAY_API_KEY ||
@@ -126,6 +127,9 @@ export function validateProviderConfig(): {
     }
     
     // Check individual providers
+    if (!process.env.OPENROUTER_API_KEY) {
+      warnings.push('OPENROUTER_API_KEY not configured - OpenRouter real mode will not be available');
+    }
     if (!process.env.STABILITY_API_KEY) {
       warnings.push('STABILITY_API_KEY not configured - avatar generation will fail');
     }

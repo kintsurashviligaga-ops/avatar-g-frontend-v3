@@ -6,15 +6,17 @@
 import { OpenAIProvider } from './openai';
 import { DeepSeekProvider } from './deepseek';
 import { MockTextProvider } from './text-mock';
+import { OpenRouterProvider } from './openrouter';
 import type { ITextGenerationProvider } from './openai';
 
-export type TextProviderId = 'openai' | 'deepseek' | 'mock';
+export type TextProviderId = 'openrouter' | 'openai' | 'deepseek' | 'mock';
 
 class TextProviderFactory {
   private providers: Map<TextProviderId, ITextGenerationProvider>;
 
   constructor() {
     const entries: Array<[TextProviderId, ITextGenerationProvider]> = [
+      ['openrouter', new OpenRouterProvider()],
       ['openai', new OpenAIProvider()],
       ['deepseek', new DeepSeekProvider()],
       ['mock', new MockTextProvider()],
@@ -36,16 +38,21 @@ class TextProviderFactory {
 
   /**
    * Get the best available provider
-   * Priority: OpenAI > DeepSeek > Mock
+   * Priority: OpenRouter > OpenAI > DeepSeek > Mock
    */
   getBestProvider(): ITextGenerationProvider {
-    // Try OpenAI first
+    // OpenRouter is preferred whenever configured.
+    const openrouter = this.providers.get('openrouter');
+    if (openrouter?.isAvailable()) {
+      return openrouter;
+    }
+
     const openai = this.providers.get('openai');
     if (openai?.isAvailable()) {
       return openai;
     }
 
-    // Try DeepSeek
+    // Try DeepSeek next
     const deepseek = this.providers.get('deepseek');
     if (deepseek?.isAvailable()) {
       return deepseek;
