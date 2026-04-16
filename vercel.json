@@ -1,0 +1,115 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+
+  "framework": "nextjs",
+
+  "buildCommand": "next build",
+  "installCommand": "npm ci",
+  "outputDirectory": ".next",
+  "devCommand": "next dev -p 3000",
+
+  "regions": ["cdg1", "iad1"],
+
+  "functions": {
+    "app/api/ai/route.ts": {
+      "maxDuration": 30
+    },
+    "app/api/ai/chat/route.ts": {
+      "maxDuration": 30
+    },
+    "app/api/automation/**": {
+      "maxDuration": 60
+    },
+    "app/api/workflows/**": {
+      "maxDuration": 60
+    },
+    "app/api/replicate/**": {
+      "maxDuration": 60
+    },
+    "app/api/video/**": {
+      "maxDuration": 60
+    },
+    "app/api/avatar/**": {
+      "maxDuration": 30
+    },
+    "app/api/music/**": {
+      "maxDuration": 30
+    },
+    "app/api/voice/**": {
+      "maxDuration": 30
+    },
+    "app/api/voice-lab/**": {
+      "maxDuration": 30
+    },
+    "app/api/webhooks/**": {
+      "maxDuration": 30
+    },
+    "app/api/**": {
+      "maxDuration": 15
+    }
+  },
+
+  "headers": [
+    {
+      "source": "/api/ai/(.*)",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-store, max-age=0" },
+        { "key": "X-Content-Type-Options", "value": "nosniff" },
+        { "key": "X-Frame-Options", "value": "DENY" }
+      ]
+    },
+    {
+      "source": "/api/(.*)",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-store, max-age=0" }
+      ]
+    },
+    {
+      "source": "/_next/static/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=31536000, immutable"
+        }
+      ]
+    },
+    {
+      "source": "/icons/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=86400, stale-while-revalidate=604800"
+        }
+      ]
+    },
+    {
+      "source": "/brand/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=86400, stale-while-revalidate=604800"
+        }
+      ]
+    }
+  ],
+
+  "rewrites": [
+    {
+      "source": "/studio/:path*",
+      "destination": "/en/studio/:path*"
+    }
+  ],
+
+  "redirects": [
+    {
+      "source": "/history",
+      "destination": "/studio/history",
+      "permanent": false
+    },
+    {
+      "source": "/generator/:agent",
+      "destination": "/studio/:agent",
+      "permanent": true
+    }
+  ]
+}

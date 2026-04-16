@@ -41,10 +41,14 @@ type StripeWebhookTestResults = {
  * 6. Return payment flow validation results
  */
 export async function POST(_request: NextRequest) {
+  if (process.env.NODE_ENV === 'production') {
+    return apiError('Not found', 404);
+  }
+
   try {
     const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
     const stripeWebhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
-    const isProduction = process.env.NODE_ENV === 'production';
+    const isProduction = (process.env.NODE_ENV as string) === 'production';
 
     if (!stripeSecretKey) {
       return apiError('STRIPE_SECRET_KEY not configured', 400);

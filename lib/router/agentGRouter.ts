@@ -4,6 +4,8 @@
  * Validates inputs, selects agent + model, executes, normalizes output.
  */
 
+import { shouldUseRealProvider } from '@/lib/server/provider-mode';
+
 export interface RouterInput {
   userId: string;
   serviceId: string;
@@ -26,7 +28,7 @@ export interface RouterOutput {
   artifacts: RouterArtifact[];
   usage: {
     creditsUsed: number;
-    provider: 'gpt' | 'replicate' | 'claude' | 'local';
+    provider: 'gpt' | 'replicate' | 'claude' | 'openrouter' | 'local';
     model: string;
   };
   conversationId?: string;
@@ -48,7 +50,7 @@ export interface RouterArtifact {
 interface AgentDef {
   id: string;
   name: string;
-  provider: 'gpt' | 'replicate' | 'claude';
+  provider: 'gpt' | 'replicate' | 'claude' | 'openrouter' | 'local';
   model: string;
   systemPrompt: string;
   capabilities: string[];
@@ -142,7 +144,7 @@ const SERVICE_AGENT_MAP: Record<string, string> = {
 // ─── Provider routing rules (Phase 7) ────────────────────────────────────────
 // Text reasoning → GPT | Image/Video/Music → Replicate | Code-heavy → GPT/Claude
 
-function selectProvider(agentId: string, hasMediaInput: boolean): { provider: 'gpt' | 'replicate' | 'claude'; model: string } {
+function selectProvider(agentId: string, hasMediaInput: boolean): { provider: 'gpt' | 'replicate' | 'claude' | 'openrouter' | 'local'; model: string } {
   const agent = AGENTS[agentId];
   if (!agent) {
     return { provider: 'gpt', model: 'gpt-4o' };
@@ -153,7 +155,14 @@ function selectProvider(agentId: string, hasMediaInput: boolean): { provider: 'g
     return { provider: 'replicate', model: agent.model };
   }
 
-  // Text/reasoning tasks → GPT
+  // Text/reasoning tasks → OpenRouter when configured, otherwise GPT/Claude
+  if (shouldUseRealProvider('openrouter') && agent.provider !== 'replicate') {
+    return {
+      provider: 'openrouter',
+      model: process.env.OPENROUTER_MODEL || 'claude-opus-4.6-fast',
+    };
+  }
+
   return { provider: agent.provider, model: agent.model };
 }
 
