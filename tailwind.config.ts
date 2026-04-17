@@ -25,15 +25,22 @@ const config: Config = {
         'app-warning': 'rgb(var(--app-warning) / <alpha-value>)',
         'app-danger': 'rgb(var(--app-danger) / <alpha-value>)',
         space: {
+          DEFAULT: '#0a0a0f',
           black: '#030712',
           dark: '#0A1423',
           deep: '#060B18',
         },
         cyan: {
+          DEFAULT: '#00d4ff',
+          dim: 'rgba(0,212,255,0.15)',
           300: '#67E8F9',
           400: '#22D3EE',
           500: '#06B6D4',
           600: '#0891B2',
+        },
+        violet: {
+          DEFAULT: '#7c3aed',
+          dim: 'rgba(124,58,237,0.15)',
         },
         silver: {
           100: '#F5F5F5',
@@ -51,6 +58,9 @@ const config: Config = {
         'glass-lg': '0 16px 64px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.08)',
         neon: '0 0 0 1px rgba(34, 211, 238, 0.25), 0 0 32px rgba(34, 211, 238, 0.2)',
         'neon-strong': '0 0 0 1px rgba(34,211,238,0.35), 0 0 48px rgba(34,211,238,0.25), 0 0 96px rgba(34,211,238,0.08)',
+        'neon-cyan': '0 0 20px rgba(0,212,255,0.3), 0 0 60px rgba(0,212,255,0.08)',
+        'neon-violet': '0 0 20px rgba(124,58,237,0.3), 0 0 60px rgba(124,58,237,0.08)',
+        'card': '0 1px 3px rgba(0,0,0,0.5), 0 1px 2px rgba(0,0,0,0.3)',
         'premium': '0 20px 60px -12px rgba(0,0,0,0.6), 0 0 1px rgba(255,255,255,0.1)',
         'card-hover': '0 24px 80px -16px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.12)',
       },
@@ -87,6 +97,8 @@ const config: Config = {
         'border-glow': 'border-glow 4s ease-in-out infinite',
         'meteor': 'meteor 8s linear infinite',
         'spin-slow': 'spin 12s linear infinite',
+        'pulse-glow': 'pulseGlow 2s ease-in-out infinite',
+        'counter': 'counter 1s ease-out forwards',
       },
       keyframes: {
         float: {
@@ -162,6 +174,14 @@ const config: Config = {
           '5%': { opacity: '1' },
           '15%': { transform: 'translateX(100vw) translateY(100vh) rotate(45deg)', opacity: '0' },
           '100%': { transform: 'translateX(100vw) translateY(100vh) rotate(45deg)', opacity: '0' },
+        },
+        pulseGlow: {
+          '0%, 100%': { boxShadow: '0 0 8px rgba(0,212,255,0.2), 0 0 24px rgba(0,212,255,0.08)' },
+          '50%': { boxShadow: '0 0 16px rgba(0,212,255,0.4), 0 0 48px rgba(0,212,255,0.15)' },
+        },
+        counter: {
+          '0%': { opacity: '0', transform: 'translateY(8px)' },
+          '100%': { opacity: '1', transform: 'translateY(0)' },
         },
       },
     },

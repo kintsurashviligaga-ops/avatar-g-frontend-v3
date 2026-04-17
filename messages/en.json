@@ -151,6 +151,45 @@
       "manage": "Manage",
       "viewDetails": "View Details",
       "cancel": "Cancel"
+    },
+    "commandBar": {
+      "placeholder": "What do you want to create today?",
+      "submit": "Create",
+      "quickActions": {
+        "avatar": "Avatar",
+        "image": "Image",
+        "video": "Video",
+        "voice": "Voice",
+        "music": "Music"
+      }
+    },
+    "stats": {
+      "credits": "Credits",
+      "activeTasks": "Active Tasks",
+      "totalGenerated": "Total Generated",
+      "agentStatus": "Agent G Status"
+    },
+    "sections": {
+      "services": "Services",
+      "activity": "Recent Activity",
+      "mediaCreation": "Media Creation",
+      "aiTools": "AI Tools",
+      "business": "Business",
+      "automation": "Automation"
+    },
+    "activity": {
+      "empty": "No activity yet",
+      "emptyHint": "Create your first AI content",
+      "viewAll": "View All"
+    },
+    "sidebar": {
+      "dashboard": "Dashboard",
+      "create": "Create",
+      "agentG": "Agent G",
+      "workflows": "Workflows",
+      "analytics": "Analytics",
+      "billing": "Billing",
+      "settings": "Settings"
     }
   },
   "subscription": {
@@ -298,56 +337,30 @@
     }
   },
   "sell": {
-    "onboarding": {
-      "title": "Start selling",
-      "subtitle": "Create your Stripe Connect account to receive payouts",
-      "steps": {
-        "create": "Create account",
-        "verify": "Complete verification",
-        "payouts": "Enable payouts"
-      },
-      "actions": {
-        "start": "Start seller setup",
-        "continue": "Continue onboarding",
-        "refresh": "Refresh status",
-        "dashboard": "Go to seller dashboard"
-      },
-      "status": {
-        "connected": "Connected",
-        "charges_enabled": "Charges enabled",
-        "payouts_enabled": "Payouts enabled",
-        "details_submitted": "Details submitted"
-      },
-      "requirements": {
-        "title": "Missing requirements",
-        "none": "All requirements completed",
-        "currently_due": "Currently due",
-        "eventually_due": "Eventually due",
-        "past_due": "Past due"
-      },
-      "no_account": "You don't have a Stripe Connect account yet"
-    },
-    "dashboard": {
-      "title": "Seller dashboard",
-      "subtitle": "Payout status and earnings",
-      "status": {
-        "payouts": "Payout status",
-        "active": "Active",
-        "pending": "Pending",
-        "disabled": "Disabled"
-      },
-      "actions": {
-        "open_stripe": "Open Stripe dashboard",
-        "payout_settings": "Payout settings"
-      },
-      "sections": {
-        "earnings": "Earnings",
-        "products": "Products & services"
-      },
-      "placeholder": {
-        "earnings": "Analytics coming soon",
-        "products": "Marketplace listing coming soon"
-      }
+    "finance": {
+      "title": "Seller Dashboard",
+      "subtitle": "Your sales and revenue information",
+      "totalGmv": "Total GMV",
+      "totalFees": "Total Fees (30%)",
+      "netAmount": "Net Amount",
+      "pendingPayout": "Pending Payout",
+      "financialSummary": "Financial Summary",
+      "grossRevenue": "Total Gross Revenue",
+      "platformFees": "Platform Fees (30%)",
+      "yourEarnings": "Your Net Earnings",
+      "payoutStatus": "Payout Status",
+      "alreadyPaidOut": "Already Paid Out",
+      "totalOrders": "Total Orders",
+      "totalPayouts": "Total Payouts",
+      "revenueFeesTrend": "Revenue & Fees Trend (Last 30 Days)",
+      "netRevenueTrend": "Net Revenue Trend (Last 30 Days)",
+      "recentOrders": "Recent Orders",
+      "orderId": "Order ID",
+      "date": "Date",
+      "grossAmount": "Gross Amount",
+      "fees": "Fees",
+      "paymentProcessing": "Payment Processing",
+      "paymentProcessingDescription": "Your pending earnings will be automatically transferred to your connected Stripe account. Transfers typically occur within 2-3 business days."
     }
   },
   "generator": {
@@ -453,224 +466,6 @@
     }
   },
   "affiliate": {
-    "title": "Affiliate Dashboard",
-    "badge": {
-      "label": "Affiliate"
-    },
-    "status": {
-      "active": "Active",
-      "disabled": "Disabled",
-      "pending": "Pending"
-    },
-    "summary": {
-      "your_code": "Your Code",
-      "referral_link": "Referral Link",
-      "copy_code": "Copy Code",
-      "copy_link": "Copy Link",
-      "copied": "Copied!",
-      "total_clicks": "Total Clicks",
-      "total_signups": "Signups",
-      "pending_commissions": "Pending",
-      "eligible_commissions": "Eligible",
-      "paid_commissions": "Paid",
-      "next_payout": "Next Payout",
-      "earnings_chart": "Earnings chart",
-      "last_7_days": "Last 7 Days",
-      "last_30_days": "Last 30 Days",
-      "all_time": "All Time"
-    },
-    "commissions": {
-      "title": "Commissions",
-      "date": "Date",
-      "source_type": "Source",
-      "source_id": "ID",
-      "amount": "Amount",
-      "rate": "Rate",
-      "status": "Status",
-      "available_at": "Available",
-      "pending": "Pending",
-      "available": "Available",
-      "eligible": "Eligible",
-      "paid": "Paid",
-      "reversed": "Reversed",
-      "subscription": "Subscription",
-      "marketplace": "Marketplace",
-      "one_time": "One-time",
-      "filters": "Filters",
-      "date_range": "Date Range",
-      "all_statuses": "All Statuses",
-      "all_types": "All Types",
-      "apply_filters": "Apply",
-      "clear_filters": "Clear",
-      "no_commissions": "No commissions found",
-      "total": "Total"
-    },
-    "referrals": {
-      "title": "Referrals",
-      "date": "Date",
-      "click_id": "Click ID",
-      "landing_url": "URL",
-      "utm_source": "Source",
-      "utm_campaign": "Campaign",
-      "status": "Status",
-      "referred_user": "User",
-      "clicked": "Clicked",
-      "signed_up": "Signed Up",
-      "converted": "Converted",
-      "no_referrals": "No referrals found",
-      "last_50": "Last 50",
-      "linked": "Linked",
-      "visitor": "Visitor"
-    },
-    "payouts": {
-      "title": "Payout History",
-      "subtitle": "Manage payout requests",
-      "period": "Period",
-      "date": "Date",
-      "amount": "Amount",
-      "method": "Method",
-      "status": "Status",
-      "transfer_id": "Transfer ID",
-      "available_balance": "Available balance",
-      "request_amount": "Request amount",
-      "request_payout": "Request payout",
-      "request_success": "Payout request submitted",
-      "request_failed": "Failed to request payout",
-      "invalid_amount": "Invalid amount",
-      "connect_required": "Connect Stripe to receive payouts",
-      "connect_now": "Connect now",
-      "view_history": "View history",
-      "requested": "Requested",
-      "pending": "Pending",
-      "processing": "Processing",
-      "paid": "Completed",
-      "failed": "Failed",
-      "canceled": "Canceled",
-      "no_payouts": "No payouts found",
-      "manual": "Manual",
-      "stripe": "Stripe",
-      "threshold_info": "Minimum threshold: {amount}"
-    },
-    "settings": {
-      "title": "Settings",
-      "payout_method": "Payout Method",
-      "connect_payout": "Connect Payout Account",
-      "coming_soon": "Coming Soon",
-      "minimum_threshold": "Minimum Threshold",
-      "current_balance": "Current Balance"
-    }
-  },
-  "admin": {
-    "affiliates": {
-      "title": "Affiliate Management",
-      "list_title": "Affiliates",
-      "search": "Search by code or ID",
-      "user_id": "User ID",
-      "code": "Code",
-      "status": "Status",
-      "clicks": "Clicks",
-      "signups": "Signups",
-      "commissions": "Commissions",
-      "actions": "Actions",
-      "toggle_status": "Toggle Status",
-      "view_details": "Details",
-      "activate": "Activate",
-      "disable": "Disable",
-      "no_affiliates": "No affiliates found"
-    },
-    "payouts": {
-      "title": "Payout Queue",
-      "queue_title": "Ready for Payout",
-      "affiliate": "Affiliate",
-      "eligible_amount": "Amount",
-      "last_payout": "Last Payout",
-      "create_payout": "Create Payout",
-      "mark_sent": "Mark Sent",
-      "mark_failed": "Mark Failed",
-      "export_csv": "Export CSV",
-      "no_eligible": "No eligible affiliates",
-      "amount": "Amount",
-      "notes": "Notes",
-      "confirm_payout": "Confirm Payout",
-      "cancel": "Cancel",
-      "confirm": "Confirm",
-      "success": "Payout created successfully"
-    }
-  },
-  "common": {
-    "loading": "Loading...",
-    "error": "Error",
-    "success": "Success",
-    "cancel": "Cancel",
-    "save": "Save",
-    "delete": "Delete",
-    "edit": "Edit",
-    "close": "Close",
-    "back": "Back",
-    "next": "Next",
-    "submit": "Submit",
-    "retry": "Retry",
-    "confirm": "Confirm",
-    "yes": "Yes",
-    "no": "No"
-  },
-  "errors": {
-    "generic": "Something went wrong. Please try again.",
-    "network": "Network error. Check your internet connection.",
-    "unauthorized": "Access denied. Please log in.",
-    "notFound": "Page not found.",
-    "serverError": "Server error. Please try again later."
-  },
-  "admin": {
-    "finance": {
-      "title": "Financial Analytics",
-      "subtitle": "Platform-wide financial overview",
-      "mrr": "Monthly Recurring Revenue (MRR)",
-      "arr": "Annual Recurring Revenue (ARR)",
-      "activeSubs": "Active Subscriptions",
-      "gmv": "Gross Merchandise Value (GMV)",
-      "revenue30d": "Revenue (30 days)",
-      "fees30d": "Platform Fees (30 days)",
-      "refunds30d": "Refunds (30 days)",
-      "churnRate": "Churn Rate",
-      "revenueSummary": "Revenue Summary (30 days)",
-      "netRevenue": "Net Revenue",
-      "feesPayouts": "Fees & Payouts (30 days)",
-      "platformFees": "Platform Fees",
-      "revenueTrend": "Revenue Trend",
-      "gmvFeesTrend": "GMV & Fees Trend",
-      "affiliateCommissionsTrend": "Affiliate Commissions Trend",
-      "sellerPayoutsTrend": "Seller Payouts Trend"
-    }
-  },
-  "sell": {
-    "finance": {
-      "title": "Seller Dashboard",
-      "subtitle": "Your sales and revenue information",
-      "totalGmv": "Total GMV",
-      "totalFees": "Total Fees (30%)",
-      "netAmount": "Net Amount",
-      "pendingPayout": "Pending Payout",
-      "financialSummary": "Financial Summary",
-      "grossRevenue": "Total Gross Revenue",
-      "platformFees": "Platform Fees (30%)",
-      "yourEarnings": "Your Net Earnings",
-      "payoutStatus": "Payout Status",
-      "alreadyPaidOut": "Already Paid Out",
-      "totalOrders": "Total Orders",
-      "totalPayouts": "Total Payouts",
-      "revenueFeesTrend": "Revenue & Fees Trend (Last 30 Days)",
-      "netRevenueTrend": "Net Revenue Trend (Last 30 Days)",
-      "recentOrders": "Recent Orders",
-      "orderId": "Order ID",
-      "date": "Date",
-      "grossAmount": "Gross Amount",
-      "fees": "Fees",
-      "paymentProcessing": "Payment Processing",
-      "paymentProcessingDescription": "Your pending earnings will be automatically transferred to your connected Stripe account. Transfers typically occur within 2-3 business days."
-    }
-  },
-  "affiliate": {
     "finance": {
       "title": "Affiliate Earnings",
       "subtitle": "Your referral earnings and status",
@@ -694,6 +489,47 @@
       "recentCommissionEvents": "Recent Commission Events",
       "availableOn": "Available On"
     }
+  },
+  "admin": {
+    "finance": {
+      "title": "Financial Analytics",
+      "subtitle": "Platform-wide financial overview",
+      "mrr": "Monthly Recurring Revenue (MRR)",
+      "arr": "Annual Recurring Revenue (ARR)",
+      "activeSubs": "Active Subscriptions",
+      "gmv": "Gross Merchandise Value (GMV)",
+      "revenue30d": "Revenue (30 days)",
+      "fees30d": "Platform Fees (30 days)",
+      "refunds30d": "Refunds (30 days)",
+      "churnRate": "Churn Rate",
+      "revenueSummary": "Revenue Summary (30 days)",
+      "netRevenue": "Net Revenue",
+      "feesPayouts": "Fees & Payouts (30 days)",
+      "platformFees": "Platform Fees",
+      "revenueTrend": "Revenue Trend",
+      "gmvFeesTrend": "GMV & Fees Trend",
+      "affiliateCommissionsTrend": "Affiliate Commissions Trend",
+      "sellerPayoutsTrend": "Seller Payouts Trend"
+    }
+  },
+  "common": {
+    "loading": "Loading...",
+    "saving": "Saving...",
+    "save": "Save",
+    "saved_successfully": "Saved successfully",
+    "error": "Error",
+    "view": "View",
+    "download": "Download",
+    "actions": "Actions",
+    "calculating": "Calculating...",
+    "back": "Back"
+  },
+  "errors": {
+    "generic": "Something went wrong. Please try again.",
+    "network": "Network error. Check your internet connection.",
+    "unauthorized": "Access denied. Please log in.",
+    "notFound": "Page not found.",
+    "serverError": "Server error. Please try again later."
   },
   "business": {
     "profile": {
@@ -835,18 +671,6 @@
       "timeline": "Timeline",
       "order_not_found": "Order not found"
     }
-  },
-  "common": {
-    "loading": "Loading...",
-    "saving": "Saving...",
-    "save": "Save",
-    "saved_successfully": "Saved successfully",
-    "error": "Error",
-    "view": "View",
-    "download": "Download",
-    "actions": "Actions",
-    "calculating": "Calculating...",
-    "back": "Back"
   },
   "returns": {
     "myReturns": "My Returns",
@@ -1074,5 +898,15 @@
     "plan_ultra_tagline": "For power users and small teams.",
     "plan_ultra_cta": "Go Ultra",
     "plan_ultra_badge": "Best value"
+  },
+  "agentG": {
+    "title": "Agent G",
+    "subtitle": "Your AI Orchestrator",
+    "inputPlaceholder": "Hello! What would you like to create?",
+    "send": "Send",
+    "thinking": "Agent G is thinking...",
+    "routingTo": "Routing to",
+    "jobCreated": "Job created",
+    "welcome": "Hello! I am Agent G — your AI orchestrator. What would you like to create today?"
   }
 }

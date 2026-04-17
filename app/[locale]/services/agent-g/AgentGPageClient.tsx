@@ -1,8 +1,10 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import ServiceChatLayout from '@/components/services/workspace/ServiceChatLayout'
+import { useSearchParams } from 'next/navigation'
 import { createBrowserClient } from '@/lib/supabase/browser'
+import { UnifiedServiceShell } from '@/components/services/unified'
+import { AgentGChatInterface } from '@/components/AgentG/ChatInterface'
 
 interface AgentGPageClientProps {
   serviceId: string
@@ -17,6 +19,8 @@ interface AgentGPageClientProps {
 export default function AgentGPageClient(props: AgentGPageClientProps) {
   const demoMode = (process.env.NEXT_PUBLIC_DEMO_MODE ?? '').trim().toLowerCase() === 'true'
   const [isAuthenticated, setIsAuthenticated] = useState(demoMode)
+  const searchParams = useSearchParams()
+  const initialQuery = searchParams.get('q') ?? undefined
 
   useEffect(() => {
     if (demoMode) {
@@ -38,10 +42,14 @@ export default function AgentGPageClient(props: AgentGPageClientProps) {
   }, [demoMode])
 
   return (
-    <ServiceChatLayout
-      {...props}
-      isAuthenticated={isAuthenticated}
-      demoMode={demoMode}
-    />
+    <UnifiedServiceShell
+      activeServiceId={props.serviceId}
+      locale={props.locale}
+    >
+      <AgentGChatInterface
+        locale={props.locale}
+        initialQuery={initialQuery}
+      />
+    </UnifiedServiceShell>
   )
 }

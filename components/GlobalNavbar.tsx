@@ -46,7 +46,16 @@ export function GlobalNavbar() {
   const switchLocale = (code: string) => {
     document.cookie = `NEXT_LOCALE=${code}; path=/; max-age=31536000; SameSite=Lax`
     setLocale(code)
-    router.refresh()
+    // Replace the locale segment in the URL path so the route actually changes
+    const segments = pathname.split('/')
+    const locales = ['ka', 'en', 'ru']
+    const firstSeg = segments[1] ?? ''
+    if (segments.length > 1 && locales.includes(firstSeg)) {
+      segments[1] = code
+      router.push(segments.join('/') || '/')
+    } else {
+      router.push(`/${code}${pathname}`)
+    }
   }
 
   const isActive = (href: string) =>

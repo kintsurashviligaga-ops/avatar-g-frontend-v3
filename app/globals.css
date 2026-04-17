@@ -41,6 +41,28 @@
   --input-focus: rgba(34,211,238,0.5);
   --sidebar-bg: rgba(16,16,20,0.98);
   --hero-glow-primary: rgba(34,211,238,0.10);
+
+  /* Neo-Cosmic Futurism — extended palette */
+  --color-cyan: #00d4ff;
+  --color-cyan-dim: rgba(0, 212, 255, 0.15);
+  --color-violet: #7c3aed;
+  --color-violet-dim: rgba(124, 58, 237, 0.15);
+  --color-bg-deep: #0a0a0f;
+  --color-bg-card: rgba(255, 255, 255, 0.04);
+  --color-bg-card-hover: rgba(255, 255, 255, 0.07);
+  --color-border-cyan: rgba(0, 212, 255, 0.12);
+  --color-border-cyan-hover: rgba(0, 212, 255, 0.35);
+  --color-muted: #94a3b8;
+  --color-success: #22c55e;
+  --color-error: #ef4444;
+
+  /* Spacing scale */
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 16px;
+  --space-lg: 24px;
+  --space-xl: 40px;
+  --space-2xl: 64px;
 }
 
 /* Light theme removed Ã¢â‚¬â€ unified dark cinematic environment */

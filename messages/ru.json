@@ -151,6 +151,45 @@
       "manage": "Управление",
       "viewDetails": "Просмотреть детали",
       "cancel": "Отменить"
+    },
+    "commandBar": {
+      "placeholder": "Что вы хотите создать сегодня?",
+      "submit": "Создать",
+      "quickActions": {
+        "avatar": "Аватар",
+        "image": "Изображение",
+        "video": "Видео",
+        "voice": "Голос",
+        "music": "Музыка"
+      }
+    },
+    "stats": {
+      "credits": "Кредиты",
+      "activeTasks": "Активные задачи",
+      "totalGenerated": "Всего создано",
+      "agentStatus": "Статус Agent G"
+    },
+    "sections": {
+      "services": "Сервисы",
+      "activity": "Последняя активность",
+      "mediaCreation": "Создание медиа",
+      "aiTools": "AI инструменты",
+      "business": "Бизнес",
+      "automation": "Автоматизация"
+    },
+    "activity": {
+      "empty": "Пока нет активности",
+      "emptyHint": "Создайте свой первый AI контент",
+      "viewAll": "Смотреть все"
+    },
+    "sidebar": {
+      "dashboard": "Панель",
+      "create": "Создать",
+      "agentG": "Agent G",
+      "workflows": "Процессы",
+      "analytics": "Аналитика",
+      "billing": "Биллинг",
+      "settings": "Настройки"
     }
   },
   "subscription": {
@@ -762,5 +801,15 @@
       "timeline": "Хронология",
       "order_not_found": "Заказ не найден"
     }
+  },
+  "agentG": {
+    "title": "Agent G",
+    "subtitle": "Ваш AI оркестратор",
+    "inputPlaceholder": "Здравствуйте! Что вы хотите создать?",
+    "send": "Отправить",
+    "thinking": "Agent G думает...",
+    "routingTo": "Перенаправление в",
+    "jobCreated": "Задача создана",
+    "welcome": "Здравствуйте! Я Agent G — ваш AI оркестратор. Что вы хотите создать сегодня?"
   }
 }

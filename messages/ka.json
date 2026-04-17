@@ -151,6 +151,45 @@
       "manage": "მართვა",
       "viewDetails": "დეტალების ნახვა",
       "cancel": "გაუქმება"
+    },
+    "commandBar": {
+      "placeholder": "რა გინდა შექმნა დღეს?",
+      "submit": "შექმნა",
+      "quickActions": {
+        "avatar": "ავატარი",
+        "image": "სურათი",
+        "video": "ვიდეო",
+        "voice": "ხმა",
+        "music": "მუსიკა"
+      }
+    },
+    "stats": {
+      "credits": "კრედიტები",
+      "activeTasks": "აქტიური დავალებები",
+      "totalGenerated": "შექმნილი",
+      "agentStatus": "Agent G სტატუსი"
+    },
+    "sections": {
+      "services": "სერვისები",
+      "activity": "ბოლო აქტივობა",
+      "mediaCreation": "მედია შექმნა",
+      "aiTools": "AI ინსტრუმენტები",
+      "business": "ბიზნესი",
+      "automation": "ავტომატიზაცია"
+    },
+    "activity": {
+      "empty": "ჯერ არ გაქვთ აქტივობა",
+      "emptyHint": "შექმენით თქვენი პირველი AI კონტენტი",
+      "viewAll": "ყველას ნახვა"
+    },
+    "sidebar": {
+      "dashboard": "პანელი",
+      "create": "შექმნა",
+      "agentG": "Agent G",
+      "workflows": "პროცესები",
+      "analytics": "ანალიტიკა",
+      "billing": "ბილინგი",
+      "settings": "პარამეტრები"
     }
   },
   "subscription": {
@@ -298,56 +337,30 @@
     }
   },
   "sell": {
-    "onboarding": {
-      "title": "გაყიდვის დაწყება",
-      "subtitle": "შექმენი Stripe Connect ანგარიში და მიიღე გადახდები",
-      "steps": {
-        "create": "ანგარიშის შექმნა",
-        "verify": "Stripe ვერიფიკაცია",
-        "payouts": "გადახდების ჩართვა"
-      },
-      "actions": {
-        "start": "გამყიდველის დაყენება",
-        "continue": "ონბორდინგის გაგრძელება",
-        "refresh": "სტატუსის განახლება",
-        "dashboard": "გაყიდვების პანელზე"
-      },
-      "status": {
-        "connected": "დაკავშირებულია",
-        "charges_enabled": "ჩარჯები ჩართულია",
-        "payouts_enabled": "პეაუტები ჩართულია",
-        "details_submitted": "დეტალები შევსებულია"
-      },
-      "requirements": {
-        "title": "დაკლებული მოთხოვნები",
-        "none": "ყველა მოთხოვნა შესრულებულია",
-        "currently_due": "მიმდინარე მოთხოვნები",
-        "eventually_due": "მომავალში მოთხოვნები",
-        "past_due": "ვადაგასული მოთხოვნები"
-      },
-      "no_account": "Stripe Connect ანგარიში ჯერ არ გაქვთ"
-    },
-    "dashboard": {
+    "finance": {
       "title": "გამყიდველის პანელი",
-      "subtitle": "გადახდების სტატუსი და შემოსავალი",
-      "status": {
-        "payouts": "გადახდის სტატუსი",
-        "active": "აქტიური",
-        "pending": "მოლოდინში",
-        "disabled": "გამორთული"
-      },
-      "actions": {
-        "open_stripe": "Stripe პანელის გახსნა",
-        "payout_settings": "გადახდის პარამეტრები"
-      },
-      "sections": {
-        "earnings": "შემოსავალი",
-        "products": "პროდუქტები და სერვისები"
-      },
-      "placeholder": {
-        "earnings": "ანალიტიკა მალე იქნება",
-        "products": "მარკეტპლეისში დამატება მალე იქნება"
-      }
+      "subtitle": "თქვენი გაყიდვების და შედეგის ინფორმაცია",
+      "totalGmv": "საერთო GMV",
+      "totalFees": "საერთო კომიის (30%)",
+      "netAmount": "წმინდა თანხა",
+      "pendingPayout": "მოლოდინში ანგარიშსწორება",
+      "financialSummary": "ფინანსური ჯამი",
+      "grossRevenue": "საერთო შედეგი",
+      "platformFees": "პლატფორმის კომიის (30%)",
+      "yourEarnings": "თქვენი შედეგი",
+      "payoutStatus": "ანგარიშსწორების სტატუსი",
+      "alreadyPaidOut": "უკვე გადახდილი",
+      "totalOrders": "ჯამი შეკვეთები",
+      "totalPayouts": "ჯამი ანგარიშსწორება",
+      "revenueFeesTrend": "შედეგი და კომია ტენდენცია (ბოლო 30 დღე)",
+      "netRevenueTrend": "წმინდა შედეგი ტენდენცია (ბოლო 30 დღე)",
+      "recentOrders": "ბოლო შეკვეთები",
+      "orderId": "შეკვეთის ID",
+      "date": "თარიღი",
+      "grossAmount": "საერთო თანხა",
+      "fees": "კომიის",
+      "paymentProcessing": "გადახდის დამუშავება",
+      "paymentProcessingDescription": "თქვენი მოლოდინში შედეგი ავტომატურად გადახდილი იქნება დაკავშირებულ Stripe ანგარიშზე. ტრანსფერი, როგორც წესი, 2-3 სამუშაო დღეში ხდება."
     }
   },
   "generator": {
@@ -453,226 +466,6 @@
     }
   },
   "affiliate": {
-    "title": "აფილიაციის პანელი",
-    "badge": {
-      "label": "Affiliate"
-    },
-    "status": {
-      "active": "აქტიური",
-      "disabled": "გათიშული",
-      "pending": "მოლოდინში"
-    },
-    "summary": {
-      "your_code": "თქვენი კოდი",
-      "referral_link": "რეფერალური ბმული",
-      "copy_code": "კოდის კოპირება",
-      "copy_link": "ბმულის კოპირება",
-      "copied": "დაკოპირდა!",
-      "total_clicks": "საერთო კლიკები",
-      "total_signups": "რეგისტრაციები",
-      "pending_commissions": "მოლოდინში",
-      "eligible_commissions": "გადახდის მზადი",
-      "paid_commissions": "გადახდილი",
-      "next_payout": "შემდეგი გადახდა",
-      "earnings_chart": "შემოსავლის გრაფიკი",
-      "last_7_days": "ბოლო 7 დღე",
-      "last_30_days": "ბოლო 30 დღე",
-      "all_time": "მთელი დრო"
-    },
-    "commissions": {
-      "title": "საკომისიოები",
-      "date": "თარიღი",
-      "source_type": "წყარო",
-      "source_id": "ID",
-      "amount": "თანხა",
-      "rate": "განაკვეთი",
-      "status": "სტატუსი",
-      "available_at": "ხელმისაწვდომი",
-      "pending": "მოლოდინში",
-      "available": "ხელმისაწვდომი",
-      "eligible": "მზადაა",
-      "paid": "გადახდილი",
-      "reversed": "უარყოფილი",
-      "subscription": "გამოწერა",
-      "marketplace": "მარკეტფლეისი",
-      "one_time": "ერთჯერადი",
-      "filters": "ფილტრები",
-      "date_range": "თარიღის დიაპაზონი",
-      "all_statuses": "ყველა სტატუსი",
-      "all_types": "ყველა ტიპი",
-      "apply_filters": "გამოყენება",
-      "clear_filters": "გასუფთავება",
-      "no_commissions": "საკომისიოები არ მოიძებნა",
-      "total": "სულ"
-    },
-    "referrals": {
-      "title": "რეფერალები",
-      "date": "თარიღი",
-      "click_id": "კლიკის ID",
-      "landing_url": "URL",
-      "utm_source": "წყარო",
-      "utm_campaign": "კამპანია",
-      "status": "სტატუსი",
-      "referred_user": "მომხმარებელი",
-      "clicked": "დაკლიკდა",
-      "signed_up": "დარეგისტრირდა",
-      "converted": "გადაიქცა",
-      "no_referrals": "რეფერალები არ მოიძებნა",
-      "last_50": "ბოლო 50",
-      "linked": "დაკავშირებული",
-      "visitor": "ვიზიტორი"
-    },
-    "payouts": {
-      "title": "გადახდების ისტორია",
-      "subtitle": "მართე payout მოთხოვნები",
-      "period": "პერიოდი",
-      "date": "თარიღი",
-      "amount": "თანხა",
-      "method": "მეთოდი",
-      "status": "სტატუსი",
-      "transfer_id": "ტრანსფერის ID",
-      "available_balance": "ხელმისაწვდომი ბალანსი",
-      "request_amount": "მოთხოვნის თანხა",
-      "request_payout": "გადახდის მოთხოვნა",
-      "request_success": "გადახდის მოთხოვნა მიღებულია",
-      "request_failed": "გადახდის მოთხოვნა ვერ შესრულდა",
-      "invalid_amount": "არასწორი თანხა",
-      "connect_required": "Stripe დაკავშირება საჭიროა გადახდებისთვის",
-      "connect_now": "დაკავშირება",
-      "view_history": "ისტორიის ნახვა",
-      "requested": "მოთხოვნილია",
-      "pending": "მოლოდინში",
-      "processing": "მუშავდება",
-      "paid": "დასრულდა",
-      "failed": "ვერ მოხერხდა",
-      "canceled": "გაუქმდა",
-      "no_payouts": "გადახდები არ მოიძებნა",
-      "manual": "მექანიკური",
-      "stripe": "Stripe",
-      "threshold_info": "მინიმალური ზღვრით: {amount}"
-    },
-    "settings": {
-      "title": "პარამეტრები",
-      "payout_method": "გადახდის მეთოდი",
-      "connect_payout": "გადახდის ანგარიშის დაკავშირება",
-      "coming_soon": "მალე ხელმისაწვდომი",
-      "minimum_threshold": "მინიმალური ზღვარი",
-      "current_balance": "მიმდინარე ბალანსი"
-    }
-  },
-  "admin": {
-    "affiliates": {
-      "title": "აფილიაციის მართვა",
-      "list_title": "აფილიატები",
-      "search": "ძიება კოდით ან ID-ით",
-      "user_id": "მომხმარებლის ID",
-      "code": "კოდი",
-      "status": "სტატუსი",
-      "clicks": "კლიკები",
-      "signups": "რეგისტრაციები",
-      "commissions": "საკომისიოები",
-      "actions": "მოქმედებები",
-      "toggle_status": "სტატუსის შეცვლა",
-      "view_details": "დეტალები",
-      "activate": "გააქტიურება",
-      "disable": "გათიშვა",
-      "no_affiliates": "აფილიატები არ მოიძებნა"
-    },
-    "payouts": {
-      "title": "გადახდების რიგი",
-      "queue_title": "გადახდის მზად არიან",
-      "affiliate": "აფილიატი",
-      "eligible_amount": "თანხა",
-      "last_payout": "ბოლო გადახდა",
-      "create_payout": "გადახდის შექმნა",
-      "mark_sent": "მონიშნე გაგზავნილად",
-      "mark_failed": "მონიშნე ვერ მოხერხდა",
-      "export_csv": "CSV ექსპორტი",
-      "no_eligible": "გადახდის მზად აფილიატები არ არიან",
-      "amount": "თანხა",
-      "notes": "შენიშვნები",
-      "confirm_payout": "დაადასტურე გადახდა",
-      "cancel": "გაუქმება",
-      "confirm": "დადასტურება",
-      "success": "გადახდა წარმატებით შეიქმნა"
-    }
-  },
-  "common": {
-    "loading": "იტვირთება...",
-    "error": "შეცდომა",
-    "success": "წარმატებული",
-    "cancel": "გაუქმება",
-    "save": "შენახვა",
-    "delete": "წაშლა",
-    "edit": "რედაქტირება",
-    "close": "დახურვა",
-    "back": "უკან",
-    "next": "შემდეგი",
-    "submit": "გაგზავნა",
-    "retry": "თავიდან ცდა",
-    "confirm": "დადასტურება",
-    "yes": "დიახ",
-    "no": "არა"
-  },
-  "errors": {
-    "generic": "რაღაც არასწორად მოხდა. გთხოვთ სცადოთ თავიდან.",
-    "network": "ქსელის შეცდომა. შეამოწმეთ ინტერნეტ კავშირი.",
-    "unauthorized": "წვდომა აკრძალულია. გთხოვთ შეხვიდეთ სისტემაში.",
-    "notFound": "გვერდი ვერ მოიძებნა.",
-    "serverError": "სერვერის შეცდომა. გთხოვთ სცადოთ მოგვიანებით."
-  },
-  "admin": {
-    "finance": {
-      "title": "ფინანსური ანალიტიკა",
-      "subtitle": "პლატფორმის ფინანსური მიმოხილვა",
-      "mrr": "მাসიური განმეორებითი შედეგი (MRR)",
-      "arr": "წლიური განმეორებითი შედეგი (ARR)",
-      "activeSubs": "აქტიური გამოწერები",
-      "gmv": "ოჯახის ბრუნვის ღირებულება (GMV)",
-      "revenue30d": "შედეგი (30 დღე)",
-      "fees30d": "პლატფორმის კომისია (30 დღე)",
-      "refunds30d": "გამოსახლებული თანხები (30 დღე)",
-      "churnRate": "მიმდევრობის მაჩვენებელი",
-      "revenueSummary": "შედეგის ჯამი (30 დღე)",
-      "netRevenue": "წმინდა შედეგი",
-      "feesPayouts": "კომიссიები და ანგარიშსწორება (30 დღე)",
-      "platformFees": "პლატფორმის კომიссია",
-      "revenueTrend": "შედეგის ტენდენცია",
-      "gmvFeesTrend": "GMV და კომიის ტენდენცია",
-      "affiliateCommissionsTrend": "რეფერალური კომიის ტენდენცია",
-      "sellerPayoutsTrend": "გამყიდველის ანგარიშსწორება ტენდენცია"
-    }
-  },
-  "sell": {
-    "finance": {
-      "title": "გამყიდველის პანელი",
-      "subtitle": "თქვენი გაყიდვების და შედეგის ინფორმაცია",
-      "totalGmv": "საერთო GMV",
-      "totalFees": "საერთო კომიის (30%)",
-      "netAmount": "წმინდა თანხა",
-      "pendingPayout": "მოლოდინში ანგარიშსწორება",
-      "financialSummary": "ფინანსური ჯამი",
-      "grossRevenue": "საერთო შედეგი",
-      "platformFees": "პლატფორმის კომიის (30%)",
-      "yourEarnings": "თქვენი შედეგი",
-      "payoutStatus": "ანგარიშსწორების სტატუსი",
-      "alreadyPaidOut": "უკვე გადახდილი",
-      "pendingPayout": "მოლოდინში ანგარიშსწორება",
-      "totalOrders": "ჯამი შეკვეთები",
-      "totalPayouts": "ჯამი ანგარიშსწორება",
-      "revenueFeesTrend": "შედეგი და კომია ტენდენცია (ბოლო 30 დღე)",
-      "netRevenueTrend": "წმინდა შედეგი ტენდენცია (ბოლო 30 დღე)",
-      "recentOrders": "ბოლო შეკვეთები",
-      "orderId": "შეკვეთის ID",
-      "date": "თარიღი",
-      "grossAmount": "საერთო თანხა",
-      "fees": "კომიის",
-      "netAmount": "წმინდა თანხა",
-      "paymentProcessing": "გადახდის დამუშავება",
-      "paymentProcessingDescription": "თქვენი მოლოდინში შედეგი ავტომატურად გადახდილი იქნება დაკავშირებულ Stripe ანგარიშზე. ტრანსფერი, როგორც წესი, 2-3 სამუშაო დღეში ხდება."
-    }
-  },
-  "affiliate": {
     "finance": {
       "title": "რეფერალური შედეგი",
       "subtitle": "მოგება და ანგარიშსწორება",
@@ -696,6 +489,47 @@
       "recentCommissionEvents": "ბოლო რეფერალური კომიის მოვლენები",
       "availableOn": "მიღება თარიღში"
     }
+  },
+  "admin": {
+    "finance": {
+      "title": "ფინანსური ანალიტიკა",
+      "subtitle": "პლატფორმის ფინანსური მიმოხილვა",
+      "mrr": "მাসიური განმეორებითი შედეგი (MRR)",
+      "arr": "წლიური განმეორებითი შედეგი (ARR)",
+      "activeSubs": "აქტიური გამოწერები",
+      "gmv": "ოჯახის ბრუნვის ღირებულება (GMV)",
+      "revenue30d": "შედეგი (30 დღე)",
+      "fees30d": "პლატფორმის კომისია (30 დღე)",
+      "refunds30d": "გამოსახლებული თანხები (30 დღე)",
+      "churnRate": "მიმდევრობის მაჩვენებელი",
+      "revenueSummary": "შედეგის ჯამი (30 დღე)",
+      "netRevenue": "წმინდა შედეგი",
+      "feesPayouts": "კომიссიები და ანგარიშსწორება (30 დღე)",
+      "platformFees": "პლატფორმის კომიссია",
+      "revenueTrend": "შედეგის ტენდენცია",
+      "gmvFeesTrend": "GMV და კომიის ტენდენცია",
+      "affiliateCommissionsTrend": "რეფერალური კომიის ტენდენცია",
+      "sellerPayoutsTrend": "გამყიდველის ანგარიშსწორება ტენდენცია"
+    }
+  },
+  "common": {
+    "loading": "ჩატვირთვა...",
+    "saving": "შენახვა...",
+    "save": "შენახვა",
+    "saved_successfully": "წარმატებით შენახდა",
+    "error": "ხარვეზი",
+    "view": "ნახვა",
+    "download": "გადმოწერა",
+    "actions": "მოქმედებები",
+    "calculating": "გამოთვლა...",
+    "back": "უკან"
+  },
+  "errors": {
+    "generic": "რაღაც არასწორად მოხდა. გთხოვთ სცადოთ თავიდან.",
+    "network": "ქსელის შეცდომა. შეამოწმეთ ინტერნეტ კავშირი.",
+    "unauthorized": "წვდომა აკრძალულია. გთხოვთ შეხვიდეთ სისტემაში.",
+    "notFound": "გვერდი ვერ მოიძებნა.",
+    "serverError": "სერვერის შეცდომა. გთხოვთ სცადოთ მოგვიანებით."
   },
   "business": {
     "profile": {
@@ -837,18 +671,6 @@
       "timeline": "დროის კიდე",
       "order_not_found": "შეკვეთა ვერ მოიძებნა"
     }
-  },
-  "common": {
-    "loading": "ჩატვირთვა...",
-    "saving": "შენახვა...",
-    "save": "შენახვა",
-    "saved_successfully": "წარმატებით შენახდა",
-    "error": "ხარვეზი",
-    "view": "ნახვა",
-    "download": "გადმოწერა",
-    "actions": "მოქმედებები",
-    "calculating": "გამოთვლა...",
-    "back": "უკან"
   },
   "returns": {
     "myReturns": "ჩემი დაბრუნებები",
@@ -1076,5 +898,15 @@
     "plan_ultra_tagline": "პრო მომხმარებლებისა და მცირე გუნდებისთვის.",
     "plan_ultra_cta": "Ultra-ზე გადასვლა",
     "plan_ultra_badge": "საუკეთესო ფასი"
+  },
+  "agentG": {
+    "title": "Agent G",
+    "subtitle": "თქვენი AI ორკესტრატორი",
+    "inputPlaceholder": "მოგესალმებით! რა გინდათ შექმნათ?",
+    "send": "გაგზავნა",
+    "thinking": "Agent G ფიქრობს...",
+    "routingTo": "გადამისამართება",
+    "jobCreated": "დავალება შექმნილია",
+    "welcome": "გამარჯობა! მე ვარ Agent G — თქვენი AI ორკესტრატორი. რა გინდათ შექმნათ დღეს?"
   }
 }
