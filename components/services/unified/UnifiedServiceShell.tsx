@@ -21,6 +21,7 @@ import { SERVICE_REGISTRY, getLocalizedServices } from '@/lib/service-registry'
 import { ServiceOrbitDock } from './ServiceOrbitDock'
 import { ServiceCommandBar } from './ServiceCommandBar'
 import { ServiceTopBar } from './ServiceTopBar'
+import { ShellContainerProvider } from './ShellContainerContext'
 
 type LocaleKey = 'en' | 'ka' | 'ru'
 
@@ -39,6 +40,7 @@ export function UnifiedServiceShell({ activeServiceId, locale, children }: Unifi
   const [dockExpanded, setDockExpanded] = useState(false)
   const [commandBarOpen, setCommandBarOpen] = useState(false)
   const [isMounted, setIsMounted] = useState(false)
+  const contentRef = useRef<HTMLDivElement>(null)
 
   const services = getLocalizedServices(lang)
   const activeService = services.find(s => s.slug === activeServiceId)
@@ -74,7 +76,7 @@ export function UnifiedServiceShell({ activeServiceId, locale, children }: Unifi
   if (!isMounted) return null
 
   return (
-    <div className="fixed inset-0 flex" style={{ height: '100dvh', background: '#0a0a0f' }}>
+    <div className="fixed inset-0 flex z-[100]" style={{ height: '100dvh', background: '#0a0a0f' }}>
       {/* ── Left: Orbit Dock (desktop) ── */}
       <ServiceOrbitDock
         services={services}
@@ -96,19 +98,21 @@ export function UnifiedServiceShell({ activeServiceId, locale, children }: Unifi
         />
 
         {/* Content */}
-        <main className="flex-1 min-h-0 relative overflow-hidden">
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={activeServiceId}
-              initial={{ opacity: 0, y: 6 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -6 }}
-              transition={{ duration: 0.2, ease: 'easeOut' }}
-              className="absolute inset-0"
-            >
-              {children}
-            </motion.div>
-          </AnimatePresence>
+        <main ref={contentRef} className="flex-1 min-h-0 relative overflow-hidden">
+          <ShellContainerProvider containerRef={contentRef}>
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={activeServiceId}
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -6 }}
+                transition={{ duration: 0.2, ease: 'easeOut' }}
+                className="absolute inset-0"
+              >
+                {children}
+              </motion.div>
+            </AnimatePresence>
+          </ShellContainerProvider>
         </main>
 
         {/* ── Bottom: Mobile Orbit Rail ── */}

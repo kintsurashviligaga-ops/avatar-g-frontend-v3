@@ -16,6 +16,7 @@ import { createPortal } from 'react-dom'
 import { useRouter, usePathname } from 'next/navigation'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
 import { useServiceContext, type ServiceOutput } from '@/lib/services/ServiceContext'
+import { useShellContainer } from '@/components/services/unified/ShellContainerContext'
 
 import { getServiceWorkspaceConfig } from '@/lib/services/workspace-config'
 import { ServiceHeader } from './ServiceHeader'
@@ -104,6 +105,7 @@ export default function ServiceChatLayout({
   const pathname = usePathname()
   const { language } = useLanguage()
   const serviceCtx = useServiceContext()
+  const shellContainer = useShellContainer()
 
   /* ── Register active service in global context ── */
   useEffect(() => {
@@ -441,8 +443,8 @@ export default function ServiceChatLayout({
   if (isAgentG) {
     const grokUI = (
       <div
-        className="fixed inset-0 z-[9999] grok-chat-root"
-        style={{ height: '100dvh', WebkitOverflowScrolling: 'touch' }}
+        className={shellContainer.insideShell ? "absolute inset-0 grok-chat-root" : "fixed inset-0 z-[9999] grok-chat-root"}
+        style={{ height: shellContainer.insideShell ? '100%' : '100dvh', WebkitOverflowScrolling: 'touch' }}
       >
         {/* 4D Environment Layer */}
         <div className="grok-4d-environment" aria-hidden="true">
@@ -679,6 +681,7 @@ export default function ServiceChatLayout({
       </div>
     )
 
+    if (shellContainer.insideShell) return grokUI
     if (!portalTarget) return null
     return createPortal(grokUI, portalTarget)
   }
@@ -688,8 +691,8 @@ export default function ServiceChatLayout({
      ────────────────────────────────────────────────── */
   const chatUI = (
     <div
-      className="fixed inset-0 z-[9999]"
-      style={{ ...serviceEnvStyle, height: '100dvh', WebkitOverflowScrolling: 'touch' }}
+      className={shellContainer.insideShell ? "absolute inset-0" : "fixed inset-0 z-[9999]"}
+      style={{ ...serviceEnvStyle, height: shellContainer.insideShell ? '100%' : '100dvh', WebkitOverflowScrolling: 'touch' }}
     >
       {/* Service-specific cinematic environment */}
       <div className="absolute inset-0 pointer-events-none" aria-hidden="true">
@@ -836,6 +839,7 @@ export default function ServiceChatLayout({
     </div>
   )
 
+  if (shellContainer.insideShell) return chatUI
   if (!portalTarget) return null
   return createPortal(chatUI, portalTarget)
 }
