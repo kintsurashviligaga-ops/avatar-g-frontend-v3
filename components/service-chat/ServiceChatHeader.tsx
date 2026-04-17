@@ -4,15 +4,16 @@
  * components/service-chat/ServiceChatHeader.tsx
  * ===============================================
  * Premium header bar for every service chatbot.
- * Shows service name, agent badge, agent mode toggle,
- * hamburger trigger, and tool panel triggers.
+ * Shows service identity with breadcrumb, agent badge, agent mode toggle,
+ * hamburger trigger, tool panel triggers, and session count.
  */
 
 import { useCallback } from 'react';
 import {
   Menu, X, Sparkles, Bot, RotateCcw, Settings2,
-  ChevronDown,
+  ChevronDown, ChevronRight, Home,
 } from 'lucide-react';
+import Link from 'next/link';
 import type { ServiceChatConfig, AgentMode } from './types';
 
 interface Props {
@@ -37,12 +38,18 @@ export function ServiceChatHeader({
     ? (config.agentModeLabel[lang] || config.agentModeLabel.en)
     : (lang === 'ka' ? 'ჩატი' : lang === 'ru' ? 'Чат' : 'Chat');
 
+  const servicesLabel = lang === 'ka' ? 'სერვისები' : lang === 'ru' ? 'Сервисы' : 'Services';
+
   return (
     <div
       className="flex items-center justify-between px-4 py-3 flex-shrink-0"
-      style={{ borderBottom: '1px solid var(--color-border)' }}
+      style={{
+        borderBottom: '1px solid var(--color-border)',
+        background: 'rgba(0,0,0,0.15)',
+        backdropFilter: 'blur(12px)',
+      }}
     >
-      {/* Left: Hamburger + identity */}
+      {/* Left: Hamburger + identity with breadcrumb */}
       <div className="flex items-center gap-3 min-w-0">
         <button
           onClick={onToggleHamburger}
@@ -64,12 +71,23 @@ export function ServiceChatHeader({
             {config.icon}
           </div>
           <div className="min-w-0">
+            {/* Breadcrumb */}
+            <div className="flex items-center gap-1 mb-0.5">
+              <Link
+                href={`/${language}/services`}
+                className="text-[10px] font-medium transition-colors hover:underline"
+                style={{ color: 'var(--color-text-tertiary)' }}
+              >
+                {servicesLabel}
+              </Link>
+              <ChevronRight className="w-2.5 h-2.5" style={{ color: 'var(--color-text-tertiary)', opacity: 0.5 }} />
+              <span className="text-[10px] font-medium truncate" style={{ color: config.accentColor }}>
+                {name}
+              </span>
+            </div>
             <h3 className="text-sm font-semibold truncate" style={{ color: 'var(--color-text)' }}>
               {name}
             </h3>
-            <p className="text-[10px] truncate" style={{ color: 'var(--color-text-tertiary)' }}>
-              {config.description[lang] || config.description.en}
-            </p>
           </div>
         </div>
       </div>
@@ -107,6 +125,7 @@ export function ServiceChatHeader({
           onClick={onNewSession}
           className="p-2 rounded-xl transition-colors hover:bg-white/5"
           style={{ color: 'var(--color-text-tertiary)' }}
+          title={lang === 'ka' ? 'ახალი სესია' : lang === 'ru' ? 'Новая сессия' : 'New session'}
         >
           <RotateCcw className="w-4 h-4" />
         </button>

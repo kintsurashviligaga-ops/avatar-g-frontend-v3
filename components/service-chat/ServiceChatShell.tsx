@@ -36,6 +36,7 @@ import { ServiceMessageList } from './ServiceMessageList';
 import { ServicePreviewPanel } from './ServicePreviewPanel';
 import { ServiceTransferBar } from './ServiceTransferBar';
 import { ServiceComposer } from './ServiceComposer';
+import { ServiceStatusBar } from './ServiceStatusBar';
 import WorkflowBuilder from '@/components/workflow/WorkflowBuilder';
 
 interface Props {
@@ -285,6 +286,9 @@ export default function ServiceChatShell({ config, language = 'en', className = 
         background: 'var(--color-bg)',
       }}
     >
+      {/* Subtle ambient glow */}
+      <div className="absolute inset-0 pointer-events-none" style={{ background: `radial-gradient(ellipse 80% 30% at 50% 0%, ${config.accentColor}04 0%, transparent 60%)` }} />
+
       {/* Header */}
       <ServiceChatHeader
         config={config}
@@ -307,6 +311,9 @@ export default function ServiceChatShell({ config, language = 'en', className = 
         onSetOption={(key, val) => dispatch({ type: 'SET_OPTION', key, value: val })}
         onClose={() => dispatch({ type: 'TOGGLE_TOOL_PANEL' })}
       />
+
+      {/* Status Bar — connection/capability indicator */}
+      <ServiceStatusBar config={config} language={language} isLoading={isLoading} agentMode={agentMode} />
 
       {/* Main Content Area — clean, breathable */}
       {config.slug === 'workflow' ? (
