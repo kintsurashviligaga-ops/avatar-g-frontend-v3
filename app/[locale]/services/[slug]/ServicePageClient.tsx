@@ -4,6 +4,7 @@ import { useEffect, useState, lazy, Suspense } from 'react';
 import ServiceChatLayout from '@/components/services/workspace/ServiceChatLayout';
 import { createBrowserClient } from '@/lib/supabase/browser';
 import { getServiceConfig } from '@/lib/service-chat/service-configs';
+import { UnifiedServiceShell } from '@/components/services/unified';
 
 const ServiceChatShell = lazy(() => import('@/components/service-chat/ServiceChatShell'));
 
@@ -43,26 +44,31 @@ export default function ServicePageClient(props: ServicePageClientProps) {
   // Use upgraded Service Chat Shell for services that have configs
   const serviceChatConfig = getServiceConfig(props.serviceId);
 
-  if (serviceChatConfig && isAuthenticated) {
-    return (
-      <div className="fixed inset-0 z-[9999] flex flex-col" style={{ height: '100dvh', background: 'var(--color-bg)' }}>
-        <Suspense fallback={<ServiceChatShellFallback />}>
-          <ServiceChatShell
-            config={serviceChatConfig}
-            language={props.locale}
-            className="flex-1 min-h-0"
-          />
-        </Suspense>
-      </div>
-    );
-  }
-
-  return (
+  const serviceContent = serviceChatConfig && isAuthenticated ? (
+    <div className="h-full w-full flex flex-col" style={{ background: 'var(--color-bg)' }}>
+      <Suspense fallback={<ServiceChatShellFallback />}>
+        <ServiceChatShell
+          config={serviceChatConfig}
+          language={props.locale}
+          className="flex-1 min-h-0"
+        />
+      </Suspense>
+    </div>
+  ) : (
     <ServiceChatLayout
       {...props}
       isAuthenticated={isAuthenticated}
       demoMode={demoMode}
     />
+  );
+
+  return (
+    <UnifiedServiceShell
+      activeServiceId={props.serviceId}
+      locale={props.locale}
+    >
+      {serviceContent}
+    </UnifiedServiceShell>
   );
 }
 
