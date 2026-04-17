@@ -50,10 +50,14 @@ const LOCALES = [
 ] as const
 
 /* ─── Bottom Nav items ─── */
+function IconStudio() {
+  return <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+}
+
 const BOTTOM_NAV = [
   { path: '/', icon: IconHome, label: { en: 'Home', ka: 'მთავარი', ru: 'Главная' } },
   { path: '/services', icon: IconGrid, label: { en: 'Services', ka: 'სერვისები', ru: 'Сервисы' } },
-  { path: '/services/workflow', icon: IconWorkflow, label: { en: 'Pipeline', ka: 'პაიფლაინი', ru: 'Pipeline' } },
+  { path: '/hub', icon: IconStudio, label: { en: 'Studio', ka: 'სტუდია', ru: 'Студия' } },
   { path: '/services/agent-g', icon: IconChat, label: { en: 'Agent G', ka: 'Agent G', ru: 'Агент G' } },
 ] as const
 
@@ -215,6 +219,16 @@ export function TopNavbar({ onMenuToggle, menuOpen }: { onMenuToggle: () => void
           ))}
         </div>
 
+        {/* Studio CTA */}
+        <Link
+          href={lh('/hub')}
+          className="hidden sm:flex items-center gap-1.5 text-[13px] font-semibold px-4 py-2 rounded-xl transition-all duration-200 hover:scale-105"
+          style={{ background: 'linear-gradient(135deg, rgba(34,211,238,0.15), rgba(99,102,241,0.15))', color: 'var(--color-accent)', border: '1px solid rgba(34,211,238,0.25)' }}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+          Studio
+        </Link>
+
         {/* Login/Account */}
         <Link
           href={lh('/login')}
@@ -351,6 +365,21 @@ export function SidebarMenu({ open, onClose }: { open: boolean; onClose: () => v
           >
             <span className="text-lg">🤖</span>
             Agent G
+          </Link>
+
+          {/* AI Studio Hub */}
+          <Link
+            href={lh('/hub')}
+            onClick={onClose}
+            className="flex items-center gap-3 px-4 py-3 rounded-xl text-[15px] font-semibold transition-all duration-200"
+            style={{
+              color: isActive('/hub') ? '#fff' : 'var(--color-accent)',
+              backgroundColor: isActive('/hub') ? 'rgba(34,211,238,0.12)' : 'rgba(34,211,238,0.06)',
+              border: `1px solid ${isActive('/hub') ? 'rgba(34,211,238,0.3)' : 'rgba(34,211,238,0.1)'}`,
+            }}
+          >
+            <span className="text-lg">⚡</span>
+            {locale === 'ka' ? 'AI სტუდია' : locale === 'ru' ? 'AI Студия' : 'AI Studio'}
           </Link>
 
           {/* All Services */}

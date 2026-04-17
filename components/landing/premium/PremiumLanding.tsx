@@ -3,8 +3,8 @@
 /**
  * PremiumLanding.tsx
  * ==================
- * MyAvatar.ge world-class landing page.
- * Flow: Hero → Services → Avatar Creation → Workflow Builder → App Download → Footer
+ * MyAvatar.ge world-class landing page — fully upgraded.
+ * Flow: Hero → AI Studio CTA → Services → Stats → Avatar Creation → Workflow Builder → App Download → Footer
  */
 
 import { HeroSection } from './HeroSection'
@@ -13,13 +13,19 @@ import { AvatarShowcase } from './AvatarShowcase'
 import { WorkflowPipelineBuilder } from './WorkflowPipelineBuilder'
 import { AppDownloadSection } from './AppDownloadSection'
 import { LandingFooter } from './LandingFooter'
+import { StudioShowcase } from './StudioShowcase'
+import { PlatformStats } from './PlatformStats'
 
 export default function PremiumLanding() {
   return (
     <div className="relative min-h-screen overflow-x-hidden" style={{ color: 'var(--color-text)' }}>
       <HeroSection />
       <Separator />
+      <StudioShowcase />
+      <Separator />
       <ServicesSlider />
+      <Separator />
+      <PlatformStats />
       <Separator />
       <AvatarShowcase locale="en" />
       <Separator />
