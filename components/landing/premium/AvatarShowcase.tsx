@@ -9,7 +9,7 @@
 
 import { useEffect, useState, useRef, Suspense } from 'react'
 import { Canvas, useFrame } from '@react-three/fiber'
-import { PresentationControls, Environment } from '@react-three/drei'
+import { PresentationControls } from '@react-three/drei'
 import * as THREE from 'three'
 import Link from 'next/link'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
@@ -295,7 +295,6 @@ function ShowcaseScene() {
       }}
     >
       <Lights />
-      <Environment preset="studio" />
 
       <PresentationControls
         global

@@ -12,7 +12,6 @@
 import { Suspense, useRef, useMemo } from 'react'
 import { Canvas, useFrame } from '@react-three/fiber'
 import {
-  Environment,
   ContactShadows,
   Float,
   useGLTF,
@@ -249,9 +248,6 @@ function AvatarScene({ modelUrl }: { modelUrl: string | null }) {
         far={4}
         color="#22d3ee"
       />
-
-      {/* HDR environment for reflections */}
-      <Environment preset="night" />
 
       {/* Fog for depth */}
       <fog attach="fog" args={['#080e14', 4, 12]} />
