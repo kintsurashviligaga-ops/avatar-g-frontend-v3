@@ -21,8 +21,7 @@
  * Same premium design language, different functionality.
  */
 
-import { useReducer, useCallback, useRef, useEffect, useMemo } from 'react';
-import { motion } from 'framer-motion';
+import { useReducer, useCallback, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 
 import type { ServiceChatConfig, ServiceChatMessage, ServiceChatAttachment, AgentMode } from './types';
@@ -45,8 +44,29 @@ interface Props {
   className?: string;
 }
 
+const SHELL_COPY = {
+  ka: {
+    genericError: 'რაღაც ხარვეზი მოხდა. სცადე ხელახლა.',
+    chatMode: 'ჩატის რეჟიმი',
+    activated: 'აქტიურდა',
+  },
+  en: {
+    genericError: 'Something went wrong. Please try again.',
+    chatMode: 'Chat Mode',
+    activated: 'activated',
+  },
+  ru: {
+    genericError: 'Что-то пошло не так. Попробуйте снова.',
+    chatMode: 'Режим чата',
+    activated: 'активирован',
+  },
+} as const;
+
 export default function ServiceChatShell({ config, language = 'en', className = '' }: Props) {
   const router = useRouter();
+  const activeLanguage = language === 'ka' || language === 'ru' ? language : 'en';
+  const shellCopy = SHELL_COPY[activeLanguage];
+
   const abortRef = useRef<AbortController | null>(null);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
 
@@ -186,7 +206,7 @@ export default function ServiceChatShell({ config, language = 'en', className = 
           type: 'UPDATE_MESSAGE',
           id: assistantId,
           updates: {
-            text: 'Something went wrong. Please try again.',
+            text: shellCopy.genericError,
             isStreaming: false,
             type: 'error',
           },
@@ -196,7 +216,7 @@ export default function ServiceChatShell({ config, language = 'en', className = 
       dispatch({ type: 'SET_LOADING', value: false });
       abortRef.current = null;
     }
-  }, [inputText, isLoading, attachments, config, agentMode, selectedOptions, language]);
+  }, [inputText, isLoading, attachments, config, agentMode, selectedOptions, language, shellCopy.genericError]);
 
   // ─── Stop Streaming ─────────────────────────────────────────
   const stopStreaming = useCallback(() => {
@@ -233,7 +253,7 @@ export default function ServiceChatShell({ config, language = 'en', className = 
     // System message announcing mode change
     const label = newMode === 'agent'
       ? (config.agentModeLabel[(language || 'en') as 'en' | 'ka' | 'ru'] || config.agentModeLabel.en)
-      : 'Chat Mode';
+      : shellCopy.chatMode;
 
     dispatch({
       type: 'ADD_MESSAGE',
@@ -241,11 +261,11 @@ export default function ServiceChatShell({ config, language = 'en', className = 
         id: `sys_${Date.now()}`,
         type: 'system',
         role: 'system',
-        text: `${label} activated`,
+        text: `${label} ${shellCopy.activated}`,
         timestamp: Date.now(),
       },
     });
-  }, [agentMode, config, language]);
+  }, [agentMode, config, language, shellCopy.chatMode, shellCopy.activated]);
 
   // ─── Handle Quick Action ────────────────────────────────────
   const handleAction = useCallback((action: string) => {
@@ -271,8 +291,8 @@ export default function ServiceChatShell({ config, language = 'en', className = 
   // ─── Handle Transfer ────────────────────────────────────────
   const handleTransfer = useCallback((targetService: string) => {
     // Navigate to the target service chat
-    router.push(`/${targetService}`);
-  }, [router]);
+    router.push(`/${activeLanguage}/services/${targetService}`);
+  }, [router, activeLanguage]);
 
   // ─── Handle Suggestion Click ────────────────────────────────
   const handleSuggestionClick = useCallback((text: string) => {

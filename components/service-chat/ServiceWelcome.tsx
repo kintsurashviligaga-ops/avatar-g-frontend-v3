@@ -22,6 +22,13 @@ interface Props {
 export function ServiceWelcome({ config, agentMode, language, onAction }: Props) {
   const lang = (language || 'en') as 'en' | 'ka' | 'ru';
   const isAgent = agentMode === 'agent';
+  const uiCopy =
+    lang === 'ka'
+      ? { agent: 'აგენტის რეჟიმი', assistant: 'ასისტენტი' }
+      : lang === 'ru'
+        ? { agent: 'Режим агента', assistant: 'Ассистент' }
+        : { agent: 'Agent', assistant: 'Assistant' };
+
   const welcomeText = config.welcomeMessage[lang] || config.welcomeMessage.en;
   const serviceName = config.name[lang] || config.name.en;
   const serviceDesc = config.description[lang] || config.description.en;
@@ -137,7 +144,7 @@ export function ServiceWelcome({ config, agentMode, language, onAction }: Props)
         <div className="flex items-center justify-center gap-1.5 mb-2">
           <Bot className="w-3.5 h-3.5" style={{ color: config.accentColor }} />
           <span className="text-[10px] font-bold tracking-[0.15em] uppercase" style={{ color: config.accentColor }}>
-            {isAgent ? 'Agent' : 'Assistant'}
+            {isAgent ? uiCopy.agent : uiCopy.assistant}
           </span>
         </div>
         <p

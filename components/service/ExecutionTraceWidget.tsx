@@ -3,6 +3,8 @@
 import { useState, useEffect, useCallback } from 'react'
 import { createBrowserClient } from '@/lib/supabase/browser'
 
+type TraceLocale = 'ka' | 'en' | 'ru'
+
 interface TraceStep {
   id: string
   root_job_id: string
@@ -15,8 +17,17 @@ interface TraceStep {
 }
 
 interface Props {
-  userId: string
+  userId?: string
   rootJobId?: string
+  locale?: TraceLocale
+  labels?: Partial<TraceLabels>
+}
+
+interface TraceLabels {
+  title: string
+  emptyState: string
+  qaPrefix: string
+  secondsSuffix: string
 }
 
 const statusIcon: Record<string, string> = {
@@ -35,7 +46,36 @@ const statusColor: Record<string, string> = {
   skipped: 'text-white/20',
 }
 
-export function ExecutionTraceWidget({ userId: _userId, rootJobId }: Props) {
+const COPY_BY_LOCALE: Record<TraceLocale, TraceLabels> = {
+  ka: {
+    title: 'შესრულების კვალი',
+    emptyState: 'აქტიური შესრულება არ არის. დასაწყებად გაგზავნე პროექტის ბრიფი.',
+    qaPrefix: 'QA',
+    secondsSuffix: 'წმ',
+  },
+  en: {
+    title: 'Execution Trace',
+    emptyState: 'No active execution. Submit a project brief to begin.',
+    qaPrefix: 'QA',
+    secondsSuffix: 's',
+  },
+  ru: {
+    title: 'Трассировка выполнения',
+    emptyState: 'Нет активного выполнения. Отправьте бриф проекта для старта.',
+    qaPrefix: 'QA',
+    secondsSuffix: 'с',
+  },
+}
+
+export function ExecutionTraceWidget({
+  userId: _userId = 'guest',
+  rootJobId,
+  locale = 'ka',
+  labels,
+}: Props) {
+  const activeLocale: TraceLocale = locale === 'en' || locale === 'ru' ? locale : 'ka'
+  const t = { ...COPY_BY_LOCALE[activeLocale], ...(labels ?? {}) }
+
   const [steps, setSteps] = useState<TraceStep[]>([])
 
   const fetchSteps = useCallback(async () => {
@@ -79,9 +119,9 @@ export function ExecutionTraceWidget({ userId: _userId, rootJobId }: Props) {
     return (
       <div>
         <h3 className="text-sm font-semibold text-white/60 uppercase tracking-wider mb-3">
-          Execution Trace
+          {t.title}
         </h3>
-        <p className="text-sm text-white/30">No active execution. Submit a project brief to begin.</p>
+        <p className="text-sm text-white/30">{t.emptyState}</p>
       </div>
     )
   }
@@ -89,7 +129,7 @@ export function ExecutionTraceWidget({ userId: _userId, rootJobId }: Props) {
   return (
     <div>
       <h3 className="text-sm font-semibold text-white/60 uppercase tracking-wider mb-3">
-        Execution Trace
+        {t.title}
       </h3>
       <div className="space-y-1">
         {steps.map((step) => (
@@ -106,12 +146,12 @@ export function ExecutionTraceWidget({ userId: _userId, rootJobId }: Props) {
             </div>
             {step.qa_score !== null && (
               <span className={`text-xs font-mono ${step.qa_score >= 85 ? 'text-green-400' : 'text-yellow-400'}`}>
-                QA: {step.qa_score}
+                {t.qaPrefix}: {step.qa_score}
               </span>
             )}
             {step.duration_ms !== null && (
               <span className="text-xs text-white/30 font-mono">
-                {(step.duration_ms / 1000).toFixed(1)}s
+                {(step.duration_ms / 1000).toFixed(1)}{t.secondsSuffix}
               </span>
             )}
           </div>

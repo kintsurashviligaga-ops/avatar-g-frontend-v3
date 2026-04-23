@@ -18,10 +18,52 @@ interface Props {
   onClearPreviews: () => void;
 }
 
+interface PreviewCopy {
+  title: string;
+  imagePreview: string;
+  videoPreview: string;
+  audioPreview: string;
+  textPreview: string;
+  workflowPreview: string;
+}
+
+function getPreviewCopy(language: string): PreviewCopy {
+  const lang = language === 'ka' || language === 'ru' ? language : 'en';
+  if (lang === 'ka') {
+    return {
+      title: 'პრევიუ',
+      imagePreview: 'სურათის პრევიუ',
+      videoPreview: 'ვიდეოს პრევიუ',
+      audioPreview: 'აუდიოს პრევიუ',
+      textPreview: 'ტექსტის პრევიუ',
+      workflowPreview: 'Workflow პრევიუ',
+    };
+  }
+  if (lang === 'ru') {
+    return {
+      title: 'Превью',
+      imagePreview: 'Предпросмотр изображения',
+      videoPreview: 'Предпросмотр видео',
+      audioPreview: 'Предпросмотр аудио',
+      textPreview: 'Предпросмотр текста',
+      workflowPreview: 'Предпросмотр workflow',
+    };
+  }
+  return {
+    title: 'Preview',
+    imagePreview: 'Image preview',
+    videoPreview: 'Video preview',
+    audioPreview: 'Audio preview',
+    textPreview: 'Text preview',
+    workflowPreview: 'Workflow Preview',
+  };
+}
+
 export function ServicePreviewPanel({ config, previews, language, onClearPreviews }: Props) {
   if (previews.length === 0) return null;
 
   const latest = previews[previews.length - 1];
+  const copy = getPreviewCopy(language);
   if (!latest) return null;
 
   return (
@@ -38,7 +80,7 @@ export function ServicePreviewPanel({ config, previews, language, onClearPreview
           {/* Header */}
           <div className="flex items-center justify-between mb-2">
             <span className="text-[11px] font-semibold" style={{ color: config.accentColor }}>
-              Preview
+              {copy.title}
               {previews.length > 1 && ` (${previews.length})`}
             </span>
             <div className="flex items-center gap-1">
@@ -55,7 +97,7 @@ export function ServicePreviewPanel({ config, previews, language, onClearPreview
           </div>
 
           {/* Content */}
-          <PreviewContent item={latest} accentColor={config.accentColor} />
+          <PreviewContent item={latest} accentColor={config.accentColor} copy={copy} />
 
           {/* Thumbnail strip for multiple */}
           {previews.length > 1 && (
@@ -86,7 +128,7 @@ export function ServicePreviewPanel({ config, previews, language, onClearPreview
   );
 }
 
-function PreviewContent({ item, accentColor }: { item: PreviewItem; accentColor: string }) {
+function PreviewContent({ item, accentColor, copy }: { item: PreviewItem; accentColor: string; copy: PreviewCopy }) {
   switch (item.type) {
     case 'image':
       return (
@@ -95,7 +137,7 @@ function PreviewContent({ item, accentColor }: { item: PreviewItem; accentColor:
             <img src={item.url} alt={item.title || 'Preview'} className="w-full max-h-[200px] object-contain bg-black/20" />
           ) : (
             <div className="w-full h-[120px] flex items-center justify-center" style={{ background: 'rgba(255,255,255,0.02)', color: 'var(--color-text-tertiary)' }}>
-              Image preview
+              {copy.imagePreview}
             </div>
           )}
         </div>
@@ -110,7 +152,7 @@ function PreviewContent({ item, accentColor }: { item: PreviewItem; accentColor:
             </video>
           ) : (
             <div className="w-full h-[120px] flex items-center justify-center" style={{ background: 'rgba(255,255,255,0.02)', color: 'var(--color-text-tertiary)' }}>
-              🎬 Video preview
+              {copy.videoPreview}
             </div>
           )}
         </div>
@@ -125,7 +167,7 @@ function PreviewContent({ item, accentColor }: { item: PreviewItem; accentColor:
             </audio>
           ) : (
             <div className="flex items-center justify-center py-4" style={{ color: 'var(--color-text-tertiary)' }}>
-              🎵 Audio preview
+              {copy.audioPreview}
             </div>
           )}
           {item.title && (
@@ -144,7 +186,7 @@ function PreviewContent({ item, accentColor }: { item: PreviewItem; accentColor:
             color: 'var(--color-text)',
           }}
         >
-          {item.content || 'Text preview'}
+          {item.content || copy.textPreview}
         </div>
       );
 
@@ -155,7 +197,7 @@ function PreviewContent({ item, accentColor }: { item: PreviewItem; accentColor:
           style={{ borderColor: 'rgba(255,255,255,0.06)', background: 'rgba(255,255,255,0.02)' }}
         >
           <div className="flex items-center gap-2" style={{ color: accentColor }}>
-            <span className="text-[12px] font-medium">⚡ Workflow Preview</span>
+            <span className="text-[12px] font-medium">⚡ {copy.workflowPreview}</span>
           </div>
           {item.content && (
             <p className="text-[12px] mt-2" style={{ color: 'var(--color-text-secondary)' }}>{item.content}</p>

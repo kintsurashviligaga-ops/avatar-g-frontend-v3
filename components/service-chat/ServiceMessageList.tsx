@@ -22,9 +22,30 @@ interface Props {
   onSuggestionClick?: (text: string) => void;
 }
 
+function getUiCopy(language: string) {
+  const lang = language === 'ka' || language === 'ru' ? language : 'en';
+  if (lang === 'ka') {
+    return {
+      thinking: 'ფიქრობს...',
+      generating: 'გენერირდება...',
+    };
+  }
+  if (lang === 'ru') {
+    return {
+      thinking: 'думает...',
+      generating: 'генерация...',
+    };
+  }
+  return {
+    thinking: 'is thinking...',
+    generating: 'Generating...',
+  };
+}
+
 export function ServiceMessageList({ config, messages, isLoading, language, onSuggestionClick }: Props) {
   const endRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const copy = getUiCopy(language);
 
   // Auto-scroll to bottom
   useEffect(() => {
@@ -50,6 +71,7 @@ export function ServiceMessageList({ config, messages, isLoading, language, onSu
             <AssistantBubble
               message={msg}
               config={config}
+              language={language}
               onSuggestionClick={onSuggestionClick}
             />
           )}
@@ -64,7 +86,7 @@ export function ServiceMessageList({ config, messages, isLoading, language, onSu
             <div className="flex items-center gap-2">
               <Loader2 className="w-3.5 h-3.5 animate-spin" style={{ color: config.accentColor }} />
               <span className="text-[12px]" style={{ color: 'var(--color-text-tertiary)' }}>
-                {config.name[(language || 'en') as 'en' | 'ka' | 'ru'] || config.name.en} is thinking...
+                {config.name[(language || 'en') as 'en' | 'ka' | 'ru'] || config.name.en} {copy.thinking}
               </span>
             </div>
           </div>
@@ -124,13 +146,15 @@ function UserBubble({ message, accentColor }: { message: ServiceChatMessage; acc
 }
 
 function AssistantBubble({
-  message, config, onSuggestionClick,
+  message, config, language, onSuggestionClick,
 }: {
   message: ServiceChatMessage;
   config: ServiceChatConfig;
+  language: string;
   onSuggestionClick?: (text: string) => void;
 }) {
   const [copied, setCopied] = useState(false);
+  const copy = getUiCopy(language);
 
   const handleCopy = useCallback(() => {
     navigator.clipboard.writeText(message.text).then(() => {
@@ -159,7 +183,7 @@ function AssistantBubble({
         {message.isStreaming && (
           <div className="flex items-center gap-1.5 px-1">
             <Loader2 className="w-3 h-3 animate-spin" style={{ color: config.accentColor }} />
-            <span className="text-[10px]" style={{ color: 'var(--color-text-tertiary)' }}>Generating...</span>
+            <span className="text-[10px]" style={{ color: 'var(--color-text-tertiary)' }}>{copy.generating}</span>
           </div>
         )}
 

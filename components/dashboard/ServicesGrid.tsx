@@ -5,25 +5,33 @@ import { motion } from 'framer-motion'
 import { useTranslations } from 'next-intl'
 import { getLocalizedServices, type ServiceDefinition } from '@/lib/service-registry'
 
-const GROUPS = [
+type ServicesGridGroup = {
+  sectionKey: string
+  slugs: string[]
+}
+
+const GROUPS: ServicesGridGroup[] = [
   { sectionKey: 'mediaCreation', slugs: ['avatar', 'video', 'editing', 'music', 'photo', 'image', 'game', 'interior'] },
   { sectionKey: 'aiTools', slugs: ['text', 'prompt', 'visual-intel', 'media'] },
   { sectionKey: 'business', slugs: ['shop', 'software', 'business', 'tourism'] },
   { sectionKey: 'automation', slugs: ['workflow', 'agent-g'] },
-] as const
+]
 
 interface ServicesGridProps {
-  locale: string
+  locale?: string
+  groups?: ServicesGridGroup[]
+  services?: ServiceDefinition[]
+  serviceCardTestId?: string
 }
 
-export function ServicesGrid({ locale }: ServicesGridProps) {
+export function ServicesGrid({ locale = 'en', groups = GROUPS, services: providedServices, serviceCardTestId = 'service-card' }: ServicesGridProps) {
   const t = useTranslations('dashboard')
-  const services = getLocalizedServices(locale)
+  const services = providedServices ?? getLocalizedServices(locale)
   const serviceMap = new Map(services.map(s => [s.slug, s]))
 
   return (
     <div className="space-y-6">
-      {GROUPS.map((group, gi) => {
+      {groups.map((group, gi) => {
         const svcList = group.slugs
           .map(slug => serviceMap.get(slug))
           .filter((s): s is ServiceDefinition => !!s && s.enabled)
@@ -42,7 +50,7 @@ export function ServicesGrid({ locale }: ServicesGridProps) {
             </h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
               {svcList.map(svc => (
-                <ServiceCard key={svc.slug} service={svc} locale={locale} />
+                <ServiceCard key={svc.slug} service={svc} locale={locale} testId={serviceCardTestId} />
               ))}
             </div>
           </motion.div>
@@ -52,13 +60,13 @@ export function ServicesGrid({ locale }: ServicesGridProps) {
   )
 }
 
-function ServiceCard({ service, locale }: { service: ServiceDefinition; locale: string }) {
+function ServiceCard({ service, locale, testId }: { service: ServiceDefinition; locale: string; testId: string }) {
   return (
     <Link
       href={`/${locale}/services/${service.slug}`}
       className="group relative rounded-xl p-4 transition-all duration-200 hover:-translate-y-0.5"
       style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border)' }}
-      data-testid="service-card"
+      data-testid={testId}
     >
       <div
         className="absolute inset-0 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"

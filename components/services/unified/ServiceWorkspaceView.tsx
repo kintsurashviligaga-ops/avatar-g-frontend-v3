@@ -10,11 +10,53 @@
  * Neo-Cosmic + Clean Modern hybrid design.
  */
 
-import { useState, useCallback, useRef, useEffect } from 'react'
+import { useState, useCallback, useRef, useEffect, type ChangeEvent } from 'react'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
-import { SERVICE_REGISTRY, getLocalizedServices } from '@/lib/service-registry'
+import type { WorkspaceResult } from '@/types/dashboard'
 
 type LocaleKey = 'en' | 'ka' | 'ru'
+type OutputKind = 'text' | 'image' | 'video' | 'audio'
+type JsonRecord = Record<string, unknown>
+type WorkspaceViewLabels = {
+  credits: string
+  preview: string
+  generating: string
+  download: string
+  copy: string
+  retry: string
+  stats: string
+  generated: string
+  thisMonth: string
+  quickTip: string
+  tipText: string
+  progress: string
+  processingStep: string
+  stepLabel: string
+  ofLabel: string
+  latestNote: string
+  available: string
+  total: string
+  live: string
+  avgTime: string
+  uploadPrompt: string
+  uploadPhotoFirst: string
+  uploadVideoFirst: string
+  requestFailed: string
+  genericPreviewMode: string
+}
+
+export type { WorkspaceResult }
+
+type EditingJobProgress = {
+  status: string
+  currentStepId: string | null
+  currentStepDescription: string | null
+  currentStepIndex: number
+  totalSteps: number
+  stepsCompleted: string[]
+  percent: number
+  notes: string[]
+}
 
 /* ── Service workspace config per service type ── */
 interface WorkspaceField {
@@ -236,82 +278,656 @@ const DEFAULT_WORKSPACE: ServiceWorkspace = {
   previewHint: { en: 'Output will appear here', ka: 'შედეგი აქ გამოჩნდება', ru: 'Результат появится здесь' },
 }
 
+const UI_COPY: Record<LocaleKey, WorkspaceViewLabels> = {
+  en: {
+    credits: 'credits',
+    preview: 'Preview',
+    generating: 'Generating...',
+    download: 'Download',
+    copy: 'Copy',
+    retry: 'Try Again',
+    stats: 'Stats',
+    generated: 'Generated',
+    thisMonth: 'This Month',
+    quickTip: 'Quick Tip',
+    tipText: 'Be specific with your descriptions for better results',
+    progress: 'Progress',
+    processingStep: 'Processing edit pipeline',
+    stepLabel: 'Step',
+    ofLabel: 'of',
+    latestNote: 'Latest note',
+    available: 'Available',
+    total: 'Total',
+    live: 'Live',
+    avgTime: 'Avg time',
+    uploadPrompt: 'Click to upload',
+    uploadPhotoFirst: 'Upload a photo first.',
+    uploadVideoFirst: 'Upload a video first.',
+    requestFailed: 'Request failed',
+    genericPreviewMode: 'This workspace is still using the generic preview mode for this service.',
+  },
+  ka: {
+    credits: 'კრედიტი',
+    preview: 'გადახედვა',
+    generating: 'გენერაცია...',
+    download: 'ჩამოტვირთვა',
+    copy: 'კოპირება',
+    retry: 'ხელახლა',
+    stats: 'სტატისტიკა',
+    generated: 'გენერირებული',
+    thisMonth: 'ამ თვეში',
+    quickTip: 'რჩევა',
+    tipText: 'უკეთესი შედეგისთვის იყავი მაქსიმალურად კონკრეტული აღწერაში',
+    progress: 'პროგრესი',
+    processingStep: 'რედაქტირების პროცესის შესრულება',
+    stepLabel: 'ეტაპი',
+    ofLabel: 'დან',
+    latestNote: 'ბოლო შენიშვნა',
+    available: 'ხელმისაწვდომი',
+    total: 'სულ',
+    live: 'აქტიური',
+    avgTime: 'საშ. დრო',
+    uploadPrompt: 'დააჭირე ასატვირთად',
+    uploadPhotoFirst: 'ჯერ ატვირთე ფოტო.',
+    uploadVideoFirst: 'ჯერ ატვირთე ვიდეო.',
+    requestFailed: 'მოთხოვნა ვერ შესრულდა',
+    genericPreviewMode: 'ეს სამუშაო სივრცე ამ სერვისისთვის ჯერ კიდევ გენერიკ პრევიუს იყენებს.',
+  },
+  ru: {
+    credits: 'кредитов',
+    preview: 'Предпросмотр',
+    generating: 'Генерация...',
+    download: 'Скачать',
+    copy: 'Копировать',
+    retry: 'Повторить',
+    stats: 'Статистика',
+    generated: 'Создано',
+    thisMonth: 'В этом месяце',
+    quickTip: 'Совет',
+    tipText: 'Чем точнее описание, тем лучше результат',
+    progress: 'Прогресс',
+    processingStep: 'Обработка монтажного конвейера',
+    stepLabel: 'Шаг',
+    ofLabel: 'из',
+    latestNote: 'Последняя заметка',
+    available: 'Доступно',
+    total: 'Всего',
+    live: 'Активно',
+    avgTime: 'Среднее время',
+    uploadPrompt: 'Нажмите для загрузки',
+    uploadPhotoFirst: 'Сначала загрузите фото.',
+    uploadVideoFirst: 'Сначала загрузите видео.',
+    requestFailed: 'Запрос не выполнен',
+    genericPreviewMode: 'Это рабочее пространство пока использует общий режим предпросмотра для этого сервиса.',
+  },
+}
+
+function getSafeLocale(locale?: string): LocaleKey {
+  return locale === 'ka' || locale === 'ru' ? locale : 'en'
+}
+
+function unwrapApiData(payload: unknown): JsonRecord {
+  if (!payload || typeof payload !== 'object') {
+    return {}
+  }
+
+  const record = payload as JsonRecord
+  if (record.data && typeof record.data === 'object') {
+    return record.data as JsonRecord
+  }
+
+  return record
+}
+
+function extractApiError(payload: unknown): string {
+  if (!payload || typeof payload !== 'object') {
+    return 'Request failed'
+  }
+
+  const record = payload as JsonRecord
+  if (typeof record.error === 'string' && record.error) {
+    return record.error
+  }
+
+  if (typeof record.message === 'string' && record.message) {
+    return record.message
+  }
+
+  if (record.data && typeof record.data === 'object') {
+    return extractApiError(record.data)
+  }
+
+  return 'Request failed'
+}
+
+function extractOutputUrl(payload: unknown): string | null {
+  if (!payload) {
+    return null
+  }
+
+  if (typeof payload === 'string') {
+    return payload.startsWith('http') || payload.startsWith('data:') ? payload : null
+  }
+
+  if (Array.isArray(payload)) {
+    const first = payload[0]
+    return extractOutputUrl(first)
+  }
+
+  if (typeof payload === 'object') {
+    const record = payload as JsonRecord
+
+    for (const key of ['url', 'audio', 'audioUrl', 'output']) {
+      const value = record[key]
+      if (typeof value === 'string' && (value.startsWith('http') || value.startsWith('data:'))) {
+        return value
+      }
+    }
+
+    if (record.normalized && typeof record.normalized === 'object') {
+      return extractOutputUrl(record.normalized)
+    }
+  }
+
+  return null
+}
+
+function extractOutputText(payload: unknown): string | null {
+  if (!payload) {
+    return null
+  }
+
+  if (typeof payload === 'string') {
+    return payload
+  }
+
+  if (Array.isArray(payload)) {
+    const values = payload
+      .map((item) => (typeof item === 'string' ? item : null))
+      .filter((item): item is string => Boolean(item))
+
+    return values.length > 0 ? values.join('\n') : null
+  }
+
+  if (typeof payload === 'object') {
+    const record = payload as JsonRecord
+
+    for (const key of ['response', 'result', 'output', 'detail', 'text', 'summary']) {
+      const value = record[key]
+      if (typeof value === 'string' && value.trim().length > 0) {
+        return value
+      }
+    }
+
+    if (record.normalized && typeof record.normalized === 'object') {
+      return extractOutputText(record.normalized)
+    }
+  }
+
+  return null
+}
+
+function extractEditingProgress(payload: JsonRecord): EditingJobProgress | null {
+  const job = payload.job && typeof payload.job === 'object' ? payload.job as JsonRecord : null
+  const output = payload.output && typeof payload.output === 'object' ? payload.output as JsonRecord : null
+  const metadata = output?.metadata && typeof output.metadata === 'object' ? output.metadata as JsonRecord : null
+
+  const candidate = (output?.progress && typeof output.progress === 'object' ? output.progress : null)
+    || (job?.progress && typeof job.progress === 'object' ? job.progress : null)
+    || (metadata?.progress && typeof metadata.progress === 'object' ? metadata.progress : null)
+
+  if (!candidate || typeof candidate !== 'object') {
+    return null
+  }
+
+  const record = candidate as JsonRecord
+  return {
+    status: typeof record.status === 'string' ? record.status : 'processing',
+    currentStepId: typeof record.currentStepId === 'string' ? record.currentStepId : null,
+    currentStepDescription: typeof record.currentStepDescription === 'string' ? record.currentStepDescription : null,
+    currentStepIndex: typeof record.currentStepIndex === 'number' ? record.currentStepIndex : 0,
+    totalSteps: typeof record.totalSteps === 'number' ? record.totalSteps : 0,
+    stepsCompleted: Array.isArray(record.stepsCompleted)
+      ? record.stepsCompleted.filter((step): step is string => typeof step === 'string')
+      : [],
+    percent: typeof record.percent === 'number' ? record.percent : 0,
+    notes: Array.isArray(record.notes)
+      ? record.notes.filter((note): note is string => typeof note === 'string')
+      : [],
+  }
+}
+
+async function postJson(path: string, body: JsonRecord): Promise<JsonRecord> {
+  const response = await fetch(path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+
+  const payload = await response.json().catch(() => null)
+  if (!response.ok) {
+    throw new Error(extractApiError(payload))
+  }
+
+  return unwrapApiData(payload)
+}
+
+function isTerminalPredictionStatus(status: string | undefined) {
+  return ['succeeded', 'failed', 'canceled', 'throttled', 'model_unavailable'].includes(status || '')
+}
+
+async function pollPrediction(path: string, predictionId: string): Promise<JsonRecord> {
+  let latest: JsonRecord = {}
+
+  for (let attempt = 0; attempt < 15; attempt += 1) {
+    latest = await postJson(path, { predictionId })
+    const status = typeof latest.status === 'string' ? latest.status : undefined
+    if (isTerminalPredictionStatus(status)) {
+      return latest
+    }
+
+    await new Promise((resolve) => window.setTimeout(resolve, 1500))
+  }
+
+  return latest
+}
+
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        resolve(reader.result)
+        return
+      }
+
+      reject(new Error('Failed to read file'))
+    }
+    reader.onerror = () => reject(new Error('Failed to read file'))
+    reader.readAsDataURL(file)
+  })
+}
+
+function buildPhotoPrompt(action: string) {
+  switch (action) {
+    case 'restore':
+      return 'Restore the uploaded photo with clean detail recovery and natural colors.'
+    case 'colorize':
+      return 'Enhance the uploaded photo with balanced color recovery and clean tonal detail.'
+    case 'denoise':
+      return 'Reduce noise, preserve facial detail, and enhance sharpness in the uploaded photo.'
+    default:
+      return 'Upscale and enhance the uploaded photo with studio-quality clarity.'
+  }
+}
+
+function buildDownloadName(serviceId: string, kind: OutputKind) {
+  if (kind === 'image') return `${serviceId}-output.png`
+  if (kind === 'video') return `${serviceId}-output.mp4`
+  if (kind === 'audio') return `${serviceId}-output.mp3`
+  return `${serviceId}-output.txt`
+}
+
+async function waitForEditingJob(jobId: string, onProgress?: (progress: EditingJobProgress | null) => void): Promise<JsonRecord> {
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    const response = await fetch(`/api/editing/jobs/${jobId}`, { cache: 'no-store' })
+    const payload = await response.json().catch(() => null)
+
+    if (!response.ok) {
+      throw new Error(extractApiError(payload))
+    }
+
+    const data = unwrapApiData(payload)
+  onProgress?.(extractEditingProgress(data))
+    const job = data.job as JsonRecord | undefined
+    const status = typeof job?.status === 'string' ? job.status : undefined
+
+    if (status === 'completed' || status === 'failed' || status === 'dead') {
+      return data
+    }
+
+    await new Promise((resolve) => window.setTimeout(resolve, 1500))
+  }
+
+  throw new Error('Editing job timed out')
+}
+
 /* ── Component ── */
 interface ServiceWorkspaceViewProps {
   serviceId: string
-  serviceName: string
-  serviceIcon: string
-  locale: string
-  description: string
+  serviceName?: string
+  serviceIcon?: string
+  locale?: string
+  description?: string
+  creditsBalance?: number
+  showStats?: boolean
+  showQuickTip?: boolean
+  labels?: Partial<WorkspaceViewLabels>
+  workspaceOverride?: Partial<ServiceWorkspace>
+  onJobStart?: (label: string) => string
+  onJobProgress?: (jobId: string, progress: number) => void
+  onJobComplete?: (jobId: string, result: WorkspaceResult) => void
+  onJobError?: (jobId: string, errorMessage: string) => void
 }
 
 export default function ServiceWorkspaceView({
   serviceId,
   serviceName,
-  serviceIcon,
+  serviceIcon = '◈',
   locale,
   description,
+  creditsBalance = 1000,
+  showStats = true,
+  showQuickTip = true,
+  labels,
+  workspaceOverride,
+  onJobStart,
+  onJobProgress,
+  onJobComplete,
+  onJobError,
 }: ServiceWorkspaceViewProps) {
   const { language } = useLanguage()
-  const lang = (language as LocaleKey) || 'en'
-  const workspace = SERVICE_WORKSPACES[serviceId] || DEFAULT_WORKSPACE
+  const lang = locale ? getSafeLocale(locale) : getSafeLocale(language)
+  const ui = { ...UI_COPY[lang], ...(labels ?? {}) }
+  const baseWorkspace = SERVICE_WORKSPACES[serviceId] || DEFAULT_WORKSPACE
+  const workspace: ServiceWorkspace = {
+    ...baseWorkspace,
+    ...workspaceOverride,
+    fields: workspaceOverride?.fields ?? baseWorkspace.fields,
+    actionLabel: { ...baseWorkspace.actionLabel, ...(workspaceOverride?.actionLabel ?? {}) },
+    previewHint: { ...baseWorkspace.previewHint, ...(workspaceOverride?.previewHint ?? {}) },
+  }
+  const safeServiceName = serviceName || serviceId
+  const safeDescription = description || workspace.previewHint[lang] || workspace.previewHint.en
   const [values, setValues] = useState<Record<string, string | number>>({})
   const [isGenerating, setIsGenerating] = useState(false)
-  const [output, setOutput] = useState<string | null>(null)
+  const [result, setResult] = useState<WorkspaceResult | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [jobProgress, setJobProgress] = useState<EditingJobProgress | null>(null)
   const [uploadedFile, setUploadedFile] = useState<File | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  // Initialize defaults
   useEffect(() => {
     const defaults: Record<string, string | number> = {}
-    workspace.fields.forEach(f => {
-      if (f.defaultValue !== undefined) defaults[f.id] = f.defaultValue
+    workspace.fields.forEach((field) => {
+      if (field.defaultValue !== undefined) defaults[field.id] = field.defaultValue
     })
     setValues(defaults)
-  }, [serviceId]) // eslint-disable-line react-hooks/exhaustive-deps
+    setResult(null)
+    setError(null)
+    setJobProgress(null)
+    setUploadedFile(null)
+  }, [serviceId, workspace.fields])
 
   const updateValue = useCallback((id: string, value: string | number) => {
-    setValues(prev => ({ ...prev, [id]: value }))
+    setValues((prev) => ({ ...prev, [id]: value }))
   }, [])
 
-  const handleGenerate = useCallback(async () => {
-    setIsGenerating(true)
-    setOutput(null)
-    // Simulate generation (real API call would go here)
-    await new Promise(r => setTimeout(r, 2000))
-    setOutput(`✅ ${serviceName} output generated successfully.\n\nThis is a demo preview. Connect your API endpoints to see real results.`)
-    setIsGenerating(false)
-  }, [serviceName])
+  const publishResult = useCallback((jobId: string | null, nextResult: WorkspaceResult) => {
+    setResult(nextResult)
+    if (jobId) {
+      onJobProgress?.(jobId, 100)
+      onJobComplete?.(jobId, nextResult)
+    }
+  }, [onJobComplete, onJobProgress])
 
-  const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
+  const handleGenerate = useCallback(async () => {
+    const prompt = String(values.prompt || '').trim()
+    const instruction = String(values.instruction || '').trim()
+    let dashboardJobId: string | null = null
+
+    setIsGenerating(true)
+    setResult(null)
+    setError(null)
+    setJobProgress(null)
+
+    try {
+      if (serviceId === 'photo') {
+        if (!uploadedFile) {
+          throw new Error(ui.uploadPhotoFirst)
+        }
+
+        dashboardJobId = onJobStart?.(safeServiceName) ?? null
+        if (dashboardJobId) {
+          onJobProgress?.(dashboardJobId, 12)
+        }
+
+        const imageUrl = await readFileAsDataUrl(uploadedFile)
+        const action = String(values.action || 'upscale')
+        const initialPayload = await postJson('/api/replicate/photo', {
+          imageUrl,
+          prompt: buildPhotoPrompt(action),
+          variant: action === 'upscale' ? 'upscale' : 'enhance',
+          quality: 'high',
+        })
+
+        const completedPayload = typeof initialPayload.id === 'string' && !isTerminalPredictionStatus(typeof initialPayload.status === 'string' ? initialPayload.status : undefined)
+          ? await pollPrediction('/api/replicate/photo', initialPayload.id)
+          : initialPayload
+
+        if (typeof completedPayload.status === 'string' && completedPayload.status !== 'succeeded') {
+          throw new Error(extractApiError(completedPayload))
+        }
+
+        const outputUrl = extractOutputUrl(completedPayload.normalized ?? completedPayload.output ?? completedPayload)
+        const outputText = extractOutputText(completedPayload.normalized ?? completedPayload.output ?? completedPayload)
+
+        if (outputUrl) {
+          publishResult(dashboardJobId, {
+            kind: 'image',
+            title: safeServiceName,
+            detail: buildPhotoPrompt(action),
+            url: outputUrl,
+          })
+          return
+        }
+
+        publishResult(dashboardJobId, {
+          kind: 'text',
+          title: safeServiceName,
+          detail: buildPhotoPrompt(action),
+          text: outputText || JSON.stringify(completedPayload, null, 2),
+        })
+        return
+      }
+
+      if (serviceId === 'software') {
+        dashboardJobId = onJobStart?.(safeServiceName) ?? null
+        if (dashboardJobId) {
+          onJobProgress?.(dashboardJobId, 16)
+        }
+
+        const payload = await postJson('/api/orbit/code-generation', {
+          prompt,
+          language: String(values.language || 'typescript'),
+          framework: 'MyAvatar.ge workspace',
+        })
+
+        publishResult(dashboardJobId, {
+          kind: 'text',
+          title: typeof payload.title === 'string' ? payload.title : safeServiceName,
+          detail: typeof payload.detail === 'string' ? payload.detail : undefined,
+          text: extractOutputText(payload) || JSON.stringify(payload, null, 2),
+        })
+        return
+      }
+
+      if (serviceId === 'business') {
+        dashboardJobId = onJobStart?.(safeServiceName) ?? null
+        if (dashboardJobId) {
+          onJobProgress?.(dashboardJobId, 16)
+        }
+
+        const reportType = String(values.type || 'market')
+        const payload = await postJson('/api/chat', {
+          message: `${prompt}\n\nReport type: ${reportType}. Return an executive summary, key findings, risks, and concrete next actions.`,
+          context: 'business',
+          serviceId: 'business',
+          language: locale,
+          locale,
+        })
+
+        publishResult(dashboardJobId, {
+          kind: 'text',
+          title: safeServiceName,
+          detail: reportType,
+          text: extractOutputText(payload) || JSON.stringify(payload, null, 2),
+        })
+        return
+      }
+
+      if (serviceId === 'editing') {
+        if (!uploadedFile) {
+          throw new Error(ui.uploadVideoFirst)
+        }
+
+        dashboardJobId = onJobStart?.(safeServiceName) ?? null
+        if (dashboardJobId) {
+          onJobProgress?.(dashboardJobId, 10)
+        }
+
+        const effect = String(values.effect || 'none')
+        const formData = new FormData()
+        formData.set('file', uploadedFile)
+        formData.set('instructions', instruction)
+        formData.set('effect', effect)
+
+        const createResponse = await fetch('/api/editing/jobs', {
+          method: 'POST',
+          body: formData,
+        })
+        const createPayload = await createResponse.json().catch(() => null)
+
+        if (!createResponse.ok) {
+          throw new Error(extractApiError(createPayload))
+        }
+
+        const createdJob = unwrapApiData(createPayload)
+        const jobId = typeof createdJob.jobId === 'string' ? createdJob.jobId : null
+        if (!jobId) {
+          throw new Error('Failed to create editing job')
+        }
+
+        const completedPayload = await waitForEditingJob(jobId, (progress) => {
+          setJobProgress(progress)
+          if (dashboardJobId && progress) {
+            onJobProgress?.(dashboardJobId, progress.percent)
+          }
+        })
+        const job = completedPayload.job as JsonRecord | undefined
+        const output = completedPayload.output as JsonRecord | undefined
+        const status = typeof job?.status === 'string' ? job.status : undefined
+
+        if (status !== 'completed') {
+          throw new Error(typeof job?.error_message === 'string' ? job.error_message : 'Editing job failed')
+        }
+
+        const primaryUrl = typeof output?.primaryUrl === 'string' ? output.primaryUrl : null
+        if (primaryUrl) {
+          publishResult(dashboardJobId, {
+            kind: 'video',
+            title: safeServiceName,
+            detail: effect === 'none' ? 'Rendered edit output' : `Effect: ${effect}`,
+            url: primaryUrl,
+          })
+          return
+        }
+
+        publishResult(dashboardJobId, {
+          kind: 'text',
+          title: safeServiceName,
+          detail: effect,
+          text: JSON.stringify(completedPayload, null, 2),
+        })
+        return
+      }
+
+      dashboardJobId = onJobStart?.(safeServiceName) ?? null
+      if (dashboardJobId) {
+        onJobProgress?.(dashboardJobId, 24)
+      }
+
+      await new Promise((resolve) => window.setTimeout(resolve, 1200))
+      publishResult(dashboardJobId, {
+        kind: 'text',
+        title: safeServiceName,
+        detail: workspace.previewHint[lang] || workspace.previewHint.en,
+        text: ui.genericPreviewMode,
+      })
+    } catch (requestError) {
+      const rawMessage = requestError instanceof Error ? requestError.message : ui.requestFailed
+      const message = rawMessage === 'Request failed' ? ui.requestFailed : rawMessage
+      setError(message)
+      if (dashboardJobId) {
+        onJobError?.(dashboardJobId, message)
+      }
+    } finally {
+      setIsGenerating(false)
+    }
+  }, [lang, locale, onJobComplete, onJobError, onJobProgress, onJobStart, publishResult, safeServiceName, serviceId, ui.genericPreviewMode, ui.requestFailed, ui.uploadPhotoFirst, ui.uploadVideoFirst, uploadedFile, values, workspace.creditCost, workspace.previewHint])
+
+  const handleFileChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
     if (file) setUploadedFile(file)
   }, [])
 
-  const T = {
-    credits: { en: 'credits', ka: 'კრედიტი', ru: 'кредитов' },
-    preview: { en: 'Preview', ka: 'გადახედვა', ru: 'Предпросмотр' },
-    generating: { en: 'Generating...', ka: 'გენერაცია...', ru: 'Генерация...' },
-    download: { en: 'Download', ka: 'ჩამოტვირთვა', ru: 'Скачать' },
-    share: { en: 'Share', ka: 'გაზიარება', ru: 'Поделиться' },
-    retry: { en: 'Try Again', ka: 'ხელახლა', ru: 'Повторить' },
-    stats: { en: 'Stats', ka: 'სტატისტიკა', ru: 'Статистика' },
-    generated: { en: 'Generated', ka: 'გენერირებული', ru: 'Создано' },
-    thisMonth: { en: 'This Month', ka: 'ამ თვეში', ru: 'В этом месяце' },
-    quickTip: { en: 'Quick Tip', ka: 'რჩევა', ru: 'Совет' },
-    tipText: { en: 'Be specific with your descriptions for better results', ka: 'იყავით კონკრეტული უკეთესი შედეგისთვის', ru: 'Будьте конкретны для лучших результатов' },
-  }
+  const handleDownload = useCallback(() => {
+    if (!result) {
+      return
+    }
 
-  const primaryPrompt = values['prompt'] as string || ''
-  const canGenerate = workspace.fields.some(f => f.type === 'textarea')
-    ? primaryPrompt.trim().length > 0
-    : true
+    if (result.url) {
+      const link = document.createElement('a')
+      link.href = result.url
+      link.download = buildDownloadName(serviceId, result.kind)
+      link.click()
+      return
+    }
+
+    if (result.text) {
+      const blob = new Blob([result.text], { type: 'text/plain;charset=utf-8' })
+      const href = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = href
+      link.download = buildDownloadName(serviceId, result.kind)
+      link.click()
+      URL.revokeObjectURL(href)
+    }
+  }, [result, serviceId])
+
+  const handleCopy = useCallback(() => {
+    if (!result) {
+      return
+    }
+
+    const content = result.text || result.url
+    if (!content || !navigator.clipboard) {
+      return
+    }
+
+    void navigator.clipboard.writeText(content)
+  }, [result])
+
+  const primaryPrompt = (values.prompt as string) || ''
+  const canGenerate = (() => {
+    if (serviceId === 'photo') {
+      return Boolean(uploadedFile)
+    }
+
+    if (serviceId === 'editing') {
+      return Boolean(uploadedFile) && String(values.instruction || '').trim().length > 0
+    }
+
+    if (workspace.fields.some((field) => field.type === 'textarea')) {
+      return primaryPrompt.trim().length > 0
+    }
+
+    return true
+  })()
 
   return (
     <div className="h-full w-full overflow-y-auto" style={{ background: '#0a0a0f' }}>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 space-y-6">
-
-        {/* ── Header ── */}
         <div className="flex items-start justify-between gap-4">
           <div className="flex items-center gap-3">
             <div
@@ -321,40 +937,38 @@ export default function ServiceWorkspaceView({
               {serviceIcon}
             </div>
             <div>
-              <h1 className="text-2xl font-bold" style={{ color: '#f8fafc' }}>{serviceName}</h1>
-              <p className="text-sm mt-0.5" style={{ color: 'rgba(148,163,184,0.7)' }}>{description}</p>
+              <h1 className="text-2xl font-bold" style={{ color: '#f8fafc' }}>{safeServiceName}</h1>
+              <p className="text-sm mt-0.5" style={{ color: 'rgba(148,163,184,0.7)' }}>{safeDescription}</p>
             </div>
           </div>
           <div className="text-right shrink-0">
-            <div className="text-2xl font-bold" style={{ color: '#00d4ff' }}>1000</div>
-            <p className="text-xs" style={{ color: 'rgba(148,163,184,0.5)' }}>{T.credits[lang]}</p>
+            <div className="text-2xl font-bold" style={{ color: '#00d4ff' }}>{creditsBalance}</div>
+            <p className="text-xs" style={{ color: 'rgba(148,163,184,0.5)' }}>{ui.credits}</p>
           </div>
         </div>
 
-        {/* ── Stats Row ── */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          {[
-            { label: T.credits[lang], value: '1000', sub: 'Available' },
-            { label: T.generated[lang], value: '0', sub: 'Total' },
-            { label: T.thisMonth[lang], value: '0', sub: T.credits[lang] },
-            { label: T.stats[lang], value: '—', sub: 'Avg time' },
-          ].map((stat, i) => (
-            <div
-              key={i}
-              className="rounded-xl p-3"
-              style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}
-            >
-              <p className="text-xs font-medium" style={{ color: 'rgba(148,163,184,0.5)' }}>{stat.label}</p>
-              <p className="text-xl font-bold mt-1" style={{ color: '#f8fafc' }}>{stat.value}</p>
-              <p className="text-[10px] mt-0.5" style={{ color: 'rgba(148,163,184,0.4)' }}>{stat.sub}</p>
-            </div>
-          ))}
-        </div>
+        {showStats && (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {[
+              { label: ui.credits, value: String(creditsBalance), sub: ui.available },
+              { label: ui.generated, value: result ? '1' : '0', sub: ui.total },
+              { label: ui.thisMonth, value: result ? String(workspace.creditCost) : '0', sub: ui.credits },
+              { label: ui.stats, value: result ? ui.live : '—', sub: ui.avgTime },
+            ].map((stat, index) => (
+              <div
+                key={index}
+                className="rounded-xl p-3"
+                style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}
+              >
+                <p className="text-xs font-medium" style={{ color: 'rgba(148,163,184,0.5)' }}>{stat.label}</p>
+                <p className="text-xl font-bold mt-1" style={{ color: '#f8fafc' }}>{stat.value}</p>
+                <p className="text-[10px] mt-0.5" style={{ color: 'rgba(148,163,184,0.4)' }}>{stat.sub}</p>
+              </div>
+            ))}
+          </div>
+        )}
 
-        {/* ── Main Grid: Tool Panel + Preview ── */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-
-          {/* Left: Tool Panel */}
           <div className="lg:col-span-1 space-y-4">
             <div
               className="rounded-2xl p-5 space-y-5"
@@ -364,7 +978,7 @@ export default function ServiceWorkspaceView({
                 {workspace.actionLabel[lang] || workspace.actionLabel.en}
               </h3>
 
-              {workspace.fields.map(field => (
+              {workspace.fields.map((field) => (
                 <div key={field.id}>
                   <label className="block text-xs font-medium mb-1.5" style={{ color: 'rgba(148,163,184,0.7)' }}>
                     {field.label[lang] || field.label.en}
@@ -373,7 +987,7 @@ export default function ServiceWorkspaceView({
                   {field.type === 'textarea' && (
                     <textarea
                       value={(values[field.id] as string) || ''}
-                      onChange={e => updateValue(field.id, e.target.value)}
+                      onChange={(event) => updateValue(field.id, event.target.value)}
                       placeholder={field.placeholder?.[lang] || field.placeholder?.en || ''}
                       rows={4}
                       className="w-full rounded-xl px-3 py-2.5 text-sm resize-none outline-none transition-colors placeholder:text-slate-600"
@@ -389,7 +1003,7 @@ export default function ServiceWorkspaceView({
                     <input
                       type="text"
                       value={(values[field.id] as string) || ''}
-                      onChange={e => updateValue(field.id, e.target.value)}
+                      onChange={(event) => updateValue(field.id, event.target.value)}
                       placeholder={field.placeholder?.[lang] || field.placeholder?.en || ''}
                       className="w-full rounded-xl px-3 py-2.5 text-sm outline-none transition-colors placeholder:text-slate-600"
                       style={{
@@ -404,7 +1018,7 @@ export default function ServiceWorkspaceView({
                     <div className="relative">
                       <select
                         value={(values[field.id] as string) || field.defaultValue || ''}
-                        onChange={e => updateValue(field.id, e.target.value)}
+                        onChange={(event) => updateValue(field.id, event.target.value)}
                         className="w-full rounded-xl px-3 py-2.5 text-sm outline-none appearance-none cursor-pointer"
                         style={{
                           background: 'rgba(255,255,255,0.04)',
@@ -412,9 +1026,9 @@ export default function ServiceWorkspaceView({
                           color: '#f8fafc',
                         }}
                       >
-                        {field.options?.map(opt => (
-                          <option key={opt.value} value={opt.value} style={{ background: '#1a1a2e', color: '#f8fafc' }}>
-                            {opt.label}
+                        {field.options?.map((option) => (
+                          <option key={option.value} value={option.value} style={{ background: '#1a1a2e', color: '#f8fafc' }}>
+                            {option.label}
                           </option>
                         ))}
                       </select>
@@ -436,15 +1050,20 @@ export default function ServiceWorkspaceView({
                         }}
                       >
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" x2="12" y1="3" y2="15" /></svg>
-                        {uploadedFile ? uploadedFile.name : (field.placeholder?.[lang] || 'Click to upload')}
+                        {uploadedFile ? uploadedFile.name : (field.placeholder?.[lang] || ui.uploadPrompt)}
                       </button>
-                      <input ref={fileInputRef} type="file" className="hidden" onChange={handleFileChange} accept="image/*,video/*,audio/*" />
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        className="hidden"
+                        onChange={handleFileChange}
+                        accept={serviceId === 'photo' ? 'image/*' : serviceId === 'editing' ? 'video/*' : 'image/*,video/*,audio/*'}
+                      />
                     </div>
                   )}
                 </div>
               ))}
 
-              {/* Generate button */}
               <button
                 onClick={handleGenerate}
                 disabled={isGenerating || !canGenerate}
@@ -458,35 +1077,35 @@ export default function ServiceWorkspaceView({
                 {isGenerating ? (
                   <>
                     <div className="w-4 h-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />
-                    {T.generating[lang]}
+                    {ui.generating}
                   </>
                 ) : (
                   <>
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" /></svg>
                     {workspace.actionLabel[lang] || workspace.actionLabel.en}
                     {workspace.creditCost > 0 && (
-                      <span className="ml-1 opacity-70">({workspace.creditCost} {T.credits[lang]})</span>
+                      <span className="ml-1 opacity-70">({workspace.creditCost} {ui.credits})</span>
                     )}
                   </>
                 )}
               </button>
             </div>
 
-            {/* Quick tip card */}
-            <div
-              className="rounded-xl p-4"
-              style={{ background: 'rgba(0,212,255,0.04)', border: '1px solid rgba(0,212,255,0.08)' }}
-            >
-              <p className="text-xs font-semibold mb-1" style={{ color: '#00d4ff' }}>
-                💡 {T.quickTip[lang]}
-              </p>
-              <p className="text-xs leading-relaxed" style={{ color: 'rgba(148,163,184,0.6)' }}>
-                {T.tipText[lang]}
-              </p>
-            </div>
+            {showQuickTip && (
+              <div
+                className="rounded-xl p-4"
+                style={{ background: 'rgba(0,212,255,0.04)', border: '1px solid rgba(0,212,255,0.08)' }}
+              >
+                <p className="text-xs font-semibold mb-1" style={{ color: '#00d4ff' }}>
+                  💡 {ui.quickTip}
+                </p>
+                <p className="text-xs leading-relaxed" style={{ color: 'rgba(148,163,184,0.6)' }}>
+                  {ui.tipText}
+                </p>
+              </div>
+            )}
           </div>
 
-          {/* Right: Preview Area */}
           <div className="lg:col-span-2">
             <div
               className="rounded-2xl min-h-[400px] h-full flex flex-col"
@@ -494,20 +1113,28 @@ export default function ServiceWorkspaceView({
             >
               <div className="flex items-center justify-between px-5 py-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
                 <h3 className="text-sm font-semibold" style={{ color: '#f8fafc' }}>
-                  {T.preview[lang]}
+                  {ui.preview}
                 </h3>
-                {output && (
+                {result && (
                   <div className="flex items-center gap-2">
-                    <button className="px-3 py-1.5 rounded-lg text-xs font-medium transition-colors" style={{ background: 'rgba(255,255,255,0.04)', color: 'rgba(148,163,184,0.7)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                    <button
+                      onClick={handleDownload}
+                      className="px-3 py-1.5 rounded-lg text-xs font-medium transition-colors"
+                      style={{ background: 'rgba(255,255,255,0.04)', color: 'rgba(148,163,184,0.7)', border: '1px solid rgba(255,255,255,0.06)' }}
+                    >
                       <span className="flex items-center gap-1">
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" x2="12" y1="15" y2="3" /></svg>
-                        {T.download[lang]}
+                        {ui.download}
                       </span>
                     </button>
-                    <button className="px-3 py-1.5 rounded-lg text-xs font-medium transition-colors" style={{ background: 'rgba(255,255,255,0.04)', color: 'rgba(148,163,184,0.7)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                    <button
+                      onClick={handleCopy}
+                      className="px-3 py-1.5 rounded-lg text-xs font-medium transition-colors"
+                      style={{ background: 'rgba(255,255,255,0.04)', color: 'rgba(148,163,184,0.7)', border: '1px solid rgba(255,255,255,0.06)' }}
+                    >
                       <span className="flex items-center gap-1">
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="18" cy="5" r="3" /><circle cx="6" cy="12" r="3" /><circle cx="18" cy="19" r="3" /><line x1="8.59" x2="15.42" y1="13.51" y2="17.49" /><line x1="15.41" x2="8.59" y1="6.51" y2="10.49" /></svg>
-                        {T.share[lang]}
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>
+                        {ui.copy}
                       </span>
                     </button>
                   </div>
@@ -516,25 +1143,86 @@ export default function ServiceWorkspaceView({
 
               <div className="flex-1 flex items-center justify-center p-6">
                 {isGenerating ? (
-                  <div className="flex flex-col items-center gap-3">
+                  <div className="flex w-full max-w-xl flex-col items-center gap-4">
                     <div className="relative w-16 h-16">
                       <div className="absolute inset-0 rounded-full border-2 border-t-cyan-400 border-r-violet-500 border-b-transparent border-l-transparent animate-spin" />
                       <div className="absolute inset-2 rounded-full border-2 border-t-transparent border-r-transparent border-b-cyan-400 border-l-violet-500 animate-spin" style={{ animationDirection: 'reverse', animationDuration: '1.5s' }} />
                     </div>
-                    <p className="text-sm" style={{ color: 'rgba(148,163,184,0.6)' }}>{T.generating[lang]}</p>
+                      <p className="text-sm" style={{ color: 'rgba(148,163,184,0.6)' }}>{ui.generating}</p>
+
+                    {serviceId === 'editing' && jobProgress && (
+                      <div
+                        className="w-full rounded-xl p-4 text-left"
+                        style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}
+                      >
+                        <div className="flex items-center justify-between gap-4 text-xs font-medium" style={{ color: 'rgba(148,163,184,0.72)' }}>
+                          <span>{jobProgress.currentStepDescription || ui.processingStep}</span>
+                          <span>{Math.max(0, Math.min(100, Math.round(jobProgress.percent)))}%</span>
+                        </div>
+
+                        <div className="mt-3 h-2 overflow-hidden rounded-full" style={{ background: 'rgba(255,255,255,0.06)' }}>
+                          <div
+                            className="h-full rounded-full transition-all duration-300"
+                            style={{
+                              width: `${Math.max(4, Math.min(100, Math.round(jobProgress.percent)))}%`,
+                              background: 'linear-gradient(90deg, #00d4ff 0%, #7c3aed 100%)',
+                            }}
+                          />
+                        </div>
+
+                        {jobProgress.totalSteps > 0 && (
+                          <p className="mt-3 text-xs" style={{ color: 'rgba(148,163,184,0.58)' }}>
+                            {ui.stepLabel} {Math.max(0, jobProgress.currentStepIndex)} {ui.ofLabel} {jobProgress.totalSteps}
+                          </p>
+                        )}
+
+                        {jobProgress.notes.length > 0 && (
+                          <p className="mt-2 text-xs leading-relaxed" style={{ color: 'rgba(148,163,184,0.58)' }}>
+                            {ui.latestNote}: {jobProgress.notes[jobProgress.notes.length - 1]}
+                          </p>
+                        )}
+                      </div>
+                    )}
                   </div>
-                ) : output ? (
+                ) : error ? (
                   <div className="w-full max-w-xl">
-                    <div className="rounded-xl p-5 whitespace-pre-wrap text-sm leading-relaxed" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', color: '#e2e8f0' }}>
-                      {output}
+                    <div className="rounded-xl p-5 whitespace-pre-wrap text-sm leading-relaxed" style={{ background: 'rgba(244,63,94,0.08)', border: '1px solid rgba(244,63,94,0.18)', color: '#fecdd3' }}>
+                      {error}
+                    </div>
+                  </div>
+                ) : result ? (
+                  <div className="w-full max-w-xl">
+                    <div className="space-y-4">
+                      {result.title && (
+                        <div>
+                          <p className="text-lg font-semibold" style={{ color: '#f8fafc' }}>{result.title}</p>
+                          {result.detail && (
+                            <p className="mt-1 text-sm" style={{ color: 'rgba(148,163,184,0.7)' }}>{result.detail}</p>
+                          )}
+                        </div>
+                      )}
+
+                      {result.kind === 'image' && result.url ? (
+                        <div className="overflow-hidden rounded-xl" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                          <img src={result.url} alt={result.title || safeServiceName} className="w-full h-auto object-cover" />
+                        </div>
+                      ) : result.kind === 'video' && result.url ? (
+                        <video controls className="w-full rounded-xl" src={result.url} />
+                      ) : result.kind === 'audio' && result.url ? (
+                        <audio controls className="w-full" src={result.url} />
+                      ) : (
+                        <div className="rounded-xl p-5 whitespace-pre-wrap text-sm leading-relaxed" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', color: '#e2e8f0' }}>
+                          {result.text}
+                        </div>
+                      )}
                     </div>
                     <div className="mt-4 flex justify-center">
                       <button
-                        onClick={() => { setOutput(null); setIsGenerating(false) }}
+                        onClick={() => { setResult(null); setError(null); setIsGenerating(false) }}
                         className="px-4 py-2 rounded-lg text-xs font-medium transition-colors"
                         style={{ background: 'rgba(255,255,255,0.04)', color: '#00d4ff', border: '1px solid rgba(0,212,255,0.15)' }}
                       >
-                        {T.retry[lang]}
+                        {ui.retry}
                       </button>
                     </div>
                   </div>

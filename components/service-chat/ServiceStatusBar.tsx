@@ -27,6 +27,8 @@ export function ServiceStatusBar({ config, language, isLoading, agentMode }: Pro
   const processingLabel = lang === 'ka' ? 'მუშავდება...' : lang === 'ru' ? 'Обработка...' : 'Processing...';
   const toolsLabel = lang === 'ka' ? 'ხელსაწყო' : lang === 'ru' ? 'инструм.' : 'tools';
   const linksLabel = lang === 'ka' ? 'კავშირი' : lang === 'ru' ? 'связей' : 'links';
+  const agentLabel = lang === 'ka' ? 'აგენტი' : lang === 'ru' ? 'Агент' : 'Agent';
+  const chatLabel = lang === 'ka' ? 'ჩატი' : lang === 'ru' ? 'Чат' : 'Chat';
 
   return (
     <div
@@ -53,7 +55,7 @@ export function ServiceStatusBar({ config, language, isLoading, agentMode }: Pro
 
         <div className="flex items-center gap-1" style={{ color: 'var(--color-text-tertiary)', opacity: 0.6 }}>
           {isAgent ? <Sparkles className="w-2.5 h-2.5" /> : <Bot className="w-2.5 h-2.5" />}
-          <span className="text-[9px]">{isAgent ? 'Agent' : 'Chat'}</span>
+          <span className="text-[9px]">{isAgent ? agentLabel : chatLabel}</span>
         </div>
       </div>
 

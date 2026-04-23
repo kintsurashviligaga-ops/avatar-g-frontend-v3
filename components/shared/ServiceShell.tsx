@@ -5,15 +5,37 @@ import { ArrowLeft, Sparkles } from "lucide-react"
 import Link from "next/link"
 import { ReactNode } from "react"
 
-interface ServiceShellProps {
-  title: string
-  subtitle: string
-  gradient: string
-  children: ReactNode
-  actions?: ReactNode
+interface ServiceShellLabels {
+  back: string
 }
 
-export function ServiceShell({ title, subtitle, gradient, children, actions }: ServiceShellProps) {
+interface ServiceShellProps {
+  title?: string
+  subtitle?: string
+  gradient?: string
+  children: ReactNode
+  actions?: ReactNode
+  backHref?: string
+  showBack?: boolean
+  labels?: Partial<ServiceShellLabels>
+}
+
+const DEFAULT_LABELS: ServiceShellLabels = {
+  back: "Back",
+}
+
+export function ServiceShell({
+  title = "Service Workspace",
+  subtitle = "One-window service mode",
+  gradient = "from-cyan-500 to-blue-600",
+  children,
+  actions,
+  backHref = "/ka/dashboard",
+  showBack = true,
+  labels,
+}: ServiceShellProps) {
+  const t = { ...DEFAULT_LABELS, ...(labels ?? {}) }
+
   return (
     <div className="min-h-screen bg-transparent text-white">
       {/* Header */}
@@ -25,15 +47,17 @@ export function ServiceShell({ title, subtitle, gradient, children, actions }: S
             <div className="flex items-center justify-between h-16">
               {/* Left: Back + title */}
               <div className="flex items-center gap-4">
-                <Link
-                  href="/"
-                  className="flex items-center gap-2 text-white/40 hover:text-white transition-colors px-3 py-1.5 rounded-xl hover:bg-white/[0.06] border border-transparent hover:border-white/[0.08]"
-                >
-                  <ArrowLeft size={16} />
-                  <span className="hidden sm:inline text-sm font-medium">Back</span>
-                </Link>
+                {showBack && (
+                  <Link
+                    href={backHref}
+                    className="flex items-center gap-2 text-white/40 hover:text-white transition-colors px-3 py-1.5 rounded-xl hover:bg-white/[0.06] border border-transparent hover:border-white/[0.08]"
+                  >
+                    <ArrowLeft size={16} />
+                    <span className="hidden sm:inline text-sm font-medium">{t.back}</span>
+                  </Link>
+                )}
 
-                <div className="w-px h-5 bg-white/[0.12]" />
+                {showBack && <div className="w-px h-5 bg-white/[0.12]" />}
 
                 <div className="flex items-center gap-3">
                   <div

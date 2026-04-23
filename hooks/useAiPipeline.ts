@@ -33,6 +33,13 @@ export interface RunParams {
   context?:  string;
 }
 
+export interface RunCallbacks {
+  onStart?: () => void;
+  onSuccess?: (result: RunResult) => void;
+  onError?: (message: string) => void;
+  onFinally?: () => void;
+}
+
 export interface RunResult {
   result:      string;
   creditsUsed: number;
@@ -43,7 +50,7 @@ export interface RunResult {
 
 export interface UseAiPipelineReturn {
   /** Trigger an AI generation for the bound agent */
-  run:         (params: RunParams) => Promise<RunResult | null>;
+  run:         (params: RunParams, callbacks?: RunCallbacks) => Promise<RunResult | null>;
   /** True while an in-flight request is pending */
   loading:     boolean;
   /** Current error message, null when clear */
@@ -98,22 +105,29 @@ export function useAiPipeline(agent: AgentType): UseAiPipelineReturn {
 
   // ── run ──────────────────────────────────────────────────────────────────
   const run = useCallback(
-    async ({ prompt, context }: RunParams): Promise<RunResult | null> => {
+    async ({ prompt, context }: RunParams, callbacks?: RunCallbacks): Promise<RunResult | null> => {
       if (!prompt.trim()) {
-        setAgentError(agent, 'Prompt cannot be empty.');
+        const message = 'Prompt cannot be empty.';
+        setAgentError(agent, message);
+        callbacks?.onError?.(message);
+        callbacks?.onFinally?.();
         return null;
       }
 
       if (!canAfford) {
+        const message = `Not enough credits. You need at least ${
+          useAiPipelineStore.getState().balance
+        } credits.`;
         setAgentError(
           agent,
-          `Not enough credits. You need at least ${
-            useAiPipelineStore.getState().balance
-          } credits.`
+          message
         );
+        callbacks?.onError?.(message);
+        callbacks?.onFinally?.();
         return null;
       }
 
+      callbacks?.onStart?.();
       setAgentLoading(agent, true);
 
       let response: Response;
@@ -124,7 +138,10 @@ export function useAiPipeline(agent: AgentType): UseAiPipelineReturn {
           body    : JSON.stringify({ agent, prompt: prompt.trim(), context }),
         });
       } catch {
-        setAgentError(agent, 'Network error — please check your connection.');
+        const message = 'Network error — please check your connection.';
+        setAgentError(agent, message);
+        callbacks?.onError?.(message);
+        callbacks?.onFinally?.();
         return null;
       }
 
@@ -133,44 +150,60 @@ export function useAiPipeline(agent: AgentType): UseAiPipelineReturn {
       try {
         json = await response.json();
       } catch {
-        setAgentError(agent, `Unexpected server response (HTTP ${response.status}).`);
+        const message = `Unexpected server response (HTTP ${response.status}).`;
+        setAgentError(agent, message);
+        callbacks?.onError?.(message);
+        callbacks?.onFinally?.();
         return null;
       }
 
       if (!response.ok) {
         const errBody = json as ApiError;
+        let message: string;
 
         // 401 → redirect to login
         if (response.status === 401) {
-          setAgentError(agent, 'Session expired. Redirecting to login…');
+          message = 'Session expired. Redirecting to login…';
+          setAgentError(agent, message);
+          callbacks?.onError?.(message);
+          callbacks?.onFinally?.();
           router.push('/login');
           return null;
         }
 
         // 402 → insufficient credits
         if (response.status === 402) {
-          setAgentError(
-            agent,
-            errBody.required
-              ? `Insufficient credits (need ${errBody.required}).`
-              : 'Insufficient credits. Please top up your balance.'
-          );
+          message = errBody.required
+            ? `Insufficient credits (need ${errBody.required}).`
+            : 'Insufficient credits. Please top up your balance.';
+          setAgentError(agent, message);
+          callbacks?.onError?.(message);
+          callbacks?.onFinally?.();
           return null;
         }
 
         // 429 → rate limited
         if (response.status === 429) {
-          setAgentError(agent, 'Too many requests — please wait a moment and try again.');
+          message = 'Too many requests — please wait a moment and try again.';
+          setAgentError(agent, message);
+          callbacks?.onError?.(message);
+          callbacks?.onFinally?.();
           return null;
         }
 
         // 504 → AI timeout
         if (response.status === 504) {
-          setAgentError(agent, 'AI request timed out. Please try a shorter prompt.');
+          message = 'AI request timed out. Please try a shorter prompt.';
+          setAgentError(agent, message);
+          callbacks?.onError?.(message);
+          callbacks?.onFinally?.();
           return null;
         }
 
-        setAgentError(agent, errBody.error ?? `Request failed (HTTP ${response.status}).`);
+        message = errBody.error ?? `Request failed (HTTP ${response.status}).`;
+        setAgentError(agent, message);
+        callbacks?.onError?.(message);
+        callbacks?.onFinally?.();
         return null;
       }
 
@@ -191,13 +224,18 @@ export function useAiPipeline(agent: AgentType): UseAiPipelineReturn {
 
       setAgentLoading(agent, false);
 
-      return {
+      const result = {
         result      : data.result,
         creditsUsed : data.creditsUsed,
         newBalance  : data.newBalance,
         executionMs : data.executionMs,
         model       : data.model,
       };
+
+      callbacks?.onSuccess?.(result);
+      callbacks?.onFinally?.();
+
+      return result;
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [agent, canAfford]

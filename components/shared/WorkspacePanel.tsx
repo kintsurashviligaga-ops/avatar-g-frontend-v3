@@ -4,14 +4,25 @@ import { motion, AnimatePresence } from "framer-motion"
 import { X } from "lucide-react"
 import { ReactNode } from "react"
 
+interface WorkspacePanelLabels {
+  close: string
+}
+
 interface WorkspacePanelProps {
   isOpen: boolean
   onClose: () => void
-  title: string
+  title?: string
   children: ReactNode
+  labels?: Partial<WorkspacePanelLabels>
 }
 
-export function WorkspacePanel({ isOpen, onClose, title, children }: WorkspacePanelProps) {
+const DEFAULT_LABELS: WorkspacePanelLabels = {
+  close: "Close panel",
+}
+
+export function WorkspacePanel({ isOpen, onClose, title = "Panel", children, labels }: WorkspacePanelProps) {
+  const t = { ...DEFAULT_LABELS, ...(labels ?? {}) }
+
   return (
     <AnimatePresence>
       {isOpen && (
@@ -40,6 +51,8 @@ export function WorkspacePanel({ isOpen, onClose, title, children }: WorkspacePa
               <h2 className="text-base font-bold text-white tracking-tight">{title}</h2>
               <button
                 onClick={onClose}
+                aria-label={t.close}
+                title={t.close}
                 className="w-8 h-8 rounded-xl bg-white/[0.05] hover:bg-white/[0.10] border border-white/[0.08] flex items-center justify-center transition-all"
               >
                 <X size={15} className="text-white/60" />

@@ -4,22 +4,31 @@ import { motion } from 'framer-motion'
 import { useTranslations } from 'next-intl'
 import { AgentIndicator } from '@/components/ui/AgentIndicator'
 
-interface StatsRowProps {
-  credits: number
-  activeTasks: number
-  totalGenerated: number
-  agentStatus: 'idle' | 'working' | 'error'
+type StatItem = {
+  label: string
+  value?: number | string | null
+  icon: string
+  color?: string
+  isAgent?: boolean
 }
 
-export function StatsRow({ credits, activeTasks, totalGenerated, agentStatus }: StatsRowProps) {
+interface StatsRowProps {
+  credits?: number
+  activeTasks?: number
+  totalGenerated?: number
+  agentStatus?: 'idle' | 'working' | 'error'
+  statsItems?: StatItem[]
+}
+
+export function StatsRow({ credits = 0, activeTasks = 0, totalGenerated = 0, agentStatus = 'idle', statsItems }: StatsRowProps) {
   const t = useTranslations('dashboard')
 
-  const stats = [
+  const stats = statsItems ?? [
     { label: t('stats.credits'), value: credits, icon: '⚡', color: '#00d4ff' },
     { label: t('stats.activeTasks'), value: activeTasks, icon: '📋', color: '#a78bfa' },
     { label: t('stats.totalGenerated'), value: totalGenerated, icon: '✨', color: '#34d399' },
     { label: t('stats.agentStatus'), value: null, icon: '🤖', isAgent: true },
-  ] as const
+  ]
 
   return (
     <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">

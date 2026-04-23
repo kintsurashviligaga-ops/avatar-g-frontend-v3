@@ -13,11 +13,13 @@ export type ActivityItem = {
 }
 
 interface ActivityFeedProps {
-  items: ActivityItem[]
-  locale: string
+  items?: ActivityItem[]
+  locale?: string
+  showViewAll?: boolean
+  onViewAll?: () => void
 }
 
-export function ActivityFeed({ items, locale }: ActivityFeedProps) {
+export function ActivityFeed({ items = [], locale = 'en', showViewAll = false, onViewAll }: ActivityFeedProps) {
   const t = useTranslations('dashboard')
 
   if (items.length === 0) {
@@ -51,9 +53,11 @@ export function ActivityFeed({ items, locale }: ActivityFeedProps) {
         <h3 className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--color-muted)' }}>
           {t('sections.activity')}
         </h3>
-        <button className="text-xs font-medium" style={{ color: '#00d4ff' }}>
-          {t('activity.viewAll')}
-        </button>
+        {showViewAll && onViewAll && (
+          <button type="button" onClick={onViewAll} className="text-xs font-medium" style={{ color: '#00d4ff' }}>
+            {t('activity.viewAll')}
+          </button>
+        )}
       </div>
       {items.map(item => (
         <div key={item.id} className="flex items-center gap-3 px-4 py-3">
