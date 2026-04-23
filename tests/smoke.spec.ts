@@ -1,82 +1,89 @@
 import { test, expect } from '@playwright/test';
 
-// ─── Core Pages Render ─────────────────────────────────────────────
+const DASHBOARD_SERVICES = [
+  'Agent G',
+  'Business Agent',
+  'Avatar Studio',
+  'Video Studio',
+  'Music Composer',
+  'Image Creator',
+  'Photo Studio',
+  'Game Creator',
+  'Text Generator',
+  'Text Intelligence',
+  'Prompt Builder',
+  'Pipeline Builder',
+  'Auto Workflows',
+];
 
-test('homepage renders with main heading', async ({ page }) => {
+// ─── Dashboard-first routing ──────────────────────────────────────
+
+test('bare root redirects to /ka/dashboard', async ({ page }) => {
+  await page.goto('/');
+  await page.waitForURL(/\/ka\/dashboard$/);
+  await expect(page).toHaveURL(/\/ka\/dashboard$/);
+  await expect(page.getByText('One Window Dashboard', { exact: false }).first()).toBeVisible();
+});
+
+test('locale root redirects to localized dashboard', async ({ page }) => {
   await page.goto('/ka');
-  await expect(page).toHaveTitle(/Avatar G/i);
-  await expect(page.locator('body')).toBeVisible();
+  await page.waitForURL(/\/ka\/dashboard$/);
+  await expect(page).toHaveURL(/\/ka\/dashboard$/);
 });
 
-test('dashboard renders command bar', async ({ page }) => {
+test('non-locale dashboard path redirects to default locale dashboard', async ({ page }) => {
+  await page.goto('/dashboard');
+  await page.waitForURL(/\/ka\/dashboard$/);
+  await expect(page).toHaveURL(/\/ka\/dashboard$/);
+});
+
+// ─── One-window dashboard ─────────────────────────────────────────
+
+test('dashboard shows the 13-service sidebar', async ({ page }) => {
   await page.goto('/ka/dashboard');
-  await expect(page.getByTestId('command-bar-input')).toBeVisible();
+
+  const sidebar = page.locator('aside').first();
+  const sidebarText = await sidebar.textContent();
+  const presentServices = DASHBOARD_SERVICES.filter((label) => sidebarText?.includes(label));
+
+  expect(presentServices).toHaveLength(DASHBOARD_SERVICES.length);
+  await expect(sidebar.getByText('Agent G', { exact: false }).first()).toBeVisible();
 });
 
-test('login page renders auth screen', async ({ page }) => {
-  await page.goto('/ka/login');
-  await expect(page.locator('body')).toBeVisible();
-  // Auth screen should have an email input or login button
-  const hasInput = await page.locator('input[type="email"], input[type="text"]').count();
-  expect(hasInput).toBeGreaterThanOrEqual(1);
+test('service switching stays on /ka/dashboard', async ({ page }) => {
+  await page.goto('/ka/dashboard');
+
+  const sidebar = page.locator('aside').first();
+  await sidebar.getByRole('button', { name: /Video Studio/i }).first().click();
+
+  await expect(page).toHaveURL(/\/ka\/dashboard$/);
+  await expect(page.getByText('Video Studio', { exact: false }).first()).toBeVisible();
 });
 
-test('signup page renders auth screen', async ({ page }) => {
-  await page.goto('/ka/signup');
-  await expect(page.locator('body')).toBeVisible();
-  const hasInput = await page.locator('input[type="email"], input[type="text"]').count();
-  expect(hasInput).toBeGreaterThanOrEqual(1);
+test('agent g panel renders inside the dashboard', async ({ page }) => {
+  await page.goto('/ka/dashboard');
+
+  await expect(page.locator('textarea').last()).toBeVisible();
+  await expect(page.getByText('Agent G', { exact: false }).first()).toBeVisible();
 });
 
-// ─── Language Switch ────────────────────────────────────────────────
+// ─── Locale Switch ─────────────────────────────────────────────────
 
 test('language switch navigates to correct locale path', async ({ page }) => {
   await page.goto('/ka/dashboard');
-  // Attempt to switch to English if the navbar language selector exists
-  const enButton = page.locator('button:has-text("ENG"), [data-locale="en"]');
-  if (await enButton.count() > 0) {
-    await enButton.first().click();
-    await page.waitForURL(/\/en\//);
-    expect(page.url()).toContain('/en/');
-  }
+  await page.getByRole('button', { name: 'EN' }).last().click();
+  await page.waitForURL(/\/en\/dashboard$/);
+  await expect(page).toHaveURL(/\/en\/dashboard$/);
 });
 
-// ─── Command Bar Interaction ────────────────────────────────────────
+// ─── Auth pages ────────────────────────────────────────────────────
 
-test('command bar accepts input', async ({ page }) => {
-  await page.goto('/ka/dashboard');
-  const input = page.getByTestId('command-bar-input');
-  await input.fill('generate avatar');
-  await expect(input).toHaveValue('generate avatar');
+test('login page renders an auth input', async ({ page }) => {
+  await page.goto('/ka/login');
+  await expect(page.locator('input[type="email"], input[type="text"]').first()).toBeVisible();
 });
 
-// ─── Service Grid ───────────────────────────────────────────────────
-
-test('dashboard shows service cards', async ({ page }) => {
-  await page.goto('/ka/dashboard');
-  const cards = page.getByTestId('service-card');
-  // Should have at least some service cards rendered
-  const count = await cards.count();
-  expect(count).toBeGreaterThanOrEqual(4);
-});
-
-// ─── Agent G Page ───────────────────────────────────────────────────
-
-test('agent-g page renders', async ({ page }) => {
-  await page.goto('/ka/services/agent-g');
-  await expect(page.locator('body')).toBeVisible();
-});
-
-// ─── Locale Redirect ────────────────────────────────────────────────
-
-test('bare root redirects to /ka', async ({ page }) => {
-  await page.goto('/');
-  await page.waitForURL(/\/ka/);
-  expect(page.url()).toContain('/ka');
-});
-
-test('non-locale path redirects to default locale', async ({ page }) => {
-  await page.goto('/dashboard');
-  await page.waitForURL(/\/ka\/dashboard/);
-  expect(page.url()).toContain('/ka/dashboard');
+test('signup page renders an auth input', async ({ page }) => {
+  await page.goto('/ka/signup');
+  await expect(page.locator('input[type="email"], input[type="text"]').first()).toBeVisible();
 });
