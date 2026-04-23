@@ -13,6 +13,8 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
+import { beginPanelShellRun, createTextPreview } from './panelShellBridge';
+import type { PanelRunCallbacks } from '@/types/dashboard';
 
 // ─── Types ───────────────────────────────────────────────────
 
@@ -108,7 +110,7 @@ const ALL_SERVICES = [
 
 // ─── Component ───────────────────────────────────────────────
 
-export function WorkflowPanel({ locale }: { locale: string }) {
+export function WorkflowPanel({ locale, callbacks }: { locale: string; callbacks?: PanelRunCallbacks }) {
   const [steps,    setSteps]    = useState<PipelineStep[]>([]);
   const [running,  setRunning]  = useState(false);
   const [done,     setDone]     = useState(false);
@@ -130,15 +132,28 @@ export function WorkflowPanel({ locale }: { locale: string }) {
 
   const runPipeline = async () => {
     if (steps.length === 0) return;
+
+    const shellRun = beginPanelShellRun(callbacks, 'workflow', 'Pipeline Builder', 8);
     setRunning(true);
     setDone(false);
-    for (let i = 0; i < steps.length; i++) {
-      setSteps(prev => prev.map((s, j) => j === i ? { ...s, status: 'running' } : s));
-      await new Promise(r => setTimeout(r, 1200 + Math.random() * 800));
-      setSteps(prev => prev.map((s, j) => j === i ? { ...s, status: 'done', output: `Output from ${s.label} ready` } : s));
+    try {
+      for (let i = 0; i < steps.length; i++) {
+        setSteps(prev => prev.map((s, j) => j === i ? { ...s, status: 'running' } : s));
+        shellRun.progress(((i + 1) / (steps.length + 1)) * 100);
+        await new Promise(r => setTimeout(r, 1200 + Math.random() * 800));
+        setSteps(prev => prev.map((s, j) => j === i ? { ...s, status: 'done', output: `Output from ${s.label} ready` } : s));
+      }
+
+      const detail = `${steps.length} workflow steps completed`;
+      const outputText = steps.map((step, index) => `${index + 1}. ${step.label}`).join('\n');
+      shellRun.complete(detail, createTextPreview('Pipeline Builder', detail, outputText));
+      setDone(true);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Workflow execution failed';
+      shellRun.fail(message);
+    } finally {
+      setRunning(false);
     }
-    setRunning(false);
-    setDone(true);
   };
 
   const reset = () => { setSteps([]); setDone(false); setRunning(false); };
@@ -153,7 +168,7 @@ export function WorkflowPanel({ locale }: { locale: string }) {
             <span className="text-lg">⚡</span>
           </div>
           <div>
-            <h1 className="text-lg font-bold text-white">Workflow Builder</h1>
+            <h1 className="text-lg font-bold text-white">Pipeline Builder</h1>
             <p className="text-[12px] text-white/40">Chain services into automated AI pipelines</p>
           </div>
           {(steps.length > 0 || done) && (

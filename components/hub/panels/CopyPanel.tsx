@@ -13,6 +13,8 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAiPipeline } from '@/hooks/useAiPipeline';
+import { beginPanelShellRun, createTextPreview } from './panelShellBridge';
+import type { PanelRunCallbacks } from '@/types/dashboard';
 
 const FORMATS = [
   { id: 'headline',        label: 'Headline',        emoji: '📰' },
@@ -53,7 +55,7 @@ const LANGUAGES = [
   { id: 'ru', label: 'Russian' },
 ];
 
-export function CopyPanel({ locale }: { locale: string }) {
+export function CopyPanel({ locale, callbacks }: { locale: string; callbacks?: PanelRunCallbacks }) {
   const [format,   setFormat]   = useState('ad-copy');
   const [tone,     setTone]     = useState('professional');
   const [length,   setLength]   = useState('medium');
@@ -68,7 +70,7 @@ export function CopyPanel({ locale }: { locale: string }) {
 
   const handleGenerate = async () => {
     if (!prompt.trim()) return;
-    const ctx = [
+    const detail = [
       `Format: ${format}`,
       `Tone: ${tone}`,
       `Length: ${length}`,
@@ -77,7 +79,19 @@ export function CopyPanel({ locale }: { locale: string }) {
       audience  ? `Audience: ${audience}` : '',
       keywords  ? `Keywords: ${keywords}` : '',
     ].filter(Boolean).join(', ');
-    await run({ prompt, context: ctx });
+    const shellRun = beginPanelShellRun(callbacks, 'text', 'Text Generator', 12);
+
+    await run(
+      { prompt, context: detail },
+      {
+        onSuccess: (result) => {
+          shellRun.complete(detail, createTextPreview('Text Generator', detail, result.result));
+        },
+        onError: (message) => {
+          shellRun.fail(message);
+        },
+      },
+    );
   };
 
   const resultText = lastResult?.result ?? '';
@@ -99,7 +113,7 @@ export function CopyPanel({ locale }: { locale: string }) {
             <span className="text-lg">✍️</span>
           </div>
           <div>
-            <h1 className="text-lg font-bold text-white">Copy & Text AI</h1>
+            <h1 className="text-lg font-bold text-white">Text Generator</h1>
             <p className="text-[12px] text-white/40">Marketing copy, SEO content, and brand text</p>
           </div>
         </div>

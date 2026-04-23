@@ -9,11 +9,21 @@ type TelegramFileResponse = {
 
 type OpenAITranscriptionResponse = {
   text?: string;
+  segments?: Array<{
+    start?: number;
+    end?: number;
+    text?: string;
+  }>;
 };
 
 export type SttResult = {
   transcript: string;
   provider: 'openai-stt';
+  segments?: Array<{
+    startSec: number;
+    endSec: number;
+    text: string;
+  }>;
 };
 
 export function isAgentGVoiceEnabled(): boolean {
@@ -80,10 +90,12 @@ async function resolveTelegramFileUrl(botToken: string, fileId: string): Promise
   return `https://api.telegram.org/file/bot${botToken}/${filePath}`;
 }
 
-async function transcribeVoiceBuffer(input: {
+export async function transcribeAudioBuffer(input: {
   audioBuffer: Uint8Array;
   filename: string;
   mimeType?: string;
+  language?: string;
+  withSegments?: boolean;
 }): Promise<SttResult> {
   const openAIKey = getOpenAIKey();
   if (!openAIKey) {
@@ -95,7 +107,12 @@ async function transcribeVoiceBuffer(input: {
   const fileBuffer = Uint8Array.from(input.audioBuffer);
   form.append('file', new Blob([fileBuffer], { type: mimeType }), input.filename);
   form.append('model', getSttModel());
-  form.append('language', 'ka');
+  if (input.language?.trim()) {
+    form.append('language', input.language.trim());
+  }
+  if (input.withSegments) {
+    form.append('response_format', 'verbose_json');
+  }
 
   const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
     method: 'POST',
@@ -115,9 +132,30 @@ async function transcribeVoiceBuffer(input: {
     throw new Error('openai_transcription_failed');
   }
 
+  const segments = Array.isArray(payload?.segments)
+    ? payload.segments
+        .map((segment) => {
+          const text = String(segment?.text || '').trim();
+          const startSec = Number(segment?.start ?? 0);
+          const endSec = Number(segment?.end ?? startSec);
+
+          if (!text || !Number.isFinite(startSec) || !Number.isFinite(endSec) || endSec <= startSec) {
+            return null;
+          }
+
+          return {
+            startSec,
+            endSec,
+            text,
+          };
+        })
+        .filter((segment): segment is NonNullable<typeof segment> => Boolean(segment))
+    : undefined;
+
   return {
     transcript,
     provider: 'openai-stt',
+    ...(segments && segments.length > 0 ? { segments } : {}),
   };
 }
 
@@ -146,10 +184,11 @@ export async function transcribeTelegramVoice(input: {
       throw new Error('empty_voice_file');
     }
 
-    return transcribeVoiceBuffer({
+    return transcribeAudioBuffer({
       audioBuffer,
       filename: 'telegram-voice.ogg',
       mimeType: input.mimeType,
+      language: 'ka',
     });
   });
 }

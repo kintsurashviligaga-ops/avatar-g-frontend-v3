@@ -3,35 +3,40 @@
 /**
  * PremiumLanding.tsx
  * ==================
- * MyAvatar.ge world-class landing page — fully upgraded.
- * Flow: Hero → AI Studio CTA → Services → Stats → Avatar Creation → Workflow Builder → App Download → Footer
+ * Main landing flow.
+ * Flow: Hero → Trust → Value → Service overview → Use cases → Avatar creation → Workflow builder → CTA → Footer
  */
 
+import { useState } from 'react'
+
 import { HeroSection } from './HeroSection'
-import { ServicesSlider } from './ServicesSlider'
-import { AvatarShowcase } from './AvatarShowcase'
+import { AvatarBuilderWindow } from './AvatarBuilderWindow'
 import { WorkflowPipelineBuilder } from './WorkflowPipelineBuilder'
-import { AppDownloadSection } from './AppDownloadSection'
 import { LandingFooter } from './LandingFooter'
-import { StudioShowcase } from './StudioShowcase'
-import { PlatformStats } from './PlatformStats'
+import { TrustStrip } from './TrustStrip'
+import { ValueStrip } from './ValueStrip'
+import FeatureGrid from './FeatureGrid'
+import { UseCases } from './UseCases'
+import { LandingCTA } from './LandingCTA'
 
 export default function PremiumLanding() {
+  const [createdAvatar, setCreatedAvatar] = useState<string | null>(null)
+
   return (
     <div className="relative min-h-screen overflow-x-hidden" style={{ color: 'var(--color-text)' }}>
       <HeroSection />
       <Separator />
-      <StudioShowcase />
+      <TrustStrip />
+      <ValueStrip />
       <Separator />
-      <ServicesSlider />
+      <FeatureGrid />
+      <UseCases />
       <Separator />
-      <PlatformStats />
+      <AvatarBuilderWindow onAvatarCreated={setCreatedAvatar} />
       <Separator />
-      <AvatarShowcase locale="en" />
+      <WorkflowPipelineBuilder createdAvatar={createdAvatar} />
       <Separator />
-      <WorkflowPipelineBuilder createdAvatar={null} />
-      <Separator />
-      <AppDownloadSection />
+      <LandingCTA />
       <LandingFooter />
     </div>
   )

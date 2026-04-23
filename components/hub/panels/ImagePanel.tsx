@@ -13,6 +13,8 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAiPipeline } from '@/hooks/useAiPipeline';
+import { beginPanelShellRun, createTextPreview } from './panelShellBridge';
+import type { PanelRunCallbacks } from '@/types/dashboard';
 
 // ─── Config ───────────────────────────────────────────────────
 
@@ -54,7 +56,7 @@ const SAMPLE_OUTPUTS = ['from-blue-600 to-violet-700', 'from-orange-600 to-red-7
 
 // ─── Component ────────────────────────────────────────────────
 
-export function ImagePanel({ locale }: { locale: string }) {
+export function ImagePanel({ locale, callbacks }: { locale: string; callbacks?: PanelRunCallbacks }) {
   const [style,    setStyle]    = useState('photorealistic');
   const [ratio,    setRatio]    = useState('1:1');
   const [lighting, setLighting] = useState('studio');
@@ -69,8 +71,20 @@ export function ImagePanel({ locale }: { locale: string }) {
 
   const handleGenerate = async () => {
     if (!prompt.trim()) return;
-    const ctx = `Style: ${style}, Ratio: ${ratio}, Lighting: ${lighting}${negPrompt ? `, Negative: ${negPrompt}` : ''}`;
-    await run({ prompt, context: ctx });
+    const detail = `Style: ${style}, Ratio: ${ratio}, Lighting: ${lighting}${negPrompt ? `, Negative: ${negPrompt}` : ''}`;
+    const shellRun = beginPanelShellRun(callbacks, 'image', 'Image Creator', 14);
+
+    await run(
+      { prompt, context: detail },
+      {
+        onSuccess: (result) => {
+          shellRun.complete(detail, createTextPreview('Image Creator', detail, result.result));
+        },
+        onError: (message) => {
+          shellRun.fail(message);
+        },
+      },
+    );
   };
 
   const randomSeed = () => setSeed(String(Math.floor(Math.random() * 99999999)));

@@ -3,6 +3,18 @@ import { updateSession } from '@/lib/supabase/middleware';
 
 const SUPPORTED_LOCALES = ['ka', 'en', 'ru'];
 const DEFAULT_LOCALE = 'ka';
+const LOCALE_COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
+
+function getLocaleDashboardPath(locale: string) {
+  return `/${locale}/dashboard`;
+}
+
+function getPreferredLocale(request: NextRequest) {
+  const cookieLocale = request.cookies.get('NEXT_LOCALE')?.value;
+  return cookieLocale && SUPPORTED_LOCALES.includes(cookieLocale)
+    ? cookieLocale
+    : DEFAULT_LOCALE;
+}
 
 /**
  * Root middleware:
@@ -11,6 +23,7 @@ const DEFAULT_LOCALE = 'ka';
  */
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+  const preferredLocale = getPreferredLocale(request);
 
   // Skip locale redirect for API routes, static assets, auth callbacks, and files with extensions
   const isSkipped =
@@ -27,15 +40,60 @@ export async function middleware(request: NextRequest) {
     const segments = pathname.split('/').filter(Boolean);
     const firstSegment = segments[0] ?? '';
 
-    // If first segment is not a supported locale → redirect to /ka/...
+    if (pathname === '/') {
+      const url = request.nextUrl.clone();
+      url.pathname = getLocaleDashboardPath(preferredLocale);
+
+      const response = NextResponse.redirect(url);
+      response.cookies.set('NEXT_LOCALE', preferredLocale, {
+        path: '/',
+        maxAge: LOCALE_COOKIE_MAX_AGE,
+        sameSite: 'lax',
+      });
+      return response;
+    }
+
+    if (SUPPORTED_LOCALES.includes(firstSegment) && segments.length === 1) {
+      const url = request.nextUrl.clone();
+      url.pathname = getLocaleDashboardPath(firstSegment);
+
+      const response = NextResponse.redirect(url);
+      response.cookies.set('NEXT_LOCALE', firstSegment, {
+        path: '/',
+        maxAge: LOCALE_COOKIE_MAX_AGE,
+        sameSite: 'lax',
+      });
+      return response;
+    }
+
+    // If first segment is not a supported locale → redirect to /{preferredLocale}/...
     if (!SUPPORTED_LOCALES.includes(firstSegment)) {
       const url = request.nextUrl.clone();
-      url.pathname = `/${DEFAULT_LOCALE}${pathname === '/' ? '' : pathname}`;
-      return NextResponse.redirect(url);
+      url.pathname = `/${preferredLocale}${pathname === '/' ? '' : pathname}`;
+
+      const response = NextResponse.redirect(url);
+      response.cookies.set('NEXT_LOCALE', preferredLocale, {
+        path: '/',
+        maxAge: LOCALE_COOKIE_MAX_AGE,
+        sameSite: 'lax',
+      });
+      return response;
     }
   }
 
   const { response } = await updateSession(request);
+
+  const segments = pathname.split('/').filter(Boolean);
+  const activeLocale = segments[0] && SUPPORTED_LOCALES.includes(segments[0])
+    ? segments[0]
+    : preferredLocale;
+
+  response.cookies.set('NEXT_LOCALE', activeLocale, {
+    path: '/',
+    maxAge: LOCALE_COOKIE_MAX_AGE,
+    sameSite: 'lax',
+  });
+
   return response;
 }
 

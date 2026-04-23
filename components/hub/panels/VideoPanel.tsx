@@ -13,6 +13,8 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAiPipeline } from '@/hooks/useAiPipeline';
+import { beginPanelShellRun, createTextPreview } from './panelShellBridge';
+import type { PanelRunCallbacks } from '@/types/dashboard';
 
 const VIDEO_STYLES = [
   { id: 'cinematic',   label: 'Cinematic',    emoji: '🎬' },
@@ -42,7 +44,7 @@ const ASPECT_RATIOS = [
 
 type Scene = { id: string; prompt: string; duration: number; camera: string };
 
-export function VideoPanel({ locale }: { locale: string }) {
+export function VideoPanel({ locale, callbacks }: { locale: string; callbacks?: PanelRunCallbacks }) {
   const [videoStyle, setVideoStyle] = useState('cinematic');
   const [camera,     setCamera]     = useState('static');
   const [ratio,      setRatio]      = useState('16:9');
@@ -59,7 +61,19 @@ export function VideoPanel({ locale }: { locale: string }) {
     if (!prompt.trim() && tab === 'single') return;
     const ctx = `Video Style: ${videoStyle}, Camera: ${camera}, Ratio: ${ratio}, Duration: ${duration}s`;
     const p = tab === 'single' ? prompt : scenes.map((s, i) => `Scene ${i + 1}: ${s.prompt}`).join('\n');
-    await run({ prompt: p, context: ctx });
+    const shellRun = beginPanelShellRun(callbacks, 'video', 'Video Studio', 16);
+
+    await run(
+      { prompt: p, context: ctx },
+      {
+        onSuccess: (result) => {
+          shellRun.complete(ctx, createTextPreview('Video Studio', ctx, result.result));
+        },
+        onError: (message) => {
+          shellRun.fail(message);
+        },
+      },
+    );
   };
 
   const addScene = () => setScenes(s => [...s, { id: Date.now().toString(), prompt: '', duration: 5, camera: 'static' }]);

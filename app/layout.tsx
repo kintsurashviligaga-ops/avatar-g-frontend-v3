@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { cookies } from 'next/headers';
 import { Inter } from "next/font/google";
 import "./globals.css";
 import Providers from "@/app/providers";
@@ -17,6 +18,8 @@ const metadataBaseUrl =
 	process.env.NEXT_PUBLIC_SITE_URL ||
 	process.env.NEXT_PUBLIC_APP_URL ||
 	"https://myavatar.ge";
+
+const SUPPORTED_LOCALES = new Set(['ka', 'en', 'ru']);
 
 export const viewport: Viewport = {
 	width: 'device-width',
@@ -70,6 +73,9 @@ export default async function RootLayout({
 }: Readonly<{
 	children: React.ReactNode;
 }>) {
+	const localeCookie = cookies().get('NEXT_LOCALE')?.value;
+	const documentLocale = localeCookie && SUPPORTED_LOCALES.has(localeCookie) ? localeCookie : 'ka';
+
 	try {
 		logStartupEnvValidation();
 	} catch {
@@ -77,7 +83,7 @@ export default async function RootLayout({
 	}
 
 	return (
-		<html lang="ka" data-theme="dark" suppressHydrationWarning className={inter.variable}>
+		<html lang={documentLocale} data-theme="dark" suppressHydrationWarning className={inter.variable}>
 			<body className="font-sans antialiased">
 				<Providers>
 					<AppShell>

@@ -13,6 +13,8 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAiPipeline } from '@/hooks/useAiPipeline';
+import { beginPanelShellRun, createTextPreview } from './panelShellBridge';
+import type { PanelRunCallbacks } from '@/types/dashboard';
 
 const GENRES = [
   { id: 'electronic',  label: 'Electronic',  emoji: '⚡' },
@@ -63,7 +65,7 @@ const STRUCTURES = [
 // Fake waveform bars
 const BARS = Array.from({ length: 40 }, () => 20 + Math.random() * 80);
 
-export function MusicPanel({ locale }: { locale: string }) {
+export function MusicPanel({ locale, callbacks }: { locale: string; callbacks?: PanelRunCallbacks }) {
   const [genre,       setGenre]       = useState('electronic');
   const [mood,        setMood]        = useState('energetic');
   const [instruments, setInstruments] = useState<string[]>(['synth', 'drums']);
@@ -80,8 +82,20 @@ export function MusicPanel({ locale }: { locale: string }) {
 
   const handleGenerate = async () => {
     const p = prompt.trim() || `${mood} ${genre} track`;
-    const ctx = `Genre: ${genre}, Mood: ${mood}, BPM: ${bpm}, Instruments: ${instruments.join(', ')}, Structure: ${structure}, Duration: ${duration}s`;
-    await run({ prompt: p, context: ctx });
+    const detail = `Genre: ${genre}, Mood: ${mood}, BPM: ${bpm}, Instruments: ${instruments.join(', ')}, Structure: ${structure}, Duration: ${duration}s`;
+    const shellRun = beginPanelShellRun(callbacks, 'music', 'Music Studio', 15);
+
+    await run(
+      { prompt: p, context: detail },
+      {
+        onSuccess: (result) => {
+          shellRun.complete(detail, createTextPreview('Music Studio', detail, result.result));
+        },
+        onError: (message) => {
+          shellRun.fail(message);
+        },
+      },
+    );
   };
 
   return (

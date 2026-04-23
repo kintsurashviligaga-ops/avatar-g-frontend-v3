@@ -10,12 +10,15 @@ import { PageEnvironment } from './ui/PageEnvironment';
 export function AppShell({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const pathname = usePathname();
-  const isFullscreenChat = !!pathname && /\/services\/[a-z0-9-]+\/?$/.test(pathname);
+  const isImmersiveWorkspace = !!pathname && (
+    /\/services\/[a-z0-9-]+\/?$/.test(pathname) ||
+    /\/(dashboard|hub|workspace)\/?$/.test(pathname)
+  );
 
   return (
     <div className='relative min-h-screen flex flex-col' style={{ color: 'var(--color-text)', isolation: 'isolate' }}>
       {/* Page-aware 4D AI environment — adapts mood per route */}
-      <PageEnvironment reduced={isFullscreenChat} />
+      <PageEnvironment reduced={isImmersiveWorkspace} />
       {/* Skip to content — accessibility */}
       <a
         href="#main-content"
@@ -24,16 +27,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       >
         Skip to content
       </a>
-      {!isFullscreenChat && <TopNavbar onMenuToggle={() => setSidebarOpen(v => !v)} menuOpen={sidebarOpen} />}
-      {!isFullscreenChat && <SidebarMenu open={sidebarOpen} onClose={() => setSidebarOpen(false)} />}
-      <main id="main-content" className="relative flex-1 w-full" style={isFullscreenChat ? { zIndex: 2 } : { paddingTop: 'calc(4rem + env(safe-area-inset-top, 0px))', zIndex: 2 }}>
+      {!isImmersiveWorkspace && <TopNavbar onMenuToggle={() => setSidebarOpen(v => !v)} menuOpen={sidebarOpen} />}
+      {!isImmersiveWorkspace && <SidebarMenu open={sidebarOpen} onClose={() => setSidebarOpen(false)} />}
+      <main id="main-content" className="relative flex-1 w-full" style={isImmersiveWorkspace ? { zIndex: 2 } : { paddingTop: 'calc(4rem + env(safe-area-inset-top, 0px))', zIndex: 2 }}>
         <ClientErrorBoundary>
           {children}
         </ClientErrorBoundary>
       </main>
-      {!isFullscreenChat && <BottomNavigation />}
-      {!isFullscreenChat && <FloatingChatButton />}
-      {!isFullscreenChat && <div className="h-16 md:hidden shrink-0" />}
+      {!isImmersiveWorkspace && <BottomNavigation />}
+      {!isImmersiveWorkspace && <FloatingChatButton />}
+      {!isImmersiveWorkspace && <div className="h-16 md:hidden shrink-0" />}
     </div>
   );
 }

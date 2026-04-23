@@ -39,7 +39,7 @@ export async function POST(request: NextRequest) {
         .insert({
           user_id: user.id,
           goal: payload.data.goal,
-          status: 'processing',
+          status: 'queued',
           plan,
           results: null,
         })

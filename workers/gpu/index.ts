@@ -9,6 +9,7 @@ import { claimNextJob, processJob, markJobFailed } from '../shared/queue'
 import { startHeartbeat } from '../shared/heartbeat'
 import { structuredLog } from '../shared/logger'
 import type { WorkerConfig, AgentResult } from '../shared/types'
+import { editingAgent } from './agents/editingAgent'
 
 // ── Agent Handlers ──────────────────────────────────────
 const agentHandlers: Record<
@@ -30,7 +31,7 @@ const agentHandlers: Record<
   },
   'editing-agent': async (payload) => {
     structuredLog('info', 'editing_agent_start', { payload })
-    return { success: true, data: { output: 'Editing pipeline complete' } }
+    return editingAgent(payload)
   },
   'music-agent': async (payload) => {
     structuredLog('info', 'music_agent_start', { payload })

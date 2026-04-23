@@ -114,5 +114,13 @@ export interface EditingJobResult {
     steps_completed: string[]
     processing_time_ms: number
     gpu_utilized: boolean
+    processing_notes?: string[]
+    progress?: Record<string, unknown>
+    subtitle_mode?: string | null
+    subtitle_transcript?: string | null
+    subtitle_segment_count?: number
+    lip_sync_applied?: boolean
+    lip_sync_model?: string | null
+    toolchain?: Record<string, unknown> | null
   }
 }

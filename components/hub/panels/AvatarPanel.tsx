@@ -15,6 +15,8 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAiPipeline } from '@/hooks/useAiPipeline';
+import { beginPanelShellRun, createTextPreview } from './panelShellBridge';
+import type { PanelRunCallbacks } from '@/types/dashboard';
 
 // ─── Options ───────────────────────────────────────────────────
 
@@ -57,7 +59,7 @@ const SAMPLE_OUTPUTS = [
 
 // ─── Component ────────────────────────────────────────────────
 
-export function AvatarPanel({ locale }: { locale: string }) {
+export function AvatarPanel({ locale, callbacks }: { locale: string; callbacks?: PanelRunCallbacks }) {
   const [style,      setStyle]      = useState('realistic');
   const [framing,    setFraming]    = useState('portrait');
   const [bg,         setBg]         = useState('studio');
@@ -69,7 +71,20 @@ export function AvatarPanel({ locale }: { locale: string }) {
 
   const handleGenerate = async () => {
     if (!prompt.trim()) return;
-    await run({ prompt: `${prompt} — Style: ${style}, Framing: ${framing}, Background: ${bg}` });
+    const detail = `Style: ${style}, Framing: ${framing}, Background: ${bg}`;
+    const shellRun = beginPanelShellRun(callbacks, 'avatar', 'Avatar Studio', 18);
+
+    await run(
+      { prompt: `${prompt} — ${detail}` },
+      {
+        onSuccess: (result) => {
+          shellRun.complete(detail, createTextPreview('Avatar Studio', detail, result.result));
+        },
+        onError: (message) => {
+          shellRun.fail(message);
+        },
+      },
+    );
   };
 
   const copyPrompt = (p: string, idx: number) => {
