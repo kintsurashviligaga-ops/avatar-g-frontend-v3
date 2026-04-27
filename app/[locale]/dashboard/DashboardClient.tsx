@@ -1,11 +1,11 @@
 'use client'
 
-import { OneWindowWorkspace } from '@/components/dashboard/OneWindowWorkspace'
+import FullChatWorkspace from '@/components/dashboard/FullChatWorkspace'
 
 interface DashboardClientProps {
   locale: string
 }
 
 export default function DashboardClient({ locale }: DashboardClientProps) {
-  return <OneWindowWorkspace locale={locale} />
+  return <FullChatWorkspace locale={locale} />
 }
