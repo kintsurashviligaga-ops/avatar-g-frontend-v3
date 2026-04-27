@@ -3,13 +3,19 @@ import { createClient } from '@supabase/supabase-js';
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-if (!supabaseUrl || !supabaseAnonKey) {
-  throw new Error('Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY');
-}
+const isConfigured =
+  !!supabaseUrl &&
+  !!supabaseAnonKey &&
+  !supabaseUrl.includes('placeholder') &&
+  !supabaseAnonKey.includes('placeholder');
 
 let browserClient: ReturnType<typeof createClient> | null = null;
 
 function getOrCreateBrowserClient() {
+  if (!isConfigured) {
+    return null as unknown as ReturnType<typeof createClient>;
+  }
+
   if (browserClient) {
     return browserClient;
   }
@@ -34,9 +40,13 @@ function getOrCreateBrowserClient() {
 
 export const supabase = getOrCreateBrowserClient();
 
+export function isSupabaseConfigured(): boolean {
+  return isConfigured;
+}
+
 /**
- * Returns a new Supabase client instance for browser usage
- * Matches legacy createBrowserClient API for compatibility
+ * Returns a new Supabase client instance for browser usage.
+ * Returns null when Supabase is not configured (demo mode).
  */
 export function createBrowserClient() {
   return getOrCreateBrowserClient();

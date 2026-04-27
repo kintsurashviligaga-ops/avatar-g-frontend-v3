@@ -3,7 +3,7 @@
 import { useState, useCallback } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { createBrowserClient } from '@/lib/supabase/browser';
+import { createBrowserClient, isSupabaseConfigured } from '@/lib/supabase/browser';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -115,7 +115,33 @@ function SpinnerIcon() {
 
 // ─── Main Component ──────────────────────────────────────────────────────────
 
+function DemoScreen({ locale }: { locale: string }) {
+  return (
+    <div className="min-h-screen flex items-center justify-center px-4" style={{ background: 'var(--color-bg)' }}>
+      <div className="max-w-md w-full text-center space-y-6 rounded-3xl border border-white/10 bg-white/5 p-10 backdrop-blur-xl">
+        <div className="text-4xl">🚀</div>
+        <h2 className="text-2xl font-bold text-white">MyAvatar.ge</h2>
+        <p className="text-slate-300">Running in demo mode — full auth requires Supabase configuration.</p>
+        <a
+          href={`/${locale}/dashboard`}
+          className="block w-full rounded-2xl py-3 text-center font-semibold text-white transition-all"
+          style={{ background: 'var(--color-accent)' }}
+        >
+          Continue to Dashboard →
+        </a>
+      </div>
+    </div>
+  );
+}
+
 export default function AuthScreen({ mode: initialMode, locale, redirectTo = '/' }: AuthScreenProps) {
+  if (!isSupabaseConfigured()) {
+    return <DemoScreen locale={locale} />;
+  }
+  return <AuthScreenInner mode={initialMode} locale={locale} redirectTo={redirectTo} />;
+}
+
+function AuthScreenInner({ mode: initialMode, locale, redirectTo = '/' }: AuthScreenProps) {
   const [mode, setMode] = useState<AuthMode>(initialMode);
   const [loading, setLoading] = useState(false);
   const [loadingProvider, setLoadingProvider] = useState<string | null>(null);

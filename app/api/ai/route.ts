@@ -47,7 +47,7 @@ import { randomUUID } from 'crypto';
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
-const ANTHROPIC_MODEL   = 'claude-3-5-sonnet-20240620';
+const ANTHROPIC_MODEL   = 'claude-sonnet-4-5';
 const ANTHROPIC_VERSION = '2023-06-01';
 
 const MAX_PROMPT_LENGTH   = 4000;
@@ -213,12 +213,20 @@ export const POST = compose()
   .handle(async (req: NextRequest) => {
     const startMs = Date.now();
 
-    // 1. Auth — requires valid session
-    let user: Awaited<ReturnType<typeof requireAuthenticatedUser>>;
-    try {
-      user = await requireAuthenticatedUser(req);
-    } catch {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    // 1. Auth — requires valid session (bypassed in demo mode when Supabase is not configured)
+    const supabaseConfigured =
+      !!process.env.NEXT_PUBLIC_SUPABASE_URL &&
+      !process.env.NEXT_PUBLIC_SUPABASE_URL.includes('placeholder');
+
+    let user: Awaited<ReturnType<typeof requireAuthenticatedUser>> | { id: string; email?: string };
+    if (supabaseConfigured) {
+      try {
+        user = await requireAuthenticatedUser(req);
+      } catch {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      }
+    } else {
+      user = { id: 'demo-user', email: 'demo@myavatar.ge' };
     }
 
     // 2. Parse & validate body
@@ -267,33 +275,33 @@ export const POST = compose()
       clearTimeout(timeout);
     }
 
-    // 6. Deduct credits (transaction-safe, idempotency-keyed)
-    const idempotencyKey = `ai-${body.agent}-${user.id}-${randomUUID()}`;
-    let newBalance = 0;
+    // 6. Deduct credits (skip in demo mode)
+    let newBalance = 1000;
 
-    try {
-      const deduction = await deductCreditsTransaction({
-        userId:         user.id,
-        amount:         creditCost,
-        jobId:          idempotencyKey,
-        agentId:        `ai_${body.agent}`,
-        reason:         `AI ${body.agent} generation`,
-        idempotencyKey,
-      });
-      newBalance = deduction.newBalance;
-    } catch (err) {
-      // Cascade billing errors with appropriate status codes
-      if (err instanceof Error) {
-        const msg = err.message.toLowerCase();
-        if (msg.includes('insufficient') || msg.includes('balance')) {
-          return NextResponse.json(
-            { error: 'Insufficient credits', required: creditCost },
-            { status: 402 }
-          );
+    if (supabaseConfigured) {
+      const idempotencyKey = `ai-${body.agent}-${user.id}-${randomUUID()}`;
+      try {
+        const deduction = await deductCreditsTransaction({
+          userId:         user.id,
+          amount:         creditCost,
+          jobId:          idempotencyKey,
+          agentId:        `ai_${body.agent}`,
+          reason:         `AI ${body.agent} generation`,
+          idempotencyKey,
+        });
+        newBalance = deduction.newBalance;
+      } catch (err) {
+        if (err instanceof Error) {
+          const msg = err.message.toLowerCase();
+          if (msg.includes('insufficient') || msg.includes('balance')) {
+            return NextResponse.json(
+              { error: 'Insufficient credits', required: creditCost },
+              { status: 402 }
+            );
+          }
         }
+        console.error('[/api/ai] Credit deduction failed after AI call:', err);
       }
-      // If credit deduction fails after a successful AI call, log but don't fail the user
-      console.error('[/api/ai] Credit deduction failed after AI call:', err);
     }
 
     const executionMs = Date.now() - startMs;

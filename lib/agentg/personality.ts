@@ -1,5 +1,5 @@
 import 'server-only';
-import OpenAI from 'openai';
+import Anthropic from '@anthropic-ai/sdk';
 
 export type AgentGChannel = 'web' | 'telegram';
 export type AgentGLocale = 'ka' | 'en' | 'ru';
@@ -61,22 +61,7 @@ type SessionMemory = {
   lastDetectedEmotion: DetectedEmotion;
 };
 
-type OpenAIChatClient = {
-  chat: {
-    completions: {
-      create: (...args: unknown[]) => Promise<{
-        choices?: Array<{
-          message?: {
-            content?: string | null;
-          };
-        }>;
-      }>;
-    };
-  };
-};
-
-const MODEL = 'gpt-4o-mini';
-const OPENAI_TIMEOUT_MS = 25_000;
+const MODEL = 'claude-sonnet-4-5';
 const MAX_REPLY_CHARS = 1500;
 const MAX_RETRIES = 2;
 
@@ -88,7 +73,7 @@ const FALLBACK_BY_LOCALE: Record<AgentGLocale, string> = {
   ru: 'Дай мне немного времени, и я скоро вернусь с ответом 🙌',
 };
 
-let cachedClient: OpenAIChatClient | null = null;
+let cachedClient: Anthropic | null = null;
 
 function normalizeLocale(locale: string | undefined): AgentGLocale {
   if (locale === 'en' || locale === 'ru') return locale;
@@ -240,51 +225,14 @@ function buildSystemPrompt(params: {
   ].filter(Boolean).join('\n');
 }
 
-function resolveOpenAIConstructor(): new (options: { apiKey: string }) => OpenAIChatClient {
-  const candidate = OpenAI as unknown as {
-    default?: unknown;
-    OpenAI?: unknown;
-  };
-
-  const ctor = [
-    OpenAI,
-    candidate.default,
-    candidate.OpenAI,
-    (candidate.default as { OpenAI?: unknown } | undefined)?.OpenAI,
-  ].find((value) => typeof value === 'function');
-
-  if (!ctor) {
-    throw new Error('OpenAI constructor is unavailable');
-  }
-
-  return ctor as new (options: { apiKey: string }) => OpenAIChatClient;
-}
-
-function createDefaultClient(apiKey: string): OpenAIChatClient {
-  const OpenAIConstructor = resolveOpenAIConstructor();
-  return new OpenAIConstructor({ apiKey });
-}
-
-let openAIClientFactory: (apiKey: string) => OpenAIChatClient = createDefaultClient;
-
-export function __setPersonalityOpenAIClientFactoryForTests(factory: (apiKey: string) => OpenAIChatClient): void {
-  openAIClientFactory = factory;
-  cachedClient = null;
-}
-
-export function __resetPersonalityOpenAIClientFactoryForTests(): void {
-  openAIClientFactory = createDefaultClient;
-  cachedClient = null;
-}
-
-function getOpenAIClient(): OpenAIChatClient {
-  const apiKey = (process.env.OPENAI_API_KEY || '').trim();
+function getAnthropicClient(): Anthropic {
+  const apiKey = (process.env.ANTHROPIC_API_KEY || '').trim();
   if (!apiKey) {
-    throw new Error('OPENAI_API_KEY is missing in environment variables');
+    throw new Error('ANTHROPIC_API_KEY is missing in environment variables');
   }
 
   if (!cachedClient) {
-    cachedClient = openAIClientFactory(apiKey);
+    cachedClient = new Anthropic({ apiKey });
   }
 
   return cachedClient;
@@ -304,16 +252,12 @@ async function generateWithRetry(args: {
   systemPrompt: string;
   history?: ConversationTurn[];
 }): Promise<string> {
-  const client = getOpenAIClient();
+  const client = getAnthropicClient();
   let attempt = 0;
   let lastError: unknown = null;
 
-  // Build messages array with conversation history
-  const messages: Array<{ role: string; content: string }> = [
-    { role: 'system', content: args.systemPrompt },
-  ];
+  const messages: Array<{ role: 'user' | 'assistant'; content: string }> = [];
 
-  // Include last few turns for context (max 10 turns to control token usage)
   if (args.history && args.history.length > 0) {
     const recentHistory = args.history.slice(-10);
     for (const turn of recentHistory) {
@@ -321,35 +265,28 @@ async function generateWithRetry(args: {
     }
   }
 
-  // Always add the current user message last
   messages.push({ role: 'user', content: args.userText });
 
   while (attempt < MAX_RETRIES) {
     attempt += 1;
     try {
-      const completion = await client.chat.completions.create(
-        {
-          model: MODEL,
-          temperature: 0.55,
-          messages,
-        },
-        {
-          timeout: OPENAI_TIMEOUT_MS,
-        }
-      );
+      const completion = await client.messages.create({
+        model: MODEL,
+        max_tokens: 600,
+        temperature: 0.55,
+        system: args.systemPrompt,
+        messages,
+      });
 
-      const text = completion.choices?.[0]?.message?.content;
-      if (!text || typeof text !== 'string') {
-        throw new Error('Empty model response');
-      }
+      const block = completion.content[0];
+      const text = block?.type === 'text' ? block.text : null;
+      if (!text) throw new Error('Empty model response');
 
       return trimReply(sanitizeOwnerNaming(text));
     } catch (error) {
-      console.error('[AgentG.Personality] OpenAI attempt', attempt, 'failed:', error instanceof Error ? error.message : error);
+      console.error('[AgentG.Personality] Anthropic attempt', attempt, 'failed:', error instanceof Error ? error.message : error);
       lastError = error;
-      if (attempt >= MAX_RETRIES) {
-        break;
-      }
+      if (attempt >= MAX_RETRIES) break;
     }
   }
 
