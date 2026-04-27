@@ -42,7 +42,7 @@ export async function middleware(request: NextRequest) {
 
     if (pathname === '/') {
       const url = request.nextUrl.clone();
-      url.pathname = `/${preferredLocale}`;
+      url.pathname = `/${preferredLocale}/dashboard`;
 
       const response = NextResponse.redirect(url);
       response.cookies.set('NEXT_LOCALE', preferredLocale, {
@@ -53,7 +53,12 @@ export async function middleware(request: NextRequest) {
       return response;
     }
 
-    // Allow locale root (e.g. /en, /ka) to render the landing page — no redirect
+    // Redirect locale root (e.g. /en, /ka) straight to dashboard
+    if (segments.length === 1 && SUPPORTED_LOCALES.includes(firstSegment)) {
+      const url = request.nextUrl.clone();
+      url.pathname = `/${firstSegment}/dashboard`;
+      return NextResponse.redirect(url);
+    }
 
     // If first segment is not a supported locale → redirect to /{preferredLocale}/...
     if (!SUPPORTED_LOCALES.includes(firstSegment)) {

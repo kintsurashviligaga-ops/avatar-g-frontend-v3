@@ -1,4 +1,4 @@
-import LandingPageClient from '@/components/landing/LandingPageClient';
+import { redirect } from 'next/navigation';
 
 type LocaleRootPageProps = {
   params: {
@@ -6,6 +6,6 @@ type LocaleRootPageProps = {
   };
 };
 
-export default function LocaleRootPage({ params: _params }: LocaleRootPageProps) {
-  return <LandingPageClient />;
+export default function LocaleRootPage({ params }: LocaleRootPageProps) {
+  redirect(`/${params.locale}/dashboard`);
 }
