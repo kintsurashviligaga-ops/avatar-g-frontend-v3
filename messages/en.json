@@ -908,5 +908,28 @@
     "routingTo": "Routing to",
     "jobCreated": "Job created",
     "welcome": "Hello! I am Agent G — your AI orchestrator. What would you like to create today?"
+  },
+  "intro": {
+    "tagline": "Artificial Intelligence · At Your Service",
+    "loading": "Loading..."
+  },
+  "commandBar": {
+    "placeholder": "Search services...",
+    "noResults": "No results found",
+    "allServices": "All Services",
+    "shortcut": "⌘K"
+  },
+  "chat": {
+    "newChat": "New Chat",
+    "services": "Services",
+    "send": "Send",
+    "stop": "Stop",
+    "attach": "Attach file",
+    "voice": "Voice input",
+    "copy": "Copy",
+    "copied": "Copied",
+    "typing": "Thinking...",
+    "disclaimer": "AI responses may contain errors",
+    "shiftEnter": "Shift+Enter for new line"
   }
 }

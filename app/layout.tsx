@@ -1,6 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { cookies } from 'next/headers';
-import { Inter } from "next/font/google";
+import { Inter, Syne, DM_Sans } from "next/font/google";
 import "./globals.css";
 import Providers from "@/app/providers";
 import { AppShell } from "@/components/AppShell";
@@ -10,6 +10,20 @@ const inter = Inter({
 	subsets: ["latin", "cyrillic"],
 	variable: "--font-ui",
 	display: "swap",
+});
+
+const syne = Syne({
+	subsets: ["latin"],
+	variable: "--font-syne",
+	display: "swap",
+	weight: ["400", "600", "700", "800"],
+});
+
+const dmSans = DM_Sans({
+	subsets: ["latin"],
+	variable: "--font-dm",
+	display: "swap",
+	weight: ["300", "400", "500", "600", "700"],
 });
 
 const metadataBaseUrl =
@@ -83,7 +97,7 @@ export default async function RootLayout({
 	}
 
 	return (
-		<html lang={documentLocale} data-theme="dark" suppressHydrationWarning className={inter.variable}>
+		<html lang={documentLocale} data-theme="dark" suppressHydrationWarning className={`${inter.variable} ${syne.variable} ${dmSans.variable}`}>
 			<body className="font-sans antialiased">
 				<Providers>
 					<AppShell>

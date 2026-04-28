@@ -11,6 +11,9 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import IntroOverlay from '@/components/intro/IntroOverlay';
+import { CommandBar } from '@/components/dashboard/CommandBar';
+import CursorGlow from '@/components/ui/CursorGlow';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -620,6 +623,9 @@ export default function FullChatWorkspace({ locale = 'ka' }: Props) {
   const hasMessages = sessionMessages.length > 0;
 
   return (
+    <>
+      <IntroOverlay />
+      <CursorGlow />
     <div
       className="flex flex-col h-screen w-full overflow-hidden"
       style={{ background: 'linear-gradient(180deg, #0d0d1a 0%, #080810 100%)' }}
@@ -663,6 +669,7 @@ export default function FullChatWorkspace({ locale = 'ka' }: Props) {
 
         {/* Right actions */}
         <div className="flex items-center gap-1.5 flex-shrink-0">
+          <CommandBar onServiceSelect={handleServiceChange} />
           {hasMessages && (
             <button
               onClick={handleNewChat}
@@ -673,18 +680,6 @@ export default function FullChatWorkspace({ locale = 'ka' }: Props) {
               <span className="hidden sm:inline">New</span>
             </button>
           )}
-          <button
-            onClick={() => setDrawerOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium transition-all"
-            style={{
-              background: `${activeService.color}18`,
-              border: `1px solid ${activeService.color}35`,
-              color: activeService.color,
-            }}
-          >
-            <Globe className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Services</span>
-          </button>
         </div>
       </header>
 
@@ -818,5 +813,6 @@ export default function FullChatWorkspace({ locale = 'ka' }: Props) {
         </p>
       </footer>
     </div>
+    </>
   );
 }

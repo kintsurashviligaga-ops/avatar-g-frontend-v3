@@ -9,8 +9,10 @@ const config: Config = {
   theme: {
     extend: {
       fontFamily: {
-        sans: ['var(--font-ui)', 'Noto Sans Georgian', 'Inter', 'system-ui', 'sans-serif'],
-        display: ['var(--font-ui)', 'Inter', 'system-ui', 'sans-serif'],
+        sans: ['var(--font-dm)', 'var(--font-ui)', 'Noto Sans Georgian', 'Inter', 'system-ui', 'sans-serif'],
+        display: ['var(--font-syne)', 'var(--font-ui)', 'Inter', 'system-ui', 'sans-serif'],
+        syne: ['var(--font-syne)', 'system-ui', 'sans-serif'],
+        dm: ['var(--font-dm)', 'system-ui', 'sans-serif'],
       },
       colors: {
         'app-bg': 'rgb(var(--app-bg) / <alpha-value>)',
