@@ -1,77 +1,27 @@
 'use client'
 
-import { useEffect, useRef, useState, useCallback } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Search, X, Bot, UserCircle2, Video, ImageIcon, Music2, FileText,
-  Scissors, Camera, Eye, Wand2, Mic2, Workflow, Briefcase, ShoppingCart,
-  Code2, Plane, Gamepad2, Sofa, Zap, type LucideIcon } from 'lucide-react'
-import { cn } from '@/lib/utils'
-
-// ─── Command catalogue ────────────────────────────────────────────────────────
-
-interface Cmd {
-  id: string
-  label: string
-  description: string
-  icon: LucideIcon
-  color: string
-  keywords: string[]
-  action: () => void
-}
-
-function buildCommands(onSelect: (id: string) => void): Cmd[] {
-  const svc = (id: string, label: string, desc: string, icon: LucideIcon, color: string, kw: string[]) =>
-    ({ id, label, description: desc, icon, color, keywords: [id, label.toLowerCase(), ...kw], action: () => onSelect(id) })
-
-  return [
-    svc('agent-g',  'Agent G',              'AI ორკესტრატორი',        Bot,          '#6366f1', ['ai', 'chat', 'assistant']),
-    svc('avatar',   'Avatar Studio',        'ავატარების გენერაცია',   UserCircle2,  '#8b5cf6', ['avatar', 'profile']),
-    svc('video',    'Video Generation',     'ვიდეო სკრიპტები',        Video,        '#ef4444', ['video', 'reel']),
-    svc('image',    'Image Generation',     'AI სურათები',             ImageIcon,    '#f59e0b', ['image', 'photo', 'art']),
-    svc('music',    'Music Production',     'AI მუსიკა',               Music2,       '#10b981', ['music', 'audio', 'beat']),
-    svc('copy',     'Text & Copy',          'მარკეტინგული ტექსტი',    FileText,     '#06b6d4', ['copy', 'text', 'seo']),
-    svc('photo',    'Photo Enhancement',    'ფოტოს გაუმჯობესება',     Camera,       '#ec4899', ['photo', 'enhance']),
-    svc('visual',   'Visual Intelligence', 'ვიზუალური ანალიზი',      Eye,          '#14b8a6', ['visual', 'analyze']),
-    svc('prompt',   'Prompt Engineering',  'AI პრომფტები',            Wand2,        '#a855f7', ['prompt', 'engineering']),
-    svc('media',    'Media Production',    'მედია პროდუქცია',         Mic2,         '#f97316', ['media', 'podcast']),
-    svc('workflow', 'Workflow Builder',    'ავტომატიზაცია',           Workflow,     '#84cc16', ['workflow', 'automation']),
-    svc('business', 'Business Intelligence','ბიზნეს ანალიზი',         Briefcase,    '#3b82f6', ['business', 'analytics']),
-    svc('shop',     'Digital Shop',        'ციფრული მაღაზია',        ShoppingCart,  '#f43f5e', ['shop', 'ecommerce']),
-    svc('code',     'Software Studio',     'კოდის გენერაცია',        Code2,         '#22c55e', ['code', 'software', 'dev']),
-    svc('tourism',  'Tourism Intelligence','ტურიზმი',                 Plane,         '#0ea5e9', ['tourism', 'travel']),
-    svc('game',     'Game Creator',        'თამაშის დიზაინი',        Gamepad2,      '#d946ef', ['game', 'design']),
-    svc('interior', 'Interior Designer',   'ინტერიერის დიზაინი',     Sofa,          '#fb923c', ['interior', 'design']),
-    svc('video-edit','Video Editing',      'ვიდეო მონტაჟი',          Scissors,      '#e11d48', ['edit', 'post']),
-  ]
-}
-
-// ─── Props ────────────────────────────────────────────────────────────────────
+import { Search, X, Zap } from 'lucide-react'
+import { UI_SERVICES } from '@/lib/services/uiCatalog'
 
 interface CommandBarProps {
   onServiceSelect?: (serviceId: string) => void
 }
 
-// ─── Component ────────────────────────────────────────────────────────────────
-
 export function CommandBar({ onServiceSelect }: CommandBarProps) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
-
-  const commands = buildCommands((id) => {
-    onServiceSelect?.(id)
-    setOpen(false)
-    setQuery('')
-  })
+  const focusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const filtered = query.trim()
-    ? commands.filter(c =>
-        c.keywords.some(k => k.includes(query.toLowerCase())) ||
-        c.label.toLowerCase().includes(query.toLowerCase())
+    ? UI_SERVICES.filter(s =>
+        s.keywords.some(k => k.includes(query.toLowerCase())) ||
+        s.label.toLowerCase().includes(query.toLowerCase())
       )
-    : commands
+    : UI_SERVICES
 
-  // ⌘K / Ctrl+K shortcut
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
@@ -84,10 +34,20 @@ export function CommandBar({ onServiceSelect }: CommandBarProps) {
     return () => window.removeEventListener('keydown', handler)
   }, [])
 
-  // Focus input when opened
   useEffect(() => {
-    if (open) setTimeout(() => inputRef.current?.focus(), 50)
+    if (open) {
+      focusTimerRef.current = setTimeout(() => inputRef.current?.focus(), 50)
+    }
+    return () => {
+      if (focusTimerRef.current) clearTimeout(focusTimerRef.current)
+    }
   }, [open])
+
+  const handleSelect = (id: string) => {
+    onServiceSelect?.(id)
+    setOpen(false)
+    setQuery('')
+  }
 
   return (
     <>
@@ -113,7 +73,6 @@ export function CommandBar({ onServiceSelect }: CommandBarProps) {
       <AnimatePresence>
         {open && (
           <>
-            {/* Backdrop */}
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -123,7 +82,6 @@ export function CommandBar({ onServiceSelect }: CommandBarProps) {
               onClick={() => setOpen(false)}
             />
 
-            {/* Panel */}
             <motion.div
               initial={{ opacity: 0, scale: 0.95, y: -12 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -169,23 +127,23 @@ export function CommandBar({ onServiceSelect }: CommandBarProps) {
                       </p>
                     )}
                     <div className="px-2 space-y-0.5">
-                      {filtered.map(cmd => {
-                        const Icon = cmd.icon
+                      {filtered.map(svc => {
+                        const Icon = svc.icon
                         return (
                           <button
-                            key={cmd.id}
-                            onClick={cmd.action}
+                            key={svc.id}
+                            onClick={() => handleSelect(svc.id)}
                             className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-all hover:bg-white/6 group"
                           >
                             <span className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
-                              style={{ background: `${cmd.color}18`, border: `1px solid ${cmd.color}30` }}>
-                              <Icon className="w-4 h-4" style={{ color: cmd.color }} />
+                              style={{ background: `${svc.color}18`, border: `1px solid ${svc.color}30` }}>
+                              <Icon className="w-4 h-4" style={{ color: svc.color }} />
                             </span>
                             <div className="min-w-0">
                               <p className="text-sm font-medium text-white/85 group-hover:text-white transition-colors truncate">
-                                {cmd.label}
+                                {svc.label}
                               </p>
-                              <p className="text-[11px] text-white/35 truncate">{cmd.description}</p>
+                              <p className="text-[11px] text-white/35 truncate">{svc.description}</p>
                             </div>
                             <Zap className="w-3.5 h-3.5 text-white/15 ml-auto flex-shrink-0 group-hover:text-white/40 transition-colors" />
                           </button>
@@ -196,13 +154,13 @@ export function CommandBar({ onServiceSelect }: CommandBarProps) {
                 )}
               </div>
 
-              {/* Footer hint */}
+              {/* Footer */}
               <div className="px-4 py-2.5 border-t border-white/6 flex items-center gap-4 text-[10px] text-white/25">
                 <span>↑↓ navigate</span>
                 <span>↵ select</span>
                 <span>Esc close</span>
                 <span className="ml-auto flex items-center gap-1">
-                  <Zap className="w-3 h-3" /> 18 სერვისი
+                  <Zap className="w-3 h-3" /> {UI_SERVICES.length} სერვისი
                 </span>
               </div>
             </motion.div>

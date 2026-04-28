@@ -3,17 +3,15 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  Menu, X, Send, Plus, Mic, Paperclip, Bot, UserCircle2, Video,
-  ImageIcon, Music2, FileText, Scissors, Camera, Eye, Wand2, Mic2,
-  Workflow, Briefcase, ShoppingCart, Code2, Plane, Gamepad2, Sofa,
+  Menu, X, Send, Plus, Mic, Paperclip,
   Copy, StopCircle, Zap, Check,
   ChevronRight, Sparkles, Globe, MicOff,
-  type LucideIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import IntroOverlay from '@/components/intro/IntroOverlay';
 import { CommandBar } from '@/components/dashboard/CommandBar';
 import CursorGlow from '@/components/ui/CursorGlow';
+import { UI_SERVICES, UI_SERVICE_GROUPS, getUiService, type UiService } from '@/lib/services/uiCatalog';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -25,146 +23,25 @@ interface Msg {
   serviceId: string;
 }
 
-interface Service {
-  id: string;
-  label: string;
-  icon: LucideIcon;
-  description: string;
-  group: string;
-  color: string;
-  suggestions: string[];
-}
+type Service = UiService;
 
 interface Props {
   locale?: string;
 }
 
+const MAX_MESSAGES = 120;
+
 // ─── Service catalogue ────────────────────────────────────────────────────────
 
-const SERVICES: Service[] = [
-  {
-    id: 'agent-g', label: 'Agent G', icon: Bot, group: 'Featured',
-    description: 'AI ორკესტრატორი — ყველა სერვისის კოორდინატორი',
-    color: '#6366f1',
-    suggestions: ['შექმენი სრული მარკეტინგ კამპანია', 'გააანალიზე ჩემი ბიზნეს მონაცემები', 'შექმენი კონტენტ სტრატეგია', 'დამეხმარე ბრენდის განვითარებაში'],
-  },
-  {
-    id: 'avatar', label: 'Avatar Studio', icon: UserCircle2, group: 'Create',
-    description: 'AI ავატარების დიზაინი და გენერაცია',
-    color: '#8b5cf6',
-    suggestions: ['შექმენი პროფესიონალური ბიზნეს ავატარი', 'სათამაშო ავატარი ფუტურისტული სტილით', 'კარტული პროფილის სურათი', 'ტექ-მეწარმის ავატარი'],
-  },
-  {
-    id: 'video', label: 'Video Generation', icon: Video, group: 'Create',
-    description: 'AI ვიდეო სკრიპტები და პროდუქცია',
-    color: '#ef4444',
-    suggestions: ['30 წამიანი პროდუქტის პრომო სკრიპტი', 'YouTube-ის ინტრო კონცეფცია', 'სოციალური მედიის რილი', 'კორპორატიული პრეზენტაციის სტრუქტურა'],
-  },
-  {
-    id: 'image', label: 'Image Generation', icon: ImageIcon, group: 'Create',
-    description: 'AI სურათებისა და ხელოვნების გენერაცია',
-    color: '#f59e0b',
-    suggestions: ['ფოტორეალისტური პროდუქტის მაკეტი', 'ვებსაიტის ჰედერის დიზაინი', 'ლოგოს კონცეფცია', 'პრეზენტაციის ფონი'],
-  },
-  {
-    id: 'music', label: 'Music Production', icon: Music2, group: 'Create',
-    description: 'AI მუსიკის კომპოზიცია და პროდუქცია',
-    color: '#10b981',
-    suggestions: ['ვიდეოსთვის ფონური მუსიკა', 'ბრენდის ჯინგლი', 'მედიტაციის ფონი', 'სოციალური მედიის ბითი'],
-  },
-  {
-    id: 'copy', label: 'Text & Copy', icon: FileText, group: 'Create',
-    description: 'მარკეტინგული ტექსტი და კონტენტი',
-    color: '#06b6d4',
-    suggestions: ['Landing page-ის ტექსტი', 'SEO ბლოგ პოსტი', 'ელ-ფოსტის კამპანია', 'Instagram კაფსები'],
-  },
-  {
-    id: 'photo', label: 'Photo Enhancement', icon: Camera, group: 'Studio',
-    description: 'AI ფოტოს გაუმჯობესება',
-    color: '#ec4899',
-    suggestions: ['პორტრეტის განათების გაუმჯობესება', 'ფონის მოცილება', 'პროდუქტის ფოტოს ფერთა კორექცია', 'სურათის გამახვილება'],
-  },
-  {
-    id: 'visual', label: 'Visual Intelligence', icon: Eye, group: 'Intelligence',
-    description: 'AI ვიზუალური ანალიზი',
-    color: '#14b8a6',
-    suggestions: ['ბრენდის ვიზუალური კონსისტენტობა', 'ეფექტური თამბნეილი', 'ვებსაიტის UX მიმოხილვა', 'ვიზუალური იერარქია'],
-  },
-  {
-    id: 'prompt', label: 'Prompt Engineering', icon: Wand2, group: 'Studio',
-    description: 'AI მოდელებისთვის სრულყოფილი პრომფტები',
-    color: '#a855f7',
-    suggestions: ['Midjourney პრომფტი ლოგოსთვის', 'Customer service ბოტის პრომფტი', 'ChatGPT ოპტიმიზაცია', 'Chain-of-thought reasoning'],
-  },
-  {
-    id: 'media', label: 'Media Production', icon: Mic2, group: 'Studio',
-    description: 'სრული მედია პროდუქციის პაიფლაინი',
-    color: '#f97316',
-    suggestions: ['Podcast-ის ეპიზოდის სტრუქტურა', 'YouTube კონტენტ კალენდარი', 'ვიდეო პროდუქციის checklist', 'მედია ტაიმლაინი'],
-  },
-  {
-    id: 'workflow', label: 'Workflow Builder', icon: Workflow, group: 'Build',
-    description: 'ბიზნეს პროცესების ავტომატიზაცია',
-    color: '#84cc16',
-    suggestions: ['კონტენტ გამოქვეყნების ავტომატიზაცია', 'Lead nurturing სეკვენცია', 'კლიენტის onboarding', 'პროდუქტის launch pipeline'],
-  },
-  {
-    id: 'business', label: 'Business Intelligence', icon: Briefcase, group: 'Intelligence',
-    description: 'მონაცემებზე დაფუძნებული ბიზნეს სტრატეგია',
-    color: '#3b82f6',
-    suggestions: ['ბაზრის ტრენდების ანალიზი', 'კონკურენტული ანალიზი', 'KPI დაშბორდი', 'ზრდის სტრატეგია'],
-  },
-  {
-    id: 'shop', label: 'Digital Shop', icon: ShoppingCart, group: 'Build',
-    description: 'ციფრული მაღაზიის ოპტიმიზაცია',
-    color: '#f43f5e',
-    suggestions: ['პროდუქტის აღწერები', 'გამყიდველობის სათაურები', 'Upsell სტრატეგია', 'პრომო კამპანია'],
-  },
-  {
-    id: 'code', label: 'Software Studio', icon: Code2, group: 'Build',
-    description: 'AI კოდის გენერაცია და მიმოხილვა',
-    color: '#22c55e',
-    suggestions: ['React კომპონენტი pricing table-ისთვის', 'Python სკრიპტი მონაცემთა დამუშავებისთვის', 'REST API endpoint', 'მონაცემთა ბაზის ოპტიმიზაცია'],
-  },
-  {
-    id: 'tourism', label: 'Tourism Intelligence', icon: Plane, group: 'Intelligence',
-    description: 'AI ტურიზმის დაგეგმვა',
-    color: '#0ea5e9',
-    suggestions: ['7-დღიანი საქართველოს მარშრუტი', 'თბილისის ტური', 'სასტუმროს აღწერები', 'კულტურული ტური'],
-  },
-  {
-    id: 'game', label: 'Game Creator', icon: Gamepad2, group: 'Build',
-    description: 'AI თამაშის კონცეფცია და განვითარება',
-    color: '#d946ef',
-    suggestions: ['მობილური თამაშის კონცეფცია', 'RPG პერსონაჟების ისტორიები', 'NPC-ების დიალოგი', 'Level progression სისტემა'],
-  },
-  {
-    id: 'interior', label: 'Interior Designer', icon: Sofa, group: 'Build',
-    description: 'AI ინტერიერის დიზაინი',
-    color: '#fb923c',
-    suggestions: ['მინიმალისტური მისაღები ოთახი', 'ოფისის ფერთა პალიტრა', 'მცირე ბინის განლაგება', 'სამუშაო სივრცის დიზაინი'],
-  },
-  {
-    id: 'video-edit', label: 'Video Editing', icon: Scissors, group: 'Studio',
-    description: 'AI ვიდეო მონტაჟი',
-    color: '#e11d48',
-    suggestions: ['YouTube ვიდეოს ედიტინგ ტაიმლაინი', 'გადასვლები პროდუქტის დემოსთვის', 'ბრენდის Color grading', 'Thumbnail სტრატეგია'],
-  },
-];
-
-const GROUPS = ['Featured', 'Create', 'Intelligence', 'Studio', 'Build'];
+const SERVICES: Service[] = UI_SERVICES;
+const GROUPS = UI_SERVICE_GROUPS;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function uid() {
-  return Math.random().toString(36).slice(2) + Date.now().toString(36);
-}
 
 function formatTime(ts: number) {
   return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
-// Very basic markdown → html (bold, code, newlines)
 function renderMarkdown(text: string) {
   return text
     .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
@@ -469,7 +346,7 @@ export default function FullChatWorkspace({ locale = 'ka' }: Props) {
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
-  const [sessionId] = useState(() => uid());
+  const [sessionId] = useState(() => crypto.randomUUID());
   const [isRecording, setIsRecording] = useState(false);
   const [isClient, setIsClient] = useState(false);
 
@@ -486,7 +363,7 @@ export default function FullChatWorkspace({ locale = 'ka' }: Props) {
   } | null>(null);
 
   const activeService: Service = useMemo(
-    () => SERVICES.find(s => s.id === activeServiceId) ?? SERVICES[0]!,
+    () => getUiService(activeServiceId),
     [activeServiceId],
   );
 
@@ -524,6 +401,11 @@ export default function FullChatWorkspace({ locale = 'ka' }: Props) {
     };
     rec.onend = () => setIsRecording(false);
     recognitionRef.current = rec;
+    return () => {
+      rec.onresult = null;
+      rec.onend = null;
+      try { rec.stop(); } catch { /* already stopped */ }
+    };
   }, []);
 
   const toggleRecording = useCallback(() => {
@@ -538,10 +420,12 @@ export default function FullChatWorkspace({ locale = 'ka' }: Props) {
     }
   }, [isRecording, locale]);
 
+  const focusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const handleServiceChange = useCallback((id: string) => {
     setActiveServiceId(id);
     setInput('');
-    setTimeout(() => textareaRef.current?.focus(), 100);
+    if (focusTimerRef.current) clearTimeout(focusTimerRef.current);
+    focusTimerRef.current = setTimeout(() => textareaRef.current?.focus(), 100);
   }, []);
 
   const handleNewChat = useCallback(() => {
@@ -555,9 +439,9 @@ export default function FullChatWorkspace({ locale = 'ka' }: Props) {
     if (!text || loading) return;
 
     const userMsg: Msg = {
-      id: uid(), role: 'user', text, ts: Date.now(), serviceId: activeServiceId,
+      id: crypto.randomUUID(), role: 'user', text, ts: Date.now(), serviceId: activeServiceId,
     };
-    setMessages(prev => [...prev, userMsg]);
+    setMessages(prev => { const next = [...prev, userMsg]; return next.length > MAX_MESSAGES ? next.slice(-MAX_MESSAGES) : next; });
     setInput('');
     setLoading(true);
 
@@ -591,18 +475,18 @@ export default function FullChatWorkspace({ locale = 'ka' }: Props) {
       const reply: string = data?.reply ?? data?.response ?? data?.message ?? 'An error occurred.';
 
       const assistantMsg: Msg = {
-        id: uid(), role: 'assistant', text: reply, ts: Date.now(), serviceId: activeServiceId,
+        id: crypto.randomUUID(), role: 'assistant', text: reply, ts: Date.now(), serviceId: activeServiceId,
       };
-      setMessages(prev => [...prev, assistantMsg]);
+      setMessages(prev => { const next = [...prev, assistantMsg]; return next.length > MAX_MESSAGES ? next.slice(-MAX_MESSAGES) : next; });
 
     } catch (err) {
       if ((err as Error).name !== 'AbortError') {
         const errMsg: Msg = {
-          id: uid(), role: 'assistant',
+          id: crypto.randomUUID(), role: 'assistant',
           text: 'კავშირის შეცდომა. გთხოვთ კვლავ სცადოთ.',
           ts: Date.now(), serviceId: activeServiceId,
         };
-        setMessages(prev => [...prev, errMsg]);
+        setMessages(prev => { const next = [...prev, errMsg]; return next.length > MAX_MESSAGES ? next.slice(-MAX_MESSAGES) : next; });
       }
     } finally {
       setLoading(false);
