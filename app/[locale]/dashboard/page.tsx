@@ -59,6 +59,9 @@ export default function DashboardPage() {
           <p className="text-sm mt-0.5" style={{ color: 'rgba(255,255,255,0.45)' }}>
             MyAvatar.ge — AI Civilization Stack
           </p>
+          <p className="text-xs mt-1 font-medium uppercase tracking-[0.16em]" style={{ color: 'rgba(0,212,255,0.78)' }}>
+            One Window Dashboard · ერთი ფანჯრის პრინციპი
+          </p>
         </div>
         <Link
           href={`/${locale}/dashboard/agent-g`}
