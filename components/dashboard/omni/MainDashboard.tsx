@@ -7,6 +7,7 @@ import { useOmniDashboardStore } from './store';
 import { ActivityLogPanel } from './ActivityLogPanel';
 import { LivePreviewEngine } from './LivePreviewEngine';
 import { PrimaryAgentChat } from './PrimaryAgentChat';
+import { ServiceSelectionGrid } from './ServiceSelectionGrid';
 import { ServiceOrchestrator } from './ServiceOrchestrator';
 import { countLabel } from './utils';
 import VoicePanel from '@/components/voice/VoicePanel';
@@ -50,7 +51,7 @@ export default function MainDashboard({ locale, userName, isAuthenticated }: Mai
   );
 
   return (
-    <div className="omni-root h-full w-full overflow-hidden p-2 sm:p-3 lg:p-4">
+    <div className="omni-root h-full w-full overflow-hidden p-2 pb-safe sm:p-3 lg:p-4">
       <div className="omni-frame flex h-full min-h-0 flex-col overflow-hidden rounded-[26px] border">
         <header className="omni-topbar flex flex-wrap items-center gap-2 border-b border-white/10 px-3 py-2.5 sm:px-4">
           <div className="flex items-center gap-2">
@@ -74,18 +75,25 @@ export default function MainDashboard({ locale, userName, isAuthenticated }: Mai
           </div>
         </header>
 
-        <div className="flex min-h-0 flex-1 p-3 sm:p-4">
+        <div className="grid min-h-0 flex-1 gap-3 p-2.5 sm:p-3 md:gap-4 md:p-4 lg:grid-cols-[minmax(290px,0.9fr)_minmax(0,2.1fr)]">
+          <aside className="omni-pane min-h-[240px] max-h-[36vh] overflow-hidden rounded-2xl border border-white/12 bg-black/20 p-3 sm:max-h-[40vh] sm:p-4 lg:min-h-0 lg:max-h-none">
+            <ServiceSelectionGrid />
+          </aside>
+
           <section className="omni-pane flex min-h-0 flex-1 flex-col rounded-2xl border border-white/12 bg-black/20 p-3 sm:p-4">
             <header className="mb-3 flex flex-wrap items-center gap-2 border-b border-white/10 pb-3">
               <div className="flex items-center gap-2">
                 <span className="omni-led is-online" />
                 <div>
                   <p className="text-sm font-semibold text-white">One AI Chat Window</p>
-                  <p className="text-[11px] text-white/50">Type once. Agent G routes work to the right services and returns the best answer in this chat.</p>
+                  <p className="text-[11px] text-white/50">Select a service, type once, and Agent G returns the best result in this single workspace.</p>
                 </div>
               </div>
               <span className="rounded-full border border-emerald-300/30 bg-emerald-400/10 px-3 py-1 text-[11px] text-emerald-100">
                 Auto Router Active
+              </span>
+              <span className="rounded-full border border-cyan-300/35 bg-cyan-500/10 px-3 py-1 text-[11px] text-cyan-100">
+                Step 1: Pick service · Step 2: Dispatch prompt
               </span>
               <span className="rounded-full border border-white/15 bg-white/[0.04] px-3 py-1 text-[11px] text-white/70">
                 Active: {OMNI_SERVICE_MAP[activeServiceId].title}

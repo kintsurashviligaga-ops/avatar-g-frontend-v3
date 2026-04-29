@@ -1,6 +1,8 @@
 'use client';
 
 import { create } from 'zustand';
+import { useGlobalStore, useStore } from '@/lib/store';
+import type { ServiceType } from '@/lib/store';
 import { OMNI_SERVICE_MAP, OMNI_SERVICES } from './services';
 import type {
   ActivityLevel,
@@ -22,6 +24,11 @@ const MAX_OUTPUTS_PER_SERVICE = 12;
 const MAX_PENDING_INPUTS = 24;
 const BASELINE_GEL = 2000;
 const DEFAULT_CREDITS = 4200;
+
+const syncGlobalServiceSelection = (serviceId: ServiceId) => {
+  useGlobalStore.getState().setActiveService(serviceId as ServiceType);
+  useStore.getState().setCurrentService(serviceId);
+};
 
 const SMALL_NUMBER_WORDS: Record<number, string> = {
   0: 'zero',
@@ -458,6 +465,7 @@ export const useOmniDashboardStore = create<OmniDashboardState>((set, get) => {
         activeServiceId: serviceId,
         ...addLogLine(state, 'system', `Focus switched to ${OMNI_SERVICE_MAP[serviceId].title}`),
       }));
+      syncGlobalServiceSelection(serviceId);
     },
     setCommandLanguage: (language) => {
       set((state) => ({
@@ -608,6 +616,8 @@ export const useOmniDashboardStore = create<OmniDashboardState>((set, get) => {
         ...addChatLine(state, 'user', userLine),
         ...addLogLine(state, 'agent', `PrimaryAgent received command in ${LANGUAGE_LABELS[language]}`),
       }));
+
+      syncGlobalServiceSelection(routed);
 
       await runWorker(routed, commandPayload, 'chat');
     },

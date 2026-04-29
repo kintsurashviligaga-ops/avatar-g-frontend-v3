@@ -16,7 +16,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   );
 
   return (
-    <div className='relative min-h-screen flex flex-col' style={{ color: 'var(--color-text)', isolation: 'isolate' }}>
+    <div
+      className='app-native-shell relative flex min-h-[var(--app-screen-height)] w-full flex-col overflow-x-hidden'
+      style={{ color: 'var(--color-text)', isolation: 'isolate' }}
+    >
       {/* Page-aware 4D AI environment — adapts mood per route */}
       <PageEnvironment reduced={isImmersiveWorkspace} />
       {/* Skip to content — accessibility */}
@@ -29,7 +32,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </a>
       {!isImmersiveWorkspace && <TopNavbar onMenuToggle={() => setSidebarOpen(v => !v)} menuOpen={sidebarOpen} />}
       {!isImmersiveWorkspace && <SidebarMenu open={sidebarOpen} onClose={() => setSidebarOpen(false)} />}
-      <main id="main-content" className="relative flex-1 w-full" style={isImmersiveWorkspace ? { zIndex: 2 } : { paddingTop: 'calc(4rem + env(safe-area-inset-top, 0px))', zIndex: 2 }}>
+      <main
+        id="main-content"
+        className="relative flex-1 w-full"
+        style={
+          isImmersiveWorkspace
+            ? { zIndex: 2, minHeight: 'var(--app-screen-height)' }
+            : { paddingTop: 'calc(4rem + env(safe-area-inset-top, 0px))', zIndex: 2 }
+        }
+      >
         <ClientErrorBoundary>
           {children}
         </ClientErrorBoundary>

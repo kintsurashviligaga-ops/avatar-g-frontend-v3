@@ -40,12 +40,21 @@ export const viewport: Viewport = {
 	initialScale: 1,
 	maximumScale: 5,
 	viewportFit: 'cover',
+	interactiveWidget: 'resizes-content',
 	themeColor: '#0a0a0c',
 };
 
 export const metadata: Metadata = {
 	metadataBase: new URL(metadataBaseUrl),
 	manifest: '/manifest.json',
+	appleWebApp: {
+		capable: true,
+		statusBarStyle: 'black-translucent',
+		title: 'Avatar G',
+	},
+	formatDetection: {
+		telephone: false,
+	},
 	icons: {
 		icon: '/icons/favicon.ico',
 		shortcut: '/icons/favicon.ico',
