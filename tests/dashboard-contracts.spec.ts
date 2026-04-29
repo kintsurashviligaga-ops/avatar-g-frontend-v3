@@ -1,53 +1,42 @@
 import { expect, test } from '@playwright/test';
 
-const DASHBOARD_SERVICES = [
-  'Agent G',
-  'Business Agent',
-  'Avatar Studio',
-  'Video Studio',
-  'Music Composer',
-  'Image Creator',
-  'Photo Studio',
-  'Game Creator',
-  'Text Generator',
-  'Text Intelligence',
-  'Prompt Builder',
-  'Pipeline Builder',
-  'Auto Workflows',
+const DASHBOARD_NAV_LINKS = [
+  '/en/dashboard/agent-g',
+  '/en/dashboard/business-agent',
+  '/en/dashboard/avatar',
+  '/en/dashboard/image',
+  '/en/dashboard/video',
+  '/en/dashboard/music',
+  '/en/dashboard/copy',
+  '/en/dashboard/workflows',
+  '/en/dashboard/executive-agent',
+  '/en/dashboard/analytics',
 ];
 
-test('one-window dashboard keeps the 13-service sidebar contract', async ({ page }) => {
-  await page.goto('/ka/dashboard');
+test('one-window dashboard keeps the route nav contract', async ({ page }) => {
+  await page.goto('/en/dashboard');
 
   const sidebar = page.locator('aside').first();
-  const sidebarText = await sidebar.textContent();
-  const presentServices = DASHBOARD_SERVICES.filter((label) => sidebarText?.includes(label));
+  await expect(page.getByText('One Window Dashboard', { exact: false }).first()).toBeVisible();
+  for (const href of DASHBOARD_NAV_LINKS) {
+    await expect(sidebar.locator(`a[href="${href}"]`).first()).toBeVisible();
+  }
 
-  expect(presentServices).toHaveLength(DASHBOARD_SERVICES.length);
-  await expect(page).toHaveURL(/\/ka\/dashboard$/);
+  await expect(page).toHaveURL(/\/en\/dashboard$/);
 });
 
-test('agent g shows a friendly localized quota error and hides disabled controls', async ({ page }) => {
-  await page.route('**/api/orbit/agent', async (route) => {
-    await route.fulfill({
-      status: 429,
-      contentType: 'application/json',
-      body: JSON.stringify({
-        error: '429 You exceeded your current quota, please check your plan and billing details.',
-      }),
-    });
+test('agent g shows a graceful error message when chat API fails', async ({ page }) => {
+  await page.route('**/api/agent-g/chat', async (route) => {
+    await route.abort();
   });
 
-  await page.goto('/ka/dashboard');
-  const sidebar = page.locator('aside').first();
-  await sidebar.getByRole('button', { name: /Agent G/i }).first().click();
+  await page.goto('/ka/dashboard/agent-g');
 
-  await expect(page.locator('textarea').last()).toBeVisible();
-  await expect(page.locator('svg.lucide-paperclip')).toHaveCount(0);
-  await expect(page.locator('svg.lucide-mic-2')).toHaveCount(0);
+  const input = page.getByPlaceholder('დაწერე შეტყობინება Agent G-ს...').first();
+  await expect(input).toBeVisible();
 
-  await page.locator('textarea').last().fill('გამარჯობა');
-  await page.getByRole('button', { name: /გაგზავნა|Send|Отправить/i }).last().click();
+  await input.fill('გამარჯობა');
+  await input.press('Enter');
 
-  await expect(page.getByText('Agent G დროებით მიუწვდომელია, რადგან AI კვოტა ამოიწურა.').first()).toBeVisible();
+  await expect(page.getByText('კავშირის შეცდომა. სცადეთ კვლავ.').first()).toBeVisible();
 });

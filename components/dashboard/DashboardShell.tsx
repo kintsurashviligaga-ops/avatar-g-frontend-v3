@@ -6,7 +6,7 @@ import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard, Bot, UserCircle2, ImageIcon, Video, Music2,
   FileText, Workflow, BarChart3, Settings, ChevronRight, Zap,
-  Menu, X, LogOut, User, Sparkles,
+  Menu, X, User, Sparkles, Building2, TrendingUp,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -17,6 +17,13 @@ const NAV = [
     section: 'Overview',
     items: [
       { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, href: '/dashboard', color: '#6366f1' },
+    ],
+  },
+  {
+    section: 'Agents',
+    items: [
+      { id: 'business-agent',  label: 'Business Agent',  icon: Building2,  href: '/dashboard/business-agent',  color: '#22c55e' },
+      { id: 'executive-agent', label: 'Executive Agent', icon: TrendingUp, href: '/dashboard/executive-agent', color: '#f97316' },
     ],
   },
   {

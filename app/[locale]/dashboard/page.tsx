@@ -1,12 +1,11 @@
 'use client';
 
-import { useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import {
   Bot, UserCircle2, ImageIcon, Video, Music2, FileText,
   Workflow, BarChart3, Zap, TrendingUp, MessageSquare,
-  Layers, ArrowRight, Sparkles, Clock, CheckCircle,
+  Layers, ArrowRight, Sparkles, Clock, CheckCircle, Building2,
 } from 'lucide-react';
 
 // ─── Stats ───────────────────────────────────────────────────────────────────
@@ -22,12 +21,14 @@ const STATS = [
 
 const QUICK = [
   { id: 'agent-g',   label: 'Agent G',          icon: Bot,        color: '#6366f1', desc: 'AI ორკესტრატორი' },
+  { id: 'business-agent', label: 'Business Agent', icon: Building2, color: '#22c55e', desc: 'ბიზნეს ზრდის ასისტენტი' },
   { id: 'avatar',    label: 'Avatar Studio',    icon: UserCircle2, color: '#8b5cf6', desc: 'ავატარის შექმნა' },
   { id: 'image',     label: 'Image Generation', icon: ImageIcon,  color: '#f59e0b', desc: 'AI სურათები' },
   { id: 'video',     label: 'Video Generation', icon: Video,      color: '#ef4444', desc: 'ვიდეო სკრიპტები' },
   { id: 'music',     label: 'Music Production', icon: Music2,     color: '#10b981', desc: 'AI მუსიკა' },
   { id: 'copy',      label: 'Text & Copy',      icon: FileText,   color: '#06b6d4', desc: 'მარკეტინგ ტექსტი' },
   { id: 'workflows', label: 'Workflow Builder', icon: Workflow,   color: '#84cc16', desc: 'ავტომატიზაცია' },
+  { id: 'executive-agent', label: 'Executive Agent', icon: TrendingUp, color: '#f97316', desc: 'CEO დონის ანალიზი' },
   { id: 'analytics', label: 'Analytics',        icon: BarChart3,  color: '#3b82f6', desc: 'მონაცემთა ანალიზი' },
 ];
 
@@ -35,10 +36,11 @@ const QUICK = [
 
 const ACTIVITY = [
   { icon: Bot,        color: '#6366f1', text: 'Agent G — მარკეტინგ სტრატეგია შეიქმნა',    time: '2 წ. წინ',    status: 'done' },
+  { icon: Building2,  color: '#22c55e', text: 'Business Agent — გაყიდვების გეგმა განახლდა', time: '12 წ. წინ',  status: 'done' },
   { icon: ImageIcon,  color: '#f59e0b', text: 'Image Gen — 3 სურათი გენერირდა',             time: '1 სთ. წინ',   status: 'done' },
   { icon: Workflow,   color: '#84cc16', text: 'Workflow "Content Pipeline" გაეშვა',          time: '3 სთ. წინ',   status: 'running' },
-  { icon: Music2,     color: '#10b981', text: 'Music — "Tech Vibes" ბითი შეიქმნა',          time: 'გუშინ',       status: 'done' },
-  { icon: UserCircle2,color: '#8b5cf6', text: 'Avatar Studio — პროფესიონალური ავატარი',     time: 'გუშინ',       status: 'done' },
+  { icon: TrendingUp, color: '#f97316', text: 'Executive Agent — KPI ბრიფი გენერირდა',      time: '5 სთ. წინ',   status: 'done' },
+  { icon: UserCircle2,color: '#8b5cf6', text: 'Avatar Studio — პროფესიონალური ავატარი',      time: 'გუშინ',       status: 'done' },
 ];
 
 // ─── Component ───────────────────────────────────────────────────────────────

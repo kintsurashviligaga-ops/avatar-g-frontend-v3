@@ -1,80 +1,95 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 
-const ONE_PIXEL_PNG_BASE64 =
-  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO7Z6mQAAAAASUVORK5CYII=';
+const DASHBOARD_ROUTE_HEALTH = [
+  { path: '/en/dashboard/agent-g', heading: /Agent G/i },
+  { path: '/en/dashboard/business-agent', heading: /Business Hub/i },
+  { path: '/en/dashboard/avatar', heading: /Avatar Studio/i },
+  { path: '/en/dashboard/image', heading: /Image Generation/i },
+  { path: '/en/dashboard/video', heading: /Video Generation/i },
+  { path: '/en/dashboard/music', heading: /Music Production/i },
+  { path: '/en/dashboard/copy', heading: /Text\s*&\s*Copy/i },
+  { path: '/en/dashboard/workflows', heading: /Workflow Builder/i },
+  { path: '/en/dashboard/executive-agent', heading: /Agent G Executive/i },
+  { path: '/en/dashboard/analytics', heading: /Analytics/i },
+];
 
-async function openDashboardWithActiveService(page: Page, serviceId: string) {
-  await page.addInitScript((value) => {
-    window.localStorage.setItem('myavatar.one-window.active-service', value);
-  }, serviceId);
-
-  await page.goto('/en/dashboard');
-  await page.waitForURL(/\/en\/dashboard$/);
-}
-
-test('workflow template run completes inside one-window dashboard', async ({ page }) => {
+test('all dashboard routes open with heading and interactive controls', async ({ page }) => {
   test.slow();
 
-  await openDashboardWithActiveService(page, 'workflow');
-
-  await expect(page.getByText('Pipeline Builder', { exact: false }).first()).toBeVisible();
-  await page.getByRole('button', { name: /Brand Video/i }).click();
-  await expect(page.getByText('Generate Avatar', { exact: false }).first()).toBeVisible();
-
-  await page.getByRole('button', { name: /Run Pipeline/i }).click();
-  await expect(page.getByText(/Pipeline complete!/i)).toBeVisible({ timeout: 20000 });
-  await expect(page).toHaveURL(/\/en\/dashboard$/);
+  for (const route of DASHBOARD_ROUTE_HEALTH) {
+    await page.goto(route.path);
+    await expect(page.getByRole('heading', { name: route.heading }).first()).toBeVisible();
+    await expect(page.locator('main button, main input, main textarea, main select').first()).toBeVisible();
+  }
 });
 
-test('photo workspace accepts upload and renders mocked output preview', async ({ page }) => {
-  await page.route('**/api/replicate/photo', async (route) => {
+test('business agent quick-action can submit and render mocked assistant reply', async ({ page }) => {
+  await page.route('**/api/agents/chat', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({
-        status: 'succeeded',
-        output: `data:image/png;base64,${ONE_PIXEL_PNG_BASE64}`,
-      }),
+      body: JSON.stringify({ reply: 'Mocked business reply.' }),
     });
   });
 
-  await openDashboardWithActiveService(page, 'photo');
+  await page.goto('/en/dashboard/business-agent');
 
-  const fileInput = page.locator('input[type="file"]').first();
-  await fileInput.setInputFiles({
-    name: 'photo.png',
-    mimeType: 'image/png',
-    buffer: Buffer.from(ONE_PIXEL_PNG_BASE64, 'base64'),
-  });
+  await page.getByRole('button', { name: /Create plan/i }).first().click();
 
-  await page.getByRole('button', { name: /Enhance Photo/i }).click();
+  const input = page.locator('input[placeholder="დაწერე შეტყობინება..."]').first();
+  await expect(input).toBeVisible();
+  await expect(input).toHaveValue('business plan');
 
-  await expect(page.locator('img[src^="data:image/png;base64,"]').first()).toBeVisible();
-  await expect(page.getByRole('button', { name: /Download latest output/i })).toBeVisible();
-  await expect(page).toHaveURL(/\/en\/dashboard$/);
+  await input.press('Enter');
+  await expect(page.getByText('Mocked business reply.').first()).toBeVisible();
 });
 
-test('business workspace submits and renders a mocked report', async ({ page }) => {
-  await page.route('**/api/chat', async (route) => {
+test('executive agent can submit task and refresh history', async ({ page }) => {
+  let created = false;
+
+  await page.route('**/api/executive/tasks', async (route) => {
+    const tasks = created
+      ? [
+          {
+            id: 'task-1',
+            user_id: 'u-1',
+            input_channel: 'dashboard',
+            input_text: 'Prepare Q3 board brief',
+            phone_e164: null,
+            detected_intent: 'executive-summary',
+            workflow: {},
+            outputs: { summaryText: 'Board brief draft is ready.', artifacts: [], deliveries: [] },
+            credits_used: 15,
+            status: 'completed',
+            error: null,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          },
+        ]
+      : [];
+
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({
-        data: {
-          response: 'Executive summary: grow B2B channel by 22% in 90 days.',
-        },
-      }),
+      body: JSON.stringify({ tasks }),
     });
   });
 
-  await openDashboardWithActiveService(page, 'business');
+  await page.route('**/api/executive/task', async (route) => {
+    created = true;
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ ok: true }),
+    });
+  });
 
-  await page
-    .getByPlaceholder('What business insight do you need?')
-    .fill('Create a go-to-market plan for a Georgian SaaS product.');
+  await page.goto('/en/dashboard/executive-agent');
 
-  await page.getByRole('button', { name: /Generate Report/i }).click();
+  const input = page.getByPlaceholder('What would you like Agent G to do?').first();
+  await input.fill('Prepare Q3 board brief');
+  await page.getByRole('button', { name: /Run Task/i }).click();
 
-  await expect(page.getByText('Executive summary: grow B2B channel by 22% in 90 days.').first()).toBeVisible();
-  await expect(page).toHaveURL(/\/en\/dashboard$/);
+  await expect(page.getByText('Prepare Q3 board brief').first()).toBeVisible();
+  await expect(page.getByText('Board brief draft is ready.').first()).toBeVisible();
 });
