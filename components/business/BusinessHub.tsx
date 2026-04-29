@@ -22,23 +22,23 @@ export function BusinessHub({ userId }: { userId: string }) {
   const t = useTranslations('business')
 
   return (
-    <div className="min-h-screen bg-transparent text-white">
+    <div className="hf-main-content">
       {/* Header */}
-      <div className="border-b border-white/[0.06] px-6 py-6">
+      <div className="hf-card px-6 py-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold">{t('hub_title')}</h1>
-            <p className="text-white/40 text-sm mt-1">{t('hub_subtitle')}</p>
+            <h1 className="hf-heading text-2xl font-bold text-white">{t('hub_title')}</h1>
+            <p className="mt-1 text-sm text-cyan-100/55">{t('hub_subtitle')}</p>
           </div>
         </div>
         <ComplianceNotice />
       </div>
 
-      <div className="flex h-[calc(100vh-180px)]">
+      <div className="mt-4 flex h-[calc(100vh-220px)] gap-4">
         {/* Main content */}
-        <div className="flex-1 flex flex-col overflow-hidden">
+        <div className="hf-card flex flex-1 flex-col overflow-hidden">
           {/* Tabs */}
-          <div className="flex gap-1 px-4 pt-4 border-b border-white/[0.06] pb-0">
+          <div className="flex gap-1 border-b border-cyan-100/10 px-4 pb-0 pt-4">
             {TABS.map(tab => (
               <button
                 key={tab.id}
@@ -46,8 +46,8 @@ export function BusinessHub({ userId }: { userId: string }) {
                 className={`
                   px-4 py-2 text-sm font-medium rounded-t-xl transition-all border-b-2
                   ${activeTab === tab.id
-                    ? 'text-white border-white bg-white/[0.05]'
-                    : 'text-white/40 border-transparent hover:text-white/70'}
+                    ? 'border-cyan-200 text-cyan-100 bg-cyan-200/[0.08]'
+                    : 'border-transparent text-cyan-100/40 hover:text-cyan-100/70'}
                 `}
               >
                 {tab.label}
@@ -65,7 +65,7 @@ export function BusinessHub({ userId }: { userId: string }) {
         </div>
 
         {/* Chat panel */}
-        <div className="w-full lg:w-[360px] flex-shrink-0 border-l border-white/[0.06] flex flex-col">
+        <div className="hf-card flex w-full flex-shrink-0 flex-col lg:w-[360px]">
           <BusinessChatPanel userId={userId} />
         </div>
       </div>

@@ -62,23 +62,23 @@ export default function ExecutiveDashboard({ userId: _userId }: ExecutiveDashboa
 
   /* ── Render ────────────────────────────────────────────────────────────── */
   return (
-    <div className="min-h-screen bg-transparent px-4 py-8 text-white sm:px-6 lg:px-8">
+    <div className="hf-main-content px-4 py-6 text-white sm:px-6 lg:px-8">
       <div className="mx-auto max-w-4xl space-y-8">
 
         {/* ── Header ─────────────────────────────────────────────────────── */}
-        <header>
-          <h1 className="text-3xl font-bold tracking-tight">{t('title')}</h1>
-          <p className="mt-1 text-sm text-white/50">{t('subtitle')}</p>
+        <header className="hf-hero px-6 py-5">
+          <h1 className="hf-heading text-3xl font-bold tracking-tight text-white">{t('title')}</h1>
+          <p className="mt-1 text-sm text-cyan-100/55">{t('subtitle')}</p>
         </header>
 
         {/* ── Input area ─────────────────────────────────────────────────── */}
-        <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+        <div className="hf-card p-4">
           <textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
             placeholder={t('input_placeholder')}
             rows={3}
-            className="w-full resize-none rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder-white/30 outline-none transition focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/30"
+            className="w-full resize-none rounded-lg border border-cyan-100/20 bg-cyan-300/[0.06] px-4 py-3 text-sm text-white placeholder-cyan-100/30 outline-none transition focus:border-cyan-300/60 focus:ring-1 focus:ring-cyan-300/30"
             disabled={running}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
@@ -95,7 +95,7 @@ export default function ExecutiveDashboard({ userId: _userId }: ExecutiveDashboa
               <button
                 onClick={handleSubmit}
                 disabled={running || !input.trim()}
-                className="rounded-lg bg-cyan-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-cyan-500 disabled:cursor-not-allowed disabled:opacity-40"
+                className="hf-cta rounded-lg px-4 py-2 text-sm font-medium text-white transition disabled:cursor-not-allowed disabled:opacity-40"
               >
                 {running ? t('button_running') : t('button_run')}
               </button>
@@ -105,12 +105,12 @@ export default function ExecutiveDashboard({ userId: _userId }: ExecutiveDashboa
 
         {/* ── Task History ───────────────────────────────────────────────── */}
         <section>
-          <h2 className="mb-4 text-lg font-semibold text-white/80">
+          <h2 className="hf-heading mb-4 text-lg font-semibold text-white/85">
             {t('history_title')}
           </h2>
 
           {tasks.length === 0 ? (
-            <p className="text-sm text-white/30">{t('no_tasks')}</p>
+            <p className="text-sm text-cyan-100/40">{t('no_tasks')}</p>
           ) : (
             <ul className="space-y-3">
               {tasks.map((task) => (
@@ -138,18 +138,18 @@ function TaskCard({ task }: { task: ExecutiveTaskLog }) {
   };
 
   return (
-    <li className="rounded-lg border border-white/10 bg-white/[0.02] p-4 transition hover:bg-white/[0.04]">
+    <li className="hf-card p-4 transition hover:bg-cyan-200/[0.03]">
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
           {/* Input text */}
-          <p className="truncate text-sm font-medium text-white/90">
+          <p className="truncate text-sm font-medium text-cyan-50/95">
             {task.input_text ?? '—'}
           </p>
 
           {/* Intent + credits */}
-          <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-white/40">
+          <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-cyan-100/45">
             {task.detected_intent && (
-              <span className="rounded bg-white/10 px-1.5 py-0.5">
+              <span className="rounded bg-cyan-200/10 px-1.5 py-0.5 text-cyan-100/70">
                 {task.detected_intent}
               </span>
             )}
@@ -168,7 +168,7 @@ function TaskCard({ task }: { task: ExecutiveTaskLog }) {
 
           {/* Summary */}
           {outputs?.summaryText && (
-            <p className="mt-2 text-xs text-white/50">{outputs.summaryText}</p>
+            <p className="mt-2 text-xs text-cyan-100/55">{outputs.summaryText}</p>
           )}
 
           {/* Artifacts */}

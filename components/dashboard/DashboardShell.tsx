@@ -4,67 +4,36 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
-  LayoutDashboard, Bot, UserCircle2, ImageIcon, Video, Music2,
-  FileText, Workflow, BarChart3, Settings, ChevronRight, Zap,
-  Menu, X, User, Sparkles, Building2, TrendingUp,
+  Settings,
+  ChevronRight,
+  Zap,
+  Menu,
+  X,
+  User,
+  Sparkles,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-
-// ─── Nav config ──────────────────────────────────────────────────────────────
-
-const NAV = [
-  {
-    section: 'Overview',
-    items: [
-      { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, href: '/dashboard', color: '#6366f1' },
-    ],
-  },
-  {
-    section: 'Agents',
-    items: [
-      { id: 'business-agent',  label: 'Business Agent',  icon: Building2,  href: '/dashboard/business-agent',  color: '#22c55e' },
-      { id: 'executive-agent', label: 'Executive Agent', icon: TrendingUp, href: '/dashboard/executive-agent', color: '#f97316' },
-    ],
-  },
-  {
-    section: 'Create',
-    items: [
-      { id: 'agent-g',  label: 'Agent G',          icon: Bot,          href: '/dashboard/agent-g', color: '#6366f1' },
-      { id: 'avatar',   label: 'Avatar Studio',    icon: UserCircle2,  href: '/dashboard/avatar',  color: '#8b5cf6' },
-      { id: 'image',    label: 'Image Generation', icon: ImageIcon,    href: '/dashboard/image',   color: '#f59e0b' },
-      { id: 'video',    label: 'Video Generation', icon: Video,        href: '/dashboard/video',   color: '#ef4444' },
-      { id: 'music',    label: 'Music Production', icon: Music2,       href: '/dashboard/music',   color: '#10b981' },
-      { id: 'copy',     label: 'Text & Copy',      icon: FileText,     href: '/dashboard/copy',    color: '#06b6d4' },
-    ],
-  },
-  {
-    section: 'Intelligence',
-    items: [
-      { id: 'workflows',  label: 'Workflow Builder', icon: Workflow,   href: '/dashboard/workflows',  color: '#84cc16' },
-      { id: 'analytics',  label: 'Analytics',        icon: BarChart3,  href: '/dashboard/analytics',  color: '#3b82f6' },
-    ],
-  },
-] as const;
+import { DASHBOARD_NAV_SECTIONS } from './hyperframe.config';
 
 // ─── Credits widget ───────────────────────────────────────────────────────────
 
 function CreditsBar({ credits = 4200, total = 10000 }: { credits?: number; total?: number }) {
   const pct = Math.round((credits / total) * 100);
   return (
-    <div className="px-3 py-3 mx-2 rounded-xl" style={{ background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.2)' }}>
-      <div className="flex items-center justify-between mb-1.5">
-        <span className="text-[11px] font-semibold text-white/50 uppercase tracking-wider">Credits</span>
-        <span className="text-[11px] font-mono text-white/70">{credits.toLocaleString()}</span>
+    <div className="hf-credits-card mx-2 rounded-2xl px-3.5 py-3.5">
+      <div className="mb-2 flex items-center justify-between">
+        <span className="text-[11px] font-semibold uppercase tracking-wider text-white/55">Credits</span>
+        <span className="text-[11px] font-mono text-cyan-100/80">{credits.toLocaleString()}</span>
       </div>
-      <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.08)' }}>
+      <div className="h-1.5 overflow-hidden rounded-full bg-white/10">
         <div
-          className="h-full rounded-full transition-all"
-          style={{ width: `${pct}%`, background: 'linear-gradient(90deg, #6366f1, #00d4ff)' }}
+          className="h-full rounded-full transition-all duration-300"
+          style={{ width: `${pct}%`, background: 'linear-gradient(90deg, #22d3ee, #34d399)' }}
         />
       </div>
-      <div className="flex justify-between mt-1">
-        <span className="text-[10px] text-white/30">{pct}% remaining</span>
-        <button className="text-[10px] text-cyan-400 hover:text-cyan-300 transition-colors font-medium">Buy more</button>
+      <div className="mt-1.5 flex justify-between">
+        <span className="text-[10px] text-white/40">{pct}% remaining</span>
+        <button className="text-[10px] font-medium text-cyan-300 transition-colors hover:text-cyan-100">Buy more</button>
       </div>
     </div>
   );
@@ -80,6 +49,7 @@ interface DashboardShellProps {
 export default function DashboardShell({ children, locale = 'ka' }: DashboardShellProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const pathname = usePathname();
+  const navItems = DASHBOARD_NAV_SECTIONS.flatMap((section) => section.items);
 
   // Close sidebar on route change (mobile)
   useEffect(() => { setSidebarOpen(false); }, [pathname]);
@@ -90,8 +60,10 @@ export default function DashboardShell({ children, locale = 'ka' }: DashboardShe
     return pathname.startsWith(localePath);
   };
 
+  const currentItem = navItems.find((item) => isActive(item.href)) ?? navItems[0];
+
   return (
-    <div className="flex h-screen overflow-hidden" style={{ background: '#08080e' }}>
+    <div className="hf-dashboard-shell flex h-screen overflow-hidden">
 
       {/* ── Mobile backdrop ─────────────────────────────────────────── */}
       {sidebarOpen && (
@@ -107,30 +79,32 @@ export default function DashboardShell({ children, locale = 'ka' }: DashboardShe
           'fixed top-0 left-0 h-full z-50 flex flex-col transition-transform duration-300 lg:relative lg:translate-x-0',
           sidebarOpen ? 'translate-x-0' : '-translate-x-full',
         )}
-        style={{ width: 240, background: 'rgba(10,10,18,0.98)', borderRight: '1px solid rgba(255,255,255,0.06)' }}
+        style={{ width: 288 }}
       >
+        <div className="hf-sidebar absolute inset-0" aria-hidden />
+
         {/* Logo */}
-        <div className="flex items-center justify-between px-4 h-14 flex-shrink-0" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-          <Link href={`/${locale}/dashboard`} className="flex items-center gap-2.5">
-            <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ background: 'linear-gradient(135deg,#6366f1,#00d4ff)' }}>
-              <Sparkles className="w-3.5 h-3.5 text-white" />
+        <div className="relative z-10 flex h-16 flex-shrink-0 items-center justify-between px-4" style={{ borderBottom: '1px solid rgba(165,243,252,0.14)' }}>
+          <Link href={`/${locale}/dashboard`} className="flex items-center gap-3">
+            <div className="flex h-8 w-8 items-center justify-center rounded-xl" style={{ background: 'linear-gradient(140deg,#22d3ee,#34d399)' }}>
+              <Sparkles className="h-4 w-4 text-slate-950" />
             </div>
-            <span className="font-bold text-sm text-white" style={{ fontFamily: 'var(--font-syne, system-ui)', letterSpacing: '-0.02em' }}>
+            <span className="hf-heading text-sm font-bold text-white" style={{ letterSpacing: '-0.02em' }}>
               MyAvatar<span style={{ color: '#00d4ff' }}>.ge</span>
             </span>
           </Link>
-          <button onClick={() => setSidebarOpen(false)} className="lg:hidden text-white/40 hover:text-white transition-colors">
+          <button onClick={() => setSidebarOpen(false)} className="text-white/40 transition-colors hover:text-white lg:hidden">
             <X className="w-4 h-4" />
           </button>
         </div>
 
         {/* Nav */}
-        <nav className="flex-1 overflow-y-auto py-3 space-y-5">
-          {NAV.map(group => (
+        <nav className="relative z-10 flex-1 space-y-5 overflow-y-auto py-4">
+          {DASHBOARD_NAV_SECTIONS.map((group) => (
             <div key={group.section}>
-              <p className="px-4 mb-1 text-[10px] font-semibold uppercase tracking-widest text-white/25">{group.section}</p>
+              <p className="mb-1 px-4 text-[10px] font-semibold uppercase tracking-[0.18em] text-cyan-100/35">{group.section}</p>
               <div className="space-y-0.5 px-2">
-                {group.items.map(item => {
+                {group.items.map((item) => {
                   const active = isActive(item.href);
                   const Icon = item.icon;
                   return (
@@ -138,14 +112,9 @@ export default function DashboardShell({ children, locale = 'ka' }: DashboardShe
                       key={item.id}
                       href={`/${locale}${item.href}`}
                       className={cn(
-                        'flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-all group relative',
-                        active ? 'text-white' : 'text-white/50 hover:text-white/85 hover:bg-white/[0.04]',
+                        'hf-sidebar-link group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition-all',
+                        active ? 'active text-white' : 'text-white/60',
                       )}
-                      style={active ? {
-                        background: `${item.color}14`,
-                        border: `1px solid ${item.color}30`,
-                        color: '#fff',
-                      } : {}}
                     >
                       {active && (
                         <span
@@ -157,7 +126,10 @@ export default function DashboardShell({ children, locale = 'ka' }: DashboardShe
                         className="w-4 h-4 flex-shrink-0 transition-colors"
                         style={{ color: active ? item.color : undefined }}
                       />
-                      <span className="flex-1 font-medium text-[13px]">{item.label}</span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-[13px] font-semibold leading-tight">{item.label}</span>
+                        <span className="block truncate text-[10px] font-medium text-white/35">{item.subtitle}</span>
+                      </span>
                       {active && <ChevronRight className="w-3 h-3 opacity-40" style={{ color: item.color }} />}
                     </Link>
                   );
@@ -168,21 +140,21 @@ export default function DashboardShell({ children, locale = 'ka' }: DashboardShe
         </nav>
 
         {/* Credits */}
-        <div className="flex-shrink-0 pb-2">
+        <div className="relative z-10 flex-shrink-0 pb-2">
           <CreditsBar />
         </div>
 
         {/* User */}
-        <div className="flex-shrink-0 px-3 pb-3" style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}>
-          <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-white/[0.04] transition-all cursor-pointer mt-2">
-            <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: 'linear-gradient(135deg,#6366f1,#8b5cf6)' }}>
+        <div className="relative z-10 flex-shrink-0 px-3 pb-3" style={{ borderTop: '1px solid rgba(165,243,252,0.14)' }}>
+          <div className="mt-2 flex cursor-pointer items-center gap-3 rounded-xl px-3 py-2.5 transition-all hover:bg-cyan-300/5">
+            <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full" style={{ background: 'linear-gradient(140deg,#22d3ee,#34d399)' }}>
               <User className="w-3.5 h-3.5 text-white" />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-[12px] font-medium text-white/80 truncate">My Account</p>
-              <p className="text-[10px] text-white/35 truncate">Pro Plan</p>
+              <p className="truncate text-[12px] font-medium text-white/85">My Account</p>
+              <p className="truncate text-[10px] text-cyan-100/40">Pro Plan</p>
             </div>
-            <Settings className="w-3.5 h-3.5 text-white/25 hover:text-white/60 transition-colors flex-shrink-0" />
+            <Settings className="h-3.5 w-3.5 flex-shrink-0 text-white/25 transition-colors hover:text-white/60" />
           </div>
         </div>
       </aside>
@@ -191,27 +163,38 @@ export default function DashboardShell({ children, locale = 'ka' }: DashboardShe
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* Mobile topbar */}
         <div
-          className="flex items-center gap-3 px-4 h-14 flex-shrink-0 lg:hidden"
-          style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', background: 'rgba(8,8,14,0.98)' }}
+          className="relative z-10 flex h-14 flex-shrink-0 items-center gap-3 px-4 lg:hidden"
+          style={{ borderBottom: '1px solid rgba(165,243,252,0.14)', background: 'rgba(5,11,24,0.9)' }}
         >
           <button
             onClick={() => setSidebarOpen(true)}
-            className="w-9 h-9 rounded-xl flex items-center justify-center text-white/60 hover:text-white hover:bg-white/[0.06] transition-all"
+            className="flex h-9 w-9 items-center justify-center rounded-xl text-white/60 transition-all hover:bg-white/[0.06] hover:text-white"
           >
             <Menu className="w-5 h-5" />
           </button>
-          <span className="font-bold text-sm text-white" style={{ fontFamily: 'var(--font-syne, system-ui)' }}>
+          <span className="hf-heading text-sm font-bold text-white">
             MyAvatar<span style={{ color: '#00d4ff' }}>.ge</span>
           </span>
-          <div className="flex items-center gap-1 ml-auto">
-            <Zap className="w-3.5 h-3.5 text-cyan-400" />
-            <span className="text-[12px] font-mono text-white/60">4,200</span>
+          <div className="ml-auto flex items-center gap-2 rounded-full border border-cyan-200/20 bg-cyan-200/10 px-2.5 py-1">
+            <Zap className="h-3.5 w-3.5 text-cyan-300" />
+            <span className="text-[12px] font-mono text-cyan-100/85">4,200</span>
+          </div>
+        </div>
+
+        <div className="relative z-10 hidden h-16 items-center border-b border-cyan-100/10 px-6 lg:flex">
+          <div>
+            <p className="text-[11px] uppercase tracking-[0.16em] text-cyan-200/40">Hyperframe Control</p>
+            <p className="hf-heading mt-0.5 text-sm font-semibold text-white/90">{currentItem?.label ?? 'Dashboard'}</p>
+          </div>
+          <div className="ml-auto flex items-center gap-2 rounded-full border border-cyan-200/20 bg-cyan-200/10 px-3 py-1.5">
+            <Zap className="h-3.5 w-3.5 text-cyan-300" />
+            <span className="text-[12px] font-mono text-cyan-100/90">4,200 credits</span>
           </div>
         </div>
 
         {/* Page content */}
-        <main className="flex-1 overflow-y-auto">
-          {children}
+        <main className="hf-main-wrap hf-main-content flex-1 overflow-y-auto">
+          <div className="min-h-full px-3 py-4 sm:px-4 lg:px-6 lg:py-5">{children}</div>
         </main>
       </div>
     </div>

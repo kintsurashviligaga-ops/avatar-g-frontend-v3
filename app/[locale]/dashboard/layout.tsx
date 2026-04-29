@@ -1,4 +1,5 @@
 import DashboardShell from '@/components/dashboard/DashboardShell';
+import './hyperframe.css';
 
 interface DashboardLayoutProps {
   children: React.ReactNode;

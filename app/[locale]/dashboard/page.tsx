@@ -3,45 +3,18 @@
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import {
-  Bot, UserCircle2, ImageIcon, Video, Music2, FileText,
-  Workflow, BarChart3, Zap, TrendingUp, MessageSquare,
-  Layers, ArrowRight, Sparkles, Clock, CheckCircle, Building2,
+  ArrowRight,
+  ArrowUpRight,
+  CheckCircle2,
+  CircleDashed,
+  Clock3,
+  Sparkles,
 } from 'lucide-react';
-
-// ─── Stats ───────────────────────────────────────────────────────────────────
-
-const STATS = [
-  { label: 'Credits Remaining', value: '4,200', sub: 'of 10,000 total', icon: Zap, color: '#6366f1', trend: '-580 this week' },
-  { label: 'AI Sessions', value: '127', sub: 'conversations', icon: MessageSquare, color: '#00d4ff', trend: '+23 this week' },
-  { label: 'Generated Items', value: '48', sub: 'images & videos', icon: Layers, color: '#10b981', trend: '+12 this week' },
-  { label: 'Active Workflows', value: '3', sub: 'running now', icon: TrendingUp, color: '#f59e0b', trend: '2 completed today' },
-];
-
-// ─── Quick Start services ─────────────────────────────────────────────────────
-
-const QUICK = [
-  { id: 'agent-g',   label: 'Agent G',          icon: Bot,        color: '#6366f1', desc: 'AI ორკესტრატორი' },
-  { id: 'business-agent', label: 'Business Agent', icon: Building2, color: '#22c55e', desc: 'ბიზნეს ზრდის ასისტენტი' },
-  { id: 'avatar',    label: 'Avatar Studio',    icon: UserCircle2, color: '#8b5cf6', desc: 'ავატარის შექმნა' },
-  { id: 'image',     label: 'Image Generation', icon: ImageIcon,  color: '#f59e0b', desc: 'AI სურათები' },
-  { id: 'video',     label: 'Video Generation', icon: Video,      color: '#ef4444', desc: 'ვიდეო სკრიპტები' },
-  { id: 'music',     label: 'Music Production', icon: Music2,     color: '#10b981', desc: 'AI მუსიკა' },
-  { id: 'copy',      label: 'Text & Copy',      icon: FileText,   color: '#06b6d4', desc: 'მარკეტინგ ტექსტი' },
-  { id: 'workflows', label: 'Workflow Builder', icon: Workflow,   color: '#84cc16', desc: 'ავტომატიზაცია' },
-  { id: 'executive-agent', label: 'Executive Agent', icon: TrendingUp, color: '#f97316', desc: 'CEO დონის ანალიზი' },
-  { id: 'analytics', label: 'Analytics',        icon: BarChart3,  color: '#3b82f6', desc: 'მონაცემთა ანალიზი' },
-];
-
-// ─── Recent activity ──────────────────────────────────────────────────────────
-
-const ACTIVITY = [
-  { icon: Bot,        color: '#6366f1', text: 'Agent G — მარკეტინგ სტრატეგია შეიქმნა',    time: '2 წ. წინ',    status: 'done' },
-  { icon: Building2,  color: '#22c55e', text: 'Business Agent — გაყიდვების გეგმა განახლდა', time: '12 წ. წინ',  status: 'done' },
-  { icon: ImageIcon,  color: '#f59e0b', text: 'Image Gen — 3 სურათი გენერირდა',             time: '1 სთ. წინ',   status: 'done' },
-  { icon: Workflow,   color: '#84cc16', text: 'Workflow "Content Pipeline" გაეშვა',          time: '3 სთ. წინ',   status: 'running' },
-  { icon: TrendingUp, color: '#f97316', text: 'Executive Agent — KPI ბრიფი გენერირდა',      time: '5 სთ. წინ',   status: 'done' },
-  { icon: UserCircle2,color: '#8b5cf6', text: 'Avatar Studio — პროფესიონალური ავატარი',      time: 'გუშინ',       status: 'done' },
-];
+import {
+  DASHBOARD_ACTIVITY,
+  DASHBOARD_METRICS,
+  DASHBOARD_QUICK_CARDS,
+} from '@/components/dashboard/hyperframe.config';
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
@@ -50,124 +23,127 @@ export default function DashboardPage() {
   const locale = (params?.locale as string) || 'ka';
 
   return (
-    <div className="p-6 max-w-6xl mx-auto space-y-8">
+    <div className="hf-main-content mx-auto max-w-7xl space-y-6">
+      <section className="hf-hero p-5 sm:p-7">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="max-w-2xl">
+            <p className="mb-2 inline-flex items-center gap-2 rounded-full border border-cyan-200/25 bg-cyan-200/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-cyan-100/75">
+              <Sparkles className="h-3.5 w-3.5" />
+              Hyperframe Command Layer
+            </p>
+            <h1 className="hf-heading text-3xl font-bold text-white sm:text-4xl">Dashboard</h1>
+            <p className="mt-1.5 text-sm text-cyan-100/65">MyAvatar.ge - AI Civilization Stack</p>
+            <p className="mt-2 text-xs font-medium uppercase tracking-[0.16em] text-cyan-300/85">
+              One Window Dashboard · ერთი ფანჯრის პრინციპი
+            </p>
+          </div>
 
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-white" style={{ fontFamily: 'var(--font-syne, system-ui)', letterSpacing: '-0.02em' }}>
-            Dashboard
-          </h1>
-          <p className="text-sm mt-0.5" style={{ color: 'rgba(255,255,255,0.45)' }}>
-            MyAvatar.ge — AI Civilization Stack
-          </p>
-          <p className="text-xs mt-1 font-medium uppercase tracking-[0.16em]" style={{ color: 'rgba(0,212,255,0.78)' }}>
-            One Window Dashboard · ერთი ფანჯრის პრინციპი
-          </p>
-        </div>
-        <Link
-          href={`/${locale}/dashboard/agent-g`}
-          className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-white transition-all hover:opacity-90"
-          style={{ background: 'linear-gradient(135deg, #6366f1, #00d4ff)' }}
-        >
-          <Sparkles className="w-4 h-4" />
-          Start with Agent G
-        </Link>
-      </div>
-
-      {/* Stats */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {STATS.map(s => {
-          const Icon = s.icon;
-          return (
-            <div
-              key={s.label}
-              className="rounded-2xl p-4"
-              style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}
+          <div className="flex flex-wrap gap-2">
+            <Link
+              href={`/${locale}/dashboard/agent-g`}
+              className="hf-cta inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition-all"
             >
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-xs text-white/40 font-medium">{s.label}</span>
-                <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ background: `${s.color}18` }}>
-                  <Icon className="w-3.5 h-3.5" style={{ color: s.color }} />
+              Start with Agent G
+              <ArrowUpRight className="h-4 w-4" />
+            </Link>
+          </div>
+        </div>
+      </section>
+
+      <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {DASHBOARD_METRICS.map((metric) => {
+          const Icon = metric.icon;
+          return (
+            <article key={metric.id} className="hf-card p-4 sm:p-5">
+              <div className="mb-3 flex items-center justify-between">
+                <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-cyan-100/45">{metric.label}</span>
+                <div
+                  className="flex h-8 w-8 items-center justify-center rounded-lg"
+                  style={{ background: `${metric.color}1f`, border: `1px solid ${metric.color}3b` }}
+                >
+                  <Icon className="h-4 w-4" style={{ color: metric.color }} />
                 </div>
               </div>
-              <p className="text-2xl font-bold text-white" style={{ fontFamily: 'var(--font-syne, system-ui)' }}>{s.value}</p>
-              <p className="text-xs mt-0.5" style={{ color: 'rgba(255,255,255,0.35)' }}>{s.sub}</p>
-              <p className="text-[11px] mt-2 font-medium" style={{ color: s.color }}>{s.trend}</p>
-            </div>
+              <p className="hf-stat-value text-3xl font-bold text-white">{metric.value}</p>
+              <p className="mt-1 text-xs text-cyan-100/50">{metric.sub}</p>
+              <p className="mt-2 text-[11px] font-semibold" style={{ color: metric.color }}>
+                {metric.trend}
+              </p>
+            </article>
           );
         })}
-      </div>
+      </section>
 
-      {/* Quick Start */}
-      <div>
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-sm font-semibold text-white/60 uppercase tracking-wider">Quick Start</h2>
+      <section className="hf-card p-5">
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="hf-heading text-lg font-semibold text-white">Quick Launch</h2>
+          <span className="hf-pill rounded-full px-3 py-1 text-[11px] font-medium uppercase tracking-[0.12em] text-cyan-100/75">
+            10 Active Modules
+          </span>
         </div>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          {QUICK.map(svc => {
-            const Icon = svc.icon;
+
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+          {DASHBOARD_QUICK_CARDS.map((card) => {
+            const Icon = card.icon;
             return (
               <Link
-                key={svc.id}
-                href={`/${locale}/dashboard/${svc.id}`}
-                className="group flex flex-col gap-3 p-4 rounded-2xl transition-all hover:scale-[1.02]"
-                style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}
+                key={card.id}
+                href={`/${locale}${card.href}`}
+                className="hf-card group p-4 transition-all duration-200 hover:-translate-y-0.5"
               >
-                <div
-                  className="w-10 h-10 rounded-xl flex items-center justify-center"
-                  style={{ background: `${svc.color}18`, border: `1px solid ${svc.color}30` }}
-                >
-                  <Icon className="w-5 h-5" style={{ color: svc.color }} />
+                <div className="mb-3 flex items-center justify-between">
+                  <div
+                    className="flex h-10 w-10 items-center justify-center rounded-xl"
+                    style={{ background: `${card.color}22`, border: `1px solid ${card.color}52` }}
+                  >
+                    <Icon className="h-5 w-5" style={{ color: card.color }} />
+                  </div>
+                  <ArrowRight className="h-4 w-4 text-cyan-100/35 transition-transform group-hover:translate-x-0.5" />
                 </div>
-                <div>
-                  <p className="text-sm font-semibold text-white/85 group-hover:text-white transition-colors">{svc.label}</p>
-                  <p className="text-[11px] mt-0.5" style={{ color: 'rgba(255,255,255,0.35)' }}>{svc.desc}</p>
-                </div>
-                <div className="flex items-center gap-1 text-[11px] font-medium" style={{ color: svc.color }}>
-                  <span>გახსნა</span>
-                  <ArrowRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
-                </div>
+                <p className="hf-heading text-sm font-semibold text-white/95">{card.label}</p>
+                <p className="mt-1 text-[11px] text-cyan-100/45">{card.desc}</p>
               </Link>
             );
           })}
         </div>
-      </div>
+      </section>
 
-      {/* Recent Activity */}
-      <div>
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-sm font-semibold text-white/60 uppercase tracking-wider">Recent Activity</h2>
-          <button className="text-xs text-cyan-400 hover:text-cyan-300 transition-colors">View all</button>
+      <section className="hf-card overflow-hidden">
+        <div className="flex items-center justify-between border-b border-cyan-100/10 px-5 py-4">
+          <h2 className="hf-heading text-base font-semibold text-white">Recent Activity</h2>
+          <button className="text-xs font-medium text-cyan-200/80 transition-colors hover:text-cyan-100">View all</button>
         </div>
-        <div className="rounded-2xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}>
-          {ACTIVITY.map((a, i) => {
-            const Icon = a.icon;
+
+        <div>
+          {DASHBOARD_ACTIVITY.map((entry, i) => {
+            const Icon = entry.icon;
             return (
-              <div
-                key={i}
-                className="flex items-center gap-4 px-4 py-3.5 transition-colors hover:bg-white/[0.03]"
-                style={{ borderBottom: i < ACTIVITY.length - 1 ? '1px solid rgba(255,255,255,0.05)' : 'none' }}
+              <article
+                key={entry.id}
+                className="flex items-center gap-3 px-5 py-3.5 transition-colors hover:bg-cyan-200/[0.03]"
+                style={{ borderBottom: i < DASHBOARD_ACTIVITY.length - 1 ? '1px solid rgba(165,243,252,0.08)' : 'none' }}
               >
-                <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: `${a.color}18` }}>
-                  <Icon className="w-4 h-4" style={{ color: a.color }} />
+                <div
+                  className="flex h-8 w-8 items-center justify-center rounded-lg"
+                  style={{ background: `${entry.color}1f`, border: `1px solid ${entry.color}3b` }}
+                >
+                  <Icon className="h-4 w-4" style={{ color: entry.color }} />
                 </div>
-                <p className="flex-1 text-sm text-white/70 truncate">{a.text}</p>
-                <div className="flex items-center gap-2 flex-shrink-0">
-                  <Clock className="w-3 h-3 text-white/25" />
-                  <span className="text-[11px] text-white/35">{a.time}</span>
-                  {a.status === 'done' ? (
-                    <CheckCircle className="w-3.5 h-3.5 text-emerald-500" />
+                <p className="flex-1 truncate text-sm text-cyan-50/85">{entry.text}</p>
+                <div className="flex items-center gap-2 text-[11px] text-cyan-100/45">
+                  <Clock3 className="h-3.5 w-3.5" />
+                  <span>{entry.time}</span>
+                  {entry.status === 'done' ? (
+                    <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
                   ) : (
-                    <div className="w-3.5 h-3.5 rounded-full border-2 border-cyan-400 border-t-transparent animate-spin" />
+                    <CircleDashed className="h-3.5 w-3.5 animate-spin text-cyan-300" />
                   )}
                 </div>
-              </div>
+              </article>
             );
           })}
         </div>
-      </div>
-
+      </section>
     </div>
   );
 }
