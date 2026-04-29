@@ -5,6 +5,8 @@ import { getMessages, setRequestLocale } from 'next-intl/server';
 import { NextIntlClientProvider } from 'next-intl';
 import { i18n } from "@/i18n.config";
 import { QueryProvider } from "@/components/providers/QueryProvider";
+import { PageTransitionWrapper } from "@/components/layout/PageTransitionWrapper";
+import { AppProviders } from "@/components/providers/AppProviders";
 
 const metadataBaseUrl = publicEnv.NEXT_PUBLIC_APP_URL || "https://avatar-g-frontend-v3.vercel.app";
 
@@ -97,7 +99,9 @@ export default async function LocaleLayout({
     <div className="font-sans ag-noise ag-silver-neon-overlay">
       <NextIntlClientProvider locale={safeLocale} messages={messages}>
         <QueryProvider>
-          {children}
+          <AppProviders>
+            <PageTransitionWrapper>{children}</PageTransitionWrapper>
+          </AppProviders>
         </QueryProvider>
       </NextIntlClientProvider>
     </div>
