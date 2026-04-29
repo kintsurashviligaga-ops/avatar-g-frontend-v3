@@ -1,10 +1,9 @@
 'use client';
 
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { CircleDollarSign, Gauge, ShieldCheck } from 'lucide-react';
 import { OMNI_SERVICE_MAP, OMNI_SERVICES } from './services';
 import { useOmniDashboardStore } from './store';
-import type { ServiceId } from './types';
 import { ActivityLogPanel } from './ActivityLogPanel';
 import { LivePreviewEngine } from './LivePreviewEngine';
 import { PrimaryAgentChat } from './PrimaryAgentChat';
@@ -25,7 +24,8 @@ export default function MainDashboard({ locale, userName, isAuthenticated }: Mai
   const auth = useOmniDashboardStore((state) => state.auth);
   const setLocale = useOmniDashboardStore((state) => state.setLocale);
   const setAuthSnapshot = useOmniDashboardStore((state) => state.setAuthSnapshot);
-  const setActiveService = useOmniDashboardStore((state) => state.setActiveService);
+  const [toolsOpen, setToolsOpen] = useState(false);
+  const [toolsTab, setToolsTab] = useState<'preview' | 'orchestrator' | 'activity'>('preview');
 
   useEffect(() => {
     setLocale(locale);
@@ -78,8 +78,14 @@ export default function MainDashboard({ locale, userName, isAuthenticated }: Mai
             <header className="mb-3 flex flex-wrap items-center gap-2 border-b border-white/10 pb-3">
               <div className="flex items-center gap-2">
                 <span className="omni-led is-online" />
-                <p className="text-sm font-semibold text-white">Unified Operations Window</p>
+                <div>
+                  <p className="text-sm font-semibold text-white">One AI Chat Window</p>
+                  <p className="text-[11px] text-white/50">Type once. Agent G routes work to the right services and returns the best answer in this chat.</p>
+                </div>
               </div>
+              <span className="rounded-full border border-emerald-300/30 bg-emerald-400/10 px-3 py-1 text-[11px] text-emerald-100">
+                Auto Router Active
+              </span>
               <span className="rounded-full border border-white/15 bg-white/[0.04] px-3 py-1 text-[11px] text-white/70">
                 Active: {OMNI_SERVICE_MAP[activeServiceId].title}
               </span>
@@ -88,41 +94,67 @@ export default function MainDashboard({ locale, userName, isAuthenticated }: Mai
               </span>
             </header>
 
-            <div className="mb-3 flex gap-1 overflow-x-auto rounded-xl border border-white/10 bg-black/30 p-1.5">
-              {OMNI_SERVICES.map((service) => {
-                const active = activeServiceId === service.id;
-                const state = services[service.id];
-                const Icon = service.icon;
-                return (
-                  <button
-                    key={service.id}
-                    type="button"
-                    onClick={() => setActiveService(service.id as ServiceId)}
-                    className={`inline-flex shrink-0 items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[11px] transition-colors ${
-                      active
-                        ? 'border-cyan-200/45 bg-cyan-200/18 text-cyan-50'
-                        : 'border-white/10 bg-white/[0.03] text-white/72 hover:bg-white/[0.08]'
-                    }`}
-                  >
-                    <span className="omni-led" style={{ backgroundColor: state.status === 'running' ? '#fbbf24' : service.accent }} />
-                    <Icon className="h-3.5 w-3.5" />
-                    {OMNI_SERVICE_MAP[service.id].short}
-                  </button>
-                );
-              })}
-            </div>
-
-            <div className="grid min-h-0 flex-1 gap-3 xl:grid-cols-[minmax(0,1.35fr)_minmax(340px,1fr)]">
+            <div className="min-h-0 flex-1">
               <PrimaryAgentChat />
-              <LivePreviewEngine />
             </div>
 
-            <div className="mt-3">
-              <ServiceOrchestrator />
-            </div>
+            <div className="mt-3 rounded-xl border border-white/10 bg-black/25 p-2.5">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/55">Workspace Tools</p>
+                <button
+                  type="button"
+                  onClick={() => setToolsOpen((value) => !value)}
+                  className="rounded-lg border border-white/15 bg-white/[0.05] px-2.5 py-1 text-xs font-semibold text-white/80 hover:bg-white/[0.1]"
+                >
+                  {toolsOpen ? 'Hide Tools' : 'Open Tools'}
+                </button>
+              </div>
 
-            <div className="mt-3 min-h-[170px]">
-              <ActivityLogPanel embedded />
+              {toolsOpen && (
+                <div className="mt-2">
+                  <div className="mb-2 flex flex-wrap gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setToolsTab('preview')}
+                      className={`rounded-lg border px-2.5 py-1 text-xs ${
+                        toolsTab === 'preview'
+                          ? 'border-cyan-300/45 bg-cyan-400/15 text-cyan-100'
+                          : 'border-white/10 bg-white/[0.03] text-white/75'
+                      }`}
+                    >
+                      Preview
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setToolsTab('orchestrator')}
+                      className={`rounded-lg border px-2.5 py-1 text-xs ${
+                        toolsTab === 'orchestrator'
+                          ? 'border-cyan-300/45 bg-cyan-400/15 text-cyan-100'
+                          : 'border-white/10 bg-white/[0.03] text-white/75'
+                      }`}
+                    >
+                      Orchestrator
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setToolsTab('activity')}
+                      className={`rounded-lg border px-2.5 py-1 text-xs ${
+                        toolsTab === 'activity'
+                          ? 'border-cyan-300/45 bg-cyan-400/15 text-cyan-100'
+                          : 'border-white/10 bg-white/[0.03] text-white/75'
+                      }`}
+                    >
+                      Activity
+                    </button>
+                  </div>
+
+                  <div className="max-h-[42vh] overflow-auto">
+                    {toolsTab === 'preview' && <LivePreviewEngine />}
+                    {toolsTab === 'orchestrator' && <ServiceOrchestrator />}
+                    {toolsTab === 'activity' && <ActivityLogPanel embedded />}
+                  </div>
+                </div>
+              )}
             </div>
           </section>
         </div>

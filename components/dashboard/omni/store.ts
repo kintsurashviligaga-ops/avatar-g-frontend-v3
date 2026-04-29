@@ -600,13 +600,15 @@ export const useOmniDashboardStore = create<OmniDashboardState>((set, get) => {
         `${userLine}\n` +
         (attachmentDigest ? `\nAttached Inputs:\n${attachmentDigest}` : '');
 
+      const routed = routeWorkerService(commandPayload, snapshot.activeServiceId);
+
       set((state) => ({
         pendingInputs: [],
+        activeServiceId: routed,
         ...addChatLine(state, 'user', userLine),
         ...addLogLine(state, 'agent', `PrimaryAgent received command in ${LANGUAGE_LABELS[language]}`),
       }));
 
-      const routed = routeWorkerService(commandPayload, snapshot.activeServiceId);
       await runWorker(routed, commandPayload, 'chat');
     },
     focusPreview: (assetId) => {

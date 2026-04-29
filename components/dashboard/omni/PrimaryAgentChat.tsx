@@ -50,6 +50,25 @@ const LANGUAGE_META: Array<{ id: CommandLanguage; short: string; label: string; 
   { id: 'ru', short: 'RU', label: 'Русский', speechCode: 'ru-RU' },
 ];
 
+const QUICK_COMMANDS: Array<{ label: string; prompt: string }> = [
+  {
+    label: 'Launch Campaign',
+    prompt: 'Create a full launch campaign plan with copy, creative directions, and 7-day execution timeline.',
+  },
+  {
+    label: 'Product Visual Pack',
+    prompt: 'Generate product visual concepts, ad image prompts, and matching short video storyboard.',
+  },
+  {
+    label: 'Voice + Script',
+    prompt: 'Write a conversion-focused script and suggest voice style options for a Georgian audience.',
+  },
+  {
+    label: 'Executive Summary',
+    prompt: 'Analyze current direction and return an executive summary with top 5 actions and risks.',
+  },
+];
+
 function resolveSpeechCtor(): SpeechRecognitionCtor | null {
   if (typeof window === 'undefined') {
     return null;
@@ -128,7 +147,7 @@ export function PrimaryAgentChat() {
       return;
     }
     node.style.height = '0px';
-    node.style.height = `${Math.min(node.scrollHeight, 220)}px`;
+    node.style.height = `${Math.min(node.scrollHeight, 320)}px`;
   }, []);
 
   const syncSelection = useCallback(() => {
@@ -476,12 +495,27 @@ export function PrimaryAgentChat() {
     }
   }, [pendingInputs.length, prompt, running, sendPrimaryCommand]);
 
+  const applyQuickCommand = useCallback((value: string) => {
+    setPrompt(value);
+    queueMicrotask(() => {
+      const node = composerRef.current;
+      if (!node) {
+        return;
+      }
+      node.focus();
+      const end = value.length;
+      node.setSelectionRange(end, end);
+      selectionRef.current = { start: end, end };
+    });
+  }, []);
+
   return (
-    <section className="omni-card relative z-10 min-w-0 overflow-hidden border border-white/12 bg-black/20">
+    <section className="omni-card omni-chat-pane relative z-10 flex min-h-0 min-w-0 flex-col overflow-hidden rounded-2xl border border-white/12 bg-black/20">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 px-4 py-3">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.16em] text-white/40">Primary Agent Console</p>
           <h3 className="text-sm font-semibold text-white/85">Multimodal Command Bar</h3>
+          <p className="mt-0.5 text-[12px] text-white/50">Write once. I route tasks across services and return the best output here.</p>
         </div>
         <div className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-black/35 p-1">
           {LANGUAGE_META.map((language) => (
@@ -500,28 +534,25 @@ export function PrimaryAgentChat() {
         </div>
       </div>
 
-      <div className="max-h-[320px] space-y-3 overflow-auto px-4 py-3">
+      <div className="omni-chat-scroll min-h-[360px] flex-1 space-y-3 overflow-y-auto bg-black/15 px-4 py-4 lg:min-h-[440px] xl:min-h-[520px]">
         {messages.length === 0 ? (
-          <p className="text-sm text-white/45">Start by commanding Agent G. Attach files, voice, or camera context as needed.</p>
+          <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4 text-sm text-white/55">
+            Start by describing your goal in natural language. You can attach files, voice, or camera context and Agent G will orchestrate all services automatically.
+          </div>
         ) : (
           messages.map((message) => (
-            <motion.div
-              key={message.id}
-              layout
-              className={`rounded-xl border px-3 py-2.5 text-sm ${
-                message.role === 'assistant'
-                  ? 'border-white/10 bg-white/[0.045] text-white/86'
-                  : 'border-cyan-400/30 bg-cyan-500/[0.12] text-cyan-100'
-              }`}
-              initial={{ opacity: 0, y: 4 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.18 }}
-            >
-              <div className="mb-1 flex items-center gap-1.5 text-[11px] uppercase tracking-[0.13em] text-white/55">
-                {message.role === 'assistant' ? <Bot className="h-3.5 w-3.5" /> : <TerminalSquare className="h-3.5 w-3.5" />}
-                {message.role === 'assistant' ? 'Agent G' : 'Operator'}
+            <motion.div key={message.id} layout className={`flex ${message.role === 'assistant' ? 'justify-start' : 'justify-end'}`} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.18 }}>
+              <div
+                className={`omni-chat-line w-full max-w-[94%] text-sm ${
+                  message.role === 'assistant' ? 'is-assistant text-white/86' : 'is-user text-cyan-100'
+                }`}
+              >
+                <div className="mb-1 flex items-center gap-1.5 text-[11px] uppercase tracking-[0.13em] text-white/55">
+                  {message.role === 'assistant' ? <Bot className="h-3.5 w-3.5" /> : <TerminalSquare className="h-3.5 w-3.5" />}
+                  {message.role === 'assistant' ? 'Agent G' : 'Operator'}
+                </div>
+                <p className="whitespace-pre-wrap text-sm leading-relaxed">{message.content}</p>
               </div>
-              <p className="whitespace-pre-wrap text-sm leading-relaxed">{message.content}</p>
             </motion.div>
           ))
         )}
@@ -545,84 +576,22 @@ export function PrimaryAgentChat() {
           void onDropFiles(event);
         }}
       >
-        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-          <div className="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-black/35 p-1">
-            <button
-              type="button"
-              onMouseDown={preventToolbarBlur}
-              className="rounded-md p-1.5 text-white/75 transition hover:bg-white/10 hover:text-white"
-              onClick={() => applyMarkdownWrap('**')}
-              title="Bold"
-            >
-              <Bold className="h-3.5 w-3.5" />
-            </button>
-            <button
-              type="button"
-              onMouseDown={preventToolbarBlur}
-              className="rounded-md p-1.5 text-white/75 transition hover:bg-white/10 hover:text-white"
-              onClick={() => applyMarkdownWrap('_')}
-              title="Italic"
-            >
-              <Italic className="h-3.5 w-3.5" />
-            </button>
-            <button
-              type="button"
-              onMouseDown={preventToolbarBlur}
-              className="rounded-md p-1.5 text-white/75 transition hover:bg-white/10 hover:text-white"
-              onClick={() => applyMarkdownWrap('`')}
-              title="Inline code"
-            >
-              <Code2 className="h-3.5 w-3.5" />
-            </button>
-            <button
-              type="button"
-              onMouseDown={preventToolbarBlur}
-              className="rounded-md p-1.5 text-white/75 transition hover:bg-white/10 hover:text-white"
-              onClick={insertBullet}
-              title="Bullet list"
-            >
-              <List className="h-3.5 w-3.5" />
-            </button>
+        <div className="mb-3 rounded-xl border border-white/10 bg-black/35 p-2.5">
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-white/45">Quick Start</p>
+            <span className="text-[11px] text-white/45">One tap templates</span>
           </div>
-
-          <div className="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-black/35 p-1">
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              className="inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-xs text-white/80 transition hover:bg-white/10 hover:text-white"
-              title="Upload file"
-            >
-              <Upload className="h-3.5 w-3.5" />
-              Upload
-            </button>
-            <button
-              type="button"
-              onClick={toggleRecording}
-              className={`inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-xs transition ${
-                recording ? 'bg-red-500/30 text-red-100' : 'text-white/80 hover:bg-white/10 hover:text-white'
-              }`}
-              title={recording ? 'Stop recording' : 'Start voice input'}
-            >
-              {recording ? <MicOff className="h-3.5 w-3.5" /> : <Mic className="h-3.5 w-3.5" />}
-              {recording ? 'Stop' : 'Voice'}
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                if (cameraOpen) {
-                  closeCamera();
-                } else {
-                  void openCamera();
-                }
-              }}
-              className={`inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-xs transition ${
-                cameraOpen ? 'bg-cyan-500/25 text-cyan-100' : 'text-white/80 hover:bg-white/10 hover:text-white'
-              }`}
-              title={cameraOpen ? 'Close camera' : 'Open camera'}
-            >
-              <Camera className="h-3.5 w-3.5" />
-              Camera
-            </button>
+          <div className="flex flex-wrap gap-1.5">
+            {QUICK_COMMANDS.map((command) => (
+              <button
+                key={command.label}
+                type="button"
+                onClick={() => applyQuickCommand(command.prompt)}
+                className="rounded-full border border-white/12 bg-white/[0.06] px-2.5 py-1 text-[11px] text-white/80 hover:bg-white/[0.1]"
+              >
+                {command.label}
+              </button>
+            ))}
           </div>
         </div>
 
@@ -632,7 +601,7 @@ export function PrimaryAgentChat() {
               initial={{ opacity: 0, y: 6 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: 6 }}
-              className="mb-2 rounded-xl border border-white/10 bg-black/40 p-2"
+              className="mb-3 rounded-xl border border-white/10 bg-black/40 p-2"
             >
               <div className="mb-1 flex items-center justify-between text-[11px] text-white/60">
                 <span>{cameraStatusLabel}</span>
@@ -676,50 +645,49 @@ export function PrimaryAgentChat() {
 
         {mediaError && <p className="mb-2 text-xs text-amber-300">{mediaError}</p>}
 
-        <div className="mb-2 flex flex-wrap items-center justify-between gap-1 text-[11px] text-white/45">
-          <span className="inline-flex items-center gap-1">
-            <Globe2 className="h-3.5 w-3.5" />
-            Command language: {languageMap[commandLanguage].label}
-          </span>
-          <span className="inline-flex items-center gap-1">
-            <Paperclip className="h-3.5 w-3.5" />
-            Enter sends · Shift+Enter newline
-          </span>
-        </div>
-
         {pendingInputs.length > 0 && (
-          <div className="mb-2 flex flex-wrap items-center gap-1.5">
-            {pendingInputs.map((input) => (
-              <span
-                key={input.id}
-                className="inline-flex items-center gap-1 rounded-full border border-white/12 bg-white/[0.06] px-2 py-1 text-[11px] text-white/80"
+          <div className="mb-3 rounded-xl border border-white/10 bg-black/35 p-2.5">
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-white/45">Attached Context</p>
+              <button
+                type="button"
+                className="rounded-full border border-white/12 bg-white/[0.04] px-2 py-1 text-[11px] text-white/70 hover:bg-white/[0.08]"
+                onClick={clearPendingInputs}
               >
-                {input.kind}
-                <span className="max-w-[160px] truncate">{input.title}</span>
-                <button
-                  type="button"
-                  className="rounded-full p-0.5 text-white/60 hover:bg-white/10 hover:text-white"
-                  onClick={() => removePendingInput(input.id)}
+                Clear all
+              </button>
+            </div>
+            <div className="flex flex-wrap items-center gap-1.5">
+              {pendingInputs.map((input) => (
+                <span
+                  key={input.id}
+                  className="inline-flex items-center gap-1 rounded-full border border-white/12 bg-white/[0.06] px-2 py-1 text-[11px] text-white/80"
                 >
-                  <X className="h-3 w-3" />
-                </button>
-              </span>
-            ))}
-            <button
-              type="button"
-              className="rounded-full border border-white/12 bg-white/[0.04] px-2 py-1 text-[11px] text-white/70 hover:bg-white/[0.08]"
-              onClick={clearPendingInputs}
-            >
-              Clear all
-            </button>
+                  {input.kind}
+                  <span className="max-w-[160px] truncate">{input.title}</span>
+                  <button
+                    type="button"
+                    className="rounded-full p-0.5 text-white/60 hover:bg-white/10 hover:text-white"
+                    onClick={() => removePendingInput(input.id)}
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </span>
+              ))}
+            </div>
           </div>
         )}
 
-        <div className="rounded-xl border border-white/12 bg-black/45 p-2">
+        <div className="rounded-xl border border-white/12 bg-black/45 p-3">
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-white/45">Prompt Composer</p>
+            <p className="text-[11px] text-white/45">{prompt.length} chars</p>
+          </div>
+
           <textarea
             ref={composerRef}
             value={prompt}
-            rows={1}
+            rows={5}
             onChange={(event) => setPrompt(event.target.value)}
             onInput={autoGrow}
             onSelect={syncSelection}
@@ -732,10 +700,89 @@ export function PrimaryAgentChat() {
               }
             }}
             placeholder={`Command ${activeServiceId} with markdown-rich instructions...`}
-            className="max-h-[220px] min-h-[48px] w-full resize-none bg-transparent px-2 py-1.5 text-sm text-white/90 outline-none placeholder:text-white/35"
+            className="max-h-[320px] min-h-[150px] w-full resize-none bg-transparent px-2 py-2 text-sm text-white/90 outline-none placeholder:text-white/35"
           />
-          <div className="mt-2 flex items-center justify-between gap-2">
-            <p className="text-[11px] text-white/40">Supports markdown, multimodal attachments, and cross-service context bridging.</p>
+
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+            <div className="flex flex-wrap items-center gap-1.5 rounded-lg border border-white/10 bg-black/35 p-1">
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-xs text-white/80 transition hover:bg-white/10 hover:text-white"
+                title="Upload file"
+              >
+                <Upload className="h-3.5 w-3.5" />
+                Upload
+              </button>
+              <button
+                type="button"
+                onClick={toggleRecording}
+                className={`inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-xs transition ${
+                  recording ? 'bg-red-500/30 text-red-100' : 'text-white/80 hover:bg-white/10 hover:text-white'
+                }`}
+                title={recording ? 'Stop recording' : 'Start voice input'}
+              >
+                {recording ? <MicOff className="h-3.5 w-3.5" /> : <Mic className="h-3.5 w-3.5" />}
+                {recording ? 'Stop' : 'Voice'}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (cameraOpen) {
+                    closeCamera();
+                  } else {
+                    void openCamera();
+                  }
+                }}
+                className={`inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-xs transition ${
+                  cameraOpen ? 'bg-cyan-500/25 text-cyan-100' : 'text-white/80 hover:bg-white/10 hover:text-white'
+                }`}
+                title={cameraOpen ? 'Close camera' : 'Open camera'}
+              >
+                <Camera className="h-3.5 w-3.5" />
+                Camera
+              </button>
+
+              <div className="mx-1 h-4 w-px bg-white/15" />
+
+              <button
+                type="button"
+                onMouseDown={preventToolbarBlur}
+                className="rounded-md p-1.5 text-white/75 transition hover:bg-white/10 hover:text-white"
+                onClick={() => applyMarkdownWrap('**')}
+                title="Bold"
+              >
+                <Bold className="h-3.5 w-3.5" />
+              </button>
+              <button
+                type="button"
+                onMouseDown={preventToolbarBlur}
+                className="rounded-md p-1.5 text-white/75 transition hover:bg-white/10 hover:text-white"
+                onClick={() => applyMarkdownWrap('_')}
+                title="Italic"
+              >
+                <Italic className="h-3.5 w-3.5" />
+              </button>
+              <button
+                type="button"
+                onMouseDown={preventToolbarBlur}
+                className="rounded-md p-1.5 text-white/75 transition hover:bg-white/10 hover:text-white"
+                onClick={() => applyMarkdownWrap('`')}
+                title="Inline code"
+              >
+                <Code2 className="h-3.5 w-3.5" />
+              </button>
+              <button
+                type="button"
+                onMouseDown={preventToolbarBlur}
+                className="rounded-md p-1.5 text-white/75 transition hover:bg-white/10 hover:text-white"
+                onClick={insertBullet}
+                title="Bullet list"
+              >
+                <List className="h-3.5 w-3.5" />
+              </button>
+            </div>
+
             <div className="flex items-center gap-2">
               <button
                 type="button"
@@ -758,13 +805,26 @@ export function PrimaryAgentChat() {
               <button
                 type="submit"
                 disabled={running || (!prompt.trim() && pendingInputs.length === 0)}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-cyan-300/45 bg-cyan-500/20 px-3 py-1.5 text-xs font-semibold text-cyan-100 disabled:cursor-not-allowed disabled:opacity-40"
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-cyan-300/45 bg-cyan-500/20 px-3 py-1.5 text-xs font-semibold text-cyan-100 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 {running ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
                 Dispatch
               </button>
             </div>
           </div>
+
+            <div className="mt-2 flex flex-wrap items-center justify-between gap-1 text-[11px] text-white/45">
+              <span className="inline-flex items-center gap-1">
+                <Globe2 className="h-3.5 w-3.5" />
+                Command language: {languageMap[commandLanguage].label}
+              </span>
+              <span className="inline-flex items-center gap-1">
+                <Paperclip className="h-3.5 w-3.5" />
+                Enter sends / Shift+Enter newline
+              </span>
+            </div>
+
+            <p className="mt-1 text-[11px] text-white/40">Supports markdown, multimodal attachments, and cross-service context bridging.</p>
         </div>
       </form>
     </section>
