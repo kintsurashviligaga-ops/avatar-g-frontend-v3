@@ -9,6 +9,7 @@ import { LivePreviewEngine } from './LivePreviewEngine';
 import { PrimaryAgentChat } from './PrimaryAgentChat';
 import { ServiceOrchestrator } from './ServiceOrchestrator';
 import { countLabel } from './utils';
+import VoicePanel from '@/components/voice/VoicePanel';
 
 interface MainDashboardProps {
   locale: string;
@@ -93,6 +94,10 @@ export default function MainDashboard({ locale, userName, isAuthenticated }: Mai
                 {countLabel(runningCount)} running · {enabledCount} enabled
               </span>
             </header>
+
+            <div className="mb-3">
+              <VoicePanel compact />
+            </div>
 
             <div className="min-h-0 flex-1">
               <PrimaryAgentChat />

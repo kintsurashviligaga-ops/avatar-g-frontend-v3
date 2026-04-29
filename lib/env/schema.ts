@@ -38,6 +38,12 @@ export const env = createEnv({
     // ElevenLabs
     ELEVENLABS_API_KEY: z.string().optional(),
     ELEVENLABS_VOICE_ID: z.string().optional(),
+    ELEVENLABS_GEORGIAN_VOICE_ID: z.string().optional(),
+
+    // Vapi
+    VAPI_API_KEY: z.string().optional(),
+    VAPI_PHONE_NUMBER_ID: z.string().optional(),
+    VAPI_WEBHOOK_SECRET: z.string().optional(),
 
     // Replicate
     REPLICATE_API_TOKEN: z.string().optional(),
@@ -92,6 +98,7 @@ export const env = createEnv({
     NEXT_PUBLIC_SUPABASE_ANON_KEY: z.string().optional(),
     NEXT_PUBLIC_STRIPE_PUBLISHABLE: z.string().optional(),
     NEXT_PUBLIC_SITE_URL: z.string().url().optional(),
+    NEXT_PUBLIC_VAPI_PUBLIC_KEY: z.string().optional(),
   },
 
   runtimeEnv: {
@@ -105,6 +112,10 @@ export const env = createEnv({
     STRIPE_WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET,
     ELEVENLABS_API_KEY: process.env.ELEVENLABS_API_KEY,
     ELEVENLABS_VOICE_ID: process.env.ELEVENLABS_VOICE_ID,
+    ELEVENLABS_GEORGIAN_VOICE_ID: process.env.ELEVENLABS_GEORGIAN_VOICE_ID,
+    VAPI_API_KEY: process.env.VAPI_API_KEY,
+    VAPI_PHONE_NUMBER_ID: process.env.VAPI_PHONE_NUMBER_ID,
+    VAPI_WEBHOOK_SECRET: process.env.VAPI_WEBHOOK_SECRET,
     REPLICATE_API_TOKEN: process.env.REPLICATE_API_TOKEN,
     TWILIO_ACCOUNT_SID: process.env.TWILIO_ACCOUNT_SID,
     TWILIO_AUTH_TOKEN: process.env.TWILIO_AUTH_TOKEN,
@@ -130,6 +141,7 @@ export const env = createEnv({
     NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
     NEXT_PUBLIC_STRIPE_PUBLISHABLE: process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE || process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY,
     NEXT_PUBLIC_SITE_URL: process.env.NEXT_PUBLIC_SITE_URL,
+    NEXT_PUBLIC_VAPI_PUBLIC_KEY: process.env.NEXT_PUBLIC_VAPI_PUBLIC_KEY,
   },
 
   skipValidation: !!process.env.SKIP_ENV_VALIDATION || process.env.NODE_ENV === 'test',

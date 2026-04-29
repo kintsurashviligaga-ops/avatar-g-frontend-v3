@@ -5,6 +5,7 @@ import { useSearchParams } from 'next/navigation'
 import { createBrowserClient } from '@/lib/supabase/browser'
 import { UnifiedServiceShell } from '@/components/services/unified'
 import { AgentGChatInterface } from '@/components/AgentG/ChatInterface'
+import VoicePanel from '@/components/voice/VoicePanel'
 
 interface AgentGPageClientProps {
   serviceId: string
@@ -46,6 +47,9 @@ export default function AgentGPageClient(props: AgentGPageClientProps) {
       activeServiceId={props.serviceId}
       locale={props.locale}
     >
+      <div className="mb-4">
+        <VoicePanel compact />
+      </div>
       <AgentGChatInterface
         locale={props.locale}
         initialQuery={initialQuery}

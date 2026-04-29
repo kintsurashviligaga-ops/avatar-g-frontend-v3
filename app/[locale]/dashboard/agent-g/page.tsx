@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Send, Plus, Copy, Check, Bot, Sparkles, Zap, StopCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import VoicePanel from '@/components/voice/VoicePanel';
 
 interface Msg { id: string; role: 'user' | 'assistant'; text: string; ts: number; }
 
@@ -145,6 +146,10 @@ export default function AgentGPage() {
 
   return (
     <div className="flex flex-col h-full" style={{ background: 'linear-gradient(180deg,#0d0d1a 0%,#08080e 100%)' }}>
+
+      <div className="px-4 pt-4 sm:px-6">
+        <VoicePanel compact />
+      </div>
 
       {/* Header */}
       <div className="flex items-center gap-3 px-6 py-4 flex-shrink-0" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
