@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useMemo } from 'react';
-import { motion } from 'framer-motion';
 import { CircleDollarSign, Gauge, ShieldCheck } from 'lucide-react';
 import { OMNI_SERVICE_MAP, OMNI_SERVICES } from './services';
 import { useOmniDashboardStore } from './store';
@@ -74,17 +73,22 @@ export default function MainDashboard({ locale, userName, isAuthenticated }: Mai
           </div>
         </header>
 
-        <div className="flex min-h-0 flex-1 gap-3 p-3 sm:p-4">
-          <aside className="omni-pane omni-service-nav hidden w-[248px] flex-col rounded-2xl border p-2 lg:flex">
-            <div className="mb-2 rounded-xl border border-white/10 bg-black/20 p-2">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/55">Service Grid</p>
-              <p className="mt-1 text-xs text-white/68">13 fixed modules in one viewport</p>
-              <p className="mt-1 text-xs text-white/55">
+        <div className="flex min-h-0 flex-1 p-3 sm:p-4">
+          <section className="omni-pane flex min-h-0 flex-1 flex-col rounded-2xl border border-white/12 bg-black/20 p-3 sm:p-4">
+            <header className="mb-3 flex flex-wrap items-center gap-2 border-b border-white/10 pb-3">
+              <div className="flex items-center gap-2">
+                <span className="omni-led is-online" />
+                <p className="text-sm font-semibold text-white">Unified Operations Window</p>
+              </div>
+              <span className="rounded-full border border-white/15 bg-white/[0.04] px-3 py-1 text-[11px] text-white/70">
+                Active: {OMNI_SERVICE_MAP[activeServiceId].title}
+              </span>
+              <span className="rounded-full border border-white/15 bg-white/[0.04] px-3 py-1 text-[11px] text-white/70">
                 {countLabel(runningCount)} running · {enabledCount} enabled
-              </p>
-            </div>
+              </span>
+            </header>
 
-            <div className="omni-service-list min-h-0 flex-1 space-y-1 overflow-y-auto pr-1">
+            <div className="mb-3 flex gap-1 overflow-x-auto rounded-xl border border-white/10 bg-black/30 p-1.5">
               {OMNI_SERVICES.map((service) => {
                 const active = activeServiceId === service.id;
                 const state = services[service.id];
@@ -94,58 +98,35 @@ export default function MainDashboard({ locale, userName, isAuthenticated }: Mai
                     key={service.id}
                     type="button"
                     onClick={() => setActiveService(service.id as ServiceId)}
-                    className={`omni-service-button ${active ? 'is-active' : ''}`}
+                    className={`inline-flex shrink-0 items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[11px] transition-colors ${
+                      active
+                        ? 'border-cyan-200/45 bg-cyan-200/18 text-cyan-50'
+                        : 'border-white/10 bg-white/[0.03] text-white/72 hover:bg-white/[0.08]'
+                    }`}
                   >
                     <span className="omni-led" style={{ backgroundColor: state.status === 'running' ? '#fbbf24' : service.accent }} />
-                    <span className="flex h-7 w-7 items-center justify-center rounded-lg border border-white/15 bg-white/[0.05]">
-                      <Icon className="h-4 w-4" style={{ color: service.accent }} />
-                    </span>
-                    <span className="min-w-0 text-left">
-                      <span className="block truncate text-[12px] font-semibold text-white/90">{service.title}</span>
-                      <span className="block truncate text-[10px] text-white/45">{service.subtitle}</span>
-                    </span>
+                    <Icon className="h-3.5 w-3.5" />
+                    {OMNI_SERVICE_MAP[service.id].short}
                   </button>
                 );
               })}
             </div>
-          </aside>
 
-          <section className="flex min-h-0 flex-1 flex-col gap-3">
-            <div className="grid min-h-0 flex-1 gap-3 xl:grid-cols-[minmax(0,1.45fr)_minmax(350px,1fr)]">
+            <div className="grid min-h-0 flex-1 gap-3 xl:grid-cols-[minmax(0,1.35fr)_minmax(340px,1fr)]">
               <PrimaryAgentChat />
               <LivePreviewEngine />
             </div>
-            <ServiceOrchestrator />
+
+            <div className="mt-3">
+              <ServiceOrchestrator />
+            </div>
+
+            <div className="mt-3 min-h-[170px]">
+              <ActivityLogPanel embedded />
+            </div>
           </section>
         </div>
-
-        <ActivityLogPanel />
       </div>
-
-      <motion.div
-        className="omni-mobile-service-strip lg:hidden"
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.22 }}
-      >
-        <div className="flex gap-1 overflow-x-auto rounded-xl border border-white/10 bg-black/35 p-1.5">
-          {OMNI_SERVICES.map((service) => {
-            const active = activeServiceId === service.id;
-            return (
-              <button
-                key={service.id}
-                type="button"
-                onClick={() => setActiveService(service.id as ServiceId)}
-                className={`shrink-0 rounded-lg border px-2.5 py-1 text-[11px] ${
-                  active ? 'border-cyan-200/45 bg-cyan-200/18 text-cyan-50' : 'border-white/10 bg-white/[0.03] text-white/70'
-                }`}
-              >
-                {OMNI_SERVICE_MAP[service.id].short}
-              </button>
-            );
-          })}
-        </div>
-      </motion.div>
     </div>
   );
 }

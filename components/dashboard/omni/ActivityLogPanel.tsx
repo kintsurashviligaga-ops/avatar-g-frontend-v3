@@ -12,7 +12,11 @@ const LEVEL_STYLES = {
   system: 'text-slate-200',
 } as const;
 
-export function ActivityLogPanel() {
+interface ActivityLogPanelProps {
+  embedded?: boolean;
+}
+
+export function ActivityLogPanel({ embedded = false }: ActivityLogPanelProps) {
   const activityLog = useOmniDashboardStore((state) => state.activityLog);
   const clearActivity = useOmniDashboardStore((state) => state.clearActivity);
   const logRef = useRef<HTMLDivElement>(null);
@@ -24,7 +28,13 @@ export function ActivityLogPanel() {
   }, [activityLog]);
 
   return (
-    <section className="omni-terminal border-t border-white/10 px-3 py-2.5 sm:px-4">
+    <section
+      className={
+        embedded
+          ? 'omni-terminal rounded-xl border border-white/10 bg-black/20 px-3 py-2.5'
+          : 'omni-terminal border-t border-white/10 px-3 py-2.5 sm:px-4'
+      }
+    >
       <header className="mb-2 flex items-center justify-between">
         <p className="font-mono text-[11px] uppercase tracking-[0.16em] text-cyan-100/70">Activity Log</p>
         <button
@@ -36,7 +46,12 @@ export function ActivityLogPanel() {
           Clear
         </button>
       </header>
-      <div ref={logRef} className="h-32 overflow-y-auto rounded-lg border border-white/10 bg-black/30 px-2 py-1.5 font-mono text-xs">
+      <div
+        ref={logRef}
+        className={`overflow-y-auto rounded-lg border border-white/10 bg-black/30 px-2 py-1.5 font-mono text-xs ${
+          embedded ? 'h-28' : 'h-32'
+        }`}
+      >
         {activityLog.map((line) => (
           <p key={line.id} className="mb-1.5 leading-relaxed text-white/80">
             <span className="mr-2 text-white/45">{formatClock(line.ts)}</span>
