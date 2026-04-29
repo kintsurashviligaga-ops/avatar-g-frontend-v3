@@ -61,6 +61,18 @@ export default function DashboardShell({ children, locale = 'ka' }: DashboardShe
   };
 
   const currentItem = navItems.find((item) => isActive(item.href)) ?? navItems[0];
+  const dashboardRoot = `/${locale}/dashboard`;
+  const isOmniRoot = pathname === dashboardRoot || pathname === `${dashboardRoot}/`;
+
+  if (isOmniRoot) {
+    return (
+      <div className="hf-dashboard-shell flex h-screen overflow-hidden">
+        <main className="hf-main-wrap hf-main-content flex-1 overflow-hidden">
+          <div className="h-full w-full">{children}</div>
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="hf-dashboard-shell flex h-screen overflow-hidden">
