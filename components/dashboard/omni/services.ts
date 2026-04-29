@@ -1,8 +1,8 @@
 import {
   Bot,
-  BriefcaseBusiness,
+  Building2,
   Crown,
-  UserRound,
+  UserCircle2,
   Image,
   Clapperboard,
   Mic2,
@@ -36,7 +36,7 @@ export const OMNI_SERVICES: OmniServiceDescriptor[] = [
     accent: '#5cf2b5',
     previewKind: 'text',
     defaultPrompt: 'Map a quarterly growth blueprint from current assets.',
-    icon: BriefcaseBusiness,
+    icon: Building2,
   },
   {
     id: 'executive-ops',
@@ -58,7 +58,7 @@ export const OMNI_SERVICES: OmniServiceDescriptor[] = [
     accent: '#9ba7ff',
     previewKind: 'image',
     defaultPrompt: 'Generate a premium executive avatar with cinematic lighting.',
-    icon: UserRound,
+    icon: UserCircle2,
   },
   {
     id: 'image-gen',
