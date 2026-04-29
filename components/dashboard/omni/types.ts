@@ -19,6 +19,10 @@ export type PreviewKind = 'image' | 'video' | 'audio' | 'text' | 'workflow';
 
 export type ServiceStatus = 'idle' | 'ready' | 'running' | 'error';
 
+export type CommandLanguage = 'ka' | 'en' | 'ru';
+
+export type ExternalInputKind = 'file' | 'voice' | 'camera' | 'text';
+
 export interface OmniServiceDescriptor {
   id: ServiceId;
   title: string;
@@ -42,12 +46,33 @@ export interface PreviewArtifact {
   textBody?: string;
 }
 
+export interface ExternalCommandInput {
+  id: string;
+  kind: ExternalInputKind;
+  title: string;
+  createdAt: number;
+  fileName?: string;
+  mimeType?: string;
+  size?: number;
+  textContent?: string;
+  sourceUrl?: string;
+}
+
+export interface ExpertSettings {
+  seed: number;
+  sampling: number;
+  weights: number;
+  temperature: number;
+}
+
 export interface ServiceRuntimeState {
   enabled: boolean;
   autopilot: boolean;
   syncPreview: boolean;
   fidelity: number;
   intensity: number;
+  expert: ExpertSettings;
+  moduleSettings: Record<string, string | number | boolean>;
   status: ServiceStatus;
   queueDepth: number;
   lastPrompt: string;
