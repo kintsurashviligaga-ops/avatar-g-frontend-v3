@@ -271,7 +271,7 @@ function ShowcaseScene() {
             3D Preview Not Available
           </h3>
           <p className="text-sm text-gray-400">
-            Your system doesn't support WebGL. Click below to create your avatar.
+            Your system does not support WebGL. Click below to create your avatar.
           </p>
         </div>
       </div>
@@ -280,7 +280,6 @@ function ShowcaseScene() {
 
   return (
     <Canvas
-      ref={containerRef as any}
       camera={{ position: [0, 1.2, 4], fov: 50, near: 0.1, far: 1000 }}
       style={{ width: '100%', height: '100%' }}
       gl={{ antialias: true, alpha: true }}
@@ -289,7 +288,7 @@ function ShowcaseScene() {
         try {
           const ctx = (state.gl as unknown as THREE.WebGLRenderer).getContext?.()
           ctx?.getExtension('OES_standard_derivatives')
-        } catch (e) {
+        } catch (_e) {
           // silently ignore missing WebGL extension
         }
       }}
@@ -319,7 +318,7 @@ function ShowcaseScene() {
 /**
  * Premium CTA state — when no avatar exists
  */
-function FallbackState({ locale, onAction }: { locale: string; onAction: () => void }) {
+function _FallbackState({ locale, onAction }: { locale: string; onAction: () => void }) {
   const lang = (locale as Lang) || 'en'
   const c = COPY[lang] || COPY.en
 
@@ -382,7 +381,7 @@ function FallbackState({ locale, onAction }: { locale: string; onAction: () => v
 /**
  * Main Avatar Showcase Component
  */
-export function AvatarShowcase({ locale }: { locale: string }) {
+export function AvatarShowcase({ locale: _locale }: { locale: string }) {
   const { language } = useLanguage()
   const lang = (language as Lang) || 'en'
   const c = COPY[lang] || COPY.en

@@ -14,7 +14,7 @@ interface GrokHeaderProps {
   onCallStart?: () => void
 }
 
-export function GrokHeader({ activeTab, onTabChange, onMenuToggle, serviceIcon, onBack, onHistoryToggle, onCallStart }: GrokHeaderProps) {
+export function GrokHeader({ activeTab, onTabChange, onMenuToggle, serviceIcon: _serviceIcon, onBack, onHistoryToggle, onCallStart }: GrokHeaderProps) {
   return (
     <header className="grok-header">
       {/* Left: Back + History + Menu */}

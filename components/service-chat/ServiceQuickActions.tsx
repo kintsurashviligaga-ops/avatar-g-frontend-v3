@@ -23,7 +23,7 @@ export function ServiceQuickActions({ config, language, onAction }: Props) {
   const lang = (language || 'en') as 'en' | 'ka' | 'ru';
 
   // Group by category
-  const grouped = useMemo(() => {
+  const _grouped = useMemo(() => {
     const map = new Map<string, ServiceQuickAction[]>();
     for (const qa of config.quickActions) {
       const cat = qa.category || 'default';

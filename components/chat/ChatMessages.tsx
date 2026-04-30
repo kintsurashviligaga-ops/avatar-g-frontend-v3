@@ -9,6 +9,7 @@
  */
 
 import { useRef, useEffect } from 'react';
+import Image from 'next/image';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ArrowRight, CheckCircle2, XCircle, Loader2, AlertTriangle,
@@ -34,10 +35,11 @@ export function ChatMessages({
 }: Props) {
   const endRef = useRef<HTMLDivElement>(null);
   const labels = getChatLabels(language);
+  const lastMessageContent = messages.length > 0 ? messages[messages.length - 1]?.content ?? '' : '';
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages.length, messages[messages.length - 1]?.content]);
+  }, [messages.length, lastMessageContent]);
 
   return (
     <div className="flex-1 overflow-y-auto px-4 py-5 space-y-4 scroll-smooth"
@@ -71,7 +73,7 @@ export function ChatMessages({
 
 function MessageRenderer({
   message: msg,
-  language,
+  language: _language,
   labels,
   onSuggestionClick,
   onClarificationSelect,
@@ -273,7 +275,10 @@ function ResultCardView({ card, labels, onAction }: {
               <div key={i} className="rounded-xl overflow-hidden"
                 style={{ backgroundColor: 'var(--color-elevated)', border: '1px solid var(--color-border)' }}>
                 {(asset.type === 'image' && (asset.url || asset.preview)) ? (
-                  <img src={asset.url || asset.preview} alt={asset.label}
+                  <Image src={asset.url || asset.preview || ''} alt={asset.label}
+                    width={640}
+                    height={256}
+                    unoptimized
                     className="w-full h-32 object-cover" />
                 ) : (
                   <div className="h-20 flex items-center justify-center">

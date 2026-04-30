@@ -51,7 +51,7 @@ const CHAT_COPY = {
     assistant: 'Agent G',
     operator: 'ოპერატორი',
     serviceSwitcher: 'სერვისების სია',
-    serviceSwitcherHint: '13 სერვისი',
+    serviceSwitcherHint: '8 სერვისი',
     file: 'ფაილი',
     voice: 'ხმა',
     camera: 'კამერა',
@@ -96,7 +96,7 @@ const CHAT_COPY = {
     assistant: 'Agent G',
     operator: 'Operator',
     serviceSwitcher: 'Services',
-    serviceSwitcherHint: '13 services',
+    serviceSwitcherHint: '8 services',
     file: 'File',
     voice: 'Voice',
     camera: 'Camera',
@@ -141,7 +141,7 @@ const CHAT_COPY = {
     assistant: 'Agent G',
     operator: 'Оператор',
     serviceSwitcher: 'Сервисы',
-    serviceSwitcherHint: '13 сервисов',
+    serviceSwitcherHint: '8 сервисов',
     file: 'Файл',
     voice: 'Голос',
     camera: 'Камера',
@@ -228,6 +228,7 @@ export default function CommandCenterChat() {
   const sharedAssets = useOmniStore((state) => state.sharedAssets);
 
   const setActiveService = useOmniStore((state) => state.setActiveService);
+  const setLocale = useOmniStore((state) => state.setLocale);
   const setCommandLanguage = useOmniStore((state) => state.setCommandLanguage);
   const sendPrimaryCommand = useOmniStore((state) => state.sendPrimaryCommand);
   const ingestCommandInput = useOmniStore((state) => state.ingestCommandInput);
@@ -252,6 +253,8 @@ export default function CommandCenterChat() {
   const streamRef = useRef<MediaStream | null>(null);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const transcriptBufferRef = useRef('');
+  const interimTranscriptRef = useRef('');
+  const recordingPromptBaseRef = useRef('');
 
   const activeService = getLocalizedService(activeServiceId, localeCode);
   const mediaAssets = useMemo(
@@ -441,6 +444,8 @@ export default function CommandCenterChat() {
     }
 
     transcriptBufferRef.current = '';
+    interimTranscriptRef.current = '';
+    recordingPromptBaseRef.current = prompt.trim();
 
     const recognition = new SpeechCtor();
     recognition.lang = localeCode === 'ka' ? 'ka-GE' : localeCode === 'ru' ? 'ru-RU' : 'en-US';
@@ -449,27 +454,46 @@ export default function CommandCenterChat() {
 
     recognition.onresult = (event) => {
       let finalChunk = '';
-      for (let i = event.resultIndex; i < event.results.length; i += 1) {
+      let interimChunk = '';
+      for (let i = 0; i < event.results.length; i += 1) {
         const result = event.results[i];
-        const firstAlternative = result?.[0];
-        if (result?.isFinal && firstAlternative?.transcript) {
-          finalChunk += firstAlternative.transcript;
+        const transcript = result?.[0]?.transcript?.trim();
+        if (!transcript) {
+          continue;
+        }
+
+        if (result?.isFinal) {
+          finalChunk += `${finalChunk ? ' ' : ''}${transcript}`;
+        } else {
+          interimChunk += `${interimChunk ? ' ' : ''}${transcript}`;
         }
       }
 
-      if (finalChunk.trim()) {
-        transcriptBufferRef.current = `${transcriptBufferRef.current}${transcriptBufferRef.current ? ' ' : ''}${finalChunk.trim()}`;
-        setPrompt((prev) => `${prev}${prev.trim().length ? ' ' : ''}${finalChunk.trim()}`);
+      if (finalChunk) {
+        transcriptBufferRef.current = finalChunk;
+      }
+
+      interimTranscriptRef.current = interimChunk;
+
+      const speechText = [transcriptBufferRef.current, interimChunk].filter(Boolean).join(' ').trim();
+      if (speechText) {
+        const basePrompt = recordingPromptBaseRef.current;
+        setPrompt(basePrompt ? `${basePrompt} ${speechText}` : speechText);
       }
     };
 
     recognition.onerror = () => {
       setMediaError(copy.speechFailed);
       setRecording(false);
+      recognitionRef.current = null;
     };
 
     recognition.onend = () => {
-      const transcript = transcriptBufferRef.current.trim();
+      const transcript = [transcriptBufferRef.current, interimTranscriptRef.current]
+        .filter(Boolean)
+        .join(' ')
+        .trim();
+
       if (transcript) {
         ingestCommandInput({
           kind: 'voice',
@@ -477,8 +501,14 @@ export default function CommandCenterChat() {
           mimeType: 'text/plain',
           textContent: transcript,
         });
+
+        const basePrompt = recordingPromptBaseRef.current;
+        setPrompt(basePrompt ? `${basePrompt} ${transcript}` : transcript);
       }
+
       transcriptBufferRef.current = '';
+      interimTranscriptRef.current = '';
+      recordingPromptBaseRef.current = '';
       setRecording(false);
       recognitionRef.current = null;
     };
@@ -487,7 +517,7 @@ export default function CommandCenterChat() {
     recognitionRef.current = recognition;
     setRecording(true);
     setMediaError(null);
-  }, [copy.speechFailed, copy.speechUnsupported, copy.voiceTranscript, ingestCommandInput, localeCode]);
+  }, [copy.speechFailed, copy.speechUnsupported, copy.voiceTranscript, ingestCommandInput, localeCode, prompt]);
 
   const toggleRecording = useCallback(() => {
     if (recording) {
@@ -525,39 +555,49 @@ export default function CommandCenterChat() {
       streamRef.current = stream;
       setCameraOpen(true);
 
+      await new Promise<void>((resolve) => {
+        requestAnimationFrame(() => resolve());
+      });
+
       const videoElement = videoRef.current;
-      if (videoElement) {
-        videoElement.srcObject = stream;
-        try {
-          await videoElement.play();
-        } catch {
-          // Some browsers require another user gesture before playback.
-        }
+      if (!videoElement) {
+        stopCameraStream();
+        setCameraOpen(false);
+        setCameraState('error');
+        setMediaError(copy.cameraNoFrame);
+        return;
+      }
 
-        await new Promise<void>((resolve) => {
-          if (videoElement.videoWidth > 0 && videoElement.videoHeight > 0) {
-            resolve();
-            return;
-          }
+      videoElement.srcObject = stream;
+      try {
+        await videoElement.play();
+      } catch {
+        // Some browsers require another user gesture before playback.
+      }
 
-          const onLoadedMetadata = () => {
-            resolve();
-          };
-
-          videoElement.addEventListener('loadedmetadata', onLoadedMetadata, { once: true });
-          setTimeout(() => {
-            videoElement.removeEventListener('loadedmetadata', onLoadedMetadata);
-            resolve();
-          }, 2200);
-        });
-
-        if (videoElement.videoWidth <= 0 || videoElement.videoHeight <= 0) {
-          stopCameraStream();
-          setCameraOpen(false);
-          setCameraState('error');
-          setMediaError(copy.cameraNoFrame);
+      await new Promise<void>((resolve) => {
+        if (videoElement.videoWidth > 0 && videoElement.videoHeight > 0) {
+          resolve();
           return;
         }
+
+        const onLoadedMetadata = () => {
+          resolve();
+        };
+
+        videoElement.addEventListener('loadedmetadata', onLoadedMetadata, { once: true });
+        setTimeout(() => {
+          videoElement.removeEventListener('loadedmetadata', onLoadedMetadata);
+          resolve();
+        }, 2200);
+      });
+
+      if (videoElement.videoWidth <= 0 || videoElement.videoHeight <= 0) {
+        stopCameraStream();
+        setCameraOpen(false);
+        setCameraState('error');
+        setMediaError(copy.cameraNoFrame);
+        return;
       }
 
       setCameraState('ready');
@@ -765,35 +805,6 @@ export default function CommandCenterChat() {
             </div>
           )}
 
-          {cameraOpen && (
-            <div className="mb-3 rounded-3xl border border-white/15 bg-[rgba(10,14,24,0.92)] p-3 backdrop-blur-2xl shadow-[0_22px_50px_rgba(0,0,0,0.55)]">
-              <div className="mb-2 flex items-center justify-between text-[11px] text-white/60">
-                <span>{cameraStatusLabel}</span>
-                <span>{cameraState === 'ready' ? copy.livePreview : copy.waitingCamera}</span>
-              </div>
-
-              <video ref={videoRef} autoPlay playsInline muted className="h-48 w-full rounded-2xl object-cover" />
-
-              <div className="mt-2 flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={captureFromCamera}
-                  disabled={cameraState !== 'ready'}
-                  className="min-h-[44px] rounded-2xl border border-cyan-300/45 bg-cyan-500/18 px-3 py-1.5 text-xs font-semibold text-cyan-100 disabled:opacity-45"
-                >
-                  {copy.capture}
-                </button>
-                <button
-                  type="button"
-                  onClick={closeCamera}
-                  className="min-h-[44px] rounded-2xl border border-white/20 bg-white/[0.05] px-3 py-1.5 text-xs font-semibold text-white/80"
-                >
-                  {copy.close}
-                </button>
-              </div>
-            </div>
-          )}
-
           <canvas ref={canvasRef} className="hidden" />
 
           {pendingInputs.length > 0 && (
@@ -868,7 +879,10 @@ export default function CommandCenterChat() {
                     <button
                       key={option.id}
                       type="button"
-                      onClick={() => setCommandLanguage(option.id)}
+                      onClick={() => {
+                        setCommandLanguage(option.id);
+                        setLocale(option.id);
+                      }}
                       className={`rounded-xl px-2 py-1 text-[11px] font-semibold transition ${
                         active
                           ? 'bg-cyan-500/25 text-cyan-100'
@@ -1032,6 +1046,62 @@ export default function CommandCenterChat() {
                   {expandedAsset.summary || copy.videoPreviewFallback}
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {cameraOpen && (
+        <div
+          className="fixed inset-0 z-[125] bg-black/82 backdrop-blur-md"
+          onClick={closeCamera}
+          role="presentation"
+        >
+          <div
+            className="mx-auto flex h-full w-full max-w-6xl flex-col px-4 pb-[max(env(safe-area-inset-bottom,0px),20px)] pt-[max(env(safe-area-inset-top,0px),20px)]"
+            onClick={(event) => event.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-label={copy.camera}
+          >
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs uppercase tracking-[0.12em] text-white/55">{cameraStatusLabel}</p>
+                <p className="text-sm font-semibold text-white">
+                  {cameraState === 'ready' ? copy.livePreview : copy.waitingCamera}
+                </p>
+              </div>
+
+              <button
+                type="button"
+                aria-label={copy.closeCamera}
+                onClick={closeCamera}
+                className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-white/20 bg-white/[0.07] text-white/85 transition hover:bg-white/[0.14]"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="relative flex-1 overflow-hidden rounded-3xl border border-white/15 bg-[rgba(8,12,22,0.88)] shadow-[0_26px_70px_rgba(0,0,0,0.6)]">
+              <video ref={videoRef} autoPlay playsInline muted className="h-full w-full object-cover" />
+            </div>
+
+            <div className="mt-3 flex items-center gap-2">
+              <button
+                type="button"
+                onClick={captureFromCamera}
+                disabled={cameraState !== 'ready'}
+                className="min-h-[44px] rounded-2xl border border-cyan-300/45 bg-cyan-500/18 px-4 py-2 text-xs font-semibold text-cyan-100 disabled:opacity-45"
+              >
+                {copy.capture}
+              </button>
+              <button
+                type="button"
+                onClick={closeCamera}
+                className="min-h-[44px] rounded-2xl border border-white/20 bg-white/[0.05] px-4 py-2 text-xs font-semibold text-white/80"
+              >
+                {copy.close}
+              </button>
             </div>
           </div>
         </div>

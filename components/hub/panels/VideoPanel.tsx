@@ -7,10 +7,7 @@
 
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import {
-  Sparkles, Play, Pause, Download, Share2, RefreshCw,
-  AlertCircle, Loader2, Film, Sliders, Plus, Trash2, GripVertical,
-} from 'lucide-react';
+import { Sparkles, Download, AlertCircle, Loader2, Film, Plus, Trash2, GripVertical } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAiPipeline } from '@/hooks/useAiPipeline';
 import { beginPanelShellRun, createTextPreview } from './panelShellBridge';
@@ -44,7 +41,7 @@ const ASPECT_RATIOS = [
 
 type Scene = { id: string; prompt: string; duration: number; camera: string };
 
-export function VideoPanel({ locale, callbacks }: { locale: string; callbacks?: PanelRunCallbacks }) {
+export function VideoPanel({ locale: _locale, callbacks }: { locale: string; callbacks?: PanelRunCallbacks }) {
   const [videoStyle, setVideoStyle] = useState('cinematic');
   const [camera,     setCamera]     = useState('static');
   const [ratio,      setRatio]      = useState('16:9');

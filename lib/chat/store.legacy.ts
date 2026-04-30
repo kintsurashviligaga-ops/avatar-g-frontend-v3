@@ -7,7 +7,7 @@
 
 'use client';
 
-import { createContext, useContext, useReducer, useCallback, type Dispatch } from 'react';
+import { createContext, useContext, useCallback, type Dispatch } from 'react';
 import type {
   ChatState,
   ChatMessage,

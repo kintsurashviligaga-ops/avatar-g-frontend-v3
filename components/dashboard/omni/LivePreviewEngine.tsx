@@ -2,9 +2,10 @@
 
 import { useMemo } from 'react';
 import { motion } from 'framer-motion';
+import Image from 'next/image';
 import { Download, Film, ImageIcon, Mic2, Music2, PlayCircle, TextCursorInput, Workflow } from 'lucide-react';
 import { useOmniDashboardStore } from './store';
-import { OMNI_SERVICE_MAP } from './services';
+import { getLocalizedService, normalizeOmniLocale } from './i18n';
 import type { PreviewArtifact } from './types';
 import { formatClock } from './utils';
 
@@ -54,16 +55,61 @@ function resolveIcon(kind: PreviewArtifact['kind']) {
   return TextCursorInput;
 }
 
+const PREVIEW_COPY = {
+  ka: {
+    title: 'ცოცხალი პრევიუ',
+    export: 'ექსპორტი',
+    empty: 'გაუშვი ნებისმიერი სერვისი და შედეგი აქ რეალურ დროში გამოჩნდება.',
+    timeline: 'რეალურ დროში სცენარის დროითი ხაზი',
+    timelineFallback: 'სცენების გრაფი სინქრონიზებულია გამოსახულებასა და ხმასთან.',
+    vu: 'ანალოგური VU მონიტორი',
+    audioFallback: 'აუდიო გენერაცია აქტიურია.',
+    recent: 'ბოლო შედეგები',
+    noAssets: 'ჯერ არცერთი არტეფაქტი არაა გენერირებული.',
+  },
+  en: {
+    title: 'Live Preview Engine',
+    export: 'Export',
+    empty: 'Run any worker to stream output in this pane.',
+    timeline: 'Real-time storyboard timeline',
+    timelineFallback: 'Scene graph synchronized with image and voice references.',
+    vu: 'Analog VU monitor',
+    audioFallback: 'Audio render online.',
+    recent: 'Recent Outputs',
+    noAssets: 'No assets generated yet.',
+  },
+  ru: {
+    title: 'Живое превью',
+    export: 'Экспорт',
+    empty: 'Запусти любой сервис, и результат появится здесь в реальном времени.',
+    timeline: 'Временная шкала сториборда в реальном времени',
+    timelineFallback: 'Граф сцен синхронизирован с изображением и голосом.',
+    vu: 'Аналоговый VU-монитор',
+    audioFallback: 'Аудиорендер выполняется.',
+    recent: 'Последние результаты',
+    noAssets: 'Пока нет сгенерированных артефактов.',
+  },
+} as const;
+
 export function LivePreviewEngine() {
   const preview = useOmniDashboardStore((state) => state.preview);
   const sharedAssets = useOmniDashboardStore((state) => state.sharedAssets);
   const focusPreview = useOmniDashboardStore((state) => state.focusPreview);
+  const locale = useOmniDashboardStore((state) => state.locale);
+
+  const localeCode = normalizeOmniLocale(locale);
+  const copy = PREVIEW_COPY[localeCode];
 
   const recentAssets = useMemo(() => sharedAssets.slice(0, 6), [sharedAssets]);
 
   const exportCurrent = () => {
     if (!preview) return;
-    const fileSafe = preview.title.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+    const normalizedTitle = preview.title
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '');
+    const fileSafe = normalizedTitle || `asset-${preview.id.slice(0, 8)}`;
 
     if (preview.kind === 'image' && preview.sourceUrl) {
       downloadDataUrl(`${fileSafe}.svg`, preview.sourceUrl);
@@ -86,7 +132,7 @@ export function LivePreviewEngine() {
     <section className="omni-pane omni-preview-pane flex min-h-0 flex-col rounded-2xl border p-3 sm:p-4">
       <header className="mb-3 flex items-center gap-3 border-b border-white/10 pb-3">
         <PreviewIcon className="h-4 w-4 text-cyan-200" />
-        <p className="omni-title text-sm font-semibold text-white">Live Preview Engine</p>
+        <p className="omni-title text-sm font-semibold text-white">{copy.title}</p>
         <button
           type="button"
           onClick={exportCurrent}
@@ -94,7 +140,7 @@ export function LivePreviewEngine() {
           className="ml-auto inline-flex items-center gap-1.5 rounded-full border border-cyan-300/30 bg-cyan-300/10 px-3 py-1 text-[11px] font-medium text-cyan-100/90 disabled:cursor-not-allowed disabled:opacity-35"
         >
           <Download className="h-3.5 w-3.5" />
-          Export
+          {copy.export}
         </button>
       </header>
 
@@ -102,7 +148,7 @@ export function LivePreviewEngine() {
         {!preview ? (
           <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
             <PlayCircle className="h-10 w-10 text-cyan-200/45" />
-            <p className="text-sm text-white/62">Run any worker to stream output in this pane.</p>
+            <p className="text-sm text-white/62">{copy.empty}</p>
           </div>
         ) : (
           <motion.div
@@ -115,20 +161,27 @@ export function LivePreviewEngine() {
             <div className="mb-2 flex items-center justify-between">
               <div>
                 <p className="text-sm font-semibold text-white">{preview.title}</p>
-                <p className="text-xs text-white/55">{OMNI_SERVICE_MAP[preview.serviceId].title}</p>
+                <p className="text-xs text-white/55">{getLocalizedService(preview.serviceId, localeCode).title}</p>
               </div>
               <p className="font-mono text-[11px] text-white/45">{formatClock(preview.createdAt)}</p>
             </div>
 
             {preview.kind === 'image' && preview.sourceUrl && (
-              <img src={preview.sourceUrl} alt={preview.title} className="h-[220px] w-full rounded-lg object-cover" />
+              <Image
+                src={preview.sourceUrl}
+                alt={preview.title}
+                width={600}
+                height={800}
+                unoptimized
+                className="h-[220px] w-full rounded-lg object-cover"
+              />
             )}
 
             {preview.kind === 'video' && (
               <div className="flex h-[220px] flex-col justify-between rounded-lg border border-white/10 bg-slate-900/60 p-3">
                 <div className="flex items-center gap-2 text-white/75">
                   <Film className="h-4 w-4" />
-                  <span className="text-xs">Real-time storyboard timeline</span>
+                  <span className="text-xs">{copy.timeline}</span>
                 </div>
                 <div className="space-y-2">
                   <div className="h-2 rounded-full bg-white/10">
@@ -138,7 +191,7 @@ export function LivePreviewEngine() {
                       transition={{ duration: 3.2, repeat: Infinity }}
                     />
                   </div>
-                  <p className="text-xs text-white/55">{preview.textBody ?? 'Scene graph synchronized with image and voice references.'}</p>
+                  <p className="text-xs text-white/55">{preview.textBody ?? copy.timelineFallback}</p>
                 </div>
               </div>
             )}
@@ -147,10 +200,10 @@ export function LivePreviewEngine() {
               <div className="space-y-3 rounded-lg border border-white/10 bg-slate-900/60 p-3">
                 <div className="flex items-center gap-2 text-white/75">
                   <Mic2 className="h-4 w-4" />
-                  <span className="text-xs">Analog VU monitor</span>
+                  <span className="text-xs">{copy.vu}</span>
                 </div>
                 <AudioMeter />
-                <p className="text-xs text-white/55">{preview.textBody ?? 'Audio render online.'}</p>
+                <p className="text-xs text-white/55">{preview.textBody ?? copy.audioFallback}</p>
               </div>
             )}
 
@@ -164,9 +217,9 @@ export function LivePreviewEngine() {
       </div>
 
       <div className="mt-3 rounded-xl border border-white/10 bg-black/20 p-2.5">
-        <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-white/45">Recent Outputs</p>
+        <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-white/45">{copy.recent}</p>
         <div className="grid gap-1.5">
-          {recentAssets.length === 0 && <p className="text-xs text-white/45">No assets generated yet.</p>}
+          {recentAssets.length === 0 && <p className="text-xs text-white/45">{copy.noAssets}</p>}
           {recentAssets.map((asset) => (
             <button
               key={asset.id}

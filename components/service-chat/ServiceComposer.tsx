@@ -9,7 +9,8 @@
  */
 
 import { useRef, useCallback, useEffect, useState } from 'react';
-import { Paperclip, Camera, Mic, MicOff, Send, StopCircle, Sparkles } from 'lucide-react';
+import Image from 'next/image';
+import { Paperclip, Camera, Mic, MicOff, Send, StopCircle } from 'lucide-react';
 import { CameraModal } from './CameraModal';
 import type { ServiceChatConfig, ServiceChatAttachment, AgentMode } from './types';
 
@@ -100,7 +101,7 @@ export function ServiceComposer({
               style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}
             >
               {att.preview ? (
-                <img src={att.preview} alt={att.name} className="w-full h-full object-cover" />
+                <Image src={att.preview} alt={att.name} width={80} height={80} unoptimized className="w-full h-full object-cover" />
               ) : (
                 <div className="w-full h-full flex items-center justify-center text-xs" style={{ color: 'var(--color-text-tertiary)' }}>
                   {att.type === 'video' ? '🎬' : att.type === 'audio' ? '🎵' : '📄'}

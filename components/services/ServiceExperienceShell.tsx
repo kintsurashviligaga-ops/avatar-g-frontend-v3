@@ -59,7 +59,7 @@ export default function ServiceExperienceShell({ children, forcedSlug }: Service
   const [error, setError] = useState<string | null>(null);
   const [jobs, setJobs] = useState<ServiceJob[]>([]);
   const [filter, setFilter] = useState<FilterMode>('all');
-  const [sort, setSort] = useState<SortMode>('newest');
+  const [sort, _setSort] = useState<SortMode>('newest');
   const [busyJobId, setBusyJobId] = useState<string | null>(null);
 
   const slug = useMemo(() => forcedSlug ?? resolveServiceSlug(pathname), [forcedSlug, pathname]);

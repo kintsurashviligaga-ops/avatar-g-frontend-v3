@@ -23,6 +23,10 @@ export type ServiceType =
   | 'video'
   | 'image'
   | 'music'
+  | 'game-creation'
+  | 'interior-design'
+  | 'prompt-builder'
+  | 'terminal-coding'
   | 'text'
   | 'workflow'
   | 'interior'
@@ -50,7 +54,7 @@ export interface WorkflowState {
 export interface WorkflowStep {
   id: string;
   service: ServiceType;
-  config: Record<string, any>;
+  config: Record<string, unknown>;
   status: 'pending' | 'running' | 'completed' | 'error';
 }
 
@@ -104,7 +108,7 @@ interface GlobalState {
 }
 
 export const useGlobalStore = create<GlobalState>()(
-  subscribeWithSelector((set, get) => ({
+  subscribeWithSelector((set, _get) => ({
     user: null,
     avatar: null,
     activeService: 'avatar',

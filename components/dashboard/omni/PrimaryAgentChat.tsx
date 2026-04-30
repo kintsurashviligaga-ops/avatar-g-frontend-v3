@@ -21,7 +21,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { DragEventHandler, MouseEventHandler } from 'react';
 
-import { OMNI_SERVICE_MAP } from './services';
+import { getLocalizedService, localizeCommandLanguage, normalizeOmniLocale, type OmniLocale } from './i18n';
 import { useOmniStore } from './store';
 import type { CommandLanguage } from './types';
 
@@ -51,24 +51,218 @@ const LANGUAGE_META: Array<{ id: CommandLanguage; short: string; label: string; 
   { id: 'ru', short: 'RU', label: 'Русский', speechCode: 'ru-RU' },
 ];
 
-const QUICK_COMMANDS: Array<{ label: string; prompt: string }> = [
-  {
-    label: 'Launch Campaign',
-    prompt: 'Create a full launch campaign plan with copy, creative directions, and 7-day execution timeline.',
+const QUICK_COMMANDS: Record<OmniLocale, Array<{ label: string; prompt: string }>> = {
+  ka: [
+    {
+      label: 'კამპანიის გაშვება',
+      prompt: 'შექმენი სრული კამპანიის გეგმა ტექსტებით, ვიზუალური მითითებებით და 7-დღიანი შესრულების გრაფიკით.',
+    },
+    {
+      label: 'ვიზუალური პაკეტი',
+      prompt: 'მომიმზადე პროდუქტის ვიზუალური კონცეპტები, სარეკლამო გამოსახულების prompt-ები და მოკლე ვიდეოს სცენარი.',
+    },
+    {
+      label: 'ხმა + სცენარი',
+      prompt: 'დამიწერე კონვერსიაზე ორიენტირებული სცენარი და შესაფერისი ხმოვანი სტილი ქართული აუდიტორიისთვის.',
+    },
+    {
+      label: 'აღმასრულებელი შეჯამება',
+      prompt: 'გაანალიზე მიმდინარე მიმართულება და მომეცი აღმასრულებელი შეჯამება ტოპ 5 მოქმედებით და რისკით.',
+    },
+  ],
+  en: [
+    {
+      label: 'Launch Campaign',
+      prompt: 'Create a full launch campaign plan with copy, creative directions, and 7-day execution timeline.',
+    },
+    {
+      label: 'Product Visual Pack',
+      prompt: 'Generate product visual concepts, ad image prompts, and matching short video storyboard.',
+    },
+    {
+      label: 'Voice + Script',
+      prompt: 'Write a conversion-focused script and suggest voice style options for a Georgian audience.',
+    },
+    {
+      label: 'Executive Summary',
+      prompt: 'Analyze current direction and return an executive summary with top 5 actions and risks.',
+    },
+  ],
+  ru: [
+    {
+      label: 'Запуск кампании',
+      prompt: 'Создай полный план запуска кампании: тексты, визуальные направления и 7-дневный график исполнения.',
+    },
+    {
+      label: 'Пакет визуалов',
+      prompt: 'Сгенерируй визуальные концепты продукта, prompt-ы для рекламных изображений и сториборд короткого видео.',
+    },
+    {
+      label: 'Голос + сценарий',
+      prompt: 'Напиши конверсионный сценарий и предложи стили озвучки для грузинской аудитории.',
+    },
+    {
+      label: 'Executive Summary',
+      prompt: 'Проанализируй текущее направление и верни executive summary с 5 ключевыми действиями и рисками.',
+    },
+  ],
+};
+
+const CHAT_COPY = {
+  ka: {
+    primaryConsole: 'ძირითადი აგენტის კონსოლი',
+    multimodalBar: 'მულტიმოდალური ბრძანებების პანელი',
+    intro: 'დაწერე ერთხელ. მე ვანაწილებ დავალებას სერვისებში და საუკეთესო შედეგს აქვე გაბრუნებ.',
+    empty:
+      'დაიწყე მიზნის მოკლე აღწერით. შეგიძლია დაამატო ფაილი, ხმა ან კამერა და Agent G ავტომატურად ააწყობს პროცესს.',
+    agentLabel: 'Agent G',
+    operatorLabel: 'ოპერატორი',
+    smartBar: 'ჭკვიანი შეყვანა',
+    routingTo: 'მიმდინარეობს:',
+    quickStart: 'სწრაფი დასაწყისი',
+    templatesHint: 'ერთი შეხებით შაბლონები',
+    cameraStarting: 'კამერა ირთვება...',
+    cameraReady: 'კამერა მზადაა',
+    cameraUnavailable: 'კამერა მიუწვდომელია',
+    cameraOff: 'კამერა გამორთულია',
+    livePreview: 'ცოცხალი პრევიუ',
+    waitingCamera: 'კამერის მოლოდინი',
+    capture: 'გადაღება',
+    close: 'დახურვა',
+    attachedContext: 'დამატებული კონტექსტი',
+    clearAll: 'გასუფთავება',
+    promptComposer: 'ბრძანების კომპოზიტორი',
+    chars: 'სიმბოლო',
+    placeholderPrefix: 'მართე',
+    placeholderSuffix: 'სერვისი markdown-ით და ზუსტი მითითებებით...',
+    upload: 'ატვირთვა',
+    stop: 'შეჩერება',
+    voice: 'ხმა',
+    camera: 'კამერა',
+    clear: 'გასუფთავება',
+    dispatch: 'გაგზავნა',
+    commandLanguage: 'ბრძანების ენა',
+    enterHint: 'Enter — გაგზავნა / Shift+Enter — ახალი ხაზი',
+    supports: 'მხარს უჭერს markdown-ს, მულტიმოდალურ input-ს და სერვისებს შორის კონტექსტის გაზიარებას.',
+    voiceTranscript: 'ხმოვანი ტრანსკრიფტი',
+    cameraCapture: 'კამერის კადრი',
+    uploadFile: 'ფაილის ატვირთვა',
+    stopRecording: 'ჩაწერის შეჩერება',
+    startVoice: 'ხმოვანი შეყვანის დაწყება',
+    closeCamera: 'კამერის დახურვა',
+    openCamera: 'კამერის გახსნა',
+    clearPrompt: 'ტექსტის გასუფთავება',
+    speechUnsupported: 'ხმოვანი ამოცნობა ამ ბრაუზერში არ არის მხარდაჭერილი.',
+    speechFailed: 'ხმოვანი ამოცნობა ვერ შესრულდა. შეამოწმე მიკროფონის წვდომა.',
+    couldNotProcess: 'ვერ დამუშავდა ფაილი:',
+    cameraApiMissing: 'კამერის API ამ ბრაუზერში არ არის ხელმისაწვდომი.',
+    cameraNoFrame: 'კამერა ჩაირთო, მაგრამ კადრი ვერ მივიღეთ. სცადე თავიდან.',
+    cameraPermissionError: 'კამერაზე წვდომა ვერ მოხერხდა. გთხოვ, დაუშვი ნებართვა.',
+    cameraNotReady: 'კამერის ნაკადი ჯერ მზად არაა. სცადე კიდევ ერთხელ.',
   },
-  {
-    label: 'Product Visual Pack',
-    prompt: 'Generate product visual concepts, ad image prompts, and matching short video storyboard.',
+  en: {
+    primaryConsole: 'Primary Agent Console',
+    multimodalBar: 'Multimodal Command Bar',
+    intro: 'Write once. I route tasks across services and return the best output here.',
+    empty:
+      'Start by describing your goal in natural language. You can attach files, voice, or camera context and Agent G will orchestrate all services automatically.',
+    agentLabel: 'Agent G',
+    operatorLabel: 'Operator',
+    smartBar: 'Smart Input Bar',
+    routingTo: 'Routing to:',
+    quickStart: 'Quick Start',
+    templatesHint: 'One tap templates',
+    cameraStarting: 'Starting camera...',
+    cameraReady: 'Camera ready',
+    cameraUnavailable: 'Camera unavailable',
+    cameraOff: 'Camera off',
+    livePreview: 'Live preview',
+    waitingCamera: 'Waiting for camera',
+    capture: 'Capture',
+    close: 'Close',
+    attachedContext: 'Attached Context',
+    clearAll: 'Clear all',
+    promptComposer: 'Prompt Composer',
+    chars: 'chars',
+    placeholderPrefix: 'Command',
+    placeholderSuffix: 'with markdown-rich instructions...',
+    upload: 'Upload',
+    stop: 'Stop',
+    voice: 'Voice',
+    camera: 'Camera',
+    clear: 'Clear',
+    dispatch: 'Dispatch',
+    commandLanguage: 'Command language',
+    enterHint: 'Enter sends / Shift+Enter newline',
+    supports: 'Supports markdown, multimodal attachments, and cross-service context bridging.',
+    voiceTranscript: 'Voice Transcript',
+    cameraCapture: 'Camera Capture',
+    uploadFile: 'Upload file',
+    stopRecording: 'Stop recording',
+    startVoice: 'Start voice input',
+    closeCamera: 'Close camera',
+    openCamera: 'Open camera',
+    clearPrompt: 'Clear text',
+    speechUnsupported: 'Speech-to-text is not supported in this browser.',
+    speechFailed: 'Voice recognition failed. Check microphone permissions.',
+    couldNotProcess: 'Could not process file:',
+    cameraApiMissing: 'Camera API is not available in this browser.',
+    cameraNoFrame: 'Camera opened, but no frames were received. Please try reopening camera.',
+    cameraPermissionError: 'Unable to access camera. Please grant camera permission.',
+    cameraNotReady: 'Camera feed is not ready yet. Try again in a moment.',
   },
-  {
-    label: 'Voice + Script',
-    prompt: 'Write a conversion-focused script and suggest voice style options for a Georgian audience.',
+  ru: {
+    primaryConsole: 'Основная консоль агента',
+    multimodalBar: 'Мультимодальная панель команд',
+    intro: 'Пишите один раз. Я распределю задачу по сервисам и верну лучший результат здесь.',
+    empty:
+      'Начните с описания цели. Можно добавить файлы, голос или камеру, и Agent G автоматически соберет весь пайплайн.',
+    agentLabel: 'Agent G',
+    operatorLabel: 'Оператор',
+    smartBar: 'Умная панель ввода',
+    routingTo: 'Маршрут в:',
+    quickStart: 'Быстрый старт',
+    templatesHint: 'Шаблоны в один тап',
+    cameraStarting: 'Запуск камеры...',
+    cameraReady: 'Камера готова',
+    cameraUnavailable: 'Камера недоступна',
+    cameraOff: 'Камера выключена',
+    livePreview: 'Live preview',
+    waitingCamera: 'Ожидание камеры',
+    capture: 'Снять',
+    close: 'Закрыть',
+    attachedContext: 'Добавленный контекст',
+    clearAll: 'Очистить всё',
+    promptComposer: 'Редактор команды',
+    chars: 'символов',
+    placeholderPrefix: 'Управляй сервисом',
+    placeholderSuffix: 'с markdown-инструкциями...',
+    upload: 'Загрузить',
+    stop: 'Стоп',
+    voice: 'Голос',
+    camera: 'Камера',
+    clear: 'Очистить',
+    dispatch: 'Отправить',
+    commandLanguage: 'Язык команды',
+    enterHint: 'Enter отправляет / Shift+Enter новая строка',
+    supports: 'Поддерживает markdown, мультимодальные вложения и передачу контекста между сервисами.',
+    voiceTranscript: 'Голосовая расшифровка',
+    cameraCapture: 'Снимок с камеры',
+    uploadFile: 'Загрузить файл',
+    stopRecording: 'Остановить запись',
+    startVoice: 'Начать голосовой ввод',
+    closeCamera: 'Закрыть камеру',
+    openCamera: 'Открыть камеру',
+    clearPrompt: 'Очистить текст',
+    speechUnsupported: 'Распознавание речи не поддерживается в этом браузере.',
+    speechFailed: 'Ошибка распознавания речи. Проверьте доступ к микрофону.',
+    couldNotProcess: 'Не удалось обработать файл:',
+    cameraApiMissing: 'Camera API недоступен в этом браузере.',
+    cameraNoFrame: 'Камера включилась, но кадры не получены. Попробуйте снова.',
+    cameraPermissionError: 'Не удалось получить доступ к камере. Разрешите доступ.',
+    cameraNotReady: 'Поток камеры еще не готов. Попробуйте снова.',
   },
-  {
-    label: 'Executive Summary',
-    prompt: 'Analyze current direction and return an executive summary with top 5 actions and risks.',
-  },
-];
+} as const;
 
 function resolveSpeechCtor(): SpeechRecognitionCtor | null {
   if (typeof window === 'undefined') {
@@ -102,6 +296,11 @@ export function PrimaryAgentChat() {
   const activeServiceId = useOmniStore((state) => state.activeServiceId);
   const commandLanguage = useOmniStore((state) => state.commandLanguage);
   const pendingInputs = useOmniStore((state) => state.pendingInputs);
+  const locale = useOmniStore((state) => state.locale);
+
+  const localeCode = normalizeOmniLocale(locale);
+  const copy = CHAT_COPY[localeCode];
+  const quickCommands = QUICK_COMMANDS[localeCode];
 
   const setCommandLanguage = useOmniStore((state) => state.setCommandLanguage);
   const sendPrimaryCommand = useOmniStore((state) => state.sendPrimaryCommand);
@@ -136,13 +335,13 @@ export function PrimaryAgentChat() {
   );
 
   const cameraStatusLabel = useMemo(() => {
-    if (cameraState === 'requesting') return 'Starting camera...';
-    if (cameraState === 'ready') return 'Camera ready';
-    if (cameraState === 'error') return 'Camera unavailable';
-    return 'Camera off';
-  }, [cameraState]);
+    if (cameraState === 'requesting') return copy.cameraStarting;
+    if (cameraState === 'ready') return copy.cameraReady;
+    if (cameraState === 'error') return copy.cameraUnavailable;
+    return copy.cameraOff;
+  }, [cameraState, copy]);
 
-  const activeServiceTitle = OMNI_SERVICE_MAP[activeServiceId].title;
+  const activeServiceTitle = getLocalizedService(activeServiceId, localeCode).title;
 
   const autoGrow = useCallback(() => {
     const node = composerRef.current;
@@ -180,6 +379,24 @@ export function PrimaryAgentChat() {
     };
   }, [stopCameraStream]);
 
+  useEffect(() => {
+    const focusComposer = () => {
+      const node = composerRef.current;
+      if (!node) {
+        return;
+      }
+      node.focus();
+      const end = node.value.length;
+      node.setSelectionRange(end, end);
+      selectionRef.current = { start: end, end };
+    };
+
+    window.addEventListener('omni:focus-composer', focusComposer);
+    return () => {
+      window.removeEventListener('omni:focus-composer', focusComposer);
+    };
+  }, []);
+
   const onAttachFiles = useCallback(
     async (inputFiles: File[]) => {
       if (inputFiles.length === 0) {
@@ -216,11 +433,11 @@ export function PrimaryAgentChat() {
             sourceUrl,
           });
         } catch {
-          setMediaError(`Could not process ${file.name}.`);
+          setMediaError(`${copy.couldNotProcess} ${file.name}.`);
         }
       }
     },
-    [ingestCommandInput],
+    [copy.couldNotProcess, ingestCommandInput],
   );
 
   const onDropFiles: DragEventHandler<HTMLFormElement> = async (event) => {
@@ -296,7 +513,7 @@ export function PrimaryAgentChat() {
   const startRecording = useCallback(() => {
     const SpeechCtor = resolveSpeechCtor();
     if (!SpeechCtor) {
-      setMediaError('Speech-to-text is not supported in this browser.');
+      setMediaError(copy.speechUnsupported);
       return;
     }
 
@@ -324,7 +541,7 @@ export function PrimaryAgentChat() {
     };
 
     recognition.onerror = () => {
-      setMediaError('Voice recognition failed. Check microphone permissions.');
+      setMediaError(copy.speechFailed);
       setRecording(false);
     };
 
@@ -333,7 +550,7 @@ export function PrimaryAgentChat() {
       if (finalTranscript) {
         ingestCommandInput({
           kind: 'voice',
-          title: `Voice Transcript • ${languageMap[commandLanguage].short}`,
+          title: `${copy.voiceTranscript} • ${languageMap[commandLanguage].short}`,
           mimeType: 'text/plain',
           textContent: finalTranscript,
         });
@@ -347,7 +564,14 @@ export function PrimaryAgentChat() {
     recognitionRef.current = recognition;
     setRecording(true);
     setMediaError(null);
-  }, [commandLanguage, ingestCommandInput, languageMap]);
+  }, [
+    commandLanguage,
+    copy.speechFailed,
+    copy.speechUnsupported,
+    copy.voiceTranscript,
+    ingestCommandInput,
+    languageMap,
+  ]);
 
   const toggleRecording = useCallback(() => {
     if (recording) {
@@ -366,7 +590,7 @@ export function PrimaryAgentChat() {
 
     if (!navigator.mediaDevices?.getUserMedia) {
       setCameraState('error');
-      setMediaError('Camera API is not available in this browser.');
+      setMediaError(copy.cameraApiMissing);
       return;
     }
 
@@ -415,7 +639,7 @@ export function PrimaryAgentChat() {
           stopCameraStream();
           setCameraOpen(false);
           setCameraState('error');
-          setMediaError('Camera opened, but no frames were received. Please try reopening camera.');
+          setMediaError(copy.cameraNoFrame);
           return;
         }
       }
@@ -425,9 +649,9 @@ export function PrimaryAgentChat() {
       stopCameraStream();
       setCameraOpen(false);
       setCameraState('error');
-      setMediaError('Unable to access camera. Please grant camera permission.');
+      setMediaError(copy.cameraPermissionError);
     }
-  }, [cameraState, stopCameraStream]);
+  }, [cameraState, copy.cameraApiMissing, copy.cameraNoFrame, copy.cameraPermissionError, stopCameraStream]);
 
   const closeCamera = useCallback(() => {
     stopCameraStream();
@@ -445,7 +669,7 @@ export function PrimaryAgentChat() {
     const width = video.videoWidth || 1280;
     const height = video.videoHeight || 720;
     if (width <= 0 || height <= 0) {
-      setMediaError('Camera feed is not ready yet. Try again in a moment.');
+      setMediaError(copy.cameraNotReady);
       return;
     }
 
@@ -462,14 +686,14 @@ export function PrimaryAgentChat() {
 
     ingestCommandInput({
       kind: 'camera',
-      title: 'Camera Capture',
+      title: copy.cameraCapture,
       mimeType: 'image/png',
       sourceUrl,
       size: Math.round(sourceUrl.length * 0.75),
     });
 
     closeCamera();
-  }, [closeCamera, ingestCommandInput]);
+  }, [closeCamera, copy.cameraCapture, copy.cameraNotReady, ingestCommandInput]);
 
   const sendCommand = useCallback(async () => {
     if (running) {
@@ -516,9 +740,9 @@ export function PrimaryAgentChat() {
     <section className="omni-card omni-chat-pane relative z-10 flex min-h-0 min-w-0 flex-col overflow-hidden rounded-2xl border border-white/12 bg-black/20">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 px-4 py-3">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-white/40">Primary Agent Console</p>
-          <h3 className="text-sm font-semibold text-white/85">Multimodal Command Bar</h3>
-          <p className="mt-0.5 text-[12px] text-white/50">Write once. I route tasks across services and return the best output here.</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-white/40">{copy.primaryConsole}</p>
+          <h3 className="text-sm font-semibold text-white/85">{copy.multimodalBar}</h3>
+          <p className="mt-0.5 text-[12px] text-white/50">{copy.intro}</p>
         </div>
         <div className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-black/35 p-1">
           {LANGUAGE_META.map((language) => (
@@ -539,9 +763,7 @@ export function PrimaryAgentChat() {
 
       <div className="omni-chat-scroll min-h-[360px] flex-1 space-y-3 overflow-y-auto bg-black/15 px-4 py-4 pb-24 md:pb-4 lg:min-h-[440px] xl:min-h-[520px]">
         {messages.length === 0 ? (
-          <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4 text-sm text-white/55">
-            Start by describing your goal in natural language. You can attach files, voice, or camera context and Agent G will orchestrate all services automatically.
-          </div>
+          <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4 text-sm text-white/55">{copy.empty}</div>
         ) : (
           messages.map((message) => (
             <motion.div key={message.id} layout className={`flex ${message.role === 'assistant' ? 'justify-start' : 'justify-end'}`} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.18 }}>
@@ -552,7 +774,7 @@ export function PrimaryAgentChat() {
               >
                 <div className="mb-1 flex items-center gap-1.5 text-[11px] uppercase tracking-[0.13em] text-white/55">
                   {message.role === 'assistant' ? <Bot className="h-3.5 w-3.5" /> : <TerminalSquare className="h-3.5 w-3.5" />}
-                  {message.role === 'assistant' ? 'Agent G' : 'Operator'}
+                  {message.role === 'assistant' ? copy.agentLabel : copy.operatorLabel}
                 </div>
                 <p className="whitespace-pre-wrap text-sm leading-relaxed">{message.content}</p>
               </div>
@@ -581,8 +803,8 @@ export function PrimaryAgentChat() {
       >
         <div className="mb-2 flex items-center justify-between rounded-xl border border-cyan-300/30 bg-cyan-500/10 px-3 py-2 md:hidden">
           <div>
-            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-cyan-100/75">Smart Input Bar</p>
-            <p className="text-xs text-cyan-50/90">Routing to {activeServiceTitle}</p>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-cyan-100/75">{copy.smartBar}</p>
+            <p className="text-xs text-cyan-50/90">{copy.routingTo} {activeServiceTitle}</p>
           </div>
           <span className="rounded-full border border-cyan-200/40 bg-black/25 px-2 py-1 text-[11px] font-semibold text-cyan-100">
             {languageMap[commandLanguage].short}
@@ -591,11 +813,11 @@ export function PrimaryAgentChat() {
 
         <div className="mb-3 hidden rounded-xl border border-white/10 bg-black/35 p-2.5 md:block">
           <div className="mb-2 flex items-center justify-between gap-2">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-white/45">Quick Start</p>
-            <span className="text-[11px] text-white/45">One tap templates</span>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-white/45">{copy.quickStart}</p>
+            <span className="text-[11px] text-white/45">{copy.templatesHint}</span>
           </div>
           <div className="flex flex-wrap gap-1.5">
-            {QUICK_COMMANDS.map((command) => (
+            {quickCommands.map((command) => (
               <button
                 key={command.label}
                 type="button"
@@ -618,7 +840,7 @@ export function PrimaryAgentChat() {
             >
               <div className="mb-1 flex items-center justify-between text-[11px] text-white/60">
                 <span>{cameraStatusLabel}</span>
-                <span>{cameraState === 'ready' ? 'Live preview' : 'Waiting for camera'}</span>
+                <span>{cameraState === 'ready' ? copy.livePreview : copy.waitingCamera}</span>
               </div>
               <video ref={videoRef} autoPlay playsInline muted className="h-48 w-full rounded-lg object-cover" />
               <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -628,14 +850,14 @@ export function PrimaryAgentChat() {
                   disabled={cameraState !== 'ready'}
                   className="min-h-[44px] rounded-lg border border-cyan-300/40 bg-cyan-500/20 px-3 py-1.5 text-xs font-semibold text-cyan-100 disabled:cursor-not-allowed disabled:opacity-45"
                 >
-                  Capture
+                  {copy.capture}
                 </button>
                 <button
                   type="button"
                   onClick={closeCamera}
                   className="min-h-[44px] rounded-lg border border-white/15 bg-white/5 px-3 py-1.5 text-xs font-semibold text-white/80"
                 >
-                  Close
+                  {copy.close}
                 </button>
               </div>
             </motion.div>
@@ -661,13 +883,13 @@ export function PrimaryAgentChat() {
         {pendingInputs.length > 0 && (
           <div className="mb-3 rounded-xl border border-white/10 bg-black/35 p-2.5">
             <div className="mb-2 flex items-center justify-between gap-2">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-white/45">Attached Context</p>
+              <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-white/45">{copy.attachedContext}</p>
               <button
                 type="button"
                 className="rounded-full border border-white/12 bg-white/[0.04] px-2 py-1 text-[11px] text-white/70 hover:bg-white/[0.08]"
                 onClick={clearPendingInputs}
               >
-                Clear all
+                {copy.clearAll}
               </button>
             </div>
             <div className="flex flex-wrap items-center gap-1.5">
@@ -693,8 +915,8 @@ export function PrimaryAgentChat() {
 
         <div className="rounded-xl border border-white/12 bg-black/45 p-3">
           <div className="mb-2 flex items-center justify-between gap-2">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-white/45">Prompt Composer</p>
-            <p className="text-[11px] text-white/45">{prompt.length} chars</p>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-white/45">{copy.promptComposer}</p>
+            <p className="text-[11px] text-white/45">{prompt.length} {copy.chars}</p>
           </div>
 
           <textarea
@@ -712,7 +934,7 @@ export function PrimaryAgentChat() {
                 void sendCommand();
               }
             }}
-            placeholder={`Command ${activeServiceId} with markdown-rich instructions...`}
+            placeholder={`${copy.placeholderPrefix} ${activeServiceTitle} ${copy.placeholderSuffix}`}
             className="max-h-[320px] min-h-[44px] w-full resize-none bg-transparent px-2 py-2 text-sm text-white/90 outline-none placeholder:text-white/35 md:min-h-[150px]"
           />
 
@@ -722,10 +944,10 @@ export function PrimaryAgentChat() {
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
                 className="inline-flex min-h-[44px] items-center gap-1 rounded-md px-2 py-1.5 text-xs text-white/80 transition hover:bg-white/10 hover:text-white"
-                title="Upload file"
+                title={copy.uploadFile}
               >
                 <Upload className="h-3.5 w-3.5" />
-                Upload
+                {copy.upload}
               </button>
               <button
                 type="button"
@@ -733,10 +955,10 @@ export function PrimaryAgentChat() {
                 className={`inline-flex min-h-[44px] items-center gap-1 rounded-md px-2 py-1.5 text-xs transition ${
                   recording ? 'bg-red-500/30 text-red-100' : 'text-white/80 hover:bg-white/10 hover:text-white'
                 }`}
-                title={recording ? 'Stop recording' : 'Start voice input'}
+                title={recording ? copy.stopRecording : copy.startVoice}
               >
                 {recording ? <MicOff className="h-3.5 w-3.5" /> : <Mic className="h-3.5 w-3.5" />}
-                {recording ? 'Stop' : 'Voice'}
+                {recording ? copy.stop : copy.voice}
               </button>
               <button
                 type="button"
@@ -750,10 +972,10 @@ export function PrimaryAgentChat() {
                 className={`inline-flex min-h-[44px] items-center gap-1 rounded-md px-2 py-1.5 text-xs transition ${
                   cameraOpen ? 'bg-cyan-500/25 text-cyan-100' : 'text-white/80 hover:bg-white/10 hover:text-white'
                 }`}
-                title={cameraOpen ? 'Close camera' : 'Open camera'}
+                title={cameraOpen ? copy.closeCamera : copy.openCamera}
               >
                 <Camera className="h-3.5 w-3.5" />
-                Camera
+                {copy.camera}
               </button>
 
               <div className="mx-1 hidden h-4 w-px bg-white/15 sm:block" />
@@ -813,7 +1035,7 @@ export function PrimaryAgentChat() {
                 disabled={!prompt.trim() || running}
                 className="min-h-[44px] rounded-lg border border-white/15 bg-white/5 px-3 py-1.5 text-xs font-semibold text-white/75 disabled:cursor-not-allowed disabled:opacity-45"
               >
-                Clear
+                {copy.clear}
               </button>
               <button
                 type="submit"
@@ -821,7 +1043,7 @@ export function PrimaryAgentChat() {
                 className="inline-flex min-h-[44px] items-center gap-1.5 rounded-lg border border-cyan-300/45 bg-cyan-500/20 px-4 py-1.5 text-xs font-semibold text-cyan-100 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 {running ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
-                Dispatch
+                {copy.dispatch}
               </button>
             </div>
           </div>
@@ -829,15 +1051,15 @@ export function PrimaryAgentChat() {
             <div className="mt-2 flex flex-wrap items-center justify-between gap-1 text-[11px] text-white/45">
               <span className="inline-flex items-center gap-1">
                 <Globe2 className="h-3.5 w-3.5" />
-                Command language: {languageMap[commandLanguage].label}
+                {copy.commandLanguage}: {localizeCommandLanguage(commandLanguage, localeCode)}
               </span>
               <span className="inline-flex items-center gap-1">
                 <Paperclip className="h-3.5 w-3.5" />
-                Enter sends / Shift+Enter newline
+                {copy.enterHint}
               </span>
             </div>
 
-            <p className="mt-1 text-[11px] text-white/40">Supports markdown, multimodal attachments, and cross-service context bridging.</p>
+            <p className="mt-1 text-[11px] text-white/40">{copy.supports}</p>
         </div>
       </form>
     </section>

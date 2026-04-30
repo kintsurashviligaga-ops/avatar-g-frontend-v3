@@ -23,18 +23,18 @@ import {
 } from '@/lib/chat/state/conversationStore';
 
 // Types
-import type { ChatAttachment, ChatMessage } from '@/lib/chat/types';
+
 
 // Logic & orchestration
 import { classifyIntent } from '@/lib/agents/orchestrator';
 import { getAgentContract } from '@/lib/agents/contracts';
 import { createUserMessage, createAssistantMessage, createHandoffMessage, createErrorMessage } from '@/lib/chat/logic/messageFactory';
-import { buildFollowUpFromMessage } from '@/lib/chat/logic/suggestionEngine';
+
 
 // Subcomponents
 import { ChatHeaderBar } from './shell/ChatHeaderBar';
 import { AgentControlStrip } from './shell/AgentControlStrip';
-import { ProjectContextBar } from './shell/ProjectContextBar';
+
 import { MessageList } from './messages/MessageList';
 import { WelcomePanel } from './panels/WelcomePanel';
 import { InputComposer } from './input/InputComposer';
@@ -150,7 +150,6 @@ export default function ChatShell() {
 
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
-      let fullText = '';
       let model = '';
 
       while (true) {
@@ -165,7 +164,6 @@ export default function ChatShell() {
           try {
             const data = JSON.parse(line.slice(6));
             if (data.token) {
-              fullText += data.token;
               convDispatch({ type: 'APPEND_STREAM', id: assistantMsg.id, token: data.token });
             }
             if (data.done) model = data.model || '';

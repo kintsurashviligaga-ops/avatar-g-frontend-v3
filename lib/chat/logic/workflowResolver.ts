@@ -5,7 +5,7 @@
 
 import type { WorkflowState, WorkflowStep, WorkflowSnapshot } from '../types';
 import type { LocaleCode } from '@/types/core';
-import { getWorkflowTemplate, type WorkflowTemplate } from '../config/workflowTemplates';
+import { getWorkflowTemplate } from '../config/workflowTemplates';
 
 /**
  * Create a new WorkflowState from a template.

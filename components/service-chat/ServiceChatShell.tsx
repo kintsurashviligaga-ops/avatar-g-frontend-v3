@@ -24,7 +24,7 @@
 import { useReducer, useCallback, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 
-import type { ServiceChatConfig, ServiceChatMessage, ServiceChatAttachment, AgentMode } from './types';
+import type { ServiceChatConfig, ServiceChatMessage, AgentMode } from './types';
 import { serviceChatReducer, createInitialState } from '@/lib/service-chat/reducer';
 
 import { ServiceChatHeader } from './ServiceChatHeader';
@@ -76,7 +76,7 @@ export default function ServiceChatShell({ config, language = 'en', className = 
   );
 
   const {
-    messages, inputText, isLoading, isStreaming, agentMode,
+    messages, inputText, isLoading, isStreaming: _isStreaming, agentMode,
     showHamburger, showToolPanel, activeToolPanel,
     selectedOptions, attachments, previews, isRecording,
   } = state;
@@ -267,6 +267,11 @@ export default function ServiceChatShell({ config, language = 'en', className = 
     });
   }, [agentMode, config, language, shellCopy.chatMode, shellCopy.activated]);
 
+  // ─── Handle Transfer ────────────────────────────────────────
+  const handleTransfer = useCallback((targetService: string) => {
+    router.push(`/${activeLanguage}/services/${targetService}`);
+  }, [router, activeLanguage]);
+
   // ─── Handle Quick Action ────────────────────────────────────
   const handleAction = useCallback((action: string) => {
     if (action === 'new-session') {
@@ -286,13 +291,7 @@ export default function ServiceChatShell({ config, language = 'en', className = 
     } else {
       sendMessage(action);
     }
-  }, [newSession, config.quickActions, language, sendMessage]);
-
-  // ─── Handle Transfer ────────────────────────────────────────
-  const handleTransfer = useCallback((targetService: string) => {
-    // Navigate to the target service chat
-    router.push(`/${activeLanguage}/services/${targetService}`);
-  }, [router, activeLanguage]);
+  }, [newSession, config.quickActions, language, sendMessage, handleTransfer]);
 
   // ─── Handle Suggestion Click ────────────────────────────────
   const handleSuggestionClick = useCallback((text: string) => {

@@ -11,6 +11,7 @@
 
 import { useRef, useEffect, useCallback, useState } from 'react';
 import { motion } from 'framer-motion';
+import Image from 'next/image';
 import { Copy, Check, Loader2 } from 'lucide-react';
 import type { ServiceChatConfig, ServiceChatMessage } from './types';
 
@@ -56,7 +57,7 @@ export function ServiceMessageList({ config, messages, isLoading, language, onSu
 
   return (
     <div ref={containerRef} className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
-      {messages.map((msg, idx) => (
+      {messages.map((msg, _idx) => (
         <motion.div
           key={msg.id}
           initial={{ opacity: 0, y: 10 }}
@@ -131,7 +132,7 @@ function UserBubble({ message, accentColor }: { message: ServiceChatMessage; acc
             {message.attachments.map((att) => (
               <div key={att.id} className="w-12 h-12 rounded-lg overflow-hidden bg-white/10 flex items-center justify-center text-xs">
                 {att.preview ? (
-                  <img src={att.preview} alt={att.name} className="w-full h-full object-cover" />
+                  <Image src={att.preview} alt={att.name} width={48} height={48} unoptimized className="w-full h-full object-cover" />
                 ) : (
                   att.type === 'video' ? '🎬' : att.type === 'audio' ? '🎵' : '📄'
                 )}

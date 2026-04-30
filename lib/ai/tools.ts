@@ -10,15 +10,15 @@ export const toolSchemas = {
 
 export type ToolName = keyof typeof toolSchemas;
 
-type ToolInputMap = {
+type _ToolInputMap = {
   [K in ToolName]: z.infer<(typeof toolSchemas)[K]>;
 };
 
 export interface ToolDefinition {
   name: ToolName;
   description: string;
-  inputSchema: z.ZodType<any>;
-  handler: (input: unknown) => Promise<{ success: boolean; result: any }>;
+  inputSchema: z.ZodType<unknown>;
+  handler: (input: unknown) => Promise<{ success: boolean; result: unknown }>;
 }
 
 export const toolsRegistry: Record<ToolName, ToolDefinition> = {
@@ -26,7 +26,7 @@ export const toolsRegistry: Record<ToolName, ToolDefinition> = {
     name: 'generate_image',
     description: 'Generate an image from prompt and style',
     inputSchema: toolSchemas.generate_image,
-    handler: async (input) => {
+    handler: async (_input) => {
       // Future: integrate with /api/image/generate and platform models
       return { success: true, result: { image_url: `/api/placeholders/image/${Date.now()}` } };
     },
@@ -35,7 +35,7 @@ export const toolsRegistry: Record<ToolName, ToolDefinition> = {
     name: 'generate_video',
     description: 'Generate a short video clip from text prompt',
     inputSchema: toolSchemas.generate_video,
-    handler: async (input) => {
+    handler: async (_input) => {
       return { success: true, result: { video_url: `/api/placeholders/video/${Date.now()}` } };
     },
   },
@@ -43,7 +43,7 @@ export const toolsRegistry: Record<ToolName, ToolDefinition> = {
     name: 'compose_music',
     description: 'Compose a music track by mood and genre',
     inputSchema: toolSchemas.compose_music,
-    handler: async (input) => {
+    handler: async (_input) => {
       return { success: true, result: { audio_url: `/api/placeholders/music/${Date.now()}` } };
     },
   },
@@ -51,7 +51,7 @@ export const toolsRegistry: Record<ToolName, ToolDefinition> = {
     name: 'create_avatar',
     description: 'Generate avatar from photo or text prompt',
     inputSchema: toolSchemas.create_avatar,
-    handler: async (input) => {
+    handler: async (_input) => {
       return { success: true, result: { avatar_id: `avatar-${Date.now()}`, url: `/api/placeholders/avatar/${Date.now()}` } };
     },
   },

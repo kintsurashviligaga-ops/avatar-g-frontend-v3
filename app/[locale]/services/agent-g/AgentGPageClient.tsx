@@ -19,7 +19,7 @@ interface AgentGPageClientProps {
 
 export default function AgentGPageClient(props: AgentGPageClientProps) {
   const demoMode = (process.env.NEXT_PUBLIC_DEMO_MODE ?? '').trim().toLowerCase() === 'true'
-  const [isAuthenticated, setIsAuthenticated] = useState(demoMode)
+  const [_isAuthenticated, setIsAuthenticated] = useState(demoMode)
   const searchParams = useSearchParams()
   const initialQuery = searchParams.get('q') ?? undefined
 

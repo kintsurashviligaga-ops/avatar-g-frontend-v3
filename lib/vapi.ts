@@ -40,11 +40,15 @@ function unwrapVapiResponse<T>(value: T | { data?: T }): T {
 }
 
 export async function createVapiCall(payload: Record<string, unknown>): Promise<Record<string, unknown>> {
-  const result = await getVapiServerClient().calls.create(payload as any);
-  return unwrapVapiResponse<Record<string, unknown>>(result as any);
+  const result = await (getVapiServerClient().calls.create as (arg: unknown) => Promise<unknown>)(payload);
+  return unwrapVapiResponse<Record<string, unknown>>(
+    result as { data?: Record<string, unknown> } | Record<string, unknown>
+  );
 }
 
 export async function createVapiAssistant(payload: Record<string, unknown>): Promise<Record<string, unknown>> {
-  const result = await getVapiServerClient().assistants.create(payload as any);
-  return unwrapVapiResponse<Record<string, unknown>>(result as any);
+  const result = await (getVapiServerClient().assistants.create as (arg: unknown) => Promise<unknown>)(payload);
+  return unwrapVapiResponse<Record<string, unknown>>(
+    result as { data?: Record<string, unknown> } | Record<string, unknown>
+  );
 }

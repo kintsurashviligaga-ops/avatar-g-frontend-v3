@@ -1,19 +1,14 @@
 import type { LucideIcon } from 'lucide-react';
 
 export type ServiceId =
-  | 'agent-g'
-  | 'business-strategy'
-  | 'executive-ops'
-  | 'avatar-studio'
-  | 'image-gen'
-  | 'video-gen'
-  | 'voice-synth'
-  | 'music-lab'
-  | 'copy-engine'
-  | 'workflow-automation'
-  | 'analytics-hub'
-  | 'commerce-pilot'
-  | 'fulfillment-hq';
+  | 'avatar'
+  | 'video'
+  | 'image'
+  | 'music'
+  | 'game-creation'
+  | 'interior-design'
+  | 'prompt-builder'
+  | 'terminal-coding';
 
 export type PreviewKind = 'image' | 'video' | 'audio' | 'text' | 'workflow';
 

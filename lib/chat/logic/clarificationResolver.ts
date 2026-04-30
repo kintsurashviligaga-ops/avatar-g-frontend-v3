@@ -18,8 +18,8 @@ export interface ClarificationNeed {
  */
 export function checkClarification(
   intent: string,
-  attachmentTypes: string[],
-  hasProject: boolean
+  _attachmentTypes: string[],
+  _hasProject: boolean
 ): ClarificationNeed | null {
   // Avatar orientation
   if (/avatar|portrait|headshot|character/i.test(intent)) {

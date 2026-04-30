@@ -31,7 +31,7 @@ interface UnifiedServiceShellProps {
   children: React.ReactNode
 }
 
-export function UnifiedServiceShell({ activeServiceId, locale, children }: UnifiedServiceShellProps) {
+export function UnifiedServiceShell({ activeServiceId, locale: _locale, children }: UnifiedServiceShellProps) {
   const router = useRouter()
   const pathname = usePathname()
   const { language } = useLanguage()

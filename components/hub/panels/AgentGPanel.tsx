@@ -7,10 +7,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import {
-  Send, Sparkles, Bot, User, Loader2, Zap, Plus,
-  ArrowRight, ChevronRight, RefreshCw, Paperclip, Mic,
-} from 'lucide-react';
+import { Send, Sparkles, Bot, User, Loader2, ChevronRight, Paperclip } from 'lucide-react';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
 import { useAiPipeline } from '@/hooks/useAiPipeline';

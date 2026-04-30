@@ -118,10 +118,10 @@ const PLAN_OPTIONS = [
   { value: 'enterprise', label: { ka: 'Enterprise', en: 'Enterprise', ru: 'Enterprise' } },
 ] as const
 
-function createIntakeSchema(copy: SmartIntakeLabels) {
+function createIntakeSchema(goalValidation: string, audienceValidation: string) {
   return z.object({
-    goal: z.string().min(3, copy.goalValidation),
-    audience: z.string().min(2, copy.audienceValidation),
+    goal: z.string().min(3, goalValidation),
+    audience: z.string().min(2, audienceValidation),
     platform: z.enum(['tiktok', 'instagram', 'youtube', 'facebook', 'website', 'other']),
     language: z.enum(['ka', 'en', 'ru']),
     stylePreset: z.enum(['Business Pro', 'Creator Viral', 'Luxury', 'Minimal', 'Noir']),
@@ -147,7 +147,10 @@ export function SmartIntakeForm({
   const activeLocale: IntakeLocale = locale === 'en' || locale === 'ru' ? locale : 'ka'
   const t = { ...COPY_BY_LOCALE[activeLocale], ...(labels ?? {}) }
 
-  const intakeSchema = useMemo(() => createIntakeSchema(t), [t.goalValidation, t.audienceValidation])
+  const intakeSchema = useMemo(
+    () => createIntakeSchema(t.goalValidation, t.audienceValidation),
+    [t.goalValidation, t.audienceValidation],
+  )
 
   const l10n = useMemo(() => {
     return {

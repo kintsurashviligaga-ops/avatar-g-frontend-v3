@@ -52,7 +52,7 @@ const QUICK_PROMPTS: Record<string, { icon: string; label: { en: string; ka: str
   ],
 }
 
-export function GrokEmptyState({ serviceIcon, onSuggestionClick, activeService = 'agent-g' }: GrokEmptyStateProps) {
+export function GrokEmptyState({ serviceIcon: _serviceIcon, onSuggestionClick, activeService = 'agent-g' }: GrokEmptyStateProps) {
   const { language } = useLanguage()
   const lang = (language as Lang) || 'en'
   const prompts = QUICK_PROMPTS[activeService] || QUICK_PROMPTS['agent-g'] || []

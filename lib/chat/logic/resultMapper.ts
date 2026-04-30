@@ -103,7 +103,7 @@ function buildResultActions(resultType: ResultType): SuggestionChip[] {
   return actions;
 }
 
-function buildResultSuggestions(resultType: ResultType, agentId: string): SuggestionChip[] {
+function buildResultSuggestions(resultType: ResultType, _agentId: string): SuggestionChip[] {
   const map: Partial<Record<ResultType, SuggestionChip[]>> = {
     avatar: [
       { label: 'Generate Video', action: 'Create a video with this avatar', icon: '🎬' },

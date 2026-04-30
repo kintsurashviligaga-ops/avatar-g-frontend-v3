@@ -8,7 +8,7 @@
  * and service shortcuts.
  */
 
-import { Sparkles } from 'lucide-react';
+
 import { QUICK_ACTIONS, SERVICE_SHORTCUTS, getChatLabels } from '@/lib/chat/constants.legacy';
 import type { QuickAction } from '@/lib/chat/types.legacy';
 

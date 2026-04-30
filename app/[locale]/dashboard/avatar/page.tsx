@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Image from 'next/image';
 import { UserCircle2, Zap, Wand2, RefreshCw, Download, Sparkles } from 'lucide-react';
 
 const STYLES = ['Professional', 'Creative', 'Artistic', 'Gaming', 'Anime', 'Realistic'];
@@ -95,7 +96,7 @@ export default function AvatarStudioPage() {
               </div>
             ) : result ? (
               <div className="w-full h-full relative group">
-                <img src={result} alt="Avatar" className="w-full h-full object-cover" />
+                <Image src={result} alt="Avatar" width={1024} height={1024} unoptimized className="w-full h-full object-cover" />
                 <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3">
                   <button className="p-3 rounded-xl bg-white/10 hover:bg-white/20 transition-colors">
                     <Download className="w-5 h-5 text-white" />
@@ -118,7 +119,7 @@ export default function AvatarStudioPage() {
             <div className="grid grid-cols-3 gap-2">
               {['Professional', 'Creative', 'Artistic'].map(v => (
                 <div key={v} className="aspect-square rounded-xl overflow-hidden" style={{ border: '1px solid rgba(255,255,255,0.08)' }}>
-                  <img src={`https://placehold.co/120x120/0d0d18/8b5cf6?text=${v[0]}`} alt={v} className="w-full h-full object-cover opacity-60 hover:opacity-100 transition-opacity cursor-pointer" />
+                  <Image src={`https://placehold.co/120x120/0d0d18/8b5cf6?text=${v[0]}`} alt={v} width={120} height={120} unoptimized className="w-full h-full object-cover opacity-60 hover:opacity-100 transition-opacity cursor-pointer" />
                 </div>
               ))}
             </div>

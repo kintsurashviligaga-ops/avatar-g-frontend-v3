@@ -7,7 +7,7 @@
  */
 
 import { useRef, useState, useCallback, useEffect } from 'react'
-import { Play, Pause, Maximize, Minimize, Volume2, VolumeX, Sparkles } from 'lucide-react'
+import { Play, Pause, Maximize, Minimize, Volume2, VolumeX } from 'lucide-react';
 
 const VIDEO_SRC = '/media/landing/myavatar-hero-video.mp4'
 

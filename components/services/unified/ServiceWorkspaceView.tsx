@@ -11,6 +11,7 @@
  */
 
 import { useState, useCallback, useRef, useEffect, type ChangeEvent } from 'react'
+import Image from 'next/image'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
 import type { WorkspaceResult } from '@/types/dashboard'
 
@@ -864,7 +865,7 @@ export default function ServiceWorkspaceView({
     } finally {
       setIsGenerating(false)
     }
-  }, [lang, locale, onJobComplete, onJobError, onJobProgress, onJobStart, publishResult, safeServiceName, serviceId, ui.genericPreviewMode, ui.requestFailed, ui.uploadPhotoFirst, ui.uploadVideoFirst, uploadedFile, values, workspace.creditCost, workspace.previewHint])
+  }, [lang, locale, onJobError, onJobProgress, onJobStart, publishResult, safeServiceName, serviceId, ui.genericPreviewMode, ui.requestFailed, ui.uploadPhotoFirst, ui.uploadVideoFirst, uploadedFile, values, workspace.previewHint])
 
   const handleFileChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
@@ -1204,7 +1205,7 @@ export default function ServiceWorkspaceView({
 
                       {result.kind === 'image' && result.url ? (
                         <div className="overflow-hidden rounded-xl" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
-                          <img src={result.url} alt={result.title || safeServiceName} className="w-full h-auto object-cover" />
+                          <Image src={result.url} alt={result.title || safeServiceName} width={1200} height={800} unoptimized className="w-full h-auto object-cover" />
                         </div>
                       ) : result.kind === 'video' && result.url ? (
                         <video controls className="w-full rounded-xl" src={result.url} />

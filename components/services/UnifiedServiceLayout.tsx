@@ -4,10 +4,10 @@ import { useState, useRef, useEffect, useCallback, type DragEvent, type ChangeEv
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { getOwnerId } from '@/lib/auth/identity';
-import { SERVICE_CONTRACTS, SERVICE_PRESETS as CATALOG_PRESETS, type ServicePreset } from '@/lib/services/catalog';
+import { SERVICE_CONTRACTS, SERVICE_PRESETS as CATALOG_PRESETS } from '@/lib/services/catalog';
 import AgentBadge from '@/components/agents/AgentBadge';
-import AgentHandoffSuggestions from '@/components/agents/AgentHandoffSuggestions';
-import { getPrimaryAgentForService } from '@/lib/agents/contracts';
+
+
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -386,7 +386,7 @@ function extractRetryAfterSeconds(input: string): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-function shouldTriggerGeneration(serviceContext: string, prompt: string) {
+function _shouldTriggerGeneration(serviceContext: string, prompt: string) {
   if (!['avatar', 'video', 'music', 'image', 'photo', 'visual-ai'].includes(serviceContext)) return false;
   return /generate|create|make|render|avatar|video|music|song|audio|image|photo|enhance|upscale|remove.*bg|caption|analyze|describe|შექმ|გენერ|созд|генер/i.test(prompt);
 }
@@ -937,7 +937,7 @@ function OptionChip({ active, label, onClick }: OptionChipProps) {
   );
 }
 
-function GoldCTAButton({ label, disabled, onClick }: GoldCTAButtonProps) {
+function _GoldCTAButton({ label, disabled, onClick }: GoldCTAButtonProps) {
   return (
     <button
       onClick={onClick}
@@ -1028,8 +1028,8 @@ export default function UnifiedServiceLayout({
   const optionSets = SERVICE_OPTION_SETS[serviceId] ?? SERVICE_OPTION_SETS[serviceContext] ?? SERVICE_OPTION_SETS['global']!;
   const workspacePresets = SERVICE_PRESETS[serviceId] ?? SERVICE_PRESETS[serviceContext] ?? SERVICE_PRESETS['global']!;
   const workspaceSections = SERVICE_WORKSPACE_SECTIONS[serviceId] ?? SERVICE_WORKSPACE_SECTIONS[serviceContext] ?? SERVICE_WORKSPACE_SECTIONS['global']!;
-  const serviceBackground = SERVICE_BACKGROUNDS[serviceId] ?? SERVICE_BACKGROUNDS['agent-g']!;
-  const serviceBackgroundImage = SERVICE_BACKGROUND_IMAGES[serviceId] ?? SERVICE_BACKGROUND_IMAGES['agent-g']!;
+  const _serviceBackground = SERVICE_BACKGROUNDS[serviceId] ?? SERVICE_BACKGROUNDS['agent-g']!;
+  const _serviceBackgroundImage = SERVICE_BACKGROUND_IMAGES[serviceId] ?? SERVICE_BACKGROUND_IMAGES['agent-g']!;
   const agentButtonLabel = `${t.useAgent} — ${serviceName}`;
   const contract = SERVICE_CONTRACTS[serviceId];
   const catalogPresets = (CATALOG_PRESETS[serviceId] ?? []).filter(

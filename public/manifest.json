@@ -2,7 +2,7 @@
   "name": "Avatar G - Digital Twin Protocol",
   "short_name": "Avatar G",
   "description": "AI-powered digital twin and media generation platform",
-  "start_url": "/",
+  "start_url": "/ka/dashboard",
   "scope": "/",
   "display": "fullscreen",
   "display_override": ["fullscreen", "standalone", "minimal-ui"],

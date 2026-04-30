@@ -38,19 +38,14 @@ const syncGlobalServiceSelection = (serviceId: ServiceId) => {
 };
 
 const AUTO_BRIDGE_TARGETS: Record<ServiceId, ServiceId[]> = {
-  'agent-g': ['business-strategy', 'workflow-automation'],
-  'business-strategy': ['executive-ops', 'commerce-pilot'],
-  'executive-ops': ['business-strategy', 'analytics-hub'],
-  'avatar-studio': ['video-gen', 'image-gen'],
-  'image-gen': ['video-gen', 'avatar-studio'],
-  'video-gen': ['copy-engine', 'analytics-hub'],
-  'voice-synth': ['video-gen', 'avatar-studio'],
-  'music-lab': ['video-gen', 'voice-synth'],
-  'copy-engine': ['voice-synth', 'avatar-studio'],
-  'workflow-automation': ['analytics-hub', 'fulfillment-hq'],
-  'analytics-hub': ['executive-ops', 'commerce-pilot'],
-  'commerce-pilot': ['business-strategy', 'fulfillment-hq'],
-  'fulfillment-hq': ['analytics-hub', 'executive-ops'],
+  avatar: ['image', 'video'],
+  video: ['image', 'music'],
+  image: ['video', 'prompt-builder'],
+  music: ['video', 'game-creation'],
+  'game-creation': ['prompt-builder', 'terminal-coding'],
+  'interior-design': ['image', 'video'],
+  'prompt-builder': ['terminal-coding', 'game-creation'],
+  'terminal-coding': ['prompt-builder', 'game-creation'],
 };
 
 const createId = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 9)}`;
@@ -80,13 +75,13 @@ const createTextImage = (title: string, accent: string, line: string) => {
 };
 
 function defaultExpert(serviceId: ServiceId): ExpertSettings {
-  if (serviceId === 'copy-engine') {
+  if (serviceId === 'prompt-builder') {
     return { seed: 11, sampling: 54, weights: 67, temperature: 72 };
   }
-  if (serviceId === 'voice-synth') {
+  if (serviceId === 'music') {
     return { seed: 38, sampling: 62, weights: 74, temperature: 36 };
   }
-  if (serviceId === 'image-gen' || serviceId === 'video-gen') {
+  if (serviceId === 'image' || serviceId === 'video') {
     return { seed: 57, sampling: 70, weights: 64, temperature: 48 };
   }
   return { seed: 29, sampling: 60, weights: 58, temperature: 44 };
@@ -212,20 +207,23 @@ const STORE_COPY = {
 const getStoreCopy = (locale: string) => STORE_COPY[normalizeOmniLocale(locale)];
 
 function defaultModuleSettings(serviceId: ServiceId): Record<string, string | number | boolean> {
-  if (serviceId === 'voice-synth') {
+  if (serviceId === 'terminal-coding') {
+    return { shellSafety: true, staticAnalysis: true, retries: 2 };
+  }
+  if (serviceId === 'music') {
     return { waveformFocus: 58, denoise: true, phonemeLock: 64 };
   }
-  if (serviceId === 'image-gen') {
+  if (serviceId === 'image') {
     return { brush: 34, texture: 72, canvasGrid: true };
   }
-  if (serviceId === 'business-strategy') {
-    return { horizon: 3, confidence: 74, anomalyScan: true };
+  if (serviceId === 'game-creation') {
+    return { gameplayLoops: 3, balanceFocus: 74, progressionMap: true };
   }
-  if (serviceId === 'copy-engine') {
+  if (serviceId === 'prompt-builder') {
     return { cadence: 64, persuasion: 71, markdownMode: true };
   }
-  if (serviceId === 'workflow-automation') {
-    return { lanes: 4, retries: 2, failover: true };
+  if (serviceId === 'interior-design') {
+    return { styleRange: 4, layoutPrecision: 72, materialMode: true };
   }
   return { precision: 61, throughput: 55, safetyLock: true };
 }
@@ -235,7 +233,7 @@ function initializeServiceState(): Record<ServiceId, ServiceRuntimeState> {
     (acc, service) => {
       acc[service.id] = {
         enabled: true,
-        autopilot: service.id === 'agent-g',
+        autopilot: service.id === 'avatar',
         syncPreview: true,
         fidelity: 74,
         intensity: 58,
@@ -256,18 +254,14 @@ function initializeServiceState(): Record<ServiceId, ServiceRuntimeState> {
 function routeWorkerService(prompt: string, fallback: ServiceId): ServiceId {
   const query = prompt.toLowerCase();
   const rules: Array<{ serviceId: ServiceId; keys: string[] }> = [
-    { serviceId: 'video-gen', keys: ['video', 'scene', 'teaser', 'cinematic'] },
-    { serviceId: 'image-gen', keys: ['image', 'poster', 'visual', 'photo', 'canvas'] },
-    { serviceId: 'voice-synth', keys: ['voice', 'narration', 'speech', 'tts'] },
-    { serviceId: 'music-lab', keys: ['music', 'soundtrack', 'beat', 'audio bed'] },
-    { serviceId: 'copy-engine', keys: ['copy', 'headline', 'script', 'text', 'markdown'] },
-    { serviceId: 'analytics-hub', keys: ['analyze', 'analytics', 'metric', 'kpi', 'dashboard'] },
-    { serviceId: 'workflow-automation', keys: ['workflow', 'pipeline', 'automation'] },
-    { serviceId: 'commerce-pilot', keys: ['commerce', 'offer', 'pricing', 'store'] },
-    { serviceId: 'fulfillment-hq', keys: ['ship', 'delivery', 'fulfillment'] },
-    { serviceId: 'business-strategy', keys: ['business', 'strategy', 'growth'] },
-    { serviceId: 'executive-ops', keys: ['executive', 'board', 'risk'] },
-    { serviceId: 'avatar-studio', keys: ['avatar', 'persona', 'portrait'] },
+    { serviceId: 'avatar', keys: ['avatar', 'persona', 'portrait', 'ავატარ', 'პორტრეტ'] },
+    { serviceId: 'video', keys: ['video', 'scene', 'teaser', 'cinematic', 'ვიდეო', 'სცენა'] },
+    { serviceId: 'image', keys: ['image', 'poster', 'visual', 'photo', 'canvas', 'სურათ', 'ფოტო'] },
+    { serviceId: 'music', keys: ['music', 'soundtrack', 'beat', 'audio bed', 'მუსიკ', 'საუნდტრეკ'] },
+    { serviceId: 'game-creation', keys: ['game', 'level', 'gameplay', 'npc', 'თამაშ', 'გეიმ'] },
+    { serviceId: 'interior-design', keys: ['interior', 'space', 'furniture', 'room', 'ინტერიერ', 'დიზაინ'] },
+    { serviceId: 'prompt-builder', keys: ['prompt', 'template', 'instruction', 'markdown', 'პრომპტ', 'prompt-'] },
+    { serviceId: 'terminal-coding', keys: ['terminal', 'code', 'coding', 'script', 'api', 'ტერმინალ', 'კოდ'] },
   ];
 
   const match = rules.find((rule) => rule.keys.some((key) => query.includes(key)));
@@ -549,7 +543,7 @@ export const useOmniDashboardStore = create<OmniDashboardState>((set, get) => {
       displayName: initialCopy.guestOperator,
       tierLabel: initialCopy.guestTier,
     },
-    activeServiceId: 'agent-g',
+    activeServiceId: 'avatar',
     commandLanguage: 'ka',
     services: initializeServiceState(),
     sharedAssets: [],

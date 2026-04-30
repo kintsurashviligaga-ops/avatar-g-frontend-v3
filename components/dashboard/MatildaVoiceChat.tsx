@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Mic, MicOff, X, Volume2 } from 'lucide-react';
+import { useOmniStore } from './omni/store';
 
 type Status = 'idle' | 'listening' | 'thinking' | 'speaking';
 
@@ -51,7 +52,7 @@ const LABELS: Record<MatildaLocale, MatildaLabelMap> = {
     listening: 'გისმენ...',
     thinking: 'ვფიქრობ...',
     speaking: 'ვლაპარაკობ...',
-    title: 'მატილდა',
+    title: 'G',
     hint: 'დააჭირე მიკროფონს და ილაპარაკე',
     close: 'დახურვა',
   },
@@ -60,7 +61,7 @@ const LABELS: Record<MatildaLocale, MatildaLabelMap> = {
     listening: 'Listening...',
     thinking: 'Thinking...',
     speaking: 'Speaking...',
-    title: 'Matilda',
+    title: 'G',
     hint: 'Press the mic and speak',
     close: 'Close',
   },
@@ -69,14 +70,17 @@ const LABELS: Record<MatildaLocale, MatildaLabelMap> = {
     listening: 'Слушаю...',
     thinking: 'Думаю...',
     speaking: 'Говорю...',
-    title: 'Матильда',
+    title: 'G',
     hint: 'Нажмите микрофон и говорите',
     close: 'Закрыть',
   },
 };
 
 export default function MatildaVoiceChat({ locale = 'ka' }: MatildaVoiceChatProps) {
-  const normalizedLocale: MatildaLocale = locale === 'en' || locale === 'ru' || locale === 'ka' ? locale : 'ka';
+  const storeLocale = useOmniStore((state) => state.locale);
+  const effectiveLocale = storeLocale || locale;
+  const normalizedLocale: MatildaLocale =
+    effectiveLocale === 'en' || effectiveLocale === 'ru' || effectiveLocale === 'ka' ? effectiveLocale : 'ka';
   const labels = LABELS[normalizedLocale];
 
   const [open, setOpen] = useState(false);
@@ -100,9 +104,9 @@ export default function MatildaVoiceChat({ locale = 'ka' }: MatildaVoiceChatProp
     const rec = new SpeechRecognition();
     rec.continuous = false;
     rec.interimResults = true;
-    rec.lang = locale === 'ka' ? 'ka-GE' : locale === 'ru' ? 'ru-RU' : 'en-US';
+    rec.lang = normalizedLocale === 'ka' ? 'ka-GE' : normalizedLocale === 'ru' ? 'ru-RU' : 'en-US';
     recognitionRef.current = rec;
-  }, [locale]);
+  }, [normalizedLocale]);
 
   const stopAudio = useCallback(() => {
     if (audioRef.current) {
@@ -277,7 +281,7 @@ export default function MatildaVoiceChat({ locale = 'ka' }: MatildaVoiceChatProp
             {/* Response */}
             {response && (
               <div className="w-full rounded-2xl border border-cyan-400/20 bg-cyan-500/[0.06] px-4 py-3">
-                <p className="text-xs text-cyan-400/60">მატილდა:</p>
+                <p className="text-xs text-cyan-400/60">{labels.title}:</p>
                 <p className="mt-1 text-sm text-white/85">{response}</p>
               </div>
             )}

@@ -75,7 +75,7 @@ const TYPE_LABELS: Record<string, { en: string; ka: string; ru: string; icon: st
   text: { en: 'Text Output', ka: 'ტექსტის შედეგი', ru: 'Текст', icon: '✍️' },
 }
 
-const DemoCard = memo(function DemoCard({ item, lang, active, onSelect }: { item: DemoItem; lang: Lang; active: boolean; onSelect: () => void }) {
+const DemoCard = memo(function DemoCard({ item, lang: _lang, active, onSelect }: { item: DemoItem; lang: Lang; active: boolean; onSelect: () => void }) {
   return (
     <button
       onClick={onSelect}

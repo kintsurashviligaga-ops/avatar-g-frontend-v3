@@ -9,267 +9,47 @@ const SERVICE_LOCALIZATION: Record<
   ServiceId,
   Record<OmniLocale, { title: string; subtitle: string; short: string; group: ServiceGroup }>
 > = {
-  'agent-g': {
-    ka: {
-      title: 'აგენტი G ბირთვი',
-      subtitle: 'ცენტრალური ორკესტრაციის ტვინი',
-      short: 'AG',
-      group: 'business',
+    avatar: {
+      ka: { title: 'ავატარი', subtitle: 'პერსონა და ვიზუალური იდენტობა', short: 'AV', group: 'creative' },
+      en: { title: 'Avatar', subtitle: 'Persona and visual identity generation', short: 'AV', group: 'creative' },
+      ru: { title: 'Аватар', subtitle: 'Персона и визуальная идентичность', short: 'AV', group: 'creative' },
     },
-    en: {
-      title: 'Agent G Core',
-      subtitle: 'Primary orchestration brain',
-      short: 'AG',
-      group: 'business',
+    video: {
+      ka: { title: 'ვიდეო', subtitle: 'სცენები და მოძრაობის კონცეპტი', short: 'VD', group: 'creative' },
+      en: { title: 'Video', subtitle: 'Scene and motion concepts', short: 'VD', group: 'creative' },
+      ru: { title: 'Видео', subtitle: 'Сцены и motion-концепты', short: 'VD', group: 'creative' },
     },
-    ru: {
-      title: 'Ядро Agent G',
-      subtitle: 'Главный оркестратор',
-      short: 'AG',
-      group: 'business',
+    image: {
+      ka: { title: 'სურათი', subtitle: 'ვიზუალები და გრაფიკული აქტივები', short: 'IM', group: 'creative' },
+      en: { title: 'Image', subtitle: 'Visuals and still assets', short: 'IM', group: 'creative' },
+      ru: { title: 'Изображение', subtitle: 'Визуалы и графические активы', short: 'IM', group: 'creative' },
     },
-  },
-  'business-strategy': {
-    ka: {
-      title: 'ბიზნეს სტრატეგია',
-      subtitle: 'ზრდა და მონეტიზაციის დაგეგმვა',
-      short: 'BS',
-      group: 'business',
+    music: {
+      ka: { title: 'მუსიკა', subtitle: 'საუნდტრეკი და ატმოსფერო', short: 'MU', group: 'creative' },
+      en: { title: 'Music', subtitle: 'Soundtrack and ambience design', short: 'MU', group: 'creative' },
+      ru: { title: 'Музыка', subtitle: 'Саундтрек и атмосфера', short: 'MU', group: 'creative' },
     },
-    en: {
-      title: 'Business Strategy',
-      subtitle: 'Growth and monetization strategy',
-      short: 'BS',
-      group: 'business',
+    'game-creation': {
+      ka: { title: 'თამაშების შექმნა', subtitle: 'მექანიკა, ლეველები და კონცეფცია', short: 'GM', group: 'business' },
+      en: { title: 'Game Creation', subtitle: 'Mechanics, levels, and concepting', short: 'GM', group: 'business' },
+      ru: { title: 'Создание игр', subtitle: 'Механики, уровни и концепция', short: 'GM', group: 'business' },
     },
-    ru: {
-      title: 'Бизнес-стратегия',
-      subtitle: 'Рост и монетизация',
-      short: 'BS',
-      group: 'business',
+    'interior-design': {
+      ka: { title: 'ინტერიერის დიზაინი', subtitle: 'სივრცის დაგეგმარება და სტილი', short: 'IN', group: 'creative' },
+      en: { title: 'Interior Design', subtitle: 'Space planning and interior styling', short: 'IN', group: 'creative' },
+      ru: { title: 'Дизайн интерьера', subtitle: 'Планировка и стиль пространства', short: 'IN', group: 'creative' },
     },
-  },
-  'executive-ops': {
-    ka: {
-      title: 'აღმასრულებელი ოპერაციები',
-      subtitle: 'მენეჯერული გადაწყვეტილებები და ბრიფები',
-      short: 'EO',
-      group: 'business',
+    'prompt-builder': {
+      ka: { title: 'პრომპტ ბილდერი', subtitle: 'სტრუქტურირებული prompt-ების მშენებლობა', short: 'PR', group: 'business' },
+      en: { title: 'Prompt Builder', subtitle: 'Structured prompt engineering', short: 'PR', group: 'business' },
+      ru: { title: 'Prompt Builder', subtitle: 'Структурированный prompt-инжиниринг', short: 'PR', group: 'business' },
     },
-    en: {
-      title: 'Executive Ops',
-      subtitle: 'Decision board and executive briefs',
-      short: 'EO',
-      group: 'business',
+    'terminal-coding': {
+      ka: { title: 'ტერმინალი და კოდინგი', subtitle: 'CLI, სკრიპტები და კოდის იმპლემენტაცია', short: 'TC', group: 'business' },
+      en: { title: 'Terminal & Coding', subtitle: 'CLI, scripts, and implementation', short: 'TC', group: 'business' },
+      ru: { title: 'Терминал и кодинг', subtitle: 'CLI, скрипты и реализация кода', short: 'TC', group: 'business' },
     },
-    ru: {
-      title: 'Операции руководства',
-      subtitle: 'Брифы и решение рисков',
-      short: 'EO',
-      group: 'business',
-    },
-  },
-  'avatar-studio': {
-    ka: {
-      title: 'ავატარის სტუდია',
-      subtitle: 'იდენტობის და პერსონის გენერირება',
-      short: 'AV',
-      group: 'creative',
-    },
-    en: {
-      title: 'Avatar Studio',
-      subtitle: 'Identity and persona generation',
-      short: 'AV',
-      group: 'creative',
-    },
-    ru: {
-      title: 'Студия аватаров',
-      subtitle: 'Генерация образа и персонажа',
-      short: 'AV',
-      group: 'creative',
-    },
-  },
-  'image-gen': {
-    ka: {
-      title: 'სურათების გენერატორი',
-      subtitle: 'ვიზუალური კონცეპტები და სტილები',
-      short: 'IM',
-      group: 'creative',
-    },
-    en: {
-      title: 'Image Generator',
-      subtitle: 'Campaign visuals and still assets',
-      short: 'IM',
-      group: 'creative',
-    },
-    ru: {
-      title: 'Генератор изображений',
-      subtitle: 'Визуалы и ключевые кадры',
-      short: 'IM',
-      group: 'creative',
-    },
-  },
-  'video-gen': {
-    ka: {
-      title: 'ვიდეო გენერატორი',
-      subtitle: 'სცენარიზაცია და მოძრავი კონტენტი',
-      short: 'VD',
-      group: 'creative',
-    },
-    en: {
-      title: 'Video Generator',
-      subtitle: 'Motion concepts and scene planning',
-      short: 'VD',
-      group: 'creative',
-    },
-    ru: {
-      title: 'Генератор видео',
-      subtitle: 'Сцены и динамический контент',
-      short: 'VD',
-      group: 'creative',
-    },
-  },
-  'voice-synth': {
-    ka: {
-      title: 'ხმის სინთეზი',
-      subtitle: 'ხმოვანი ნარაცია და ტექსტის გახმოვანება',
-      short: 'VS',
-      group: 'creative',
-    },
-    en: {
-      title: 'Voice Synth',
-      subtitle: 'Voiceover and speech synthesis',
-      short: 'VS',
-      group: 'creative',
-    },
-    ru: {
-      title: 'Синтез голоса',
-      subtitle: 'Озвучка и TTS',
-      short: 'VS',
-      group: 'creative',
-    },
-  },
-  'music-lab': {
-    ka: {
-      title: 'მუსიკის ლაბი',
-      subtitle: 'ფონური მუსიკა და საუნდტრეკები',
-      short: 'MU',
-      group: 'creative',
-    },
-    en: {
-      title: 'Music Lab',
-      subtitle: 'Mood bed and soundtrack generation',
-      short: 'MU',
-      group: 'creative',
-    },
-    ru: {
-      title: 'Музыкальная лаборатория',
-      subtitle: 'Саундтрек и аудиодорожка',
-      short: 'MU',
-      group: 'creative',
-    },
-  },
-  'copy-engine': {
-    ka: {
-      title: 'ტექსტის ძრავი',
-      subtitle: 'სარეკლამო ტექსტი და სცენარები',
-      short: 'CP',
-      group: 'creative',
-    },
-    en: {
-      title: 'Copy Engine',
-      subtitle: 'Narrative, ad copy, and scripts',
-      short: 'CP',
-      group: 'creative',
-    },
-    ru: {
-      title: 'Текстовый движок',
-      subtitle: 'Сценарии и рекламные тексты',
-      short: 'CP',
-      group: 'creative',
-    },
-  },
-  'workflow-automation': {
-    ka: {
-      title: 'პროცესების ავტომაცია',
-      subtitle: 'სერვისებს შორის ავტომატური ჯაჭვები',
-      short: 'WF',
-      group: 'business',
-    },
-    en: {
-      title: 'Workflow Automation',
-      subtitle: 'Cross-service pipeline control',
-      short: 'WF',
-      group: 'business',
-    },
-    ru: {
-      title: 'Автоматизация процессов',
-      subtitle: 'Сценарии между сервисами',
-      short: 'WF',
-      group: 'business',
-    },
-  },
-  'analytics-hub': {
-    ka: {
-      title: 'ანალიტიკის ჰაბი',
-      subtitle: 'მაჩვენებლები, ხარჯები და პროგნოზი',
-      short: 'AN',
-      group: 'analytics',
-    },
-    en: {
-      title: 'Analytics Hub',
-      subtitle: 'Telemetry and spend intelligence',
-      short: 'AN',
-      group: 'analytics',
-    },
-    ru: {
-      title: 'Центр аналитики',
-      subtitle: 'Метрики, расходы и прогноз',
-      short: 'AN',
-      group: 'analytics',
-    },
-  },
-  'commerce-pilot': {
-    ka: {
-      title: 'კომერციის პილოტი',
-      subtitle: 'ოფერის და გაყიდვების სტრატეგია',
-      short: 'CM',
-      group: 'business',
-    },
-    en: {
-      title: 'Commerce Pilot',
-      subtitle: 'Offer design and storefront strategy',
-      short: 'CM',
-      group: 'business',
-    },
-    ru: {
-      title: 'Коммерческий пилот',
-      subtitle: 'Офферы и стратегия продаж',
-      short: 'CM',
-      group: 'business',
-    },
-  },
-  'fulfillment-hq': {
-    ka: {
-      title: 'მიწოდების ცენტრი',
-      subtitle: 'შესრულება, ლოჯისტიკა და ვადები',
-      short: 'FH',
-      group: 'business',
-    },
-    en: {
-      title: 'Fulfillment HQ',
-      subtitle: 'Delivery tracking and operations',
-      short: 'FH',
-      group: 'business',
-    },
-    ru: {
-      title: 'Центр выполнения',
-      subtitle: 'Доставка, логистика и сроки',
-      short: 'FH',
-      group: 'business',
-    },
-  },
-};
+  };
 
 const GROUP_LABELS: Record<ServiceGroup, Record<OmniLocale, string>> = {
   business: {

@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useRef, useEffect, useState, type KeyboardEvent } from 'react'
-import { ChatModeSelector, type ChatMode, getModeIcon } from './ChatModeSelector'
+import { ChatModeSelector, type ChatMode } from './ChatModeSelector';
 
 interface GrokComposerProps {
   value: string
@@ -17,7 +17,7 @@ interface GrokComposerProps {
 }
 
 export function GrokComposer({
-  value, onChange, onSend, onAttach, onCamera,
+  value, onChange, onSend, onAttach, onCamera: _onCamera,
   isSubmitting, placeholder, mode, onModeChange, attachCount = 0,
 }: GrokComposerProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)

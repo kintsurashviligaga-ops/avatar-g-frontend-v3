@@ -6,7 +6,7 @@
  * Glass-morphism design, MyAvatar.ge branded.
  */
 
-import { useEffect, useRef, useCallback } from 'react'
+import { useEffect, useRef } from 'react';
 
 export interface SettingsConfig {
   duration?: { options: string[]; value: string }

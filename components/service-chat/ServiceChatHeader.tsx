@@ -8,11 +8,8 @@
  * hamburger trigger, tool panel triggers, and session count.
  */
 
-import { useCallback } from 'react';
-import {
-  Menu, X, Sparkles, Bot, RotateCcw, Settings2,
-  ChevronDown, ChevronRight, Home,
-} from 'lucide-react';
+
+import { Menu, X, Sparkles, Bot, RotateCcw, Settings2, ChevronRight } from 'lucide-react';
 import Link from 'next/link';
 import type { ServiceChatConfig, AgentMode } from './types';
 

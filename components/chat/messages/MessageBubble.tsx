@@ -8,7 +8,8 @@
  */
 
 import { useState, useCallback } from 'react';
-import { motion } from 'framer-motion';
+import Image from 'next/image';
+
 import { Copy, Check, Loader2 } from 'lucide-react';
 import { AgentBadge } from '../shared/AgentBadge';
 import { MESSAGE_RENDER_MAP } from '@/lib/chat/config/messageRenderConfig';
@@ -29,7 +30,14 @@ export function UserBubble({ content, attachments }: UserBubbleProps) {
             {attachments.map((att, i) => (
               <div key={i} className="chat-attachment" style={{ width: 48, height: 48 }}>
                 {att.preview ? (
-                  <img src={att.preview} alt={att.name} />
+                  <Image
+                    src={att.preview}
+                    alt={att.name}
+                    width={48}
+                    height={48}
+                    unoptimized
+                    className="w-full h-full object-cover"
+                  />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center text-xs bg-white/10">
                     {att.type === 'video' ? '🎬' : att.type === 'audio' ? '🎵' : '📄'}

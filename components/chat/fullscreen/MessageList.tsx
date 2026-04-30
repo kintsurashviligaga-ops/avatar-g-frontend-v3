@@ -19,10 +19,13 @@ interface Props {
 export function MessageList({ messages }: Props) {
   const endRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
+  const lastAgentText = messages.length > 0 && messages[messages.length - 1]?.role === 'agent'
+    ? (messages[messages.length - 1] as { text?: string }).text ?? ''
+    : ''
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages.length, messages[messages.length - 1]?.role === 'agent' ? (messages[messages.length - 1] as { text?: string }).text : ''])
+  }, [messages.length, lastAgentText])
 
   return (
     <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 sm:px-6 py-4 sm:py-6">

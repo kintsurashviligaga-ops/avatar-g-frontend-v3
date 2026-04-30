@@ -7,6 +7,7 @@
  */
 
 import { X } from 'lucide-react';
+import Image from 'next/image';
 import type { ChatAttachment } from '@/lib/chat/types';
 
 interface Props {
@@ -22,9 +23,12 @@ export function AttachmentTray({ attachments, onRemove }: Props) {
       {attachments.map(att => (
         <div key={att.attachmentId} className="relative flex-shrink-0 group">
           {att.previewUrl ? (
-            <img
+            <Image
               src={att.previewUrl}
               alt={att.fileName}
+              width={80}
+              height={80}
+              unoptimized
               className="w-14 h-14 rounded-xl object-cover"
               style={{ border: '1px solid var(--color-border)' }}
             />

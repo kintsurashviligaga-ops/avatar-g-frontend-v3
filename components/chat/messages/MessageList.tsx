@@ -27,12 +27,13 @@ interface Props {
   onRetry: (action: string) => void;
 }
 
-export function MessageList({ messages, language, onSuggestionClick, onClarificationSelect, onRetry }: Props) {
+export function MessageList({ messages, language: _language, onSuggestionClick, onClarificationSelect, onRetry }: Props) {
   const endRef = useRef<HTMLDivElement>(null);
+  const lastMessageId = messages.length > 0 ? messages[messages.length - 1]?.id : undefined;
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages.length, messages[messages.length - 1]?.id]);
+  }, [messages.length, lastMessageId]);
 
   return (
     <div

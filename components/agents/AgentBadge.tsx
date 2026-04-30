@@ -8,7 +8,7 @@
 'use client';
 
 import { useMemo } from 'react';
-import { AGENT_CONTRACTS, getAgentsForService, type AgentContract } from '@/lib/agents/contracts';
+import { getAgentsForService, type AgentContract } from '@/lib/agents/contracts';
 
 interface AgentBadgeProps {
   serviceSlug: string;

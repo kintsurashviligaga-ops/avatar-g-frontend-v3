@@ -46,6 +46,7 @@ export const viewport: Viewport = {
 
 export const metadata: Metadata = {
 	metadataBase: new URL(metadataBaseUrl),
+	applicationName: 'Avatar G',
 	manifest: '/manifest.json',
 	appleWebApp: {
 		capable: true,
@@ -59,6 +60,11 @@ export const metadata: Metadata = {
 		icon: '/icons/favicon.ico',
 		shortcut: '/icons/favicon.ico',
 		apple: '/icons/icon-180x180.png',
+	},
+	other: {
+		'mobile-web-app-capable': 'yes',
+		'apple-mobile-web-app-capable': 'yes',
+		'apple-mobile-web-app-status-bar-style': 'black-translucent',
 	},
 	title: {
 		default: "Avatar G - AI მედია პლატფორმა",

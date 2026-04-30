@@ -25,7 +25,7 @@ import { ServiceQuickActions } from './ServiceQuickActions'
 import { ServiceWelcome } from './ServiceWelcome'
 import { ServiceComposer } from './ServiceComposer'
 import { ServiceToolPanel } from './ServiceToolPanel'
-import { CrossServiceTransfer } from './CrossServiceTransfer'
+
 import { ServiceOutputCard } from './ServiceOutputCard'
 import { getServiceEnvironmentStyle } from '@/components/ui/PageEnvironment'
 
@@ -94,12 +94,12 @@ export default function ServiceChatLayout({
   serviceId,
   serviceName,
   serviceIcon,
-  agentId,
+  agentId: _agentId,
   locale,
-  features,
-  description,
-  isAuthenticated,
-  demoMode,
+  features: _features,
+  description: _description,
+  isAuthenticated: _isAuthenticated,
+  demoMode: _demoMode,
 }: ServiceChatLayoutProps) {
   const router = useRouter()
   const pathname = usePathname()
@@ -136,7 +136,7 @@ export default function ServiceChatLayout({
 
   /* ── Call state ── */
   const [callOpen, setCallOpen] = useState(false)
-  const [sendTimestamp, setSendTimestamp] = useState<number>(0)
+  const [_sendTimestamp, setSendTimestamp] = useState<number>(0)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [actionSheetOpen, setActionSheetOpen] = useState(false)
   const [imagineSettings, setImagineSettings] = useState<SettingsConfig>({
@@ -525,7 +525,7 @@ export default function ServiceChatLayout({
                             <div className="flex gap-1.5 mb-2 flex-wrap">
                               {msg.attachments.map(att => (
                                 att.kind === 'image' && (att.previewUrl || att.dataUrl) ? (
-                                  <img key={att.id} src={att.previewUrl || att.dataUrl} alt={att.name} className="w-20 h-20 rounded-lg object-cover" />
+                                  <Image key={att.id} src={att.previewUrl || att.dataUrl || ''} alt={att.name} width={80} height={80} unoptimized className="w-20 h-20 rounded-lg object-cover" />
                                 ) : (
                                   <div key={att.id} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs" style={{ backgroundColor: 'rgba(255,255,255,0.1)' }}>
                                     <span>{att.kind === 'video' ? '🎬' : att.kind === 'audio' ? '🎵' : '📎'}</span>
@@ -645,7 +645,7 @@ export default function ServiceChatLayout({
                 {attachments.map(att => (
                   <div key={att.id} className="relative flex-shrink-0 group">
                     {att.kind === 'image' && att.previewUrl ? (
-                      <img src={att.previewUrl} alt={att.name} className="w-14 h-14 rounded-xl object-cover" style={{ border: '1px solid rgba(255,255,255,0.1)' }} />
+                      <Image src={att.previewUrl} alt={att.name} width={56} height={56} unoptimized className="w-14 h-14 rounded-xl object-cover" style={{ border: '1px solid rgba(255,255,255,0.1)' }} />
                     ) : (
                       <div className="w-14 h-14 rounded-xl flex items-center justify-center text-xs" style={{ backgroundColor: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.5)' }}>
                         {att.kind === 'video' ? '🎬' : att.kind === 'audio' ? '🎵' : '📎'}
@@ -746,7 +746,7 @@ export default function ServiceChatLayout({
                           <div className="flex gap-1.5 mb-2 flex-wrap">
                             {msg.attachments.map(att => (
                               att.kind === 'image' && (att.previewUrl || att.dataUrl) ? (
-                                <img key={att.id} src={att.previewUrl || att.dataUrl} alt={att.name} className="w-20 h-20 rounded-lg object-cover" />
+                                <Image key={att.id} src={att.previewUrl || att.dataUrl || ''} alt={att.name} width={80} height={80} unoptimized className="w-20 h-20 rounded-lg object-cover" />
                               ) : (
                                 <div key={att.id} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs" style={{ backgroundColor: 'rgba(255,255,255,0.1)' }}>
                                   <span>{att.kind === 'video' ? '🎬' : att.kind === 'audio' ? '🎵' : '📎'}</span>
@@ -807,7 +807,7 @@ export default function ServiceChatLayout({
               {attachments.map(att => (
                 <div key={att.id} className="relative flex-shrink-0 group">
                   {att.kind === 'image' && att.previewUrl ? (
-                    <img src={att.previewUrl} alt={att.name} className="w-14 h-14 rounded-xl object-cover" style={{ border: '1px solid rgba(255,255,255,0.1)' }} />
+                    <Image src={att.previewUrl} alt={att.name} width={56} height={56} unoptimized className="w-14 h-14 rounded-xl object-cover" style={{ border: '1px solid rgba(255,255,255,0.1)' }} />
                   ) : (
                     <div className="w-14 h-14 rounded-xl flex items-center justify-center text-xs" style={{ backgroundColor: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.5)' }}>
                       {att.kind === 'video' ? '🎬' : att.kind === 'audio' ? '🎵' : '📎'}

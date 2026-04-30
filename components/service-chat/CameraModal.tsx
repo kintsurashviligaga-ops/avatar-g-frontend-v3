@@ -10,6 +10,7 @@
 
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import Image from 'next/image';
 import { Camera, Video, X, RotateCcw, Maximize, Minimize, Check, RefreshCw } from 'lucide-react';
 import type { ServiceChatAttachment } from './types';
 
@@ -333,7 +334,7 @@ export function CameraModal({ isOpen, accentColor, onClose, onAttach, showFaceGu
               mode === 'video' ? (
                 <video src={previewUrl} className="w-full h-full object-cover" controls autoPlay loop playsInline />
               ) : (
-                <img src={previewUrl} alt="Captured" className="w-full h-full object-cover" />
+                <Image src={previewUrl} alt="Captured" width={1200} height={900} unoptimized className="w-full h-full object-cover" />
               )
             )}
 

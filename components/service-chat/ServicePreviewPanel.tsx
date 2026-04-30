@@ -8,7 +8,8 @@
  */
 
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Download, ExternalLink, Maximize2 } from 'lucide-react';
+import Image from 'next/image';
+import { X, Download, Maximize2 } from 'lucide-react';
 import type { PreviewItem, ServiceChatConfig } from './types';
 
 interface Props {
@@ -112,7 +113,7 @@ export function ServicePreviewPanel({ config, previews, language, onClearPreview
                   }}
                 >
                   {p.thumbnail ? (
-                    <img src={p.thumbnail} alt="" className="w-full h-full object-cover" />
+                    <Image src={p.thumbnail} alt="" width={48} height={48} unoptimized className="w-full h-full object-cover" />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center text-[10px]" style={{ color: 'var(--color-text-tertiary)' }}>
                       {i + 1}
@@ -134,7 +135,7 @@ function PreviewContent({ item, accentColor, copy }: { item: PreviewItem; accent
       return (
         <div className="rounded-xl overflow-hidden border" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
           {item.url ? (
-            <img src={item.url} alt={item.title || 'Preview'} className="w-full max-h-[200px] object-contain bg-black/20" />
+            <Image src={item.url} alt={item.title || 'Preview'} width={1200} height={800} unoptimized className="w-full max-h-[200px] object-contain bg-black/20" />
           ) : (
             <div className="w-full h-[120px] flex items-center justify-center" style={{ background: 'rgba(255,255,255,0.02)', color: 'var(--color-text-tertiary)' }}>
               {copy.imagePreview}

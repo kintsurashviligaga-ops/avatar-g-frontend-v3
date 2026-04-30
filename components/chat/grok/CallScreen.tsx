@@ -9,7 +9,7 @@ interface CallScreenProps {
   onSendVoiceMessage?: (text: string) => void
 }
 
-export function CallScreen({ open, onClose, onSendVoiceMessage }: CallScreenProps) {
+export function CallScreen({ open, onClose, onSendVoiceMessage: _onSendVoiceMessage }: CallScreenProps) {
   const [callState, setCallState] = useState<'ringing' | 'connected' | 'ended'>('ringing')
   const [duration, setDuration] = useState(0)
   const [isMuted, setIsMuted] = useState(false)

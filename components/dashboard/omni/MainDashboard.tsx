@@ -37,86 +37,87 @@ const DASHBOARD_COPY = {
 const QUICK_ACTIONS: Record<OmniLocale, Array<{ serviceId: ServiceId; icon: string; label: string; prompt: string }>> = {
   ka: [
     {
-      serviceId: 'image-gen',
+      serviceId: 'avatar',
+      icon: '🧑',
+      label: 'ავატარი',
+      prompt: 'შემიქმენი პრემიუმ ავატარი პროფესიული სტილით, მკაფიო განათებით და ძლიერი პერსონით.',
+    },
+    {
+      serviceId: 'image',
       icon: '🖼️',
       label: 'სურათის შექმნა',
       prompt: 'შექმენი სარეკლამო სურათი მაღალი დეტალით, modern glassmorphism სტილით და მკაფიო ბრენდული აქცენტით.',
     },
     {
-      serviceId: 'voice-synth',
-      icon: '🎙️',
-      label: 'ხმის სინთეზი',
-      prompt: 'დამიგენერირე ბუნებრივი ქართული გახმოვანება მოკლე ტექსტზე, ემოციური მაგრამ პროფესიული ტონით.',
-    },
-    {
-      serviceId: 'video-gen',
+      serviceId: 'video',
       icon: '🎬',
       label: 'ვიდეოს გენერირება',
       prompt: 'მომიმზადე 15-წამიანი ვიდეო კონცეფცია სცენარით, კადრებით და რიტმით სოციალური მედიისთვის.',
     },
     {
-      serviceId: 'business-strategy',
-      icon: '📊',
-      label: 'ბიზნეს სტრატეგია',
-      prompt: 'შემიქმენი 30-დღიანი ბიზნეს სტრატეგია KPI-ებით, პრიორიტეტებით და ეტაპობრივი შესრულების გეგმით.',
+      serviceId: 'terminal-coding',
+      icon: '💻',
+      label: 'ტერმინალი და კოდინგი',
+      prompt: 'შემიდგინე ტერმინალის ნაბიჯები და კოდის სტრუქტურა, რომ ამოცანა production-ready შესრულდეს.',
     },
   ],
   en: [
     {
-      serviceId: 'image-gen',
+      serviceId: 'avatar',
+      icon: '🧑',
+      label: 'Avatar',
+      prompt: 'Create a premium avatar portrait with clean lighting and a confident professional identity.',
+    },
+    {
+      serviceId: 'image',
       icon: '🖼️',
       label: 'Create Image',
       prompt: 'Generate a premium campaign visual with sharp detail and clean brand composition.',
     },
     {
-      serviceId: 'voice-synth',
-      icon: '🎙️',
-      label: 'Voice Synthesis',
-      prompt: 'Create natural voice narration in a polished executive tone from a short script.',
-    },
-    {
-      serviceId: 'video-gen',
+      serviceId: 'video',
       icon: '🎬',
       label: 'Generate Video',
       prompt: 'Create a 15-second video concept with storyboard beats and pacing for social media.',
     },
     {
-      serviceId: 'business-strategy',
-      icon: '📊',
-      label: 'Business Strategy',
-      prompt: 'Build a 30-day business strategy with KPI targets, priorities, and phased execution.',
+      serviceId: 'terminal-coding',
+      icon: '💻',
+      label: 'Terminal & Coding',
+      prompt: 'Provide terminal-first implementation steps and production-ready code structure for this task.',
     },
   ],
   ru: [
     {
-      serviceId: 'image-gen',
+      serviceId: 'avatar',
+      icon: '🧑',
+      label: 'Аватар',
+      prompt: 'Создай премиальный аватар с чистым светом и выразительной профессиональной подачей.',
+    },
+    {
+      serviceId: 'image',
       icon: '🖼️',
       label: 'Создать изображение',
       prompt: 'Создай рекламный визуал премиум-уровня с чистой композицией и высоким качеством.',
     },
     {
-      serviceId: 'voice-synth',
-      icon: '🎙️',
-      label: 'Синтез голоса',
-      prompt: 'Сгенерируй естественную озвучку в деловом тоне по короткому тексту.',
-    },
-    {
-      serviceId: 'video-gen',
+      serviceId: 'video',
       icon: '🎬',
       label: 'Генерация видео',
       prompt: 'Подготовь концепт 15-секундного видео со структурой сцен и ритмом.',
     },
     {
-      serviceId: 'business-strategy',
-      icon: '📊',
-      label: 'Бизнес-стратегия',
-      prompt: 'Сформируй 30-дневную бизнес-стратегию с KPI, приоритетами и пошаговым планом.',
+      serviceId: 'terminal-coding',
+      icon: '💻',
+      label: 'Терминал и кодинг',
+      prompt: 'Составь терминальные шаги и структуру production-кода для решения задачи.',
     },
   ],
 };
 
 export default function MainDashboard({ locale, userName, isAuthenticated }: MainDashboardProps) {
-  const localeCode = normalizeOmniLocale(locale);
+  const storeLocale = useOmniDashboardStore((state) => state.locale);
+  const localeCode = normalizeOmniLocale(storeLocale || locale);
   const copy = DASHBOARD_COPY[localeCode];
 
   const chatMessages = useOmniDashboardStore((state) => state.chatMessages);
