@@ -1,25 +1,10 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
-import {
-  CheckCircle2,
-  ChevronDown,
-  Circle,
-  CircleDollarSign,
-  Command,
-  Gauge,
-  Search,
-  ShieldCheck,
-} from 'lucide-react';
-import { OMNI_SERVICE_MAP, OMNI_SERVICES } from './services';
+import { useEffect, useMemo } from 'react';
+import CommandCenterChat from './CommandCenterChat';
 import { useOmniDashboardStore } from './store';
-import { ActivityLogPanel } from './ActivityLogPanel';
-import { LivePreviewEngine } from './LivePreviewEngine';
-import { PrimaryAgentChat } from './PrimaryAgentChat';
-import { ServiceOrchestrator } from './ServiceOrchestrator';
-import { countLabel } from './utils';
 import type { ServiceId } from './types';
-import VoicePanel from '@/components/voice/VoicePanel';
+import { normalizeOmniLocale, type OmniLocale } from './i18n';
 
 interface MainDashboardProps {
   locale: string;
@@ -27,21 +12,116 @@ interface MainDashboardProps {
   isAuthenticated: boolean;
 }
 
+const DASHBOARD_COPY = {
+  ka: {
+    welcome: 'რით შემიძლია დაგეხმარო?',
+    subtitle: 'აირჩიე სწრაფი მოქმედება ან დაწერე საკუთარი დავალება ქვედა ბარში.',
+    pillsTitle: 'სწრაფი სერვისები',
+  },
+  en: {
+    welcome: 'How can I help you?',
+    subtitle: 'Pick a quick action or write a custom instruction in the bottom bar.',
+    pillsTitle: 'Quick services',
+  },
+  ru: {
+    welcome: 'Чем могу помочь?',
+    subtitle: 'Выберите быстрое действие или напишите задачу в нижней панели.',
+    pillsTitle: 'Быстрые сервисы',
+  },
+} as const;
+
+const QUICK_ACTIONS: Record<OmniLocale, Array<{ serviceId: ServiceId; icon: string; label: string; prompt: string }>> = {
+  ka: [
+    {
+      serviceId: 'business-strategy',
+      icon: '🧠',
+      label: 'სტრატეგიული გეგმა',
+      prompt: 'შემიქმენი 30-დღიანი ზრდის სტრატეგია KPI-ებით, პრიორიტეტებით და კონკრეტული ნაბიჯებით.',
+    },
+    {
+      serviceId: 'video-gen',
+      icon: '🎬',
+      label: 'ვიდეო კონცეფცია',
+      prompt: 'შექმენი მოკლე ვიდეო კონცეფცია: სცენარი, კადრების გეგმა და ტონი ქართულ აუდიტორიაზე.',
+    },
+    {
+      serviceId: 'image-gen',
+      icon: '🖼️',
+      label: 'ვიზუალური პაკეტი',
+      prompt: 'მომიმზადე სარეკლამო ვიზუალების პაკეტი: მთავარი ბანერი, სოციალური პოსტი და ვიზუალური მიმართულება.',
+    },
+    {
+      serviceId: 'analytics-hub',
+      icon: '📊',
+      label: 'აღმასრულებელი შეჯამება',
+      prompt: 'გააკეთე აღმასრულებელი შეჯამება მიმდინარე მდგომარეობაზე: რა მუშაობს, რა რისკია და რა ქმედებაა საჭირო.',
+    },
+  ],
+  en: [
+    {
+      serviceId: 'business-strategy',
+      icon: '🧠',
+      label: 'Strategic Plan',
+      prompt: 'Create a 30-day growth strategy with KPIs, priorities, and clear execution steps.',
+    },
+    {
+      serviceId: 'video-gen',
+      icon: '🎬',
+      label: 'Video Concept',
+      prompt: 'Build a short-form video concept with scene plan, voice direction, and target tone.',
+    },
+    {
+      serviceId: 'image-gen',
+      icon: '🖼️',
+      label: 'Visual Pack',
+      prompt: 'Prepare a visual campaign pack: hero art, social variation, and style direction.',
+    },
+    {
+      serviceId: 'analytics-hub',
+      icon: '📊',
+      label: 'Executive Brief',
+      prompt: 'Provide an executive summary of current performance, key risks, and next actions.',
+    },
+  ],
+  ru: [
+    {
+      serviceId: 'business-strategy',
+      icon: '🧠',
+      label: 'Стратегический план',
+      prompt: 'Сформируй 30-дневную стратегию роста с KPI, приоритетами и конкретными шагами.',
+    },
+    {
+      serviceId: 'video-gen',
+      icon: '🎬',
+      label: 'Концепт видео',
+      prompt: 'Подготовь концепт короткого видео: сцены, подача, тон и формат.',
+    },
+    {
+      serviceId: 'image-gen',
+      icon: '🖼️',
+      label: 'Визуальный пакет',
+      prompt: 'Собери пакет визуалов: главный баннер, вариант для соцсетей и стиль.',
+    },
+    {
+      serviceId: 'analytics-hub',
+      icon: '📊',
+      label: 'Executive-сводка',
+      prompt: 'Сделай executive-сводку по метрикам, рискам и следующим действиям.',
+    },
+  ],
+};
+
 export default function MainDashboard({ locale, userName, isAuthenticated }: MainDashboardProps) {
-  const activeServiceId = useOmniDashboardStore((state) => state.activeServiceId);
-  const services = useOmniDashboardStore((state) => state.services);
-  const baselineGel = useOmniDashboardStore((state) => state.baselineGel);
-  const credits = useOmniDashboardStore((state) => state.credits);
-  const auth = useOmniDashboardStore((state) => state.auth);
-  const setActiveService = useOmniDashboardStore((state) => state.setActiveService);
+  const localeCode = normalizeOmniLocale(locale);
+  const copy = DASHBOARD_COPY[localeCode];
+
+  const chatMessages = useOmniDashboardStore((state) => state.chatMessages);
   const setLocale = useOmniDashboardStore((state) => state.setLocale);
   const setAuthSnapshot = useOmniDashboardStore((state) => state.setAuthSnapshot);
-  const [toolsOpen, setToolsOpen] = useState(false);
-  const [toolsTab, setToolsTab] = useState<'preview' | 'orchestrator' | 'activity'>('preview');
-  const [serviceMenuOpen, setServiceMenuOpen] = useState(false);
-  const [serviceFilter, setServiceFilter] = useState('');
-  const serviceMenuRef = useRef<HTMLDivElement | null>(null);
-  const serviceTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const setActiveService = useOmniDashboardStore((state) => state.setActiveService);
+
+  const quickActions = useMemo(() => QUICK_ACTIONS[localeCode], [localeCode]);
+  const showWelcome = chatMessages.length === 0;
 
   useEffect(() => {
     setLocale(locale);
@@ -55,301 +135,45 @@ export default function MainDashboard({ locale, userName, isAuthenticated }: Mai
     });
   }, [isAuthenticated, setAuthSnapshot, userName]);
 
-  const runningCount = useMemo(
-    () => OMNI_SERVICES.filter((service) => services[service.id].status === 'running').length,
-    [services],
-  );
-  const enabledCount = useMemo(
-    () => OMNI_SERVICES.filter((service) => services[service.id].enabled).length,
-    [services],
-  );
-
-  const filteredServices = useMemo(() => {
-    const query = serviceFilter.trim().toLowerCase();
-    if (!query) {
-      return OMNI_SERVICES;
-    }
-
-    return OMNI_SERVICES.filter((service) =>
-      [service.title, service.subtitle, service.worker, service.short].join(' ').toLowerCase().includes(query),
-    );
-  }, [serviceFilter]);
-
-  const handleServiceSelect = (serviceId: ServiceId) => {
+  const handleQuickAction = (serviceId: ServiceId, prompt: string) => {
     setActiveService(serviceId);
-    setServiceMenuOpen(false);
-    setServiceFilter('');
-  };
-
-  useEffect(() => {
-    const onKeyboardShortcut = (event: KeyboardEvent) => {
-      if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== 'k') {
-        return;
-      }
-
-      event.preventDefault();
-      setServiceMenuOpen((open) => !open);
-    };
-
-    window.addEventListener('keydown', onKeyboardShortcut);
-    return () => {
-      window.removeEventListener('keydown', onKeyboardShortcut);
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!serviceMenuOpen) {
+    if (typeof window === 'undefined') {
       return;
     }
-
-    const onPointerDown = (event: MouseEvent) => {
-      const targetNode = event.target as Node;
-      if (serviceMenuRef.current?.contains(targetNode) || serviceTriggerRef.current?.contains(targetNode)) {
-        return;
-      }
-      setServiceMenuOpen(false);
-    };
-
-    const onEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        setServiceMenuOpen(false);
-      }
-    };
-
-    window.addEventListener('mousedown', onPointerDown);
-    window.addEventListener('keydown', onEscape);
-
-    return () => {
-      window.removeEventListener('mousedown', onPointerDown);
-      window.removeEventListener('keydown', onEscape);
-    };
-  }, [serviceMenuOpen]);
+    window.dispatchEvent(new CustomEvent('omni:seed-command', { detail: { serviceId, prompt } }));
+  };
 
   return (
-    <div className="omni-root h-full w-full overflow-hidden p-2 pb-safe sm:p-3 lg:p-4">
-      <div className="omni-frame flex h-full min-h-0 flex-col overflow-hidden rounded-[26px] border">
-        <header className="omni-topbar flex flex-wrap items-center gap-2 border-b border-white/10 px-3 py-2.5 sm:px-4">
-          <div className="flex items-center gap-2">
-            <span className="omni-led is-online" />
-            <p className="omni-title text-sm font-semibold text-white">Omni-Dashboard Command Center</p>
-          </div>
+    <div className="command-center-shell h-full w-full overflow-hidden">
+      <div className="command-center-frame flex h-full min-h-0 flex-col overflow-hidden rounded-[30px] border border-white/14">
+        <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
+          <section
+            className={`command-center-welcome px-4 pt-6 text-center sm:px-6 sm:pt-8 ${showWelcome ? 'is-visible' : 'is-condensed'}`}
+          >
+            <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/45">{copy.pillsTitle}</p>
+            <h1 className="mx-auto max-w-3xl text-3xl font-semibold tracking-[-0.03em] text-white sm:text-4xl">
+              {copy.welcome}
+            </h1>
+            <p className="mx-auto mt-3 max-w-2xl text-sm text-white/62 sm:text-base">{copy.subtitle}</p>
 
-          <div className="ml-auto flex flex-wrap items-center gap-2 text-[11px]">
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/[0.05] px-3 py-1 text-white/85">
-              <ShieldCheck className="h-3.5 w-3.5 text-emerald-300" />
-              {auth.status === 'authenticated' ? `Signed in as ${auth.displayName}` : 'Guest Mode'}
-            </span>
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/[0.05] px-3 py-1 text-white/85">
-              <CircleDollarSign className="h-3.5 w-3.5 text-cyan-200" />
-              Baseline Budget: {baselineGel.toLocaleString()} GEL
-            </span>
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/[0.05] px-3 py-1 text-white/85">
-              <Gauge className="h-3.5 w-3.5 text-amber-300" />
-              Credits: {credits.toLocaleString()}
-            </span>
-          </div>
-        </header>
-
-        <div className="flex min-h-0 flex-1 p-2.5 sm:p-3 md:p-4">
-          <section className="omni-pane relative flex min-h-0 w-full flex-1 flex-col rounded-2xl border border-white/12 bg-black/20 p-3 sm:p-4">
-            <header className="relative mb-3 flex flex-wrap items-center gap-2 border-b border-white/10 pb-3">
-              <div className="flex items-center gap-2">
-                <span className="omni-led is-online" />
-                <div>
-                  <p className="text-sm font-semibold text-white">One AI Chat Window</p>
-                  <p className="text-[11px] text-white/50">Select a service, type once, and Agent G returns the best result in this single workspace.</p>
-                </div>
-              </div>
-              <span className="rounded-full border border-emerald-300/30 bg-emerald-400/10 px-3 py-1 text-[11px] text-emerald-100">
-                Auto Router Active
-              </span>
-              <span className="rounded-full border border-cyan-300/35 bg-cyan-500/10 px-3 py-1 text-[11px] text-cyan-100">
-                Step 1: Pick service · Step 2: Dispatch prompt
-              </span>
-
-              <div className="ml-auto flex flex-wrap items-center gap-2">
+            <div className="command-center-pills mx-auto mt-6 flex w-full max-w-3xl flex-wrap items-center justify-center gap-2 sm:mt-7 sm:gap-2.5">
+              {quickActions.map((action) => (
                 <button
-                  ref={serviceTriggerRef}
+                  key={action.serviceId}
                   type="button"
-                  aria-expanded={serviceMenuOpen}
-                  aria-haspopup="listbox"
-                  aria-controls="omni-service-selector"
-                  onClick={() => setServiceMenuOpen((open) => !open)}
-                  className="omni-service-trigger inline-flex min-h-[44px] items-center gap-2 rounded-xl px-3 py-2 text-[11px] font-semibold text-white"
+                  onClick={() => handleQuickAction(action.serviceId, action.prompt)}
+                  className="command-center-pill inline-flex min-h-[48px] items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium text-white/92"
                 >
-                  <span className="inline-flex items-center gap-2">
-                    <span className="omni-led is-online" />
-                    Service Selector
-                  </span>
-                  <span className="truncate text-cyan-100/90">{OMNI_SERVICE_MAP[activeServiceId].title}</span>
-                  <span className="hidden items-center gap-1 rounded-md border border-white/20 bg-white/[0.06] px-1.5 py-0.5 text-[10px] text-white/75 md:inline-flex">
-                    <Command className="h-3 w-3" />K
-                  </span>
-                  <ChevronDown className={`h-3.5 w-3.5 transition-transform ${serviceMenuOpen ? 'rotate-180' : ''}`} />
+                  <span aria-hidden className="text-base">{action.icon}</span>
+                  <span>{action.label}</span>
                 </button>
-
-                <span className="rounded-full border border-white/15 bg-white/[0.04] px-3 py-1 text-[11px] text-white/70">
-                  Active: {OMNI_SERVICE_MAP[activeServiceId].title}
-                </span>
-                <span className="rounded-full border border-white/15 bg-white/[0.04] px-3 py-1 text-[11px] text-white/70">
-                  {countLabel(runningCount)} running · {enabledCount} enabled
-                </span>
-              </div>
-
-              {serviceMenuOpen && (
-                <div
-                  ref={serviceMenuRef}
-                  id="omni-service-selector"
-                  role="listbox"
-                  aria-label="Service selector"
-                  className="omni-service-menu absolute left-0 right-0 top-full z-40 mt-2 max-h-[72vh] overflow-hidden rounded-2xl p-3 md:left-auto md:w-[430px]"
-                >
-                  <div className="mb-2 flex items-center justify-between gap-2">
-                    <div>
-                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-cyan-100/85">Service Matrix</p>
-                      <p className="text-[11px] text-white/55">Skeuomorphic command switcher for all 13 modules.</p>
-                    </div>
-                    <span className="rounded-lg border border-white/20 bg-white/[0.05] px-2 py-1 text-[10px] text-white/70">
-                      {countLabel(filteredServices.length)} visible
-                    </span>
-                  </div>
-
-                  <div className="omni-service-menu-search mb-2 flex items-center gap-2 rounded-xl px-2.5 py-2">
-                    <Search className="h-3.5 w-3.5 text-white/50" />
-                    <input
-                      type="text"
-                      value={serviceFilter}
-                      onChange={(event) => setServiceFilter(event.target.value)}
-                      placeholder="Filter services"
-                      className="w-full bg-transparent text-xs text-white outline-none placeholder:text-white/40"
-                    />
-                  </div>
-
-                  <div className="max-h-[50vh] space-y-1.5 overflow-y-auto pr-1">
-                    {filteredServices.map((service) => {
-                      const runtime = services[service.id];
-                      const Icon = service.icon;
-                      const isActive = activeServiceId === service.id;
-
-                      return (
-                        <button
-                          key={service.id}
-                          type="button"
-                          role="option"
-                          aria-selected={isActive}
-                          onClick={() => handleServiceSelect(service.id)}
-                          className={`omni-service-menu-item flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left ${
-                            isActive ? 'is-active' : ''
-                          }`}
-                        >
-                          <span
-                            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border"
-                            style={{
-                              borderColor: `${service.accent}55`,
-                              backgroundColor: `${service.accent}1A`,
-                            }}
-                          >
-                            <Icon className="h-4 w-4" style={{ color: service.accent }} />
-                          </span>
-
-                          <span className="min-w-0 flex-1">
-                            <span className="block truncate text-xs font-semibold text-white/92">{service.title}</span>
-                            <span className="block truncate text-[11px] text-white/55">{service.subtitle}</span>
-                            <span className="mt-1 block text-[10px] uppercase tracking-[0.11em] text-white/45">
-                              {runtime.status}
-                              {runtime.queueDepth > 0 ? ` · queue ${runtime.queueDepth}` : ''}
-                            </span>
-                          </span>
-
-                          <span className="inline-flex items-center gap-1 text-[10px] uppercase tracking-[0.09em] text-white/55">
-                            {runtime.enabled ? (
-                              <CheckCircle2 className="h-3.5 w-3.5 text-emerald-300" />
-                            ) : (
-                              <Circle className="h-3.5 w-3.5 text-white/35" />
-                            )}
-                            {runtime.enabled ? 'On' : 'Off'}
-                          </span>
-                        </button>
-                      );
-                    })}
-
-                    {filteredServices.length === 0 && (
-                      <div className="rounded-xl border border-white/12 bg-white/[0.04] px-3 py-5 text-center text-xs text-white/65">
-                        No services match this filter.
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-            </header>
-
-            <div className="mb-3">
-              <VoicePanel compact />
-            </div>
-
-            <div className="min-h-0 flex-1">
-              <PrimaryAgentChat />
-            </div>
-
-            <div className="mt-3 rounded-xl border border-white/10 bg-black/25 p-2.5">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/55">Workspace Tools</p>
-                <button
-                  type="button"
-                  onClick={() => setToolsOpen((value) => !value)}
-                  className="rounded-lg border border-white/15 bg-white/[0.05] px-2.5 py-1 text-xs font-semibold text-white/80 hover:bg-white/[0.1]"
-                >
-                  {toolsOpen ? 'Hide Tools' : 'Open Tools'}
-                </button>
-              </div>
-
-              {toolsOpen && (
-                <div className="mt-2">
-                  <div className="mb-2 flex flex-wrap gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => setToolsTab('preview')}
-                      className={`rounded-lg border px-2.5 py-1 text-xs ${
-                        toolsTab === 'preview'
-                          ? 'border-cyan-300/45 bg-cyan-400/15 text-cyan-100'
-                          : 'border-white/10 bg-white/[0.03] text-white/75'
-                      }`}
-                    >
-                      Preview
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setToolsTab('orchestrator')}
-                      className={`rounded-lg border px-2.5 py-1 text-xs ${
-                        toolsTab === 'orchestrator'
-                          ? 'border-cyan-300/45 bg-cyan-400/15 text-cyan-100'
-                          : 'border-white/10 bg-white/[0.03] text-white/75'
-                      }`}
-                    >
-                      Orchestrator
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setToolsTab('activity')}
-                      className={`rounded-lg border px-2.5 py-1 text-xs ${
-                        toolsTab === 'activity'
-                          ? 'border-cyan-300/45 bg-cyan-400/15 text-cyan-100'
-                          : 'border-white/10 bg-white/[0.03] text-white/75'
-                      }`}
-                    >
-                      Activity
-                    </button>
-                  </div>
-
-                  <div className="max-h-[42vh] overflow-auto">
-                    {toolsTab === 'preview' && <LivePreviewEngine />}
-                    {toolsTab === 'orchestrator' && <ServiceOrchestrator />}
-                    {toolsTab === 'activity' && <ActivityLogPanel embedded />}
-                  </div>
-                </div>
-              )}
+              ))}
             </div>
           </section>
+
+          <div className="min-h-0 flex-1">
+            <CommandCenterChat />
+          </div>
         </div>
       </div>
     </div>

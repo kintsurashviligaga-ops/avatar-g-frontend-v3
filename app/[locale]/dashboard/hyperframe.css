@@ -419,3 +419,69 @@
   }
 }
 
+.command-center-shell {
+  position: relative;
+  background:
+    radial-gradient(circle at 16% -12%, rgba(86, 167, 255, 0.22), transparent 40%),
+    radial-gradient(circle at 82% 112%, rgba(17, 120, 198, 0.16), transparent 42%),
+    linear-gradient(180deg, #05070e 0%, #090d16 52%, #06080f 100%);
+}
+
+.command-center-frame {
+  position: relative;
+  backdrop-filter: blur(18px) saturate(1.08);
+  background: linear-gradient(180deg, rgba(8, 12, 20, 0.88), rgba(5, 9, 16, 0.94));
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.65);
+}
+
+.command-center-frame::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+  background-size: 38px 38px;
+  opacity: 0.25;
+}
+
+.command-center-welcome {
+  transition: opacity 0.32s ease, transform 0.32s ease, max-height 0.32s ease;
+  max-height: 300px;
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.command-center-welcome.is-condensed {
+  max-height: 0;
+  opacity: 0;
+  transform: translateY(-10px);
+  overflow: hidden;
+}
+
+.command-center-pills {
+  position: relative;
+  z-index: 2;
+}
+
+.command-center-pill {
+  border-color: rgba(255, 255, 255, 0.18);
+  background: linear-gradient(165deg, rgba(255, 255, 255, 0.09), rgba(255, 255, 255, 0.04));
+  backdrop-filter: blur(12px) saturate(1.12);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.35);
+  transition: transform 0.18s ease, border-color 0.18s ease, background-color 0.18s ease;
+}
+
+.command-center-pill:hover {
+  transform: translateY(-1px);
+  border-color: rgba(168, 231, 255, 0.46);
+  background: linear-gradient(165deg, rgba(50, 136, 220, 0.3), rgba(255, 255, 255, 0.06));
+}
+
+@media (max-width: 767px) {
+  .command-center-welcome {
+    max-height: 380px;
+  }
+}
+
