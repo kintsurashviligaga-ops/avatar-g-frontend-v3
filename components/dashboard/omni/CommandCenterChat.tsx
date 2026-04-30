@@ -1,13 +1,14 @@
 'use client';
 
+import Image from 'next/image';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Camera,
+  LayoutGrid,
   Loader2,
-  Menu,
   Mic,
   MicOff,
-  Paperclip,
+  Plus,
   Send,
   Sparkles,
   X,
@@ -17,7 +18,7 @@ import type { DragEventHandler } from 'react';
 import { getLocalizedService, normalizeOmniLocale } from './i18n';
 import { OMNI_SERVICES } from './services';
 import { useOmniStore } from './store';
-import type { ServiceId } from './types';
+import type { CommandLanguage, PreviewArtifact, ServiceId } from './types';
 
 interface SpeechRecognitionLike {
   lang: string;
@@ -83,6 +84,12 @@ const CHAT_COPY = {
     cameraNotReady: 'კამერის ნაკადი ჯერ მზად არაა. სცადე კიდევ ერთხელ.',
     voiceTranscript: 'ხმოვანი ტრანსკრიფტი',
     cameraCapture: 'კამერის კადრი',
+    languageLabel: 'ენა',
+    openServiceHub: 'სერვისების ჰაბი',
+    mediaPreviewTitle: 'გენერირებული პრევიუ',
+    openFullscreen: 'სრული ეკრანი',
+    closeFullscreen: 'დახურვა',
+    videoPreviewFallback: 'ვიდეო პრევიუ ხელმისაწვდომია სრულ ეკრანზე.',
   },
   en: {
     emptyHint: 'Your first response will appear here. Start with a short, precise instruction.',
@@ -122,6 +129,12 @@ const CHAT_COPY = {
     cameraNotReady: 'Camera stream is not ready yet. Try again in a moment.',
     voiceTranscript: 'Voice transcript',
     cameraCapture: 'Camera capture',
+    languageLabel: 'Lang',
+    openServiceHub: 'Service hub',
+    mediaPreviewTitle: 'Generated previews',
+    openFullscreen: 'Fullscreen',
+    closeFullscreen: 'Close',
+    videoPreviewFallback: 'Video preview is available in fullscreen mode.',
   },
   ru: {
     emptyHint: 'Первый ответ появится здесь. Начните с короткой и точной задачи.',
@@ -161,8 +174,20 @@ const CHAT_COPY = {
     cameraNotReady: 'Поток камеры еще не готов. Попробуйте снова.',
     voiceTranscript: 'Голосовая расшифровка',
     cameraCapture: 'Снимок с камеры',
+    languageLabel: 'Язык',
+    openServiceHub: 'Хаб сервисов',
+    mediaPreviewTitle: 'Сгенерированные превью',
+    openFullscreen: 'Полный экран',
+    closeFullscreen: 'Закрыть',
+    videoPreviewFallback: 'Превью видео доступно в полноэкранном режиме.',
   },
 } as const;
+
+const LANGUAGE_OPTIONS: Array<{ id: CommandLanguage; label: string }> = [
+  { id: 'ka', label: 'GE' },
+  { id: 'en', label: 'EN' },
+  { id: 'ru', label: 'RU' },
+];
 
 function resolveSpeechCtor(): SpeechRecognitionCtor | null {
   if (typeof window === 'undefined') {
@@ -198,13 +223,17 @@ export default function CommandCenterChat() {
 
   const messages = useOmniStore((state) => state.chatMessages);
   const activeServiceId = useOmniStore((state) => state.activeServiceId);
+  const commandLanguage = useOmniStore((state) => state.commandLanguage);
   const pendingInputs = useOmniStore((state) => state.pendingInputs);
+  const sharedAssets = useOmniStore((state) => state.sharedAssets);
 
   const setActiveService = useOmniStore((state) => state.setActiveService);
+  const setCommandLanguage = useOmniStore((state) => state.setCommandLanguage);
   const sendPrimaryCommand = useOmniStore((state) => state.sendPrimaryCommand);
   const ingestCommandInput = useOmniStore((state) => state.ingestCommandInput);
   const removePendingInput = useOmniStore((state) => state.removePendingInput);
   const clearPendingInputs = useOmniStore((state) => state.clearPendingInputs);
+  const focusPreview = useOmniStore((state) => state.focusPreview);
 
   const [prompt, setPrompt] = useState('');
   const [running, setRunning] = useState(false);
@@ -213,6 +242,7 @@ export default function CommandCenterChat() {
   const [cameraState, setCameraState] = useState<CameraState>('idle');
   const [mediaError, setMediaError] = useState<string | null>(null);
   const [switcherOpen, setSwitcherOpen] = useState(false);
+  const [expandedAsset, setExpandedAsset] = useState<PreviewArtifact | null>(null);
 
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
   const barRef = useRef<HTMLDivElement | null>(null);
@@ -224,6 +254,13 @@ export default function CommandCenterChat() {
   const transcriptBufferRef = useRef('');
 
   const activeService = getLocalizedService(activeServiceId, localeCode);
+  const mediaAssets = useMemo(
+    () =>
+      sharedAssets
+        .filter((asset) => asset.kind === 'image' || asset.kind === 'video')
+        .slice(0, 6),
+    [sharedAssets],
+  );
 
   const cameraStatusLabel = useMemo(() => {
     if (cameraState === 'requesting') return copy.cameraStarting;
@@ -280,14 +317,43 @@ export default function CommandCenterChat() {
       queueMicrotask(focusComposer);
     };
 
+    const openServiceHub = () => {
+      setSwitcherOpen(true);
+    };
+
+    const toggleServiceHub = () => {
+      setSwitcherOpen((value) => !value);
+    };
+
     window.addEventListener('omni:focus-composer', focusComposer);
     window.addEventListener('omni:seed-command', seedCommand as EventListener);
+    window.addEventListener('omni:open-service-hub', openServiceHub);
+    window.addEventListener('omni:toggle-service-hub', toggleServiceHub);
 
     return () => {
       window.removeEventListener('omni:focus-composer', focusComposer);
       window.removeEventListener('omni:seed-command', seedCommand as EventListener);
+      window.removeEventListener('omni:open-service-hub', openServiceHub);
+      window.removeEventListener('omni:toggle-service-hub', toggleServiceHub);
     };
   }, [setActiveService]);
+
+  useEffect(() => {
+    if (!expandedAsset) {
+      return;
+    }
+
+    const onEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setExpandedAsset(null);
+      }
+    };
+
+    window.addEventListener('keydown', onEscape);
+    return () => {
+      window.removeEventListener('keydown', onEscape);
+    };
+  }, [expandedAsset]);
 
   useEffect(() => {
     if (!switcherOpen) {
@@ -602,6 +668,48 @@ export default function CommandCenterChat() {
                 </article>
               </div>
             ))}
+
+            {mediaAssets.length > 0 && (
+              <div className="flex flex-col gap-3">
+                <p className="px-1 text-[11px] uppercase tracking-[0.14em] text-white/45">{copy.mediaPreviewTitle}</p>
+                {mediaAssets.map((asset) => (
+                  <div key={asset.id} className="flex justify-start">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        focusPreview(asset.id);
+                        setExpandedAsset(asset);
+                      }}
+                      className="w-full max-w-[92%] rounded-3xl border border-white/15 bg-white/[0.05] p-3 text-left text-white/90 shadow-[0_14px_30px_rgba(0,0,0,0.35)]"
+                    >
+                      <div className="mb-2 flex items-center justify-between gap-3">
+                        <p className="text-xs font-semibold">{asset.title}</p>
+                        <span className="rounded-full border border-white/20 bg-white/[0.06] px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-white/65">
+                          {copy.openFullscreen}
+                        </span>
+                      </div>
+
+                      {asset.kind === 'image' && asset.sourceUrl ? (
+                        <div className="relative aspect-video w-full overflow-hidden rounded-2xl border border-white/10">
+                          <Image
+                            src={asset.sourceUrl}
+                            alt={asset.title}
+                            fill
+                            sizes="(max-width: 1024px) 92vw, 760px"
+                            className="object-cover"
+                            unoptimized
+                          />
+                        </div>
+                      ) : (
+                        <div className="flex min-h-[164px] items-center justify-center rounded-2xl border border-white/10 bg-black/25 px-4 py-8 text-center text-sm text-white/70">
+                          {asset.summary || copy.videoPreviewFallback}
+                        </div>
+                      )}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -747,20 +855,40 @@ export default function CommandCenterChat() {
               }}
             />
 
-            <div className="mb-2 flex items-center gap-2">
-              <button
-                type="button"
-                aria-label={copy.serviceSwitcher}
-                onClick={() => setSwitcherOpen((open) => !open)}
-                className="inline-flex min-h-[44px] items-center gap-1 rounded-2xl border border-white/15 bg-white/[0.06] px-3 py-1.5 text-xs font-semibold text-white/85 hover:bg-white/[0.12]"
-              >
-                <Menu className="h-4 w-4" />
-                <span className="hidden sm:inline">{copy.serviceSwitcher}</span>
-              </button>
-
+            <div className="mb-2 flex flex-wrap items-center gap-2">
               <span className="inline-flex min-h-[44px] items-center rounded-full border border-cyan-200/30 bg-cyan-500/12 px-3 text-xs font-medium text-cyan-100">
                 {activeService.title}
               </span>
+
+              <div className="inline-flex min-h-[44px] items-center gap-1 rounded-2xl border border-white/15 bg-white/[0.06] px-1.5 py-1">
+                <span className="px-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-white/55">{copy.languageLabel}</span>
+                {LANGUAGE_OPTIONS.map((option) => {
+                  const active = commandLanguage === option.id;
+                  return (
+                    <button
+                      key={option.id}
+                      type="button"
+                      onClick={() => setCommandLanguage(option.id)}
+                      className={`rounded-xl px-2 py-1 text-[11px] font-semibold transition ${
+                        active
+                          ? 'bg-cyan-500/25 text-cyan-100'
+                          : 'text-white/75 hover:bg-white/10 hover:text-white'
+                      }`}
+                    >
+                      {option.label}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <button
+                type="button"
+                aria-label={copy.openServiceHub}
+                onClick={() => setSwitcherOpen((open) => !open)}
+                className="ml-auto inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-white/15 bg-white/[0.06] text-white/85 hover:bg-white/[0.12]"
+              >
+                <LayoutGrid className="h-4 w-4" />
+              </button>
 
               <button
                 type="button"
@@ -769,7 +897,7 @@ export default function CommandCenterChat() {
                   queueMicrotask(() => composerRef.current?.focus());
                 }}
                 disabled={!prompt.trim() || running}
-                className="ml-auto inline-flex min-h-[44px] items-center rounded-2xl border border-white/15 bg-white/[0.05] px-3 py-1.5 text-xs font-semibold text-white/80 disabled:opacity-45"
+                className="inline-flex min-h-[44px] items-center rounded-2xl border border-white/15 bg-white/[0.05] px-3 py-1.5 text-xs font-semibold text-white/80 disabled:opacity-45"
               >
                 {copy.clear}
               </button>
@@ -796,10 +924,10 @@ export default function CommandCenterChat() {
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
                 title={copy.uploadFile}
-                className="inline-flex min-h-[44px] items-center gap-1 rounded-2xl border border-white/15 bg-white/[0.05] px-3 py-1.5 text-xs text-white/82 hover:bg-white/[0.12]"
+                aria-label={copy.uploadFile}
+                className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-white/15 bg-white/[0.05] text-white/82 hover:bg-white/[0.12]"
               >
-                <Paperclip className="h-4 w-4" />
-                {copy.file}
+                <Plus className="h-5 w-5" />
               </button>
 
               <button
@@ -859,6 +987,55 @@ export default function CommandCenterChat() {
           )}
         </div>
       </div>
+
+      {expandedAsset && (
+        <div
+          className="fixed inset-0 z-[120] bg-black/82 backdrop-blur-md"
+          onClick={() => setExpandedAsset(null)}
+          role="presentation"
+        >
+          <div
+            className="mx-auto flex h-full w-full max-w-6xl flex-col px-4 pb-[max(env(safe-area-inset-bottom,0px),20px)] pt-[max(env(safe-area-inset-top,0px),20px)]"
+            onClick={(event) => event.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-label={expandedAsset.title}
+          >
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs uppercase tracking-[0.12em] text-white/55">{copy.mediaPreviewTitle}</p>
+                <p className="text-sm font-semibold text-white">{expandedAsset.title}</p>
+              </div>
+
+              <button
+                type="button"
+                aria-label={copy.closeFullscreen}
+                onClick={() => setExpandedAsset(null)}
+                className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-white/20 bg-white/[0.07] text-white/85 transition hover:bg-white/[0.14]"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="relative flex-1 overflow-hidden rounded-3xl border border-white/15 bg-[rgba(8,12,22,0.88)] shadow-[0_26px_70px_rgba(0,0,0,0.6)]">
+              {expandedAsset.kind === 'image' && expandedAsset.sourceUrl ? (
+                <Image
+                  src={expandedAsset.sourceUrl}
+                  alt={expandedAsset.title}
+                  fill
+                  sizes="100vw"
+                  className="object-contain"
+                  unoptimized
+                />
+              ) : (
+                <div className="flex h-full items-center justify-center px-6 text-center text-sm text-white/75">
+                  {expandedAsset.summary || copy.videoPreviewFallback}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   );
 }

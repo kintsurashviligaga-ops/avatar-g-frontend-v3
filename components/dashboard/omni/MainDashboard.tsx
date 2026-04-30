@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo } from 'react';
+import { Menu } from 'lucide-react';
 import CommandCenterChat from './CommandCenterChat';
 import { useOmniDashboardStore } from './store';
 import type { ServiceId } from './types';
@@ -14,99 +15,102 @@ interface MainDashboardProps {
 
 const DASHBOARD_COPY = {
   ka: {
-    welcome: 'რით შემიძლია დაგეხმარო?',
+    welcome: 'გამარჯობა გიორგი, რით შემიძლია დაგეხმარო?',
     subtitle: 'აირჩიე სწრაფი მოქმედება ან დაწერე საკუთარი დავალება ქვედა ბარში.',
     pillsTitle: 'სწრაფი სერვისები',
+    menuLabel: 'სერვის-ჰაბის გახსნა',
   },
   en: {
-    welcome: 'How can I help you?',
+    welcome: 'Hello Giorgi, how can I help you?',
     subtitle: 'Pick a quick action or write a custom instruction in the bottom bar.',
     pillsTitle: 'Quick services',
+    menuLabel: 'Open service hub',
   },
   ru: {
-    welcome: 'Чем могу помочь?',
+    welcome: 'Привет, Георгий. Чем могу помочь?',
     subtitle: 'Выберите быстрое действие или напишите задачу в нижней панели.',
     pillsTitle: 'Быстрые сервисы',
+    menuLabel: 'Открыть хаб сервисов',
   },
 } as const;
 
 const QUICK_ACTIONS: Record<OmniLocale, Array<{ serviceId: ServiceId; icon: string; label: string; prompt: string }>> = {
   ka: [
     {
-      serviceId: 'business-strategy',
-      icon: '🧠',
-      label: 'სტრატეგიული გეგმა',
-      prompt: 'შემიქმენი 30-დღიანი ზრდის სტრატეგია KPI-ებით, პრიორიტეტებით და კონკრეტული ნაბიჯებით.',
+      serviceId: 'image-gen',
+      icon: '🖼️',
+      label: 'სურათის შექმნა',
+      prompt: 'შექმენი სარეკლამო სურათი მაღალი დეტალით, modern glassmorphism სტილით და მკაფიო ბრენდული აქცენტით.',
+    },
+    {
+      serviceId: 'voice-synth',
+      icon: '🎙️',
+      label: 'ხმის სინთეზი',
+      prompt: 'დამიგენერირე ბუნებრივი ქართული გახმოვანება მოკლე ტექსტზე, ემოციური მაგრამ პროფესიული ტონით.',
     },
     {
       serviceId: 'video-gen',
       icon: '🎬',
-      label: 'ვიდეო კონცეფცია',
-      prompt: 'შექმენი მოკლე ვიდეო კონცეფცია: სცენარი, კადრების გეგმა და ტონი ქართულ აუდიტორიაზე.',
+      label: 'ვიდეოს გენერირება',
+      prompt: 'მომიმზადე 15-წამიანი ვიდეო კონცეფცია სცენარით, კადრებით და რიტმით სოციალური მედიისთვის.',
     },
     {
-      serviceId: 'image-gen',
-      icon: '🖼️',
-      label: 'ვიზუალური პაკეტი',
-      prompt: 'მომიმზადე სარეკლამო ვიზუალების პაკეტი: მთავარი ბანერი, სოციალური პოსტი და ვიზუალური მიმართულება.',
-    },
-    {
-      serviceId: 'analytics-hub',
+      serviceId: 'business-strategy',
       icon: '📊',
-      label: 'აღმასრულებელი შეჯამება',
-      prompt: 'გააკეთე აღმასრულებელი შეჯამება მიმდინარე მდგომარეობაზე: რა მუშაობს, რა რისკია და რა ქმედებაა საჭირო.',
+      label: 'ბიზნეს სტრატეგია',
+      prompt: 'შემიქმენი 30-დღიანი ბიზნეს სტრატეგია KPI-ებით, პრიორიტეტებით და ეტაპობრივი შესრულების გეგმით.',
     },
   ],
   en: [
     {
-      serviceId: 'business-strategy',
-      icon: '🧠',
-      label: 'Strategic Plan',
-      prompt: 'Create a 30-day growth strategy with KPIs, priorities, and clear execution steps.',
+      serviceId: 'image-gen',
+      icon: '🖼️',
+      label: 'Create Image',
+      prompt: 'Generate a premium campaign visual with sharp detail and clean brand composition.',
+    },
+    {
+      serviceId: 'voice-synth',
+      icon: '🎙️',
+      label: 'Voice Synthesis',
+      prompt: 'Create natural voice narration in a polished executive tone from a short script.',
     },
     {
       serviceId: 'video-gen',
       icon: '🎬',
-      label: 'Video Concept',
-      prompt: 'Build a short-form video concept with scene plan, voice direction, and target tone.',
+      label: 'Generate Video',
+      prompt: 'Create a 15-second video concept with storyboard beats and pacing for social media.',
     },
     {
-      serviceId: 'image-gen',
-      icon: '🖼️',
-      label: 'Visual Pack',
-      prompt: 'Prepare a visual campaign pack: hero art, social variation, and style direction.',
-    },
-    {
-      serviceId: 'analytics-hub',
+      serviceId: 'business-strategy',
       icon: '📊',
-      label: 'Executive Brief',
-      prompt: 'Provide an executive summary of current performance, key risks, and next actions.',
+      label: 'Business Strategy',
+      prompt: 'Build a 30-day business strategy with KPI targets, priorities, and phased execution.',
     },
   ],
   ru: [
     {
-      serviceId: 'business-strategy',
-      icon: '🧠',
-      label: 'Стратегический план',
-      prompt: 'Сформируй 30-дневную стратегию роста с KPI, приоритетами и конкретными шагами.',
+      serviceId: 'image-gen',
+      icon: '🖼️',
+      label: 'Создать изображение',
+      prompt: 'Создай рекламный визуал премиум-уровня с чистой композицией и высоким качеством.',
+    },
+    {
+      serviceId: 'voice-synth',
+      icon: '🎙️',
+      label: 'Синтез голоса',
+      prompt: 'Сгенерируй естественную озвучку в деловом тоне по короткому тексту.',
     },
     {
       serviceId: 'video-gen',
       icon: '🎬',
-      label: 'Концепт видео',
-      prompt: 'Подготовь концепт короткого видео: сцены, подача, тон и формат.',
+      label: 'Генерация видео',
+      prompt: 'Подготовь концепт 15-секундного видео со структурой сцен и ритмом.',
     },
     {
-      serviceId: 'image-gen',
-      icon: '🖼️',
-      label: 'Визуальный пакет',
-      prompt: 'Собери пакет визуалов: главный баннер, вариант для соцсетей и стиль.',
-    },
-    {
-      serviceId: 'analytics-hub',
+      serviceId: 'business-strategy',
       icon: '📊',
-      label: 'Executive-сводка',
-      prompt: 'Сделай executive-сводку по метрикам, рискам и следующим действиям.',
+      label: 'Бизнес-стратегия',
+      prompt: 'Сформируй 30-дневную бизнес-стратегию с KPI, приоритетами и пошаговым планом.',
     },
   ],
 };
@@ -143,10 +147,28 @@ export default function MainDashboard({ locale, userName, isAuthenticated }: Mai
     window.dispatchEvent(new CustomEvent('omni:seed-command', { detail: { serviceId, prompt } }));
   };
 
+  const openServiceHub = () => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+    window.dispatchEvent(new CustomEvent('omni:open-service-hub'));
+  };
+
   return (
     <div className="command-center-shell h-full w-full overflow-hidden">
       <div className="command-center-frame flex h-full min-h-0 flex-col overflow-hidden rounded-[30px] border border-white/14">
         <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
+          <div className="absolute left-3 top-3 z-30 sm:left-5 sm:top-5">
+            <button
+              type="button"
+              aria-label={copy.menuLabel}
+              onClick={openServiceHub}
+              className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-white/15 bg-white/[0.07] text-white/80 backdrop-blur-xl transition hover:border-cyan-200/45 hover:text-cyan-100"
+            >
+              <Menu className="h-5 w-5" />
+            </button>
+          </div>
+
           <section
             className={`command-center-welcome px-4 pt-6 text-center sm:px-6 sm:pt-8 ${showWelcome ? 'is-visible' : 'is-condensed'}`}
           >

@@ -22,7 +22,7 @@ test('bare root redirects to /ka/dashboard', async ({ page }) => {
   await page.goto('/');
   await page.waitForURL(/\/ka\/dashboard$/);
   await expect(page).toHaveURL(/\/ka\/dashboard$/);
-  await expect(page.getByText('რით შემიძლია დაგეხმარო?', { exact: false }).first()).toBeVisible({ timeout: 15000 });
+  await expect(page.getByText('გამარჯობა გიორგი, რით შემიძლია დაგეხმარო?', { exact: false }).first()).toBeVisible({ timeout: 15000 });
 });
 
 test('locale root redirects to localized dashboard', async ({ page }) => {
@@ -43,7 +43,7 @@ test('dashboard switcher exposes current 13-service contract', async ({ page }) 
   await page.goto('/en/dashboard');
 
   const serviceSelectorButton = page
-    .getByRole('button', { name: /Services|სერვისების სია|Сервисы/i })
+    .getByRole('button', { name: /Service hub|სერვისების ჰაბი|Хаб сервисов|Open service hub|სერვის-ჰაბის გახსნა/i })
     .first();
 
   await expect(serviceSelectorButton).toBeVisible({ timeout: 15000 });
@@ -64,7 +64,7 @@ test('service switching updates active service in one-window dashboard', async (
   await page.goto('/en/dashboard');
 
   const serviceSelectorButton = page
-    .getByRole('button', { name: /Services|სერვისების სია|Сервисы/i })
+    .getByRole('button', { name: /Service hub|სერვისების ჰაბი|Хаб сервисов|Open service hub|სერვის-ჰაბის გახსნა/i })
     .first();
 
   await expect(serviceSelectorButton).toBeVisible({ timeout: 15000 });
