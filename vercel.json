@@ -11,6 +11,15 @@
   "regions": ["iad1"],
 
   "functions": {
+    "app/api/chat/gemini/route.ts": {
+      "maxDuration": 60
+    },
+    "app/api/ltx-video/route.ts": {
+      "maxDuration": 120
+    },
+    "app/api/matilda/route.ts": {
+      "maxDuration": 30
+    },
     "app/api/ai/route.ts": {
       "maxDuration": 30
     },
