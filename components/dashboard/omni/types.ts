@@ -39,6 +39,7 @@ export interface PreviewArtifact {
   createdAt: number;
   sourceUrl?: string;
   textBody?: string;
+  audioUrl?: string;
 }
 
 export interface ExternalCommandInput {

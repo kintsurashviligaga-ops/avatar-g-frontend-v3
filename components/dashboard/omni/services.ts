@@ -14,12 +14,12 @@ export const OMNI_SERVICES: OmniServiceDescriptor[] = [
   {
     id: 'avatar',
     title: 'Avatar',
-    subtitle: 'Identity and persona generation',
+    subtitle: 'AI talking avatar via HeyGen',
     short: 'AV',
     worker: 'AvatarComposer',
     accent: '#7cd4ff',
-    previewKind: 'image',
-    defaultPrompt: 'Create a premium avatar portrait with cinematic lighting and confident expression.',
+    previewKind: 'video',
+    defaultPrompt: 'Hello! I am your AI avatar from MyAvatar.ge. I am ready to represent you professionally.',
     icon: UserCircle2,
   },
   {

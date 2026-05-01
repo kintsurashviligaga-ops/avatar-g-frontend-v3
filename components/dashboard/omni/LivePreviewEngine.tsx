@@ -226,15 +226,24 @@ export function LivePreviewEngine() {
                   <Mic2 className="h-4 w-4" />
                   <span className="text-xs">{copy.vu}</span>
                 </div>
-                <AudioMeter />
+                {preview.sourceUrl ? (
+                  <audio src={preview.sourceUrl} controls autoPlay className="w-full rounded" />
+                ) : (
+                  <AudioMeter />
+                )}
                 <p className="text-xs text-white/55">{preview.textBody ?? copy.audioFallback}</p>
               </div>
             )}
 
             {(preview.kind === 'text' || preview.kind === 'workflow') && (
-              <pre className="h-[220px] overflow-auto rounded-lg border border-white/10 bg-black/40 p-3 font-mono text-xs leading-relaxed text-cyan-100/80">
-                {preview.textBody ?? preview.summary}
-              </pre>
+              <div className="space-y-2">
+                <pre className="h-[180px] overflow-auto rounded-lg border border-white/10 bg-black/40 p-3 font-mono text-xs leading-relaxed text-cyan-100/80">
+                  {preview.textBody ?? preview.summary}
+                </pre>
+                {preview.audioUrl && (
+                  <audio src={preview.audioUrl} controls className="w-full rounded" />
+                )}
+              </div>
             )}
           </motion.div>
         )}
