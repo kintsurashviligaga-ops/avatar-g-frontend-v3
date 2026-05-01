@@ -437,18 +437,15 @@ export const useOmniDashboardStore = create<OmniDashboardState>((set, get) => {
     const localizedDescriptor = getLocalizedService(serviceId, locale);
     const traceId = createId();
 
+    // Strip [language=...] metadata prefix so it never leaks into UI
+    const cleanPrompt = prompt.replace(/^\[language=[^\]]*\]\s*/m, '').trim();
+
     set((state) => {
       const current = state.services[serviceId];
-      const updatedService: ServiceRuntimeState = {
-        ...current,
-        status: 'running',
-        queueDepth: current.queueDepth + 1,
-        lastPrompt: prompt,
-      };
       return {
         services: {
           ...state.services,
-          [serviceId]: updatedService,
+          [serviceId]: { ...current, status: 'running', queueDepth: current.queueDepth + 1, lastPrompt: cleanPrompt },
         },
         ...addLogLine(state, 'api', `POST /api/agents/orchestrate worker=${descriptor.worker} trace=${traceId}`),
       };
@@ -464,9 +461,99 @@ export const useOmniDashboardStore = create<OmniDashboardState>((set, get) => {
       ),
     }));
 
-    await delay(260);
+    // --- Video: call real LTX API ---
+    if (serviceId === 'video') {
+      const videoArtifactId = createId();
 
-    const output = buildArtifact(serviceId, prompt, locale);
+      // Add a loading placeholder into sharedAssets + preview
+      const loadingArtifact: PreviewArtifact = {
+        id: videoArtifactId,
+        serviceId,
+        kind: 'video',
+        title: `${localizedDescriptor.title} — ${cleanPrompt.slice(0, 50)}`,
+        summary: cleanPrompt,
+        createdAt: Date.now(),
+        textBody: copy.videoFallback,
+      };
+
+      set((state) => {
+        const svc = state.services[serviceId];
+        return {
+          services: {
+            ...state.services,
+            [serviceId]: { ...svc, outputs: [loadingArtifact, ...svc.outputs].slice(0, MAX_OUTPUTS_PER_SERVICE) },
+          },
+          sharedAssets: [loadingArtifact, ...state.sharedAssets].slice(0, 140),
+          preview: loadingArtifact,
+        };
+      });
+
+      if (source === 'chat') {
+        const msgId = createId();
+        set((state) => ({
+          chatMessages: [
+            ...state.chatMessages,
+            { id: msgId, role: 'assistant' as const, content: copy.videoFallback, ts: Date.now() },
+          ].slice(-MAX_CHAT_ITEMS),
+          ...addLogLine(state, 'agent', `${copy.assistantDispatched} trace=${traceId}`),
+        }));
+      }
+
+      try {
+        const res = await fetch('/api/ltx-video', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prompt: cleanPrompt, model: 'ltx-2-3-fast', resolution: '1920x1080', duration: 6, fps: 24 }),
+        });
+
+        const contentType = res.headers.get('content-type') ?? '';
+        if (res.ok && contentType.includes('video')) {
+          const blob = await res.blob();
+          const videoUrl = URL.createObjectURL(blob);
+
+          const readyArtifact: PreviewArtifact = { ...loadingArtifact, sourceUrl: videoUrl, textBody: undefined };
+
+          set((state) => {
+            const svc = state.services[serviceId];
+            const updatedOutputs = svc.outputs.map((o) => o.id === videoArtifactId ? readyArtifact : o);
+            const updatedAssets = state.sharedAssets.map((a) => a.id === videoArtifactId ? readyArtifact : a);
+            return {
+              services: {
+                ...state.services,
+                [serviceId]: { ...svc, status: 'ready', queueDepth: Math.max(0, svc.queueDepth - 1), outputs: updatedOutputs },
+              },
+              sharedAssets: updatedAssets,
+              preview: readyArtifact,
+              ...addLogLine(state, 'worker', `${descriptor.worker} ${copy.workerCompleted}`),
+            };
+          });
+        } else {
+          const errData = await res.json().catch(() => ({})) as { error?: string };
+          const errMsg = errData.error ?? `Error ${res.status}`;
+          set((state) => {
+            const svc = state.services[serviceId];
+            return {
+              services: { ...state.services, [serviceId]: { ...svc, status: 'error', queueDepth: Math.max(0, svc.queueDepth - 1) } },
+              ...addLogLine(state, 'system', `video worker error: ${errMsg}`),
+            };
+          });
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'network error';
+        set((state) => {
+          const svc = state.services[serviceId];
+          return {
+            services: { ...state.services, [serviceId]: { ...svc, status: 'error', queueDepth: Math.max(0, svc.queueDepth - 1) } },
+            ...addLogLine(state, 'system', `video worker exception: ${msg}`),
+          };
+        });
+      }
+
+      return;
+    }
+
+    // --- All other services: build artifact + Claude chat response ---
+    const output = buildArtifact(serviceId, cleanPrompt, locale);
 
     set((state) => {
       const targetState = state.services[serviceId];
@@ -498,10 +585,7 @@ export const useOmniDashboardStore = create<OmniDashboardState>((set, get) => {
             .join(', ')}`,
           ts: Date.now(),
         };
-
-        logChain = {
-          activityLog: [...logChain.activityLog, bridgeLog].slice(-MAX_LOG_ITEMS),
-        };
+        logChain = { activityLog: [...logChain.activityLog, bridgeLog].slice(-MAX_LOG_ITEMS) };
       }
 
       return {
@@ -513,7 +597,6 @@ export const useOmniDashboardStore = create<OmniDashboardState>((set, get) => {
     });
 
     if (source === 'chat') {
-      // Add a streaming placeholder message
       const streamingMsgId = createId();
       set((state) => ({
         chatMessages: [

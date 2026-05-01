@@ -740,9 +740,26 @@ export default function CommandCenterChat() {
                             unoptimized
                           />
                         </div>
+                      ) : asset.kind === 'video' && asset.sourceUrl ? (
+                        <video
+                          src={asset.sourceUrl}
+                          controls
+                          autoPlay
+                          loop
+                          className="w-full rounded-2xl bg-black"
+                          style={{ maxHeight: 260 }}
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                      ) : asset.kind === 'video' ? (
+                        <div className="flex min-h-[164px] flex-col items-center justify-center gap-3 rounded-2xl border border-white/10 bg-black/25 px-4 py-8">
+                          <div className="h-1.5 w-48 rounded-full bg-white/10 overflow-hidden">
+                            <div className="h-full w-1/3 rounded-full bg-cyan-400/60 animate-pulse" />
+                          </div>
+                          <p className="text-center text-xs text-white/40">{copy.videoPreviewFallback}</p>
+                        </div>
                       ) : (
                         <div className="flex min-h-[164px] items-center justify-center rounded-2xl border border-white/10 bg-black/25 px-4 py-8 text-center text-sm text-white/70">
-                          {asset.summary || copy.videoPreviewFallback}
+                          {asset.textBody || asset.summary || copy.videoPreviewFallback}
                         </div>
                       )}
                     </button>
@@ -1041,9 +1058,24 @@ export default function CommandCenterChat() {
                   className="object-contain"
                   unoptimized
                 />
+              ) : expandedAsset.kind === 'video' && expandedAsset.sourceUrl ? (
+                <video
+                  src={expandedAsset.sourceUrl}
+                  controls
+                  autoPlay
+                  loop
+                  className="h-full w-full object-contain bg-black"
+                />
+              ) : expandedAsset.kind === 'video' ? (
+                <div className="flex h-full flex-col items-center justify-center gap-4 px-6">
+                  <div className="h-2 w-64 rounded-full bg-white/10 overflow-hidden">
+                    <div className="h-full w-1/3 rounded-full bg-cyan-400/60 animate-pulse" />
+                  </div>
+                  <p className="text-center text-sm text-white/40">{copy.videoPreviewFallback}</p>
+                </div>
               ) : (
                 <div className="flex h-full items-center justify-center px-6 text-center text-sm text-white/75">
-                  {expandedAsset.summary || copy.videoPreviewFallback}
+                  {expandedAsset.textBody || expandedAsset.summary || copy.videoPreviewFallback}
                 </div>
               )}
             </div>

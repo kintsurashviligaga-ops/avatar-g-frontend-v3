@@ -178,22 +178,32 @@ export function LivePreviewEngine() {
             )}
 
             {preview.kind === 'video' && (
-              <div className="flex h-[220px] flex-col justify-between rounded-lg border border-white/10 bg-slate-900/60 p-3">
-                <div className="flex items-center gap-2 text-white/75">
-                  <Film className="h-4 w-4" />
-                  <span className="text-xs">{copy.timeline}</span>
-                </div>
-                <div className="space-y-2">
-                  <div className="h-2 rounded-full bg-white/10">
-                    <motion.div
-                      className="h-full rounded-full bg-cyan-300/70"
-                      animate={{ width: ['16%', '76%', '34%'] }}
-                      transition={{ duration: 3.2, repeat: Infinity }}
-                    />
+              preview.sourceUrl ? (
+                <video
+                  src={preview.sourceUrl}
+                  controls
+                  autoPlay
+                  loop
+                  className="h-[220px] w-full rounded-lg object-contain bg-black"
+                />
+              ) : (
+                <div className="flex h-[220px] flex-col justify-between rounded-lg border border-white/10 bg-slate-900/60 p-3">
+                  <div className="flex items-center gap-2 text-white/75">
+                    <Film className="h-4 w-4" />
+                    <span className="text-xs">{copy.timeline}</span>
                   </div>
-                  <p className="text-xs text-white/55">{preview.textBody ?? copy.timelineFallback}</p>
+                  <div className="space-y-2">
+                    <div className="h-2 rounded-full bg-white/10">
+                      <motion.div
+                        className="h-full rounded-full bg-cyan-300/70"
+                        animate={{ width: ['16%', '76%', '34%'] }}
+                        transition={{ duration: 3.2, repeat: Infinity }}
+                      />
+                    </div>
+                    <p className="text-xs text-white/55">{copy.timelineFallback}</p>
+                  </div>
                 </div>
-              </div>
+              )
             )}
 
             {preview.kind === 'audio' && (
