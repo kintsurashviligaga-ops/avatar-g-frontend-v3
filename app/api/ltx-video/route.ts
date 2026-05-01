@@ -14,7 +14,6 @@ export async function POST(req: NextRequest) {
       resolution = '1920x1080',
       duration = 6,
       fps = 24,
-      generate_audio = false,
     } = await req.json();
 
     if (!prompt?.trim()) {
@@ -32,22 +31,25 @@ export async function POST(req: NextRequest) {
         Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ prompt, model, resolution, duration, fps, generate_audio }),
+      body: JSON.stringify({ prompt, model, resolution, duration, fps, generate_audio: false }),
     });
 
     if (!ltxRes.ok) {
       const errText = await ltxRes.text();
       console.error('[ltx-video] API error', ltxRes.status, errText);
       return NextResponse.json(
-        { error: `LTX API error ${ltxRes.status}`, detail: errText },
-        { status: ltxRes.status }
+        { error: `Video generation failed (${ltxRes.status})`, detail: errText },
+        { status: ltxRes.status >= 400 && ltxRes.status < 600 ? ltxRes.status : 500 }
       );
     }
 
-    const videoBuffer = await ltxRes.arrayBuffer();
-    const videoBase64 = Buffer.from(videoBuffer).toString('base64');
-
-    return NextResponse.json({ video: videoBase64 });
+    // Stream video/mp4 directly back to client
+    return new Response(ltxRes.body, {
+      headers: {
+        'Content-Type': 'video/mp4',
+        'Cache-Control': 'no-store',
+      },
+    });
   } catch (err) {
     console.error('[ltx-video]', err);
     return NextResponse.json({ error: 'Server error' }, { status: 500 });

@@ -65,14 +65,14 @@ export default function VideoGenerationPage() {
         body: JSON.stringify({ prompt, model, resolution, duration, fps }),
       });
 
-      const data = await res.json();
-      if (!res.ok) {
+      const contentType = res.headers.get('content-type') ?? '';
+      if (!res.ok || !contentType.includes('video')) {
+        const data = await res.json().catch(() => ({ error: `Error ${res.status}` }));
         setError(data.detail || data.error || `Error ${res.status}`);
         return;
       }
 
-      const bytes = Uint8Array.from(atob(data.video), (c) => c.charCodeAt(0));
-      const blob = new Blob([bytes], { type: 'video/mp4' });
+      const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       prevUrlRef.current = url;
       setVideoUrl(url);
