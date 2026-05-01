@@ -2,11 +2,10 @@
 
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { useChat } from '@ai-sdk/react';
-import { DefaultChatTransport, isTextUIPart, type UIMessage } from 'ai';
-import { Menu, Send, Square, RotateCcw, Paperclip } from 'lucide-react';
+import { DefaultChatTransport, isTextUIPart, type UIMessage, type FileUIPart } from 'ai';
+import { Menu, Send, Square, RotateCcw, Paperclip, X } from 'lucide-react';
 import MessageBubble from './MessageBubble';
 import ChatSidebar from './ChatSidebar';
-import FileUpload, { type UploadedFile, processFiles } from './FileUpload';
 import {
   getConversations,
   getMessages,
@@ -21,51 +20,47 @@ interface ChatInterfaceProps {
   locale?: string;
 }
 
+interface LocalFile {
+  name: string;
+  mediaType: string;
+  dataUrl: string; // full data:mime;base64,... URL
+}
+
 const SUGGESTION_CHIPS = [
-  'სურათის გენერაცია',
-  'ვიდეოს შექმნა',
-  'ავატარის შექმნა',
-  'MyAvatar.ge სერვისები',
+  '◉ AvATAR შექმენი',
+  '✦ სურათი გამიკეთე',
+  '▶ ვიდეოს კონცეფცია',
+  '>_ კოდი დამიწერე',
 ];
 
-// Helper to extract plain text from a UIMessage
 function getMessageText(msg: UIMessage): string {
-  return msg.parts
-    .filter(isTextUIPart)
-    .map((p) => p.text)
-    .join('');
+  return msg.parts.filter(isTextUIPart).map((p) => p.text).join('');
 }
 
 export default function ChatInterface({ locale: _locale = 'ka' }: ChatInterfaceProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
-  const [attachedFiles, setAttachedFiles] = useState<UploadedFile[]>([]);
+  const [localFiles, setLocalFiles] = useState<LocalFile[]>([]);
   const [input, setInput] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-
-  // Ref to hold files at send time so onFinish can access them via closure
   const activeSessionRef = useRef<string | null>(null);
   activeSessionRef.current = activeSessionId;
 
   const { messages, sendMessage, regenerate, stop, status, setMessages } = useChat({
-    transport: new DefaultChatTransport({
-      api: '/api/chat/gemini',
-      body: { files: attachedFiles },
-    }),
-    onFinish: async ({ message }) => {
+    transport: new DefaultChatTransport({ api: '/api/chat/gemini' }),
+    onFinish: ({ message, messages: allMessages }) => {
       const sessionId = activeSessionRef.current;
       if (!sessionId) return;
       const text = getMessageText(message);
       if (text) {
-        await saveMessage(sessionId, 'assistant', text);
+        void saveMessage(sessionId, 'assistant', text);
       }
-      // Update session title from first user message
-      const firstUser = messages.find((m) => m.role === 'user');
+      const firstUser = allMessages.find((m) => m.role === 'user');
       if (firstUser) {
         const title = getMessageText(firstUser).slice(0, 60);
-        await updateSessionTitle(sessionId, title);
+        void updateSessionTitle(sessionId, title);
         setConversations((prev) =>
           prev.map((c) =>
             c.session_id === sessionId
@@ -79,12 +74,10 @@ export default function ChatInterface({ locale: _locale = 'ka' }: ChatInterfaceP
 
   const isLoading = status === 'streaming' || status === 'submitted';
 
-  // Auto-scroll to bottom
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isLoading]);
 
-  // Auto-resize textarea
   useEffect(() => {
     const ta = textareaRef.current;
     if (!ta) return;
@@ -92,7 +85,6 @@ export default function ChatInterface({ locale: _locale = 'ka' }: ChatInterfaceP
     ta.style.height = `${Math.min(ta.scrollHeight, 180)}px`;
   }, [input]);
 
-  // Load conversations
   useEffect(() => {
     void getConversations('anonymous').then(setConversations);
   }, []);
@@ -100,7 +92,7 @@ export default function ChatInterface({ locale: _locale = 'ka' }: ChatInterfaceP
   const handleNewChat = useCallback(() => {
     setMessages([]);
     setActiveSessionId(null);
-    setAttachedFiles([]);
+    setLocalFiles([]);
     setInput('');
     setSidebarOpen(false);
   }, [setMessages]);
@@ -110,7 +102,6 @@ export default function ChatInterface({ locale: _locale = 'ka' }: ChatInterfaceP
       setActiveSessionId(sessionId);
       setSidebarOpen(false);
       const msgs = await getMessages(sessionId);
-      // Reconstruct UIMessage array from DB records
       const uiMessages: UIMessage[] = msgs
         .filter((m) => m.role === 'user' || m.role === 'assistant')
         .map((m) => ({
@@ -137,20 +128,34 @@ export default function ChatInterface({ locale: _locale = 'ka' }: ChatInterfaceP
   );
 
   const handleAddFiles = useCallback(async (rawFiles: File[]) => {
-    const processed = await processFiles(rawFiles);
-    setAttachedFiles((prev) => [...prev, ...processed]);
+    const results: LocalFile[] = await Promise.all(
+      rawFiles.map(
+        (file) =>
+          new Promise<LocalFile>((resolve) => {
+            const reader = new FileReader();
+            reader.onload = () =>
+              resolve({
+                name: file.name,
+                mediaType: file.type || 'application/octet-stream',
+                dataUrl: reader.result as string,
+              });
+            reader.readAsDataURL(file);
+          })
+      )
+    );
+    setLocalFiles((prev) => [...prev, ...results]);
   }, []);
 
   const handleRemoveFile = useCallback((index: number) => {
-    setAttachedFiles((prev) => prev.filter((_, i) => i !== index));
+    setLocalFiles((prev) => prev.filter((_, i) => i !== index));
   }, []);
 
   const doSend = useCallback(async () => {
     const text = input.trim();
-    if (!text && attachedFiles.length === 0) return;
+    if (!text && localFiles.length === 0) return;
     if (isLoading) return;
 
-    // Create session on first message
+    // Create Supabase session on first message
     let sessionId = activeSessionId;
     if (!sessionId) {
       sessionId = await createSession('anonymous', 'agent-g', text.slice(0, 60) || 'ახალი ჩატი');
@@ -167,22 +172,28 @@ export default function ChatInterface({ locale: _locale = 'ka' }: ChatInterfaceP
         ]);
       }
     }
-
     if (sessionId && text) {
-      await saveMessage(sessionId, 'user', text);
+      void saveMessage(sessionId, 'user', text);
     }
 
-    const currentFiles = [...attachedFiles];
-    setInput('');
-    setAttachedFiles([]);
+    // Convert local files to FileUIPart[] (data URLs — SDK handles base64 extraction)
+    const fileParts: FileUIPart[] = localFiles.map((f) => ({
+      type: 'file' as const,
+      mediaType: f.mediaType,
+      filename: f.name,
+      url: f.dataUrl,
+    }));
 
-    await sendMessage(
-      { text },
-      {
-        body: { files: currentFiles },
-      }
-    );
-  }, [input, attachedFiles, isLoading, activeSessionId, sendMessage]);
+    setInput('');
+    setLocalFiles([]);
+
+    // Single-argument sendMessage — files go inside the message
+    if (fileParts.length > 0) {
+      sendMessage({ text: text || ' ', files: fileParts });
+    } else {
+      sendMessage({ text });
+    }
+  }, [input, localFiles, isLoading, activeSessionId, sendMessage]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -190,30 +201,22 @@ export default function ChatInterface({ locale: _locale = 'ka' }: ChatInterfaceP
         e.preventDefault();
         void doSend();
       }
-      if (e.key === 'Escape' && isLoading) {
-        void stop();
-      }
+      if (e.key === 'Escape' && isLoading) stop();
     },
     [doSend, isLoading, stop]
   );
 
   const handleSuggestionClick = useCallback((suggestion: string) => {
-    setInput(suggestion);
+    setInput(suggestion + ' ');
     textareaRef.current?.focus();
   }, []);
 
-  const handleRegenerate = useCallback(() => {
-    void regenerate();
-  }, [regenerate]);
-
   const isEmpty = messages.length === 0;
   const lastMessage = messages[messages.length - 1];
-  const showRegenerate =
-    !isLoading && lastMessage?.role === 'assistant' && messages.length > 0;
+  const showRegenerate = !isLoading && lastMessage?.role === 'assistant' && messages.length > 0;
 
   return (
     <div className="flex h-screen bg-[#050b18] overflow-hidden">
-      {/* Sidebar */}
       <ChatSidebar
         conversations={conversations}
         activeId={activeSessionId}
@@ -224,43 +227,38 @@ export default function ChatInterface({ locale: _locale = 'ka' }: ChatInterfaceP
         onClose={() => setSidebarOpen(false)}
       />
 
-      {/* Main area */}
       <div className="flex flex-col flex-1 min-w-0">
         {/* Header */}
-        <header className="flex items-center gap-3 px-4 py-3 border-b border-white/[0.06] bg-[#070d1e]/80 backdrop-blur-sm">
+        <header className="flex items-center gap-3 px-4 py-3 border-b border-white/[0.06] bg-[#070d1e]/80 backdrop-blur-sm shrink-0">
           <button
             onClick={() => setSidebarOpen(true)}
             className="lg:hidden p-2 rounded-xl text-white/50 hover:text-white hover:bg-white/[0.06] transition-colors"
           >
             <Menu className="w-5 h-5" />
           </button>
-
           <div className="flex items-center gap-2 flex-1">
-            <div className="w-7 h-7 rounded-full bg-cyan-500/20 border border-cyan-400/30 flex items-center justify-center">
+            <div className="w-7 h-7 rounded-full bg-cyan-500/20 border border-cyan-400/30 flex items-center justify-center shrink-0">
               <span className="text-cyan-400 text-xs font-bold">G</span>
             </div>
             <div>
-              <p className="text-white/90 text-sm font-medium leading-none">Agent G</p>
+              <p className="text-white/90 text-sm font-semibold leading-none">Agent G</p>
               <p className="text-white/40 text-[10px] mt-0.5">Claude Opus · MyAvatar.ge</p>
             </div>
           </div>
-
           <div className="flex items-center gap-1.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
-            <span className="text-white/40 text-xs">Online</span>
+            <span className={`w-1.5 h-1.5 rounded-full ${isLoading ? 'bg-amber-400' : 'bg-cyan-400'} animate-pulse`} />
+            <span className="text-white/40 text-xs">{isLoading ? 'ფიქრობს...' : 'Online'}</span>
           </div>
         </header>
 
-        {/* Messages area */}
+        {/* Messages */}
         <div className="flex-1 overflow-y-auto">
           {isEmpty ? (
             <div className="flex flex-col items-center justify-center h-full px-4 py-8">
               <div className="w-16 h-16 rounded-full bg-cyan-500/10 border border-cyan-400/20 flex items-center justify-center mb-4">
                 <span className="text-cyan-400 text-2xl font-bold">G</span>
               </div>
-              <h2 className="text-white/90 text-xl font-semibold mb-2">
-                გამარჯობა! მე ვარ Agent G
-              </h2>
+              <h2 className="text-white/90 text-xl font-semibold mb-2">გამარჯობა! მე ვარ Agent G</h2>
               <p className="text-white/50 text-sm text-center max-w-sm mb-8">
                 MyAvatar.ge-ის AI ასისტენტი — სურათების, ვიდეოს, ავატარების შექმნა და სხვა
               </p>
@@ -279,39 +277,31 @@ export default function ChatInterface({ locale: _locale = 'ka' }: ChatInterfaceP
           ) : (
             <div className="py-6 space-y-1">
               {messages.map((msg, idx) => {
-                const isLastAssistant =
-                  msg.role === 'assistant' && idx === messages.length - 1;
-                const text = getMessageText(msg);
+                const isLastAssistant = msg.role === 'assistant' && idx === messages.length - 1;
                 return (
                   <MessageBubble
                     key={msg.id}
-                    message={{
-                      id: msg.id,
-                      role: msg.role as 'user' | 'assistant',
-                      content: text,
-                    }}
+                    message={{ id: msg.id, role: msg.role as 'user' | 'assistant', content: getMessageText(msg) }}
                     isStreaming={isLastAssistant && isLoading}
                   />
                 );
               })}
 
-              {/* Thinking indicator — waiting for first token */}
+              {/* Thinking dots — before first assistant token */}
               {isLoading && lastMessage?.role === 'user' && (
-                <div className="flex gap-3 mb-4 px-4">
-                  <div className="flex-shrink-0 w-7 h-7 rounded-full bg-cyan-500/20 border border-cyan-400/30 flex items-center justify-center mt-0.5">
+                <div className="flex gap-3 px-4 mb-2">
+                  <div className="shrink-0 w-7 h-7 rounded-full bg-cyan-500/20 border border-cyan-400/30 flex items-center justify-center mt-0.5">
                     <span className="text-cyan-400 text-xs font-bold">G</span>
                   </div>
-                  <div className="flex items-center gap-1 pt-1">
+                  <div className="flex items-center gap-1 pt-1.5">
                     <span className="text-white/40 text-sm">ფიქრობს</span>
-                    <span className="flex gap-0.5">
-                      {[0, 1, 2].map((i) => (
-                        <span
-                          key={i}
-                          className="w-1 h-1 rounded-full bg-cyan-400/60 animate-bounce"
-                          style={{ animationDelay: `${i * 0.15}s` }}
-                        />
-                      ))}
-                    </span>
+                    {[0, 1, 2].map((i) => (
+                      <span
+                        key={i}
+                        className="w-1 h-1 rounded-full bg-cyan-400/60 animate-bounce"
+                        style={{ animationDelay: `${i * 0.15}s` }}
+                      />
+                    ))}
                   </div>
                 </div>
               )}
@@ -321,11 +311,11 @@ export default function ChatInterface({ locale: _locale = 'ka' }: ChatInterfaceP
           )}
         </div>
 
-        {/* Regenerate button */}
+        {/* Regenerate */}
         {showRegenerate && (
-          <div className="flex justify-center pb-2">
+          <div className="flex justify-center pb-2 shrink-0">
             <button
-              onClick={handleRegenerate}
+              onClick={() => void regenerate()}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/[0.04] border border-white/10 text-white/50 hover:text-white/80 hover:bg-white/[0.07] text-xs transition-colors"
             >
               <RotateCcw className="w-3 h-3" />
@@ -335,20 +325,28 @@ export default function ChatInterface({ locale: _locale = 'ka' }: ChatInterfaceP
         )}
 
         {/* Input area */}
-        <div className="px-4 pb-4 pt-2 border-t border-white/[0.06]">
+        <div className="px-4 pb-4 pt-2 border-t border-white/[0.06] shrink-0">
           {/* File previews */}
-          {attachedFiles.length > 0 && (
-            <div className="mb-2">
-              <FileUpload
-                files={attachedFiles}
-                onAdd={handleAddFiles}
-                onRemove={handleRemoveFile}
-              />
+          {localFiles.length > 0 && (
+            <div className="flex flex-wrap gap-2 mb-2">
+              {localFiles.map((f, i) => (
+                <div
+                  key={i}
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white/[0.05] border border-white/10 text-xs text-white/60"
+                >
+                  <span className="truncate max-w-[120px]">{f.name}</span>
+                  <button
+                    onClick={() => handleRemoveFile(i)}
+                    className="text-white/30 hover:text-white/70 transition-colors ml-1"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
+              ))}
             </div>
           )}
 
           <div className="flex items-end gap-2 bg-white/[0.04] border border-white/10 rounded-2xl px-3 py-2 focus-within:border-cyan-400/20 focus-within:bg-white/[0.06] transition-colors">
-            {/* Attach button */}
             <button
               type="button"
               onClick={() => {
@@ -362,18 +360,17 @@ export default function ChatInterface({ locale: _locale = 'ka' }: ChatInterfaceP
                 };
                 picker.click();
               }}
-              className="flex-shrink-0 p-1.5 mb-0.5 rounded-lg text-white/40 hover:text-cyan-400 hover:bg-white/[0.05] transition-colors relative"
+              className="shrink-0 p-1.5 mb-0.5 rounded-lg text-white/40 hover:text-cyan-400 hover:bg-white/[0.05] transition-colors relative"
               title="ფაილის დამატება"
             >
               <Paperclip className="w-4 h-4" />
-              {attachedFiles.length > 0 && (
+              {localFiles.length > 0 && (
                 <span className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-cyan-500 rounded-full text-[8px] text-white flex items-center justify-center font-bold">
-                  {attachedFiles.length}
+                  {localFiles.length}
                 </span>
               )}
             </button>
 
-            {/* Textarea */}
             <textarea
               ref={textareaRef}
               value={input}
@@ -385,12 +382,11 @@ export default function ChatInterface({ locale: _locale = 'ka' }: ChatInterfaceP
               style={{ scrollbarWidth: 'none' }}
             />
 
-            {/* Send / Stop */}
             {isLoading ? (
               <button
                 type="button"
-                onClick={() => void stop()}
-                className="flex-shrink-0 p-2 mb-0.5 rounded-xl bg-red-500/20 border border-red-400/30 text-red-400 hover:bg-red-500/30 transition-colors"
+                onClick={() => stop()}
+                className="shrink-0 p-2 mb-0.5 rounded-xl bg-red-500/20 border border-red-400/30 text-red-400 hover:bg-red-500/30 transition-colors"
                 title="გაჩერება"
               >
                 <Square className="w-4 h-4 fill-current" />
@@ -399,8 +395,8 @@ export default function ChatInterface({ locale: _locale = 'ka' }: ChatInterfaceP
               <button
                 type="button"
                 onClick={() => void doSend()}
-                disabled={!input.trim() && attachedFiles.length === 0}
-                className="flex-shrink-0 p-2 mb-0.5 rounded-xl bg-cyan-500/20 border border-cyan-400/30 text-cyan-400 hover:bg-cyan-500/30 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                disabled={!input.trim() && localFiles.length === 0}
+                className="shrink-0 p-2 mb-0.5 rounded-xl bg-cyan-500/20 border border-cyan-400/30 text-cyan-400 hover:bg-cyan-500/30 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
                 title="გაგზავნა"
               >
                 <Send className="w-4 h-4" />
