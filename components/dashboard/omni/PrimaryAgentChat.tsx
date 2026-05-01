@@ -53,58 +53,34 @@ const LANGUAGE_META: Array<{ id: CommandLanguage; short: string; label: string; 
 
 const QUICK_COMMANDS: Record<OmniLocale, Array<{ label: string; prompt: string }>> = {
   ka: [
-    {
-      label: 'კამპანიის გაშვება',
-      prompt: 'შექმენი სრული კამპანიის გეგმა ტექსტებით, ვიზუალური მითითებებით და 7-დღიანი შესრულების გრაფიკით.',
-    },
-    {
-      label: 'ვიზუალური პაკეტი',
-      prompt: 'მომიმზადე პროდუქტის ვიზუალური კონცეპტები, სარეკლამო გამოსახულების prompt-ები და მოკლე ვიდეოს სცენარი.',
-    },
-    {
-      label: 'ხმა + სცენარი',
-      prompt: 'დამიწერე კონვერსიაზე ორიენტირებული სცენარი და შესაფერისი ხმოვანი სტილი ქართული აუდიტორიისთვის.',
-    },
-    {
-      label: 'აღმასრულებელი შეჯამება',
-      prompt: 'გაანალიზე მიმდინარე მიმართულება და მომეცი აღმასრულებელი შეჯამება ტოპ 5 მოქმედებით და რისკით.',
-    },
+    { label: '◉ AvATAR', prompt: 'შექმენი AvATAR: ' },
+    { label: '▶ ვიდეო', prompt: 'შექმენი ვიდეო: ' },
+    { label: '✦ სურათი', prompt: 'შექმენი სურათი: ' },
+    { label: '♪ მუსიკა', prompt: 'შექმენი მუსიკა: ' },
+    { label: '⬡ თამაში', prompt: 'შექმენი თამაშის კონცეფცია: ' },
+    { label: '◫ ინტერიერი', prompt: 'გამიდიზაინე ინტერიერი: ' },
+    { label: '⌥ Prompt', prompt: 'ააშენე prompt: ' },
+    { label: '>_ კოდი', prompt: 'დამიწერე კოდი: ' },
   ],
   en: [
-    {
-      label: 'Launch Campaign',
-      prompt: 'Create a full launch campaign plan with copy, creative directions, and 7-day execution timeline.',
-    },
-    {
-      label: 'Product Visual Pack',
-      prompt: 'Generate product visual concepts, ad image prompts, and matching short video storyboard.',
-    },
-    {
-      label: 'Voice + Script',
-      prompt: 'Write a conversion-focused script and suggest voice style options for a Georgian audience.',
-    },
-    {
-      label: 'Executive Summary',
-      prompt: 'Analyze current direction and return an executive summary with top 5 actions and risks.',
-    },
+    { label: '◉ Avatar', prompt: 'Create Avatar: ' },
+    { label: '▶ Video', prompt: 'Create Video: ' },
+    { label: '✦ Image', prompt: 'Create Image: ' },
+    { label: '♪ Music', prompt: 'Create Music: ' },
+    { label: '⬡ Game', prompt: 'Create Game Concept: ' },
+    { label: '◫ Interior', prompt: 'Design Interior: ' },
+    { label: '⌥ Prompt', prompt: 'Build Prompt: ' },
+    { label: '>_ Code', prompt: 'Write Code: ' },
   ],
   ru: [
-    {
-      label: 'Запуск кампании',
-      prompt: 'Создай полный план запуска кампании: тексты, визуальные направления и 7-дневный график исполнения.',
-    },
-    {
-      label: 'Пакет визуалов',
-      prompt: 'Сгенерируй визуальные концепты продукта, prompt-ы для рекламных изображений и сториборд короткого видео.',
-    },
-    {
-      label: 'Голос + сценарий',
-      prompt: 'Напиши конверсионный сценарий и предложи стили озвучки для грузинской аудитории.',
-    },
-    {
-      label: 'Executive Summary',
-      prompt: 'Проанализируй текущее направление и верни executive summary с 5 ключевыми действиями и рисками.',
-    },
+    { label: '◉ Аватар', prompt: 'Создай аватар: ' },
+    { label: '▶ Видео', prompt: 'Создай видео: ' },
+    { label: '✦ Изображение', prompt: 'Создай изображение: ' },
+    { label: '♪ Музыка', prompt: 'Создай музыку: ' },
+    { label: '⬡ Игра', prompt: 'Создай концепцию игры: ' },
+    { label: '◫ Интерьер', prompt: 'Сделай дизайн интерьера: ' },
+    { label: '⌥ Промпт', prompt: 'Построй промпт: ' },
+    { label: '>_ Код', prompt: 'Напиши код: ' },
   ],
 };
 

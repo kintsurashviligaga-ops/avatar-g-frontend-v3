@@ -24,6 +24,8 @@
     "test:e2e:ui": "playwright test --ui"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "^3.0.73",
+    "@ai-sdk/react": "^3.0.174",
     "@anthropic-ai/sdk": "^0.91.1",
     "@aws-sdk/client-s3": "^3.983.0",
     "@aws-sdk/lib-storage": "^3.980.0",
@@ -47,6 +49,7 @@
     "@vapi-ai/server-sdk": "^1.2.0",
     "@vapi-ai/web": "^2.5.2",
     "@xyflow/react": "^12.10.1",
+    "ai": "^6.0.172",
     "axios": "^1.15.2",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
@@ -63,7 +66,10 @@
     "react-dom": "^18.3.1",
     "react-hook-form": "^7.71.2",
     "react-hot-toast": "^2.4.1",
+    "react-markdown": "^10.1.0",
     "redis": "^4.6.13",
+    "rehype-highlight": "^7.0.2",
+    "remark-gfm": "^4.0.1",
     "replicate": "^1.4.0",
     "server-only": "^0.0.1",
     "sonner": "^2.0.7",

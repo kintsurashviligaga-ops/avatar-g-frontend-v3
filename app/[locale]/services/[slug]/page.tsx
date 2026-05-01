@@ -10,6 +10,7 @@ const SHORT_SLUGS = [
   'avatar', 'video', 'editing', 'music', 'photo', 'image',
   'media', 'text', 'prompt', 'visual-intel', 'workflow', 'shop', 'agent-g',
   'software', 'business', 'tourism', 'game', 'interior', 'next',
+  'prompt-builder', 'terminal',
 ] as const;
 
 export async function generateStaticParams() {
