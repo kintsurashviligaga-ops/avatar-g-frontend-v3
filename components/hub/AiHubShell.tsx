@@ -17,13 +17,7 @@
 
 import { useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import {
-  Bot, UserCircle2, Video, Music2, Camera, ImageIcon, FileText,
-  Wand2, Workflow, ShoppingCart, Cpu, Code2, Briefcase, Plane,
-  Gamepad2, Sofa, Scissors, Eye, Film, ChevronLeft, ChevronRight,
-  LayoutDashboard, Search, Zap, X, Menu, Coins, Settings, LogIn,
-  TrendingUp, Sparkles, Plus, History, Star,
-} from 'lucide-react';
+import { Bot, UserCircle2, Video, Music2, Camera, ImageIcon, FileText, Wand2, Workflow, ShoppingCart, Code2, Briefcase, Plane, Gamepad2, Sofa, Scissors, Eye, Film, ChevronLeft, ChevronRight, LayoutDashboard, Search, Zap, X, Menu, Coins, Settings, LogIn, TrendingUp, Sparkles, Plus, History } from 'lucide-react';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
 

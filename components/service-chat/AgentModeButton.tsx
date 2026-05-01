@@ -15,7 +15,7 @@
  */
 
 import { motion } from 'framer-motion';
-import { Sparkles, Bot, Zap } from 'lucide-react';
+import { Sparkles, Zap } from 'lucide-react';
 import type { ServiceChatConfig, AgentMode } from './types';
 
 interface Props {

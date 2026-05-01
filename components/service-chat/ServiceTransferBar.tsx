@@ -11,7 +11,7 @@
 import { motion } from 'framer-motion';
 import { ChevronRight } from 'lucide-react';
 import { ICON_MAP } from './icons';
-import type { ServiceChatConfig, TransferAction } from './types';
+import type { ServiceChatConfig } from './types';
 
 interface Props {
   config: ServiceChatConfig;

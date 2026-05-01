@@ -33,7 +33,7 @@ import {
   Rocket,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { Button }     from '@/components/ui/button';
+
 import { CreditBadge } from '@/components/ui/CreditBadge';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -146,7 +146,7 @@ const COST_ROWS: { label: string; credits: number }[] = [
   { label: 'Copy / SEO',         credits:  3 },
 ];
 
-function CostBreakdown({ currency }: { currency: Currency }) {
+function CostBreakdown({ currency: _currency }: { currency: Currency }) {
   return (
     <div className="rounded-2xl border border-white/[0.10] bg-[linear-gradient(155deg,rgba(12,22,46,0.88),rgba(7,14,32,0.80))] backdrop-blur-xl p-6 space-y-4">
       <p className="text-sm font-semibold text-white/60 flex items-center gap-2">

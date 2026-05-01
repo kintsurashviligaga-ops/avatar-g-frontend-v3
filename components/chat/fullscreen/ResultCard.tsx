@@ -1,5 +1,6 @@
 'use client'
 
+import Image from 'next/image'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
 import { CHAT_LABELS, type ChatLocale } from './config'
 import type { FCResultMessage } from './types'
@@ -20,7 +21,7 @@ const TYPE_ICONS: Record<string, string> = {
 export function ResultCard({ message }: Props) {
   const { language } = useLanguage()
   const lang = (language as ChatLocale) || 'en'
-  const labels = CHAT_LABELS[lang] || CHAT_LABELS.en
+  const _labels = CHAT_LABELS[lang] || CHAT_LABELS.en
   const icon = TYPE_ICONS[message.resultType] || '📦'
 
   return (
@@ -28,7 +29,7 @@ export function ResultCard({ message }: Props) {
       <div className="chat-result-card">
         {message.previewUrl && (
           <div className="relative h-40 sm:h-48 overflow-hidden">
-            <img src={message.previewUrl} alt={message.title} className="w-full h-full object-cover" />
+            <Image src={message.previewUrl} alt={message.title} width={1024} height={512} unoptimized className="w-full h-full object-cover" />
             <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
           </div>
         )}

@@ -307,7 +307,7 @@ function PipelineStatusView({ locale, pipeline }: { locale: string; pipeline?: P
   );
 }
 
-function StepRow({ step, index, locale }: { step: PipelineStepStatus; index: number; locale: string }) {
+function StepRow({ step, index, locale: _locale }: { step: PipelineStepStatus; index: number; locale: string }) {
   const statusIcon = {
     pending: '○',
     running: '◉',

@@ -5,12 +5,7 @@
  * Each service chat uses its own instance of this reducer.
  */
 
-import type {
-  ServiceChatState,
-  ServiceChatAction,
-  ServiceSlug,
-  AgentMode,
-} from '@/components/service-chat/types';
+import type { ServiceChatState, ServiceChatAction, ServiceSlug } from '@/components/service-chat/types';
 
 export function createInitialState(
   serviceSlug: ServiceSlug,

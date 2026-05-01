@@ -22,7 +22,7 @@ export function BottomChatComposer({ value, onChange, onSend, onAttach, onMic, d
   const { language } = useLanguage()
   const lang = language as keyof typeof PLACEHOLDERS
   const textareaRef = useRef<HTMLTextAreaElement>(null)
-  const [focused, setFocused] = useState(false)
+  const [_focused, setFocused] = useState(false)
 
   // Auto-resize
   useEffect(() => {

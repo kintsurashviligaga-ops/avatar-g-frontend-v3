@@ -20,7 +20,7 @@ interface ServiceOutputCardProps {
   locale: string
 }
 
-export function ServiceOutputCard({ serviceId, serviceName, serviceIcon, onNavigate, transfers, locale }: ServiceOutputCardProps) {
+export function ServiceOutputCard({ serviceId: _serviceId, serviceName: _serviceName, serviceIcon: _serviceIcon, onNavigate, transfers, locale: _locale }: ServiceOutputCardProps) {
   const { language } = useLanguage()
   const lang = (language as LocaleKey) || 'en'
 

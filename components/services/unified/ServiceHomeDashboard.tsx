@@ -8,7 +8,7 @@
 
 import Link from 'next/link'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
-import { SERVICE_REGISTRY, getLocalizedServices } from '@/lib/service-registry'
+import { getLocalizedServices } from '@/lib/service-registry';
 import { motion } from 'framer-motion'
 
 type LocaleKey = 'en' | 'ka' | 'ru'

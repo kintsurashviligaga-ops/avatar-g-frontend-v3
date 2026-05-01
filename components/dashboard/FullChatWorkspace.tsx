@@ -2,11 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import {
-  Menu, X, Send, Plus, Mic, Paperclip,
-  Copy, StopCircle, Zap, Check,
-  ChevronRight, Sparkles, Globe, MicOff,
-} from 'lucide-react';
+import { Menu, X, Send, Plus, Mic, Paperclip, Copy, StopCircle, Zap, Check, ChevronRight, Sparkles, MicOff } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import IntroOverlay from '@/components/intro/IntroOverlay';
 import { CommandBar } from '@/components/dashboard/CommandBar';

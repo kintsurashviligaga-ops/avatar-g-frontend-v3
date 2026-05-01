@@ -8,7 +8,12 @@ import { ServiceControlSuite } from './ServiceControlSuite';
 import { OMNI_SERVICE_MAP, OMNI_SERVICES } from './services';
 import { useOmniDashboardStore } from './store';
 import type { PreviewArtifact, ServiceId } from './types';
-import { countLabel } from './utils';
+import {
+  getLocalizedService,
+  localizeServiceStatus,
+  normalizeOmniLocale,
+  type OmniLocale,
+} from './i18n';
 
 interface ToggleSwitchProps {
   checked: boolean;
@@ -87,7 +92,96 @@ function ExpertField({ label, value, onChange }: ExpertFieldProps) {
   );
 }
 
-export function ServiceOrchestrator() {
+interface ServiceOrchestratorProps {
+  locale?: string;
+  isExpertMode?: boolean;
+}
+
+const ORCHESTRATOR_COPY = {
+  ka: {
+    panelTitle: 'სერვისის ორკესტრატორი',
+    status: 'სტატუსი',
+    queue: 'რიგი',
+    showAdvanced: 'დამატებითი კონტროლი',
+    hideAdvanced: 'დამალვა',
+    quickControls: 'სწრაფი კონტროლი',
+    quickControlsHint: 'ყოველდღიური პარამეტრები სწრაფი მართვისთვის.',
+    servicePower: 'სერვისის ენერგია',
+    autopilot: 'ავტოპილოტი',
+    syncToPreview: 'პრევიუს სინქი',
+    fidelity: 'სიზუსტე',
+    intensity: 'ინტენსივობა',
+    manualRun: 'ხელით გაშვება',
+    manualRunHint: 'აქტიური სერვისის სწრაფი გაშვება საკუთარი prompt-ით.',
+    useDefault: 'ნაგულისხმები',
+    runWorker: 'გაშვება',
+    linkedReferences: 'მიმაგრებული არტეფაქტები',
+    noReferences: 'ჯერ არცერთი არტეფაქტი არ არის მიბმული.',
+    stateBridge: 'უნივერსალური State Bridge',
+    stateBridgeHint: 'ნებისმიერი შედეგი გადააგზავნე სხვა სერვისში როგორც შემავალი მონაცემი.',
+    noOutputs: 'გამოსავალი არ არის',
+    pushInput: 'გადაგზავნა',
+    expertPanel: 'ექსპერტის პანელი',
+    expertHint: 'Seed, Sampling, Weights და Temperature კონტროლები.',
+  },
+  en: {
+    panelTitle: 'Service Orchestrator',
+    status: 'status',
+    queue: 'queue',
+    showAdvanced: 'Show Advanced',
+    hideAdvanced: 'Hide Advanced',
+    quickControls: 'Quick Controls',
+    quickControlsHint: 'Everyday controls for fast operation.',
+    servicePower: 'Service Power',
+    autopilot: 'Autopilot',
+    syncToPreview: 'Sync To Preview',
+    fidelity: 'Fidelity',
+    intensity: 'Intensity',
+    manualRun: 'Manual Run',
+    manualRunHint: 'Quickly execute the active service with a custom prompt.',
+    useDefault: 'Use Default',
+    runWorker: 'Run Worker',
+    linkedReferences: 'Linked References',
+    noReferences: 'No references bridged yet.',
+    stateBridge: 'Universal State Bridge',
+    stateBridgeHint: 'Push any output as immediate input to another service.',
+    noOutputs: 'No outputs available',
+    pushInput: 'Push Input',
+    expertPanel: 'Expert Panel',
+    expertHint: 'Seed, Sampling, Weights, and Temperature controls.',
+  },
+  ru: {
+    panelTitle: 'Оркестратор сервиса',
+    status: 'статус',
+    queue: 'очередь',
+    showAdvanced: 'Показать расширенное',
+    hideAdvanced: 'Скрыть расширенное',
+    quickControls: 'Быстрые настройки',
+    quickControlsHint: 'Повседневные элементы для быстрой работы.',
+    servicePower: 'Питание сервиса',
+    autopilot: 'Автопилот',
+    syncToPreview: 'Синхронизация превью',
+    fidelity: 'Точность',
+    intensity: 'Интенсивность',
+    manualRun: 'Ручной запуск',
+    manualRunHint: 'Быстро запустить активный сервис с вашим prompt.',
+    useDefault: 'По умолчанию',
+    runWorker: 'Запустить',
+    linkedReferences: 'Связанные артефакты',
+    noReferences: 'Связанных артефактов пока нет.',
+    stateBridge: 'Универсальный State Bridge',
+    stateBridgeHint: 'Передайте любой результат в другой сервис как входные данные.',
+    noOutputs: 'Нет доступных результатов',
+    pushInput: 'Передать',
+    expertPanel: 'Панель эксперта',
+    expertHint: 'Параметры Seed, Sampling, Weights и Temperature.',
+  },
+} as const;
+
+export function ServiceOrchestrator({ locale = 'ka', isExpertMode = true }: ServiceOrchestratorProps) {
+  const localeCode: OmniLocale = normalizeOmniLocale(locale);
+  const copy = ORCHESTRATOR_COPY[localeCode];
+
   const activeServiceId = useOmniDashboardStore((state) => state.activeServiceId);
   const services = useOmniDashboardStore((state) => state.services);
   const sharedAssets = useOmniDashboardStore((state) => state.sharedAssets);
@@ -102,12 +196,19 @@ export function ServiceOrchestrator() {
 
   const descriptor = OMNI_SERVICE_MAP[activeServiceId];
   const serviceState = services[activeServiceId];
+  const localizedService = getLocalizedService(activeServiceId, localeCode);
 
   const [manualPrompt, setManualPrompt] = useState(serviceState.lastPrompt);
   const [running, setRunning] = useState(false);
   const [selectedAssetId, setSelectedAssetId] = useState('');
   const [targetServiceId, setTargetServiceId] = useState<ServiceId>(activeServiceId);
   const [showAdvanced, setShowAdvanced] = useState(false);
+
+  useEffect(() => {
+    if (!isExpertMode) {
+      setShowAdvanced(false);
+    }
+  }, [isExpertMode]);
 
   useEffect(() => {
     setManualPrompt(serviceState.lastPrompt);
@@ -179,45 +280,47 @@ export function ServiceOrchestrator() {
           <div className="mb-3 flex flex-wrap items-center gap-2 border-b border-white/10 pb-3">
             <div className="flex items-center gap-2">
               <SlidersHorizontal className="h-4 w-4" style={{ color: descriptor.accent }} />
-              <p className="omni-title text-sm font-semibold text-white">Service Orchestrator</p>
+              <p className="omni-title text-sm font-semibold text-white">{copy.panelTitle}</p>
             </div>
             <span className="rounded-full border border-white/15 bg-white/[0.04] px-3 py-1 text-[11px] text-white/70">
-              {descriptor.title} · status {serviceState.status}
+              {localizedService.title} · {copy.status} {localizeServiceStatus(serviceState.status, localeCode)}
             </span>
             <span className="rounded-full border border-white/15 bg-white/[0.04] px-3 py-1 text-[11px] text-white/70">
-              queue {countLabel(serviceState.queueDepth)}
+              {copy.queue} {serviceState.queueDepth}
             </span>
-            <button
-              type="button"
-              onClick={() => setShowAdvanced((value) => !value)}
-              className="ml-auto inline-flex items-center gap-1 rounded-lg border border-white/15 bg-white/[0.04] px-2.5 py-1.5 text-[11px] font-semibold uppercase tracking-[0.1em] text-white/80 hover:bg-white/[0.08]"
-            >
-              {showAdvanced ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-              {showAdvanced ? 'Hide Advanced' : 'Show Advanced'}
-            </button>
+            {isExpertMode && (
+              <button
+                type="button"
+                onClick={() => setShowAdvanced((value) => !value)}
+                className="ml-auto inline-flex items-center gap-1 rounded-lg border border-white/15 bg-white/[0.04] px-2.5 py-1.5 text-[11px] font-semibold uppercase tracking-[0.1em] text-white/80 hover:bg-white/[0.08]"
+              >
+                {showAdvanced ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                {showAdvanced ? copy.hideAdvanced : copy.showAdvanced}
+              </button>
+            )}
           </div>
 
           <div className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
             <section className="rounded-xl border border-white/10 bg-black/25 p-3">
-              <p className="mb-1 text-sm font-semibold text-white/90">Quick Controls</p>
-              <p className="mb-2 text-xs text-white/45">Everyday controls for fast operation.</p>
+              <p className="mb-1 text-sm font-semibold text-white/90">{copy.quickControls}</p>
+              <p className="mb-2 text-xs text-white/45">{copy.quickControlsHint}</p>
 
               <div className="grid gap-2 sm:grid-cols-3">
                 <ToggleSwitch
                   checked={serviceState.enabled}
-                  label="Service Power"
+                  label={copy.servicePower}
                   accent={descriptor.accent}
                   onToggle={() => toggleServiceFlag(activeServiceId, 'enabled')}
                 />
                 <ToggleSwitch
                   checked={serviceState.autopilot}
-                  label="Autopilot"
+                  label={copy.autopilot}
                   accent={descriptor.accent}
                   onToggle={() => toggleServiceFlag(activeServiceId, 'autopilot')}
                 />
                 <ToggleSwitch
                   checked={serviceState.syncPreview}
-                  label="Sync To Preview"
+                  label={copy.syncToPreview}
                   accent={descriptor.accent}
                   onToggle={() => toggleServiceFlag(activeServiceId, 'syncPreview')}
                 />
@@ -225,12 +328,12 @@ export function ServiceOrchestrator() {
 
               <div className="mt-2 grid gap-2 sm:grid-cols-2">
                 <RangeField
-                  label="Fidelity"
+                  label={copy.fidelity}
                   value={serviceState.fidelity}
                   onChange={(value) => setServiceDial(activeServiceId, 'fidelity', value)}
                 />
                 <RangeField
-                  label="Intensity"
+                  label={copy.intensity}
                   value={serviceState.intensity}
                   onChange={(value) => setServiceDial(activeServiceId, 'intensity', value)}
                 />
@@ -238,8 +341,8 @@ export function ServiceOrchestrator() {
             </section>
 
             <section className="rounded-xl border border-white/10 bg-black/25 p-3">
-              <p className="mb-1 text-sm font-semibold text-white/90">Manual Run</p>
-              <p className="mb-2 text-xs text-white/45">Quickly execute the active service with a custom prompt.</p>
+              <p className="mb-1 text-sm font-semibold text-white/90">{copy.manualRun}</p>
+              <p className="mb-2 text-xs text-white/45">{copy.manualRunHint}</p>
 
               <textarea
                 rows={4}
@@ -254,7 +357,7 @@ export function ServiceOrchestrator() {
                   onClick={() => setManualPrompt(descriptor.defaultPrompt)}
                   className="rounded-lg border border-white/15 bg-white/[0.04] px-2.5 py-1.5 text-xs font-semibold text-white/75 hover:bg-white/[0.08]"
                 >
-                  Use Default
+                  {copy.useDefault}
                 </button>
                 <button
                   type="button"
@@ -263,7 +366,7 @@ export function ServiceOrchestrator() {
                   className="omni-button inline-flex items-center justify-center gap-2 rounded-lg px-3 py-1.5 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   {running ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
-                  Run Worker
+                  {copy.runWorker}
                 </button>
               </div>
             </section>
@@ -271,9 +374,9 @@ export function ServiceOrchestrator() {
 
           <div className="mt-4 grid gap-4 xl:grid-cols-[1fr_1fr]">
             <section className="rounded-xl border border-white/10 bg-black/20 p-3">
-              <p className="mb-2 text-sm font-semibold text-white/90">Linked References</p>
+              <p className="mb-2 text-sm font-semibold text-white/90">{copy.linkedReferences}</p>
               {linkedReferences.length === 0 ? (
-                <p className="text-xs text-white/45">No references bridged yet.</p>
+                <p className="text-xs text-white/45">{copy.noReferences}</p>
               ) : (
                 <div className="space-y-1.5">
                   {linkedReferences.slice(0, 5).map((asset) => (
@@ -291,15 +394,15 @@ export function ServiceOrchestrator() {
             </section>
 
             <section className="rounded-xl border border-white/10 bg-black/20 p-3">
-              <p className="text-sm font-semibold text-white/90">Universal State Bridge</p>
-              <p className="mb-2 text-xs text-white/45">Push any output as immediate input to another service.</p>
+              <p className="text-sm font-semibold text-white/90">{copy.stateBridge}</p>
+              <p className="mb-2 text-xs text-white/45">{copy.stateBridgeHint}</p>
               <div className="grid gap-2 md:grid-cols-[1.6fr_1.2fr_auto]">
                 <select
                   className="rounded-lg border border-white/10 bg-slate-950/80 px-2 py-2 text-xs text-white"
                   value={selectedAssetId}
                   onChange={(event) => setSelectedAssetId(event.target.value)}
                 >
-                  {bridgeCandidates.length === 0 && <option value="">No outputs available</option>}
+                  {bridgeCandidates.length === 0 && <option value="">{copy.noOutputs}</option>}
                   {bridgeCandidates.map((asset) => (
                     <option key={asset.id} value={asset.id}>
                       {asset.title}
@@ -314,7 +417,7 @@ export function ServiceOrchestrator() {
                 >
                   {OMNI_SERVICES.map((service) => (
                     <option key={service.id} value={service.id}>
-                      {service.title}
+                      {getLocalizedService(service.id, localeCode).title}
                     </option>
                   ))}
                 </select>
@@ -325,7 +428,7 @@ export function ServiceOrchestrator() {
                   disabled={!selectedAssetId}
                   onClick={() => bridgeAssetToService(selectedAssetId, targetServiceId)}
                 >
-                  Push Input
+                  {copy.pushInput}
                 </button>
               </div>
               <div className="mt-2 flex flex-wrap gap-1.5">
@@ -338,7 +441,7 @@ export function ServiceOrchestrator() {
                       onClick={() => setTargetServiceId(service.id)}
                       className="rounded-full border border-white/10 bg-white/[0.03] px-2.5 py-1 text-[11px] text-white/72 transition-colors hover:bg-white/[0.09]"
                     >
-                      {service.short}
+                        {getLocalizedService(service.id, localeCode).short}
                     </button>
                   ))}
               </div>
@@ -346,7 +449,7 @@ export function ServiceOrchestrator() {
           </div>
 
           <AnimatePresence>
-            {showAdvanced && (
+              {showAdvanced && isExpertMode && (
               <motion.div
                 initial={{ opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -362,8 +465,8 @@ export function ServiceOrchestrator() {
                 />
 
                 <section className="rounded-xl border border-white/10 bg-black/25 p-3">
-                  <p className="mb-1 text-sm font-semibold text-white/90">Expert Panel</p>
-                  <p className="mb-3 text-xs text-white/45">Seed, Sampling, Weights, and Temperature controls.</p>
+                  <p className="mb-1 text-sm font-semibold text-white/90">{copy.expertPanel}</p>
+                  <p className="mb-3 text-xs text-white/45">{copy.expertHint}</p>
                   <div className="space-y-2.5">
                     <ExpertField
                       label="Seed"

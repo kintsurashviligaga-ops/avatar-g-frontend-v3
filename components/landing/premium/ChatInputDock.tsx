@@ -14,7 +14,7 @@ export function ChatInputDock() {
   const { language } = useLanguage()
   const router = useRouter()
   const [value, setValue] = useState('')
-  const [focused, setFocused] = useState(false)
+  const [_focused, setFocused] = useState(false)
 
   const handleSubmit = useCallback(() => {
     const trimmed = value.trim()

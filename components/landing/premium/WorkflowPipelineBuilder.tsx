@@ -8,6 +8,7 @@
 
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
+import Image from 'next/image'
 import Link from 'next/link'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
 import { SERVICES, type ServiceDefinition } from '@/lib/services/catalog'
@@ -179,7 +180,7 @@ export function WorkflowPipelineBuilder({ createdAvatar }: WorkflowPipelineBuild
           <p className="text-sm sm:text-base max-w-lg mx-auto" style={{ color: 'rgba(255,255,255,0.45)' }}>{c.sub}</p>
           {createdAvatar && (
             <div className="inline-flex items-center gap-2 mt-4 px-4 py-2 rounded-xl" style={{ background: 'rgba(34,211,238,0.08)', border: '1px solid rgba(34,211,238,0.2)' }}>
-              <img src={createdAvatar} alt="" className="w-7 h-7 rounded-lg object-cover" style={{ border: '1px solid rgba(34,211,238,0.3)' }} />
+                <Image src={createdAvatar} alt="" width={120} height={120} className="w-7 h-7 rounded-lg object-cover" style={{ border: '1px solid rgba(34,211,238,0.3)' }} />
               <span className="text-xs font-bold" style={{ color: '#22d3ee' }}>Avatar ready</span>
               <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: '#34d399', boxShadow: '0 0 6px #34d399' }} />
             </div>

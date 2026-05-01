@@ -12,7 +12,7 @@
  *   - lib/router/agentGRouter.ts (provider routing)
  */
 
-import type { AgentType, WorkerType, LocaleCode, StylePreset } from '@/types/core';
+import type { AgentType, WorkerType, LocaleCode } from '@/types/core';
 import type { MediaType, ExportFormat } from '@/lib/services/catalog';
 
 // ─── Agent Contract Interface ────────────────────────────────────────────────

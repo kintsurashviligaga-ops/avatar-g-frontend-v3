@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { DASHBOARD_NAV_SECTIONS } from './hyperframe.config';
+import MatildaVoiceChat from './MatildaVoiceChat';
 
 // ─── Credits widget ───────────────────────────────────────────────────────────
 
@@ -66,16 +67,17 @@ export default function DashboardShell({ children, locale = 'ka' }: DashboardShe
 
   if (isOmniRoot) {
     return (
-      <div className="hf-dashboard-shell flex h-screen overflow-hidden">
+      <div className="hf-dashboard-shell flex h-[var(--app-screen-height)] min-h-[var(--app-screen-height)] overflow-hidden">
         <main className="hf-main-wrap hf-main-content flex-1 overflow-hidden">
           <div className="h-full w-full">{children}</div>
         </main>
+        <MatildaVoiceChat locale={locale} />
       </div>
     );
   }
 
   return (
-    <div className="hf-dashboard-shell flex h-screen overflow-hidden">
+    <div className="hf-dashboard-shell flex h-[var(--app-screen-height)] min-h-[var(--app-screen-height)] overflow-hidden">
 
       {/* ── Mobile backdrop ─────────────────────────────────────────── */}
       {sidebarOpen && (
@@ -209,6 +211,7 @@ export default function DashboardShell({ children, locale = 'ka' }: DashboardShe
           <div className="min-h-full px-3 py-4 sm:px-4 lg:px-6 lg:py-5">{children}</div>
         </main>
       </div>
+      <MatildaVoiceChat locale={locale} />
     </div>
   );
 }

@@ -8,7 +8,7 @@
 'use client';
 
 import { useMemo } from 'react';
-import { getAgentContract, getHandoffTargets, type AgentContract } from '@/lib/agents/contracts';
+import { getHandoffTargets, type AgentContract } from '@/lib/agents/contracts';
 
 interface AgentHandoffSuggestionsProps {
   currentAgentId: string;

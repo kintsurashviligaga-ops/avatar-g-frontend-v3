@@ -539,7 +539,7 @@ function SoftwareScene({ c1, c2 }: SceneProps) {
 }
 
 /* ─── 14. Business — Intelligence Dashboard ───────────────────────── */
-function BusinessScene({ c1, c2 }: SceneProps) {
+function BusinessScene({ c1, c2: _c2 }: SceneProps) {
   return (
     <g>
       {/* main chart area */}

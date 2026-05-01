@@ -6,6 +6,7 @@
  */
 
 import type { FCAttachment } from './types'
+import Image from 'next/image'
 
 interface Props {
   attachments: FCAttachment[]
@@ -21,7 +22,7 @@ export function UploadPreviewTray({ attachments, onRemove }: Props) {
         {attachments.map(att => (
           <div key={att.id} className="chat-attachment">
             {att.kind === 'image' && att.localPreviewUrl ? (
-              <img src={att.localPreviewUrl} alt={att.fileName} />
+              <Image src={att.localPreviewUrl} alt={att.fileName} width={56} height={56} unoptimized className="w-full h-full object-cover" />
             ) : (
               <div className="w-full h-full flex items-center justify-center text-xs" style={{ backgroundColor: 'var(--color-surface)', color: 'var(--color-text-secondary)' }}>
                 {att.kind === 'video' ? '🎬' : att.kind === 'audio' ? '🎵' : '📎'}

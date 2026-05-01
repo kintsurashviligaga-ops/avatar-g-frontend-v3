@@ -45,7 +45,7 @@ export default function ServicePageClient(props: ServicePageClientProps) {
     return () => subscription.unsubscribe();
   }, [demoMode]);
 
-  const toggleView = useCallback(() => {
+  const _toggleView = useCallback(() => {
     setViewMode(v => v === 'workspace' ? 'chat' : 'workspace');
   }, []);
 

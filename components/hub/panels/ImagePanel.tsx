@@ -56,7 +56,7 @@ const SAMPLE_OUTPUTS = ['from-blue-600 to-violet-700', 'from-orange-600 to-red-7
 
 // ─── Component ────────────────────────────────────────────────
 
-export function ImagePanel({ locale, callbacks }: { locale: string; callbacks?: PanelRunCallbacks }) {
+export function ImagePanel({ locale: _locale, callbacks }: { locale: string; callbacks?: PanelRunCallbacks }) {
   const [style,    setStyle]    = useState('photorealistic');
   const [ratio,    setRatio]    = useState('1:1');
   const [lighting, setLighting] = useState('studio');

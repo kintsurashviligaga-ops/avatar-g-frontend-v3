@@ -8,9 +8,9 @@
  */
 
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronDown, X } from 'lucide-react';
+import { X } from 'lucide-react';
 import { ICON_MAP } from './icons';
-import type { ServiceChatConfig, ToolPanel, ToolOption } from './types';
+import type { ServiceChatConfig, ToolOption } from './types';
 
 interface Props {
   config: ServiceChatConfig;

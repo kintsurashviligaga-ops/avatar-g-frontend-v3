@@ -7,7 +7,7 @@
  * Connects services: Avatar → Video → Music → Export
  */
 
-import { useCallback, useState } from 'react';
+import { useCallback } from 'react';
 import {
   ReactFlow,
   Node,
@@ -72,7 +72,7 @@ function ActionNode({ data }: { data: { label: string; action: string } }) {
 }
 
 export default function WorkflowBuilder() {
-  const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
+  const [nodes, _setNodes, onNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
 
   const onConnect = useCallback(

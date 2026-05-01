@@ -4,12 +4,7 @@ import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
-import {
-  UserCircle2, Video, Music2, ImageIcon, Bot, Workflow, Zap,
-  TrendingUp, Play, CheckCircle2, Clock, ArrowRight, Plus,
-  Sparkles, Activity, Star, Package, BarChart3, Flame,
-  ShoppingCart, Code2, Briefcase, Coins,
-} from 'lucide-react';
+import { UserCircle2, Video, Music2, ImageIcon, Bot, Workflow, Zap, TrendingUp, Play, CheckCircle2, ArrowRight, Plus, Code2 } from 'lucide-react';
 
 // ─── Static data ───────────────────────────────────────────────
 

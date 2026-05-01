@@ -16,6 +16,14 @@ export const revalidate = 0;
 export const metadata: Metadata = {
   metadataBase: new URL(metadataBaseUrl),
   manifest: '/manifest.json',
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'black-translucent',
+    title: 'Avatar G',
+  },
+  formatDetection: {
+    telephone: false,
+  },
   icons: {
     icon: '/icons/favicon.ico',
     shortcut: '/icons/favicon.ico',

@@ -18,7 +18,32 @@ export interface Avatar {
   createdAt: Date;
 }
 
-export type ServiceType = 'avatar' | 'video' | 'image' | 'music' | 'text' | 'workflow' | 'interior' | 'game';
+export type ServiceType =
+  | 'avatar'
+  | 'video'
+  | 'image'
+  | 'music'
+  | 'game-creation'
+  | 'interior-design'
+  | 'prompt-builder'
+  | 'terminal-coding'
+  | 'text'
+  | 'workflow'
+  | 'interior'
+  | 'game'
+  | 'agent-g'
+  | 'business-strategy'
+  | 'executive-ops'
+  | 'avatar-studio'
+  | 'image-gen'
+  | 'video-gen'
+  | 'voice-synth'
+  | 'music-lab'
+  | 'copy-engine'
+  | 'workflow-automation'
+  | 'analytics-hub'
+  | 'commerce-pilot'
+  | 'fulfillment-hq';
 
 export interface WorkflowState {
   activeWorkflow: string | null;
@@ -29,7 +54,7 @@ export interface WorkflowState {
 export interface WorkflowStep {
   id: string;
   service: ServiceType;
-  config: Record<string, any>;
+  config: Record<string, unknown>;
   status: 'pending' | 'running' | 'completed' | 'error';
 }
 
@@ -83,7 +108,7 @@ interface GlobalState {
 }
 
 export const useGlobalStore = create<GlobalState>()(
-  subscribeWithSelector((set, get) => ({
+  subscribeWithSelector((set, _get) => ({
     user: null,
     avatar: null,
     activeService: 'avatar',

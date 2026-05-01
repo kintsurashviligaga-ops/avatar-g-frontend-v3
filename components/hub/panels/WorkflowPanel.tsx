@@ -6,11 +6,8 @@
  */
 
 import { useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import {
-  Play, Plus, Trash2, ChevronRight, Zap, CheckCircle2,
-  Clock, Loader2, ArrowRight, Sparkles, GripVertical,
-} from 'lucide-react';
+import { motion } from 'framer-motion';
+import { Play, Plus, Trash2, ChevronRight, Zap, CheckCircle2, Loader2, ArrowRight, Sparkles, GripVertical } from 'lucide-react';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
 import { beginPanelShellRun, createTextPreview } from './panelShellBridge';
@@ -114,7 +111,7 @@ export function WorkflowPanel({ locale, callbacks }: { locale: string; callbacks
   const [steps,    setSteps]    = useState<PipelineStep[]>([]);
   const [running,  setRunning]  = useState(false);
   const [done,     setDone]     = useState(false);
-  const [selected, setSelected] = useState<string | null>(null);
+  const [_selected, _setSelected] = useState<string | null>(null);
 
   const loadTemplate = (tpl: Template) => {
     setDone(false);

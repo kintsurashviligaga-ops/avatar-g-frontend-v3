@@ -36,7 +36,7 @@ export function InputComposer({
 }: Props) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [focused, setFocused] = useState(false);
+  const [_focused, setFocused] = useState(false);
   const placeholder = getPlaceholder(mode, language);
 
   // Auto-resize textarea

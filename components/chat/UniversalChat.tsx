@@ -24,7 +24,7 @@ import { useReducer, useCallback, useRef, useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { MessageCircle } from 'lucide-react';
 import { chatReducer, initialChatState, ChatContext } from '@/lib/chat/store.legacy';
-import type { ChatMessage, ChatAttachment } from '@/lib/chat/types.legacy';
+import type { ChatMessage } from '@/lib/chat/types.legacy';
 import { classifyIntent } from '@/lib/agents/orchestrator';
 import { getAgentContract } from '@/lib/agents/contracts';
 

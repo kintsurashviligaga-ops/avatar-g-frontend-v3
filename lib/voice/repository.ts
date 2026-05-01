@@ -14,7 +14,7 @@ function nowIso(): string {
   return new Date().toISOString();
 }
 
-function useMemoryStore(): boolean {
+function shouldUseMemoryStore(): boolean {
   const supabaseUrl = String(process.env.NEXT_PUBLIC_SUPABASE_URL || '').trim();
   const serviceRole = String(process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
 
@@ -55,7 +55,7 @@ function normalizeRow(row: PartialVoiceCall): VoiceCallRecord {
 export async function insertVoiceCall(row: PartialVoiceCall): Promise<VoiceCallRecord> {
   const normalized = normalizeRow(row);
 
-  if (useMemoryStore()) {
+  if (shouldUseMemoryStore()) {
     const store = memoryStore();
     store.unshift(normalized);
     return normalized;
@@ -97,7 +97,7 @@ export async function getVoiceCallByVapiId(vapiCallId: string): Promise<VoiceCal
     return null;
   }
 
-  if (useMemoryStore()) {
+  if (shouldUseMemoryStore()) {
     return memoryStore().find((row) => row.vapi_call_id === vapiCallId) || null;
   }
 
@@ -124,7 +124,7 @@ export async function updateVoiceCallById(callId: string, updates: PartialVoiceC
     return null;
   }
 
-  if (useMemoryStore()) {
+  if (shouldUseMemoryStore()) {
     const store = memoryStore();
     const index = store.findIndex((row) => row.id === callId);
     if (index === -1) {
@@ -194,7 +194,7 @@ export async function listVoiceCallsByUserId(userId: string, limit = 10): Promis
     return [];
   }
 
-  if (useMemoryStore()) {
+  if (shouldUseMemoryStore()) {
     return memoryStore()
       .filter((row) => row.user_id === userId)
       .sort((a, b) => b.created_at.localeCompare(a.created_at))
@@ -222,7 +222,7 @@ export async function listVoiceCallsByUserId(userId: string, limit = 10): Promis
 }
 
 export async function appendVoiceCallMetadata(callId: string, patch: Record<string, unknown>): Promise<VoiceCallRecord | null> {
-  const existing = useMemoryStore()
+  const existing = shouldUseMemoryStore()
     ? memoryStore().find((row) => row.id === callId) || null
     : null;
 
@@ -235,7 +235,7 @@ export async function appendVoiceCallMetadata(callId: string, patch: Record<stri
     });
   }
 
-  if (!useMemoryStore()) {
+  if (!shouldUseMemoryStore()) {
     const supabase = createServiceRoleClient();
     const { data } = await supabase
       .from('voice_calls')

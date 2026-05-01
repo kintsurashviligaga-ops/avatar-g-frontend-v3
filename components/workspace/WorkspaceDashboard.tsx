@@ -3,13 +3,7 @@
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import Link from 'next/link'
-import {
-  UserCircle2, Video, Music2, Camera, ImageIcon, FileText, Wand2, Workflow,
-  ShoppingCart, Cpu, Code2, Briefcase, Plane, Scissors, Eye, Film,
-  Play, Zap, BarChart3, CheckCircle2, Clock, ArrowRight, Sparkles,
-  Bot, Globe, TrendingUp, Layers, Target, Star, Activity, Plus,
-  ChevronRight, Package, Flame, Radio,
-} from 'lucide-react'
+import { UserCircle2, Video, Music2, Camera, ImageIcon, FileText, Wand2, Workflow, ShoppingCart, Cpu, Briefcase, Scissors, Play, Zap, CheckCircle2, Clock, ArrowRight, Sparkles, Bot, TrendingUp, Layers, Activity, Plus, ChevronRight, Package, Flame, Radio } from 'lucide-react';
 
 // ─── Types & Data ─────────────────────────────────────────────
 type ServiceId = 'avatar' | 'video' | 'editing' | 'music' | 'photo' | 'image' | 'media' | 'text' | 'prompt' | 'visual-intel' | 'workflow' | 'shop' | 'agent-g' | 'software' | 'business' | 'tourism'

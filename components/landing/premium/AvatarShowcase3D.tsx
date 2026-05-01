@@ -178,10 +178,10 @@ function Particles({ count = 40 }: { count?: number }) {
     const t = clock.getElapsedTime()
     const posAttr = ref.current.geometry.attributes.position
     if (!posAttr?.array) return
-    const arr = posAttr.array as unknown as Float32Array
+    const arr = posAttr.array as Float32Array
     for (let i = 0; i < count; i++) {
-      ;(arr as any)[i * 3 + 1] = (((arr as any)[i * 3 + 1]! + 0.003) % 3)
-      ;(arr as any)[i * 3] += Math.sin(t + i) * 0.0005
+      arr[i * 3 + 1] = ((arr[i * 3 + 1] ?? 0) + 0.003) % 3
+      arr[i * 3] = (arr[i * 3] ?? 0) + Math.sin(t + i) * 0.0005
     }
     posAttr.needsUpdate = true
   })

@@ -8,6 +8,7 @@
  */
 
 import { useRef, useCallback, useEffect, useState } from 'react';
+import Image from 'next/image';
 import { motion } from 'framer-motion';
 import { Paperclip, Mic, MicOff, Send, StopCircle, X } from 'lucide-react';
 import type { ChatAttachment } from '@/lib/chat/types.legacy';
@@ -34,7 +35,7 @@ export function ChatComposer({
 }: Props) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [focused, setFocused] = useState(false);
+  const [_focused, setFocused] = useState(false);
   const placeholder = getPlaceholder(mode, language);
 
   // Auto-resize textarea
@@ -106,7 +107,10 @@ export function ChatComposer({
               transition={{ delay: idx * 0.05 }}
             >
               {att.preview ? (
-                <img src={att.preview} alt={att.name}
+                <Image src={att.preview} alt={att.name}
+                  width={56}
+                  height={56}
+                  unoptimized
                   className="w-14 h-14 rounded-xl object-cover shadow-lg"
                   style={{ border: '1px solid var(--color-border)' }} />
               ) : (

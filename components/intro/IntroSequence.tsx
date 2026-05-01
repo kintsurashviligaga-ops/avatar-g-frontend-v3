@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { motion, AnimatePresence, useMotionValue, useSpring } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 
 // ─── Particle ─────────────────────────────────────────────────────────────────
 
@@ -50,7 +50,7 @@ export default function IntroSequence({ onComplete }: IntroSequenceProps) {
   const [phase, setPhase] = useState<'particles' | 'logo' | 'tagline' | 'scanlines' | 'iris' | 'done'>('particles');
   const [particles] = useState(() => generateParticles(72));
   const [irisScale, setIrisScale] = useState(0);
-  const animFrameRef = useRef<number>(0);
+  const _animFrameRef = useRef<number>(0);
   const startRef = useRef<number>(0);
   const irisRef = useRef<number>(0);
 

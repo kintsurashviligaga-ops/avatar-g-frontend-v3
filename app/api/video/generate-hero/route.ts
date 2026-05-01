@@ -9,7 +9,7 @@ import Replicate from 'replicate';
 
 const PROMPT = `Create a 30-second cinematic commercial for an AI platform called "MyAvatar". Style: photorealistic, cinematic, futuristic AI technology commercial. Visual tone: dark modern UI, deep black background, soft blue and violet glow, futuristic digital environment, premium SaaS interface. Scenes: Logo intro with glow reveal, platform interface with AI chat, user typing prompt, multi-agent AI network (Avatar, Video, Music, Subtitle agents), avatar builder generating photorealistic avatar, video creation with music and subtitles, full platform ecosystem zoom-out, Agent G automation, final montage with logo. Camera: smooth cinematic zooms, clean UI transitions. Lighting: soft futuristic blue highlights. Quality: ultra realistic premium technology commercial.`;
 
-export async function POST(req: NextRequest) {
+export async function POST(_req: NextRequest) {
   const token = process.env.REPLICATE_API_TOKEN;
   if (!token) {
     return NextResponse.json({ error: 'REPLICATE_API_TOKEN not configured' }, { status: 500 });

@@ -389,6 +389,44 @@ const LOCALIZED_SERVICE_META: Record<string, LocalizedServiceMeta> = {
       ru: ['Маршрут зарезервирован', 'Unified service shell готов', 'Готова интеграция агента', 'Готова локализация (KA/EN/RU)'],
     },
   },
+  'prompt-builder': {
+    icon: '⌥',
+    agentId: 'content-agent',
+    headline: {
+      en: 'Prompt Builder',
+      ka: 'პრომპტ ბილდერი',
+      ru: 'Конструктор промптов',
+    },
+    description: {
+      en: 'Build structured, optimized prompts for any AI model. Design, test, and export reusable prompt templates for consistent AI generation.',
+      ka: 'შექმენი სტრუქტურირებული, ოპტიმიზებული prompt-ები ნებისმიერი AI მოდელისთვის. დაადიზაინე, შეამოწმე და ექსპორტე მრავალჯერადი შაბლონები.',
+      ru: 'Создавайте структурированные, оптимизированные промпты для любой AI-модели. Проектируйте, тестируйте и экспортируйте многоразовые шаблоны.',
+    },
+    features: {
+      en: ['Structured prompt engineering', 'Multi-model support (Midjourney, DALL-E, SD)', 'Prompt library & export', 'Negative prompt sets'],
+      ka: ['სტრუქტურირებული prompt ინჟინერია', 'მრავალი მოდელის მხარდაჭერა', 'Prompt ბიბლიოთეკა და ექსპორტი', 'ნეგატიური prompt-ები'],
+      ru: ['Структурированная инженерия промптов', 'Поддержка нескольких моделей', 'Библиотека и экспорт промптов', 'Наборы негативных промптов'],
+    },
+  },
+  'terminal': {
+    icon: '>_',
+    agentId: 'dev-agent',
+    headline: {
+      en: 'Terminal & Coding',
+      ka: 'ტერმინალი და კოდინგი',
+      ru: 'Терминал и кодинг',
+    },
+    description: {
+      en: 'AI-powered code generation, scripts, and CLI tools. Write, debug, and deploy code in any language with intelligent assistance.',
+      ka: 'AI-ით კოდის გენერაცია, სკრიპტები და CLI ინსტრუმენტები. დაწერე, გამართე და დეპლოი გააკეთე ნებისმიერ ენაზე.',
+      ru: 'AI-генерация кода, скрипты и CLI-инструменты. Пишите, отлаживайте и деплойте код на любом языке.',
+    },
+    features: {
+      en: ['Code generation (any language)', 'CLI scripts & automation', 'Debug & refactor assistance', 'API & bot implementation'],
+      ka: ['კოდის გენერაცია (ნებისმიერი ენა)', 'CLI სკრიპტები და ავტომატიზაცია', 'დებაგი და რეფაქტორინგი', 'API და ბოტის იმპლემენტაცია'],
+      ru: ['Генерация кода (любой язык)', 'CLI-скрипты и автоматизация', 'Отладка и рефакторинг', 'Реализация API и ботов'],
+    },
+  },
 };
 
 // Legacy flat English-only format for backward compatibility

@@ -7,8 +7,8 @@
 'use client';
 
 import { createContext, useContext, type Dispatch } from 'react';
-import type { ChatState, ChatSession, ChatMode, ChatAttachment, SuggestionChip, PanelLayout } from '../types';
-import type { ChatMessage } from '../types';
+import type { ChatState, ChatSession, ChatMode, ChatAttachment, PanelLayout } from '../types';
+
 
 // ─── Create Initial Session ──────────────────────────────────────────────────
 

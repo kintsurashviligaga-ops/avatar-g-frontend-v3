@@ -8,11 +8,7 @@
 
 import Link from 'next/link';
 import type { ElementType } from 'react';
-import {
-  ArrowRight, Sparkles, ExternalLink,
-  Video, Camera, Gamepad2, Sofa, Scissors, Film, Eye, Wand2,
-  ShoppingCart, Code2, Briefcase, Plane, Zap, Bot,
-} from 'lucide-react';
+import { ArrowRight, Sparkles, ExternalLink, Camera, Gamepad2, Sofa, Scissors, Film, Eye, Wand2, ShoppingCart, Code2, Briefcase, Plane, Zap, Bot } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { SupportedLocale } from '@/types/dashboard';
 

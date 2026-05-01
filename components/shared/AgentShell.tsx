@@ -128,7 +128,7 @@ export function AgentShell({
   contextLabel = 'Additional context (optional)',
   backHref = '/dashboard',
 }: AgentShellProps) {
-  const { run, loading, error, lastResult, canAfford, clearError } = useAiPipeline(agent);
+  const { run, loading, error, lastResult: _lastResult, canAfford, clearError } = useAiPipeline(agent);
 
   const [prompt,  setPrompt]  = useState('');
   const [context, setContext] = useState('');

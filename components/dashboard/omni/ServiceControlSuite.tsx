@@ -93,80 +93,7 @@ export function ServiceControlSuite({ serviceId, accent, settings, setSetting }:
     </section>
   );
 
-  if (serviceId === 'agent-g') {
-    return surface(
-      'Agent Routing Matrix',
-      'Primary orchestration lanes and worker permissions',
-      <div className="grid gap-2">
-        <label className="text-xs text-white/68">
-          Router mode
-          <select
-            className="mt-1 w-full rounded-lg border border-white/10 bg-slate-900/80 px-2 py-1.5 text-sm text-white"
-            value={readText('routerMode', 'balanced')}
-            onChange={(event) => setSetting('routerMode', event.target.value)}
-          >
-            <option value="balanced">Balanced</option>
-            <option value="aggressive">Aggressive</option>
-            <option value="safety-first">Safety First</option>
-          </select>
-        </label>
-        <RangeField
-          label="Chain Depth"
-          value={readNumber('chainDepth', 4)}
-          min={1}
-          max={10}
-          onChange={(value) => setSetting('chainDepth', value)}
-        />
-      </div>,
-    );
-  }
-
-  if (serviceId === 'business-strategy') {
-    return surface(
-      'Business Data Grid',
-      'Revenue vectors and strategy confidence layers',
-      <div className="space-y-2">
-        <div className="grid grid-cols-3 gap-2 text-xs">
-          <div className="rounded border border-white/10 bg-white/[0.04] p-2 text-white/70">CAC</div>
-          <div className="rounded border border-white/10 bg-white/[0.04] p-2 text-white/70">LTV</div>
-          <div className="rounded border border-white/10 bg-white/[0.04] p-2 text-white/70">Retention</div>
-        </div>
-        <RangeField
-          label="Forecast Horizon (quarters)"
-          value={readNumber('horizon', 3)}
-          min={1}
-          max={12}
-          onChange={(value) => setSetting('horizon', value)}
-        />
-        <ToggleCell label="Anomaly Scan" checked={readBool('anomalyScan', true)} onChange={(value) => setSetting('anomalyScan', value)} />
-      </div>,
-    );
-  }
-
-  if (serviceId === 'executive-ops') {
-    return surface(
-      'Executive Risk Board',
-      'Priority lanes for decision velocity',
-      <div className="space-y-2">
-        <div className="grid grid-cols-3 gap-2 text-[11px]">
-          {['Risk', 'Impact', 'Urgency'].map((cell) => (
-            <div key={cell} className="rounded border border-white/10 bg-white/[0.04] p-2 text-white/72">
-              {cell}
-            </div>
-          ))}
-        </div>
-        <RangeField
-          label="Board Alert Threshold"
-          value={readNumber('alertThreshold', 61)}
-          min={0}
-          max={100}
-          onChange={(value) => setSetting('alertThreshold', value)}
-        />
-      </div>,
-    );
-  }
-
-  if (serviceId === 'avatar-studio') {
+  if (serviceId === 'avatar') {
     return surface(
       'Avatar Canvas Lab',
       'Pose, expression, and identity blend controls',
@@ -190,7 +117,7 @@ export function ServiceControlSuite({ serviceId, accent, settings, setSetting }:
     );
   }
 
-  if (serviceId === 'image-gen') {
+  if (serviceId === 'image') {
     return surface(
       'Image Canvas Tools',
       'Brush, aspect, and composition controls',
@@ -227,7 +154,7 @@ export function ServiceControlSuite({ serviceId, accent, settings, setSetting }:
     );
   }
 
-  if (serviceId === 'video-gen') {
+  if (serviceId === 'video') {
     return surface(
       'Video Timeline Deck',
       'Scene sequencing and pacing controls',
@@ -253,35 +180,38 @@ export function ServiceControlSuite({ serviceId, accent, settings, setSetting }:
     );
   }
 
-  if (serviceId === 'voice-synth') {
+  if (serviceId === 'game-creation') {
     return surface(
-      'Waveform Command Deck',
-      'Voice waveform, pitch, and articulation',
+      'Game Systems Board',
+      'Loop design, progression pacing, and balance confidence',
       <div className="space-y-2">
-        <div className="flex h-12 items-end gap-1 rounded border border-white/10 bg-slate-950/70 p-2">
-          {[18, 24, 14, 34, 22, 30, 17, 28, 20, 32, 15, 25].map((h, i) => (
-            <span key={`${h}-${i}`} className="w-1.5 rounded-sm bg-cyan-200/80" style={{ height: h }} />
+        <div className="grid grid-cols-3 gap-2 text-[11px]">
+          {['Core Loop', 'Progression', 'Rewards'].map((cell) => (
+            <div key={cell} className="rounded border border-white/10 bg-white/[0.04] p-2 text-white/72">
+              {cell}
+            </div>
           ))}
         </div>
         <RangeField
-          label="Pitch Curve"
-          value={readNumber('pitch', 48)}
-          min={0}
-          max={100}
-          onChange={(value) => setSetting('pitch', value)}
+          label="Gameplay Loops"
+          value={readNumber('gameplayLoops', 3)}
+          min={1}
+          max={8}
+          onChange={(value) => setSetting('gameplayLoops', value)}
         />
         <RangeField
-          label="Diction"
-          value={readNumber('diction', 66)}
+          label="Balance Focus"
+          value={readNumber('balanceFocus', 74)}
           min={0}
           max={100}
-          onChange={(value) => setSetting('diction', value)}
+          onChange={(value) => setSetting('balanceFocus', value)}
         />
+        <ToggleCell label="Progression Map" checked={readBool('progressionMap', true)} onChange={(value) => setSetting('progressionMap', value)} />
       </div>,
     );
   }
 
-  if (serviceId === 'music-lab') {
+  if (serviceId === 'music') {
     return surface(
       'Music Sequencer Grid',
       'Pattern lanes, tempo, and mastering emphasis',
@@ -313,10 +243,10 @@ export function ServiceControlSuite({ serviceId, accent, settings, setSetting }:
     );
   }
 
-  if (serviceId === 'copy-engine') {
+  if (serviceId === 'prompt-builder') {
     return surface(
-      'Copy Script Builder',
-      'Markdown-aware script sections and tone control',
+      'Prompt Script Builder',
+      'Template sections, structure, and output pressure',
       <div className="space-y-2">
         <div className="grid grid-cols-2 gap-1.5">
           <ToggleCell label="Hook" checked={readBool('section-hook', true)} onChange={(value) => setSetting('section-hook', value)} />
@@ -335,11 +265,30 @@ export function ServiceControlSuite({ serviceId, accent, settings, setSetting }:
     );
   }
 
-  if (serviceId === 'workflow-automation') {
+  if (serviceId === 'terminal-coding') {
     return surface(
-      'Workflow Lane Composer',
-      'Lane routing, retries, and failover controls',
+      'Terminal Runbook Matrix',
+      'Command routing, safety constraints, and retry policies',
       <div className="space-y-2">
+        <label className="text-xs text-white/68">
+          Router mode
+          <select
+            className="mt-1 w-full rounded-lg border border-white/10 bg-slate-900/80 px-2 py-1.5 text-sm text-white"
+            value={readText('routerMode', 'balanced')}
+            onChange={(event) => setSetting('routerMode', event.target.value)}
+          >
+            <option value="balanced">Balanced</option>
+            <option value="aggressive">Aggressive</option>
+            <option value="safety-first">Safety First</option>
+          </select>
+        </label>
+        <RangeField
+          label="Chain Depth"
+          value={readNumber('chainDepth', 4)}
+          min={1}
+          max={10}
+          onChange={(value) => setSetting('chainDepth', value)}
+        />
         <RangeField
           label="Parallel Lanes"
           value={readNumber('lanes', 4)}
@@ -355,81 +304,61 @@ export function ServiceControlSuite({ serviceId, accent, settings, setSetting }:
           onChange={(value) => setSetting('retries', value)}
         />
         <ToggleCell label="Failover" checked={readBool('failover', true)} onChange={(value) => setSetting('failover', value)} />
+        <ToggleCell label="Shell Safety" checked={readBool('shellSafety', true)} onChange={(value) => setSetting('shellSafety', value)} />
       </div>,
     );
   }
 
-  if (serviceId === 'analytics-hub') {
+  if (serviceId === 'interior-design') {
     return surface(
-      'Analytics Data Grid',
-      'KPI thresholding and anomaly confidence',
+      'Interior Layout Studio',
+      'Space proportions, material mood, and furniture balance',
       <div className="space-y-2">
-        <div className="grid grid-cols-4 gap-1.5 text-[11px]">
-          {['CTR', 'CVR', 'ROAS', 'CAC'].map((kpi) => (
-            <div key={kpi} className="rounded border border-white/10 bg-white/[0.04] p-1.5 text-center text-white/72">
-              {kpi}
+        <div className="grid grid-cols-3 gap-1.5 text-[11px]">
+          {['Flow', 'Light', 'Texture'].map((item) => (
+            <div key={item} className="rounded border border-white/10 bg-white/[0.04] p-1.5 text-center text-white/72">
+              {item}
             </div>
           ))}
         </div>
         <RangeField
-          label="Anomaly Sensitivity"
-          value={readNumber('anomalySensitivity', 57)}
+          label="Layout Precision"
+          value={readNumber('layoutPrecision', 72)}
           min={0}
           max={100}
-          onChange={(value) => setSetting('anomalySensitivity', value)}
-        />
-      </div>,
-    );
-  }
-
-  if (serviceId === 'commerce-pilot') {
-    return surface(
-      'Commerce Offer Matrix',
-      'Price ladders, bundle pressure, and conversion levers',
-      <div className="space-y-2">
-        <RangeField
-          label="Bundle Weight"
-          value={readNumber('bundleWeight', 63)}
-          min={0}
-          max={100}
-          onChange={(value) => setSetting('bundleWeight', value)}
+          onChange={(value) => setSetting('layoutPrecision', value)}
         />
         <RangeField
-          label="Discount Band"
-          value={readNumber('discountBand', 22)}
-          min={0}
-          max={50}
-          onChange={(value) => setSetting('discountBand', value)}
+          label="Style Range"
+          value={readNumber('styleRange', 4)}
+          min={1}
+          max={8}
+          onChange={(value) => setSetting('styleRange', value)}
         />
+        <ToggleCell label="Material Mode" checked={readBool('materialMode', true)} onChange={(value) => setSetting('materialMode', value)} />
       </div>,
     );
   }
 
   return surface(
-    'Fulfillment Operations Grid',
-    'Carrier throughput, lead-time tracking, and queue controls',
+    'Service Control Panel',
+    'Generic controls for this service',
     <div className="space-y-2">
-      <div className="grid grid-cols-3 gap-1.5 text-[11px]">
-        {['Carrier', 'Lead Time', 'Queue'].map((col) => (
-          <div key={col} className="rounded border border-white/10 bg-white/[0.04] p-1.5 text-center text-white/72">
-            {col}
-          </div>
-        ))}
-      </div>
       <RangeField
-        label="SLA Strictness"
-        value={readNumber('slaStrictness', 69)}
+        label="Precision"
+        value={readNumber('precision', 61)}
         min={0}
         max={100}
-        onChange={(value) => setSetting('slaStrictness', value)}
+        onChange={(value) => setSetting('precision', value)}
       />
       <RangeField
-        label="Dispatch Cadence"
-        value={readNumber('dispatchCadence', 46)}
+        label="Throughput"
+        value={readNumber('throughput', 55)}
         min={0}
         max={100}
-        onChange={(value) => setSetting('dispatchCadence', value)}
+        onChange={(value) => setSetting('throughput', value)}
       />
+      <ToggleCell label="Safety Lock" checked={readBool('safetyLock', true)} onChange={(value) => setSetting('safetyLock', value)} />
     </div>,
   );
 }

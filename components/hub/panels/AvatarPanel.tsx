@@ -8,11 +8,7 @@
 
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import {
-  Upload, ScanFace, User, Sparkles, RefreshCw, Download,
-  Share2, Star, Sliders, ChevronRight, Camera, Wand2,
-  ZoomIn, Copy, CheckCircle2, AlertCircle, Loader2,
-} from 'lucide-react';
+import { Upload, ScanFace, User, Sparkles, RefreshCw, Download, Share2, Star, Camera, Wand2, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAiPipeline } from '@/hooks/useAiPipeline';
 import { beginPanelShellRun, createTextPreview } from './panelShellBridge';
@@ -59,7 +55,7 @@ const SAMPLE_OUTPUTS = [
 
 // ─── Component ────────────────────────────────────────────────
 
-export function AvatarPanel({ locale, callbacks }: { locale: string; callbacks?: PanelRunCallbacks }) {
+export function AvatarPanel({ locale: _locale, callbacks }: { locale: string; callbacks?: PanelRunCallbacks }) {
   const [style,      setStyle]      = useState('realistic');
   const [framing,    setFraming]    = useState('portrait');
   const [bg,         setBg]         = useState('studio');

@@ -1,7 +1,16 @@
 'use client';
 
 import { create } from 'zustand';
+import { useGlobalStore, useStore } from '@/lib/store';
+import type { ServiceType } from '@/lib/store';
 import { OMNI_SERVICE_MAP, OMNI_SERVICES } from './services';
+import {
+  formatCountWord,
+  getLocalizedService,
+  localizeBooleanState,
+  localizeCommandLanguage,
+  normalizeOmniLocale,
+} from './i18n';
 import type {
   ActivityLevel,
   ActivityItem,
@@ -23,39 +32,20 @@ const MAX_PENDING_INPUTS = 24;
 const BASELINE_GEL = 2000;
 const DEFAULT_CREDITS = 4200;
 
-const SMALL_NUMBER_WORDS: Record<number, string> = {
-  0: 'zero',
-  1: 'one',
-  2: 'two',
-  3: 'three',
-  4: 'four',
-  5: 'five',
-  6: 'six',
-  7: 'seven',
-  8: 'eight',
-  9: 'nine',
-};
-
-const LANGUAGE_LABELS: Record<CommandLanguage, string> = {
-  ka: 'Georgian',
-  en: 'English',
-  ru: 'Russian',
+const syncGlobalServiceSelection = (serviceId: ServiceId) => {
+  useGlobalStore.getState().setActiveService(serviceId as ServiceType);
+  useStore.getState().setCurrentService(serviceId);
 };
 
 const AUTO_BRIDGE_TARGETS: Record<ServiceId, ServiceId[]> = {
-  'agent-g': ['business-strategy', 'workflow-automation'],
-  'business-strategy': ['executive-ops', 'commerce-pilot'],
-  'executive-ops': ['business-strategy', 'analytics-hub'],
-  'avatar-studio': ['video-gen', 'image-gen'],
-  'image-gen': ['video-gen', 'avatar-studio'],
-  'video-gen': ['copy-engine', 'analytics-hub'],
-  'voice-synth': ['video-gen', 'avatar-studio'],
-  'music-lab': ['video-gen', 'voice-synth'],
-  'copy-engine': ['voice-synth', 'avatar-studio'],
-  'workflow-automation': ['analytics-hub', 'fulfillment-hq'],
-  'analytics-hub': ['executive-ops', 'commerce-pilot'],
-  'commerce-pilot': ['business-strategy', 'fulfillment-hq'],
-  'fulfillment-hq': ['analytics-hub', 'executive-ops'],
+  avatar: ['image', 'video'],
+  video: ['image', 'music'],
+  image: ['video', 'prompt-builder'],
+  music: ['video', 'game-creation'],
+  'game-creation': ['prompt-builder', 'terminal-coding'],
+  'interior-design': ['image', 'video'],
+  'prompt-builder': ['terminal-coding', 'game-creation'],
+  'terminal-coding': ['prompt-builder', 'game-creation'],
 };
 
 const createId = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 9)}`;
@@ -65,7 +55,7 @@ const delay = (ms: number) =>
     setTimeout(resolve, ms);
   });
 
-const numberToLabel = (value: number) => (value < 10 ? (SMALL_NUMBER_WORDS[value] ?? `${value}`) : `${value}`);
+const numberToLabel = (value: number, locale: string) => formatCountWord(value, normalizeOmniLocale(locale));
 
 const createTextImage = (title: string, accent: string, line: string) => {
   const svg = `
@@ -85,33 +75,155 @@ const createTextImage = (title: string, accent: string, line: string) => {
 };
 
 function defaultExpert(serviceId: ServiceId): ExpertSettings {
-  if (serviceId === 'copy-engine') {
+  if (serviceId === 'prompt-builder') {
     return { seed: 11, sampling: 54, weights: 67, temperature: 72 };
   }
-  if (serviceId === 'voice-synth') {
+  if (serviceId === 'music') {
     return { seed: 38, sampling: 62, weights: 74, temperature: 36 };
   }
-  if (serviceId === 'image-gen' || serviceId === 'video-gen') {
+  if (serviceId === 'image' || serviceId === 'video') {
     return { seed: 57, sampling: 70, weights: 64, temperature: 48 };
   }
   return { seed: 29, sampling: 60, weights: 58, temperature: 44 };
 }
 
+const STORE_COPY = {
+  ka: {
+    guestOperator: 'სტუმარი ოპერატორი',
+    guestTier: 'სტუმარი',
+    outputSuffix: 'შედეგი',
+    inputPrefix: 'შეყვანა',
+    summaryTitle: 'შეჯამება',
+    nextActionTitle: 'შემდეგი ნაბიჯი',
+    actionValidate: '- გადაამოწმე დამოკიდებულებები',
+    actionQuality: '- გაუშვი ხარისხის კონტროლის ეტაპი',
+    actionExport: '- გაიტანე აღმასრულებელი ანგარიში',
+    audioBlueprintPrefix: 'აუდიო გეგმა შეიქმნა:',
+    workflowStagedPrefix: 'Workflow ჯაჭვი მომზადდა სერვისისთვის',
+    videoFallback: 'ვიდეო სტორიბორდი მზადაა. რენდერის რიგი სინქრონიზებულია.',
+    initLog: 'Omni-Dashboard ჩაიტვირთა. ერთ-ფანჯრიანი ბრძანების ცენტრი მზადაა.',
+    initChat: 'Primary Agent მზადაა. აღწერე მიზანი და ყველა სერვისს ავტომატურად დავაორკესტრირებ.',
+    routingComplete: 'PrimaryAgent მარშრუტიზაცია დასრულდა:',
+    selectedFrom: 'არჩეულია კონტექსტიდან',
+    workerCompleted: 'დაასრულა პაკეტის გენერაცია live რეჟიმში',
+    bridgeLabel: 'უნივერსალური bridge:',
+    outputSharedWith: 'შედეგი გაეზიარა სერვისებს',
+    assistantFinished: 'ვორკერი დასრულდა.',
+    previewLive: 'შედეგი უკვე ჩანს პრევიუში.',
+    modulesActive: 'მოდული აქტიურია',
+    jobsRunning: 'პროცესი გაშვებულია',
+    assistantDispatched: 'ასისტენტის პასუხი გაგზავნილია',
+    focusSwitched: 'ფოკუსი გადავიდა სერვისზე',
+    commandLanguageSet: 'ბრძანების ენა განახლდა:',
+    multimodalAttached: 'დამატებულია მულტიმოდალური input:',
+    pendingCleared: 'მოლოდინში მყოფი მულტიმოდალური input-ები გასუფთავდა.',
+    processAttached: 'დამუშავე მიმაგრებული მულტიმოდალური input-ები.',
+    attachedInputs: 'მიმაგრებული input-ები',
+    byteUnit: 'ბაიტი',
+    commandReceived: 'PrimaryAgent-მა ბრძანება მიიღო ენაზე',
+    previewFocus: 'პრევიუს ფოკუსი გადავიდა არტეფაქტზე',
+    manualBridge: 'ხელით bridge:',
+    pushedTo: 'გადაიგზავნა სერვისში',
+    activityCleared: 'აქტივობის ჟურნალი გასუფთავდა ოპერატორის მიერ.',
+  },
+  en: {
+    guestOperator: 'Guest Operator',
+    guestTier: 'Guest',
+    outputSuffix: 'Output',
+    inputPrefix: 'Input',
+    summaryTitle: 'SUMMARY',
+    nextActionTitle: 'NEXT ACTION',
+    actionValidate: '- Validate dependencies',
+    actionQuality: '- Trigger quality gate',
+    actionExport: '- Export executive report',
+    audioBlueprintPrefix: 'Audio blueprint generated for:',
+    workflowStagedPrefix: 'Workflow chain staged for service',
+    videoFallback: 'Storyboard staged. Real-time render queue synchronized.',
+    initLog: 'Omni-Dashboard initialized. One-window command center online.',
+    initChat: 'Primary Agent online. Describe a goal and I will route worker agents while keeping every module synchronized.',
+    routingComplete: 'PrimaryAgent routing complete:',
+    selectedFrom: 'selected from context',
+    workerCompleted: 'completed render package in live mode',
+    bridgeLabel: 'Universal bridge:',
+    outputSharedWith: 'output shared with',
+    assistantFinished: 'Worker finished.',
+    previewLive: 'Output is now live in the preview pane.',
+    modulesActive: 'modules are active',
+    jobsRunning: 'jobs are running',
+    assistantDispatched: 'Assistant response dispatched',
+    focusSwitched: 'Focus switched to',
+    commandLanguageSet: 'Command language set to:',
+    multimodalAttached: 'Multimodal input attached:',
+    pendingCleared: 'Pending multimodal inputs cleared.',
+    processAttached: 'Process attached multimodal inputs.',
+    attachedInputs: 'Attached Inputs',
+    byteUnit: 'bytes',
+    commandReceived: 'PrimaryAgent received command in',
+    previewFocus: 'Preview focus switched to',
+    manualBridge: 'Manual bridge:',
+    pushedTo: 'pushed to',
+    activityCleared: 'Activity log cleared by operator.',
+  },
+  ru: {
+    guestOperator: 'Гостевой оператор',
+    guestTier: 'Гость',
+    outputSuffix: 'Результат',
+    inputPrefix: 'Вход',
+    summaryTitle: 'СВОДКА',
+    nextActionTitle: 'СЛЕДУЮЩИЕ ШАГИ',
+    actionValidate: '- Проверь зависимости',
+    actionQuality: '- Запусти этап контроля качества',
+    actionExport: '- Выгрузи executive-отчет',
+    audioBlueprintPrefix: 'Аудио-план подготовлен для:',
+    workflowStagedPrefix: 'Workflow-цепочка подготовлена для сервиса',
+    videoFallback: 'Сториборд готов. Очередь рендера синхронизирована.',
+    initLog: 'Omni-Dashboard инициализирован. Командный центр в одном окне готов.',
+    initChat: 'Primary Agent онлайн. Опишите цель, и я автоматически оркестрирую все сервисы.',
+    routingComplete: 'Маршрутизация PrimaryAgent завершена:',
+    selectedFrom: 'выбрано из контекста',
+    workerCompleted: 'завершил пакет рендера в live-режиме',
+    bridgeLabel: 'Универсальный bridge:',
+    outputSharedWith: 'результат передан сервисам',
+    assistantFinished: 'Воркер завершил задачу.',
+    previewLive: 'Результат уже доступен в превью.',
+    modulesActive: 'модулей активно',
+    jobsRunning: 'задач выполняется',
+    assistantDispatched: 'Ответ ассистента отправлен',
+    focusSwitched: 'Фокус переключен на сервис',
+    commandLanguageSet: 'Язык команды изменен:',
+    multimodalAttached: 'Добавлен мультимодальный input:',
+    pendingCleared: 'Ожидающие мультимодальные input очищены.',
+    processAttached: 'Обработай прикрепленные мультимодальные input.',
+    attachedInputs: 'Прикрепленные input',
+    byteUnit: 'байт',
+    commandReceived: 'PrimaryAgent получил команду на языке',
+    previewFocus: 'Фокус превью переключен на',
+    manualBridge: 'Ручной bridge:',
+    pushedTo: 'передан в сервис',
+    activityCleared: 'Журнал активности очищен оператором.',
+  },
+} as const;
+
+const getStoreCopy = (locale: string) => STORE_COPY[normalizeOmniLocale(locale)];
+
 function defaultModuleSettings(serviceId: ServiceId): Record<string, string | number | boolean> {
-  if (serviceId === 'voice-synth') {
+  if (serviceId === 'terminal-coding') {
+    return { shellSafety: true, staticAnalysis: true, retries: 2 };
+  }
+  if (serviceId === 'music') {
     return { waveformFocus: 58, denoise: true, phonemeLock: 64 };
   }
-  if (serviceId === 'image-gen') {
+  if (serviceId === 'image') {
     return { brush: 34, texture: 72, canvasGrid: true };
   }
-  if (serviceId === 'business-strategy') {
-    return { horizon: 3, confidence: 74, anomalyScan: true };
+  if (serviceId === 'game-creation') {
+    return { gameplayLoops: 3, balanceFocus: 74, progressionMap: true };
   }
-  if (serviceId === 'copy-engine') {
+  if (serviceId === 'prompt-builder') {
     return { cadence: 64, persuasion: 71, markdownMode: true };
   }
-  if (serviceId === 'workflow-automation') {
-    return { lanes: 4, retries: 2, failover: true };
+  if (serviceId === 'interior-design') {
+    return { styleRange: 4, layoutPrecision: 72, materialMode: true };
   }
   return { precision: 61, throughput: 55, safetyLock: true };
 }
@@ -121,7 +233,7 @@ function initializeServiceState(): Record<ServiceId, ServiceRuntimeState> {
     (acc, service) => {
       acc[service.id] = {
         enabled: true,
-        autopilot: service.id === 'agent-g',
+        autopilot: service.id === 'avatar',
         syncPreview: true,
         fidelity: 74,
         intensity: 58,
@@ -142,31 +254,29 @@ function initializeServiceState(): Record<ServiceId, ServiceRuntimeState> {
 function routeWorkerService(prompt: string, fallback: ServiceId): ServiceId {
   const query = prompt.toLowerCase();
   const rules: Array<{ serviceId: ServiceId; keys: string[] }> = [
-    { serviceId: 'video-gen', keys: ['video', 'scene', 'teaser', 'cinematic'] },
-    { serviceId: 'image-gen', keys: ['image', 'poster', 'visual', 'photo', 'canvas'] },
-    { serviceId: 'voice-synth', keys: ['voice', 'narration', 'speech', 'tts'] },
-    { serviceId: 'music-lab', keys: ['music', 'soundtrack', 'beat', 'audio bed'] },
-    { serviceId: 'copy-engine', keys: ['copy', 'headline', 'script', 'text', 'markdown'] },
-    { serviceId: 'analytics-hub', keys: ['analyze', 'analytics', 'metric', 'kpi', 'dashboard'] },
-    { serviceId: 'workflow-automation', keys: ['workflow', 'pipeline', 'automation'] },
-    { serviceId: 'commerce-pilot', keys: ['commerce', 'offer', 'pricing', 'store'] },
-    { serviceId: 'fulfillment-hq', keys: ['ship', 'delivery', 'fulfillment'] },
-    { serviceId: 'business-strategy', keys: ['business', 'strategy', 'growth'] },
-    { serviceId: 'executive-ops', keys: ['executive', 'board', 'risk'] },
-    { serviceId: 'avatar-studio', keys: ['avatar', 'persona', 'portrait'] },
+    { serviceId: 'avatar', keys: ['avatar', 'persona', 'portrait', 'ავატარ', 'პორტრეტ'] },
+    { serviceId: 'video', keys: ['video', 'scene', 'teaser', 'cinematic', 'ვიდეო', 'სცენა'] },
+    { serviceId: 'image', keys: ['image', 'poster', 'visual', 'photo', 'canvas', 'სურათ', 'ფოტო'] },
+    { serviceId: 'music', keys: ['music', 'soundtrack', 'beat', 'audio bed', 'მუსიკ', 'საუნდტრეკ'] },
+    { serviceId: 'game-creation', keys: ['game', 'level', 'gameplay', 'npc', 'თამაშ', 'გეიმ'] },
+    { serviceId: 'interior-design', keys: ['interior', 'space', 'furniture', 'room', 'ინტერიერ', 'დიზაინ'] },
+    { serviceId: 'prompt-builder', keys: ['prompt', 'template', 'instruction', 'markdown', 'პრომპტ', 'prompt-'] },
+    { serviceId: 'terminal-coding', keys: ['terminal', 'code', 'coding', 'script', 'api', 'ტერმინალ', 'კოდ'] },
   ];
 
   const match = rules.find((rule) => rule.keys.some((key) => query.includes(key)));
   return match?.serviceId ?? fallback;
 }
 
-function buildArtifact(serviceId: ServiceId, prompt: string): PreviewArtifact {
+function buildArtifact(serviceId: ServiceId, prompt: string, locale: string): PreviewArtifact {
+  const copy = getStoreCopy(locale);
   const service = OMNI_SERVICE_MAP[serviceId];
+  const localizedService = getLocalizedService(serviceId, locale);
   const shortPrompt = prompt.length > 110 ? `${prompt.slice(0, 107)}...` : prompt;
   const common = {
     id: createId(),
     serviceId,
-    title: `${service.title} Output`,
+    title: `${localizedService.title} ${copy.outputSuffix}`,
     summary: shortPrompt,
     createdAt: Date.now(),
   };
@@ -176,7 +286,7 @@ function buildArtifact(serviceId: ServiceId, prompt: string): PreviewArtifact {
     return {
       ...common,
       kind,
-      sourceUrl: createTextImage(service.title, service.accent, shortPrompt),
+      sourceUrl: createTextImage(localizedService.title, service.accent, shortPrompt),
     };
   }
 
@@ -184,7 +294,7 @@ function buildArtifact(serviceId: ServiceId, prompt: string): PreviewArtifact {
     return {
       ...common,
       kind,
-      textBody: `SUMMARY\n${shortPrompt}\n\nNEXT ACTION\n- Validate dependencies\n- Trigger quality gate\n- Export executive report`,
+      textBody: `${copy.summaryTitle}\n${shortPrompt}\n\n${copy.nextActionTitle}\n${copy.actionValidate}\n${copy.actionQuality}\n${copy.actionExport}`,
     };
   }
 
@@ -192,7 +302,7 @@ function buildArtifact(serviceId: ServiceId, prompt: string): PreviewArtifact {
     return {
       ...common,
       kind,
-      textBody: `Audio blueprint generated for: ${shortPrompt}`,
+      textBody: `${copy.audioBlueprintPrefix} ${shortPrompt}`,
     };
   }
 
@@ -200,14 +310,14 @@ function buildArtifact(serviceId: ServiceId, prompt: string): PreviewArtifact {
     return {
       ...common,
       kind,
-      textBody: `Workflow chain staged for ${service.title}.`,
+      textBody: `${copy.workflowStagedPrefix} ${localizedService.title}.`,
     };
   }
 
   return {
     ...common,
     kind: 'video',
-    textBody: 'Storyboard staged. Real-time render queue synchronized.',
+    textBody: copy.videoFallback,
   };
 }
 
@@ -220,7 +330,9 @@ function previewKindFromInput(input: Omit<ExternalCommandInput, 'id' | 'createdA
 function buildInputArtifact(
   serviceId: ServiceId,
   input: ExternalCommandInput,
+  locale: string,
 ): PreviewArtifact | null {
+  const copy = getStoreCopy(locale);
   const kind = previewKindFromInput(input);
   const summary = input.textContent ?? input.fileName ?? input.title;
 
@@ -232,7 +344,7 @@ function buildInputArtifact(
     id: createId(),
     serviceId,
     kind,
-    title: `Input · ${input.title}`,
+    title: `${copy.inputPrefix} · ${input.title}`,
     summary,
     createdAt: input.createdAt,
     sourceUrl: input.sourceUrl,
@@ -321,7 +433,10 @@ export interface OmniDashboardState {
 
 export const useOmniDashboardStore = create<OmniDashboardState>((set, get) => {
   const runWorker = async (serviceId: ServiceId, prompt: string, source: 'chat' | 'panel') => {
+    const locale = normalizeOmniLocale(get().locale);
+    const copy = getStoreCopy(locale);
     const descriptor = OMNI_SERVICE_MAP[serviceId];
+    const localizedDescriptor = getLocalizedService(serviceId, locale);
     const traceId = createId();
 
     set((state) => {
@@ -347,13 +462,13 @@ export const useOmniDashboardStore = create<OmniDashboardState>((set, get) => {
       ...addLogLine(
         state,
         'agent',
-        `PrimaryAgent routing complete: ${descriptor.title} selected from ${state.activeServiceId} context`,
+        `${copy.routingComplete} ${localizedDescriptor.title} ${copy.selectedFrom} ${getLocalizedService(state.activeServiceId, locale).title}.`,
       ),
     }));
 
     await delay(260);
 
-    const output = buildArtifact(serviceId, prompt);
+    const output = buildArtifact(serviceId, prompt, locale);
 
     set((state) => {
       const targetState = state.services[serviceId];
@@ -374,13 +489,15 @@ export const useOmniDashboardStore = create<OmniDashboardState>((set, get) => {
       const shouldSyncPreview = nextServices[serviceId].syncPreview;
       const preview = shouldSyncPreview ? output : state.preview;
 
-      let logChain = addLogLine(state, 'worker', `${descriptor.worker} completed render package in live mode`);
+      let logChain = addLogLine(state, 'worker', `${descriptor.worker} ${copy.workerCompleted}`);
 
       if (bridgedTargets.length > 0) {
         const bridgeLog: ActivityItem = {
           id: createId(),
           level: 'system',
-          message: `Universal bridge: ${descriptor.title} output shared with ${bridgedTargets.map((target) => OMNI_SERVICE_MAP[target].short).join(', ')}`,
+          message: `${copy.bridgeLabel} ${localizedDescriptor.title} ${copy.outputSharedWith} ${bridgedTargets
+            .map((target) => getLocalizedService(target, locale).short)
+            .join(', ')}`,
           ts: Date.now(),
         };
 
@@ -404,16 +521,18 @@ export const useOmniDashboardStore = create<OmniDashboardState>((set, get) => {
         const activeCount = OMNI_SERVICES.filter((service) => state.services[service.id].enabled).length;
         const runningCount = OMNI_SERVICES.filter((service) => state.services[service.id].status === 'running').length;
         const response =
-          `Worker ${descriptor.worker} finished. ${descriptor.title} output is now live in the preview pane. ` +
-          `${numberToLabel(activeCount)} modules are active and ${numberToLabel(runningCount)} jobs are running.`;
+          `${copy.assistantFinished} ${descriptor.worker}. ${localizedDescriptor.title} ${copy.previewLive} ` +
+          `${numberToLabel(activeCount, locale)} ${copy.modulesActive}, ${numberToLabel(runningCount, locale)} ${copy.jobsRunning}.`;
 
         return {
           ...addChatLine(state, 'assistant', response),
-          ...addLogLine(state, 'agent', `Assistant response dispatched for trace=${traceId}`),
+          ...addLogLine(state, 'agent', `${copy.assistantDispatched} trace=${traceId}`),
         };
       });
     }
   };
+
+  const initialCopy = getStoreCopy('ka');
 
   return {
     locale: 'ka',
@@ -421,10 +540,10 @@ export const useOmniDashboardStore = create<OmniDashboardState>((set, get) => {
     credits: DEFAULT_CREDITS,
     auth: {
       status: 'guest',
-      displayName: 'Guest Operator',
-      tierLabel: 'Guest',
+      displayName: initialCopy.guestOperator,
+      tierLabel: initialCopy.guestTier,
     },
-    activeServiceId: 'agent-g',
+    activeServiceId: 'avatar',
     commandLanguage: 'ka',
     services: initializeServiceState(),
     sharedAssets: [],
@@ -433,7 +552,7 @@ export const useOmniDashboardStore = create<OmniDashboardState>((set, get) => {
       {
         id: createId(),
         level: 'system',
-        message: 'Omni-Dashboard initialized. One-window command center online.',
+        message: initialCopy.initLog,
         ts: Date.now(),
       },
     ],
@@ -441,8 +560,7 @@ export const useOmniDashboardStore = create<OmniDashboardState>((set, get) => {
       {
         id: createId(),
         role: 'assistant',
-        content:
-          'Primary Agent online. Describe a goal and I will route worker agents while keeping every module synchronized.',
+        content: initialCopy.initChat,
         ts: Date.now(),
       },
     ],
@@ -454,16 +572,27 @@ export const useOmniDashboardStore = create<OmniDashboardState>((set, get) => {
       set({ auth });
     },
     setActiveService: (serviceId) => {
-      set((state) => ({
-        activeServiceId: serviceId,
-        ...addLogLine(state, 'system', `Focus switched to ${OMNI_SERVICE_MAP[serviceId].title}`),
-      }));
+      set((state) => {
+        const copy = getStoreCopy(state.locale);
+        return {
+          activeServiceId: serviceId,
+          ...addLogLine(state, 'system', `${copy.focusSwitched} ${getLocalizedService(serviceId, state.locale).title}`),
+        };
+      });
+      syncGlobalServiceSelection(serviceId);
     },
     setCommandLanguage: (language) => {
-      set((state) => ({
-        commandLanguage: language,
-        ...addLogLine(state, 'system', `Command language set to ${LANGUAGE_LABELS[language]}`),
-      }));
+      set((state) => {
+        const copy = getStoreCopy(state.locale);
+        return {
+          commandLanguage: language,
+          ...addLogLine(
+            state,
+            'system',
+            `${copy.commandLanguageSet} ${localizeCommandLanguage(language, state.locale)}`,
+          ),
+        };
+      });
     },
     setServiceDial: (serviceId, key, value) => {
       set((state) => {
@@ -529,25 +658,26 @@ export const useOmniDashboardStore = create<OmniDashboardState>((set, get) => {
           ...addLogLine(
             state,
             'system',
-            `${OMNI_SERVICE_MAP[serviceId].title} ${key} set to ${nextState[key] ? 'enabled' : 'disabled'}`,
+            `${getLocalizedService(serviceId, state.locale).title} ${key} → ${localizeBooleanState(Boolean(nextState[key]), state.locale)}`,
           ),
         };
       });
     },
     ingestCommandInput: (input) => {
       set((state) => {
+        const copy = getStoreCopy(state.locale);
         const normalizedInput: ExternalCommandInput = {
           ...input,
           id: createId(),
           createdAt: Date.now(),
         };
 
-        const artifact = buildInputArtifact(state.activeServiceId, normalizedInput);
+        const artifact = buildInputArtifact(state.activeServiceId, normalizedInput, state.locale);
         const pendingInputs = [...state.pendingInputs, normalizedInput].slice(-MAX_PENDING_INPUTS);
 
         const result: Partial<OmniDashboardState> = {
           pendingInputs,
-          ...addLogLine(state, 'system', `Multimodal input attached: ${normalizedInput.title}`),
+          ...addLogLine(state, 'system', `${copy.multimodalAttached} ${normalizedInput.title}`),
         };
 
         if (artifact) {
@@ -568,7 +698,7 @@ export const useOmniDashboardStore = create<OmniDashboardState>((set, get) => {
     clearPendingInputs: () => {
       set((state) => ({
         pendingInputs: [],
-        ...addLogLine(state, 'system', 'Pending multimodal inputs cleared.'),
+        ...addLogLine(state, 'system', getStoreCopy(state.locale).pendingCleared),
       }));
     },
     runServiceNow: async (serviceId, prompt) => {
@@ -578,27 +708,28 @@ export const useOmniDashboardStore = create<OmniDashboardState>((set, get) => {
     sendPrimaryCommand: async (prompt) => {
       const trimmed = prompt.trim();
       const snapshot = get();
+      const copy = getStoreCopy(snapshot.locale);
       const pendingInputs = snapshot.pendingInputs;
 
       if (!trimmed && pendingInputs.length === 0) return;
 
-      const userLine = trimmed || 'Process attached multimodal inputs.';
+      const userLine = trimmed || copy.processAttached;
       const language = snapshot.commandLanguage;
       const attachmentDigest = pendingInputs
         .map((input) => {
           const detail = input.textContent
             ? input.textContent.slice(0, 90)
             : input.fileName
-              ? `${input.fileName} (${input.size ?? 0} bytes)`
+              ? `${input.fileName} (${input.size ?? 0} ${copy.byteUnit})`
               : input.title;
           return `- ${input.kind.toUpperCase()}: ${detail}`;
         })
         .join('\n');
 
       const commandPayload =
-        `[language=${LANGUAGE_LABELS[language]}]\n` +
+        `[language=${localizeCommandLanguage(language, snapshot.locale)}]\n` +
         `${userLine}\n` +
-        (attachmentDigest ? `\nAttached Inputs:\n${attachmentDigest}` : '');
+        (attachmentDigest ? `\n${copy.attachedInputs}:\n${attachmentDigest}` : '');
 
       const routed = routeWorkerService(commandPayload, snapshot.activeServiceId);
 
@@ -606,8 +737,14 @@ export const useOmniDashboardStore = create<OmniDashboardState>((set, get) => {
         pendingInputs: [],
         activeServiceId: routed,
         ...addChatLine(state, 'user', userLine),
-        ...addLogLine(state, 'agent', `PrimaryAgent received command in ${LANGUAGE_LABELS[language]}`),
+        ...addLogLine(
+          state,
+          'agent',
+          `${getStoreCopy(state.locale).commandReceived} ${localizeCommandLanguage(language, state.locale)}`,
+        ),
       }));
+
+      syncGlobalServiceSelection(routed);
 
       await runWorker(routed, commandPayload, 'chat');
     },
@@ -617,9 +754,10 @@ export const useOmniDashboardStore = create<OmniDashboardState>((set, get) => {
         if (!selected) {
           return state;
         }
+        const copy = getStoreCopy(state.locale);
         return {
           preview: selected,
-          ...addLogLine(state, 'system', `Preview focus switched to ${selected.title}`),
+          ...addLogLine(state, 'system', `${copy.previewFocus} ${selected.title}`),
         };
       });
     },
@@ -630,6 +768,7 @@ export const useOmniDashboardStore = create<OmniDashboardState>((set, get) => {
           return state;
         }
 
+        const copy = getStoreCopy(state.locale);
         const targetState = state.services[targetServiceId];
         return {
           services: {
@@ -642,18 +781,18 @@ export const useOmniDashboardStore = create<OmniDashboardState>((set, get) => {
           ...addLogLine(
             state,
             'system',
-            `Manual bridge: ${sourceAsset.title} pushed to ${OMNI_SERVICE_MAP[targetServiceId].title}`,
+            `${copy.manualBridge} ${sourceAsset.title} ${copy.pushedTo} ${getLocalizedService(targetServiceId, state.locale).title}`,
           ),
         };
       });
     },
     clearActivity: () => {
-      set(() => ({
+      set((state) => ({
         activityLog: [
           {
             id: createId(),
             level: 'system',
-            message: 'Activity log cleared by operator.',
+            message: getStoreCopy(state.locale).activityCleared,
             ts: Date.now(),
           },
         ],

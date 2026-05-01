@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import { TopNavbar, SidebarMenu, BottomNavigation } from './shell/ModernShell';
 import { ClientErrorBoundary } from './ClientErrorBoundary';
@@ -10,13 +10,72 @@ import { PageEnvironment } from './ui/PageEnvironment';
 export function AppShell({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const pathname = usePathname();
+
+  useEffect(() => {
+    const nav = window.navigator as Navigator & { standalone?: boolean };
+    const fullscreenQuery = window.matchMedia('(display-mode: fullscreen)');
+    const standaloneQuery = window.matchMedia('(display-mode: standalone)');
+
+    const setDisplayModeData = () => {
+      const isFullscreen = fullscreenQuery.matches;
+      const isStandalone = standaloneQuery.matches || nav.standalone === true;
+
+      document.documentElement.dataset.displayMode = isFullscreen
+        ? 'fullscreen'
+        : isStandalone
+          ? 'standalone'
+          : 'browser';
+    };
+
+    const setViewportCssVars = () => {
+      // Keep viewport variables in sync on mobile browsers with dynamic toolbars.
+      document.documentElement.style.setProperty('--app-screen-height', `${window.innerHeight}px`);
+      document.documentElement.style.setProperty('--app-screen-width', `${window.innerWidth}px`);
+    };
+
+    const bindDisplayModeListener = (query: MediaQueryList) => {
+      if (typeof query.addEventListener === 'function') {
+        query.addEventListener('change', setDisplayModeData);
+        return () => query.removeEventListener('change', setDisplayModeData);
+      }
+
+      query.addListener(setDisplayModeData);
+      return () => query.removeListener(setDisplayModeData);
+    };
+
+    setDisplayModeData();
+    setViewportCssVars();
+
+    const unbindFullscreen = bindDisplayModeListener(fullscreenQuery);
+    const unbindStandalone = bindDisplayModeListener(standaloneQuery);
+
+    window.addEventListener('resize', setViewportCssVars, { passive: true });
+    window.addEventListener('orientationchange', setViewportCssVars);
+
+    if (process.env.NODE_ENV === 'production' && 'serviceWorker' in navigator) {
+      void navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(() => {
+        // Keep shell rendering resilient if SW registration fails.
+      });
+    }
+
+    return () => {
+      unbindFullscreen();
+      unbindStandalone();
+      window.removeEventListener('resize', setViewportCssVars);
+      window.removeEventListener('orientationchange', setViewportCssVars);
+    };
+  }, []);
+
   const isImmersiveWorkspace = !!pathname && (
     /\/services\/[a-z0-9-]+\/?$/.test(pathname) ||
     /\/(dashboard|hub|workspace)\/?$/.test(pathname)
   );
 
   return (
-    <div className='relative min-h-screen flex flex-col' style={{ color: 'var(--color-text)', isolation: 'isolate' }}>
+    <div
+      className='app-native-shell relative flex min-h-[var(--app-screen-height)] w-full flex-col overflow-x-hidden'
+      style={{ color: 'var(--color-text)', isolation: 'isolate' }}
+    >
       {/* Page-aware 4D AI environment — adapts mood per route */}
       <PageEnvironment reduced={isImmersiveWorkspace} />
       {/* Skip to content — accessibility */}
@@ -29,7 +88,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </a>
       {!isImmersiveWorkspace && <TopNavbar onMenuToggle={() => setSidebarOpen(v => !v)} menuOpen={sidebarOpen} />}
       {!isImmersiveWorkspace && <SidebarMenu open={sidebarOpen} onClose={() => setSidebarOpen(false)} />}
-      <main id="main-content" className="relative flex-1 w-full" style={isImmersiveWorkspace ? { zIndex: 2 } : { paddingTop: 'calc(4rem + env(safe-area-inset-top, 0px))', zIndex: 2 }}>
+      <main
+        id="main-content"
+        className="relative flex-1 w-full"
+        style={
+          isImmersiveWorkspace
+            ? { zIndex: 2, minHeight: 'var(--app-screen-height)' }
+            : { paddingTop: 'calc(4rem + env(safe-area-inset-top, 0px))', zIndex: 2 }
+        }
+      >
         <ClientErrorBoundary>
           {children}
         </ClientErrorBoundary>

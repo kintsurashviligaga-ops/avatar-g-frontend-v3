@@ -5,29 +5,7 @@
  * Maps string icon names from configs to Lucide components.
  */
 
-import {
-  Plus, FolderOpen, Upload, Palette, Bookmark, Video,
-  Bot, ScanFace, UserCircle, User, Eye, Download,
-  Settings2, Sparkles, ImageIcon as ImageIconLucide, Copy, Maximize,
-  Music, Film, Mic, Shuffle, ArrowRight, ListMusic, Heart,
-  Type, FileText, Megaphone, BookOpen, RefreshCw, Smile,
-  LayoutTemplate, List, Zap, Play, Save, GitBranch,
-  Clock, Tag, ShoppingCart, DollarSign, BarChart3, Package,
-  Store, Users, Scissors, Eraser, Wand2, Upload as UploadIcon,
-  Clapperboard, LayoutGrid, Subtitles, Ratio, FileVideo,
-  RectangleVertical, ImagePlus, ShoppingBag, StopCircle, Send,
-  Paperclip, MicOff, Loader2, Check, X, Menu, RotateCcw,
-  ChevronDown, ChevronRight, MoreHorizontal, ExternalLink,
-  Camera, Aperture, Focus, Layers, Combine, Globe,
-  Code, Terminal, Bug, Rocket, Database, Cloud,
-  Briefcase, PieChart, TrendingUp, FileSpreadsheet, Target, Presentation,
-  Plane, Map, MapPin, Compass, Building, CalendarDays,
-  Brain, Search, Lightbulb, Puzzle, MessageSquare, PenTool,
-  Monitor, Headphones, Radio, Share2, Tv, FileImage,
-  Gamepad2, Joystick, Sword, Trophy, Dices, Shapes,
-  Sofa, Lamp, PaintBucket, Ruler, Home, SlidersHorizontal,
-  RectangleHorizontal, SunMedium, Paintbrush, Armchair,
-} from 'lucide-react';
+import { Plus, FolderOpen, Upload, Palette, Bookmark, Video, Bot, ScanFace, UserCircle, User, Eye, Download, Settings2, Sparkles, ImageIcon as ImageIconLucide, Copy, Maximize, Music, Film, Mic, Shuffle, ArrowRight, ListMusic, Heart, Type, FileText, Megaphone, BookOpen, RefreshCw, Smile, LayoutTemplate, List, Zap, Play, Save, GitBranch, Clock, Tag, ShoppingCart, DollarSign, BarChart3, Package, Store, Users, Scissors, Eraser, Wand2, Clapperboard, LayoutGrid, Subtitles, Ratio, FileVideo, RectangleVertical, ImagePlus, ShoppingBag, StopCircle, Send, Paperclip, MicOff, Loader2, Check, X, Menu, RotateCcw, ChevronDown, ChevronRight, MoreHorizontal, ExternalLink, Camera, Aperture, Focus, Layers, Combine, Globe, Code, Terminal, Bug, Rocket, Database, Cloud, Briefcase, PieChart, TrendingUp, FileSpreadsheet, Target, Presentation, Plane, Map, MapPin, Compass, Building, CalendarDays, Brain, Search, Lightbulb, Puzzle, MessageSquare, PenTool, Monitor, Headphones, Radio, Share2, Tv, FileImage, Gamepad2, Joystick, Sword, Trophy, Dices, Shapes, Sofa, Lamp, PaintBucket, Ruler, Home, SlidersHorizontal, RectangleHorizontal, SunMedium, Paintbrush, Armchair } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
 export const ICON_MAP: Record<string, LucideIcon> = {

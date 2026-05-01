@@ -76,7 +76,13 @@ export function ServicesSlider() {
   const onTouchStart = useCallback((e: React.TouchEvent) => { touchX.current = e.touches[0]!.clientX; setPaused(true) }, [])
   const onTouchEnd = useCallback((e: React.TouchEvent) => {
     const dx = e.changedTouches[0]!.clientX - touchX.current
-    if (Math.abs(dx) > 50) { dx > 0 ? prev() : next() }
+    if (Math.abs(dx) > 50) {
+      if (dx > 0) {
+        prev()
+      } else {
+        next()
+      }
+    }
     setPaused(false)
   }, [next, prev])
 

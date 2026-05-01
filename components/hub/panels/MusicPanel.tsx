@@ -7,10 +7,7 @@
 
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import {
-  Sparkles, Play, Pause, Download, Share2, RefreshCw,
-  AlertCircle, Loader2, Music2, Volume2, SkipBack, SkipForward,
-} from 'lucide-react';
+import { Sparkles, Play, Pause, Download, AlertCircle, Loader2, Music2, Volume2, SkipBack, SkipForward } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAiPipeline } from '@/hooks/useAiPipeline';
 import { beginPanelShellRun, createTextPreview } from './panelShellBridge';
@@ -65,7 +62,7 @@ const STRUCTURES = [
 // Fake waveform bars
 const BARS = Array.from({ length: 40 }, () => 20 + Math.random() * 80);
 
-export function MusicPanel({ locale, callbacks }: { locale: string; callbacks?: PanelRunCallbacks }) {
+export function MusicPanel({ locale: _locale, callbacks }: { locale: string; callbacks?: PanelRunCallbacks }) {
   const [genre,       setGenre]       = useState('electronic');
   const [mood,        setMood]        = useState('energetic');
   const [instruments, setInstruments] = useState<string[]>(['synth', 'drums']);

@@ -7,7 +7,8 @@
  * metadata, action buttons, and export options.
  */
 
-import { Download } from 'lucide-react';
+
+import Image from 'next/image';
 import type { ResultCard } from '@/lib/chat/types';
 
 interface Props {
@@ -30,7 +31,7 @@ export function ResultCardView({ card, onAction }: Props) {
               <audio src={card.preview} controls className="w-4/5" />
             </div>
           ) : (
-            <img src={card.preview} alt={card.title} className="w-full h-full object-cover" />
+            <Image src={card.preview} alt={card.title} width={1024} height={576} unoptimized className="w-full h-full object-cover" />
           )}
         </div>
       )}

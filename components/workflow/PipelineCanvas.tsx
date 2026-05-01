@@ -28,7 +28,7 @@ export default function PipelineCanvas({
   onSelect,
   onRemove,
   onMove,
-  onAddAfter,
+  onAddAfter: _onAddAfter,
 }: PipelineCanvasProps) {
   const t = L[lang] ?? L.en;
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -38,7 +38,7 @@ export default function PipelineCanvas({
     dragRef.current = idx;
   }, []);
 
-  const handleDragOver = useCallback((e: React.DragEvent, idx: number) => {
+  const handleDragOver = useCallback((e: React.DragEvent, _idx: number) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
   }, []);

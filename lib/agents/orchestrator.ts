@@ -12,15 +12,9 @@
  * 6. Result aggregation
  */
 
-import { AGENT_CONTRACTS, matchAgentsByIntent, getAgentContract, getHandoffTargets } from './contracts';
-import type { AgentContract } from './contracts';
-import type {
-  SessionContext,
-  PipelineStatus,
-  HandoffPayload,
-  HandoffResult,
-  AssetEntry,
-} from './context';
+import { matchAgentsByIntent, getAgentContract } from './contracts';
+
+import type { SessionContext, PipelineStatus, HandoffResult, AssetEntry } from './context';
 import {
   createSessionContext,
   createPipelineStatus,
@@ -378,7 +372,7 @@ export async function executePipeline(
     }
 
     // Execute all ready steps in parallel
-    const results = await Promise.all(
+    const _results = await Promise.all(
       ready.map(async (step) => {
         // Mark as running
         status = updateStepStatus(status, step.stepIndex, {

@@ -1,8 +1,9 @@
 'use client';
 
 import { useState } from 'react';
+import Image from 'next/image';
 import { ImageIcon, Sparkles, Zap, Download, RefreshCw, Wand2 } from 'lucide-react';
-import { cn } from '@/lib/utils';
+
 
 const STYLES = ['Photorealistic', 'Digital Art', 'Oil Painting', 'Watercolor', 'Anime', 'Sketch', '3D Render', 'Cinematic'];
 const RATIOS = ['1:1', '16:9', '9:16', '4:3'];
@@ -142,7 +143,7 @@ export default function ImageGenerationPage() {
               )}
               {generated.map((src, i) => (
                 <div key={i} className="group relative aspect-square rounded-2xl overflow-hidden" style={{ border: '1px solid rgba(255,255,255,0.08)' }}>
-                  <img src={src} alt="Generated" className="w-full h-full object-cover" />
+                  <Image src={src} alt="Generated" width={1024} height={1024} unoptimized className="w-full h-full object-cover" />
                   <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3">
                     <button className="p-2 rounded-lg bg-white/10 hover:bg-white/20 transition-colors">
                       <Download className="w-4 h-4 text-white" />

@@ -40,16 +40,31 @@ export const viewport: Viewport = {
 	initialScale: 1,
 	maximumScale: 5,
 	viewportFit: 'cover',
+	interactiveWidget: 'resizes-content',
 	themeColor: '#0a0a0c',
 };
 
 export const metadata: Metadata = {
 	metadataBase: new URL(metadataBaseUrl),
+	applicationName: 'Avatar G',
 	manifest: '/manifest.json',
+	appleWebApp: {
+		capable: true,
+		statusBarStyle: 'black-translucent',
+		title: 'Avatar G',
+	},
+	formatDetection: {
+		telephone: false,
+	},
 	icons: {
 		icon: '/icons/favicon.ico',
 		shortcut: '/icons/favicon.ico',
 		apple: '/icons/icon-180x180.png',
+	},
+	other: {
+		'mobile-web-app-capable': 'yes',
+		'apple-mobile-web-app-capable': 'yes',
+		'apple-mobile-web-app-status-bar-style': 'black-translucent',
 	},
 	title: {
 		default: "Avatar G - AI მედია პლატფორმა",

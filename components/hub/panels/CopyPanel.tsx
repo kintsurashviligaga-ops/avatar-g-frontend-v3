@@ -7,10 +7,7 @@
 
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import {
-  Sparkles, Copy, Check, AlertCircle, Loader2, FileText,
-  RefreshCw, Download, Wand2, Globe, Target,
-} from 'lucide-react';
+import { Sparkles, Copy, Check, AlertCircle, Loader2, RefreshCw, Download, Wand2, Globe } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAiPipeline } from '@/hooks/useAiPipeline';
 import { beginPanelShellRun, createTextPreview } from './panelShellBridge';
