@@ -66,6 +66,7 @@ const PREVIEW_COPY = {
     audioFallback: 'აუდიო გენერაცია აქტიურია.',
     recent: 'ბოლო შედეგები',
     noAssets: 'ჯერ არცერთი არტეფაქტი არაა გენერირებული.',
+    imageGenerating: 'სურათი იქმნება...',
   },
   en: {
     title: 'Live Preview Engine',
@@ -77,6 +78,7 @@ const PREVIEW_COPY = {
     audioFallback: 'Audio render online.',
     recent: 'Recent Outputs',
     noAssets: 'No assets generated yet.',
+    imageGenerating: 'Generating image...',
   },
   ru: {
     title: 'Живое превью',
@@ -88,6 +90,7 @@ const PREVIEW_COPY = {
     audioFallback: 'Аудиорендер выполняется.',
     recent: 'Последние результаты',
     noAssets: 'Пока нет сгенерированных артефактов.',
+    imageGenerating: 'Генерация изображения...',
   },
 } as const;
 
@@ -175,6 +178,17 @@ export function LivePreviewEngine() {
                 unoptimized
                 className="h-[220px] w-full rounded-lg object-cover"
               />
+            )}
+
+            {preview.kind === 'image' && !preview.sourceUrl && (
+              <div className="flex h-[220px] flex-col items-center justify-center gap-3 rounded-lg border border-white/10 bg-slate-900/60">
+                <motion.div
+                  className="h-8 w-8 rounded-full border-2 border-cyan-300/40 border-t-cyan-300"
+                  animate={{ rotate: 360 }}
+                  transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
+                />
+                <p className="text-xs text-white/55">{copy.imageGenerating}</p>
+              </div>
             )}
 
             {preview.kind === 'video' && (

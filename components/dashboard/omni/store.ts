@@ -99,6 +99,7 @@ const STORE_COPY = {
     audioBlueprintPrefix: 'აუდიო გეგმა შეიქმნა:',
     workflowStagedPrefix: 'Workflow ჯაჭვი მომზადდა სერვისისთვის',
     videoFallback: 'ვიდეო სტორიბორდი მზადაა. რენდერის რიგი სინქრონიზებულია.',
+    imageGenerating: 'სურათი იქმნება...',
     initLog: 'Omni-Dashboard ჩაიტვირთა. ერთ-ფანჯრიანი ბრძანების ცენტრი მზადაა.',
     initChat: 'Primary Agent მზადაა. აღწერე მიზანი და ყველა სერვისს ავტომატურად დავაორკესტრირებ.',
     routingComplete: 'PrimaryAgent მარშრუტიზაცია დასრულდა:',
@@ -137,6 +138,7 @@ const STORE_COPY = {
     audioBlueprintPrefix: 'Audio blueprint generated for:',
     workflowStagedPrefix: 'Workflow chain staged for service',
     videoFallback: 'Storyboard staged. Real-time render queue synchronized.',
+    imageGenerating: 'Generating image...',
     initLog: 'Omni-Dashboard initialized. One-window command center online.',
     initChat: 'Primary Agent online. Describe a goal and I will route worker agents while keeping every module synchronized.',
     routingComplete: 'PrimaryAgent routing complete:',
@@ -175,6 +177,7 @@ const STORE_COPY = {
     audioBlueprintPrefix: 'Аудио-план подготовлен для:',
     workflowStagedPrefix: 'Workflow-цепочка подготовлена для сервиса',
     videoFallback: 'Сториборд готов. Очередь рендера синхронизирована.',
+    imageGenerating: 'Генерация изображения...',
     initLog: 'Omni-Dashboard инициализирован. Командный центр в одном окне готов.',
     initChat: 'Primary Agent онлайн. Опишите цель, и я автоматически оркестрирую все сервисы.',
     routingComplete: 'Маршрутизация PrimaryAgent завершена:',
@@ -545,6 +548,93 @@ export const useOmniDashboardStore = create<OmniDashboardState>((set, get) => {
           return {
             services: { ...state.services, [serviceId]: { ...svc, status: 'error', queueDepth: Math.max(0, svc.queueDepth - 1) } },
             ...addLogLine(state, 'system', `video worker exception: ${msg}`),
+          };
+        });
+      }
+
+      return;
+    }
+
+    // --- Image services: call real Replicate API ---
+    if (serviceId === 'image' || serviceId === 'avatar' || serviceId === 'interior-design') {
+      const replicateService = serviceId === 'avatar' ? 'avatar' : 'image';
+      const imageArtifactId = createId();
+
+      const loadingArtifact: PreviewArtifact = {
+        id: imageArtifactId,
+        serviceId,
+        kind: 'image',
+        title: `${localizedDescriptor.title} — ${cleanPrompt.slice(0, 50)}`,
+        summary: cleanPrompt,
+        createdAt: Date.now(),
+      };
+
+      set((state) => {
+        const svc = state.services[serviceId];
+        return {
+          services: {
+            ...state.services,
+            [serviceId]: { ...svc, outputs: [loadingArtifact, ...svc.outputs].slice(0, MAX_OUTPUTS_PER_SERVICE) },
+          },
+          sharedAssets: [loadingArtifact, ...state.sharedAssets].slice(0, 140),
+          preview: loadingArtifact,
+        };
+      });
+
+      if (source === 'chat') {
+        const msgId = createId();
+        set((state) => ({
+          chatMessages: [
+            ...state.chatMessages,
+            { id: msgId, role: 'assistant' as const, content: copy.imageGenerating, ts: Date.now() },
+          ].slice(-MAX_CHAT_ITEMS),
+          ...addLogLine(state, 'agent', `${copy.assistantDispatched} trace=${traceId}`),
+        }));
+      }
+
+      try {
+        const res = await fetch('/api/replicate/image', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ service: replicateService, prompt: cleanPrompt, quality: 'standard' }),
+        });
+
+        const data = await res.json() as { success: boolean; url: string | null; error?: string };
+
+        if (res.ok && data.success && data.url) {
+          const readyArtifact: PreviewArtifact = { ...loadingArtifact, sourceUrl: data.url };
+
+          set((state) => {
+            const svc = state.services[serviceId];
+            const updatedOutputs = svc.outputs.map((o) => o.id === imageArtifactId ? readyArtifact : o);
+            const updatedAssets = state.sharedAssets.map((a) => a.id === imageArtifactId ? readyArtifact : a);
+            return {
+              services: {
+                ...state.services,
+                [serviceId]: { ...svc, status: 'ready', queueDepth: Math.max(0, svc.queueDepth - 1), outputs: updatedOutputs },
+              },
+              sharedAssets: updatedAssets,
+              preview: readyArtifact,
+              ...addLogLine(state, 'worker', `${descriptor.worker} ${copy.workerCompleted}`),
+            };
+          });
+        } else {
+          const errMsg = data.error ?? `Error ${res.status}`;
+          set((state) => {
+            const svc = state.services[serviceId];
+            return {
+              services: { ...state.services, [serviceId]: { ...svc, status: 'error', queueDepth: Math.max(0, svc.queueDepth - 1) } },
+              ...addLogLine(state, 'system', `image worker error: ${errMsg}`),
+            };
+          });
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'network error';
+        set((state) => {
+          const svc = state.services[serviceId];
+          return {
+            services: { ...state.services, [serviceId]: { ...svc, status: 'error', queueDepth: Math.max(0, svc.queueDepth - 1) } },
+            ...addLogLine(state, 'system', `image worker exception: ${msg}`),
           };
         });
       }
