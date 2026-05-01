@@ -5,7 +5,6 @@ import { useGlobalStore, useStore } from '@/lib/store';
 import type { ServiceType } from '@/lib/store';
 import { OMNI_SERVICE_MAP, OMNI_SERVICES } from './services';
 import {
-  formatCountWord,
   getLocalizedService,
   localizeBooleanState,
   localizeCommandLanguage,
@@ -55,7 +54,6 @@ const delay = (ms: number) =>
     setTimeout(resolve, ms);
   });
 
-const numberToLabel = (value: number, locale: string) => formatCountWord(value, normalizeOmniLocale(locale));
 
 const createTextImage = (title: string, accent: string, line: string) => {
   const svg = `
@@ -514,21 +512,74 @@ export const useOmniDashboardStore = create<OmniDashboardState>((set, get) => {
       };
     });
 
-    await delay(120);
-
     if (source === 'chat') {
-      set((state) => {
-        const activeCount = OMNI_SERVICES.filter((service) => state.services[service.id].enabled).length;
-        const runningCount = OMNI_SERVICES.filter((service) => state.services[service.id].status === 'running').length;
-        const response =
-          `${copy.assistantFinished} ${descriptor.worker}. ${localizedDescriptor.title} ${copy.previewLive} ` +
-          `${numberToLabel(activeCount, locale)} ${copy.modulesActive}, ${numberToLabel(runningCount, locale)} ${copy.jobsRunning}.`;
+      // Add a streaming placeholder message
+      const streamingMsgId = createId();
+      set((state) => ({
+        chatMessages: [
+          ...state.chatMessages,
+          { id: streamingMsgId, role: 'assistant' as const, content: '', ts: Date.now() },
+        ].slice(-MAX_CHAT_ITEMS),
+        ...addLogLine(state, 'agent', `${copy.assistantDispatched} trace=${traceId}`),
+      }));
 
-        return {
-          ...addChatLine(state, 'assistant', response),
-          ...addLogLine(state, 'agent', `${copy.assistantDispatched} trace=${traceId}`),
-        };
-      });
+      try {
+        const history = get().chatMessages;
+        const uiMessages = history
+          .filter((m) => m.role === 'user' || m.role === 'assistant')
+          .map((m, i) => ({
+            id: `m${i}`,
+            role: m.role as 'user' | 'assistant',
+            parts: [{ type: 'text' as const, text: m.content }],
+            metadata: undefined,
+          }));
+
+        const res = await fetch('/api/chat/gemini', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ messages: uiMessages }),
+        });
+
+        if (res.ok && res.body) {
+          const reader = res.body.getReader();
+          const decoder = new TextDecoder();
+          let fullText = '';
+
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            const chunk = decoder.decode(value, { stream: true });
+            for (const line of chunk.split('\n')) {
+              if (!line.startsWith('data: ')) continue;
+              const raw = line.slice(6).trim();
+              if (raw === '[DONE]') continue;
+              try {
+                const event = JSON.parse(raw) as { type: string; delta?: string };
+                if (event.type === 'text-delta' && event.delta) {
+                  fullText += event.delta;
+                  set((state) => ({
+                    chatMessages: state.chatMessages.map((m) =>
+                      m.id === streamingMsgId ? { ...m, content: fullText } : m,
+                    ),
+                  }));
+                }
+              } catch { /* skip malformed lines */ }
+            }
+          }
+        } else {
+          set((state) => ({
+            chatMessages: state.chatMessages.map((m) =>
+              m.id === streamingMsgId ? { ...m, content: copy.assistantFinished + ' (error)' } : m,
+            ),
+          }));
+        }
+      } catch {
+        set((state) => ({
+          chatMessages: state.chatMessages.map((m) =>
+            m.id === streamingMsgId ? { ...m, content: copy.assistantFinished + ' (error)' } : m,
+          ),
+        }));
+      }
     }
   };
 
