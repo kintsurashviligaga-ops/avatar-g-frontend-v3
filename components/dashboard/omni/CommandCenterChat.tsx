@@ -2,6 +2,7 @@
 
 import Image from 'next/image';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
 import {
   Camera,
   LayoutGrid,
@@ -19,6 +20,40 @@ import { getLocalizedService, normalizeOmniLocale } from './i18n';
 import { OMNI_SERVICES } from './services';
 import { useOmniStore } from './store';
 import type { CommandLanguage, PreviewArtifact, ServiceId } from './types';
+import { ClarificationMessage } from '@/components/chat/ClarificationMessage';
+import { ConfirmationCard } from '@/components/chat/ConfirmationCard';
+import { GenerationProgress, type GenerationStage } from '@/components/chat/GenerationProgress';
+import { OutputCard } from '@/components/chat/OutputCard';
+import type { ClarificationQuestion } from '@/lib/agent-g-clarifier';
+import type { ServiceId as RegistryServiceId } from '@/lib/registry';
+
+// ─── Pipeline types ───────────────────────────────────────────────────────────
+
+type PipelineStage = 'idle' | 'detecting' | 'clarifying' | 'confirming' | 'generating' | 'done';
+
+interface PipelineState {
+  stage: PipelineStage;
+  serviceId?: RegistryServiceId;
+  serviceName?: string;
+  userInput?: string;
+  questions: ClarificationQuestion[];
+  currentQuestionIndex: number;
+  answers: Record<string, string | string[]>;
+  finalPrompt?: string;
+  creditCost?: number;
+  estimatedSeconds?: number;
+  generationStage?: GenerationStage;
+  outputUrl?: string;
+  outputText?: string;
+  outputKind?: 'image' | 'video' | 'audio' | 'text' | 'code';
+  tokensUsed?: number;
+  cancelled?: boolean;
+  userBalance: number;
+}
+
+const GENERATION_STAGE_ORDER: GenerationStage[] = [
+  'received', 'processing', 'generating', 'optimizing', 'delivering',
+];
 
 interface SpeechRecognitionLike {
   lang: string;
@@ -238,6 +273,15 @@ export default function CommandCenterChat() {
 
   const [prompt, setPrompt] = useState('');
   const [running, setRunning] = useState(false);
+  const [pipeline, setPipeline] = useState<PipelineState>({
+    stage: 'idle',
+    questions: [],
+    currentQuestionIndex: 0,
+    answers: {},
+    userBalance: 100,
+  });
+  const pipelineRef = useRef(pipeline);
+  pipelineRef.current = pipeline;
   const [recording, setRecording] = useState(false);
   const [cameraOpen, setCameraOpen] = useState(false);
   const [cameraState, setCameraState] = useState<CameraState>('idle');
@@ -651,31 +695,133 @@ export default function CommandCenterChat() {
     closeCamera();
   }, [closeCamera, copy.cameraCapture, copy.cameraNotReady, ingestCommandInput]);
 
-  const sendCommand = useCallback(async () => {
-    if (running) {
-      return;
+  const callPipeline = useCallback(async (body: Record<string, unknown>) => {
+    const res = await fetch('/api/pipeline', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...body, locale: localeCode }),
+    });
+    return res.json() as Promise<Record<string, unknown>>;
+  }, [localeCode]);
+
+  const handlePipelineAnswer = useCallback(async (questionId: string, value: string | string[]) => {
+    const p = pipelineRef.current;
+    const newAnswers = { ...p.answers, [questionId]: value };
+    const nextIndex = p.currentQuestionIndex + 1;
+    const done = nextIndex >= p.questions.length;
+
+    setPipeline(prev => ({ ...prev, answers: newAnswers, currentQuestionIndex: done ? prev.currentQuestionIndex : nextIndex }));
+
+    if (!done) return;
+
+    setPipeline(prev => ({ ...prev, stage: 'confirming' }));
+    try {
+      const data = await callPipeline({ action: 'confirm', serviceId: p.serviceId, userInput: p.userInput, answers: newAnswers });
+      setPipeline(prev => ({
+        ...prev,
+        stage: 'confirming',
+        finalPrompt: data.finalPrompt as string,
+        creditCost: data.creditCost as number,
+        estimatedSeconds: data.estimatedSeconds as number,
+      }));
+    } catch {
+      setPipeline(prev => ({ ...prev, stage: 'idle' }));
     }
+  }, [callPipeline]);
+
+  const handlePipelineGenerate = useCallback(async () => {
+    const p = pipelineRef.current;
+    setPipeline(prev => ({ ...prev, stage: 'generating', generationStage: 'received', cancelled: false }));
+
+    const stageInterval = setInterval(() => {
+      setPipeline(prev => {
+        if (prev.stage !== 'generating' || prev.cancelled) { clearInterval(stageInterval); return prev; }
+        const idx = GENERATION_STAGE_ORDER.indexOf(prev.generationStage ?? 'received');
+        if (idx < GENERATION_STAGE_ORDER.length - 2) return { ...prev, generationStage: GENERATION_STAGE_ORDER[idx + 1] };
+        return prev;
+      });
+    }, Math.max(1500, ((p.estimatedSeconds ?? 10) * 1000) / 4));
+
+    try {
+      const data = await callPipeline({
+        action: 'generate',
+        serviceId: p.serviceId,
+        userInput: p.finalPrompt ?? p.userInput,
+        answers: p.answers,
+      }) as Record<string, unknown>;
+
+      clearInterval(stageInterval);
+      setPipeline(prev => ({
+        ...prev,
+        stage: 'done',
+        generationStage: 'delivering',
+        userBalance: Math.max(0, prev.userBalance - (prev.creditCost ?? 0)),
+        outputUrl: (data.result_url ?? data.url ?? undefined) as string | undefined,
+        outputText: (data.outputKind === 'text' || data.outputKind === 'code') ? data.result as string : undefined,
+        outputKind: data.outputKind as PipelineState['outputKind'],
+        tokensUsed: data.tokensUsed as number | undefined,
+      }));
+    } catch {
+      clearInterval(stageInterval);
+      setPipeline(prev => ({ ...prev, stage: 'idle', generationStage: undefined }));
+    }
+  }, [callPipeline]);
+
+  const handlePipelineCancel = useCallback(() => {
+    setPipeline(prev => ({ ...prev, cancelled: true }));
+    setTimeout(() => setPipeline(prev => ({ ...prev, stage: 'idle', generationStage: undefined, cancelled: false })), 1500);
+  }, []);
+
+  const handlePipelineNewRequest = useCallback(() => {
+    setPipeline(prev => ({ stage: 'idle', questions: [], currentQuestionIndex: 0, answers: {}, userBalance: prev.userBalance }));
+  }, []);
+
+  const sendCommand = useCallback(async () => {
+    if (running || pipeline.stage !== 'idle') return;
 
     const trimmed = prompt.trim();
-    if (!trimmed && pendingInputs.length === 0) {
-      return;
-    }
+    if (!trimmed && pendingInputs.length === 0) return;
 
     setRunning(true);
     try {
-      await sendPrimaryCommand(trimmed);
+      // 1. Show user message immediately
+      const userText = trimmed || '(attachment)';
       setPrompt('');
-      queueMicrotask(() => {
-        const node = composerRef.current;
-        if (!node) {
-          return;
-        }
-        node.focus();
-      });
+
+      // 2. Detect intent via pipeline API
+      setPipeline(prev => ({ ...prev, stage: 'detecting', userInput: userText }));
+
+      const data = await callPipeline({ action: 'detect_intent', userInput: userText });
+
+      if (!data.detected) {
+        // No service intent → fall back to existing Gemini/store flow
+        setPipeline(prev => ({ ...prev, stage: 'idle' }));
+        await sendPrimaryCommand(userText);
+      } else {
+        // Service detected → run clarification flow
+        const qData = await callPipeline({ action: 'get_questions', serviceId: data.serviceId });
+        setPipeline(prev => ({
+          ...prev,
+          stage: 'clarifying',
+          serviceId: data.serviceId as RegistryServiceId,
+          serviceName: data.serviceName as string,
+          userInput: userText,
+          questions: (qData.questions as ClarificationQuestion[]) ?? [],
+          currentQuestionIndex: 0,
+          answers: {},
+        }));
+        // Add a chat line so user sees their message
+        await sendPrimaryCommand(`[PIPELINE_START:${data.serviceId as string}] ${userText}`);
+      }
+
+      queueMicrotask(() => composerRef.current?.focus());
+    } catch {
+      setPipeline(prev => ({ ...prev, stage: 'idle' }));
+      await sendPrimaryCommand(prompt.trim()).catch(() => undefined);
     } finally {
       setRunning(false);
     }
-  }, [pendingInputs.length, prompt, running, sendPrimaryCommand]);
+  }, [running, pipeline.stage, prompt, pendingInputs.length, callPipeline, sendPrimaryCommand]);
 
   const kindLabel = (kind: string) => {
     if (kind === 'camera') return copy.camera;
@@ -692,7 +838,7 @@ export default function CommandCenterChat() {
           </div>
         ) : (
           <div className="mx-auto flex w-full max-w-4xl flex-col gap-3">
-            {messages.map((message) => (
+            {messages.filter(m => !m.content.startsWith('[PIPELINE_START:')).map((message) => (
               <div key={message.id} className={`flex ${message.role === 'assistant' ? 'justify-start' : 'justify-end'}`}>
                 <article
                   className={`max-w-[92%] rounded-3xl border px-4 py-3 text-sm leading-relaxed shadow-[0_14px_30px_rgba(0,0,0,0.35)] ${
@@ -770,6 +916,100 @@ export default function CommandCenterChat() {
           </div>
         )}
       </div>
+
+      {/* ── Pipeline cards ──────────────────────────────────────────────────── */}
+      <AnimatePresence>
+        {pipeline.stage !== 'idle' && (
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 12 }}
+            className="absolute inset-x-0 bottom-[310px] sm:bottom-[330px] z-30 flex justify-center px-4 sm:px-6"
+          >
+            <div className="w-full max-w-lg">
+              {pipeline.stage === 'detecting' && (
+                <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-black/40 px-4 py-3 backdrop-blur-sm">
+                  <Loader2 className="h-4 w-4 animate-spin text-cyan-400" />
+                  <span className="text-sm text-white/60">
+                    {localeCode === 'ka' ? 'სერვისს ვანალიზებ...' : localeCode === 'ru' ? 'Анализирую...' : 'Detecting service...'}
+                  </span>
+                </div>
+              )}
+
+              {pipeline.stage === 'clarifying' && (() => {
+                const q = pipeline.questions[pipeline.currentQuestionIndex];
+                return q ? (
+                  <ClarificationMessage
+                    question={q}
+                    stepNumber={pipeline.currentQuestionIndex + 1}
+                    totalSteps={pipeline.questions.length || 4}
+                    locale={localeCode}
+                    onAnswer={handlePipelineAnswer}
+                    selectedValue={pipeline.answers[q.id]}
+                  />
+                ) : null;
+              })()}
+
+              {pipeline.stage === 'confirming' && !pipeline.finalPrompt && (
+                <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-black/40 px-4 py-3 backdrop-blur-sm">
+                  <Loader2 className="h-4 w-4 animate-spin text-cyan-400" />
+                  <span className="text-sm text-white/60">
+                    {localeCode === 'ka' ? 'prompt-ს ვამზადებ...' : 'Building prompt...'}
+                  </span>
+                </div>
+              )}
+
+              {pipeline.stage === 'confirming' && pipeline.finalPrompt && pipeline.creditCost !== undefined && (
+                <ConfirmationCard
+                  service={pipeline.serviceId!}
+                  answers={pipeline.answers}
+                  finalPrompt={pipeline.finalPrompt}
+                  creditCost={pipeline.creditCost}
+                  userBalance={pipeline.userBalance}
+                  estimatedSeconds={pipeline.estimatedSeconds ?? 20}
+                  locale={localeCode}
+                  onEdit={(field) => {
+                    if (field === 'answers') setPipeline(prev => ({ ...prev, stage: 'clarifying', currentQuestionIndex: 0, answers: {} }));
+                  }}
+                  onGenerate={handlePipelineGenerate}
+                  onCancel={() => setPipeline(prev => ({ ...prev, stage: 'idle' }))}
+                />
+              )}
+
+              {pipeline.stage === 'generating' && (
+                <GenerationProgress
+                  service={pipeline.serviceId!}
+                  stage={pipeline.generationStage ?? 'received'}
+                  estimatedSeconds={pipeline.estimatedSeconds ?? 20}
+                  creditCost={pipeline.creditCost ?? 0}
+                  locale={localeCode}
+                  onCancel={handlePipelineCancel}
+                  cancelled={pipeline.cancelled}
+                />
+              )}
+
+              {pipeline.stage === 'done' && (
+                <OutputCard
+                  service={pipeline.serviceId!}
+                  outputKind={pipeline.outputKind}
+                  resultUrl={pipeline.outputUrl}
+                  resultText={pipeline.outputText}
+                  creditCost={pipeline.creditCost ?? 0}
+                  tokensUsed={pipeline.tokensUsed}
+                  locale={localeCode}
+                  onNewRequest={handlePipelineNewRequest}
+                  onDownload={pipeline.outputUrl ? () => {
+                    const a = document.createElement('a');
+                    a.href = pipeline.outputUrl!;
+                    a.download = `myavatar-${pipeline.serviceId ?? 'output'}-${Date.now()}`;
+                    a.click();
+                  } : undefined}
+                />
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <div className="pointer-events-none absolute inset-x-0 bottom-0 z-40 flex justify-center px-2 pb-[calc(env(safe-area-inset-bottom,0px)+10px)] sm:px-4">
         <div ref={barRef} className="pointer-events-auto w-full max-w-5xl">
@@ -927,7 +1167,7 @@ export default function CommandCenterChat() {
                   setPrompt('');
                   queueMicrotask(() => composerRef.current?.focus());
                 }}
-                disabled={!prompt.trim() || running}
+                disabled={!prompt.trim() || running || pipeline.stage !== 'idle'}
                 className="inline-flex min-h-[44px] items-center rounded-2xl border border-white/15 bg-white/[0.05] px-3 py-1.5 text-xs font-semibold text-white/80 disabled:opacity-45"
               >
                 {copy.clear}
@@ -997,7 +1237,7 @@ export default function CommandCenterChat() {
 
               <button
                 type="submit"
-                disabled={running || (!prompt.trim() && pendingInputs.length === 0)}
+                disabled={running || pipeline.stage !== 'idle' || (!prompt.trim() && pendingInputs.length === 0)}
                 className="ml-auto inline-flex min-h-[44px] items-center gap-1.5 rounded-2xl border border-cyan-300/45 bg-cyan-500/18 px-4 py-1.5 text-xs font-semibold text-cyan-50 disabled:opacity-40"
               >
                 {running ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
