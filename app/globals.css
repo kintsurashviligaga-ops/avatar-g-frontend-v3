@@ -3518,3 +3518,71 @@ a:focus-visible {
   background: rgba(255,255,255,0.04);
 }
 
+
+/* ═══════════════════════════════════════════════════════════════
+   Neo-Cosmic Futurism — Design System v4 additions
+   ═══════════════════════════════════════════════════════════════ */
+
+/* Glow variables */
+:root {
+  --glow-cyan-sm:   0 0 8px rgba(0,212,255,0.3);
+  --glow-cyan-md:   0 0 20px rgba(0,212,255,0.4), 0 0 40px rgba(0,212,255,0.15);
+  --glow-cyan-lg:   0 0 40px rgba(0,212,255,0.5), 0 0 80px rgba(0,212,255,0.2);
+  --glow-violet-sm: 0 0 8px rgba(124,58,237,0.35);
+  --glow-violet-md: 0 0 20px rgba(124,58,237,0.45), 0 0 40px rgba(124,58,237,0.18);
+  --shadow-card: 0 8px 40px rgba(0,0,0,0.6), 0 2px 8px rgba(0,0,0,0.4);
+  --shadow-float: 0 20px 60px rgba(0,0,0,0.8), 0 4px 16px rgba(0,212,255,0.1);
+}
+
+/* Gradient text utilities */
+.gradient-text-cyan {
+  background: linear-gradient(135deg, #00d4ff 0%, #7c3aed 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+.gradient-text-violet {
+  background: linear-gradient(135deg, #7c3aed 0%, #00d4ff 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Glass morphism utility */
+.glass {
+  background: rgba(13,13,24,0.7);
+  backdrop-filter: blur(16px) saturate(180%);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
+  border: 1px solid rgba(255,255,255,0.06);
+}
+
+/* Selection */
+::selection {
+  background: rgba(0,212,255,0.25);
+  color: white;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: #03030a; }
+::-webkit-scrollbar-thumb { background: #1e1e35; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #00d4ff; }
+
+/* ── Neo-Cosmic Futurism: Additional Keyframes ── */
+@keyframes twinkle {
+  0%, 100% { opacity: 0.2; transform: scale(1); }
+  50% { opacity: 0.8; transform: scale(1.5); }
+}
+
+@keyframes scanline {
+  0% { top: -2px; opacity: 0; }
+  5% { opacity: 1; }
+  95% { opacity: 1; }
+  100% { top: 100%; opacity: 0; }
+}
+
+@keyframes gradient-shift {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}

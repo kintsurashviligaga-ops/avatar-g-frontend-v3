@@ -42,7 +42,7 @@ export async function middleware(request: NextRequest) {
 
     if (pathname === '/') {
       const url = request.nextUrl.clone();
-      url.pathname = `/${preferredLocale}/dashboard`;
+      url.pathname = `/${preferredLocale}`;
 
       const response = NextResponse.redirect(url);
       response.cookies.set('NEXT_LOCALE', preferredLocale, {
@@ -53,12 +53,7 @@ export async function middleware(request: NextRequest) {
       return response;
     }
 
-    // Redirect locale root (e.g. /en, /ka) straight to dashboard
-    if (segments.length === 1 && SUPPORTED_LOCALES.includes(firstSegment)) {
-      const url = request.nextUrl.clone();
-      url.pathname = `/${firstSegment}/dashboard`;
-      return NextResponse.redirect(url);
-    }
+    // Locale root (e.g. /en, /ka) → show landing page (handled by [locale]/page.tsx)
 
     // If first segment is not a supported locale → redirect to /{preferredLocale}/...
     if (!SUPPORTED_LOCALES.includes(firstSegment)) {
