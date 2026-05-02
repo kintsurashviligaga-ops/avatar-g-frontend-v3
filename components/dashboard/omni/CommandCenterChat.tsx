@@ -832,12 +832,14 @@ export default function CommandCenterChat() {
   return (
     <section className="relative flex h-full min-h-0 flex-col">
       <div className="flex-1 overflow-y-auto px-4 pt-4 pb-[310px] sm:px-6 sm:pt-6 sm:pb-[330px]">
-        {messages.length === 0 ? (
-          <div className="mx-auto max-w-3xl rounded-3xl border border-white/10 bg-black/20 px-5 py-6 text-sm text-white/60 backdrop-blur-lg">
-            {copy.emptyHint}
-          </div>
-        ) : (
-          <div className="mx-auto flex w-full max-w-4xl flex-col gap-3">
+        <div className="mx-auto flex w-full max-w-4xl flex-col gap-3">
+          {messages.length === 0 && pipeline.stage === 'idle' && (
+            <div className="rounded-3xl border border-white/10 bg-black/20 px-5 py-6 text-sm text-white/60 backdrop-blur-lg">
+              {copy.emptyHint}
+            </div>
+          )}
+          {messages.length > 0 && (
+            <>
             {messages.filter(m => !m.content.startsWith('[PIPELINE_START:')).map((message) => (
               <div key={message.id} className={`flex ${message.role === 'assistant' ? 'justify-start' : 'justify-end'}`}>
                 <article
@@ -913,103 +915,103 @@ export default function CommandCenterChat() {
                 ))}
               </div>
             )}
+            </>
+          )}
+
+          {/* ── Pipeline cards (inline in scroll area) ── */}
+          <AnimatePresence>
+              {pipeline.stage !== 'idle' && (
+                <motion.div
+                  key={pipeline.stage}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0 }}
+                  className="mt-3 w-full max-w-lg"
+                >
+                  {pipeline.stage === 'detecting' && (
+                    <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-black/40 px-4 py-3 backdrop-blur-sm">
+                      <Loader2 className="h-4 w-4 animate-spin text-cyan-400" />
+                      <span className="text-sm text-white/60">
+                        {localeCode === 'ka' ? 'სერვისს ვანალიზებ...' : localeCode === 'ru' ? 'Анализирую...' : 'Detecting service...'}
+                      </span>
+                    </div>
+                  )}
+
+                  {pipeline.stage === 'clarifying' && (() => {
+                    const q = pipeline.questions[pipeline.currentQuestionIndex];
+                    return q ? (
+                      <ClarificationMessage
+                        question={q}
+                        stepNumber={pipeline.currentQuestionIndex + 1}
+                        totalSteps={pipeline.questions.length || 4}
+                        locale={localeCode}
+                        onAnswer={handlePipelineAnswer}
+                        selectedValue={pipeline.answers[q.id]}
+                      />
+                    ) : null;
+                  })()}
+
+                  {pipeline.stage === 'confirming' && !pipeline.finalPrompt && (
+                    <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-black/40 px-4 py-3 backdrop-blur-sm">
+                      <Loader2 className="h-4 w-4 animate-spin text-cyan-400" />
+                      <span className="text-sm text-white/60">
+                        {localeCode === 'ka' ? 'prompt-ს ვამზადებ...' : 'Building prompt...'}
+                      </span>
+                    </div>
+                  )}
+
+                  {pipeline.stage === 'confirming' && pipeline.finalPrompt && pipeline.creditCost !== undefined && (
+                    <ConfirmationCard
+                      service={pipeline.serviceId!}
+                      answers={pipeline.answers}
+                      finalPrompt={pipeline.finalPrompt}
+                      creditCost={pipeline.creditCost}
+                      userBalance={pipeline.userBalance}
+                      estimatedSeconds={pipeline.estimatedSeconds ?? 20}
+                      locale={localeCode}
+                      onEdit={(field) => {
+                        if (field === 'answers') setPipeline(prev => ({ ...prev, stage: 'clarifying', currentQuestionIndex: 0, answers: {} }));
+                      }}
+                      onGenerate={handlePipelineGenerate}
+                      onCancel={() => setPipeline(prev => ({ ...prev, stage: 'idle' }))}
+                    />
+                  )}
+
+                  {pipeline.stage === 'generating' && (
+                    <GenerationProgress
+                      service={pipeline.serviceId!}
+                      stage={pipeline.generationStage ?? 'received'}
+                      estimatedSeconds={pipeline.estimatedSeconds ?? 20}
+                      creditCost={pipeline.creditCost ?? 0}
+                      locale={localeCode}
+                      onCancel={handlePipelineCancel}
+                      cancelled={pipeline.cancelled}
+                    />
+                  )}
+
+                  {pipeline.stage === 'done' && (
+                    <OutputCard
+                      service={pipeline.serviceId!}
+                      outputKind={pipeline.outputKind}
+                      resultUrl={pipeline.outputUrl}
+                      resultText={pipeline.outputText}
+                      creditCost={pipeline.creditCost ?? 0}
+                      tokensUsed={pipeline.tokensUsed}
+                      locale={localeCode}
+                      onNewRequest={handlePipelineNewRequest}
+                      onDownload={pipeline.outputUrl ? () => {
+                        const a = document.createElement('a');
+                        a.href = pipeline.outputUrl!;
+                        a.download = `myavatar-${pipeline.serviceId ?? 'output'}-${Date.now()}`;
+                        a.click();
+                      } : undefined}
+                    />
+                  )}
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
-        )}
       </div>
-
-      {/* ── Pipeline cards ──────────────────────────────────────────────────── */}
-      <AnimatePresence>
-        {pipeline.stage !== 'idle' && (
-          <motion.div
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 12 }}
-            className="absolute inset-x-0 bottom-[310px] sm:bottom-[330px] z-30 flex justify-center px-4 sm:px-6"
-          >
-            <div className="w-full max-w-lg">
-              {pipeline.stage === 'detecting' && (
-                <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-black/40 px-4 py-3 backdrop-blur-sm">
-                  <Loader2 className="h-4 w-4 animate-spin text-cyan-400" />
-                  <span className="text-sm text-white/60">
-                    {localeCode === 'ka' ? 'სერვისს ვანალიზებ...' : localeCode === 'ru' ? 'Анализирую...' : 'Detecting service...'}
-                  </span>
-                </div>
-              )}
-
-              {pipeline.stage === 'clarifying' && (() => {
-                const q = pipeline.questions[pipeline.currentQuestionIndex];
-                return q ? (
-                  <ClarificationMessage
-                    question={q}
-                    stepNumber={pipeline.currentQuestionIndex + 1}
-                    totalSteps={pipeline.questions.length || 4}
-                    locale={localeCode}
-                    onAnswer={handlePipelineAnswer}
-                    selectedValue={pipeline.answers[q.id]}
-                  />
-                ) : null;
-              })()}
-
-              {pipeline.stage === 'confirming' && !pipeline.finalPrompt && (
-                <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-black/40 px-4 py-3 backdrop-blur-sm">
-                  <Loader2 className="h-4 w-4 animate-spin text-cyan-400" />
-                  <span className="text-sm text-white/60">
-                    {localeCode === 'ka' ? 'prompt-ს ვამზადებ...' : 'Building prompt...'}
-                  </span>
-                </div>
-              )}
-
-              {pipeline.stage === 'confirming' && pipeline.finalPrompt && pipeline.creditCost !== undefined && (
-                <ConfirmationCard
-                  service={pipeline.serviceId!}
-                  answers={pipeline.answers}
-                  finalPrompt={pipeline.finalPrompt}
-                  creditCost={pipeline.creditCost}
-                  userBalance={pipeline.userBalance}
-                  estimatedSeconds={pipeline.estimatedSeconds ?? 20}
-                  locale={localeCode}
-                  onEdit={(field) => {
-                    if (field === 'answers') setPipeline(prev => ({ ...prev, stage: 'clarifying', currentQuestionIndex: 0, answers: {} }));
-                  }}
-                  onGenerate={handlePipelineGenerate}
-                  onCancel={() => setPipeline(prev => ({ ...prev, stage: 'idle' }))}
-                />
-              )}
-
-              {pipeline.stage === 'generating' && (
-                <GenerationProgress
-                  service={pipeline.serviceId!}
-                  stage={pipeline.generationStage ?? 'received'}
-                  estimatedSeconds={pipeline.estimatedSeconds ?? 20}
-                  creditCost={pipeline.creditCost ?? 0}
-                  locale={localeCode}
-                  onCancel={handlePipelineCancel}
-                  cancelled={pipeline.cancelled}
-                />
-              )}
-
-              {pipeline.stage === 'done' && (
-                <OutputCard
-                  service={pipeline.serviceId!}
-                  outputKind={pipeline.outputKind}
-                  resultUrl={pipeline.outputUrl}
-                  resultText={pipeline.outputText}
-                  creditCost={pipeline.creditCost ?? 0}
-                  tokensUsed={pipeline.tokensUsed}
-                  locale={localeCode}
-                  onNewRequest={handlePipelineNewRequest}
-                  onDownload={pipeline.outputUrl ? () => {
-                    const a = document.createElement('a');
-                    a.href = pipeline.outputUrl!;
-                    a.download = `myavatar-${pipeline.serviceId ?? 'output'}-${Date.now()}`;
-                    a.click();
-                  } : undefined}
-                />
-              )}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
 
       <div className="pointer-events-none absolute inset-x-0 bottom-0 z-40 flex justify-center px-2 pb-[calc(env(safe-area-inset-bottom,0px)+10px)] sm:px-4">
         <div ref={barRef} className="pointer-events-auto w-full max-w-5xl">
