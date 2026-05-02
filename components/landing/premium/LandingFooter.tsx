@@ -5,6 +5,11 @@ import Link from 'next/link'
 import Image from 'next/image'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
 
+function scrollTo(anchor: string) {
+  const el = document.querySelector(anchor)
+  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+}
+
 const FOOTER_COPY = {
   en: {
     services: 'Services',
@@ -168,9 +173,9 @@ export function LandingFooter() {
           <div>
             <p className="font-medium mb-3 text-[11px] uppercase tracking-wider text-white/40">{c.platform}</p>
             <div className="space-y-2.5 text-[13px] text-white/45">
-              <Link href={lh('/services')} className="block py-0.5 transition-colors hover:text-white/80">{c.services}</Link>
-              <Link href={lh('/pricing')} className="block py-0.5 transition-colors hover:text-white/80">Pricing</Link>
-              <Link href={lh('/workspace')} className="block py-0.5 transition-colors hover:text-white/80">Workspace</Link>
+              <button onClick={() => scrollTo('#services')} className="block py-0.5 transition-colors hover:text-white/80 text-left">{c.services}</button>
+              <button onClick={() => scrollTo('#pricing')} className="block py-0.5 transition-colors hover:text-white/80 text-left">Pricing</button>
+              <Link href={lh('/dashboard')} className="block py-0.5 transition-colors hover:text-white/80">Workspace</Link>
               <Link href={lh('/business')} className="block py-0.5 transition-colors hover:text-white/80">Business</Link>
             </div>
           </div>
@@ -179,7 +184,7 @@ export function LandingFooter() {
           <div>
             <p className="font-medium mb-3 text-[11px] uppercase tracking-wider text-white/40">{c.resources}</p>
             <div className="space-y-2.5 text-[13px] text-white/45">
-              <Link href={lh('/about')} className="block py-0.5 transition-colors hover:text-white/80">About</Link>
+              <button onClick={() => scrollTo('#about')} className="block py-0.5 transition-colors hover:text-white/80 text-left">About</button>
               <Link href={lh('/contact')} className="block py-0.5 transition-colors hover:text-white/80">Contact</Link>
               <Link href={lh('/blog')} className="block py-0.5 transition-colors hover:text-white/80">Blog</Link>
               <Link href={lh('/careers')} className="block py-0.5 transition-colors hover:text-white/80">Careers</Link>

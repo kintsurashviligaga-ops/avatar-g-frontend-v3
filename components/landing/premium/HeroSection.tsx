@@ -77,6 +77,11 @@ function generateStars(count: number): Star[] {
 
 const STARS = generateStars(150)
 
+function scrollTo(anchor: string) {
+  const el = document.querySelector(anchor)
+  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+}
+
 export function HeroSection() {
   const { language } = useLanguage()
   const c = COPY[language] || COPY.en
@@ -213,8 +218,8 @@ export function HeroSection() {
             </Link>
           </motion.div>
           <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.98 }} transition={{ type: 'spring', stiffness: 400, damping: 17 }}>
-            <Link
-              href={lh('/services')}
+            <button
+              onClick={() => scrollTo('#services')}
               className="inline-flex items-center gap-2 text-sm font-semibold px-8 py-3.5 rounded-xl transition-all duration-200 text-white/80 hover:text-white"
               style={{
                 backgroundColor: 'rgba(255,255,255,0.05)',
@@ -222,7 +227,7 @@ export function HeroSection() {
               }}
             >
               {c.cta2}
-            </Link>
+            </button>
           </motion.div>
         </motion.div>
 

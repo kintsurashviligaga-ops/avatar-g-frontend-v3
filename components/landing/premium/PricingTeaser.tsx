@@ -149,6 +149,10 @@ export function PricingTeaser() {
   const { language } = useLanguage()
   const c = COPY[language] || COPY.en
   const lh = (p: string) => `/${language}${p}`
+  const scrollTo = (anchor: string) => {
+    const el = document.querySelector(anchor)
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
 
   return (
     <section className="relative px-4 sm:px-6 lg:px-10 py-20 sm:py-28 overflow-hidden">
@@ -279,7 +283,7 @@ export function PricingTeaser() {
 
         {/* See all pricing link */}
         <div className="text-center mt-8">
-          <GlowButton href={lh('/pricing')} variant="ghost" size="sm">
+          <GlowButton href={lh('/signup')} variant="ghost" size="sm">
             {c.cta} →
           </GlowButton>
         </div>

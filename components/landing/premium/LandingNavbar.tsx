@@ -13,21 +13,22 @@ const LOCALES = [
   { code: 'ru', label: 'РУ' },
 ] as const
 
+// Anchor links — all point to sections on the same single page
 const NAV_LINKS = {
   en: [
-    { label: 'Services', href: '/services' },
-    { label: 'Pricing', href: '/pricing' },
-    { label: 'About', href: '/about' },
+    { label: 'Services', href: '#services' },
+    { label: 'Pricing', href: '#pricing' },
+    { label: 'About', href: '#about' },
   ],
   ka: [
-    { label: 'სერვისები', href: '/services' },
-    { label: 'ფასები', href: '/pricing' },
-    { label: 'ჩვენს შესახებ', href: '/about' },
+    { label: 'სერვისები', href: '#services' },
+    { label: 'ფასები', href: '#pricing' },
+    { label: 'ჩვენს შესახებ', href: '#about' },
   ],
   ru: [
-    { label: 'Услуги', href: '/services' },
-    { label: 'Цены', href: '/pricing' },
-    { label: 'О нас', href: '/about' },
+    { label: 'Услуги', href: '#services' },
+    { label: 'Цены', href: '#pricing' },
+    { label: 'О нас', href: '#about' },
   ],
 } as const
 
@@ -52,6 +53,11 @@ const mobileLinkVariants = {
     x: 0,
     transition: { delay: i * 0.06, duration: 0.3, ease: 'easeOut' },
   }),
+}
+
+function scrollTo(anchor: string) {
+  const el = document.querySelector(anchor)
+  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
 }
 
 export function LandingNavbar() {
@@ -97,20 +103,17 @@ export function LandingNavbar() {
         {/* Logo */}
         <BrandLogo href={localeHref('/')} size="nav" showText compact={scrolled} />
 
-        {/* Desktop nav links */}
+        {/* Desktop nav links — smooth-scroll to page sections */}
         <div className="hidden md:flex items-center gap-1">
           {links.map((link) => (
-            <Link
+            <button
               key={link.href}
-              href={localeHref(link.href)}
+              onClick={() => { scrollTo(link.href); setMobileOpen(false) }}
               className="relative group px-3 py-2 text-[13px] font-medium text-white/65 hover:text-white transition-colors duration-200"
             >
               {link.label}
-              {/* Animated underline */}
-              <span
-                className="absolute bottom-0.5 left-3 right-3 h-px bg-cyan-400 origin-left scale-x-0 group-hover:scale-x-100 transition-transform duration-200"
-              />
-            </Link>
+              <span className="absolute bottom-0.5 left-3 right-3 h-px bg-cyan-400 origin-left scale-x-0 group-hover:scale-x-100 transition-transform duration-200" />
+            </button>
           ))}
         </div>
 
@@ -204,13 +207,12 @@ export function LandingNavbar() {
             <div className="flex flex-col gap-1 px-6 pt-8">
               {links.map((link, i) => (
                 <motion.div key={link.href} custom={i} variants={mobileLinkVariants} initial="hidden" animate="visible">
-                  <Link
-                    href={localeHref(link.href)}
-                    onClick={() => setMobileOpen(false)}
-                    className="block py-4 text-2xl font-bold text-white/80 hover:text-white border-b border-white/6 transition-colors"
+                  <button
+                    onClick={() => { scrollTo(link.href); setMobileOpen(false) }}
+                    className="block w-full text-left py-4 text-2xl font-bold text-white/80 hover:text-white border-b border-white/6 transition-colors"
                   >
                     {link.label}
-                  </Link>
+                  </button>
                 </motion.div>
               ))}
 

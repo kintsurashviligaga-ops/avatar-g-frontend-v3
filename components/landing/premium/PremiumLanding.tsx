@@ -1,12 +1,6 @@
 'use client'
 
-/**
- * PremiumLanding.tsx
- * ==================
- * Main landing flow — Neo-Cosmic Futurism redesign
- * Flow: Hero → ServicesGrid → AgentGSection → StatsSection → PricingTeaser → LandingCTA → LandingFooter
- */
-
+import { LandingNavbar } from './LandingNavbar'
 import { HeroSection } from './HeroSection'
 import { ServicesGrid } from './ServicesGrid'
 import { AgentGSection } from './AgentGSection'
@@ -17,18 +11,45 @@ import { LandingFooter } from './LandingFooter'
 
 export default function PremiumLanding() {
   return (
-    <div className="relative min-h-screen overflow-x-hidden" style={{ color: 'var(--color-text)' }}>
-      <HeroSection />
+    <div
+      className="relative min-h-screen overflow-x-hidden"
+      style={{ backgroundColor: 'var(--color-bg, #0a0a0c)', color: 'var(--color-text)' }}
+    >
+      <LandingNavbar />
+
+      {/* Each section has an id so navbar anchor links work */}
+      <div id="home">
+        <HeroSection />
+      </div>
+
       <Separator />
-      <ServicesGrid />
+
+      <div id="services">
+        <ServicesGrid />
+      </div>
+
       <Separator />
-      <AgentGSection />
+
+      <div id="agent-g">
+        <AgentGSection />
+      </div>
+
       <Separator />
+
       <StatsSection />
+
       <Separator />
-      <PricingTeaser />
+
+      <div id="pricing">
+        <PricingTeaser />
+      </div>
+
       <Separator />
-      <LandingCTA />
+
+      <div id="about">
+        <LandingCTA />
+      </div>
+
       <LandingFooter />
     </div>
   )

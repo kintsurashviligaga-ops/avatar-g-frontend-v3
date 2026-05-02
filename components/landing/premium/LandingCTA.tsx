@@ -63,6 +63,11 @@ function buildParticles(count: number): Particle[] {
 
 const PARTICLES = buildParticles(14)
 
+function scrollTo(anchor: string) {
+  const el = document.querySelector(anchor)
+  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+}
+
 export function LandingCTA() {
   const { language } = useLanguage()
   const c = CTA_COPY[language] || CTA_COPY.en
@@ -197,7 +202,7 @@ export function LandingCTA() {
               <polyline points="12 5 19 12 12 19" />
             </svg>
           </GlowButton>
-          <GlowButton href={lh('/services')} variant="ghost" size="lg">
+          <GlowButton onClick={() => scrollTo('#services')} variant="ghost" size="lg">
             {c.cta2}
           </GlowButton>
         </motion.div>
