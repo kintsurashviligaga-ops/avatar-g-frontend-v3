@@ -1007,5 +1007,62 @@
       "ended": "Ended",
       "failed": "Failed"
     }
+  },
+  "pipeline": {
+    "step": "Step {current}/{total}",
+    "clarification": {
+      "title": "Clarification",
+      "agentLabel": "Agent G"
+    },
+    "confirmation": {
+      "title": "Generation Plan",
+      "finalPrompt": "Final Prompt",
+      "editPrompt": "Edit Prompt",
+      "editAnswers": "Edit Answers",
+      "selectedOptions": "Selected Options",
+      "creditCost": "Credit Cost",
+      "yourBalance": "Your Balance",
+      "remaining": "Remaining",
+      "estimatedTime": "Estimated Time",
+      "generate": "Generate",
+      "cancel": "Cancel",
+      "insufficientCredits": "Insufficient credits",
+      "credits": "cr."
+    },
+    "progress": {
+      "title": "Generating...",
+      "stages": {
+        "received": "Received",
+        "processing": "Processing",
+        "generating": "Generating",
+        "optimizing": "Optimizing",
+        "delivering": "Delivering"
+      },
+      "timeRemaining": "Time remaining",
+      "willDeduct": "Will deduct",
+      "cancel": "Cancel",
+      "cancelling": "Cancelling...",
+      "cancelled": "Cancelled",
+      "credits": "cr."
+    },
+    "output": {
+      "ready": "Ready!",
+      "download": "Download",
+      "share": "Share",
+      "newRequest": "New Request",
+      "spent": "Spent",
+      "tokens": "tokens",
+      "copyCode": "Copy Code",
+      "copyText": "Copy Text",
+      "copied": "Copied!"
+    },
+    "credits": {
+      "balance": "Balance",
+      "label": "cr.",
+      "low": "Low credits"
+    },
+    "detect": {
+      "notDetected": "I am Agent G. Which service would you like? Avatar, Video, Image, Music, Game, Interior, Prompt or Terminal?"
+    }
   }
 }

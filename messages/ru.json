@@ -1007,5 +1007,62 @@
       "ended": "Завершен",
       "failed": "Ошибка"
     }
+  },
+  "pipeline": {
+    "step": "Шаг {current}/{total}",
+    "clarification": {
+      "title": "Уточнение",
+      "agentLabel": "Agent G"
+    },
+    "confirmation": {
+      "title": "План генерации",
+      "finalPrompt": "Финальный промпт",
+      "editPrompt": "Изменить промпт",
+      "editAnswers": "Изменить ответы",
+      "selectedOptions": "Выбранные параметры",
+      "creditCost": "Стоимость кредитов",
+      "yourBalance": "Ваш баланс",
+      "remaining": "Останется",
+      "estimatedTime": "Примерное время",
+      "generate": "Генерировать",
+      "cancel": "Отмена",
+      "insufficientCredits": "Недостаточно кредитов",
+      "credits": "кр."
+    },
+    "progress": {
+      "title": "Генерация...",
+      "stages": {
+        "received": "Получено",
+        "processing": "Обработка",
+        "generating": "Генерация",
+        "optimizing": "Оптимизация",
+        "delivering": "Доставка"
+      },
+      "timeRemaining": "Оставшееся время",
+      "willDeduct": "Будет списано",
+      "cancel": "Отмена",
+      "cancelling": "Отмена...",
+      "cancelled": "Отменено",
+      "credits": "кр."
+    },
+    "output": {
+      "ready": "Готово!",
+      "download": "Скачать",
+      "share": "Поделиться",
+      "newRequest": "Новый запрос",
+      "spent": "Потрачено",
+      "tokens": "токенов",
+      "copyCode": "Копировать код",
+      "copyText": "Копировать текст",
+      "copied": "Скопировано!"
+    },
+    "credits": {
+      "balance": "Баланс",
+      "label": "кр.",
+      "low": "Мало кредитов"
+    },
+    "detect": {
+      "notDetected": "Я Agent G. Какой сервис вы хотите? Avatar, Video, Image, Music, Game, Interior, Prompt или Terminal?"
+    }
   }
 }

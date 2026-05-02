@@ -95,3 +95,22 @@ export const SERVICE_CREDIT_COSTS: Record<ServiceId, number> = Object.fromEntrie
 export const SERVICE_AVG_SECONDS: Record<ServiceId, number> = Object.fromEntries(
   SERVICE_REGISTRY.map(s => [s.id, s.avgSeconds])
 ) as Record<ServiceId, number>
+
+export function getServiceById(id: ServiceId) {
+  return SERVICE_REGISTRY.find(s => s.id === id)
+}
+
+export function resolveServiceColor(id: ServiceId): string {
+  return getServiceById(id)?.color ?? '#00d4ff'
+}
+
+export const SERVICE_OUTPUT_KINDS: Record<ServiceId, 'image' | 'video' | 'audio' | 'text' | 'code'> = {
+  avatar:           'video',
+  video:            'video',
+  image:            'image',
+  music:            'audio',
+  game:             'text',
+  interior:         'image',
+  'prompt-builder': 'text',
+  terminal:         'code',
+}

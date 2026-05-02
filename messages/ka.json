@@ -1007,5 +1007,62 @@
       "ended": "დასრულდა",
       "failed": "შეცდომა"
     }
+  },
+  "pipeline": {
+    "step": "ნაბიჯი {current}/{total}",
+    "clarification": {
+      "title": "დაზუსტება",
+      "agentLabel": "Agent G"
+    },
+    "confirmation": {
+      "title": "გენერაციის გეგმა",
+      "finalPrompt": "საბოლოო Prompt",
+      "editPrompt": "Prompt-ის შეცვლა",
+      "editAnswers": "პასუხების შეცვლა",
+      "selectedOptions": "არჩეული პარამეტრები",
+      "creditCost": "კრედიტის ღირებულება",
+      "yourBalance": "თქვენი ბალანსი",
+      "remaining": "დარჩება",
+      "estimatedTime": "სავარაუდო დრო",
+      "generate": "გენერაცია",
+      "cancel": "გაუქმება",
+      "insufficientCredits": "არ გაქვს საკმარისი კრედიტი",
+      "credits": "კრ."
+    },
+    "progress": {
+      "title": "გენერაცია მიმდინარეობს...",
+      "stages": {
+        "received": "მიღებულია",
+        "processing": "დამუშავება",
+        "generating": "გენერაცია",
+        "optimizing": "ოპტიმიზაცია",
+        "delivering": "მიწოდება"
+      },
+      "timeRemaining": "დარჩენილი დრო",
+      "willDeduct": "ჩამოაკლდება",
+      "cancel": "გაუქმება",
+      "cancelling": "გაუქმება...",
+      "cancelled": "გაუქმდა",
+      "credits": "კრ."
+    },
+    "output": {
+      "ready": "მზადაა!",
+      "download": "გადმოწერა",
+      "share": "გაზიარება",
+      "newRequest": "ახალი მოთხოვნა",
+      "spent": "დახარჯული",
+      "tokens": "ტოკენი",
+      "copyCode": "კოდის კოპირება",
+      "copyText": "ტექსტის კოპირება",
+      "copied": "დაკოპირდა!"
+    },
+    "credits": {
+      "balance": "ბალანსი",
+      "label": "კრ.",
+      "low": "კრედიტი იწურება"
+    },
+    "detect": {
+      "notDetected": "მე ვარ Agent G — MyAvatar.ge-ს AI ასისტენტი. რომელი სერვისი გინდა? Avatar, Video, Image, Music, Game, Interior, Prompt ან Terminal?"
+    }
   }
 }
