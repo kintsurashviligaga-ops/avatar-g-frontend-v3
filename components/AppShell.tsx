@@ -66,10 +66,20 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
+  // Routes that own their full layout — no app shell chrome
   const isImmersiveWorkspace = !!pathname && (
     /\/services\/[a-z0-9-]+\/?$/.test(pathname) ||
     /\/(dashboard|hub|workspace)\/?$/.test(pathname)
   );
+
+  // Landing & auth pages manage their own navbar — strip the app shell
+  const isLandingOrAuth = !!pathname && (
+    /^\/(ka|en|ru)\/?$/.test(pathname) ||          // /ka  /en  /ru
+    /^\/$/.test(pathname) ||                        // bare /
+    /\/(login|signup|auth|register)(\/|$)/.test(pathname)
+  );
+
+  const hideShellChrome = isImmersiveWorkspace || isLandingOrAuth;
 
   return (
     <div
@@ -86,14 +96,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       >
         Skip to content
       </a>
-      {!isImmersiveWorkspace && <TopNavbar onMenuToggle={() => setSidebarOpen(v => !v)} menuOpen={sidebarOpen} />}
-      {!isImmersiveWorkspace && <SidebarMenu open={sidebarOpen} onClose={() => setSidebarOpen(false)} />}
+      {!hideShellChrome && <TopNavbar onMenuToggle={() => setSidebarOpen(v => !v)} menuOpen={sidebarOpen} />}
+      {!hideShellChrome && <SidebarMenu open={sidebarOpen} onClose={() => setSidebarOpen(false)} />}
       <main
         id="main-content"
         className="relative flex-1 w-full"
         style={
-          isImmersiveWorkspace
-            ? { zIndex: 2, minHeight: 'var(--app-screen-height)' }
+          hideShellChrome
+            ? { zIndex: 2 }
             : { paddingTop: 'calc(4rem + env(safe-area-inset-top, 0px))', zIndex: 2 }
         }
       >
@@ -101,9 +111,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           {children}
         </ClientErrorBoundary>
       </main>
-      {!isImmersiveWorkspace && <BottomNavigation />}
-      {!isImmersiveWorkspace && <FloatingChatButton />}
-      {!isImmersiveWorkspace && <div className="h-16 md:hidden shrink-0" />}
+      {!hideShellChrome && <BottomNavigation />}
+      {!hideShellChrome && <FloatingChatButton />}
+      {!hideShellChrome && <div className="h-16 md:hidden shrink-0" />}
     </div>
   );
 }
