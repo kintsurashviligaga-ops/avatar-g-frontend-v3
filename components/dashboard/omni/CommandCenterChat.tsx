@@ -24,18 +24,20 @@ import { ClarificationMessage } from '@/components/chat/ClarificationMessage';
 import { ConfirmationCard } from '@/components/chat/ConfirmationCard';
 import { GenerationProgress, type GenerationStage } from '@/components/chat/GenerationProgress';
 import { OutputCard } from '@/components/chat/OutputCard';
+import { MediaUploadStep, type UploadedMedia } from '@/components/chat/MediaUploadStep';
 import type { ClarificationQuestion } from '@/lib/agent-g-clarifier';
 import type { ServiceId as RegistryServiceId } from '@/lib/registry';
 
 // ─── Pipeline types ───────────────────────────────────────────────────────────
 
-type PipelineStage = 'idle' | 'detecting' | 'clarifying' | 'confirming' | 'generating' | 'done';
+type PipelineStage = 'idle' | 'detecting' | 'uploading' | 'clarifying' | 'confirming' | 'generating' | 'done';
 
 interface PipelineState {
   stage: PipelineStage;
   serviceId?: RegistryServiceId;
   serviceName?: string;
   userInput?: string;
+  uploadedMedia: UploadedMedia[];
   questions: ClarificationQuestion[];
   currentQuestionIndex: number;
   answers: Record<string, string | string[]>;
@@ -275,6 +277,7 @@ export default function CommandCenterChat() {
   const [running, setRunning] = useState(false);
   const [pipeline, setPipeline] = useState<PipelineState>({
     stage: 'idle',
+    uploadedMedia: [],
     questions: [],
     currentQuestionIndex: 0,
     answers: {},
@@ -716,7 +719,10 @@ export default function CommandCenterChat() {
 
     setPipeline(prev => ({ ...prev, stage: 'confirming' }));
     try {
-      const data = await callPipeline({ action: 'confirm', serviceId: p.serviceId, userInput: p.userInput, answers: newAnswers });
+      const mediaContext = p.uploadedMedia.length > 0
+        ? `\n[User uploaded ${p.uploadedMedia.length} file(s): ${p.uploadedMedia.map(m => m.name).join(', ')}]`
+        : '';
+      const data = await callPipeline({ action: 'confirm', serviceId: p.serviceId, userInput: (p.userInput ?? '') + mediaContext, answers: newAnswers });
       setPipeline(prev => ({
         ...prev,
         stage: 'confirming',
@@ -772,8 +778,16 @@ export default function CommandCenterChat() {
     setTimeout(() => setPipeline(prev => ({ ...prev, stage: 'idle', generationStage: undefined, cancelled: false })), 1500);
   }, []);
 
+  const handleUploadContinue = useCallback((media: UploadedMedia[]) => {
+    setPipeline(prev => ({ ...prev, stage: 'clarifying', uploadedMedia: media }));
+  }, []);
+
+  const handleUploadSkip = useCallback(() => {
+    setPipeline(prev => ({ ...prev, stage: 'clarifying', uploadedMedia: [] }));
+  }, []);
+
   const handlePipelineNewRequest = useCallback(() => {
-    setPipeline(prev => ({ stage: 'idle', questions: [], currentQuestionIndex: 0, answers: {}, userBalance: prev.userBalance }));
+    setPipeline(prev => ({ stage: 'idle', uploadedMedia: [], questions: [], currentQuestionIndex: 0, answers: {}, userBalance: prev.userBalance }));
   }, []);
 
   const sendCommand = useCallback(async () => {
@@ -798,14 +812,15 @@ export default function CommandCenterChat() {
         setPipeline(prev => ({ ...prev, stage: 'idle' }));
         await sendPrimaryCommand(userText);
       } else {
-        // Service detected → run clarification flow
+        // Service detected → fetch questions, then show upload step
         const qData = await callPipeline({ action: 'get_questions', serviceId: data.serviceId });
         setPipeline(prev => ({
           ...prev,
-          stage: 'clarifying',
+          stage: 'uploading',
           serviceId: data.serviceId as RegistryServiceId,
           serviceName: data.serviceName as string,
           userInput: userText,
+          uploadedMedia: [],
           questions: (qData.questions as ClarificationQuestion[]) ?? [],
           currentQuestionIndex: 0,
           answers: {},
@@ -934,6 +949,31 @@ export default function CommandCenterChat() {
                       <span className="text-sm text-white/60">
                         {localeCode === 'ka' ? 'სერვისს ვანალიზებ...' : localeCode === 'ru' ? 'Анализирую...' : 'Detecting service...'}
                       </span>
+                    </div>
+                  )}
+
+                  {pipeline.stage === 'uploading' && pipeline.serviceId && (
+                    <MediaUploadStep
+                      service={pipeline.serviceId}
+                      locale={localeCode}
+                      onContinue={handleUploadContinue}
+                      onSkip={handleUploadSkip}
+                    />
+                  )}
+
+                  {/* Uploaded media summary strip */}
+                  {(pipeline.stage === 'clarifying' || pipeline.stage === 'confirming' || pipeline.stage === 'generating' || pipeline.stage === 'done') && pipeline.uploadedMedia.length > 0 && (
+                    <div className="mb-2 flex flex-wrap gap-2">
+                      {pipeline.uploadedMedia.map(m => (
+                        <div key={m.id} className="flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/[0.04] px-2.5 py-1.5">
+                          {m.preview
+                            // eslint-disable-next-line @next/next/no-img-element
+                            ? <img src={m.preview} alt={m.name} className="h-6 w-6 rounded object-cover" />
+                            : <span className="text-sm">{m.type === 'audio' ? '🎵' : m.type === 'video' ? '🎬' : '📄'}</span>
+                          }
+                          <span className="max-w-[100px] truncate text-[10px] text-white/60">{m.name}</span>
+                        </div>
+                      ))}
                     </div>
                   )}
 
