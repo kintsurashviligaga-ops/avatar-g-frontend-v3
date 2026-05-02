@@ -30,7 +30,7 @@ import type { ServiceId as RegistryServiceId } from '@/lib/registry';
 
 // ─── Pipeline types ───────────────────────────────────────────────────────────
 
-type PipelineStage = 'idle' | 'detecting' | 'uploading' | 'clarifying' | 'confirming' | 'generating' | 'done';
+type PipelineStage = 'idle' | 'detecting' | 'uploading' | 'clarifying' | 'confirming' | 'generating' | 'done' | 'error';
 
 interface PipelineState {
   stage: PipelineStage;
@@ -50,6 +50,7 @@ interface PipelineState {
   outputKind?: 'image' | 'video' | 'audio' | 'text' | 'code';
   tokensUsed?: number;
   cancelled?: boolean;
+  errorMessage?: string;
   userBalance: number;
 }
 
@@ -737,7 +738,7 @@ export default function CommandCenterChat() {
 
   const handlePipelineGenerate = useCallback(async () => {
     const p = pipelineRef.current;
-    setPipeline(prev => ({ ...prev, stage: 'generating', generationStage: 'received', cancelled: false }));
+    setPipeline(prev => ({ ...prev, stage: 'generating', generationStage: 'received', cancelled: false, errorMessage: undefined }));
 
     const stageInterval = setInterval(() => {
       setPipeline(prev => {
@@ -746,24 +747,54 @@ export default function CommandCenterChat() {
         if (idx < GENERATION_STAGE_ORDER.length - 2) return { ...prev, generationStage: GENERATION_STAGE_ORDER[idx + 1] };
         return prev;
       });
-    }, Math.max(1500, ((p.estimatedSeconds ?? 10) * 1000) / 4));
+    }, Math.max(2000, ((p.estimatedSeconds ?? 20) * 1000) / 4));
 
     try {
-      const data = await callPipeline({
-        action: 'generate',
-        serviceId: p.serviceId,
-        userInput: p.finalPrompt ?? p.userInput,
-        answers: p.answers,
-        mediaFiles: p.uploadedMedia.map(m => ({
+      // Compress images to stay within Vercel's 4.5MB body limit
+      const compressImage = (dataUrl: string, maxDim = 1024, quality = 0.82): Promise<string> =>
+        new Promise(resolve => {
+          const img = new window.Image();
+          img.onload = () => {
+            const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+            const canvas = document.createElement('canvas');
+            canvas.width  = Math.round(img.width  * scale);
+            canvas.height = Math.round(img.height * scale);
+            canvas.getContext('2d')?.drawImage(img, 0, 0, canvas.width, canvas.height);
+            resolve(canvas.toDataURL('image/jpeg', quality));
+          };
+          img.onerror = () => resolve(dataUrl);
+          img.src = dataUrl;
+        });
+
+      const preparedMedia = await Promise.all(
+        p.uploadedMedia.map(async m => ({
           id: m.id,
           name: m.name,
           type: m.type,
-          mimeType: m.mimeType,
-          dataUrl: m.dataUrl,
-        })),
+          mimeType: m.type === 'image' ? 'image/jpeg' : m.mimeType,
+          dataUrl: m.type === 'image' ? await compressImage(m.dataUrl) : m.dataUrl,
+        }))
+      );
+
+      // Send raw userInput (what user typed) — server rebuilds finalPrompt from userInput + answers.
+      // Avatar service uses userInput directly as the speech script.
+      const data = await callPipeline({
+        action: 'generate',
+        serviceId: p.serviceId,
+        userInput: p.userInput,
+        answers: p.answers,
+        mediaFiles: preparedMedia,
       }) as Record<string, unknown>;
 
       clearInterval(stageInterval);
+
+      // Handle error response from server
+      if (data.status === 'error' || data.error) {
+        const errMsg = (data.error as string) ?? (localeCode === 'ka' ? 'გენერაცია ვერ შესრულდა' : 'Generation failed');
+        setPipeline(prev => ({ ...prev, stage: 'error', generationStage: undefined, errorMessage: errMsg }));
+        return;
+      }
+
       setPipeline(prev => ({
         ...prev,
         stage: 'done',
@@ -776,9 +807,10 @@ export default function CommandCenterChat() {
       }));
     } catch {
       clearInterval(stageInterval);
-      setPipeline(prev => ({ ...prev, stage: 'idle', generationStage: undefined }));
+      const errMsg = localeCode === 'ka' ? 'კავშირის შეცდომა. სცადე თავიდან.' : 'Connection error. Please try again.';
+      setPipeline(prev => ({ ...prev, stage: 'error', generationStage: undefined, errorMessage: errMsg }));
     }
-  }, [callPipeline]);
+  }, [callPipeline, localeCode]);
 
   const handlePipelineCancel = useCallback(() => {
     setPipeline(prev => ({ ...prev, cancelled: true }));
@@ -794,7 +826,7 @@ export default function CommandCenterChat() {
   }, []);
 
   const handlePipelineNewRequest = useCallback(() => {
-    setPipeline(prev => ({ stage: 'idle', uploadedMedia: [], questions: [], currentQuestionIndex: 0, answers: {}, userBalance: prev.userBalance }));
+    setPipeline(prev => ({ stage: 'idle', uploadedMedia: [], questions: [], currentQuestionIndex: 0, answers: {}, userBalance: prev.userBalance, errorMessage: undefined }));
   }, []);
 
   const sendCommand = useCallback(async () => {
@@ -1053,6 +1085,22 @@ export default function CommandCenterChat() {
                         a.click();
                       } : undefined}
                     />
+                  )}
+
+                  {pipeline.stage === 'error' && (
+                    <div className="rounded-2xl border border-rose-400/30 bg-rose-400/10 p-4">
+                      <p className="mb-1 text-xs font-semibold text-rose-300">
+                        {localeCode === 'ka' ? '⚠ გენერაცია ვერ შესრულდა' : localeCode === 'ru' ? '⚠ Ошибка генерации' : '⚠ Generation failed'}
+                      </p>
+                      <p className="mb-3 text-[11px] text-rose-300/70">{pipeline.errorMessage}</p>
+                      <button
+                        type="button"
+                        onClick={handlePipelineNewRequest}
+                        className="rounded-xl border border-rose-400/30 px-3 py-1.5 text-xs text-rose-300 transition hover:bg-rose-400/10"
+                      >
+                        {localeCode === 'ka' ? 'თავიდან ცდა' : localeCode === 'ru' ? 'Попробовать снова' : 'Try again'}
+                      </button>
+                    </div>
                   )}
                 </motion.div>
               )}
