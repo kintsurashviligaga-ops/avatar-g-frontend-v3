@@ -32,88 +32,101 @@ export interface ClarificationFlow {
   buildPrompt: (userInput: string, answers: Record<string, string | string[]>) => string;
 }
 
-function s(v: string): string { return v; }
-
 // ─── All 8 Clarification Flows ────────────────────────────────────────────────
 
 export const CLARIFICATION_PROMPTS: Record<ServiceId, ClarificationFlow> = {
 
-  // ── AVATAR ────────────────────────────────────────────────────────────────
+  // ── AVATAR (HeyGen Talking Avatar) ────────────────────────────────────────
   avatar: {
     questions: [
       {
-        id: 'style',
-        text: { ka: 'რა სტილი გინდა?', en: 'What style?', ru: 'Какой стиль?' },
+        id: 'voice_gender',
+        text: { ka: 'ავატარის ხმა?', en: 'Avatar voice?', ru: 'Голос аватара?' },
         type: 'chips',
         options: [
-          { value: 'realistic',    label: { ka: 'რეალისტური',    en: 'Realistic',    ru: 'Реалистичный'    }, icon: '📷' },
-          { value: 'anime',        label: { ka: 'ანიმე',          en: 'Anime',         ru: 'Аниме'           }, icon: '✨' },
-          { value: '3d',           label: { ka: '3D',              en: '3D Render',     ru: '3D рендер'       }, icon: '🎲' },
-          { value: 'illustration', label: { ka: 'ილუსტრაცია',    en: 'Illustration',  ru: 'Иллюстрация'     }, icon: '🎨' },
-          { value: 'pixel',        label: { ka: 'პიქსელ არტი',   en: 'Pixel Art',     ru: 'Пиксель арт'     }, icon: '👾' },
+          { value: 'female', label: { ka: 'ქალის ხმა',   en: 'Female Voice', ru: 'Женский голос'  }, icon: '👩' },
+          { value: 'male',   label: { ka: 'მამაკაცის ხმა', en: 'Male Voice', ru: 'Мужской голос'   }, icon: '👨' },
         ],
       },
       {
-        id: 'mood',
-        text: { ka: 'განწყობა?', en: 'Mood?', ru: 'Настроение?' },
+        id: 'voice_language',
+        text: { ka: 'ლაპარაკის ენა?', en: 'Speaking language?', ru: 'Язык речи?' },
+        type: 'chips',
+        options: [
+          { value: 'en', label: { ka: 'ინგლისური',  en: 'English',   ru: 'Английский' }, icon: '🇺🇸' },
+          { value: 'ka', label: { ka: 'ქართული',    en: 'Georgian',  ru: 'Грузинский' }, icon: '🇬🇪' },
+          { value: 'ru', label: { ka: 'რუსული',     en: 'Russian',   ru: 'Русский'    }, icon: '🇷🇺' },
+          { value: 'de', label: { ka: 'გერმანული',  en: 'German',    ru: 'Немецкий'   }, icon: '🇩🇪' },
+          { value: 'fr', label: { ka: 'ფრანგული',   en: 'French',    ru: 'Французский'}, icon: '🇫🇷' },
+          { value: 'es', label: { ka: 'ესპანური',   en: 'Spanish',   ru: 'Испанский'  }, icon: '🇪🇸' },
+        ],
+      },
+      {
+        id: 'video_format',
+        text: { ka: 'ვიდეოს ფორმატი?', en: 'Video format?', ru: 'Формат видео?' },
+        type: 'chips',
+        options: [
+          { value: '16:9', label: { ka: 'Landscape (16:9)',  en: 'Landscape (16:9)', ru: 'Горизонтальный' }, icon: '📺' },
+          { value: '9:16', label: { ka: 'Portrait (9:16)',   en: 'Portrait (9:16)',  ru: 'Вертикальный'   }, icon: '📱' },
+          { value: '1:1',  label: { ka: 'Square (1:1)',      en: 'Square (1:1)',     ru: 'Квадрат'         }, icon: '⬜' },
+        ],
+      },
+      {
+        id: 'speaking_style',
+        text: { ka: 'ლაპარაკის სტილი?', en: 'Speaking style?', ru: 'Стиль речи?' },
         type: 'chips',
         options: [
           { value: 'professional', label: { ka: 'პროფესიონალი',   en: 'Professional',  ru: 'Профессиональный' }, icon: '💼' },
-          { value: 'creative',     label: { ka: 'შემოქმედებითი', en: 'Creative',       ru: 'Творческий'       }, icon: '🎭' },
-          { value: 'mysterious',   label: { ka: 'იდუმალი',        en: 'Mysterious',    ru: 'Таинственный'     }, icon: '🌙' },
           { value: 'friendly',     label: { ka: 'მეგობრული',      en: 'Friendly',      ru: 'Дружелюбный'      }, icon: '😊' },
-        ],
-      },
-      {
-        id: 'gender',
-        text: { ka: 'პერსონაჟის სქესი?', en: 'Character gender?', ru: 'Пол персонажа?' },
-        type: 'chips',
-        options: [
-          { value: 'male',    label: { ka: 'მამრობითი',  en: 'Male',    ru: 'Мужской'   } },
-          { value: 'female',  label: { ka: 'მდედრობითი', en: 'Female',  ru: 'Женский'   } },
-          { value: 'neutral', label: { ka: 'ნეიტრალური', en: 'Neutral', ru: 'Нейтральный' } },
-        ],
-      },
-      {
-        id: 'use_case',
-        text: { ka: 'სად გამოიყენება?', en: 'Where will you use it?', ru: 'Где будете использовать?' },
-        type: 'chips',
-        options: [
-          { value: 'social',   label: { ka: 'სოციალური მედია', en: 'Social Media', ru: 'Соцсети'   }, icon: '📱' },
-          { value: 'game',     label: { ka: 'თამაში',           en: 'Game',          ru: 'Игра'      }, icon: '🎮' },
-          { value: 'brand',    label: { ka: 'ბრენდი',           en: 'Brand',         ru: 'Бренд'     }, icon: '🏢' },
-          { value: 'personal', label: { ka: 'პირადი',           en: 'Personal',      ru: 'Личное'    }, icon: '👤' },
+          { value: 'news_anchor',  label: { ka: 'ახალი ამბები',   en: 'News Anchor',   ru: 'Диктор новостей'  }, icon: '📡' },
+          { value: 'teacher',      label: { ka: 'მასწავლებელი',   en: 'Teacher',       ru: 'Учитель'           }, icon: '🎓' },
+          { value: 'storyteller',  label: { ka: 'მოთხრობა',       en: 'Storyteller',   ru: 'Рассказчик'       }, icon: '📖' },
         ],
       },
     ],
-    creditFormula: (a) => s(a.style as string) === 'realistic' ? 20 : 15,
-    timeFormula: () => 25,
-    buildPrompt: (input, a) =>
-      `Create a ${a.style} ${a.gender} avatar/persona with ${a.mood} mood for ${a.use_case}. User description: ${input}. High quality, detailed, professional character design.`,
+    creditFormula: () => 25,
+    timeFormula: () => 60,
+    buildPrompt: (input, a) => {
+      const styleNote = a.speaking_style === 'professional'
+        ? 'Speak confidently and professionally, maintain eye contact, use clear diction.'
+        : a.speaking_style === 'news_anchor'
+          ? 'Speak like a TV news anchor — authoritative, measured pace, clear enunciation.'
+          : a.speaking_style === 'teacher'
+            ? 'Speak in an educational, warm tone. Pause for emphasis. Use simple clear language.'
+            : a.speaking_style === 'storyteller'
+              ? 'Speak with narrative flow, engaging tone, vary pace for effect.'
+              : 'Speak naturally, warmly, with a conversational friendly tone.';
+      return `${input}\n\n[Voice: ${a.voice_gender}, Language: ${a.voice_language}, Style: ${a.speaking_style}]\n[Direction: ${styleNote}]`;
+    },
   },
 
-  // ── VIDEO ─────────────────────────────────────────────────────────────────
+  // ── VIDEO (LTX) ───────────────────────────────────────────────────────────
   video: {
     questions: [
       {
-        id: 'type',
-        text: { ka: 'ვიდეოს ტიპი?', en: 'Video type?', ru: 'Тип видео?' },
+        id: 'scene_type',
+        text: { ka: 'სცენის ტიპი?', en: 'Scene type?', ru: 'Тип сцены?' },
         type: 'chips',
         options: [
           { value: 'cinematic',   label: { ka: 'კინემატოგრაფიული', en: 'Cinematic',   ru: 'Кинематографичный' }, icon: '🎬' },
-          { value: 'animated',    label: { ka: 'ანიმაციური',        en: 'Animated',    ru: 'Анимированный'     }, icon: '✨' },
-          { value: 'documentary', label: { ka: 'დოკუმენტური',      en: 'Documentary', ru: 'Документальный'    }, icon: '📹' },
-          { value: 'abstract',    label: { ka: 'აბსტრაქტული',      en: 'Abstract',    ru: 'Абстрактный'       }, icon: '🌀' },
+          { value: 'nature',      label: { ka: 'ბუნება',            en: 'Nature',      ru: 'Природа'            }, icon: '🌿' },
+          { value: 'urban',       label: { ka: 'ურბანული',          en: 'Urban',       ru: 'Городской'          }, icon: '🏙️' },
+          { value: 'abstract',    label: { ka: 'აბსტრაქტული',      en: 'Abstract',    ru: 'Абстрактный'        }, icon: '🌀' },
+          { value: 'fantasy',     label: { ka: 'ფანტაზია',          en: 'Fantasy',     ru: 'Фэнтези'            }, icon: '✨' },
+          { value: 'product',     label: { ka: 'პროდუქტი',          en: 'Product Shot', ru: 'Продуктовый'       }, icon: '📦' },
         ],
       },
       {
-        id: 'duration',
-        text: { ka: 'ხანგრძლივობა?', en: 'Duration?', ru: 'Длительность?' },
+        id: 'camera_movement',
+        text: { ka: 'კამერის მოძრაობა?', en: 'Camera movement?', ru: 'Движение камеры?' },
         type: 'chips',
         options: [
-          { value: '5',  label: { ka: '5 წამი',  en: '5 seconds',  ru: '5 секунд'  }, credits: 10 },
-          { value: '10', label: { ka: '10 წამი', en: '10 seconds', ru: '10 секунд' }, credits: 20 },
-          { value: '15', label: { ka: '15 წამი', en: '15 seconds', ru: '15 секунд' }, credits: 30 },
+          { value: 'static',   label: { ka: 'სტატიური',    en: 'Static',        ru: 'Статичный'   } },
+          { value: 'pan',      label: { ka: 'პანორამა',    en: 'Pan',           ru: 'Панорама'    } },
+          { value: 'zoom',     label: { ka: 'ზუმი',        en: 'Slow Zoom In',  ru: 'Наезд'       } },
+          { value: 'tracking', label: { ka: 'ტრეკინგი',    en: 'Tracking Shot', ru: 'Трекинг'     } },
+          { value: 'orbital',  label: { ka: 'ორბიტალური', en: 'Orbital 360°',  ru: 'Орбита 360°' } },
+          { value: 'handheld', label: { ka: 'ხელით',       en: 'Handheld',      ru: 'С руки'       } },
         ],
       },
       {
@@ -127,23 +140,30 @@ export const CLARIFICATION_PROMPTS: Record<ServiceId, ClarificationFlow> = {
         ],
       },
       {
-        id: 'motion',
-        text: { ka: 'მოძრაობის სიჩქარე?', en: 'Motion speed?', ru: 'Скорость движения?' },
+        id: 'duration',
+        text: { ka: 'ხანგრძლივობა?', en: 'Duration?', ru: 'Длительность?' },
         type: 'chips',
         options: [
-          { value: 'slow',    label: { ka: 'ნელი',       en: 'Slow & Smooth',   ru: 'Медленный'    } },
-          { value: 'dynamic', label: { ka: 'დინამიური',  en: 'Dynamic',         ru: 'Динамичный'   } },
-          { value: 'static',  label: { ka: 'სტატიური',   en: 'Mostly Static',   ru: 'Статичный'    } },
+          { value: '5',  label: { ka: '5 წამი',  en: '5 seconds',  ru: '5 секунд'  }, credits: 10, time: 45 },
+          { value: '7',  label: { ka: '7 წამი',  en: '7 seconds',  ru: '7 секунд'  }, credits: 15, time: 60 },
+          { value: '10', label: { ka: '10 წამი', en: '10 seconds', ru: '10 секунд' }, credits: 20, time: 80 },
         ],
       },
     ],
-    creditFormula: (a) => parseInt(String(a.duration ?? '5')) * 2,
-    timeFormula: (a) => parseInt(String(a.duration ?? '5')) * 8,
-    buildPrompt: (input, a) =>
-      `${a.type} video, ${a.duration}s, ${a.aspect} format, ${a.motion} motion. Scene: ${input}`,
+    creditFormula: (a) => parseInt(String(a.duration ?? '7')) * 2,
+    timeFormula: (a) => parseInt(String(a.duration ?? '7')) * 8,
+    buildPrompt: (input, a) => {
+      const camNote = a.camera_movement === 'static' ? 'static locked-off camera' :
+        a.camera_movement === 'pan' ? 'smooth panoramic camera pan' :
+        a.camera_movement === 'zoom' ? 'slow cinematic zoom in' :
+        a.camera_movement === 'tracking' ? 'tracking shot following the subject' :
+        a.camera_movement === 'orbital' ? 'smooth 360-degree orbital camera movement' :
+        'handheld documentary camera movement';
+      return `${a.scene_type} scene: ${input}. ${camNote}. ${a.aspect} aspect ratio. Duration: ${a.duration}s. Cinematic color grade, professional lighting, high detail, 4K quality.`;
+    },
   },
 
-  // ── IMAGE ─────────────────────────────────────────────────────────────────
+  // ── IMAGE (FLUX via Replicate) ────────────────────────────────────────────
   image: {
     questions: [
       {
@@ -151,23 +171,26 @@ export const CLARIFICATION_PROMPTS: Record<ServiceId, ClarificationFlow> = {
         text: { ka: 'ვიზუალური სტილი?', en: 'Visual style?', ru: 'Визуальный стиль?' },
         type: 'chips',
         options: [
-          { value: 'photorealistic', label: { ka: 'ფოტო-რეალისტური', en: 'Photorealistic', ru: 'Фотореалистичный' }, icon: '📷' },
-          { value: 'artistic',       label: { ka: 'მხატვრული',       en: 'Artistic',       ru: 'Художественный'   }, icon: '🎨' },
-          { value: 'anime',          label: { ka: 'ანიმე',            en: 'Anime',           ru: 'Аниме'            }, icon: '✨' },
-          { value: '3d',             label: { ka: '3D Render',        en: '3D Render',       ru: '3D рендер'        }, icon: '🎲' },
-          { value: 'flat',           label: { ka: 'ფლატ დიზაინი',   en: 'Flat Design',     ru: 'Флет дизайн'      }, icon: '⬜' },
-          { value: 'dark',           label: { ka: 'ბნელი',           en: 'Dark/Gothic',     ru: 'Тёмный/Готика'    }, icon: '🌑' },
+          { value: 'photorealistic', label: { ka: 'ფოტო-რეალისტური',  en: 'Photorealistic',  ru: 'Фотореалистичный' }, icon: '📷' },
+          { value: 'artistic',       label: { ka: 'მხატვრული ფერწერა', en: 'Oil Painting',    ru: 'Живопись'         }, icon: '🎨' },
+          { value: 'anime',          label: { ka: 'ანიმე/მანგა',       en: 'Anime / Manga',   ru: 'Аниме / Манга'   }, icon: '✨' },
+          { value: '3d',             label: { ka: '3D Render',          en: '3D Render',       ru: '3D рендер'        }, icon: '🎲' },
+          { value: 'flat',           label: { ka: 'ვექტორი / ფლათი',  en: 'Vector / Flat',   ru: 'Вектор / Флет'   }, icon: '⬜' },
+          { value: 'dark',           label: { ka: 'Dark / Gothic',     en: 'Dark / Gothic',   ru: 'Тёмный / Готика' }, icon: '🌑' },
+          { value: 'watercolor',     label: { ka: 'Watercolor',        en: 'Watercolor',      ru: 'Акварель'         }, icon: '💧' },
+          { value: 'cinematic',      label: { ka: 'კინემატოგრაფიული', en: 'Cinematic Photo', ru: 'Кинофото'         }, icon: '🎬' },
         ],
       },
       {
         id: 'aspect',
-        text: { ka: 'ზომა/პროპორცია?', en: 'Size/Ratio?', ru: 'Размер/Соотношение?' },
+        text: { ka: 'ზომა/პროპორცია?', en: 'Size / Ratio?', ru: 'Размер / Соотношение?' },
         type: 'chips',
         options: [
-          { value: '1:1',  label: { ka: 'Square 1:1', en: 'Square 1:1', ru: 'Квадрат 1:1' }, icon: '⬜' },
-          { value: '16:9', label: { ka: 'Wide 16:9',  en: 'Wide 16:9',  ru: 'Широкий 16:9'  }, icon: '📺' },
-          { value: '9:16', label: { ka: 'Vertical 9:16', en: 'Vertical 9:16', ru: 'Вертикальный 9:16' }, icon: '📱' },
-          { value: '4:3',  label: { ka: 'Classic 4:3', en: 'Classic 4:3', ru: 'Классический 4:3' }, icon: '🖼' },
+          { value: '1:1',  label: { ka: 'Square 1:1',     en: 'Square 1:1',     ru: 'Квадрат 1:1'     }, icon: '⬜' },
+          { value: '16:9', label: { ka: 'Wide 16:9',      en: 'Wide 16:9',      ru: 'Широкий 16:9'    }, icon: '📺' },
+          { value: '9:16', label: { ka: 'Vertical 9:16',  en: 'Vertical 9:16',  ru: 'Вертикальный'    }, icon: '📱' },
+          { value: '4:3',  label: { ka: 'Classic 4:3',    en: 'Classic 4:3',    ru: 'Классический 4:3'}, icon: '🖼' },
+          { value: '3:2',  label: { ka: 'Photo 3:2',      en: 'Photo 3:2',      ru: 'Фото 3:2'        }, icon: '🖼' },
         ],
       },
       {
@@ -175,9 +198,9 @@ export const CLARIFICATION_PROMPTS: Record<ServiceId, ClarificationFlow> = {
         text: { ka: 'ხარისხი?', en: 'Quality?', ru: 'Качество?' },
         type: 'chips',
         options: [
-          { value: 'draft',    label: { ka: 'სწრაფი (draft)', en: 'Quick Draft', ru: 'Быстрый' }, credits: 2,  time: 8  },
-          { value: 'standard', label: { ka: 'სტანდარტული',   en: 'Standard',    ru: 'Стандарт' }, credits: 5,  time: 20 },
-          { value: 'premium',  label: { ka: 'პრემიუმი',      en: 'Premium',     ru: 'Премиум'  }, credits: 10, time: 40 },
+          { value: 'draft',    label: { ka: 'სწრაფი',       en: 'Quick Draft',   ru: 'Быстрый'  }, credits: 3,  time: 10 },
+          { value: 'standard', label: { ka: 'სტანდარტული', en: 'Standard',      ru: 'Стандарт' }, credits: 6,  time: 25 },
+          { value: 'premium',  label: { ka: 'პრემიუმი',    en: 'Premium',       ru: 'Премиум'  }, credits: 12, time: 50 },
         ],
       },
       {
@@ -185,33 +208,42 @@ export const CLARIFICATION_PROMPTS: Record<ServiceId, ClarificationFlow> = {
         text: { ka: 'განათება?', en: 'Lighting?', ru: 'Освещение?' },
         type: 'chips',
         options: [
-          { value: 'natural',  label: { ka: 'ბუნებრივი', en: 'Natural',       ru: 'Естественный' } },
-          { value: 'studio',   label: { ka: 'სტუდიური',  en: 'Studio',        ru: 'Студийный'    } },
-          { value: 'dramatic', label: { ka: 'დრამატული', en: 'Dramatic',      ru: 'Драматичный'  } },
-          { value: 'neon',     label: { ka: 'Neon/Cyberpunk', en: 'Neon/Cyberpunk', ru: 'Неон/Киберпанк' } },
+          { value: 'natural',  label: { ka: 'ბუნებრივი',     en: 'Natural Light',  ru: 'Естественный' } },
+          { value: 'studio',   label: { ka: 'სტუდიური',      en: 'Studio Light',   ru: 'Студийный'    } },
+          { value: 'dramatic', label: { ka: 'დრამატული',     en: 'Dramatic/Moody', ru: 'Драматичный'  } },
+          { value: 'golden',   label: { ka: 'ოქროსფერი სხივი', en: 'Golden Hour',  ru: 'Золотой час'  } },
+          { value: 'neon',     label: { ka: 'Neon / Cyberpunk', en: 'Neon / Cyberpunk', ru: 'Неон/Киберпанк' } },
         ],
       },
     ],
-    creditFormula: (a) => a.quality === 'draft' ? 2 : a.quality === 'premium' ? 10 : 5,
-    timeFormula: (a) => a.quality === 'draft' ? 8 : a.quality === 'premium' ? 40 : 20,
-    buildPrompt: (input, a) =>
-      `${a.style} style image, ${a.aspect} ratio, ${a.lighting} lighting, ${a.quality} quality. Subject: ${input}. Highly detailed, professional composition.`,
+    creditFormula: (a) => a.quality === 'draft' ? 3 : a.quality === 'premium' ? 12 : 6,
+    timeFormula: (a) => a.quality === 'draft' ? 10 : a.quality === 'premium' ? 50 : 25,
+    buildPrompt: (input, a) => {
+      const qualityTag = a.quality === 'premium'
+        ? 'ultra-high detail, 8K resolution, award-winning photography'
+        : a.quality === 'standard'
+          ? 'high quality, detailed, professional'
+          : 'clean, good quality';
+      return `${a.style} style: ${input}. ${a.lighting} lighting. ${a.aspect} aspect ratio. ${qualityTag}. Sharp focus, professional composition, no watermarks.`;
+    },
   },
 
-  // ── MUSIC ─────────────────────────────────────────────────────────────────
+  // ── MUSIC (ElevenLabs Sound Generation) ──────────────────────────────────
   music: {
     questions: [
       {
         id: 'genre',
-        text: { ka: 'ჟანრი?', en: 'Genre?', ru: 'Жанр?' },
+        text: { ka: 'მუსიკის ჟანრი?', en: 'Music genre?', ru: 'Жанр музыки?' },
         type: 'chips',
         options: [
-          { value: 'ambient',       label: { ka: 'Ambient',         en: 'Ambient',       ru: 'Эмбиент'       }, icon: '🌌' },
-          { value: 'electronic',    label: { ka: 'Electronic',      en: 'Electronic',    ru: 'Электронный'   }, icon: '⚡' },
-          { value: 'orchestral',    label: { ka: 'Orchestral',      en: 'Orchestral',    ru: 'Оркестровый'   }, icon: '🎻' },
-          { value: 'cinematic',     label: { ka: 'Cinematic',       en: 'Cinematic',     ru: 'Кинематографич.' }, icon: '🎬' },
-          { value: 'lofi',          label: { ka: 'Lo-Fi',           en: 'Lo-Fi',         ru: 'Ло-фай'        }, icon: '☕' },
-          { value: 'georgian_folk', label: { ka: 'ქართული',        en: 'Georgian Folk', ru: 'Грузинский'    }, icon: '🇬🇪' },
+          { value: 'ambient',       label: { ka: 'Ambient',           en: 'Ambient',       ru: 'Эмбиент'         }, icon: '🌌' },
+          { value: 'electronic',    label: { ka: 'Electronic / EDM',  en: 'Electronic/EDM', ru: 'Электронная'    }, icon: '⚡' },
+          { value: 'orchestral',    label: { ka: 'Orchestral',        en: 'Orchestral',    ru: 'Оркестровый'     }, icon: '🎻' },
+          { value: 'cinematic',     label: { ka: 'Cinematic',         en: 'Cinematic',     ru: 'Кинематографич.' }, icon: '🎬' },
+          { value: 'lofi',          label: { ka: 'Lo-Fi Hip-Hop',     en: 'Lo-Fi Hip-Hop', ru: 'Ло-фай хип-хоп' }, icon: '☕' },
+          { value: 'georgian_folk', label: { ka: 'ქართული ხალხური',  en: 'Georgian Folk', ru: 'Грузинский фольк'}, icon: '🇬🇪' },
+          { value: 'jazz',          label: { ka: 'Jazz',              en: 'Jazz',          ru: 'Джаз'            }, icon: '🎷' },
+          { value: 'rock',          label: { ka: 'Rock',              en: 'Rock',          ru: 'Рок'             }, icon: '🎸' },
         ],
       },
       {
@@ -219,11 +251,12 @@ export const CLARIFICATION_PROMPTS: Record<ServiceId, ClarificationFlow> = {
         text: { ka: 'განწყობა?', en: 'Mood?', ru: 'Настроение?' },
         type: 'chips',
         options: [
-          { value: 'epic',        label: { ka: 'ეპიკური',       en: 'Epic',        ru: 'Эпический'    } },
-          { value: 'calm',        label: { ka: 'მშვიდი',        en: 'Calm',        ru: 'Спокойный'    } },
-          { value: 'mysterious',  label: { ka: 'იდუმალი',      en: 'Mysterious',  ru: 'Таинственный' } },
-          { value: 'energetic',   label: { ka: 'ენერგიული',    en: 'Energetic',   ru: 'Энергичный'   } },
-          { value: 'melancholic', label: { ka: 'მელანქოლიური', en: 'Melancholic', ru: 'Меланхоличный'} },
+          { value: 'epic',        label: { ka: 'ეპიკური',         en: 'Epic',        ru: 'Эпический'    } },
+          { value: 'calm',        label: { ka: 'მშვიდი/Relaxing',  en: 'Calm/Relaxing', ru: 'Спокойный' } },
+          { value: 'mysterious',  label: { ka: 'იდუმალი',         en: 'Mysterious',  ru: 'Таинственный' } },
+          { value: 'energetic',   label: { ka: 'ენერგიული',       en: 'Energetic',   ru: 'Энергичный'   } },
+          { value: 'melancholic', label: { ka: 'მელანქოლიური',   en: 'Melancholic', ru: 'Меланхоличный'} },
+          { value: 'uplifting',   label: { ka: 'ამაღელვებელი',   en: 'Uplifting',   ru: 'Воодушевляющий'} },
         ],
       },
       {
@@ -231,29 +264,31 @@ export const CLARIFICATION_PROMPTS: Record<ServiceId, ClarificationFlow> = {
         text: { ka: 'ხანგრძლივობა?', en: 'Duration?', ru: 'Длительность?' },
         type: 'chips',
         options: [
-          { value: '15',  label: { ka: '15 წმ',   en: '15s',   ru: '15с'  }, credits: 5  },
-          { value: '22',  label: { ka: '22 წმ',   en: '22s',   ru: '22с'  }, credits: 10 },
+          { value: '15',  label: { ka: '15 წამი (მოკლე)',  en: '15s (Short)',  ru: '15с (Короткий)' }, credits: 5  },
+          { value: '22',  label: { ka: '22 წამი (სტანდ.)', en: '22s (Standard)',ru: '22с (Стандарт)' }, credits: 10 },
         ],
       },
       {
         id: 'use_case',
-        text: { ka: 'სად გამოიყენება?', en: 'Use case?', ru: 'Назначение?' },
+        text: { ka: 'გამოყენება?', en: 'Use case?', ru: 'Назначение?' },
         type: 'chips',
         options: [
-          { value: 'video',        label: { ka: 'ვიდეო ბექგრაუნდი', en: 'Video Background', ru: 'Фон для видео'  } },
-          { value: 'game',         label: { ka: 'თამაშისთვის',       en: 'Game OST',         ru: 'Саундтрек игры' } },
-          { value: 'meditation',   label: { ka: 'მედიტაცია',         en: 'Meditation',       ru: 'Медитация'      } },
-          { value: 'presentation', label: { ka: 'პრეზენტაცია',      en: 'Presentation',     ru: 'Презентация'    } },
+          { value: 'video_bg',     label: { ka: 'ვიდეო ბექგრაუნდი',  en: 'Video Background', ru: 'Фон видео'     } },
+          { value: 'game_ost',     label: { ka: 'თამაშის OST',        en: 'Game OST',         ru: 'Саундтрек'     } },
+          { value: 'meditation',   label: { ka: 'მედიტაცია / Spa',    en: 'Meditation / Spa', ru: 'Медитация'     } },
+          { value: 'presentation', label: { ka: 'პრეზენტაცია',        en: 'Presentation',     ru: 'Презентация'   } },
+          { value: 'podcast',      label: { ka: 'Podcast ჩასმა',      en: 'Podcast Insert',   ru: 'Подкаст'       } },
+          { value: 'social',       label: { ka: 'სოცი. მედია',        en: 'Social Media',     ru: 'Соцсети'       } },
         ],
       },
     ],
     creditFormula: (a) => Math.round(parseInt(String(a.duration ?? '22')) / 3),
     timeFormula: (a) => parseInt(String(a.duration ?? '22')) + 15,
     buildPrompt: (input, a) =>
-      `${a.genre} ${a.mood} music, ${a.duration} seconds, for ${a.use_case}. Style notes: ${input}`,
+      `${a.genre} music, ${a.mood} mood, ${a.duration} seconds, designed for ${a.use_case}. ${input ? `Style notes: ${input}.` : ''} Rich layered composition, professional mastering, no vocals, clean fade in/out.`,
   },
 
-  // ── GAME ──────────────────────────────────────────────────────────────────
+  // ── GAME (Claude) ─────────────────────────────────────────────────────────
   game: {
     questions: [
       {
@@ -261,54 +296,59 @@ export const CLARIFICATION_PROMPTS: Record<ServiceId, ClarificationFlow> = {
         text: { ka: 'თამაშის ჟანრი?', en: 'Game genre?', ru: 'Жанр игры?' },
         type: 'chips',
         options: [
-          { value: 'rpg',       label: { ka: 'RPG',       en: 'RPG',       ru: 'РПГ'       }, icon: '⚔️' },
-          { value: 'platformer',label: { ka: 'Platformer', en: 'Platformer', ru: 'Платформер'}, icon: '🏃' },
-          { value: 'puzzle',    label: { ka: 'Puzzle',    en: 'Puzzle',    ru: 'Головоломка'}, icon: '🧩' },
-          { value: 'strategy',  label: { ka: 'Strategy',  en: 'Strategy',  ru: 'Стратегия' }, icon: '♟️' },
-          { value: 'action',    label: { ka: 'Action',    en: 'Action',    ru: 'Экшн'      }, icon: '💥' },
-          { value: 'adventure', label: { ka: 'Adventure', en: 'Adventure', ru: 'Приключение'}, icon: '🗺️' },
+          { value: 'rpg',           label: { ka: 'RPG',           en: 'RPG',           ru: 'РПГ'          }, icon: '⚔️' },
+          { value: 'platformer',    label: { ka: 'Platformer',    en: 'Platformer',    ru: 'Платформер'   }, icon: '🏃' },
+          { value: 'puzzle',        label: { ka: 'Puzzle',        en: 'Puzzle',        ru: 'Головоломка'  }, icon: '🧩' },
+          { value: 'strategy',      label: { ka: 'Strategy / RTS',en: 'Strategy/RTS',  ru: 'Стратегия'   }, icon: '♟️' },
+          { value: 'action',        label: { ka: 'Action / FPS',  en: 'Action / FPS',  ru: 'Экшн / FPS'  }, icon: '💥' },
+          { value: 'adventure',     label: { ka: 'Adventure',     en: 'Adventure',     ru: 'Приключение'  }, icon: '🗺️' },
+          { value: 'simulation',    label: { ka: 'Simulation',    en: 'Simulation',    ru: 'Симулятор'    }, icon: '🏗️' },
+          { value: 'horror',        label: { ka: 'Horror',        en: 'Horror',        ru: 'Ужасы'        }, icon: '👻' },
         ],
       },
       {
         id: 'output_type',
-        text: { ka: 'რა გჭირდება?', en: 'What do you need?', ru: 'Что нужно?' },
+        text: { ka: 'რა დოკუმენტი გჭირდება?', en: 'What document?', ru: 'Какой документ?' },
         type: 'chips',
         options: [
-          { value: 'concept',       label: { ka: 'კონცეფცია',        en: 'Game Concept',  ru: 'Концепция'   } },
-          { value: 'mechanics_doc', label: { ka: 'მექანიკა',         en: 'Mechanics Doc', ru: 'Механика'    } },
-          { value: 'level_design',  label: { ka: 'ლეველის დიზაინი', en: 'Level Design',  ru: 'Дизайн уровня'} },
-          { value: 'gdd',           label: { ka: 'სრული GDD',       en: 'Full GDD',      ru: 'Полный GDD'  } },
+          { value: 'concept',        label: { ka: 'Game Concept',   en: 'Game Concept',      ru: 'Концепция'       } },
+          { value: 'mechanics_doc',  label: { ka: 'Core Mechanics', en: 'Core Mechanics Doc', ru: 'Механики'       } },
+          { value: 'level_design',   label: { ka: 'Level Design',   en: 'Level Design Doc',  ru: 'Дизайн уровней' } },
+          { value: 'character_bible',label: { ka: 'Character Bible',en: 'Character Bible',   ru: 'Персонажи'       } },
+          { value: 'gdd',            label: { ka: 'სრული GDD',     en: 'Full GDD',          ru: 'Полный GDD'     } },
         ],
       },
       {
         id: 'platform',
-        text: { ka: 'პლატფორმა?', en: 'Platform?', ru: 'Платформа?' },
+        text: { ka: 'პლატფორმა?', en: 'Target platform?', ru: 'Целевая платформа?' },
         type: 'chips',
         options: [
-          { value: 'mobile',  label: { ka: 'Mobile',      en: 'Mobile',      ru: 'Мобильная' }, icon: '📱' },
-          { value: 'pc',      label: { ka: 'PC',          en: 'PC',          ru: 'ПК'         }, icon: '💻' },
-          { value: 'web',     label: { ka: 'Web Browser', en: 'Web Browser', ru: 'Браузер'   }, icon: '🌐' },
-          { value: 'console', label: { ka: 'Console',     en: 'Console',     ru: 'Консоль'   }, icon: '🎮' },
+          { value: 'mobile',  label: { ka: 'iOS / Android', en: 'iOS / Android', ru: 'iOS / Android' }, icon: '📱' },
+          { value: 'pc',      label: { ka: 'PC / Steam',    en: 'PC / Steam',    ru: 'ПК / Steam'    }, icon: '💻' },
+          { value: 'web',     label: { ka: 'Web Browser',   en: 'Web Browser',   ru: 'Браузер'       }, icon: '🌐' },
+          { value: 'console', label: { ka: 'Console',       en: 'Console',       ru: 'Консоль'       }, icon: '🎮' },
+          { value: 'vr',      label: { ka: 'VR / AR',       en: 'VR / AR',       ru: 'VR / AR'       }, icon: '🥽' },
         ],
       },
       {
         id: 'complexity',
-        text: { ka: 'სკოპი?', en: 'Scope?', ru: 'Масштаб?' },
+        text: { ka: 'პროექტის სკოპი?', en: 'Project scope?', ru: 'Масштаб проекта?' },
         type: 'chips',
         options: [
-          { value: 'indie',       label: { ka: 'ინდი (1-3 თვე)',     en: 'Indie (1-3 months)',  ru: 'Инди (1-3 мес.)'   } },
-          { value: 'mid',         label: { ka: 'საშუალო (6+ თვე)',   en: 'Mid (6+ months)',     ru: 'Средний (6+ мес.)' } },
-          { value: 'aaa_concept', label: { ka: 'AAA კონცეფცია',      en: 'AAA Concept',         ru: 'AAA концепция'     } },
+          { value: 'jam',   label: { ka: 'Game Jam (48h)',    en: 'Game Jam (48h)',   ru: 'Game Jam (48ч)' } },
+          { value: 'indie', label: { ka: 'Indie (1-6 თვე)',   en: 'Indie (1-6 months)', ru: 'Инди (1-6 мес.)'} },
+          { value: 'mid',   label: { ka: 'Mid-size (6-18m)',  en: 'Mid-size (6-18m)', ru: 'Средний'       } },
+          { value: 'aaa',   label: { ka: 'AAA Concept',       en: 'AAA Concept',      ru: 'AAA концепция' } },
         ],
       },
     ],
-    creditFormula: (a) => a.output_type === 'gdd' ? 15 : 8,
-    timeFormula: (a) => a.output_type === 'gdd' ? 20 : 8,
+    creditFormula: (a) => a.output_type === 'gdd' ? 18 : a.output_type === 'character_bible' ? 12 : 8,
+    timeFormula: (a) => a.output_type === 'gdd' ? 25 : 10,
     buildPrompt: (input, a) =>
-      `Create a detailed ${a.output_type} for a ${a.genre} game on ${a.platform}. Scope: ${a.complexity}. Concept: ${input}. Include specific mechanics, systems, and implementation details.`,
+      `You are a senior game designer at a AAA studio. Create a detailed, professional ${a.output_type} for a ${a.genre} game targeting ${a.platform}. Project scope: ${a.complexity}.\n\nGame concept: ${input}\n\nFormat in clean markdown with sections, subsections, bullet points. Include:\n- Core gameplay loop\n- Target audience & market positioning\n- Unique selling points vs competitors\n- Technical requirements for ${a.platform}\n- Monetization strategy appropriate for ${a.complexity} scope\n- Risk assessment and mitigation\nBe specific, actionable, and production-ready.`,
   },
 
-  // ── INTERIOR ──────────────────────────────────────────────────────────────
+  // ── INTERIOR (FLUX via Replicate) ─────────────────────────────────────────
   interior: {
     questions: [
       {
@@ -316,37 +356,40 @@ export const CLARIFICATION_PROMPTS: Record<ServiceId, ClarificationFlow> = {
         text: { ka: 'ოთახის ტიპი?', en: 'Room type?', ru: 'Тип комнаты?' },
         type: 'chips',
         options: [
-          { value: 'living',     label: { ka: 'სასტუმრო ოთახი', en: 'Living Room',  ru: 'Гостиная'   }, icon: '🛋️' },
-          { value: 'bedroom',    label: { ka: 'საძინებელი',      en: 'Bedroom',      ru: 'Спальня'    }, icon: '🛏️' },
-          { value: 'kitchen',    label: { ka: 'სამზარეულო',     en: 'Kitchen',      ru: 'Кухня'      }, icon: '🍳' },
-          { value: 'office',     label: { ka: 'ოფისი',           en: 'Office',       ru: 'Офис'       }, icon: '💼' },
-          { value: 'studio',     label: { ka: 'სტუდია',          en: 'Studio',       ru: 'Студия'     }, icon: '🎨' },
-          { value: 'commercial', label: { ka: 'კომერციული',     en: 'Commercial',   ru: 'Коммерческий'}, icon: '🏢' },
+          { value: 'living',     label: { ka: 'სასტუმრო',          en: 'Living Room',  ru: 'Гостиная'    }, icon: '🛋️' },
+          { value: 'bedroom',    label: { ka: 'საძინებელი',         en: 'Bedroom',      ru: 'Спальня'     }, icon: '🛏️' },
+          { value: 'kitchen',    label: { ka: 'სამზარეულო',        en: 'Kitchen',      ru: 'Кухня'       }, icon: '🍳' },
+          { value: 'office',     label: { ka: 'სამუშაო კაბინეტი',  en: 'Home Office',  ru: 'Кабинет'     }, icon: '💼' },
+          { value: 'bathroom',   label: { ka: 'სველი კვანძი',      en: 'Bathroom',     ru: 'Ванная'      }, icon: '🛁' },
+          { value: 'studio',     label: { ka: 'Creative სტუდია',   en: 'Creative Studio', ru: 'Студия'   }, icon: '🎨' },
+          { value: 'commercial', label: { ka: 'კომერციული სივრცე', en: 'Commercial',   ru: 'Коммерческий'}, icon: '🏢' },
         ],
       },
       {
         id: 'style',
-        text: { ka: 'სტილი?', en: 'Design style?', ru: 'Стиль дизайна?' },
+        text: { ka: 'დიზაინის სტილი?', en: 'Design style?', ru: 'Стиль дизайна?' },
         type: 'chips',
         options: [
-          { value: 'minimalist',          label: { ka: 'მინიმალისტი',          en: 'Minimalist',           ru: 'Минимализм'     } },
-          { value: 'georgian_traditional',label: { ka: 'ქართული ტრადიციული',  en: 'Georgian Traditional', ru: 'Грузинский'     } },
-          { value: 'modern',              label: { ka: 'თანამედროვე',          en: 'Modern',               ru: 'Современный'    } },
-          { value: 'industrial',          label: { ka: 'Industrial',            en: 'Industrial',           ru: 'Индустриальный' } },
-          { value: 'cozy',                label: { ka: 'კოზი',                  en: 'Cozy',                 ru: 'Уютный'         } },
-          { value: 'luxury',              label: { ka: 'ლუქსი',                en: 'Luxury',               ru: 'Люкс'           } },
+          { value: 'minimalist',           label: { ka: 'სკანდინავიური / მინ.', en: 'Scandinavian / Minimal', ru: 'Скандинавский'  } },
+          { value: 'georgian_traditional', label: { ka: 'ქართული ტრადიციული',  en: 'Georgian Traditional',  ru: 'Грузинский'     } },
+          { value: 'modern',               label: { ka: 'თანამედროვე',          en: 'Contemporary Modern',   ru: 'Современный'    } },
+          { value: 'industrial',           label: { ka: 'ინდუსტრიალური / Loft', en: 'Industrial / Loft',     ru: 'Индустриальный' } },
+          { value: 'cozy',                 label: { ka: 'Cozy / Hygge',         en: 'Cozy / Hygge',          ru: 'Уютный Hygge'   } },
+          { value: 'luxury',               label: { ka: 'ლუქსი / Art Deco',    en: 'Luxury / Art Deco',     ru: 'Люкс / Art Deco'} },
+          { value: 'japandi',              label: { ka: 'Japandi',              en: 'Japandi',               ru: 'Japandi'        } },
         ],
       },
       {
         id: 'color_palette',
-        text: { ka: 'ფერების პალიტრა?', en: 'Color palette?', ru: 'Цветовая палитра?' },
+        text: { ka: 'ფერთა სქემა?', en: 'Color scheme?', ru: 'Цветовая схема?' },
         type: 'chips',
         options: [
-          { value: 'warm',       label: { ka: 'თბილი',       en: 'Warm Tones',  ru: 'Тёплые'      } },
-          { value: 'cool',       label: { ka: 'ცივი',        en: 'Cool Tones',  ru: 'Холодные'    } },
-          { value: 'neutral',    label: { ka: 'ნეიტრალური',  en: 'Neutral',     ru: 'Нейтральные' } },
-          { value: 'vibrant',    label: { ka: 'მდიდარი',     en: 'Vibrant',     ru: 'Яркие'       } },
-          { value: 'monochrome', label: { ka: 'მონოქრომი',   en: 'Monochrome',  ru: 'Монохром'    } },
+          { value: 'warm',       label: { ka: 'თბილი ტონები',    en: 'Warm Tones',   ru: 'Тёплые тона'  } },
+          { value: 'cool',       label: { ka: 'ცივი ტონები',     en: 'Cool Tones',   ru: 'Холодные тона'} },
+          { value: 'neutral',    label: { ka: 'ნეიტრალური / Wht', en: 'Neutral/White', ru: 'Нейтральные'} },
+          { value: 'earthy',     label: { ka: 'Earth Tones',     en: 'Earth Tones',  ru: 'Земляные'     } },
+          { value: 'bold',       label: { ka: 'გამჭვირვალე',    en: 'Bold / Vibrant', ru: 'Яркие'       } },
+          { value: 'monochrome', label: { ka: 'მონოქრომი',      en: 'Monochrome',   ru: 'Монохром'     } },
         ],
       },
       {
@@ -354,73 +397,83 @@ export const CLARIFICATION_PROMPTS: Record<ServiceId, ClarificationFlow> = {
         text: { ka: 'სივრცის ზომა?', en: 'Space size?', ru: 'Размер помещения?' },
         type: 'chips',
         options: [
-          { value: 'small',  label: { ka: 'მცირე (<30 მ²)',      en: 'Small (<30m²)',     ru: 'Маленький (<30м²)'  } },
-          { value: 'medium', label: { ka: 'საშუალო (30-60 მ²)', en: 'Medium (30-60m²)',  ru: 'Средний (30-60м²)'  } },
-          { value: 'large',  label: { ka: 'დიდი (60+ მ²)',       en: 'Large (60+m²)',     ru: 'Большой (60+м²)'    } },
+          { value: 'small',  label: { ka: 'მცირე  (<30 მ²)',      en: 'Small (<30m²)',     ru: 'Маленький' } },
+          { value: 'medium', label: { ka: 'საშუალო (30–60 მ²)',   en: 'Medium (30–60m²)',  ru: 'Средний'   } },
+          { value: 'large',  label: { ka: 'დიდი   (60+ მ²)',       en: 'Large (60m²+)',     ru: 'Большой'   } },
+          { value: 'open',   label: { ka: 'Open-plan / Studio',   en: 'Open Plan / Studio', ru: 'Открытый'  } },
         ],
       },
     ],
-    creditFormula: () => 7,
-    timeFormula: () => 20,
-    buildPrompt: (input, a) =>
-      `Interior design visualization: ${a.style} style ${a.room_type}, ${a.size} space, ${a.color_palette} color palette. Requirements: ${input}. Show realistic 3D render with furniture placement and lighting.`,
+    creditFormula: () => 8,
+    timeFormula: () => 25,
+    buildPrompt: (input, a) => {
+      const refNote = ''; // photo reference appended separately via media context
+      return `Photorealistic 3D interior design visualization: ${a.style} style ${a.room_type} (${a.size}), ${a.color_palette} color scheme. Design requirements: ${input}. ${refNote}Architectural digest quality render, professional interior photography angle, perfect proportions, ambient and accent lighting, realistic materials and textures, no people, 16:9 format.`;
+    },
   },
 
-  // ── PROMPT-BUILDER ────────────────────────────────────────────────────────
+  // ── PROMPT-BUILDER (Claude) ───────────────────────────────────────────────
   'prompt-builder': {
     questions: [
       {
         id: 'target_ai',
-        text: { ka: 'რომელი AI-სთვის?', en: 'Which AI?', ru: 'Для какого AI?' },
+        text: { ka: 'რომელი AI-სთვის?', en: 'Optimize for which AI?', ru: 'Для какого AI?' },
         type: 'chips',
         options: [
-          { value: 'midjourney',       label: { ka: 'Midjourney',       en: 'Midjourney',       ru: 'Midjourney'       }, icon: '🎨' },
-          { value: 'stable_diffusion', label: { ka: 'Stable Diffusion', en: 'Stable Diffusion', ru: 'Stable Diffusion' }, icon: '🌊' },
-          { value: 'dalle',            label: { ka: 'DALL-E',           en: 'DALL-E',            ru: 'DALL-E'           }, icon: '🤖' },
-          { value: 'sora',             label: { ka: 'Sora (Video)',     en: 'Sora (Video)',     ru: 'Sora (Видео)'    }, icon: '🎬' },
-          { value: 'claude',           label: { ka: 'Claude',           en: 'Claude',            ru: 'Claude'           }, icon: '◆'  },
-          { value: 'gpt',              label: { ka: 'GPT-4',            en: 'GPT-4',             ru: 'GPT-4'            }, icon: '💬' },
-          { value: 'flux',             label: { ka: 'FLUX',             en: 'FLUX',              ru: 'FLUX'             }, icon: '⚡' },
+          { value: 'midjourney',       label: { ka: 'Midjourney v6',      en: 'Midjourney v6',     ru: 'Midjourney v6'    }, icon: '🎨' },
+          { value: 'flux',             label: { ka: 'FLUX (Replicate)',   en: 'FLUX (Replicate)',  ru: 'FLUX'             }, icon: '⚡' },
+          { value: 'stable_diffusion', label: { ka: 'Stable Diffusion',  en: 'Stable Diffusion', ru: 'Stable Diffusion' }, icon: '🌊' },
+          { value: 'dalle',            label: { ka: 'DALL-E 3',          en: 'DALL-E 3',          ru: 'DALL-E 3'         }, icon: '🤖' },
+          { value: 'sora',             label: { ka: 'Sora (Video)',      en: 'Sora (Video)',      ru: 'Sora (Видео)'    }, icon: '🎬' },
+          { value: 'kling',            label: { ka: 'Kling / RunwayML',  en: 'Kling / RunwayML',  ru: 'Kling / Runway'  }, icon: '🎞️' },
+          { value: 'claude',           label: { ka: 'Claude 4',          en: 'Claude 4',          ru: 'Claude 4'         }, icon: '◆'  },
+          { value: 'gpt',              label: { ka: 'GPT-4o',            en: 'GPT-4o',            ru: 'GPT-4o'           }, icon: '💬' },
+          { value: 'gemini',           label: { ka: 'Gemini Ultra',      en: 'Gemini Ultra',      ru: 'Gemini Ultra'    }, icon: '♊' },
         ],
       },
       {
         id: 'detail_level',
-        text: { ka: 'დეტალიზაცია?', en: 'Detail level?', ru: 'Уровень детализации?' },
+        text: { ka: 'დეტალიზაციის დონე?', en: 'Detail level?', ru: 'Уровень детализации?' },
         type: 'chips',
         options: [
-          { value: 'minimal',   label: { ka: 'მინიმალური', en: 'Minimal',          ru: 'Минимальный'  } },
-          { value: 'detailed',  label: { ka: 'დეტალური',   en: 'Detailed',         ru: 'Детальный'    } },
-          { value: 'technical', label: { ka: 'ტექნიკური',  en: 'Technical/Expert', ru: 'Технический'  } },
+          { value: 'minimal',   label: { ka: 'მინიმალური (1 წინადადება)', en: 'Minimal (1 sentence)', ru: 'Минимальный' } },
+          { value: 'detailed',  label: { ka: 'დეტალური (2-5 წინ.)',      en: 'Detailed (2-5 sentences)', ru: 'Детальный' } },
+          { value: 'technical', label: { ka: 'Expert (ყველა პარამ.)',    en: 'Expert (all params)',   ru: 'Экспертный' } },
         ],
       },
       {
         id: 'language',
-        text: { ka: 'Prompt-ის ენა?', en: 'Prompt language?', ru: 'Язык промпта?' },
+        text: { ka: 'Prompt-ის ენა?', en: 'Output language?', ru: 'Язык промпта?' },
         type: 'chips',
         options: [
           { value: 'en', label: { ka: 'English (recommended)', en: 'English (recommended)', ru: 'Английский (рекомендуется)' }, icon: '🇺🇸' },
-          { value: 'ka', label: { ka: 'Georgian / ქართული',  en: 'Georgian',              ru: 'Грузинский'                  }, icon: '🇬🇪' },
+          { value: 'ka', label: { ka: 'ქართული',              en: 'Georgian',              ru: 'Грузинский'                  }, icon: '🇬🇪' },
+          { value: 'ru', label: { ka: 'Русский',               en: 'Russian',               ru: 'Русский'                    }, icon: '🇷🇺' },
         ],
       },
       {
         id: 'purpose',
-        text: { ka: 'მიზანი?', en: 'Purpose?', ru: 'Цель?' },
+        text: { ka: 'მიზანი?', en: 'Purpose?', ru: 'Цель промпта?' },
         type: 'chips',
         options: [
-          { value: 'image_gen',    label: { ka: 'სურათის გენერაცია', en: 'Image Generation', ru: 'Генерация изображений' } },
-          { value: 'video_gen',    label: { ka: 'ვიდეოს გენერაცია', en: 'Video Generation', ru: 'Генерация видео'       } },
-          { value: 'chat_system',  label: { ka: 'AI ჩატ სისტემა',   en: 'Chat System',       ru: 'Чат система'          } },
-          { value: 'code_gen',     label: { ka: 'კოდის გენერაცია',  en: 'Code Generation',  ru: 'Генерация кода'       } },
+          { value: 'image_gen',    label: { ka: 'სურათის გენ.',   en: 'Image Generation',  ru: 'Генерация изображений' } },
+          { value: 'video_gen',    label: { ka: 'ვიდეოს გენ.',    en: 'Video Generation',  ru: 'Генерация видео'       } },
+          { value: 'chat_system',  label: { ka: 'AI System Prompt', en: 'AI System Prompt', ru: 'Системный промпт'     } },
+          { value: 'code_gen',     label: { ka: 'კოდის გენ.',     en: 'Code Generation',   ru: 'Генерация кода'       } },
+          { value: 'storytelling', label: { ka: 'მოთხრობა / ნარ.',en: 'Storytelling',      ru: 'Сторителлинг'         } },
         ],
       },
     ],
-    creditFormula: () => 2,
-    timeFormula: () => 5,
-    buildPrompt: (input, a) =>
-      `Build an optimized ${a.detail_level} prompt for ${a.target_ai} in ${a.language === 'en' ? 'English' : 'Georgian'} for ${a.purpose}. User's idea: ${input}. Apply best practices for ${a.target_ai} prompt engineering. Return ONLY the final prompt, no explanations.`,
+    creditFormula: () => 3,
+    timeFormula: () => 6,
+    buildPrompt: (input, a) => {
+      const lang = a.language === 'en' ? 'English' : a.language === 'ru' ? 'Russian' : 'Georgian';
+      const detail = a.detail_level === 'minimal' ? '1 concise sentence' : a.detail_level === 'detailed' ? '3-5 detailed sentences' : 'a comprehensive expert-level prompt with all relevant parameters, modifiers, and technical flags';
+      return `You are a world-class prompt engineer specializing in ${a.target_ai}. Create ${detail} optimized for ${a.target_ai} in ${lang} for the purpose of: ${a.purpose}.\n\nUser's raw idea: "${input}"\n\nApply all best practices for ${a.target_ai}:\n- Use model-specific syntax and parameter flags\n- Include quality boosters and negative/exclusion terms where relevant\n- Structure for maximum coherence and output quality\n\nReturn ONLY the final optimized prompt. No explanations, no preamble, no markdown wrapper.`;
+    },
   },
 
-  // ── TERMINAL ──────────────────────────────────────────────────────────────
+  // ── TERMINAL / CODE (Claude) ──────────────────────────────────────────────
   terminal: {
     questions: [
       {
@@ -431,10 +484,11 @@ export const CLARIFICATION_PROMPTS: Record<ServiceId, ClarificationFlow> = {
           { value: 'python',     label: { ka: 'Python',     en: 'Python',     ru: 'Python'     }, icon: '🐍' },
           { value: 'javascript', label: { ka: 'JavaScript', en: 'JavaScript', ru: 'JavaScript' }, icon: '🟨' },
           { value: 'typescript', label: { ka: 'TypeScript', en: 'TypeScript', ru: 'TypeScript' }, icon: '🔷' },
-          { value: 'bash',       label: { ka: 'Bash/Shell', en: 'Bash/Shell', ru: 'Bash/Shell' }, icon: '🖥' },
-          { value: 'go',         label: { ka: 'Go',         en: 'Go',         ru: 'Go'         }, icon: '🐹' },
-          { value: 'sql',        label: { ka: 'SQL',        en: 'SQL',        ru: 'SQL'        }, icon: '🗄️' },
+          { value: 'bash',       label: { ka: 'Bash / Shell', en: 'Bash/Shell', ru: 'Bash/Shell'}, icon: '🖥' },
+          { value: 'go',         label: { ka: 'Go (Golang)', en: 'Go (Golang)', ru: 'Go'        }, icon: '🐹' },
           { value: 'rust',       label: { ka: 'Rust',       en: 'Rust',       ru: 'Rust'       }, icon: '⚙️' },
+          { value: 'sql',        label: { ka: 'SQL',        en: 'SQL',        ru: 'SQL'        }, icon: '🗄️' },
+          { value: 'solidity',   label: { ka: 'Solidity (Web3)', en: 'Solidity (Web3)', ru: 'Solidity' }, icon: '⛓️' },
         ],
       },
       {
@@ -442,11 +496,12 @@ export const CLARIFICATION_PROMPTS: Record<ServiceId, ClarificationFlow> = {
         text: { ka: 'კოდის ტიპი?', en: 'Code type?', ru: 'Тип кода?' },
         type: 'chips',
         options: [
-          { value: 'function',   label: { ka: 'ფუნქცია',           en: 'Function/Module',     ru: 'Функция/Модуль' } },
-          { value: 'script',     label: { ka: 'სკრიპტი',           en: 'Automation Script',   ru: 'Скрипт'         } },
-          { value: 'cli_tool',   label: { ka: 'CLI Tool',          en: 'CLI Tool',            ru: 'CLI инструмент' } },
-          { value: 'api_client', label: { ka: 'API Client',        en: 'API Client',          ru: 'API клиент'     } },
-          { value: 'full_app',   label: { ka: 'სრული აპლიკაცია', en: 'Full App',            ru: 'Полное приложение'} },
+          { value: 'function',    label: { ka: 'ფუნქცია / Module',    en: 'Function / Module',  ru: 'Функция/Модуль'    } },
+          { value: 'script',      label: { ka: 'Automation Script',   en: 'Automation Script',  ru: 'Скрипт'            } },
+          { value: 'cli_tool',    label: { ka: 'CLI Tool',            en: 'CLI Tool',            ru: 'CLI инструмент'    } },
+          { value: 'api_client',  label: { ka: 'API Client',          en: 'API Client',          ru: 'API клиент'        } },
+          { value: 'smart_contract', label: { ka: 'Smart Contract',  en: 'Smart Contract',      ru: 'Смарт-контракт'   } },
+          { value: 'full_app',    label: { ka: 'სრული აპლიკაცია',   en: 'Full Application',   ru: 'Полное приложение' } },
         ],
       },
       {
@@ -454,28 +509,35 @@ export const CLARIFICATION_PROMPTS: Record<ServiceId, ClarificationFlow> = {
         text: { ka: 'დამატებები?', en: 'Include?', ru: 'Включить?' },
         type: 'multi',
         options: [
-          { value: 'comments',       label: { ka: 'კომენტარები',      en: 'Inline Comments', ru: 'Комментарии'   } },
-          { value: 'tests',          label: { ka: 'ტესტები',           en: 'Unit Tests',      ru: 'Тесты'         } },
-          { value: 'readme',         label: { ka: 'README',            en: 'README',          ru: 'README'        } },
-          { value: 'error_handling', label: { ka: 'ერორ ჰენდლინგი', en: 'Error Handling',  ru: 'Обработка ошибок'} },
+          { value: 'comments',       label: { ka: 'JSDoc/კომენტარები', en: 'JSDoc / Comments',  ru: 'Комментарии'       } },
+          { value: 'tests',          label: { ka: 'Unit / Integration ტ.', en: 'Unit Tests',    ru: 'Тесты'             } },
+          { value: 'readme',         label: { ka: 'README.md',           en: 'README.md',        ru: 'README.md'         } },
+          { value: 'error_handling', label: { ka: 'Error Handling',      en: 'Error Handling',  ru: 'Обработка ошибок'  } },
+          { value: 'docker',         label: { ka: 'Dockerfile',          en: 'Dockerfile',       ru: 'Dockerfile'        } },
+          { value: 'ci_cd',          label: { ka: 'CI/CD Config',        en: 'CI/CD Config',     ru: 'CI/CD конфиг'     } },
         ],
       },
       {
         id: 'complexity',
-        text: { ka: 'სირთულე?', en: 'Complexity?', ru: 'Сложность?' },
+        text: { ka: 'სირთულის დონე?', en: 'Complexity level?', ru: 'Уровень сложности?' },
         type: 'chips',
         options: [
-          { value: 'simple',       label: { ka: 'მარტივი',       en: 'Simple',          ru: 'Простой'       } },
-          { value: 'intermediate', label: { ka: 'საშუალო',       en: 'Intermediate',    ru: 'Средний'       } },
-          { value: 'advanced',     label: { ka: 'რთული',         en: 'Advanced',        ru: 'Сложный'       } },
+          { value: 'simple',       label: { ka: 'მარტივი (Junior)',        en: 'Simple (Junior)',       ru: 'Простой'       } },
+          { value: 'intermediate', label: { ka: 'საშუალო (Mid)',           en: 'Intermediate (Mid)',    ru: 'Средний'       } },
+          { value: 'advanced',     label: { ka: 'Advanced (Senior)',       en: 'Advanced (Senior)',     ru: 'Продвинутый'   } },
+          { value: 'expert',       label: { ka: 'Expert / Architect',     en: 'Expert / Architect',   ru: 'Эксперт'       } },
         ],
       },
     ],
-    creditFormula: (a) => a.type === 'full_app' ? 10 : 3,
-    timeFormula: (a) => a.type === 'full_app' ? 20 : 5,
+    creditFormula: (a) => a.type === 'full_app' ? 12 : a.type === 'smart_contract' ? 10 : 4,
+    timeFormula: (a) => a.type === 'full_app' ? 30 : 8,
     buildPrompt: (input, a) => {
-      const extras = Array.isArray(a.extras) ? (a.extras as string[]).join(', ') : String(a.extras ?? '');
-      return `Write ${a.type} in ${a.language}. Complexity: ${a.complexity}. Requirements: ${input}. Include: ${extras || 'error handling'}. Production-ready code, clean architecture, best practices.`;
+      const extras = Array.isArray(a.extras) ? (a.extras as string[]).join(', ') : String(a.extras ?? 'error_handling');
+      const style = a.complexity === 'expert' ? 'Staff/Principal engineer level'
+        : a.complexity === 'advanced' ? 'Senior engineer level'
+        : a.complexity === 'intermediate' ? 'Mid-level engineer level'
+        : 'Clean, readable beginner-friendly';
+      return `You are a ${style} ${a.language} developer. Write production-quality ${a.type} in ${a.language}.\n\nRequirement: ${input}\n\nMust include: ${extras}.\n\nCode standards:\n- Clean architecture, SOLID principles where applicable\n- Proper error handling and input validation\n- Performance-conscious implementation\n- Security best practices (no hardcoded secrets, sanitized inputs)\n\nFormat: Return complete, runnable code. Use markdown code blocks with language tag.`;
     },
   },
 };

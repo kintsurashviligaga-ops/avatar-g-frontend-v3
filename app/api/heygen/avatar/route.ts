@@ -5,65 +5,170 @@ export const maxDuration = 120;
 
 const HEYGEN_BASE = 'https://api.heygen.com';
 
-interface HeyGenAvatar {
-  avatar_id: string;
-  avatar_name: string;
-  gender?: string;
+// ─── Voice mapping by gender + language ──────────────────────────────────────
+
+const VOICE_MAP: Record<string, Record<string, string>> = {
+  // Curated HeyGen voice IDs — fallback to Jenny/Guy if not found
+  female: {
+    en: '1bd001e7e50f421d891986aad5158bc8', // Lily (en-US female)
+    ru: 'a50d990a4bd14da4a49d0f4d10310a6b', // Natasha (ru-RU female)
+    ka: '1bd001e7e50f421d891986aad5158bc8', // fallback to English
+    de: '1bd001e7e50f421d891986aad5158bc8',
+    fr: '1bd001e7e50f421d891986aad5158bc8',
+    es: '1bd001e7e50f421d891986aad5158bc8',
+  },
+  male: {
+    en: '2d5b0e6cf36f460aa7fc47e3eee4ba54', // Josh (en-US male)
+    ru: 'a50d990a4bd14da4a49d0f4d10310a6b',
+    ka: '2d5b0e6cf36f460aa7fc47e3eee4ba54',
+    de: '2d5b0e6cf36f460aa7fc47e3eee4ba54',
+    fr: '2d5b0e6cf36f460aa7fc47e3eee4ba54',
+    es: '2d5b0e6cf36f460aa7fc47e3eee4ba54',
+  },
+};
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+async function getVoiceId(apiKey: string, gender: string, language: string): Promise<string> {
+  try {
+    const res = await fetch(`${HEYGEN_BASE}/v2/voices`, {
+      headers: { 'X-Api-Key': apiKey },
+    });
+    if (!res.ok) throw new Error('voices list failed');
+    const data = await res.json() as { data?: { voices?: Array<{ voice_id: string; language?: string; gender?: string }> } };
+    const voices = data.data?.voices ?? [];
+    const langCode = language === 'ka' ? 'en' : language; // Georgian → fallback to English TTS
+    const match = voices.find(v =>
+      v.gender?.toLowerCase() === gender.toLowerCase() &&
+      v.language?.toLowerCase().startsWith(langCode.toLowerCase())
+    );
+    return match?.voice_id ?? VOICE_MAP[gender]?.[language] ?? VOICE_MAP['female']!['en']!;
+  } catch {
+    return VOICE_MAP[gender]?.[language] ?? VOICE_MAP['female']!['en']!;
+  }
 }
 
-interface HeyGenVoice {
-  voice_id: string;
-  language: string;
-  gender?: string;
-  name?: string;
-}
-
-async function getFirstAvatar(apiKey: string): Promise<string> {
+async function getFirstStockAvatar(apiKey: string): Promise<string> {
   const res = await fetch(`${HEYGEN_BASE}/v2/avatars`, {
     headers: { 'X-Api-Key': apiKey },
   });
   if (!res.ok) throw new Error(`HeyGen avatars list failed: ${res.status}`);
-  const data = await res.json() as { data?: { avatars?: HeyGenAvatar[] } };
-  const avatars = data.data?.avatars ?? [];
-  const first = avatars[0];
+  const data = await res.json() as { data?: { avatars?: Array<{ avatar_id: string }> } };
+  const first = data.data?.avatars?.[0];
   if (!first) throw new Error('No avatars found in HeyGen account');
   return first.avatar_id;
 }
 
-async function getDefaultVoice(apiKey: string): Promise<string> {
-  const res = await fetch(`${HEYGEN_BASE}/v2/voices`, {
+async function uploadPhotoAsset(apiKey: string, photoBase64: string, mimeType: string): Promise<string> {
+  // Strip data URL prefix if present
+  const base64Data = (photoBase64.includes(',') ? photoBase64.split(',')[1] : photoBase64) ?? '';
+  const binaryData = Buffer.from(base64Data, 'base64');
+  const uint8 = new Uint8Array(binaryData.buffer, binaryData.byteOffset, binaryData.byteLength);
+  const blob = new Blob([uint8], { type: mimeType || 'image/jpeg' });
+
+  const formData = new FormData();
+  formData.append('file', blob, 'avatar_photo.jpg');
+  formData.append('type', 'image');
+
+  const res = await fetch(`${HEYGEN_BASE}/v1/asset`, {
+    method: 'POST',
     headers: { 'X-Api-Key': apiKey },
+    body: formData,
   });
-  if (!res.ok) return 'en-US-JennyNeural'; // Azure fallback voice name
-  const data = await res.json() as { data?: { voices?: HeyGenVoice[] } };
-  const voices = data.data?.voices ?? [];
-  const english = voices.find((v) => v.language?.startsWith('en')) ?? voices[0] ?? null;
-  return english?.voice_id ?? 'en-US-JennyNeural';
+
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`HeyGen asset upload failed ${res.status}: ${err}`);
+  }
+
+  const data = await res.json() as { data?: { id?: string; asset_id?: string } };
+  const assetId = data.data?.id ?? data.data?.asset_id;
+  if (!assetId) throw new Error('HeyGen asset upload returned no ID');
+  return assetId;
 }
 
-async function createVideo(
+async function createTalkingPhoto(apiKey: string, assetId: string): Promise<string> {
+  const res = await fetch(`${HEYGEN_BASE}/v1/talking_photo`, {
+    method: 'POST',
+    headers: { 'X-Api-Key': apiKey, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ image_asset_id: assetId }),
+  });
+
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`HeyGen talking_photo failed ${res.status}: ${err}`);
+  }
+
+  const data = await res.json() as { data?: { talking_photo_id?: string } };
+  const talkingPhotoId = data.data?.talking_photo_id;
+  if (!talkingPhotoId) throw new Error('HeyGen returned no talking_photo_id');
+  return talkingPhotoId;
+}
+
+async function createVideoWithTalkingPhoto(
   apiKey: string,
-  avatarId: string,
+  talkingPhotoId: string,
   voiceId: string,
   script: string,
+  dimension: { width: number; height: number },
 ): Promise<string> {
   const res = await fetch(`${HEYGEN_BASE}/v2/video/generate`, {
     method: 'POST',
     headers: { 'X-Api-Key': apiKey, 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      video_inputs: [
-        {
-          character: { type: 'avatar', avatar_id: avatarId, avatar_style: 'normal' },
-          voice: {
-            type: 'text',
-            input_text: script.slice(0, 1500),
-            voice_id: voiceId,
-          },
+      video_inputs: [{
+        character: {
+          type: 'talking_photo',
+          talking_photo_id: talkingPhotoId,
+          talking_photo_style: 'rectangle',
         },
-      ],
-      dimension: { width: 1280, height: 720 },
+        voice: {
+          type: 'text',
+          input_text: script.slice(0, 1500),
+          voice_id: voiceId,
+        },
+      }],
+      dimension,
     }),
   });
+
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`HeyGen video/generate ${res.status}: ${err}`);
+  }
+  const data = await res.json() as { data?: { video_id?: string }; video_id?: string };
+  const videoId = data.data?.video_id ?? data.video_id;
+  if (!videoId) throw new Error('HeyGen returned no video_id');
+  return videoId;
+}
+
+async function createVideoWithStockAvatar(
+  apiKey: string,
+  avatarId: string,
+  voiceId: string,
+  script: string,
+  dimension: { width: number; height: number },
+): Promise<string> {
+  const res = await fetch(`${HEYGEN_BASE}/v2/video/generate`, {
+    method: 'POST',
+    headers: { 'X-Api-Key': apiKey, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      video_inputs: [{
+        character: {
+          type: 'avatar',
+          avatar_id: avatarId,
+          avatar_style: 'normal',
+        },
+        voice: {
+          type: 'text',
+          input_text: script.slice(0, 1500),
+          voice_id: voiceId,
+        },
+      }],
+      dimension,
+    }),
+  });
+
   if (!res.ok) {
     const err = await res.text();
     throw new Error(`HeyGen video/generate ${res.status}: ${err}`);
@@ -75,49 +180,78 @@ async function createVideo(
 }
 
 async function pollUntilDone(apiKey: string, videoId: string): Promise<string> {
-  for (let i = 0; i < 25; i++) {
-    await new Promise((r) => setTimeout(r, 4000));
+  for (let i = 0; i < 30; i++) {
+    await new Promise<void>((r) => setTimeout(r, 4000));
     const res = await fetch(`${HEYGEN_BASE}/v1/video_status.get?video_id=${videoId}`, {
       headers: { 'X-Api-Key': apiKey },
     });
     if (!res.ok) throw new Error(`HeyGen poll error: ${res.status}`);
-    const data = await res.json() as {
-      data?: { status?: string; video_url?: string; error?: string };
-    };
+    const data = await res.json() as { data?: { status?: string; video_url?: string; error?: string } };
     const { status, video_url, error } = data.data ?? {};
     if (status === 'completed' && video_url) return video_url;
     if (status === 'failed') throw new Error(error ?? 'HeyGen generation failed');
   }
-  throw new Error('HeyGen video timed out after 100s');
+  throw new Error('HeyGen video timed out after 120s');
 }
+
+// ─── Route handler ────────────────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
   const apiKey = process.env.HEYGEN_API_KEY;
   if (!apiKey) {
-    return NextResponse.json(
-      { success: false, error: 'HEYGEN_API_KEY not configured' },
-      { status: 500 },
-    );
+    return NextResponse.json({ success: false, error: 'HEYGEN_API_KEY not configured' }, { status: 500 });
   }
 
   try {
-    const body = await req.json() as { prompt?: string; avatarId?: string; voiceId?: string };
-    const prompt = body.prompt?.trim();
-    if (!prompt) {
-      return NextResponse.json({ success: false, error: 'prompt is required' }, { status: 400 });
+    const body = await req.json() as {
+      script?: string;
+      prompt?: string;
+      photoBase64?: string;
+      photoMimeType?: string;
+      voiceGender?: string;
+      voiceLanguage?: string;
+      videoFormat?: string;
+      avatarId?: string;
+      voiceId?: string;
+    };
+
+    const script = (body.script ?? body.prompt ?? '').trim();
+    if (!script) {
+      return NextResponse.json({ success: false, error: 'script is required' }, { status: 400 });
     }
 
-    const [avatarId, voiceId] = await Promise.all([
-      body.avatarId ?? getFirstAvatar(apiKey),
-      body.voiceId ?? getDefaultVoice(apiKey),
-    ]);
+    const voiceGender = body.voiceGender ?? 'female';
+    const voiceLanguage = body.voiceLanguage ?? 'en';
+    const videoFormat = body.videoFormat ?? '16:9';
 
-    const videoId = await createVideo(apiKey, avatarId, voiceId, prompt);
+    // Determine dimension
+    const dimension = videoFormat === '9:16'
+      ? { width: 720, height: 1280 }
+      : videoFormat === '1:1'
+        ? { width: 720, height: 720 }
+        : { width: 1280, height: 720 };
+
+    // Get voice ID
+    const voiceId = body.voiceId ?? await getVoiceId(apiKey, voiceGender, voiceLanguage);
+
+    let videoId: string;
+
+    if (body.photoBase64) {
+      // Photo mode: upload → talking photo → video
+      const assetId = await uploadPhotoAsset(apiKey, body.photoBase64, body.photoMimeType ?? 'image/jpeg');
+      const talkingPhotoId = await createTalkingPhoto(apiKey, assetId);
+      videoId = await createVideoWithTalkingPhoto(apiKey, talkingPhotoId, voiceId, script, dimension);
+    } else {
+      // Stock avatar mode
+      const avatarId = body.avatarId ?? await getFirstStockAvatar(apiKey);
+      videoId = await createVideoWithStockAvatar(apiKey, avatarId, voiceId, script, dimension);
+    }
+
     const videoUrl = await pollUntilDone(apiKey, videoId);
-
     return NextResponse.json({ success: true, url: videoUrl, kind: 'video' });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'HeyGen avatar generation failed';
+    console.error('[heygen/avatar]', message);
     return NextResponse.json({ success: false, url: null, error: message }, { status: 502 });
   }
 }

@@ -754,6 +754,13 @@ export default function CommandCenterChat() {
         serviceId: p.serviceId,
         userInput: p.finalPrompt ?? p.userInput,
         answers: p.answers,
+        mediaFiles: p.uploadedMedia.map(m => ({
+          id: m.id,
+          name: m.name,
+          type: m.type,
+          mimeType: m.mimeType,
+          dataUrl: m.dataUrl,
+        })),
       }) as Record<string, unknown>;
 
       clearInterval(stageInterval);
