@@ -35,6 +35,25 @@ enum Endpoint {
     case userProfile
     case updateProfile
 
+    // Jam Sessions (Phase 6)
+    case jamCreate
+    case jamSession(String)
+    case jamEnd
+    case jamStemUpload
+    case jamAIFill
+    case jamMerge
+
+    // Licensing / NFT (Phase 6)
+    case licenseGenerate
+    case licenseMint
+    case licenseTxStatus
+    case licenseUpdateNFT
+    case licensePurchase
+
+    // Content Safety (Phase 6)
+    case contentGuard
+    case reportViolation
+
     var path: String {
         switch self {
         case .login:
@@ -65,6 +84,32 @@ enum Endpoint {
             return "/api/user/profile"
         case .updateProfile:
             return "/api/user/profile"
+        case .jamCreate:
+            return "/api/jam/create"
+        case .jamSession(let id):
+            return "/api/jam/session/\(id)"
+        case .jamEnd:
+            return "/api/jam/end"
+        case .jamStemUpload:
+            return "/api/jam/stem/upload"
+        case .jamAIFill:
+            return "/api/jam/stem/ai-fill"
+        case .jamMerge:
+            return "/api/jam/merge"
+        case .licenseGenerate:
+            return "/api/license/generate"
+        case .licenseMint:
+            return "/api/license/nft/mint"
+        case .licenseTxStatus:
+            return "/api/license/nft/status"
+        case .licenseUpdateNFT:
+            return "/api/license/nft/update"
+        case .licensePurchase:
+            return "/api/license/purchase"
+        case .contentGuard:
+            return "/api/guard/check"
+        case .reportViolation:
+            return "/api/guard/report"
         }
     }
 
@@ -77,9 +122,13 @@ enum Endpoint {
         case .login, .register, .refreshToken,
              .agentChat, .agentVoice,
              .musicGenerate, .stemRegenerate,
-             .imageGenerate, .videoGenerate:
+             .imageGenerate, .videoGenerate,
+             .jamCreate, .jamEnd, .jamStemUpload, .jamAIFill, .jamMerge,
+             .licenseGenerate, .licenseMint, .licenseTxStatus,
+             .licenseUpdateNFT, .licensePurchase,
+             .contentGuard, .reportViolation:
             return .post
-        case .musicStatus, .gallery, .userProfile:
+        case .musicStatus, .gallery, .userProfile, .jamSession:
             return .get
         case .updateProfile:
             return .put
@@ -88,6 +137,9 @@ enum Endpoint {
         }
     }
 }
+
+// Plural alias used in Phase 6 modules
+typealias Endpoints = Endpoint
 
 enum HTTPMethod: String {
     case get = "GET"

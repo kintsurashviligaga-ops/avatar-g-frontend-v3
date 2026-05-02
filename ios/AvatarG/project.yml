@@ -38,6 +38,60 @@ targets:
     settings:
       base:
         INFOPLIST_FILE: AvatarG/Info.plist
+        APP_GROUP_ID: group.ge.myavatar.app
+    dependencies:
+      - target: AvatarGWidget
+      - target: AvatarGWatch
+    entitlements:
+      path: AvatarG/AvatarG.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.ge.myavatar.app
+
+  AvatarGWidget:
+    type: app-extension
+    platform: iOS
+    sources:
+      - AvatarGWidget
+    info:
+      path: AvatarGWidget/Info.plist
+      properties:
+        CFBundleDisplayName: "Avatar G Widget"
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: ge.myavatar.app.widget
+        INFOPLIST_FILE: AvatarGWidget/Info.plist
+        APP_GROUP_ID: group.ge.myavatar.app
+        TARGETED_DEVICE_FAMILY: "1"
+        IPHONEOS_DEPLOYMENT_TARGET: "17.0"
+        SWIFT_VERSION: "5.10"
+    entitlements:
+      path: AvatarGWidget/AvatarGWidget.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.ge.myavatar.app
+
+  AvatarGWatch:
+    type: application
+    platform: watchOS
+    sources:
+      - AvatarGWatch
+    info:
+      path: AvatarGWatch/Info.plist
+      properties:
+        CFBundleDisplayName: "Avatar G"
+        WKApplication: true
+        NSMicrophoneUsageDescription: "Agent G uses the microphone for voice commands on Watch."
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: ge.myavatar.app.watchkitapp
+        INFOPLIST_FILE: AvatarGWatch/Info.plist
+        TARGETED_DEVICE_FAMILY: "4"
+        WATCHOS_DEPLOYMENT_TARGET: "10.0"
+        SWIFT_VERSION: "5.10"
+
 packages:
   Starscream:
     url: https://github.com/daltoniam/Starscream

@@ -95,6 +95,33 @@ final class APIClient {
         return try await execute(request)
     }
 
+    func upload<T: Decodable>(url endpoint: Endpoint, fileURL: URL, fields: [String: String]) async throws -> T {
+        var request = URLRequest(url: endpoint.url)
+        request.httpMethod = HTTPMethod.post.rawValue
+        if let token = authToken {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        let boundary = UUID().uuidString
+        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        var body = Data()
+        for (key, value) in fields {
+            body.append("--\(boundary)\r\n".data(using: .utf8)!)
+            body.append("Content-Disposition: form-data; name=\"\(key)\"\r\n\r\n".data(using: .utf8)!)
+            body.append("\(value)\r\n".data(using: .utf8)!)
+        }
+        if let fileData = try? Data(contentsOf: fileURL) {
+            let filename = fileURL.lastPathComponent
+            body.append("--\(boundary)\r\n".data(using: .utf8)!)
+            body.append("Content-Disposition: form-data; name=\"file\"; filename=\"\(filename)\"\r\n".data(using: .utf8)!)
+            body.append("Content-Type: audio/mpeg\r\n\r\n".data(using: .utf8)!)
+            body.append(fileData)
+            body.append("\r\n".data(using: .utf8)!)
+        }
+        body.append("--\(boundary)--\r\n".data(using: .utf8)!)
+        request.httpBody = body
+        return try await execute(request)
+    }
+
     // MARK: - Private Helpers
 
     private func buildRequest(endpoint: Endpoint, body: Data?) throws -> URLRequest {
