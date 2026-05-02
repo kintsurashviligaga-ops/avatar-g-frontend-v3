@@ -102,7 +102,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         id="main-content"
         className="relative flex-1 w-full"
         style={
-          hideShellChrome
+          isImmersiveWorkspace
+            ? { zIndex: 2, height: 'var(--app-screen-height)', minHeight: 'var(--app-screen-height)', overflow: 'hidden' }
+            : isLandingOrAuth
             ? { zIndex: 2 }
             : { paddingTop: 'calc(4rem + env(safe-area-inset-top, 0px))', zIndex: 2 }
         }

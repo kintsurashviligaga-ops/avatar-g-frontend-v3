@@ -100,8 +100,8 @@ export function LandingNavbar() {
             : { backgroundColor: 'transparent' }
         }
       >
-        {/* Logo */}
-        <BrandLogo href={localeHref('/')} size="nav" showText compact={scrolled} />
+        {/* Logo → back to dashboard */}
+        <BrandLogo href={localeHref('/dashboard')} size="nav" showText compact={scrolled} />
 
         {/* Desktop nav links — smooth-scroll to page sections */}
         <div className="hidden md:flex items-center gap-1">

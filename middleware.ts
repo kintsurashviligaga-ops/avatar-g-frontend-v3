@@ -5,10 +5,6 @@ const SUPPORTED_LOCALES = ['ka', 'en', 'ru'];
 const DEFAULT_LOCALE = 'ka';
 const LOCALE_COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
 
-function getLocaleDashboardPath(locale: string) {
-  return `/${locale}/dashboard`;
-}
-
 function getPreferredLocale(request: NextRequest) {
   const cookieLocale = request.cookies.get('NEXT_LOCALE')?.value;
   return cookieLocale && SUPPORTED_LOCALES.includes(cookieLocale)
@@ -18,14 +14,13 @@ function getPreferredLocale(request: NextRequest) {
 
 /**
  * Root middleware:
- * 1. Redirects bare paths (no locale prefix) → /ka/... (or detected locale)
- * 2. Refreshes Supabase auth cookies on every request.
+ * / and locale roots → /{locale}/dashboard  (single-window chatbot)
+ * Paths without locale prefix → /{locale}/path
  */
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const preferredLocale = getPreferredLocale(request);
 
-  // Skip locale redirect for API routes, static assets, auth callbacks, and files with extensions
   const isSkipped =
     pathname.startsWith('/api/') ||
     pathname.startsWith('/_next/') ||
@@ -40,10 +35,10 @@ export async function middleware(request: NextRequest) {
     const segments = pathname.split('/').filter(Boolean);
     const firstSegment = segments[0] ?? '';
 
+    // Bare root → /{locale}/dashboard
     if (pathname === '/') {
       const url = request.nextUrl.clone();
-      url.pathname = `/${preferredLocale}`;
-
+      url.pathname = `/${preferredLocale}/dashboard`;
       const response = NextResponse.redirect(url);
       response.cookies.set('NEXT_LOCALE', preferredLocale, {
         path: '/',
@@ -53,13 +48,23 @@ export async function middleware(request: NextRequest) {
       return response;
     }
 
-    // Locale root (e.g. /en, /ka) → show landing page (handled by [locale]/page.tsx)
+    // Locale root (e.g. /ka, /en, /ru) → /{locale}/dashboard
+    if (SUPPORTED_LOCALES.includes(firstSegment) && segments.length === 1) {
+      const url = request.nextUrl.clone();
+      url.pathname = `/${firstSegment}/dashboard`;
+      const response = NextResponse.redirect(url);
+      response.cookies.set('NEXT_LOCALE', firstSegment, {
+        path: '/',
+        maxAge: LOCALE_COOKIE_MAX_AGE,
+        sameSite: 'lax',
+      });
+      return response;
+    }
 
-    // If first segment is not a supported locale → redirect to /{preferredLocale}/...
+    // Path without locale prefix → /{preferredLocale}/path
     if (!SUPPORTED_LOCALES.includes(firstSegment)) {
       const url = request.nextUrl.clone();
-      url.pathname = `/${preferredLocale}${pathname === '/' ? '' : pathname}`;
-
+      url.pathname = `/${preferredLocale}${pathname}`;
       const response = NextResponse.redirect(url);
       response.cookies.set('NEXT_LOCALE', preferredLocale, {
         path: '/',
@@ -88,13 +93,6 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    /*
-     * Match all paths except:
-     * - _next/static (static assets)
-     * - _next/image  (image optimisation)
-     * - favicon.ico, brand/, placeholders/ (public assets)
-     * - api/webhooks (Stripe webhooks must not have cookies tampered with)
-     */
     '/((?!_next/static|_next/image|favicon\\.ico|brand/|placeholders/|api/webhooks).*)',
   ],
 };

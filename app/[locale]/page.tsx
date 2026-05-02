@@ -1,16 +1,8 @@
-import dynamic from 'next/dynamic'
+import { redirect } from 'next/navigation'
 
-const LandingPageClient = dynamic(
-  () => import('@/components/landing/LandingPageClient'),
-  { ssr: false },
-)
+type Props = { params: { locale: string } }
 
-type LocaleRootPageProps = {
-  params: {
-    locale: string
-  }
-}
-
-export default function LocaleRootPage({ params: _params }: LocaleRootPageProps) {
-  return <LandingPageClient />
+// Middleware handles this redirect, but SSR fallback keeps it safe
+export default function LocaleRootPage({ params }: Props) {
+  redirect(`/${params.locale}/dashboard`)
 }
