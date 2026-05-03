@@ -11,34 +11,34 @@ import { NeonBadge } from '@/components/ui/NeonBadge'
 /* ─── Copy ──────────────────────────────────────────────── */
 const COPY = {
   en: {
-    georgianBadge: 'Georgia\'s first AI platform',
-    badge: 'AI workspace',
-    headline1: 'Create avatars, videos,',
-    headline2: 'and AI workflows',
-    headline3: 'in one workspace.',
+    georgianBadge: 'Georgia\'s first AI civilization stack',
+    badge: 'Neo-Cosmic AI Platform',
+    headline1: 'GEORGIA\'S FIRST',
+    headline2: 'AI CIVILIZATION',
+    headline3: 'STACK.',
     cta1: 'Start Free',
     cta2: 'See Services',
-    trust: 'One place for content production, automation, and business tasks.',
+    trust: 'One platform. 13 AI services. Voice, image, video, music, avatar — in Georgian.',
   },
   ka: {
-    georgianBadge: 'პირველი AI პლატფორმა საქართველოში',
-    badge: 'AI სამუშაო სივრცე',
-    headline1: 'შექმენი ავატარები, ვიდეოები',
-    headline2: 'და AI პროცესები',
-    headline3: 'ერთ სივრცეში.',
+    georgianBadge: 'საქართველოს პირველი AI ცივილიზაციური სტეკი',
+    badge: 'Neo-Cosmic AI პლატფორმა',
+    headline1: 'საქართველოს',
+    headline2: 'AI ცივილიზაციური',
+    headline3: 'სტეკი.',
     cta1: 'დაიწყე უფასოდ',
     cta2: 'სერვისების ნახვა',
-    trust: 'ერთი ადგილი კონტენტის შექმნისთვის, ავტომატიზაციისთვის და ბიზნეს ამოცანებისთვის.',
+    trust: 'ერთი პლატფორმა. 13 AI სერვისი. ხმა, სურათი, ვიდეო, მუსიკა, ავატარი — ქართულად.',
   },
   ru: {
-    georgianBadge: 'Первая AI платформа в Грузии',
-    badge: 'AI workspace',
-    headline1: 'Создавайте аватары, видео',
-    headline2: 'и AI-процессы',
-    headline3: 'в одном пространстве.',
+    georgianBadge: 'Первый AI civilization stack в Грузии',
+    badge: 'Neo-Cosmic AI Платформа',
+    headline1: 'ПЕРВЫЙ В ГРУЗИИ',
+    headline2: 'AI CIVILIZATION',
+    headline3: 'STACK.',
     cta1: 'Начать бесплатно',
     cta2: 'Смотреть сервисы',
-    trust: 'Единое место для контента, автоматизации и бизнес-задач.',
+    trust: 'Одна платформа. 13 AI сервисов. Голос, изображение, видео, музыка, аватар — на грузинском.',
   },
 } as const
 
@@ -162,13 +162,16 @@ export function HeroSection() {
         </motion.div>
 
         {/* Headline */}
-        <div className="space-y-3">
+        <div className="space-y-2 sm:space-y-3">
           <motion.div
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.8, delay: 0.2, ease: 'easeOut' }}
           >
-            <h1 className="text-4xl sm:text-5xl lg:text-7xl xl:text-8xl font-900 tracking-tight leading-[1.05] drop-shadow-2xl" style={{ color: 'var(--color-text)', textShadow: '0 0 40px rgba(34,211,238,0.15)' }}>
+            <h1
+              className="text-4xl sm:text-6xl lg:text-8xl xl:text-9xl font-black tracking-[0.06em] leading-[1.0] uppercase drop-shadow-2xl"
+              style={{ color: 'var(--color-text)', textShadow: '0 0 60px rgba(34,211,238,0.18)', fontFamily: 'var(--font-display, var(--font-syne, sans-serif))' }}
+            >
               {c.headline1}
             </h1>
           </motion.div>
@@ -177,8 +180,11 @@ export function HeroSection() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.8, delay: 0.35, ease: 'easeOut' }}
           >
-            <h1 className="text-4xl sm:text-5xl lg:text-7xl xl:text-8xl font-900 tracking-tight leading-[1.05]">
-              <span className="bg-gradient-to-r from-cyan-400 via-blue-400 to-purple-400 bg-clip-text text-transparent" style={{ backgroundSize: '200% 200%' }}>
+            <h1 className="text-4xl sm:text-6xl lg:text-8xl xl:text-9xl font-black tracking-[0.06em] leading-[1.0] uppercase" style={{ fontFamily: 'var(--font-display, var(--font-syne, sans-serif))' }}>
+              <span
+                className="bg-gradient-to-r from-cyan-400 via-blue-400 to-violet-500 bg-clip-text text-transparent"
+                style={{ backgroundSize: '200% 200%', animation: 'gradient-shift 4s ease infinite' }}
+              >
                 {c.headline2}
               </span>
             </h1>
@@ -188,7 +194,10 @@ export function HeroSection() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.8, delay: 0.5, ease: 'easeOut' }}
           >
-            <h1 className="text-4xl sm:text-5xl lg:text-7xl xl:text-8xl font-900 tracking-tight leading-[1.05]" style={{ color: 'var(--color-text)' }}>
+            <h1
+              className="text-4xl sm:text-6xl lg:text-8xl xl:text-9xl font-black tracking-[0.06em] leading-[1.0] uppercase"
+              style={{ color: 'rgba(255,255,255,0.55)', fontFamily: 'var(--font-display, var(--font-syne, sans-serif))' }}
+            >
               {c.headline3}
             </h1>
           </motion.div>

@@ -140,6 +140,7 @@ interface ServiceCardProps {
 function ServiceCard({ service, locale, index }: ServiceCardProps) {
   const [visible, setVisible] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
+  const featured = index < 3
 
   useEffect(() => {
     const el = ref.current
@@ -158,59 +159,87 @@ function ServiceCard({ service, locale, index }: ServiceCardProps) {
     return () => observer.disconnect()
   }, [index])
 
-  const borderColor =
-    service.color === 'cyan'
-      ? 'hover:border-cyan-500/40 hover:shadow-[0_8px_30px_rgba(0,212,255,0.12)]'
-      : service.color === 'violet'
-      ? 'hover:border-violet-500/40 hover:shadow-[0_8px_30px_rgba(124,58,237,0.12)]'
-      : 'hover:border-emerald-500/40 hover:shadow-[0_8px_30px_rgba(16,185,129,0.12)]'
+  const accentCyan = service.color === 'cyan'
+  const accentViolet = service.color === 'violet'
 
-  const iconGlow =
-    service.color === 'cyan'
-      ? 'group-hover:drop-shadow-[0_0_12px_rgba(0,212,255,0.7)]'
-      : service.color === 'violet'
-      ? 'group-hover:drop-shadow-[0_0_12px_rgba(124,58,237,0.7)]'
-      : 'group-hover:drop-shadow-[0_0_12px_rgba(16,185,129,0.7)]'
+  const borderHover = accentCyan
+    ? 'hover:border-cyan-500/50 hover:shadow-[0_12px_40px_rgba(0,212,255,0.15)]'
+    : accentViolet
+    ? 'hover:border-violet-500/50 hover:shadow-[0_12px_40px_rgba(124,58,237,0.15)]'
+    : 'hover:border-emerald-500/50 hover:shadow-[0_12px_40px_rgba(16,185,129,0.12)]'
+
+  const iconGlow = accentCyan
+    ? 'group-hover:drop-shadow-[0_0_16px_rgba(0,212,255,0.8)]'
+    : accentViolet
+    ? 'group-hover:drop-shadow-[0_0_16px_rgba(124,58,237,0.8)]'
+    : 'group-hover:drop-shadow-[0_0_16px_rgba(16,185,129,0.8)]'
+
+  const glowAccent = accentCyan ? 'rgba(0,212,255,0.06)' : accentViolet ? 'rgba(124,58,237,0.06)' : 'rgba(16,185,129,0.05)'
+  const iconBg = accentCyan ? 'rgba(0,212,255,0.1)' : accentViolet ? 'rgba(124,58,237,0.1)' : 'rgba(16,185,129,0.08)'
 
   return (
     <div
       ref={ref}
       className={cn(
         'transform transition-all duration-500',
-        visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-6',
+        visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8',
+        featured && 'sm:row-span-2',
       )}
     >
       <Link
         href={`/${locale}${service.href}`}
         className={cn(
-          'group relative flex flex-col gap-3 p-5 rounded-2xl border border-white/8 transition-all duration-300 hover:-translate-y-1',
-          'bg-[rgba(255,255,255,0.03)]',
-          borderColor,
+          'group relative flex flex-col gap-4 rounded-2xl border border-white/8 transition-all duration-300 hover:-translate-y-1.5 h-full',
+          featured ? 'p-6 sm:p-7 bg-[rgba(255,255,255,0.04)]' : 'p-5 bg-[rgba(255,255,255,0.02)]',
+          borderHover,
         )}
+        style={featured ? { boxShadow: `inset 0 0 60px ${glowAccent}` } : undefined}
       >
+        {/* Featured top gradient bar */}
+        {featured && (
+          <div
+            className="absolute top-0 left-0 right-0 h-px rounded-t-2xl"
+            style={{
+              background: accentCyan
+                ? 'linear-gradient(90deg, transparent, rgba(0,212,255,0.5), transparent)'
+                : accentViolet
+                ? 'linear-gradient(90deg, transparent, rgba(124,58,237,0.5), transparent)'
+                : 'linear-gradient(90deg, transparent, rgba(0,200,150,0.5), transparent)',
+            }}
+          />
+        )}
+
         {/* Icon */}
         <div
           className={cn(
-            'text-2xl w-10 h-10 flex items-center justify-center rounded-xl transition-all duration-300',
+            'flex items-center justify-center rounded-xl transition-all duration-300 flex-shrink-0',
+            featured ? 'text-3xl w-14 h-14' : 'text-2xl w-10 h-10',
             iconGlow,
           )}
-          style={{ backgroundColor: 'rgba(255,255,255,0.06)' }}
+          style={{ backgroundColor: iconBg }}
         >
           {service.icon}
         </div>
 
         {/* Content */}
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold text-white/90 mb-1 truncate">{service.name[locale]}</p>
-          <p className="text-[12px] leading-relaxed text-white/45 line-clamp-2">{service.desc[locale]}</p>
+          <p className={cn('font-bold text-white/95 mb-1.5', featured ? 'text-base sm:text-lg' : 'text-sm truncate')}>
+            {service.name[locale]}
+          </p>
+          <p className={cn('leading-relaxed text-white/50', featured ? 'text-[13px] sm:text-sm line-clamp-3' : 'text-[12px] line-clamp-2')}>
+            {service.desc[locale]}
+          </p>
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-between mt-1">
-          <NeonBadge color={service.color} className="text-[9px]">
+        <div className="flex items-center justify-between mt-auto">
+          <NeonBadge color={service.color} className={featured ? 'text-[10px]' : 'text-[9px]'}>
             {service.color === 'cyan' ? 'AI' : service.color === 'emerald' ? 'data' : 'studio'}
           </NeonBadge>
-          <span className="text-white/30 group-hover:text-white/70 transition-colors duration-200 text-sm">
+          <span className={cn(
+            'text-white/30 group-hover:text-white/80 group-hover:translate-x-1 transition-all duration-200',
+            featured ? 'text-base' : 'text-sm',
+          )}>
             →
           </span>
         </div>
@@ -254,8 +283,8 @@ export function ServicesGrid() {
           <p className="text-base text-white/50 max-w-md mx-auto">{c.subtitle}</p>
         </div>
 
-        {/* Grid */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
+        {/* Grid — first 3 cards span 2 rows on sm+ (featured) */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4 sm:grid-rows-[auto_auto_auto]">
           {SERVICES.map((service, index) => (
             <ServiceCard key={service.id} service={service} locale={locale} index={index} />
           ))}
