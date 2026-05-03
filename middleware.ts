@@ -14,7 +14,8 @@ function getPreferredLocale(request: NextRequest) {
 
 /**
  * Root middleware:
- * / and locale roots → /{locale}/dashboard  (single-window chatbot)
+ * / and locale roots → /{locale}/landing  (marketing landing page)
+ * /{locale}/landing is the canonical home; dashboard reachable via CTA/login
  * Paths without locale prefix → /{locale}/path
  */
 export async function middleware(request: NextRequest) {
@@ -35,10 +36,10 @@ export async function middleware(request: NextRequest) {
     const segments = pathname.split('/').filter(Boolean);
     const firstSegment = segments[0] ?? '';
 
-    // Bare root → /{locale}/dashboard
+    // Bare root → /{locale}/landing
     if (pathname === '/') {
       const url = request.nextUrl.clone();
-      url.pathname = `/${preferredLocale}/dashboard`;
+      url.pathname = `/${preferredLocale}/landing`;
       const response = NextResponse.redirect(url);
       response.cookies.set('NEXT_LOCALE', preferredLocale, {
         path: '/',
@@ -48,10 +49,10 @@ export async function middleware(request: NextRequest) {
       return response;
     }
 
-    // Locale root (e.g. /ka, /en, /ru) → /{locale}/dashboard
+    // Locale root (e.g. /ka, /en, /ru) → /{locale}/landing
     if (SUPPORTED_LOCALES.includes(firstSegment) && segments.length === 1) {
       const url = request.nextUrl.clone();
-      url.pathname = `/${firstSegment}/dashboard`;
+      url.pathname = `/${firstSegment}/landing`;
       const response = NextResponse.redirect(url);
       response.cookies.set('NEXT_LOCALE', firstSegment, {
         path: '/',
