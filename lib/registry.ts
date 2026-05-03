@@ -81,9 +81,59 @@ export const SERVICE_REGISTRY = [
     category: 'tools',
     avgSeconds: 8,
   },
+  {
+    id: 'voice',
+    name: { ka: 'ხმის კლონი', en: 'Voice Clone', ru: 'Клон голоса' },
+    description: { ka: 'ხმის კლონირება და AI სინთეზი', en: 'Voice Cloning & AI Synthesis', ru: 'Клонирование голоса и AI-синтез' },
+    icon: '🎙',
+    color: '#00d4ff',
+    credits: 12,
+    category: 'audio',
+    avgSeconds: 20,
+  },
+  {
+    id: 'content-writer',
+    name: { ka: 'კონტენტ მწერლობა', en: 'Content Writer', ru: 'Автор контента' },
+    description: { ka: 'SEO ტექსტები, სტატიები, სოციალური პოსტები', en: 'SEO texts, articles, social posts', ru: 'SEO-тексты, статьи, посты' },
+    icon: '✍',
+    color: '#a855f7',
+    credits: 3,
+    category: 'tools',
+    avgSeconds: 10,
+  },
+  {
+    id: 'podcast',
+    name: { ka: 'პოდკასტ სტუდია', en: 'Podcast Studio', ru: 'Подкаст-студия' },
+    description: { ka: 'AI პოდკასტის სცენარი და ხმოვანი სინთეზი', en: 'AI podcast script & voice synthesis', ru: 'Сценарий подкаста и голосовой синтез' },
+    icon: '🎙',
+    color: '#7c3aed',
+    credits: 8,
+    category: 'audio',
+    avgSeconds: 25,
+  },
+  {
+    id: 'character',
+    name: { ka: 'პერსონაჟის AI', en: 'Character AI', ru: 'Персонаж AI' },
+    description: { ka: 'ინტერაქტიული AI პერსონაჟები ქართული სულით', en: 'Interactive AI characters with Georgian soul', ru: 'Интерактивные AI-персонажи' },
+    icon: '🎭',
+    color: '#f59e0b',
+    credits: 5,
+    category: 'creation',
+    avgSeconds: 12,
+  },
+  {
+    id: 'event',
+    name: { ka: 'ივენთ სტუდია', en: 'Event Studio', ru: 'Event-студия' },
+    description: { ka: 'AI ივენთ კონტენტი და სრული სცენარი', en: 'AI event content & full scenario', ru: 'AI-контент для мероприятий' },
+    icon: '🎪',
+    color: '#00c896',
+    credits: 6,
+    category: 'creation',
+    avgSeconds: 15,
+  },
 ] as const
 
-assert(SERVICE_REGISTRY.length === 8, `SERVICE_REGISTRY must have exactly 8 services, got ${SERVICE_REGISTRY.length}`)
+assert(SERVICE_REGISTRY.length === 13, `SERVICE_REGISTRY must have exactly 13 services, got ${SERVICE_REGISTRY.length}`)
 
 export type ServiceId = typeof SERVICE_REGISTRY[number]['id']
 export type Service = typeof SERVICE_REGISTRY[number]
@@ -113,4 +163,9 @@ export const SERVICE_OUTPUT_KINDS: Record<ServiceId, 'image' | 'video' | 'audio'
   interior:         'image',
   'prompt-builder': 'text',
   terminal:         'code',
+  voice:            'audio',
+  'content-writer': 'text',
+  podcast:          'audio',
+  character:        'text',
+  event:            'text',
 }

@@ -42,7 +42,7 @@ type MediaFile = z.infer<typeof MediaFileSchema>;
 // ─── Service intent detection ─────────────────────────────────────────────────
 
 const SERVICE_KEYWORDS: Record<ServiceId, string[]> = {
-  avatar:           ['avatar', 'ავატარ', 'persona', 'talking', 'ლაპარაკ', 'character', 'персон', 'аватар', 'სახე'],
+  avatar:           ['avatar', 'ავატარ', 'persona', 'talking', 'ლაპარაკ', 'персон', 'аватар', 'სახე'],
   video:            ['video', 'ვიდეო', 'видео', 'scene', 'cinematic', 'სცენა', 'film', 'clip'],
   image:            ['image', 'სურათ', 'изображ', 'photo', 'poster', 'visual', 'ფოტო', 'picture', 'generate image'],
   music:            ['music', 'მუსიკ', 'музык', 'soundtrack', 'audio', 'beat', 'sound', 'ბგერ', 'melody'],
@@ -50,6 +50,11 @@ const SERVICE_KEYWORDS: Record<ServiceId, string[]> = {
   interior:         ['interior', 'ინტერიერ', 'интерьер', 'room', 'space', 'ოთახ', 'design', 'furniture'],
   'prompt-builder': ['prompt', 'პრომპტ', 'промпт', 'midjourney', 'dalle', 'flux', 'optimize prompt'],
   terminal:         ['code', 'კოდ', 'код', 'script', 'terminal', 'ტერმინალ', 'function', 'api', 'python', 'javascript', 'typescript'],
+  voice:            ['voice', 'ხმა', 'ხმის', 'голос', 'tts', 'clone', 'speech', 'synthesize', 'speak', 'ლაპარაკი', 'произнес'],
+  'content-writer': ['article', 'blog', 'სტატია', 'статья', 'სეო', 'seo', 'copywriting', 'content', 'კონტენტ', 'write', 'post', 'newsletter', 'caption'],
+  podcast:          ['podcast', 'პოდკასტ', 'подкаст', 'episode', 'radio', 'interview script', 'ეპიზოდ'],
+  character:        ['character', 'პერსონაჟ', 'персонаж', 'npc', 'roleplay', 'role-play', 'fictional', 'fictional character'],
+  event:            ['event', 'ივენთ', 'мероприят', 'wedding', 'conference', 'festival', 'concert', 'კონფერენც', 'ქორწილ', 'launch', 'ceremony'],
 };
 
 function detectServiceIntent(text: string): ServiceId | null {
@@ -366,13 +371,17 @@ async function handleGenerate(
   const jobId = `job_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
   // ── Text services via Claude ──────────────────────────────────────────────
-  const TEXT_SERVICES: ServiceId[] = ['game', 'prompt-builder', 'terminal'];
+  const TEXT_SERVICES: ServiceId[] = ['game', 'prompt-builder', 'terminal', 'content-writer', 'podcast', 'character', 'event'];
 
   if (TEXT_SERVICES.includes(serviceId)) {
     const systemPrompts: Record<string, string> = {
-      game:             'You are a senior game designer. Produce detailed, structured game design documents in markdown.',
+      game:             'You are a senior game designer. Produce detailed, structured game design documents in markdown. Include mechanics, narrative, level design, and monetization in separate sections.',
       'prompt-builder': 'You are a world-class prompt engineer. Return ONLY the final optimized prompt — no preamble, no explanation.',
       terminal:         'You are a Staff Engineer. Write production-ready, secure, well-structured code with markdown code blocks.',
+      'content-writer': 'You are a world-class copywriter and content strategist. Produce high-quality, engaging, SEO-aware content. Use natural language, avoid generic AI phrases. Format in clean markdown.',
+      podcast:          'You are a professional podcast producer and scriptwriter. Create complete, engaging podcast scripts with clear segment structure, natural dialogue, and strong hooks. Format in markdown with speaker labels.',
+      character:        'You are a master character designer and narrative architect. Create rich, multi-dimensional characters with deep backstories, consistent voice, and cultural depth. Format in clean markdown with clear sections.',
+      event:            'You are a professional event producer and copywriter. Create comprehensive event materials including programs, MC scripts, promo copy, and invitations. Be specific, engaging, and culturally aware. Format in clean markdown.',
     };
     const result = await anthropic.messages.create({
       model: 'claude-sonnet-4-6',
@@ -410,6 +419,20 @@ async function handleGenerate(
       case 'interior':
         genResult = await generateImage(finalPrompt, answers, mediaFiles);
         break;
+      case 'voice': {
+        const elevenKey = process.env.ELEVENLABS_API_KEY;
+        if (!elevenKey) { genResult = { outputKind: 'audio', error: 'ELEVENLABS_API_KEY not configured' }; break; }
+        const voiceId = process.env.ELEVENLABS_GEORGIAN_VOICE_ID || process.env.ELEVENLABS_VOICE_ID || 'vWpzdSR8GpLUKR0ai8Li';
+        const ttsRes = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
+          method: 'POST',
+          headers: { 'xi-api-key': elevenKey, 'Content-Type': 'application/json', 'Accept': 'application/json' },
+          body: JSON.stringify({ text: finalPrompt.slice(0, 5000), model_id: 'eleven_turbo_v2_5', voice_settings: { stability: 0.75, similarity_boost: 0.85 } }),
+        });
+        if (!ttsRes.ok) { genResult = { outputKind: 'audio', error: `ElevenLabs TTS error ${ttsRes.status}` }; break; }
+        const ttsData = await ttsRes.json() as { audio_base64?: string };
+        genResult = { outputKind: 'audio', resultUrl: ttsData.audio_base64 ? `data:audio/mpeg;base64,${ttsData.audio_base64}` : undefined };
+        break;
+      }
       default:
         genResult = { outputKind: 'text', error: `Unknown service: ${serviceId}` };
     }

@@ -540,6 +540,173 @@ export const CLARIFICATION_PROMPTS: Record<ServiceId, ClarificationFlow> = {
       return `You are a ${style} ${a.language} developer. Write production-quality ${a.type} in ${a.language}.\n\nRequirement: ${input}\n\nMust include: ${extras}.\n\nCode standards:\n- Clean architecture, SOLID principles where applicable\n- Proper error handling and input validation\n- Performance-conscious implementation\n- Security best practices (no hardcoded secrets, sanitized inputs)\n\nFormat: Return complete, runnable code. Use markdown code blocks with language tag.`;
     },
   },
+
+  // ── VOICE CLONE (ElevenLabs TTS) ──────────────────────────────────────────
+  voice: {
+    questions: [
+      {
+        id: 'text_lang',
+        text: { ka: 'სინთეზის ენა?', en: 'Synthesis language?', ru: 'Язык синтеза?' },
+        type: 'chips',
+        options: [
+          { value: 'ka', label: { ka: 'ქართული', en: 'Georgian', ru: 'Грузинский' }, icon: '🇬🇪' },
+          { value: 'en', label: { ka: 'ინგლისური', en: 'English', ru: 'Английский' }, icon: '🇬🇧' },
+          { value: 'ru', label: { ka: 'რუსული', en: 'Russian', ru: 'Русский' }, icon: '🇷🇺' },
+        ],
+      },
+      {
+        id: 'voice_style',
+        text: { ka: 'ხმის სტილი?', en: 'Voice style?', ru: 'Стиль голоса?' },
+        type: 'chips',
+        options: [
+          { value: 'neutral',      label: { ka: 'ნეიტრალური', en: 'Neutral', ru: 'Нейтральный' } },
+          { value: 'professional', label: { ka: 'პროფესიონალური', en: 'Professional', ru: 'Профессиональный' } },
+          { value: 'warm',         label: { ka: 'თბილი', en: 'Warm', ru: 'Тёплый' } },
+          { value: 'energetic',    label: { ka: 'ენერგიული', en: 'Energetic', ru: 'Энергичный' } },
+        ],
+      },
+    ],
+    creditFormula: () => 6,
+    timeFormula: () => 10,
+    buildPrompt: (input, a) =>
+      `Synthesize the following text in ${a.text_lang ?? 'ka'} with a ${a.voice_style ?? 'neutral'} tone:\n\n${input}`,
+  },
+
+  // ── CONTENT WRITER (Claude SEO/Content) ───────────────────────────────────
+  'content-writer': {
+    questions: [
+      {
+        id: 'content_type',
+        text: { ka: 'კონტენტის ტიპი?', en: 'Content type?', ru: 'Тип контента?' },
+        type: 'chips',
+        options: [
+          { value: 'blog',     label: { ka: 'ბლოგ სტატია', en: 'Blog Article', ru: 'Блог-статья' }, icon: '📝' },
+          { value: 'social',   label: { ka: 'სოც. პოსტი', en: 'Social Post', ru: 'Соцсеть' }, icon: '📱' },
+          { value: 'seo',      label: { ka: 'SEO ტექსტი', en: 'SEO Text', ru: 'SEO-текст' }, icon: '🔍' },
+          { value: 'email',    label: { ka: 'Email ნიუსლეთერი', en: 'Email Newsletter', ru: 'Email-рассылка' }, icon: '✉️' },
+          { value: 'ad_copy',  label: { ka: 'რეკლამის ტექსტი', en: 'Ad Copy', ru: 'Рекламный текст' }, icon: '📢' },
+          { value: 'product',  label: { ka: 'პროდუქტის აღწერა', en: 'Product Description', ru: 'Описание товара' }, icon: '🛍' },
+        ],
+      },
+      {
+        id: 'tone',
+        text: { ka: 'ტონი?', en: 'Tone?', ru: 'Тон?' },
+        type: 'chips',
+        options: [
+          { value: 'professional', label: { ka: 'პროფესიონალური', en: 'Professional', ru: 'Профессиональный' } },
+          { value: 'friendly',     label: { ka: 'მეგობრული', en: 'Friendly', ru: 'Дружелюбный' } },
+          { value: 'persuasive',   label: { ka: 'დამარწმუნებელი', en: 'Persuasive', ru: 'Убедительный' } },
+          { value: 'humorous',     label: { ka: 'იუმორისტული', en: 'Humorous', ru: 'Юмористический' } },
+        ],
+      },
+    ],
+    creditFormula: (a) => a.content_type === 'blog' ? 5 : 2,
+    timeFormula: () => 8,
+    buildPrompt: (input, a) =>
+      `You are a world-class ${a.tone ?? 'professional'} copywriter. Write a high-quality ${a.content_type ?? 'blog'} about:\n\n${input}\n\nRequirements:\n- Engaging, readable, conversion-focused\n- Natural language, avoid generic phrases\n- Use markdown formatting where appropriate\n- Georgian-aware brand voice if topic is Georgian`,
+  },
+
+  // ── PODCAST (Script + TTS) ────────────────────────────────────────────────
+  podcast: {
+    questions: [
+      {
+        id: 'format',
+        text: { ka: 'ფორმატი?', en: 'Format?', ru: 'Формат?' },
+        type: 'chips',
+        options: [
+          { value: 'solo',      label: { ka: 'სოლო', en: 'Solo', ru: 'Соло' }, icon: '🎤' },
+          { value: 'interview', label: { ka: 'ინტერვიუ', en: 'Interview', ru: 'Интервью' }, icon: '🎙' },
+          { value: 'debate',    label: { ka: 'დებატი', en: 'Debate', ru: 'Дебаты' }, icon: '⚡' },
+          { value: 'story',     label: { ka: 'სტორი / ნარატივი', en: 'Story / Narrative', ru: 'Нарратив' }, icon: '📖' },
+        ],
+      },
+      {
+        id: 'duration',
+        text: { ka: 'სიგრძე?', en: 'Duration?', ru: 'Длина?' },
+        type: 'chips',
+        options: [
+          { value: '5min',  label: { ka: '5 წთ', en: '5 min', ru: '5 мин' } },
+          { value: '15min', label: { ka: '15 წთ', en: '15 min', ru: '15 мин' } },
+          { value: '30min', label: { ka: '30 წთ', en: '30 min', ru: '30 мин' } },
+          { value: '60min', label: { ka: '60 წთ', en: '60 min', ru: '60 мин' } },
+        ],
+      },
+    ],
+    creditFormula: (a) => a.duration === '60min' ? 20 : a.duration === '30min' ? 12 : a.duration === '15min' ? 7 : 4,
+    timeFormula: (a) => a.duration === '60min' ? 120 : a.duration === '30min' ? 60 : 20,
+    buildPrompt: (input, a) =>
+      `You are a professional podcast producer and scriptwriter. Create a complete ${a.duration ?? '15min'} ${a.format ?? 'solo'} podcast script about:\n\n${input}\n\nScript must include:\n- Intro with hook\n- Main segments with transitions\n- Key talking points and quotes\n- Outro with CTA\n\nFormat: Full word-for-word script in markdown. Mark speakers and segments clearly.`,
+  },
+
+  // ── EVENT STUDIO ─────────────────────────────────────────────────────────
+  event: {
+    questions: [
+      {
+        id: 'event_type',
+        text: { ka: 'ივენთის ტიპი?', en: 'Event type?', ru: 'Тип мероприятия?' },
+        type: 'chips',
+        options: [
+          { value: 'conference',  label: { ka: 'კონფერენცია', en: 'Conference', ru: 'Конференция' }, icon: '🎤' },
+          { value: 'wedding',     label: { ka: 'ქორწინება', en: 'Wedding', ru: 'Свадьба' }, icon: '💍' },
+          { value: 'corporate',   label: { ka: 'კორპორატიული', en: 'Corporate', ru: 'Корпоратив' }, icon: '🏢' },
+          { value: 'concert',     label: { ka: 'კონცერტი', en: 'Concert', ru: 'Концерт' }, icon: '🎵' },
+          { value: 'launch',      label: { ka: 'პროდუქტის გაშვება', en: 'Product Launch', ru: 'Запуск продукта' }, icon: '🚀' },
+          { value: 'festival',    label: { ka: 'ფესტივალი', en: 'Festival', ru: 'Фестиваль' }, icon: '🎪' },
+        ],
+      },
+      {
+        id: 'deliverable',
+        text: { ka: 'რა გჭირდება?', en: 'What do you need?', ru: 'Что нужно?' },
+        type: 'multi',
+        options: [
+          { value: 'program',    label: { ka: 'პროგრამა / განრიგი', en: 'Program / Schedule', ru: 'Программа' } },
+          { value: 'script',     label: { ka: 'MC სკრიპტი', en: 'MC Script', ru: 'Сценарий ведущего' } },
+          { value: 'promo',      label: { ka: 'სარეკლამო ტექსტი', en: 'Promo Copy', ru: 'Рекламный текст' } },
+          { value: 'invitations',label: { ka: 'მოწვევის ტექსტი', en: 'Invitation Copy', ru: 'Текст приглашений' } },
+        ],
+      },
+    ],
+    creditFormula: () => 5,
+    timeFormula: () => 10,
+    buildPrompt: (input, a) => {
+      const deliverables = Array.isArray(a.deliverable) ? (a.deliverable as string[]).join(', ') : String(a.deliverable ?? 'program, script');
+      return `You are a professional event producer. Create complete event materials for a ${a.event_type ?? 'corporate'} event.\n\nEvent details: ${input}\n\nDeliverables needed: ${deliverables}\n\nFormat everything in clean markdown with clear sections. Include Georgian cultural elements where relevant.`;
+    },
+  },
+
+  // ── CHARACTER AI ─────────────────────────────────────────────────────────
+  character: {
+    questions: [
+      {
+        id: 'personality',
+        text: { ka: 'პერსონაჟის ტიპი?', en: 'Character type?', ru: 'Тип персонажа?' },
+        type: 'chips',
+        options: [
+          { value: 'mentor',    label: { ka: 'მენტორი', en: 'Mentor', ru: 'Ментор' }, icon: '🧠' },
+          { value: 'hero',      label: { ka: 'გმირი', en: 'Hero', ru: 'Герой' }, icon: '⚔️' },
+          { value: 'companion', label: { ka: 'კომპანიონი', en: 'Companion', ru: 'Компаньон' }, icon: '🤝' },
+          { value: 'villain',   label: { ka: 'ანტაგონისტი', en: 'Villain', ru: 'Злодей' }, icon: '😈' },
+          { value: 'trickster', label: { ka: 'ტრიქსტერი', en: 'Trickster', ru: 'Трикстер' }, icon: '🃏' },
+          { value: 'sage',      label: { ka: 'ბრძენი', en: 'Sage', ru: 'Мудрец' }, icon: '🌟' },
+        ],
+      },
+      {
+        id: 'context',
+        text: { ka: 'გამოყენება?', en: 'Usage?', ru: 'Использование?' },
+        type: 'chips',
+        options: [
+          { value: 'game',       label: { ka: 'თამაში / NPC', en: 'Game / NPC', ru: 'Игра / NPC' } },
+          { value: 'education',  label: { ka: 'სასწავლო', en: 'Educational', ru: 'Учебный' } },
+          { value: 'roleplay',   label: { ka: 'Role-play', en: 'Role-play', ru: 'Ролевая игра' } },
+          { value: 'assistant',  label: { ka: 'AI ასისტენტი', en: 'AI Assistant', ru: 'AI-ассистент' } },
+        ],
+      },
+    ],
+    creditFormula: () => 5,
+    timeFormula: () => 12,
+    buildPrompt: (input, a) =>
+      `Create a detailed ${a.personality ?? 'mentor'} AI character for ${a.context ?? 'roleplay'} use.\n\nCharacter concept: ${input}\n\nDeliver:\n1. Character name and background (100-150 words)\n2. Personality traits (5-7 key traits)\n3. Speech patterns and vocabulary style\n4. Core motivations and fears\n5. Sample dialogue (3-5 exchanges)\n6. Georgian cultural touchpoints if applicable\n\nFormat: Rich markdown with headers.`,
+  },
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
