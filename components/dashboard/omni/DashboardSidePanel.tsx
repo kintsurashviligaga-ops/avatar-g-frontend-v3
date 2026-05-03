@@ -282,6 +282,10 @@ export function DashboardSidePanel({ isOpen, onClose, locale, isAuthenticated, u
   );
 }
 
+// ─── Copy type (union of all locales) ────────────────────────────────────
+
+type CopyDict = typeof COPY[keyof typeof COPY];
+
 // ─── Animation variant ────────────────────────────────────────────────────
 
 const fadeSlide = {
@@ -294,7 +298,7 @@ const fadeSlide = {
 // ─── MENU ────────────────────────────────────────────────────────────────────
 
 function renderMenu({ c, isAuthenticated, userName, credits, setSection, selectService, loc, onClose }: {
-  c: typeof COPY['en'], isAuthenticated: boolean, userName: string,
+  c: CopyDict, isAuthenticated: boolean, userName: string,
   credits: number, setSection: (s: PanelSection) => void,
   selectService: (id: ServiceId) => void, loc: OmniLocale, onClose: () => void
 }) {
@@ -417,7 +421,7 @@ function renderMenu({ c, isAuthenticated, userName, credits, setSection, selectS
 // ─── SERVICES ────────────────────────────────────────────────────────────────
 
 function renderServices({ c, loc, selectService }: {
-  c: typeof COPY['en'], loc: OmniLocale, selectService: (id: ServiceId) => void
+  c: CopyDict, loc: OmniLocale, selectService: (id: ServiceId) => void
 }) {
   return (
     <div className="p-3 grid grid-cols-2 gap-2">
@@ -457,7 +461,7 @@ const CREDIT_PACKS = [
 ];
 
 function renderPackages({ c, billing, setBilling, isAuthenticated }: {
-  c: typeof COPY['en'], billing: string, setBilling: (b: 'monthly' | 'annual') => void, isAuthenticated: boolean
+  c: CopyDict, billing: string, setBilling: (b: 'monthly' | 'annual') => void, isAuthenticated: boolean
 }) {
   return (
     <div className="p-4 space-y-4">
@@ -530,7 +534,7 @@ function renderPackages({ c, billing, setBilling, isAuthenticated }: {
 // ─── ACCOUNT ─────────────────────────────────────────────────────────────────
 
 function renderAccount({ c, isAuthenticated, userName, locale }: {
-  c: typeof COPY['en'], isAuthenticated: boolean, userName: string, locale: string
+  c: CopyDict, isAuthenticated: boolean, userName: string, locale: string
 }) {
   if (!isAuthenticated) {
     return (
@@ -800,7 +804,7 @@ const MOCK_PROJECTS = [
 const PROJ_FILTERS = ['all', 'image', 'video', 'music', 'text'];
 
 function renderProjects({ c, projectFilter, setProjectFilter }: {
-  c: typeof COPY['en'], projectFilter: string, setProjectFilter: (f: string) => void
+  c: CopyDict, projectFilter: string, setProjectFilter: (f: string) => void
 }) {
   const filtered = projectFilter === 'all' ? MOCK_PROJECTS : MOCK_PROJECTS.filter(p => p.type === projectFilter);
 
@@ -871,7 +875,7 @@ const LIBRARY_DATA = {
 };
 
 function renderLibrary({ c, libraryTab, setLibraryTab }: {
-  c: typeof COPY['en'], libraryTab: string, setLibraryTab: (t: string) => void
+  c: CopyDict, libraryTab: string, setLibraryTab: (t: string) => void
 }) {
   return (
     <div className="p-3 space-y-3">
