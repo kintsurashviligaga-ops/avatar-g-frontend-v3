@@ -4,12 +4,11 @@ import React, { useState, useEffect } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   X, ChevronRight, ChevronLeft,
-  Home, MessageSquare, Music, Image as ImageIcon, Crown,
-  Bolt, Folder, BookOpen, Settings, Key,
-  HelpCircle, Sparkles, LogOut, LogIn, UserPlus,
-  Globe, Bell, BellOff, Eye, EyeOff, Trash2, Copy, Check,
-  Mic, BarChart2, Info, Star, ExternalLink,
-  User, ShieldCheck, ZapOff,
+  MessageSquare, Crown,
+  Zap, Folder, BookOpen, Settings, Key,
+  HelpCircle, Sparkles, LogOut,
+  Eye, EyeOff, Copy, Check,
+  User, ShieldCheck,
 } from 'lucide-react';
 import { OMNI_SERVICES } from './services';
 import { getLocalizedService, normalizeOmniLocale, type OmniLocale } from './i18n';
@@ -368,7 +367,7 @@ function renderMenu({ c, isAuthenticated, userName, credits, setSection, selectS
       {navSection(c.account, [
         { icon: <User className="w-4 h-4" />, label: c.account, color: '#00d4ff', onClick: () => setSection('account') },
         { icon: <Crown className="w-4 h-4" />, label: c.packages, color: '#f59e0b', onClick: () => setSection('packages') },
-        { icon: <Bolt className="w-4 h-4" />, label: `${credits.toLocaleString()} ${c.credits}`, color: '#00c896', onClick: () => setSection('packages') },
+        { icon: <Zap className="w-4 h-4" />, label: `${credits.toLocaleString()} ${c.credits}`, color: '#00c896', onClick: () => setSection('packages') },
       ])}
 
       <div className="mx-4 h-px bg-white/6" />
