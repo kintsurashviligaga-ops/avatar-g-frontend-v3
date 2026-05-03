@@ -1,8 +1,9 @@
 'use client';
 
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Menu } from 'lucide-react';
 import CommandCenterChat from './CommandCenterChat';
+import { DashboardSidePanel } from './DashboardSidePanel';
 import { useOmniDashboardStore } from './store';
 import type { ServiceId } from './types';
 import { normalizeOmniLocale, type OmniLocale } from './i18n';
@@ -120,6 +121,8 @@ export default function MainDashboard({ locale, userName, isAuthenticated }: Mai
   const localeCode = normalizeOmniLocale(storeLocale || locale);
   const copy = DASHBOARD_COPY[localeCode];
 
+  const [isSidePanelOpen, setIsSidePanelOpen] = useState(false);
+
   const chatMessages = useOmniDashboardStore((state) => state.chatMessages);
   const setLocale = useOmniDashboardStore((state) => state.setLocale);
   const setAuthSnapshot = useOmniDashboardStore((state) => state.setAuthSnapshot);
@@ -148,22 +151,25 @@ export default function MainDashboard({ locale, userName, isAuthenticated }: Mai
     window.dispatchEvent(new CustomEvent('omni:seed-command', { detail: { serviceId, prompt } }));
   };
 
-  const openServiceHub = () => {
-    if (typeof window === 'undefined') {
-      return;
-    }
-    window.dispatchEvent(new CustomEvent('omni:open-service-hub'));
-  };
-
   return (
     <div className="command-center-shell h-full w-full overflow-hidden">
       <div className="command-center-frame flex h-full min-h-0 flex-col overflow-hidden rounded-[30px] border border-white/14">
         <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
+
+          {/* Side panel overlay — inside the rounded frame */}
+          <DashboardSidePanel
+            isOpen={isSidePanelOpen}
+            onClose={() => setIsSidePanelOpen(false)}
+            locale={locale}
+            isAuthenticated={isAuthenticated}
+            userName={userName}
+          />
+
           <div className="absolute left-3 top-3 z-30 sm:left-5 sm:top-5">
             <button
               type="button"
               aria-label={copy.menuLabel}
-              onClick={openServiceHub}
+              onClick={() => setIsSidePanelOpen(true)}
               className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-white/15 bg-white/[0.07] text-white/80 backdrop-blur-xl transition hover:border-cyan-200/45 hover:text-cyan-100"
             >
               <Menu className="h-5 w-5" />
