@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   Camera,
+  ChevronDown,
   LayoutGrid,
   Loader2,
   Mic,
@@ -291,6 +292,7 @@ export default function CommandCenterChat() {
   const [cameraState, setCameraState] = useState<CameraState>('idle');
   const [mediaError, setMediaError] = useState<string | null>(null);
   const [switcherOpen, setSwitcherOpen] = useState(false);
+  const [explicitServiceId, setExplicitServiceId] = useState<ServiceId | null>(null);
   const [expandedAsset, setExpandedAsset] = useState<PreviewArtifact | null>(null);
 
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
@@ -361,6 +363,7 @@ export default function CommandCenterChat() {
       const custom = event as CustomEvent<SeedCommandDetail>;
       if (custom.detail?.serviceId) {
         setActiveService(custom.detail.serviceId);
+        setExplicitServiceId(custom.detail.serviceId);
       }
       if (custom.detail?.prompt) {
         setPrompt(custom.detail.prompt);
@@ -837,35 +840,49 @@ export default function CommandCenterChat() {
 
     setRunning(true);
     try {
-      // 1. Show user message immediately
       const userText = trimmed || '(attachment)';
       setPrompt('');
 
-      // 2. Detect intent via pipeline API
       setPipeline(prev => ({ ...prev, stage: 'detecting', userInput: userText }));
 
-      const data = await callPipeline({ action: 'detect_intent', userInput: userText });
-
-      if (!data.detected) {
-        // No service intent → fall back to existing Gemini/store flow
-        setPipeline(prev => ({ ...prev, stage: 'idle' }));
-        await sendPrimaryCommand(userText);
-      } else {
-        // Service detected → fetch questions, then show upload step
-        const qData = await callPipeline({ action: 'get_questions', serviceId: data.serviceId });
+      if (explicitServiceId) {
+        // User pinned a service → skip detect_intent, go straight to questions
+        const qData = await callPipeline({ action: 'get_questions', serviceId: explicitServiceId });
+        const localized = getLocalizedService(explicitServiceId, localeCode);
         setPipeline(prev => ({
           ...prev,
           stage: 'uploading',
-          serviceId: data.serviceId as RegistryServiceId,
-          serviceName: data.serviceName as string,
+          serviceId: explicitServiceId as RegistryServiceId,
+          serviceName: localized.title,
           userInput: userText,
           uploadedMedia: [],
           questions: (qData.questions as ClarificationQuestion[]) ?? [],
           currentQuestionIndex: 0,
           answers: {},
         }));
-        // Add a chat line so user sees their message
-        await sendPrimaryCommand(`[PIPELINE_START:${data.serviceId as string}] ${userText}`);
+        await sendPrimaryCommand(`[PIPELINE_START:${explicitServiceId}] ${userText}`);
+      } else {
+        // Auto-detect mode
+        const data = await callPipeline({ action: 'detect_intent', userInput: userText });
+
+        if (!data.detected) {
+          setPipeline(prev => ({ ...prev, stage: 'idle' }));
+          await sendPrimaryCommand(userText);
+        } else {
+          const qData = await callPipeline({ action: 'get_questions', serviceId: data.serviceId });
+          setPipeline(prev => ({
+            ...prev,
+            stage: 'uploading',
+            serviceId: data.serviceId as RegistryServiceId,
+            serviceName: data.serviceName as string,
+            userInput: userText,
+            uploadedMedia: [],
+            questions: (qData.questions as ClarificationQuestion[]) ?? [],
+            currentQuestionIndex: 0,
+            answers: {},
+          }));
+          await sendPrimaryCommand(`[PIPELINE_START:${data.serviceId as string}] ${userText}`);
+        }
       }
 
       queueMicrotask(() => composerRef.current?.focus());
@@ -875,7 +892,7 @@ export default function CommandCenterChat() {
     } finally {
       setRunning(false);
     }
-  }, [running, pipeline.stage, prompt, pendingInputs.length, callPipeline, sendPrimaryCommand]);
+  }, [running, pipeline.stage, prompt, pendingInputs.length, explicitServiceId, localeCode, callPipeline, sendPrimaryCommand]);
 
   const kindLabel = (kind: string) => {
     if (kind === 'camera') return copy.camera;
@@ -1128,10 +1145,34 @@ export default function CommandCenterChat() {
                 </button>
               </div>
 
+              {/* Auto-detect option */}
+              <button
+                type="button"
+                role="option"
+                aria-selected={!explicitServiceId}
+                onClick={() => {
+                  setExplicitServiceId(null);
+                  setSwitcherOpen(false);
+                  queueMicrotask(() => composerRef.current?.focus());
+                }}
+                className={`mb-2 w-full rounded-2xl border px-3 py-2 text-left transition ${
+                  !explicitServiceId
+                    ? 'border-cyan-200/45 bg-cyan-500/15 text-cyan-50'
+                    : 'border-white/10 bg-white/[0.04] text-white/80 hover:border-white/20 hover:bg-white/[0.08]'
+                }`}
+              >
+                <p className="text-xs font-semibold">
+                  {localeCode === 'ka' ? '✦ ავტომატური განსაზღვრა' : localeCode === 'ru' ? '✦ Авто-определение' : '✦ Auto-detect'}
+                </p>
+                <p className="mt-0.5 text-[11px] text-white/55">
+                  {localeCode === 'ka' ? 'სერვისი ტექსტიდან ავტომატურად განისაზღვრება' : localeCode === 'ru' ? 'Сервис определяется из текста автоматически' : 'Service is detected from your input text'}
+                </p>
+              </button>
+
               <div className="grid gap-2 sm:grid-cols-2">
                 {OMNI_SERVICES.map((service) => {
                   const localized = getLocalizedService(service.id, localeCode);
-                  const isActive = activeServiceId === service.id;
+                  const isActive = explicitServiceId === service.id;
 
                   return (
                     <button
@@ -1141,6 +1182,7 @@ export default function CommandCenterChat() {
                       aria-selected={isActive}
                       onClick={() => {
                         setActiveService(service.id);
+                        setExplicitServiceId(service.id);
                         setSwitcherOpen(false);
                         queueMicrotask(() => composerRef.current?.focus());
                       }}
@@ -1221,9 +1263,16 @@ export default function CommandCenterChat() {
             />
 
             <div className="mb-2 flex flex-wrap items-center gap-2">
-              <span className="inline-flex min-h-[44px] items-center rounded-full border border-cyan-200/30 bg-cyan-500/12 px-3 text-xs font-medium text-cyan-100">
-                {activeService.title}
-              </span>
+              <button
+                type="button"
+                onClick={() => setSwitcherOpen((open) => !open)}
+                className="inline-flex min-h-[44px] items-center gap-1.5 rounded-full border border-cyan-200/30 bg-cyan-500/12 px-3 text-xs font-medium text-cyan-100 transition hover:bg-cyan-500/22"
+              >
+                {explicitServiceId
+                  ? activeService.title
+                  : localeCode === 'ka' ? '✦ ავტო' : localeCode === 'ru' ? '✦ Авто' : '✦ Auto'}
+                <ChevronDown className="h-3.5 w-3.5 opacity-60" />
+              </button>
 
               <div className="inline-flex min-h-[44px] items-center gap-1 rounded-2xl border border-white/15 bg-white/[0.06] px-1.5 py-1">
                 <span className="px-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-white/55">{copy.languageLabel}</span>
