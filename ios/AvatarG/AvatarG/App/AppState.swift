@@ -1,6 +1,20 @@
 import Foundation
 import SwiftUI
 
+// MARK: - Side Menu Route
+
+enum SideMenuRoute: Hashable {
+    case account
+    case packages
+    case credits
+    case projects
+    case library
+    case settings
+    case apiKeys
+    case help
+    case whatsNew
+}
+
 // MARK: - App Language
 
 enum AppLanguage: String, CaseIterable, Codable {
@@ -45,6 +59,10 @@ final class AppState: ObservableObject {
     @Published var isLoading: Bool = false
     @Published var globalError: String?
     @Published var hasNewAgentMessage: Bool = false
+
+    // Side Menu
+    @Published var isSideMenuOpen: Bool = false
+    @Published var activeSideRoute: SideMenuRoute? = nil
 
     private let userDefaultsKey = "avatar_g_auth_token"
     private let languageKey = "avatar_g_language"
@@ -136,6 +154,19 @@ final class AppState: ObservableObject {
 
     func navigateToGallery() {
         selectedTab = 3
+    }
+
+    func openSideMenu() {
+        isSideMenuOpen = true
+    }
+
+    func closeSideMenu() {
+        isSideMenuOpen = false
+    }
+
+    func navigateSideMenu(to route: SideMenuRoute) {
+        activeSideRoute = route
+        isSideMenuOpen = false
     }
 
     // MARK: - Persistence
