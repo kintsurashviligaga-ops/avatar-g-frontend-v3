@@ -70,8 +70,8 @@ function handleDetectIntent(userInput: string, locale: string) {
     return NextResponse.json({
       detected: false,
       message: locale === 'ka'
-        ? 'მე ვარ Agent G. რომელი სერვისი გინდა? Avatar, Video, Image, Music, Game, Interior, Prompt ან Terminal?'
-        : 'I am Agent G. Which service? Avatar, Video, Image, Music, Game, Interior, Prompt or Terminal?',
+        ? 'მე ვარ Agent G — MyAvatar.ge-ის AI ორკესტრატორი. 13 სერვისიდან რომელი გჭირდება?\n\n**Avatar** · **Video** · **Image** · **Music Studio** · **Voice Clone** · **Game** · **Interior** · **Prompt** · **Terminal** · **Content Writer** · **Podcast** · **Character AI** · **Event Studio**'
+        : 'I am Agent G — AI orchestrator of MyAvatar.ge. Which of our 13 services do you need?\n\n**Avatar** · **Video** · **Image** · **Music Studio** · **Voice Clone** · **Game** · **Interior** · **Prompt** · **Terminal** · **Content Writer** · **Podcast** · **Character AI** · **Event Studio**',
     });
   }
   const flow = getFlow(serviceId);
