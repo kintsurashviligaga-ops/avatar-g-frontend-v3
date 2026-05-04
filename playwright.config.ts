@@ -1,5 +1,12 @@
 import { defineConfig, devices } from '@playwright/test';
 
+const playwrightDevPort = Number(process.env.PLAYWRIGHT_DEV_PORT || 3000);
+const playwrightBaseUrl = process.env.PLAYWRIGHT_BASE_URL || `http://localhost:${playwrightDevPort}`;
+const shouldCleanNextCache = process.env.PLAYWRIGHT_CLEAN_NEXT === '1';
+const forceFreshWebServer = process.env.PLAYWRIGHT_FORCE_FRESH_SERVER === '1';
+
+const webServerCommand = `${shouldCleanNextCache ? 'rm -rf .next && ' : ''}next dev -p ${playwrightDevPort}`;
+
 export default defineConfig({
   testDir: './tests',
   fullyParallel: true,
@@ -8,7 +15,7 @@ export default defineConfig({
   workers: process.env.CI ? 1 : undefined,
   reporter: 'html',
   use: {
-    baseURL: 'http://localhost:3000',
+    baseURL: playwrightBaseUrl,
     trace: 'on-first-retry',
   },
   projects: [
@@ -18,8 +25,8 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: 'npm run dev',
-    url: 'http://localhost:3000',
-    reuseExistingServer: !process.env.CI,
+    command: webServerCommand,
+    url: `http://localhost:${playwrightDevPort}`,
+    reuseExistingServer: forceFreshWebServer ? false : !process.env.CI,
   },
 });
