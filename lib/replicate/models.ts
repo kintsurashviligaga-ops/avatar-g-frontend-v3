@@ -68,7 +68,7 @@ const MODELS = {
 
   // ── Music ───────────────────────────────────────────────
   'musicgen': {
-    id: 'meta/musicgen:671ac645ce5e552cc63a54a2bbff63fcf798043055d2dac5fc9e36a837eedbb5',
+    id: 'meta/musicgen',
     label: 'Meta MusicGen',
     outputType: 'audio' as const,
   },
