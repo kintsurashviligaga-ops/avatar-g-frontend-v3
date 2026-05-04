@@ -84,6 +84,10 @@ export type WorkspaceResult = {
   detail?: string;
   text?: string;
   url?: string;
+  viewerUrl?: string;
+  modelUrl?: string;
+  provider?: string;
+  metadata?: Record<string, unknown>;
 };
 
 export type DashboardPreview = WorkspaceResult & {

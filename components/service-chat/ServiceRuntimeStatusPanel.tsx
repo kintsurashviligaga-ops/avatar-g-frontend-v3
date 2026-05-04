@@ -97,6 +97,7 @@ const PROVIDER_LABELS: Record<string, string> = {
   nanobanana: 'NanoBanana',
   udio: 'Udio API',
   ltx: 'LTX Video',
+  worldlabs: 'World Labs',
   heygen: 'HeyGen',
   deepgram: 'Deepgram',
   elevenlabs: 'ElevenLabs',

@@ -10,9 +10,11 @@ import {
 } from '@/lib/agent-g-clarifier';
 import { SERVICE_REGISTRY } from '@/lib/registry';
 import type { ServiceId } from '@/lib/registry';
+import { buildInteriorDesignBrief } from '@/lib/interior/smart-intake';
 import { generateNanoBananaImage } from '@/lib/nanobanana/client';
 import { resolveNanoBananaEndpoint } from '@/lib/nanobanana/endpoints';
 import { generateUdioTrack } from '@/lib/udio/client';
+import { generateWorldLabsInterior } from '@/lib/worldlabs/client';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 180;
@@ -401,6 +403,85 @@ async function generateImage(
   return { resultUrl: normalized.url, outputKind: 'image' };
 }
 
+async function generateInterior(
+  prompt: string,
+  answers: Record<string, string | string[]>,
+  mediaFiles: MediaFile[],
+): Promise<{
+  resultUrl?: string;
+  resultText?: string;
+  outputKind: string;
+  error?: string;
+  spatialLink?: string | null;
+  modelUrl?: string | null;
+  previewImageUrl?: string | null;
+  provider?: string;
+  creditsRemaining?: number | null;
+  adminAlertTriggered?: boolean;
+}> {
+  const provider = String(answers.provider ?? 'worldlabs').toLowerCase();
+  if (provider === 'replicate' || provider === 'nanobanana') {
+    return generateImage(prompt, answers, mediaFiles);
+  }
+
+  const imageFile = mediaFiles.find((file) => file.type === 'image');
+  if (!imageFile?.dataUrl) {
+    return { outputKind: 'text', error: 'Upload a clear room photo before starting 3D interior generation.' };
+  }
+
+  const width = Number(answers.image_width ?? 0);
+  const height = Number(answers.image_height ?? 0);
+  if (Number.isFinite(width) && Number.isFinite(height) && (width < 960 || height < 720)) {
+    return {
+      outputKind: 'text',
+      error: 'To get the best 3D result, please upload a high-resolution photo with clear lighting.',
+    };
+  }
+
+  const confirmed = String(answers.confirm_design_brief ?? 'false').toLowerCase() === 'true';
+  if (!confirmed) {
+    return {
+      outputKind: 'text',
+      error: 'Please confirm the generated Design Brief before calling World Labs.',
+    };
+  }
+
+  const designBrief = buildInteriorDesignBrief({
+    userPrompt: String(prompt || ''),
+    answers: {
+      primaryGoal: String(answers.primary_goal || 'full_renovation'),
+      colorPalette: String(answers.color_palette || 'neutral_scandi'),
+      materials: String(answers.materials || 'natural_wood'),
+      lightingVibe: String(answers.lighting_vibe || 'natural_sunlight'),
+    },
+  });
+
+  try {
+    const world = await generateWorldLabsInterior({
+      imageDataUrl: imageFile.dataUrl,
+      prompt: designBrief,
+      filename: imageFile.name,
+    });
+
+    return {
+      outputKind: 'text',
+      resultUrl: world.previewImageUrl || world.spatialLink || undefined,
+      resultText: world.spatialLink
+        ? '3D interior world generated successfully. Open embedded viewer below.'
+        : world.message || '3D interior generation completed.',
+      spatialLink: world.spatialLink,
+      modelUrl: world.glbUrl,
+      previewImageUrl: world.previewImageUrl,
+      provider: 'worldlabs',
+      creditsRemaining: world.creditsRemaining,
+      adminAlertTriggered: world.adminAlertTriggered,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'World Labs interior generation failed';
+    return { outputKind: 'text', error: message };
+  }
+}
+
 async function generateMusic(
   prompt: string,
   answers: Record<string, string | string[]>,
@@ -565,7 +646,18 @@ async function handleGenerate(
 
   // ── Media services — inline API calls ────────────────────────────────────
   try {
-    let genResult: { resultUrl?: string; resultText?: string; outputKind: string; error?: string };
+    let genResult: {
+      resultUrl?: string;
+      resultText?: string;
+      outputKind: string;
+      error?: string;
+      spatialLink?: string | null;
+      modelUrl?: string | null;
+      previewImageUrl?: string | null;
+      provider?: string;
+      creditsRemaining?: number | null;
+      adminAlertTriggered?: boolean;
+    };
 
     switch (serviceId) {
       case 'avatar':
@@ -582,7 +674,7 @@ async function handleGenerate(
         genResult = await generateMusic(finalPrompt, answers);
         break;
       case 'interior':
-        genResult = await generateImage(finalPrompt, answers, mediaFiles);
+        genResult = await generateInterior(finalPrompt, answers, mediaFiles);
         break;
       case 'voice': {
         const elevenKey = process.env.ELEVENLABS_API_KEY;
@@ -636,11 +728,18 @@ async function handleGenerate(
       return NextResponse.json({ jobId, status: 'error', serviceId, error: 'Missing result URL' }, { status: 200 });
     }
 
-    return NextResponse.json({
-      jobId, status: 'done', serviceId,
-      outputKind: genResult.outputKind,
-      result_url: genResult.resultUrl,
-    });
+      return NextResponse.json({
+        jobId, status: 'done', serviceId,
+        outputKind: genResult.outputKind,
+        result_url: genResult.resultUrl,
+        result: genResult.resultText,
+        spatial_link: genResult.spatialLink,
+        model_url: genResult.modelUrl,
+        preview_image_url: genResult.previewImageUrl,
+        provider: genResult.provider,
+        credits_remaining: genResult.creditsRemaining,
+        admin_alert_triggered: genResult.adminAlertTriggered,
+      });
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Generation failed';
     console.error(`[pipeline/generate] ${serviceId}:`, msg);

@@ -13,7 +13,10 @@
 import { useState, useCallback, useRef, useEffect, type ChangeEvent } from 'react'
 import Image from 'next/image'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
+import { buildInteriorDesignBrief } from '@/lib/interior/smart-intake'
 import type { WorkspaceResult } from '@/types/dashboard'
+import { Interior3DViewer } from './Interior3DViewer'
+import { InteriorSmartIntake } from './InteriorSmartIntake'
 
 type LocaleKey = 'en' | 'ka' | 'ru'
 type OutputKind = 'text' | 'image' | 'video' | 'audio'
@@ -45,6 +48,8 @@ type WorkspaceViewLabels = {
   requestFailed: string
   genericPreviewMode: string
 }
+
+const INTERIOR_INTAKE_FIELD_IDS = new Set(['primary_goal', 'color_palette', 'materials', 'lighting_vibe'])
 
 export type { WorkspaceResult }
 
@@ -268,24 +273,18 @@ const SERVICE_WORKSPACES: Record<string, ServiceWorkspace> = {
     fields: [
       { id: 'upload', type: 'upload', label: { en: 'Upload Room Photo', ka: 'ოთახის ფოტოს ატვირთვა', ru: 'Загрузить фото комнаты' } },
       { id: 'prompt', type: 'textarea', label: { en: 'Design Brief', ka: 'დიზაინის ბრიფი', ru: 'Бриф дизайна' }, placeholder: { en: 'Describe desired interior style...', ka: 'აღწერეთ სასურველი სტილი...', ru: 'Опишите желаемый стиль...' } },
-      { id: 'provider', type: 'select', label: { en: 'Provider', ka: 'პროვაიდერი', ru: 'Провайдер' }, options: [{ value: 'nanobanana', label: 'NanoBanana API' }, { value: 'replicate', label: 'Replicate (Fallback)' }], defaultValue: 'nanobanana' },
-      { id: 'nanobanana_endpoint', type: 'select', label: { en: 'NanoBanana Endpoint', ka: 'NanoBanana ენდპოინტი', ru: 'NanoBanana endpoint' }, options: [
-        { value: 'task-details', label: 'Task Details (0 credits)', credits: 0 },
-        { value: 'text-to-image', label: 'Text -> Image (4 credits)', credits: 4 },
-        { value: 'pro-1k2k', label: 'Pro 1K/2K (18 credits)', credits: 18 },
-        { value: 'pro-4k', label: 'Pro 4K (24 credits)', credits: 24 },
-        { value: 'v2-1k', label: 'V2 1K (8 credits)', credits: 8 },
-        { value: 'v2-2k', label: 'V2 2K (12 credits)', credits: 12 },
-        { value: 'v2-4k', label: 'V2 4K (18 credits)', credits: 18 },
-      ], defaultValue: 'v2-2k' },
-      { id: 'style', type: 'select', label: { en: 'Style', ka: 'სტილი', ru: 'Стиль' }, options: [{ value: 'modern', label: 'Modern' }, { value: 'minimalist', label: 'Minimalist' }, { value: 'rustic', label: 'Rustic' }, { value: 'industrial', label: 'Industrial' }], defaultValue: 'modern' },
+      { id: 'provider', type: 'select', label: { en: 'Provider', ka: 'პროვაიდერი', ru: 'Провайдер' }, options: [{ value: 'worldlabs', label: 'World Labs (Primary)' }, { value: 'replicate', label: 'Replicate (Fallback)' }], defaultValue: 'worldlabs' },
+      { id: 'style', type: 'select', label: { en: 'Style', ka: 'სტილი', ru: 'Стиль' }, options: [{ value: 'minimalist_scandi', label: 'Minimalist Scandi' }, { value: 'industrial_loft', label: 'Industrial Loft' }, { value: 'modern_luxury', label: 'Modern Luxury' }, { value: 'warm_japandi', label: 'Warm Japandi' }], defaultValue: 'minimalist_scandi' },
       { id: 'aspect', type: 'select', label: { en: 'Aspect Ratio', ka: 'პროპორცია', ru: 'Пропорции' }, options: [{ value: '16:9', label: '16:9' }, { value: '4:3', label: '4:3' }, { value: '1:1', label: '1:1' }], defaultValue: '16:9' },
+      { id: 'primary_goal', type: 'select', label: { en: 'Primary Goal', ka: 'ძირითადი მიზანი', ru: 'Основная цель' }, options: [{ value: 'full_renovation', label: 'Full Renovation' }, { value: 'furniture_layout', label: 'Furniture Layout' }, { value: 'lighting_update', label: 'Lighting Update' }, { value: 'staging', label: 'Real-Estate Staging' }], defaultValue: 'full_renovation' },
+      { id: 'color_palette', type: 'select', label: { en: 'Color Palette', ka: 'ფერთა პალიტრა', ru: 'Цветовая палитра' }, options: [{ value: 'warm_earth', label: 'Warm Earth Tones' }, { value: 'cold_industrial', label: 'Cold Industrial' }, { value: 'vibrant_bold', label: 'Vibrant / Bold' }, { value: 'neutral_scandi', label: 'Neutral Scandi' }], defaultValue: 'neutral_scandi' },
+      { id: 'materials', type: 'select', label: { en: 'Materials', ka: 'მასალები', ru: 'Материалы' }, options: [{ value: 'natural_wood', label: 'Natural Wood' }, { value: 'concrete_steel', label: 'Concrete & Steel' }, { value: 'luxury_marble', label: 'Luxury Marble' }, { value: 'glass_metal', label: 'Glass & Metal' }], defaultValue: 'natural_wood' },
+      { id: 'lighting_vibe', type: 'select', label: { en: 'Lighting Vibe', ka: 'განათების ატმოსფერო', ru: 'Световая атмосфера' }, options: [{ value: 'natural_sunlight', label: 'Natural Sunlight' }, { value: 'cozy_dimmable', label: 'Cozy Dimmable' }, { value: 'studio_bright', label: 'Studio Bright' }, { value: 'ambient_layered', label: 'Layered Ambient' }], defaultValue: 'natural_sunlight' },
     ],
-    creditCost: 10,
-    creditSourceFieldId: 'nanobanana_endpoint',
-    actionLabel: { en: 'Design Room', ka: 'ოთახის დიზაინი', ru: 'Дизайн' },
-    outputType: 'image',
-    previewHint: { en: 'Redesigned room will appear here', ka: 'დიზაინი აქ გამოჩნდება', ru: 'Дизайн появится здесь' },
+    creditCost: 22,
+    actionLabel: { en: 'Build 3D Interior', ka: '3D ინტერიერის აწყობა', ru: 'Построить 3D интерьер' },
+    outputType: 'mixed',
+    previewHint: { en: 'Interactive 3D interior will appear here', ka: 'ინტერაქტიული 3D ინტერიერი აქ გამოჩნდება', ru: 'Интерактивный 3D интерьер появится здесь' },
   },
   workflow: {
     fields: [
@@ -579,6 +578,41 @@ function readFileAsDataUrl(file: File): Promise<string> {
   })
 }
 
+async function readImageDimensions(file: File): Promise<{ width: number; height: number }> {
+  const objectUrl = URL.createObjectURL(file)
+
+  try {
+    const dimensions = await new Promise<{ width: number; height: number }>((resolve, reject) => {
+      const image = new window.Image()
+      image.onload = () => {
+        resolve({ width: image.naturalWidth || 0, height: image.naturalHeight || 0 })
+      }
+      image.onerror = () => reject(new Error('Unable to read image metadata'))
+      image.src = objectUrl
+    })
+
+    return dimensions
+  } finally {
+    URL.revokeObjectURL(objectUrl)
+  }
+}
+
+async function evaluateInteriorImageQuality(file: File): Promise<{
+  width: number;
+  height: number;
+  lowQuality: boolean;
+}> {
+  const { width, height } = await readImageDimensions(file)
+  const lowResolution = width < 960 || height < 720
+  const lowBytes = file.size > 0 && file.size < 150_000
+
+  return {
+    width,
+    height,
+    lowQuality: lowResolution || lowBytes,
+  }
+}
+
 function buildPhotoPrompt(action: string) {
   switch (action) {
     case 'restore':
@@ -711,6 +745,9 @@ export default function ServiceWorkspaceView({
     workspace.fields.forEach((field) => {
       if (field.defaultValue !== undefined) defaults[field.id] = field.defaultValue
     })
+    if (serviceId === 'interior') {
+      defaults.confirm_design_brief = 'false'
+    }
     setValues(defaults)
     setResult(null)
     setError(null)
@@ -719,8 +756,18 @@ export default function ServiceWorkspaceView({
   }, [serviceId, workspace.fields])
 
   const updateValue = useCallback((id: string, value: string | number) => {
-    setValues((prev) => ({ ...prev, [id]: value }))
-  }, [])
+    setValues((prev) => {
+      const next = { ...prev, [id]: value }
+      if (
+        serviceId === 'interior'
+        && id !== 'confirm_design_brief'
+        && String(prev.confirm_design_brief || 'false') === 'true'
+      ) {
+        next.confirm_design_brief = 'false'
+      }
+      return next
+    })
+  }, [serviceId])
 
   const publishResult = useCallback((jobId: string | null, nextResult: WorkspaceResult) => {
     setResult(nextResult)
@@ -790,7 +837,7 @@ export default function ServiceWorkspaceView({
         return
       }
 
-      if (serviceId === 'image' || serviceId === 'interior') {
+      if (serviceId === 'image') {
         dashboardJobId = onJobStart?.(safeServiceName) ?? null
         if (dashboardJobId) {
           onJobProgress?.(dashboardJobId, 18)
@@ -798,8 +845,8 @@ export default function ServiceWorkspaceView({
 
         const provider = String(values.provider || 'nanobanana').toLowerCase()
         const endpoint = String(values.nanobanana_endpoint || 'text-to-image')
-        const style = String(values.style || (serviceId === 'interior' ? 'modern' : 'photorealistic'))
-        const aspect = String(values.aspect || (serviceId === 'interior' ? '16:9' : '1:1'))
+        const style = String(values.style || 'photorealistic')
+        const aspect = String(values.aspect || '1:1')
 
         const mediaFiles: JsonRecord[] = []
         if (uploadedFile && uploadedFile.type.startsWith('image/')) {
@@ -853,6 +900,94 @@ export default function ServiceWorkspaceView({
           title: safeServiceName,
           detail: `${provider} · ${endpoint}`,
           text: outputText || JSON.stringify(payload, null, 2),
+        })
+        return
+      }
+
+      if (serviceId === 'interior') {
+        if (!uploadedFile || !uploadedFile.type.startsWith('image/')) {
+          throw new Error(ui.uploadPhotoFirst)
+        }
+
+        const confirmedBrief = String(values.confirm_design_brief || 'false') === 'true'
+        if (!confirmedBrief) {
+          throw new Error('Confirm the final Design Brief before spending credits.')
+        }
+
+        dashboardJobId = onJobStart?.(safeServiceName) ?? null
+        if (dashboardJobId) {
+          onJobProgress?.(dashboardJobId, 20)
+        }
+
+        const promptText = prompt || String(values.style || 'Minimalist Scandi style')
+        const quality = await evaluateInteriorImageQuality(uploadedFile)
+        if (quality.lowQuality) {
+          throw new Error('To get the best 3D result, please upload a high-resolution photo with clear lighting.')
+        }
+
+        const imageDataUrl = await readFileAsDataUrl(uploadedFile)
+        const designBrief = buildInteriorDesignBrief({
+          userPrompt: promptText,
+          answers: {
+            primaryGoal: String(values.primary_goal || 'full_renovation'),
+            colorPalette: String(values.color_palette || 'neutral_scandi'),
+            materials: String(values.materials || 'natural_wood'),
+            lightingVibe: String(values.lighting_vibe || 'natural_sunlight'),
+          },
+        })
+
+        const payload = await postJson('/api/pipeline', {
+          action: 'generate',
+          serviceId,
+          userInput: promptText,
+          answers: {
+            provider: String(values.provider || 'worldlabs'),
+            style: String(values.style || 'minimalist_scandi'),
+            aspect: String(values.aspect || '16:9'),
+            primary_goal: String(values.primary_goal || 'full_renovation'),
+            color_palette: String(values.color_palette || 'neutral_scandi'),
+            materials: String(values.materials || 'natural_wood'),
+            lighting_vibe: String(values.lighting_vibe || 'natural_sunlight'),
+            confirm_design_brief: 'true',
+            image_width: String(quality.width),
+            image_height: String(quality.height),
+            final_design_brief: designBrief,
+          },
+          mediaFiles: [
+            {
+              id: `upload_${Date.now()}`,
+              name: uploadedFile.name,
+              type: 'image',
+              mimeType: uploadedFile.type || 'image/jpeg',
+              dataUrl: imageDataUrl,
+            },
+          ],
+        })
+
+        if (payload.status === 'error' || payload.error) {
+          throw new Error(extractApiError(payload))
+        }
+
+        const viewerUrl = typeof payload.spatial_link === 'string' ? payload.spatial_link : undefined
+        const modelUrl = typeof payload.model_url === 'string' ? payload.model_url : undefined
+        const previewUrl = typeof payload.preview_image_url === 'string' ? payload.preview_image_url : undefined
+        const outputText = typeof payload.result === 'string'
+          ? payload.result
+          : extractOutputText(payload)
+
+        publishResult(dashboardJobId, {
+          kind: 'text',
+          title: safeServiceName,
+          detail: `World Labs · Photo-to-3D`,
+          text: outputText || 'Interior 3D generation completed.',
+          viewerUrl,
+          modelUrl,
+          url: previewUrl,
+          provider: typeof payload.provider === 'string' ? payload.provider : 'worldlabs',
+          metadata: {
+            creditsRemaining: payload.credits_remaining,
+            adminAlertTriggered: payload.admin_alert_triggered,
+          },
         })
         return
       }
@@ -1056,6 +1191,14 @@ export default function ServiceWorkspaceView({
       return
     }
 
+    if (serviceId === 'interior' && result.modelUrl) {
+      const link = document.createElement('a')
+      link.href = result.modelUrl
+      link.download = `${serviceId}-model.glb`
+      link.click()
+      return
+    }
+
     if (result.url) {
       const link = document.createElement('a')
       link.href = result.url
@@ -1094,6 +1237,14 @@ export default function ServiceWorkspaceView({
       return Boolean(uploadedFile)
     }
 
+    if (serviceId === 'interior') {
+      return (
+        Boolean(uploadedFile)
+        && primaryPrompt.trim().length > 0
+        && String(values.confirm_design_brief || 'false') === 'true'
+      )
+    }
+
     if (serviceId === 'editing') {
       return Boolean(uploadedFile) && String(values.instruction || '').trim().length > 0
     }
@@ -1106,7 +1257,7 @@ export default function ServiceWorkspaceView({
   })()
 
   const activeCreditCost = resolveWorkspaceCreditCost(workspace, values)
-  const selectedProvider = String(values.provider || 'nanobanana')
+  const selectedProvider = String(values.provider || (serviceId === 'interior' ? 'worldlabs' : 'nanobanana'))
   const creditSourceField = workspace.creditSourceFieldId
     ? workspace.fields.find((field) => field.id === workspace.creditSourceFieldId)
     : undefined
@@ -1167,7 +1318,12 @@ export default function ServiceWorkspaceView({
                 {workspace.actionLabel[lang] || workspace.actionLabel.en}
               </h3>
 
-              {workspace.fields.map((field) => (
+              {workspace.fields.map((field) => {
+                if (serviceId === 'interior' && INTERIOR_INTAKE_FIELD_IDS.has(field.id)) {
+                  return null
+                }
+
+                return (
                 <div key={field.id}>
                   <label className="block text-xs font-medium mb-1.5" style={{ color: 'rgba(148,163,184,0.7)' }}>
                     {field.label[lang] || field.label.en}
@@ -1254,12 +1410,21 @@ export default function ServiceWorkspaceView({
                         type="file"
                         className="hidden"
                         onChange={handleFileChange}
-                        accept={serviceId === 'photo' ? 'image/*' : serviceId === 'editing' ? 'video/*' : 'image/*,video/*,audio/*'}
+                        accept={serviceId === 'editing' ? 'video/*' : 'image/*'}
                       />
                     </div>
                   )}
                 </div>
-              ))}
+                )
+              })}
+
+              {serviceId === 'interior' && (
+                <InteriorSmartIntake
+                  prompt={String(values.prompt || '')}
+                  values={values}
+                  onChange={(id, value) => updateValue(id, value)}
+                />
+              )}
 
               <button
                 onClick={handleGenerate}
@@ -1349,11 +1514,27 @@ export default function ServiceWorkspaceView({
               <div className="flex-1 flex items-center justify-center p-6">
                 {isGenerating ? (
                   <div className="flex w-full max-w-xl flex-col items-center gap-4">
-                    <div className="relative w-16 h-16">
-                      <div className="absolute inset-0 rounded-full border-2 border-t-cyan-400 border-r-violet-500 border-b-transparent border-l-transparent animate-spin" />
-                      <div className="absolute inset-2 rounded-full border-2 border-t-transparent border-r-transparent border-b-cyan-400 border-l-violet-500 animate-spin" style={{ animationDirection: 'reverse', animationDuration: '1.5s' }} />
-                    </div>
-                      <p className="text-sm" style={{ color: 'rgba(148,163,184,0.6)' }}>{ui.generating}</p>
+                    {serviceId === 'interior' ? (
+                      <>
+                        <div className="relative h-20 w-20">
+                          <div className="absolute inset-0 rounded-2xl border border-cyan-400/30 animate-pulse" />
+                          <div className="absolute left-3 top-3 h-3 w-3 rounded-sm bg-cyan-400/80 animate-bounce" />
+                          <div className="absolute right-4 top-6 h-2.5 w-2.5 rounded-sm bg-violet-400/80 animate-bounce" style={{ animationDelay: '120ms' }} />
+                          <div className="absolute bottom-4 left-5 h-3 w-3 rounded-sm bg-emerald-400/80 animate-bounce" style={{ animationDelay: '220ms' }} />
+                        </div>
+                        <p className="text-sm text-center" style={{ color: 'rgba(148,163,184,0.75)' }}>
+                          Building your Photo-to-3D interior world...
+                        </p>
+                      </>
+                    ) : (
+                      <>
+                        <div className="relative w-16 h-16">
+                          <div className="absolute inset-0 rounded-full border-2 border-t-cyan-400 border-r-violet-500 border-b-transparent border-l-transparent animate-spin" />
+                          <div className="absolute inset-2 rounded-full border-2 border-t-transparent border-r-transparent border-b-cyan-400 border-l-violet-500 animate-spin" style={{ animationDirection: 'reverse', animationDuration: '1.5s' }} />
+                        </div>
+                        <p className="text-sm" style={{ color: 'rgba(148,163,184,0.6)' }}>{ui.generating}</p>
+                      </>
+                    )}
 
                     {serviceId === 'editing' && jobProgress && (
                       <div
@@ -1407,7 +1588,9 @@ export default function ServiceWorkspaceView({
                         </div>
                       )}
 
-                      {result.kind === 'image' && result.url ? (
+                      {serviceId === 'interior' && result.viewerUrl ? (
+                        <Interior3DViewer spatialLink={result.viewerUrl} modelUrl={result.modelUrl} />
+                      ) : result.kind === 'image' && result.url ? (
                         <div className="overflow-hidden rounded-xl" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
                           <Image src={result.url} alt={result.title || safeServiceName} width={1200} height={800} unoptimized className="w-full h-auto object-cover" />
                         </div>

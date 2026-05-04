@@ -14,6 +14,7 @@ const APP_KEYS = [
   { id: 'nanobanana', env: 'NANOBANANA_API_KEY' },
   { id: 'udio', env: 'UDIO_API_KEY' },
   { id: 'ltx', env: 'LTX_VIDEO_API_KEY' },
+  { id: 'worldlabs', env: 'WORLDLABS_API_KEY' },
   { id: 'heygen', env: 'HEYGEN_API_KEY' },
   { id: 'deepgram', env: 'DEEPGRAM_API_KEY' },
   { id: 'elevenlabs', env: 'ELEVENLABS_API_KEY' },
@@ -53,7 +54,7 @@ const SERVICE_PROVIDER_REQUIREMENTS: Partial<Record<string, readonly ProviderId[
   business: ['openai', 'anthropic'],
   tourism: ['openai', 'anthropic'],
   game: ['openai', 'anthropic', 'nanobanana', 'replicate'],
-  interior: ['openai', 'replicate', 'nanobanana'],
+  interior: ['openai', 'worldlabs'],
 };
 
 function hasValue(value: string | undefined): boolean {
