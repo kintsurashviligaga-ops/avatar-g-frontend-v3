@@ -86,7 +86,8 @@ function ToolOptionRow({
   const label = option.label[lang] || option.label.en;
 
   switch (option.type) {
-    case 'chips':
+    case 'chips': {
+      const selectedChip = option.options?.find((opt) => value === opt.value);
       return (
         <div className="space-y-1.5">
           <label className="text-[11px] font-medium" style={{ color: 'var(--color-text-tertiary)' }}>{label}</label>
@@ -105,12 +106,19 @@ function ToolOptionRow({
                   }}
                 >
                   {opt.label[lang] || opt.label.en}
+                  {typeof opt.credits === 'number' ? ` · ${opt.credits} cr` : ''}
                 </button>
               );
             })}
           </div>
+          {typeof selectedChip?.credits === 'number' && (
+            <p className="text-[10px]" style={{ color: accentColor }}>
+              {selectedChip.credits} credits
+            </p>
+          )}
         </div>
       );
+    }
 
     case 'toggle':
       return (

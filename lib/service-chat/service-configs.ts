@@ -193,6 +193,19 @@ export const imageConfig: ServiceChatConfig = {
     {
       id: 'image-settings', label: { en: 'Image Settings', ka: 'პარამეტრები', ru: 'Настройки' }, icon: 'Settings2',
       options: [
+        { id: 'provider', label: { en: 'Provider', ka: 'პროვაიდერი', ru: 'Провайдер' }, type: 'chips', options: [
+          { value: 'nanobanana', label: { en: 'NanoBanana', ka: 'NanoBanana', ru: 'NanoBanana' } },
+          { value: 'replicate', label: { en: 'Replicate', ka: 'Replicate', ru: 'Replicate' } },
+        ], defaultValue: 'nanobanana' },
+        { id: 'nanobanana_endpoint', label: { en: 'NanoBanana Tier', ka: 'NanoBanana ტიერი', ru: 'NanoBanana уровень' }, type: 'chips', options: [
+          { value: 'task-details', label: { en: 'Task Details', ka: 'Task დეტალები', ru: 'Детали задачи' }, credits: 0 },
+          { value: 'text-to-image', label: { en: 'Text -> Image', ka: 'ტექსტი -> სურათი', ru: 'Текст -> изображение' }, credits: 4 },
+          { value: 'pro-1k2k', label: { en: 'Pro 1K/2K', ka: 'Pro 1K/2K', ru: 'Pro 1K/2K' }, credits: 18 },
+          { value: 'pro-4k', label: { en: 'Pro 4K', ka: 'Pro 4K', ru: 'Pro 4K' }, credits: 24 },
+          { value: 'v2-1k', label: { en: 'V2 1K', ka: 'V2 1K', ru: 'V2 1K' }, credits: 8 },
+          { value: 'v2-2k', label: { en: 'V2 2K', ka: 'V2 2K', ru: 'V2 2K' }, credits: 12 },
+          { value: 'v2-4k', label: { en: 'V2 4K', ka: 'V2 4K', ru: 'V2 4K' }, credits: 18 },
+        ], defaultValue: 'text-to-image' },
         { id: 'img-size', label: { en: 'Size', ka: 'ზომა', ru: 'Размер' }, type: 'chips', options: [
           { value: '1024x1024', label: { en: '1:1', ka: '1:1', ru: '1:1' } },
           { value: '1024x1792', label: { en: '9:16', ka: '9:16', ru: '9:16' } },
@@ -1165,6 +1178,19 @@ export const interiorConfig: ServiceChatConfig = {
     {
       id: 'design-style', label: { en: 'Design Style', ka: 'დიზაინის სტილი', ru: 'Стиль дизайна' }, icon: 'Palette',
       options: [
+        { id: 'provider', label: { en: 'Provider', ka: 'პროვაიდერი', ru: 'Провайдер' }, type: 'chips', options: [
+          { value: 'nanobanana', label: { en: 'NanoBanana', ka: 'NanoBanana', ru: 'NanoBanana' } },
+          { value: 'replicate', label: { en: 'Replicate', ka: 'Replicate', ru: 'Replicate' } },
+        ], defaultValue: 'nanobanana' },
+        { id: 'nanobanana_endpoint', label: { en: 'NanoBanana Tier', ka: 'NanoBanana ტიერი', ru: 'NanoBanana уровень' }, type: 'chips', options: [
+          { value: 'task-details', label: { en: 'Task Details', ka: 'Task დეტალები', ru: 'Детали задачи' }, credits: 0 },
+          { value: 'text-to-image', label: { en: 'Text -> Image', ka: 'ტექსტი -> სურათი', ru: 'Текст -> изображение' }, credits: 4 },
+          { value: 'pro-1k2k', label: { en: 'Pro 1K/2K', ka: 'Pro 1K/2K', ru: 'Pro 1K/2K' }, credits: 18 },
+          { value: 'pro-4k', label: { en: 'Pro 4K', ka: 'Pro 4K', ru: 'Pro 4K' }, credits: 24 },
+          { value: 'v2-1k', label: { en: 'V2 1K', ka: 'V2 1K', ru: 'V2 1K' }, credits: 8 },
+          { value: 'v2-2k', label: { en: 'V2 2K', ka: 'V2 2K', ru: 'V2 2K' }, credits: 12 },
+          { value: 'v2-4k', label: { en: 'V2 4K', ka: 'V2 4K', ru: 'V2 4K' }, credits: 18 },
+        ], defaultValue: 'v2-2k' },
         { id: 'style', label: { en: 'Style', ka: 'სტილი', ru: 'Стиль' }, type: 'chips', options: [
           { value: 'modern', label: { en: 'Modern', ka: 'თანამედროვე', ru: 'Современный' } },
           { value: 'minimalist', label: { en: 'Minimalist', ka: 'მინიმალისტური', ru: 'Минимализм' } },

@@ -13,6 +13,10 @@ import { detectIntent, intentToReplicateService, type DetectedIntent, type Inten
 import { validateInput, buildModelInput, type GenerateInput } from '@/lib/replicate/schemas';
 import { resolveModel } from '@/lib/replicate/models';
 import { createPrediction } from '@/lib/replicate/client';
+import { generateNanoBananaImage } from '@/lib/nanobanana/client';
+import { getNanoBananaCreditCost, resolveNanoBananaEndpoint } from '@/lib/nanobanana/endpoints';
+import { ServiceManager, type ServiceManagerResponse } from './ServiceManager';
+import { getUdioGenerationStatus, startUdioGeneration } from '@/lib/udio/client';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -70,6 +74,16 @@ const CONTEXT_TO_AGENT: Record<string, string> = {
   prompt: 'main-assistant',
 };
 
+const DETERMINISTIC_INTENTS = new Set<IntentCategory>([
+  'avatar_generation',
+  'image_generation',
+  'photo_edit',
+  'video_generation',
+]);
+
+const serviceManager = new ServiceManager();
+const UDIO_PREDICTION_PREFIX = 'udio:';
+
 // ─── Main orchestrate function ───────────────────────────────────────────────
 
 export async function orchestrate(
@@ -79,12 +93,190 @@ export async function orchestrate(
   // 1. Detect intent
   const detected = detectIntent(input.message, input.serviceContext);
 
+  if (detected.intent === 'music_generation') {
+    return handleMusicIntent(input, detected);
+  }
+
+  if (DETERMINISTIC_INTENTS.has(detected.intent)) {
+    return handleDeterministicIntent(input, detected);
+  }
+
   // 2. Route to the right provider
   if (detected.provider === 'replicate') {
     return handleReplicateIntent(input, detected);
   }
 
   return handleTextIntent(input, detected);
+}
+
+export async function pollOrchestrationTask(predictionId: string, sessionId?: string): Promise<ChatResponse> {
+  const udioWorkId = extractUdioWorkId(predictionId);
+  if (udioWorkId) {
+    return pollUdioTask(udioWorkId, predictionId);
+  }
+
+  const response = await serviceManager.poll(predictionId, sessionId);
+  return toChatResponse(response, 'text_chat');
+}
+
+async function handleMusicIntent(
+  input: OrchestratorInput,
+  detected: DetectedIntent,
+): Promise<ChatResponse> {
+  const opts = input.selectedOptions || {};
+  const provider = String(
+    opts.provider
+      || opts.music_provider
+      || opts.musicProvider
+      || (process.env.UDIO_API_KEY?.trim() ? 'udio' : 'replicate'),
+  ).toLowerCase();
+
+  if (provider === 'replicate') {
+    return handleReplicateIntent(input, detected);
+  }
+
+  const lyricsMode = String(opts.lyrics_mode || opts.lyricsMode || '').toLowerCase();
+  const styleTags = parseOptionList(opts.style_tags || opts.styleTags || opts.tags);
+
+  try {
+    const started = await startUdioGeneration({
+      prompt: input.message,
+      lyrics: opts.lyrics,
+      style: opts.style,
+      title: opts.title,
+      genre: opts.genre,
+      mood: opts.mood,
+      styleTags,
+      model: opts.model || opts.variant,
+      makeInstrumental: parseBooleanOption(opts.make_instrumental || opts.instrumental) || lyricsMode === 'instrumental',
+      callbackUrl: typeof input.metadata?.callback_url === 'string'
+        ? input.metadata.callback_url
+        : typeof input.metadata?.callbackUrl === 'string'
+          ? input.metadata.callbackUrl
+          : undefined,
+    });
+
+    const predictionId = toUdioPredictionId(started.workId);
+
+    return {
+      success: true,
+      intent: detected.intent,
+      responseType: 'audio',
+      message: startedMessage(detected.intent),
+      predictionId,
+      predictionStatus: 'processing',
+      assetType: 'audio',
+      metadata: {
+        provider: 'udio',
+        model: started.model,
+        workId: started.workId,
+        confidence: detected.confidence,
+      },
+    };
+  } catch (err) {
+    const errorMsg = err instanceof Error ? err.message : 'Udio generation failed';
+
+    return {
+      success: false,
+      intent: detected.intent,
+      responseType: 'text',
+      message: errorMsg,
+      metadata: {
+        provider: 'udio',
+        confidence: detected.confidence,
+      },
+    };
+  }
+}
+
+async function pollUdioTask(workId: string, predictionId: string): Promise<ChatResponse> {
+  const status = await getUdioGenerationStatus(workId);
+
+  if (status.status === 'failed') {
+    return {
+      success: false,
+      intent: 'music_generation',
+      responseType: 'text',
+      message: status.message || 'Music generation failed.',
+      predictionId,
+      predictionStatus: 'failed',
+      metadata: {
+        provider: 'udio',
+        workId,
+      },
+    };
+  }
+
+  if (status.status === 'succeeded') {
+    return {
+      success: true,
+      intent: 'music_generation',
+      responseType: 'audio',
+      message: readyMessage('music_generation'),
+      assetUrl: status.audioUrl,
+      assetType: 'audio',
+      predictionId,
+      predictionStatus: 'succeeded',
+      metadata: {
+        provider: 'udio',
+        workId,
+        imageUrl: status.imageUrl,
+        rawStatus: status.rawStatus,
+      },
+    };
+  }
+
+  return {
+    success: true,
+    intent: 'music_generation',
+    responseType: 'audio',
+    message: status.message || startedMessage('music_generation'),
+    predictionId,
+    predictionStatus: 'processing',
+    metadata: {
+      provider: 'udio',
+      workId,
+      rawStatus: status.rawStatus,
+    },
+  };
+}
+
+async function handleDeterministicIntent(
+  input: OrchestratorInput,
+  detected: DetectedIntent,
+): Promise<ChatResponse> {
+  const response = await serviceManager.execute({
+    sessionId: input.sessionId,
+    serviceContext: input.serviceContext,
+    intent: detected.intent,
+    userPrompt: input.message,
+    selectedOptions: input.selectedOptions,
+    imageUrl: input.imageUrl,
+    locale: input.locale,
+    confidence: detected.confidence,
+  });
+
+  return toChatResponse(response, detected.intent);
+}
+
+function toChatResponse(
+  response: ServiceManagerResponse,
+  intent: IntentCategory,
+): ChatResponse {
+  return {
+    success: response.success,
+    intent,
+    responseType: response.responseType,
+    message: response.message,
+    assetUrl: response.assetUrl,
+    assetType: response.assetType,
+    predictionId: response.predictionId,
+    predictionStatus: response.predictionStatus,
+    metadata: {
+      ...response.metadata,
+      provider: response.provider,
+    },
+  };
 }
 
 // ─── Text LLM path ──────────────────────────────────────────────────────────
@@ -138,6 +330,16 @@ async function handleReplicateIntent(
   }
 
   const opts = input.selectedOptions || {};
+  const selectedProvider = String(
+    opts.provider || opts.image_provider || opts.imageProvider || '',
+  ).toLowerCase();
+
+  const canUseNanoBanana = selectedProvider === 'nanobanana'
+    && (replicateService === 'image' || input.serviceContext === 'interior');
+
+  if (canUseNanoBanana) {
+    return handleNanoBananaIntent(input, detected, opts);
+  }
 
   // Build and validate the generation input
   const raw: Record<string, unknown> = {
@@ -229,6 +431,70 @@ async function handleReplicateIntent(
   }
 }
 
+async function handleNanoBananaIntent(
+  input: OrchestratorInput,
+  detected: DetectedIntent,
+  opts: Record<string, string>,
+): Promise<ChatResponse> {
+  const endpoint = resolveNanoBananaEndpoint(
+    opts.nanobanana_endpoint || opts.nanobananaEndpoint || opts.endpoint,
+  );
+
+  try {
+    const result = await generateNanoBananaImage({
+      prompt: input.message,
+      endpoint,
+      aspectRatio: opts.ratio || opts.aspectRatio || opts.aspectratio,
+      style: opts.style || opts.imgStyle || opts.imgstyle,
+      referenceImageDataUrl: input.imageUrl,
+      service: input.serviceContext || 'image',
+    });
+
+    if (result.url) {
+      return {
+        success: true,
+        intent: detected.intent,
+        responseType: 'image',
+        message: readyMessage(detected.intent),
+        assetUrl: result.url,
+        assetType: 'image',
+        metadata: {
+          provider: 'nanobanana',
+          model: endpoint,
+          creditCost: getNanoBananaCreditCost(endpoint),
+          confidence: detected.confidence,
+        },
+      };
+    }
+
+    return {
+      success: true,
+      intent: detected.intent,
+      responseType: 'text',
+      message: result.text || 'Task details ready.',
+      metadata: {
+        provider: 'nanobanana',
+        model: endpoint,
+        creditCost: getNanoBananaCreditCost(endpoint),
+        confidence: detected.confidence,
+      },
+    };
+  } catch (err) {
+    const errorMsg = err instanceof Error ? err.message : 'NanoBanana generation failed';
+    return {
+      success: false,
+      intent: detected.intent,
+      responseType: 'text',
+      message: errorMsg,
+      metadata: {
+        provider: 'nanobanana',
+        model: endpoint,
+        confidence: detected.confidence,
+      },
+    };
+  }
+}
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function mapResponseType(intent: IntentCategory): ChatResponse['responseType'] {
@@ -246,6 +512,41 @@ function mapResponseType(intent: IntentCategory): ChatResponse['responseType'] {
     default:
       return 'text';
   }
+}
+
+function toUdioPredictionId(workId: string): string {
+  return `${UDIO_PREDICTION_PREFIX}${workId}`;
+}
+
+function extractUdioWorkId(predictionId: string): string | null {
+  if (!predictionId.startsWith(UDIO_PREDICTION_PREFIX)) {
+    return null;
+  }
+
+  const workId = predictionId.slice(UDIO_PREDICTION_PREFIX.length).trim();
+  return workId || null;
+}
+
+function parseOptionList(value: string | undefined): string[] | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  const items = value
+    .split(',')
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0);
+
+  return items.length > 0 ? items : undefined;
+}
+
+function parseBooleanOption(value: string | undefined): boolean {
+  if (!value) {
+    return false;
+  }
+
+  const normalized = value.trim().toLowerCase();
+  return normalized === '1' || normalized === 'true' || normalized === 'yes' || normalized === 'on';
 }
 
 function extractOutputUrl(output: unknown): string | null {

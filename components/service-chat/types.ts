@@ -52,7 +52,7 @@ export interface ToolOption {
   id: string;
   label: L10n;
   type: ToolOptionType;
-  options?: { value: string; label: L10n }[];
+  options?: { value: string; label: L10n; credits?: number }[];
   defaultValue?: string | number | boolean;
   min?: number;
   max?: number;
