@@ -42,6 +42,15 @@ const DEFAULT_UDIO_GENERATE_PATH = '/api/v2/generate';
 const DEFAULT_UDIO_FEED_PATH = '/api/v2/feed';
 const DEFAULT_UDIO_MODEL = 'chirp-v4-5';
 
+function buildUdioAuthHeaders(apiKey: string): Record<string, string> {
+  // Udio-compatible gateways are inconsistent: send all common auth header variants.
+  return {
+    Authorization: `Bearer ${apiKey}`,
+    'x-api-key': apiKey,
+    'X-Api-Key': apiKey,
+  };
+}
+
 function getUdioApiKey(): string {
   const key = process.env.UDIO_API_KEY?.trim();
   if (!key) {
@@ -304,7 +313,7 @@ export async function startUdioGeneration(input: UdioGenerationInput): Promise<U
   const response = await fetch(url, {
     method: 'POST',
     headers: {
-      Authorization: `Bearer ${apiKey}`,
+      ...buildUdioAuthHeaders(apiKey),
       'Content-Type': 'application/json',
     },
     body: JSON.stringify(buildGenerateBody(input)),
@@ -338,9 +347,7 @@ export async function getUdioGenerationStatus(workId: string): Promise<UdioStatu
 
   const response = await fetch(url, {
     method: 'GET',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-    },
+    headers: buildUdioAuthHeaders(apiKey),
     cache: 'no-store',
   });
 

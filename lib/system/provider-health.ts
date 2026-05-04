@@ -123,7 +123,11 @@ async function probe(provider: ProviderName): Promise<{ ok: boolean; detail: str
       const feedPath = String(process.env.UDIO_FEED_PATH || '/api/v2/feed');
       const url = `${base}${feedPath.startsWith('/') ? feedPath : `/${feedPath}`}?workId=healthcheck`;
       const response = await fetch(url, {
-        headers: { Authorization: `Bearer ${key}` },
+        headers: {
+          Authorization: `Bearer ${key}`,
+          'x-api-key': key,
+          'X-Api-Key': key,
+        },
         cache: 'no-store',
       });
       if (response.status === 401 || response.status === 403) {
