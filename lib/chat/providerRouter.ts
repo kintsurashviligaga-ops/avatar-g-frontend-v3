@@ -20,6 +20,8 @@ import { getUdioGenerationStatus, startUdioGeneration } from '@/lib/udio/client'
 import { buildInteriorDesignBrief } from '@/lib/interior/smart-intake';
 import { generateWorldLabsInterior } from '@/lib/worldlabs/client';
 import { buildIterativePrompt } from './iteration-store';
+import { generateWithGemini } from '@/lib/gemini/client';
+import { getGeminiSystemPrompt, type GeminiServiceContext } from '@/lib/gemini/prompts';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -87,12 +89,56 @@ const DETERMINISTIC_INTENTS = new Set<IntentCategory>([
 const serviceManager = new ServiceManager();
 const UDIO_PREDICTION_PREFIX = 'udio:';
 
+// ─── Gemini multimodal handler ────────────────────────────────────────────────
+
+const GEMINI_MULTIMODAL_SERVICES = new Set(['interior', 'image', 'avatar', 'video']);
+
+async function handleGeminiMultimodal(input: OrchestratorInput): Promise<ChatResponse | null> {
+  const hasImage = !!input.imageUrl || !!input.metadata?.imageBase64;
+  if (!hasImage || !process.env.GEMINI_API_KEY) return null;
+
+  const imageBase64 = input.metadata?.imageBase64 as string | undefined;
+  const mimeType = (input.metadata?.mimeType as string) ?? 'image/jpeg';
+  const ctx = (input.serviceContext ?? 'general') as GeminiServiceContext;
+  const systemPrompt = getGeminiSystemPrompt(ctx, input.locale ?? 'ka');
+
+  const startMs = Date.now();
+  const response = await generateWithGemini({
+    prompt: input.message,
+    systemPrompt,
+    tier: 'pro',
+    attachments: imageBase64 ? [{ type: 'image', mimeType, data: imageBase64 }] : undefined,
+    history: input.history?.map((h) => ({
+      role: h.role === 'assistant' ? ('model' as const) : ('user' as const),
+      parts: [{ text: h.content }],
+    })),
+  });
+
+  return {
+    success: true,
+    intent: 'analysis' as IntentCategory,
+    responseType: 'analysis',
+    message: response.text,
+    metadata: {
+      provider: 'gemini',
+      model: response.model,
+      durationMs: Date.now() - startMs,
+    },
+  };
+}
+
 // ─── Main orchestrate function ───────────────────────────────────────────────
 
 export async function orchestrate(
   input: OrchestratorInput,
   _baseUrl?: string,
 ): Promise<ChatResponse> {
+  // Gemini multimodal path for image-bearing requests on supported services
+  if (GEMINI_MULTIMODAL_SERVICES.has(input.serviceContext)) {
+    const geminiResponse = await handleGeminiMultimodal(input);
+    if (geminiResponse) return geminiResponse;
+  }
+
   if (shouldRouteInteriorToWorldLabs(input)) {
     return handleInteriorIntent(input);
   }

@@ -14,6 +14,7 @@ import { motion } from 'framer-motion';
 import Image from 'next/image';
 import { Copy, Check, Loader2 } from 'lucide-react';
 import type { ServiceChatConfig, ServiceChatMessage } from './types';
+import { GeminiFeedbackBar } from '@/components/chat/GeminiFeedbackBar';
 
 interface Props {
   config: ServiceChatConfig;
@@ -165,10 +166,10 @@ function AssistantBubble({
   }, [message.text]);
 
   return (
-    <div className="flex gap-2.5 items-start">
+    <div className="flex gap-2.5 items-start group">
       <ServiceAgentAvatar config={config} />
       <div className="flex-1 min-w-0 space-y-2">
-        <div className="chat-bubble-agent group relative">
+        <div className="chat-bubble-agent relative">
           <p className="whitespace-pre-wrap" style={{ color: 'var(--color-text)' }}>
             {message.text}
             {message.isStreaming && <span className="chat-cursor" />}
@@ -179,6 +180,16 @@ function AssistantBubble({
             </button>
           )}
         </div>
+
+        {/* Gemini feedback bar — visible on hover */}
+        {!message.isStreaming && message.text.length > 0 && (
+          <GeminiFeedbackBar
+            messageId={message.id}
+            content={message.text}
+            accentColor={config.accentColor}
+            locale={language}
+          />
+        )}
 
         {/* Streaming indicator */}
         {message.isStreaming && (

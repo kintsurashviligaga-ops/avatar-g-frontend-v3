@@ -28,7 +28,7 @@ export interface RouterOutput {
   artifacts: RouterArtifact[];
   usage: {
     creditsUsed: number;
-    provider: 'gpt' | 'replicate' | 'claude' | 'openrouter' | 'worldlabs' | 'udio' | 'heygen' | 'ltx' | 'local';
+    provider: 'gpt' | 'replicate' | 'claude' | 'openrouter' | 'worldlabs' | 'udio' | 'heygen' | 'ltx' | 'local' | 'gemini';
     model: string;
   };
   conversationId?: string;
@@ -50,7 +50,7 @@ export interface RouterArtifact {
 interface AgentDef {
   id: string;
   name: string;
-  provider: 'gpt' | 'replicate' | 'claude' | 'openrouter' | 'worldlabs' | 'udio' | 'heygen' | 'ltx' | 'local';
+  provider: 'gpt' | 'replicate' | 'claude' | 'openrouter' | 'worldlabs' | 'udio' | 'heygen' | 'ltx' | 'local' | 'gemini';
   model: string;
   systemPrompt: string;
   capabilities: string[];
@@ -129,6 +129,22 @@ const AGENTS: Record<string, AgentDef> = {
     systemPrompt: 'You handle photo-to-3D interior generation via World Labs Marble.',
     capabilities: ['interior-3d', 'spatial-design', 'iterative-refinement'],
   },
+  'gemini_pro_agent': {
+    id: 'gemini_pro_agent',
+    name: 'Gemini Pro Analyst',
+    provider: 'gemini' as const,
+    model: 'gemini-1.5-pro-latest',
+    systemPrompt: 'Premium multimodal AI consultant for MyAvatar.ge with Georgian language support.',
+    capabilities: ['multimodal', 'image-analysis', 'material-recognition', 'design-audit', 'interior', 'text-generation'],
+  },
+  'gemini_flash_agent': {
+    id: 'gemini_flash_agent',
+    name: 'Gemini Flash Assistant',
+    provider: 'gemini' as const,
+    model: 'gemini-1.5-flash-8b',
+    systemPrompt: 'Fast, responsive AI assistant for quick queries and real-time interactions.',
+    capabilities: ['text-generation', 'quick-response', 'live-chat', 'realtime'],
+  },
 };
 
 // ─── Service → Agent mapping ─────────────────────────────────────────────────
@@ -140,7 +156,7 @@ const SERVICE_AGENT_MAP: Record<string, string> = {
   music: 'music_agent',
   photo: 'image_agent',
   image: 'image_agent',
-  interior: 'interior_agent',
+  interior: process.env.GEMINI_API_KEY ? 'gemini_pro_agent' : 'interior_agent',
   media: 'agent_g_director',
   text: 'agent_g_director',
   prompt: 'agent_g_director',
@@ -153,10 +169,14 @@ const SERVICE_AGENT_MAP: Record<string, string> = {
 // ─── Provider routing rules (Phase 7) ────────────────────────────────────────
 // Text reasoning → GPT | Image/Video/Music → Replicate | Code-heavy → GPT/Claude
 
-function selectProvider(agentId: string, hasMediaInput: boolean): { provider: 'gpt' | 'replicate' | 'claude' | 'openrouter' | 'worldlabs' | 'udio' | 'heygen' | 'ltx' | 'local'; model: string } {
+function selectProvider(agentId: string, hasMediaInput: boolean): { provider: 'gpt' | 'replicate' | 'claude' | 'openrouter' | 'worldlabs' | 'udio' | 'heygen' | 'ltx' | 'local' | 'gemini'; model: string } {
   const agent = AGENTS[agentId];
   if (!agent) {
     return { provider: 'gpt', model: 'gpt-4o' };
+  }
+
+  if (agentId === 'gemini_pro_agent' || agentId === 'gemini_flash_agent') {
+    return { provider: 'gemini', model: agent.model };
   }
 
   if (agentId === 'interior_agent') {

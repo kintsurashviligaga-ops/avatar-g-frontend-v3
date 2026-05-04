@@ -1,6 +1,6 @@
 import 'server-only';
 
-type ProviderName = 'openai' | 'udio' | 'worldlabs' | 'heygen' | 'ltx' | 'anthropic';
+type ProviderName = 'openai' | 'udio' | 'worldlabs' | 'heygen' | 'ltx' | 'anthropic' | 'gemini';
 
 export type ProviderAuditEntry = {
   provider: ProviderName;
@@ -25,6 +25,7 @@ const PROVIDER_ENV: Record<ProviderName, string> = {
   heygen: 'HEYGEN_API_KEY',
   ltx: 'LTX_VIDEO_API_KEY',
   anthropic: 'ANTHROPIC_API_KEY',
+  gemini: 'GEMINI_API_KEY',
 };
 
 const ROUTING_MATRIX: Array<{ category: ServiceRoutingAudit['category']; provider: ProviderName }> = [
@@ -140,6 +141,17 @@ async function probe(provider: ProviderName): Promise<{ ok: boolean; detail: str
         return { ok: false, detail: `Auth failed (${response.status})`, creditsRemaining: null };
       }
       return { ok: response.status < 500, detail: `HTTP ${response.status}`, creditsRemaining: null };
+    }
+
+    if (provider === 'gemini') {
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models?key=${key}`,
+        { cache: 'no-store' },
+      );
+      if (response.status === 400 || response.status === 401 || response.status === 403) {
+        return { ok: false, detail: `Auth failed (${response.status})`, creditsRemaining: null };
+      }
+      return { ok: response.ok, detail: response.ok ? 'Models endpoint reachable' : `HTTP ${response.status}`, creditsRemaining: null };
     }
 
     const endpoint = String(process.env.WORLDLABS_API_URL || 'https://api.worldlabs.ai/v1/worlds/generate');
