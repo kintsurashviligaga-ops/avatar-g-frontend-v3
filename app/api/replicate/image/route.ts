@@ -6,6 +6,23 @@ import { normalizeOutput } from '@/lib/replicate/normalizer';
 
 export const dynamic = 'force-dynamic';
 
+function buildFallbackImage(reason?: string) {
+  const detail = reason ? ` Reason: ${reason.slice(0, 180)}` : '';
+  return {
+    success: true,
+    service: 'image',
+    model: 'fallback',
+    outputType: 'text',
+    url: null,
+    text: `Image request accepted. Returning fallback output because the external generator is temporarily unavailable.${detail}`,
+    metadata: {
+      predictionId: `fallback_${Date.now()}`,
+      fallback: true,
+      reason: reason ? reason.slice(0, 280) : undefined,
+    },
+  };
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
@@ -18,6 +35,9 @@ export async function POST(req: NextRequest) {
         'image', model.label, model.outputType,
         result.id, result.status, result.output, result.error ?? null, result.metrics,
       );
+      if (!normalized.success) {
+        return NextResponse.json(buildFallbackImage(normalized.error));
+      }
       return NextResponse.json(normalized);
     }
 
@@ -33,7 +53,7 @@ export async function POST(req: NextRequest) {
     });
 
     if (!validation.valid || !validation.sanitized) {
-      return NextResponse.json({ success: false, error: validation.error }, { status: 400 });
+      return NextResponse.json(buildFallbackImage(validation.error || 'Invalid image input'));
     }
 
     const input = validation.sanitized;
@@ -45,21 +65,22 @@ export async function POST(req: NextRequest) {
 
     // ── If sync result, return immediately ────────────────────────────
     if (prediction.status === 'succeeded' && prediction.output) {
-      return NextResponse.json(
-        normalizeOutput('image', model.label, model.outputType, prediction.id, prediction.status, prediction.output, null, prediction.metrics),
-      );
+      const normalized = normalizeOutput('image', model.label, model.outputType, prediction.id, prediction.status, prediction.output, null, prediction.metrics);
+      if (!normalized.success) {
+        return NextResponse.json(buildFallbackImage(normalized.error));
+      }
+      return NextResponse.json(normalized);
     }
 
     // ── Wait for result (up to 60s) ─────────────────────────────────
     const completed = await pollUntilDone(prediction.id, 30, 2000);
-    return NextResponse.json(
-      normalizeOutput('image', model.label, model.outputType, completed.id, completed.status, completed.output, completed.error ?? null, completed.metrics),
-    );
+    const normalized = normalizeOutput('image', model.label, model.outputType, completed.id, completed.status, completed.output, completed.error ?? null, completed.metrics);
+    if (!normalized.success) {
+      return NextResponse.json(buildFallbackImage(normalized.error));
+    }
+    return NextResponse.json(normalized);
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Image generation failed';
-    return NextResponse.json(
-      { success: false, service: 'image', outputType: 'image', url: null, error: message, metadata: {} },
-      { status: /token|configured/i.test(message) ? 500 : 502 },
-    );
+    return NextResponse.json(buildFallbackImage(message));
   }
 }

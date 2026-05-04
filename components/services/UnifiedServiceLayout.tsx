@@ -402,6 +402,7 @@ function resolveReplicateEndpoint(serviceContext: string) {
 
 function mapOutputToArtifacts(serviceContext: string, output: unknown): Artifact[] {
   const outputValue = Array.isArray(output) ? output[0] : output;
+  const isUrlLike = (value: string) => /^https?:\/\//i.test(value) || /^data:/i.test(value);
 
   // Text-based output (visual-ai captioning)
   if (serviceContext === 'visual-ai') {
@@ -409,7 +410,16 @@ function mapOutputToArtifacts(serviceContext: string, output: unknown): Artifact
     return [{ type: 'text', label: 'AI Analysis', content: text, mimeType: 'text/plain' }];
   }
 
-  const url = typeof outputValue === 'string' ? outputValue : '';
+  if (typeof outputValue === 'string' && outputValue.trim() && !isUrlLike(outputValue)) {
+    return [{
+      type: 'text',
+      label: 'Generation result',
+      content: outputValue,
+      mimeType: 'text/plain',
+    }];
+  }
+
+  const url = typeof outputValue === 'string' && isUrlLike(outputValue) ? outputValue : '';
   if (!url) return [];
 
   if (serviceContext === 'avatar') {
@@ -1382,6 +1392,29 @@ export default function UnifiedServiceLayout({
         if (context === 'avatar' && directArtifacts[0]?.url) {
           broadcastAvatarUpdate(directArtifacts[0].url);
         }
+        setGenerationProgress({ percent: 100, stage: 'done', context });
+        return;
+      }
+
+      // ── Handle NormalizedOutput fallback text ──
+      if (startData.success && startData.text) {
+        const fallbackText = startData.text || generationCompleteLabel;
+        setGenerationProgress({ percent: 96, stage: 'finalizing', context });
+        const fallbackArtifacts = decorateGeneratedArtifacts([{
+          type: 'text',
+          label: locale === 'ka' ? 'შედეგი' : locale === 'ru' ? 'Результат' : 'Result',
+          content: fallbackText,
+          mimeType: 'text/plain',
+        }], prompt, context, 'succeeded');
+
+        setMessages(prev => [...prev, {
+          id: `msg_${Date.now()}_direct_text_fallback`,
+          role: 'assistant',
+          content: fallbackText,
+          artifacts: fallbackArtifacts,
+          timestamp: new Date(),
+        }]);
+        setPreviewArtifact(fallbackArtifacts[0]!);
         setGenerationProgress({ percent: 100, stage: 'done', context });
         return;
       }

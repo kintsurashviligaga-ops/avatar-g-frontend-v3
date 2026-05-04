@@ -67,6 +67,17 @@ function detectServiceIntent(text: string): ServiceId | null {
   return best?.id ?? null;
 }
 
+function buildFallbackResult(serviceId: ServiceId, locale: string): string {
+  const label = serviceId.replace(/-/g, ' ');
+  if (locale === 'ka') {
+    return `მოთხოვნა მივიღე და ${label} სერვისზე დავაბრუნე fallback შედეგი, რადგან გარე გენერაცია დროებით შეზღუდულია. შეგიძლია იგივე მოთხოვნა ისევ გააგზავნო მოგვიანებით.`;
+  }
+  if (locale === 'ru') {
+    return `Запрос получен. Для сервиса ${label} возвращен fallback-результат, так как внешний генератор временно недоступен. Повторите запрос позже для полного рендера.`;
+  }
+  return `Request received. Returned a fallback result for ${label} because the external generator is temporarily unavailable. Retry later for a full render.`;
+}
+
 // ─── Pipeline actions ─────────────────────────────────────────────────────────
 
 function handleDetectIntent(userInput: string, locale: string) {
@@ -374,28 +385,41 @@ async function handleGenerate(
   const TEXT_SERVICES: ServiceId[] = ['game', 'prompt-builder', 'terminal', 'content-writer', 'podcast', 'character', 'event'];
 
   if (TEXT_SERVICES.includes(serviceId)) {
-    const systemPrompts: Record<string, string> = {
-      game:             'You are a senior game designer. Produce detailed, structured game design documents in markdown. Include mechanics, narrative, level design, and monetization in separate sections.',
-      'prompt-builder': 'You are a world-class prompt engineer. Return ONLY the final optimized prompt — no preamble, no explanation.',
-      terminal:         'You are a Staff Engineer. Write production-ready, secure, well-structured code with markdown code blocks.',
-      'content-writer': 'You are a world-class copywriter and content strategist. Produce high-quality, engaging, SEO-aware content. Use natural language, avoid generic AI phrases. Format in clean markdown.',
-      podcast:          'You are a professional podcast producer and scriptwriter. Create complete, engaging podcast scripts with clear segment structure, natural dialogue, and strong hooks. Format in markdown with speaker labels.',
-      character:        'You are a master character designer and narrative architect. Create rich, multi-dimensional characters with deep backstories, consistent voice, and cultural depth. Format in clean markdown with clear sections.',
-      event:            'You are a professional event producer and copywriter. Create comprehensive event materials including programs, MC scripts, promo copy, and invitations. Be specific, engaging, and culturally aware. Format in clean markdown.',
-    };
-    const result = await anthropic.messages.create({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 4096,
-      system: systemPrompts[serviceId] ?? 'You are a helpful AI assistant.',
-      messages: [{ role: 'user', content: finalPrompt }],
-    });
-    const text      = result.content[0]?.type === 'text' ? result.content[0].text : '';
     const outputKind = serviceId === 'terminal' ? 'code' : 'text';
-    return NextResponse.json({
-      jobId, status: 'done', serviceId, outputKind,
-      result: text,
-      tokensUsed: result.usage.input_tokens + result.usage.output_tokens,
-    });
+    try {
+      const systemPrompts: Record<string, string> = {
+        game:             'You are a senior game designer. Produce detailed, structured game design documents in markdown. Include mechanics, narrative, level design, and monetization in separate sections.',
+        'prompt-builder': 'You are a world-class prompt engineer. Return ONLY the final optimized prompt — no preamble, no explanation.',
+        terminal:         'You are a Staff Engineer. Write production-ready, secure, well-structured code with markdown code blocks.',
+        'content-writer': 'You are a world-class copywriter and content strategist. Produce high-quality, engaging, SEO-aware content. Use natural language, avoid generic AI phrases. Format in clean markdown.',
+        podcast:          'You are a professional podcast producer and scriptwriter. Create complete, engaging podcast scripts with clear segment structure, natural dialogue, and strong hooks. Format in markdown with speaker labels.',
+        character:        'You are a master character designer and narrative architect. Create rich, multi-dimensional characters with deep backstories, consistent voice, and cultural depth. Format in clean markdown with clear sections.',
+        event:            'You are a professional event producer and copywriter. Create comprehensive event materials including programs, MC scripts, promo copy, and invitations. Be specific, engaging, and culturally aware. Format in clean markdown.',
+      };
+      const result = await anthropic.messages.create({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 4096,
+        system: systemPrompts[serviceId] ?? 'You are a helpful AI assistant.',
+        messages: [{ role: 'user', content: finalPrompt }],
+      });
+      const text = result.content[0]?.type === 'text' ? result.content[0].text : '';
+      return NextResponse.json({
+        jobId, status: 'done', serviceId, outputKind,
+        result: text,
+        tokensUsed: result.usage.input_tokens + result.usage.output_tokens,
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Text generation unavailable';
+      console.warn(`[pipeline/generate:fallback] ${serviceId}: ${msg}`);
+      return NextResponse.json({
+        jobId,
+        status: 'done',
+        serviceId,
+        outputKind,
+        result: buildFallbackResult(serviceId, locale),
+        metadata: { fallback: true, reason: msg },
+      });
+    }
   }
 
   // ── Media services — inline API calls ────────────────────────────────────
@@ -437,8 +461,15 @@ async function handleGenerate(
         genResult = { outputKind: 'text', error: `Unknown service: ${serviceId}` };
     }
 
-    if (genResult.error) {
-      return NextResponse.json({ jobId, status: 'error', serviceId, error: genResult.error }, { status: 200 });
+    if (genResult.error || !genResult.resultUrl) {
+      return NextResponse.json({
+        jobId,
+        status: 'done',
+        serviceId,
+        outputKind: 'text',
+        result: buildFallbackResult(serviceId, locale),
+        metadata: { fallback: true, reason: genResult.error ?? 'Missing result URL' },
+      });
     }
 
     return NextResponse.json({
@@ -448,9 +479,29 @@ async function handleGenerate(
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Generation failed';
-    console.error(`[pipeline/generate] ${serviceId}:`, msg);
-    return NextResponse.json({ jobId, status: 'error', serviceId, error: msg }, { status: 200 });
+    console.warn(`[pipeline/generate:fallback] ${serviceId}: ${msg}`);
+    return NextResponse.json({
+      jobId,
+      status: 'done',
+      serviceId,
+      outputKind: 'text',
+      result: buildFallbackResult(serviceId, locale),
+      metadata: { fallback: true, reason: msg },
+    });
   }
+}
+
+// ─── Frontend → backend service ID aliases ────────────────────────────────────
+// Frontend uses hyphenated compound IDs; registry uses short IDs.
+
+const SERVICE_ID_ALIASES: Record<string, ServiceId> = {
+  'game-creation':   'game',
+  'interior-design': 'interior',
+  'terminal-coding': 'terminal',
+};
+
+function normalizeServiceId(id: string): ServiceId {
+  return SERVICE_ID_ALIASES[id] ?? (id as ServiceId);
 }
 
 // ─── Request handler ──────────────────────────────────────────────────────────
@@ -463,7 +514,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid request' }, { status: 400 });
     }
 
-    const { action, serviceId, userInput, answers, mediaFiles, locale } = parsed.data;
+    const { action, userInput, answers, mediaFiles, locale } = parsed.data;
+    const serviceId = parsed.data.serviceId ? normalizeServiceId(parsed.data.serviceId) : undefined;
 
     switch (action) {
       case 'detect_intent':
