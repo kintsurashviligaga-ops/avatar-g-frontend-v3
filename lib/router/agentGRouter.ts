@@ -28,7 +28,7 @@ export interface RouterOutput {
   artifacts: RouterArtifact[];
   usage: {
     creditsUsed: number;
-    provider: 'gpt' | 'replicate' | 'claude' | 'openrouter' | 'local';
+    provider: 'gpt' | 'replicate' | 'claude' | 'openrouter' | 'worldlabs' | 'udio' | 'heygen' | 'ltx' | 'local';
     model: string;
   };
   conversationId?: string;
@@ -50,7 +50,7 @@ export interface RouterArtifact {
 interface AgentDef {
   id: string;
   name: string;
-  provider: 'gpt' | 'replicate' | 'claude' | 'openrouter' | 'local';
+  provider: 'gpt' | 'replicate' | 'claude' | 'openrouter' | 'worldlabs' | 'udio' | 'heygen' | 'ltx' | 'local';
   model: string;
   systemPrompt: string;
   capabilities: string[];
@@ -76,8 +76,8 @@ const AGENTS: Record<string, AgentDef> = {
   'video_agent': {
     id: 'video_agent',
     name: 'Video Agent',
-    provider: 'replicate',
-    model: 'anotherjesse/zeroscope-v2-xl',
+    provider: 'heygen',
+    model: 'heygen-avatar-video',
     systemPrompt: 'You handle video generation, editing, and post-production tasks.',
     capabilities: ['video-gen', 'storyboard', 'caption', 'edit'],
   },
@@ -92,8 +92,8 @@ const AGENTS: Record<string, AgentDef> = {
   'music_agent': {
     id: 'music_agent',
     name: 'Music Agent',
-    provider: 'replicate',
-    model: 'meta/musicgen',
+    provider: 'udio',
+    model: 'chirp-v4-5',
     systemPrompt: 'You handle music generation, mixing, and audio production.',
     capabilities: ['music-gen', 'mix', 'master', 'stems'],
   },
@@ -121,6 +121,14 @@ const AGENTS: Record<string, AgentDef> = {
     systemPrompt: 'You handle enterprise-scale operations, compliance, and multi-tenant workflows.',
     capabilities: ['compliance', 'multi-tenant', 'audit', 'sla'],
   },
+  'interior_agent': {
+    id: 'interior_agent',
+    name: 'Interior Agent',
+    provider: 'worldlabs',
+    model: 'marble',
+    systemPrompt: 'You handle photo-to-3D interior generation via World Labs Marble.',
+    capabilities: ['interior-3d', 'spatial-design', 'iterative-refinement'],
+  },
 };
 
 // ─── Service → Agent mapping ─────────────────────────────────────────────────
@@ -132,6 +140,7 @@ const SERVICE_AGENT_MAP: Record<string, string> = {
   music: 'music_agent',
   photo: 'image_agent',
   image: 'image_agent',
+  interior: 'interior_agent',
   media: 'agent_g_director',
   text: 'agent_g_director',
   prompt: 'agent_g_director',
@@ -144,14 +153,26 @@ const SERVICE_AGENT_MAP: Record<string, string> = {
 // ─── Provider routing rules (Phase 7) ────────────────────────────────────────
 // Text reasoning → GPT | Image/Video/Music → Replicate | Code-heavy → GPT/Claude
 
-function selectProvider(agentId: string, hasMediaInput: boolean): { provider: 'gpt' | 'replicate' | 'claude' | 'openrouter' | 'local'; model: string } {
+function selectProvider(agentId: string, hasMediaInput: boolean): { provider: 'gpt' | 'replicate' | 'claude' | 'openrouter' | 'worldlabs' | 'udio' | 'heygen' | 'ltx' | 'local'; model: string } {
   const agent = AGENTS[agentId];
   if (!agent) {
     return { provider: 'gpt', model: 'gpt-4o' };
   }
 
+  if (agentId === 'interior_agent') {
+    return { provider: 'worldlabs', model: 'marble' };
+  }
+
+  if (agentId === 'music_agent') {
+    return { provider: 'udio', model: agent.model };
+  }
+
+  if (agentId === 'video_agent') {
+    return { provider: 'heygen', model: agent.model };
+  }
+
   // If media generation is needed, route to Replicate
-  if (hasMediaInput && ['image_agent', 'video_agent', 'music_agent'].includes(agentId)) {
+  if (hasMediaInput && ['image_agent'].includes(agentId)) {
     return { provider: 'replicate', model: agent.model };
   }
 
@@ -218,7 +239,7 @@ export async function routeRequest(input: RouterInput): Promise<RouterOutput> {
   // 5. Execute (delegated to API handlers)
   // In production, this would call the appropriate API
   // For now, return a structured response showing the routing decision
-  const creditsUsed = provider === 'replicate' ? 10 : 3;
+  const creditsUsed = ['replicate', 'worldlabs', 'udio', 'heygen', 'ltx'].includes(provider) ? 10 : 3;
 
   return {
     ok: true,

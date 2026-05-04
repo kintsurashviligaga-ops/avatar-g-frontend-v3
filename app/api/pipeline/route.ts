@@ -15,6 +15,7 @@ import { generateNanoBananaImage } from '@/lib/nanobanana/client';
 import { resolveNanoBananaEndpoint } from '@/lib/nanobanana/endpoints';
 import { generateUdioTrack } from '@/lib/udio/client';
 import { generateWorldLabsInterior } from '@/lib/worldlabs/client';
+import { buildIterativePrompt } from '@/lib/chat/iteration-store';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 180;
@@ -37,6 +38,7 @@ const MediaFileSchema = z.object({
 const PipelineRequestSchema = z.object({
   action: z.enum(['detect_intent', 'get_questions', 'confirm', 'generate', 'status']),
   serviceId:    z.string().optional(),
+  sessionId:    z.string().optional(),
   userInput:    z.string().optional(),
   answers:      z.record(z.union([z.string(), z.array(z.string())])).optional(),
   mediaFiles:   z.array(MediaFileSchema).optional(),
@@ -586,11 +588,21 @@ async function handleGenerate(
   serviceId: ServiceId,
   finalPrompt: string,
   rawScript: string,
+  sessionId: string,
   locale: string,
   answers: Record<string, string | string[]>,
   mediaFiles: MediaFile[],
 ) {
   const jobId = `job_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  const iterative = buildIterativePrompt({
+    sessionId,
+    serviceContext: serviceId,
+    message: finalPrompt,
+    selectedOptions: Object.fromEntries(
+      Object.entries(answers).filter(([, value]) => typeof value === 'string'),
+    ) as Record<string, string>,
+  });
+  const effectivePrompt = iterative.prompt;
 
   // ── Text services via Claude ──────────────────────────────────────────────
   const TEXT_SERVICES: ServiceId[] = ['game', 'prompt-builder', 'terminal', 'content-writer', 'podcast', 'character', 'event'];
@@ -665,16 +677,16 @@ async function handleGenerate(
         genResult = await generateAvatar(rawScript, answers, mediaFiles);
         break;
       case 'video':
-        genResult = await generateVideo(finalPrompt, answers);
+        genResult = await generateVideo(effectivePrompt, answers);
         break;
       case 'image':
-        genResult = await generateImage(finalPrompt, answers, mediaFiles);
+        genResult = await generateImage(effectivePrompt, answers, mediaFiles);
         break;
       case 'music':
-        genResult = await generateMusic(finalPrompt, answers);
+        genResult = await generateMusic(effectivePrompt, answers);
         break;
       case 'interior':
-        genResult = await generateInterior(finalPrompt, answers, mediaFiles);
+        genResult = await generateInterior(effectivePrompt, answers, mediaFiles);
         break;
       case 'voice': {
         const elevenKey = process.env.ELEVENLABS_API_KEY;
@@ -683,7 +695,7 @@ async function handleGenerate(
           const ttsRes = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
             method: 'POST',
             headers: { 'xi-api-key': elevenKey, 'Content-Type': 'application/json', 'Accept': 'application/json' },
-            body: JSON.stringify({ text: finalPrompt.slice(0, 5000), model_id: 'eleven_turbo_v2_5', voice_settings: { stability: 0.75, similarity_boost: 0.85 } }),
+             body: JSON.stringify({ text: effectivePrompt.slice(0, 5000), model_id: 'eleven_turbo_v2_5', voice_settings: { stability: 0.75, similarity_boost: 0.85 } }),
           });
 
           if (ttsRes.ok) {
@@ -694,7 +706,7 @@ async function handleGenerate(
         }
 
         try {
-          const dataUrl = await generateOpenAITtsDataUrl(finalPrompt);
+          const dataUrl = await generateOpenAITtsDataUrl(effectivePrompt);
           genResult = { outputKind: 'audio', resultUrl: dataUrl };
         } catch (ttsErr) {
           const ttsMsg = ttsErr instanceof Error ? ttsErr.message : 'Voice generation failed';
@@ -739,6 +751,7 @@ async function handleGenerate(
         provider: genResult.provider,
         credits_remaining: genResult.creditsRemaining,
         admin_alert_triggered: genResult.adminAlertTriggered,
+        iteration: iterative.iteration,
       });
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Generation failed';
@@ -770,7 +783,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid request' }, { status: 400 });
     }
 
-    const { action, userInput, answers, mediaFiles, locale } = parsed.data;
+    const { action, userInput, answers, mediaFiles, locale, sessionId } = parsed.data;
     const serviceId = parsed.data.serviceId ? normalizeServiceId(parsed.data.serviceId) : undefined;
 
     switch (action) {
@@ -802,6 +815,7 @@ export async function POST(req: NextRequest) {
           serviceId as ServiceId,
           finalPrompt,
           userInput,      // raw script (used for avatar)
+          sessionId || `pipeline_${Date.now()}`,
           locale,
           answers ?? {},
           mediaFiles ?? [],

@@ -739,6 +739,7 @@ export default function ServiceWorkspaceView({
   const [jobProgress, setJobProgress] = useState<EditingJobProgress | null>(null)
   const [uploadedFile, setUploadedFile] = useState<File | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const sessionRef = useRef(`workspace_${serviceId}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`)
 
   useEffect(() => {
     const defaults: Record<string, string | number> = {}
@@ -753,6 +754,7 @@ export default function ServiceWorkspaceView({
     setError(null)
     setJobProgress(null)
     setUploadedFile(null)
+    sessionRef.current = `workspace_${serviceId}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
   }, [serviceId, workspace.fields])
 
   const updateValue = useCallback((id: string, value: string | number) => {
@@ -863,6 +865,7 @@ export default function ServiceWorkspaceView({
         const payload = await postJson('/api/pipeline', {
           action: 'generate',
           serviceId,
+          sessionId: sessionRef.current,
           userInput: prompt,
           answers: {
             provider,
@@ -939,6 +942,7 @@ export default function ServiceWorkspaceView({
         const payload = await postJson('/api/pipeline', {
           action: 'generate',
           serviceId,
+          sessionId: sessionRef.current,
           userInput: promptText,
           answers: {
             provider: String(values.provider || 'worldlabs'),
@@ -978,7 +982,7 @@ export default function ServiceWorkspaceView({
         publishResult(dashboardJobId, {
           kind: 'text',
           title: safeServiceName,
-          detail: `World Labs · Photo-to-3D`,
+          detail: `World Labs · Photo-to-3D · Iteration ${typeof payload.iteration === 'number' ? payload.iteration : 1}`,
           text: outputText || 'Interior 3D generation completed.',
           viewerUrl,
           modelUrl,
@@ -1004,6 +1008,7 @@ export default function ServiceWorkspaceView({
         const payload = await postJson('/api/pipeline', {
           action: 'generate',
           serviceId,
+          sessionId: sessionRef.current,
           userInput: prompt,
           answers: {
             provider: 'udio',

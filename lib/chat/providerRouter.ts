@@ -17,6 +17,9 @@ import { generateNanoBananaImage } from '@/lib/nanobanana/client';
 import { getNanoBananaCreditCost, resolveNanoBananaEndpoint } from '@/lib/nanobanana/endpoints';
 import { ServiceManager, type ServiceManagerResponse } from './ServiceManager';
 import { getUdioGenerationStatus, startUdioGeneration } from '@/lib/udio/client';
+import { buildInteriorDesignBrief } from '@/lib/interior/smart-intake';
+import { generateWorldLabsInterior } from '@/lib/worldlabs/client';
+import { buildIterativePrompt } from './iteration-store';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -90,6 +93,10 @@ export async function orchestrate(
   input: OrchestratorInput,
   _baseUrl?: string,
 ): Promise<ChatResponse> {
+  if (shouldRouteInteriorToWorldLabs(input)) {
+    return handleInteriorIntent(input);
+  }
+
   // 1. Detect intent
   const detected = detectIntent(input.message, input.serviceContext);
 
@@ -119,10 +126,190 @@ export async function pollOrchestrationTask(predictionId: string, sessionId?: st
   return toChatResponse(response, 'text_chat');
 }
 
+function shouldRouteInteriorToWorldLabs(input: OrchestratorInput): boolean {
+  const context = String(input.serviceContext || '').toLowerCase();
+  if (context === 'interior' || context === 'interior-design') {
+    return true;
+  }
+
+  const provider = String(
+    input.selectedOptions?.provider
+      || input.selectedOptions?.model_provider
+      || input.selectedOptions?.interior_provider
+      || '',
+  ).toLowerCase();
+  if (provider === 'worldlabs' || provider === 'marble') {
+    return true;
+  }
+
+  return /\b(interior|room|space|marble|world\s*labs|3d\s*interior)\b/i.test(input.message);
+}
+
+function ensureImageDataUrl(raw: string, mimeType: string): string {
+  const prefix = `data:${mimeType};base64,`;
+  return raw.startsWith('data:') ? raw : `${prefix}${raw}`;
+}
+
+async function loadImageAsDataUrl(imageUrl: string): Promise<string> {
+  if (imageUrl.startsWith('data:')) {
+    return imageUrl;
+  }
+
+  if (!/^https?:\/\//i.test(imageUrl)) {
+    throw new Error('Interior generation requires a valid image URL or data URL.');
+  }
+
+  const response = await fetch(imageUrl, { cache: 'no-store' });
+  if (!response.ok) {
+    throw new Error(`Unable to load reference image (${response.status})`);
+  }
+
+  const contentType = response.headers.get('content-type') || 'image/jpeg';
+  const bytes = Buffer.from(await response.arrayBuffer());
+  return ensureImageDataUrl(bytes.toString('base64'), contentType);
+}
+
+function runOutputValidation(input: {
+  requestedPrompt: string;
+  selectedOptions?: Record<string, string>;
+  spatialLink?: string | null;
+  glbUrl?: string | null;
+}): { status: 'pass' | 'review' | 'fail'; note: string } {
+  if (!input.spatialLink && !input.glbUrl) {
+    return { status: 'fail', note: 'Generated output missing both viewer and model links.' };
+  }
+
+  const values = Object.values(input.selectedOptions || {})
+    .map((value) => value.trim().toLowerCase())
+    .filter((value) => value.length > 2)
+    .slice(0, 8);
+  const prompt = input.requestedPrompt.toLowerCase();
+  const missing = values.filter((value) => !prompt.includes(value));
+
+  if (missing.length > 0) {
+    return {
+      status: 'review',
+      note: `Output generated, but prompt alignment needs review (${missing.join(', ')}).`,
+    };
+  }
+
+  return { status: 'pass', note: 'Output passed alignment checks.' };
+}
+
+async function handleInteriorIntent(input: OrchestratorInput): Promise<ChatResponse> {
+  const iterative = buildIterativePrompt({
+    sessionId: input.sessionId,
+    serviceContext: 'interior',
+    message: input.message,
+    selectedOptions: input.selectedOptions,
+    imageUrl: input.imageUrl,
+  });
+
+  const selectedOptions = input.selectedOptions || {};
+  const designBrief = buildInteriorDesignBrief({
+    userPrompt: iterative.prompt,
+    answers: {
+      primaryGoal: String(selectedOptions.primary_goal || 'full_renovation'),
+      colorPalette: String(selectedOptions.color_palette || 'neutral_scandi'),
+      materials: String(selectedOptions.materials || 'natural_wood'),
+      lightingVibe: String(selectedOptions.lighting_vibe || 'natural_sunlight'),
+    },
+  });
+
+  const imageUrl = input.imageUrl || selectedOptions.image_url || selectedOptions.reference_image;
+  if (!imageUrl) {
+    return {
+      success: false,
+      intent: 'image_generation',
+      responseType: 'action_suggestions',
+      message: 'Upload a clear room photo first, then I will generate the 3D interior world.',
+      metadata: {
+        provider: 'worldlabs',
+        model: 'marble',
+        validation: 'blocked_missing_image',
+        iteration: iterative.iteration,
+      },
+    };
+  }
+
+  try {
+    const imageDataUrl = await loadImageAsDataUrl(imageUrl);
+    const world = await generateWorldLabsInterior({
+      imageDataUrl,
+      prompt: designBrief,
+      filename: 'interior-reference.jpg',
+    });
+
+    const validation = runOutputValidation({
+      requestedPrompt: designBrief,
+      selectedOptions,
+      spatialLink: world.spatialLink,
+      glbUrl: world.glbUrl,
+    });
+
+    if (validation.status === 'fail') {
+      return {
+        success: false,
+        intent: 'image_generation',
+        responseType: 'text',
+        message: `Output validation failed: ${validation.note} Please retry with a clearer photo or refined brief.`,
+        metadata: {
+          provider: 'worldlabs',
+          model: 'marble',
+          validation: validation.status,
+          iteration: iterative.iteration,
+        },
+      };
+    }
+
+    const completionNote = validation.status === 'review'
+      ? `${validation.note} You can send follow-up refinements and I will iterate.`
+      : 'Interior world ready. You can send follow-up refinements and I will regenerate.';
+
+    return {
+      success: true,
+      intent: 'image_generation',
+      responseType: 'image',
+      message: completionNote,
+      assetUrl: world.previewImageUrl || world.spatialLink,
+      assetType: '3d-world',
+      metadata: {
+        provider: 'worldlabs',
+        model: 'marble',
+        spatial_link: world.spatialLink,
+        model_url: world.glbUrl,
+        credits_remaining: world.creditsRemaining,
+        output_validation: validation.status,
+        output_validation_note: validation.note,
+        iteration: iterative.iteration,
+      },
+    };
+  } catch (error) {
+    return {
+      success: false,
+      intent: 'image_generation',
+      responseType: 'text',
+      message: error instanceof Error ? error.message : 'World Labs interior generation failed.',
+      metadata: {
+        provider: 'worldlabs',
+        model: 'marble',
+        iteration: iterative.iteration,
+      },
+    };
+  }
+}
+
 async function handleMusicIntent(
   input: OrchestratorInput,
   detected: DetectedIntent,
 ): Promise<ChatResponse> {
+  const iterative = buildIterativePrompt({
+    sessionId: input.sessionId,
+    serviceContext: input.serviceContext || 'music',
+    message: input.message,
+    selectedOptions: input.selectedOptions,
+    imageUrl: input.imageUrl,
+  });
   const opts = input.selectedOptions || {};
   const provider = String(
     opts.provider
@@ -140,7 +327,7 @@ async function handleMusicIntent(
 
   try {
     const started = await startUdioGeneration({
-      prompt: input.message,
+      prompt: iterative.prompt,
       lyrics: opts.lyrics,
       style: opts.style,
       title: opts.title,
@@ -171,6 +358,7 @@ async function handleMusicIntent(
         model: started.model,
         workId: started.workId,
         confidence: detected.confidence,
+        iteration: iterative.iteration,
       },
     };
   } catch (err) {
@@ -184,6 +372,7 @@ async function handleMusicIntent(
       metadata: {
         provider: 'udio',
         confidence: detected.confidence,
+        iteration: iterative.iteration,
       },
     };
   }
@@ -245,18 +434,28 @@ async function handleDeterministicIntent(
   input: OrchestratorInput,
   detected: DetectedIntent,
 ): Promise<ChatResponse> {
+  const iterative = buildIterativePrompt({
+    sessionId: input.sessionId,
+    serviceContext: input.serviceContext || detected.intent,
+    message: input.message,
+    selectedOptions: input.selectedOptions,
+    imageUrl: input.imageUrl,
+  });
+
   const response = await serviceManager.execute({
     sessionId: input.sessionId,
     serviceContext: input.serviceContext,
     intent: detected.intent,
-    userPrompt: input.message,
+    userPrompt: iterative.prompt,
     selectedOptions: input.selectedOptions,
     imageUrl: input.imageUrl,
     locale: input.locale,
     confidence: detected.confidence,
   });
 
-  return toChatResponse(response, detected.intent);
+  const mapped = toChatResponse(response, detected.intent);
+  mapped.metadata.iteration = iterative.iteration;
+  return mapped;
 }
 
 function toChatResponse(
