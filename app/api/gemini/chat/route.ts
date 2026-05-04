@@ -68,6 +68,16 @@ export async function POST(req: NextRequest) {
           process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL ?? '',
           process.env.SUPABASE_SERVICE_ROLE_KEY,
         );
+        await supabase.from('gemini_chat_sessions').upsert(
+          {
+            id: sessionId,
+            user_id: userId,
+            service_context: serviceContext,
+            locale,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: 'id' },
+        );
         await supabase.from('gemini_chat_messages').insert([
           {
             id: crypto.randomUUID(),

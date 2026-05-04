@@ -4,9 +4,10 @@ export const dynamic = 'force-dynamic';
 
 export async function POST(req: NextRequest) {
   try {
-    const { messageId, rating } = (await req.json()) as {
+    const { messageId, rating, userId } = (await req.json()) as {
       messageId?: string;
       rating?: number;
+      userId?: string;
     };
 
     if (!messageId || ![-1, 1].includes(rating as number)) {
@@ -21,7 +22,7 @@ export async function POST(req: NextRequest) {
       );
       await supabase
         .from('gemini_message_feedback')
-        .upsert({ message_id: messageId, rating }, { onConflict: 'message_id' });
+        .upsert({ message_id: messageId, rating, user_id: userId ?? null }, { onConflict: 'message_id' });
     }
 
     return NextResponse.json({ ok: true });
