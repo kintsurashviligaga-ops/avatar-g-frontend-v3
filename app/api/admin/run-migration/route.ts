@@ -68,19 +68,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   const providedKey = normalize(req.headers.get('x-admin-key'));
 
   if (!expectedKey || providedKey !== expectedKey) {
-    return NextResponse.json(
-      {
-        ok: false,
-        error: 'Unauthorized',
-        debug: {
-          hasMigrationKey: Boolean(migrationKey),
-          hasAdminKey: Boolean(adminKey),
-          providedLength: providedKey.length,
-          expectedSource: migrationKey ? 'MIGRATION_RUN_KEY' : (adminKey ? 'ADMIN_KEY' : 'none'),
-        },
-      },
-      { status: 401 },
-    );
+    return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 });
   }
 
   try {
