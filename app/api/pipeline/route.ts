@@ -10,6 +10,9 @@ import {
 } from '@/lib/agent-g-clarifier';
 import { SERVICE_REGISTRY } from '@/lib/registry';
 import type { ServiceId } from '@/lib/registry';
+import { generateNanoBananaImage } from '@/lib/nanobanana/client';
+import { resolveNanoBananaEndpoint } from '@/lib/nanobanana/endpoints';
+import { generateUdioTrack } from '@/lib/udio/client';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 180;
@@ -322,20 +325,60 @@ async function generateImage(
   prompt: string,
   answers: Record<string, string | string[]>,
   mediaFiles: MediaFile[],
-): Promise<{ resultUrl?: string; outputKind: string; error?: string }> {
-  const { createPrediction, pollUntilDone } = await import('@/lib/replicate/client');
-  const { resolveModel }                    = await import('@/lib/replicate/models');
-  const { validateInput, buildModelInput }  = await import('@/lib/replicate/schemas');
-  const { normalizeOutput }                 = await import('@/lib/replicate/normalizer');
+): Promise<{ resultUrl?: string; resultText?: string; outputKind: string; error?: string }> {
+  const provider = String(
+    answers.provider
+      ?? answers.image_provider
+      ?? answers.model_provider
+      ?? 'replicate',
+  ).toLowerCase();
 
-  const quality     = String(answers.quality     ?? 'standard');
-  const aspectRatio = String(answers.aspect      ?? '1:1');
-  const style       = String(answers.style       ?? 'photorealistic');
+  const endpoint = resolveNanoBananaEndpoint(
+    answers.nanobanana_endpoint
+      ?? answers.nanobananaEndpoint
+      ?? answers.endpoint,
+  );
+
+  const aspectRatio = String(answers.aspect ?? '1:1');
+  const style = String(answers.style ?? 'photorealistic');
 
   const refImage = mediaFiles.find(f => f.type === 'image');
   const enhancedPrompt = refImage
     ? `${prompt} [Reference image provided for composition/style guidance]`
     : prompt;
+
+  if (provider === 'nanobanana') {
+    try {
+      const nanoResult = await generateNanoBananaImage({
+        prompt: enhancedPrompt,
+        endpoint,
+        aspectRatio,
+        style,
+        referenceImageDataUrl: refImage?.dataUrl,
+        service: 'image',
+      });
+
+      if (nanoResult.url) {
+        return { resultUrl: nanoResult.url, outputKind: 'image' };
+      }
+
+      if (nanoResult.text) {
+        return { resultText: nanoResult.text, outputKind: 'text' };
+      }
+
+      return { outputKind: 'image', error: 'NanoBanana did not return an output.' };
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'NanoBanana generation failed';
+      return { outputKind: 'image', error: msg };
+    }
+  }
+
+  const { createPrediction, pollUntilDone } = await import('@/lib/replicate/client');
+  const { resolveModel }                    = await import('@/lib/replicate/models');
+  const { validateInput, buildModelInput }  = await import('@/lib/replicate/schemas');
+  const { normalizeOutput }                 = await import('@/lib/replicate/normalizer');
+
+  const quality = String(answers.quality ?? 'standard');
 
   const validation = validateInput({ service: 'image', prompt: enhancedPrompt, quality, aspectRatio, style });
   if (!validation.valid || !validation.sanitized) {
@@ -362,6 +405,55 @@ async function generateMusic(
   prompt: string,
   answers: Record<string, string | string[]>,
 ): Promise<{ resultUrl?: string; outputKind: string; error?: string }> {
+  const provider = String(
+    answers.provider
+      ?? answers.music_provider
+      ?? answers.musicProvider
+      ?? (process.env.UDIO_API_KEY?.trim() ? 'udio' : 'replicate'),
+  ).toLowerCase();
+
+  if (provider === 'udio') {
+    const styleTags = Array.isArray(answers.style_tags)
+      ? answers.style_tags.map((item) => String(item).trim()).filter(Boolean)
+      : typeof answers.style_tags === 'string'
+        ? answers.style_tags.split(',').map((item) => item.trim()).filter(Boolean)
+        : [];
+
+    const lyricsMode = String(answers.lyrics_mode ?? '').toLowerCase();
+    const makeInstrumental = lyricsMode === 'instrumental'
+      || String(answers.make_instrumental ?? answers.instrumental ?? '').toLowerCase() === 'true';
+
+    try {
+      const result = await generateUdioTrack({
+        prompt,
+        lyrics: typeof answers.lyrics === 'string' ? answers.lyrics : undefined,
+        style: typeof answers.style === 'string' ? answers.style : undefined,
+        title: typeof answers.title === 'string' ? answers.title : undefined,
+        genre: typeof answers.genre === 'string' ? answers.genre : undefined,
+        mood: typeof answers.mood === 'string' ? answers.mood : undefined,
+        styleTags,
+        model: typeof answers.model === 'string' ? answers.model : undefined,
+        makeInstrumental,
+      }, {
+        maxAttempts: 40,
+        pollIntervalMs: 3000,
+      });
+
+      if (result.status === 'failed') {
+        return { outputKind: 'audio', error: result.message || 'Udio generation failed' };
+      }
+
+      if (!result.audioUrl) {
+        return { outputKind: 'audio', error: 'Udio completed without audio URL' };
+      }
+
+      return { resultUrl: result.audioUrl, outputKind: 'audio' };
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Udio generation failed';
+      return { outputKind: 'audio', error: msg };
+    }
+  }
+
   const { createPrediction, pollUntilDone } = await import('@/lib/replicate/client');
   const { resolveModel } = await import('@/lib/replicate/models');
   const { validateInput, buildModelInput } = await import('@/lib/replicate/schemas');
@@ -473,7 +565,7 @@ async function handleGenerate(
 
   // ── Media services — inline API calls ────────────────────────────────────
   try {
-    let genResult: { resultUrl?: string; outputKind: string; error?: string };
+    let genResult: { resultUrl?: string; resultText?: string; outputKind: string; error?: string };
 
     switch (serviceId) {
       case 'avatar':
@@ -522,8 +614,26 @@ async function handleGenerate(
         genResult = { outputKind: 'text', error: `Unknown service: ${serviceId}` };
     }
 
-    if (genResult.error || !genResult.resultUrl) {
-      return NextResponse.json({ jobId, status: 'error', serviceId, error: genResult.error ?? 'Missing result URL' }, { status: 200 });
+    if (genResult.error) {
+      return NextResponse.json({ jobId, status: 'error', serviceId, error: genResult.error }, { status: 200 });
+    }
+
+    if (genResult.outputKind === 'text' || genResult.outputKind === 'code') {
+      if (!genResult.resultText) {
+        return NextResponse.json({ jobId, status: 'error', serviceId, error: 'Missing text output' }, { status: 200 });
+      }
+
+      return NextResponse.json({
+        jobId,
+        status: 'done',
+        serviceId,
+        outputKind: genResult.outputKind,
+        result: genResult.resultText,
+      });
+    }
+
+    if (!genResult.resultUrl) {
+      return NextResponse.json({ jobId, status: 'error', serviceId, error: 'Missing result URL' }, { status: 200 });
     }
 
     return NextResponse.json({

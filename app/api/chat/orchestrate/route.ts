@@ -15,10 +15,10 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
+import { randomUUID } from 'crypto';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 import { getAuthContext, checkDailyBudget, sanitizePrompt } from '@/lib/security/apiGuard';
-import { orchestrate, type ChatResponse } from '@/lib/chat/providerRouter';
-import { pollPrediction } from '@/lib/replicate/client';
+import { orchestrate, pollOrchestrationTask, type ChatResponse } from '@/lib/chat/providerRouter';
 import { detectIntent } from '@/lib/chat/intentDetector';
 
 export const dynamic = 'force-dynamic';
@@ -29,6 +29,7 @@ export const runtime = 'nodejs';
 const orchestrateSchema = z.object({
   // ── Core fields ──
   message: z.string().min(1).max(4000),
+  sessionId: z.string().optional(),
   serviceContext: z.string().default('global'),
   agentId: z.string().optional(),
   locale: z.string().default('en'),
@@ -73,7 +74,7 @@ export async function POST(req: NextRequest) {
 
     // ── Poll path (check status of running prediction) ───────────────
     if (data.predictionId) {
-      return handlePoll(data.predictionId, data.serviceContext);
+      return handlePoll(data.predictionId, data.sessionId);
     }
 
     // ── Auth ─────────────────────────────────────────────────────────
@@ -93,28 +94,36 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Sanitize input
-    const sanitizedMessage = sanitizePrompt(data.message);
+    const rawMessage = data.message.trim();
+    const detectedIntent = detectIntent(rawMessage, data.serviceContext);
+    const preservePrompt = detectedIntent.intent === 'image_generation'
+      || detectedIntent.intent === 'photo_edit'
+      || detectedIntent.intent === 'video_generation'
+      || detectedIntent.intent === 'avatar_generation';
+
+    // Keep generation prompts untouched to preserve deterministic prompt-to-payload mapping.
+    const routedMessage = preservePrompt ? rawMessage : sanitizePrompt(rawMessage);
+    const sessionId = data.sessionId || `session_${userId}_${randomUUID()}`;
 
     // ── Demo mode fallback ───────────────────────────────────────────
     if (data.demoMode) {
-      const detected = detectIntent(sanitizedMessage, data.serviceContext);
+      const detected = detectIntent(routedMessage, data.serviceContext);
       return NextResponse.json({
         success: true,
         intent: detected.intent,
         responseType: detected.provider === 'replicate' ? mapOutputType(data.serviceContext) : 'text',
-        message: `[Demo] Request received: "${sanitizedMessage.slice(0, 80)}…"`,
+        message: `[Demo] Request received: "${routedMessage.slice(0, 80)}…"`,
         metadata: { provider: 'demo', confidence: detected.confidence },
       } satisfies ChatResponse);
     }
 
     // ── Orchestrate (direct in-process calls, no HTTP self-fetch) ──
     const response = await orchestrate({
-      message: sanitizedMessage,
+      message: routedMessage,
       serviceContext: data.serviceContext,
       agentId: data.agentId || '',
       userId,
-      sessionId: `session_${userId}_${Date.now()}`,
+      sessionId,
       locale: data.locale,
       history: data.history,
       selectedOptions: data.selectedOptions,
@@ -153,50 +162,10 @@ export async function POST(req: NextRequest) {
 
 // ─── Poll handler ────────────────────────────────────────────────────────────
 
-async function handlePoll(predictionId: string, serviceContext: string) {
+async function handlePoll(predictionId: string, sessionId?: string) {
   try {
-    const result = await pollPrediction(predictionId);
-
-    if (result.status === 'succeeded') {
-      const output = result.output;
-      const outputUrl = extractOutputUrl(output);
-      const outputText = typeof output === 'string' ? output :
-        Array.isArray(output) && typeof output[0] === 'string' && !output[0].startsWith('http') ? output[0] : undefined;
-
-      return NextResponse.json({
-        success: true,
-        intent: 'text_chat' as const,
-        responseType: mapOutputType(serviceContext),
-        message: outputText || 'Generation complete.',
-        assetUrl: outputUrl,
-        predictionId,
-        predictionStatus: 'succeeded',
-        metadata: { provider: 'replicate', durationMs: result.metrics?.predict_time ? result.metrics.predict_time * 1000 : undefined },
-      } satisfies ChatResponse);
-    }
-
-    if (result.status === 'failed') {
-      return NextResponse.json({
-        success: false,
-        intent: 'text_chat',
-        responseType: 'text',
-        message: result.error || 'Generation failed.',
-        predictionId,
-        predictionStatus: 'failed',
-        metadata: { provider: 'replicate' },
-      } satisfies ChatResponse);
-    }
-
-    // Still processing
-    return NextResponse.json({
-      success: true,
-      intent: 'text_chat',
-      responseType: 'text',
-      message: 'Still processing…',
-      predictionId,
-      predictionStatus: result.status,
-      metadata: { provider: 'replicate' },
-    } satisfies ChatResponse);
+    const result = await pollOrchestrationTask(predictionId, sessionId);
+    return NextResponse.json(result);
   } catch (error) {
     const msg = error instanceof Error ? error.message : 'Poll failed';
     return NextResponse.json({
@@ -206,24 +175,13 @@ async function handlePoll(predictionId: string, serviceContext: string) {
       message: msg,
       predictionId,
       predictionStatus: 'error',
-      metadata: { provider: 'replicate' },
+      metadata: { provider: 'system' },
     } satisfies ChatResponse, { status: 500 });
   }
 }
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
-function extractOutputUrl(output: unknown): string | null {
-  if (typeof output === 'string' && output.startsWith('http')) return output;
-  if (Array.isArray(output)) {
-    const first = output[0];
-    if (typeof first === 'string' && first.startsWith('http')) return first;
-  }
-  return null;
-}
-
 function mapOutputType(context: string): ChatResponse['responseType'] {
-  if (['avatar', 'image', 'photo'].includes(context)) return 'image';
+  if (['avatar', 'image', 'photo', 'interior'].includes(context)) return 'image';
   if (context === 'video' || context === 'editing') return 'video';
   if (context === 'music') return 'audio';
   if (context === 'visual-ai' || context === 'visual-intel') return 'analysis';

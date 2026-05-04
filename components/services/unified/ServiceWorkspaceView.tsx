@@ -65,16 +65,23 @@ interface WorkspaceField {
   type: 'textarea' | 'select' | 'slider' | 'upload' | 'text'
   label: Record<string, string>
   placeholder?: Record<string, string>
-  options?: { value: string; label: string }[]
+  options?: WorkspaceFieldOption[]
   min?: number
   max?: number
   step?: number
   defaultValue?: string | number
 }
 
+interface WorkspaceFieldOption {
+  value: string
+  label: string
+  credits?: number
+}
+
 interface ServiceWorkspace {
   fields: WorkspaceField[]
   creditCost: number
+  creditSourceFieldId?: string
   actionLabel: Record<string, string>
   outputType: 'image' | 'video' | 'audio' | 'text' | 'mixed'
   previewHint: Record<string, string>
@@ -104,10 +111,21 @@ const SERVICE_WORKSPACES: Record<string, ServiceWorkspace> = {
   image: {
     fields: [
       { id: 'prompt', type: 'textarea', label: { en: 'Prompt', ka: 'პრომპტი', ru: 'Промпт' }, placeholder: { en: 'Describe the image you want to create...', ka: 'აღწერეთ სურათი რომლის შექმნაც გსურთ...', ru: 'Опишите изображение, которое хотите создать...' } },
+      { id: 'provider', type: 'select', label: { en: 'Provider', ka: 'პროვაიდერი', ru: 'Провайдер' }, options: [{ value: 'nanobanana', label: 'NanoBanana API' }, { value: 'replicate', label: 'Replicate (Fallback)' }], defaultValue: 'nanobanana' },
+      { id: 'nanobanana_endpoint', type: 'select', label: { en: 'NanoBanana Endpoint', ka: 'NanoBanana ენდპოინტი', ru: 'NanoBanana endpoint' }, options: [
+        { value: 'task-details', label: 'Task Details (0 credits)', credits: 0 },
+        { value: 'text-to-image', label: 'Text -> Image (4 credits)', credits: 4 },
+        { value: 'pro-1k2k', label: 'Pro 1K/2K (18 credits)', credits: 18 },
+        { value: 'pro-4k', label: 'Pro 4K (24 credits)', credits: 24 },
+        { value: 'v2-1k', label: 'V2 1K (8 credits)', credits: 8 },
+        { value: 'v2-2k', label: 'V2 2K (12 credits)', credits: 12 },
+        { value: 'v2-4k', label: 'V2 4K (18 credits)', credits: 18 },
+      ], defaultValue: 'text-to-image' },
       { id: 'style', type: 'select', label: { en: 'Style', ka: 'სტილი', ru: 'Стиль' }, options: [{ value: 'photorealistic', label: 'Photorealistic' }, { value: 'artistic', label: 'Artistic' }, { value: 'cartoon', label: 'Cartoon' }, { value: 'abstract', label: 'Abstract' }], defaultValue: 'photorealistic' },
       { id: 'aspect', type: 'select', label: { en: 'Aspect Ratio', ka: 'პროპორცია', ru: 'Пропорции' }, options: [{ value: '1:1', label: '1:1' }, { value: '16:9', label: '16:9' }, { value: '9:16', label: '9:16' }, { value: '4:3', label: '4:3' }], defaultValue: '1:1' },
     ],
     creditCost: 5,
+    creditSourceFieldId: 'nanobanana_endpoint',
     actionLabel: { en: 'Generate Image', ka: 'სურათის გენერაცია', ru: 'Создать изображение' },
     outputType: 'image',
     previewHint: { en: 'Your generated image will appear here', ka: 'სურათი აქ გამოჩნდება', ru: 'Изображение появится здесь' },
@@ -250,9 +268,21 @@ const SERVICE_WORKSPACES: Record<string, ServiceWorkspace> = {
     fields: [
       { id: 'upload', type: 'upload', label: { en: 'Upload Room Photo', ka: 'ოთახის ფოტოს ატვირთვა', ru: 'Загрузить фото комнаты' } },
       { id: 'prompt', type: 'textarea', label: { en: 'Design Brief', ka: 'დიზაინის ბრიფი', ru: 'Бриф дизайна' }, placeholder: { en: 'Describe desired interior style...', ka: 'აღწერეთ სასურველი სტილი...', ru: 'Опишите желаемый стиль...' } },
+      { id: 'provider', type: 'select', label: { en: 'Provider', ka: 'პროვაიდერი', ru: 'Провайдер' }, options: [{ value: 'nanobanana', label: 'NanoBanana API' }, { value: 'replicate', label: 'Replicate (Fallback)' }], defaultValue: 'nanobanana' },
+      { id: 'nanobanana_endpoint', type: 'select', label: { en: 'NanoBanana Endpoint', ka: 'NanoBanana ენდპოინტი', ru: 'NanoBanana endpoint' }, options: [
+        { value: 'task-details', label: 'Task Details (0 credits)', credits: 0 },
+        { value: 'text-to-image', label: 'Text -> Image (4 credits)', credits: 4 },
+        { value: 'pro-1k2k', label: 'Pro 1K/2K (18 credits)', credits: 18 },
+        { value: 'pro-4k', label: 'Pro 4K (24 credits)', credits: 24 },
+        { value: 'v2-1k', label: 'V2 1K (8 credits)', credits: 8 },
+        { value: 'v2-2k', label: 'V2 2K (12 credits)', credits: 12 },
+        { value: 'v2-4k', label: 'V2 4K (18 credits)', credits: 18 },
+      ], defaultValue: 'v2-2k' },
       { id: 'style', type: 'select', label: { en: 'Style', ka: 'სტილი', ru: 'Стиль' }, options: [{ value: 'modern', label: 'Modern' }, { value: 'minimalist', label: 'Minimalist' }, { value: 'rustic', label: 'Rustic' }, { value: 'industrial', label: 'Industrial' }], defaultValue: 'modern' },
+      { id: 'aspect', type: 'select', label: { en: 'Aspect Ratio', ka: 'პროპორცია', ru: 'Пропорции' }, options: [{ value: '16:9', label: '16:9' }, { value: '4:3', label: '4:3' }, { value: '1:1', label: '1:1' }], defaultValue: '16:9' },
     ],
     creditCost: 10,
+    creditSourceFieldId: 'nanobanana_endpoint',
     actionLabel: { en: 'Design Room', ka: 'ოთახის დიზაინი', ru: 'Дизайн' },
     outputType: 'image',
     previewHint: { en: 'Redesigned room will appear here', ka: 'დიზაინი აქ გამოჩნდება', ru: 'Дизайн появится здесь' },
@@ -569,6 +599,34 @@ function buildDownloadName(serviceId: string, kind: OutputKind) {
   return `${serviceId}-output.txt`
 }
 
+function resolveWorkspaceCreditCost(
+  workspace: ServiceWorkspace,
+  values: Record<string, string | number>,
+): number {
+  if (!workspace.creditSourceFieldId) {
+    return workspace.creditCost
+  }
+
+  if (
+    workspace.creditSourceFieldId === 'nanobanana_endpoint'
+    && String(values.provider || 'nanobanana') !== 'nanobanana'
+  ) {
+    return workspace.creditCost
+  }
+
+  const sourceField = workspace.fields.find((field) => field.id === workspace.creditSourceFieldId)
+  if (!sourceField?.options || sourceField.options.length === 0) {
+    return workspace.creditCost
+  }
+
+  const selectedValue = String(values[workspace.creditSourceFieldId] || '')
+  const selectedOption = sourceField.options.find((option) => option.value === selectedValue)
+
+  return typeof selectedOption?.credits === 'number'
+    ? selectedOption.credits
+    : workspace.creditCost
+}
+
 async function waitForEditingJob(jobId: string, onProgress?: (progress: EditingJobProgress | null) => void): Promise<JsonRecord> {
   for (let attempt = 0; attempt < 30; attempt += 1) {
     const response = await fetch(`/api/editing/jobs/${jobId}`, { cache: 'no-store' })
@@ -728,6 +786,127 @@ export default function ServiceWorkspaceView({
           title: safeServiceName,
           detail: buildPhotoPrompt(action),
           text: outputText || JSON.stringify(completedPayload, null, 2),
+        })
+        return
+      }
+
+      if (serviceId === 'image' || serviceId === 'interior') {
+        dashboardJobId = onJobStart?.(safeServiceName) ?? null
+        if (dashboardJobId) {
+          onJobProgress?.(dashboardJobId, 18)
+        }
+
+        const provider = String(values.provider || 'nanobanana').toLowerCase()
+        const endpoint = String(values.nanobanana_endpoint || 'text-to-image')
+        const style = String(values.style || (serviceId === 'interior' ? 'modern' : 'photorealistic'))
+        const aspect = String(values.aspect || (serviceId === 'interior' ? '16:9' : '1:1'))
+
+        const mediaFiles: JsonRecord[] = []
+        if (uploadedFile && uploadedFile.type.startsWith('image/')) {
+          const imageDataUrl = await readFileAsDataUrl(uploadedFile)
+          mediaFiles.push({
+            id: `upload_${Date.now()}`,
+            name: uploadedFile.name,
+            type: 'image',
+            mimeType: uploadedFile.type || 'image/jpeg',
+            dataUrl: imageDataUrl,
+          })
+        }
+
+        const payload = await postJson('/api/pipeline', {
+          action: 'generate',
+          serviceId,
+          userInput: prompt,
+          answers: {
+            provider,
+            nanobanana_endpoint: endpoint,
+            style,
+            aspect,
+          },
+          mediaFiles,
+        })
+
+        if (payload.status === 'error' || payload.error) {
+          throw new Error(extractApiError(payload))
+        }
+
+        const outputUrl = typeof payload.result_url === 'string'
+          ? payload.result_url
+          : extractOutputUrl(payload)
+
+        const outputText = typeof payload.result === 'string'
+          ? payload.result
+          : extractOutputText(payload)
+
+        if (outputUrl) {
+          publishResult(dashboardJobId, {
+            kind: 'image',
+            title: safeServiceName,
+            detail: `${provider} · ${endpoint}`,
+            url: outputUrl,
+          })
+          return
+        }
+
+        publishResult(dashboardJobId, {
+          kind: 'text',
+          title: safeServiceName,
+          detail: `${provider} · ${endpoint}`,
+          text: outputText || JSON.stringify(payload, null, 2),
+        })
+        return
+      }
+
+      if (serviceId === 'music') {
+        dashboardJobId = onJobStart?.(safeServiceName) ?? null
+        if (dashboardJobId) {
+          onJobProgress?.(dashboardJobId, 18)
+        }
+
+        const genre = String(values.genre || 'electronic')
+        const duration = String(values.duration || '60')
+
+        const payload = await postJson('/api/pipeline', {
+          action: 'generate',
+          serviceId,
+          userInput: prompt,
+          answers: {
+            provider: 'udio',
+            music_provider: 'udio',
+            lyrics_mode: 'instrumental',
+            genre,
+            style: genre,
+            duration,
+          },
+        })
+
+        if (payload.status === 'error' || payload.error) {
+          throw new Error(extractApiError(payload))
+        }
+
+        const outputUrl = typeof payload.result_url === 'string'
+          ? payload.result_url
+          : extractOutputUrl(payload)
+
+        const outputText = typeof payload.result === 'string'
+          ? payload.result
+          : extractOutputText(payload)
+
+        if (outputUrl) {
+          publishResult(dashboardJobId, {
+            kind: 'audio',
+            title: safeServiceName,
+            detail: `Udio · ${genre} · ${duration}s`,
+            url: outputUrl,
+          })
+          return
+        }
+
+        publishResult(dashboardJobId, {
+          kind: 'text',
+          title: safeServiceName,
+          detail: `Udio · ${genre} · ${duration}s`,
+          text: outputText || JSON.stringify(payload, null, 2),
         })
         return
       }
@@ -926,6 +1105,15 @@ export default function ServiceWorkspaceView({
     return true
   })()
 
+  const activeCreditCost = resolveWorkspaceCreditCost(workspace, values)
+  const selectedProvider = String(values.provider || 'nanobanana')
+  const creditSourceField = workspace.creditSourceFieldId
+    ? workspace.fields.find((field) => field.id === workspace.creditSourceFieldId)
+    : undefined
+  const selectedTierLabel = creditSourceField?.options?.find(
+    (option) => option.value === String(values[workspace.creditSourceFieldId || ''] || ''),
+  )?.label
+
   return (
     <div className="h-full w-full overflow-y-auto" style={{ background: '#0a0a0f' }}>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 space-y-6">
@@ -953,7 +1141,7 @@ export default function ServiceWorkspaceView({
             {[
               { label: ui.credits, value: String(creditsBalance), sub: ui.available },
               { label: ui.generated, value: result ? '1' : '0', sub: ui.total },
-              { label: ui.thisMonth, value: result ? String(workspace.creditCost) : '0', sub: ui.credits },
+                { label: ui.thisMonth, value: result ? String(activeCreditCost) : '0', sub: ui.credits },
               { label: ui.stats, value: result ? ui.live : '—', sub: ui.avgTime },
             ].map((stat, index) => (
               <div
@@ -1017,14 +1205,20 @@ export default function ServiceWorkspaceView({
 
                   {field.type === 'select' && (
                     <div className="relative">
+                      {(() => {
+                        const selectDisabled = field.id === 'nanobanana_endpoint' && selectedProvider !== 'nanobanana'
+                        return (
                       <select
                         value={(values[field.id] as string) || field.defaultValue || ''}
                         onChange={(event) => updateValue(field.id, event.target.value)}
+                        disabled={selectDisabled}
                         className="w-full rounded-xl px-3 py-2.5 text-sm outline-none appearance-none cursor-pointer"
                         style={{
                           background: 'rgba(255,255,255,0.04)',
                           border: '1px solid rgba(255,255,255,0.08)',
                           color: '#f8fafc',
+                          opacity: selectDisabled ? 0.55 : 1,
+                          cursor: selectDisabled ? 'not-allowed' : 'pointer',
                         }}
                       >
                         {field.options?.map((option) => (
@@ -1033,6 +1227,8 @@ export default function ServiceWorkspaceView({
                           </option>
                         ))}
                       </select>
+                        )
+                      })()}
                       <svg className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'rgba(148,163,184,0.5)' }}>
                         <path d="m6 9 6 6 6-6" />
                       </svg>
@@ -1084,12 +1280,20 @@ export default function ServiceWorkspaceView({
                   <>
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" /></svg>
                     {workspace.actionLabel[lang] || workspace.actionLabel.en}
-                    {workspace.creditCost > 0 && (
-                      <span className="ml-1 opacity-70">({workspace.creditCost} {ui.credits})</span>
+                    {activeCreditCost > 0 && (
+                      <span className="ml-1 opacity-70">({activeCreditCost} {ui.credits})</span>
                     )}
                   </>
                 )}
               </button>
+
+              {workspace.creditSourceFieldId && (
+                <p className="text-[11px]" style={{ color: 'rgba(148,163,184,0.65)' }}>
+                  {selectedProvider === 'nanobanana'
+                    ? (selectedTierLabel || 'NanoBanana tier')
+                    : `Replicate mode (${workspace.creditCost} ${ui.credits})`}
+                </p>
+              )}
             </div>
 
             {showQuickTip && (

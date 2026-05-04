@@ -1033,6 +1033,7 @@ export default function UnifiedServiceLayout({
   const cameraVideoRef = useRef<HTMLVideoElement>(null);
   const promptInputRef = useRef<HTMLTextAreaElement>(null);
   const chatPanelRef = useRef<HTMLDivElement>(null);
+  const sessionIdRef = useRef<string>(`svc_${serviceId}_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`);
   const searchParams = useSearchParams();
   const serviceContext = SERVICE_CONTEXT[serviceId] ?? 'global';
   const optionSets = SERVICE_OPTION_SETS[serviceId] ?? SERVICE_OPTION_SETS[serviceContext] ?? SERVICE_OPTION_SETS['global']!;
@@ -1059,6 +1060,10 @@ export default function UnifiedServiceLayout({
     });
     setSelectedOptions(defaults);
   }, [serviceId, optionSets]);
+
+  useEffect(() => {
+    sessionIdRef.current = `svc_${serviceId}_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+  }, [serviceId]);
 
   useEffect(() => {
     setActiveSectionId(workspaceSections[0]?.id ?? '');
@@ -1771,6 +1776,7 @@ export default function UnifiedServiceLayout({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: msg,
+          sessionId: sessionIdRef.current,
           serviceContext,
           agentId,
           locale,
@@ -1875,6 +1881,7 @@ export default function UnifiedServiceLayout({
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               message: msg,
+              sessionId: sessionIdRef.current,
               serviceContext,
               predictionId: chatResp.predictionId,
             }),

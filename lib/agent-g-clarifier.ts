@@ -1,4 +1,5 @@
 import type { ServiceId } from '@/lib/registry';
+import { getNanoBananaCreditCost, resolveNanoBananaEndpoint } from '@/lib/nanobanana/endpoints';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -167,6 +168,29 @@ export const CLARIFICATION_PROMPTS: Record<ServiceId, ClarificationFlow> = {
   image: {
     questions: [
       {
+        id: 'provider',
+        text: { ka: 'პროვაიდერი?', en: 'Provider?', ru: 'Провайдер?' },
+        type: 'chips',
+        options: [
+          { value: 'nanobanana', label: { ka: 'NanoBanana API', en: 'NanoBanana API', ru: 'NanoBanana API' }, icon: '🍌' },
+          { value: 'replicate', label: { ka: 'Replicate', en: 'Replicate', ru: 'Replicate' }, icon: '⚡' },
+        ],
+      },
+      {
+        id: 'nanobanana_endpoint',
+        text: { ka: 'NanoBanana ენდპოინტი?', en: 'NanoBanana endpoint?', ru: 'NanoBanana endpoint?' },
+        type: 'chips',
+        options: [
+          { value: 'task-details', label: { ka: 'Task დეტალები', en: 'Task Details', ru: 'Детали задачи' }, credits: 0, time: 5 },
+          { value: 'text-to-image', label: { ka: 'Text -> Image', en: 'Text -> Image', ru: 'Текст -> изображение' }, credits: 4, time: 20 },
+          { value: 'pro-1k2k', label: { ka: 'Pro 1K/2K', en: 'Pro 1K/2K', ru: 'Pro 1K/2K' }, credits: 18, time: 35 },
+          { value: 'pro-4k', label: { ka: 'Pro 4K', en: 'Pro 4K', ru: 'Pro 4K' }, credits: 24, time: 55 },
+          { value: 'v2-1k', label: { ka: 'V2 1K', en: 'V2 1K', ru: 'V2 1K' }, credits: 8, time: 24 },
+          { value: 'v2-2k', label: { ka: 'V2 2K', en: 'V2 2K', ru: 'V2 2K' }, credits: 12, time: 32 },
+          { value: 'v2-4k', label: { ka: 'V2 4K', en: 'V2 4K', ru: 'V2 4K' }, credits: 18, time: 45 },
+        ],
+      },
+      {
         id: 'style',
         text: { ka: 'ვიზუალური სტილი?', en: 'Visual style?', ru: 'Визуальный стиль?' },
         type: 'chips',
@@ -216,8 +240,27 @@ export const CLARIFICATION_PROMPTS: Record<ServiceId, ClarificationFlow> = {
         ],
       },
     ],
-    creditFormula: (a) => a.quality === 'draft' ? 3 : a.quality === 'premium' ? 12 : 6,
-    timeFormula: (a) => a.quality === 'draft' ? 10 : a.quality === 'premium' ? 50 : 25,
+    creditFormula: (a) => {
+      const provider = String(a.provider ?? 'nanobanana').toLowerCase();
+      if (provider === 'nanobanana') {
+        return getNanoBananaCreditCost(a.nanobanana_endpoint);
+      }
+      return a.quality === 'draft' ? 3 : a.quality === 'premium' ? 12 : 6;
+    },
+    timeFormula: (a) => {
+      const provider = String(a.provider ?? 'nanobanana').toLowerCase();
+      if (provider === 'nanobanana') {
+        const endpoint = resolveNanoBananaEndpoint(a.nanobanana_endpoint);
+        if (endpoint === 'task-details') return 5;
+        if (endpoint === 'text-to-image') return 20;
+        if (endpoint === 'v2-1k') return 24;
+        if (endpoint === 'v2-2k') return 32;
+        if (endpoint === 'v2-4k') return 45;
+        if (endpoint === 'pro-1k2k') return 35;
+        return 55;
+      }
+      return a.quality === 'draft' ? 10 : a.quality === 'premium' ? 50 : 25;
+    },
     buildPrompt: (input, a) => {
       const qualityTag = a.quality === 'premium'
         ? 'ultra-high detail, 8K resolution, award-winning photography'
@@ -352,6 +395,29 @@ export const CLARIFICATION_PROMPTS: Record<ServiceId, ClarificationFlow> = {
   interior: {
     questions: [
       {
+        id: 'provider',
+        text: { ka: 'პროვაიდერი?', en: 'Provider?', ru: 'Провайдер?' },
+        type: 'chips',
+        options: [
+          { value: 'nanobanana', label: { ka: 'NanoBanana API', en: 'NanoBanana API', ru: 'NanoBanana API' }, icon: '🍌' },
+          { value: 'replicate', label: { ka: 'Replicate', en: 'Replicate', ru: 'Replicate' }, icon: '⚡' },
+        ],
+      },
+      {
+        id: 'nanobanana_endpoint',
+        text: { ka: 'NanoBanana ენდპოინტი?', en: 'NanoBanana endpoint?', ru: 'NanoBanana endpoint?' },
+        type: 'chips',
+        options: [
+          { value: 'task-details', label: { ka: 'Task დეტალები', en: 'Task Details', ru: 'Детали задачи' }, credits: 0, time: 5 },
+          { value: 'text-to-image', label: { ka: 'Text -> Image', en: 'Text -> Image', ru: 'Текст -> изображение' }, credits: 4, time: 20 },
+          { value: 'pro-1k2k', label: { ka: 'Pro 1K/2K', en: 'Pro 1K/2K', ru: 'Pro 1K/2K' }, credits: 18, time: 35 },
+          { value: 'pro-4k', label: { ka: 'Pro 4K', en: 'Pro 4K', ru: 'Pro 4K' }, credits: 24, time: 55 },
+          { value: 'v2-1k', label: { ka: 'V2 1K', en: 'V2 1K', ru: 'V2 1K' }, credits: 8, time: 24 },
+          { value: 'v2-2k', label: { ka: 'V2 2K', en: 'V2 2K', ru: 'V2 2K' }, credits: 12, time: 32 },
+          { value: 'v2-4k', label: { ka: 'V2 4K', en: 'V2 4K', ru: 'V2 4K' }, credits: 18, time: 45 },
+        ],
+      },
+      {
         id: 'room_type',
         text: { ka: 'ოთახის ტიპი?', en: 'Room type?', ru: 'Тип комнаты?' },
         type: 'chips',
@@ -404,8 +470,27 @@ export const CLARIFICATION_PROMPTS: Record<ServiceId, ClarificationFlow> = {
         ],
       },
     ],
-    creditFormula: () => 8,
-    timeFormula: () => 25,
+    creditFormula: (a) => {
+      const provider = String(a.provider ?? 'nanobanana').toLowerCase();
+      if (provider === 'nanobanana') {
+        return getNanoBananaCreditCost(a.nanobanana_endpoint);
+      }
+      return 8;
+    },
+    timeFormula: (a) => {
+      const provider = String(a.provider ?? 'nanobanana').toLowerCase();
+      if (provider === 'nanobanana') {
+        const endpoint = resolveNanoBananaEndpoint(a.nanobanana_endpoint);
+        if (endpoint === 'task-details') return 5;
+        if (endpoint === 'text-to-image') return 20;
+        if (endpoint === 'v2-1k') return 24;
+        if (endpoint === 'v2-2k') return 32;
+        if (endpoint === 'v2-4k') return 45;
+        if (endpoint === 'pro-1k2k') return 35;
+        return 55;
+      }
+      return 25;
+    },
     buildPrompt: (input, a) => {
       const refNote = ''; // photo reference appended separately via media context
       return `Photorealistic 3D interior design visualization: ${a.style} style ${a.room_type} (${a.size}), ${a.color_palette} color scheme. Design requirements: ${input}. ${refNote}Architectural digest quality render, professional interior photography angle, perfect proportions, ambient and accent lighting, realistic materials and textures, no people, 16:9 format.`;

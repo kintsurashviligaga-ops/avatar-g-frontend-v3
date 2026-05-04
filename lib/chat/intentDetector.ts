@@ -59,7 +59,7 @@ const RULES: IntentRule[] = [
     intent: 'image_generation',
     provider: 'replicate',
     weight: 0.82,
-    contextBoost: ['image'],
+    contextBoost: ['image', 'interior'],
     patterns: [
       /\b(generate|create|make|render|design)\b.*\b(image|poster|thumbnail|banner|illustration|graphic|artwork)/i,
       /\b(image|poster|thumbnail|banner)\b.*\b(generat|creat|render)/i,
@@ -212,6 +212,7 @@ export function detectIntent(
     // Service-context default: if on a generative page, hint generation
     if (serviceContext === 'avatar') return { intent: 'avatar_generation', confidence: 0.55, provider: 'replicate', serviceHint: 'avatar' };
     if (serviceContext === 'image') return { intent: 'image_generation', confidence: 0.55, provider: 'replicate', serviceHint: 'image' };
+    if (serviceContext === 'interior') return { intent: 'image_generation', confidence: 0.55, provider: 'replicate', serviceHint: 'interior' };
     if (serviceContext === 'photo') return { intent: 'photo_edit', confidence: 0.55, provider: 'replicate', serviceHint: 'photo' };
     if (serviceContext === 'video') return { intent: 'video_generation', confidence: 0.55, provider: 'replicate', serviceHint: 'video' };
     if (serviceContext === 'music') return { intent: 'music_generation', confidence: 0.55, provider: 'replicate', serviceHint: 'music' };

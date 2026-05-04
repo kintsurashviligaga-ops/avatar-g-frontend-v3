@@ -34,6 +34,12 @@ export default function ServicePageClient(props: ServicePageClientProps) {
 
     const supabase = createBrowserClient();
 
+    // When Supabase env is not configured, browser client is unavailable.
+    if (!(supabase as { auth?: unknown } | null)?.auth) {
+      setIsAuthenticated(false);
+      return;
+    }
+
     supabase.auth.getSession().then(({ data }) => {
       setIsAuthenticated(!!data.session);
     });
