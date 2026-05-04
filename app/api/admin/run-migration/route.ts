@@ -18,7 +18,7 @@ function buildHeaders(apiKey: string): Record<string, string> {
 }
 
 async function executeSql(sql: string): Promise<{ ok: boolean; endpoint?: string; detail: string }> {
-  const supabaseUrl = normalize(process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL);
+  const supabaseUrl = normalize(process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL).replace(/\/+$/, '');
   const serviceRoleKey = normalize(process.env.SUPABASE_SERVICE_ROLE_KEY);
 
   if (!supabaseUrl || !serviceRoleKey) {
