@@ -49,18 +49,48 @@ const SHELL_COPY = {
     genericError: 'რაღაც ხარვეზი მოხდა. სცადე ხელახლა.',
     chatMode: 'ჩატის რეჟიმი',
     activated: 'აქტიურდა',
+    checkingStatus: 'ვამოწმებ API key-ებს და ბალანსს...',
+    statusLabel: 'სისტემის სტატუსი',
+    keysLabel: 'API key-ები',
+    balanceLabel: 'ბალანსი',
+    unavailableLabel: 'მიუწვდომელია',
+    statusError: 'სტატუსის მიღება ვერ მოხერხდა.',
   },
   en: {
     genericError: 'Something went wrong. Please try again.',
     chatMode: 'Chat Mode',
     activated: 'activated',
+    checkingStatus: 'Checking API key status and balance...',
+    statusLabel: 'System status',
+    keysLabel: 'API keys',
+    balanceLabel: 'Balance',
+    unavailableLabel: 'unavailable',
+    statusError: 'Unable to load status right now.',
   },
   ru: {
     genericError: 'Что-то пошло не так. Попробуйте снова.',
     chatMode: 'Режим чата',
     activated: 'активирован',
+    checkingStatus: 'Проверяю API-ключи и баланс...',
+    statusLabel: 'Статус системы',
+    keysLabel: 'API-ключи',
+    balanceLabel: 'Баланс',
+    unavailableLabel: 'недоступно',
+    statusError: 'Не удалось получить статус.',
   },
 } as const;
+
+type AppStatusPayload = {
+  keys?: {
+    status?: 'ready' | 'partial' | 'missing';
+    configured?: number;
+    total?: number;
+  };
+  billing?: {
+    balance?: number | null;
+    authenticated?: boolean;
+  };
+};
 
 export default function ServiceChatShell({ config, language = 'en', className = '' }: Props) {
   const router = useRouter();
@@ -159,7 +189,11 @@ export default function ServiceChatShell({ config, language = 'en', className = 
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
+      let streamError: string | null = null;
+      let streamFinished = false;
+      let streamModel: string | undefined;
 
+      outer:
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
@@ -172,11 +206,15 @@ export default function ServiceChatShell({ config, language = 'en', className = 
           if (line.startsWith('data: ')) {
             const data = line.slice(6).trim();
             if (data === '[DONE]') {
-              dispatch({ type: 'FINISH_STREAM', id: assistantId });
-              break;
+              streamFinished = true;
+              break outer;
             }
             try {
               const parsed = JSON.parse(data);
+              if (typeof parsed.error === 'string' && parsed.error.trim().length > 0) {
+                streamError = parsed.error.trim();
+                break outer;
+              }
               if (parsed.token) {
                 dispatch({ type: 'APPEND_STREAM', id: assistantId, token: parsed.token });
               }
@@ -190,6 +228,11 @@ export default function ServiceChatShell({ config, language = 'en', className = 
               if (parsed.preview) {
                 dispatch({ type: 'ADD_PREVIEW', preview: parsed.preview });
               }
+              if (parsed.done === true) {
+                streamFinished = true;
+                streamModel = typeof parsed.model === 'string' ? parsed.model : undefined;
+                break outer;
+              }
             } catch {
               // Skip malformed JSON
             }
@@ -197,7 +240,19 @@ export default function ServiceChatShell({ config, language = 'en', className = 
         }
       }
 
-      dispatch({ type: 'FINISH_STREAM', id: assistantId });
+      if (streamError) {
+        dispatch({
+          type: 'UPDATE_MESSAGE',
+          id: assistantId,
+          updates: {
+            text: streamError,
+            isStreaming: false,
+            type: 'error',
+          },
+        });
+      } else {
+        dispatch({ type: 'FINISH_STREAM', id: assistantId, model: streamModel });
+      }
     } catch (err: unknown) {
       if (err instanceof Error && err.name === 'AbortError') {
         dispatch({ type: 'FINISH_STREAM', id: assistantId });
@@ -217,6 +272,61 @@ export default function ServiceChatShell({ config, language = 'en', className = 
       abortRef.current = null;
     }
   }, [inputText, isLoading, attachments, config, agentMode, selectedOptions, language, shellCopy.genericError]);
+
+  const showRuntimeStatus = useCallback(async () => {
+    dispatch({
+      type: 'ADD_MESSAGE',
+      message: {
+        id: `sys_status_${Date.now()}`,
+        type: 'system',
+        role: 'system',
+        text: shellCopy.checkingStatus,
+        timestamp: Date.now(),
+      },
+    });
+
+    try {
+      const res = await fetch('/api/app/status', { cache: 'no-store' });
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+
+      const payload = await res.json() as AppStatusPayload;
+      const configured = typeof payload.keys?.configured === 'number' ? payload.keys.configured : 0;
+      const total = typeof payload.keys?.total === 'number' ? payload.keys.total : 0;
+      const balance = typeof payload.billing?.balance === 'number'
+        ? Math.max(0, Math.round(payload.billing.balance))
+        : null;
+
+      const summary = [
+        `${shellCopy.statusLabel}:`,
+        `${shellCopy.keysLabel}: ${configured}/${total}`,
+        `${shellCopy.balanceLabel}: ${balance === null ? shellCopy.unavailableLabel : balance}`,
+      ].join('\n');
+
+      dispatch({
+        type: 'ADD_MESSAGE',
+        message: {
+          id: `sys_status_result_${Date.now()}`,
+          type: 'system',
+          role: 'system',
+          text: summary,
+          timestamp: Date.now(),
+        },
+      });
+    } catch {
+      dispatch({
+        type: 'ADD_MESSAGE',
+        message: {
+          id: `sys_status_error_${Date.now()}`,
+          type: 'error',
+          role: 'system',
+          text: shellCopy.statusError,
+          timestamp: Date.now(),
+        },
+      });
+    }
+  }, [shellCopy]);
 
   // ─── Stop Streaming ─────────────────────────────────────────
   const stopStreaming = useCallback(() => {
@@ -278,6 +388,10 @@ export default function ServiceChatShell({ config, language = 'en', className = 
       newSession();
       return;
     }
+    if (action === 'service-status') {
+      void showRuntimeStatus();
+      return;
+    }
     if (action.startsWith('transfer-')) {
       const target = action.replace('transfer-', '');
       handleTransfer(target);
@@ -291,7 +405,7 @@ export default function ServiceChatShell({ config, language = 'en', className = 
     } else {
       sendMessage(action);
     }
-  }, [newSession, config.quickActions, language, sendMessage, handleTransfer]);
+  }, [newSession, config.quickActions, language, sendMessage, handleTransfer, showRuntimeStatus]);
 
   // ─── Handle Suggestion Click ────────────────────────────────
   const handleSuggestionClick = useCallback((text: string) => {
@@ -332,7 +446,13 @@ export default function ServiceChatShell({ config, language = 'en', className = 
       />
 
       {/* Status Bar — connection/capability indicator */}
-      <ServiceStatusBar config={config} language={language} isLoading={isLoading} agentMode={agentMode} />
+      <ServiceStatusBar
+        config={config}
+        language={language}
+        isLoading={isLoading}
+        agentMode={agentMode}
+        selectedOptions={selectedOptions}
+      />
 
       {/* Main Content Area — clean, breathable */}
       {config.slug === 'workflow' ? (
