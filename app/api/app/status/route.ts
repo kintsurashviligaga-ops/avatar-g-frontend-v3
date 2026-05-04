@@ -9,6 +9,7 @@ type KeyStatus = 'ready' | 'partial' | 'missing';
 
 const APP_KEYS = [
   { id: 'openai', env: 'OPENAI_API_KEY' },
+  { id: 'gemini', env: 'GEMINI_API_KEY' },
   { id: 'anthropic', env: 'ANTHROPIC_API_KEY' },
   { id: 'replicate', env: 'REPLICATE_API_TOKEN' },
   { id: 'nanobanana', env: 'NANOBANANA_API_KEY' },
@@ -38,23 +39,23 @@ const DEFAULT_SERVICE_PROVIDERS: readonly ProviderId[] = ['openai'];
 
 const SERVICE_PROVIDER_REQUIREMENTS: Partial<Record<string, readonly ProviderId[]>> = {
   avatar: ['openai', 'heygen', 'nanobanana', 'replicate'],
-  video: ['openai', 'ltx', 'heygen'],
-  image: ['openai', 'nanobanana', 'replicate'],
-  music: ['openai', 'udio'],
-  text: ['openai', 'anthropic'],
-  workflow: ['openai', 'replicate', 'nanobanana', 'ltx', 'heygen', 'elevenlabs', 'stripe'],
-  shop: ['openai', 'stripe'],
-  editing: ['openai', 'nanobanana', 'replicate', 'ltx'],
-  'agent-g': ['openai', 'anthropic', 'deepgram', 'elevenlabs', 'cartesia'],
-  photo: ['openai', 'nanobanana', 'replicate'],
-  media: ['openai', 'nanobanana', 'replicate', 'ltx', 'heygen', 'elevenlabs'],
-  prompt: ['openai', 'anthropic'],
-  'visual-intel': ['openai', 'anthropic'],
-  software: ['openai', 'anthropic'],
-  business: ['openai', 'anthropic'],
-  tourism: ['openai', 'anthropic'],
-  game: ['openai', 'anthropic', 'nanobanana', 'replicate'],
-  interior: ['openai', 'worldlabs'],
+  video: ['gemini', 'ltx', 'heygen'],
+  image: ['gemini', 'nanobanana', 'replicate'],
+  music: ['gemini', 'udio'],
+  text: ['gemini', 'anthropic'],
+  workflow: ['gemini', 'replicate', 'nanobanana', 'ltx', 'heygen', 'elevenlabs', 'stripe'],
+  shop: ['gemini', 'stripe'],
+  editing: ['gemini', 'nanobanana', 'replicate', 'ltx'],
+  'agent-g': ['gemini', 'anthropic', 'deepgram', 'elevenlabs', 'cartesia'],
+  photo: ['gemini', 'nanobanana', 'replicate'],
+  media: ['gemini', 'nanobanana', 'replicate', 'ltx', 'heygen', 'elevenlabs'],
+  prompt: ['gemini', 'anthropic'],
+  'visual-intel': ['gemini', 'anthropic'],
+  software: ['gemini', 'anthropic'],
+  business: ['gemini', 'anthropic'],
+  tourism: ['gemini', 'anthropic'],
+  game: ['gemini', 'anthropic', 'nanobanana', 'replicate'],
+  interior: ['gemini', 'worldlabs'],
 };
 
 function hasValue(value: string | undefined): boolean {

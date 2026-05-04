@@ -12,7 +12,7 @@ export type ProviderAuditEntry = {
 };
 
 export type ServiceRoutingAudit = {
-  category: 'audio' | 'music' | '3d' | 'video' | 'text';
+  category: 'audio' | 'music' | '3d' | 'video' | 'text' | 'code';
   provider: ProviderName;
   envKey: string;
   configured: boolean;
@@ -32,8 +32,9 @@ const ROUTING_MATRIX: Array<{ category: ServiceRoutingAudit['category']; provide
   { category: 'audio', provider: 'openai' },
   { category: 'music', provider: 'udio' },
   { category: '3d', provider: 'worldlabs' },
-  { category: 'video', provider: 'heygen' },
-  { category: 'text', provider: 'openai' },
+  { category: 'video', provider: 'ltx' },
+  { category: 'text', provider: 'gemini' },
+  { category: 'code', provider: 'anthropic' },
 ];
 
 function hasKey(provider: ProviderName): boolean {

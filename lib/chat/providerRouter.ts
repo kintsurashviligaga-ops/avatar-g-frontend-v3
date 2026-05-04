@@ -91,15 +91,53 @@ const UDIO_PREDICTION_PREFIX = 'udio:';
 
 // ─── Gemini multimodal handler ────────────────────────────────────────────────
 
-const GEMINI_MULTIMODAL_SERVICES = new Set(['interior', 'image', 'avatar', 'video']);
+const GEMINI_MULTIMODAL_SERVICES = new Set(['interior', 'image', 'avatar', 'video', 'photo']);
+
+function toGeminiServiceContext(serviceContext: string): GeminiServiceContext {
+  const normalized = String(serviceContext || '').toLowerCase();
+  switch (normalized) {
+    case 'interior':
+    case 'interior-design':
+      return 'interior';
+    case 'image':
+    case 'photo':
+      return 'image';
+    case 'video':
+      return 'video';
+    case 'music':
+      return 'music';
+    case 'voice':
+      return 'voice';
+    case 'avatar':
+      return 'avatar';
+    case 'business':
+      return 'business';
+    case 'game':
+      return 'game';
+    case 'text':
+    case 'prompt':
+    case 'content':
+      return 'text';
+    default:
+      return 'general';
+  }
+}
 
 async function handleGeminiMultimodal(input: OrchestratorInput): Promise<ChatResponse | null> {
   const hasImage = !!input.imageUrl || !!input.metadata?.imageBase64;
-  if (!hasImage || !process.env.GEMINI_API_KEY) return null;
+  const metadataAttachments = Array.isArray(input.metadata?.attachments)
+    ? input.metadata.attachments as Array<{ type?: string; mimeType?: string; data?: string }>
+    : [];
+  const supportedMetadataAttachments = metadataAttachments.filter((item) => {
+    const type = String(item.type || '').toLowerCase();
+    return type === 'image' || type === 'pdf' || type === 'video';
+  });
+  const hasExtraAttachments = supportedMetadataAttachments.length > 0;
+  if ((!hasImage && !hasExtraAttachments) || !process.env.GEMINI_API_KEY) return null;
 
   const imageBase64 = input.metadata?.imageBase64 as string | undefined;
   const mimeType = (input.metadata?.mimeType as string) ?? 'image/jpeg';
-  const ctx = (input.serviceContext ?? 'general') as GeminiServiceContext;
+  const ctx = toGeminiServiceContext(input.serviceContext);
   const systemPrompt = getGeminiSystemPrompt(ctx, input.locale ?? 'ka');
 
   const startMs = Date.now();
@@ -107,7 +145,14 @@ async function handleGeminiMultimodal(input: OrchestratorInput): Promise<ChatRes
     prompt: input.message,
     systemPrompt,
     tier: 'pro',
-    attachments: imageBase64 ? [{ type: 'image', mimeType, data: imageBase64 }] : undefined,
+    attachments: [
+      ...(imageBase64 ? [{ type: 'image' as const, mimeType, data: imageBase64 }] : []),
+      ...supportedMetadataAttachments.map((item) => ({
+        type: String(item.type).toLowerCase() as 'image' | 'pdf' | 'video',
+        mimeType: String(item.mimeType || 'application/octet-stream'),
+        data: String(item.data || ''),
+      })),
+    ],
     history: input.history?.map((h) => ({
       role: h.role === 'assistant' ? ('model' as const) : ('user' as const),
       parts: [{ text: h.content }],
@@ -123,6 +168,7 @@ async function handleGeminiMultimodal(input: OrchestratorInput): Promise<ChatRes
       provider: 'gemini',
       model: response.model,
       durationMs: Date.now() - startMs,
+      attachment_count: (imageBase64 ? 1 : 0) + (hasExtraAttachments ? supportedMetadataAttachments.length : 0),
     },
   };
 }
@@ -530,6 +576,41 @@ async function handleTextIntent(
   input: OrchestratorInput,
   detected: DetectedIntent,
 ): Promise<ChatResponse> {
+  if (process.env.GEMINI_API_KEY) {
+    try {
+      const ctx = toGeminiServiceContext(input.serviceContext);
+      const systemPrompt = getGeminiSystemPrompt(ctx, input.locale || 'ka');
+      const prefersPro = input.message.length > 1200 || input.history.length > 12 || ctx === 'interior' || ctx === 'business';
+      const gemini = await generateWithGemini({
+        prompt: input.message,
+        systemPrompt,
+        tier: prefersPro ? 'pro' : 'flash',
+        history: input.history?.map((h) => ({
+          role: h.role === 'assistant' ? ('model' as const) : ('user' as const),
+          parts: [{ text: h.content }],
+        })),
+        temperature: 0.6,
+      });
+
+      return {
+        success: true,
+        intent: detected.intent,
+        responseType: 'text',
+        message: gemini.text,
+        metadata: {
+          provider: 'gemini',
+          model: gemini.model,
+          tokensIn: gemini.tokensIn,
+          tokensOut: gemini.tokensOut,
+          confidence: detected.confidence,
+        },
+      };
+    } catch (error) {
+      // Fall back to existing chat engine path.
+      console.warn('[providerRouter] Gemini text path failed, falling back to chatEngine:', error);
+    }
+  }
+
   const agentId = input.agentId || CONTEXT_TO_AGENT[input.serviceContext] || 'main-assistant';
 
   const engineReq: ChatEngineRequest = {

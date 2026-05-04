@@ -76,10 +76,18 @@ const AGENTS: Record<string, AgentDef> = {
   'video_agent': {
     id: 'video_agent',
     name: 'Video Agent',
+    provider: 'ltx',
+    model: 'ltx-2-3-fast',
+    systemPrompt: 'You handle cinematic video generation, editing, and post-production tasks via LTX Studio.',
+    capabilities: ['video-gen', 'storyboard', 'caption', 'edit'],
+  },
+  'avatar_face_agent': {
+    id: 'avatar_face_agent',
+    name: 'Avatar Face Agent',
     provider: 'heygen',
     model: 'heygen-avatar-video',
-    systemPrompt: 'You handle video generation, editing, and post-production tasks.',
-    capabilities: ['video-gen', 'storyboard', 'caption', 'edit'],
+    systemPrompt: 'You handle realistic talking avatar generation with HeyGen.',
+    capabilities: ['avatar-video', 'talking-photo', 'human-avatar'],
   },
   'image_agent': {
     id: 'image_agent',
@@ -150,20 +158,24 @@ const AGENTS: Record<string, AgentDef> = {
 // ─── Service → Agent mapping ─────────────────────────────────────────────────
 
 const SERVICE_AGENT_MAP: Record<string, string> = {
-  avatar: 'image_agent',
+  avatar: 'avatar_face_agent',
   video: 'video_agent',
   editing: 'video_agent',
   music: 'music_agent',
   photo: 'image_agent',
   image: 'image_agent',
-  interior: process.env.GEMINI_API_KEY ? 'gemini_pro_agent' : 'interior_agent',
-  media: 'agent_g_director',
-  text: 'agent_g_director',
-  prompt: 'agent_g_director',
-  'visual-intel': 'agent_g_director',
-  workflow: 'agent_g_director',
+  interior: 'interior_agent',
+  media: process.env.GEMINI_API_KEY ? 'gemini_pro_agent' : 'agent_g_director',
+  text: process.env.GEMINI_API_KEY ? 'gemini_pro_agent' : 'agent_g_director',
+  prompt: process.env.GEMINI_API_KEY ? 'gemini_flash_agent' : 'agent_g_director',
+  'visual-intel': process.env.GEMINI_API_KEY ? 'gemini_pro_agent' : 'agent_g_director',
+  workflow: process.env.GEMINI_API_KEY ? 'gemini_pro_agent' : 'agent_g_director',
+  business: process.env.GEMINI_API_KEY ? 'gemini_pro_agent' : 'business_agent',
+  tourism: process.env.GEMINI_API_KEY ? 'gemini_flash_agent' : 'agent_g_director',
+  game: process.env.GEMINI_API_KEY ? 'gemini_pro_agent' : 'agent_g_director',
+  software: 'software_agent',
   shop: 'shop_agent',
-  'agent-g': 'agent_g_director',
+  'agent-g': process.env.GEMINI_API_KEY ? 'gemini_flash_agent' : 'agent_g_director',
 };
 
 // ─── Provider routing rules (Phase 7) ────────────────────────────────────────
@@ -188,6 +200,10 @@ function selectProvider(agentId: string, hasMediaInput: boolean): { provider: 'g
   }
 
   if (agentId === 'video_agent') {
+    return { provider: 'ltx', model: agent.model };
+  }
+
+  if (agentId === 'avatar_face_agent') {
     return { provider: 'heygen', model: agent.model };
   }
 

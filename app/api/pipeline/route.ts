@@ -16,6 +16,8 @@ import { resolveNanoBananaEndpoint } from '@/lib/nanobanana/endpoints';
 import { generateUdioTrack } from '@/lib/udio/client';
 import { generateWorldLabsInterior } from '@/lib/worldlabs/client';
 import { buildIterativePrompt } from '@/lib/chat/iteration-store';
+import { generateWithGemini } from '@/lib/gemini/client';
+import { getGeminiSystemPrompt, type GeminiServiceContext } from '@/lib/gemini/prompts';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 180;
@@ -92,6 +94,47 @@ async function generateTextWithOpenAI(systemPrompt: string, prompt: string): Pro
   });
 
   return completion.choices[0]?.message?.content?.trim() || '';
+}
+
+function toGeminiContext(serviceId: ServiceId): GeminiServiceContext {
+  switch (serviceId) {
+    case 'interior':
+      return 'interior';
+    case 'image':
+      return 'image';
+    case 'video':
+      return 'video';
+    case 'music':
+      return 'music';
+    case 'voice':
+      return 'voice';
+    case 'avatar':
+      return 'avatar';
+    case 'game':
+      return 'game';
+    case 'content-writer':
+    case 'prompt-builder':
+      return 'text';
+    default:
+      return 'general';
+  }
+}
+
+async function generateTextWithGemini(serviceId: ServiceId, locale: string, prompt: string): Promise<string> {
+  if (!process.env.GEMINI_API_KEY) {
+    throw new Error('GEMINI_API_KEY is not configured');
+  }
+
+  const context = toGeminiContext(serviceId);
+  const systemPrompt = getGeminiSystemPrompt(context, locale);
+  const prefersPro = prompt.length > 1200 || serviceId === 'game' || serviceId === 'content-writer';
+  const response = await generateWithGemini({
+    prompt,
+    systemPrompt,
+    tier: prefersPro ? 'pro' : 'flash',
+    temperature: 0.65,
+  });
+  return response.text.trim();
 }
 
 // ─── Pipeline actions ─────────────────────────────────────────────────────────
@@ -604,7 +647,7 @@ async function handleGenerate(
   });
   const effectivePrompt = iterative.prompt;
 
-  // ── Text services via Claude ──────────────────────────────────────────────
+  // ── Text services (Gemini as primary assistant brain) ─────────────────────
   const TEXT_SERVICES: ServiceId[] = ['game', 'prompt-builder', 'terminal', 'content-writer', 'podcast', 'character', 'event'];
 
   if (TEXT_SERVICES.includes(serviceId)) {
@@ -619,39 +662,94 @@ async function handleGenerate(
       event:            'You are a professional event producer and copywriter. Create comprehensive event materials including programs, MC scripts, promo copy, and invitations. Be specific, engaging, and culturally aware. Format in clean markdown.',
     };
 
-    try {
-      const result = await anthropic.messages.create({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 4096,
-        system: systemPrompts[serviceId] ?? 'You are a helpful AI assistant.',
-        messages: [{ role: 'user', content: finalPrompt }],
-      });
-      const text = result.content[0]?.type === 'text' ? result.content[0].text : '';
-      return NextResponse.json({
-        jobId, status: 'done', serviceId, outputKind,
-        result: text,
-        tokensUsed: result.usage.input_tokens + result.usage.output_tokens,
-      });
-    } catch (anthropicErr) {
+    if (serviceId === 'terminal') {
       try {
-        const text = await generateTextWithOpenAI(
-          systemPrompts[serviceId] ?? 'You are a helpful AI assistant.',
-          finalPrompt,
-        );
+        const result = await anthropic.messages.create({
+          model: 'claude-sonnet-4-6',
+          max_tokens: 4096,
+          system: systemPrompts[serviceId] ?? 'You are a helpful AI assistant.',
+          messages: [{ role: 'user', content: effectivePrompt }],
+        });
+        const text = result.content[0]?.type === 'text' ? result.content[0].text : '';
+        return NextResponse.json({
+          jobId, status: 'done', serviceId, outputKind,
+          result: text,
+          provider: 'anthropic',
+          tokensUsed: result.usage.input_tokens + result.usage.output_tokens,
+          iteration: iterative.iteration,
+        });
+      } catch (anthropicErr) {
+        try {
+          const text = await generateTextWithGemini(serviceId, locale, `${systemPrompts[serviceId]}\n\n${effectivePrompt}`);
+          return NextResponse.json({
+            jobId,
+            status: 'done',
+            serviceId,
+            outputKind,
+            result: text,
+            provider: 'gemini',
+            iteration: iterative.iteration,
+          });
+        } catch (geminiErr) {
+          const anthropicMsg = anthropicErr instanceof Error ? anthropicErr.message : 'Anthropic unavailable';
+          const geminiMsg = geminiErr instanceof Error ? geminiErr.message : 'Gemini unavailable';
+          return NextResponse.json({ jobId, status: 'error', serviceId, error: `Terminal generation unavailable: ${anthropicMsg}; ${geminiMsg}` }, { status: 200 });
+        }
+      }
+    }
 
+    try {
+      const text = await generateTextWithGemini(serviceId, locale, `${systemPrompts[serviceId]}\n\n${effectivePrompt}`);
+      return NextResponse.json({
+        jobId,
+        status: 'done',
+        serviceId,
+        outputKind,
+        result: text,
+        provider: 'gemini',
+        iteration: iterative.iteration,
+      });
+    } catch (geminiErr) {
+      try {
+        const result = await anthropic.messages.create({
+          model: 'claude-sonnet-4-6',
+          max_tokens: 4096,
+          system: systemPrompts[serviceId] ?? 'You are a helpful AI assistant.',
+          messages: [{ role: 'user', content: effectivePrompt }],
+        });
+        const text = result.content[0]?.type === 'text' ? result.content[0].text : '';
         return NextResponse.json({
           jobId,
           status: 'done',
           serviceId,
           outputKind,
           result: text,
-          provider: 'openai',
+          provider: 'anthropic',
+          tokensUsed: result.usage.input_tokens + result.usage.output_tokens,
+          iteration: iterative.iteration,
         });
-      } catch (openaiErr) {
-        const anthropicMsg = anthropicErr instanceof Error ? anthropicErr.message : 'Anthropic unavailable';
-        const openaiMsg = openaiErr instanceof Error ? openaiErr.message : 'OpenAI unavailable';
-        const msg = `Text generation unavailable: ${anthropicMsg}; ${openaiMsg}`;
-        return NextResponse.json({ jobId, status: 'error', serviceId, error: msg }, { status: 200 });
+      } catch (anthropicErr) {
+        try {
+          const text = await generateTextWithOpenAI(
+            systemPrompts[serviceId] ?? 'You are a helpful AI assistant.',
+            effectivePrompt,
+          );
+          return NextResponse.json({
+            jobId,
+            status: 'done',
+            serviceId,
+            outputKind,
+            result: text,
+            provider: 'openai',
+            iteration: iterative.iteration,
+          });
+        } catch (openaiErr) {
+          const geminiMsg = geminiErr instanceof Error ? geminiErr.message : 'Gemini unavailable';
+          const anthropicMsg = anthropicErr instanceof Error ? anthropicErr.message : 'Anthropic unavailable';
+          const openaiMsg = openaiErr instanceof Error ? openaiErr.message : 'OpenAI unavailable';
+          const msg = `Text generation unavailable: ${geminiMsg}; ${anthropicMsg}; ${openaiMsg}`;
+          return NextResponse.json({ jobId, status: 'error', serviceId, error: msg }, { status: 200 });
+        }
       }
     }
   }
