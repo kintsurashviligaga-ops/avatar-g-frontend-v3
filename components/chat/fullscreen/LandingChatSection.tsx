@@ -44,6 +44,29 @@ type ApiReply = {
   meta?: { detectedEmotion: string; styleHints: string[]; voiceHint: string }
 }
 
+type SpeechRecognitionResultLike = {
+  results: ArrayLike<ArrayLike<{ transcript: string }>>
+}
+
+type SpeechRecognitionLike = {
+  continuous: boolean
+  interimResults: boolean
+  lang: string
+  onstart: (() => void) | null
+  onresult: ((event: SpeechRecognitionResultLike) => void) | null
+  onerror: (() => void) | null
+  onend: (() => void) | null
+  start: () => void
+  stop: () => void
+}
+
+type SpeechRecognitionCtor = new () => SpeechRecognitionLike
+
+type WindowWithSpeechRecognition = Window & {
+  SpeechRecognition?: SpeechRecognitionCtor
+  webkitSpeechRecognition?: SpeechRecognitionCtor
+}
+
 const SECTION_LABELS = {
   en: {
     eyebrow: 'AI Assistant',
@@ -180,11 +203,11 @@ export function LandingChatSection() {
   }, [])
 
   /* ── VOICE ── */
-  const recognitionRef = useRef<SpeechRecognition | null>(null)
+  const recognitionRef = useRef<SpeechRecognitionLike | null>(null)
   const handleVoice = useCallback(() => {
     if (voiceStatus === 'listening') { recognitionRef.current?.stop(); setVoiceStatus('idle'); return }
-    const SR = (window as unknown as Record<string, unknown>).SpeechRecognition as typeof window.SpeechRecognition | undefined
-      ?? (window as unknown as Record<string, unknown>).webkitSpeechRecognition as typeof window.SpeechRecognition | undefined
+    const speechWindow = window as WindowWithSpeechRecognition
+    const SR = speechWindow.SpeechRecognition ?? speechWindow.webkitSpeechRecognition
     if (!SR) { setVoiceStatus('error'); setTimeout(() => setVoiceStatus('idle'), 2000); return }
     setVoiceStatus('requesting_permission')
     const rec = new SR(); rec.continuous = false; rec.interimResults = false

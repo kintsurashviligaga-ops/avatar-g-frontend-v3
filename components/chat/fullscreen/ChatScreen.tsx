@@ -43,6 +43,29 @@ type ApiReply = {
   meta?: { detectedEmotion: string; styleHints: string[]; voiceHint: string }
 }
 
+type SpeechRecognitionResultLike = {
+  results: ArrayLike<ArrayLike<{ transcript: string }>>
+}
+
+type SpeechRecognitionLike = {
+  continuous: boolean
+  interimResults: boolean
+  lang: string
+  onstart: (() => void) | null
+  onresult: ((event: SpeechRecognitionResultLike) => void) | null
+  onerror: (() => void) | null
+  onend: (() => void) | null
+  start: () => void
+  stop: () => void
+}
+
+type SpeechRecognitionCtor = new () => SpeechRecognitionLike
+
+type WindowWithSpeechRecognition = Window & {
+  SpeechRecognition?: SpeechRecognitionCtor
+  webkitSpeechRecognition?: SpeechRecognitionCtor
+}
+
 export function ChatScreen() {
   const pathname = usePathname()
   const { language } = useLanguage()
@@ -233,7 +256,7 @@ export function ChatScreen() {
   }, [])
 
   /* ── VOICE (speech-to-text) ── */
-  const recognitionRef = useRef<SpeechRecognition | null>(null)
+  const recognitionRef = useRef<SpeechRecognitionLike | null>(null)
 
   const handleVoice = useCallback(() => {
     // Toggle off if currently listening
@@ -243,8 +266,8 @@ export function ChatScreen() {
       return
     }
 
-    const SpeechRecognition = (window as unknown as Record<string, unknown>).SpeechRecognition as typeof window.SpeechRecognition | undefined
-      ?? (window as unknown as Record<string, unknown>).webkitSpeechRecognition as typeof window.SpeechRecognition | undefined
+    const speechWindow = window as WindowWithSpeechRecognition
+    const SpeechRecognition = speechWindow.SpeechRecognition ?? speechWindow.webkitSpeechRecognition
 
     if (!SpeechRecognition) {
       setVoiceStatus('error')
