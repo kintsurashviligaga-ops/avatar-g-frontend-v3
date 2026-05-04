@@ -30,9 +30,10 @@ interface Props {
   isLoading: boolean;
   agentMode: AgentMode;
   selectedOptions: Record<string, unknown>;
+  onOpenRuntimeStatus?: () => void;
 }
 
-export function ServiceStatusBar({ config, language, isLoading, agentMode, selectedOptions }: Props) {
+export function ServiceStatusBar({ config, language, isLoading, agentMode, selectedOptions, onOpenRuntimeStatus }: Props) {
   const lang = (language || 'en') as 'en' | 'ka' | 'ru';
   const isAgent = agentMode === 'agent';
   const panelCount = config.toolPanels.length;
@@ -137,24 +138,30 @@ export function ServiceStatusBar({ config, language, isLoading, agentMode, selec
       {/* Right: Capability badges */}
       <div className="flex items-center gap-2.5">
         {typeof configuredKeys === 'number' && typeof totalKeys === 'number' && (
-          <span
+          <button
+            type="button"
             data-testid="service-keys-status"
-            className="text-[9px] font-medium flex items-center gap-1"
-            style={{ color: keyColor, opacity: 0.75 }}
+            onClick={onOpenRuntimeStatus}
+            className="text-[9px] font-medium flex items-center gap-1 rounded-md px-1"
+            style={{ color: keyColor, opacity: 0.75, cursor: onOpenRuntimeStatus ? 'pointer' : 'default' }}
+            title={onOpenRuntimeStatus ? 'Open runtime status details' : undefined}
           >
             <KeyRound className="w-2.5 h-2.5" />
             {keysLabel} {configuredKeys}/{totalKeys}
-          </span>
+          </button>
         )}
         {typeof balance === 'number' && (
-          <span
+          <button
+            type="button"
             data-testid="service-balance-status"
-            className="text-[9px] font-medium flex items-center gap-1"
-            style={{ color: 'var(--color-text-tertiary)', opacity: 0.7 }}
+            onClick={onOpenRuntimeStatus}
+            className="text-[9px] font-medium flex items-center gap-1 rounded-md px-1"
+            style={{ color: 'var(--color-text-tertiary)', opacity: 0.7, cursor: onOpenRuntimeStatus ? 'pointer' : 'default' }}
+            title={onOpenRuntimeStatus ? 'Open runtime status details' : undefined}
           >
             <Wallet className="w-2.5 h-2.5" />
             {balanceLabel} {Math.max(0, Math.round(balance))} {creditsLabel}
-          </span>
+          </button>
         )}
         {panelCount > 0 && (
           <span className="text-[9px] font-medium flex items-center gap-1" style={{ color: 'var(--color-text-tertiary)', opacity: 0.5 }}>

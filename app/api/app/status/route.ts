@@ -50,11 +50,12 @@ export async function GET() {
 
   let balance: number | null = null;
   let plan: string | null = null;
+  let resetAt: string | null = null;
 
   if (user) {
     const [{ data: creditsRow }, { data: userCreditsRow }, { data: subscriptionRow }] = await Promise.all([
-      supabase.from('credits').select('balance').eq('user_id', user.id).maybeSingle(),
-      supabase.from('user_credits').select('balance').eq('user_id', user.id).maybeSingle(),
+      supabase.from('credits').select('balance, reset_at').eq('user_id', user.id).maybeSingle(),
+      supabase.from('user_credits').select('balance, plan_id, period_end').eq('user_id', user.id).maybeSingle(),
       supabase.from('subscriptions').select('plan').eq('user_id', user.id).maybeSingle(),
     ]);
 
@@ -68,7 +69,17 @@ export async function GET() {
       }
     }
 
-    plan = typeof subscriptionRow?.plan === 'string' ? subscriptionRow.plan : null;
+    plan = typeof subscriptionRow?.plan === 'string'
+      ? subscriptionRow.plan
+      : typeof userCreditsRow?.plan_id === 'string'
+        ? userCreditsRow.plan_id
+        : null;
+
+    resetAt = typeof creditsRow?.reset_at === 'string'
+      ? creditsRow.reset_at
+      : typeof userCreditsRow?.period_end === 'string'
+        ? userCreditsRow.period_end
+        : null;
   }
 
   return NextResponse.json({
@@ -82,6 +93,7 @@ export async function GET() {
       authenticated: Boolean(user),
       balance,
       plan,
+      resetAt,
     },
   });
 }

@@ -21,7 +21,7 @@
  * Same premium design language, different functionality.
  */
 
-import { useReducer, useCallback, useRef, useEffect } from 'react';
+import { useReducer, useCallback, useRef, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
 import type { ServiceChatConfig, ServiceChatMessage, AgentMode } from './types';
@@ -36,6 +36,7 @@ import { ServicePreviewPanel } from './ServicePreviewPanel';
 import { ServiceTransferBar } from './ServiceTransferBar';
 import { ServiceComposer } from './ServiceComposer';
 import { ServiceStatusBar } from './ServiceStatusBar';
+import { ServiceRuntimeStatusPanel, type RuntimeStatusData } from './ServiceRuntimeStatusPanel';
 import WorkflowBuilder from '@/components/workflow/WorkflowBuilder';
 
 interface Props {
@@ -85,10 +86,13 @@ type AppStatusPayload = {
     status?: 'ready' | 'partial' | 'missing';
     configured?: number;
     total?: number;
+    providers?: Array<{ id?: string; configured?: boolean }>;
   };
   billing?: {
     balance?: number | null;
     authenticated?: boolean;
+    plan?: string | null;
+    resetAt?: string | null;
   };
 };
 
@@ -110,6 +114,11 @@ export default function ServiceChatShell({ config, language = 'en', className = 
     showHamburger, showToolPanel, activeToolPanel,
     selectedOptions, attachments, previews, isRecording,
   } = state;
+
+  const [runtimeStatusOpen, setRuntimeStatusOpen] = useState(false);
+  const [runtimeStatusLoading, setRuntimeStatusLoading] = useState(false);
+  const [runtimeStatusError, setRuntimeStatusError] = useState<string | null>(null);
+  const [runtimeStatus, setRuntimeStatus] = useState<RuntimeStatusData | null>(null);
 
   const hasMessages = messages.length > 0;
   const hasResults = previews.length > 0 || messages.some((m) => m.type === 'result');
@@ -273,17 +282,9 @@ export default function ServiceChatShell({ config, language = 'en', className = 
     }
   }, [inputText, isLoading, attachments, config, agentMode, selectedOptions, language, shellCopy.genericError]);
 
-  const showRuntimeStatus = useCallback(async () => {
-    dispatch({
-      type: 'ADD_MESSAGE',
-      message: {
-        id: `sys_status_${Date.now()}`,
-        type: 'system',
-        role: 'system',
-        text: shellCopy.checkingStatus,
-        timestamp: Date.now(),
-      },
-    });
+  const loadRuntimeStatus = useCallback(async () => {
+    setRuntimeStatusLoading(true);
+    setRuntimeStatusError(null);
 
     try {
       const res = await fetch('/api/app/status', { cache: 'no-store' });
@@ -294,39 +295,55 @@ export default function ServiceChatShell({ config, language = 'en', className = 
       const payload = await res.json() as AppStatusPayload;
       const configured = typeof payload.keys?.configured === 'number' ? payload.keys.configured : 0;
       const total = typeof payload.keys?.total === 'number' ? payload.keys.total : 0;
+      const status = payload.keys?.status === 'ready' || payload.keys?.status === 'partial' || payload.keys?.status === 'missing'
+        ? payload.keys.status
+        : configured <= 0
+          ? 'missing'
+          : configured >= total
+            ? 'ready'
+            : 'partial';
+
+      const providers = Array.isArray(payload.keys?.providers)
+        ? payload.keys.providers
+          .filter((provider): provider is { id: string; configured: boolean } => (
+            Boolean(provider)
+            && typeof provider?.id === 'string'
+            && typeof provider?.configured === 'boolean'
+          ))
+        : [];
+
       const balance = typeof payload.billing?.balance === 'number'
         ? Math.max(0, Math.round(payload.billing.balance))
         : null;
 
-      const summary = [
-        `${shellCopy.statusLabel}:`,
-        `${shellCopy.keysLabel}: ${configured}/${total}`,
-        `${shellCopy.balanceLabel}: ${balance === null ? shellCopy.unavailableLabel : balance}`,
-      ].join('\n');
+      const plan = typeof payload.billing?.plan === 'string' ? payload.billing.plan : null;
+      const resetAt = typeof payload.billing?.resetAt === 'string' ? payload.billing.resetAt : null;
 
-      dispatch({
-        type: 'ADD_MESSAGE',
-        message: {
-          id: `sys_status_result_${Date.now()}`,
-          type: 'system',
-          role: 'system',
-          text: summary,
-          timestamp: Date.now(),
+      setRuntimeStatus({
+        keys: {
+          status,
+          configured,
+          total,
+          providers,
+        },
+        billing: {
+          authenticated: Boolean(payload.billing?.authenticated),
+          balance,
+          plan,
+          resetAt,
         },
       });
     } catch {
-      dispatch({
-        type: 'ADD_MESSAGE',
-        message: {
-          id: `sys_status_error_${Date.now()}`,
-          type: 'error',
-          role: 'system',
-          text: shellCopy.statusError,
-          timestamp: Date.now(),
-        },
-      });
+      setRuntimeStatusError(shellCopy.statusError);
+    } finally {
+      setRuntimeStatusLoading(false);
     }
-  }, [shellCopy]);
+  }, [shellCopy.statusError]);
+
+  const showRuntimeStatus = useCallback(() => {
+    setRuntimeStatusOpen(true);
+    void loadRuntimeStatus();
+  }, [loadRuntimeStatus]);
 
   // ─── Stop Streaming ─────────────────────────────────────────
   const stopStreaming = useCallback(() => {
@@ -452,6 +469,19 @@ export default function ServiceChatShell({ config, language = 'en', className = 
         isLoading={isLoading}
         agentMode={agentMode}
         selectedOptions={selectedOptions}
+        onOpenRuntimeStatus={showRuntimeStatus}
+      />
+
+      <ServiceRuntimeStatusPanel
+        language={language}
+        isOpen={runtimeStatusOpen}
+        isLoading={runtimeStatusLoading}
+        error={runtimeStatusError}
+        status={runtimeStatus}
+        onRefresh={() => {
+          void loadRuntimeStatus();
+        }}
+        onClose={() => setRuntimeStatusOpen(false)}
       />
 
       {/* Main Content Area — clean, breathable */}
