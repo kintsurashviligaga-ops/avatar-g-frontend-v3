@@ -464,11 +464,6 @@ async function generateInterior(
   creditsRemaining?: number | null;
   adminAlertTriggered?: boolean;
 }> {
-  const provider = String(answers.provider ?? 'worldlabs').toLowerCase();
-  if (provider === 'replicate' || provider === 'nanobanana') {
-    return generateImage(prompt, answers, mediaFiles);
-  }
-
   const imageFile = mediaFiles.find((file) => file.type === 'image');
   if (!imageFile?.dataUrl) {
     return { outputKind: 'text', error: 'Upload a clear room photo before starting 3D interior generation.' };

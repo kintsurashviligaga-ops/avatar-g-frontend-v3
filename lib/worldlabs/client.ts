@@ -20,11 +20,6 @@ function getWorldLabsApiKey(): string {
     return direct;
   }
 
-  const fallback = String(process.env.LTX_VIDEO_API_KEY || '').trim();
-  if (fallback) {
-    return fallback;
-  }
-
   throw new Error('WORLDLABS_API_KEY is not configured');
 }
 

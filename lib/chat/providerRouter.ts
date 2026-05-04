@@ -91,7 +91,7 @@ const UDIO_PREDICTION_PREFIX = 'udio:';
 
 // ─── Gemini multimodal handler ────────────────────────────────────────────────
 
-const GEMINI_MULTIMODAL_SERVICES = new Set(['interior', 'image', 'avatar', 'video', 'photo']);
+const GEMINI_MULTIMODAL_SERVICES = new Set(['image', 'avatar', 'video', 'photo']);
 
 function toGeminiServiceContext(serviceContext: string): GeminiServiceContext {
   const normalized = String(serviceContext || '').toLowerCase();
@@ -179,14 +179,14 @@ export async function orchestrate(
   input: OrchestratorInput,
   _baseUrl?: string,
 ): Promise<ChatResponse> {
+  if (shouldRouteInteriorToWorldLabs(input)) {
+    return handleInteriorIntent(input);
+  }
+
   // Gemini multimodal path for image-bearing requests on supported services
   if (GEMINI_MULTIMODAL_SERVICES.has(input.serviceContext)) {
     const geminiResponse = await handleGeminiMultimodal(input);
     if (geminiResponse) return geminiResponse;
-  }
-
-  if (shouldRouteInteriorToWorldLabs(input)) {
-    return handleInteriorIntent(input);
   }
 
   // 1. Detect intent
