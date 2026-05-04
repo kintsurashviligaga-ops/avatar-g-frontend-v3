@@ -17,43 +17,74 @@ function buildHeaders(apiKey: string): Record<string, string> {
   };
 }
 
+function extractProjectRef(supabaseUrl: string): string | null {
+  const match = supabaseUrl.match(/https?:\/\/([^.]+)\.supabase\.co/);
+  return match ? match[1] ?? null : null;
+}
+
 async function executeSql(sql: string): Promise<{ ok: boolean; endpoint?: string; detail: string }> {
   const supabaseUrl = normalize(process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL).replace(/\/+$/, '');
   const serviceRoleKey = normalize(process.env.SUPABASE_SERVICE_ROLE_KEY);
+  const accessToken = normalize(process.env.SUPABASE_ACCESS_TOKEN);
 
-  if (!supabaseUrl || !serviceRoleKey) {
-    return { ok: false, detail: 'Missing SUPABASE_URL/NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY' };
+  if (!supabaseUrl) {
+    return { ok: false, detail: 'Missing SUPABASE_URL or NEXT_PUBLIC_SUPABASE_URL' };
   }
 
-  const endpoints = [
-    { url: `${supabaseUrl}/pg/v1/query`, body: { query: sql } },
-    { url: `${supabaseUrl}/rest/v1/rpc/exec_sql`, body: { query: sql } },
-    { url: `${supabaseUrl}/rest/v1/rpc/query`, body: { query: sql } },
-  ];
-
   const errors: string[] = [];
-  for (const attempt of endpoints) {
-    try {
-      const res = await fetch(attempt.url, {
-        method: 'POST',
-        headers: buildHeaders(serviceRoleKey),
-        body: JSON.stringify(attempt.body),
-        cache: 'no-store',
-      });
-      if (res.ok) {
-        return { ok: true, endpoint: attempt.url, detail: 'Migration SQL executed' };
+
+  // Primary: Supabase Management API (requires PAT)
+  if (accessToken) {
+    const ref = extractProjectRef(supabaseUrl);
+    if (ref) {
+      const mgmtUrl = `https://api.supabase.com/v1/projects/${ref}/database/query`;
+      try {
+        const res = await fetch(mgmtUrl, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query: sql }),
+          cache: 'no-store',
+        });
+        if (res.ok) {
+          return { ok: true, endpoint: mgmtUrl, detail: 'Migration SQL executed via Management API' };
+        }
+        const body = await res.text();
+        errors.push(`${mgmtUrl} => ${res.status} ${body.slice(0, 240)}`);
+      } catch (error) {
+        errors.push(`${mgmtUrl} => ${error instanceof Error ? error.message : 'request failed'}`);
       }
-      const body = await res.text();
-      errors.push(`${attempt.url} => ${res.status} ${body.slice(0, 180)}`);
-    } catch (error) {
-      errors.push(`${attempt.url} => ${error instanceof Error ? error.message : 'request failed'}`);
     }
   }
 
-  return {
-    ok: false,
-    detail: errors.join(' | '),
-  };
+  // Fallback: project REST API with service role key
+  if (serviceRoleKey) {
+    const fallbackEndpoints = [
+      { url: `${supabaseUrl}/rest/v1/rpc/exec_sql`, body: { query: sql } },
+    ];
+    for (const attempt of fallbackEndpoints) {
+      try {
+        const res = await fetch(attempt.url, {
+          method: 'POST',
+          headers: buildHeaders(serviceRoleKey),
+          body: JSON.stringify(attempt.body),
+          cache: 'no-store',
+        });
+        if (res.ok) {
+          return { ok: true, endpoint: attempt.url, detail: 'Migration SQL executed via REST RPC' };
+        }
+        const body = await res.text();
+        errors.push(`${attempt.url} => ${res.status} ${body.slice(0, 180)}`);
+      } catch (error) {
+        errors.push(`${attempt.url} => ${error instanceof Error ? error.message : 'request failed'}`);
+      }
+    }
+  }
+
+  if (!accessToken && !serviceRoleKey) {
+    return { ok: false, detail: 'No SUPABASE_ACCESS_TOKEN or SUPABASE_SERVICE_ROLE_KEY configured' };
+  }
+
+  return { ok: false, detail: errors.join(' | ') };
 }
 
 async function loadMigrationSql(): Promise<string> {
