@@ -3,6 +3,15 @@
 import { AnimatePresence, motion } from 'framer-motion';
 import { CheckCircle2, AlertTriangle, KeyRound, Wallet, RotateCw, X, CalendarDays } from 'lucide-react';
 
+export type RuntimeServiceStatus = {
+  slug: string;
+  name: string;
+  status: 'ready' | 'partial' | 'missing';
+  configured: number;
+  total: number;
+  providers: Array<{ id: string; configured: boolean }>;
+};
+
 export type RuntimeStatusData = {
   keys: {
     status: 'ready' | 'partial' | 'missing';
@@ -10,6 +19,8 @@ export type RuntimeStatusData = {
     total: number;
     providers: Array<{ id: string; configured: boolean }>;
   };
+  currentService: RuntimeServiceStatus | null;
+  services: RuntimeServiceStatus[];
   billing: {
     authenticated: boolean;
     balance: number | null;
@@ -34,6 +45,9 @@ const COPY = {
     loading: 'Loading latest status...',
     keys: 'API Keys',
     providers: 'Providers',
+    serviceKeys: 'Service API Keys',
+    forService: 'For Service',
+    allServices: 'Service Matrix',
     billing: 'Billing',
     plan: 'Plan',
     balance: 'Balance',
@@ -47,6 +61,9 @@ const COPY = {
     loading: 'სტატუსის განახლება...',
     keys: 'API ქიები',
     providers: 'პროვაიდერები',
+    serviceKeys: 'სერვისის API ქიები',
+    forService: 'სერვისი',
+    allServices: 'სერვისების მატრიცა',
     billing: 'ბილინგი',
     plan: 'პლანი',
     balance: 'ბალანსი',
@@ -60,6 +77,9 @@ const COPY = {
     loading: 'Обновляем статус...',
     keys: 'API-ключи',
     providers: 'Провайдеры',
+    serviceKeys: 'API-ключи сервиса',
+    forService: 'Сервис',
+    allServices: 'Матрица сервисов',
     billing: 'Биллинг',
     plan: 'План',
     balance: 'Баланс',
@@ -74,6 +94,7 @@ const PROVIDER_LABELS: Record<string, string> = {
   openai: 'OpenAI',
   anthropic: 'Anthropic',
   replicate: 'Replicate',
+  nanobanana: 'NanoBanana',
   deepgram: 'Deepgram',
   elevenlabs: 'ElevenLabs',
   cartesia: 'Cartesia',
@@ -106,6 +127,18 @@ function normalizePlan(plan: string | null, fallback: string): string {
   }
 
   return plan.replaceAll('_', ' ').toUpperCase();
+}
+
+function statusColor(status: 'ready' | 'partial' | 'missing'): string {
+  if (status === 'ready') {
+    return '#86efac';
+  }
+
+  if (status === 'partial') {
+    return '#fcd34d';
+  }
+
+  return '#fca5a5';
 }
 
 export function ServiceRuntimeStatusPanel({
@@ -177,13 +210,14 @@ export function ServiceRuntimeStatusPanel({
             )}
 
             {status && (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+              <div className="space-y-2.5">
+                <div className={`grid grid-cols-1 gap-2.5 ${status.currentService ? 'md:grid-cols-3' : 'md:grid-cols-2'}`}>
                 <div className="rounded-xl p-2.5 space-y-2" style={{ border: '1px solid var(--color-border)', background: 'rgba(255,255,255,0.02)' }}>
                   <div className="flex items-center justify-between">
                     <span className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: 'var(--color-text-tertiary)' }}>
                       {t.keys}
                     </span>
-                    <span className="text-[11px] font-medium" style={{ color: status.keys.status === 'ready' ? '#86efac' : status.keys.status === 'partial' ? '#fcd34d' : '#fca5a5' }}>
+                    <span className="text-[11px] font-medium" style={{ color: statusColor(status.keys.status) }}>
                       {status.keys.configured}/{status.keys.total}
                     </span>
                   </div>
@@ -208,6 +242,41 @@ export function ServiceRuntimeStatusPanel({
                     </div>
                   </div>
                 </div>
+
+                {status.currentService && (
+                  <div className="rounded-xl p-2.5 space-y-2" style={{ border: '1px solid var(--color-border)', background: 'rgba(255,255,255,0.02)' }}>
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: 'var(--color-text-tertiary)' }}>
+                        {t.serviceKeys}
+                      </span>
+                      <span className="text-[11px] font-medium" style={{ color: statusColor(status.currentService.status) }}>
+                        {status.currentService.configured}/{status.currentService.total}
+                      </span>
+                    </div>
+
+                    <div className="space-y-1">
+                      <p className="text-[10px]" style={{ color: 'var(--color-text-tertiary)' }}>
+                        {t.forService}: {status.currentService.name}
+                      </p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {status.currentService.providers.map((provider) => (
+                          <span
+                            key={`${status.currentService?.slug}_${provider.id}`}
+                            className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[10px]"
+                            style={{
+                              border: '1px solid var(--color-border)',
+                              color: provider.configured ? '#86efac' : '#fca5a5',
+                              background: provider.configured ? 'rgba(20,83,45,0.25)' : 'rgba(127,29,29,0.2)',
+                            }}
+                          >
+                            {provider.configured ? <CheckCircle2 className="w-3 h-3" /> : <AlertTriangle className="w-3 h-3" />}
+                            {PROVIDER_LABELS[provider.id] || provider.id}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 <div className="rounded-xl p-2.5 space-y-2" style={{ border: '1px solid var(--color-border)', background: 'rgba(255,255,255,0.02)' }}>
                   <div className="flex items-center gap-1.5">
@@ -241,6 +310,34 @@ export function ServiceRuntimeStatusPanel({
                     </p>
                   )}
                 </div>
+
+                </div>
+
+                {status.services.length > 0 && (
+                  <div className="rounded-xl p-2.5 space-y-2" style={{ border: '1px solid var(--color-border)', background: 'rgba(255,255,255,0.02)' }}>
+                    <p className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: 'var(--color-text-tertiary)' }}>
+                      {t.allServices}
+                    </p>
+
+                    <div className="max-h-44 overflow-auto pr-1 space-y-1.5">
+                      {status.services.map((serviceStatus) => (
+                        <div
+                          key={serviceStatus.slug}
+                          className="rounded-md px-2 py-1.5 flex items-center justify-between text-[10px]"
+                          style={{ border: '1px solid var(--color-border)', background: 'rgba(255,255,255,0.01)' }}
+                          title={serviceStatus.providers.map((provider) => PROVIDER_LABELS[provider.id] || provider.id).join(', ')}
+                        >
+                          <span style={{ color: 'var(--color-text-secondary)' }}>
+                            {serviceStatus.name}
+                          </span>
+                          <span style={{ color: statusColor(serviceStatus.status) }}>
+                            {serviceStatus.configured}/{serviceStatus.total}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>

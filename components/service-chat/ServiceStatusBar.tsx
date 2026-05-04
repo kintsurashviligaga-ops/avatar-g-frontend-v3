@@ -19,6 +19,11 @@ type AppStatusResponse = {
     configured?: number;
     total?: number;
   };
+  currentService?: {
+    status?: KeyStatus;
+    configured?: number;
+    total?: number;
+  } | null;
   billing?: {
     balance?: number | null;
   };
@@ -50,7 +55,7 @@ export function ServiceStatusBar({ config, language, isLoading, agentMode, selec
 
     const loadStatus = async () => {
       try {
-        const response = await fetch('/api/app/status', {
+        const response = await fetch(`/api/app/status?service=${encodeURIComponent(config.slug)}`, {
           cache: 'no-store',
           signal: controller.signal,
         });
@@ -65,9 +70,10 @@ export function ServiceStatusBar({ config, language, isLoading, agentMode, selec
           return;
         }
 
-        const configured = typeof payload.keys?.configured === 'number' ? payload.keys.configured : null;
-        const total = typeof payload.keys?.total === 'number' ? payload.keys.total : null;
-        const status = payload.keys?.status;
+        const source = payload.currentService || payload.keys;
+        const configured = typeof source?.configured === 'number' ? source.configured : null;
+        const total = typeof source?.total === 'number' ? source.total : null;
+        const status = source?.status;
         const billingBalance = typeof payload.billing?.balance === 'number' ? payload.billing.balance : null;
 
         setConfiguredKeys(configured);
@@ -89,7 +95,7 @@ export function ServiceStatusBar({ config, language, isLoading, agentMode, selec
       controller.abort();
       window.clearInterval(interval);
     };
-  }, []);
+  }, [config.slug]);
 
   const readyLabel = lang === 'ka' ? 'მზადაა' : lang === 'ru' ? 'Готово' : 'Ready';
   const processingLabel = lang === 'ka' ? 'მუშავდება...' : lang === 'ru' ? 'Обработка...' : 'Processing...';

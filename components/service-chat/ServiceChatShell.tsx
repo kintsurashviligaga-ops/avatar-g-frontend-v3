@@ -36,7 +36,7 @@ import { ServicePreviewPanel } from './ServicePreviewPanel';
 import { ServiceTransferBar } from './ServiceTransferBar';
 import { ServiceComposer } from './ServiceComposer';
 import { ServiceStatusBar } from './ServiceStatusBar';
-import { ServiceRuntimeStatusPanel, type RuntimeStatusData } from './ServiceRuntimeStatusPanel';
+import { ServiceRuntimeStatusPanel, type RuntimeStatusData, type RuntimeServiceStatus } from './ServiceRuntimeStatusPanel';
 import WorkflowBuilder from '@/components/workflow/WorkflowBuilder';
 
 interface Props {
@@ -94,6 +94,17 @@ type AppStatusPayload = {
     plan?: string | null;
     resetAt?: string | null;
   };
+  currentService?: AppServiceStatusPayload | null;
+  services?: AppServiceStatusPayload[];
+};
+
+type AppServiceStatusPayload = {
+  slug?: string;
+  name?: string;
+  status?: 'ready' | 'partial' | 'missing';
+  configured?: number;
+  total?: number;
+  providers?: Array<{ id?: string; configured?: boolean }>;
 };
 
 export default function ServiceChatShell({ config, language = 'en', className = '' }: Props) {
@@ -287,12 +298,47 @@ export default function ServiceChatShell({ config, language = 'en', className = 
     setRuntimeStatusError(null);
 
     try {
-      const res = await fetch('/api/app/status', { cache: 'no-store' });
+      const res = await fetch(`/api/app/status?service=${encodeURIComponent(config.slug)}`, { cache: 'no-store' });
       if (!res.ok) {
         throw new Error(`HTTP ${res.status}`);
       }
 
       const payload = await res.json() as AppStatusPayload;
+
+      const parseServiceStatus = (value: AppServiceStatusPayload | null | undefined): RuntimeServiceStatus | null => {
+        if (!value || typeof value.slug !== 'string' || typeof value.name !== 'string') {
+          return null;
+        }
+
+        const configured = typeof value.configured === 'number' ? value.configured : 0;
+        const total = typeof value.total === 'number' ? value.total : 0;
+        const status = value.status === 'ready' || value.status === 'partial' || value.status === 'missing'
+          ? value.status
+          : configured <= 0
+            ? 'missing'
+            : configured >= total
+              ? 'ready'
+              : 'partial';
+
+        const providers = Array.isArray(value.providers)
+          ? value.providers
+            .filter((provider): provider is { id: string; configured: boolean } => (
+              Boolean(provider)
+              && typeof provider?.id === 'string'
+              && typeof provider?.configured === 'boolean'
+            ))
+          : [];
+
+        return {
+          slug: value.slug,
+          name: value.name,
+          status,
+          configured,
+          total,
+          providers,
+        };
+      };
+
       const configured = typeof payload.keys?.configured === 'number' ? payload.keys.configured : 0;
       const total = typeof payload.keys?.total === 'number' ? payload.keys.total : 0;
       const status = payload.keys?.status === 'ready' || payload.keys?.status === 'partial' || payload.keys?.status === 'missing'
@@ -318,6 +364,12 @@ export default function ServiceChatShell({ config, language = 'en', className = 
 
       const plan = typeof payload.billing?.plan === 'string' ? payload.billing.plan : null;
       const resetAt = typeof payload.billing?.resetAt === 'string' ? payload.billing.resetAt : null;
+      const currentService = parseServiceStatus(payload.currentService);
+      const services = Array.isArray(payload.services)
+        ? payload.services
+          .map((service) => parseServiceStatus(service))
+          .filter((service): service is RuntimeServiceStatus => Boolean(service))
+        : [];
 
       setRuntimeStatus({
         keys: {
@@ -326,6 +378,8 @@ export default function ServiceChatShell({ config, language = 'en', className = 
           total,
           providers,
         },
+        currentService,
+        services,
         billing: {
           authenticated: Boolean(payload.billing?.authenticated),
           balance,
@@ -338,7 +392,7 @@ export default function ServiceChatShell({ config, language = 'en', className = 
     } finally {
       setRuntimeStatusLoading(false);
     }
-  }, [shellCopy.statusError]);
+  }, [shellCopy.statusError, config.slug]);
 
   const showRuntimeStatus = useCallback(() => {
     setRuntimeStatusOpen(true);

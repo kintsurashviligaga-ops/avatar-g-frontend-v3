@@ -1,5 +1,6 @@
-import { NextResponse } from 'next/server';
+import { NextResponse, type NextRequest } from 'next/server';
 import { createServerClient } from '@/lib/supabase/server';
+import { SERVICE_CONFIGS } from '@/lib/service-chat/service-configs';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -10,12 +11,47 @@ const APP_KEYS = [
   { id: 'openai', env: 'OPENAI_API_KEY' },
   { id: 'anthropic', env: 'ANTHROPIC_API_KEY' },
   { id: 'replicate', env: 'REPLICATE_API_TOKEN' },
+  { id: 'nanobanana', env: 'NANOBANANA_API_KEY' },
   { id: 'deepgram', env: 'DEEPGRAM_API_KEY' },
   { id: 'elevenlabs', env: 'ELEVENLABS_API_KEY' },
   { id: 'cartesia', env: 'CARTESIA_API_KEY' },
   { id: 'stripe', env: 'STRIPE_SECRET_KEY' },
   { id: 'supabase_service', env: 'SUPABASE_SERVICE_ROLE_KEY' },
 ] as const;
+
+type ProviderId = typeof APP_KEYS[number]['id'];
+
+type ServiceKeyStatus = {
+  slug: string;
+  name: string;
+  status: KeyStatus;
+  configured: number;
+  total: number;
+  providers: Array<{ id: ProviderId; configured: boolean }>;
+};
+
+const DEFAULT_SERVICE_PROVIDERS: readonly ProviderId[] = ['openai'];
+
+const SERVICE_PROVIDER_REQUIREMENTS: Partial<Record<string, readonly ProviderId[]>> = {
+  avatar: ['openai', 'replicate', 'nanobanana'],
+  video: ['openai', 'replicate'],
+  image: ['openai', 'replicate', 'nanobanana'],
+  music: ['openai', 'elevenlabs'],
+  text: ['openai', 'anthropic'],
+  workflow: ['openai', 'replicate', 'elevenlabs', 'stripe'],
+  shop: ['openai', 'stripe'],
+  editing: ['openai', 'replicate'],
+  'agent-g': ['openai', 'anthropic', 'deepgram', 'elevenlabs', 'cartesia'],
+  photo: ['openai', 'replicate'],
+  media: ['openai', 'replicate', 'elevenlabs'],
+  prompt: ['openai', 'anthropic'],
+  'visual-intel': ['openai', 'anthropic'],
+  software: ['openai', 'anthropic'],
+  business: ['openai', 'anthropic'],
+  tourism: ['openai', 'anthropic'],
+  game: ['openai', 'anthropic', 'replicate'],
+  interior: ['openai', 'replicate', 'nanobanana'],
+};
 
 function hasValue(value: string | undefined): boolean {
   return typeof value === 'string' && value.trim().length > 0;
@@ -33,7 +69,33 @@ function resolveKeyStatus(configured: number, total: number): KeyStatus {
   return 'partial';
 }
 
-export async function GET() {
+function buildServiceStatuses(
+  providerStatusMap: Map<ProviderId, boolean>,
+): ServiceKeyStatus[] {
+  return Object.entries(SERVICE_CONFIGS)
+    .map(([slug, serviceConfig]) => {
+      const requiredProviders = SERVICE_PROVIDER_REQUIREMENTS[slug] || DEFAULT_SERVICE_PROVIDERS;
+      const providers = requiredProviders.map((providerId) => ({
+        id: providerId,
+        configured: providerStatusMap.get(providerId) === true,
+      }));
+
+      const configured = providers.filter((provider) => provider.configured).length;
+      const total = providers.length;
+
+      return {
+        slug,
+        name: serviceConfig.name.en,
+        status: resolveKeyStatus(configured, total),
+        configured,
+        total,
+        providers,
+      } satisfies ServiceKeyStatus;
+    })
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+export async function GET(request: NextRequest) {
   const providers = APP_KEYS.map((item) => ({
     id: item.id,
     configured: hasValue(process.env[item.env]),
@@ -42,6 +104,15 @@ export async function GET() {
   const configured = providers.filter((provider) => provider.configured).length;
   const total = providers.length;
   const status = resolveKeyStatus(configured, total);
+  const providerStatusMap = new Map<ProviderId, boolean>(
+    providers.map((provider) => [provider.id, provider.configured]),
+  );
+  const services = buildServiceStatuses(providerStatusMap);
+
+  const requestedService = request.nextUrl.searchParams.get('service');
+  const currentService = requestedService
+    ? services.find((service) => service.slug === requestedService) || null
+    : null;
 
   const supabase = createServerClient();
   const {
@@ -89,6 +160,8 @@ export async function GET() {
       total,
       providers,
     },
+    currentService,
+    services,
     billing: {
       authenticated: Boolean(user),
       balance,
