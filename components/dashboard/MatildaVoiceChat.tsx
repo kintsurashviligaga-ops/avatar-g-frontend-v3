@@ -1,80 +1,116 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { Mic, MicOff, X, Volume2 } from 'lucide-react';
+import { useCallback, useState } from 'react';
+import { Languages, Mic, RotateCcw, Volume2, X } from 'lucide-react';
+
+import { RealtimeWaveform } from '@/components/voice/RealtimeWaveform';
+import { useVoiceInput } from '@/hooks/useVoiceInput';
+import type { RealtimeVoiceLanguage, RealtimeVoiceState } from '@/types/voice';
+
 import { useOmniStore } from './omni/store';
-
-type Status = 'idle' | 'listening' | 'thinking' | 'speaking';
-
-interface Message {
-  role: 'user' | 'assistant';
-  content: string;
-}
 
 interface MatildaVoiceChatProps {
   locale?: string;
 }
 
 type MatildaLocale = 'ka' | 'en' | 'ru';
-type MatildaLabelMap = Record<Status | 'title' | 'hint' | 'close', string>;
-
-interface SpeechRecognitionResultLike {
-  0: {
-    transcript: string;
-  };
-}
-
-interface SpeechRecognitionEventLike {
-  results: ArrayLike<SpeechRecognitionResultLike>;
-}
-
-interface SpeechRecognitionLike {
-  continuous: boolean;
-  interimResults: boolean;
-  lang: string;
-  start: () => void;
-  stop: () => void;
-  onresult: ((event: SpeechRecognitionEventLike) => void) | null;
-  onerror: (() => void) | null;
-  onend: (() => void) | null;
-}
-
-type SpeechRecognitionCtor = new () => SpeechRecognitionLike;
-
-type SpeechRecognitionWindow = Window & {
-  SpeechRecognition?: SpeechRecognitionCtor;
-  webkitSpeechRecognition?: SpeechRecognitionCtor;
+type MatildaLabelMap = {
+  title: string;
+  hint: string;
+  close: string;
+  reset: string;
+  language: string;
+  latency: string;
+  unsupported: string;
+  states: Record<RealtimeVoiceState, string>;
 };
+
+const LANGUAGE_OPTIONS: Array<{ code: RealtimeVoiceLanguage; short: string }> = [
+  { code: 'ka-GE', short: 'GE' },
+  { code: 'en-US', short: 'EN' },
+  { code: 'ru-RU', short: 'RU' },
+];
 
 const LABELS: Record<MatildaLocale, MatildaLabelMap> = {
   ka: {
-    idle: 'ილაპარაკე',
-    listening: 'გისმენ...',
-    thinking: 'ვფიქრობ...',
-    speaking: 'ვლაპარაკობ...',
     title: 'G',
     hint: 'დააჭირე მიკროფონს და ილაპარაკე',
     close: 'დახურვა',
+    reset: 'განულება',
+    language: 'ენა',
+    latency: 'რეაგირების დრო',
+    unsupported: 'Realtime ხმა ამ ბრაუზერში ხელმისაწვდომი არ არის.',
+    states: {
+      idle: 'მზად ვარ',
+      listening: 'გისმენ...',
+      processing: 'ვამუშავებ...',
+      speaking: 'ვლაპარაკობ...',
+      error: 'შეცდომა',
+    },
   },
   en: {
-    idle: 'Speak',
-    listening: 'Listening...',
-    thinking: 'Thinking...',
-    speaking: 'Speaking...',
     title: 'G',
     hint: 'Press the mic and speak',
     close: 'Close',
+    reset: 'Reset',
+    language: 'Language',
+    latency: 'Response latency',
+    unsupported: 'Realtime voice is not available in this browser.',
+    states: {
+      idle: 'Ready',
+      listening: 'Listening...',
+      processing: 'Processing...',
+      speaking: 'Speaking...',
+      error: 'Error',
+    },
   },
   ru: {
-    idle: 'Говорите',
-    listening: 'Слушаю...',
-    thinking: 'Думаю...',
-    speaking: 'Говорю...',
     title: 'G',
     hint: 'Нажмите микрофон и говорите',
     close: 'Закрыть',
+    reset: 'Сброс',
+    language: 'Язык',
+    latency: 'Задержка ответа',
+    unsupported: 'Realtime-голос недоступен в этом браузере.',
+    states: {
+      idle: 'Готово',
+      listening: 'Слушаю...',
+      processing: 'Обрабатываю...',
+      speaking: 'Говорю...',
+      error: 'Ошибка',
+    },
   },
 };
+
+const BADGE_COLOR: Record<RealtimeVoiceState, string> = {
+  idle: 'border-cyan-300/35 bg-cyan-500/15 text-cyan-100',
+  listening: 'border-sky-300/50 bg-sky-500/20 text-sky-100',
+  processing: 'border-amber-300/55 bg-amber-500/20 text-amber-100',
+  speaking: 'border-emerald-300/55 bg-emerald-500/20 text-emerald-100',
+  error: 'border-rose-300/55 bg-rose-500/20 text-rose-100',
+};
+
+const STATE_HALO: Record<RealtimeVoiceState, string> = {
+  idle: 'from-cyan-500/20 to-sky-500/5',
+  listening: 'from-sky-400/40 to-cyan-300/5',
+  processing: 'from-amber-400/35 to-orange-300/5',
+  speaking: 'from-emerald-400/35 to-teal-300/5',
+  error: 'from-rose-500/35 to-red-300/5',
+};
+
+function statusIcon(state: RealtimeVoiceState) {
+  if (state === 'speaking') {
+    return <Volume2 className="h-7 w-7" />;
+  }
+
+  return <Mic className="h-7 w-7" />;
+}
+
+function toRealtimeLanguage(locale: MatildaLocale): RealtimeVoiceLanguage {
+  if (locale === 'ru') return 'ru-RU';
+  if (locale === 'en') return 'en-US';
+  return 'ka-GE';
+}
 
 export default function MatildaVoiceChat({ locale = 'ka' }: MatildaVoiceChatProps) {
   const storeLocale = useOmniStore((state) => state.locale);
@@ -84,133 +120,61 @@ export default function MatildaVoiceChat({ locale = 'ka' }: MatildaVoiceChatProp
   const labels = LABELS[normalizedLocale];
 
   const [open, setOpen] = useState(false);
-  const [status, setStatus] = useState<Status>('idle');
-  const [transcript, setTranscript] = useState('');
-  const [response, setResponse] = useState('');
-  const [history, setHistory] = useState<Message[]>([]);
-  const [supported, setSupported] = useState(true);
+  const [errorText, setErrorText] = useState('');
 
-  const recognitionRef = useRef<SpeechRecognition | SpeechRecognitionLike | null>(null);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  const abortRef = useRef(false);
+  const {
+    state,
+    transcript,
+    partialTranscript,
+    assistantTranscript,
+    analyserNode,
+    latencyMs,
+    language,
+    setLanguage,
+    startListening,
+    stopListening,
+    resetTranscript,
+    browserSupportsSpeechRecognition,
+  } = useVoiceInput({
+    language: toRealtimeLanguage(normalizedLocale),
+    onError: (error) => {
+      setErrorText(String(error || '').replace(/_/g, ' '));
+    },
+  });
 
-  useEffect(() => {
-    const speechWindow = window as SpeechRecognitionWindow;
-    const SpeechRecognition = speechWindow.SpeechRecognition ?? speechWindow.webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-      setSupported(false);
+  const statusLabel = labels.states[state] || labels.states.idle;
+  const isActive = state !== 'idle' && state !== 'error';
+  const pulseRing = state === 'listening' || state === 'speaking';
+
+  const handleMicClick = useCallback(() => {
+    if (isActive) {
+      stopListening();
       return;
     }
-    const rec = new SpeechRecognition();
-    rec.continuous = false;
-    rec.interimResults = true;
-    rec.lang = normalizedLocale === 'ka' ? 'ka-GE' : normalizedLocale === 'ru' ? 'ru-RU' : 'en-US';
-    recognitionRef.current = rec;
-  }, [normalizedLocale]);
 
-  const stopAudio = useCallback(() => {
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current.src = '';
-    }
-  }, []);
+    setErrorText('');
+    void startListening();
+  }, [isActive, startListening, stopListening]);
 
-  const startListening = useCallback(() => {
-    const rec = recognitionRef.current;
-    if (!rec || status !== 'idle') return;
+  const handleLanguageChange = useCallback((nextLanguage: RealtimeVoiceLanguage) => {
+    setLanguage(nextLanguage);
+    setErrorText('');
+  }, [setLanguage]);
 
-    abortRef.current = false;
-    setTranscript('');
-    setStatus('listening');
-
-    rec.onresult = (e: { results: ArrayLike<{ 0: { transcript: string } }> }) => {
-      const interim = Array.from(e.results)
-        .map((r) => r[0]?.transcript ?? '')
-        .join('');
-      setTranscript(interim);
-    };
-
-    rec.onend = async () => {
-      if (abortRef.current) return;
-      const finalText = transcript || '';
-      if (!finalText.trim()) {
-        setStatus('idle');
-        return;
-      }
-      setStatus('thinking');
-      try {
-        const res = await fetch('/api/matilda', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text: finalText, history }),
-        });
-        const data = await res.json();
-        const assistantText: string = data.response || '';
-        setResponse(assistantText);
-        setHistory((h) => [
-          ...h,
-          { role: 'user', content: finalText },
-          { role: 'assistant', content: assistantText },
-        ]);
-
-        if (data.audio) {
-          setStatus('speaking');
-          const bytes = Uint8Array.from(atob(data.audio), (c) => c.charCodeAt(0));
-          const blob = new Blob([bytes], { type: 'audio/mpeg' });
-          const url = URL.createObjectURL(blob);
-          const audio = new Audio(url);
-          audioRef.current = audio;
-          audio.onended = () => {
-            URL.revokeObjectURL(url);
-            setStatus('idle');
-          };
-          audio.play().catch(() => setStatus('idle'));
-        } else {
-          setStatus('idle');
-        }
-      } catch {
-        setStatus('idle');
-      }
-    };
-
-    rec.onerror = () => setStatus('idle');
-    rec.start();
-  }, [status, transcript, history]);
-
-  const stopListening = useCallback(() => {
-    abortRef.current = true;
-    recognitionRef.current?.stop();
-    stopAudio();
-    setStatus('idle');
-  }, [stopAudio]);
-
-  const handleMicClick = () => {
-    if (status === 'idle') {
-      startListening();
-    } else {
-      stopListening();
-    }
-  };
+  const handleReset = useCallback(() => {
+    resetTranscript();
+    setErrorText('');
+  }, [resetTranscript]);
 
   const handleClose = () => {
     stopListening();
     setOpen(false);
-    setTranscript('');
-    setResponse('');
-    setHistory([]);
-    setStatus('idle');
+    handleReset();
   };
 
-  const statusColor: Record<Status, string> = {
-    idle: 'bg-cyan-500/20 border-cyan-400/40 text-cyan-300',
-    listening: 'bg-red-500/20 border-red-400/50 text-red-300',
-    thinking: 'bg-amber-500/20 border-amber-400/50 text-amber-300',
-    speaking: 'bg-emerald-500/20 border-emerald-400/50 text-emerald-300',
-  };
-
-  const pulseRing = status === 'listening' || status === 'speaking';
-
-  if (!supported) return null;
+  if (!browserSupportsSpeechRecognition) {
+    return null;
+  }
 
   return (
     <>
@@ -220,6 +184,7 @@ export default function MatildaVoiceChat({ locale = 'ka' }: MatildaVoiceChatProp
           type="button"
           onClick={() => setOpen(true)}
           title={labels.title}
+          data-testid="matilda-open"
           className="fixed bottom-28 right-5 z-40 flex h-14 w-14 items-center justify-center rounded-full border border-cyan-400/40 bg-[rgba(0,212,255,0.12)] text-cyan-300 shadow-lg backdrop-blur-xl transition-all hover:scale-105 hover:border-cyan-300/60 hover:bg-[rgba(0,212,255,0.2)] sm:bottom-24 sm:right-6"
         >
           <Volume2 className="h-6 w-6" />
@@ -228,7 +193,7 @@ export default function MatildaVoiceChat({ locale = 'ka' }: MatildaVoiceChatProp
 
       {/* Voice panel */}
       {open && (
-        <div className="fixed bottom-24 right-5 z-50 w-80 overflow-hidden rounded-3xl border border-white/14 bg-[rgba(12,12,26,0.92)] shadow-2xl backdrop-blur-2xl sm:right-6">
+        <div className="fixed bottom-24 right-5 z-50 w-[22rem] overflow-hidden rounded-3xl border border-cyan-100/15 bg-[radial-gradient(circle_at_85%_0%,rgba(14,165,233,0.22),transparent_45%),linear-gradient(165deg,rgba(2,6,23,0.96),rgba(8,16,36,0.96))] shadow-2xl shadow-cyan-900/25 backdrop-blur-2xl sm:right-6">
           {/* Header */}
           <div className="flex items-center justify-between px-5 py-4">
             <div className="flex items-center gap-2">
@@ -245,50 +210,101 @@ export default function MatildaVoiceChat({ locale = 'ka' }: MatildaVoiceChatProp
             </button>
           </div>
 
+          <div className="px-5 pb-3">
+            <RealtimeWaveform analyserNode={analyserNode} state={state} />
+          </div>
+
+          <div className="px-5">
+            <div data-testid="matilda-status" className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold ${BADGE_COLOR[state]}`}>
+              {statusLabel}
+            </div>
+
+            <div className="mt-3 flex items-center justify-between rounded-xl border border-cyan-100/12 bg-white/[0.03] px-3 py-2">
+              <span className="text-[11px] uppercase tracking-[0.14em] text-white/45">{labels.language}</span>
+              <div className="flex items-center gap-1">
+                <Languages className="h-3.5 w-3.5 text-cyan-200/75" />
+                {LANGUAGE_OPTIONS.map((option) => {
+                  const active = language === option.code;
+                  return (
+                    <button
+                      key={option.code}
+                      type="button"
+                      onClick={() => handleLanguageChange(option.code)}
+                      className={`rounded-md px-2 py-1 text-[11px] font-semibold transition ${active ? 'bg-cyan-400/25 text-cyan-100' : 'text-white/55 hover:bg-white/10 hover:text-white/80'}`}
+                    >
+                      {option.short}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
           {/* Mic button */}
           <div className="flex flex-col items-center gap-4 px-5 pb-5">
             <div className="relative flex items-center justify-center">
               {pulseRing && (
-                <span className="absolute h-24 w-24 animate-ping rounded-full bg-current opacity-15" style={{ color: status === 'listening' ? '#f87171' : '#34d399' }} />
+                <span className="absolute h-24 w-24 animate-ping rounded-full bg-current opacity-20" style={{ color: state === 'listening' ? '#38bdf8' : '#34d399' }} />
               )}
               <button
                 type="button"
                 onClick={handleMicClick}
-                className={`relative z-10 flex h-20 w-20 items-center justify-center rounded-full border-2 transition-all duration-200 ${statusColor[status]} ${status !== 'idle' ? 'scale-105' : 'hover:scale-105'}`}
+                data-testid="matilda-mic-toggle"
+                className={`relative z-10 flex h-20 w-20 items-center justify-center rounded-full border-2 bg-gradient-to-br ${STATE_HALO[state]} ${BADGE_COLOR[state]} transition-all duration-200 ${isActive ? 'scale-105' : 'hover:scale-105'}`}
               >
-                {status === 'idle' || status === 'thinking' ? (
-                  <Mic className="h-8 w-8" />
-                ) : status === 'listening' ? (
-                  <MicOff className="h-8 w-8" />
-                ) : (
-                  <Volume2 className="h-8 w-8" />
-                )}
+                {statusIcon(state)}
               </button>
             </div>
 
             <p className="text-center text-sm font-medium text-white/60">
-              {labels[status]}
+              {statusLabel}
             </p>
 
+            <div className="flex w-full items-center gap-2">
+              <button
+                type="button"
+                onClick={handleReset}
+                data-testid="matilda-reset"
+                className="inline-flex items-center gap-1 rounded-lg border border-white/12 bg-white/[0.04] px-2.5 py-1.5 text-xs font-semibold text-white/75 transition hover:bg-white/[0.08]"
+              >
+                <RotateCcw className="h-3.5 w-3.5" />
+                {labels.reset}
+              </button>
+              {latencyMs !== null && (
+                <div className="ml-auto rounded-lg border border-cyan-300/20 bg-cyan-500/10 px-2.5 py-1.5 text-[11px] text-cyan-100/85">
+                  {labels.latency}: {latencyMs}ms
+                </div>
+              )}
+            </div>
+
             {/* Transcript */}
-            {transcript && (
+            {(transcript || partialTranscript) && (
               <div className="w-full rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3">
                 <p className="text-xs text-white/40">შენ:</p>
-                <p className="mt-1 text-sm text-white/80">{transcript}</p>
+                {transcript ? <p className="mt-1 text-sm text-white/85">{transcript}</p> : null}
+                {partialTranscript ? <p className="mt-1 text-sm italic text-cyan-100/85">{partialTranscript}</p> : null}
               </div>
             )}
 
             {/* Response */}
-            {response && (
+            {assistantTranscript && (
               <div className="w-full rounded-2xl border border-cyan-400/20 bg-cyan-500/[0.06] px-4 py-3">
                 <p className="text-xs text-cyan-400/60">{labels.title}:</p>
-                <p className="mt-1 text-sm text-white/85">{response}</p>
+                <p className="mt-1 text-sm text-white/85">{assistantTranscript}</p>
               </div>
             )}
 
-            {!transcript && !response && (
+            {errorText && (
+              <div className="w-full rounded-2xl border border-rose-300/25 bg-rose-500/10 px-4 py-3">
+                <p className="text-xs text-rose-100/80">{labels.states.error}</p>
+                <p className="mt-1 text-sm text-rose-100/90">{errorText}</p>
+              </div>
+            )}
+
+            {!transcript && !assistantTranscript && !errorText && (
               <p className="text-center text-xs text-white/30">{labels.hint}</p>
             )}
+
           </div>
         </div>
       )}
