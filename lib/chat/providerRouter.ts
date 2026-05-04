@@ -50,25 +50,6 @@ export interface ChatResponse {
   };
 }
 
-function replicateFallbackMessage(intent: IntentCategory): string {
-  switch (intent) {
-    case 'avatar_generation':
-      return 'Avatar request received. Returning fallback output while generator capacity is limited.';
-    case 'image_generation':
-      return 'Image request received. Returning fallback output while generator capacity is limited.';
-    case 'photo_edit':
-      return 'Photo edit request received. Returning fallback output while generator capacity is limited.';
-    case 'video_generation':
-      return 'Video request received. Returning fallback output while generator capacity is limited.';
-    case 'music_generation':
-      return 'Music request received. Returning fallback output while generator capacity is limited.';
-    case 'visual_analysis':
-      return 'Visual analysis request received. Returning fallback analysis while generator capacity is limited.';
-    default:
-      return 'Request received. Returning fallback output while generator capacity is limited.';
-  }
-}
-
 // ─── Agent selection ─────────────────────────────────────────────────────────
 
 const CONTEXT_TO_AGENT: Record<string, string> = {
@@ -172,16 +153,11 @@ async function handleReplicateIntent(
   const validation = validateInput(raw);
   if (!validation.valid || !validation.sanitized) {
     return {
-      success: true,
+      success: false,
       intent: detected.intent,
       responseType: 'text',
-      message: replicateFallbackMessage(detected.intent),
-      metadata: {
-        provider: 'replicate-fallback',
-        confidence: detected.confidence,
-        fallback: true,
-        reason: validation.error || 'Invalid input for generation',
-      },
+      message: validation.error || 'Invalid input for generation.',
+      metadata: { provider: 'replicate', confidence: detected.confidence },
     };
   }
 
@@ -244,16 +220,11 @@ async function handleReplicateIntent(
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : 'Replicate generation failed';
     return {
-      success: true,
+      success: false,
       intent: detected.intent,
       responseType: 'text',
-      message: replicateFallbackMessage(detected.intent),
-      metadata: {
-        provider: 'replicate-fallback',
-        confidence: detected.confidence,
-        fallback: true,
-        reason: errorMsg,
-      },
+      message: errorMsg,
+      metadata: { provider: 'replicate', confidence: detected.confidence },
     };
   }
 }

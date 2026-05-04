@@ -84,12 +84,12 @@ export async function POST(req: NextRequest) {
       const budget = checkDailyBudget(auth.userId);
       if (!budget.allowed) {
         return NextResponse.json({
-          success: true,
+          success: false,
           intent: 'text_chat',
           responseType: 'text',
-          message: `Daily limit of ${budget.limit} requests reached. Returning fallback response for now; full generation resets in 24h.`,
-          metadata: { provider: 'system-fallback', fallback: true, budgetLimited: true },
-        } satisfies ChatResponse);
+          message: `Daily limit of ${budget.limit} requests reached. Resets in 24h.`,
+          metadata: { provider: 'system' },
+        }, { status: 429 });
       }
     }
 
@@ -130,22 +130,23 @@ export async function POST(req: NextRequest) {
     // Detect throttle / quota errors
     if (/429|rate.limit|quota|thrott/i.test(message)) {
       return NextResponse.json({
-        success: true,
+        success: false,
         intent: 'text_chat',
         responseType: 'text',
-        message: 'Service is temporarily rate-limited. Returning fallback response; please retry shortly for full generation.',
-        metadata: { provider: 'system-fallback', fallback: true, error: message },
+        message: 'Service temporarily rate-limited. Please retry shortly.',
+        metadata: { provider: 'system', error: message },
       } satisfies ChatResponse);
     }
 
     return NextResponse.json(
       {
-        success: true,
+        success: false,
         intent: 'text_chat',
         responseType: 'text',
-        message: 'Request received. Returning fallback response because generation is temporarily unavailable.',
-        metadata: { provider: 'system-fallback', fallback: true },
+        message: 'Something went wrong. Please try again.',
+        metadata: { provider: 'system' },
       } satisfies ChatResponse,
+      { status: 500 },
     );
   }
 }
@@ -176,13 +177,13 @@ async function handlePoll(predictionId: string, serviceContext: string) {
 
     if (result.status === 'failed') {
       return NextResponse.json({
-        success: true,
+        success: false,
         intent: 'text_chat',
         responseType: 'text',
-        message: 'Generation request received. Returning fallback output while provider is temporarily unavailable.',
+        message: result.error || 'Generation failed.',
         predictionId,
-        predictionStatus: 'succeeded',
-        metadata: { provider: 'replicate-fallback', fallback: true, reason: result.error || 'Generation failed' },
+        predictionStatus: 'failed',
+        metadata: { provider: 'replicate' },
       } satisfies ChatResponse);
     }
 
@@ -199,14 +200,14 @@ async function handlePoll(predictionId: string, serviceContext: string) {
   } catch (error) {
     const msg = error instanceof Error ? error.message : 'Poll failed';
     return NextResponse.json({
-      success: true,
+      success: false,
       intent: 'text_chat',
       responseType: 'text',
-      message: 'Polling temporarily unavailable. Returning fallback output and keeping your request active.',
+      message: msg,
       predictionId,
-      predictionStatus: 'succeeded',
-      metadata: { provider: 'replicate-fallback', fallback: true, reason: msg },
-    } satisfies ChatResponse);
+      predictionStatus: 'error',
+      metadata: { provider: 'replicate' },
+    } satisfies ChatResponse, { status: 500 });
   }
 }
 

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import Anthropic from '@anthropic-ai/sdk';
+import OpenAI from 'openai';
 import {
   getFlow,
   buildFinalPrompt,
@@ -14,6 +15,7 @@ export const dynamic = 'force-dynamic';
 export const maxDuration = 180;
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+const openai = process.env.OPENAI_API_KEY ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) : null;
 
 const HEYGEN_BASE = 'https://api.heygen.com';
 
@@ -67,15 +69,22 @@ function detectServiceIntent(text: string): ServiceId | null {
   return best?.id ?? null;
 }
 
-function buildFallbackResult(serviceId: ServiceId, locale: string): string {
-  const label = serviceId.replace(/-/g, ' ');
-  if (locale === 'ka') {
-    return `მოთხოვნა მივიღე და ${label} სერვისზე დავაბრუნე fallback შედეგი, რადგან გარე გენერაცია დროებით შეზღუდულია. შეგიძლია იგივე მოთხოვნა ისევ გააგზავნო მოგვიანებით.`;
+async function generateTextWithOpenAI(systemPrompt: string, prompt: string): Promise<string> {
+  if (!openai) {
+    throw new Error('OPENAI_API_KEY is not configured');
   }
-  if (locale === 'ru') {
-    return `Запрос получен. Для сервиса ${label} возвращен fallback-результат, так как внешний генератор временно недоступен. Повторите запрос позже для полного рендера.`;
-  }
-  return `Request received. Returned a fallback result for ${label} because the external generator is temporarily unavailable. Retry later for a full render.`;
+
+  const completion = await openai.chat.completions.create({
+    model: 'gpt-4o-mini',
+    max_tokens: 4096,
+    temperature: 0.7,
+    messages: [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: prompt },
+    ],
+  });
+
+  return completion.choices[0]?.message?.content?.trim() || '';
 }
 
 // ─── Pipeline actions ─────────────────────────────────────────────────────────
@@ -279,28 +288,34 @@ async function generateVideo(
   prompt: string,
   answers: Record<string, string | string[]>,
 ): Promise<{ resultUrl?: string; outputKind: string; error?: string }> {
-  const apiKey = process.env.LTX_VIDEO_API_KEY;
-  if (!apiKey) return { outputKind: 'video', error: 'LTX_VIDEO_API_KEY not configured' };
+  const { createPrediction, pollUntilDone } = await import('@/lib/replicate/client');
+  const { resolveModel } = await import('@/lib/replicate/models');
+  const { validateInput, buildModelInput } = await import('@/lib/replicate/schemas');
+  const { normalizeOutput } = await import('@/lib/replicate/normalizer');
 
-  const duration  = parseInt(String(answers.duration ?? '7'));
-  const aspect    = String(answers.aspect ?? '16:9');
-  const resolution = aspect === '9:16' ? '720x1280' : aspect === '1:1' ? '720x720' : '1280x720';
+  const quality = String(answers.quality ?? 'standard');
+  const aspectRatio = String(answers.aspect ?? '16:9');
+  const variant = String(answers.variant ?? 'text-to-video');
 
-  const res = await fetch('https://api.ltx.video/v1/text-to-video', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ prompt, model: 'ltx-2-3-fast', resolution, duration, fps: 24, generate_audio: false }),
-  });
-
-  if (!res.ok) {
-    const err = await res.text();
-    return { outputKind: 'video', error: `LTX Video ${res.status}: ${err}` };
+  const validation = validateInput({ service: 'video', prompt, quality, aspectRatio, variant });
+  if (!validation.valid || !validation.sanitized) {
+    return { outputKind: 'video', error: validation.error ?? 'Invalid video input' };
   }
 
-  const buf    = await res.arrayBuffer();
-  const b64    = Buffer.from(buf).toString('base64');
-  const dataUrl = `data:video/mp4;base64,${b64}`;
-  return { resultUrl: dataUrl, outputKind: 'video' };
+  const model = resolveModel('video', validation.sanitized.variant);
+  const modelInput = buildModelInput(validation.sanitized);
+  const prediction = await createPrediction(model.id, modelInput);
+  const completed = prediction.status === 'succeeded' && prediction.output
+    ? prediction
+    : await pollUntilDone(prediction.id, 40, 2500);
+
+  const normalized = normalizeOutput(
+    'video', model.label, model.outputType,
+    completed.id, completed.status, completed.output, completed.error ?? null, completed.metrics,
+  );
+
+  if (!normalized.url) return { outputKind: 'video', error: normalized.error ?? 'No video URL returned' };
+  return { resultUrl: normalized.url, outputKind: 'video' };
 }
 
 async function generateImage(
@@ -347,26 +362,49 @@ async function generateMusic(
   prompt: string,
   answers: Record<string, string | string[]>,
 ): Promise<{ resultUrl?: string; outputKind: string; error?: string }> {
-  const apiKey = process.env.ELEVENLABS_API_KEY;
-  if (!apiKey) return { outputKind: 'audio', error: 'ELEVENLABS_API_KEY not configured' };
+  const { createPrediction, pollUntilDone } = await import('@/lib/replicate/client');
+  const { resolveModel } = await import('@/lib/replicate/models');
+  const { validateInput, buildModelInput } = await import('@/lib/replicate/schemas');
+  const { normalizeOutput } = await import('@/lib/replicate/normalizer');
 
-  const duration = Math.min(parseInt(String(answers.duration ?? '22')), 22);
+  const quality = String(answers.quality ?? 'standard');
+  const variant = String(answers.variant ?? 'soundtrack');
 
-  const res = await fetch('https://api.elevenlabs.io/v1/sound-generation', {
-    method: 'POST',
-    headers: { 'xi-api-key': apiKey, 'Content-Type': 'application/json', Accept: 'audio/mpeg' },
-    body: JSON.stringify({ text: prompt.slice(0, 450), duration_seconds: duration, prompt_influence: 0.3 }),
-  });
-
-  if (!res.ok) {
-    const err = await res.text();
-    return { outputKind: 'audio', error: `ElevenLabs ${res.status}: ${err}` };
+  const validation = validateInput({ service: 'music', prompt, quality, variant });
+  if (!validation.valid || !validation.sanitized) {
+    return { outputKind: 'audio', error: validation.error ?? 'Invalid music input' };
   }
 
-  const buf     = await res.arrayBuffer();
-  const b64     = Buffer.from(buf).toString('base64');
-  const dataUrl = `data:audio/mpeg;base64,${b64}`;
-  return { resultUrl: dataUrl, outputKind: 'audio' };
+  const model = resolveModel('music', validation.sanitized.variant);
+  const modelInput = buildModelInput(validation.sanitized);
+  const prediction = await createPrediction(model.id, modelInput);
+  const completed = prediction.status === 'succeeded' && prediction.output
+    ? prediction
+    : await pollUntilDone(prediction.id, 40, 2500);
+
+  const normalized = normalizeOutput(
+    'music', model.label, model.outputType,
+    completed.id, completed.status, completed.output, completed.error ?? null, completed.metrics,
+  );
+
+  if (!normalized.url) return { outputKind: 'audio', error: normalized.error ?? 'No audio URL returned' };
+  return { resultUrl: normalized.url, outputKind: 'audio' };
+}
+
+async function generateOpenAITtsDataUrl(text: string): Promise<string> {
+  if (!openai) {
+    throw new Error('OPENAI_API_KEY is not configured');
+  }
+
+  const speech = await openai.audio.speech.create({
+    model: 'gpt-4o-mini-tts',
+    voice: 'alloy',
+    input: text.slice(0, 4096),
+    response_format: 'mp3',
+  });
+
+  const audioBuffer = Buffer.from(await speech.arrayBuffer());
+  return `data:audio/mpeg;base64,${audioBuffer.toString('base64')}`;
 }
 
 // ─── Main generate handler ────────────────────────────────────────────────────
@@ -386,16 +424,17 @@ async function handleGenerate(
 
   if (TEXT_SERVICES.includes(serviceId)) {
     const outputKind = serviceId === 'terminal' ? 'code' : 'text';
+    const systemPrompts: Record<string, string> = {
+      game:             'You are a senior game designer. Produce detailed, structured game design documents in markdown. Include mechanics, narrative, level design, and monetization in separate sections.',
+      'prompt-builder': 'You are a world-class prompt engineer. Return ONLY the final optimized prompt — no preamble, no explanation.',
+      terminal:         'You are a Staff Engineer. Write production-ready, secure, well-structured code with markdown code blocks.',
+      'content-writer': 'You are a world-class copywriter and content strategist. Produce high-quality, engaging, SEO-aware content. Use natural language, avoid generic AI phrases. Format in clean markdown.',
+      podcast:          'You are a professional podcast producer and scriptwriter. Create complete, engaging podcast scripts with clear segment structure, natural dialogue, and strong hooks. Format in markdown with speaker labels.',
+      character:        'You are a master character designer and narrative architect. Create rich, multi-dimensional characters with deep backstories, consistent voice, and cultural depth. Format in clean markdown with clear sections.',
+      event:            'You are a professional event producer and copywriter. Create comprehensive event materials including programs, MC scripts, promo copy, and invitations. Be specific, engaging, and culturally aware. Format in clean markdown.',
+    };
+
     try {
-      const systemPrompts: Record<string, string> = {
-        game:             'You are a senior game designer. Produce detailed, structured game design documents in markdown. Include mechanics, narrative, level design, and monetization in separate sections.',
-        'prompt-builder': 'You are a world-class prompt engineer. Return ONLY the final optimized prompt — no preamble, no explanation.',
-        terminal:         'You are a Staff Engineer. Write production-ready, secure, well-structured code with markdown code blocks.',
-        'content-writer': 'You are a world-class copywriter and content strategist. Produce high-quality, engaging, SEO-aware content. Use natural language, avoid generic AI phrases. Format in clean markdown.',
-        podcast:          'You are a professional podcast producer and scriptwriter. Create complete, engaging podcast scripts with clear segment structure, natural dialogue, and strong hooks. Format in markdown with speaker labels.',
-        character:        'You are a master character designer and narrative architect. Create rich, multi-dimensional characters with deep backstories, consistent voice, and cultural depth. Format in clean markdown with clear sections.',
-        event:            'You are a professional event producer and copywriter. Create comprehensive event materials including programs, MC scripts, promo copy, and invitations. Be specific, engaging, and culturally aware. Format in clean markdown.',
-      };
       const result = await anthropic.messages.create({
         model: 'claude-sonnet-4-6',
         max_tokens: 4096,
@@ -408,17 +447,27 @@ async function handleGenerate(
         result: text,
         tokensUsed: result.usage.input_tokens + result.usage.output_tokens,
       });
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Text generation unavailable';
-      console.warn(`[pipeline/generate:fallback] ${serviceId}: ${msg}`);
-      return NextResponse.json({
-        jobId,
-        status: 'done',
-        serviceId,
-        outputKind,
-        result: buildFallbackResult(serviceId, locale),
-        metadata: { fallback: true, reason: msg },
-      });
+    } catch (anthropicErr) {
+      try {
+        const text = await generateTextWithOpenAI(
+          systemPrompts[serviceId] ?? 'You are a helpful AI assistant.',
+          finalPrompt,
+        );
+
+        return NextResponse.json({
+          jobId,
+          status: 'done',
+          serviceId,
+          outputKind,
+          result: text,
+          provider: 'openai',
+        });
+      } catch (openaiErr) {
+        const anthropicMsg = anthropicErr instanceof Error ? anthropicErr.message : 'Anthropic unavailable';
+        const openaiMsg = openaiErr instanceof Error ? openaiErr.message : 'OpenAI unavailable';
+        const msg = `Text generation unavailable: ${anthropicMsg}; ${openaiMsg}`;
+        return NextResponse.json({ jobId, status: 'error', serviceId, error: msg }, { status: 200 });
+      }
     }
   }
 
@@ -445,16 +494,28 @@ async function handleGenerate(
         break;
       case 'voice': {
         const elevenKey = process.env.ELEVENLABS_API_KEY;
-        if (!elevenKey) { genResult = { outputKind: 'audio', error: 'ELEVENLABS_API_KEY not configured' }; break; }
         const voiceId = process.env.ELEVENLABS_GEORGIAN_VOICE_ID || process.env.ELEVENLABS_VOICE_ID || 'vWpzdSR8GpLUKR0ai8Li';
-        const ttsRes = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
-          method: 'POST',
-          headers: { 'xi-api-key': elevenKey, 'Content-Type': 'application/json', 'Accept': 'application/json' },
-          body: JSON.stringify({ text: finalPrompt.slice(0, 5000), model_id: 'eleven_turbo_v2_5', voice_settings: { stability: 0.75, similarity_boost: 0.85 } }),
-        });
-        if (!ttsRes.ok) { genResult = { outputKind: 'audio', error: `ElevenLabs TTS error ${ttsRes.status}` }; break; }
-        const ttsData = await ttsRes.json() as { audio_base64?: string };
-        genResult = { outputKind: 'audio', resultUrl: ttsData.audio_base64 ? `data:audio/mpeg;base64,${ttsData.audio_base64}` : undefined };
+        if (elevenKey) {
+          const ttsRes = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
+            method: 'POST',
+            headers: { 'xi-api-key': elevenKey, 'Content-Type': 'application/json', 'Accept': 'application/json' },
+            body: JSON.stringify({ text: finalPrompt.slice(0, 5000), model_id: 'eleven_turbo_v2_5', voice_settings: { stability: 0.75, similarity_boost: 0.85 } }),
+          });
+
+          if (ttsRes.ok) {
+            const ttsData = await ttsRes.json() as { audio_base64?: string };
+            genResult = { outputKind: 'audio', resultUrl: ttsData.audio_base64 ? `data:audio/mpeg;base64,${ttsData.audio_base64}` : undefined };
+            break;
+          }
+        }
+
+        try {
+          const dataUrl = await generateOpenAITtsDataUrl(finalPrompt);
+          genResult = { outputKind: 'audio', resultUrl: dataUrl };
+        } catch (ttsErr) {
+          const ttsMsg = ttsErr instanceof Error ? ttsErr.message : 'Voice generation failed';
+          genResult = { outputKind: 'audio', error: ttsMsg };
+        }
         break;
       }
       default:
@@ -462,14 +523,7 @@ async function handleGenerate(
     }
 
     if (genResult.error || !genResult.resultUrl) {
-      return NextResponse.json({
-        jobId,
-        status: 'done',
-        serviceId,
-        outputKind: 'text',
-        result: buildFallbackResult(serviceId, locale),
-        metadata: { fallback: true, reason: genResult.error ?? 'Missing result URL' },
-      });
+      return NextResponse.json({ jobId, status: 'error', serviceId, error: genResult.error ?? 'Missing result URL' }, { status: 200 });
     }
 
     return NextResponse.json({
@@ -479,15 +533,8 @@ async function handleGenerate(
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Generation failed';
-    console.warn(`[pipeline/generate:fallback] ${serviceId}: ${msg}`);
-    return NextResponse.json({
-      jobId,
-      status: 'done',
-      serviceId,
-      outputKind: 'text',
-      result: buildFallbackResult(serviceId, locale),
-      metadata: { fallback: true, reason: msg },
-    });
+    console.error(`[pipeline/generate] ${serviceId}:`, msg);
+    return NextResponse.json({ jobId, status: 'error', serviceId, error: msg }, { status: 200 });
   }
 }
 

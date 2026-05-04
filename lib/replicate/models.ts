@@ -91,9 +91,9 @@ export interface RouteConfig {
 
 const SERVICE_ROUTES: Record<ServiceType, RouteConfig> = {
   avatar: {
-    defaultModel: 'flux',
+    defaultModel: 'sdxl',
     variants: {
-      fast: 'flux',
+      fast: 'sdxl',
       realistic: 'sdxl',
       identity: 'instant-id',
       stylized: 'face-to-many',
@@ -101,10 +101,10 @@ const SERVICE_ROUTES: Record<ServiceType, RouteConfig> = {
     outputType: 'image',
   },
   image: {
-    defaultModel: 'flux',
+    defaultModel: 'sdxl',
     variants: {
-      fast: 'flux',
-      premium: 'flux-pro',
+      fast: 'sdxl',
+      premium: 'realistic-vision',
       realistic: 'realistic-vision',
       general: 'sdxl',
     },
