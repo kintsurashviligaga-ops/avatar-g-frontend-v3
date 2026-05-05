@@ -20,7 +20,7 @@ import { generateWithGemini } from '@/lib/gemini/client';
 import { getGeminiSystemPrompt, type GeminiServiceContext } from '@/lib/gemini/prompts';
 
 export const dynamic = 'force-dynamic';
-export const maxDuration = 180;
+export const maxDuration = 300; // HeyGen avatar polling can take up to 150s; LTX video up to 90s
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const openai = process.env.OPENAI_API_KEY ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) : null;
