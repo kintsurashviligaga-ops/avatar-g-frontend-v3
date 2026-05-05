@@ -671,7 +671,7 @@ async function handleGenerate(
   if (TEXT_SERVICES.includes(serviceId)) {
     const outputKind = serviceId === 'terminal' ? 'code' : 'text';
     const systemPrompts: Record<string, string> = {
-      game:             'You are a senior game designer. Produce detailed, structured game design documents in markdown. Include mechanics, narrative, level design, and monetization in separate sections.',
+      game:             'You are a senior game designer and narrative architect. Produce a comprehensive, publication-ready Game Design Document (GDD) in rich markdown. Structure the document with these sections: ## Overview, ## Core Mechanics, ## Narrative & World, ## Level Design, ## Characters & Abilities, ## Progression & Monetization, ## Technical Requirements, ## Art Direction. Use tables, bullet lists, and code blocks where appropriate. Be specific, creative, and actionable.',
       'prompt-builder': 'You are a world-class prompt engineer. Return ONLY the final optimized prompt — no preamble, no explanation.',
       terminal:         'You are a Staff Engineer. Write production-ready, secure, well-structured code with markdown code blocks.',
       'content-writer': 'You are a world-class copywriter and content strategist. Produce high-quality, engaging, SEO-aware content. Use natural language, avoid generic AI phrases. Format in clean markdown.',
@@ -716,8 +716,24 @@ async function handleGenerate(
       }
     }
 
+    // For game service, enrich prompt with genre/platform/art_style answers
+    let enrichedPrompt = effectivePrompt;
+    if (serviceId === 'game') {
+      const genre      = typeof answers.genre      === 'string' && answers.genre      ? answers.genre      : null;
+      const platform   = typeof answers.platform   === 'string' && answers.platform   ? answers.platform   : null;
+      const art_style  = typeof answers.art_style  === 'string' && answers.art_style  ? answers.art_style  : null;
+      const extras = [
+        genre     && `Genre: ${genre}`,
+        platform  && `Target Platform: ${platform}`,
+        art_style && `Art Style: ${art_style}`,
+      ].filter(Boolean);
+      if (extras.length > 0) {
+        enrichedPrompt = `${effectivePrompt}\n\n**Design Parameters:**\n${extras.map(e => `- ${e}`).join('\n')}`;
+      }
+    }
+
     try {
-      const text = await generateTextWithGemini(serviceId, locale, `${systemPrompts[serviceId]}\n\n${effectivePrompt}`);
+      const text = await generateTextWithGemini(serviceId, locale, `${systemPrompts[serviceId]}\n\n${enrichedPrompt}`);
       return NextResponse.json({
         jobId,
         status: 'done',
@@ -733,7 +749,7 @@ async function handleGenerate(
           model: 'claude-sonnet-4-6',
           max_tokens: 4096,
           system: systemPrompts[serviceId] ?? 'You are a helpful AI assistant.',
-          messages: [{ role: 'user', content: effectivePrompt }],
+          messages: [{ role: 'user', content: enrichedPrompt }],
         });
         const text = result.content[0]?.type === 'text' ? result.content[0].text : '';
         return NextResponse.json({
@@ -750,7 +766,7 @@ async function handleGenerate(
         try {
           const text = await generateTextWithOpenAI(
             systemPrompts[serviceId] ?? 'You are a helpful AI assistant.',
-            effectivePrompt,
+            enrichedPrompt,
           );
           return NextResponse.json({
             jobId,

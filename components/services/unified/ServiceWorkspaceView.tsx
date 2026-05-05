@@ -12,6 +12,8 @@
 
 import { useState, useCallback, useRef, useEffect, type ChangeEvent } from 'react'
 import Image from 'next/image'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
 import { buildInteriorDesignBrief } from '@/lib/interior/smart-intake'
 import type { WorkspaceResult } from '@/types/dashboard'
@@ -261,13 +263,57 @@ const SERVICE_WORKSPACES: Record<string, ServiceWorkspace> = {
   },
   game: {
     fields: [
-      { id: 'prompt', type: 'textarea', label: { en: 'Game Concept', ka: 'თამაშის კონცეფცია', ru: 'Концепция игры' }, placeholder: { en: 'Describe your game idea...', ka: 'აღწერეთ თამაშის იდეა...', ru: 'Опишите идею игры...' } },
-      { id: 'genre', type: 'select', label: { en: 'Genre', ka: 'ჟანრი', ru: 'Жанр' }, options: [{ value: 'puzzle', label: 'Puzzle' }, { value: 'rpg', label: 'RPG' }, { value: 'arcade', label: 'Arcade' }, { value: 'simulation', label: 'Simulation' }], defaultValue: 'puzzle' },
+      { id: 'prompt', type: 'textarea', label: { en: 'Game Concept', ka: 'თამაშის კონცეფცია', ru: 'Концепция игры' }, placeholder: { en: 'Describe your game idea — characters, world, mechanics, target audience...', ka: 'აღწერეთ თამაშის იდეა — პერსონაჟები, სამყარო, მექანიკა...', ru: 'Опишите идею игры — персонажи, мир, механика...' } },
+      {
+        id: 'genre',
+        type: 'select',
+        label: { en: 'Genre', ka: 'ჟანრი', ru: 'Жанр' },
+        options: [
+          { value: 'puzzle', label: 'Puzzle' },
+          { value: 'rpg', label: 'RPG' },
+          { value: 'arcade', label: 'Arcade' },
+          { value: 'simulation', label: 'Simulation' },
+          { value: 'platformer', label: 'Platformer' },
+          { value: 'strategy', label: 'Strategy / RTS' },
+          { value: 'shooter', label: 'Shooter / FPS' },
+          { value: 'horror', label: 'Horror / Survival' },
+          { value: 'adventure', label: 'Adventure' },
+          { value: 'fighting', label: 'Fighting' },
+        ],
+        defaultValue: 'rpg',
+      },
+      {
+        id: 'platform',
+        type: 'select',
+        label: { en: 'Target Platform', ka: 'პლათფორმა', ru: 'Платформа' },
+        options: [
+          { value: 'mobile', label: 'Mobile (iOS/Android)' },
+          { value: 'pc', label: 'PC / Steam' },
+          { value: 'web', label: 'Web Browser' },
+          { value: 'console', label: 'Console' },
+          { value: 'cross', label: 'Cross-Platform' },
+        ],
+        defaultValue: 'mobile',
+      },
+      {
+        id: 'art_style',
+        type: 'select',
+        label: { en: 'Art Style', ka: 'არტ სტილი', ru: 'Арт-стиль' },
+        options: [
+          { value: 'pixel', label: 'Pixel Art' },
+          { value: 'cartoon', label: 'Cartoon / 2D' },
+          { value: 'realistic', label: 'Realistic 3D' },
+          { value: 'low_poly', label: 'Low-Poly 3D' },
+          { value: 'stylized', label: 'Stylized / Cel-Shaded' },
+          { value: 'anime', label: 'Anime / Manga' },
+        ],
+        defaultValue: 'pixel',
+      },
     ],
     creditCost: 15,
-    actionLabel: { en: 'Create Game', ka: 'თამაშის შექმნა', ru: 'Создать игру' },
-    outputType: 'mixed',
-    previewHint: { en: 'Game preview will appear here', ka: 'თამაშის გადახედვა', ru: 'Предпросмотр игры' },
+    actionLabel: { en: 'Create Game Design', ka: 'GDD-ს შექმნა', ru: 'Создать GDD' },
+    outputType: 'text',
+    previewHint: { en: 'Game Design Document (GDD) will appear here', ka: 'GDD გამოჩნდება აქ', ru: 'GDD появится здесь' },
   },
   interior: {
     fields: [
@@ -1162,6 +1208,52 @@ export default function ServiceWorkspaceView({
         return
       }
 
+      // ── Pipeline text services (game, prompt-builder, content-writer, podcast, character, event, terminal) ──
+      const PIPELINE_TEXT_SERVICES = ['game', 'prompt-builder', 'terminal', 'content-writer', 'podcast', 'character', 'event', 'tourism']
+      if (PIPELINE_TEXT_SERVICES.includes(serviceId)) {
+        dashboardJobId = onJobStart?.(safeServiceName) ?? null
+        if (dashboardJobId) {
+          onJobProgress?.(dashboardJobId, 15)
+        }
+
+        // Build answers from workspace field values
+        const answers: Record<string, string> = {}
+        workspace.fields.forEach((field) => {
+          if (field.id !== 'prompt') {
+            const val = values[field.id]
+            if (val !== undefined) answers[field.id] = String(val)
+          }
+        })
+
+        const payload = await postJson('/api/pipeline', {
+          action: 'generate',
+          serviceId,
+          sessionId: sessionRef.current,
+          userInput: prompt,
+          answers,
+        })
+
+        if (dashboardJobId) {
+          onJobProgress?.(dashboardJobId, 85)
+        }
+
+        if ((payload.status as string) === 'error' || payload.error) {
+          throw new Error(extractApiError(payload))
+        }
+
+        const outputText = typeof payload.result === 'string' && payload.result.trim()
+          ? payload.result
+          : extractOutputText(payload)
+
+        publishResult(dashboardJobId, {
+          kind: 'text',
+          title: safeServiceName,
+          detail: typeof payload.provider === 'string' ? payload.provider : serviceId,
+          text: outputText || JSON.stringify(payload, null, 2),
+        })
+        return
+      }
+
       dashboardJobId = onJobStart?.(safeServiceName) ?? null
       if (dashboardJobId) {
         onJobProgress?.(dashboardJobId, 24)
@@ -1604,8 +1696,36 @@ export default function ServiceWorkspaceView({
                       ) : result.kind === 'audio' && result.url ? (
                         <audio controls className="w-full" src={result.url} />
                       ) : (
-                        <div className="rounded-xl p-5 whitespace-pre-wrap text-sm leading-relaxed" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', color: '#e2e8f0' }}>
-                          {result.text}
+                        <div
+                          className="rounded-xl p-5 text-sm leading-relaxed overflow-y-auto"
+                          style={{
+                            background: 'rgba(255,255,255,0.03)',
+                            border: '1px solid rgba(255,255,255,0.06)',
+                            color: '#e2e8f0',
+                            maxHeight: '60vh',
+                          }}
+                        >
+                          <div className="prose prose-invert prose-sm max-w-none
+                            [&_h1]:text-cyan-300 [&_h1]:font-bold [&_h1]:text-base [&_h1]:mb-2 [&_h1]:mt-4
+                            [&_h2]:text-violet-300 [&_h2]:font-semibold [&_h2]:text-sm [&_h2]:mb-2 [&_h2]:mt-4
+                            [&_h3]:text-slate-200 [&_h3]:font-semibold [&_h3]:text-sm [&_h3]:mb-1 [&_h3]:mt-3
+                            [&_p]:text-slate-300 [&_p]:leading-relaxed [&_p]:mb-2
+                            [&_ul]:list-disc [&_ul]:pl-4 [&_ul]:mb-2
+                            [&_ol]:list-decimal [&_ol]:pl-4 [&_ol]:mb-2
+                            [&_li]:text-slate-300 [&_li]:mb-0.5
+                            [&_strong]:text-white [&_em]:text-cyan-200/80
+                            [&_code]:bg-white/[0.06] [&_code]:px-1 [&_code]:py-0.5 [&_code]:rounded [&_code]:text-xs [&_code]:text-emerald-300
+                            [&_pre]:bg-white/[0.04] [&_pre]:rounded-xl [&_pre]:p-3 [&_pre]:overflow-x-auto [&_pre]:mb-3
+                            [&_blockquote]:border-l-2 [&_blockquote]:border-cyan-400/40 [&_blockquote]:pl-3 [&_blockquote]:text-slate-400 [&_blockquote]:italic
+                            [&_hr]:border-white/[0.08] [&_hr]:my-3
+                            [&_table]:w-full [&_table]:text-xs
+                            [&_th]:text-left [&_th]:text-cyan-300 [&_th]:pb-1 [&_th]:border-b [&_th]:border-white/[0.08]
+                            [&_td]:py-1 [&_td]:border-b [&_td]:border-white/[0.04] [&_td]:text-slate-300
+                          ">
+                            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                              {result.text ?? ''}
+                            </ReactMarkdown>
+                          </div>
                         </div>
                       )}
                     </div>
