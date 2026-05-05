@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
-export const maxDuration = 120;
+export const maxDuration = 60; // Start job only — client polls /status
 
 const HEYGEN_BASE = 'https://api.heygen.com';
 
@@ -179,22 +179,9 @@ async function createVideoWithStockAvatar(
   return videoId;
 }
 
-async function pollUntilDone(apiKey: string, videoId: string): Promise<string> {
-  for (let i = 0; i < 30; i++) {
-    await new Promise<void>((r) => setTimeout(r, 4000));
-    const res = await fetch(`${HEYGEN_BASE}/v1/video_status.get?video_id=${videoId}`, {
-      headers: { 'X-Api-Key': apiKey },
-    });
-    if (!res.ok) throw new Error(`HeyGen poll error: ${res.status}`);
-    const data = await res.json() as { data?: { status?: string; video_url?: string; error?: string } };
-    const { status, video_url, error } = data.data ?? {};
-    if (status === 'completed' && video_url) return video_url;
-    if (status === 'failed') throw new Error(error ?? 'HeyGen generation failed');
-  }
-  throw new Error('HeyGen video timed out after 120s');
-}
-
 // ─── Route handler ────────────────────────────────────────────────────────────
+// POST: start job → return { videoId } immediately
+// Client polls GET /api/heygen/avatar/status?videoId=xxx
 
 export async function POST(req: NextRequest) {
   const apiKey = process.env.HEYGEN_API_KEY;
@@ -220,38 +207,65 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: 'script is required' }, { status: 400 });
     }
 
-    const voiceGender = body.voiceGender ?? 'female';
+    const voiceGender   = body.voiceGender   ?? 'female';
     const voiceLanguage = body.voiceLanguage ?? 'en';
-    const videoFormat = body.videoFormat ?? '16:9';
+    const videoFormat   = body.videoFormat   ?? '16:9';
 
-    // Determine dimension
-    const dimension = videoFormat === '9:16'
-      ? { width: 720, height: 1280 }
-      : videoFormat === '1:1'
-        ? { width: 720, height: 720 }
-        : { width: 1280, height: 720 };
+    const dimension =
+      videoFormat === '9:16' ? { width: 720, height: 1280 } :
+      videoFormat === '1:1'  ? { width: 720, height: 720  } :
+                               { width: 1280, height: 720 };
 
-    // Get voice ID
     const voiceId = body.voiceId ?? await getVoiceId(apiKey, voiceGender, voiceLanguage);
 
     let videoId: string;
 
     if (body.photoBase64) {
-      // Photo mode: upload → talking photo → video
-      const assetId = await uploadPhotoAsset(apiKey, body.photoBase64, body.photoMimeType ?? 'image/jpeg');
+      const assetId       = await uploadPhotoAsset(apiKey, body.photoBase64, body.photoMimeType ?? 'image/jpeg');
       const talkingPhotoId = await createTalkingPhoto(apiKey, assetId);
       videoId = await createVideoWithTalkingPhoto(apiKey, talkingPhotoId, voiceId, script, dimension);
     } else {
-      // Stock avatar mode
       const avatarId = body.avatarId ?? await getFirstStockAvatar(apiKey);
       videoId = await createVideoWithStockAvatar(apiKey, avatarId, voiceId, script, dimension);
     }
 
-    const videoUrl = await pollUntilDone(apiKey, videoId);
-    return NextResponse.json({ success: true, url: videoUrl, kind: 'video' });
+    // Return immediately — client polls status endpoint
+    return NextResponse.json({ success: true, videoId, status: 'processing' });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'HeyGen avatar generation failed';
     console.error('[heygen/avatar]', message);
-    return NextResponse.json({ success: false, url: null, error: message }, { status: 502 });
+    return NextResponse.json({ success: false, error: message }, { status: 502 });
+  }
+}
+
+// GET ?videoId=xxx — lightweight status check, called by client every 5 s
+export async function GET(req: NextRequest) {
+  const apiKey = process.env.HEYGEN_API_KEY;
+  if (!apiKey) return NextResponse.json({ error: 'HEYGEN_API_KEY not configured' }, { status: 500 });
+
+  const videoId = req.nextUrl.searchParams.get('videoId');
+  if (!videoId) return NextResponse.json({ error: 'videoId required' }, { status: 400 });
+
+  try {
+    const res = await fetch(`${HEYGEN_BASE}/v1/video_status.get?video_id=${videoId}`, {
+      headers: { 'X-Api-Key': apiKey },
+    });
+    if (!res.ok) throw new Error(`HeyGen status ${res.status}`);
+
+    const data = await res.json() as {
+      data?: { status?: string; video_url?: string; thumbnail_url?: string; duration?: number; error?: string };
+    };
+    const d = data.data ?? {};
+
+    return NextResponse.json({
+      status:       d.status    ?? 'processing',
+      url:          d.video_url ?? null,
+      thumbnail:    d.thumbnail_url ?? null,
+      duration:     d.duration  ?? null,
+      error:        d.error     ?? null,
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Status check failed';
+    return NextResponse.json({ error: message }, { status: 502 });
   }
 }
