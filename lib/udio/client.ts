@@ -16,6 +16,51 @@ export interface UdioGenerationInput {
   callbackUrl?: string;
 }
 
+/** Input for extending an existing Udio track */
+export interface UdioExtendInput {
+  /** workId of the track to extend */
+  audioConditioningId: string;
+  prompt?: string;
+  style?: string;
+  title?: string;
+  model?: string;
+  callbackUrl?: string;
+}
+
+/** Input for cover song generation (text-based prompt) */
+export interface UdioCoverInput {
+  /** URL of the reference audio track */
+  audioUrl: string;
+  prompt?: string;
+  style?: string;
+  title?: string;
+  model?: string;
+  callbackUrl?: string;
+}
+
+/** Input for cover generation with an uploaded audio file */
+export interface UdioUploadCoverInput {
+  /** Raw audio blob/buffer to upload */
+  audioBlob: Blob | Uint8Array;
+  audioFilename?: string;
+  prompt?: string;
+  style?: string;
+  title?: string;
+  model?: string;
+  callbackUrl?: string;
+}
+
+/** Input for timestamped lyrics retrieval */
+export interface UdioTimestampedLyricsInput {
+  workId: string;
+}
+
+export interface UdioTimestampedLyricsResult {
+  workId: string;
+  lyrics: Array<{ time: number; text: string }>;
+  raw: unknown;
+}
+
 export interface UdioStartResult {
   workId: string;
   model: string;
@@ -40,7 +85,17 @@ interface WaitOptions {
 const DEFAULT_UDIO_BASE_URL = 'https://udioapi.pro';
 const DEFAULT_UDIO_GENERATE_PATH = '/api/v2/generate';
 const DEFAULT_UDIO_FEED_PATH = '/api/v2/feed';
+const DEFAULT_UDIO_COVER_PATH = '/api/v2/cover/generate';
+const DEFAULT_UDIO_UPLOAD_COVER_PATH = '/api/v2/upload-cover/generate';
+const DEFAULT_UDIO_EXTEND_PATH = '/api/v2/extend';
+const DEFAULT_UDIO_LYRICS_PATH = '/api/v2/timestamped-lyrics';
+const DEFAULT_UDIO_CREDITS_PATH = '/api/v2/credits';
 const DEFAULT_UDIO_MODEL = 'chirp-v4-5';
+
+export interface UdioCreditsResult {
+  credits: number;
+  raw: unknown;
+}
 
 function buildUdioAuthHeaders(apiKey: string): Record<string, string> {
   // Udio-compatible gateways are inconsistent: send all common auth header variants.
@@ -404,4 +459,193 @@ export async function generateUdioTrack(
 ): Promise<UdioStatusResult> {
   const started = await startUdioGeneration(input);
   return waitForUdioGeneration(started.workId, options);
+}
+
+// ─── Extend ──────────────────────────────────────────────────────────────────
+
+export async function startUdioExtend(input: UdioExtendInput): Promise<UdioStartResult> {
+  const apiKey = getUdioApiKey();
+  const path = resolvePath(process.env.UDIO_EXTEND_PATH, DEFAULT_UDIO_EXTEND_PATH);
+  const url = toUrl(path);
+  const model = (input.model || process.env.UDIO_MODEL || DEFAULT_UDIO_MODEL).trim();
+
+  const body: Record<string, unknown> = {
+    model,
+    audio_conditioning_id: input.audioConditioningId,
+  };
+  if (input.prompt?.trim()) body.gpt_description_prompt = input.prompt.trim();
+  if (input.style?.trim()) body.style = input.style.trim();
+  if (input.title?.trim()) body.title = input.title.trim();
+  if (input.callbackUrl?.trim()) body.callback_url = input.callbackUrl.trim();
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { ...buildUdioAuthHeaders(apiKey), 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+    cache: 'no-store',
+  });
+
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) throw new Error(extractMessage(payload) || `Udio extend failed (${response.status})`);
+
+  const workId = extractWorkId(payload);
+  if (!workId) throw new Error('Udio extend did not return workId');
+  return { workId, model, raw: payload };
+}
+
+export async function extendUdioTrack(
+  input: UdioExtendInput,
+  options: WaitOptions = {},
+): Promise<UdioStatusResult> {
+  const started = await startUdioExtend(input);
+  return waitForUdioGeneration(started.workId, options);
+}
+
+// ─── Cover (prompt-based) ────────────────────────────────────────────────────
+
+export async function startUdioCover(input: UdioCoverInput): Promise<UdioStartResult> {
+  const apiKey = getUdioApiKey();
+  const path = resolvePath(process.env.UDIO_COVER_PATH, DEFAULT_UDIO_COVER_PATH);
+  const url = toUrl(path);
+  const model = (input.model || process.env.UDIO_MODEL || DEFAULT_UDIO_MODEL).trim();
+
+  const body: Record<string, unknown> = { model, audio_url: input.audioUrl };
+  if (input.prompt?.trim()) body.gpt_description_prompt = input.prompt.trim();
+  if (input.style?.trim()) body.style = input.style.trim();
+  if (input.title?.trim()) body.title = input.title.trim();
+  if (input.callbackUrl?.trim()) body.callback_url = input.callbackUrl.trim();
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { ...buildUdioAuthHeaders(apiKey), 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+    cache: 'no-store',
+  });
+
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) throw new Error(extractMessage(payload) || `Udio cover failed (${response.status})`);
+
+  const workId = extractWorkId(payload);
+  if (!workId) throw new Error('Udio cover did not return workId');
+  return { workId, model, raw: payload };
+}
+
+export async function generateUdioCover(
+  input: UdioCoverInput,
+  options: WaitOptions = {},
+): Promise<UdioStatusResult> {
+  const started = await startUdioCover(input);
+  return waitForUdioGeneration(started.workId, options);
+}
+
+// ─── Upload-cover (file-based) ───────────────────────────────────────────────
+
+export async function startUdioUploadCover(input: UdioUploadCoverInput): Promise<UdioStartResult> {
+  const apiKey = getUdioApiKey();
+  const path = resolvePath(process.env.UDIO_UPLOAD_COVER_PATH, DEFAULT_UDIO_UPLOAD_COVER_PATH);
+  const url = toUrl(path);
+  const model = (input.model || process.env.UDIO_MODEL || DEFAULT_UDIO_MODEL).trim();
+
+  const form = new FormData();
+  form.append('model', model);
+  const audioBlob =
+    input.audioBlob instanceof Blob
+      ? input.audioBlob
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      : new Blob([input.audioBlob as any], { type: 'audio/mpeg' });
+  form.append('audio', audioBlob, input.audioFilename || 'cover.mp3');
+  if (input.prompt?.trim()) form.append('gpt_description_prompt', input.prompt.trim());
+  if (input.style?.trim()) form.append('style', input.style.trim());
+  if (input.title?.trim()) form.append('title', input.title.trim());
+  if (input.callbackUrl?.trim()) form.append('callback_url', input.callbackUrl.trim());
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: buildUdioAuthHeaders(apiKey),
+    body: form,
+    cache: 'no-store',
+  });
+
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) throw new Error(extractMessage(payload) || `Udio upload-cover failed (${response.status})`);
+
+  const workId = extractWorkId(payload);
+  if (!workId) throw new Error('Udio upload-cover did not return workId');
+  return { workId, model, raw: payload };
+}
+
+export async function generateUdioUploadCover(
+  input: UdioUploadCoverInput,
+  options: WaitOptions = {},
+): Promise<UdioStatusResult> {
+  const started = await startUdioUploadCover(input);
+  return waitForUdioGeneration(started.workId, options);
+}
+
+// ─── Timestamped Lyrics ──────────────────────────────────────────────────────
+
+export async function getUdioTimestampedLyrics(
+  input: UdioTimestampedLyricsInput,
+): Promise<UdioTimestampedLyricsResult> {
+  const apiKey = getUdioApiKey();
+  const path = resolvePath(process.env.UDIO_LYRICS_PATH, DEFAULT_UDIO_LYRICS_PATH);
+  const base = toUrl(path);
+  const sep = base.includes('?') ? '&' : '?';
+  const url = `${base}${sep}workId=${encodeURIComponent(input.workId)}`;
+
+  const response = await fetch(url, {
+    method: 'GET',
+    headers: buildUdioAuthHeaders(apiKey),
+    cache: 'no-store',
+  });
+
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    throw new Error(extractMessage(payload) || `Udio lyrics failed (${response.status})`);
+  }
+
+  const root = asRecord(payload) || {};
+  const data = asRecord(root.data) || root;
+  const rawLyrics = Array.isArray(data.lyrics) ? data.lyrics : [];
+  const lyrics = rawLyrics
+    .map((item) => {
+      const r = asRecord(item);
+      if (!r) return null;
+      const time = typeof r.time === 'number' ? r.time : parseFloat(String(r.time ?? 0));
+      const text = typeof r.text === 'string' ? r.text : String(r.text ?? '');
+      return { time, text };
+    })
+    .filter((item): item is { time: number; text: string } => item !== null);
+
+  return { workId: input.workId, lyrics, raw: payload };
+}
+
+// ─── Credits ─────────────────────────────────────────────────────────────────
+
+export async function getUdioCredits(): Promise<UdioCreditsResult> {
+  const apiKey = getUdioApiKey();
+  const path = resolvePath(process.env.UDIO_CREDITS_PATH, DEFAULT_UDIO_CREDITS_PATH);
+  const url = toUrl(path);
+
+  const response = await fetch(url, {
+    method: 'GET',
+    headers: buildUdioAuthHeaders(apiKey),
+    cache: 'no-store',
+  });
+
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    throw new Error(extractMessage(payload) || `Udio credits failed (${response.status})`);
+  }
+
+  const root = asRecord(payload) || {};
+  const data = asRecord(root.data) || root;
+  const credits =
+    typeof data.credits === 'number'
+      ? data.credits
+      : typeof root.credits === 'number'
+        ? root.credits
+        : 0;
+
+  return { credits, raw: payload };
 }

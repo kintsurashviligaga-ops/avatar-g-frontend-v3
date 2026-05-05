@@ -119,10 +119,11 @@ async function probe(provider: ProviderName): Promise<{ ok: boolean; detail: str
     }
 
     if (provider === 'udio') {
+      // Probe credits endpoint — lightweight GET that confirms auth without spending credits.
       const base = String(process.env.UDIO_API_URL || 'https://udioapi.pro').replace(/\/+$/, '');
-      const feedPath = String(process.env.UDIO_FEED_PATH || '/api/v2/feed');
-      const url = `${base}${feedPath.startsWith('/') ? feedPath : `/${feedPath}`}?workId=healthcheck`;
+      const url = `${base}/api/v2/credits`;
       const response = await fetch(url, {
+        method: 'GET',
         headers: {
           Authorization: `Bearer ${key}`,
           'x-api-key': key,
@@ -134,7 +135,8 @@ async function probe(provider: ProviderName): Promise<{ ok: boolean; detail: str
         return { ok: false, detail: `Auth failed (${response.status})`, creditsRemaining: null };
       }
       const payload = await response.json().catch(() => null);
-      return { ok: response.ok || response.status === 400 || response.status === 404, detail: `HTTP ${response.status}`, creditsRemaining: extractCredits(payload) };
+      const credits = extractCredits(payload);
+      return { ok: response.ok || response.status === 400 || response.status === 404, detail: `HTTP ${response.status}`, creditsRemaining: credits };
     }
 
     if (provider === 'ltx') {
