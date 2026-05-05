@@ -101,12 +101,13 @@ const SERVICE_ROUTES: Record<ServiceType, RouteConfig> = {
     outputType: 'image',
   },
   image: {
-    defaultModel: 'sdxl',
+    defaultModel: 'flux',
     variants: {
-      fast: 'sdxl',
-      premium: 'realistic-vision',
+      fast:      'flux',
+      general:   'flux',
+      premium:   'flux-pro',
+      ultra:     'flux-pro',
       realistic: 'realistic-vision',
-      general: 'sdxl',
     },
     outputType: 'image',
   },

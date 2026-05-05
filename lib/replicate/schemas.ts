@@ -60,6 +60,22 @@ export function getAspectDimensions(ratio: string = '1:1'): { width: number; hei
   return ASPECT_RATIOS[ratio] ?? ASPECT_RATIOS['1:1']!;
 }
 
+const STYLE_SUFFIXES: Record<string, string> = {
+  'Photorealistic': 'photorealistic, 8k uhd, sharp focus, photographic quality, dslr',
+  'Digital Art':    'digital art, vibrant colors, artstation, trending, concept art',
+  'Oil Painting':   'oil painting, textured brushstrokes, classical fine art, canvas',
+  'Watercolor':     'watercolor painting, soft flowing colors, paper texture, delicate',
+  'Anime':          'anime style, manga, cel shaded, studio ghibli quality',
+  'Sketch':         'detailed pencil sketch, graphite drawing, fine line art',
+  '3D Render':      '3D render, octane render, cinema4d, studio lighting, subsurface scattering',
+  'Cinematic':      'cinematic photography, film grain, dramatic lighting, anamorphic lens',
+};
+
+function enrichPromptWithStyle(prompt: string, style?: string): string {
+  const suffix = style ? (STYLE_SUFFIXES[style] ?? style) : '';
+  return suffix ? `${prompt}, ${suffix}` : prompt;
+}
+
 export function buildModelInput(input: GenerateInput): Record<string, unknown> {
   const dims = getAspectDimensions(input.aspectRatio);
 
@@ -75,16 +91,29 @@ export function buildModelInput(input: GenerateInput): Record<string, unknown> {
         ...(input.imageUrl ? { image: input.imageUrl } : {}),
       };
 
-    case 'image':
+    case 'image': {
+      const isRealistic = input.variant === 'realistic';
+      const enriched = enrichPromptWithStyle(input.prompt, input.style);
+      if (isRealistic) {
+        // SDXL-style model
+        return {
+          prompt: enriched,
+          negative_prompt: input.negativePrompt || 'blurry, low quality, watermark, text overlay, distorted',
+          width: dims.width,
+          height: dims.height,
+          num_inference_steps: input.quality === 'ultra' ? 50 : input.quality === 'high' ? 30 : 20,
+          guidance_scale: 7.5,
+        };
+      }
+      // FLUX model (Schnell or 1.1 Pro) — uses aspect_ratio, not width/height
       return {
-        prompt: input.prompt,
-        ...(input.negativePrompt ? { negative_prompt: input.negativePrompt } : { negative_prompt: 'blurry, low quality, watermark, text overlay' }),
-        width: dims.width,
-        height: dims.height,
-        num_inference_steps: input.quality === 'ultra' ? 50 : input.quality === 'high' ? 30 : 20,
-        guidance_scale: 7.5,
-        ...(input.style ? { style_preset: input.style } : {}),
+        prompt: enriched,
+        aspect_ratio: (input.aspectRatio ?? '1:1'),
+        output_format: 'webp',
+        output_quality: input.quality === 'ultra' ? 95 : input.quality === 'high' ? 85 : 80,
+        go_fast: true,
       };
+    }
 
     case 'photo':
       if (!input.imageUrl) {

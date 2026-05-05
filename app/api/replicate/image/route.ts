@@ -1,16 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { generateNanoBananaImage } from '@/lib/nanobanana/client';
 import { validateInput, buildModelInput } from '@/lib/replicate/schemas';
 import { resolveModel } from '@/lib/replicate/models';
-import { createPrediction, pollPrediction, pollUntilDone } from '@/lib/replicate/client';
+import { createPrediction, pollPrediction } from '@/lib/replicate/client';
 import { normalizeOutput } from '@/lib/replicate/normalizer';
 
 export const dynamic = 'force-dynamic';
+export const maxDuration = 60;
+
+// ── Quality → NanoBanana endpoint mapping ──────────────────────────────────────
+const QUALITY_TO_NB_ENDPOINT: Record<string, string> = {
+  standard: 'v2-1k',
+  high:     'v2-2k',
+  ultra:    'pro-4k',
+};
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
 
-    // ── Poll existing prediction ─────────────────────────────────────
+    // ── Poll existing Replicate prediction (fallback path only) ────────
     if (body.predictionId) {
       const result = await pollPrediction(String(body.predictionId));
       const model = resolveModel('image', body.variant);
@@ -21,7 +30,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(normalized);
     }
 
-    // ── Validate ─────────────────────────────────────────────────────
+    // ── Validate input ─────────────────────────────────────────────────
     const validation = validateInput({
       service: 'image',
       prompt: body.prompt,
@@ -37,24 +46,54 @@ export async function POST(req: NextRequest) {
     }
 
     const input = validation.sanitized;
+    const nanoBananaKey = process.env.NANOBANANA_API_KEY;
+
+    // ── Primary: NanoBanana ────────────────────────────────────────────
+    if (nanoBananaKey) {
+      try {
+        const endpoint = QUALITY_TO_NB_ENDPOINT[input.quality ?? 'high'] ?? 'v2-2k';
+        const result = await generateNanoBananaImage({
+          prompt: input.prompt,
+          endpoint,
+          aspectRatio: input.aspectRatio ?? '1:1',
+          style: input.style,
+        });
+
+        if (result.url) {
+          return NextResponse.json({
+            success: true,
+            url: result.url,
+            model: `NanoBanana ${endpoint.toUpperCase()}`,
+            outputType: 'image',
+            provider: 'nanobanana',
+            credits: result.credits,
+          });
+        }
+      } catch (nbErr) {
+        console.warn('[image] NanoBanana failed, falling back to Replicate:', nbErr instanceof Error ? nbErr.message : nbErr);
+      }
+    }
+
+    // ── Fallback: Replicate FLUX ───────────────────────────────────────
     const model = resolveModel(input.service, input.variant);
     const modelInput = buildModelInput(input);
-
-    // ── Create prediction ────────────────────────────────────────────
     const prediction = await createPrediction(model.id, modelInput);
 
-    // ── If sync result, return immediately ────────────────────────────
     if (prediction.status === 'succeeded' && prediction.output) {
       return NextResponse.json(
         normalizeOutput('image', model.label, model.outputType, prediction.id, prediction.status, prediction.output, null, prediction.metrics),
       );
     }
 
-    // ── Wait for result (up to 60s) ─────────────────────────────────
-    const completed = await pollUntilDone(prediction.id, 30, 2000);
-    return NextResponse.json(
-      normalizeOutput('image', model.label, model.outputType, completed.id, completed.status, completed.output, completed.error ?? null, completed.metrics),
-    );
+    // Return predictionId — client polls
+    return NextResponse.json({
+      success: true,
+      predictionId: prediction.id,
+      status: prediction.status,
+      model: model.label,
+      outputType: model.outputType,
+      provider: 'replicate',
+    });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Image generation failed';
     return NextResponse.json(
