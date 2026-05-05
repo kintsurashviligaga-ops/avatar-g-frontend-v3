@@ -338,34 +338,57 @@ async function generateVideo(
   prompt: string,
   answers: Record<string, string | string[]>,
 ): Promise<{ resultUrl?: string; outputKind: string; error?: string }> {
-  const { createPrediction, pollUntilDone } = await import('@/lib/replicate/client');
-  const { resolveModel } = await import('@/lib/replicate/models');
-  const { validateInput, buildModelInput } = await import('@/lib/replicate/schemas');
-  const { normalizeOutput } = await import('@/lib/replicate/normalizer');
+  // Prefer LTX when key is available (higher quality, synchronous)
+  const ltxKey = process.env.LTX_VIDEO_API_KEY;
+  if (ltxKey) {
+    const resolution = String(answers.resolution ?? '1920x1080');
+    const duration   = Number(answers.duration ?? 6);
+    const fps        = Number(answers.fps ?? 24);
+    const model      = String(answers.ltx_model ?? 'ltx-2-3-fast');
 
-  const quality = String(answers.quality ?? 'standard');
-  const aspectRatio = String(answers.aspect ?? '16:9');
-  const variant = String(answers.variant ?? 'text-to-video');
+    try {
+      const ltxRes = await fetch('https://api.ltx.video/v1/text-to-video', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${ltxKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt, model, resolution, duration, fps, generate_audio: false }),
+      });
 
-  const validation = validateInput({ service: 'video', prompt, quality, aspectRatio, variant });
-  if (!validation.valid || !validation.sanitized) {
-    return { outputKind: 'video', error: validation.error ?? 'Invalid video input' };
+      if (ltxRes.ok) {
+        const arrayBuf = await ltxRes.arrayBuffer();
+        const base64 = Buffer.from(arrayBuf).toString('base64');
+        return { resultUrl: `data:video/mp4;base64,${base64}`, outputKind: 'video' };
+      }
+
+      const errText = await ltxRes.text().catch(() => '');
+      console.warn('[pipeline/video] LTX failed, falling back to Replicate:', ltxRes.status, errText);
+    } catch (ltxErr) {
+      console.warn('[pipeline/video] LTX error, falling back to Replicate:', ltxErr);
+    }
   }
 
-  const model = resolveModel('video', validation.sanitized.variant);
-  const modelInput = buildModelInput(validation.sanitized);
-  const prediction = await createPrediction(model.id, modelInput);
-  const completed = prediction.status === 'succeeded' && prediction.output
-    ? prediction
-    : await pollUntilDone(prediction.id, 40, 2500);
+  // Fallback: Replicate minimax/video-01-live (returns a URL)
+  try {
+    const { runReplicateModel } = await import('@/lib/replicate/client');
+    const output = await runReplicateModel('minimax/video-01-live', {
+      prompt,
+      prompt_optimizer: true,
+    });
 
-  const normalized = normalizeOutput(
-    'video', model.label, model.outputType,
-    completed.id, completed.status, completed.output, completed.error ?? null, completed.metrics,
-  );
+    const videoUrl =
+      typeof output === 'string'
+        ? output
+        : output instanceof URL
+          ? output.href
+          : Array.isArray(output) && output.length > 0
+            ? String(output[0])
+            : null;
 
-  if (!normalized.url) return { outputKind: 'video', error: normalized.error ?? 'No video URL returned' };
-  return { resultUrl: normalized.url, outputKind: 'video' };
+    if (!videoUrl) return { outputKind: 'video', error: 'No video URL returned from model' };
+    return { resultUrl: videoUrl, outputKind: 'video' };
+  } catch (replicateErr) {
+    const msg = replicateErr instanceof Error ? replicateErr.message : 'Video generation failed';
+    return { outputKind: 'video', error: msg };
+  }
 }
 
 async function generateImage(
