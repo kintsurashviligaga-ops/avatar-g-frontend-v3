@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Image from 'next/image';
-import { ImageIcon, Sparkles, Zap, Download, RefreshCw, Wand2, AlertCircle, X, ChevronDown, ChevronUp } from 'lucide-react';
+import { ImageIcon, Sparkles, Zap, Download, RefreshCw, Wand2, AlertCircle, ChevronDown, ChevronUp } from 'lucide-react';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -21,9 +21,9 @@ const RATIOS = [
 type Ratio = (typeof RATIOS)[number]['value'];
 
 const QUALITIES = [
-  { value: 'standard', label: 'Standard', variant: 'fast',    model: 'NanoBanana V2 1K' },
-  { value: 'high',     label: 'HD',       variant: 'fast',    model: 'NanoBanana V2 2K' },
-  { value: 'ultra',    label: 'Ultra HD', variant: 'premium', model: 'NanoBanana Pro 4K' },
+  { value: 'standard', label: 'Standard', endpoint: 'v2-1k',  model: 'NanoBanana V2 1K',  credits: 8  },
+  { value: 'high',     label: 'HD',       endpoint: 'v2-2k',  model: 'NanoBanana V2 2K',  credits: 12 },
+  { value: 'ultra',    label: 'Ultra HD', endpoint: 'pro-4k', model: 'NanoBanana Pro 4K', credits: 24 },
 ] as const;
 type Quality = (typeof QUALITIES)[number]['value'];
 
@@ -66,12 +66,9 @@ export default function ImageGenerationPage() {
   const [gallery, setGallery]  = useState<GeneratedImage[]>([]);
   const [selected, setSelected] = useState<GeneratedImage | null>(null);
 
-  const pollTimer   = useRef<ReturnType<typeof setInterval> | null>(null);
   const elapsedTimer = useRef<ReturnType<typeof setInterval> | null>(null);
-  const currentVariant = useRef<string>('fast');
 
   useEffect(() => () => {
-    if (pollTimer.current)    clearInterval(pollTimer.current);
     if (elapsedTimer.current) clearInterval(elapsedTimer.current);
   }, []);
 
@@ -85,48 +82,17 @@ export default function ImageGenerationPage() {
     if (elapsedTimer.current) { clearInterval(elapsedTimer.current); elapsedTimer.current = null; }
   };
 
-  const pollResult = (predictionId: string, meta: Omit<GeneratedImage, 'id' | 'url'>) => {
-    let tick = 0;
-    pollTimer.current = setInterval(async () => {
-      tick++;
-      setProgress(Math.min(90, Math.round((tick / 20) * 90)));
-
-      try {
-        const res  = await fetch('/api/replicate/image', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ predictionId, variant: currentVariant.current }),
-        });
-        const data = await res.json() as {
-          success?: boolean; url?: string | null; status?: string;
-          error?: string; metadata?: { predictionId?: string };
-        };
-
-        if (data.success && data.url) {
-          clearInterval(pollTimer.current!);
-          stopElapsed();
-          setProgress(100);
-          setStatus('done');
-          const img: GeneratedImage = { id: predictionId, url: data.url, ...meta };
-          setGallery(prev => [img, ...prev]);
-          setSelected(img);
-        } else if (data.status === 'failed' || (!data.success && data.error && data.status !== 'starting' && data.status !== 'processing')) {
-          clearInterval(pollTimer.current!);
-          stopElapsed();
-          setStatus('failed');
-          setError(data.error ?? 'Generation failed');
-        }
-      } catch {
-        // transient error — keep polling
-      }
-
-      if (tick >= 40) { // 2 min max for slow models
-        clearInterval(pollTimer.current!);
-        stopElapsed();
-        setStatus('failed');
-        setError('Generation timed out. Please try again.');
-      }
-    }, 3000);
+  // Animate progress toward 95% while waiting for server response
+  const progressRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const startProgress = () => {
+    setProgress(5);
+    progressRef.current = setInterval(() => {
+      setProgress(p => p < 90 ? p + Math.random() * 4 : p);
+    }, 800);
+  };
+  const stopProgress = (final: number) => {
+    if (progressRef.current) { clearInterval(progressRef.current); progressRef.current = null; }
+    setProgress(final);
   };
 
   const generate = async () => {
@@ -136,66 +102,85 @@ export default function ImageGenerationPage() {
     setProgress(0);
     setStatus('starting');
     startElapsed();
-
-    const variant  = qConfig.variant;
-    currentVariant.current = variant;
+    startProgress();
 
     try {
-      const res = await fetch('/api/replicate/image', {
+      // Primary: NanoBananaAI — server polls internally, returns URL directly
+      const res = await fetch('/api/nanobanana/image', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          prompt:        prompt.trim(),
+          prompt:      prompt.trim(),
           style,
           quality,
-          variant,
-          aspectRatio:   ratio,
-          negativePrompt: negPrompt.trim() || undefined,
+          endpoint:    qConfig.endpoint,
+          aspectRatio: ratio,
         }),
       });
       const data = await res.json() as {
-        success?: boolean; predictionId?: string; url?: string | null;
-        status?: string; model?: string; error?: string;
+        success?: boolean; url?: string | null;
+        model?: string; endpoint?: string; credits?: number; error?: string;
       };
 
-      if (!res.ok || data.error) {
-        stopElapsed();
-        setStatus('failed');
-        setError(data.error ?? `API error ${res.status}`);
-        return;
-      }
+      stopElapsed();
+      stopProgress(data.success && data.url ? 100 : 0);
 
-      // Instant result (rare but possible)
-      if (data.success && data.url) {
+      if (!res.ok || !data.success || !data.url) {
+        // Fallback: Replicate FLUX
+        setError(null);
+        setStatus('processing');
+        startElapsed();
+        startProgress();
+
+        const fbRes = await fetch('/api/replicate/image', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            prompt:        prompt.trim(),
+            style,
+            quality,
+            variant:       quality === 'ultra' ? 'premium' : 'fast',
+            aspectRatio:   ratio,
+          }),
+        });
+        const fbData = await fbRes.json() as {
+          success?: boolean; predictionId?: string; url?: string | null;
+          model?: string; error?: string;
+        };
+
         stopElapsed();
-        setProgress(100);
-        setStatus('done');
+        stopProgress(fbData.success && fbData.url ? 100 : 0);
+
+        if (!fbRes.ok || fbData.error || !fbData.url) {
+          setStatus('failed');
+          setError(fbData.error ?? data.error ?? `Generation failed (${res.status})`);
+          return;
+        }
+
         const img: GeneratedImage = {
-          id: data.predictionId ?? String(Date.now()),
-          url: data.url,
-          prompt: prompt.trim(),
-          style, ratio, quality,
-          model: data.model ?? qConfig.model,
+          id: fbData.predictionId ?? String(Date.now()),
+          url: fbData.url,
+          prompt: prompt.trim(), style, ratio, quality,
+          model: fbData.model ?? qConfig.model,
         };
         setGallery(prev => [img, ...prev]);
         setSelected(img);
+        setStatus('done');
         return;
       }
 
-      if (!data.predictionId) {
-        stopElapsed();
-        setStatus('failed');
-        setError('No prediction ID returned');
-        return;
-      }
-
-      setStatus('processing');
-      pollResult(data.predictionId, {
+      const img: GeneratedImage = {
+        id: String(Date.now()),
+        url: data.url,
         prompt: prompt.trim(), style, ratio, quality,
         model: data.model ?? qConfig.model,
-      });
+      };
+      setGallery(prev => [img, ...prev]);
+      setSelected(img);
+      setStatus('done');
     } catch {
       stopElapsed();
+      stopProgress(0);
       setStatus('failed');
       setError('Network error — please try again.');
     }
@@ -206,7 +191,7 @@ export default function ImageGenerationPage() {
   const handleDownload = (img: GeneratedImage) => {
     const a = document.createElement('a');
     a.href = img.url; a.target = '_blank';
-    a.download = `myavatar-image-${Date.now()}.webp`;
+    a.download = `myavatar-image-${Date.now()}.jpg`;
     a.click();
   };
 
@@ -219,10 +204,10 @@ export default function ImageGenerationPage() {
         </div>
         <div>
           <h1 className="text-xl font-bold text-white" style={{ fontFamily: 'var(--font-syne, system-ui)' }}>Image Generation</h1>
-          <p className="text-xs text-white/40">AI სურათებისა და ხელოვნების გენერაცია · FLUX Schnell & 1.1 Pro</p>
+          <p className="text-xs text-white/40">AI სურათებისა და ხელოვნების გენერაცია · NanoBananaAI V2/Pro</p>
         </div>
         <div className="ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs" style={{ background: '#f59e0b18', border: '1px solid #f59e0b30', color: '#fbbf24' }}>
-          <Zap className="w-3 h-3" /> 20 credits/image
+          <Zap className="w-3 h-3" /> {qConfig.credits} credits/image
         </div>
       </div>
 
@@ -296,7 +281,7 @@ export default function ImageGenerationPage() {
                     }>{q.label}</button>
                 ))}
               </div>
-              <p className="text-[10px] text-white/25 mt-1 text-right">Model: {qConfig.model}</p>
+              <p className="text-[10px] text-white/25 mt-1 text-right">{qConfig.model} · {qConfig.credits} credits</p>
             </div>
 
             {/* Advanced */}
@@ -365,7 +350,7 @@ export default function ImageGenerationPage() {
               <div className="text-center p-8">
                 <Sparkles className="w-10 h-10 text-amber-500/60 mx-auto mb-3 animate-spin" style={{ animationDuration: '2s' }} />
                 <p className="text-sm text-white/40">Generating with {qConfig.model}...</p>
-                <p className="text-xs text-white/20 mt-1">{elapsed}s · FLUX is usually fast ⚡</p>
+                <p className="text-xs text-white/20 mt-1">{elapsed}s · NanoBananaAI is fast ⚡</p>
               </div>
             )}
             {!busy && selected && (
@@ -390,7 +375,7 @@ export default function ImageGenerationPage() {
               <div className="text-center p-8">
                 <ImageIcon className="w-12 h-12 text-white/10 mx-auto mb-3" />
                 <p className="text-sm text-white/30">Your generated image will appear here</p>
-                <p className="text-xs text-white/20 mt-1">Powered by FLUX Schnell & 1.1 Pro</p>
+                <p className="text-xs text-white/20 mt-1">Powered by NanoBananaAI V2 · FLUX fallback</p>
               </div>
             )}
           </div>
