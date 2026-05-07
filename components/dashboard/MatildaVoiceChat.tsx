@@ -3,8 +3,7 @@
 import { useCallback, useState } from 'react';
 import { Languages, Mic, RotateCcw, Volume2, X } from 'lucide-react';
 
-import { RealtimeWaveform } from '@/components/voice/RealtimeWaveform';
-import { useVoiceInput } from '@/hooks/useVoiceInput';
+import { useSimpleVoice } from '@/hooks/useSimpleVoice';
 import type { RealtimeVoiceLanguage, RealtimeVoiceState } from '@/types/voice';
 
 import { useOmniStore } from './omni/store';
@@ -21,7 +20,6 @@ type MatildaLabelMap = {
   reset: string;
   language: string;
   latency: string;
-  unsupported: string;
   states: Record<RealtimeVoiceState, string>;
 };
 
@@ -39,7 +37,6 @@ const LABELS: Record<MatildaLocale, MatildaLabelMap> = {
     reset: 'განულება',
     language: 'ენა',
     latency: 'რეაგირების დრო',
-    unsupported: 'Realtime ხმა ამ ბრაუზერში ხელმისაწვდომი არ არის.',
     states: {
       idle: 'მზად ვარ',
       listening: 'გისმენ...',
@@ -55,7 +52,6 @@ const LABELS: Record<MatildaLocale, MatildaLabelMap> = {
     reset: 'Reset',
     language: 'Language',
     latency: 'Response latency',
-    unsupported: 'Realtime voice is not available in this browser.',
     states: {
       idle: 'Ready',
       listening: 'Listening...',
@@ -71,7 +67,6 @@ const LABELS: Record<MatildaLocale, MatildaLabelMap> = {
     reset: 'Сброс',
     language: 'Язык',
     latency: 'Задержка ответа',
-    unsupported: 'Realtime-голос недоступен в этом браузере.',
     states: {
       idle: 'Готово',
       listening: 'Слушаю...',
@@ -98,14 +93,6 @@ const STATE_HALO: Record<RealtimeVoiceState, string> = {
   error: 'from-rose-500/35 to-red-300/5',
 };
 
-function statusIcon(state: RealtimeVoiceState) {
-  if (state === 'speaking') {
-    return <Volume2 className="h-7 w-7" />;
-  }
-
-  return <Mic className="h-7 w-7" />;
-}
-
 function toRealtimeLanguage(locale: MatildaLocale): RealtimeVoiceLanguage {
   if (locale === 'ru') return 'ru-RU';
   if (locale === 'en') return 'en-US';
@@ -121,34 +108,24 @@ export default function MatildaVoiceChat({ locale = 'ka' }: MatildaVoiceChatProp
 
   const [open, setOpen] = useState(false);
   const [errorText, setErrorText] = useState('');
-  const [voiceAvailable, setVoiceAvailable] = useState(true);
 
   const {
     state,
     transcript,
     partialTranscript,
     assistantTranscript,
-    analyserNode,
     latencyMs,
     language,
+    isSupported,
     setLanguage,
     startListening,
     stopListening,
     resetTranscript,
-    browserSupportsSpeechRecognition,
-  } = useVoiceInput({
+  } = useSimpleVoice({
     language: toRealtimeLanguage(normalizedLocale),
     onError: (error) => {
-      const code = String(error || '');
-      const silent = new Set(['socket_error', 'session_bootstrap_failed', 'session_ws_url_missing', 'voice_not_configured']);
-      if (code === 'session_bootstrap_failed' || code === 'voice_not_configured') {
-        // Voice server not configured — hide the widget entirely
-        setVoiceAvailable(false);
-        return;
-      }
-      if (!silent.has(code)) {
-        setErrorText(code.replace(/_/g, ' '));
-      }
+      const msg = String(error || '').replace(/_/g, ' ');
+      setErrorText(msg);
     },
   });
 
@@ -161,9 +138,8 @@ export default function MatildaVoiceChat({ locale = 'ka' }: MatildaVoiceChatProp
       stopListening();
       return;
     }
-
     setErrorText('');
-    void startListening();
+    startListening();
   }, [isActive, startListening, stopListening]);
 
   const handleLanguageChange = useCallback((nextLanguage: RealtimeVoiceLanguage) => {
@@ -182,13 +158,13 @@ export default function MatildaVoiceChat({ locale = 'ka' }: MatildaVoiceChatProp
     handleReset();
   };
 
-  if (!browserSupportsSpeechRecognition || !voiceAvailable) {
+  if (!isSupported) {
     return null;
   }
 
   return (
     <>
-      {/* Floating trigger button */}
+      {/* Floating trigger */}
       {!open && (
         <button
           type="button"
@@ -220,15 +196,13 @@ export default function MatildaVoiceChat({ locale = 'ka' }: MatildaVoiceChatProp
             </button>
           </div>
 
-          <div className="px-5 pb-3">
-            <RealtimeWaveform analyserNode={analyserNode} state={state} />
-          </div>
-
           <div className="px-5">
+            {/* Status badge */}
             <div data-testid="matilda-status" className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold ${BADGE_COLOR[state]}`}>
               {statusLabel}
             </div>
 
+            {/* Language selector */}
             <div className="mt-3 flex items-center justify-between rounded-xl border border-cyan-100/12 bg-white/[0.03] px-3 py-2">
               <span className="text-[11px] uppercase tracking-[0.14em] text-white/45">{labels.language}</span>
               <div className="flex items-center gap-1">
@@ -251,7 +225,7 @@ export default function MatildaVoiceChat({ locale = 'ka' }: MatildaVoiceChatProp
           </div>
 
           {/* Mic button */}
-          <div className="flex flex-col items-center gap-4 px-5 pb-5">
+          <div className="flex flex-col items-center gap-4 px-5 pb-5 pt-4">
             <div className="relative flex items-center justify-center">
               {pulseRing && (
                 <span className="absolute h-24 w-24 animate-ping rounded-full bg-current opacity-20" style={{ color: state === 'listening' ? '#38bdf8' : '#34d399' }} />
@@ -262,13 +236,11 @@ export default function MatildaVoiceChat({ locale = 'ka' }: MatildaVoiceChatProp
                 data-testid="matilda-mic-toggle"
                 className={`relative z-10 flex h-20 w-20 items-center justify-center rounded-full border-2 bg-gradient-to-br ${STATE_HALO[state]} ${BADGE_COLOR[state]} transition-all duration-200 ${isActive ? 'scale-105' : 'hover:scale-105'}`}
               >
-                {statusIcon(state)}
+                {state === 'speaking' ? <Volume2 className="h-7 w-7" /> : <Mic className="h-7 w-7" />}
               </button>
             </div>
 
-            <p className="text-center text-sm font-medium text-white/60">
-              {statusLabel}
-            </p>
+            <p className="text-center text-sm font-medium text-white/60">{statusLabel}</p>
 
             <div className="flex w-full items-center gap-2">
               <button
@@ -291,8 +263,8 @@ export default function MatildaVoiceChat({ locale = 'ka' }: MatildaVoiceChatProp
             {(transcript || partialTranscript) && (
               <div className="w-full rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3">
                 <p className="text-xs text-white/40">შენ:</p>
-                {transcript ? <p className="mt-1 text-sm text-white/85">{transcript}</p> : null}
-                {partialTranscript ? <p className="mt-1 text-sm italic text-cyan-100/85">{partialTranscript}</p> : null}
+                {transcript && <p className="mt-1 text-sm text-white/85">{transcript}</p>}
+                {partialTranscript && <p className="mt-1 text-sm italic text-cyan-100/85">{partialTranscript}</p>}
               </div>
             )}
 
@@ -306,7 +278,6 @@ export default function MatildaVoiceChat({ locale = 'ka' }: MatildaVoiceChatProp
 
             {errorText && (
               <div className="w-full rounded-2xl border border-rose-300/25 bg-rose-500/10 px-4 py-3">
-                <p className="text-xs text-rose-100/80">{labels.states.error}</p>
                 <p className="mt-1 text-sm text-rose-100/90">{errorText}</p>
               </div>
             )}
@@ -314,7 +285,6 @@ export default function MatildaVoiceChat({ locale = 'ka' }: MatildaVoiceChatProp
             {!transcript && !assistantTranscript && !errorText && (
               <p className="text-center text-xs text-white/30">{labels.hint}</p>
             )}
-
           </div>
         </div>
       )}
