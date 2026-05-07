@@ -45,6 +45,12 @@ const AUTO_BRIDGE_TARGETS: Record<ServiceId, ServiceId[]> = {
   'interior-design': ['image', 'video'],
   'prompt-builder': ['terminal-coding', 'game-creation'],
   'terminal-coding': ['prompt-builder', 'game-creation'],
+  'content-writer': ['prompt-builder', 'podcast'],
+  'podcast': ['content-writer', 'voice-studio'],
+  'character': ['content-writer', 'image'],
+  'event': ['content-writer', 'image'],
+  'tourism': ['image', 'content-writer'],
+  'voice-studio': ['podcast', 'content-writer'],
 };
 
 const createId = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 9)}`;
@@ -829,13 +835,14 @@ export const useOmniDashboardStore = create<OmniDashboardState>((set, get) => {
     }
 
     // --- All other services: build artifact + Claude chat response ---
+    // For panel source, set status to 'running' while we generate real content
     const output = buildArtifact(serviceId, cleanPrompt, locale);
 
     set((state) => {
       const targetState = state.services[serviceId];
       const updatedTarget: ServiceRuntimeState = {
         ...targetState,
-        status: 'ready',
+        status: source === 'panel' ? 'running' : 'ready',
         queueDepth: Math.max(0, targetState.queueDepth - 1),
         outputs: [output, ...targetState.outputs].slice(0, MAX_OUTPUTS_PER_SERVICE),
       };
@@ -898,6 +905,87 @@ export const useOmniDashboardStore = create<OmniDashboardState>((set, get) => {
           });
         })
         .catch(() => {});
+    }
+
+    // --- Panel source: generate real AI content into artifact textBody ---
+    if (source === 'panel') {
+      void (async () => {
+        try {
+          const uiMessages = [{
+            id: 'm0',
+            role: 'user' as const,
+            parts: [{ type: 'text' as const, text: cleanPrompt }],
+            metadata: undefined,
+          }];
+
+          const res = await fetch('/api/chat/gemini', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ messages: uiMessages }),
+          });
+
+          if (res.ok && res.body) {
+            const reader = res.body.getReader();
+            const decoder = new TextDecoder();
+            let fullText = '';
+
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              const chunk = decoder.decode(value, { stream: true });
+              for (const line of chunk.split('\n')) {
+                if (!line.startsWith('data: ')) continue;
+                const raw = line.slice(6).trim();
+                if (raw === '[DONE]') continue;
+                try {
+                  const event = JSON.parse(raw) as { type: string; delta?: string };
+                  if (event.type === 'text-delta' && event.delta) {
+                    fullText += event.delta;
+                    set((state) => {
+                      const svc = state.services[serviceId];
+                      const updatedOutputs = svc.outputs.map((o) =>
+                        o.id === output.id ? { ...o, textBody: fullText } : o,
+                      );
+                      const updatedAssets = state.sharedAssets.map((a) =>
+                        a.id === output.id ? { ...a, textBody: fullText } : a,
+                      );
+                      const updatedPreview = state.preview?.id === output.id
+                        ? { ...state.preview, textBody: fullText }
+                        : state.preview;
+                      return {
+                        services: { ...state.services, [serviceId]: { ...svc, outputs: updatedOutputs } },
+                        sharedAssets: updatedAssets,
+                        preview: updatedPreview,
+                      };
+                    });
+                  }
+                } catch { /* skip malformed lines */ }
+              }
+            }
+
+            set((state) => {
+              const svc = state.services[serviceId];
+              return {
+                services: { ...state.services, [serviceId]: { ...svc, status: 'ready' } },
+              };
+            });
+          } else {
+            set((state) => {
+              const svc = state.services[serviceId];
+              return {
+                services: { ...state.services, [serviceId]: { ...svc, status: 'ready' } },
+              };
+            });
+          }
+        } catch {
+          set((state) => {
+            const svc = state.services[serviceId];
+            return {
+              services: { ...state.services, [serviceId]: { ...svc, status: 'error' } },
+            };
+          });
+        }
+      })();
     }
 
     if (source === 'chat') {

@@ -167,7 +167,7 @@ export const OMNI_SERVICES: OmniServiceDescriptor[] = [
     short: 'VS',
     worker: 'VoiceStudioWorker',
     accent: '#fb923c',
-    previewKind: 'audio',
+    previewKind: 'text',
     defaultPrompt: 'Generate a professional voice-over script for a 60-second product commercial.',
     icon: Mic2,
   },
