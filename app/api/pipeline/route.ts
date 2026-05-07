@@ -66,6 +66,7 @@ const SERVICE_KEYWORDS: Record<ServiceId, string[]> = {
   podcast:          ['podcast', 'პოდკასტ', 'подкаст', 'episode', 'radio', 'interview script', 'ეპიზოდ'],
   character:        ['character', 'პერსონაჟ', 'персонаж', 'npc', 'roleplay', 'role-play', 'fictional', 'fictional character'],
   event:            ['event', 'ივენთ', 'мероприят', 'wedding', 'conference', 'festival', 'concert', 'კონფერენც', 'ქორწილ', 'launch', 'ceremony'],
+  tourism:          ['travel', 'tour', 'trip', 'მოგზაურ', 'путешеств', 'itinerary', 'destination', 'visit', 'vacation', 'holiday', 'ტური', 'ადგილ', 'guide', 'tourism'],
 };
 
 function detectServiceIntent(text: string): ServiceId | null {
@@ -145,8 +146,8 @@ function handleDetectIntent(userInput: string, locale: string) {
     return NextResponse.json({
       detected: false,
       message: locale === 'ka'
-        ? 'მე ვარ Agent G — MyAvatar.ge-ის AI ორკესტრატორი. 13 სერვისიდან რომელი გჭირდება?\n\n**Avatar** · **Video** · **Image** · **Music Studio** · **Voice Clone** · **Game** · **Interior** · **Prompt** · **Terminal** · **Content Writer** · **Podcast** · **Character AI** · **Event Studio**'
-        : 'I am Agent G — AI orchestrator of MyAvatar.ge. Which of our 13 services do you need?\n\n**Avatar** · **Video** · **Image** · **Music Studio** · **Voice Clone** · **Game** · **Interior** · **Prompt** · **Terminal** · **Content Writer** · **Podcast** · **Character AI** · **Event Studio**',
+        ? 'მე ვარ Agent G — MyAvatar.ge-ის AI ორკესტრატორი. 14 სერვისიდან რომელი გჭირდება?\n\n**Avatar** · **Video** · **Image** · **Music Studio** · **Voice Clone** · **Game** · **Interior** · **Prompt** · **Terminal** · **Content Writer** · **Podcast** · **Character AI** · **Event Studio** · **Tourism**'
+        : 'I am Agent G — AI orchestrator of MyAvatar.ge. Which of our 14 services do you need?\n\n**Avatar** · **Video** · **Image** · **Music Studio** · **Voice Clone** · **Game** · **Interior** · **Prompt** · **Terminal** · **Content Writer** · **Podcast** · **Character AI** · **Event Studio** · **Tourism**',
     });
   }
   const flow = getFlow(serviceId);
@@ -666,18 +667,19 @@ async function handleGenerate(
   const effectivePrompt = iterative.prompt;
 
   // ── Text services (Gemini as primary assistant brain) ─────────────────────
-  const TEXT_SERVICES: ServiceId[] = ['game', 'prompt-builder', 'terminal', 'content-writer', 'podcast', 'character', 'event'];
+  const TEXT_SERVICES: ServiceId[] = ['game', 'prompt-builder', 'terminal', 'content-writer', 'podcast', 'character', 'event', 'tourism'];
 
   if (TEXT_SERVICES.includes(serviceId)) {
     const outputKind = serviceId === 'terminal' ? 'code' : 'text';
     const systemPrompts: Record<string, string> = {
       game:             'You are a senior game designer and narrative architect. Produce a comprehensive, publication-ready Game Design Document (GDD) in rich markdown. Structure the document with these sections: ## Overview, ## Core Mechanics, ## Narrative & World, ## Level Design, ## Characters & Abilities, ## Progression & Monetization, ## Technical Requirements, ## Art Direction. Use tables, bullet lists, and code blocks where appropriate. Be specific, creative, and actionable.',
-      'prompt-builder': 'You are a world-class prompt engineer. Return ONLY the final optimized prompt — no preamble, no explanation.',
+      'prompt-builder': 'You are a world-class prompt engineer specializing in crafting high-performance prompts for AI models. Your task: transform the user\'s raw input into a powerful, optimized prompt tailored to the target model and style. Return ONLY the final optimized prompt — no preamble, no explanation, no quotes around it. Just the prompt itself, ready to copy-paste.',
       terminal:         'You are a Staff Engineer. Write production-ready, secure, well-structured code with markdown code blocks.',
       'content-writer': 'You are a world-class copywriter and content strategist. Produce high-quality, engaging, SEO-aware content. Use natural language, avoid generic AI phrases. Format in clean markdown.',
       podcast:          'You are a professional podcast producer and scriptwriter. Create complete, engaging podcast scripts with clear segment structure, natural dialogue, and strong hooks. Format in markdown with speaker labels.',
       character:        'You are a master character designer and narrative architect. Create rich, multi-dimensional characters with deep backstories, consistent voice, and cultural depth. Format in clean markdown with clear sections.',
       event:            'You are a professional event producer and copywriter. Create comprehensive event materials including programs, MC scripts, promo copy, and invitations. Be specific, engaging, and culturally aware. Format in clean markdown.',
+      tourism:          'You are an expert travel consultant and destination specialist. Create detailed, practical, and inspiring travel content. Include local tips, cultural context, logistics, and hidden gems. Format in clean, readable markdown with clear sections.',
     };
 
     if (serviceId === 'terminal') {
@@ -730,6 +732,90 @@ async function handleGenerate(
       if (extras.length > 0) {
         enrichedPrompt = `${effectivePrompt}\n\n**Design Parameters:**\n${extras.map(e => `- ${e}`).join('\n')}`;
       }
+    }
+
+    if (serviceId === 'prompt-builder') {
+      const targetMap: Record<string, string> = {
+        gpt4:       'GPT-4o (OpenAI chat model — supports long context, system instructions, structured reasoning)',
+        claude:     'Claude (Anthropic — excels at nuanced reasoning, long documents, XML-structured output)',
+        gemini:     'Gemini (Google — strong with multimodal tasks and long-form analysis)',
+        flux:       'FLUX image generation model (diffusion-based — uses natural language descriptions of visual scenes, lighting, composition, style)',
+        midjourney: 'Midjourney image generation (uses comma-separated descriptors, style suffixes like --ar 16:9 --style raw --v 7)',
+        dalle:      'DALL-E image generation (OpenAI — natural language descriptions, clear subject + style + lighting + mood)',
+        kling:      'Kling video generation (descriptive scene setup, camera movement, subject action, lighting)',
+        sora:       'Sora video generation (OpenAI — cinematic scene descriptions with camera angle, motion, environment, duration)',
+      };
+      const styleMap: Record<string, string> = {
+        detailed:   'detailed and highly specific — add rich context, constraints, format instructions, and examples where useful',
+        concise:    'concise and direct — keep it short but powerful, every word earns its place',
+        creative:   'creative and expressive — evocative language, metaphors, vivid imagery',
+        technical:  'technical and precise — exact terminology, structured format, measurable constraints',
+        cinematic:  'cinematic — visual storytelling language: camera angles, lighting, atmosphere, motion, mood',
+      };
+      const target = typeof answers.target === 'string' && answers.target ? answers.target : 'gpt4';
+      const style  = typeof answers.style  === 'string' && answers.style  ? answers.style  : 'detailed';
+      const targetDesc = targetMap[target] ?? target;
+      const styleDesc  = styleMap[style]   ?? style;
+      enrichedPrompt = `Optimize the following prompt for: ${targetDesc}.\nOptimization style: ${styleDesc}.\n\nOriginal prompt:\n${effectivePrompt}`;
+    }
+
+    if (serviceId === 'content-writer') {
+      const type     = typeof answers.type     === 'string' && answers.type     ? answers.type     : 'article';
+      const tone     = typeof answers.tone     === 'string' && answers.tone     ? answers.tone     : 'professional';
+      const language = typeof answers.language === 'string' && answers.language ? answers.language : null;
+      const extras = [
+        `Content Type: ${type}`,
+        `Tone: ${tone}`,
+        language && `Language: ${language === 'ka' ? 'Georgian (ქართული)' : language === 'ru' ? 'Russian' : 'English'}`,
+      ].filter(Boolean);
+      enrichedPrompt = `${effectivePrompt}\n\n**Writing Parameters:**\n${extras.map(e => `- ${e}`).join('\n')}`;
+      if (language === 'ka') {
+        enrichedPrompt += '\n\nIMPORTANT: Write the entire output in Georgian (ქართული). Use proper Georgian typography and natural, engaging language.';
+      } else if (language === 'ru') {
+        enrichedPrompt += '\n\nIMPORTANT: Write the entire output in Russian. Use natural, engaging language.';
+      }
+    }
+
+    if (serviceId === 'podcast') {
+      const format   = typeof answers.format   === 'string' && answers.format   ? answers.format   : 'interview';
+      const duration = typeof answers.duration === 'string' && answers.duration ? answers.duration : '30';
+      const tone     = typeof answers.tone     === 'string' && answers.tone     ? answers.tone     : 'conversational';
+      enrichedPrompt = `${effectivePrompt}\n\n**Podcast Parameters:**\n- Format: ${format}\n- Target duration: ${duration} minutes\n- Tone: ${tone}\n\nGenerate a complete, production-ready episode script with timestamps, speaker labels, transitions, and natural dialogue.`;
+    }
+
+    if (serviceId === 'character') {
+      const archetype = typeof answers.archetype === 'string' && answers.archetype ? answers.archetype : null;
+      const world     = typeof answers.world     === 'string' && answers.world     ? answers.world     : null;
+      const depth     = typeof answers.depth     === 'string' && answers.depth     ? answers.depth     : 'standard';
+      const extras = [
+        archetype && `Archetype: ${archetype}`,
+        world     && `World / Setting: ${world}`,
+        `Detail Level: ${depth}`,
+      ].filter(Boolean);
+      enrichedPrompt = `${effectivePrompt}\n\n**Character Parameters:**\n${extras.map(e => `- ${e}`).join('\n')}`;
+      if (depth === 'deep') {
+        enrichedPrompt += '\n\nInclude: full backstory, personality breakdown, key relationships, speech patterns, sample dialogue (5+ lines), fears, motivations, and a visual description suitable for image generation.';
+      }
+    }
+
+    if (serviceId === 'event') {
+      const type   = typeof answers.type   === 'string' && answers.type   ? answers.type   : 'conference';
+      const output = typeof answers.output === 'string' && answers.output ? answers.output : 'full';
+      const outputDesc: Record<string, string> = {
+        program:   'full event program with schedule and speaker bios',
+        mc_script: 'complete MC / host script with cues and transitions',
+        invitation: 'formal invitation text suitable for print and digital',
+        promo:     'social media promo copy pack (3 posts + story captions)',
+        full:      'everything: program + MC script + invitation + promo copy',
+      };
+      enrichedPrompt = `${effectivePrompt}\n\n**Event Parameters:**\n- Event Type: ${type}\n- Generate: ${outputDesc[output] ?? output}`;
+    }
+
+    if (serviceId === 'tourism') {
+      const type     = typeof answers.type     === 'string' && answers.type     ? answers.type     : 'itinerary';
+      const duration = typeof answers.duration === 'string' && answers.duration ? answers.duration : '5';
+      const style    = typeof answers.style    === 'string' && answers.style    ? answers.style    : 'cultural';
+      enrichedPrompt = `${effectivePrompt}\n\n**Travel Parameters:**\n- Plan Type: ${type}\n- Duration: ${duration} days\n- Travel Style: ${style}\n\nInclude: daily schedule, accommodation tips, must-see spots, local cuisine recommendations, transport advice, and practical tips.`;
     }
 
     try {

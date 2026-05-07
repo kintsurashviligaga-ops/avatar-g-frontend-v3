@@ -211,6 +211,44 @@ const SERVICE_WORKSPACES: Record<string, ServiceWorkspace> = {
     outputType: 'text',
     previewHint: { en: 'Optimized prompt will appear here', ka: 'ოპტიმიზებული პრომპტი', ru: 'Оптимизированный промпт' },
   },
+  'prompt-builder': {
+    fields: [
+      { id: 'prompt', type: 'textarea', label: { en: 'Base Prompt', ka: 'საწყისი პრომპტი', ru: 'Базовый промпт' }, placeholder: { en: 'Enter your prompt to optimize...', ka: 'შეიყვანეთ პრომპტი ოპტიმიზაციისთვის...', ru: 'Введите промпт для оптимизации...' } },
+      {
+        id: 'target',
+        type: 'select',
+        label: { en: 'Target Model', ka: 'სამიზნე მოდელი', ru: 'Целевая модель' },
+        options: [
+          { value: 'gpt4', label: 'GPT-4o (Chat)' },
+          { value: 'claude', label: 'Claude (Chat)' },
+          { value: 'gemini', label: 'Gemini (Chat)' },
+          { value: 'flux', label: 'FLUX (Image gen)' },
+          { value: 'midjourney', label: 'Midjourney (Image gen)' },
+          { value: 'dalle', label: 'DALL-E (Image gen)' },
+          { value: 'kling', label: 'Kling (Video gen)' },
+          { value: 'sora', label: 'Sora (Video gen)' },
+        ],
+        defaultValue: 'gpt4',
+      },
+      {
+        id: 'style',
+        type: 'select',
+        label: { en: 'Optimization Style', ka: 'ოპტიმიზაციის სტილი', ru: 'Стиль оптимизации' },
+        options: [
+          { value: 'detailed', label: 'Detailed & Specific' },
+          { value: 'concise', label: 'Concise & Direct' },
+          { value: 'creative', label: 'Creative & Expressive' },
+          { value: 'technical', label: 'Technical & Precise' },
+          { value: 'cinematic', label: 'Cinematic (visual)' },
+        ],
+        defaultValue: 'detailed',
+      },
+    ],
+    creditCost: 2,
+    actionLabel: { en: 'Build Optimized Prompt', ka: 'პრომპტის ოპტიმიზაცია', ru: 'Оптимизировать промпт' },
+    outputType: 'text',
+    previewHint: { en: 'Your optimized prompt will appear here — ready to copy & paste', ka: 'ოპტიმიზებული პრომპტი გამოჩნდება', ru: 'Оптимизированный промпт появится здесь' },
+  },
   'visual-intel': {
     fields: [
       { id: 'upload', type: 'upload', label: { en: 'Upload Image', ka: 'სურათის ატვირთვა', ru: 'Загрузить изображение' } },
@@ -253,13 +291,302 @@ const SERVICE_WORKSPACES: Record<string, ServiceWorkspace> = {
   },
   tourism: {
     fields: [
-      { id: 'prompt', type: 'textarea', label: { en: 'Travel Query', ka: 'მოგზაურობის მოთხოვნა', ru: 'Запрос о путешествии' }, placeholder: { en: 'Where do you want to visit?', ka: 'სად გსურთ მოგზაურობა?', ru: 'Куда хотите отправиться?' } },
-      { id: 'type', type: 'select', label: { en: 'Plan Type', ka: 'გეგმის ტიპი', ru: 'Тип плана' }, options: [{ value: 'itinerary', label: 'Itinerary' }, { value: 'guide', label: 'Local Guide' }, { value: 'budget', label: 'Budget Plan' }], defaultValue: 'itinerary' },
+      { id: 'prompt', type: 'textarea', label: { en: 'Travel Query', ka: 'მოგზაურობის მოთხოვნა', ru: 'Запрос о путешествии' }, placeholder: { en: 'Where do you want to visit? Any special interests?', ka: 'სად გსურთ მოგზაურობა? განსაკუთრებული ინტერესები?', ru: 'Куда хотите отправиться? Особые интересы?' } },
+      {
+        id: 'type',
+        type: 'select',
+        label: { en: 'Plan Type', ka: 'გეგმის ტიპი', ru: 'Тип плана' },
+        options: [
+          { value: 'itinerary', label: 'Full Itinerary' },
+          { value: 'guide', label: 'Local Guide' },
+          { value: 'budget', label: 'Budget Plan' },
+          { value: 'hidden_gems', label: 'Hidden Gems' },
+          { value: 'weekend', label: 'Weekend Escape' },
+        ],
+        defaultValue: 'itinerary',
+      },
+      {
+        id: 'duration',
+        type: 'select',
+        label: { en: 'Duration', ka: 'ხანგრძლივობა', ru: 'Длительность' },
+        options: [
+          { value: '1', label: '1 day' },
+          { value: '3', label: '3 days' },
+          { value: '5', label: '5 days' },
+          { value: '7', label: '1 week' },
+          { value: '14', label: '2 weeks' },
+        ],
+        defaultValue: '5',
+      },
+      {
+        id: 'style',
+        type: 'select',
+        label: { en: 'Travel Style', ka: 'მოგზაურობის სტილი', ru: 'Стиль путешествия' },
+        options: [
+          { value: 'cultural', label: 'Cultural & Historical' },
+          { value: 'adventure', label: 'Adventure & Outdoors' },
+          { value: 'luxury', label: 'Luxury & Comfort' },
+          { value: 'backpacker', label: 'Backpacker / Budget' },
+          { value: 'family', label: 'Family-friendly' },
+          { value: 'food', label: 'Food & Culinary' },
+        ],
+        defaultValue: 'cultural',
+      },
     ],
     creditCost: 4,
-    actionLabel: { en: 'Plan Trip', ka: 'მოგზაურობის დაგეგმვა', ru: 'Спланировать' },
+    actionLabel: { en: 'Plan My Trip', ka: 'მოგზაურობის დაგეგმვა', ru: 'Спланировать поездку' },
     outputType: 'text',
-    previewHint: { en: 'Travel plan will appear here', ka: 'მოგზაურობის გეგმა', ru: 'План путешествия' },
+    previewHint: { en: 'Your personalised travel plan will appear here', ka: 'პირადი მოგზაურობის გეგმა გამოჩნდება', ru: 'Ваш персонализированный план путешествия появится здесь' },
+  },
+  'content-writer': {
+    fields: [
+      { id: 'prompt', type: 'textarea', label: { en: 'Topic / Brief', ka: 'თემა / ბრიფი', ru: 'Тема / Бриф' }, placeholder: { en: 'Describe what you need written — article topic, target audience, key points...', ka: 'აღწერეთ რა უნდა დაიწეროს — სტატიის თემა, სამიზნე აუდიტორია...', ru: 'Опишите что нужно написать — тема статьи, аудитория, ключевые моменты...' } },
+      {
+        id: 'type',
+        type: 'select',
+        label: { en: 'Content Type', ka: 'კონტენტის ტიპი', ru: 'Тип контента' },
+        options: [
+          { value: 'article', label: 'Blog Article' },
+          { value: 'seo', label: 'SEO Article' },
+          { value: 'social', label: 'Social Media Post' },
+          { value: 'email', label: 'Email Campaign' },
+          { value: 'ad', label: 'Ad Copy' },
+          { value: 'product', label: 'Product Description' },
+        ],
+        defaultValue: 'article',
+      },
+      {
+        id: 'tone',
+        type: 'select',
+        label: { en: 'Tone', ka: 'ტონი', ru: 'Тон' },
+        options: [
+          { value: 'professional', label: 'Professional' },
+          { value: 'casual', label: 'Casual & Friendly' },
+          { value: 'persuasive', label: 'Persuasive' },
+          { value: 'educational', label: 'Educational' },
+          { value: 'creative', label: 'Creative & Bold' },
+        ],
+        defaultValue: 'professional',
+      },
+      {
+        id: 'language',
+        type: 'select',
+        label: { en: 'Language', ka: 'ენა', ru: 'Язык' },
+        options: [
+          { value: 'ka', label: 'ქართული' },
+          { value: 'en', label: 'English' },
+          { value: 'ru', label: 'Русский' },
+        ],
+        defaultValue: 'ka',
+      },
+    ],
+    creditCost: 3,
+    actionLabel: { en: 'Write Content', ka: 'კონტენტის დაწერა', ru: 'Написать контент' },
+    outputType: 'text',
+    previewHint: { en: 'Your content will appear here', ka: 'კონტენტი გამოჩნდება', ru: 'Контент появится здесь' },
+  },
+  podcast: {
+    fields: [
+      { id: 'prompt', type: 'textarea', label: { en: 'Episode Topic', ka: 'ეპიზოდის თემა', ru: 'Тема эпизода' }, placeholder: { en: 'What is this episode about? Key discussion points, guests, tone...', ka: 'რაზე არის ეს ეპიზოდი? ძირითადი სადისკუსიო წერტილები...', ru: 'О чём этот эпизод? Ключевые темы для обсуждения...' } },
+      {
+        id: 'format',
+        type: 'select',
+        label: { en: 'Format', ka: 'ფორმატი', ru: 'Формат' },
+        options: [
+          { value: 'interview', label: 'Interview' },
+          { value: 'solo', label: 'Solo Monologue' },
+          { value: 'panel', label: 'Panel Discussion' },
+          { value: 'storytelling', label: 'Narrative Storytelling' },
+          { value: 'educational', label: 'Educational / How-to' },
+        ],
+        defaultValue: 'interview',
+      },
+      {
+        id: 'duration',
+        type: 'select',
+        label: { en: 'Target Duration', ka: 'სიგრძე', ru: 'Длительность' },
+        options: [
+          { value: '5', label: '5 minutes' },
+          { value: '15', label: '15 minutes' },
+          { value: '30', label: '30 minutes' },
+          { value: '60', label: '1 hour' },
+        ],
+        defaultValue: '30',
+      },
+      {
+        id: 'tone',
+        type: 'select',
+        label: { en: 'Tone', ka: 'ტონი', ru: 'Тон' },
+        options: [
+          { value: 'conversational', label: 'Conversational' },
+          { value: 'professional', label: 'Professional' },
+          { value: 'entertaining', label: 'Entertaining' },
+          { value: 'investigative', label: 'Investigative' },
+        ],
+        defaultValue: 'conversational',
+      },
+    ],
+    creditCost: 8,
+    actionLabel: { en: 'Write Episode Script', ka: 'ეპიზოდის სცენარი', ru: 'Написать сценарий' },
+    outputType: 'text',
+    previewHint: { en: 'Full episode script will appear here', ka: 'სრული ეპიზოდის სცენარი გამოჩნდება', ru: 'Полный сценарий эпизода появится здесь' },
+  },
+  character: {
+    fields: [
+      { id: 'prompt', type: 'textarea', label: { en: 'Character Concept', ka: 'პერსონაჟის კონცეფცია', ru: 'Концепция персонажа' }, placeholder: { en: 'Describe your character — role, personality, setting, purpose...', ka: 'აღწერეთ თქვენი პერსონაჟი — როლი, პიროვნება, კონტექსტი...', ru: 'Опишите персонажа — роль, личность, контекст...' } },
+      {
+        id: 'archetype',
+        type: 'select',
+        label: { en: 'Archetype', ka: 'არქეტიპი', ru: 'Архетип' },
+        options: [
+          { value: 'hero', label: 'Hero / Protagonist' },
+          { value: 'villain', label: 'Villain / Antagonist' },
+          { value: 'mentor', label: 'Mentor / Guide' },
+          { value: 'trickster', label: 'Trickster / Joker' },
+          { value: 'npc', label: 'NPC / Supporting' },
+          { value: 'ai', label: 'AI Character' },
+        ],
+        defaultValue: 'hero',
+      },
+      {
+        id: 'world',
+        type: 'select',
+        label: { en: 'World / Setting', ka: 'სამყარო', ru: 'Мир / Сеттинг' },
+        options: [
+          { value: 'fantasy', label: 'Fantasy' },
+          { value: 'scifi', label: 'Sci-Fi' },
+          { value: 'modern', label: 'Modern Day' },
+          { value: 'historical', label: 'Historical' },
+          { value: 'post_apocalyptic', label: 'Post-Apocalyptic' },
+          { value: 'georgian', label: 'Georgian Folklore / Culture' },
+        ],
+        defaultValue: 'fantasy',
+      },
+      {
+        id: 'depth',
+        type: 'select',
+        label: { en: 'Detail Level', ka: 'დეტალიზაციის დონე', ru: 'Уровень детализации' },
+        options: [
+          { value: 'brief', label: 'Brief Overview' },
+          { value: 'standard', label: 'Standard Profile' },
+          { value: 'deep', label: 'Deep Profile + Dialogue' },
+        ],
+        defaultValue: 'standard',
+      },
+    ],
+    creditCost: 5,
+    actionLabel: { en: 'Create Character', ka: 'პერსონაჟის შექმნა', ru: 'Создать персонажа' },
+    outputType: 'text',
+    previewHint: { en: 'Character profile will appear here', ka: 'პერსონაჟის პროფილი გამოჩნდება', ru: 'Профиль персонажа появится здесь' },
+  },
+  event: {
+    fields: [
+      { id: 'prompt', type: 'textarea', label: { en: 'Event Description', ka: 'ღონისძიების აღწერა', ru: 'Описание мероприятия' }, placeholder: { en: 'Describe your event — type, audience, theme, date, goals...', ka: 'აღწერეთ ღონისძიება — ტიპი, აუდიტორია, თემა, თარიღი...', ru: 'Опишите мероприятие — тип, аудитория, тема, дата...' } },
+      {
+        id: 'type',
+        type: 'select',
+        label: { en: 'Event Type', ka: 'ღონისძიების ტიპი', ru: 'Тип мероприятия' },
+        options: [
+          { value: 'conference', label: 'Conference / Summit' },
+          { value: 'wedding', label: 'Wedding' },
+          { value: 'concert', label: 'Concert / Festival' },
+          { value: 'corporate', label: 'Corporate Event' },
+          { value: 'launch', label: 'Product Launch' },
+          { value: 'birthday', label: 'Birthday / Celebration' },
+          { value: 'gala', label: 'Gala / Award Ceremony' },
+        ],
+        defaultValue: 'conference',
+      },
+      {
+        id: 'output',
+        type: 'select',
+        label: { en: 'What to Generate', ka: 'რა გამოვიმუშავოთ', ru: 'Что сгенерировать' },
+        options: [
+          { value: 'program', label: 'Full Event Program' },
+          { value: 'mc_script', label: 'MC / Host Script' },
+          { value: 'invitation', label: 'Invitation Text' },
+          { value: 'promo', label: 'Promo Copy Pack' },
+          { value: 'full', label: 'Everything (Full Pack)' },
+        ],
+        defaultValue: 'full',
+      },
+    ],
+    creditCost: 6,
+    actionLabel: { en: 'Generate Event Materials', ka: 'ივენთ მასალების გენერაცია', ru: 'Создать материалы' },
+    outputType: 'text',
+    previewHint: { en: 'Event materials will appear here', ka: 'ივენთ მასალები გამოჩნდება', ru: 'Материалы мероприятия появятся здесь' },
+  },
+  terminal: {
+    fields: [
+      { id: 'prompt', type: 'textarea', label: { en: 'Task Description', ka: 'დავალების აღწერა', ru: 'Описание задачи' }, placeholder: { en: 'Describe what you need coded — function, script, API, algorithm...', ka: 'აღწერეთ რა უნდა დაიკოდოს — ფუნქცია, სკრიპტი, API...', ru: 'Опишите что нужно закодировать — функция, скрипт, API...' } },
+      {
+        id: 'language',
+        type: 'select',
+        label: { en: 'Language / Framework', ka: 'ენა / ფრეიმვორქი', ru: 'Язык / Фреймворк' },
+        options: [
+          { value: 'typescript', label: 'TypeScript' },
+          { value: 'python', label: 'Python' },
+          { value: 'javascript', label: 'JavaScript' },
+          { value: 'react', label: 'React / Next.js' },
+          { value: 'swift', label: 'Swift (iOS)' },
+          { value: 'kotlin', label: 'Kotlin (Android)' },
+          { value: 'go', label: 'Go' },
+          { value: 'rust', label: 'Rust' },
+          { value: 'bash', label: 'Bash / Shell' },
+          { value: 'sql', label: 'SQL' },
+        ],
+        defaultValue: 'typescript',
+      },
+      {
+        id: 'style',
+        type: 'select',
+        label: { en: 'Code Style', ka: 'კოდის სტილი', ru: 'Стиль кода' },
+        options: [
+          { value: 'production', label: 'Production-ready' },
+          { value: 'minimal', label: 'Minimal / Clean' },
+          { value: 'commented', label: 'Heavily Commented' },
+          { value: 'tests', label: 'With Tests' },
+        ],
+        defaultValue: 'production',
+      },
+    ],
+    creditCost: 3,
+    actionLabel: { en: 'Generate Code', ka: 'კოდის გენერაცია', ru: 'Создать код' },
+    outputType: 'text',
+    previewHint: { en: 'Generated code will appear here', ka: 'კოდი გამოჩნდება', ru: 'Код появится здесь' },
+  },
+  voice: {
+    fields: [
+      { id: 'prompt', type: 'textarea', label: { en: 'Text to Speak', ka: 'ტექსტი გამოსახვისთვის', ru: 'Текст для озвучки' }, placeholder: { en: 'Enter the text you want to convert to speech...', ka: 'შეიყვანეთ ტექსტი ხმოვან ჩაწერად გადასაყვანად...', ru: 'Введите текст для преобразования в речь...' } },
+      {
+        id: 'voice_style',
+        type: 'select',
+        label: { en: 'Voice Style', ka: 'ხმის სტილი', ru: 'Стиль голоса' },
+        options: [
+          { value: 'neutral', label: 'Neutral / Natural' },
+          { value: 'warm', label: 'Warm & Friendly' },
+          { value: 'professional', label: 'Professional' },
+          { value: 'dramatic', label: 'Dramatic / Expressive' },
+          { value: 'calm', label: 'Calm & Soothing' },
+        ],
+        defaultValue: 'neutral',
+      },
+      {
+        id: 'language',
+        type: 'select',
+        label: { en: 'Language', ka: 'ენა', ru: 'Язык' },
+        options: [
+          { value: 'ka', label: 'ქართული' },
+          { value: 'en', label: 'English' },
+          { value: 'ru', label: 'Русский' },
+        ],
+        defaultValue: 'ka',
+      },
+    ],
+    creditCost: 12,
+    actionLabel: { en: 'Generate Voice', ka: 'ხმის გენერაცია', ru: 'Создать голос' },
+    outputType: 'audio',
+    previewHint: { en: 'Generated audio will be playable here', ka: 'გენერირებული აუდიო გაიჩვენება', ru: 'Сгенерированное аудио будет воспроизводиться здесь' },
   },
   game: {
     fields: [
@@ -1249,6 +1576,82 @@ export default function ServiceWorkspaceView({
           kind: 'text',
           title: safeServiceName,
           detail: typeof payload.provider === 'string' ? payload.provider : serviceId,
+          text: outputText || JSON.stringify(payload, null, 2),
+        })
+        return
+      }
+
+      // ── Avatar / Video / Voice — pipeline media services ──────────────────
+      if (serviceId === 'avatar' || serviceId === 'video' || serviceId === 'voice') {
+        dashboardJobId = onJobStart?.(safeServiceName) ?? null
+        if (dashboardJobId) onJobProgress?.(dashboardJobId, 10)
+
+        const mediaFiles: JsonRecord[] = []
+        if (uploadedFile && uploadedFile.type.startsWith('image/')) {
+          const imageDataUrl = await readFileAsDataUrl(uploadedFile)
+          mediaFiles.push({
+            id: `upload_${Date.now()}`,
+            name: uploadedFile.name,
+            type: 'image',
+            mimeType: uploadedFile.type || 'image/jpeg',
+            dataUrl: imageDataUrl,
+          })
+        }
+
+        const answers: Record<string, string> = {}
+        workspace.fields.forEach((field) => {
+          if (field.id !== 'prompt') {
+            const val = values[field.id]
+            if (val !== undefined) answers[field.id] = String(val)
+          }
+        })
+        if (serviceId === 'avatar') {
+          answers.voice_gender = answers.voice_gender || 'female'
+          answers.voice_language = answers.voice_language || 'en'
+          answers.video_format = '16:9'
+        }
+        if (serviceId === 'video') {
+          answers.resolution = '1920x1080'
+          answers.fps = '24'
+          answers.ltx_model = 'ltx-2-3-fast'
+        }
+
+        const payload = await postJson('/api/pipeline', {
+          action: 'generate',
+          serviceId,
+          sessionId: sessionRef.current,
+          userInput: prompt,
+          answers,
+          mediaFiles,
+        })
+
+        if (payload.status === 'error' || payload.error) {
+          throw new Error(extractApiError(payload))
+        }
+
+        const outputUrl = typeof payload.result_url === 'string'
+          ? payload.result_url
+          : extractOutputUrl(payload)
+        const outputText = typeof payload.result === 'string'
+          ? payload.result
+          : extractOutputText(payload)
+
+        const outputKind: 'video' | 'audio' = serviceId === 'voice' ? 'audio' : 'video'
+
+        if (outputUrl) {
+          publishResult(dashboardJobId, {
+            kind: outputKind,
+            title: safeServiceName,
+            detail: typeof payload.provider === 'string' ? payload.provider : serviceId,
+            url: outputUrl,
+          })
+          return
+        }
+
+        publishResult(dashboardJobId, {
+          kind: 'text',
+          title: safeServiceName,
+          detail: serviceId,
           text: outputText || JSON.stringify(payload, null, 2),
         })
         return

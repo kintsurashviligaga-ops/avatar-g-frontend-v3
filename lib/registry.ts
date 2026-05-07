@@ -131,9 +131,19 @@ export const SERVICE_REGISTRY = [
     category: 'creation',
     avgSeconds: 15,
   },
+  {
+    id: 'tourism',
+    name: { ka: 'ტურიზმი', en: 'Tourism & Travel', ru: 'Туризм и путешествия' },
+    description: { ka: 'მოგზაურობის გეგმები, ადგილობრივი გიდი', en: 'Travel plans, local guides & itineraries', ru: 'Планы путешествий и местные гиды' },
+    icon: '✈',
+    color: '#0ea5e9',
+    credits: 4,
+    category: 'tools',
+    avgSeconds: 10,
+  },
 ] as const
 
-assert(SERVICE_REGISTRY.length === 13, `SERVICE_REGISTRY must have exactly 13 services, got ${SERVICE_REGISTRY.length}`)
+assert(SERVICE_REGISTRY.length === 14, `SERVICE_REGISTRY must have exactly 14 services, got ${SERVICE_REGISTRY.length}`)
 
 export type ServiceId = typeof SERVICE_REGISTRY[number]['id']
 export type Service = typeof SERVICE_REGISTRY[number]
@@ -168,4 +178,5 @@ export const SERVICE_OUTPUT_KINDS: Record<ServiceId, 'image' | 'video' | 'audio'
   podcast:          'audio',
   character:        'text',
   event:            'text',
+  tourism:          'text',
 }

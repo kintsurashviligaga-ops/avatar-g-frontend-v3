@@ -45,6 +45,7 @@ export function GrokComposer({
       setIsListening(false)
       return
     }
+    if (!window.isSecureContext) return
     const SR = (window as unknown as Record<string, unknown>).SpeechRecognition || (window as unknown as Record<string, unknown>).webkitSpeechRecognition
     if (!SR) return
     const recognition = new (SR as new () => SpeechRecognition)()

@@ -792,6 +792,38 @@ export const CLARIFICATION_PROMPTS: Record<ServiceId, ClarificationFlow> = {
     buildPrompt: (input, a) =>
       `Create a detailed ${a.personality ?? 'mentor'} AI character for ${a.context ?? 'roleplay'} use.\n\nCharacter concept: ${input}\n\nDeliver:\n1. Character name and background (100-150 words)\n2. Personality traits (5-7 key traits)\n3. Speech patterns and vocabulary style\n4. Core motivations and fears\n5. Sample dialogue (3-5 exchanges)\n6. Georgian cultural touchpoints if applicable\n\nFormat: Rich markdown with headers.`,
   },
+  tourism: {
+    questions: [
+      {
+        id: 'trip_type',
+        text: { ka: 'მოგზაურობის ტიპი?', en: 'Trip type?', ru: 'Тип поездки?' },
+        type: 'chips',
+        options: [
+          { value: 'itinerary',   label: { ka: 'სრული მარშრუტი',  en: 'Full Itinerary', ru: 'Полный маршрут' },   icon: '🗺️' },
+          { value: 'guide',       label: { ka: 'ადგილობრივი გიდი', en: 'Local Guide',    ru: 'Местный гид' },      icon: '📍' },
+          { value: 'hidden_gems', label: { ka: 'ფარული ადგილები', en: 'Hidden Gems',    ru: 'Скрытые места' },     icon: '💎' },
+          { value: 'weekend',     label: { ka: 'უიქენდ',          en: 'Weekend Escape', ru: 'Уикенд' },           icon: '🌄' },
+          { value: 'budget',      label: { ka: 'ბიუჯეტური',       en: 'Budget Plan',    ru: 'Бюджетный план' },   icon: '💰' },
+        ],
+      },
+      {
+        id: 'travel_style',
+        text: { ka: 'მოგზაურობის სტილი?', en: 'Travel style?', ru: 'Стиль путешествия?' },
+        type: 'chips',
+        options: [
+          { value: 'cultural',   label: { ka: 'კულტურული',    en: 'Cultural',   ru: 'Культурный' },   icon: '🏛️' },
+          { value: 'adventure',  label: { ka: 'სათავგადასავლო', en: 'Adventure',  ru: 'Приключения' }, icon: '🏔️' },
+          { value: 'food',       label: { ka: 'კვება / გასტრო', en: 'Food & Gastro', ru: 'Гастро' },  icon: '🍽️' },
+          { value: 'luxury',     label: { ka: 'ლუქსი',         en: 'Luxury',     ru: 'Люкс' },        icon: '✨' },
+          { value: 'family',     label: { ka: 'ოჯახური',       en: 'Family',     ru: 'Семейный' },    icon: '👨‍👩‍👧' },
+        ],
+      },
+    ],
+    creditFormula: () => 4,
+    timeFormula: () => 10,
+    buildPrompt: (input, a) =>
+      `You are an expert travel consultant. Create a detailed ${a.trip_type ?? 'itinerary'} travel plan.\n\nDestination / query: ${input}\n\nTravel style preference: ${a.travel_style ?? 'cultural'}\n\nInclude: daily schedule, top attractions, local food picks, transport tips, accommodation suggestions, hidden gems, and practical advice. Format in clean markdown.`,
+  },
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────

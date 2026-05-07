@@ -138,7 +138,12 @@ export default function MatildaVoiceChat({ locale = 'ka' }: MatildaVoiceChatProp
   } = useVoiceInput({
     language: toRealtimeLanguage(normalizedLocale),
     onError: (error) => {
-      setErrorText(String(error || '').replace(/_/g, ' '));
+      const code = String(error || '');
+      // Connection-level errors: mic button goes red, no text box
+      const silent = new Set(['socket_error', 'session_bootstrap_failed', 'session_ws_url_missing']);
+      if (!silent.has(code)) {
+        setErrorText(code.replace(/_/g, ' '));
+      }
     },
   });
 

@@ -59,6 +59,9 @@ function supportsRealtimeVoice(): boolean {
   if (typeof window === 'undefined') {
     return false;
   }
+  if (!window.isSecureContext) {
+    return false;
+  }
 
   const hasAudioContext = Boolean(window.AudioContext || (window as unknown as { webkitAudioContext?: unknown }).webkitAudioContext);
   const hasGetUserMedia = Boolean(navigator.mediaDevices?.getUserMedia);
@@ -482,40 +485,57 @@ export function useVoiceInput({
       source.connect(analyser);
       analyser.connect(worklet);
 
-      const socket = new WebSocket(resolveWsUrl(bootstrap.wsUrl, bootstrap.token, bootstrap.sessionId));
+      let reconnectCount = 0;
+      const MAX_RETRIES = 2;
 
-      socket.onopen = () => {
-        sessionIdRef.current = bootstrap.sessionId;
-        sequenceRef.current = 0;
+      const connectSocket = () => {
+        const socket = new WebSocket(resolveWsUrl(bootstrap.wsUrl, bootstrap.token, bootstrap.sessionId));
 
-        sendFrame(socket, {
-          type: 'session.start',
-          sessionId: bootstrap.sessionId,
-          token: bootstrap.token,
-          language: languageState,
-          sampleRate: bootstrap.sampleRate,
-          format: 'pcm16',
-        });
-      };
+        socket.onopen = () => {
+          sessionIdRef.current = bootstrap.sessionId;
+          sequenceRef.current = 0;
 
-      socket.onmessage = (event: MessageEvent<string>) => {
-        try {
-          const payload = JSON.parse(String(event.data || '')) as VoiceServerFrame;
-          handleServerFrame(payload);
-        } catch {
-          callbacksRef.current.onError?.('invalid_server_payload');
-        }
-      };
+          sendFrame(socket, {
+            type: 'session.start',
+            sessionId: bootstrap.sessionId,
+            token: bootstrap.token,
+            language: languageState,
+            sampleRate: bootstrap.sampleRate,
+            format: 'pcm16',
+          });
+        };
 
-      socket.onerror = () => {
-        callbacksRef.current.onError?.('socket_error');
-        setVoiceState('error');
-      };
+        socket.onmessage = (event: MessageEvent<string>) => {
+          try {
+            const payload = JSON.parse(String(event.data || '')) as VoiceServerFrame;
+            handleServerFrame(payload);
+          } catch {
+            callbacksRef.current.onError?.('invalid_server_payload');
+          }
+        };
 
-      socket.onclose = () => {
-        if (stateRef.current !== 'idle') {
-          setVoiceState('idle');
-        }
+        socket.onerror = () => {
+          if (reconnectCount < MAX_RETRIES) {
+            reconnectCount += 1;
+            const delay = reconnectCount * 1000;
+            setTimeout(() => {
+              if (stateRef.current !== 'idle' && stateRef.current !== 'error') {
+                connectSocket();
+              }
+            }, delay);
+          } else {
+            callbacksRef.current.onError?.('socket_error');
+            setVoiceState('error');
+          }
+        };
+
+        socket.onclose = () => {
+          if (stateRef.current !== 'idle') {
+            setVoiceState('idle');
+          }
+        };
+
+        websocketRef.current = socket;
       };
 
       const handleWorkletPayload = (payload: { type?: string; buffer?: ArrayBuffer; rms?: number }) => {
@@ -527,7 +547,7 @@ export function useVoiceInput({
         const transition = vadRef.current.update(rms);
 
         if (transition === 'speech_start') {
-          sendFrame(socket, {
+          sendFrame(websocketRef.current, {
             type: 'vad.event',
             event: 'speech_start',
             timestampMs: Date.now(),
@@ -535,7 +555,7 @@ export function useVoiceInput({
 
           if (stateRef.current === 'speaking') {
             stopPlayback();
-            sendFrame(socket, {
+            sendFrame(websocketRef.current, {
               type: 'control.interrupt',
               reason: 'barge_in',
             });
@@ -544,7 +564,7 @@ export function useVoiceInput({
         }
 
         if (transition === 'speech_end') {
-          sendFrame(socket, {
+          sendFrame(websocketRef.current, {
             type: 'vad.event',
             event: 'speech_end',
             timestampMs: Date.now(),
@@ -555,7 +575,7 @@ export function useVoiceInput({
           setVoiceState('processing');
         }
 
-        sendFrame(socket, {
+        sendFrame(websocketRef.current, {
           type: 'audio.chunk',
           seq: ++sequenceRef.current,
           timestampMs: Date.now(),
@@ -571,7 +591,7 @@ export function useVoiceInput({
         handleWorkletPayload(event.data || {});
       };
 
-      websocketRef.current = socket;
+      connectSocket();
       audioContextRef.current = context;
       mediaStreamRef.current = stream;
       sourceNodeRef.current = source;

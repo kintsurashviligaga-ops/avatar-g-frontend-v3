@@ -427,6 +427,101 @@ const LOCALIZED_SERVICE_META: Record<string, LocalizedServiceMeta> = {
       ru: ['Генерация кода (любой язык)', 'CLI-скрипты и автоматизация', 'Отладка и рефакторинг', 'Реализация API и ботов'],
     },
   },
+  'content-writer': {
+    icon: '✍',
+    agentId: 'content-agent',
+    headline: {
+      en: 'Content Writer',
+      ka: 'კონტენტ მწერლობა',
+      ru: 'Автор контента',
+    },
+    description: {
+      en: 'AI-powered SEO articles, social media copy, email campaigns, and marketing content. Write in Georgian, English, or Russian at a professional level.',
+      ka: 'AI-ით SEO სტატიები, სოციალური მედიის ტექსტები, ელ-ფოსტის კამპანიები და მარკეტინგული კონტენტი. დაწერე ქართულად, ინგლისურად ან რუსულად.',
+      ru: 'AI-статьи для SEO, тексты для соцсетей, email-кампании и маркетинговый контент. Пишите на грузинском, английском или русском.',
+    },
+    features: {
+      en: ['SEO articles & blog posts', 'Social media copy', 'Email campaigns', 'Marketing & ad copy'],
+      ka: ['SEO სტატიები და ბლოგ-პოსტები', 'სოციალური მედიის ტექსტები', 'ელ-ფოსტის კამპანიები', 'მარკეტინგული ტექსტები'],
+      ru: ['SEO-статьи и блог-посты', 'Тексты для соцсетей', 'Email-кампании', 'Маркетинговые тексты'],
+    },
+  },
+  'podcast': {
+    icon: '🎙',
+    agentId: 'content-agent',
+    headline: {
+      en: 'Podcast Studio',
+      ka: 'პოდკასტ სტუდია',
+      ru: 'Подкаст-студия',
+    },
+    description: {
+      en: 'AI podcast script generation with full episode structure, speaker cues, and talking points. From interview-style to narrative storytelling.',
+      ka: 'AI პოდკასტის სცენარის გენერაცია სრული ეპიზოდის სტრუქტურით, სპიკერის მინიშნებებით და ძირითადი წერტილებით.',
+      ru: 'AI-генерация сценариев подкастов с полной структурой эпизодов, репликами и основными тезисами.',
+    },
+    features: {
+      en: ['Full episode scripts', 'Interview & narrative formats', 'Intro, segments & outro', 'Speaker cues & timing'],
+      ka: ['სრული ეპიზოდის სცენარი', 'ინტერვიუ და ნარატიული ფორმატები', 'ინტრო, სეგმენტები და ოუტრო', 'სპიკერის მინიშნებები'],
+      ru: ['Полные сценарии эпизодов', 'Форматы интервью и нарратива', 'Интро, сегменты и аутро', 'Реплики и тайминг'],
+    },
+  },
+  'character': {
+    icon: '🎭',
+    agentId: 'content-agent',
+    headline: {
+      en: 'Character AI',
+      ka: 'პერსონაჟის AI',
+      ru: 'Персонаж AI',
+    },
+    description: {
+      en: 'Design rich, multi-dimensional AI characters with deep backstories, personality profiles, dialogue samples, and visual references.',
+      ka: 'შექმენი მდიდარი, მრავალგანზომილებიანი AI პერსონაჟები ღრმა ისტორიით, პიროვნების პროფილით, დიალოგის ნიმუშებით.',
+      ru: 'Создавайте многогранных AI-персонажей с предысторией, профилем личности и образцами диалогов.',
+    },
+    features: {
+      en: ['Full character profiles', 'Backstory & motivation', 'Dialogue samples', 'Visual reference prompts'],
+      ka: ['სრული პერსონაჟის პროფილი', 'ისტორია და მოტივაცია', 'დიალოგის ნიმუშები', 'ვიზუალური რეფერენსი'],
+      ru: ['Полные профили персонажей', 'Предыстория и мотивация', 'Образцы диалогов', 'Визуальные референсы'],
+    },
+  },
+  'event': {
+    icon: '🎪',
+    agentId: 'content-agent',
+    headline: {
+      en: 'Event Studio',
+      ka: 'ივენთ სტუდია',
+      ru: 'Event-студия',
+    },
+    description: {
+      en: 'Complete AI-generated event materials: programs, MC scripts, promo copy, invitations, and social media packs for any occasion.',
+      ka: 'სრული AI-გენერირებული ივენთ მასალები: პროგრამები, MC სცენარები, სარეკლამო ტექსტები, მოწვევები ნებისმიერი ღონისძიებისთვის.',
+      ru: 'Полный AI-пакет для мероприятий: программы, сценарии ведущих, промо-тексты и приглашения.',
+    },
+    features: {
+      en: ['Event programs & schedules', 'MC & host scripts', 'Invitations & promo copy', 'Social media event pack'],
+      ka: ['ღონისძიების პროგრამები', 'MC და ვედიუს სცენარები', 'მოწვევები და სარეკლამო ტექსტები', 'სოც. მედიის პაკეტი'],
+      ru: ['Программы мероприятий', 'Сценарии ведущих', 'Приглашения и промо', 'Соцмедиа-пакет'],
+    },
+  },
+  'voice': {
+    icon: '🎙',
+    agentId: 'audio-agent',
+    headline: {
+      en: 'Voice Clone',
+      ka: 'ხმის კლონი',
+      ru: 'Клон голоса',
+    },
+    description: {
+      en: 'Clone any voice in seconds and generate professional-grade voice narration, dubbing, and audio content in Georgian, English, or Russian.',
+      ka: 'ნებისმიერი ხმის კლონირება წამებში და პროფესიონალური ხმოვანი ნარაციის, დუბლირების და აუდიო კონტენტის გენერაცია.',
+      ru: 'Клонируйте любой голос за секунды и создавайте профессиональные озвучки, дубляж и аудиоконтент.',
+    },
+    features: {
+      en: ['Voice cloning from sample', 'Text-to-speech narration', 'Multi-language support', 'Export as MP3/WAV'],
+      ka: ['ხმის კლონირება ნიმუშიდან', 'ტექსტი-ხმამდე ნარაცია', 'მრავალენოვანი მხარდაჭერა', 'ექსპორტი MP3/WAV'],
+      ru: ['Клонирование голоса из образца', 'Озвучка текста', 'Поддержка нескольких языков', 'Экспорт MP3/WAV'],
+    },
+  },
 };
 
 // Legacy flat English-only format for backward compatibility
