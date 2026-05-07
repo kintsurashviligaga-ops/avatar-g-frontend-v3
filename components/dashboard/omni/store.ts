@@ -45,12 +45,6 @@ const AUTO_BRIDGE_TARGETS: Record<ServiceId, ServiceId[]> = {
   'interior-design': ['image', 'video'],
   'prompt-builder': ['terminal-coding', 'game-creation'],
   'terminal-coding': ['prompt-builder', 'game-creation'],
-  'content-writer': ['prompt-builder', 'podcast'],
-  'podcast': ['content-writer', 'voice-studio'],
-  'character': ['content-writer', 'image'],
-  'event': ['content-writer', 'image'],
-  'tourism': ['image', 'content-writer'],
-  'voice-studio': ['podcast', 'content-writer'],
 };
 
 const createId = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 9)}`;
@@ -275,12 +269,6 @@ function routeWorkerService(prompt: string, fallback: ServiceId): ServiceId {
     { serviceId: 'interior-design', keys: ['interior', 'space', 'furniture', 'room', 'ინტერიერ', 'დიზაინ'] },
     { serviceId: 'prompt-builder', keys: ['prompt', 'template', 'instruction', 'markdown', 'პრომპტ', 'prompt-'] },
     { serviceId: 'terminal-coding', keys: ['terminal', 'code', 'coding', 'script', 'api', 'ტერმინალ', 'კოდ'] },
-    { serviceId: 'content-writer', keys: ['article', 'blog', 'copy', 'write', 'სტატი', 'კონტენტ', 'ბლოგ'] },
-    { serviceId: 'podcast', keys: ['podcast', 'episode', 'audio script', 'პოდკასტ', 'ეპიზოდ'] },
-    { serviceId: 'character', keys: ['character', 'persona', 'backstory', 'fiction', 'პერსონაჟ', 'ქარექტერ'] },
-    { serviceId: 'event', keys: ['event', 'conference', 'ceremony', 'ივენთ', 'ღონისძიებ', 'კონფერენც'] },
-    { serviceId: 'tourism', keys: ['travel', 'tourism', 'trip', 'itinerary', 'მოგზაურ', 'ტური', 'ადგილ'] },
-    { serviceId: 'voice-studio', keys: ['voiceover', 'tts', 'narrate', 'voice-over', 'ხმის სინთ', 'ნარაც'] },
   ];
 
   const match = rules.find((rule) => rule.keys.some((key) => query.includes(key)));
@@ -868,7 +856,7 @@ export const useOmniDashboardStore = create<OmniDashboardState>((set, get) => {
       };
     });
 
-    const isTtsService = ['game-creation', 'prompt-builder', 'terminal-coding', 'content-writer', 'podcast', 'character', 'event', 'tourism', 'voice-studio'].includes(serviceId);
+    const isTtsService = ['game-creation', 'prompt-builder', 'terminal-coding'].includes(serviceId);
 
     const attachTtsAudio = (audioB64: string) => {
       const audioUrl = `data:audio/mpeg;base64,${audioB64}`;
@@ -927,9 +915,10 @@ export const useOmniDashboardStore = create<OmniDashboardState>((set, get) => {
                 const raw = line.slice(6).trim();
                 if (raw === '[DONE]') continue;
                 try {
-                  const event = JSON.parse(raw) as { type: string; delta?: string };
-                  if (event.type === 'text-delta' && event.delta) {
-                    fullText += event.delta;
+                  const event = JSON.parse(raw) as { type: string; textDelta?: string; delta?: string };
+                  const chunk = event.textDelta ?? event.delta ?? '';
+                  if (event.type === 'text-delta' && chunk) {
+                    fullText += chunk;
                     set((state) => {
                       const svc = state.services[serviceId];
                       const updatedOutputs = svc.outputs.map((o) =>
@@ -1020,9 +1009,10 @@ export const useOmniDashboardStore = create<OmniDashboardState>((set, get) => {
               const raw = line.slice(6).trim();
               if (raw === '[DONE]') continue;
               try {
-                const event = JSON.parse(raw) as { type: string; delta?: string };
-                if (event.type === 'text-delta' && event.delta) {
-                  fullText += event.delta;
+                const event = JSON.parse(raw) as { type: string; textDelta?: string; delta?: string };
+                const chunk = event.textDelta ?? event.delta ?? '';
+                if (event.type === 'text-delta' && chunk) {
+                  fullText += chunk;
                   set((state) => ({
                     chatMessages: state.chatMessages.map((m) =>
                       m.id === streamingMsgId ? { ...m, content: fullText } : m,
@@ -1060,7 +1050,7 @@ export const useOmniDashboardStore = create<OmniDashboardState>((set, get) => {
       displayName: initialCopy.guestOperator,
       tierLabel: initialCopy.guestTier,
     },
-    activeServiceId: 'content-writer',
+    activeServiceId: 'avatar',
     commandLanguage: 'ka',
     services: initializeServiceState(),
     sharedAssets: [],

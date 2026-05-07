@@ -8,13 +8,7 @@ export type ServiceId =
   | 'game-creation'
   | 'interior-design'
   | 'prompt-builder'
-  | 'terminal-coding'
-  | 'content-writer'
-  | 'podcast'
-  | 'character'
-  | 'event'
-  | 'tourism'
-  | 'voice-studio';
+  | 'terminal-coding';
 
 export type PreviewKind = 'image' | 'video' | 'audio' | 'text' | 'workflow';
 
