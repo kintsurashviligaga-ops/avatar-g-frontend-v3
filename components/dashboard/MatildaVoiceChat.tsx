@@ -121,6 +121,7 @@ export default function MatildaVoiceChat({ locale = 'ka' }: MatildaVoiceChatProp
 
   const [open, setOpen] = useState(false);
   const [errorText, setErrorText] = useState('');
+  const [voiceAvailable, setVoiceAvailable] = useState(true);
 
   const {
     state,
@@ -139,8 +140,12 @@ export default function MatildaVoiceChat({ locale = 'ka' }: MatildaVoiceChatProp
     language: toRealtimeLanguage(normalizedLocale),
     onError: (error) => {
       const code = String(error || '');
-      // Connection-level errors: mic button goes red, no text box
-      const silent = new Set(['socket_error', 'session_bootstrap_failed', 'session_ws_url_missing']);
+      const silent = new Set(['socket_error', 'session_bootstrap_failed', 'session_ws_url_missing', 'voice_not_configured']);
+      if (code === 'session_bootstrap_failed' || code === 'voice_not_configured') {
+        // Voice server not configured — hide the widget entirely
+        setVoiceAvailable(false);
+        return;
+      }
       if (!silent.has(code)) {
         setErrorText(code.replace(/_/g, ' '));
       }
@@ -177,7 +182,7 @@ export default function MatildaVoiceChat({ locale = 'ka' }: MatildaVoiceChatProp
     handleReset();
   };
 
-  if (!browserSupportsSpeechRecognition) {
+  if (!browserSupportsSpeechRecognition || !voiceAvailable) {
     return null;
   }
 

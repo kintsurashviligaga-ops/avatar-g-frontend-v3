@@ -15,14 +15,18 @@ const schema = z.object({
   language: z.enum(['ka-GE', 'en-US', 'ru-RU']).default('ka-GE'),
 });
 
-function resolveWsUrl(request: NextRequest): string {
+function resolveWsUrl(request: NextRequest): string | null {
   const explicit = String(process.env.VOICE_V2V_WS_URL || process.env.NEXT_PUBLIC_VOICE_V2V_WS_URL || '').trim();
   if (explicit) {
     return explicit;
   }
 
-  const protocol = request.nextUrl.protocol === 'https:' ? 'wss:' : 'ws:';
-  return `${protocol}//localhost:8787/realtime`;
+  // In production (HTTPS) without an explicit WS URL, voice realtime is not available.
+  if (request.nextUrl.protocol === 'https:') {
+    return null;
+  }
+
+  return `ws://localhost:8787/realtime`;
 }
 
 export async function POST(request: NextRequest) {
@@ -40,6 +44,14 @@ export async function POST(request: NextRequest) {
       ttlSeconds: 120,
     });
 
+    const wsUrl = resolveWsUrl(request);
+    if (!wsUrl) {
+      return NextResponse.json(
+        { status: 'error', error: 'voice_not_configured' },
+        { status: 503 },
+      );
+    }
+
     const providers = getRealtimeProviderSnapshot();
 
     return NextResponse.json({
@@ -48,7 +60,7 @@ export async function POST(request: NextRequest) {
         sessionId,
         token: tokenData.token,
         expiresAt: tokenData.expiresAt,
-        wsUrl: resolveWsUrl(request),
+        wsUrl,
         sampleRate: 16_000,
         targetLatencyMs: 800,
         providers,

@@ -189,7 +189,7 @@ export async function POST(req: NextRequest) {
               agentId: parsedData.agentId,
               userId,
               sessionId: shellSessionId,
-              locale: parsedData.language || 'en',
+              locale: parsedData.language || 'ka',
               history: [],
               selectedOptions,
               metadata: {
