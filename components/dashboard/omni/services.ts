@@ -12,7 +12,7 @@ import {
   UserCircle2,
   Wand2,
   Globe,
-  Drama,
+  VenetianMask,
 } from 'lucide-react';
 import type { OmniServiceDescriptor, ServiceId } from './types';
 
@@ -136,7 +136,7 @@ export const OMNI_SERVICES: OmniServiceDescriptor[] = [
     accent: '#a78bfa',
     previewKind: 'text',
     defaultPrompt: 'Create a detailed AI character with name, backstory, personality traits and dialogue examples.',
-    icon: Drama,
+    icon: VenetianMask,
   },
   {
     id: 'event',

@@ -9,7 +9,7 @@ import {
   Clapperboard,
   Code2,
   Cpu,
-  Drama,
+  VenetianMask,
   Eye,
   FileText,
   Film,
@@ -227,7 +227,7 @@ const SERVICE_ITEMS: ServiceItem[] = [
     title: 'Character AI',
     description: 'Design rich AI characters with backstories, personality profiles, and dialogue samples.',
     tag: 'Create',
-    icon: Drama,
+    icon: VenetianMask,
   },
   {
     id: 'event',
