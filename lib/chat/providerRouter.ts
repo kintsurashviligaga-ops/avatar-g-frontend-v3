@@ -77,6 +77,12 @@ const CONTEXT_TO_AGENT: Record<string, string> = {
   text: 'content-agent',
   media: 'social-agent',
   prompt: 'main-assistant',
+  'content-writer': 'main-assistant',
+  podcast: 'main-assistant',
+  character: 'main-assistant',
+  event: 'main-assistant',
+  tourism: 'main-assistant',
+  'voice-studio': 'audio-agent',
 };
 
 const DETERMINISTIC_INTENTS = new Set<IntentCategory>([

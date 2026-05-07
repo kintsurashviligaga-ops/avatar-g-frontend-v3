@@ -202,13 +202,43 @@ export const SERVICE_REGISTRY: ServiceDefinition[] = [
     },
   },
   {
-    slug: 'next', title: 'Expansion Slot', href: '/services/next', id: 'next',
-    name: 'Expansion Slot', description: 'Reserved route for the next enterprise service module.',
-    icon: '🚀', route: '/services/next', enabled: true,
+    slug: 'content-writer', title: 'Content Writer', href: '/services/content-writer', id: 'content-writer',
+    name: 'Content Writer', description: 'AI-powered articles, marketing copy, and SEO content.',
+    icon: '✍️', route: '/services/content-writer', enabled: true,
     localized: {
-      en: { name: 'Expansion Slot', description: 'Reserved route for the next enterprise service module.' },
-      ka: { name: 'გაფართოების სლოტი', description: 'რეზერვირებული მარშრუტი შემდეგი enterprise სერვისისთვის.' },
-      ru: { name: 'Слот расширения', description: 'Резервный маршрут для следующего enterprise-сервиса.' },
+      en: { name: 'Content Writer', description: 'AI-powered articles, marketing copy, and SEO content.' },
+      ka: { name: 'კონტენტ მწერელი', description: 'AI სტატიები, მარკეტინგული ტექსტი და SEO კონტენტი.' },
+      ru: { name: 'Контент-писатель', description: 'AI-статьи, маркетинговые тексты и SEO-контент.' },
+    },
+  },
+  {
+    slug: 'podcast', title: 'Podcast Studio', href: '/services/podcast', id: 'podcast',
+    name: 'Podcast Studio', description: 'AI podcast scripts, episode planning, and audio content.',
+    icon: '🎙️', route: '/services/podcast', enabled: true,
+    localized: {
+      en: { name: 'Podcast Studio', description: 'AI podcast scripts, episode planning, and audio content.' },
+      ka: { name: 'პოდკასტ სტუდია', description: 'AI პოდკასტ სცენარები, ეპიზოდების დაგეგმვა და ოდიო კონტენტი.' },
+      ru: { name: 'Подкаст-студия', description: 'AI-скрипты подкастов, планирование эпизодов и аудиоконтент.' },
+    },
+  },
+  {
+    slug: 'character', title: 'Character AI', href: '/services/character', id: 'character',
+    name: 'Character AI', description: 'Create rich AI characters with backstories and personalities.',
+    icon: '🎭', route: '/services/character', enabled: true,
+    localized: {
+      en: { name: 'Character AI', description: 'Create rich AI characters with backstories and personalities.' },
+      ka: { name: 'პერსონაჟის AI', description: 'შექმენი მდიდარი AI პერსონაჟები ბიოგრაფიით და პიროვნებით.' },
+      ru: { name: 'Персонаж AI', description: 'Создавайте персонажей AI с историями и личностями.' },
+    },
+  },
+  {
+    slug: 'event', title: 'Event Studio', href: '/services/event', id: 'event',
+    name: 'Event Studio', description: 'AI event content, programs, and full scenario planning.',
+    icon: '🎪', route: '/services/event', enabled: true,
+    localized: {
+      en: { name: 'Event Studio', description: 'AI event content, programs, and full scenario planning.' },
+      ka: { name: 'ივენთ სტუდია', description: 'AI ივენთ კონტენტი, პროგრამები და სრული სცენარის დაგეგმვა.' },
+      ru: { name: 'Event-студия', description: 'AI-контент мероприятий, программы и полное планирование сценария.' },
     },
   },
 ];
