@@ -49,6 +49,36 @@ const SERVICE_LOCALIZATION: Record<
       en: { title: 'Terminal & Coding', subtitle: 'CLI, scripts, and implementation', short: 'TC', group: 'business' },
       ru: { title: 'Терминал и кодинг', subtitle: 'CLI, скрипты и реализация кода', short: 'TC', group: 'business' },
     },
+    'content-writer': {
+      ka: { title: 'კონტენტ მწერელი', subtitle: 'სტატიები, პოსტები და მარკეტინგული ტექსტი', short: 'CW', group: 'business' },
+      en: { title: 'Content Writer', subtitle: 'Articles, posts and marketing copy', short: 'CW', group: 'business' },
+      ru: { title: 'Контент-писатель', subtitle: 'Статьи, посты и маркетинговый текст', short: 'CW', group: 'business' },
+    },
+    podcast: {
+      ka: { title: 'პოდკასტი', subtitle: 'სკრიპტები, ეპიზოდები და ოდიო კონტენტი', short: 'PD', group: 'creative' },
+      en: { title: 'Podcast', subtitle: 'Scripts, episodes and audio content', short: 'PD', group: 'creative' },
+      ru: { title: 'Подкаст', subtitle: 'Скрипты, эпизоды и аудиоконтент', short: 'PD', group: 'creative' },
+    },
+    character: {
+      ka: { title: 'პერსონაჟი', subtitle: 'AI ქარექტერის შექმნა და ბიოგრაფია', short: 'CH', group: 'creative' },
+      en: { title: 'Character', subtitle: 'AI character creation and backstory', short: 'CH', group: 'creative' },
+      ru: { title: 'Персонаж', subtitle: 'Создание AI-персонажа и биография', short: 'CH', group: 'creative' },
+    },
+    event: {
+      ka: { title: 'ივენთ სტუდია', subtitle: 'AI ივენთ კონტენტი და სრული სცენარი', short: 'EV', group: 'business' },
+      en: { title: 'Event Studio', subtitle: 'AI event content and full scenario', short: 'EV', group: 'business' },
+      ru: { title: 'Event-студия', subtitle: 'AI-контент и полный сценарий мероприятия', short: 'EV', group: 'business' },
+    },
+    tourism: {
+      ka: { title: 'ტურიზმი', subtitle: 'მოგზაურობის გეგმები და ადგილობრივი გიდი', short: 'TR', group: 'business' },
+      en: { title: 'Tourism & Travel', subtitle: 'Travel plans, local guides and itineraries', short: 'TR', group: 'business' },
+      ru: { title: 'Туризм и путешествия', subtitle: 'Планы путешествий и местные гиды', short: 'TR', group: 'business' },
+    },
+    'voice-studio': {
+      ka: { title: 'ხმის სტუდია', subtitle: 'AI ხმის სინთეზი და TTS', short: 'VS', group: 'creative' },
+      en: { title: 'Voice Studio', subtitle: 'AI voice synthesis and TTS', short: 'VS', group: 'creative' },
+      ru: { title: 'Голосовая студия', subtitle: 'AI-синтез голоса и TTS', short: 'VS', group: 'creative' },
+    },
   };
 
 const GROUP_LABELS: Record<ServiceGroup, Record<OmniLocale, string>> = {

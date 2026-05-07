@@ -269,6 +269,12 @@ function routeWorkerService(prompt: string, fallback: ServiceId): ServiceId {
     { serviceId: 'interior-design', keys: ['interior', 'space', 'furniture', 'room', 'ინტერიერ', 'დიზაინ'] },
     { serviceId: 'prompt-builder', keys: ['prompt', 'template', 'instruction', 'markdown', 'პრომპტ', 'prompt-'] },
     { serviceId: 'terminal-coding', keys: ['terminal', 'code', 'coding', 'script', 'api', 'ტერმინალ', 'კოდ'] },
+    { serviceId: 'content-writer', keys: ['article', 'blog', 'copy', 'write', 'სტატი', 'კონტენტ', 'ბლოგ'] },
+    { serviceId: 'podcast', keys: ['podcast', 'episode', 'audio script', 'პოდკასტ', 'ეპიზოდ'] },
+    { serviceId: 'character', keys: ['character', 'persona', 'backstory', 'fiction', 'პერსონაჟ', 'ქარექტერ'] },
+    { serviceId: 'event', keys: ['event', 'conference', 'ceremony', 'ივენთ', 'ღონისძიებ', 'კონფერენც'] },
+    { serviceId: 'tourism', keys: ['travel', 'tourism', 'trip', 'itinerary', 'მოგზაურ', 'ტური', 'ადგილ'] },
+    { serviceId: 'voice-studio', keys: ['voiceover', 'tts', 'narrate', 'voice-over', 'ხმის სინთ', 'ნარაც'] },
   ];
 
   const match = rules.find((rule) => rule.keys.some((key) => query.includes(key)));
@@ -867,7 +873,7 @@ export const useOmniDashboardStore = create<OmniDashboardState>((set, get) => {
     });
 
     // --- TTS: fire-and-forget voice for text-based services ---
-    if (['game-creation', 'prompt-builder', 'terminal-coding'].includes(serviceId)) {
+    if (['game-creation', 'prompt-builder', 'terminal-coding', 'content-writer', 'podcast', 'character', 'event', 'tourism', 'voice-studio'].includes(serviceId)) {
       const voiceText = (output.textBody ?? output.summary).slice(0, 1200);
       fetch('/api/elevenlabs/tts', {
         method: 'POST',
