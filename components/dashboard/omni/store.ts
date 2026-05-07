@@ -573,8 +573,8 @@ export const useOmniDashboardStore = create<OmniDashboardState>((set, get) => {
       return;
     }
 
-    // --- Avatar: call HeyGen API ---
-    if (serviceId === 'avatar') {
+    // --- Avatar: call HeyGen API (panel/explicit generation only; chat source falls through to text) ---
+    if (serviceId === 'avatar' && source === 'panel') {
       const avatarArtifactId = createId();
 
       const loadingArtifact: PreviewArtifact = {
@@ -1071,7 +1071,7 @@ export const useOmniDashboardStore = create<OmniDashboardState>((set, get) => {
       displayName: initialCopy.guestOperator,
       tierLabel: initialCopy.guestTier,
     },
-    activeServiceId: 'avatar',
+    activeServiceId: 'content-writer',
     commandLanguage: 'ka',
     services: initializeServiceState(),
     sharedAssets: [],
