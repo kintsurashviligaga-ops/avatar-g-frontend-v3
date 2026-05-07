@@ -180,3 +180,4 @@ export const SERVICE_OUTPUT_KINDS: Record<ServiceId, 'image' | 'video' | 'audio'
   event:            'text',
   tourism:          'text',
 }
+
