@@ -811,81 +811,80 @@ export const useOmniDashboardStore = create<OmniDashboardState>((set, get) => {
       return;
     }
 
-    // --- All other services: build artifact + Claude chat response ---
-    // For panel source, set status to 'running' while we generate real content
-    const output = buildArtifact(serviceId, cleanPrompt, locale);
+    // --- Panel source only: build artifact, update preview, generate content ---
+    if (source === 'panel') {
+      const output = buildArtifact(serviceId, cleanPrompt, locale);
 
-    set((state) => {
-      const targetState = state.services[serviceId];
-      const updatedTarget: ServiceRuntimeState = {
-        ...targetState,
-        status: source === 'panel' ? 'running' : 'ready',
-        queueDepth: Math.max(0, targetState.queueDepth - 1),
-        outputs: [output, ...targetState.outputs].slice(0, MAX_OUTPUTS_PER_SERVICE),
-      };
-
-      const nextServices: Record<ServiceId, ServiceRuntimeState> = {
-        ...state.services,
-        [serviceId]: updatedTarget,
-      };
-
-      const bridgedTargets = autoBridgeOutput(nextServices, serviceId, output.id);
-
-      const shouldSyncPreview = nextServices[serviceId].syncPreview;
-      const preview = shouldSyncPreview ? output : state.preview;
-
-      let logChain = addLogLine(state, 'worker', `${descriptor.worker} ${copy.workerCompleted}`);
-
-      if (bridgedTargets.length > 0) {
-        const bridgeLog: ActivityItem = {
-          id: createId(),
-          level: 'system',
-          message: `${copy.bridgeLabel} ${localizedDescriptor.title} ${copy.outputSharedWith} ${bridgedTargets
-            .map((target) => getLocalizedService(target, locale).short)
-            .join(', ')}`,
-          ts: Date.now(),
-        };
-        logChain = { activityLog: [...logChain.activityLog, bridgeLog].slice(-MAX_LOG_ITEMS) };
-      }
-
-      return {
-        services: nextServices,
-        sharedAssets: [output, ...state.sharedAssets].slice(0, 140),
-        preview,
-        ...logChain,
-      };
-    });
-
-    const isTtsService = ['game-creation', 'prompt-builder', 'terminal-coding'].includes(serviceId);
-
-    const attachTtsAudio = (audioB64: string) => {
-      const audioUrl = `data:audio/mpeg;base64,${audioB64}`;
       set((state) => {
-        const svc = state.services[serviceId];
+        const targetState = state.services[serviceId];
+        const updatedTarget: ServiceRuntimeState = {
+          ...targetState,
+          status: 'running',
+          queueDepth: Math.max(0, targetState.queueDepth - 1),
+          outputs: [output, ...targetState.outputs].slice(0, MAX_OUTPUTS_PER_SERVICE),
+        };
+
+        const nextServices: Record<ServiceId, ServiceRuntimeState> = {
+          ...state.services,
+          [serviceId]: updatedTarget,
+        };
+
+        const bridgedTargets = autoBridgeOutput(nextServices, serviceId, output.id);
+
+        const shouldSyncPreview = nextServices[serviceId].syncPreview;
+        const preview = shouldSyncPreview ? output : state.preview;
+
+        let logChain = addLogLine(state, 'worker', `${descriptor.worker} ${copy.workerCompleted}`);
+
+        if (bridgedTargets.length > 0) {
+          const bridgeLog: ActivityItem = {
+            id: createId(),
+            level: 'system',
+            message: `${copy.bridgeLabel} ${localizedDescriptor.title} ${copy.outputSharedWith} ${bridgedTargets
+              .map((target) => getLocalizedService(target, locale).short)
+              .join(', ')}`,
+            ts: Date.now(),
+          };
+          logChain = { activityLog: [...logChain.activityLog, bridgeLog].slice(-MAX_LOG_ITEMS) };
+        }
+
         return {
-          services: { ...state.services, [serviceId]: { ...svc, outputs: svc.outputs.map((o) => o.id === output.id ? { ...o, audioUrl } : o) } },
-          sharedAssets: state.sharedAssets.map((a) => a.id === output.id ? { ...a, audioUrl } : a),
-          preview: state.preview?.id === output.id ? { ...state.preview, audioUrl } : state.preview,
+          services: nextServices,
+          sharedAssets: [output, ...state.sharedAssets].slice(0, 140),
+          preview,
+          ...logChain,
         };
       });
-    };
 
-    const fireTts = (text: string) => {
-      fetch('/api/elevenlabs/tts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: text.slice(0, 1200) }),
-      })
-        .then(async (res) => {
-          if (!res.ok) return;
-          const data = await res.json() as { success: boolean; audio?: string };
-          if (data.success && data.audio) attachTtsAudio(data.audio);
+      const isTtsService = ['game-creation', 'prompt-builder', 'terminal-coding'].includes(serviceId);
+
+      const attachTtsAudio = (audioB64: string) => {
+        const audioUrl = `data:audio/mpeg;base64,${audioB64}`;
+        set((state) => {
+          const svc = state.services[serviceId];
+          return {
+            services: { ...state.services, [serviceId]: { ...svc, outputs: svc.outputs.map((o) => o.id === output.id ? { ...o, audioUrl } : o) } },
+            sharedAssets: state.sharedAssets.map((a) => a.id === output.id ? { ...a, audioUrl } : a),
+            preview: state.preview?.id === output.id ? { ...state.preview, audioUrl } : state.preview,
+          };
+        });
+      };
+
+      const fireTts = (text: string) => {
+        fetch('/api/elevenlabs/tts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: text.slice(0, 1200) }),
         })
-        .catch(() => {});
-    };
+          .then(async (res) => {
+            if (!res.ok) return;
+            const data = await res.json() as { success: boolean; audio?: string };
+            if (data.success && data.audio) attachTtsAudio(data.audio);
+          })
+          .catch(() => {});
+      };
 
-    // --- Panel source: generate real AI content into artifact textBody ---
-    if (source === 'panel') {
+      // Generate real AI content into artifact textBody
       void (async () => {
         try {
           const uiMessages = [{
