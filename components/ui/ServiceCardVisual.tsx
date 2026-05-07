@@ -782,7 +782,7 @@ function EventScene({ c1, c2 }: SceneProps) {
       <rect x={182} y={88} width={36} height={47} rx={2} fill="white" fillOpacity={0.04} stroke={c1} strokeOpacity={0.1} strokeWidth={0.6} />
       <circle cx={200} cy={80} r={6} fill="none" stroke={c1} strokeOpacity={0.25} strokeWidth={1} />
       {/* document cards at bottom */}
-      {[[80, 140], [155, 140], [230, 140], [305, 140]].map(([x, y], i) => (
+      {[[80, 140], [155, 140], [230, 140], [305, 140]].map(([x = 0, y = 0], i) => (
         <g key={i}>
           <rect x={x} y={y} width={60} height={32} rx={3} fill="white" fillOpacity={0.03} stroke={c2} strokeOpacity={0.08} strokeWidth={0.5} />
           <rect x={x + 6} y={y + 7} width={30} height={3} rx={1} fill={c1} fillOpacity={0.12} />
