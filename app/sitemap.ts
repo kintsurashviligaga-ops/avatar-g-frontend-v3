@@ -13,29 +13,22 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { url: `${baseUrl}/dashboard/billing`, priority: 0.7, changeFrequency: 'weekly' as const },
   ];
   
-  // All 13 services
+  // All 14 core AI services (locales: ka, en, ru)
   const services = [
-    'avatar-builder',
-    'business-agent',
-    'game-creator',
-    'image-creator',
-    'media-production',
-    'music-studio',
-    'online-shop',
-    'photo-studio',
-    'prompt-builder',
-    'social-media',
-    'text-intelligence',
-    'video-studio',
-    'marketplace',
+    'avatar', 'video', 'image', 'music', 'voice',
+    'game', 'interior', 'prompt-builder', 'terminal',
+    'content-writer', 'podcast', 'character', 'event', 'tourism',
   ];
+  const locales = ['ka', 'en', 'ru'];
   
-  const servicePages = services.map(service => ({
-    url: `${baseUrl}/services/${service}`,
-    lastModified: now,
-    changeFrequency: 'weekly' as const,
-    priority: 0.8,
-  }));
+  const servicePages = locales.flatMap(locale =>
+    services.map(service => ({
+      url: `${baseUrl}/${locale}/services/${service}`,
+      lastModified: now,
+      changeFrequency: 'weekly' as const,
+      priority: locale === 'ka' ? 0.9 : 0.8,
+    }))
+  );
   
   // Additional pages
   const additionalPages = [

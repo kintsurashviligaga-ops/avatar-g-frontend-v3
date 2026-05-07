@@ -18,7 +18,7 @@ const COPY = {
     headline3: 'STACK.',
     cta1: 'Start Free',
     cta2: 'See Services',
-    trust: 'One platform. 13 AI services. Voice, image, video, music, avatar — in Georgian.',
+    trust: 'One platform. 14 AI services. Voice, image, video, music, avatar — in Georgian.',
   },
   ka: {
     georgianBadge: 'საქართველოს პირველი AI ცივილიზაციური სტეკი',
@@ -28,7 +28,7 @@ const COPY = {
     headline3: 'სტეკი.',
     cta1: 'დაიწყე უფასოდ',
     cta2: 'სერვისების ნახვა',
-    trust: 'ერთი პლატფორმა. 13 AI სერვისი. ხმა, სურათი, ვიდეო, მუსიკა, ავატარი — ქართულად.',
+    trust: 'ერთი პლატფორმა. 14 AI სერვისი. ხმა, სურათი, ვიდეო, მუსიკა, ავატარი — ქართულად.',
   },
   ru: {
     georgianBadge: 'Первый AI civilization stack в Грузии',
@@ -38,7 +38,7 @@ const COPY = {
     headline3: 'STACK.',
     cta1: 'Начать бесплатно',
     cta2: 'Смотреть сервисы',
-    trust: 'Одна платформа. 13 AI сервисов. Голос, изображение, видео, музыка, аватар — на грузинском.',
+    trust: 'Одна платформа. 14 AI сервисов. Голос, изображение, видео, музыка, аватар — на грузинском.',
   },
 } as const
 

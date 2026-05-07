@@ -1536,7 +1536,7 @@ export default function ServiceWorkspaceView({
       }
 
       // ── Pipeline text services (game, prompt-builder, content-writer, podcast, character, event, terminal) ──
-      const PIPELINE_TEXT_SERVICES = ['game', 'prompt-builder', 'terminal', 'content-writer', 'podcast', 'character', 'event', 'tourism', 'voice']
+      const PIPELINE_TEXT_SERVICES = ['game', 'prompt-builder', 'terminal', 'content-writer', 'podcast', 'character', 'event', 'tourism']
       if (PIPELINE_TEXT_SERVICES.includes(serviceId)) {
         dashboardJobId = onJobStart?.(safeServiceName) ?? null
         if (dashboardJobId) {

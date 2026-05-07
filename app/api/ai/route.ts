@@ -47,7 +47,7 @@ import { randomUUID } from 'crypto';
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
-const ANTHROPIC_MODEL   = 'claude-sonnet-4-5';
+const ANTHROPIC_MODEL   = 'claude-sonnet-4-6';
 const ANTHROPIC_VERSION = '2023-06-01';
 
 const MAX_PROMPT_LENGTH   = 4000;

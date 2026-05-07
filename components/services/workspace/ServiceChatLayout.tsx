@@ -634,6 +634,7 @@ export default function ServiceChatLayout({
             mode={chatMode}
             onModeChange={setChatMode}
             attachCount={attachments.length}
+            locale={locale}
           />
         )}
 

@@ -879,33 +879,33 @@ export const useOmniDashboardStore = create<OmniDashboardState>((set, get) => {
       };
     });
 
-    // --- TTS: fire-and-forget voice for text-based services ---
-    if (['game-creation', 'prompt-builder', 'terminal-coding', 'content-writer', 'podcast', 'character', 'event', 'tourism', 'voice-studio'].includes(serviceId)) {
-      const voiceText = (output.textBody ?? output.summary).slice(0, 1200);
+    const isTtsService = ['game-creation', 'prompt-builder', 'terminal-coding', 'content-writer', 'podcast', 'character', 'event', 'tourism', 'voice-studio'].includes(serviceId);
+
+    const attachTtsAudio = (audioB64: string) => {
+      const audioUrl = `data:audio/mpeg;base64,${audioB64}`;
+      set((state) => {
+        const svc = state.services[serviceId];
+        return {
+          services: { ...state.services, [serviceId]: { ...svc, outputs: svc.outputs.map((o) => o.id === output.id ? { ...o, audioUrl } : o) } },
+          sharedAssets: state.sharedAssets.map((a) => a.id === output.id ? { ...a, audioUrl } : a),
+          preview: state.preview?.id === output.id ? { ...state.preview, audioUrl } : state.preview,
+        };
+      });
+    };
+
+    const fireTts = (text: string) => {
       fetch('/api/elevenlabs/tts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: voiceText }),
+        body: JSON.stringify({ text: text.slice(0, 1200) }),
       })
         .then(async (res) => {
           if (!res.ok) return;
           const data = await res.json() as { success: boolean; audio?: string };
-          if (!data.success || !data.audio) return;
-          const audioUrl = `data:audio/mpeg;base64,${data.audio}`;
-          set((state) => {
-            const svc = state.services[serviceId];
-            const updatedOutputs = svc.outputs.map((o) => o.id === output.id ? { ...o, audioUrl } : o);
-            const updatedAssets = state.sharedAssets.map((a) => a.id === output.id ? { ...a, audioUrl } : a);
-            const newPreview = state.preview?.id === output.id ? { ...state.preview, audioUrl } : state.preview;
-            return {
-              services: { ...state.services, [serviceId]: { ...svc, outputs: updatedOutputs } },
-              sharedAssets: updatedAssets,
-              preview: newPreview,
-            };
-          });
+          if (data.success && data.audio) attachTtsAudio(data.audio);
         })
         .catch(() => {});
-    }
+    };
 
     // --- Panel source: generate real AI content into artifact textBody ---
     if (source === 'panel') {
@@ -969,6 +969,8 @@ export const useOmniDashboardStore = create<OmniDashboardState>((set, get) => {
                 services: { ...state.services, [serviceId]: { ...svc, status: 'ready' } },
               };
             });
+
+            if (isTtsService && fullText) fireTts(fullText);
           } else {
             set((state) => {
               const svc = state.services[serviceId];

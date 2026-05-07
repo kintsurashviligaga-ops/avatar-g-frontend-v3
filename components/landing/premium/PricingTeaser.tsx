@@ -32,7 +32,7 @@ const COPY = {
         desc: 'For creators and professionals',
         features: [
           'Unlimited generations',
-          'All 13 AI services',
+          'All 14 AI services',
           'Priority processing',
           'HD exports',
           '24/7 support',
@@ -77,7 +77,7 @@ const COPY = {
         desc: 'შემქმნელებისა და პროფესიონალებისთვის',
         features: [
           'Unlimited გენერაცია',
-          '13 AI სერვისი',
+          '14 AI სერვისი',
           'პრიორიტეტული დამუშავება',
           'HD ექსპორტი',
           '24/7 მხარდაჭერა',
@@ -122,7 +122,7 @@ const COPY = {
         desc: 'Для создателей и профессионалов',
         features: [
           'Неограниченные генерации',
-          'Все 13 AI сервисов',
+          'Все 14 AI сервисов',
           'Приоритетная обработка',
           'HD экспорт',
           'Поддержка 24/7',

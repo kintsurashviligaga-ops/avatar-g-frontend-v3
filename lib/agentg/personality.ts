@@ -62,7 +62,7 @@ type SessionMemory = {
   lastDetectedEmotion: DetectedEmotion;
 };
 
-const MODEL = 'claude-sonnet-4-5';
+const MODEL = 'claude-sonnet-4-6';
 const MAX_REPLY_CHARS = 1500;
 const MAX_RETRIES = 2;
 

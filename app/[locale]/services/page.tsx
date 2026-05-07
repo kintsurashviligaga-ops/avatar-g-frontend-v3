@@ -4,18 +4,24 @@ import type { ComponentType } from 'react';
 import { ServiceCardVisual } from '@/components/ui/ServiceCardVisual';
 import {
   Briefcase,
+  Calendar,
   Camera,
   Clapperboard,
   Code2,
   Cpu,
+  Drama,
   Eye,
   FileText,
   Film,
   Gamepad2,
+  Globe,
   ImageIcon,
+  Mic2,
   Music2,
+  PenLine,
   Plane,
   Puzzle,
+  Radio,
   Scissors,
   ShoppingCart,
   Sofa,
@@ -51,6 +57,13 @@ type ServiceId =
   | 'tourism'
   | 'game'
   | 'interior'
+  | 'voice'
+  | 'content-writer'
+  | 'podcast'
+  | 'character'
+  | 'event'
+  | 'prompt-builder'
+  | 'terminal'
   | 'next';
 
 type ServiceItem = {
@@ -189,6 +202,55 @@ const SERVICE_ITEMS: ServiceItem[] = [
     icon: Sofa,
   },
   {
+    id: 'voice',
+    title: 'Voice Clone',
+    description: 'Clone voices and generate professional-grade narration, dubbing, and audio content.',
+    tag: 'Create',
+    icon: Mic2,
+  },
+  {
+    id: 'content-writer',
+    title: 'Content Writer',
+    description: 'Write SEO articles, social media copy, email campaigns, and marketing content with AI.',
+    tag: 'Write',
+    icon: PenLine,
+  },
+  {
+    id: 'podcast',
+    title: 'Podcast Studio',
+    description: 'Generate full episode scripts with speaker cues, segments, and timestamps.',
+    tag: 'Write',
+    icon: Radio,
+  },
+  {
+    id: 'character',
+    title: 'Character AI',
+    description: 'Design rich AI characters with backstories, personality profiles, and dialogue samples.',
+    tag: 'Create',
+    icon: Drama,
+  },
+  {
+    id: 'event',
+    title: 'Event Studio',
+    description: 'Generate AI event materials: programs, MC scripts, invitations, and promo packs.',
+    tag: 'Create',
+    icon: Calendar,
+  },
+  {
+    id: 'prompt-builder',
+    title: 'Prompt Builder',
+    description: 'Build structured, optimized prompts for any AI model. Design, test, and export templates.',
+    tag: 'Optimize',
+    icon: Wand2,
+  },
+  {
+    id: 'terminal',
+    title: 'Terminal & Coding',
+    description: 'AI-powered code generation, scripts, and CLI tools in any language.',
+    tag: 'Build',
+    icon: Code2,
+  },
+  {
     id: 'next',
     title: 'Expansion Slot',
     description: 'Reserve capacity for next-generation modules and enterprise extension layers.',
@@ -211,19 +273,19 @@ const CATEGORIES: Category[] = [
     id: 'creative-generation',
     title: 'Avatar & Creative Generation',
     summary: 'Create, render, edit, and export visual, audio, and avatar-driven assets.',
-    serviceIds: ['avatar', 'video', 'editing', 'music', 'photo', 'image', 'game', 'interior'],
+    serviceIds: ['avatar', 'video', 'editing', 'music', 'photo', 'image', 'voice', 'game', 'interior'],
   },
   {
     id: 'creative-intelligence',
-    title: 'Creative Intelligence Layer',
-    summary: 'Plan, evaluate, improve, and standardize all content outputs.',
-    serviceIds: ['media', 'text', 'prompt', 'visual-intel'],
+    title: 'Content & Writing',
+    summary: 'Generate, evaluate, and standardize all written and scripted content.',
+    serviceIds: ['content-writer', 'podcast', 'character', 'event', 'media', 'text', 'prompt-builder', 'visual-intel'],
   },
   {
     id: 'automation-orchestration',
     title: 'Automation & Orchestration',
     summary: 'Connect modules into workflows and let Agent G coordinate execution.',
-    serviceIds: ['workflow', 'agent-g'],
+    serviceIds: ['workflow', 'agent-g', 'terminal'],
   },
   {
     id: 'commerce-business-development',
@@ -233,9 +295,9 @@ const CATEGORIES: Category[] = [
   },
   {
     id: 'vertical-future',
-    title: 'Vertical & Future Modules',
-    summary: 'Support tourism-focused services and future enterprise expansion.',
-    serviceIds: ['tourism', 'next'],
+    title: 'Vertical & Industry Modules',
+    summary: 'Specialized AI for tourism, travel planning, and enterprise expansion.',
+    serviceIds: ['tourism'],
   },
 ];
 
@@ -257,7 +319,7 @@ const PAGE_TEXT: Record<string, PageText> = {
   en: {
     eyebrow: 'AI ECOSYSTEM',
     title: 'Your AI Factory',
-    subtitle: '19 connected AI-powered modules working together in one ecosystem.',
+    subtitle: '24 connected AI-powered modules working together in one ecosystem.',
     description:
       'From avatar creation to content production, automation, software, commerce, and business execution — MyAvatar.ge connects every service into one intelligent workflow.',
     workflowLabel: 'Create → Optimize → Automate → Sell → Scale',
@@ -273,7 +335,7 @@ const PAGE_TEXT: Record<string, PageText> = {
   ka: {
     eyebrow: 'AI ეკოსისტემა',
     title: 'შენი AI ქარხანა',
-    subtitle: '19 ურთიერთდაკავშირებული AI-ით მართული მოდული — ერთ ეკოსისტემაში.',
+    subtitle: '24 ურთიერთდაკავშირებული AI-ით მართული მოდული — ერთ ეკოსისტემაში.',
     description:
       'ავატარის შექმნიდან კონტენტ-წარმოებამდე, ავტომატიზაცია, პროგრამული უზრუნველყოფა, კომერცია და ბიზნეს-ოპერაციები — MyAvatar.ge-ი ყველა სერვისს ერთ ინტელექტუალურ workflow-ში აერთიანებს.',
     workflowLabel: 'შექმნა → ოპტიმიზაცია → ავტომატიზაცია → გაყიდვა → მასშტაბი',
@@ -289,7 +351,7 @@ const PAGE_TEXT: Record<string, PageText> = {
   ru: {
     eyebrow: 'AI ЭКОСИСТЕМА',
     title: 'Ваша AI Фабрика',
-    subtitle: '19 взаимосвязанных AI-модулей, работающих вместе в единой экосистеме.',
+    subtitle: '24 взаимосвязанных AI-модулей, работающих вместе в единой экосистеме.',
     description:
       'От создания аватаров до производства контента, автоматизации, разработки ПО, коммерции и бизнес-операций — MyAvatar.ge объединяет все сервисы в один интеллектуальный workflow.',
     workflowLabel: 'Создать → Оптимизировать → Автоматизировать → Продать → Масштабировать',

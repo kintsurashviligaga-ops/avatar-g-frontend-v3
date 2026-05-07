@@ -667,7 +667,7 @@ async function handleGenerate(
   const effectivePrompt = iterative.prompt;
 
   // ── Text services (Gemini as primary assistant brain) ─────────────────────
-  const TEXT_SERVICES: ServiceId[] = ['game', 'prompt-builder', 'terminal', 'content-writer', 'podcast', 'character', 'event', 'tourism', 'voice'];
+  const TEXT_SERVICES: ServiceId[] = ['game', 'prompt-builder', 'terminal', 'content-writer', 'podcast', 'character', 'event', 'tourism'];
 
   if (TEXT_SERVICES.includes(serviceId)) {
     const outputKind = serviceId === 'terminal' ? 'code' : 'text';
@@ -680,7 +680,6 @@ async function handleGenerate(
       character:        'You are a master character designer and narrative architect. Create rich, multi-dimensional characters with deep backstories, consistent voice, and cultural depth. Format in clean markdown with clear sections.',
       event:            'You are a professional event producer and copywriter. Create comprehensive event materials including programs, MC scripts, promo copy, and invitations. Be specific, engaging, and culturally aware. Format in clean markdown.',
       tourism:          'You are an expert travel consultant and destination specialist. Create detailed, practical, and inspiring travel content. Include local tips, cultural context, logistics, and hidden gems. Format in clean, readable markdown with clear sections.',
-      voice:            'You are a professional voice-over scriptwriter and audio content specialist. Create compelling, naturally spoken scripts optimized for text-to-speech synthesis. Use clear pacing, natural pauses, and engaging delivery. Format in clean markdown with speaker notes.',
     };
 
     if (serviceId === 'terminal') {

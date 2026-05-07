@@ -76,12 +76,12 @@ const SERVICES: Service[] = [
     href: '/services/text',
   },
   {
-    id: 'translate',
-    icon: '🌐',
-    name: { en: 'Translator', ka: 'თარჯიმანი', ru: 'Переводчик' },
-    desc: { en: 'Translate between languages', ka: 'ენებს შორის თარგმნა', ru: 'Переводите тексты' },
+    id: 'content-writer',
+    icon: '✍️',
+    name: { en: 'Content Writer', ka: 'კონტენტ მწერელი', ru: 'Автор Контента' },
+    desc: { en: 'SEO articles, social copy & email campaigns', ka: 'SEO სტატიები, სოც. მედია, ელ-ფოსტა', ru: 'SEO-статьи и соцсети' },
     color: 'cyan',
-    href: '/services/translate',
+    href: '/services/content-writer',
   },
   {
     id: 'podcast',
@@ -100,20 +100,20 @@ const SERVICES: Service[] = [
     href: '/services/character',
   },
   {
-    id: 'calls',
-    icon: '📞',
-    name: { en: 'Voice Calls', ka: 'ხმოვანი ზარები', ru: 'Голосовые Звонки' },
-    desc: { en: 'AI voice call automation', ka: 'AI ზარების ავტომატიზაცია', ru: 'Автоматизируйте звонки' },
+    id: 'tourism',
+    icon: '✈️',
+    name: { en: 'Tourism AI', ka: 'ტურიზმი AI', ru: 'Туризм AI' },
+    desc: { en: 'Smart itineraries & travel planning', ka: 'ჭკვიანი მარშრუტები და დაგეგმვა', ru: 'Умные маршруты и планирование' },
     color: 'cyan',
-    href: '/services/voice-calls',
+    href: '/services/tourism',
   },
   {
-    id: 'analytics',
-    icon: '📊',
-    name: { en: 'Analytics', ka: 'ანალიტიკა', ru: 'Аналитика' },
-    desc: { en: 'AI-powered insights & data', ka: 'AI ანალიტიკა', ru: 'AI-аналитика' },
+    id: 'interior',
+    icon: '🏠',
+    name: { en: 'Interior Design', ka: 'ინტერიერის დიზაინი', ru: 'Дизайн Интерьера' },
+    desc: { en: 'Redesign any room with AI', ka: 'AI-ით ოთახის გადაპროექტება', ru: 'Переоформите комнату с AI' },
     color: 'emerald',
-    href: '/services/analytics',
+    href: '/services/interior',
   },
   {
     id: 'event',
@@ -126,9 +126,9 @@ const SERVICES: Service[] = [
 ]
 
 const SECTION_COPY = {
-  en: { title: 'Everything you need to create with AI', subtitle: '13 powerful tools. One unified platform.' },
-  ka: { title: 'ყველაფერი AI-ით შექმნისთვის', subtitle: '13 ძლიერი ინსტრუმენტი. ერთი პლატფორმა.' },
-  ru: { title: 'Всё для AI-творчества', subtitle: '13 мощных инструментов. Одна платформа.' },
+  en: { title: 'Everything you need to create with AI', subtitle: '14 powerful tools. One unified platform.' },
+  ka: { title: 'ყველაფერი AI-ით შექმნისთვის', subtitle: '14 ძლიერი ინსტრუმენტი. ერთი პლატფორმა.' },
+  ru: { title: 'Всё для AI-творчества', subtitle: '14 мощных инструментов. Одна платформа.' },
 } as const
 
 interface ServiceCardProps {
@@ -275,7 +275,7 @@ export function ServicesGrid() {
         {/* Header */}
         <div className="text-center mb-14">
           <NeonBadge color="cyan" pulse className="mb-4">
-            13 AI Services
+            14 AI Services
           </NeonBadge>
           <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight text-white/95 mb-4">
             {c.title}

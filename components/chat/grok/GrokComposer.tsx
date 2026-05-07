@@ -14,11 +14,12 @@ interface GrokComposerProps {
   mode: ChatMode
   onModeChange: (mode: ChatMode) => void
   attachCount?: number
+  locale?: string
 }
 
 export function GrokComposer({
   value, onChange, onSend, onAttach, onCamera: _onCamera,
-  isSubmitting, placeholder, mode, onModeChange, attachCount = 0,
+  isSubmitting, placeholder, mode, onModeChange, attachCount = 0, locale = 'ka',
 }: GrokComposerProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const [isListening, setIsListening] = useState(false)
@@ -51,7 +52,7 @@ export function GrokComposer({
     const recognition = new (SR as new () => SpeechRecognition)()
     recognition.continuous = false
     recognition.interimResults = false
-    recognition.lang = 'en-US'
+    recognition.lang = locale === 'ru' ? 'ru-RU' : locale === 'en' ? 'en-US' : 'ka-GE'
     recognitionRef.current = recognition
     recognition.onresult = (event: SpeechRecognitionEvent) => {
       const transcript = event.results[0]?.[0]?.transcript
