@@ -143,9 +143,16 @@ function renderScene(id: string, c1: string, c2: string) {
     case 'software':     return <SoftwareScene c1={c1} c2={c2} />;
     case 'business':     return <BusinessScene c1={c1} c2={c2} />;
     case 'agent-g':      return <AgentGScene c1={c1} c2={c2} />;
-    case 'tourism':      return <TourismScene c1={c1} c2={c2} />;
-    case 'next':         return <NextScene c1={c1} c2={c2} />;
-    default:             return <DefaultScene c1={c1} c2={c2} />;
+    case 'tourism':        return <TourismScene c1={c1} c2={c2} />;
+    case 'next':           return <NextScene c1={c1} c2={c2} />;
+    case 'voice':          return <VoiceScene c1={c1} c2={c2} />;
+    case 'content-writer': return <TextScene c1={c1} c2={c2} />;
+    case 'prompt-builder': return <PromptScene c1={c1} c2={c2} />;
+    case 'podcast':        return <PodcastScene c1={c1} c2={c2} />;
+    case 'character':      return <CharacterScene c1={c1} c2={c2} />;
+    case 'event':          return <EventScene c1={c1} c2={c2} />;
+    case 'terminal':       return <SoftwareScene c1={c1} c2={c2} />;
+    default:               return <DefaultScene c1={c1} c2={c2} />;
   }
 }
 
@@ -660,6 +667,129 @@ function NextScene({ c1, c2 }: SceneProps) {
       <circle cx={60} cy={170} r={2} fill="white" fillOpacity={0.06} />
       <circle cx={72} cy={170} r={2} fill="white" fillOpacity={0.06} />
       <circle cx={84} cy={170} r={2} fill="white" fillOpacity={0.06} />
+    </g>
+  );
+}
+
+/* ─── 17b. Voice — Synthesis & Waveform ───────────────────────────── */
+function VoiceScene({ c1, c2 }: SceneProps) {
+  return (
+    <g>
+      {/* microphone silhouette */}
+      <rect x={190} y={30} width={20} height={50} rx={10} fill="none" stroke={c1} strokeOpacity={0.3} strokeWidth={1.2} />
+      <path d="M170,70 Q170,95 200,95 Q230,95 230,70" fill="none" stroke={c1} strokeOpacity={0.25} strokeWidth={1} />
+      <line x1={200} y1={95} x2={200} y2={115} stroke={c1} strokeOpacity={0.2} strokeWidth={1} />
+      <line x1={180} y1={115} x2={220} y2={115} stroke={c1} strokeOpacity={0.2} strokeWidth={1} />
+      {/* waveform rings emanating from mic */}
+      {[40, 55, 70, 85].map((r, i) => (
+        <ellipse key={r} cx={200} cy={55} rx={r} ry={r * 0.4} fill="none" stroke={c2} strokeOpacity={0.04 + i * 0.03} strokeWidth={0.5} strokeDasharray="4 4" />
+      ))}
+      {/* horizontal waveform at bottom */}
+      <path d="M40,150 Q65,130 90,150 Q115,170 140,150 Q165,130 190,150 Q215,170 240,150 Q265,130 290,150 Q315,170 360,150" fill="none" stroke={c1} strokeOpacity={0.2} strokeWidth={1.5} />
+      {/* EQ bars */}
+      {[60, 80, 100, 120, 140, 160, 180, 200, 220, 240, 260, 280, 300, 320, 340].map((x, i) => {
+        const h = 8 + Math.abs(Math.sin(i * 0.9)) * 28;
+        return <rect key={x} x={x - 4} y={165 - h} width={6} height={h} rx={2} fill={c1} fillOpacity={0.07 + (i % 4) * 0.03} />;
+      })}
+    </g>
+  );
+}
+
+/* ─── 18. Podcast — Multi-Speaker Studio ──────────────────────────── */
+function PodcastScene({ c1, c2 }: SceneProps) {
+  return (
+    <g>
+      {/* two mic icons (host + guest) */}
+      {[130, 270].map((cx, i) => (
+        <g key={cx}>
+          <rect x={cx - 8} y={35} width={16} height={38} rx={8} fill="none" stroke={i === 0 ? c1 : c2} strokeOpacity={0.3} strokeWidth={1} />
+          <path d={`M${cx - 18},68 Q${cx - 18},83 ${cx},83 Q${cx + 18},83 ${cx + 18},68`} fill="none" stroke={i === 0 ? c1 : c2} strokeOpacity={0.2} strokeWidth={0.8} />
+          <line x1={cx} y1={83} x2={cx} y2={95} stroke={c1} strokeOpacity={0.15} strokeWidth={0.8} />
+        </g>
+      ))}
+      {/* script / transcript panel in center */}
+      <rect x={165} y={30} width={70} height={90} rx={3} fill="white" fillOpacity={0.03} stroke={c1} strokeOpacity={0.1} strokeWidth={0.6} />
+      {[42, 52, 62, 72, 82, 92, 102].map(y => (
+        <rect key={y} x={172} y={y} width={y === 52 || y === 72 || y === 92 ? 55 : 42} height={3} rx={1} fill="white" fillOpacity={0.06} />
+      ))}
+      {/* recording indicator */}
+      <circle cx={200} cy={22} r={5} fill="#ef4444" fillOpacity={0.5} />
+      <circle cx={200} cy={22} r={8} fill="none" stroke="#ef4444" strokeOpacity={0.2} strokeWidth={0.8} />
+      {/* audio waveform at bottom */}
+      {[50, 70, 90, 110, 130, 150, 170, 190, 210, 230, 250, 270, 290, 310, 330, 350].map((x, i) => {
+        const h = 6 + Math.abs(Math.sin(i * 1.1)) * 22;
+        return <rect key={x} x={x - 3} y={155 - h} width={5} height={h} rx={1} fill={c1} fillOpacity={0.08 + (i % 3) * 0.04} />;
+      })}
+    </g>
+  );
+}
+
+/* ─── 19. Character — AI Character Design ─────────────────────────── */
+function CharacterScene({ c1, c2 }: SceneProps) {
+  return (
+    <g>
+      {/* character portrait frame */}
+      <rect x={130} y={20} width={80} height={110} rx={6} fill="white" fillOpacity={0.03} stroke={c1} strokeOpacity={0.15} strokeWidth={0.8} />
+      {/* silhouette head */}
+      <ellipse cx={170} cy={48} rx={18} ry={20} stroke={c1} strokeOpacity={0.25} strokeWidth={1} fill="none" />
+      {/* silhouette body */}
+      <path d="M145,100 Q145,80 155,72 Q163,66 170,66 Q177,66 185,72 Q195,80 195,100" stroke={c1} strokeOpacity={0.15} strokeWidth={0.8} fill="none" />
+      {/* trait cards (right side) */}
+      {[30, 65, 100].map((y, i) => (
+        <g key={y}>
+          <rect x={225} y={y} width={90} height={28} rx={4} fill="white" fillOpacity={0.03} stroke={c2} strokeOpacity={0.1} strokeWidth={0.5} />
+          <rect x={232} y={y + 7} width={28} height={4} rx={1} fill={c2} fillOpacity={0.18 - i * 0.04} />
+          <rect x={232} y={y + 15} width={65} height={3} rx={1} fill="white" fillOpacity={0.06} />
+        </g>
+      ))}
+      {/* trait cards (left side) */}
+      {[30, 65, 100].map((y) => (
+        <g key={y}>
+          <rect x={85} y={y} width={35} height={28} rx={4} fill="white" fillOpacity={0.02} stroke={c1} strokeOpacity={0.06} strokeWidth={0.5} />
+          <rect x={90} y={y + 8} width={20} height={3} rx={1} fill={c1} fillOpacity={0.1} />
+          <rect x={90} y={y + 15} width={25} height={3} rx={1} fill="white" fillOpacity={0.05} />
+        </g>
+      ))}
+      {/* sparkles around character */}
+      {([[120, 20], [230, 18], [300, 65]] as [number, number][]).map(([x, y], i) => (
+        <g key={i}>
+          <line x1={x - 4} y1={y} x2={x + 4} y2={y} stroke={c1} strokeOpacity={0.2} strokeWidth={0.7} />
+          <line x1={x} y1={y - 4} x2={x} y2={y + 4} stroke={c1} strokeOpacity={0.2} strokeWidth={0.7} />
+        </g>
+      ))}
+      {/* bottom quote line */}
+      <rect x={110} y={145} width={180} height={4} rx={1} fill="white" fillOpacity={0.05} />
+      <rect x={125} y={153} width={140} height={3} rx={1} fill="white" fillOpacity={0.04} />
+    </g>
+  );
+}
+
+/* ─── 20. Event — Production Studio ───────────────────────────────── */
+function EventScene({ c1, c2 }: SceneProps) {
+  return (
+    <g>
+      {/* stage / backdrop */}
+      <rect x={70} y={25} width={260} height={110} rx={4} fill="white" fillOpacity={0.02} />
+      <rect x={70} y={25} width={260} height={110} rx={4} fill="none" stroke={c1} strokeOpacity={0.1} strokeWidth={0.8} />
+      {/* spotlight beams */}
+      <path d="M100,25 L130,100" fill="none" stroke={c1} strokeOpacity={0.06} strokeWidth={8} strokeLinecap="round" />
+      <path d="M200,25 L200,110" fill="none" stroke={c2} strokeOpacity={0.05} strokeWidth={10} strokeLinecap="round" />
+      <path d="M300,25 L270,100" fill="none" stroke={c1} strokeOpacity={0.06} strokeWidth={8} strokeLinecap="round" />
+      {/* stage curtains */}
+      <path d="M70,25 Q90,45 80,80 Q75,100 85,130 L70,130 Z" fill={c1} fillOpacity={0.05} />
+      <path d="M330,25 Q310,45 320,80 Q325,100 315,130 L330,130 Z" fill={c1} fillOpacity={0.05} />
+      {/* podium / MC stand */}
+      <rect x={182} y={88} width={36} height={47} rx={2} fill="white" fillOpacity={0.04} stroke={c1} strokeOpacity={0.1} strokeWidth={0.6} />
+      <circle cx={200} cy={80} r={6} fill="none" stroke={c1} strokeOpacity={0.25} strokeWidth={1} />
+      {/* document cards at bottom */}
+      {[[80, 140], [155, 140], [230, 140], [305, 140]].map(([x, y], i) => (
+        <g key={i}>
+          <rect x={x} y={y} width={60} height={32} rx={3} fill="white" fillOpacity={0.03} stroke={c2} strokeOpacity={0.08} strokeWidth={0.5} />
+          <rect x={x + 6} y={y + 7} width={30} height={3} rx={1} fill={c1} fillOpacity={0.12} />
+          <rect x={x + 6} y={y + 14} width={45} height={2} rx={1} fill="white" fillOpacity={0.06} />
+          <rect x={x + 6} y={y + 20} width={38} height={2} rx={1} fill="white" fillOpacity={0.04} />
+        </g>
+      ))}
     </g>
   );
 }

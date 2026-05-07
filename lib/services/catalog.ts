@@ -16,7 +16,7 @@ export interface ServiceDefinition {
   category: ServiceCategory;
 }
 
-/* ─── 16 Services ────────────────────────────────────────────────── */
+/* ─── 25 Services ────────────────────────────────────────────────── */
 
 export const SERVICES: ServiceDefinition[] = [
   {
@@ -214,6 +214,83 @@ export const SERVICES: ServiceDefinition[] = [
       en: 'Redesign rooms and spaces with AI-powered interior design',
       ka: 'გადააპროექტე ოთახები და სივრცეები AI ინტერიერის დიზაინით',
       ru: 'Переоформите комнаты и пространства с AI-дизайном интерьеров',
+    },
+    category: 'create',
+  },
+  {
+    slug: 'voice',
+    icon: '🎙️',
+    title: { en: 'Voice Clone', ka: 'ხმის კლონირება', ru: 'Клонирование голоса' },
+    description: {
+      en: 'Clone voices and generate professional narration, dubbing, and audio content',
+      ka: 'კლონირე ხმები და შექმენი პროფესიონალური ნარაცია, დუბლირება',
+      ru: 'Клонируйте голоса и создайте профессиональную озвучку',
+    },
+    category: 'create',
+  },
+  {
+    slug: 'content-writer',
+    icon: '✍️',
+    title: { en: 'Content Writer', ka: 'კონტენტ-რაიტერი', ru: 'Контент-райтер' },
+    description: {
+      en: 'Write SEO articles, social media copy, email campaigns, and marketing content',
+      ka: 'დაწერე SEO სტატიები, სოციალური მედიის კოპი და მარკეტინგული კონტენტი',
+      ru: 'Пишите SEO-статьи, посты в соцсетях и маркетинговый контент',
+    },
+    category: 'create',
+  },
+  {
+    slug: 'podcast',
+    icon: '🎧',
+    title: { en: 'Podcast Studio', ka: 'პოდკასტ სტუდია', ru: 'Подкаст-студия' },
+    description: {
+      en: 'Generate full episode scripts with speaker cues, segments, and timestamps',
+      ka: 'შექმენი სრული ეპიზოდის სცენარი სპიკერის ნიშნებით და სეგმენტებით',
+      ru: 'Генерируйте полные сценарии эпизодов с репликами и тайм-кодами',
+    },
+    category: 'create',
+  },
+  {
+    slug: 'character',
+    icon: '🎭',
+    title: { en: 'Character AI', ka: 'Character AI', ru: 'Character AI' },
+    description: {
+      en: 'Design rich AI characters with backstories, personality profiles, and dialogue samples',
+      ka: 'შექმენი მდიდარი AI პერსონაჟები backstory-ით და პიროვნების პროფილებით',
+      ru: 'Создавайте богатых AI-персонажей с историей и диалоговыми образцами',
+    },
+    category: 'create',
+  },
+  {
+    slug: 'event',
+    icon: '🎪',
+    title: { en: 'Event Studio', ka: 'ივენთ სტუდია', ru: 'Event-студия' },
+    description: {
+      en: 'Generate AI event materials: programs, MC scripts, invitations, and promo packs',
+      ka: 'შექმენი AI ივენთ მასალები: პროგრამები, MC სცენარები, მოწვევები',
+      ru: 'Создавайте AI-материалы для мероприятий: программы, сценарии, приглашения',
+    },
+    category: 'create',
+  },
+  {
+    slug: 'prompt-builder',
+    icon: '⚡',
+    title: { en: 'Prompt Builder', ka: 'Prompt Builder', ru: 'Prompt Builder' },
+    description: {
+      en: 'Build structured, optimized prompts for any AI model — design, test, and export',
+      ka: 'შექმენი სტრუქტურირებული, ოპტიმიზებული prompts ნებისმიერი AI მოდელისთვის',
+      ru: 'Создавайте структурированные оптимизированные промпты для любой AI-модели',
+    },
+    category: 'create',
+  },
+  {
+    slug: 'terminal',
+    icon: '>_',
+    title: { en: 'Terminal & Coding', ka: 'ტერმინალი & კოდი', ru: 'Терминал и код' },
+    description: {
+      en: 'AI-powered code generation, scripts, and CLI tools in any language',
+      ka: 'AI-ით მართული კოდის გენერაცია, სკრიპტები და CLI ინსტრუმენტები',
+      ru: 'Генерация кода с AI, скрипты и CLI-инструменты на любом языке',
     },
     category: 'create',
   },

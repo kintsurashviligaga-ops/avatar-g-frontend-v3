@@ -99,25 +99,21 @@ async function generateTextWithOpenAI(systemPrompt: string, prompt: string): Pro
 
 function toGeminiContext(serviceId: ServiceId): GeminiServiceContext {
   switch (serviceId) {
-    case 'interior':
-      return 'interior';
-    case 'image':
-      return 'image';
-    case 'video':
-      return 'video';
-    case 'music':
-      return 'music';
-    case 'voice':
-      return 'voice';
-    case 'avatar':
-      return 'avatar';
-    case 'game':
-      return 'game';
-    case 'content-writer':
-    case 'prompt-builder':
-      return 'text';
-    default:
-      return 'general';
+    case 'interior':       return 'interior';
+    case 'image':          return 'image';
+    case 'video':          return 'video';
+    case 'music':          return 'music';
+    case 'voice':          return 'voice';
+    case 'avatar':         return 'avatar';
+    case 'game':           return 'game';
+    case 'content-writer': return 'content-writer';
+    case 'prompt-builder': return 'prompt-builder';
+    case 'podcast':        return 'podcast';
+    case 'character':      return 'character';
+    case 'event':          return 'event';
+    case 'tourism':        return 'tourism';
+    case 'terminal':       return 'terminal';
+    default:               return 'general';
   }
 }
 

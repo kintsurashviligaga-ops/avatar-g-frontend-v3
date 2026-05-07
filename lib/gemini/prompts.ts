@@ -15,6 +15,13 @@ export type GeminiServiceContext =
   | 'avatar'
   | 'business'
   | 'game'
+  | 'content-writer'
+  | 'prompt-builder'
+  | 'podcast'
+  | 'character'
+  | 'event'
+  | 'tourism'
+  | 'terminal'
   | 'general';
 
 export function getGeminiSystemPrompt(service: GeminiServiceContext, locale: string): string {
@@ -61,6 +68,34 @@ export function getGeminiSystemPrompt(service: GeminiServiceContext, locale: str
       ? `\n\nთამაშების სერვისში ხარ. დაეხმარე GDD-ის, მექანიკის, სიუჟეტის, პერსონაჟების შექმნაში.`
       : `\n\nYou are in the Game Design service. Help create GDD, mechanics, story, and characters.`,
 
+    'content-writer': isGeorgian
+      ? `\n\nკონტენტ-რაიტინგის სერვისში ხარ. დაეხმარე SEO სტატიების, ბლოგ-პოსტების, სოციალური მედიის კოპის, სარეკლამო ტექსტებისა და ნიუზლეთერების შექმნაში. ენგეიჯური, ბუნებრივი ქართული/ინგლისური/რუსული.`
+      : `\n\nYou are in the Content Writing service. Help create SEO articles, blog posts, social media copy, ads, and newsletters. Write engaging, natural language — avoid generic AI phrasing.`,
+
+    'prompt-builder': isGeorgian
+      ? `\n\nPrompt Builder სერვისში ხარ. დაეხმარე AI მოდელებისთვის (Midjourney, FLUX, DALL-E, GPT, Claude, Sora) ოპტიმიზებული, ეფექტური prompts-ების შექმნაში.`
+      : `\n\nYou are in the Prompt Builder service. Help craft optimized, high-performance prompts for AI models like Midjourney, FLUX, DALL-E, GPT, Claude, and Sora.`,
+
+    podcast: isGeorgian
+      ? `\n\nPodcast Studio სერვისში ხარ. დაეხმარე podcast-ის სცენარის, ეპიზოდის სტრუქტურის, სპიკერის ხაზების, ინტრო/აუტრო-ს და ჩართვების შექმნაში. სტილი: ენგეიჯური, ბუნებრივი, პროფესიონალური.`
+      : `\n\nYou are in the Podcast Studio service. Help create episode scripts, segment structures, speaker lines, intros, outros, and transitions. Style: engaging, natural, professional.`,
+
+    character: isGeorgian
+      ? `\n\nCharacter AI სერვისში ხარ. დაეხმარე AI პერსონაჟების შექმნაში — backstory, პიროვნება, მოტივაციები, სალაპარაკო სტილი, role-play სცენარები, NPC სქემები.`
+      : `\n\nYou are in the Character AI service. Help create AI characters with rich backstories, personalities, motivations, speech patterns, role-play scenarios, and NPC profiles.`,
+
+    event: isGeorgian
+      ? `\n\nEvent Studio სერვისში ხარ. დაეხმარე ღონისძიების პროგრამის, MC სცენარის, ოფიციალური მოწვევების, სოციალური პრომო კოპის შექმნაში — კონფერენციებისთვის, ქორწილებისთვის, ფესტივალებისთვის.`
+      : `\n\nYou are in the Event Studio service. Help create event programs, MC scripts, formal invitations, and social promo copy for conferences, weddings, festivals, and launches.`,
+
+    tourism: isGeorgian
+      ? `\n\nTourism AI სერვისში ხარ. დაეხმარე მოგზაურობის გეგმების, ადგილობრივი გიდების, კულტურული კონტექსტის, ლოჯისტიკისა და ფარული ადგილების კონტენტის შექმნაში. კონკრეტული, პრაქტიკული, ინსპირაციული.`
+      : `\n\nYou are in the Tourism AI service. Help create travel itineraries, local guides, cultural context, logistics advice, and hidden-gem content. Be specific, practical, and inspiring.`,
+
+    terminal: isGeorgian
+      ? `\n\nTerminal & Coding სერვისში ხარ. დაეხმარე production-ready კოდის, სკრიპტების, API-ების, CLI ინსტრუმენტებისა და automation-ის დაწერაში. ენა: Python, TypeScript, Bash, Go, Swift.`
+      : `\n\nYou are in the Terminal & Coding service. Help write production-ready code, scripts, APIs, CLI tools, and automation. Languages: Python, TypeScript, Bash, Go, Swift, Kotlin.`,
+
     general: isGeorgian
       ? `\n\nMyAvatar.ge-ს ყველა სერვისთან გაქვს წვდომა. დაეხმარე მომხმარებელს სწორი სერვისის არჩევაში.`
       : `\n\nYou have access to all MyAvatar.ge services. Help the user choose the right service for their needs.`,
@@ -80,6 +115,13 @@ export function getServiceCreditCost(service: GeminiServiceContext, tier: 'pro' 
     avatar: 15,
     business: 10,
     game: 10,
+    'content-writer': 5,
+    'prompt-builder': 3,
+    podcast: 8,
+    character: 6,
+    event: 8,
+    tourism: 6,
+    terminal: 5,
     general: 3,
   };
   return (baseCosts[service] ?? 5) * (tier === 'pro' ? 2 : 1);

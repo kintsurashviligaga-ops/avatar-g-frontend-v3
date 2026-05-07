@@ -28,6 +28,8 @@ const ACCENTS: Record<string, string> = {
   'agent-g': '#22d3ee', 'visual-intel': '#3b82f6', prompt: '#fbbf24',
   media: '#ec4899', business: '#8b5cf6', shop: '#10b981', software: '#6366f1',
   tourism: '#14b8a6', game: '#f97316', interior: '#d946ef',
+  voice: '#38bdf8', 'content-writer': '#4ade80', podcast: '#e879f9',
+  character: '#a78bfa', event: '#fb923c', 'prompt-builder': '#fbbf24', terminal: '#34d399',
 }
 
 const AUTO_MS = 8000
