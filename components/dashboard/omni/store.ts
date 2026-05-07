@@ -599,17 +599,6 @@ export const useOmniDashboardStore = create<OmniDashboardState>((set, get) => {
         };
       });
 
-      if (source === 'chat') {
-        const msgId = createId();
-        set((state) => ({
-          chatMessages: [
-            ...state.chatMessages,
-            { id: msgId, role: 'assistant' as const, content: copy.avatarGenerating, ts: Date.now() },
-          ].slice(-MAX_CHAT_ITEMS),
-          ...addLogLine(state, 'agent', `${copy.assistantDispatched} trace=${traceId}`),
-        }));
-      }
-
       try {
         const res = await fetch('/api/heygen/avatar', {
           method: 'POST',
