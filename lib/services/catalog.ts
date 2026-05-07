@@ -285,7 +285,7 @@ export const SERVICES: ServiceDefinition[] = [
   },
   {
     slug: 'terminal',
-    icon: '>_',
+    icon: '⌨️',
     title: { en: 'Terminal & Coding', ka: 'ტერმინალი & კოდი', ru: 'Терминал и код' },
     description: {
       en: 'AI-powered code generation, scripts, and CLI tools in any language',

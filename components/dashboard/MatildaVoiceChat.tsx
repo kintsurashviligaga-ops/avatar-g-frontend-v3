@@ -107,7 +107,6 @@ export default function MatildaVoiceChat({ locale = 'ka' }: MatildaVoiceChatProp
   const labels = LABELS[normalizedLocale];
 
   const [open, setOpen] = useState(false);
-  const [errorText, setErrorText] = useState('');
 
   const {
     state,
@@ -123,10 +122,6 @@ export default function MatildaVoiceChat({ locale = 'ka' }: MatildaVoiceChatProp
     resetTranscript,
   } = useSimpleVoice({
     language: toRealtimeLanguage(normalizedLocale),
-    onError: (error) => {
-      const msg = String(error || '').replace(/_/g, ' ');
-      setErrorText(msg);
-    },
   });
 
   const statusLabel = labels.states[state] || labels.states.idle;
@@ -138,18 +133,15 @@ export default function MatildaVoiceChat({ locale = 'ka' }: MatildaVoiceChatProp
       stopListening();
       return;
     }
-    setErrorText('');
     startListening();
   }, [isActive, startListening, stopListening]);
 
   const handleLanguageChange = useCallback((nextLanguage: RealtimeVoiceLanguage) => {
     setLanguage(nextLanguage);
-    setErrorText('');
   }, [setLanguage]);
 
   const handleReset = useCallback(() => {
     resetTranscript();
-    setErrorText('');
   }, [resetTranscript]);
 
   const handleClose = () => {
@@ -276,13 +268,7 @@ export default function MatildaVoiceChat({ locale = 'ka' }: MatildaVoiceChatProp
               </div>
             )}
 
-            {errorText && (
-              <div className="w-full rounded-2xl border border-rose-300/25 bg-rose-500/10 px-4 py-3">
-                <p className="mt-1 text-sm text-rose-100/90">{errorText}</p>
-              </div>
-            )}
-
-            {!transcript && !assistantTranscript && !errorText && (
+            {!transcript && !assistantTranscript && (
               <p className="text-center text-xs text-white/30">{labels.hint}</p>
             )}
           </div>

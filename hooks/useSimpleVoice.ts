@@ -53,6 +53,7 @@ function getSpeechRecognition(): (new () => SpeechRecognitionInstance) | null {
 
 function isVoiceSupported(): boolean {
   if (typeof window === 'undefined') return false;
+  if (!window.isSecureContext) return false;
   return Boolean(getSpeechRecognition()) && Boolean(navigator.mediaDevices?.getUserMedia);
 }
 
