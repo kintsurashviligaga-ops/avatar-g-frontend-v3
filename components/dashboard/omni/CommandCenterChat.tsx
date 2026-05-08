@@ -3,6 +3,8 @@
 import Image from 'next/image';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import {
   Camera,
   ChevronDown,
@@ -20,7 +22,7 @@ import type { DragEventHandler } from 'react';
 import { getLocalizedService, normalizeOmniLocale } from './i18n';
 import { OMNI_SERVICES } from './services';
 import { useOmniStore } from './store';
-import type { CommandLanguage, PreviewArtifact, ServiceId } from './types';
+import type { CommandLanguage, ExternalCommandInput, PreviewArtifact, ServiceId } from './types';
 import { ClarificationMessage } from '@/components/chat/ClarificationMessage';
 import { ConfirmationCard } from '@/components/chat/ConfirmationCard';
 import { GenerationProgress, type GenerationStage } from '@/components/chat/GenerationProgress';
@@ -28,6 +30,18 @@ import { OutputCard } from '@/components/chat/OutputCard';
 import { MediaUploadStep, type UploadedMedia } from '@/components/chat/MediaUploadStep';
 import type { ClarificationQuestion } from '@/lib/agent-g-clarifier';
 import type { ServiceId as RegistryServiceId } from '@/lib/registry';
+
+// ─── Chat types ───────────────────────────────────────────────────────────────
+
+interface ChatMsg {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+function mkId() {
+  return `${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
+}
 
 // ─── Pipeline types ───────────────────────────────────────────────────────────
 
@@ -180,7 +194,7 @@ const CHAT_COPY = {
     assistant: 'Agent G',
     operator: 'Оператор',
     serviceSwitcher: 'Сервисы',
-    serviceSwitcherHint: '14 сервисов',
+    serviceSwitcherHint: '8 сервисов',
     file: 'Файл',
     voice: 'Голос',
     camera: 'Камера',
@@ -260,7 +274,6 @@ export default function CommandCenterChat() {
   const localeCode = normalizeOmniLocale(locale);
   const copy = CHAT_COPY[localeCode];
 
-  const messages = useOmniStore((state) => state.chatMessages);
   const activeServiceId = useOmniStore((state) => state.activeServiceId);
   const commandLanguage = useOmniStore((state) => state.commandLanguage);
   const pendingInputs = useOmniStore((state) => state.pendingInputs);
@@ -269,11 +282,14 @@ export default function CommandCenterChat() {
   const setActiveService = useOmniStore((state) => state.setActiveService);
   const setLocale = useOmniStore((state) => state.setLocale);
   const setCommandLanguage = useOmniStore((state) => state.setCommandLanguage);
-  const sendPrimaryCommand = useOmniStore((state) => state.sendPrimaryCommand);
   const ingestCommandInput = useOmniStore((state) => state.ingestCommandInput);
   const removePendingInput = useOmniStore((state) => state.removePendingInput);
   const clearPendingInputs = useOmniStore((state) => state.clearPendingInputs);
   const focusPreview = useOmniStore((state) => state.focusPreview);
+
+  // Local chat state — independent of the omni store
+  const [chatHistory, setChatHistory] = useState<ChatMsg[]>([]);
+  const [isStreaming, setIsStreaming] = useState(false);
 
   const [prompt, setPrompt] = useState('');
   const [running, setRunning] = useState(false);
@@ -296,6 +312,7 @@ export default function CommandCenterChat() {
   const [expandedAsset, setExpandedAsset] = useState<PreviewArtifact | null>(null);
 
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
+  const bottomRef = useRef<HTMLDivElement | null>(null);
   const barRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -340,6 +357,11 @@ export default function CommandCenterChat() {
   useEffect(() => {
     autoGrow();
   }, [prompt, autoGrow]);
+
+  // Auto-scroll to bottom on new chat messages
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [chatHistory]);
 
   useEffect(() => {
     return () => {
@@ -711,6 +733,105 @@ export default function CommandCenterChat() {
     return res.json() as Promise<Record<string, unknown>>;
   }, [localeCode]);
 
+  // ─── Direct Gemini chat (no pipeline, no store) ───────────────────────────
+  const sendChat = useCallback(async (
+    userText: string,
+    attachments: ExternalCommandInput[],
+  ) => {
+    const userId = mkId();
+    const assistantId = mkId();
+
+    // Build text with inline attachments
+    let fullUserText = userText;
+    for (const att of attachments) {
+      if (att.textContent) {
+        fullUserText += `\n\n[${att.title}]:\n${att.textContent.slice(0, 1500)}`;
+      }
+    }
+
+    // Snapshot history before adding new messages
+    const historySnapshot = chatHistory;
+
+    setChatHistory(prev => [
+      ...prev,
+      { id: userId, role: 'user', content: userText + (attachments.length > 0 ? ` (+${attachments.length})` : '') },
+      { id: assistantId, role: 'assistant', content: '' },
+    ]);
+    setIsStreaming(true);
+
+    try {
+      const uiMessages = [
+        ...historySnapshot.map((m, i) => ({
+          id: `h${i}`,
+          role: m.role as 'user' | 'assistant',
+          parts: [{ type: 'text' as const, text: m.content }],
+          metadata: undefined,
+        })),
+        {
+          id: 'latest',
+          role: 'user' as const,
+          parts: [
+            { type: 'text' as const, text: fullUserText },
+            ...attachments
+              .filter((a) => a.sourceUrl && a.mimeType?.startsWith('image/'))
+              .map((a) => ({
+                type: 'file' as const,
+                mediaType: a.mimeType as `${string}/${string}`,
+                url: a.sourceUrl as string,
+              })),
+          ],
+          metadata: undefined,
+        },
+      ];
+
+      const res = await fetch('/api/chat/gemini', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: uiMessages }),
+      });
+
+      if (res.ok && res.body) {
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let accumulated = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          const rawChunk = decoder.decode(value, { stream: true });
+          for (const line of rawChunk.split('\n')) {
+            if (!line.startsWith('data: ')) continue;
+            const raw = line.slice(6).trim();
+            if (!raw || raw === '[DONE]') continue;
+            try {
+              const evt = JSON.parse(raw) as { type: string; delta?: string; textDelta?: string };
+              const chunk = evt.delta ?? evt.textDelta ?? '';
+              if (evt.type === 'text-delta' && chunk) {
+                accumulated += chunk;
+                setChatHistory(prev =>
+                  prev.map(m => m.id === assistantId ? { ...m, content: accumulated } : m),
+                );
+              }
+            } catch { /* skip malformed line */ }
+          }
+        }
+
+        if (!accumulated) {
+          const errMsg = localeCode === 'ka' ? 'პასუხი ვერ მოვიდა. სცადე თავიდან.' : localeCode === 'ru' ? 'Нет ответа. Попробуйте снова.' : 'No response. Please try again.';
+          setChatHistory(prev => prev.map(m => m.id === assistantId ? { ...m, content: errMsg } : m));
+        }
+      } else {
+        const errMsg = localeCode === 'ka' ? 'სერვერის შეცდომა. სცადე თავიდან.' : localeCode === 'ru' ? 'Ошибка сервера.' : 'Server error. Please try again.';
+        setChatHistory(prev => prev.map(m => m.id === assistantId ? { ...m, content: errMsg } : m));
+      }
+    } catch {
+      const errMsg = localeCode === 'ka' ? 'კავშირის შეცდომა.' : localeCode === 'ru' ? 'Ошибка соединения.' : 'Connection error.';
+      setChatHistory(prev => prev.map(m => m.id === assistantId ? { ...m, content: errMsg } : m));
+    } finally {
+      setIsStreaming(false);
+    }
+  }, [chatHistory, localeCode]);
+
   const handlePipelineAnswer = useCallback(async (questionId: string, value: string | string[]) => {
     const p = pipelineRef.current;
     const newAnswers = { ...p.answers, [questionId]: value };
@@ -833,22 +954,23 @@ export default function CommandCenterChat() {
   }, []);
 
   const sendCommand = useCallback(async () => {
-    if (running || pipeline.stage !== 'idle') return;
+    if (isStreaming || running || pipeline.stage !== 'idle') return;
 
     const trimmed = prompt.trim();
     if (!trimmed && pendingInputs.length === 0) return;
 
-    setRunning(true);
-    try {
-      const userText = trimmed || '(attachment)';
-      setPrompt('');
+    const userText = trimmed || '(attachment)';
+    const attachmentsCopy = [...pendingInputs];
+    setPrompt('');
+    clearPendingInputs();
 
-      setPipeline(prev => ({ ...prev, stage: 'detecting', userInput: userText }));
-
-      if (explicitServiceId) {
-        // User pinned a service → skip detect_intent, go straight to questions
+    if (explicitServiceId) {
+      // ── Pipeline mode: user pinned a service ──
+      setRunning(true);
+      try {
         const qData = await callPipeline({ action: 'get_questions', serviceId: explicitServiceId });
         const localized = getLocalizedService(explicitServiceId, localeCode);
+        setChatHistory(prev => [...prev, { id: mkId(), role: 'user', content: userText }]);
         setPipeline(prev => ({
           ...prev,
           stage: 'uploading',
@@ -860,39 +982,17 @@ export default function CommandCenterChat() {
           currentQuestionIndex: 0,
           answers: {},
         }));
-        await sendPrimaryCommand(`[PIPELINE_START:${explicitServiceId}] ${userText}`);
-      } else {
-        // Auto-detect mode
-        const data = await callPipeline({ action: 'detect_intent', userInput: userText });
-
-        if (!data.detected) {
-          setPipeline(prev => ({ ...prev, stage: 'idle' }));
-          await sendPrimaryCommand(userText);
-        } else {
-          const qData = await callPipeline({ action: 'get_questions', serviceId: data.serviceId });
-          setPipeline(prev => ({
-            ...prev,
-            stage: 'uploading',
-            serviceId: data.serviceId as RegistryServiceId,
-            serviceName: data.serviceName as string,
-            userInput: userText,
-            uploadedMedia: [],
-            questions: (qData.questions as ClarificationQuestion[]) ?? [],
-            currentQuestionIndex: 0,
-            answers: {},
-          }));
-          await sendPrimaryCommand(`[PIPELINE_START:${data.serviceId as string}] ${userText}`);
-        }
+      } catch {
+        setPipeline(prev => ({ ...prev, stage: 'idle' }));
+      } finally {
+        setRunning(false);
       }
-
+    } else {
+      // ── Auto mode: direct Gemini chat ──
+      await sendChat(userText, attachmentsCopy);
       queueMicrotask(() => composerRef.current?.focus());
-    } catch {
-      setPipeline(prev => ({ ...prev, stage: 'idle' }));
-      await sendPrimaryCommand(prompt.trim()).catch(() => undefined);
-    } finally {
-      setRunning(false);
     }
-  }, [running, pipeline.stage, prompt, pendingInputs.length, explicitServiceId, localeCode, callPipeline, sendPrimaryCommand]);
+  }, [isStreaming, running, pipeline.stage, prompt, pendingInputs, explicitServiceId, localeCode, callPipeline, sendChat, clearPendingInputs]);
 
   const kindLabel = (kind: string) => {
     if (kind === 'camera') return copy.camera;
@@ -904,14 +1004,14 @@ export default function CommandCenterChat() {
     <section className="relative flex h-full min-h-0 flex-col">
       <div className="flex-1 overflow-y-auto px-4 pt-4 pb-[310px] sm:px-6 sm:pt-6 sm:pb-[330px]">
         <div className="mx-auto flex w-full max-w-4xl flex-col gap-3">
-          {messages.length === 0 && pipeline.stage === 'idle' && (
+          {chatHistory.length === 0 && pipeline.stage === 'idle' && (
             <div className="rounded-3xl border border-white/10 bg-black/20 px-5 py-6 text-sm text-white/60 backdrop-blur-lg">
               {copy.emptyHint}
             </div>
           )}
-          {messages.length > 0 && (
+          {chatHistory.length > 0 && (
             <>
-            {messages.filter(m => !m.content.startsWith('[PIPELINE_START:')).map((message) => (
+            {chatHistory.map((message) => (
               <div key={message.id} className={`flex ${message.role === 'assistant' ? 'justify-start' : 'justify-end'}`}>
                 <article
                   className={`max-w-[92%] rounded-3xl border px-4 py-3 text-sm leading-relaxed shadow-[0_14px_30px_rgba(0,0,0,0.35)] ${
@@ -923,7 +1023,19 @@ export default function CommandCenterChat() {
                   <p className="mb-1 text-[10px] uppercase tracking-[0.16em] text-white/50">
                     {message.role === 'assistant' ? copy.assistant : copy.operator}
                   </p>
-                  <p className="whitespace-pre-wrap">{message.content}</p>
+                  {message.role === 'assistant' ? (
+                    message.content ? (
+                      <div className="chat-md prose-dark">
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                          {message.content}
+                        </ReactMarkdown>
+                      </div>
+                    ) : (
+                      <span className="inline-block h-4 w-0.5 animate-pulse bg-cyan-400/70 align-middle" />
+                    )
+                  ) : (
+                    <p className="whitespace-pre-wrap">{message.content}</p>
+                  )}
                 </article>
               </div>
             ))}
@@ -1122,6 +1234,9 @@ export default function CommandCenterChat() {
                 </motion.div>
               )}
             </AnimatePresence>
+
+          {/* Scroll anchor */}
+          <div ref={bottomRef} className="h-2" />
           </div>
       </div>
 
@@ -1162,10 +1277,10 @@ export default function CommandCenterChat() {
                 }`}
               >
                 <p className="text-xs font-semibold">
-                  {localeCode === 'ka' ? '✦ ავტომატური განსაზღვრა' : localeCode === 'ru' ? '✦ Авто-определение' : '✦ Auto-detect'}
+                  {localeCode === 'ka' ? '✦ Gemini ჩეთი' : localeCode === 'ru' ? '✦ Gemini Чат' : '✦ Gemini Chat'}
                 </p>
                 <p className="mt-0.5 text-[11px] text-white/55">
-                  {localeCode === 'ka' ? 'სერვისი ტექსტიდან ავტომატურად განისაზღვრება' : localeCode === 'ru' ? 'Сервис определяется из текста автоматически' : 'Service is detected from your input text'}
+                  {localeCode === 'ka' ? 'პირდაპირი AI ჩეთი — კითხე, ახსენი, შექმენი' : localeCode === 'ru' ? 'Прямой AI-чат — спрашивай, объясняй, создавай' : 'Direct AI chat — ask, explain, create anything'}
                 </p>
               </button>
 
@@ -1313,7 +1428,7 @@ export default function CommandCenterChat() {
                   setPrompt('');
                   queueMicrotask(() => composerRef.current?.focus());
                 }}
-                disabled={!prompt.trim() || running || pipeline.stage !== 'idle'}
+                disabled={!prompt.trim() || isStreaming || running || pipeline.stage !== 'idle'}
                 className="inline-flex min-h-[44px] items-center rounded-2xl border border-white/15 bg-white/[0.05] px-3 py-1.5 text-xs font-semibold text-white/80 disabled:opacity-45"
               >
                 {copy.clear}
@@ -1383,10 +1498,10 @@ export default function CommandCenterChat() {
 
               <button
                 type="submit"
-                disabled={running || pipeline.stage !== 'idle' || (!prompt.trim() && pendingInputs.length === 0)}
+                disabled={isStreaming || running || pipeline.stage !== 'idle' || (!prompt.trim() && pendingInputs.length === 0)}
                 className="ml-auto inline-flex min-h-[44px] items-center gap-1.5 rounded-2xl border border-cyan-300/45 bg-cyan-500/18 px-4 py-1.5 text-xs font-semibold text-cyan-50 disabled:opacity-40"
               >
-                {running ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                {(isStreaming || running) ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                 {copy.send}
               </button>
             </div>
