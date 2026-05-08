@@ -179,6 +179,8 @@ export function useSimpleVoice({
   const startListening = useCallback(() => {
     const SpeechRecognition = getSpeechRecognition();
     if (!SpeechRecognition || activeRef.current) return;
+    // Clear error state so the user can retry
+    setState(prev => prev === 'error' ? 'idle' : prev);
 
     const recognition = new SpeechRecognition();
     recognition.lang = lang;

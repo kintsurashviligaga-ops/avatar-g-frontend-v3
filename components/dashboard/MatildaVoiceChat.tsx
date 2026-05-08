@@ -268,7 +268,16 @@ export default function MatildaVoiceChat({ locale = 'ka' }: MatildaVoiceChatProp
               </div>
             )}
 
-            {!transcript && !assistantTranscript && (
+            {state === 'error' && (
+              <p className="text-center text-xs text-rose-300/70">
+                {normalizedLocale === 'ka'
+                  ? 'შეცდომა. მიკროფონზე დააჭირე კვლავ სცადე.'
+                  : normalizedLocale === 'ru'
+                    ? 'Ошибка. Нажмите mic для повтора.'
+                    : 'Error. Click mic to retry.'}
+              </p>
+            )}
+            {state !== 'error' && !transcript && !assistantTranscript && (
               <p className="text-center text-xs text-white/30">{labels.hint}</p>
             )}
           </div>

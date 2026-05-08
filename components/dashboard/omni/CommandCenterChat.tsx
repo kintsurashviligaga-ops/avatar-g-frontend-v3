@@ -363,6 +363,13 @@ export default function CommandCenterChat() {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatHistory]);
 
+  // Auto-dismiss media errors after 5 s
+  useEffect(() => {
+    if (!mediaError) return;
+    const t = setTimeout(() => setMediaError(null), 5000);
+    return () => clearTimeout(t);
+  }, [mediaError]);
+
   useEffect(() => {
     return () => {
       stopCameraStream();
@@ -760,34 +767,29 @@ export default function CommandCenterChat() {
     setIsStreaming(true);
 
     try {
-      const uiMessages = [
-        ...historySnapshot.map((m, i) => ({
-          id: `h${i}`,
-          role: m.role as 'user' | 'assistant',
-          parts: [{ type: 'text' as const, text: m.content }],
-          metadata: undefined,
-        })),
-        {
-          id: 'latest',
-          role: 'user' as const,
-          parts: [
+      const imageAttachments = attachments.filter(
+        (a) => a.sourceUrl && a.mimeType?.startsWith('image/'),
+      );
+      const lastContent = imageAttachments.length > 0
+        ? [
             { type: 'text' as const, text: fullUserText },
-            ...attachments
-              .filter((a) => a.sourceUrl && a.mimeType?.startsWith('image/'))
-              .map((a) => ({
-                type: 'file' as const,
-                mediaType: a.mimeType as `${string}/${string}`,
-                url: a.sourceUrl as string,
-              })),
-          ],
-          metadata: undefined,
-        },
-      ];
+            ...imageAttachments.map((a) => ({
+              type: 'image' as const,
+              image: a.sourceUrl as string,
+              mimeType: a.mimeType,
+            })),
+          ]
+        : fullUserText;
 
       const res = await fetch('/api/chat/gemini', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: uiMessages }),
+        body: JSON.stringify({
+          messages: [
+            ...historySnapshot.map((m) => ({ role: m.role, content: m.content })),
+            { role: 'user', content: lastContent },
+          ],
+        }),
       });
 
       if (res.ok && res.body) {
@@ -807,10 +809,9 @@ export default function CommandCenterChat() {
             const raw = line.slice(6).trim();
             if (!raw || raw === '[DONE]') continue;
             try {
-              const evt = JSON.parse(raw) as { type: string; delta?: string; textDelta?: string };
-              const chunk = evt.delta ?? evt.textDelta ?? '';
-              if (evt.type === 'text-delta' && chunk) {
-                accumulated += chunk;
+              const evt = JSON.parse(raw) as { text?: string };
+              if (evt.text) {
+                accumulated += evt.text;
                 setChatHistory(prev =>
                   prev.map(m => m.id === assistantId ? { ...m, content: accumulated } : m),
                 );
