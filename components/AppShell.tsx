@@ -106,7 +106,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             ? { zIndex: 2, height: 'var(--app-screen-height)', minHeight: 'var(--app-screen-height)', overflow: 'hidden' }
             : isLandingOrAuth
             ? { zIndex: 2 }
-            : { paddingTop: 'calc(4rem + env(safe-area-inset-top, 0px))', zIndex: 2 }
+            : {
+                paddingTop: 'calc(4rem + env(safe-area-inset-top, 0px))',
+                paddingBottom: 'calc(60px + env(safe-area-inset-bottom, 0px))',
+                zIndex: 2,
+              }
         }
       >
         <ClientErrorBoundary>
@@ -115,7 +119,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </main>
       {!hideShellChrome && <BottomNavigation />}
       {!hideShellChrome && <FloatingChatButton />}
-      {!hideShellChrome && <div className="h-16 md:hidden shrink-0" />}
     </div>
   );
 }

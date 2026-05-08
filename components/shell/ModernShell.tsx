@@ -109,18 +109,18 @@ export function TopNavbar({ onMenuToggle, menuOpen }: { onMenuToggle: () => void
   return (
     <>
     <nav
-      className={`fixed top-0 inset-x-0 z-[200] flex items-center justify-between px-4 sm:px-6 transition-all duration-300 ${
-        scrolled ? 'h-14' : 'h-16'
-      }`}
+      className={`fixed top-0 inset-x-0 z-[200] flex flex-col transition-all duration-300`}
       style={{
         backgroundColor: 'var(--nav-bg)',
         borderBottom: '1px solid var(--nav-border)',
         backdropFilter: 'blur(28px) saturate(1.3)',
         WebkitBackdropFilter: 'blur(28px) saturate(1.3)',
-        paddingTop: 'env(safe-area-inset-top, 0px)',
         boxShadow: '0 4px 24px rgba(0,0,0,0.2), 0 0 40px rgba(34,211,238,0.02)',
       }}
     >
+      {/* Safe-area spacer for notch/dynamic island */}
+      <div style={{ height: 'env(safe-area-inset-top, 0px)', flexShrink: 0 }} />
+      <div className={`flex items-center justify-between px-4 sm:px-6 transition-all duration-300 ${scrolled ? 'h-14' : 'h-16'}`}>
       {/* Left: Hamburger + Brand Logo */}
       <div className="flex items-center gap-2">
         <button
@@ -246,6 +246,7 @@ export function TopNavbar({ onMenuToggle, menuOpen }: { onMenuToggle: () => void
         >
           {locale === 'ka' ? 'დაწყება' : locale === 'ru' ? 'Начать' : 'Get Started'}
         </Link>
+      </div>
       </div>
     </nav>
 

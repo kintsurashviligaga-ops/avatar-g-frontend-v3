@@ -38,7 +38,8 @@ const SUPPORTED_LOCALES = new Set(['ka', 'en', 'ru']);
 export const viewport: Viewport = {
 	width: 'device-width',
 	initialScale: 1,
-	maximumScale: 5,
+	maximumScale: 1,
+	userScalable: false,
 	viewportFit: 'cover',
 	interactiveWidget: 'resizes-content',
 	themeColor: '#0a0a0c',
