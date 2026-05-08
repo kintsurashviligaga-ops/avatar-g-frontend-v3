@@ -794,12 +794,15 @@ export default function CommandCenterChat() {
         const reader = res.body.getReader();
         const decoder = new TextDecoder();
         let accumulated = '';
+        let sseBuffer = '';
 
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
-          const rawChunk = decoder.decode(value, { stream: true });
-          for (const line of rawChunk.split('\n')) {
+          sseBuffer += decoder.decode(value, { stream: true });
+          const lines = sseBuffer.split('\n');
+          sseBuffer = lines.pop() ?? '';
+          for (const line of lines) {
             if (!line.startsWith('data: ')) continue;
             const raw = line.slice(6).trim();
             if (!raw || raw === '[DONE]') continue;

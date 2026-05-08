@@ -1,7 +1,9 @@
 import { streamText, convertToModelMessages, type UIMessage } from 'ai';
-import { anthropic } from '@ai-sdk/anthropic';
+import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { AGENT_G_SYSTEM_PROMPT } from '@/lib/agent-g-orchestrator';
 import { NextRequest } from 'next/server';
+
+const google = createGoogleGenerativeAI({ apiKey: process.env.GEMINI_API_KEY ?? '' });
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -26,7 +28,7 @@ export async function POST(req: NextRequest) {
     const modelMessages = await convertToModelMessages(messages);
 
     const result = streamText({
-      model: anthropic('claude-sonnet-4-6'),
+      model: google('gemini-2.0-flash'),
       system: SYSTEM_PROMPT,
       messages: modelMessages,
       maxOutputTokens: 4096,
