@@ -1009,7 +1009,7 @@ export default function CommandCenterChat() {
 
   return (
     <section className="relative flex h-full min-h-0 flex-col">
-      <div className="flex-1 overflow-y-auto px-4 pt-4 pb-[310px] sm:px-6 sm:pt-6 sm:pb-[330px]">
+      <div className="flex-1 overflow-y-auto px-4 pt-4 pb-[240px] sm:px-6 sm:pt-6 sm:pb-[260px]">
         <div className="mx-auto flex w-full max-w-4xl flex-col gap-3">
           {chatHistory.length === 0 && pipeline.stage === 'idle' && (
             <div className="rounded-3xl border border-white/10 bg-black/20 px-5 py-6 text-sm text-white/60 backdrop-blur-lg">
@@ -1042,7 +1042,15 @@ export default function CommandCenterChat() {
                         </ReactMarkdown>
                       </div>
                     ) : (
-                      <span className="inline-block h-4 w-0.5 animate-pulse bg-cyan-400/70 align-middle" />
+                      <span className="inline-flex items-center gap-1 py-1">
+                        {[0, 1, 2].map(i => (
+                          <span
+                            key={i}
+                            className="inline-block h-1.5 w-1.5 rounded-full bg-cyan-400/70"
+                            style={{ animation: `pulse 1.2s ease-in-out ${i * 0.2}s infinite` }}
+                          />
+                        ))}
+                      </span>
                     )
                   ) : (
                     <p className="whitespace-pre-wrap">{message.content}</p>
@@ -1425,26 +1433,33 @@ export default function CommandCenterChat() {
                 })}
               </div>
 
-              <button
-                type="button"
-                aria-label={copy.openServiceHub}
-                onClick={() => setSwitcherOpen((open) => !open)}
-                className="ml-auto inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-white/15 bg-white/[0.06] text-white/85 hover:bg-white/[0.12]"
-              >
-                <LayoutGrid className="h-4 w-4" />
-              </button>
+              <div className="ml-auto flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setChatHistory([]);
+                    setPipeline(prev => ({ stage: 'idle', uploadedMedia: [], questions: [], currentQuestionIndex: 0, answers: {}, userBalance: prev.userBalance, errorMessage: undefined }));
+                    clearPendingInputs();
+                    setPrompt('');
+                    setExplicitServiceId(null);
+                    queueMicrotask(() => composerRef.current?.focus());
+                  }}
+                  disabled={chatHistory.length === 0 && pipeline.stage === 'idle'}
+                  className="inline-flex min-h-[44px] items-center gap-1.5 rounded-2xl border border-white/15 bg-white/[0.05] px-3 py-1.5 text-xs font-semibold text-white/80 disabled:opacity-40 hover:bg-white/[0.1]"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  <span className="hidden sm:inline">{copy.newChat}</span>
+                </button>
 
-              <button
-                type="button"
-                onClick={() => {
-                  setPrompt('');
-                  queueMicrotask(() => composerRef.current?.focus());
-                }}
-                disabled={!prompt.trim() || isStreaming || running || pipeline.stage !== 'idle'}
-                className="inline-flex min-h-[44px] items-center rounded-2xl border border-white/15 bg-white/[0.05] px-3 py-1.5 text-xs font-semibold text-white/80 disabled:opacity-45"
-              >
-                {copy.clear}
-              </button>
+                <button
+                  type="button"
+                  aria-label={copy.openServiceHub}
+                  onClick={() => setSwitcherOpen((open) => !open)}
+                  className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-white/15 bg-white/[0.06] text-white/85 hover:bg-white/[0.12]"
+                >
+                  <LayoutGrid className="h-4 w-4" />
+                </button>
+              </div>
             </div>
 
             <textarea
@@ -1518,7 +1533,7 @@ export default function CommandCenterChat() {
               </button>
             </div>
 
-            <div className="mt-2 flex items-center gap-1 text-[11px] text-white/45">
+            <div className="mt-2 hidden sm:flex items-center gap-1 text-[11px] text-white/45">
               <Sparkles className="h-3.5 w-3.5" />
               {copy.sendHint}
             </div>

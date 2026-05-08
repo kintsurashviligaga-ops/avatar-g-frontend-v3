@@ -16,19 +16,25 @@ interface MainDashboardProps {
 
 const DASHBOARD_COPY = {
   ka: {
-    welcome: 'გამარჯობა გიორგი, რით შემიძლია დაგეხმარო?',
+    greeting: 'გამარჯობა',
+    welcomeSuffix: ', რით შემიძლია დაგეხმარო?',
+    guestName: 'სტუმარო',
     subtitle: 'აირჩიე სწრაფი მოქმედება ან დაწერე საკუთარი დავალება ქვედა ბარში.',
     pillsTitle: 'სწრაფი სერვისები',
     menuLabel: 'სერვის-ჰაბის გახსნა',
   },
   en: {
-    welcome: 'Hello Giorgi, how can I help you?',
+    greeting: 'Hello',
+    welcomeSuffix: ', how can I help you?',
+    guestName: 'there',
     subtitle: 'Pick a quick action or write a custom instruction in the bottom bar.',
     pillsTitle: 'Quick services',
     menuLabel: 'Open service hub',
   },
   ru: {
-    welcome: 'Привет, Георгий. Чем могу помочь?',
+    greeting: 'Привет',
+    welcomeSuffix: '. Чем могу помочь?',
+    guestName: 'Гость',
     subtitle: 'Выберите быстрое действие или напишите задачу в нижней панели.',
     pillsTitle: 'Быстрые сервисы',
     menuLabel: 'Открыть хаб сервисов',
@@ -131,6 +137,12 @@ export default function MainDashboard({ locale, userName, isAuthenticated }: Mai
   const quickActions = useMemo(() => QUICK_ACTIONS[localeCode], [localeCode]);
   const showWelcome = chatMessages.length === 0;
 
+  const firstName = useMemo(() => {
+    if (!isAuthenticated || !userName || userName === 'Guest Operator') return copy.guestName;
+    const raw = userName.includes('@') ? userName.split('@')[0] : userName.split(/\s+/)[0];
+    return (raw ?? '').replace(/[._-]/g, ' ').split(' ')[0] ?? copy.guestName;
+  }, [isAuthenticated, userName, copy.guestName]);
+
   useEffect(() => {
     setLocale(locale);
   }, [locale, setLocale]);
@@ -181,7 +193,9 @@ export default function MainDashboard({ locale, userName, isAuthenticated }: Mai
           >
             <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/45">{copy.pillsTitle}</p>
             <h1 className="mx-auto max-w-3xl text-3xl font-semibold tracking-[-0.03em] text-white sm:text-4xl">
-              {copy.welcome}
+              {copy.greeting}{' '}
+              <span style={{ color: 'var(--color-accent)' }}>{firstName}</span>
+              {copy.welcomeSuffix}
             </h1>
             <p className="mx-auto mt-3 max-w-2xl text-sm text-white/62 sm:text-base">{copy.subtitle}</p>
 

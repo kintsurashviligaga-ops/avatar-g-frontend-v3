@@ -169,6 +169,16 @@ body {
   padding-right: env(safe-area-inset-right, 0px);
 }
 
+/* Floating buttons: above bottom nav on mobile, normal position on desktop */
+.floating-btn-bottom {
+  bottom: calc(60px + env(safe-area-inset-bottom, 0px) + 14px);
+}
+@media (min-width: 768px) {
+  .floating-btn-bottom {
+    bottom: 1.5rem;
+  }
+}
+
 html[data-display-mode='standalone'] .app-native-shell,
 html[data-display-mode='fullscreen'] .app-native-shell {
   min-height: 100dvh;
