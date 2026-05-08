@@ -118,20 +118,35 @@ function toGeminiContext(serviceId: ServiceId): GeminiServiceContext {
 }
 
 async function generateTextWithGemini(serviceId: ServiceId, locale: string, prompt: string): Promise<string> {
-  if (!process.env.GEMINI_API_KEY) {
-    throw new Error('GEMINI_API_KEY is not configured');
-  }
-
   const context = toGeminiContext(serviceId);
   const systemPrompt = getGeminiSystemPrompt(context, locale);
   const prefersPro = prompt.length > 1200 || serviceId === 'game' || serviceId === 'content-writer';
-  const response = await generateWithGemini({
-    prompt,
-    systemPrompt,
-    tier: prefersPro ? 'pro' : 'flash',
-    temperature: 0.65,
+
+  // Primary: Gemini
+  if (process.env.GEMINI_API_KEY) {
+    try {
+      const response = await generateWithGemini({
+        prompt,
+        systemPrompt,
+        tier: prefersPro ? 'pro' : 'flash',
+        temperature: 0.65,
+      });
+      if (response.text.trim()) return response.text.trim();
+    } catch (geminiErr) {
+      console.error(`[pipeline/generateTextWithGemini] Gemini failed for ${serviceId}:`, geminiErr);
+    }
+  }
+
+  // Fallback: Anthropic
+  const result = await anthropic.messages.create({
+    model: 'claude-haiku-4-5-20251001',
+    max_tokens: 4096,
+    system: systemPrompt,
+    messages: [{ role: 'user', content: prompt }],
   });
-  return response.text.trim();
+  const text = result.content[0]?.type === 'text' ? result.content[0].text : '';
+  if (!text) throw new Error('Both Gemini and Anthropic returned empty responses');
+  return text.trim();
 }
 
 // ─── Pipeline actions ─────────────────────────────────────────────────────────

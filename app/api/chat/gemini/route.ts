@@ -1,10 +1,15 @@
 import { streamText } from 'ai';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
+import { createAnthropic } from '@ai-sdk/anthropic';
 import { AGENT_G_SYSTEM_PROMPT } from '@/lib/agent-g-orchestrator';
 import { NextRequest } from 'next/server';
 
 const google = createGoogleGenerativeAI({
   apiKey: process.env.GEMINI_API_KEY ?? process.env.GOOGLE_GENERATIVE_AI_API_KEY ?? '',
+});
+
+const anthropic = createAnthropic({
+  apiKey: process.env.ANTHROPIC_API_KEY ?? '',
 });
 
 export const dynamic = 'force-dynamic';
@@ -54,28 +59,44 @@ export async function POST(req: NextRequest) {
   try {
     const body = (await req.json()) as { messages: IncomingMessage[] };
     const { messages = [] } = body;
-
     const modelMessages = toCoreMessages(messages);
-
-    const result = streamText({
-      model: google('gemini-2.0-flash'),
-      system: SYSTEM_PROMPT,
-      messages: modelMessages,
-      maxOutputTokens: 4096,
-      temperature: 0.7,
-    });
 
     const encoder = new TextEncoder();
     const readable = new ReadableStream({
       async start(controller) {
+        const send = (text: string) =>
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text })}\n\n`));
+
         try {
-          for await (const chunk of result.textStream) {
-            controller.enqueue(
-              encoder.encode(`data: ${JSON.stringify({ text: chunk })}\n\n`),
-            );
+          // Primary: Gemini 2.0 Flash
+          try {
+            const result = streamText({
+              model: google('gemini-2.0-flash'),
+              system: SYSTEM_PROMPT,
+              messages: modelMessages,
+              maxOutputTokens: 4096,
+              temperature: 0.7,
+            });
+            for await (const chunk of result.textStream) {
+              send(chunk);
+            }
+          } catch {
+            // Fallback: Anthropic Claude Haiku
+            console.error('[/api/chat/gemini] Gemini failed — falling back to Anthropic');
+            const fallback = streamText({
+              model: anthropic('claude-haiku-4-5-20251001'),
+              system: SYSTEM_PROMPT,
+              messages: modelMessages,
+              maxOutputTokens: 4096,
+              temperature: 0.7,
+            });
+            for await (const chunk of fallback.textStream) {
+              send(chunk);
+            }
           }
         } catch (err) {
-          console.error('[/api/chat/gemini stream]', err);
+          const msg = err instanceof Error ? err.message : 'AI service unavailable';
+          send(`⚠️ ${msg}`);
         } finally {
           controller.enqueue(encoder.encode('data: [DONE]\n\n'));
           controller.close();
