@@ -170,7 +170,7 @@ export default function MainDashboard({ locale, userName, isAuthenticated }: Mai
     if (typeof window === 'undefined') {
       return;
     }
-    window.dispatchEvent(new CustomEvent('omni:seed-command', { detail: { serviceId, prompt } }));
+    window.dispatchEvent(new CustomEvent('omni:seed-command', { detail: { serviceId, prompt, autoSend: true } }));
   };
 
   return (
@@ -225,7 +225,7 @@ export default function MainDashboard({ locale, userName, isAuthenticated }: Mai
           </section>
 
           <div className="min-h-0 flex-1">
-            <CommandCenterChat />
+            <CommandCenterChat hideEmptyHint={showWelcome} />
           </div>
         </div>
       </div>

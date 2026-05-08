@@ -96,6 +96,7 @@ type CameraState = 'idle' | 'requesting' | 'ready' | 'error';
 type SeedCommandDetail = {
   prompt?: string;
   serviceId?: ServiceId;
+  autoSend?: boolean;
 };
 
 const CHAT_COPY = {
@@ -272,7 +273,7 @@ function readFileAsText(file: File): Promise<string> {
   });
 }
 
-export default function CommandCenterChat() {
+export default function CommandCenterChat({ hideEmptyHint = false }: { hideEmptyHint?: boolean }) {
   const locale = useOmniStore((state) => state.locale);
   const localeCode = normalizeOmniLocale(locale);
   const copy = CHAT_COPY[localeCode];
@@ -311,12 +312,15 @@ export default function CommandCenterChat() {
   const [cameraState, setCameraState] = useState<CameraState>('idle');
   const [mediaError, setMediaError] = useState<string | null>(null);
   const [switcherOpen, setSwitcherOpen] = useState(false);
+  const [barHeight, setBarHeight] = useState(240);
   const [explicitServiceId, setExplicitServiceId] = useState<ServiceId | null>(null);
   const [expandedAsset, setExpandedAsset] = useState<PreviewArtifact | null>(null);
 
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const barRef = useRef<HTMLDivElement | null>(null);
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  const pendingAutoSendRef = useRef(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -361,10 +365,25 @@ export default function CommandCenterChat() {
     autoGrow();
   }, [prompt, autoGrow]);
 
-  // Auto-scroll to bottom on new chat messages
+  // Auto-scroll: instant during streaming to avoid animation restarts, smooth for new messages
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [chatHistory]);
+    const el = scrollContainerRef.current;
+    if (!el) return;
+    el.scrollTo({ top: el.scrollHeight, behavior: isStreaming ? 'auto' : 'smooth' });
+  }, [chatHistory, isStreaming]);
+
+  // Dynamic bottom padding — tracks actual floating bar height via ResizeObserver
+  useEffect(() => {
+    const el = barRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (!entry) return;
+      setBarHeight(Math.ceil(entry.contentRect.height));
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   // Auto-dismiss media errors after 5 s
   useEffect(() => {
@@ -399,6 +418,9 @@ export default function CommandCenterChat() {
       }
       if (custom.detail?.prompt) {
         setPrompt(custom.detail.prompt);
+      }
+      if (custom.detail?.autoSend) {
+        pendingAutoSendRef.current = true;
       }
       queueMicrotask(focusComposer);
     };
@@ -1006,6 +1028,13 @@ export default function CommandCenterChat() {
     }
   }, [isStreaming, running, pipeline.stage, prompt, pendingInputs, explicitServiceId, localeCode, callPipeline, sendChat, clearPendingInputs]);
 
+  // Auto-send when a quick-action pill seeds the prompt with autoSend: true
+  useEffect(() => {
+    if (!pendingAutoSendRef.current || !prompt) return;
+    pendingAutoSendRef.current = false;
+    void sendCommand();
+  }, [prompt, sendCommand]);
+
   const kindLabel = (kind: string) => {
     if (kind === 'camera') return copy.camera;
     if (kind === 'voice') return copy.voice;
@@ -1014,9 +1043,13 @@ export default function CommandCenterChat() {
 
   return (
     <section className="relative flex h-full min-h-0 flex-col">
-      <div className="flex-1 overflow-y-auto px-4 pt-4 pb-[240px] sm:px-6 sm:pt-6 sm:pb-[260px]">
+      <div
+        ref={scrollContainerRef}
+        className="flex-1 overflow-y-auto px-4 pt-4 sm:px-6 sm:pt-6"
+        style={{ paddingBottom: barHeight + 16 }}
+      >
         <div className="mx-auto flex w-full max-w-4xl flex-col gap-3">
-          {chatHistory.length === 0 && pipeline.stage === 'idle' && (
+          {!hideEmptyHint && chatHistory.length === 0 && pipeline.stage === 'idle' && (
             <div className="rounded-3xl border border-white/10 bg-black/20 px-5 py-6 text-sm text-white/60 backdrop-blur-lg">
               {copy.emptyHint}
             </div>
