@@ -966,6 +966,11 @@ export default function CommandCenterChat() {
     const trimmed = prompt.trim();
     if (!trimmed && pendingInputs.length === 0) return;
 
+    // Signal to MainDashboard that the user has started chatting → hide welcome
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('omni:user-message-sent'));
+    }
+
     const userText = trimmed || '(attachment)';
     const attachmentsCopy = [...pendingInputs];
     setPrompt('');

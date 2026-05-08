@@ -135,7 +135,17 @@ export default function MainDashboard({ locale, userName, isAuthenticated }: Mai
   const setActiveService = useOmniDashboardStore((state) => state.setActiveService);
 
   const quickActions = useMemo(() => QUICK_ACTIONS[localeCode], [localeCode]);
-  const showWelcome = chatMessages.length === 0;
+
+  // Track whether the user has sent any message (panel OR Gemini chat)
+  const [hasSentMessage, setHasSentMessage] = useState(false);
+  useEffect(() => {
+    const handler = () => setHasSentMessage(true);
+    window.addEventListener('omni:user-message-sent', handler);
+    return () => window.removeEventListener('omni:user-message-sent', handler);
+  }, []);
+
+  // Welcome section: show until user sends a message or store has a user-role message
+  const showWelcome = !hasSentMessage && !chatMessages.some(m => m.role === 'user');
 
   const firstName = useMemo(() => {
     if (!isAuthenticated || !userName || userName === 'Guest Operator') return copy.guestName;
