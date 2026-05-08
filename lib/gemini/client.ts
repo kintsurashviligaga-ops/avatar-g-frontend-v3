@@ -9,8 +9,8 @@
 const GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta';
 
 export const GEMINI_MODELS = {
-  pro: process.env.GEMINI_MODEL_PRO ?? 'gemini-1.5-pro-latest',
-  flash: process.env.GEMINI_MODEL_FLASH ?? 'gemini-1.5-flash-8b',
+  pro: process.env.GEMINI_MODEL_PRO ?? 'gemini-2.0-flash',
+  flash: process.env.GEMINI_MODEL_FLASH ?? 'gemini-2.0-flash',
 } as const;
 
 export type GeminiModelTier = 'pro' | 'flash';

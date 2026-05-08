@@ -105,6 +105,7 @@ const CHAT_COPY = {
     operator: 'ოპერატორი',
     serviceSwitcher: 'სერვისების სია',
     serviceSwitcherHint: '8 სერვისი',
+    newChat: 'ახალი ჩეთი',
     file: 'ფაილი',
     voice: 'ხმა',
     camera: 'კამერა',
@@ -150,6 +151,7 @@ const CHAT_COPY = {
     operator: 'Operator',
     serviceSwitcher: 'Services',
     serviceSwitcherHint: '8 services',
+    newChat: 'New Chat',
     file: 'File',
     voice: 'Voice',
     camera: 'Camera',
@@ -195,6 +197,7 @@ const CHAT_COPY = {
     operator: 'Оператор',
     serviceSwitcher: 'Сервисы',
     serviceSwitcherHint: '8 сервисов',
+    newChat: 'Новый чат',
     file: 'Файл',
     voice: 'Голос',
     camera: 'Камера',
@@ -1015,12 +1018,16 @@ export default function CommandCenterChat() {
           )}
           {chatHistory.length > 0 && (
             <>
-            {chatHistory.map((message) => (
+            {chatHistory.map((message) => {
+              const isError = message.role === 'assistant' && message.content.startsWith('⚠️');
+              return (
               <div key={message.id} className={`flex ${message.role === 'assistant' ? 'justify-start' : 'justify-end'}`}>
                 <article
                   className={`max-w-[92%] rounded-3xl border px-4 py-3 text-sm leading-relaxed shadow-[0_14px_30px_rgba(0,0,0,0.35)] ${
                     message.role === 'assistant'
-                      ? 'border-white/15 bg-white/[0.06] text-white/90'
+                      ? isError
+                        ? 'border-rose-400/30 bg-rose-500/[0.08] text-rose-200/90'
+                        : 'border-white/15 bg-white/[0.06] text-white/90'
                       : 'border-cyan-200/40 bg-cyan-500/16 text-cyan-50'
                   }`}
                 >
@@ -1042,7 +1049,8 @@ export default function CommandCenterChat() {
                   )}
                 </article>
               </div>
-            ))}
+              );
+            })}
 
             {mediaAssets.length > 0 && (
               <div className="flex flex-col gap-3">
