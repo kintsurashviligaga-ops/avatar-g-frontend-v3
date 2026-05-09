@@ -355,8 +355,10 @@ async function tryRealFallback(
     return { text: cached.text, provider: `${cached.provider}-cached`, model: cached.model };
   }
 
-  // Try Gemini variants in order. Each has a separate free-tier quota bucket;
-  // rotating gives several "lives" before falling through to Anthropic.
+  // Try Gemini variants in order. Each has a separate free-tier quota bucket
+  // and not every model name is exposed on v1beta — keep rotating on any
+  // failure (quota, "model not found", auth, transient) since the candidate
+  // list is small and any single hit gives us a real response.
   const apiKey = process.env.GEMINI_API_KEY ?? process.env.GOOGLE_GENERATIVE_AI_API_KEY ?? '';
   if (apiKey) {
     const google = createGoogleGenerativeAI({ apiKey });
@@ -378,14 +380,11 @@ async function tryRealFallback(
       } catch (err) {
         const msg = err instanceof Error ? err.message.slice(0, 120) : 'unknown';
         attempted.push(`${modelName}: ${msg}`);
-        if (!isQuotaError(err)) {
-          // Non-quota error → don't keep rotating models; the issue isn't quota.
-          break;
-        }
-        console.warn(`[Chat fallback] Gemini ${modelName} quota — trying next`);
+        const reason = isQuotaError(err) ? 'quota' : 'error';
+        console.warn(`[Chat fallback] Gemini ${modelName} ${reason} — trying next`);
       }
     }
-    failures.gemini = attempted.slice(0, 3).join(' | ');
+    failures.gemini = attempted.slice(0, 5).join(' | ');
   } else {
     failures.gemini = 'no API key';
   }
