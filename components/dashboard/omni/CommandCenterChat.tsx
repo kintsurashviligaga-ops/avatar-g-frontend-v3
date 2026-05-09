@@ -314,6 +314,7 @@ export default function CommandCenterChat({ hideEmptyHint = false }: { hideEmpty
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const [barHeight, setBarHeight] = useState(240);
   const [explicitServiceId, setExplicitServiceId] = useState<ServiceId | null>(null);
+  const [chatMode, setChatMode] = useState<'gemini' | 'openai'>('gemini');
   const [expandedAsset, setExpandedAsset] = useState<PreviewArtifact | null>(null);
 
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
@@ -765,10 +766,11 @@ export default function CommandCenterChat({ hideEmptyHint = false }: { hideEmpty
     return res.json() as Promise<Record<string, unknown>>;
   }, [localeCode]);
 
-  // ─── Direct Gemini chat (no pipeline, no store) ───────────────────────────
+  // ─── Direct AI chat — Gemini or OpenAI depending on chatMode ─────────────
   const sendChat = useCallback(async (
     userText: string,
     attachments: ExternalCommandInput[],
+    endpoint = '/api/chat/gemini',
   ) => {
     const userId = mkId();
     const assistantId = mkId();
@@ -806,7 +808,7 @@ export default function CommandCenterChat({ hideEmptyHint = false }: { hideEmpty
           ]
         : fullUserText;
 
-      const res = await fetch('/api/chat/gemini', {
+      const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1022,11 +1024,12 @@ export default function CommandCenterChat({ hideEmptyHint = false }: { hideEmpty
         setRunning(false);
       }
     } else {
-      // ── Auto mode: direct Gemini chat ──
-      await sendChat(userText, attachmentsCopy);
+      // ── Auto mode: Gemini or ChatGPT depending on chatMode ──
+      const chatEndpoint = chatMode === 'openai' ? '/api/chat/openai' : '/api/chat/gemini';
+      await sendChat(userText, attachmentsCopy, chatEndpoint);
       queueMicrotask(() => composerRef.current?.focus());
     }
-  }, [isStreaming, running, pipeline.stage, prompt, pendingInputs, explicitServiceId, localeCode, callPipeline, sendChat, clearPendingInputs]);
+  }, [isStreaming, running, pipeline.stage, prompt, pendingInputs, explicitServiceId, localeCode, callPipeline, sendChat, clearPendingInputs, chatMode]);
 
   // Auto-send when a quick-action pill seeds the prompt with autoSend: true
   useEffect(() => {
@@ -1318,18 +1321,19 @@ export default function CommandCenterChat({ hideEmptyHint = false }: { hideEmpty
                 </button>
               </div>
 
-              {/* Auto-detect option */}
+              {/* Gemini auto option */}
               <button
                 type="button"
                 role="option"
-                aria-selected={!explicitServiceId}
+                aria-selected={!explicitServiceId && chatMode === 'gemini'}
                 onClick={() => {
                   setExplicitServiceId(null);
+                  setChatMode('gemini');
                   setSwitcherOpen(false);
                   queueMicrotask(() => composerRef.current?.focus());
                 }}
                 className={`mb-2 w-full rounded-2xl border px-3 py-2 text-left transition ${
-                  !explicitServiceId
+                  !explicitServiceId && chatMode === 'gemini'
                     ? 'border-cyan-200/45 bg-cyan-500/15 text-cyan-50'
                     : 'border-white/10 bg-white/[0.04] text-white/80 hover:border-white/20 hover:bg-white/[0.08]'
                 }`}
@@ -1338,7 +1342,32 @@ export default function CommandCenterChat({ hideEmptyHint = false }: { hideEmpty
                   {localeCode === 'ka' ? '✦ Gemini ჩეთი' : localeCode === 'ru' ? '✦ Gemini Чат' : '✦ Gemini Chat'}
                 </p>
                 <p className="mt-0.5 text-[11px] text-white/55">
-                  {localeCode === 'ka' ? 'პირდაპირი AI ჩეთი — კითხე, ახსენი, შექმენი' : localeCode === 'ru' ? 'Прямой AI-чат — спрашивай, объясняй, создавай' : 'Direct AI chat — ask, explain, create anything'}
+                  {localeCode === 'ka' ? 'Google Gemini 2.0 Flash — სწრაფი AI ჩეთი' : localeCode === 'ru' ? 'Google Gemini 2.0 Flash — быстрый AI чат' : 'Google Gemini 2.0 Flash — fast AI chat'}
+                </p>
+              </button>
+
+              {/* ChatGPT option */}
+              <button
+                type="button"
+                role="option"
+                aria-selected={!explicitServiceId && chatMode === 'openai'}
+                onClick={() => {
+                  setExplicitServiceId(null);
+                  setChatMode('openai');
+                  setSwitcherOpen(false);
+                  queueMicrotask(() => composerRef.current?.focus());
+                }}
+                className={`mb-2 w-full rounded-2xl border px-3 py-2 text-left transition ${
+                  !explicitServiceId && chatMode === 'openai'
+                    ? 'border-emerald-200/45 bg-emerald-500/15 text-emerald-50'
+                    : 'border-white/10 bg-white/[0.04] text-white/80 hover:border-white/20 hover:bg-white/[0.08]'
+                }`}
+              >
+                <p className="text-xs font-semibold">
+                  {localeCode === 'ka' ? '✦ ChatGPT ჩეთი' : localeCode === 'ru' ? '✦ ChatGPT Чат' : '✦ ChatGPT Chat'}
+                </p>
+                <p className="mt-0.5 text-[11px] text-white/55">
+                  {localeCode === 'ka' ? 'OpenAI GPT-4o-mini — ძლიერი AI ჩეთი' : localeCode === 'ru' ? 'OpenAI GPT-4o-mini — мощный AI чат' : 'OpenAI GPT-4o-mini — powerful AI chat'}
                 </p>
               </button>
 
@@ -1443,7 +1472,9 @@ export default function CommandCenterChat({ hideEmptyHint = false }: { hideEmpty
               >
                 {explicitServiceId
                   ? activeService.title
-                  : localeCode === 'ka' ? '✦ ავტო' : localeCode === 'ru' ? '✦ Авто' : '✦ Auto'}
+                  : chatMode === 'openai'
+                    ? '✦ ChatGPT'
+                    : localeCode === 'ka' ? '✦ Gemini' : localeCode === 'ru' ? '✦ Gemini' : '✦ Gemini'}
                 <ChevronDown className="h-3.5 w-3.5 opacity-60" />
               </button>
 
@@ -1480,6 +1511,7 @@ export default function CommandCenterChat({ hideEmptyHint = false }: { hideEmpty
                     clearPendingInputs();
                     setPrompt('');
                     setExplicitServiceId(null);
+                    setChatMode('gemini');
                     queueMicrotask(() => composerRef.current?.focus());
                   }}
                   disabled={chatHistory.length === 0 && pipeline.stage === 'idle'}
