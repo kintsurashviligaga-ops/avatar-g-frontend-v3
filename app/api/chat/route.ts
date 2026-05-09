@@ -291,12 +291,15 @@ export async function POST(req: NextRequest) {
 // rotate through them on quota errors before giving up.
 // Returns null only if all Gemini variants and Anthropic fail.
 
-// Models exposed on v1beta. The bare names ("gemini-1.5-flash-8b") return
-// "not found" on v1beta; v1beta requires the "-latest" suffix for the 1.5
-// family. 2.0-flash uses its bare name.
+// Models verified available on this API key via
+// GET https://generativelanguage.googleapis.com/v1beta/models
+// (1.5 family is no longer exposed). Lite variants typically have higher
+// free-tier quota, so they're tried first.
 const GEMINI_FREE_MODELS = [
-  'gemini-1.5-flash-8b-latest',
-  'gemini-1.5-flash-latest',
+  'gemini-flash-lite-latest',
+  'gemini-2.0-flash-lite',
+  'gemini-2.5-flash-lite',
+  'gemini-flash-latest',
   'gemini-2.0-flash',
 ] as const;
 
