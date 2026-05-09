@@ -1,10 +1,14 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
+import { generateText } from 'ai';
+import { createGoogleGenerativeAI } from '@ai-sdk/google';
+import { createAnthropic } from '@ai-sdk/anthropic';
 import { apiSuccess, apiError } from '@/lib/api/response';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 import { execute } from '@/lib/ai/chatEngine';
 import { getAllAgents } from '@/lib/agents/agentRegistry';
 import { getAuthContext, checkDailyBudget, sanitizePrompt } from '@/lib/security/apiGuard';
+import { AGENT_G_SYSTEM_PROMPT } from '@/lib/agent-g-orchestrator';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -116,6 +120,7 @@ export async function POST(req: NextRequest) {
   let demoModeRequested = false;
   let fallbackContext = 'global';
   let fallbackMessage = '';
+  let fallbackHistory: Array<{ role: 'user' | 'assistant'; content: string }> = [];
 
   try {
     const body = await req.json();
@@ -154,6 +159,15 @@ export async function POST(req: NextRequest) {
 
     // Security: sanitize prompt
     const sanitizedMessage = sanitizePrompt(effectiveMessage);
+
+    // Capture history for fallback path (used if primary engine fails)
+    fallbackHistory = [
+      ...((history?.length ? history : incomingMessages.slice(0, -1)) ?? []).map(h => ({
+        role: h.role as 'user' | 'assistant',
+        content: h.content,
+      })),
+      { role: 'user' as const, content: sanitizedMessage },
+    ];
 
     // Auth context (optional — allows unauthenticated for public chat)
     const auth = await getAuthContext();
@@ -235,6 +249,18 @@ export async function POST(req: NextRequest) {
     }
 
     if (throttled || unavailable) {
+      // Real fallback: try Gemini, then Anthropic, before giving up
+      const realFallback = await tryRealFallback(fallbackHistory);
+      if (realFallback) {
+        return apiSuccess({
+          response: realFallback.text,
+          provider: realFallback.provider,
+          model: realFallback.model,
+          agentId: 'main-assistant',
+          artifacts: fallbackArtifacts,
+        });
+      }
+
       return apiSuccess({
         response: throttled
           ? 'AI provider is temporarily rate-limited. Your request was accepted; please retry in a moment.'
@@ -248,6 +274,58 @@ export async function POST(req: NextRequest) {
 
     return apiError(error, 500, 'Chat service error');
   }
+}
+
+// ─── Real-AI fallback chain (Gemini → Anthropic) ─────────────────────────────
+// Used when chatEngine (OpenAI) throws a quota/rate-limit/availability error.
+// Returns null only if both Gemini and Anthropic also fail.
+
+async function tryRealFallback(
+  messages: Array<{ role: 'user' | 'assistant'; content: string }>,
+): Promise<{ text: string; provider: string; model: string } | null> {
+  if (!messages.length) return null;
+
+  // Try Gemini 2.0 Flash
+  try {
+    const apiKey = process.env.GEMINI_API_KEY ?? process.env.GOOGLE_GENERATIVE_AI_API_KEY ?? '';
+    if (apiKey) {
+      const google = createGoogleGenerativeAI({ apiKey });
+      const result = await generateText({
+        model: google('gemini-2.0-flash'),
+        system: AGENT_G_SYSTEM_PROMPT,
+        messages,
+        maxOutputTokens: 2048,
+        temperature: 0.7,
+      });
+      if (result.text?.trim()) {
+        return { text: result.text, provider: 'gemini', model: 'gemini-2.0-flash' };
+      }
+    }
+  } catch (err) {
+    console.warn('[Chat fallback] Gemini failed, trying Anthropic:', err);
+  }
+
+  // Try Anthropic Claude Haiku
+  try {
+    const apiKey = process.env.ANTHROPIC_API_KEY ?? '';
+    if (apiKey) {
+      const anthropic = createAnthropic({ apiKey });
+      const result = await generateText({
+        model: anthropic('claude-haiku-4-5-20251001'),
+        system: AGENT_G_SYSTEM_PROMPT,
+        messages,
+        maxOutputTokens: 2048,
+        temperature: 0.7,
+      });
+      if (result.text?.trim()) {
+        return { text: result.text, provider: 'anthropic', model: 'claude-haiku-4-5' };
+      }
+    }
+  } catch (err) {
+    console.error('[Chat fallback] Anthropic also failed:', err);
+  }
+
+  return null;
 }
 
 export async function GET() {
