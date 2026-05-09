@@ -291,11 +291,12 @@ export async function POST(req: NextRequest) {
 // rotate through them on quota errors before giving up.
 // Returns null only if all Gemini variants and Anthropic fail.
 
-// Models confirmed available on the v1 endpoint, ordered by free-tier generosity.
-// (1.5-flash-latest, 2.0-flash-lite were "not found" on v1beta — removed.)
+// Models exposed on v1beta. The bare names ("gemini-1.5-flash-8b") return
+// "not found" on v1beta; v1beta requires the "-latest" suffix for the 1.5
+// family. 2.0-flash uses its bare name.
 const GEMINI_FREE_MODELS = [
-  'gemini-1.5-flash-8b',
-  'gemini-1.5-flash',
+  'gemini-1.5-flash-8b-latest',
+  'gemini-1.5-flash-latest',
   'gemini-2.0-flash',
 ] as const;
 
@@ -360,13 +361,10 @@ async function tryRealFallback(
   // list is small and any single hit gives us a real response.
   const apiKey = process.env.GEMINI_API_KEY ?? process.env.GOOGLE_GENERATIVE_AI_API_KEY ?? '';
   if (apiKey) {
-    // Force the v1 endpoint. The SDK defaults to v1beta which doesn't expose
-    // gemini-1.5-flash / gemini-1.5-flash-8b — the diagnostic showed both as
-    // "not found for API version v1beta". v1 lists them with separate quotas.
-    const google = createGoogleGenerativeAI({
-      apiKey,
-      baseURL: 'https://generativelanguage.googleapis.com/v1',
-    });
+    // Use v1beta (the SDK default). v1 rejects the systemInstruction field that
+    // the SDK sends with our system prompt; v1beta accepts it. The "-latest"
+    // suffixed model names listed below are the v1beta-correct ones.
+    const google = createGoogleGenerativeAI({ apiKey });
     const attempted: string[] = [];
     for (const modelName of GEMINI_FREE_MODELS) {
       try {
