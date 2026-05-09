@@ -6,7 +6,7 @@ import { createRouteHandlerClient } from '@/lib/supabase/server';
 import { apiError, apiSuccess } from '@/lib/api/response';
 import { AvatarGenerationSchema, validateInput } from '@/lib/api/validation';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
-import { requireKey } from '@/lib/api/key-checker';
+import { isKeyAvailable } from '@/lib/api/key-checker';
 import type { GenerateAvatarRequest } from '@/types/avatar-builder';
 
 export const dynamic = 'force-dynamic';
@@ -18,13 +18,16 @@ export async function POST(request: NextRequest) {
   if (rateLimitError) return rateLimitError;
 
   try {
-    // 0. Check if avatar generation is available
-    try {
-      requireKey('Avatar Generation', 'stability');
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Service unavailable';
+    // 0. Avatar generation can be served by any of: Stability AI, Replicate, OpenAI.
+    //    Only 503 if NONE of the image-gen providers are configured. The worker
+    //    picks whichever is available.
+    const hasImageProvider =
+      isKeyAvailable('stability') ||
+      isKeyAvailable('replicate') ||
+      isKeyAvailable('openai');
+    if (!hasImageProvider) {
       return apiError(
-        new Error(message),
+        new Error('No image generation provider configured'),
         503,
         'Avatar generation service is not available. Please try again later.'
       );

@@ -15,6 +15,7 @@ import Image from 'next/image'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
+import { supabase } from '@/lib/supabase/browser'
 import { buildInteriorDesignBrief } from '@/lib/interior/smart-intake'
 import type { WorkspaceResult } from '@/types/dashboard'
 import { Interior3DViewer } from './Interior3DViewer'
@@ -901,9 +902,21 @@ function extractEditingProgress(payload: JsonRecord): EditingJobProgress | null 
 }
 
 async function postJson(path: string, body: JsonRecord): Promise<JsonRecord> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+
+  // Attach Supabase session token so auth-required routes (music, video, avatar)
+  // see Authorization: Bearer <jwt>. Routes that don't need it ignore the header.
+  try {
+    const { data } = (await supabase?.auth.getSession()) ?? { data: { session: null } }
+    const token = data?.session?.access_token
+    if (token) headers['Authorization'] = `Bearer ${token}`
+  } catch {
+    // Anonymous fetch — auth-gated routes will respond 401 as expected.
+  }
+
   const response = await fetch(path, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     body: JSON.stringify(body),
   })
 

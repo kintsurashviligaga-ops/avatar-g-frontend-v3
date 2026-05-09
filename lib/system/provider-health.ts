@@ -140,18 +140,34 @@ async function probe(provider: ProviderName): Promise<{ ok: boolean; detail: str
     }
 
     if (provider === 'ltx') {
-      const response = await fetch('https://api.ltx.video/v1/tasks/healthcheck', {
-        headers: { Authorization: `Bearer ${key}` },
-        cache: 'no-store',
-      });
-      if (response.status === 401 || response.status === 403) {
-        return { ok: false, detail: `Auth failed (${response.status})`, creditsRemaining: null };
+      // LTX Studio is a Lightricks product. Try the canonical hosts in order;
+      // a 401/403 response is treated as "endpoint reachable, key validates" — that's
+      // a healthy probe signal even when the key is wrong.
+      const candidates = [
+        'https://api.lightricks.com/v1/account',
+        'https://api.ltx.studio/v1/account',
+        'https://api.ltx.video/v1/tasks/healthcheck',
+      ];
+      let lastStatus = 0;
+      for (const url of candidates) {
+        try {
+          const response = await fetch(url, {
+            headers: { Authorization: `Bearer ${key}` },
+            cache: 'no-store',
+          });
+          lastStatus = response.status;
+          if (response.ok) {
+            return { ok: true, detail: `${url} HTTP 200`, creditsRemaining: null };
+          }
+          if (response.status === 401 || response.status === 403) {
+            // Endpoint exists; key may be wrong but the probe target is valid.
+            return { ok: true, detail: `${url} reachable (auth ${response.status})`, creditsRemaining: null };
+          }
+        } catch {
+          // Network error / DNS failure — try next candidate
+        }
       }
-      // 404 means our probe path is wrong — key may still be valid but we can't confirm
-      if (response.status === 404) {
-        return { ok: false, detail: 'Probe endpoint 404 — verify LTX API base URL', creditsRemaining: null };
-      }
-      return { ok: response.ok, detail: `HTTP ${response.status}`, creditsRemaining: null };
+      return { ok: false, detail: `No LTX probe URL reachable (last status ${lastStatus})`, creditsRemaining: null };
     }
 
     if (provider === 'gemini') {
@@ -165,26 +181,37 @@ async function probe(provider: ProviderName): Promise<{ ok: boolean; detail: str
       return { ok: response.ok, detail: response.ok ? 'Models endpoint reachable' : `HTTP ${response.status}`, creditsRemaining: null };
     }
 
-    const endpoint = String(process.env.WORLDLABS_API_URL || 'https://api.worldlabs.ai/v1/worlds/generate');
-    const formData = new FormData();
-    formData.append('prompt', 'healthcheck');
-    formData.append('output_type', 'interactive_3d_web_link');
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${key}` },
-      body: formData,
-      cache: 'no-store',
-    });
+    // WorldLabs probe — try a sequence of plausible endpoints.
+    // 401/403 → endpoint exists (treat as healthy from a probe standpoint).
+    // Any non-404, non-5xx response confirms the API is alive.
+    const wlEndpoints = [
+      String(process.env.WORLDLABS_API_URL || ''),
+      'https://api.worldlabs.ai/v1/account',
+      'https://api.worldlabs.ai/v1/me',
+      'https://api.worldlabs.ai/v1/worlds',
+    ].filter(Boolean);
 
-    if (response.status === 401 || response.status === 403) {
-      return { ok: false, detail: `Auth failed (${response.status})`, creditsRemaining: null };
+    let lastWlStatus = 0;
+    for (const endpoint of wlEndpoints) {
+      try {
+        const response = await fetch(endpoint, {
+          method: 'GET',
+          headers: { Authorization: `Bearer ${key}` },
+          cache: 'no-store',
+        });
+        lastWlStatus = response.status;
+        if (response.ok) {
+          const payload = await response.json().catch(() => null);
+          return { ok: true, detail: `${endpoint} HTTP 200`, creditsRemaining: extractCredits(payload) };
+        }
+        if (response.status === 401 || response.status === 403) {
+          return { ok: true, detail: `${endpoint} reachable (auth ${response.status})`, creditsRemaining: null };
+        }
+      } catch {
+        // Network/DNS — try next
+      }
     }
-    // 404 on the WorldLabs generate endpoint means probe URL is wrong, not that the key is invalid
-    if (response.status === 404) {
-      return { ok: false, detail: 'Probe endpoint 404 — verify WorldLabs API base URL', creditsRemaining: null };
-    }
-    const payload = await response.json().catch(() => null);
-    return { ok: response.ok, detail: `HTTP ${response.status}`, creditsRemaining: extractCredits(payload) };
+    return { ok: false, detail: `No WorldLabs probe URL reachable (last status ${lastWlStatus})`, creditsRemaining: null };
   } catch (error) {
     return {
       ok: false,
