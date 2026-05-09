@@ -147,7 +147,11 @@ async function probe(provider: ProviderName): Promise<{ ok: boolean; detail: str
       if (response.status === 401 || response.status === 403) {
         return { ok: false, detail: `Auth failed (${response.status})`, creditsRemaining: null };
       }
-      return { ok: response.status < 500, detail: `HTTP ${response.status}`, creditsRemaining: null };
+      // 404 means our probe path is wrong — key may still be valid but we can't confirm
+      if (response.status === 404) {
+        return { ok: false, detail: 'Probe endpoint 404 — verify LTX API base URL', creditsRemaining: null };
+      }
+      return { ok: response.ok, detail: `HTTP ${response.status}`, creditsRemaining: null };
     }
 
     if (provider === 'gemini') {
@@ -175,8 +179,12 @@ async function probe(provider: ProviderName): Promise<{ ok: boolean; detail: str
     if (response.status === 401 || response.status === 403) {
       return { ok: false, detail: `Auth failed (${response.status})`, creditsRemaining: null };
     }
+    // 404 on the WorldLabs generate endpoint means probe URL is wrong, not that the key is invalid
+    if (response.status === 404) {
+      return { ok: false, detail: 'Probe endpoint 404 — verify WorldLabs API base URL', creditsRemaining: null };
+    }
     const payload = await response.json().catch(() => null);
-    return { ok: response.status < 500, detail: `HTTP ${response.status}`, creditsRemaining: extractCredits(payload) };
+    return { ok: response.ok, detail: `HTTP ${response.status}`, creditsRemaining: extractCredits(payload) };
   } catch (error) {
     return {
       ok: false,
