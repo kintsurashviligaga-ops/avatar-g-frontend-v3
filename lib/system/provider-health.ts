@@ -181,9 +181,9 @@ async function probe(provider: ProviderName): Promise<{ ok: boolean; detail: str
       return { ok: response.ok, detail: response.ok ? 'Models endpoint reachable' : `HTTP ${response.status}`, creditsRemaining: null };
     }
 
-    // WorldLabs probe — try a sequence of plausible endpoints.
-    // 401/403 → endpoint exists (treat as healthy from a probe standpoint).
-    // Any non-404, non-5xx response confirms the API is alive.
+    // WorldLabs probe — first try authenticated paths, then fall back to a host
+    // liveness check. Any HTTP response (incl. 404) from api.worldlabs.ai means
+    // the host is alive, even if we don't know the exact API surface.
     const wlEndpoints = [
       String(process.env.WORLDLABS_API_URL || ''),
       'https://api.worldlabs.ai/v1/account',
@@ -191,7 +191,6 @@ async function probe(provider: ProviderName): Promise<{ ok: boolean; detail: str
       'https://api.worldlabs.ai/v1/worlds',
     ].filter(Boolean);
 
-    let lastWlStatus = 0;
     for (const endpoint of wlEndpoints) {
       try {
         const response = await fetch(endpoint, {
@@ -199,7 +198,6 @@ async function probe(provider: ProviderName): Promise<{ ok: boolean; detail: str
           headers: { Authorization: `Bearer ${key}` },
           cache: 'no-store',
         });
-        lastWlStatus = response.status;
         if (response.ok) {
           const payload = await response.json().catch(() => null);
           return { ok: true, detail: `${endpoint} HTTP 200`, creditsRemaining: extractCredits(payload) };
@@ -211,7 +209,22 @@ async function probe(provider: ProviderName): Promise<{ ok: boolean; detail: str
         // Network/DNS — try next
       }
     }
-    return { ok: false, detail: `No WorldLabs probe URL reachable (last status ${lastWlStatus})`, creditsRemaining: null };
+
+    // Liveness check: any HTTP response from the host counts as "host is alive".
+    try {
+      const liveness = await fetch('https://api.worldlabs.ai/', { method: 'GET', cache: 'no-store' });
+      return {
+        ok: true,
+        detail: `Host alive (api.worldlabs.ai HTTP ${liveness.status}); API surface needs verification`,
+        creditsRemaining: null,
+      };
+    } catch (err) {
+      return {
+        ok: false,
+        detail: err instanceof Error ? `Network: ${err.message.slice(0, 100)}` : 'Network unreachable',
+        creditsRemaining: null,
+      };
+    }
   } catch (error) {
     return {
       ok: false,

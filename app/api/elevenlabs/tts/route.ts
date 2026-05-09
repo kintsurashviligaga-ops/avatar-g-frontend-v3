@@ -9,9 +9,11 @@ interface TtsRequest {
   voice_id?: string; // accept both naming conventions
 }
 
-async function synthesizeWithOpenAI(text: string): Promise<{ audio: string; provider: string } | null> {
+async function synthesizeWithOpenAI(
+  text: string,
+): Promise<{ audio: string; provider: string } | { error: string }> {
   const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) return null;
+  if (!apiKey) return { error: 'no OPENAI_API_KEY' };
 
   try {
     const { default: OpenAI } = await import('openai');
@@ -25,8 +27,9 @@ async function synthesizeWithOpenAI(text: string): Promise<{ audio: string; prov
     const buffer = Buffer.from(await mp3.arrayBuffer());
     return { audio: buffer.toString('base64'), provider: 'openai-fallback' };
   } catch (err) {
-    console.error('[/api/elevenlabs/tts] OpenAI fallback also failed:', err);
-    return null;
+    const msg = err instanceof Error ? err.message.slice(0, 200) : 'unknown error';
+    console.error('[/api/elevenlabs/tts] OpenAI fallback also failed:', msg);
+    return { error: msg };
   }
 }
 
@@ -82,12 +85,23 @@ export async function POST(req: NextRequest) {
       if (isPermissionError || res.status >= 500) {
         console.warn(`[/api/elevenlabs/tts] ElevenLabs ${res.status} — falling back to OpenAI TTS`);
         const fallback = await synthesizeWithOpenAI(text);
-        if (fallback) {
+        if ('audio' in fallback) {
           return NextResponse.json(
             { success: true, audio: fallback.audio, provider: fallback.provider },
             { headers: { 'X-Voice-Provider': fallback.provider } },
           );
         }
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'No TTS provider available',
+            diagnostics: {
+              elevenlabs: `HTTP ${res.status}: ${errBody.slice(0, 200)}`,
+              openai: fallback.error,
+            },
+          },
+          { status: 502 },
+        );
       }
 
       return NextResponse.json(
@@ -97,18 +111,29 @@ export async function POST(req: NextRequest) {
     } catch (err) {
       console.error('[/api/elevenlabs/tts] ElevenLabs network error — trying OpenAI:', err);
       const fallback = await synthesizeWithOpenAI(text);
-      if (fallback) {
+      if ('audio' in fallback) {
         return NextResponse.json(
           { success: true, audio: fallback.audio, provider: fallback.provider },
           { headers: { 'X-Voice-Provider': fallback.provider } },
         );
       }
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'No TTS provider available',
+          diagnostics: {
+            elevenlabs: err instanceof Error ? err.message.slice(0, 200) : 'unknown',
+            openai: fallback.error,
+          },
+        },
+        { status: 502 },
+      );
     }
   }
 
   // No ElevenLabs key — go straight to OpenAI fallback
   const fallback = await synthesizeWithOpenAI(text);
-  if (fallback) {
+  if ('audio' in fallback) {
     return NextResponse.json(
       { success: true, audio: fallback.audio, provider: fallback.provider },
       { headers: { 'X-Voice-Provider': fallback.provider } },
@@ -116,7 +141,11 @@ export async function POST(req: NextRequest) {
   }
 
   return NextResponse.json(
-    { success: false, error: 'No TTS provider configured (ElevenLabs unavailable, OpenAI unavailable)' },
+    {
+      success: false,
+      error: 'No TTS provider configured',
+      diagnostics: { elevenlabs: 'no API key', openai: fallback.error },
+    },
     { status: 503 },
   );
 }
