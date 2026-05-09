@@ -371,6 +371,11 @@ async function tryRealFallback(
           messages,
           maxOutputTokens: 2048,
           temperature: 0.7,
+          // Fail fast per attempt: AI SDK defaults to 2 retries (= 3 attempts).
+          // With 5 models in the rotation that compounds to ~15s and trips the
+          // Vercel function timeout. We're already rotating, so retries here
+          // are wasted work.
+          maxRetries: 0,
         });
         if (result.text?.trim()) {
           setCached(messages, { text: result.text, provider: 'gemini', model: modelName });
@@ -400,6 +405,7 @@ async function tryRealFallback(
         messages,
         maxOutputTokens: 2048,
         temperature: 0.7,
+        maxRetries: 0,
       });
       if (result.text?.trim()) {
         setCached(messages, { text: result.text, provider: 'anthropic', model: 'claude-haiku-4-5' });
