@@ -8,8 +8,9 @@ import {
   Zap, Folder, BookOpen, Settings, Key,
   HelpCircle, Sparkles, LogOut,
   Eye, EyeOff, Copy, Check,
-  User, ShieldCheck,
+  User, ShieldCheck, Activity,
 } from 'lucide-react';
+import { ProviderStatusList } from './ProviderStatusList';
 import { OMNI_SERVICES } from './services';
 import { getLocalizedService, normalizeOmniLocale, type OmniLocale } from './i18n';
 import { useOmniDashboardStore } from './store';
@@ -26,7 +27,8 @@ type PanelSection =
   | 'settings'
   | 'apikeys'
   | 'projects'
-  | 'library';
+  | 'library'
+  | 'providerStatus';
 
 interface Props {
   isOpen: boolean;
@@ -41,7 +43,7 @@ interface Props {
 const COPY = {
   ka: {
     services: 'სერვისები', packages: 'პაკეტები და ფასები', account: 'ანგარიში',
-    settings: 'პარამეტრები', apikeys: 'API გასაღებები', projects: 'ჩემი პროექტები',
+    settings: 'პარამეტრები', apikeys: 'API გასაღებები', providerStatus: 'AI სტატუსი', projects: 'ჩემი პროექტები',
     library: 'ბიბლიოთეკა', help: 'დახმარება', whatsNew: 'სიახლეები',
     signOut: 'გასვლა', login: 'შესვლა', signup: 'რეგისტრაცია',
     navigation: 'ნავიგაცია', content: 'კონტენტი', configuration: 'კონფიგურაცია',
@@ -65,7 +67,7 @@ const COPY = {
   },
   en: {
     services: 'Services', packages: 'Packages & Pricing', account: 'Account',
-    settings: 'Settings', apikeys: 'API Keys', projects: 'My Projects',
+    settings: 'Settings', apikeys: 'API Keys', providerStatus: 'AI Status', projects: 'My Projects',
     library: 'Library', help: 'Help & FAQ', whatsNew: "What's New",
     signOut: 'Sign Out', login: 'Log In', signup: 'Sign Up',
     navigation: 'Navigation', content: 'Content', configuration: 'Configuration',
@@ -89,7 +91,7 @@ const COPY = {
   },
   ru: {
     services: 'Сервисы', packages: 'Пакеты и цены', account: 'Аккаунт',
-    settings: 'Настройки', apikeys: 'API Ключи', projects: 'Мои проекты',
+    settings: 'Настройки', apikeys: 'API Ключи', providerStatus: 'AI Статус', projects: 'Мои проекты',
     library: 'Библиотека', help: 'Помощь', whatsNew: 'Что нового',
     signOut: 'Выйти', login: 'Войти', signup: 'Регистрация',
     navigation: 'Навигация', content: 'Контент', configuration: 'Конфигурация',
@@ -263,6 +265,11 @@ export function DashboardSidePanel({ isOpen, onClose, locale, isAuthenticated, u
                     {renderAPIKeys({ c, apiKeys, setApiKeys, editingKey, setEditingKey, keyDraft, setKeyDraft, revealedKeys, setRevealedKeys, copiedKey, setCopiedKey })}
                   </motion.div>
                 )}
+                {section === 'providerStatus' && (
+                  <motion.div key="providerStatus" {...fadeSlide}>
+                    <ProviderStatusList locale={loc} />
+                  </motion.div>
+                )}
                 {section === 'projects' && (
                   <motion.div key="projects" {...fadeSlide}>
                     {renderProjects({ c, projectFilter, setProjectFilter })}
@@ -388,6 +395,7 @@ function renderMenu({ c, isAuthenticated, userName, credits, setSection, selectS
       {navSection(c.configuration, [
         { icon: <Settings className="w-4 h-4" />, label: c.settings, color: '#9ca3af', onClick: () => setSection('settings') },
         { icon: <Key className="w-4 h-4" />, label: c.apikeys, color: '#f59e0b', onClick: () => setSection('apikeys') },
+        { icon: <Activity className="w-4 h-4" />, label: c.providerStatus, color: '#10b981', onClick: () => setSection('providerStatus') },
       ])}
 
       <div className="mx-4 h-px bg-white/6" />
