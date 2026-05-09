@@ -9,9 +9,9 @@ interface TtsRequest {
   voice_id?: string; // accept both naming conventions
 }
 
-async function synthesizeWithOpenAI(
-  text: string,
-): Promise<{ audio: string; provider: string } | { error: string }> {
+type TtsResult = { audio: string; provider: string } | { error: string };
+
+async function synthesizeWithOpenAI(text: string): Promise<TtsResult> {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) return { error: 'no OPENAI_API_KEY' };
 
@@ -31,6 +31,74 @@ async function synthesizeWithOpenAI(
     console.error('[/api/elevenlabs/tts] OpenAI fallback also failed:', msg);
     return { error: msg };
   }
+}
+
+// Google Cloud TTS — uses the same Google project key as Gemini and has a
+// generous free tier (~1M chars/month). Also handles Georgian (ka-GE) natively.
+async function synthesizeWithGoogleTTS(text: string): Promise<TtsResult> {
+  const apiKey = process.env.GEMINI_API_KEY ?? process.env.GOOGLE_GENERATIVE_AI_API_KEY ?? '';
+  if (!apiKey) return { error: 'no GEMINI_API_KEY' };
+
+  const isGeorgian = /[ა-ჿ]/.test(text);
+  const isRussian = /[Ѐ-ӿ]/.test(text);
+  const languageCode = isGeorgian ? 'ka-GE' : isRussian ? 'ru-RU' : 'en-US';
+  const voiceName = isGeorgian
+    ? 'ka-GE-Standard-A'
+    : isRussian
+      ? 'ru-RU-Standard-A'
+      : 'en-US-Neural2-C';
+
+  try {
+    const response = await fetch(
+      `https://texttospeech.googleapis.com/v1/text:synthesize?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          input: { text: text.slice(0, 4000) },
+          voice: { languageCode, name: voiceName },
+          audioConfig: { audioEncoding: 'MP3' },
+        }),
+      },
+    );
+
+    if (!response.ok) {
+      const errBody = await response.text().catch(() => '');
+      return { error: `Google TTS HTTP ${response.status}: ${errBody.slice(0, 160)}` };
+    }
+
+    const data = (await response.json()) as { audioContent?: string };
+    if (!data.audioContent) {
+      return { error: 'Google TTS returned no audioContent' };
+    }
+    // audioContent is already base64-encoded MP3 — pass through directly.
+    return { audio: data.audioContent, provider: 'google-tts-fallback' };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message.slice(0, 200) : 'unknown error';
+    console.error('[/api/elevenlabs/tts] Google TTS fallback failed:', msg);
+    return { error: msg };
+  }
+}
+
+// Try OpenAI, then Google TTS in order. Returns the first successful synthesis,
+// or all collected errors if both fail.
+async function tryFallbackChain(
+  text: string,
+): Promise<
+  { audio: string; provider: string } | { errors: { openai: string; google: string } }
+> {
+  const openaiResult = await synthesizeWithOpenAI(text);
+  if ('audio' in openaiResult) return openaiResult;
+
+  const googleResult = await synthesizeWithGoogleTTS(text);
+  if ('audio' in googleResult) return googleResult;
+
+  return {
+    errors: {
+      openai: openaiResult.error,
+      google: googleResult.error,
+    },
+  };
 }
 
 export async function POST(req: NextRequest) {
@@ -81,10 +149,10 @@ export async function POST(req: NextRequest) {
         res.status === 401 &&
         (errBody.includes('missing_permissions') || errBody.includes('text_to_speech'));
 
-      // 401 missing_permissions or any 5xx → try OpenAI TTS fallback.
+      // 401 missing_permissions or any 5xx → run the full fallback chain.
       if (isPermissionError || res.status >= 500) {
-        console.warn(`[/api/elevenlabs/tts] ElevenLabs ${res.status} — falling back to OpenAI TTS`);
-        const fallback = await synthesizeWithOpenAI(text);
+        console.warn(`[/api/elevenlabs/tts] ElevenLabs ${res.status} — running fallback chain`);
+        const fallback = await tryFallbackChain(text);
         if ('audio' in fallback) {
           return NextResponse.json(
             { success: true, audio: fallback.audio, provider: fallback.provider },
@@ -97,7 +165,8 @@ export async function POST(req: NextRequest) {
             error: 'No TTS provider available',
             diagnostics: {
               elevenlabs: `HTTP ${res.status}: ${errBody.slice(0, 200)}`,
-              openai: fallback.error,
+              openai: fallback.errors.openai,
+              google: fallback.errors.google,
             },
           },
           { status: 502 },
@@ -109,8 +178,8 @@ export async function POST(req: NextRequest) {
         { status: 502 },
       );
     } catch (err) {
-      console.error('[/api/elevenlabs/tts] ElevenLabs network error — trying OpenAI:', err);
-      const fallback = await synthesizeWithOpenAI(text);
+      console.error('[/api/elevenlabs/tts] ElevenLabs network error — running fallback chain:', err);
+      const fallback = await tryFallbackChain(text);
       if ('audio' in fallback) {
         return NextResponse.json(
           { success: true, audio: fallback.audio, provider: fallback.provider },
@@ -123,7 +192,8 @@ export async function POST(req: NextRequest) {
           error: 'No TTS provider available',
           diagnostics: {
             elevenlabs: err instanceof Error ? err.message.slice(0, 200) : 'unknown',
-            openai: fallback.error,
+            openai: fallback.errors.openai,
+            google: fallback.errors.google,
           },
         },
         { status: 502 },
@@ -131,8 +201,8 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // No ElevenLabs key — go straight to OpenAI fallback
-  const fallback = await synthesizeWithOpenAI(text);
+  // No ElevenLabs key — go straight to OpenAI → Google chain
+  const fallback = await tryFallbackChain(text);
   if ('audio' in fallback) {
     return NextResponse.json(
       { success: true, audio: fallback.audio, provider: fallback.provider },
@@ -144,7 +214,11 @@ export async function POST(req: NextRequest) {
     {
       success: false,
       error: 'No TTS provider configured',
-      diagnostics: { elevenlabs: 'no API key', openai: fallback.error },
+      diagnostics: {
+        elevenlabs: 'no API key',
+        openai: fallback.errors.openai,
+        google: fallback.errors.google,
+      },
     },
     { status: 503 },
   );

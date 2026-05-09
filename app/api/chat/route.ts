@@ -285,9 +285,58 @@ export async function POST(req: NextRequest) {
   }
 }
 
-// ─── Real-AI fallback chain (Gemini → Anthropic) ─────────────────────────────
+// ─── Real-AI fallback chain (Gemini rotation → Anthropic) ────────────────────
 // Used when chatEngine (OpenAI) throws a quota/rate-limit/availability error.
-// Returns null only if both Gemini and Anthropic also fail.
+// Each Gemini model variant has a separate free-tier quota bucket, so we
+// rotate through them on quota errors before giving up.
+// Returns null only if all Gemini variants and Anthropic fail.
+
+// Models ordered by free-tier generosity (highest-quota first).
+const GEMINI_FREE_MODELS = [
+  'gemini-1.5-flash-8b',
+  'gemini-1.5-flash',
+  'gemini-1.5-flash-latest',
+  'gemini-2.0-flash-lite',
+  'gemini-2.0-flash',
+] as const;
+
+function isQuotaError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return /429|quota|RESOURCE_EXHAUSTED|rate.?limit/i.test(msg);
+}
+
+// Tiny in-memory cache so identical messages don't re-hit the quota.
+// 5-minute TTL, capped at 100 entries to bound memory.
+interface CacheEntry { text: string; provider: string; model: string; ts: number }
+const chatCache = new Map<string, CacheEntry>();
+const CACHE_TTL_MS = 5 * 60 * 1000;
+
+function cacheKeyFor(messages: Array<{ role: 'user' | 'assistant'; content: string }>): string {
+  const last = messages[messages.length - 1]?.content ?? '';
+  return last.trim().toLowerCase().slice(0, 200);
+}
+
+function getCached(messages: Array<{ role: 'user' | 'assistant'; content: string }>): CacheEntry | null {
+  const key = cacheKeyFor(messages);
+  if (!key) return null;
+  const entry = chatCache.get(key);
+  if (entry && Date.now() - entry.ts < CACHE_TTL_MS) return entry;
+  if (entry) chatCache.delete(key);
+  return null;
+}
+
+function setCached(
+  messages: Array<{ role: 'user' | 'assistant'; content: string }>,
+  value: Omit<CacheEntry, 'ts'>,
+): void {
+  const key = cacheKeyFor(messages);
+  if (!key) return;
+  chatCache.set(key, { ...value, ts: Date.now() });
+  if (chatCache.size > 100) {
+    const firstKey = chatCache.keys().next().value;
+    if (firstKey !== undefined) chatCache.delete(firstKey);
+  }
+}
 
 interface FallbackFailures {
   gemini?: string;
@@ -300,28 +349,45 @@ async function tryRealFallback(
 ): Promise<{ text: string; provider: string; model: string } | null> {
   if (!messages.length) return null;
 
-  // Try Gemini 2.0 Flash
-  try {
-    const apiKey = process.env.GEMINI_API_KEY ?? process.env.GOOGLE_GENERATIVE_AI_API_KEY ?? '';
-    if (apiKey) {
-      const google = createGoogleGenerativeAI({ apiKey });
-      const result = await generateText({
-        model: google('gemini-2.0-flash'),
-        system: AGENT_G_SYSTEM_PROMPT,
-        messages,
-        maxOutputTokens: 2048,
-        temperature: 0.7,
-      });
-      if (result.text?.trim()) {
-        return { text: result.text, provider: 'gemini', model: 'gemini-2.0-flash' };
+  // Cache hit short-circuits the whole chain — saves quota on duplicate prompts.
+  const cached = getCached(messages);
+  if (cached) {
+    return { text: cached.text, provider: `${cached.provider}-cached`, model: cached.model };
+  }
+
+  // Try Gemini variants in order. Each has a separate free-tier quota bucket;
+  // rotating gives several "lives" before falling through to Anthropic.
+  const apiKey = process.env.GEMINI_API_KEY ?? process.env.GOOGLE_GENERATIVE_AI_API_KEY ?? '';
+  if (apiKey) {
+    const google = createGoogleGenerativeAI({ apiKey });
+    const attempted: string[] = [];
+    for (const modelName of GEMINI_FREE_MODELS) {
+      try {
+        const result = await generateText({
+          model: google(modelName),
+          system: AGENT_G_SYSTEM_PROMPT,
+          messages,
+          maxOutputTokens: 2048,
+          temperature: 0.7,
+        });
+        if (result.text?.trim()) {
+          setCached(messages, { text: result.text, provider: 'gemini', model: modelName });
+          return { text: result.text, provider: 'gemini', model: modelName };
+        }
+        attempted.push(`${modelName}: empty`);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message.slice(0, 120) : 'unknown';
+        attempted.push(`${modelName}: ${msg}`);
+        if (!isQuotaError(err)) {
+          // Non-quota error → don't keep rotating models; the issue isn't quota.
+          break;
+        }
+        console.warn(`[Chat fallback] Gemini ${modelName} quota — trying next`);
       }
-      failures.gemini = 'empty response';
-    } else {
-      failures.gemini = 'no API key';
     }
-  } catch (err) {
-    failures.gemini = err instanceof Error ? err.message.slice(0, 200) : 'unknown error';
-    console.warn('[Chat fallback] Gemini failed:', failures.gemini);
+    failures.gemini = attempted.slice(0, 3).join(' | ');
+  } else {
+    failures.gemini = 'no API key';
   }
 
   // Try Anthropic Claude Haiku
@@ -337,6 +403,7 @@ async function tryRealFallback(
         temperature: 0.7,
       });
       if (result.text?.trim()) {
+        setCached(messages, { text: result.text, provider: 'anthropic', model: 'claude-haiku-4-5' });
         return { text: result.text, provider: 'anthropic', model: 'claude-haiku-4-5' };
       }
       failures.anthropic = 'empty response';
