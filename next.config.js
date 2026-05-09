@@ -141,18 +141,30 @@ const nextConfig = {
       { from: 'tokenized-digital-goods-system', to: 'shop' },
     ];
 
-    return serviceRedirects.flatMap(({ from, to }) => [
-      {
-        source: `/services/${from}`,
-        destination: `/services/${to}`,
-        permanent: true,
-      },
-      {
-        source: `/:locale/services/${from}`,
-        destination: `/:locale/services/${to}`,
-        permanent: true,
-      },
-    ]);
+    // /:locale/<slug> → /:locale/services/<slug> for the four media services.
+    // Users type /ka/voice etc directly; without this they 404. /ka/avatar/[id] is
+    // unaffected — Next redirects match exact path depth.
+    const shortSlugRedirects = ['voice', 'music', 'video', 'avatar'].map((slug) => ({
+      source: `/:locale/${slug}`,
+      destination: `/:locale/services/${slug}`,
+      permanent: false,
+    }));
+
+    return [
+      ...serviceRedirects.flatMap(({ from, to }) => [
+        {
+          source: `/services/${from}`,
+          destination: `/services/${to}`,
+          permanent: true,
+        },
+        {
+          source: `/:locale/services/${from}`,
+          destination: `/:locale/services/${to}`,
+          permanent: true,
+        },
+      ]),
+      ...shortSlugRedirects,
+    ];
   },
 };
 

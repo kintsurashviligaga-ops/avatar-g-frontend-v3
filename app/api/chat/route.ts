@@ -250,7 +250,8 @@ export async function POST(req: NextRequest) {
 
     if (throttled || unavailable) {
       // Real fallback: try Gemini, then Anthropic, before giving up
-      const realFallback = await tryRealFallback(fallbackHistory);
+      const failures: FallbackFailures = {};
+      const realFallback = await tryRealFallback(fallbackHistory, failures);
       if (realFallback) {
         return apiSuccess({
           response: realFallback.text,
@@ -261,14 +262,22 @@ export async function POST(req: NextRequest) {
         });
       }
 
+      // All providers failed — surface diagnostic so operators can act
+      const diag = [
+        `openai: ${normalized.slice(0, 120)}`,
+        failures.gemini && `gemini: ${failures.gemini}`,
+        failures.anthropic && `anthropic: ${failures.anthropic}`,
+      ].filter(Boolean).join(' | ');
+
       return apiSuccess({
         response: throttled
-          ? 'AI provider is temporarily rate-limited. Your request was accepted; please retry in a moment.'
-          : 'AI provider is temporarily unavailable. Your request was accepted in fallback mode.',
+          ? 'All AI providers are unavailable (likely billing/quota). Please retry shortly or top up provider accounts.'
+          : 'All AI providers are unavailable. Please retry shortly.',
         provider: throttled ? 'throttled-fallback' : 'provider-fallback',
         model: 'none',
         agentId: 'main-assistant',
         artifacts: fallbackArtifacts,
+        diagnostics: diag,
       });
     }
 
@@ -280,8 +289,14 @@ export async function POST(req: NextRequest) {
 // Used when chatEngine (OpenAI) throws a quota/rate-limit/availability error.
 // Returns null only if both Gemini and Anthropic also fail.
 
+interface FallbackFailures {
+  gemini?: string;
+  anthropic?: string;
+}
+
 async function tryRealFallback(
   messages: Array<{ role: 'user' | 'assistant'; content: string }>,
+  failures: FallbackFailures = {},
 ): Promise<{ text: string; provider: string; model: string } | null> {
   if (!messages.length) return null;
 
@@ -300,9 +315,13 @@ async function tryRealFallback(
       if (result.text?.trim()) {
         return { text: result.text, provider: 'gemini', model: 'gemini-2.0-flash' };
       }
+      failures.gemini = 'empty response';
+    } else {
+      failures.gemini = 'no API key';
     }
   } catch (err) {
-    console.warn('[Chat fallback] Gemini failed, trying Anthropic:', err);
+    failures.gemini = err instanceof Error ? err.message.slice(0, 200) : 'unknown error';
+    console.warn('[Chat fallback] Gemini failed:', failures.gemini);
   }
 
   // Try Anthropic Claude Haiku
@@ -320,9 +339,13 @@ async function tryRealFallback(
       if (result.text?.trim()) {
         return { text: result.text, provider: 'anthropic', model: 'claude-haiku-4-5' };
       }
+      failures.anthropic = 'empty response';
+    } else {
+      failures.anthropic = 'no API key';
     }
   } catch (err) {
-    console.error('[Chat fallback] Anthropic also failed:', err);
+    failures.anthropic = err instanceof Error ? err.message.slice(0, 200) : 'unknown error';
+    console.error('[Chat fallback] Anthropic also failed:', failures.anthropic);
   }
 
   return null;
