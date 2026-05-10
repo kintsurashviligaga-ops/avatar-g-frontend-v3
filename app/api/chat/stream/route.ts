@@ -7,11 +7,24 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { randomUUID } from 'crypto';
-import { executeStream } from '@/lib/ai/chatEngine';
+import { streamText } from 'ai';
+import { createGoogleGenerativeAI } from '@ai-sdk/google';
+import { createAnthropic } from '@ai-sdk/anthropic';
 import type { ChatMessage } from '@/lib/ai/chatEngine';
 import { getAuthContext, checkDailyBudget, sanitizePrompt } from '@/lib/security/apiGuard';
 import { detectIntent } from '@/lib/chat/intentDetector';
 import { orchestrate, pollOrchestrationTask } from '@/lib/chat/providerRouter';
+import { AGENT_G_SYSTEM_PROMPT } from '@/lib/agent-g-orchestrator';
+
+// Same rotation as /api/chat (verified via /v1beta/models). 1.5 family is no
+// longer exposed on this API key; lite variants tried first for higher quota.
+const GEMINI_FREE_MODELS = [
+  'gemini-flash-lite-latest',
+  'gemini-2.0-flash-lite',
+  'gemini-2.5-flash-lite',
+  'gemini-flash-latest',
+  'gemini-2.0-flash',
+] as const;
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -75,43 +88,101 @@ export async function POST(req: NextRequest) {
       );
 
       const encoder = new TextEncoder();
-      const stream = new ReadableStream({
-        start(controller) {
-          const chatMessages: ChatMessage[] = sanitizedMessages.map(m => ({
-            role: m.role,
-            content: m.content,
-          }));
+      const sessionForStream = sessionId || `stream_${Date.now()}`;
+      const chatMessages: ChatMessage[] = sanitizedMessages.map(m => ({
+        role: m.role,
+        content: m.content,
+      }));
+      // Strip any system messages — the SDK takes the system prompt as a
+      // separate `system` parameter; passing role: 'system' in messages would
+      // be rejected by Gemini.
+      const userAssistantMessages = chatMessages
+        .filter(m => m.role === 'user' || m.role === 'assistant')
+        .map(m => ({ role: m.role as 'user' | 'assistant', content: m.content }));
 
-          executeStream(
-            {
-              agentId,
-              userId,
-              sessionId: sessionId || `stream_${Date.now()}`,
-              channel,
-              messages: chatMessages,
-            },
-            {
-              onToken(token) {
-                controller.enqueue(encoder.encode(`data: ${JSON.stringify({ token })}\n\n`));
-              },
-              onDone(response) {
-                controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+      const stream = new ReadableStream({
+        async start(controller) {
+          const startTime = Date.now();
+          const send = (payload: Record<string, unknown>) =>
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify(payload)}\n\n`));
+
+          let lastError: string | undefined;
+          let succeeded = false;
+
+          // Try each Gemini model in the rotation. Same list and order as
+          // /api/chat — keeps both endpoints behaving identically.
+          const apiKey = process.env.GEMINI_API_KEY ?? process.env.GOOGLE_GENERATIVE_AI_API_KEY ?? '';
+          if (apiKey) {
+            const google = createGoogleGenerativeAI({ apiKey });
+            for (const modelName of GEMINI_FREE_MODELS) {
+              try {
+                const result = streamText({
+                  model: google(modelName),
+                  system: AGENT_G_SYSTEM_PROMPT,
+                  messages: userAssistantMessages,
+                  maxOutputTokens: 2048,
+                  temperature: 0.7,
+                  maxRetries: 0,
+                });
+                for await (const chunk of result.textStream) {
+                  send({ token: chunk });
+                }
+                send({
                   done: true,
-                  model: response.model,
-                  tokensIn: response.tokensIn,
-                  tokensOut: response.tokensOut,
-                  costEstimate: response.costEstimate,
-                  agentId: response.agentId,
-                  durationMs: response.durationMs,
-                })}\n\n`));
-                controller.close();
-              },
-              onError(error) {
-                controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: error.message })}\n\n`));
-                controller.close();
-              },
-            },
-          );
+                  model: modelName,
+                  provider: 'gemini',
+                  agentId,
+                  sessionId: sessionForStream,
+                  durationMs: Date.now() - startTime,
+                });
+                succeeded = true;
+                break;
+              } catch (err) {
+                lastError = err instanceof Error ? err.message.slice(0, 200) : String(err);
+                console.warn(`[chat/stream] Gemini ${modelName} failed: ${lastError}`);
+              }
+            }
+          } else {
+            lastError = 'GEMINI_API_KEY not configured';
+          }
+
+          // Anthropic fallback (same as /api/chat) when every Gemini variant fails.
+          if (!succeeded) {
+            const anthropicKey = process.env.ANTHROPIC_API_KEY ?? '';
+            if (anthropicKey) {
+              try {
+                const anthropic = createAnthropic({ apiKey: anthropicKey });
+                const result = streamText({
+                  model: anthropic('claude-haiku-4-5-20251001'),
+                  system: AGENT_G_SYSTEM_PROMPT,
+                  messages: userAssistantMessages,
+                  maxOutputTokens: 2048,
+                  temperature: 0.7,
+                  maxRetries: 0,
+                });
+                for await (const chunk of result.textStream) {
+                  send({ token: chunk });
+                }
+                send({
+                  done: true,
+                  model: 'claude-haiku-4-5',
+                  provider: 'anthropic',
+                  agentId,
+                  sessionId: sessionForStream,
+                  durationMs: Date.now() - startTime,
+                });
+                succeeded = true;
+              } catch (err) {
+                lastError = err instanceof Error ? err.message.slice(0, 200) : String(err);
+                console.error('[chat/stream] Anthropic also failed:', lastError);
+              }
+            }
+          }
+
+          if (!succeeded) {
+            send({ error: `All chat providers failed${lastError ? `: ${lastError}` : ''}` });
+          }
+          controller.close();
         },
       });
 
