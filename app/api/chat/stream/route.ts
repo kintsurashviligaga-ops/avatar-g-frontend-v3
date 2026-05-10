@@ -28,6 +28,9 @@ const GEMINI_FREE_MODELS = [
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
+// Match the other chat streaming routes — without this, Vercel kills the
+// function at the default ~15s and the stream returns FUNCTION_INVOCATION_TIMEOUT.
+export const maxDuration = 60;
 
 const legacyStreamRequestSchema = z.object({
   agentId: z.string().default('main-assistant'),
