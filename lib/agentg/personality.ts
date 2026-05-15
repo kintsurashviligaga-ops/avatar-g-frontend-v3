@@ -64,7 +64,7 @@ type SessionMemory = {
   lastDetectedEmotion: DetectedEmotion;
 };
 
-const GEMINI_MODEL = 'gemini-2.0-flash';
+const GEMINI_MODEL = 'gemini-2.5-flash';
 const ANTHROPIC_FALLBACK = 'claude-haiku-4-5-20251001';
 const MAX_REPLY_CHARS = 1500;
 const MAX_RETRIES = 2;

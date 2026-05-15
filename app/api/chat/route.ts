@@ -297,9 +297,9 @@ export async function POST(req: NextRequest) {
 // (1.5 family is no longer exposed). Lite variants typically have higher
 // free-tier quota, so they're tried first.
 const GEMINI_FREE_MODELS = [
+  'gemini-2.5-flash',
   'gemini-flash-lite-latest',
   'gemini-2.0-flash-lite',
-  'gemini-2.5-flash-lite',
   'gemini-flash-latest',
   'gemini-2.0-flash',
 ] as const;

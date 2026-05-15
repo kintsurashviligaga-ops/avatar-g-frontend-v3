@@ -147,10 +147,11 @@ export async function POST(req: NextRequest) {
           // ── Primary: Gemini 2.0 Flash ──────────────────────────────────────
           // Try Gemini models in order — fail fast (maxRetries:0) so the fallback
           // chain runs within the 60s Vercel timeout instead of burning it on retries.
+          // gemini-2.5-flash has a separate quota bucket and is the most capable.
           const GEMINI_MODELS = [
+            'gemini-2.5-flash',
             'gemini-2.0-flash-lite',
             'gemini-2.0-flash',
-            'gemini-1.5-flash-latest',
           ] as const;
 
           let geminiOk = false;
