@@ -90,8 +90,8 @@ function toCoreMessages(messages: IncomingMessage[]): ModelMessage[] {
 // ─── 5. ERROR CLASSIFICATION ─────────────────────────────────────────────────
 
 function classifyError(err: unknown): 'rate_limit' | 'safety' | 'unknown' {
-  const msg = err instanceof Error ? err.message.toLowerCase() : '';
-  if (msg.includes('429') || msg.includes('quota') || msg.includes('rate limit') || msg.includes('resource_exhausted')) {
+  const msg = err instanceof Error ? err.message.toLowerCase() : String(err).toLowerCase();
+  if (msg.includes('429') || msg.includes('quota') || msg.includes('rate limit') || msg.includes('resource_exhausted') || msg.includes('maxretriesexceeded')) {
     return 'rate_limit';
   }
   if (msg.includes('safety') || msg.includes('blocked') || msg.includes('content_filter') || msg.includes('finish_reason: safety')) {
@@ -145,37 +145,45 @@ export async function POST(req: NextRequest) {
 
         try {
           // ── Primary: Gemini 2.0 Flash ──────────────────────────────────────
-          try {
-            const google = getGeminiClient();
-            const result = streamText({
-              model: google('gemini-2.0-flash'),
-              system: SYSTEM_PROMPT,
-              messages: modelMessages,
-              maxOutputTokens: 4096,
-              temperature: 0.7,
-            });
+          // Try Gemini models in order — fail fast (maxRetries:0) so the fallback
+          // chain runs within the 60s Vercel timeout instead of burning it on retries.
+          const GEMINI_MODELS = [
+            'gemini-2.0-flash-lite',
+            'gemini-2.0-flash',
+            'gemini-1.5-flash-latest',
+          ] as const;
 
-            for await (const chunk of result.textStream) {
-              send(chunk);
+          let geminiOk = false;
+          for (const modelName of GEMINI_MODELS) {
+            try {
+              const google = getGeminiClient();
+              const result = streamText({
+                model: google(modelName),
+                system: SYSTEM_PROMPT,
+                messages: modelMessages,
+                maxOutputTokens: 4096,
+                temperature: 0.7,
+                maxRetries: 0, // fail instantly on quota/error — we rotate ourselves
+              });
+              for await (const chunk of result.textStream) {
+                send(chunk);
+              }
+              geminiOk = true;
+              break;
+            } catch (geminiErr) {
+              const kind = classifyError(geminiErr);
+              if (kind === 'safety') {
+                console.warn('[/api/chat/gemini] Safety block on', modelName);
+                send(SAFETY_MESSAGE_KA + '\n\n' + SAFETY_MESSAGE_EN);
+                return;
+              }
+              console.warn('[/api/chat/gemini]', modelName, kind, '— trying next model');
             }
+          }
 
-          } catch (geminiErr) {
-            const kind = classifyError(geminiErr);
-
-            if (kind === 'safety') {
-              // Safety blocks should not fall through to another model
-              console.warn('[/api/chat/gemini] Safety block:', geminiErr);
-              send(SAFETY_MESSAGE_KA + '\n\n' + SAFETY_MESSAGE_EN);
-              return;
-            }
-
-            if (kind === 'rate_limit') {
-              console.error('[/api/chat/gemini] Rate limit hit — falling back to Anthropic');
-            } else {
-              console.error('[/api/chat/gemini] Gemini error — falling back to Anthropic:', geminiErr);
-            }
-
-            // ── Fallback: Anthropic Claude Haiku ──────────────────────────────
+          if (!geminiOk) {
+            // ── Fallback: Anthropic Claude Haiku ────────────────────────────
+            console.error('[/api/chat/gemini] All Gemini models exhausted — falling back to Anthropic');
             const anthropic = getAnthropicClient();
             const fallback = streamText({
               model: anthropic('claude-haiku-4-5-20251001'),
@@ -192,8 +200,8 @@ export async function POST(req: NextRequest) {
               })),
               maxOutputTokens: 4096,
               temperature: 0.7,
+              maxRetries: 1,
             });
-
             for await (const chunk of fallback.textStream) {
               send(chunk);
             }
