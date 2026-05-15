@@ -9,6 +9,7 @@ import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
+export const maxDuration = 60;
 
 const contextSchema = z.object({
   currentPage: z.string().max(200).optional(),

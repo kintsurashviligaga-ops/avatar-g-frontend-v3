@@ -1,4 +1,4 @@
-import MainDashboard from '@/components/dashboard/omni/MainDashboard';
+import CommandCenter from '@/components/dashboard/command-center/CommandCenter';
 import { createServerClient } from '@/lib/supabase/server';
 
 export const dynamic = 'force-dynamic';
@@ -27,5 +27,5 @@ export default async function DashboardPage({ params }: Props) {
     // Fall back to guest mode when auth infrastructure is unavailable.
   }
 
-  return <MainDashboard locale={locale} userName={userName} isAuthenticated={isAuthenticated} />;
+  return <CommandCenter locale={locale} userName={userName} isAuthenticated={isAuthenticated} />;
 }

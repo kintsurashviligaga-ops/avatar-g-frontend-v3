@@ -402,6 +402,14 @@ async function pollTaskResult(baseUrl: string, apiKey: string, taskId: string): 
       throw new Error(state.errorMessage || `NanoBanana task ${taskId} failed`);
     }
 
+    // successFlag === 0 means still processing — always wait and retry
+    if (state.successFlag === 0) {
+      if (attempt < maxAttempts - 1) {
+        await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+      }
+      continue;
+    }
+
     const outputUrl = extractUrl(result.parsed);
     const outputText = extractText(result.parsed);
     if (outputUrl || outputText) {

@@ -3,7 +3,7 @@ import { generateNanoBananaImage } from '@/lib/nanobanana/client';
 import type { NanoBananaEndpoint } from '@/lib/nanobanana/endpoints';
 
 export const dynamic = 'force-dynamic';
-export const maxDuration = 60;
+export const maxDuration = 120;
 
 // Quality → NanoBanana endpoint mapping
 const QUALITY_ENDPOINT: Record<string, NanoBananaEndpoint> = {

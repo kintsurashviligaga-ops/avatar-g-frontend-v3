@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
-export const maxDuration = 60; // Start job only — client polls /status
+export const maxDuration = 60;
 
 const HEYGEN_BASE = 'https://api.heygen.com';
 
@@ -180,8 +180,7 @@ async function createVideoWithStockAvatar(
 }
 
 // ─── Route handler ────────────────────────────────────────────────────────────
-// POST: start job → return { videoId } immediately
-// Client polls GET /api/heygen/avatar/status?videoId=xxx
+// POST → returns { videoId } immediately; client polls GET ?videoId=xxx
 
 export async function POST(req: NextRequest) {
   const apiKey = process.env.HEYGEN_API_KEY;
@@ -229,7 +228,6 @@ export async function POST(req: NextRequest) {
       videoId = await createVideoWithStockAvatar(apiKey, avatarId, voiceId, script, dimension);
     }
 
-    // Return immediately — client polls status endpoint
     return NextResponse.json({ success: true, videoId, status: 'processing' });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'HeyGen avatar generation failed';

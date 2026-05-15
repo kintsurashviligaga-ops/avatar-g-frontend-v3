@@ -12,6 +12,7 @@ import { AGENT_G_SYSTEM_PROMPT } from '@/lib/agent-g-orchestrator';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
+export const maxDuration = 60;
 
 // ─── Context → Agent mapping (backwards compat) ────────────────────────────
 const CONTEXT_TO_AGENT: Record<string, string> = {

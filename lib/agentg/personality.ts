@@ -1,5 +1,7 @@
 import 'server-only';
-import Anthropic from '@anthropic-ai/sdk';
+import { generateText } from 'ai';
+import { createGoogleGenerativeAI } from '@ai-sdk/google';
+import { createAnthropic } from '@ai-sdk/anthropic';
 import { AGENT_G_SYSTEM_PROMPT } from '@/lib/agent-g-orchestrator';
 
 export type AgentGChannel = 'web' | 'telegram';
@@ -62,7 +64,8 @@ type SessionMemory = {
   lastDetectedEmotion: DetectedEmotion;
 };
 
-const MODEL = 'claude-sonnet-4-6';
+const GEMINI_MODEL = 'gemini-2.0-flash';
+const ANTHROPIC_FALLBACK = 'claude-haiku-4-5-20251001';
 const MAX_REPLY_CHARS = 1500;
 const MAX_RETRIES = 2;
 
@@ -73,8 +76,6 @@ const FALLBACK_BY_LOCALE: Record<AgentGLocale, string> = {
   en: 'Give me a moment and I will get back with a clear answer 🙌',
   ru: 'Дай мне немного времени, и я скоро вернусь с ответом 🙌',
 };
-
-let cachedClient: Anthropic | null = null;
 
 function normalizeLocale(locale: string | undefined): AgentGLocale {
   if (locale === 'en' || locale === 'ru') return locale;
@@ -197,19 +198,6 @@ function buildSystemPrompt(params: {
   ].filter(Boolean).join('\n');
 }
 
-function getAnthropicClient(): Anthropic {
-  const apiKey = (process.env.ANTHROPIC_API_KEY || '').trim();
-  if (!apiKey) {
-    throw new Error('ANTHROPIC_API_KEY is missing in environment variables');
-  }
-
-  if (!cachedClient) {
-    cachedClient = new Anthropic({ apiKey });
-  }
-
-  return cachedClient;
-}
-
 function isUnsafeInput(input: string): boolean {
   return HARMFUL_PATTERN.test(input);
 }
@@ -224,45 +212,59 @@ async function generateWithRetry(args: {
   systemPrompt: string;
   history?: ConversationTurn[];
 }): Promise<string> {
-  const client = getAnthropicClient();
-  let attempt = 0;
   let lastError: unknown = null;
 
   const messages: Array<{ role: 'user' | 'assistant'; content: string }> = [];
-
   if (args.history && args.history.length > 0) {
-    const recentHistory = args.history.slice(-10);
-    for (const turn of recentHistory) {
+    for (const turn of args.history.slice(-20)) {
       messages.push({ role: turn.role, content: turn.content });
     }
   }
-
   messages.push({ role: 'user', content: args.userText });
 
-  while (attempt < MAX_RETRIES) {
-    attempt += 1;
-    try {
-      const completion = await client.messages.create({
-        model: MODEL,
-        max_tokens: 600,
-        temperature: 0.55,
-        system: args.systemPrompt,
-        messages,
-      });
-
-      const block = completion.content[0];
-      const text = block?.type === 'text' ? block.text : null;
-      if (!text) throw new Error('Empty model response');
-
-      return trimReply(sanitizeOwnerNaming(text));
-    } catch (error) {
-      console.error('[AgentG.Personality] Anthropic attempt', attempt, 'failed:', error instanceof Error ? error.message : error);
-      lastError = error;
-      if (attempt >= MAX_RETRIES) break;
+  // Primary: Gemini Flash
+  const geminiKey = (process.env.GEMINI_API_KEY ?? process.env.GOOGLE_GENERATIVE_AI_API_KEY ?? '').trim();
+  if (geminiKey) {
+    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+      try {
+        const google = createGoogleGenerativeAI({ apiKey: geminiKey });
+        const result = await generateText({
+          model: google(GEMINI_MODEL),
+          system: args.systemPrompt,
+          messages,
+          maxOutputTokens: 600,
+          temperature: 0.55,
+          maxRetries: 0,
+        });
+        if (result.text?.trim()) return trimReply(sanitizeOwnerNaming(result.text));
+      } catch (err) {
+        console.warn('[AgentG.Personality] Gemini attempt', attempt + 1, 'failed:', err instanceof Error ? err.message : err);
+        lastError = err;
+      }
     }
   }
 
-  throw lastError instanceof Error ? lastError : new Error('Model generation failed');
+  // Fallback: Anthropic Haiku
+  const anthropicKey = (process.env.ANTHROPIC_API_KEY ?? '').trim();
+  if (anthropicKey) {
+    try {
+      const anthropic = createAnthropic({ apiKey: anthropicKey });
+      const result = await generateText({
+        model: anthropic(ANTHROPIC_FALLBACK),
+        system: args.systemPrompt,
+        messages,
+        maxOutputTokens: 600,
+        temperature: 0.55,
+        maxRetries: 1,
+      });
+      if (result.text?.trim()) return trimReply(sanitizeOwnerNaming(result.text));
+    } catch (err) {
+      console.error('[AgentG.Personality] Anthropic fallback failed:', err instanceof Error ? err.message : err);
+      lastError = err;
+    }
+  }
+
+  throw lastError instanceof Error ? lastError : new Error('All AI providers failed');
 }
 
 export async function generateAgentGPersonalityReply(input: PersonalityInput): Promise<PersonalityOutput> {
