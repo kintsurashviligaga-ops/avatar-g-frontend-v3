@@ -44,11 +44,13 @@ import UpgradeModal from './UpgradeModal';
 import OnboardingModal from './OnboardingModal';
 import PromptChips from './PromptChips';
 import ActivityDashboard from '@/components/dashboard/ActivityDashboard';
+import ExportPackModal from './ExportPackModal';
+import AdminDashboard from '@/components/dashboard/AdminDashboard';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type Locale = 'ka' | 'en' | 'ru';
-type View = 'chat' | 'library' | 'pricing' | 'activity';
+type View = 'chat' | 'library' | 'pricing' | 'activity' | 'admin';
 type ServiceId = 'chat' | 'avatar' | 'image' | 'text' | 'music' | 'code' | 'video' | 'voice';
 type OrbState = 'idle' | 'listening' | 'speaking';
 type LibraryFilter = 'all' | 'images' | 'videos' | 'audio' | 'avatars';
@@ -384,6 +386,16 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
   const [characters, setCharacters] = useState<Array<{ id: string; name: string; slug: string; image_url: string }>>([]);
   const [charSuggestions, setCharSuggestions] = useState<typeof characters>([]);
 
+  // Batch mode (image → 4 variations)
+  const [batchMode, setBatchMode] = useState(false);
+  const [batchResults, setBatchResults] = useState<Array<{ url: string; creationId: string | null }>>([]);
+
+  // Export pack modal
+  const [exportPackOpen, setExportPackOpen] = useState(false);
+
+  // Admin check (by email stored in profile/user)
+  const [isAdmin, setIsAdmin] = useState(false);
+
   // Onboarding
   const [onboardingOpen, setOnboardingOpen] = useState(false);
 
@@ -443,6 +455,14 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
     window.addEventListener('keydown', h);
     return () => window.removeEventListener('keydown', h);
   }, []);
+
+  // Check if user is admin
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    fetch('/api/admin/creations-stats', { credentials: 'include' })
+      .then(r => { if (r.ok) setIsAdmin(true); })
+      .catch(() => {});
+  }, [isAuthenticated]);
 
   // Show onboarding for first-time visitors
   useEffect(() => {
@@ -609,14 +629,46 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
         setCredits(c => c - cost);
 
       } else if (service === 'image') {
-        const res = await fetch('/api/replicate/image', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt: text }) });
-        const data = await res.json() as { url?: string; imageUrl?: string; output?: string[]; data?: { url?: string }; error?: string };
-        const url = data?.url || data?.imageUrl || data?.output?.[0] || data?.data?.url;
-        if (!url) throw new Error(data?.error || copy.errorGeneric);
-        setMessages(m => m.map(msg => msg.id === pendingMsg.id ? { ...msg, pending: false, content: '', media: { kind: 'image', url } } : msg));
-        setCredits(c => c - cost);
-        // Auto-save to creations
-        void fetch('/api/creations', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind: 'image', service: 'image', prompt: text, url, thumbnail_url: url, credits_used: cost }) });
+        if (batchMode) {
+          // Batch: 4 variations in parallel
+          const batchCost = cost * 4;
+          if (credits < batchCost) {
+            setUpgradeCreditsNeeded(batchCost);
+            setUpgradeOpen(true);
+            setMessages(m => m.filter(x => x.id !== pendingMsg.id && x.id !== userMsg.id));
+            return;
+          }
+          setMessages(m => m.map(msg => msg.id === pendingMsg.id
+            ? { ...msg, pending: true, content: '🎨 4 ვარიაციას ვქმნი...' }
+            : msg
+          ));
+          const batchRes = await fetch('/api/creations/batch', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ prompt: text, count: 4 }),
+          });
+          const batchData = await batchRes.json() as {
+            results?: Array<{ url: string; creationId: string | null }>;
+            error?: string;
+          };
+          if (!batchRes.ok || !batchData.results?.length) throw new Error(batchData.error || copy.errorGeneric);
+          setBatchResults(batchData.results);
+          const firstUrl = batchData.results[0]!.url;
+          setMessages(m => m.map(msg => msg.id === pendingMsg.id
+            ? { ...msg, pending: false, content: `✅ 4 ვარიაცია შეიქმნა! (${batchData.results?.length ?? 0}/4)`, media: { kind: 'image', url: firstUrl } }
+            : msg
+          ));
+          setCredits(c => c - batchCost);
+        } else {
+          const res = await fetch('/api/replicate/image', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt: text }) });
+          const data = await res.json() as { url?: string; imageUrl?: string; output?: string[]; data?: { url?: string }; error?: string };
+          const url = data?.url || data?.imageUrl || data?.output?.[0] || data?.data?.url;
+          if (!url) throw new Error(data?.error || copy.errorGeneric);
+          setMessages(m => m.map(msg => msg.id === pendingMsg.id ? { ...msg, pending: false, content: '', media: { kind: 'image', url } } : msg));
+          setCredits(c => c - cost);
+          // Auto-save to creations
+          void fetch('/api/creations', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind: 'image', service: 'image', prompt: text, url, thumbnail_url: url, credits_used: cost }) });
+        }
 
       } else if (service === 'music') {
         const musicPrompt = musicPreset
@@ -693,7 +745,7 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
       setSending(false);
       setOrbState('idle');
     }
-  }, [activeService, credits, copy, localeCode, messages, sending, attachedImage, showToast]);
+  }, [activeService, batchMode, credits, copy, localeCode, messages, sending, attachedImage, showToast]);
 
   const toggleVoiceRecording = useCallback(() => {
     if (typeof window === 'undefined') return;
@@ -795,6 +847,18 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
         creditsNeeded={upgradeCreditsNeeded}
         currentCredits={credits}
         onClose={() => setUpgradeOpen(false)}
+      />
+
+      {/* ── Export Pack Modal ── */}
+      <ExportPackModal
+        open={exportPackOpen}
+        items={mediaItems.map(m => ({
+          id: m.id,
+          kind: (m.media?.kind ?? 'image') as 'image' | 'video' | 'audio',
+          url: m.media?.url ?? '',
+          title: m.content?.slice(0, 50) || `${m.service ?? 'ai'} creation`,
+        })).filter(i => i.url)}
+        onClose={() => setExportPackOpen(false)}
       />
 
       {/* ── Onboarding Modal ── */}
@@ -1119,6 +1183,16 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
                   {f === 'all' && copy.filterAll}{f === 'images' && copy.filterImages}{f === 'videos' && copy.filterVideos}{f === 'audio' && copy.filterAudio}{f === 'avatars' && copy.filterAvatars}
                 </button>
               ))}
+              {mediaItems.length > 0 && (
+                <button
+                  type="button"
+                  className="cc-filter"
+                  onClick={() => setExportPackOpen(true)}
+                  style={{ marginLeft: 'auto', color: '#a855f7', borderColor: 'rgba(168,85,247,0.4)', background: 'rgba(168,85,247,0.08)' }}
+                >
+                  📦 Export
+                </button>
+              )}
             </div>
             {filteredMedia.length === 0 ? (
               <div className="cc-standby" style={{ paddingTop: 48 }}>
@@ -1144,10 +1218,74 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
           </div>
         )}
 
+        {/* Batch results 2×2 grid (shown below messages when batch mode was used) */}
+        {view === 'chat' && batchResults.length > 1 && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            style={{ padding: '0 16px 16px' }}
+          >
+            <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 10 }}>
+              🎨 4 ვარიაცია · {batchResults.length} generated
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
+              {batchResults.map((r, idx) => (
+                <motion.div
+                  key={r.creationId ?? idx}
+                  initial={{ opacity: 0, scale: 0.92 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  transition={{ delay: idx * 0.08 }}
+                  style={{ position: 'relative', borderRadius: 12, overflow: 'hidden', aspectRatio: '1/1', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}
+                >
+                  <img
+                    src={r.url}
+                    alt={`Variation ${idx + 1}`}
+                    style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                    loading="lazy"
+                  />
+                  <div style={{ position: 'absolute', top: 6, left: 8, fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,0.7)', background: 'rgba(0,0,0,0.5)', borderRadius: 4, padding: '2px 6px' }}>
+                    #{idx + 1}
+                  </div>
+                  <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, display: 'flex', gap: 4, padding: 6, background: 'linear-gradient(to top, rgba(0,0,0,0.7), transparent)' }}>
+                    <a
+                      href={r.url}
+                      download
+                      style={{ flex: 1, padding: '5px 0', textAlign: 'center', fontSize: 10, fontWeight: 600, color: '#fff', background: 'rgba(255,255,255,0.15)', borderRadius: 6, textDecoration: 'none' }}
+                    >
+                      ⬇
+                    </a>
+                    <button
+                      type="button"
+                      onClick={() => { setInput(messages.filter(m => m.role === 'user').slice(-1)[0]?.content ?? ''); setActiveService('image'); }}
+                      style={{ flex: 1, padding: '5px 0', fontSize: 10, fontWeight: 600, color: '#c084fc', background: 'rgba(168,85,247,0.2)', borderRadius: 6, border: 'none', cursor: 'pointer' }}
+                    >
+                      🔄
+                    </button>
+                  </div>
+                </motion.div>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={() => setBatchResults([])}
+              style={{ marginTop: 8, fontSize: 11, color: 'rgba(255,255,255,0.3)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+            >
+              ✕ Clear batch
+            </button>
+          </motion.div>
+        )}
+
         {/* ACTIVITY */}
         {view === 'activity' && (
           <div style={{ flex: 1, overflowY: 'auto' }}>
             <ActivityDashboard />
+          </div>
+        )}
+
+        {/* ADMIN */}
+        {view === 'admin' && (
+          <div style={{ flex: 1, overflowY: 'auto', padding: '0 16px' }}>
+            <AdminDashboard />
           </div>
         )}
 
@@ -1186,7 +1324,7 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
 
       {/* ── Bottom nav tabs ── */}
       <nav className="cc-tabs">
-        {(['chat', 'library', 'activity', 'pricing'] as View[]).map(v => (
+        {(['chat', 'library', 'activity', 'pricing'] as const).map(v => (
           <button key={v} type="button" className={`cc-tab${view === v ? ' active' : ''}`} onClick={() => setView(v)}>
             {v === 'chat' && <HomeIcon style={{ width: 15, height: 15 }} />}
             {v === 'library' && <LibraryIcon style={{ width: 15, height: 15 }} />}
@@ -1195,6 +1333,12 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
             <span>{copy.tabs[v]}</span>
           </button>
         ))}
+        {isAdmin && (
+          <button type="button" className={`cc-tab${view === 'admin' ? ' active' : ''}`} onClick={() => setView('admin')}>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+            <span>Admin</span>
+          </button>
+        )}
       </nav>
 
       {/* ── Service rail (chat only, with messages) ── */}
@@ -1268,6 +1412,38 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
               activeService={activeService}
               onSelect={(p) => { setInput(p); inputRef.current?.focus(); }}
             />
+          )}
+
+          {/* Batch mode toggle (visible when image service active) */}
+          {activeService === 'image' && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6, padding: '0 2px' }}>
+              <button
+                type="button"
+                onClick={() => setBatchMode(v => !v)}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 7,
+                  padding: '5px 12px',
+                  background: batchMode ? 'rgba(168,85,247,0.15)' : 'rgba(255,255,255,0.04)',
+                  border: `1px solid ${batchMode ? 'rgba(168,85,247,0.5)' : 'rgba(255,255,255,0.1)'}`,
+                  borderRadius: 20,
+                  color: batchMode ? '#c084fc' : 'rgba(255,255,255,0.5)',
+                  fontSize: 11, fontWeight: 600, cursor: 'pointer', transition: 'all 0.15s',
+                }}
+              >
+                <span style={{ fontSize: 12 }}>🎨🎨🎨🎨</span>
+                <span>Batch ×4</span>
+                {batchMode && (
+                  <span style={{ fontSize: 10, background: 'rgba(168,85,247,0.25)', borderRadius: 4, padding: '1px 5px', color: '#c084fc' }}>
+                    40⚡
+                  </span>
+                )}
+              </button>
+              {batchMode && (
+                <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)' }}>
+                  4 ვარიაცია ერთდროულად
+                </span>
+              )}
+            </div>
           )}
 
           {/* Music preset chips (visible when music service active) */}
