@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   Zap,
   Library as LibraryIcon,
@@ -28,7 +29,11 @@ import {
   HelpCircle,
   ChevronRight,
   Search,
+  RefreshCw,
+  Sparkles,
+  Bot,
 } from 'lucide-react';
+import { createBrowserClient } from '@/lib/supabase/browser';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -55,6 +60,14 @@ interface Toast {
   id: string;
   message: string;
   type: 'success' | 'error' | 'info';
+  retryFn?: () => void;
+}
+
+interface PipelineTask {
+  taskId: string;
+  status: 'queued' | 'processing' | 'completed' | 'failed' | 'partial';
+  progress: { percent: number; completedSteps: number; totalSteps: number };
+  summaryKa?: string;
 }
 
 interface CommandCenterProps {
@@ -300,6 +313,10 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
   const [profileOpen, setProfileOpen] = useState(false);
   const [hubOpen, setHubOpen] = useState(false);
 
+  // Async pipeline task
+  const [pipelineTask, setPipelineTask] = useState<PipelineTask | null>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
   // Library
   const [libraryFilter, setLibraryFilter] = useState<LibraryFilter>('all');
 
@@ -311,10 +328,11 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const showToast = useCallback((message: string, type: Toast['type'] = 'success') => {
+  const showToast = useCallback((message: string, type: Toast['type'] = 'success', retryFn?: () => void) => {
     const id = mkId();
-    setToasts(t => [...t, { id, message, type }]);
-    setTimeout(() => setToasts(t => t.filter(x => x.id !== id)), 3000);
+    const ttl = type === 'error' ? 6000 : 3000;
+    setToasts(t => [...t, { id, message, type, retryFn }]);
+    setTimeout(() => setToasts(t => t.filter(x => x.id !== id)), ttl);
   }, []);
 
   // Auto-scroll
@@ -358,6 +376,72 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
     window.addEventListener('keydown', h);
     return () => window.removeEventListener('keydown', h);
   }, []);
+
+  // Supabase Realtime — subscribe to credit updates from profiles table
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    const supabase = createBrowserClient();
+    if (!supabase) return;
+
+    const channel = supabase
+      .channel('profile-credits')
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'profiles' },
+        (payload: { new?: { credits?: number; credits_remaining?: number } }) => {
+          const newCredits = payload.new?.credits ?? payload.new?.credits_remaining;
+          if (typeof newCredits === 'number') {
+            setCredits(newCredits);
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [isAuthenticated]);
+
+  // Pipeline task polling
+  useEffect(() => {
+    if (!pipelineTask) return;
+    if (pipelineTask.status === 'completed' || pipelineTask.status === 'failed' || pipelineTask.status === 'partial') {
+      if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+      return;
+    }
+
+    pollRef.current = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/tasks/${pipelineTask.taskId}/status`);
+        if (!res.ok) return;
+        const data = await res.json() as {
+          status: string;
+          progress: { percent: number; completedSteps: number; totalSteps: number };
+          plan?: { summaryKa?: string };
+        };
+        setPipelineTask(prev => prev ? {
+          ...prev,
+          status: data.status as PipelineTask['status'],
+          progress: data.progress,
+          summaryKa: data.plan?.summaryKa ?? prev.summaryKa,
+        } : null);
+
+        if (data.status === 'completed' || data.status === 'partial') {
+          clearInterval(pollRef.current!);
+          pollRef.current = null;
+          showToast('✅ დავალება შესრულდა!', 'success');
+        } else if (data.status === 'failed') {
+          clearInterval(pollRef.current!);
+          pollRef.current = null;
+          showToast('❌ შეცდომა. სცადეთ თავიდან.', 'error');
+        }
+      } catch { /* ignore poll error */ }
+    }, 3000);
+
+    return () => {
+      if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+    };
+  }, [pipelineTask, showToast]);
 
   const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -584,14 +668,55 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
 
       {/* ── Toasts ── */}
       <div className="cc-toasts">
-        {toasts.map(t => (
-          <div key={t.id} className={`cc-toast cc-toast-${t.type}`}>
-            {t.type === 'success' && <Check style={{ width: 14, height: 14, flexShrink: 0 }} />}
-            {t.type === 'error' && <X style={{ width: 14, height: 14, flexShrink: 0 }} />}
-            <span>{t.message}</span>
-          </div>
-        ))}
+        <AnimatePresence>
+          {toasts.map(t => (
+            <motion.div
+              key={t.id}
+              initial={{ opacity: 0, y: 20, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -8, scale: 0.95 }}
+              transition={{ duration: 0.2 }}
+              className={`cc-toast cc-toast-${t.type}`}
+            >
+              {t.type === 'success' && <Check style={{ width: 14, height: 14, flexShrink: 0 }} />}
+              {t.type === 'error' && <X style={{ width: 14, height: 14, flexShrink: 0 }} />}
+              {t.type === 'info' && <Sparkles style={{ width: 14, height: 14, flexShrink: 0 }} />}
+              <span style={{ flex: 1 }}>{t.message}</span>
+              {t.type === 'error' && t.retryFn && (
+                <button
+                  type="button"
+                  onClick={() => { t.retryFn?.(); setToasts(ts => ts.filter(x => x.id !== t.id)); }}
+                  className="cc-toast-retry"
+                >
+                  <RefreshCw style={{ width: 11, height: 11 }} />
+                  <span>ხელახლა</span>
+                </button>
+              )}
+            </motion.div>
+          ))}
+        </AnimatePresence>
       </div>
+
+      {/* ── Pipeline progress banner ── */}
+      <AnimatePresence>
+        {pipelineTask && pipelineTask.status !== 'completed' && pipelineTask.status !== 'failed' && pipelineTask.status !== 'partial' && (
+          <motion.div
+            initial={{ opacity: 0, y: -30 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -30 }}
+            className="cc-pipeline-banner"
+          >
+            <Bot style={{ width: 14, height: 14, flexShrink: 0, color: '#a855f7' }} />
+            <span className="cc-pipeline-txt">
+              {pipelineTask.summaryKa ?? 'Agent G-ი მუშაობს...'}
+            </span>
+            <div className="cc-pipeline-progress">
+              <div className="cc-pipeline-fill" style={{ width: `${pipelineTask.progress.percent}%` }} />
+            </div>
+            <span className="cc-pipeline-pct">{pipelineTask.progress.percent}%</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* ── Backdrop ── */}
       {anyDrawer && <div className="cc-backdrop" onClick={() => { setHistoryOpen(false); setProfileOpen(false); }} />}
@@ -697,6 +822,16 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
           </svg>
         </button>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {/* Mini orb — only visible when chat is active */}
+          {messages.length > 0 && (
+            <motion.div
+              layoutId="agent-g-orb"
+              className={`cc-orb-mini${orbState === 'listening' ? ' orb-listening' : orbState === 'speaking' ? ' orb-speaking' : ''}`}
+              transition={{ type: 'spring', stiffness: 200, damping: 28 }}
+            >
+              <span className="cc-orb-g-sm">G</span>
+            </motion.div>
+          )}
           <span style={{ fontSize: 13, fontWeight: 500, color: 'rgba(255,255,255,0.5)' }}>{copy.title}</span>
           <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.2)' }}>·</span>
           <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', fontWeight: 400 }}>
@@ -716,9 +851,13 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
           messages.length === 0 ? (
             /* Empty / standby state */
             <div className="cc-standby">
-              <div className={`cc-orb-lg${orbState === 'listening' ? ' orb-listening' : orbState === 'speaking' ? ' orb-speaking' : ''}`}>
+              <motion.div
+                layoutId="agent-g-orb"
+                className={`cc-orb-lg${orbState === 'listening' ? ' orb-listening' : orbState === 'speaking' ? ' orb-speaking' : ''}`}
+                transition={{ type: 'spring', stiffness: 200, damping: 28 }}
+              >
                 <span className="cc-orb-g">G</span>
-              </div>
+              </motion.div>
               <div className="cc-standby-status">{copy.standby}</div>
               <h1 className="cc-standby-title">{copy.agentLabel}</h1>
 
@@ -741,11 +880,18 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
                 {QUICK_SERVICES.map(id => {
                   const Icon = SERVICE_ICONS[id];
                   return (
-                    <button key={id} type="button" className="cc-quick-card" onClick={() => { setActiveService(id); inputRef.current?.focus(); }}>
+                    <motion.button
+                      key={id}
+                      type="button"
+                      className="cc-quick-card"
+                      onClick={() => { setActiveService(id); inputRef.current?.focus(); }}
+                      whileHover={{ scale: 1.03 }}
+                      whileTap={{ scale: 0.97 }}
+                    >
                       <Icon style={{ width: 18, height: 18, color: SERVICE_COLORS[id] }} />
                       <span>{copy.services[id]}</span>
                       <span className="cc-quick-cost"><Zap style={{ width: 9, height: 9 }} />{SERVICE_COSTS[id]}</span>
-                    </button>
+                    </motion.button>
                   );
                 })}
               </div>
@@ -920,35 +1066,71 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
 
       <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleFileSelect} aria-hidden="true" />
 
-      {/* ── Agent Hub bottom sheet ── */}
-      {hubOpen && (
-        <div className="cc-hub-overlay" onClick={() => setHubOpen(false)}>
-          <div className="cc-hub" onClick={e => e.stopPropagation()}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px 10px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-              <span style={{ fontSize: 14, fontWeight: 600, color: '#fff' }}>{copy.aiServices}</span>
-              <button type="button" className="cc-icon-btn" style={{ width: 30, height: 30 }} onClick={() => setHubOpen(false)}><X style={{ width: 14, height: 14 }} /></button>
-            </div>
-            <div className="cc-hub-grid">
-              {([
-                { id: 'avatar' as ServiceId }, { id: 'image' as ServiceId }, { id: 'video' as ServiceId }, { id: 'music' as ServiceId },
-                { id: 'text' as ServiceId }, { id: 'code' as ServiceId }, { id: 'voice' as ServiceId }, { id: 'chat' as ServiceId },
-              ]).map(({ id }) => {
-                const Icon = SERVICE_ICONS[id];
-                const active = activeService === id;
-                return (
-                  <button key={id} type="button" className={`cc-hub-item${active ? ' active' : ''}`} onClick={() => { setActiveService(id); setHubOpen(false); }}>
-                    <div className="cc-hub-icon" style={{ background: `${SERVICE_COLORS[id]}18`, border: `1px solid ${SERVICE_COLORS[id]}35` }}>
-                      <Icon style={{ width: 18, height: 18, color: SERVICE_COLORS[id] }} />
-                    </div>
-                    <span className="cc-hub-name">{copy.services[id]}</span>
-                    <span className="cc-hub-cost"><Zap style={{ width: 9, height: 9, display: 'inline' }} />{SERVICE_COSTS[id]}</span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-      )}
+      {/* ── Agent Hub — animated slide-up one-window menu ── */}
+      <AnimatePresence>
+        {hubOpen && (
+          <>
+            <motion.div
+              key="hub-backdrop"
+              className="cc-hub-overlay"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.18 }}
+              onClick={() => setHubOpen(false)}
+            />
+            <motion.div
+              key="hub-panel"
+              className="cc-hub"
+              initial={{ y: '100%', opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: '100%', opacity: 0 }}
+              transition={{ type: 'spring', stiffness: 340, damping: 36 }}
+              onClick={e => e.stopPropagation()}
+            >
+              {/* Handle bar */}
+              <div className="cc-hub-handle" />
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 16px 12px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Sparkles style={{ width: 15, height: 15, color: '#a855f7' }} />
+                  <span style={{ fontSize: 14, fontWeight: 600, color: '#fff' }}>{copy.aiServices}</span>
+                </div>
+                <button type="button" className="cc-icon-btn" style={{ width: 30, height: 30 }} onClick={() => setHubOpen(false)}>
+                  <X style={{ width: 14, height: 14 }} />
+                </button>
+              </div>
+              <div className="cc-hub-grid">
+                {([
+                  { id: 'avatar' as ServiceId }, { id: 'image' as ServiceId }, { id: 'video' as ServiceId }, { id: 'music' as ServiceId },
+                  { id: 'text' as ServiceId }, { id: 'code' as ServiceId }, { id: 'voice' as ServiceId }, { id: 'chat' as ServiceId },
+                ]).map(({ id }, idx) => {
+                  const Icon = SERVICE_ICONS[id];
+                  const active = activeService === id;
+                  return (
+                    <motion.button
+                      key={id}
+                      type="button"
+                      className={`cc-hub-item${active ? ' active' : ''}`}
+                      onClick={() => { setActiveService(id); setHubOpen(false); }}
+                      initial={{ opacity: 0, y: 16 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: idx * 0.04, duration: 0.22 }}
+                      whileHover={{ scale: 1.04 }}
+                      whileTap={{ scale: 0.96 }}
+                    >
+                      <div className="cc-hub-icon" style={{ background: `${SERVICE_COLORS[id]}18`, border: `1px solid ${SERVICE_COLORS[id]}35` }}>
+                        <Icon style={{ width: 18, height: 18, color: SERVICE_COLORS[id] }} />
+                      </div>
+                      <span className="cc-hub-name">{copy.services[id]}</span>
+                      <span className="cc-hub-cost"><Zap style={{ width: 9, height: 9, display: 'inline' }} />{SERVICE_COSTS[id]}</span>
+                    </motion.button>
+                  );
+                })}
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
 
       {/* ── Global styles ── */}
       <style jsx>{`
@@ -1085,6 +1267,47 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
         .cc-orb-g { font-size: 32px; font-weight: 800; color: #fff; letter-spacing: -0.02em; }
         .cc-orb-lg.orb-listening { animation: orb-pulse 1s ease-in-out infinite; }
         .cc-orb-lg.orb-speaking { animation: orb-glow 0.75s ease-in-out infinite; }
+        /* Mini orb in header */
+        .cc-orb-mini {
+          width: 30px; height: 30px; border-radius: 50%;
+          background: linear-gradient(135deg,#a855f7 0%,#7c3aed 60%,#4c1d95 100%);
+          display: flex; align-items: center; justify-content: center;
+          box-shadow: 0 0 14px rgba(139,92,246,0.55), inset 0 1px 0 rgba(255,255,255,0.2);
+          border: 1px solid rgba(255,255,255,0.12); flex-shrink: 0;
+        }
+        .cc-orb-mini.orb-listening { animation: orb-pulse 1s ease-in-out infinite; }
+        .cc-orb-mini.orb-speaking { animation: orb-glow 0.75s ease-in-out infinite; }
+        .cc-orb-g-sm { font-size: 13px; font-weight: 800; color: #fff; letter-spacing: -0.02em; }
+        /* Pipeline progress banner */
+        .cc-pipeline-banner {
+          position: relative; z-index: 10; display: flex; align-items: center; gap: 8px;
+          padding: 8px 14px; background: rgba(139,92,246,0.08);
+          border-bottom: 1px solid rgba(139,92,246,0.2); flex-shrink: 0;
+        }
+        .cc-pipeline-txt { flex: 1; font-size: 12px; color: rgba(255,255,255,0.7); }
+        .cc-pipeline-progress {
+          width: 80px; height: 3px; background: rgba(255,255,255,0.08);
+          border-radius: 2px; overflow: hidden; flex-shrink: 0;
+        }
+        .cc-pipeline-fill {
+          height: 100%; background: linear-gradient(90deg,#7c3aed,#a855f7);
+          border-radius: 2px; transition: width 0.5s;
+        }
+        .cc-pipeline-pct { font-size: 11px; font-weight: 600; color: rgba(167,139,250,0.8); flex-shrink: 0; }
+        /* Toast retry button */
+        .cc-toast-retry {
+          display: flex; align-items: center; gap: 3px; padding: 3px 8px;
+          border-radius: 6px; border: 1px solid rgba(255,255,255,0.2);
+          background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.8);
+          font-size: 11px; font-weight: 600; cursor: pointer; flex-shrink: 0;
+          transition: background 0.15s;
+        }
+        .cc-toast-retry:hover { background: rgba(255,255,255,0.15); }
+        /* Hub handle bar */
+        .cc-hub-handle {
+          width: 36px; height: 4px; border-radius: 2px; background: rgba(255,255,255,0.15);
+          margin: 10px auto 0;
+        }
         /* Standby */
         .cc-standby {
           flex: 1; display: flex; flex-direction: column; align-items: center;
