@@ -4,6 +4,7 @@ const withBundleAnalyzer = require('@next/bundle-analyzer')({
   enabled: process.env.ANALYZE === 'true',
   openAnalyzer: false,
 });
+const { withSentryConfig } = require('@sentry/nextjs');
 
 const buildVersion = process.env.NEXT_PUBLIC_BUILD_ID || String(Date.now());
 const isDev = process.env.NODE_ENV === 'development';
@@ -21,8 +22,8 @@ const CSP_DIRECTIVES = [
   "font-src 'self' https://fonts.gstatic.com data:",
   // Images: self + Supabase storage + Cloudflare R2 + Stripe + placehold.co
   "img-src 'self' blob: data: https://*.supabase.co https://*.r2.cloudflarestorage.com https://placehold.co https://js.stripe.com",
-  // Connect: API calls — self + Supabase + OpenAI + Replicate + ElevenLabs + Stripe + Upstash
-  "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.openai.com https://api.replicate.com https://api.elevenlabs.io https://api.stripe.com https://*.upstash.io https://www.google-analytics.com",
+  // Connect: API calls — self + Supabase + OpenAI + Replicate + ElevenLabs + Stripe + Upstash + PostHog + Sentry + Vercel Analytics
+  "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.openai.com https://api.replicate.com https://api.elevenlabs.io https://api.stripe.com https://*.upstash.io https://www.google-analytics.com https://app.posthog.com https://us.i.posthog.com https://o*.ingest.sentry.io https://vitals.vercel-insights.com",
   // Frames: only Stripe iframes allowed (for Stripe Elements)
   "frame-src 'self' https://js.stripe.com https://hooks.stripe.com",
   // Media: self + blob (for audio/video previews)
@@ -168,4 +169,21 @@ const nextConfig = {
   },
 };
 
-module.exports = withBundleAnalyzer(withNextIntl(nextConfig));
+const sentryConfig = {
+  // Upload source maps only when SENTRY_AUTH_TOKEN is set
+  silent: true,
+  org: process.env.SENTRY_ORG || 'myavatar-ge',
+  project: process.env.SENTRY_PROJECT || 'avatar-g-frontend',
+  authToken: process.env.SENTRY_AUTH_TOKEN,
+  widenClientFileUpload: true,
+  hideSourceMaps: true,
+  disableLogger: true,
+  automaticVercelMonitors: true,
+};
+
+// Only wrap with Sentry if auth token is present (avoids build errors without token)
+const sentryWrapped = process.env.SENTRY_AUTH_TOKEN
+  ? withSentryConfig(withBundleAnalyzer(withNextIntl(nextConfig)), sentryConfig)
+  : withBundleAnalyzer(withNextIntl(nextConfig));
+
+module.exports = sentryWrapped;

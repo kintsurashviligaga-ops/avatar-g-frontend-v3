@@ -47,6 +47,7 @@ import ActivityDashboard from '@/components/dashboard/ActivityDashboard';
 import ExportPackModal from './ExportPackModal';
 import AdminDashboard from '@/components/dashboard/AdminDashboard';
 import RateLimitBanner from '@/components/dashboard/RateLimitBanner';
+import ReferralPanel from '@/components/dashboard/ReferralPanel';
 import { useRateLimit } from '@/hooks/useRateLimit';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -1035,6 +1036,9 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
             <div className="cc-credits-bar"><div className="cc-credits-fill" style={{ width: `${Math.min((credits / 10000) * 100, 100)}%` }} /></div>
             <span className="cc-credits-sub">{copy.monthlyReset}</span>
           </div>
+
+          {/* Referral */}
+          <ReferralPanel isAuthenticated={isAuthenticated} />
 
           {/* Model selector */}
           <div className="cc-model-section">
