@@ -350,7 +350,7 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
-  const [credits, setCredits] = useState(4199);
+  const [credits, setCredits] = useState(200); // default Starter allowance; updated on mount
   const [isRecording, setIsRecording] = useState(false);
   const [orbState, setOrbState] = useState<OrbState>('idle');
   const [attachedImage, setAttachedImage] = useState<{ base64: string; mimeType: string } | null>(null);
@@ -407,6 +407,8 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
   // Rate limit (Starter plan: 50 gen/day)
   const rateLimit = useRateLimit(isAuthenticated);
   const [rateLimitDismissed, setRateLimitDismissed] = useState(false);
+  const [monthlyAllowance, setMonthlyAllowance] = useState(200);
+  const [creditsResetAt, setCreditsResetAt] = useState<string | null>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const recogRef = useRef<SpeechRecognition | null>(null);
@@ -555,6 +557,19 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
     };
   }, [isAuthenticated]);
 
+  // Fetch real credit balance on mount
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    fetch('/api/credits/balance', { credentials: 'include' })
+      .then(r => r.ok ? r.json() : null)
+      .then((d: { balance?: number; monthlyAllowance?: number; resetAt?: string } | null) => {
+        if (typeof d?.balance === 'number') setCredits(d.balance);
+        if (typeof d?.monthlyAllowance === 'number') setMonthlyAllowance(d.monthlyAllowance);
+        if (d?.resetAt) setCreditsResetAt(d.resetAt);
+      })
+      .catch(() => {});
+  }, [isAuthenticated]);
+
   // Pipeline task polling
   useEffect(() => {
     if (!pipelineTask) return;
@@ -599,9 +614,6 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
 
     return () => {
       clearInterval(keepAlive);
-    };
-
-    return () => {
       if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
     };
   }, [pipelineTask, showToast]);
@@ -1066,8 +1078,11 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
           <div className="cc-credits-card">
             <span className="cc-credits-label">{copy.creditsRemaining}</span>
             <span className="cc-credits-num">{credits.toLocaleString()}</span>
-            <div className="cc-credits-bar"><div className="cc-credits-fill" style={{ width: `${Math.min((credits / 10000) * 100, 100)}%` }} /></div>
-            <span className="cc-credits-sub">{copy.monthlyReset}</span>
+            <div className="cc-credits-bar"><div className="cc-credits-fill" style={{ width: `${Math.min((credits / Math.max(monthlyAllowance, 1)) * 100, 100)}%` }} /></div>
+            <span className="cc-credits-sub">
+              {monthlyAllowance.toLocaleString()}{localeCode === 'ka' ? ' ყოველთვიური' : localeCode === 'ru' ? ' ежемесячно' : ' monthly'}
+              {creditsResetAt && ` · ${localeCode === 'ka' ? 'განახლება' : localeCode === 'ru' ? 'обновление' : 'resets'} ${new Date(creditsResetAt).toLocaleDateString(localeCode === 'ka' ? 'ka-GE' : localeCode === 'ru' ? 'ru-RU' : 'en-US', { month: 'short', day: 'numeric' })}`}
+            </span>
           </div>
 
           {/* Referral */}
@@ -1098,7 +1113,13 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
               <HelpCircle style={{ width: 16, height: 16 }} /><span>{copy.helpDocs}</span><ChevronRight style={{ width: 14, height: 14, marginLeft: 'auto', opacity: 0.4 }} />
             </button>
             <div className="cc-prof-divider" />
-            <button type="button" className="cc-prof-link cc-danger">
+            <button type="button" className="cc-prof-link cc-danger" onClick={async () => {
+              try {
+                const supabase = createBrowserClient();
+                if (supabase) await supabase.auth.signOut();
+              } catch { /* ignore */ }
+              window.location.href = '/';
+            }}>
               <LogOut style={{ width: 16, height: 16 }} /><span>{copy.signOut}</span>
             </button>
           </nav>
@@ -1363,12 +1384,59 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
         {/* PRICING */}
         {view === 'pricing' && (
           <div className="cc-pricing">
-            <h2 className="cc-pricing-h">Choose Your Plan</h2>
-            <p className="cc-pricing-sub">Unlock the full power of AI creation</p>
+            <h2 className="cc-pricing-h">
+              {localeCode === 'ka' ? 'გეგმა შეარჩიე' : localeCode === 'ru' ? 'Выберите тариф' : 'Choose Your Plan'}
+            </h2>
+            <p className="cc-pricing-sub">
+              {localeCode === 'ka' ? 'ყველა ფასი ქართულ ლარში (₾)' : localeCode === 'ru' ? 'Все цены в лари (₾)' : 'All prices in Georgian Lari (₾)'}
+            </p>
             <div className="cc-plans">
-              <PlanCard name={copy.free} price="$0" period="/mo" features={['100 credits/month', 'Basic chat', '5 image generations']} accent="#6b7280" btnClass="cc-btn-outline" btnText="Current Plan" />
-              <PlanCard name={copy.pro} price="$20" period="/mo" features={['5,000 credits/month', 'All AI services', 'Priority generation', 'HD video output']} accent="#8b5cf6" btnClass="cc-btn-primary" btnText="Upgrade to Pro" badge="Popular" />
-              <PlanCard name={copy.business} price="$40" period="/mo" features={['15,000 credits/month', 'API access', 'Custom avatars', 'Team workspace']} accent="#6b7280" btnClass="cc-btn-outline" btnText="Get Business" />
+              <PlanCard
+                name={localeCode === 'ka' ? 'სტარტერი' : localeCode === 'ru' ? 'Стартер' : 'Starter'}
+                price="₾0"
+                period={localeCode === 'ka' ? '/თვე' : localeCode === 'ru' ? '/мес' : '/mo'}
+                features={
+                  localeCode === 'ka'
+                    ? ['200 კრედიტი/თვეში', '5 AI სურათი', '3 მუსიკის ტრეკი', 'Community Support']
+                    : localeCode === 'ru'
+                      ? ['200 кредитов/мес', '5 AI изображений', '3 музыкальных трека', 'Поддержка сообщества']
+                      : ['200 credits/month', '5 AI images', '3 music tracks', 'Community support']
+                }
+                accent="#6b7280" btnClass="cc-btn-outline"
+                btnText={localeCode === 'ka' ? 'მიმდინარე გეგმა' : localeCode === 'ru' ? 'Текущий тариф' : 'Current Plan'}
+                href={`/${localeCode}/pricing`}
+              />
+              <PlanCard
+                name="Pro"
+                price="₾9"
+                period={localeCode === 'ka' ? '/თვე' : localeCode === 'ru' ? '/мес' : '/mo'}
+                features={
+                  localeCode === 'ka'
+                    ? ['500 კრედიტი/თვეში', 'შეუზღუდავი გენერაციები', '50 სურათი + მუსიკა', 'Email Support']
+                    : localeCode === 'ru'
+                      ? ['500 кредитов/мес', 'Неограниченные генерации', '50 изображений + музыка', 'Email поддержка']
+                      : ['500 credits/month', 'Unlimited generations', '50 images + music', 'Email support']
+                }
+                accent="#8b5cf6" btnClass="cc-btn-primary"
+                btnText={localeCode === 'ka' ? 'Pro-ზე გადასვლა' : localeCode === 'ru' ? 'Перейти на Pro' : 'Upgrade to Pro'}
+                badge={localeCode === 'ka' ? 'პოპულარული' : localeCode === 'ru' ? 'Популярный' : 'Popular'}
+                href={`/${localeCode}/pricing`}
+              />
+              <PlanCard
+                name="Ultimate"
+                price="₾29"
+                period={localeCode === 'ka' ? '/თვე' : localeCode === 'ru' ? '/мес' : '/mo'}
+                features={
+                  localeCode === 'ka'
+                    ? ['2,000 კრედიტი/თვეში', 'ყველაფერი შეუზღუდავი', 'Batch ×4 სურათი', 'Priority + Slack']
+                    : localeCode === 'ru'
+                      ? ['2 000 кредитов/мес', 'Всё без ограничений', 'Batch ×4 изображений', 'Priority + Slack']
+                      : ['2,000 credits/month', 'Unlimited everything', 'Batch ×4 images', 'Priority + Slack']
+                }
+                accent="#f59e0b" btnClass="cc-btn-ultimate"
+                btnText={localeCode === 'ka' ? 'Ultimate-ზე გადასვლა' : localeCode === 'ru' ? 'Перейти на Ultimate' : 'Get Ultimate'}
+                href={`/${localeCode}/pricing`}
+              />
             </div>
             <div className="cc-credit-table">
               <div className="cc-credit-table-hd">Credit Costs</div>
@@ -2385,16 +2453,21 @@ function Btn({ children, onClick, title, active }: { children: React.ReactNode; 
 
 // ─── PlanCard ─────────────────────────────────────────────────────────────────
 
-function PlanCard({ name, price, period, features, accent, btnClass, btnText, badge }: {
+function PlanCard({ name, price, period, features, accent, btnClass, btnText, badge, href }: {
   name: string; price: string; period: string; features: string[];
-  accent: string; btnClass: string; btnText: string; badge?: string;
+  accent: string; btnClass: string; btnText: string; badge?: string; href?: string;
 }) {
+  const isUltimate = btnClass === 'cc-btn-ultimate';
   return (
-    <div style={{ position: 'relative', padding: 16, borderRadius: 18, border: `1px solid ${badge ? 'rgba(139,92,246,0.45)' : 'rgba(255,255,255,0.08)'}`, background: badge ? 'rgba(139,92,246,0.06)' : 'rgba(255,255,255,0.02)' }}>
-      {badge && <div style={{ position: 'absolute', top: -11, left: '50%', transform: 'translateX(-50%)', padding: '3px 12px', borderRadius: 20, background: 'linear-gradient(90deg,#6d28d9,#a855f7)', fontSize: 10, fontWeight: 700, color: '#fff', letterSpacing: '0.06em', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>{badge}</div>}
+    <div style={{
+      position: 'relative', padding: 16, borderRadius: 18,
+      border: `1px solid ${isUltimate ? 'rgba(245,158,11,0.4)' : badge ? 'rgba(139,92,246,0.45)' : 'rgba(255,255,255,0.08)'}`,
+      background: isUltimate ? 'rgba(245,158,11,0.05)' : badge ? 'rgba(139,92,246,0.06)' : 'rgba(255,255,255,0.02)',
+    }}>
+      {badge && <div style={{ position: 'absolute', top: -11, left: '50%', transform: 'translateX(-50%)', padding: '3px 12px', borderRadius: 20, background: badge ? (isUltimate ? 'linear-gradient(90deg,#d97706,#f59e0b)' : 'linear-gradient(90deg,#6d28d9,#a855f7)') : 'transparent', fontSize: 10, fontWeight: 700, color: '#fff', letterSpacing: '0.06em', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>{badge}</div>}
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 12 }}>
         <span style={{ fontSize: 15, fontWeight: 700, color: '#fff' }}>{name}</span>
-        <span style={{ fontSize: 22, fontWeight: 800, color: '#fff' }}>{price}<span style={{ fontSize: 11, fontWeight: 500, color: 'rgba(255,255,255,0.35)' }}>{period}</span></span>
+        <span style={{ fontSize: 22, fontWeight: 800, color: isUltimate ? '#f59e0b' : badge ? '#a855f7' : '#fff' }}>{price}<span style={{ fontSize: 11, fontWeight: 500, color: 'rgba(255,255,255,0.35)' }}>{period}</span></span>
       </div>
       <ul style={{ listStyle: 'none', margin: '0 0 14px', padding: 0, display: 'flex', flexDirection: 'column', gap: 7 }}>
         {features.map(f => (
@@ -2403,12 +2476,20 @@ function PlanCard({ name, price, period, features, accent, btnClass, btnText, ba
           </li>
         ))}
       </ul>
-      <button type="button" className={btnClass} style={{ width: '100%', padding: '10px', borderRadius: 11, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
-        {btnText}
-      </button>
+      {href ? (
+        <a href={href} style={{ display: 'block', width: '100%', padding: '10px', borderRadius: 11, fontSize: 13, fontWeight: 600, cursor: 'pointer', textDecoration: 'none', textAlign: 'center' }} className={btnClass}>
+          {btnText}
+        </a>
+      ) : (
+        <button type="button" className={btnClass} style={{ width: '100%', padding: '10px', borderRadius: 11, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+          {btnText}
+        </button>
+      )}
       <style jsx>{`
         .cc-btn-primary { background: linear-gradient(135deg,#6d28d9,#a855f7); color:#fff; border:none; box-shadow:0 4px 18px rgba(139,92,246,0.4); }
         .cc-btn-primary:hover { transform:translateY(-1px); box-shadow:0 6px 22px rgba(139,92,246,0.55); }
+        .cc-btn-ultimate { background: linear-gradient(135deg,#d97706,#f59e0b); color:#fff; border:none; box-shadow:0 4px 18px rgba(245,158,11,0.35); }
+        .cc-btn-ultimate:hover { transform:translateY(-1px); box-shadow:0 6px 22px rgba(245,158,11,0.5); }
         .cc-btn-outline { background:transparent; color:rgba(255,255,255,0.55); border:1px solid rgba(255,255,255,0.12); }
         .cc-btn-outline:hover { border-color:rgba(255,255,255,0.25); color:#fff; }
       `}</style>

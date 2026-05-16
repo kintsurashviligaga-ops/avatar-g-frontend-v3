@@ -26,15 +26,30 @@ function parseLtxError(text: string): string {
   return text.length > 200 ? text.slice(0, 200) + '…' : text;
 }
 
+// Map aspect_ratio shorthand → default resolution for that model family
+const ASPECT_TO_RESOLUTION: Record<string, string> = {
+  '16:9':  '1920x1080',
+  '9:16':  '1080x1920',
+  '1:1':   '1920x1080', // LTX doesn't support 1:1 natively; closest landscape
+  '4:3':   '1920x1080',
+  '3:4':   '1080x1920',
+};
+
 export async function POST(req: NextRequest) {
   try {
+    const body = await req.json();
     const {
       prompt,
       model = 'ltx-2-3-fast',
-      resolution = '1920x1080',
       duration = 6,
       fps = 24,
-    } = await req.json();
+    } = body;
+
+    // Accept both `resolution` (explicit) and `aspect_ratio` shorthand from CommandCenter
+    const resolution: string =
+      body.resolution ??
+      ASPECT_TO_RESOLUTION[body.aspect_ratio as string] ??
+      '1920x1080';
 
     if (!prompt?.trim()) {
       return NextResponse.json({ error: 'No prompt provided' }, { status: 400 });
@@ -47,11 +62,9 @@ export async function POST(req: NextRequest) {
 
     // Validate resolution for chosen model
     const supported = LTX_SUPPORTED_RESOLUTIONS[model] ?? ['1920x1080'];
+    const finalResolution = supported.includes(resolution) ? resolution : supported[0]!;
     if (!supported.includes(resolution)) {
-      return NextResponse.json(
-        { error: `Resolution ${resolution} is not supported by model ${model}. Supported: ${supported.join(', ')}` },
-        { status: 400 },
-      );
+      console.warn(`[ltx-video] Resolution ${resolution} not supported by ${model}, using ${finalResolution}`);
     }
 
     const ltxRes = await fetch(`${LTX_BASE}/v1/text-to-video`, {
@@ -60,7 +73,7 @@ export async function POST(req: NextRequest) {
         Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ prompt, model, resolution, duration, fps, generate_audio: false }),
+      body: JSON.stringify({ prompt, model, resolution: finalResolution, duration, fps, generate_audio: false }),
     });
 
     if (!ltxRes.ok) {
