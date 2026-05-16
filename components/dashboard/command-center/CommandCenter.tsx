@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Zap,
   Library as LibraryIcon,
-  History as HistoryIcon,
   User as UserIcon,
   ImageIcon,
   Type as TextIcon,
@@ -22,14 +21,13 @@ import {
   RotateCcw,
   ThumbsUp,
   ThumbsDown,
-  ChevronRight,
   Settings,
   LogOut,
   Check,
   Home as HomeIcon,
-  CreditCard,
-  Menu,
-  Home,
+  HelpCircle,
+  ChevronRight,
+  Search,
 } from 'lucide-react';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -39,6 +37,7 @@ type View = 'chat' | 'library' | 'pricing';
 type ServiceId = 'chat' | 'avatar' | 'image' | 'text' | 'music' | 'code' | 'video' | 'voice';
 type OrbState = 'idle' | 'listening' | 'speaking';
 type LibraryFilter = 'all' | 'images' | 'videos' | 'audio' | 'avatars';
+type ModelId = 'gemini-2.0-flash' | 'gemini-2.0-pro' | 'gemini-1.5-ultra';
 
 interface ChatMessage {
   id: string;
@@ -50,13 +49,6 @@ interface ChatMessage {
   pending?: boolean;
   liked?: boolean;
   disliked?: boolean;
-}
-
-interface ConversationGroup {
-  id: string;
-  title: string;
-  messages: ChatMessage[];
-  ts: number;
 }
 
 interface Toast {
@@ -78,149 +70,158 @@ const HISTORY_KEY = 'agentg_chat_history';
 const COPY = {
   ka: {
     title: 'myavatar.ge',
-    subtitle: 'Agent G',
     agentLabel: 'Agent G',
+    standby: 'STANDBY',
+    voiceTextMode: 'Voice & Text Mode',
     tabs: { chat: 'ჩატი', library: 'ბიბლიოთეკა', pricing: 'გეგმები' },
-    credits: 'კრედიტი',
+    creditsRemaining: 'კრედიტი დარჩა',
+    monthlyReset: '10,000 ყოველთვიური · განახლება 18 დღეში',
     services: { chat: 'ჩატი', avatar: 'ავატარი', image: 'სურათი', text: 'ტექსტი', music: 'მუსიკა', code: 'კოდი', video: 'ვიდეო', voice: 'ხმა' },
     aiServices: 'AI სერვისები',
-    creativeTools: '8 შემოქმედებითი ხელსაწყო',
-    placeholder: 'რა შევქმნათ დღეს...',
+    placeholder: 'დაწერე ან ილაპარაკე...',
     sending: 'იგზავნება...',
     listening: 'ვუსმენ...',
-    empty: 'გამარჯობა! მე ვარ Agent G.\nრა შევქმნათ დღეს?',
+    emptyHint: 'რა შევქმნათ დღეს?',
     libraryEmpty: 'ბიბლიოთეკა ცარიელია',
-    historyEmpty: 'ისტორია ცარიელია',
+    historyEmpty: 'ჯერ ისტორია არ არის',
     errorGeneric: 'შეცდომა მოხდა. სცადეთ თავიდან.',
     insufficient: 'არასაკმარისი კრედიტი. გთხოვ გეგმა განაახლე.',
     copied: 'კოპირებულია!',
-    today: 'დღეს',
-    yesterday: 'გუშინ',
-    last7: 'ბოლო 7 დღე',
-    older: 'ადრე',
-    profile: 'პროფილი',
-    history: 'ისტორია',
-    settings: 'პარამეტრები',
-    signOut: 'გასვლა',
-    model: 'მოდელი',
-    plan: 'გეგმა',
-    free: 'უფასო',
-    pro: 'Pro',
-    business: 'Business',
+    today: 'TODAY',
+    yesterday: 'YESTERDAY',
+    last7: 'LAST 7 DAYS',
+    older: 'OLDER',
+    profile: 'Profile',
+    recentConversations: 'Recent conversations',
+    newChat: '+ New chat',
+    settings: 'Settings',
+    signOut: 'Sign out',
+    model: 'MODEL',
+    mediaLibrary: 'Media Library',
+    helpDocs: 'Help & Docs',
+    close: 'დახურვა',
+    starter: 'STARTER',
     filterAll: 'ყველა',
     filterImages: 'სურათები',
     filterVideos: 'ვიდეო',
     filterAudio: 'აუდიო',
     filterAvatars: 'ავატარები',
-    newChat: 'ახალი ჩატი',
-    close: 'დახურვა',
-    interior: 'ინტერიერი',
+    free: 'Free',
+    pro: 'Pro',
+    business: 'Business',
+    plan: 'Plan',
   },
   en: {
     title: 'myavatar.ge',
-    subtitle: 'Agent G',
     agentLabel: 'Agent G',
+    standby: 'STANDBY',
+    voiceTextMode: 'Voice & Text Mode',
     tabs: { chat: 'Chat', library: 'Library', pricing: 'Plans' },
-    credits: 'Credits',
+    creditsRemaining: 'CREDITS REMAINING',
+    monthlyReset: '10,000 monthly · resets in 18 days',
     services: { chat: 'Chat', avatar: 'Avatar', image: 'Image', text: 'Text', music: 'Music', code: 'Code', video: 'Video', voice: 'Voice' },
     aiServices: 'AI Services',
-    creativeTools: '8 creative tools',
-    placeholder: 'What shall we create today...',
+    placeholder: 'Type or speak your command...',
     sending: 'Sending...',
     listening: 'Listening...',
-    empty: "Hello! I'm Agent G.\nWhat shall we create today?",
+    emptyHint: 'What shall we create today?',
     libraryEmpty: 'Library is empty',
     historyEmpty: 'No history yet',
     errorGeneric: 'Something went wrong. Try again.',
     insufficient: 'Insufficient credits. Please upgrade your plan.',
     copied: 'Copied!',
-    today: 'Today',
-    yesterday: 'Yesterday',
-    last7: 'Last 7 days',
-    older: 'Older',
+    today: 'TODAY',
+    yesterday: 'YESTERDAY',
+    last7: 'LAST 7 DAYS',
+    older: 'OLDER',
     profile: 'Profile',
-    history: 'History',
+    recentConversations: 'Recent conversations',
+    newChat: '+ New chat',
     settings: 'Settings',
     signOut: 'Sign out',
-    model: 'Model',
-    plan: 'Plan',
-    free: 'Free',
-    pro: 'Pro',
-    business: 'Business',
+    model: 'MODEL',
+    mediaLibrary: 'Media Library',
+    helpDocs: 'Help & Docs',
+    close: 'Close',
+    starter: 'STARTER',
     filterAll: 'All',
     filterImages: 'Images',
     filterVideos: 'Videos',
     filterAudio: 'Audio',
     filterAvatars: 'Avatars',
-    newChat: 'New Chat',
-    close: 'Close',
-    interior: 'Interior',
+    free: 'Free',
+    pro: 'Pro',
+    business: 'Business',
+    plan: 'Plan',
   },
   ru: {
     title: 'myavatar.ge',
-    subtitle: 'Agent G',
     agentLabel: 'Agent G',
+    standby: 'STANDBY',
+    voiceTextMode: 'Голос & Текст',
     tabs: { chat: 'Чат', library: 'Библиотека', pricing: 'Тарифы' },
-    credits: 'Кредиты',
+    creditsRemaining: 'ОСТАЛОСЬ КРЕДИТОВ',
+    monthlyReset: '10,000 в месяц · обновление через 18 дней',
     services: { chat: 'Чат', avatar: 'Аватар', image: 'Изображение', text: 'Текст', music: 'Музыка', code: 'Код', video: 'Видео', voice: 'Голос' },
     aiServices: 'AI Сервисы',
-    creativeTools: '8 инструментов',
-    placeholder: 'Что создадим сегодня...',
+    placeholder: 'Напишите или скажите команду...',
     sending: 'Отправка...',
     listening: 'Слушаю...',
-    empty: 'Привет! Я Agent G.\nЧто создадим сегодня?',
+    emptyHint: 'Что создадим сегодня?',
     libraryEmpty: 'Библиотека пуста',
     historyEmpty: 'История пуста',
     errorGeneric: 'Что-то пошло не так. Попробуй снова.',
     insufficient: 'Недостаточно кредитов. Обнови тариф.',
     copied: 'Скопировано!',
-    today: 'Сегодня',
-    yesterday: 'Вчера',
-    last7: 'Последние 7 дней',
-    older: 'Раньше',
+    today: 'TODAY',
+    yesterday: 'YESTERDAY',
+    last7: 'LAST 7 DAYS',
+    older: 'OLDER',
     profile: 'Профиль',
-    history: 'История',
+    recentConversations: 'Недавние разговоры',
+    newChat: '+ Новый чат',
     settings: 'Настройки',
     signOut: 'Выйти',
-    model: 'Модель',
-    plan: 'Тариф',
-    free: 'Бесплатно',
-    pro: 'Pro',
-    business: 'Business',
+    model: 'МОДЕЛЬ',
+    mediaLibrary: 'Медиатека',
+    helpDocs: 'Помощь',
+    close: 'Закрыть',
+    starter: 'STARTER',
     filterAll: 'Все',
     filterImages: 'Изображения',
     filterVideos: 'Видео',
     filterAudio: 'Аудио',
     filterAvatars: 'Аватары',
-    newChat: 'Новый чат',
-    close: 'Закрыть',
-    interior: 'Интерьер',
+    free: 'Бесплатно',
+    pro: 'Pro',
+    business: 'Business',
+    plan: 'Тариф',
   },
 } as const;
 
 const SERVICE_COSTS: Record<ServiceId, number> = {
-  chat: 1,
-  text: 2,
-  code: 5,
-  voice: 5,
-  image: 10,
-  music: 15,
-  avatar: 20,
-  video: 50,
+  chat: 1, text: 2, code: 5, voice: 5, image: 10, music: 15, avatar: 20, video: 50,
 };
 
 const SERVICE_ICONS: Record<ServiceId, React.ElementType> = {
-  chat: TextIcon,
-  avatar: UserIcon,
-  image: ImageIcon,
-  text: TextIcon,
-  music: MusicIcon,
-  code: CodeIcon,
-  video: VideoIcon,
-  voice: Volume2,
+  chat: HomeIcon, avatar: UserIcon, image: ImageIcon, text: TextIcon,
+  music: MusicIcon, code: CodeIcon, video: VideoIcon, voice: Volume2,
 };
 
-const QUICK_SERVICES: ServiceId[] = ['avatar', 'image', 'video', 'music', 'text', 'code', 'voice'];
+// Service accent colors for history icons
+const SERVICE_COLORS: Record<ServiceId, string> = {
+  chat: '#6366f1', avatar: '#8b5cf6', image: '#ec4899',
+  text: '#06b6d4', music: '#f59e0b', code: '#10b981',
+  video: '#f97316', voice: '#3b82f6',
+};
+
+const MODELS: Array<{ id: ModelId; label: string; badge: string; badgeColor: string }> = [
+  { id: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash', badge: 'FAST', badgeColor: '#22c55e' },
+  { id: 'gemini-2.0-pro', label: 'Gemini 2.0 Pro', badge: 'PRO', badgeColor: '#a855f7' },
+  { id: 'gemini-1.5-ultra', label: 'Gemini 1.5 Ultra', badge: 'BEST', badgeColor: '#f59e0b' },
+];
+
+const QUICK_SERVICES: ServiceId[] = ['avatar', 'image', 'code'];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -238,29 +239,42 @@ function formatTime(ts: number) {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
-function formatDate(ts: number, copy: (typeof COPY)[Locale]) {
-  const now = new Date();
+function relativeTime(ts: number): string {
+  const diff = Date.now() - ts;
+  const mins = Math.floor(diff / 60000);
+  const hours = Math.floor(diff / 3600000);
+  const days = Math.floor(diff / 86400000);
+  if (mins < 60) return `${mins} min ago`;
+  if (hours < 24) return `${hours} hours ago`;
+  if (days === 1) return `Yesterday ${formatTime(ts)}`;
   const d = new Date(ts);
-  const diffDays = Math.floor((now.getTime() - d.getTime()) / 86400000);
-  if (diffDays === 0) return copy.today;
-  if (diffDays === 1) return copy.yesterday;
-  if (diffDays < 7) return copy.last7;
-  return copy.older;
+  return d.toLocaleDateString('en', { weekday: 'short' });
 }
 
-function detectSkillFromText(text: string): ServiceId | null {
-  if (/\b(draw|paint|generate image|create image|make image|photo|სურათი|დახატე|შექმენი სურათი|нарисуй|создай фото)\b/i.test(text)) return 'image';
-  if (/\b(create video|make video|generate video|animate|ვიდეო|შექმენი ვიდეო|видео)\b/i.test(text)) return 'video';
-  if (/\b(compose|create music|make song|generate music|მუსიკა|შექმენი მუსიკა|музыка|create song)\b/i.test(text)) return 'music';
-  if (/\b(avatar|talking head|ავატარი|аватар)\b/i.test(text)) return 'avatar';
-  if (/\b(speak|read aloud|say this|voice|text to speech|წაიკითხე|прочитай)\b/i.test(text)) return 'voice';
-  return null;
+function dayBucket(ts: number): 'today' | 'yesterday' | 'last7' | 'older' {
+  const diff = Math.floor((Date.now() - ts) / 86400000);
+  if (diff === 0) return 'today';
+  if (diff === 1) return 'yesterday';
+  if (diff < 7) return 'last7';
+  return 'older';
 }
 
 function sameDay(a: number, b: number) {
-  const da = new Date(a);
-  const db = new Date(b);
+  const da = new Date(a), db = new Date(b);
   return da.getFullYear() === db.getFullYear() && da.getMonth() === db.getMonth() && da.getDate() === db.getDate();
+}
+
+function bucketLabel(bucket: ReturnType<typeof dayBucket>, copy: (typeof COPY)[Locale]): string {
+  return copy[bucket === 'today' ? 'today' : bucket === 'yesterday' ? 'yesterday' : bucket === 'last7' ? 'last7' : 'older'];
+}
+
+function detectSkillFromText(text: string): ServiceId | null {
+  if (/\b(draw|paint|generate image|create image|make image|photo|სურათი|დახატე|нарисуй)\b/i.test(text)) return 'image';
+  if (/\b(create video|make video|generate video|animate|ვიდეო|видео)\b/i.test(text)) return 'video';
+  if (/\b(compose|create music|make song|generate music|მუსიკა|музыка)\b/i.test(text)) return 'music';
+  if (/\b(avatar|talking head|ავატარი|аватар)\b/i.test(text)) return 'avatar';
+  if (/\b(speak|read aloud|say this|voice|text to speech|წაიკითხე|прочитай)\b/i.test(text)) return 'voice';
+  return null;
 }
 
 // ─── Main Component ───────────────────────────────────────────────────────────
@@ -269,35 +283,34 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
   const localeCode = normalizeLocale(locale);
   const copy = COPY[localeCode];
 
-  // Core state
   const [view, setView] = useState<View>('chat');
   const [activeService, setActiveService] = useState<ServiceId>('chat');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
-  const [credits, setCredits] = useState(4200);
+  const [credits, setCredits] = useState(4199);
   const [isRecording, setIsRecording] = useState(false);
   const [orbState, setOrbState] = useState<OrbState>('idle');
   const [attachedImage, setAttachedImage] = useState<{ base64: string; mimeType: string } | null>(null);
+  const [voiceMode, setVoiceMode] = useState(true);
+  const [selectedModel, setSelectedModel] = useState<ModelId>('gemini-2.0-flash');
 
-  // Drawer state
+  // Drawer / overlay state
   const [historyOpen, setHistoryOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [hubOpen, setHubOpen] = useState(false);
 
-  // Library state
+  // Library
   const [libraryFilter, setLibraryFilter] = useState<LibraryFilter>('all');
 
-  // Toast state
+  // Toasts
   const [toasts, setToasts] = useState<Toast[]>([]);
 
-  // Refs
   const scrollRef = useRef<HTMLDivElement>(null);
   const recogRef = useRef<SpeechRecognition | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Toast helpers
   const showToast = useCallback((message: string, type: Toast['type'] = 'success') => {
     const id = mkId();
     setToasts(t => [...t, { id, message, type }]);
@@ -318,69 +331,55 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
     ta.style.height = `${Math.min(ta.scrollHeight, 140)}px`;
   }, [input]);
 
-  // Load history
+  // Load persisted messages
   useEffect(() => {
     try {
       const saved = localStorage.getItem(HISTORY_KEY);
       if (saved) {
         const parsed = JSON.parse(saved) as ChatMessage[];
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          setMessages(parsed.slice(-40));
-        }
+        if (Array.isArray(parsed) && parsed.length > 0) setMessages(parsed.slice(-40));
       }
     } catch { /* ignore */ }
   }, []);
 
-  // Persist history
+  // Persist messages
   useEffect(() => {
     if (messages.length === 0) return;
     try {
-      const toSave = messages.filter(m => !m.pending).slice(-40);
-      localStorage.setItem(HISTORY_KEY, JSON.stringify(toSave));
+      localStorage.setItem(HISTORY_KEY, JSON.stringify(messages.filter(m => !m.pending).slice(-40)));
     } catch { /* ignore */ }
   }, [messages]);
 
-  // Close drawers on escape
+  // Escape closes drawers
   useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        setHistoryOpen(false);
-        setProfileOpen(false);
-        setHubOpen(false);
-      }
+    const h = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setHistoryOpen(false); setProfileOpen(false); setHubOpen(false); }
     };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
+    window.addEventListener('keydown', h);
+    return () => window.removeEventListener('keydown', h);
   }, []);
 
-  // File select handler
   const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !file.type.startsWith('image/')) return;
     const reader = new FileReader();
-    reader.onload = () => {
-      setAttachedImage({ base64: reader.result as string, mimeType: file.type });
-    };
+    reader.onload = () => setAttachedImage({ base64: reader.result as string, mimeType: file.type });
     reader.readAsDataURL(file);
     e.target.value = '';
   }, []);
 
-  // Send message
   const send = useCallback(async (rawText: string, forcedService?: ServiceId) => {
     const text = rawText.trim();
     if (!text || sending) return;
 
     let service = forcedService ?? activeService;
     if (service === 'chat' && !forcedService) {
-      const detected = detectSkillFromText(text);
-      if (detected) { service = detected; setActiveService(detected); }
+      const det = detectSkillFromText(text);
+      if (det) { service = det; setActiveService(det); }
     }
 
     const cost = SERVICE_COSTS[service];
-    if (credits < cost) {
-      showToast(copy.insufficient, 'error');
-      return;
-    }
+    if (credits < cost) { showToast(copy.insufficient, 'error'); return; }
 
     const userMsg: ChatMessage = { id: mkId(), role: 'user', content: text, ts: Date.now(), service };
     const pendingMsg: ChatMessage = { id: mkId(), role: 'assistant', content: '', ts: Date.now() + 1, service, pending: true };
@@ -393,115 +392,70 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
     try {
       if (service === 'avatar') {
         const startRes = await fetch('/api/heygen/avatar', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ script: text }),
         });
         const startData = await startRes.json() as { videoId?: string; error?: string };
         if (!startData?.videoId) throw new Error(startData?.error || copy.errorGeneric);
-        const videoId = startData.videoId;
         let videoUrl: string | null = null;
         for (let i = 0; i < 24; i++) {
           await new Promise(r => setTimeout(r, 5000));
-          const pollRes = await fetch(`/api/heygen/avatar?videoId=${encodeURIComponent(videoId)}`);
-          if (!pollRes.ok) continue;
-          const pollData = await pollRes.json() as { status?: string; url?: string; error?: string };
-          if (pollData?.status === 'completed' && pollData?.url) { videoUrl = pollData.url; break; }
-          if (pollData?.status === 'failed') throw new Error(pollData?.error || copy.errorGeneric);
+          const poll = await fetch(`/api/heygen/avatar?videoId=${encodeURIComponent(startData.videoId)}`);
+          if (!poll.ok) continue;
+          const pd = await poll.json() as { status?: string; url?: string; error?: string };
+          if (pd?.status === 'completed' && pd?.url) { videoUrl = pd.url; break; }
+          if (pd?.status === 'failed') throw new Error(pd?.error || copy.errorGeneric);
         }
-        if (!videoUrl) throw new Error('HeyGen: video timed out');
-        setMessages(m => m.map(msg => msg.id === pendingMsg.id
-          ? { ...msg, pending: false, content: '', media: { kind: 'video', url: videoUrl! } }
-          : msg));
+        if (!videoUrl) throw new Error('HeyGen: timed out');
+        setMessages(m => m.map(msg => msg.id === pendingMsg.id ? { ...msg, pending: false, content: '', media: { kind: 'video', url: videoUrl! } } : msg));
         setCredits(c => c - cost);
 
       } else if (service === 'image') {
-        const res = await fetch('/api/replicate/image', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ prompt: text }),
-        });
+        const res = await fetch('/api/replicate/image', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt: text }) });
         const data = await res.json() as { url?: string; imageUrl?: string; output?: string[]; data?: { url?: string }; error?: string };
         const url = data?.url || data?.imageUrl || data?.output?.[0] || data?.data?.url;
         if (!url) throw new Error(data?.error || copy.errorGeneric);
-        setMessages(m => m.map(msg => msg.id === pendingMsg.id
-          ? { ...msg, pending: false, content: '', media: { kind: 'image', url } }
-          : msg));
+        setMessages(m => m.map(msg => msg.id === pendingMsg.id ? { ...msg, pending: false, content: '', media: { kind: 'image', url } } : msg));
         setCredits(c => c - cost);
 
       } else if (service === 'video') {
-        const res = await fetch('/api/ltx-video', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ prompt: text }),
-        });
-        if (!res.ok) {
-          const errData = await res.json().catch(() => ({})) as { error?: string };
-          throw new Error(errData?.error || copy.errorGeneric);
-        }
-        const blob = await res.blob();
-        const url = URL.createObjectURL(blob);
-        setMessages(m => m.map(msg => msg.id === pendingMsg.id
-          ? { ...msg, pending: false, content: '', media: { kind: 'video', url } }
-          : msg));
+        const res = await fetch('/api/ltx-video', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt: text }) });
+        if (!res.ok) { const e = await res.json().catch(() => ({})) as { error?: string }; throw new Error(e?.error || copy.errorGeneric); }
+        const url = URL.createObjectURL(await res.blob());
+        setMessages(m => m.map(msg => msg.id === pendingMsg.id ? { ...msg, pending: false, content: '', media: { kind: 'video', url } } : msg));
         setCredits(c => c - cost);
 
       } else if (service === 'music') {
-        const res = await fetch('/api/udio/generate', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ prompt: text, make_instrumental: false }),
-        });
+        const res = await fetch('/api/udio/generate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt: text, make_instrumental: false }) });
         const data = await res.json() as { url?: string; audioUrl?: string; error?: string };
         const url = data?.url || data?.audioUrl;
         if (!url) throw new Error(data?.error || copy.errorGeneric);
-        setMessages(m => m.map(msg => msg.id === pendingMsg.id
-          ? { ...msg, pending: false, content: '', media: { kind: 'audio', url } }
-          : msg));
+        setMessages(m => m.map(msg => msg.id === pendingMsg.id ? { ...msg, pending: false, content: '', media: { kind: 'audio', url } } : msg));
         setCredits(c => c - cost);
 
       } else if (service === 'voice') {
-        const res = await fetch('/api/elevenlabs/tts', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text, locale: localeCode }),
-        });
+        const res = await fetch('/api/elevenlabs/tts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, locale: localeCode }) });
         if (!res.ok) throw new Error(copy.errorGeneric);
-        const blob = await res.blob();
-        const url = URL.createObjectURL(blob);
-        setMessages(m => m.map(msg => msg.id === pendingMsg.id
-          ? { ...msg, pending: false, content: '🔊 Audio ready', media: { kind: 'audio', url } }
-          : msg));
+        const url = URL.createObjectURL(await res.blob());
+        setMessages(m => m.map(msg => msg.id === pendingMsg.id ? { ...msg, pending: false, content: '🔊 Audio ready', media: { kind: 'audio', url } } : msg));
         setCredits(c => c - cost);
 
       } else {
-        // chat / text / code → Gemini streaming
-        type GeminiPart = { type: 'text'; text: string } | { type: 'image'; image: string; mimeType: string };
-        type GeminiMsg = { role: 'user' | 'assistant'; content: string } | { role: 'user'; content: GeminiPart[] };
-
-        const historyMessages = messages.filter(m => !m.pending).slice(-20)
-          .map(m => ({ role: m.role as 'user' | 'assistant', content: m.content }));
-
-        const currentMessage: GeminiMsg = attachedImage
+        // chat / text / code → Gemini streaming SSE
+        type Part = { type: 'text'; text: string } | { type: 'image'; image: string; mimeType: string };
+        type Msg = { role: 'user' | 'assistant'; content: string } | { role: 'user'; content: Part[] };
+        const history = messages.filter(m => !m.pending).slice(-20).map(m => ({ role: m.role as 'user' | 'assistant', content: m.content }));
+        const cur: Msg = attachedImage
           ? { role: 'user', content: [{ type: 'image', image: attachedImage.base64, mimeType: attachedImage.mimeType }, { type: 'text', text }] }
           : { role: 'user', content: text };
-
-        const geminiMessages: GeminiMsg[] = [...historyMessages, currentMessage];
         if (attachedImage) setAttachedImage(null);
 
-        const res = await fetch('/api/chat/gemini', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ messages: geminiMessages }),
-        });
-
+        const res = await fetch('/api/chat/gemini', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ messages: [...history, cur] }) });
         if (!res.ok || !res.body) throw new Error(copy.errorGeneric);
 
         const reader = res.body.getReader();
         const decoder = new TextDecoder();
-        let accumulated = '';
-        let buffer = '';
-
+        let accumulated = '', buffer = '';
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
@@ -513,70 +467,51 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
             const raw = line.slice(6).trim();
             if (raw === '[DONE]') break;
             try {
-              const parsed = JSON.parse(raw) as { text?: string };
-              if (parsed.text) {
-                accumulated += parsed.text;
-                setMessages(m => m.map(msg => msg.id === pendingMsg.id
-                  ? { ...msg, pending: false, content: accumulated }
-                  : msg));
+              const p = JSON.parse(raw) as { text?: string };
+              if (p.text) {
+                accumulated += p.text;
+                setMessages(m => m.map(msg => msg.id === pendingMsg.id ? { ...msg, pending: false, content: accumulated } : msg));
               }
             } catch { /* skip */ }
           }
         }
-
         if (!accumulated) throw new Error(copy.errorGeneric);
         setCredits(c => c - cost);
       }
-
     } catch (err) {
-      const errMsg = err instanceof Error ? err.message : copy.errorGeneric;
-      setMessages(m => m.map(msg => msg.id === pendingMsg.id
-        ? { ...msg, pending: false, content: `⚠️ ${errMsg}` }
-        : msg));
-      showToast(errMsg, 'error');
+      const msg = err instanceof Error ? err.message : copy.errorGeneric;
+      setMessages(m => m.map(msg2 => msg2.id === pendingMsg.id ? { ...msg2, pending: false, content: `⚠️ ${msg}` } : msg2));
+      showToast(msg, 'error');
     } finally {
       setSending(false);
       setOrbState('idle');
     }
   }, [activeService, credits, copy, localeCode, messages, sending, attachedImage, showToast]);
 
-  // Voice recording
   const toggleVoiceRecording = useCallback(() => {
     if (typeof window === 'undefined') return;
     const SR = (window as unknown as { SpeechRecognition?: new () => SpeechRecognition; webkitSpeechRecognition?: new () => SpeechRecognition }).SpeechRecognition
       || (window as unknown as { SpeechRecognition?: new () => SpeechRecognition; webkitSpeechRecognition?: new () => SpeechRecognition }).webkitSpeechRecognition;
     if (!SR) return;
-
-    if (isRecording && recogRef.current) {
-      recogRef.current.stop();
-      setIsRecording(false);
-      setOrbState('idle');
-      return;
-    }
-
+    if (isRecording && recogRef.current) { recogRef.current.stop(); setIsRecording(false); setOrbState('idle'); return; }
     const recog = new SR();
     recog.lang = localeCode === 'ka' ? 'ka-GE' : localeCode === 'ru' ? 'ru-RU' : 'en-US';
     recog.continuous = false;
     recog.interimResults = true;
-
-    let finalText = '';
+    let final = '';
     recog.onresult = (e: SpeechRecognitionEvent) => {
       let interim = '';
       for (let i = e.resultIndex; i < e.results.length; i++) {
-        const result = e.results[i];
-        if (!result) continue;
-        const alt = result[0];
+        const r = e.results[i];
+        if (!r) continue;
+        const alt = r[0];
         if (!alt) continue;
-        if (result.isFinal) finalText += alt.transcript;
+        if (r.isFinal) final += alt.transcript;
         else interim += alt.transcript;
       }
-      setInput((finalText + interim).trim());
+      setInput((final + interim).trim());
     };
-    recog.onend = () => {
-      setIsRecording(false);
-      setOrbState('idle');
-      if (finalText.trim()) send(finalText);
-    };
+    recog.onend = () => { setIsRecording(false); setOrbState('idle'); if (final.trim()) send(final); };
     recog.onerror = () => { setIsRecording(false); setOrbState('idle'); };
     recogRef.current = recog;
     recog.start();
@@ -595,353 +530,281 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
   }, []);
 
   const copyMessage = useCallback((content: string) => {
-    navigator.clipboard.writeText(content).then(() => showToast(copy.copied)).catch(() => { /* ignore */ });
+    navigator.clipboard.writeText(content).then(() => showToast(copy.copied)).catch(() => { });
   }, [copy.copied, showToast]);
 
   const retryMessage = useCallback((msg: ChatMessage) => {
-    const prev = messages.findLast(m => m.role === 'user' && m.id !== msg.id);
+    const prev = [...messages].reverse().find(m => m.role === 'user');
     if (prev) send(prev.content, msg.service);
   }, [messages, send]);
 
   const speakMessage = useCallback(async (text: string) => {
     try {
-      const res = await fetch('/api/elevenlabs/tts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text, locale: localeCode }),
-      });
+      const res = await fetch('/api/elevenlabs/tts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, locale: localeCode }) });
       if (!res.ok) return;
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const audio = new Audio(url);
-      audio.play().catch(() => { /* ignore */ });
+      const url = URL.createObjectURL(await res.blob());
+      new Audio(url).play().catch(() => { });
     } catch { /* ignore */ }
   }, [localeCode]);
 
   const toggleLike = useCallback((id: string, type: 'liked' | 'disliked') => {
     setMessages(m => m.map(msg => {
       if (msg.id !== id) return msg;
-      const isOn = msg[type];
-      return { ...msg, liked: type === 'liked' ? !isOn : false, disliked: type === 'disliked' ? !isOn : false };
+      return { ...msg, liked: type === 'liked' ? !msg.liked : false, disliked: type === 'disliked' ? !msg.disliked : false };
     }));
   }, []);
 
-  // Media items for library
+  // Media for library
   const mediaItems = useMemo(() => messages.filter(m => m.media), [messages]);
   const filteredMedia = useMemo(() => {
     if (libraryFilter === 'all') return mediaItems;
     if (libraryFilter === 'images') return mediaItems.filter(m => m.media?.kind === 'image');
     if (libraryFilter === 'videos') return mediaItems.filter(m => m.media?.kind === 'video');
     if (libraryFilter === 'audio') return mediaItems.filter(m => m.media?.kind === 'audio');
-    if (libraryFilter === 'avatars') return mediaItems.filter(m => m.service === 'avatar');
-    return mediaItems;
+    return mediaItems.filter(m => m.service === 'avatar');
   }, [mediaItems, libraryFilter]);
 
-  // Conversation groups for history
-  const conversationGroups = useMemo<ConversationGroup[]>(() => {
-    const groups: ConversationGroup[] = [];
-    let currentGroup: ConversationGroup | null = null;
-
+  // History grouped by day
+  const historyGroups = useMemo(() => {
+    const buckets: Record<string, ChatMessage[]> = { today: [], yesterday: [], last7: [], older: [] };
     for (const msg of messages) {
       if (msg.role !== 'user') continue;
-      const label = formatDate(msg.ts, copy);
-      if (!currentGroup || !sameDay(currentGroup.ts, msg.ts)) {
-        currentGroup = { id: mkId(), title: label, messages: [msg], ts: msg.ts };
-        groups.push(currentGroup);
-      } else {
-        currentGroup.messages.push(msg);
-      }
+      const b = dayBucket(msg.ts);
+      buckets[b]!.push(msg);
     }
-
-    return groups.reverse();
+    return (['today', 'yesterday', 'last7', 'older'] as const)
+      .map(key => ({ key, label: bucketLabel(key, copy), items: (buckets[key] ?? []).slice().reverse() }))
+      .filter(g => g.items.length > 0);
   }, [messages, copy]);
 
-  const anyDrawerOpen = historyOpen || profileOpen;
+  const anyDrawer = historyOpen || profileOpen;
 
   return (
     <div className="cc-root">
-      {/* ─── Toast notifications ─── */}
+
+      {/* ── Toasts ── */}
       <div className="cc-toasts">
         {toasts.map(t => (
           <div key={t.id} className={`cc-toast cc-toast-${t.type}`}>
-            {t.type === 'success' && <Check className="h-4 w-4" />}
-            {t.type === 'error' && <X className="h-4 w-4" />}
+            {t.type === 'success' && <Check style={{ width: 14, height: 14, flexShrink: 0 }} />}
+            {t.type === 'error' && <X style={{ width: 14, height: 14, flexShrink: 0 }} />}
             <span>{t.message}</span>
           </div>
         ))}
       </div>
 
-      {/* ─── Backdrop for drawers ─── */}
-      {anyDrawerOpen && (
-        <div
-          className="cc-backdrop"
-          onClick={() => { setHistoryOpen(false); setProfileOpen(false); }}
-          aria-hidden="true"
-        />
-      )}
+      {/* ── Backdrop ── */}
+      {anyDrawer && <div className="cc-backdrop" onClick={() => { setHistoryOpen(false); setProfileOpen(false); }} />}
 
-      {/* ─── History Drawer (left) ─── */}
+      {/* ── History Drawer (left) ── */}
       <aside className={`cc-drawer cc-drawer-left${historyOpen ? ' open' : ''}`}>
-        <div className="cc-drawer-header">
-          <span className="cc-drawer-title">{copy.history}</span>
-          <button type="button" className="cc-icon-btn" onClick={() => setHistoryOpen(false)} aria-label={copy.close}>
-            <X className="h-4 w-4" />
-          </button>
+        <div className="cc-drawer-top">
+          <span className="cc-drawer-title">{copy.recentConversations}</span>
+          <button type="button" className="cc-icon-btn" onClick={() => setHistoryOpen(false)}><X style={{ width: 16, height: 16 }} /></button>
         </div>
-        <button type="button" className="cc-new-chat-btn" onClick={clearChat}>
-          <Plus className="h-4 w-4" />
-          <span>{copy.newChat}</span>
-        </button>
+        <div style={{ padding: '8px 12px' }}>
+          <button type="button" className="cc-new-chat-btn" onClick={clearChat}>{copy.newChat}</button>
+        </div>
         <div className="cc-drawer-body">
-          {conversationGroups.length === 0 ? (
-            <p className="cc-empty-small">{copy.historyEmpty}</p>
+          {historyGroups.length === 0 ? (
+            <p className="cc-empty-sm">{copy.historyEmpty}</p>
           ) : (
-            conversationGroups.map(group => (
-              <div key={group.id} className="cc-hist-group">
-                <span className="cc-hist-label">{group.title}</span>
-                {group.messages.map(msg => (
-                  <button
-                    key={msg.id}
-                    type="button"
-                    className="cc-hist-item"
-                    onClick={() => {
-                      setView('chat');
-                      setHistoryOpen(false);
-                    }}
-                  >
-                    <span className="cc-hist-text">{msg.content}</span>
-                    <span className="cc-hist-time">{formatTime(msg.ts)}</span>
-                  </button>
-                ))}
+            historyGroups.map(group => (
+              <div key={group.key} className="cc-hist-section">
+                <span className="cc-hist-bucket">{group.label}</span>
+                {group.items.map(msg => {
+                  const svc = (msg.service ?? 'chat') as ServiceId;
+                  const Icon = SERVICE_ICONS[svc];
+                  const color = SERVICE_COLORS[svc];
+                  return (
+                    <button key={msg.id} type="button" className="cc-hist-row" onClick={() => { setView('chat'); setHistoryOpen(false); }}>
+                      <div className="cc-hist-icon" style={{ background: `${color}22`, border: `1px solid ${color}44` }}>
+                        <Icon style={{ width: 14, height: 14, color }} />
+                      </div>
+                      <div className="cc-hist-body">
+                        <span className="cc-hist-text">{msg.content.slice(0, 50)}{msg.content.length > 50 ? '…' : ''}</span>
+                        <span className="cc-hist-time">{relativeTime(msg.ts)}</span>
+                      </div>
+                    </button>
+                  );
+                })}
               </div>
             ))
           )}
         </div>
       </aside>
 
-      {/* ─── Profile Drawer (right) ─── */}
+      {/* ── Profile Drawer (right) ── */}
       <aside className={`cc-drawer cc-drawer-right${profileOpen ? ' open' : ''}`}>
-        <div className="cc-drawer-header">
-          <span className="cc-drawer-title">{copy.profile}</span>
-          <button type="button" className="cc-icon-btn" onClick={() => setProfileOpen(false)} aria-label={copy.close}>
-            <X className="h-4 w-4" />
-          </button>
+        <div className="cc-drawer-top" style={{ border: 'none', paddingBottom: 8 }}>
+          <button type="button" className="cc-icon-btn" onClick={() => setProfileOpen(false)}><X style={{ width: 16, height: 16 }} /></button>
         </div>
-        <div className="cc-drawer-body">
-          {/* User info */}
-          <div className="cc-profile-user">
-            <div className="cc-avatar-circle">
-              {userName ? userName.charAt(0).toUpperCase() : 'U'}
-            </div>
-            <div className="cc-profile-info">
-              <span className="cc-profile-name">{userName || 'User'}</span>
-              <span className="cc-profile-plan cc-plan-free">{copy.free}</span>
+        <div className="cc-drawer-body" style={{ paddingTop: 0 }}>
+          {/* User */}
+          <div className="cc-prof-user">
+            <div className="cc-prof-avatar">{(userName || 'U').charAt(0).toUpperCase()}</div>
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 600, color: '#fff' }}>{userName || 'glo@myavatar.ge'}</div>
+              <span className="cc-starter-badge">{copy.starter}</span>
             </div>
           </div>
 
           {/* Credits */}
           <div className="cc-credits-card">
-            <div className="flex items-center gap-2">
-              <Zap className="h-4 w-4 text-purple-300" />
-              <span className="text-sm text-white/70">{copy.credits}</span>
-            </div>
-            <span className="cc-credits-big">{credits.toLocaleString()}</span>
-            <div className="cc-credits-bar">
-              <div className="cc-credits-fill" style={{ width: `${Math.min((credits / 5000) * 100, 100)}%` }} />
-            </div>
+            <span className="cc-credits-label">{copy.creditsRemaining}</span>
+            <span className="cc-credits-num">{credits.toLocaleString()}</span>
+            <div className="cc-credits-bar"><div className="cc-credits-fill" style={{ width: `${Math.min((credits / 10000) * 100, 100)}%` }} /></div>
+            <span className="cc-credits-sub">{copy.monthlyReset}</span>
           </div>
 
-          {/* Model */}
-          <div className="cc-profile-section">
-            <span className="cc-section-label">{copy.model}</span>
-            <div className="cc-model-pill">
-              <span className="cc-model-dot" />
-              <span>Gemini 2.5 Flash</span>
-            </div>
+          {/* Model selector */}
+          <div className="cc-model-section">
+            <span className="cc-section-lbl">{copy.model}</span>
+            {MODELS.map(m => (
+              <label key={m.id} className={`cc-model-row${selectedModel === m.id ? ' selected' : ''}`}>
+                <input type="radio" name="model" value={m.id} checked={selectedModel === m.id} onChange={() => setSelectedModel(m.id)} style={{ display: 'none' }} />
+                <span className={`cc-radio${selectedModel === m.id ? ' on' : ''}`} />
+                <span style={{ flex: 1, fontSize: 13, color: selectedModel === m.id ? '#fff' : 'rgba(255,255,255,0.65)' }}>{m.label}</span>
+                <span className="cc-model-badge" style={{ background: `${m.badgeColor}22`, color: m.badgeColor, border: `1px solid ${m.badgeColor}44` }}>{m.badge}</span>
+              </label>
+            ))}
           </div>
 
-          {/* Menu items */}
-          <nav className="cc-profile-nav">
-            <button type="button" className="cc-nav-item" onClick={() => { setView('pricing'); setProfileOpen(false); }}>
-              <CreditCard className="h-4 w-4" />
-              <span>{copy.plan}</span>
-              <ChevronRight className="h-4 w-4 ml-auto opacity-40" />
+          {/* Nav links */}
+          <nav className="cc-prof-nav">
+            <button type="button" className="cc-prof-link" onClick={() => { setView('library'); setProfileOpen(false); }}>
+              <LibraryIcon style={{ width: 16, height: 16 }} /><span>{copy.mediaLibrary}</span><ChevronRight style={{ width: 14, height: 14, marginLeft: 'auto', opacity: 0.4 }} />
             </button>
-            <button type="button" className="cc-nav-item">
-              <Settings className="h-4 w-4" />
-              <span>{copy.settings}</span>
-              <ChevronRight className="h-4 w-4 ml-auto opacity-40" />
+            <button type="button" className="cc-prof-link">
+              <Settings style={{ width: 16, height: 16 }} /><span>{copy.settings}</span><ChevronRight style={{ width: 14, height: 14, marginLeft: 'auto', opacity: 0.4 }} />
             </button>
-            <button type="button" className="cc-nav-item cc-nav-danger">
-              <LogOut className="h-4 w-4" />
-              <span>{copy.signOut}</span>
+            <button type="button" className="cc-prof-link">
+              <HelpCircle style={{ width: 16, height: 16 }} /><span>{copy.helpDocs}</span><ChevronRight style={{ width: 14, height: 14, marginLeft: 'auto', opacity: 0.4 }} />
+            </button>
+            <div className="cc-prof-divider" />
+            <button type="button" className="cc-prof-link cc-danger">
+              <LogOut style={{ width: 16, height: 16 }} /><span>{copy.signOut}</span>
             </button>
           </nav>
         </div>
       </aside>
 
-      {/* ─── Header ─── */}
+      {/* ── Header ── */}
       <header className="cc-header">
-        <button
-          type="button"
-          className="cc-icon-btn"
-          onClick={() => { setHistoryOpen(true); setProfileOpen(false); }}
-          aria-label={copy.history}
-        >
-          <HistoryIcon className="h-5 w-5" />
+        <button type="button" className="cc-icon-btn" onClick={() => { setHistoryOpen(true); setProfileOpen(false); }} aria-label="History">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="3" y1="6" x2="21" y2="6" /><line x1="3" y1="12" x2="21" y2="12" /><line x1="3" y1="18" x2="21" y2="18" />
+          </svg>
         </button>
-
-        <div className="cc-header-center">
-          <div className={`cc-orb${orbState === 'listening' ? ' orb-listening' : orbState === 'speaking' ? ' orb-speaking' : ''}`}>
-            <span className="cc-orb-letter">G</span>
-          </div>
-          <div className="cc-header-text">
-            <span className="cc-header-title">{copy.title}</span>
-            <span className="cc-header-sub">{copy.subtitle}</span>
-          </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: 13, fontWeight: 500, color: 'rgba(255,255,255,0.5)' }}>{copy.title}</span>
+          <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.2)' }}>·</span>
+          <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', fontWeight: 400 }}>
+            {MODELS.find(m => m.id === selectedModel)?.label ?? 'Gemini 2.0 Flash'}
+          </span>
         </div>
-
-        <button
-          type="button"
-          className="cc-icon-btn"
-          onClick={() => { setProfileOpen(true); setHistoryOpen(false); }}
-          aria-label={copy.profile}
-        >
-          <UserIcon className="h-5 w-5" />
+        <button type="button" className="cc-icon-btn" onClick={() => { setProfileOpen(true); setHistoryOpen(false); }} aria-label="Profile">
+          <UserIcon style={{ width: 18, height: 18 }} />
         </button>
       </header>
 
-      {/* ─── Tab Bar ─── */}
-      <nav className="cc-tabs">
-        <button
-          type="button"
-          className={`cc-tab${view === 'chat' ? ' active' : ''}`}
-          onClick={() => setView('chat')}
-        >
-          <Home className="h-3.5 w-3.5" />
-          <span>{copy.tabs.chat}</span>
-          {view === 'chat' && <span className="cc-tab-dot" />}
-        </button>
-        <button
-          type="button"
-          className={`cc-tab${view === 'library' ? ' active' : ''}`}
-          onClick={() => setView('library')}
-        >
-          <LibraryIcon className="h-3.5 w-3.5" />
-          <span>{copy.tabs.library}</span>
-        </button>
-        <button
-          type="button"
-          className={`cc-tab${view === 'pricing' ? ' active' : ''}`}
-          onClick={() => setView('pricing')}
-        >
-          <Zap className="h-3.5 w-3.5" />
-          <span>{copy.tabs.pricing}</span>
-        </button>
-      </nav>
-
-      {/* ─── Main Content ─── */}
+      {/* ── Main content ── */}
       <main className="cc-main" ref={scrollRef}>
-        {/* ── Chat View ── */}
+
+        {/* CHAT */}
         {view === 'chat' && (
-          <div className="cc-chat">
-            {messages.length === 0 ? (
-              <div className="cc-empty">
-                <div className="cc-orb cc-orb-lg">
-                  <span className="cc-orb-letter" style={{ fontSize: 28 }}>G</span>
-                </div>
-                <p className="cc-empty-text">{copy.empty}</p>
-                {/* Quick start chips */}
-                <div className="cc-quick-chips">
-                  {(['image', 'video', 'music', 'avatar'] as ServiceId[]).map(id => {
-                    const Icon = SERVICE_ICONS[id];
-                    return (
-                      <button
-                        key={id}
-                        type="button"
-                        className="cc-chip"
-                        onClick={() => setActiveService(id)}
-                      >
-                        <Icon className="h-3.5 w-3.5" />
-                        <span>{copy.services[id]}</span>
-                      </button>
-                    );
-                  })}
-                </div>
+          messages.length === 0 ? (
+            /* Empty / standby state */
+            <div className="cc-standby">
+              <div className={`cc-orb-lg${orbState === 'listening' ? ' orb-listening' : orbState === 'speaking' ? ' orb-speaking' : ''}`}>
+                <span className="cc-orb-g">G</span>
               </div>
-            ) : (
-              <div className="cc-messages">
-                {messages.map((msg, i) => {
-                  const prevMsg = messages[i - 1];
-                  const showDivider = !prevMsg || !sameDay(prevMsg.ts, msg.ts);
+              <div className="cc-standby-status">{copy.standby}</div>
+              <h1 className="cc-standby-title">{copy.agentLabel}</h1>
+
+              {/* Voice & Text Mode toggle */}
+              <div className="cc-voice-toggle">
+                <span className="cc-voice-toggle-label">{copy.voiceTextMode}</span>
+                <button
+                  type="button"
+                  className={`cc-toggle${voiceMode ? ' on' : ''}`}
+                  onClick={() => setVoiceMode(v => !v)}
+                  aria-pressed={voiceMode}
+                  role="switch"
+                >
+                  <span className="cc-toggle-thumb" />
+                </button>
+              </div>
+
+              {/* Quick service cards */}
+              <div className="cc-quick-cards">
+                {QUICK_SERVICES.map(id => {
+                  const Icon = SERVICE_ICONS[id];
                   return (
-                    <div key={msg.id}>
-                      {showDivider && (
-                        <div className="cc-day-divider">
-                          <span>{formatDate(msg.ts, copy)}</span>
-                        </div>
-                      )}
-                      <MessageRow
-                        msg={msg}
-                        copy={copy}
-                        onCopy={() => copyMessage(msg.content)}
-                        onRetry={() => retryMessage(msg)}
-                        onSpeak={() => speakMessage(msg.content)}
-                        onLike={() => toggleLike(msg.id, 'liked')}
-                        onDislike={() => toggleLike(msg.id, 'disliked')}
-                      />
-                    </div>
+                    <button key={id} type="button" className="cc-quick-card" onClick={() => { setActiveService(id); inputRef.current?.focus(); }}>
+                      <Icon style={{ width: 18, height: 18, color: SERVICE_COLORS[id] }} />
+                      <span>{copy.services[id]}</span>
+                      <span className="cc-quick-cost"><Zap style={{ width: 9, height: 9 }} />{SERVICE_COSTS[id]}</span>
+                    </button>
                   );
                 })}
               </div>
-            )}
-          </div>
+            </div>
+          ) : (
+            /* Messages */
+            <div className="cc-messages">
+              {messages.map((msg, i) => {
+                const prev = messages[i - 1];
+                const showDiv = !prev || !sameDay(prev.ts, msg.ts);
+                return (
+                  <div key={msg.id}>
+                    {showDiv && (
+                      <div className="cc-day-div">
+                        <span>{bucketLabel(dayBucket(msg.ts), copy)}</span>
+                      </div>
+                    )}
+                    <MessageRow
+                      msg={msg} copy={copy}
+                      onCopy={() => copyMessage(msg.content)}
+                      onRetry={() => retryMessage(msg)}
+                      onSpeak={() => speakMessage(msg.content)}
+                      onLike={() => toggleLike(msg.id, 'liked')}
+                      onDislike={() => toggleLike(msg.id, 'disliked')}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+          )
         )}
 
-        {/* ── Library View ── */}
+        {/* LIBRARY */}
         {view === 'library' && (
           <div className="cc-library">
-            {/* Filter pills */}
             <div className="cc-lib-filters">
               {(['all', 'images', 'videos', 'audio', 'avatars'] as LibraryFilter[]).map(f => (
-                <button
-                  key={f}
-                  type="button"
-                  className={`cc-filter-pill${libraryFilter === f ? ' active' : ''}`}
-                  onClick={() => setLibraryFilter(f)}
-                >
-                  {f === 'all' && copy.filterAll}
-                  {f === 'images' && copy.filterImages}
-                  {f === 'videos' && copy.filterVideos}
-                  {f === 'audio' && copy.filterAudio}
-                  {f === 'avatars' && copy.filterAvatars}
+                <button key={f} type="button" className={`cc-filter${libraryFilter === f ? ' active' : ''}`} onClick={() => setLibraryFilter(f)}>
+                  {f === 'all' && copy.filterAll}{f === 'images' && copy.filterImages}{f === 'videos' && copy.filterVideos}{f === 'audio' && copy.filterAudio}{f === 'avatars' && copy.filterAvatars}
                 </button>
               ))}
             </div>
             {filteredMedia.length === 0 ? (
-              <div className="cc-empty">
-                <LibraryIcon className="h-12 w-12 text-white/20" />
-                <p className="cc-empty-text">{copy.libraryEmpty}</p>
+              <div className="cc-standby" style={{ paddingTop: 48 }}>
+                <LibraryIcon style={{ width: 48, height: 48, color: 'rgba(255,255,255,0.15)' }} />
+                <p style={{ fontSize: 14, color: 'rgba(255,255,255,0.4)', marginTop: 12 }}>{copy.libraryEmpty}</p>
               </div>
             ) : (
               <div className="cc-lib-grid">
                 {filteredMedia.map(m => (
                   <div key={m.id} className="cc-lib-item">
-                    {m.media?.kind === 'image' && (
-                      <img src={m.media.url} alt="" className="cc-lib-media" loading="lazy" />
-                    )}
-                    {m.media?.kind === 'video' && (
-                      <video src={m.media.url} className="cc-lib-media" muted loop />
-                    )}
+                    {m.media?.kind === 'image' && <img src={m.media.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} loading="lazy" />}
+                    {m.media?.kind === 'video' && <video src={m.media.url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} muted loop />}
                     {m.media?.kind === 'audio' && (
-                      <div className="cc-lib-audio">
-                        <MusicIcon className="h-10 w-10 text-purple-300" />
-                        <span className="text-xs text-white/50 mt-1">{formatTime(m.ts)}</span>
+                      <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: 'rgba(139,92,246,0.08)' }}>
+                        <MusicIcon style={{ width: 32, height: 32, color: 'rgba(167,139,250,0.7)' }} />
                       </div>
                     )}
-                    <div className="cc-lib-overlay">
-                      <span className="text-[10px] text-white/80 uppercase">{m.service ?? 'ai'}</span>
-                    </div>
+                    <div className="cc-lib-badge">{m.service ?? 'ai'}</div>
                   </div>
                 ))}
               </div>
@@ -949,113 +812,67 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
           </div>
         )}
 
-        {/* ── Pricing View ── */}
+        {/* PRICING */}
         {view === 'pricing' && (
           <div className="cc-pricing">
-            <h2 className="cc-pricing-title">Choose Your Plan</h2>
+            <h2 className="cc-pricing-h">Choose Your Plan</h2>
             <p className="cc-pricing-sub">Unlock the full power of AI creation</p>
             <div className="cc-plans">
-              {/* Free */}
-              <div className="cc-plan">
-                <div className="cc-plan-header">
-                  <span className="cc-plan-name">{copy.free}</span>
-                  <span className="cc-plan-price">$0<span className="cc-plan-period">/mo</span></span>
-                </div>
-                <ul className="cc-plan-features">
-                  <li><Check className="h-3.5 w-3.5 text-green-400" /><span>100 credits/month</span></li>
-                  <li><Check className="h-3.5 w-3.5 text-green-400" /><span>Basic chat</span></li>
-                  <li><Check className="h-3.5 w-3.5 text-green-400" /><span>5 image generations</span></li>
-                </ul>
-                <button type="button" className="cc-plan-btn cc-plan-btn-outline">Current Plan</button>
-              </div>
-
-              {/* Pro */}
-              <div className="cc-plan cc-plan-featured">
-                <div className="cc-plan-badge">Popular</div>
-                <div className="cc-plan-header">
-                  <span className="cc-plan-name">{copy.pro}</span>
-                  <span className="cc-plan-price">$20<span className="cc-plan-period">/mo</span></span>
-                </div>
-                <ul className="cc-plan-features">
-                  <li><Check className="h-3.5 w-3.5 text-purple-400" /><span>5,000 credits/month</span></li>
-                  <li><Check className="h-3.5 w-3.5 text-purple-400" /><span>All AI services</span></li>
-                  <li><Check className="h-3.5 w-3.5 text-purple-400" /><span>Priority generation</span></li>
-                  <li><Check className="h-3.5 w-3.5 text-purple-400" /><span>HD video output</span></li>
-                </ul>
-                <button type="button" className="cc-plan-btn cc-plan-btn-primary">Upgrade to Pro</button>
-              </div>
-
-              {/* Business */}
-              <div className="cc-plan">
-                <div className="cc-plan-header">
-                  <span className="cc-plan-name">{copy.business}</span>
-                  <span className="cc-plan-price">$40<span className="cc-plan-period">/mo</span></span>
-                </div>
-                <ul className="cc-plan-features">
-                  <li><Check className="h-3.5 w-3.5 text-green-400" /><span>15,000 credits/month</span></li>
-                  <li><Check className="h-3.5 w-3.5 text-green-400" /><span>API access</span></li>
-                  <li><Check className="h-3.5 w-3.5 text-green-400" /><span>Custom avatars</span></li>
-                  <li><Check className="h-3.5 w-3.5 text-green-400" /><span>Team workspace</span></li>
-                </ul>
-                <button type="button" className="cc-plan-btn cc-plan-btn-outline">Get Business</button>
-              </div>
+              <PlanCard name={copy.free} price="$0" period="/mo" features={['100 credits/month', 'Basic chat', '5 image generations']} accent="#6b7280" btnClass="cc-btn-outline" btnText="Current Plan" />
+              <PlanCard name={copy.pro} price="$20" period="/mo" features={['5,000 credits/month', 'All AI services', 'Priority generation', 'HD video output']} accent="#8b5cf6" btnClass="cc-btn-primary" btnText="Upgrade to Pro" badge="Popular" />
+              <PlanCard name={copy.business} price="$40" period="/mo" features={['15,000 credits/month', 'API access', 'Custom avatars', 'Team workspace']} accent="#6b7280" btnClass="cc-btn-outline" btnText="Get Business" />
             </div>
-
-            {/* Credit table */}
             <div className="cc-credit-table">
-              <h3 className="cc-credit-table-title">Credit Costs</h3>
-              <div className="cc-credit-rows">
-                {(Object.entries(SERVICE_COSTS) as [ServiceId, number][]).map(([svc, cost]) => {
-                  const Icon = SERVICE_ICONS[svc];
-                  return (
-                    <div key={svc} className="cc-credit-row">
-                      <div className="flex items-center gap-2">
-                        <Icon className="h-4 w-4 text-purple-400" />
-                        <span className="text-sm text-white/80 capitalize">{copy.services[svc]}</span>
+              <div className="cc-credit-table-hd">Credit Costs</div>
+              {(Object.entries(SERVICE_COSTS) as [ServiceId, number][]).map(([svc, cost]) => {
+                const Icon = SERVICE_ICONS[svc];
+                return (
+                  <div key={svc} className="cc-credit-row">
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <div style={{ width: 28, height: 28, borderRadius: 8, background: `${SERVICE_COLORS[svc]}18`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <Icon style={{ width: 14, height: 14, color: SERVICE_COLORS[svc] }} />
                       </div>
-                      <span className="cc-credit-cost">
-                        <Zap className="h-3 w-3 text-purple-400 inline mr-0.5" />
-                        {cost}
-                      </span>
+                      <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.75)', textTransform: 'capitalize' }}>{copy.services[svc]}</span>
                     </div>
-                  );
-                })}
-              </div>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: 'rgba(167,139,250,0.9)', display: 'flex', alignItems: 'center', gap: 3 }}>
+                      <Zap style={{ width: 11, height: 11 }} />{cost}
+                    </span>
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}
       </main>
 
-      {/* ─── Service Rail (chat only) ─── */}
-      {view === 'chat' && (
-        <div className="cc-rail">
-          <button
-            type="button"
-            className="cc-hub-btn"
-            onClick={() => setHubOpen(v => !v)}
-          >
-            <span className="cc-hub-icon"><Menu className="h-4 w-4" /></span>
-            <div className="cc-hub-text">
-              <span className="text-sm font-semibold text-white">{copy.aiServices}</span>
-              <span className="text-[11px] text-white/50">{copy.creativeTools}</span>
-            </div>
-            <ChevronRight className="h-4 w-4 text-white/40 ml-auto" />
+      {/* ── Bottom nav tabs ── */}
+      <nav className="cc-tabs">
+        {(['chat', 'library', 'pricing'] as View[]).map(v => (
+          <button key={v} type="button" className={`cc-tab${view === v ? ' active' : ''}`} onClick={() => setView(v)}>
+            {v === 'chat' && <HomeIcon style={{ width: 16, height: 16 }} />}
+            {v === 'library' && <LibraryIcon style={{ width: 16, height: 16 }} />}
+            {v === 'pricing' && <Zap style={{ width: 16, height: 16 }} />}
+            <span>{copy.tabs[v]}</span>
           </button>
+        ))}
+      </nav>
 
-          <div className="cc-service-pills">
-            {QUICK_SERVICES.map(id => {
+      {/* ── Service rail (chat only, with messages) ── */}
+      {view === 'chat' && messages.length > 0 && (
+        <div className="cc-rail">
+          <button type="button" className="cc-rail-hub" onClick={() => setHubOpen(v => !v)}>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="3" /><path d="M12 2v3m0 14v3M4.22 4.22l2.12 2.12m11.32 11.32 2.12 2.12M2 12h3m14 0h3M4.22 19.78l2.12-2.12M17.66 6.34l2.12-2.12" />
+            </svg>
+            <span style={{ fontSize: 12, fontWeight: 600 }}>{copy.aiServices}</span>
+          </button>
+          <div className="cc-pills">
+            {(['avatar', 'image', 'video', 'music', 'text', 'code', 'voice'] as ServiceId[]).map(id => {
               const Icon = SERVICE_ICONS[id];
               const active = activeService === id;
               return (
-                <button
-                  key={id}
-                  type="button"
-                  onClick={() => setActiveService(id)}
-                  aria-pressed={active}
-                  className={`cc-pill${active ? ' active' : ''}`}
-                >
-                  <Icon className="h-[17px] w-[17px]" />
-                  <span>{copy.services[id]}</span>
+                <button key={id} type="button" className={`cc-pill${active ? ' active' : ''}`} onClick={() => setActiveService(id)}>
+                  <Icon style={{ width: 15, height: 15 }} /><span>{copy.services[id]}</span>
                 </button>
               );
             })}
@@ -1063,1074 +880,400 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
         </div>
       )}
 
-      {/* ─── Input Bar (chat only) ─── */}
+      {/* ── Input bar (chat only) ── */}
       {view === 'chat' && (
         <div className="cc-input-wrap">
-          {/* Attached image preview */}
           {attachedImage && (
-            <div className="cc-attachment">
-              <img src={attachedImage.base64} alt="" className="cc-attachment-img" />
-              <button type="button" className="cc-attachment-rm" onClick={() => setAttachedImage(null)}>
-                <X className="h-3 w-3" />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0 4px 8px' }}>
+              <img src={attachedImage.base64} alt="" style={{ width: 52, height: 52, borderRadius: 10, objectFit: 'cover', border: '1px solid rgba(255,255,255,0.15)' }} />
+              <button type="button" onClick={() => setAttachedImage(null)} style={{ width: 22, height: 22, borderRadius: '50%', background: 'rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.6)' }}>
+                <X style={{ width: 12, height: 12 }} />
               </button>
             </div>
           )}
-
-          {/* Credits display */}
-          <div className="cc-input-meta">
-            <span className="cc-credits-badge">
-              <Zap className="h-3 w-3" />
-              {credits.toLocaleString()}
-            </span>
-            {sending && <span className="cc-sending-text">{copy.sending}</span>}
-          </div>
-
           <div className="cc-input-bar">
-            <button
-              type="button"
-              className="cc-input-btn"
-              aria-label="More"
-              onClick={() => setHubOpen(v => !v)}
-            >
-              <Plus className="h-5 w-5" />
-            </button>
-
+            <button type="button" className="cc-ibtn" onClick={() => setHubOpen(v => !v)} aria-label="Services"><Plus style={{ width: 18, height: 18 }} /></button>
             <textarea
-              ref={inputRef}
-              value={input}
-              onChange={e => setInput(e.target.value)}
-              onKeyDown={handleKey}
-              rows={1}
-              placeholder={isRecording ? copy.listening : copy.placeholder}
-              className="cc-textarea"
-              inputMode="text"
+              ref={inputRef} value={input} onChange={e => setInput(e.target.value)} onKeyDown={handleKey}
+              rows={1} placeholder={isRecording ? copy.listening : copy.placeholder} className="cc-textarea"
             />
-
             {isRecording && (
-              <div className="cc-waveform" aria-hidden="true">
+              <div style={{ display: 'flex', alignItems: 'center', gap: 2, padding: '0 6px' }}>
                 {[3, 5, 8, 6, 9, 4, 7].map((h, i) => (
-                  <span key={i} className="cc-wave-bar" style={{ height: `${h * 2}px`, animationDelay: `${i * 80}ms` }} />
+                  <span key={i} style={{ display: 'block', width: 2, height: h * 2, borderRadius: 1, background: 'rgba(167,139,250,0.9)', animation: `cc-wave 0.9s ${i * 80}ms ease-in-out infinite` }} />
                 ))}
               </div>
             )}
-
-            <button
-              type="button"
-              className="cc-input-btn"
-              aria-label="Attach image"
-              onClick={() => fileInputRef.current?.click()}
-              style={attachedImage ? { color: 'rgba(167,139,250,1)', background: 'rgba(139,92,246,0.2)' } : undefined}
-            >
-              <Paperclip className="h-5 w-5" />
+            <button type="button" className="cc-ibtn" onClick={() => fileInputRef.current?.click()} style={attachedImage ? { color: 'rgba(167,139,250,1)', background: 'rgba(139,92,246,0.18)' } : undefined}>
+              <Paperclip style={{ width: 18, height: 18 }} />
             </button>
-
-            <button
-              type="button"
-              className={`cc-input-btn${isRecording ? ' recording' : ''}`}
-              aria-label="Voice"
-              aria-pressed={isRecording}
-              onClick={toggleVoiceRecording}
-            >
-              <Mic className="h-5 w-5" />
+            <button type="button" className={`cc-ibtn${isRecording ? ' rec' : ''}`} onClick={toggleVoiceRecording} aria-pressed={isRecording}>
+              <Mic style={{ width: 18, height: 18 }} />
               {isRecording && <span className="cc-rec-dot" />}
             </button>
-
-            <button
-              type="button"
-              className={`cc-send-btn${(input.trim() && !sending) ? ' ready' : ''}`}
-              aria-label="Send"
-              disabled={!input.trim() || sending}
-              onClick={() => send(input)}
-            >
-              {sending ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
+            <button type="button" className={`cc-send${(input.trim() && !sending) ? ' ready' : ''}`} disabled={!input.trim() || sending} onClick={() => send(input)}>
+              {sending ? <Loader2 style={{ width: 17, height: 17 }} className="cc-spin" /> : <Send style={{ width: 17, height: 17 }} />}
             </button>
           </div>
         </div>
       )}
 
-      {/* ─── Hidden file input ─── */}
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept="image/*"
-        className="hidden"
-        onChange={handleFileSelect}
-        aria-hidden="true"
-      />
+      <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleFileSelect} aria-hidden="true" />
 
-      {/* ─── Agent Hub popup ─── */}
+      {/* ── Agent Hub bottom sheet ── */}
       {hubOpen && (
-        <div className="cc-hub-overlay" onClick={() => setHubOpen(false)} aria-hidden="true">
+        <div className="cc-hub-overlay" onClick={() => setHubOpen(false)}>
           <div className="cc-hub" onClick={e => e.stopPropagation()}>
-            <div className="cc-hub-header">
-              <span className="cc-hub-title">{copy.aiServices}</span>
-              <button type="button" className="cc-icon-btn" onClick={() => setHubOpen(false)} style={{ height: 32, width: 32 }}>
-                <X className="h-4 w-4" />
-              </button>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px 10px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+              <span style={{ fontSize: 14, fontWeight: 600, color: '#fff' }}>{copy.aiServices}</span>
+              <button type="button" className="cc-icon-btn" style={{ width: 30, height: 30 }} onClick={() => setHubOpen(false)}><X style={{ width: 14, height: 14 }} /></button>
             </div>
             <div className="cc-hub-grid">
               {([
-                { id: 'avatar' as ServiceId, Icon: UserIcon },
-                { id: 'image' as ServiceId, Icon: ImageIcon },
-                { id: 'video' as ServiceId, Icon: VideoIcon },
-                { id: 'music' as ServiceId, Icon: MusicIcon },
-                { id: 'text' as ServiceId, Icon: TextIcon },
-                { id: 'code' as ServiceId, Icon: CodeIcon },
-                { id: 'voice' as ServiceId, Icon: Volume2 },
-                { id: 'chat' as ServiceId, Icon: HomeIcon },
-              ]).map(({ id, Icon }) => (
-                <button
-                  key={id}
-                  type="button"
-                  className={`cc-hub-item${activeService === id ? ' active' : ''}`}
-                  onClick={() => { setActiveService(id); setHubOpen(false); }}
-                >
-                  <div className="cc-hub-item-icon">
-                    <Icon className="h-5 w-5" />
-                  </div>
-                  <span className="cc-hub-item-name">{copy.services[id]}</span>
-                  <span className="cc-hub-item-cost">
-                    <Zap className="h-2.5 w-2.5 inline mr-0.5 text-purple-400" />
-                    {SERVICE_COSTS[id]}
-                  </span>
-                </button>
-              ))}
+                { id: 'avatar' as ServiceId }, { id: 'image' as ServiceId }, { id: 'video' as ServiceId }, { id: 'music' as ServiceId },
+                { id: 'text' as ServiceId }, { id: 'code' as ServiceId }, { id: 'voice' as ServiceId }, { id: 'chat' as ServiceId },
+              ]).map(({ id }) => {
+                const Icon = SERVICE_ICONS[id];
+                const active = activeService === id;
+                return (
+                  <button key={id} type="button" className={`cc-hub-item${active ? ' active' : ''}`} onClick={() => { setActiveService(id); setHubOpen(false); }}>
+                    <div className="cc-hub-icon" style={{ background: `${SERVICE_COLORS[id]}18`, border: `1px solid ${SERVICE_COLORS[id]}35` }}>
+                      <Icon style={{ width: 18, height: 18, color: SERVICE_COLORS[id] }} />
+                    </div>
+                    <span className="cc-hub-name">{copy.services[id]}</span>
+                    <span className="cc-hub-cost"><Zap style={{ width: 9, height: 9, display: 'inline' }} />{SERVICE_COSTS[id]}</span>
+                  </button>
+                );
+              })}
             </div>
           </div>
         </div>
       )}
 
-      {/* ─── Styles ─── */}
+      {/* ── Global styles ── */}
       <style jsx>{`
-        /* === Root === */
         .cc-root {
-          position: relative;
-          display: flex;
-          flex-direction: column;
-          height: 100%;
-          width: 100%;
-          overflow: hidden;
-          background:
-            radial-gradient(1400px 700px at 75% -120px, rgba(139, 92, 246, 0.13), transparent 60%),
-            radial-gradient(1000px 600px at -5% 110%, rgba(124, 58, 237, 0.09), transparent 60%),
-            #0a0a0e;
-          color: #f8f8fc;
-          font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', system-ui, sans-serif;
+          position: relative; display: flex; flex-direction: column;
+          height: 100%; width: 100%; overflow: hidden;
+          background: radial-gradient(1400px 700px at 70% -100px, rgba(139,92,246,0.12), transparent 60%),
+                      radial-gradient(900px 600px at -5% 110%, rgba(109,40,217,0.08), transparent 55%),
+                      #0a0a0e;
+          color: #f5f5f7;
+          font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', system-ui, sans-serif;
           -webkit-font-smoothing: antialiased;
         }
-
-        /* === Backdrop === */
-        .cc-backdrop {
-          position: fixed;
-          inset: 0;
-          z-index: 40;
-          background: rgba(0, 0, 0, 0.6);
-          backdrop-filter: blur(4px);
-        }
-
-        /* === Drawers === */
+        /* Backdrop */
+        .cc-backdrop { position: fixed; inset: 0; z-index: 40; background: rgba(0,0,0,0.65); backdrop-filter: blur(5px); }
+        /* Drawers */
         .cc-drawer {
-          position: fixed;
-          top: 0;
-          bottom: 0;
-          z-index: 50;
-          width: 280px;
-          background: #111116;
-          border-color: rgba(255,255,255,0.07);
-          display: flex;
-          flex-direction: column;
-          transition: transform 0.28s cubic-bezier(0.32, 0.72, 0, 1);
+          position: fixed; top: 0; bottom: 0; z-index: 50; width: 300px;
+          background: #0f0f14; display: flex; flex-direction: column;
+          transition: transform 0.28s cubic-bezier(0.32,0.72,0,1);
         }
-        .cc-drawer-left {
-          left: 0;
-          border-right: 1px solid rgba(255,255,255,0.07);
-          transform: translateX(-100%);
+        .cc-drawer-left { left:0; border-right:1px solid rgba(255,255,255,0.07); transform:translateX(-100%); }
+        .cc-drawer-right { right:0; border-left:1px solid rgba(255,255,255,0.07); transform:translateX(100%); }
+        .cc-drawer.open { transform: translateX(0); }
+        .cc-drawer-top {
+          display: flex; align-items: center; justify-content: space-between;
+          padding: 14px 14px 12px; border-bottom: 1px solid rgba(255,255,255,0.06);
         }
-        .cc-drawer-right {
-          right: 0;
-          border-left: 1px solid rgba(255,255,255,0.07);
-          transform: translateX(100%);
-        }
-        .cc-drawer.open {
-          transform: translateX(0);
-        }
-        .cc-drawer-header {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          padding: 16px;
-          border-bottom: 1px solid rgba(255,255,255,0.06);
-        }
-        .cc-drawer-title {
-          font-size: 15px;
-          font-weight: 600;
-          color: #fff;
-        }
-        .cc-drawer-body {
-          flex: 1;
-          overflow-y: auto;
-          padding: 12px 0;
-        }
-        .cc-drawer-body::-webkit-scrollbar { width: 4px; }
-        .cc-drawer-body::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 2px; }
+        .cc-drawer-title { font-size:14px; font-weight:600; color:#fff; }
+        .cc-drawer-body { flex:1; overflow-y:auto; }
+        .cc-drawer-body::-webkit-scrollbar { width:3px; }
+        .cc-drawer-body::-webkit-scrollbar-thumb { background:rgba(255,255,255,0.08); border-radius:2px; }
         .cc-new-chat-btn {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          margin: 8px 12px 4px;
-          padding: 10px 14px;
-          border-radius: 12px;
-          border: 1px dashed rgba(139,92,246,0.35);
-          background: rgba(139,92,246,0.08);
-          color: rgba(167,139,250,1);
-          font-size: 13px;
-          font-weight: 500;
-          cursor: pointer;
+          display: block; width: 100%; padding: 9px 12px; border-radius: 10px; text-align: left;
+          border: 1px dashed rgba(139,92,246,0.35); background: rgba(139,92,246,0.07);
+          color: rgba(167,139,250,0.9); font-size: 13px; font-weight: 500; cursor: pointer;
           transition: background 0.15s;
         }
-        .cc-new-chat-btn:hover { background: rgba(139,92,246,0.15); }
-        .cc-empty-small {
-          padding: 24px 16px;
-          text-align: center;
-          font-size: 13px;
-          color: rgba(255,255,255,0.35);
-        }
-
-        /* History items */
-        .cc-hist-group { padding: 4px 0; }
-        .cc-hist-label {
-          display: block;
-          padding: 8px 16px 4px;
-          font-size: 10px;
-          font-weight: 600;
-          text-transform: uppercase;
-          letter-spacing: 0.06em;
-          color: rgba(255,255,255,0.35);
-        }
-        .cc-hist-item {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          gap: 8px;
-          width: 100%;
-          padding: 10px 16px;
-          text-align: left;
-          cursor: pointer;
-          transition: background 0.12s;
-        }
-        .cc-hist-item:hover { background: rgba(255,255,255,0.04); }
-        .cc-hist-text {
-          font-size: 13px;
-          color: rgba(255,255,255,0.75);
-          overflow: hidden;
-          text-overflow: ellipsis;
-          white-space: nowrap;
-          flex: 1;
-        }
-        .cc-hist-time {
-          font-size: 10px;
+        .cc-new-chat-btn:hover { background: rgba(139,92,246,0.14); }
+        .cc-empty-sm { padding: 24px 16px; text-align: center; font-size: 13px; color: rgba(255,255,255,0.3); }
+        /* History rows */
+        .cc-hist-section { padding: 4px 0 8px; }
+        .cc-hist-bucket {
+          display: block; padding: 8px 14px 5px;
+          font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em;
           color: rgba(255,255,255,0.3);
-          flex-shrink: 0;
         }
-
+        .cc-hist-row {
+          display: flex; align-items: center; gap: 10px; width: 100%;
+          padding: 9px 14px; text-align: left; cursor: pointer; transition: background 0.12s;
+          border: none; background: transparent;
+        }
+        .cc-hist-row:hover { background: rgba(255,255,255,0.04); }
+        .cc-hist-icon {
+          width: 32px; height: 32px; border-radius: 9px; display: flex; align-items: center;
+          justify-content: center; flex-shrink: 0;
+        }
+        .cc-hist-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+        .cc-hist-text { font-size: 13px; color: rgba(255,255,255,0.75); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .cc-hist-time { font-size: 11px; color: rgba(255,255,255,0.3); }
         /* Profile drawer */
-        .cc-profile-user {
-          display: flex;
-          align-items: center;
-          gap: 12px;
-          padding: 16px;
-          border-bottom: 1px solid rgba(255,255,255,0.05);
-          margin-bottom: 8px;
+        .cc-prof-user { display: flex; align-items: center; gap: 12px; padding: 12px 14px 16px; }
+        .cc-prof-avatar {
+          width: 42px; height: 42px; border-radius: 50%; flex-shrink: 0;
+          background: linear-gradient(135deg,#a855f7,#6d28d9);
+          display: flex; align-items: center; justify-content: center;
+          font-size: 18px; font-weight: 700; color: #fff;
         }
-        .cc-avatar-circle {
-          width: 44px;
-          height: 44px;
-          border-radius: 50%;
-          background: linear-gradient(135deg, #a855f7, #7c3aed);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-size: 18px;
-          font-weight: 700;
-          color: #fff;
-          flex-shrink: 0;
+        .cc-starter-badge {
+          display: inline-block; margin-top: 3px; padding: 2px 7px; border-radius: 4px;
+          background: rgba(251,146,60,0.15); border: 1px solid rgba(251,146,60,0.35);
+          color: #fb923c; font-size: 10px; font-weight: 700; letter-spacing: 0.07em;
         }
-        .cc-profile-info { display: flex; flex-direction: column; gap: 2px; }
-        .cc-profile-name { font-size: 14px; font-weight: 600; color: #fff; }
-        .cc-profile-plan {
-          display: inline-block;
-          font-size: 10px;
-          font-weight: 600;
-          padding: 2px 7px;
-          border-radius: 20px;
-          text-transform: uppercase;
-          letter-spacing: 0.04em;
-        }
-        .cc-plan-free { background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.55); }
-        .cc-plan-pro { background: rgba(139,92,246,0.25); color: rgba(167,139,250,1); }
         .cc-credits-card {
-          margin: 0 12px 8px;
-          padding: 12px 14px;
-          border-radius: 14px;
-          background: rgba(139,92,246,0.08);
-          border: 1px solid rgba(139,92,246,0.2);
-          display: flex;
-          flex-direction: column;
-          gap: 6px;
+          margin: 0 14px 14px; padding: 14px;
+          background: rgba(139,92,246,0.07); border: 1px solid rgba(139,92,246,0.2);
+          border-radius: 14px; display: flex; flex-direction: column; gap: 6px;
         }
-        .cc-credits-big { font-size: 24px; font-weight: 700; color: #fff; }
-        .cc-credits-bar {
-          height: 4px;
-          border-radius: 2px;
-          background: rgba(255,255,255,0.08);
-          overflow: hidden;
+        .cc-credits-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: rgba(255,255,255,0.4); }
+        .cc-credits-num { font-size: 28px; font-weight: 800; color: #fff; line-height: 1; }
+        .cc-credits-bar { height: 4px; background: rgba(255,255,255,0.08); border-radius: 2px; overflow: hidden; }
+        .cc-credits-fill { height: 100%; background: linear-gradient(90deg,#6d28d9,#a855f7); border-radius: 2px; transition: width 0.4s; }
+        .cc-credits-sub { font-size: 11px; color: rgba(255,255,255,0.35); margin-top: 2px; }
+        .cc-model-section { padding: 0 14px 12px; }
+        .cc-section-lbl { display: block; padding-bottom: 8px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: rgba(255,255,255,0.35); }
+        .cc-model-row {
+          display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 10px;
+          cursor: pointer; transition: background 0.12s; margin-bottom: 3px; border: none; background: transparent;
+          width: 100%; text-align: left;
         }
-        .cc-credits-fill {
-          height: 100%;
-          border-radius: 2px;
-          background: linear-gradient(90deg, #7c3aed, #a855f7);
-          transition: width 0.4s ease;
+        .cc-model-row:hover { background: rgba(255,255,255,0.04); }
+        .cc-model-row.selected { background: rgba(139,92,246,0.1); }
+        .cc-radio {
+          width: 16px; height: 16px; border-radius: 50%; border: 1.5px solid rgba(255,255,255,0.25);
+          flex-shrink: 0; display: flex; align-items: center; justify-content: center;
         }
-        .cc-profile-section { padding: 8px 16px; }
-        .cc-section-label {
-          font-size: 10px;
-          font-weight: 600;
-          text-transform: uppercase;
-          letter-spacing: 0.06em;
-          color: rgba(255,255,255,0.35);
-          display: block;
-          margin-bottom: 6px;
+        .cc-radio.on { border-color: #a855f7; background: radial-gradient(circle, #a855f7 40%, transparent 70%); }
+        .cc-model-badge {
+          font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 4px;
+          letter-spacing: 0.05em; flex-shrink: 0;
         }
-        .cc-model-pill {
-          display: inline-flex;
-          align-items: center;
-          gap: 6px;
-          padding: 6px 10px;
-          border-radius: 8px;
-          background: rgba(255,255,255,0.05);
-          border: 1px solid rgba(255,255,255,0.08);
-          font-size: 12px;
-          color: rgba(255,255,255,0.75);
+        .cc-prof-nav { border-top: 1px solid rgba(255,255,255,0.06); padding: 6px 0; }
+        .cc-prof-link {
+          display: flex; align-items: center; gap: 12px; width: 100%;
+          padding: 12px 16px; font-size: 13px; color: rgba(255,255,255,0.7);
+          cursor: pointer; transition: background 0.12s; border: none; background: transparent;
         }
-        .cc-model-dot {
-          width: 6px;
-          height: 6px;
-          border-radius: 50%;
-          background: #34d399;
-          box-shadow: 0 0 6px rgba(52,211,153,0.7);
-        }
-        .cc-profile-nav { padding: 8px 0; border-top: 1px solid rgba(255,255,255,0.05); margin-top: 4px; }
-        .cc-nav-item {
-          display: flex;
-          align-items: center;
-          gap: 10px;
-          width: 100%;
-          padding: 12px 16px;
-          font-size: 13px;
-          color: rgba(255,255,255,0.75);
-          cursor: pointer;
-          transition: background 0.12s;
-        }
-        .cc-nav-item:hover { background: rgba(255,255,255,0.04); }
-        .cc-nav-danger { color: rgba(248,113,113,0.85); }
-        .cc-nav-danger:hover { background: rgba(239,68,68,0.06); }
-
-        /* === Header === */
-        .cc-header {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          padding: 12px 16px;
-          border-bottom: 1px solid rgba(255,255,255,0.06);
-          backdrop-filter: blur(20px);
-          flex-shrink: 0;
-        }
-        .cc-header-center {
-          display: flex;
-          align-items: center;
-          gap: 10px;
-        }
-        .cc-header-text {
-          display: flex;
-          flex-direction: column;
-          line-height: 1.2;
-        }
-        .cc-header-title {
-          font-size: 14px;
-          font-weight: 700;
-          color: #fff;
-        }
-        .cc-header-sub {
-          font-size: 11px;
-          color: rgba(255,255,255,0.45);
-        }
-
-        /* Orb */
-        .cc-orb {
-          width: 38px;
-          height: 38px;
-          border-radius: 50%;
-          background: linear-gradient(135deg, #a855f7 0%, #7c3aed 60%, #5b21b6 100%);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          box-shadow: 0 0 20px rgba(139,92,246,0.4), inset 0 1px 0 rgba(255,255,255,0.22);
-          border: 1px solid rgba(255,255,255,0.12);
-          flex-shrink: 0;
-          transition: box-shadow 0.3s ease;
-        }
-        .cc-orb-lg {
-          width: 64px;
-          height: 64px;
-          box-shadow: 0 0 32px rgba(139,92,246,0.5), inset 0 1px 0 rgba(255,255,255,0.22);
-        }
-        .cc-orb-letter {
-          font-size: 16px;
-          font-weight: 800;
-          color: #fff;
-          letter-spacing: -0.02em;
-        }
-        .cc-orb.orb-listening {
-          animation: orb-pulse 1s ease-in-out infinite;
-        }
-        .cc-orb.orb-speaking {
-          animation: orb-glow 0.75s ease-in-out infinite;
-        }
-
-        /* Icon button */
+        .cc-prof-link:hover { background: rgba(255,255,255,0.04); }
+        .cc-danger { color: rgba(248,113,113,0.85) !important; }
+        .cc-danger:hover { background: rgba(239,68,68,0.06) !important; }
+        .cc-prof-divider { height: 1px; background: rgba(255,255,255,0.06); margin: 4px 0; }
+        /* Icon btn */
         .cc-icon-btn {
-          height: 40px;
-          width: 40px;
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          border-radius: 12px;
-          border: 1px solid rgba(255,255,255,0.08);
-          background: rgba(255,255,255,0.04);
-          color: rgba(255,255,255,0.8);
-          cursor: pointer;
-          transition: background 0.15s, border-color 0.15s;
+          display: inline-flex; align-items: center; justify-content: center;
+          width: 38px; height: 38px; border-radius: 11px; flex-shrink: 0;
+          border: 1px solid rgba(255,255,255,0.08); background: rgba(255,255,255,0.04);
+          color: rgba(255,255,255,0.75); cursor: pointer; transition: all 0.14s;
+        }
+        .cc-icon-btn:hover { background: rgba(255,255,255,0.09); border-color: rgba(255,255,255,0.14); }
+        /* Header */
+        .cc-header {
+          display: flex; align-items: center; justify-content: space-between;
+          padding: 10px 14px; border-bottom: 1px solid rgba(255,255,255,0.06);
+          backdrop-filter: blur(20px); flex-shrink: 0;
+        }
+        /* Orb large (standby) */
+        .cc-orb-lg {
+          width: 80px; height: 80px; border-radius: 50%;
+          background: linear-gradient(135deg,#a855f7 0%,#7c3aed 60%,#4c1d95 100%);
+          display: flex; align-items: center; justify-content: center;
+          box-shadow: 0 0 40px rgba(139,92,246,0.45), 0 0 80px rgba(109,40,217,0.2), inset 0 1px 0 rgba(255,255,255,0.2);
+          border: 1px solid rgba(255,255,255,0.12);
+        }
+        .cc-orb-g { font-size: 32px; font-weight: 800; color: #fff; letter-spacing: -0.02em; }
+        .cc-orb-lg.orb-listening { animation: orb-pulse 1s ease-in-out infinite; }
+        .cc-orb-lg.orb-speaking { animation: orb-glow 0.75s ease-in-out infinite; }
+        /* Standby */
+        .cc-standby {
+          flex: 1; display: flex; flex-direction: column; align-items: center;
+          justify-content: center; gap: 14px; padding: 48px 24px; text-align: center;
+          min-height: 100%;
+        }
+        .cc-standby-status {
+          font-size: 10px; font-weight: 700; letter-spacing: 0.14em;
+          color: rgba(255,255,255,0.3); text-transform: uppercase;
+        }
+        .cc-standby-title { font-size: 26px; font-weight: 700; color: #fff; letter-spacing: -0.02em; }
+        /* Voice toggle */
+        .cc-voice-toggle { display: flex; align-items: center; gap: 10px; margin-top: 4px; }
+        .cc-voice-toggle-label { font-size: 13px; color: rgba(255,255,255,0.55); }
+        .cc-toggle {
+          width: 44px; height: 24px; border-radius: 12px;
+          background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.12);
+          position: relative; cursor: pointer; transition: background 0.2s;
           flex-shrink: 0;
         }
-        .cc-icon-btn:hover { background: rgba(255,255,255,0.09); border-color: rgba(255,255,255,0.15); }
-
-        /* === Tabs === */
+        .cc-toggle.on { background: rgba(139,92,246,0.7); border-color: rgba(139,92,246,0.9); }
+        .cc-toggle-thumb {
+          position: absolute; top: 2px; left: 2px; width: 18px; height: 18px;
+          border-radius: 50%; background: #fff; transition: transform 0.2s;
+          box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+        }
+        .cc-toggle.on .cc-toggle-thumb { transform: translateX(20px); }
+        /* Quick service cards */
+        .cc-quick-cards { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; margin-top: 8px; }
+        .cc-quick-card {
+          display: flex; flex-direction: column; align-items: center; gap: 6px;
+          padding: 14px 18px; border-radius: 16px; min-width: 80px;
+          border: 1px solid rgba(255,255,255,0.09); background: rgba(255,255,255,0.03);
+          cursor: pointer; transition: all 0.14s;
+        }
+        .cc-quick-card:hover { background: rgba(255,255,255,0.07); border-color: rgba(255,255,255,0.15); transform: translateY(-1px); }
+        .cc-quick-card span:first-of-type { font-size: 13px; font-weight: 500; color: rgba(255,255,255,0.75); }
+        .cc-quick-cost { display: flex; align-items: center; gap: 2px; font-size: 10px; color: rgba(255,255,255,0.3); }
+        /* Messages */
+        .cc-messages { display: flex; flex-direction: column; padding: 12px 14px 8px; max-width: 768px; margin: 0 auto; width: 100%; }
+        .cc-day-div {
+          display: flex; align-items: center; gap: 10px; margin: 12px 0 10px;
+          font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em;
+          color: rgba(255,255,255,0.2);
+        }
+        .cc-day-div::before, .cc-day-div::after { content: ''; flex: 1; height: 1px; background: rgba(255,255,255,0.05); }
+        /* Bottom tabs */
         .cc-tabs {
-          display: flex;
-          align-items: center;
-          padding: 8px 16px;
-          gap: 4px;
-          flex-shrink: 0;
-          border-bottom: 1px solid rgba(255,255,255,0.05);
+          display: flex; border-top: 1px solid rgba(255,255,255,0.06);
+          flex-shrink: 0; background: rgba(0,0,0,0.4); backdrop-filter: blur(16px);
         }
         .cc-tab {
-          display: flex;
-          align-items: center;
-          gap: 5px;
-          padding: 7px 14px;
-          border-radius: 20px;
-          font-size: 12px;
-          font-weight: 500;
-          color: rgba(255,255,255,0.45);
-          cursor: pointer;
-          transition: all 0.15s;
-          position: relative;
+          flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px;
+          padding: 10px 4px 8px; font-size: 10px; font-weight: 500;
+          color: rgba(255,255,255,0.35); cursor: pointer; transition: all 0.14s; border: none; background: transparent;
         }
-        .cc-tab:hover { color: rgba(255,255,255,0.75); }
-        .cc-tab.active {
-          background: rgba(255,255,255,0.08);
-          color: #fff;
-          font-weight: 600;
-        }
-        .cc-tab-dot {
-          display: inline-block;
-          width: 6px;
-          height: 6px;
-          border-radius: 50%;
-          background: #34d399;
-          box-shadow: 0 0 5px rgba(52,211,153,0.8);
-        }
-
-        /* === Main scroll area === */
-        .cc-main {
-          flex: 1;
-          overflow-y: auto;
-          min-height: 0;
-        }
-        .cc-main::-webkit-scrollbar { width: 5px; }
-        .cc-main::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 3px; }
-
-        /* === Chat === */
-        .cc-chat { display: flex; flex-direction: column; min-height: 100%; }
-        .cc-empty {
-          flex: 1;
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: center;
-          gap: 16px;
-          padding: 48px 24px;
-          text-align: center;
-        }
-        .cc-empty-text {
-          font-size: 15px;
-          color: rgba(255,255,255,0.5);
-          white-space: pre-line;
-          line-height: 1.6;
-        }
-        .cc-quick-chips {
-          display: flex;
-          flex-wrap: wrap;
-          justify-content: center;
-          gap: 8px;
-          margin-top: 8px;
-        }
-        .cc-chip {
-          display: flex;
-          align-items: center;
-          gap: 5px;
-          padding: 7px 14px;
-          border-radius: 20px;
-          border: 1px solid rgba(139,92,246,0.3);
-          background: rgba(139,92,246,0.08);
-          color: rgba(167,139,250,0.9);
-          font-size: 12px;
-          font-weight: 500;
-          cursor: pointer;
-          transition: all 0.15s;
-        }
-        .cc-chip:hover { background: rgba(139,92,246,0.18); border-color: rgba(139,92,246,0.5); }
-
-        .cc-messages {
-          display: flex;
-          flex-direction: column;
-          gap: 0;
-          padding: 16px;
-          max-width: 768px;
-          margin: 0 auto;
-          width: 100%;
-        }
-
-        /* Day divider */
-        .cc-day-divider {
-          display: flex;
-          align-items: center;
-          gap: 12px;
-          margin: 16px 0 12px;
-          color: rgba(255,255,255,0.25);
-          font-size: 11px;
-          font-weight: 500;
-          text-transform: uppercase;
-          letter-spacing: 0.06em;
-        }
-        .cc-day-divider::before,
-        .cc-day-divider::after {
-          content: '';
-          flex: 1;
-          height: 1px;
-          background: rgba(255,255,255,0.06);
-        }
-
-        /* === Library === */
-        .cc-library { padding: 16px; }
-        .cc-lib-filters {
-          display: flex;
-          gap: 8px;
-          overflow-x: auto;
-          padding-bottom: 12px;
-          scrollbar-width: none;
-        }
-        .cc-lib-filters::-webkit-scrollbar { display: none; }
-        .cc-filter-pill {
-          flex-shrink: 0;
-          padding: 6px 14px;
-          border-radius: 20px;
-          font-size: 12px;
-          font-weight: 500;
-          border: 1px solid rgba(255,255,255,0.1);
-          background: rgba(255,255,255,0.03);
-          color: rgba(255,255,255,0.5);
-          cursor: pointer;
-          transition: all 0.15s;
-        }
-        .cc-filter-pill.active {
-          border-color: rgba(139,92,246,0.5);
-          background: rgba(139,92,246,0.15);
-          color: rgba(167,139,250,1);
-        }
-        .cc-filter-pill:hover:not(.active) { color: rgba(255,255,255,0.8); }
-        .cc-lib-grid {
-          display: grid;
-          grid-template-columns: repeat(2, 1fr);
-          gap: 10px;
-        }
-        @media (min-width: 480px) { .cc-lib-grid { grid-template-columns: repeat(3, 1fr); } }
-        .cc-lib-item {
-          position: relative;
-          border-radius: 14px;
-          overflow: hidden;
-          aspect-ratio: 1;
-          border: 1px solid rgba(255,255,255,0.07);
-          background: rgba(255,255,255,0.02);
-        }
-        .cc-lib-media { width: 100%; height: 100%; object-fit: cover; }
-        .cc-lib-audio {
-          width: 100%;
-          height: 100%;
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: center;
-          background: rgba(139,92,246,0.08);
-        }
-        .cc-lib-overlay {
-          position: absolute;
-          bottom: 0;
-          left: 0;
-          right: 0;
-          padding: 4px 8px;
-          background: linear-gradient(to top, rgba(0,0,0,0.6), transparent);
-        }
-
-        /* === Pricing === */
-        .cc-pricing { padding: 20px 16px 32px; max-width: 480px; margin: 0 auto; }
-        .cc-pricing-title { font-size: 22px; font-weight: 700; color: #fff; text-align: center; margin-bottom: 6px; }
-        .cc-pricing-sub { font-size: 13px; color: rgba(255,255,255,0.45); text-align: center; margin-bottom: 24px; }
-        .cc-plans { display: flex; flex-direction: column; gap: 12px; margin-bottom: 24px; }
-        .cc-plan {
-          position: relative;
-          padding: 18px;
-          border-radius: 18px;
-          border: 1px solid rgba(255,255,255,0.09);
-          background: rgba(255,255,255,0.02);
-        }
-        .cc-plan-featured {
-          border-color: rgba(139,92,246,0.5);
-          background: rgba(139,92,246,0.07);
-        }
-        .cc-plan-badge {
-          position: absolute;
-          top: -10px;
-          left: 50%;
-          transform: translateX(-50%);
-          padding: 3px 12px;
-          border-radius: 20px;
-          background: linear-gradient(90deg, #7c3aed, #a855f7);
-          font-size: 10px;
-          font-weight: 700;
-          color: #fff;
-          text-transform: uppercase;
-          letter-spacing: 0.06em;
-        }
-        .cc-plan-header { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 14px; }
-        .cc-plan-name { font-size: 16px; font-weight: 700; color: #fff; }
-        .cc-plan-price { font-size: 24px; font-weight: 800; color: #fff; }
-        .cc-plan-period { font-size: 12px; font-weight: 500; color: rgba(255,255,255,0.4); }
-        .cc-plan-features { display: flex; flex-direction: column; gap: 8px; list-style: none; margin-bottom: 16px; padding: 0; }
-        .cc-plan-features li { display: flex; align-items: center; gap: 8px; font-size: 13px; color: rgba(255,255,255,0.7); }
-        .cc-plan-btn {
-          width: 100%;
-          padding: 11px;
-          border-radius: 12px;
-          font-size: 13px;
-          font-weight: 600;
-          cursor: pointer;
-          transition: all 0.15s;
-        }
-        .cc-plan-btn-primary {
-          background: linear-gradient(135deg, #7c3aed, #a855f7);
-          color: #fff;
-          border: none;
-          box-shadow: 0 4px 20px rgba(139,92,246,0.4);
-        }
-        .cc-plan-btn-primary:hover { transform: translateY(-1px); box-shadow: 0 6px 24px rgba(139,92,246,0.55); }
-        .cc-plan-btn-outline {
-          background: transparent;
-          color: rgba(255,255,255,0.65);
-          border: 1px solid rgba(255,255,255,0.12);
-        }
-        .cc-plan-btn-outline:hover { border-color: rgba(255,255,255,0.25); color: #fff; }
-
-        .cc-credit-table {
-          border-radius: 16px;
-          border: 1px solid rgba(255,255,255,0.07);
-          overflow: hidden;
-        }
-        .cc-credit-table-title {
-          padding: 12px 16px;
-          font-size: 13px;
-          font-weight: 600;
-          color: rgba(255,255,255,0.6);
-          border-bottom: 1px solid rgba(255,255,255,0.06);
-          background: rgba(255,255,255,0.02);
-        }
-        .cc-credit-rows { display: flex; flex-direction: column; }
-        .cc-credit-row {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          padding: 10px 16px;
-          border-bottom: 1px solid rgba(255,255,255,0.04);
-        }
-        .cc-credit-row:last-child { border-bottom: none; }
-        .cc-credit-cost { font-size: 13px; font-weight: 600; color: rgba(167,139,250,0.9); }
-
-        /* === Service rail === */
+        .cc-tab:hover { color: rgba(255,255,255,0.65); }
+        .cc-tab.active { color: rgba(167,139,250,1); }
+        /* Rail */
         .cc-rail {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          padding: 10px 12px;
-          overflow-x: auto;
-          scrollbar-width: none;
-          flex-shrink: 0;
-          border-top: 1px solid rgba(255,255,255,0.05);
+          display: flex; align-items: center; gap: 6px; padding: 8px 12px;
+          overflow-x: auto; scrollbar-width: none; flex-shrink: 0;
+          border-top: 1px solid rgba(255,255,255,0.05); background: rgba(0,0,0,0.25);
         }
         .cc-rail::-webkit-scrollbar { display: none; }
-        .cc-hub-btn {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          flex-shrink: 0;
-          padding: 8px 12px;
-          border-radius: 16px;
-          border: 1px solid rgba(255,255,255,0.09);
-          background: rgba(255,255,255,0.03);
-          cursor: pointer;
-          transition: all 0.15s;
-          min-width: 160px;
+        .cc-rail-hub {
+          display: flex; align-items: center; gap: 6px; flex-shrink: 0; padding: 7px 10px;
+          border-radius: 10px; border: 1px solid rgba(255,255,255,0.08);
+          background: rgba(255,255,255,0.03); color: rgba(255,255,255,0.65);
+          cursor: pointer; transition: background 0.14s; white-space: nowrap;
         }
-        .cc-hub-btn:hover { background: rgba(255,255,255,0.06); }
-        .cc-hub-icon {
-          width: 30px;
-          height: 30px;
-          border-radius: 9px;
-          background: rgba(139,92,246,0.15);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          color: rgba(167,139,250,1);
-          flex-shrink: 0;
-        }
-        .cc-hub-text { display: flex; flex-direction: column; line-height: 1.2; text-align: left; }
-        .cc-service-pills { display: flex; gap: 6px; }
+        .cc-rail-hub:hover { background: rgba(255,255,255,0.07); }
+        .cc-pills { display: flex; gap: 5px; }
         .cc-pill {
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: center;
-          gap: 3px;
-          width: 58px;
-          height: 54px;
-          flex-shrink: 0;
-          border-radius: 14px;
-          border: 1px solid rgba(255,255,255,0.08);
-          background: rgba(255,255,255,0.02);
-          font-size: 10px;
-          font-weight: 500;
-          color: rgba(255,255,255,0.5);
-          cursor: pointer;
-          transition: all 0.15s;
+          display: flex; flex-direction: column; align-items: center; gap: 2px;
+          width: 52px; height: 48px; flex-shrink: 0; border-radius: 12px;
+          border: 1px solid rgba(255,255,255,0.08); background: rgba(255,255,255,0.02);
+          font-size: 9px; font-weight: 500; color: rgba(255,255,255,0.45);
+          cursor: pointer; transition: all 0.14s;
         }
-        .cc-pill:hover { color: rgba(255,255,255,0.8); border-color: rgba(255,255,255,0.15); }
-        .cc-pill.active {
-          border-color: rgba(139,92,246,0.6);
-          background: rgba(139,92,246,0.14);
-          color: #fff;
-          box-shadow: 0 0 14px rgba(139,92,246,0.15);
-        }
-
-        /* === Input wrap === */
-        .cc-input-wrap {
-          padding: 8px 12px 12px;
-          padding-bottom: max(env(safe-area-inset-bottom, 12px), 12px);
-          flex-shrink: 0;
-        }
-        .cc-attachment {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          margin-bottom: 8px;
-          padding: 0 4px;
-        }
-        .cc-attachment-img {
-          width: 56px;
-          height: 56px;
-          border-radius: 10px;
-          object-fit: cover;
-          border: 1px solid rgba(255,255,255,0.15);
-        }
-        .cc-attachment-rm {
-          width: 22px;
-          height: 22px;
-          border-radius: 50%;
-          background: rgba(255,255,255,0.1);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          color: rgba(255,255,255,0.6);
-          cursor: pointer;
-        }
-        .cc-input-meta {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          padding: 0 4px 6px;
-        }
-        .cc-credits-badge {
-          display: inline-flex;
-          align-items: center;
-          gap: 4px;
-          font-size: 11px;
-          color: rgba(167,139,250,0.75);
-          font-weight: 500;
-        }
-        .cc-sending-text {
-          font-size: 11px;
-          color: rgba(255,255,255,0.35);
-          animation: pulse 1.5s ease-in-out infinite;
-        }
+        .cc-pill:hover { color: rgba(255,255,255,0.75); border-color: rgba(255,255,255,0.14); }
+        .cc-pill.active { border-color: rgba(139,92,246,0.55); background: rgba(139,92,246,0.12); color: #fff; }
+        /* Input */
+        .cc-input-wrap { padding: 8px 12px; padding-bottom: max(env(safe-area-inset-bottom, 12px), 12px); flex-shrink: 0; }
         .cc-input-bar {
-          display: flex;
-          align-items: flex-end;
-          gap: 6px;
-          background: rgba(255,255,255,0.04);
-          border: 1px solid rgba(255,255,255,0.1);
-          border-radius: 24px;
-          padding: 6px 6px;
+          display: flex; align-items: flex-end; gap: 5px;
+          background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.09);
+          border-radius: 22px; padding: 5px;
           backdrop-filter: blur(16px);
         }
         .cc-textarea {
-          flex: 1;
-          min-height: 22px;
-          resize: none;
-          background: transparent;
-          border: none;
-          outline: none;
-          font-size: 15px;
-          line-height: 1.5;
-          color: #fff;
-          padding: 6px 8px;
+          flex: 1; min-height: 20px; max-height: 140px; resize: none;
+          background: transparent; border: none; outline: none;
+          font-size: 15px; line-height: 1.5; color: #fff; padding: 6px 6px;
+          font-family: inherit;
         }
-        .cc-textarea::placeholder { color: rgba(255,255,255,0.35); }
-        .cc-input-btn {
-          width: 38px;
-          height: 38px;
-          border-radius: 50%;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          flex-shrink: 0;
-          background: rgba(255,255,255,0.06);
-          color: rgba(255,255,255,0.7);
-          cursor: pointer;
-          transition: all 0.15s;
-          position: relative;
-          border: none;
+        .cc-textarea::placeholder { color: rgba(255,255,255,0.3); }
+        .cc-ibtn {
+          width: 36px; height: 36px; border-radius: 50%; flex-shrink: 0;
+          display: flex; align-items: center; justify-content: center;
+          background: rgba(255,255,255,0.05); color: rgba(255,255,255,0.65);
+          cursor: pointer; transition: all 0.14s; border: none; position: relative;
         }
-        .cc-input-btn:hover { background: rgba(255,255,255,0.12); }
-        .cc-input-btn.recording { background: rgba(239,68,68,0.2); color: rgba(248,113,113,1); }
+        .cc-ibtn:hover { background: rgba(255,255,255,0.1); }
+        .cc-ibtn.rec { background: rgba(239,68,68,0.18); color: rgba(248,113,113,1); }
         .cc-rec-dot {
-          position: absolute;
-          top: 6px;
-          right: 6px;
-          width: 7px;
-          height: 7px;
-          border-radius: 50%;
-          background: #ef4444;
-          animation: pulse 1s ease-in-out infinite;
-          box-shadow: 0 0 6px rgba(239,68,68,0.8);
+          position: absolute; top: 5px; right: 5px; width: 7px; height: 7px;
+          border-radius: 50%; background: #ef4444; animation: rec-blink 1s ease-in-out infinite;
+          box-shadow: 0 0 5px rgba(239,68,68,0.8);
         }
-        .cc-send-btn {
-          width: 38px;
-          height: 38px;
-          border-radius: 50%;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          flex-shrink: 0;
-          background: rgba(255,255,255,0.06);
-          color: rgba(255,255,255,0.3);
-          cursor: not-allowed;
-          transition: all 0.2s;
-          border: none;
+        .cc-send {
+          width: 36px; height: 36px; border-radius: 50%; flex-shrink: 0;
+          display: flex; align-items: center; justify-content: center;
+          background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.25);
+          cursor: not-allowed; transition: all 0.18s; border: none;
         }
-        .cc-send-btn.ready {
-          background: linear-gradient(135deg, #7c3aed, #a855f7);
-          color: #fff;
-          cursor: pointer;
-          box-shadow: 0 0 16px rgba(139,92,246,0.5);
+        .cc-send.ready {
+          background: linear-gradient(135deg,#6d28d9,#a855f7);
+          color: #fff; cursor: pointer;
+          box-shadow: 0 0 14px rgba(139,92,246,0.5);
         }
-        .cc-send-btn.ready:hover { box-shadow: 0 0 24px rgba(139,92,246,0.7); transform: scale(1.05); }
-
-        /* Waveform */
-        .cc-waveform {
-          display: flex;
-          align-items: center;
-          gap: 2px;
-          padding: 0 8px;
-          height: 38px;
+        .cc-send.ready:hover { box-shadow: 0 0 22px rgba(139,92,246,0.7); transform: scale(1.06); }
+        .cc-spin { animation: spin 0.8s linear infinite; }
+        /* Library */
+        .cc-library { padding: 14px; }
+        .cc-lib-filters { display: flex; gap: 7px; overflow-x: auto; padding-bottom: 10px; scrollbar-width: none; }
+        .cc-lib-filters::-webkit-scrollbar { display: none; }
+        .cc-filter {
+          flex-shrink: 0; padding: 5px 13px; border-radius: 20px; font-size: 12px; font-weight: 500;
+          border: 1px solid rgba(255,255,255,0.09); background: rgba(255,255,255,0.03);
+          color: rgba(255,255,255,0.45); cursor: pointer; transition: all 0.14s;
         }
-        .cc-wave-bar {
-          display: block;
-          width: 2px;
-          border-radius: 1px;
-          background: rgba(167,139,250,0.9);
-          animation: cc-wave 0.9s ease-in-out infinite;
+        .cc-filter.active { border-color: rgba(139,92,246,0.5); background: rgba(139,92,246,0.12); color: rgba(167,139,250,1); }
+        .cc-filter:hover:not(.active) { color: rgba(255,255,255,0.75); }
+        .cc-lib-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+        @media (min-width: 440px) { .cc-lib-grid { grid-template-columns: repeat(3, 1fr); } }
+        .cc-lib-item { position: relative; border-radius: 14px; overflow: hidden; aspect-ratio: 1; border: 1px solid rgba(255,255,255,0.06); }
+        .cc-lib-badge {
+          position: absolute; bottom: 6px; left: 6px; padding: 2px 7px; border-radius: 6px;
+          background: rgba(0,0,0,0.55); font-size: 9px; font-weight: 600;
+          text-transform: uppercase; letter-spacing: 0.06em; color: rgba(255,255,255,0.8);
         }
-
-        /* === Agent Hub overlay === */
-        .cc-hub-overlay {
-          position: fixed;
-          inset: 0;
-          z-index: 60;
-          display: flex;
-          align-items: flex-end;
-          background: rgba(0,0,0,0.55);
-          backdrop-filter: blur(4px);
-        }
-        .cc-hub {
-          width: 100%;
-          max-height: 70vh;
-          background: #111116;
-          border-radius: 24px 24px 0 0;
-          border: 1px solid rgba(255,255,255,0.08);
-          border-bottom: none;
-          overflow-y: auto;
-          padding-bottom: max(env(safe-area-inset-bottom, 16px), 16px);
-        }
-        .cc-hub-header {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          padding: 16px 16px 12px;
-          border-bottom: 1px solid rgba(255,255,255,0.06);
-        }
-        .cc-hub-title { font-size: 15px; font-weight: 600; color: #fff; }
-        .cc-hub-grid {
-          display: grid;
-          grid-template-columns: repeat(4, 1fr);
-          gap: 8px;
-          padding: 12px;
-        }
+        /* Pricing */
+        .cc-pricing { padding: 20px 14px 36px; max-width: 440px; margin: 0 auto; }
+        .cc-pricing-h { font-size: 20px; font-weight: 700; color: #fff; text-align: center; margin-bottom: 6px; }
+        .cc-pricing-sub { font-size: 13px; color: rgba(255,255,255,0.4); text-align: center; margin-bottom: 20px; }
+        .cc-plans { display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px; }
+        .cc-credit-table { border-radius: 16px; border: 1px solid rgba(255,255,255,0.07); overflow: hidden; }
+        .cc-credit-table-hd { padding: 11px 14px; font-size: 12px; font-weight: 600; color: rgba(255,255,255,0.5); border-bottom: 1px solid rgba(255,255,255,0.06); background: rgba(255,255,255,0.02); }
+        .cc-credit-row { display: flex; align-items: center; justify-content: space-between; padding: 9px 14px; border-bottom: 1px solid rgba(255,255,255,0.04); }
+        .cc-credit-row:last-child { border-bottom: none; }
+        /* Hub overlay */
+        .cc-hub-overlay { position: fixed; inset: 0; z-index: 60; display: flex; align-items: flex-end; background: rgba(0,0,0,0.6); backdrop-filter: blur(5px); }
+        .cc-hub { width: 100%; max-height: 65vh; background: #0f0f14; border-radius: 22px 22px 0 0; border: 1px solid rgba(255,255,255,0.08); border-bottom: none; overflow-y: auto; padding-bottom: 16px; }
+        .cc-hub-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; padding: 10px 12px; }
         .cc-hub-item {
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          gap: 5px;
-          padding: 14px 6px;
-          border-radius: 16px;
-          border: 1px solid rgba(255,255,255,0.07);
-          background: rgba(255,255,255,0.02);
-          cursor: pointer;
-          transition: all 0.15s;
+          display: flex; flex-direction: column; align-items: center; gap: 6px;
+          padding: 12px 4px; border-radius: 14px; border: 1px solid rgba(255,255,255,0.07);
+          background: rgba(255,255,255,0.02); cursor: pointer; transition: all 0.14s;
         }
         .cc-hub-item:hover { background: rgba(255,255,255,0.06); }
-        .cc-hub-item.active {
-          border-color: rgba(139,92,246,0.5);
-          background: rgba(139,92,246,0.12);
-        }
-        .cc-hub-item-icon {
-          width: 40px;
-          height: 40px;
-          border-radius: 12px;
-          background: rgba(139,92,246,0.1);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          color: rgba(167,139,250,0.9);
-          border: 1px solid rgba(139,92,246,0.2);
-        }
-        .cc-hub-item.active .cc-hub-item-icon {
-          background: rgba(139,92,246,0.25);
-          border-color: rgba(139,92,246,0.45);
-        }
-        .cc-hub-item-name {
-          font-size: 11px;
-          font-weight: 500;
-          color: rgba(255,255,255,0.7);
-        }
-        .cc-hub-item-cost {
-          font-size: 10px;
-          color: rgba(255,255,255,0.35);
-        }
-
-        /* === Toasts === */
-        .cc-toasts {
-          position: fixed;
-          bottom: 120px;
-          left: 50%;
-          transform: translateX(-50%);
-          z-index: 100;
-          display: flex;
-          flex-direction: column;
-          gap: 8px;
-          align-items: center;
-          pointer-events: none;
-        }
-        .cc-toast {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          padding: 10px 16px;
-          border-radius: 20px;
-          font-size: 13px;
-          font-weight: 500;
-          backdrop-filter: blur(16px);
-          animation: toast-in 0.25s ease-out;
-          white-space: nowrap;
-        }
-        .cc-toast-success {
-          background: rgba(16,185,129,0.15);
-          border: 1px solid rgba(16,185,129,0.3);
-          color: rgba(52,211,153,1);
-        }
-        .cc-toast-error {
-          background: rgba(239,68,68,0.15);
-          border: 1px solid rgba(239,68,68,0.3);
-          color: rgba(248,113,113,1);
-        }
-        .cc-toast-info {
-          background: rgba(139,92,246,0.15);
-          border: 1px solid rgba(139,92,246,0.3);
-          color: rgba(167,139,250,1);
-        }
-
-        /* === Animations === */
-        @keyframes cc-wave {
-          0%, 100% { transform: scaleY(0.5); }
-          50% { transform: scaleY(1.4); }
-        }
-        @keyframes pulse {
-          0%, 100% { opacity: 1; }
-          50% { opacity: 0.5; }
-        }
+        .cc-hub-item.active { border-color: rgba(139,92,246,0.45); background: rgba(139,92,246,0.1); }
+        .cc-hub-icon { width: 38px; height: 38px; border-radius: 11px; display: flex; align-items: center; justify-content: center; }
+        .cc-hub-name { font-size: 11px; font-weight: 500; color: rgba(255,255,255,0.7); }
+        .cc-hub-cost { font-size: 10px; color: rgba(255,255,255,0.3); display: flex; align-items: center; gap: 2px; }
+        /* Toasts */
+        .cc-toasts { position: fixed; bottom: 110px; left: 50%; transform: translateX(-50%); z-index: 100; display: flex; flex-direction: column; gap: 7px; align-items: center; pointer-events: none; }
+        .cc-toast { display: flex; align-items: center; gap: 8px; padding: 9px 15px; border-radius: 20px; font-size: 13px; font-weight: 500; backdrop-filter: blur(16px); animation: toast-in 0.22s ease-out; white-space: nowrap; }
+        .cc-toast-success { background: rgba(16,185,129,0.14); border: 1px solid rgba(16,185,129,0.28); color: #34d399; }
+        .cc-toast-error { background: rgba(239,68,68,0.14); border: 1px solid rgba(239,68,68,0.28); color: #f87171; }
+        .cc-toast-info { background: rgba(139,92,246,0.14); border: 1px solid rgba(139,92,246,0.3); color: #a78bfa; }
+        /* Main scroll */
+        .cc-main { flex: 1; overflow-y: auto; min-height: 0; display: flex; flex-direction: column; }
+        .cc-main::-webkit-scrollbar { width: 4px; }
+        .cc-main::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.07); border-radius: 2px; }
+        /* Keyframes */
         @keyframes orb-pulse {
-          0%, 100% {
-            transform: scale(1);
-            box-shadow: 0 0 20px rgba(139,92,246,0.4), inset 0 1px 0 rgba(255,255,255,0.22);
-          }
-          50% {
-            transform: scale(1.14);
-            box-shadow: 0 0 48px rgba(139,92,246,0.9), 0 0 72px rgba(139,92,246,0.35), inset 0 1px 0 rgba(255,255,255,0.25);
-          }
+          0%,100% { transform:scale(1); box-shadow:0 0 40px rgba(139,92,246,0.45),0 0 80px rgba(109,40,217,0.2),inset 0 1px 0 rgba(255,255,255,0.2); }
+          50% { transform:scale(1.1); box-shadow:0 0 60px rgba(139,92,246,0.9),0 0 100px rgba(109,40,217,0.4),inset 0 1px 0 rgba(255,255,255,0.25); }
         }
         @keyframes orb-glow {
-          0%, 100% {
-            box-shadow: 0 0 20px rgba(139,92,246,0.45), inset 0 1px 0 rgba(255,255,255,0.22);
-          }
-          50% {
-            box-shadow: 0 0 56px rgba(139,92,246,1), 0 0 90px rgba(167,139,250,0.6), inset 0 1px 0 rgba(255,255,255,0.3);
-          }
+          0%,100% { box-shadow:0 0 40px rgba(139,92,246,0.5),0 0 80px rgba(109,40,217,0.2),inset 0 1px 0 rgba(255,255,255,0.2); }
+          50% { box-shadow:0 0 70px rgba(139,92,246,1),0 0 120px rgba(167,139,250,0.6),inset 0 1px 0 rgba(255,255,255,0.3); }
         }
-        @keyframes toast-in {
-          from { opacity: 0; transform: translateY(8px) scale(0.95); }
-          to { opacity: 1; transform: translateY(0) scale(1); }
-        }
-        @keyframes bounce {
-          0%, 100% { transform: translateY(0); opacity: 0.5; }
-          50% { transform: translateY(-4px); opacity: 1; }
-        }
+        @keyframes cc-wave { 0%,100% { transform:scaleY(0.5); } 50% { transform:scaleY(1.5); } }
+        @keyframes rec-blink { 0%,100% { opacity:1; } 50% { opacity:0.4; } }
+        @keyframes spin { from { transform:rotate(0deg); } to { transform:rotate(360deg); } }
+        @keyframes bounce { 0%,100% { transform:translateY(0); opacity:0.5; } 50% { transform:translateY(-4px); opacity:1; } }
+        @keyframes toast-in { from { opacity:0; transform:translateY(8px) scale(0.95); } to { opacity:1; transform:translateY(0) scale(1); } }
       `}</style>
     </div>
   );
@@ -2138,15 +1281,7 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
 
 // ─── MessageRow ───────────────────────────────────────────────────────────────
 
-function MessageRow({
-  msg,
-  copy,
-  onCopy,
-  onRetry,
-  onSpeak,
-  onLike,
-  onDislike,
-}: {
+function MessageRow({ msg, copy, onCopy, onRetry, onSpeak, onLike, onDislike }: {
   msg: ChatMessage;
   copy: (typeof COPY)[Locale];
   onCopy: () => void;
@@ -2155,124 +1290,57 @@ function MessageRow({
   onLike: () => void;
   onDislike: () => void;
 }) {
-  const [actionsVisible, setActionsVisible] = useState(false);
+  const [hover, setHover] = useState(false);
 
   if (msg.role === 'user') {
     return (
-      <div className="msg-user" style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 10 }}>
         <div style={{ maxWidth: '78%', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
-          <div style={{
-            padding: '10px 16px',
-            borderRadius: '20px 20px 4px 20px',
-            background: 'rgba(139,92,246,0.2)',
-            border: '1px solid rgba(139,92,246,0.3)',
-            fontSize: 15,
-            lineHeight: 1.5,
-            color: '#fff',
-          }}>
+          <div style={{ padding: '10px 16px', borderRadius: '20px 20px 4px 20px', background: 'rgba(109,40,217,0.25)', border: '1px solid rgba(139,92,246,0.3)', fontSize: 15, lineHeight: 1.55, color: '#f5f5f7' }}>
             {msg.content}
           </div>
-          <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)' }}>{formatTime(msg.ts)}</span>
+          <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)' }}>{formatTime(msg.ts)}</span>
         </div>
       </div>
     );
   }
 
   return (
-    <div
-      style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 12 }}
-      onMouseEnter={() => setActionsVisible(true)}
-      onMouseLeave={() => setActionsVisible(false)}
-    >
-      {/* Orb avatar */}
-      <div style={{
-        width: 30,
-        height: 30,
-        borderRadius: '50%',
-        background: 'linear-gradient(135deg,#a855f7,#7c3aed)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        flexShrink: 0,
-        boxShadow: '0 0 12px rgba(139,92,246,0.35)',
-        border: '1px solid rgba(255,255,255,0.1)',
-        marginTop: 2,
-      }}>
-        <span style={{ fontSize: 13, fontWeight: 800, color: '#fff' }}>G</span>
+    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 14 }} onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}>
+      {/* Orb */}
+      <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'linear-gradient(135deg,#a855f7,#6d28d9)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, boxShadow: '0 0 10px rgba(139,92,246,0.3)', marginTop: 2 }}>
+        <span style={{ fontSize: 12, fontWeight: 800, color: '#fff' }}>G</span>
       </div>
-
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-          <span style={{ fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,0.65)' }}>{copy.agentLabel}</span>
-          <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)' }}>{formatTime(msg.ts)}</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5 }}>
+          <span style={{ fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,0.55)' }}>{copy.agentLabel}</span>
+          <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.25)' }}>{formatTime(msg.ts)}</span>
         </div>
-
         {msg.pending && !msg.content ? (
-          <div style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: 4,
-            padding: '10px 16px',
-            borderRadius: '4px 20px 20px 20px',
-            background: 'rgba(255,255,255,0.04)',
-            border: '1px solid rgba(255,255,255,0.08)',
-          }}>
-            {[0, 150, 300].map(delay => (
-              <span key={delay} style={{
-                display: 'block',
-                width: 6,
-                height: 6,
-                borderRadius: '50%',
-                background: 'rgba(255,255,255,0.5)',
-                animation: `bounce 1s ${delay}ms ease-in-out infinite`,
-              }} />
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '10px 14px', borderRadius: '4px 18px 18px 18px', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}>
+            {[0, 150, 300].map(d => (
+              <span key={d} style={{ display: 'block', width: 6, height: 6, borderRadius: '50%', background: 'rgba(255,255,255,0.45)', animation: `bounce 1s ${d}ms ease-in-out infinite` }} />
             ))}
           </div>
         ) : msg.media ? (
-          <div style={{ overflow: 'hidden', borderRadius: 16, border: '1px solid rgba(255,255,255,0.08)' }}>
-            {msg.media.kind === 'image' && (
-              <img src={msg.media.url} alt="" style={{ maxWidth: 300, display: 'block', objectFit: 'cover' }} loading="lazy" />
-            )}
-            {msg.media.kind === 'video' && (
-              <video src={msg.media.url} controls style={{ maxWidth: 300, display: 'block' }} />
-            )}
-            {msg.media.kind === 'audio' && (
-              <div style={{ padding: 12 }}>
-                <audio src={msg.media.url} controls style={{ width: 260 }} />
-              </div>
-            )}
+          <div style={{ overflow: 'hidden', borderRadius: 14, border: '1px solid rgba(255,255,255,0.08)', display: 'inline-block' }}>
+            {msg.media.kind === 'image' && <img src={msg.media.url} alt="" style={{ display: 'block', maxWidth: 280, objectFit: 'cover' }} loading="lazy" />}
+            {msg.media.kind === 'video' && <video src={msg.media.url} controls style={{ display: 'block', maxWidth: 280 }} />}
+            {msg.media.kind === 'audio' && <div style={{ padding: 12 }}><audio src={msg.media.url} controls style={{ width: 260 }} /></div>}
           </div>
         ) : (
-          <div style={{
-            padding: '10px 16px',
-            borderRadius: '4px 20px 20px 20px',
-            background: 'rgba(255,255,255,0.04)',
-            border: '1px solid rgba(255,255,255,0.07)',
-            fontSize: 15,
-            lineHeight: 1.6,
-            color: 'rgba(255,255,255,0.9)',
-            whiteSpace: 'pre-wrap',
-            wordBreak: 'break-word',
-          }}>
+          <div style={{ padding: '10px 14px', borderRadius: '4px 18px 18px 18px', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)', fontSize: 15, lineHeight: 1.6, color: 'rgba(255,255,255,0.88)', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
             {msg.content}
           </div>
         )}
-
-        {/* Message actions */}
+        {/* Actions */}
         {!msg.pending && msg.content && (
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 2,
-            marginTop: 6,
-            opacity: actionsVisible ? 1 : 0,
-            transition: 'opacity 0.15s',
-          }}>
-            <ActionBtn onClick={onCopy} title="Copy"><Copy style={{ width: 13, height: 13 }} /></ActionBtn>
-            <ActionBtn onClick={onRetry} title="Retry"><RotateCcw style={{ width: 13, height: 13 }} /></ActionBtn>
-            <ActionBtn onClick={onSpeak} title="Speak"><Volume2 style={{ width: 13, height: 13 }} /></ActionBtn>
-            <ActionBtn onClick={onLike} title="Like" active={msg.liked}><ThumbsUp style={{ width: 13, height: 13 }} /></ActionBtn>
-            <ActionBtn onClick={onDislike} title="Dislike" active={msg.disliked}><ThumbsDown style={{ width: 13, height: 13 }} /></ActionBtn>
+          <div style={{ display: 'flex', gap: 3, marginTop: 6, opacity: hover ? 1 : 0, transition: 'opacity 0.15s' }}>
+            <Btn title="Copy" onClick={onCopy}><Copy style={{ width: 12, height: 12 }} /></Btn>
+            <Btn title="Retry" onClick={onRetry}><RotateCcw style={{ width: 12, height: 12 }} /></Btn>
+            <Btn title="Speak" onClick={onSpeak}><Volume2 style={{ width: 12, height: 12 }} /></Btn>
+            <Btn title="Like" onClick={onLike} active={msg.liked}><ThumbsUp style={{ width: 12, height: 12 }} /></Btn>
+            <Btn title="Dislike" onClick={onDislike} active={msg.disliked}><ThumbsDown style={{ width: 12, height: 12 }} /></Btn>
           </div>
         )}
       </div>
@@ -2280,32 +1348,48 @@ function MessageRow({
   );
 }
 
-function ActionBtn({ children, onClick, title, active }: {
-  children: React.ReactNode;
-  onClick: () => void;
-  title: string;
-  active?: boolean;
-}) {
+function Btn({ children, onClick, title, active }: { children: React.ReactNode; onClick: () => void; title: string; active?: boolean }) {
   return (
-    <button
-      type="button"
-      title={title}
-      onClick={onClick}
-      style={{
-        width: 26,
-        height: 26,
-        borderRadius: 8,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        background: active ? 'rgba(139,92,246,0.2)' : 'rgba(255,255,255,0.04)',
-        border: `1px solid ${active ? 'rgba(139,92,246,0.4)' : 'rgba(255,255,255,0.07)'}`,
-        color: active ? 'rgba(167,139,250,1)' : 'rgba(255,255,255,0.45)',
-        cursor: 'pointer',
-        transition: 'all 0.12s',
-      }}
-    >
+    <button type="button" title={title} onClick={onClick} style={{
+      width: 24, height: 24, borderRadius: 7, display: 'flex', alignItems: 'center', justifyContent: 'center',
+      background: active ? 'rgba(139,92,246,0.2)' : 'rgba(255,255,255,0.04)',
+      border: `1px solid ${active ? 'rgba(139,92,246,0.4)' : 'rgba(255,255,255,0.06)'}`,
+      color: active ? 'rgba(167,139,250,1)' : 'rgba(255,255,255,0.4)', cursor: 'pointer',
+    }}>
       {children}
     </button>
+  );
+}
+
+// ─── PlanCard ─────────────────────────────────────────────────────────────────
+
+function PlanCard({ name, price, period, features, accent, btnClass, btnText, badge }: {
+  name: string; price: string; period: string; features: string[];
+  accent: string; btnClass: string; btnText: string; badge?: string;
+}) {
+  return (
+    <div style={{ position: 'relative', padding: 16, borderRadius: 18, border: `1px solid ${badge ? 'rgba(139,92,246,0.45)' : 'rgba(255,255,255,0.08)'}`, background: badge ? 'rgba(139,92,246,0.06)' : 'rgba(255,255,255,0.02)' }}>
+      {badge && <div style={{ position: 'absolute', top: -11, left: '50%', transform: 'translateX(-50%)', padding: '3px 12px', borderRadius: 20, background: 'linear-gradient(90deg,#6d28d9,#a855f7)', fontSize: 10, fontWeight: 700, color: '#fff', letterSpacing: '0.06em', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>{badge}</div>}
+      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 12 }}>
+        <span style={{ fontSize: 15, fontWeight: 700, color: '#fff' }}>{name}</span>
+        <span style={{ fontSize: 22, fontWeight: 800, color: '#fff' }}>{price}<span style={{ fontSize: 11, fontWeight: 500, color: 'rgba(255,255,255,0.35)' }}>{period}</span></span>
+      </div>
+      <ul style={{ listStyle: 'none', margin: '0 0 14px', padding: 0, display: 'flex', flexDirection: 'column', gap: 7 }}>
+        {features.map(f => (
+          <li key={f} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'rgba(255,255,255,0.65)' }}>
+            <Check style={{ width: 13, height: 13, color: accent, flexShrink: 0 }} />{f}
+          </li>
+        ))}
+      </ul>
+      <button type="button" className={btnClass} style={{ width: '100%', padding: '10px', borderRadius: 11, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+        {btnText}
+      </button>
+      <style jsx>{`
+        .cc-btn-primary { background: linear-gradient(135deg,#6d28d9,#a855f7); color:#fff; border:none; box-shadow:0 4px 18px rgba(139,92,246,0.4); }
+        .cc-btn-primary:hover { transform:translateY(-1px); box-shadow:0 6px 22px rgba(139,92,246,0.55); }
+        .cc-btn-outline { background:transparent; color:rgba(255,255,255,0.55); border:1px solid rgba(255,255,255,0.12); }
+        .cc-btn-outline:hover { border-color:rgba(255,255,255,0.25); color:#fff; }
+      `}</style>
+    </div>
   );
 }
