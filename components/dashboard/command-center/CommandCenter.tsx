@@ -1242,18 +1242,25 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
 
               {/* Quick service cards */}
               <div className="cc-quick-cards">
-                {QUICK_SERVICES.map(id => {
+                {QUICK_SERVICES.map((id, idx) => {
                   const Icon = SERVICE_ICONS[id];
+                  const color = SERVICE_COLORS[id];
                   return (
                     <motion.button
                       key={id}
                       type="button"
                       className="cc-quick-card"
                       onClick={() => { setActiveService(id); inputRef.current?.focus(); }}
-                      whileHover={{ scale: 1.03 }}
-                      whileTap={{ scale: 0.97 }}
+                      whileHover={{ scale: 1.03, y: -2 }}
+                      whileTap={{ scale: 0.96 }}
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: 0.05 + idx * 0.05, duration: 0.25, ease: 'easeOut' }}
+                      style={{ ['--svc-color' as string]: color }}
                     >
-                      <Icon style={{ width: 18, height: 18, color: SERVICE_COLORS[id] }} />
+                      <span className="cc-quick-icon-wrap" style={{ background: `${color}18`, border: `1px solid ${color}30` }}>
+                        <Icon style={{ width: 18, height: 18, color }} />
+                      </span>
                       <span>{copy.services[id]}</span>
                       <span className="cc-quick-cost"><Zap style={{ width: 9, height: 9 }} />{SERVICE_COSTS[id]}</span>
                     </motion.button>
@@ -1319,20 +1326,35 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
               )}
             </div>
             {libraryLoading ? (
-              <div className="cc-standby" style={{ paddingTop: 48 }}>
-                <Loader2 style={{ width: 28, height: 28, color: 'rgba(139,92,246,0.5)' }} className="cc-spin" />
-                <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.3)', marginTop: 10 }}>
-                  {localeCode === 'ka' ? 'იტვირთება...' : localeCode === 'ru' ? 'Загрузка...' : 'Loading...'}
-                </p>
+              <div className="cc-lib-grid" aria-busy="true" aria-label={localeCode === 'ka' ? 'იტვირთება' : localeCode === 'ru' ? 'Загрузка' : 'Loading'}>
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <div key={i} className="cc-lib-skel" style={{ animationDelay: `${i * 80}ms` }} />
+                ))}
               </div>
             ) : filteredLibrary.length === 0 ? (
-              <div className="cc-standby" style={{ paddingTop: 48 }}>
-                <LibraryIcon style={{ width: 48, height: 48, color: 'rgba(255,255,255,0.15)' }} />
-                <p style={{ fontSize: 14, color: 'rgba(255,255,255,0.4)', marginTop: 12 }}>{copy.libraryEmpty}</p>
-                <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.2)', marginTop: 4 }}>
-                  {localeCode === 'ka' ? 'გენერირებული კონტენტი აქ გამოჩნდება' : localeCode === 'ru' ? 'Созданный контент появится здесь' : 'Generated content will appear here'}
+              <motion.div
+                className="cc-standby"
+                style={{ paddingTop: 48 }}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.3, ease: 'easeOut' }}
+              >
+                <div className="cc-empty-icon-halo">
+                  <LibraryIcon style={{ width: 36, height: 36, color: 'rgba(167,139,250,0.85)' }} />
+                </div>
+                <p style={{ fontSize: 15, fontWeight: 600, color: 'rgba(255,255,255,0.7)', marginTop: 14 }}>{copy.libraryEmpty}</p>
+                <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', marginTop: 6, maxWidth: 260 }}>
+                  {localeCode === 'ka' ? 'შენი გენერირებული სურათები, ვიდეოები და მუსიკა აქ დაგროვდება — ხელით სამახსოვროდ შენახული.' : localeCode === 'ru' ? 'Здесь будут собираться все созданные изображения, видео и музыка — автоматически сохраненные.' : 'All your generated images, videos, and music will collect here — automatically saved.'}
                 </p>
-              </div>
+                <button
+                  type="button"
+                  className="cc-empty-cta"
+                  onClick={() => setView('chat')}
+                >
+                  <Sparkles style={{ width: 14, height: 14 }} />
+                  {localeCode === 'ka' ? 'დაიწყე გენერაცია' : localeCode === 'ru' ? 'Начать генерацию' : 'Start generating'}
+                </button>
+              </motion.div>
             ) : (
               <div className="cc-lib-grid">
                 {filteredLibrary.map(item => (
@@ -2045,18 +2067,44 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
           box-shadow: 0 1px 4px rgba(0,0,0,0.3);
         }
         .cc-toggle.on .cc-toggle-thumb { transform: translateX(20px); }
-        /* Quick service cards — large touch targets */
+        /* Quick service cards — large touch targets, premium glow */
         .cc-quick-cards { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; margin-top: 8px; }
         .cc-quick-card {
-          display: flex; flex-direction: column; align-items: center; gap: 6px;
-          padding: 16px 20px; border-radius: 16px; min-width: 88px;
+          display: flex; flex-direction: column; align-items: center; gap: 8px;
+          padding: 16px 20px; border-radius: 18px; min-width: 96px;
           border: 1px solid rgba(255,255,255,0.09); background: rgba(255,255,255,0.03);
-          cursor: pointer; transition: all 0.14s; touch-action: manipulation;
+          cursor: pointer; transition: background 0.18s, border-color 0.18s, box-shadow 0.22s;
+          touch-action: manipulation; position: relative; overflow: hidden;
+          color: rgba(255,255,255,0.85);
         }
-        .cc-quick-card:hover { background: rgba(255,255,255,0.07); border-color: rgba(255,255,255,0.15); transform: translateY(-1px); }
-        .cc-quick-card:active { transform: scale(0.95); }
-        .cc-quick-card span:first-of-type { font-size: 13px; font-weight: 500; color: rgba(255,255,255,0.75); }
-        .cc-quick-cost { display: flex; align-items: center; gap: 2px; font-size: 10px; color: rgba(255,255,255,0.3); }
+        .cc-quick-card::before {
+          content: ''; position: absolute; inset: -1px; border-radius: inherit;
+          background: radial-gradient(circle at 50% 0%, var(--svc-color, transparent) 0%, transparent 65%);
+          opacity: 0; transition: opacity 0.22s ease; pointer-events: none;
+          mix-blend-mode: screen;
+        }
+        .cc-quick-card:hover {
+          background: rgba(255,255,255,0.06);
+          border-color: color-mix(in srgb, var(--svc-color, rgba(255,255,255,0.18)) 45%, transparent);
+          box-shadow: 0 8px 28px -10px color-mix(in srgb, var(--svc-color, rgba(0,0,0,0.4)) 60%, transparent);
+        }
+        .cc-quick-card:hover::before { opacity: 0.18; }
+        .cc-quick-card:active { transform: scale(0.96); }
+        .cc-quick-card:focus-visible {
+          outline: none;
+          box-shadow: 0 0 0 2px color-mix(in srgb, var(--svc-color, #a855f7) 70%, transparent),
+                      0 8px 28px -10px color-mix(in srgb, var(--svc-color, rgba(0,0,0,0.4)) 60%, transparent);
+        }
+        .cc-quick-icon-wrap {
+          display: inline-flex; align-items: center; justify-content: center;
+          width: 38px; height: 38px; border-radius: 12px;
+          transition: transform 0.25s cubic-bezier(.34,1.56,.64,1);
+        }
+        .cc-quick-card:hover .cc-quick-icon-wrap { transform: scale(1.08) rotate(-3deg); }
+        .cc-quick-card > span:first-of-type, .cc-quick-card > span:nth-of-type(2) {
+          font-size: 13px; font-weight: 500; color: rgba(255,255,255,0.85);
+        }
+        .cc-quick-cost { display: flex; align-items: center; gap: 2px; font-size: 10px; color: rgba(255,255,255,0.35); font-weight: 500; }
         /* Messages */
         .cc-messages { display: flex; flex-direction: column; padding: 12px 14px 8px; max-width: 768px; margin: 0 auto; width: 100%; }
         .cc-day-div {
@@ -2080,6 +2128,8 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
         .cc-tab:hover { color: rgba(255,255,255,0.65); }
         .cc-tab:active { transform: scale(0.95); }
         .cc-tab.active { color: rgba(167,139,250,1); }
+        .cc-tab:focus-visible { outline: none; color: #fff; box-shadow: inset 0 -2px 0 rgba(168,85,247,0.85); }
+        .cc-filter:focus-visible { outline: none; box-shadow: 0 0 0 2px rgba(168,85,247,0.6); }
         /* Rail — service selector strip */
         .cc-rail {
           display: flex; align-items: center; gap: 6px; padding: 10px 12px;
@@ -2119,6 +2169,12 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
           background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.09);
           border-radius: 22px; padding: 4px;
           backdrop-filter: blur(16px);
+          transition: border-color 0.2s, box-shadow 0.25s, background 0.2s;
+        }
+        .cc-input-bar:focus-within {
+          border-color: rgba(139,92,246,0.45);
+          background: rgba(255,255,255,0.06);
+          box-shadow: 0 0 0 4px rgba(139,92,246,0.1), 0 8px 24px -10px rgba(139,92,246,0.35);
         }
         /* 16px on mobile prevents iOS auto-zoom; keep 15px with explicit override */
         .cc-textarea {
@@ -2157,9 +2213,16 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
           background: linear-gradient(135deg,#6d28d9,#a855f7);
           color: #fff; cursor: pointer;
           box-shadow: 0 0 14px rgba(139,92,246,0.5);
+          animation: cc-send-ready 2.4s ease-in-out infinite;
         }
-        .cc-send.ready:hover { box-shadow: 0 0 22px rgba(139,92,246,0.7); transform: scale(1.06); }
+        @keyframes cc-send-ready {
+          0%, 100% { box-shadow: 0 0 14px rgba(139,92,246,0.45); }
+          50% { box-shadow: 0 0 20px rgba(139,92,246,0.7); }
+        }
+        .cc-send.ready:hover { box-shadow: 0 0 24px rgba(139,92,246,0.8); transform: scale(1.06); animation: none; }
         .cc-send.ready:active { transform: scale(0.94); }
+        .cc-send.ready:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(168,85,247,0.55), 0 0 20px rgba(139,92,246,0.7); }
+        .cc-ibtn:focus-visible { outline: none; box-shadow: 0 0 0 2px rgba(168,85,247,0.6); }
         .cc-spin { animation: spin 0.8s linear infinite; }
         /* Library */
         .cc-library { padding: 14px; }
@@ -2185,6 +2248,44 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
           border-radius: 50%; background: rgba(34,197,94,0.85);
           box-shadow: 0 0 5px rgba(34,197,94,0.5);
         }
+        /* Library skeleton — shimmer for premium loading */
+        .cc-lib-skel {
+          aspect-ratio: 1; border-radius: 14px;
+          background: linear-gradient(110deg, rgba(255,255,255,0.04) 8%, rgba(255,255,255,0.08) 24%, rgba(255,255,255,0.04) 40%);
+          background-size: 200% 100%; animation: cc-shimmer 1.6s ease-in-out infinite;
+          border: 1px solid rgba(255,255,255,0.05);
+        }
+        @keyframes cc-shimmer {
+          0% { background-position: 200% 0; }
+          100% { background-position: -200% 0; }
+        }
+        /* Empty state halo + CTA */
+        .cc-empty-icon-halo {
+          width: 84px; height: 84px; border-radius: 50%;
+          display: flex; align-items: center; justify-content: center;
+          background: radial-gradient(circle at 50% 50%, rgba(167,139,250,0.18) 0%, rgba(167,139,250,0.06) 50%, transparent 70%);
+          position: relative;
+        }
+        .cc-empty-icon-halo::before {
+          content: ''; position: absolute; inset: -6px; border-radius: 50%;
+          background: radial-gradient(circle, rgba(139,92,246,0.25) 0%, transparent 60%);
+          animation: cc-halo-pulse 2.6s ease-in-out infinite;
+        }
+        @keyframes cc-halo-pulse {
+          0%, 100% { transform: scale(1); opacity: 0.5; }
+          50% { transform: scale(1.12); opacity: 0.8; }
+        }
+        .cc-empty-cta {
+          margin-top: 18px; display: inline-flex; align-items: center; gap: 7px;
+          padding: 10px 18px; border-radius: 999px; font-size: 13px; font-weight: 600;
+          color: #fff; cursor: pointer; border: none;
+          background: linear-gradient(135deg, #6d28d9, #a855f7);
+          box-shadow: 0 6px 20px -6px rgba(139,92,246,0.55);
+          transition: transform 0.18s, box-shadow 0.22s;
+        }
+        .cc-empty-cta:hover { transform: translateY(-1px); box-shadow: 0 10px 28px -8px rgba(139,92,246,0.75); }
+        .cc-empty-cta:active { transform: scale(0.97); }
+        .cc-empty-cta:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(168,85,247,0.55), 0 6px 20px -6px rgba(139,92,246,0.55); }
         /* Pricing */
         .cc-pricing { padding: 20px 14px 36px; max-width: 440px; margin: 0 auto; }
         .cc-pricing-h { font-size: 20px; font-weight: 700; color: #fff; text-align: center; margin-bottom: 6px; }
