@@ -1,9 +1,67 @@
 'use client';
 
+import { useState, useCallback } from 'react';
 import { motion } from 'framer-motion';
-import { Check, Zap, Star, Crown, Building2, ArrowRight } from 'lucide-react';
+import { Check, Zap, Star, Crown, Building2, ArrowRight, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 import { PRICING_PLANS, type PricingPlan } from '@/lib/pricing/canonicalPricing';
+
+// ─── Plan → billing tier mapping ─────────────────────────────────────────────
+// Canonical plan IDs → server-side billing tier IDs
+const PLAN_TO_BILLING_TIER: Record<string, string> = {
+  pro: 'PRO',
+  ultimate: 'PREMIUM',  // "PREMIUM" is "ultimate" in billing layer
+  enterprise: 'ENTERPRISE',
+};
+
+// ─── Checkout hook ────────────────────────────────────────────────────────────
+function useCheckout() {
+  const [loading, setLoading] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const startCheckout = useCallback(async (planId: string) => {
+    // Starter: just go to signup
+    if (planId === 'starter') { window.location.href = '/signup'; return; }
+    // Enterprise: contact sales
+    if (planId === 'enterprise') { window.location.href = 'mailto:sales@myavatar.ge'; return; }
+
+    const billingTier = PLAN_TO_BILLING_TIER[planId];
+    if (!billingTier) return;
+
+    setLoading(planId);
+    setError(null);
+    try {
+      const res = await fetch('/api/billing/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ plan: billingTier }),
+      });
+      const data = await res.json() as { url?: string; error?: string; error_code?: string };
+
+      if (res.status === 401 || data.error_code === 'UNAUTHORIZED') {
+        // Not logged in — redirect to signup with plan hint
+        window.location.href = `/signup?plan=${planId}`;
+        return;
+      }
+      if (res.status === 503) {
+        // Stripe not configured — go to contact
+        window.location.href = 'mailto:sales@myavatar.ge?subject=Upgrade to ' + planId;
+        return;
+      }
+      if (!res.ok || !data.url) {
+        throw new Error(data.error ?? 'Checkout error');
+      }
+      window.location.href = data.url;
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Something went wrong');
+    } finally {
+      setLoading(null);
+    }
+  }, []);
+
+  return { startCheckout, loading, error };
+}
 
 // ─── Icons per plan ───────────────────────────────────────────────────────────
 const PLAN_ICONS = {
@@ -32,10 +90,16 @@ const FEATURE_ROWS = [
 ];
 
 // ─── Plan card ────────────────────────────────────────────────────────────────
-function PlanCard({ plan, index }: { plan: PricingPlan; index: number }) {
+function PlanCard({ plan, index, onCheckout, checkoutLoading }: {
+  plan: PricingPlan;
+  index: number;
+  onCheckout: (planId: string) => void;
+  checkoutLoading: string | null;
+}) {
   const Icon = PLAN_ICONS[plan.id as keyof typeof PLAN_ICONS] ?? Zap;
   const isFree = plan.price === 0;
   const isPopular = plan.popular;
+  const isLoadingThis = checkoutLoading === plan.id;
 
   return (
     <motion.div
@@ -124,8 +188,9 @@ function PlanCard({ plan, index }: { plan: PricingPlan; index: number }) {
       </ul>
 
       {/* CTA */}
-      <Link
-        href={isFree ? '/signup' : `/signup?plan=${plan.id}`}
+      <button
+        onClick={() => onCheckout(plan.id)}
+        disabled={isLoadingThis}
         style={{
           display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
           padding: '13px 20px',
@@ -137,21 +202,30 @@ function PlanCard({ plan, index }: { plan: PricingPlan; index: number }) {
           border: isFree ? '1px solid rgba(255,255,255,0.12)' : 'none',
           borderRadius: 12,
           color: '#fff',
-          textDecoration: 'none',
           fontSize: 14,
           fontWeight: 700,
-          transition: 'opacity 0.15s',
+          cursor: isLoadingThis ? 'not-allowed' : 'pointer',
+          opacity: isLoadingThis ? 0.7 : 1,
+          transition: 'opacity 0.15s, transform 0.1s',
+          width: '100%',
+          boxShadow: isPopular ? '0 0 20px rgba(245,158,11,0.3)' : !isFree ? '0 0 16px rgba(139,92,246,0.2)' : 'none',
         }}
+        onMouseEnter={e => { if (!isLoadingThis) (e.currentTarget as HTMLButtonElement).style.transform = 'scale(1.02)'; }}
+        onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.transform = 'scale(1)'; }}
       >
-        {plan.ctaKa}
-        {!isFree && <ArrowRight style={{ width: 15, height: 15 }} />}
-      </Link>
+        {isLoadingThis
+          ? <><Loader2 style={{ width: 14, height: 14, animation: 'spin 1s linear infinite' }} /> იტვირთება...</>
+          : <>{plan.ctaKa}{!isFree && <ArrowRight style={{ width: 15, height: 15 }} />}</>
+        }
+      </button>
     </motion.div>
   );
 }
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export default function PricingPageClient() {
+  const { startCheckout, loading: checkoutLoading, error: checkoutError } = useCheckout();
+
   return (
     <div style={{
       minHeight: '100vh',
@@ -228,8 +302,13 @@ export default function PricingPageClient() {
 
         {/* Plan cards */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 16, marginBottom: 64 }}>
+          {checkoutError && (
+            <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '10px 16px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 10, color: '#fca5a5', fontSize: 13 }}>
+              ⚠️ {checkoutError}
+            </div>
+          )}
           {PRICING_PLANS.map((plan, i) => (
-            <PlanCard key={plan.id} plan={plan} index={i} />
+            <PlanCard key={plan.id} plan={plan} index={i} onCheckout={startCheckout} checkoutLoading={checkoutLoading} />
           ))}
         </div>
 

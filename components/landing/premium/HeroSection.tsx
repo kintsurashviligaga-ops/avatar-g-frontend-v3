@@ -16,9 +16,10 @@ const COPY = {
     headline1: 'GEORGIA\'S FIRST',
     headline2: 'AI CIVILIZATION',
     headline3: 'STACK.',
-    cta1: 'Start Free',
+    cta1: '🚀 Start Free',
     cta2: 'See Services',
     trust: 'One platform. 14 AI services. Voice, image, video, music, avatar — in Georgian.',
+    subTrust: '✓ No card needed · ✓ 200 free credits · ✓ Ready in 2 minutes',
   },
   ka: {
     georgianBadge: 'საქართველოს პირველი AI ცივილიზაციური სტეკი',
@@ -26,9 +27,10 @@ const COPY = {
     headline1: 'საქართველოს',
     headline2: 'AI ცივილიზაციური',
     headline3: 'სტეკი.',
-    cta1: 'დაიწყე უფასოდ',
+    cta1: '🚀 უფასოდ დაიწყე',
     cta2: 'სერვისების ნახვა',
     trust: 'ერთი პლატფორმა. 14 AI სერვისი. ხმა, სურათი, ვიდეო, მუსიკა, ავატარი — ქართულად.',
+    subTrust: '✓ ბარათი არ სჭირდება · ✓ 200 კრედიტი უფასოდ · ✓ 2 წუთში მზად',
   },
   ru: {
     georgianBadge: 'Первый AI civilization stack в Грузии',
@@ -36,9 +38,10 @@ const COPY = {
     headline1: 'ПЕРВЫЙ В ГРУЗИИ',
     headline2: 'AI CIVILIZATION',
     headline3: 'STACK.',
-    cta1: 'Начать бесплатно',
+    cta1: '🚀 Начать бесплатно',
     cta2: 'Смотреть сервисы',
     trust: 'Одна платформа. 14 AI сервисов. Голос, изображение, видео, музыка, аватар — на грузинском.',
+    subTrust: '✓ Без карты · ✓ 200 бесплатных кредитов · ✓ Готово за 2 минуты',
   },
 } as const
 
@@ -210,17 +213,22 @@ export function HeroSection() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.8, delay: 0.65, ease: 'easeOut' }}
         >
-          <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.98 }} transition={{ type: 'spring', stiffness: 400, damping: 17 }}>
+          <motion.div
+            whileHover={{ scale: 1.06 }}
+            whileTap={{ scale: 0.97 }}
+            transition={{ type: 'spring', stiffness: 400, damping: 17 }}
+          >
             <Link
-              href={lh('/signup')}
-              className="inline-flex items-center gap-2 text-sm font-semibold px-8 py-3.5 rounded-xl transition-all duration-200 text-white"
+              href={lh('/dashboard')}
+              className="inline-flex items-center gap-2 text-sm font-bold px-9 py-4 rounded-xl transition-all duration-200 text-white"
               style={{
-                background: 'linear-gradient(135deg, rgba(0,212,255,0.9), rgba(124,58,237,0.9))',
-                boxShadow: '0 0 24px rgba(0,212,255,0.3)',
+                background: 'linear-gradient(135deg, #06b6d4, #7c3aed)',
+                boxShadow: '0 0 32px rgba(34,211,238,0.35), 0 0 0 1px rgba(34,211,238,0.2)',
+                letterSpacing: '0.01em',
               }}
             >
               {c.cta1}
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
                 <line x1="5" y1="12" x2="19" y2="12" />
                 <polyline points="12 5 19 12 12 19" />
               </svg>
@@ -252,14 +260,21 @@ export function HeroSection() {
         </motion.div>
 
         {/* Trust signal */}
-        <motion.p
-          className="mt-8 sm:mt-12 text-sm sm:text-base font-light tracking-wide text-white/40"
+        <motion.div
+          className="flex flex-col items-center gap-2 mt-8 sm:mt-12"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ duration: 0.8, delay: 1.0 }}
         >
-          {c.trust}
-        </motion.p>
+          <p className="text-sm sm:text-base font-light tracking-wide text-white/40 text-center">
+            {c.trust}
+          </p>
+          {'subTrust' in c && (
+            <p className="text-xs sm:text-sm font-medium tracking-wide text-white/30 text-center">
+              {(c as typeof c & { subTrust: string }).subTrust}
+            </p>
+          )}
+        </motion.div>
       </div>
     </section>
   )

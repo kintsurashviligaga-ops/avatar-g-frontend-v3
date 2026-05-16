@@ -134,30 +134,53 @@ export default function SharePageClient({ creation }: { creation: Creation | nul
           <MediaDisplay creation={creation} />
         </div>
 
-        {/* Action buttons */}
+        {/* Primary CTA — "Create Similar" */}
+        <a
+          href={creation.prompt
+            ? `https://myavatar.ge/ka/dashboard?prompt=${encodeURIComponent(creation.prompt)}`
+            : 'https://myavatar.ge/ka/dashboard'}
+          style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+            padding: '16px 28px',
+            background: `linear-gradient(135deg, ${color}cc, #7c3aed)`,
+            borderRadius: 14,
+            color: '#fff', textDecoration: 'none',
+            fontSize: 16, fontWeight: 700,
+            boxShadow: `0 0 28px ${color}44, 0 4px 16px rgba(0,0,0,0.3)`,
+            transition: 'transform 0.15s, box-shadow 0.15s',
+            marginBottom: 12,
+          }}
+          onMouseEnter={e => { (e.currentTarget as HTMLAnchorElement).style.transform = 'scale(1.03)'; }}
+          onMouseLeave={e => { (e.currentTarget as HTMLAnchorElement).style.transform = 'scale(1)'; }}
+        >
+          <span style={{ fontSize: 20 }}>{KIND_ICON[creation.kind as Kind] ?? '✨'}</span>
+          ამის მსგავსი შევქმნა Avatar G-ით →
+        </a>
+
+        {/* Secondary action buttons */}
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
           {creation.url && (
             <a
               href={creation.url}
               download
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '10px 20px', background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 10, color: '#fff', textDecoration: 'none', fontSize: 14, fontWeight: 500, transition: 'background 0.15s' }}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '10px 18px', background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 10, color: '#fff', textDecoration: 'none', fontSize: 13, fontWeight: 500, transition: 'background 0.15s' }}
             >
               ⬇ ჩამოტვირთვა
             </a>
           )}
-          {remixUrl && (
+          {creation.prompt && (
             <a
-              href={remixUrl}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '10px 20px', background: `${color}20`, border: `1px solid ${color}44`, borderRadius: 10, color, textDecoration: 'none', fontSize: 14, fontWeight: 500 }}
+              href={`https://myavatar.ge/ka/dashboard?prompt=${encodeURIComponent(creation.prompt)}`}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '10px 18px', background: `${color}18`, border: `1px solid ${color}40`, borderRadius: 10, color, textDecoration: 'none', fontSize: 13, fontWeight: 500 }}
             >
               🔄 Remix
             </a>
           )}
           <a
             href="https://myavatar.ge"
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '10px 20px', background: 'linear-gradient(135deg,#6d28d9,#a855f7)', borderRadius: 10, color: '#fff', textDecoration: 'none', fontSize: 14, fontWeight: 600 }}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '10px 18px', background: 'rgba(139,92,246,0.12)', border: '1px solid rgba(139,92,246,0.25)', borderRadius: 10, color: '#c4b5fd', textDecoration: 'none', fontSize: 13, fontWeight: 500 }}
           >
-            ✨ Avatar G-ში სცადე
+            🏠 Avatar G-ის მთავარი
           </a>
         </div>
 
