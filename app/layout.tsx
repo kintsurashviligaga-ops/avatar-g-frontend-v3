@@ -6,6 +6,7 @@ import Providers from "@/app/providers";
 import { AppShell } from "@/components/AppShell";
 import { logStartupEnvValidation } from "@/lib/env/startupValidation";
 import { Analytics } from "@vercel/analytics/react";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 import { PostHogProvider } from "@/components/analytics/PostHogProvider";
 
 const inter = Inter({
@@ -126,6 +127,8 @@ export default async function RootLayout({
 				</PostHogProvider>
 				{/* Vercel Analytics — zero-config page view tracking */}
 				<Analytics />
+				{/* Vercel Speed Insights — Core Web Vitals monitoring */}
+				<SpeedInsights />
 			</body>
 		</html>
 	);

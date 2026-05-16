@@ -5,6 +5,7 @@ import { motion } from 'framer-motion';
 import { Check, Zap, Star, Crown, Building2, ArrowRight, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 import { PRICING_PLANS, type PricingPlan } from '@/lib/pricing/canonicalPricing';
+import { analytics } from '@/components/analytics/PostHogProvider';
 
 // ─── Plan → billing tier mapping ─────────────────────────────────────────────
 // Canonical plan IDs → server-side billing tier IDs
@@ -20,13 +21,14 @@ function useCheckout() {
   const [error, setError] = useState<string | null>(null);
 
   const startCheckout = useCallback(async (planId: string) => {
+    analytics.pricingClick(planId, 'click_cta');
     // Starter: just go to signup
     if (planId === 'starter') { window.location.href = '/signup'; return; }
     // Enterprise: contact sales
     if (planId === 'enterprise') { window.location.href = 'mailto:sales@myavatar.ge'; return; }
 
-    const billingTier = PLAN_TO_BILLING_TIER[planId];
-    if (!billingTier) return;
+    const billingTier = PLAN_TO_BILLING_TIER[planId] ?? planId;
+    analytics.checkoutStarted(planId, billingTier);
 
     setLoading(planId);
     setError(null);

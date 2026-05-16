@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
+import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
 import { createBrowserClient, isSupabaseConfigured } from '@/lib/supabase/browser';
@@ -151,7 +152,16 @@ function AuthScreenInner({ mode: initialMode, locale, redirectTo = '/' }: AuthSc
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [showMoreProviders, setShowMoreProviders] = useState(false);
 
+  const searchParams = useSearchParams();
   const supabase = createBrowserClient();
+
+  // Capture referral code from URL (?ref=CODE) and store for auto-redeem after auth
+  useEffect(() => {
+    const refCode = searchParams?.get('ref');
+    if (refCode && refCode.length >= 6 && typeof window !== 'undefined') {
+      localStorage.setItem('agentg_pending_referral', refCode.toUpperCase());
+    }
+  }, [searchParams]);
 
   const callbackUrl = typeof window !== 'undefined'
     ? (process.env.NEXT_PUBLIC_AUTH_REDIRECT_URL || `${window.location.origin}/auth/callback?redirect=${encodeURIComponent(redirectTo)}`)

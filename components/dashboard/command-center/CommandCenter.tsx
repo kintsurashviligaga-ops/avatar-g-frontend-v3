@@ -50,6 +50,7 @@ import RateLimitBanner from '@/components/dashboard/RateLimitBanner';
 import ReferralPanel from '@/components/dashboard/ReferralPanel';
 import InviteReferralBanner from '@/components/dashboard/InviteReferralBanner';
 import { useRateLimit } from '@/hooks/useRateLimit';
+import { analytics } from '@/components/analytics/PostHogProvider';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -472,6 +473,30 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
       .catch(() => {});
   }, [isAuthenticated]);
 
+  // Auto-redeem referral code stored from signup URL (?ref=CODE)
+  useEffect(() => {
+    if (!isAuthenticated || typeof window === 'undefined') return;
+    const pendingCode = localStorage.getItem('agentg_pending_referral');
+    if (!pendingCode) return;
+    // Clear immediately to prevent double-redeem on refresh
+    localStorage.removeItem('agentg_pending_referral');
+    fetch('/api/referral/redeem', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ code: pendingCode }),
+    })
+      .then(r => r.json())
+      .then((d: { success?: boolean; bonusCredits?: number; message?: string; alreadyRedeemed?: boolean }) => {
+        if (d.success && d.message) {
+          showToast(d.message, 'success');
+          analytics.referralRedeemed(pendingCode);
+        }
+        // alreadyRedeemed or code not found — silently ignore
+      })
+      .catch(() => {});
+  }, [isAuthenticated, showToast]);
+
   // Show onboarding for first-time visitors
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -623,6 +648,9 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
     setOrbState('speaking');
 
     let mediaGenerated = false; // tracks if a non-chat generation succeeded (for rate limit)
+    const genStartTime = Date.now();
+    analytics.generationStarted(service, cost);
+    analytics.prompt(service, text);
     try {
       if (service === 'avatar') {
         const startRes = await fetch('/api/heygen/avatar', {
@@ -763,8 +791,12 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
       const msg = err instanceof Error ? err.message : copy.errorGeneric;
       setMessages(m => m.map(msg2 => msg2.id === pendingMsg.id ? { ...msg2, pending: false, content: `⚠️ ${msg}` } : msg2));
       showToast(msg, 'error');
+      analytics.generationFailed(service, msg);
     } finally {
-      if (mediaGenerated) rateLimit.incrementCount();
+      if (mediaGenerated) {
+        rateLimit.incrementCount();
+        analytics.generationSuccess(service, cost, Date.now() - genStartTime);
+      }
       setSending(false);
       setOrbState('idle');
     }
