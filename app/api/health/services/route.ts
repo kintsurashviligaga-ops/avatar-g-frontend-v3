@@ -206,12 +206,27 @@ export async function GET(req: NextRequest) {
     }),
 
     // ── Monitoring ─────────────────────────────────────────────────────────
-    probe('Sentry', 'monitoring', 'SENTRY_DSN', process.env.SENTRY_DSN, async () => {
-      // Sentry DSN is just a URL — verify format
-      const dsn = process.env.SENTRY_DSN!;
-      const ok = /^https:\/\/[a-f0-9]+@[\w.-]+\/[0-9]+$/.test(dsn);
-      return { ok, message: ok ? 'DSN format valid' : 'DSN format invalid' };
-    }),
+    probe(
+      'Sentry',
+      'monitoring',
+      'NEXT_PUBLIC_SENTRY_DSN',
+      // sentry.server.config.ts accepts either SENTRY_DSN or NEXT_PUBLIC_SENTRY_DSN.
+      // Probe both so the matrix matches the runtime behavior.
+      process.env.SENTRY_DSN || process.env.NEXT_PUBLIC_SENTRY_DSN,
+      async () => {
+        const dsn = (process.env.SENTRY_DSN || process.env.NEXT_PUBLIC_SENTRY_DSN)!;
+        const match = dsn.match(/^https:\/\/[a-f0-9]+@([\w.-]+)\/([0-9]+)$/);
+        if (!match) return { ok: false, message: 'DSN format invalid' };
+        const [, host, projectId] = match;
+        // Optional reachability ping — Sentry returns 200/405 on the project envelope endpoint
+        try {
+          const r = await fetchWithTimeout(`https://${host}/api/${projectId}/envelope/`, { method: 'OPTIONS' }, 4000);
+          return { ok: true, message: `DSN valid · host=${host} · probe ${r.status}` };
+        } catch {
+          return { ok: true, message: `DSN valid · host=${host} (no reach probe)` };
+        }
+      },
+    ),
   ];
 
   const results = await Promise.all(probes);

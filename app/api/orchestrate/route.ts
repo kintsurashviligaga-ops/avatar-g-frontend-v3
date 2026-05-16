@@ -8,6 +8,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { textProviderFactory, type TextProviderId } from '@/lib/providers/text-factory';
 import { toolRegistry, type ToolId } from '@/lib/tools/registry';
+import { reportError } from '@/lib/observability/report-error';
 import { getAgent } from '@/lib/agents/registry';
 
 export const dynamic = 'force-dynamic';
@@ -182,7 +183,7 @@ export async function POST(request: NextRequest) {
     });
 
   } catch (error) {
-    console.error('Orchestration error:', error);
+    reportError(error, { route: '/api/orchestrate', durationMs: Date.now() - startTime });
 
     // Log failed run
     try {

@@ -11,6 +11,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createServiceRoleClient } from '@/lib/supabase/server';
+import { reportError } from '@/lib/observability/report-error';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -113,6 +114,7 @@ async function runStepWithRetry(
         await new Promise(r => setTimeout(r, 1500 * attempt));
         continue;
       }
+      reportError(err, { route: '/api/agent-g/run-task', agent: step.agent, action: step.action, attempt, subtaskId });
       return {
         subtaskId, agent: step.agent, action: step.action,
         status: 'failed', input: step.input,

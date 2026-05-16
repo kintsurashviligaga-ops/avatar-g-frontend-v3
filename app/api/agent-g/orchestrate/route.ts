@@ -14,6 +14,7 @@ import { z } from 'zod';
 import { getAuthenticatedUser } from '@/lib/supabase/auth';
 import { createServiceRoleClient } from '@/lib/supabase/server';
 import { parseIntent } from '@/lib/agentg/intent-parser';
+import { reportError } from '@/lib/observability/report-error';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -160,10 +161,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       }
     );
   } catch (error) {
-    console.error('[Orchestrate] unexpected error', {
-      request_id: requestId,
-      message: error instanceof Error ? error.message : 'Unknown',
-      duration_ms: Date.now() - startedAt,
+    reportError(error, {
+      route: '/api/agent-g/orchestrate',
+      requestId,
+      durationMs: Date.now() - startedAt,
     });
 
     return NextResponse.json(

@@ -3,6 +3,7 @@ import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { createAnthropic } from '@ai-sdk/anthropic';
 import { AGENT_G_SYSTEM_PROMPT } from '@/lib/agent-g-orchestrator';
 import { NextRequest } from 'next/server';
+import { reportError } from '@/lib/observability/report-error';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -228,7 +229,7 @@ export async function POST(req: NextRequest) {
     });
 
   } catch (error) {
-    console.error('[/api/chat/gemini] Parse error:', error);
+    reportError(error, { route: '/api/chat/gemini', stage: 'request-parse' });
     return new Response(
       JSON.stringify({ error: 'Invalid request body' }),
       { status: 400, headers: { 'Content-Type': 'application/json' } },
