@@ -2277,6 +2277,17 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
           object-fit: cover; border: 1px solid rgba(255,255,255,0.1);
           flex-shrink: 0;
         }
+        /* Message action row — hidden on desktop until hover, always visible on touch */
+        .cc-msg-actions {
+          display: flex; gap: 3px; margin-top: 6px;
+          opacity: 0; transition: opacity 0.15s;
+        }
+        .cc-msg-actions.hovered { opacity: 1; }
+        /* Touch devices: always show */
+        @media (pointer: coarse) {
+          .cc-msg-actions { opacity: 0.55 !important; }
+          .cc-msg-actions.hovered { opacity: 1 !important; }
+        }
         /* Mobile responsive improvements */
         @media (max-width: 480px) {
           .cc-messages { padding: 8px 10px 4px; }
@@ -2423,9 +2434,9 @@ function MessageRow({ msg, copy, onCopy, onRetry, onSpeak, onLike, onDislike, on
             {msg.content}
           </div>
         )}
-        {/* Actions */}
+        {/* Actions — always visible on touch, fade-in on pointer:fine */}
         {!msg.pending && (msg.content || msg.media) && (
-          <div style={{ display: 'flex', gap: 3, marginTop: 6, opacity: hover ? 1 : 0, transition: 'opacity 0.15s' }}>
+          <div className={`cc-msg-actions${hover ? ' hovered' : ''}`}>
             {msg.content && <Btn title="Copy" onClick={onCopy}><Copy style={{ width: 12, height: 12 }} /></Btn>}
             <Btn title="Retry" onClick={onRetry}><RotateCcw style={{ width: 12, height: 12 }} /></Btn>
             {msg.content && <Btn title="Speak" onClick={onSpeak}><Volume2 style={{ width: 12, height: 12 }} /></Btn>}
