@@ -171,15 +171,15 @@ export function PricingTeaser() {
           <p className="text-base text-white/50 max-w-md mx-auto">{c.subtitle}</p>
         </div>
 
-        {/* Plan Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
+        {/* Plan Cards — stacked on mobile, 3-col on sm+ */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mb-8">
           {c.plans.map((plan) => {
             const isPopular = 'popular' in plan && plan.popular
             const Icon = plan.icon
             return (
               <div
                 key={plan.id}
-                className="relative flex flex-col gap-5 p-6 rounded-2xl border transition-all duration-300 hover:-translate-y-1"
+                className="relative flex flex-col gap-4 sm:gap-5 p-5 sm:p-6 rounded-2xl border transition-all duration-300 hover:-translate-y-1"
                 style={{
                   background: plan.color,
                   borderColor: plan.borderColor,
@@ -263,7 +263,7 @@ export function PricingTeaser() {
                 <Link
                   href={lh(plan.id === 'starter' ? '/signup' : '/pricing')}
                   className={cn(
-                    'block w-full text-center text-sm font-semibold py-2.5 px-4 rounded-xl transition-all duration-200',
+                    'block w-full text-center text-sm font-semibold py-3.5 px-4 rounded-xl transition-all duration-200',
                     isPopular
                       ? 'text-white hover:shadow-[0_0_24px_rgba(245,158,11,0.4)]'
                       : plan.id === 'pro'

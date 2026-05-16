@@ -107,7 +107,11 @@ export default function DashboardShell({ children, locale = 'ka' }: DashboardShe
               MyAvatar<span style={{ color: '#00d4ff' }}>.ge</span>
             </span>
           </Link>
-          <button onClick={() => setSidebarOpen(false)} className="text-white/40 transition-colors hover:text-white lg:hidden">
+          <button
+            onClick={() => setSidebarOpen(false)}
+            className="flex h-10 w-10 items-center justify-center rounded-xl text-white/40 transition-colors hover:text-white lg:hidden active:scale-95"
+            style={{ touchAction: 'manipulation' }}
+          >
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -182,7 +186,8 @@ export default function DashboardShell({ children, locale = 'ka' }: DashboardShe
         >
           <button
             onClick={() => setSidebarOpen(true)}
-            className="flex h-9 w-9 items-center justify-center rounded-xl text-white/60 transition-all hover:bg-white/[0.06] hover:text-white"
+            className="flex h-11 w-11 items-center justify-center rounded-xl text-white/60 transition-all hover:bg-white/[0.06] hover:text-white active:scale-95"
+            style={{ touchAction: 'manipulation' }}
           >
             <Menu className="w-5 h-5" />
           </button>

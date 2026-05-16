@@ -138,7 +138,7 @@ export function LandingNavbar() {
 
         {/* Right controls */}
         <div className="flex items-center gap-2">
-          {/* Language switcher */}
+          {/* Language switcher — adequate touch targets */}
           <div
             className="flex items-center gap-0.5 rounded-full px-1 py-0.5"
             style={{
@@ -150,10 +150,11 @@ export function LandingNavbar() {
               <button
                 key={loc.code}
                 onClick={() => switchLocale(loc.code)}
-                className="text-[10px] font-medium px-2 py-0.5 rounded-full transition-all duration-200"
+                className="text-[10px] font-medium px-2.5 py-1.5 rounded-full transition-all duration-200 min-h-[32px] flex items-center"
                 style={{
                   backgroundColor: locale === loc.code ? 'rgba(0,212,255,0.2)' : 'transparent',
                   color: locale === loc.code ? '#00d4ff' : 'rgba(255,255,255,0.4)',
+                  touchAction: 'manipulation',
                 }}
               >
                 {loc.label}
@@ -228,7 +229,8 @@ export function LandingNavbar() {
                 <motion.div key={link.href} custom={i} variants={mobileLinkVariants} initial="hidden" animate="visible">
                   <button
                     onClick={() => { scrollTo(link.href); setMobileOpen(false) }}
-                    className="block w-full text-left py-4 text-2xl font-bold text-white/80 hover:text-white border-b border-white/6 transition-colors"
+                    className="block w-full text-left py-5 text-2xl font-bold text-white/80 hover:text-white border-b border-white/6 transition-colors active:text-white"
+                    style={{ touchAction: 'manipulation' }}
                   >
                     {link.label}
                   </button>

@@ -161,22 +161,24 @@ export default function PromptChips({ activeService, onSelect }: PromptChipsProp
           align-items: center;
           gap: 8px;
           overflow-x: auto;
-          padding: 2px 12px;
+          padding: 4px 12px;
           scrollbar-width: none;
           -ms-overflow-style: none;
+          -webkit-overflow-scrolling: touch;
           /* Prevent row from collapsing */
-          min-height: 36px;
+          min-height: 44px;
         }
         .pc-row::-webkit-scrollbar {
           display: none;
         }
+        /* Chips — 36px height on mobile (comfortable, not excessive) */
         .pc-chip {
           flex-shrink: 0;
           white-space: nowrap;
           background: rgba(255, 255, 255, 0.04);
           border: 1px solid rgba(255, 255, 255, 0.08);
           border-radius: 20px;
-          padding: 6px 14px;
+          padding: 9px 16px;
           font-size: 13px;
           color: #a0a0c0;
           cursor: pointer;
@@ -184,15 +186,26 @@ export default function PromptChips({ activeService, onSelect }: PromptChipsProp
             background 0.15s,
             border-color 0.15s,
             color 0.15s,
-            box-shadow 0.15s;
+            box-shadow 0.15s,
+            transform 0.1s;
           line-height: 1;
           font-family: inherit;
+          touch-action: manipulation;
+          min-height: 36px;
+          display: inline-flex;
+          align-items: center;
         }
         .pc-chip:hover {
           background: rgba(0, 212, 255, 0.08);
           border-color: rgba(0, 212, 255, 0.3);
           color: #e0f9ff;
           box-shadow: 0 0 12px rgba(0, 212, 255, 0.15);
+        }
+        .pc-chip:active {
+          transform: scale(0.95);
+          background: rgba(0, 212, 255, 0.12);
+          border-color: rgba(0, 212, 255, 0.4);
+          color: #e0f9ff;
         }
         .pc-chip--flash {
           background: rgba(0, 212, 255, 0.15) !important;

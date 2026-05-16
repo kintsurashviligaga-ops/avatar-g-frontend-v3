@@ -134,24 +134,27 @@ export default function RateLimitBanner({ status, onDismiss }: RateLimitBannerPr
               {percentage}%
             </div>
 
-            {/* Dismiss */}
+            {/* Dismiss — 36×36 touch target */}
             {onDismiss && (
               <button
                 onClick={onDismiss}
                 style={{
                   flexShrink: 0,
-                  background: 'none',
-                  border: 'none',
+                  background: isError ? 'rgba(239,68,68,0.08)' : 'rgba(245,158,11,0.08)',
+                  border: `1px solid ${isError ? 'rgba(239,68,68,0.2)' : 'rgba(245,158,11,0.2)'}`,
                   cursor: 'pointer',
-                  color: isError ? 'rgba(252,165,165,0.5)' : 'rgba(252,211,77,0.5)',
+                  color: isError ? 'rgba(252,165,165,0.7)' : 'rgba(252,211,77,0.7)',
                   fontSize: 16,
                   lineHeight: 1,
-                  padding: '2px 4px',
-                  borderRadius: 4,
-                  transition: 'color 0.15s',
+                  width: 36,
+                  height: 36,
+                  borderRadius: 8,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  transition: 'all 0.15s',
+                  touchAction: 'manipulation',
                 }}
-                onMouseEnter={e => ((e.currentTarget as HTMLButtonElement).style.color = isError ? '#fca5a5' : '#fcd34d')}
-                onMouseLeave={e => ((e.currentTarget as HTMLButtonElement).style.color = isError ? 'rgba(252,165,165,0.5)' : 'rgba(252,211,77,0.5)')}
                 aria-label="დახურვა"
               >
                 ×

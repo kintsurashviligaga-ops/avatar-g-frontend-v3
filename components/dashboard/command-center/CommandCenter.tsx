@@ -1734,7 +1734,7 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
           padding: 14px 14px 12px; border-bottom: 1px solid rgba(255,255,255,0.06);
         }
         .cc-drawer-title { font-size:14px; font-weight:600; color:#fff; }
-        .cc-drawer-body { flex:1; overflow-y:auto; }
+        .cc-drawer-body { flex:1; overflow-y:auto; -webkit-overflow-scrolling: touch; }
         .cc-drawer-body::-webkit-scrollbar { width:3px; }
         .cc-drawer-body::-webkit-scrollbar-thumb { background:rgba(255,255,255,0.08); border-radius:2px; }
         .cc-new-chat-btn {
@@ -1754,10 +1754,11 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
         }
         .cc-hist-row {
           display: flex; align-items: center; gap: 10px; width: 100%;
-          padding: 9px 14px; text-align: left; cursor: pointer; transition: background 0.12s;
-          border: none; background: transparent;
+          padding: 12px 14px; text-align: left; cursor: pointer; transition: background 0.12s;
+          border: none; background: transparent; touch-action: manipulation; min-height: 52px;
         }
         .cc-hist-row:hover { background: rgba(255,255,255,0.04); }
+        .cc-hist-row:active { background: rgba(255,255,255,0.06); }
         .cc-hist-icon {
           width: 32px; height: 32px; border-radius: 9px; display: flex; align-items: center;
           justify-content: center; flex-shrink: 0;
@@ -1816,14 +1817,16 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
         .cc-danger { color: rgba(248,113,113,0.85) !important; }
         .cc-danger:hover { background: rgba(239,68,68,0.06) !important; }
         .cc-prof-divider { height: 1px; background: rgba(255,255,255,0.06); margin: 4px 0; }
-        /* Icon btn */
+        /* Icon btn — 44px min touch target (WCAG / Apple HIG) */
         .cc-icon-btn {
           display: inline-flex; align-items: center; justify-content: center;
-          width: 38px; height: 38px; border-radius: 11px; flex-shrink: 0;
+          width: 44px; height: 44px; border-radius: 12px; flex-shrink: 0;
           border: 1px solid rgba(255,255,255,0.08); background: rgba(255,255,255,0.04);
           color: rgba(255,255,255,0.75); cursor: pointer; transition: all 0.14s;
+          touch-action: manipulation;
         }
         .cc-icon-btn:hover { background: rgba(255,255,255,0.09); border-color: rgba(255,255,255,0.14); }
+        .cc-icon-btn:active { transform: scale(0.95); }
         /* Header */
         .cc-header {
           display: flex; align-items: center; justify-content: space-between;
@@ -1870,13 +1873,15 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
         .cc-pipeline-pct { font-size: 11px; font-weight: 600; color: rgba(167,139,250,0.8); flex-shrink: 0; }
         .cc-pipeline-sub { font-size: 11px; color: rgba(255,255,255,0.35); margin-top: 2px; }
         /* Cancel task button */
+        /* Cancel task button — expanded touch target */
         .cc-cancel-btn {
-          width: 22px; height: 22px; border-radius: 6px; display: flex; align-items: center;
+          width: 36px; height: 36px; border-radius: 8px; display: flex; align-items: center;
           justify-content: center; border: 1px solid rgba(255,255,255,0.12);
           background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.5);
-          cursor: pointer; transition: all 0.15s; flex-shrink: 0;
+          cursor: pointer; transition: all 0.15s; flex-shrink: 0; touch-action: manipulation;
         }
         .cc-cancel-btn:hover { background: rgba(239,68,68,0.15); border-color: rgba(239,68,68,0.3); color: rgba(248,113,113,0.9); }
+        .cc-cancel-btn:active { transform: scale(0.92); }
         /* Toast retry button */
         .cc-toast-retry {
           display: flex; align-items: center; gap: 3px; padding: 3px 8px;
@@ -1891,11 +1896,17 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
           width: 36px; height: 4px; border-radius: 2px; background: rgba(255,255,255,0.15);
           margin: 10px auto 0;
         }
-        /* Standby */
+        /* Standby — responsive vertical padding */
         .cc-standby {
           flex: 1; display: flex; flex-direction: column; align-items: center;
-          justify-content: center; gap: 14px; padding: 48px 24px; text-align: center;
-          min-height: 100%;
+          justify-content: center; gap: 14px; padding: clamp(24px, 6vh, 48px) 24px;
+          text-align: center; min-height: 100%;
+        }
+        @media (max-height: 600px) {
+          .cc-standby { gap: 10px; padding: 16px 24px; }
+          .cc-orb-lg { width: 60px; height: 60px; }
+          .cc-orb-g { font-size: 24px; }
+          .cc-standby-title { font-size: 20px; }
         }
         .cc-standby-status {
           font-size: 10px; font-weight: 700; letter-spacing: 0.14em;
@@ -1918,15 +1929,16 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
           box-shadow: 0 1px 4px rgba(0,0,0,0.3);
         }
         .cc-toggle.on .cc-toggle-thumb { transform: translateX(20px); }
-        /* Quick service cards */
-        .cc-quick-cards { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; margin-top: 8px; }
+        /* Quick service cards — large touch targets */
+        .cc-quick-cards { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; margin-top: 8px; }
         .cc-quick-card {
           display: flex; flex-direction: column; align-items: center; gap: 6px;
-          padding: 14px 18px; border-radius: 16px; min-width: 80px;
+          padding: 16px 20px; border-radius: 16px; min-width: 88px;
           border: 1px solid rgba(255,255,255,0.09); background: rgba(255,255,255,0.03);
-          cursor: pointer; transition: all 0.14s;
+          cursor: pointer; transition: all 0.14s; touch-action: manipulation;
         }
         .cc-quick-card:hover { background: rgba(255,255,255,0.07); border-color: rgba(255,255,255,0.15); transform: translateY(-1px); }
+        .cc-quick-card:active { transform: scale(0.95); }
         .cc-quick-card span:first-of-type { font-size: 13px; font-weight: 500; color: rgba(255,255,255,0.75); }
         .cc-quick-cost { display: flex; align-items: center; gap: 2px; font-size: 10px; color: rgba(255,255,255,0.3); }
         /* Messages */
@@ -1937,75 +1949,93 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
           color: rgba(255,255,255,0.2);
         }
         .cc-day-div::before, .cc-day-div::after { content: ''; flex: 1; height: 1px; background: rgba(255,255,255,0.05); }
-        /* Bottom tabs */
+        /* Bottom tabs — 48px min height (44px touch target + comfort) */
         .cc-tabs {
           display: flex; border-top: 1px solid rgba(255,255,255,0.06);
           flex-shrink: 0; background: rgba(0,0,0,0.4); backdrop-filter: blur(16px);
+          padding-bottom: env(safe-area-inset-bottom, 0px);
         }
         .cc-tab {
           flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px;
-          padding: 10px 4px 8px; font-size: 10px; font-weight: 500;
+          padding: 12px 4px 10px; font-size: 10px; font-weight: 500;
           color: rgba(255,255,255,0.35); cursor: pointer; transition: all 0.14s; border: none; background: transparent;
+          touch-action: manipulation; min-height: 48px;
         }
         .cc-tab:hover { color: rgba(255,255,255,0.65); }
+        .cc-tab:active { transform: scale(0.95); }
         .cc-tab.active { color: rgba(167,139,250,1); }
-        /* Rail */
+        /* Rail — service selector strip */
         .cc-rail {
-          display: flex; align-items: center; gap: 6px; padding: 8px 12px;
+          display: flex; align-items: center; gap: 6px; padding: 10px 12px;
           overflow-x: auto; scrollbar-width: none; flex-shrink: 0;
           border-top: 1px solid rgba(255,255,255,0.05); background: rgba(0,0,0,0.25);
+          -webkit-overflow-scrolling: touch;
         }
         .cc-rail::-webkit-scrollbar { display: none; }
         .cc-rail-hub {
-          display: flex; align-items: center; gap: 6px; flex-shrink: 0; padding: 7px 10px;
+          display: flex; align-items: center; gap: 6px; flex-shrink: 0; padding: 9px 12px;
           border-radius: 10px; border: 1px solid rgba(255,255,255,0.08);
           background: rgba(255,255,255,0.03); color: rgba(255,255,255,0.65);
           cursor: pointer; transition: background 0.14s; white-space: nowrap;
+          touch-action: manipulation; min-height: 44px;
         }
         .cc-rail-hub:hover { background: rgba(255,255,255,0.07); }
-        .cc-pills { display: flex; gap: 5px; }
+        .cc-rail-hub:active { transform: scale(0.96); }
+        .cc-pills { display: flex; gap: 6px; }
+        /* Service pills — 56×52px for easy tapping */
         .cc-pill {
-          display: flex; flex-direction: column; align-items: center; gap: 2px;
-          width: 52px; height: 48px; flex-shrink: 0; border-radius: 12px;
+          display: flex; flex-direction: column; align-items: center; gap: 3px;
+          width: 56px; height: 52px; flex-shrink: 0; border-radius: 13px;
           border: 1px solid rgba(255,255,255,0.08); background: rgba(255,255,255,0.02);
           font-size: 9px; font-weight: 500; color: rgba(255,255,255,0.45);
-          cursor: pointer; transition: all 0.14s;
+          cursor: pointer; transition: all 0.14s; touch-action: manipulation;
         }
         .cc-pill:hover { color: rgba(255,255,255,0.75); border-color: rgba(255,255,255,0.14); }
+        .cc-pill:active { transform: scale(0.94); }
         .cc-pill.active { border-color: rgba(139,92,246,0.55); background: rgba(139,92,246,0.12); color: #fff; }
-        /* Input */
-        .cc-input-wrap { padding: 8px 12px; padding-bottom: max(env(safe-area-inset-bottom, 12px), 12px); flex-shrink: 0; position: relative; }
+        /* Input area — safe bottom inset + keyboard handling */
+        .cc-input-wrap {
+          padding: 8px 12px; padding-bottom: max(env(safe-area-inset-bottom, 12px), 12px);
+          flex-shrink: 0; position: relative;
+        }
         .cc-input-bar {
-          display: flex; align-items: flex-end; gap: 5px;
+          display: flex; align-items: flex-end; gap: 4px;
           background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.09);
-          border-radius: 22px; padding: 5px;
+          border-radius: 22px; padding: 4px;
           backdrop-filter: blur(16px);
         }
+        /* 16px on mobile prevents iOS auto-zoom; keep 15px with explicit override */
         .cc-textarea {
-          flex: 1; min-height: 20px; max-height: 140px; resize: none;
+          flex: 1; min-height: 20px; max-height: 120px; resize: none;
           background: transparent; border: none; outline: none;
-          font-size: 15px; line-height: 1.5; color: #fff; padding: 6px 6px;
-          font-family: inherit;
+          font-size: 16px; line-height: 1.5; color: #fff; padding: 6px 6px;
+          font-family: inherit; -webkit-appearance: none;
         }
+        @media (min-width: 480px) { .cc-textarea { font-size: 15px; } }
         .cc-textarea::placeholder { color: rgba(255,255,255,0.3); }
+        /* Input action buttons — 44px touch target */
         .cc-ibtn {
-          width: 36px; height: 36px; border-radius: 50%; flex-shrink: 0;
+          width: 44px; height: 44px; border-radius: 50%; flex-shrink: 0;
           display: flex; align-items: center; justify-content: center;
           background: rgba(255,255,255,0.05); color: rgba(255,255,255,0.65);
           cursor: pointer; transition: all 0.14s; border: none; position: relative;
+          touch-action: manipulation;
         }
         .cc-ibtn:hover { background: rgba(255,255,255,0.1); }
+        .cc-ibtn:active { transform: scale(0.94); }
         .cc-ibtn.rec { background: rgba(239,68,68,0.18); color: rgba(248,113,113,1); }
         .cc-rec-dot {
           position: absolute; top: 5px; right: 5px; width: 7px; height: 7px;
           border-radius: 50%; background: #ef4444; animation: rec-blink 1s ease-in-out infinite;
           box-shadow: 0 0 5px rgba(239,68,68,0.8);
         }
+        /* Send button — 44px touch target */
         .cc-send {
-          width: 36px; height: 36px; border-radius: 50%; flex-shrink: 0;
+          width: 44px; height: 44px; border-radius: 50%; flex-shrink: 0;
           display: flex; align-items: center; justify-content: center;
           background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.25);
           cursor: not-allowed; transition: all 0.18s; border: none;
+          touch-action: manipulation;
         }
         .cc-send.ready {
           background: linear-gradient(135deg,#6d28d9,#a855f7);
@@ -2013,6 +2043,7 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
           box-shadow: 0 0 14px rgba(139,92,246,0.5);
         }
         .cc-send.ready:hover { box-shadow: 0 0 22px rgba(139,92,246,0.7); transform: scale(1.06); }
+        .cc-send.ready:active { transform: scale(0.94); }
         .cc-spin { animation: spin 0.8s linear infinite; }
         /* Library */
         .cc-library { padding: 14px; }
@@ -2042,18 +2073,27 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
         .cc-credit-table-hd { padding: 11px 14px; font-size: 12px; font-weight: 600; color: rgba(255,255,255,0.5); border-bottom: 1px solid rgba(255,255,255,0.06); background: rgba(255,255,255,0.02); }
         .cc-credit-row { display: flex; align-items: center; justify-content: space-between; padding: 9px 14px; border-bottom: 1px solid rgba(255,255,255,0.04); }
         .cc-credit-row:last-child { border-bottom: none; }
-        /* Hub overlay */
+        /* Hub overlay — slide-up service picker */
         .cc-hub-overlay { position: fixed; inset: 0; z-index: 60; display: flex; align-items: flex-end; background: rgba(0,0,0,0.6); backdrop-filter: blur(5px); }
-        .cc-hub { width: 100%; max-height: 65vh; background: #0f0f14; border-radius: 22px 22px 0 0; border: 1px solid rgba(255,255,255,0.08); border-bottom: none; overflow-y: auto; padding-bottom: 16px; }
-        .cc-hub-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; padding: 10px 12px; }
+        .cc-hub {
+          width: 100%; max-height: 70vh; background: #0f0f14; border-radius: 22px 22px 0 0;
+          border: 1px solid rgba(255,255,255,0.08); border-bottom: none; overflow-y: auto;
+          padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+          -webkit-overflow-scrolling: touch;
+        }
+        /* 4 cols on wide, 3 cols on small phones */
+        .cc-hub-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; padding: 12px; }
+        @media (max-width: 380px) { .cc-hub-grid { grid-template-columns: repeat(3, 1fr); gap: 8px; } }
         .cc-hub-item {
           display: flex; flex-direction: column; align-items: center; gap: 6px;
-          padding: 12px 4px; border-radius: 14px; border: 1px solid rgba(255,255,255,0.07);
+          padding: 14px 4px; border-radius: 14px; border: 1px solid rgba(255,255,255,0.07);
           background: rgba(255,255,255,0.02); cursor: pointer; transition: all 0.14s;
+          touch-action: manipulation; min-height: 80px;
         }
         .cc-hub-item:hover { background: rgba(255,255,255,0.06); }
+        .cc-hub-item:active { transform: scale(0.95); }
         .cc-hub-item.active { border-color: rgba(139,92,246,0.45); background: rgba(139,92,246,0.1); }
-        .cc-hub-icon { width: 38px; height: 38px; border-radius: 11px; display: flex; align-items: center; justify-content: center; }
+        .cc-hub-icon { width: 42px; height: 42px; border-radius: 12px; display: flex; align-items: center; justify-content: center; }
         .cc-hub-name { font-size: 11px; font-weight: 500; color: rgba(255,255,255,0.7); }
         .cc-hub-cost { font-size: 10px; color: rgba(255,255,255,0.3); display: flex; align-items: center; gap: 2px; }
         /* Toasts */
@@ -2062,8 +2102,8 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
         .cc-toast-success { background: rgba(16,185,129,0.14); border: 1px solid rgba(16,185,129,0.28); color: #34d399; }
         .cc-toast-error { background: rgba(239,68,68,0.14); border: 1px solid rgba(239,68,68,0.28); color: #f87171; }
         .cc-toast-info { background: rgba(139,92,246,0.14); border: 1px solid rgba(139,92,246,0.3); color: #a78bfa; }
-        /* Main scroll */
-        .cc-main { flex: 1; overflow-y: auto; min-height: 0; display: flex; flex-direction: column; }
+        /* Main scroll — momentum on iOS */
+        .cc-main { flex: 1; overflow-y: auto; min-height: 0; display: flex; flex-direction: column; -webkit-overflow-scrolling: touch; }
         .cc-main::-webkit-scrollbar { width: 4px; }
         .cc-main::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.07); border-radius: 2px; }
         /* Keyframes */

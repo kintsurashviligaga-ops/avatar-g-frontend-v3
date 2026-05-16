@@ -206,25 +206,27 @@ export function HeroSection() {
           </motion.div>
         </div>
 
-        {/* CTA Buttons */}
+        {/* CTA Buttons — full-width on xs, inline on sm+ */}
         <motion.div
-          className="flex flex-col sm:flex-row flex-wrap items-center justify-center gap-3"
+          className="flex flex-col xs:flex-row sm:flex-row flex-wrap items-stretch sm:items-center justify-center gap-3 w-full sm:w-auto px-4 sm:px-0"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.8, delay: 0.65, ease: 'easeOut' }}
         >
           <motion.div
-            whileHover={{ scale: 1.06 }}
+            className="w-full sm:w-auto"
+            whileHover={{ scale: 1.04 }}
             whileTap={{ scale: 0.97 }}
             transition={{ type: 'spring', stiffness: 400, damping: 17 }}
           >
             <Link
               href={lh('/dashboard')}
-              className="inline-flex items-center gap-2 text-sm font-bold px-9 py-4 rounded-xl transition-all duration-200 text-white"
+              className="flex items-center justify-center gap-2 text-sm font-bold px-9 py-4 rounded-xl transition-all duration-200 text-white w-full sm:w-auto"
               style={{
                 background: 'linear-gradient(135deg, #06b6d4, #7c3aed)',
                 boxShadow: '0 0 32px rgba(34,211,238,0.35), 0 0 0 1px rgba(34,211,238,0.2)',
                 letterSpacing: '0.01em',
+                minHeight: 52,
               }}
             >
               {c.cta1}
@@ -234,13 +236,14 @@ export function HeroSection() {
               </svg>
             </Link>
           </motion.div>
-          <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.98 }} transition={{ type: 'spring', stiffness: 400, damping: 17 }}>
+          <motion.div className="w-full sm:w-auto" whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }} transition={{ type: 'spring', stiffness: 400, damping: 17 }}>
             <button
               onClick={() => scrollTo('#services')}
-              className="inline-flex items-center gap-2 text-sm font-semibold px-8 py-3.5 rounded-xl transition-all duration-200 text-white/80 hover:text-white"
+              className="flex items-center justify-center gap-2 text-sm font-semibold px-8 rounded-xl transition-all duration-200 text-white/80 hover:text-white w-full sm:w-auto"
               style={{
                 backgroundColor: 'rgba(255,255,255,0.05)',
                 border: '1px solid rgba(255,255,255,0.12)',
+                minHeight: 52,
               }}
             >
               {c.cta2}

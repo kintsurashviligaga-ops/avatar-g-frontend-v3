@@ -78,16 +78,18 @@ export default function InviteReferralBanner({ credits, referralCode }: Props) {
           მოიწვიე →
         </Link>
 
-        {/* Dismiss */}
+        {/* Dismiss — 36×36 touch target */}
         <button
           onClick={() => setDismissed(true)}
           style={{
-            flexShrink: 0, width: 22, height: 22,
-            borderRadius: '50%', border: 'none',
-            background: 'rgba(255,255,255,0.07)',
-            color: 'rgba(255,255,255,0.4)',
-            cursor: 'pointer', fontSize: 12,
+            flexShrink: 0, width: 36, height: 36,
+            borderRadius: 8,
+            border: '1px solid rgba(139,92,246,0.2)',
+            background: 'rgba(255,255,255,0.06)',
+            color: 'rgba(255,255,255,0.5)',
+            cursor: 'pointer', fontSize: 16,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
+            touchAction: 'manipulation',
           }}
           aria-label="Dismiss"
         >
