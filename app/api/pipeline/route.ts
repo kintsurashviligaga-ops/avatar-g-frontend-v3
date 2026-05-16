@@ -18,6 +18,7 @@ import { generateWorldLabsInterior } from '@/lib/worldlabs/client';
 import { buildIterativePrompt } from '@/lib/chat/iteration-store';
 import { generateWithGemini } from '@/lib/gemini/client';
 import { getGeminiSystemPrompt, type GeminiServiceContext } from '@/lib/gemini/prompts';
+import { reportError } from '@/lib/observability/report-error';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300; // HeyGen avatar polling can take up to 150s; LTX video up to 90s
@@ -969,7 +970,7 @@ async function handleGenerate(
       });
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Generation failed';
-    console.error(`[pipeline/generate] ${serviceId}:`, msg);
+    reportError(err, { route: '/api/pipeline', stage: 'generate', serviceId, jobId });
     return NextResponse.json({ jobId, status: 'error', serviceId, error: msg }, { status: 200 });
   }
 }
@@ -1042,6 +1043,7 @@ export async function POST(req: NextRequest) {
     }
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Pipeline error';
+    reportError(err, { route: '/api/pipeline', stage: 'router' });
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 }

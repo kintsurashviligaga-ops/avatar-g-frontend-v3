@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Download, Share2, RefreshCw, Bookmark, Check, Copy, X } from 'lucide-react';
+import { Download, Share2, RefreshCw, Bookmark, Check, Copy, X, Scissors } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 interface MediaActionsProps {
@@ -365,6 +365,25 @@ export default function MediaActions({
           >
             <RefreshCw size={13} />
             <span className="ma-btn-label">Remix</span>
+          </motion.button>
+        )}
+
+        {(kind === 'video' || kind === 'audio') && (
+          <motion.button
+            className="ma-btn"
+            title={kind === 'video' ? 'რედაქტირება CapCut-ში' : 'რედაქტირება ხმოვან რედაქტორში'}
+            onClick={() => {
+              // CapCut accepts deep-link via web URL for the desktop app
+              // (graceful fallback: opens CapCut Web Editor where user can upload manually)
+              const target = kind === 'video'
+                ? 'https://www.capcut.com/editor'
+                : 'https://www.bandlab.com/edit';
+              window.open(target, '_blank', 'noopener,noreferrer');
+            }}
+            whileTap={{ scale: 0.9 }}
+          >
+            <Scissors size={13} />
+            <span className="ma-btn-label">{kind === 'video' ? 'CapCut' : 'რედაქტირება'}</span>
           </motion.button>
         )}
 
