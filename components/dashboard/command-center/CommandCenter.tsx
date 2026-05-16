@@ -66,7 +66,13 @@ interface Toast {
 interface PipelineTask {
   taskId: string;
   status: 'queued' | 'processing' | 'completed' | 'failed' | 'partial';
-  progress: { percent: number; completedSteps: number; totalSteps: number };
+  progress: {
+    percent: number;
+    completedSteps: number;
+    totalSteps: number;
+    currentStepKa?: string | null;
+    etaRemainingSeconds?: number;
+  };
   summaryKa?: string;
 }
 
@@ -410,13 +416,19 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
       return;
     }
 
+    // Keep-alive ping every 25s for long tasks (prevents tab suspension)
+    const keepAlive = setInterval(() => { void fetch('/api/version', { cache: 'no-store' }).catch(() => {}); }, 25_000);
+
     pollRef.current = setInterval(async () => {
       try {
         const res = await fetch(`/api/tasks/${pipelineTask.taskId}/status`);
         if (!res.ok) return;
         const data = await res.json() as {
           status: string;
-          progress: { percent: number; completedSteps: number; totalSteps: number };
+          progress: {
+            percent: number; completedSteps: number; totalSteps: number;
+            currentStepKa?: string | null; etaRemainingSeconds?: number;
+          };
           plan?: { summaryKa?: string };
         };
         setPipelineTask(prev => prev ? {
@@ -427,16 +439,20 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
         } : null);
 
         if (data.status === 'completed' || data.status === 'partial') {
-          clearInterval(pollRef.current!);
+          clearInterval(pollRef.current!); clearInterval(keepAlive);
           pollRef.current = null;
-          showToast('✅ დავალება შესრულდა!', 'success');
+          showToast('✅ Agent G-მ წარმატებით შეასრულა დავალება!', 'success');
         } else if (data.status === 'failed') {
-          clearInterval(pollRef.current!);
+          clearInterval(pollRef.current!); clearInterval(keepAlive);
           pollRef.current = null;
-          showToast('❌ შეცდომა. სცადეთ თავიდან.', 'error');
+          showToast('❌ დავალება ვერ შესრულდა. სცადეთ ხელახლა.', 'error');
         }
-      } catch { /* ignore poll error */ }
+      } catch { /* ignore transient poll error */ }
     }, 3000);
+
+    return () => {
+      clearInterval(keepAlive);
+    };
 
     return () => {
       if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
@@ -699,21 +715,45 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
 
       {/* ── Pipeline progress banner ── */}
       <AnimatePresence>
-        {pipelineTask && pipelineTask.status !== 'completed' && pipelineTask.status !== 'failed' && pipelineTask.status !== 'partial' && (
+        {pipelineTask && !['completed', 'failed', 'partial'].includes(pipelineTask.status) && (
           <motion.div
             initial={{ opacity: 0, y: -30 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -30 }}
             className="cc-pipeline-banner"
           >
-            <Bot style={{ width: 14, height: 14, flexShrink: 0, color: '#a855f7' }} />
-            <span className="cc-pipeline-txt">
-              {pipelineTask.summaryKa ?? 'Agent G-ი მუშაობს...'}
-            </span>
-            <div className="cc-pipeline-progress">
-              <div className="cc-pipeline-fill" style={{ width: `${pipelineTask.progress.percent}%` }} />
+            <Loader2 style={{ width: 13, height: 13, flexShrink: 0, color: '#a855f7' }} className="cc-spin" />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div className="cc-pipeline-txt">
+                {pipelineTask.progress.currentStepKa
+                  ? `${pipelineTask.progress.currentStepKa}-ს გენერაცია...`
+                  : (pipelineTask.summaryKa ?? 'Agent G-ი მუშაობს...')}
+              </div>
+              <div className="cc-pipeline-sub">
+                {pipelineTask.progress.completedSteps}/{pipelineTask.progress.totalSteps} ნაბიჯი
+                {pipelineTask.progress.etaRemainingSeconds && pipelineTask.progress.etaRemainingSeconds > 0
+                  ? ` · ~${pipelineTask.progress.etaRemainingSeconds}წმ დარჩა`
+                  : ''}
+              </div>
             </div>
-            <span className="cc-pipeline-pct">{pipelineTask.progress.percent}%</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+              <div className="cc-pipeline-progress">
+                <div className="cc-pipeline-fill" style={{ width: `${pipelineTask.progress.percent}%` }} />
+              </div>
+              <span className="cc-pipeline-pct">{pipelineTask.progress.percent}%</span>
+              <button
+                type="button"
+                className="cc-cancel-btn"
+                onClick={async () => {
+                  await fetch(`/api/tasks/${pipelineTask.taskId}/cancel`, { method: 'POST' }).catch(() => {});
+                  setPipelineTask(null);
+                  showToast('დავალება გაუქმდა.', 'info');
+                }}
+                title="გაუქმება"
+              >
+                <X style={{ width: 11, height: 11 }} />
+              </button>
+            </div>
           </motion.div>
         )}
       </AnimatePresence>
@@ -848,9 +888,17 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
 
         {/* CHAT */}
         {view === 'chat' && (
-          messages.length === 0 ? (
+          <AnimatePresence mode="wait" initial={false}>
+          {messages.length === 0 ? (
             /* Empty / standby state */
-            <div className="cc-standby">
+            <motion.div
+              key="standby"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.18 }}
+              className="cc-standby"
+            >
               <motion.div
                 layoutId="agent-g-orb"
                 className={`cc-orb-lg${orbState === 'listening' ? ' orb-listening' : orbState === 'speaking' ? ' orb-speaking' : ''}`}
@@ -895,10 +943,17 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
                   );
                 })}
               </div>
-            </div>
+            </motion.div>
           ) : (
             /* Messages */
-            <div className="cc-messages">
+            <motion.div
+              key="messages"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.18 }}
+              className="cc-messages"
+            >
               {messages.map((msg, i) => {
                 const prev = messages[i - 1];
                 const showDiv = !prev || !sameDay(prev.ts, msg.ts);
@@ -920,8 +975,9 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
                   </div>
                 );
               })}
-            </div>
-          )
+            </motion.div>
+          )}
+          </AnimatePresence>
         )}
 
         {/* LIBRARY */}
@@ -1294,6 +1350,15 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
           border-radius: 2px; transition: width 0.5s;
         }
         .cc-pipeline-pct { font-size: 11px; font-weight: 600; color: rgba(167,139,250,0.8); flex-shrink: 0; }
+        .cc-pipeline-sub { font-size: 11px; color: rgba(255,255,255,0.35); margin-top: 2px; }
+        /* Cancel task button */
+        .cc-cancel-btn {
+          width: 22px; height: 22px; border-radius: 6px; display: flex; align-items: center;
+          justify-content: center; border: 1px solid rgba(255,255,255,0.12);
+          background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.5);
+          cursor: pointer; transition: all 0.15s; flex-shrink: 0;
+        }
+        .cc-cancel-btn:hover { background: rgba(239,68,68,0.15); border-color: rgba(239,68,68,0.3); color: rgba(248,113,113,0.9); }
         /* Toast retry button */
         .cc-toast-retry {
           display: flex; align-items: center; gap: 3px; padding: 3px 8px;

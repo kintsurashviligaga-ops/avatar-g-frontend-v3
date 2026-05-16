@@ -182,8 +182,10 @@ export async function parseIntent(goal: string): Promise<IntentPlan> {
   if (geminiKey) {
     try {
       const google = createGoogleGenerativeAI({ apiKey: geminiKey });
+      // Use env-configurable model; default to gemini-2.5-flash (same as chat route)
+      const intentModel = process.env.GEMINI_INTENT_MODEL ?? 'gemini-2.5-flash';
       const result = await generateText({
-        model: google('gemini-2.5-flash-preview-05-20'),
+        model: google(intentModel),
         system: INTENT_SYSTEM_PROMPT,
         prompt: goal,
         maxOutputTokens: 512,
