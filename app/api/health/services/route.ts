@@ -174,13 +174,15 @@ export async function GET(req: NextRequest) {
 
     // ── Avatar / Talking Head ──────────────────────────────────────────────
     probe('HeyGen (avatar)', 'avatar', 'HEYGEN_API_KEY', process.env.HEYGEN_API_KEY, async () => {
-      const r = await fetchWithTimeout('https://api.heygen.com/v1/user/remaining_quota', {
+      // /v2/avatars is the canonical reachability probe (used by the production
+      // ServiceManager and pipeline). Avoids the deprecated /v1/remaining_quota.
+      const r = await fetchWithTimeout('https://api.heygen.com/v2/avatars', {
         headers: { 'X-Api-Key': process.env.HEYGEN_API_KEY! },
       });
       if (!r.ok) return { ok: false, message: `${r.status} ${r.statusText}` };
-      const j = (await r.json().catch(() => ({}))) as { data?: { remaining_quota?: number } };
-      const q = j.data?.remaining_quota;
-      return { ok: true, message: `${r.status} OK · ${q ?? '?'} credits remaining` };
+      const j = (await r.json().catch(() => ({}))) as { data?: { avatars?: unknown[] } };
+      const count = j.data?.avatars?.length;
+      return { ok: true, message: `${r.status} OK · ${count ?? '?'} avatars available` };
     }),
 
     // ── Infra ──────────────────────────────────────────────────────────────
