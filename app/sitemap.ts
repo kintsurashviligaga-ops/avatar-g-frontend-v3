@@ -2,7 +2,7 @@ import { MetadataRoute } from "next";
 import { publicEnv } from "@/lib/env/public";
 
 export default function sitemap(): MetadataRoute.Sitemap {
-  const baseUrl = publicEnv.NEXT_PUBLIC_APP_URL || "https://avatar-g-frontend-v3.vercel.app";
+  const baseUrl = publicEnv.NEXT_PUBLIC_APP_URL || "https://myavatar.ge";
   const now = new Date();
   
   // Core pages
