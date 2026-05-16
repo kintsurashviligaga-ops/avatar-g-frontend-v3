@@ -368,6 +368,8 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
 
   // Library
   const [libraryFilter, setLibraryFilter] = useState<LibraryFilter>('all');
+  const [dbCreations, setDbCreations] = useState<Array<{ id: string; kind: string; service: string; url: string | null; thumbnail_url: string | null; prompt: string | null; created_at: string }>>([]);
+  const [libraryLoading, setLibraryLoading] = useState(false);
 
   // Toasts
   const [toasts, setToasts] = useState<Toast[]>([]);
@@ -570,6 +572,19 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
       .catch(() => {});
   }, [isAuthenticated]);
 
+  // Load persisted creations from DB when Library tab is opened
+  useEffect(() => {
+    if (view !== 'library' || !isAuthenticated) return;
+    setLibraryLoading(true);
+    fetch('/api/creations?limit=50', { credentials: 'include' })
+      .then(r => r.ok ? r.json() : { creations: [] })
+      .then((d: { creations?: Array<{ id: string; kind: string; service: string; url: string | null; thumbnail_url: string | null; prompt: string | null; created_at: string }> }) => {
+        setDbCreations(d.creations ?? []);
+      })
+      .catch(() => {})
+      .finally(() => setLibraryLoading(false));
+  }, [view, isAuthenticated]);
+
   // Pipeline task polling
   useEffect(() => {
     if (!pipelineTask) return;
@@ -656,6 +671,7 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
 
     setMessages(m => [...m, userMsg, pendingMsg]);
     setInput('');
+    setBatchResults([]); // clear any previous batch grid on new generation
     setSending(true);
     setOrbState('speaking');
 
@@ -750,6 +766,8 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
         setMessages(m => m.map(msg => msg.id === pendingMsg.id ? { ...msg, pending: false, content: '', media: { kind: 'video', url } } : msg));
         setCredits(c => c - cost);
         mediaGenerated = true;
+        // Track video generation in creations (blob URL is ephemeral — persist prompt only)
+        void fetch('/api/creations', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind: 'video', service: 'video', prompt: text, credits_used: cost }) });
 
       } else if (service === 'voice') {
         const res = await fetch('/api/elevenlabs/tts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, locale: localeCode, voiceId: selectedVoiceId }) });
@@ -758,8 +776,7 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
         setMessages(m => m.map(msg => msg.id === pendingMsg.id ? { ...msg, pending: false, content: '🔊 Audio ready', media: { kind: 'audio', url } } : msg));
         setCredits(c => c - cost);
         mediaGenerated = true;
-        // Auto-save to creations
-        void fetch('/api/creations', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind: 'audio', service: 'voice', prompt: text, url, credits_used: cost }) });
+        // Note: blob URLs are ephemeral (session-only), so we don't persist to creations DB
 
       } else {
         // chat / text / code → Gemini streaming SSE
@@ -880,15 +897,30 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
     }));
   }, []);
 
-  // Media for library
+  // Media for library — normalized items from both in-session messages AND DB creations
   const mediaItems = useMemo(() => messages.filter(m => m.media), [messages]);
-  const filteredMedia = useMemo(() => {
-    if (libraryFilter === 'all') return mediaItems;
-    if (libraryFilter === 'images') return mediaItems.filter(m => m.media?.kind === 'image');
-    if (libraryFilter === 'videos') return mediaItems.filter(m => m.media?.kind === 'video');
-    if (libraryFilter === 'audio') return mediaItems.filter(m => m.media?.kind === 'audio');
-    return mediaItems.filter(m => m.service === 'avatar');
-  }, [mediaItems, libraryFilter]);
+
+  type LibraryItem = { id: string; kind: 'image' | 'video' | 'audio'; url: string; service: string; source: 'session' | 'db' };
+  const allLibraryItems = useMemo((): LibraryItem[] => {
+    // In-session items
+    const session: LibraryItem[] = mediaItems
+      .filter(m => m.media?.url && (m.media.kind === 'image' || m.media.kind === 'video' || m.media.kind === 'audio'))
+      .map(m => ({ id: m.id, kind: m.media!.kind as 'image' | 'video' | 'audio', url: m.media!.url, service: m.service ?? 'ai', source: 'session' as const }));
+    // DB items (deduplicate by URL against session items)
+    const sessionUrls = new Set(session.map(s => s.url));
+    const db: LibraryItem[] = dbCreations
+      .filter(c => c.url && !sessionUrls.has(c.url) && ['image', 'video', 'audio'].includes(c.kind))
+      .map(c => ({ id: c.id, kind: c.kind as 'image' | 'video' | 'audio', url: c.thumbnail_url ?? c.url ?? '', service: c.service ?? 'ai', source: 'db' as const }));
+    return [...session, ...db];
+  }, [mediaItems, dbCreations]);
+
+  const filteredLibrary = useMemo((): LibraryItem[] => {
+    if (libraryFilter === 'all') return allLibraryItems;
+    if (libraryFilter === 'images') return allLibraryItems.filter(m => m.kind === 'image');
+    if (libraryFilter === 'videos') return allLibraryItems.filter(m => m.kind === 'video');
+    if (libraryFilter === 'audio') return allLibraryItems.filter(m => m.kind === 'audio');
+    return allLibraryItems.filter(m => m.service === 'avatar');
+  }, [allLibraryItems, libraryFilter]);
 
   // History grouped by day
   const historyGroups = useMemo(() => {
@@ -919,12 +951,12 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
       {/* ── Export Pack Modal ── */}
       <ExportPackModal
         open={exportPackOpen}
-        items={mediaItems.map(m => ({
-          id: m.id,
-          kind: (m.media?.kind ?? 'image') as 'image' | 'video' | 'audio',
-          url: m.media?.url ?? '',
-          title: m.content?.slice(0, 50) || `${m.service ?? 'ai'} creation`,
-        })).filter(i => i.url)}
+        items={allLibraryItems.filter(i => i.url).map(i => ({
+          id: i.id,
+          kind: i.kind,
+          url: i.url,
+          title: `${i.service} creation`,
+        }))}
         onClose={() => setExportPackOpen(false)}
       />
 
@@ -1275,7 +1307,7 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
                   {f === 'all' && copy.filterAll}{f === 'images' && copy.filterImages}{f === 'videos' && copy.filterVideos}{f === 'audio' && copy.filterAudio}{f === 'avatars' && copy.filterAvatars}
                 </button>
               ))}
-              {mediaItems.length > 0 && (
+              {allLibraryItems.length > 0 && (
                 <button
                   type="button"
                   className="cc-filter"
@@ -1286,23 +1318,38 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
                 </button>
               )}
             </div>
-            {filteredMedia.length === 0 ? (
+            {libraryLoading ? (
+              <div className="cc-standby" style={{ paddingTop: 48 }}>
+                <Loader2 style={{ width: 28, height: 28, color: 'rgba(139,92,246,0.5)' }} className="cc-spin" />
+                <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.3)', marginTop: 10 }}>
+                  {localeCode === 'ka' ? 'იტვირთება...' : localeCode === 'ru' ? 'Загрузка...' : 'Loading...'}
+                </p>
+              </div>
+            ) : filteredLibrary.length === 0 ? (
               <div className="cc-standby" style={{ paddingTop: 48 }}>
                 <LibraryIcon style={{ width: 48, height: 48, color: 'rgba(255,255,255,0.15)' }} />
                 <p style={{ fontSize: 14, color: 'rgba(255,255,255,0.4)', marginTop: 12 }}>{copy.libraryEmpty}</p>
+                <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.2)', marginTop: 4 }}>
+                  {localeCode === 'ka' ? 'გენერირებული კონტენტი აქ გამოჩნდება' : localeCode === 'ru' ? 'Созданный контент появится здесь' : 'Generated content will appear here'}
+                </p>
               </div>
             ) : (
               <div className="cc-lib-grid">
-                {filteredMedia.map(m => (
-                  <div key={m.id} className="cc-lib-item">
-                    {m.media?.kind === 'image' && <img src={m.media.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} loading="lazy" />}
-                    {m.media?.kind === 'video' && <video src={m.media.url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} muted loop />}
-                    {m.media?.kind === 'audio' && (
+                {filteredLibrary.map(item => (
+                  <div key={item.id} className="cc-lib-item">
+                    {item.kind === 'image' && <img src={item.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} loading="lazy" />}
+                    {item.kind === 'video' && (item.url ? <video src={item.url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} muted loop /> : (
+                      <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(249,115,22,0.08)' }}>
+                        <VideoIcon style={{ width: 32, height: 32, color: 'rgba(249,115,22,0.6)' }} />
+                      </div>
+                    ))}
+                    {item.kind === 'audio' && (
                       <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: 'rgba(139,92,246,0.08)' }}>
                         <MusicIcon style={{ width: 32, height: 32, color: 'rgba(167,139,250,0.7)' }} />
                       </div>
                     )}
-                    <div className="cc-lib-badge">{m.service ?? 'ai'}</div>
+                    <div className="cc-lib-badge">{item.service}</div>
+                    {item.source === 'db' && <div className="cc-lib-db-dot" title="Saved" />}
                   </div>
                 ))}
               </div>
@@ -1677,6 +1724,7 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
             <textarea
               ref={inputRef} value={input} onChange={e => setInput(e.target.value)} onKeyDown={handleKey}
               rows={1} placeholder={isRecording ? copy.listening : copy.placeholder} className="cc-textarea"
+              aria-label={copy.placeholder}
             />
             {isRecording && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 2, padding: '0 6px' }}>
@@ -2074,7 +2122,7 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
         }
         /* 16px on mobile prevents iOS auto-zoom; keep 15px with explicit override */
         .cc-textarea {
-          flex: 1; min-height: 20px; max-height: 120px; resize: none;
+          flex: 1; min-height: 20px; max-height: 140px; resize: none;
           background: transparent; border: none; outline: none;
           font-size: 16px; line-height: 1.5; color: #fff; padding: 6px 6px;
           font-family: inherit; -webkit-appearance: none;
@@ -2131,6 +2179,11 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
           position: absolute; bottom: 6px; left: 6px; padding: 2px 7px; border-radius: 6px;
           background: rgba(0,0,0,0.55); font-size: 9px; font-weight: 600;
           text-transform: uppercase; letter-spacing: 0.06em; color: rgba(255,255,255,0.8);
+        }
+        .cc-lib-db-dot {
+          position: absolute; top: 6px; right: 6px; width: 7px; height: 7px;
+          border-radius: 50%; background: rgba(34,197,94,0.85);
+          box-shadow: 0 0 5px rgba(34,197,94,0.5);
         }
         /* Pricing */
         .cc-pricing { padding: 20px 14px 36px; max-width: 440px; margin: 0 auto; }
