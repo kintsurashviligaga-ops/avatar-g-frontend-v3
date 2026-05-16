@@ -5,6 +5,7 @@ import { HeroSection } from './HeroSection'
 import { ServicesGrid } from './ServicesGrid'
 import { AgentGSection } from './AgentGSection'
 import { StatsSection } from './StatsSection'
+import { TestimonialsSection } from './TestimonialsSection'
 import { PricingTeaser } from './PricingTeaser'
 import { LandingCTA } from './LandingCTA'
 import { LandingFooter } from './LandingFooter'
@@ -37,6 +38,12 @@ export default function PremiumLanding() {
       <Separator />
 
       <StatsSection />
+
+      <Separator />
+
+      <div id="testimonials">
+        <TestimonialsSection />
+      </div>
 
       <Separator />
 
