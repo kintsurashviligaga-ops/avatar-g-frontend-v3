@@ -54,15 +54,21 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       );
     }
 
-    // Auth — works for both logged-in users and guest/demo
+    // Auth — require authenticated user for task persistence
     const user = await getAuthenticatedUser(request);
+    if (!user) {
+      return NextResponse.json(
+        { error: 'Unauthenticated', requestId },
+        { status: 401 }
+      );
+    }
     const supabase = createServiceRoleClient();
 
     // Upsert task row
     const taskInsert = await supabase
       .from('agent_g_tasks')
       .insert({
-        user_id: user?.id ?? '00000000-0000-0000-0000-000000000000', // demo UUID
+        user_id: user.id,
         goal,
         status: 'queued',
         plan: {

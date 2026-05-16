@@ -130,7 +130,7 @@ function heuristicPlan(goal: string): Omit<IntentPlan, 'main_goal' | 'estimatedS
   const g = goal.toLowerCase();
   const locale = detectLocale(goal);
 
-  const hasImage  = /(image|picture|photo|სურათ|ფოტო|изображен)/.test(g);
+  const hasImage  = /(image|picture|photo|draw|paint|sketch|illustrat|render|სურათ|დახატე|ფოტო|изображен|нарисуй|рисунок)/.test(g);
   const hasVoice  = /(voice|audio|narrat|ხმ|speak|произнес|озвуч)/.test(g);
   const hasMusic  = /(music|song|track|მუსიკ|мелодия|трек)/.test(g);
   const hasVideo  = /(video|movie|clip|ვიდეო|видео)/.test(g);
