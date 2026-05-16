@@ -6,6 +6,9 @@ import { ServicesGrid } from './ServicesGrid'
 import { AgentGSection } from './AgentGSection'
 import { StatsSection } from './StatsSection'
 import { TestimonialsSection } from './TestimonialsSection'
+import { ExampleGallerySection } from './ExampleGallerySection'
+import { VideoDemoSection } from './VideoDemoSection'
+import { TechBadgesSection } from './TechBadgesSection'
 import { PricingTeaser } from './PricingTeaser'
 import { LandingCTA } from './LandingCTA'
 import { LandingFooter } from './LandingFooter'
@@ -44,6 +47,22 @@ export default function PremiumLanding() {
       <div id="testimonials">
         <TestimonialsSection />
       </div>
+
+      <Separator />
+
+      <div id="gallery">
+        <ExampleGallerySection />
+      </div>
+
+      <Separator />
+
+      <div id="demo">
+        <VideoDemoSection />
+      </div>
+
+      <Separator />
+
+      <TechBadgesSection />
 
       <Separator />
 

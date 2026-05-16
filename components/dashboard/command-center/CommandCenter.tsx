@@ -48,6 +48,7 @@ import ExportPackModal from './ExportPackModal';
 import AdminDashboard from '@/components/dashboard/AdminDashboard';
 import RateLimitBanner from '@/components/dashboard/RateLimitBanner';
 import ReferralPanel from '@/components/dashboard/ReferralPanel';
+import InviteReferralBanner from '@/components/dashboard/InviteReferralBanner';
 import { useRateLimit } from '@/hooks/useRateLimit';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -1110,6 +1111,11 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
             status={rateLimit}
             onDismiss={() => setRateLimitDismissed(true)}
           />
+        )}
+
+        {/* Invite referral banner — shows when credits are low (< 300) */}
+        {view === 'chat' && (
+          <InviteReferralBanner credits={credits} />
         )}
 
         {/* CHAT */}
