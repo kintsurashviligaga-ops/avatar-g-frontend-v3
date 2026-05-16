@@ -228,7 +228,7 @@ export default function OnboardingModal({ open, onClose, onComplete }: Onboardin
                   className="ob-dot"
                   animate={{
                     width: i === step ? 20 : 8,
-                    background: i === step ? '#818cf8' : 'rgba(255,255,255,0.2)',
+                    background: i === step ? '#00d4ff' : 'rgba(255,255,255,0.18)',
                   }}
                   transition={{ duration: 0.25 }}
                 />
@@ -278,13 +278,13 @@ export default function OnboardingModal({ open, onClose, onComplete }: Onboardin
             }
             .ob-modal {
               position: relative;
-              background: rgba(10, 10, 20, 0.95);
-              border: 1px solid rgba(129, 140, 248, 0.3);
+              background: rgba(10, 10, 18, 0.97);
+              border: 1px solid rgba(0, 212, 255, 0.2);
               border-radius: 24px;
               padding: 36px 32px 28px;
               width: 100%;
               max-width: 480px;
-              box-shadow: 0 0 60px rgba(129, 140, 248, 0.12), 0 32px 80px rgba(0, 0, 0, 0.6);
+              box-shadow: 0 0 60px rgba(0, 212, 255, 0.08), 0 0 0 1px rgba(0, 212, 255, 0.06), 0 32px 80px rgba(0, 0, 0, 0.7);
               overflow: hidden;
             }
             .ob-skip-btn {
@@ -345,19 +345,19 @@ export default function OnboardingModal({ open, onClose, onComplete }: Onboardin
               width: 72px;
               height: 72px;
               border-radius: 50%;
-              background: linear-gradient(135deg, #818cf8, #a78bfa, #ec4899);
+              background: linear-gradient(135deg, #00d4ff, #7c3aed, #a855f7);
               display: flex;
               align-items: center;
               justify-content: center;
               font-size: 30px;
               font-weight: 800;
               color: #fff;
-              box-shadow: 0 0 32px rgba(129, 140, 248, 0.5);
+              box-shadow: 0 0 32px rgba(0, 212, 255, 0.45), 0 0 64px rgba(124, 58, 237, 0.2);
             }
             .ob-orb-ring {
               position: absolute;
               border-radius: 50%;
-              border: 1px solid rgba(129, 140, 248, 0.3);
+              border: 1px solid rgba(0, 212, 255, 0.25);
               animation: ob-pulse 3s ease-in-out infinite;
             }
             .ob-orb-ring--1 {
@@ -366,7 +366,7 @@ export default function OnboardingModal({ open, onClose, onComplete }: Onboardin
             }
             .ob-orb-ring--2 {
               inset: -18px;
-              border-color: rgba(129, 140, 248, 0.15);
+              border-color: rgba(0, 212, 255, 0.12);
               animation-delay: 0.6s;
             }
             @keyframes ob-pulse {
@@ -379,15 +379,15 @@ export default function OnboardingModal({ open, onClose, onComplete }: Onboardin
               width: 64px;
               height: 64px;
               border-radius: 18px;
-              background: rgba(129, 140, 248, 0.12);
-              border: 1px solid rgba(129, 140, 248, 0.25);
+              background: rgba(0, 212, 255, 0.08);
+              border: 1px solid rgba(0, 212, 255, 0.2);
               display: flex;
               align-items: center;
               justify-content: center;
               margin-bottom: 8px;
             }
             .ob-step-icon {
-              color: #818cf8;
+              color: #00d4ff;
             }
 
             .ob-title {
@@ -399,7 +399,7 @@ export default function OnboardingModal({ open, onClose, onComplete }: Onboardin
             }
             .ob-subtitle {
               font-size: 14px;
-              color: #818cf8;
+              color: #22d3ee;
               margin: 0;
               font-weight: 500;
             }
@@ -431,8 +431,8 @@ export default function OnboardingModal({ open, onClose, onComplete }: Onboardin
               transition: border-color 0.15s, background 0.15s;
             }
             .ob-feature-card:hover {
-              border-color: rgba(129, 140, 248, 0.3);
-              background: rgba(129, 140, 248, 0.05);
+              border-color: rgba(0, 212, 255, 0.25);
+              background: rgba(0, 212, 255, 0.04);
             }
             .ob-feature-emoji {
               font-size: 22px;
@@ -473,14 +473,14 @@ export default function OnboardingModal({ open, onClose, onComplete }: Onboardin
               line-height: 1.4;
             }
             .ob-prompt-btn:hover {
-              border-color: rgba(129, 140, 248, 0.4);
-              background: rgba(129, 140, 248, 0.07);
-              color: #e0e0ff;
+              border-color: rgba(0, 212, 255, 0.35);
+              background: rgba(0, 212, 255, 0.06);
+              color: #e8fffe;
             }
             .ob-prompt-btn--active {
-              border-color: rgba(129, 140, 248, 0.7) !important;
-              background: rgba(129, 140, 248, 0.14) !important;
-              color: #c4c7ff !important;
+              border-color: rgba(0, 212, 255, 0.6) !important;
+              background: rgba(0, 212, 255, 0.1) !important;
+              color: #e8fffe !important;
             }
             .ob-selected-hint {
               font-size: 12px;
@@ -537,7 +537,7 @@ export default function OnboardingModal({ open, onClose, onComplete }: Onboardin
               display: flex;
               align-items: center;
               gap: 6px;
-              background: linear-gradient(135deg, #6366f1, #818cf8);
+              background: linear-gradient(135deg, #06b6d4, #7c3aed);
               border: none;
               border-radius: 12px;
               padding: 11px 22px;
@@ -545,12 +545,13 @@ export default function OnboardingModal({ open, onClose, onComplete }: Onboardin
               font-weight: 700;
               color: #fff;
               cursor: pointer;
-              transition: opacity 0.15s, box-shadow 0.15s;
-              box-shadow: 0 0 20px rgba(99, 102, 241, 0.35);
+              transition: opacity 0.15s, box-shadow 0.15s, transform 0.1s;
+              box-shadow: 0 0 20px rgba(0, 212, 255, 0.25), 0 0 40px rgba(124, 58, 237, 0.15);
             }
             .ob-next-btn:hover {
-              opacity: 0.9;
-              box-shadow: 0 0 28px rgba(99, 102, 241, 0.5);
+              opacity: 0.92;
+              transform: translateY(-1px);
+              box-shadow: 0 0 30px rgba(0, 212, 255, 0.4), 0 0 60px rgba(124, 58, 237, 0.2);
             }
 
             @media (max-width: 400px) {

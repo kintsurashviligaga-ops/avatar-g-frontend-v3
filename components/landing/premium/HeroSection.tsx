@@ -78,7 +78,7 @@ function generateStars(count: number): Star[] {
   return stars
 }
 
-const STARS = generateStars(150)
+const STARS = generateStars(80)
 
 function scrollTo(anchor: string) {
   const el = document.querySelector(anchor)

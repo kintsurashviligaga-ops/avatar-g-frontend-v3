@@ -185,9 +185,9 @@ export function LandingFooter() {
             <p className="font-medium mb-3 text-[11px] uppercase tracking-wider text-white/40">{c.resources}</p>
             <div className="space-y-2.5 text-[13px] text-white/45">
               <button onClick={() => scrollTo('#about')} className="block py-0.5 transition-colors hover:text-white/80 text-left">About</button>
-              <Link href={lh('/contact')} className="block py-0.5 transition-colors hover:text-white/80">Contact</Link>
-              <Link href={lh('/blog')} className="block py-0.5 transition-colors hover:text-white/80">Blog</Link>
-              <Link href={lh('/careers')} className="block py-0.5 transition-colors hover:text-white/80">Careers</Link>
+              <a href="mailto:support@myavatar.ge" className="block py-0.5 transition-colors hover:text-white/80">Contact</a>
+              <button onClick={() => scrollTo('#gallery')} className="block py-0.5 transition-colors hover:text-white/80 text-left">Gallery</button>
+              <button onClick={() => scrollTo('#pricing')} className="block py-0.5 transition-colors hover:text-white/80 text-left">Pricing</button>
             </div>
           </div>
 
@@ -195,10 +195,10 @@ export function LandingFooter() {
           <div>
             <p className="font-medium mb-3 text-[11px] uppercase tracking-wider text-white/40">{c.legal}</p>
             <div className="space-y-2.5 text-[13px] text-white/45">
-              <Link href={lh('/privacy')} className="block py-0.5 transition-colors hover:text-white/80">Privacy</Link>
-              <Link href={lh('/terms')} className="block py-0.5 transition-colors hover:text-white/80">Terms</Link>
-              <Link href={lh('/cookies')} className="block py-0.5 transition-colors hover:text-white/80">Cookies</Link>
-              <Link href={lh('/licenses')} className="block py-0.5 transition-colors hover:text-white/80">Licenses</Link>
+              <a href="mailto:support@myavatar.ge?subject=Privacy" className="block py-0.5 transition-colors hover:text-white/80">Privacy</a>
+              <a href="mailto:support@myavatar.ge?subject=Terms" className="block py-0.5 transition-colors hover:text-white/80">Terms</a>
+              <a href="mailto:support@myavatar.ge" className="block py-0.5 transition-colors hover:text-white/80">Support</a>
+              <a href="mailto:sales@myavatar.ge" className="block py-0.5 transition-colors hover:text-white/80">Enterprise</a>
             </div>
           </div>
         </div>

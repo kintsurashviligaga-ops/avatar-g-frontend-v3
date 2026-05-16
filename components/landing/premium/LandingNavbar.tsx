@@ -100,8 +100,27 @@ export function LandingNavbar() {
             : { backgroundColor: 'transparent' }
         }
       >
-        {/* Logo → back to dashboard */}
-        <BrandLogo href={localeHref('/dashboard')} size="nav" showText compact={scrolled} />
+        {/* Logo + Live badge */}
+        <div className="flex items-center gap-2.5">
+          <BrandLogo href={localeHref('/dashboard')} size="nav" showText compact={scrolled} />
+          <div
+            className="hidden sm:flex items-center gap-1.5 px-2 py-0.5 rounded-full"
+            style={{
+              background: 'rgba(34,197,94,0.12)',
+              border: '1px solid rgba(34,197,94,0.25)',
+            }}
+          >
+            <span
+              className="w-1.5 h-1.5 rounded-full"
+              style={{
+                backgroundColor: '#22c55e',
+                boxShadow: '0 0 6px rgba(34,197,94,0.8)',
+                animation: 'pulse 2s ease-in-out infinite',
+              }}
+            />
+            <span className="text-[10px] font-semibold text-green-400 uppercase tracking-wider">Live</span>
+          </div>
+        </div>
 
         {/* Desktop nav links — smooth-scroll to page sections */}
         <div className="hidden md:flex items-center gap-1">

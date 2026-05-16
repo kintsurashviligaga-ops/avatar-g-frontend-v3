@@ -189,16 +189,16 @@ export default function PromptChips({ activeService, onSelect }: PromptChipsProp
           font-family: inherit;
         }
         .pc-chip:hover {
-          background: rgba(129, 140, 248, 0.1);
-          border-color: rgba(129, 140, 248, 0.35);
-          color: #c8caff;
-          box-shadow: 0 0 12px rgba(129, 140, 248, 0.2);
+          background: rgba(0, 212, 255, 0.08);
+          border-color: rgba(0, 212, 255, 0.3);
+          color: #e0f9ff;
+          box-shadow: 0 0 12px rgba(0, 212, 255, 0.15);
         }
         .pc-chip--flash {
-          background: rgba(129, 140, 248, 0.22) !important;
-          border-color: rgba(129, 140, 248, 0.6) !important;
-          color: #e0e2ff !important;
-          box-shadow: 0 0 18px rgba(129, 140, 248, 0.35) !important;
+          background: rgba(0, 212, 255, 0.15) !important;
+          border-color: rgba(0, 212, 255, 0.5) !important;
+          color: #e0f9ff !important;
+          box-shadow: 0 0 16px rgba(0, 212, 255, 0.25) !important;
         }
       `}</style>
     </div>

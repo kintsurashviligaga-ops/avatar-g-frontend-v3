@@ -83,12 +83,12 @@ export default function PremiumLanding() {
 
 function Separator() {
   return (
-    <div className="max-w-lg mx-auto px-10">
+    <div className="relative mx-auto px-4 sm:px-10" style={{ maxWidth: '72rem' }}>
       <div
         className="h-px"
         style={{
           background:
-            'linear-gradient(to right, transparent, rgba(34,211,238,0.15), rgba(255,255,255,0.06), rgba(34,211,238,0.15), transparent)',
+            'linear-gradient(to right, transparent 0%, rgba(0,212,255,0.12) 20%, rgba(255,255,255,0.08) 50%, rgba(0,212,255,0.12) 80%, transparent 100%)',
         }}
       />
     </div>
