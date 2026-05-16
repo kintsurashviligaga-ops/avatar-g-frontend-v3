@@ -43,7 +43,7 @@ function MediaDisplay({ creation }: { creation: Creation }) {
     return (
       <div style={{ width: '100%', aspectRatio: '16/9', background: 'rgba(255,255,255,0.04)', borderRadius: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 12 }}>
         <span style={{ fontSize: 48 }}>{KIND_ICON[kind as Kind]}</span>
-        <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.4)' }}>Media unavailable</p>
+        <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.4)' }}>მედია მიუწვდომელია</p>
       </div>
     );
   }

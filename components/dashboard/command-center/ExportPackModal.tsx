@@ -169,7 +169,7 @@ export default function ExportPackModal({ open, items, onClose }: ExportPackModa
                 <div>
                   <div style={{ fontSize: 15, fontWeight: 700, color: '#fff' }}>Export Pack</div>
                   <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>
-                    {selectedCount} / {items.length} selected
+                    {selectedCount} / {items.length} მონიშნული
                   </div>
                 </div>
               </div>
@@ -206,7 +206,7 @@ export default function ExportPackModal({ open, items, onClose }: ExportPackModa
                 {selected.size === items.length
                   ? <CheckSquare style={{ width: 15, height: 15 }} />
                   : <Square style={{ width: 15, height: 15, opacity: 0.5 }} />}
-                {selected.size === items.length ? 'Deselect all' : 'Select all'}
+                {selected.size === items.length ? 'ყველას მოხსნა' : 'ყველას მონიშვნა'}
               </button>
             </div>
 
@@ -291,7 +291,7 @@ export default function ExportPackModal({ open, items, onClose }: ExportPackModa
                   style={{ padding: '8px 20px 0' }}
                 >
                   <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', marginBottom: 6, display: 'flex', justifyContent: 'space-between' }}>
-                    <span>{status === 'zipping' ? 'Creating ZIP...' : `Downloading ${progress.fetched}/${progress.total}...`}</span>
+                    <span>{status === 'zipping' ? 'ZIP-ს ვქმნი...' : `ჩამოტვირთვა ${progress.fetched}/${progress.total}...`}</span>
                     <span>{Math.round((progress.fetched / progress.total) * 100)}%</span>
                   </div>
                   <div style={{ height: 4, background: 'rgba(255,255,255,0.08)', borderRadius: 2, overflow: 'hidden' }}>
@@ -317,7 +317,7 @@ export default function ExportPackModal({ open, items, onClose }: ExportPackModa
                   fontWeight: 600,
                   textAlign: 'center',
                 }}>
-                  ✅ ZIP downloaded!
+                  ✅ ZIP ჩამოიტვირთა!
                 </div>
               ) : status === 'error' ? (
                 <div style={{
@@ -330,7 +330,7 @@ export default function ExportPackModal({ open, items, onClose }: ExportPackModa
                   fontWeight: 600,
                   textAlign: 'center',
                 }}>
-                  ❌ Export failed. Try again.
+                  ❌ ექსპორტი ვერ მოხერხდა. სცადეთ ხელახლა.
                 </div>
               ) : (
                 <motion.button
@@ -363,12 +363,12 @@ export default function ExportPackModal({ open, items, onClose }: ExportPackModa
                         animation: 'spin 0.7s linear infinite',
                       }} />
                       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-                      Processing...
+                      მუშავდება...
                     </>
                   ) : (
                     <>
                       <Download style={{ width: 16, height: 16 }} />
-                      Download ZIP ({selectedCount} {selectedCount === 1 ? 'file' : 'files'})
+                      ZIP-ის ჩამოტვირთვა ({selectedCount} {selectedCount === 1 ? 'ფაილი' : 'ფაილი'})
                     </>
                   )}
                 </motion.button>
