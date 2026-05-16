@@ -2007,8 +2007,11 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
         @keyframes cc-wave { 0%,100% { transform:scaleY(0.5); } 50% { transform:scaleY(1.5); } }
         @keyframes rec-blink { 0%,100% { opacity:1; } 50% { opacity:0.4; } }
         @keyframes spin { from { transform:rotate(0deg); } to { transform:rotate(360deg); } }
+        @keyframes cc-spin { from { transform:rotate(0deg); } to { transform:rotate(360deg); } }
         @keyframes bounce { 0%,100% { transform:translateY(0); opacity:0.5; } 50% { transform:translateY(-4px); opacity:1; } }
         @keyframes toast-in { from { opacity:0; transform:translateY(8px) scale(0.95); } to { opacity:1; transform:translateY(0) scale(1); } }
+        @keyframes cc-shimmer { 0% { background-position:200% 0; } 100% { background-position:-200% 0; } }
+        @keyframes cc-pulse { 0%,100% { opacity:0.6; transform:scale(1); } 50% { opacity:1; transform:scale(1.15); } }
         /* Cost badge */
         .cc-cost-badge {
           display: flex; align-items: center; gap: 3px;
@@ -2121,6 +2124,58 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
   );
 }
 
+// ─── GenerationSkeleton ───────────────────────────────────────────────────────
+
+function GenerationSkeleton({ service }: { service: string }) {
+  const isVisual = ['image', 'video', 'avatar'].includes(service);
+  const isAudio  = ['music', 'voice', 'audio'].includes(service);
+
+  if (isVisual) {
+    return (
+      <div style={{ overflow: 'hidden', borderRadius: 14, border: '1px solid rgba(255,255,255,0.07)', display: 'inline-block', position: 'relative', width: 240, height: 200 }}>
+        <div style={{ width: '100%', height: '100%', background: 'linear-gradient(110deg, rgba(255,255,255,0.03) 25%, rgba(255,255,255,0.07) 50%, rgba(255,255,255,0.03) 75%)', backgroundSize: '200% 100%', animation: 'cc-shimmer 1.6s ease-in-out infinite' }} />
+        <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
+          <div style={{ fontSize: 28, animation: 'cc-pulse 2s ease-in-out infinite' }}>
+            {service === 'image' ? '🎨' : service === 'avatar' ? '🧑' : '🎬'}
+          </div>
+          <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', display: 'flex', alignItems: 'center', gap: 6 }}>
+            <div style={{ width: 8, height: 8, borderRadius: '50%', border: '1.5px solid rgba(168,85,247,0.4)', borderTopColor: '#a855f7', animation: 'cc-spin 0.8s linear infinite' }} />
+            {service === 'image' ? 'სურათს ვქმნი...' : service === 'avatar' ? 'ავატარი...' : 'ვიდეო...'}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (isAudio) {
+    return (
+      <div style={{ padding: '14px 18px', borderRadius: '4px 18px 18px 18px', background: 'rgba(34,211,238,0.06)', border: '1px solid rgba(34,211,238,0.15)', display: 'flex', flexDirection: 'column', gap: 10, minWidth: 240 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{ fontSize: 20, animation: 'cc-pulse 1.5s ease-in-out infinite' }}>{service === 'music' ? '🎵' : '🎙️'}</div>
+          <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)' }}>{service === 'music' ? 'მუსიკას ვქმნი...' : 'ხმას ვქმნი...'}</span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 2, height: 28 }}>
+          {Array.from({ length: 28 }, (_, i) => {
+            const h = 4 + Math.abs(Math.sin(i * 0.7)) * 20;
+            return (
+              <div key={i} style={{ flex: 1, height: h, background: 'rgba(34,211,238,0.35)', borderRadius: 2, animation: `cc-wave 1.2s ${(i % 7) * 120}ms ease-in-out infinite` }} />
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
+  // Default: text typing dots
+  return (
+    <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '10px 14px', borderRadius: '4px 18px 18px 18px', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}>
+      {[0, 150, 300].map(d => (
+        <span key={d} style={{ display: 'block', width: 6, height: 6, borderRadius: '50%', background: 'rgba(255,255,255,0.45)', animation: `bounce 1s ${d}ms ease-in-out infinite` }} />
+      ))}
+    </div>
+  );
+}
+
 // ─── MessageRow ───────────────────────────────────────────────────────────────
 
 function MessageRow({ msg, copy, onCopy, onRetry, onSpeak, onLike, onDislike, onRemix }: {
@@ -2163,10 +2218,11 @@ function MessageRow({ msg, copy, onCopy, onRetry, onSpeak, onLike, onDislike, on
           <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.25)' }}>{formatTime(msg.ts)}</span>
         </div>
         {msg.pending && !msg.content ? (
-          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '10px 14px', borderRadius: '4px 18px 18px 18px', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}>
-            {[0, 150, 300].map(d => (
-              <span key={d} style={{ display: 'block', width: 6, height: 6, borderRadius: '50%', background: 'rgba(255,255,255,0.45)', animation: `bounce 1s ${d}ms ease-in-out infinite` }} />
-            ))}
+          <GenerationSkeleton service={msg.service ?? 'chat'} />
+        ) : msg.pending && msg.content ? (
+          <div style={{ padding: '10px 14px', borderRadius: '4px 18px 18px 18px', background: 'rgba(168,85,247,0.08)', border: '1px solid rgba(168,85,247,0.2)', fontSize: 14, color: 'rgba(255,255,255,0.7)', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div style={{ width: 12, height: 12, borderRadius: '50%', border: '2px solid rgba(168,85,247,0.4)', borderTopColor: '#a855f7', animation: 'cc-spin 0.8s linear infinite', flexShrink: 0 }} />
+            {msg.content}
           </div>
         ) : msg.media ? (
           <div>
