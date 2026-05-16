@@ -30,6 +30,7 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith('/placeholders/') ||
     pathname.startsWith('/previews/') ||
     pathname.startsWith('/auth/callback') ||
+    pathname.startsWith('/share/') ||   // Public share pages — no locale redirect
     /\.\w{2,5}$/.test(pathname);
 
   if (!isSkipped) {
