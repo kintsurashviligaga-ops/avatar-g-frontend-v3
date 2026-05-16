@@ -1,15 +1,13 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-
   "framework": "nextjs",
-
   "buildCommand": "next build",
   "installCommand": "npm ci",
   "outputDirectory": ".next",
   "devCommand": "next dev -p 3000",
-
-  "regions": ["iad1"],
-
+  "regions": [
+    "iad1"
+  ],
   "functions": {
     "app/api/chat/gemini/route.ts": {
       "maxDuration": 60
@@ -63,20 +61,31 @@
       "maxDuration": 15
     }
   },
-
   "headers": [
     {
       "source": "/api/ai/(.*)",
       "headers": [
-        { "key": "Cache-Control", "value": "no-store, max-age=0" },
-        { "key": "X-Content-Type-Options", "value": "nosniff" },
-        { "key": "X-Frame-Options", "value": "DENY" }
+        {
+          "key": "Cache-Control",
+          "value": "no-store, max-age=0"
+        },
+        {
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
+        },
+        {
+          "key": "X-Frame-Options",
+          "value": "DENY"
+        }
       ]
     },
     {
       "source": "/api/(.*)",
       "headers": [
-        { "key": "Cache-Control", "value": "no-store, max-age=0" }
+        {
+          "key": "Cache-Control",
+          "value": "no-store, max-age=0"
+        }
       ]
     },
     {
@@ -107,14 +116,12 @@
       ]
     }
   ],
-
   "rewrites": [
     {
       "source": "/studio/:path*",
       "destination": "/en/studio/:path*"
     }
   ],
-
   "redirects": [
     {
       "source": "/history",
@@ -126,5 +133,8 @@
       "destination": "/studio/:agent",
       "permanent": true
     }
+  ],
+  "alias": [
+    "myavatar.ge"
   ]
 }

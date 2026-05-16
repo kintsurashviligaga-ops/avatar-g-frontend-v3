@@ -41,11 +41,14 @@ import {
 import { createBrowserClient } from '@/lib/supabase/browser';
 import MediaActions from './MediaActions';
 import UpgradeModal from './UpgradeModal';
+import OnboardingModal from './OnboardingModal';
+import PromptChips from './PromptChips';
+import ActivityDashboard from '@/components/dashboard/ActivityDashboard';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type Locale = 'ka' | 'en' | 'ru';
-type View = 'chat' | 'library' | 'pricing';
+type View = 'chat' | 'library' | 'pricing' | 'activity';
 type ServiceId = 'chat' | 'avatar' | 'image' | 'text' | 'music' | 'code' | 'video' | 'voice';
 type OrbState = 'idle' | 'listening' | 'speaking';
 type LibraryFilter = 'all' | 'images' | 'videos' | 'audio' | 'avatars';
@@ -99,7 +102,7 @@ const COPY = {
     agentLabel: 'Agent G',
     standby: 'STANDBY',
     voiceTextMode: 'Voice & Text Mode',
-    tabs: { chat: 'ჩატი', library: 'ბიბლიოთეკა', pricing: 'გეგმები' },
+    tabs: { chat: 'ჩატი', library: 'ბიბლიოთეკა', pricing: 'გეგმები', activity: 'აქტივობა' },
     creditsRemaining: 'კრედიტი დარჩა',
     monthlyReset: '10,000 ყოველთვიური · განახლება 18 დღეში',
     services: { chat: 'ჩატი', avatar: 'ავატარი', image: 'სურათი', text: 'ტექსტი', music: 'მუსიკა', code: 'კოდი', video: 'ვიდეო', voice: 'ხმა' },
@@ -142,7 +145,7 @@ const COPY = {
     agentLabel: 'Agent G',
     standby: 'STANDBY',
     voiceTextMode: 'Voice & Text Mode',
-    tabs: { chat: 'Chat', library: 'Library', pricing: 'Plans' },
+    tabs: { chat: 'Chat', library: 'Library', pricing: 'Plans', activity: 'Activity' },
     creditsRemaining: 'CREDITS REMAINING',
     monthlyReset: '10,000 monthly · resets in 18 days',
     services: { chat: 'Chat', avatar: 'Avatar', image: 'Image', text: 'Text', music: 'Music', code: 'Code', video: 'Video', voice: 'Voice' },
@@ -185,7 +188,7 @@ const COPY = {
     agentLabel: 'Agent G',
     standby: 'STANDBY',
     voiceTextMode: 'Голос & Текст',
-    tabs: { chat: 'Чат', library: 'Библиотека', pricing: 'Тарифы' },
+    tabs: { chat: 'Чат', library: 'Библиотека', pricing: 'Тарифы', activity: 'Активность' },
     creditsRemaining: 'ОСТАЛОСЬ КРЕДИТОВ',
     monthlyReset: '10,000 в месяц · обновление через 18 дней',
     services: { chat: 'Чат', avatar: 'Аватар', image: 'Изображение', text: 'Текст', music: 'Музыка', code: 'Код', video: 'Видео', voice: 'Голос' },
@@ -381,6 +384,9 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
   const [characters, setCharacters] = useState<Array<{ id: string; name: string; slug: string; image_url: string }>>([]);
   const [charSuggestions, setCharSuggestions] = useState<typeof characters>([]);
 
+  // Onboarding
+  const [onboardingOpen, setOnboardingOpen] = useState(false);
+
   const scrollRef = useRef<HTMLDivElement>(null);
   const recogRef = useRef<SpeechRecognition | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -436,6 +442,17 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
     };
     window.addEventListener('keydown', h);
     return () => window.removeEventListener('keydown', h);
+  }, []);
+
+  // Show onboarding for first-time visitors
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const onboarded = localStorage.getItem('agentg_onboarded');
+    if (!onboarded) {
+      const t = setTimeout(() => setOnboardingOpen(true), 800);
+      return () => clearTimeout(t);
+    }
+    return undefined;
   }, []);
 
   // Load character references for @mention
@@ -780,6 +797,20 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
         onClose={() => setUpgradeOpen(false)}
       />
 
+      {/* ── Onboarding Modal ── */}
+      <OnboardingModal
+        open={onboardingOpen}
+        onClose={() => setOnboardingOpen(false)}
+        onComplete={(prefill) => {
+          setOnboardingOpen(false);
+          if (prefill) {
+            setInput(prefill);
+            setView('chat');
+            setTimeout(() => inputRef.current?.focus(), 100);
+          }
+        }}
+      />
+
       {/* ── Toasts ── */}
       <div className="cc-toasts">
         <AnimatePresence>
@@ -1113,6 +1144,13 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
           </div>
         )}
 
+        {/* ACTIVITY */}
+        {view === 'activity' && (
+          <div style={{ flex: 1, overflowY: 'auto' }}>
+            <ActivityDashboard />
+          </div>
+        )}
+
         {/* PRICING */}
         {view === 'pricing' && (
           <div className="cc-pricing">
@@ -1148,11 +1186,12 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
 
       {/* ── Bottom nav tabs ── */}
       <nav className="cc-tabs">
-        {(['chat', 'library', 'pricing'] as View[]).map(v => (
+        {(['chat', 'library', 'activity', 'pricing'] as View[]).map(v => (
           <button key={v} type="button" className={`cc-tab${view === v ? ' active' : ''}`} onClick={() => setView(v)}>
-            {v === 'chat' && <HomeIcon style={{ width: 16, height: 16 }} />}
-            {v === 'library' && <LibraryIcon style={{ width: 16, height: 16 }} />}
-            {v === 'pricing' && <Zap style={{ width: 16, height: 16 }} />}
+            {v === 'chat' && <HomeIcon style={{ width: 15, height: 15 }} />}
+            {v === 'library' && <LibraryIcon style={{ width: 15, height: 15 }} />}
+            {v === 'activity' && <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>}
+            {v === 'pricing' && <Zap style={{ width: 15, height: 15 }} />}
             <span>{copy.tabs[v]}</span>
           </button>
         ))}
@@ -1221,6 +1260,14 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
                 <X style={{ width: 12, height: 12 }} />
               </button>
             </div>
+          )}
+
+          {/* Prompt suggestion chips — always visible when no messages */}
+          {messages.length === 0 && (
+            <PromptChips
+              activeService={activeService}
+              onSelect={(p) => { setInput(p); inputRef.current?.focus(); }}
+            />
           )}
 
           {/* Music preset chips (visible when music service active) */}
