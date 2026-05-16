@@ -174,15 +174,18 @@ export async function GET(req: NextRequest) {
 
     // ── Avatar / Talking Head ──────────────────────────────────────────────
     probe('HeyGen (avatar)', 'avatar', 'HEYGEN_API_KEY', process.env.HEYGEN_API_KEY, async () => {
-      // /v2/avatars is the canonical reachability probe (used by the production
-      // ServiceManager and pipeline). Avoids the deprecated /v1/remaining_quota.
-      const r = await fetchWithTimeout('https://api.heygen.com/v2/avatars', {
-        headers: { 'X-Api-Key': process.env.HEYGEN_API_KEY! },
-      });
+      // /v2/voices is much lighter than /v2/avatars (~5KB vs >1MB) but still
+      // requires a valid API key — perfect for a fast reachability probe.
+      // Allow extra timeout since HeyGen US-East has variable latency.
+      const r = await fetchWithTimeout(
+        'https://api.heygen.com/v2/voices',
+        { headers: { 'X-Api-Key': process.env.HEYGEN_API_KEY! } },
+        12000,
+      );
       if (!r.ok) return { ok: false, message: `${r.status} ${r.statusText}` };
-      const j = (await r.json().catch(() => ({}))) as { data?: { avatars?: unknown[] } };
-      const count = j.data?.avatars?.length;
-      return { ok: true, message: `${r.status} OK · ${count ?? '?'} avatars available` };
+      const j = (await r.json().catch(() => ({}))) as { data?: { voices?: unknown[] } };
+      const count = j.data?.voices?.length;
+      return { ok: true, message: `${r.status} OK · ${count ?? '?'} voices available` };
     }),
 
     // ── Infra ──────────────────────────────────────────────────────────────
