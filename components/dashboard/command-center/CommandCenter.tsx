@@ -32,8 +32,15 @@ import {
   RefreshCw,
   Sparkles,
   Bot,
+  ChevronDown,
+  Monitor,
+  Smartphone,
+  Square,
+  Clock,
 } from 'lucide-react';
 import { createBrowserClient } from '@/lib/supabase/browser';
+import MediaActions from './MediaActions';
+import UpgradeModal from './UpgradeModal';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -242,6 +249,32 @@ const MODELS: Array<{ id: ModelId; label: string; badge: string; badgeColor: str
 
 const QUICK_SERVICES: ServiceId[] = ['avatar', 'image', 'code'];
 
+// ElevenLabs Georgian voices
+const ELEVENLABS_VOICES = [
+  { id: 'pMsXgVXv3BLzUgSXRplE', name: 'Nino (Georgian)', lang: 'ka' },
+  { id: 'EXAVITQu4vr4xnSDxMaL', name: 'Bella (English)', lang: 'en' },
+  { id: 'VR6AewLTigWG4xSOukaG', name: 'Arnold (English)', lang: 'en' },
+  { id: 'TX3LPaxmHKxFdv7VOQHJ', name: 'Liam (English)', lang: 'en' },
+] as const;
+
+// Music style presets
+const MUSIC_PRESETS = [
+  { id: 'georgian-folk', label: '🎻 ქართული ხალხური', prompt: 'Georgian folk music, traditional instruments, panduri, chonguri, polyphony' },
+  { id: 'electronic', label: '⚡ ელექტრონული', prompt: 'Electronic dance music, synthesizer, bass, modern beats' },
+  { id: 'cinematic', label: '🎬 კინოსტილი', prompt: 'Cinematic orchestral score, epic, dramatic, strings and brass' },
+  { id: 'pop', label: '🎵 პოპი', prompt: 'Contemporary pop music, catchy melody, upbeat rhythm' },
+] as const;
+
+// Video aspect ratios
+const VIDEO_ASPECTS = [
+  { id: '16:9', label: '16:9', icon: '▭', desc: 'Landscape' },
+  { id: '9:16', label: '9:16', icon: '▯', desc: 'Portrait/Reel' },
+  { id: '1:1', label: '1:1', icon: '□', desc: 'Square' },
+] as const;
+
+// Video durations
+const VIDEO_DURATIONS = [5, 8, 12] as const;
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function normalizeLocale(loc: string): Locale {
@@ -329,6 +362,25 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
   // Toasts
   const [toasts, setToasts] = useState<Toast[]>([]);
 
+  // Upgrade modal
+  const [upgradeOpen, setUpgradeOpen] = useState(false);
+  const [upgradeCreditsNeeded, setUpgradeCreditsNeeded] = useState<number | undefined>(undefined);
+
+  // Voice selection
+  const [selectedVoiceId, setSelectedVoiceId] = useState<string>(ELEVENLABS_VOICES[0].id);
+  const [voiceDropdownOpen, setVoiceDropdownOpen] = useState(false);
+
+  // Music style preset
+  const [musicPreset, setMusicPreset] = useState<string | null>(null);
+
+  // Video options
+  const [videoAspect, setVideoAspect] = useState<'16:9' | '9:16' | '1:1'>('16:9');
+  const [videoDuration, setVideoDuration] = useState<5 | 8 | 12>(5);
+
+  // Character references for @mention
+  const [characters, setCharacters] = useState<Array<{ id: string; name: string; slug: string; image_url: string }>>([]);
+  const [charSuggestions, setCharSuggestions] = useState<typeof characters>([]);
+
   const scrollRef = useRef<HTMLDivElement>(null);
   const recogRef = useRef<SpeechRecognition | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -374,14 +426,39 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
     } catch { /* ignore */ }
   }, [messages]);
 
-  // Escape closes drawers
+  // Escape closes drawers + dropdowns
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { setHistoryOpen(false); setProfileOpen(false); setHubOpen(false); }
+      if (e.key === 'Escape') {
+        setHistoryOpen(false); setProfileOpen(false); setHubOpen(false);
+        setVoiceDropdownOpen(false); setCharSuggestions([]);
+      }
     };
     window.addEventListener('keydown', h);
     return () => window.removeEventListener('keydown', h);
   }, []);
+
+  // Load character references for @mention
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    fetch('/api/character/reference')
+      .then(r => r.ok ? r.json() : { characters: [] })
+      .then((d: { characters?: Array<{ id: string; name: string; slug: string; image_url: string }> }) => {
+        setCharacters(d.characters ?? []);
+      })
+      .catch(() => {});
+  }, [isAuthenticated]);
+
+  // @mention detection in input
+  useEffect(() => {
+    const match = input.match(/@(\w*)$/);
+    if (match) {
+      const query = (match[1] ?? '').toLowerCase();
+      setCharSuggestions(characters.filter(c => c.name.toLowerCase().includes(query) || c.slug.includes(query)).slice(0, 5));
+    } else {
+      setCharSuggestions([]);
+    }
+  }, [input, characters]);
 
   // Supabase Realtime — subscribe to credit updates from profiles table
   useEffect(() => {
@@ -479,7 +556,11 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
     }
 
     const cost = SERVICE_COSTS[service];
-    if (credits < cost) { showToast(copy.insufficient, 'error'); return; }
+    if (credits < cost) {
+      setUpgradeCreditsNeeded(cost);
+      setUpgradeOpen(true);
+      return;
+    }
 
     const userMsg: ChatMessage = { id: mkId(), role: 'user', content: text, ts: Date.now(), service };
     const pendingMsg: ChatMessage = { id: mkId(), role: 'assistant', content: '', ts: Date.now() + 1, service, pending: true };
@@ -517,28 +598,37 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
         if (!url) throw new Error(data?.error || copy.errorGeneric);
         setMessages(m => m.map(msg => msg.id === pendingMsg.id ? { ...msg, pending: false, content: '', media: { kind: 'image', url } } : msg));
         setCredits(c => c - cost);
-
-      } else if (service === 'video') {
-        const res = await fetch('/api/ltx-video', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt: text }) });
-        if (!res.ok) { const e = await res.json().catch(() => ({})) as { error?: string }; throw new Error(e?.error || copy.errorGeneric); }
-        const url = URL.createObjectURL(await res.blob());
-        setMessages(m => m.map(msg => msg.id === pendingMsg.id ? { ...msg, pending: false, content: '', media: { kind: 'video', url } } : msg));
-        setCredits(c => c - cost);
+        // Auto-save to creations
+        void fetch('/api/creations', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind: 'image', service: 'image', prompt: text, url, thumbnail_url: url, credits_used: cost }) });
 
       } else if (service === 'music') {
-        const res = await fetch('/api/udio/generate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt: text, make_instrumental: false }) });
+        const musicPrompt = musicPreset
+          ? `${text}. Style: ${MUSIC_PRESETS.find(p => p.id === musicPreset)?.prompt ?? ''}`
+          : text;
+        const res = await fetch('/api/udio/generate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt: musicPrompt, make_instrumental: false }) });
         const data = await res.json() as { url?: string; audioUrl?: string; error?: string };
         const url = data?.url || data?.audioUrl;
         if (!url) throw new Error(data?.error || copy.errorGeneric);
         setMessages(m => m.map(msg => msg.id === pendingMsg.id ? { ...msg, pending: false, content: '', media: { kind: 'audio', url } } : msg));
         setCredits(c => c - cost);
+        // Auto-save to creations
+        void fetch('/api/creations', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind: 'audio', service: 'music', prompt: musicPrompt, url, thumbnail_url: url, credits_used: cost }) });
+
+      } else if (service === 'video') {
+        const res = await fetch('/api/ltx-video', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt: text, aspect_ratio: videoAspect, duration: videoDuration }) });
+        if (!res.ok) { const e = await res.json().catch(() => ({})) as { error?: string }; throw new Error(e?.error || copy.errorGeneric); }
+        const url = URL.createObjectURL(await res.blob());
+        setMessages(m => m.map(msg => msg.id === pendingMsg.id ? { ...msg, pending: false, content: '', media: { kind: 'video', url } } : msg));
+        setCredits(c => c - cost);
 
       } else if (service === 'voice') {
-        const res = await fetch('/api/elevenlabs/tts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, locale: localeCode }) });
+        const res = await fetch('/api/elevenlabs/tts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, locale: localeCode, voiceId: selectedVoiceId }) });
         if (!res.ok) throw new Error(copy.errorGeneric);
         const url = URL.createObjectURL(await res.blob());
         setMessages(m => m.map(msg => msg.id === pendingMsg.id ? { ...msg, pending: false, content: '🔊 Audio ready', media: { kind: 'audio', url } } : msg));
         setCredits(c => c - cost);
+        // Auto-save to creations
+        void fetch('/api/creations', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind: 'audio', service: 'voice', prompt: text, url, credits_used: cost }) });
 
       } else {
         // chat / text / code → Gemini streaming SSE
@@ -681,6 +771,14 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
 
   return (
     <div className="cc-root">
+
+      {/* ── Upgrade Modal ── */}
+      <UpgradeModal
+        open={upgradeOpen}
+        creditsNeeded={upgradeCreditsNeeded}
+        currentCredits={credits}
+        onClose={() => setUpgradeOpen(false)}
+      />
 
       {/* ── Toasts ── */}
       <div className="cc-toasts">
@@ -971,6 +1069,7 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
                       onSpeak={() => speakMessage(msg.content)}
                       onLike={() => toggleLike(msg.id, 'liked')}
                       onDislike={() => toggleLike(msg.id, 'disliked')}
+                      onRemix={(p) => { setInput(p); setHubOpen(false); inputRef.current?.focus(); }}
                     />
                   </div>
                 );
@@ -1085,6 +1184,36 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
       {/* ── Input bar (chat only) ── */}
       {view === 'chat' && (
         <div className="cc-input-wrap">
+          {/* @mention suggestions */}
+          <AnimatePresence>
+            {charSuggestions.length > 0 && (
+              <motion.div
+                className="cc-char-suggestions"
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 8 }}
+                transition={{ duration: 0.15 }}
+              >
+                {charSuggestions.map(c => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    className="cc-char-suggestion-item"
+                    onClick={() => {
+                      setInput(input.replace(/@\w*$/, `@${c.slug} `));
+                      setCharSuggestions([]);
+                      inputRef.current?.focus();
+                    }}
+                  >
+                    <img src={c.image_url} alt={c.name} className="cc-char-suggestion-img" />
+                    <span>{c.name}</span>
+                  </button>
+                ))}
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* Attached image preview */}
           {attachedImage && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0 4px 8px' }}>
               <img src={attachedImage.base64} alt="" style={{ width: 52, height: 52, borderRadius: 10, objectFit: 'cover', border: '1px solid rgba(255,255,255,0.15)' }} />
@@ -1093,6 +1222,94 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
               </button>
             </div>
           )}
+
+          {/* Music preset chips (visible when music service active) */}
+          {activeService === 'music' && (
+            <div className="cc-preset-bar">
+              {MUSIC_PRESETS.map(p => (
+                <button
+                  key={p.id}
+                  type="button"
+                  className={`cc-preset-chip${musicPreset === p.id ? ' active' : ''}`}
+                  onClick={() => setMusicPreset(prev => prev === p.id ? null : p.id)}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Video options (visible when video service active) */}
+          {activeService === 'video' && (
+            <div className="cc-video-opts">
+              <div className="cc-video-group">
+                {VIDEO_ASPECTS.map(a => (
+                  <button
+                    key={a.id}
+                    type="button"
+                    className={`cc-video-opt${videoAspect === a.id ? ' active' : ''}`}
+                    onClick={() => setVideoAspect(a.id as typeof videoAspect)}
+                    title={a.desc}
+                  >
+                    <span style={{ fontSize: 11 }}>{a.icon}</span>
+                    <span>{a.label}</span>
+                  </button>
+                ))}
+              </div>
+              <div className="cc-video-group">
+                {VIDEO_DURATIONS.map(d => (
+                  <button
+                    key={d}
+                    type="button"
+                    className={`cc-video-opt${videoDuration === d ? ' active' : ''}`}
+                    onClick={() => setVideoDuration(d as typeof videoDuration)}
+                  >
+                    <Clock style={{ width: 10, height: 10 }} />
+                    <span>{d}s</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Voice selector (visible when voice service active) */}
+          {activeService === 'voice' && (
+            <div style={{ position: 'relative', marginBottom: 6 }}>
+              <button
+                type="button"
+                className="cc-voice-selector"
+                onClick={() => setVoiceDropdownOpen(v => !v)}
+              >
+                <Mic style={{ width: 13, height: 13, opacity: 0.7 }} />
+                <span>{ELEVENLABS_VOICES.find(v => v.id === selectedVoiceId)?.name ?? 'Voice'}</span>
+                <ChevronDown style={{ width: 12, height: 12, opacity: 0.5, marginLeft: 'auto' }} />
+              </button>
+              <AnimatePresence>
+                {voiceDropdownOpen && (
+                  <motion.div
+                    className="cc-voice-dropdown"
+                    initial={{ opacity: 0, y: -6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -6 }}
+                    transition={{ duration: 0.14 }}
+                  >
+                    {ELEVENLABS_VOICES.map(v => (
+                      <button
+                        key={v.id}
+                        type="button"
+                        className={`cc-voice-opt${selectedVoiceId === v.id ? ' active' : ''}`}
+                        onClick={() => { setSelectedVoiceId(v.id); setVoiceDropdownOpen(false); }}
+                      >
+                        {v.name}
+                        {selectedVoiceId === v.id && <Check style={{ width: 11, height: 11, marginLeft: 'auto', color: '#a855f7' }} />}
+                      </button>
+                    ))}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          )}
+
           <div className="cc-input-bar">
             <button type="button" className="cc-ibtn" onClick={() => setHubOpen(v => !v)} aria-label="Services"><Plus style={{ width: 18, height: 18 }} /></button>
             <textarea
@@ -1104,6 +1321,13 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
                 {[3, 5, 8, 6, 9, 4, 7].map((h, i) => (
                   <span key={i} style={{ display: 'block', width: 2, height: h * 2, borderRadius: 1, background: 'rgba(167,139,250,0.9)', animation: `cc-wave 0.9s ${i * 80}ms ease-in-out infinite` }} />
                 ))}
+              </div>
+            )}
+            {/* Cost preview badge */}
+            {input.trim() && !sending && (
+              <div className="cc-cost-badge">
+                <Zap style={{ width: 9, height: 9 }} />
+                {SERVICE_COSTS[activeService]}
               </div>
             )}
             <button type="button" className="cc-ibtn" onClick={() => fileInputRef.current?.click()} style={attachedImage ? { color: 'rgba(167,139,250,1)', background: 'rgba(139,92,246,0.18)' } : undefined}>
@@ -1456,7 +1680,7 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
         .cc-pill:hover { color: rgba(255,255,255,0.75); border-color: rgba(255,255,255,0.14); }
         .cc-pill.active { border-color: rgba(139,92,246,0.55); background: rgba(139,92,246,0.12); color: #fff; }
         /* Input */
-        .cc-input-wrap { padding: 8px 12px; padding-bottom: max(env(safe-area-inset-bottom, 12px), 12px); flex-shrink: 0; }
+        .cc-input-wrap { padding: 8px 12px; padding-bottom: max(env(safe-area-inset-bottom, 12px), 12px); flex-shrink: 0; position: relative; }
         .cc-input-bar {
           display: flex; align-items: flex-end; gap: 5px;
           background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.09);
@@ -1562,6 +1786,113 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
         @keyframes spin { from { transform:rotate(0deg); } to { transform:rotate(360deg); } }
         @keyframes bounce { 0%,100% { transform:translateY(0); opacity:0.5; } 50% { transform:translateY(-4px); opacity:1; } }
         @keyframes toast-in { from { opacity:0; transform:translateY(8px) scale(0.95); } to { opacity:1; transform:translateY(0) scale(1); } }
+        /* Cost badge */
+        .cc-cost-badge {
+          display: flex; align-items: center; gap: 3px;
+          padding: 3px 8px; border-radius: 20px;
+          background: rgba(99,102,241,0.15); border: 1px solid rgba(99,102,241,0.25);
+          color: rgba(167,139,250,0.85); font-size: 11px; font-weight: 600;
+          flex-shrink: 0; white-space: nowrap;
+        }
+        /* Music preset bar */
+        .cc-preset-bar {
+          display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none;
+          padding: 0 2px 8px; flex-wrap: nowrap;
+        }
+        .cc-preset-bar::-webkit-scrollbar { display: none; }
+        .cc-preset-chip {
+          flex-shrink: 0; padding: 5px 12px; border-radius: 20px;
+          background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.09);
+          color: rgba(255,255,255,0.55); font-size: 12px; cursor: pointer;
+          transition: all 0.14s; white-space: nowrap;
+        }
+        .cc-preset-chip.active {
+          background: rgba(245,158,11,0.15); border-color: rgba(245,158,11,0.4);
+          color: #fbbf24;
+        }
+        .cc-preset-chip:hover:not(.active) { background: rgba(255,255,255,0.08); color: #fff; }
+        /* Video options */
+        .cc-video-opts {
+          display: flex; gap: 8px; margin-bottom: 8px; flex-wrap: wrap;
+        }
+        .cc-video-group { display: flex; gap: 4px; }
+        .cc-video-opt {
+          display: flex; align-items: center; gap: 4px;
+          padding: 5px 10px; border-radius: 8px; font-size: 11px;
+          background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.09);
+          color: rgba(255,255,255,0.5); cursor: pointer; transition: all 0.14s;
+          white-space: nowrap;
+        }
+        .cc-video-opt.active {
+          background: rgba(249,115,22,0.15); border-color: rgba(249,115,22,0.4);
+          color: #fb923c;
+        }
+        .cc-video-opt:hover:not(.active) { background: rgba(255,255,255,0.08); color: #fff; }
+        /* Voice selector */
+        .cc-voice-selector {
+          display: flex; align-items: center; gap: 8px;
+          width: 100%; padding: 8px 12px; border-radius: 10px;
+          background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.09);
+          color: rgba(255,255,255,0.7); font-size: 13px; cursor: pointer;
+          transition: all 0.14s; margin-bottom: 0;
+        }
+        .cc-voice-selector:hover { background: rgba(255,255,255,0.07); }
+        .cc-voice-dropdown {
+          position: absolute; bottom: calc(100% + 6px); left: 0; right: 0;
+          background: #1a1a2e; border: 1px solid rgba(99,102,241,0.25);
+          border-radius: 12px; overflow: hidden; z-index: 50;
+          box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+        }
+        .cc-voice-opt {
+          display: flex; align-items: center; gap: 10px;
+          width: 100%; padding: 10px 14px; font-size: 13px;
+          color: rgba(255,255,255,0.7); cursor: pointer;
+          transition: background 0.12s; border: none;
+          background: transparent; text-align: left;
+        }
+        .cc-voice-opt:hover { background: rgba(255,255,255,0.06); color: #fff; }
+        .cc-voice-opt.active { color: #c4b5fd; }
+        /* @mention suggestions */
+        .cc-char-suggestions {
+          position: absolute; bottom: calc(100% + 6px); left: 12px; right: 12px;
+          background: #1a1a2e; border: 1px solid rgba(99,102,241,0.25);
+          border-radius: 12px; overflow: hidden; z-index: 50;
+          box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+        }
+        .cc-char-suggestion-item {
+          display: flex; align-items: center; gap: 10px;
+          width: 100%; padding: 10px 14px; font-size: 13px;
+          color: rgba(255,255,255,0.75); cursor: pointer;
+          transition: background 0.12s; border: none;
+          background: transparent; text-align: left;
+        }
+        .cc-char-suggestion-item:hover { background: rgba(255,255,255,0.06); color: #fff; }
+        .cc-char-suggestion-img {
+          width: 28px; height: 28px; border-radius: 8px;
+          object-fit: cover; border: 1px solid rgba(255,255,255,0.1);
+          flex-shrink: 0;
+        }
+        /* Mobile responsive improvements */
+        @media (max-width: 480px) {
+          .cc-messages { padding: 8px 10px 4px; }
+          .cc-input-wrap { padding: 6px 8px; padding-bottom: max(env(safe-area-inset-bottom, 8px), 8px); }
+          .cc-orb-lg { width: 64px; height: 64px; }
+          .cc-orb-g { font-size: 26px; }
+          .cc-standby-title { font-size: 22px; }
+          .cc-quick-cards { gap: 6px; }
+          .cc-quick-card { padding: 11px 14px; min-width: 70px; }
+          .cc-hub-grid { grid-template-columns: repeat(4, 1fr); gap: 6px; padding: 8px 10px; }
+          .cc-hub-item { padding: 10px 4px; }
+          .cc-hub-icon { width: 32px; height: 32px; }
+          .cc-rail { padding: 6px 8px; }
+          .cc-toasts { bottom: 100px; width: calc(100% - 32px); }
+          .cc-toast { white-space: normal; max-width: 100%; }
+          .cc-preset-bar { padding-bottom: 6px; }
+        }
+        @media (max-width: 360px) {
+          .cc-hub-grid { grid-template-columns: repeat(3, 1fr); }
+          .cc-video-opts { gap: 6px; }
+        }
       `}</style>
     </div>
   );
@@ -1569,7 +1900,7 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
 
 // ─── MessageRow ───────────────────────────────────────────────────────────────
 
-function MessageRow({ msg, copy, onCopy, onRetry, onSpeak, onLike, onDislike }: {
+function MessageRow({ msg, copy, onCopy, onRetry, onSpeak, onLike, onDislike, onRemix }: {
   msg: ChatMessage;
   copy: (typeof COPY)[Locale];
   onCopy: () => void;
@@ -1577,6 +1908,7 @@ function MessageRow({ msg, copy, onCopy, onRetry, onSpeak, onLike, onDislike }: 
   onSpeak: () => void;
   onLike: () => void;
   onDislike: () => void;
+  onRemix: (prompt: string) => void;
 }) {
   const [hover, setHover] = useState(false);
 
@@ -1592,6 +1924,9 @@ function MessageRow({ msg, copy, onCopy, onRetry, onSpeak, onLike, onDislike }: 
       </div>
     );
   }
+
+  // Find related user message for prompt context
+  const userPrompt = msg.content || '';
 
   return (
     <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 14 }} onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}>
@@ -1611,10 +1946,19 @@ function MessageRow({ msg, copy, onCopy, onRetry, onSpeak, onLike, onDislike }: 
             ))}
           </div>
         ) : msg.media ? (
-          <div style={{ overflow: 'hidden', borderRadius: 14, border: '1px solid rgba(255,255,255,0.08)', display: 'inline-block' }}>
-            {msg.media.kind === 'image' && <img src={msg.media.url} alt="" style={{ display: 'block', maxWidth: 280, objectFit: 'cover' }} loading="lazy" />}
-            {msg.media.kind === 'video' && <video src={msg.media.url} controls style={{ display: 'block', maxWidth: 280 }} />}
-            {msg.media.kind === 'audio' && <div style={{ padding: 12 }}><audio src={msg.media.url} controls style={{ width: 260 }} /></div>}
+          <div>
+            <div style={{ overflow: 'hidden', borderRadius: 14, border: '1px solid rgba(255,255,255,0.08)', display: 'inline-block' }}>
+              {msg.media.kind === 'image' && <img src={msg.media.url} alt="" style={{ display: 'block', maxWidth: 280, objectFit: 'cover' }} loading="lazy" />}
+              {msg.media.kind === 'video' && <video src={msg.media.url} controls style={{ display: 'block', maxWidth: 280 }} />}
+              {msg.media.kind === 'audio' && <div style={{ padding: 12 }}><audio src={msg.media.url} controls style={{ width: 260 }} /></div>}
+            </div>
+            <MediaActions
+              kind={msg.media.kind === 'audio' ? 'audio' : msg.media.kind}
+              url={msg.media.url}
+              prompt={userPrompt}
+              onRemix={onRemix}
+              onSaveCharacter={msg.media.kind === 'image' ? () => {} : undefined}
+            />
           </div>
         ) : (
           <div style={{ padding: '10px 14px', borderRadius: '4px 18px 18px 18px', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)', fontSize: 15, lineHeight: 1.6, color: 'rgba(255,255,255,0.88)', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
@@ -1622,11 +1966,11 @@ function MessageRow({ msg, copy, onCopy, onRetry, onSpeak, onLike, onDislike }: 
           </div>
         )}
         {/* Actions */}
-        {!msg.pending && msg.content && (
+        {!msg.pending && (msg.content || msg.media) && (
           <div style={{ display: 'flex', gap: 3, marginTop: 6, opacity: hover ? 1 : 0, transition: 'opacity 0.15s' }}>
-            <Btn title="Copy" onClick={onCopy}><Copy style={{ width: 12, height: 12 }} /></Btn>
+            {msg.content && <Btn title="Copy" onClick={onCopy}><Copy style={{ width: 12, height: 12 }} /></Btn>}
             <Btn title="Retry" onClick={onRetry}><RotateCcw style={{ width: 12, height: 12 }} /></Btn>
-            <Btn title="Speak" onClick={onSpeak}><Volume2 style={{ width: 12, height: 12 }} /></Btn>
+            {msg.content && <Btn title="Speak" onClick={onSpeak}><Volume2 style={{ width: 12, height: 12 }} /></Btn>}
             <Btn title="Like" onClick={onLike} active={msg.liked}><ThumbsUp style={{ width: 12, height: 12 }} /></Btn>
             <Btn title="Dislike" onClick={onDislike} active={msg.disliked}><ThumbsDown style={{ width: 12, height: 12 }} /></Btn>
           </div>
