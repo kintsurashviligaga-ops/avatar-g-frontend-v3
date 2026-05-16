@@ -46,6 +46,8 @@ import PromptChips from './PromptChips';
 import ActivityDashboard from '@/components/dashboard/ActivityDashboard';
 import ExportPackModal from './ExportPackModal';
 import AdminDashboard from '@/components/dashboard/AdminDashboard';
+import RateLimitBanner from '@/components/dashboard/RateLimitBanner';
+import { useRateLimit } from '@/hooks/useRateLimit';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -399,6 +401,10 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
   // Onboarding
   const [onboardingOpen, setOnboardingOpen] = useState(false);
 
+  // Rate limit (Starter plan: 50 gen/day)
+  const rateLimit = useRateLimit(isAuthenticated);
+  const [rateLimitDismissed, setRateLimitDismissed] = useState(false);
+
   const scrollRef = useRef<HTMLDivElement>(null);
   const recogRef = useRef<SpeechRecognition | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -599,6 +605,13 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
       return;
     }
 
+    // Daily generation limit check (Starter plan: 50/day)
+    if (rateLimit.isAtLimit) {
+      showToast('დღის ლიმიტი ამოიწურა (50 გენ/დღე Starter-ზე). Pro-ზე გადასვლა: /pricing', 'error');
+      setRateLimitDismissed(false); // re-show banner
+      return;
+    }
+
     const userMsg: ChatMessage = { id: mkId(), role: 'user', content: text, ts: Date.now(), service };
     const pendingMsg: ChatMessage = { id: mkId(), role: 'assistant', content: '', ts: Date.now() + 1, service, pending: true };
 
@@ -607,6 +620,7 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
     setSending(true);
     setOrbState('speaking');
 
+    let mediaGenerated = false; // tracks if a non-chat generation succeeded (for rate limit)
     try {
       if (service === 'avatar') {
         const startRes = await fetch('/api/heygen/avatar', {
@@ -627,6 +641,7 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
         if (!videoUrl) throw new Error('HeyGen: timed out');
         setMessages(m => m.map(msg => msg.id === pendingMsg.id ? { ...msg, pending: false, content: '', media: { kind: 'video', url: videoUrl! } } : msg));
         setCredits(c => c - cost);
+        mediaGenerated = true;
 
       } else if (service === 'image') {
         if (batchMode) {
@@ -659,6 +674,7 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
             : msg
           ));
           setCredits(c => c - batchCost);
+          mediaGenerated = true;
         } else {
           const res = await fetch('/api/replicate/image', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt: text }) });
           const data = await res.json() as { url?: string; imageUrl?: string; output?: string[]; data?: { url?: string }; error?: string };
@@ -666,6 +682,7 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
           if (!url) throw new Error(data?.error || copy.errorGeneric);
           setMessages(m => m.map(msg => msg.id === pendingMsg.id ? { ...msg, pending: false, content: '', media: { kind: 'image', url } } : msg));
           setCredits(c => c - cost);
+          mediaGenerated = true;
           // Auto-save to creations
           void fetch('/api/creations', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind: 'image', service: 'image', prompt: text, url, thumbnail_url: url, credits_used: cost }) });
         }
@@ -680,6 +697,7 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
         if (!url) throw new Error(data?.error || copy.errorGeneric);
         setMessages(m => m.map(msg => msg.id === pendingMsg.id ? { ...msg, pending: false, content: '', media: { kind: 'audio', url } } : msg));
         setCredits(c => c - cost);
+        mediaGenerated = true;
         // Auto-save to creations
         void fetch('/api/creations', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind: 'audio', service: 'music', prompt: musicPrompt, url, thumbnail_url: url, credits_used: cost }) });
 
@@ -689,6 +707,7 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
         const url = URL.createObjectURL(await res.blob());
         setMessages(m => m.map(msg => msg.id === pendingMsg.id ? { ...msg, pending: false, content: '', media: { kind: 'video', url } } : msg));
         setCredits(c => c - cost);
+        mediaGenerated = true;
 
       } else if (service === 'voice') {
         const res = await fetch('/api/elevenlabs/tts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, locale: localeCode, voiceId: selectedVoiceId }) });
@@ -696,6 +715,7 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
         const url = URL.createObjectURL(await res.blob());
         setMessages(m => m.map(msg => msg.id === pendingMsg.id ? { ...msg, pending: false, content: '🔊 Audio ready', media: { kind: 'audio', url } } : msg));
         setCredits(c => c - cost);
+        mediaGenerated = true;
         // Auto-save to creations
         void fetch('/api/creations', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind: 'audio', service: 'voice', prompt: text, url, credits_used: cost }) });
 
@@ -742,10 +762,11 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
       setMessages(m => m.map(msg2 => msg2.id === pendingMsg.id ? { ...msg2, pending: false, content: `⚠️ ${msg}` } : msg2));
       showToast(msg, 'error');
     } finally {
+      if (mediaGenerated) rateLimit.incrementCount();
       setSending(false);
       setOrbState('idle');
     }
-  }, [activeService, batchMode, credits, copy, localeCode, messages, sending, attachedImage, showToast]);
+  }, [activeService, batchMode, credits, copy, localeCode, messages, sending, attachedImage, showToast, rateLimit]);
 
   const toggleVoiceRecording = useCallback(() => {
     if (typeof window === 'undefined') return;
@@ -1078,6 +1099,14 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
 
       {/* ── Main content ── */}
       <main className="cc-main" ref={scrollRef}>
+
+        {/* Rate limit banner — shows when Starter plan user is near/at daily gen limit */}
+        {view === 'chat' && !rateLimitDismissed && (
+          <RateLimitBanner
+            status={rateLimit}
+            onDismiss={() => setRateLimitDismissed(true)}
+          />
+        )}
 
         {/* CHAT */}
         {view === 'chat' && (
