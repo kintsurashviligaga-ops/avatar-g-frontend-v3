@@ -92,19 +92,20 @@ export async function GET(_req: NextRequest) {
     since.setUTCDate(since.getUTCDate() - 30);
     const sinceISO = since.toISOString();
 
-    // Messages — joined via conversations (RLS already filters to the user's own)
-    const { data: convoRows } = await supabase
-      .from('conversations')
+    // Messages — joined via chat_sessions (production schema; legacy
+    // "conversations"/"messages" tables don't exist on this Supabase project)
+    const { data: sessionRows } = await supabase
+      .from('chat_sessions')
       .select('id')
       .eq('user_id', user.id);
-    const convoIds = (convoRows ?? []).map(r => r.id);
+    const sessionIds = (sessionRows ?? []).map(r => r.id);
 
     let messages: Array<{ content: string; created_at: string; role: string }> = [];
-    if (convoIds.length > 0) {
+    if (sessionIds.length > 0) {
       const { data } = await supabase
-        .from('messages')
+        .from('chat_messages')
         .select('content, created_at, role')
-        .in('conversation_id', convoIds)
+        .in('session_id', sessionIds)
         .gte('created_at', sinceISO)
         .order('created_at', { ascending: false })
         .limit(1000);
