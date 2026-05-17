@@ -4,6 +4,8 @@ import { createAnthropic } from '@ai-sdk/anthropic';
 import { AGENT_G_SYSTEM_PROMPT } from '@/lib/agent-g-orchestrator';
 import { NextRequest } from 'next/server';
 import { reportError } from '@/lib/observability/report-error';
+import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { embed } from '@/lib/memory/embed';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -88,6 +90,68 @@ function toCoreMessages(messages: IncomingMessage[]): ModelMessage[] {
     });
 }
 
+// ─── 4b. MEMORY INJECTION ────────────────────────────────────────────────────
+// Pull the latest user text, embed it, and fetch the top-k most-similar
+// memories for the current authenticated user via the `match_memories` RPC.
+// Failures are silent: missing OPENAI_API_KEY, no auth, embed failure, or RPC
+// error all return `null` so chat never breaks because of memory.
+
+function extractLatestUserText(messages: IncomingMessage[]): string {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i];
+    if (!m || m.role !== 'user') continue;
+    if (typeof m.content === 'string') return m.content.trim();
+    if (Array.isArray(m.content)) {
+      const text = (m.content as IncomingPart[])
+        .filter((p): p is { type: 'text'; text: string } => p.type === 'text')
+        .map((p) => p.text)
+        .join('\n')
+        .trim();
+      if (text) return text;
+    }
+  }
+  return '';
+}
+
+async function buildMemoryPreamble(messages: IncomingMessage[]): Promise<string | null> {
+  try {
+    const userText = extractLatestUserText(messages);
+    if (!userText) return null;
+
+    const embedding = await embed(userText);
+    if (!embedding) return null;
+
+    const supabase = createSupabaseServerClient();
+    // Auth check — match_memories filters by auth.uid() internally,
+    // but skip the RPC entirely for unauthenticated callers.
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return null;
+
+    const { data, error } = await supabase.rpc('match_memories', {
+      query_embedding: embedding,
+      match_count: 5,
+    });
+    if (error) {
+      reportError(error, { route: '/api/chat/gemini', stage: 'memory-rpc' });
+      return null;
+    }
+
+    const rows = (data ?? []) as Array<{ id: string; fact: string; similarity: number }>;
+    if (!rows.length) return null;
+
+    const bullets = rows
+      .map((r) => `- ${r.fact.replace(/\s+/g, ' ').trim()}`)
+      .join('\n');
+
+    return `User context (remembered facts):\n${bullets}`;
+  } catch (err) {
+    reportError(err, { route: '/api/chat/gemini', stage: 'memory-build' });
+    return null;
+  }
+}
+
 // ─── 5. ERROR CLASSIFICATION ─────────────────────────────────────────────────
 
 function classifyError(err: unknown): 'rate_limit' | 'safety' | 'unknown' {
@@ -138,6 +202,13 @@ export async function POST(req: NextRequest) {
 
     const modelMessages = toCoreMessages(messages);
 
+    // Best-effort memory injection. Never blocks the chat — if the lookup
+    // fails for any reason we fall back to the base system prompt.
+    const memoryPreamble = await buildMemoryPreamble(messages);
+    const effectiveSystem = memoryPreamble
+      ? `${memoryPreamble}\n\n${SYSTEM_PROMPT}`
+      : SYSTEM_PROMPT;
+
     const encoder = new TextEncoder();
     const readable = new ReadableStream({
       async start(controller) {
@@ -161,7 +232,7 @@ export async function POST(req: NextRequest) {
               const google = getGeminiClient();
               const result = streamText({
                 model: google(modelName),
-                system: SYSTEM_PROMPT,
+                system: effectiveSystem,
                 messages: modelMessages,
                 maxOutputTokens: 4096,
                 temperature: 0.7,
@@ -189,7 +260,7 @@ export async function POST(req: NextRequest) {
             const anthropic = getAnthropicClient();
             const fallback = streamText({
               model: anthropic('claude-haiku-4-5-20251001'),
-              system: SYSTEM_PROMPT,
+              system: effectiveSystem,
               // Haiku doesn't support image URLs inline — strip to text-only
               messages: modelMessages.map(m => ({
                 role: m.role,

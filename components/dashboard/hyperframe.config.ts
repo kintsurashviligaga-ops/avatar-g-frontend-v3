@@ -9,6 +9,7 @@ import {
   FileText,
   Workflow,
   BarChart3,
+  Brain,
   Building2,
   TrendingUp,
   Sparkles,
@@ -149,6 +150,14 @@ export const DASHBOARD_NAV_SECTIONS: DashboardNavSection[] = [
   {
     section: 'Intelligence',
     items: [
+      {
+        id: 'memory',
+        label: 'Memory',
+        subtitle: 'მეხსიერება — what Agent G remembers',
+        icon: Brain,
+        href: '/memory',
+        color: '#a78bfa',
+      },
       {
         id: 'workflows',
         label: 'Workflow Builder',

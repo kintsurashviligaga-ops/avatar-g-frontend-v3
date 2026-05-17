@@ -7,10 +7,10 @@ import {
   Library as LibraryIcon,
   User as UserIcon,
   ImageIcon,
-  Type as TextIcon,
   Music as MusicIcon,
   Code as CodeIcon,
   Video as VideoIcon,
+  Sofa as SofaIcon,
   Mic,
   Plus,
   Paperclip,
@@ -32,7 +32,11 @@ import {
   Sparkles,
   ChevronDown,
   Clock,
+  Mic2,
+  Brain,
+  BarChart3,
 } from 'lucide-react';
+import Link from 'next/link';
 import { createBrowserClient } from '@/lib/supabase/browser';
 import InlineMedia, { detectInlineMedia } from './InlineMedia';
 import UpgradeModal from './UpgradeModal';
@@ -51,7 +55,11 @@ import { analytics } from '@/components/analytics/PostHogProvider';
 
 type Locale = 'ka' | 'en' | 'ru';
 type View = 'chat' | 'library' | 'pricing' | 'activity' | 'admin';
-type ServiceId = 'chat' | 'avatar' | 'image' | 'text' | 'music' | 'code' | 'video' | 'voice';
+// `chat` is the default Agent-G conversation mode (not a service).
+// `app` covers code/app creation (legacy id `code` aliased server-side).
+// The seven generation services exposed in the Hub: avatar / image / video /
+// music / voice / interior / app — Agent G routes user intent to these.
+type ServiceId = 'chat' | 'avatar' | 'image' | 'video' | 'music' | 'voice' | 'interior' | 'app';
 type OrbState = 'idle' | 'listening' | 'speaking';
 type LibraryFilter = 'all' | 'images' | 'videos' | 'audio' | 'avatars';
 type ModelId = 'gemini-2.0-flash' | 'gemini-2.0-pro' | 'gemini-1.5-ultra';
@@ -111,7 +119,7 @@ const COPY = {
     tabs: { chat: 'ჩატი', library: 'ბიბლიოთეკა', pricing: 'გეგმები', activity: 'აქტივობა' },
     creditsRemaining: 'კრედიტი დარჩა',
     monthlyReset: '10,000 ყოველთვიური · განახლება 18 დღეში',
-    services: { chat: 'ჩატი', avatar: 'ავატარი', image: 'სურათი', text: 'ტექსტი', music: 'მუსიკა', code: 'კოდი', video: 'ვიდეო', voice: 'ხმა' },
+    services: { chat: 'ჩატი', avatar: 'ავატარის შექმნა', image: 'ფოტოს შექმნა', video: 'ვიდეოს შექმნა', music: 'მუსიკის შექმნა', voice: 'ხმის', interior: 'ინტერიერის დიზაინი', app: 'აპლიკაციის შექმნა' },
     aiServices: 'AI სერვისები',
     placeholder: 'დაწერე ან ილაპარაკე...',
     sending: 'იგზავნება...',
@@ -154,7 +162,7 @@ const COPY = {
     tabs: { chat: 'Chat', library: 'Library', pricing: 'Plans', activity: 'Activity' },
     creditsRemaining: 'CREDITS REMAINING',
     monthlyReset: '10,000 monthly · resets in 18 days',
-    services: { chat: 'Chat', avatar: 'Avatar', image: 'Image', text: 'Text', music: 'Music', code: 'Code', video: 'Video', voice: 'Voice' },
+    services: { chat: 'Chat', avatar: 'Avatar', image: 'Photo', video: 'Video', music: 'Music', voice: 'Voice', interior: 'Interior Design', app: 'App Creation' },
     aiServices: 'AI Services',
     placeholder: 'Type or speak your command...',
     sending: 'Sending...',
@@ -197,7 +205,7 @@ const COPY = {
     tabs: { chat: 'Чат', library: 'Библиотека', pricing: 'Тарифы', activity: 'Активность' },
     creditsRemaining: 'ОСТАЛОСЬ КРЕДИТОВ',
     monthlyReset: '10,000 в месяц · обновление через 18 дней',
-    services: { chat: 'Чат', avatar: 'Аватар', image: 'Изображение', text: 'Текст', music: 'Музыка', code: 'Код', video: 'Видео', voice: 'Голос' },
+    services: { chat: 'Чат', avatar: 'Аватар', image: 'Фото', video: 'Видео', music: 'Музыка', voice: 'Голос', interior: 'Интерьер', app: 'Приложение' },
     aiServices: 'AI Сервисы',
     placeholder: 'Напишите или скажите команду...',
     sending: 'Отправка...',
@@ -235,19 +243,20 @@ const COPY = {
 } as const;
 
 const SERVICE_COSTS: Record<ServiceId, number> = {
-  chat: 1, text: 2, code: 5, voice: 5, image: 10, music: 15, avatar: 20, video: 50,
+  chat: 1, voice: 5, app: 8, image: 10, music: 15, avatar: 20, interior: 25, video: 50,
 };
 
 const SERVICE_ICONS: Record<ServiceId, React.ElementType> = {
-  chat: HomeIcon, avatar: UserIcon, image: ImageIcon, text: TextIcon,
-  music: MusicIcon, code: CodeIcon, video: VideoIcon, voice: Volume2,
+  chat: HomeIcon, avatar: UserIcon, image: ImageIcon,
+  video: VideoIcon, music: MusicIcon, voice: Volume2,
+  interior: SofaIcon, app: CodeIcon,
 };
 
-// Service accent colors for history icons
+// Service accent colors — each agent gets its own identity for the history feed
 const SERVICE_COLORS: Record<ServiceId, string> = {
   chat: '#6366f1', avatar: '#8b5cf6', image: '#ec4899',
-  text: '#06b6d4', music: '#f59e0b', code: '#10b981',
-  video: '#f97316', voice: '#3b82f6',
+  video: '#f97316', music: '#f59e0b', voice: '#3b82f6',
+  interior: '#14b8a6', app: '#10b981',
 };
 
 const MODELS: Array<{ id: ModelId; label: string; badge: string; badgeColor: string }> = [
@@ -256,7 +265,9 @@ const MODELS: Array<{ id: ModelId; label: string; badge: string; badgeColor: str
   { id: 'gemini-1.5-ultra', label: 'Gemini 1.5 Ultra', badge: 'BEST', badgeColor: '#f59e0b' },
 ];
 
-const QUICK_SERVICES: ServiceId[] = ['avatar', 'image', 'code'];
+// Quick-pick services shown on the standby screen — the 4 most-used.
+// The full 7 are reachable from the Hub drawer below.
+const QUICK_SERVICES: ServiceId[] = ['avatar', 'image', 'video', 'music'];
 
 // ElevenLabs Georgian voices
 const ELEVENLABS_VOICES = [
@@ -329,12 +340,17 @@ function bucketLabel(bucket: ReturnType<typeof dayBucket>, copy: (typeof COPY)[L
   return copy[bucket === 'today' ? 'today' : bucket === 'yesterday' ? 'yesterday' : bucket === 'last7' ? 'last7' : 'older'];
 }
 
+// Agent G intent router — when the user types freely, Agent G inspects the
+// text and delegates to the matching specialist agent. The seven services are
+// avatar / image / video / music / voice / interior / app.
 function detectSkillFromText(text: string): ServiceId | null {
-  if (/\b(draw|paint|generate image|create image|make image|photo|სურათი|დახატე|нарисуй)\b/i.test(text)) return 'image';
+  if (/\b(draw|paint|generate image|create image|make image|photo|სურათი|დახატე|ფოტო|нарисуй|фото)\b/i.test(text)) return 'image';
   if (/\b(create video|make video|generate video|animate|ვიდეო|видео)\b/i.test(text)) return 'video';
   if (/\b(compose|create music|make song|generate music|მუსიკა|музыка)\b/i.test(text)) return 'music';
-  if (/\b(avatar|talking head|ავატარი|аватар)\b/i.test(text)) return 'avatar';
-  if (/\b(speak|read aloud|say this|voice|text to speech|წაიკითხე|прочитай)\b/i.test(text)) return 'voice';
+  if (/\b(avatar|talking head|ავატარი|აავტარი|аватар)\b/i.test(text)) return 'avatar';
+  if (/\b(speak|read aloud|say this|voice|text to speech|წაიკითხე|ხმა|прочитай)\b/i.test(text)) return 'voice';
+  if (/\b(interior|room|bedroom|living room|kitchen|ინტერიერი|დიზაინი|ოთახი|интерьер|комната)\b/i.test(text)) return 'interior';
+  if (/\b(app|application|web app|website|code|build app|აპლიკაცია|აპი|ვებსაიტი|приложение|сайт)\b/i.test(text)) return 'app';
   return null;
 }
 
@@ -777,6 +793,61 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
         mediaGenerated = true;
         // Note: blob URLs are ephemeral (session-only), so we don't persist to creations DB
 
+      } else if (service === 'interior') {
+        // Agent G → Interior Design agent. Routes through the pipeline which
+        // delegates to WorldLabs (or NanoBanana with an interior-design system
+        // prompt as a fallback). Returns an image URL.
+        const res = await fetch('/api/pipeline', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'generate', serviceId: 'interior', prompt: text }),
+        });
+        const data = await res.json() as { result?: { url?: string }; url?: string; error?: string };
+        const url = data?.result?.url ?? data?.url;
+        if (!url) throw new Error(data?.error || copy.errorGeneric);
+        setMessages(m => m.map(msg => msg.id === pendingMsg.id ? { ...msg, pending: false, content: '', media: { kind: 'image', url } } : msg));
+        setCredits(c => c - cost);
+        mediaGenerated = true;
+        void fetch('/api/creations', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind: 'image', service: 'interior', prompt: text, url, thumbnail_url: url, credits_used: cost }) });
+
+      } else if (service === 'app') {
+        // Agent G → App Creation agent. Asks Gemini to return self-contained
+        // HTML + inline CSS + JS. Renders as an inline interactive preview
+        // (sandboxed iframe) via InlineMedia kind="code".
+        const codePrompt = `You are a senior frontend engineer. Produce a single self-contained HTML document (with inline CSS and JS, no external assets) that fully implements the following request. Return ONLY the HTML — no markdown fences, no commentary.\n\nRequest: ${text}`;
+        const res = await fetch('/api/chat/gemini', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ messages: [{ role: 'user', content: codePrompt }] }),
+        });
+        if (!res.ok || !res.body) throw new Error(copy.errorGeneric);
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let accumulated = '', buffer = '';
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          let nl: number;
+          while ((nl = buffer.indexOf('\n')) >= 0) {
+            const line = buffer.slice(0, nl).trim();
+            buffer = buffer.slice(nl + 1);
+            if (line.startsWith('data: ')) {
+              try {
+                const j = JSON.parse(line.slice(6)) as { type?: string; textDelta?: string };
+                if (j.type === 'text-delta' && j.textDelta) accumulated += j.textDelta;
+              } catch { /* tolerate non-JSON SSE lines */ }
+            }
+          }
+        }
+        // Strip any accidental markdown fences and trim
+        const html = accumulated
+          .replace(/^```(?:html)?\s*/i, '')
+          .replace(/\s*```\s*$/i, '')
+          .trim();
+        if (!html) throw new Error(copy.errorGeneric);
+        setMessages(m => m.map(msg => msg.id === pendingMsg.id ? { ...msg, pending: false, content: '', media: { kind: 'code', html, language: 'html' } } : msg));
+        setCredits(c => c - cost);
+        mediaGenerated = true;
+
       } else {
         // chat / text / code → Gemini streaming SSE
         type Part = { type: 'text'; text: string } | { type: 'image'; image: string; mimeType: string };
@@ -1139,6 +1210,19 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
             <button type="button" className="cc-prof-link" onClick={() => { setView('library'); setProfileOpen(false); }}>
               <LibraryIcon style={{ width: 16, height: 16 }} /><span>{copy.mediaLibrary}</span><ChevronRight style={{ width: 14, height: 14, marginLeft: 'auto', opacity: 0.4 }} />
             </button>
+            <Link href={`/${locale}/avatar`} className="cc-prof-link" onClick={() => setProfileOpen(false)}>
+              <UserIcon style={{ width: 16, height: 16 }} /><span>{localeCode === 'ka' ? 'ჩემი ავატარი' : localeCode === 'ru' ? 'Мой аватар' : 'My Avatar'}</span><ChevronRight style={{ width: 14, height: 14, marginLeft: 'auto', opacity: 0.4 }} />
+            </Link>
+            <Link href={`/${locale}/voice-lab`} className="cc-prof-link" onClick={() => setProfileOpen(false)}>
+              <Mic2 style={{ width: 16, height: 16 }} /><span>{localeCode === 'ka' ? 'ხმის ლაბორატორია' : localeCode === 'ru' ? 'Голосовая лаборатория' : 'Voice Lab'}</span><ChevronRight style={{ width: 14, height: 14, marginLeft: 'auto', opacity: 0.4 }} />
+            </Link>
+            <Link href={`/${locale}/memory`} className="cc-prof-link" onClick={() => setProfileOpen(false)}>
+              <Brain style={{ width: 16, height: 16 }} /><span>{localeCode === 'ka' ? 'მეხსიერება' : localeCode === 'ru' ? 'Память' : 'Memory'}</span><ChevronRight style={{ width: 14, height: 14, marginLeft: 'auto', opacity: 0.4 }} />
+            </Link>
+            <Link href={`/${locale}/analytics`} className="cc-prof-link" onClick={() => setProfileOpen(false)}>
+              <BarChart3 style={{ width: 16, height: 16 }} /><span>{localeCode === 'ka' ? 'ანალიტიკა' : localeCode === 'ru' ? 'Аналитика' : 'Analytics'}</span><ChevronRight style={{ width: 14, height: 14, marginLeft: 'auto', opacity: 0.4 }} />
+            </Link>
+            <div className="cc-prof-divider" />
             <button type="button" className="cc-prof-link">
               <Settings style={{ width: 16, height: 16 }} /><span>{copy.settings}</span><ChevronRight style={{ width: 14, height: 14, marginLeft: 'auto', opacity: 0.4 }} />
             </button>
@@ -1560,7 +1644,7 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
             <span style={{ fontSize: 12, fontWeight: 600 }}>{copy.aiServices}</span>
           </button>
           <div className="cc-pills">
-            {(['avatar', 'image', 'video', 'music', 'text', 'code', 'voice'] as ServiceId[]).map(id => {
+            {(['avatar', 'image', 'video', 'music', 'voice', 'interior', 'app'] as ServiceId[]).map(id => {
               const Icon = SERVICE_ICONS[id];
               const active = activeService === id;
               return (
@@ -1814,8 +1898,11 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
               </div>
               <div className="cc-hub-grid">
                 {([
-                  { id: 'avatar' as ServiceId }, { id: 'image' as ServiceId }, { id: 'video' as ServiceId }, { id: 'music' as ServiceId },
-                  { id: 'text' as ServiceId }, { id: 'code' as ServiceId }, { id: 'voice' as ServiceId }, { id: 'chat' as ServiceId },
+                  // The 7 specialist agents Agent G routes to.
+                  { id: 'avatar' as ServiceId },   { id: 'image' as ServiceId },
+                  { id: 'video' as ServiceId },    { id: 'music' as ServiceId },
+                  { id: 'voice' as ServiceId },    { id: 'interior' as ServiceId },
+                  { id: 'app' as ServiceId },
                 ]).map(({ id }, idx) => {
                   const Icon = SERVICE_ICONS[id];
                   const active = activeService === id;
