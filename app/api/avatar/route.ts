@@ -115,12 +115,13 @@ export async function POST(request: NextRequest) {
       return apiSuccess({ avatar: data });
     }
 
+    // The fresh persona avatars table (20260517 migration) doesn't have
+    // status/progress columns — they belonged to the older image-gen
+    // avatars schema. The onboarding wizard only persists persona fields.
     const { data, error } = await supabase
       .from('avatars')
       .insert({
         user_id: user.id,
-        status: 'completed',
-        progress: 100,
         ...payload,
       })
       .select('id, name, personality, voice_id, system_prompt')
