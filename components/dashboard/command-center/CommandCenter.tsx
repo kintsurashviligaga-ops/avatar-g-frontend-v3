@@ -40,6 +40,7 @@ import {
 } from 'lucide-react';
 import { createBrowserClient } from '@/lib/supabase/browser';
 import MediaActions from './MediaActions';
+import InlineMedia, { detectInlineMedia } from './InlineMedia';
 import UpgradeModal from './UpgradeModal';
 import OnboardingModal from './OnboardingModal';
 import PromptChips from './PromptChips';
@@ -66,7 +67,11 @@ interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
   ts: number;
-  media?: { kind: 'image' | 'video' | 'audio'; url: string };
+  media?:
+    | { kind: 'image'; url: string }
+    | { kind: 'video'; url: string }
+    | { kind: 'audio'; url: string }
+    | { kind: 'code'; html: string; language?: string };
   service?: ServiceId;
   pending?: boolean;
   liked?: boolean;
@@ -902,10 +907,12 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
 
   type LibraryItem = { id: string; kind: 'image' | 'video' | 'audio'; url: string; service: string; source: 'session' | 'db' };
   const allLibraryItems = useMemo((): LibraryItem[] => {
-    // In-session items
+    // In-session items — narrow to media kinds that have a `url`, excluding 'code'
     const session: LibraryItem[] = mediaItems
-      .filter(m => m.media?.url && (m.media.kind === 'image' || m.media.kind === 'video' || m.media.kind === 'audio'))
-      .map(m => ({ id: m.id, kind: m.media!.kind as 'image' | 'video' | 'audio', url: m.media!.url, service: m.service ?? 'ai', source: 'session' as const }));
+      .filter((m): m is typeof m & { media: { kind: 'image' | 'video' | 'audio'; url: string } } =>
+        !!m.media && (m.media.kind === 'image' || m.media.kind === 'video' || m.media.kind === 'audio') && !!m.media.url,
+      )
+      .map(m => ({ id: m.id, kind: m.media.kind, url: m.media.url, service: m.service ?? 'ai', source: 'session' as const }));
     // DB items (deduplicate by URL against session items)
     const sessionUrls = new Set(session.map(s => s.url));
     const db: LibraryItem[] = dbCreations
@@ -2569,25 +2576,38 @@ function MessageRow({ msg, copy, onCopy, onRetry, onSpeak, onLike, onDislike, on
             {msg.content}
           </div>
         ) : msg.media ? (
-          <div>
-            <div style={{ overflow: 'hidden', borderRadius: 14, border: '1px solid rgba(255,255,255,0.08)', display: 'inline-block' }}>
-              {msg.media.kind === 'image' && <img src={msg.media.url} alt="" style={{ display: 'block', maxWidth: 280, objectFit: 'cover' }} loading="lazy" />}
-              {msg.media.kind === 'video' && <video src={msg.media.url} controls style={{ display: 'block', maxWidth: 280 }} />}
-              {msg.media.kind === 'audio' && <div style={{ padding: 12 }}><audio src={msg.media.url} controls style={{ width: 260 }} /></div>}
+          // ─── One Window: render media INLINE — never a raw URL ───
+          msg.media.kind === 'code' ? (
+            <InlineMedia kind="code" html={msg.media.html} language={msg.media.language} prompt={userPrompt} onRemix={onRemix} />
+          ) : msg.media.kind === 'image' ? (
+            <InlineMedia kind="image" url={msg.media.url} prompt={userPrompt} onRemix={onRemix} />
+          ) : msg.media.kind === 'video' ? (
+            <InlineMedia kind="video" url={msg.media.url} prompt={userPrompt} onRemix={onRemix} />
+          ) : (
+            <InlineMedia kind="audio" url={msg.media.url} prompt={userPrompt} onRemix={onRemix} />
+          )
+        ) : (() => {
+          // ─── Auto-detect raw media URLs in text and hoist to InlineMedia ───
+          const detected = detectInlineMedia(msg.content);
+          if (detected) {
+            const textWithoutUrl = msg.content.replace(detected.url, '').trim();
+            return (
+              <div>
+                {textWithoutUrl && (
+                  <div style={{ padding: '10px 14px', borderRadius: '4px 18px 18px 18px', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)', fontSize: 15, lineHeight: 1.6, color: 'rgba(255,255,255,0.88)', whiteSpace: 'pre-wrap', wordBreak: 'break-word', marginBottom: 8 }}>
+                    {textWithoutUrl}
+                  </div>
+                )}
+                <InlineMedia kind={detected.kind} url={detected.url} prompt={userPrompt} onRemix={onRemix} />
+              </div>
+            );
+          }
+          return (
+            <div style={{ padding: '10px 14px', borderRadius: '4px 18px 18px 18px', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)', fontSize: 15, lineHeight: 1.6, color: 'rgba(255,255,255,0.88)', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+              {msg.content}
             </div>
-            <MediaActions
-              kind={msg.media.kind === 'audio' ? 'audio' : msg.media.kind}
-              url={msg.media.url}
-              prompt={userPrompt}
-              onRemix={onRemix}
-              onSaveCharacter={msg.media.kind === 'image' ? () => {} : undefined}
-            />
-          </div>
-        ) : (
-          <div style={{ padding: '10px 14px', borderRadius: '4px 18px 18px 18px', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)', fontSize: 15, lineHeight: 1.6, color: 'rgba(255,255,255,0.88)', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-            {msg.content}
-          </div>
-        )}
+          );
+        })()}
         {/* Actions — always visible on touch, fade-in on pointer:fine */}
         {!msg.pending && (msg.content || msg.media) && (
           <div className={`cc-msg-actions${hover ? ' hovered' : ''}`}>
