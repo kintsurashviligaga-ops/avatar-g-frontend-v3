@@ -145,8 +145,12 @@ const nextConfig = {
     // /:locale/<slug> → /:locale/services/<slug> for the four media services.
     // Users type /ka/voice etc directly; without this they 404. /ka/avatar/[id] is
     // unaffected — Next redirects match exact path depth.
+    //
+    // CRITICAL: constrain :locale to the actual locales (ka|en|ru). Without the
+    // regex constraint, ":locale" matches greedily and redirects /api/avatar
+    // to /api/services/avatar (which is empty), breaking the avatar API.
     const shortSlugRedirects = ['voice', 'music', 'video', 'avatar'].map((slug) => ({
-      source: `/:locale/${slug}`,
+      source: `/:locale(ka|en|ru)/${slug}`,
       destination: `/:locale/services/${slug}`,
       permanent: false,
     }));
