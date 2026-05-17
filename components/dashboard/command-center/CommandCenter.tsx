@@ -32,7 +32,11 @@ import {
   Sparkles,
   ChevronDown,
   Clock,
+  Mic2,
+  Brain,
+  BarChart3,
 } from 'lucide-react';
+import Link from 'next/link';
 import { createBrowserClient } from '@/lib/supabase/browser';
 import InlineMedia, { detectInlineMedia } from './InlineMedia';
 import UpgradeModal from './UpgradeModal';
@@ -1139,6 +1143,19 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
             <button type="button" className="cc-prof-link" onClick={() => { setView('library'); setProfileOpen(false); }}>
               <LibraryIcon style={{ width: 16, height: 16 }} /><span>{copy.mediaLibrary}</span><ChevronRight style={{ width: 14, height: 14, marginLeft: 'auto', opacity: 0.4 }} />
             </button>
+            <Link href={`/${locale}/avatar`} className="cc-prof-link" onClick={() => setProfileOpen(false)}>
+              <UserIcon style={{ width: 16, height: 16 }} /><span>{localeCode === 'ka' ? 'ჩემი ავატარი' : localeCode === 'ru' ? 'Мой аватар' : 'My Avatar'}</span><ChevronRight style={{ width: 14, height: 14, marginLeft: 'auto', opacity: 0.4 }} />
+            </Link>
+            <Link href={`/${locale}/voice-lab`} className="cc-prof-link" onClick={() => setProfileOpen(false)}>
+              <Mic2 style={{ width: 16, height: 16 }} /><span>{localeCode === 'ka' ? 'ხმის ლაბორატორია' : localeCode === 'ru' ? 'Голосовая лаборатория' : 'Voice Lab'}</span><ChevronRight style={{ width: 14, height: 14, marginLeft: 'auto', opacity: 0.4 }} />
+            </Link>
+            <Link href={`/${locale}/memory`} className="cc-prof-link" onClick={() => setProfileOpen(false)}>
+              <Brain style={{ width: 16, height: 16 }} /><span>{localeCode === 'ka' ? 'მეხსიერება' : localeCode === 'ru' ? 'Память' : 'Memory'}</span><ChevronRight style={{ width: 14, height: 14, marginLeft: 'auto', opacity: 0.4 }} />
+            </Link>
+            <Link href={`/${locale}/analytics`} className="cc-prof-link" onClick={() => setProfileOpen(false)}>
+              <BarChart3 style={{ width: 16, height: 16 }} /><span>{localeCode === 'ka' ? 'ანალიტიკა' : localeCode === 'ru' ? 'Аналитика' : 'Analytics'}</span><ChevronRight style={{ width: 14, height: 14, marginLeft: 'auto', opacity: 0.4 }} />
+            </Link>
+            <div className="cc-prof-divider" />
             <button type="button" className="cc-prof-link">
               <Settings style={{ width: 16, height: 16 }} /><span>{copy.settings}</span><ChevronRight style={{ width: 14, height: 14, marginLeft: 'auto', opacity: 0.4 }} />
             </button>
