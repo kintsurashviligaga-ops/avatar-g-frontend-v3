@@ -49,7 +49,6 @@
     "**/*.test.ts",
     "**/*.test.tsx",
     "**/*.spec.ts",
-    "**/*.spec.tsx",
-    "rebuild-v2/**"
+    "**/*.spec.tsx"
   ]
 }
