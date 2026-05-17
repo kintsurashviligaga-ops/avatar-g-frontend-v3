@@ -1,7 +1,7 @@
 import 'server-only';
 
 import { cookies } from 'next/headers';
-import type { User } from '@supabase/supabase-js';
+import type { SupabaseClient, User } from '@supabase/supabase-js';
 import {
 	createServerClient as createSsrServerClient,
 } from '@supabase/ssr';
@@ -95,3 +95,42 @@ export async function getProfile(userId?: string) {
 
 export const createRouteHandlerClient = () => createServerClient();
 export const createSupabaseServerClient = () => createServerClient();
+
+/**
+ * Auth-aware client for API routes. Tries cookie-based session first
+ * (browser callers with Supabase SSR cookies), then falls back to a
+ * Bearer token in the `Authorization` header — necessary for mobile
+ * apps and any non-browser client that holds a JWT directly.
+ *
+ * Returns `{ supabase, user }` where `user` is null if no valid session
+ * was found in either source. Callers decide whether to 401.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AnySupabase = SupabaseClient<any, 'public', any>;
+
+export async function authedClientFromRequest(req: Request): Promise<{
+	supabase: AnySupabase;
+	user: User | null;
+}> {
+	// 1. Cookie path
+	const cookieClient = createServerClient() as unknown as AnySupabase;
+	{
+		const { data: { user } } = await cookieClient.auth.getUser();
+		if (user) return { supabase: cookieClient, user };
+	}
+
+	// 2. Bearer path — build a fresh client bound to the provided JWT
+	const auth = req.headers.get('authorization') ?? req.headers.get('Authorization');
+	const bearer = auth?.startsWith('Bearer ') ? auth.slice(7).trim() : null;
+	if (!bearer) {
+		return { supabase: cookieClient, user: null };
+	}
+
+	const { supabaseUrl, supabaseAnonKey } = getPublicSupabaseConfig();
+	const bearerClient = createSupabaseJsClient(supabaseUrl, supabaseAnonKey, {
+		auth: { autoRefreshToken: false, persistSession: false },
+		global: { headers: { Authorization: `Bearer ${bearer}` } },
+	}) as unknown as AnySupabase;
+	const { data: { user } } = await bearerClient.auth.getUser();
+	return { supabase: bearerClient, user };
+}

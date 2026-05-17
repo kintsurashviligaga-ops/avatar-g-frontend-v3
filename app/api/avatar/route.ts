@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { apiError, apiSuccess } from '@/lib/api/response';
-import { createServerClient, requireUser } from '@/lib/supabase/server';
+import { authedClientFromRequest } from '@/lib/supabase/server';
 import { structuredLog } from '@/lib/logger';
 
 export const dynamic = 'force-dynamic';
@@ -23,10 +23,10 @@ const patchSchema = personaSchema.partial();
  * onboarding wizard, identified by `name IS NOT NULL`) or
  * `{ avatar: null }` when the user has not onboarded yet.
  */
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const user = await requireUser();
-    const supabase = createServerClient();
+    const { supabase, user } = await authedClientFromRequest(request);
+    if (!user) return apiError(new Error('UNAUTHENTICATED'), 401, 'Unauthorized');
 
     const { data, error } = await supabase
       .from('avatars')
@@ -65,15 +65,15 @@ export async function GET() {
  */
 export async function POST(request: NextRequest) {
   try {
-    const user = await requireUser();
+    const { supabase, user } = await authedClientFromRequest(request);
+    if (!user) return apiError(new Error('UNAUTHENTICATED'), 401, 'Unauthorized');
+
     const json = await request.json().catch(() => null);
     const parsed = personaSchema.safeParse(json);
 
     if (!parsed.success) {
       return apiError(parsed.error, 400, 'Invalid avatar payload');
     }
-
-    const supabase = createServerClient();
 
     // Look for existing persona row.
     const { data: existing, error: lookupError } = await supabase
@@ -150,15 +150,15 @@ export async function POST(request: NextRequest) {
  */
 export async function PATCH(request: NextRequest) {
   try {
-    const user = await requireUser();
+    const { supabase, user } = await authedClientFromRequest(request);
+    if (!user) return apiError(new Error('UNAUTHENTICATED'), 401, 'Unauthorized');
+
     const json = await request.json().catch(() => null);
     const parsed = patchSchema.safeParse(json);
 
     if (!parsed.success) {
       return apiError(parsed.error, 400, 'Invalid avatar payload');
     }
-
-    const supabase = createServerClient();
 
     const { data: existing, error: lookupError } = await supabase
       .from('avatars')

@@ -12,7 +12,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerClient } from '@/lib/supabase/server';
+import { authedClientFromRequest } from '@/lib/supabase/server';
 import { reportError } from '@/lib/observability/report-error';
 
 export const dynamic = 'force-dynamic';
@@ -80,12 +80,9 @@ function buildDayBuckets(rows: Array<{ created_at: string }>): DayCount[] {
   return [...buckets.entries()].map(([date, count]) => ({ date, count }));
 }
 
-export async function GET(_req: NextRequest) {
+export async function GET(req: NextRequest) {
   try {
-    const supabase = createServerClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+    const { supabase, user } = await authedClientFromRequest(req);
     if (!user) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
 
     const since = new Date();

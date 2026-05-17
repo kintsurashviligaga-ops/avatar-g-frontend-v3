@@ -10,7 +10,7 @@
  * `public.memories` enforces ownership at the database layer as well.
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { authedClientFromRequest } from '@/lib/supabase/server';
 import { reportError } from '@/lib/observability/report-error';
 import { embed } from '@/lib/memory/embed';
 
@@ -31,12 +31,9 @@ const MIN_FACT_LENGTH = 3;
 const MAX_FACT_LENGTH = 2000;
 
 // ─── GET ──────────────────────────────────────────────────────────────
-export async function GET(): Promise<NextResponse> {
+export async function GET(req: NextRequest): Promise<NextResponse> {
   try {
-    const supabase = createSupabaseServerClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+    const { supabase, user } = await authedClientFromRequest(req);
     if (!user) {
       return NextResponse.json({ error: 'Unauthenticated' }, { status: 401 });
     }
@@ -62,10 +59,7 @@ export async function GET(): Promise<NextResponse> {
 // ─── POST ─────────────────────────────────────────────────────────────
 export async function POST(req: NextRequest): Promise<NextResponse> {
   try {
-    const supabase = createSupabaseServerClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+    const { supabase, user } = await authedClientFromRequest(req);
     if (!user) {
       return NextResponse.json({ error: 'Unauthenticated' }, { status: 401 });
     }
@@ -114,10 +108,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 // ─── PATCH ────────────────────────────────────────────────────────────
 export async function PATCH(req: NextRequest): Promise<NextResponse> {
   try {
-    const supabase = createSupabaseServerClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+    const { supabase, user } = await authedClientFromRequest(req);
     if (!user) {
       return NextResponse.json({ error: 'Unauthenticated' }, { status: 401 });
     }
@@ -177,10 +168,7 @@ export async function PATCH(req: NextRequest): Promise<NextResponse> {
 // ─── DELETE ───────────────────────────────────────────────────────────
 export async function DELETE(req: NextRequest): Promise<NextResponse> {
   try {
-    const supabase = createSupabaseServerClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+    const { supabase, user } = await authedClientFromRequest(req);
     if (!user) {
       return NextResponse.json({ error: 'Unauthenticated' }, { status: 401 });
     }
