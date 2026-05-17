@@ -145,7 +145,16 @@ async function buildMemoryPreamble(messages: IncomingMessage[]): Promise<string 
       .map((r) => `- ${r.fact.replace(/\s+/g, ' ').trim()}`)
       .join('\n');
 
-    return `User context (remembered facts):\n${bullets}`;
+    // Make the preamble unambiguous: these are facts the user explicitly told
+    // Agent G in earlier sessions (stored in their personal memory). Treat
+    // them as trusted personal context — answer naturally, don't disclaim
+    // "I don't have access to personal information".
+    return [
+      'KNOWN FACTS ABOUT THIS USER (from their personal memory store —',
+      'they told you these themselves in earlier sessions; use them naturally',
+      'and don\'t disclaim that you don\'t know personal info):',
+      bullets,
+    ].join('\n');
   } catch (err) {
     reportError(err, { route: '/api/chat/gemini', stage: 'memory-build' });
     return null;
