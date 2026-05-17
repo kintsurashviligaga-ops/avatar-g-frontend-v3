@@ -4,7 +4,7 @@ import { createAnthropic } from '@ai-sdk/anthropic';
 import { AGENT_G_SYSTEM_PROMPT } from '@/lib/agent-g-orchestrator';
 import { NextRequest } from 'next/server';
 import { reportError } from '@/lib/observability/report-error';
-import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { authedClientFromRequest } from '@/lib/supabase/server';
 import { embed } from '@/lib/memory/embed';
 
 export const dynamic = 'force-dynamic';
@@ -113,7 +113,7 @@ function extractLatestUserText(messages: IncomingMessage[]): string {
   return '';
 }
 
-async function buildMemoryPreamble(messages: IncomingMessage[]): Promise<string | null> {
+async function buildMemoryPreamble(req: NextRequest, messages: IncomingMessage[]): Promise<string | null> {
   try {
     const userText = extractLatestUserText(messages);
     if (!userText) return null;
@@ -121,12 +121,10 @@ async function buildMemoryPreamble(messages: IncomingMessage[]): Promise<string 
     const embedding = await embed(userText);
     if (!embedding) return null;
 
-    const supabase = createSupabaseServerClient();
-    // Auth check — match_memories filters by auth.uid() internally,
-    // but skip the RPC entirely for unauthenticated callers.
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+    // Accept both cookie-based (browser) and Bearer-token (mobile / SDK) auth.
+    // The previous createSupabaseServerClient() path read cookies only, which
+    // meant memory was never injected for any non-browser caller.
+    const { supabase, user } = await authedClientFromRequest(req);
     if (!user) return null;
 
     const { data, error } = await supabase.rpc('match_memories', {
@@ -213,7 +211,7 @@ export async function POST(req: NextRequest) {
 
     // Best-effort memory injection. Never blocks the chat — if the lookup
     // fails for any reason we fall back to the base system prompt.
-    const memoryPreamble = await buildMemoryPreamble(messages);
+    const memoryPreamble = await buildMemoryPreamble(req, messages);
     const effectiveSystem = memoryPreamble
       ? `${memoryPreamble}\n\n${SYSTEM_PROMPT}`
       : SYSTEM_PROMPT;
