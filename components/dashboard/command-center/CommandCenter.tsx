@@ -794,15 +794,21 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
         // Note: blob URLs are ephemeral (session-only), so we don't persist to creations DB
 
       } else if (service === 'interior') {
-        // Agent G → Interior Design agent. Routes through the pipeline which
-        // delegates to WorldLabs (or NanoBanana with an interior-design system
-        // prompt as a fallback). Returns an image URL.
-        const res = await fetch('/api/pipeline', {
+        // Interior Design agent. Two paths:
+        //  1. Full 3D experience via WorldLabs needs a room photo upload +
+        //     multi-step confirmation flow — that lives on the dedicated
+        //     /[locale]/services/interior page.
+        //  2. Quick 2D interior render from chat — we augment the prompt with
+        //     "modern interior design, architectural photography" cues and
+        //     route to the regular image endpoint. Returns a real interior
+        //     image inline.
+        const augmented = `interior design render, ${text}, architectural photography, professional lighting, ultra detailed, 4k, photorealistic`;
+        const res = await fetch('/api/replicate/image', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'generate', serviceId: 'interior', prompt: text }),
+          body: JSON.stringify({ prompt: augmented, quality: 'standard', ratio: '16:9' }),
         });
-        const data = await res.json() as { result?: { url?: string }; url?: string; error?: string };
-        const url = data?.result?.url ?? data?.url;
+        const data = await res.json() as { url?: string; imageUrl?: string; output?: string[]; error?: string };
+        const url = data?.url || data?.imageUrl || data?.output?.[0];
         if (!url) throw new Error(data?.error || copy.errorGeneric);
         setMessages(m => m.map(msg => msg.id === pendingMsg.id ? { ...msg, pending: false, content: '', media: { kind: 'image', url } } : msg));
         setCredits(c => c - cost);

@@ -6,7 +6,9 @@ import { createPrediction, pollPrediction } from '@/lib/replicate/client';
 import { normalizeOutput } from '@/lib/replicate/normalizer';
 
 export const dynamic = 'force-dynamic';
-export const maxDuration = 60;
+// 120s — NanoBanana polling can take ~30s (20 polls × 1.5s), Replicate fallback
+// another ~10s. 60s was tripping FUNCTION_INVOCATION_TIMEOUT in production.
+export const maxDuration = 120;
 
 // ── Quality → NanoBanana endpoint mapping ──────────────────────────────────────
 const QUALITY_TO_NB_ENDPOINT: Record<string, string> = {
