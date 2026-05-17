@@ -104,7 +104,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     // Fallback if DB insert failed — return raw URLs
     if (results.length === 0) {
       return NextResponse.json({
-        results: successUrls.map((url, idx) => ({ creationId: null, url, thumbnailUrl: url, shareToken: null })),
+        results: successUrls.map((url) => ({ creationId: null, url, thumbnailUrl: url, shareToken: null })),
         generated: successUrls.length,
         requested: count,
         creditsUsed: successUrls.length * CREDITS_PER_IMAGE,

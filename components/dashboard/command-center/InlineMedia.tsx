@@ -315,9 +315,6 @@ export default function InlineMedia(props: InlineMediaProps) {
             url={(props as { url: string }).url}
             prompt={props.prompt ?? ''}
             onRemix={props.onRemix}
-            onSaveCharacter={
-              props.kind === 'image' ? (props as { onSaveCharacter?: () => void }).onSaveCharacter : undefined
-            }
           />
         </div>
       )}

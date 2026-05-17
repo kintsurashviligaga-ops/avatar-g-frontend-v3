@@ -85,9 +85,6 @@ export default function SharePageClient({ creation }: { creation: Creation | nul
   if (!creation) return <NotFound />;
 
   const color = KIND_COLOR[creation.kind as Kind] ?? '#a855f7';
-  const remixUrl = creation.prompt
-    ? `https://myavatar.ge?prompt=${encodeURIComponent(creation.prompt)}`
-    : null;
 
   return (
     <div style={{ minHeight: '100vh', background: '#0a0a0e', color: '#f0f0f5', fontFamily: '-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif', display: 'flex', flexDirection: 'column' }}>

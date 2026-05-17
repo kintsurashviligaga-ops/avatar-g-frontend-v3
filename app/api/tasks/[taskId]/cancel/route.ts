@@ -26,7 +26,7 @@ export async function POST(
   }
 
   const supabase = createServiceRoleClient();
-  const user = await getAuthenticatedUser(request);
+  await getAuthenticatedUser(request);
 
   // Fetch the task first
   const { data: task } = await supabase

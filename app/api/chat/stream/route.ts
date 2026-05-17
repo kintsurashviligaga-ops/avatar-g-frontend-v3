@@ -82,7 +82,6 @@ export async function POST(req: NextRequest) {
     if ('messages' in parsedData) {
       const agentId = parsedData.agentId;
       const sessionId = parsedData.sessionId;
-      const channel = parsedData.channel;
       const messages = parsedData.messages;
 
       // Sanitize last user message

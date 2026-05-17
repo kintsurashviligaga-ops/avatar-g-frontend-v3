@@ -158,69 +158,6 @@ export default function ChatInterface({ locale = 'ka' }: ChatInterfaceProps) {
     return res.json();
   }, [locale]);
 
-  // ── Fallback to Gemini (free-form chat) ──────────────────────────────────────
-  const sendToGemini = useCallback(async (userText: string) => {
-    setIsLoading(true);
-    try {
-      abortRef.current = new AbortController();
-      const res = await fetch('/api/chat/gemini', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: [{ role: 'user', content: userText }] }),
-        signal: abortRef.current.signal,
-      });
-
-      if (!res.ok) throw new Error('Chat error');
-
-      const replyMsg: ChatMsg = { id: uid(), role: 'assistant', content: '' };
-      setMessages(prev => [...prev, replyMsg]);
-
-      if (res.body) {
-        const reader = res.body.getReader();
-        const decoder = new TextDecoder();
-        let full = '';
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          const chunk = decoder.decode(value);
-          // Handle SSE data: lines
-          for (const line of chunk.split('\n')) {
-            if (line.startsWith('data: ')) {
-              const data = line.slice(6).trim();
-              if (data === '[DONE]') break;
-              try {
-                const parsed = JSON.parse(data);
-                const delta = parsed.choices?.[0]?.delta?.content ?? parsed.delta ?? parsed.text ?? '';
-                if (delta) {
-                  full += delta;
-                  setMessages(prev => prev.map(m =>
-                    m.id === replyMsg.id ? { ...m, content: full } : m
-                  ));
-                }
-              } catch { /* non-JSON line */ }
-            }
-          }
-          // Also handle plain JSON response
-          if (!res.headers.get('content-type')?.includes('text/event-stream')) {
-            full += chunk;
-            setMessages(prev => prev.map(m =>
-              m.id === replyMsg.id ? { ...m, content: full } : m
-            ));
-          }
-        }
-        // nothing extra needed after stream loop
-      }
-    } catch (e) {
-      if ((e as Error).name !== 'AbortError') {
-        addMsg('assistant', locale === 'ka'
-          ? 'სამწუხაროდ, პასუხი ვერ მოვიღე. სცადეთ ახლიდან.'
-          : 'Sorry, could not get a response. Please try again.');
-      }
-    } finally {
-      setIsLoading(false);
-    }
-  }, [addMsg, locale]);
-
   // ── Stage: detect intent ──────────────────────────────────────────────────────
   const detectIntent = useCallback(async (userText: string) => {
     setPipeline(p => ({ ...p, stage: 'detecting' }));

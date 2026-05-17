@@ -212,7 +212,7 @@ export default function OnboardingModal({ open, onClose, onComplete }: Onboardin
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                       >
-                        ✓ "{selectedPrompt.slice(0, 30)}..." შეირჩა
+                        ✓ &ldquo;{selectedPrompt.slice(0, 30)}...&rdquo; შეირჩა
                       </motion.p>
                     )}
                   </motion.div>

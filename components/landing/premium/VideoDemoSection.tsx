@@ -1,6 +1,5 @@
 'use client'
 
-import { useRef, useState } from 'react'
 import { motion } from 'framer-motion'
 import Link from 'next/link'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
@@ -47,7 +46,6 @@ const STEPS = [
 export function VideoDemoSection() {
   const { locale } = useLanguage()
   const c = COPY[locale as keyof typeof COPY] ?? COPY.ka
-  const [activeStep, setActiveStep] = useState(0)
 
   return (
     <section className="py-20 px-4" id="demo">

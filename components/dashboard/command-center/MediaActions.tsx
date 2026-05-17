@@ -11,17 +11,15 @@ interface MediaActionsProps {
   prompt?: string;
   title?: string;
   onRemix?: (prompt: string) => void;
-  onSaveCharacter?: (imageUrl: string, prompt: string) => void;
   className?: string;
 }
 
 interface ShareModalProps {
-  url: string;
   shareUrl: string;
   onClose: () => void;
 }
 
-function ShareModal({ url, shareUrl, onClose }: ShareModalProps) {
+function ShareModal({ shareUrl, onClose }: ShareModalProps) {
   const [copied, setCopied] = useState(false);
 
   const copy = async () => {
@@ -241,7 +239,6 @@ export default function MediaActions({
   prompt = '',
   title,
   onRemix,
-  onSaveCharacter,
   className = '',
 }: MediaActionsProps) {
   const [shareModal, setShareModal] = useState(false);
@@ -403,7 +400,6 @@ export default function MediaActions({
       <AnimatePresence>
         {shareModal && (
           <ShareModal
-            url={url}
             shareUrl={shareUrl}
             onClose={() => setShareModal(false)}
           />

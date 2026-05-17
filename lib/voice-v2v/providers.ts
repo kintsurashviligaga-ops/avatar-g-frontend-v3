@@ -271,9 +271,9 @@ export async function* streamAssistantTokens(input: AssistantStreamInput): Async
     temperature: 0.35,
     stream: true,
     messages,
-  } as any);
+  } as unknown as Parameters<typeof client.chat.completions.create>[0]);
 
-  for await (const event of stream as unknown as AsyncIterable<any>) {
+  for await (const event of stream as unknown as AsyncIterable<{ choices?: Array<{ delta?: { content?: string } }> }>) {
     const token = String(event?.choices?.[0]?.delta?.content || '');
     if (token) {
       yield token;

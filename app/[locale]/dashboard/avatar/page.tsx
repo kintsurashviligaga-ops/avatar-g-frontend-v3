@@ -4,8 +4,8 @@ import { useEffect, useRef, useState } from 'react';
 import Image from 'next/image';
 import {
   UserCircle2, Zap, Wand2, RefreshCw, Download, Sparkles,
-  Upload, X, AlertCircle, Video, ImageIcon, Mic, Globe,
-  Play, CheckCircle2, Clock, ChevronRight,
+  Upload, X, AlertCircle, Video, ImageIcon,
+  CheckCircle2, Clock,
 } from 'lucide-react';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -93,7 +93,7 @@ function TalkingAvatarTab() {
   const [lang,       setLang]       = useState<string>('en');
   const [format,     setFormat]     = useState<string>('16:9');
   const [status,     setStatus]     = useState<VideoStatus>('idle');
-  const [videoId,    setVideoId]    = useState<string | null>(null);
+  const [, setVideoId] = useState<string | null>(null);
   const [videoUrl,   setVideoUrl]   = useState<string | null>(null);
   const [thumbnail,  setThumbnail]  = useState<string | null>(null);
   const [progress,   setProgress]   = useState(0);
@@ -595,7 +595,7 @@ export default function AvatarStudioPage() {
         {([
           { value: 'talking', icon: Video,     label: 'Talking Avatar',  sub: 'HeyGen AI · Best' },
           { value: 'portrait', icon: ImageIcon, label: 'AI Portrait',     sub: 'Replicate SDXL'   },
-        ] as const).map(({ value, icon: Icon, label, sub }) => (
+        ] as const).map(({ value, icon: Icon, label }) => (
           <button key={value} onClick={() => setMode(value)}
             className="flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-sm transition-all"
             style={mode === value

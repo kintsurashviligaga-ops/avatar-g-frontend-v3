@@ -14,7 +14,6 @@ import {
   FileText,
   Film,
   Gamepad2,
-  Globe,
   ImageIcon,
   Mic2,
   Music2,

@@ -70,7 +70,6 @@ async function dispatchAgent(
   input: Record<string, unknown>,
   origin: string,
   headers: HeadersInit,
-  demoMode: boolean
 ): Promise<{ output: Record<string, unknown> }> {
   const goal = String(input.goal ?? input.prompt ?? input.text ?? '');
   const locale = String(input.language ?? input.locale ?? 'ka');
@@ -286,7 +285,8 @@ export async function POST(request: NextRequest) {
     const origin = request.nextUrl.origin;
     const headers = authHeaders(request);
 
-    const result = await dispatchAgent(agent_name, action, input, origin, headers, Boolean(demo_mode));
+    void demo_mode;
+    const result = await dispatchAgent(agent_name, action, input, origin, headers);
 
     return apiSuccess(result);
   } catch (error) {

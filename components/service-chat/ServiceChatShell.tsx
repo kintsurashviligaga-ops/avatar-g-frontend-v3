@@ -210,7 +210,6 @@ export default function ServiceChatShell({ config, language = 'en', className = 
       const decoder = new TextDecoder();
       let buffer = '';
       let streamError: string | null = null;
-      let streamFinished = false;
       let streamModel: string | undefined;
 
       outer:
@@ -226,7 +225,6 @@ export default function ServiceChatShell({ config, language = 'en', className = 
           if (line.startsWith('data: ')) {
             const data = line.slice(6).trim();
             if (data === '[DONE]') {
-              streamFinished = true;
               break outer;
             }
             try {
@@ -249,7 +247,6 @@ export default function ServiceChatShell({ config, language = 'en', className = 
                 dispatch({ type: 'ADD_PREVIEW', preview: parsed.preview });
               }
               if (parsed.done === true) {
-                streamFinished = true;
                 streamModel = typeof parsed.model === 'string' ? parsed.model : undefined;
                 break outer;
               }

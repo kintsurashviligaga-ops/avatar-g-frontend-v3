@@ -328,7 +328,7 @@ export function TestimonialsSection() {
               fontSize: 17, lineHeight: 1.7, color: 'rgba(255,255,255,0.88)',
               margin: '0 0 24px', fontStyle: 'italic',
             }}>
-              "{t.text}"
+              &ldquo;{t.text}&rdquo;
             </p>
 
             {/* Author row */}

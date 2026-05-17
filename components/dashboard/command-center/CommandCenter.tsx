@@ -28,18 +28,12 @@ import {
   Home as HomeIcon,
   HelpCircle,
   ChevronRight,
-  Search,
   RefreshCw,
   Sparkles,
-  Bot,
   ChevronDown,
-  Monitor,
-  Smartphone,
-  Square,
   Clock,
 } from 'lucide-react';
 import { createBrowserClient } from '@/lib/supabase/browser';
-import MediaActions from './MediaActions';
 import InlineMedia, { detectInlineMedia } from './InlineMedia';
 import UpgradeModal from './UpgradeModal';
 import OnboardingModal from './OnboardingModal';

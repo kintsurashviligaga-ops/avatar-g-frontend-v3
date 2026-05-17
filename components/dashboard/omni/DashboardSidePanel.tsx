@@ -226,17 +226,17 @@ export function DashboardSidePanel({ isOpen, onClose, locale, isAuthenticated, u
               <AnimatePresence mode="wait">
                 {section === 'menu' && (
                   <motion.div key="menu" {...fadeSlide}>
-                    {renderMenu({ c, isAuthenticated, userName, credits, setSection, selectService, loc, onClose })}
+                    {renderMenu({ c, isAuthenticated, userName, credits, setSection, loc, onClose })}
                   </motion.div>
                 )}
                 {section === 'services' && (
                   <motion.div key="services" {...fadeSlide}>
-                    {renderServices({ c, loc, selectService })}
+                    {renderServices({ loc, selectService })}
                   </motion.div>
                 )}
                 {section === 'packages' && (
                   <motion.div key="packages" {...fadeSlide}>
-                    {renderPackages({ c, billing, setBilling, isAuthenticated })}
+                    {renderPackages({ c, billing, setBilling })}
                   </motion.div>
                 )}
                 {section === 'account' && (
@@ -304,10 +304,10 @@ const fadeSlide = {
 
 // ─── MENU ────────────────────────────────────────────────────────────────────
 
-function renderMenu({ c, isAuthenticated, userName, credits, setSection, selectService, loc, onClose }: {
+function renderMenu({ c, isAuthenticated, userName, credits, setSection, loc, onClose }: {
   c: CopyDict, isAuthenticated: boolean, userName: string,
   credits: number, setSection: (s: PanelSection) => void,
-  selectService: (id: ServiceId) => void, loc: OmniLocale, onClose: () => void
+  loc: OmniLocale, onClose: () => void
 }) {
   const navSection = (title: string, items: { icon: React.ReactNode; label: string; color: string; onClick: () => void; badge?: string }[]) => (
     <div className="px-2 py-2">
@@ -428,8 +428,8 @@ function renderMenu({ c, isAuthenticated, userName, credits, setSection, selectS
 
 // ─── SERVICES ────────────────────────────────────────────────────────────────
 
-function renderServices({ c, loc, selectService }: {
-  c: CopyDict, loc: OmniLocale, selectService: (id: ServiceId) => void
+function renderServices({ loc, selectService }: {
+  loc: OmniLocale, selectService: (id: ServiceId) => void
 }) {
   return (
     <div className="p-3 grid grid-cols-2 gap-2">
@@ -468,8 +468,8 @@ const CREDIT_PACKS = [
   { credits: 2000, price: 39.99, bonus: 600, label: 'Best' },
 ];
 
-function renderPackages({ c, billing, setBilling, isAuthenticated }: {
-  c: CopyDict, billing: string, setBilling: (b: 'monthly' | 'annual') => void, isAuthenticated: boolean
+function renderPackages({ c, billing, setBilling }: {
+  c: CopyDict, billing: string, setBilling: (b: 'monthly' | 'annual') => void
 }) {
   return (
     <div className="p-4 space-y-4">
@@ -618,7 +618,19 @@ function renderAccount({ c, isAuthenticated, userName, locale }: {
 function renderSettings({ c, loc, settingsHaptics, setSettingsHaptics, settingsAnimations, setSettingsAnimations,
   settingsAutoSave, setSettingsAutoSave, settingsQuality, setSettingsQuality,
   notifGeneration, setNotifGeneration, notifCredits, setNotifCredits, notifMarketing, setNotifMarketing,
-  voiceStorage, setVoiceStorage, analytics, setAnalytics }: any) {
+  voiceStorage, setVoiceStorage, analytics, setAnalytics }: {
+  c: CopyDict;
+  loc: OmniLocale;
+  settingsHaptics: boolean; setSettingsHaptics: (v: boolean) => void;
+  settingsAnimations: boolean; setSettingsAnimations: (v: boolean) => void;
+  settingsAutoSave: boolean; setSettingsAutoSave: (v: boolean) => void;
+  settingsQuality: string; setSettingsQuality: (v: string) => void;
+  notifGeneration: boolean; setNotifGeneration: (v: boolean) => void;
+  notifCredits: boolean; setNotifCredits: (v: boolean) => void;
+  notifMarketing: boolean; setNotifMarketing: (v: boolean) => void;
+  voiceStorage: boolean; setVoiceStorage: (v: boolean) => void;
+  analytics: boolean; setAnalytics: (v: boolean) => void;
+}) {
 
   const Toggle = ({ on, toggle }: { on: boolean; toggle: () => void }) => (
     <button onClick={toggle} className={`relative inline-flex w-9 h-5 rounded-full transition ${on ? 'bg-cyan-500' : 'bg-white/15'}`}>
@@ -638,7 +650,6 @@ function renderSettings({ c, loc, settingsHaptics, setSettingsHaptics, settingsA
   );
 
   const languages = [{ code: 'ka', flag: '🇬🇪', name: 'ქართული' }, { code: 'en', flag: '🇺🇸', name: 'English' }, { code: 'ru', flag: '🇷🇺', name: 'Русский' }];
-  const currentLang = languages.find(l => l.code === loc) || languages[1];
 
   return (
     <div className="px-4 pb-6">
@@ -693,11 +704,23 @@ function renderSettings({ c, loc, settingsHaptics, setSettingsHaptics, settingsA
 
 // ─── API KEYS ────────────────────────────────────────────────────────────────
 
-function renderAPIKeys({ c, apiKeys, setApiKeys, editingKey, setEditingKey, keyDraft, setKeyDraft, revealedKeys, setRevealedKeys, copiedKey, setCopiedKey }: any) {
+function renderAPIKeys({ c, apiKeys, setApiKeys, editingKey, setEditingKey, keyDraft, setKeyDraft, revealedKeys, setRevealedKeys, copiedKey, setCopiedKey }: {
+  c: CopyDict;
+  apiKeys: Record<string, string>;
+  setApiKeys: React.Dispatch<React.SetStateAction<Record<string, string>>>;
+  editingKey: string | null;
+  setEditingKey: (v: string | null) => void;
+  keyDraft: string;
+  setKeyDraft: (v: string) => void;
+  revealedKeys: Set<string>;
+  setRevealedKeys: React.Dispatch<React.SetStateAction<Set<string>>>;
+  copiedKey: string | null;
+  setCopiedKey: (v: string | null) => void;
+}) {
   const masked = (v: string) => v.length > 8 ? `${v.slice(0, 6)}••••${v.slice(-4)}` : '••••••••';
 
   const saveKey = (id: string) => {
-    setApiKeys((prev: any) => ({ ...prev, [id]: keyDraft }));
+    setApiKeys((prev) => ({ ...prev, [id]: keyDraft }));
     setEditingKey(null);
     setKeyDraft('');
   };
@@ -709,9 +732,13 @@ function renderAPIKeys({ c, apiKeys, setApiKeys, editingKey, setEditingKey, keyD
   };
 
   const toggleReveal = (id: string) => {
-    setRevealedKeys((prev: Set<string>) => {
+    setRevealedKeys((prev) => {
       const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
       return next;
     });
   };
@@ -779,7 +806,7 @@ function renderAPIKeys({ c, apiKeys, setApiKeys, editingKey, setEditingKey, keyD
                     {c.save2}
                   </button>
                   {value && (
-                    <button onClick={() => { setApiKeys((p: any) => ({ ...p, [def.id]: '' })); setEditingKey(null); }}
+                    <button onClick={() => { setApiKeys((p) => ({ ...p, [def.id]: '' })); setEditingKey(null); }}
                       className="px-3 py-1.5 rounded-xl text-[12px] font-semibold text-red-400 border border-red-500/20 hover:bg-red-500/8 transition">
                       {c.remove}
                     </button>
