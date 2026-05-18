@@ -1,3 +1,3 @@
-import DashboardAgentGPage from '../dashboard/agent-g/page';
+import DashboardAgentGPage from '../dashboard/(legacy)/agent-g/page';
 
 export default DashboardAgentGPage;
