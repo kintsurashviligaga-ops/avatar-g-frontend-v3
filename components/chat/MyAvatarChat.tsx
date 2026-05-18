@@ -565,7 +565,7 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
 
       {/* ── Bottom input — only on chat view ────────────────────────────── */}
       {activeView === 'chat' && (
-        <div className="relative z-10 flex-shrink-0 px-3 pb-3 pt-2 bg-gradient-to-t from-black via-black/95 to-transparent">
+        <div className="relative z-10 flex-shrink-0 px-3 pb-3 pt-2 bg-black">
           <div className="flex gap-2 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {PILLS.map(p => (
               <button
@@ -755,18 +755,7 @@ function EmptyState({ locale, onPick }: { locale: 'ka' | 'en' | 'ru'; onPick: (p
   const subtitle = locale === 'ka' ? 'შეარჩიე ან აკრიფე ნებისმიერი — მე ერთ ფანჯარაში ვაკეთებ ყველაფერს.' : 'Pick one or type anything — I create everything in one window.';
   return (
     <div className="h-full flex flex-col items-center justify-center px-4 text-center">
-      <div className="relative mb-5">
-        <div
-          className="w-24 h-24 rounded-full opacity-30"
-          style={{
-            background: 'radial-gradient(circle at 50% 40%, rgba(167,139,250,0.6) 0%, rgba(167,139,250,0.05) 55%, transparent 75%)',
-            filter: 'blur(6px)',
-          }}
-        />
-        <div className="absolute inset-0 flex items-center justify-center">
-          <Sparkles size={36} className="text-violet-200/70" />
-        </div>
-      </div>
+      <Sparkles size={32} className="text-white/40 mb-5" />
       <h2 className="text-[22px] font-semibold text-white mb-2 tracking-tight">{welcome}</h2>
       <p className="text-[13px] text-white/55 max-w-[320px] mb-6 leading-relaxed">{subtitle}</p>
       <div className="grid grid-cols-2 gap-2 max-w-[420px] w-full">

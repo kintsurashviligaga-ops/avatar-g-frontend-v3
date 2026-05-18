@@ -125,18 +125,7 @@ export default function PreviewCanvas({ media, locale, onClear }: PreviewCanvasP
               transition={{ duration: 0.2 }}
               className="h-full flex flex-col items-center justify-center text-center"
             >
-              <div className="relative mb-5">
-                <div
-                  className="w-28 h-28 rounded-full opacity-25"
-                  style={{
-                    background: 'radial-gradient(circle at 50% 40%, rgba(167,139,250,0.6) 0%, rgba(167,139,250,0.05) 55%, transparent 75%)',
-                    filter: 'blur(8px)',
-                  }}
-                />
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <Sparkles size={32} className="text-violet-200/55" />
-                </div>
-              </div>
+              <Sparkles size={32} className="text-white/30 mb-5" />
               <h3 className="text-[18px] font-semibold text-white/85 mb-2">{t.empty_title}</h3>
               <p className="text-[13px] text-white/45 max-w-[320px] leading-relaxed">{t.empty_subtitle}</p>
             </motion.div>
