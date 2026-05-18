@@ -52,6 +52,7 @@ import {
   LogOut,
 } from 'lucide-react';
 import InlineMedia, { detectInlineMedia } from '@/components/dashboard/command-center/InlineMedia';
+import PreviewCanvas, { type PreviewMedia } from '@/components/chat/PreviewCanvas';
 import VoiceLab from '@/components/voice/VoiceLab';
 import MemoryPanel from '@/components/memory/MemoryPanel';
 import { BarChart, KpiTile, LineChart, TopicList } from '@/components/analytics/AnalyticsCharts';
@@ -207,9 +208,38 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [listening, setListening] = useState(false);
+  const [latestMedia, setLatestMedia] = useState<PreviewMedia | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const endRef = useRef<HTMLDivElement | null>(null);
   const recognitionRef = useRef<unknown>(null);
+
+  // Surface the most recent assistant-side media into the right preview canvas
+  // (desktop-only). Detect both explicit `media` payloads and inline-detected
+  // media URLs in the message text.
+  useEffect(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const m = messages[i];
+      if (!m || m.role !== 'assistant' || m.pending) continue;
+      const userPrompt = i > 0 ? messages[i - 1]?.text : '';
+      if (m.media) {
+        setLatestMedia({
+          id: m.id,
+          kind: m.media.kind,
+          url: m.media.url,
+          html: m.media.html,
+          language: m.media.language,
+          poster: m.media.poster,
+          prompt: userPrompt,
+        });
+        return;
+      }
+      const detected = detectInlineMedia(m.text);
+      if (detected) {
+        setLatestMedia({ id: m.id, kind: detected.kind, url: detected.url, prompt: userPrompt });
+        return;
+      }
+    }
+  }, [messages]);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
@@ -412,10 +442,13 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
 
   return (
     <main
-      className="fixed inset-0 flex flex-col bg-black text-white antialiased"
+      className="fixed inset-0 flex flex-col lg:flex-row bg-black text-white antialiased overflow-hidden"
       style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)', fontFamily: 'var(--font-geist, var(--font-ui, system-ui))' }}
     >
       {/* Pure pitch black — no background visuals per user spec */}
+
+      {/* ── Chat column (full width mobile, 60% desktop) ─────────────────── */}
+      <div className="relative flex flex-col flex-1 min-h-0 lg:w-[60%] lg:max-w-[60%]">
 
       {/* ── TopBar ──────────────────────────────────────────────────────── */}
       <header className="relative z-10 flex items-center justify-between px-4 pt-3 pb-2 flex-shrink-0">
@@ -603,6 +636,16 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
           </div>
         </div>
       )}
+
+      {/* ── /Chat column ─────────────────────────────────────────────────── */}
+      </div>
+
+      {/* ── Right preview canvas (desktop only) ──────────────────────────── */}
+      <PreviewCanvas
+        media={latestMedia}
+        locale={localeCode}
+        onClear={() => setLatestMedia(null)}
+      />
 
       {/* ── Left drawer — VIEW SWITCHER (in-place, never redirects) ─────── */}
       <AnimatePresence>

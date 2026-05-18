@@ -107,6 +107,7 @@ html {
   max-width: 100vw;
   overflow-x: hidden;
   scroll-behavior: smooth;
+  background-color: #000000;
   font-family: 'Inter', 'Noto Sans Georgian', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   font-feature-settings: "cv02", "cv03", "cv04", "cv11";
   font-weight: 400;
@@ -151,7 +152,7 @@ body {
   height: 100%;
   min-height: var(--app-screen-height);
   color: var(--color-text);
-  background-color: #0a0a0c;
+  background-color: #000000;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   line-height: 1.65;
