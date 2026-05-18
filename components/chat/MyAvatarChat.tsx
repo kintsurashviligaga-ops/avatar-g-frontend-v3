@@ -49,7 +49,6 @@ import {
   ThumbsUp,
   ThumbsDown,
   RotateCcw,
-  Scissors,
   LogOut,
 } from 'lucide-react';
 import InlineMedia, { detectInlineMedia } from '@/components/dashboard/command-center/InlineMedia';
@@ -207,8 +206,10 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
   const [sending, setSending] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [listening, setListening] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const endRef = useRef<HTMLDivElement | null>(null);
+  const recognitionRef = useRef<unknown>(null);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
@@ -225,6 +226,53 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
     setActiveView(id);
     setDrawerOpen(false);
   }, []);
+
+  // ── Native browser voice-to-text (Web Speech API). Progressive enhancement —
+  //    falls back silently if the browser doesn't support SpeechRecognition.
+  //    Append transcript to current input rather than overwriting, so the user
+  //    can mix typing and speech.
+  const toggleVoiceInput = useCallback(() => {
+    type SpeechRecognitionLike = {
+      lang: string;
+      continuous: boolean;
+      interimResults: boolean;
+      onresult: ((e: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void) | null;
+      onend: (() => void) | null;
+      onerror: (() => void) | null;
+      start: () => void;
+      stop: () => void;
+    };
+    const win = window as unknown as {
+      SpeechRecognition?: new () => SpeechRecognitionLike;
+      webkitSpeechRecognition?: new () => SpeechRecognitionLike;
+    };
+    const Ctor = win.SpeechRecognition ?? win.webkitSpeechRecognition;
+    if (!Ctor) return;
+
+    if (listening) {
+      try { (recognitionRef.current as SpeechRecognitionLike | null)?.stop(); } catch { /* ignore */ }
+      setListening(false);
+      return;
+    }
+
+    try {
+      const rec = new Ctor();
+      rec.lang = localeCode === 'ka' ? 'ka-GE' : localeCode === 'ru' ? 'ru-RU' : 'en-US';
+      rec.continuous = false;
+      rec.interimResults = false;
+      rec.onresult = (e) => {
+        const transcript = e.results[0]?.[0]?.transcript ?? '';
+        if (transcript) setInput(prev => (prev ? `${prev} ${transcript}` : transcript));
+      };
+      rec.onend = () => setListening(false);
+      rec.onerror = () => setListening(false);
+      rec.start();
+      recognitionRef.current = rec;
+      setListening(true);
+    } catch {
+      setListening(false);
+    }
+  }, [listening, localeCode]);
 
   // ── Send / regenerate ─────────────────────────────────────────────────────
   const send = useCallback(async (text: string, forceService?: ServiceId, replacePendingId?: string) => {
@@ -388,7 +436,7 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
               className="flex-1 min-h-0 overflow-y-auto px-4"
             >
               {!hasMessages ? (
-                <EmptyState />
+                <EmptyState locale={localeCode} onPick={(p) => void send(p)} />
               ) : (
                 <div className="max-w-2xl mx-auto py-4 space-y-3">
                   {messages.map(m => (
@@ -483,7 +531,16 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
                 </span>
               </div>
               <div className="flex items-center gap-1">
-                <button type="button" aria-label="Voice" className="h-9 w-9 rounded-full hover:bg-white/[0.08] flex items-center justify-center text-[#94A3B8] transition">
+                <button
+                  type="button"
+                  aria-label={listening ? 'Stop listening' : 'Voice input'}
+                  onClick={toggleVoiceInput}
+                  className={`h-9 w-9 rounded-full flex items-center justify-center transition ${
+                    listening
+                      ? 'bg-violet-500/20 text-violet-200 animate-pulse'
+                      : 'hover:bg-white/[0.08] text-[#94A3B8]'
+                  }`}
+                >
                   <Mic size={16} />
                 </button>
                 <button
@@ -602,25 +659,54 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
   );
 }
 
-// ─── EmptyState (faded center glyph) ─────────────────────────────────────────
+// ─── EmptyState — welcome + tappable example prompts (first-run UX) ──────────
 
-function EmptyState() {
+const EXAMPLE_PROMPTS_KA: Array<{ label: string; prompt: string }> = [
+  { label: '✦ ფოტო',     prompt: 'ლამაზი მთის პეიზაჟი მზის ჩასვლისას, კინემატოგრაფიული' },
+  { label: '✦ ვიდეო',    prompt: 'ცინემატური ხედი ზღვის ნაპირზე მზის ჩასვლისას' },
+  { label: '✦ ხმა',       prompt: 'გამარჯობა, ეს არის MyAvatar.ge ხმოვანი ნიმუში' },
+  { label: '✦ აპლიკაცია', prompt: 'ლანდინგ გვერდი ფერადი ღილაკით რომელიც დაჭერისას ცვლის ფერს' },
+];
+
+const EXAMPLE_PROMPTS_EN: Array<{ label: string; prompt: string }> = [
+  { label: '✦ Image',  prompt: 'Beautiful mountain landscape at sunset, cinematic' },
+  { label: '✦ Video',  prompt: 'Cinematic shot of a seashore at sunset' },
+  { label: '✦ Voice',  prompt: 'Hello, this is a MyAvatar.ge voice sample' },
+  { label: '✦ App',    prompt: 'Landing page with a color-changing button' },
+];
+
+function EmptyState({ locale, onPick }: { locale: 'ka' | 'en' | 'ru'; onPick: (prompt: string) => void }) {
+  const examples = locale === 'ka' ? EXAMPLE_PROMPTS_KA : EXAMPLE_PROMPTS_EN;
+  const welcome  = locale === 'ka' ? 'როგორ შემიძლია დაგეხმარო?' : 'How can I help you?';
+  const subtitle = locale === 'ka' ? 'შეარჩიე ან აკრიფე ნებისმიერი — მე ერთ ფანჯარაში ვაკეთებ ყველაფერს.' : 'Pick one or type anything — I create everything in one window.';
   return (
-    <div className="h-full flex items-center justify-center pointer-events-none">
-      <div className="relative">
+    <div className="h-full flex flex-col items-center justify-center px-4 text-center">
+      <div className="relative mb-5">
         <div
-          className="w-32 h-32 rounded-full opacity-25"
+          className="w-24 h-24 rounded-full opacity-30"
           style={{
-            background: 'radial-gradient(circle at 50% 40%, rgba(167,139,250,0.7) 0%, rgba(167,139,250,0.05) 55%, transparent 75%)',
-            filter: 'blur(4px)',
+            background: 'radial-gradient(circle at 50% 40%, rgba(167,139,250,0.6) 0%, rgba(167,139,250,0.05) 55%, transparent 75%)',
+            filter: 'blur(6px)',
           }}
         />
         <div className="absolute inset-0 flex items-center justify-center">
-          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-white/30">
-            <path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09Z" />
-            <path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2Z" />
-          </svg>
+          <Sparkles size={36} className="text-violet-200/70" />
         </div>
+      </div>
+      <h2 className="text-[22px] font-semibold text-white mb-2 tracking-tight">{welcome}</h2>
+      <p className="text-[13px] text-white/55 max-w-[320px] mb-6 leading-relaxed">{subtitle}</p>
+      <div className="grid grid-cols-2 gap-2 max-w-[420px] w-full">
+        {examples.map(ex => (
+          <button
+            key={ex.label}
+            type="button"
+            onClick={() => onPick(ex.prompt)}
+            className="text-left px-3 py-2.5 rounded-xl bg-white/[0.05] hover:bg-white/[0.10] active:bg-white/[0.13] border border-white/[0.06] transition"
+          >
+            <div className="text-[12px] font-semibold text-white/90 mb-0.5">{ex.label}</div>
+            <div className="text-[11px] text-white/55 line-clamp-2 leading-snug">{ex.prompt}</div>
+          </button>
+        ))}
       </div>
     </div>
   );
@@ -664,7 +750,6 @@ function MessageRow({ m, locale: _locale, onLike, onDislike, onCopy, onRegenerat
         .replace(/\s{2,}/g, ' ')                  // collapse spaces
         .trim()
     : m.text;
-  const hasMedia = !!m.media || !!detected;
 
   return (
     <div className="flex flex-col items-start gap-2">
@@ -698,18 +783,15 @@ function MessageRow({ m, locale: _locale, onLike, onDislike, onCopy, onRegenerat
             </div>
           )}
 
-          {/* Action row — anchored under the media (or under the text if none) */}
+          {/* Action row — anchored under the media (or under the text if none).
+              Note: CapCut/edit lives inside the InlineMedia overlay, not here, to
+              avoid two buttons for the same action. */}
           <div className="flex items-center gap-0.5 -mt-0.5 opacity-60 hover:opacity-100 transition">
             <ActionIcon title="Copy" onClick={onCopy}><Copy size={13} /></ActionIcon>
             <ActionIcon title="Regenerate" onClick={onRegenerate}><RotateCcw size={13} /></ActionIcon>
             <ActionIcon title="Speak" onClick={onSpeak}><Volume2 size={13} /></ActionIcon>
             <ActionIcon title="Like" onClick={onLike} active={m.liked}><ThumbsUp size={13} /></ActionIcon>
             <ActionIcon title="Dislike" onClick={onDislike} active={m.disliked}><ThumbsDown size={13} /></ActionIcon>
-            {hasMedia && (m.media?.kind === 'video' || m.media?.kind === 'audio') && (
-              <ActionIcon title="CapCut / Edit" onClick={() => undefined /* InlineMedia hosts the real CapCut */ }>
-                <Scissors size={13} />
-              </ActionIcon>
-            )}
           </div>
         </>
       )}
