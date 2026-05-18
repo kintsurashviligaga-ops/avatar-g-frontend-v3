@@ -53,7 +53,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     window.addEventListener('orientationchange', setViewportCssVars);
 
     if (process.env.NODE_ENV === 'production' && 'serviceWorker' in navigator) {
-      void navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(() => {
+      void navigator.serviceWorker.register('/sw.js', { scope: '/', updateViaCache: 'none' }).catch(() => {
         // Keep shell rendering resilient if SW registration fails.
       });
     }

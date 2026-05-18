@@ -1,4 +1,4 @@
-const CACHE_NAME = 'avatar-g-shell-v1';
+const CACHE_NAME = 'avatar-g-shell-v2';
 const CORE_ASSETS = [
   '/offline.html',
   '/manifest.json',
@@ -64,7 +64,21 @@ self.addEventListener('fetch', (event) => {
   }
 
   const destination = request.destination;
-  if (destination === 'style' || destination === 'script' || destination === 'image' || destination === 'font') {
+
+  if (destination === 'style' || destination === 'script') {
+    event.respondWith(
+      fetch(request)
+        .then((response) => {
+          const copy = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
+          return response;
+        })
+        .catch(() => caches.match(request)),
+    );
+    return;
+  }
+
+  if (destination === 'image' || destination === 'font') {
     event.respondWith(
       caches.match(request).then((cached) => {
         const networkFetch = fetch(request)
