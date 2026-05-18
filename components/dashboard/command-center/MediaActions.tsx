@@ -163,12 +163,16 @@ function ShareModal({ shareUrl, onClose }: ShareModalProps) {
           display: flex; flex-wrap: wrap; gap: 6px; margin-top: 14px;
         }
         .ma-social-pill {
-          flex: 1; min-width: 64px;
-          padding: 8px 10px; border-radius: 9px;
-          font-size: 12px; font-weight: 600;
+          flex: 1;
+          /* Apple HIG / iOS WCAG: 44×44 minimum tappable target */
+          min-width: 64px; min-height: 44px;
+          display: inline-flex; align-items: center; justify-content: center;
+          padding: 8px 12px; border-radius: 11px;
+          font-size: 13px; font-weight: 600;
           color: #fff; border: none; cursor: pointer;
           text-decoration: none; text-align: center;
           opacity: 0.92; transition: opacity 0.15s, transform 0.12s;
+          touch-action: manipulation;
         }
         .ma-social-pill:hover { opacity: 1; transform: translateY(-1px); }
         .ma-social-pill:active { transform: scale(0.97); }
