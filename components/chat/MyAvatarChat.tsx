@@ -79,6 +79,11 @@ interface MediaPayload {
   url?: string;
   html?: string;
   language?: string;
+  poster?: string;        // Optional thumbnail/poster for video — used by VideoBlock
+                          // to render a clear preview frame BEFORE the video reaches
+                          // canplay (avoids the "invisible black frame" bug where
+                          // HeyGen videos load silently with a pitch-black first frame
+                          // on a pitch-black background).
 }
 
 interface ChatMessage {
@@ -680,7 +685,13 @@ function MessageRow({ m, locale: _locale, onLike, onDislike, onCopy, onRegenerat
               {m.media?.kind === 'code' && m.media.html ? (
                 <InlineMedia kind="code" html={m.media.html} language={m.media.language} prompt="" onRemix={onRemix} />
               ) : m.media?.url ? (
-                <InlineMedia kind={m.media.kind as 'image' | 'video' | 'audio'} url={m.media.url} prompt={m.text} onRemix={onRemix} />
+                <InlineMedia
+                  kind={m.media.kind as 'image' | 'video' | 'audio'}
+                  url={m.media.url}
+                  poster={m.media.poster}
+                  prompt={m.text}
+                  onRemix={onRemix}
+                />
               ) : detected ? (
                 <InlineMedia kind={detected.kind} url={detected.url} prompt={text} onRemix={onRemix} />
               ) : null}
@@ -1115,17 +1126,34 @@ async function runAvatar(script: string, pendingId: string, setMessages: Setter)
   });
   const startData = await start.json() as { videoId?: string; error?: string };
   if (!startData.videoId) throw new Error(startData.error || 'Avatar failed');
+
+  // HeyGen avatar generation often takes 2–4 minutes for short scripts and
+  // can occasionally exceed 4 min for longer ones. The previous 24×5s=120s
+  // budget caused frequent "Avatar timed out" errors AND a worse failure
+  // mode: in some edge cases the catch handler fires *after* the GET had
+  // already begun returning a URL on a parallel tick, leaving an orphaned
+  // message. Extend to 60×5s=300s and also capture the thumbnail URL as a
+  // video poster so the user sees a clear preview frame even before
+  // canplay fires (fixes the "black-on-black invisible video" bug).
   let videoUrl: string | null = null;
-  for (let i = 0; i < 24; i++) {
+  let posterUrl: string | null = null;
+  for (let i = 0; i < 60; i++) {
     await new Promise(r => setTimeout(r, 5000));
     const poll = await fetch(`/api/heygen/avatar?videoId=${encodeURIComponent(startData.videoId)}`);
     if (!poll.ok) continue;
-    const pd = await poll.json() as { status?: string; url?: string; error?: string };
-    if (pd.status === 'completed' && pd.url) { videoUrl = pd.url; break; }
+    const pd = await poll.json() as { status?: string; url?: string; thumbnail?: string; error?: string };
+    if (pd.status === 'completed' && pd.url) {
+      videoUrl = pd.url;
+      posterUrl = pd.thumbnail ?? null;
+      break;
+    }
     if (pd.status === 'failed') throw new Error(pd.error || 'Avatar failed');
   }
-  if (!videoUrl) throw new Error('Avatar timed out');
-  patchMessage(setMessages, pendingId, { text: '', media: { kind: 'video', url: videoUrl } });
+  if (!videoUrl) throw new Error('Avatar timed out (5 min)');
+  patchMessage(setMessages, pendingId, {
+    text: '',
+    media: { kind: 'video', url: videoUrl, ...(posterUrl ? { poster: posterUrl } : {}) },
+  });
 }
 
 async function runInterior(prompt: string, pendingId: string, setMessages: Setter) {

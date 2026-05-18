@@ -28,7 +28,7 @@ import MediaActions from './MediaActions';
 
 type InlineMediaProps =
   | { kind: 'image'; url: string; prompt?: string; onRemix?: (p: string) => void; onSaveCharacter?: () => void }
-  | { kind: 'video'; url: string; prompt?: string; onRemix?: (p: string) => void }
+  | { kind: 'video'; url: string; poster?: string; prompt?: string; onRemix?: (p: string) => void }
   | { kind: 'audio'; url: string; prompt?: string; onRemix?: (p: string) => void }
   | { kind: 'code'; html: string; language?: string; prompt?: string; onRemix?: (p: string) => void };
 
@@ -124,16 +124,31 @@ function ImageBlock({ url }: { url: string }) {
 
 // ─── Video ────────────────────────────────────────────────────────────────────
 
-function VideoBlock({ url }: { url: string }) {
+function VideoBlock({ url, poster }: { url: string; poster?: string }) {
   const vidRef = useRef<HTMLVideoElement>(null);
   const [playing, setPlaying] = useState(true);
   const [muted, setMuted] = useState(true);
   const [loaded, setLoaded] = useState(false);
+  const [errored, setErrored] = useState(false);
+
+  // Watchdog: if canplay never fires within 6s (HeyGen S3 cold-start, autoplay
+  // blocked in some browser configs, etc.) we still flip `loaded` so the
+  // user sees the play/mute controls and can click to play manually. Without
+  // this, the video silently stayed at opacity:0 forever with only a skeleton
+  // visible — exactly the "invisible avatar" bug screenshot reported.
+  useEffect(() => {
+    if (loaded || errored) return;
+    const t = setTimeout(() => {
+      if (vidRef.current && vidRef.current.readyState >= 2) setLoaded(true);
+      else setLoaded(true); // optimistic reveal — better to show a paused frame than nothing
+    }, 6000);
+    return () => clearTimeout(t);
+  }, [loaded, errored]);
 
   const toggle = () => {
     const v = vidRef.current;
     if (!v) return;
-    if (v.paused) { void v.play(); setPlaying(true); }
+    if (v.paused) { void v.play().catch(() => { /* autoplay rejected — ignore */ }); setPlaying(true); }
     else { v.pause(); setPlaying(false); }
   };
 
@@ -146,18 +161,26 @@ function VideoBlock({ url }: { url: string }) {
 
   return (
     <div className="inline-media-video-wrap" onClick={toggle}>
-      {!loaded && <div className="inline-media-skel" aria-busy="true" />}
+      {!loaded && !errored && <div className="inline-media-skel" aria-busy="true" />}
       <motion.video
         ref={vidRef}
         src={url}
-        autoPlay muted loop playsInline
+        poster={poster}
+        autoPlay muted loop playsInline preload="metadata"
         onCanPlay={() => setLoaded(true)}
+        onLoadedData={() => setLoaded(true)}
+        onError={() => { setErrored(true); setLoaded(true); }}
         initial={{ opacity: 0 }}
         animate={{ opacity: loaded ? 1 : 0 }}
         transition={{ duration: 0.4 }}
-        style={{ display: 'block', width: '100%', height: 'auto', borderRadius: 14 }}
+        style={{ display: 'block', width: '100%', height: 'auto', borderRadius: 14, background: '#000' }}
       />
-      {loaded && (
+      {errored && (
+        <div className="inline-media-video-error" role="alert">
+          ვიდეო ვერ ჩაიტვირთა · <a href={url} target="_blank" rel="noopener noreferrer" style={{ color: '#a5b4fc', textDecoration: 'underline' }}>გახსენი</a>
+        </div>
+      )}
+      {loaded && !errored && (
         <div className="inline-media-video-overlay">
           <button type="button" aria-label={playing ? 'Pause' : 'Play'} className="inline-media-btn" onClick={e => { e.stopPropagation(); toggle(); }}>
             {playing ? <Pause style={{ width: 14, height: 14 }} /> : <Play style={{ width: 14, height: 14 }} />}
@@ -304,7 +327,7 @@ export default function InlineMedia(props: InlineMediaProps) {
   return (
     <div className="inline-media-root">
       {props.kind === 'image' && <ImageBlock url={props.url} />}
-      {props.kind === 'video' && <VideoBlock url={props.url} />}
+      {props.kind === 'video' && <VideoBlock url={props.url} poster={props.poster} />}
       {props.kind === 'audio' && <AudioBlock url={props.url} />}
       {props.kind === 'code' && <CodeBlock html={props.html} language={props.language} />}
 
@@ -377,6 +400,14 @@ export default function InlineMedia(props: InlineMediaProps) {
         }
         .inline-media-btn:hover { background: rgba(139,92,246,0.5); transform: scale(1.06); }
         .inline-media-btn:active { transform: scale(0.94); }
+        .inline-media-video-error {
+          position: absolute; inset: 0;
+          display: flex; align-items: center; justify-content: center;
+          padding: 16px; text-align: center;
+          background: rgba(0,0,0,0.55);
+          color: #fca5a5; font-size: 13px; line-height: 1.4;
+          border-radius: 14px;
+        }
 
         /* ── Audio pill ── */
         .inline-media-audio-wrap {
