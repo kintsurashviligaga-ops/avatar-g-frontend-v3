@@ -175,6 +175,12 @@ function classifyError(err: unknown): 'rate_limit' | 'safety' | 'unknown' {
 const SAFETY_MESSAGE_KA = '⚠️ შეტყობინება Google-ის უსაფრთხოების ფილტრებს ეჯახება. გთხოვ, შეცვალე ფორმულირება და სცადე თავიდან.';
 const SAFETY_MESSAGE_EN = '⚠️ This request was blocked by safety filters. Please rephrase and try again.';
 
+// Used when BOTH Gemini and Anthropic return empty output — most often a
+// quota/rate-limit issue on the provider side that doesn't surface as an
+// HTTP error. Tells the user what to do instead of a misleading "safety" claim.
+const PROVIDERS_DOWN_KA = '⚠️ AI სერვისები დროებით მიუწვდომელია (Gemini + Anthropic ცარიელ პასუხს აბრუნებენ). სცადე რამდენიმე წუთში — ეს ხშირად ლიმიტის ან მცირე outage-ის შედეგია. თუ პრობლემა გრძელდება, შეტყობინე ადმინს.';
+const PROVIDERS_DOWN_EN = '⚠️ AI services temporarily unavailable (Gemini + Anthropic both returned empty responses). Please try again in a few minutes — this is usually a rate-limit or brief outage. If it persists, contact support.';
+
 function localeFromMessages(messages: IncomingMessage[]): 'ka' | 'en' {
   for (let i = messages.length - 1; i >= 0; i--) {
     const m = messages[i];
@@ -319,11 +325,11 @@ export async function POST(req: NextRequest) {
                 }
               }
               if (streamed === 0) {
-                send(localeFromMessages(messages) === 'en' ? SAFETY_MESSAGE_EN : SAFETY_MESSAGE_KA);
+                send(localeFromMessages(messages) === 'en' ? PROVIDERS_DOWN_EN : PROVIDERS_DOWN_KA);
               }
             } catch (anthropicErr) {
               console.error('[/api/chat/gemini] Anthropic fallback failed:', anthropicErr);
-              send(localeFromMessages(messages) === 'en' ? SAFETY_MESSAGE_EN : SAFETY_MESSAGE_KA);
+              send(localeFromMessages(messages) === 'en' ? PROVIDERS_DOWN_EN : PROVIDERS_DOWN_KA);
             }
           }
 
