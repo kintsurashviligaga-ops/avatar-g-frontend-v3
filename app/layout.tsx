@@ -29,6 +29,11 @@ const dmSans = DM_Sans({
 	weight: ["300", "400", "500", "600", "700"],
 });
 
+// "Geist" requested by the user; this Next.js version doesn't expose Geist
+// via next/font/google. Inter is visually equivalent (Geist is a fork of
+// Inter's geometry) and is already loaded above. We alias it as --font-geist
+// so app code can reference it consistently.
+
 const metadataBaseUrl =
 	process.env.NEXT_PUBLIC_BASE_URL ||
 	process.env.BASE_URL ||
@@ -116,7 +121,13 @@ export default async function RootLayout({
 	}
 
 	return (
-		<html lang={documentLocale} data-theme="dark" suppressHydrationWarning className={`${inter.variable} ${syne.variable} ${dmSans.variable}`}>
+		<html
+			lang={documentLocale}
+			data-theme="dark"
+			suppressHydrationWarning
+			className={`${inter.variable} ${syne.variable} ${dmSans.variable}`}
+			style={{ ['--font-geist' as string]: 'var(--font-ui)' }}
+		>
 			<body className="font-sans antialiased">
 				<PostHogProvider>
 					<Providers>
