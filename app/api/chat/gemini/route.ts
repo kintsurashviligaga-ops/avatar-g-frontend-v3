@@ -175,6 +175,22 @@ function classifyError(err: unknown): 'rate_limit' | 'safety' | 'unknown' {
 const SAFETY_MESSAGE_KA = '⚠️ შეტყობინება Google-ის უსაფრთხოების ფილტრებს ეჯახება. გთხოვ, შეცვალე ფორმულირება და სცადე თავიდან.';
 const SAFETY_MESSAGE_EN = '⚠️ This request was blocked by safety filters. Please rephrase and try again.';
 
+function localeFromMessages(messages: IncomingMessage[]): 'ka' | 'en' {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i];
+    if (!m) continue;
+    const txt = typeof m.content === 'string'
+      ? m.content
+      : (m.content as IncomingPart[])
+          .filter((p): p is { type: 'text'; text: string } => p.type === 'text')
+          .map(p => p.text)
+          .join(' ');
+    if (txt && /[Ⴀ-ჿ]/.test(txt)) return 'ka';
+    if (txt) return 'en';
+  }
+  return 'ka';
+}
+
 // ─── 6. ROUTE HANDLER ────────────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
@@ -245,8 +261,20 @@ export async function POST(req: NextRequest) {
                 temperature: 0.7,
                 maxRetries: 0, // fail instantly on quota/error — we rotate ourselves
               });
+              let streamed = 0;
               for await (const chunk of result.textStream) {
-                send(chunk);
+                if (chunk) {
+                  send(chunk);
+                  streamed += chunk.length;
+                }
+              }
+              // Gemini occasionally completes with zero text chunks (silent
+              // safety pass-through, empty finish_reason, or quota throttling
+              // that doesn't surface as an error). Treat that as a miss and
+              // fall through to the next model / fallback.
+              if (streamed === 0) {
+                console.warn('[/api/chat/gemini]', modelName, 'returned 0 chars — rotating');
+                continue;
               }
               geminiOk = true;
               break;
@@ -264,26 +292,38 @@ export async function POST(req: NextRequest) {
           if (!geminiOk) {
             // ── Fallback: Anthropic Claude Haiku ────────────────────────────
             console.error('[/api/chat/gemini] All Gemini models exhausted — falling back to Anthropic');
-            const anthropic = getAnthropicClient();
-            const fallback = streamText({
-              model: anthropic('claude-haiku-4-5-20251001'),
-              system: effectiveSystem,
-              // Haiku doesn't support image URLs inline — strip to text-only
-              messages: modelMessages.map(m => ({
-                role: m.role,
-                content: typeof m.content === 'string'
-                  ? m.content
-                  : (m.content as Array<TextContent | ImageContent>)
-                      .filter((p): p is TextContent => p.type === 'text')
-                      .map(p => p.text)
-                      .join('\n') || '[image attached]',
-              })),
-              maxOutputTokens: 4096,
-              temperature: 0.7,
-              maxRetries: 1,
-            });
-            for await (const chunk of fallback.textStream) {
-              send(chunk);
+            try {
+              const anthropic = getAnthropicClient();
+              const fallback = streamText({
+                model: anthropic('claude-haiku-4-5-20251001'),
+                system: effectiveSystem,
+                // Haiku doesn't support image URLs inline — strip to text-only
+                messages: modelMessages.map(m => ({
+                  role: m.role,
+                  content: typeof m.content === 'string'
+                    ? m.content
+                    : (m.content as Array<TextContent | ImageContent>)
+                        .filter((p): p is TextContent => p.type === 'text')
+                        .map(p => p.text)
+                        .join('\n') || '[image attached]',
+                })),
+                maxOutputTokens: 4096,
+                temperature: 0.7,
+                maxRetries: 1,
+              });
+              let streamed = 0;
+              for await (const chunk of fallback.textStream) {
+                if (chunk) {
+                  send(chunk);
+                  streamed += chunk.length;
+                }
+              }
+              if (streamed === 0) {
+                send(localeFromMessages(messages) === 'en' ? SAFETY_MESSAGE_EN : SAFETY_MESSAGE_KA);
+              }
+            } catch (anthropicErr) {
+              console.error('[/api/chat/gemini] Anthropic fallback failed:', anthropicErr);
+              send(localeFromMessages(messages) === 'en' ? SAFETY_MESSAGE_EN : SAFETY_MESSAGE_KA);
             }
           }
 
