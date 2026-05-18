@@ -27,9 +27,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import {
   Menu,
   User as UserIcon,
-  Paperclip,
   Mic,
-  Zap,
   Send,
   Image as ImageIcon,
   Video as VideoIcon,
@@ -456,13 +454,13 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
           type="button"
           aria-label="Menu"
           onClick={() => setDrawerOpen(true)}
-          className="h-10 w-10 rounded-full bg-white/[0.05] hover:bg-white/[0.12] flex items-center justify-center transition"
+          className="h-10 w-10 rounded-full bg-black border border-white/[0.10] hover:border-white/[0.22] flex items-center justify-center transition"
         >
           <Menu size={18} className="text-white" />
         </button>
 
         {activeView === 'chat' ? (
-          <div className="flex items-center gap-1 bg-white/[0.05] rounded-full p-1">
+          <div className="flex items-center gap-1 bg-black border border-white/[0.10] rounded-full p-1">
             <button
               type="button"
               onClick={() => setMode('ask')}
@@ -492,7 +490,7 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
           type="button"
           aria-label="System status"
           onClick={() => setProfileOpen(true)}
-          className="h-10 w-10 rounded-full bg-white/[0.05] hover:bg-white/[0.12] flex items-center justify-center transition relative"
+          className="h-10 w-10 rounded-full bg-black border border-white/[0.10] hover:border-white/[0.22] flex items-center justify-center transition relative"
         >
           <UserIcon size={18} className="text-white" />
         </button>
@@ -575,7 +573,7 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
                 type="button"
                 onClick={() => handlePill(p)}
                 disabled={sending}
-                className="flex-shrink-0 inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full bg-white/[0.06] hover:bg-white/[0.12] disabled:opacity-50 transition text-[13px] font-medium text-white"
+                className="flex-shrink-0 inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full bg-black border border-white/[0.10] hover:border-white/[0.20] hover:bg-white/[0.04] disabled:opacity-50 transition text-[13px] font-medium text-white"
               >
                 <p.icon size={14} className="text-white/85" />
                 {localeCode === 'ka' ? p.label_ka : p.label_en}
@@ -583,7 +581,7 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
             ))}
           </div>
 
-          <div className="rounded-3xl bg-white/[0.06] border border-white/[0.08] overflow-hidden focus-within:border-white/[0.18] transition">
+          <div className="rounded-3xl bg-black border border-white/[0.10] overflow-hidden focus-within:border-white/[0.22] transition">
             <textarea
               ref={inputRef}
               value={input}
@@ -595,16 +593,7 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
               className="w-full bg-transparent border-none outline-none resize-none px-4 pt-3 pb-1 text-[15px] text-white placeholder:text-[#94A3B8]"
               style={{ minHeight: 24, maxHeight: 140 }}
             />
-            <div className="flex items-center justify-between px-2 py-1.5">
-              <div className="flex items-center gap-1">
-                <button type="button" aria-label="Attach" className="h-9 w-9 rounded-full hover:bg-white/[0.08] flex items-center justify-center text-[#94A3B8] transition">
-                  <Paperclip size={16} />
-                </button>
-                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-white/[0.04] text-white/85 text-[12px] font-medium">
-                  <Zap size={12} className="text-yellow-300" />
-                  {localeCode === 'ka' ? 'სწრაფი' : 'Fast'}
-                </span>
-              </div>
+            <div className="flex items-center justify-end px-2 py-1.5">
               <div className="flex items-center gap-1">
                 <button
                   type="button"
@@ -613,7 +602,7 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
                   className={`h-9 w-9 rounded-full flex items-center justify-center transition ${
                     listening
                       ? 'bg-violet-500/20 text-violet-200 animate-pulse'
-                      : 'hover:bg-white/[0.08] text-[#94A3B8]'
+                      : 'hover:bg-white/[0.06] text-[#94A3B8]'
                   }`}
                 >
                   <Mic size={16} />
@@ -625,7 +614,7 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
                   className={`inline-flex items-center gap-1.5 px-4 h-9 rounded-full font-semibold text-[13px] transition ${
                     input.trim() && !sending
                       ? 'bg-white text-black hover:bg-white/90'
-                      : 'bg-white/[0.08] text-white/40 cursor-not-allowed'
+                      : 'bg-black border border-white/[0.10] text-white/35 cursor-not-allowed'
                   }`}
                 >
                   {sending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
@@ -786,7 +775,7 @@ function EmptyState({ locale, onPick }: { locale: 'ka' | 'en' | 'ru'; onPick: (p
             key={ex.label}
             type="button"
             onClick={() => onPick(ex.prompt)}
-            className="text-left px-3 py-2.5 rounded-xl bg-white/[0.05] hover:bg-white/[0.10] active:bg-white/[0.13] border border-white/[0.06] transition"
+            className="text-left px-3 py-2.5 rounded-xl bg-black border border-white/[0.10] hover:border-white/[0.22] hover:bg-white/[0.03] transition"
           >
             <div className="text-[12px] font-semibold text-white/90 mb-0.5">{ex.label}</div>
             <div className="text-[11px] text-white/55 line-clamp-2 leading-snug">{ex.prompt}</div>
@@ -1088,6 +1077,8 @@ function SystemStatusDrawer({
   onClose: () => void;
 }) {
   const [creditsBalance, setCreditsBalance] = useState<number | null>(null);
+  const [online, setOnline] = useState<boolean>(typeof navigator === 'undefined' ? true : navigator.onLine);
+  const [providersReachable, setProvidersReachable] = useState<boolean | null>(null);
 
   useEffect(() => {
     if (!isAuthenticated) return;
@@ -1101,6 +1092,33 @@ function SystemStatusDrawer({
       } catch { /* ignore */ }
     })();
   }, [isAuthenticated]);
+
+  // Track real network status — replaces the static "operational" lie.
+  useEffect(() => {
+    const update = () => setOnline(navigator.onLine);
+    window.addEventListener('online', update);
+    window.addEventListener('offline', update);
+    return () => {
+      window.removeEventListener('online', update);
+      window.removeEventListener('offline', update);
+    };
+  }, []);
+
+  // Light-weight chat-route reachability check (no auth, fast OPTIONS preflight).
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const r = await fetch('/api/chat/gemini', { method: 'OPTIONS' });
+        if (!cancelled) setProvidersReachable(r.ok || r.status === 204);
+      } catch {
+        if (!cancelled) setProvidersReachable(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  const statusOk = online && providersReachable !== false;
 
   const signOut = useCallback(async () => {
     try {
@@ -1124,7 +1142,7 @@ function SystemStatusDrawer({
 
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
         {/* Credits */}
-        <section className="rounded-2xl p-4 bg-white/[0.04] border border-white/[0.08]">
+        <section className="rounded-2xl p-4 bg-black border border-white/[0.10]">
           <div className="text-[10px] font-bold tracking-wider uppercase text-[#94A3B8]">
             {locale === 'ka' ? 'კრედიტი' : 'Credits'}
           </div>
@@ -1133,16 +1151,19 @@ function SystemStatusDrawer({
           </div>
         </section>
 
-        {/* System status (provider live signal) */}
-        <section className="rounded-2xl p-4 bg-white/[0.04] border border-white/[0.08]">
+        {/* System status (real signal: navigator.onLine + chat-route reachability) */}
+        <section className="rounded-2xl p-4 bg-black border border-white/[0.10]">
           <div className="text-[10px] font-bold tracking-wider uppercase text-[#94A3B8] mb-2">
             {locale === 'ka' ? 'სისტემის სტატუსი' : 'System Status'}
           </div>
           <div className="flex items-center gap-2 text-[13px] text-white">
-            <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
-            {locale === 'ka' ? 'ყველა სერვისი მუშაობს' : 'All systems operational'}
+            <span className={`h-2 w-2 rounded-full ${statusOk ? 'bg-emerald-400 animate-pulse' : 'bg-rose-400'}`} />
+            {statusOk
+              ? (locale === 'ka' ? 'სერვისები ხელმისაწვდომია' : 'Services reachable')
+              : !online
+                ? (locale === 'ka' ? 'ინტერნეტი გათიშულია' : 'You are offline')
+                : (locale === 'ka' ? 'AI პროვაიდერი მიუწვდომელია' : 'AI provider unreachable')}
           </div>
-          <Sparkles size={12} className="hidden" />
         </section>
 
         {/* Sign out (if authed) */}
