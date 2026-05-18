@@ -1134,30 +1134,21 @@ async function runInterior(prompt: string, pendingId: string, setMessages: Sette
 }
 
 async function runApp(prompt: string, pendingId: string, setMessages: Setter) {
-  const codePrompt = `You are a senior frontend engineer. Produce a single self-contained HTML document (with inline CSS and JS, no external assets) that fully implements the following request. Return ONLY the HTML — no markdown fences, no commentary.\n\nRequest: ${prompt}`;
-  const res = await fetch('/api/chat/gemini', {
+  // App Builder uses Anthropic Claude (better at self-contained HTML/CSS/JS
+  // than Gemini). Endpoint streams plain text (no SSE framing) so we just
+  // concatenate the body chunks.
+  const res = await fetch('/api/chat/claude', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ messages: [{ role: 'user', content: codePrompt }] }),
+    body: JSON.stringify({ prompt }),
   });
   if (!res.ok || !res.body) throw new Error('App build failed');
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
-  let acc = '', buffer = '';
+  let acc = '';
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split('\n');
-    buffer = lines.pop() ?? '';
-    for (const line of lines) {
-      if (!line.startsWith('data: ')) continue;
-      const raw = line.slice(6).trim();
-      if (raw === '[DONE]') break;
-      try {
-        const p = JSON.parse(raw) as { text?: string };
-        if (p.text) acc += p.text;
-      } catch { /* skip */ }
-    }
+    acc += decoder.decode(value, { stream: true });
   }
   const html = acc.replace(/^```(?:html)?\s*/i, '').replace(/\s*```\s*$/i, '').trim();
   if (!html) throw new Error('Empty HTML');

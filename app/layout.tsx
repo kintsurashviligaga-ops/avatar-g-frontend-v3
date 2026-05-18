@@ -50,17 +50,18 @@ export const viewport: Viewport = {
 	userScalable: false,
 	viewportFit: 'cover',
 	interactiveWidget: 'resizes-content',
-	themeColor: '#0a0a0c',
+	themeColor: '#000000',
 };
 
 export const metadata: Metadata = {
 	metadataBase: new URL(metadataBaseUrl),
-	applicationName: 'Avatar G',
-	manifest: '/manifest.json',
+	applicationName: 'MyAvatar',
+	// Next.js dynamic manifest at app/manifest.ts is served at /manifest.webmanifest.
+	manifest: '/manifest.webmanifest',
 	appleWebApp: {
 		capable: true,
 		statusBarStyle: 'black-translucent',
-		title: 'Avatar G',
+		title: 'MyAvatar',
 	},
 	formatDetection: {
 		telephone: false,

@@ -30,6 +30,34 @@ function ShareModal({ shareUrl, onClose }: ShareModalProps) {
     } catch { /* ignore */ }
   };
 
+  // Web Share API — native iOS / Android share sheet when available. Falls
+  // back to per-network deep links below.
+  const nativeShare = async () => {
+    if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
+      try {
+        await navigator.share({
+          title: 'MyAvatar.ge',
+          text: 'შევქმენი MyAvatar.ge-ზე — გადახედე',
+          url: shareUrl,
+        });
+        onClose();
+      } catch { /* user cancelled */ }
+    }
+  };
+
+  // Social-network deep links. Each opens a pre-filled compose window in
+  // a new tab/app. The Instagram path falls back to Copy because IG has
+  // no web compose URL — user pastes the link into their post manually.
+  const SOCIAL_LINKS: Array<{ name: string; href: string | null; bg: string }> = [
+    { name: 'X', bg: '#000', href: `https://twitter.com/intent/tweet?url=${encodeURIComponent(shareUrl)}&text=${encodeURIComponent('შევქმენი MyAvatar.ge-ზე')}` },
+    { name: 'Facebook', bg: '#1877F2', href: `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareUrl)}` },
+    { name: 'WhatsApp', bg: '#25D366', href: `https://wa.me/?text=${encodeURIComponent('შევქმენი MyAvatar.ge-ზე: ' + shareUrl)}` },
+    { name: 'Telegram', bg: '#0088CC', href: `https://t.me/share/url?url=${encodeURIComponent(shareUrl)}&text=${encodeURIComponent('შევქმენი MyAvatar.ge-ზე')}` },
+    { name: 'Instagram', bg: '#E1306C', href: null }, // Copy link — IG doesn't accept compose URL
+  ];
+
+  const canNativeShare = typeof navigator !== 'undefined' && typeof navigator.share === 'function';
+
   return (
     <motion.div
       className="ma-modal-overlay"
@@ -63,6 +91,34 @@ function ShareModal({ shareUrl, onClose }: ShareModalProps) {
               {copied ? 'კოპირდა' : 'კოპირება'}
             </button>
           </div>
+
+          {/* Social-network compose deep-links */}
+          <div className="ma-social-row">
+            {canNativeShare && (
+              <button className="ma-social-pill" style={{ background: '#a855f7' }} onClick={nativeShare}>
+                გაზიარება…
+              </button>
+            )}
+            {SOCIAL_LINKS.map(link =>
+              link.href ? (
+                <a
+                  key={link.name}
+                  href={link.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="ma-social-pill"
+                  style={{ background: link.bg }}
+                >
+                  {link.name}
+                </a>
+              ) : (
+                <button key={link.name} className="ma-social-pill" style={{ background: link.bg }} onClick={copy}>
+                  {link.name}
+                </button>
+              ),
+            )}
+          </div>
+
           <p className="ma-share-hint">ნებისმიერი ამ ლინკს ხედავს</p>
         </div>
       </motion.div>
@@ -103,6 +159,19 @@ function ShareModal({ shareUrl, onClose }: ShareModalProps) {
         .ma-share-hint {
           font-size: 12px; color: #666; margin-top: 8px;
         }
+        .ma-social-row {
+          display: flex; flex-wrap: wrap; gap: 6px; margin-top: 14px;
+        }
+        .ma-social-pill {
+          flex: 1; min-width: 64px;
+          padding: 8px 10px; border-radius: 9px;
+          font-size: 12px; font-weight: 600;
+          color: #fff; border: none; cursor: pointer;
+          text-decoration: none; text-align: center;
+          opacity: 0.92; transition: opacity 0.15s, transform 0.12s;
+        }
+        .ma-social-pill:hover { opacity: 1; transform: translateY(-1px); }
+        .ma-social-pill:active { transform: scale(0.97); }
       `}</style>
     </motion.div>
   );
