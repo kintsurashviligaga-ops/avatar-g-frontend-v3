@@ -1113,6 +1113,21 @@ function SystemStatusDrawer({
             <span className="text-[14px] text-red-400 font-medium">{locale === 'ka' ? 'გასვლა' : 'Sign out'}</span>
           </button>
         )}
+
+        {/* Legal / Support — required for App Store reviewability */}
+        <div className="pt-2 border-t border-white/[0.06] flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-white/45">
+          <a href={`/${locale}/support`} className="hover:text-white/80 transition">
+            {locale === 'ka' ? 'მხარდაჭერა' : 'Support'}
+          </a>
+          <span aria-hidden>·</span>
+          <a href={`/${locale}/privacy`} className="hover:text-white/80 transition">
+            {locale === 'ka' ? 'კონფიდენციალურობა' : 'Privacy'}
+          </a>
+          <span aria-hidden>·</span>
+          <a href={`/${locale}/terms`} className="hover:text-white/80 transition">
+            {locale === 'ka' ? 'პირობები' : 'Terms'}
+          </a>
+        </div>
       </div>
     </div>
   );

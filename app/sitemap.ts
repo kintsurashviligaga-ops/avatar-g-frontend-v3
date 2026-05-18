@@ -34,10 +34,18 @@ export default function sitemap(): MetadataRoute.Sitemap {
   const additionalPages = [
     { url: `${baseUrl}/chat`, priority: 0.7, changeFrequency: 'daily' as const },
     { url: `${baseUrl}/agent`, priority: 0.7, changeFrequency: 'weekly' as const },
-    { url: `${baseUrl}/terms`, priority: 0.4, changeFrequency: 'monthly' as const },
-    { url: `${baseUrl}/privacy`, priority: 0.4, changeFrequency: 'monthly' as const },
-    { url: `${baseUrl}/refund-policy`, priority: 0.4, changeFrequency: 'monthly' as const },
   ];
+
+  // Legal/support — emit per locale so App Store can resolve a localized URL
+  const legalSlugs = ['terms', 'privacy', 'support'];
+  const legalPages = locales.flatMap(locale =>
+    legalSlugs.map(slug => ({
+      url: `${baseUrl}/${locale}/${slug}`,
+      lastModified: now,
+      changeFrequency: 'monthly' as const,
+      priority: 0.4,
+    }))
+  );
   
   return [
     ...corePages.map(page => ({
@@ -53,5 +61,6 @@ export default function sitemap(): MetadataRoute.Sitemap {
       changeFrequency: page.changeFrequency,
       priority: page.priority,
     })),
+    ...legalPages,
   ];
 }
