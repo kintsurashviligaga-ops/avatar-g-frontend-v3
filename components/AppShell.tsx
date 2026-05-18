@@ -53,6 +53,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     window.addEventListener('orientationchange', setViewportCssVars);
 
     if (process.env.NODE_ENV === 'production' && 'serviceWorker' in navigator) {
+      const hadController = !!navigator.serviceWorker.controller;
+      let didReload = false;
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        // Only auto-reload when a NEW worker takes over an existing client.
+        // First-time installs (no previous controller) shouldn't reload.
+        if (didReload || !hadController) return;
+        didReload = true;
+        window.location.reload();
+      });
       void navigator.serviceWorker.register('/sw.js', { scope: '/', updateViaCache: 'none' }).catch(() => {
         // Keep shell rendering resilient if SW registration fails.
       });
