@@ -461,12 +461,17 @@ export default function InlineMedia(props: InlineMediaProps) {
  * → we hoist that URL into an InlineMedia block.
  */
 export function detectInlineMedia(text: string): { kind: 'image' | 'video' | 'audio'; url: string } | null {
-  const urlRe = /https?:\/\/[^\s<>"']+\.(png|jpg|jpeg|webp|gif|mp4|webm|mov|mp3|wav|m4a|ogg)(\?[^\s<>"']*)?/i;
+  // Match standard media URLs anywhere in the text. The character class
+  // excludes whitespace, common quoting/markdown wrappers (`<>"'`), and
+  // closing brackets/parens (`])}`) so we strip the URL out cleanly when
+  // the model emits markdown like `[image](https://...png)` or wraps a
+  // URL in parentheses.
+  const urlRe = /https?:\/\/[^\s<>"'\])}]+\.(png|jpg|jpeg|webp|gif|svg|mp4|webm|mov|m4v|mp3|wav|m4a|ogg|oga|aac|flac)(\?[^\s<>"'\])}]*)?/i;
   const m = text.match(urlRe);
   if (!m || !m[1]) return null;
   const ext = m[1].toLowerCase();
-  if (['png', 'jpg', 'jpeg', 'webp', 'gif'].includes(ext)) return { kind: 'image', url: m[0] };
-  if (['mp4', 'webm', 'mov'].includes(ext)) return { kind: 'video', url: m[0] };
-  if (['mp3', 'wav', 'm4a', 'ogg'].includes(ext)) return { kind: 'audio', url: m[0] };
+  if (['png', 'jpg', 'jpeg', 'webp', 'gif', 'svg'].includes(ext)) return { kind: 'image', url: m[0] };
+  if (['mp4', 'webm', 'mov', 'm4v'].includes(ext)) return { kind: 'video', url: m[0] };
+  if (['mp3', 'wav', 'm4a', 'ogg', 'oga', 'aac', 'flac'].includes(ext)) return { kind: 'audio', url: m[0] };
   return null;
 }

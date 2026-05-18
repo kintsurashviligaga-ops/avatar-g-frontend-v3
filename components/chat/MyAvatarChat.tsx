@@ -130,19 +130,24 @@ export function serviceLabel(s: ServiceId, locale: string) {
 // ─── Agent G intent router ────────────────────────────────────────────────────
 
 function detectIntent(text: string, mode: Mode): ServiceId {
+  // "Imagine" mode is biased toward generation. Default to image, but
+  // honor explicit hints for video / music / avatar.
   if (mode === 'imagine') {
     if (/\b(video|ვიდეო|видео|movie|clip)\b/i.test(text)) return 'video';
-    if (/\b(music|song|track|მუსიკ|музык)\b/i.test(text)) return 'music';
+    if (/\b(music|song|track|მუსიკ|музык|სიმღერა|песн)\b/i.test(text)) return 'music';
     if (/\b(avatar|talking|ავატარ|аватар)\b/i.test(text)) return 'avatar';
     return 'image';
   }
-  if (/\b(draw|paint|generate image|create image|make image|photo|სურათი|ფოტო|დახატე|нарисуй|фото)\b/i.test(text)) return 'image';
-  if (/\b(create video|make video|generate video|animate|ვიდეო|видео)\b/i.test(text)) return 'video';
-  if (/\b(compose|create music|make song|generate music|მუსიკა|музыка)\b/i.test(text)) return 'music';
-  if (/\b(avatar|talking head|ავატარი|аватар)\b/i.test(text)) return 'avatar';
-  if (/\b(speak|read aloud|say this|voice|text to speech|წაიკითხე|ხმოვა|прочитай)\b/i.test(text)) return 'voice';
-  if (/\b(interior|room|bedroom|living room|kitchen|ინტერიერი|ოთახი|интерьер|комната)\b/i.test(text)) return 'interior';
-  if (/\b(app|application|website|html|code|build app|აპლიკაცია|ვებსაიტი|приложение|сайт)\b/i.test(text)) return 'app';
+  // "Ask" mode — broader keyword match so phrases like "an image of waves"
+  // or "show me a video" trigger the right specialist without the user
+  // needing to use the exact verb phrasing.
+  if (/\b(draw|paint|render|image|picture|photo|სურათ|ფოტო|დახატე|нарисуй|изобрази|фото|картинк)\b/i.test(text)) return 'image';
+  if (/\b(video|clip|animate|movie|ვიდეო|видео|анимаци)\b/i.test(text)) return 'video';
+  if (/\b(music|song|track|tune|compose|მუსიკ|სიმღერა|музык|песн)\b/i.test(text)) return 'music';
+  if (/\b(avatar|talking head|spokesperson|ავატარ|аватар)\b/i.test(text)) return 'avatar';
+  if (/\b(speak|read aloud|say this|voice|text to speech|tts|წაიკითხე|ხმოვა|ხმა გააკეთე|прочитай|озвучь)\b/i.test(text)) return 'voice';
+  if (/\b(interior|room|bedroom|living room|kitchen|design my room|ინტერიერ|ოთახ|интерьер|комнат|дизайн комнаты)\b/i.test(text)) return 'interior';
+  if (/\b(app|application|website|landing page|html|webapp|build me a|build me an|აპლიკაცი|ვებგვერდ|ვებსაიტ|приложение|сайт|лендинг)\b/i.test(text)) return 'app';
   return 'chat';
 }
 
@@ -315,16 +320,7 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
       className="fixed inset-0 flex flex-col bg-black text-white antialiased"
       style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)', fontFamily: 'var(--font-geist, var(--font-ui, system-ui))' }}
     >
-      {/* Subtle space nebula at 0.1 opacity */}
-      <div
-        aria-hidden
-        className="pointer-events-none fixed inset-0 z-0"
-        style={{
-          opacity: 0.1,
-          background:
-            'radial-gradient(ellipse 80% 60% at 50% -10%, rgba(124,58,237,0.6) 0%, transparent 60%), radial-gradient(ellipse 60% 40% at 0% 80%, rgba(34,211,238,0.4) 0%, transparent 60%), radial-gradient(ellipse 50% 40% at 100% 30%, rgba(167,139,250,0.35) 0%, transparent 60%)',
-        }}
-      />
+      {/* Pure pitch black — no background visuals per user spec */}
 
       {/* ── TopBar ──────────────────────────────────────────────────────── */}
       <header className="relative z-10 flex items-center justify-between px-4 pt-3 pb-2 flex-shrink-0">
@@ -650,7 +646,19 @@ function MessageRow({ m, locale: _locale, onLike, onDislike, onCopy, onRegenerat
   }
 
   const detected = !m.media && !m.pending ? detectInlineMedia(m.text) : null;
-  const text = detected ? m.text.replace(detected.url, '').trim() : m.text;
+  // After we hoist the URL into an InlineMedia block, scrub leftover markdown
+  // wrappers ("[label]()", "(  )", trailing colons) so the user-visible text
+  // doesn't show "Here's your image:" with a dangling empty bracket.
+  const text = detected
+    ? m.text
+        .replace(detected.url, '')
+        .replace(/\[([^\]]*)\]\(\s*\)/g, '$1')   // "[image]()" → "image"
+        .replace(/\(\s*\)/g, '')                  // empty "(  )"
+        .replace(/!\[([^\]]*)\]/g, '$1')          // "![alt]" → "alt"
+        .replace(/\s+:\s*$/m, '')                 // trailing ":"
+        .replace(/\s{2,}/g, ' ')                  // collapse spaces
+        .trim()
+    : m.text;
   const hasMedia = !!m.media || !!detected;
 
   return (
