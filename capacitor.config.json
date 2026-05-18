@@ -1,0 +1,45 @@
+{
+  "appId": "ge.myavatar.app",
+  "appName": "MyAvatar",
+  "webDir": "public",
+  "bundledWebRuntime": false,
+  "server": {
+    "url": "https://myavatar.ge",
+    "allowNavigation": [
+      "myavatar.ge",
+      "*.myavatar.ge",
+      "*.supabase.co",
+      "checkout.stripe.com",
+      "js.stripe.com"
+    ],
+    "cleartext": false,
+    "androidScheme": "https"
+  },
+  "ios": {
+    "backgroundColor": "#000000",
+    "contentInset": "always",
+    "scrollEnabled": true,
+    "allowsLinkPreview": false,
+    "preferredContentMode": "mobile"
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchAutoHide": true,
+      "launchShowDuration": 600,
+      "backgroundColor": "#000000",
+      "showSpinner": false
+    },
+    "StatusBar": {
+      "style": "dark",
+      "backgroundColor": "#000000",
+      "overlaysWebView": true
+    },
+    "Keyboard": {
+      "resize": "native",
+      "resizeOnFullScreen": true
+    },
+    "App": {
+      "handleUniversalLinks": true
+    }
+  }
+}

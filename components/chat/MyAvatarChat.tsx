@@ -227,11 +227,12 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
     setDrawerOpen(false);
   }, []);
 
-  // ── Native browser voice-to-text (Web Speech API). Progressive enhancement —
-  //    falls back silently if the browser doesn't support SpeechRecognition.
+  // ── Voice-to-text input. Tries native SpeechRecognition first (Chrome/Edge);
+  //    falls back to MediaRecorder + /api/voice/transcribe (Whisper) so iOS
+  //    Safari users — where SpeechRecognition is unreliable — get the same UX.
   //    Append transcript to current input rather than overwriting, so the user
   //    can mix typing and speech.
-  const toggleVoiceInput = useCallback(() => {
+  const toggleVoiceInput = useCallback(async () => {
     type SpeechRecognitionLike = {
       lang: string;
       continuous: boolean;
@@ -246,28 +247,69 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
       SpeechRecognition?: new () => SpeechRecognitionLike;
       webkitSpeechRecognition?: new () => SpeechRecognitionLike;
     };
-    const Ctor = win.SpeechRecognition ?? win.webkitSpeechRecognition;
-    if (!Ctor) return;
+    const SRCtor = win.SpeechRecognition ?? win.webkitSpeechRecognition;
+    const lang = localeCode === 'ka' ? 'ka-GE' : localeCode === 'ru' ? 'ru-RU' : 'en-US';
 
+    // STOP path (works for either backend)
     if (listening) {
-      try { (recognitionRef.current as SpeechRecognitionLike | null)?.stop(); } catch { /* ignore */ }
+      const ref = recognitionRef.current as { stop?: () => void } | null;
+      try { ref?.stop?.(); } catch { /* ignore */ }
       setListening(false);
       return;
     }
 
+    // Backend A: Web Speech API (Chrome, Edge, Safari macOS 14+ partial).
+    if (SRCtor) {
+      try {
+        const rec = new SRCtor();
+        rec.lang = lang;
+        rec.continuous = false;
+        rec.interimResults = false;
+        rec.onresult = (e) => {
+          const transcript = e.results[0]?.[0]?.transcript ?? '';
+          if (transcript) setInput(prev => (prev ? `${prev} ${transcript}` : transcript));
+        };
+        rec.onend = () => setListening(false);
+        rec.onerror = () => setListening(false);
+        rec.start();
+        recognitionRef.current = rec;
+        setListening(true);
+        return;
+      } catch { /* fall through to MediaRecorder */ }
+    }
+
+    // Backend B: MediaRecorder + Whisper (iOS Safari, anywhere SR is missing).
+    if (typeof navigator.mediaDevices?.getUserMedia !== 'function' || typeof MediaRecorder === 'undefined') {
+      return;
+    }
     try {
-      const rec = new Ctor();
-      rec.lang = localeCode === 'ka' ? 'ka-GE' : localeCode === 'ru' ? 'ru-RU' : 'en-US';
-      rec.continuous = false;
-      rec.interimResults = false;
-      rec.onresult = (e) => {
-        const transcript = e.results[0]?.[0]?.transcript ?? '';
-        if (transcript) setInput(prev => (prev ? `${prev} ${transcript}` : transcript));
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mime = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm'
+                 : MediaRecorder.isTypeSupported('audio/mp4') ? 'audio/mp4'
+                 : '';
+      const rec = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
+      const chunks: BlobPart[] = [];
+      rec.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+      rec.onstop = async () => {
+        stream.getTracks().forEach(t => t.stop());
+        if (chunks.length === 0) { setListening(false); return; }
+        const blob = new Blob(chunks, { type: rec.mimeType || 'audio/webm' });
+        const form = new FormData();
+        form.append('audio', blob, `voice.${(rec.mimeType || 'audio/webm').includes('mp4') ? 'm4a' : 'webm'}`);
+        form.append('language', lang);
+        try {
+          const res = await fetch('/api/voice/transcribe', { method: 'POST', body: form });
+          if (res.ok) {
+            const data = await res.json() as { text?: string };
+            const txt = (data.text || '').trim();
+            if (txt) setInput(prev => (prev ? `${prev} ${txt}` : txt));
+          }
+        } catch { /* ignore — user can retry */ }
+        finally { setListening(false); }
       };
-      rec.onend = () => setListening(false);
-      rec.onerror = () => setListening(false);
+      // Stop wrapper exposes a unified .stop() for the toggle
+      recognitionRef.current = { stop: () => { try { rec.stop(); } catch { /* noop */ } } };
       rec.start();
-      recognitionRef.current = rec;
       setListening(true);
     } catch {
       setListening(false);
