@@ -31,7 +31,17 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith('/previews/') ||
     pathname.startsWith('/auth/callback') ||
     pathname.startsWith('/share/') ||   // Public share pages — no locale redirect
-    /\.\w{2,5}$/.test(pathname);
+    // PWA / SEO surfaces that browsers fetch from the root with no locale.
+    // Without these, /manifest.webmanifest gets 307-redirected to /ka/...
+    // and PWA install fails.
+    pathname === '/manifest.webmanifest' ||
+    pathname === '/manifest.json' ||
+    pathname === '/robots.txt' ||
+    pathname === '/sitemap.xml' ||
+    pathname === '/sw.js' ||
+    pathname === '/.well-known' ||
+    pathname.startsWith('/.well-known/') ||
+    /\.\w{2,11}$/.test(pathname);    // widened: covers .webmanifest (11) and similar long-tail file ext
 
   if (!isSkipped) {
     const segments = pathname.split('/').filter(Boolean);
