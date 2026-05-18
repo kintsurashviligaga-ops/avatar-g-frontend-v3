@@ -406,7 +406,7 @@ export function useVoiceCall() {
         assistant?: Record<string, unknown>;
       };
 
-      const vapiClient = getVapiWebClient(payload.token);
+      const vapiClient = await getVapiWebClient(payload.token);
       if (!vapiClient) {
         setPending(false);
         setPhase('idle');
