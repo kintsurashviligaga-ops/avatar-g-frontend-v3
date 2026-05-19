@@ -440,7 +440,7 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
 
   return (
     <main
-      className="fixed inset-0 flex flex-col lg:flex-row bg-black text-white antialiased overflow-hidden"
+      className="fixed inset-0 z-[5] flex flex-col lg:flex-row bg-black text-white antialiased overflow-hidden"
       style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)', fontFamily: 'var(--font-geist, var(--font-ui, system-ui))' }}
     >
       {/* Pure pitch black — no background visuals per user spec */}
