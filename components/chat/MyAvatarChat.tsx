@@ -50,6 +50,8 @@ import {
   RotateCcw,
   LogOut,
 } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import InlineMedia, { detectInlineMedia } from '@/components/dashboard/command-center/InlineMedia';
 import PreviewCanvas, { type PreviewMedia } from '@/components/chat/PreviewCanvas';
 import VoiceLab from '@/components/voice/VoiceLab';
@@ -97,6 +99,13 @@ interface ChatMessage {
   disliked?: boolean;
 }
 
+interface ChatSessionMeta {
+  id: string;
+  title: string;
+  ts: number;
+  messageCount: number;
+}
+
 interface MyAvatarChatProps {
   locale: string;
   userName: string;
@@ -133,7 +142,40 @@ export function serviceLabel(s: ServiceId, locale: string) {
 
 // ─── Agent G intent router ────────────────────────────────────────────────────
 
+// Slash commands: power-user shortcut to lock the next message to a
+// specific specialist. Returns the parsed { service, rest } when the
+// text starts with a known slash, else null.
+const SLASH_COMMANDS: Record<string, ServiceId> = {
+  '/image':    'image',
+  '/img':      'image',
+  '/photo':    'image',
+  '/video':    'video',
+  '/vid':      'video',
+  '/music':    'music',
+  '/song':     'music',
+  '/voice':    'voice',
+  '/tts':      'voice',
+  '/avatar':   'avatar',
+  '/interior': 'interior',
+  '/app':      'app',
+  '/code':     'app',
+  '/chat':     'chat',
+  '/ask':      'chat',
+};
+
+function parseSlash(text: string): { service: ServiceId; rest: string } | null {
+  const m = text.match(/^\s*(\/[a-z]+)\s*(.*)$/i);
+  if (!m) return null;
+  const cmd = m[1]?.toLowerCase() ?? '';
+  const rest = (m[2] ?? '').trim();
+  const service = SLASH_COMMANDS[cmd];
+  return service ? { service, rest } : null;
+}
+
 function detectIntent(text: string, mode: Mode): ServiceId {
+  // Power-user slash commands always win.
+  const slash = parseSlash(text);
+  if (slash) return slash.service;
   // "Imagine" mode is biased toward generation. Default to image, but
   // honor explicit hints for video / music / avatar.
   if (mode === 'imagine') {
@@ -211,20 +253,27 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
   const [mobileView, setMobileView] = useState<'chat' | 'preview'>('chat');
   const [attachment, setAttachment] = useState<{ name: string; type: string; base64: string; previewUrl: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+  const [sessionId, setSessionId] = useState<string>(() => mkId());
+  const [sessions, setSessions] = useState<ChatSessionMeta[]>([]);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const endRef = useRef<HTMLDivElement | null>(null);
   const recognitionRef = useRef<unknown>(null);
 
-  // Surface the most recent assistant-side media into the right preview canvas
-  // (desktop-only). Detect both explicit `media` payloads and inline-detected
-  // media URLs in the message text.
+  // Surface the most recent assistant-side media into the preview canvas.
+  // Detect both explicit `media` payloads and inline-detected media URLs.
+  // On mobile, when a NEW media arrives (id changes), auto-switch the
+  // Chat/Preview tab toggle to the Preview pane so the user immediately
+  // sees their full-size creation without having to tap the tab.
+  const prevMediaIdRef = useRef<string | null>(null);
   useEffect(() => {
     for (let i = messages.length - 1; i >= 0; i--) {
       const m = messages[i];
       if (!m || m.role !== 'assistant' || m.pending) continue;
       const userPrompt = i > 0 ? messages[i - 1]?.text : '';
+      let next: PreviewMedia | null = null;
       if (m.media) {
-        setLatestMedia({
+        next = {
           id: m.id,
           kind: m.media.kind,
           url: m.media.url,
@@ -232,12 +281,21 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
           language: m.media.language,
           poster: m.media.poster,
           prompt: userPrompt,
-        });
-        return;
+        };
+      } else {
+        const detected = detectInlineMedia(m.text);
+        if (detected) next = { id: m.id, kind: detected.kind, url: detected.url, prompt: userPrompt };
       }
-      const detected = detectInlineMedia(m.text);
-      if (detected) {
-        setLatestMedia({ id: m.id, kind: detected.kind, url: detected.url, prompt: userPrompt });
+      if (next) {
+        setLatestMedia(next);
+        // Mobile auto-switch: only when this is a brand-new media (different
+        // id) — avoids flipping the view on every messages re-render.
+        if (prevMediaIdRef.current !== next.id) {
+          prevMediaIdRef.current = next.id;
+          if (typeof window !== 'undefined' && window.matchMedia('(max-width: 1023px)').matches) {
+            setMobileView('preview');
+          }
+        }
         return;
       }
     }
@@ -246,6 +304,77 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
   }, [messages]);
+
+  // ── Persist sessions to localStorage. Keeps last 20 conversations per
+  //    browser. Each session lives at `myavatar-chat:<id>`. Index at
+  //    `myavatar-chat:index` stores the recent-list metadata for the sidebar.
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('myavatar-chat:index');
+      if (raw) {
+        const list = JSON.parse(raw) as ChatSessionMeta[];
+        if (Array.isArray(list)) setSessions(list);
+      }
+    } catch { /* ignore */ }
+  }, []);
+
+  useEffect(() => {
+    // Skip empty / brand-new sessions.
+    if (messages.length === 0) return;
+    try {
+      const title = (messages.find(m => m.role === 'user')?.text ?? 'New chat').slice(0, 60);
+      const meta: ChatSessionMeta = { id: sessionId, title, ts: Date.now(), messageCount: messages.length };
+      // Strip transient state from saved messages.
+      const persistable = messages
+        .filter(m => !m.pending)
+        .map(m => ({ ...m, pending: undefined, liked: undefined, disliked: undefined }));
+      localStorage.setItem(`myavatar-chat:${sessionId}`, JSON.stringify(persistable));
+      const next: ChatSessionMeta[] = [meta, ...sessions.filter(s => s.id !== sessionId)].slice(0, 20);
+      setSessions(next);
+      localStorage.setItem('myavatar-chat:index', JSON.stringify(next));
+      // GC: drop any saved sessions beyond the 20-cap.
+      const keep = new Set(next.map(s => s.id));
+      try {
+        for (let i = 0; i < localStorage.length; i++) {
+          const k = localStorage.key(i);
+          if (k && k.startsWith('myavatar-chat:') && k !== 'myavatar-chat:index') {
+            const id = k.slice('myavatar-chat:'.length);
+            if (!keep.has(id)) localStorage.removeItem(k);
+          }
+        }
+      } catch { /* ignore */ }
+    } catch { /* ignore localStorage quota */ }
+    // sessions intentionally not in deps — would loop. We read latest via closure.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messages, sessionId]);
+
+  const loadSession = useCallback((id: string) => {
+    try {
+      const raw = localStorage.getItem(`myavatar-chat:${id}`);
+      if (!raw) return;
+      const data = JSON.parse(raw) as ChatMessage[];
+      if (!Array.isArray(data)) return;
+      setMessages(data);
+      setSessionId(id);
+      setDrawerOpen(false);
+    } catch { /* ignore */ }
+  }, []);
+
+  const newSession = useCallback(() => {
+    setMessages([]);
+    setSessionId(mkId());
+    setDrawerOpen(false);
+  }, []);
+
+  const deleteSession = useCallback((id: string) => {
+    try {
+      localStorage.removeItem(`myavatar-chat:${id}`);
+      const next = sessions.filter(s => s.id !== id);
+      setSessions(next);
+      localStorage.setItem('myavatar-chat:index', JSON.stringify(next));
+      if (id === sessionId) newSession();
+    } catch { /* ignore */ }
+  }, [sessionId, sessions, newSession]);
 
   useEffect(() => {
     const ta = inputRef.current;
@@ -375,6 +504,28 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
     const trimmed = text.trim();
     if (!trimmed || sending) return;
 
+    // Strip slash-command prefix from outgoing payload — e.g. "/image a cat" →
+    // service=image, payload="a cat". `/help`, `/clear` are intercepted below.
+    const slash = parseSlash(trimmed);
+    if (slash?.service === 'chat' && /^(\/help|\/h|\/\?)$/i.test(trimmed.trim().split(/\s+/)[0] ?? '')) {
+      // Built-in /help — render an in-line markdown cheat-sheet.
+      const helpMd = localeCode === 'ka'
+        ? `**ხელმისაწვდომი ბრძანებები**\n\n- \`/image <prompt>\` — სურათი\n- \`/video <prompt>\` — ვიდეო\n- \`/music <prompt>\` — მუსიკა\n- \`/voice <prompt>\` — ხმოვანი (TTS)\n- \`/avatar <script>\` — HeyGen ავატარი\n- \`/interior <room>\` — ინტერიერი\n- \`/app <description>\` — Claude აპლიკაცია\n- \`/clear\` — საუბრის გასუფთავება\n- \`/help\` — ეს დახმარება`
+        : `**Available slash commands**\n\n- \`/image <prompt>\` — image\n- \`/video <prompt>\` — video\n- \`/music <prompt>\` — music\n- \`/voice <prompt>\` — voice (TTS)\n- \`/avatar <script>\` — HeyGen avatar\n- \`/interior <room>\` — interior render\n- \`/app <description>\` — Claude HTML app\n- \`/clear\` — clear conversation\n- \`/help\` — this help`;
+      setMessages(m => [
+        ...m,
+        { id: mkId(), role: 'user', text: trimmed, ts: Date.now() },
+        { id: mkId(), role: 'assistant', text: helpMd, ts: Date.now() + 1 },
+      ]);
+      setInput('');
+      return;
+    }
+    if (/^\/clear\b/i.test(trimmed.trim())) {
+      setMessages([]);
+      setInput('');
+      return;
+    }
+    const cleanText = slash?.rest && slash.rest.length > 0 ? slash.rest : trimmed;
     const service = forceService ?? detectIntent(trimmed, mode);
     const pendingId = replacePendingId ?? mkId();
 
@@ -397,26 +548,41 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
       setInput('');
     }
     setSending(true);
+    const controller = new AbortController();
+    abortRef.current = controller;
 
     try {
-      if (service === 'chat')         await runChat(trimmed, messages, pendingId, setMessages);
-      else if (service === 'image')   await runImage(trimmed, pendingId, setMessages);
-      else if (service === 'video')   await runVideo(trimmed, pendingId, setMessages);
-      else if (service === 'music')   await runMusic(trimmed, pendingId, setMessages);
-      else if (service === 'voice')   await runVoice(trimmed, pendingId, setMessages);
+      if (service === 'chat')         {
+        const visionImg = attachment ? { base64: attachment.base64, mimeType: attachment.type } : undefined;
+        await runChat(cleanText, messages, pendingId, setMessages, controller.signal, visionImg);
+        if (attachment) setAttachment(null);
+      }
+      else if (service === 'image')   await runImage(cleanText, pendingId, setMessages);
+      else if (service === 'video')   await runVideo(cleanText, pendingId, setMessages);
+      else if (service === 'music')   await runMusic(cleanText, pendingId, setMessages);
+      else if (service === 'voice')   await runVoice(cleanText, pendingId, setMessages);
       else if (service === 'avatar')  {
-        await runAvatar(trimmed, pendingId, setMessages, attachment?.base64, attachment?.type);
+        await runAvatar(cleanText, pendingId, setMessages, attachment?.base64, attachment?.type);
         setAttachment(null);
       }
-      else if (service === 'interior') await runInterior(trimmed, pendingId, setMessages);
-      else if (service === 'app')     await runApp(trimmed, pendingId, setMessages);
+      else if (service === 'interior') await runInterior(cleanText, pendingId, setMessages);
+      else if (service === 'app')     await runApp(cleanText, pendingId, setMessages);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'შეცდომა';
-      setMessages(m => m.map(x => x.id === pendingId ? { ...x, pending: false, text: `⚠️ ${msg}` } : x));
+      if ((err as Error)?.name === 'AbortError') {
+        // Suppressed — user clicked Stop. runChat handled the message already.
+      } else {
+        const msg = err instanceof Error ? err.message : 'შეცდომა';
+        setMessages(m => m.map(x => x.id === pendingId ? { ...x, pending: false, text: `⚠️ ${msg}` } : x));
+      }
     } finally {
       setSending(false);
+      abortRef.current = null;
     }
   }, [mode, sending, messages, localeCode, attachment]);
+
+  const stopGeneration = useCallback(() => {
+    abortRef.current?.abort();
+  }, []);
 
   const handleKey = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -464,6 +630,30 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
     setInput(prompt);
     inputRef.current?.focus();
   }, []);
+
+  // Promote a specific message's media into the dedicated preview canvas
+  // and (on mobile) switch to the Preview tab so the user sees it big.
+  const onOpenInPreview = useCallback((m: ChatMessage) => {
+    const idx = messages.findIndex(x => x.id === m.id);
+    const userPrompt = idx > 0 ? messages[idx - 1]?.text ?? '' : '';
+    if (m.media) {
+      setLatestMedia({
+        id: m.id,
+        kind: m.media.kind,
+        url: m.media.url,
+        html: m.media.html,
+        language: m.media.language,
+        poster: m.media.poster,
+        prompt: userPrompt,
+      });
+    } else {
+      const d = detectInlineMedia(m.text);
+      if (d) setLatestMedia({ id: m.id, kind: d.kind, url: d.url, prompt: userPrompt });
+    }
+    if (typeof window !== 'undefined' && window.matchMedia('(max-width: 1023px)').matches) {
+      setMobileView('preview');
+    }
+  }, [messages]);
 
   const hasMessages = messages.length > 0;
 
@@ -589,8 +779,20 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
                       onRegenerate={() => onRegenerate(m.id)}
                       onSpeak={() => onSpeak(m.text)}
                       onRemix={onRemix}
+                      onOpenInPreview={() => onOpenInPreview(m)}
                     />
                   ))}
+                  {!sending && messages.length > 0 && (() => {
+                    const last = messages[messages.length - 1];
+                    if (!last || last.role !== 'assistant' || last.pending) return null;
+                    return (
+                      <SuggestedFollowups
+                        locale={localeCode}
+                        service={last.service ?? 'chat'}
+                        onPick={(p) => void send(p)}
+                      />
+                    );
+                  })()}
                   <div ref={endRef} />
                 </div>
               )}
@@ -706,19 +908,31 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
                 >
                   <Mic size={16} />
                 </button>
-                <button
-                  type="button"
-                  onClick={() => void send(input)}
-                  disabled={!input.trim() || sending}
-                  className={`inline-flex items-center gap-1.5 px-4 h-9 rounded-full font-semibold text-[13px] transition ${
-                    input.trim() && !sending
-                      ? 'bg-white text-black hover:bg-white/90'
-                      : 'bg-black border border-white/[0.10] text-white/35 cursor-not-allowed'
-                  }`}
-                >
-                  {sending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
-                  {localeCode === 'ka' ? 'გაგზავნა' : 'Send'}
-                </button>
+                {sending ? (
+                  <button
+                    type="button"
+                    onClick={stopGeneration}
+                    aria-label="Stop"
+                    className="inline-flex items-center gap-1.5 px-4 h-9 rounded-full font-semibold text-[13px] bg-rose-500/90 hover:bg-rose-500 text-white transition"
+                  >
+                    <span className="block h-2.5 w-2.5 bg-white rounded-[2px]" />
+                    {localeCode === 'ka' ? 'შეჩერება' : 'Stop'}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => void send(input)}
+                    disabled={!input.trim()}
+                    className={`inline-flex items-center gap-1.5 px-4 h-9 rounded-full font-semibold text-[13px] transition ${
+                      input.trim()
+                        ? 'bg-white text-black hover:bg-white/90'
+                        : 'bg-black border border-white/[0.10] text-white/35 cursor-not-allowed'
+                    }`}
+                  >
+                    <Send size={14} />
+                    {localeCode === 'ka' ? 'გაგზავნა' : 'Send'}
+                  </button>
+                )}
               </div>
             </div>
           </div>
@@ -768,7 +982,7 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
                   <X size={16} />
                 </button>
               </div>
-              <nav className="flex-1 overflow-y-auto py-2">
+              <nav className="flex-shrink-0 py-2 border-b border-white/[0.06]">
                 {VIEW_ITEMS.map(item => {
                   const active = activeView === item.id;
                   return (
@@ -776,7 +990,7 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
                       key={item.id}
                       type="button"
                       onClick={() => switchView(item.id)}
-                      className={`w-full flex items-center gap-3 px-4 py-3 text-left transition ${
+                      className={`w-full flex items-center gap-3 px-4 py-2.5 text-left transition ${
                         active ? 'bg-white/[0.06]' : 'hover:bg-white/[0.04]'
                       }`}
                     >
@@ -789,6 +1003,56 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
                   );
                 })}
               </nav>
+
+              {/* Recent chats — localStorage-backed; persists across visits. */}
+              <div className="flex items-center justify-between px-4 pt-3 pb-2">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-white/45">
+                  {localeCode === 'ka' ? 'ბოლო ჩათები' : 'Recent chats'}
+                </span>
+                <button
+                  type="button"
+                  onClick={newSession}
+                  title={localeCode === 'ka' ? 'ახალი ჩათი' : 'New chat'}
+                  className="h-7 w-7 rounded-full hover:bg-white/[0.08] flex items-center justify-center text-white/65 hover:text-white transition"
+                  aria-label="New chat"
+                >
+                  +
+                </button>
+              </div>
+              <div className="flex-1 overflow-y-auto pb-2">
+                {sessions.length === 0 ? (
+                  <div className="px-4 py-3 text-[11px] text-white/35">
+                    {localeCode === 'ka' ? 'ჯერ არ გაქვს დაცული ჩათი' : 'No saved chats yet'}
+                  </div>
+                ) : sessions.map(s => {
+                  const active = s.id === sessionId;
+                  return (
+                    <div
+                      key={s.id}
+                      className={`group flex items-center gap-2 px-3 mx-1 my-0.5 rounded-lg transition ${
+                        active ? 'bg-white/[0.06]' : 'hover:bg-white/[0.04]'
+                      }`}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => loadSession(s.id)}
+                        className="flex-1 text-left py-2 min-w-0"
+                      >
+                        <div className={`text-[13px] truncate ${active ? 'text-white font-medium' : 'text-white/85'}`}>{s.title}</div>
+                        <div className="text-[10px] text-white/35">{new Date(s.ts).toLocaleDateString()} · {s.messageCount}</div>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); deleteSession(s.id); }}
+                        aria-label="Delete session"
+                        className="h-7 w-7 rounded-full text-white/35 hover:text-rose-300 hover:bg-white/[0.06] flex items-center justify-center opacity-0 group-hover:opacity-100 transition"
+                      >
+                        <X size={12} />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           </motion.aside>
         )}
@@ -829,6 +1093,49 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
         )}
       </AnimatePresence>
     </main>
+  );
+}
+
+// ─── SuggestedFollowups — 3 contextual chips below the last reply ────────────
+
+const FOLLOWUPS_KA: Record<ServiceId, string[]> = {
+  chat:     ['ვრცლად მითხარი', 'შემაჯამე ერთ აბზაცში', 'მომეცი მაგალითი'],
+  image:    ['სხვა სტილით სცადე', 'გადააქციე ვიდეოდ', 'უფრო ბაჟიერად'],
+  video:    ['უფრო ხანგრძლივი', 'სხვა კუთხიდან', 'მუსიკის დამატება'],
+  music:    ['სხვა ჟანრით', 'მოამზადე ვიდეო-ფონი', 'ხმოვანი დადებითად'],
+  voice:    ['სხვა ხმით სცადე', 'სხვა ენაზე', 'მცირე ცვლილებით'],
+  avatar:   ['სხვა სკრიპტი', 'მსგავსი, სხვა ხმით', 'სხვა ფონით'],
+  interior: ['სხვა სტილით', 'ღამის განათება', 'მინიმალისტური ვერსია'],
+  app:      ['დაამატე ფუნქცია', 'სხვა ფერი/თემა', 'მობილური ვერსიის გაკეთება'],
+};
+
+const FOLLOWUPS_EN: Record<ServiceId, string[]> = {
+  chat:     ['Tell me more',          'Summarize in one paragraph', 'Give me an example'],
+  image:    ['Try another style',     'Turn it into a video',        'More vivid'],
+  video:    ['Make it longer',        'From a different angle',      'Add background music'],
+  music:    ['Try another genre',     'Make a video to match',       'Add a vocal line'],
+  voice:    ['Try a different voice', 'In another language',         'Slight variation'],
+  avatar:   ['Different script',      'Same look, new voice',        'Different background'],
+  interior: ['Different style',       'Night lighting',              'Minimalist version'],
+  app:      ['Add a feature',         'Different colour / theme',    'Make a mobile version'],
+};
+
+function SuggestedFollowups({ locale, service, onPick }: { locale: 'ka' | 'en' | 'ru'; service: ServiceId; onPick: (p: string) => void }) {
+  const items = (locale === 'ka' ? FOLLOWUPS_KA : FOLLOWUPS_EN)[service] ?? [];
+  if (!items.length) return null;
+  return (
+    <div className="flex flex-wrap gap-2 pt-1 pl-1">
+      {items.map(s => (
+        <button
+          key={s}
+          type="button"
+          onClick={() => onPick(s)}
+          className="inline-flex items-center px-3 py-1.5 rounded-full bg-black border border-white/[0.10] hover:border-white/[0.22] hover:bg-white/[0.04] text-[12px] text-white/85 transition"
+        >
+          {s}
+        </button>
+      ))}
+    </div>
   );
 }
 
@@ -885,9 +1192,10 @@ interface MessageRowProps {
   onRegenerate: () => void;
   onSpeak: () => void;
   onRemix: (prompt: string) => void;
+  onOpenInPreview: () => void;
 }
 
-function MessageRow({ m, locale: _locale, onLike, onDislike, onCopy, onRegenerate, onSpeak, onRemix }: MessageRowProps) {
+function MessageRow({ m, locale, onLike, onDislike, onCopy, onRegenerate, onSpeak, onRemix, onOpenInPreview }: MessageRowProps) {
   if (m.role === 'user') {
     return (
       <div className="flex justify-end">
@@ -923,8 +1231,37 @@ function MessageRow({ m, locale: _locale, onLike, onDislike, onCopy, onRegenerat
       ) : (
         <>
           {text && (
-            <div className="max-w-[88%] px-1 text-white text-[15px] leading-relaxed whitespace-pre-wrap break-words">
-              {text}
+            <div className="max-w-[88%] px-1 text-white text-[15px] leading-relaxed break-words chat-md">
+              <ReactMarkdown
+                remarkPlugins={[remarkGfm]}
+                components={{
+                  // Render external links safely in a new tab.
+                  a: ({ node: _n, ...props }) => <a {...props} target="_blank" rel="noopener noreferrer" className="text-violet-300 hover:text-violet-200 underline-offset-4 hover:underline" />,
+                  // Inline + block code styles.
+                  code: ({ inline, className, children, ...props }: { inline?: boolean; className?: string; children?: React.ReactNode }) => {
+                    if (inline) {
+                      return <code className="px-1.5 py-0.5 rounded bg-white/[0.08] text-[13px] font-mono text-violet-200" {...props}>{children}</code>;
+                    }
+                    return (
+                      <pre className="my-2 rounded-xl bg-black border border-white/[0.10] p-3 overflow-x-auto text-[12px] leading-[1.55]">
+                        <code className={`font-mono text-zinc-100 ${className ?? ''}`} {...props}>{children}</code>
+                      </pre>
+                    );
+                  },
+                  ul: ({ node: _n, ...props }) => <ul {...props} className="list-disc pl-5 space-y-1 my-2" />,
+                  ol: ({ node: _n, ...props }) => <ol {...props} className="list-decimal pl-5 space-y-1 my-2" />,
+                  p:  ({ node: _n, ...props }) => <p  {...props} className="whitespace-pre-wrap" />,
+                  h1: ({ node: _n, ...props }) => <h1 {...props} className="text-[18px] font-semibold mt-3 mb-1.5" />,
+                  h2: ({ node: _n, ...props }) => <h2 {...props} className="text-[16px] font-semibold mt-3 mb-1.5" />,
+                  h3: ({ node: _n, ...props }) => <h3 {...props} className="text-[15px] font-semibold mt-2.5 mb-1" />,
+                  table: ({ node: _n, ...props }) => <div className="overflow-x-auto my-2"><table {...props} className="text-[13px] border border-white/[0.10] rounded-md" /></div>,
+                  th: ({ node: _n, ...props }) => <th {...props} className="px-2 py-1 border border-white/[0.08] bg-white/[0.04] text-left font-semibold" />,
+                  td: ({ node: _n, ...props }) => <td {...props} className="px-2 py-1 border border-white/[0.06]" />,
+                  blockquote: ({ node: _n, ...props }) => <blockquote {...props} className="border-l-2 border-violet-400/40 pl-3 my-2 text-white/75 italic" />,
+                }}
+              >
+                {text}
+              </ReactMarkdown>
             </div>
           )}
           {(m.media || detected) && (
@@ -942,6 +1279,14 @@ function MessageRow({ m, locale: _locale, onLike, onDislike, onCopy, onRegenerat
               ) : detected ? (
                 <InlineMedia kind={detected.kind} url={detected.url} prompt={text} onRemix={onRemix} />
               ) : null}
+              {/* Open this media in the dedicated preview canvas — bigger view + share/scrub */}
+              <button
+                type="button"
+                onClick={onOpenInPreview}
+                className="mt-1.5 inline-flex items-center gap-1 text-[11px] text-violet-300 hover:text-violet-200 transition"
+              >
+                {locale === 'ka' ? 'პრევიუში გახსნა →' : 'Open in preview →'}
+              </button>
             </div>
           )}
 
@@ -1359,34 +1704,53 @@ function patchMessage(setMessages: Setter, id: string, patch: Partial<ChatMessag
 
 // ─── Specialist runners — one per agent ──────────────────────────────────────
 
-async function runChat(text: string, history: ChatMessage[], pendingId: string, setMessages: Setter) {
+async function runChat(text: string, history: ChatMessage[], pendingId: string, setMessages: Setter, signal?: AbortSignal, image?: { base64: string; mimeType: string }) {
   const trimmed = history.filter(m => !m.pending).slice(-20).map(m => ({ role: m.role, content: m.text }));
+  const lastMessage = image
+    ? {
+        role: 'user',
+        content: [
+          { type: 'text', text },
+          { type: 'image', image: `data:${image.mimeType};base64,${image.base64}`, mimeType: image.mimeType },
+        ],
+      }
+    : { role: 'user', content: text };
   const res = await fetch('/api/chat/gemini', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ messages: [...trimmed, { role: 'user', content: text }] }),
+    body: JSON.stringify({ messages: [...trimmed, lastMessage] }),
+    signal,
   });
   if (!res.ok || !res.body) throw new Error('Chat failed');
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
   let acc = '', buffer = '';
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split('\n');
-    buffer = lines.pop() ?? '';
-    for (const line of lines) {
-      if (!line.startsWith('data: ')) continue;
-      const raw = line.slice(6).trim();
-      if (raw === '[DONE]') break;
-      try {
-        const p = JSON.parse(raw) as { text?: string };
-        if (p.text) {
-          acc += p.text;
-          setMessages(m => m.map(x => x.id === pendingId ? { ...x, pending: false, text: acc } : x));
-        }
-      } catch { /* skip */ }
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() ?? '';
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        const raw = line.slice(6).trim();
+        if (raw === '[DONE]') break;
+        try {
+          const p = JSON.parse(raw) as { text?: string };
+          if (p.text) {
+            acc += p.text;
+            setMessages(m => m.map(x => x.id === pendingId ? { ...x, pending: false, text: acc } : x));
+          }
+        } catch { /* skip */ }
+      }
     }
+  } catch (e) {
+    if ((e as Error)?.name === 'AbortError') {
+      // Surface what we've streamed so far as the final message and don't rethrow.
+      setMessages(m => m.map(x => x.id === pendingId ? { ...x, pending: false, text: acc || '⏹ შეჩერდა' } : x));
+      return;
+    }
+    throw e;
   }
   if (!acc) throw new Error('Empty response');
 }
