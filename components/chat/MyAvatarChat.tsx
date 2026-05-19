@@ -1315,6 +1315,10 @@ function SystemStatusDrawer({
           <a href={`/${locale}/terms`} className="hover:text-white/80 transition">
             {locale === 'ka' ? 'პირობები' : 'Terms'}
           </a>
+          <span aria-hidden>·</span>
+          <a href={`/${locale}/refund-policy`} className="hover:text-white/80 transition">
+            {locale === 'ka' ? 'დაბრუნება' : 'Refunds'}
+          </a>
         </div>
       </div>
     </div>

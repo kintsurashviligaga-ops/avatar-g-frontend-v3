@@ -37,7 +37,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
   ];
 
   // Legal/support — emit per locale so App Store can resolve a localized URL
-  const legalSlugs = ['terms', 'privacy', 'support'];
+  const legalSlugs = ['terms', 'privacy', 'support', 'refund-policy'];
   const legalPages = locales.flatMap(locale =>
     legalSlugs.map(slug => ({
       url: `${baseUrl}/${locale}/${slug}`,
