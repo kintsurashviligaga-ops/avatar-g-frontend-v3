@@ -54,6 +54,8 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import InlineMedia, { detectInlineMedia } from '@/components/dashboard/command-center/InlineMedia';
 import PreviewCanvas, { type PreviewMedia } from '@/components/chat/PreviewCanvas';
+import { buildSuggestedActions } from '@/lib/orchestrator/actions';
+import type { AssetRef, PipelineContext, ServiceResponse, SuggestedAction } from '@/lib/orchestrator/types';
 import VoiceLab from '@/components/voice/VoiceLab';
 import MemoryPanel from '@/components/memory/MemoryPanel';
 import { BarChart, KpiTile, LineChart, TopicList } from '@/components/analytics/AnalyticsCharts';
@@ -633,6 +635,100 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
     inputRef.current?.focus();
   }, []);
 
+  // Central dispatch for orchestrator-generated SuggestedAction chips.
+  // The orchestrator decides WHAT to suggest; this handler decides HOW
+  // to execute each canonical ActionKey against the existing chat state.
+  const dispatchAction = useCallback((a: SuggestedAction) => {
+    const payload = a.payload ?? {};
+    switch (a.action) {
+      case 'RUN_AGENT': {
+        const agent = payload['agent'] as ServiceId | undefined;
+        const prompt = String(payload['prompt'] ?? '');
+        if (!prompt) return;
+        void send(prompt, agent);
+        return;
+      }
+      case 'RETRY_LAST': {
+        // Find the last assistant message and resend its user prompt.
+        for (let i = messages.length - 1; i >= 0; i--) {
+          const m = messages[i];
+          if (m?.role === 'assistant' && !m.pending) {
+            void send(messages[i - 1]?.text ?? '', m.service, m.id);
+            return;
+          }
+        }
+        return;
+      }
+      case 'STOP': {
+        abortRef.current?.abort();
+        return;
+      }
+      case 'OPEN_PREVIEW': {
+        const id = String(payload['assetId'] ?? '');
+        const target = messages.find(m => m.id === id);
+        if (target) onOpenInPreview(target);
+        return;
+      }
+      case 'DOWNLOAD': {
+        const id = String(payload['assetId'] ?? '');
+        const target = messages.find(m => m.id === id);
+        const url = target?.media?.url;
+        if (!url) return;
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = '';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        return;
+      }
+      case 'SHARE': {
+        const id = String(payload['assetId'] ?? '');
+        const target = messages.find(m => m.id === id);
+        const url = target?.media?.url;
+        if (!url) return;
+        if (typeof navigator.share === 'function') {
+          void navigator.share({ url }).catch(() => undefined);
+        } else {
+          void navigator.clipboard.writeText(url).catch(() => undefined);
+        }
+        return;
+      }
+      case 'CLEAR': {
+        setMessages([]);
+        setLatestMedia(null);
+        return;
+      }
+      case 'ADD_VIDEO_SEGMENT': {
+        const prompt = String(payload['prompt'] ?? '');
+        if (prompt) void send(prompt, 'video');
+        return;
+      }
+      case 'ADD_MUSIC': {
+        const prompt = String(payload['prompt'] ?? 'background music');
+        void send(prompt, 'music');
+        return;
+      }
+      case 'ADD_VOICEOVER': {
+        const text = String(payload['text'] ?? '');
+        if (text) void send(text, 'voice');
+        return;
+      }
+      case 'ASSEMBLE_VIDEO':
+      case 'REGEN_SEGMENT':
+      case 'REMOVE_SEGMENT':
+      case 'REORDER_SEGMENT':
+      case 'SET_CAM_ZOOM_IN':
+      case 'SET_CAM_ZOOM_OUT':
+      case 'SET_CAM_PAN_LEFT':
+      case 'SET_CAM_PAN_RIGHT':
+      case 'SET_CAM_DOLLY':
+      case 'EXPORT_SESSION':
+        // Stubs — wired in a follow-up sprint once the video editor lands.
+        return;
+    }
+  }, [messages, send]);
+
   // Promote a specific message's media into the dedicated preview canvas
   // and (on mobile) switch to the Preview tab so the user sees it big.
   const onOpenInPreview = useCallback((m: ChatMessage) => {
@@ -802,11 +898,37 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
                   {!sending && messages.length > 0 && (() => {
                     const last = messages[messages.length - 1];
                     if (!last || last.role !== 'assistant' || last.pending) return null;
+                    // Synthesize an orchestrator-shaped response so the same
+                    // buildSuggestedActions() that powers the standalone
+                    // orchestrator drives the chip row here too — single
+                    // source of truth for "what next".
+                    const userPrompt = messages[messages.length - 2]?.text ?? '';
+                    const asset: AssetRef | undefined = last.media?.url
+                      ? {
+                          id: last.id,
+                          kind: last.media.kind === 'code' ? 'code' : last.media.kind,
+                          url: last.media.url,
+                          html: last.media.html,
+                          language: last.media.language,
+                          poster: last.media.poster,
+                          prompt: userPrompt,
+                          createdAt: last.ts,
+                        }
+                      : last.media?.kind === 'code' && last.media.html
+                        ? { id: last.id, kind: 'code', html: last.media.html, language: last.media.language, prompt: userPrompt, createdAt: last.ts }
+                        : undefined;
+                    const response: ServiceResponse = { ok: true, taskId: last.id, asset };
+                    const ctx: PipelineContext = {
+                      locale: localeCode,
+                      assets: asset ? [asset] : [],
+                      lastIntent: last.service,
+                      notes: `last_user_prompt=${userPrompt.slice(0, 200)};`,
+                    };
+                    const actions = buildSuggestedActions(response, ctx);
                     return (
-                      <SuggestedFollowups
-                        locale={localeCode}
-                        service={last.service ?? 'chat'}
-                        onPick={(p) => void send(p)}
+                      <SuggestedActionRow
+                        actions={actions}
+                        onDispatch={(a) => dispatchAction(a)}
                       />
                     );
                   })()}
@@ -1111,6 +1233,32 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
         )}
       </AnimatePresence>
     </main>
+  );
+}
+
+// ─── SuggestedActionRow — orchestrator-driven chip row below replies ─────────
+// Renders the JSON contract from buildSuggestedActions() as a flex-wrap of
+// tappable chips. Primary chips get the white-on-black emphasis treatment.
+
+function SuggestedActionRow({ actions, onDispatch }: { actions: SuggestedAction[]; onDispatch: (a: SuggestedAction) => void }) {
+  if (!actions.length) return null;
+  return (
+    <div className="flex flex-wrap gap-2 pt-1 pl-1">
+      {actions.map(a => (
+        <button
+          key={`${a.action}-${a.label}`}
+          type="button"
+          onClick={() => onDispatch(a)}
+          className={`inline-flex items-center px-3 py-1.5 rounded-full text-[12px] transition ${
+            a.primary
+              ? 'bg-white text-black font-semibold hover:bg-white/90'
+              : 'bg-black border border-white/[0.10] text-white/85 font-medium hover:border-white/[0.22] hover:bg-white/[0.04]'
+          }`}
+        >
+          {a.label}
+        </button>
+      ))}
+    </div>
   );
 }
 
