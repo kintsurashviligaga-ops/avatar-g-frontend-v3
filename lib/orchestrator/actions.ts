@@ -53,29 +53,33 @@ export function buildSuggestedActions(
       ];
     }
     case 'video': {
-      // Video → add another 6s segment, assemble final, add music / voiceover
-      const hasComposition = !!context.composition && context.composition.segments.length > 0;
+      // Video → camera-motion presets (one-tap variants) + 6s editor controls
+      // + audio layers. Camera-motion chips emit ADD_VIDEO_SEGMENT with a
+      // prompt suffix so the UI handler doesn't need to know motion strings.
+      const basePrompt = (asset.prompt ?? '').trim();
+      const motion = (suffix: string) => basePrompt ? `${basePrompt}, ${suffix}` : suffix;
       const out: SuggestedAction[] = [...base];
-      out.push({
-        label: t('ახალი 6წ კლიპი', 'Add 6s clip', 'Добавить 6с клип'),
-        action: 'ADD_VIDEO_SEGMENT',
-        payload: { prompt: asset.prompt ?? '' },
-      });
-      if (hasComposition && (context.composition?.segments.length ?? 0) >= 2) {
+      out.push(
+        { label: t('კამერა: Zoom In', 'Camera: Zoom In', 'Камера: Zoom In'),
+          action: 'ADD_VIDEO_SEGMENT', payload: { prompt: motion('slow cinematic zoom in') } },
+        { label: t('კამერა: Pan',     'Camera: Pan',     'Камера: Pan'),
+          action: 'ADD_VIDEO_SEGMENT', payload: { prompt: motion('smooth horizontal pan') } },
+        { label: t('კამერა: Static',  'Camera: Static',  'Камера: Static'),
+          action: 'ADD_VIDEO_SEGMENT', payload: { prompt: motion('locked-off static camera') } },
+      );
+      const segCount = context.composition?.segments.length ?? 0;
+      if (segCount >= 2) {
         out.push({
-          label: t('აწყობა', 'Assemble', 'Собрать'),
-          action: 'ASSEMBLE_VIDEO',
-          primary: true,
+          label: t(`აწყობა (${segCount} კლიპი)`, `Assemble (${segCount} clips)`, `Собрать (${segCount})`),
+          action: 'ASSEMBLE_VIDEO', primary: true,
         });
       }
-      out.push({
-        label: t('მუსიკის დადება', 'Add music', 'Добавить музыку'),
-        action: 'ADD_MUSIC', payload: { prompt: t('ფონური მუსიკა', 'Background music', 'Фоновая музыка') },
-      });
-      out.push({
-        label: t('ვოის-ოვერი', 'Add voiceover', 'Озвучка'),
-        action: 'ADD_VOICEOVER', payload: { text: asset.prompt ?? '' },
-      });
+      out.push(
+        { label: t('მუსიკის დადება', 'Add music',     'Музыка'),
+          action: 'ADD_MUSIC',     payload: { prompt: t('ფონური მუსიკა', 'Background music', 'Фоновая музыка') } },
+        { label: t('ვოის-ოვერი',     'Add voiceover', 'Озвучка'),
+          action: 'ADD_VOICEOVER', payload: { text: basePrompt } },
+      );
       return out;
     }
     case 'audio': {

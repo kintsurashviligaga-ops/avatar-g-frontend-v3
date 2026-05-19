@@ -53,7 +53,6 @@ import {
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import InlineMedia, { detectInlineMedia } from '@/components/dashboard/command-center/InlineMedia';
-import PreviewCanvas, { type PreviewMedia } from '@/components/chat/PreviewCanvas';
 import { buildSuggestedActions } from '@/lib/orchestrator/actions';
 import type { AssetRef, PipelineContext, ServiceResponse, SuggestedAction } from '@/lib/orchestrator/types';
 import VoiceLab from '@/components/voice/VoiceLab';
@@ -251,55 +250,54 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [listening, setListening] = useState(false);
-  const [latestMedia, setLatestMedia] = useState<PreviewMedia | null>(null);
-  const [mobileView, setMobileView] = useState<'chat' | 'preview'>('chat');
+  // (Removed: latestMedia + mobileView — previews are now inline-only.)
   const [attachment, setAttachment] = useState<{ name: string; type: string; base64: string; previewUrl: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+
+  // Session-recovery: persist the pending attachment to localStorage so a
+  // page reload doesn't drop the file the user was about to send. Cleared
+  // on successful dispatch or manual remove.
+  useEffect(() => {
+    if (typeof localStorage === 'undefined') return;
+    try {
+      const raw = localStorage.getItem('myavatar-attachment');
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as { name: string; type: string; base64: string; previewUrl: string };
+      if (parsed?.base64 && parsed?.type) setAttachment(parsed);
+    } catch { /* ignore */ }
+  }, []);
+  useEffect(() => {
+    if (typeof localStorage === 'undefined') return;
+    try {
+      if (attachment) localStorage.setItem('myavatar-attachment', JSON.stringify(attachment));
+      else localStorage.removeItem('myavatar-attachment');
+    } catch { /* quota — ignore */ }
+  }, [attachment]);
   const [sessionId, setSessionId] = useState<string>(() => mkId());
   const [sessions, setSessions] = useState<ChatSessionMeta[]>([]);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const endRef = useRef<HTMLDivElement | null>(null);
   const recognitionRef = useRef<unknown>(null);
 
-  // Surface the most recent assistant-side media into the preview canvas.
-  // Detect both explicit `media` payloads and inline-detected media URLs.
-  // On mobile, when a NEW media arrives (id changes), auto-switch the
-  // Chat/Preview tab toggle to the Preview pane so the user immediately
-  // sees their full-size creation without having to tap the tab.
+  // Inline-only: when a new media-bearing assistant message lands, smoothly
+  // scroll it into view so it's immediately framed in the chat viewport.
   const prevMediaIdRef = useRef<string | null>(null);
   useEffect(() => {
     for (let i = messages.length - 1; i >= 0; i--) {
       const m = messages[i];
       if (!m || m.role !== 'assistant' || m.pending) continue;
-      const userPrompt = i > 0 ? messages[i - 1]?.text : '';
-      let next: PreviewMedia | null = null;
-      if (m.media) {
-        next = {
-          id: m.id,
-          kind: m.media.kind,
-          url: m.media.url,
-          html: m.media.html,
-          language: m.media.language,
-          poster: m.media.poster,
-          prompt: userPrompt,
-        };
-      } else {
-        const detected = detectInlineMedia(m.text);
-        if (detected) next = { id: m.id, kind: detected.kind, url: detected.url, prompt: userPrompt };
+      const hasMedia = m.media?.url || m.media?.html || detectInlineMedia(m.text);
+      if (!hasMedia) continue;
+      if (prevMediaIdRef.current !== m.id) {
+        prevMediaIdRef.current = m.id;
+        // Defer to next tick so the DOM node exists before scrolling.
+        requestAnimationFrame(() => {
+          const node = document.querySelector(`[data-msg-id="${m.id}"]`);
+          node?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        });
       }
-      if (next) {
-        setLatestMedia(next);
-        // Mobile auto-switch: only when this is a brand-new media (different
-        // id) — avoids flipping the view on every messages re-render.
-        if (prevMediaIdRef.current !== next.id) {
-          prevMediaIdRef.current = next.id;
-          if (typeof window !== 'undefined' && window.matchMedia('(max-width: 1023px)').matches) {
-            setMobileView('preview');
-          }
-        }
-        return;
-      }
+      return;
     }
   }, [messages]);
 
@@ -696,7 +694,6 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
       }
       case 'CLEAR': {
         setMessages([]);
-        setLatestMedia(null);
         return;
       }
       case 'ADD_VIDEO_SEGMENT': {
@@ -729,56 +726,24 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
     }
   }, [messages, send]);
 
-  // Promote a specific message's media into the dedicated preview canvas
-  // and (on mobile) switch to the Preview tab so the user sees it big.
+  // Inline-only: "Open in preview" now scrolls the inline media into view.
+  // The per-bubble click-to-lightbox in InlineMedia handles fullscreen.
   const onOpenInPreview = useCallback((m: ChatMessage) => {
-    const idx = messages.findIndex(x => x.id === m.id);
-    const userPrompt = idx > 0 ? messages[idx - 1]?.text ?? '' : '';
-    if (m.media) {
-      setLatestMedia({
-        id: m.id,
-        kind: m.media.kind,
-        url: m.media.url,
-        html: m.media.html,
-        language: m.media.language,
-        poster: m.media.poster,
-        prompt: userPrompt,
-      });
-    } else {
-      const d = detectInlineMedia(m.text);
-      if (d) setLatestMedia({ id: m.id, kind: d.kind, url: d.url, prompt: userPrompt });
-    }
-    if (typeof window !== 'undefined' && window.matchMedia('(max-width: 1023px)').matches) {
-      setMobileView('preview');
-    }
-  }, [messages]);
+    const node = document.querySelector(`[data-msg-id="${m.id}"]`);
+    node?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, []);
 
   const hasMessages = messages.length > 0;
 
-  // Surface the live pending generation into the preview canvas. Skip chat
-  // (text-only) — the canvas only renders media. The pending TEXT is
-  // refreshed by the runners via tickPending().
-  const pendingPreview = (() => {
-    const p = messages.find(m => m.role === 'assistant' && m.pending);
-    if (!p) return null;
-    const service = p.service;
-    if (!service || service === 'chat') return null;
-    const kindMap: Record<Exclude<ServiceId, 'chat'>, 'image' | 'video' | 'audio' | 'code'> = {
-      image: 'image', video: 'video', music: 'audio', voice: 'audio',
-      avatar: 'video', interior: 'image', app: 'code',
-    };
-    return { service: kindMap[service], text: p.text };
-  })();
-
   return (
     <main
-      className="fixed inset-0 z-[5] flex flex-col lg:flex-row bg-black text-white antialiased overflow-hidden"
+      className="fixed inset-0 z-[5] flex flex-col bg-black text-white antialiased overflow-hidden"
       style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)', fontFamily: 'var(--font-geist, var(--font-ui, system-ui))' }}
     >
       {/* Pure pitch black — no background visuals per user spec */}
 
       {/* ── Chat column (full width mobile, 60% desktop) ─────────────────── */}
-      <div className="relative flex flex-col flex-1 min-h-0 lg:w-[60%] lg:max-w-[60%]">
+      <div className="relative flex flex-col flex-1 min-h-0 w-full">
 
       {/* ── TopBar ──────────────────────────────────────────────────────── */}
       <header className="relative z-10 flex items-center justify-between px-4 pt-3 pb-2 flex-shrink-0">
@@ -828,45 +793,13 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
         </button>
       </header>
 
-      {/* ── Mobile-only Chat / Preview tab bar (lg:hidden) ─────────────────
-          Desktop already shows both panes side-by-side; on mobile users
-          switch between the chat surface and the preview canvas with this
-          two-tab toggle, per the One Window brief.                     */}
-      {activeView === 'chat' && (
-        <div className="lg:hidden relative z-10 px-3 pb-2 flex-shrink-0">
-          <div className="inline-flex items-center gap-0.5 bg-black border border-white/[0.10] rounded-full p-0.5">
-            <button
-              type="button"
-              onClick={() => setMobileView('chat')}
-              className={`px-3.5 py-1 rounded-full text-[12px] font-semibold transition ${
-                mobileView === 'chat' ? 'bg-white text-black' : 'text-white/65'
-              }`}
-            >
-              {localeCode === 'ka' ? 'ჩატი' : 'Chat'}
-            </button>
-            <button
-              type="button"
-              onClick={() => setMobileView('preview')}
-              className={`px-3.5 py-1 rounded-full text-[12px] font-semibold transition inline-flex items-center gap-1 ${
-                mobileView === 'preview' ? 'bg-white text-black' : 'text-white/65'
-              }`}
-            >
-              {localeCode === 'ka' ? 'პრევიუ' : 'Preview'}
-              {latestMedia && mobileView !== 'preview' && <span className="h-1.5 w-1.5 rounded-full bg-violet-300" />}
-            </button>
-          </div>
-        </div>
-      )}
+      {/* All previews now render INLINE inside the message bubbles
+          (InlineMedia + InlinePreviewOverlay). No side panel, no
+          Chat/Preview tab — per the latest brief, the chat IS the
+          preview surface. */}
 
       {/* ── Body with view switcher (AnimatePresence fade) ──────────────── */}
       <div className="relative z-10 flex-1 min-h-0 flex flex-col">
-        {/* Mobile preview takeover — only on <lg; desktop always sees chat body */}
-        {activeView === 'chat' && mobileView === 'preview' && (
-          <div className="lg:hidden absolute inset-0 z-[3] bg-black">
-            <PreviewCanvas variant="mobile" media={latestMedia} pending={pendingPreview} locale={localeCode} onClear={() => setLatestMedia(null)} />
-          </div>
-        )}
-
         <AnimatePresence mode="wait">
           {activeView === 'chat' && (
             <motion.div
@@ -972,7 +905,7 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
 
       {/* ── Bottom input — only on chat view, and hidden when mobile previews are active */}
       {activeView === 'chat' && (
-        <div className={`relative z-10 flex-shrink-0 px-3 pb-3 pt-2 bg-black ${mobileView === 'preview' ? 'hidden lg:block' : ''}`}>
+        <div className="relative z-10 flex-shrink-0 px-3 pb-3 pt-2 bg-black">
           <div className="flex gap-2 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {PILLS.map(p => (
               <button
@@ -1081,13 +1014,9 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
       {/* ── /Chat column ─────────────────────────────────────────────────── */}
       </div>
 
-      {/* ── Right preview canvas (desktop only) ──────────────────────────── */}
-      <PreviewCanvas
-        media={latestMedia}
-        pending={pendingPreview}
-        locale={localeCode}
-        onClear={() => setLatestMedia(null)}
-      />
+      {/* Inline-only: the right preview canvas was removed per the
+          Inline-Preview brief. Big-format viewing now happens via the
+          message-bubble's inline media + click-to-lightbox flow. */}
 
       {/* ── Left drawer — VIEW SWITCHER (in-place, never redirects) ─────── */}
       <AnimatePresence>
@@ -1904,16 +1833,34 @@ function localizedError(raw: unknown, locale: Locale): string {
 }
 
 /**
- * fetch with an AbortController timeout + a single retry on transient 5xx.
- * Caller can pass their own signal — combined via AbortSignal.any if both
- * are provided (with a tiny shim for older Safari that lacks it).
+ * fetch with an AbortController timeout + exponential-backoff retry on
+ * transient 5xx and 429. Caller can pass their own signal — composed
+ * with the inner timeout so either path aborts cleanly.
+ *
+ * Retry schedule: up to `maxAttempts` total attempts (default 3) with
+ * `baseDelayMs * 2^(attempt-1)` between them, jittered ±25 %, capped
+ * at 10 s per pause. Status codes the loop retries on: 408, 425,
+ * 429, 500, 502, 503, 504. Other failures bail immediately.
  */
 async function fetchWithRetry(
   url: string,
   init: RequestInit = {},
-  opts: { timeoutMs?: number; retryOn5xx?: boolean; signal?: AbortSignal } = {},
+  opts: {
+    timeoutMs?: number;
+    retryOn5xx?: boolean;
+    signal?: AbortSignal;
+    maxAttempts?: number;
+    baseDelayMs?: number;
+  } = {},
 ): Promise<Response> {
-  const { timeoutMs = 60_000, retryOn5xx = true, signal: outerSignal } = opts;
+  const {
+    timeoutMs = 60_000,
+    retryOn5xx = true,
+    signal: outerSignal,
+    maxAttempts = 3,
+    baseDelayMs = 600,
+  } = opts;
+  const transient = new Set([408, 425, 429, 500, 502, 503, 504]);
   const attempt = async (): Promise<Response> => {
     const ctl = new AbortController();
     const t = setTimeout(() => ctl.abort(new DOMException('timeout', 'AbortError')), timeoutMs);
@@ -1929,12 +1876,24 @@ async function fetchWithRetry(
       outerSignal?.removeEventListener('abort', onOuter);
     }
   };
-  let res = await attempt();
-  if (retryOn5xx && res.status >= 500 && res.status < 600 && !(outerSignal?.aborted)) {
-    await new Promise(r => setTimeout(r, 1500));
-    res = await attempt();
+  let res: Response | null = null;
+  for (let i = 1; i <= maxAttempts; i++) {
+    try {
+      res = await attempt();
+    } catch (e) {
+      // Outer abort → propagate. Timeout / network → retry if budget left.
+      if (outerSignal?.aborted) throw e;
+      if (i === maxAttempts) throw e;
+    }
+    if (res && (!retryOn5xx || !transient.has(res.status))) return res;
+    if (i === maxAttempts) break;
+    if (outerSignal?.aborted) break;
+    const delay = Math.min(10_000, baseDelayMs * 2 ** (i - 1));
+    const jittered = delay * (0.75 + Math.random() * 0.5);
+    await new Promise(r => setTimeout(r, jittered));
   }
-  return res;
+  // Last response (still transient) returned to the caller for normal handling.
+  return res as Response;
 }
 
 /** Update the pending message's text in place — used for progress ticks. */
@@ -1955,19 +1914,67 @@ async function runChat(text: string, history: ChatMessage[], pendingId: string, 
         ],
       }
     : { role: 'user', content: text };
-  const res = await fetch('/api/chat/gemini', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ messages: [...trimmed, lastMessage] }),
-    signal,
-  });
-  if (!res.ok || !res.body) throw new Error('Chat failed');
+
+  // Chat is its own streaming SSE; we cannot use fetchWithRetry (which would
+  // consume the whole body). Instead: wrap fetch in an outer AbortController
+  // that fires if the stream goes idle for >25 s — that's the "Stream idle
+  // timeout" the user was seeing in the wild.
+  const idleAbort = new AbortController();
+  const combined = new AbortController();
+  const onOuter = () => combined.abort(signal?.reason);
+  signal?.addEventListener('abort', onOuter, { once: true });
+  const onIdle = () => combined.abort(new DOMException('idle', 'AbortError'));
+  idleAbort.signal.addEventListener('abort', onIdle, { once: true });
+  let idleTimer: ReturnType<typeof setTimeout> | null = null;
+  const kickIdle = () => {
+    if (idleTimer) clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => idleAbort.abort(), 25_000);
+  };
+
+  // Manual retry loop — exponential backoff on 5xx / 429 / network error
+  // BEFORE the stream starts. Once streaming has begun we never retry
+  // (the model has already produced text that would be lost).
+  let res: Response | null = null;
+  let lastErr: unknown = null;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      kickIdle();
+      res = await fetch('/api/chat/gemini', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: [...trimmed, lastMessage] }),
+        signal: combined.signal,
+      });
+      if (res.ok) break;
+      // Transient → retry. Non-transient (400 / 401 / 413) → bail.
+      const transient = new Set([408, 425, 429, 500, 502, 503, 504]);
+      if (!transient.has(res.status)) break;
+    } catch (e) {
+      lastErr = e;
+      if ((e as Error)?.name === 'AbortError') break;
+    }
+    if (attempt < 3 && !combined.signal.aborted) {
+      const delay = Math.min(10_000, 600 * 2 ** (attempt - 1)) * (0.75 + Math.random() * 0.5);
+      await new Promise(r => setTimeout(r, delay));
+    }
+  }
+  if (idleTimer) clearTimeout(idleTimer);
+  if (!res || !res.ok || !res.body) {
+    if (lastErr && (lastErr as Error)?.name === 'AbortError') throw lastErr;
+    // Surface the server's body when present — much more useful than "Chat failed".
+    let detail = '';
+    try { detail = res ? (await res.text()).slice(0, 200) : ''; } catch { /* ignore */ }
+    throw new Error(res ? `Chat failed (${res.status}) ${detail}`.trim() : 'Chat failed');
+  }
+
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
   let acc = '', buffer = '';
   try {
+    kickIdle();
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
+      kickIdle();
       buffer += decoder.decode(value, { stream: true });
       const lines = buffer.split('\n');
       buffer = lines.pop() ?? '';
@@ -1986,11 +1993,15 @@ async function runChat(text: string, history: ChatMessage[], pendingId: string, 
     }
   } catch (e) {
     if ((e as Error)?.name === 'AbortError') {
-      // Surface what we've streamed so far as the final message and don't rethrow.
+      // Whether it's the user clicking Stop or the idle watchdog firing,
+      // surface whatever streamed so far instead of throwing away the work.
       setMessages(m => m.map(x => x.id === pendingId ? { ...x, pending: false, text: acc || '⏹ შეჩერდა' } : x));
       return;
     }
     throw e;
+  } finally {
+    if (idleTimer) clearTimeout(idleTimer);
+    signal?.removeEventListener('abort', onOuter);
   }
   if (!acc) throw new Error('Empty response');
 }

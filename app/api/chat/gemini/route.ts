@@ -9,7 +9,11 @@ import { embed } from '@/lib/memory/embed';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
-export const maxDuration = 60;
+// Vision (multimodal) requests can take significantly longer for large
+// photos. 120 s gives Gemini room to analyse + start streaming before
+// any function timeout interrupts the connection (the "Stream idle
+// timeout" symptom the user was seeing).
+export const maxDuration = 120;
 
 // ─── 1. SYSTEM PROMPT ────────────────────────────────────────────────────────
 // Agent G persona: expert creative director, Georgian-first, Markdown-rich.
@@ -27,7 +31,12 @@ CHAT INTERFACE — OPERATING RULES:
 
 // ─── 2. SECURITY GUARD ───────────────────────────────────────────────────────
 
-const MAX_BODY_BYTES = 512_000; // 512 KB — prevents abuse via oversized payloads
+// Body size cap. Pure-text chat fits easily under 200 KB; multimodal
+// vision requests carry a base64-encoded image (≈1.33× the raw bytes)
+// so we raise the cap to 16 MB to comfortably accept a ~12 MB photo
+// while still rejecting obvious abuse. The Paperclip picker caps the
+// raw file at 8 MB upstream.
+const MAX_BODY_BYTES = 16_000_000;
 
 function getGeminiClient() {
   const apiKey = process.env.GEMINI_API_KEY ?? process.env.GOOGLE_GENERATIVE_AI_API_KEY ?? '';
@@ -213,7 +222,7 @@ export async function POST(req: NextRequest) {
   const contentLength = Number(req.headers.get('content-length') ?? 0);
   if (contentLength > MAX_BODY_BYTES) {
     return new Response(
-      JSON.stringify({ error: 'Request body too large (max 512 KB)' }),
+      JSON.stringify({ error: 'Request body too large (max 16 MB)' }),
       { status: 413, headers: { 'Content-Type': 'application/json' } },
     );
   }
