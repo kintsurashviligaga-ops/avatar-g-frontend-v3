@@ -6,6 +6,7 @@ import { TopNavbar, SidebarMenu, BottomNavigation } from './shell/ModernShell';
 import { ClientErrorBoundary } from './ClientErrorBoundary';
 import { FloatingChatButton } from './chat/FloatingChatButton';
 import { PageEnvironment } from './ui/PageEnvironment';
+import CookieConsent from './CookieConsent';
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -128,6 +129,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </main>
       {!hideShellChrome && <BottomNavigation />}
       {!hideShellChrome && <FloatingChatButton />}
+      <CookieConsent />
     </div>
   );
 }

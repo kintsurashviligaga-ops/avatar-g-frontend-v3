@@ -70,6 +70,12 @@ const nextConfig = {
     // Lint is run separately in CI; skip during `next build` to avoid OOM on large codebases
     ignoreDuringBuilds: true,
   },
+  // Strip console.* in production except error/warn — keeps Sentry-routed
+  // reportError() noise out of the browser dev console while preserving
+  // genuine failure logs that operators still want visible.
+  compiler: isDev ? undefined : {
+    removeConsole: { exclude: ['error', 'warn'] },
+  },
   staticPageGenerationTimeout: 180,
   // Compress responses
   compress: true,

@@ -29,6 +29,7 @@ import {
   User as UserIcon,
   Mic,
   Send,
+  Paperclip,
   Image as ImageIcon,
   Video as VideoIcon,
   Music as MusicIcon,
@@ -207,6 +208,9 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
   const [profileOpen, setProfileOpen] = useState(false);
   const [listening, setListening] = useState(false);
   const [latestMedia, setLatestMedia] = useState<PreviewMedia | null>(null);
+  const [mobileView, setMobileView] = useState<'chat' | 'preview'>('chat');
+  const [attachment, setAttachment] = useState<{ name: string; type: string; base64: string; previewUrl: string } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const endRef = useRef<HTMLDivElement | null>(null);
   const recognitionRef = useRef<unknown>(null);
@@ -260,6 +264,28 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
   //    Safari users — where SpeechRecognition is unreliable — get the same UX.
   //    Append transcript to current input rather than overwriting, so the user
   //    can mix typing and speech.
+  // Attach an image — currently only used by the Avatar specialist (HeyGen's
+  // talking-photo flow). Other services accept the message text only and the
+  // attachment is silently dropped.
+  const onPickFile = useCallback(() => {
+    fileInputRef.current?.click();
+  }, []);
+  const onFileChosen = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    e.target.value = ''; // allow re-picking the same file
+    if (!f) return;
+    if (!f.type.startsWith('image/')) return;
+    if (f.size > 8 * 1024 * 1024) return; // 8 MB hard cap, prevents huge base64 strings
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = String(reader.result ?? '');
+      const base64 = result.includes(',') ? result.split(',')[1] ?? '' : result;
+      setAttachment({ name: f.name, type: f.type, base64, previewUrl: result });
+    };
+    reader.readAsDataURL(f);
+  }, []);
+  const clearAttachment = useCallback(() => setAttachment(null), []);
+
   const toggleVoiceInput = useCallback(async () => {
     type SpeechRecognitionLike = {
       lang: string;
@@ -378,7 +404,10 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
       else if (service === 'video')   await runVideo(trimmed, pendingId, setMessages);
       else if (service === 'music')   await runMusic(trimmed, pendingId, setMessages);
       else if (service === 'voice')   await runVoice(trimmed, pendingId, setMessages);
-      else if (service === 'avatar')  await runAvatar(trimmed, pendingId, setMessages);
+      else if (service === 'avatar')  {
+        await runAvatar(trimmed, pendingId, setMessages, attachment?.base64, attachment?.type);
+        setAttachment(null);
+      }
       else if (service === 'interior') await runInterior(trimmed, pendingId, setMessages);
       else if (service === 'app')     await runApp(trimmed, pendingId, setMessages);
     } catch (err) {
@@ -387,7 +416,7 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
     } finally {
       setSending(false);
     }
-  }, [mode, sending, messages, localeCode]);
+  }, [mode, sending, messages, localeCode, attachment]);
 
   const handleKey = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -496,8 +525,45 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
         </button>
       </header>
 
+      {/* ── Mobile-only Chat / Preview tab bar (lg:hidden) ─────────────────
+          Desktop already shows both panes side-by-side; on mobile users
+          switch between the chat surface and the preview canvas with this
+          two-tab toggle, per the One Window brief.                     */}
+      {activeView === 'chat' && (
+        <div className="lg:hidden relative z-10 px-3 pb-2 flex-shrink-0">
+          <div className="inline-flex items-center gap-0.5 bg-black border border-white/[0.10] rounded-full p-0.5">
+            <button
+              type="button"
+              onClick={() => setMobileView('chat')}
+              className={`px-3.5 py-1 rounded-full text-[12px] font-semibold transition ${
+                mobileView === 'chat' ? 'bg-white text-black' : 'text-white/65'
+              }`}
+            >
+              {localeCode === 'ka' ? 'ჩატი' : 'Chat'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setMobileView('preview')}
+              className={`px-3.5 py-1 rounded-full text-[12px] font-semibold transition inline-flex items-center gap-1 ${
+                mobileView === 'preview' ? 'bg-white text-black' : 'text-white/65'
+              }`}
+            >
+              {localeCode === 'ka' ? 'პრევიუ' : 'Preview'}
+              {latestMedia && mobileView !== 'preview' && <span className="h-1.5 w-1.5 rounded-full bg-violet-300" />}
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* ── Body with view switcher (AnimatePresence fade) ──────────────── */}
       <div className="relative z-10 flex-1 min-h-0 flex flex-col">
+        {/* Mobile preview takeover — only on <lg; desktop always sees chat body */}
+        {activeView === 'chat' && mobileView === 'preview' && (
+          <div className="lg:hidden absolute inset-0 z-[3] bg-black">
+            <PreviewCanvas variant="mobile" media={latestMedia} locale={localeCode} onClear={() => setLatestMedia(null)} />
+          </div>
+        )}
+
         <AnimatePresence mode="wait">
           {activeView === 'chat' && (
             <motion.div
@@ -563,9 +629,9 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
         </AnimatePresence>
       </div>
 
-      {/* ── Bottom input — only on chat view ────────────────────────────── */}
+      {/* ── Bottom input — only on chat view, and hidden when mobile previews are active */}
       {activeView === 'chat' && (
-        <div className="relative z-10 flex-shrink-0 px-3 pb-3 pt-2 bg-black">
+        <div className={`relative z-10 flex-shrink-0 px-3 pb-3 pt-2 bg-black ${mobileView === 'preview' ? 'hidden lg:block' : ''}`}>
           <div className="flex gap-2 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {PILLS.map(p => (
               <button
@@ -582,6 +648,23 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
           </div>
 
           <div className="rounded-3xl bg-black border border-white/[0.10] overflow-hidden focus-within:border-white/[0.22] transition">
+            {attachment && (
+              <div className="px-3 pt-3 -mb-1">
+                <div className="inline-flex items-center gap-2 max-w-full pl-1 pr-2 py-1 rounded-full bg-white/[0.05] border border-white/[0.10] text-[11px] text-white/85">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={attachment.previewUrl} alt="" className="h-6 w-6 rounded-full object-cover" />
+                  <span className="truncate max-w-[180px]">{attachment.name}</span>
+                  <button
+                    type="button"
+                    onClick={clearAttachment}
+                    aria-label="Remove attachment"
+                    className="h-5 w-5 rounded-full hover:bg-white/[0.10] flex items-center justify-center text-white/65 hover:text-white transition"
+                  >
+                    <X size={11} />
+                  </button>
+                </div>
+              </div>
+            )}
             <textarea
               ref={inputRef}
               value={input}
@@ -593,7 +676,23 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
               className="w-full bg-transparent border-none outline-none resize-none px-4 pt-3 pb-1 text-[15px] text-white placeholder:text-[#94A3B8]"
               style={{ minHeight: 24, maxHeight: 140 }}
             />
-            <div className="flex items-center justify-end px-2 py-1.5">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              hidden
+              onChange={onFileChosen}
+            />
+            <div className="flex items-center justify-between px-2 py-1.5">
+              <button
+                type="button"
+                aria-label="Attach image"
+                onClick={onPickFile}
+                title={localeCode === 'ka' ? 'სურათის მიმაგრება (ავატარისთვის)' : 'Attach image (for Avatar)'}
+                className="h-9 w-9 rounded-full hover:bg-white/[0.06] flex items-center justify-center text-[#94A3B8] hover:text-white transition"
+              >
+                <Paperclip size={16} />
+              </button>
               <div className="flex items-center gap-1">
                 <button
                   type="button"
@@ -1093,13 +1192,24 @@ function SystemStatusDrawer({
     };
   }, []);
 
-  // Light-weight chat-route reachability check (no auth, fast OPTIONS preflight).
+  // Live per-category provider health from /api/health/public (cached 60s server-side).
+  type Bucket = 'ok' | 'degraded' | 'down' | 'unconfigured';
+  type Category = 'chat' | 'image' | 'video' | 'music' | 'voice' | 'avatar';
+  const [providerSnapshot, setProviderSnapshot] = useState<Record<Category, Bucket> | null>(null);
+
   useEffect(() => {
     let cancelled = false;
     void (async () => {
       try {
-        const r = await fetch('/api/chat/gemini', { method: 'OPTIONS' });
-        if (!cancelled) setProvidersReachable(r.ok || r.status === 204);
+        const r = await fetch('/api/health/public');
+        if (!r.ok) {
+          if (!cancelled) setProvidersReachable(false);
+          return;
+        }
+        const j = await r.json() as { online?: boolean; categories?: Record<Category, Bucket> };
+        if (cancelled) return;
+        setProvidersReachable(j.online === true);
+        if (j.categories) setProviderSnapshot(j.categories);
       } catch {
         if (!cancelled) setProvidersReachable(false);
       }
@@ -1140,19 +1250,44 @@ function SystemStatusDrawer({
           </div>
         </section>
 
-        {/* System status (real signal: navigator.onLine + chat-route reachability) */}
+        {/* System status — live per-category buckets from /api/health/public */}
         <section className="rounded-2xl p-4 bg-black border border-white/[0.10]">
-          <div className="text-[10px] font-bold tracking-wider uppercase text-[#94A3B8] mb-2">
-            {locale === 'ka' ? 'სისტემის სტატუსი' : 'System Status'}
-          </div>
-          <div className="flex items-center gap-2 text-[13px] text-white">
+          <div className="flex items-center justify-between mb-3">
+            <div className="text-[10px] font-bold tracking-wider uppercase text-[#94A3B8]">
+              {locale === 'ka' ? 'სისტემის სტატუსი' : 'System Status'}
+            </div>
             <span className={`h-2 w-2 rounded-full ${statusOk ? 'bg-emerald-400 animate-pulse' : 'bg-rose-400'}`} />
-            {statusOk
-              ? (locale === 'ka' ? 'სერვისები ხელმისაწვდომია' : 'Services reachable')
-              : !online
-                ? (locale === 'ka' ? 'ინტერნეტი გათიშულია' : 'You are offline')
-                : (locale === 'ka' ? 'AI პროვაიდერი მიუწვდომელია' : 'AI provider unreachable')}
           </div>
+          {!online ? (
+            <div className="text-[13px] text-rose-300">
+              {locale === 'ka' ? 'ინტერნეტი გათიშულია' : 'You are offline'}
+            </div>
+          ) : providerSnapshot ? (
+            <div className="grid grid-cols-2 gap-1.5">
+              {(['chat','image','video','music','voice','avatar'] as Category[]).map(cat => {
+                const b = providerSnapshot[cat];
+                const dot = b === 'ok' ? 'bg-emerald-400' : b === 'down' ? 'bg-rose-400' : b === 'degraded' ? 'bg-amber-400' : 'bg-white/25';
+                const labels: Record<Category, [string, string]> = {
+                  chat:   ['ჩატი',     'Chat'],
+                  image:  ['სურათი',   'Image'],
+                  video:  ['ვიდეო',    'Video'],
+                  music:  ['მუსიკა',   'Music'],
+                  voice:  ['ხმა',      'Voice'],
+                  avatar: ['ავატარი',  'Avatar'],
+                };
+                return (
+                  <div key={cat} className="flex items-center gap-1.5 text-[12px] text-white/80">
+                    <span className={`h-1.5 w-1.5 rounded-full ${dot}`} />
+                    {locale === 'ka' ? labels[cat][0] : labels[cat][1]}
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="text-[13px] text-white/55">
+              {locale === 'ka' ? 'შემოწმება...' : 'Checking…'}
+            </div>
+          )}
         </section>
 
         {/* Sign out (if authed) */}
@@ -1311,10 +1446,16 @@ async function runVoice(text: string, pendingId: string, setMessages: Setter) {
   patchMessage(setMessages, pendingId, { text: '', media: { kind: 'audio', url } });
 }
 
-async function runAvatar(script: string, pendingId: string, setMessages: Setter) {
+async function runAvatar(
+  script: string,
+  pendingId: string,
+  setMessages: Setter,
+  photoBase64?: string,
+  photoMimeType?: string,
+) {
   const start = await fetch('/api/heygen/avatar', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ script }),
+    body: JSON.stringify(photoBase64 ? { script, photoBase64, photoMimeType } : { script }),
   });
   const startData = await start.json() as { videoId?: string; error?: string };
   if (!startData.videoId) throw new Error(startData.error || 'Avatar failed');

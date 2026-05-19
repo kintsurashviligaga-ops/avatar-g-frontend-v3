@@ -87,19 +87,19 @@ export const metadata: Metadata = {
 		type: "website",
 		locale: "ka_GE",
 		url: metadataBaseUrl,
-		siteName: "Avatar G",
+		siteName: "MyAvatar",
 		images: [{
-			url: "/brand/logo-primary-transparent.png",
-			width: 512,
-			height: 512,
-			alt: "Avatar G - AI მედია პლატფორმა"
+			url: "/og-image.png",
+			width: 1200,
+			height: 630,
+			alt: "MyAvatar.ge — Georgian AI Studio, one window"
 		}]
 	},
 	twitter: {
 		card: "summary_large_image",
-		title: "Avatar G - AI მედია პლატფორმა",
-		description: "AI მედიის შექმნა Avatar G-სთან ერთად",
-		images: ["/brand/logo-primary-transparent.png"]
+		title: "MyAvatar.ge — AI Chat",
+		description: "Georgian AI creative studio — chat, image, video, music, voice, avatar, interior, app builder in one window.",
+		images: ["/og-image.png"]
 	},
 	robots: {
 		index: true,

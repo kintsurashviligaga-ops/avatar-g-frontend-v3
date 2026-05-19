@@ -1,10 +1,19 @@
 'use client';
 
 import { useEffect } from 'react';
+import { useParams } from 'next/navigation';
+import { AlertTriangle, RotateCcw, ArrowLeft } from 'lucide-react';
+
+const messages: Record<string, { title: string; subtitle: string; retry: string; home: string; details: string }> = {
+  en: { title: 'Something went wrong',     subtitle: 'An unexpected error happened. We were notified automatically.', retry: 'Try again',     home: 'Back home',  details: 'Error details' },
+  ka: { title: 'რაღაც შეცდომა მოხდა',       subtitle: 'მოულოდნელი შეცდომა. ჩვენ ავტომატურად ვიგებთ.',                  retry: 'სცადე თავიდან', home: 'მთავარზე',   details: 'შეცდომის დეტალები' },
+  ru: { title: 'Что-то пошло не так',       subtitle: 'Произошла неожиданная ошибка. Мы получили уведомление автоматически.', retry: 'Повторить', home: 'На главную', details: 'Детали ошибки' },
+};
 
 /**
- * Locale-scoped error boundary.
- * Catches errors inside [locale] pages without losing the root layout shell.
+ * Locale-scoped error boundary. Catches errors inside [locale] pages
+ * without losing the root layout shell. Honest UX — surfaces error
+ * digest for support but never the raw stack trace.
  */
 export default function LocaleError({
   error,
@@ -13,29 +22,46 @@ export default function LocaleError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
+  const params = useParams();
+  const locale = (typeof params?.locale === 'string' ? params.locale : 'ka') as keyof typeof messages;
+  const t = messages[locale] ?? messages['ka'];
+
   useEffect(() => {
+    // Surfaced to Sentry by global error handler in production.
     console.error('[Locale Error Boundary]', error);
   }, [error]);
 
+  if (!t) return null;
+
   return (
-    <div className="min-h-[60vh] flex items-center justify-center px-4">
-      <div className="text-center max-w-md">
-        <h2 className="text-2xl font-bold text-white mb-4">Something went wrong</h2>
-        <p className="text-gray-400 mb-6">
-          {error.message || 'An unexpected error occurred while loading this page.'}
-        </p>
-        <div className="flex gap-3 justify-center">
+    <div className="min-h-screen bg-black text-white flex items-center justify-center px-4">
+      <div className="max-w-md w-full text-center space-y-6">
+        <AlertTriangle size={40} className="text-rose-300/80 mx-auto" />
+        <div>
+          <h2 className="text-xl font-semibold">{t.title}</h2>
+          <p className="mt-2 text-sm text-white/60">{t.subtitle}</p>
+          {error.digest && (
+            <details className="mt-3 text-[11px] text-white/35">
+              <summary className="cursor-pointer hover:text-white/55">{t.details}</summary>
+              <code className="block mt-1 font-mono">{error.digest}</code>
+            </details>
+          )}
+        </div>
+        <div className="flex flex-col sm:flex-row items-stretch gap-2 justify-center">
           <button
+            type="button"
             onClick={reset}
-            className="px-5 py-2.5 rounded-lg bg-[#D4AF37] text-black font-semibold text-sm hover:bg-[#c9a432] transition"
+            className="inline-flex items-center justify-center gap-2 h-11 px-5 rounded-full bg-white text-black text-[14px] font-semibold hover:bg-white/90 transition"
           >
-            Try again
+            <RotateCcw size={16} />
+            {t.retry}
           </button>
           <a
-            href="/"
-            className="px-5 py-2.5 rounded-lg border border-white/20 text-white text-sm font-medium hover:bg-white/5 transition"
+            href={`/${locale}`}
+            className="inline-flex items-center justify-center gap-2 h-11 px-5 rounded-full bg-black border border-white/[0.12] text-white text-[14px] font-medium hover:border-white/[0.22] transition"
           >
-            Go home
+            <ArrowLeft size={16} />
+            {t.home}
           </a>
         </div>
       </div>

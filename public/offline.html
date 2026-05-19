@@ -1,77 +1,70 @@
 <!doctype html>
-<html lang="en">
+<html lang="ka">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>Avatar G - Offline</title>
+    <title>MyAvatar — ოფლაინი / Offline</title>
     <style>
-      :root {
-        color-scheme: dark;
-      }
-      * {
-        box-sizing: border-box;
-      }
-      body {
+      :root { color-scheme: dark; }
+      * { box-sizing: border-box; }
+      html, body {
         margin: 0;
         min-height: 100dvh;
-        min-height: 100vh;
-        display: grid;
-        place-items: center;
-        background: radial-gradient(100% 120% at 50% 0%, #0f172a 0%, #05070a 70%);
-        color: #f8fafc;
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-        padding: 24px;
+        background: #000;
+        color: #fff;
+        font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Noto Sans Georgian', 'Segoe UI', Roboto, sans-serif;
       }
+      body { display: grid; place-items: center; padding: 24px; }
       .card {
-        width: min(420px, 100%);
+        width: min(440px, 100%);
         border-radius: 20px;
-        border: 1px solid rgba(255, 255, 255, 0.12);
-        background: rgba(15, 23, 42, 0.72);
-        backdrop-filter: blur(12px);
-        padding: 20px;
+        border: 1px solid rgba(255, 255, 255, 0.10);
+        background: #000;
+        padding: 28px 24px;
+        text-align: center;
       }
-      h1 {
-        margin: 0 0 8px;
-        font-size: 20px;
+      .glyph {
+        width: 44px; height: 44px; margin: 0 auto 16px;
+        display: grid; place-items: center;
+        border-radius: 50%;
+        background: rgba(244, 63, 94, 0.12);
+        color: #fda4af;
+        font-size: 22px;
       }
-      p {
-        margin: 0;
-        color: rgba(248, 250, 252, 0.78);
-        line-height: 1.5;
-      }
+      h1 { margin: 0 0 6px; font-size: 20px; font-weight: 600; }
+      .sub { margin: 0; color: rgba(255, 255, 255, 0.6); line-height: 1.55; font-size: 14px; }
       .actions {
-        margin-top: 16px;
-        display: flex;
-        gap: 10px;
+        margin-top: 22px; display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;
       }
-      button,
-      a {
+      button, a.btn {
         appearance: none;
         border: 0;
-        border-radius: 12px;
-        padding: 10px 14px;
+        border-radius: 999px;
+        padding: 10px 18px;
         font-weight: 600;
         text-decoration: none;
         cursor: pointer;
+        font-size: 13px;
+        line-height: 1.2;
+        height: 40px;
+        display: inline-flex; align-items: center; gap: 6px;
       }
-      button {
-        background: #22d3ee;
-        color: #020617;
-      }
-      a {
-        background: rgba(255, 255, 255, 0.12);
-        color: #f8fafc;
-      }
+      button { background: #fff; color: #000; }
+      a.btn { background: #000; border: 1px solid rgba(255,255,255,0.16); color: #fff; }
+      a.btn:hover { border-color: rgba(255,255,255,0.30); }
+      .lang { margin-top: 18px; font-size: 11px; color: rgba(255,255,255,0.35); }
     </style>
   </head>
   <body>
     <div class="card">
-      <h1>You are offline</h1>
-      <p>Avatar G could not reach the network. Reconnect and retry to continue your workspace.</p>
+      <div class="glyph">⌁</div>
+      <h1>ინტერნეტი გათიშულია</h1>
+      <p class="sub">MyAvatar ვერ უკავშირდება ქსელს. შეუერთდი და გადატვირთე გვერდი რომ გააგრძელო.</p>
       <div class="actions">
-        <button type="button" onclick="window.location.reload()">Retry</button>
-        <a href="/ka/dashboard">Open Dashboard</a>
+        <button type="button" onclick="window.location.reload()">გადატვირთვა</button>
+        <a class="btn" href="/ka/dashboard">ჩატის გახსნა</a>
       </div>
+      <div class="lang">You are offline · Вы офлайн</div>
     </div>
   </body>
 </html>
