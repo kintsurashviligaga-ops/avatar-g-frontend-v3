@@ -659,6 +659,21 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
 
   const hasMessages = messages.length > 0;
 
+  // Surface the live pending generation into the preview canvas. Skip chat
+  // (text-only) — the canvas only renders media. The pending TEXT is
+  // refreshed by the runners via tickPending().
+  const pendingPreview = (() => {
+    const p = messages.find(m => m.role === 'assistant' && m.pending);
+    if (!p) return null;
+    const service = p.service;
+    if (!service || service === 'chat') return null;
+    const kindMap: Record<Exclude<ServiceId, 'chat'>, 'image' | 'video' | 'audio' | 'code'> = {
+      image: 'image', video: 'video', music: 'audio', voice: 'audio',
+      avatar: 'video', interior: 'image', app: 'code',
+    };
+    return { service: kindMap[service], text: p.text };
+  })();
+
   return (
     <main
       className="fixed inset-0 z-[5] flex flex-col lg:flex-row bg-black text-white antialiased overflow-hidden"
@@ -752,7 +767,7 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
         {/* Mobile preview takeover — only on <lg; desktop always sees chat body */}
         {activeView === 'chat' && mobileView === 'preview' && (
           <div className="lg:hidden absolute inset-0 z-[3] bg-black">
-            <PreviewCanvas variant="mobile" media={latestMedia} locale={localeCode} onClear={() => setLatestMedia(null)} />
+            <PreviewCanvas variant="mobile" media={latestMedia} pending={pendingPreview} locale={localeCode} onClear={() => setLatestMedia(null)} />
           </div>
         )}
 
@@ -947,6 +962,7 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
       {/* ── Right preview canvas (desktop only) ──────────────────────────── */}
       <PreviewCanvas
         media={latestMedia}
+        pending={pendingPreview}
         locale={localeCode}
         onClear={() => setLatestMedia(null)}
       />

@@ -25,7 +25,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Share2, Download, ExternalLink, Code2, Eye, Sparkles, X, Twitter, Facebook, Send as TelegramSend, MessageCircle, Copy as CopyIcon, Check, Play, Pause, Volume2, VolumeX } from 'lucide-react';
+import { Share2, Download, ExternalLink, Code2, Eye, Sparkles, X, Twitter, Facebook, Send as TelegramSend, MessageCircle, Copy as CopyIcon, Check, Play, Pause, Volume2, VolumeX, Loader2 } from 'lucide-react';
 
 export interface PreviewMedia {
   id: string;
@@ -42,6 +42,12 @@ interface PreviewCanvasProps {
   locale: 'ka' | 'en' | 'ru';
   onClear?: () => void;
   variant?: 'desktop' | 'mobile';
+  /**
+   * Optional live pending status. When set, the canvas renders a
+   * skeleton loader + service-specific text instead of the empty state
+   * (or alongside the previous media as a "next is loading" hint).
+   */
+  pending?: { service: PreviewMedia['kind'] | 'video' | 'image' | 'audio' | 'code'; text: string } | null;
 }
 
 type Strings = {
@@ -92,7 +98,7 @@ const COPY: Record<'ka' | 'en' | 'ru', Strings> = {
   },
 };
 
-export default function PreviewCanvas({ media, locale, onClear, variant = 'desktop' }: PreviewCanvasProps) {
+export default function PreviewCanvas({ media, locale, onClear, variant = 'desktop', pending }: PreviewCanvasProps) {
   const t = COPY[locale];
   const containerCls = variant === 'mobile'
     ? 'flex flex-col h-full w-full bg-black'
@@ -120,7 +126,30 @@ export default function PreviewCanvas({ media, locale, onClear, variant = 'deskt
 
       <div className="flex-1 min-h-0 overflow-y-auto px-5 py-5">
         <AnimatePresence mode="wait">
-          {!media ? (
+          {pending ? (
+            <motion.div
+              key="pending"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.18 }}
+              className="h-full flex flex-col items-center justify-center text-center"
+            >
+              <div className="relative mb-5">
+                <div
+                  className="w-28 h-28 rounded-full opacity-30 animate-pulse"
+                  style={{ background: 'radial-gradient(circle at 50% 40%, rgba(167,139,250,0.6) 0%, transparent 70%)', filter: 'blur(8px)' }}
+                />
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <Loader2 size={28} className="text-violet-200 animate-spin" />
+                </div>
+              </div>
+              <p className="text-[14px] font-medium text-white/85">{pending.text}</p>
+              <p className="text-[11px] text-white/40 mt-1">
+                {locale === 'ka' ? 'შეგიძლია ჩატში სხვა მოქმედებაც გააკეთო' : locale === 'ru' ? 'Можно продолжать чат пока ждёте' : 'You can continue chatting while it builds'}
+              </p>
+            </motion.div>
+          ) : !media ? (
             <motion.div
               key="empty"
               initial={{ opacity: 0 }}
@@ -151,6 +180,17 @@ export default function PreviewCanvas({ media, locale, onClear, variant = 'deskt
 // ─── Image ────────────────────────────────────────────────────────────────────
 
 function ImagePanel({ url, prompt, t }: { url: string; prompt: string; t: Strings }) {
+  const [lightbox, setLightbox] = useState(false);
+  useEffect(() => {
+    if (!lightbox) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setLightbox(false); };
+    window.addEventListener('keydown', onKey);
+    document.body.style.overflow = 'hidden';
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      document.body.style.overflow = '';
+    };
+  }, [lightbox]);
   return (
     <motion.div
       initial={{ opacity: 0, y: 8 }}
@@ -159,13 +199,42 @@ function ImagePanel({ url, prompt, t }: { url: string; prompt: string; t: String
       transition={{ duration: 0.25 }}
       className="space-y-3"
     >
-      <div className="relative group rounded-2xl overflow-hidden border border-white/[0.08] bg-white/[0.02]">
+      <button
+        type="button"
+        onClick={() => setLightbox(true)}
+        aria-label="Expand"
+        className="block w-full text-left relative group rounded-2xl overflow-hidden border border-white/[0.08] bg-white/[0.02] cursor-zoom-in"
+      >
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={url} alt={prompt} className="w-full h-auto block" />
         <SocialShareOverlay url={url} prompt={prompt} />
-      </div>
+      </button>
       {prompt && <p className="text-[12px] text-white/50 italic px-1 line-clamp-3">{prompt}</p>}
       <ShareRow url={url} t={t} />
+      <AnimatePresence>
+        {lightbox && (
+          <motion.div
+            key="lightbox"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.18 }}
+            onClick={() => setLightbox(false)}
+            className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-xl flex items-center justify-center p-6 cursor-zoom-out"
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={url} alt={prompt} className="max-w-full max-h-full object-contain rounded-lg" onClick={e => e.stopPropagation()} />
+            <button
+              type="button"
+              aria-label="Close"
+              onClick={() => setLightbox(false)}
+              className="absolute top-4 right-4 h-10 w-10 rounded-full bg-white/[0.08] hover:bg-white/[0.15] border border-white/[0.15] text-white flex items-center justify-center transition"
+            >
+              <X size={18} />
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 }
