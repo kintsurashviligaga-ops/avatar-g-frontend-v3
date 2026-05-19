@@ -552,27 +552,29 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
     abortRef.current = controller;
 
     try {
+      const opts = { localeCode: localeCode as Locale };
       if (service === 'chat')         {
         const visionImg = attachment ? { base64: attachment.base64, mimeType: attachment.type } : undefined;
         await runChat(cleanText, messages, pendingId, setMessages, controller.signal, visionImg);
         if (attachment) setAttachment(null);
       }
-      else if (service === 'image')   await runImage(cleanText, pendingId, setMessages);
-      else if (service === 'video')   await runVideo(cleanText, pendingId, setMessages);
-      else if (service === 'music')   await runMusic(cleanText, pendingId, setMessages);
-      else if (service === 'voice')   await runVoice(cleanText, pendingId, setMessages);
+      else if (service === 'image')   await runImage(cleanText, pendingId, setMessages, controller.signal, opts);
+      else if (service === 'video')   await runVideo(cleanText, pendingId, setMessages, controller.signal, opts);
+      else if (service === 'music')   await runMusic(cleanText, pendingId, setMessages, controller.signal, opts);
+      else if (service === 'voice')   await runVoice(cleanText, pendingId, setMessages, controller.signal, opts);
       else if (service === 'avatar')  {
-        await runAvatar(cleanText, pendingId, setMessages, attachment?.base64, attachment?.type);
+        await runAvatar(cleanText, pendingId, setMessages, attachment?.base64, attachment?.type, controller.signal, opts);
         setAttachment(null);
       }
-      else if (service === 'interior') await runInterior(cleanText, pendingId, setMessages);
-      else if (service === 'app')     await runApp(cleanText, pendingId, setMessages);
+      else if (service === 'interior') await runInterior(cleanText, pendingId, setMessages, controller.signal, opts);
+      else if (service === 'app')     await runApp(cleanText, pendingId, setMessages, controller.signal, opts);
     } catch (err) {
       if ((err as Error)?.name === 'AbortError') {
         // Suppressed — user clicked Stop. runChat handled the message already.
       } else {
-        const msg = err instanceof Error ? err.message : 'შეცდომა';
-        setMessages(m => m.map(x => x.id === pendingId ? { ...x, pending: false, text: `⚠️ ${msg}` } : x));
+        setMessages(m => m.map(x => x.id === pendingId
+          ? { ...x, pending: false, text: localizedError(err, localeCode) }
+          : x));
       }
     } finally {
       setSending(false);
@@ -1702,6 +1704,80 @@ function patchMessage(setMessages: Setter, id: string, patch: Partial<ChatMessag
   setMessages(m => m.map(x => x.id === id ? { ...x, ...patch, pending: false } : x));
 }
 
+// ─── Shared runner helpers ───────────────────────────────────────────────────
+
+type Locale = 'ka' | 'en' | 'ru';
+
+/**
+ * Map raw provider failures to a clear, localized message. The runner
+ * catches an error, calls this, and surfaces the result instead of the
+ * raw "fetch failed" / "500 internal server error" leakage.
+ */
+function localizedError(raw: unknown, locale: Locale): string {
+  const m = (raw instanceof Error ? raw.message : String(raw ?? '')).toLowerCase();
+  const t = (ka: string, en: string, ru: string) => locale === 'ka' ? ka : locale === 'ru' ? ru : en;
+  if (m.includes('abort')) {
+    return t('⏹ შეჩერდა', '⏹ Stopped', '⏹ Остановлено');
+  }
+  if (m.includes('timed out') || m.includes('timeout')) {
+    return t('⏱ პროვაიდერი დროზე გადააცილებდა — სცადე თავიდან.', '⏱ Provider timed out — try again.', '⏱ Тайм-аут провайдера — попробуйте снова.');
+  }
+  if (m.includes('credit') || m.includes('quota') || m.includes('limit')) {
+    return t('💳 კრედიტი ან კვოტა ამოიწურა. Billing-ში დაამატე და სცადე თავიდან.', '💳 Out of credits or quota. Top up in Billing and retry.', '💳 Закончились кредиты или квота. Пополните в Billing.');
+  }
+  if (m.includes('content policy') || m.includes('safety') || m.includes('moderation') || m.includes('nsfw')) {
+    return t('🛡 პროვაიდერმა ეს ბრძანება უარყო პოლიტიკის გამო. სცადე ფრაზის შეცვლა.', '🛡 The provider refused this request under its safety policy. Try rephrasing.', '🛡 Провайдер отклонил запрос по политике безопасности. Перефразируйте.');
+  }
+  if (m.includes('5') && m.includes('failed')) {
+    return t('⚠ პროვაიდერთან დროებითი პრობლემაა — სცადე თავიდან.', '⚠ Transient provider error — try again.', '⚠ Временная ошибка провайдера — попробуйте снова.');
+  }
+  if (m.includes('network') || m.includes('failed to fetch')) {
+    return t('📡 ქსელის შეცდომა. შეამოწმე კავშირი.', '📡 Network error. Check your connection.', '📡 Сетевая ошибка. Проверьте подключение.');
+  }
+  // Fallback — surface the raw message but cap it.
+  const cap = m.slice(0, 140);
+  return t(`⚠ შეცდომა — ${cap}`, `⚠ Error — ${cap}`, `⚠ Ошибка — ${cap}`);
+}
+
+/**
+ * fetch with an AbortController timeout + a single retry on transient 5xx.
+ * Caller can pass their own signal — combined via AbortSignal.any if both
+ * are provided (with a tiny shim for older Safari that lacks it).
+ */
+async function fetchWithRetry(
+  url: string,
+  init: RequestInit = {},
+  opts: { timeoutMs?: number; retryOn5xx?: boolean; signal?: AbortSignal } = {},
+): Promise<Response> {
+  const { timeoutMs = 60_000, retryOn5xx = true, signal: outerSignal } = opts;
+  const attempt = async (): Promise<Response> => {
+    const ctl = new AbortController();
+    const t = setTimeout(() => ctl.abort(new DOMException('timeout', 'AbortError')), timeoutMs);
+    const onOuter = () => ctl.abort(outerSignal?.reason);
+    if (outerSignal) {
+      if (outerSignal.aborted) ctl.abort(outerSignal.reason);
+      else outerSignal.addEventListener('abort', onOuter, { once: true });
+    }
+    try {
+      return await fetch(url, { ...init, signal: ctl.signal });
+    } finally {
+      clearTimeout(t);
+      outerSignal?.removeEventListener('abort', onOuter);
+    }
+  };
+  let res = await attempt();
+  if (retryOn5xx && res.status >= 500 && res.status < 600 && !(outerSignal?.aborted)) {
+    await new Promise(r => setTimeout(r, 1500));
+    res = await attempt();
+  }
+  return res;
+}
+
+/** Update the pending message's text in place — used for progress ticks. */
+function tickPending(setMessages: Setter, pendingId: string, text: string) {
+  setMessages(m => m.map(x => x.id === pendingId ? { ...x, text } : x));
+}
+
 // ─── Specialist runners — one per agent ──────────────────────────────────────
 
 async function runChat(text: string, history: ChatMessage[], pendingId: string, setMessages: Setter, signal?: AbortSignal, image?: { base64: string; mimeType: string }) {
@@ -1755,61 +1831,143 @@ async function runChat(text: string, history: ChatMessage[], pendingId: string, 
   if (!acc) throw new Error('Empty response');
 }
 
-async function runImage(prompt: string, pendingId: string, setMessages: Setter) {
-  const res = await fetch('/api/replicate/image', {
+function detectImageRatio(prompt: string): '1:1' | '16:9' | '9:16' | '4:3' | '3:4' {
+  const p = prompt.toLowerCase();
+  // Portrait cues (KA + EN + RU)
+  if (/\b(portrait|პორტრე|портре|person|face|სახე|лицо|tall|vertical|story|reels?|tiktok|9:16)\b/.test(p)) return '9:16';
+  // Square cues (Instagram square, profile pic, logo, icon, avatar headshot)
+  if (/\b(square|1:1|logo|icon|profile pic|avatar|ლოგო|იკონ|логотип|иконк|квадрат)\b/.test(p)) return '1:1';
+  // Classic 4:3 / 3:4
+  if (/\b(4:3)\b/.test(p)) return '4:3';
+  if (/\b(3:4)\b/.test(p)) return '3:4';
+  // Default → 16:9 cinematic landscape
+  return '16:9';
+}
+
+async function runImage(prompt: string, pendingId: string, setMessages: Setter, signal?: AbortSignal, opts?: { localeCode?: Locale }) {
+  const locale: Locale = opts?.localeCode ?? 'ka';
+  const ratio = detectImageRatio(prompt);
+  const res = await fetchWithRetry('/api/replicate/image', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ prompt, quality: 'standard', ratio: '16:9' }),
-  });
+    body: JSON.stringify({ prompt, quality: 'standard', ratio }),
+  }, { signal, timeoutMs: 60_000 });
+  if (!res.ok) throw new Error(`Image failed (${res.status})`);
   const data = await res.json() as { url?: string; imageUrl?: string; output?: string[]; predictionId?: string; error?: string };
   let url = data?.url || data?.imageUrl || data?.output?.[0];
   // If a predictionId came back, the generation isn't done — poll briefly
   if (!url && data?.predictionId) {
     for (let i = 0; i < 18; i++) {
+      if (signal?.aborted) throw new DOMException('aborted', 'AbortError');
       await new Promise(r => setTimeout(r, 2000));
-      const poll = await fetch('/api/replicate/image', {
+      const elapsed = (i + 1) * 2;
+      tickPending(setMessages, pendingId, locale === 'ka'
+        ? `ვქმნი სურათს · ${elapsed}წ`
+        : locale === 'ru' ? `Генерирую изображение · ${elapsed}с` : `Generating image · ${elapsed}s`);
+      const poll = await fetchWithRetry('/api/replicate/image', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ predictionId: data.predictionId }),
-      });
+      }, { signal, timeoutMs: 30_000, retryOn5xx: false });
       if (!poll.ok) continue;
-      const pd = await poll.json() as { url?: string; status?: string; output?: string[] };
+      const pd = await poll.json() as { url?: string; status?: string; output?: string[]; error?: string };
       const u = pd.url || pd.output?.[0];
       if (u) { url = u; break; }
-      if (pd.status === 'failed') throw new Error('Image generation failed');
+      if (pd.status === 'failed') throw new Error(pd.error || 'Image generation failed');
     }
   }
   if (!url) throw new Error(data?.error || 'Image generation failed');
   patchMessage(setMessages, pendingId, { text: '', media: { kind: 'image', url } });
 }
 
-async function runVideo(prompt: string, pendingId: string, setMessages: Setter) {
-  const res = await fetch('/api/ltx-video', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ prompt, aspect_ratio: '16:9', duration: 6 }),
-  });
-  if (!res.ok) throw new Error(`Video failed (${res.status})`);
-  const blob = await res.blob();
-  const url = URL.createObjectURL(blob);
-  patchMessage(setMessages, pendingId, { text: '', media: { kind: 'video', url } });
+function detectVideoAspect(prompt: string): '16:9' | '9:16' | '1:1' {
+  const p = prompt.toLowerCase();
+  if (/\b(portrait|vertical|story|reels?|tiktok|9:16|პორტრე|вертикал|сторис)\b/.test(p)) return '9:16';
+  if (/\b(square|1:1|ig|instagram|კვადრ|квадрат)\b/.test(p)) return '1:1';
+  return '16:9';
 }
 
-async function runMusic(prompt: string, pendingId: string, setMessages: Setter) {
-  const res = await fetch('/api/udio/generate', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ prompt, make_instrumental: false }),
-  });
-  const data = await res.json() as { url?: string; audioUrl?: string; error?: string };
-  const url = data?.url || data?.audioUrl;
-  if (!url) throw new Error(data?.error || 'Music generation failed');
-  patchMessage(setMessages, pendingId, { text: '', media: { kind: 'audio', url } });
+async function runVideo(prompt: string, pendingId: string, setMessages: Setter, signal?: AbortSignal, opts?: { localeCode?: Locale }) {
+  const locale: Locale = opts?.localeCode ?? 'ka';
+  const aspect_ratio = detectVideoAspect(prompt);
+  // LTX generation is async on the server (5-15s). Provide reassuring tick so
+  // the user doesn't think the UI froze.
+  let alive = true;
+  let elapsed = 0;
+  const tick = setInterval(() => {
+    if (!alive) return;
+    elapsed += 2;
+    tickPending(setMessages, pendingId, locale === 'ka'
+      ? `ვქმნი ვიდეოს · ${elapsed}წ`
+      : locale === 'ru' ? `Генерирую видео · ${elapsed}с` : `Generating video · ${elapsed}s`);
+  }, 2000);
+  try {
+    const res = await fetchWithRetry('/api/ltx-video', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt, aspect_ratio, duration: 6 }),
+    }, { signal, timeoutMs: 120_000 });
+    if (!res.ok) {
+      // Surface server's error body if present
+      let detail = '';
+      try { detail = (await res.text()).slice(0, 200); } catch { /* ignore */ }
+      throw new Error(`Video failed (${res.status}) ${detail}`.trim());
+    }
+    const blob = await res.blob();
+    if (blob.size === 0) throw new Error('Empty video');
+    const url = URL.createObjectURL(blob);
+    patchMessage(setMessages, pendingId, { text: '', media: { kind: 'video', url } });
+  } finally {
+    alive = false;
+    clearInterval(tick);
+  }
 }
 
-async function runVoice(text: string, pendingId: string, setMessages: Setter) {
-  const res = await fetch('/api/elevenlabs/tts', {
+function detectInstrumental(prompt: string): boolean {
+  return /\b(instrumental|no\s*vocals?|no\s*lyrics|background|ფონ|без\s*вокал|инструментал|საფონო)\b/i.test(prompt);
+}
+
+async function runMusic(prompt: string, pendingId: string, setMessages: Setter, signal?: AbortSignal, opts?: { localeCode?: Locale }) {
+  const locale: Locale = opts?.localeCode ?? 'ka';
+  let alive = true;
+  let elapsed = 0;
+  const tick = setInterval(() => {
+    if (!alive) return;
+    elapsed += 3;
+    tickPending(setMessages, pendingId, locale === 'ka'
+      ? `ვქმნი მუსიკას · ${elapsed}წ`
+      : locale === 'ru' ? `Создаю музыку · ${elapsed}с` : `Composing music · ${elapsed}s`);
+  }, 3000);
+  try {
+    const res = await fetchWithRetry('/api/udio/generate', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt, make_instrumental: detectInstrumental(prompt) }),
+    }, { signal, timeoutMs: 120_000 });
+    if (!res.ok) {
+      let detail = '';
+      try { detail = (await res.text()).slice(0, 200); } catch { /* ignore */ }
+      throw new Error(`Music failed (${res.status}) ${detail}`.trim());
+    }
+    const data = await res.json() as { url?: string; audioUrl?: string; error?: string };
+    const url = data?.url || data?.audioUrl;
+    if (!url) throw new Error(data?.error || 'Music generation failed');
+    patchMessage(setMessages, pendingId, { text: '', media: { kind: 'audio', url } });
+  } finally {
+    alive = false;
+    clearInterval(tick);
+  }
+}
+
+async function runVoice(text: string, pendingId: string, setMessages: Setter, signal?: AbortSignal, opts?: { localeCode?: Locale }) {
+  const locale: Locale = opts?.localeCode ?? 'ka';
+  const res = await fetchWithRetry('/api/elevenlabs/tts', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ text, locale: 'ka' }),
-  });
-  if (!res.ok) throw new Error('Voice failed');
+    body: JSON.stringify({ text, locale }),
+  }, { signal, timeoutMs: 60_000 });
+  if (!res.ok) {
+    let detail = '';
+    try { detail = (await res.text()).slice(0, 200); } catch { /* ignore */ }
+    throw new Error(`Voice failed (${res.status}) ${detail}`.trim());
+  }
   const blob = await res.blob();
+  if (blob.size === 0) throw new Error('Empty voice clip');
   const url = URL.createObjectURL(blob);
   patchMessage(setMessages, pendingId, { text: '', media: { kind: 'audio', url } });
 }
@@ -1820,27 +1978,37 @@ async function runAvatar(
   setMessages: Setter,
   photoBase64?: string,
   photoMimeType?: string,
+  signal?: AbortSignal,
+  opts?: { localeCode?: Locale },
 ) {
-  const start = await fetch('/api/heygen/avatar', {
+  const locale: Locale = opts?.localeCode ?? 'ka';
+  const start = await fetchWithRetry('/api/heygen/avatar', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(photoBase64 ? { script, photoBase64, photoMimeType } : { script }),
-  });
+  }, { signal, timeoutMs: 60_000 });
+  if (!start.ok) {
+    let detail = '';
+    try { detail = (await start.text()).slice(0, 200); } catch { /* ignore */ }
+    throw new Error(`Avatar start failed (${start.status}) ${detail}`.trim());
+  }
   const startData = await start.json() as { videoId?: string; error?: string };
   if (!startData.videoId) throw new Error(startData.error || 'Avatar failed');
 
-  // HeyGen avatar generation often takes 2–4 minutes for short scripts and
-  // can occasionally exceed 4 min for longer ones. The previous 24×5s=120s
-  // budget caused frequent "Avatar timed out" errors AND a worse failure
-  // mode: in some edge cases the catch handler fires *after* the GET had
-  // already begun returning a URL on a parallel tick, leaving an orphaned
-  // message. Extend to 60×5s=300s and also capture the thumbnail URL as a
-  // video poster so the user sees a clear preview frame even before
-  // canplay fires (fixes the "black-on-black invisible video" bug).
+  // HeyGen avatar generation often takes 2–4 minutes for short scripts.
+  // 60×5s=300s polling budget. Tick the pending message so the user sees
+  // visible progress instead of guessing whether the request died.
   let videoUrl: string | null = null;
   let posterUrl: string | null = null;
   for (let i = 0; i < 60; i++) {
+    if (signal?.aborted) throw new DOMException('aborted', 'AbortError');
     await new Promise(r => setTimeout(r, 5000));
-    const poll = await fetch(`/api/heygen/avatar?videoId=${encodeURIComponent(startData.videoId)}`);
+    const elapsed = (i + 1) * 5;
+    tickPending(setMessages, pendingId, locale === 'ka'
+      ? `ვქმნი ავატარს · ${elapsed}წ (≤ 5წთ)`
+      : locale === 'ru' ? `Создаю аватара · ${elapsed}с (≤ 5 мин)` : `Generating avatar · ${elapsed}s (≤ 5 min)`);
+    const poll = await fetchWithRetry(`/api/heygen/avatar?videoId=${encodeURIComponent(startData.videoId)}`,
+      { method: 'GET' },
+      { signal, timeoutMs: 20_000, retryOn5xx: false });
     if (!poll.ok) continue;
     const pd = await poll.json() as { status?: string; url?: string; thumbnail?: string; error?: string };
     if (pd.status === 'completed' && pd.url) {
@@ -1850,34 +2018,58 @@ async function runAvatar(
     }
     if (pd.status === 'failed') throw new Error(pd.error || 'Avatar failed');
   }
-  if (!videoUrl) throw new Error('Avatar timed out (5 min)');
+  if (!videoUrl) throw new Error('timeout');
   patchMessage(setMessages, pendingId, {
     text: '',
     media: { kind: 'video', url: videoUrl, ...(posterUrl ? { poster: posterUrl } : {}) },
   });
 }
 
-async function runInterior(prompt: string, pendingId: string, setMessages: Setter) {
+async function runInterior(prompt: string, pendingId: string, setMessages: Setter, signal?: AbortSignal, opts?: { localeCode?: Locale }) {
   const augmented = `interior design render, ${prompt}, architectural photography, professional lighting, ultra detailed, 4k, photorealistic`;
-  await runImage(augmented, pendingId, setMessages);
+  await runImage(augmented, pendingId, setMessages, signal, opts);
 }
 
-async function runApp(prompt: string, pendingId: string, setMessages: Setter) {
+async function runApp(prompt: string, pendingId: string, setMessages: Setter, signal?: AbortSignal, opts?: { localeCode?: Locale }) {
+  const locale: Locale = opts?.localeCode ?? 'ka';
   // App Builder uses Anthropic Claude (better at self-contained HTML/CSS/JS
   // than Gemini). Endpoint streams plain text (no SSE framing) so we just
-  // concatenate the body chunks.
-  const res = await fetch('/api/chat/claude', {
+  // concatenate the body chunks. We stream-update the pending message so
+  // the user sees building progress.
+  const res = await fetchWithRetry('/api/chat/claude', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ prompt }),
-  });
-  if (!res.ok || !res.body) throw new Error('App build failed');
+  }, { signal, timeoutMs: 120_000 });
+  if (!res.ok || !res.body) {
+    let detail = '';
+    try { detail = (await res.text()).slice(0, 200); } catch { /* ignore */ }
+    throw new Error(`App build failed (${res.status}) ${detail}`.trim());
+  }
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
   let acc = '';
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    acc += decoder.decode(value, { stream: true });
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      acc += decoder.decode(value, { stream: true });
+      // Live progress: surface character count to user.
+      const kb = (acc.length / 1024).toFixed(1);
+      tickPending(setMessages, pendingId, locale === 'ka'
+        ? `ვაშენებ აპლიკაციას · ${kb} KB`
+        : locale === 'ru' ? `Собираю приложение · ${kb} KB` : `Building app · ${kb} KB`);
+    }
+  } catch (e) {
+    if ((e as Error)?.name === 'AbortError') {
+      // Promote whatever we have if it looks complete-ish; otherwise surface stop.
+      const partial = acc.replace(/^```(?:html)?\s*/i, '').replace(/\s*```\s*$/i, '').trim();
+      if (partial.length > 200 && partial.includes('</')) {
+        patchMessage(setMessages, pendingId, { text: '', media: { kind: 'code', html: partial, language: 'html' } });
+        return;
+      }
+      throw e;
+    }
+    throw e;
   }
   const html = acc.replace(/^```(?:html)?\s*/i, '').replace(/\s*```\s*$/i, '').trim();
   if (!html) throw new Error('Empty HTML');
