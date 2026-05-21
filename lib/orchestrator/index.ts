@@ -18,4 +18,5 @@ export * from './intent';
 export * from './actions';
 export * from './composition';
 export * from './saga';
+export * from './events';
 export * from './orchestrator';
