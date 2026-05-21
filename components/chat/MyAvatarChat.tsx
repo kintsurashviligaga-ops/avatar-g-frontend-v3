@@ -57,6 +57,8 @@ import AuthModal from '@/components/chat/AuthModal';
 import VideoControlSuite from '@/components/chat/VideoControlSuite';
 import { type RenderSettings, renderSettingsToPayload } from '@/lib/orchestrator/render-settings';
 import { useRenderSettings } from '@/hooks/useRenderSettings';
+import SwarmStatusPanel from '@/components/chat/SwarmStatusPanel';
+import { publishPipeline } from '@/lib/orchestrator/broker-instance';
 import { buildSuggestedActions } from '@/lib/orchestrator/actions';
 import type { AssetRef, PipelineContext, ServiceResponse, SuggestedAction } from '@/lib/orchestrator/types';
 import VoiceLab from '@/components/voice/VoiceLab';
@@ -256,6 +258,7 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
   const [authOpen, setAuthOpen] = useState(false);
   const [renderSettings, setRenderSettings] = useRenderSettings();
   const [renderPanelOpen, setRenderPanelOpen] = useState(false);
+  const [activePipelineId, setActivePipelineId] = useState<string | null>(null);
   // (Removed: latestMedia + mobileView — previews are now inline-only.)
   const [attachment, setAttachment] = useState<{ name: string; type: string; base64: string; previewUrl: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -557,6 +560,14 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
     const controller = new AbortController();
     abortRef.current = controller;
 
+    // The swarm status panel tracks media pipelines (video/avatar/music).
+    const isPipeline = service === 'video' || service === 'avatar' || service === 'music';
+    const pipelineId = isPipeline ? `pl_${pendingId}` : null;
+    if (pipelineId) {
+      setActivePipelineId(pipelineId);
+      publishPipeline('media.pipeline.initiated', pipelineId, { service });
+    }
+
     try {
       const opts = { localeCode: localeCode as Locale };
       if (service === 'chat')         {
@@ -574,10 +585,13 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
       }
       else if (service === 'interior') await runInterior(cleanText, pendingId, setMessages, controller.signal, opts);
       else if (service === 'app')     await runApp(cleanText, pendingId, setMessages, controller.signal, opts);
+      if (pipelineId) publishPipeline('pipeline.completed', pipelineId);
     } catch (err) {
       if ((err as Error)?.name === 'AbortError') {
         // Suppressed — user clicked Stop. runChat handled the message already.
+        if (pipelineId) publishPipeline('pipeline.failed', pipelineId, { reason: 'aborted' });
       } else {
+        if (pipelineId) publishPipeline('pipeline.failed', pipelineId, { reason: 'error' });
         setMessages(m => m.map(x => x.id === pendingId
           ? { ...x, pending: false, text: localizedError(err, localeCode) }
           : x));
@@ -585,6 +599,7 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
     } finally {
       setSending(false);
       abortRef.current = null;
+      if (pipelineId) setTimeout(() => setActivePipelineId(cur => (cur === pipelineId ? null : cur)), 1500);
     }
   }, [mode, sending, messages, localeCode, attachment, renderSettings]);
 
@@ -908,6 +923,12 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
       {/* ── Bottom input — only on chat view, and hidden when mobile previews are active */}
       {activeView === 'chat' && (
         <div className="relative z-10 flex-shrink-0 px-3 pb-3 pt-2 bg-black">
+          {/* Live agentic-swarm progress — shown while a media pipeline runs */}
+          {activePipelineId && (
+            <div className="max-w-2xl mx-auto mb-2">
+              <SwarmStatusPanel locale={localeCode} pipelineId={activePipelineId} />
+            </div>
+          )}
           {/* In-chat video render controls — settings fold into the render payload */}
           <div className="max-w-2xl mx-auto mb-2">
             <VideoControlSuite

@@ -20,4 +20,5 @@ export * from './composition';
 export * from './saga';
 export * from './events';
 export * from './render-settings';
+export * from './pipeline-stages';
 export * from './orchestrator';
