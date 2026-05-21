@@ -28,6 +28,7 @@ import {
   Menu,
   User as UserIcon,
   Mic,
+  Camera,
   Send,
   Paperclip,
   Image as ImageIcon,
@@ -58,6 +59,8 @@ import VideoControlSuite from '@/components/chat/VideoControlSuite';
 import { type RenderSettings, renderSettingsToPayload } from '@/lib/orchestrator/render-settings';
 import { useRenderSettings } from '@/hooks/useRenderSettings';
 import SwarmStatusPanel from '@/components/chat/SwarmStatusPanel';
+import { CameraModal } from '@/components/service-chat/CameraModal';
+import type { ServiceChatAttachment } from '@/components/service-chat/types';
 import { publishPipeline } from '@/lib/orchestrator/broker-instance';
 import { buildSuggestedActions } from '@/lib/orchestrator/actions';
 import type { AssetRef, PipelineContext, ServiceResponse, SuggestedAction } from '@/lib/orchestrator/types';
@@ -263,6 +266,7 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
   const [activePipelineId, setActivePipelineId] = useState<string | null>(null);
   // (Removed: latestMedia + mobileView — previews are now inline-only.)
   const [attachment, setAttachment] = useState<{ name: string; type: string; base64: string; previewUrl: string } | null>(null);
+  const [cameraOpen, setCameraOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
@@ -425,6 +429,27 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
     reader.readAsDataURL(f);
   }, []);
   const clearAttachment = useCallback(() => setAttachment(null), []);
+
+  // Camera capture → chat attachment. CameraModal hands back a blob: URL; we
+  // read it into a base64 data URL so it (a) matches the vision/avatar payload
+  // contract and (b) survives a page reload via the localStorage recovery above
+  // (blob: URLs do not). Only still photos feed the attachment — captured video
+  // has no consuming runner yet, so it's ignored rather than silently broken.
+  const onCameraAttach = useCallback(async (att: ServiceChatAttachment) => {
+    setCameraOpen(false);
+    if (att.type !== 'image' || !att.dataUrl) return;
+    try {
+      const blob = await (await fetch(att.dataUrl)).blob();
+      if (blob.size > 8 * 1024 * 1024) return; // 8 MB cap, matches file picker
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = String(reader.result ?? '');
+        const base64 = result.includes(',') ? result.split(',')[1] ?? '' : result;
+        setAttachment({ name: att.name, type: att.mimeType || 'image/jpeg', base64, previewUrl: result });
+      };
+      reader.readAsDataURL(blob);
+    } catch { /* capture dropped — user can retry */ }
+  }, []);
 
   const toggleVoiceInput = useCallback(async () => {
     type SpeechRecognitionLike = {
@@ -976,23 +1001,35 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
               onChange={onFileChosen}
             />
             <div className="flex items-center justify-between px-2 py-1.5">
-              <button
-                type="button"
-                aria-label="Attach image"
-                onClick={onPickFile}
-                title={localeCode === 'ka' ? 'სურათის მიმაგრება (ავატარისთვის)' : 'Attach image (for Avatar)'}
-                className="h-9 w-9 rounded-full hover:bg-white/[0.06] flex items-center justify-center text-[#94A3B8] hover:text-white transition"
-              >
-                <Paperclip size={16} />
-              </button>
               <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  aria-label="Attach image"
+                  onClick={onPickFile}
+                  title={localeCode === 'ka' ? 'სურათის მიმაგრება (ავატარისთვის)' : 'Attach image (for Avatar)'}
+                  className="h-9 w-9 rounded-full hover:bg-white/[0.06] flex items-center justify-center text-[#94A3B8] hover:text-white transition"
+                >
+                  <Paperclip size={16} />
+                </button>
+                <button
+                  type="button"
+                  aria-label="Camera"
+                  onClick={() => setCameraOpen(true)}
+                  title={localeCode === 'ka' ? 'კამერა' : 'Camera'}
+                  className="h-9 w-9 rounded-full hover:bg-white/[0.06] flex items-center justify-center text-[#94A3B8] hover:text-white transition"
+                >
+                  <Camera size={16} />
+                </button>
+              </div>
+              <div className="flex items-center gap-1">
+                <AnimatePresence>{listening && <SoundwaveMeter />}</AnimatePresence>
                 <button
                   type="button"
                   aria-label={listening ? 'Stop listening' : 'Voice input'}
                   onClick={toggleVoiceInput}
                   className={`h-9 w-9 rounded-full flex items-center justify-center transition ${
                     listening
-                      ? 'bg-violet-500/20 text-violet-200 animate-pulse'
+                      ? 'bg-violet-500/20 text-violet-200 ring-1 ring-violet-400/40'
                       : 'hover:bg-white/[0.06] text-[#94A3B8]'
                   }`}
                 >
@@ -1175,6 +1212,15 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
         )}
       </AnimatePresence>
 
+      {/* In-window camera capture — photos land as an input attachment */}
+      <CameraModal
+        isOpen={cameraOpen}
+        accentColor="#a855f7"
+        onClose={() => setCameraOpen(false)}
+        onAttach={onCameraAttach}
+        showFaceGuide
+      />
+
       {/* In-window auth (One Window) — login / register / reset / magic link */}
       <AuthModal
         open={authOpen}
@@ -1183,6 +1229,36 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
         onAuthed={() => { setAuthOpen(false); window.location.reload(); }}
       />
     </main>
+  );
+}
+
+// ─── SoundwaveMeter — live "listening" indicator next to the mic button ──────
+// Five Framer-Motion bars that breathe in a staggered loop while voice capture
+// is active. It signals an active recording session (not decoded amplitude) —
+// honest feedback that the mic is hot, mounted/unmounted via AnimatePresence so
+// it slides in and out cleanly.
+function SoundwaveMeter() {
+  const bars = [0, 1, 2, 3, 4];
+  const peaks = [12, 18, 9, 20, 14];
+  return (
+    <motion.div
+      initial={{ opacity: 0, width: 0 }}
+      animate={{ opacity: 1, width: 'auto' }}
+      exit={{ opacity: 0, width: 0 }}
+      transition={{ duration: 0.18 }}
+      className="flex items-center gap-[3px] h-6 px-1.5 overflow-hidden"
+      aria-hidden="true"
+    >
+      {bars.map(i => (
+        <motion.span
+          key={i}
+          className="w-[2.5px] rounded-full bg-violet-300"
+          initial={{ height: 4 }}
+          animate={{ height: [4, peaks[i] ?? 12, 6, (peaks[i] ?? 12) - 4, 4] }}
+          transition={{ duration: 0.9, repeat: Infinity, ease: 'easeInOut', delay: i * 0.11 }}
+        />
+      ))}
+    </motion.div>
   );
 }
 
