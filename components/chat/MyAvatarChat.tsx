@@ -248,7 +248,6 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [profileOpen, setProfileOpen] = useState(false);
   const [listening, setListening] = useState(false);
   // (Removed: latestMedia + mobileView — previews are now inline-only.)
   const [attachment, setAttachment] = useState<{ name: string; type: string; base64: string; previewUrl: string } | null>(null);
@@ -634,6 +633,13 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
   }, []);
 
   // Central dispatch for orchestrator-generated SuggestedAction chips.
+  // Inline-only: "Open in preview" scrolls the inline media into view.
+  // The per-bubble click-to-lightbox in InlineMedia handles fullscreen.
+  const onOpenInPreview = useCallback((m: ChatMessage) => {
+    const node = document.querySelector(`[data-msg-id="${m.id}"]`);
+    node?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, []);
+
   // The orchestrator decides WHAT to suggest; this handler decides HOW
   // to execute each canonical ActionKey against the existing chat state.
   const dispatchAction = useCallback((a: SuggestedAction) => {
@@ -724,14 +730,7 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
         // Stubs — wired in a follow-up sprint once the video editor lands.
         return;
     }
-  }, [messages, send]);
-
-  // Inline-only: "Open in preview" now scrolls the inline media into view.
-  // The per-bubble click-to-lightbox in InlineMedia handles fullscreen.
-  const onOpenInPreview = useCallback((m: ChatMessage) => {
-    const node = document.querySelector(`[data-msg-id="${m.id}"]`);
-    node?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  }, []);
+  }, [messages, send, onOpenInPreview]);
 
   const hasMessages = messages.length > 0;
 
@@ -783,14 +782,10 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
           </h1>
         )}
 
-        <button
-          type="button"
-          aria-label="System status"
-          onClick={() => setProfileOpen(true)}
-          className="h-10 w-10 rounded-full bg-black border border-white/[0.10] hover:border-white/[0.22] flex items-center justify-center transition relative"
-        >
-          <UserIcon size={18} className="text-white" />
-        </button>
+        {/* Right side intentionally empty — account, status, settings, and
+            auth all live in the left hamburger drawer now. Spacer keeps the
+            centre toggle visually centred. */}
+        <div className="h-10 w-10 flex-shrink-0" aria-hidden />
       </header>
 
       {/* All previews now render INLINE inside the message bubbles
@@ -811,7 +806,7 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
               className="flex-1 min-h-0 overflow-y-auto px-4"
             >
               {!hasMessages ? (
-                <EmptyState locale={localeCode} onPick={(p) => void send(p)} />
+                <EmptyState locale={localeCode} />
               ) : (
                 <div className="max-w-2xl mx-auto py-4 space-y-3">
                   {messages.map(m => (
@@ -1122,45 +1117,20 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
                   );
                 })}
               </div>
+
+              {/* Account / status / settings / auth — everything that used
+                  to live in the right drawer now lives here, pinned to the
+                  bottom of the single left hamburger. */}
+              <AccountSection
+                locale={localeCode}
+                userName={userName}
+                isAuthenticated={isAuthenticated}
+              />
             </div>
           </motion.aside>
         )}
       </AnimatePresence>
 
-      {/* ── Right drawer — SYSTEM STATUS (status/credits/sign-out only) ── */}
-      <AnimatePresence>
-        {profileOpen && (
-          <motion.button
-            key="profile-bg"
-            type="button"
-            aria-label="Close"
-            onClick={() => setProfileOpen(false)}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.15 }}
-            className="fixed inset-0 z-40 bg-black/70 backdrop-blur-sm"
-          />
-        )}
-        {profileOpen && (
-          <motion.aside
-            key="profile-panel"
-            initial={{ x: '100%' }}
-            animate={{ x: 0 }}
-            exit={{ x: '100%' }}
-            transition={{ type: 'spring', stiffness: 360, damping: 36 }}
-            className="fixed top-0 bottom-0 right-0 z-50 w-[300px] bg-black border-l border-white/[0.08]"
-            style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
-          >
-            <SystemStatusDrawer
-              locale={localeCode}
-              userName={userName}
-              isAuthenticated={isAuthenticated}
-              onClose={() => setProfileOpen(false)}
-            />
-          </motion.aside>
-        )}
-      </AnimatePresence>
     </main>
   );
 }
@@ -1191,87 +1161,22 @@ function SuggestedActionRow({ actions, onDispatch }: { actions: SuggestedAction[
   );
 }
 
-// ─── SuggestedFollowups — 3 contextual chips below the last reply ────────────
-
-const FOLLOWUPS_KA: Record<ServiceId, string[]> = {
-  chat:     ['ვრცლად მითხარი', 'შემაჯამე ერთ აბზაცში', 'მომეცი მაგალითი'],
-  image:    ['სხვა სტილით სცადე', 'გადააქციე ვიდეოდ', 'უფრო ბაჟიერად'],
-  video:    ['უფრო ხანგრძლივი', 'სხვა კუთხიდან', 'მუსიკის დამატება'],
-  music:    ['სხვა ჟანრით', 'მოამზადე ვიდეო-ფონი', 'ხმოვანი დადებითად'],
-  voice:    ['სხვა ხმით სცადე', 'სხვა ენაზე', 'მცირე ცვლილებით'],
-  avatar:   ['სხვა სკრიპტი', 'მსგავსი, სხვა ხმით', 'სხვა ფონით'],
-  interior: ['სხვა სტილით', 'ღამის განათება', 'მინიმალისტური ვერსია'],
-  app:      ['დაამატე ფუნქცია', 'სხვა ფერი/თემა', 'მობილური ვერსიის გაკეთება'],
-};
-
-const FOLLOWUPS_EN: Record<ServiceId, string[]> = {
-  chat:     ['Tell me more',          'Summarize in one paragraph', 'Give me an example'],
-  image:    ['Try another style',     'Turn it into a video',        'More vivid'],
-  video:    ['Make it longer',        'From a different angle',      'Add background music'],
-  music:    ['Try another genre',     'Make a video to match',       'Add a vocal line'],
-  voice:    ['Try a different voice', 'In another language',         'Slight variation'],
-  avatar:   ['Different script',      'Same look, new voice',        'Different background'],
-  interior: ['Different style',       'Night lighting',              'Minimalist version'],
-  app:      ['Add a feature',         'Different colour / theme',    'Make a mobile version'],
-};
-
-function SuggestedFollowups({ locale, service, onPick }: { locale: 'ka' | 'en' | 'ru'; service: ServiceId; onPick: (p: string) => void }) {
-  const items = (locale === 'ka' ? FOLLOWUPS_KA : FOLLOWUPS_EN)[service] ?? [];
-  if (!items.length) return null;
-  return (
-    <div className="flex flex-wrap gap-2 pt-1 pl-1">
-      {items.map(s => (
-        <button
-          key={s}
-          type="button"
-          onClick={() => onPick(s)}
-          className="inline-flex items-center px-3 py-1.5 rounded-full bg-black border border-white/[0.10] hover:border-white/[0.22] hover:bg-white/[0.04] text-[12px] text-white/85 transition"
-        >
-          {s}
-        </button>
-      ))}
-    </div>
-  );
-}
-
 // ─── EmptyState — welcome + tappable example prompts (first-run UX) ──────────
 
-const EXAMPLE_PROMPTS_KA: Array<{ label: string; prompt: string }> = [
-  { label: '✦ ფოტო',     prompt: 'ლამაზი მთის პეიზაჟი მზის ჩასვლისას, კინემატოგრაფიული' },
-  { label: '✦ ვიდეო',    prompt: 'ცინემატური ხედი ზღვის ნაპირზე მზის ჩასვლისას' },
-  { label: '✦ ხმა',       prompt: 'გამარჯობა, ეს არის MyAvatar.ge ხმოვანი ნიმუში' },
-  { label: '✦ აპლიკაცია', prompt: 'ლანდინგ გვერდი ფერადი ღილაკით რომელიც დაჭერისას ცვლის ფერს' },
-];
-
-const EXAMPLE_PROMPTS_EN: Array<{ label: string; prompt: string }> = [
-  { label: '✦ Image',  prompt: 'Beautiful mountain landscape at sunset, cinematic' },
-  { label: '✦ Video',  prompt: 'Cinematic shot of a seashore at sunset' },
-  { label: '✦ Voice',  prompt: 'Hello, this is a MyAvatar.ge voice sample' },
-  { label: '✦ App',    prompt: 'Landing page with a color-changing button' },
-];
-
-function EmptyState({ locale, onPick }: { locale: 'ka' | 'en' | 'ru'; onPick: (prompt: string) => void }) {
-  const examples = locale === 'ka' ? EXAMPLE_PROMPTS_KA : EXAMPLE_PROMPTS_EN;
-  const welcome  = locale === 'ka' ? 'როგორ შემიძლია დაგეხმარო?' : 'How can I help you?';
-  const subtitle = locale === 'ka' ? 'შეარჩიე ან აკრიფე ნებისმიერი — მე ერთ ფანჯარაში ვაკეთებ ყველაფერს.' : 'Pick one or type anything — I create everything in one window.';
+function EmptyState({ locale }: { locale: 'ka' | 'en' | 'ru' }) {
+  const welcome  = locale === 'ka' ? 'როგორ შემიძლია დაგეხმარო?' : locale === 'ru' ? 'Чем могу помочь?' : 'How can I help you?';
+  const subtitle = locale === 'ka'
+    ? 'აკრიფე ნებისმიერი — ყველაფერს ერთ ფანჯარაში ვქმნი.'
+    : locale === 'ru'
+      ? 'Напишите что угодно — всё создаю в одном окне.'
+      : 'Type anything — I create everything in one window.';
+  // Minimal, distraction-free centre. No template cards — the specialist
+  // pills above the input bar are the discoverable entry points.
   return (
     <div className="h-full flex flex-col items-center justify-center px-4 text-center">
       <Sparkles size={32} className="text-white/40 mb-5" />
       <h2 className="text-[22px] font-semibold text-white mb-2 tracking-tight">{welcome}</h2>
-      <p className="text-[13px] text-white/55 max-w-[320px] mb-6 leading-relaxed">{subtitle}</p>
-      <div className="grid grid-cols-2 gap-2 max-w-[420px] w-full">
-        {examples.map(ex => (
-          <button
-            key={ex.label}
-            type="button"
-            onClick={() => onPick(ex.prompt)}
-            className="text-left px-3 py-2.5 rounded-xl bg-black border border-white/[0.10] hover:border-white/[0.22] hover:bg-white/[0.03] transition"
-          >
-            <div className="text-[12px] font-semibold text-white/90 mb-0.5">{ex.label}</div>
-            <div className="text-[11px] text-white/55 line-clamp-2 leading-snug">{ex.prompt}</div>
-          </button>
-        ))}
-      </div>
+      <p className="text-[13px] text-white/55 max-w-[320px] leading-relaxed">{subtitle}</p>
     </div>
   );
 }
@@ -1593,20 +1498,25 @@ function PlanRow({ name, price, desc }: { name: string; price: string; desc: str
 
 // ─── System Status drawer (right) ────────────────────────────────────────────
 
-function SystemStatusDrawer({
+/**
+ * AccountSection — pinned to the bottom of the single left hamburger drawer.
+ * Consolidates everything that previously lived in the removed right drawer:
+ * credits, live system status, language settings, auth (login / sign-out),
+ * and the legal/support links.
+ */
+function AccountSection({
   locale,
   userName,
   isAuthenticated,
-  onClose,
 }: {
   locale: string;
   userName: string;
   isAuthenticated: boolean;
-  onClose: () => void;
 }) {
   const [creditsBalance, setCreditsBalance] = useState<number | null>(null);
   const [online, setOnline] = useState<boolean>(typeof navigator === 'undefined' ? true : navigator.onLine);
   const [providersReachable, setProvidersReachable] = useState<boolean | null>(null);
+  const [expanded, setExpanded] = useState(false);
 
   useEffect(() => {
     if (!isAuthenticated) return;
@@ -1621,7 +1531,6 @@ function SystemStatusDrawer({
     })();
   }, [isAuthenticated]);
 
-  // Track real network status — replaces the static "operational" lie.
   useEffect(() => {
     const update = () => setOnline(navigator.onLine);
     window.addEventListener('online', update);
@@ -1632,7 +1541,6 @@ function SystemStatusDrawer({
     };
   }, []);
 
-  // Live per-category provider health from /api/health/public (cached 60s server-side).
   type Bucket = 'ok' | 'degraded' | 'down' | 'unconfigured';
   type Category = 'chat' | 'image' | 'video' | 'music' | 'voice' | 'avatar';
   const [providerSnapshot, setProviderSnapshot] = useState<Record<Category, Bucket> | null>(null);
@@ -1642,10 +1550,7 @@ function SystemStatusDrawer({
     void (async () => {
       try {
         const r = await fetch('/api/health/public');
-        if (!r.ok) {
-          if (!cancelled) setProvidersReachable(false);
-          return;
-        }
+        if (!r.ok) { if (!cancelled) setProvidersReachable(false); return; }
         const j = await r.json() as { online?: boolean; categories?: Record<Category, Bucket> };
         if (cancelled) return;
         setProvidersReachable(j.online === true);
@@ -1667,100 +1572,130 @@ function SystemStatusDrawer({
     window.location.href = `/${locale}/login`;
   }, [locale]);
 
+  const switchLocale = useCallback((next: 'ka' | 'en' | 'ru') => {
+    if (next === locale) return;
+    try { document.cookie = `NEXT_LOCALE=${next}; path=/; max-age=31536000; samesite=lax`; } catch { /* ignore */ }
+    // Preserve the current path, swapping only the locale segment.
+    const path = window.location.pathname.replace(/^\/(ka|en|ru)(?=\/|$)/, '') || '/dashboard';
+    window.location.href = `/${next}${path}`;
+  }, [locale]);
+
+  const LOCALES: Array<{ id: 'ka' | 'en' | 'ru'; label: string }> = [
+    { id: 'ka', label: 'ქარ' },
+    { id: 'en', label: 'EN' },
+    { id: 'ru', label: 'RU' },
+  ];
+
   return (
-    <div className="h-full flex flex-col">
-      <div className="flex items-center justify-between px-4 pt-4 pb-3 border-b border-white/[0.06]">
-        <span className="text-[15px] font-semibold text-white truncate pr-2">
-          {userName || (locale === 'ka' ? 'სტუმარი' : 'Guest')}
+    <div className="flex-shrink-0 border-t border-white/[0.08] bg-black">
+      {/* Account header row — tap to expand status + settings */}
+      <button
+        type="button"
+        onClick={() => setExpanded(v => !v)}
+        className="w-full flex items-center gap-3 px-4 py-3 hover:bg-white/[0.04] transition text-left"
+      >
+        <span className="h-8 w-8 rounded-full bg-white/[0.06] border border-white/[0.10] flex items-center justify-center flex-shrink-0">
+          <UserIcon size={15} className="text-white/80" />
         </span>
-        <button type="button" aria-label="Close" onClick={onClose}
-          className="h-8 w-8 rounded-full hover:bg-white/[0.08] flex items-center justify-center text-[#94A3B8]">
-          <X size={16} />
-        </button>
-      </div>
+        <span className="flex-1 min-w-0">
+          <span className="block text-[13px] text-white font-medium truncate">
+            {userName || (locale === 'ka' ? 'სტუმარი' : locale === 'ru' ? 'Гость' : 'Guest')}
+          </span>
+          <span className="block text-[11px] text-white/45">
+            {creditsBalance != null
+              ? `${creditsBalance.toLocaleString()} ${locale === 'ka' ? 'კრედიტი' : locale === 'ru' ? 'кредитов' : 'credits'}`
+              : (locale === 'ka' ? 'ანგარიში' : locale === 'ru' ? 'Аккаунт' : 'Account')}
+          </span>
+        </span>
+        <span className={`h-1.5 w-1.5 rounded-full flex-shrink-0 ${statusOk ? 'bg-emerald-400' : 'bg-rose-400'}`} />
+      </button>
 
-      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
-        {/* Credits */}
-        <section className="rounded-2xl p-4 bg-black border border-white/[0.10]">
-          <div className="text-[10px] font-bold tracking-wider uppercase text-[#94A3B8]">
-            {locale === 'ka' ? 'კრედიტი' : 'Credits'}
-          </div>
-          <div className="text-[28px] font-bold text-white mt-1">
-            {creditsBalance != null ? creditsBalance.toLocaleString() : '—'}
-          </div>
-        </section>
+      {expanded && (
+        <div className="px-4 pb-4 space-y-3 max-h-[46vh] overflow-y-auto">
+          {/* Live system status */}
+          <section className="rounded-xl p-3 bg-white/[0.02] border border-white/[0.08]">
+            <div className="text-[10px] font-bold tracking-wider uppercase text-[#94A3B8] mb-2">
+              {locale === 'ka' ? 'სისტემის სტატუსი' : locale === 'ru' ? 'Состояние' : 'System Status'}
+            </div>
+            {!online ? (
+              <div className="text-[12px] text-rose-300">
+                {locale === 'ka' ? 'ინტერნეტი გათიშულია' : locale === 'ru' ? 'Нет сети' : 'You are offline'}
+              </div>
+            ) : providerSnapshot ? (
+              <div className="grid grid-cols-2 gap-1.5">
+                {(['chat','image','video','music','voice','avatar'] as Category[]).map(cat => {
+                  const b = providerSnapshot[cat];
+                  const dot = b === 'ok' ? 'bg-emerald-400' : b === 'down' ? 'bg-rose-400' : b === 'degraded' ? 'bg-amber-400' : 'bg-white/25';
+                  const labels: Record<Category, [string, string]> = {
+                    chat: ['ჩატი','Chat'], image: ['სურათი','Image'], video: ['ვიდეო','Video'],
+                    music: ['მუსიკა','Music'], voice: ['ხმა','Voice'], avatar: ['ავატარი','Avatar'],
+                  };
+                  return (
+                    <div key={cat} className="flex items-center gap-1.5 text-[12px] text-white/80">
+                      <span className={`h-1.5 w-1.5 rounded-full ${dot}`} />
+                      {locale === 'ka' ? labels[cat][0] : labels[cat][1]}
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="text-[12px] text-white/55">{locale === 'ka' ? 'შემოწმება...' : 'Checking…'}</div>
+            )}
+          </section>
 
-        {/* System status — live per-category buckets from /api/health/public */}
-        <section className="rounded-2xl p-4 bg-black border border-white/[0.10]">
-          <div className="flex items-center justify-between mb-3">
-            <div className="text-[10px] font-bold tracking-wider uppercase text-[#94A3B8]">
-              {locale === 'ka' ? 'სისტემის სტატუსი' : 'System Status'}
+          {/* Settings — language */}
+          <section className="rounded-xl p-3 bg-white/[0.02] border border-white/[0.08]">
+            <div className="text-[10px] font-bold tracking-wider uppercase text-[#94A3B8] mb-2">
+              {locale === 'ka' ? 'ენა' : locale === 'ru' ? 'Язык' : 'Language'}
             </div>
-            <span className={`h-2 w-2 rounded-full ${statusOk ? 'bg-emerald-400 animate-pulse' : 'bg-rose-400'}`} />
-          </div>
-          {!online ? (
-            <div className="text-[13px] text-rose-300">
-              {locale === 'ka' ? 'ინტერნეტი გათიშულია' : 'You are offline'}
+            <div className="flex gap-1.5">
+              {LOCALES.map(l => (
+                <button
+                  key={l.id}
+                  type="button"
+                  onClick={() => switchLocale(l.id)}
+                  className={`flex-1 py-1.5 rounded-lg text-[12px] font-semibold transition ${
+                    l.id === locale ? 'bg-white text-black' : 'bg-black border border-white/[0.12] text-white/70 hover:border-white/[0.25]'
+                  }`}
+                >
+                  {l.label}
+                </button>
+              ))}
             </div>
-          ) : providerSnapshot ? (
-            <div className="grid grid-cols-2 gap-1.5">
-              {(['chat','image','video','music','voice','avatar'] as Category[]).map(cat => {
-                const b = providerSnapshot[cat];
-                const dot = b === 'ok' ? 'bg-emerald-400' : b === 'down' ? 'bg-rose-400' : b === 'degraded' ? 'bg-amber-400' : 'bg-white/25';
-                const labels: Record<Category, [string, string]> = {
-                  chat:   ['ჩატი',     'Chat'],
-                  image:  ['სურათი',   'Image'],
-                  video:  ['ვიდეო',    'Video'],
-                  music:  ['მუსიკა',   'Music'],
-                  voice:  ['ხმა',      'Voice'],
-                  avatar: ['ავატარი',  'Avatar'],
-                };
-                return (
-                  <div key={cat} className="flex items-center gap-1.5 text-[12px] text-white/80">
-                    <span className={`h-1.5 w-1.5 rounded-full ${dot}`} />
-                    {locale === 'ka' ? labels[cat][0] : labels[cat][1]}
-                  </div>
-                );
-              })}
-            </div>
+          </section>
+
+          {/* Auth */}
+          {isAuthenticated ? (
+            <button
+              type="button"
+              onClick={signOut}
+              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-white/[0.04] transition text-left"
+            >
+              <LogOut size={15} className="text-rose-400" />
+              <span className="text-[13px] text-rose-400 font-medium">{locale === 'ka' ? 'გასვლა' : locale === 'ru' ? 'Выйти' : 'Sign out'}</span>
+            </button>
           ) : (
-            <div className="text-[13px] text-white/55">
-              {locale === 'ka' ? 'შემოწმება...' : 'Checking…'}
-            </div>
+            <a
+              href={`/${locale}/login`}
+              className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl bg-white text-black text-[13px] font-semibold hover:bg-white/90 transition"
+            >
+              <UserIcon size={15} />
+              {locale === 'ka' ? 'შესვლა' : locale === 'ru' ? 'Войти' : 'Log in'}
+            </a>
           )}
-        </section>
 
-        {/* Sign out (if authed) */}
-        {isAuthenticated && (
-          <button
-            type="button"
-            onClick={signOut}
-            className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl hover:bg-white/[0.04] transition text-left"
-          >
-            <LogOut size={16} className="text-red-400" />
-            <span className="text-[14px] text-red-400 font-medium">{locale === 'ka' ? 'გასვლა' : 'Sign out'}</span>
-          </button>
-        )}
-
-        {/* Legal / Support — required for App Store reviewability */}
-        <div className="pt-2 border-t border-white/[0.06] flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-white/45">
-          <a href={`/${locale}/support`} className="hover:text-white/80 transition">
-            {locale === 'ka' ? 'მხარდაჭერა' : 'Support'}
-          </a>
-          <span aria-hidden>·</span>
-          <a href={`/${locale}/privacy`} className="hover:text-white/80 transition">
-            {locale === 'ka' ? 'კონფიდენციალურობა' : 'Privacy'}
-          </a>
-          <span aria-hidden>·</span>
-          <a href={`/${locale}/terms`} className="hover:text-white/80 transition">
-            {locale === 'ka' ? 'პირობები' : 'Terms'}
-          </a>
-          <span aria-hidden>·</span>
-          <a href={`/${locale}/refund-policy`} className="hover:text-white/80 transition">
-            {locale === 'ka' ? 'დაბრუნება' : 'Refunds'}
-          </a>
+          {/* Legal / support */}
+          <div className="pt-1 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-white/45">
+            <a href={`/${locale}/support`} className="hover:text-white/80 transition">{locale === 'ka' ? 'მხარდაჭერა' : locale === 'ru' ? 'Поддержка' : 'Support'}</a>
+            <span aria-hidden>·</span>
+            <a href={`/${locale}/privacy`} className="hover:text-white/80 transition">{locale === 'ka' ? 'კონფიდენც.' : locale === 'ru' ? 'Приватность' : 'Privacy'}</a>
+            <span aria-hidden>·</span>
+            <a href={`/${locale}/terms`} className="hover:text-white/80 transition">{locale === 'ka' ? 'პირობები' : locale === 'ru' ? 'Условия' : 'Terms'}</a>
+            <span aria-hidden>·</span>
+            <a href={`/${locale}/refund-policy`} className="hover:text-white/80 transition">{locale === 'ka' ? 'დაბრუნება' : locale === 'ru' ? 'Возврат' : 'Refunds'}</a>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
