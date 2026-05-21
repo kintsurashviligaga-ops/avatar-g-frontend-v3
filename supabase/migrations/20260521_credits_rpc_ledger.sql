@@ -127,3 +127,14 @@ REVOKE ALL ON FUNCTION public.deduct_credits(UUID, INTEGER, TEXT) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.refund_credits(UUID, INTEGER, TEXT) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.deduct_credits(UUID, INTEGER, TEXT) TO authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.refund_credits(UUID, INTEGER, TEXT) TO authenticated, service_role;
+
+-- ── High-load optimization ───────────────────────────────────────────────────
+-- The idempotency guards in both RPCs scan credit_transactions by description
+-- (the p_ref). This index keeps that lookup O(log n) at millions of rows.
+CREATE INDEX IF NOT EXISTS idx_credit_transactions_desc
+  ON public.credit_transactions (description);
+
+-- Composite index for the exact (user_id, description, transaction_type) probe
+-- the RPC EXISTS() checks run — even faster than the single-column index above.
+CREATE INDEX IF NOT EXISTS idx_credit_transactions_user_desc_type
+  ON public.credit_transactions (user_id, description, transaction_type);

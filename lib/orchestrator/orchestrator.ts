@@ -158,7 +158,7 @@ export async function handleUserMessage({
   // Token-efficient input building: pass only the asset(s) this agent
   // can actually use. Avatar uses photos; vision-chat uses photos;
   // video animate uses a single image input; everything else: nothing.
-  const inputs = pickInputsFor(agent, attachment, state.context);
+  const inputs = pickInputsFor(agent, attachment);
 
   const task: AgentTask = {
     id: `task_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`,
@@ -215,7 +215,6 @@ export async function handleUserMessage({
 function pickInputsFor(
   agent: ServiceId,
   attachment: AssetRef | undefined,
-  ctx: PipelineContext,
 ): AssetRef[] | undefined {
   const cfg = serviceConfig(agent);
   if (!cfg.accepts.includes('image') || !attachment) return undefined;

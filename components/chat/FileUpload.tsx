@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useRef, useCallback } from 'react';
-import { X, FileText, Image, Paperclip } from 'lucide-react';
+import { X, FileText, Image as ImageIcon, Paperclip } from 'lucide-react';
 
 export interface UploadedFile {
   name: string;
@@ -143,7 +143,7 @@ export default function FileUpload({ files, onAdd, onRemove }: FileUploadProps) 
                 {file.type === 'application/pdf' ? (
                   <FileText className="w-4 h-4 text-red-400" />
                 ) : (
-                  <Image className="w-4 h-4 text-cyan-400" />
+                  <ImageIcon className="w-4 h-4 text-cyan-400" />
                 )}
               </div>
             )}

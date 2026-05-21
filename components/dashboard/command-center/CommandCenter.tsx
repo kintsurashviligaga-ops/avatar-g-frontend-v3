@@ -1324,8 +1324,9 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
                   type="button"
                   className={`cc-toggle${voiceMode ? ' on' : ''}`}
                   onClick={() => setVoiceMode(v => !v)}
-                  aria-pressed={voiceMode}
                   role="switch"
+                  aria-checked={voiceMode}
+                  aria-label={copy.voiceTextMode}
                 >
                   <span className="cc-toggle-thumb" />
                 </button>
