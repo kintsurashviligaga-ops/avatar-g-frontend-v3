@@ -54,6 +54,8 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import InlineMedia, { detectInlineMedia } from '@/components/dashboard/command-center/InlineMedia';
 import AuthModal from '@/components/chat/AuthModal';
+import VideoControlSuite from '@/components/chat/VideoControlSuite';
+import { type RenderSettings, DEFAULT_RENDER_SETTINGS, renderSettingsToPayload } from '@/lib/orchestrator/render-settings';
 import { buildSuggestedActions } from '@/lib/orchestrator/actions';
 import type { AssetRef, PipelineContext, ServiceResponse, SuggestedAction } from '@/lib/orchestrator/types';
 import VoiceLab from '@/components/voice/VoiceLab';
@@ -251,6 +253,8 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [listening, setListening] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
+  const [renderSettings, setRenderSettings] = useState<RenderSettings>(DEFAULT_RENDER_SETTINGS);
+  const [renderPanelOpen, setRenderPanelOpen] = useState(false);
   // (Removed: latestMedia + mobileView — previews are now inline-only.)
   const [attachment, setAttachment] = useState<{ name: string; type: string; base64: string; previewUrl: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -560,7 +564,7 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
         if (attachment) setAttachment(null);
       }
       else if (service === 'image')   await runImage(cleanText, pendingId, setMessages, controller.signal, opts);
-      else if (service === 'video')   await runVideo(cleanText, pendingId, setMessages, controller.signal, opts);
+      else if (service === 'video')   await runVideo(cleanText, pendingId, setMessages, controller.signal, { ...opts, renderSettings });
       else if (service === 'music')   await runMusic(cleanText, pendingId, setMessages, controller.signal, opts);
       else if (service === 'voice')   await runVoice(cleanText, pendingId, setMessages, controller.signal, opts);
       else if (service === 'avatar')  {
@@ -581,7 +585,7 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
       setSending(false);
       abortRef.current = null;
     }
-  }, [mode, sending, messages, localeCode, attachment]);
+  }, [mode, sending, messages, localeCode, attachment, renderSettings]);
 
   const stopGeneration = useCallback(() => {
     abortRef.current?.abort();
@@ -903,6 +907,16 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
       {/* ── Bottom input — only on chat view, and hidden when mobile previews are active */}
       {activeView === 'chat' && (
         <div className="relative z-10 flex-shrink-0 px-3 pb-3 pt-2 bg-black">
+          {/* In-chat video render controls — settings fold into the render payload */}
+          <div className="max-w-2xl mx-auto mb-2">
+            <VideoControlSuite
+              locale={localeCode}
+              open={renderPanelOpen}
+              onToggle={() => setRenderPanelOpen(v => !v)}
+              settings={renderSettings}
+              onChange={setRenderSettings}
+            />
+          </div>
           <div className="flex gap-2 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {PILLS.map(p => (
               <button
@@ -2014,9 +2028,12 @@ function detectVideoAspect(prompt: string): '16:9' | '9:16' | '1:1' {
   return '16:9';
 }
 
-async function runVideo(prompt: string, pendingId: string, setMessages: Setter, signal?: AbortSignal, opts?: { localeCode?: Locale }) {
+async function runVideo(prompt: string, pendingId: string, setMessages: Setter, signal?: AbortSignal, opts?: { localeCode?: Locale; renderSettings?: RenderSettings }) {
   const locale: Locale = opts?.localeCode ?? 'ka';
   const aspect_ratio = detectVideoAspect(prompt);
+  // Render settings (transition / caption theme / ducking / fps) flow as
+  // plain JSON into the payload — folded for the CapCut render agent.
+  const render = opts?.renderSettings ? renderSettingsToPayload(opts.renderSettings) : undefined;
   // LTX generation is async on the server (5-15s). Provide reassuring tick so
   // the user doesn't think the UI froze.
   let alive = true;
@@ -2031,7 +2048,7 @@ async function runVideo(prompt: string, pendingId: string, setMessages: Setter, 
   try {
     const res = await fetchWithRetry('/api/ltx-video', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt, aspect_ratio, duration: 6 }),
+      body: JSON.stringify({ prompt, aspect_ratio, duration: 6, ...(render ? { render } : {}) }),
     }, { signal, timeoutMs: 120_000 });
     if (!res.ok) {
       // Surface server's error body if present

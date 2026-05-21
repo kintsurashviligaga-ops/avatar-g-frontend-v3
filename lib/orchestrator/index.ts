@@ -19,4 +19,5 @@ export * from './actions';
 export * from './composition';
 export * from './saga';
 export * from './events';
+export * from './render-settings';
 export * from './orchestrator';
