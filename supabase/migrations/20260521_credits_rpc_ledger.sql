@@ -1,17 +1,22 @@
 -- Migration: 20260521_credits_rpc_ledger
 -- Durable ledger RPCs for the orchestrator Saga (lib/orchestrator/ledger.ts).
 --
--- The app calls deduct_credits(p_user_id, p_amount, p_ref) and
--- refund_credits(p_user_id, p_amount, p_ref). These are NEW 3-arg overloads
--- that coexist with the existing 5-arg public.deduct_credits(...) — PostgREST
--- resolves by the named-argument set, so there is no ambiguity.
+-- LIVE schema of this project:
+--   • public.profiles.credits_balance (integer) — balance of record
+--   • public.credit_ledger (user_id, job_id, delta, reason, metadata, created_at)
+--       reason ∈ {reserve, commit, refund, admin_adjustment, purchase}
+--   • TRIGGER trigger_update_credits_balance AFTER INSERT ON credit_ledger
+--       applies delta to profiles.credits_balance.
 --
--- Contract expected by the ledger:
---   • deduct: RAISE 'insufficient_credits' when balance < amount (the ledger
---     classifies the message → fail-fast); otherwise decrement + return the
---     new INTEGER balance.
---   • refund: increment + return the new INTEGER balance (Saga compensation).
---   • Both are idempotent on p_ref so a Saga retry never double-applies.
+-- ⇒ These RPCs MUST NOT touch profiles.credits_balance directly (the trigger
+--   owns that). They only validate + append a ledger row; the trigger does the
+--   arithmetic. Balance is re-read after the insert for an accurate return.
+--
+-- Contract for lib/orchestrator/ledger.ts:
+--   • deduct: RAISE 'insufficient_credits' when balance < amount → fail-fast;
+--     else append delta=-amount and return the new INTEGER balance.
+--   • refund: append delta=+amount (Saga compensation), return new balance.
+--   • idempotent on p_ref (stored in metadata->>'ref' since reason is enum'd).
 --   • SECURITY DEFINER + locked search_path so they run above RLS safely.
 
 -- ── deduct_credits(uuid, int, text) → integer ────────────────────────────────
@@ -32,43 +37,37 @@ BEGIN
     RAISE EXCEPTION 'invalid_amount' USING ERRCODE = '22023';
   END IF;
 
-  -- Idempotency: if this exact ref already debited, return the current balance.
+  -- Idempotency (ref lives in metadata; reason is a constrained enum).
   IF EXISTS (
-    SELECT 1 FROM public.credit_transactions
-    WHERE user_id = p_user_id AND description = p_ref AND transaction_type = 'deduction'
+    SELECT 1 FROM public.credit_ledger
+    WHERE user_id = p_user_id AND metadata->>'ref' = p_ref AND delta < 0
   ) THEN
-    SELECT balance INTO v_balance FROM public.credits WHERE user_id = p_user_id;
+    SELECT credits_balance INTO v_balance FROM public.profiles WHERE id = p_user_id;
     RETURN COALESCE(v_balance, 0);
   END IF;
 
-  -- Lock the balance row.
-  SELECT balance INTO v_balance
-  FROM public.credits
-  WHERE user_id = p_user_id
+  -- Lock the balance row to serialize concurrent deducts.
+  SELECT credits_balance INTO v_balance
+  FROM public.profiles
+  WHERE id = p_user_id
   FOR UPDATE;
 
   IF NOT FOUND THEN
-    RAISE EXCEPTION 'insufficient_credits' USING ERRCODE = 'P0001', DETAIL = 'no credit record';
+    RAISE EXCEPTION 'insufficient_credits' USING ERRCODE = 'P0001', DETAIL = 'no profile record';
   END IF;
 
-  IF v_balance < p_amount THEN
-    RAISE EXCEPTION 'insufficient_credits' USING ERRCODE = 'P0001', DETAIL = format('have %s need %s', v_balance, p_amount);
+  IF COALESCE(v_balance, 0) < p_amount THEN
+    RAISE EXCEPTION 'insufficient_credits' USING ERRCODE = 'P0001',
+      DETAIL = format('have %s need %s', COALESCE(v_balance, 0), p_amount);
   END IF;
 
-  v_balance := v_balance - p_amount;
+  -- Append the ledger row; trigger_update_credits_balance applies the delta.
+  INSERT INTO public.credit_ledger (user_id, delta, reason, metadata)
+  VALUES (p_user_id, -p_amount, 'commit', jsonb_build_object('source', 'orchestrator', 'ref', p_ref));
 
-  UPDATE public.credits
-  SET balance = v_balance,
-      total_spent = total_spent + p_amount,
-      updated_at = NOW()
-  WHERE user_id = p_user_id;
-
-  INSERT INTO public.credit_transactions
-    (user_id, amount, balance_after, transaction_type, description, job_id, agent_id)
-  VALUES
-    (p_user_id, -p_amount, v_balance, 'deduction', p_ref, NULL, 'orchestrator');
-
-  RETURN v_balance;
+  -- Re-read the post-trigger balance for an accurate return value.
+  SELECT credits_balance INTO v_balance FROM public.profiles WHERE id = p_user_id;
+  RETURN COALESCE(v_balance, 0);
 END;
 $$;
 
@@ -92,49 +91,33 @@ BEGIN
 
   -- Idempotency: never refund the same ref twice.
   IF EXISTS (
-    SELECT 1 FROM public.credit_transactions
-    WHERE user_id = p_user_id AND description = p_ref AND transaction_type = 'refund'
+    SELECT 1 FROM public.credit_ledger
+    WHERE user_id = p_user_id AND metadata->>'ref' = p_ref AND delta > 0
   ) THEN
-    SELECT balance INTO v_balance FROM public.credits WHERE user_id = p_user_id;
+    SELECT credits_balance INTO v_balance FROM public.profiles WHERE id = p_user_id;
     RETURN COALESCE(v_balance, 0);
   END IF;
 
-  -- Upsert a credit row so a refund can never silently no-op.
-  INSERT INTO public.credits (user_id, balance)
-  VALUES (p_user_id, 0)
-  ON CONFLICT (user_id) DO NOTHING;
+  -- Only credit a real profile; the trigger applies the +delta.
+  IF NOT EXISTS (SELECT 1 FROM public.profiles WHERE id = p_user_id) THEN
+    RETURN 0;
+  END IF;
 
-  UPDATE public.credits
-  SET balance = balance + p_amount,
-      total_earned = total_earned + p_amount,
-      updated_at = NOW()
-  WHERE user_id = p_user_id
-  RETURNING balance INTO v_balance;
+  INSERT INTO public.credit_ledger (user_id, delta, reason, metadata)
+  VALUES (p_user_id, p_amount, 'refund', jsonb_build_object('source', 'orchestrator-rollback', 'ref', p_ref));
 
-  INSERT INTO public.credit_transactions
-    (user_id, amount, balance_after, transaction_type, description, job_id, agent_id)
-  VALUES
-    (p_user_id, p_amount, v_balance, 'refund', p_ref, NULL, 'orchestrator');
-
-  RETURN v_balance;
+  SELECT credits_balance INTO v_balance FROM public.profiles WHERE id = p_user_id;
+  RETURN COALESCE(v_balance, 0);
 END;
 $$;
 
 -- ── Execution grants ─────────────────────────────────────────────────────────
--- Service role (server runners) + authenticated callers may invoke; SECURITY
--- DEFINER means the body runs as the owner, bypassing RLS on public.credits.
 REVOKE ALL ON FUNCTION public.deduct_credits(UUID, INTEGER, TEXT) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.refund_credits(UUID, INTEGER, TEXT) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.deduct_credits(UUID, INTEGER, TEXT) TO authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.refund_credits(UUID, INTEGER, TEXT) TO authenticated, service_role;
 
 -- ── High-load optimization ───────────────────────────────────────────────────
--- The idempotency guards in both RPCs scan credit_transactions by description
--- (the p_ref). This index keeps that lookup O(log n) at millions of rows.
-CREATE INDEX IF NOT EXISTS idx_credit_transactions_desc
-  ON public.credit_transactions (description);
-
--- Composite index for the exact (user_id, description, transaction_type) probe
--- the RPC EXISTS() checks run — even faster than the single-column index above.
-CREATE INDEX IF NOT EXISTS idx_credit_transactions_user_desc_type
-  ON public.credit_transactions (user_id, description, transaction_type);
+-- Idempotency guards probe credit_ledger by (user_id, metadata->>'ref').
+CREATE INDEX IF NOT EXISTS idx_credit_ledger_user_ref
+  ON public.credit_ledger (user_id, (metadata->>'ref'));
