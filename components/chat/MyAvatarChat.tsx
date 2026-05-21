@@ -53,11 +53,12 @@ import {
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import InlineMedia, { detectInlineMedia } from '@/components/dashboard/command-center/InlineMedia';
+import AuthModal from '@/components/chat/AuthModal';
 import { buildSuggestedActions } from '@/lib/orchestrator/actions';
 import type { AssetRef, PipelineContext, ServiceResponse, SuggestedAction } from '@/lib/orchestrator/types';
 import VoiceLab from '@/components/voice/VoiceLab';
 import MemoryPanel from '@/components/memory/MemoryPanel';
-import { BarChart, KpiTile, LineChart, TopicList } from '@/components/analytics/AnalyticsCharts';
+import { BarChart, KpiTile, LineChart, TopicList, WeeklyUsageChart } from '@/components/analytics/AnalyticsCharts';
 import { createBrowserClient } from '@/lib/supabase/browser';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -249,6 +250,7 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
   const [sending, setSending] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [listening, setListening] = useState(false);
+  const [authOpen, setAuthOpen] = useState(false);
   // (Removed: latestMedia + mobileView — previews are now inline-only.)
   const [attachment, setAttachment] = useState<{ name: string; type: string; base64: string; previewUrl: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -1125,12 +1127,20 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
                 locale={localeCode}
                 userName={userName}
                 isAuthenticated={isAuthenticated}
+                onLogin={() => { setDrawerOpen(false); setAuthOpen(true); }}
               />
             </div>
           </motion.aside>
         )}
       </AnimatePresence>
 
+      {/* In-window auth (One Window) — login / register / reset / magic link */}
+      <AuthModal
+        open={authOpen}
+        locale={localeCode}
+        onClose={() => setAuthOpen(false)}
+        onAuthed={() => { setAuthOpen(false); window.location.reload(); }}
+      />
     </main>
   );
 }
@@ -1427,6 +1437,12 @@ function AnalyticsView({ locale }: { locale: string }) {
       </div>
       <section className="rounded-2xl p-4 bg-white/[0.04] border border-white/[0.08]">
         <h3 className="text-[13px] font-semibold text-white mb-3">
+          {locale === 'ka' ? 'კვირეული გამოყენება — ბოლო 7 დღე' : locale === 'ru' ? 'Недельная активность — 7 дней' : 'Weekly Usage · last 7 days'}
+        </h3>
+        <WeeklyUsageChart data={data.messagesPerDay} locale={locale === 'ka' || locale === 'ru' ? locale : 'en'} />
+      </section>
+      <section className="rounded-2xl p-4 bg-white/[0.04] border border-white/[0.08]">
+        <h3 className="text-[13px] font-semibold text-white mb-3">
           {locale === 'ka' ? 'შეტყობინებები / დღე — ბოლო 30 დღე' : 'Messages per day · last 30 days'}
         </h3>
         <LineChart data={data.messagesPerDay} />
@@ -1508,10 +1524,12 @@ function AccountSection({
   locale,
   userName,
   isAuthenticated,
+  onLogin,
 }: {
   locale: string;
   userName: string;
   isAuthenticated: boolean;
+  onLogin: () => void;
 }) {
   const [creditsBalance, setCreditsBalance] = useState<number | null>(null);
   const [online, setOnline] = useState<boolean>(typeof navigator === 'undefined' ? true : navigator.onLine);
@@ -1675,13 +1693,14 @@ function AccountSection({
               <span className="text-[13px] text-rose-400 font-medium">{locale === 'ka' ? 'გასვლა' : locale === 'ru' ? 'Выйти' : 'Sign out'}</span>
             </button>
           ) : (
-            <a
-              href={`/${locale}/login`}
+            <button
+              type="button"
+              onClick={onLogin}
               className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl bg-white text-black text-[13px] font-semibold hover:bg-white/90 transition"
             >
               <UserIcon size={15} />
               {locale === 'ka' ? 'შესვლა' : locale === 'ru' ? 'Войти' : 'Log in'}
-            </a>
+            </button>
           )}
 
           {/* Legal / support */}

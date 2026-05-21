@@ -5,7 +5,7 @@
  * responsive line / bar / donut visualizations for the analytics page.
  */
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 
 // ─── Line chart (messages per day) ────────────────────────────────────────────
 
@@ -150,6 +150,121 @@ export function KpiTile({ label, value, accent = '#a855f7' }: { label: string; v
         {value}
       </div>
       <div style={{ marginTop: 4, height: 2, width: 32, borderRadius: 2, background: accent }} />
+    </div>
+  );
+}
+
+// ─── Weekly Usage — premium 7-day area chart with interactive tooltips ────────
+
+interface WeeklyUsageChartProps {
+  /** Rolling 7-day data; the component slices/pads to exactly 7 points. */
+  data: Array<{ date: string; count: number }>;
+  locale?: 'ka' | 'en' | 'ru';
+}
+
+/**
+ * A self-contained, dependency-free 7-day usage chart: indigo→deep-purple
+ * gradient area + line, hoverable points with a floating tooltip showing
+ * the day and its value. Responsive (viewBox), 60fps (pure SVG, no layout
+ * thrash) and keyboard/pointer accessible.
+ */
+export function WeeklyUsageChart({ data, locale = 'en' }: WeeklyUsageChartProps) {
+  const [hover, setHover] = useState<number | null>(null);
+
+  const week = useMemo(() => {
+    const last7 = data.slice(-7);
+    while (last7.length < 7) last7.unshift({ date: '', count: 0 });
+    return last7;
+  }, [data]);
+
+  const W = 600, H = 180, padX = 28, padY = 22;
+  const maxV = Math.max(1, ...week.map(d => d.count));
+  const step = (W - padX * 2) / Math.max(1, week.length - 1);
+  const pts = week.map((d, i) => {
+    const x = padX + i * step;
+    const y = H - padY - (d.count / maxV) * (H - padY * 2);
+    return [x, y] as const;
+  });
+  const line = pts.map(([x, y], i) => `${i === 0 ? 'M' : 'L'} ${x.toFixed(1)} ${y.toFixed(1)}`).join(' ');
+  const area = `${line} L ${pts[pts.length - 1]?.[0] ?? padX} ${H - padY} L ${padX} ${H - padY} Z`;
+
+  const dayLabel = (iso: string) => {
+    if (!iso) return '—';
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return iso;
+    const loc = locale === 'ka' ? 'ka-GE' : locale === 'ru' ? 'ru-RU' : 'en-US';
+    return d.toLocaleDateString(loc, { weekday: 'short', day: 'numeric' });
+  };
+
+  const total = week.reduce((s, d) => s + d.count, 0);
+
+  return (
+    <div className="relative">
+      <svg
+        viewBox={`0 0 ${W} ${H}`}
+        preserveAspectRatio="none"
+        style={{ width: '100%', height: H, display: 'block', cursor: 'pointer' }}
+        onMouseLeave={() => setHover(null)}
+      >
+        <defs>
+          <linearGradient id="weekly-area" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#818cf8" stopOpacity="0.45" />
+            <stop offset="100%" stopColor="#6d28d9" stopOpacity="0" />
+          </linearGradient>
+          <linearGradient id="weekly-line" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stopColor="#818cf8" />
+            <stop offset="100%" stopColor="#a855f7" />
+          </linearGradient>
+        </defs>
+
+        {/* gridlines */}
+        {[0, 0.5, 1].map((f, i) => (
+          <line key={i} x1={padX} x2={W - padX} y1={padY + f * (H - padY * 2)} y2={padY + f * (H - padY * 2)}
+            stroke="rgba(255,255,255,0.06)" strokeDasharray="2 4" />
+        ))}
+
+        <path d={area} fill="url(#weekly-area)" />
+        <path d={line} fill="none" stroke="url(#weekly-line)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+
+        {/* points + invisible hit targets */}
+        {pts.map(([x, y], i) => (
+          <g key={i}>
+            {hover === i && (
+              <line x1={x} x2={x} y1={padY} y2={H - padY} stroke="rgba(168,85,247,0.4)" strokeWidth="1" />
+            )}
+            <circle cx={x} cy={y} r={hover === i ? 5 : 3.5} fill={hover === i ? '#fff' : '#a855f7'}
+              stroke="#6d28d9" strokeWidth="1.5" />
+            <rect x={x - step / 2} y={0} width={step} height={H} fill="transparent"
+              onMouseEnter={() => setHover(i)} />
+          </g>
+        ))}
+      </svg>
+
+      {/* x-axis day labels */}
+      <div className="flex justify-between px-[18px] mt-1">
+        {week.map((d, i) => (
+          <span key={i} className={`text-[10px] ${hover === i ? 'text-white' : 'text-white/40'} transition-colors`}>
+            {dayLabel(d.date)}
+          </span>
+        ))}
+      </div>
+
+      {/* floating tooltip */}
+      {hover !== null && week[hover] && (
+        <div
+          className="absolute -top-1 px-2.5 py-1.5 rounded-lg bg-black border border-white/[0.15] shadow-lg pointer-events-none text-center"
+          style={{ left: `${(pts[hover]?.[0] ?? 0) / W * 100}%`, transform: 'translateX(-50%)' }}
+        >
+          <div className="text-[10px] text-white/55">{dayLabel(week[hover]!.date)}</div>
+          <div className="text-[14px] font-bold text-white tabular-nums">{week[hover]!.count}</div>
+        </div>
+      )}
+
+      {/* total caption */}
+      <div className="mt-2 text-[11px] text-white/45">
+        {locale === 'ka' ? 'სულ კვირაში' : locale === 'ru' ? 'Всего за неделю' : 'Total this week'}:{' '}
+        <span className="text-white/80 font-semibold">{total}</span>
+      </div>
     </div>
   );
 }
