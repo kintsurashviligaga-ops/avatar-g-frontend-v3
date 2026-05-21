@@ -4,12 +4,11 @@
  * Re-exports the CLIENT-SAFE modules so consumers can do:
  *   import { handleUserMessage, runSaga, buildSuggestedActions } from '@/lib/orchestrator';
  *
- * `idempotency.ts` is intentionally NOT re-exported here: it is marked
- * `server-only` (Redis token-lock / idempotency / circuit breaker) and
- * pulling it through this barrel would drag `server-only` into any client
- * bundle that imports the orchestrator (e.g. the chat surface). Server
- * code must import it directly:
- *   import { claimIdempotencyKey } from '@/lib/orchestrator/idempotency';
+ * Server-only modules are intentionally NOT re-exported here — pulling
+ * them through this barrel would drag `server-only` into any client bundle
+ * that imports the orchestrator (e.g. the chat surface). Import them
+ * directly from server code:
+ *   idempotency.ts · ledger.ts · storage-adapter.ts
  */
 
 export * from './types';
@@ -21,4 +20,6 @@ export * from './saga';
 export * from './events';
 export * from './render-settings';
 export * from './pipeline-stages';
+export * from './providers';
+export * from './runpod-adapter';
 export * from './orchestrator';

@@ -3,22 +3,26 @@
  *
  * Receives the compiled composition (≤5 segment URLs + per-segment + global
  * RenderSettings + master audio handles) and bridges the heavy stitch to an
- * external GPU FFmpeg worker (RunPod/Lambda) over a private webhook —
- * serverless functions cannot run CUDA FFmpeg themselves.
+ * external GPU FFmpeg worker (RunPod) over a private webhook — serverless
+ * functions cannot run CUDA FFmpeg themselves.
  *
- * The whole dispatch is wrapped in a Saga so a RunPod outage rolls back
- * cleanly: the user's reserved credits are released and any partial temp
- * storage is purged, leaving no dead state.
- *
- * Honest degradation: with no RUNPOD_RENDER_WEBHOOK_URL configured the
- * route returns 503 (not a fake success) — the contract is ready the
- * moment the GPU node is provisioned.
+ * Guarantees:
+ *   - Idempotency: a payload hash is claimed in Redis for 60s so a
+ *     double-click cannot launch two render jobs (fails-open w/o Redis).
+ *   - Saga: reserve credits → dispatch → commit; any failure releases the
+ *     credit lock and best-effort purges the partial render.
+ *   - Honest degradation: 503 when the GPU node env is unprovisioned.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { runSaga, type SagaStep } from '@/lib/orchestrator/saga';
-import { lockTokens, commitTokenLock, releaseTokenLock, type TokenLock } from '@/lib/orchestrator/idempotency';
+import {
+  lockTokens, commitTokenLock, releaseTokenLock, type TokenLock,
+  claimIdempotencyKey, hashPayload,
+} from '@/lib/orchestrator/idempotency';
+import { readRunPodConfig, dispatchRunPod, type RunPodManifest } from '@/lib/orchestrator/runpod-adapter';
+import { deductCredits, refundCredits } from '@/lib/orchestrator/ledger';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -47,93 +51,84 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'invalid JSON body' }, { status: 400 });
   }
 
-  const segments = (body.segments ?? []).filter(s => typeof s.url === 'string' && s.url.length > 0);
+  const segments = (body.segments ?? []).filter((s): s is Required<Pick<SegmentInput, 'url'>> & SegmentInput =>
+    typeof s.url === 'string' && s.url.length > 0);
   if (segments.length < 2) {
     return NextResponse.json({ error: 'at least 2 ready segments required' }, { status: 400 });
   }
 
-  // Identify the user (cookie or Bearer) for credit accounting.
   const { user } = await authedClientFromRequest(req);
   if (!user) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   }
 
-  const webhookUrl = process.env.RUNPOD_RENDER_WEBHOOK_URL;
-  const webhookToken = process.env.RUNPOD_API_TOKEN;
-  if (!webhookUrl || !webhookToken) {
+  // Idempotency — block duplicate submissions of the same composition.
+  const idemKey = await hashPayload({ u: user.id, segs: segments.map(s => s.url), v: body.voiceoverUrl, m: body.musicUrl });
+  const fresh = await claimIdempotencyKey(user.id, `assemble:${idemKey}`, 60);
+  if (!fresh) {
+    return NextResponse.json({ error: 'duplicate_request', message: 'This composition is already being assembled.' }, { status: 409 });
+  }
+
+  // GPU node gate — honest 503 when unprovisioned.
+  const cfg = readRunPodConfig();
+  if (!cfg) {
     return NextResponse.json(
-      { error: 'render_node_unprovisioned', message: 'GPU render node (RUNPOD_RENDER_WEBHOOK_URL / RUNPOD_API_TOKEN) is not configured.' },
+      { error: 'render_node_unprovisioned', message: 'GPU render node (RUNPOD_RENDER_WEBHOOK_URL + RUNPOD_RENDER_WEBHOOK_TOKEN) is not configured.' },
       { status: 503 },
     );
   }
 
-  // Saga: reserve credits → dispatch to RunPod → commit. State is threaded
-  // through ctx.bag so every step (and its compensator) reads a single
-  // source of truth; any failure rolls back (release credits + purge temp).
+  const manifest: RunPodManifest = {
+    segments: segments.map(s => ({
+      url: s.url,
+      durationSec: s.durationSec ?? 6,
+      cameraMotion: s.cameraMotion ?? null,
+      render: s.render ?? {},
+    })),
+    voiceoverUrl: body.voiceoverUrl ?? null,
+    musicUrl: body.musicUrl ?? null,
+    globalRender: body.globalRender ?? {},
+    pipelineId: '',
+    callbackUrl: new URL('/api/video/assemble/callback', req.url).toString(),
+  };
+
+  // Saga: reserve credits (Redis lock + durable ledger debit) → dispatch →
+  // commit. Failure releases the lock AND refunds the durable debit, and
+  // best-effort purges the partial render.
   const steps: SagaStep[] = [
     {
       name: 'reserve-credits',
       run: async (ctx) => {
         const lock = await lockTokens(user.id, ASSEMBLE_COST, 900);
         ctx.bag.lock = lock;
+        const debit = await deductCredits(user.id, ASSEMBLE_COST, `assemble:${ctx.sagaId}`);
+        ctx.bag.debited = debit.ok;
+        if (!debit.ok && debit.reason === 'insufficient') {
+          throw new Error('insufficient credits');
+        }
         return lock;
       },
       compensate: async (_r, ctx) => {
         const lock = ctx.bag.lock as TokenLock | null | undefined;
         if (lock) await releaseTokenLock(lock);
+        if (ctx.bag.debited) await refundCredits(user.id, ASSEMBLE_COST, `assemble-rollback:${ctx.sagaId}`);
       },
     },
     {
       name: 'dispatch-runpod',
       run: async (ctx) => {
-        const payload = {
-          segments: segments.map(s => ({
-            url: s.url,
-            durationSec: s.durationSec ?? 6,
-            cameraMotion: s.cameraMotion ?? null,
-            render: s.render ?? {},
-          })),
-          voiceoverUrl: body.voiceoverUrl ?? null,
-          musicUrl: body.musicUrl ?? null,
-          globalRender: body.globalRender ?? {},
-          pipelineId: ctx.sagaId,
-        };
-        // Exponential-backoff retry (max 3) on transient 5xx / network errors.
-        let lastErr: unknown = null;
-        for (let attempt = 1; attempt <= 3; attempt++) {
-          try {
-            const r = await fetch(webhookUrl, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${webhookToken}` },
-              body: JSON.stringify({ input: payload }),
-              signal: ctx.signal,
-            });
-            if (r.ok) {
-              const data = (await r.json()) as { output?: { url?: string }; url?: string };
-              const url = data.output?.url ?? data.url;
-              if (!url) throw new Error('render node returned no url');
-              ctx.bag.tempUrl = url;
-              return url;
-            }
-            if (r.status < 500 && r.status !== 429) throw new Error(`render node ${r.status}`);
-            lastErr = new Error(`render node ${r.status}`);
-          } catch (e) {
-            lastErr = e;
-            if ((e as Error)?.name === 'AbortError') throw e;
-          }
-          if (attempt < 3) await new Promise(res => setTimeout(res, Math.min(8000, 700 * 2 ** (attempt - 1))));
-        }
-        throw lastErr instanceof Error ? lastErr : new Error('render node unreachable');
+        const res = await dispatchRunPod(cfg, { ...manifest, pipelineId: ctx.sagaId }, { signal: ctx.signal });
+        ctx.bag.tempUrl = res.url;
+        return res.url;
       },
       compensate: async (_r, ctx) => {
-        // Best-effort purge of the partial render so no orphaned asset lingers.
         const tempUrl = ctx.bag.tempUrl;
         const purge = process.env.RUNPOD_PURGE_WEBHOOK_URL;
         if (typeof tempUrl === 'string' && purge) {
           try {
             await fetch(purge, {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${webhookToken}` },
+              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${cfg.token}` },
               body: JSON.stringify({ url: tempUrl }),
             });
           } catch { /* best effort */ }
@@ -156,12 +151,7 @@ export async function POST(req: NextRequest) {
 
   if (!saga.ok) {
     return NextResponse.json(
-      {
-        error: 'assembly_failed',
-        failedStep: saga.failedStep,
-        message: saga.error,
-        compensated: saga.compensatedSteps,
-      },
+      { error: 'assembly_failed', failedStep: saga.failedStep, message: saga.error, compensated: saga.compensatedSteps },
       { status: 502 },
     );
   }
