@@ -112,6 +112,18 @@ export interface VideoSegment {
   errorMessage?: string;
   /** Optional camera-motion preset captured from a SuggestedAction. */
   cameraMotion?: 'zoom_in' | 'zoom_out' | 'pan_left' | 'pan_right' | 'dolly' | null;
+  /**
+   * Optional per-segment render overrides. Any field set here wins over the
+   * composition's global RenderSettings for THIS clip only; unset fields
+   * fall back to the global settings (see resolveSegmentSettings).
+   * Imported lazily as a structural shape to avoid a hard type cycle.
+   */
+  overrides?: {
+    transition?: 'crossfade' | 'dissolve' | 'wipe' | 'fade_to_black';
+    captionTheme?: 'minimal' | 'bold_glow' | 'subtitle_bar' | 'none';
+    vocalDuckingPct?: number;
+    fps?: 24 | 60;
+  };
   createdAt: number;
 }
 

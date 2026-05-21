@@ -1,4 +1,14 @@
 import { SEGMENT_DURATION_SEC, type VideoComposition, type VideoSegment } from './types';
+import { normalizeRenderSettings, renderSettingsToPayload, type RenderSettings } from './render-settings';
+
+/**
+ * Resolve the effective render settings for one segment: explicit segment
+ * overrides win field-by-field over the composition's global settings.
+ * Unset override fields gracefully fall back to global.
+ */
+export function resolveSegmentSettings(global: RenderSettings, seg: VideoSegment): RenderSettings {
+  return normalizeRenderSettings({ ...global, ...(seg.overrides ?? {}) });
+}
 
 /**
  * Temporal Segmentation — 6-second clip assembly.
@@ -102,15 +112,24 @@ export function canAssemble(comp: VideoComposition): boolean {
  */
 export async function assembleComposition(
   comp: VideoComposition,
+  global: RenderSettings,
   signal?: AbortSignal,
 ): Promise<string> {
   const payload = {
     segments: comp.segments
       .filter(s => s.status === 'ready' && s.assetUrl)
       .sort((a, b) => a.index - b.index)
-      .map(s => ({ url: s.assetUrl, durationSec: s.durationSec, cameraMotion: s.cameraMotion ?? null })),
+      .map(s => ({
+        url: s.assetUrl,
+        durationSec: s.durationSec,
+        cameraMotion: s.cameraMotion ?? null,
+        // Each segment carries its fully-resolved settings (override → global).
+        render: renderSettingsToPayload(resolveSegmentSettings(global, s)),
+      })),
     voiceoverUrl: comp.voiceoverUrl ?? null,
     musicUrl:     comp.musicUrl     ?? null,
+    // Global defaults included so the agent has the fallback baseline too.
+    globalRender: renderSettingsToPayload(global),
   };
   const res = await fetch('/api/video/assemble', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },

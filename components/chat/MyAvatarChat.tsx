@@ -55,7 +55,8 @@ import remarkGfm from 'remark-gfm';
 import InlineMedia, { detectInlineMedia } from '@/components/dashboard/command-center/InlineMedia';
 import AuthModal from '@/components/chat/AuthModal';
 import VideoControlSuite from '@/components/chat/VideoControlSuite';
-import { type RenderSettings, DEFAULT_RENDER_SETTINGS, renderSettingsToPayload } from '@/lib/orchestrator/render-settings';
+import { type RenderSettings, renderSettingsToPayload } from '@/lib/orchestrator/render-settings';
+import { useRenderSettings } from '@/hooks/useRenderSettings';
 import { buildSuggestedActions } from '@/lib/orchestrator/actions';
 import type { AssetRef, PipelineContext, ServiceResponse, SuggestedAction } from '@/lib/orchestrator/types';
 import VoiceLab from '@/components/voice/VoiceLab';
@@ -253,7 +254,7 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [listening, setListening] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
-  const [renderSettings, setRenderSettings] = useState<RenderSettings>(DEFAULT_RENDER_SETTINGS);
+  const [renderSettings, setRenderSettings] = useRenderSettings();
   const [renderPanelOpen, setRenderPanelOpen] = useState(false);
   // (Removed: latestMedia + mobileView — previews are now inline-only.)
   const [attachment, setAttachment] = useState<{ name: string; type: string; base64: string; previewUrl: string } | null>(null);
