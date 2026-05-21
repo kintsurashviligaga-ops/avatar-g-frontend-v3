@@ -24,6 +24,7 @@
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:voice-smoke": "PLAYWRIGHT_DEV_PORT=3003 PLAYWRIGHT_FORCE_FRESH_SERVER=1 PLAYWRIGHT_CLEAN_NEXT=1 playwright test tests/voice-v2v-smoke.spec.ts",
     "health:providers": "node scripts/provider-health-check.mjs",
+    "preflight": "node scripts/preflight-check.mjs",
     "voice:v2v": "npm --prefix services/voice-v2v-node install && npm --prefix services/voice-v2v-node run start",
     "voice:v2v:dev": "npm --prefix services/voice-v2v-node install && npm --prefix services/voice-v2v-node run dev"
   },
