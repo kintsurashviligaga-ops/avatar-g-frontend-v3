@@ -249,7 +249,9 @@ const VIEW_ITEMS: Array<{
 export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAvatarChatProps) {
   const localeCode = (locale === 'ka' || locale === 'en' || locale === 'ru') ? locale : 'ka';
   const [activeView, setActiveView] = useState<ViewId>('chat');
-  const [mode, setMode] = useState<Mode>('ask');
+  // Ask/Imagine toggle removed — intent is resolved from keywords, pills,
+  // and slash commands. Mode is fixed to 'ask' (the broad-routing default).
+  const mode: Mode = 'ask';
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
@@ -778,26 +780,9 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
         </button>
 
         {activeView === 'chat' ? (
-          <div className="flex items-center gap-1 bg-black border border-white/[0.10] rounded-full p-1">
-            <button
-              type="button"
-              onClick={() => setMode('ask')}
-              className={`px-4 py-1.5 rounded-full text-[14px] font-semibold transition ${
-                mode === 'ask' ? 'bg-white/15 text-white' : 'text-white/55'
-              }`}
-            >
-              {localeCode === 'ka' ? 'კითხვა' : 'Ask'}
-            </button>
-            <button
-              type="button"
-              onClick={() => setMode('imagine')}
-              className={`px-4 py-1.5 rounded-full text-[14px] font-semibold transition ${
-                mode === 'imagine' ? 'bg-white/15 text-white' : 'text-white/55'
-              }`}
-            >
-              {localeCode === 'ka' ? 'შექმნა' : 'Imagine'}
-            </button>
-          </div>
+          <span className="text-[15px] font-semibold tracking-tight text-white select-none">
+            MyAvatar<span className="text-white/40">.ge</span>
+          </span>
         ) : (
           <h1 className="text-[15px] font-semibold text-white">
             {VIEW_ITEMS.find(v => v.id === activeView)?.[localeCode === 'ka' ? 'label_ka' : 'label_en']}
@@ -1078,13 +1063,33 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
           >
             <div className="h-full flex flex-col">
               <div className="flex items-center justify-between px-4 pt-4 pb-3 border-b border-white/[0.06]">
-                <span className="text-[15px] font-semibold text-white">MyAvatar</span>
+                <span className="text-[15px] font-semibold tracking-tight text-white">
+                  MyAvatar<span className="text-white/40">.ge</span>
+                </span>
                 <button type="button" aria-label="Close" onClick={() => setDrawerOpen(false)}
                   className="h-8 w-8 rounded-full hover:bg-white/[0.08] flex items-center justify-center text-[#94A3B8]">
                   <X size={16} />
                 </button>
               </div>
-              <nav className="flex-shrink-0 py-2 border-b border-white/[0.06]">
+
+              {/* Prominent New chat CTA */}
+              <div className="px-3 pt-3">
+                <motion.button
+                  type="button"
+                  onClick={newSession}
+                  whileHover={{ scale: 1.01 }}
+                  whileTap={{ scale: 0.99 }}
+                  className="w-full flex items-center justify-center gap-2 h-10 rounded-xl bg-white text-black text-[13px] font-semibold hover:bg-white/90 transition"
+                >
+                  <Sparkles size={15} />
+                  {localeCode === 'ka' ? 'ახალი ჩატი' : localeCode === 'ru' ? 'Новый чат' : 'New chat'}
+                </motion.button>
+              </div>
+
+              <div className="px-4 pt-3 pb-1 text-[10px] font-bold uppercase tracking-wider text-white/35">
+                {localeCode === 'ka' ? 'სამუშაო სივრცე' : localeCode === 'ru' ? 'Рабочее пространство' : 'Workspace'}
+              </div>
+              <nav className="flex-shrink-0 pb-2 border-b border-white/[0.06]">
                 {VIEW_ITEMS.map(item => {
                   const active = activeView === item.id;
                   return (
