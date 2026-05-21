@@ -104,9 +104,14 @@ console.log(`  Required present : ${REQUIRED.length - missingRequired}/${REQUIRE
 console.log(`  Media agents     : ${MEDIA_AGENTS.length - missingMedia}/${MEDIA_AGENTS.length} configured`);
 console.log(`  Infrastructure   : ${INFRA.length - missingInfra}/${INFRA.length} configured`);
 
+// --soft (or PREFLIGHT_SOFT=1): report but never exit non-zero. Used in the
+// Vercel build chain so a runtime-only secret that isn't present at BUILD
+// time can never block a deploy — the report still lands in the build log.
+const soft = process.argv.includes('--soft') || process.env.PREFLIGHT_SOFT === '1';
+
 if (missingRequired > 0) {
-  console.log(`\n${C.red}${C.bold}✗ PRE-FLIGHT FAILED${C.reset} — ${missingRequired} required key(s) missing. Fix the alert blocks above before deploy.\n`);
-  process.exit(1);
+  console.log(`\n${C.red}${C.bold}✗ PRE-FLIGHT ${soft ? 'WARNING' : 'FAILED'}${C.reset} — ${missingRequired} required key(s) missing.${soft ? ' (soft mode — not blocking the build)' : ' Fix the alert blocks above before deploy.'}\n`);
+  process.exit(soft ? 0 : 1);
 }
 console.log(`\n${C.green}${C.bold}✓ PRE-FLIGHT PASSED${C.reset} — all required keys present.${missingMedia ? ` ${missingMedia} media agent(s) will degrade gracefully.` : ''}\n`);
 process.exit(0);

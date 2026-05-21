@@ -12,7 +12,7 @@
     "clean": "rm -rf .next",
     "build": "next build",
     "build:analyze": "ANALYZE=true next build",
-    "vercel-build": "next build",
+    "vercel-build": "node scripts/preflight-check.mjs --soft && next build",
     "start": "next start",
     "lint": "next lint",
     "lint:fix": "next lint --fix",
