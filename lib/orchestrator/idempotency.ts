@@ -54,9 +54,14 @@ export async function claimIdempotencyKey(userId: string, key: string, windowSec
   const r = redis();
   if (!r) return true;
   const k = `idem:${userId}:${key}`;
-  // SET NX EX — atomic "first writer wins" with TTL.
-  const res = await r.set(k, '1', { nx: true, ex: windowSec });
-  return res === 'OK';
+  try {
+    // SET NX EX — atomic "first writer wins" with TTL.
+    const res = await r.set(k, '1', { nx: true, ex: windowSec });
+    return res === 'OK';
+  } catch {
+    // Live-but-erroring Redis must never crash the route — fail open.
+    return true;
+  }
 }
 
 // ─── Token lock (Saga-aware) ──────────────────────────────────────────────────
@@ -72,7 +77,11 @@ export async function lockTokens(userId: string, amount: number, ttlSec = 600): 
   const r = redis();
   const lockId = `lock_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
   if (!r) return { userId, amount, lockId }; // optimistic when no Redis
-  await r.set(`toklock:${userId}:${lockId}`, String(amount), { ex: ttlSec });
+  try {
+    await r.set(`toklock:${userId}:${lockId}`, String(amount), { ex: ttlSec });
+  } catch {
+    // Fail open — the durable ledger debit is the real guard.
+  }
   return { userId, amount, lockId };
 }
 
@@ -80,14 +89,14 @@ export async function lockTokens(userId: string, amount: number, ttlSec = 600): 
 export async function commitTokenLock(lock: TokenLock): Promise<void> {
   const r = redis();
   if (!r) return;
-  await r.del(`toklock:${lock.userId}:${lock.lockId}`);
+  try { await r.del(`toklock:${lock.userId}:${lock.lockId}`); } catch { /* fail open */ }
 }
 
 /** Release a lock — the Saga rolled back; credit the user instantly. */
 export async function releaseTokenLock(lock: TokenLock): Promise<void> {
   const r = redis();
   if (!r) return;
-  await r.del(`toklock:${lock.userId}:${lock.lockId}`);
+  try { await r.del(`toklock:${lock.userId}:${lock.lockId}`); } catch { /* fail open */ }
 }
 
 // ─── Circuit breaker ──────────────────────────────────────────────────────────
@@ -101,21 +110,24 @@ export async function recordProviderResult(provider: string, ok: boolean, thresh
   const r = redis();
   if (!r) return;
   const failKey = `cb:fails:${provider}`;
-  if (ok) {
-    await r.del(failKey);
-    return;
-  }
-  const fails = await r.incr(failKey);
-  await r.expire(failKey, cooldownSec);
-  if (fails >= threshold) {
-    await r.set(`cb:open:${provider}`, '1', { ex: cooldownSec });
-  }
+  try {
+    if (ok) { await r.del(failKey); return; }
+    const fails = await r.incr(failKey);
+    await r.expire(failKey, cooldownSec);
+    if (fails >= threshold) {
+      await r.set(`cb:open:${provider}`, '1', { ex: cooldownSec });
+    }
+  } catch { /* fail open — never block generation on breaker bookkeeping */ }
 }
 
 export async function isProviderTripped(provider: string): Promise<boolean> {
   const r = redis();
   if (!r) return false;
-  return (await r.get(`cb:open:${provider}`)) === '1';
+  try {
+    return (await r.get(`cb:open:${provider}`)) === '1';
+  } catch {
+    return false; // fail open
+  }
 }
 
 /** Whether the Redis-backed guarantees are actually active. */
