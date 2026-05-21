@@ -12,11 +12,36 @@
 import 'server-only';
 import { createServiceRoleClient } from '@/lib/supabase/server';
 
+export type LedgerReason = 'insufficient' | 'skipped' | 'error';
+
 export interface LedgerResult {
   ok: boolean;
   /** present when ok=false */
-  reason?: 'insufficient' | 'skipped' | 'error';
+  reason?: LedgerReason;
   balance?: number;
+}
+
+/**
+ * Classify a Supabase RPC error string.
+ *   - 'insufficient' → business rejection (balance too low) → fail-fast.
+ *   - 'skipped'      → the RPC simply isn't created yet (Postgres 42883 /
+ *                      "does not exist") → degrade, let the Saga proceed on
+ *                      the Redis lock.
+ *   - 'error'        → a genuine DB / connection failure → fail-fast.
+ */
+export function classifyLedgerError(message: string): Exclude<LedgerReason, never> {
+  const m = message.toLowerCase();
+  if (m.includes('insufficient')) return 'insufficient';
+  if (m.includes('does not exist') || m.includes('42883') || m.includes('could not find') || m.includes('not found')) {
+    return 'skipped';
+  }
+  return 'error';
+}
+
+function parseBalance(data: unknown): number | undefined {
+  if (typeof data === 'number') return data;
+  const b = (data as { balance?: number } | null)?.balance;
+  return typeof b === 'number' ? b : undefined;
 }
 
 function client(): ReturnType<typeof createServiceRoleClient> | null {
@@ -28,37 +53,37 @@ function client(): ReturnType<typeof createServiceRoleClient> | null {
 }
 
 /**
- * Atomically debit `amount` credits. Returns ok:false reason:'insufficient'
- * when the balance is too low (the Saga aborts), reason:'skipped' when the
- * ledger backend is unavailable (Saga continues on the Redis lock alone).
+ * Atomically debit `amount` credits via the `deduct_credits` RPC.
+ *   ok:false reason:'insufficient' → balance too low (Saga aborts).
+ *   ok:false reason:'error'        → DB/connection failure (Saga aborts).
+ *   ok:false reason:'skipped'      → RPC not provisioned (Saga proceeds).
  */
 export async function deductCredits(userId: string, amount: number, ref: string): Promise<LedgerResult> {
   const sb = client();
   if (!sb) return { ok: false, reason: 'skipped' };
   try {
     const { data, error } = await sb.rpc('deduct_credits', { p_user_id: userId, p_amount: amount, p_ref: ref });
-    if (error) {
-      // Distinguish a genuine insufficient-funds rejection from a missing RPC.
-      if (/insufficient/i.test(error.message)) return { ok: false, reason: 'insufficient' };
-      return { ok: false, reason: 'skipped' };
-    }
-    const balance = typeof data === 'number' ? data : (data as { balance?: number } | null)?.balance;
-    return { ok: true, balance: balance ?? undefined };
-  } catch {
-    return { ok: false, reason: 'skipped' };
+    if (error) return { ok: false, reason: classifyLedgerError(error.message) };
+    return { ok: true, balance: parseBalance(data) };
+  } catch (e) {
+    // A thrown exception is a genuine connection failure → fail-fast.
+    return { ok: false, reason: classifyLedgerError(e instanceof Error ? e.message : '') };
   }
 }
 
-/** Refund `amount` credits (Saga rollback). Best-effort, never throws. */
+/**
+ * Refund `amount` credits (Saga rollback) via the `refund_credits` RPC.
+ * Best-effort and never throws — a failed refund is reported, not raised,
+ * so the rollback chain always completes.
+ */
 export async function refundCredits(userId: string, amount: number, ref: string): Promise<LedgerResult> {
   const sb = client();
   if (!sb) return { ok: false, reason: 'skipped' };
   try {
     const { data, error } = await sb.rpc('refund_credits', { p_user_id: userId, p_amount: amount, p_ref: ref });
-    if (error) return { ok: false, reason: 'skipped' };
-    const balance = typeof data === 'number' ? data : (data as { balance?: number } | null)?.balance;
-    return { ok: true, balance: balance ?? undefined };
-  } catch {
-    return { ok: false, reason: 'skipped' };
+    if (error) return { ok: false, reason: classifyLedgerError(error.message) };
+    return { ok: true, balance: parseBalance(data) };
+  } catch (e) {
+    return { ok: false, reason: classifyLedgerError(e instanceof Error ? e.message : '') };
   }
 }

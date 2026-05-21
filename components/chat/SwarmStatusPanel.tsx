@@ -59,6 +59,50 @@ export default function SwarmStatusPanel({ locale, pipelineId }: { locale: Lang;
     return () => { window.removeEventListener('online', up); window.removeEventListener('offline', down); };
   }, []);
 
+  // Cross-device SSE bridge — folds remote lifecycle events (from the RunPod
+  // callback) for THIS pipeline. Auto-reconnects with exponential backoff
+  // so a tab freeze / network blip never strands the panel.
+  useEffect(() => {
+    if (typeof EventSource === 'undefined') return;
+    let es: EventSource | null = null;
+    let retry = 0;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let closed = false;
+
+    const connect = () => {
+      if (closed) return;
+      es = new EventSource(`/api/pipeline/stream?pipelineId=${encodeURIComponent(pipelineId)}`);
+      es.onopen = () => { retry = 0; setOnline(true); };
+      es.onmessage = (ev) => {
+        try {
+          const data = JSON.parse(ev.data) as { topic?: string; pipelineId?: string; payload?: Record<string, unknown> };
+          if (!data.topic || data.pipelineId !== pidRef.current) return;
+          setProgress(prev => applyEvent(prev, {
+            topic: data.topic as PipelineEvent['topic'],
+            pipelineId: pidRef.current,
+            ts: Date.now(),
+            payload: (data.payload ?? {}) as PipelineEvent['payload'],
+          }));
+        } catch { /* ignore malformed frame */ }
+      };
+      es.onerror = () => {
+        es?.close();
+        if (closed) return;
+        // Exponential backoff: 1s, 2s, 4s … capped at 15s.
+        const delay = Math.min(15_000, 1000 * 2 ** retry);
+        retry += 1;
+        timer = setTimeout(connect, delay);
+      };
+    };
+    connect();
+
+    return () => {
+      closed = true;
+      if (timer) clearTimeout(timer);
+      es?.close();
+    };
+  }, [pipelineId]);
+
   const overall = useMemo(() => {
     const done = STAGE_ORDER.filter(id => progress.stages[id]?.status === 'done').length;
     return Math.round((done / STAGE_ORDER.length) * 100);

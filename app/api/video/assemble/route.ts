@@ -23,6 +23,7 @@ import {
 } from '@/lib/orchestrator/idempotency';
 import { readRunPodConfig, dispatchRunPod, type RunPodManifest } from '@/lib/orchestrator/runpod-adapter';
 import { deductCredits, refundCredits } from '@/lib/orchestrator/ledger';
+import { reSignIfInternal } from '@/lib/orchestrator/storage-adapter';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -78,15 +79,21 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const manifest: RunPodManifest = {
-    segments: segments.map(s => ({
-      url: s.url,
+  // Media-flow sanitization (Task 3): re-sign any internal Supabase Storage
+  // object so only 15-minute signed URLs cross to the render node — no
+  // permanent bucket URL escapes. External provider links pass through.
+  const signedSegments = await Promise.all(
+    segments.map(async s => ({
+      url: await reSignIfInternal(s.url),
       durationSec: s.durationSec ?? 6,
       cameraMotion: s.cameraMotion ?? null,
       render: s.render ?? {},
     })),
-    voiceoverUrl: body.voiceoverUrl ?? null,
-    musicUrl: body.musicUrl ?? null,
+  );
+  const manifest: RunPodManifest = {
+    segments: signedSegments,
+    voiceoverUrl: body.voiceoverUrl ? await reSignIfInternal(body.voiceoverUrl) : null,
+    musicUrl: body.musicUrl ? await reSignIfInternal(body.musicUrl) : null,
     globalRender: body.globalRender ?? {},
     pipelineId: '',
     callbackUrl: new URL('/api/video/assemble/callback', req.url).toString(),
@@ -103,9 +110,11 @@ export async function POST(req: NextRequest) {
         ctx.bag.lock = lock;
         const debit = await deductCredits(user.id, ASSEMBLE_COST, `assemble:${ctx.sagaId}`);
         ctx.bag.debited = debit.ok;
-        if (!debit.ok && debit.reason === 'insufficient') {
-          throw new Error('insufficient credits');
-        }
+        // Fail-fast on a real rejection so we never dispatch a paid render
+        // the user can't afford or that the DB couldn't record. 'skipped'
+        // (RPC not provisioned) is the only non-fatal miss.
+        if (!debit.ok && debit.reason === 'insufficient') throw new Error('insufficient credits');
+        if (!debit.ok && debit.reason === 'error') throw new Error('credit ledger unavailable');
         return lock;
       },
       compensate: async (_r, ctx) => {

@@ -56,6 +56,37 @@ export async function createSignedAssetUrls(
   }
 }
 
+/**
+ * Parse a Supabase Storage object URL into { bucket, path } when it points
+ * at OUR storage; returns null for external (provider) URLs. Handles both
+ * public (`/object/public/<bucket>/<path>`) and signed
+ * (`/object/sign/<bucket>/<path>?token=…`) shapes.
+ */
+export function parseSupabaseObjectUrl(url: string): { bucket: string; path: string } | null {
+  try {
+    const u = new URL(url);
+    if (!u.hostname.endsWith('.supabase.co')) return null;
+    const m = u.pathname.match(/\/storage\/v1\/object\/(?:public|sign)\/([^/]+)\/(.+)$/);
+    if (!m || !m[1] || !m[2]) return null;
+    return { bucket: decodeURIComponent(m[1]), path: decodeURIComponent(m[2]) };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * If `url` is one of OUR Supabase Storage objects, return a fresh 15-minute
+ * signed URL for it; otherwise return the URL unchanged (external provider
+ * links are already time-limited by their issuer). Guarantees no permanent
+ * internal bucket URL escapes onto the wire.
+ */
+export async function reSignIfInternal(url: string, expiresSec: number = SIGNED_URL_TTL_SEC): Promise<string> {
+  const ref = parseSupabaseObjectUrl(url);
+  if (!ref) return url;
+  const signed = await createSignedAssetUrl(ref.bucket, ref.path, expiresSec);
+  return signed ?? url;
+}
+
 /** Upload a base64 fragment + return its 15-minute signed URL. */
 export async function uploadAndSign(
   bucket: string,
