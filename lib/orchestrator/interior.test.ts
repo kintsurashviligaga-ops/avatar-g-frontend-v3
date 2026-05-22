@@ -1,7 +1,27 @@
 import {
   normalizeRoomGeometry, normalizeStyleGuide, buildWalkthroughPrompts,
-  buildStyleUserPrompt, DEFAULT_ROOM_GEOMETRY, DEFAULT_STYLE_GUIDE,
+  buildStyleUserPrompt, normalizeIntake, intakeHasMedia,
+  DEFAULT_ROOM_GEOMETRY, DEFAULT_STYLE_GUIDE,
 } from './interior';
+
+describe('normalizeIntake', () => {
+  test('caps photos at 3 and keeps an optional video', () => {
+    const i = normalizeIntake({ imageUrls: ['a', 'b', 'c', 'd'], videoUrl: 'v', brief: ' redo ' });
+    expect(i.imageUrls).toEqual(['a', 'b', 'c']);
+    expect(i.videoUrl).toBe('v');
+    expect(i.brief).toBe('redo');
+  });
+  test('drops empty/non-string urls; null video by default', () => {
+    const i = normalizeIntake({ imageUrls: ['', 'x', 5] });
+    expect(i.imageUrls).toEqual(['x']);
+    expect(i.videoUrl).toBeNull();
+  });
+  test('intakeHasMedia true for photo-only and video-only, false for empty', () => {
+    expect(intakeHasMedia(normalizeIntake({ imageUrls: ['p'] }))).toBe(true);
+    expect(intakeHasMedia(normalizeIntake({ videoUrl: 'v' }))).toBe(true);
+    expect(intakeHasMedia(normalizeIntake({ brief: 'x' }))).toBe(false);
+  });
+});
 
 describe('normalizeRoomGeometry', () => {
   test('garbage → safe default-ish geometry with ≥3 walls', () => {

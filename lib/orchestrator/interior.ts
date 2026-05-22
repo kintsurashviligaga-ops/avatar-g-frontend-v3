@@ -131,6 +131,28 @@ export function normalizeStyleGuide(raw: unknown): StyleGuide {
   };
 }
 
+// ─── InteriorIntake (multi-modal capture: ≤3 photos OR a 360° video) ─────────
+export interface InteriorIntake {
+  imageUrls: string[];        // up to 3 — data URLs or https
+  videoUrl: string | null;    // optional 360° walkthrough recording
+  brief: string;
+}
+
+export function normalizeIntake(raw: unknown): InteriorIntake {
+  const r = (raw ?? {}) as Record<string, unknown>;
+  const imageUrls = (Array.isArray(r.imageUrls) ? r.imageUrls : [])
+    .filter((u): u is string => typeof u === 'string' && u.trim().length > 0)
+    .slice(0, 3);
+  const videoUrl = typeof r.videoUrl === 'string' && r.videoUrl.trim() ? r.videoUrl.trim() : null;
+  const brief = typeof r.brief === 'string' ? r.brief.trim().slice(0, 600) : '';
+  return { imageUrls, videoUrl, brief };
+}
+
+/** An intake is usable when it carries at least one photo or a video. */
+export function intakeHasMedia(i: InteriorIntake): boolean {
+  return i.imageUrls.length > 0 || Boolean(i.videoUrl);
+}
+
 // ─── Prompt matrices ─────────────────────────────────────────────────────────
 export function buildGeometrySystemPrompt(): string {
   return [
@@ -138,6 +160,8 @@ export function buildGeometrySystemPrompt(): string {
     'interior photo(s) estimate the EMPTY-room physical layout, ignoring furniture/clutter.',
     'Reason about vanishing lines, standard fixture sizes (doors ~0.9×2.0m, ceilings ~2.7m)',
     'and visible floor/wall/ceiling planes to estimate metric dimensions.',
+    'If multiple frames/photos are given, cross-reference them as sequential viewpoints',
+    'of one space to triangulate wall boundaries and opening coordinates more reliably.',
     'Output ONLY minified JSON — no prose/markdown/fences — matching exactly:',
     '{"roomType":string,"floor":{"widthM":number,"depthM":number},"wallHeightM":number,',
     '"walls":[{"lengthM":number}],"openings":[{"type":"door"|"window","wall":number,"widthM":number,"heightM":number,"offsetM":number}],',
@@ -152,6 +176,9 @@ export function buildStyleSystemPrompt(): string {
     'brief, produce a cinematic STYLE GUIDE — not textures. Choose a coherent named style,',
     'a 4–6 colour hex palette, furniture pieces sized to the room, a lighting colour',
     'temperature (Kelvin), material list, a one-line mood, and an ambient-SFX hint.',
+    'In the mood + materials, encode spatial-physics cues for the render engine:',
+    'how light bounces off each texture (matte vs specular), photorealistic soft shadows,',
+    'and volumetric ray-tracing hints appropriate to the room geometry.',
     'Output ONLY minified JSON — no prose/markdown/fences — matching:',
     '{"styleName":string,"palette":["#rrggbb"],"furniture":[string],"lightingTempK":number,',
     '"materials":[string],"mood":string,"ambientSfx":string}',

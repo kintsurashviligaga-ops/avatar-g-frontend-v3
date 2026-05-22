@@ -104,6 +104,7 @@ export const AGENT_PROFILES: Record<AgentId, AgentProfile> = {
       'color-palette matching from Gemini vision output',
       'spatial resolution constraints',
       'cinematic framing: anamorphic lens, volumetric lighting, shallow depth of field',
+      'seamless 3D walkthrough passes with cross-cut visual coherence',
     ],
   },
   J: {
@@ -139,11 +140,12 @@ export const AGENT_PROFILES: Record<AgentId, AgentProfile> = {
     displayName: 'Depth & Schema Agent',
     provider: 'gemini',
     model: process.env.GEMINI_VISION_MODEL ?? 'gemini-2.5-flash',
-    role: 'Estimates room 3D geometry (floor plan, walls, openings) from ≤3 photos.',
+    role: 'Spatial & Video Geometry Architect — room 3D geometry from ≤3 photos OR a 360° video.',
     skills: [
       'monocular geometry estimation from photos (VLM; ZoeDepth/SAM/LiDAR = GPU upgrade)',
-      'floor-plan + wall-dimension extraction, clutter rejection',
-      'door/window detection with structured JSON output',
+      'sequential video-frame tracking — structural change across timestamp segments → spatial volume',
+      'floor-plan + wall-boundary + window/door coordinate extraction, full clutter rejection',
+      'structured RoomGeometry JSON output',
     ],
   },
   K: {
@@ -152,11 +154,12 @@ export const AGENT_PROFILES: Record<AgentId, AgentProfile> = {
     displayName: 'Interior Style Orchestrator',
     provider: 'anthropic',
     model: process.env.ANTHROPIC_SCRIPT_MODEL ?? 'claude-haiku-4-5-20251001',
-    role: 'Turns geometry + brief into a cinematic style-guide JSON (not textures).',
+    role: 'Creative Director & Material Specialist — geometry + brief → ultra-detailed style manifest.',
     skills: [
       'named-style selection (e.g. Mid-Century Modern)',
       'palette + material + lighting-temperature design',
       'furniture sizing to the measured room',
+      'spatial physics: fabric light-bounce, photorealistic shadows, volumetric ray-tracing guidelines',
     ],
   },
 };

@@ -23,6 +23,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import dynamic from 'next/dynamic';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   Menu,
@@ -59,7 +60,16 @@ import VideoControlSuite from '@/components/chat/VideoControlSuite';
 import { type RenderSettings, renderSettingsToPayload } from '@/lib/orchestrator/render-settings';
 import { useRenderSettings } from '@/hooks/useRenderSettings';
 import SwarmStatusPanel from '@/components/chat/SwarmStatusPanel';
+import type { RoomGeometry, StyleGuide } from '@/lib/orchestrator/interior';
 import { CameraModal } from '@/components/service-chat/CameraModal';
+
+// R3F is client-only + heavy — load the 3D room viewer on demand (no SSR).
+const RoomViewer = dynamic(() => import('@/components/chat/RoomViewer'), {
+  ssr: false,
+  loading: () => (
+    <div style={{ width: '100%', height: 320, borderRadius: 14, background: '#0a0a0a', border: '1px solid rgba(255,255,255,0.10)' }} className="inline-media-skel" aria-busy="true" />
+  ),
+});
 import type { ServiceChatAttachment } from '@/components/service-chat/types';
 import { publishPipeline } from '@/lib/orchestrator/broker-instance';
 import { buildSuggestedActions } from '@/lib/orchestrator/actions';
@@ -98,8 +108,10 @@ interface RenderMeta {
 }
 
 interface MediaPayload {
-  kind: 'image' | 'video' | 'audio' | 'code';
+  kind: 'image' | 'video' | 'audio' | 'code' | 'room';
   url?: string;
+  /** Interior service: extracted geometry + style → inline Three.js RoomViewer. */
+  room?: { geometry: RoomGeometry; style?: StyleGuide };
   html?: string;
   language?: string;
   poster?: string;        // Optional thumbnail/poster for video — used by VideoBlock
@@ -815,6 +827,79 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
     }
   }, [producing, sending, input, localeCode]);
 
+  // ── Interior design (3D). Uses the attached room photo (📎/📷) + brief, streams
+  //    the Agent N→K telemetry, then mounts the inline Three.js RoomViewer.
+  const runInteriorDesign = useCallback(async () => {
+    if (producing || sending) return;
+    if (!attachment) {
+      setMessages(m => [...m, {
+        id: mkId(), role: 'assistant', ts: Date.now(),
+        text: localeCode === 'ka' ? 'ჯერ მიამაგრე ოთახის ფოტო (📎 ან 📷), მერე დააჭირე „ოთახის დიზაინი 3D".'
+          : localeCode === 'ru' ? 'Сначала прикрепите фото комнаты (📎 или 📷), затем нажмите «Дизайн комнаты 3D».'
+          : 'Attach a room photo first (📎 or 📷), then tap "Design Room 3D".',
+      }]);
+      return;
+    }
+    const brief = input.trim();
+    const imageUrl = attachment.previewUrl;
+    setProducing(true); setProduceStage('[Capturing room…]'); setProducePct(5); setProduceDetail('');
+    setInput('');
+    const userId = mkId();
+    const pendId = mkId();
+    setMessages(m => [
+      ...m,
+      { id: userId, role: 'user', text: `🛋️ ${brief || (localeCode === 'ka' ? 'ოთახის დიზაინი' : 'redesign my room')}`, ts: Date.now() },
+      { id: pendId, role: 'assistant', text: '[Extracting Spatial Matrix…]', pending: true, service: 'interior', ts: Date.now() },
+    ]);
+    setAttachment(null);
+    try {
+      const res = await fetch('/api/orchestrator/interior/produce', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+        body: JSON.stringify({ imageUrls: [imageUrl], brief }),
+      });
+      if (res.status === 401) { setMessages(m => m.filter(x => x.id !== pendId && x.id !== userId)); setAuthOpen(true); return; }
+      if (!res.ok || !res.body) throw new Error(`interior_${res.status}`);
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = '';
+      let geometry: RoomGeometry | null = null;
+      let style: StyleGuide | undefined;
+      let failed: string | null = null;
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const chunks = buf.split('\n\n');
+        buf = chunks.pop() ?? '';
+        for (const chunk of chunks) {
+          const line = chunk.split('\n').find(l => l.startsWith('data: '));
+          if (!line) continue;
+          let ev: { stage?: string; pct?: number; ticker?: string; geometry?: RoomGeometry; style?: StyleGuide; error?: string };
+          try { ev = JSON.parse(line.slice(6)); } catch { continue; }
+          if (ev.stage) {
+            setProduceStage(ev.ticker ?? ev.stage);
+            if (typeof ev.pct === 'number') setProducePct(ev.pct);
+            tickPending(setMessages, pendId, ev.ticker ?? ev.stage);
+          }
+          if (ev.stage === 'completed' && ev.geometry) { geometry = ev.geometry; style = ev.style; }
+          if (ev.stage === 'failed') failed = ev.error ?? 'failed';
+        }
+      }
+      if (geometry) {
+        patchMessage(setMessages, pendId, {
+          text: localeCode === 'ka' ? 'შენი ახალი ოთახი — დაატრიალე და დაათვალიერე 👇' : localeCode === 'ru' ? 'Ваша новая комната — вращайте и масштабируйте 👇' : 'Your redesigned room — drag to orbit & zoom 👇',
+          media: { kind: 'room', room: { geometry, ...(style ? { style } : {}) } },
+        });
+      } else {
+        patchMessage(setMessages, pendId, { pending: false, text: localizedInteriorError(failed, localeCode) });
+      }
+    } catch (e) {
+      patchMessage(setMessages, pendId, { pending: false, text: localizedInteriorError(e instanceof Error ? e.message : null, localeCode) });
+    } finally {
+      setProducing(false); setProduceStage(''); setProducePct(0); setProduceDetail('');
+    }
+  }, [producing, sending, attachment, input, localeCode]);
+
   // Inline-only: "Open in preview" scrolls the inline media into view.
   // The per-bubble click-to-lightbox in InlineMedia handles fullscreen.
   const onOpenInPreview = useCallback((m: ChatMessage) => {
@@ -1025,7 +1110,7 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
                     // orchestrator drives the chip row here too — single
                     // source of truth for "what next".
                     const userPrompt = messages[messages.length - 2]?.text ?? '';
-                    const asset: AssetRef | undefined = last.media?.url
+                    const asset: AssetRef | undefined = last.media?.url && last.media.kind !== 'room'
                       ? {
                           id: last.id,
                           kind: last.media.kind === 'code' ? 'code' : last.media.kind,
@@ -1106,15 +1191,27 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
             {producing ? (
               <ProduceProgress stage={produceStage} pct={producePct} detail={produceDetail} locale={localeCode} />
             ) : (
-              <button
-                type="button"
-                onClick={() => void runProduce()}
-                disabled={sending}
-                className="w-full inline-flex items-center justify-center gap-2 h-11 rounded-2xl font-semibold text-[14px] text-white bg-gradient-to-r from-violet-600 to-fuchsia-500 hover:from-violet-500 hover:to-fuchsia-400 active:scale-[0.99] disabled:opacity-50 transition-transform duration-150 shadow-[0_8px_30px_-8px_rgba(168,85,247,0.6)]"
-              >
-                <Sparkles size={16} />
-                {localeCode === 'ka' ? 'შექმენი 30წ ფილმი' : localeCode === 'ru' ? 'Создать 30с фильм' : 'Produce 30s Film'}
-              </button>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => void runProduce()}
+                  disabled={sending}
+                  className="flex-1 inline-flex items-center justify-center gap-2 h-11 rounded-2xl font-semibold text-[13px] text-white bg-gradient-to-r from-violet-600 to-fuchsia-500 hover:from-violet-500 hover:to-fuchsia-400 active:scale-[0.99] disabled:opacity-50 transition-transform duration-150 shadow-[0_8px_30px_-8px_rgba(168,85,247,0.6)]"
+                >
+                  <Sparkles size={16} />
+                  {localeCode === 'ka' ? '30წ ფილმი' : localeCode === 'ru' ? '30с фильм' : 'Produce Film'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void runInteriorDesign()}
+                  disabled={sending}
+                  title={localeCode === 'ka' ? 'მიამაგრე ოთახის ფოტო, მერე დააჭირე' : 'Attach a room photo, then tap'}
+                  className="flex-1 inline-flex items-center justify-center gap-2 h-11 rounded-2xl font-semibold text-[13px] text-white bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 active:scale-[0.99] disabled:opacity-50 transition-transform duration-150 shadow-[0_8px_30px_-8px_rgba(16,185,129,0.55)]"
+                >
+                  <SofaIcon size={16} />
+                  {localeCode === 'ka' ? 'ოთახის დიზაინი 3D' : localeCode === 'ru' ? 'Дизайн комнаты 3D' : 'Design Room 3D'}
+                </button>
+              </div>
             )}
           </div>
           {/* In-chat video render controls — settings fold into the render payload */}
@@ -1455,6 +1552,13 @@ function localizedProduceError(_err: string | null, locale: string): string {
   return "I couldn't finish the film just now — one of the engines is briefly busy. Try again in a few seconds (you weren't charged).";
 }
 
+// TASK 4: graceful interior failure (e.g. unsupported video / streaming bottleneck).
+function localizedInteriorError(_err: string | null, locale: string): string {
+  if (locale === 'ka') return 'ოთახის 3D ანალიზი ამ წამს ვერ დასრულდა — ფაილი ან ფორმატი ვერ დამუშავდა. სცადე სხვა/ნათელი ფოტოთი (JPG/PNG) ან ცადე ხელახლა.';
+  if (locale === 'ru') return 'Не удалось завершить 3D-анализ комнаты — файл или формат не обработан. Попробуйте другое чёткое фото (JPG/PNG) или повторите.';
+  return "I couldn't finish the 3D room analysis — that file or format didn't process. Try a clearer photo (JPG/PNG) or give it another go.";
+}
+
 function ProduceProgress({ stage, pct, detail, locale }: { stage: string; pct: number; detail: string; locale: string }) {
   const curIdx = PRODUCE_STAGES.indexOf(stage as (typeof PRODUCE_STAGES)[number]);
   return (
@@ -1735,7 +1839,11 @@ function MessageRow({ m, locale, onLike, onDislike, onCopy, onRegenerate, onSpea
           )}
           {(m.media || detected) && (
             <div className="ml-1 relative group">
-              {m.media?.kind === 'code' && m.media.html ? (
+              {m.media?.kind === 'room' && m.media.room ? (
+                <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
+                  <RoomViewer geometry={m.media.room.geometry} style={m.media.room.style} />
+                </motion.div>
+              ) : m.media?.kind === 'code' && m.media.html ? (
                 <InlineMedia kind="code" html={m.media.html} language={m.media.language} prompt="" badges={mediaBadges(m.service, 'code')} onRemix={onRemix} />
               ) : m.media?.url ? (
                 <InlineMedia
