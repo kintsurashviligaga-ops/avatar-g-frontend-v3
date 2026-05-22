@@ -43,7 +43,12 @@ export async function POST(req: NextRequest) {
       model = 'ltx-2-3-fast',
       duration = 6,
       fps = 24,
+      camera_motion,
     } = body;
+    // LTX-2's headline capability is synchronized audio. The LTX API defaults
+    // generate_audio to true; we honor that (silent clips felt "broken") while
+    // still letting a caller opt out with generate_audio: false.
+    const generateAudio = body.generate_audio !== false;
 
     // Accept both `resolution` (explicit) and `aspect_ratio` shorthand from CommandCenter
     const resolution: string =
@@ -73,7 +78,7 @@ export async function POST(req: NextRequest) {
         Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ prompt, model, resolution: finalResolution, duration, fps, generate_audio: false }),
+      body: JSON.stringify({ prompt, model, resolution: finalResolution, duration, fps, generate_audio: generateAudio, ...(camera_motion ? { camera_motion } : {}) }),
     });
 
     if (!ltxRes.ok) {

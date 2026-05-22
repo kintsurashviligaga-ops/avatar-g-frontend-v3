@@ -2151,8 +2151,11 @@ async function runVideo(prompt: string, pendingId: string, setMessages: Setter, 
   try {
     const res = await fetchWithRetry('/api/ltx-video', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt, aspect_ratio, duration: 6, ...(render ? { render } : {}) }),
-    }, { signal, timeoutMs: 120_000 });
+      body: JSON.stringify({ prompt, aspect_ratio, duration: 6, generate_audio: true, ...(render ? { render } : {}) }),
+      // Generation is expensive + non-idempotent: never auto-retry (a retry
+      // would silently bill a second render). Allow 3 min — audio synthesis
+      // adds to the ~25s video base.
+    }, { signal, timeoutMs: 180_000, maxAttempts: 1 });
     if (!res.ok) {
       // Surface server's error body if present
       let detail = '';
