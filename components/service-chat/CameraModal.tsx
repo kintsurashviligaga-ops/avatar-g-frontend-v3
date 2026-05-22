@@ -23,6 +23,8 @@ interface CameraModalProps {
   onClose: () => void;
   onAttach: (attachment: ServiceChatAttachment) => void;
   showFaceGuide?: boolean;
+  /** Render as an immersive absolute-black full-viewport layer (chat usage). */
+  fullScreen?: boolean;
 }
 
 const COPY = {
@@ -31,7 +33,7 @@ const COPY = {
   ru: { photo: 'Фото', video: 'Видео', capture: 'Снять', record: 'Запись', stop: 'Стоп', retake: 'Заново', attach: 'Прикрепить', switchCam: 'Камера', fullscreen: 'Полный экран', noCamera: 'Камера недоступна', denied: 'Доступ к камере запрещён', align: 'Выровняйте лицо' },
 };
 
-export function CameraModal({ isOpen, accentColor, onClose, onAttach, showFaceGuide = false }: CameraModalProps) {
+export function CameraModal({ isOpen, accentColor, onClose, onAttach, showFaceGuide = false, fullScreen = false }: CameraModalProps) {
   const [mode, setMode] = useState<CameraMode>('photo');
   const [state, setState] = useState<CameraState>('idle');
   const [facing, setFacing] = useState<'user' | 'environment'>('user');
@@ -53,6 +55,9 @@ export function CameraModal({ isOpen, accentColor, onClose, onAttach, showFaceGu
     ? ((document.documentElement.lang || 'en') as 'en' | 'ka' | 'ru')
     : 'en';
   const c = COPY[lang] || COPY.en;
+  // Immersive = either the browser fullscreen API is engaged OR the caller asked
+  // for the absolute-black full-viewport chat layer.
+  const immersive = isFullscreen || fullScreen;
 
   /* ── Start camera ── */
   const startCamera = useCallback(async (facingMode?: 'user' | 'environment') => {
@@ -254,19 +259,19 @@ export function CameraModal({ isOpen, accentColor, onClose, onAttach, showFaceGu
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
         className="fixed inset-0 z-[100] flex items-center justify-center"
-        style={{ background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(8px)' }}
+        style={{ background: fullScreen ? '#000' : 'rgba(0,0,0,0.85)', backdropFilter: fullScreen ? 'none' : 'blur(8px)' }}
       >
         <motion.div
           ref={containerRef}
           initial={{ scale: 0.95, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
           exit={{ scale: 0.95, opacity: 0 }}
-          className="relative w-full max-w-2xl mx-4 rounded-3xl overflow-hidden"
+          className={`relative w-full overflow-hidden ${immersive ? 'flex flex-col' : 'max-w-2xl mx-4 rounded-3xl'}`}
           style={{
-            background: '#0a0e14',
-            border: `1px solid ${accentColor}25`,
-            boxShadow: `0 8px 60px rgba(0,0,0,0.6), 0 0 60px ${accentColor}10`,
-            ...(isFullscreen ? { maxWidth: '100%', borderRadius: 0, height: '100%' } : {}),
+            background: immersive ? '#000' : '#0a0e14',
+            border: immersive ? 'none' : `1px solid ${accentColor}25`,
+            boxShadow: immersive ? 'none' : `0 8px 60px rgba(0,0,0,0.6), 0 0 60px ${accentColor}10`,
+            ...(immersive ? { maxWidth: '100%', borderRadius: 0, height: '100vh', width: '100vw' } : {}),
           }}
         >
           {/* ── Header ── */}
@@ -307,7 +312,7 @@ export function CameraModal({ isOpen, accentColor, onClose, onAttach, showFaceGu
           </div>
 
           {/* ── Viewport ── */}
-          <div className="relative" style={{ aspectRatio: isFullscreen ? undefined : '4/3', height: isFullscreen ? 'calc(100% - 120px)' : undefined }}>
+          <div className="relative" style={{ aspectRatio: immersive ? undefined : '4/3', flex: immersive ? 1 : undefined, minHeight: 0 }}>
             {/* Live feed */}
             {(state === 'ready' || state === 'recording') && (
               <>

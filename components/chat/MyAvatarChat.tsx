@@ -267,6 +267,7 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
   // (Removed: latestMedia + mobileView — previews are now inline-only.)
   const [attachment, setAttachment] = useState<{ name: string; type: string; base64: string; previewUrl: string } | null>(null);
   const [cameraOpen, setCameraOpen] = useState(false);
+  const [dragActive, setDragActive] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
@@ -414,9 +415,10 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
   const onPickFile = useCallback(() => {
     fileInputRef.current?.click();
   }, []);
-  const onFileChosen = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0];
-    e.target.value = ''; // allow re-picking the same file
+  // Single ingest path shared by the file picker AND drag-and-drop. Image-only:
+  // the vision/avatar runners are the only consumers of an attachment, so we
+  // reject non-images up front rather than appending a payload nothing reads.
+  const ingestImageFile = useCallback((f: File | undefined | null) => {
     if (!f) return;
     if (!f.type.startsWith('image/')) return;
     if (f.size > 8 * 1024 * 1024) return; // 8 MB hard cap, prevents huge base64 strings
@@ -427,6 +429,24 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
       setAttachment({ name: f.name, type: f.type, base64, previewUrl: result });
     };
     reader.readAsDataURL(f);
+  }, []);
+  const onFileChosen = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    e.target.value = ''; // allow re-picking the same file
+    ingestImageFile(f);
+  }, [ingestImageFile]);
+  const onDropFiles = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setDragActive(false);
+    ingestImageFile(e.dataTransfer?.files?.[0]);
+  }, [ingestImageFile]);
+  const onDragOverInput = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setDragActive(true);
+  }, []);
+  const onDragLeaveInput = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setDragActive(false);
   }, []);
   const clearAttachment = useCallback(() => setAttachment(null), []);
 
@@ -452,11 +472,13 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
   }, []);
 
   const toggleVoiceInput = useCallback(async () => {
+    type SRAlt = { transcript: string };
+    type SRResult = ArrayLike<SRAlt> & { isFinal: boolean };
     type SpeechRecognitionLike = {
       lang: string;
       continuous: boolean;
       interimResults: boolean;
-      onresult: ((e: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void) | null;
+      onresult: ((e: { resultIndex: number; results: ArrayLike<SRResult> }) => void) | null;
       onend: (() => void) | null;
       onerror: (() => void) | null;
       start: () => void;
@@ -478,15 +500,26 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
     }
 
     // Backend A: Web Speech API (Chrome, Edge, Safari macOS 14+ partial).
+    // interimResults streams partial tokens so the user watches their speech
+    // turn into text in real time; continuous keeps the mic hot until they stop.
     if (SRCtor) {
       try {
         const rec = new SRCtor();
         rec.lang = lang;
-        rec.continuous = false;
-        rec.interimResults = false;
+        rec.continuous = true;
+        rec.interimResults = true;
+        const base = (inputRef.current?.value ?? '').trim();
+        let finalText = '';
         rec.onresult = (e) => {
-          const transcript = e.results[0]?.[0]?.transcript ?? '';
-          if (transcript) setInput(prev => (prev ? `${prev} ${transcript}` : transcript));
+          let interim = '';
+          for (let i = e.resultIndex; i < e.results.length; i++) {
+            const seg = e.results[i];
+            const txt = seg?.[0]?.transcript ?? '';
+            if (seg?.isFinal) finalText += txt;
+            else interim += txt;
+          }
+          const live = `${finalText}${interim}`.trim();
+          setInput(base ? (live ? `${base} ${live}` : base) : live);
         };
         rec.onend = () => setListening(false);
         rec.onerror = () => setListening(false);
@@ -964,7 +997,24 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
             ))}
           </div>
 
-          <div className="rounded-3xl bg-black border border-white/[0.10] overflow-hidden focus-within:border-white/[0.22] transition">
+          <div
+            onDrop={onDropFiles}
+            onDragOver={onDragOverInput}
+            onDragLeave={onDragLeaveInput}
+            className={`relative rounded-3xl bg-black border overflow-hidden transition ${
+              dragActive
+                ? 'border-violet-400/60 ring-2 ring-violet-500/30'
+                : 'border-white/[0.10] focus-within:border-white/[0.22]'
+            }`}
+          >
+            {dragActive && (
+              <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/75 backdrop-blur-sm pointer-events-none">
+                <span className="inline-flex items-center gap-2 text-[13px] font-medium text-violet-200">
+                  <ImageIcon size={16} />
+                  {localeCode === 'ka' ? 'ჩააგდე სურათი აქ' : localeCode === 'ru' ? 'Перетащите изображение' : 'Drop image here'}
+                </span>
+              </div>
+            )}
             {attachment && (
               <div className="px-3 pt-3 -mb-1">
                 <div className="inline-flex items-center gap-2 max-w-full pl-1 pr-2 py-1 rounded-full bg-white/[0.05] border border-white/[0.10] text-[11px] text-white/85">
@@ -1007,7 +1057,7 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
                   aria-label="Attach image"
                   onClick={onPickFile}
                   title={localeCode === 'ka' ? 'სურათის მიმაგრება (ავატარისთვის)' : 'Attach image (for Avatar)'}
-                  className="h-9 w-9 rounded-full hover:bg-white/[0.06] flex items-center justify-center text-[#94A3B8] hover:text-white transition"
+                  className="h-9 w-9 rounded-full hover:bg-white/[0.06] flex items-center justify-center text-[#94A3B8] hover:text-white transition active:scale-90"
                 >
                   <Paperclip size={16} />
                 </button>
@@ -1016,7 +1066,7 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
                   aria-label="Camera"
                   onClick={() => setCameraOpen(true)}
                   title={localeCode === 'ka' ? 'კამერა' : 'Camera'}
-                  className="h-9 w-9 rounded-full hover:bg-white/[0.06] flex items-center justify-center text-[#94A3B8] hover:text-white transition"
+                  className="h-9 w-9 rounded-full hover:bg-white/[0.06] flex items-center justify-center text-[#94A3B8] hover:text-white transition active:scale-90"
                 >
                   <Camera size={16} />
                 </button>
@@ -1027,10 +1077,10 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
                   type="button"
                   aria-label={listening ? 'Stop listening' : 'Voice input'}
                   onClick={toggleVoiceInput}
-                  className={`h-9 w-9 rounded-full flex items-center justify-center transition ${
+                  className={`h-9 w-9 rounded-full flex items-center justify-center transition active:scale-90 ${
                     listening
                       ? 'bg-violet-500/20 text-violet-200 ring-1 ring-violet-400/40'
-                      : 'hover:bg-white/[0.06] text-[#94A3B8]'
+                      : 'hover:bg-white/[0.06] text-[#94A3B8] hover:text-white'
                   }`}
                 >
                   <Mic size={16} />
@@ -1219,6 +1269,7 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
         onClose={() => setCameraOpen(false)}
         onAttach={onCameraAttach}
         showFaceGuide
+        fullScreen
       />
 
       {/* In-window auth (One Window) — login / register / reset / magic link */}
