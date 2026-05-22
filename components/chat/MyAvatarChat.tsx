@@ -299,6 +299,7 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
   const [sending, setSending] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [listening, setListening] = useState(false);
+  const [permissionNotice, setPermissionNotice] = useState<string | null>(null);
   const [authOpen, setAuthOpen] = useState(false);
   const [renderSettings, setRenderSettings] = useRenderSettings();
   const [renderPanelOpen, setRenderPanelOpen] = useState(false);
@@ -523,7 +524,7 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
       interimResults: boolean;
       onresult: ((e: { resultIndex: number; results: ArrayLike<SRResult> }) => void) | null;
       onend: (() => void) | null;
-      onerror: (() => void) | null;
+      onerror: ((e: { error?: string }) => void) | null;
       start: () => void;
       stop: () => void;
     };
@@ -565,7 +566,11 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
           setInput(base ? (live ? `${base} ${live}` : base) : live);
         };
         rec.onend = () => setListening(false);
-        rec.onerror = () => setListening(false);
+        rec.onerror = (e) => {
+          setListening(false);
+          if (e?.error === 'not-allowed' || e?.error === 'service-not-allowed') setPermissionNotice(micPermissionMessage(localeCode));
+        };
+        setPermissionNotice(null);
         rec.start();
         recognitionRef.current = rec;
         setListening(true);
@@ -606,8 +611,9 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
       recognitionRef.current = { stop: () => { try { rec.stop(); } catch { /* noop */ } } };
       rec.start();
       setListening(true);
-    } catch {
+    } catch (err) {
       setListening(false);
+      if (err instanceof DOMException && err.name === 'NotAllowedError') setPermissionNotice(micPermissionMessage(localeCode));
     }
   }, [listening, localeCode]);
 
@@ -1256,6 +1262,16 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
               <SwarmStatusPanel locale={localeCode} pipelineId={activePipelineId} />
             </div>
           )}
+          {/* Hardware-permission notice — elegant inline guidance, never a dead button */}
+          {permissionNotice && (
+            <div className="max-w-2xl mx-auto mb-2 flex items-start gap-2 rounded-xl border border-amber-400/30 bg-amber-500/10 px-3 py-2 text-[12px] text-amber-100">
+              <span className="mt-0.5">🔒</span>
+              <span className="flex-1 leading-relaxed">{permissionNotice}</span>
+              <button type="button" onClick={() => setPermissionNotice(null)} aria-label="Dismiss" className="text-amber-200/70 hover:text-amber-100 transition active:scale-90">
+                <X size={14} />
+              </button>
+            </div>
+          )}
           {/* One-tap cinematic production — button → live SSE telemetry → inline film */}
           <div className="max-w-2xl mx-auto mb-2">
             {producing ? (
@@ -1649,6 +1665,13 @@ function localizedAvatarError(reason: string | null, locale: string): string {
   if (locale === 'ka') return 'ავატარის გენერაცია ვერ დასრულდა — სცადე უფრო მოკლე ტექსტით ან ხელახლა.';
   if (locale === 'ru') return 'Не удалось создать аватара — попробуйте более короткий текст или повторите.';
   return "Couldn't finish the avatar — try a shorter script or give it another go.";
+}
+
+// TASK 4.2: elegant mic-permission guidance instead of a silent dead button.
+function micPermissionMessage(locale: string): string {
+  if (locale === 'ka') return 'მიკროფონზე წვდომა დაბლოკილია. ჩართე ბრაუზერის მისამართის ზოლის 🔒 ხატულადან → Microphone → Allow, შემდეგ სცადე ხელახლა.';
+  if (locale === 'ru') return 'Доступ к микрофону заблокирован. Включите его через значок 🔒 в адресной строке → Микрофон → Разрешить, затем повторите.';
+  return "Microphone access is blocked. Enable it from the 🔒 icon in your browser's address bar → Microphone → Allow, then try again.";
 }
 
 function ProduceProgress({ stage, pct, detail, locale }: { stage: string; pct: number; detail: string; locale: string }) {
