@@ -7,9 +7,9 @@ import {
 } from './profiles';
 
 describe('AGENT_PROFILES registry', () => {
-  const ids: AgentId[] = ['A', 'H', 'I', 'J', 'L'];
+  const ids: AgentId[] = ['A', 'H', 'I', 'J', 'L', 'K', 'N'];
 
-  test('defines all five swarm agents', () => {
+  test('defines the full swarm (incl. interior agents N + K)', () => {
     expect(Object.keys(AGENT_PROFILES).sort()).toEqual([...ids].sort());
   });
 

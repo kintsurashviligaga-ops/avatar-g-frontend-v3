@@ -13,7 +13,7 @@
  * Pure + client-safe (no SDK imports) → safe to re-export from the barrel.
  */
 
-export type AgentId = 'A' | 'H' | 'I' | 'J' | 'L';
+export type AgentId = 'A' | 'H' | 'I' | 'J' | 'L' | 'K' | 'N';
 
 export interface AgentProfile {
   id: AgentId;
@@ -131,6 +131,32 @@ export const AGENT_PROFILES: Record<AgentId, AgentProfile> = {
       'sub-second clip stitching',
       'multi-track spatial audio overlay',
       '1s crossfade transitions + sidechain music ducking under the voiceover',
+    ],
+  },
+  N: {
+    id: 'N',
+    codeName: 'depth-schema-extraction',
+    displayName: 'Depth & Schema Agent',
+    provider: 'gemini',
+    model: process.env.GEMINI_VISION_MODEL ?? 'gemini-2.5-flash',
+    role: 'Estimates room 3D geometry (floor plan, walls, openings) from ≤3 photos.',
+    skills: [
+      'monocular geometry estimation from photos (VLM; ZoeDepth/SAM/LiDAR = GPU upgrade)',
+      'floor-plan + wall-dimension extraction, clutter rejection',
+      'door/window detection with structured JSON output',
+    ],
+  },
+  K: {
+    id: 'K',
+    codeName: 'interior-style-orchestrator',
+    displayName: 'Interior Style Orchestrator',
+    provider: 'anthropic',
+    model: process.env.ANTHROPIC_SCRIPT_MODEL ?? 'claude-haiku-4-5-20251001',
+    role: 'Turns geometry + brief into a cinematic style-guide JSON (not textures).',
+    skills: [
+      'named-style selection (e.g. Mid-Century Modern)',
+      'palette + material + lighting-temperature design',
+      'furniture sizing to the measured room',
     ],
   },
 };
