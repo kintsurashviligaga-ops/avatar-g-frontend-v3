@@ -23,6 +23,8 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
+import { generateText } from 'ai';
+import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import {
   buildScriptSystemPrompt,
   buildScriptUserPrompt,
@@ -54,52 +56,42 @@ interface ScriptBody {
 async function analyzeAssetWithGemini(
   image: { base64: string; mimeType?: string },
   brief: string,
-): Promise<string | null> {
+): Promise<{ text: string | null; error?: string }> {
   const apiKey = process.env.GEMINI_API_KEY ?? process.env.GOOGLE_GENERATIVE_AI_API_KEY;
-  if (!apiKey) return null;
-  // Strip a data-URL prefix if present — the REST API wants raw base64.
-  const data = image.base64.startsWith('data:')
-    ? (image.base64.split(',')[1] ?? '')
-    : image.base64;
-  if (!data) return null;
-  // Direct Gemini REST call (no @ai-sdk/google import) keeps this serverless
-  // function lean — heavy SDK deps split it into its own Lambda and blew the
-  // Hobby 12-function ceiling.
-  try {
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${VISION_MODEL}:generateContent?key=${apiKey}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [
-            {
-              parts: [
-                {
-                  text:
-                    `Analyze this asset to inform a short video. Creative brief: "${brief}". ` +
-                    'Describe the key subjects, setting, mood, lighting and colors in 2–4 sentences ' +
-                    'a video director could storyboard from. Plain prose, no preamble.',
-                },
-                { inline_data: { mime_type: image.mimeType ?? 'image/jpeg', data } },
-              ],
-            },
-          ],
-        }),
-      },
-    );
-    if (!res.ok) return null;
-    const json = (await res.json()) as {
-      candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
-    };
-    const text = (json.candidates?.[0]?.content?.parts ?? [])
-      .map(p => p.text ?? '')
-      .join('')
-      .trim();
-    return text ? text : null;
-  } catch {
-    return null; // vision is best-effort enrichment — never block the script
+  if (!apiKey) return { text: null, error: 'no_gemini_key' };
+  // Reuse the EXACT @ai-sdk/google pattern the working /api/chat/gemini route
+  // uses (proven in production with vision). data-URL or raw base64 both accepted.
+  const dataUrl = image.base64.startsWith('data:')
+    ? image.base64
+    : `data:${image.mimeType ?? 'image/jpeg'};base64,${image.base64}`;
+  const google = createGoogleGenerativeAI({ apiKey });
+  const prompt =
+    `Analyze this asset to inform a short video. Creative brief: "${brief}". ` +
+    'Describe the key subjects, setting, mood, lighting and colors in 2–4 sentences ' +
+    'a video director could storyboard from. Plain prose, no preamble.';
+  let lastErr = 'empty';
+  for (const model of [VISION_MODEL, 'gemini-2.0-flash']) {
+    try {
+      const { text } = await generateText({
+        model: google(model),
+        maxRetries: 0,
+        messages: [
+          {
+            role: 'user',
+            content: [
+              { type: 'text', text: prompt },
+              { type: 'image', image: dataUrl },
+            ],
+          },
+        ],
+      });
+      const trimmed = text?.trim();
+      if (trimmed) return { text: trimmed };
+    } catch (e) {
+      lastErr = e instanceof Error ? e.message.slice(0, 100) : 'gemini_error';
+    }
   }
+  return { text: null, error: lastErr };
 }
 
 export async function POST(req: NextRequest) {
@@ -118,13 +110,19 @@ export async function POST(req: NextRequest) {
 
   // ── Stage 1: Gemini multi-modal ingestion (optional) ──────────────────────
   const hasImage = typeof body.image?.base64 === 'string' && body.image.base64.length > 0;
-  const analysis = hasImage
+  const av = hasImage
     ? await analyzeAssetWithGemini({ base64: body.image!.base64!, mimeType: body.image?.mimeType }, prompt)
-    : null;
+    : { text: null as string | null, error: undefined as string | undefined };
+  const analysis = av.text;
   const effectivePrompt = analysis
     ? `${prompt}\n\nVisual context (analyzed from the uploaded asset): ${analysis}`
     : prompt;
-  const vision = { used: Boolean(analysis), model: analysis ? VISION_MODEL : null, analysis };
+  const vision = {
+    used: Boolean(analysis),
+    model: analysis ? VISION_MODEL : null,
+    analysis,
+    error: av.error ?? null,
+  };
 
   // ── Stage 2: Claude CEO orchestrator → 6-second shot manifests ────────────
   const apiKey = process.env.ANTHROPIC_API_KEY;
