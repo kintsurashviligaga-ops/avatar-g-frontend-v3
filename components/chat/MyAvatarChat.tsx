@@ -900,6 +900,76 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
     }
   }, [producing, sending, attachment, input, localeCode]);
 
+  // ── AI Avatar video (HeyGen). Script (input) + optional attached photo →
+  //    Agent V/H/M telemetry → inline HD talking-avatar video.
+  const runAvatarProduce = useCallback(async () => {
+    if (producing || sending) return;
+    const script = input.trim();
+    if (!script) {
+      setMessages(m => [...m, {
+        id: mkId(), role: 'assistant', ts: Date.now(),
+        text: localeCode === 'ka' ? 'დაწერე ტექსტი/სცენარი, მერე დააჭირე „AI ავატარი" (სურვილისამებრ მიამაგრე ფოტო).'
+          : localeCode === 'ru' ? 'Введите текст/сценарий, затем нажмите «AI Аватар» (фото — по желанию).'
+          : 'Type a script first, then tap "AI Avatar" (attach a photo optionally).',
+      }]);
+      return;
+    }
+    setProducing(true); setProduceStage('[Initializing HeyGen session…]'); setProducePct(5); setProduceDetail('');
+    setInput('');
+    const photo = attachment;
+    const userId = mkId();
+    const pendId = mkId();
+    setMessages(m => [
+      ...m,
+      { id: userId, role: 'user', text: `🗣️ ${script}`, ts: Date.now() },
+      { id: pendId, role: 'assistant', text: '[Initializing HeyGen session…]', pending: true, service: 'avatar', ts: Date.now() },
+    ]);
+    setAttachment(null);
+    try {
+      const res = await fetch('/api/orchestrator/avatar/produce', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+        body: JSON.stringify({ script, ...(photo ? { photoBase64: photo.base64, photoMimeType: photo.type } : {}) }),
+      });
+      if (res.status === 401) { setMessages(m => m.filter(x => x.id !== pendId && x.id !== userId)); setAuthOpen(true); return; }
+      if (!res.ok || !res.body) throw new Error(`avatar_${res.status}`);
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = '';
+      let url: string | null = null;
+      let poster: string | null = null;
+      let failed: string | null = null;
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const chunks = buf.split('\n\n');
+        buf = chunks.pop() ?? '';
+        for (const chunk of chunks) {
+          const line = chunk.split('\n').find(l => l.startsWith('data: '));
+          if (!line) continue;
+          let ev: { stage?: string; pct?: number; ticker?: string; url?: string; poster?: string | null; error?: string };
+          try { ev = JSON.parse(line.slice(6)); } catch { continue; }
+          if (ev.stage) {
+            setProduceStage(ev.ticker ?? ev.stage);
+            if (typeof ev.pct === 'number') setProducePct(ev.pct);
+            tickPending(setMessages, pendId, ev.ticker ?? ev.stage);
+          }
+          if (ev.stage === 'completed' && ev.url) { url = ev.url; poster = ev.poster ?? null; }
+          if (ev.stage === 'failed') failed = ev.error ?? 'failed';
+        }
+      }
+      if (url) {
+        patchMessage(setMessages, pendId, { text: '', media: { kind: 'video', url, ...(poster ? { poster } : {}), meta: { engine: 'HeyGen' } } });
+      } else {
+        patchMessage(setMessages, pendId, { pending: false, text: localizedAvatarError(failed, localeCode) });
+      }
+    } catch (e) {
+      patchMessage(setMessages, pendId, { pending: false, text: localizedAvatarError(e instanceof Error ? e.message : null, localeCode) });
+    } finally {
+      setProducing(false); setProduceStage(''); setProducePct(0); setProduceDetail('');
+    }
+  }, [producing, sending, input, attachment, localeCode]);
+
   // Inline-only: "Open in preview" scrolls the inline media into view.
   // The per-bubble click-to-lightbox in InlineMedia handles fullscreen.
   const onOpenInPreview = useCallback((m: ChatMessage) => {
@@ -1191,25 +1261,35 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
             {producing ? (
               <ProduceProgress stage={produceStage} pct={producePct} detail={produceDetail} locale={localeCode} />
             ) : (
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 <button
                   type="button"
                   onClick={() => void runProduce()}
                   disabled={sending}
-                  className="flex-1 inline-flex items-center justify-center gap-2 h-11 rounded-2xl font-semibold text-[13px] text-white bg-gradient-to-r from-violet-600 to-fuchsia-500 hover:from-violet-500 hover:to-fuchsia-400 active:scale-[0.99] disabled:opacity-50 transition-transform duration-150 shadow-[0_8px_30px_-8px_rgba(168,85,247,0.6)]"
+                  className="flex-1 min-w-[30%] inline-flex items-center justify-center gap-1.5 h-11 rounded-2xl font-semibold text-[13px] text-white bg-gradient-to-r from-violet-600 to-fuchsia-500 hover:from-violet-500 hover:to-fuchsia-400 active:scale-[0.99] disabled:opacity-50 transition-transform duration-150 shadow-[0_8px_30px_-8px_rgba(168,85,247,0.6)]"
                 >
-                  <Sparkles size={16} />
+                  <Sparkles size={15} />
                   {localeCode === 'ka' ? '30წ ფილმი' : localeCode === 'ru' ? '30с фильм' : 'Produce Film'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void runAvatarProduce()}
+                  disabled={sending}
+                  title={localeCode === 'ka' ? 'დაწერე ტექსტი (+სურვ. ფოტო)' : 'Type a script (+optional photo)'}
+                  className="flex-1 min-w-[30%] inline-flex items-center justify-center gap-1.5 h-11 rounded-2xl font-semibold text-[13px] text-white bg-gradient-to-r from-sky-600 to-indigo-500 hover:from-sky-500 hover:to-indigo-400 active:scale-[0.99] disabled:opacity-50 transition-transform duration-150 shadow-[0_8px_30px_-8px_rgba(56,135,235,0.55)]"
+                >
+                  <UserIcon size={15} />
+                  {localeCode === 'ka' ? 'AI ავატარი' : localeCode === 'ru' ? 'AI Аватар' : 'AI Avatar'}
                 </button>
                 <button
                   type="button"
                   onClick={() => void runInteriorDesign()}
                   disabled={sending}
                   title={localeCode === 'ka' ? 'მიამაგრე ოთახის ფოტო, მერე დააჭირე' : 'Attach a room photo, then tap'}
-                  className="flex-1 inline-flex items-center justify-center gap-2 h-11 rounded-2xl font-semibold text-[13px] text-white bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 active:scale-[0.99] disabled:opacity-50 transition-transform duration-150 shadow-[0_8px_30px_-8px_rgba(16,185,129,0.55)]"
+                  className="flex-1 min-w-[30%] inline-flex items-center justify-center gap-1.5 h-11 rounded-2xl font-semibold text-[13px] text-white bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 active:scale-[0.99] disabled:opacity-50 transition-transform duration-150 shadow-[0_8px_30px_-8px_rgba(16,185,129,0.55)]"
                 >
-                  <SofaIcon size={16} />
-                  {localeCode === 'ka' ? 'ოთახის დიზაინი 3D' : localeCode === 'ru' ? 'Дизайн комнаты 3D' : 'Design Room 3D'}
+                  <SofaIcon size={15} />
+                  {localeCode === 'ka' ? 'ოთახის 3D' : localeCode === 'ru' ? 'Комната 3D' : 'Design Room'}
                 </button>
               </div>
             )}
@@ -1557,6 +1637,18 @@ function localizedInteriorError(_err: string | null, locale: string): string {
   if (locale === 'ka') return 'ოთახის 3D ანალიზი ამ წამს ვერ დასრულდა — ფაილი ან ფორმატი ვერ დამუშავდა. სცადე სხვა/ნათელი ფოტოთი (JPG/PNG) ან ცადე ხელახლა.';
   if (locale === 'ru') return 'Не удалось завершить 3D-анализ комнаты — файл или формат не обработан. Попробуйте другое чёткое фото (JPG/PNG) или повторите.';
   return "I couldn't finish the 3D room analysis — that file or format didn't process. Try a clearer photo (JPG/PNG) or give it another go.";
+}
+
+// TASK 4: graceful avatar failure — HeyGen concurrency gets a calm queue message.
+function localizedAvatarError(reason: string | null, locale: string): string {
+  if (reason === 'concurrency') {
+    if (locale === 'ka') return 'HeyGen ამჟამად დატვირთულია — ავატარი რიგშია და ავტომატურად დაიწყება მალე. სცადე ცოტა ხანში.';
+    if (locale === 'ru') return 'HeyGen сейчас перегружен — аватар в очереди и запустится автоматически. Повторите чуть позже.';
+    return 'HeyGen is at capacity right now — your avatar is queued and will retry automatically in a moment. Feel free to try again shortly.';
+  }
+  if (locale === 'ka') return 'ავატარის გენერაცია ვერ დასრულდა — სცადე უფრო მოკლე ტექსტით ან ხელახლა.';
+  if (locale === 'ru') return 'Не удалось создать аватара — попробуйте более короткий текст или повторите.';
+  return "Couldn't finish the avatar — try a shorter script or give it another go.";
 }
 
 function ProduceProgress({ stage, pct, detail, locale }: { stage: string; pct: number; detail: string; locale: string }) {

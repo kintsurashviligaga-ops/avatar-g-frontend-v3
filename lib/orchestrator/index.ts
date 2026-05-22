@@ -24,6 +24,7 @@ export * from './script-breakdown';
 export * from './agents/profiles';
 export * from './ffmpeg-filtergraph';
 export * from './interior';
+export * from './avatar';
 export * from './providers';
 export * from './runpod-adapter';
 export * from './orchestrator';

@@ -13,7 +13,7 @@
  * Pure + client-safe (no SDK imports) → safe to re-export from the barrel.
  */
 
-export type AgentId = 'A' | 'H' | 'I' | 'J' | 'L' | 'K' | 'N';
+export type AgentId = 'A' | 'H' | 'I' | 'J' | 'L' | 'K' | 'N' | 'V' | 'M';
 
 export interface AgentProfile {
   id: AgentId;
@@ -90,6 +90,7 @@ export const AGENT_PROFILES: Record<AgentId, AgentProfile> = {
       'emotion-tone balancing from script context',
       'multi-lingual phonetic localization',
       'conversational micro-inflections (breath, emphasis, pacing)',
+      'HeyGen streaming lipsync phonetic alignment + pacing',
     ],
   },
   I: {
@@ -160,6 +161,32 @@ export const AGENT_PROFILES: Record<AgentId, AgentProfile> = {
       'palette + material + lighting-temperature design',
       'furniture sizing to the measured room',
       'spatial physics: fabric light-bounce, photorealistic shadows, volumetric ray-tracing guidelines',
+    ],
+  },
+  V: {
+    id: 'V',
+    codeName: 'persona-emotion-director',
+    displayName: 'Avatar Persona & Emotion Director',
+    provider: 'internal',
+    model: null,
+    role: 'Injects facial-expression states, micro-gestures and posture cues from dialogue context.',
+    skills: [
+      'emotion/intent detection from dialogue text',
+      'facial-expression + micro-gesture + torso-posture coding',
+      'tone alignment to dialogue context',
+    ],
+  },
+  M: {
+    id: 'M',
+    codeName: 'visual-coherence-matcher',
+    displayName: 'Visual Coherence & Environment Matcher',
+    provider: 'internal',
+    model: null,
+    role: 'Matches the avatar to the background with exact lighting templates (no "pasted-on" look).',
+    skills: [
+      'lighting template matching (studio / cinematic / natural / corporate)',
+      'rim-light + shadow coherence',
+      'subject-to-background integration',
     ],
   },
 };
