@@ -65,9 +65,11 @@ export interface DispatchResult {
 }
 
 /**
- * Dispatch with exp-backoff retry (max 3) on 5xx / 429 / network errors.
+ * Dispatch with exp-backoff retry (max 4) on 5xx / 429 / network errors.
  * 4xx (other than 429) fail fast. Honors an AbortSignal.
  */
+const RUNPOD_MAX_ATTEMPTS = 4;
+
 export async function dispatchRunPod(
   cfg: RunPodConfig,
   manifest: RunPodManifest,
@@ -76,7 +78,7 @@ export async function dispatchRunPod(
   const doFetch = opts.fetchImpl ?? fetch;
   const { url, init } = buildRunPodRequest(cfg, manifest);
   let lastErr: unknown = null;
-  for (let attempt = 1; attempt <= 3; attempt++) {
+  for (let attempt = 1; attempt <= RUNPOD_MAX_ATTEMPTS; attempt++) {
     let nonRetryable = false;
     try {
       const r = await doFetch(url, { ...init, signal: opts.signal });
@@ -91,7 +93,8 @@ export async function dispatchRunPod(
       if ((e as Error)?.name === 'AbortError') throw e;
     }
     if (nonRetryable) break;
-    if (attempt < 3) await new Promise(res => setTimeout(res, Math.min(8000, 700 * 2 ** (attempt - 1))));
+    // Exponential backoff: 0.7s, 1.4s, 2.8s (capped at 10s).
+    if (attempt < RUNPOD_MAX_ATTEMPTS) await new Promise(res => setTimeout(res, Math.min(10_000, 700 * 2 ** (attempt - 1))));
   }
   throw lastErr instanceof Error ? lastErr : new Error('render node unreachable');
 }

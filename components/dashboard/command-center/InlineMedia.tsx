@@ -27,10 +27,22 @@ import { Play, Pause, Volume2, VolumeX, Maximize2, X, Code2, Eye } from 'lucide-
 import MediaActions from './MediaActions';
 
 type InlineMediaProps =
-  | { kind: 'image'; url: string; prompt?: string; onRemix?: (p: string) => void; onSaveCharacter?: () => void }
-  | { kind: 'video'; url: string; poster?: string; prompt?: string; onRemix?: (p: string) => void }
-  | { kind: 'audio'; url: string; prompt?: string; onRemix?: (p: string) => void }
-  | { kind: 'code'; html: string; language?: string; prompt?: string; onRemix?: (p: string) => void };
+  | { kind: 'image'; url: string; prompt?: string; badges?: string[]; onRemix?: (p: string) => void; onSaveCharacter?: () => void }
+  | { kind: 'video'; url: string; poster?: string; prompt?: string; badges?: string[]; onRemix?: (p: string) => void }
+  | { kind: 'audio'; url: string; prompt?: string; badges?: string[]; onRemix?: (p: string) => void }
+  | { kind: 'code'; html: string; language?: string; prompt?: string; badges?: string[]; onRemix?: (p: string) => void };
+
+// ─── Meta chips — truthful provenance/format badges on a media bubble ──────────
+function MetaBadges({ badges }: { badges?: string[] }) {
+  if (!badges || badges.length === 0) return null;
+  return (
+    <div className="inline-media-badges">
+      {badges.map((b, i) => (
+        <span key={`${b}-${i}`} className="inline-media-badge">{b}</span>
+      ))}
+    </div>
+  );
+}
 
 // ─── Lightbox (image) ─────────────────────────────────────────────────────────
 
@@ -200,6 +212,7 @@ function AudioBlock({ url }: { url: string }) {
   const audRef = useRef<HTMLAudioElement>(null);
   const [playing, setPlaying] = useState(false);
   const [progress, setProgress] = useState(0); // 0..1
+  const [buffered, setBuffered] = useState(0); // 0..1 — real buffered fraction
   const [duration, setDuration] = useState(0);
   const [current, setCurrent] = useState(0);
 
@@ -210,13 +223,20 @@ function AudioBlock({ url }: { url: string }) {
       setCurrent(a.currentTime);
       setProgress(a.duration > 0 ? a.currentTime / a.duration : 0);
     };
+    const onProgress = () => {
+      if (a.buffered.length > 0 && a.duration > 0) {
+        setBuffered(Math.min(1, a.buffered.end(a.buffered.length - 1) / a.duration));
+      }
+    };
     const onLoad = () => setDuration(a.duration);
     const onEnd = () => setPlaying(false);
     a.addEventListener('timeupdate', onTime);
+    a.addEventListener('progress', onProgress);
     a.addEventListener('loadedmetadata', onLoad);
     a.addEventListener('ended', onEnd);
     return () => {
       a.removeEventListener('timeupdate', onTime);
+      a.removeEventListener('progress', onProgress);
       a.removeEventListener('loadedmetadata', onLoad);
       a.removeEventListener('ended', onEnd);
     };
@@ -256,14 +276,20 @@ function AudioBlock({ url }: { url: string }) {
       </button>
       <div className="inline-media-audio-wave" onClick={seek} role="progressbar" aria-valuenow={Math.round(progress * 100)}>
         {bars.map((h, i) => {
-          const active = i / bars.length < progress;
+          const frac = i / bars.length;
+          const isPlayed = frac < progress;
+          const isBuffered = frac < buffered;
           return (
             <span
               key={i}
-              className="inline-media-audio-bar"
+              className={`inline-media-audio-bar${isPlayed ? ' played' : ''}`}
               style={{
                 height: `${Math.round(h * 100)}%`,
-                background: active ? 'linear-gradient(180deg,#a855f7,#6d28d9)' : 'rgba(255,255,255,0.18)',
+                background: isPlayed
+                  ? 'linear-gradient(180deg,#c084fc,#7c3aed)'
+                  : isBuffered
+                    ? 'rgba(168,85,247,0.40)'   // buffered, not yet played
+                    : 'rgba(255,255,255,0.14)', // not buffered
                 animationDelay: `${i * 30}ms`,
               }}
             />
@@ -330,6 +356,8 @@ export default function InlineMedia(props: InlineMediaProps) {
       {props.kind === 'video' && <VideoBlock url={props.url} poster={props.poster} />}
       {props.kind === 'audio' && <AudioBlock url={props.url} />}
       {props.kind === 'code' && <CodeBlock html={props.html} language={props.language} />}
+
+      <MetaBadges badges={props.badges} />
 
       {showActions && (
         <div className="inline-media-actions-wrap">
@@ -480,6 +508,42 @@ export default function InlineMedia(props: InlineMediaProps) {
         /* ── Actions overlay anchored bottom-right ── */
         .inline-media-actions-wrap {
           margin-top: 6px;
+        }
+
+        /* ── Meta badges (truthful provenance/format chips) ── */
+        .inline-media-badges {
+          display: flex; flex-wrap: wrap; gap: 5px; margin-top: 7px;
+        }
+        .inline-media-badge {
+          display: inline-flex; align-items: center;
+          padding: 2px 8px; border-radius: 999px;
+          font-size: 10px; font-weight: 600; letter-spacing: 0.02em;
+          color: rgba(216,196,255,0.92);
+          background: rgba(139,92,246,0.12);
+          border: 1px solid rgba(139,92,246,0.28);
+          backdrop-filter: blur(8px);
+        }
+
+        /* ── Played-bar glow (audio scrubber) ── */
+        .inline-media-audio-bar.played {
+          box-shadow: 0 0 6px rgba(168,85,247,0.55);
+        }
+
+        /* ── Tactile hover micro-interactions on visual media ── */
+        .inline-media-image-wrap,
+        .inline-media-video-wrap {
+          transition: transform 0.22s ease, box-shadow 0.22s ease, border-color 0.22s ease;
+          will-change: transform;
+        }
+        .inline-media-image-wrap:hover,
+        .inline-media-video-wrap:hover {
+          transform: translateY(-2px);
+          box-shadow: 0 14px 38px -16px rgba(168,85,247,0.45);
+          border-color: rgba(168,85,247,0.30);
+        }
+        @media (pointer: coarse) {
+          .inline-media-image-wrap:hover,
+          .inline-media-video-wrap:hover { transform: none; }
         }
       `}</style>
     </div>

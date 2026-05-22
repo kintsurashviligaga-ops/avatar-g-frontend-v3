@@ -14,6 +14,7 @@
  */
 
 import { SEGMENT_DURATION_SEC } from './types';
+import { agentASystemPrompt } from './agents/profiles';
 
 /** Safety cap — 8 × 6s = 48s, the longest composition we assemble in one pass. */
 export const MAX_SEGMENTS = 8;
@@ -89,14 +90,8 @@ export function normalizeBreakdown(raw: unknown, basePrompt: string, totalSec: n
 }
 
 export function buildScriptSystemPrompt(): string {
-  return [
-    'You are the Creative Script Agent for a short-form cinematic video generator.',
-    'Break a single creative brief into a sequence of 6-second shots that tell one coherent story.',
-    'Output ONLY minified JSON — no prose, no markdown, no code fences — matching exactly:',
-    '{"segments":[{"prompt":string,"cameraMotion":"zoom_in"|"zoom_out"|"pan_left"|"pan_right"|"dolly"}]}',
-    'Each "prompt" is a vivid, self-contained visual description of one 6-second shot',
-    '(subject, setting, lighting, motion). Preserve visual continuity across shots.',
-  ].join(' ');
+  // Agent A's installed skill-matrix prompt (single source of truth).
+  return agentASystemPrompt();
 }
 
 export function buildScriptUserPrompt(prompt: string, totalSec: number): string {

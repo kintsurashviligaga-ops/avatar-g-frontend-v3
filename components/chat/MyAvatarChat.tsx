@@ -1445,6 +1445,26 @@ function mediaActionCategory(service: ServiceId | undefined, kind: string | unde
   return null;
 }
 
+// Truthful provenance/format badges for a media bubble — reflects the real
+// engine that produced the asset (no fabricated "4K/60fps" claims).
+function mediaBadges(service: ServiceId | undefined, kind: string | undefined): string[] {
+  switch (service) {
+    case 'video': return ['LTX-2', 'MP4'];
+    case 'avatar': return ['HeyGen', 'Lip-Sync'];
+    case 'music': return ['Udio', 'Audio'];
+    case 'voice': return ['ElevenLabs', 'TTS'];
+    case 'image': return ['AI Image'];
+    case 'interior': return ['AI · Interior'];
+    case 'app': return ['Claude', 'HTML'];
+    default:
+      if (kind === 'image') return ['Image'];
+      if (kind === 'video') return ['Video'];
+      if (kind === 'audio') return ['Audio'];
+      if (kind === 'code') return ['HTML'];
+      return [];
+  }
+}
+
 function MediaContextActions({
   service, kind, prompt, url, locale, onAction,
 }: {
@@ -1559,17 +1579,18 @@ function MessageRow({ m, locale, onLike, onDislike, onCopy, onRegenerate, onSpea
           {(m.media || detected) && (
             <div className="ml-1 relative group">
               {m.media?.kind === 'code' && m.media.html ? (
-                <InlineMedia kind="code" html={m.media.html} language={m.media.language} prompt="" onRemix={onRemix} />
+                <InlineMedia kind="code" html={m.media.html} language={m.media.language} prompt="" badges={mediaBadges(m.service, 'code')} onRemix={onRemix} />
               ) : m.media?.url ? (
                 <InlineMedia
                   kind={m.media.kind as 'image' | 'video' | 'audio'}
                   url={m.media.url}
                   poster={m.media.poster}
                   prompt={m.text}
+                  badges={mediaBadges(m.service, m.media.kind)}
                   onRemix={onRemix}
                 />
               ) : detected ? (
-                <InlineMedia kind={detected.kind} url={detected.url} prompt={text} onRemix={onRemix} />
+                <InlineMedia kind={detected.kind} url={detected.url} prompt={text} badges={mediaBadges(m.service, detected.kind)} onRemix={onRemix} />
               ) : null}
               {/* Open this media in the dedicated preview canvas — bigger view + share/scrub */}
               <button

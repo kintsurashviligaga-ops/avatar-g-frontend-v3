@@ -21,6 +21,7 @@ export * from './events';
 export * from './render-settings';
 export * from './pipeline-stages';
 export * from './script-breakdown';
+export * from './agents/profiles';
 export * from './providers';
 export * from './runpod-adapter';
 export * from './orchestrator';
