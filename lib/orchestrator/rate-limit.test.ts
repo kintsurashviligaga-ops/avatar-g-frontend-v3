@@ -1,7 +1,7 @@
 /** @jest-environment node */
 jest.mock('@upstash/redis', () => ({ Redis: class {} }));
 
-import { PRODUCE_COST, rateWindowKeys, RATE_PER_MIN, RATE_PER_DAY, type ProduceKind } from './rate-limit';
+import { PRODUCE_COST, rateWindowKeys, RATE_PER_MIN, RATE_PER_DAY, GLOBAL_DAILY_CAP, type ProduceKind } from './rate-limit';
 
 describe('PRODUCE_COST', () => {
   test('covers all 6 pipelines with positive integer costs', () => {
@@ -40,5 +40,8 @@ describe('rate caps', () => {
   test('sane defaults', () => {
     expect(RATE_PER_MIN).toBeGreaterThan(0);
     expect(RATE_PER_DAY).toBeGreaterThanOrEqual(RATE_PER_MIN);
+  });
+  test('global ceiling exceeds the per-user day cap (platform-wide kill switch)', () => {
+    expect(GLOBAL_DAILY_CAP).toBeGreaterThan(RATE_PER_DAY);
   });
 });

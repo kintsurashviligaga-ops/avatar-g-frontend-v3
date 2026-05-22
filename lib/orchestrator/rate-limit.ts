@@ -26,6 +26,13 @@ export const PRODUCE_COST: Record<ProduceKind, number> = {
 export const RATE_PER_MIN = 6;
 export const RATE_PER_DAY = 120;
 
+/**
+ * Platform-wide daily produce ceiling — a global kill-switch so a coordinated
+ * burst (many users) can't drain the org's vendor balances in a day. Overridable
+ * via env so it can be raised as the business scales.
+ */
+export const GLOBAL_DAILY_CAP = Number(process.env.PRODUCE_GLOBAL_DAILY_CAP ?? 2000);
+
 function redis(): Redis | null {
   const url = process.env.UPSTASH_REDIS_REST_URL ?? process.env.KV_REST_API_URL;
   const token = process.env.UPSTASH_REDIS_REST_TOKEN ?? process.env.KV_REST_API_TOKEN;
@@ -42,7 +49,7 @@ export function rateWindowKeys(userId: string, now: number = Date.now()): { minK
 
 export interface RateResult {
   ok: boolean;
-  reason?: 'rate_minute' | 'rate_day';
+  reason?: 'rate_minute' | 'rate_day' | 'global_ceiling';
   retryAfterSec?: number;
 }
 
@@ -61,6 +68,11 @@ export async function checkProduceRate(userId: string, now: number = Date.now())
     const dayN = await r.incr(dayKey);
     await r.expire(dayKey, 90_000);
     if (dayN > RATE_PER_DAY) return { ok: false, reason: 'rate_day', retryAfterSec: 3600 };
+    // Platform-wide daily kill-switch.
+    const gKey = `rl:global:${new Date(now).toISOString().slice(0, 10)}`;
+    const gN = await r.incr(gKey);
+    await r.expire(gKey, 90_000);
+    if (gN > GLOBAL_DAILY_CAP) return { ok: false, reason: 'global_ceiling', retryAfterSec: 3600 };
     return { ok: true };
   } catch {
     return { ok: true }; // fail-open
