@@ -249,6 +249,20 @@ const VIEW_ITEMS: Array<{
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
+// Force-download a media asset. For same-origin / CORS-friendly URLs the
+// `download` attribute names the file; cross-origin falls back to opening it.
+function downloadAsset(url: string | undefined, name = 'myavatar-media') {
+  if (!url) return;
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  a.target = '_blank';
+  a.rel = 'noopener';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
 export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAvatarChatProps) {
   const localeCode = (locale === 'ka' || locale === 'en' || locale === 'ru') ? locale : 'ka';
   const [activeView, setActiveView] = useState<ViewId>('chat');
@@ -722,6 +736,34 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
     node?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }, []);
 
+  // Contextual post-production actions rendered under each completed media block.
+  // Every action does something real: re-dispatch a generation with a crafted
+  // intent, open the render-settings panel, download the asset, or load the
+  // script back into the composer for editing.
+  const handleContextAction = useCallback((action: string, p: { prompt: string; url?: string }) => {
+    const base = (p.prompt || '').trim();
+    switch (action) {
+      // ── Image ──
+      case 'image.upscale':  void send(`${base} — ultra-detailed, 4K resolution, maximum sharpness and clarity`, 'image'); break;
+      case 'image.variant':  void send(`${base} — a fresh creative variation`, 'image'); break;
+      case 'image.aspect':   void send(`${base} — 16:9 widescreen cinematic composition`, 'image'); break;
+      case 'image.toVideo':  void send(base || 'animate this scene into motion', 'video'); break;
+      // ── Video ──
+      case 'video.extend':   void send(`${base} — continue the scene, the next 5 seconds`, 'video'); break;
+      case 'video.voiceover':void send(`Voice-over narration for: ${base}`, 'voice'); break;
+      case 'video.fps':      setRenderSettings({ ...renderSettings, fps: 60 }); setRenderPanelOpen(true); break;
+      case 'video.transition': setRenderPanelOpen(true); break;
+      // ── Music / Voice ──
+      case 'music.rescore':  void send(base || 'a fresh musical theme', 'music'); break;
+      case 'music.ducking':  setRenderPanelOpen(true); break;
+      case 'audio.download': downloadAsset(p.url, 'myavatar-audio'); break;
+      // ── Avatar ──
+      case 'avatar.script':  setInput(base); requestAnimationFrame(() => inputRef.current?.focus()); break;
+      case 'avatar.lipsync': void send(base, 'avatar'); break;
+      case 'avatar.background': void send(`${base} — with a different background scene`, 'avatar'); break;
+    }
+  }, [send, renderSettings, setRenderSettings]);
+
   // The orchestrator decides WHAT to suggest; this handler decides HOW
   // to execute each canonical ActionKey against the existing chat state.
   const dispatchAction = useCallback((a: SuggestedAction) => {
@@ -886,6 +928,7 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
                       onSpeak={() => onSpeak(m.text)}
                       onRemix={onRemix}
                       onOpenInPreview={() => onOpenInPreview(m)}
+                      onContextAction={handleContextAction}
                     />
                   ))}
                   {!sending && messages.length > 0 && (() => {
@@ -1361,6 +1404,76 @@ function EmptyState({ locale }: { locale: 'ka' | 'en' | 'ru' }) {
 
 // ─── MessageRow ──────────────────────────────────────────────────────────────
 
+// ─── MediaContextActions — contextual post-production chips under each media ──
+// Renders a service-specific row of one-tap actions beneath a completed media
+// block. Each chip dispatches a real action through onAction → handleContextAction.
+type CtxAction = { key: string; en: string; ka: string; ru: string };
+
+const MEDIA_ACTIONS: Record<'image' | 'video' | 'music' | 'avatar', CtxAction[]> = {
+  image: [
+    { key: 'image.upscale', en: '4K Upscale', ka: '4K გადიდება', ru: '4K Апскейл' },
+    { key: 'image.variant', en: 'Variant', ka: 'ვარიანტი', ru: 'Вариант' },
+    { key: 'image.aspect', en: 'Crop 16:9', ka: 'კადრი 16:9', ru: 'Кадр 16:9' },
+    { key: 'image.toVideo', en: '→ Video', ka: '→ ვიდეო', ru: '→ Видео' },
+  ],
+  video: [
+    { key: 'video.extend', en: 'Extend +5s', ka: '+5წ გაგრძელება', ru: 'Продлить +5с' },
+    { key: 'video.voiceover', en: 'Voice-Over', ka: 'ხმის დადება', ru: 'Озвучка' },
+    { key: 'video.fps', en: '60fps Smooth', ka: '60fps', ru: '60fps' },
+    { key: 'video.transition', en: 'Transition', ka: 'გადასვლა', ru: 'Переход' },
+  ],
+  music: [
+    { key: 'music.rescore', en: 'Re-Score', ka: 'თავიდან', ru: 'Перезаписать' },
+    { key: 'music.ducking', en: 'Ducking', ka: 'დაკინგი', ru: 'Дакинг' },
+    { key: 'audio.download', en: 'Download', ka: 'ჩამოტვირთვა', ru: 'Скачать' },
+  ],
+  avatar: [
+    { key: 'avatar.script', en: 'Edit Script', ka: 'სცენარი', ru: 'Сценарий' },
+    { key: 'avatar.lipsync', en: 'Retime Lip-Sync', ka: 'ლიპ-სინქი', ru: 'Синхрон' },
+    { key: 'avatar.background', en: 'Change BG', ka: 'ფონი', ru: 'Фон' },
+  ],
+};
+
+function mediaActionCategory(service: ServiceId | undefined, kind: string | undefined): keyof typeof MEDIA_ACTIONS | null {
+  if (service === 'image' || service === 'interior') return 'image';
+  if (service === 'video') return 'video';
+  if (service === 'avatar') return 'avatar';
+  if (service === 'music' || service === 'voice') return 'music';
+  if (kind === 'image') return 'image';
+  if (kind === 'video') return 'video';
+  if (kind === 'audio') return 'music';
+  return null;
+}
+
+function MediaContextActions({
+  service, kind, prompt, url, locale, onAction,
+}: {
+  service?: ServiceId;
+  kind?: string;
+  prompt: string;
+  url?: string;
+  locale: string;
+  onAction: (action: string, payload: { prompt: string; url?: string }) => void;
+}) {
+  const cat = mediaActionCategory(service, kind);
+  if (!cat) return null;
+  const label = (a: CtxAction) => (locale === 'ka' ? a.ka : locale === 'ru' ? a.ru : a.en);
+  return (
+    <div className="flex flex-wrap gap-1.5 mt-2">
+      {MEDIA_ACTIONS[cat].map(a => (
+        <button
+          key={a.key}
+          type="button"
+          onClick={() => onAction(a.key, { prompt, url })}
+          className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-medium text-white/80 bg-white/[0.05] border border-white/[0.10] hover:bg-white/[0.10] hover:text-white hover:border-white/[0.20] active:scale-95 transition"
+        >
+          {label(a)}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 interface MessageRowProps {
   m: ChatMessage;
   locale: string;
@@ -1371,9 +1484,10 @@ interface MessageRowProps {
   onSpeak: () => void;
   onRemix: (prompt: string) => void;
   onOpenInPreview: () => void;
+  onContextAction: (action: string, payload: { prompt: string; url?: string }) => void;
 }
 
-function MessageRow({ m, locale, onLike, onDislike, onCopy, onRegenerate, onSpeak, onRemix, onOpenInPreview }: MessageRowProps) {
+function MessageRow({ m, locale, onLike, onDislike, onCopy, onRegenerate, onSpeak, onRemix, onOpenInPreview, onContextAction }: MessageRowProps) {
   if (m.role === 'user') {
     return (
       <div className="flex justify-end">
@@ -1465,6 +1579,15 @@ function MessageRow({ m, locale, onLike, onDislike, onCopy, onRegenerate, onSpea
               >
                 {locale === 'ka' ? 'პრევიუში გახსნა →' : 'Open in preview →'}
               </button>
+              {/* Contextual post-production actions (per service) */}
+              <MediaContextActions
+                service={m.service}
+                kind={m.media?.kind ?? detected?.kind}
+                prompt={m.text}
+                url={m.media?.url ?? detected?.url}
+                locale={locale}
+                onAction={onContextAction}
+              />
             </div>
           )}
 
