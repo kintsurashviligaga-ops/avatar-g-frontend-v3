@@ -735,7 +735,7 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
     const text = localeCode === 'ka' ? p.prompt_ka : `Create a ${p.label_en.toLowerCase()}: ${p.prompt_ka}`;
     // Image/Music route through the swarm produce flow (Agent P / Agent S + SSE
     // telemetry); everything else uses the standard dispatch.
-    if (p.id === 'image' || p.id === 'music') { void runMediaProduce(p.id, input.trim() || text); return; }
+    if (p.id === 'image' || p.id === 'music' || p.id === 'voice') { void runMediaProduce(p.id, input.trim() || text); return; }
     void send(text, p.id);
   };
 
@@ -989,18 +989,20 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
   // ── Image / Music swarm produce (Agent P / Agent S) with live SSE telemetry.
   //    Logged-out users transparently fall back to the direct generation path
   //    (which needs no auth) so the chips never dead-end.
-  const runMediaProduce = useCallback(async (kind: 'image' | 'music', rawPrompt: string) => {
+  const runMediaProduce = useCallback(async (kind: 'image' | 'music' | 'voice', rawPrompt: string) => {
     if (producing || sending) return;
     const prompt = (rawPrompt.trim() || input.trim());
     if (!prompt) return;
     setProducing(true);
-    setProduceStage(kind === 'image' ? '[Agent P: Formulating Visual Prompt Matrix…]' : '[Agent S: Architecting Lyric/Vibe Matrix…]');
+    setProduceStage(kind === 'image' ? '[Agent P: Formulating Visual Prompt Matrix…]'
+      : kind === 'voice' ? '[Agent H: Synthesizing Vocal Frequency Spectrum…]'
+      : '[Agent S: Architecting Lyric/Vibe Matrix…]');
     setProducePct(5); setProduceDetail('');
     let res: Response;
     try {
       res = await fetch(`/api/orchestrator/${kind}/produce`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
-        body: JSON.stringify({ prompt }),
+        body: JSON.stringify(kind === 'voice' ? { text: prompt, locale: localeCode } : { prompt }),
       });
     } catch {
       setProducing(false); setProduceStage(''); setProducePct(0);
@@ -1048,7 +1050,9 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
           text: '',
           media: kind === 'image'
             ? { kind: 'image', url, meta: { engine: 'AI Image', ...(ratio ? { aspectRatio: ratio } : {}) } }
-            : { kind: 'audio', url, meta: { engine: 'Udio' } },
+            : kind === 'voice'
+              ? { kind: 'audio', url, meta: { engine: 'ElevenLabs', voiceProvider: 'ElevenLabs' } }
+              : { kind: 'audio', url, meta: { engine: 'Udio' } },
         });
       } else {
         patchMessage(setMessages, pendId, { pending: false, text: localizedProduceError(failed, localeCode) });
@@ -1394,16 +1398,19 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
               </div>
             )}
           </div>
-          {/* In-chat video render controls — settings fold into the render payload */}
-          <div className="max-w-2xl mx-auto mb-2">
-            <VideoControlSuite
-              locale={localeCode}
-              open={renderPanelOpen}
-              onToggle={() => setRenderPanelOpen(v => !v)}
-              settings={renderSettings}
-              onChange={setRenderSettings}
-            />
-          </div>
+          {/* In-chat video render controls — strictly hidden unless the user is in a
+              film/video context (a video-intent prompt OR an active film production). */}
+          {(producing || /\b(video|ვიდეო|видео|film|ფილმ|фильм|clip|რგოლ|montage|მონტაჟ|cinematic|კინო)\b/i.test(input)) && (
+            <div className="max-w-2xl mx-auto mb-2">
+              <VideoControlSuite
+                locale={localeCode}
+                open={renderPanelOpen}
+                onToggle={() => setRenderPanelOpen(v => !v)}
+                settings={renderSettings}
+                onChange={setRenderSettings}
+              />
+            </div>
+          )}
           <div className="flex gap-2 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {PILLS.map(p => (
               <button
@@ -1845,19 +1852,12 @@ function SuggestedActionRow({ actions, onDispatch }: { actions: SuggestedAction[
 // ─── EmptyState — welcome + tappable example prompts (first-run UX) ──────────
 
 function EmptyState({ locale }: { locale: 'ka' | 'en' | 'ru' }) {
-  const welcome  = locale === 'ka' ? 'როგორ შემიძლია დაგეხმარო?' : locale === 'ru' ? 'Чем могу помочь?' : 'How can I help you?';
-  const subtitle = locale === 'ka'
-    ? 'აკრიფე ნებისმიერი — ყველაფერს ერთ ფანჯარაში ვქმნი.'
-    : locale === 'ru'
-      ? 'Напишите что угодно — всё создаю в одном окне.'
-      : 'Type anything — I create everything in one window.';
-  // Minimal, distraction-free centre. No template cards — the specialist
-  // pills above the input bar are the discoverable entry points.
+  // High-end minimalist hero — a single question, perfectly centered.
+  const welcome = locale === 'ka' ? 'რა გსურს?' : locale === 'ru' ? 'Чего хотите?' : 'What would you like?';
   return (
     <div className="h-full flex flex-col items-center justify-center px-4 text-center">
-      <Sparkles size={32} className="text-white/40 mb-5" />
-      <h2 className="text-[22px] font-semibold text-white mb-2 tracking-tight">{welcome}</h2>
-      <p className="text-[13px] text-white/55 max-w-[320px] leading-relaxed">{subtitle}</p>
+      <Sparkles size={30} className="text-white/35 mb-5" />
+      <h2 className="text-[30px] sm:text-[34px] font-semibold text-white tracking-tight">{welcome}</h2>
     </div>
   );
 }
