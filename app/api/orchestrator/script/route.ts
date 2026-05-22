@@ -57,41 +57,53 @@ async function analyzeAssetWithGemini(
   image: { base64: string; mimeType?: string },
   brief: string,
 ): Promise<{ text: string | null; error?: string }> {
-  const apiKey = process.env.GEMINI_API_KEY ?? process.env.GOOGLE_GENERATIVE_AI_API_KEY;
-  if (!apiKey) return { text: null, error: 'no_gemini_key' };
-  // Reuse the EXACT @ai-sdk/google pattern the working /api/chat/gemini route
-  // uses (proven in production with vision). data-URL or raw base64 both accepted.
+  const keys = geminiKeys();
+  if (keys.length === 0) return { text: null, error: 'no_gemini_key' };
+  // data-URL or raw base64 both accepted by @ai-sdk/google (proven in the chat route).
   const dataUrl = image.base64.startsWith('data:')
     ? image.base64
     : `data:${image.mimeType ?? 'image/jpeg'};base64,${image.base64}`;
-  const google = createGoogleGenerativeAI({ apiKey });
   const prompt =
     `Analyze this asset to inform a short video. Creative brief: "${brief}". ` +
     'Describe the key subjects, setting, mood, lighting and colors in 2–4 sentences ' +
     'a video director could storyboard from. Plain prose, no preamble.';
-  // gemini-2.5-flash has an available quota bucket but spikes to transient 503s
-  // ("high demand"); the SDK backs off and retries those. We do NOT fall back to
-  // gemini-2.0-flash — that model is hard-429'd on this project's free tier, so
-  // retrying 2.5-flash is the reliable path (verified live).
-  try {
-    const { text } = await generateText({
-      model: google(VISION_MODEL),
-      maxRetries: 4,
-      messages: [
-        {
-          role: 'user',
-          content: [
-            { type: 'text', text: prompt },
-            { type: 'image', image: dataUrl },
-          ],
-        },
-      ],
-    });
-    const trimmed = text?.trim();
-    return trimmed ? { text: trimmed } : { text: null, error: 'empty' };
-  } catch (e) {
-    return { text: null, error: e instanceof Error ? e.message.slice(0, 100) : 'gemini_error' };
+  // Token rotation: gemini-2.5-flash has an available quota bucket but spikes to
+  // transient 503s; maxRetries:4 backs those off. If a key is hard-429'd
+  // (quota/billing), rotate to the next configured key. With one key this is just
+  // the retry path; with GEMINI_API_KEYS=k1,k2,… it zeroes out quota stalls.
+  let lastErr = 'empty';
+  for (const apiKey of keys) {
+    const google = createGoogleGenerativeAI({ apiKey });
+    try {
+      const { text } = await generateText({
+        model: google(VISION_MODEL),
+        maxRetries: 4,
+        messages: [
+          {
+            role: 'user',
+            content: [
+              { type: 'text', text: prompt },
+              { type: 'image', image: dataUrl },
+            ],
+          },
+        ],
+      });
+      const trimmed = text?.trim();
+      if (trimmed) return { text: trimmed };
+    } catch (e) {
+      lastErr = e instanceof Error ? e.message.slice(0, 100) : 'gemini_error';
+      // fall through and rotate to the next key
+    }
   }
+  return { text: null, error: lastErr };
+}
+
+/** All configured Gemini keys (GEMINI_API_KEYS csv ∪ GEMINI_API_KEY ∪ GOOGLE_GENERATIVE_AI_API_KEY), de-duped. */
+function geminiKeys(): string[] {
+  const csv = (process.env.GEMINI_API_KEYS ?? '').split(',').map(s => s.trim()).filter(Boolean);
+  const single = (process.env.GEMINI_API_KEY ?? process.env.GOOGLE_GENERATIVE_AI_API_KEY ?? '').trim();
+  if (single) csv.push(single);
+  return [...new Set(csv)];
 }
 
 export async function POST(req: NextRequest) {

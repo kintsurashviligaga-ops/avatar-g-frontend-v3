@@ -14,7 +14,7 @@ import {
 describe('render-settings', () => {
   test('defaults match the brief (crossfade / minimal / 30% / 24fps)', () => {
     expect(DEFAULT_RENDER_SETTINGS).toEqual({
-      transition: 'crossfade', captionTheme: 'minimal', vocalDuckingPct: 30, fps: 24,
+      transition: 'crossfade', captionTheme: 'minimal', vocalDuckingPct: 30, fps: 24, sfxEnabled: true,
     });
   });
 
@@ -41,10 +41,10 @@ describe('render-settings', () => {
   });
 
   test('payload is snake_case primitives (wire contract, no binary)', () => {
-    const p = renderSettingsToPayload({ transition: 'wipe', captionTheme: 'bold_glow', vocalDuckingPct: 50, fps: 60 });
-    expect(p).toEqual({ transition: 'wipe', caption_theme: 'bold_glow', vocal_ducking_pct: 50, fps: 60 });
+    const p = renderSettingsToPayload({ transition: 'wipe', captionTheme: 'bold_glow', vocalDuckingPct: 50, fps: 60, sfxEnabled: false });
+    expect(p).toEqual({ transition: 'wipe', caption_theme: 'bold_glow', vocal_ducking_pct: 50, fps: 60, sfx_enabled: false });
     for (const v of Object.values(p)) {
-      expect(['string', 'number']).toContain(typeof v);
+      expect(['string', 'number', 'boolean']).toContain(typeof v);
     }
   });
 

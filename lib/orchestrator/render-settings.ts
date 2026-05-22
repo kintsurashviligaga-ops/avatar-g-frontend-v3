@@ -24,6 +24,12 @@ export interface RenderSettings {
   vocalDuckingPct: number;
   /** 24 = native; 60 = AI frame-interpolation smoothness. */
   fps: RenderFps;
+  /**
+   * Agent J secondary pass: generate a background SFX/atmosphere track
+   * (cinematic rises, ambient beds, impacts) mixed UNDER the voiceover with
+   * `vocalDuckingPct` attenuation — the second lane of the dual-track mix.
+   */
+  sfxEnabled: boolean;
 }
 
 export const DEFAULT_RENDER_SETTINGS: RenderSettings = {
@@ -31,6 +37,7 @@ export const DEFAULT_RENDER_SETTINGS: RenderSettings = {
   captionTheme: 'minimal',
   vocalDuckingPct: 30,
   fps: 24,
+  sfxEnabled: true,
 };
 
 export const TRANSITIONS: TransitionType[] = ['crossfade', 'dissolve', 'wipe', 'fade_to_black'];
@@ -46,7 +53,8 @@ export function normalizeRenderSettings(input: Partial<RenderSettings> | null | 
   const rawDuck = typeof s.vocalDuckingPct === 'number' ? s.vocalDuckingPct : DEFAULT_RENDER_SETTINGS.vocalDuckingPct;
   const vocalDuckingPct = Math.max(0, Math.min(100, Math.round(rawDuck)));
   const fps: RenderFps = s.fps === 60 ? 60 : 24;
-  return { transition, captionTheme, vocalDuckingPct, fps };
+  const sfxEnabled = typeof s.sfxEnabled === 'boolean' ? s.sfxEnabled : DEFAULT_RENDER_SETTINGS.sfxEnabled;
+  return { transition, captionTheme, vocalDuckingPct, fps, sfxEnabled };
 }
 
 /**
@@ -59,6 +67,7 @@ export function renderSettingsToPayload(settings: RenderSettings): {
   caption_theme: CaptionTheme;
   vocal_ducking_pct: number;
   fps: RenderFps;
+  sfx_enabled: boolean;
 } {
   const s = normalizeRenderSettings(settings);
   return {
@@ -66,6 +75,7 @@ export function renderSettingsToPayload(settings: RenderSettings): {
     caption_theme: s.captionTheme,
     vocal_ducking_pct: s.vocalDuckingPct,
     fps: s.fps,
+    sfx_enabled: s.sfxEnabled,
   };
 }
 

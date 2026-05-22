@@ -35,13 +35,14 @@ interface SegmentInput {
   url?: string;
   durationSec?: number;
   cameraMotion?: string | null;
-  render?: Record<string, string | number>;
+  render?: Record<string, string | number | boolean>;
 }
 interface AssembleBody {
   segments?: SegmentInput[];
   voiceoverUrl?: string | null;
   musicUrl?: string | null;
-  globalRender?: Record<string, string | number>;
+  sfxUrl?: string | null;
+  globalRender?: Record<string, string | number | boolean>;
 }
 
 export async function POST(req: NextRequest) {
@@ -94,6 +95,7 @@ export async function POST(req: NextRequest) {
     segments: signedSegments,
     voiceoverUrl: body.voiceoverUrl ? await reSignIfInternal(body.voiceoverUrl) : null,
     musicUrl: body.musicUrl ? await reSignIfInternal(body.musicUrl) : null,
+    sfxUrl: body.sfxUrl ? await reSignIfInternal(body.sfxUrl) : null,
     globalRender: body.globalRender ?? {},
     pipelineId: '',
     callbackUrl: new URL('/api/video/assemble/callback', req.url).toString(),

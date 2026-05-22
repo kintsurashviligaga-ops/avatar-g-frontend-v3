@@ -11,14 +11,20 @@ export interface RunPodSegment {
   url: string;
   durationSec: number;
   cameraMotion: string | null;
-  render: Record<string, string | number>;
+  render: Record<string, string | number | boolean>;
 }
 
 export interface RunPodManifest {
   segments: RunPodSegment[];
+  /** Primary lane — the vocal voiceover (ElevenLabs). */
   voiceoverUrl: string | null;
+  /** Background music lane (Udio), ducked under the voiceover. */
   musicUrl: string | null;
-  globalRender: Record<string, string | number>;
+  /** Background SFX/atmosphere lane (Agent J secondary pass), ducked under the
+   *  voiceover. The FFmpeg worker mixes voiceover + (music ∪ sfx) with the
+   *  vocal_ducking_pct attenuation on the background lanes. */
+  sfxUrl: string | null;
+  globalRender: Record<string, string | number | boolean>;
   pipelineId: string;
   /** URL the render node calls with intermediate + final lifecycle events. */
   callbackUrl?: string;
