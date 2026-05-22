@@ -30,10 +30,12 @@ export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 export const maxDuration = 30;
 
-// Sonnet-class by default (matches the manifesto's quality bar); overridable via
-// env so the model can be upgraded without a code change.
+// Default to the exact model id the working App Builder route uses (proven
+// valid on this org). Set ANTHROPIC_SCRIPT_MODEL to a Sonnet/Opus id to upgrade
+// quality without a code change. (NOTE: a valid ANTHROPIC_API_KEY is required —
+// the one currently in Vercel returns 401 and must be rotated.)
 const SCRIPT_MODEL =
-  process.env.ANTHROPIC_SCRIPT_MODEL ?? process.env.ANTHROPIC_MODEL ?? 'claude-sonnet-4-6';
+  process.env.ANTHROPIC_SCRIPT_MODEL ?? process.env.ANTHROPIC_MODEL ?? 'claude-haiku-4-5-20251001';
 
 interface ScriptBody {
   prompt?: string;
