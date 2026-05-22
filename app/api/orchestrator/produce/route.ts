@@ -16,6 +16,8 @@
 import { NextRequest } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { authedClientFromRequest } from '@/lib/supabase/server';
+import { checkProduceRate, rateLimitedResponse, PRODUCE_COST } from '@/lib/orchestrator/rate-limit';
+import { deductCredits } from '@/lib/orchestrator/ledger';
 import {
   buildScriptSystemPrompt, buildScriptUserPrompt, extractJson, normalizeBreakdown,
   type ScriptSegment,
@@ -82,6 +84,8 @@ export async function POST(req: NextRequest) {
   // Auth required in production; bypassed ONLY under `next dev` (NODE_ENV==='development')
   // for local QA. Never a production-active header/cookie backdoor.
   if (!user && process.env.NODE_ENV !== 'development') return new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
+  // Cost guardrail: per-user rate cap (fail-open without Upstash).
+  if (user) { const rate = await checkProduceRate(user.id); if (!rate.ok) return rateLimitedResponse(rate); }
 
   let body: ProduceBody;
   try { body = (await req.json()) as ProduceBody; } catch { return new Response(JSON.stringify({ error: 'invalid body' }), { status: 400 }); }
@@ -128,6 +132,7 @@ export async function POST(req: NextRequest) {
           globalRender: { transition: 'crossfade', vocal_ducking_pct: 30, fps: 24 },
           pipelineId,
         });
+        if (user) await deductCredits(user.id, PRODUCE_COST.film, `film:${Date.now()}`).catch(() => null);
         emit({ stage: 'completed', pct: 100, url, shots: clipUrls.length });
         controller.close();
       } catch (e) {

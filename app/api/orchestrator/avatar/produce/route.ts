@@ -19,6 +19,8 @@
  */
 import { NextRequest } from 'next/server';
 import { authedClientFromRequest } from '@/lib/supabase/server';
+import { checkProduceRate, rateLimitedResponse, PRODUCE_COST } from '@/lib/orchestrator/rate-limit';
+import { deductCredits } from '@/lib/orchestrator/ledger';
 import { buildSessionConfig } from '@/lib/orchestrator/avatar';
 
 export const dynamic = 'force-dynamic';
@@ -38,6 +40,7 @@ export async function POST(req: NextRequest) {
   const { user } = await authedClientFromRequest(req);
   // Auth required in production; bypassed ONLY under `next dev` for local QA.
   if (!user && process.env.NODE_ENV !== 'development') return new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
+  if (user) { const rate = await checkProduceRate(user.id); if (!rate.ok) return rateLimitedResponse(rate); }
 
   let body: Body;
   try { body = (await req.json()) as Body; } catch { return new Response(JSON.stringify({ error: 'invalid body' }), { status: 400 }); }
@@ -87,6 +90,7 @@ export async function POST(req: NextRequest) {
         }
         if (!url) { emit({ stage: 'failed', error: 'timeout' }); controller.close(); return; }
 
+        if (user) await deductCredits(user.id, PRODUCE_COST.avatar, `avatar:${Date.now()}`).catch(() => null);
         emit({ stage: 'completed', pct: 100, url, poster, persona: session.persona, lighting: session.lighting });
         controller.close();
       } catch (e) {

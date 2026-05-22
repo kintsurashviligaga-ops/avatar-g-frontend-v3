@@ -16,6 +16,8 @@ import Anthropic from '@anthropic-ai/sdk';
 import { generateText } from 'ai';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { authedClientFromRequest } from '@/lib/supabase/server';
+import { checkProduceRate, rateLimitedResponse, PRODUCE_COST } from '@/lib/orchestrator/rate-limit';
+import { deductCredits } from '@/lib/orchestrator/ledger';
 import {
   normalizeIntake, intakeHasMedia, normalizeRoomGeometry, normalizeStyleGuide,
   buildGeometrySystemPrompt, buildStyleSystemPrompt, buildStyleUserPrompt,
@@ -81,6 +83,7 @@ export async function POST(req: NextRequest) {
   const { user } = await authedClientFromRequest(req);
   // Auth required in production; bypassed ONLY under `next dev` for local QA.
   if (!user && process.env.NODE_ENV !== 'development') return new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
+  if (user) { const rate = await checkProduceRate(user.id); if (!rate.ok) return rateLimitedResponse(rate); }
 
   let intake;
   try { intake = normalizeIntake(await req.json()); } catch { return new Response(JSON.stringify({ error: 'invalid body' }), { status: 400 }); }
@@ -107,6 +110,7 @@ export async function POST(req: NextRequest) {
         emit({ stage: 'mounting', pct: 90, ticker: '[Agent L: Mounting 3D WebGL Three.js Container…]' });
         const walkthrough = buildWalkthroughPrompts(geometry, style);
 
+        if (user) await deductCredits(user.id, PRODUCE_COST.interior, `interior:${Date.now()}`).catch(() => null);
         emit({ stage: 'completed', pct: 100, geometry, style, walkthrough, degradedGeometry: degradedGeo });
         controller.close();
       } catch (e) {

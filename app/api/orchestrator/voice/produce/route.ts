@@ -11,6 +11,8 @@
  */
 import { NextRequest } from 'next/server';
 import { authedClientFromRequest } from '@/lib/supabase/server';
+import { checkProduceRate, rateLimitedResponse, PRODUCE_COST } from '@/lib/orchestrator/rate-limit';
+import { deductCredits } from '@/lib/orchestrator/ledger';
 import { extractPersonaDirective } from '@/lib/orchestrator/avatar';
 import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
 
@@ -23,6 +25,7 @@ interface Body { text?: string; locale?: string }
 export async function POST(req: NextRequest) {
   const { user } = await authedClientFromRequest(req);
   if (!user && process.env.NODE_ENV !== 'development') return new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
+  if (user) { const rate = await checkProduceRate(user.id); if (!rate.ok) return rateLimitedResponse(rate); }
 
   let body: Body;
   try { body = (await req.json()) as Body; } catch { return new Response(JSON.stringify({ error: 'invalid body' }), { status: 400 }); }
@@ -52,6 +55,7 @@ export async function POST(req: NextRequest) {
         const url = await uploadAndSign('renders', `voice/${Date.now()}.mp3`, buf.toString('base64'), 'audio/mpeg');
         if (!url) { emit({ stage: 'failed', error: 'upload_failed' }); controller.close(); return; }
 
+        if (user) await deductCredits(user.id, PRODUCE_COST.voice, `voice:${Date.now()}`).catch(() => null);
         emit({ stage: 'completed', pct: 100, url, expression: persona.expression });
         controller.close();
       } catch (e) {

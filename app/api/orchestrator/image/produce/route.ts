@@ -11,6 +11,8 @@
 import { NextRequest } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { authedClientFromRequest } from '@/lib/supabase/server';
+import { checkProduceRate, rateLimitedResponse, PRODUCE_COST } from '@/lib/orchestrator/rate-limit';
+import { deductCredits } from '@/lib/orchestrator/ledger';
 import {
   buildImageDirectorSystemPrompt, normalizeImageDirective, deterministicImageDirective,
 } from '@/lib/orchestrator/media-directors';
@@ -34,6 +36,7 @@ function extractJson(text: string): unknown {
 export async function POST(req: NextRequest) {
   const { user } = await authedClientFromRequest(req);
   if (!user && process.env.NODE_ENV !== 'development') return new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
+  if (user) { const rate = await checkProduceRate(user.id); if (!rate.ok) return rateLimitedResponse(rate); }
 
   let body: { prompt?: string };
   try { body = (await req.json()) as { prompt?: string }; } catch { return new Response(JSON.stringify({ error: 'invalid body' }), { status: 400 }); }
@@ -89,6 +92,7 @@ export async function POST(req: NextRequest) {
         }
         if (!url) { emit({ stage: 'failed', error: data.error ?? 'no_image' }); controller.close(); return; }
 
+        if (user) await deductCredits(user.id, PRODUCE_COST.image, `image:${Date.now()}`).catch(() => null);
         emit({ stage: 'completed', pct: 100, url, ratio: directive.ratio, style: directive.style });
         controller.close();
       } catch (e) {
