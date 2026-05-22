@@ -13,7 +13,7 @@
  * Pure + client-safe (no SDK imports) → safe to re-export from the barrel.
  */
 
-export type AgentId = 'A' | 'H' | 'I' | 'J' | 'L' | 'K' | 'N' | 'V' | 'M';
+export type AgentId = 'A' | 'H' | 'I' | 'J' | 'L' | 'K' | 'N' | 'V' | 'M' | 'P' | 'S';
 
 export interface AgentProfile {
   id: AgentId;
@@ -187,6 +187,32 @@ export const AGENT_PROFILES: Record<AgentId, AgentProfile> = {
       'lighting template matching (studio / cinematic / natural / corporate)',
       'rim-light + shadow coherence',
       'subject-to-background integration',
+    ],
+  },
+  P: {
+    id: 'P',
+    codeName: 'image-director',
+    displayName: 'Image Director',
+    provider: 'anthropic',
+    model: process.env.ANTHROPIC_SCRIPT_MODEL ?? 'claude-haiku-4-5-20251001',
+    role: 'Expands the brief into a generation prompt with the right aspect ratio + stylization.',
+    skills: [
+      'prompt expansion to a vivid generation matrix',
+      'aspect-ratio correction',
+      'lighting/stylization injection (photorealistic · 3D render · digital art · cinematic)',
+    ],
+  },
+  S: {
+    id: 'S',
+    codeName: 'sound-lyric-architect',
+    displayName: 'Sound & Lyric Architect',
+    provider: 'anthropic',
+    model: process.env.ANTHROPIC_SCRIPT_MODEL ?? 'claude-haiku-4-5-20251001',
+    role: 'Designs structured song metrics: style breakdown, BPM, instrumental flag, lyrics.',
+    skills: [
+      'automatic style breakdown',
+      'rhythmic BPM configuration',
+      'lyrical prose composition from chat context',
     ],
   },
 };

@@ -733,6 +733,9 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
   const handlePill = (p: PillSpec) => {
     if (activeView !== 'chat') setActiveView('chat');
     const text = localeCode === 'ka' ? p.prompt_ka : `Create a ${p.label_en.toLowerCase()}: ${p.prompt_ka}`;
+    // Image/Music route through the swarm produce flow (Agent P / Agent S + SSE
+    // telemetry); everything else uses the standard dispatch.
+    if (p.id === 'image' || p.id === 'music') { void runMediaProduce(p.id, input.trim() || text); return; }
     void send(text, p.id);
   };
 
@@ -982,6 +985,80 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
       setProducing(false); setProduceStage(''); setProducePct(0); setProduceDetail('');
     }
   }, [producing, sending, input, attachment, localeCode]);
+
+  // ── Image / Music swarm produce (Agent P / Agent S) with live SSE telemetry.
+  //    Logged-out users transparently fall back to the direct generation path
+  //    (which needs no auth) so the chips never dead-end.
+  const runMediaProduce = useCallback(async (kind: 'image' | 'music', rawPrompt: string) => {
+    if (producing || sending) return;
+    const prompt = (rawPrompt.trim() || input.trim());
+    if (!prompt) return;
+    setProducing(true);
+    setProduceStage(kind === 'image' ? '[Agent P: Formulating Visual Prompt Matrix…]' : '[Agent S: Architecting Lyric/Vibe Matrix…]');
+    setProducePct(5); setProduceDetail('');
+    let res: Response;
+    try {
+      res = await fetch(`/api/orchestrator/${kind}/produce`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+        body: JSON.stringify({ prompt }),
+      });
+    } catch {
+      setProducing(false); setProduceStage(''); setProducePct(0);
+      void send(prompt, kind); return; // network → direct path
+    }
+    if (res.status === 401) {
+      // Not logged in → use the unauthenticated direct generator (still inline).
+      setProducing(false); setProduceStage(''); setProducePct(0);
+      void send(prompt, kind); return;
+    }
+    const userId = mkId();
+    const pendId = mkId();
+    setMessages(m => [
+      ...m,
+      { id: userId, role: 'user', text: prompt, ts: Date.now() },
+      { id: pendId, role: 'assistant', text: produceStage, pending: true, service: kind, ts: Date.now() },
+    ]);
+    setInput('');
+    try {
+      if (!res.ok || !res.body) throw new Error(`${kind}_${res.status}`);
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = '';
+      let url: string | null = null;
+      let ratio: string | undefined;
+      let failed: string | null = null;
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const chunks = buf.split('\n\n');
+        buf = chunks.pop() ?? '';
+        for (const chunk of chunks) {
+          const line = chunk.split('\n').find(l => l.startsWith('data: '));
+          if (!line) continue;
+          let ev: { stage?: string; pct?: number; ticker?: string; url?: string; ratio?: string; error?: string };
+          try { ev = JSON.parse(line.slice(6)); } catch { continue; }
+          if (ev.stage) { setProduceStage(ev.ticker ?? ev.stage); if (typeof ev.pct === 'number') setProducePct(ev.pct); tickPending(setMessages, pendId, ev.ticker ?? ev.stage); }
+          if (ev.stage === 'completed' && ev.url) { url = ev.url; ratio = ev.ratio; }
+          if (ev.stage === 'failed') failed = ev.error ?? 'failed';
+        }
+      }
+      if (url) {
+        patchMessage(setMessages, pendId, {
+          text: '',
+          media: kind === 'image'
+            ? { kind: 'image', url, meta: { engine: 'AI Image', ...(ratio ? { aspectRatio: ratio } : {}) } }
+            : { kind: 'audio', url, meta: { engine: 'Udio' } },
+        });
+      } else {
+        patchMessage(setMessages, pendId, { pending: false, text: localizedProduceError(failed, localeCode) });
+      }
+    } catch (e) {
+      patchMessage(setMessages, pendId, { pending: false, text: localizedProduceError(e instanceof Error ? e.message : null, localeCode) });
+    } finally {
+      setProducing(false); setProduceStage(''); setProducePct(0); setProduceDetail('');
+    }
+  }, [producing, sending, input, produceStage, localeCode, send]);
 
   // Inline-only: "Open in preview" scrolls the inline media into view.
   // The per-bubble click-to-lightbox in InlineMedia handles fullscreen.
