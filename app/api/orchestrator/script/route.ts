@@ -35,7 +35,7 @@ import {
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
-export const maxDuration = 45;
+export const maxDuration = 60; // vision retries (503 backoff) + Claude breakdown
 
 // Claude (CEO orchestrator) — Sonnet by default for quality, env-overridable.
 const SCRIPT_MODEL =
@@ -69,29 +69,29 @@ async function analyzeAssetWithGemini(
     `Analyze this asset to inform a short video. Creative brief: "${brief}". ` +
     'Describe the key subjects, setting, mood, lighting and colors in 2–4 sentences ' +
     'a video director could storyboard from. Plain prose, no preamble.';
-  let lastErr = 'empty';
-  for (const model of [VISION_MODEL, 'gemini-2.0-flash']) {
-    try {
-      const { text } = await generateText({
-        model: google(model),
-        maxRetries: 0,
-        messages: [
-          {
-            role: 'user',
-            content: [
-              { type: 'text', text: prompt },
-              { type: 'image', image: dataUrl },
-            ],
-          },
-        ],
-      });
-      const trimmed = text?.trim();
-      if (trimmed) return { text: trimmed };
-    } catch (e) {
-      lastErr = e instanceof Error ? e.message.slice(0, 100) : 'gemini_error';
-    }
+  // gemini-2.5-flash has an available quota bucket but spikes to transient 503s
+  // ("high demand"); the SDK backs off and retries those. We do NOT fall back to
+  // gemini-2.0-flash — that model is hard-429'd on this project's free tier, so
+  // retrying 2.5-flash is the reliable path (verified live).
+  try {
+    const { text } = await generateText({
+      model: google(VISION_MODEL),
+      maxRetries: 4,
+      messages: [
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: prompt },
+            { type: 'image', image: dataUrl },
+          ],
+        },
+      ],
+    });
+    const trimmed = text?.trim();
+    return trimmed ? { text: trimmed } : { text: null, error: 'empty' };
+  } catch (e) {
+    return { text: null, error: e instanceof Error ? e.message.slice(0, 100) : 'gemini_error' };
   }
-  return { text: null, error: lastErr };
 }
 
 export async function POST(req: NextRequest) {
