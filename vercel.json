@@ -9,8 +9,56 @@
     "iad1"
   ],
   "functions": {
-    "app/api/**": {
+    "app/api/chat/gemini/route.ts": {
       "maxDuration": 60
+    },
+    "app/api/ltx-video/route.ts": {
+      "maxDuration": 120
+    },
+    "app/api/heygen/**": {
+      "maxDuration": 120
+    },
+    "app/api/elevenlabs/**": {
+      "maxDuration": 30
+    },
+    "app/api/matilda/route.ts": {
+      "maxDuration": 30
+    },
+    "app/api/ai/route.ts": {
+      "maxDuration": 30
+    },
+    "app/api/ai/chat/route.ts": {
+      "maxDuration": 30
+    },
+    "app/api/automation/**": {
+      "maxDuration": 60
+    },
+    "app/api/workflows/**": {
+      "maxDuration": 60
+    },
+    "app/api/replicate/**": {
+      "maxDuration": 60
+    },
+    "app/api/video/**": {
+      "maxDuration": 60
+    },
+    "app/api/avatar/**": {
+      "maxDuration": 30
+    },
+    "app/api/music/**": {
+      "maxDuration": 30
+    },
+    "app/api/voice/**": {
+      "maxDuration": 30
+    },
+    "app/api/voice-lab/**": {
+      "maxDuration": 30
+    },
+    "app/api/webhooks/**": {
+      "maxDuration": 30
+    },
+    "app/api/**": {
+      "maxDuration": 15
     }
   },
   "headers": [
