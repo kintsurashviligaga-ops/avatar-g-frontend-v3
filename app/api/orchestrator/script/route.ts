@@ -23,8 +23,6 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
-import { generateText } from 'ai';
-import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import {
   buildScriptSystemPrompt,
   buildScriptUserPrompt,
@@ -59,32 +57,46 @@ async function analyzeAssetWithGemini(
 ): Promise<string | null> {
   const apiKey = process.env.GEMINI_API_KEY ?? process.env.GOOGLE_GENERATIVE_AI_API_KEY;
   if (!apiKey) return null;
+  // Strip a data-URL prefix if present — the REST API wants raw base64.
+  const data = image.base64.startsWith('data:')
+    ? (image.base64.split(',')[1] ?? '')
+    : image.base64;
+  if (!data) return null;
+  // Direct Gemini REST call (no @ai-sdk/google import) keeps this serverless
+  // function lean — heavy SDK deps split it into its own Lambda and blew the
+  // Hobby 12-function ceiling.
   try {
-    const google = createGoogleGenerativeAI({ apiKey });
-    const dataUrl = image.base64.startsWith('data:')
-      ? image.base64
-      : `data:${image.mimeType ?? 'image/jpeg'};base64,${image.base64}`;
-    const { text } = await generateText({
-      model: google(VISION_MODEL),
-      maxRetries: 0,
-      messages: [
-        {
-          role: 'user',
-          content: [
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${VISION_MODEL}:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [
             {
-              type: 'text',
-              text:
-                `Analyze this asset to inform a short video. Creative brief: "${brief}". ` +
-                'Describe the key subjects, setting, mood, lighting and colors in 2–4 sentences ' +
-                'a video director could storyboard from. Plain prose, no preamble.',
+              parts: [
+                {
+                  text:
+                    `Analyze this asset to inform a short video. Creative brief: "${brief}". ` +
+                    'Describe the key subjects, setting, mood, lighting and colors in 2–4 sentences ' +
+                    'a video director could storyboard from. Plain prose, no preamble.',
+                },
+                { inline_data: { mime_type: image.mimeType ?? 'image/jpeg', data } },
+              ],
             },
-            { type: 'image', image: dataUrl },
           ],
-        },
-      ],
-    });
-    const trimmed = text?.trim();
-    return trimmed ? trimmed : null;
+        }),
+      },
+    );
+    if (!res.ok) return null;
+    const json = (await res.json()) as {
+      candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+    };
+    const text = (json.candidates?.[0]?.content?.parts ?? [])
+      .map(p => p.text ?? '')
+      .join('')
+      .trim();
+    return text ? text : null;
   } catch {
     return null; // vision is best-effort enrichment — never block the script
   }
