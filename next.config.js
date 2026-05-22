@@ -65,6 +65,13 @@ const nextConfig = {
       '@react-three/fiber',
       '@react-three/drei',
     ],
+    // ffmpeg-static ships a native binary — don't let webpack bundle it; load it
+    // from node_modules at runtime and force-trace it into the assemble lambda
+    // so the CPU FFmpeg fallback (Option B) has its binary in production.
+    serverComponentsExternalPackages: ['ffmpeg-static'],
+    outputFileTracingIncludes: {
+      '/api/video/assemble': ['./node_modules/ffmpeg-static/**'],
+    },
   },
   eslint: {
     // Lint is run separately in CI; skip during `next build` to avoid OOM on large codebases

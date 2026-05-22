@@ -9,6 +9,10 @@
     "iad1"
   ],
   "functions": {
+    "app/api/video/assemble/route.ts": {
+      "maxDuration": 300,
+      "memory": 3008
+    },
     "app/api/chat/gemini/route.ts": {
       "maxDuration": 60
     },

@@ -24,10 +24,11 @@ import {
 import { readRunPodConfig, dispatchRunPod, type RunPodManifest } from '@/lib/orchestrator/runpod-adapter';
 import { deductCredits, refundCredits } from '@/lib/orchestrator/ledger';
 import { reSignIfInternal } from '@/lib/orchestrator/storage-adapter';
+import { assembleWithFfmpeg } from '@/lib/orchestrator/ffmpeg-assembly';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
-export const maxDuration = 60;
+export const maxDuration = 300; // CPU FFmpeg stitch of a 30s master needs headroom (Pro)
 
 const ASSEMBLE_COST = 20; // credits to stitch a composition
 
@@ -71,14 +72,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'duplicate_request', message: 'This composition is already being assembled.' }, { status: 409 });
   }
 
-  // GPU node gate — honest 503 when unprovisioned.
+  // Render-path selection: GPU RunPod worker when provisioned, otherwise the
+  // bundled CPU FFmpeg assembler (Option B). Either way the request completes —
+  // no 503. (RunPod is the quality upgrade: GPU encode + 60fps interpolation.)
   const cfg = readRunPodConfig();
-  if (!cfg) {
-    return NextResponse.json(
-      { error: 'render_node_unprovisioned', message: 'GPU render node (RUNPOD_RENDER_WEBHOOK_URL + RUNPOD_RENDER_WEBHOOK_TOKEN) is not configured.' },
-      { status: 503 },
-    );
-  }
 
   // Media-flow sanitization (Task 3): re-sign any internal Supabase Storage
   // object so only 15-minute signed URLs cross to the render node — no
@@ -126,16 +123,20 @@ export async function POST(req: NextRequest) {
       },
     },
     {
-      name: 'dispatch-runpod',
+      name: 'dispatch',
       run: async (ctx) => {
-        const res = await dispatchRunPod(cfg, { ...manifest, pipelineId: ctx.sagaId }, { signal: ctx.signal });
+        // GPU worker when configured; else stitch on this node with CPU FFmpeg.
+        const res = cfg
+          ? await dispatchRunPod(cfg, { ...manifest, pipelineId: ctx.sagaId }, { signal: ctx.signal })
+          : await assembleWithFfmpeg({ ...manifest, pipelineId: ctx.sagaId });
         ctx.bag.tempUrl = res.url;
         return res.url;
       },
       compensate: async (_r, ctx) => {
+        // Only the RunPod path leaves a remote temp render to purge.
         const tempUrl = ctx.bag.tempUrl;
         const purge = process.env.RUNPOD_PURGE_WEBHOOK_URL;
-        if (typeof tempUrl === 'string' && purge) {
+        if (cfg && typeof tempUrl === 'string' && purge) {
           try {
             await fetch(purge, {
               method: 'POST',
