@@ -71,7 +71,6 @@ const nextConfig = {
     serverComponentsExternalPackages: ['ffmpeg-static'],
     outputFileTracingIncludes: {
       '/api/video/assemble': ['./node_modules/ffmpeg-static/**'],
-      '/api/video/assemble/selftest': ['./node_modules/ffmpeg-static/**'],
     },
   },
   eslint: {

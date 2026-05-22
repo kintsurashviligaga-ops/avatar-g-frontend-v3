@@ -97,6 +97,12 @@ export async function uploadAndSign(
   const sb = client();
   if (!sb) return null;
   try {
+    // Self-provision a private bucket on first use (idempotent — the service
+    // role can create it; an "already exists" result is ignored). Removes the
+    // manual "create the renders bucket" step.
+    await sb.storage.createBucket(bucket, { public: false });
+  } catch { /* exists / no perms — upload will surface any real failure */ }
+  try {
     const bytes = Buffer.from(base64.includes(',') ? base64.split(',')[1] ?? '' : base64, 'base64');
     const { error } = await sb.storage.from(bucket).upload(path, bytes, { contentType, upsert: true });
     if (error) return null;
