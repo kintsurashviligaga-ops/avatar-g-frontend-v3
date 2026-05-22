@@ -1,5 +1,24 @@
 /** @jest-environment node */
-import { subscribe, publish, subscriberCount } from './sse-hub';
+jest.mock('@upstash/redis', () => ({ Redis: class {} }));
+import { subscribe, publish, subscriberCount, readPipelineEvents, hubUsesRedis } from './sse-hub';
+
+describe('sse-hub durable layer (no Upstash env → fail-open)', () => {
+  test('hubUsesRedis is false without UPSTASH env', () => {
+    expect(hubUsesRedis()).toBe(false);
+  });
+  test('readPipelineEvents fails open to an empty batch + preserves cursor', async () => {
+    const { events, nextIndex } = await readPipelineEvents('p-none', 7);
+    expect(events).toEqual([]);
+    expect(nextIndex).toBe(7);
+  });
+  test('publish still delivers in-memory when Redis is absent', () => {
+    const got: string[] = [];
+    const off = subscribe('pmem', (e) => got.push(String(e.payload.k)));
+    publish({ topic: 'data.sanitized', pipelineId: 'pmem', payload: { k: 'x' } });
+    expect(got).toEqual(['x']);
+    off();
+  });
+});
 
 describe('sse-hub fan-out', () => {
   test('publish reaches only same-pipeline subscribers', () => {
