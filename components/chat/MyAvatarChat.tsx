@@ -85,6 +85,18 @@ type Mode = 'ask' | 'imagine';
 
 type ViewId = 'chat' | 'avatar' | 'voice' | 'memory' | 'analytics' | 'billing';
 
+// Truthful per-asset render metadata — populated by the runner from the exact
+// parameters the generation actually used (never fabricated). Drives the dynamic
+// meta-chips in InlineMedia.
+interface RenderMeta {
+  fps?: number;
+  resolution?: string;     // e.g. "1920x1080"
+  aspectRatio?: string;    // e.g. "16:9"
+  duckingPct?: number;     // 0–100, music attenuation under vocals
+  voiceProvider?: string;  // e.g. "ElevenLabs"
+  engine?: string;         // producing engine, e.g. "LTX-2"
+}
+
 interface MediaPayload {
   kind: 'image' | 'video' | 'audio' | 'code';
   url?: string;
@@ -95,6 +107,7 @@ interface MediaPayload {
                           // canplay (avoids the "invisible black frame" bug where
                           // HeyGen videos load silently with a pitch-black first frame
                           // on a pitch-black background).
+  meta?: RenderMeta;      // truthful render parameters → InlineMedia meta-chips
 }
 
 interface ChatMessage {
@@ -1587,6 +1600,7 @@ function MessageRow({ m, locale, onLike, onDislike, onCopy, onRegenerate, onSpea
                   poster={m.media.poster}
                   prompt={m.text}
                   badges={mediaBadges(m.service, m.media.kind)}
+                  meta={m.media.meta}
                   onRemix={onRemix}
                 />
               ) : detected ? (
@@ -2316,7 +2330,7 @@ async function runImage(prompt: string, pendingId: string, setMessages: Setter, 
     }
   }
   if (!url) throw new Error(data?.error || 'Image generation failed');
-  patchMessage(setMessages, pendingId, { text: '', media: { kind: 'image', url } });
+  patchMessage(setMessages, pendingId, { text: '', media: { kind: 'image', url, meta: { engine: 'AI Image', aspectRatio: ratio } } });
 }
 
 function detectVideoAspect(prompt: string): '16:9' | '9:16' | '1:1' {
@@ -2344,9 +2358,10 @@ async function runVideo(prompt: string, pendingId: string, setMessages: Setter, 
       : locale === 'ru' ? `Генерирую видео · ${elapsed}с` : `Generating video · ${elapsed}s`);
   }, 2000);
   try {
+    const fps = opts?.renderSettings?.fps ?? 24;
     const res = await fetchWithRetry('/api/ltx-video', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt, aspect_ratio, duration: 6, generate_audio: true, ...(render ? { render } : {}) }),
+      body: JSON.stringify({ prompt, aspect_ratio, duration: 6, fps, generate_audio: true, ...(render ? { render } : {}) }),
       // Generation is expensive + non-idempotent: never auto-retry (a retry
       // would silently bill a second render). Allow 3 min — audio synthesis
       // adds to the ~25s video base.
@@ -2357,10 +2372,20 @@ async function runVideo(prompt: string, pendingId: string, setMessages: Setter, 
       try { detail = (await res.text()).slice(0, 200); } catch { /* ignore */ }
       throw new Error(`Video failed (${res.status}) ${detail}`.trim());
     }
+    // Read the truthful render params the server actually applied.
+    const hdrFps = Number(res.headers.get('x-render-fps')) || fps;
+    const hdrRes = res.headers.get('x-render-resolution') || undefined;
     const blob = await res.blob();
     if (blob.size === 0) throw new Error('Empty video');
     const url = URL.createObjectURL(blob);
-    patchMessage(setMessages, pendingId, { text: '', media: { kind: 'video', url } });
+    patchMessage(setMessages, pendingId, {
+      text: '',
+      media: {
+        kind: 'video',
+        url,
+        meta: { engine: 'LTX-2', fps: hdrFps, resolution: hdrRes, aspectRatio: aspect_ratio },
+      },
+    });
   } finally {
     alive = false;
     clearInterval(tick);
@@ -2395,7 +2420,7 @@ async function runMusic(prompt: string, pendingId: string, setMessages: Setter, 
     const data = await res.json() as { url?: string; audioUrl?: string; error?: string };
     const url = data?.url || data?.audioUrl;
     if (!url) throw new Error(data?.error || 'Music generation failed');
-    patchMessage(setMessages, pendingId, { text: '', media: { kind: 'audio', url } });
+    patchMessage(setMessages, pendingId, { text: '', media: { kind: 'audio', url, meta: { engine: 'Udio' } } });
   } finally {
     alive = false;
     clearInterval(tick);
@@ -2416,7 +2441,7 @@ async function runVoice(text: string, pendingId: string, setMessages: Setter, si
   const blob = await res.blob();
   if (blob.size === 0) throw new Error('Empty voice clip');
   const url = URL.createObjectURL(blob);
-  patchMessage(setMessages, pendingId, { text: '', media: { kind: 'audio', url } });
+  patchMessage(setMessages, pendingId, { text: '', media: { kind: 'audio', url, meta: { engine: 'ElevenLabs', voiceProvider: 'ElevenLabs' } } });
 }
 
 async function runAvatar(
@@ -2468,7 +2493,7 @@ async function runAvatar(
   if (!videoUrl) throw new Error('timeout');
   patchMessage(setMessages, pendingId, {
     text: '',
-    media: { kind: 'video', url: videoUrl, ...(posterUrl ? { poster: posterUrl } : {}) },
+    media: { kind: 'video', url: videoUrl, ...(posterUrl ? { poster: posterUrl } : {}), meta: { engine: 'HeyGen' } },
   });
 }
 

@@ -42,9 +42,11 @@ export async function POST(req: NextRequest) {
       prompt,
       model = 'ltx-2-3-fast',
       duration = 6,
-      fps = 24,
       camera_motion,
     } = body;
+    // fps can arrive top-level OR nested in the render-settings payload
+    // (renderSettingsToPayload → { fps }). Honor either; 60 = AI interpolation.
+    const fps: number = (body.fps ?? body.render?.fps) === 60 ? 60 : 24;
     // LTX-2's headline capability is synchronized audio. The LTX API defaults
     // generate_audio to true; we honor that (silent clips felt "broken") while
     // still letting a caller opt out with generate_audio: false.
@@ -91,11 +93,15 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Forward the video stream directly — LTX returns video/mp4 synchronously
+    // Forward the video stream directly — LTX returns video/mp4 synchronously.
+    // Expose the EXACT render params the client persists as truthful media meta.
     return new Response(ltxRes.body, {
       headers: {
         'Content-Type': ltxRes.headers.get('content-type') || 'video/mp4',
         'Cache-Control': 'no-store',
+        'X-Render-Fps': String(fps),
+        'X-Render-Resolution': finalResolution,
+        'Access-Control-Expose-Headers': 'X-Render-Fps, X-Render-Resolution',
       },
     });
   } catch (err) {

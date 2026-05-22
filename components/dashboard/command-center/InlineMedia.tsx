@@ -26,13 +26,48 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Play, Pause, Volume2, VolumeX, Maximize2, X, Code2, Eye } from 'lucide-react';
 import MediaActions from './MediaActions';
 
-type InlineMediaProps =
-  | { kind: 'image'; url: string; prompt?: string; badges?: string[]; onRemix?: (p: string) => void; onSaveCharacter?: () => void }
-  | { kind: 'video'; url: string; poster?: string; prompt?: string; badges?: string[]; onRemix?: (p: string) => void }
-  | { kind: 'audio'; url: string; prompt?: string; badges?: string[]; onRemix?: (p: string) => void }
-  | { kind: 'code'; html: string; language?: string; prompt?: string; badges?: string[]; onRemix?: (p: string) => void };
+// Truthful per-asset render metadata (mirrors ChatMessage media.meta).
+export interface RenderMetaLite {
+  fps?: number;
+  resolution?: string;
+  aspectRatio?: string;
+  duckingPct?: number;
+  voiceProvider?: string;
+  engine?: string;
+}
 
-// ─── Meta chips — truthful provenance/format badges on a media bubble ──────────
+type InlineMediaProps =
+  | { kind: 'image'; url: string; prompt?: string; badges?: string[]; meta?: RenderMetaLite; onRemix?: (p: string) => void; onSaveCharacter?: () => void }
+  | { kind: 'video'; url: string; poster?: string; prompt?: string; badges?: string[]; meta?: RenderMetaLite; onRemix?: (p: string) => void }
+  | { kind: 'audio'; url: string; prompt?: string; badges?: string[]; meta?: RenderMetaLite; onRemix?: (p: string) => void }
+  | { kind: 'code'; html: string; language?: string; prompt?: string; badges?: string[]; meta?: RenderMetaLite; onRemix?: (p: string) => void };
+
+function prettyResolution(r: string): string {
+  if (/(3840x2160|2160x3840|4096x2160)/.test(r)) return '4K UHD';
+  if (/(2560x1440|1440x2560)/.test(r)) return '2K QHD';
+  if (/(1920x1080|1080x1920)/.test(r)) return '1080p HD';
+  if (/(1280x720|720x1280)/.test(r)) return '720p';
+  return r;
+}
+
+// Derive truthful dynamic chips from real render metadata. Empty when no meta.
+function metaToChips(meta?: RenderMetaLite): string[] {
+  if (!meta) return [];
+  const chips: string[] = [];
+  if (meta.engine) chips.push(meta.engine);
+  if (typeof meta.fps === 'number') chips.push(meta.fps >= 60 ? '60fps AI Interpolated' : `${meta.fps}fps`);
+  if (meta.resolution) chips.push(prettyResolution(meta.resolution));
+  else if (meta.aspectRatio) chips.push(meta.aspectRatio);
+  if (typeof meta.duckingPct === 'number' && meta.duckingPct > 0) {
+    // % attenuation → dB (truthful conversion): dB = 20·log10(1 − pct/100).
+    const db = Math.round(20 * Math.log10(Math.max(0.001, 1 - meta.duckingPct / 100)));
+    chips.push(`Audio Ducking ${db}dB`);
+  }
+  if (meta.voiceProvider) chips.push(meta.voiceProvider);
+  return [...new Set(chips)];
+}
+
+// ─── Meta chips — truthful provenance/format/parameter badges on a media bubble ─
 function MetaBadges({ badges }: { badges?: string[] }) {
   if (!badges || badges.length === 0) return null;
   return (
@@ -357,7 +392,7 @@ export default function InlineMedia(props: InlineMediaProps) {
       {props.kind === 'audio' && <AudioBlock url={props.url} />}
       {props.kind === 'code' && <CodeBlock html={props.html} language={props.language} />}
 
-      <MetaBadges badges={props.badges} />
+      <MetaBadges badges={metaToChips(props.meta).length > 0 ? metaToChips(props.meta) : props.badges} />
 
       {showActions && (
         <div className="inline-media-actions-wrap">
