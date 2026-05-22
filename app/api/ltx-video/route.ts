@@ -44,9 +44,12 @@ export async function POST(req: NextRequest) {
       duration = 6,
       camera_motion,
     } = body;
-    // fps can arrive top-level OR nested in the render-settings payload
-    // (renderSettingsToPayload → { fps }). Honor either; 60 = AI interpolation.
-    const fps: number = (body.fps ?? body.render?.fps) === 60 ? 60 : 24;
+    // LTX renders at NATIVE frame rates only — sending fps:60 makes the upstream
+    // API 400. The "60fps AI Interpolated" smoothness is a downstream RunPod
+    // interpolation pass (Agent L), not an LTX param. Clamp to a supported native
+    // rate and report the TRUE rendered fps back (so the meta chip stays honest).
+    const reqFps = Number(body.fps ?? body.render?.fps ?? 24);
+    const fps: number = [24, 25, 30].includes(reqFps) ? reqFps : 24;
     // LTX-2's headline capability is synchronized audio. The LTX API defaults
     // generate_audio to true; we honor that (silent clips felt "broken") while
     // still letting a caller opt out with generate_audio: false.
