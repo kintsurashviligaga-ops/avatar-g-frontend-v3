@@ -79,7 +79,8 @@ async function designStyle(geometry: RoomGeometry, brief: string) {
 
 export async function POST(req: NextRequest) {
   const { user } = await authedClientFromRequest(req);
-  if (!user) return new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
+  // Auth required in production; bypassed ONLY under `next dev` for local QA.
+  if (!user && process.env.NODE_ENV !== 'development') return new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
 
   let intake;
   try { intake = normalizeIntake(await req.json()); } catch { return new Response(JSON.stringify({ error: 'invalid body' }), { status: 400 }); }

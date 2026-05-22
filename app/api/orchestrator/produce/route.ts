@@ -79,7 +79,9 @@ async function genVoice(origin: string, pipelineId: string, segments: ScriptSegm
 
 export async function POST(req: NextRequest) {
   const { user } = await authedClientFromRequest(req);
-  if (!user) return new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
+  // Auth required in production; bypassed ONLY under `next dev` (NODE_ENV==='development')
+  // for local QA. Never a production-active header/cookie backdoor.
+  if (!user && process.env.NODE_ENV !== 'development') return new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
 
   let body: ProduceBody;
   try { body = (await req.json()) as ProduceBody; } catch { return new Response(JSON.stringify({ error: 'invalid body' }), { status: 400 }); }

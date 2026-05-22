@@ -129,6 +129,8 @@ interface ChatMessage {
   pending?: boolean;
   service?: ServiceId;
   media?: MediaPayload;
+  /** Data URL of an image the USER attached — rendered inline in their bubble. */
+  userImage?: string;
   ts: number;
   liked?: boolean;
   disliked?: boolean;
@@ -646,6 +648,7 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
     const cleanText = slash?.rest && slash.rest.length > 0 ? slash.rest : trimmed;
     const service = forceService ?? detectIntent(trimmed, mode);
     const pendingId = replacePendingId ?? mkId();
+    const att = attachment; // snapshot before any async/clear so the payload is never dropped
 
     if (replacePendingId) {
       setMessages(m => m.map(x => x.id === replacePendingId
@@ -653,7 +656,10 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
         : x,
       ));
     } else {
-      const userMsg: ChatMessage = { id: mkId(), role: 'user', text: trimmed, ts: Date.now() };
+      const userMsg: ChatMessage = {
+        id: mkId(), role: 'user', text: trimmed, ts: Date.now(),
+        ...(att?.previewUrl ? { userImage: att.previewUrl } : {}),
+      };
       const pendingMsg: ChatMessage = {
         id: pendingId,
         role: 'assistant',
@@ -665,6 +671,9 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
       setMessages(m => [...m, userMsg, pendingMsg]);
       setInput('');
     }
+    // Attachment is captured into the user message + the dispatch below; clear the
+    // composer now so it never lingers or double-sends across services.
+    if (att) setAttachment(null);
     setSending(true);
     const controller = new AbortController();
     abortRef.current = controller;
@@ -680,17 +689,15 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
     try {
       const opts = { localeCode: localeCode as Locale };
       if (service === 'chat')         {
-        const visionImg = attachment ? { base64: attachment.base64, mimeType: attachment.type } : undefined;
+        const visionImg = att ? { base64: att.base64, mimeType: att.type } : undefined;
         await runChat(cleanText, messages, pendingId, setMessages, controller.signal, visionImg);
-        if (attachment) setAttachment(null);
       }
       else if (service === 'image')   await runImage(cleanText, pendingId, setMessages, controller.signal, opts);
       else if (service === 'video')   await runVideo(cleanText, pendingId, setMessages, controller.signal, { ...opts, renderSettings });
       else if (service === 'music')   await runMusic(cleanText, pendingId, setMessages, controller.signal, opts);
       else if (service === 'voice')   await runVoice(cleanText, pendingId, setMessages, controller.signal, opts);
       else if (service === 'avatar')  {
-        await runAvatar(cleanText, pendingId, setMessages, attachment?.base64, attachment?.type, controller.signal, opts);
-        setAttachment(null);
+        await runAvatar(cleanText, pendingId, setMessages, att?.base64, att?.type, controller.signal, opts);
       }
       else if (service === 'interior') await runInterior(cleanText, pendingId, setMessages, controller.signal, opts);
       else if (service === 'app')     await runApp(cleanText, pendingId, setMessages, controller.signal, opts);
@@ -1327,7 +1334,7 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
                 type="button"
                 onClick={() => handlePill(p)}
                 disabled={sending}
-                className="flex-shrink-0 inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full bg-black border border-white/[0.10] hover:border-white/[0.20] hover:bg-white/[0.04] disabled:opacity-50 transition text-[13px] font-medium text-white"
+                className="flex-shrink-0 inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full bg-black border border-white/[0.10] hover:border-violet-400/45 hover:bg-white/[0.05] hover:shadow-[0_0_18px_-5px_rgba(168,85,247,0.6)] active:scale-95 disabled:opacity-50 transition-all duration-150 text-[13px] font-medium text-white"
               >
                 <p.icon size={14} className="text-white/85" />
                 {localeCode === 'ka' ? p.label_ka : p.label_en}
@@ -1887,8 +1894,20 @@ function MessageRow({ m, locale, onLike, onDislike, onCopy, onRegenerate, onSpea
   if (m.role === 'user') {
     return (
       <div className="flex justify-end">
-        <div className="max-w-[82%] px-4 py-2.5 rounded-2xl bg-white/10 text-white text-[15px] leading-relaxed">
-          {m.text}
+        <div className="max-w-[82%] flex flex-col items-end gap-1.5">
+          {m.userImage && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={m.userImage}
+              alt=""
+              className="max-w-[220px] max-h-[220px] rounded-2xl object-cover border border-white/10"
+            />
+          )}
+          {m.text && (
+            <div className="px-4 py-2.5 rounded-2xl bg-white/10 text-white text-[15px] leading-relaxed break-words">
+              {m.text}
+            </div>
+          )}
         </div>
       </div>
     );
