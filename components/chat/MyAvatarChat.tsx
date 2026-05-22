@@ -291,6 +291,10 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
   const [renderSettings, setRenderSettings] = useRenderSettings();
   const [renderPanelOpen, setRenderPanelOpen] = useState(false);
   const [activePipelineId, setActivePipelineId] = useState<string | null>(null);
+  const [producing, setProducing] = useState(false);
+  const [produceStage, setProduceStage] = useState<string>('');
+  const [producePct, setProducePct] = useState(0);
+  const [produceDetail, setProduceDetail] = useState('');
   // (Removed: latestMedia + mobileView — previews are now inline-only.)
   const [attachment, setAttachment] = useState<{ name: string; type: string; base64: string; previewUrl: string } | null>(null);
   const [cameraOpen, setCameraOpen] = useState(false);
@@ -742,6 +746,75 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
   }, []);
 
   // Central dispatch for orchestrator-generated SuggestedAction chips.
+  // ── One-tap cinematic production. POSTs to the authed /produce orchestrator
+  //    and renders the live SSE stage stream into a progress tracker; on
+  //    completion the final 30s master mounts inline in the timeline.
+  const runProduce = useCallback(async () => {
+    if (producing || sending) return;
+    const prompt = input.trim() || (localeCode === 'ka' ? 'კინემატოგრაფიული 30-წამიანი რგოლი' : 'a cinematic 30-second promo');
+    setProducing(true); setProduceStage('initiated'); setProducePct(3); setProduceDetail('');
+    setInput('');
+    const userId = mkId();
+    const pendId = mkId();
+    setMessages(m => [
+      ...m,
+      { id: userId, role: 'user', text: `🎬 ${prompt}`, ts: Date.now() },
+      { id: pendId, role: 'assistant', text: produceStageLabel('initiated', localeCode), pending: true, service: 'video', ts: Date.now() },
+    ]);
+    try {
+      const res = await fetch('/api/orchestrator/produce', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ prompt, totalDurationSec: 30 }),
+      });
+      if (res.status === 401) {
+        setMessages(m => m.filter(x => x.id !== pendId && x.id !== userId));
+        setAuthOpen(true);
+        return;
+      }
+      if (!res.ok || !res.body) throw new Error(`produce_${res.status}`);
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = '';
+      let finalUrl: string | null = null;
+      let failed: string | null = null;
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const chunks = buf.split('\n\n');
+        buf = chunks.pop() ?? '';
+        for (const chunk of chunks) {
+          const line = chunk.split('\n').find(l => l.startsWith('data: '));
+          if (!line) continue;
+          let ev: { stage?: string; pct?: number; url?: string; error?: string; ready?: number; total?: number; shots?: number };
+          try { ev = JSON.parse(line.slice(6)); } catch { continue; }
+          if (ev.stage) {
+            setProduceStage(ev.stage);
+            if (typeof ev.pct === 'number') setProducePct(ev.pct);
+            const det = ev.stage === 'video.segments.ready' ? `${ev.ready}/${ev.total}`
+              : ev.stage === 'script.compiled' && ev.shots ? `${ev.shots} ${localeCode === 'ka' ? 'კადრი' : 'shots'}`
+              : '';
+            setProduceDetail(det);
+            tickPending(setMessages, pendId, produceStageLabel(ev.stage, localeCode, det));
+          }
+          if (ev.stage === 'completed' && ev.url) finalUrl = ev.url;
+          if (ev.stage === 'failed') failed = ev.error ?? 'failed';
+        }
+      }
+      if (finalUrl) {
+        patchMessage(setMessages, pendId, { text: '', media: { kind: 'video', url: finalUrl, meta: { engine: 'MyAvatar Swarm', fps: 24, aspectRatio: '16:9' } } });
+      } else {
+        patchMessage(setMessages, pendId, { pending: false, text: localizedProduceError(failed, localeCode) });
+      }
+    } catch (e) {
+      patchMessage(setMessages, pendId, { pending: false, text: localizedProduceError(e instanceof Error ? e.message : null, localeCode) });
+    } finally {
+      setProducing(false); setProduceStage(''); setProducePct(0); setProduceDetail('');
+    }
+  }, [producing, sending, input, localeCode]);
+
   // Inline-only: "Open in preview" scrolls the inline media into view.
   // The per-bubble click-to-lightbox in InlineMedia handles fullscreen.
   const onOpenInPreview = useCallback((m: ChatMessage) => {
@@ -1028,6 +1101,22 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
               <SwarmStatusPanel locale={localeCode} pipelineId={activePipelineId} />
             </div>
           )}
+          {/* One-tap cinematic production — button → live SSE telemetry → inline film */}
+          <div className="max-w-2xl mx-auto mb-2">
+            {producing ? (
+              <ProduceProgress stage={produceStage} pct={producePct} detail={produceDetail} locale={localeCode} />
+            ) : (
+              <button
+                type="button"
+                onClick={() => void runProduce()}
+                disabled={sending}
+                className="w-full inline-flex items-center justify-center gap-2 h-11 rounded-2xl font-semibold text-[14px] text-white bg-gradient-to-r from-violet-600 to-fuchsia-500 hover:from-violet-500 hover:to-fuchsia-400 active:scale-[0.99] disabled:opacity-50 transition-transform duration-150 shadow-[0_8px_30px_-8px_rgba(168,85,247,0.6)]"
+              >
+                <Sparkles size={16} />
+                {localeCode === 'ka' ? 'შექმენი 30წ ფილმი' : localeCode === 'ru' ? 'Создать 30с фильм' : 'Produce 30s Film'}
+              </button>
+            )}
+          </div>
           {/* In-chat video render controls — settings fold into the render payload */}
           <div className="max-w-2xl mx-auto mb-2">
             <VideoControlSuite
@@ -1336,6 +1425,61 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
         onAuthed={() => { setAuthOpen(false); window.location.reload(); }}
       />
     </main>
+  );
+}
+
+// ─── Produce-film pipeline telemetry ─────────────────────────────────────────
+const PRODUCE_STAGES = [
+  'scripting', 'script.compiled', 'generating_clips', 'video.segments.ready', 'voiceover', 'assembling', 'completed',
+] as const;
+
+function produceStageLabel(stage: string, locale: string, detail = ''): string {
+  const ka: Record<string, string> = {
+    initiated: 'ვიწყებ წარმოებას…', scripting: 'ვწერ სცენარს…', 'script.compiled': 'სცენარი მზადაა',
+    generating_clips: 'ვქმნი კადრებს…', 'video.segments.ready': 'კადრები მზადაა', voiceover: 'ვამატებ ხმას…',
+    'audio.segments.ready': 'ხმა მზადაა', assembling: 'ვაერთებ 30წ ფილმს…', completed: 'მზადაა', failed: 'ვერ მოხერხდა',
+  };
+  const en: Record<string, string> = {
+    initiated: 'Starting production…', scripting: 'Writing the script…', 'script.compiled': 'Script ready',
+    generating_clips: 'Generating clips…', 'video.segments.ready': 'Clips ready', voiceover: 'Adding voiceover…',
+    'audio.segments.ready': 'Audio ready', assembling: 'Assembling the 30s film…', completed: 'Done', failed: 'Failed',
+  };
+  const base = (locale === 'ka' ? ka : en)[stage] ?? stage;
+  return detail ? `${base} · ${detail}` : base;
+}
+
+// TASK 4: elegant, user-centric failure copy — never a raw system break.
+function localizedProduceError(_err: string | null, locale: string): string {
+  if (locale === 'ka') return 'ფილმის აწყობა ამ წამს ვერ მოხერხდა — ერთ-ერთი ძრავა დროებით დაკავებულია. სცადე ხელახლა რამდენიმე წამში (კრედიტი არ ჩამოგეჭრა).';
+  if (locale === 'ru') return 'Не удалось собрать фильм прямо сейчас — один из движков временно занят. Повторите через несколько секунд (кредиты не списаны).';
+  return "I couldn't finish the film just now — one of the engines is briefly busy. Try again in a few seconds (you weren't charged).";
+}
+
+function ProduceProgress({ stage, pct, detail, locale }: { stage: string; pct: number; detail: string; locale: string }) {
+  const curIdx = PRODUCE_STAGES.indexOf(stage as (typeof PRODUCE_STAGES)[number]);
+  return (
+    <div className="rounded-2xl bg-black border border-white/[0.10] px-4 py-3 will-change-transform">
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-[12px] font-semibold text-white inline-flex items-center gap-1.5">
+          <Sparkles size={13} className="text-violet-300 animate-pulse" />
+          {produceStageLabel(stage, locale, detail)}
+        </span>
+        <span className="text-[11px] text-white/50 tabular-nums">{Math.round(pct)}%</span>
+      </div>
+      <div className="h-1.5 rounded-full bg-white/[0.08] overflow-hidden">
+        <motion.div
+          className="h-full rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-400"
+          initial={{ width: 0 }}
+          animate={{ width: `${Math.max(3, Math.min(100, pct))}%` }}
+          transition={{ ease: 'easeOut', duration: 0.4 }}
+        />
+      </div>
+      <div className="flex gap-1 mt-2">
+        {PRODUCE_STAGES.map((s, i) => (
+          <span key={s} className={`h-1 flex-1 rounded-full transition-colors duration-300 ${i <= curIdx ? 'bg-violet-400/70' : 'bg-white/[0.08]'}`} />
+        ))}
+      </div>
+    </div>
   );
 }
 

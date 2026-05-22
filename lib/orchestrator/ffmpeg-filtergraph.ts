@@ -28,7 +28,7 @@ const XFADE: Record<string, string> = {
   wipe: 'wiperight',
   fade_to_black: 'fadeblack',
 };
-const TRANSITION_SEC = 0.5;
+const TRANSITION_SEC = 1; // 1s crossfade (offset = clipSec - 1)
 
 export function buildFilterComplex(opts: FilterGraphOpts): {
   filter: string;
@@ -41,9 +41,11 @@ export function buildFilterComplex(opts: FilterGraphOpts): {
   const trans = XFADE[opts.transition ?? 'crossfade'] ?? 'fade';
   const parts: string[] = [];
 
-  // ── Video: normalize each clip, then xfade-chain ──────────────────────────
+  // ── Video: normalize + color-match QA pass per clip, then xfade-chain ──────
+  // A uniform mild grade (eq) keeps contrast/saturation consistent across clips
+  // generated independently — the "color match tuning" pass before assembly.
   for (let i = 0; i < nClips; i++) {
-    parts.push(`[${i}:v]settb=AVTB,fps=${vfps},format=yuv420p[v${i}]`);
+    parts.push(`[${i}:v]settb=AVTB,fps=${vfps},format=yuv420p,eq=contrast=1.04:saturation=1.06[v${i}]`);
   }
   let vmap: string;
   if (nClips === 1) {
@@ -67,7 +69,6 @@ export function buildFilterComplex(opts: FilterGraphOpts): {
   const sfxIdx = opts.hasSfx ? ai++ : null;
   const bg = [musicIdx, sfxIdx].filter((x): x is number => x !== null);
   const duck = Math.max(0, Math.min(1, opts.duckPct / 100));
-  const bgVol = (1 - duck).toFixed(2);
 
   let amap: string | null = null;
   if (voiceIdx !== null && bg.length > 0) {
@@ -78,8 +79,13 @@ export function buildFilterComplex(opts: FilterGraphOpts): {
     } else {
       bgLabel = `[${bg[0]}:a]`;
     }
-    parts.push(`${bgLabel}volume=${bgVol}[bgduck]`);
-    parts.push(`[bgduck][${voiceIdx}:a]amix=inputs=2:normalize=0[aout]`);
+    // True dynamic ducking: the voice keys a sidechain compressor on the
+    // music/SFX bed, dropping it (~duck dB) only while the voiceover speaks,
+    // then recovering — much cleaner than a constant volume cut.
+    const ratio = Math.max(2, Math.round(2 + duck * 18)); // 0%→2 … 100%→20
+    parts.push(`[${voiceIdx}:a]asplit=2[vkey][vmix]`);
+    parts.push(`${bgLabel}[vkey]sidechaincompress=threshold=0.05:ratio=${ratio}:attack=20:release=300[bgduck]`);
+    parts.push(`[bgduck][vmix]amix=inputs=2:normalize=0[aout]`);
     amap = '[aout]';
   } else if (voiceIdx !== null) {
     amap = `[${voiceIdx}:a]`;

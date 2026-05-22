@@ -20,6 +20,7 @@ import {
   buildScriptSystemPrompt, buildScriptUserPrompt, extractJson, normalizeBreakdown,
   type ScriptSegment,
 } from '@/lib/orchestrator/script-breakdown';
+import { videoFramingSuffix } from '@/lib/orchestrator/agents/profiles';
 import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
 import { assembleWithFfmpeg } from '@/lib/orchestrator/ffmpeg-assembly';
 
@@ -53,7 +54,7 @@ async function genClip(origin: string, pipelineId: string, idx: number, seg: Scr
   try {
     const r = await fetch(`${origin}/api/ltx-video`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt: seg.prompt, aspect_ratio: '16:9', duration: 6, generate_audio: false, ...(seg.cameraMotion ? { camera_motion: seg.cameraMotion } : {}) }),
+      body: JSON.stringify({ prompt: seg.prompt + videoFramingSuffix(), aspect_ratio: '16:9', duration: 6, generate_audio: false, ...(seg.cameraMotion ? { camera_motion: seg.cameraMotion } : {}) }),
     });
     if (!r.ok) return null;
     const buf = Buffer.from(await r.arrayBuffer());
