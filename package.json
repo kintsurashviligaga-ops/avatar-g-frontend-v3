@@ -28,6 +28,7 @@
     "db:apply-ledger": "node scripts/apply-ledger-migration.mjs",
     "db:apply-jobs": "node scripts/apply-generation-jobs-migration.mjs",
     "db:apply-wallet": "node scripts/apply-wallet-onboarding-migration.mjs",
+    "verify:prod": "node scripts/verify-production.mjs",
     "mcp:install": "npm --prefix apps/myavatar-mcp-server install && npm --prefix apps/myavatar-mcp-server run build",
     "mcp:skill": "node scripts/mcp-skill.mjs",
     "voice:v2v": "npm --prefix services/voice-v2v-node install && npm --prefix services/voice-v2v-node run start",
