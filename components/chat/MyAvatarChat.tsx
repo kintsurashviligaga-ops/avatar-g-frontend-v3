@@ -1816,7 +1816,7 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
             </div>
           )}
           </div>{/* /capped action zone — pills + composer baseline stays pinned below */}
-          <div className="flex gap-2 overflow-x-auto pb-2 pt-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <div className="flex gap-3 overflow-x-auto pb-3 pt-1 mb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {PILLS.map(p => (
               <button
                 key={p.id}
