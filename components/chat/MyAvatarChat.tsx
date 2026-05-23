@@ -68,6 +68,9 @@ import SwarmStatusPanel from '@/components/chat/SwarmStatusPanel';
 import type { RoomGeometry, StyleGuide } from '@/lib/orchestrator/interior';
 import { CameraModal } from '@/components/service-chat/CameraModal';
 import { AdminSystemPanel } from '@/components/chat/AdminSystemPanel';
+import { AvatarOnboarding } from '@/components/chat/onboarding/AvatarOnboarding';
+import { BalanceChip, WalletRefillModal } from '@/components/chat/WalletRefill';
+import { GEL_COST, type MeteredAction } from '@/lib/billing/gel';
 
 // R3F is client-only + heavy — load the 3D room viewer on demand (no SSR).
 const RoomViewer = dynamic(() => import('@/components/chat/RoomViewer'), {
@@ -416,6 +419,71 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
   // Lets the user cancel an in-flight produce pipeline (Film/Avatar/Interior/
   // Image-Music-Voice) — those flows stream over a long-lived fetch.
   const produceAbortRef = useRef<AbortController | null>(null);
+
+  // ── Onboarding + GEL wallet state ──────────────────────────────────────────
+  const [avatarName, setAvatarName] = useState<string | null>(null);
+  const [onboardingHydrated, setOnboardingHydrated] = useState(false);
+  const [freeAvatarChats, setFreeAvatarChats] = useState(3);
+  const [balanceGel, setBalanceGel] = useState<number | null>(null);
+  const [refillOpen, setRefillOpen] = useState(false);
+  const [refillRequired, setRefillRequired] = useState<number | null>(null);
+
+  // Hydrate avatar name + free-counter from localStorage (anonymous-friendly).
+  useEffect(() => {
+    try {
+      const nm = localStorage.getItem('myavatar:avatar_name');
+      if (nm) setAvatarName(nm);
+      const free = Number(localStorage.getItem('myavatar:free_avatar_chats'));
+      if (Number.isFinite(free) && free >= 0) setFreeAvatarChats(free);
+    } catch { /* ignore */ }
+    setOnboardingHydrated(true);
+  }, []);
+
+  // GEL balance (presentation over the existing credit ledger).
+  useEffect(() => {
+    if (!effectiveAuth) return;
+    void (async () => {
+      try {
+        const r = await fetch('/api/billing/usage', { credentials: 'include' });
+        if (!r.ok) return;
+        const j = await r.json() as { credits_balance?: number; balance?: number };
+        const v = j.credits_balance ?? j.balance;
+        if (typeof v === 'number') setBalanceGel(v);
+      } catch { /* ignore */ }
+    })();
+  }, [effectiveAuth]);
+
+  const handleAvatarNamed = useCallback((name: string) => {
+    setAvatarName(name);
+    setFreeAvatarChats(3);
+    try {
+      localStorage.setItem('myavatar:avatar_name', name);
+      localStorage.setItem('myavatar:free_avatar_chats', '3');
+    } catch { /* ignore */ }
+  }, []);
+
+  // Pre-flight cost guardrail (PHASE 4). Returns true if the action may proceed:
+  // first 3 post-naming runs are free; otherwise the GEL balance must cover it,
+  // else we open the refill modal and halt.
+  const guardCost = useCallback((action: MeteredAction): boolean => {
+    if (freeAvatarChats > 0) return true;
+    const cost = GEL_COST[action] ?? 0;
+    if (cost <= 0) return true;
+    if ((balanceGel ?? 0) >= cost) return true;
+    setRefillRequired(cost);
+    setRefillOpen(true);
+    return false;
+  }, [freeAvatarChats, balanceGel]);
+
+  // Burn one free response (after a guarded produce run actually dispatches).
+  const consumeFreeChat = useCallback(() => {
+    setFreeAvatarChats(prev => {
+      if (prev <= 0) return prev;
+      const next = prev - 1;
+      try { localStorage.setItem('myavatar:free_avatar_chats', String(next)); } catch { /* ignore */ }
+      return next;
+    });
+  }, []);
 
   // Session-recovery: persist the pending attachment to localStorage so a
   // page reload doesn't drop the file the user was about to send. Cleared
@@ -1027,8 +1095,10 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
 
   const runProduce = useCallback(async () => {
     if (producing || sending) return;
+    if (!guardCost('video_film')) return; // PHASE 4 pre-flight balance interceptor
     const prompt = input.trim() || (localeCode === 'ka' ? 'კინემატოგრაფიული 30-წამიანი რგოლი' : 'a cinematic 30-second promo');
     setProducing(true); setProduceStage('initiated'); setProducePct(3); setProduceDetail('');
+    consumeFreeChat();
     setInput('');
     const userId = mkId();
     const pendId = mkId();
@@ -1100,7 +1170,7 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
       produceAbortRef.current = null;
       setProducing(false); setProduceStage(''); setProducePct(0); setProduceDetail('');
     }
-  }, [producing, sending, input, localeCode, promptAuth]);
+  }, [producing, sending, input, localeCode, promptAuth, guardCost, consumeFreeChat]);
 
   // ── Interior design (3D). Uses the attached room photo (📎/📷) + brief, streams
   //    the Agent N→K telemetry, then mounts the inline Three.js RoomViewer.
@@ -1200,7 +1270,9 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
       }]);
       return;
     }
+    if (!guardCost('avatar')) return; // PHASE 4 pre-flight balance interceptor
     setProducing(true); setProduceStage('[Initializing HeyGen session…]'); setProducePct(5); setProduceDetail('');
+    consumeFreeChat();
     setInput('');
     const photo = attachment;
     const userId = mkId();
@@ -1265,7 +1337,7 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
       produceAbortRef.current = null;
       setProducing(false); setProduceStage(''); setProducePct(0); setProduceDetail('');
     }
-  }, [producing, sending, input, attachment, localeCode, promptAuth]);
+  }, [producing, sending, input, attachment, localeCode, promptAuth, guardCost, consumeFreeChat]);
 
   // ── Image / Music swarm produce (Agent P / Agent S) with live SSE telemetry.
   //    Logged-out users transparently fall back to the direct generation path
@@ -1655,6 +1727,15 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
               </button>
             </div>
           )}
+          {/* GEL wallet balance + free-video counter (PHASE 2/3) */}
+          <div className="max-w-2xl mx-auto mb-2 flex items-center justify-between gap-2">
+            <BalanceChip balanceGel={balanceGel} onClick={() => { setRefillRequired(null); setRefillOpen(true); }} />
+            {avatarName && freeAvatarChats > 0 && (
+              <span className="inline-flex items-center gap-1.5 h-8 px-3 rounded-full border border-sky-400/30 bg-sky-500/10 text-[12px] font-semibold text-sky-200 shadow-[0_0_16px_-6px_rgba(56,189,248,0.6)]">
+                ✨ {freeAvatarChats} {localeCode === 'ka' ? 'უფასო ვიდეო პასუხი დარჩა' : localeCode === 'ru' ? 'бесплатных видео осталось' : 'free video replies left'}
+              </span>
+            )}
+          </div>
           {/* One-tap cinematic production — button → live SSE telemetry → inline film */}
           <div className="max-w-2xl mx-auto mb-2">
             {producing ? (
@@ -2020,6 +2101,17 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
 
       {/* Admin-only infrastructure telemetry (renders nothing for non-admins). */}
       <AdminSystemPanel enabled={effectiveAuth} />
+
+      {/* First-run avatar naming gate — blocks the composer until named (PHASE 3). */}
+      {onboardingHydrated && !avatarName && <AvatarOnboarding onNamed={handleAvatarNamed} />}
+
+      {/* GEL wallet refill / pre-flight insufficient-balance modal (PHASE 2/4). */}
+      <WalletRefillModal
+        open={refillOpen}
+        locale={localeCode}
+        requiredAmount={refillRequired}
+        onClose={() => setRefillOpen(false)}
+      />
     </main>
   );
 }

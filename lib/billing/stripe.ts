@@ -79,6 +79,48 @@ export async function createCheckoutSession(params: {
 }
 
 /**
+ * Create a one-off GEL wallet top-up Checkout Session (mode: payment).
+ * Uses inline price_data so the amount is the literal Lari value chosen by the
+ * user. NOTE: settlement in GEL requires the Stripe account to support the
+ * currency — if it doesn't, Stripe rejects this call and the caller surfaces a
+ * clean error (the subscription/plan path still works regardless).
+ */
+export async function createWalletTopupSession(params: {
+  customerId: string;
+  amountGel: number;
+  successUrl: string;
+  cancelUrl: string;
+}): Promise<string> {
+  const stripe = getStripe();
+
+  const session = await stripe.checkout.sessions.create({
+    customer: params.customerId,
+    payment_method_types: ['card'],
+    mode: 'payment',
+    line_items: [
+      {
+        quantity: 1,
+        price_data: {
+          currency: 'gel',
+          unit_amount: Math.round(params.amountGel * 100),
+          product_data: { name: `MyAvatar Wallet — ${params.amountGel.toFixed(2)} ₾` },
+        },
+      },
+    ],
+    metadata: { kind: 'wallet_topup', currency: 'gel', amount_gel: String(params.amountGel) },
+    success_url: params.successUrl,
+    cancel_url: params.cancelUrl,
+    billing_address_collection: 'auto',
+  });
+
+  if (!session.url) {
+    throw new Error('Failed to create wallet top-up session URL');
+  }
+
+  return session.url;
+}
+
+/**
  * Create customer portal session
  */
 export async function createPortalSession(params: {
