@@ -153,7 +153,7 @@ export default function SwarmStatusPanel({ locale, pipelineId }: { locale: Lang;
       {/* overall bar */}
       <div className="h-1 bg-white/[0.06]">
         <motion.div
-          className="h-full bg-gradient-to-r from-indigo-400 to-purple-500"
+          className="h-full bg-gradient-to-r from-cyan-400 to-blue-600"
           animate={{ width: `${overall}%` }}
           transition={{ duration: 0.4, ease: 'easeOut' }}
         />

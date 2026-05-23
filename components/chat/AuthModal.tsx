@@ -124,7 +124,7 @@ export default function AuthModal({ open, locale, onClose, onAuthed }: AuthModal
     }
   }, [mode, email, password, name, locale, t, onAuthed, onClose, reset]);
 
-  const inputCls = 'w-full bg-white/[0.04] border border-white/[0.12] rounded-xl pl-10 pr-3 py-3 text-[14px] text-white placeholder:text-white/35 outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all';
+  const inputCls = 'w-full bg-white/[0.04] border border-white/[0.12] rounded-xl pl-10 pr-3 py-3 text-[14px] text-white placeholder:text-white/35 outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent transition-all';
   const title = mode === 'login' ? t.login : mode === 'register' ? t.register : mode === 'reset' ? t.reset : t.magic;
   const cta = mode === 'login' ? t.loginCta : mode === 'register' ? t.registerCta : mode === 'reset' ? t.resetCta : t.magicCta;
 
@@ -146,7 +146,7 @@ export default function AuthModal({ open, locale, onClose, onAuthed }: AuthModal
             exit={{ opacity: 0, scale: 0.96, y: 12 }}
             transition={{ type: 'spring', stiffness: 360, damping: 30 }}
             onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-[400px] rounded-3xl bg-black border border-white/[0.12] p-6 shadow-[0_30px_90px_-20px_rgba(124,58,237,0.35)]"
+            className="w-full max-w-[400px] rounded-3xl bg-black border border-white/[0.12] p-6 shadow-[0_30px_90px_-20px_rgba(56,189,248,0.35)]"
           >
             <div className="flex items-center justify-between mb-5">
               <div className="flex items-center gap-2">
@@ -156,7 +156,7 @@ export default function AuthModal({ open, locale, onClose, onAuthed }: AuthModal
                     <ArrowLeft size={16} />
                   </button>
                 ) : (
-                  <span className="h-8 w-8 rounded-full bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center">
+                  <span className="h-8 w-8 rounded-full bg-gradient-to-br from-cyan-400 to-blue-600 flex items-center justify-center">
                     <Sparkles size={15} className="text-white" />
                   </span>
                 )}
@@ -194,7 +194,7 @@ export default function AuthModal({ open, locale, onClose, onAuthed }: AuthModal
                 disabled={busy}
                 whileHover={{ scale: busy ? 1 : 1.02 }}
                 whileTap={{ scale: 0.98 }}
-                className="w-full h-11 rounded-xl bg-gradient-to-r from-purple-500 to-indigo-600 text-white text-[14px] font-semibold flex items-center justify-center gap-2 disabled:opacity-60 transition-all"
+                className="w-full h-11 rounded-xl bg-gradient-to-r from-cyan-400 to-blue-600 text-white text-[14px] font-semibold flex items-center justify-center gap-2 disabled:opacity-60 transition-all"
               >
                 {busy ? <Loader2 size={16} className="animate-spin" /> : null}
                 {cta}
@@ -205,7 +205,7 @@ export default function AuthModal({ open, locale, onClose, onAuthed }: AuthModal
             <div className="mt-4 space-y-2 text-center text-[12px]">
               {mode === 'login' && (
                 <>
-                  <button type="button" onClick={() => { setMode('magic'); reset(); }} className="block w-full text-purple-300 hover:text-purple-200 transition">{t.useMagic}</button>
+                  <button type="button" onClick={() => { setMode('magic'); reset(); }} className="block w-full text-sky-300 hover:text-sky-200 transition">{t.useMagic}</button>
                   <div className="flex items-center justify-center gap-3 text-white/45">
                     <button type="button" onClick={() => { setMode('reset'); reset(); }} className="hover:text-white/70 transition">{t.forgot}</button>
                     <span aria-hidden>·</span>
@@ -214,7 +214,7 @@ export default function AuthModal({ open, locale, onClose, onAuthed }: AuthModal
                 </>
               )}
               {mode === 'register' && (
-                <button type="button" onClick={() => { setMode('login'); reset(); }} className="text-white/55 hover:text-white/80 transition">{t.haveAccount} <span className="text-purple-300">{t.login}</span></button>
+                <button type="button" onClick={() => { setMode('login'); reset(); }} className="text-white/55 hover:text-white/80 transition">{t.haveAccount} <span className="text-sky-300">{t.login}</span></button>
               )}
               {mode === 'magic' && (
                 <button type="button" onClick={() => { setMode('login'); reset(); }} className="text-white/55 hover:text-white/80 transition">{t.usePassword}</button>

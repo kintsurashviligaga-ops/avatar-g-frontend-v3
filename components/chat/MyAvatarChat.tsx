@@ -1560,7 +1560,7 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
                   type="button"
                   onClick={() => void runProduce()}
                   disabled={sending}
-                  className="flex-1 min-w-[30%] inline-flex items-center justify-center gap-1.5 h-11 rounded-2xl font-semibold text-[13px] text-white bg-gradient-to-r from-violet-600 to-fuchsia-500 hover:from-violet-500 hover:to-fuchsia-400 active:scale-[0.99] disabled:opacity-50 transition-transform duration-150 shadow-[0_8px_30px_-8px_rgba(168,85,247,0.6)]"
+                  className="flex-1 min-w-[30%] inline-flex items-center justify-center gap-1.5 h-11 rounded-2xl font-semibold text-[13px] text-white bg-gradient-to-r from-cyan-400 via-sky-500 to-blue-600 hover:from-cyan-300 hover:via-sky-400 hover:to-blue-500 active:scale-[0.99] disabled:opacity-50 transition-transform duration-150 shadow-[0_8px_30px_-8px_rgba(56,189,248,0.6)]"
                 >
                   <Sparkles size={15} />
                   {localeCode === 'ka' ? '30წ ფილმი' : localeCode === 'ru' ? '30с фильм' : 'Produce Film'}
@@ -1608,7 +1608,7 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
                 type="button"
                 onClick={() => handlePill(p)}
                 disabled={sending}
-                className="flex-shrink-0 inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full bg-black border border-white/[0.10] hover:border-violet-400/45 hover:bg-white/[0.05] hover:shadow-[0_0_18px_-5px_rgba(168,85,247,0.6)] active:scale-95 disabled:opacity-50 transition-all duration-150 text-[13px] font-medium text-white"
+                className="flex-shrink-0 inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full bg-black border border-white/[0.10] hover:border-sky-400/45 hover:bg-white/[0.05] hover:shadow-[0_0_18px_-5px_rgba(56,189,248,0.6)] active:scale-95 disabled:opacity-50 transition-all duration-150 text-[13px] font-medium text-white"
               >
                 <p.icon size={14} className="text-white/85" />
                 {localeCode === 'ka' ? p.label_ka : p.label_en}
@@ -1622,13 +1622,13 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
             onDragLeave={onDragLeaveInput}
             className={`relative rounded-3xl bg-black border overflow-hidden transition ${
               dragActive
-                ? 'border-violet-400/60 ring-2 ring-violet-500/30'
+                ? 'border-sky-400/60 ring-2 ring-sky-500/30'
                 : 'border-white/[0.10] focus-within:border-white/[0.22]'
             }`}
           >
             {dragActive && (
               <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/75 backdrop-blur-sm pointer-events-none">
-                <span className="inline-flex items-center gap-2 text-[13px] font-medium text-violet-200">
+                <span className="inline-flex items-center gap-2 text-[13px] font-medium text-cyan-200">
                   <ImageIcon size={16} />
                   {localeCode === 'ka' ? 'ჩააგდე სურათი აქ' : localeCode === 'ru' ? 'Перетащите изображение' : 'Drop image here'}
                 </span>
@@ -1671,7 +1671,7 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
               rows={1}
               placeholder={localeCode === 'ka' ? 'მკითხე ნებისმიერი' : 'Ask Anything'}
               aria-label={localeCode === 'ka' ? 'მკითხე ნებისმიერი' : 'Ask Anything'}
-              className="w-full bg-transparent border-none outline-none resize-none overflow-y-auto px-4 pt-3 pb-1 text-[15px] text-white placeholder:text-[#94A3B8] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+              className="w-full bg-transparent border-none outline-none resize-none overflow-y-auto px-4 pt-3 pb-1.5 text-[15px] font-medium leading-relaxed text-white placeholder:text-white/45 placeholder:font-normal [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
               style={{ minHeight: 24, maxHeight: 140 }}
             />
             <input
@@ -1708,9 +1708,9 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
                   type="button"
                   aria-label={listening ? 'Stop listening' : 'Voice input'}
                   onClick={toggleVoiceInput}
-                  className={`h-9 w-9 rounded-full flex items-center justify-center transition active:scale-90 ${
+                  className={`h-9 w-9 rounded-full flex items-center justify-center transition-all duration-300 ease-in-out active:scale-90 ${
                     listening
-                      ? 'bg-violet-500/20 text-violet-200 ring-1 ring-violet-400/40 animate-pulse'
+                      ? 'bg-gradient-to-br from-cyan-400 to-blue-600 text-white ring-1 ring-sky-300/50 shadow-[0_0_18px_-4px_rgba(56,189,248,0.7)] animate-pulse'
                       : 'hover:bg-white/[0.06] text-[#94A3B8] hover:text-white'
                   }`}
                 >
@@ -1731,9 +1731,9 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
                     type="button"
                     onClick={() => void send(input)}
                     disabled={!input.trim()}
-                    className={`inline-flex items-center gap-1.5 px-4 h-9 rounded-full font-semibold text-[13px] transition ${
+                    className={`inline-flex items-center gap-1.5 px-4 h-9 rounded-full font-semibold text-[13px] transition-all duration-300 ease-in-out ${
                       input.trim()
-                        ? 'bg-white text-black hover:bg-white/90'
+                        ? 'bg-gradient-to-r from-cyan-400 to-blue-600 text-white hover:from-cyan-300 hover:to-blue-500 shadow-[0_6px_22px_-8px_rgba(56,189,248,0.7)]'
                         : 'bg-black border border-white/[0.10] text-white/35 cursor-not-allowed'
                     }`}
                   >
@@ -1898,7 +1898,7 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
       {/* In-window camera capture — photos land as an input attachment */}
       <CameraModal
         isOpen={cameraOpen}
-        accentColor="#a855f7"
+        accentColor="#0ea5e9"
         onClose={() => setCameraOpen(false)}
         onAttach={onCameraAttach}
         showFaceGuide
@@ -1981,14 +1981,14 @@ function ProduceProgress({ stage, pct, detail, locale }: { stage: string; pct: n
     <div className="rounded-2xl bg-black border border-white/[0.10] px-4 py-3 will-change-transform">
       <div className="flex items-center justify-between mb-2">
         <span className="text-[12px] font-semibold text-white inline-flex items-center gap-1.5">
-          <Sparkles size={13} className="text-violet-300 animate-pulse" />
+          <Sparkles size={13} className="text-cyan-300 animate-pulse" />
           {produceStageLabel(stage, locale, detail)}
         </span>
         <span className="text-[11px] text-white/50 tabular-nums">{Math.round(pct)}%</span>
       </div>
       <div className="h-1.5 rounded-full bg-white/[0.08] overflow-hidden">
         <motion.div
-          className="h-full rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-400"
+          className="h-full rounded-full bg-gradient-to-r from-cyan-400 to-blue-500"
           initial={{ width: 0 }}
           animate={{ width: `${Math.max(3, Math.min(100, pct))}%` }}
           transition={{ ease: 'easeOut', duration: 0.4 }}
@@ -1996,7 +1996,7 @@ function ProduceProgress({ stage, pct, detail, locale }: { stage: string; pct: n
       </div>
       <div className="flex gap-1 mt-2">
         {PRODUCE_STAGES.map((s, i) => (
-          <span key={s} className={`h-1 flex-1 rounded-full transition-colors duration-300 ${i <= curIdx ? 'bg-violet-400/70' : 'bg-white/[0.08]'}`} />
+          <span key={s} className={`h-1 flex-1 rounded-full transition-colors duration-300 ${i <= curIdx ? 'bg-sky-400/70' : 'bg-white/[0.08]'}`} />
         ))}
       </div>
     </div>
@@ -2023,7 +2023,7 @@ function SoundwaveMeter() {
       {bars.map(i => (
         <motion.span
           key={i}
-          className="w-[2.5px] rounded-full bg-violet-300"
+          className="w-[2.5px] rounded-full bg-cyan-300"
           initial={{ height: 4 }}
           animate={{ height: [4, peaks[i] ?? 12, 6, (peaks[i] ?? 12) - 4, 4] }}
           transition={{ duration: 0.9, repeat: Infinity, ease: 'easeInOut', delay: i * 0.11 }}
@@ -2063,7 +2063,7 @@ function SuggestedActionRow({ actions, onDispatch }: { actions: SuggestedAction[
 
 function EmptyState({ locale }: { locale: 'ka' | 'en' | 'ru' }) {
   // High-end minimalist hero — a single question, perfectly centered, with a
-  // staggered entrance and a soft violet aura behind the mark for depth.
+  // staggered entrance and a soft sky/marine aura behind the mark for depth.
   const welcome = locale === 'ka' ? 'რა გსურს?' : locale === 'ru' ? 'Чего хотите?' : 'What would you like?';
   const sub = locale === 'ka'
     ? 'ფილმი, ავატარი, მუსიკა, ხმა, ინტერიერი — ერთ სივრცეში.'
@@ -2079,8 +2079,8 @@ function EmptyState({ locale }: { locale: 'ka' | 'en' | 'ru' }) {
         transition={{ duration: 0.5, ease }}
         className="relative mb-5"
       >
-        <span aria-hidden className="absolute inset-0 -z-10 blur-2xl rounded-full bg-violet-500/20 scale-150" />
-        <Sparkles size={32} className="text-violet-300/80" />
+        <span aria-hidden className="absolute inset-0 -z-10 blur-2xl rounded-full bg-sky-500/20 scale-150" />
+        <Sparkles size={32} className="text-cyan-300/80" />
       </motion.div>
       <motion.h2
         initial={{ opacity: 0, y: 10 }}
@@ -2250,11 +2250,11 @@ function MessageRow({ m, locale, onLike, onDislike, onRegenerate, onRemix, onOpe
           initial={{ opacity: 0, y: 4 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
-          className="relative inline-flex items-center gap-2.5 px-4 py-2.5 rounded-2xl bg-white/[0.04] border border-violet-400/20 text-white/85 text-[14px] overflow-hidden shadow-[0_0_24px_-8px_rgba(168,85,247,0.45)]"
+          className="relative inline-flex items-center gap-2.5 px-4 py-2.5 rounded-2xl bg-white/[0.04] border border-sky-400/20 text-white/85 text-[14px] overflow-hidden shadow-[0_0_24px_-8px_rgba(56,189,248,0.45)]"
         >
           {/* Sweeping premium glow that reflects active processing time */}
-          <span aria-hidden className="pointer-events-none absolute inset-0 rounded-2xl bg-gradient-to-r from-violet-500/0 via-fuchsia-500/[0.12] to-violet-500/0 animate-pulse" />
-          <Loader2 size={14} className="relative animate-spin text-violet-300" />
+          <span aria-hidden className="pointer-events-none absolute inset-0 rounded-2xl bg-gradient-to-r from-sky-500/0 via-cyan-400/[0.12] to-sky-500/0 animate-pulse" />
+          <Loader2 size={14} className="relative animate-spin text-cyan-300" />
           <span className="relative">{m.text}</span>
         </motion.div>
       ) : (
@@ -2265,11 +2265,11 @@ function MessageRow({ m, locale, onLike, onDislike, onRegenerate, onRemix, onOpe
                 remarkPlugins={[remarkGfm]}
                 components={{
                   // Render external links safely in a new tab.
-                  a: ({ node: _n, ...props }) => <a {...props} target="_blank" rel="noopener noreferrer" className="text-violet-300 hover:text-violet-200 underline-offset-4 hover:underline" />,
+                  a: ({ node: _n, ...props }) => <a {...props} target="_blank" rel="noopener noreferrer" className="text-cyan-300 hover:text-cyan-200 underline-offset-4 hover:underline" />,
                   // Inline + block code styles.
                   code: ({ inline, className, children, ...props }: { inline?: boolean; className?: string; children?: React.ReactNode }) => {
                     if (inline) {
-                      return <code className="px-1.5 py-0.5 rounded bg-white/[0.08] text-[13px] font-mono text-violet-200" {...props}>{children}</code>;
+                      return <code className="px-1.5 py-0.5 rounded bg-white/[0.08] text-[13px] font-mono text-cyan-200" {...props}>{children}</code>;
                     }
                     return (
                       <pre className="my-2 rounded-xl bg-black border border-white/[0.10] p-3 overflow-x-auto text-[12px] leading-[1.55]">
@@ -2286,7 +2286,7 @@ function MessageRow({ m, locale, onLike, onDislike, onRegenerate, onRemix, onOpe
                   table: ({ node: _n, ...props }) => <div className="overflow-x-auto my-2"><table {...props} className="text-[13px] border border-white/[0.10] rounded-md" /></div>,
                   th: ({ node: _n, ...props }) => <th {...props} className="px-2 py-1 border border-white/[0.08] bg-white/[0.04] text-left font-semibold" />,
                   td: ({ node: _n, ...props }) => <td {...props} className="px-2 py-1 border border-white/[0.06]" />,
-                  blockquote: ({ node: _n, ...props }) => <blockquote {...props} className="border-l-2 border-violet-400/40 pl-3 my-2 text-white/75 italic" />,
+                  blockquote: ({ node: _n, ...props }) => <blockquote {...props} className="border-l-2 border-sky-400/40 pl-3 my-2 text-white/75 italic" />,
                 }}
               >
                 {text}
@@ -2318,7 +2318,7 @@ function MessageRow({ m, locale, onLike, onDislike, onRegenerate, onRemix, onOpe
               <button
                 type="button"
                 onClick={onOpenInPreview}
-                className="mt-1.5 inline-flex items-center gap-1 text-[11px] text-violet-300 hover:text-violet-200 transition"
+                className="mt-1.5 inline-flex items-center gap-1 text-[11px] text-cyan-300 hover:text-cyan-200 transition"
               >
                 {locale === 'ka' ? 'პრევიუში გახსნა →' : 'Open in preview →'}
               </button>
@@ -2341,8 +2341,8 @@ function MessageRow({ m, locale, onLike, onDislike, onRegenerate, onRemix, onOpe
             <CopyButton text={m.text} />
             <ActionIcon title="Regenerate" onClick={onRegenerate}><RotateCcw size={13} /></ActionIcon>
             <SpeakerButton text={m.text} locale={locale} />
-            <ActionIcon title="Like" onClick={onLike} active={m.liked} tone="violet"><ThumbsUp size={13} /></ActionIcon>
-            <ActionIcon title="Dislike" onClick={onDislike} active={m.disliked} tone="fuchsia"><ThumbsDown size={13} /></ActionIcon>
+            <ActionIcon title="Like" onClick={onLike} active={m.liked} tone="sky"><ThumbsUp size={13} /></ActionIcon>
+            <ActionIcon title="Dislike" onClick={onDislike} active={m.disliked} tone="cyan"><ThumbsDown size={13} /></ActionIcon>
           </div>
         </>
       )}
@@ -2351,19 +2351,19 @@ function MessageRow({ m, locale, onLike, onDislike, onRegenerate, onRemix, onOpe
 }
 
 function ActionIcon({
-  children, title, onClick, active, tone = 'violet',
+  children, title, onClick, active, tone = 'sky',
 }: {
   children: React.ReactNode;
   title: string;
   onClick: () => void;
   active?: boolean;
-  tone?: 'violet' | 'fuchsia';
+  tone?: 'sky' | 'cyan';
 }) {
-  // Active = registered state with a premium neon glow (violet for affirmative
-  // actions, fuchsia for dissent / playback).
-  const activeCls = tone === 'fuchsia'
-    ? 'text-fuchsia-300 bg-fuchsia-500/15 shadow-[0_0_14px_-2px_rgba(217,70,239,0.65)]'
-    : 'text-violet-300 bg-violet-500/15 shadow-[0_0_14px_-2px_rgba(168,85,247,0.65)]';
+  // Active = registered state with a premium marine neon glow (sky for
+  // affirmative actions, deep cyan/blue for dissent / playback).
+  const activeCls = tone === 'cyan'
+    ? 'text-cyan-200 bg-blue-600/15 shadow-[0_0_14px_-2px_rgba(37,99,235,0.65)]'
+    : 'text-sky-200 bg-sky-500/15 shadow-[0_0_14px_-2px_rgba(56,189,248,0.65)]';
   // Safeguard runtime — never let a handler throw bubble into render.
   const handle = () => { try { onClick(); } catch { /* swallow */ } };
   return (
@@ -2374,7 +2374,7 @@ function ActionIcon({
       aria-pressed={active ?? undefined}
       onClick={handle}
       className={`h-7 w-7 rounded-full flex items-center justify-center transition-all duration-200 hover:scale-110 active:scale-95 ${
-        active ? activeCls : 'hover:text-fuchsia-400 hover:bg-white/[0.08]'
+        active ? activeCls : 'hover:text-cyan-300 hover:bg-white/[0.08]'
       }`}
     >
       {children}
@@ -2425,7 +2425,7 @@ function CopyButton({ text }: { text: string }) {
   }, [text]);
 
   return (
-    <ActionIcon title={copied ? 'Copied' : 'Copy'} onClick={copy} active={copied} tone="violet">
+    <ActionIcon title={copied ? 'Copied' : 'Copy'} onClick={copy} active={copied} tone="sky">
       {copied ? <Check size={13} /> : <Copy size={13} />}
     </ActionIcon>
   );
@@ -2485,7 +2485,7 @@ function SpeakerButton({ text, locale }: { text: string; locale: string }) {
 
   const title = state === 'playing' ? 'Stop' : state === 'loading' ? 'Synthesizing' : 'Speak';
   return (
-    <ActionIcon title={title} onClick={onClick} active={state === 'playing'} tone="fuchsia">
+    <ActionIcon title={title} onClick={onClick} active={state === 'playing'} tone="cyan">
       {state === 'loading'
         ? <Loader2 size={13} className="animate-spin" />
         : state === 'playing'
@@ -2594,7 +2594,7 @@ function AnalyticsView({ locale }: { locale: string }) {
   return (
     <div className="max-w-3xl mx-auto space-y-4">
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <KpiTile label={locale === 'ka' ? 'შეტყობინება' : 'Messages'} value={data.totalMessages} accent="#a855f7" />
+        <KpiTile label={locale === 'ka' ? 'შეტყობინება' : 'Messages'} value={data.totalMessages} accent="#0ea5e9" />
         <KpiTile label={locale === 'ka' ? 'სურათი' : 'Images'} value={u.image} accent="#ec4899" />
         <KpiTile label={locale === 'ka' ? 'ვიდეო' : 'Videos'} value={u.video} accent="#f97316" />
         <KpiTile label={locale === 'ka' ? 'აუდიო' : 'Audio'} value={u.audio} accent="#06b6d4" />
@@ -2619,7 +2619,7 @@ function AnalyticsView({ locale }: { locale: string }) {
           { label: 'image', count: u.image,  color: 'linear-gradient(180deg,#ec4899,#be185d)' },
           { label: 'video', count: u.video,  color: 'linear-gradient(180deg,#f97316,#c2410c)' },
           { label: 'audio', count: u.audio,  color: 'linear-gradient(180deg,#06b6d4,#0891b2)' },
-          { label: 'avatar', count: u.avatar, color: 'linear-gradient(180deg,#8b5cf6,#6d28d9)' },
+          { label: 'avatar', count: u.avatar, color: 'linear-gradient(180deg,#22d3ee,#0284c7)' },
           { label: 'code',  count: u.code,   color: 'linear-gradient(180deg,#10b981,#047857)' },
         ]} />
       </section>
@@ -2710,24 +2710,24 @@ function BillingView({ locale }: { locale: string }) {
             >
               {/* Gradient halo ring — the memorable anchor on the Pro tier */}
               {p.popular && (
-                <div aria-hidden className="absolute -inset-px rounded-[1.55rem] bg-gradient-to-br from-violet-500/70 via-fuchsia-500/45 to-violet-500/70" />
+                <div aria-hidden className="absolute -inset-px rounded-[1.55rem] bg-gradient-to-br from-cyan-400/70 via-sky-500/45 to-blue-500/70" />
               )}
               <div
                 className={`relative rounded-[1.5rem] p-5 border backdrop-blur-xl transition-all duration-300 ${
                   p.popular
-                    ? 'border-transparent bg-[#0b0712] shadow-[0_20px_64px_-22px_rgba(168,85,247,0.6)]'
+                    ? 'border-transparent bg-[#0b0712] shadow-[0_20px_64px_-22px_rgba(56,189,248,0.6)]'
                     : 'border-white/[0.08] bg-white/[0.03] hover:border-white/[0.16] hover:bg-white/[0.05]'
                 }`}
               >
                 {p.popular && (
-                  <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 inline-flex items-center gap-1 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-[0.14em] text-white bg-gradient-to-r from-violet-600 to-fuchsia-500 shadow-[0_6px_22px_-6px_rgba(217,70,239,0.85)] whitespace-nowrap">
+                  <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 inline-flex items-center gap-1 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-[0.14em] text-white bg-gradient-to-r from-cyan-400 via-sky-500 to-blue-600 shadow-[0_6px_22px_-6px_rgba(37,99,235,0.85)] whitespace-nowrap">
                     <Sparkles size={11} /> {t('პოპულარული', 'Popular', 'Популярный')}
                   </span>
                 )}
 
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex items-center gap-2.5 min-w-0">
-                    <span className={`h-9 w-9 rounded-xl flex items-center justify-center flex-shrink-0 ${p.popular ? 'bg-violet-500/20 text-violet-200' : 'bg-white/[0.06] text-white/70'}`}>
+                    <span className={`h-9 w-9 rounded-xl flex items-center justify-center flex-shrink-0 ${p.popular ? 'bg-sky-500/20 text-cyan-200' : 'bg-white/[0.06] text-white/70'}`}>
                       <Icon size={17} />
                     </span>
                     <span className="text-[12px] font-bold uppercase tracking-[0.16em] text-white/75 truncate">{p.name}</span>
@@ -2740,14 +2740,14 @@ function BillingView({ locale }: { locale: string }) {
 
                 {/* Credit structure — high-contrast, unmissable */}
                 <div className="mt-4 flex items-baseline gap-1.5 rounded-2xl bg-black/40 border border-white/[0.06] px-3.5 py-2.5">
-                  <span className={`text-[22px] font-bold tabular-nums tracking-tight ${p.popular ? 'text-transparent bg-clip-text bg-gradient-to-r from-violet-200 to-fuchsia-200' : 'text-white'}`}>{p.credits}</span>
+                  <span className={`text-[22px] font-bold tabular-nums tracking-tight ${p.popular ? 'text-transparent bg-clip-text bg-gradient-to-r from-cyan-200 to-sky-200' : 'text-white'}`}>{p.credits}</span>
                   <span className="text-[12px] text-white/55">{p.creditsLabel}</span>
                 </div>
 
                 <ul className="mt-3.5 space-y-2">
                   {p.features.map((f, i) => (
                     <li key={i} className="flex items-center gap-2 text-[12.5px] text-white/75">
-                      <Check size={14} className={`flex-shrink-0 ${p.popular ? 'text-fuchsia-300' : 'text-emerald-400'}`} />
+                      <Check size={14} className={`flex-shrink-0 ${p.popular ? 'text-cyan-300' : 'text-emerald-400'}`} />
                       <span className="truncate">{f}</span>
                     </li>
                   ))}
@@ -2791,12 +2791,12 @@ function StripePortalButton({ locale }: { locale: string }) {
       onClick={openPortal}
       disabled={loading}
       aria-label={label}
-      className="group relative w-full overflow-hidden rounded-2xl px-5 py-3.5 flex items-center justify-center gap-2.5 border border-white/[0.14] bg-white/[0.06] backdrop-blur-xl text-white font-semibold text-[14px] transition-all duration-300 hover:bg-white/[0.10] hover:border-white/[0.24] hover:shadow-[0_14px_44px_-14px_rgba(168,85,247,0.55)] active:scale-[0.985] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400/60 disabled:opacity-70"
+      className="group relative w-full overflow-hidden rounded-2xl px-5 py-3.5 flex items-center justify-center gap-2.5 border border-white/[0.14] bg-white/[0.06] backdrop-blur-xl text-white font-semibold text-[14px] transition-all duration-300 hover:bg-white/[0.10] hover:border-white/[0.24] hover:shadow-[0_14px_44px_-14px_rgba(56,189,248,0.55)] active:scale-[0.985] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/60 disabled:opacity-70"
     >
       <span aria-hidden className="pointer-events-none absolute inset-0 -translate-x-full group-hover:translate-x-full transition-transform duration-700 ease-out bg-gradient-to-r from-transparent via-white/[0.16] to-transparent" />
       {loading
-        ? <Loader2 size={16} className="relative animate-spin text-violet-200" />
-        : <CreditCard size={16} className="relative text-violet-200" />}
+        ? <Loader2 size={16} className="relative animate-spin text-cyan-200" />
+        : <CreditCard size={16} className="relative text-cyan-200" />}
       <span className="relative">{label}</span>
       {!loading && <ExternalLink size={14} className="relative text-white/50 group-hover:text-white/85 transition" />}
     </button>

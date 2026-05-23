@@ -45,8 +45,8 @@
   /* Neo-Cosmic Futurism — extended palette */
   --color-cyan: #00d4ff;
   --color-cyan-dim: rgba(0, 212, 255, 0.15);
-  --color-violet: #7c3aed;
-  --color-violet-dim: rgba(124, 58, 237, 0.15);
+  --color-violet: #0ea5e9;
+  --color-violet-dim: rgba(14, 165, 233, 0.15);
   --color-bg-deep: #0a0a0f;
   --color-bg-card: rgba(255, 255, 255, 0.04);
   --color-bg-card-hover: rgba(255, 255, 255, 0.07);
@@ -1572,7 +1572,7 @@ a:focus-visible {
 }
 
 .glass-button {
-  background: linear-gradient(135deg, rgba(34,211,238,0.15), rgba(168,85,247,0.1));
+  background: linear-gradient(135deg, rgba(34,211,238,0.15), rgba(14,165,233,0.1));
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
   border: 1px solid rgba(34,211,238,0.25);
@@ -1588,7 +1588,7 @@ a:focus-visible {
 }
 
 .glass-button:hover {
-  background: linear-gradient(135deg, rgba(34,211,238,0.25), rgba(168,85,247,0.15));
+  background: linear-gradient(135deg, rgba(34,211,238,0.25), rgba(14,165,233,0.15));
   border-color: rgba(34,211,238,0.4);
   box-shadow:
     0 8px 28px rgba(34,211,238,0.2),
@@ -1610,10 +1610,10 @@ a:focus-visible {
 /* ─── Premium Color Palette Variables ── */
 :root {
   --glass-cyan: rgba(34,211,238,0.2);
-  --glass-purple: rgba(168,85,247,0.15);
+  --glass-purple: rgba(14,165,233,0.15);
   --glass-blue: rgba(59,130,246,0.15);
   --glow-cyan: rgba(34,211,238,0.4);
-  --glow-purple: rgba(168,85,247,0.3);
+  --glow-purple: rgba(14,165,233,0.3);
 }
 
 /* Ã¢â€â‚¬Ã¢â€â‚¬ Chat Textarea Ã¢â€â‚¬Ã¢â€â‚¬ */
@@ -3545,21 +3545,21 @@ a:focus-visible {
   --glow-cyan-sm:   0 0 8px rgba(0,212,255,0.3);
   --glow-cyan-md:   0 0 20px rgba(0,212,255,0.4), 0 0 40px rgba(0,212,255,0.15);
   --glow-cyan-lg:   0 0 40px rgba(0,212,255,0.5), 0 0 80px rgba(0,212,255,0.2);
-  --glow-violet-sm: 0 0 8px rgba(124,58,237,0.35);
-  --glow-violet-md: 0 0 20px rgba(124,58,237,0.45), 0 0 40px rgba(124,58,237,0.18);
+  --glow-violet-sm: 0 0 8px rgba(14,165,233,0.35);
+  --glow-violet-md: 0 0 20px rgba(14,165,233,0.45), 0 0 40px rgba(14,165,233,0.18);
   --shadow-card: 0 8px 40px rgba(0,0,0,0.6), 0 2px 8px rgba(0,0,0,0.4);
   --shadow-float: 0 20px 60px rgba(0,0,0,0.8), 0 4px 16px rgba(0,212,255,0.1);
 }
 
 /* Gradient text utilities */
 .gradient-text-cyan {
-  background: linear-gradient(135deg, #00d4ff 0%, #7c3aed 100%);
+  background: linear-gradient(135deg, #00d4ff 0%, #0ea5e9 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
 }
 .gradient-text-violet {
-  background: linear-gradient(135deg, #7c3aed 0%, #00d4ff 100%);
+  background: linear-gradient(135deg, #0ea5e9 0%, #00d4ff 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
