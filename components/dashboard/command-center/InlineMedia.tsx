@@ -431,6 +431,9 @@ export default function InlineMedia(props: InlineMediaProps) {
           position: relative; overflow: hidden; border-radius: 14px;
           border: 1px solid rgba(255,255,255,0.08); cursor: zoom-in;
           background: rgba(255,255,255,0.02); min-height: 80px;
+          /* Layout containment — isolate paint/layout so an image load or
+             cinematic switch never thrashes the surrounding chat feed. */
+          contain: content;
         }
         .inline-media-expand {
           position: absolute; top: 8px; right: 8px;
@@ -447,6 +450,9 @@ export default function InlineMedia(props: InlineMediaProps) {
           position: relative; overflow: hidden; border-radius: 14px;
           border: 1px solid rgba(255,255,255,0.08);
           background: rgba(0,0,0,0.3); cursor: pointer; min-height: 120px;
+          /* Hardware-friendly containment: keep cinematic playback off the
+             surrounding layout/paint path during render switches. */
+          contain: content;
         }
         .inline-media-video-overlay {
           position: absolute; bottom: 10px; left: 10px;

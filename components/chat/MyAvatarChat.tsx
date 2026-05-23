@@ -22,7 +22,7 @@
  * for system status / credits / sign-out only (no navigation).
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
@@ -1649,11 +1649,11 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
                       key={m.id}
                       m={m}
                       locale={localeCode}
-                      onLike={() => onLike(m.id)}
-                      onDislike={() => onDislike(m.id)}
-                      onRegenerate={() => onRegenerate(m.id)}
+                      onLike={onLike}
+                      onDislike={onDislike}
+                      onRegenerate={onRegenerate}
                       onRemix={onRemix}
-                      onOpenInPreview={() => onOpenInPreview(m)}
+                      onOpenInPreview={onOpenInPreview}
                       onContextAction={handleContextAction}
                     />
                   ))}
@@ -2447,15 +2447,22 @@ function MediaContextActions({
 interface MessageRowProps {
   m: ChatMessage;
   locale: string;
-  onLike: () => void;
-  onDislike: () => void;
-  onRegenerate: () => void;
+  // id/message-based so the parent can pass STABLE useCallback refs (no per-row
+  // arrow closures) — that's what lets React.memo skip unchanged rows while the
+  // last message streams or the composer input changes.
+  onLike: (id: string) => void;
+  onDislike: (id: string) => void;
+  onRegenerate: (id: string) => void;
   onRemix: (prompt: string) => void;
-  onOpenInPreview: () => void;
+  onOpenInPreview: (m: ChatMessage) => void;
   onContextAction: (action: string, payload: { prompt: string; url?: string }) => void;
 }
 
-function MessageRow({ m, locale, onLike, onDislike, onRegenerate, onRemix, onOpenInPreview, onContextAction }: MessageRowProps) {
+// React.memo: a row only re-renders when its own `m` object identity changes.
+// patchMessage/setMessages preserve refs for untouched messages, so streaming
+// the latest bubble or typing in the composer no longer re-renders the whole
+// feed (incl. heavy video/3D preview nodes).
+const MessageRow = memo(function MessageRow({ m, locale, onLike, onDislike, onRegenerate, onRemix, onOpenInPreview, onContextAction }: MessageRowProps) {
   if (m.role === 'user') {
     return (
       <div className="flex justify-end">
@@ -2569,7 +2576,7 @@ function MessageRow({ m, locale, onLike, onDislike, onRegenerate, onRemix, onOpe
               {/* Open this media in the dedicated preview canvas — bigger view + share/scrub */}
               <button
                 type="button"
-                onClick={onOpenInPreview}
+                onClick={() => onOpenInPreview(m)}
                 className="mt-1.5 inline-flex items-center gap-1 text-[11px] text-cyan-300 hover:text-cyan-200 transition"
               >
                 {locale === 'ka' ? 'პრევიუში გახსნა →' : 'Open in preview →'}
@@ -2591,16 +2598,16 @@ function MessageRow({ m, locale, onLike, onDislike, onRegenerate, onRemix, onOpe
               avoid two buttons for the same action. */}
           <div className="flex items-center gap-3 text-neutral-400 dark:text-neutral-500 mt-2">
             <CopyButton text={m.text} />
-            <ActionIcon title="Regenerate" onClick={onRegenerate}><RotateCcw size={13} /></ActionIcon>
+            <ActionIcon title="Regenerate" onClick={() => onRegenerate(m.id)}><RotateCcw size={13} /></ActionIcon>
             <SpeakerButton text={m.text} locale={locale} />
-            <ActionIcon title="Like" onClick={onLike} active={m.liked} tone="sky"><ThumbsUp size={13} /></ActionIcon>
-            <ActionIcon title="Dislike" onClick={onDislike} active={m.disliked} tone="cyan"><ThumbsDown size={13} /></ActionIcon>
+            <ActionIcon title="Like" onClick={() => onLike(m.id)} active={m.liked} tone="sky"><ThumbsUp size={13} /></ActionIcon>
+            <ActionIcon title="Dislike" onClick={() => onDislike(m.id)} active={m.disliked} tone="cyan"><ThumbsDown size={13} /></ActionIcon>
           </div>
         </>
       )}
     </div>
   );
-}
+});
 
 function ActionIcon({
   children, title, onClick, active, tone = 'sky',
