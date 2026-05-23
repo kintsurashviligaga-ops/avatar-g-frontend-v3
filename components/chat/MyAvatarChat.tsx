@@ -67,6 +67,7 @@ import { useRenderSettings } from '@/hooks/useRenderSettings';
 import SwarmStatusPanel from '@/components/chat/SwarmStatusPanel';
 import type { RoomGeometry, StyleGuide } from '@/lib/orchestrator/interior';
 import { CameraModal } from '@/components/service-chat/CameraModal';
+import { AdminSystemPanel } from '@/components/chat/AdminSystemPanel';
 
 // R3F is client-only + heavy — load the 3D room viewer on demand (no SSR).
 const RoomViewer = dynamic(() => import('@/components/chat/RoomViewer'), {
@@ -251,6 +252,13 @@ function mkId() {
 // friction. This NEVER affects production (NODE_ENV !== 'development' there).
 const DEV_BYPASS = process.env.NODE_ENV === 'development';
 const QA_PROFILE_NAME = 'Giorgi-QA-Session';
+
+// Defensive client-side ceiling for produce pipelines. The serverless produce
+// functions cap at 300s; we abort ~10s earlier so a slow CPU-ffmpeg fallback
+// surfaces a clean localized message instead of a raw 504 gateway timeout / a
+// frozen UI. Fires only on a genuinely stuck heavy render — light flows finish
+// long before. Tunable via NEXT_PUBLIC_PRODUCE_TIMEOUT_MS.
+const PRODUCE_TIMEOUT_MS = Number(process.env.NEXT_PUBLIC_PRODUCE_TIMEOUT_MS) || 290_000;
 
 // ─── Pills above input ────────────────────────────────────────────────────────
 
@@ -1031,6 +1039,8 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
     ]);
     const controller = new AbortController();
     produceAbortRef.current = controller;
+    let timedOut = false;
+    const produceTimeout = setTimeout(() => { timedOut = true; try { controller.abort(); } catch { /* noop */ } }, PRODUCE_TIMEOUT_MS);
     try {
       const res = await fetch('/api/orchestrator/produce', {
         method: 'POST',
@@ -1081,11 +1091,12 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
       }
     } catch (e) {
       if ((e as Error)?.name === 'AbortError') {
-        patchMessage(setMessages, pendId, { pending: false, text: localizedError(e, localeCode) });
+        patchMessage(setMessages, pendId, { pending: false, text: timedOut ? localizedTimeout(localeCode) : localizedError(e, localeCode) });
       } else {
         patchMessage(setMessages, pendId, { pending: false, text: localizedProduceError(e instanceof Error ? e.message : null, localeCode) });
       }
     } finally {
+      clearTimeout(produceTimeout);
       produceAbortRef.current = null;
       setProducing(false); setProduceStage(''); setProducePct(0); setProduceDetail('');
     }
@@ -1118,6 +1129,8 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
     setAttachment(null);
     const controller = new AbortController();
     produceAbortRef.current = controller;
+    let timedOut = false;
+    const produceTimeout = setTimeout(() => { timedOut = true; try { controller.abort(); } catch { /* noop */ } }, PRODUCE_TIMEOUT_MS);
     try {
       const res = await fetch('/api/orchestrator/interior/produce', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
@@ -1162,11 +1175,12 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
       }
     } catch (e) {
       if ((e as Error)?.name === 'AbortError') {
-        patchMessage(setMessages, pendId, { pending: false, text: localizedError(e, localeCode) });
+        patchMessage(setMessages, pendId, { pending: false, text: timedOut ? localizedTimeout(localeCode) : localizedError(e, localeCode) });
       } else {
         patchMessage(setMessages, pendId, { pending: false, text: localizedInteriorError(e instanceof Error ? e.message : null, localeCode) });
       }
     } finally {
+      clearTimeout(produceTimeout);
       produceAbortRef.current = null;
       setProducing(false); setProduceStage(''); setProducePct(0); setProduceDetail('');
     }
@@ -1199,6 +1213,8 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
     setAttachment(null);
     const controller = new AbortController();
     produceAbortRef.current = controller;
+    let timedOut = false;
+    const produceTimeout = setTimeout(() => { timedOut = true; try { controller.abort(); } catch { /* noop */ } }, PRODUCE_TIMEOUT_MS);
     try {
       const res = await fetch('/api/orchestrator/avatar/produce', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
@@ -1240,11 +1256,12 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
       }
     } catch (e) {
       if ((e as Error)?.name === 'AbortError') {
-        patchMessage(setMessages, pendId, { pending: false, text: localizedError(e, localeCode) });
+        patchMessage(setMessages, pendId, { pending: false, text: timedOut ? localizedTimeout(localeCode) : localizedError(e, localeCode) });
       } else {
         patchMessage(setMessages, pendId, { pending: false, text: localizedAvatarError(e instanceof Error ? e.message : null, localeCode) });
       }
     } finally {
+      clearTimeout(produceTimeout);
       produceAbortRef.current = null;
       setProducing(false); setProduceStage(''); setProducePct(0); setProduceDetail('');
     }
@@ -1264,6 +1281,8 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
     setProducePct(5); setProduceDetail('');
     const controller = new AbortController();
     produceAbortRef.current = controller;
+    let timedOut = false;
+    const produceTimeout = setTimeout(() => { timedOut = true; try { controller.abort(); } catch { /* noop */ } }, PRODUCE_TIMEOUT_MS);
     let res: Response;
     try {
       res = await fetch(`/api/orchestrator/${kind}/produce`, {
@@ -1272,6 +1291,7 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
         signal: controller.signal,
       });
     } catch (e) {
+      clearTimeout(produceTimeout);
       setProducing(false); setProduceStage(''); setProducePct(0);
       produceAbortRef.current = null;
       if ((e as Error)?.name === 'AbortError') return; // user cancelled — no fallback
@@ -1279,6 +1299,8 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
     }
     if (res.status === 401) {
       // Not logged in → use the unauthenticated direct generator (still inline).
+      clearTimeout(produceTimeout);
+      produceAbortRef.current = null;
       setProducing(false); setProduceStage(''); setProducePct(0);
       void send(prompt, kind); return;
     }
@@ -1328,11 +1350,12 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
       }
     } catch (e) {
       if ((e as Error)?.name === 'AbortError') {
-        patchMessage(setMessages, pendId, { pending: false, text: localizedError(e, localeCode) });
+        patchMessage(setMessages, pendId, { pending: false, text: timedOut ? localizedTimeout(localeCode) : localizedError(e, localeCode) });
       } else {
         patchMessage(setMessages, pendId, { pending: false, text: localizedProduceError(e instanceof Error ? e.message : null, localeCode) });
       }
     } finally {
+      clearTimeout(produceTimeout);
       produceAbortRef.current = null;
       setProducing(false); setProduceStage(''); setProducePct(0); setProduceDetail('');
     }
@@ -1994,6 +2017,9 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
         onClose={() => setAuthOpen(false)}
         onAuthed={() => { setAuthOpen(false); window.location.reload(); }}
       />
+
+      {/* Admin-only infrastructure telemetry (renders nothing for non-admins). */}
+      <AdminSystemPanel enabled={effectiveAuth} />
     </main>
   );
 }
@@ -2055,6 +2081,14 @@ function cameraUnavailableMessage(locale: string): string {
   if (locale === 'ka') return 'კამერა მიუწვდომელია ამ მოწყობილობაზე ან ბრაუზერში. სცადე სხვა ბრაუზერი ან შეამოწმე ნებართვები.';
   if (locale === 'ru') return 'Камера недоступна на этом устройстве или в браузере. Попробуйте другой браузер или проверьте разрешения.';
   return 'The camera is unavailable on this device or browser. Try another browser or check your permissions.';
+}
+
+// Shown when a produce pipeline is auto-aborted at the client-side ceiling
+// (CPU-ffmpeg fallback running long) — a calm explanation, not a raw 504.
+function localizedTimeout(locale: string): string {
+  if (locale === 'ka') return '⏱ რენდერი დიდხანს გაგრძელდა (დროებით CPU-რეჟიმი) და შევაჩერე, რომ ინტერფეისი არ გაიყინოს. სცადე ხელახლა ან უფრო მოკლე მასალით.';
+  if (locale === 'ru') return '⏱ Рендер затянулся (временно CPU-режим) и был остановлен, чтобы интерфейс не завис. Попробуйте снова или с более коротким материалом.';
+  return '⏱ The render took too long (temporary CPU mode) and was stopped to keep the UI responsive. Please try again or with shorter input.';
 }
 
 function ProduceProgress({ stage, pct, detail, locale, onCancel }: { stage: string; pct: number; detail: string; locale: string; onCancel?: () => void }) {

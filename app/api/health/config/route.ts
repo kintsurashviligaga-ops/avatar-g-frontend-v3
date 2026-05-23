@@ -6,23 +6,24 @@
  * Authenticated users and local `next dev` get the full per-integration audit.
  * No secret VALUES are ever returned — presence only.
  */
-import { NextRequest, NextResponse } from 'next/server';
-import { authedClientFromRequest } from '@/lib/supabase/server';
+import { NextResponse } from 'next/server';
+import { isAdmin } from '@/lib/auth/adminGuard';
 import { auditConfig, productionReadiness, logConfigPostureOnce } from '@/lib/orchestrator/config-audit';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
-export async function GET(req: NextRequest) {
+export async function GET() {
   logConfigPostureOnce();
   const summary = productionReadiness();
 
-  // Coarse public signal — safe to expose (just "is the platform fully provisioned").
+  // Full per-integration detail is admin-only (knowing exactly which backends
+  // are unconfigured is reconnaissance). Everyone else gets the coarse signal.
+  // Local `next dev` always gets detail for convenience.
   let detailed = process.env.NODE_ENV === 'development';
   if (!detailed) {
     try {
-      const { user } = await authedClientFromRequest(req);
-      detailed = Boolean(user);
+      detailed = await isAdmin();
     } catch {
       detailed = false;
     }
