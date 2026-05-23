@@ -2247,11 +2247,13 @@ function MessageRow({ m, locale, onLike, onDislike, onRegenerate, onRemix, onOpe
             <img
               src={m.userImage}
               alt=""
-              className="max-w-[220px] max-h-[220px] rounded-2xl object-cover border border-white/10"
+              className="max-w-[220px] max-h-[220px] rounded-2xl object-cover border border-sky-400/20"
             />
           )}
           {m.text && (
-            <div className="px-4 py-2.5 rounded-2xl bg-white/10 text-white text-[15px] leading-relaxed break-words">
+            // Marine-cohesive user bubble: sky-tinted glass with a soft blur +
+            // faint ocean glow (TASK 2.3) — distinct from the neutral assistant text.
+            <div className="px-4 py-2.5 rounded-2xl bg-sky-500/[0.08] backdrop-blur-sm border border-sky-400/20 text-white text-[15px] leading-relaxed break-words shadow-[0_2px_16px_-6px_rgba(56,189,248,0.35)]">
               {m.text}
             </div>
           )}
