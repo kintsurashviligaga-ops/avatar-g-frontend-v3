@@ -50,7 +50,7 @@ const KIND_LABEL: Record<Kind, string> = {
 
 const KIND_COLOR: Record<Kind, string> = {
   image: '#a78bfa',
-  video: '#f472b6',
+  video: '#22d3ee',
   audio: '#34d399',
   avatar: '#00d4ff',
   text: '#fbbf24',
@@ -280,7 +280,7 @@ function CreditUsageBar({ creations, delay = 0 }: { creations: Creation[]; delay
 
   const segments = [
     { key: 'image', label: '🎨 სურათი', color: '#a78bfa' },
-    { key: 'video', label: '🎬 ვიდეო', color: '#f472b6' },
+    { key: 'video', label: '🎬 ვიდეო', color: '#22d3ee' },
     { key: 'audio', label: '🎵 აუდიო', color: '#34d399' },
     { key: 'other', label: '📦 სხვა', color: '#60a5fa' },
   ];
@@ -455,8 +455,8 @@ function TopWords({ creations, delay = 0 }: { creations: Creation[]; delay?: num
                 style={{
                   fontSize: size,
                   opacity,
-                  background: 'rgba(124,58,237,0.12)',
-                  border: '1px solid rgba(124,58,237,0.2)',
+                  background: 'rgba(2,132,199,0.12)',
+                  border: '1px solid rgba(2,132,199,0.2)',
                   color: '#c4b5fd',
                 }}
                 title={`${count}x`}

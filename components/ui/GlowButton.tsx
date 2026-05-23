@@ -47,7 +47,7 @@ const variantStyles: Record<Variant, string> = {
     'border border-violet-base/40',
     'text-white font-semibold',
     'shadow-glow-violet',
-    'hover:shadow-[0_0_30px_rgba(124,58,237,0.6),0_0_60px_rgba(124,58,237,0.2)]',
+    'hover:shadow-[0_0_30px_rgba(2,132,199,0.6),0_0_60px_rgba(2,132,199,0.2)]',
     'hover:border-violet-base/70',
   ].join(' '),
   ghost: [

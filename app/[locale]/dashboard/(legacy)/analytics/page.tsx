@@ -18,7 +18,7 @@ const SERVICES = [
   { name: 'Image Gen', pct: 25, color: '#f59e0b', credits: 1450 },
   { name: 'Copy AI', pct: 18, color: '#06b6d4', credits: 1044 },
   { name: 'Music', pct: 10, color: '#10b981', credits: 580 },
-  { name: 'Other', pct: 5, color: '#8b5cf6', credits: 290 },
+  { name: 'Other', pct: 5, color: '#38bdf8', credits: 290 },
 ];
 
 function BarGraph({ data }: { data: number[] }) {
@@ -134,7 +134,7 @@ export default function AnalyticsPage() {
           { service: 'Image Gen', query: 'Photorealistic product photo — studio lighting', credits: 40, time: '1 სთ. წინ', color: '#f59e0b' },
           { service: 'Copy AI', query: 'Landing page copy for SaaS product', credits: 10, time: '3 სთ. წინ', color: '#06b6d4' },
           { service: 'Music', query: 'Electronic background track for promo video', credits: 35, time: 'გუშინ', color: '#10b981' },
-          { service: 'Avatar', query: 'Professional business avatar — dark suit', credits: 30, time: 'გუშინ', color: '#8b5cf6' },
+          { service: 'Avatar', query: 'Professional business avatar — dark suit', credits: 30, time: 'გუშინ', color: '#38bdf8' },
         ].map((row, i) => (
           <div key={i} className="flex items-center gap-4 px-5 py-3 hover:bg-white/[0.02] transition-colors"
             style={{ borderBottom: i < 4 ? '1px solid rgba(255,255,255,0.05)' : 'none' }}>

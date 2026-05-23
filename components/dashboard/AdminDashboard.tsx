@@ -21,7 +21,7 @@ interface AdminStats {
 }
 
 const KIND_COLORS: Record<string, string> = {
-  image: '#a855f7',
+  image: '#0ea5e9',
   video: '#3b82f6',
   audio: '#22d3ee',
   avatar: '#f59e0b',
@@ -73,7 +73,7 @@ function MiniBarChart({ data }: { data: Array<{ date: string; count: number }> }
               width: '100%',
               borderRadius: '3px 3px 0 0',
               background: d.count > 0
-                ? 'linear-gradient(to top, #7c3aed, #a855f7)'
+                ? 'linear-gradient(to top, #0284c7, #0ea5e9)'
                 : 'rgba(255,255,255,0.06)',
             }}
             title={`${d.date}: ${d.count}`}
@@ -159,8 +159,8 @@ export default function AdminDashboard() {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 300, flexDirection: 'column', gap: 16 }}>
         <div style={{
           width: 36, height: 36, borderRadius: '50%',
-          border: '3px solid rgba(168,85,247,0.3)',
-          borderTopColor: '#a855f7',
+          border: '3px solid rgba(14,165,233,0.3)',
+          borderTopColor: '#0ea5e9',
           animation: 'spin 0.8s linear infinite',
         }} />
         <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.4)' }}>Loading admin stats...</span>
@@ -204,10 +204,10 @@ export default function AdminDashboard() {
           disabled={loading}
           style={{
             padding: '7px 14px',
-            background: 'rgba(168,85,247,0.15)',
-            border: '1px solid rgba(168,85,247,0.3)',
+            background: 'rgba(14,165,233,0.15)',
+            border: '1px solid rgba(14,165,233,0.3)',
             borderRadius: 8,
-            color: '#a855f7',
+            color: '#0ea5e9',
             fontSize: 12,
             fontWeight: 600,
             cursor: loading ? 'wait' : 'pointer',
@@ -220,7 +220,7 @@ export default function AdminDashboard() {
 
       {/* Overview stat cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10 }}>
-        <StatCard label="Total Generations" value={overview.totalCreations} sub="all time" color="#a855f7" />
+        <StatCard label="Total Generations" value={overview.totalCreations} sub="all time" color="#0ea5e9" />
         <StatCard label="Total Users" value={overview.totalUsers} sub="registered" color="#22d3ee" />
         <StatCard label="Credits Used" value={overview.totalCreditsUsed.toLocaleString()} sub="all time" color="#f59e0b" />
         <StatCard label="Today" value={overview.today.count} sub={`${overview.today.credits} credits`} color="#10b981" />
@@ -286,7 +286,7 @@ export default function AdminDashboard() {
               padding: '6px 8px',
               textAlign: 'center',
             }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: d.count > 0 ? '#a855f7' : 'rgba(255,255,255,0.2)' }}>{d.count}</div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: d.count > 0 ? '#0ea5e9' : 'rgba(255,255,255,0.2)' }}>{d.count}</div>
               <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.25)', marginTop: 2 }}>{d.date.slice(5)}</div>
             </div>
           ))}

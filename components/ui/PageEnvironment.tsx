@@ -11,7 +11,7 @@
  *   intelligence — Electric Blue (#3b82f6) — AI depth
  *   identity   — Violet (#a78bfa)  — Creative personality
  *   cinema     — Amber (#f59e0b)   — Warm, cinematic
- *   gallery    — Rose (#f472b6)    — Artistic, visual
+ *   gallery    — Rose (#22d3ee)    — Artistic, visual
  *   audio      — Emerald (#34d399) — Musical, organic
  *   knowledge  — Indigo (#818cf8)  — Cerebral, focused
  *   engine     — Orange (#fb923c)  — Energy, automation
@@ -125,7 +125,7 @@ const MOODS: Record<EnvironmentMood, MoodConfig> = {
     `,
     geoOpacity: 0.7,
     geoHue: '#a78bfa',
-    geoHue2: '#8b5cf6',
+    geoHue2: '#38bdf8',
     particleColor: 'rgba(167, 139, 250, 0.8)',
     particleGlow: 'rgba(167, 139, 250, 0.5)',
     particleOpacity: 0.7,
@@ -169,8 +169,8 @@ const MOODS: Record<EnvironmentMood, MoodConfig> = {
       radial-gradient(ellipse 60% 30% at 50% 0%, rgba(236,72,153,0.12) 0%, transparent 40%)
     `,
     geoOpacity: 0.6,
-    geoHue: '#f472b6',
-    geoHue2: '#ec4899',
+    geoHue: '#22d3ee',
+    geoHue2: '#06b6d4',
     particleColor: 'rgba(244, 114, 182, 0.8)',
     particleGlow: 'rgba(244, 114, 182, 0.5)',
     particleOpacity: 0.5,

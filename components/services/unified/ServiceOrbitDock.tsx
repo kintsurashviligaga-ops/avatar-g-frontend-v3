@@ -311,7 +311,7 @@ const ServiceDockItem = forwardRef<HTMLButtonElement, ServiceDockItemProps>(
               className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] rounded-r-full"
               style={{
                 height: 20,
-                background: 'linear-gradient(180deg, #00d4ff, #7c3aed)',
+                background: 'linear-gradient(180deg, #00d4ff, #0284c7)',
                 boxShadow: '0 0 8px rgba(0,212,255,0.5)',
               }}
               transition={{ type: 'spring', stiffness: 350, damping: 30 }}

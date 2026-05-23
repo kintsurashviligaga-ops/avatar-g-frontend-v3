@@ -283,7 +283,7 @@ export function AvatarBuilderWindow({ onAvatarCreated }: AvatarBuilderWindowProp
                     onClick={goToStudio}
                     className="inline-flex items-center gap-2.5 px-7 py-3.5 rounded-xl text-sm font-bold tracking-wide transition-all duration-200 active:scale-[0.97] hover:-translate-y-0.5 hover:shadow-lg hover:shadow-purple-500/15"
                     style={{
-                      background: 'linear-gradient(135deg, #a78bfa, #8b5cf6)',
+                      background: 'linear-gradient(135deg, #a78bfa, #38bdf8)',
                       color: '#fff',
                       boxShadow: '0 0 30px rgba(167,139,250,0.2)',
                     }}

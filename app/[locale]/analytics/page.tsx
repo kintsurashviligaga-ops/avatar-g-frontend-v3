@@ -79,7 +79,7 @@ export default async function AnalyticsPage({ params }: Props) {
             style={{
               display: 'inline-block', marginTop: 18, padding: '10px 18px', borderRadius: 999,
               fontSize: 13, fontWeight: 600, color: '#fff',
-              background: 'linear-gradient(135deg,#6d28d9,#a855f7)',
+              background: 'linear-gradient(135deg,#0369a1,#0ea5e9)',
               boxShadow: '0 6px 18px -6px rgba(139,92,246,0.5)',
               textDecoration: 'none',
             }}
@@ -90,8 +90,8 @@ export default async function AnalyticsPage({ params }: Props) {
       ) : (
         <>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12, marginBottom: 24 }}>
-            <KpiTile label="Total messages" value={summary.totalMessages} accent="#a855f7" />
-            <KpiTile label="Images" value={summary.generationUsage.image} accent="#ec4899" />
+            <KpiTile label="Total messages" value={summary.totalMessages} accent="#0ea5e9" />
+            <KpiTile label="Images" value={summary.generationUsage.image} accent="#06b6d4" />
             <KpiTile label="Videos" value={summary.generationUsage.video} accent="#f97316" />
             <KpiTile label="Audio" value={summary.generationUsage.audio} accent="#06b6d4" />
           </div>
@@ -118,10 +118,10 @@ export default async function AnalyticsPage({ params }: Props) {
                 Generation usage
               </h2>
               <BarChart data={[
-                { label: 'image', count: summary.generationUsage.image, color: 'linear-gradient(180deg,#ec4899,#be185d)' },
+                { label: 'image', count: summary.generationUsage.image, color: 'linear-gradient(180deg,#06b6d4,#0e7490)' },
                 { label: 'video', count: summary.generationUsage.video, color: 'linear-gradient(180deg,#f97316,#c2410c)' },
                 { label: 'audio', count: summary.generationUsage.audio, color: 'linear-gradient(180deg,#06b6d4,#0891b2)' },
-                { label: 'avatar', count: summary.generationUsage.avatar, color: 'linear-gradient(180deg,#8b5cf6,#6d28d9)' },
+                { label: 'avatar', count: summary.generationUsage.avatar, color: 'linear-gradient(180deg,#38bdf8,#0369a1)' },
                 { label: 'code', count: summary.generationUsage.code, color: 'linear-gradient(180deg,#10b981,#047857)' },
               ]} />
             </section>

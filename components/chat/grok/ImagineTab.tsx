@@ -35,7 +35,7 @@ const CREATE_OPTIONS = [
     ),
     label: 'Photo / Image',
     desc: 'AI image creation & editing',
-    color: '#f472b6',
+    color: '#22d3ee',
     gradient: 'linear-gradient(145deg, #1a0818, #3d0c30)',
   },
 ]

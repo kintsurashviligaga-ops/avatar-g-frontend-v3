@@ -95,7 +95,7 @@ function ShareModal({ shareUrl, onClose }: ShareModalProps) {
           {/* Social-network compose deep-links */}
           <div className="ma-social-row">
             {canNativeShare && (
-              <button className="ma-social-pill" style={{ background: '#a855f7' }} onClick={nativeShare}>
+              <button className="ma-social-pill" style={{ background: '#0ea5e9' }} onClick={nativeShare}>
                 გაზიარება…
               </button>
             )}

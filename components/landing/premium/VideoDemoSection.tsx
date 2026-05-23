@@ -38,7 +38,7 @@ const COPY = {
 }
 
 const STEPS = [
-  { emoji: '✍️', key: 'step1' as const, color: '#a855f7' },
+  { emoji: '✍️', key: 'step1' as const, color: '#0ea5e9' },
   { emoji: '⚡', key: 'step2' as const, color: '#22d3ee' },
   { emoji: '🚀', key: 'step3' as const, color: '#4ade80' },
 ]
@@ -133,7 +133,7 @@ export function VideoDemoSection() {
             >
               <div style={{
                 maxWidth: '70%', padding: '10px 14px', borderRadius: '14px 14px 4px 14px',
-                background: 'linear-gradient(135deg, #7c3aed, #5b21b6)',
+                background: 'linear-gradient(135deg, #0284c7, #5b21b6)',
                 color: '#fff', fontSize: 13,
               }}>
                 🖼️ გამიკეთე ნათელი ნეო-ბაროკო სტილის სურათი, ძველი თბილისი ღამით
@@ -150,7 +150,7 @@ export function VideoDemoSection() {
             >
               <div style={{
                 width: 32, height: 32, borderRadius: 8, flexShrink: 0,
-                background: 'linear-gradient(135deg, #06b6d4, #7c3aed)',
+                background: 'linear-gradient(135deg, #06b6d4, #0284c7)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 fontSize: 14, fontWeight: 800, color: '#fff',
               }}>G</div>
@@ -192,7 +192,7 @@ export function VideoDemoSection() {
             </div>
             <div style={{
               width: 36, height: 36, borderRadius: 10, flexShrink: 0,
-              background: 'linear-gradient(135deg, #7c3aed, #06b6d4)',
+              background: 'linear-gradient(135deg, #0284c7, #06b6d4)',
               display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16,
             }}>→</div>
           </div>
@@ -248,7 +248,7 @@ export function VideoDemoSection() {
             style={{
               display: 'inline-flex', alignItems: 'center', gap: 8,
               padding: '13px 28px', borderRadius: 99,
-              background: 'linear-gradient(135deg, #06b6d4, #7c3aed)',
+              background: 'linear-gradient(135deg, #06b6d4, #0284c7)',
               color: '#fff', fontWeight: 700, fontSize: 14,
               textDecoration: 'none',
               boxShadow: '0 0 28px rgba(6,182,212,0.3), 0 4px 16px rgba(0,0,0,0.3)',

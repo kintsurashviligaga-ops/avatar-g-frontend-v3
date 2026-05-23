@@ -79,7 +79,7 @@ export function StatsSection() {
                   <span
                     className="text-5xl sm:text-6xl font-extrabold tracking-tight"
                     style={{
-                      background: 'linear-gradient(135deg, #00d4ff, #7c3aed)',
+                      background: 'linear-gradient(135deg, #00d4ff, #0284c7)',
                       WebkitBackgroundClip: 'text',
                       WebkitTextFillColor: 'transparent',
                     }}
@@ -89,7 +89,7 @@ export function StatsSection() {
                 ) : (
                   <span
                     style={{
-                      background: 'linear-gradient(135deg, #00d4ff, #7c3aed)',
+                      background: 'linear-gradient(135deg, #00d4ff, #0284c7)',
                       WebkitBackgroundClip: 'text',
                       WebkitTextFillColor: 'transparent',
                     }}

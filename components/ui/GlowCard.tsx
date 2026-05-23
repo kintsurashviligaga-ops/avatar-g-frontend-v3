@@ -79,7 +79,7 @@ export function GlowCard({ children, variant = 'default', className, onClick }: 
             className="absolute inset-0 rounded-2xl"
             style={{
               padding: '1px',
-              background: 'linear-gradient(135deg, rgba(0,212,255,0.5), rgba(124,58,237,0.5))',
+              background: 'linear-gradient(135deg, rgba(0,212,255,0.5), rgba(2,132,199,0.5))',
               WebkitMask: 'linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)',
               WebkitMaskComposite: 'xor',
               maskComposite: 'exclude',
@@ -88,7 +88,7 @@ export function GlowCard({ children, variant = 'default', className, onClick }: 
           <div
             className="absolute -top-px left-0 right-0 h-px animate-pulse"
             style={{
-              background: 'linear-gradient(to right, transparent, rgba(0,212,255,0.8), rgba(124,58,237,0.8), transparent)',
+              background: 'linear-gradient(to right, transparent, rgba(0,212,255,0.8), rgba(2,132,199,0.8), transparent)',
             }}
           />
         </>

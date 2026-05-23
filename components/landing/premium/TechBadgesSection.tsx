@@ -11,9 +11,9 @@ const COPY = {
 
 const TECH = [
   { name: 'Flux', icon: '⚡', color: '#f59e0b', desc: 'Image Generation' },
-  { name: 'ElevenLabs', icon: '🎙️', color: '#8b5cf6', desc: 'Voice AI' },
+  { name: 'ElevenLabs', icon: '🎙️', color: '#38bdf8', desc: 'Voice AI' },
   { name: 'LTX Video', icon: '🎬', color: '#06b6d4', desc: 'Video Generation' },
-  { name: 'Udio', icon: '🎵', color: '#ec4899', desc: 'Music AI' },
+  { name: 'Udio', icon: '🎵', color: '#06b6d4', desc: 'Music AI' },
   { name: 'Gemini', icon: '✨', color: '#4ade80', desc: 'Language Model' },
   { name: 'Anthropic', icon: '🧠', color: '#f97316', desc: 'AI Research' },
   { name: 'Supabase', icon: '🗄️', color: '#22d3ee', desc: 'Database' },

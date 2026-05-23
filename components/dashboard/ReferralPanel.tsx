@@ -84,7 +84,7 @@ export default function ReferralPanel({ isAuthenticated }: { isAuthenticated: bo
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
         <div style={{
           width: 32, height: 32, borderRadius: 8,
-          background: 'linear-gradient(135deg, #7c3aed, #22d3ee)',
+          background: 'linear-gradient(135deg, #0284c7, #22d3ee)',
           display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15,
         }}>
           🎁
@@ -101,7 +101,7 @@ export default function ReferralPanel({ isAuthenticated }: { isAuthenticated: bo
         <div style={{ display: 'flex', gap: 6, justifyContent: 'center', padding: '12px 0' }}>
           {[0,1,2].map(i => (
             <div key={i} style={{
-              width: 6, height: 6, borderRadius: '50%', background: '#a855f7',
+              width: 6, height: 6, borderRadius: '50%', background: '#0ea5e9',
               animation: `bounce 1.2s ${i * 0.2}s ease-in-out infinite`,
             }} />
           ))}
@@ -119,7 +119,7 @@ export default function ReferralPanel({ isAuthenticated }: { isAuthenticated: bo
               background: 'rgba(255,255,255,0.04)', borderRadius: 10,
               border: '1px solid rgba(255,255,255,0.06)',
             }}>
-              <div style={{ fontSize: 20, fontWeight: 800, color: '#a855f7' }}>{data.totalReferrals}</div>
+              <div style={{ fontSize: 20, fontWeight: 800, color: '#0ea5e9' }}>{data.totalReferrals}</div>
               <div style={{ fontSize: 10.5, color: 'rgba(255,255,255,0.4)' }}>მოწვეული</div>
             </div>
             <div style={{
@@ -150,8 +150,8 @@ export default function ReferralPanel({ isAuthenticated }: { isAuthenticated: bo
                 onClick={copyLink}
                 style={{
                   flexShrink: 0, padding: '4px 10px', borderRadius: 6,
-                  background: copied ? 'rgba(34,197,94,0.15)' : 'rgba(168,85,247,0.15)',
-                  border: `1px solid ${copied ? 'rgba(34,197,94,0.3)' : 'rgba(168,85,247,0.3)'}`,
+                  background: copied ? 'rgba(34,197,94,0.15)' : 'rgba(14,165,233,0.15)',
+                  border: `1px solid ${copied ? 'rgba(34,197,94,0.3)' : 'rgba(14,165,233,0.3)'}`,
                   color: copied ? '#4ade80' : '#c084fc',
                   fontSize: 11.5, fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s',
                 }}
@@ -172,7 +172,7 @@ export default function ReferralPanel({ isAuthenticated }: { isAuthenticated: bo
               fontSize: 12, fontWeight: 700, letterSpacing: '0.12em',
               padding: '5px 14px', borderRadius: 99,
               background: 'rgba(139,92,246,0.12)', border: '1px solid rgba(139,92,246,0.3)',
-              color: '#a855f7',
+              color: '#0ea5e9',
             }}>
               კოდი: {data.code}
             </span>

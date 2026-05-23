@@ -124,9 +124,9 @@ export function HeroSection() {
 
       {/* ── Mesh gradient layers ── */}
       <div className="absolute inset-0 pointer-events-none" style={{ background: 'radial-gradient(ellipse 85% 65% at 50% -10%, rgba(34,211,238,0.18) 0%, rgba(6,182,212,0.08) 40%, transparent 70%)' }} />
-      <div className="absolute top-0 left-1/4 -translate-x-12 w-[700px] h-[600px] pointer-events-none" style={{ background: 'radial-gradient(ellipse 55% 60% at 50% 20%, rgba(168,85,247,0.12) 0%, rgba(168,85,247,0.04) 35%, transparent 65%)', filter: 'blur(70px)' }} />
+      <div className="absolute top-0 left-1/4 -translate-x-12 w-[700px] h-[600px] pointer-events-none" style={{ background: 'radial-gradient(ellipse 55% 60% at 50% 20%, rgba(14,165,233,0.12) 0%, rgba(14,165,233,0.04) 35%, transparent 65%)', filter: 'blur(70px)' }} />
       <div className="absolute top-0 right-1/4 translate-x-12 w-[700px] h-[600px] pointer-events-none" style={{ background: 'radial-gradient(ellipse 55% 60% at 50% 20%, rgba(59,130,246,0.10) 0%, rgba(59,130,246,0.03) 35%, transparent 65%)', filter: 'blur(80px)' }} />
-      <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-[900px] h-[600px] pointer-events-none" style={{ background: 'radial-gradient(ellipse 60% 55% at 50% 40%, rgba(34,211,238,0.10) 0%, rgba(168,85,247,0.05) 30%, transparent 70%)', filter: 'blur(90px)' }} />
+      <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-[900px] h-[600px] pointer-events-none" style={{ background: 'radial-gradient(ellipse 60% 55% at 50% 40%, rgba(34,211,238,0.10) 0%, rgba(14,165,233,0.05) 30%, transparent 70%)', filter: 'blur(90px)' }} />
 
       {/* Dot grid */}
       <div className="absolute inset-0 pointer-events-none opacity-[0.03]" style={{ backgroundImage: 'radial-gradient(var(--color-text, #fff) 0.5px, transparent 0.5px)', backgroundSize: '32px 32px' }} />
@@ -150,7 +150,7 @@ export function HeroSection() {
           animate={{ opacity: 1, y: 0, scale: 1 }}
           transition={{ duration: 0.6, delay: 0.1, ease: 'easeOut' }}
           className="flex items-center gap-3 px-4 py-2 rounded-full backdrop-blur-md border border-cyan-500/20 hover:border-cyan-500/50 transition-all hover:shadow-[0_0_24px_rgba(34,211,238,0.3)]"
-          style={{ background: 'linear-gradient(135deg, rgba(34,211,238,0.08), rgba(168,85,247,0.08))' }}
+          style={{ background: 'linear-gradient(135deg, rgba(34,211,238,0.08), rgba(14,165,233,0.08))' }}
         >
           <motion.div
             className="relative w-[47px] h-[47px]"
@@ -223,7 +223,7 @@ export function HeroSection() {
               href={lh('/dashboard')}
               className="flex items-center justify-center gap-2 text-sm font-bold px-9 py-4 rounded-xl transition-all duration-200 text-white w-full sm:w-auto"
               style={{
-                background: 'linear-gradient(135deg, #06b6d4, #7c3aed)',
+                background: 'linear-gradient(135deg, #06b6d4, #0284c7)',
                 boxShadow: '0 0 32px rgba(34,211,238,0.35), 0 0 0 1px rgba(34,211,238,0.2)',
                 letterSpacing: '0.01em',
                 minHeight: 52,

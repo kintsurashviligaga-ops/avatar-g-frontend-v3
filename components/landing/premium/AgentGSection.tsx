@@ -208,7 +208,7 @@ export function AgentGSection() {
             <Link
               href={lh('/dashboard')}
               className="inline-flex items-center gap-2 text-sm font-semibold px-7 py-3.5 rounded-xl transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-cyan-500/25 text-white"
-              style={{ background: 'linear-gradient(135deg, rgba(0,212,255,0.9), rgba(124,58,237,0.9))', boxShadow: '0 0 20px rgba(0,212,255,0.25)' }}
+              style={{ background: 'linear-gradient(135deg, rgba(0,212,255,0.9), rgba(2,132,199,0.9))', boxShadow: '0 0 20px rgba(0,212,255,0.25)' }}
             >
               {c.cta}
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>

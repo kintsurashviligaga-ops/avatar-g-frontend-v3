@@ -564,7 +564,7 @@ export default async function LocalizedServicesPage({ params }: ServicesPageProp
           <div className='absolute inset-0 pointer-events-none' aria-hidden='true'>
             <div className='absolute top-0 left-1/2 -translate-x-1/2 w-[700px] h-[400px]' style={{ background: 'radial-gradient(ellipse 70% 50% at 50% 0%, rgba(34,211,238,0.08) 0%, transparent 70%)', filter: 'blur(60px)' }} />
             <div className='absolute bottom-0 right-0 w-[500px] h-[300px]' style={{ background: 'radial-gradient(ellipse at 80% 100%, rgba(99,102,241,0.06) 0%, transparent 70%)', filter: 'blur(50px)' }} />
-            <div className='absolute top-1/2 left-0 w-[400px] h-[400px] -translate-y-1/2' style={{ background: 'radial-gradient(ellipse at 0% 50%, rgba(168,85,247,0.05) 0%, transparent 70%)', filter: 'blur(60px)' }} />
+            <div className='absolute top-1/2 left-0 w-[400px] h-[400px] -translate-y-1/2' style={{ background: 'radial-gradient(ellipse at 0% 50%, rgba(14,165,233,0.05) 0%, transparent 70%)', filter: 'blur(60px)' }} />
             {/* Grid overlay */}
             <div className='absolute inset-0 opacity-[0.03]' style={{ backgroundImage: 'linear-gradient(rgba(255,255,255,0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.1) 1px, transparent 1px)', backgroundSize: '60px 60px' }} />
             {/* Scan line */}

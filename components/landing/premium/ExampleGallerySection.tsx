@@ -44,10 +44,10 @@ const GALLERY_ITEMS: GalleryItem[] = [
     id: '1',
     kind: 'image',
     prompt: 'Georgian warrior in neon cyberpunk Tbilisi at night',
-    color: '#a855f7',
+    color: '#0ea5e9',
     icon: '🗡️',
-    gradient: 'linear-gradient(135deg, #1a0533 0%, #4c0d7c 50%, #7c3aed 100%)',
-    accentColor: '#a855f7',
+    gradient: 'linear-gradient(135deg, #1a0533 0%, #4c0d7c 50%, #0284c7 100%)',
+    accentColor: '#0ea5e9',
   },
   {
     id: '2',
@@ -71,10 +71,10 @@ const GALLERY_ITEMS: GalleryItem[] = [
     id: '4',
     kind: 'music',
     prompt: 'Georgian polyphony meets electronic beats, modern fusion',
-    color: '#ec4899',
+    color: '#06b6d4',
     icon: '🎵',
-    gradient: 'linear-gradient(135deg, #1f0014 0%, #831843 50%, #db2777 100%)',
-    accentColor: '#f472b6',
+    gradient: 'linear-gradient(135deg, #1f0014 0%, #831843 50%, #0891b2 100%)',
+    accentColor: '#22d3ee',
   },
   {
     id: '5',
@@ -98,9 +98,9 @@ const GALLERY_ITEMS: GalleryItem[] = [
     id: '7',
     kind: 'image',
     prompt: 'Old Tbilisi balcony at dusk, hyper-detailed illustration',
-    color: '#8b5cf6',
+    color: '#38bdf8',
     icon: '🌆',
-    gradient: 'linear-gradient(135deg, #0f0520 0%, #3b0764 50%, #6d28d9 100%)',
+    gradient: 'linear-gradient(135deg, #0f0520 0%, #3b0764 50%, #0369a1 100%)',
     accentColor: '#a78bfa',
   },
   {
@@ -224,9 +224,9 @@ export function ExampleGallerySection() {
             style={{
               display: 'inline-block',
               fontSize: 11, fontWeight: 700, letterSpacing: '0.1em',
-              textTransform: 'uppercase', color: '#a855f7',
-              background: 'rgba(168,85,247,0.1)',
-              border: '1px solid rgba(168,85,247,0.25)',
+              textTransform: 'uppercase', color: '#0ea5e9',
+              background: 'rgba(14,165,233,0.1)',
+              border: '1px solid rgba(14,165,233,0.25)',
               borderRadius: 99, padding: '4px 14px', marginBottom: 16,
             }}
           >
@@ -281,10 +281,10 @@ export function ExampleGallerySection() {
               style={{
                 display: 'inline-flex', alignItems: 'center', gap: 8,
                 padding: '13px 28px', borderRadius: 99,
-                background: 'linear-gradient(135deg, #7c3aed, #06b6d4)',
+                background: 'linear-gradient(135deg, #0284c7, #06b6d4)',
                 color: '#fff', fontWeight: 700, fontSize: 14,
                 textDecoration: 'none',
-                boxShadow: '0 0 28px rgba(124,58,237,0.35), 0 4px 16px rgba(0,0,0,0.3)',
+                boxShadow: '0 0 28px rgba(2,132,199,0.35), 0 4px 16px rgba(0,0,0,0.3)',
                 transition: 'transform 0.2s ease, box-shadow 0.2s ease',
               }}
             >

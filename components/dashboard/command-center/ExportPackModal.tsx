@@ -160,11 +160,11 @@ export default function ExportPackModal({ open, items, onClose }: ExportPackModa
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <div style={{
                   width: 34, height: 34, borderRadius: 10,
-                  background: 'linear-gradient(135deg, #7c3aed22, #a855f722)',
-                  border: '1px solid rgba(168,85,247,0.3)',
+                  background: 'linear-gradient(135deg, #0284c722, #0ea5e922)',
+                  border: '1px solid rgba(14,165,233,0.3)',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                 }}>
-                  <Package style={{ width: 16, height: 16, color: '#a855f7' }} />
+                  <Package style={{ width: 16, height: 16, color: '#0ea5e9' }} />
                 </div>
                 <div>
                   <div style={{ fontSize: 15, fontWeight: 700, color: '#fff' }}>Export Pack</div>
@@ -199,7 +199,7 @@ export default function ExportPackModal({ open, items, onClose }: ExportPackModa
                 disabled={isRunning}
                 style={{
                   display: 'flex', alignItems: 'center', gap: 7,
-                  background: 'none', border: 'none', color: '#a855f7',
+                  background: 'none', border: 'none', color: '#0ea5e9',
                   fontSize: 12, fontWeight: 600, cursor: 'pointer', padding: 0,
                 }}
               >
@@ -225,8 +225,8 @@ export default function ExportPackModal({ open, items, onClose }: ExportPackModa
                       display: 'flex', alignItems: 'center', gap: 12,
                       padding: '10px 12px',
                       marginBottom: 6,
-                      background: isSelected ? 'rgba(168,85,247,0.1)' : 'rgba(255,255,255,0.03)',
-                      border: `1px solid ${isSelected ? 'rgba(168,85,247,0.3)' : 'rgba(255,255,255,0.07)'}`,
+                      background: isSelected ? 'rgba(14,165,233,0.1)' : 'rgba(255,255,255,0.03)',
+                      border: `1px solid ${isSelected ? 'rgba(14,165,233,0.3)' : 'rgba(255,255,255,0.07)'}`,
                       borderRadius: 10,
                       cursor: isRunning ? 'default' : 'pointer',
                       textAlign: 'left',
@@ -264,8 +264,8 @@ export default function ExportPackModal({ open, items, onClose }: ExportPackModa
                     {/* Checkbox */}
                     <div style={{
                       width: 18, height: 18, borderRadius: 5,
-                      background: isSelected ? '#a855f7' : 'transparent',
-                      border: `2px solid ${isSelected ? '#a855f7' : 'rgba(255,255,255,0.2)'}`,
+                      background: isSelected ? '#0ea5e9' : 'transparent',
+                      border: `2px solid ${isSelected ? '#0ea5e9' : 'rgba(255,255,255,0.2)'}`,
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                       flexShrink: 0,
                       transition: 'all 0.15s',
@@ -297,7 +297,7 @@ export default function ExportPackModal({ open, items, onClose }: ExportPackModa
                   <div style={{ height: 4, background: 'rgba(255,255,255,0.08)', borderRadius: 2, overflow: 'hidden' }}>
                     <motion.div
                       animate={{ width: `${(progress.fetched / progress.total) * 100}%` }}
-                      style={{ height: '100%', background: 'linear-gradient(90deg, #7c3aed, #a855f7)', borderRadius: 2 }}
+                      style={{ height: '100%', background: 'linear-gradient(90deg, #0284c7, #0ea5e9)', borderRadius: 2 }}
                     />
                   </div>
                 </motion.div>
@@ -342,7 +342,7 @@ export default function ExportPackModal({ open, items, onClose }: ExportPackModa
                     width: '100%',
                     padding: '13px 20px',
                     background: selectedCount > 0 && !isRunning
-                      ? 'linear-gradient(135deg, #6d28d9, #a855f7)'
+                      ? 'linear-gradient(135deg, #0369a1, #0ea5e9)'
                       : 'rgba(255,255,255,0.05)',
                     border: 'none',
                     borderRadius: 12,

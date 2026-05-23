@@ -41,7 +41,7 @@ export default function InviteReferralBanner({ credits, referralCode }: Props) {
         {/* Icon */}
         <div style={{
           width: 32, height: 32, borderRadius: 8, flexShrink: 0,
-          background: 'linear-gradient(135deg, #7c3aed, #22d3ee)',
+          background: 'linear-gradient(135deg, #0284c7, #22d3ee)',
           display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15,
         }}>
           🎁

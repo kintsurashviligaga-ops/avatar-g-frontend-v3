@@ -345,14 +345,14 @@ export default function OnboardingModal({ open, onClose, onComplete }: Onboardin
               width: 72px;
               height: 72px;
               border-radius: 50%;
-              background: linear-gradient(135deg, #00d4ff, #7c3aed, #a855f7);
+              background: linear-gradient(135deg, #00d4ff, #0284c7, #0ea5e9);
               display: flex;
               align-items: center;
               justify-content: center;
               font-size: 30px;
               font-weight: 800;
               color: #fff;
-              box-shadow: 0 0 32px rgba(0, 212, 255, 0.45), 0 0 64px rgba(124, 58, 237, 0.2);
+              box-shadow: 0 0 32px rgba(0, 212, 255, 0.45), 0 0 64px rgba(2,132,199, 0.2);
             }
             .ob-orb-ring {
               position: absolute;
@@ -537,7 +537,7 @@ export default function OnboardingModal({ open, onClose, onComplete }: Onboardin
               display: flex;
               align-items: center;
               gap: 6px;
-              background: linear-gradient(135deg, #06b6d4, #7c3aed);
+              background: linear-gradient(135deg, #06b6d4, #0284c7);
               border: none;
               border-radius: 12px;
               padding: 11px 22px;
@@ -546,12 +546,12 @@ export default function OnboardingModal({ open, onClose, onComplete }: Onboardin
               color: #fff;
               cursor: pointer;
               transition: opacity 0.15s, box-shadow 0.15s, transform 0.1s;
-              box-shadow: 0 0 20px rgba(0, 212, 255, 0.25), 0 0 40px rgba(124, 58, 237, 0.15);
+              box-shadow: 0 0 20px rgba(0, 212, 255, 0.25), 0 0 40px rgba(2,132,199, 0.15);
             }
             .ob-next-btn:hover {
               opacity: 0.92;
               transform: translateY(-1px);
-              box-shadow: 0 0 30px rgba(0, 212, 255, 0.4), 0 0 60px rgba(124, 58, 237, 0.2);
+              box-shadow: 0 0 30px rgba(0, 212, 255, 0.4), 0 0 60px rgba(2,132,199, 0.2);
             }
 
             @media (max-width: 400px) {

@@ -23,11 +23,11 @@ const COPY = {
 } as const
 
 const ACCENTS: Record<string, string> = {
-  avatar: '#a78bfa', video: '#f59e0b', image: '#f472b6', music: '#34d399',
+  avatar: '#a78bfa', video: '#f59e0b', image: '#22d3ee', music: '#34d399',
   text: '#818cf8', editing: '#06b6d4', photo: '#fb923c', workflow: '#fb923c',
   'agent-g': '#22d3ee', 'visual-intel': '#3b82f6', prompt: '#fbbf24',
-  media: '#ec4899', business: '#8b5cf6', shop: '#10b981', software: '#6366f1',
-  tourism: '#14b8a6', game: '#f97316', interior: '#d946ef',
+  media: '#06b6d4', business: '#38bdf8', shop: '#10b981', software: '#6366f1',
+  tourism: '#14b8a6', game: '#f97316', interior: '#06b6d4',
   voice: '#38bdf8', 'content-writer': '#4ade80', podcast: '#e879f9',
   character: '#a78bfa', event: '#fb923c', 'prompt-builder': '#fbbf24', terminal: '#34d399',
 }

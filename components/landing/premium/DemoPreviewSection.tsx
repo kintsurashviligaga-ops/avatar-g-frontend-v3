@@ -48,7 +48,7 @@ const DEMOS: DemoItem[] = [
     mockOutput: { en: '4K cinematic video — atmospheric lighting, volumetric clouds, neon city reflections', ka: '4K კინემატოგრაფიული ვიდეო — ატმოსფერული განათება, ნეონური ასახვები', ru: '4K кинематографическое видео — атмосферное освещение, неоновые отражения' },
   },
   {
-    id: 'image-demo', service: 'Image Generation', icon: '🖼️', accent: '#f472b6',
+    id: 'image-demo', service: 'Image Generation', icon: '🖼️', accent: '#22d3ee',
     prompt: { en: '"Product shot of a luxury perfume bottle on marble"', ka: '"ლუქს პარფიუმერიის ბოთლის პროდუქტ-ფოტო მარმარილოზე"', ru: '"Продуктовое фото флакона люксовых духов на мраморе"' },
     outputType: 'image',
     mockOutput: { en: 'Advertising-grade product photography — soft reflections, premium composition, 4K resolution', ka: 'სარეკლამო დონის პროდუქტის ფოტო — რბილი ასახვები, პრემიუმ კომპოზიცია', ru: 'Рекламное фото продукта — мягкие отражения, премиум-композиция' },

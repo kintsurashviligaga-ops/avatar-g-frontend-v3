@@ -49,13 +49,27 @@ const config: Config = {
           500: '#06B6D4',
           600: '#0891B2',
         },
+        // ── Brand rebrand: the legacy purple family is globally remapped to the
+        //    marine palette so EVERY residual violet/fuchsia/purple/indigo
+        //    utility across the app renders sea/sky-blue (no per-file misses).
+        //    violet→sky, fuchsia→cyan, purple/indigo→blue.
         violet: {
-          DEFAULT: '#0ea5e9',
-          dim:    '#082f49',
-          mid:    '#075985',
-          base:   '#0ea5e9',
-          bright: '#38bdf8',
-          white:  '#e0f2fe',
+          DEFAULT: '#0ea5e9', dim: '#082f49', mid: '#075985', base: '#0ea5e9', bright: '#38bdf8', white: '#e0f2fe',
+          50: '#f0f9ff', 100: '#e0f2fe', 200: '#bae6fd', 300: '#7dd3fc', 400: '#38bdf8', 500: '#0ea5e9', 600: '#0284c7', 700: '#0369a1', 800: '#075985', 900: '#0c4a6e', 950: '#082f49',
+        },
+        fuchsia: {
+          50: '#ecfeff', 100: '#cffafe', 200: '#a5f3fc', 300: '#67e8f9', 400: '#22d3ee', 500: '#06b6d4', 600: '#0891b2', 700: '#0e7490', 800: '#155e75', 900: '#164e63', 950: '#083344',
+        },
+        purple: {
+          50: '#eff6ff', 100: '#dbeafe', 200: '#bfdbfe', 300: '#93c5fd', 400: '#60a5fa', 500: '#3b82f6', 600: '#2563eb', 700: '#1d4ed8', 800: '#1e40af', 900: '#1e3a8a', 950: '#172554',
+        },
+        indigo: {
+          50: '#eff6ff', 100: '#dbeafe', 200: '#bfdbfe', 300: '#93c5fd', 400: '#60a5fa', 500: '#3b82f6', 600: '#2563eb', 700: '#1d4ed8', 800: '#1e40af', 900: '#1e3a8a', 950: '#172554',
+        },
+        // pink→cyan: it only ever pairs with the purple family as a brand accent
+        // (never a semantic role — `rose` owns danger/error and is left intact).
+        pink: {
+          50: '#ecfeff', 100: '#cffafe', 200: '#a5f3fc', 300: '#67e8f9', 400: '#22d3ee', 500: '#06b6d4', 600: '#0891b2', 700: '#0e7490', 800: '#155e75', 900: '#164e63', 950: '#083344',
         },
         emerald: {
           dim:    '#003322',

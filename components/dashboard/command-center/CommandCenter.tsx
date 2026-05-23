@@ -254,14 +254,14 @@ const SERVICE_ICONS: Record<ServiceId, React.ElementType> = {
 
 // Service accent colors — each agent gets its own identity for the history feed
 const SERVICE_COLORS: Record<ServiceId, string> = {
-  chat: '#6366f1', avatar: '#8b5cf6', image: '#ec4899',
+  chat: '#6366f1', avatar: '#38bdf8', image: '#06b6d4',
   video: '#f97316', music: '#f59e0b', voice: '#3b82f6',
   interior: '#14b8a6', app: '#10b981',
 };
 
 const MODELS: Array<{ id: ModelId; label: string; badge: string; badgeColor: string }> = [
   { id: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash', badge: 'FAST', badgeColor: '#22c55e' },
-  { id: 'gemini-2.0-pro', label: 'Gemini 2.0 Pro', badge: 'PRO', badgeColor: '#a855f7' },
+  { id: 'gemini-2.0-pro', label: 'Gemini 2.0 Pro', badge: 'PRO', badgeColor: '#0ea5e9' },
   { id: 'gemini-1.5-ultra', label: 'Gemini 1.5 Ultra', badge: 'BEST', badgeColor: '#f59e0b' },
 ];
 
@@ -1092,7 +1092,7 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
             exit={{ opacity: 0, y: -30 }}
             className="cc-pipeline-banner"
           >
-            <Loader2 style={{ width: 13, height: 13, flexShrink: 0, color: '#a855f7' }} className="cc-spin" />
+            <Loader2 style={{ width: 13, height: 13, flexShrink: 0, color: '#0ea5e9' }} className="cc-spin" />
             <div style={{ flex: 1, minWidth: 0 }}>
               <div className="cc-pipeline-txt">
                 {pipelineTask.progress.currentStepKa
@@ -1411,7 +1411,7 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
                   type="button"
                   className="cc-filter"
                   onClick={() => setExportPackOpen(true)}
-                  style={{ marginLeft: 'auto', color: '#a855f7', borderColor: 'rgba(168,85,247,0.4)', background: 'rgba(168,85,247,0.08)' }}
+                  style={{ marginLeft: 'auto', color: '#0ea5e9', borderColor: 'rgba(14,165,233,0.4)', background: 'rgba(14,165,233,0.08)' }}
                 >
                   📦 Export
                 </button>
@@ -1510,7 +1510,7 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
                     <button
                       type="button"
                       onClick={() => { setInput(messages.filter(m => m.role === 'user').slice(-1)[0]?.content ?? ''); setActiveService('image'); }}
-                      style={{ flex: 1, padding: '5px 0', fontSize: 10, fontWeight: 600, color: '#c084fc', background: 'rgba(168,85,247,0.2)', borderRadius: 6, border: 'none', cursor: 'pointer' }}
+                      style={{ flex: 1, padding: '5px 0', fontSize: 10, fontWeight: 600, color: '#c084fc', background: 'rgba(14,165,233,0.2)', borderRadius: 6, border: 'none', cursor: 'pointer' }}
                     >
                       🔄
                     </button>
@@ -1578,7 +1578,7 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
                       ? ['500 кредитов/мес', 'Неограниченные генерации', '50 изображений + музыка', 'Email поддержка']
                       : ['500 credits/month', 'Unlimited generations', '50 images + music', 'Email support']
                 }
-                accent="#8b5cf6" btnClass="cc-btn-primary"
+                accent="#38bdf8" btnClass="cc-btn-primary"
                 btnText={localeCode === 'ka' ? 'Pro-ზე გადასვლა' : localeCode === 'ru' ? 'Перейти на Pro' : 'Upgrade to Pro'}
                 badge={localeCode === 'ka' ? 'პოპულარული' : localeCode === 'ru' ? 'Популярный' : 'Popular'}
                 href={`/${localeCode}/pricing`}
@@ -1723,8 +1723,8 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
                 style={{
                   display: 'flex', alignItems: 'center', gap: 7,
                   padding: '5px 12px',
-                  background: batchMode ? 'rgba(168,85,247,0.15)' : 'rgba(255,255,255,0.04)',
-                  border: `1px solid ${batchMode ? 'rgba(168,85,247,0.5)' : 'rgba(255,255,255,0.1)'}`,
+                  background: batchMode ? 'rgba(14,165,233,0.15)' : 'rgba(255,255,255,0.04)',
+                  border: `1px solid ${batchMode ? 'rgba(14,165,233,0.5)' : 'rgba(255,255,255,0.1)'}`,
                   borderRadius: 20,
                   color: batchMode ? '#c084fc' : 'rgba(255,255,255,0.5)',
                   fontSize: 11, fontWeight: 600, cursor: 'pointer', transition: 'all 0.15s',
@@ -1733,7 +1733,7 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
                 <span style={{ fontSize: 12 }}>🎨🎨🎨🎨</span>
                 <span>Batch ×4</span>
                 {batchMode && (
-                  <span style={{ fontSize: 10, background: 'rgba(168,85,247,0.25)', borderRadius: 4, padding: '1px 5px', color: '#c084fc' }}>
+                  <span style={{ fontSize: 10, background: 'rgba(14,165,233,0.25)', borderRadius: 4, padding: '1px 5px', color: '#c084fc' }}>
                     40⚡
                   </span>
                 )}
@@ -1824,7 +1824,7 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
                         onClick={() => { setSelectedVoiceId(v.id); setVoiceDropdownOpen(false); }}
                       >
                         {v.name}
-                        {selectedVoiceId === v.id && <Check style={{ width: 11, height: 11, marginLeft: 'auto', color: '#a855f7' }} />}
+                        {selectedVoiceId === v.id && <Check style={{ width: 11, height: 11, marginLeft: 'auto', color: '#0ea5e9' }} />}
                       </button>
                     ))}
                   </motion.div>
@@ -1896,7 +1896,7 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
               <div className="cc-hub-handle" />
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 16px 12px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <Sparkles style={{ width: 15, height: 15, color: '#a855f7' }} />
+                  <Sparkles style={{ width: 15, height: 15, color: '#0ea5e9' }} />
                   <span style={{ fontSize: 14, fontWeight: 600, color: '#fff' }}>{copy.aiServices}</span>
                 </div>
                 <button type="button" className="cc-icon-btn" style={{ width: 30, height: 30 }} onClick={() => setHubOpen(false)}>
@@ -2003,7 +2003,7 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
         .cc-prof-user { display: flex; align-items: center; gap: 12px; padding: 12px 14px 16px; }
         .cc-prof-avatar {
           width: 42px; height: 42px; border-radius: 50%; flex-shrink: 0;
-          background: linear-gradient(135deg,#a855f7,#6d28d9);
+          background: linear-gradient(135deg,#0ea5e9,#0369a1);
           display: flex; align-items: center; justify-content: center;
           font-size: 18px; font-weight: 700; color: #fff;
         }
@@ -2020,7 +2020,7 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
         .cc-credits-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: rgba(255,255,255,0.4); }
         .cc-credits-num { font-size: 28px; font-weight: 800; color: #fff; line-height: 1; }
         .cc-credits-bar { height: 4px; background: rgba(255,255,255,0.08); border-radius: 2px; overflow: hidden; }
-        .cc-credits-fill { height: 100%; background: linear-gradient(90deg,#6d28d9,#a855f7); border-radius: 2px; transition: width 0.4s; }
+        .cc-credits-fill { height: 100%; background: linear-gradient(90deg,#0369a1,#0ea5e9); border-radius: 2px; transition: width 0.4s; }
         .cc-credits-sub { font-size: 11px; color: rgba(255,255,255,0.35); margin-top: 2px; }
         .cc-model-section { padding: 0 14px 12px; }
         .cc-section-lbl { display: block; padding-bottom: 8px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: rgba(255,255,255,0.35); }
@@ -2035,7 +2035,7 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
           width: 16px; height: 16px; border-radius: 50%; border: 1.5px solid rgba(255,255,255,0.25);
           flex-shrink: 0; display: flex; align-items: center; justify-content: center;
         }
-        .cc-radio.on { border-color: #a855f7; background: radial-gradient(circle, #a855f7 40%, transparent 70%); }
+        .cc-radio.on { border-color: #0ea5e9; background: radial-gradient(circle, #0ea5e9 40%, transparent 70%); }
         .cc-model-badge {
           font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 4px;
           letter-spacing: 0.05em; flex-shrink: 0;
@@ -2069,7 +2069,7 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
         /* Orb large (standby) */
         .cc-orb-lg {
           width: 80px; height: 80px; border-radius: 50%;
-          background: linear-gradient(135deg,#a855f7 0%,#7c3aed 60%,#4c1d95 100%);
+          background: linear-gradient(135deg,#0ea5e9 0%,#0284c7 60%,#4c1d95 100%);
           display: flex; align-items: center; justify-content: center;
           box-shadow: 0 0 40px rgba(139,92,246,0.45), 0 0 80px rgba(109,40,217,0.2), inset 0 1px 0 rgba(255,255,255,0.2);
           border: 1px solid rgba(255,255,255,0.12);
@@ -2080,7 +2080,7 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
         /* Mini orb in header */
         .cc-orb-mini {
           width: 30px; height: 30px; border-radius: 50%;
-          background: linear-gradient(135deg,#a855f7 0%,#7c3aed 60%,#4c1d95 100%);
+          background: linear-gradient(135deg,#0ea5e9 0%,#0284c7 60%,#4c1d95 100%);
           display: flex; align-items: center; justify-content: center;
           box-shadow: 0 0 14px rgba(139,92,246,0.55), inset 0 1px 0 rgba(255,255,255,0.2);
           border: 1px solid rgba(255,255,255,0.12); flex-shrink: 0;
@@ -2100,7 +2100,7 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
           border-radius: 2px; overflow: hidden; flex-shrink: 0;
         }
         .cc-pipeline-fill {
-          height: 100%; background: linear-gradient(90deg,#7c3aed,#a855f7);
+          height: 100%; background: linear-gradient(90deg,#0284c7,#0ea5e9);
           border-radius: 2px; transition: width 0.5s;
         }
         .cc-pipeline-pct { font-size: 11px; font-weight: 600; color: rgba(167,139,250,0.8); flex-shrink: 0; }
@@ -2187,7 +2187,7 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
         .cc-quick-card:active { transform: scale(0.96); }
         .cc-quick-card:focus-visible {
           outline: none;
-          box-shadow: 0 0 0 2px color-mix(in srgb, var(--svc-color, #a855f7) 70%, transparent),
+          box-shadow: 0 0 0 2px color-mix(in srgb, var(--svc-color, #0ea5e9) 70%, transparent),
                       0 8px 28px -10px color-mix(in srgb, var(--svc-color, rgba(0,0,0,0.4)) 60%, transparent);
         }
         .cc-quick-icon-wrap {
@@ -2223,8 +2223,8 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
         .cc-tab:hover { color: rgba(255,255,255,0.65); }
         .cc-tab:active { transform: scale(0.95); }
         .cc-tab.active { color: rgba(167,139,250,1); }
-        .cc-tab:focus-visible { outline: none; color: #fff; box-shadow: inset 0 -2px 0 rgba(168,85,247,0.85); }
-        .cc-filter:focus-visible { outline: none; box-shadow: 0 0 0 2px rgba(168,85,247,0.6); }
+        .cc-tab:focus-visible { outline: none; color: #fff; box-shadow: inset 0 -2px 0 rgba(14,165,233,0.85); }
+        .cc-filter:focus-visible { outline: none; box-shadow: 0 0 0 2px rgba(14,165,233,0.6); }
         /* Rail — service selector strip */
         .cc-rail {
           display: flex; align-items: center; gap: 6px; padding: 10px 12px;
@@ -2305,7 +2305,7 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
           touch-action: manipulation;
         }
         .cc-send.ready {
-          background: linear-gradient(135deg,#6d28d9,#a855f7);
+          background: linear-gradient(135deg,#0369a1,#0ea5e9);
           color: #fff; cursor: pointer;
           box-shadow: 0 0 14px rgba(139,92,246,0.5);
           animation: cc-send-ready 2.4s ease-in-out infinite;
@@ -2316,8 +2316,8 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
         }
         .cc-send.ready:hover { box-shadow: 0 0 24px rgba(139,92,246,0.8); transform: scale(1.06); animation: none; }
         .cc-send.ready:active { transform: scale(0.94); }
-        .cc-send.ready:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(168,85,247,0.55), 0 0 20px rgba(139,92,246,0.7); }
-        .cc-ibtn:focus-visible { outline: none; box-shadow: 0 0 0 2px rgba(168,85,247,0.6); }
+        .cc-send.ready:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(14,165,233,0.55), 0 0 20px rgba(139,92,246,0.7); }
+        .cc-ibtn:focus-visible { outline: none; box-shadow: 0 0 0 2px rgba(14,165,233,0.6); }
         .cc-spin { animation: spin 0.8s linear infinite; }
         /* Library */
         .cc-library { padding: 14px; }
@@ -2374,13 +2374,13 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
           margin-top: 18px; display: inline-flex; align-items: center; gap: 7px;
           padding: 10px 18px; border-radius: 999px; font-size: 13px; font-weight: 600;
           color: #fff; cursor: pointer; border: none;
-          background: linear-gradient(135deg, #6d28d9, #a855f7);
+          background: linear-gradient(135deg, #0369a1, #0ea5e9);
           box-shadow: 0 6px 20px -6px rgba(139,92,246,0.55);
           transition: transform 0.18s, box-shadow 0.22s;
         }
         .cc-empty-cta:hover { transform: translateY(-1px); box-shadow: 0 10px 28px -8px rgba(139,92,246,0.75); }
         .cc-empty-cta:active { transform: scale(0.97); }
-        .cc-empty-cta:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(168,85,247,0.55), 0 6px 20px -6px rgba(139,92,246,0.55); }
+        .cc-empty-cta:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(14,165,233,0.55), 0 6px 20px -6px rgba(139,92,246,0.55); }
         /* Pricing */
         .cc-pricing { padding: 20px 14px 36px; max-width: 440px; margin: 0 auto; }
         .cc-pricing-h { font-size: 20px; font-weight: 700; color: #fff; text-align: center; margin-bottom: 6px; }
@@ -2578,7 +2578,7 @@ function GenerationSkeleton({ service }: { service: string }) {
             {service === 'image' ? '🎨' : service === 'avatar' ? '🧑' : '🎬'}
           </div>
           <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', display: 'flex', alignItems: 'center', gap: 6 }}>
-            <div style={{ width: 8, height: 8, borderRadius: '50%', border: '1.5px solid rgba(168,85,247,0.4)', borderTopColor: '#a855f7', animation: 'cc-spin 0.8s linear infinite' }} />
+            <div style={{ width: 8, height: 8, borderRadius: '50%', border: '1.5px solid rgba(14,165,233,0.4)', borderTopColor: '#0ea5e9', animation: 'cc-spin 0.8s linear infinite' }} />
             {service === 'image' ? 'სურათს ვქმნი...' : service === 'avatar' ? 'ავატარი...' : 'ვიდეო...'}
           </div>
         </div>
@@ -2648,7 +2648,7 @@ function MessageRow({ msg, copy, onCopy, onRetry, onSpeak, onLike, onDislike, on
   return (
     <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 14 }} onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}>
       {/* Orb */}
-      <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'linear-gradient(135deg,#a855f7,#6d28d9)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, boxShadow: '0 0 10px rgba(139,92,246,0.3)', marginTop: 2 }}>
+      <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'linear-gradient(135deg,#0ea5e9,#0369a1)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, boxShadow: '0 0 10px rgba(139,92,246,0.3)', marginTop: 2 }}>
         <span style={{ fontSize: 12, fontWeight: 800, color: '#fff' }}>G</span>
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
@@ -2659,8 +2659,8 @@ function MessageRow({ msg, copy, onCopy, onRetry, onSpeak, onLike, onDislike, on
         {msg.pending && !msg.content ? (
           <GenerationSkeleton service={msg.service ?? 'chat'} />
         ) : msg.pending && msg.content ? (
-          <div style={{ padding: '10px 14px', borderRadius: '4px 18px 18px 18px', background: 'rgba(168,85,247,0.08)', border: '1px solid rgba(168,85,247,0.2)', fontSize: 14, color: 'rgba(255,255,255,0.7)', display: 'flex', alignItems: 'center', gap: 8 }}>
-            <div style={{ width: 12, height: 12, borderRadius: '50%', border: '2px solid rgba(168,85,247,0.4)', borderTopColor: '#a855f7', animation: 'cc-spin 0.8s linear infinite', flexShrink: 0 }} />
+          <div style={{ padding: '10px 14px', borderRadius: '4px 18px 18px 18px', background: 'rgba(14,165,233,0.08)', border: '1px solid rgba(14,165,233,0.2)', fontSize: 14, color: 'rgba(255,255,255,0.7)', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div style={{ width: 12, height: 12, borderRadius: '50%', border: '2px solid rgba(14,165,233,0.4)', borderTopColor: '#0ea5e9', animation: 'cc-spin 0.8s linear infinite', flexShrink: 0 }} />
             {msg.content}
           </div>
         ) : msg.media ? (
@@ -2737,10 +2737,10 @@ function PlanCard({ name, price, period, features, accent, btnClass, btnText, ba
       border: `1px solid ${isUltimate ? 'rgba(245,158,11,0.4)' : badge ? 'rgba(139,92,246,0.45)' : 'rgba(255,255,255,0.08)'}`,
       background: isUltimate ? 'rgba(245,158,11,0.05)' : badge ? 'rgba(139,92,246,0.06)' : 'rgba(255,255,255,0.02)',
     }}>
-      {badge && <div style={{ position: 'absolute', top: -11, left: '50%', transform: 'translateX(-50%)', padding: '3px 12px', borderRadius: 20, background: badge ? (isUltimate ? 'linear-gradient(90deg,#d97706,#f59e0b)' : 'linear-gradient(90deg,#6d28d9,#a855f7)') : 'transparent', fontSize: 10, fontWeight: 700, color: '#fff', letterSpacing: '0.06em', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>{badge}</div>}
+      {badge && <div style={{ position: 'absolute', top: -11, left: '50%', transform: 'translateX(-50%)', padding: '3px 12px', borderRadius: 20, background: badge ? (isUltimate ? 'linear-gradient(90deg,#d97706,#f59e0b)' : 'linear-gradient(90deg,#0369a1,#0ea5e9)') : 'transparent', fontSize: 10, fontWeight: 700, color: '#fff', letterSpacing: '0.06em', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>{badge}</div>}
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 12 }}>
         <span style={{ fontSize: 15, fontWeight: 700, color: '#fff' }}>{name}</span>
-        <span style={{ fontSize: 22, fontWeight: 800, color: isUltimate ? '#f59e0b' : badge ? '#a855f7' : '#fff' }}>{price}<span style={{ fontSize: 11, fontWeight: 500, color: 'rgba(255,255,255,0.35)' }}>{period}</span></span>
+        <span style={{ fontSize: 22, fontWeight: 800, color: isUltimate ? '#f59e0b' : badge ? '#0ea5e9' : '#fff' }}>{price}<span style={{ fontSize: 11, fontWeight: 500, color: 'rgba(255,255,255,0.35)' }}>{period}</span></span>
       </div>
       <ul style={{ listStyle: 'none', margin: '0 0 14px', padding: 0, display: 'flex', flexDirection: 'column', gap: 7 }}>
         {features.map(f => (
@@ -2759,7 +2759,7 @@ function PlanCard({ name, price, period, features, accent, btnClass, btnText, ba
         </button>
       )}
       <style jsx>{`
-        .cc-btn-primary { background: linear-gradient(135deg,#6d28d9,#a855f7); color:#fff; border:none; box-shadow:0 4px 18px rgba(139,92,246,0.4); }
+        .cc-btn-primary { background: linear-gradient(135deg,#0369a1,#0ea5e9); color:#fff; border:none; box-shadow:0 4px 18px rgba(139,92,246,0.4); }
         .cc-btn-primary:hover { transform:translateY(-1px); box-shadow:0 6px 22px rgba(139,92,246,0.55); }
         .cc-btn-ultimate { background: linear-gradient(135deg,#d97706,#f59e0b); color:#fff; border:none; box-shadow:0 4px 18px rgba(245,158,11,0.35); }
         .cc-btn-ultimate:hover { transform:translateY(-1px); box-shadow:0 6px 22px rgba(245,158,11,0.5); }

@@ -20,7 +20,7 @@ const PLANS = [
     price: '₾9',
     period: '/თვე',
     icon: <Star size={20} />,
-    color: '#a855f7',
+    color: '#0ea5e9',
     features: ['500 კრედიტი/თვეში', 'შეუზღუდავი გენერაციები', '50 სურათი + მუსიკა', 'Email Support'],
     popular: false,
   },

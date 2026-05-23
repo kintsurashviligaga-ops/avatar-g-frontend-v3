@@ -5,7 +5,7 @@ import type { Creation } from './page';
 type Kind = 'image' | 'video' | 'audio' | 'avatar' | 'text' | 'code';
 
 const KIND_COLOR: Record<Kind, string> = {
-  image: '#a855f7', video: '#3b82f6', audio: '#22d3ee',
+  image: '#0ea5e9', video: '#3b82f6', audio: '#22d3ee',
   avatar: '#f59e0b', text: '#10b981', code: '#f97316',
 };
 const KIND_ICON: Record<Kind, string> = {
@@ -29,7 +29,7 @@ function NotFound() {
       <p style={{ fontSize: 14, color: 'rgba(255,255,255,0.4)', textAlign: 'center', maxWidth: 320 }}>
         ეს გაზიარება არ არსებობს ან გახდა პირადი.
       </p>
-      <a href="https://myavatar.ge" style={{ padding: '10px 22px', background: 'linear-gradient(135deg,#6d28d9,#a855f7)', borderRadius: 10, color: '#fff', textDecoration: 'none', fontSize: 14, fontWeight: 600 }}>
+      <a href="https://myavatar.ge" style={{ padding: '10px 22px', background: 'linear-gradient(135deg,#0369a1,#0ea5e9)', borderRadius: 10, color: '#fff', textDecoration: 'none', fontSize: 14, fontWeight: 600 }}>
         Avatar G-ზე დაბრუნება
       </a>
     </div>
@@ -84,21 +84,21 @@ function MediaDisplay({ creation }: { creation: Creation }) {
 export default function SharePageClient({ creation }: { creation: Creation | null }) {
   if (!creation) return <NotFound />;
 
-  const color = KIND_COLOR[creation.kind as Kind] ?? '#a855f7';
+  const color = KIND_COLOR[creation.kind as Kind] ?? '#0ea5e9';
 
   return (
     <div style={{ minHeight: '100vh', background: '#0a0a0e', color: '#f0f0f5', fontFamily: '-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif', display: 'flex', flexDirection: 'column' }}>
 
       {/* Ambient glow */}
-      <div style={{ position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: 0, background: `radial-gradient(ellipse 80% 50% at 20% -10%, ${color}28 0%, transparent 60%), radial-gradient(ellipse 60% 40% at 80% 110%, rgba(168,85,247,0.12) 0%, transparent 55%)` }} />
+      <div style={{ position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: 0, background: `radial-gradient(ellipse 80% 50% at 20% -10%, ${color}28 0%, transparent 60%), radial-gradient(ellipse 60% 40% at 80% 110%, rgba(14,165,233,0.12) 0%, transparent 55%)` }} />
 
       {/* Header */}
       <header style={{ position: 'relative', zIndex: 10, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '1rem 1.5rem', borderBottom: '1px solid rgba(255,255,255,0.06)', backdropFilter: 'blur(12px)', background: 'rgba(10,10,14,0.7)' }}>
         <a href="https://myavatar.ge" style={{ display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none', color: 'inherit' }}>
-          <div style={{ width: 32, height: 32, borderRadius: 8, background: 'linear-gradient(135deg,#7c3aed,#a855f7)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, fontWeight: 800, color: '#fff' }}>G</div>
+          <div style={{ width: 32, height: 32, borderRadius: 8, background: 'linear-gradient(135deg,#0284c7,#0ea5e9)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, fontWeight: 800, color: '#fff' }}>G</div>
           <span style={{ fontWeight: 700, fontSize: 15, color: '#fff' }}>Avatar G</span>
         </a>
-        <a href="https://myavatar.ge" style={{ padding: '7px 16px', background: 'linear-gradient(135deg,#6d28d9,#a855f7)', borderRadius: 8, color: '#fff', textDecoration: 'none', fontSize: 13, fontWeight: 600 }}>
+        <a href="https://myavatar.ge" style={{ padding: '7px 16px', background: 'linear-gradient(135deg,#0369a1,#0ea5e9)', borderRadius: 8, color: '#fff', textDecoration: 'none', fontSize: 13, fontWeight: 600 }}>
           Avatar G-ში გახსნა →
         </a>
       </header>
@@ -139,7 +139,7 @@ export default function SharePageClient({ creation }: { creation: Creation | nul
           style={{
             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
             padding: '16px 28px',
-            background: `linear-gradient(135deg, ${color}cc, #7c3aed)`,
+            background: `linear-gradient(135deg, ${color}cc, #0284c7)`,
             borderRadius: 14,
             color: '#fff', textDecoration: 'none',
             fontSize: 16, fontWeight: 700,
@@ -183,7 +183,7 @@ export default function SharePageClient({ creation }: { creation: Creation | nul
 
         {/* Footer credit */}
         <div style={{ marginTop: 48, paddingTop: 24, borderTop: '1px solid rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center', gap: 8 }}>
-          <div style={{ width: 24, height: 24, borderRadius: 6, background: 'linear-gradient(135deg,#7c3aed,#a855f7)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 800, color: '#fff' }}>G</div>
+          <div style={{ width: 24, height: 24, borderRadius: 6, background: 'linear-gradient(135deg,#0284c7,#0ea5e9)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 800, color: '#fff' }}>G</div>
           <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.3)' }}>შექმნილია Avatar G AI-ით · myavatar.ge</span>
         </div>
       </main>

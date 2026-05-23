@@ -14,7 +14,7 @@ export function GlassCard({ children, className, glow = false, variant = 'defaul
   const borderMap = {
     default: 'border-white/[0.06] hover:border-white/[0.12]',
     cyan: 'border-[rgba(0,212,255,0.12)] hover:border-[rgba(0,212,255,0.3)]',
-    violet: 'border-[rgba(124,58,237,0.12)] hover:border-[rgba(124,58,237,0.3)]',
+    violet: 'border-[rgba(2,132,199,0.12)] hover:border-[rgba(2,132,199,0.3)]',
   }
 
   return (

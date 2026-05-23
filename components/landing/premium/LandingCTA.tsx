@@ -85,7 +85,7 @@ export function LandingCTA() {
       <div
         className="absolute inset-0 pointer-events-none"
         style={{
-          background: 'radial-gradient(ellipse 50% 50% at 80% 80%, rgba(124,58,237,0.08) 0%, transparent 60%)',
+          background: 'radial-gradient(ellipse 50% 50% at 80% 80%, rgba(2,132,199,0.08) 0%, transparent 60%)',
         }}
       />
       <div
@@ -106,7 +106,7 @@ export function LandingCTA() {
               top: p.y,
               width: p.size,
               height: p.size,
-              backgroundColor: i % 2 === 0 ? '#00d4ff' : '#7c3aed',
+              backgroundColor: i % 2 === 0 ? '#00d4ff' : '#0284c7',
               opacity: p.opacity,
             }}
             animate={{
@@ -148,7 +148,7 @@ export function LandingCTA() {
           <span
             className="inline-block"
             style={{
-              background: 'linear-gradient(135deg, #00d4ff, #7c3aed)',
+              background: 'linear-gradient(135deg, #00d4ff, #0284c7)',
               WebkitBackgroundClip: 'text',
               WebkitTextFillColor: 'transparent',
             }}

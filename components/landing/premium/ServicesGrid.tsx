@@ -165,17 +165,17 @@ function ServiceCard({ service, locale, index }: ServiceCardProps) {
   const borderHover = accentCyan
     ? 'hover:border-cyan-500/50 hover:shadow-[0_12px_40px_rgba(0,212,255,0.15)]'
     : accentViolet
-    ? 'hover:border-violet-500/50 hover:shadow-[0_12px_40px_rgba(124,58,237,0.15)]'
+    ? 'hover:border-violet-500/50 hover:shadow-[0_12px_40px_rgba(2,132,199,0.15)]'
     : 'hover:border-emerald-500/50 hover:shadow-[0_12px_40px_rgba(16,185,129,0.12)]'
 
   const iconGlow = accentCyan
     ? 'group-hover:drop-shadow-[0_0_16px_rgba(0,212,255,0.8)]'
     : accentViolet
-    ? 'group-hover:drop-shadow-[0_0_16px_rgba(124,58,237,0.8)]'
+    ? 'group-hover:drop-shadow-[0_0_16px_rgba(2,132,199,0.8)]'
     : 'group-hover:drop-shadow-[0_0_16px_rgba(16,185,129,0.8)]'
 
-  const glowAccent = accentCyan ? 'rgba(0,212,255,0.06)' : accentViolet ? 'rgba(124,58,237,0.06)' : 'rgba(16,185,129,0.05)'
-  const iconBg = accentCyan ? 'rgba(0,212,255,0.1)' : accentViolet ? 'rgba(124,58,237,0.1)' : 'rgba(16,185,129,0.08)'
+  const glowAccent = accentCyan ? 'rgba(0,212,255,0.06)' : accentViolet ? 'rgba(2,132,199,0.06)' : 'rgba(16,185,129,0.05)'
+  const iconBg = accentCyan ? 'rgba(0,212,255,0.1)' : accentViolet ? 'rgba(2,132,199,0.1)' : 'rgba(16,185,129,0.08)'
 
   return (
     <div
@@ -203,7 +203,7 @@ function ServiceCard({ service, locale, index }: ServiceCardProps) {
               background: accentCyan
                 ? 'linear-gradient(90deg, transparent, rgba(0,212,255,0.5), transparent)'
                 : accentViolet
-                ? 'linear-gradient(90deg, transparent, rgba(124,58,237,0.5), transparent)'
+                ? 'linear-gradient(90deg, transparent, rgba(2,132,199,0.5), transparent)'
                 : 'linear-gradient(90deg, transparent, rgba(0,200,150,0.5), transparent)',
             }}
           />
@@ -266,7 +266,7 @@ export function ServicesGrid() {
       <div
         className="absolute bottom-0 right-1/4 w-[500px] h-[400px] pointer-events-none"
         style={{
-          background: 'radial-gradient(ellipse at center, rgba(124,58,237,0.05) 0%, transparent 70%)',
+          background: 'radial-gradient(ellipse at center, rgba(2,132,199,0.05) 0%, transparent 70%)',
           filter: 'blur(80px)',
         }}
       />

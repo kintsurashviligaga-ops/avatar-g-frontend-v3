@@ -12,11 +12,11 @@ export function NeonButton({ children, className, variant = 'cyan', size = 'md',
   const sizeMap = { sm: 'h-9 px-4 text-sm', md: 'h-11 px-6 text-sm', lg: 'h-12 px-8 text-base' }
   const gradientMap = {
     cyan: 'from-[#00d4ff] to-[#0891b2]',
-    violet: 'from-[#7c3aed] to-[#5b21b6]',
+    violet: 'from-[#0284c7] to-[#5b21b6]',
   }
   const glowMap = {
     cyan: 'shadow-[0_4px_20px_rgba(0,212,255,0.25)] hover:shadow-[0_4px_32px_rgba(0,212,255,0.4)]',
-    violet: 'shadow-[0_4px_20px_rgba(124,58,237,0.25)] hover:shadow-[0_4px_32px_rgba(124,58,237,0.4)]',
+    violet: 'shadow-[0_4px_20px_rgba(2,132,199,0.25)] hover:shadow-[0_4px_32px_rgba(2,132,199,0.4)]',
   }
 
   return (

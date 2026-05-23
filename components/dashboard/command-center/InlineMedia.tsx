@@ -321,9 +321,9 @@ function AudioBlock({ url }: { url: string }) {
               style={{
                 height: `${Math.round(h * 100)}%`,
                 background: isPlayed
-                  ? 'linear-gradient(180deg,#c084fc,#7c3aed)'
+                  ? 'linear-gradient(180deg,#c084fc,#0284c7)'
                   : isBuffered
-                    ? 'rgba(168,85,247,0.40)'   // buffered, not yet played
+                    ? 'rgba(14,165,233,0.40)'   // buffered, not yet played
                     : 'rgba(255,255,255,0.14)', // not buffered
                 animationDelay: `${i * 30}ms`,
               }}
@@ -483,7 +483,7 @@ export default function InlineMedia(props: InlineMediaProps) {
         }
         .inline-media-audio-play {
           width: 36px; height: 36px; border-radius: 50%; flex-shrink: 0;
-          background: linear-gradient(135deg,#6d28d9,#a855f7);
+          background: linear-gradient(135deg,#0369a1,#0ea5e9);
           border: none; color: #fff;
           display: flex; align-items: center; justify-content: center;
           cursor: pointer; transition: transform 0.15s, box-shadow 0.18s;
@@ -523,8 +523,8 @@ export default function InlineMedia(props: InlineMediaProps) {
         }
         .inline-media-code-tab:hover { color: rgba(255,255,255,0.8); }
         .inline-media-code-tab.active {
-          background: rgba(168,85,247,0.15);
-          border-color: rgba(168,85,247,0.35);
+          background: rgba(14,165,233,0.15);
+          border-color: rgba(14,165,233,0.35);
           color: rgba(167,139,250,1);
         }
         .inline-media-code-lang {
@@ -561,7 +561,7 @@ export default function InlineMedia(props: InlineMediaProps) {
 
         /* ── Played-bar glow (audio scrubber) ── */
         .inline-media-audio-bar.played {
-          box-shadow: 0 0 6px rgba(168,85,247,0.55);
+          box-shadow: 0 0 6px rgba(14,165,233,0.55);
         }
 
         /* ── Tactile hover micro-interactions on visual media ── */
@@ -573,8 +573,8 @@ export default function InlineMedia(props: InlineMediaProps) {
         .inline-media-image-wrap:hover,
         .inline-media-video-wrap:hover {
           transform: translateY(-2px);
-          box-shadow: 0 14px 38px -16px rgba(168,85,247,0.45);
-          border-color: rgba(168,85,247,0.30);
+          box-shadow: 0 14px 38px -16px rgba(14,165,233,0.45);
+          border-color: rgba(14,165,233,0.30);
         }
         @media (pointer: coarse) {
           .inline-media-image-wrap:hover,

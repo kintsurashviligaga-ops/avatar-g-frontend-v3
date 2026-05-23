@@ -15,7 +15,7 @@ interface LineChartProps {
   color?: string;
 }
 
-export function LineChart({ data, height = 140, color = '#a855f7' }: LineChartProps) {
+export function LineChart({ data, height = 140, color = '#0ea5e9' }: LineChartProps) {
   const { path, area, max, ticks } = useMemo(() => {
     const w = 600;
     const h = height;
@@ -81,7 +81,7 @@ export function BarChart({ data, height = 160 }: BarChartProps) {
             <div style={{
               width: '100%', maxWidth: 56, height: `${Math.max(2, pct)}%`, minHeight: 2,
               borderRadius: '6px 6px 0 0',
-              background: d.color ?? 'linear-gradient(180deg,#a855f7,#6d28d9)',
+              background: d.color ?? 'linear-gradient(180deg,#0ea5e9,#0369a1)',
               transition: 'height 0.35s ease',
             }} />
             <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
@@ -119,7 +119,7 @@ export function TopicList({ topics }: TopicListProps) {
             <div style={{ flex: 1, height: 8, borderRadius: 4, background: 'rgba(255,255,255,0.05)', overflow: 'hidden' }}>
               <div style={{
                 width: `${pct}%`, height: '100%',
-                background: 'linear-gradient(90deg,#06b6d4,#a855f7)',
+                background: 'linear-gradient(90deg,#06b6d4,#0ea5e9)',
                 transition: 'width 0.35s ease',
               }} />
             </div>
@@ -135,7 +135,7 @@ export function TopicList({ topics }: TopicListProps) {
 
 // ─── KPI tile ─────────────────────────────────────────────────────────────────
 
-export function KpiTile({ label, value, accent = '#a855f7' }: { label: string; value: string | number; accent?: string }) {
+export function KpiTile({ label, value, accent = '#0ea5e9' }: { label: string; value: string | number; accent?: string }) {
   return (
     <div style={{
       padding: '16px 18px', borderRadius: 14,
@@ -209,11 +209,11 @@ export function WeeklyUsageChart({ data, locale = 'en' }: WeeklyUsageChartProps)
         <defs>
           <linearGradient id="weekly-area" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor="#818cf8" stopOpacity="0.45" />
-            <stop offset="100%" stopColor="#6d28d9" stopOpacity="0" />
+            <stop offset="100%" stopColor="#0369a1" stopOpacity="0" />
           </linearGradient>
           <linearGradient id="weekly-line" x1="0" y1="0" x2="1" y2="0">
             <stop offset="0%" stopColor="#818cf8" />
-            <stop offset="100%" stopColor="#a855f7" />
+            <stop offset="100%" stopColor="#0ea5e9" />
           </linearGradient>
         </defs>
 
@@ -230,10 +230,10 @@ export function WeeklyUsageChart({ data, locale = 'en' }: WeeklyUsageChartProps)
         {pts.map(([x, y], i) => (
           <g key={i}>
             {hover === i && (
-              <line x1={x} x2={x} y1={padY} y2={H - padY} stroke="rgba(168,85,247,0.4)" strokeWidth="1" />
+              <line x1={x} x2={x} y1={padY} y2={H - padY} stroke="rgba(14,165,233,0.4)" strokeWidth="1" />
             )}
-            <circle cx={x} cy={y} r={hover === i ? 5 : 3.5} fill={hover === i ? '#fff' : '#a855f7'}
-              stroke="#6d28d9" strokeWidth="1.5" />
+            <circle cx={x} cy={y} r={hover === i ? 5 : 3.5} fill={hover === i ? '#fff' : '#0ea5e9'}
+              stroke="#0369a1" strokeWidth="1.5" />
             <rect x={x - step / 2} y={0} width={step} height={H} fill="transparent"
               onMouseEnter={() => setHover(i)} />
           </g>

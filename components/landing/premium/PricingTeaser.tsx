@@ -36,8 +36,8 @@ const COPY = {
         name: 'Pro',
         price: '₾9',
         desc: 'For daily creators',
-        color: 'rgba(124,58,237,0.06)',
-        borderColor: 'rgba(124,58,237,0.3)',
+        color: 'rgba(2,132,199,0.06)',
+        borderColor: 'rgba(2,132,199,0.3)',
         features: ['500 credits/month', 'Unlimited generations', '50 images + music', 'Email support'],
       },
       {
@@ -80,8 +80,8 @@ const COPY = {
         name: 'Pro',
         price: '₾9',
         desc: 'ყოველდღიური შემქმნელებისთვის',
-        color: 'rgba(124,58,237,0.06)',
-        borderColor: 'rgba(124,58,237,0.3)',
+        color: 'rgba(2,132,199,0.06)',
+        borderColor: 'rgba(2,132,199,0.3)',
         features: ['500 კრედიტი/თვეში', 'შეუზღუდავი გენერაციები', '50 სურათი + მუსიკა', 'Email Support'],
       },
       {
@@ -124,8 +124,8 @@ const COPY = {
         name: 'Pro',
         price: '₾9',
         desc: 'Для ежедневных создателей',
-        color: 'rgba(124,58,237,0.06)',
-        borderColor: 'rgba(124,58,237,0.3)',
+        color: 'rgba(2,132,199,0.06)',
+        borderColor: 'rgba(2,132,199,0.3)',
         features: ['500 кредитов/месяц', 'Неограниченные генерации', '50 изображений + музыка', 'Email поддержка'],
       },
       {
@@ -155,7 +155,7 @@ export function PricingTeaser() {
         className="absolute inset-0 pointer-events-none"
         style={{
           background:
-            'radial-gradient(ellipse 70% 50% at 50% 30%, rgba(124,58,237,0.06) 0%, transparent 70%)',
+            'radial-gradient(ellipse 70% 50% at 50% 30%, rgba(2,132,199,0.06) 0%, transparent 70%)',
         }}
       />
 
@@ -208,14 +208,14 @@ export function PricingTeaser() {
                       background: isPopular
                         ? 'rgba(245,158,11,0.15)'
                         : plan.id === 'pro'
-                        ? 'rgba(124,58,237,0.15)'
+                        ? 'rgba(2,132,199,0.15)'
                         : 'rgba(255,255,255,0.06)',
                     }}
                   >
                     <Icon
                       size={18}
                       style={{
-                        color: isPopular ? '#f59e0b' : plan.id === 'pro' ? '#a855f7' : 'rgba(255,255,255,0.5)',
+                        color: isPopular ? '#f59e0b' : plan.id === 'pro' ? '#0ea5e9' : 'rgba(255,255,255,0.5)',
                       }}
                     />
                   </div>
@@ -230,7 +230,7 @@ export function PricingTeaser() {
                   <span
                     className="text-4xl font-extrabold"
                     style={{
-                      color: isPopular ? '#f59e0b' : plan.id === 'pro' ? '#a855f7' : 'rgba(255,255,255,0.85)',
+                      color: isPopular ? '#f59e0b' : plan.id === 'pro' ? '#0ea5e9' : 'rgba(255,255,255,0.85)',
                     }}
                   >
                     {plan.price}
@@ -251,7 +251,7 @@ export function PricingTeaser() {
                         size={13}
                         className="mt-0.5 flex-shrink-0"
                         style={{
-                          color: isPopular ? '#f59e0b' : plan.id === 'pro' ? '#a855f7' : 'rgba(255,255,255,0.35)',
+                          color: isPopular ? '#f59e0b' : plan.id === 'pro' ? '#0ea5e9' : 'rgba(255,255,255,0.35)',
                         }}
                       />
                       {f}
@@ -267,14 +267,14 @@ export function PricingTeaser() {
                     isPopular
                       ? 'text-white hover:shadow-[0_0_24px_rgba(245,158,11,0.4)]'
                       : plan.id === 'pro'
-                      ? 'text-white hover:shadow-[0_0_20px_rgba(124,58,237,0.3)]'
+                      ? 'text-white hover:shadow-[0_0_20px_rgba(2,132,199,0.3)]'
                       : 'text-white/70 border border-white/10 hover:bg-white/10 hover:text-white',
                   )}
                   style={
                     isPopular
                       ? { background: 'linear-gradient(135deg, #d97706, #f59e0b)' }
                       : plan.id === 'pro'
-                      ? { background: 'linear-gradient(135deg, #6d28d9, #a855f7)' }
+                      ? { background: 'linear-gradient(135deg, #0369a1, #0ea5e9)' }
                       : { backgroundColor: 'rgba(255,255,255,0.05)' }
                   }
                 >

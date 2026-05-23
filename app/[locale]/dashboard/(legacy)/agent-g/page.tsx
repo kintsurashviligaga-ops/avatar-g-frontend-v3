@@ -52,7 +52,7 @@ function MsgBubble({ msg }: { msg: Msg }) {
         <div
           className="px-4 py-3 rounded-2xl text-sm leading-relaxed"
           style={isUser
-            ? { background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', color: '#fff' }
+            ? { background: 'linear-gradient(135deg,#6366f1,#38bdf8)', color: '#fff' }
             : { background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.09)', color: 'rgba(255,255,255,0.88)' }
           }
           dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.text) }}

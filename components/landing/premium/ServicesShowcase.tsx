@@ -35,7 +35,7 @@ const CARDS: SvcCard[] = [
     features: { en: ['Text to Video', 'Image to Video', 'Cinematic Prompts'], ka: ['ტექსტიდან ვიდეო', 'სურათიდან ვიდეო', 'სცენარი'], ru: ['Текст в видео', 'Фото в видео', 'Сценарии'] },
   },
   {
-    slug: 'image', icon: '🖼️', accent: '#f472b6',
+    slug: 'image', icon: '🖼️', accent: '#22d3ee',
     name: { en: 'Image Generation', ka: 'სურათის გენერაცია', ru: 'Генерация изображений' },
     desc: { en: 'Create campaign-grade visuals and commercial imagery', ka: 'შექმენი კამპანიის დონის ვიზუალი', ru: 'Создайте визуалы коммерческого качества' },
     features: { en: ['Posters & Ads', 'Product Shots', 'Art & Illustration'], ka: ['პოსტერები', 'პროდუქტის ფოტო', 'ხელოვნება'], ru: ['Постеры', 'Продукт-фото', 'Арт'] },

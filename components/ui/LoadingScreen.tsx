@@ -68,7 +68,7 @@ export function LoadingScreen({ onDone }: LoadingScreenProps) {
         <span
           className="text-2xl font-extrabold tracking-[0.25em]"
           style={{
-            background: 'linear-gradient(90deg, #00d4ff, #7c3aed)',
+            background: 'linear-gradient(90deg, #00d4ff, #0284c7)',
             WebkitBackgroundClip: 'text',
             WebkitTextFillColor: 'transparent',
           }}
@@ -87,7 +87,7 @@ export function LoadingScreen({ onDone }: LoadingScreenProps) {
           className="h-full rounded-full transition-all duration-100 ease-out"
           style={{
             width: `${progress}%`,
-            background: 'linear-gradient(to right, #00d4ff, #7c3aed)',
+            background: 'linear-gradient(to right, #00d4ff, #0284c7)',
             boxShadow: '0 0 8px rgba(0,212,255,0.6)',
           }}
         />

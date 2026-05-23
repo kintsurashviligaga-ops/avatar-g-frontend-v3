@@ -70,7 +70,7 @@ function Pill<T extends string>({
         <button key={o.value} onClick={() => onChange(o.value)}
           className="px-3 py-1.5 rounded-lg text-xs transition-all"
           style={value === o.value
-            ? { background: '#8b5cf618', border: '1px solid #8b5cf650', color: '#c4b5fd' }
+            ? { background: '#38bdf818', border: '1px solid #38bdf850', color: '#c4b5fd' }
             : { background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.45)' }
           }
         >{o.label}</button>
@@ -300,7 +300,7 @@ function TalkingAvatarTab() {
 
         <button onClick={busy ? undefined : generate} disabled={busy}
           className="w-full py-3.5 rounded-xl text-sm font-bold text-white flex items-center justify-center gap-2 transition-all disabled:opacity-60"
-          style={{ background: busy ? 'rgba(139,92,246,0.4)' : 'linear-gradient(135deg,#8b5cf6,#6366f1)', boxShadow: busy ? 'none' : '0 0 24px rgba(139,92,246,0.3)' }}
+          style={{ background: busy ? 'rgba(139,92,246,0.4)' : 'linear-gradient(135deg,#38bdf8,#6366f1)', boxShadow: busy ? 'none' : '0 0 24px rgba(139,92,246,0.3)' }}
         >
           {busy
             ? <><RefreshCw className="w-4 h-4 animate-spin" /> Generating Avatar Video...</>
@@ -315,7 +315,7 @@ function TalkingAvatarTab() {
         >
           {status === 'idle' && (
             <div className="text-center p-8">
-              <div className="w-20 h-20 rounded-2xl mx-auto mb-4 flex items-center justify-center" style={{ background: '#8b5cf610', border: '1px solid #8b5cf630' }}>
+              <div className="w-20 h-20 rounded-2xl mx-auto mb-4 flex items-center justify-center" style={{ background: '#38bdf810', border: '1px solid #38bdf830' }}>
                 <Video className="w-10 h-10 text-purple-500/50" />
               </div>
               <p className="text-sm text-white/30">Your talking avatar video will appear here</p>
@@ -335,7 +335,7 @@ function TalkingAvatarTab() {
               {/* Progress bar */}
               <div className="w-full h-1.5 rounded-full mx-auto max-w-xs overflow-hidden" style={{ background: 'rgba(255,255,255,0.08)' }}>
                 <div className="h-full rounded-full transition-all duration-500"
-                  style={{ width: `${progress}%`, background: 'linear-gradient(90deg,#8b5cf6,#6366f1)' }} />
+                  style={{ width: `${progress}%`, background: 'linear-gradient(90deg,#38bdf8,#6366f1)' }} />
               </div>
               <p className="text-xs text-white/20 mt-2">{progress}%</p>
             </div>
@@ -522,7 +522,7 @@ function AIPortraitTab() {
 
         <button onClick={generate} disabled={loading}
           className="w-full py-3 rounded-xl text-sm font-bold text-white flex items-center justify-center gap-2 transition-all disabled:opacity-50"
-          style={{ background: loading ? 'rgba(139,92,246,0.4)' : 'linear-gradient(135deg,#8b5cf6,#6366f1)', boxShadow: loading ? 'none' : '0 0 20px rgba(139,92,246,0.25)' }}
+          style={{ background: loading ? 'rgba(139,92,246,0.4)' : 'linear-gradient(135deg,#38bdf8,#6366f1)', boxShadow: loading ? 'none' : '0 0 20px rgba(139,92,246,0.25)' }}
         >
           {loading ? <><RefreshCw className="w-4 h-4 animate-spin" /> Generating...</> : <><Wand2 className="w-4 h-4" /> Generate AI Portrait</>}
         </button>
@@ -581,8 +581,8 @@ export default function AvatarStudioPage() {
     <div className="p-6 max-w-5xl mx-auto space-y-6">
       {/* Header */}
       <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: '#8b5cf618', border: '1px solid #8b5cf640' }}>
-          <UserCircle2 className="w-5 h-5" style={{ color: '#8b5cf6' }} />
+        <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: '#38bdf818', border: '1px solid #38bdf840' }}>
+          <UserCircle2 className="w-5 h-5" style={{ color: '#38bdf8' }} />
         </div>
         <div>
           <h1 className="text-xl font-bold text-white" style={{ fontFamily: 'var(--font-syne, system-ui)' }}>Avatar Studio</h1>
@@ -599,7 +599,7 @@ export default function AvatarStudioPage() {
           <button key={value} onClick={() => setMode(value)}
             className="flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-sm transition-all"
             style={mode === value
-              ? { background: 'linear-gradient(135deg,#8b5cf6,#6366f1)', color: '#fff', fontWeight: 600, boxShadow: '0 2px 12px rgba(139,92,246,0.3)' }
+              ? { background: 'linear-gradient(135deg,#38bdf8,#6366f1)', color: '#fff', fontWeight: 600, boxShadow: '0 2px 12px rgba(139,92,246,0.3)' }
               : { color: 'rgba(255,255,255,0.4)' }
             }
           >

@@ -2627,7 +2627,7 @@ function AnalyticsView({ locale }: { locale: string }) {
     <div className="max-w-3xl mx-auto space-y-4">
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <KpiTile label={locale === 'ka' ? 'შეტყობინება' : 'Messages'} value={data.totalMessages} accent="#0ea5e9" />
-        <KpiTile label={locale === 'ka' ? 'სურათი' : 'Images'} value={u.image} accent="#ec4899" />
+        <KpiTile label={locale === 'ka' ? 'სურათი' : 'Images'} value={u.image} accent="#06b6d4" />
         <KpiTile label={locale === 'ka' ? 'ვიდეო' : 'Videos'} value={u.video} accent="#f97316" />
         <KpiTile label={locale === 'ka' ? 'აუდიო' : 'Audio'} value={u.audio} accent="#06b6d4" />
       </div>
@@ -2648,7 +2648,7 @@ function AnalyticsView({ locale }: { locale: string }) {
           {locale === 'ka' ? 'გენერაცია სერვისების მიხედვით' : 'Generation usage'}
         </h3>
         <BarChart data={[
-          { label: 'image', count: u.image,  color: 'linear-gradient(180deg,#ec4899,#be185d)' },
+          { label: 'image', count: u.image,  color: 'linear-gradient(180deg,#06b6d4,#0e7490)' },
           { label: 'video', count: u.video,  color: 'linear-gradient(180deg,#f97316,#c2410c)' },
           { label: 'audio', count: u.audio,  color: 'linear-gradient(180deg,#06b6d4,#0891b2)' },
           { label: 'avatar', count: u.avatar, color: 'linear-gradient(180deg,#22d3ee,#0284c7)' },

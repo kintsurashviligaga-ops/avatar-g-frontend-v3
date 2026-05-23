@@ -74,7 +74,7 @@ export function CommandInput({ placeholder, value, onChange, onSubmit, className
         disabled={!controlledValue.trim() || loading}
         className={cn(
           'absolute right-3 top-1/2 -translate-y-1/2 w-9 h-9 rounded-xl flex items-center justify-center',
-          'bg-gradient-to-r from-[#00d4ff] to-[#7c3aed] text-white',
+          'bg-gradient-to-r from-[#00d4ff] to-[#0284c7] text-white',
           'transition-all duration-200 hover:brightness-110 active:scale-95',
           'disabled:opacity-30 disabled:cursor-not-allowed',
         )}

@@ -1944,7 +1944,7 @@ export default function ServiceWorkspaceView({
                 disabled={isGenerating || !canGenerate}
                 className="w-full rounded-xl py-3 text-sm font-semibold transition-all duration-200 flex items-center justify-center gap-2 disabled:opacity-40"
                 style={{
-                  background: isGenerating ? 'rgba(0,212,255,0.1)' : 'linear-gradient(135deg, #00d4ff 0%, #7c3aed 100%)',
+                  background: isGenerating ? 'rgba(0,212,255,0.1)' : 'linear-gradient(135deg, #00d4ff 0%, #0284c7 100%)',
                   color: '#fff',
                   boxShadow: !isGenerating && canGenerate ? '0 4px 20px rgba(0,212,255,0.25)' : 'none',
                 }}
@@ -2064,7 +2064,7 @@ export default function ServiceWorkspaceView({
                             className="h-full rounded-full transition-all duration-300"
                             style={{
                               width: `${Math.max(4, Math.min(100, Math.round(jobProgress.percent)))}%`,
-                              background: 'linear-gradient(90deg, #00d4ff 0%, #7c3aed 100%)',
+                              background: 'linear-gradient(90deg, #00d4ff 0%, #0284c7 100%)',
                             }}
                           />
                         </div>
@@ -2168,7 +2168,7 @@ export default function ServiceWorkspaceView({
                     </p>
                     <div className="flex items-center gap-4 mt-2">
                       <div className="w-20 h-1 rounded-full" style={{ background: 'rgba(0,212,255,0.1)' }} />
-                      <div className="w-12 h-1 rounded-full" style={{ background: 'rgba(124,58,237,0.1)' }} />
+                      <div className="w-12 h-1 rounded-full" style={{ background: 'rgba(2,132,199,0.1)' }} />
                       <div className="w-16 h-1 rounded-full" style={{ background: 'rgba(0,212,255,0.06)' }} />
                     </div>
                   </div>

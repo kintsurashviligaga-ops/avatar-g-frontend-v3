@@ -21,11 +21,11 @@ const colorMap: Record<BadgeColor, { bg: string; border: string; text: string; d
     glow: 'rgba(0,212,255,0.4)',
   },
   violet: {
-    bg: 'rgba(124,58,237,0.08)',
-    border: 'rgba(124,58,237,0.3)',
+    bg: 'rgba(2,132,199,0.08)',
+    border: 'rgba(2,132,199,0.3)',
     text: '#a78bfa',
-    dot: '#7c3aed',
-    glow: 'rgba(124,58,237,0.4)',
+    dot: '#0284c7',
+    glow: 'rgba(2,132,199,0.4)',
   },
   emerald: {
     bg: 'rgba(16,185,129,0.08)',

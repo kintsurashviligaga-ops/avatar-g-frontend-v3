@@ -423,7 +423,7 @@ function AudioPanel({ url, prompt, t }: { url: string; prompt: string; t: String
                 const active = i / bars.length < progress;
                 return (
                   <span key={i} className="flex-1 min-w-[2px] rounded-full transition-colors"
-                    style={{ height: `${Math.round(h * 100)}%`, background: active ? 'linear-gradient(180deg,#a855f7,#6d28d9)' : 'rgba(255,255,255,0.18)' }} />
+                    style={{ height: `${Math.round(h * 100)}%`, background: active ? 'linear-gradient(180deg,#0ea5e9,#0369a1)' : 'rgba(255,255,255,0.18)' }} />
                 );
               })}
             </div>

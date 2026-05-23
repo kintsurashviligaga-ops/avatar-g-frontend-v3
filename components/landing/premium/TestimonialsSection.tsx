@@ -217,7 +217,7 @@ const GALLERY_ITEMS = [
 // ─── Service badge colors ──────────────────────────────────────────────────────
 
 const SERVICE_COLORS: Record<string, string> = {
-  სურათი: '#ec4899', Image: '#ec4899', Изображение: '#ec4899',
+  სურათი: '#06b6d4', Image: '#06b6d4', Изображение: '#06b6d4',
   ვიდეო: '#f97316', Video: '#f97316', Видео: '#f97316',
   მუსიკა: '#f59e0b', Music: '#f59e0b', Музыка: '#f59e0b',
   ხმა: '#3b82f6', Voice: '#3b82f6', Голос: '#3b82f6',

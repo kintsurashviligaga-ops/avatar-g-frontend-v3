@@ -175,7 +175,7 @@ export function LandingNavbar() {
             href={localeHref('/signup')}
             className="text-[12px] sm:text-[13px] font-semibold px-4 py-1.5 rounded-full transition-all duration-200 hover:shadow-[0_0_16px_rgba(0,212,255,0.4)] hover:-translate-y-px"
             style={{
-              background: 'linear-gradient(135deg, rgba(0,212,255,0.9), rgba(124,58,237,0.9))',
+              background: 'linear-gradient(135deg, rgba(0,212,255,0.9), rgba(2,132,199,0.9))',
               color: '#fff',
             }}
           >
@@ -250,7 +250,7 @@ export function LandingNavbar() {
                   href={localeHref('/signup')}
                   onClick={() => setMobileOpen(false)}
                   className="block text-center py-3 rounded-xl text-base font-semibold text-white"
-                  style={{ background: 'linear-gradient(135deg, #00d4ff, #7c3aed)' }}
+                  style={{ background: 'linear-gradient(135deg, #00d4ff, #0284c7)' }}
                 >
                   {t('nav.getStarted')}
                 </Link>
