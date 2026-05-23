@@ -51,6 +51,10 @@ import {
   ThumbsDown,
   RotateCcw,
   LogOut,
+  Check,
+  Zap,
+  Crown,
+  ExternalLink,
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -1642,23 +1646,35 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
                 </span>
               </div>
             )}
-            {attachment && (
-              <div className="px-3 pt-3 -mb-1">
-                <div className="inline-flex items-center gap-2 max-w-full pl-1 pr-2 py-1 rounded-full bg-white/[0.05] border border-white/[0.10] text-[11px] text-white/85">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={attachment.previewUrl} alt="" className="h-6 w-6 rounded-full object-cover" />
-                  <span className="truncate max-w-[180px]">{attachment.name}</span>
-                  <button
-                    type="button"
-                    onClick={clearAttachment}
-                    aria-label="Remove attachment"
-                    className="h-5 w-5 rounded-full hover:bg-white/[0.10] flex items-center justify-center text-white/65 hover:text-white transition"
-                  >
-                    <X size={11} />
-                  </button>
-                </div>
-              </div>
-            )}
+            {/* Attachment chip animates its height so adding/removing a file
+                grows the composer fluidly — no layout shift, no clipping. */}
+            <AnimatePresence initial={false}>
+              {attachment && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+                  className="overflow-hidden"
+                >
+                  <div className="px-3 pt-3 -mb-1">
+                    <div className="inline-flex items-center gap-2 max-w-full pl-1 pr-2 py-1 rounded-full bg-white/[0.05] border border-white/[0.10] text-[11px] text-white/85">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={attachment.previewUrl} alt="" className="h-6 w-6 rounded-full object-cover" />
+                      <span className="truncate max-w-[180px]">{attachment.name}</span>
+                      <button
+                        type="button"
+                        onClick={clearAttachment}
+                        aria-label="Remove attachment"
+                        className="h-5 w-5 rounded-full hover:bg-white/[0.10] flex items-center justify-center text-white/65 hover:text-white transition"
+                      >
+                        <X size={11} />
+                      </button>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
             <textarea
               ref={inputRef}
               value={input}
@@ -1882,7 +1898,9 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
                 locale={localeCode}
                 userName={effectiveUserName}
                 isAuthenticated={effectiveAuth}
-                onLogin={() => { setDrawerOpen(false); promptAuth(); }}
+                // Close the drawer first, then open auth once it has animated out
+                // so the two overlays never stack into a broken fragment.
+                onLogin={() => { setDrawerOpen(false); window.setTimeout(promptAuth, 200); }}
               />
             </div>
           </motion.aside>
@@ -2056,12 +2074,42 @@ function SuggestedActionRow({ actions, onDispatch }: { actions: SuggestedAction[
 // ─── EmptyState — welcome + tappable example prompts (first-run UX) ──────────
 
 function EmptyState({ locale }: { locale: 'ka' | 'en' | 'ru' }) {
-  // High-end minimalist hero — a single question, perfectly centered.
+  // High-end minimalist hero — a single question, perfectly centered, with a
+  // staggered entrance and a soft violet aura behind the mark for depth.
   const welcome = locale === 'ka' ? 'რა გსურს?' : locale === 'ru' ? 'Чего хотите?' : 'What would you like?';
+  const sub = locale === 'ka'
+    ? 'ფილმი, ავატარი, მუსიკა, ხმა, ინტერიერი — ერთ სივრცეში.'
+    : locale === 'ru'
+      ? 'Фильм, аватар, музыка, голос, интерьер — в одном окне.'
+      : 'Film, avatar, music, voice, interiors — all in one place.';
+  const ease = [0.22, 1, 0.36, 1] as const;
   return (
     <div className="h-full flex flex-col items-center justify-center px-4 text-center">
-      <Sparkles size={30} className="text-white/35 mb-5" />
-      <h2 className="text-[30px] sm:text-[34px] font-semibold text-white tracking-tight">{welcome}</h2>
+      <motion.div
+        initial={{ opacity: 0, scale: 0.8, y: 6 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        transition={{ duration: 0.5, ease }}
+        className="relative mb-5"
+      >
+        <span aria-hidden className="absolute inset-0 -z-10 blur-2xl rounded-full bg-violet-500/20 scale-150" />
+        <Sparkles size={32} className="text-violet-300/80" />
+      </motion.div>
+      <motion.h2
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.45, delay: 0.08, ease }}
+        className="text-[30px] sm:text-[36px] font-semibold text-white tracking-tight leading-[1.1]"
+      >
+        {welcome}
+      </motion.h2>
+      <motion.p
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.45, delay: 0.16, ease }}
+        className="mt-2.5 max-w-xs text-[14px] text-white/45 leading-relaxed"
+      >
+        {sub}
+      </motion.p>
     </div>
   );
 }
@@ -2212,10 +2260,17 @@ function MessageRow({ m, locale, onLike, onDislike, onCopy, onRegenerate, onSpea
   return (
     <div className="flex flex-col items-start gap-2">
       {m.pending ? (
-        <div className="inline-flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-white/[0.04] border border-white/[0.08] text-white/80 text-[14px]">
-          <Loader2 size={14} className="animate-spin text-violet-300" />
-          {m.text}
-        </div>
+        <motion.div
+          initial={{ opacity: 0, y: 4 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
+          className="relative inline-flex items-center gap-2.5 px-4 py-2.5 rounded-2xl bg-white/[0.04] border border-violet-400/20 text-white/85 text-[14px] overflow-hidden shadow-[0_0_24px_-8px_rgba(168,85,247,0.45)]"
+        >
+          {/* Sweeping premium glow that reflects active processing time */}
+          <span aria-hidden className="pointer-events-none absolute inset-0 rounded-2xl bg-gradient-to-r from-violet-500/0 via-fuchsia-500/[0.12] to-violet-500/0 animate-pulse" />
+          <Loader2 size={14} className="relative animate-spin text-violet-300" />
+          <span className="relative">{m.text}</span>
+        </motion.div>
       ) : (
         <>
           {text && (
@@ -2462,46 +2517,173 @@ function AnalyticsView({ locale }: { locale: string }) {
   );
 }
 
+interface PricePlan {
+  id: 'starter' | 'pro' | 'ultimate';
+  name: string;
+  price: string;
+  period: string;
+  credits: string;
+  creditsLabel: string;
+  icon: typeof Zap;
+  features: string[];
+  popular?: boolean;
+}
+
 function BillingView({ locale }: { locale: string }) {
+  const t = (ka: string, en: string, ru: string) => (locale === 'ka' ? ka : locale === 'ru' ? ru : en);
+  const creditsLabel = t('კრედიტი / თვე', 'credits / month', 'кредитов / мес');
+
+  const plans: PricePlan[] = [
+    {
+      id: 'starter', name: t('სტარტერი', 'Starter', 'Стартер'), price: '₾0',
+      period: t('სამუდამოდ', 'forever', 'навсегда'), credits: '200', creditsLabel, icon: Sparkles,
+      features: [
+        t('ჩატი + სურათები', 'Chat + images', 'Чат + изображения'),
+        t('საბაზისო მოდელები', 'Standard models', 'Базовые модели'),
+        t('1 ავატარი', '1 avatar', '1 аватар'),
+      ],
+    },
+    {
+      id: 'pro', name: 'Pro', price: '₾9', period: t('თვეში', '/ month', '/ мес'),
+      credits: '5,000', creditsLabel, icon: Zap, popular: true,
+      features: [
+        t('უპირატესი მოდელები', 'Premium models', 'Премиум-модели'),
+        t('ვიდეო + მუსიკა', 'Video + music', 'Видео + музыка'),
+        t('პრიორიტეტული რიგი', 'Priority queue', 'Приоритетная очередь'),
+      ],
+    },
+    {
+      id: 'ultimate', name: 'Ultimate', price: '₾29', period: t('თვეში', '/ month', '/ мес'),
+      credits: '20,000', creditsLabel, icon: Crown,
+      features: [
+        t('HeyGen Pro ავატარები', 'HeyGen Pro avatars', 'HeyGen Pro аватары'),
+        t('Voice Clone', 'Voice Clone', 'Клон голоса'),
+        t('მაქს. პრიორიტეტი', 'Max priority', 'Макс. приоритет'),
+      ],
+    },
+  ];
+
   return (
-    <div className="max-w-md mx-auto space-y-4 pt-4">
-      <h2 className="text-[18px] font-bold text-white">
-        {locale === 'ka' ? 'ფასები & სეთინგი' : 'Pricing & Settings'}
-      </h2>
-      <p className="text-[13px] text-[#94A3B8]">
-        {locale === 'ka' ? 'Stripe billing dashboard' : 'Stripe billing dashboard'}
-      </p>
-      <div className="rounded-2xl p-5 bg-white/[0.04] border border-white/[0.08] space-y-3">
-        <PlanRow name="Starter" price="₾0" desc={locale === 'ka' ? 'უფასო · 200 კრედიტი თვეში' : 'Free · 200 credits / month'} />
-        <PlanRow name="Pro" price="₾9" desc={locale === 'ka' ? '5,000 კრედიტი · უპირატესი მოდელები' : '5,000 credits · premium models'} />
-        <PlanRow name="Ultimate" price="₾29" desc={locale === 'ka' ? '20,000 კრედიტი · HeyGen Pro · Voice Clone' : '20,000 credits · HeyGen Pro · Voice Clone'} />
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
+      className="max-w-md mx-auto pt-5 pb-10 space-y-5"
+    >
+      <header className="text-center space-y-1.5">
+        <h2 className="text-[24px] font-bold tracking-tight text-white">
+          {t('აირჩიე გეგმა', 'Choose your plan', 'Выберите план')}
+        </h2>
+        <p className="text-[13px] text-white/55 leading-relaxed px-2">
+          {t('გაამძაფრე შემოქმედება — გაზარდე ან გააუქმე ნებისმიერ დროს.',
+            'Scale your creativity — upgrade or cancel anytime.',
+            'Масштабируйте творчество — меняйте план в любой момент.')}
+        </p>
+      </header>
+
+      <div className="space-y-3.5">
+        {plans.map((p, idx) => {
+          const Icon = p.icon;
+          return (
+            <motion.div
+              key={p.id}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3, delay: 0.06 * idx, ease: [0.22, 1, 0.36, 1] }}
+              className="relative"
+            >
+              {/* Gradient halo ring — the memorable anchor on the Pro tier */}
+              {p.popular && (
+                <div aria-hidden className="absolute -inset-px rounded-[1.55rem] bg-gradient-to-br from-violet-500/70 via-fuchsia-500/45 to-violet-500/70" />
+              )}
+              <div
+                className={`relative rounded-[1.5rem] p-5 border backdrop-blur-xl transition-all duration-300 ${
+                  p.popular
+                    ? 'border-transparent bg-[#0b0712] shadow-[0_20px_64px_-22px_rgba(168,85,247,0.6)]'
+                    : 'border-white/[0.08] bg-white/[0.03] hover:border-white/[0.16] hover:bg-white/[0.05]'
+                }`}
+              >
+                {p.popular && (
+                  <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 inline-flex items-center gap-1 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-[0.14em] text-white bg-gradient-to-r from-violet-600 to-fuchsia-500 shadow-[0_6px_22px_-6px_rgba(217,70,239,0.85)] whitespace-nowrap">
+                    <Sparkles size={11} /> {t('პოპულარული', 'Popular', 'Популярный')}
+                  </span>
+                )}
+
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <span className={`h-9 w-9 rounded-xl flex items-center justify-center flex-shrink-0 ${p.popular ? 'bg-violet-500/20 text-violet-200' : 'bg-white/[0.06] text-white/70'}`}>
+                      <Icon size={17} />
+                    </span>
+                    <span className="text-[12px] font-bold uppercase tracking-[0.16em] text-white/75 truncate">{p.name}</span>
+                  </div>
+                  <div className="text-right leading-none flex-shrink-0">
+                    <span className="text-[26px] font-extrabold tabular-nums text-white">{p.price}</span>
+                    <span className="block text-[11px] text-white/45 mt-1">{p.period}</span>
+                  </div>
+                </div>
+
+                {/* Credit structure — high-contrast, unmissable */}
+                <div className="mt-4 flex items-baseline gap-1.5 rounded-2xl bg-black/40 border border-white/[0.06] px-3.5 py-2.5">
+                  <span className={`text-[22px] font-bold tabular-nums tracking-tight ${p.popular ? 'text-transparent bg-clip-text bg-gradient-to-r from-violet-200 to-fuchsia-200' : 'text-white'}`}>{p.credits}</span>
+                  <span className="text-[12px] text-white/55">{p.creditsLabel}</span>
+                </div>
+
+                <ul className="mt-3.5 space-y-2">
+                  {p.features.map((f, i) => (
+                    <li key={i} className="flex items-center gap-2 text-[12.5px] text-white/75">
+                      <Check size={14} className={`flex-shrink-0 ${p.popular ? 'text-fuchsia-300' : 'text-emerald-400'}`} />
+                      <span className="truncate">{f}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </motion.div>
+          );
+        })}
       </div>
-      <button
-        type="button"
-        onClick={async () => {
-          try {
-            const r = await fetch('/api/billing/portal', { method: 'POST', credentials: 'include' });
-            const j = await r.json() as { url?: string };
-            if (j.url) window.location.href = j.url;
-          } catch { /* ignore */ }
-        }}
-        className="w-full py-3 rounded-2xl bg-white text-black font-semibold text-[14px]"
-      >
-        {locale === 'ka' ? 'Stripe Customer Portal-ის გახსნა' : 'Open Stripe Customer Portal'}
-      </button>
-    </div>
+
+      <StripePortalButton locale={locale} />
+
+      <p className="text-center text-[11px] text-white/35 leading-relaxed px-4">
+        {t('გადახდები მუშავდება Stripe-ით. გააუქმე ნებისმიერ დროს.',
+          'Payments are processed securely by Stripe. Cancel anytime.',
+          'Платежи обрабатываются через Stripe. Отмена в любое время.')}
+      </p>
+    </motion.div>
   );
 }
 
-function PlanRow({ name, price, desc }: { name: string; price: string; desc: string }) {
+// Glassmorphic primary CTA — animated diagonal sheen on hover, explicit
+// loading/active/focus states, perfectly centered within the billing column.
+function StripePortalButton({ locale }: { locale: string }) {
+  const [loading, setLoading] = useState(false);
+  const label = locale === 'ka' ? 'Stripe პორტალის გახსნა' : locale === 'ru' ? 'Открыть портал Stripe' : 'Open Stripe Customer Portal';
+  const openPortal = useCallback(async () => {
+    if (loading) return;
+    setLoading(true);
+    try {
+      const r = await fetch('/api/billing/portal', { method: 'POST', credentials: 'include' });
+      const j = await r.json() as { url?: string };
+      if (j.url) { window.location.href = j.url; return; }
+      setLoading(false);
+    } catch { setLoading(false); }
+  }, [loading]);
+
   return (
-    <div className="flex items-center justify-between">
-      <div>
-        <div className="text-[14px] font-semibold text-white">{name}</div>
-        <div className="text-[11px] text-[#94A3B8] mt-0.5">{desc}</div>
-      </div>
-      <div className="text-[16px] font-bold text-white">{price}</div>
-    </div>
+    <button
+      type="button"
+      onClick={openPortal}
+      disabled={loading}
+      aria-label={label}
+      className="group relative w-full overflow-hidden rounded-2xl px-5 py-3.5 flex items-center justify-center gap-2.5 border border-white/[0.14] bg-white/[0.06] backdrop-blur-xl text-white font-semibold text-[14px] transition-all duration-300 hover:bg-white/[0.10] hover:border-white/[0.24] hover:shadow-[0_14px_44px_-14px_rgba(168,85,247,0.55)] active:scale-[0.985] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400/60 disabled:opacity-70"
+    >
+      <span aria-hidden className="pointer-events-none absolute inset-0 -translate-x-full group-hover:translate-x-full transition-transform duration-700 ease-out bg-gradient-to-r from-transparent via-white/[0.16] to-transparent" />
+      {loading
+        ? <Loader2 size={16} className="relative animate-spin text-violet-200" />
+        : <CreditCard size={16} className="relative text-violet-200" />}
+      <span className="relative">{label}</span>
+      {!loading && <ExternalLink size={14} className="relative text-white/50 group-hover:text-white/85 transition" />}
+    </button>
   );
 }
 
@@ -2696,15 +2878,27 @@ function AccountSection({
             </button>
           )}
 
-          {/* Legal / support */}
-          <div className="pt-1 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-white/45">
-            <a href={`/${locale}/support`} className="hover:text-white/80 transition">{locale === 'ka' ? 'მხარდაჭერა' : locale === 'ru' ? 'Поддержка' : 'Support'}</a>
-            <span aria-hidden>·</span>
-            <a href={`/${locale}/privacy`} className="hover:text-white/80 transition">{locale === 'ka' ? 'კონფიდენც.' : locale === 'ru' ? 'Приватность' : 'Privacy'}</a>
-            <span aria-hidden>·</span>
-            <a href={`/${locale}/terms`} className="hover:text-white/80 transition">{locale === 'ka' ? 'პირობები' : locale === 'ru' ? 'Условия' : 'Terms'}</a>
-            <span aria-hidden>·</span>
-            <a href={`/${locale}/refund-policy`} className="hover:text-white/80 transition">{locale === 'ka' ? 'დაბრუნება' : locale === 'ru' ? 'Возврат' : 'Refunds'}</a>
+          {/* Legal / support — deterministic routes, opened in a new tab so the
+              chat session is never lost and no in-app panel can overlap/break. */}
+          <div className="pt-1 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[11px] text-white/45">
+            {[
+              { href: `/${locale}/support`, label: locale === 'ka' ? 'მხარდაჭერა' : locale === 'ru' ? 'Поддержка' : 'Support' },
+              { href: `/${locale}/privacy`, label: locale === 'ka' ? 'კონფიდენც.' : locale === 'ru' ? 'Приватность' : 'Privacy' },
+              { href: `/${locale}/terms`, label: locale === 'ka' ? 'პირობები' : locale === 'ru' ? 'Условия' : 'Terms' },
+              { href: `/${locale}/refund-policy`, label: locale === 'ka' ? 'დაბრუნება' : locale === 'ru' ? 'Возврат' : 'Refunds' },
+            ].map((lnk, i, arr) => (
+              <span key={lnk.href} className="inline-flex items-center gap-2.5">
+                <a
+                  href={lnk.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="hover:text-white/85 underline-offset-2 hover:underline transition-colors"
+                >
+                  {lnk.label}
+                </a>
+                {i < arr.length - 1 && <span aria-hidden className="text-white/20">·</span>}
+              </span>
+            ))}
           </div>
         </div>
       )}
