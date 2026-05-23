@@ -6,6 +6,7 @@ import { NextRequest } from 'next/server';
 import { reportError } from '@/lib/observability/report-error';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { embed } from '@/lib/memory/embed';
+import { classifyGeminiMessage, logGeminiState } from '@/lib/orchestrator/gemini-guard';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -171,7 +172,11 @@ async function buildMemoryPreamble(req: NextRequest, messages: IncomingMessage[]
 // ─── 5. ERROR CLASSIFICATION ─────────────────────────────────────────────────
 
 function classifyError(err: unknown): 'rate_limit' | 'safety' | 'unknown' {
-  const msg = err instanceof Error ? err.message.toLowerCase() : String(err).toLowerCase();
+  const raw = err instanceof Error ? err.message : String(err);
+  const msg = raw.toLowerCase();
+  // Structured terminal feedback on the Gemini billing/quota/auth posture so a
+  // spend wall is instantly distinguishable from a transient blip in prod logs.
+  logGeminiState('chat/gemini', classifyGeminiMessage(raw), raw);
   if (msg.includes('429') || msg.includes('quota') || msg.includes('rate limit') || msg.includes('resource_exhausted') || msg.includes('maxretriesexceeded')) {
     return 'rate_limit';
   }

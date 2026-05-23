@@ -26,6 +26,7 @@
     "health:providers": "node scripts/provider-health-check.mjs",
     "preflight": "node scripts/preflight-check.mjs",
     "db:apply-ledger": "node scripts/apply-ledger-migration.mjs",
+    "db:apply-jobs": "node scripts/apply-generation-jobs-migration.mjs",
     "voice:v2v": "npm --prefix services/voice-v2v-node install && npm --prefix services/voice-v2v-node run start",
     "voice:v2v:dev": "npm --prefix services/voice-v2v-node install && npm --prefix services/voice-v2v-node run dev"
   },
