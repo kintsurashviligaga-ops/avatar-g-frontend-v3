@@ -430,6 +430,10 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const endRef = useRef<HTMLDivElement | null>(null);
   const recognitionRef = useRef<unknown>(null);
+  // True while the user intends to keep dictating — drives the seamless
+  // auto-restart of continuous SpeechRecognition (Chrome ends sessions on
+  // silence; we restart until the user manually stops).
+  const srWantRef = useRef(false);
 
   // Inline-only: when a new media-bearing assistant message lands, smoothly
   // scroll it into view so it's immediately framed in the chat viewport.
@@ -732,8 +736,10 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
     const SRCtor = win.SpeechRecognition ?? win.webkitSpeechRecognition;
     const lang = localeCode === 'ka' ? 'ka-GE' : localeCode === 'ru' ? 'ru-RU' : 'en-US';
 
-    // STOP path (works for either backend)
+    // STOP path (works for either backend). Clear intent first so the
+    // self-restart guard in onend does NOT relaunch the session.
     if (listening) {
+      srWantRef.current = false;
       const ref = recognitionRef.current as { stop?: () => void } | null;
       try { ref?.stop?.(); } catch { /* ignore */ }
       setListening(false);
@@ -744,35 +750,57 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
     // interimResults streams partial tokens so the user watches their speech
     // turn into text in real time; continuous keeps the mic hot until they stop.
     if (SRCtor) {
-      try {
-        const rec = new SRCtor();
-        rec.lang = lang;
-        rec.continuous = true;
-        rec.interimResults = true;
-        const base = (inputRef.current?.value ?? '').trim();
-        let finalText = '';
-        rec.onresult = (e) => {
-          let interim = '';
-          for (let i = e.resultIndex; i < e.results.length; i++) {
-            const seg = e.results[i];
-            const txt = seg?.[0]?.transcript ?? '';
-            if (seg?.isFinal) finalText += txt;
-            else interim += txt;
-          }
-          const live = `${finalText}${interim}`.trim();
-          setInput(base ? (live ? `${base} ${live}` : base) : live);
-        };
-        rec.onend = () => setListening(false);
-        rec.onerror = (e) => {
+      // Production-hardened continuous dictation: each session re-reads the
+      // current input as its base, so a seamless auto-restart on `onend`
+      // (Chrome stops on silence) never loses already-committed transcript.
+      const startSR = () => {
+        try {
+          const rec = new SRCtor();
+          rec.lang = lang;
+          rec.continuous = true;
+          rec.interimResults = true;
+          const base = (inputRef.current?.value ?? '').trim();
+          let finalText = '';
+          rec.onresult = (e) => {
+            let interim = '';
+            for (let i = e.resultIndex; i < e.results.length; i++) {
+              const seg = e.results[i];
+              const txt = seg?.[0]?.transcript ?? '';
+              if (seg?.isFinal) finalText += txt;
+              else interim += txt;
+            }
+            const live = `${finalText}${interim}`.trim();
+            setInput(base ? (live ? `${base} ${live}` : base) : live);
+          };
+          rec.onend = () => {
+            // Restart seamlessly if the user still intends to dictate.
+            if (srWantRef.current) {
+              try { startSR(); } catch { srWantRef.current = false; setListening(false); }
+            } else {
+              setListening(false);
+            }
+          };
+          rec.onerror = (e) => {
+            // Fatal (permission) → stop for good + guide the user. Transient
+            // ('no-speech' / 'aborted' / 'network') → let onend auto-restart.
+            if (e?.error === 'not-allowed' || e?.error === 'service-not-allowed') {
+              srWantRef.current = false;
+              setListening(false);
+              setPermissionNotice(micPermissionMessage(localeCode));
+            }
+          };
+          rec.start();
+          recognitionRef.current = rec;
+        } catch {
+          srWantRef.current = false;
           setListening(false);
-          if (e?.error === 'not-allowed' || e?.error === 'service-not-allowed') setPermissionNotice(micPermissionMessage(localeCode));
-        };
-        setPermissionNotice(null);
-        rec.start();
-        recognitionRef.current = rec;
-        setListening(true);
-        return;
-      } catch { /* fall through to MediaRecorder */ }
+        }
+      };
+      setPermissionNotice(null);
+      srWantRef.current = true;
+      setListening(true);
+      startSR();
+      return;
     }
 
     // Backend B: MediaRecorder + Whisper (iOS Safari, anywhere SR is missing).
@@ -1570,7 +1598,7 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
                   onClick={() => void runAvatarProduce()}
                   disabled={sending}
                   title={localeCode === 'ka' ? 'დაწერე ტექსტი (+სურვ. ფოტო)' : 'Type a script (+optional photo)'}
-                  className="flex-1 min-w-[30%] inline-flex items-center justify-center gap-1.5 h-11 rounded-2xl font-semibold text-[13px] text-white bg-gradient-to-r from-sky-600 to-indigo-500 hover:from-sky-500 hover:to-indigo-400 active:scale-[0.99] disabled:opacity-50 transition-transform duration-150 shadow-[0_8px_30px_-8px_rgba(56,135,235,0.55)]"
+                  className="flex-1 min-w-[30%] inline-flex items-center justify-center gap-1.5 h-11 rounded-2xl font-semibold text-[13px] text-white bg-gradient-to-r from-sky-600 to-blue-600 hover:from-sky-500 hover:to-blue-500 active:scale-[0.99] disabled:opacity-50 transition-transform duration-150 shadow-[0_8px_30px_-8px_rgba(37,99,235,0.55)]"
                 >
                   <UserIcon size={15} />
                   {localeCode === 'ka' ? 'AI ავატარი' : localeCode === 'ru' ? 'AI Аватар' : 'AI Avatar'}
@@ -2004,13 +2032,14 @@ function ProduceProgress({ stage, pct, detail, locale }: { stage: string; pct: n
 }
 
 // ─── SoundwaveMeter — live "listening" indicator next to the mic button ──────
-// Five Framer-Motion bars that breathe in a staggered loop while voice capture
-// is active. It signals an active recording session (not decoded amplitude) —
-// honest feedback that the mic is hot, mounted/unmounted via AnimatePresence so
-// it slides in and out cleanly.
+// Seven Framer-Motion bars with a cyan→sky→blue ocean gradient, each pulsing on
+// its own organic cadence so the cluster reads like a live waveform while voice
+// capture is active. Honest feedback that the mic is hot (not decoded amplitude);
+// mounted/unmounted via AnimatePresence so it slides in and out cleanly.
 function SoundwaveMeter() {
-  const bars = [0, 1, 2, 3, 4];
-  const peaks = [12, 18, 9, 20, 14];
+  const bars = [0, 1, 2, 3, 4, 5, 6];
+  const peaks = [10, 20, 13, 24, 11, 18, 9];
+  const durs = [0.74, 0.96, 0.62, 1.02, 0.82, 0.7, 0.66];
   return (
     <motion.div
       initial={{ opacity: 0, width: 0 }}
@@ -2020,15 +2049,18 @@ function SoundwaveMeter() {
       className="flex items-center gap-[3px] h-6 px-1.5 overflow-hidden"
       aria-hidden="true"
     >
-      {bars.map(i => (
-        <motion.span
-          key={i}
-          className="w-[2.5px] rounded-full bg-cyan-300"
-          initial={{ height: 4 }}
-          animate={{ height: [4, peaks[i] ?? 12, 6, (peaks[i] ?? 12) - 4, 4] }}
-          transition={{ duration: 0.9, repeat: Infinity, ease: 'easeInOut', delay: i * 0.11 }}
-        />
-      ))}
+      {bars.map(i => {
+        const peak = peaks[i] ?? 12;
+        return (
+          <motion.span
+            key={i}
+            className="w-[2.5px] rounded-full bg-gradient-to-t from-blue-500 via-sky-400 to-cyan-300"
+            initial={{ height: 4 }}
+            animate={{ height: [4, peak, 7, peak - 5, 4] }}
+            transition={{ duration: durs[i] ?? 0.8, repeat: Infinity, ease: 'easeInOut', delay: i * 0.09 }}
+          />
+        );
+      })}
     </motion.div>
   );
 }
@@ -2756,6 +2788,39 @@ function BillingView({ locale }: { locale: string }) {
             </motion.div>
           );
         })}
+      </div>
+
+      {/* Credit → output guide — makes per-route cost legible to first-time
+          guests. Mirrors PRODUCE_COST in lib/orchestrator/rate-limit.ts. */}
+      <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-4">
+        <div className="text-[11px] font-bold uppercase tracking-[0.14em] text-white/55 mb-3">
+          {t('რას ქმნის კრედიტი', 'What your credits make', 'Что создают кредиты')}
+        </div>
+        <div className="grid grid-cols-2 gap-x-4 gap-y-2.5">
+          {([
+            { icon: VideoIcon, label: t('ფილმი', 'Film', 'Фильм'), cr: 20 },
+            { icon: UserIcon, label: t('ავატარი', 'Avatar', 'Аватар'), cr: 15 },
+            { icon: SofaIcon, label: t('ინტერიერი 3D', 'Interior 3D', 'Интерьер 3D'), cr: 8 },
+            { icon: MusicIcon, label: t('მუსიკა', 'Music', 'Музыка'), cr: 6 },
+            { icon: ImageIcon, label: t('სურათი', 'Image', 'Изображение'), cr: 2 },
+            { icon: Volume2, label: t('ხმა', 'Voice', 'Голос'), cr: 2 },
+          ]).map(({ icon: Icon, label, cr }) => (
+            <div key={label} className="flex items-center justify-between gap-2">
+              <span className="flex items-center gap-2 text-[12.5px] text-white/75 min-w-0">
+                <Icon size={14} className="text-sky-300 flex-shrink-0" />
+                <span className="truncate">{label}</span>
+              </span>
+              <span className="text-[12px] font-semibold tabular-nums text-cyan-200 flex-shrink-0">
+                {cr} {t('კრ', 'cr', 'кр')}
+              </span>
+            </div>
+          ))}
+        </div>
+        <p className="mt-3 text-[11px] text-white/40 leading-relaxed">
+          {t('მაგ: Pro-ს 5,000 კრედიტი = 250 ფილმი ან 2,500 სურათი.',
+            "e.g. Pro's 5,000 credits = 250 films or 2,500 images.",
+            'Напр.: 5,000 кредитов Pro = 250 фильмов или 2,500 изображений.')}
+        </p>
       </div>
 
       <StripePortalButton locale={locale} />
