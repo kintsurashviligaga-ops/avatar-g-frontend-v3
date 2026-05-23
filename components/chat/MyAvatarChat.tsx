@@ -405,6 +405,9 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
   const [dragActive, setDragActive] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  // Lets the user cancel an in-flight produce pipeline (Film/Avatar/Interior/
+  // Image-Music-Voice) — those flows stream over a long-lived fetch.
+  const produceAbortRef = useRef<AbortController | null>(null);
 
   // Session-recovery: persist the pending attachment to localStorage so a
   // page reload doesn't drop the file the user was about to send. Cleared
@@ -1008,6 +1011,12 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
   // ── One-tap cinematic production. POSTs to the authed /produce orchestrator
   //    and renders the live SSE stage stream into a progress tracker; on
   //    completion the final 30s master mounts inline in the timeline.
+  // Cancel any in-flight produce pipeline. The aborted fetch rejects with
+  // AbortError, which each flow surfaces as a graceful "stopped" message.
+  const cancelProduce = useCallback(() => {
+    try { produceAbortRef.current?.abort(); } catch { /* noop */ }
+  }, []);
+
   const runProduce = useCallback(async () => {
     if (producing || sending) return;
     const prompt = input.trim() || (localeCode === 'ka' ? 'კინემატოგრაფიული 30-წამიანი რგოლი' : 'a cinematic 30-second promo');
@@ -1020,12 +1029,15 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
       { id: userId, role: 'user', text: `🎬 ${prompt}`, ts: Date.now() },
       { id: pendId, role: 'assistant', text: produceStageLabel('initiated', localeCode), pending: true, service: 'video', ts: Date.now() },
     ]);
+    const controller = new AbortController();
+    produceAbortRef.current = controller;
     try {
       const res = await fetch('/api/orchestrator/produce', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({ prompt, totalDurationSec: 30 }),
+        signal: controller.signal,
       });
       if (res.status === 401) {
         setMessages(m => m.filter(x => x.id !== pendId && x.id !== userId));
@@ -1068,8 +1080,13 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
         patchMessage(setMessages, pendId, { pending: false, text: localizedProduceError(failed, localeCode) });
       }
     } catch (e) {
-      patchMessage(setMessages, pendId, { pending: false, text: localizedProduceError(e instanceof Error ? e.message : null, localeCode) });
+      if ((e as Error)?.name === 'AbortError') {
+        patchMessage(setMessages, pendId, { pending: false, text: localizedError(e, localeCode) });
+      } else {
+        patchMessage(setMessages, pendId, { pending: false, text: localizedProduceError(e instanceof Error ? e.message : null, localeCode) });
+      }
     } finally {
+      produceAbortRef.current = null;
       setProducing(false); setProduceStage(''); setProducePct(0); setProduceDetail('');
     }
   }, [producing, sending, input, localeCode, promptAuth]);
@@ -1099,10 +1116,13 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
       { id: pendId, role: 'assistant', text: '[Extracting Spatial Matrix…]', pending: true, service: 'interior', ts: Date.now() },
     ]);
     setAttachment(null);
+    const controller = new AbortController();
+    produceAbortRef.current = controller;
     try {
       const res = await fetch('/api/orchestrator/interior/produce', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
         body: JSON.stringify({ imageUrls: [imageUrl], brief }),
+        signal: controller.signal,
       });
       if (res.status === 401) { setMessages(m => m.filter(x => x.id !== pendId && x.id !== userId)); promptAuth(); return; }
       if (!res.ok || !res.body) throw new Error(`interior_${res.status}`);
@@ -1141,8 +1161,13 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
         patchMessage(setMessages, pendId, { pending: false, text: localizedInteriorError(failed, localeCode) });
       }
     } catch (e) {
-      patchMessage(setMessages, pendId, { pending: false, text: localizedInteriorError(e instanceof Error ? e.message : null, localeCode) });
+      if ((e as Error)?.name === 'AbortError') {
+        patchMessage(setMessages, pendId, { pending: false, text: localizedError(e, localeCode) });
+      } else {
+        patchMessage(setMessages, pendId, { pending: false, text: localizedInteriorError(e instanceof Error ? e.message : null, localeCode) });
+      }
     } finally {
+      produceAbortRef.current = null;
       setProducing(false); setProduceStage(''); setProducePct(0); setProduceDetail('');
     }
   }, [producing, sending, attachment, input, localeCode, promptAuth]);
@@ -1172,10 +1197,13 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
       { id: pendId, role: 'assistant', text: '[Initializing HeyGen session…]', pending: true, service: 'avatar', ts: Date.now() },
     ]);
     setAttachment(null);
+    const controller = new AbortController();
+    produceAbortRef.current = controller;
     try {
       const res = await fetch('/api/orchestrator/avatar/produce', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
         body: JSON.stringify({ script, ...(photo ? { photoBase64: photo.base64, photoMimeType: photo.type } : {}) }),
+        signal: controller.signal,
       });
       if (res.status === 401) { setMessages(m => m.filter(x => x.id !== pendId && x.id !== userId)); promptAuth(); return; }
       if (!res.ok || !res.body) throw new Error(`avatar_${res.status}`);
@@ -1211,8 +1239,13 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
         patchMessage(setMessages, pendId, { pending: false, text: localizedAvatarError(failed, localeCode) });
       }
     } catch (e) {
-      patchMessage(setMessages, pendId, { pending: false, text: localizedAvatarError(e instanceof Error ? e.message : null, localeCode) });
+      if ((e as Error)?.name === 'AbortError') {
+        patchMessage(setMessages, pendId, { pending: false, text: localizedError(e, localeCode) });
+      } else {
+        patchMessage(setMessages, pendId, { pending: false, text: localizedAvatarError(e instanceof Error ? e.message : null, localeCode) });
+      }
     } finally {
+      produceAbortRef.current = null;
       setProducing(false); setProduceStage(''); setProducePct(0); setProduceDetail('');
     }
   }, [producing, sending, input, attachment, localeCode, promptAuth]);
@@ -1229,14 +1262,19 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
       : kind === 'voice' ? '[Agent H: Synthesizing Vocal Frequency Spectrum…]'
       : '[Agent S: Architecting Lyric/Vibe Matrix…]');
     setProducePct(5); setProduceDetail('');
+    const controller = new AbortController();
+    produceAbortRef.current = controller;
     let res: Response;
     try {
       res = await fetch(`/api/orchestrator/${kind}/produce`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
         body: JSON.stringify(kind === 'voice' ? { text: prompt, locale: localeCode } : { prompt }),
+        signal: controller.signal,
       });
-    } catch {
+    } catch (e) {
       setProducing(false); setProduceStage(''); setProducePct(0);
+      produceAbortRef.current = null;
+      if ((e as Error)?.name === 'AbortError') return; // user cancelled — no fallback
       void send(prompt, kind); return; // network → direct path
     }
     if (res.status === 401) {
@@ -1289,8 +1327,13 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
         patchMessage(setMessages, pendId, { pending: false, text: localizedProduceError(failed, localeCode) });
       }
     } catch (e) {
-      patchMessage(setMessages, pendId, { pending: false, text: localizedProduceError(e instanceof Error ? e.message : null, localeCode) });
+      if ((e as Error)?.name === 'AbortError') {
+        patchMessage(setMessages, pendId, { pending: false, text: localizedError(e, localeCode) });
+      } else {
+        patchMessage(setMessages, pendId, { pending: false, text: localizedProduceError(e instanceof Error ? e.message : null, localeCode) });
+      }
     } finally {
+      produceAbortRef.current = null;
       setProducing(false); setProduceStage(''); setProducePct(0); setProduceDetail('');
     }
   }, [producing, sending, input, produceStage, localeCode, send]);
@@ -1592,7 +1635,7 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
           {/* One-tap cinematic production — button → live SSE telemetry → inline film */}
           <div className="max-w-2xl mx-auto mb-2">
             {producing ? (
-              <ProduceProgress stage={produceStage} pct={producePct} detail={produceDetail} locale={localeCode} />
+              <ProduceProgress stage={produceStage} pct={producePct} detail={produceDetail} locale={localeCode} onCancel={cancelProduce} />
             ) : (
               <div className="flex flex-wrap gap-2">
                 <button
@@ -2014,16 +2057,30 @@ function cameraUnavailableMessage(locale: string): string {
   return 'The camera is unavailable on this device or browser. Try another browser or check your permissions.';
 }
 
-function ProduceProgress({ stage, pct, detail, locale }: { stage: string; pct: number; detail: string; locale: string }) {
+function ProduceProgress({ stage, pct, detail, locale, onCancel }: { stage: string; pct: number; detail: string; locale: string; onCancel?: () => void }) {
   const curIdx = PRODUCE_STAGES.indexOf(stage as (typeof PRODUCE_STAGES)[number]);
+  const stopLabel = locale === 'ka' ? 'შეჩერება' : locale === 'ru' ? 'Стоп' : 'Stop';
   return (
-    <div className="rounded-2xl bg-black border border-white/[0.10] px-4 py-3 will-change-transform">
-      <div className="flex items-center justify-between mb-2">
-        <span className="text-[12px] font-semibold text-white inline-flex items-center gap-1.5">
-          <Sparkles size={13} className="text-cyan-300 animate-pulse" />
-          {produceStageLabel(stage, locale, detail)}
+    <div className="rounded-2xl bg-black border border-sky-400/15 px-4 py-3 will-change-transform shadow-[0_0_24px_-10px_rgba(56,189,248,0.45)]">
+      <div className="flex items-center justify-between gap-2 mb-2">
+        <span className="text-[12px] font-semibold text-white inline-flex items-center gap-1.5 min-w-0">
+          <Sparkles size={13} className="text-cyan-300 animate-pulse flex-shrink-0" />
+          <span className="truncate">{produceStageLabel(stage, locale, detail)}</span>
         </span>
-        <span className="text-[11px] text-white/50 tabular-nums">{Math.round(pct)}%</span>
+        <span className="flex items-center gap-2 flex-shrink-0">
+          <span className="text-[11px] text-white/50 tabular-nums">{Math.round(pct)}%</span>
+          {onCancel && (
+            <button
+              type="button"
+              onClick={onCancel}
+              aria-label={stopLabel}
+              className="inline-flex items-center gap-1 px-2 h-6 rounded-full text-[11px] font-semibold bg-rose-500/90 hover:bg-rose-500 text-white transition active:scale-95"
+            >
+              <span className="block h-2 w-2 bg-white rounded-[2px]" />
+              {stopLabel}
+            </button>
+          )}
+        </span>
       </div>
       <div className="h-1.5 rounded-full bg-white/[0.08] overflow-hidden">
         <motion.div
