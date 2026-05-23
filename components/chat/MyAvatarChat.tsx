@@ -727,7 +727,7 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
     const raf = requestAnimationFrame(() => {
       try {
         ta.style.height = 'auto';
-        ta.style.height = input ? `${Math.min(ta.scrollHeight, 168)}px` : '28px';
+        ta.style.height = input ? `${Math.max(52, Math.min(ta.scrollHeight, 168))}px` : '52px';
       } catch { /* ignore measurement edge cases */ }
     });
     return () => cancelAnimationFrame(raf);
@@ -1735,7 +1735,7 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
 
       {/* ── Bottom input — only on chat view, and hidden when mobile previews are active */}
       {activeView === 'chat' && (
-        <div className="relative z-10 flex-shrink-0 px-3 pt-2 pb-[max(0.75rem,env(safe-area-inset-bottom))] bg-black/80 backdrop-blur-xl border-t border-white/[0.08]">
+        <div className="relative z-10 flex-shrink-0 px-3 pt-2 pb-[max(3rem,calc(env(safe-area-inset-bottom)+1.25rem))] bg-black/80 backdrop-blur-xl border-t border-white/[0.08]">
           {/* Action rows — capped + internally scrollable on short viewports so the
               pills + composer baseline below is never pushed off-screen / clipped. */}
           <div className="max-h-[42vh] overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
@@ -1835,7 +1835,7 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
             onDrop={onDropFiles}
             onDragOver={onDragOverInput}
             onDragLeave={onDragLeaveInput}
-            className={`relative rounded-3xl bg-black border overflow-hidden transition ${
+            className={`relative rounded-3xl bg-black border overflow-hidden transition flex-shrink-0 ${
               dragActive
                 ? 'border-sky-400/60 ring-2 ring-sky-500/30'
                 : 'border-white/[0.10] focus-within:border-white/[0.22]'
@@ -1886,8 +1886,8 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
               rows={1}
               placeholder={localeCode === 'ka' ? 'მკითხე ნებისმიერი' : 'Ask Anything'}
               aria-label={localeCode === 'ka' ? 'მკითხე ნებისმიერი' : 'Ask Anything'}
-              className="w-full bg-transparent border-none outline-none resize-none overflow-y-auto px-4 pt-3 pb-1.5 text-[15px] font-medium leading-relaxed text-white placeholder:text-white/45 placeholder:font-normal [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-              style={{ minHeight: 28, maxHeight: 168 }}
+              className="w-full flex-shrink-0 bg-transparent border-none outline-none resize-none overflow-y-auto px-4 pt-3.5 pb-2 text-[15px] font-medium leading-relaxed text-white placeholder:text-white/45 placeholder:font-normal [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+              style={{ minHeight: 52, maxHeight: 168 }}
             />
             <input
               ref={fileInputRef}
