@@ -324,8 +324,10 @@ export function CameraModal({ isOpen, accentColor, onClose, onAttach, showFaceGu
                     <span className="absolute bottom-20 text-[11px] font-medium px-3 py-1 rounded-full" style={{ background: 'rgba(0,0,0,0.6)', color: accentColor }}>{c.align}</span>
                   </div>
                 )}
-                {/* Corner crosshairs */}
-                {[{ top: 12, left: 12 }, { top: 12, right: 12 }, { bottom: 12, left: 12 }, { bottom: 12, right: 12 }].map((pos, i) => (
+                {/* Corner crosshairs — hidden in the immersive (Apple-style)
+                    layer to keep the viewport clean; shown only in the compact
+                    card view where they read as a deliberate framing accent. */}
+                {!immersive && [{ top: 12, left: 12 }, { top: 12, right: 12 }, { bottom: 12, left: 12 }, { bottom: 12, right: 12 }].map((pos, i) => (
                   <div key={i} className="absolute w-4 h-4 pointer-events-none" style={pos as React.CSSProperties}>
                     <div className="absolute top-0 left-0 w-4 h-px" style={{ backgroundColor: `${accentColor}50` }} />
                     <div className="absolute top-0 left-0 w-px h-4" style={{ backgroundColor: `${accentColor}50` }} />

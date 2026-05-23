@@ -238,6 +238,15 @@ function mkId() {
   return `${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
+// ─── Local-QA hard bypass ─────────────────────────────────────────────────────
+// In `next dev` ONLY (statically inlined by Next at build time, so it compiles
+// out of the production bundle), every client-side auth gate is decoupled and a
+// null session is swapped for a deterministic QA profile — so Produce Film /
+// AI Avatar / Design Room 3D / mic are immediately operational with zero
+// friction. This NEVER affects production (NODE_ENV !== 'development' there).
+const DEV_BYPASS = process.env.NODE_ENV === 'development';
+const QA_PROFILE_NAME = 'Giorgi-QA-Session';
+
 // ─── Pills above input ────────────────────────────────────────────────────────
 
 interface PillSpec {
@@ -363,6 +372,10 @@ const RECOVERY_RECENT_MS = 30 * 60 * 1000;
 
 export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAvatarChatProps) {
   const localeCode = (locale === 'ka' || locale === 'en' || locale === 'ru') ? locale : 'ka';
+  // Local-QA bypass: treat the session as authed and surface a deterministic
+  // mock profile so every produce action is unlocked under `next dev` only.
+  const effectiveAuth = isAuthenticated || DEV_BYPASS;
+  const effectiveUserName = isAuthenticated ? userName : (DEV_BYPASS ? QA_PROFILE_NAME : userName);
   const [activeView, setActiveView] = useState<ViewId>('chat');
   // Ask/Imagine toggle removed — intent is resolved from keywords, pills,
   // and slash commands. Mode is fixed to 'ask' (the broad-routing default).
@@ -592,11 +605,19 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
     } catch { /* ignore */ }
   }, [sessionId, sessions, newSession]);
 
+  // Fluid auto-grow without layout shift: measure in a rAF (after paint), clamp
+  // to the 140px ceiling (textarea then scrolls internally), and reset cleanly
+  // to the single-row baseline when emptied so the toolbar never jumps.
   useEffect(() => {
     const ta = inputRef.current;
     if (!ta) return;
-    ta.style.height = 'auto';
-    ta.style.height = `${Math.min(ta.scrollHeight, 140)}px`;
+    const raf = requestAnimationFrame(() => {
+      try {
+        ta.style.height = 'auto';
+        ta.style.height = input ? `${Math.min(ta.scrollHeight, 140)}px` : '24px';
+      } catch { /* ignore measurement edge cases */ }
+    });
+    return () => cancelAnimationFrame(raf);
   }, [input]);
 
   const switchView = useCallback((id: ViewId) => {
@@ -649,6 +670,21 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
     setDragActive(false);
   }, []);
   const clearAttachment = useCallback(() => setAttachment(null), []);
+
+  // Defensive camera launch — guard the hardware-capability probe so a missing
+  // mediaDevices API surfaces an elegant notice instead of an empty black modal.
+  const openCamera = useCallback(() => {
+    try {
+      if (typeof navigator === 'undefined' || typeof navigator.mediaDevices?.getUserMedia !== 'function') {
+        setPermissionNotice(cameraUnavailableMessage(localeCode));
+        return;
+      }
+      setPermissionNotice(null);
+      setCameraOpen(true);
+    } catch {
+      setPermissionNotice(cameraUnavailableMessage(localeCode));
+    }
+  }, [localeCode]);
 
   // Camera capture → chat attachment. CameraModal hands back a blob: URL; we
   // read it into a base64 data URL so it (a) matches the vision/avatar payload
@@ -877,6 +913,14 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
     abortRef.current?.abort();
   }, []);
 
+  // Auth interceptor — opens the in-window login. Hard-bypassed under `next dev`
+  // so a 401 never blocks local QA (the server bypass already returns 200 there;
+  // this guarantees the modal never appears even on an anomalous 401).
+  const promptAuth = useCallback(() => {
+    if (DEV_BYPASS) return;
+    setAuthOpen(true);
+  }, []);
+
   const handleKey = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -952,7 +996,7 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
       });
       if (res.status === 401) {
         setMessages(m => m.filter(x => x.id !== pendId && x.id !== userId));
-        setAuthOpen(true);
+        promptAuth();
         return;
       }
       if (!res.ok || !res.body) throw new Error(`produce_${res.status}`);
@@ -995,7 +1039,7 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
     } finally {
       setProducing(false); setProduceStage(''); setProducePct(0); setProduceDetail('');
     }
-  }, [producing, sending, input, localeCode]);
+  }, [producing, sending, input, localeCode, promptAuth]);
 
   // ── Interior design (3D). Uses the attached room photo (📎/📷) + brief, streams
   //    the Agent N→K telemetry, then mounts the inline Three.js RoomViewer.
@@ -1027,7 +1071,7 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
         method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
         body: JSON.stringify({ imageUrls: [imageUrl], brief }),
       });
-      if (res.status === 401) { setMessages(m => m.filter(x => x.id !== pendId && x.id !== userId)); setAuthOpen(true); return; }
+      if (res.status === 401) { setMessages(m => m.filter(x => x.id !== pendId && x.id !== userId)); promptAuth(); return; }
       if (!res.ok || !res.body) throw new Error(`interior_${res.status}`);
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
@@ -1068,7 +1112,7 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
     } finally {
       setProducing(false); setProduceStage(''); setProducePct(0); setProduceDetail('');
     }
-  }, [producing, sending, attachment, input, localeCode]);
+  }, [producing, sending, attachment, input, localeCode, promptAuth]);
 
   // ── AI Avatar video (HeyGen). Script (input) + optional attached photo →
   //    Agent V/H/M telemetry → inline HD talking-avatar video.
@@ -1100,7 +1144,7 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
         method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
         body: JSON.stringify({ script, ...(photo ? { photoBase64: photo.base64, photoMimeType: photo.type } : {}) }),
       });
-      if (res.status === 401) { setMessages(m => m.filter(x => x.id !== pendId && x.id !== userId)); setAuthOpen(true); return; }
+      if (res.status === 401) { setMessages(m => m.filter(x => x.id !== pendId && x.id !== userId)); promptAuth(); return; }
       if (!res.ok || !res.body) throw new Error(`avatar_${res.status}`);
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
@@ -1138,7 +1182,7 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
     } finally {
       setProducing(false); setProduceStage(''); setProducePct(0); setProduceDetail('');
     }
-  }, [producing, sending, input, attachment, localeCode]);
+  }, [producing, sending, input, attachment, localeCode, promptAuth]);
 
   // ── Image / Music swarm produce (Agent P / Agent S) with live SSE telemetry.
   //    Logged-out users transparently fall back to the direct generation path
@@ -1623,7 +1667,7 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
               rows={1}
               placeholder={localeCode === 'ka' ? 'მკითხე ნებისმიერი' : 'Ask Anything'}
               aria-label={localeCode === 'ka' ? 'მკითხე ნებისმიერი' : 'Ask Anything'}
-              className="w-full bg-transparent border-none outline-none resize-none px-4 pt-3 pb-1 text-[15px] text-white placeholder:text-[#94A3B8]"
+              className="w-full bg-transparent border-none outline-none resize-none overflow-y-auto px-4 pt-3 pb-1 text-[15px] text-white placeholder:text-[#94A3B8] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
               style={{ minHeight: 24, maxHeight: 140 }}
             />
             <input
@@ -1647,7 +1691,7 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
                 <button
                   type="button"
                   aria-label="Camera"
-                  onClick={() => setCameraOpen(true)}
+                  onClick={openCamera}
                   title={localeCode === 'ka' ? 'კამერა' : 'Camera'}
                   className="h-9 w-9 rounded-full hover:bg-white/[0.06] flex items-center justify-center text-[#94A3B8] hover:text-white transition active:scale-90"
                 >
@@ -1662,7 +1706,7 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
                   onClick={toggleVoiceInput}
                   className={`h-9 w-9 rounded-full flex items-center justify-center transition active:scale-90 ${
                     listening
-                      ? 'bg-violet-500/20 text-violet-200 ring-1 ring-violet-400/40'
+                      ? 'bg-violet-500/20 text-violet-200 ring-1 ring-violet-400/40 animate-pulse'
                       : 'hover:bg-white/[0.06] text-[#94A3B8] hover:text-white'
                   }`}
                 >
@@ -1836,9 +1880,9 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
                   bottom of the single left hamburger. */}
               <AccountSection
                 locale={localeCode}
-                userName={userName}
-                isAuthenticated={isAuthenticated}
-                onLogin={() => { setDrawerOpen(false); setAuthOpen(true); }}
+                userName={effectiveUserName}
+                isAuthenticated={effectiveAuth}
+                onLogin={() => { setDrawerOpen(false); promptAuth(); }}
               />
             </div>
           </motion.aside>
@@ -1917,6 +1961,12 @@ function micPermissionMessage(locale: string): string {
   if (locale === 'ka') return 'მიკროფონზე წვდომა დაბლოკილია. ჩართე ბრაუზერის მისამართის ზოლის 🔒 ხატულადან → Microphone → Allow, შემდეგ სცადე ხელახლა.';
   if (locale === 'ru') return 'Доступ к микрофону заблокирован. Включите его через значок 🔒 в адресной строке → Микрофон → Разрешить, затем повторите.';
   return "Microphone access is blocked. Enable it from the 🔒 icon in your browser's address bar → Microphone → Allow, then try again.";
+}
+
+function cameraUnavailableMessage(locale: string): string {
+  if (locale === 'ka') return 'კამერა მიუწვდომელია ამ მოწყობილობაზე ან ბრაუზერში. სცადე სხვა ბრაუზერი ან შეამოწმე ნებართვები.';
+  if (locale === 'ru') return 'Камера недоступна на этом устройстве или в браузере. Попробуйте другой браузер или проверьте разрешения.';
+  return 'The camera is unavailable on this device or browser. Try another browser or check your permissions.';
 }
 
 function ProduceProgress({ stage, pct, detail, locale }: { stage: string; pct: number; detail: string; locale: string }) {
