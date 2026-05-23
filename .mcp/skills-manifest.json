@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "server": { "name": "myavatar-mcp-server", "version": "0.1.0" },
+  "tools": [
+    {
+      "id": "database_jobs_sync",
+      "title": "Database Jobs Sync",
+      "description": "Read the authenticated user's generation_jobs (reload-recovery state) from Supabase via the MyAvatar API.",
+      "category": "database",
+      "enabled": true,
+      "route": { "path": "/api/orchestrator/jobs", "method": "GET", "kind": "json", "auth": true },
+      "inputHints": { "limit": "max rows (1-50, default 12)", "status": "optional: 'active' for in-flight only" }
+    },
+    {
+      "id": "hardware_gpu_render",
+      "title": "Hardware GPU Render",
+      "description": "Run the cinematic film pipeline (Agent A→I→H→L) end-to-end on the RunPod GPU / CPU-ffmpeg fallback; returns the final signed master URL.",
+      "category": "hardware",
+      "enabled": true,
+      "route": { "path": "/api/orchestrator/produce", "method": "POST", "kind": "sse", "auth": true },
+      "inputHints": { "prompt": "the film brief", "totalDurationSec": "default 30" }
+    },
+    {
+      "id": "synthesis_voice_ka",
+      "title": "Premium Georgian Voice Synthesis",
+      "description": "High-fidelity Georgian (ka) text-to-speech via ElevenLabs eleven_turbo_v2_5 (ka-GE fallback); returns base64 audio/mpeg.",
+      "category": "synthesis",
+      "enabled": true,
+      "route": { "path": "/api/elevenlabs/tts", "method": "POST", "kind": "binary", "auth": false },
+      "inputHints": { "text": "text to speak (<= 800 chars)", "locale": "ka | en | ru (default ka)" }
+    }
+  ],
+  "agents": [
+    { "id": "orchestrator", "label": "Main Orchestrator", "skills": ["database_jobs_sync", "hardware_gpu_render", "synthesis_voice_ka"] },
+    { "id": "N", "label": "Agent N — Interior 3D", "skills": ["database_jobs_sync", "hardware_gpu_render"] },
+    { "id": "video-swarm", "label": "Video Swarm", "skills": ["hardware_gpu_render", "database_jobs_sync"] },
+    { "id": "voice-swarm", "label": "Voice Swarm", "skills": ["synthesis_voice_ka"] }
+  ]
+}

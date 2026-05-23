@@ -1,0 +1,13 @@
+{
+  "$comment": "Claude Code project MCP binding — the Main Agent (Claude Code) becomes the MCP CLIENT and dynamically discovers MyAvatar tools from the local server. Build the server once: `npm --prefix apps/myavatar-mcp-server install && npm --prefix apps/myavatar-mcp-server run build`. Set MYAVATAR_API_TOKEN (a Supabase bearer JWT) to unlock the authed produce/jobs tools.",
+  "mcpServers": {
+    "myavatar": {
+      "command": "node",
+      "args": ["apps/myavatar-mcp-server/dist/index.js"],
+      "env": {
+        "MYAVATAR_API_BASE": "https://myavatar.ge",
+        "MYAVATAR_API_TOKEN": ""
+      }
+    }
+  }
+}
