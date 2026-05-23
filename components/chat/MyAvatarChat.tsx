@@ -753,6 +753,12 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
       // Production-hardened continuous dictation: each session re-reads the
       // current input as its base, so a seamless auto-restart on `onend`
       // (Chrome stops on silence) never loses already-committed transcript.
+      // A fast-fail guard prevents a runaway restart loop when the engine ends
+      // immediately (no audio device / mic thrash): normal silence-gap restarts
+      // run for >1.2s and reset the counter; ≥4 consecutive sub-1.2s sessions
+      // back off and stop instead of spinning.
+      let lastStartTs = 0;
+      let fastFails = 0;
       const startSR = () => {
         try {
           const rec = new SRCtor();
@@ -762,6 +768,7 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
           const base = (inputRef.current?.value ?? '').trim();
           let finalText = '';
           rec.onresult = (e) => {
+            fastFails = 0; // real audio captured → not a thrash loop
             let interim = '';
             for (let i = e.resultIndex; i < e.results.length; i++) {
               const seg = e.results[i];
@@ -773,12 +780,15 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
             setInput(base ? (live ? `${base} ${live}` : base) : live);
           };
           rec.onend = () => {
-            // Restart seamlessly if the user still intends to dictate.
-            if (srWantRef.current) {
-              try { startSR(); } catch { srWantRef.current = false; setListening(false); }
-            } else {
-              setListening(false);
-            }
+            if (!srWantRef.current) { setListening(false); return; }
+            // Track runaway thrash: sub-1.2s sessions are "fast fails".
+            fastFails = (Date.now() - lastStartTs < 1200) ? fastFails + 1 : 0;
+            if (fastFails >= 4) { srWantRef.current = false; setListening(false); return; }
+            // Restart seamlessly; tiny backoff after a fast-fail to avoid a tight loop.
+            const delay = fastFails > 0 ? 300 : 0;
+            window.setTimeout(() => {
+              if (srWantRef.current) { try { startSR(); } catch { srWantRef.current = false; setListening(false); } }
+            }, delay);
           };
           rec.onerror = (e) => {
             // Fatal (permission) → stop for good + guide the user. Transient
@@ -789,6 +799,7 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
               setPermissionNotice(micPermissionMessage(localeCode));
             }
           };
+          lastStartTs = Date.now();
           rec.start();
           recognitionRef.current = rec;
         } catch {
