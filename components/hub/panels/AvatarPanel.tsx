@@ -265,7 +265,7 @@ export function AvatarPanel({ locale: _locale, callbacks }: { locale: string; ca
                   'w-full flex items-center justify-center gap-2.5 py-3.5 rounded-2xl text-[14px] font-bold transition-all',
                   loading || !prompt.trim()
                     ? 'bg-white/[0.05] border border-white/[0.08] text-white/25 cursor-not-allowed'
-                    : 'bg-gradient-to-r from-violet-500 to-indigo-600 text-white shadow-[0_0_24px_rgba(139,92,246,0.4)] hover:shadow-[0_0_32px_rgba(139,92,246,0.55)] hover:scale-[1.01]',
+                    : 'bg-gradient-to-r from-violet-500 to-indigo-600 text-white shadow-[0_0_24px_rgba(14,165,233,0.4)] hover:shadow-[0_0_32px_rgba(14,165,233,0.55)] hover:scale-[1.01]',
                 )}
               >
                 {loading ? (

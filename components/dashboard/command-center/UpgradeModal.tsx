@@ -153,7 +153,7 @@ export default function UpgradeModal({ open, creditsNeeded, currentCredits, onCl
             }
             .um-modal {
               background: linear-gradient(145deg, #12122a, #1a1a3e);
-              border: 1px solid rgba(99,102,241,0.25);
+              border: 1px solid rgba(14,165,233,0.25);
               border-radius: 20px; padding: 28px;
               width: 100%; max-width: 680px;
               box-shadow: 0 24px 80px rgba(0,0,0,0.5);
@@ -165,9 +165,9 @@ export default function UpgradeModal({ open, creditsNeeded, currentCredits, onCl
             .um-header-inner { display: flex; align-items: center; gap: 14px; }
             .um-zap-badge {
               width: 44px; height: 44px; border-radius: 12px;
-              background: rgba(99,102,241,0.2); border: 1px solid rgba(99,102,241,0.3);
+              background: rgba(14,165,233,0.2); border: 1px solid rgba(14,165,233,0.3);
               display: flex; align-items: center; justify-content: center;
-              color: #818cf8; flex-shrink: 0;
+              color: #38bdf8; flex-shrink: 0;
             }
             .um-title { font-size: 18px; font-weight: 700; color: #e0e0ff; margin: 0 0 4px; }
             .um-sub { font-size: 13px; color: #888; margin: 0; }

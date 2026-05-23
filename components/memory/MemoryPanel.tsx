@@ -157,7 +157,7 @@ export default function MemoryPanel() {
           <div className="flex items-center gap-3">
             <div
               className="flex h-9 w-9 items-center justify-center rounded-xl"
-              style={{ background: 'linear-gradient(140deg,#22d3ee,#a78bfa)' }}
+              style={{ background: 'linear-gradient(140deg,#22d3ee,#38bdf8)' }}
             >
               <Brain className="h-4 w-4 text-slate-950" />
             </div>

@@ -73,8 +73,8 @@ export default function ReferralPanel({ isAuthenticated }: { isAuthenticated: bo
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4 }}
       style={{
-        background: 'linear-gradient(135deg, rgba(139,92,246,0.08), rgba(34,211,238,0.06))',
-        border: '1px solid rgba(139,92,246,0.2)',
+        background: 'linear-gradient(135deg, rgba(14,165,233,0.08), rgba(34,211,238,0.06))',
+        border: '1px solid rgba(14,165,233,0.2)',
         borderRadius: 16,
         padding: '20px 20px',
         margin: '0 12px 12px',
@@ -152,7 +152,7 @@ export default function ReferralPanel({ isAuthenticated }: { isAuthenticated: bo
                   flexShrink: 0, padding: '4px 10px', borderRadius: 6,
                   background: copied ? 'rgba(34,197,94,0.15)' : 'rgba(14,165,233,0.15)',
                   border: `1px solid ${copied ? 'rgba(34,197,94,0.3)' : 'rgba(14,165,233,0.3)'}`,
-                  color: copied ? '#4ade80' : '#c084fc',
+                  color: copied ? '#4ade80' : '#60a5fa',
                   fontSize: 11.5, fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s',
                 }}
               >
@@ -171,7 +171,7 @@ export default function ReferralPanel({ isAuthenticated }: { isAuthenticated: bo
             <span style={{
               fontSize: 12, fontWeight: 700, letterSpacing: '0.12em',
               padding: '5px 14px', borderRadius: 99,
-              background: 'rgba(139,92,246,0.12)', border: '1px solid rgba(139,92,246,0.3)',
+              background: 'rgba(14,165,233,0.12)', border: '1px solid rgba(14,165,233,0.3)',
               color: '#0ea5e9',
             }}>
               კოდი: {data.code}

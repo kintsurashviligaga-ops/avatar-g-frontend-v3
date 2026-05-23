@@ -70,7 +70,7 @@ function Pill<T extends string>({
         <button key={o.value} onClick={() => onChange(o.value)}
           className="px-3 py-1.5 rounded-lg text-xs transition-all"
           style={value === o.value
-            ? { background: '#38bdf818', border: '1px solid #38bdf850', color: '#c4b5fd' }
+            ? { background: '#38bdf818', border: '1px solid #38bdf850', color: '#7dd3fc' }
             : { background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.45)' }
           }
         >{o.label}</button>
@@ -300,7 +300,7 @@ function TalkingAvatarTab() {
 
         <button onClick={busy ? undefined : generate} disabled={busy}
           className="w-full py-3.5 rounded-xl text-sm font-bold text-white flex items-center justify-center gap-2 transition-all disabled:opacity-60"
-          style={{ background: busy ? 'rgba(139,92,246,0.4)' : 'linear-gradient(135deg,#38bdf8,#6366f1)', boxShadow: busy ? 'none' : '0 0 24px rgba(139,92,246,0.3)' }}
+          style={{ background: busy ? 'rgba(14,165,233,0.4)' : 'linear-gradient(135deg,#38bdf8,#0ea5e9)', boxShadow: busy ? 'none' : '0 0 24px rgba(14,165,233,0.3)' }}
         >
           {busy
             ? <><RefreshCw className="w-4 h-4 animate-spin" /> Generating Avatar Video...</>
@@ -311,7 +311,7 @@ function TalkingAvatarTab() {
       {/* Right: Preview */}
       <div className="flex flex-col gap-4">
         <div className="flex-1 rounded-2xl overflow-hidden flex flex-col items-center justify-center min-h-72 relative"
-          style={{ background: 'rgba(0,0,0,0.3)', border: `2px ${status === 'completed' ? 'solid rgba(139,92,246,0.5)' : 'dashed rgba(139,92,246,0.2)'}` }}
+          style={{ background: 'rgba(0,0,0,0.3)', border: `2px ${status === 'completed' ? 'solid rgba(14,165,233,0.5)' : 'dashed rgba(14,165,233,0.2)'}` }}
         >
           {status === 'idle' && (
             <div className="text-center p-8">
@@ -335,7 +335,7 @@ function TalkingAvatarTab() {
               {/* Progress bar */}
               <div className="w-full h-1.5 rounded-full mx-auto max-w-xs overflow-hidden" style={{ background: 'rgba(255,255,255,0.08)' }}>
                 <div className="h-full rounded-full transition-all duration-500"
-                  style={{ width: `${progress}%`, background: 'linear-gradient(90deg,#38bdf8,#6366f1)' }} />
+                  style={{ width: `${progress}%`, background: 'linear-gradient(90deg,#38bdf8,#0ea5e9)' }} />
               </div>
               <p className="text-xs text-white/20 mt-2">{progress}%</p>
             </div>
@@ -374,8 +374,8 @@ function TalkingAvatarTab() {
         </div>
 
         {/* HeyGen quality badge */}
-        <div className="flex items-center gap-2 px-4 py-3 rounded-xl" style={{ background: 'rgba(99,102,241,0.06)', border: '1px solid rgba(99,102,241,0.15)' }}>
-          <div className="w-6 h-6 rounded-lg flex items-center justify-center shrink-0" style={{ background: '#6366f120' }}>
+        <div className="flex items-center gap-2 px-4 py-3 rounded-xl" style={{ background: 'rgba(14,165,233,0.06)', border: '1px solid rgba(14,165,233,0.15)' }}>
+          <div className="w-6 h-6 rounded-lg flex items-center justify-center shrink-0" style={{ background: '#0ea5e920' }}>
             <Zap className="w-3.5 h-3.5 text-indigo-400" />
           </div>
           <p className="text-xs text-white/40 leading-relaxed">
@@ -522,7 +522,7 @@ function AIPortraitTab() {
 
         <button onClick={generate} disabled={loading}
           className="w-full py-3 rounded-xl text-sm font-bold text-white flex items-center justify-center gap-2 transition-all disabled:opacity-50"
-          style={{ background: loading ? 'rgba(139,92,246,0.4)' : 'linear-gradient(135deg,#38bdf8,#6366f1)', boxShadow: loading ? 'none' : '0 0 20px rgba(139,92,246,0.25)' }}
+          style={{ background: loading ? 'rgba(14,165,233,0.4)' : 'linear-gradient(135deg,#38bdf8,#0ea5e9)', boxShadow: loading ? 'none' : '0 0 20px rgba(14,165,233,0.25)' }}
         >
           {loading ? <><RefreshCw className="w-4 h-4 animate-spin" /> Generating...</> : <><Wand2 className="w-4 h-4" /> Generate AI Portrait</>}
         </button>
@@ -531,7 +531,7 @@ function AIPortraitTab() {
       {/* Preview */}
       <div className="flex flex-col gap-4">
         <div className="flex-1 rounded-2xl overflow-hidden flex items-center justify-center min-h-64 relative"
-          style={{ background: 'rgba(0,0,0,0.25)', border: `2px ${allImages.length > 0 ? 'solid rgba(139,92,246,0.4)' : 'dashed rgba(139,92,246,0.2)'}` }}
+          style={{ background: 'rgba(0,0,0,0.25)', border: `2px ${allImages.length > 0 ? 'solid rgba(14,165,233,0.4)' : 'dashed rgba(14,165,233,0.2)'}` }}
         >
           {loading ? (
             <div className="text-center p-8">
@@ -560,7 +560,7 @@ function AIPortraitTab() {
             {allImages.slice(0, 3).map((url, i) => (
               <button key={url} onClick={() => setActiveIdx(i)}
                 className="aspect-square rounded-xl overflow-hidden transition-all"
-                style={{ border: activeIdx === i ? '2px solid rgba(139,92,246,0.7)' : '1px solid rgba(255,255,255,0.08)', opacity: activeIdx === i ? 1 : 0.55 }}
+                style={{ border: activeIdx === i ? '2px solid rgba(14,165,233,0.7)' : '1px solid rgba(255,255,255,0.08)', opacity: activeIdx === i ? 1 : 0.55 }}
               >
                 <Image src={url} alt={`v${i+1}`} width={120} height={120} unoptimized className="w-full h-full object-cover" />
               </button>
@@ -599,14 +599,14 @@ export default function AvatarStudioPage() {
           <button key={value} onClick={() => setMode(value)}
             className="flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-sm transition-all"
             style={mode === value
-              ? { background: 'linear-gradient(135deg,#38bdf8,#6366f1)', color: '#fff', fontWeight: 600, boxShadow: '0 2px 12px rgba(139,92,246,0.3)' }
+              ? { background: 'linear-gradient(135deg,#38bdf8,#0ea5e9)', color: '#fff', fontWeight: 600, boxShadow: '0 2px 12px rgba(14,165,233,0.3)' }
               : { color: 'rgba(255,255,255,0.4)' }
             }
           >
             <Icon className="w-4 h-4 shrink-0" />
             <span className="leading-none">{label}</span>
             {value === 'talking' && mode !== 'talking' && (
-              <span className="text-xs px-1.5 py-0.5 rounded-md" style={{ background: 'rgba(139,92,246,0.25)', color: '#c4b5fd' }}>Best</span>
+              <span className="text-xs px-1.5 py-0.5 rounded-md" style={{ background: 'rgba(14,165,233,0.25)', color: '#7dd3fc' }}>Best</span>
             )}
           </button>
         ))}

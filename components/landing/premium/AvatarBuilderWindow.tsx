@@ -164,15 +164,15 @@ export function AvatarBuilderWindow({ onAvatarCreated }: AvatarBuilderWindowProp
     <section className="relative px-4 sm:px-6 lg:px-10 py-20 sm:py-28 lg:py-36 overflow-hidden">
       {/* ── Deep ambient background ── */}
       <div className="absolute inset-0 pointer-events-none" aria-hidden="true">
-        <div className="absolute inset-0" style={{ background: 'radial-gradient(ellipse 70% 50% at 50% 50%, rgba(167,139,250,0.04) 0%, transparent 70%)' }} />
+        <div className="absolute inset-0" style={{ background: 'radial-gradient(ellipse 70% 50% at 50% 50%, rgba(56,189,248,0.04) 0%, transparent 70%)' }} />
         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[500px]" style={{ background: 'radial-gradient(ellipse 60% 40% at 50% 0%, rgba(34,211,238,0.03) 0%, transparent 70%)', filter: 'blur(60px)' }} />
-        <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-full h-[300px]" style={{ background: 'radial-gradient(ellipse 80% 60% at 50% 100%, rgba(139,92,246,0.04) 0%, transparent 70%)', filter: 'blur(40px)' }} />
+        <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-full h-[300px]" style={{ background: 'radial-gradient(ellipse 80% 60% at 50% 100%, rgba(14,165,233,0.04) 0%, transparent 70%)', filter: 'blur(40px)' }} />
       </div>
 
       <div className="relative max-w-6xl mx-auto">
         {/* ─── HEADER ─── */}
         <div className="text-center mb-10 sm:mb-14">
-          <p className="text-[10px] sm:text-[11px] tracking-[0.3em] uppercase font-black mb-3" style={{ color: '#a78bfa' }}>
+          <p className="text-[10px] sm:text-[11px] tracking-[0.3em] uppercase font-black mb-3" style={{ color: '#38bdf8' }}>
             {c.eyebrow}
           </p>
           <h2 className="text-3xl sm:text-4xl lg:text-5xl xl:text-6xl font-bold tracking-tight mb-4">
@@ -184,7 +184,7 @@ export function AvatarBuilderWindow({ onAvatarCreated }: AvatarBuilderWindowProp
           {/* Feature pills */}
           <div className="flex items-center justify-center gap-2 mt-5 flex-wrap">
             {c.features.map((f, i) => (
-              <span key={i} className="text-[10px] font-bold px-3 py-1 rounded-full" style={{ background: 'rgba(167,139,250,0.08)', border: '1px solid rgba(167,139,250,0.15)', color: 'rgba(167,139,250,0.7)' }}>
+              <span key={i} className="text-[10px] font-bold px-3 py-1 rounded-full" style={{ background: 'rgba(56,189,248,0.08)', border: '1px solid rgba(56,189,248,0.15)', color: 'rgba(56,189,248,0.7)' }}>
                 {f}
               </span>
             ))}
@@ -196,8 +196,8 @@ export function AvatarBuilderWindow({ onAvatarCreated }: AvatarBuilderWindowProp
           className="relative max-w-4xl mx-auto rounded-3xl overflow-hidden"
           style={{
             background: 'linear-gradient(170deg, #0b1219, #080e14 40%, #060c16)',
-            border: '1px solid rgba(167,139,250,0.12)',
-            boxShadow: '0 8px 80px rgba(0,0,0,0.5), 0 0 120px rgba(167,139,250,0.05), inset 0 1px 0 rgba(255,255,255,0.03)',
+            border: '1px solid rgba(56,189,248,0.12)',
+            boxShadow: '0 8px 80px rgba(0,0,0,0.5), 0 0 120px rgba(56,189,248,0.05), inset 0 1px 0 rgba(255,255,255,0.03)',
           }}
         >
           {/* Top bar */}
@@ -211,8 +211,8 @@ export function AvatarBuilderWindow({ onAvatarCreated }: AvatarBuilderWindowProp
               <span className="ml-3 text-[10px] font-bold tracking-[0.15em] uppercase" style={{ color: 'rgba(255,255,255,0.25)' }}>AVATAR STUDIO</span>
             </div>
             <div className="flex items-center gap-1.5">
-              <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: hasAvatar ? '#34d399' : isProcessing ? '#fbbf24' : '#a78bfa', boxShadow: `0 0 6px ${hasAvatar ? '#34d399' : isProcessing ? '#fbbf24' : '#a78bfa'}` }} />
-              <span className="text-[9px] font-bold" style={{ color: hasAvatar ? 'rgba(52,211,153,0.7)' : isProcessing ? 'rgba(251,191,36,0.7)' : 'rgba(167,139,250,0.5)' }}>
+              <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: hasAvatar ? '#34d399' : isProcessing ? '#fbbf24' : '#38bdf8', boxShadow: `0 0 6px ${hasAvatar ? '#34d399' : isProcessing ? '#fbbf24' : '#38bdf8'}` }} />
+              <span className="text-[9px] font-bold" style={{ color: hasAvatar ? 'rgba(52,211,153,0.7)' : isProcessing ? 'rgba(251,191,36,0.7)' : 'rgba(56,189,248,0.5)' }}>
                 {hasAvatar ? c.readyStatus.toUpperCase() : isProcessing ? 'PROCESSING' : c.livePreview}
               </span>
             </div>
@@ -226,11 +226,11 @@ export function AvatarBuilderWindow({ onAvatarCreated }: AvatarBuilderWindowProp
             {/* Processing overlay */}
             {isProcessing && (
               <div className="absolute inset-0 flex flex-col items-center justify-center z-10" style={{ background: 'rgba(8,14,20,0.7)', backdropFilter: 'blur(4px)' }}>
-                <div className="w-14 h-14 rounded-full border-2 animate-spin mb-4" style={{ borderColor: 'rgba(167,139,250,0.15)', borderTopColor: '#a78bfa' }} />
+                <div className="w-14 h-14 rounded-full border-2 animate-spin mb-4" style={{ borderColor: 'rgba(56,189,248,0.15)', borderTopColor: '#38bdf8' }} />
                 <p className="text-sm font-medium" style={{ color: 'rgba(255,255,255,0.6)' }}>{c.processing}</p>
                 <div className="flex gap-1.5 mt-3">
                   {[0, 1, 2, 3].map(i => (
-                    <div key={i} className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: '#a78bfa', opacity: 0.3, animation: `pulse 1.2s ease-in-out ${i * 0.3}s infinite` }} />
+                    <div key={i} className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: '#38bdf8', opacity: 0.3, animation: `pulse 1.2s ease-in-out ${i * 0.3}s infinite` }} />
                   ))}
                 </div>
               </div>
@@ -249,10 +249,10 @@ export function AvatarBuilderWindow({ onAvatarCreated }: AvatarBuilderWindowProp
                     onClick={goToStudio}
                     className="inline-flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-bold tracking-wide transition-all duration-200 active:scale-[0.97] hover:-translate-y-0.5"
                     style={{
-                      background: 'linear-gradient(135deg, rgba(167,139,250,0.25), rgba(139,92,246,0.12))',
-                      border: '1px solid rgba(167,139,250,0.4)',
-                      color: '#a78bfa',
-                      boxShadow: '0 0 24px rgba(167,139,250,0.1)',
+                      background: 'linear-gradient(135deg, rgba(56,189,248,0.25), rgba(14,165,233,0.12))',
+                      border: '1px solid rgba(56,189,248,0.4)',
+                      color: '#38bdf8',
+                      boxShadow: '0 0 24px rgba(56,189,248,0.1)',
                     }}
                   >
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>
@@ -283,9 +283,9 @@ export function AvatarBuilderWindow({ onAvatarCreated }: AvatarBuilderWindowProp
                     onClick={goToStudio}
                     className="inline-flex items-center gap-2.5 px-7 py-3.5 rounded-xl text-sm font-bold tracking-wide transition-all duration-200 active:scale-[0.97] hover:-translate-y-0.5 hover:shadow-lg hover:shadow-purple-500/15"
                     style={{
-                      background: 'linear-gradient(135deg, #a78bfa, #38bdf8)',
+                      background: 'linear-gradient(135deg, #38bdf8, #38bdf8)',
                       color: '#fff',
-                      boxShadow: '0 0 30px rgba(167,139,250,0.2)',
+                      boxShadow: '0 0 30px rgba(56,189,248,0.2)',
                     }}
                   >
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">

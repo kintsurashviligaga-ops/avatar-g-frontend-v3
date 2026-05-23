@@ -177,6 +177,9 @@ function VideoBlock({ url, poster }: { url: string; poster?: string }) {
   const [muted, setMuted] = useState(true);
   const [loaded, setLoaded] = useState(false);
   const [errored, setErrored] = useState(false);
+  const lang = typeof document !== 'undefined' ? ((document.documentElement.lang || 'ka') as 'ka' | 'en' | 'ru') : 'ka';
+  const errText = lang === 'en' ? 'Video failed to load' : lang === 'ru' ? 'Видео не загрузилось' : 'ვიდეო ვერ ჩაიტვირთა';
+  const openText = lang === 'en' ? 'Open' : lang === 'ru' ? 'Открыть' : 'გახსენი';
 
   // Watchdog: if canplay never fires within 6s (HeyGen S3 cold-start, autoplay
   // blocked in some browser configs, etc.) we still flip `loaded` so the
@@ -224,7 +227,7 @@ function VideoBlock({ url, poster }: { url: string; poster?: string }) {
       />
       {errored && (
         <div className="inline-media-video-error" role="alert">
-          ვიდეო ვერ ჩაიტვირთა · <a href={url} target="_blank" rel="noopener noreferrer" style={{ color: '#a5b4fc', textDecoration: 'underline' }}>გახსენი</a>
+          {errText} · <a href={url} target="_blank" rel="noopener noreferrer" style={{ color: '#7dd3fc', textDecoration: 'underline' }}>{openText}</a>
         </div>
       )}
       {loaded && !errored && (
@@ -321,7 +324,7 @@ function AudioBlock({ url }: { url: string }) {
               style={{
                 height: `${Math.round(h * 100)}%`,
                 background: isPlayed
-                  ? 'linear-gradient(180deg,#c084fc,#0284c7)'
+                  ? 'linear-gradient(180deg,#60a5fa,#0284c7)'
                   : isBuffered
                     ? 'rgba(14,165,233,0.40)'   // buffered, not yet played
                     : 'rgba(255,255,255,0.14)', // not buffered
@@ -461,7 +464,7 @@ export default function InlineMedia(props: InlineMediaProps) {
           display: flex; align-items: center; justify-content: center; cursor: pointer;
           transition: transform 0.15s, background 0.15s;
         }
-        .inline-media-btn:hover { background: rgba(139,92,246,0.5); transform: scale(1.06); }
+        .inline-media-btn:hover { background: rgba(14,165,233,0.5); transform: scale(1.06); }
         .inline-media-btn:active { transform: scale(0.94); }
         .inline-media-video-error {
           position: absolute; inset: 0;
@@ -476,8 +479,8 @@ export default function InlineMedia(props: InlineMediaProps) {
         .inline-media-audio-wrap {
           display: flex; align-items: center; gap: 12px;
           padding: 12px 16px; border-radius: 999px;
-          background: rgba(139,92,246,0.08);
-          border: 1px solid rgba(139,92,246,0.22);
+          background: rgba(14,165,233,0.08);
+          border: 1px solid rgba(14,165,233,0.22);
           backdrop-filter: blur(20px);
           min-width: 280px; max-width: 100%;
         }
@@ -487,9 +490,9 @@ export default function InlineMedia(props: InlineMediaProps) {
           border: none; color: #fff;
           display: flex; align-items: center; justify-content: center;
           cursor: pointer; transition: transform 0.15s, box-shadow 0.18s;
-          box-shadow: 0 0 12px rgba(139,92,246,0.45);
+          box-shadow: 0 0 12px rgba(14,165,233,0.45);
         }
-        .inline-media-audio-play:hover { transform: scale(1.06); box-shadow: 0 0 18px rgba(139,92,246,0.7); }
+        .inline-media-audio-play:hover { transform: scale(1.06); box-shadow: 0 0 18px rgba(14,165,233,0.7); }
         .inline-media-audio-play:active { transform: scale(0.94); }
         .inline-media-audio-wave {
           flex: 1; display: flex; align-items: center; gap: 2px;
@@ -525,7 +528,7 @@ export default function InlineMedia(props: InlineMediaProps) {
         .inline-media-code-tab.active {
           background: rgba(14,165,233,0.15);
           border-color: rgba(14,165,233,0.35);
-          color: rgba(167,139,250,1);
+          color: rgba(56,189,248,1);
         }
         .inline-media-code-lang {
           margin-left: auto; padding: 3px 8px; font-size: 10px; font-weight: 600;
@@ -554,8 +557,8 @@ export default function InlineMedia(props: InlineMediaProps) {
           padding: 2px 8px; border-radius: 999px;
           font-size: 10px; font-weight: 600; letter-spacing: 0.02em;
           color: rgba(216,196,255,0.92);
-          background: rgba(139,92,246,0.12);
-          border: 1px solid rgba(139,92,246,0.28);
+          background: rgba(14,165,233,0.12);
+          border: 1px solid rgba(14,165,233,0.28);
           backdrop-filter: blur(8px);
         }
 

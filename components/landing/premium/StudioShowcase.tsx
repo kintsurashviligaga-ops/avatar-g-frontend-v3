@@ -77,7 +77,7 @@ export function StudioShowcase() {
     <section className="relative py-20 sm:py-28 overflow-hidden">
       {/* Ambient glow */}
       <div className="absolute inset-0 pointer-events-none" style={{ background: 'radial-gradient(ellipse 80% 50% at 50% 30%, rgba(34,211,238,0.06) 0%, transparent 70%)' }} />
-      <div className="absolute top-0 right-0 w-[500px] h-[500px] pointer-events-none" style={{ background: 'radial-gradient(ellipse at 80% 20%, rgba(99,102,241,0.06) 0%, transparent 70%)' }} />
+      <div className="absolute top-0 right-0 w-[500px] h-[500px] pointer-events-none" style={{ background: 'radial-gradient(ellipse at 80% 20%, rgba(14,165,233,0.06) 0%, transparent 70%)' }} />
 
       <div className="relative max-w-7xl mx-auto px-4 sm:px-6">
         {/* Header */}
@@ -165,7 +165,7 @@ export function StudioShowcase() {
               {/* Stats Row */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
                 {[
-                  { label: 'Avatars', value: '12', icon: '🎭', color: 'rgba(167,139,250,0.15)' },
+                  { label: 'Avatars', value: '12', icon: '🎭', color: 'rgba(56,189,248,0.15)' },
                   { label: 'Pipelines', value: '7', icon: '⚡', color: 'rgba(34,211,238,0.15)' },
                   { label: 'Services', value: '18', icon: '📊', color: 'rgba(251,191,36,0.15)' },
                   { label: 'Success', value: '98%', icon: '✅', color: 'rgba(52,211,153,0.15)' },
@@ -191,7 +191,7 @@ export function StudioShowcase() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {[
                   { emoji: '🎬', name: 'Brand Video', steps: 3, status: 'Done', color: '#22d3ee' },
-                  { emoji: '🎵', name: 'Music Clip', steps: 3, status: 'Running', color: '#a78bfa' },
+                  { emoji: '🎵', name: 'Music Clip', steps: 3, status: 'Running', color: '#38bdf8' },
                 ].map(p => (
                   <div key={p.name} className="rounded-xl p-3" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)' }}>
                     <div className="flex items-center gap-2 mb-2">

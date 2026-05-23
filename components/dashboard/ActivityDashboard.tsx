@@ -49,7 +49,7 @@ const KIND_LABEL: Record<Kind, string> = {
 };
 
 const KIND_COLOR: Record<Kind, string> = {
-  image: '#a78bfa',
+  image: '#38bdf8',
   video: '#22d3ee',
   audio: '#34d399',
   avatar: '#00d4ff',
@@ -279,7 +279,7 @@ function CreditUsageBar({ creations, delay = 0 }: { creations: Creation[]; delay
   const total = Object.values(usage).reduce((a, b) => a + b, 0);
 
   const segments = [
-    { key: 'image', label: '🎨 სურათი', color: '#a78bfa' },
+    { key: 'image', label: '🎨 სურათი', color: '#38bdf8' },
     { key: 'video', label: '🎬 ვიდეო', color: '#22d3ee' },
     { key: 'audio', label: '🎵 აუდიო', color: '#34d399' },
     { key: 'other', label: '📦 სხვა', color: '#60a5fa' },
@@ -457,7 +457,7 @@ function TopWords({ creations, delay = 0 }: { creations: Creation[]; delay?: num
                   opacity,
                   background: 'rgba(2,132,199,0.12)',
                   border: '1px solid rgba(2,132,199,0.2)',
-                  color: '#c4b5fd',
+                  color: '#7dd3fc',
                 }}
                 title={`${count}x`}
               >
@@ -602,7 +602,7 @@ export default function ActivityDashboard({ userId: _userId }: ActivityDashboard
                 label="კრედიტები"
                 value={totalCredits.toLocaleString()}
                 icon="💎"
-                color="#a78bfa"
+                color="#38bdf8"
                 delay={0.07}
               />
               <StatCard

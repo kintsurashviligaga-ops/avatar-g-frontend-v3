@@ -175,7 +175,7 @@ export default function SharePageClient({ creation }: { creation: Creation | nul
           )}
           <a
             href="https://myavatar.ge"
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '10px 18px', background: 'rgba(139,92,246,0.12)', border: '1px solid rgba(139,92,246,0.25)', borderRadius: 10, color: '#c4b5fd', textDecoration: 'none', fontSize: 13, fontWeight: 500 }}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '10px 18px', background: 'rgba(14,165,233,0.12)', border: '1px solid rgba(14,165,233,0.25)', borderRadius: 10, color: '#7dd3fc', textDecoration: 'none', fontSize: 13, fontWeight: 500 }}
           >
             🏠 Avatar G-ის მთავარი
           </a>

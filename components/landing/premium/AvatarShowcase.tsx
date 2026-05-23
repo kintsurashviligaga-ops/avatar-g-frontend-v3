@@ -141,10 +141,10 @@ function PlaceholderAvatar() {
       <mesh position={[0, 1.6, 0]} castShadow>
         <sphereGeometry args={[0.35, 32, 32]} />
         <meshStandardMaterial
-          color="#a78bfa"
+          color="#38bdf8"
           metalness={0.5}
           roughness={0.4}
-          emissive="#a78bfa"
+          emissive="#38bdf8"
           emissiveIntensity={0.2}
         />
       </mesh>
@@ -153,10 +153,10 @@ function PlaceholderAvatar() {
       <mesh position={[0, 1.6, 0.4]}>
         <sphereGeometry args={[0.4, 32, 32]} />
         <meshStandardMaterial
-          color="#a78bfa"
+          color="#38bdf8"
           transparent
           opacity={0.15}
-          emissive="#a78bfa"
+          emissive="#38bdf8"
           emissiveIntensity={0.3}
         />
       </mesh>
@@ -165,10 +165,10 @@ function PlaceholderAvatar() {
       <mesh position={[0, 0.8, 0]} castShadow>
         <boxGeometry args={[0.5, 0.8, 0.4]} />
         <meshStandardMaterial
-          color="#6366f1"
+          color="#0ea5e9"
           metalness={0.4}
           roughness={0.5}
-          emissive="#6366f1"
+          emissive="#0ea5e9"
           emissiveIntensity={0.15}
         />
       </mesh>
@@ -177,7 +177,7 @@ function PlaceholderAvatar() {
       <mesh position={[-0.5, 1.0, 0]} castShadow>
         <boxGeometry args={[0.2, 0.9, 0.25]} />
         <meshStandardMaterial
-          color="#4f46e5"
+          color="#0284c7"
           metalness={0.3}
           roughness={0.5}
         />
@@ -187,7 +187,7 @@ function PlaceholderAvatar() {
       <mesh position={[0.5, 1.0, 0]} castShadow>
         <boxGeometry args={[0.2, 0.9, 0.25]} />
         <meshStandardMaterial
-          color="#4f46e5"
+          color="#0284c7"
           metalness={0.3}
           roughness={0.5}
         />
@@ -197,7 +197,7 @@ function PlaceholderAvatar() {
       <mesh position={[-0.2, 0.2, 0]} castShadow>
         <boxGeometry args={[0.18, 0.8, 0.25]} />
         <meshStandardMaterial
-          color="#3730a3"
+          color="#075985"
           metalness={0.2}
           roughness={0.6}
         />
@@ -207,7 +207,7 @@ function PlaceholderAvatar() {
       <mesh position={[0.2, 0.2, 0]} castShadow>
         <boxGeometry args={[0.18, 0.8, 0.25]} />
         <meshStandardMaterial
-          color="#3730a3"
+          color="#075985"
           metalness={0.2}
           roughness={0.6}
         />
@@ -328,7 +328,7 @@ function _FallbackState({ locale, onAction }: { locale: string; onAction: () => 
       <div
         className="absolute inset-0 pointer-events-none"
         style={{
-          background: `linear-gradient(135deg, rgba(34,211,238,0.08) 0%, rgba(99,102,241,0.04) 100%)`,
+          background: `linear-gradient(135deg, rgba(34,211,238,0.08) 0%, rgba(14,165,233,0.04) 100%)`,
         }}
       />
 
@@ -409,7 +409,7 @@ export function AvatarShowcase({ locale: _locale }: { locale: string }) {
           {/* Ambient glow layers */}
           <div className="absolute inset-0 pointer-events-none" aria-hidden="true">
             <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[300px]" style={{ background: 'radial-gradient(ellipse, rgba(34,211,238,0.12) 0%, transparent 70%)', filter: 'blur(60px)' }} />
-            <div className="absolute bottom-0 right-1/4 w-[400px] h-[300px]" style={{ background: 'radial-gradient(ellipse, rgba(99,102,241,0.08) 0%, transparent 70%)', filter: 'blur(50px)' }} />
+            <div className="absolute bottom-0 right-1/4 w-[400px] h-[300px]" style={{ background: 'radial-gradient(ellipse, rgba(14,165,233,0.08) 0%, transparent 70%)', filter: 'blur(50px)' }} />
           </div>
 
           {/* 3D Canvas */}

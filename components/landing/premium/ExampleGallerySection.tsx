@@ -73,7 +73,7 @@ const GALLERY_ITEMS: GalleryItem[] = [
     prompt: 'Georgian polyphony meets electronic beats, modern fusion',
     color: '#06b6d4',
     icon: '🎵',
-    gradient: 'linear-gradient(135deg, #1f0014 0%, #831843 50%, #0891b2 100%)',
+    gradient: 'linear-gradient(135deg, #1f0014 0%, #164e63 50%, #0891b2 100%)',
     accentColor: '#22d3ee',
   },
   {
@@ -100,8 +100,8 @@ const GALLERY_ITEMS: GalleryItem[] = [
     prompt: 'Old Tbilisi balcony at dusk, hyper-detailed illustration',
     color: '#38bdf8',
     icon: '🌆',
-    gradient: 'linear-gradient(135deg, #0f0520 0%, #3b0764 50%, #0369a1 100%)',
-    accentColor: '#a78bfa',
+    gradient: 'linear-gradient(135deg, #0f0520 0%, #172554 50%, #0369a1 100%)',
+    accentColor: '#38bdf8',
   },
   {
     id: '8',

@@ -44,15 +44,15 @@ function MsgBubble({ msg }: { msg: Msg }) {
       className={cn('flex gap-3 px-4 sm:px-6 group', isUser ? 'justify-end' : 'justify-start')}
     >
       {!isUser && (
-        <div className="w-8 h-8 rounded-xl flex-shrink-0 flex items-center justify-center mt-1" style={{ background: '#6366f118', border: '1px solid #6366f140' }}>
-          <Bot className="w-4 h-4" style={{ color: '#6366f1' }} />
+        <div className="w-8 h-8 rounded-xl flex-shrink-0 flex items-center justify-center mt-1" style={{ background: '#0ea5e918', border: '1px solid #0ea5e940' }}>
+          <Bot className="w-4 h-4" style={{ color: '#0ea5e9' }} />
         </div>
       )}
       <div className={cn('max-w-[75%]', isUser ? 'items-end' : 'items-start', 'flex flex-col gap-1')}>
         <div
           className="px-4 py-3 rounded-2xl text-sm leading-relaxed"
           style={isUser
-            ? { background: 'linear-gradient(135deg,#6366f1,#38bdf8)', color: '#fff' }
+            ? { background: 'linear-gradient(135deg,#0ea5e9,#38bdf8)', color: '#fff' }
             : { background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.09)', color: 'rgba(255,255,255,0.88)' }
           }
           dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.text) }}
@@ -73,8 +73,8 @@ function MsgBubble({ msg }: { msg: Msg }) {
 function TypingIndicator() {
   return (
     <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="flex gap-3 px-4 sm:px-6">
-      <div className="w-8 h-8 rounded-xl flex-shrink-0 flex items-center justify-center" style={{ background: '#6366f118', border: '1px solid #6366f140' }}>
-        <Bot className="w-4 h-4" style={{ color: '#6366f1' }} />
+      <div className="w-8 h-8 rounded-xl flex-shrink-0 flex items-center justify-center" style={{ background: '#0ea5e918', border: '1px solid #0ea5e940' }}>
+        <Bot className="w-4 h-4" style={{ color: '#0ea5e9' }} />
       </div>
       <div className="px-4 py-3 rounded-2xl flex items-center gap-1.5" style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.09)' }}>
         {[0, 1, 2].map(i => (
@@ -153,15 +153,15 @@ export default function AgentGPage() {
 
       {/* Header */}
       <div className="flex items-center gap-3 px-6 py-4 flex-shrink-0" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-        <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: '#6366f118', border: '1px solid #6366f140' }}>
-          <Bot className="w-5 h-5" style={{ color: '#6366f1' }} />
+        <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: '#0ea5e918', border: '1px solid #0ea5e940' }}>
+          <Bot className="w-5 h-5" style={{ color: '#0ea5e9' }} />
         </div>
         <div>
           <h1 className="text-sm font-bold text-white" style={{ fontFamily: 'var(--font-syne, system-ui)' }}>Agent G</h1>
           <p className="text-[11px] text-white/40">AI ორკესტრატორი — ყველა სერვისის კოორდინატორი</p>
         </div>
         <div className="ml-auto flex items-center gap-2">
-          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs" style={{ background: 'rgba(99,102,241,0.12)', border: '1px solid rgba(99,102,241,0.25)', color: '#a5b4fc' }}>
+          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs" style={{ background: 'rgba(14,165,233,0.12)', border: '1px solid rgba(14,165,233,0.25)', color: '#7dd3fc' }}>
             <Zap className="w-3 h-3" /> 5 credits/msg
           </div>
           {hasMessages && (
@@ -177,8 +177,8 @@ export default function AgentGPage() {
         {!hasMessages ? (
           <div className="h-full flex flex-col items-center justify-center px-6 gap-8">
             <div className="text-center">
-              <div className="w-16 h-16 rounded-2xl mx-auto mb-4 flex items-center justify-center" style={{ background: '#6366f118', border: '1px solid #6366f140' }}>
-                <Sparkles className="w-8 h-8" style={{ color: '#6366f1' }} />
+              <div className="w-16 h-16 rounded-2xl mx-auto mb-4 flex items-center justify-center" style={{ background: '#0ea5e918', border: '1px solid #0ea5e940' }}>
+                <Sparkles className="w-8 h-8" style={{ color: '#0ea5e9' }} />
               </div>
               <h2 className="text-xl font-bold text-white mb-2" style={{ fontFamily: 'var(--font-syne, system-ui)' }}>Agent G — AI ორკესტრატორი</h2>
               <p className="text-sm text-white/45 max-w-sm">მე შემიძლია დაგეხმარო ნებისმიერ AI ამოცანაში — მარკეტინგი, სტრატეგია, კონტენტი, ბიზნეს ანალიზი</p>
@@ -231,7 +231,7 @@ export default function AgentGPage() {
                 onClick={() => send()}
                 disabled={!input.trim()}
                 className="w-9 h-9 rounded-xl flex items-center justify-center transition-all disabled:opacity-30"
-                style={{ background: input.trim() ? 'linear-gradient(135deg,#6366f1,#00d4ff)' : 'rgba(255,255,255,0.06)' }}
+                style={{ background: input.trim() ? 'linear-gradient(135deg,#0ea5e9,#00d4ff)' : 'rgba(255,255,255,0.06)' }}
               >
                 <Send className="w-4 h-4 text-white" />
               </button>

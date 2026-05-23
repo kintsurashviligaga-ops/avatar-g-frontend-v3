@@ -6,7 +6,7 @@ import { BarChart3, TrendingUp, Zap, MessageSquare, Layers, Workflow, ArrowUpRig
 const PERIODS = ['7 days', '30 days', '90 days', 'All time'];
 
 const STATS = [
-  { label: 'Credits Used', value: '5,800', change: '+12%', up: true, icon: Zap, color: '#6366f1' },
+  { label: 'Credits Used', value: '5,800', change: '+12%', up: true, icon: Zap, color: '#0ea5e9' },
   { label: 'AI Sessions', value: '127', change: '+23%', up: true, icon: MessageSquare, color: '#00d4ff' },
   { label: 'Generated Items', value: '48', change: '+8%', up: true, icon: Layers, color: '#10b981' },
   { label: 'Workflows Run', value: '12', change: '-3%', up: false, icon: Workflow, color: '#f59e0b' },
@@ -14,7 +14,7 @@ const STATS = [
 
 const DAILY = [40, 65, 32, 80, 55, 90, 70, 45, 85, 60, 75, 95, 50, 88];
 const SERVICES = [
-  { name: 'Agent G', pct: 42, color: '#6366f1', credits: 2436 },
+  { name: 'Agent G', pct: 42, color: '#0ea5e9', credits: 2436 },
   { name: 'Image Gen', pct: 25, color: '#f59e0b', credits: 1450 },
   { name: 'Copy AI', pct: 18, color: '#06b6d4', credits: 1044 },
   { name: 'Music', pct: 10, color: '#10b981', credits: 580 },
@@ -29,7 +29,7 @@ function BarGraph({ data }: { data: number[] }) {
         <div key={i} className="flex-1 flex flex-col items-center gap-1">
           <div
             className="w-full rounded-t-sm transition-all hover:opacity-80"
-            style={{ height: `${(v / max) * 100}%`, background: `rgba(99,102,241,${0.3 + (v / max) * 0.5})`, minHeight: 2 }}
+            style={{ height: `${(v / max) * 100}%`, background: `rgba(14,165,233,${0.3 + (v / max) * 0.5})`, minHeight: 2 }}
           />
         </div>
       ))}
@@ -130,7 +130,7 @@ export default function AnalyticsPage() {
           <span className="text-xs text-white/35">127 total</span>
         </div>
         {[
-          { service: 'Agent G', query: 'მარკეტინგ სტრატეგია ახალი პროდუქტისთვის', credits: 25, time: '2 წ. წინ', color: '#6366f1' },
+          { service: 'Agent G', query: 'მარკეტინგ სტრატეგია ახალი პროდუქტისთვის', credits: 25, time: '2 წ. წინ', color: '#0ea5e9' },
           { service: 'Image Gen', query: 'Photorealistic product photo — studio lighting', credits: 40, time: '1 სთ. წინ', color: '#f59e0b' },
           { service: 'Copy AI', query: 'Landing page copy for SaaS product', credits: 10, time: '3 სთ. წინ', color: '#06b6d4' },
           { service: 'Music', query: 'Electronic background track for promo video', credits: 35, time: 'გუშინ', color: '#10b981' },

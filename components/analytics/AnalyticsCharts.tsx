@@ -208,11 +208,11 @@ export function WeeklyUsageChart({ data, locale = 'en' }: WeeklyUsageChartProps)
       >
         <defs>
           <linearGradient id="weekly-area" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#818cf8" stopOpacity="0.45" />
+            <stop offset="0%" stopColor="#38bdf8" stopOpacity="0.45" />
             <stop offset="100%" stopColor="#0369a1" stopOpacity="0" />
           </linearGradient>
           <linearGradient id="weekly-line" x1="0" y1="0" x2="1" y2="0">
-            <stop offset="0%" stopColor="#818cf8" />
+            <stop offset="0%" stopColor="#38bdf8" />
             <stop offset="100%" stopColor="#0ea5e9" />
           </linearGradient>
         </defs>

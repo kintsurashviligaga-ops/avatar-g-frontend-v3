@@ -94,7 +94,7 @@ function KindBreakdownBar({ kinds }: { kinds: Record<string, number> }) {
         .sort(([, a], [, b]) => b - a)
         .map(([kind, count]) => {
           const pct = Math.round((count / total) * 100);
-          const color = KIND_COLORS[kind] ?? '#6366f1';
+          const color = KIND_COLORS[kind] ?? '#0ea5e9';
           return (
             <div key={kind} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <span style={{ width: 20, textAlign: 'center', fontSize: 14 }}>{KIND_ICONS[kind] ?? '📦'}</span>

@@ -17,7 +17,7 @@ export function GeminiFeedbackBar({
   content,
   onRegenerate,
   onFeedback,
-  accentColor = '#6366f1',
+  accentColor = '#0ea5e9',
   locale = 'ka',
 }: Props) {
   const [copied, setCopied] = useState(false);

@@ -87,7 +87,7 @@ function ServiceDrawer({
             <div className="flex items-center justify-between px-5 py-4 border-b border-white/8">
               <div className="flex items-center gap-2.5">
                 <div className="w-7 h-7 rounded-lg flex items-center justify-center"
-                  style={{ background: 'linear-gradient(135deg,#6366f1,#06b6d4)' }}>
+                  style={{ background: 'linear-gradient(135deg,#0ea5e9,#06b6d4)' }}>
                   <Sparkles className="w-4 h-4 text-white" />
                 </div>
                 <span className="font-semibold text-white text-sm tracking-wide">MyAvatar.ge</span>
@@ -277,7 +277,7 @@ function MessageBubble({
             isUser ? 'rounded-tr-sm' : 'rounded-tl-sm',
           )}
           style={isUser ? {
-            background: 'linear-gradient(135deg, #6366f1, #06b6d4)',
+            background: 'linear-gradient(135deg, #0ea5e9, #06b6d4)',
             color: '#fff',
           } : {
             background: 'rgba(255,255,255,0.06)',

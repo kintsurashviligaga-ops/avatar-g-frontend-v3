@@ -36,7 +36,7 @@ interface DemoItem {
 
 const DEMOS: DemoItem[] = [
   {
-    id: 'avatar-demo', service: 'Avatar Studio', icon: '👤', accent: '#a78bfa',
+    id: 'avatar-demo', service: 'Avatar Studio', icon: '👤', accent: '#38bdf8',
     prompt: { en: '"Create a professional headshot for a tech CEO"', ka: '"შექმენი პროფესიონალური პორტრეტი ტექ-დირექტორისთვის"', ru: '"Создай профессиональный портрет для тех-директора"' },
     outputType: 'image',
     mockOutput: { en: 'AI-generated professional headshot with studio lighting, natural expression, corporate style', ka: 'AI-ით გენერირებული პროფესიონალური პორტრეტი სტუდიური განათებით', ru: 'AI-сгенерированный профессиональный портрет со студийным светом' },
@@ -60,7 +60,7 @@ const DEMOS: DemoItem[] = [
     mockOutput: { en: 'Original orchestral score — strings, brass, percussion, with cinematic build-up', ka: 'ორიგინალური ორკესტრული სკორი — სიმები, სპილენძი, პერკუსია', ru: 'Оригинальная оркестровая партитура — струнные, медь, перкуссия' },
   },
   {
-    id: 'text-demo', service: 'Text & Copy', icon: '✍️', accent: '#818cf8',
+    id: 'text-demo', service: 'Text & Copy', icon: '✍️', accent: '#38bdf8',
     prompt: { en: '"Write a product description for a smart home device"', ka: '"დაწერე პროდუქტის აღწერა ჭკვიანი სახლის მოწყობილობისთვის"', ru: '"Напиши описание продукта для устройства умного дома"' },
     outputType: 'text',
     mockOutput: { en: 'Introducing the HaloSphere — the intelligent home companion that learns your rhythm. Seamlessly controls lighting, climate, and security with a single voice command. Designed for modern living.', ka: 'გაცანით HaloSphere — ჭკვიანი სახლის სპუტნიკი, რომელიც სწავლობს თქვენს რიტმს. მართავს განათებას, კლიმატს და უსაფრთხოებას ერთი ხმოვანი ბრძანებით.', ru: 'Представляем HaloSphere — умный домашний спутник, который учится вашему ритму. Управляет светом, климатом и безопасностью одной голосовой командой.' },

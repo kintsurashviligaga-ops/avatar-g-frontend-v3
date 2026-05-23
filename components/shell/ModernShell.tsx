@@ -223,7 +223,7 @@ export function TopNavbar({ onMenuToggle, menuOpen }: { onMenuToggle: () => void
         <Link
           href={lh('/hub')}
           className="hidden sm:flex items-center gap-1.5 text-[13px] font-semibold px-4 py-2 rounded-xl transition-all duration-200 hover:scale-105"
-          style={{ background: 'linear-gradient(135deg, rgba(34,211,238,0.15), rgba(99,102,241,0.15))', color: 'var(--color-accent)', border: '1px solid rgba(34,211,238,0.25)' }}
+          style={{ background: 'linear-gradient(135deg, rgba(34,211,238,0.15), rgba(14,165,233,0.15))', color: 'var(--color-accent)', border: '1px solid rgba(34,211,238,0.25)' }}
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
           Studio

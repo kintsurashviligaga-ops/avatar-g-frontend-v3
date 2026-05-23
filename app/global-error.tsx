@@ -213,7 +213,7 @@ export default function GlobalError({
               <a 
                 href="mailto:support@myavatar.ge" 
                 style={{
-                  color: '#818cf8',
+                  color: '#38bdf8',
                   textDecoration: 'none',
                 }}
               >

@@ -349,9 +349,9 @@ export function TestimonialsSection() {
               <div style={{ marginLeft: 'auto' }}>
                 <span style={{
                   fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 99,
-                  background: `${SERVICE_COLORS[t.service] ?? '#6366f1'}18`,
-                  color: SERVICE_COLORS[t.service] ?? '#6366f1',
-                  border: `1px solid ${SERVICE_COLORS[t.service] ?? '#6366f1'}30`,
+                  background: `${SERVICE_COLORS[t.service] ?? '#0ea5e9'}18`,
+                  color: SERVICE_COLORS[t.service] ?? '#0ea5e9',
+                  border: `1px solid ${SERVICE_COLORS[t.service] ?? '#0ea5e9'}30`,
                 }}>
                   {t.service}
                 </span>

@@ -138,7 +138,7 @@ export default function PreviewCanvas({ media, locale, onClear, variant = 'deskt
               <div className="relative mb-5">
                 <div
                   className="w-28 h-28 rounded-full opacity-30 animate-pulse"
-                  style={{ background: 'radial-gradient(circle at 50% 40%, rgba(167,139,250,0.6) 0%, transparent 70%)', filter: 'blur(8px)' }}
+                  style={{ background: 'radial-gradient(circle at 50% 40%, rgba(56,189,248,0.6) 0%, transparent 70%)', filter: 'blur(8px)' }}
                 />
                 <div className="absolute inset-0 flex items-center justify-center">
                   <Loader2 size={28} className="text-violet-200 animate-spin" />
@@ -413,7 +413,7 @@ function AudioPanel({ url, prompt, t }: { url: string; prompt: string; t: String
         <SocialShareOverlay url={url} prompt={prompt} />
         <div className="flex items-center gap-4">
           <button type="button" onClick={toggle} aria-label={playing ? 'Pause' : 'Play'}
-            className="h-12 w-12 rounded-full bg-gradient-to-br from-violet-500 to-violet-700 text-white flex items-center justify-center shadow-[0_0_24px_rgba(139,92,246,0.4)] hover:scale-105 transition flex-shrink-0">
+            className="h-12 w-12 rounded-full bg-gradient-to-br from-violet-500 to-violet-700 text-white flex items-center justify-center shadow-[0_0_24px_rgba(14,165,233,0.4)] hover:scale-105 transition flex-shrink-0">
             {playing ? <Pause size={18} /> : <Play size={18} className="ml-0.5" />}
           </button>
           <div className="flex-1 min-w-0">

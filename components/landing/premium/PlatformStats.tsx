@@ -82,7 +82,7 @@ export function PlatformStats() {
   return (
     <section className="relative py-16 sm:py-24 overflow-hidden">
       {/* Background grain */}
-      <div className="absolute inset-0 pointer-events-none" style={{ background: 'radial-gradient(ellipse 60% 40% at 50% 60%, rgba(99,102,241,0.04) 0%, transparent 70%)' }} />
+      <div className="absolute inset-0 pointer-events-none" style={{ background: 'radial-gradient(ellipse 60% 40% at 50% 60%, rgba(14,165,233,0.04) 0%, transparent 70%)' }} />
 
       <div className="relative max-w-6xl mx-auto px-4 sm:px-6">
         {/* Header */}
@@ -130,7 +130,7 @@ export function PlatformStats() {
               <span className="text-3xl sm:text-4xl mb-3 block">{s.icon}</span>
               <div
                 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold tracking-tight mb-2"
-                style={{ color: 'var(--color-text)', background: 'linear-gradient(135deg, #22d3ee, #a78bfa)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}
+                style={{ color: 'var(--color-text)', background: 'linear-gradient(135deg, #22d3ee, #38bdf8)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}
               >
                 <AnimatedNumber target={s.value} suffix={s.suffix} />
               </div>

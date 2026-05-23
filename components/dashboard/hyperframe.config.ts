@@ -156,7 +156,7 @@ export const DASHBOARD_NAV_SECTIONS: DashboardNavSection[] = [
         subtitle: 'მეხსიერება — what Agent G remembers',
         icon: Brain,
         href: '/memory',
-        color: '#a78bfa',
+        color: '#38bdf8',
       },
       {
         id: 'workflows',

@@ -254,7 +254,7 @@ const SERVICE_ICONS: Record<ServiceId, React.ElementType> = {
 
 // Service accent colors — each agent gets its own identity for the history feed
 const SERVICE_COLORS: Record<ServiceId, string> = {
-  chat: '#6366f1', avatar: '#38bdf8', image: '#06b6d4',
+  chat: '#0ea5e9', avatar: '#38bdf8', image: '#06b6d4',
   video: '#f97316', music: '#f59e0b', voice: '#3b82f6',
   interior: '#14b8a6', app: '#10b981',
 };
@@ -1432,7 +1432,7 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
                 transition={{ duration: 0.3, ease: 'easeOut' }}
               >
                 <div className="cc-empty-icon-halo">
-                  <LibraryIcon style={{ width: 36, height: 36, color: 'rgba(167,139,250,0.85)' }} />
+                  <LibraryIcon style={{ width: 36, height: 36, color: 'rgba(56,189,248,0.85)' }} />
                 </div>
                 <p style={{ fontSize: 15, fontWeight: 600, color: 'rgba(255,255,255,0.7)', marginTop: 14 }}>{copy.libraryEmpty}</p>
                 <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', marginTop: 6, maxWidth: 260 }}>
@@ -1458,8 +1458,8 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
                       </div>
                     ))}
                     {item.kind === 'audio' && (
-                      <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: 'rgba(139,92,246,0.08)' }}>
-                        <MusicIcon style={{ width: 32, height: 32, color: 'rgba(167,139,250,0.7)' }} />
+                      <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: 'rgba(14,165,233,0.08)' }}>
+                        <MusicIcon style={{ width: 32, height: 32, color: 'rgba(56,189,248,0.7)' }} />
                       </div>
                     )}
                     <div className="cc-lib-badge">{item.service}</div>
@@ -1510,7 +1510,7 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
                     <button
                       type="button"
                       onClick={() => { setInput(messages.filter(m => m.role === 'user').slice(-1)[0]?.content ?? ''); setActiveService('image'); }}
-                      style={{ flex: 1, padding: '5px 0', fontSize: 10, fontWeight: 600, color: '#c084fc', background: 'rgba(14,165,233,0.2)', borderRadius: 6, border: 'none', cursor: 'pointer' }}
+                      style={{ flex: 1, padding: '5px 0', fontSize: 10, fontWeight: 600, color: '#60a5fa', background: 'rgba(14,165,233,0.2)', borderRadius: 6, border: 'none', cursor: 'pointer' }}
                     >
                       🔄
                     </button>
@@ -1611,7 +1611,7 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
                       </div>
                       <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.75)', textTransform: 'capitalize' }}>{copy.services[svc]}</span>
                     </div>
-                    <span style={{ fontSize: 13, fontWeight: 600, color: 'rgba(167,139,250,0.9)', display: 'flex', alignItems: 'center', gap: 3 }}>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: 'rgba(56,189,248,0.9)', display: 'flex', alignItems: 'center', gap: 3 }}>
                       <Zap style={{ width: 11, height: 11 }} />{cost}
                     </span>
                   </div>
@@ -1726,14 +1726,14 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
                   background: batchMode ? 'rgba(14,165,233,0.15)' : 'rgba(255,255,255,0.04)',
                   border: `1px solid ${batchMode ? 'rgba(14,165,233,0.5)' : 'rgba(255,255,255,0.1)'}`,
                   borderRadius: 20,
-                  color: batchMode ? '#c084fc' : 'rgba(255,255,255,0.5)',
+                  color: batchMode ? '#60a5fa' : 'rgba(255,255,255,0.5)',
                   fontSize: 11, fontWeight: 600, cursor: 'pointer', transition: 'all 0.15s',
                 }}
               >
                 <span style={{ fontSize: 12 }}>🎨🎨🎨🎨</span>
                 <span>Batch ×4</span>
                 {batchMode && (
-                  <span style={{ fontSize: 10, background: 'rgba(14,165,233,0.25)', borderRadius: 4, padding: '1px 5px', color: '#c084fc' }}>
+                  <span style={{ fontSize: 10, background: 'rgba(14,165,233,0.25)', borderRadius: 4, padding: '1px 5px', color: '#60a5fa' }}>
                     40⚡
                   </span>
                 )}
@@ -1843,7 +1843,7 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
             {isRecording && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 2, padding: '0 6px' }}>
                 {[3, 5, 8, 6, 9, 4, 7].map((h, i) => (
-                  <span key={i} style={{ display: 'block', width: 2, height: h * 2, borderRadius: 1, background: 'rgba(167,139,250,0.9)', animation: `cc-wave 0.9s ${i * 80}ms ease-in-out infinite` }} />
+                  <span key={i} style={{ display: 'block', width: 2, height: h * 2, borderRadius: 1, background: 'rgba(56,189,248,0.9)', animation: `cc-wave 0.9s ${i * 80}ms ease-in-out infinite` }} />
                 ))}
               </div>
             )}
@@ -1854,7 +1854,7 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
                 {SERVICE_COSTS[activeService]}
               </div>
             )}
-            <button type="button" className="cc-ibtn" onClick={() => fileInputRef.current?.click()} style={attachedImage ? { color: 'rgba(167,139,250,1)', background: 'rgba(139,92,246,0.18)' } : undefined}>
+            <button type="button" className="cc-ibtn" onClick={() => fileInputRef.current?.click()} style={attachedImage ? { color: 'rgba(56,189,248,1)', background: 'rgba(14,165,233,0.18)' } : undefined}>
               <Paperclip style={{ width: 18, height: 18 }} />
             </button>
             <button type="button" className={`cc-ibtn${isRecording ? ' rec' : ''}`} onClick={toggleVoiceRecording} aria-pressed={isRecording}>
@@ -1944,8 +1944,8 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
         .cc-root {
           position: relative; display: flex; flex-direction: column;
           height: 100%; width: 100%; overflow: hidden;
-          background: radial-gradient(1400px 700px at 70% -100px, rgba(139,92,246,0.12), transparent 60%),
-                      radial-gradient(900px 600px at -5% 110%, rgba(109,40,217,0.08), transparent 55%),
+          background: radial-gradient(1400px 700px at 70% -100px, rgba(14,165,233,0.12), transparent 60%),
+                      radial-gradient(900px 600px at -5% 110%, rgba(3,105,161,0.08), transparent 55%),
                       #0a0a0e;
           color: #f5f5f7;
           font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', system-ui, sans-serif;
@@ -1972,11 +1972,11 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
         .cc-drawer-body::-webkit-scrollbar-thumb { background:rgba(255,255,255,0.08); border-radius:2px; }
         .cc-new-chat-btn {
           display: block; width: 100%; padding: 9px 12px; border-radius: 10px; text-align: left;
-          border: 1px dashed rgba(139,92,246,0.35); background: rgba(139,92,246,0.07);
-          color: rgba(167,139,250,0.9); font-size: 13px; font-weight: 500; cursor: pointer;
+          border: 1px dashed rgba(14,165,233,0.35); background: rgba(14,165,233,0.07);
+          color: rgba(56,189,248,0.9); font-size: 13px; font-weight: 500; cursor: pointer;
           transition: background 0.15s;
         }
-        .cc-new-chat-btn:hover { background: rgba(139,92,246,0.14); }
+        .cc-new-chat-btn:hover { background: rgba(14,165,233,0.14); }
         .cc-empty-sm { padding: 24px 16px; text-align: center; font-size: 13px; color: rgba(255,255,255,0.3); }
         /* History rows */
         .cc-hist-section { padding: 4px 0 8px; }
@@ -2014,7 +2014,7 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
         }
         .cc-credits-card {
           margin: 0 14px 14px; padding: 14px;
-          background: rgba(139,92,246,0.07); border: 1px solid rgba(139,92,246,0.2);
+          background: rgba(14,165,233,0.07); border: 1px solid rgba(14,165,233,0.2);
           border-radius: 14px; display: flex; flex-direction: column; gap: 6px;
         }
         .cc-credits-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: rgba(255,255,255,0.4); }
@@ -2030,7 +2030,7 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
           width: 100%; text-align: left;
         }
         .cc-model-row:hover { background: rgba(255,255,255,0.04); }
-        .cc-model-row.selected { background: rgba(139,92,246,0.1); }
+        .cc-model-row.selected { background: rgba(14,165,233,0.1); }
         .cc-radio {
           width: 16px; height: 16px; border-radius: 50%; border: 1.5px solid rgba(255,255,255,0.25);
           flex-shrink: 0; display: flex; align-items: center; justify-content: center;
@@ -2069,9 +2069,9 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
         /* Orb large (standby) */
         .cc-orb-lg {
           width: 80px; height: 80px; border-radius: 50%;
-          background: linear-gradient(135deg,#0ea5e9 0%,#0284c7 60%,#4c1d95 100%);
+          background: linear-gradient(135deg,#0ea5e9 0%,#0284c7 60%,#0c4a6e 100%);
           display: flex; align-items: center; justify-content: center;
-          box-shadow: 0 0 40px rgba(139,92,246,0.45), 0 0 80px rgba(109,40,217,0.2), inset 0 1px 0 rgba(255,255,255,0.2);
+          box-shadow: 0 0 40px rgba(14,165,233,0.45), 0 0 80px rgba(3,105,161,0.2), inset 0 1px 0 rgba(255,255,255,0.2);
           border: 1px solid rgba(255,255,255,0.12);
         }
         .cc-orb-g { font-size: 32px; font-weight: 800; color: #fff; letter-spacing: -0.02em; }
@@ -2080,9 +2080,9 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
         /* Mini orb in header */
         .cc-orb-mini {
           width: 30px; height: 30px; border-radius: 50%;
-          background: linear-gradient(135deg,#0ea5e9 0%,#0284c7 60%,#4c1d95 100%);
+          background: linear-gradient(135deg,#0ea5e9 0%,#0284c7 60%,#0c4a6e 100%);
           display: flex; align-items: center; justify-content: center;
-          box-shadow: 0 0 14px rgba(139,92,246,0.55), inset 0 1px 0 rgba(255,255,255,0.2);
+          box-shadow: 0 0 14px rgba(14,165,233,0.55), inset 0 1px 0 rgba(255,255,255,0.2);
           border: 1px solid rgba(255,255,255,0.12); flex-shrink: 0;
         }
         .cc-orb-mini.orb-listening { animation: orb-pulse 1s ease-in-out infinite; }
@@ -2091,8 +2091,8 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
         /* Pipeline progress banner */
         .cc-pipeline-banner {
           position: relative; z-index: 10; display: flex; align-items: center; gap: 8px;
-          padding: 8px 14px; background: rgba(139,92,246,0.08);
-          border-bottom: 1px solid rgba(139,92,246,0.2); flex-shrink: 0;
+          padding: 8px 14px; background: rgba(14,165,233,0.08);
+          border-bottom: 1px solid rgba(14,165,233,0.2); flex-shrink: 0;
         }
         .cc-pipeline-txt { flex: 1; font-size: 12px; color: rgba(255,255,255,0.7); }
         .cc-pipeline-progress {
@@ -2103,7 +2103,7 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
           height: 100%; background: linear-gradient(90deg,#0284c7,#0ea5e9);
           border-radius: 2px; transition: width 0.5s;
         }
-        .cc-pipeline-pct { font-size: 11px; font-weight: 600; color: rgba(167,139,250,0.8); flex-shrink: 0; }
+        .cc-pipeline-pct { font-size: 11px; font-weight: 600; color: rgba(56,189,248,0.8); flex-shrink: 0; }
         .cc-pipeline-sub { font-size: 11px; color: rgba(255,255,255,0.35); margin-top: 2px; }
         /* Cancel task button */
         /* Cancel task button — expanded touch target */
@@ -2155,7 +2155,7 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
           position: relative; cursor: pointer; transition: background 0.2s;
           flex-shrink: 0;
         }
-        .cc-toggle.on { background: rgba(139,92,246,0.7); border-color: rgba(139,92,246,0.9); }
+        .cc-toggle.on { background: rgba(14,165,233,0.7); border-color: rgba(14,165,233,0.9); }
         .cc-toggle-thumb {
           position: absolute; top: 2px; left: 2px; width: 18px; height: 18px;
           border-radius: 50%; background: #fff; transition: transform 0.2s;
@@ -2222,7 +2222,7 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
         }
         .cc-tab:hover { color: rgba(255,255,255,0.65); }
         .cc-tab:active { transform: scale(0.95); }
-        .cc-tab.active { color: rgba(167,139,250,1); }
+        .cc-tab.active { color: rgba(56,189,248,1); }
         .cc-tab:focus-visible { outline: none; color: #fff; box-shadow: inset 0 -2px 0 rgba(14,165,233,0.85); }
         .cc-filter:focus-visible { outline: none; box-shadow: 0 0 0 2px rgba(14,165,233,0.6); }
         /* Rail — service selector strip */
@@ -2253,7 +2253,7 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
         }
         .cc-pill:hover { color: rgba(255,255,255,0.75); border-color: rgba(255,255,255,0.14); }
         .cc-pill:active { transform: scale(0.94); }
-        .cc-pill.active { border-color: rgba(139,92,246,0.55); background: rgba(139,92,246,0.12); color: #fff; }
+        .cc-pill.active { border-color: rgba(14,165,233,0.55); background: rgba(14,165,233,0.12); color: #fff; }
         /* Input area — safe bottom inset + keyboard handling */
         .cc-input-wrap {
           padding: 8px 12px; padding-bottom: max(env(safe-area-inset-bottom, 12px), 12px);
@@ -2267,9 +2267,9 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
           transition: border-color 0.2s, box-shadow 0.25s, background 0.2s;
         }
         .cc-input-bar:focus-within {
-          border-color: rgba(139,92,246,0.45);
+          border-color: rgba(14,165,233,0.45);
           background: rgba(255,255,255,0.06);
-          box-shadow: 0 0 0 4px rgba(139,92,246,0.1), 0 8px 24px -10px rgba(139,92,246,0.35);
+          box-shadow: 0 0 0 4px rgba(14,165,233,0.1), 0 8px 24px -10px rgba(14,165,233,0.35);
         }
         /* 16px on mobile prevents iOS auto-zoom; keep 15px with explicit override */
         .cc-textarea {
@@ -2307,16 +2307,16 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
         .cc-send.ready {
           background: linear-gradient(135deg,#0369a1,#0ea5e9);
           color: #fff; cursor: pointer;
-          box-shadow: 0 0 14px rgba(139,92,246,0.5);
+          box-shadow: 0 0 14px rgba(14,165,233,0.5);
           animation: cc-send-ready 2.4s ease-in-out infinite;
         }
         @keyframes cc-send-ready {
-          0%, 100% { box-shadow: 0 0 14px rgba(139,92,246,0.45); }
-          50% { box-shadow: 0 0 20px rgba(139,92,246,0.7); }
+          0%, 100% { box-shadow: 0 0 14px rgba(14,165,233,0.45); }
+          50% { box-shadow: 0 0 20px rgba(14,165,233,0.7); }
         }
-        .cc-send.ready:hover { box-shadow: 0 0 24px rgba(139,92,246,0.8); transform: scale(1.06); animation: none; }
+        .cc-send.ready:hover { box-shadow: 0 0 24px rgba(14,165,233,0.8); transform: scale(1.06); animation: none; }
         .cc-send.ready:active { transform: scale(0.94); }
-        .cc-send.ready:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(14,165,233,0.55), 0 0 20px rgba(139,92,246,0.7); }
+        .cc-send.ready:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(14,165,233,0.55), 0 0 20px rgba(14,165,233,0.7); }
         .cc-ibtn:focus-visible { outline: none; box-shadow: 0 0 0 2px rgba(14,165,233,0.6); }
         .cc-spin { animation: spin 0.8s linear infinite; }
         /* Library */
@@ -2328,7 +2328,7 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
           border: 1px solid rgba(255,255,255,0.09); background: rgba(255,255,255,0.03);
           color: rgba(255,255,255,0.45); cursor: pointer; transition: all 0.14s;
         }
-        .cc-filter.active { border-color: rgba(139,92,246,0.5); background: rgba(139,92,246,0.12); color: rgba(167,139,250,1); }
+        .cc-filter.active { border-color: rgba(14,165,233,0.5); background: rgba(14,165,233,0.12); color: rgba(56,189,248,1); }
         .cc-filter:hover:not(.active) { color: rgba(255,255,255,0.75); }
         .cc-lib-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
         @media (min-width: 440px) { .cc-lib-grid { grid-template-columns: repeat(3, 1fr); } }
@@ -2358,12 +2358,12 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
         .cc-empty-icon-halo {
           width: 84px; height: 84px; border-radius: 50%;
           display: flex; align-items: center; justify-content: center;
-          background: radial-gradient(circle at 50% 50%, rgba(167,139,250,0.18) 0%, rgba(167,139,250,0.06) 50%, transparent 70%);
+          background: radial-gradient(circle at 50% 50%, rgba(56,189,248,0.18) 0%, rgba(56,189,248,0.06) 50%, transparent 70%);
           position: relative;
         }
         .cc-empty-icon-halo::before {
           content: ''; position: absolute; inset: -6px; border-radius: 50%;
-          background: radial-gradient(circle, rgba(139,92,246,0.25) 0%, transparent 60%);
+          background: radial-gradient(circle, rgba(14,165,233,0.25) 0%, transparent 60%);
           animation: cc-halo-pulse 2.6s ease-in-out infinite;
         }
         @keyframes cc-halo-pulse {
@@ -2375,12 +2375,12 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
           padding: 10px 18px; border-radius: 999px; font-size: 13px; font-weight: 600;
           color: #fff; cursor: pointer; border: none;
           background: linear-gradient(135deg, #0369a1, #0ea5e9);
-          box-shadow: 0 6px 20px -6px rgba(139,92,246,0.55);
+          box-shadow: 0 6px 20px -6px rgba(14,165,233,0.55);
           transition: transform 0.18s, box-shadow 0.22s;
         }
-        .cc-empty-cta:hover { transform: translateY(-1px); box-shadow: 0 10px 28px -8px rgba(139,92,246,0.75); }
+        .cc-empty-cta:hover { transform: translateY(-1px); box-shadow: 0 10px 28px -8px rgba(14,165,233,0.75); }
         .cc-empty-cta:active { transform: scale(0.97); }
-        .cc-empty-cta:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(14,165,233,0.55), 0 6px 20px -6px rgba(139,92,246,0.55); }
+        .cc-empty-cta:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(14,165,233,0.55), 0 6px 20px -6px rgba(14,165,233,0.55); }
         /* Pricing */
         .cc-pricing { padding: 20px 14px 36px; max-width: 440px; margin: 0 auto; }
         .cc-pricing-h { font-size: 20px; font-weight: 700; color: #fff; text-align: center; margin-bottom: 6px; }
@@ -2409,7 +2409,7 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
         }
         .cc-hub-item:hover { background: rgba(255,255,255,0.06); }
         .cc-hub-item:active { transform: scale(0.95); }
-        .cc-hub-item.active { border-color: rgba(139,92,246,0.45); background: rgba(139,92,246,0.1); }
+        .cc-hub-item.active { border-color: rgba(14,165,233,0.45); background: rgba(14,165,233,0.1); }
         .cc-hub-icon { width: 42px; height: 42px; border-radius: 12px; display: flex; align-items: center; justify-content: center; }
         .cc-hub-name { font-size: 11px; font-weight: 500; color: rgba(255,255,255,0.7); }
         .cc-hub-cost { font-size: 10px; color: rgba(255,255,255,0.3); display: flex; align-items: center; gap: 2px; }
@@ -2418,19 +2418,19 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
         .cc-toast { display: flex; align-items: center; gap: 8px; padding: 9px 15px; border-radius: 20px; font-size: 13px; font-weight: 500; backdrop-filter: blur(16px); animation: toast-in 0.22s ease-out; white-space: nowrap; }
         .cc-toast-success { background: rgba(16,185,129,0.14); border: 1px solid rgba(16,185,129,0.28); color: #34d399; }
         .cc-toast-error { background: rgba(239,68,68,0.14); border: 1px solid rgba(239,68,68,0.28); color: #f87171; }
-        .cc-toast-info { background: rgba(139,92,246,0.14); border: 1px solid rgba(139,92,246,0.3); color: #a78bfa; }
+        .cc-toast-info { background: rgba(14,165,233,0.14); border: 1px solid rgba(14,165,233,0.3); color: #38bdf8; }
         /* Main scroll — momentum on iOS */
         .cc-main { flex: 1; overflow-y: auto; min-height: 0; display: flex; flex-direction: column; -webkit-overflow-scrolling: touch; }
         .cc-main::-webkit-scrollbar { width: 4px; }
         .cc-main::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.07); border-radius: 2px; }
         /* Keyframes */
         @keyframes orb-pulse {
-          0%,100% { transform:scale(1); box-shadow:0 0 40px rgba(139,92,246,0.45),0 0 80px rgba(109,40,217,0.2),inset 0 1px 0 rgba(255,255,255,0.2); }
-          50% { transform:scale(1.1); box-shadow:0 0 60px rgba(139,92,246,0.9),0 0 100px rgba(109,40,217,0.4),inset 0 1px 0 rgba(255,255,255,0.25); }
+          0%,100% { transform:scale(1); box-shadow:0 0 40px rgba(14,165,233,0.45),0 0 80px rgba(3,105,161,0.2),inset 0 1px 0 rgba(255,255,255,0.2); }
+          50% { transform:scale(1.1); box-shadow:0 0 60px rgba(14,165,233,0.9),0 0 100px rgba(3,105,161,0.4),inset 0 1px 0 rgba(255,255,255,0.25); }
         }
         @keyframes orb-glow {
-          0%,100% { box-shadow:0 0 40px rgba(139,92,246,0.5),0 0 80px rgba(109,40,217,0.2),inset 0 1px 0 rgba(255,255,255,0.2); }
-          50% { box-shadow:0 0 70px rgba(139,92,246,1),0 0 120px rgba(167,139,250,0.6),inset 0 1px 0 rgba(255,255,255,0.3); }
+          0%,100% { box-shadow:0 0 40px rgba(14,165,233,0.5),0 0 80px rgba(3,105,161,0.2),inset 0 1px 0 rgba(255,255,255,0.2); }
+          50% { box-shadow:0 0 70px rgba(14,165,233,1),0 0 120px rgba(56,189,248,0.6),inset 0 1px 0 rgba(255,255,255,0.3); }
         }
         @keyframes cc-wave { 0%,100% { transform:scaleY(0.5); } 50% { transform:scaleY(1.5); } }
         @keyframes rec-blink { 0%,100% { opacity:1; } 50% { opacity:0.4; } }
@@ -2444,8 +2444,8 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
         .cc-cost-badge {
           display: flex; align-items: center; gap: 3px;
           padding: 3px 8px; border-radius: 20px;
-          background: rgba(99,102,241,0.15); border: 1px solid rgba(99,102,241,0.25);
-          color: rgba(167,139,250,0.85); font-size: 11px; font-weight: 600;
+          background: rgba(14,165,233,0.15); border: 1px solid rgba(14,165,233,0.25);
+          color: rgba(56,189,248,0.85); font-size: 11px; font-weight: 600;
           flex-shrink: 0; white-space: nowrap;
         }
         /* Music preset bar */
@@ -2493,7 +2493,7 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
         .cc-voice-selector:hover { background: rgba(255,255,255,0.07); }
         .cc-voice-dropdown {
           position: absolute; bottom: calc(100% + 6px); left: 0; right: 0;
-          background: #1a1a2e; border: 1px solid rgba(99,102,241,0.25);
+          background: #1a1a2e; border: 1px solid rgba(14,165,233,0.25);
           border-radius: 12px; overflow: hidden; z-index: 50;
           box-shadow: 0 8px 32px rgba(0,0,0,0.4);
         }
@@ -2505,11 +2505,11 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
           background: transparent; text-align: left;
         }
         .cc-voice-opt:hover { background: rgba(255,255,255,0.06); color: #fff; }
-        .cc-voice-opt.active { color: #c4b5fd; }
+        .cc-voice-opt.active { color: #7dd3fc; }
         /* @mention suggestions */
         .cc-char-suggestions {
           position: absolute; bottom: calc(100% + 6px); left: 12px; right: 12px;
-          background: #1a1a2e; border: 1px solid rgba(99,102,241,0.25);
+          background: #1a1a2e; border: 1px solid rgba(14,165,233,0.25);
           border-radius: 12px; overflow: hidden; z-index: 50;
           box-shadow: 0 8px 32px rgba(0,0,0,0.4);
         }
@@ -2633,7 +2633,7 @@ function MessageRow({ msg, copy, onCopy, onRetry, onSpeak, onLike, onDislike, on
     return (
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 10 }}>
         <div style={{ maxWidth: '78%', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
-          <div style={{ padding: '10px 16px', borderRadius: '20px 20px 4px 20px', background: 'rgba(109,40,217,0.25)', border: '1px solid rgba(139,92,246,0.3)', fontSize: 15, lineHeight: 1.55, color: '#f5f5f7' }}>
+          <div style={{ padding: '10px 16px', borderRadius: '20px 20px 4px 20px', background: 'rgba(3,105,161,0.25)', border: '1px solid rgba(14,165,233,0.3)', fontSize: 15, lineHeight: 1.55, color: '#f5f5f7' }}>
             {msg.content}
           </div>
           <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)' }}>{formatTime(msg.ts)}</span>
@@ -2648,7 +2648,7 @@ function MessageRow({ msg, copy, onCopy, onRetry, onSpeak, onLike, onDislike, on
   return (
     <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 14 }} onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}>
       {/* Orb */}
-      <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'linear-gradient(135deg,#0ea5e9,#0369a1)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, boxShadow: '0 0 10px rgba(139,92,246,0.3)', marginTop: 2 }}>
+      <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'linear-gradient(135deg,#0ea5e9,#0369a1)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, boxShadow: '0 0 10px rgba(14,165,233,0.3)', marginTop: 2 }}>
         <span style={{ fontSize: 12, fontWeight: 800, color: '#fff' }}>G</span>
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
@@ -2715,9 +2715,9 @@ function Btn({ children, onClick, title, active }: { children: React.ReactNode; 
   return (
     <button type="button" title={title} onClick={onClick} style={{
       width: 24, height: 24, borderRadius: 7, display: 'flex', alignItems: 'center', justifyContent: 'center',
-      background: active ? 'rgba(139,92,246,0.2)' : 'rgba(255,255,255,0.04)',
-      border: `1px solid ${active ? 'rgba(139,92,246,0.4)' : 'rgba(255,255,255,0.06)'}`,
-      color: active ? 'rgba(167,139,250,1)' : 'rgba(255,255,255,0.4)', cursor: 'pointer',
+      background: active ? 'rgba(14,165,233,0.2)' : 'rgba(255,255,255,0.04)',
+      border: `1px solid ${active ? 'rgba(14,165,233,0.4)' : 'rgba(255,255,255,0.06)'}`,
+      color: active ? 'rgba(56,189,248,1)' : 'rgba(255,255,255,0.4)', cursor: 'pointer',
     }}>
       {children}
     </button>
@@ -2734,8 +2734,8 @@ function PlanCard({ name, price, period, features, accent, btnClass, btnText, ba
   return (
     <div style={{
       position: 'relative', padding: 16, borderRadius: 18,
-      border: `1px solid ${isUltimate ? 'rgba(245,158,11,0.4)' : badge ? 'rgba(139,92,246,0.45)' : 'rgba(255,255,255,0.08)'}`,
-      background: isUltimate ? 'rgba(245,158,11,0.05)' : badge ? 'rgba(139,92,246,0.06)' : 'rgba(255,255,255,0.02)',
+      border: `1px solid ${isUltimate ? 'rgba(245,158,11,0.4)' : badge ? 'rgba(14,165,233,0.45)' : 'rgba(255,255,255,0.08)'}`,
+      background: isUltimate ? 'rgba(245,158,11,0.05)' : badge ? 'rgba(14,165,233,0.06)' : 'rgba(255,255,255,0.02)',
     }}>
       {badge && <div style={{ position: 'absolute', top: -11, left: '50%', transform: 'translateX(-50%)', padding: '3px 12px', borderRadius: 20, background: badge ? (isUltimate ? 'linear-gradient(90deg,#d97706,#f59e0b)' : 'linear-gradient(90deg,#0369a1,#0ea5e9)') : 'transparent', fontSize: 10, fontWeight: 700, color: '#fff', letterSpacing: '0.06em', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>{badge}</div>}
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 12 }}>
@@ -2759,8 +2759,8 @@ function PlanCard({ name, price, period, features, accent, btnClass, btnText, ba
         </button>
       )}
       <style jsx>{`
-        .cc-btn-primary { background: linear-gradient(135deg,#0369a1,#0ea5e9); color:#fff; border:none; box-shadow:0 4px 18px rgba(139,92,246,0.4); }
-        .cc-btn-primary:hover { transform:translateY(-1px); box-shadow:0 6px 22px rgba(139,92,246,0.55); }
+        .cc-btn-primary { background: linear-gradient(135deg,#0369a1,#0ea5e9); color:#fff; border:none; box-shadow:0 4px 18px rgba(14,165,233,0.4); }
+        .cc-btn-primary:hover { transform:translateY(-1px); box-shadow:0 6px 22px rgba(14,165,233,0.55); }
         .cc-btn-ultimate { background: linear-gradient(135deg,#d97706,#f59e0b); color:#fff; border:none; box-shadow:0 4px 18px rgba(245,158,11,0.35); }
         .cc-btn-ultimate:hover { transform:translateY(-1px); box-shadow:0 6px 22px rgba(245,158,11,0.5); }
         .cc-btn-outline { background:transparent; color:rgba(255,255,255,0.55); border:1px solid rgba(255,255,255,0.12); }

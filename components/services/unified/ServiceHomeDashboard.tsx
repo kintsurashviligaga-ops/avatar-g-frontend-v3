@@ -59,7 +59,7 @@ export default function ServiceHomeDashboard({ locale }: ServiceHomeDashboardPro
 
   const stats = [
     { label: T.credits[lang], value: '1000', icon: '⚡', color: '#00d4ff' },
-    { label: T.generated[lang], value: '0', icon: '✨', color: '#a78bfa' },
+    { label: T.generated[lang], value: '0', icon: '✨', color: '#38bdf8' },
     { label: T.workflows[lang], value: '0', icon: '🔄', color: '#34d399' },
     { label: T.thisMonth[lang], value: '0', icon: '📊', color: '#f59e0b' },
   ]

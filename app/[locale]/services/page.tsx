@@ -454,14 +454,14 @@ export default async function LocalizedServicesPage({ params }: ServicesPageProp
       <div className='relative mx-auto flex w-full max-w-7xl flex-col gap-12 md:gap-16'>
         <header className='mx-auto max-w-4xl text-center'>
           <div className='mx-auto mb-5 relative w-[83px] h-[83px] sm:w-[104px] sm:h-[104px]'>
-            <div className='absolute inset-[10%] rounded-full' style={{ background: 'radial-gradient(circle, rgba(99,102,241,0.08) 0%, transparent 70%)', filter: 'blur(8px)' }} />
+            <div className='absolute inset-[10%] rounded-full' style={{ background: 'radial-gradient(circle, rgba(14,165,233,0.08) 0%, transparent 70%)', filter: 'blur(8px)' }} />
             <Image
               src="/brand/gemini-rocket-clean.png"
               alt="MyAvatar.ge"
               fill
               sizes="104px"
               priority
-              className='object-contain drop-shadow-[0_4px_16px_rgba(99,102,241,0.22)]'
+              className='object-contain drop-shadow-[0_4px_16px_rgba(14,165,233,0.22)]'
             />
           </div>
           <p className='mb-3 inline-flex rounded-full px-4 py-1.5 text-xs font-semibold tracking-[0.2em]' style={{ backgroundColor: 'var(--color-accent-soft)', color: 'var(--color-accent)', border: '1px solid var(--color-accent)' }}>
@@ -477,13 +477,13 @@ export default async function LocalizedServicesPage({ params }: ServicesPageProp
           href={`/${locale}/hub`}
           className='group relative block overflow-hidden rounded-2xl transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-cyan-500/10'
           style={{
-            background: 'linear-gradient(135deg, rgba(34,211,238,0.06), rgba(99,102,241,0.06))',
+            background: 'linear-gradient(135deg, rgba(34,211,238,0.06), rgba(14,165,233,0.06))',
             border: '1px solid rgba(34,211,238,0.2)',
           }}
         >
           <div className='absolute inset-0 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity' style={{ background: 'radial-gradient(ellipse at 50% 0%, rgba(34,211,238,0.08) 0%, transparent 60%)' }} />
           <div className='relative flex items-center gap-4 px-6 py-5 sm:px-8 sm:py-6'>
-            <div className='flex-shrink-0 w-12 h-12 sm:w-14 sm:h-14 rounded-2xl flex items-center justify-center' style={{ background: 'linear-gradient(135deg, rgba(34,211,238,0.15), rgba(99,102,241,0.15))', border: '1px solid rgba(34,211,238,0.2)' }}>
+            <div className='flex-shrink-0 w-12 h-12 sm:w-14 sm:h-14 rounded-2xl flex items-center justify-center' style={{ background: 'linear-gradient(135deg, rgba(34,211,238,0.15), rgba(14,165,233,0.15))', border: '1px solid rgba(34,211,238,0.2)' }}>
               <LayoutGrid className='w-6 h-6 sm:w-7 sm:h-7' style={{ color: '#22d3ee' }} />
             </div>
             <div className='flex-1 min-w-0'>
@@ -563,7 +563,7 @@ export default async function LocalizedServicesPage({ params }: ServicesPageProp
           {/* Ambient glow layers */}
           <div className='absolute inset-0 pointer-events-none' aria-hidden='true'>
             <div className='absolute top-0 left-1/2 -translate-x-1/2 w-[700px] h-[400px]' style={{ background: 'radial-gradient(ellipse 70% 50% at 50% 0%, rgba(34,211,238,0.08) 0%, transparent 70%)', filter: 'blur(60px)' }} />
-            <div className='absolute bottom-0 right-0 w-[500px] h-[300px]' style={{ background: 'radial-gradient(ellipse at 80% 100%, rgba(99,102,241,0.06) 0%, transparent 70%)', filter: 'blur(50px)' }} />
+            <div className='absolute bottom-0 right-0 w-[500px] h-[300px]' style={{ background: 'radial-gradient(ellipse at 80% 100%, rgba(14,165,233,0.06) 0%, transparent 70%)', filter: 'blur(50px)' }} />
             <div className='absolute top-1/2 left-0 w-[400px] h-[400px] -translate-y-1/2' style={{ background: 'radial-gradient(ellipse at 0% 50%, rgba(14,165,233,0.05) 0%, transparent 70%)', filter: 'blur(60px)' }} />
             {/* Grid overlay */}
             <div className='absolute inset-0 opacity-[0.03]' style={{ backgroundImage: 'linear-gradient(rgba(255,255,255,0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.1) 1px, transparent 1px)', backgroundSize: '60px 60px' }} />
@@ -584,7 +584,7 @@ export default async function LocalizedServicesPage({ params }: ServicesPageProp
             {/* Headline */}
             <h2 className='max-w-3xl text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight leading-[1.1]'>
               <span style={{ color: '#fff' }}>The Future of </span>
-              <span style={{ background: 'linear-gradient(135deg, #22d3ee, #818cf8, #a78bfa)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>AI Creation</span>
+              <span style={{ background: 'linear-gradient(135deg, #22d3ee, #38bdf8, #38bdf8)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>AI Creation</span>
             </h2>
 
             {/* Sub */}

@@ -9,11 +9,11 @@
  * Color System:
  *   command    — Cyan (#22d3ee)    — Flagship, commanding
  *   intelligence — Electric Blue (#3b82f6) — AI depth
- *   identity   — Violet (#a78bfa)  — Creative personality
+ *   identity   — Violet (#38bdf8)  — Creative personality
  *   cinema     — Amber (#f59e0b)   — Warm, cinematic
  *   gallery    — Rose (#22d3ee)    — Artistic, visual
  *   audio      — Emerald (#34d399) — Musical, organic
- *   knowledge  — Indigo (#818cf8)  — Cerebral, focused
+ *   knowledge  — Indigo (#38bdf8)  — Cerebral, focused
  *   engine     — Orange (#fb923c)  — Energy, automation
  *   hub        — Cyan (#22d3ee)    — Unified entry
  *   vault      — Gold (#fbbf24)    — Secure, premium
@@ -119,15 +119,15 @@ const MOODS: Record<EnvironmentMood, MoodConfig> = {
       linear-gradient(180deg, #08061a 0%, #0c0a1e 40%, #0a081c 80%, #060514 100%)
     `,
     glow: `
-      radial-gradient(ellipse 70% 70% at 50% 35%, rgba(167,139,250,0.12) 0%, transparent 60%),
-      radial-gradient(ellipse 120% 40% at 50% 100%, rgba(167,139,250,0.20) 0%, transparent 50%),
-      radial-gradient(ellipse 40% 50% at 10% 40%, rgba(139,92,246,0.12) 0%, transparent 35%)
+      radial-gradient(ellipse 70% 70% at 50% 35%, rgba(56,189,248,0.12) 0%, transparent 60%),
+      radial-gradient(ellipse 120% 40% at 50% 100%, rgba(56,189,248,0.20) 0%, transparent 50%),
+      radial-gradient(ellipse 40% 50% at 10% 40%, rgba(14,165,233,0.12) 0%, transparent 35%)
     `,
     geoOpacity: 0.7,
-    geoHue: '#a78bfa',
+    geoHue: '#38bdf8',
     geoHue2: '#38bdf8',
-    particleColor: 'rgba(167, 139, 250, 0.8)',
-    particleGlow: 'rgba(167, 139, 250, 0.5)',
+    particleColor: 'rgba(56,189,248, 0.8)',
+    particleGlow: 'rgba(56,189,248, 0.5)',
     particleOpacity: 0.7,
   },
 
@@ -207,14 +207,14 @@ const MOODS: Record<EnvironmentMood, MoodConfig> = {
       linear-gradient(180deg, #06081a 0%, #0a0c1e 40%, #080a1c 70%, #050714 100%)
     `,
     glow: `
-      radial-gradient(ellipse 80% 40% at 50% 100%, rgba(129,140,248,0.18) 0%, transparent 50%),
-      radial-gradient(ellipse 60% 25% at 50% 0%, rgba(129,140,248,0.10) 0%, transparent 40%)
+      radial-gradient(ellipse 80% 40% at 50% 100%, rgba(56,189,248,0.18) 0%, transparent 50%),
+      radial-gradient(ellipse 60% 25% at 50% 0%, rgba(56,189,248,0.10) 0%, transparent 40%)
     `,
     geoOpacity: 0.45,
-    geoHue: '#818cf8',
-    geoHue2: '#6366f1',
-    particleColor: 'rgba(129, 140, 248, 0.8)',
-    particleGlow: 'rgba(129, 140, 248, 0.5)',
+    geoHue: '#38bdf8',
+    geoHue2: '#0ea5e9',
+    particleColor: 'rgba(56,189,248, 0.8)',
+    particleGlow: 'rgba(56,189,248, 0.5)',
     particleOpacity: 0.4,
   },
 

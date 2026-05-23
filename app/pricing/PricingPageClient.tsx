@@ -140,8 +140,8 @@ function PlanCard({ plan, index, onCheckout, checkoutLoading }: {
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
           <div style={{
             width: 38, height: 38, borderRadius: 10,
-            background: `linear-gradient(135deg, ${isPopular ? 'rgba(245,158,11,0.25)' : 'rgba(139,92,246,0.2)'}, transparent)`,
-            border: `1px solid ${isPopular ? 'rgba(245,158,11,0.3)' : 'rgba(139,92,246,0.25)'}`,
+            background: `linear-gradient(135deg, ${isPopular ? 'rgba(245,158,11,0.25)' : 'rgba(14,165,233,0.2)'}, transparent)`,
+            border: `1px solid ${isPopular ? 'rgba(245,158,11,0.3)' : 'rgba(14,165,233,0.25)'}`,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
           }}>
             <Icon style={{ width: 18, height: 18, color: isPopular ? '#f59e0b' : '#0ea5e9' }} />
@@ -210,7 +210,7 @@ function PlanCard({ plan, index, onCheckout, checkoutLoading }: {
           opacity: isLoadingThis ? 0.7 : 1,
           transition: 'opacity 0.15s, transform 0.1s',
           width: '100%',
-          boxShadow: isPopular ? '0 0 20px rgba(245,158,11,0.3)' : !isFree ? '0 0 16px rgba(139,92,246,0.2)' : 'none',
+          boxShadow: isPopular ? '0 0 20px rgba(245,158,11,0.3)' : !isFree ? '0 0 16px rgba(14,165,233,0.2)' : 'none',
         }}
         onMouseEnter={e => { if (!isLoadingThis) (e.currentTarget as HTMLButtonElement).style.transform = 'scale(1.02)'; }}
         onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.transform = 'scale(1)'; }}
@@ -238,7 +238,7 @@ export default function PricingPageClient() {
       {/* Ambient */}
       <div style={{
         position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: 0,
-        background: 'radial-gradient(ellipse 80% 50% at 50% -10%, rgba(139,92,246,0.18) 0%, transparent 60%)',
+        background: 'radial-gradient(ellipse 80% 50% at 50% -10%, rgba(14,165,233,0.18) 0%, transparent 60%)',
       }} />
 
       {/* Nav */}
@@ -283,7 +283,7 @@ export default function PricingPageClient() {
             background: 'rgba(14,165,233,0.12)',
             border: '1px solid rgba(14,165,233,0.3)',
             borderRadius: 20,
-            fontSize: 11, fontWeight: 700, color: '#c084fc',
+            fontSize: 11, fontWeight: 700, color: '#60a5fa',
             textTransform: 'uppercase', letterSpacing: '0.08em',
             marginBottom: 20,
           }}>

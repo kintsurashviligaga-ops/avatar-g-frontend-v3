@@ -80,7 +80,7 @@ export default async function AnalyticsPage({ params }: Props) {
               display: 'inline-block', marginTop: 18, padding: '10px 18px', borderRadius: 999,
               fontSize: 13, fontWeight: 600, color: '#fff',
               background: 'linear-gradient(135deg,#0369a1,#0ea5e9)',
-              boxShadow: '0 6px 18px -6px rgba(139,92,246,0.5)',
+              boxShadow: '0 6px 18px -6px rgba(14,165,233,0.5)',
               textDecoration: 'none',
             }}
           >

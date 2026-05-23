@@ -9,7 +9,7 @@ const TEMPLATES = [
     name: 'Content Pipeline',
     desc: 'Agent G → Copy AI → Image Gen → Social post',
     steps: ['Agent G', 'Copy AI', 'Image Gen'],
-    color: '#6366f1',
+    color: '#0ea5e9',
     credits: 55,
   },
   {
@@ -39,7 +39,7 @@ const TEMPLATES = [
 ];
 
 const ACTIVE = [
-  { name: 'Content Pipeline', status: 'running', step: 2, total: 3, started: '5 წ. წინ', color: '#6366f1' },
+  { name: 'Content Pipeline', status: 'running', step: 2, total: 3, started: '5 წ. წინ', color: '#0ea5e9' },
   { name: 'SEO Blog Machine', status: 'done', step: 3, total: 3, started: '1 სთ. წინ', color: '#10b981' },
   { name: 'Brand Kit Generator', status: 'paused', step: 1, total: 3, started: 'გუშინ', color: '#f59e0b' },
 ];

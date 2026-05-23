@@ -265,7 +265,7 @@ export default function VoiceLab() {
               className={`group relative flex h-24 w-24 items-center justify-center rounded-full border transition ${
                 recording
                   ? 'border-red-500/60 bg-red-500/20 shadow-[0_0_40px_-4px_rgba(239,68,68,0.65)]'
-                  : 'border-violet-500/40 bg-gradient-to-br from-violet-600/30 to-cyan-500/20 shadow-[0_0_30px_-6px_rgba(139,92,246,0.55)] hover:from-violet-600/40 hover:to-cyan-500/30'
+                  : 'border-violet-500/40 bg-gradient-to-br from-violet-600/30 to-cyan-500/20 shadow-[0_0_30px_-6px_rgba(14,165,233,0.55)] hover:from-violet-600/40 hover:to-cyan-500/30'
               } disabled:cursor-not-allowed disabled:opacity-50`}
             >
               {recording ? (
@@ -367,7 +367,7 @@ export default function VoiceLab() {
                   key={sample.id}
                   className={`rounded-xl border bg-zinc-900/40 p-4 transition ${
                     sample.is_default
-                      ? 'border-violet-500/40 shadow-[0_0_24px_-12px_rgba(139,92,246,0.55)]'
+                      ? 'border-violet-500/40 shadow-[0_0_24px_-12px_rgba(14,165,233,0.55)]'
                       : 'border-zinc-800'
                   }`}
                 >

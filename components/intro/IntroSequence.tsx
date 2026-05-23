@@ -17,8 +17,8 @@ interface Particle {
 }
 
 const PARTICLE_COLORS = [
-  '#00d4ff', '#6366f1', '#22d3ee', '#818cf8',
-  '#0ea5e9', '#a78bfa', '#38bdf8', '#c084fc',
+  '#00d4ff', '#0ea5e9', '#22d3ee', '#38bdf8',
+  '#0ea5e9', '#38bdf8', '#38bdf8', '#60a5fa',
   '#ffffff',
 ];
 
@@ -102,7 +102,7 @@ export default function IntroSequence({ onComplete }: IntroSequenceProps) {
         animate={{ opacity: phase === 'particles' ? 0 : 0.6 }}
         transition={{ duration: 1.2 }}
         style={{
-          background: 'radial-gradient(ellipse 60% 50% at 50% 50%, rgba(99,102,241,0.18) 0%, rgba(0,212,255,0.10) 40%, transparent 70%)',
+          background: 'radial-gradient(ellipse 60% 50% at 50% 50%, rgba(14,165,233,0.18) 0%, rgba(0,212,255,0.10) 40%, transparent 70%)',
         }}
       />
 
@@ -212,7 +212,7 @@ export default function IntroSequence({ onComplete }: IntroSequenceProps) {
           style={{
             height: 2,
             width: 120,
-            background: 'linear-gradient(90deg, transparent, #00d4ff, #6366f1, transparent)',
+            background: 'linear-gradient(90deg, transparent, #00d4ff, #0ea5e9, transparent)',
             borderRadius: 999,
           }}
         />

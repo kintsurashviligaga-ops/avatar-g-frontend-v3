@@ -113,7 +113,7 @@ export default function CopyPage() {
 
           <button onClick={generate} disabled={!topic.trim() || loading}
             className="w-full py-3 rounded-xl text-sm font-semibold text-white flex items-center justify-center gap-2 disabled:opacity-40"
-            style={{ background: 'linear-gradient(135deg,#06b6d4,#6366f1)' }}>
+            style={{ background: 'linear-gradient(135deg,#06b6d4,#0ea5e9)' }}>
             {loading ? <><RefreshCw className="w-4 h-4 animate-spin" /> Writing...</> : <><Wand2 className="w-4 h-4" /> Generate Copy</>}
           </button>
         </div>

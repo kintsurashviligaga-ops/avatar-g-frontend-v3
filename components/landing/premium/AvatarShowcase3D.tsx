@@ -63,10 +63,10 @@ function HolographicSilhouette() {
       <mesh ref={meshRef} position={[0, 0.85, 0]}>
         <capsuleGeometry args={[0.25, 0.9, 16, 32]} />
         <meshStandardMaterial
-          color="#a78bfa"
+          color="#38bdf8"
           transparent
           opacity={0.12}
-          emissive="#a78bfa"
+          emissive="#38bdf8"
           emissiveIntensity={0.4}
           wireframe
         />
@@ -75,10 +75,10 @@ function HolographicSilhouette() {
       <mesh position={[0, 1.65, 0]}>
         <sphereGeometry args={[0.2, 32, 32]} />
         <meshStandardMaterial
-          color="#a78bfa"
+          color="#38bdf8"
           transparent
           opacity={0.1}
-          emissive="#a78bfa"
+          emissive="#38bdf8"
           emissiveIntensity={0.5}
           wireframe
         />
@@ -148,8 +148,8 @@ function Pedestal() {
       <mesh ref={ring2Ref} position={[0, 0.04, 0]} rotation={[-Math.PI / 2, 0, 0]}>
         <torusGeometry args={[0.68, 0.004, 8, 128]} />
         <meshStandardMaterial
-          color="#a78bfa"
-          emissive="#a78bfa"
+          color="#38bdf8"
+          emissive="#38bdf8"
           emissiveIntensity={1.5}
           transparent
           opacity={0.3}
@@ -213,7 +213,7 @@ function AvatarScene({ modelUrl }: { modelUrl: string | null }) {
       <ambientLight intensity={0.3} />
       <directionalLight position={[3, 5, 2]} intensity={0.8} color="#ffffff" />
       <pointLight position={[-2, 3, -1]} intensity={0.5} color="#22d3ee" />
-      <pointLight position={[2, 1, 2]} intensity={0.3} color="#a78bfa" />
+      <pointLight position={[2, 1, 2]} intensity={0.3} color="#38bdf8" />
       <spotLight
         position={[0, 6, 0]}
         angle={0.3}

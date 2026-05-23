@@ -102,7 +102,7 @@ export function VideoDemoSection() {
             border: '1px solid rgba(255,255,255,0.08)',
             background: 'linear-gradient(135deg, rgba(10,10,15,0.95), rgba(20,12,40,0.95))',
             overflow: 'hidden',
-            boxShadow: '0 32px 80px rgba(0,0,0,0.6), 0 0 0 1px rgba(139,92,246,0.12)',
+            boxShadow: '0 32px 80px rgba(0,0,0,0.6), 0 0 0 1px rgba(14,165,233,0.12)',
             marginBottom: 40,
           }}
         >
@@ -133,7 +133,7 @@ export function VideoDemoSection() {
             >
               <div style={{
                 maxWidth: '70%', padding: '10px 14px', borderRadius: '14px 14px 4px 14px',
-                background: 'linear-gradient(135deg, #0284c7, #5b21b6)',
+                background: 'linear-gradient(135deg, #0284c7, #075985)',
                 color: '#fff', fontSize: 13,
               }}>
                 🖼️ გამიკეთე ნათელი ნეო-ბაროკო სტილის სურათი, ძველი თბილისი ღამით
@@ -164,7 +164,7 @@ export function VideoDemoSection() {
                   marginTop: 10,
                   height: 120, borderRadius: 10,
                   background: 'linear-gradient(135deg, #1a0533 0%, #4c0d7c 50%, #f59e0b30 100%)',
-                  border: '1px solid rgba(139,92,246,0.2)',
+                  border: '1px solid rgba(14,165,233,0.2)',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   fontSize: 36,
                 }}>

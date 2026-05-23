@@ -120,7 +120,7 @@ const PLANS: Plan[] = [
     badge     : 'Best value',
     icon      : <Crown size={20} />,
     gradient  : 'from-violet-500 to-pink-600',
-    glowColor : 'rgba(167,139,250,0.18)',
+    glowColor : 'rgba(56,189,248,0.18)',
     features  : [
       '2,000 credits / month',
       'All 5 AI generators',

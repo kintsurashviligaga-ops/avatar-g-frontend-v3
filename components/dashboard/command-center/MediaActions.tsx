@@ -131,7 +131,7 @@ function ShareModal({ shareUrl, onClose }: ShareModalProps) {
           padding: 16px;
         }
         .ma-modal {
-          background: #1a1a2e; border: 1px solid rgba(99,102,241,0.3);
+          background: #1a1a2e; border: 1px solid rgba(14,165,233,0.3);
           border-radius: 16px; padding: 20px; width: 100%; max-width: 400px;
         }
         .ma-modal-header {
@@ -151,7 +151,7 @@ function ShareModal({ shareUrl, onClose }: ShareModalProps) {
         }
         .ma-copy-btn {
           display: flex; align-items: center; gap: 6px;
-          background: #6366f1; border: none; border-radius: 8px;
+          background: #0ea5e9; border: none; border-radius: 8px;
           padding: 8px 14px; color: #fff; font-size: 13px;
           cursor: pointer; white-space: nowrap; transition: background 0.15s;
         }
@@ -262,7 +262,7 @@ function SaveCharModal({ imageUrl, prompt, onSave, onClose }: SaveCharModalProps
           padding: 16px;
         }
         .ma-modal {
-          background: #1a1a2e; border: 1px solid rgba(99,102,241,0.3);
+          background: #1a1a2e; border: 1px solid rgba(14,165,233,0.3);
           border-radius: 16px; padding: 20px; width: 100%; max-width: 380px;
         }
         .ma-modal-header {
@@ -291,10 +291,10 @@ function SaveCharModal({ imageUrl, prompt, onSave, onClose }: SaveCharModalProps
           transition: border-color 0.15s;
         }
         .ma-char-input:focus, .ma-char-textarea:focus {
-          border-color: rgba(99,102,241,0.5);
+          border-color: rgba(14,165,233,0.5);
         }
         .ma-save-btn {
-          width: 100%; background: #6366f1; border: none; border-radius: 10px;
+          width: 100%; background: #0ea5e9; border: none; border-radius: 10px;
           padding: 11px; color: #fff; font-size: 14px; font-weight: 600;
           cursor: pointer; transition: background 0.15s;
         }
@@ -502,8 +502,8 @@ export default function MediaActions({
           white-space: nowrap;
         }
         .ma-btn:hover {
-          background: rgba(99,102,241,0.15);
-          border-color: rgba(99,102,241,0.4);
+          background: rgba(14,165,233,0.15);
+          border-color: rgba(14,165,233,0.4);
           color: #c0c0ff;
         }
         .ma-btn:disabled { opacity: 0.5; cursor: not-allowed; }

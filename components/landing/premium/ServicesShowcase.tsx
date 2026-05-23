@@ -23,7 +23,7 @@ interface SvcCard {
 
 const CARDS: SvcCard[] = [
   {
-    slug: 'avatar', icon: '👤', accent: '#a78bfa',
+    slug: 'avatar', icon: '👤', accent: '#38bdf8',
     name: { en: 'Avatar Studio', ka: 'ავატარ სტუდია', ru: 'Аватар-студия' },
     desc: { en: 'Create photorealistic digital humans and identity assets', ka: 'შექმენი ფოტორეალისტური ციფრული ადამიანები', ru: 'Создайте фотореалистичные цифровые аватары' },
     features: { en: ['AI Portraits', 'Brand Avatars', 'Custom Styles'], ka: ['AI პორტრეტები', 'ბრენდ ავატარები', 'სტილები'], ru: ['AI-портреты', 'Бренд-аватары', 'Стили'] },
@@ -47,7 +47,7 @@ const CARDS: SvcCard[] = [
     features: { en: ['Original Beats', 'Film Scores', 'Soundscapes'], ka: ['ბითები', 'მუსიკა', 'საუნდსკეიფი'], ru: ['Биты', 'Саундтреки', 'Саундскейпы'] },
   },
   {
-    slug: 'text', icon: '✍️', accent: '#818cf8',
+    slug: 'text', icon: '✍️', accent: '#38bdf8',
     name: { en: 'Text & Copy', ka: 'ტექსტი და კოპი', ru: 'Текст и копирайтинг' },
     desc: { en: 'Write marketing copy, scripts, articles, and translations', ka: 'დაწერე მარკეტინგული ტექსტი და სცენარები', ru: 'Пишите маркетинговые тексты и сценарии' },
     features: { en: ['Marketing Copy', 'Scripts', 'Translations'], ka: ['მარკეტინგი', 'სცენარები', 'თარგმანები'], ru: ['Маркетинг', 'Сценарии', 'Переводы'] },

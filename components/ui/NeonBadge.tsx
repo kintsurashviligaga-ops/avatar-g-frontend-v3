@@ -23,7 +23,7 @@ const colorMap: Record<BadgeColor, { bg: string; border: string; text: string; d
   violet: {
     bg: 'rgba(2,132,199,0.08)',
     border: 'rgba(2,132,199,0.3)',
-    text: '#a78bfa',
+    text: '#38bdf8',
     dot: '#0284c7',
     glow: 'rgba(2,132,199,0.4)',
   },
