@@ -55,6 +55,7 @@ import {
   Zap,
   Crown,
   ExternalLink,
+  Square,
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -948,20 +949,9 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
   const onDislike = useCallback((id: string) => {
     setMessages(m => m.map(x => x.id === id ? { ...x, disliked: !x.disliked, liked: false } : x));
   }, []);
-  const onCopy = useCallback(async (text: string) => {
-    try { await navigator.clipboard.writeText(text); } catch { /* ignore */ }
-  }, []);
-  const onSpeak = useCallback(async (text: string) => {
-    try {
-      const res = await fetch('/api/elevenlabs/tts', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: text.slice(0, 500), locale: localeCode }),
-      });
-      if (!res.ok) return;
-      const url = URL.createObjectURL(await res.blob());
-      new Audio(url).play().catch(() => undefined);
-    } catch { /* ignore */ }
-  }, [localeCode]);
+  // Copy + Speak are now self-contained per-message components (CopyButton /
+  // SpeakerButton) that own their loading/cached/playing state — no parent
+  // handler needed.
   const onRegenerate = useCallback((id: string) => {
     // Find the user message preceding this assistant message
     const idx = messages.findIndex(m => m.id === id);
@@ -1460,9 +1450,7 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
                       locale={localeCode}
                       onLike={() => onLike(m.id)}
                       onDislike={() => onDislike(m.id)}
-                      onCopy={() => onCopy(m.text)}
                       onRegenerate={() => onRegenerate(m.id)}
-                      onSpeak={() => onSpeak(m.text)}
                       onRemix={onRemix}
                       onOpenInPreview={() => onOpenInPreview(m)}
                       onContextAction={handleContextAction}
@@ -2211,15 +2199,13 @@ interface MessageRowProps {
   locale: string;
   onLike: () => void;
   onDislike: () => void;
-  onCopy: () => void;
   onRegenerate: () => void;
-  onSpeak: () => void;
   onRemix: (prompt: string) => void;
   onOpenInPreview: () => void;
   onContextAction: (action: string, payload: { prompt: string; url?: string }) => void;
 }
 
-function MessageRow({ m, locale, onLike, onDislike, onCopy, onRegenerate, onSpeak, onRemix, onOpenInPreview, onContextAction }: MessageRowProps) {
+function MessageRow({ m, locale, onLike, onDislike, onRegenerate, onRemix, onOpenInPreview, onContextAction }: MessageRowProps) {
   if (m.role === 'user') {
     return (
       <div className="flex justify-end">
@@ -2351,12 +2337,12 @@ function MessageRow({ m, locale, onLike, onDislike, onCopy, onRegenerate, onSpea
           {/* Action row — anchored under the media (or under the text if none).
               Note: CapCut/edit lives inside the InlineMedia overlay, not here, to
               avoid two buttons for the same action. */}
-          <div className="flex items-center gap-0.5 -mt-0.5 opacity-60 hover:opacity-100 transition">
-            <ActionIcon title="Copy" onClick={onCopy}><Copy size={13} /></ActionIcon>
+          <div className="flex items-center gap-3 text-neutral-400 dark:text-neutral-500 mt-2">
+            <CopyButton text={m.text} />
             <ActionIcon title="Regenerate" onClick={onRegenerate}><RotateCcw size={13} /></ActionIcon>
-            <ActionIcon title="Speak" onClick={onSpeak}><Volume2 size={13} /></ActionIcon>
-            <ActionIcon title="Like" onClick={onLike} active={m.liked}><ThumbsUp size={13} /></ActionIcon>
-            <ActionIcon title="Dislike" onClick={onDislike} active={m.disliked}><ThumbsDown size={13} /></ActionIcon>
+            <SpeakerButton text={m.text} locale={locale} />
+            <ActionIcon title="Like" onClick={onLike} active={m.liked} tone="violet"><ThumbsUp size={13} /></ActionIcon>
+            <ActionIcon title="Dislike" onClick={onDislike} active={m.disliked} tone="fuchsia"><ThumbsDown size={13} /></ActionIcon>
           </div>
         </>
       )}
@@ -2364,18 +2350,148 @@ function MessageRow({ m, locale, onLike, onDislike, onCopy, onRegenerate, onSpea
   );
 }
 
-function ActionIcon({ children, title, onClick, active }: { children: React.ReactNode; title: string; onClick: () => void; active?: boolean }) {
+function ActionIcon({
+  children, title, onClick, active, tone = 'violet',
+}: {
+  children: React.ReactNode;
+  title: string;
+  onClick: () => void;
+  active?: boolean;
+  tone?: 'violet' | 'fuchsia';
+}) {
+  // Active = registered state with a premium neon glow (violet for affirmative
+  // actions, fuchsia for dissent / playback).
+  const activeCls = tone === 'fuchsia'
+    ? 'text-fuchsia-300 bg-fuchsia-500/15 shadow-[0_0_14px_-2px_rgba(217,70,239,0.65)]'
+    : 'text-violet-300 bg-violet-500/15 shadow-[0_0_14px_-2px_rgba(168,85,247,0.65)]';
+  // Safeguard runtime — never let a handler throw bubble into render.
+  const handle = () => { try { onClick(); } catch { /* swallow */ } };
   return (
     <button
       type="button"
       title={title}
-      onClick={onClick}
-      className={`h-7 w-7 rounded-full flex items-center justify-center transition ${
-        active ? 'text-violet-300 bg-violet-500/15' : 'text-[#94A3B8] hover:text-white hover:bg-white/[0.08]'
+      aria-label={title}
+      aria-pressed={active ?? undefined}
+      onClick={handle}
+      className={`h-7 w-7 rounded-full flex items-center justify-center transition-all duration-200 hover:scale-110 active:scale-95 ${
+        active ? activeCls : 'hover:text-fuchsia-400 hover:bg-white/[0.08]'
       }`}
     >
       {children}
     </button>
+  );
+}
+
+// Copy-to-clipboard with a defensive hidden-textarea fallback (older / locked-down
+// browsers) and a 2-second checkmark success state.
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => () => { if (timerRef.current) clearTimeout(timerRef.current); }, []);
+
+  const copy = useCallback(async () => {
+    const fallback = (s: string): boolean => {
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = s;
+        ta.setAttribute('readonly', '');
+        ta.style.position = 'fixed';
+        ta.style.top = '-9999px';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        const ok = document.execCommand('copy');
+        document.body.removeChild(ta);
+        return ok;
+      } catch { return false; }
+    };
+    let ok = false;
+    try {
+      if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+        ok = true;
+      } else {
+        ok = fallback(text);
+      }
+    } catch {
+      ok = fallback(text);
+    }
+    if (ok) {
+      setCopied(true);
+      if (timerRef.current) clearTimeout(timerRef.current);
+      timerRef.current = setTimeout(() => setCopied(false), 2000);
+    }
+  }, [text]);
+
+  return (
+    <ActionIcon title={copied ? 'Copied' : 'Copy'} onClick={copy} active={copied} tone="violet">
+      {copied ? <Check size={13} /> : <Copy size={13} />}
+    </ActionIcon>
+  );
+}
+
+// Premium TTS — high-fidelity Georgian voice via the platform synthesis engine.
+// Lifecycle: idle → loading (spinner) → playing (stop control). The first
+// synthesis is cached as a blob URL + Audio element so repeat clicks replay
+// instantly with zero additional API charge. Stops cleanly + frees the blob.
+function SpeakerButton({ text, locale }: { text: string; locale: string }) {
+  const [state, setState] = useState<'idle' | 'loading' | 'playing'>('idle');
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const urlRef = useRef<string | null>(null);
+
+  useEffect(() => () => {
+    try { audioRef.current?.pause(); } catch { /* noop */ }
+    if (urlRef.current) { try { URL.revokeObjectURL(urlRef.current); } catch { /* noop */ } }
+  }, []);
+
+  const startPlayback = useCallback((audio: HTMLAudioElement) => {
+    audio.onended = () => setState('idle');
+    audio.play().then(() => setState('playing')).catch(() => setState('idle'));
+  }, []);
+
+  const onClick = useCallback(async () => {
+    try {
+      if (state === 'loading') return;
+      // Active playback → stop + rewind.
+      if (state === 'playing') {
+        const a = audioRef.current;
+        if (a) { try { a.pause(); a.currentTime = 0; } catch { /* noop */ } }
+        setState('idle');
+        return;
+      }
+      // Cached audio → replay instantly (no redundant API charge).
+      if (audioRef.current && urlRef.current) { startPlayback(audioRef.current); return; }
+      const clean = text.replace(/\s+/g, ' ').trim().slice(0, 800);
+      if (!clean) return;
+      setState('loading');
+      const res = await fetch('/api/elevenlabs/tts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: clean, locale }),
+      });
+      if (!res.ok) { setState('idle'); return; }
+      const blob = await res.blob();
+      if (!blob.size) { setState('idle'); return; }
+      const url = URL.createObjectURL(blob);
+      urlRef.current = url;
+      const audio = new Audio(url);
+      audioRef.current = audio;
+      startPlayback(audio);
+    } catch {
+      setState('idle');
+    }
+  }, [state, text, locale, startPlayback]);
+
+  const title = state === 'playing' ? 'Stop' : state === 'loading' ? 'Synthesizing' : 'Speak';
+  return (
+    <ActionIcon title={title} onClick={onClick} active={state === 'playing'} tone="fuchsia">
+      {state === 'loading'
+        ? <Loader2 size={13} className="animate-spin" />
+        : state === 'playing'
+          ? <Square size={13} className="fill-current" />
+          : <Volume2 size={13} />}
+    </ActionIcon>
   );
 }
 
