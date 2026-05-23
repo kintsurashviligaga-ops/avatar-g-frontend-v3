@@ -727,7 +727,7 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
     const raf = requestAnimationFrame(() => {
       try {
         ta.style.height = 'auto';
-        ta.style.height = input ? `${Math.min(ta.scrollHeight, 140)}px` : '24px';
+        ta.style.height = input ? `${Math.min(ta.scrollHeight, 168)}px` : '28px';
       } catch { /* ignore measurement edge cases */ }
     });
     return () => cancelAnimationFrame(raf);
@@ -1735,7 +1735,10 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
 
       {/* ── Bottom input — only on chat view, and hidden when mobile previews are active */}
       {activeView === 'chat' && (
-        <div className="relative z-10 flex-shrink-0 px-3 pb-3 pt-2 bg-black">
+        <div className="relative z-10 flex-shrink-0 px-3 pt-2 pb-[max(0.75rem,env(safe-area-inset-bottom))] bg-black/80 backdrop-blur-xl border-t border-white/[0.08]">
+          {/* Action rows — capped + internally scrollable on short viewports so the
+              pills + composer baseline below is never pushed off-screen / clipped. */}
+          <div className="max-h-[42vh] overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {/* Live agentic-swarm progress — shown while a media pipeline runs */}
           {activePipelineId && (
             <div className="max-w-2xl mx-auto mb-2">
@@ -1812,7 +1815,8 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
               />
             </div>
           )}
-          <div className="flex gap-2 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          </div>{/* /capped action zone — pills + composer baseline stays pinned below */}
+          <div className="flex gap-2 overflow-x-auto pb-2 pt-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {PILLS.map(p => (
               <button
                 key={p.id}
@@ -1883,7 +1887,7 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
               placeholder={localeCode === 'ka' ? 'მკითხე ნებისმიერი' : 'Ask Anything'}
               aria-label={localeCode === 'ka' ? 'მკითხე ნებისმიერი' : 'Ask Anything'}
               className="w-full bg-transparent border-none outline-none resize-none overflow-y-auto px-4 pt-3 pb-1.5 text-[15px] font-medium leading-relaxed text-white placeholder:text-white/45 placeholder:font-normal [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-              style={{ minHeight: 24, maxHeight: 140 }}
+              style={{ minHeight: 28, maxHeight: 168 }}
             />
             <input
               ref={fileInputRef}
