@@ -13,6 +13,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { checkProduceRate, rateLimitedResponse, PRODUCE_COST } from '@/lib/orchestrator/rate-limit';
 import { deductCredits } from '@/lib/orchestrator/ledger';
+import { createJob, recordJobEvent } from '@/lib/orchestrator/jobs';
 import {
   buildSongArchitectSystemPrompt, normalizeSongMetrics, deterministicSongMetrics, songGenerationPrompt,
 } from '@/lib/orchestrator/media-directors';
@@ -44,10 +45,15 @@ export async function POST(req: NextRequest) {
   if (!prompt) return new Response(JSON.stringify({ error: 'prompt required' }), { status: 400 });
   const origin = new URL(req.url).origin;
 
+  // Durable job row (#5).
+  const pipelineId = `msc_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  const jobId = user ? pipelineId : null;
+  if (user) await createJob({ id: pipelineId, userId: user.id, serviceType: 'music', params: { prompt } });
+
   const enc = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
-      const emit = (o: Record<string, unknown>) => { try { controller.enqueue(enc.encode(`data: ${JSON.stringify(o)}\n\n`)); } catch { /* closed */ } };
+      const emit = (o: Record<string, unknown>) => { try { controller.enqueue(enc.encode(`data: ${JSON.stringify(o)}\n\n`)); } catch { /* closed */ } recordJobEvent(jobId, o); };
       try {
         emit({ stage: 'architecting', pct: 12, ticker: '[Agent S: Architecting Lyric/Vibe Matrix…]' });
 

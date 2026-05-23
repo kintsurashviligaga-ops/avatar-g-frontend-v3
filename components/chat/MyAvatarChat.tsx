@@ -290,6 +290,77 @@ function downloadAsset(url: string | undefined, name = 'myavatar-media') {
   a.remove();
 }
 
+// ─── Reload recovery (#5) ─────────────────────────────────────────────────────
+// A produce run persists to `generation_jobs` (row id == SSE pipelineId). The
+// SSE itself streams over an unreplayable POST body, so the durable row IS the
+// recovery channel: on mount the chat queries the user's recent jobs, re-renders
+// any that finished while away, and resumes polling any still in-flight.
+
+type JobServiceType = 'film' | 'avatar' | 'interior' | 'image' | 'music' | 'voice';
+
+interface RecoveredJob {
+  id: string;
+  service_type: JobServiceType;
+  status: 'pending' | 'processing' | 'completed' | 'failed';
+  current_stage: string | null;
+  pct: number;
+  result: Record<string, unknown> | null;
+  signed_url: string | null;
+  error: string | null;
+  updated_at: string;
+}
+
+const JOB_SERVICE_TO_ID: Record<JobServiceType, ServiceId> = {
+  film: 'video', avatar: 'avatar', interior: 'interior', image: 'image', music: 'music', voice: 'voice',
+};
+
+/** Reconstruct the inline MediaPayload from a completed job's stored result. */
+function jobResultToMedia(serviceType: JobServiceType, result: Record<string, unknown> | null, signedUrl: string | null): MediaPayload | null {
+  const url = (typeof result?.url === 'string' ? result.url : null) ?? signedUrl ?? undefined;
+  switch (serviceType) {
+    case 'film':
+      return url ? { kind: 'video', url, meta: { engine: 'MyAvatar Swarm', fps: 24, aspectRatio: '16:9' } } : null;
+    case 'avatar': {
+      const poster = typeof result?.poster === 'string' ? result.poster : undefined;
+      return url ? { kind: 'video', url, ...(poster ? { poster } : {}), meta: { engine: 'HeyGen' } } : null;
+    }
+    case 'image': {
+      const ratio = typeof result?.ratio === 'string' ? result.ratio : undefined;
+      return url ? { kind: 'image', url, meta: { engine: 'AI Image', ...(ratio ? { aspectRatio: ratio } : {}) } } : null;
+    }
+    case 'music':
+      return url ? { kind: 'audio', url, meta: { engine: 'Udio' } } : null;
+    case 'voice':
+      return url ? { kind: 'audio', url, meta: { engine: 'ElevenLabs', voiceProvider: 'ElevenLabs' } } : null;
+    case 'interior': {
+      const geometry = result?.geometry as RoomGeometry | undefined;
+      if (!geometry) return null;
+      const style = result?.style as StyleGuide | undefined;
+      return { kind: 'room', room: { geometry, ...(style ? { style } : {}) } };
+    }
+    default:
+      return null;
+  }
+}
+
+/** Localized "resuming your <service>…" ticker for an in-flight recovered job. */
+function recoveryResumeLabel(job: RecoveredJob, locale: Locale): string {
+  const svc = serviceLabel(JOB_SERVICE_TO_ID[job.service_type], locale);
+  const pct = job.pct > 0 ? ` · ${job.pct}%` : '';
+  return locale === 'ka' ? `⏳ ვაგრძელებ თქვენს ${svc}-ს${pct}…`
+    : locale === 'ru' ? `⏳ Возобновляю ваш ${svc}${pct}…`
+      : `⏳ Resuming your ${svc}${pct}…`;
+}
+
+function recoveryFailedLabel(locale: Locale): string {
+  return locale === 'ka' ? '⚠ წინა გენერაცია ვერ დასრულდა — სცადე თავიდან.'
+    : locale === 'ru' ? '⚠ Предыдущая генерация не завершилась — попробуйте снова.'
+      : '⚠ A previous generation didn’t finish — please try again.';
+}
+
+/** Only auto-surface terminal jobs that finished recently (avoid dumping history). */
+const RECOVERY_RECENT_MS = 30 * 60 * 1000;
+
 export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAvatarChatProps) {
   const localeCode = (locale === 'ka' || locale === 'en' || locale === 'ru') ? locale : 'ka';
   const [activeView, setActiveView] = useState<ViewId>('chat');
@@ -409,6 +480,89 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
     // sessions intentionally not in deps — would loop. We read latest via closure.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages, sessionId]);
+
+  // ── Reload recovery (#5): on mount, re-hydrate finished produce jobs and
+  //    resume any still in-flight. The durable `generation_jobs` row is the
+  //    recovery channel (produce SSE streams over an unreplayable POST body).
+  const recoveredSeenRef = useRef<Set<string>>(new Set());
+  const recoveredDoneRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    let cancelled = false;
+    let added = 0;
+    let firstPollDone = false;
+
+    const applyJob = (job: RecoveredJob) => {
+      const active = job.status === 'pending' || job.status === 'processing';
+      const recent = Date.now() - new Date(job.updated_at).getTime() < RECOVERY_RECENT_MS;
+      const seen = recoveredSeenRef.current.has(job.id);
+      const done = recoveredDoneRef.current.has(job.id);
+
+      if (!seen) {
+        // First sighting. Surface in-flight jobs always; terminal jobs only if recent.
+        if (active) {
+          if (added >= 6) return;
+          added++;
+          recoveredSeenRef.current.add(job.id);
+          setMessages(m => m.some(x => x.id === job.id) ? m : [...m, {
+            id: job.id, role: 'assistant', text: recoveryResumeLabel(job, localeCode),
+            pending: true, service: JOB_SERVICE_TO_ID[job.service_type], ts: Date.now(),
+          }]);
+        } else if (job.status === 'completed' && recent) {
+          const media = jobResultToMedia(job.service_type, job.result, job.signed_url);
+          if (!media) return;
+          if (added >= 6) return;
+          added++;
+          recoveredSeenRef.current.add(job.id);
+          recoveredDoneRef.current.add(job.id);
+          setMessages(m => m.some(x => x.id === job.id) ? m : [...m, {
+            id: job.id, role: 'assistant', text: '', media,
+            service: JOB_SERVICE_TO_ID[job.service_type], ts: Date.now(),
+          }]);
+        }
+        return;
+      }
+
+      // Already surfaced as an in-flight card → drive it to its terminal state.
+      if (done) return;
+      if (job.status === 'completed') {
+        const media = jobResultToMedia(job.service_type, job.result, job.signed_url);
+        recoveredDoneRef.current.add(job.id);
+        if (media) patchMessage(setMessages, job.id, { text: '', media });
+        else patchMessage(setMessages, job.id, { pending: false, text: recoveryFailedLabel(localeCode) });
+      } else if (job.status === 'failed') {
+        recoveredDoneRef.current.add(job.id);
+        patchMessage(setMessages, job.id, { pending: false, text: recoveryFailedLabel(localeCode) });
+      } else {
+        // Still running → refresh the ticker (progress %).
+        tickPending(setMessages, job.id, recoveryResumeLabel(job, localeCode));
+      }
+    };
+
+    const inFlightRemaining = () =>
+      [...recoveredSeenRef.current].some(id => !recoveredDoneRef.current.has(id));
+
+    const poll = async () => {
+      try {
+        const res = await fetch('/api/orchestrator/jobs?limit=20', { cache: 'no-store', credentials: 'include' });
+        if (!res.ok || cancelled) return;
+        const { jobs } = await res.json() as { jobs?: RecoveredJob[] };
+        if (cancelled || !Array.isArray(jobs)) return;
+        // Oldest-first so recovered cards land in chronological order.
+        for (const job of [...jobs].reverse()) applyJob(job);
+      } catch { /* ignore */ } finally { firstPollDone = true; }
+    };
+
+    void poll();
+    const iv = setInterval(() => {
+      if (cancelled) return;
+      if (!firstPollDone || inFlightRemaining()) void poll();
+      else clearInterval(iv);
+    }, 4000);
+    const stop = setTimeout(() => clearInterval(iv), 8 * 60 * 1000);
+    return () => { cancelled = true; clearInterval(iv); clearTimeout(stop); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuthenticated]);
 
   const loadSession = useCallback((id: string) => {
     try {

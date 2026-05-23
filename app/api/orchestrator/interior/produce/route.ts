@@ -18,6 +18,7 @@ import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { checkProduceRate, rateLimitedResponse, PRODUCE_COST } from '@/lib/orchestrator/rate-limit';
 import { deductCredits } from '@/lib/orchestrator/ledger';
+import { createJob, recordJobEvent } from '@/lib/orchestrator/jobs';
 import {
   normalizeIntake, intakeHasMedia, normalizeRoomGeometry, normalizeStyleGuide,
   buildGeometrySystemPrompt, buildStyleSystemPrompt, buildStyleUserPrompt,
@@ -89,10 +90,15 @@ export async function POST(req: NextRequest) {
   try { intake = normalizeIntake(await req.json()); } catch { return new Response(JSON.stringify({ error: 'invalid body' }), { status: 400 }); }
   if (!intakeHasMedia(intake)) return new Response(JSON.stringify({ error: 'at least 1 photo or a video is required' }), { status: 400 });
 
+  // Durable job row (#5).
+  const pipelineId = `intr_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  const jobId = user ? pipelineId : null;
+  if (user) await createJob({ id: pipelineId, userId: user.id, serviceType: 'interior', params: { brief: intake.brief, photos: intake.imageUrls.length, hasVideo: Boolean(intake.videoUrl) } });
+
   const enc = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
-      const emit = (o: Record<string, unknown>) => { try { controller.enqueue(enc.encode(`data: ${JSON.stringify(o)}\n\n`)); } catch { /* closed */ } };
+      const emit = (o: Record<string, unknown>) => { try { controller.enqueue(enc.encode(`data: ${JSON.stringify(o)}\n\n`)); } catch { /* closed */ } recordJobEvent(jobId, o); };
       try {
         emit({ stage: 'extracting', pct: 10, ticker: intake.videoUrl ? '[Extracting Spatial Matrix from Video Frames…]' : '[Extracting Spatial Matrix from Photos…]' });
 

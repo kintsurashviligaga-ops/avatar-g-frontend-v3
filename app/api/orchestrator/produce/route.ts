@@ -18,6 +18,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { checkProduceRate, rateLimitedResponse, PRODUCE_COST } from '@/lib/orchestrator/rate-limit';
 import { deductCredits } from '@/lib/orchestrator/ledger';
+import { createJob, recordJobEvent } from '@/lib/orchestrator/jobs';
 import {
   buildScriptSystemPrompt, buildScriptUserPrompt, extractJson, normalizeBreakdown,
   type ScriptSegment,
@@ -96,11 +97,16 @@ export async function POST(req: NextRequest) {
   const origin = new URL(req.url).origin;
   const pipelineId = `prod_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
+  // Durable job row (#5) — persisted before streaming so an immediate reload recovers it.
+  const jobId = user ? pipelineId : null;
+  if (user) await createJob({ id: pipelineId, userId: user.id, serviceType: 'film', params: { prompt, totalSec, withVoice } });
+
   const encoder = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       const emit = (o: Record<string, unknown>) => {
         try { controller.enqueue(encoder.encode(`data: ${JSON.stringify({ pipelineId, ...o })}\n\n`)); } catch { /* closed */ }
+        recordJobEvent(jobId, o);
       };
       try {
         emit({ stage: 'initiated', pct: 5 });

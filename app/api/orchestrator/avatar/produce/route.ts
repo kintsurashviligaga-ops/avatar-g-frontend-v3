@@ -21,6 +21,7 @@ import { NextRequest } from 'next/server';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { checkProduceRate, rateLimitedResponse, PRODUCE_COST } from '@/lib/orchestrator/rate-limit';
 import { deductCredits } from '@/lib/orchestrator/ledger';
+import { createJob, recordJobEvent } from '@/lib/orchestrator/jobs';
 import { buildSessionConfig } from '@/lib/orchestrator/avatar';
 
 export const dynamic = 'force-dynamic';
@@ -50,10 +51,15 @@ export async function POST(req: NextRequest) {
   const origin = new URL(req.url).origin;
   const session = buildSessionConfig({ script, systemPrompt: body.systemPrompt, memory: body.memory, lightingHint: body.lightingHint });
 
+  // Durable job row (#5).
+  const pipelineId = `avtr_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  const jobId = user ? pipelineId : null;
+  if (user) await createJob({ id: pipelineId, userId: user.id, serviceType: 'avatar', params: { hasPhoto: Boolean(body.photoBase64), lightingHint: body.lightingHint ?? null } });
+
   const enc = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
-      const emit = (o: Record<string, unknown>) => { try { controller.enqueue(enc.encode(`data: ${JSON.stringify(o)}\n\n`)); } catch { /* closed */ } };
+      const emit = (o: Record<string, unknown>) => { try { controller.enqueue(enc.encode(`data: ${JSON.stringify(o)}\n\n`)); } catch { /* closed */ } recordJobEvent(jobId, o); };
       try {
         emit({ stage: 'initializing_session', pct: 8, ticker: '[Initializing HeyGen session…]' });
         emit({ stage: 'agent_syncing', pct: 18, ticker: '[Syncing MyAvatar context with the remote agent…]', persona: session.persona.expression, lighting: session.lighting.key });
