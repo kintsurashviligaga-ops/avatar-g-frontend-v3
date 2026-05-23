@@ -90,6 +90,8 @@ export async function createWalletTopupSession(params: {
   amountGel: number;
   successUrl: string;
   cancelUrl: string;
+  /** Extra session metadata merged on top of the wallet_topup defaults. */
+  metadata?: Record<string, string>;
 }): Promise<string> {
   const stripe = getStripe();
 
@@ -107,7 +109,7 @@ export async function createWalletTopupSession(params: {
         },
       },
     ],
-    metadata: { kind: 'wallet_topup', currency: 'gel', amount_gel: String(params.amountGel) },
+    metadata: { kind: 'wallet_topup', currency: 'gel', amount_gel: String(params.amountGel), ...(params.metadata ?? {}) },
     success_url: params.successUrl,
     cancel_url: params.cancelUrl,
     billing_address_collection: 'auto',

@@ -70,6 +70,7 @@ import { CameraModal } from '@/components/service-chat/CameraModal';
 import { AdminSystemPanel } from '@/components/chat/AdminSystemPanel';
 import { AvatarOnboarding } from '@/components/chat/onboarding/AvatarOnboarding';
 import { BalanceChip, WalletRefillModal } from '@/components/chat/WalletRefill';
+import { PricingGrid } from '@/components/dashboard/PricingGrid';
 import { GEL_COST, type MeteredAction } from '@/lib/billing/gel';
 
 // R3F is client-only + heavy — load the 3D room viewer on demand (no SSR).
@@ -2955,6 +2956,9 @@ function BillingView({ locale }: { locale: string }) {
             'Масштабируйте творчество — меняйте план в любой момент.')}
         </p>
       </header>
+
+      {/* Founder-only production verification gate (renders nothing for non-admins). */}
+      <PricingGrid locale={locale} />
 
       <div className="space-y-3.5">
         {plans.map((p, idx) => {

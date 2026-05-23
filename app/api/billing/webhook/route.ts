@@ -120,8 +120,14 @@ async function handleWalletTopup(session: Stripe.Checkout.Session) {
   const userId = customerId ? await getUserIdByCustomer(customerId) : null;
   const amountGel = Number(session.metadata?.amount_gel);
   if (!userId || !Number.isFinite(amountGel) || amountGel <= 0) return;
+  const isFounderVerify = session.metadata?.is_founder_verification === 'true';
+  if (isFounderVerify) {
+    // eslint-disable-next-line no-console
+    console.info(`[FOUNDER_VERIFY] hydrating ledger=${session.metadata?.target_ledger ?? 'fiat_gel'} user=${userId} amount=${amountGel}₾ session=${session.id}`);
+  }
   // Idempotent on `stripe:<session.id>` (the RPC dedupes; the outer event-id
-  // guard dedupes re-delivered events) → never double-credits.
+  // guard dedupes re-delivered events) → never double-credits. Same crediting
+  // path for founder verification and organic top-ups (single source of truth).
   await creditWalletGel(userId, amountGel, `stripe:${session.id}`);
 }
 
