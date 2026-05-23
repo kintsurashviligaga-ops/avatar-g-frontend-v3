@@ -21,6 +21,7 @@ import { NextRequest } from 'next/server';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { checkProduceRate, rateLimitedResponse, PRODUCE_COST } from '@/lib/orchestrator/rate-limit';
 import { deductCredits } from '@/lib/orchestrator/ledger';
+import { consumeFreeAvatarChat } from '@/lib/billing/wallet-ledger';
 import { createJob, recordJobEvent } from '@/lib/orchestrator/jobs';
 import { buildSessionConfig } from '@/lib/orchestrator/avatar';
 
@@ -96,7 +97,11 @@ export async function POST(req: NextRequest) {
         }
         if (!url) { emit({ stage: 'failed', error: 'timeout' }); controller.close(); return; }
 
-        if (user) await deductCredits(user.id, PRODUCE_COST.avatar, `avatar:${Date.now()}`).catch(() => null);
+        if (user) {
+          // Server-authoritative free-counter (fail-open → charge as before).
+          const free = await consumeFreeAvatarChat(user.id);
+          if (free === null || free < 0) await deductCredits(user.id, PRODUCE_COST.avatar, `avatar:${Date.now()}`).catch(() => null);
+        }
         emit({ stage: 'completed', pct: 100, url, poster, persona: session.persona, lighting: session.lighting });
         controller.close();
       } catch (e) {

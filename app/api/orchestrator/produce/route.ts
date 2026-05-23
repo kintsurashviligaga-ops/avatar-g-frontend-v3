@@ -18,6 +18,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { checkProduceRate, rateLimitedResponse, PRODUCE_COST } from '@/lib/orchestrator/rate-limit';
 import { deductCredits } from '@/lib/orchestrator/ledger';
+import { consumeFreeAvatarChat } from '@/lib/billing/wallet-ledger';
 import { createJob, recordJobEvent } from '@/lib/orchestrator/jobs';
 import {
   buildScriptSystemPrompt, buildScriptUserPrompt, extractJson, normalizeBreakdown,
@@ -138,7 +139,13 @@ export async function POST(req: NextRequest) {
           globalRender: { transition: 'crossfade', vocal_ducking_pct: 30, fps: 24 },
           pipelineId,
         });
-        if (user) await deductCredits(user.id, PRODUCE_COST.film, `film:${Date.now()}`).catch(() => null);
+        if (user) {
+          // Server-authoritative free-counter: burn a free response if one is
+          // available, else charge. Fail-open: RPC/migration absent (free === null)
+          // → charge, i.e. exactly the prior behavior (zero regression).
+          const free = await consumeFreeAvatarChat(user.id);
+          if (free === null || free < 0) await deductCredits(user.id, PRODUCE_COST.film, `film:${Date.now()}`).catch(() => null);
+        }
         emit({ stage: 'completed', pct: 100, url, shots: clipUrls.length });
         controller.close();
       } catch (e) {

@@ -4,6 +4,7 @@ import { getPlan, type PlanTier } from '../../../../lib/billing/plans';
 import { getPlanByStripePriceId } from '@/lib/billing/stripe-prices';
 import { createRouteHandlerClient } from '@/lib/supabase/server';
 import { BillingProviderUnavailableError, getBillingProvider } from '@/lib/monetization/provider';
+import { creditWalletGel } from '@/lib/billing/wallet-ledger';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -114,7 +115,23 @@ async function handleSubscriptionDeleted(subscription: Stripe.Subscription) {
   });
 }
 
+async function handleWalletTopup(session: Stripe.Checkout.Session) {
+  const customerId = session.customer ? String(session.customer) : '';
+  const userId = customerId ? await getUserIdByCustomer(customerId) : null;
+  const amountGel = Number(session.metadata?.amount_gel);
+  if (!userId || !Number.isFinite(amountGel) || amountGel <= 0) return;
+  // Idempotent on `stripe:<session.id>` (the RPC dedupes; the outer event-id
+  // guard dedupes re-delivered events) → never double-credits.
+  await creditWalletGel(userId, amountGel, `stripe:${session.id}`);
+}
+
 async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
+  // One-off GEL wallet top-up → credit the ledger, then stop (no subscription).
+  if (session.metadata?.kind === 'wallet_topup') {
+    await handleWalletTopup(session);
+    return;
+  }
+
   const customerId = String(session.customer);
   const userId = await getUserIdByCustomer(customerId);
 

@@ -1,0 +1,91 @@
+/**
+ * Wallet + onboarding server lifecycle (server-only).
+ *
+ * Thin, fail-OPEN wrappers over the SECURITY DEFINER RPCs from
+ * 20260523_wallet_and_onboarding.sql, called with the service-role client so they
+ * run above RLS (webhook + produce routes have no user session). Every helper
+ * degrades cleanly when the RPC/migration isn't present yet — callers fall back
+ * to existing behavior, so this is strictly additive (zero regression).
+ */
+
+import 'server-only';
+import { createServiceRoleClient } from '@/lib/supabase/server';
+
+function client(): ReturnType<typeof createServiceRoleClient> | null {
+  try { return createServiceRoleClient(); } catch { return null; }
+}
+
+/**
+ * Idempotently credit `amountGel` to the user's GEL balance (via credit_ledger).
+ * `ref` (e.g. `stripe:<session_id>`) makes a re-delivered webhook a no-op.
+ * Returns the new balance, or null when unavailable (fail-open).
+ */
+export async function creditWalletGel(userId: string, amountGel: number, ref: string): Promise<number | null> {
+  const sb = client();
+  if (!sb || !Number.isFinite(amountGel) || amountGel <= 0) return null;
+  try {
+    const { data, error } = await sb.rpc('credit_wallet_gel', { p_user_id: userId, p_amount: amountGel, p_ref: ref });
+    if (error) return null;
+    return typeof data === 'number' ? data : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Atomically consume one free avatar response.
+ *   >= 0 → a free slot was burned (new remaining count)
+ *   -1   → none remaining (caller should charge)
+ *   null → RPC/migration absent or errored (caller keeps existing behavior)
+ */
+export async function consumeFreeAvatarChat(userId: string): Promise<number | null> {
+  const sb = client();
+  if (!sb) return null;
+  try {
+    const { data, error } = await sb.rpc('consume_free_avatar_chat', { p_user_id: userId });
+    if (error) return null;
+    return typeof data === 'number' ? data : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Persist the avatar name + flip is_avatar_named server-side. Best-effort. */
+export async function setAvatarName(userId: string, name: string): Promise<boolean> {
+  const sb = client();
+  if (!sb) return false;
+  try {
+    const { error } = await sb.rpc('set_avatar_name', { p_user_id: userId, p_name: name.slice(0, 40) });
+    return !error;
+  } catch {
+    return false;
+  }
+}
+
+export interface OnboardingState {
+  avatarName: string | null;
+  isAvatarNamed: boolean;
+  freeRemaining: number;
+}
+
+/** Read the authed user's onboarding state from their profile row. Fail-open null. */
+export async function getOnboardingState(userId: string): Promise<OnboardingState | null> {
+  const sb = client();
+  if (!sb) return null;
+  try {
+    const { data, error } = await sb
+      .from('profiles')
+      .select('avatar_name,is_avatar_named,free_avatar_chats_remaining')
+      .eq('id', userId)
+      .maybeSingle();
+    if (error || !data) return null;
+    const row = data as { avatar_name?: string | null; is_avatar_named?: boolean | null; free_avatar_chats_remaining?: number | null };
+    return {
+      avatarName: row.avatar_name ?? null,
+      isAvatarNamed: Boolean(row.is_avatar_named),
+      freeRemaining: typeof row.free_avatar_chats_remaining === 'number' ? row.free_avatar_chats_remaining : 3,
+    };
+  } catch {
+    return null;
+  }
+}

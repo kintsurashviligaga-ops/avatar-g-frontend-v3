@@ -460,7 +460,31 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
       localStorage.setItem('myavatar:avatar_name', name);
       localStorage.setItem('myavatar:free_avatar_chats', '3');
     } catch { /* ignore */ }
-  }, []);
+    // Logged-in → persist server-side (authoritative); anon keeps localStorage.
+    if (isAuthenticated) {
+      void fetch('/api/profile/onboarding', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+        body: JSON.stringify({ name }),
+      }).catch(() => null);
+    }
+  }, [isAuthenticated]);
+
+  // Server-authoritative onboarding for logged-in sessions: the profile row
+  // overrides localStorage (anti-abuse + cross-device). Anonymous users keep
+  // the client-side state hydrated above.
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    void (async () => {
+      try {
+        const r = await fetch('/api/profile/onboarding', { credentials: 'include', cache: 'no-store' });
+        if (!r.ok) return;
+        const j = await r.json() as { state?: { avatarName: string | null; isAvatarNamed: boolean; freeRemaining: number } | null };
+        if (!j.state) return;
+        if (j.state.avatarName) setAvatarName(j.state.avatarName);
+        if (typeof j.state.freeRemaining === 'number') setFreeAvatarChats(j.state.freeRemaining);
+      } catch { /* ignore — localStorage fallback already applied */ }
+    })();
+  }, [isAuthenticated]);
 
   // Pre-flight cost guardrail (PHASE 4). Returns true if the action may proceed:
   // first 3 post-naming runs are free; otherwise the GEL balance must cover it,
