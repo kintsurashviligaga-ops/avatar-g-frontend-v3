@@ -11,6 +11,7 @@
  */
 
 import { useState, useCallback, useRef, useEffect } from 'react'
+import { speakPremium, stopPremium } from '@/lib/audio/premium-tts'
 import { useRouter, usePathname } from 'next/navigation'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
 import { CHAT_LABELS, QUICK_ACTIONS, type ChatLocale } from './config'
@@ -107,7 +108,6 @@ export function LandingChatSection() {
 
   const fileInputRef = useRef<HTMLInputElement>(null)
   const cameraInputRef = useRef<HTMLInputElement>(null)
-  const speechSynth = typeof window !== 'undefined' ? window.speechSynthesis : null
 
   const locale = pathname?.startsWith('/en') ? 'en' : pathname?.startsWith('/ru') ? 'ru' : 'ka'
   const hasMessages = messages.length > 0
@@ -147,10 +147,8 @@ export function LandingChatSection() {
           .filter(m => m.id !== systemMsg.id).concat(agentMsg)
       )
 
-      if (speechModeOn && speechSynth) {
-        const u = new SpeechSynthesisUtterance(data.reply)
-        u.lang = locale === 'ka' ? 'ka-GE' : locale === 'ru' ? 'ru-RU' : 'en-US'
-        speechSynth.speak(u)
+      if (speechModeOn) {
+        void speakPremium(data.reply, locale as 'ka' | 'en' | 'ru') // premium voice only — no browser robot
       }
     } catch {
       setMessages(prev =>
@@ -161,7 +159,7 @@ export function LandingChatSection() {
     } finally {
       setIsSubmitting(false)
     }
-  }, [locale, sessionId, labels, speechModeOn, speechSynth])
+  }, [locale, sessionId, labels, speechModeOn])
 
   const handleSend = useCallback(() => { sendMessage(composerText, attachments) }, [composerText, attachments, sendMessage])
 
@@ -220,8 +218,8 @@ export function LandingChatSection() {
   }, [voiceStatus, locale])
 
   const handleSpeechModeToggle = useCallback(() => {
-    setSpeechModeOn(prev => { if (prev && speechSynth) speechSynth.cancel(); return !prev })
-  }, [speechSynth])
+    setSpeechModeOn(prev => { if (prev) stopPremium(); return !prev })
+  }, [])
 
   useEffect(() => () => {
     attachments.forEach(a => { if (a.localPreviewUrl) URL.revokeObjectURL(a.localPreviewUrl) })

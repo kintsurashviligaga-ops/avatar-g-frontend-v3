@@ -98,7 +98,16 @@ export async function POST(req: NextRequest) {
   }
 
   const apiKey = process.env.ELEVENLABS_API_KEY;
-  const voiceId = body.voiceId ?? body.voice_id ?? process.env.ELEVENLABS_VOICE_ID ?? 'vWpzdSR8GpLUKR0ai8Li';
+  // Georgian text/locale → the dedicated premium Georgian voice (trained on
+  // ElevenLabs) when configured; otherwise the default voice. An explicit
+  // body.voiceId always wins.
+  const isGeorgian = body.locale === 'ka' || /[ა-ჿ]/.test(text);
+  const georgianVoiceId = process.env.ELEVENLABS_GEORGIAN_VOICE_ID;
+  const voiceId = body.voiceId
+    ?? body.voice_id
+    ?? (isGeorgian && georgianVoiceId ? georgianVoiceId : undefined)
+    ?? process.env.ELEVENLABS_VOICE_ID
+    ?? 'vWpzdSR8GpLUKR0ai8Li';
 
   // Primary: ElevenLabs
   if (apiKey) {

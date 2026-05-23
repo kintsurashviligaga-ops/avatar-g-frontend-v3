@@ -8,6 +8,7 @@
  */
 
 import { useState, useCallback, useRef, useEffect } from 'react'
+import { speakPremium, stopPremium } from '@/lib/audio/premium-tts'
 import { createPortal } from 'react-dom'
 import { usePathname } from 'next/navigation'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
@@ -84,8 +85,6 @@ export function ChatScreen() {
   // Refs for file pickers
   const fileInputRef = useRef<HTMLInputElement>(null)
   const cameraInputRef = useRef<HTMLInputElement>(null)
-  // TTS ref
-  const speechSynth = typeof window !== 'undefined' ? window.speechSynthesis : null
 
   /* ── locale from path ── */
   const locale = pathname?.startsWith('/en') ? 'en' : pathname?.startsWith('/ru') ? 'ru' : 'ka'
@@ -170,11 +169,9 @@ export function ChatScreen() {
           .concat(agentMsg)
       )
 
-      // TTS if speech mode is on
-      if (speechModeOn && speechSynth) {
-        const utterance = new SpeechSynthesisUtterance(data.reply)
-        utterance.lang = locale === 'ka' ? 'ka-GE' : locale === 'ru' ? 'ru-RU' : 'en-US'
-        speechSynth.speak(utterance)
+      // TTS if speech mode is on — premium ElevenLabs voice ONLY (no browser robot).
+      if (speechModeOn) {
+        void speakPremium(data.reply, locale as 'ka' | 'en' | 'ru')
       }
     } catch {
       const errorMsg: FCSystemMessage = {
@@ -194,7 +191,7 @@ export function ChatScreen() {
     } finally {
       setIsSubmitting(false)
     }
-  }, [locale, sessionId, labels, speechModeOn, speechSynth, messages, pathname])
+  }, [locale, sessionId, labels, speechModeOn, messages, pathname])
 
   /* ── SEND HANDLER ── */
   const handleSend = useCallback(() => {
@@ -305,10 +302,10 @@ export function ChatScreen() {
   /* ── SPEECH MODE TOGGLE (TTS) ── */
   const handleSpeechModeToggle = useCallback(() => {
     setSpeechModeOn(prev => {
-      if (prev && speechSynth) speechSynth.cancel()
+      if (prev) stopPremium() // turning off → halt any premium playback
       return !prev
     })
-  }, [speechSynth])
+  }, [])
 
   /* ── Portal target — render at document.body to escape stacking contexts ── */
   const [portalTarget, setPortalTarget] = useState<HTMLElement | null>(null)
