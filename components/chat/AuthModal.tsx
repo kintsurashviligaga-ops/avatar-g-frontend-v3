@@ -16,6 +16,8 @@ import { useEffect, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Mail, Lock, Loader2, Sparkles, ArrowLeft } from 'lucide-react';
 import { createBrowserClient, isSupabaseConfigured } from '@/lib/supabase/browser';
+import { LoginCard } from '@/components/auth/LoginCard';
+import { SUPPORT_EMAIL, buildSupportMailto } from '@/lib/support';
 
 type Lang = 'ka' | 'en' | 'ru';
 type Mode = 'login' | 'register' | 'reset' | 'magic';
@@ -168,6 +170,18 @@ export default function AuthModal({ open, locale, onClose, onAuthed }: AuthModal
               </button>
             </div>
 
+            {/* One-click social OAuth — Google · Apple · GitHub (login/register only) */}
+            {(mode === 'login' || mode === 'register') && (
+              <>
+                <LoginCard locale={locale} redirectTo={`/${locale}/dashboard`} className="mb-1" />
+                <div className="my-3 flex items-center gap-3 text-[11px] uppercase tracking-wider text-white/35">
+                  <span className="h-px flex-1 bg-white/[0.10]" />
+                  {t.orContinue}
+                  <span className="h-px flex-1 bg-white/[0.10]" />
+                </div>
+              </>
+            )}
+
             <form onSubmit={submit} className="space-y-3">
               {mode === 'register' && (
                 <div className="relative">
@@ -219,6 +233,13 @@ export default function AuthModal({ open, locale, onClose, onAuthed }: AuthModal
               {mode === 'magic' && (
                 <button type="button" onClick={() => { setMode('login'); reset(); }} className="text-white/55 hover:text-white/80 transition">{t.usePassword}</button>
               )}
+            </div>
+
+            {/* Official support node */}
+            <div className="mt-4 pt-3 border-t border-white/[0.06] text-center text-[11px] text-white/35">
+              <a href={buildSupportMailto({ subject: 'MyAvatar.ge — help' })} className="hover:text-sky-300 transition">
+                {SUPPORT_EMAIL}
+              </a>
             </div>
           </motion.div>
         </motion.div>
