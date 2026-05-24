@@ -50,12 +50,38 @@ async function heygenAvatars(key: string) {
 }
 
 async function heygenStreaming(key: string) {
-  // Capability probe: can we mint a streaming session token?
+  // Capability probe: can we mint a streaming session token? (classic, sunset)
   const r = await fetch('https://api.heygen.com/v1/streaming.create_token', {
     method: 'POST', headers: { 'X-Api-Key': key, 'Content-Type': 'application/json' }, body: '{}',
   });
   const body = (await r.text()).slice(0, 200);
   return { available: r.ok, status: r.status, detail: body };
+}
+
+async function liveAvatar(key: string) {
+  // Probe HeyGen's NEW real-time product (LiveAvatar). Does the HeyGen key work?
+  const out: Record<string, unknown> = {};
+  // 1) interactive avatars list
+  try {
+    const a = await fetch('https://api.liveavatar.com/v1/avatars', { headers: { 'X-API-KEY': key } });
+    const body = await a.text();
+    let parsed: unknown; try { parsed = JSON.parse(body); } catch { parsed = body.slice(0, 200); }
+    out['avatars'] = { status: a.status, ok: a.ok, sample: parsed };
+  } catch (e) { out['avatars'] = { error: String(e) }; }
+  // 2) token auth check (empty body → 400 means KEY ACCEPTED; 401/403 means no access)
+  try {
+    const t = await fetch('https://api.liveavatar.com/v1/sessions/token', {
+      method: 'POST', headers: { 'X-API-KEY': key, 'Content-Type': 'application/json' }, body: '{}',
+    });
+    out['tokenAuth'] = { status: t.status, ok: t.ok, detail: (await t.text()).slice(0, 240) };
+  } catch (e) { out['tokenAuth'] = { error: String(e) }; }
+  // 3) voices list (to confirm Eka native Georgian voice id is usable)
+  try {
+    const v = await fetch('https://api.liveavatar.com/v1/voices', { headers: { 'X-API-KEY': key } });
+    const body = await v.text();
+    out['voices'] = { status: v.status, ok: v.ok, len: body.length };
+  } catch (e) { out['voices'] = { error: String(e) }; }
+  return out;
 }
 
 async function elevenVoices(key: string) {
@@ -111,6 +137,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     tasks.push(heygenVoices(heygenKey).then(d => { result['heygen_voices'] = d; }).catch(e => { result['heygen_voices'] = { ok: false, error: String(e) }; }));
     tasks.push(heygenAvatars(heygenKey).then(d => { result['heygen_avatars'] = d; }).catch(e => { result['heygen_avatars'] = { ok: false, error: String(e) }; }));
     tasks.push(heygenStreaming(heygenKey).then(d => { result['heygen_streaming'] = d; }).catch(e => { result['heygen_streaming'] = { ok: false, error: String(e) }; }));
+    tasks.push(liveAvatar(heygenKey).then(d => { result['liveavatar'] = d; }).catch(e => { result['liveavatar'] = { error: String(e) }; }));
   }
   if (elevenKey) {
     tasks.push(elevenVoices(elevenKey).then(d => { result['elevenlabs_voices'] = d; }).catch(e => { result['elevenlabs_voices'] = { ok: false, error: String(e) }; }));
