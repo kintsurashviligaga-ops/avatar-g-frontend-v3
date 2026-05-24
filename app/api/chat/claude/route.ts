@@ -25,6 +25,11 @@ const MAX_BODY_BYTES = 512_000;
  * Supreme QA Gatekeeper critique for App-Builder HTML — confident structural
  * checks only, so a valid first pass is accepted immediately (no extra cost).
  */
+/** Deterministic cleanup — strip markdown code fences the model sometimes adds. */
+function stripFences(s: string): string {
+  return s.trim().replace(/^```[a-zA-Z]*\s*\n?/, '').replace(/\n?```\s*$/, '').trim();
+}
+
 function critiqueHtml(html: string): Critique {
   const issues: string[] = [];
   const t = html.trim();
@@ -91,10 +96,11 @@ export async function POST(req: NextRequest) {
         system,
         messages: [{ role: 'user', content: prompt }],
       });
-      return msg.content
+      const raw = msg.content
         .filter((b): b is Anthropic.TextBlock => b.type === 'text')
         .map((b) => b.text)
         .join('');
+      return stripFences(raw);
     };
 
     let finalHtml = '';
