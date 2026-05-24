@@ -728,7 +728,7 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
     const raf = requestAnimationFrame(() => {
       try {
         ta.style.height = 'auto';
-        ta.style.height = input ? `${Math.max(52, Math.min(ta.scrollHeight, 168))}px` : '52px';
+        ta.style.height = input ? `${Math.max(56, Math.min(ta.scrollHeight, 168))}px` : '56px';
       } catch { /* ignore measurement edge cases */ }
     });
     return () => cancelAnimationFrame(raf);
@@ -1918,7 +1918,7 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
               placeholder={localeCode === 'ka' ? 'მკითხე ნებისმიერი' : 'Ask Anything'}
               aria-label={localeCode === 'ka' ? 'მკითხე ნებისმიერი' : 'Ask Anything'}
               className="w-full flex-shrink-0 bg-transparent border-none outline-none resize-none overflow-y-auto px-4 pt-3.5 pb-2 text-[15px] font-medium leading-relaxed text-white placeholder:text-white/45 placeholder:font-normal [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-              style={{ minHeight: 52, maxHeight: 168 }}
+              style={{ minHeight: 56, maxHeight: 168 }}
             />
             <input
               ref={fileInputRef}
