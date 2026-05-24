@@ -17,27 +17,36 @@
  */
 
 import { useEffect, useRef } from 'react';
-import { motion } from 'framer-motion';
+import { motion, useReducedMotion } from 'framer-motion';
 import { Sparkles } from 'lucide-react';
+import { resolveAvatarVideo } from '@/lib/avatar/video-config';
 
-const IDLE_URL = process.env.NEXT_PUBLIC_AVATAR_IDLE_VIDEO_URL || '';
-const TALK_URL = process.env.NEXT_PUBLIC_AVATAR_TALKING_VIDEO_URL || '';
-const POSTER = process.env.NEXT_PUBLIC_AVATAR_POSTER_URL || undefined;
+const { idleUrl: IDLE_URL, talkUrl: TALK_URL, poster: POSTER, hasVideo: HAS_VIDEO, hasTalkingLayer: HAS_TALK } = resolveAvatarVideo();
 
 const PEAKS = [14, 20, 11, 22, 13, 18];
 
 export function AvatarVideoStage({ speaking }: { speaking: boolean }) {
   const talkRef = useRef<HTMLVideoElement | null>(null);
-  const hasVideo = Boolean(IDLE_URL);
+  const reduceMotion = useReducedMotion();
+  const hasVideo = HAS_VIDEO;
 
-  // Drive the talking clip from the audio lifecycle.
+  // Drive the talking clip from the audio lifecycle. play() rejects ASYNC when
+  // autoplay is blocked, so we must .catch() the promise — a try/catch alone
+  // would leak an unhandled rejection to the console.
   useEffect(() => {
-    if (!TALK_URL) return;
+    if (!HAS_TALK) return;
     const t = talkRef.current;
     if (!t) return;
-    if (speaking) { try { t.currentTime = 0; void t.play(); } catch { /* noop */ } }
-    else { try { t.pause(); } catch { /* noop */ } }
+    if (speaking) {
+      try { t.currentTime = 0; } catch { /* noop */ }
+      void Promise.resolve(t.play()).catch(() => { /* autoplay blocked — orb/idle stays */ });
+    } else {
+      try { t.pause(); } catch { /* noop */ }
+    }
   }, [speaking]);
+
+  // Respect prefers-reduced-motion: hold a steady glow/orb instead of looping.
+  const animate = speaking && !reduceMotion;
 
   return (
     <motion.div
@@ -49,8 +58,8 @@ export function AvatarVideoStage({ speaking }: { speaking: boolean }) {
       <motion.span
         aria-hidden className="absolute -inset-5 rounded-[2.25rem] blur-2xl pointer-events-none"
         style={{ background: 'radial-gradient(circle, rgba(34,211,238,0.45), rgba(37,99,235,0.12) 60%, transparent 75%)' }}
-        animate={speaking ? { scale: [1, 1.08, 1], opacity: [0.7, 1, 0.7] } : { scale: 1, opacity: 0.4 }}
-        transition={{ duration: 1.6, repeat: Infinity, ease: 'easeInOut' }}
+        animate={animate ? { scale: [1, 1.08, 1], opacity: [0.7, 1, 0.7] } : { scale: 1, opacity: speaking ? 0.85 : 0.4 }}
+        transition={{ duration: 1.6, repeat: animate ? Infinity : 0, ease: 'easeInOut' }}
       />
 
       {/* Glass-frame viewport */}
@@ -59,9 +68,9 @@ export function AvatarVideoStage({ speaking }: { speaking: boolean }) {
           <>
             <video
               src={IDLE_URL} poster={POSTER} autoPlay loop muted playsInline preload="auto"
-              className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-300 ${speaking && TALK_URL ? 'opacity-0' : 'opacity-100'}`}
+              className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-300 ${speaking && HAS_TALK ? 'opacity-0' : 'opacity-100'}`}
             />
-            {TALK_URL && (
+            {HAS_TALK && (
               <video
                 ref={talkRef} src={TALK_URL} poster={POSTER} loop muted playsInline preload="auto"
                 className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-300 ${speaking ? 'opacity-100' : 'opacity-0'}`}
@@ -73,8 +82,8 @@ export function AvatarVideoStage({ speaking }: { speaking: boolean }) {
           <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-[#04101c] to-[#02060d]">
             <motion.div
               className="h-28 w-28 rounded-full flex items-center justify-center bg-gradient-to-br from-cyan-400 via-sky-500 to-blue-600 shadow-[0_0_50px_-8px_rgba(56,189,248,0.85)]"
-              animate={speaking ? { scale: [1, 1.06, 0.98, 1.04, 1] } : { scale: 1 }}
-              transition={{ duration: 0.9, repeat: speaking ? Infinity : 0, ease: 'easeInOut' }}
+              animate={animate ? { scale: [1, 1.06, 0.98, 1.04, 1] } : { scale: speaking ? 1.03 : 1 }}
+              transition={{ duration: 0.9, repeat: animate ? Infinity : 0, ease: 'easeInOut' }}
             >
               <Sparkles size={40} className="text-white" />
             </motion.div>
@@ -88,8 +97,8 @@ export function AvatarVideoStage({ speaking }: { speaking: boolean }) {
               <motion.span
                 key={i} className="w-[3px] rounded-full bg-gradient-to-t from-blue-500 to-cyan-300"
                 initial={{ height: 4 }}
-                animate={{ height: [4, peak, 6, peak - 5, 4] }}
-                transition={{ duration: 0.8, repeat: Infinity, ease: 'easeInOut', delay: i * 0.08 }}
+                animate={reduceMotion ? { height: Math.round(peak / 2) } : { height: [4, peak, 6, peak - 5, 4] }}
+                transition={{ duration: 0.8, repeat: reduceMotion ? 0 : Infinity, ease: 'easeInOut', delay: i * 0.08 }}
               />
             ))}
           </div>
