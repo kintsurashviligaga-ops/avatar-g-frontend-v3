@@ -1660,10 +1660,10 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
                     />
                     <span className="text-[12px] font-semibold text-cyan-100">
                       {localeCode === 'ka'
-                        ? '⚡ AI გუნდი ამოწმებს და აუმჯობესებს შენს გადაწყვეტას...'
+                        ? '⚡ AI გუნდი ამოწმებს, ვალიდაციას უკეთებს და აუმჯობესებს შენს გადაწყვეტას...'
                         : localeCode === 'ru'
-                          ? '⚡ AI-команда проверяет и улучшает ваше решение...'
-                          : '⚡ AI Team is validating and refining your solution...'}
+                          ? '⚡ AI-команда проверяет, валидирует и улучшает ваше решение...'
+                          : '⚡ AI Team is auditing, validating, and refining your solution...'}
                     </span>
                   </motion.div>
                 )}
@@ -1766,7 +1766,7 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
 
       {/* ── Bottom input — only on chat view, and hidden when mobile previews are active */}
       {activeView === 'chat' && (
-        <div className="relative z-10 flex-shrink-0 px-3 pt-2 pb-[max(4rem,calc(env(safe-area-inset-bottom)+1.5rem))] bg-black/80 backdrop-blur-xl border-t border-white/[0.08]">
+        <div className="relative z-10 flex-shrink-0 px-3 pt-2 pb-[max(72px,calc(env(safe-area-inset-bottom)+1.5rem))] bg-black/80 backdrop-blur-xl border-t border-white/[0.08]">
           {/* Action rows — capped + internally scrollable on short viewports so the
               pills + composer baseline below is never pushed off-screen / clipped. */}
           <div className="max-h-[42vh] overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">

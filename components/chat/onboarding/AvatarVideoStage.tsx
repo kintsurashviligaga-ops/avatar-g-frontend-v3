@@ -94,8 +94,9 @@ export function AvatarVideoStage({ variant = 'cinematic' }: AvatarVideoStageProp
         transition={{ duration: 1.8, repeat: glowActive ? Infinity : 0, ease: 'easeInOut' }}
       />
 
-      {/* Glass-frame portrait avatar viewport */}
-      <div className="avatar-video-viewport group relative w-full aspect-[9/16] rounded-[1.5rem] overflow-hidden border border-white/10 bg-black/50 backdrop-blur-xl shadow-[0_28px_90px_-24px_rgba(56,189,248,0.6)]">
+      {/* Glass-frame portrait avatar viewport — anchor variant is hard-capped at
+          40vh so it stays a proud central host without ever crowding the chat. */}
+      <div className={`avatar-video-viewport group relative w-full aspect-[9/16] rounded-[1.5rem] overflow-hidden border border-white/10 bg-black/50 backdrop-blur-xl shadow-[0_28px_90px_-24px_rgba(56,189,248,0.6)] ${anchor ? 'max-h-[40vh]' : ''}`}>
         {HAS_VIDEO ? (
           <>
             <video
