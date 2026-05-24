@@ -9,9 +9,10 @@
  * the parent, which persists `avatar_name` + flips `is_avatar_named`.
  */
 
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Sparkles, Volume2, Loader2, Square } from 'lucide-react';
+import { Volume2, Loader2, Square } from 'lucide-react';
+import { AvatarVideoStage } from '@/components/chat/onboarding/AvatarVideoStage';
 
 const INTRO_KA =
   'გამარჯობა! მე ვარ შენი პერსონალური ციფრული ავატარი და ამავდროულად — შენი უძლიერესი AI აგენტი. მე შემიძლია ყველაფერი, რაც კი აგენტს შეუძლია: დაგიპროექტებ 3D ინტერიერს, შევქმნი კინემატოგრაფიულ ფილმებს და ვილაპარაკებ ნებისმიერ ენაზე. თუმცა, სანამ დავიწყებთ... მითხარი, რა დამარქვი?';
@@ -52,6 +53,16 @@ export function AvatarOnboarding({ onNamed }: { onNamed: (name: string) => void 
     } catch { setVoice('idle'); }
   }, [voice]);
 
+  // Auto-greet on mount: the muted avatar video autoplays (browser-allowed); the
+  // voice is attempted too and gracefully no-ops if the browser blocks autoplay
+  // audio (the "მომისმინე" button then plays it on the first tap).
+  const autoTried = useRef(false);
+  useEffect(() => {
+    if (autoTried.current) return;
+    autoTried.current = true;
+    void speak();
+  }, [speak]);
+
   const commit = useCallback(() => {
     const n = name.trim();
     if (!n) return;
@@ -70,22 +81,10 @@ export function AvatarOnboarding({ onNamed }: { onNamed: (name: string) => void 
       <div aria-hidden className="pointer-events-none absolute inset-0 opacity-70"
         style={{ background: 'radial-gradient(60% 50% at 50% 38%, rgba(14,165,233,0.18), transparent 70%)' }} />
 
-      {/* Animated avatar orb */}
-      <motion.div
-        initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
-        transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
-        className="relative mb-7"
-      >
-        <motion.span
-          aria-hidden className="absolute -inset-6 rounded-full blur-2xl"
-          style={{ background: 'radial-gradient(circle, rgba(34,211,238,0.5), rgba(37,99,235,0.15) 60%, transparent 75%)' }}
-          animate={{ scale: [1, 1.12, 1], opacity: [0.6, 0.9, 0.6] }}
-          transition={{ duration: 3.2, repeat: Infinity, ease: 'easeInOut' }}
-        />
-        <div className="relative h-24 w-24 rounded-full flex items-center justify-center bg-gradient-to-br from-cyan-400 via-sky-500 to-blue-600 shadow-[0_0_50px_-8px_rgba(56,189,248,0.8)]">
-          <Sparkles size={34} className="text-white" />
-        </div>
-      </motion.div>
+      {/* Talking avatar video viewport — speaks in sync with the premium voice. */}
+      <div className="relative mb-7">
+        <AvatarVideoStage speaking={voice === 'playing'} />
+      </div>
 
       {/* Intro script + speak control */}
       <motion.p
