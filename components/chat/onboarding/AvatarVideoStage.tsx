@@ -74,7 +74,7 @@ export function AvatarVideoStage() {
     <motion.div
       initial={{ scale: 0.94, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
       transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
-      className="relative w-full max-w-2xl"
+      className="relative w-[clamp(220px,58vw,300px)]"
     >
       {/* Marine glow — intensifies while the voice plays */}
       <motion.span
@@ -84,8 +84,8 @@ export function AvatarVideoStage() {
         transition={{ duration: 1.8, repeat: glowActive ? Infinity : 0, ease: 'easeInOut' }}
       />
 
-      {/* Glass-frame widescreen viewport */}
-      <div className="avatar-video-viewport group relative w-full aspect-video rounded-[1.5rem] overflow-hidden border border-white/10 bg-black/50 backdrop-blur-xl shadow-[0_28px_90px_-24px_rgba(56,189,248,0.6)]">
+      {/* Glass-frame portrait avatar viewport */}
+      <div className="avatar-video-viewport group relative w-full aspect-[9/16] rounded-[1.5rem] overflow-hidden border border-white/10 bg-black/50 backdrop-blur-xl shadow-[0_28px_90px_-24px_rgba(56,189,248,0.6)]">
         {HAS_VIDEO ? (
           <>
             <video
