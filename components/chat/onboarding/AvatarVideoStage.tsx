@@ -25,7 +25,17 @@ const { idleUrl: VIDEO_URL, poster: POSTER, hasVideo: HAS_VIDEO } = resolveAvata
 
 const PEAKS = [14, 22, 12, 24, 15, 20, 13];
 
-export function AvatarVideoStage() {
+/**
+ * `cinematic` — large, for the full-screen onboarding gate.
+ * `anchor`    — compact, for the persistent central host at the top of the chat.
+ */
+export interface AvatarVideoStageProps {
+  variant?: 'cinematic' | 'anchor';
+}
+
+export function AvatarVideoStage({ variant = 'cinematic' }: AvatarVideoStageProps = {}) {
+  const anchor = variant === 'anchor';
+  const frameWidth = anchor ? 'w-[clamp(120px,30vw,168px)]' : 'w-[clamp(220px,58vw,300px)]';
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const reduceMotion = useReducedMotion();
   const [soundOn, setSoundOn] = useState(false);
@@ -74,7 +84,7 @@ export function AvatarVideoStage() {
     <motion.div
       initial={{ scale: 0.94, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
       transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
-      className="relative w-[clamp(220px,58vw,300px)]"
+      className={`relative ${frameWidth}`}
     >
       {/* Marine glow — intensifies while the voice plays */}
       <motion.span
@@ -100,14 +110,16 @@ export function AvatarVideoStage() {
               <button
                 type="button" onClick={enableSound}
                 aria-label="watch with sound"
-                className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-gradient-to-t from-black/55 via-black/10 to-black/20 transition-opacity"
+                className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-gradient-to-t from-black/55 via-black/10 to-black/20 transition-opacity"
               >
-                <span className="flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-cyan-400 to-blue-600 shadow-[0_10px_40px_-8px_rgba(56,189,248,0.9)] transition-transform group-hover:scale-105 active:scale-95">
-                  <Play size={30} className="ml-1 fill-white text-white" />
+                <span className={`flex items-center justify-center rounded-full bg-gradient-to-br from-cyan-400 to-blue-600 shadow-[0_10px_40px_-8px_rgba(56,189,248,0.9)] transition-transform group-hover:scale-105 active:scale-95 ${anchor ? 'h-11 w-11' : 'h-16 w-16'}`}>
+                  <Play size={anchor ? 20 : 30} className="ml-0.5 fill-white text-white" />
                 </span>
-                <span className="rounded-full bg-black/50 px-3 py-1 text-[12px] font-semibold text-white/90 backdrop-blur-sm">
-                  ▶ ხმით ნახვა
-                </span>
+                {!anchor && (
+                  <span className="rounded-full bg-black/50 px-3 py-1 text-[12px] font-semibold text-white/90 backdrop-blur-sm">
+                    ▶ ხმით ნახვა
+                  </span>
+                )}
               </button>
             )}
 

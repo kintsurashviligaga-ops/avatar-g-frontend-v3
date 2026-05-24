@@ -69,6 +69,7 @@ import type { RoomGeometry, StyleGuide } from '@/lib/orchestrator/interior';
 import { CameraModal } from '@/components/service-chat/CameraModal';
 import { AdminSystemPanel } from '@/components/chat/AdminSystemPanel';
 import { AvatarOnboarding } from '@/components/chat/onboarding/AvatarOnboarding';
+import { AvatarVideoStage } from '@/components/chat/onboarding/AvatarVideoStage';
 import { BalanceChip, WalletRefillModal } from '@/components/chat/WalletRefill';
 import { PricingGrid } from '@/components/dashboard/PricingGrid';
 import { GEL_COST, type MeteredAction } from '@/lib/billing/gel';
@@ -1639,8 +1640,37 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.18 }}
-              className="flex-1 min-h-0 overflow-y-auto px-4"
+              className="flex-1 min-h-0 flex flex-col"
             >
+              {/* ── PILLAR 1: Anchored central avatar host. Fixed at the top of the
+                  workspace; the message stream flows BELOW it and it never moves
+                  or unmounts as the message list scales/scrolls. ───────────────── */}
+              <div className="flex-shrink-0 flex flex-col items-center px-4 pt-2 pb-1">
+                <AvatarVideoStage variant="anchor" />
+                {/* PILLAR 2: warm glassmorphic pulse while the AI team validates/refines */}
+                {(sending || producing || Boolean(activePipelineId)) && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }}
+                    className="mt-2.5 inline-flex items-center gap-2 rounded-full border border-cyan-300/25 bg-gradient-to-r from-cyan-500/10 to-blue-500/10 px-3.5 py-1.5 backdrop-blur-md shadow-[0_0_24px_-8px_rgba(56,189,248,0.7)]"
+                  >
+                    <motion.span
+                      className="h-2 w-2 rounded-full bg-cyan-300"
+                      animate={{ opacity: [0.4, 1, 0.4], scale: [0.85, 1.15, 0.85] }}
+                      transition={{ duration: 1.2, repeat: Infinity, ease: 'easeInOut' }}
+                    />
+                    <span className="text-[12px] font-semibold text-cyan-100">
+                      {localeCode === 'ka'
+                        ? '⚡ AI გუნდი ამოწმებს და აუმჯობესებს შენს გადაწყვეტას...'
+                        : localeCode === 'ru'
+                          ? '⚡ AI-команда проверяет и улучшает ваше решение...'
+                          : '⚡ AI Team is validating and refining your solution...'}
+                    </span>
+                  </motion.div>
+                )}
+              </div>
+
+              {/* Dynamic downward stream — scrolls beneath the steady avatar */}
+              <div className="flex-1 min-h-0 overflow-y-auto px-4">
               {!hasMessages ? (
                 <EmptyState locale={localeCode} />
               ) : (
@@ -1698,6 +1728,7 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
                   <div ref={endRef} />
                 </div>
               )}
+              </div>
             </motion.div>
           )}
           {activeView === 'avatar' && (
@@ -1735,7 +1766,7 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
 
       {/* ── Bottom input — only on chat view, and hidden when mobile previews are active */}
       {activeView === 'chat' && (
-        <div className="relative z-10 flex-shrink-0 px-3 pt-2 pb-[max(3rem,calc(env(safe-area-inset-bottom)+1.25rem))] bg-black/80 backdrop-blur-xl border-t border-white/[0.08]">
+        <div className="relative z-10 flex-shrink-0 px-3 pt-2 pb-[max(4rem,calc(env(safe-area-inset-bottom)+1.5rem))] bg-black/80 backdrop-blur-xl border-t border-white/[0.08]">
           {/* Action rows — capped + internally scrollable on short viewports so the
               pills + composer baseline below is never pushed off-screen / clipped. */}
           <div className="max-h-[42vh] overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">

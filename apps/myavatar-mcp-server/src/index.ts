@@ -18,6 +18,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { TOOLS, type ToolResult } from './tools.js';
+import { withGatekeeper } from './reflection.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -43,8 +44,11 @@ async function main(): Promise<void> {
   const server = new McpServer({ name: manifest.server.name, version: manifest.server.version });
 
   const registered: string[] = [];
-  for (const def of TOOLS) {
-    if (!enabled.has(def.id)) continue; // manifest gate — disabled skills are never exposed
+  for (const raw of TOOLS) {
+    if (!enabled.has(raw.id)) continue; // manifest gate — disabled skills are never exposed
+    // Supreme QA Gatekeeper: every sub-agent tool is wrapped so its first pass is
+    // critiqued (and refined) before it can ever stream to the user.
+    const def = withGatekeeper(raw);
     server.tool(
       def.id,
       def.description,
