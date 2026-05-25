@@ -190,7 +190,7 @@ export function MyAvatarComposer({
       onKeyDown={onKeyDown}
       textareaRef={inputRef}
       placeholder={locale === 'ka' ? 'მკითხე ნებისმიერი' : 'Ask Anything'}
-      minHeight={56}
+      minHeight={60}
       maxHeight={168}
       wrapperClassName={`relative rounded-3xl bg-black border overflow-hidden transition flex-shrink-0 ${
         dragActive ? 'border-sky-400/60 ring-2 ring-sky-500/30' : 'border-white/[0.10] focus-within:border-white/[0.22]'

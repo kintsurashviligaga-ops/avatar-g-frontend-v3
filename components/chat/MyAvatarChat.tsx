@@ -69,7 +69,6 @@ import type { RoomGeometry, StyleGuide } from '@/lib/orchestrator/interior';
 import { CameraModal } from '@/components/service-chat/CameraModal';
 import { AdminSystemPanel } from '@/components/chat/AdminSystemPanel';
 import { AvatarOnboarding } from '@/components/chat/onboarding/AvatarOnboarding';
-import { AvatarVideoStage } from '@/components/chat/onboarding/AvatarVideoStage';
 import { AvatarBackdrop } from '@/components/chat/AvatarBackdrop';
 import { MessageList } from '@/components/chat/MessageList';
 import { MyAvatarComposer } from '@/components/chat/MyAvatarComposer';
@@ -1598,18 +1597,12 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
               transition={{ duration: 0.18 }}
               className="flex-1 min-h-0 flex flex-col"
             >
-              {/* ── PILLAR 1: Anchored central avatar host. Fixed at the top of the
-                  workspace; the message stream flows BELOW it and it never moves
-                  or unmounts as the message list scales/scrolls. ───────────────── */}
-              <div className="flex-shrink-0 flex flex-col items-center px-4 pt-2 pb-1">
-                {/* Desktop: anchored card. Mobile: the full-screen AvatarBackdrop
-                    plays the role instead, so the card is hidden to avoid doubling. */}
-                <div className="hidden md:block"><AvatarVideoStage variant="anchor" /></div>
-                {/* PILLAR 2: warm glassmorphic pulse while the AI team validates/refines */}
-                {(sending || producing || Boolean(activePipelineId)) && (
+              {/* Reflection pulse — floats over the full-screen avatar canvas. */}
+              {(sending || producing || Boolean(activePipelineId)) && (
+                <div className="flex-shrink-0 flex justify-center px-4 pt-3">
                   <motion.div
                     initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }}
-                    className="mt-2.5 inline-flex items-center gap-2 rounded-full border border-cyan-300/25 bg-gradient-to-r from-cyan-500/10 to-blue-500/10 px-3.5 py-1.5 backdrop-blur-md shadow-[0_0_24px_-8px_rgba(56,189,248,0.7)]"
+                    className="inline-flex items-center gap-2 rounded-full border border-cyan-300/25 bg-black/40 backdrop-blur-md px-3.5 py-1.5 shadow-[0_0_24px_-8px_rgba(56,189,248,0.7)]"
                   >
                     <motion.span
                       className="h-2 w-2 rounded-full bg-cyan-300"
@@ -1624,12 +1617,15 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
                           : '⚡ AI Team is auditing, validating, and refining your solution...'}
                     </span>
                   </motion.div>
-                )}
-              </div>
+                </div>
+              )}
 
-              {/* Dynamic downward stream — scrolls beneath the steady avatar.
-                  Extracted to <MessageList/> (Roadmap #12 decomposition). */}
-              <div className="flex-1 min-h-0 overflow-y-auto px-4">
+              {/* Transparent spacer — reveals the full-screen avatar canvas above the chat. */}
+              <div className="flex-1 min-h-0" aria-hidden />
+
+              {/* Docked glass chat stream — floats above the avatar canvas (z-10) with a
+                  high-fidelity glass backdrop so nothing clips the video layer. */}
+              <div className="flex-shrink-0 max-h-[54vh] overflow-y-auto px-4 pt-3 rounded-t-[1.75rem] bg-black/40 backdrop-blur-2xl border-t border-white/10">
                 <MessageList
                   messages={messages}
                   locale={localeCode}
@@ -1682,7 +1678,7 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
 
       {/* ── Bottom input — only on chat view, and hidden when mobile previews are active */}
       {activeView === 'chat' && (
-        <div className="relative z-10 flex-shrink-0 px-3 pt-2 pb-[max(72px,calc(env(safe-area-inset-bottom)+1.5rem))] bg-black/45 md:bg-black/80 backdrop-blur-[20px] border-t border-white/10">
+        <div className="relative z-10 flex-shrink-0 px-3 pt-2 pb-[max(64px,calc(env(safe-area-inset-bottom)+1.5rem))] bg-black/50 backdrop-blur-[24px] border-t border-white/10">
           {/* Action rows — capped + internally scrollable on short viewports so the
               pills + composer baseline below is never pushed off-screen / clipped. */}
           <div className="max-h-[42vh] overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">

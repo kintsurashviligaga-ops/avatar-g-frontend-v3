@@ -1,4 +1,4 @@
-const CACHE_NAME = 'avatar-g-shell-v3';
+const CACHE_NAME = 'avatar-g-shell-v4';
 const CORE_ASSETS = [
   '/offline.html',
   '/manifest.json',

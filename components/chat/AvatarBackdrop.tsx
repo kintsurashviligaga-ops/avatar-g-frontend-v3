@@ -17,7 +17,7 @@ const { idleUrl: VIDEO_URL, poster: POSTER, hasVideo: HAS_VIDEO } = resolveAvata
 export function AvatarBackdrop() {
   if (!HAS_VIDEO) return null;
   return (
-    <div aria-hidden className="md:hidden pointer-events-none fixed inset-0 z-0">
+    <div aria-hidden className="pointer-events-none fixed inset-0 z-0">
       <video
         src={VIDEO_URL}
         poster={POSTER}
@@ -28,9 +28,9 @@ export function AvatarBackdrop() {
         preload="metadata"
         className="h-full w-full object-cover"
       />
-      {/* Readability scrim — light at top (show the avatar), dark at the bottom
-          (where the glass control panel sits). */}
-      <div className="absolute inset-0 bg-gradient-to-b from-black/35 via-black/45 to-black/80" />
+      {/* Readability scrim — crisp avatar up top, darker toward the bottom where the
+          glass chat panel + control bar sit. Full-screen canvas on every viewport. */}
+      <div className="absolute inset-0 bg-gradient-to-b from-black/20 via-black/30 to-black/85" />
     </div>
   );
 }
