@@ -1,4 +1,4 @@
-const CACHE_NAME = 'avatar-g-shell-v2';
+const CACHE_NAME = 'avatar-g-shell-v3';
 const CORE_ASSETS = [
   '/offline.html',
   '/manifest.json',
@@ -79,18 +79,17 @@ self.addEventListener('fetch', (event) => {
   }
 
   if (destination === 'image' || destination === 'font') {
+    // Network-first (was cache-first): always fetch fresh when online so updated
+    // avatar posters / assets are never masked by a stale cached copy; fall back
+    // to cache only when offline.
     event.respondWith(
-      caches.match(request).then((cached) => {
-        const networkFetch = fetch(request)
-          .then((response) => {
-            const copy = response.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
-            return response;
-          })
-          .catch(() => cached);
-
-        return cached || networkFetch;
-      }),
+      fetch(request)
+        .then((response) => {
+          const copy = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
+          return response;
+        })
+        .catch(() => caches.match(request)),
     );
   }
 });

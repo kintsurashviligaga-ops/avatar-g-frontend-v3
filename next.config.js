@@ -105,6 +105,16 @@ const nextConfig = {
   async headers() {
     return [
       {
+        // The service worker must never be HTTP-cached, or clients keep running an
+        // old SW that serves a stale app shell + assets (the "deploy did nothing"
+        // class of bug). Force a re-check on every load.
+        source: '/sw.js',
+        headers: [
+          { key: 'Cache-Control', value: 'no-cache, no-store, must-revalidate' },
+          { key: 'Service-Worker-Allowed', value: '/' },
+        ],
+      },
+      {
         // Only disable caching for API routes - let Next.js manage SSG/ISR caching
         source: '/api/:path*',
         headers: [

@@ -35,7 +35,9 @@ export interface AvatarVideoStageProps {
 
 export function AvatarVideoStage({ variant = 'cinematic' }: AvatarVideoStageProps = {}) {
   const anchor = variant === 'anchor';
-  const frameWidth = anchor ? 'w-[clamp(120px,30vw,168px)]' : 'w-[clamp(220px,58vw,300px)]';
+  // Desktop anchor is a proud centerpiece (not a tiny box); height still capped at
+  // 40vh on the frame so it never crowds the feed.
+  const frameWidth = anchor ? 'w-[clamp(200px,30vw,300px)]' : 'w-[clamp(220px,58vw,300px)]';
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const reduceMotion = useReducedMotion();
   const [soundOn, setSoundOn] = useState(false);
