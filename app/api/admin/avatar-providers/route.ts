@@ -42,10 +42,16 @@ async function heygenAvatars(key: string) {
   if (!r.ok) return { ok: false, status: r.status, detail: (await r.text()).slice(0, 160) };
   const j = await r.json() as { data?: { avatars?: Array<Record<string, unknown>> } };
   const avatars = j.data?.avatars ?? [];
+  const slim = (a: Record<string, unknown>) => ({ avatar_id: a['avatar_id'], name: a['avatar_name'], gender: a['gender'], preview: a['preview_image_url'] });
+  const isMale = (a: Record<string, unknown>) => String(a['gender'] ?? '').toLowerCase() === 'male';
+  const businessRe = /office|business|suit|professional|formal|glass|executive|corporate|ceo|manager|desk/i;
+  const maleBusiness = avatars.filter(a => isMale(a) && businessRe.test(String(a['avatar_name'] ?? ''))).map(slim);
   return {
     ok: true,
     total: avatars.length,
-    sample: avatars.slice(0, 10).map(a => ({ avatar_id: a['avatar_id'], name: a['avatar_name'], gender: a['gender'], preview: a['preview_image_url'] })),
+    sample: avatars.slice(0, 10).map(slim),
+    maleBusiness: maleBusiness.slice(0, 25),
+    maleBusinessCount: maleBusiness.length,
   };
 }
 

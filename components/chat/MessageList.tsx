@@ -191,14 +191,14 @@ interface MessageRowProps {
 export const MessageRow = memo(function MessageRow({ m, locale, onLike, onDislike, onRegenerate, onRemix, onOpenInPreview, onContextAction }: MessageRowProps) {
   if (m.role === 'user') {
     return (
-      <div className="flex justify-end">
+      <div data-msg-id={m.id} className="flex justify-end">
         <div className="max-w-[82%] flex flex-col items-end gap-1.5">
           {m.userImage && (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={m.userImage} alt="" className="max-w-[220px] max-h-[220px] rounded-2xl object-cover border border-sky-400/20" />
           )}
           {m.text && (
-            <div className="px-4 py-2.5 rounded-2xl bg-sky-500/[0.08] backdrop-blur-sm border border-sky-400/20 text-white text-[15px] leading-relaxed break-words shadow-[0_2px_16px_-6px_rgba(56,189,248,0.35)]">
+            <div className="px-4 py-2.5 rounded-2xl bg-sky-500/[0.08] backdrop-blur-sm border border-sky-400/20 text-white text-[16px] leading-[1.65] break-words shadow-[0_2px_16px_-6px_rgba(56,189,248,0.35)]">
               {m.text}
             </div>
           )}
@@ -220,7 +220,7 @@ export const MessageRow = memo(function MessageRow({ m, locale, onLike, onDislik
     : m.text;
 
   return (
-    <div className="flex flex-col items-start gap-2">
+    <div data-msg-id={m.id} className="flex flex-col items-start gap-2">
       {m.pending ? (
         <motion.div
           initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
@@ -233,7 +233,7 @@ export const MessageRow = memo(function MessageRow({ m, locale, onLike, onDislik
       ) : (
         <>
           {text && (
-            <div className="max-w-[88%] px-1 text-white text-[15px] leading-relaxed break-words chat-md">
+            <div className="max-w-[88%] px-1 text-white text-[16px] leading-[1.65] break-words chat-md">
               <ReactMarkdown
                 remarkPlugins={[remarkGfm]}
                 components={{
@@ -303,12 +303,12 @@ export const MessageRow = memo(function MessageRow({ m, locale, onLike, onDislik
             </div>
           )}
 
-          <div className="flex items-center gap-3 text-neutral-400 dark:text-neutral-500 mt-2">
+          <div className="flex items-center gap-2 text-neutral-400 dark:text-neutral-500 mt-2.5">
             <CopyButton text={m.text} />
-            <ActionIcon title="Regenerate" onClick={() => onRegenerate(m.id)}><RotateCcw size={13} /></ActionIcon>
+            <ActionIcon title="Regenerate" onClick={() => onRegenerate(m.id)}><RotateCcw size={17} /></ActionIcon>
             <SpeakerButton text={m.text} locale={locale} />
-            <ActionIcon title="Like" onClick={() => onLike(m.id)} active={m.liked} tone="sky"><ThumbsUp size={13} /></ActionIcon>
-            <ActionIcon title="Dislike" onClick={() => onDislike(m.id)} active={m.disliked} tone="cyan"><ThumbsDown size={13} /></ActionIcon>
+            <ActionIcon title="Like" onClick={() => onLike(m.id)} active={m.liked} tone="sky"><ThumbsUp size={17} /></ActionIcon>
+            <ActionIcon title="Dislike" onClick={() => onDislike(m.id)} active={m.disliked} tone="cyan"><ThumbsDown size={17} /></ActionIcon>
           </div>
         </>
       )}
@@ -336,7 +336,7 @@ function ActionIcon({
       aria-label={title}
       aria-pressed={active ?? undefined}
       onClick={handle}
-      className={`h-7 w-7 rounded-full flex items-center justify-center transition-all duration-200 hover:scale-110 active:scale-95 ${
+      className={`h-9 w-9 rounded-full flex items-center justify-center transition-all duration-200 hover:scale-110 active:scale-95 ${
         active ? activeCls : 'hover:text-cyan-300 hover:bg-white/[0.08]'
       }`}
     >
@@ -376,7 +376,7 @@ function CopyButton({ text }: { text: string }) {
 
   return (
     <ActionIcon title={copied ? 'Copied' : 'Copy'} onClick={copy} active={copied} tone="sky">
-      {copied ? <Check size={13} /> : <Copy size={13} />}
+      {copied ? <Check size={17} /> : <Copy size={17} />}
     </ActionIcon>
   );
 }
@@ -406,10 +406,10 @@ function SpeakerButton({ text, locale }: { text: string; locale: string }) {
   return (
     <ActionIcon title={title} onClick={onClick} active={state === 'playing'} tone="cyan">
       {state === 'loading'
-        ? <Loader2 size={13} className="animate-spin" />
+        ? <Loader2 size={17} className="animate-spin" />
         : state === 'playing'
-          ? <Square size={13} className="fill-current" />
-          : <Volume2 size={13} />}
+          ? <Square size={17} className="fill-current" />
+          : <Volume2 size={17} />}
     </ActionIcon>
   );
 }

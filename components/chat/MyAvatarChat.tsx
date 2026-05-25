@@ -1757,16 +1757,18 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
             </div>
           )}
           </div>{/* /capped action zone — pills + composer baseline stays pinned below */}
-          <div className="flex gap-3 overflow-x-auto pb-3 pt-1 mb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <div className="flex gap-2.5 overflow-x-auto pb-3 pt-1 mb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {PILLS.map(p => (
               <button
                 key={p.id}
                 type="button"
                 onClick={() => handlePill(p)}
                 disabled={sending}
-                className="flex-shrink-0 inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full bg-black border border-white/[0.10] hover:border-sky-400/45 hover:bg-white/[0.05] hover:shadow-[0_0_18px_-5px_rgba(56,189,248,0.6)] active:scale-95 disabled:opacity-50 transition-all duration-150 text-[13px] font-medium text-white"
+                className="group/pill flex-shrink-0 inline-flex items-center gap-2 pl-1.5 pr-4 py-1.5 rounded-2xl bg-white/[0.03] border border-white/[0.10] hover:border-sky-400/50 hover:bg-white/[0.06] hover:shadow-[0_6px_24px_-10px_rgba(56,189,248,0.7)] active:scale-95 disabled:opacity-50 transition-all duration-200 text-[13.5px] font-semibold text-white/90"
               >
-                <p.icon size={14} className="text-white/85" />
+                <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-400/15 to-blue-600/15 border border-white/[0.08] text-sky-300 group-hover/pill:from-cyan-400/25 group-hover/pill:to-blue-600/25 group-hover/pill:text-cyan-200 transition-colors">
+                  <p.icon size={15} />
+                </span>
                 {localeCode === 'ka' ? p.label_ka : p.label_en}
               </button>
             ))}
