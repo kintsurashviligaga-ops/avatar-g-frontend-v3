@@ -23,8 +23,12 @@ function audioResponse(buffer: ArrayBuffer, provider: string): NextResponse {
   });
 }
 
-async function synthesizeWithElevenLabs(text: string, voiceId: string, apiKey: string): Promise<ArrayBuffer | null> {
-  const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
+// Progressive: hit the ElevenLabs /stream endpoint with low-latency optimization
+// and PIPE the chunked body straight through — first audio bytes reach the client
+// far sooner than buffering the whole file. Consumers that need a blob/arrayBuffer
+// (blob playback, MCP) still work; consumers that support MSE play progressively.
+async function streamElevenLabs(text: string, voiceId: string, apiKey: string): Promise<NextResponse | null> {
+  const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}/stream?optimize_streaming_latency=3`, {
     method: 'POST',
     headers: {
       'xi-api-key': apiKey,
@@ -45,13 +49,21 @@ async function synthesizeWithElevenLabs(text: string, voiceId: string, apiKey: s
     }),
   });
 
-  if (!res.ok) {
+  if (!res.ok || !res.body) {
     const errBody = await res.text().catch(() => '');
     console.error('[elevenlabs/tts] ElevenLabs error', res.status, errBody.slice(0, 200));
     return null;
   }
 
-  return res.arrayBuffer();
+  return new NextResponse(res.body, {
+    status: 200,
+    headers: {
+      'Content-Type': 'audio/mpeg',
+      'X-Voice-Provider': 'elevenlabs',
+      'Cache-Control': 'no-store',
+      'X-Accel-Buffering': 'no',
+    },
+  });
 }
 
 async function synthesizeWithGoogleTTS(text: string): Promise<ArrayBuffer | null> {
@@ -109,10 +121,10 @@ export async function POST(req: NextRequest) {
     ?? process.env.ELEVENLABS_VOICE_ID
     ?? 'vWpzdSR8GpLUKR0ai8Li';
 
-  // Primary: ElevenLabs
+  // Primary: ElevenLabs (progressive streaming — minimal time-to-first-sound)
   if (apiKey) {
-    const audio = await synthesizeWithElevenLabs(text, voiceId, apiKey);
-    if (audio) return audioResponse(audio, 'elevenlabs');
+    const streamed = await streamElevenLabs(text, voiceId, apiKey);
+    if (streamed) return streamed;
   }
 
   // Fallback: Google TTS (uses Gemini key, works for Georgian natively)
