@@ -51,15 +51,25 @@ export async function POST(req: NextRequest) {
     const nanoBananaKey = process.env.NANOBANANA_API_KEY;
 
     // ── Primary: NanoBanana ────────────────────────────────────────────
+    // Hard wall-clock cap so a slow/failing NanoBanana can't block the whole
+    // request: if it doesn't return a URL within the cap, fail over to the fast
+    // Replicate predictionId path immediately (the client then polls). This keeps
+    // time-to-first-preview low even when NanoBanana is degraded.
+    const NB_CAP_MS = 14_000;
     if (nanoBananaKey) {
       try {
         const endpoint = QUALITY_TO_NB_ENDPOINT[input.quality ?? 'high'] ?? 'v2-2k';
-        const result = await generateNanoBananaImage({
-          prompt: input.prompt,
-          endpoint,
-          aspectRatio: input.aspectRatio ?? '1:1',
-          style: input.style,
-        });
+        const result = await Promise.race([
+          generateNanoBananaImage({
+            prompt: input.prompt,
+            endpoint,
+            aspectRatio: input.aspectRatio ?? '1:1',
+            style: input.style,
+          }),
+          new Promise<{ url?: string; credits?: number }>((_, reject) =>
+            setTimeout(() => reject(new Error('nanobanana cap exceeded')), NB_CAP_MS),
+          ),
+        ]);
 
         if (result.url) {
           return NextResponse.json({

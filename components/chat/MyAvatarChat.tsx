@@ -2353,7 +2353,7 @@ async function runImage(prompt: string, pendingId: string, setMessages: Setter, 
   const res = await fetchWithRetry('/api/replicate/image', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ prompt, quality: 'standard', ratio }),
-  }, { signal, timeoutMs: 60_000 });
+  }, { signal, timeoutMs: 100_000 });
   if (!res.ok) throw new Error(`Image failed (${res.status})`);
   const data = await res.json() as { url?: string; imageUrl?: string; output?: string[]; predictionId?: string; error?: string };
   let url = data?.url || data?.imageUrl || data?.output?.[0];
