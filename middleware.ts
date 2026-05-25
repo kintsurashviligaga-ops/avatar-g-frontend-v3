@@ -47,10 +47,11 @@ export async function middleware(request: NextRequest) {
     const segments = pathname.split('/').filter(Boolean);
     const firstSegment = segments[0] ?? '';
 
-    // Bare root → /{locale}/dashboard
+    // Bare root → /{locale}/landing (informational marketing page; the dashboard
+    // is reached via the landing's "Get Started" / login CTAs).
     if (pathname === '/') {
       const url = request.nextUrl.clone();
-      url.pathname = `/${preferredLocale}/dashboard`;
+      url.pathname = `/${preferredLocale}/landing`;
       const response = NextResponse.redirect(url);
       response.cookies.set('NEXT_LOCALE', preferredLocale, {
         path: '/',
@@ -60,10 +61,10 @@ export async function middleware(request: NextRequest) {
       return response;
     }
 
-    // Locale root (e.g. /ka, /en, /ru) → /{locale}/dashboard
+    // Locale root (e.g. /ka, /en, /ru) → /{locale}/landing
     if (SUPPORTED_LOCALES.includes(firstSegment) && segments.length === 1) {
       const url = request.nextUrl.clone();
-      url.pathname = `/${firstSegment}/dashboard`;
+      url.pathname = `/${firstSegment}/landing`;
       const response = NextResponse.redirect(url);
       response.cookies.set('NEXT_LOCALE', firstSegment, {
         path: '/',
