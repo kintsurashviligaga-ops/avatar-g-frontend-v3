@@ -1,6 +1,8 @@
 'use client';
 
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { createBrowserClient } from '@/lib/supabase/client';
+import type { Database } from '@/types/database.types';
 
 export interface Conversation {
   session_id: string;
@@ -16,9 +18,13 @@ export interface ChatMessage {
   created_at: string;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function getClient(): any {
-  return createBrowserClient();
+/**
+ * Typed browser client for the chat-history tables. The single boundary cast
+ * (createBrowserClient is intentionally schema-agnostic and may return null in
+ * demo mode) gives every query below strict, compile-checked types — no `as any`.
+ */
+function getClient(): SupabaseClient<Database> | null {
+  return createBrowserClient() as unknown as SupabaseClient<Database> | null;
 }
 
 export async function createSession(
@@ -30,8 +36,7 @@ export async function createSession(
     const client = getClient();
     if (!client) return null;
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data, error } = await (client as any)
+    const { data, error } = await client
       .from('chat_sessions')
       .insert({
         user_id: userId,
@@ -43,8 +48,7 @@ export async function createSession(
       .single();
 
     if (error) return null;
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-return, @typescript-eslint/no-unsafe-member-access
-    return (data as { session_id: string }).session_id ?? null;
+    return data?.session_id ?? null;
   } catch {
     return null;
   }
@@ -58,8 +62,7 @@ export async function updateSessionTitle(
     const client = getClient();
     if (!client) return;
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await (client as any)
+    await client
       .from('chat_sessions')
       .update({ title, updated_at: new Date().toISOString() })
       .eq('session_id', sessionId);
@@ -77,8 +80,7 @@ export async function saveMessage(
     const client = getClient();
     if (!client) return;
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await (client as any).from('chat_messages').insert({
+    await client.from('chat_messages').insert({
       session_id: sessionId,
       role,
       content,
@@ -95,8 +97,7 @@ export async function getConversations(
     const client = getClient();
     if (!client) return [];
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data, error } = await (client as any)
+    const { data, error } = await client
       .from('chat_sessions')
       .select('session_id, title, updated_at, agent_id')
       .eq('user_id', userId)
@@ -104,7 +105,7 @@ export async function getConversations(
       .limit(50);
 
     if (error) return [];
-    return (data ?? []) as Conversation[];
+    return data ?? [];
   } catch {
     return [];
   }
@@ -115,8 +116,7 @@ export async function getMessages(sessionId: string): Promise<ChatMessage[]> {
     const client = getClient();
     if (!client) return [];
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data, error } = await (client as any)
+    const { data, error } = await client
       .from('chat_messages')
       .select('id, role, content, created_at')
       .eq('session_id', sessionId)
@@ -134,14 +134,12 @@ export async function deleteSession(sessionId: string): Promise<void> {
     const client = getClient();
     if (!client) return;
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await (client as any)
+    await client
       .from('chat_messages')
       .delete()
       .eq('session_id', sessionId);
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await (client as any)
+    await client
       .from('chat_sessions')
       .delete()
       .eq('session_id', sessionId);

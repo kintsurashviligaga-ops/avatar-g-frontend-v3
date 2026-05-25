@@ -1,7 +1,8 @@
 'use client'
 
-import { useRef, useState, useCallback, useEffect } from 'react'
+import { useState } from 'react'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
+import { useComposerTextarea } from '@/components/chat/BaseChatComposer'
 
 const PLACEHOLDERS = {
   en: 'Ask Agent G what to create…',
@@ -21,25 +22,9 @@ interface Props {
 export function BottomChatComposer({ value, onChange, onSend, onAttach, onMic, disabled }: Props) {
   const { language } = useLanguage()
   const lang = language as keyof typeof PLACEHOLDERS
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
   const [_focused, setFocused] = useState(false)
-
-  // Auto-resize
-  useEffect(() => {
-    const el = textareaRef.current
-    if (!el) return
-    el.style.height = 'auto'
-    el.style.height = Math.min(el.scrollHeight, 120) + 'px'
-  }, [value])
-
-  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault()
-      if (value.trim() && !disabled) onSend()
-    }
-  }, [value, disabled, onSend])
-
-  const canSend = value.trim().length > 0 && !disabled
+  // Shared composer mechanics (autosize + Enter-to-send + canSend) — Phase 1.2.
+  const { textareaRef, handleKeyDown, canSend } = useComposerTextarea({ value, onSend, disabled, maxHeight: 120 })
 
   return (
     <div className="chat-composer">

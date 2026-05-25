@@ -1,22 +1,20 @@
 'use client';
 
 /**
- * MyAvatarComposer — the MyAvatarChat input dock (Roadmap #12 decomposition).
+ * MyAvatarComposer — the MyAvatarChat input dock (Roadmap #12 / Phase 1.2).
  *
- * Pure controlled/presentational composer card extracted from the MyAvatarChat
- * monolith: drag-drop image zone, attachment chip, auto-sizing textarea,
- * attach/camera/mic controls, and the send/stop button. ALL state, refs,
- * autosize, dictation and submit logic stay in the MyAvatarChat container and
- * arrive as props, so the shared hooks/bindings remain rock-solid.
- *
- * NOTE: named distinctly from the legacy `ChatComposer.tsx` (used by the
- * fullscreen/landing surfaces) to avoid clobbering an in-use component.
+ * A thin surface variant built on the shared <BaseChatComposer/> primitive: it
+ * supplies the MyAvatar-specific chrome (drag-drop image zone, attachment chip,
+ * attach/camera/mic controls, send/stop) via the primitive's overlay/header/
+ * leftActions/rightActions slots. All state, refs, autosize, dictation and submit
+ * logic stay in the MyAvatarChat container and arrive as props.
  */
 
 import type React from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { ImageIcon, X, Paperclip, Camera, Mic, Send } from 'lucide-react';
 import type { Locale } from '@/components/chat/types';
+import { BaseChatComposer } from '@/components/chat/BaseChatComposer';
 
 // Live "listening" indicator next to the mic button.
 function SoundwaveMeter() {
@@ -77,25 +75,17 @@ export function MyAvatarComposer({
   attachment, onClearAttachment, dragActive, onDrop, onDragOver, onDragLeave,
   listening, onToggleVoice,
 }: MyAvatarComposerProps) {
-  return (
-    <div
-      onDrop={onDrop}
-      onDragOver={onDragOver}
-      onDragLeave={onDragLeave}
-      className={`relative rounded-3xl bg-black border overflow-hidden transition flex-shrink-0 ${
-        dragActive
-          ? 'border-sky-400/60 ring-2 ring-sky-500/30'
-          : 'border-white/[0.10] focus-within:border-white/[0.22]'
-      }`}
-    >
-      {dragActive && (
-        <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/75 backdrop-blur-sm pointer-events-none">
-          <span className="inline-flex items-center gap-2 text-[13px] font-medium text-cyan-200">
-            <ImageIcon size={16} />
-            {locale === 'ka' ? 'ჩააგდე სურათი აქ' : locale === 'ru' ? 'Перетащите изображение' : 'Drop image here'}
-          </span>
-        </div>
-      )}
+  const overlay = dragActive ? (
+    <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/75 backdrop-blur-sm pointer-events-none">
+      <span className="inline-flex items-center gap-2 text-[13px] font-medium text-cyan-200">
+        <ImageIcon size={16} />
+        {locale === 'ka' ? 'ჩააგდე სურათი აქ' : locale === 'ru' ? 'Перетащите изображение' : 'Drop image here'}
+      </span>
+    </div>
+  ) : null;
+
+  const header = (
+    <>
       <AnimatePresence initial={false}>
         {attachment && (
           <motion.div
@@ -123,80 +113,95 @@ export function MyAvatarComposer({
           </motion.div>
         )}
       </AnimatePresence>
-      <textarea
-        ref={inputRef}
-        value={input}
-        onChange={e => onInputChange(e.target.value)}
-        onKeyDown={onKeyDown}
-        rows={1}
-        placeholder={locale === 'ka' ? 'მკითხე ნებისმიერი' : 'Ask Anything'}
-        aria-label={locale === 'ka' ? 'მკითხე ნებისმიერი' : 'Ask Anything'}
-        className="w-full flex-shrink-0 bg-transparent border-none outline-none resize-none overflow-y-auto px-4 pt-3.5 pb-2 text-[15px] font-medium leading-relaxed text-white placeholder:text-white/45 placeholder:font-normal [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-        style={{ minHeight: 56, maxHeight: 168 }}
-      />
       <input ref={fileInputRef} type="file" accept="image/*" hidden onChange={onFileChosen} />
-      <div className="flex items-center justify-between px-2 py-1.5">
-        <div className="flex items-center gap-1">
-          <button
-            type="button"
-            aria-label="Attach image"
-            onClick={onPickFile}
-            title={locale === 'ka' ? 'სურათის მიმაგრება (ავატარისთვის)' : 'Attach image (for Avatar)'}
-            className="h-9 w-9 rounded-full hover:bg-white/[0.06] flex items-center justify-center text-[#94A3B8] hover:text-white transition active:scale-90"
-          >
-            <Paperclip size={16} />
-          </button>
-          <button
-            type="button"
-            aria-label="Camera"
-            onClick={onOpenCamera}
-            title={locale === 'ka' ? 'კამერა' : 'Camera'}
-            className="h-9 w-9 rounded-full hover:bg-white/[0.06] flex items-center justify-center text-[#94A3B8] hover:text-white transition active:scale-90"
-          >
-            <Camera size={16} />
-          </button>
-        </div>
-        <div className="flex items-center gap-1">
-          <AnimatePresence>{listening && <SoundwaveMeter />}</AnimatePresence>
-          <button
-            type="button"
-            aria-label={listening ? 'Stop listening' : 'Voice input'}
-            onClick={onToggleVoice}
-            className={`h-9 w-9 rounded-full flex items-center justify-center transition-all duration-300 ease-in-out active:scale-90 ${
-              listening
-                ? 'bg-gradient-to-br from-cyan-400 to-blue-600 text-white ring-1 ring-sky-300/50 shadow-[0_0_18px_-4px_rgba(56,189,248,0.7)] animate-pulse'
-                : 'hover:bg-white/[0.06] text-[#94A3B8] hover:text-white'
-            }`}
-          >
-            <Mic size={16} />
-          </button>
-          {sending ? (
-            <button
-              type="button"
-              onClick={onStop}
-              aria-label="Stop"
-              className="inline-flex items-center gap-1.5 px-4 h-9 rounded-full font-semibold text-[13px] bg-rose-500/90 hover:bg-rose-500 text-white transition"
-            >
-              <span className="block h-2.5 w-2.5 bg-white rounded-[2px]" />
-              {locale === 'ka' ? 'შეჩერება' : 'Stop'}
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={onSend}
-              disabled={!input.trim()}
-              className={`inline-flex items-center gap-1.5 px-4 h-9 rounded-full font-semibold text-[13px] transition-all duration-300 ease-in-out ${
-                input.trim()
-                  ? 'bg-gradient-to-r from-cyan-400 to-blue-600 text-white hover:from-cyan-300 hover:to-blue-500 shadow-[0_6px_22px_-8px_rgba(56,189,248,0.7)]'
-                  : 'bg-black border border-white/[0.10] text-white/35 cursor-not-allowed'
-              }`}
-            >
-              <Send size={14} />
-              {locale === 'ka' ? 'გაგზავნა' : 'Send'}
-            </button>
-          )}
-        </div>
-      </div>
-    </div>
+    </>
+  );
+
+  const leftActions = (
+    <>
+      <button
+        type="button"
+        aria-label="Attach image"
+        onClick={onPickFile}
+        title={locale === 'ka' ? 'სურათის მიმაგრება (ავატარისთვის)' : 'Attach image (for Avatar)'}
+        className="h-9 w-9 rounded-full hover:bg-white/[0.06] flex items-center justify-center text-[#94A3B8] hover:text-white transition active:scale-90"
+      >
+        <Paperclip size={16} />
+      </button>
+      <button
+        type="button"
+        aria-label="Camera"
+        onClick={onOpenCamera}
+        title={locale === 'ka' ? 'კამერა' : 'Camera'}
+        className="h-9 w-9 rounded-full hover:bg-white/[0.06] flex items-center justify-center text-[#94A3B8] hover:text-white transition active:scale-90"
+      >
+        <Camera size={16} />
+      </button>
+    </>
+  );
+
+  const rightActions = (
+    <>
+      <AnimatePresence>{listening && <SoundwaveMeter />}</AnimatePresence>
+      <button
+        type="button"
+        aria-label={listening ? 'Stop listening' : 'Voice input'}
+        onClick={onToggleVoice}
+        className={`h-9 w-9 rounded-full flex items-center justify-center transition-all duration-300 ease-in-out active:scale-90 ${
+          listening
+            ? 'bg-gradient-to-br from-cyan-400 to-blue-600 text-white ring-1 ring-sky-300/50 shadow-[0_0_18px_-4px_rgba(56,189,248,0.7)] animate-pulse'
+            : 'hover:bg-white/[0.06] text-[#94A3B8] hover:text-white'
+        }`}
+      >
+        <Mic size={16} />
+      </button>
+      {sending ? (
+        <button
+          type="button"
+          onClick={onStop}
+          aria-label="Stop"
+          className="inline-flex items-center gap-1.5 px-4 h-9 rounded-full font-semibold text-[13px] bg-rose-500/90 hover:bg-rose-500 text-white transition"
+        >
+          <span className="block h-2.5 w-2.5 bg-white rounded-[2px]" />
+          {locale === 'ka' ? 'შეჩერება' : 'Stop'}
+        </button>
+      ) : (
+        <button
+          type="button"
+          onClick={onSend}
+          disabled={!input.trim()}
+          className={`inline-flex items-center gap-1.5 px-4 h-9 rounded-full font-semibold text-[13px] transition-all duration-300 ease-in-out ${
+            input.trim()
+              ? 'bg-gradient-to-r from-cyan-400 to-blue-600 text-white hover:from-cyan-300 hover:to-blue-500 shadow-[0_6px_22px_-8px_rgba(56,189,248,0.7)]'
+              : 'bg-black border border-white/[0.10] text-white/35 cursor-not-allowed'
+          }`}
+        >
+          <Send size={14} />
+          {locale === 'ka' ? 'გაგზავნა' : 'Send'}
+        </button>
+      )}
+    </>
+  );
+
+  return (
+    <BaseChatComposer
+      value={input}
+      onChange={onInputChange}
+      onKeyDown={onKeyDown}
+      textareaRef={inputRef}
+      placeholder={locale === 'ka' ? 'მკითხე ნებისმიერი' : 'Ask Anything'}
+      minHeight={56}
+      maxHeight={168}
+      wrapperClassName={`relative rounded-3xl bg-black border overflow-hidden transition flex-shrink-0 ${
+        dragActive ? 'border-sky-400/60 ring-2 ring-sky-500/30' : 'border-white/[0.10] focus-within:border-white/[0.22]'
+      }`}
+      overlay={overlay}
+      header={header}
+      leftActions={leftActions}
+      rightActions={rightActions}
+      onDrop={onDrop}
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+    />
   );
 }
