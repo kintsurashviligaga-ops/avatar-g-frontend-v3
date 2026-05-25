@@ -177,6 +177,73 @@ function MediaContextActions({
   );
 }
 
+// ─── MediaSkeleton — instant live-preview placeholder for media generations ──
+// Renders the moment a media prompt is submitted (the pending message), then is
+// swapped for the real player when patchMessage delivers the asset URL.
+function MediaSkeleton({ service, label }: { service: ServiceId; label: string }) {
+  const isAudio = service === 'music' || service === 'voice';
+  const aspect = service === 'video' || service === 'interior'
+    ? 'aspect-video'
+    : service === 'avatar'
+      ? 'aspect-[3/4]'
+      : 'aspect-square';
+
+  const ProgressBar = (
+    <div className="mt-2 h-1.5 w-full rounded-full bg-white/[0.06] overflow-hidden">
+      <motion.span
+        className="block h-full w-2/5 rounded-full bg-gradient-to-r from-cyan-400 to-blue-500"
+        animate={{ x: ['-45%', '255%'] }}
+        transition={{ duration: 1.3, repeat: Infinity, ease: 'easeInOut' }}
+      />
+    </div>
+  );
+  const StatusRow = (
+    <div className="flex items-center gap-2 text-[13px] font-medium text-white/85">
+      <motion.span className="h-2 w-2 rounded-full bg-cyan-300"
+        animate={{ opacity: [0.4, 1, 0.4], scale: [0.85, 1.15, 0.85] }}
+        transition={{ duration: 1.1, repeat: Infinity, ease: 'easeInOut' }} />
+      <span className="truncate">{label}</span>
+    </div>
+  );
+  const Shimmer = (
+    <motion.span
+      aria-hidden className="pointer-events-none absolute inset-0 -skew-x-12 bg-gradient-to-r from-transparent via-white/[0.12] to-transparent"
+      initial={{ x: '-120%' }} animate={{ x: '120%' }}
+      transition={{ duration: 1.4, repeat: Infinity, ease: 'easeInOut' }}
+    />
+  );
+
+  if (isAudio) {
+    return (
+      <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
+        className="w-full max-w-sm rounded-2xl border border-white/10 bg-white/[0.03] p-3.5 shadow-[0_0_30px_-12px_rgba(56,189,248,0.5)]">
+        <div className="relative flex items-end gap-[3px] h-12 overflow-hidden rounded-xl bg-black/30 px-3 py-2">
+          {Shimmer}
+          {[14, 26, 10, 30, 18, 24, 12, 28, 16, 22, 9, 20].map((h, i) => (
+            <motion.span key={i} className="w-[3px] rounded-full bg-gradient-to-t from-blue-500 to-cyan-300"
+              animate={{ height: [6, h, 8, h - 4, 6] }}
+              transition={{ duration: 0.9, repeat: Infinity, ease: 'easeInOut', delay: i * 0.06 }} />
+          ))}
+        </div>
+        <div className="mt-2.5">{StatusRow}{ProgressBar}</div>
+      </motion.div>
+    );
+  }
+
+  return (
+    <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
+      className="w-full max-w-sm rounded-2xl border border-white/10 bg-white/[0.03] overflow-hidden shadow-[0_0_30px_-12px_rgba(56,189,248,0.5)]">
+      <div className={`relative ${aspect} w-full bg-gradient-to-br from-white/[0.07] to-white/[0.02] overflow-hidden`}>
+        {Shimmer}
+        <div className="absolute inset-0 flex items-center justify-center">
+          <Loader2 size={30} className="animate-spin text-cyan-300/90" />
+        </div>
+      </div>
+      <div className="px-3.5 py-3">{StatusRow}{ProgressBar}</div>
+    </motion.div>
+  );
+}
+
 interface MessageRowProps {
   m: ChatMessage;
   locale: string;
@@ -198,7 +265,7 @@ export const MessageRow = memo(function MessageRow({ m, locale, onLike, onDislik
             <img src={m.userImage} alt="" className="max-w-[220px] max-h-[220px] rounded-2xl object-cover border border-sky-400/20" />
           )}
           {m.text && (
-            <div className="px-4 py-2.5 rounded-2xl bg-sky-500/[0.08] backdrop-blur-sm border border-sky-400/20 text-white text-[16px] leading-[1.65] break-words shadow-[0_2px_16px_-6px_rgba(56,189,248,0.35)]">
+            <div className="px-4 py-2.5 rounded-2xl bg-sky-500/[0.08] backdrop-blur-sm border border-sky-400/20 text-white text-[1.05rem] leading-[1.625] break-words shadow-[0_2px_16px_-6px_rgba(56,189,248,0.35)]">
               {m.text}
             </div>
           )}
@@ -222,18 +289,24 @@ export const MessageRow = memo(function MessageRow({ m, locale, onLike, onDislik
   return (
     <div data-msg-id={m.id} className="flex flex-col items-start gap-2">
       {m.pending ? (
-        <motion.div
-          initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
-          className="relative inline-flex items-center gap-2.5 px-4 py-2.5 rounded-2xl bg-white/[0.04] border border-sky-400/20 text-white/85 text-[14px] overflow-hidden shadow-[0_0_24px_-8px_rgba(56,189,248,0.45)]"
-        >
-          <span aria-hidden className="pointer-events-none absolute inset-0 rounded-2xl bg-gradient-to-r from-sky-500/0 via-cyan-400/[0.12] to-sky-500/0 animate-pulse" />
-          <Loader2 size={14} className="relative animate-spin text-cyan-300" />
-          <span className="relative">{m.text}</span>
-        </motion.div>
+        m.service && m.service !== 'chat' && m.service !== 'app' ? (
+          // Instant live-preview skeleton for media generations — swaps to the
+          // real player the moment patchMessage delivers the asset URL.
+          <MediaSkeleton service={m.service} label={m.text} />
+        ) : (
+          <motion.div
+            initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
+            className="relative inline-flex items-center gap-2.5 px-4 py-2.5 rounded-2xl bg-white/[0.04] border border-sky-400/20 text-white/85 text-[14px] overflow-hidden shadow-[0_0_24px_-8px_rgba(56,189,248,0.45)]"
+          >
+            <span aria-hidden className="pointer-events-none absolute inset-0 rounded-2xl bg-gradient-to-r from-sky-500/0 via-cyan-400/[0.12] to-sky-500/0 animate-pulse" />
+            <Loader2 size={14} className="relative animate-spin text-cyan-300" />
+            <span className="relative">{m.text}</span>
+          </motion.div>
+        )
       ) : (
         <>
           {text && (
-            <div className="max-w-[88%] px-1 text-white text-[16px] leading-[1.65] break-words chat-md">
+            <div className="max-w-[88%] px-1 text-white text-[1.05rem] leading-[1.625] break-words chat-md">
               <ReactMarkdown
                 remarkPlugins={[remarkGfm]}
                 components={{

@@ -70,6 +70,7 @@ import { CameraModal } from '@/components/service-chat/CameraModal';
 import { AdminSystemPanel } from '@/components/chat/AdminSystemPanel';
 import { AvatarOnboarding } from '@/components/chat/onboarding/AvatarOnboarding';
 import { AvatarVideoStage } from '@/components/chat/onboarding/AvatarVideoStage';
+import { AvatarBackdrop } from '@/components/chat/AvatarBackdrop';
 import { MessageList } from '@/components/chat/MessageList';
 import { MyAvatarComposer } from '@/components/chat/MyAvatarComposer';
 import { AvatarGalleryView, AnalyticsView, BillingView, AccountSection } from '@/components/chat/ChatViews';
@@ -1546,10 +1547,12 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
       className="fixed inset-0 z-[5] flex flex-col bg-black text-white antialiased overflow-hidden"
       style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)', fontFamily: 'var(--font-geist, var(--font-ui, system-ui))' }}
     >
-      {/* Pure pitch black — no background visuals per user spec */}
+      {/* Mobile-only immersive full-screen 9:16 avatar video canvas (z-0). */}
+      {activeView === 'chat' && <AvatarBackdrop />}
 
-      {/* ── Chat column (full width mobile, 60% desktop) ─────────────────── */}
-      <div className="relative flex flex-col flex-1 min-h-0 w-full">
+      {/* ── Chat column (full width mobile, 60% desktop). z-10 so it floats as a
+          glassmorphic control layer above the mobile video backdrop. ───────── */}
+      <div className="relative z-10 flex flex-col flex-1 min-h-0 w-full">
 
       {/* ── TopBar ──────────────────────────────────────────────────────── */}
       <header className="relative z-10 flex items-center justify-between px-4 pt-3 pb-2 flex-shrink-0">
@@ -1599,7 +1602,9 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
                   workspace; the message stream flows BELOW it and it never moves
                   or unmounts as the message list scales/scrolls. ───────────────── */}
               <div className="flex-shrink-0 flex flex-col items-center px-4 pt-2 pb-1">
-                <AvatarVideoStage variant="anchor" />
+                {/* Desktop: anchored card. Mobile: the full-screen AvatarBackdrop
+                    plays the role instead, so the card is hidden to avoid doubling. */}
+                <div className="hidden md:block"><AvatarVideoStage variant="anchor" /></div>
                 {/* PILLAR 2: warm glassmorphic pulse while the AI team validates/refines */}
                 {(sending || producing || Boolean(activePipelineId)) && (
                   <motion.div
@@ -1676,7 +1681,7 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
 
       {/* ── Bottom input — only on chat view, and hidden when mobile previews are active */}
       {activeView === 'chat' && (
-        <div className="relative z-10 flex-shrink-0 px-3 pt-2 pb-[max(72px,calc(env(safe-area-inset-bottom)+1.5rem))] bg-black/80 backdrop-blur-xl border-t border-white/[0.08]">
+        <div className="relative z-10 flex-shrink-0 px-3 pt-2 pb-[max(72px,calc(env(safe-area-inset-bottom)+1.5rem))] bg-black/45 md:bg-black/80 backdrop-blur-[20px] border-t border-white/10">
           {/* Action rows — capped + internally scrollable on short viewports so the
               pills + composer baseline below is never pushed off-screen / clipped. */}
           <div className="max-h-[42vh] overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
