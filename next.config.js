@@ -89,6 +89,19 @@ const nextConfig = {
   compress: true,
   // Power by header leaks server info
   poweredByHeader: false,
+  // Silence the benign "Critical dependency: require function is used…" warning
+  // emitted by @sentry/nextjs → @opentelemetry/instrumentation → require-in-the-middle
+  // (dynamic require for runtime instrumentation; expected, not a real issue) so the
+  // production build output stays pristine.
+  webpack: (config) => {
+    config.ignoreWarnings = [
+      ...(config.ignoreWarnings || []),
+      { module: /require-in-the-middle/ },
+      { module: /@opentelemetry[/\\]instrumentation/ },
+      { message: /Critical dependency: require function is used/ },
+    ];
+    return config;
+  },
   async headers() {
     return [
       {
