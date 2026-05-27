@@ -1,6 +1,8 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { executeStream } from '@/lib/ai/chatEngine';
+import { applyApiGuards } from '@/lib/api/guard';
+import { RATE_LIMITS } from '@/lib/api/rate-limit';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -16,6 +18,9 @@ const requestSchema = z.object({
 });
 
 export async function POST(request: NextRequest) {
+  const gate = await applyApiGuards(request, { limit: RATE_LIMITS.AI, label: 'orbit.agent' });
+  if (gate.response) return gate.response;
+
   const body = await request.json().catch(() => null);
   const parsed = requestSchema.safeParse(body);
 
@@ -33,7 +38,7 @@ export async function POST(request: NextRequest) {
     start(controller) {
       void executeStream(
         {
-          agentId: 'executive-agent-g',
+          agentId: 'agent-g',
           userId: sessionId ? `dashboard:${sessionId}` : 'dashboard-anonymous',
           sessionId: sessionId || `orbit_agent_${Date.now()}`,
           channel: 'web',

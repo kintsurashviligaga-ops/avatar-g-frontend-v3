@@ -16,8 +16,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { randomUUID } from 'crypto';
-import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
-import { getAuthContext, checkDailyBudget, sanitizePrompt } from '@/lib/security/apiGuard';
+import { applyApiGuards } from '@/lib/api/guard';
+import { RATE_LIMITS } from '@/lib/api/rate-limit';
+import { sanitizePrompt } from '@/lib/security/apiGuard';
 import { orchestrate, pollOrchestrationTask, type ChatResponse } from '@/lib/chat/providerRouter';
 import { detectIntent } from '@/lib/chat/intentDetector';
 
@@ -56,10 +57,6 @@ const orchestrateSchema = z.object({
 // ─── POST handler ────────────────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
-  // Rate limit
-  const rateLimitError = await checkRateLimit(req, RATE_LIMITS.WRITE);
-  if (rateLimitError) return rateLimitError;
-
   try {
     const body = await req.json();
     const parsed = orchestrateSchema.safeParse(body);
@@ -72,27 +69,20 @@ export async function POST(req: NextRequest) {
 
     const data = parsed.data;
 
+    // Poll path skips budget (we already paid on the initial request).
+    const gate = await applyApiGuards(req, {
+      limit: data.predictionId ? RATE_LIMITS.READ : RATE_LIMITS.WRITE,
+      skipBudget: !!data.predictionId,
+      label: 'chat.orchestrate',
+    });
+    if (gate.response) return gate.response;
+
     // ── Poll path (check status of running prediction) ───────────────
     if (data.predictionId) {
       return handlePoll(data.predictionId, data.sessionId);
     }
 
-    // ── Auth ─────────────────────────────────────────────────────────
-    const auth = await getAuthContext();
-    const userId = auth?.userId || 'anonymous';
-
-    if (auth) {
-      const budget = checkDailyBudget(auth.userId);
-      if (!budget.allowed) {
-        return NextResponse.json({
-          success: false,
-          intent: 'text_chat',
-          responseType: 'text',
-          message: `Daily limit of ${budget.limit} requests reached. Resets in 24h.`,
-          metadata: { provider: 'system' },
-        }, { status: 429 });
-      }
-    }
+    const userId = gate.auth?.userId || 'anonymous';
 
     const rawMessage = data.message.trim();
     const detectedIntent = detectIntent(rawMessage, data.serviceContext);

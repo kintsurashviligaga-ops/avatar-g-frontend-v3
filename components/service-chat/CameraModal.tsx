@@ -258,21 +258,46 @@ export function CameraModal({ isOpen, accentColor, onClose, onAttach, showFaceGu
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className="fixed inset-0 z-[100] flex items-center justify-center"
-        style={{ background: fullScreen ? '#000' : 'rgba(0,0,0,0.85)', backdropFilter: fullScreen ? 'none' : 'blur(8px)' }}
+        // When immersive (full-screen API or `fullScreen` prop), use the
+        // absolute-black layer the chat shell expects. Otherwise apply mobile
+        // padding + safe-area insets so iOS Safari can't clip the controls.
+        className={immersive
+          ? 'fixed inset-0 z-[100] flex items-center justify-center'
+          : 'fixed inset-0 z-[100] flex items-center justify-center p-2 sm:p-4'}
+        style={immersive
+          ? { background: '#000', backdropFilter: 'none' }
+          : {
+              background: 'rgba(0,0,0,0.85)',
+              backdropFilter: 'blur(8px)',
+              paddingTop: 'max(env(safe-area-inset-top, 0px), 0.5rem)',
+              paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 0.5rem)',
+            }}
       >
         <motion.div
           ref={containerRef}
           initial={{ scale: 0.95, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
           exit={{ scale: 0.95, opacity: 0 }}
-          className={`relative w-full overflow-hidden ${immersive ? 'flex flex-col' : 'max-w-2xl mx-4 rounded-3xl'}`}
-          style={{
-            background: immersive ? '#000' : '#0a0e14',
-            border: immersive ? 'none' : `1px solid ${accentColor}25`,
-            boxShadow: immersive ? 'none' : `0 8px 60px rgba(0,0,0,0.6), 0 0 60px ${accentColor}10`,
-            ...(immersive ? { maxWidth: '100%', borderRadius: 0, height: '100vh', width: '100vw' } : {}),
-          }}
+          // Immersive: full-viewport black layer for chat shell.
+          // Otherwise: classic 2xl card that fills mobile safe-area without
+          // clipping controls.
+          className={`relative w-full overflow-hidden flex flex-col ${immersive ? '' : 'max-w-2xl rounded-2xl sm:rounded-3xl'}`}
+          style={immersive
+            ? {
+                background: '#000',
+                border: 'none',
+                boxShadow: 'none',
+                maxWidth: '100%',
+                borderRadius: 0,
+                height: '100vh',
+                width: '100vw',
+              }
+            : {
+                background: '#0a0e14',
+                border: `1px solid ${accentColor}25`,
+                boxShadow: `0 8px 60px rgba(0,0,0,0.6), 0 0 60px ${accentColor}10`,
+                maxHeight: '100%',
+              }}
         >
           {/* ── Header ── */}
           <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
@@ -312,11 +337,20 @@ export function CameraModal({ isOpen, accentColor, onClose, onAttach, showFaceGu
           </div>
 
           {/* ── Viewport ── */}
-          <div className="relative" style={{ aspectRatio: immersive ? undefined : '4/3', flex: immersive ? 1 : undefined, minHeight: 0 }}>
+          {/* flex-1 + min-h-0 lets the frame absorb leftover modal height.
+              Non-immersive mode also caps maxHeight against dvh so portrait
+              mobile viewports never overflow the control bar. */}
+          <div
+            className="relative flex-1 min-h-0 bg-black"
+            style={{
+              aspectRatio: immersive ? undefined : '4/3',
+              maxHeight: immersive ? undefined : 'min(72vh, calc(100dvh - 200px))',
+            }}
+          >
             {/* Live feed */}
             {(state === 'ready' || state === 'recording') && (
               <>
-                <video ref={videoRef} className="w-full h-full object-cover" autoPlay muted playsInline />
+                <video ref={videoRef} className="w-full h-full object-contain sm:object-cover" autoPlay muted playsInline />
                 {/* Face guide */}
                 {showFaceGuide && state === 'ready' && mode === 'photo' && (
                   <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
@@ -339,9 +373,9 @@ export function CameraModal({ isOpen, accentColor, onClose, onAttach, showFaceGu
             {/* Preview */}
             {state === 'preview' && previewUrl && (
               mode === 'video' ? (
-                <video src={previewUrl} className="w-full h-full object-cover" controls autoPlay loop playsInline />
+                <video src={previewUrl} className="w-full h-full object-contain sm:object-cover" controls autoPlay loop playsInline />
               ) : (
-                <Image src={previewUrl} alt="Captured" width={1200} height={900} unoptimized className="w-full h-full object-cover" />
+                <Image src={previewUrl} alt="Captured" width={1200} height={900} unoptimized className="w-full h-full object-contain sm:object-cover" />
               )
             )}
 
@@ -361,7 +395,14 @@ export function CameraModal({ isOpen, accentColor, onClose, onAttach, showFaceGu
           </div>
 
           {/* ── Controls ── */}
-          <div className="flex items-center justify-center gap-4 py-4 px-4" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+          <div
+            className="flex items-center justify-center gap-4 px-4 flex-shrink-0"
+            style={{
+              borderTop: '1px solid rgba(255,255,255,0.06)',
+              paddingTop: '1rem',
+              paddingBottom: 'calc(1rem + env(safe-area-inset-bottom, 0px))',
+            }}
+          >
             {state === 'ready' && mode === 'photo' && (
               <>
                 <button onClick={switchCamera} className="w-10 h-10 rounded-full flex items-center justify-center transition-all active:scale-90" style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)' }}>

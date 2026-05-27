@@ -69,15 +69,22 @@ export interface ToolPanel {
 /* ─── Preview ────────────────────────────────────────────────────── */
 
 export type PreviewType = 'image' | 'video' | 'audio' | 'text' | 'workflow' | 'none';
+export type PreviewStatus = 'pending' | 'running' | 'ready' | 'failed';
 
 export interface PreviewItem {
   id: string;
   type: PreviewType;
+  /** Lifecycle state. `pending`/`running` cards render a loading shimmer until upgraded to `ready`. */
+  status?: PreviewStatus;
   url?: string;
   content?: string;
   title?: string;
   thumbnail?: string;
   meta?: Record<string, string>;
+  /** Upstream prediction/job identifier used by the shell to correlate poll updates. */
+  predictionId?: string;
+  /** Human-readable error message when status === 'failed'. */
+  errorMessage?: string;
 }
 
 /* ─── Cross-Service Transfer ─────────────────────────────────────── */
@@ -163,6 +170,8 @@ export type ServiceChatAction =
   | { type: 'CLEAR_ATTACHMENTS' }
   | { type: 'SET_RECORDING'; value: boolean }
   | { type: 'ADD_PREVIEW'; preview: PreviewItem }
+  | { type: 'UPSERT_PREVIEW'; preview: PreviewItem }
+  | { type: 'UPDATE_PREVIEW'; id: string; updates: Partial<PreviewItem> }
   | { type: 'CLEAR_PREVIEWS' }
   | { type: 'SET_LANGUAGE'; language: string };
 

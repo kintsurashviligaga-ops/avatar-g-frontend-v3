@@ -124,6 +124,24 @@ export function serviceChatReducer(
     case 'ADD_PREVIEW':
       return { ...state, previews: [...state.previews, action.preview] };
 
+    case 'UPSERT_PREVIEW': {
+      const index = state.previews.findIndex((p) => p.id === action.preview.id);
+      if (index === -1) {
+        return { ...state, previews: [...state.previews, action.preview] };
+      }
+      const next = state.previews.slice();
+      next[index] = { ...next[index], ...action.preview };
+      return { ...state, previews: next };
+    }
+
+    case 'UPDATE_PREVIEW':
+      return {
+        ...state,
+        previews: state.previews.map((p) =>
+          p.id === action.id ? { ...p, ...action.updates } : p,
+        ),
+      };
+
     case 'CLEAR_PREVIEWS':
       return { ...state, previews: [] };
 

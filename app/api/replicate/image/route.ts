@@ -4,8 +4,11 @@ import { validateInput, buildModelInput } from '@/lib/replicate/schemas';
 import { resolveModel } from '@/lib/replicate/models';
 import { createPrediction, pollPrediction } from '@/lib/replicate/client';
 import { normalizeOutput } from '@/lib/replicate/normalizer';
+import { applyApiGuards } from '@/lib/api/guard';
+import { RATE_LIMITS } from '@/lib/api/rate-limit';
 
 export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
 // 120s — NanoBanana polling can take ~30s (20 polls × 1.5s), Replicate fallback
 // another ~10s. 60s was tripping FUNCTION_INVOCATION_TIMEOUT in production.
 export const maxDuration = 120;
@@ -20,6 +23,14 @@ const QUALITY_TO_NB_ENDPOINT: Record<string, string> = {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
+
+    // Poll calls re-hit the same route — skip budget on poll to avoid double-counting.
+    const gate = await applyApiGuards(req, {
+      limit: body?.predictionId ? RATE_LIMITS.READ : RATE_LIMITS.EXPENSIVE,
+      skipBudget: !!body?.predictionId,
+      label: 'replicate.image',
+    });
+    if (gate.response) return gate.response;
 
     // ── Poll existing Replicate prediction (fallback path only) ────────
     if (body.predictionId) {

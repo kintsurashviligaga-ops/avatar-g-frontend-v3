@@ -22,6 +22,7 @@ import { generateWorldLabsInterior } from '@/lib/worldlabs/client';
 import { buildIterativePrompt } from './iteration-store';
 import { generateWithGemini } from '@/lib/gemini/client';
 import { getGeminiSystemPrompt, type GeminiServiceContext } from '@/lib/gemini/prompts';
+import { extractMediaArtifact, type MediaKind } from '@/lib/media/extractArtifact';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -63,17 +64,17 @@ export interface ChatResponse {
 
 const CONTEXT_TO_AGENT: Record<string, string> = {
   global: 'main-assistant',
-  music: 'audio-agent',
+  music: 'music-agent',
   video: 'video-agent',
-  avatar: 'image-agent',
+  avatar: 'avatar-agent',
   image: 'image-agent',
-  photo: 'image-agent',
-  voice: 'audio-agent',
+  photo: 'thumbnail-agent',
+  voice: 'music-agent',
   business: 'business-agent',
-  'visual-ai': 'research-agent',
-  'visual-intel': 'research-agent',
-  workflow: 'automation-agent',
-  shop: 'marketplace-agent',
+  'visual-ai': 'qa-agent',
+  'visual-intel': 'qa-agent',
+  workflow: 'workflow-agent',
+  shop: 'store-agent',
   text: 'content-agent',
   media: 'social-agent',
   prompt: 'main-assistant',
@@ -708,22 +709,14 @@ async function handleReplicateIntent(
 
     // If output is immediately available (sync models like blip)
     if (prediction.output) {
-      const outputUrl = extractOutputUrl(prediction.output);
-      const outputText =
-        typeof prediction.output === 'string'
-          ? prediction.output
-          : Array.isArray(prediction.output) &&
-            typeof prediction.output[0] === 'string' &&
-            !String(prediction.output[0]).startsWith('http')
-          ? String(prediction.output[0])
-          : undefined;
+      const artifact = extractMediaArtifact(prediction.output, intentToMediaKind(detected.intent));
 
       return {
         success: true,
         intent: detected.intent,
         responseType,
-        message: outputText || readyMessage(detected.intent),
-        assetUrl: outputUrl,
+        message: artifact.text || readyMessage(detected.intent),
+        assetUrl: artifact.url,
         assetType: replicateService,
         predictionId: prediction.id,
         predictionStatus: 'succeeded',
@@ -881,13 +874,21 @@ function parseBooleanOption(value: string | undefined): boolean {
   return normalized === '1' || normalized === 'true' || normalized === 'yes' || normalized === 'on';
 }
 
-function extractOutputUrl(output: unknown): string | null {
-  if (typeof output === 'string' && output.startsWith('http')) return output;
-  if (Array.isArray(output)) {
-    const first = output[0];
-    if (typeof first === 'string' && first.startsWith('http')) return first;
+function intentToMediaKind(intent: IntentCategory): MediaKind {
+  switch (intent) {
+    case 'avatar_generation':
+    case 'image_generation':
+    case 'photo_edit':
+      return 'image';
+    case 'video_generation':
+      return 'video';
+    case 'music_generation':
+      return 'audio';
+    case 'visual_analysis':
+      return 'analysis';
+    default:
+      return 'text';
   }
-  return null;
 }
 
 function startedMessage(intent: IntentCategory): string {

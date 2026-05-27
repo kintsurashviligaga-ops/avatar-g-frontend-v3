@@ -6,8 +6,7 @@ import Link from 'next/link';
 import { getOwnerId } from '@/lib/auth/identity';
 import { SERVICE_CONTRACTS, SERVICE_PRESETS as CATALOG_PRESETS } from '@/lib/services/catalog';
 import AgentBadge from '@/components/agents/AgentBadge';
-
-
+import { extractMediaArtifact, mediaKindForService } from '@/lib/media/extractArtifact';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -401,40 +400,36 @@ function resolveReplicateEndpoint(serviceContext: string) {
 }
 
 function mapOutputToArtifacts(serviceContext: string, output: unknown): Artifact[] {
-  const outputValue = Array.isArray(output) ? output[0] : output;
-  const isUrlLike = (value: string) => /^https?:\/\//i.test(value) || /^data:/i.test(value);
+  const hint = mediaKindForService(serviceContext);
+  const artifact = extractMediaArtifact(output, hint);
 
-  // Text-based output (visual-ai captioning)
-  if (serviceContext === 'visual-ai') {
-    const text = typeof outputValue === 'string' ? outputValue : typeof output === 'string' ? output : JSON.stringify(output);
-    return [{ type: 'text', label: 'AI Analysis', content: text, mimeType: 'text/plain' }];
-  }
-
-  if (typeof outputValue === 'string' && outputValue.trim() && !isUrlLike(outputValue)) {
-    return [{
-      type: 'text',
-      label: 'Generation result',
-      content: outputValue,
-      mimeType: 'text/plain',
-    }];
+  // Text-based output (visual-ai captioning, raw model text)
+  if (artifact.kind === 'analysis' || artifact.kind === 'text' || (!artifact.url && artifact.text)) {
+    const text = artifact.text ?? (typeof output === 'string' ? output : JSON.stringify(output));
+    return [{ type: 'text', label: serviceContext === 'visual-ai' ? 'AI Analysis' : 'Result', content: text, mimeType: 'text/plain' }];
   }
 
-  const url = typeof outputValue === 'string' && isUrlLike(outputValue) ? outputValue : '';
-  if (!url) return [];
+  if (!artifact.url) return [];
 
-  if (serviceContext === 'avatar') {
-    return [{ type: 'image', url, label: 'Generated Avatar', mimeType: 'image/*' }];
+  const url = artifact.url;
+  const mimeType = artifact.mimeType;
+
+  if (artifact.kind === 'image') {
+    const label = serviceContext === 'avatar' ? 'Generated Avatar'
+      : serviceContext === 'photo' ? 'Enhanced Photo'
+      : 'Generated Image';
+    return [{ type: 'image', url, label, mimeType: mimeType ?? 'image/*' }];
   }
-  if (serviceContext === 'image') {
-    return [{ type: 'image', url, label: 'Generated Image', mimeType: 'image/*' }];
+  if (artifact.kind === 'video') {
+    return [{ type: 'video', url, label: 'Generated Video', mimeType: mimeType ?? 'video/*' }];
   }
-  if (serviceContext === 'photo') {
-    return [{ type: 'image', url, label: 'Enhanced Photo', mimeType: 'image/*' }];
+  if (artifact.kind === 'audio') {
+    return [{ type: 'audio', url, label: 'Generated Music', mimeType: mimeType ?? 'audio/*' }];
   }
-  if (serviceContext === 'video') {
-    return [{ type: 'video', url, label: 'Generated Video', mimeType: 'video/*' }];
-  }
-  return [{ type: 'audio', url, label: 'Generated Music', mimeType: 'audio/*' }];
+  // Unknown kind but URL present — fall back by service context.
+  if (serviceContext === 'video') return [{ type: 'video', url, label: 'Generated Video', mimeType: 'video/*' }];
+  if (serviceContext === 'music') return [{ type: 'audio', url, label: 'Generated Music', mimeType: 'audio/*' }];
+  return [{ type: 'image', url, label: 'Generated Image', mimeType: 'image/*' }];
 }
 
 function formatBytes(bytes: number | null): string {
@@ -2096,8 +2091,19 @@ export default function UnifiedServiceLayout({
   const previewDownloadMetric = previewArtifact?.url ? downloadMetrics[previewArtifact.url] : undefined;
 
   // ─── Render ──────────────────────────────────────────────────────────────
+  // Viewport authority: the surrounding UnifiedServiceShell owns the 100dvh
+  // fixed container. We fill it with `h-full min-h-0` rather than forcing
+  // `min-h-screen`, which used to stack against the shell on mobile and
+  // produce overlap / clipped content under the bottom service rail.
   return (
-    <div className="relative min-h-screen overflow-hidden" style={{ backgroundColor: 'var(--color-bg)', color: 'var(--color-text)' }}>
+    <div
+      className="relative h-full min-h-0 flex flex-col overflow-hidden"
+      style={{
+        backgroundColor: 'var(--color-bg)',
+        color: 'var(--color-text)',
+        paddingBottom: 'env(safe-area-inset-bottom, 0px)',
+      }}
+    >
       {/* ── Header ──────────────────────────────────────────────────────── */}
       <header className="relative z-10 px-3 sm:px-5 lg:px-6 py-4 sm:py-5" style={{ borderBottom: '1px solid var(--color-border)', backgroundColor: 'var(--nav-bg)', backdropFilter: 'blur(20px)' }}>
         <div className="max-w-[94rem] mx-auto flex items-center justify-between gap-3">
@@ -2211,7 +2217,9 @@ export default function UnifiedServiceLayout({
       </div>
 
       {/* ── Main Layout: Chat (70%) + Preview (30%) ─────────────────────── */}
-      <div className={`relative z-10 max-w-[94rem] mx-auto flex flex-col lg:flex-row min-h-[calc(100vh-60px)] sm:min-h-[calc(100vh-64px)] px-2 sm:px-3 md:px-4 lg:px-6 py-2 sm:py-3 gap-2 lg:gap-3 ${chatFullscreen ? 'max-w-full px-1 sm:px-2 md:px-3 lg:px-3' : ''}`}>
+      {/* Fill the remaining shell space with `flex-1 min-h-0` so children scroll
+          instead of overflowing the mobile viewport into the service rail. */}
+      <div className={`relative z-10 max-w-[94rem] w-full mx-auto flex-1 min-h-0 flex flex-col lg:flex-row px-2 sm:px-3 md:px-4 lg:px-6 py-2 sm:py-3 gap-2 lg:gap-3 ${chatFullscreen ? 'max-w-full px-1 sm:px-2 md:px-3 lg:px-3' : ''}`}>
 
         {/* ── Chat Window (70%) ─────────────────────────────────────────── */}
         <div

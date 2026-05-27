@@ -24,8 +24,9 @@
 import { useReducer, useCallback, useRef, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
-import type { ServiceChatConfig, ServiceChatMessage, AgentMode } from './types';
+import type { ServiceChatConfig, ServiceChatMessage, AgentMode, PreviewItem, PreviewType } from './types';
 import { serviceChatReducer, createInitialState } from '@/lib/service-chat/reducer';
+import { extractMediaArtifact, mediaKindForService, type MediaKind } from '@/lib/media/extractArtifact';
 
 import { ServiceChatHeader } from './ServiceChatHeader';
 import { ServiceHamburgerMenu } from './ServiceHamburgerMenu';
@@ -107,6 +108,128 @@ type AppServiceStatusPayload = {
   providers?: Array<{ id?: string; configured?: boolean }>;
 };
 
+type OrchestrateResponse = {
+  success?: boolean;
+  message?: string;
+  error?: string;
+  responseType?: 'text' | 'image' | 'video' | 'audio' | 'analysis' | 'action_suggestions';
+  assetUrl?: string | null;
+  predictionId?: string;
+  predictionStatus?: string;
+  metadata?: {
+    model?: string;
+    agentId?: string;
+    [key: string]: unknown;
+  };
+};
+
+function normalizeSelectedOptions(selectedOptions: Record<string, unknown>): Record<string, string> | undefined {
+  const normalized = Object.fromEntries(
+    Object.entries(selectedOptions).flatMap(([key, value]) => {
+      if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+        return [[key, String(value)]];
+      }
+
+      return [];
+    })
+  );
+
+  return Object.keys(normalized).length > 0 ? normalized : undefined;
+}
+
+function responseTypeToPreviewType(responseType: OrchestrateResponse['responseType']): PreviewType {
+  switch (responseType) {
+    case 'video': return 'video';
+    case 'audio': return 'audio';
+    case 'image': return 'image';
+    case 'analysis': return 'text';
+    case 'action_suggestions':
+    case 'text':
+    default: return 'text';
+  }
+}
+
+function isGenerativeService(slug: string): boolean {
+  return ['avatar', 'image', 'photo', 'video', 'editing', 'music', 'visual-intel', 'visual-ai'].includes(slug);
+}
+
+function buildPreviewItem(id: string, response: OrchestrateResponse, hint: MediaKind): PreviewItem | null {
+  const artifact = extractMediaArtifact(
+    response.assetUrl ?? response.metadata,
+    response.responseType === 'analysis' ? 'analysis' : hint,
+  );
+
+  const previewType = responseTypeToPreviewType(response.responseType);
+
+  // If the upstream provided a usable URL, render the corresponding media card.
+  if (artifact.url || response.assetUrl) {
+    return {
+      id,
+      type: previewType === 'text' ? 'image' : previewType,
+      status: 'ready',
+      url: artifact.url ?? response.assetUrl ?? undefined,
+      title: response.message,
+      thumbnail: previewType === 'image' ? (artifact.url ?? response.assetUrl ?? undefined) : undefined,
+      predictionId: response.predictionId,
+    };
+  }
+
+  // Text-style responses (analysis output, free-form completions).
+  if (response.responseType === 'analysis' && response.message) {
+    return {
+      id,
+      type: 'text',
+      status: 'ready',
+      content: response.message,
+      title: 'Analysis',
+      predictionId: response.predictionId,
+    };
+  }
+
+  return null;
+}
+
+async function pollOrchestratedResult(
+  predictionId: string,
+  serviceContext: string,
+  message: string,
+  signal?: AbortSignal,
+): Promise<OrchestrateResponse> {
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+
+    if (signal?.aborted) {
+      throw new DOMException('Aborted', 'AbortError');
+    }
+
+    const pollRes = await fetch('/api/chat/orchestrate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message,
+        serviceContext,
+        predictionId,
+      }),
+      signal,
+    });
+
+    const pollData = await pollRes.json() as OrchestrateResponse;
+    if (!pollRes.ok) {
+      throw new Error(pollData.error || pollData.message || 'Polling failed');
+    }
+
+    if (pollData.predictionStatus === 'succeeded') {
+      return pollData;
+    }
+
+    if (pollData.predictionStatus === 'failed' || pollData.predictionStatus === 'error') {
+      throw new Error(pollData.message || 'Generation failed');
+    }
+  }
+
+  throw new Error('Generation timed out');
+}
+
 export default function ServiceChatShell({ config, language = 'en', className = '' }: Props) {
   const router = useRouter();
   const activeLanguage = language === 'ka' || language === 'ru' ? language : 'en';
@@ -170,117 +293,142 @@ export default function ServiceChatShell({ config, language = 'en', className = 
     dispatch({ type: 'CLEAR_ATTACHMENTS' });
     dispatch({ type: 'SET_LOADING', value: true });
 
-    // Assistant placeholder for streaming
-    const assistantId = `a_${Date.now()}`;
-    const assistantMsg: ServiceChatMessage = {
-      id: assistantId,
-      type: 'assistant',
-      role: 'assistant',
-      text: '',
-      timestamp: Date.now(),
-      agentId: config.agentId,
-      isStreaming: true,
-    };
-    dispatch({ type: 'ADD_MESSAGE', message: assistantMsg });
+    const generative = isGenerativeService(config.slug);
+    const previewId = `preview_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    const hint: MediaKind = mediaKindForService(config.slug);
+
+    if (generative) {
+      const previewType: PreviewType =
+        hint === 'image' ? 'image'
+        : hint === 'video' ? 'video'
+        : hint === 'audio' ? 'audio'
+        : 'text';
+      dispatch({
+        type: 'UPSERT_PREVIEW',
+        preview: { id: previewId, type: previewType, status: 'pending', title: text.slice(0, 80) },
+      });
+    }
 
     try {
       abortRef.current = new AbortController();
 
+      const history = messages
+        .filter((message): message is ServiceChatMessage & { role: 'user' | 'assistant' } =>
+          message.role === 'user' || message.role === 'assistant'
+        )
+        .slice(-8)
+        .map((message) => ({ role: message.role, content: message.text }));
+
       const body = {
         message: text,
-        serviceSlug: config.slug,
+        serviceContext: config.slug,
         agentId: config.agentId,
-        agentMode,
-        options: selectedOptions,
-        language,
+        locale: language,
+        history,
+        selectedOptions: normalizeSelectedOptions(selectedOptions),
+        serviceId: config.slug,
+        metadata: {
+          agentMode,
+        },
       };
 
-      const res = await fetch('/api/chat/stream', {
+      const res = await fetch('/api/chat/orchestrate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
         signal: abortRef.current.signal,
       });
 
-      if (!res.ok || !res.body) {
-        throw new Error(`HTTP ${res.status}`);
+      const response = await res.json() as OrchestrateResponse;
+
+      if (!res.ok || response.success === false) {
+        throw new Error(response.error || response.message || shellCopy.genericError);
       }
 
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-      let streamError: string | null = null;
-      let streamModel: string | undefined;
+      const assistantMessage: ServiceChatMessage = {
+        id: `a_${Date.now()}`,
+        type: 'assistant',
+        role: 'assistant',
+        text: response.message || shellCopy.genericError,
+        timestamp: Date.now(),
+        agentId: typeof response.metadata?.agentId === 'string' ? response.metadata.agentId : config.agentId,
+        model: typeof response.metadata?.model === 'string' ? response.metadata.model : undefined,
+      };
+      dispatch({ type: 'ADD_MESSAGE', message: assistantMessage });
 
-      outer:
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
-
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            const data = line.slice(6).trim();
-            if (data === '[DONE]') {
-              break outer;
-            }
-            try {
-              const parsed = JSON.parse(data);
-              if (typeof parsed.error === 'string' && parsed.error.trim().length > 0) {
-                streamError = parsed.error.trim();
-                break outer;
-              }
-              if (parsed.token) {
-                dispatch({ type: 'APPEND_STREAM', id: assistantId, token: parsed.token });
-              }
-              if (parsed.suggestions) {
-                dispatch({
-                  type: 'UPDATE_MESSAGE',
-                  id: assistantId,
-                  updates: { suggestions: parsed.suggestions },
-                });
-              }
-              if (parsed.preview) {
-                dispatch({ type: 'ADD_PREVIEW', preview: parsed.preview });
-              }
-              if (parsed.done === true) {
-                streamModel = typeof parsed.model === 'string' ? parsed.model : undefined;
-                break outer;
-              }
-            } catch {
-              // Skip malformed JSON
-            }
-          }
-        }
-      }
-
-      if (streamError) {
+      // Upgrade the pending preview card with whatever the first response carries
+      // (sync URL or assetUrl). If we only get a predictionId, keep it in `running`
+      // and let the poller upgrade it when the upstream finishes.
+      const preview = buildPreviewItem(previewId, response, hint);
+      if (preview) {
+        dispatch({ type: 'UPSERT_PREVIEW', preview });
+      } else if (generative) {
         dispatch({
-          type: 'UPDATE_MESSAGE',
-          id: assistantId,
-          updates: {
-            text: streamError,
-            isStreaming: false,
-            type: 'error',
-          },
+          type: 'UPDATE_PREVIEW',
+          id: previewId,
+          updates: { status: 'running', predictionId: response.predictionId },
         });
-      } else {
-        dispatch({ type: 'FINISH_STREAM', id: assistantId, model: streamModel });
+      }
+
+      if (response.predictionId && response.predictionStatus !== 'succeeded') {
+        const completedResponse = await pollOrchestratedResult(
+          response.predictionId,
+          config.slug,
+          text,
+          abortRef.current.signal,
+        );
+
+        const completedMessage: ServiceChatMessage = {
+          id: `a_${Date.now()}_complete`,
+          type: 'assistant',
+          role: 'assistant',
+          text: completedResponse.message || response.message || shellCopy.genericError,
+          timestamp: Date.now(),
+          agentId: typeof completedResponse.metadata?.agentId === 'string'
+            ? completedResponse.metadata.agentId
+            : assistantMessage.agentId,
+          model: typeof completedResponse.metadata?.model === 'string'
+            ? completedResponse.metadata.model
+            : assistantMessage.model,
+        };
+        dispatch({ type: 'ADD_MESSAGE', message: completedMessage });
+
+        const completedPreview = buildPreviewItem(previewId, completedResponse, hint);
+        if (completedPreview) {
+          dispatch({ type: 'UPSERT_PREVIEW', preview: completedPreview });
+        } else if (generative) {
+          dispatch({
+            type: 'UPDATE_PREVIEW',
+            id: previewId,
+            updates: { status: 'failed', errorMessage: completedResponse.message || shellCopy.genericError },
+          });
+        }
       }
     } catch (err: unknown) {
       if (err instanceof Error && err.name === 'AbortError') {
-        dispatch({ type: 'FINISH_STREAM', id: assistantId });
+        // Keep prior messages intact when the user stops an in-flight request.
+        if (generative) {
+          dispatch({ type: 'UPDATE_PREVIEW', id: previewId, updates: { status: 'failed', errorMessage: 'Cancelled' } });
+        }
       } else {
+        if (generative) {
+          dispatch({
+            type: 'UPDATE_PREVIEW',
+            id: previewId,
+            updates: {
+              status: 'failed',
+              errorMessage: err instanceof Error ? err.message : shellCopy.genericError,
+            },
+          });
+        }
         dispatch({
-          type: 'UPDATE_MESSAGE',
-          id: assistantId,
-          updates: {
+          type: 'ADD_MESSAGE',
+          message: {
+            id: `a_${Date.now()}_error`,
             text: shellCopy.genericError,
-            isStreaming: false,
             type: 'error',
+            role: 'assistant',
+            timestamp: Date.now(),
           },
         });
       }
@@ -288,7 +436,7 @@ export default function ServiceChatShell({ config, language = 'en', className = 
       dispatch({ type: 'SET_LOADING', value: false });
       abortRef.current = null;
     }
-  }, [inputText, isLoading, attachments, config, agentMode, selectedOptions, language, shellCopy.genericError]);
+  }, [inputText, isLoading, messages, config, agentMode, selectedOptions, language, shellCopy.genericError]);
 
   const loadRuntimeStatus = useCallback(async () => {
     setRuntimeStatusLoading(true);

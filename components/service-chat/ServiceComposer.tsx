@@ -90,7 +90,10 @@ export function ServiceComposer({
   }, [attachments.length, onAddAttachment]);
 
   return (
-    <div className="px-3 pb-3 pt-2 flex-shrink-0">
+    <div
+      className="px-3 pt-2 flex-shrink-0"
+      style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom, 0px))' }}
+    >
       {/* Attachment previews */}
       {attachments.length > 0 && (
         <div className="flex gap-2 mb-2 px-1 overflow-x-auto">

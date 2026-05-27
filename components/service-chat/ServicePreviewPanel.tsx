@@ -9,7 +9,7 @@
 
 import { motion, AnimatePresence } from 'framer-motion';
 import Image from 'next/image';
-import { X, Download, Maximize2 } from 'lucide-react';
+import { X, Download, Loader2, AlertCircle, Maximize2 } from 'lucide-react';
 import type { PreviewItem, ServiceChatConfig } from './types';
 
 interface Props {
@@ -129,7 +129,49 @@ export function ServicePreviewPanel({ config, previews, language, onClearPreview
   );
 }
 
+function PendingState({ accentColor, label }: { accentColor: string; label: string }) {
+  return (
+    <div
+      className="relative rounded-xl overflow-hidden border flex items-center justify-center"
+      style={{
+        borderColor: `${accentColor}30`,
+        background: `linear-gradient(120deg, rgba(255,255,255,0.02), ${accentColor}10, rgba(255,255,255,0.02))`,
+        backgroundSize: '300% 100%',
+        animation: 'previewShimmer 1.6s ease-in-out infinite',
+        minHeight: 140,
+      }}
+    >
+      <div className="flex flex-col items-center gap-2 px-4 py-6 text-center">
+        <Loader2 className="w-5 h-5 animate-spin" style={{ color: accentColor }} />
+        <span className="text-[11px] font-medium" style={{ color: 'var(--color-text-secondary)' }}>{label}</span>
+      </div>
+      <style>{`@keyframes previewShimmer { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }`}</style>
+    </div>
+  );
+}
+
+function FailedState({ accentColor, message }: { accentColor: string; message: string }) {
+  return (
+    <div
+      className="rounded-xl p-3 border flex items-start gap-2"
+      style={{ borderColor: 'rgba(248,113,113,0.3)', background: 'rgba(248,113,113,0.06)' }}
+    >
+      <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" style={{ color: '#f87171' }} />
+      <span className="text-[12px] leading-snug" style={{ color: 'var(--color-text)' }}>{message}</span>
+      <span className="ml-auto text-[10px] uppercase tracking-wider font-semibold opacity-50" style={{ color: accentColor }}>failed</span>
+    </div>
+  );
+}
+
 function PreviewContent({ item, accentColor, copy }: { item: PreviewItem; accentColor: string; copy: PreviewCopy }) {
+  if (item.status === 'pending' || item.status === 'running') {
+    const label = item.title || (item.type === 'video' ? copy.videoPreview : item.type === 'audio' ? copy.audioPreview : item.type === 'text' ? copy.textPreview : copy.imagePreview);
+    return <PendingState accentColor={accentColor} label={label} />;
+  }
+  if (item.status === 'failed') {
+    return <FailedState accentColor={accentColor} message={item.errorMessage || 'Generation failed'} />;
+  }
+
   switch (item.type) {
     case 'image':
       return (
