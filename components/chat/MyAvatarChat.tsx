@@ -1632,7 +1632,6 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
                   onOpenInPreview={onOpenInPreview}
                   onContextAction={handleContextAction}
                   onDispatchAction={dispatchAction}
-                  onSuggestion={(t) => { setInput(t); requestAnimationFrame(() => inputRef.current?.focus()); }}
                 />
               </div>
             </motion.div>

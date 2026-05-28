@@ -15,7 +15,7 @@
 import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { motion } from 'framer-motion';
-import { Sparkles, Loader2, RotateCcw, ThumbsUp, ThumbsDown, Check, Copy, Square, Volume2, ImageOff } from 'lucide-react';
+import { Loader2, RotateCcw, ThumbsUp, ThumbsDown, Check, Copy, Square, Volume2, ImageOff } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import InlineMedia, { detectInlineMedia } from '@/components/dashboard/command-center/InlineMedia';
@@ -55,68 +55,9 @@ function SuggestedActionRow({ actions, onDispatch }: { actions: SuggestedAction[
   );
 }
 
-// Suggested starter prompts — tappable, fill the composer (localized).
-const SUGGESTIONS: Array<{ icon: string; ka: string; en: string; ru: string }> = [
-  { icon: '🎬', ka: 'შექმენი 30 წამიანი კინემატოგრაფიული ფილმი ზღვაზე', en: 'Make a 30s cinematic film of the sea', ru: 'Сделай 30-сек кино о море' },
-  { icon: '🖼️', ka: 'დახატე მთის პეიზაჟი მზის ჩასვლისას, 4K', en: 'A mountain landscape at sunset, 4K', ru: 'Горный пейзаж на закате, 4K' },
-  { icon: '🏠', ka: 'დააპროექტე მოდერნი მისაღები ოთახი 3D-ში', en: 'Design a modern living room in 3D', ru: 'Спроектируй гостиную в 3D' },
-  { icon: '🎵', ka: 'დაწერე თბილი ჯაზური ფონური მუსიკა', en: 'Compose warm jazz background music', ru: 'Сочини тёплый джаз' },
-];
-
-// ─── EmptyState — welcome + tappable suggested prompts (first-run UX) ─────────
-function EmptyState({ locale, onPick }: { locale: Locale; onPick?: (text: string) => void }) {
-  const welcome = locale === 'ka' ? 'რა გსურს?' : locale === 'ru' ? 'Чего хотите?' : 'What would you like?';
-  const sub = locale === 'ka'
-    ? 'ფილმი, ავატარი, მუსიკა, ხმა, ინტერიერი — ერთ სივრცეში.'
-    : locale === 'ru'
-      ? 'Фильм, аватар, музыка, голос, интерьер — в одном окне.'
-      : 'Film, avatar, music, voice, interiors — all in one place.';
-  const ease = [0.22, 1, 0.36, 1] as const;
-  const pick = (s: typeof SUGGESTIONS[number]) => locale === 'ka' ? s.ka : locale === 'ru' ? s.ru : s.en;
-  return (
-    <div className="h-full flex flex-col items-center justify-center px-4 text-center">
-      <motion.div
-        initial={{ opacity: 0, scale: 0.8, y: 6 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        transition={{ duration: 0.5, ease }}
-        className="relative mb-5"
-      >
-        <span aria-hidden className="absolute inset-0 -z-10 blur-2xl rounded-full bg-sky-500/20 scale-150" />
-        <Sparkles size={32} className="text-cyan-300/80" />
-      </motion.div>
-      <motion.h2
-        initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45, delay: 0.08, ease }}
-        className="text-[30px] sm:text-[36px] font-semibold text-white tracking-tight leading-[1.1]"
-      >
-        {welcome}
-      </motion.h2>
-      <motion.p
-        initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45, delay: 0.16, ease }}
-        className="mt-2.5 max-w-xs text-[14px] text-white/45 leading-relaxed"
-      >
-        {sub}
-      </motion.p>
-
-      {/* Suggested prompts — tap to drop into the composer */}
-      <motion.div
-        initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.26, ease }}
-        className="mt-7 grid grid-cols-1 sm:grid-cols-2 gap-2.5 w-full max-w-xl"
-      >
-        {SUGGESTIONS.map((s) => (
-          <button
-            key={s.en}
-            type="button"
-            onClick={() => onPick?.(pick(s))}
-            className="group flex items-center gap-2.5 text-left rounded-2xl border border-white/[0.10] bg-white/[0.03] px-3.5 py-3 hover:border-sky-400/45 hover:bg-white/[0.06] hover:shadow-[0_8px_30px_-12px_rgba(56,189,248,0.6)] active:scale-[0.99] transition-all duration-200"
-          >
-            <span className="text-[18px] leading-none">{s.icon}</span>
-            <span className="text-[13.5px] text-white/85 group-hover:text-white leading-snug">{pick(s)}</span>
-          </button>
-        ))}
-      </motion.div>
-    </div>
-  );
-}
+// Ruthless minimalism: the empty conversational canvas renders NOTHING — no
+// greeting headers, no suggestion grid. The center stays a clean cyber-black void
+// (BalanceChip, service selector, composer + floating avatar live in the shell).
 
 // ─── MediaContextActions — contextual post-production chips under each media ──
 type CtxAction = { key: string; en: string; ka: string; ru: string };
@@ -557,14 +498,13 @@ export interface MessageListProps {
   onOpenInPreview: (m: ChatMessage) => void;
   onContextAction: (action: string, payload: { prompt: string; url?: string }) => void;
   onDispatchAction: (a: SuggestedAction) => void;
-  onSuggestion?: (text: string) => void;
 }
 
 export function MessageList({
   messages, locale, sending, endRef,
-  onLike, onDislike, onRegenerate, onRemix, onOpenInPreview, onContextAction, onDispatchAction, onSuggestion,
+  onLike, onDislike, onRegenerate, onRemix, onOpenInPreview, onContextAction, onDispatchAction,
 }: MessageListProps) {
-  if (messages.length === 0) return <EmptyState locale={locale} onPick={onSuggestion} />;
+  if (messages.length === 0) return null;
   return (
     <div className="max-w-2xl mx-auto py-4 space-y-3">
       {messages.map(m => (
