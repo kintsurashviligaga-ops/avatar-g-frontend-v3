@@ -23,6 +23,7 @@ import { buildIterativePrompt } from './iteration-store';
 import { generateWithGemini } from '@/lib/gemini/client';
 import { getGeminiSystemPrompt, type GeminiServiceContext } from '@/lib/gemini/prompts';
 import { extractMediaArtifact, type MediaKind } from '@/lib/media/extractArtifact';
+import { isMusicVideoComposite, handleMusicVideoComposite } from './musicVideoComposite';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -194,6 +195,14 @@ export async function orchestrate(
   if (GEMINI_MULTIMODAL_SERVICES.has(input.serviceContext)) {
     const geminiResponse = await handleGeminiMultimodal(input);
     if (geminiResponse) return geminiResponse;
+  }
+
+  // Composite check runs BEFORE single-intent detection. Music-video prompts
+  // would otherwise be matched by music_generation OR video_generation
+  // (whichever pattern hits the higher confidence weight) and only ONE
+  // worker would fire — see lib/chat/musicVideoComposite.ts for the trace.
+  if (isMusicVideoComposite(input.message)) {
+    return handleMusicVideoComposite(input);
   }
 
   // 1. Detect intent
