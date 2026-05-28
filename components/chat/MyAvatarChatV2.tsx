@@ -488,6 +488,35 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated }: Pr
     };
 
     try {
+      // ── Voice (ხმა): pure TTS → ElevenLabs, independent of the text track ──
+      if (mode === 'voice') {
+        setPipeline(null); // not a multi-stage render; show the simple spinner
+        const ttsRes = await fetch('/api/elevenlabs/tts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          signal,
+          body: JSON.stringify({ text, locale: lang }),
+        });
+        if (!ttsRes.ok) {
+          const errText = await ttsRes.text().catch(() => '');
+          throw new Error(errText || `Voice synthesis failed (${ttsRes.status})`);
+        }
+        const audioBlob = await ttsRes.blob();
+        const audioUrl = URL.createObjectURL(audioBlob);
+        dispatch({ type: 'ADD_MESSAGE', message: {
+          id: `a_${Date.now()}`,
+          role: 'assistant',
+          text: '',
+          timestamp: Date.now(),
+          assetUrl: audioUrl,
+          assetType: 'audio',
+          sourcePrompt: text,
+          model: ttsRes.headers.get('X-Voice-Provider') || 'elevenlabs',
+        }});
+        return;
+      }
+
       const history = messages
         .filter((m): m is ChatMessage & { role: 'user' | 'assistant' } => m.role === 'user' || m.role === 'assistant')
         .slice(-8)

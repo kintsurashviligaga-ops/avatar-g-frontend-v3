@@ -23,9 +23,25 @@ function getWorldLabsApiKey(): string {
   throw new Error('WORLDLABS_API_KEY is not configured');
 }
 
+const WORLDLABS_GENERATE_PATH = '/v1/worlds/generate';
+
 function getWorldLabsEndpoint(): string {
-  const endpoint = String(process.env.WORLDLABS_API_URL || '').trim();
-  return endpoint || 'https://api.worldlabs.ai/v1/worlds/generate';
+  const raw = String(process.env.WORLDLABS_API_URL || '').trim();
+  if (!raw) return `https://api.worldlabs.ai${WORLDLABS_GENERATE_PATH}`;
+
+  // A common misconfiguration is setting WORLDLABS_API_URL to just the host
+  // (e.g. https://api.worldlabs.ai) with no generation route, which yields a
+  // provider "no Route matched" error. Append the canonical suffix when the
+  // configured value carries no path of its own.
+  try {
+    const u = new URL(raw);
+    if (u.pathname === '' || u.pathname === '/') {
+      return `${raw.replace(/\/+$/, '')}${WORLDLABS_GENERATE_PATH}`;
+    }
+  } catch {
+    /* not a full URL — fall through and use as-is */
+  }
+  return raw;
 }
 
 function parseDataUrl(value: string): { mimeType: string; bytes: Buffer } {
