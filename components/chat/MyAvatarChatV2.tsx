@@ -44,7 +44,6 @@ import {
   Download,
   Film,
   Globe,
-  ImagePlus,
   Loader2,
   LogOut,
   Maximize2,
@@ -164,12 +163,12 @@ const MAX_MEDIA_MB = 25;
  * (text / image / video / audio). `global` is the default free-form chat.
  */
 const MODES = [
-  { id: 'global',   Icon: MessageSquare, accent: '#22d3ee', label: { en: 'Chat',    ka: 'ჩატი',       ru: 'Чат' } },
-  { id: 'video',    Icon: Film,          accent: '#38bdf8', label: { en: 'Film',    ka: 'ფილმი',      ru: 'Фильм' } },
-  { id: 'avatar',   Icon: User,     accent: '#818cf8', label: { en: 'Avatar',  ka: 'AI ავატარი', ru: 'AI Аватар' } },
-  { id: 'image',    Icon: ImagePlus,     accent: '#34d399', label: { en: 'Image',   ka: 'სურათი',     ru: 'Изображение' } },
-  { id: 'music',    Icon: Music,         accent: '#f472b6', label: { en: 'Music',   ka: 'მუსიკა',     ru: 'Музыка' } },
-  { id: 'interior', Icon: Box,           accent: '#10b981', label: { en: 'Room 3D', ka: 'ოთახის 3D',  ru: 'Комната 3D' } },
+  { id: 'global',   Icon: MessageSquare, accent: '#22d3ee', label: { en: 'Chat',     ka: 'ჩათი',            ru: 'Чат' } },
+  { id: 'video',    Icon: Film,          accent: '#38bdf8', label: { en: '30s Film',  ka: '30-წამიანი ფილმი', ru: '30-сек фильм' } },
+  { id: 'music',    Icon: Music,         accent: '#f472b6', label: { en: 'Music',     ka: 'მუსიკა',          ru: 'Музыка' } },
+  { id: 'avatar',   Icon: User,          accent: '#818cf8', label: { en: 'Avatar',    ka: 'AI ავატარი',      ru: 'AI Аватар' } },
+  { id: 'interior', Icon: Box,           accent: '#10b981', label: { en: 'Room 3D',   ka: 'ოთახის 3D',       ru: 'Комната 3D' } },
+  { id: 'voice',    Icon: Volume2,       accent: '#f59e0b', label: { en: 'Voice',     ka: 'ხმა',             ru: 'Голос' } },
 ] as const;
 type ServiceMode = typeof MODES[number]['id'];
 
@@ -882,7 +881,7 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated }: Pr
 
         {/* ── Unified monolithic console: mode selector + composer ───── */}
         <div className="px-3 pt-2 pb-2 max-w-2xl mx-auto">
-          <div className="rounded-3xl border border-zinc-800/80 bg-[#0a0a0a] transition-all focus-within:border-cyan-400/40 focus-within:shadow-[0_0_0_3px_rgba(34,211,238,0.08)]">
+          <div className="rounded-2xl border border-zinc-800/80 bg-[#0a0a0a] transition-colors focus-within:border-zinc-700">
             {/* Mode selector — sets the orchestrator service context */}
             <div className="flex gap-1.5 overflow-x-auto px-2 pt-2 pb-1.5 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
               {MODES.map(({ id, Icon, accent, label }) => {
@@ -893,9 +892,9 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated }: Pr
                     type="button"
                     onClick={() => setMode(id)}
                     aria-pressed={active}
-                    className={`flex-shrink-0 inline-flex items-center gap-1.5 h-8 px-3 rounded-full text-[12px] font-medium border bg-[#121212] transition-all active:scale-95 ${
+                    className={`flex-shrink-0 inline-flex items-center gap-1.5 h-8 px-3 rounded-full text-[12px] font-medium border bg-[#121212] transition-colors active:scale-95 ${
                       active
-                        ? 'border-cyan-400/50 text-zinc-100 shadow-[0_0_0_1px_rgba(34,211,238,0.35),0_6px_22px_-10px_rgba(34,211,238,0.7)]'
+                        ? 'border-cyan-400/40 text-zinc-100'
                         : 'border-white/10 text-zinc-400 hover:text-zinc-200 hover:border-white/20'
                     }`}
                   >
@@ -962,7 +961,6 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated }: Pr
                   className="h-9 w-9 flex items-center justify-center rounded-xl text-zinc-950 active:scale-95 transition disabled:opacity-40 disabled:cursor-not-allowed"
                   style={{
                     background: inputText.trim() ? `linear-gradient(135deg, ${ACCENT}, #0891b2)` : 'transparent',
-                    boxShadow: inputText.trim() ? `0 0 18px -4px ${ACCENT}88` : 'none',
                   }}
                 >
                   <Send size={16} />
