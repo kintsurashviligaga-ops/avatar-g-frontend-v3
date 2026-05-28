@@ -44,6 +44,7 @@ import {
   Download,
   Film,
   Globe,
+  ImagePlus,
   Loader2,
   LogOut,
   Maximize2,
@@ -164,8 +165,8 @@ const MAX_MEDIA_MB = 25;
  */
 const MODES = [
   { id: 'global',   Icon: MessageSquare, accent: '#22d3ee', label: { en: 'Chat',     ka: 'ჩათი',            ru: 'Чат' } },
-  { id: 'video',    Icon: Film,          accent: '#38bdf8', label: { en: '30s Film',  ka: '30-წამიანი ფილმი', ru: '30-сек фильм' } },
-  { id: 'music',    Icon: Music,         accent: '#f472b6', label: { en: 'Music',     ka: 'მუსიკა',          ru: 'Музыка' } },
+  { id: 'image',    Icon: ImagePlus,     accent: '#34d399', label: { en: 'Image',     ka: 'სურათი',          ru: 'Изображение' } },
+  { id: 'video',    Icon: Film,          accent: '#38bdf8', label: { en: '30s Film',  ka: '30 წმ ფილმი',     ru: '30-сек фильм' } },
   { id: 'avatar',   Icon: User,          accent: '#818cf8', label: { en: 'Avatar',    ka: 'AI ავატარი',      ru: 'AI Аватар' } },
   { id: 'interior', Icon: Box,           accent: '#10b981', label: { en: 'Room 3D',   ka: 'ოთახის 3D',       ru: 'Комната 3D' } },
   { id: 'voice',    Icon: Volume2,       accent: '#f59e0b', label: { en: 'Voice',     ka: 'ხმა',             ru: 'Голос' } },
@@ -309,6 +310,17 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated }: Pr
   const [avatarExpanded, setAvatarExpanded] = useState(false);
   const [balanceGel, setBalanceGel] = useState<number | null>(null);
   const [mode, setMode] = useState<ServiceMode>('global');
+  // Stable per-session id sent on EVERY request (initial + polls). The backend
+  // bakes this into the predictionId/taskRef; if polls arrive with a different
+  // (or missing) session it throws "Session mismatch". Generating it once here
+  // keeps the whole async lifecycle on one session.
+  const [sessionId] = useState<string>(() =>
+    `session_web_${
+      typeof crypto !== 'undefined' && crypto.randomUUID
+        ? crypto.randomUUID()
+        : `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`
+    }`,
+  );
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [avatarSoundOn, setAvatarSoundOn] = useState(false);
   const [pipeline, setPipeline] = useState<PipelineState | null>(null);
@@ -522,7 +534,7 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated }: Pr
         .slice(-8)
         .map((m) => ({ role: m.role, content: m.text }));
 
-      let resp = await postOrchestrate({ message: text, serviceContext: mode, locale: lang, history, ...(imageUrl ? { imageUrl } : {}) });
+      let resp = await postOrchestrate({ message: text, sessionId, serviceContext: mode, locale: lang, history, ...(imageUrl ? { imageUrl } : {}) });
       if (resp.success === false && !resp.predictionId) {
         throw new Error(resp.error || resp.message || copy.genericError);
       }
@@ -536,7 +548,7 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated }: Pr
       while (resp.predictionId && !isTerminalStatus(resp.predictionStatus) && polls < MAX_POLLS) {
         await sleep(POLL_INTERVAL, signal);
         polls++;
-        resp = await postOrchestrate({ message: text, predictionId: resp.predictionId, serviceContext: mode, locale: lang });
+        resp = await postOrchestrate({ message: text, sessionId, predictionId: resp.predictionId, serviceContext: mode, locale: lang });
         setPipeline(derivePipeline(resp));
       }
 
@@ -573,7 +585,7 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated }: Pr
       setPipeline(null);
       abortRef.current = null;
     }
-  }, [inputText, isLoading, messages, lang, mode, attachments, copy.genericError]);
+  }, [inputText, isLoading, messages, lang, mode, attachments, sessionId, copy.genericError]);
 
   const stop = useCallback(() => abortRef.current?.abort(), []);
 
