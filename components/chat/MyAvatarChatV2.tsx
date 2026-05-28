@@ -42,7 +42,6 @@ import {
   Camera,
   Check,
   Download,
-  Film,
   Globe,
   ImagePlus,
   Loader2,
@@ -1105,6 +1104,7 @@ function MessageBubble({
   const isUser = message.role === 'user';
   const isError = message.role === 'error';
   const bubbleVideoRef = useRef<HTMLVideoElement>(null);
+  const [lightbox, setLightbox] = useState(false);
 
   const togglePiP = useCallback(async () => {
     const v = bubbleVideoRef.current;
@@ -1178,7 +1178,17 @@ function MessageBubble({
         </div>
 
         {message.assetUrl && message.assetType === 'image' ? (
-          <Image src={message.assetUrl} alt="Generated" width={1200} height={800} unoptimized className="rounded-2xl border border-zinc-800/70 max-w-full max-h-[280px] object-contain bg-black" />
+          <button
+            type="button"
+            onClick={() => setLightbox(true)}
+            aria-label="Open full-size image"
+            className="group relative block overflow-hidden rounded-2xl border border-zinc-800/70 bg-black max-w-full active:scale-[0.99] transition"
+          >
+            <Image src={message.assetUrl} alt="Generated" width={1200} height={800} unoptimized className="max-w-full max-h-[300px] w-auto object-contain" />
+            <span className="absolute top-2 right-2 h-7 w-7 rounded-full bg-black/55 backdrop-blur-sm flex items-center justify-center text-white/90 opacity-0 group-hover:opacity-100 transition">
+              <Maximize2 size={14} />
+            </span>
+          </button>
         ) : null}
         {message.assetUrl && message.assetType === 'video' ? (
           <video
@@ -1188,17 +1198,50 @@ function MessageBubble({
             preload="metadata"
             // translateZ(0) promotes to a compositor layer so PiP / tab-switch
             // on memory-constrained mobile doesn't stall the decode pipeline.
+            // object-contain preserves the source aspect (9:16 avatar / 16:9 film)
+            // inside a bounded premium frame without distortion.
             style={{ transform: 'translateZ(0)' }}
-            className="rounded-2xl border border-zinc-800/70 max-w-full max-h-[280px] bg-black"
+            className="rounded-2xl border border-zinc-800/70 max-w-full max-h-[320px] w-auto object-contain bg-black"
           >
             <source src={message.assetUrl} />
           </video>
         ) : null}
         {message.assetUrl && message.assetType === 'audio' ? (
-          <audio controls preload="metadata" className="rounded-2xl">
-            <source src={message.assetUrl} />
-          </audio>
+          <div className="w-full max-w-sm rounded-2xl border border-zinc-800/70 bg-[#0a0a0a] p-3">
+            <div className="flex items-center gap-2 pb-2 text-[12px] font-medium text-zinc-300">
+              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white/5">
+                <Volume2 size={13} style={{ color: accent }} />
+              </span>
+              <span>Audio</span>
+            </div>
+            <audio controls preload="metadata" className="w-full">
+              <source src={message.assetUrl} />
+            </audio>
+          </div>
         ) : null}
+
+        {/* Image lightbox */}
+        <AnimatePresence>
+          {lightbox && message.assetUrl && message.assetType === 'image' ? (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[80] flex items-center justify-center bg-black/90 backdrop-blur-md p-4"
+              onClick={() => setLightbox(false)}
+            >
+              <Image src={message.assetUrl} alt="Generated (full size)" width={2048} height={2048} unoptimized className="max-h-[92vh] max-w-[96vw] w-auto h-auto object-contain rounded-xl" />
+              <button
+                onClick={() => setLightbox(false)}
+                aria-label="Close"
+                className="absolute top-5 right-5 h-11 w-11 rounded-full bg-white/10 backdrop-blur-md border border-white/15 flex items-center justify-center text-white hover:bg-white/20 active:scale-90 transition"
+                style={{ top: 'calc(1.25rem + env(safe-area-inset-top, 0px))' }}
+              >
+                <X size={20} />
+              </button>
+            </motion.div>
+          ) : null}
+        </AnimatePresence>
 
         {/* Executive toolbar — assistant messages only */}
         {!isUser && !isError ? (
