@@ -1,10 +1,11 @@
-import dynamic from 'next/dynamic'
+import { redirect } from 'next/navigation'
 
-const LandingPageClient = dynamic(
-  () => import('@/components/landing/LandingPageClient'),
-  { ssr: false },
-)
+type Props = { params: { locale: string } }
 
-export default function LandingPage() {
-  return <LandingPageClient />
+// LEGACY LANDING RETIRED. The integrated cyber-black chat workspace is the only
+// entrypoint. This route hard-redirects to the dashboard so the old marketing
+// landing (full-bleed canvas + "საქართველოს AI ცივილიზაციური" banner) can never
+// be served again — even for stale bookmarks or service-worker-cached navigations.
+export default function RetiredLandingPage({ params }: Props) {
+  redirect(`/${params.locale}/dashboard`)
 }

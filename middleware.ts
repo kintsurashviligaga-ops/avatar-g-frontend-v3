@@ -14,11 +14,9 @@ function getPreferredLocale(request: NextRequest) {
 
 /**
  * Root middleware:
- * / and locale roots → /{locale}/dashboard (the one-window chatbot —
- *   full-screen avatar canvas + docked glass chat, rendered by MyAvatarChat
- *   at app/[locale]/dashboard/page.tsx).
- * The old /{locale}/landing marketing stack is bypassed; users land directly
- * in the chatbot. The marketing page remains reachable by direct URL.
+ * / and locale roots → /{locale}/dashboard (the integrated chat workspace at
+ *   app/[locale]/dashboard/page.tsx — the only entrypoint).
+ * /{locale}/landing is retired and redirects to the dashboard.
  * Paths without locale prefix → /{locale}/path
  */
 export async function middleware(request: NextRequest) {
@@ -50,7 +48,8 @@ export async function middleware(request: NextRequest) {
     const segments = pathname.split('/').filter(Boolean);
     const firstSegment = segments[0] ?? '';
 
-    // Bare root → /{locale}/dashboard (Unified Workspace).
+    // Bare root → /{locale}/dashboard (the integrated cyber-black chat workspace is
+    // the ONLY entrypoint; the legacy marketing landing is retired).
     if (pathname === '/') {
       const url = request.nextUrl.clone();
       url.pathname = `/${preferredLocale}/dashboard`;
