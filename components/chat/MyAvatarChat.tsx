@@ -69,7 +69,7 @@ import type { RoomGeometry, StyleGuide } from '@/lib/orchestrator/interior';
 import { CameraModal } from '@/components/service-chat/CameraModal';
 import { AdminSystemPanel } from '@/components/chat/AdminSystemPanel';
 import { AvatarOnboarding } from '@/components/chat/onboarding/AvatarOnboarding';
-import { AvatarVideoStage } from '@/components/chat/onboarding/AvatarVideoStage';
+import { FloatingAvatar } from '@/components/chat/FloatingAvatar';
 import { MessageList } from '@/components/chat/MessageList';
 import { MyAvatarComposer } from '@/components/chat/MyAvatarComposer';
 import { AvatarGalleryView, AnalyticsView, BillingView, AccountSection } from '@/components/chat/ChatViews';
@@ -1543,7 +1543,7 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
 
   return (
     <main
-      className="fixed inset-0 z-[5] flex flex-col bg-black text-white antialiased overflow-hidden"
+      className="fixed inset-0 z-[5] flex flex-col bg-[#030303] text-white antialiased overflow-hidden"
       style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)', fontFamily: 'var(--font-geist, var(--font-ui, system-ui))' }}
     >
       {/* ── Chat column (full width mobile, 60% desktop). ─────────────────────── */}
@@ -1593,15 +1593,14 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
               transition={{ duration: 0.18 }}
               className="flex-1 min-h-0 flex flex-col"
             >
-              {/* Contained avatar host — a dedicated, aspect-correct frame so the FULL
-                  character (head + suit + face) is visible, never cropped. Centered on
-                  desktop; sits below the header on mobile. */}
-              <div className="flex-shrink-0 flex flex-col items-center px-4 pt-2 pb-1">
-                <AvatarVideoStage variant="anchor" />
-                {(sending || producing || Boolean(activePipelineId)) && (
+              {/* v2 cyber-workspace: NO top avatar banner. The avatar lives as a
+                  floating corner widget (<FloatingAvatar/>). Only a compact AI-team
+                  reflection pulse appears here while a pipeline runs. */}
+              {(sending || producing || Boolean(activePipelineId)) && (
+                <div className="flex-shrink-0 flex justify-center px-4 pt-2.5">
                   <motion.div
                     initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }}
-                    className="mt-2.5 inline-flex items-center gap-2 rounded-full border border-cyan-300/25 bg-gradient-to-r from-cyan-500/10 to-blue-500/10 px-3.5 py-1.5 backdrop-blur-md shadow-[0_0_24px_-8px_rgba(56,189,248,0.7)]"
+                    className="inline-flex items-center gap-2 rounded-full border border-cyan-300/25 bg-white/[0.04] px-3.5 py-1.5 backdrop-blur-md shadow-[0_0_24px_-8px_rgba(56,189,248,0.7)]"
                   >
                     <motion.span
                       className="h-2 w-2 rounded-full bg-cyan-300"
@@ -1616,10 +1615,10 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
                           : '⚡ AI Team is auditing, validating, and refining your solution...'}
                     </span>
                   </motion.div>
-                )}
-              </div>
+                </div>
+              )}
 
-              {/* Message feed */}
+              {/* Message feed — full edge-to-edge workspace (no banner above) */}
               <div className="flex-1 min-h-0 overflow-y-auto px-4">
                 <MessageList
                   messages={messages}
@@ -1801,6 +1800,9 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
 
       {/* ── /Chat column ─────────────────────────────────────────────────── */}
       </div>
+
+      {/* v2: floating avatar widget — corner by default, expands face-to-face. */}
+      {activeView === 'chat' && <FloatingAvatar />}
 
       {/* Inline-only: the right preview canvas was removed per the
           Inline-Preview brief. Big-format viewing now happens via the
