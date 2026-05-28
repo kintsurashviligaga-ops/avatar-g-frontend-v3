@@ -24,6 +24,8 @@ import { generateWithGemini } from '@/lib/gemini/client';
 import { getGeminiSystemPrompt, type GeminiServiceContext } from '@/lib/gemini/prompts';
 import { extractMediaArtifact, type MediaKind } from '@/lib/media/extractArtifact';
 import { isMusicVideoComposite, handleMusicVideoComposite } from './musicVideoComposite';
+import { isCompositeRef, decodeCompositeRef } from './compositeTaskRef';
+import { isFounderAuditCommand, isFounder, runFounderAudit, renderAuditAsMarkdown } from '@/lib/monetization/audit-engine';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -197,6 +199,33 @@ export async function orchestrate(
     if (geminiResponse) return geminiResponse;
   }
 
+  // Founder Audit short-circuit. Bypasses normal routing for an allowlisted
+  // user_id (FOUNDER_USER_IDS env). Returns the canonical wholesale-vs-retail
+  // aggregate as a markdown block in the chat feed.
+  if (isFounderAuditCommand(input.message) && isFounder(input.userId)) {
+    try {
+      const audit = await runFounderAudit();
+      return {
+        success: true,
+        intent: 'business_help',
+        responseType: 'analysis',
+        message: renderAuditAsMarkdown(audit, input.locale),
+        metadata: {
+          provider: 'founder-audit',
+          audit,
+        },
+      };
+    } catch (err) {
+      return {
+        success: false,
+        intent: 'business_help',
+        responseType: 'text',
+        message: `Founder audit failed: ${err instanceof Error ? err.message : String(err)}`,
+        metadata: { provider: 'founder-audit' },
+      };
+    }
+  }
+
   // Composite check runs BEFORE single-intent detection. Music-video prompts
   // would otherwise be matched by music_generation OR video_generation
   // (whichever pattern hits the higher confidence weight) and only ONE
@@ -225,6 +254,11 @@ export async function orchestrate(
 }
 
 export async function pollOrchestrationTask(predictionId: string, sessionId?: string): Promise<ChatResponse> {
+  // Composite (music + video + lyrics) — decode and poll each leg.
+  if (isCompositeRef(predictionId)) {
+    return pollCompositeTask(predictionId, sessionId);
+  }
+
   const udioWorkId = extractUdioWorkId(predictionId);
   if (udioWorkId) {
     return pollUdioTask(udioWorkId, predictionId);
@@ -232,6 +266,104 @@ export async function pollOrchestrationTask(predictionId: string, sessionId?: st
 
   const response = await serviceManager.poll(predictionId, sessionId);
   return toChatResponse(response, 'text_chat');
+}
+
+/**
+ * Polls the music + video legs of a composite ref in a single tick.
+ * Returns a merged ChatResponse:
+ *   - `predictionStatus` is `succeeded` only when ALL non-skipped legs land
+ *   - `assetUrl` is the music URL when ready (most-distinctive deliverable
+ *     for music-video prompts; the video URL rides in metadata.video.url)
+ *   - failures degrade gracefully — a failed leg doesn't kill the others.
+ */
+async function pollCompositeTask(predictionId: string, sessionId?: string): Promise<ChatResponse> {
+  const ref = decodeCompositeRef(predictionId);
+  if (!ref) {
+    return {
+      success: false,
+      intent: 'music_generation',
+      responseType: 'text',
+      message: 'Composite task token is malformed.',
+      predictionId,
+      predictionStatus: 'error',
+      metadata: { provider: 'composite', composite: true },
+    };
+  }
+
+  type LegState = { status: 'pending' | 'succeeded' | 'failed' | 'skipped'; url: string | null; error?: string };
+
+  const music: LegState = { status: ref.musicWorkId ? 'pending' : 'skipped', url: null };
+  const video: LegState = { status: ref.videoTaskRef ? 'pending' : 'skipped', url: null };
+
+  // Music leg via Udio.
+  if (ref.musicWorkId) {
+    try {
+      const udio = await pollUdioTask(ref.musicWorkId, `udio:${ref.musicWorkId}`);
+      if (udio.predictionStatus === 'succeeded') {
+        music.status = 'succeeded';
+        music.url = udio.assetUrl ?? null;
+      } else if (udio.predictionStatus === 'failed') {
+        music.status = 'failed';
+        music.error = udio.message;
+      }
+    } catch (err) {
+      music.status = 'failed';
+      music.error = err instanceof Error ? err.message : String(err);
+    }
+  }
+
+  // Video leg via ServiceManager.
+  if (ref.videoTaskRef) {
+    try {
+      const sm = await serviceManager.poll(ref.videoTaskRef, sessionId || ref.sessionId);
+      if (sm.predictionStatus === 'succeeded') {
+        video.status = 'succeeded';
+        video.url = sm.assetUrl ?? null;
+      } else if (sm.predictionStatus === 'failed' || sm.predictionStatus === 'error' || sm.predictionStatus === 'canceled') {
+        video.status = 'failed';
+        video.error = sm.message;
+      }
+    } catch (err) {
+      video.status = 'failed';
+      video.error = err instanceof Error ? err.message : String(err);
+    }
+  }
+
+  const legs = [music, video].filter((leg) => leg.status !== 'skipped');
+  const anyPending = legs.some((leg) => leg.status === 'pending');
+  const allSucceeded = legs.length > 0 && legs.every((leg) => leg.status === 'succeeded');
+  const anyFailed = legs.some((leg) => leg.status === 'failed');
+
+  const compositeStatus: 'processing' | 'succeeded' | 'failed' =
+    anyPending ? 'processing' : allSucceeded ? 'succeeded' : anyFailed ? 'failed' : 'processing';
+
+  const summaryLines: string[] = [];
+  if (ref.lyrics) summaryLines.push('✅ Lyrics composed');
+  summaryLines.push(`🎵 Music: ${music.status}${music.error ? ` (${music.error})` : ''}`);
+  summaryLines.push(`🎬 Video: ${video.status}${video.error ? ` (${video.error})` : ''}`);
+
+  return {
+    success: compositeStatus !== 'failed',
+    intent: 'music_generation',
+    responseType: 'audio',
+    message: summaryLines.join('\n'),
+    assetUrl: music.url ?? video.url ?? null,
+    assetType: 'composite-music-video',
+    predictionId,
+    predictionStatus: compositeStatus,
+    metadata: {
+      provider: 'composite',
+      composite: true,
+      compositePlan: {
+        lyrics: ref.lyrics ?? null,
+        musicPredictionId: ref.musicWorkId ?? null,
+        videoTaskRef: ref.videoTaskRef ?? null,
+        videoStatus: video.status,
+      },
+      music: { status: music.status, url: music.url, error: music.error },
+      video: { status: video.status, url: video.url, error: video.error },
+    },
+  };
 }
 
 function shouldRouteInteriorToWorldLabs(input: OrchestratorInput): boolean {

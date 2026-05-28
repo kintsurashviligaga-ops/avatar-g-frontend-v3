@@ -34,9 +34,13 @@ import 'server-only';
 import type { OrchestratorInput, ChatResponse } from './providerRouter';
 import { startUdioGeneration } from '@/lib/udio/client';
 import { generateWithGemini } from '@/lib/gemini/client';
-import { recordTrace, withTrace } from '@/lib/observability/agentTrace';
+import { withTrace } from '@/lib/observability/agentTrace';
 import { forecastMarginForAction } from '@/lib/monetization/audit-engine';
 import { createServiceRoleClient } from '@/lib/supabase/server';
+import { ServiceManager } from './ServiceManager';
+import { encodeCompositeRef } from './compositeTaskRef';
+
+const serviceManager = new ServiceManager();
 
 // Recognise prompts that need BOTH music AND video. Loose — the false-positive
 // cost is just running the composite path on a request that would have been
@@ -62,11 +66,12 @@ interface CompositePlan {
   videoError?: string;
 }
 
+interface ForecastLeg { wholesale: number; retail: number }
 interface ForecastResult {
   totalRetailGel: number;
   totalWholesaleGel: number;
   marginMultiplier: number | null;
-  breakdown: Array<{ action: string; wholesale: number; retail: number }>;
+  legs: { lyrics: ForecastLeg; music: ForecastLeg; video: ForecastLeg };
 }
 
 /** Compute total retail + wholesale GEL for the composite plan. */
@@ -83,11 +88,11 @@ function forecastComposite(): ForecastResult {
     totalRetailGel: totalRetail,
     totalWholesaleGel: totalWholesale,
     marginMultiplier: totalWholesale > 0 ? totalRetail / totalWholesale : null,
-    breakdown: [
-      { action: 'lyrics', wholesale: lyrics.wholesaleGel, retail: lyrics.retailGel },
-      { action: 'music', wholesale: music.wholesaleGel, retail: music.retailGel },
-      { action: 'video', wholesale: video.wholesaleGel, retail: video.retailGel },
-    ],
+    legs: {
+      lyrics: { wholesale: lyrics.wholesaleGel, retail: lyrics.retailGel },
+      music: { wholesale: music.wholesaleGel, retail: music.retailGel },
+      video: { wholesale: video.wholesaleGel, retail: video.retailGel },
+    },
   };
 }
 
@@ -167,8 +172,8 @@ export async function handleMusicVideoComposite(input: OrchestratorInput): Promi
           workerKind: 'gemini',
           action: 'compose_lyrics',
           promptSummary: input.message,
-          costWholesaleGel: forecast.breakdown[0].wholesale,
-          costRetailGel: forecast.breakdown[0].retail,
+          costWholesaleGel: forecast.legs.lyrics.wholesale,
+          costRetailGel: forecast.legs.lyrics.retail,
           metadata: { composite: true, leg: 'lyrics' },
         },
         () => generateWithGemini({ prompt: lyricsPrompt, tier: 'flash' }),
@@ -186,7 +191,8 @@ export async function handleMusicVideoComposite(input: OrchestratorInput): Promi
   const opts = input.selectedOptions || {};
   const baseStyle = opts.style?.toLowerCase() || 'hip-hop';
 
-  const musicPromise = process.env.UDIO_API_KEY
+  // Music leg — Udio.
+  const musicPromise: Promise<string | null> = process.env.UDIO_API_KEY
     ? withTrace(
         {
           userId: input.userId || null,
@@ -194,8 +200,8 @@ export async function handleMusicVideoComposite(input: OrchestratorInput): Promi
           workerKind: 'udio',
           action: 'generate_track',
           promptSummary: input.message,
-          costWholesaleGel: forecast.breakdown[1].wholesale,
-          costRetailGel: forecast.breakdown[1].retail,
+          costWholesaleGel: forecast.legs.music.wholesale,
+          costRetailGel: forecast.legs.music.retail,
           metadata: { composite: true, leg: 'music', style: baseStyle },
         },
         () =>
@@ -207,7 +213,7 @@ export async function handleMusicVideoComposite(input: OrchestratorInput): Promi
             makeInstrumental: false,
           }),
       )
-        .then((r) => `udio:${r.workId}`)
+        .then((r) => r.workId)
         .catch((err) => {
           // eslint-disable-next-line no-console
           console.warn('[composite] music leg failed:', err instanceof Error ? err.message : err);
@@ -215,45 +221,72 @@ export async function handleMusicVideoComposite(input: OrchestratorInput): Promi
         })
     : Promise.resolve(null);
 
-  // Video leg is recorded as queued but NOT physically started here. The
-  // current ServiceManager.runVideoAvatar / runLtxVideo signatures expect a
-  // ServiceManagerRequest with an intent + serviceContext that won't match
-  // music_video cleanly without invasive changes. Rather than ship a
-  // half-broken dispatch, the trace records the intent and the response
-  // metadata flags it for a follow-up dedicated video worker call from the
-  // client. This keeps the composite honest: it does NOT pretend to have
-  // started the video when it hasn't.
-  await recordTrace({
-    userId: input.userId || null,
-    agentId: 'video-agent',
-    workerKind: 'ltx',
-    action: 'queue_clip',
-    promptSummary: input.message,
-    costWholesaleGel: 0, // queued, not invoiced yet
-    costRetailGel: 0,
-    status: 'succeeded',
-    metadata: {
-      composite: true,
-      leg: 'video',
-      queued: true,
-      style: baseStyle,
-      durationSec: 30,
-      note: 'awaiting dedicated client-side video kickoff (multi-asset polling not yet implemented)',
-    },
-  });
+  // Video leg — LTX via ServiceManager. The lyrics text (when available)
+  // flows into the video brief so the cinematic clip lines up with the
+  // song's narrative beats.
+  const videoBrief = plan.lyrics
+    ? `${baseStyle} music video, 30 seconds, cinematic, performer lip-syncing the following lyrics: ${plan.lyrics.slice(0, 600)}`
+    : `${baseStyle} music video, 30 seconds, cinematic, based on: ${input.message}`;
 
-  plan.musicPredictionId = await musicPromise;
-  plan.videoStatus = 'queued';
+  const videoPromise: Promise<string | null> = process.env.LTX_VIDEO_API_KEY
+    ? withTrace(
+        {
+          userId: input.userId || null,
+          agentId: 'video-agent',
+          workerKind: 'ltx',
+          action: 'generate_clip',
+          promptSummary: videoBrief,
+          costWholesaleGel: forecast.legs.video.wholesale,
+          costRetailGel: forecast.legs.video.retail,
+          metadata: { composite: true, leg: 'video', style: baseStyle, durationSec: 30 },
+        },
+        () =>
+          serviceManager.execute({
+            sessionId: input.sessionId,
+            serviceContext: 'video',
+            intent: 'video_generation',
+            userPrompt: videoBrief,
+            selectedOptions: {
+              ...opts,
+              duration: '30',
+              aspectRatio: opts.aspectRatio || opts.ratio || '9:16',
+            },
+            locale: input.locale,
+          }),
+        (r) => r.assetUrl || r.predictionId || null,
+      )
+        .then((r) => r.predictionId || r.assetUrl || null)
+        .catch((err) => {
+          // eslint-disable-next-line no-console
+          console.warn('[composite] video leg failed:', err instanceof Error ? err.message : err);
+          return null;
+        })
+    : Promise.resolve(null);
+
+  const [musicWorkId, videoTaskRef] = await Promise.all([musicPromise, videoPromise]);
+
+  plan.musicPredictionId = musicWorkId;
+  plan.videoTaskRef = videoTaskRef;
+  plan.videoStatus = videoTaskRef ? 'queued' : 'skipped';
 
   // ── Build composite response ───────────────────────────────────────────
-  // Primary tracker = music predictionId (chat shell polls this). Video
-  // ref + lyrics ride in metadata.compositePlan for the UI to render
-  // alongside as soon as multi-asset polling lands.
+  // The chat shell follows ONE predictionId. We encode BOTH leg refs into
+  // a `composite:` token so pollOrchestrationTask can decode and poll
+  // each leg in a single tick.
+  const compositePredictionId = (musicWorkId || videoTaskRef)
+    ? encodeCompositeRef({
+        sessionId: input.sessionId,
+        createdAt: Date.now(),
+        musicWorkId: musicWorkId ?? undefined,
+        videoTaskRef: videoTaskRef ?? undefined,
+        lyrics: plan.lyrics,
+      })
+    : undefined;
 
   const summary = [
     plan.lyrics ? '✅ Lyrics composed' : '⚠️ Lyrics skipped',
-    plan.musicPredictionId ? '🎵 Music generation started' : '⚠️ Music skipped (no provider)',
-    '🎬 Video clip queued for follow-up worker',
+    musicWorkId ? '🎵 Music generation started' : '⚠️ Music skipped (no provider)',
+    videoTaskRef ? '🎬 Cinematic video clip started' : '⚠️ Video skipped (no provider)',
   ].join('\n');
 
   return {
@@ -261,8 +294,8 @@ export async function handleMusicVideoComposite(input: OrchestratorInput): Promi
     intent: 'music_generation',
     responseType: 'audio',
     message: summary,
-    predictionId: plan.musicPredictionId ?? undefined,
-    predictionStatus: plan.musicPredictionId ? 'processing' : 'failed',
+    predictionId: compositePredictionId,
+    predictionStatus: compositePredictionId ? 'processing' : 'failed',
     assetType: 'composite-music-video',
     metadata: {
       provider: 'composite',
@@ -272,7 +305,7 @@ export async function handleMusicVideoComposite(input: OrchestratorInput): Promi
         retailGel: forecast.totalRetailGel,
         wholesaleGel: forecast.totalWholesaleGel,
         marginMultiplier: forecast.marginMultiplier,
-        breakdown: forecast.breakdown,
+        legs: forecast.legs,
       },
     },
   };
