@@ -101,22 +101,27 @@ export function FloatingAvatar() {
             style={{ transformOrigin: 'bottom right' }}
             className="fixed inset-0 z-[60] bg-[#030303] flex items-center justify-center"
           >
-            {HAS_VIDEO ? (
-              <video
-                ref={fullRef}
-                src={VIDEO_URL}
-                poster={POSTER}
-                playsInline preload="auto"
-                onEnded={() => setSoundOn(false)}
-                className="h-full w-full object-contain"
-              />
-            ) : (
-              <div className="flex flex-col items-center gap-4 text-white/70">
-                <span className="flex h-28 w-28 items-center justify-center rounded-full bg-gradient-to-br from-cyan-400 via-sky-500 to-blue-600">
-                  <Bot size={48} className="text-white" />
-                </span>
-              </div>
-            )}
+            {/* Strict 9:16 stage — full-bleed on mobile (inset-0), a centered
+                vertical 9:16 box on desktop. object-contain so the executive
+                figure (head + suit + tie) is never cropped or distorted. */}
+            <div className="relative h-full w-full overflow-hidden md:h-[96vh] md:w-auto md:aspect-[9/16] md:rounded-[1.75rem] md:border md:border-white/10 md:shadow-[0_40px_140px_-30px_rgba(56,189,248,0.65)]">
+              {HAS_VIDEO ? (
+                <video
+                  ref={fullRef}
+                  src={VIDEO_URL}
+                  poster={POSTER}
+                  playsInline preload="auto"
+                  onEnded={() => setSoundOn(false)}
+                  className="h-full w-full object-contain"
+                />
+              ) : (
+                <div className="flex h-full w-full flex-col items-center justify-center gap-4 text-white/70">
+                  <span className="flex h-28 w-28 items-center justify-center rounded-full bg-gradient-to-br from-cyan-400 via-sky-500 to-blue-600">
+                    <Bot size={48} className="text-white" />
+                  </span>
+                </div>
+              )}
+            </div>
 
             <button
               type="button"
