@@ -19,6 +19,7 @@ import { getUdioGenerationStatus, startUdioGeneration } from '@/lib/udio/client'
 import { buildInteriorDesignBrief } from '@/lib/interior/smart-intake';
 import { generateWorldLabsInterior } from '@/lib/worldlabs/client';
 import { buildIterativePrompt } from './iteration-store';
+import Anthropic from '@anthropic-ai/sdk';
 import { generateWithGemini } from '@/lib/gemini/client';
 import { getGeminiSystemPrompt, type GeminiServiceContext } from '@/lib/gemini/prompts';
 import { extractMediaArtifact, type MediaKind } from '@/lib/media/extractArtifact';
@@ -723,20 +724,72 @@ async function handleTextIntent(
   input: OrchestratorInput,
   detected: DetectedIntent,
 ): Promise<ChatResponse> {
-  // Cognitive core is Gemini-only. OpenAI is deprecated and intentionally NOT
-  // in the runtime path (no silent fallback that would resurface its billing
-  // errors). If Gemini is unconfigured/erroring we return a clean, surfaced
-  // failure instead of routing to another provider.
+  // Cognitive core: Claude (Anthropic) is primary. Gemini is a fallback only
+  // when Claude is unconfigured (the Gemini project is stuck on free-tier
+  // limit 0). OpenAI stays fully out of the runtime path.
+  const anthropicKey = process.env.ANTHROPIC_API_KEY;
+  if (anthropicKey) {
+    try {
+      const ctx = toGeminiServiceContext(input.serviceContext);
+      const systemPrompt = getGeminiSystemPrompt(ctx, input.locale || 'ka');
+      const anthropic = new Anthropic({ apiKey: anthropicKey });
+      const model = process.env.ANTHROPIC_MODEL || 'claude-haiku-4-5-20251001';
+      const msg = await anthropic.messages.create({
+        model,
+        max_tokens: 1024,
+        system: systemPrompt,
+        messages: [
+          ...input.history.map((h) => ({
+            role: h.role === 'assistant' ? ('assistant' as const) : ('user' as const),
+            content: h.content,
+          })),
+          { role: 'user' as const, content: input.message },
+        ],
+      });
+      const text = msg.content
+        .filter((b): b is Anthropic.TextBlock => b.type === 'text')
+        .map((b) => b.text)
+        .join('')
+        .trim();
+      return {
+        success: true,
+        intent: detected.intent,
+        responseType: 'text',
+        message: text || '…',
+        metadata: {
+          provider: 'anthropic',
+          model: msg.model,
+          tokensIn: msg.usage?.input_tokens,
+          tokensOut: msg.usage?.output_tokens,
+          confidence: detected.confidence,
+        },
+      };
+    } catch (error) {
+      const m = error instanceof Error ? error.message : 'Claude request failed';
+      console.error('[providerRouter] Claude text path failed:', error);
+      // Surface the Claude error unless a Gemini fallback is available.
+      if (!process.env.GEMINI_API_KEY) {
+        return {
+          success: false,
+          intent: detected.intent,
+          responseType: 'text',
+          message: 'Chat is temporarily unavailable. Please try again shortly.',
+          metadata: { provider: 'anthropic', error: m },
+        };
+      }
+    }
+  }
+
+  // ── Gemini fallback (only reached when Claude is absent or errored) ──
   if (!process.env.GEMINI_API_KEY) {
     return {
       success: false,
       intent: detected.intent,
       responseType: 'text',
       message: 'Chat is temporarily unavailable (cognitive core not configured).',
-      metadata: { provider: 'gemini', error: 'GEMINI_API_KEY not configured' },
+      metadata: { provider: 'anthropic', error: 'ANTHROPIC_API_KEY / GEMINI_API_KEY not configured' },
     };
   }
-
   try {
     const ctx = toGeminiServiceContext(input.serviceContext);
     const systemPrompt = getGeminiSystemPrompt(ctx, input.locale || 'ka');
@@ -751,7 +804,6 @@ async function handleTextIntent(
       })),
       temperature: 0.6,
     });
-
     return {
       success: true,
       intent: detected.intent,
