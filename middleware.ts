@@ -14,8 +14,9 @@ function getPreferredLocale(request: NextRequest) {
 
 /**
  * Root middleware:
- * / and locale roots → /{locale}/landing  (marketing landing page)
- * /{locale}/landing is the canonical home; dashboard reachable via CTA/login
+ * / and locale roots → /{locale}/chat  (Unified Workspace entry)
+ * The old /{locale}/landing marketing stack is bypassed; users land directly
+ * in the chat shell. The marketing page remains reachable by direct URL.
  * Paths without locale prefix → /{locale}/path
  */
 export async function middleware(request: NextRequest) {
@@ -47,11 +48,10 @@ export async function middleware(request: NextRequest) {
     const segments = pathname.split('/').filter(Boolean);
     const firstSegment = segments[0] ?? '';
 
-    // Bare root → /{locale}/landing (informational marketing page; the dashboard
-    // is reached via the landing's "Get Started" / login CTAs).
+    // Bare root → /{locale}/chat (Unified Workspace).
     if (pathname === '/') {
       const url = request.nextUrl.clone();
-      url.pathname = `/${preferredLocale}/landing`;
+      url.pathname = `/${preferredLocale}/chat`;
       const response = NextResponse.redirect(url);
       response.cookies.set('NEXT_LOCALE', preferredLocale, {
         path: '/',
@@ -61,10 +61,10 @@ export async function middleware(request: NextRequest) {
       return response;
     }
 
-    // Locale root (e.g. /ka, /en, /ru) → /{locale}/landing
+    // Locale root (e.g. /ka, /en, /ru) → /{locale}/chat
     if (SUPPORTED_LOCALES.includes(firstSegment) && segments.length === 1) {
       const url = request.nextUrl.clone();
-      url.pathname = `/${firstSegment}/landing`;
+      url.pathname = `/${firstSegment}/chat`;
       const response = NextResponse.redirect(url);
       response.cookies.set('NEXT_LOCALE', firstSegment, {
         path: '/',
