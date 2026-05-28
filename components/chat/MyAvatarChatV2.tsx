@@ -166,7 +166,7 @@ const MAX_MEDIA_MB = 25;
 const MODES = [
   { id: 'global',   Icon: MessageSquare, accent: '#22d3ee', label: { en: 'Chat',     ka: 'ჩათი',            ru: 'Чат' } },
   { id: 'image',    Icon: ImagePlus,     accent: '#34d399', label: { en: 'Image',     ka: 'სურათი',          ru: 'Изображение' } },
-  { id: 'video',    Icon: Film,          accent: '#38bdf8', label: { en: '30s Film',  ka: '30 წმ ფილმი',     ru: '30-сек фильм' } },
+  { id: 'music',    Icon: Music,         accent: '#f472b6', label: { en: 'Music',     ka: 'მუსიკა',          ru: 'Музыка' } },
   { id: 'avatar',   Icon: User,          accent: '#818cf8', label: { en: 'Avatar',    ka: 'AI ავატარი',      ru: 'AI Аватар' } },
   { id: 'interior', Icon: Box,           accent: '#10b981', label: { en: 'Room 3D',   ka: 'ოთახის 3D',       ru: 'Комната 3D' } },
   { id: 'voice',    Icon: Volume2,       accent: '#f59e0b', label: { en: 'Voice',     ka: 'ხმა',             ru: 'Голос' } },
