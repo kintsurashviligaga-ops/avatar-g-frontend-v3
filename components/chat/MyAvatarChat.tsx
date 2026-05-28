@@ -1691,14 +1691,9 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
               </button>
             </div>
           )}
-          {/* GEL wallet balance + free-video counter (PHASE 2/3) */}
-          <div className="max-w-2xl mx-auto mb-2 flex items-center justify-between gap-2">
+          {/* GEL wallet balance — freemium badge removed for clean corporate brand. */}
+          <div className="max-w-2xl mx-auto mb-2 flex items-center">
             <BalanceChip balanceGel={balanceGel} onClick={() => { setRefillRequired(null); setRefillOpen(true); }} />
-            {avatarName && freeAvatarChats > 0 && (
-              <span className="inline-flex items-center gap-1.5 h-8 px-3 rounded-full border border-sky-400/30 bg-sky-500/10 text-[12px] font-semibold text-sky-200 shadow-[0_0_16px_-6px_rgba(56,189,248,0.6)]">
-                ✨ {freeAvatarChats} {localeCode === 'ka' ? 'უფასო ვიდეო პასუხი დარჩა' : localeCode === 'ru' ? 'бесплатных видео осталось' : 'free video replies left'}
-              </span>
-            )}
           </div>
           {/* One-tap cinematic production — button → live SSE telemetry → inline film */}
           <div className="max-w-2xl mx-auto mb-2">
@@ -1710,9 +1705,9 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
                   type="button"
                   onClick={() => void runProduce()}
                   disabled={sending}
-                  className="flex-1 min-w-[30%] inline-flex items-center justify-center gap-1.5 h-11 rounded-2xl font-semibold text-[13px] text-white bg-gradient-to-r from-cyan-400 via-sky-500 to-blue-600 hover:from-cyan-300 hover:via-sky-400 hover:to-blue-500 active:scale-[0.99] disabled:opacity-50 transition-transform duration-150 shadow-[0_8px_30px_-8px_rgba(56,189,248,0.6)]"
+                  className="flex-1 min-w-[30%] inline-flex items-center justify-center gap-2 h-11 rounded-2xl font-semibold text-[13px] text-white/90 bg-[#121212] border border-white/10 hover:border-sky-400/40 hover:bg-white/[0.05] hover:shadow-[0_8px_30px_-12px_rgba(56,189,248,0.55)] active:scale-[0.99] disabled:opacity-50 transition-all duration-200"
                 >
-                  <Sparkles size={15} />
+                  <Sparkles size={15} className="text-cyan-300" />
                   {localeCode === 'ka' ? '30წ ფილმი' : localeCode === 'ru' ? '30с фильм' : 'Produce Film'}
                 </button>
                 <button
@@ -1720,9 +1715,9 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
                   onClick={() => void runAvatarProduce()}
                   disabled={sending}
                   title={localeCode === 'ka' ? 'დაწერე ტექსტი (+სურვ. ფოტო)' : 'Type a script (+optional photo)'}
-                  className="flex-1 min-w-[30%] inline-flex items-center justify-center gap-1.5 h-11 rounded-2xl font-semibold text-[13px] text-white bg-gradient-to-r from-sky-600 to-blue-600 hover:from-sky-500 hover:to-blue-500 active:scale-[0.99] disabled:opacity-50 transition-transform duration-150 shadow-[0_8px_30px_-8px_rgba(37,99,235,0.55)]"
+                  className="flex-1 min-w-[30%] inline-flex items-center justify-center gap-2 h-11 rounded-2xl font-semibold text-[13px] text-white/90 bg-[#121212] border border-white/10 hover:border-sky-400/40 hover:bg-white/[0.05] hover:shadow-[0_8px_30px_-12px_rgba(56,189,248,0.55)] active:scale-[0.99] disabled:opacity-50 transition-all duration-200"
                 >
-                  <UserIcon size={15} />
+                  <UserIcon size={15} className="text-sky-300" />
                   {localeCode === 'ka' ? 'AI ავატარი' : localeCode === 'ru' ? 'AI Аватар' : 'AI Avatar'}
                 </button>
                 <button
@@ -1730,9 +1725,9 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
                   onClick={() => void runInteriorDesign()}
                   disabled={sending}
                   title={localeCode === 'ka' ? 'მიამაგრე ოთახის ფოტო, მერე დააჭირე' : 'Attach a room photo, then tap'}
-                  className="flex-1 min-w-[30%] inline-flex items-center justify-center gap-1.5 h-11 rounded-2xl font-semibold text-[13px] text-white bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 active:scale-[0.99] disabled:opacity-50 transition-transform duration-150 shadow-[0_8px_30px_-8px_rgba(16,185,129,0.55)]"
+                  className="flex-1 min-w-[30%] inline-flex items-center justify-center gap-2 h-11 rounded-2xl font-semibold text-[13px] text-white/90 bg-[#121212] border border-white/10 hover:border-emerald-400/40 hover:bg-white/[0.05] hover:shadow-[0_8px_30px_-12px_rgba(16,185,129,0.5)] active:scale-[0.99] disabled:opacity-50 transition-all duration-200"
                 >
-                  <SofaIcon size={15} />
+                  <SofaIcon size={15} className="text-emerald-300" />
                   {localeCode === 'ka' ? 'ოთახის 3D' : localeCode === 'ru' ? 'Комната 3D' : 'Design Room'}
                 </button>
               </div>
@@ -1759,7 +1754,7 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
                 type="button"
                 onClick={() => handlePill(p)}
                 disabled={sending}
-                className="group/pill flex-shrink-0 inline-flex items-center gap-2 pl-1.5 pr-4 py-1.5 rounded-2xl bg-white/[0.03] border border-white/[0.10] hover:border-sky-400/50 hover:bg-white/[0.06] hover:shadow-[0_6px_24px_-10px_rgba(56,189,248,0.7)] active:scale-95 disabled:opacity-50 transition-all duration-200 text-[13.5px] font-semibold text-white/90"
+                className="group/pill flex-shrink-0 inline-flex items-center gap-2 pl-1.5 pr-4 py-1.5 rounded-2xl bg-[#121212] border border-white/10 hover:border-sky-400/40 hover:bg-white/[0.05] hover:shadow-[0_6px_24px_-12px_rgba(56,189,248,0.6)] active:scale-95 disabled:opacity-50 transition-all duration-200 text-[13.5px] font-semibold text-white/90"
               >
                 <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-400/15 to-blue-600/15 border border-white/[0.08] text-sky-300 group-hover/pill:from-cyan-400/25 group-hover/pill:to-blue-600/25 group-hover/pill:text-cyan-200 transition-colors">
                   <p.icon size={15} />

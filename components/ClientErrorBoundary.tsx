@@ -1,5 +1,5 @@
 'use client';
-import ErrorBoundary from '@/components/landing/ErrorBoundary';
+import ErrorBoundary from '@/components/ErrorBoundary';
 import type { ReactNode } from 'react';
 
 export function ClientErrorBoundary({ children }: { children: ReactNode }) {
