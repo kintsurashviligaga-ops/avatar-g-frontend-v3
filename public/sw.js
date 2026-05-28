@@ -1,4 +1,4 @@
-const CACHE_NAME = 'avatar-g-shell-v13';
+const CACHE_NAME = 'avatar-g-shell-v14';
 const CORE_ASSETS = [
   '/offline.html',
   '/manifest.json',
@@ -64,6 +64,32 @@ self.addEventListener('fetch', (event) => {
   }
 
   const destination = request.destination;
+
+  // Large media (video/audio): pass straight through to the network so the
+  // browser can serve Range requests natively. Never SW-cache these — caching
+  // breaks range streaming and bloats storage on native iOS app wrappers.
+  if (destination === 'video' || destination === 'audio') {
+    return;
+  }
+
+  // App-shell icons: cache-first for instant standalone launch. These are
+  // immutable, versioned assets, so a cached copy is always safe; we still
+  // revalidate in the background to pick up a new icon set on next load.
+  if (url.pathname.startsWith('/icons/') || url.pathname === '/manifest.json' || url.pathname === '/favicon.png') {
+    event.respondWith(
+      caches.match(request).then((cached) => {
+        const network = fetch(request)
+          .then((response) => {
+            const copy = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
+            return response;
+          })
+          .catch(() => cached);
+        return cached || network;
+      }),
+    );
+    return;
+  }
 
   if (destination === 'style' || destination === 'script') {
     event.respondWith(

@@ -40,6 +40,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Box,
   Camera,
+  Check,
   Download,
   Film,
   Globe,
@@ -75,7 +76,17 @@ import { resolveAvatarVideo } from '@/lib/avatar/video-config';
 import { useKeyboardResilience } from '@/hooks/useKeyboardResilience';
 
 const ACCENT = '#22d3ee';
-const { idleUrl: AVATAR_VIDEO, poster: AVATAR_POSTER, hasVideo: HAS_AVATAR_VIDEO } = resolveAvatarVideo();
+
+// Bundled fallback so the floating widget always renders the real executive
+// avatar even when NEXT_PUBLIC_AVATAR_IDLE_VIDEO_URL isn't configured in the
+// deploy environment. A configured env var still wins (resolveAvatarVideo).
+const FALLBACK_AVATAR_VIDEO = '/media/avatar/greeting-v4.mp4';
+const FALLBACK_AVATAR_POSTER = '/media/avatar/greeting-v4.jpg';
+
+const _avatar = resolveAvatarVideo();
+const AVATAR_VIDEO = _avatar.hasVideo ? _avatar.idleUrl : FALLBACK_AVATAR_VIDEO;
+const AVATAR_POSTER = _avatar.hasVideo ? _avatar.poster : FALLBACK_AVATAR_POSTER;
+const HAS_AVATAR_VIDEO = true;
 
 interface Props {
   locale: string;
@@ -157,6 +168,117 @@ const MODES = [
 ] as const;
 type ServiceMode = typeof MODES[number]['id'];
 
+/* ─── Live orchestration telemetry (driven by real backend status) ───────────
+ * /api/chat/orchestrate returns a single JSON response; async media generation
+ * carries a `predictionId` + `predictionStatus` (Replicate-style) that the
+ * client re-POSTs to poll. The composite music-video pipeline additionally
+ * reports genuine per-leg states under metadata.legs. The telemetry UI below
+ * is bound strictly to these real fields — never to timers. */
+
+type LegStatus = 'pending' | 'succeeded' | 'failed' | 'skipped';
+
+interface OrchestrateResponse {
+  success?: boolean;
+  message?: string;
+  responseType?: 'text' | 'image' | 'video' | 'audio' | 'analysis' | 'action_suggestions';
+  assetUrl?: string | null;
+  predictionId?: string;
+  predictionStatus?: string;
+  metadata?: {
+    model?: string;
+    agentId?: string;
+    legs?: { music?: { status: LegStatus }; video?: { status: LegStatus } };
+    [k: string]: unknown;
+  };
+  error?: string;
+}
+
+type StageState = 'pending' | 'active' | 'done' | 'failed' | 'skipped';
+interface PipelineStage {
+  key: 'analysis' | 'audio' | 'render';
+  label: { en: string; ka: string; ru: string };
+  state: StageState;
+}
+interface PipelineState { active: boolean; stages: PipelineStage[] }
+
+const STAGE_LABELS: Record<PipelineStage['key'], PipelineStage['label']> = {
+  analysis: { en: 'Script & layout analysis', ka: 'სცენარის ანალიზი', ru: 'Анализ сценария' },
+  audio:    { en: 'Audio & waveform synthesis', ka: 'აუდიოს სინთეზი', ru: 'Синтез аудио' },
+  render:   { en: 'GPU cinematic render', ka: 'GPU ვიდეო რენდერი', ru: 'GPU рендер видео' },
+};
+
+const TERMINAL_STATUSES = new Set(['succeeded', 'failed', 'error', 'canceled']);
+function isTerminalStatus(status?: string): boolean {
+  return !status || TERMINAL_STATUSES.has(status);
+}
+
+function legToStage(s: LegStatus | undefined): StageState {
+  if (s === 'succeeded') return 'done';
+  if (s === 'failed') return 'failed';
+  if (s === 'skipped') return 'skipped';
+  if (s === 'pending') return 'active';
+  return 'pending';
+}
+
+/** Build the telemetry stage list from a real response (or in-flight state). */
+function derivePipeline(resp: OrchestrateResponse | null): PipelineState {
+  // No response yet → the request itself is in flight (analysis active).
+  if (!resp) {
+    return {
+      active: true,
+      stages: [
+        { key: 'analysis', label: STAGE_LABELS.analysis, state: 'active' },
+        { key: 'audio', label: STAGE_LABELS.audio, state: 'pending' },
+        { key: 'render', label: STAGE_LABELS.render, state: 'pending' },
+      ],
+    };
+  }
+
+  const legs = resp.metadata?.legs;
+
+  // Pure text / analysis reply — no media render pipeline to surface.
+  const isMediaJob = !!resp.predictionId || !!legs || ['image', 'video', 'audio'].includes(resp.responseType || '');
+  if (!isMediaJob) return { active: false, stages: [] };
+
+  const terminal = isTerminalStatus(resp.predictionStatus);
+  const failed = resp.predictionStatus === 'failed' || resp.predictionStatus === 'error' || resp.predictionStatus === 'canceled';
+
+  // Analysis completes the moment the backend accepts the request.
+  const analysis: StageState = 'done';
+
+  let audio: StageState;
+  let render: StageState;
+
+  if (legs) {
+    // Composite music-video pipeline: bind to genuine per-leg status.
+    audio = legToStage(legs.music?.status);
+    render = legToStage(legs.video?.status);
+  } else {
+    // Single async prediction: no separate audio leg.
+    audio = 'skipped';
+    render = failed ? 'failed' : terminal ? 'done' : 'active';
+  }
+
+  return {
+    active: !terminal || (!!legs && (audio === 'active' || render === 'active')),
+    stages: [
+      { key: 'analysis', label: STAGE_LABELS.analysis, state: analysis },
+      { key: 'audio', label: STAGE_LABELS.audio, state: audio },
+      { key: 'render', label: STAGE_LABELS.render, state: render },
+    ],
+  };
+}
+
+/** Promise sleep that rejects if the provided signal aborts (cancellation). */
+function sleep(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal.aborted) return reject(new DOMException('Aborted', 'AbortError'));
+    const t = setTimeout(() => { signal.removeEventListener('abort', onAbort); resolve(); }, ms);
+    const onAbort = () => { clearTimeout(t); reject(new DOMException('Aborted', 'AbortError')); };
+    signal.addEventListener('abort', onAbort, { once: true });
+  });
+}
+
 type SpeechRecognitionLike = {
   continuous: boolean;
   interimResults: boolean;
@@ -185,6 +307,7 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated }: Pr
   const [mode, setMode] = useState<ServiceMode>('global');
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [avatarSoundOn, setAvatarSoundOn] = useState(false);
+  const [pipeline, setPipeline] = useState<PipelineState | null>(null);
 
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -283,71 +406,101 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated }: Pr
     });
   }, []);
 
-  // ── Send message ──────────────────────────────────────────────────
+  // ── Send message (real async lifecycle: POST → poll predictionId) ──
   const sendMessage = useCallback(async (overrideText?: string) => {
     const text = (overrideText ?? inputText).trim();
     if (!text || isLoading) return;
 
-    const userMsg: ChatMessage = {
-      id: `u_${Date.now()}`,
-      role: 'user',
-      text,
-      timestamp: Date.now(),
-    };
-    dispatch({ type: 'ADD_MESSAGE', message: userMsg });
+    dispatch({ type: 'ADD_MESSAGE', message: { id: `u_${Date.now()}`, role: 'user', text, timestamp: Date.now() } });
     dispatch({ type: 'SET_INPUT', text: '' });
     dispatch({ type: 'CLEAR_ATTACHMENTS' });
     dispatch({ type: 'SET_LOADING', value: true });
+    setPipeline(derivePipeline(null));
+
+    const controller = new AbortController();
+    abortRef.current = controller;
+    const signal = controller.signal;
+
+    // POST with a 45s per-attempt timeout + bounded retry on network/5xx —
+    // the client-side fail-safe for dropouts/timeouts (covers the interior /
+    // ოთახის 3D pipeline and every other mode). User-cancel is not retried.
+    const postOrchestrate = async (payload: Record<string, unknown>): Promise<OrchestrateResponse> => {
+      const RETRIES = 2;
+      let lastErr: unknown;
+      for (let attempt = 0; attempt <= RETRIES; attempt++) {
+        const timeoutCtl = new AbortController();
+        const onUserAbort = () => timeoutCtl.abort();
+        signal.addEventListener('abort', onUserAbort, { once: true });
+        const timer = setTimeout(() => timeoutCtl.abort(), 45000);
+        try {
+          const res = await fetch('/api/chat/orchestrate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            signal: timeoutCtl.signal,
+            body: JSON.stringify(payload),
+          });
+          clearTimeout(timer);
+          signal.removeEventListener('abort', onUserAbort);
+          const json = (await res.json()) as OrchestrateResponse;
+          if (!res.ok && res.status >= 500 && attempt < RETRIES) {
+            lastErr = new Error(json.error || json.message || 'server error');
+            await sleep(1200 * (attempt + 1), signal);
+            continue;
+          }
+          if (!res.ok) throw new Error(json.error || json.message || copy.genericError);
+          return json;
+        } catch (e) {
+          clearTimeout(timer);
+          signal.removeEventListener('abort', onUserAbort);
+          if (signal.aborted) throw new DOMException('Aborted', 'AbortError');
+          lastErr = e;
+          if (attempt < RETRIES) { await sleep(1200 * (attempt + 1), signal); continue; }
+        }
+      }
+      throw lastErr instanceof Error ? lastErr : new Error(copy.genericError);
+    };
 
     try {
-      abortRef.current = new AbortController();
       const history = messages
         .filter((m): m is ChatMessage & { role: 'user' | 'assistant' } => m.role === 'user' || m.role === 'assistant')
         .slice(-8)
         .map((m) => ({ role: m.role, content: m.text }));
 
-      const res = await fetch('/api/chat/orchestrate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        signal: abortRef.current.signal,
-        body: JSON.stringify({
-          message: text,
-          serviceContext: mode,
-          locale: lang,
-          history,
-        }),
-      });
+      let resp = await postOrchestrate({ message: text, serviceContext: mode, locale: lang, history });
+      if (resp.success === false && !resp.predictionId) {
+        throw new Error(resp.error || resp.message || copy.genericError);
+      }
+      setPipeline(derivePipeline(resp));
 
-      const data = await res.json() as {
-        success?: boolean;
-        message?: string;
-        responseType?: 'text' | 'image' | 'video' | 'audio' | 'analysis' | 'action_suggestions';
-        assetUrl?: string | null;
-        metadata?: { model?: string; agentId?: string };
-        error?: string;
-      };
-
-      if (!res.ok || data.success === false) {
-        throw new Error(data.error || data.message || copy.genericError);
+      // Poll the real prediction lifecycle until terminal (the route's poll
+      // path skips budget; schema still requires `message`, so we resend it).
+      const POLL_INTERVAL = 2500;
+      const MAX_POLLS = 90;
+      let polls = 0;
+      while (resp.predictionId && !isTerminalStatus(resp.predictionStatus) && polls < MAX_POLLS) {
+        await sleep(POLL_INTERVAL, signal);
+        polls++;
+        resp = await postOrchestrate({ message: text, predictionId: resp.predictionId, serviceContext: mode, locale: lang });
+        setPipeline(derivePipeline(resp));
       }
 
       const assetType: ChatMessage['assetType'] =
-        data.responseType === 'image' ? 'image'
-        : data.responseType === 'video' ? 'video'
-        : data.responseType === 'audio' ? 'audio'
+        resp.responseType === 'image' ? 'image'
+        : resp.responseType === 'video' ? 'video'
+        : resp.responseType === 'audio' ? 'audio'
         : null;
 
       dispatch({ type: 'ADD_MESSAGE', message: {
         id: `a_${Date.now()}`,
-        role: 'assistant',
-        text: data.message || '',
+        role: resp.success === false ? 'error' : 'assistant',
+        text: resp.message || (resp.success === false ? copy.genericError : ''),
         timestamp: Date.now(),
-        assetUrl: data.assetUrl ?? null,
+        assetUrl: resp.assetUrl ?? null,
         assetType,
         sourcePrompt: text,
-        agentId: data.metadata?.agentId,
-        model: data.metadata?.model,
+        agentId: resp.metadata?.agentId,
+        model: resp.metadata?.model,
       }});
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') {
@@ -362,6 +515,7 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated }: Pr
       }
     } finally {
       dispatch({ type: 'SET_LOADING', value: false });
+      setPipeline(null);
       abortRef.current = null;
     }
   }, [inputText, isLoading, messages, lang, mode, copy.genericError]);
@@ -537,10 +691,14 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated }: Pr
             messages.map((m) => <MessageBubble key={m.id} message={m} accent={ACCENT} onRegenerate={() => sendMessage(m.sourcePrompt)} onFeedback={sendFeedback} onPlayAudio={playAssetAudio} />)
           )}
           {isLoading ? (
-            <div className="flex items-center gap-2 text-[12px] text-zinc-400">
-              <Loader2 className="w-4 h-4 animate-spin" style={{ color: ACCENT }} />
-              <span>...</span>
-            </div>
+            pipeline?.active ? (
+              <AgentTelemetry pipeline={pipeline} lang={lang} />
+            ) : (
+              <div className="flex items-center gap-2 text-[12px] text-zinc-400">
+                <Loader2 className="w-4 h-4 animate-spin" style={{ color: ACCENT }} />
+                <span>…</span>
+              </div>
+            )
           ) : null}
           <div ref={endRef} />
         </div>
@@ -966,6 +1124,55 @@ function MessageBubble({
             ) : null}
           </div>
         ) : null}
+      </div>
+    </div>
+  );
+}
+
+/* ─── Live agent telemetry — bound to real backend prediction status ─────────
+ * Monochrome, sequential progress. Each stage's state comes from derivePipeline
+ * (real predictionStatus / composite metadata.legs), never from a timer. */
+
+function AgentTelemetry({ pipeline, lang }: { pipeline: PipelineState; lang: 'en' | 'ka' | 'ru' }) {
+  const visible = pipeline.stages.filter((s) => s.state !== 'skipped');
+  if (visible.length === 0) return null;
+
+  return (
+    <div className="w-full max-w-md rounded-2xl border border-zinc-800/70 bg-[#0a0a0a] p-3.5">
+      <div className="flex flex-col gap-2.5">
+        {visible.map((s) => (
+          <div key={s.key} className="flex items-center gap-2.5">
+            <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center">
+              {s.state === 'active' ? (
+                <Loader2 size={15} className="animate-spin text-zinc-100" />
+              ) : s.state === 'done' ? (
+                <Check size={15} className="text-zinc-400" />
+              ) : s.state === 'failed' ? (
+                <X size={15} className="text-rose-400" />
+              ) : (
+                <span className="h-2 w-2 rounded-full border border-zinc-600" />
+              )}
+            </span>
+            <span
+              className={`text-[12.5px] ${
+                s.state === 'active'
+                  ? 'text-zinc-100'
+                  : s.state === 'done'
+                  ? 'text-zinc-400'
+                  : s.state === 'failed'
+                  ? 'text-rose-300'
+                  : 'text-zinc-600'
+              }`}
+            >
+              {s.label[lang]}
+            </span>
+            {s.state === 'active' ? (
+              <span className="ml-auto h-1 w-16 overflow-hidden rounded-full bg-zinc-800">
+                <span className="block h-full w-2/3 animate-pulse rounded-full bg-zinc-300/70" />
+              </span>
+            ) : null}
+          </div>
+        ))}
       </div>
     </div>
   );
