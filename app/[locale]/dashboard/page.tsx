@@ -1,6 +1,10 @@
 import { redirect } from 'next/navigation';
-import MyAvatarChat from '@/components/chat/MyAvatarChat';
+import MyAvatarChatV2 from '@/components/chat/MyAvatarChatV2';
 import { createServerClient } from '@/lib/supabase/server';
+
+// V2 = the minimalist Cyber-Black single-window shell.
+// V1 (MyAvatarChat) is left intact at components/chat/MyAvatarChat.tsx
+// so the rollback path is a one-line import swap.
 
 export const dynamic = 'force-dynamic';
 
@@ -47,7 +51,7 @@ export default async function DashboardPage({ params }: Props) {
   }
 
   return (
-    <MyAvatarChat
+    <MyAvatarChatV2
       locale={locale}
       userName={userName}
       isAuthenticated={isAuthenticated}
