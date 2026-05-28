@@ -24,6 +24,10 @@ import { detectIntent } from '@/lib/chat/intentDetector';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
+// Synchronous provider kickoffs (HeyGen avatar, LTX video) can take 12–150s.
+// Without this the route hits the ~15s platform default and 504s mid-handshake
+// (matches the maxDuration the other media routes already declare).
+export const maxDuration = 300;
 
 // ─── Request validation ──────────────────────────────────────────────────────
 
