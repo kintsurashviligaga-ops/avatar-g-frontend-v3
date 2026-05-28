@@ -41,11 +41,12 @@ import {
   Box,
   Camera,
   Film,
-  History,
+  Globe,
   ImagePlus,
   Loader2,
   LogOut,
   Maximize2,
+  Menu,
   MessageSquare,
   Mic,
   MicOff,
@@ -54,11 +55,13 @@ import {
   Paperclip,
   RotateCcw,
   Send,
+  Settings,
   ThumbsDown,
   ThumbsUp,
   Trash2,
   User,
   Volume2,
+  VolumeX,
   X,
 } from 'lucide-react';
 import Image from 'next/image';
@@ -66,8 +69,10 @@ import { BalanceChip, WalletRefillModal } from '@/components/chat/WalletRefill';
 import { CameraModal } from '@/components/service-chat/CameraModal';
 import AuthModal from '@/components/chat/AuthModal';
 import type { ServiceChatAttachment } from '@/components/service-chat/types';
+import { resolveAvatarVideo } from '@/lib/avatar/video-config';
 
 const ACCENT = '#22d3ee';
+const { idleUrl: AVATAR_VIDEO, poster: AVATAR_POSTER, hasVideo: HAS_AVATAR_VIDEO } = resolveAvatarVideo();
 
 interface Props {
   locale: string;
@@ -129,9 +134,9 @@ const initialState: ChatState = {
 };
 
 const COPY = {
-  en: { placeholder: 'Type a message…', signIn: 'Sign in', signOut: 'Sign out', clearHistory: 'Clear history', history: 'History', genericError: 'Something went wrong. Try again.' },
-  ka: { placeholder: 'დაწერე შეტყობინება…', signIn: 'შესვლა', signOut: 'გასვლა', clearHistory: 'ისტორიის გასუფთავება', history: 'ისტორია', genericError: 'რაღაც ხარვეზი. სცადე ხელახლა.' },
-  ru: { placeholder: 'Введите сообщение…', signIn: 'Войти', signOut: 'Выйти', clearHistory: 'Очистить историю', history: 'История', genericError: 'Что-то пошло не так. Попробуйте снова.' },
+  en: { placeholder: 'Type a message…', signIn: 'Sign in', signOut: 'Sign out', clearHistory: 'Clear history', history: 'History', menu: 'Menu', settings: 'Settings', language: 'Language', sound: 'Avatar sound', genericError: 'Something went wrong. Try again.' },
+  ka: { placeholder: 'დაწერე შეტყობინება…', signIn: 'შესვლა', signOut: 'გასვლა', clearHistory: 'ისტორიის გასუფთავება', history: 'ისტორია', menu: 'მენიუ', settings: 'პარამეტრები', language: 'ენა', sound: 'ავატარის ხმა', genericError: 'რაღაც ხარვეზი. სცადე ხელახლა.' },
+  ru: { placeholder: 'Введите сообщение…', signIn: 'Войти', signOut: 'Выйти', clearHistory: 'Очистить историю', history: 'История', menu: 'Меню', settings: 'Настройки', language: 'Язык', sound: 'Звук аватара', genericError: 'Что-то пошло не так. Попробуйте снова.' },
 } as const;
 
 /**
@@ -174,12 +179,18 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated }: Pr
   const [avatarExpanded, setAvatarExpanded] = useState(false);
   const [balanceGel, setBalanceGel] = useState<number | null>(null);
   const [mode, setMode] = useState<ServiceMode>('global');
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [avatarSoundOn, setAvatarSoundOn] = useState(false);
 
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
+  const stageRef = useRef<HTMLDivElement>(null);          // drag-constraints boundary
+  const cornerVideoRef = useRef<HTMLVideoElement>(null);  // ambient corner loop
+  const fullVideoRef = useRef<HTMLVideoElement>(null);    // expanded 9:16 preview
+  const avatarDraggedRef = useRef(false);                 // distinguishes drag from tap
 
   // ── Auto-scroll on new message ─────────────────────────────────────
   useEffect(() => {
@@ -223,6 +234,50 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated }: Pr
       .catch(() => {});
     return () => { alive = false; };
   }, [isAuthenticated]);
+
+  // Sound preference mirrored to a ref so the expand effect can read it
+  // without re-running (and restarting playback) on every toggle.
+  const soundPrefRef = useRef(avatarSoundOn);
+  useEffect(() => { soundPrefRef.current = avatarSoundOn; }, [avatarSoundOn]);
+
+  // ── Avatar: ambient muted loop on the corner widget ───────────────
+  useEffect(() => {
+    if (!HAS_AVATAR_VIDEO || avatarExpanded) return;
+    const v = cornerVideoRef.current;
+    if (!v) return;
+    v.muted = true; v.loop = true;
+    void Promise.resolve(v.play()).catch(() => { /* autoplay blocked — poster stays */ });
+  }, [avatarExpanded]);
+
+  // ── Avatar: on expand, play full 9:16 (sound follows the preference;
+  //    the click is a user gesture so unmuted playback is permitted) ──
+  useEffect(() => {
+    if (!HAS_AVATAR_VIDEO || !avatarExpanded) return;
+    const v = fullVideoRef.current;
+    if (!v) return;
+    v.loop = true;
+    try { v.currentTime = 0; } catch { /* noop */ }
+    const wantSound = soundPrefRef.current;
+    v.muted = !wantSound;
+    void Promise.resolve(v.play()).catch(() => {
+      // Unmuted autoplay blocked → fall back to muted so it still animates.
+      v.muted = true;
+      setAvatarSoundOn(false);
+      void Promise.resolve(v.play()).catch(() => {});
+    });
+  }, [avatarExpanded]);
+
+  const toggleAvatarSound = useCallback(() => {
+    setAvatarSoundOn((prev) => {
+      const next = !prev;
+      const v = fullVideoRef.current;
+      if (v) {
+        v.muted = !next;
+        if (next) void Promise.resolve(v.play()).catch(() => {});
+      }
+      return next;
+    });
+  }, []);
 
   // ── Send message ──────────────────────────────────────────────────
   const sendMessage = useCallback(async (overrideText?: string) => {
@@ -344,6 +399,13 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated }: Pr
     window.location.reload();
   }, []);
 
+  const changeLanguage = useCallback((next: 'ka' | 'en' | 'ru') => {
+    if (next === lang) { setSettingsOpen(false); return; }
+    const { pathname, search } = window.location;
+    const rest = pathname.replace(/^\/(ka|en|ru)(?=\/|$)/, '');
+    window.location.href = `/${next}${rest || '/dashboard'}${search}`;
+  }, [lang]);
+
   const playAssetAudio = useCallback((url: string) => {
     const a = new Audio(url);
     void a.play().catch(() => {});
@@ -364,6 +426,7 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated }: Pr
 
   return (
     <div
+      ref={stageRef}
       className="fixed inset-0 z-[5] flex flex-col bg-[#030303] text-zinc-100 antialiased overflow-hidden"
       style={{ height: '100dvh' }}
     >
@@ -372,32 +435,90 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated }: Pr
         className="flex items-center justify-between px-3 py-2 border-b border-zinc-800/70 bg-[#030303]/95 backdrop-blur-md"
         style={{ paddingTop: 'calc(0.5rem + env(safe-area-inset-top, 0px))' }}
       >
+        {/* Hamburger → conversation-log drawer */}
         <button
           onClick={() => setHistoryOpen(true)}
-          aria-label={copy.history}
+          aria-label={copy.menu}
           className="h-9 w-9 rounded-full flex items-center justify-center text-zinc-300 hover:text-zinc-50 hover:bg-zinc-900 transition active:scale-95"
         >
-          <History className="w-4.5 h-4.5" size={18} />
+          <Menu size={18} />
         </button>
 
         <BalanceChip balanceGel={balanceGel} onClick={() => setWalletOpen(true)} />
 
-        {isAuthenticated ? (
+        <div className="relative flex items-center gap-1">
+          {/* Settings gear → system-state popover */}
           <button
-            onClick={handleSignOut}
-            aria-label={copy.signOut}
-            className="h-9 px-3 rounded-full flex items-center gap-2 text-[12px] font-medium text-zinc-300 hover:text-zinc-50 hover:bg-zinc-900 transition active:scale-95"
+            onClick={() => setSettingsOpen((v) => !v)}
+            aria-label={copy.settings}
+            aria-expanded={settingsOpen}
+            className={`h-9 w-9 rounded-full flex items-center justify-center transition active:scale-95 ${settingsOpen ? 'text-cyan-300 bg-zinc-900' : 'text-zinc-300 hover:text-zinc-50 hover:bg-zinc-900'}`}
           >
-            <LogOut size={14} /> <span className="hidden sm:inline">{userName}</span>
+            <Settings size={18} />
           </button>
-        ) : (
-          <button
-            onClick={() => setAuthOpen(true)}
-            className="h-9 px-4 rounded-full flex items-center gap-2 text-[12px] font-semibold border border-zinc-700/70 bg-[#070707] text-zinc-100 hover:border-zinc-500/80 transition active:scale-95"
-          >
-            {copy.signIn}
-          </button>
-        )}
+
+          {isAuthenticated ? (
+            <button
+              onClick={handleSignOut}
+              aria-label={copy.signOut}
+              className="h-9 px-3 rounded-full flex items-center gap-2 text-[12px] font-medium text-zinc-300 hover:text-zinc-50 hover:bg-zinc-900 transition active:scale-95"
+            >
+              <LogOut size={14} /> <span className="hidden sm:inline">{userName}</span>
+            </button>
+          ) : (
+            <button
+              onClick={() => setAuthOpen(true)}
+              className="h-9 px-4 rounded-full flex items-center gap-2 text-[12px] font-semibold border border-zinc-700/70 bg-[#070707] text-zinc-100 hover:border-zinc-500/80 transition active:scale-95"
+            >
+              {copy.signIn}
+            </button>
+          )}
+
+          {/* Settings popover */}
+          <AnimatePresence>
+            {settingsOpen ? (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setSettingsOpen(false)} aria-hidden />
+                <motion.div
+                  initial={{ opacity: 0, y: -6, scale: 0.98 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -6, scale: 0.98 }}
+                  transition={{ duration: 0.16 }}
+                  role="menu"
+                  className="absolute right-0 top-11 z-50 w-56 rounded-2xl border border-zinc-800/80 bg-[#0a0a0a] p-3 shadow-[0_24px_60px_-20px_rgba(0,0,0,0.9)]"
+                >
+                  <div className="flex items-center gap-2 px-1 pb-2 text-[11px] uppercase tracking-wider text-zinc-500">
+                    <Globe size={13} /> {copy.language}
+                  </div>
+                  <div className="flex gap-1.5 pb-3">
+                    {(['ka', 'en', 'ru'] as const).map((lc) => (
+                      <button
+                        key={lc}
+                        onClick={() => changeLanguage(lc)}
+                        className={`flex-1 h-8 rounded-lg text-[12px] font-semibold uppercase transition active:scale-95 border ${lang === lc ? 'border-cyan-400/50 bg-[#121212] text-cyan-200' : 'border-white/10 bg-[#121212] text-zinc-400 hover:text-zinc-200'}`}
+                      >
+                        {lc}
+                      </button>
+                    ))}
+                  </div>
+                  <button
+                    onClick={toggleAvatarSound}
+                    role="menuitemcheckbox"
+                    aria-checked={avatarSoundOn}
+                    className="w-full h-9 px-2 rounded-lg flex items-center justify-between text-[12.5px] text-zinc-300 hover:bg-zinc-900 transition"
+                  >
+                    <span className="flex items-center gap-2">
+                      {avatarSoundOn ? <Volume2 size={15} /> : <VolumeX size={15} />} {copy.sound}
+                    </span>
+                    <span className={`relative h-5 w-9 rounded-full transition ${avatarSoundOn ? 'bg-cyan-500/70' : 'bg-zinc-700'}`}>
+                      <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white transition-all ${avatarSoundOn ? 'left-[1.125rem]' : 'left-0.5'}`} />
+                    </span>
+                  </button>
+                </motion.div>
+              </>
+            ) : null}
+          </AnimatePresence>
+        </div>
       </header>
 
       {/* ── Message feed ──────────────────────────────────────────── */}
@@ -421,7 +542,11 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated }: Pr
         </div>
       </main>
 
-      {/* ── Floating corner avatar ───────────────────────────────── */}
+      {/* ── Floating avatar ──────────────────────────────────────────
+          Collapsed: a draggable circular video widget (framer-motion drag,
+          constrained to the viewport). A genuine tap (no drag) expands it
+          into a centered 9:16 talking-avatar preview. Falls back to a marine
+          orb when no avatar video asset is configured. */}
       <AnimatePresence>
         {avatarExpanded ? (
           <motion.div
@@ -429,45 +554,91 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated }: Pr
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 bg-[#030303] flex items-center justify-center"
+            className="fixed inset-0 z-[60] bg-[#030303] flex items-center justify-center"
           >
+            <div className="relative h-full w-full overflow-hidden md:h-[94vh] md:w-auto md:aspect-[9/16] md:rounded-[1.75rem] md:border md:border-white/10 md:shadow-[0_40px_140px_-30px_rgba(34,211,238,0.6)]">
+              {HAS_AVATAR_VIDEO ? (
+                <video
+                  ref={fullVideoRef}
+                  src={AVATAR_VIDEO}
+                  poster={AVATAR_POSTER}
+                  playsInline
+                  preload="auto"
+                  className="h-full w-full object-contain"
+                />
+              ) : (
+                <div className="flex h-full w-full flex-col items-center justify-center gap-4 text-zinc-400">
+                  <span className="flex h-28 w-28 items-center justify-center rounded-full bg-gradient-to-br from-cyan-400 via-sky-500 to-blue-600 text-white text-[44px]">🤖</span>
+                  <p className="text-sm">Live avatar</p>
+                </div>
+              )}
+            </div>
+
             <button
               onClick={() => setAvatarExpanded(false)}
-              className="absolute top-4 right-4 h-10 w-10 rounded-full flex items-center justify-center bg-zinc-900/80 border border-zinc-700/70 text-zinc-100 hover:border-zinc-500/80 active:scale-95"
+              className="absolute top-4 right-4 h-11 w-11 rounded-full flex items-center justify-center bg-zinc-900/80 backdrop-blur-md border border-zinc-700/70 text-zinc-100 hover:border-zinc-500/80 active:scale-90 transition"
               style={{ top: 'calc(1rem + env(safe-area-inset-top, 0px))' }}
               aria-label="Collapse avatar"
             >
               <Minimize2 size={18} />
             </button>
-            {/* Full-bleed avatar placeholder — real-time video stream lands here in a follow-up. */}
-            <div className="w-full h-full flex items-center justify-center text-zinc-400 text-sm">
-              Live avatar canvas
-            </div>
+            {HAS_AVATAR_VIDEO ? (
+              <button
+                onClick={toggleAvatarSound}
+                aria-label={avatarSoundOn ? 'Mute avatar' : 'Unmute avatar'}
+                className="absolute top-4 left-4 h-11 w-11 rounded-full flex items-center justify-center bg-zinc-900/80 backdrop-blur-md border border-zinc-700/70 text-zinc-100 hover:border-zinc-500/80 active:scale-90 transition"
+                style={{ top: 'calc(1rem + env(safe-area-inset-top, 0px))' }}
+              >
+                {avatarSoundOn ? <Volume2 size={18} /> : <VolumeX size={18} />}
+              </button>
+            ) : null}
           </motion.div>
         ) : (
-          <motion.button
+          <motion.div
             key="avatar-floating"
+            role="button"
+            tabIndex={0}
+            aria-label="Expand avatar"
+            drag
+            dragConstraints={stageRef}
+            dragElastic={0.12}
+            dragMomentum={false}
+            whileDrag={{ scale: 1.08, cursor: 'grabbing' }}
+            onDragStart={() => { avatarDraggedRef.current = true; }}
+            onDragEnd={() => { window.setTimeout(() => { avatarDraggedRef.current = false; }, 0); }}
+            onClick={() => { if (avatarDraggedRef.current) return; setAvatarExpanded(true); }}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setAvatarExpanded(true); } }}
             initial={{ scale: 0.8, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             exit={{ scale: 0.8, opacity: 0 }}
-            onClick={() => setAvatarExpanded(true)}
-            aria-label="Expand avatar"
-            className="fixed z-40 rounded-full overflow-hidden flex items-center justify-center transition active:scale-95"
+            className="fixed z-40 h-16 w-16 rounded-full overflow-hidden flex items-center justify-center cursor-grab touch-none select-none active:scale-95"
             style={{
-              bottom: 'calc(96px + env(safe-area-inset-bottom, 0px))',
+              bottom: 'calc(150px + env(safe-area-inset-bottom, 0px))',
               right: 16,
-              width: 56,
-              height: 56,
+              border: `2px solid ${ACCENT}55`,
+              boxShadow: `0 10px 36px -8px ${ACCENT}99`,
               background: 'radial-gradient(60% 60% at 50% 35%, rgba(34,211,238,0.18), rgba(0,0,0,0.6))',
-              border: `1px solid ${ACCENT}45`,
-              boxShadow: `0 0 24px -6px ${ACCENT}55`,
             }}
           >
-            <span className="text-[22px]" aria-hidden>🤖</span>
-            <span className="absolute bottom-0.5 right-0.5 h-4 w-4 rounded-full bg-[#030303] border border-zinc-700/80 flex items-center justify-center">
+            {HAS_AVATAR_VIDEO ? (
+              <video
+                ref={cornerVideoRef}
+                src={AVATAR_VIDEO}
+                poster={AVATAR_POSTER}
+                muted
+                loop
+                playsInline
+                preload="metadata"
+                className="pointer-events-none h-full w-full object-cover"
+              />
+            ) : (
+              <span className="text-[24px] pointer-events-none" aria-hidden>🤖</span>
+            )}
+            <span aria-hidden className="pointer-events-none absolute -inset-1 rounded-full ring-2 ring-cyan-400/30 animate-ping" />
+            <span className="absolute bottom-0.5 right-0.5 h-4 w-4 rounded-full bg-[#030303] border border-zinc-700/80 flex items-center justify-center pointer-events-none">
               <Maximize2 size={9} className="text-zinc-300" />
             </span>
-          </motion.button>
+          </motion.div>
         )}
       </AnimatePresence>
 
@@ -503,93 +674,95 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated }: Pr
           </div>
         ) : null}
 
-        {/* Unified mode dock — selects the orchestrator service context. */}
-        <div className="px-3 pt-2 max-w-2xl mx-auto">
-          <div className="flex gap-1.5 overflow-x-auto pb-0.5 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
-            {MODES.map(({ id, Icon, accent, label }) => {
-              const active = mode === id;
-              return (
-                <button
-                  key={id}
-                  type="button"
-                  onClick={() => setMode(id)}
-                  aria-pressed={active}
-                  className={`flex-shrink-0 inline-flex items-center gap-1.5 h-8 px-3 rounded-full text-[12px] font-medium border bg-[#121212] transition-all active:scale-95 ${
-                    active
-                      ? 'border-cyan-400/50 text-zinc-100 shadow-[0_0_0_1px_rgba(34,211,238,0.35),0_6px_22px_-10px_rgba(34,211,238,0.7)]'
-                      : 'border-white/10 text-zinc-400 hover:text-zinc-200 hover:border-white/20'
-                  }`}
-                >
-                  <Icon size={14} style={active ? { color: accent } : undefined} />
-                  {label[lang]}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
+        {/* ── Unified monolithic console: mode selector + composer ───── */}
         <div className="px-3 pt-2 pb-2 max-w-2xl mx-auto">
-          <div
-            className="flex items-end gap-1.5 rounded-2xl px-2 py-1.5 transition-all bg-[#070707] border border-zinc-800/70 focus-within:border-cyan-400/40 focus-within:shadow-[0_0_0_3px_rgba(34,211,238,0.08)]"
-          >
-            <input ref={fileInputRef} type="file" className="hidden" accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.txt" onChange={onFileChange} />
-            <button
-              onClick={onPickFile}
-              aria-label="Attach file"
-              className="h-9 w-9 flex items-center justify-center rounded-xl text-zinc-400 hover:text-zinc-100 hover:bg-zinc-900 transition active:scale-95"
-            >
-              <Paperclip size={18} />
-            </button>
-            <button
-              onClick={() => setCameraOpen(true)}
-              aria-label="Open camera"
-              className="h-9 w-9 flex items-center justify-center rounded-xl text-zinc-400 hover:text-zinc-100 hover:bg-zinc-900 transition active:scale-95"
-            >
-              <Camera size={18} />
-            </button>
-            <textarea
-              ref={inputRef}
-              value={inputText}
-              onChange={(e) => dispatch({ type: 'SET_INPUT', text: e.target.value })}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  if (inputText.trim() && !isLoading) void sendMessage();
-                }
-              }}
-              placeholder={copy.placeholder}
-              rows={1}
-              className="flex-1 bg-transparent text-[15px] leading-7 text-zinc-50 placeholder-zinc-500 resize-none outline-none px-1 py-1.5 min-h-[36px]"
-            />
-            <button
-              onClick={toggleRecording}
-              aria-label={isRecording ? 'Stop recording' : 'Start voice input'}
-              className={`h-9 w-9 flex items-center justify-center rounded-xl transition active:scale-95 ${isRecording ? 'text-rose-300 bg-rose-500/10' : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-900'}`}
-            >
-              {isRecording ? <MicOff size={18} /> : <Mic size={18} />}
-            </button>
-            {isLoading ? (
+          <div className="rounded-3xl border border-zinc-800/80 bg-[#0a0a0a] transition-all focus-within:border-cyan-400/40 focus-within:shadow-[0_0_0_3px_rgba(34,211,238,0.08)]">
+            {/* Mode selector — sets the orchestrator service context */}
+            <div className="flex gap-1.5 overflow-x-auto px-2 pt-2 pb-1.5 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+              {MODES.map(({ id, Icon, accent, label }) => {
+                const active = mode === id;
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => setMode(id)}
+                    aria-pressed={active}
+                    className={`flex-shrink-0 inline-flex items-center gap-1.5 h-8 px-3 rounded-full text-[12px] font-medium border bg-[#121212] transition-all active:scale-95 ${
+                      active
+                        ? 'border-cyan-400/50 text-zinc-100 shadow-[0_0_0_1px_rgba(34,211,238,0.35),0_6px_22px_-10px_rgba(34,211,238,0.7)]'
+                        : 'border-white/10 text-zinc-400 hover:text-zinc-200 hover:border-white/20'
+                    }`}
+                  >
+                    <Icon size={14} style={active ? { color: accent } : undefined} />
+                    {label[lang]}
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="mx-2 border-t border-zinc-800/70" />
+
+            {/* Composer row — attachment, camera, input, mic, send */}
+            <div className="flex items-end gap-1.5 px-2 py-2">
+              <input ref={fileInputRef} type="file" className="hidden" accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.txt" onChange={onFileChange} />
               <button
-                onClick={stop}
-                aria-label="Stop"
-                className="h-9 w-9 flex items-center justify-center rounded-xl text-rose-300 hover:bg-rose-500/10 active:scale-95"
+                onClick={onPickFile}
+                aria-label="Attach file"
+                className="h-9 w-9 flex items-center justify-center rounded-xl text-zinc-400 hover:text-zinc-100 hover:bg-zinc-900 transition active:scale-95"
               >
-                <X size={18} />
+                <Paperclip size={18} />
               </button>
-            ) : (
               <button
-                onClick={() => void sendMessage()}
-                disabled={!inputText.trim()}
-                aria-label="Send"
-                className="h-9 w-9 flex items-center justify-center rounded-xl text-zinc-950 active:scale-95 transition disabled:opacity-40 disabled:cursor-not-allowed"
-                style={{
-                  background: inputText.trim() ? `linear-gradient(135deg, ${ACCENT}, #0891b2)` : 'transparent',
-                  boxShadow: inputText.trim() ? `0 0 18px -4px ${ACCENT}88` : 'none',
+                onClick={() => setCameraOpen(true)}
+                aria-label="Open camera"
+                className="h-9 w-9 flex items-center justify-center rounded-xl text-zinc-400 hover:text-zinc-100 hover:bg-zinc-900 transition active:scale-95"
+              >
+                <Camera size={18} />
+              </button>
+              <textarea
+                ref={inputRef}
+                value={inputText}
+                onChange={(e) => dispatch({ type: 'SET_INPUT', text: e.target.value })}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    if (inputText.trim() && !isLoading) void sendMessage();
+                  }
                 }}
+                placeholder={copy.placeholder}
+                rows={1}
+                className="flex-1 bg-transparent text-[15px] leading-7 text-zinc-50 placeholder-zinc-500 resize-none outline-none px-1 py-1.5 min-h-[36px]"
+              />
+              <button
+                onClick={toggleRecording}
+                aria-label={isRecording ? 'Stop recording' : 'Start voice input'}
+                className={`h-9 w-9 flex items-center justify-center rounded-xl transition active:scale-95 ${isRecording ? 'text-rose-300 bg-rose-500/10' : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-900'}`}
               >
-                <Send size={16} />
+                {isRecording ? <MicOff size={18} /> : <Mic size={18} />}
               </button>
-            )}
+              {isLoading ? (
+                <button
+                  onClick={stop}
+                  aria-label="Stop"
+                  className="h-9 w-9 flex items-center justify-center rounded-xl text-rose-300 hover:bg-rose-500/10 active:scale-95"
+                >
+                  <X size={18} />
+                </button>
+              ) : (
+                <button
+                  onClick={() => void sendMessage()}
+                  disabled={!inputText.trim()}
+                  aria-label="Send"
+                  className="h-9 w-9 flex items-center justify-center rounded-xl text-zinc-950 active:scale-95 transition disabled:opacity-40 disabled:cursor-not-allowed"
+                  style={{
+                    background: inputText.trim() ? `linear-gradient(135deg, ${ACCENT}, #0891b2)` : 'transparent',
+                    boxShadow: inputText.trim() ? `0 0 18px -4px ${ACCENT}88` : 'none',
+                  }}
+                >
+                  <Send size={16} />
+                </button>
+              )}
+            </div>
           </div>
         </div>
       </footer>
@@ -690,12 +863,17 @@ function MessageBubble({
           <Image src={message.assetUrl} alt="Generated" width={1200} height={800} unoptimized className="rounded-2xl border border-zinc-800/70 max-w-full max-h-[280px] object-contain bg-black" />
         ) : null}
         {message.assetUrl && message.assetType === 'video' ? (
-          <video controls className="rounded-2xl border border-zinc-800/70 max-w-full max-h-[280px] bg-black">
+          <video
+            controls
+            playsInline
+            preload="metadata"
+            className="rounded-2xl border border-zinc-800/70 max-w-full max-h-[280px] bg-black"
+          >
             <source src={message.assetUrl} />
           </video>
         ) : null}
         {message.assetUrl && message.assetType === 'audio' ? (
-          <audio controls className="rounded-2xl">
+          <audio controls preload="metadata" className="rounded-2xl">
             <source src={message.assetUrl} />
           </audio>
         ) : null}
