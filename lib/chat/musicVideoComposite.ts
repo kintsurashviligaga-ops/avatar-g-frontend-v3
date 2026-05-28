@@ -124,6 +124,10 @@ async function readWalletBalanceGel(userId: string): Promise<number | null> {
 export async function handleMusicVideoComposite(input: OrchestratorInput): Promise<ChatResponse> {
   const forecast = forecastComposite();
 
+  // Stable per-request id; used to namespace per-leg debit refs so a retry
+  // is idempotent and concurrent users never collide on the same ref.
+  const compositeId = `composite:${input.sessionId}:${Date.now()}`;
+
   // ── Pre-flight: do we have enough balance? ─────────────────────────────
   // For anonymous users (userId === 'anonymous'), skip the check — the
   // existing per-action billing gate handles them downstream.
@@ -175,6 +179,8 @@ export async function handleMusicVideoComposite(input: OrchestratorInput): Promi
           costWholesaleGel: forecast.legs.lyrics.wholesale,
           costRetailGel: forecast.legs.lyrics.retail,
           metadata: { composite: true, leg: 'lyrics' },
+          deduct: true,
+          deductRef: `${compositeId}:lyrics`,
         },
         () => generateWithGemini({ prompt: lyricsPrompt, tier: 'flash' }),
         (r) => r.text?.slice(0, 200) ?? null,
@@ -203,6 +209,8 @@ export async function handleMusicVideoComposite(input: OrchestratorInput): Promi
           costWholesaleGel: forecast.legs.music.wholesale,
           costRetailGel: forecast.legs.music.retail,
           metadata: { composite: true, leg: 'music', style: baseStyle },
+          deduct: true,
+          deductRef: `${compositeId}:music`,
         },
         () =>
           startUdioGeneration({
@@ -239,6 +247,8 @@ export async function handleMusicVideoComposite(input: OrchestratorInput): Promi
           costWholesaleGel: forecast.legs.video.wholesale,
           costRetailGel: forecast.legs.video.retail,
           metadata: { composite: true, leg: 'video', style: baseStyle, durationSec: 30 },
+          deduct: true,
+          deductRef: `${compositeId}:video`,
         },
         () =>
           serviceManager.execute({

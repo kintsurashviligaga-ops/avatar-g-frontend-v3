@@ -41,12 +41,37 @@ export interface AgentTraceRow {
   latencyMs?: number;
   status?: TraceStatus;
   metadata?: Record<string, unknown>;
+  /**
+   * When `true` AND status === 'succeeded' AND costRetailGel > 0 AND userId is
+   * present, the trace also debits the user's wallet via the
+   * `debit_wallet_gel` Postgres RPC. Debit failures are swallowed (logged
+   * only); the worker output has already been delivered by the time we get
+   * here, so a debit failure must not surface as a user-visible error.
+   *
+   * Pre-flight balance checks in the dispatcher (see musicVideoComposite
+   * forecastComposite) ensure this debit ordinarily succeeds.
+   */
+  deduct?: boolean;
+  /**
+   * Idempotency ref for the debit. Falls back to a synthesised key
+   * (`agentId:action:userId:Date.now()`) when omitted.
+   */
+  deductRef?: string;
 }
 
 /** Insert one row. Silently swallows errors. */
 export async function recordTrace(row: AgentTraceRow): Promise<void> {
+  let supabase;
   try {
-    const supabase = createServiceRoleClient();
+    supabase = createServiceRoleClient();
+  } catch (err) {
+    // No service-role client configured — drop trace silently.
+    // eslint-disable-next-line no-console
+    console.warn('[agentTrace] service-role client unavailable:', err instanceof Error ? err.message : err);
+    return;
+  }
+
+  try {
     await supabase.from('agent_evolution_traces').insert({
       user_id: row.userId,
       agent_id: row.agentId,
@@ -64,6 +89,35 @@ export async function recordTrace(row: AgentTraceRow): Promise<void> {
     // Trace is observability, never user-facing — log and move on.
     // eslint-disable-next-line no-console
     console.warn('[agentTrace] insert failed:', err instanceof Error ? err.message : err);
+  }
+
+  // Debit pass (best-effort). Only fires on successful succeeded traces with
+  // a positive retail price and a real user id.
+  const shouldDebit =
+    row.deduct === true &&
+    (row.status ?? 'succeeded') === 'succeeded' &&
+    typeof row.userId === 'string' &&
+    row.userId.length > 0 &&
+    typeof row.costRetailGel === 'number' &&
+    row.costRetailGel > 0;
+
+  if (!shouldDebit) return;
+
+  const ref = row.deductRef ?? `${row.agentId}:${row.action ?? 'run'}:${row.userId}:${Date.now()}`;
+
+  try {
+    const { error } = await supabase.rpc('debit_wallet_gel', {
+      p_user_id: row.userId,
+      p_amount: row.costRetailGel,
+      p_ref: ref,
+    });
+    if (error) {
+      // eslint-disable-next-line no-console
+      console.warn('[agentTrace] debit_wallet_gel rejected:', error.message);
+    }
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn('[agentTrace] debit_wallet_gel call failed:', err instanceof Error ? err.message : err);
   }
 }
 
