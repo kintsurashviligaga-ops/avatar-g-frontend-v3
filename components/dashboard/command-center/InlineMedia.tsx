@@ -137,7 +137,19 @@ function Lightbox({ url, onClose }: { url: string; onClose: () => void }) {
 
 function ImageBlock({ url }: { url: string }) {
   const [loaded, setLoaded] = useState(false);
+  const [failed, setFailed] = useState(false);
   const [lightbox, setLightbox] = useState(false);
+
+  if (failed || !url) {
+    const lang = typeof document !== 'undefined' ? (document.documentElement.lang || 'ka') : 'ka';
+    const msg = lang === 'en' ? 'Image failed to load' : lang === 'ru' ? 'Изображение не загрузилось' : 'სურათი ვერ ჩაიტვირთა';
+    return (
+      <div className="inline-media-skel" style={{ display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'center', justifyContent: 'center', color: '#94A3B8', fontSize: 12, minHeight: 160 }}>
+        <span>⚠️ {msg}</span>
+        {url && <a href={url} target="_blank" rel="noopener noreferrer" style={{ color: '#67e8f9', textDecoration: 'underline' }}>{lang === 'en' ? 'Open original' : lang === 'ru' ? 'Открыть' : 'გახსნა'}</a>}
+      </div>
+    );
+  }
 
   return (
     <>
@@ -148,6 +160,7 @@ function ImageBlock({ url }: { url: string }) {
           alt=""
           loading="lazy"
           onLoad={() => setLoaded(true)}
+          onError={() => setFailed(true)}
           initial={{ opacity: 0, scale: 0.985 }}
           animate={{ opacity: loaded ? 1 : 0, scale: loaded ? 1 : 0.985 }}
           transition={{ duration: 0.4, ease: 'easeOut' }}
@@ -180,6 +193,15 @@ function VideoBlock({ url, poster }: { url: string; poster?: string }) {
   const lang = typeof document !== 'undefined' ? ((document.documentElement.lang || 'ka') as 'ka' | 'en' | 'ru') : 'ka';
   const errText = lang === 'en' ? 'Video failed to load' : lang === 'ru' ? 'Видео не загрузилось' : 'ვიდეო ვერ ჩაიტვირთა';
   const openText = lang === 'en' ? 'Open' : lang === 'ru' ? 'Открыть' : 'გახსენი';
+  const retryText = lang === 'en' ? 'Retry' : lang === 'ru' ? 'Повторить' : 'ხელახლა';
+
+  // Re-fetch the stream (clears a network stall / failed resolve without a reload).
+  const retry = () => {
+    setErrored(false);
+    setLoaded(false);
+    const v = vidRef.current;
+    if (v) { try { v.load(); void v.play().catch(() => {}); } catch { /* noop */ } }
+  };
 
   // Watchdog: if canplay never fires within 6s (HeyGen S3 cold-start, autoplay
   // blocked in some browser configs, etc.) we still flip `loaded` so the
@@ -226,8 +248,18 @@ function VideoBlock({ url, poster }: { url: string; poster?: string }) {
         style={{ display: 'block', width: '100%', height: 'auto', borderRadius: 14, background: '#000' }}
       />
       {errored && (
-        <div className="inline-media-video-error" role="alert">
-          {errText} · <a href={url} target="_blank" rel="noopener noreferrer" style={{ color: '#7dd3fc', textDecoration: 'underline' }}>{openText}</a>
+        <div className="inline-media-video-error" role="alert" style={{ display: 'flex', flexDirection: 'column', gap: 10, alignItems: 'center', justifyContent: 'center' }}>
+          <span>⚠️ {errText}</span>
+          <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+            <button
+              type="button"
+              onClick={e => { e.stopPropagation(); retry(); }}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 999, background: 'linear-gradient(90deg,#22d3ee,#2563eb)', color: '#fff', fontSize: 13, fontWeight: 600, border: 'none', cursor: 'pointer' }}
+            >
+              🔄 {retryText}
+            </button>
+            <a href={url} target="_blank" rel="noopener noreferrer" style={{ color: '#7dd3fc', textDecoration: 'underline', fontSize: 13 }}>{openText}</a>
+          </div>
         </div>
       )}
       {loaded && !errored && (
@@ -253,10 +285,19 @@ function AudioBlock({ url }: { url: string }) {
   const [buffered, setBuffered] = useState(0); // 0..1 — real buffered fraction
   const [duration, setDuration] = useState(0);
   const [current, setCurrent] = useState(0);
+  const [failed, setFailed] = useState(false);
+
+  const retry = () => {
+    setFailed(false);
+    const a = audRef.current;
+    if (a) { try { a.load(); } catch { /* noop */ } }
+  };
 
   useEffect(() => {
     const a = audRef.current;
     if (!a) return;
+    const onErr = () => setFailed(true);
+    a.addEventListener('error', onErr);
     const onTime = () => {
       setCurrent(a.currentTime);
       setProgress(a.duration > 0 ? a.currentTime / a.duration : 0);
@@ -277,6 +318,7 @@ function AudioBlock({ url }: { url: string }) {
       a.removeEventListener('progress', onProgress);
       a.removeEventListener('loadedmetadata', onLoad);
       a.removeEventListener('ended', onEnd);
+      a.removeEventListener('error', onErr);
     };
   }, []);
 
@@ -306,9 +348,23 @@ function AudioBlock({ url }: { url: string }) {
     return 0.3 + seed * 0.7;
   });
 
+  const aLang = typeof document !== 'undefined' ? (document.documentElement.lang || 'ka') : 'ka';
+  if (failed) {
+    const msg = aLang === 'en' ? 'Track failed to load' : aLang === 'ru' ? 'Трек не загрузился' : 'ტრეკი ვერ ჩაიტვირთა';
+    const rt = aLang === 'en' ? 'Retry' : aLang === 'ru' ? 'Повторить' : 'ხელახლა';
+    return (
+      <div className="inline-media-audio-wrap" style={{ justifyContent: 'center', gap: 12 }}>
+        <span style={{ color: '#94A3B8', fontSize: 13 }}>⚠️ {msg}</span>
+        <button type="button" onClick={retry} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 999, background: 'linear-gradient(90deg,#22d3ee,#2563eb)', color: '#fff', fontSize: 13, fontWeight: 600, border: 'none', cursor: 'pointer' }}>
+          🔄 {rt}
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="inline-media-audio-wrap">
-      <audio ref={audRef} src={url} preload="metadata" />
+      <audio ref={audRef} src={url} preload="metadata" onError={() => setFailed(true)} />
       <button type="button" aria-label={playing ? 'Pause' : 'Play'} className="inline-media-audio-play" onClick={toggle}>
         {playing ? <Pause style={{ width: 14, height: 14 }} /> : <Play style={{ width: 14, height: 14 }} />}
       </button>

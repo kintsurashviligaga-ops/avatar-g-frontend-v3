@@ -15,7 +15,7 @@
 import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { motion } from 'framer-motion';
-import { Sparkles, Loader2, RotateCcw, ThumbsUp, ThumbsDown, Check, Copy, Square, Volume2 } from 'lucide-react';
+import { Sparkles, Loader2, RotateCcw, ThumbsUp, ThumbsDown, Check, Copy, Square, Volume2, ImageOff } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import InlineMedia, { detectInlineMedia } from '@/components/dashboard/command-center/InlineMedia';
@@ -271,6 +271,33 @@ function MediaSkeleton({ service, label }: { service: ServiceId; label: string }
   );
 }
 
+// Safe inline image — skeleton while loading, graceful fallback on broken/empty
+// URL (never a broken-anchor browser icon). Used for any markdown <img>.
+function SafeImage({ src, alt }: { src?: string; alt?: string }) {
+  const [state, setState] = useState<'loading' | 'ok' | 'error'>(src ? 'loading' : 'error');
+  if (!src || state === 'error') {
+    return (
+      <span className="my-1 inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-[12px] text-white/45">
+        <ImageOff size={14} /> {alt || 'media'}
+      </span>
+    );
+  }
+  return (
+    <span className="relative my-2 block w-fit">
+      {state === 'loading' && <span aria-hidden className="absolute inset-0 rounded-xl bg-white/[0.06] animate-pulse" />}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={src}
+        alt={alt || ''}
+        loading="lazy"
+        onLoad={() => setState('ok')}
+        onError={() => setState('error')}
+        className={`block max-w-full rounded-xl border border-white/10 transition-opacity duration-300 ${state === 'ok' ? 'opacity-100' : 'opacity-0'}`}
+      />
+    </span>
+  );
+}
+
 interface MessageRowProps {
   m: ChatMessage;
   locale: string;
@@ -338,6 +365,9 @@ export const MessageRow = memo(function MessageRow({ m, locale, onLike, onDislik
                 remarkPlugins={[remarkGfm]}
                 components={{
                   a: ({ node: _n, ...props }) => <a {...props} target="_blank" rel="noopener noreferrer" className="text-cyan-300 hover:text-cyan-200 underline-offset-4 hover:underline" />,
+                  // Never render a raw markdown <img> (broken-anchor icon on bad URLs):
+                  // route through SafeImage (skeleton + graceful fallback).
+                  img: ({ src, alt }: { src?: string; alt?: string }) => <SafeImage src={typeof src === 'string' ? src : undefined} alt={typeof alt === 'string' ? alt : undefined} />,
                   code: ({ inline, className, children, ...props }: { inline?: boolean; className?: string; children?: React.ReactNode }) => {
                     if (inline) {
                       return <code className="px-1.5 py-0.5 rounded bg-white/[0.08] text-[13px] font-mono text-cyan-200" {...props}>{children}</code>;

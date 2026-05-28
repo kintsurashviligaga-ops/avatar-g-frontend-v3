@@ -1,6 +1,3 @@
-// v5 — force-purge the v4 shell that still cached the / → /landing redirect.
-// Bump whenever a routing or root-layout change must reach already-installed
-// clients on next load (skipWaiting + clients.claim below do the takeover).
 const CACHE_NAME = 'avatar-g-shell-v5';
 const CORE_ASSETS = [
   '/offline.html',
