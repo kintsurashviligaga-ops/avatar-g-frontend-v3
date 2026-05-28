@@ -40,6 +40,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Box,
   Camera,
+  Download,
   Film,
   Globe,
   ImagePlus,
@@ -53,6 +54,7 @@ import {
   Minimize2,
   Music,
   Paperclip,
+  PictureInPicture2,
   RotateCcw,
   Send,
   Settings,
@@ -70,6 +72,7 @@ import { CameraModal } from '@/components/service-chat/CameraModal';
 import AuthModal from '@/components/chat/AuthModal';
 import type { ServiceChatAttachment } from '@/components/service-chat/types';
 import { resolveAvatarVideo } from '@/lib/avatar/video-config';
+import { useKeyboardResilience } from '@/hooks/useKeyboardResilience';
 
 const ACCENT = '#22d3ee';
 const { idleUrl: AVATAR_VIDEO, poster: AVATAR_POSTER, hasVideo: HAS_AVATAR_VIDEO } = resolveAvatarVideo();
@@ -170,6 +173,7 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated }: Pr
 
   const [state, dispatch] = useReducer(reducer, initialState);
   const { messages, inputText, isLoading, attachments, isRecording } = state;
+  const { keyboardOffset } = useKeyboardResilience();
 
   // Local-only UI state
   const [walletOpen, setWalletOpen] = useState(false);
@@ -427,8 +431,8 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated }: Pr
   return (
     <div
       ref={stageRef}
-      className="fixed inset-0 z-[5] flex flex-col bg-[#030303] text-zinc-100 antialiased overflow-hidden"
-      style={{ height: '100dvh' }}
+      className="fixed inset-x-0 top-0 z-[5] flex flex-col bg-[#030303] text-zinc-100 antialiased overflow-hidden"
+      style={{ height: keyboardOffset > 0 ? `calc(100dvh - ${keyboardOffset}px)` : '100dvh' }}
     >
       {/* ── Top bar ────────────────────────────────────────────────── */}
       <header
@@ -843,6 +847,33 @@ function MessageBubble({
 }) {
   const isUser = message.role === 'user';
   const isError = message.role === 'error';
+  const bubbleVideoRef = useRef<HTMLVideoElement>(null);
+
+  const togglePiP = useCallback(async () => {
+    const v = bubbleVideoRef.current;
+    if (!v || !document.pictureInPictureEnabled) return;
+    try {
+      if (document.pictureInPictureElement === v) {
+        await document.exitPictureInPicture();
+      } else {
+        await v.requestPictureInPicture();
+      }
+    } catch { /* PiP unsupported / blocked — no-op */ }
+  }, []);
+
+  const downloadAsset = useCallback(() => {
+    if (!message.assetUrl) return;
+    // Real generated cloud asset — best-effort download (cross-origin URLs may
+    // open in a new tab when the browser ignores the download attribute).
+    const a = document.createElement('a');
+    a.href = message.assetUrl;
+    a.download = `myavatar-${message.id}`;
+    a.target = '_blank';
+    a.rel = 'noopener';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  }, [message.assetUrl, message.id]);
 
   return (
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
@@ -864,6 +895,7 @@ function MessageBubble({
         ) : null}
         {message.assetUrl && message.assetType === 'video' ? (
           <video
+            ref={bubbleVideoRef}
             controls
             playsInline
             preload="metadata"
@@ -903,6 +935,24 @@ function MessageBubble({
                 style={{ color: accent }}
               >
                 <Volume2 size={13} />
+              </button>
+            ) : null}
+            {message.assetUrl && message.assetType === 'video' ? (
+              <button
+                onClick={togglePiP}
+                aria-label="Picture in picture"
+                className="h-7 w-7 flex items-center justify-center rounded-full hover:bg-zinc-900 hover:text-zinc-200 transition active:scale-95"
+              >
+                <PictureInPicture2 size={13} />
+              </button>
+            ) : null}
+            {message.assetUrl ? (
+              <button
+                onClick={downloadAsset}
+                aria-label="Download media"
+                className="h-7 w-7 flex items-center justify-center rounded-full hover:bg-zinc-900 hover:text-zinc-200 transition active:scale-95"
+              >
+                <Download size={13} />
               </button>
             ) : null}
             {message.sourcePrompt ? (
