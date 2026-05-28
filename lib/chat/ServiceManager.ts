@@ -22,7 +22,7 @@ const TASK_REF_VERSION = 1;
 const ltxRequestSchema = z.object({
   prompt: z.string().min(1).max(1500),
   model: z.enum(['ltx-2-3-fast', 'ltx-2-3-pro']).default('ltx-2-3-fast'),
-  resolution: z.enum(['1920x1080', '1080x1920', '1280x720', '720x1280', '1024x1024']).default('1280x720'),
+  resolution: z.enum(['1920x1080', '1080x1920', '1280x720', '720x1280']).default('1280x720'),
   duration: z.number().int().min(2).max(60).default(6),
   fps: z.number().int().min(12).max(30).default(24),
 });
@@ -1035,14 +1035,15 @@ export class ServiceManager {
     return fromMap[normalized] || '1:1';
   }
 
-  private mapLtxResolution(value: string | undefined, aspectRatio: string): '1920x1080' | '1080x1920' | '1280x720' | '720x1280' | '1024x1024' {
+  private mapLtxResolution(value: string | undefined, aspectRatio: string): '1920x1080' | '1080x1920' | '1280x720' | '720x1280' {
     const normalized = (value || '').trim();
-    if (normalized === '1920x1080' || normalized === '1080x1920' || normalized === '1280x720' || normalized === '720x1280' || normalized === '1024x1024') {
+    if (normalized === '1920x1080' || normalized === '1080x1920' || normalized === '1280x720' || normalized === '720x1280') {
       return normalized;
     }
 
+    // LTX video models reject square (1024x1024); 1:1 has no valid LTX video
+    // form, so fall back to the safe 16:9 720p resolution.
     if (aspectRatio === '9:16') return '1080x1920';
-    if (aspectRatio === '1:1') return '1024x1024';
     return '1280x720';
   }
 
