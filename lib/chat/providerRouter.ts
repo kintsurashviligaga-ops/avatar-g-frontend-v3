@@ -2,13 +2,12 @@
  * lib/chat/providerRouter.ts
  * ==========================
  * Routes requests to the correct backend provider:
- *   - text-llm  → chatEngine (OpenAI GPT-4o / GPT-4.1)
+ *   - text-llm  → Gemini (1.5 Pro / Flash) — OpenAI deprecated, not in runtime path
  *   - replicate → internal Replicate API routes
  *
  * Returns a normalized ChatResponse in both cases.
  */
 
-import { execute, type ChatEngineRequest } from '@/lib/ai/chatEngine';
 import { detectIntent, intentToReplicateService, type DetectedIntent, type IntentCategory } from './intentDetector';
 import { validateInput, buildModelInput, type GenerateInput } from '@/lib/replicate/schemas';
 import { resolveModel } from '@/lib/replicate/models';
@@ -724,71 +723,59 @@ async function handleTextIntent(
   input: OrchestratorInput,
   detected: DetectedIntent,
 ): Promise<ChatResponse> {
-  if (process.env.GEMINI_API_KEY) {
-    try {
-      const ctx = toGeminiServiceContext(input.serviceContext);
-      const systemPrompt = getGeminiSystemPrompt(ctx, input.locale || 'ka');
-      const prefersPro = input.message.length > 1200 || input.history.length > 12 || ctx === 'interior' || ctx === 'business';
-      const gemini = await generateWithGemini({
-        prompt: input.message,
-        systemPrompt,
-        tier: prefersPro ? 'pro' : 'flash',
-        history: input.history?.map((h) => ({
-          role: h.role === 'assistant' ? ('model' as const) : ('user' as const),
-          parts: [{ text: h.content }],
-        })),
-        temperature: 0.6,
-      });
-
-      return {
-        success: true,
-        intent: detected.intent,
-        responseType: 'text',
-        message: gemini.text,
-        metadata: {
-          provider: 'gemini',
-          model: gemini.model,
-          tokensIn: gemini.tokensIn,
-          tokensOut: gemini.tokensOut,
-          confidence: detected.confidence,
-        },
-      };
-    } catch (error) {
-      // Fall back to existing chat engine path.
-      console.warn('[providerRouter] Gemini text path failed, falling back to chatEngine:', error);
-    }
+  // Cognitive core is Gemini-only. OpenAI is deprecated and intentionally NOT
+  // in the runtime path (no silent fallback that would resurface its billing
+  // errors). If Gemini is unconfigured/erroring we return a clean, surfaced
+  // failure instead of routing to another provider.
+  if (!process.env.GEMINI_API_KEY) {
+    return {
+      success: false,
+      intent: detected.intent,
+      responseType: 'text',
+      message: 'Chat is temporarily unavailable (cognitive core not configured).',
+      metadata: { provider: 'gemini', error: 'GEMINI_API_KEY not configured' },
+    };
   }
 
-  const agentId = input.agentId || CONTEXT_TO_AGENT[input.serviceContext] || 'main-assistant';
+  try {
+    const ctx = toGeminiServiceContext(input.serviceContext);
+    const systemPrompt = getGeminiSystemPrompt(ctx, input.locale || 'ka');
+    const prefersPro = input.message.length > 1200 || input.history.length > 12 || ctx === 'interior' || ctx === 'business';
+    const gemini = await generateWithGemini({
+      prompt: input.message,
+      systemPrompt,
+      tier: prefersPro ? 'pro' : 'flash',
+      history: input.history?.map((h) => ({
+        role: h.role === 'assistant' ? ('model' as const) : ('user' as const),
+        parts: [{ text: h.content }],
+      })),
+      temperature: 0.6,
+    });
 
-  const engineReq: ChatEngineRequest = {
-    agentId,
-    userId: input.userId,
-    sessionId: input.sessionId,
-    channel: 'web',
-    messages: [
-      ...input.history.map((h) => ({ role: h.role as 'user' | 'assistant', content: h.content })),
-      { role: 'user' as const, content: input.message },
-    ],
-  };
-
-  const result = await execute(engineReq);
-
-  return {
-    success: true,
-    intent: detected.intent,
-    responseType: 'text',
-    message: result.text,
-    metadata: {
-      provider: 'openai',
-      model: result.model,
-      agentId: result.agentId,
-      tokensIn: result.tokensIn,
-      tokensOut: result.tokensOut,
-      durationMs: result.durationMs,
-      confidence: detected.confidence,
-    },
-  };
+    return {
+      success: true,
+      intent: detected.intent,
+      responseType: 'text',
+      message: gemini.text,
+      metadata: {
+        provider: 'gemini',
+        model: gemini.model,
+        tokensIn: gemini.tokensIn,
+        tokensOut: gemini.tokensOut,
+        confidence: detected.confidence,
+      },
+    };
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : 'Gemini request failed';
+    console.error('[providerRouter] Gemini text path failed:', error);
+    return {
+      success: false,
+      intent: detected.intent,
+      responseType: 'text',
+      message: 'Chat is temporarily unavailable. Please try again shortly.',
+      metadata: { provider: 'gemini', error: msg },
+    };
+  }
 }
 
 // ─── Replicate generation path (direct, no HTTP self-fetch) ──────────────────
