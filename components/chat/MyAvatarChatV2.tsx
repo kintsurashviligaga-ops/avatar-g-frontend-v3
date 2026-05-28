@@ -411,7 +411,20 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated }: Pr
     const text = (overrideText ?? inputText).trim();
     if (!text || isLoading) return;
 
-    dispatch({ type: 'ADD_MESSAGE', message: { id: `u_${Date.now()}`, role: 'user', text, timestamp: Date.now() } });
+    // Image attachment → orchestrator `imageUrl` (it accepts data: URLs directly,
+    // see providerRouter.loadImageAsDataUrl). This is what drives the image-edit /
+    // interior (ოთახის 3D) / photo→avatar pipelines.
+    const imageAttachment = attachments.find((a) => a.type === 'image' && (a.dataUrl || a.preview));
+    const imageUrl = imageAttachment?.dataUrl || imageAttachment?.preview;
+
+    dispatch({ type: 'ADD_MESSAGE', message: {
+      id: `u_${Date.now()}`,
+      role: 'user',
+      text,
+      timestamp: Date.now(),
+      assetUrl: imageUrl ?? null,
+      assetType: imageUrl ? 'image' : null,
+    } });
     dispatch({ type: 'SET_INPUT', text: '' });
     dispatch({ type: 'CLEAR_ATTACHMENTS' });
     dispatch({ type: 'SET_LOADING', value: true });
@@ -467,7 +480,7 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated }: Pr
         .slice(-8)
         .map((m) => ({ role: m.role, content: m.text }));
 
-      let resp = await postOrchestrate({ message: text, serviceContext: mode, locale: lang, history });
+      let resp = await postOrchestrate({ message: text, serviceContext: mode, locale: lang, history, ...(imageUrl ? { imageUrl } : {}) });
       if (resp.success === false && !resp.predictionId) {
         throw new Error(resp.error || resp.message || copy.genericError);
       }
@@ -518,7 +531,7 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated }: Pr
       setPipeline(null);
       abortRef.current = null;
     }
-  }, [inputText, isLoading, messages, lang, mode, copy.genericError]);
+  }, [inputText, isLoading, messages, lang, mode, attachments, copy.genericError]);
 
   const stop = useCallback(() => abortRef.current?.abort(), []);
 
