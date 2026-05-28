@@ -137,13 +137,19 @@ export async function POST(req: NextRequest) {
       } satisfies ChatResponse);
     }
 
+    // Surface the underlying provider/config error (mirrors the 429 branch).
+    // Without this the cause is swallowed and a missing key (e.g.
+    // LTX_VIDEO_API_KEY / WORLDLABS_API_KEY) is indistinguishable from a bug.
+    const isConfigError = /not configured|missing|no route matched|unauthor|invalid api key/i.test(message);
     return NextResponse.json(
       {
         success: false,
         intent: 'text_chat',
         responseType: 'text',
-        message: 'Something went wrong. Please try again.',
-        metadata: { provider: 'system' },
+        message: isConfigError
+          ? 'This service is temporarily unavailable (provider not configured).'
+          : 'Something went wrong. Please try again.',
+        metadata: { provider: 'system', error: message },
       } satisfies ChatResponse,
       { status: 500 },
     );
