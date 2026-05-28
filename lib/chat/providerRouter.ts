@@ -525,15 +525,26 @@ async function handleInteriorIntent(input: OrchestratorInput): Promise<ChatRespo
       },
     };
   } catch (error) {
+    // Graceful degradation: keep the raw provider error in metadata for
+    // diagnostics, but show the user a premium, non-breaking message instead
+    // of a raw "no Route matched" string. Honest wording — the service is
+    // temporarily unavailable, not silently "succeeding".
+    const raw = error instanceof Error ? error.message : 'World Labs interior generation failed.';
+    const loc = input.locale || 'ka';
+    const friendly =
+      loc === 'en' ? 'The 3D Room engine is reconnecting to the spatial agent — please try again shortly.'
+      : loc === 'ru' ? 'Движок 3D-комнаты переподключается к пространственному агенту — попробуйте чуть позже.'
+      : 'ოთახის 3D ძრავი სინქრონიზდება სპატიალურ აგენტთან — სცადეთ ცოტა ხანში.';
     return {
       success: false,
       intent: 'image_generation',
       responseType: 'text',
-      message: error instanceof Error ? error.message : 'World Labs interior generation failed.',
+      message: friendly,
       metadata: {
         provider: 'worldlabs',
         model: 'marble',
         iteration: iterative.iteration,
+        error: raw,
       },
     };
   }
@@ -733,9 +744,14 @@ async function handleTextIntent(
   let geminiError: string | null = null;
 
   if (process.env.GEMINI_API_KEY) {
+    let geminiTimer: ReturnType<typeof setTimeout> | undefined;
     try {
       const prefersPro = input.message.length > 1200 || input.history.length > 12 || ctx === 'interior' || ctx === 'business';
-      const gemini = await generateWithGemini({
+      // Hard 10s cap so a hung Gemini call can't block the request up to
+      // maxDuration — on failure/timeout it drops straight to the Claude
+      // fallback below, keeping "zero breakdown visibility" for the user.
+      const gemini = await Promise.race([
+        generateWithGemini({
         prompt: input.message,
         systemPrompt,
         tier: prefersPro ? 'pro' : 'flash',
@@ -744,7 +760,12 @@ async function handleTextIntent(
           parts: [{ text: h.content }],
         })),
         temperature: 0.6,
-      });
+        }),
+        new Promise<never>((_, reject) => {
+          geminiTimer = setTimeout(() => reject(new Error('Gemini timeout (10s)')), 10000);
+        }),
+      ]);
+      if (geminiTimer) clearTimeout(geminiTimer);
       return {
         success: true,
         intent: detected.intent,
@@ -759,6 +780,7 @@ async function handleTextIntent(
         },
       };
     } catch (error) {
+      if (geminiTimer) clearTimeout(geminiTimer);
       geminiError = error instanceof Error ? error.message : 'Gemini request failed';
       console.warn('[providerRouter] Gemini text path failed, falling back to Claude:', geminiError);
     }
