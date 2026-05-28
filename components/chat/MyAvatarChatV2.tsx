@@ -38,20 +38,26 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
+  Box,
   Camera,
+  Film,
   History,
+  ImagePlus,
   Loader2,
   LogOut,
   Maximize2,
+  MessageSquare,
   Mic,
   MicOff,
   Minimize2,
+  Music,
   Paperclip,
   RotateCcw,
   Send,
   ThumbsDown,
   ThumbsUp,
   Trash2,
+  User,
   Volume2,
   X,
 } from 'lucide-react';
@@ -128,6 +134,21 @@ const COPY = {
   ru: { placeholder: 'Введите сообщение…', signIn: 'Войти', signOut: 'Выйти', clearHistory: 'Очистить историю', history: 'История', genericError: 'Что-то пошло не так. Попробуйте снова.' },
 } as const;
 
+/**
+ * Unified control-dock modes. The selected mode is passed as `serviceContext`
+ * to /api/chat/orchestrate, which biases intent detection + output type
+ * (text / image / video / audio). `global` is the default free-form chat.
+ */
+const MODES = [
+  { id: 'global',   Icon: MessageSquare, accent: '#22d3ee', label: { en: 'Chat',    ka: 'ჩატი',       ru: 'Чат' } },
+  { id: 'video',    Icon: Film,          accent: '#38bdf8', label: { en: 'Film',    ka: 'ფილმი',      ru: 'Фильм' } },
+  { id: 'avatar',   Icon: User,     accent: '#818cf8', label: { en: 'Avatar',  ka: 'AI ავატარი', ru: 'AI Аватар' } },
+  { id: 'image',    Icon: ImagePlus,     accent: '#34d399', label: { en: 'Image',   ka: 'სურათი',     ru: 'Изображение' } },
+  { id: 'music',    Icon: Music,         accent: '#f472b6', label: { en: 'Music',   ka: 'მუსიკა',     ru: 'Музыка' } },
+  { id: 'interior', Icon: Box,           accent: '#10b981', label: { en: 'Room 3D', ka: 'ოთახის 3D',  ru: 'Комната 3D' } },
+] as const;
+type ServiceMode = typeof MODES[number]['id'];
+
 type SpeechRecognitionLike = {
   continuous: boolean;
   interimResults: boolean;
@@ -152,6 +173,7 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated }: Pr
   const [historyOpen, setHistoryOpen] = useState(false);
   const [avatarExpanded, setAvatarExpanded] = useState(false);
   const [balanceGel, setBalanceGel] = useState<number | null>(null);
+  const [mode, setMode] = useState<ServiceMode>('global');
 
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -232,7 +254,7 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated }: Pr
         signal: abortRef.current.signal,
         body: JSON.stringify({
           message: text,
-          serviceContext: 'global',
+          serviceContext: mode,
           locale: lang,
           history,
         }),
@@ -283,7 +305,7 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated }: Pr
       dispatch({ type: 'SET_LOADING', value: false });
       abortRef.current = null;
     }
-  }, [inputText, isLoading, messages, lang, copy.genericError]);
+  }, [inputText, isLoading, messages, lang, mode, copy.genericError]);
 
   const stop = useCallback(() => abortRef.current?.abort(), []);
 
@@ -480,6 +502,31 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated }: Pr
             ))}
           </div>
         ) : null}
+
+        {/* Unified mode dock — selects the orchestrator service context. */}
+        <div className="px-3 pt-2 max-w-2xl mx-auto">
+          <div className="flex gap-1.5 overflow-x-auto pb-0.5 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+            {MODES.map(({ id, Icon, accent, label }) => {
+              const active = mode === id;
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => setMode(id)}
+                  aria-pressed={active}
+                  className={`flex-shrink-0 inline-flex items-center gap-1.5 h-8 px-3 rounded-full text-[12px] font-medium border bg-[#121212] transition-all active:scale-95 ${
+                    active
+                      ? 'border-cyan-400/50 text-zinc-100 shadow-[0_0_0_1px_rgba(34,211,238,0.35),0_6px_22px_-10px_rgba(34,211,238,0.7)]'
+                      : 'border-white/10 text-zinc-400 hover:text-zinc-200 hover:border-white/20'
+                  }`}
+                >
+                  <Icon size={14} style={active ? { color: accent } : undefined} />
+                  {label[lang]}
+                </button>
+              );
+            })}
+          </div>
+        </div>
 
         <div className="px-3 pt-2 pb-2 max-w-2xl mx-auto">
           <div

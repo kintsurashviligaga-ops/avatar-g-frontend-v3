@@ -30,8 +30,8 @@ describe('formatGEL', () => {
 });
 
 describe('refill tiers', () => {
-  test('exactly 5/10/20/50 with 5 as the minimum', () => {
-    expect([...REFILL_TIERS_GEL]).toEqual([5, 10, 20, 50]);
+  test('exactly 5/10/20/50/500 with 5 as the minimum', () => {
+    expect([...REFILL_TIERS_GEL]).toEqual([5, 10, 20, 50, 500]);
     expect(MIN_REFILL_GEL).toBe(5);
     expect(Math.min(...REFILL_TIERS_GEL)).toBe(MIN_REFILL_GEL);
   });
