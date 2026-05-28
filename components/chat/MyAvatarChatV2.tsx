@@ -148,10 +148,15 @@ const initialState: ChatState = {
 };
 
 const COPY = {
-  en: { placeholder: 'Type a message…', signIn: 'Sign in', signOut: 'Sign out', clearHistory: 'Clear history', history: 'History', menu: 'Menu', settings: 'Settings', language: 'Language', sound: 'Avatar sound', genericError: 'Something went wrong. Try again.' },
-  ka: { placeholder: 'დაწერე შეტყობინება…', signIn: 'შესვლა', signOut: 'გასვლა', clearHistory: 'ისტორიის გასუფთავება', history: 'ისტორია', menu: 'მენიუ', settings: 'პარამეტრები', language: 'ენა', sound: 'ავატარის ხმა', genericError: 'რაღაც ხარვეზი. სცადე ხელახლა.' },
-  ru: { placeholder: 'Введите сообщение…', signIn: 'Войти', signOut: 'Выйти', clearHistory: 'Очистить историю', history: 'История', menu: 'Меню', settings: 'Настройки', language: 'Язык', sound: 'Звук аватара', genericError: 'Что-то пошло не так. Попробуйте снова.' },
+  en: { placeholder: 'Type a message…', signIn: 'Sign in', signOut: 'Sign out', clearHistory: 'Clear history', history: 'History', menu: 'Menu', settings: 'Settings', language: 'Language', sound: 'Avatar sound', genericError: 'Something went wrong. Try again.', fileTooLarge: 'File is too large (max {max}MB).', fileBadType: 'Unsupported file type. Use an image, video, or audio file.' },
+  ka: { placeholder: 'დაწერე შეტყობინება…', signIn: 'შესვლა', signOut: 'გასვლა', clearHistory: 'ისტორიის გასუფთავება', history: 'ისტორია', menu: 'მენიუ', settings: 'პარამეტრები', language: 'ენა', sound: 'ავატარის ხმა', genericError: 'რაღაც ხარვეზი. სცადე ხელახლა.', fileTooLarge: 'ფაილი ძალიან დიდია (მაქს. {max}MB).', fileBadType: 'არასწორი ფაილის ტიპი. გამოიყენე სურათი, ვიდეო ან აუდიო.' },
+  ru: { placeholder: 'Введите сообщение…', signIn: 'Войти', signOut: 'Выйти', clearHistory: 'Очистить историю', history: 'История', menu: 'Меню', settings: 'Настройки', language: 'Язык', sound: 'Звук аватара', genericError: 'Что-то пошло не так. Попробуйте снова.', fileTooLarge: 'Файл слишком большой (макс. {max}МБ).', fileBadType: 'Неподдерживаемый тип файла. Используйте изображение, видео или аудио.' },
 } as const;
+
+// Pre-flight upload bounds. Images are inlined as base64 data URLs (≈+33%), so
+// the image cap is conservative to stay under serverless request-body limits.
+const MAX_IMAGE_MB = 4;
+const MAX_MEDIA_MB = 25;
 
 /**
  * Unified control-dock modes. The selected mode is passed as `serviceContext`
@@ -308,6 +313,15 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated }: Pr
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [avatarSoundOn, setAvatarSoundOn] = useState(false);
   const [pipeline, setPipeline] = useState<PipelineState | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const noticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Non-blocking transient alert (auto-dismiss) for pre-flight validation, etc.
+  const showNotice = useCallback((msg: string) => {
+    setNotice(msg);
+    if (noticeTimerRef.current) clearTimeout(noticeTimerRef.current);
+    noticeTimerRef.current = setTimeout(() => setNotice(null), 4000);
+  }, []);
 
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -545,23 +559,40 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated }: Pr
   const onPickFile = useCallback(() => fileInputRef.current?.click(), []);
   const onFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    e.target.value = ''; // reset early so re-picking the same file re-fires
     if (!file) return;
+
+    // ── Pre-flight validation (non-blocking) ──────────────────────────
+    const kind = file.type.startsWith('image/') ? 'image'
+      : file.type.startsWith('video/') ? 'video'
+      : file.type.startsWith('audio/') ? 'audio'
+      : null;
+    if (!kind) {
+      showNotice(copy.fileBadType);
+      return;
+    }
+    const maxMb = kind === 'image' ? MAX_IMAGE_MB : MAX_MEDIA_MB;
+    if (file.size > maxMb * 1024 * 1024) {
+      showNotice(copy.fileTooLarge.replace('{max}', String(maxMb)));
+      return;
+    }
+
     const att: ServiceChatAttachment = {
       id: `att_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
       name: file.name,
-      type: file.type.startsWith('image/') ? 'image' : file.type.startsWith('video/') ? 'video' : file.type.startsWith('audio/') ? 'audio' : 'file',
+      type: kind,
       mimeType: file.type,
       size: file.size,
     };
-    if (file.type.startsWith('image/')) {
+    if (kind === 'image') {
       const reader = new FileReader();
       reader.onload = () => dispatch({ type: 'ADD_ATTACHMENT', attachment: { ...att, preview: reader.result as string, dataUrl: reader.result as string } });
+      reader.onerror = () => showNotice(copy.genericError);
       reader.readAsDataURL(file);
     } else {
       dispatch({ type: 'ADD_ATTACHMENT', attachment: att });
     }
-    e.target.value = '';
-  }, []);
+  }, [showNotice, copy.fileBadType, copy.fileTooLarge, copy.genericError]);
 
   const handleSignOut = useCallback(async () => {
     try {
@@ -1001,6 +1032,22 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated }: Pr
         onClose={() => setCameraOpen(false)}
         onAttach={(att) => { dispatch({ type: 'ADD_ATTACHMENT', attachment: att }); setCameraOpen(false); }}
       />
+
+      {/* Non-blocking transient notice (pre-flight validation, export errors) */}
+      <AnimatePresence>
+        {notice ? (
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 12 }}
+            role="alert"
+            className="fixed left-1/2 z-[70] -translate-x-1/2 rounded-full border border-amber-400/30 bg-[#1a1407]/95 px-4 py-2 text-[12.5px] font-medium text-amber-200 shadow-[0_12px_40px_-12px_rgba(0,0,0,0.8)] backdrop-blur-md"
+            style={{ bottom: 'calc(180px + env(safe-area-inset-bottom, 0px))' }}
+          >
+            {notice}
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
     </div>
   );
 }
@@ -1032,19 +1079,49 @@ function MessageBubble({
     } catch { /* PiP unsupported / blocked — no-op */ }
   }, []);
 
-  const downloadAsset = useCallback(() => {
-    if (!message.assetUrl) return;
-    // Real generated cloud asset — best-effort download (cross-origin URLs may
-    // open in a new tab when the browser ignores the download attribute).
+  const downloadAsset = useCallback(async () => {
+    const url = message.assetUrl;
+    if (!url) return;
+    const ext = message.assetType === 'video' ? 'mp4'
+      : message.assetType === 'audio' ? 'mp3'
+      : message.assetType === 'image' ? 'png'
+      : 'bin';
+    const filename = `myavatar-${message.id}.${ext}`;
+
+    const standalone =
+      window.matchMedia?.('(display-mode: standalone)').matches ||
+      (window.navigator as Navigator & { standalone?: boolean }).standalone === true;
+
+    // In a standalone PWA / iOS web-view a plain cross-origin anchor opens a
+    // blank frame instead of saving. Force a fetch→blob→objectURL save; fall
+    // back to a direct anchor when the fetch is CORS-blocked.
+    if (standalone || url.startsWith('blob:') || url.startsWith('data:')) {
+      try {
+        const res = await fetch(url, { credentials: 'omit' });
+        if (!res.ok) throw new Error('fetch failed');
+        const objectUrl = URL.createObjectURL(await res.blob());
+        const a = document.createElement('a');
+        a.href = objectUrl;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(objectUrl), 10000);
+        return;
+      } catch {
+        /* CORS / network — fall through to direct navigation */
+      }
+    }
+
     const a = document.createElement('a');
-    a.href = message.assetUrl;
-    a.download = `myavatar-${message.id}`;
+    a.href = url;
+    a.download = filename;
     a.target = '_blank';
     a.rel = 'noopener';
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
-  }, [message.assetUrl, message.id]);
+  }, [message.assetUrl, message.assetType, message.id]);
 
   return (
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
@@ -1070,6 +1147,9 @@ function MessageBubble({
             controls
             playsInline
             preload="metadata"
+            // translateZ(0) promotes to a compositor layer so PiP / tab-switch
+            // on memory-constrained mobile doesn't stall the decode pipeline.
+            style={{ transform: 'translateZ(0)' }}
             className="rounded-2xl border border-zinc-800/70 max-w-full max-h-[280px] bg-black"
           >
             <source src={message.assetUrl} />
