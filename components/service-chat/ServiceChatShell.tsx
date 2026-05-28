@@ -24,7 +24,7 @@
 import { useReducer, useCallback, useRef, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
-import type { ServiceChatConfig, ServiceChatMessage, AgentMode, PreviewItem, PreviewType } from './types';
+import type { ServiceChatConfig, ServiceChatMessage, AgentMode, PreviewItem, PreviewType, PreviewLegs, PreviewLegStatus } from './types';
 import { serviceChatReducer, createInitialState } from '@/lib/service-chat/reducer';
 import { extractMediaArtifact, mediaKindForService, type MediaKind } from '@/lib/media/extractArtifact';
 
@@ -153,6 +153,70 @@ function isGenerativeService(slug: string): boolean {
   return ['avatar', 'image', 'photo', 'video', 'editing', 'music', 'visual-intel', 'visual-ai'].includes(slug);
 }
 
+/**
+ * Map composite metadata (from the music-video pipeline orchestrator) into the
+ * PreviewLegs shape the panel renders as a staggered telemetry feed.
+ *
+ * Handles both the initial response (metadata.compositePlan exists with
+ * leg refs but no per-leg poll status) and subsequent poll updates
+ * (metadata.music/.video carry per-leg status). Returns undefined when the
+ * response isn't composite at all.
+ */
+function legsFromComposite(metadata: Record<string, unknown> | undefined): PreviewLegs | undefined {
+  if (!metadata || !(metadata as Record<string, unknown>).composite) return undefined;
+
+  const plan = (metadata as Record<string, unknown>).compositePlan as
+    | { lyrics?: string | null; musicPredictionId?: string | null; videoTaskRef?: string | null }
+    | undefined;
+  const music = (metadata as Record<string, unknown>).music as
+    | { status?: PreviewLegStatus; url?: string | null; error?: string }
+    | undefined;
+  const video = (metadata as Record<string, unknown>).video as
+    | { status?: PreviewLegStatus; url?: string | null; error?: string }
+    | undefined;
+
+  const legs: PreviewLegs = {};
+
+  if (plan?.lyrics) {
+    legs.lyrics = {
+      label: 'Script Agent',
+      status: 'ready',
+      detail: 'Lyrics composed',
+    };
+  } else if (plan && 'lyrics' in plan) {
+    legs.lyrics = { label: 'Script Agent', status: 'skipped' };
+  }
+
+  // music leg status: prefer the per-leg poll info; fall back to initial plan.
+  if (music) {
+    legs.music = {
+      label: 'Audio Agent',
+      status: music.status ?? 'pending',
+      detail: music.status === 'ready' ? 'Beat ready' : 'Dropping boom-bap drums...',
+      error: music.error,
+    };
+  } else if (plan?.musicPredictionId) {
+    legs.music = { label: 'Audio Agent', status: 'pending', detail: 'Dropping boom-bap drums...' };
+  } else if (plan && 'musicPredictionId' in plan) {
+    legs.music = { label: 'Audio Agent', status: 'skipped' };
+  }
+
+  if (video) {
+    legs.video = {
+      label: 'Cinematic Agent',
+      status: video.status ?? 'pending',
+      detail: video.status === 'ready' ? 'Clip rendered' : 'Compositing cinematic frames...',
+      error: video.error,
+    };
+  } else if (plan?.videoTaskRef) {
+    legs.video = { label: 'Cinematic Agent', status: 'pending', detail: 'Compositing cinematic frames...' };
+  } else if (plan && 'videoTaskRef' in plan) {
+    legs.video = { label: 'Cinematic Agent', status: 'skipped' };
+  }
+
+  return Object.keys(legs).length > 0 ? legs : undefined;
+}
+
 function buildPreviewItem(id: string, response: OrchestrateResponse, hint: MediaKind): PreviewItem | null {
   const artifact = extractMediaArtifact(
     response.assetUrl ?? response.metadata,
@@ -160,17 +224,28 @@ function buildPreviewItem(id: string, response: OrchestrateResponse, hint: Media
   );
 
   const previewType = responseTypeToPreviewType(response.responseType);
+  const legs = legsFromComposite(response.metadata);
+  const compositeVideoUrl = legs?.video?.status === 'ready'
+    ? (response.metadata?.video as { url?: string } | undefined)?.url ?? undefined
+    : undefined;
+  const compositeMusicUrl = legs?.music?.status === 'ready'
+    ? (response.metadata?.music as { url?: string } | undefined)?.url ?? undefined
+    : undefined;
 
   // If the upstream provided a usable URL, render the corresponding media card.
-  if (artifact.url || response.assetUrl) {
+  if (artifact.url || response.assetUrl || compositeMusicUrl || compositeVideoUrl) {
+    const primaryUrl = compositeMusicUrl ?? artifact.url ?? response.assetUrl ?? compositeVideoUrl ?? undefined;
+    const secondaryUrl = compositeMusicUrl && compositeVideoUrl ? compositeVideoUrl : undefined;
     return {
       id,
       type: previewType === 'text' ? 'image' : previewType,
       status: 'ready',
-      url: artifact.url ?? response.assetUrl ?? undefined,
+      url: primaryUrl,
+      secondaryUrl,
       title: response.message,
-      thumbnail: previewType === 'image' ? (artifact.url ?? response.assetUrl ?? undefined) : undefined,
+      thumbnail: previewType === 'image' ? primaryUrl : undefined,
       predictionId: response.predictionId,
+      ...(legs ? { legs } : {}),
     };
   }
 
@@ -183,6 +258,20 @@ function buildPreviewItem(id: string, response: OrchestrateResponse, hint: Media
       content: response.message,
       title: 'Analysis',
       predictionId: response.predictionId,
+      ...(legs ? { legs } : {}),
+    };
+  }
+
+  // Composite responses with no asset yet but with legs telemetry — render
+  // a pending card carrying the per-leg feed so the user sees motion.
+  if (legs) {
+    return {
+      id,
+      type: previewType === 'text' ? 'audio' : previewType,
+      status: 'running',
+      title: response.message,
+      predictionId: response.predictionId,
+      legs,
     };
   }
 

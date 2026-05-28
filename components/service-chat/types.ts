@@ -77,6 +77,9 @@ export interface PreviewItem {
   /** Lifecycle state. `pending`/`running` cards render a loading shimmer until upgraded to `ready`. */
   status?: PreviewStatus;
   url?: string;
+  /** Secondary asset (e.g. the video URL when `url` carries the music URL on
+   *  a composite music-video card). Render alongside the primary asset. */
+  secondaryUrl?: string;
   content?: string;
   title?: string;
   thumbnail?: string;
@@ -85,6 +88,32 @@ export interface PreviewItem {
   predictionId?: string;
   /** Human-readable error message when status === 'failed'. */
   errorMessage?: string;
+  /** Per-sub-agent telemetry for composite pipelines. When populated, the
+   *  panel renders a staggered status feed instead of a generic shimmer. */
+  legs?: PreviewLegs;
+}
+
+export type PreviewLegStatus = 'pending' | 'running' | 'ready' | 'failed' | 'skipped';
+
+export interface PreviewLeg {
+  /** Agent label shown in the telemetry feed (e.g. "Script Agent", "Audio Agent"). */
+  label: string;
+  /** Lifecycle of this leg. */
+  status: PreviewLegStatus;
+  /** Optional 0-100 progress. When omitted, the feed shows status text only. */
+  progress?: number;
+  /** Optional one-line subtitle (e.g. "Dropping boom-bap drums..."). */
+  detail?: string;
+  /** Failure message when status === 'failed'. */
+  error?: string;
+}
+
+export interface PreviewLegs {
+  lyrics?: PreviewLeg;
+  music?: PreviewLeg;
+  video?: PreviewLeg;
+  /** Open slot for ad-hoc legs without changing the type (voice, mastering, …). */
+  extra?: PreviewLeg[];
 }
 
 /* ─── Cross-Service Transfer ─────────────────────────────────────── */
