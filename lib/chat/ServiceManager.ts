@@ -19,12 +19,26 @@ const LTX_BASE_URL = 'https://api.ltx.video';
 const HEYGEN_BASE_URL = 'https://api.heygen.com';
 const TASK_REF_VERSION = 1;
 
+const LTX_SUPPORTED_RESOLUTIONS: Record<'ltx-2-3-fast' | 'ltx-2-3-pro', readonly string[]> = {
+  'ltx-2-3-fast': ['1920x1080', '1080x1920', '2560x1440', '3840x2160'],
+  'ltx-2-3-pro': ['1920x1080', '1080x1920', '2560x1440', '3840x2160'],
+};
+const LTX_ALLOWED_FPS = [24, 25, 30] as const;
+
 const ltxRequestSchema = z.object({
   prompt: z.string().min(1).max(1500),
   model: z.enum(['ltx-2-3-fast', 'ltx-2-3-pro']).default('ltx-2-3-fast'),
-  resolution: z.enum(['768x512', '512x768']).default('768x512'),
+  resolution: z
+    .enum(['1920x1080', '1080x1920', '2560x1440', '3840x2160'])
+    .default('1920x1080'),
   duration: z.number().int().min(2).max(60).default(6),
-  fps: z.number().int().min(12).max(30).default(24),
+  fps: z
+    .number()
+    .int()
+    .refine((v) => (LTX_ALLOWED_FPS as readonly number[]).includes(v), {
+      message: 'fps must be one of 24, 25, 30',
+    })
+    .default(24),
 });
 
 const heygenRequestSchema = z.object({
@@ -342,12 +356,13 @@ export class ServiceManager {
     const promptHash = this.hashPrompt(request.userPrompt);
 
     const aspectRatio = this.normalizeAspectRatio(this.getOption(options, ['aspect', 'aspectRatio', 'ratio'])) || '16:9';
+    const requestedModel = this.getOption(options, ['model', 'videoModel']) === 'ltx-2-3-pro' ? 'ltx-2-3-pro' : 'ltx-2-3-fast';
     const parsed = ltxRequestSchema.parse({
       prompt: request.userPrompt,
-      model: this.getOption(options, ['model', 'videoModel']) || 'ltx-2-3-fast',
-      resolution: this.mapLtxResolution(this.getOption(options, ['resolution', 'size']), aspectRatio),
+      model: requestedModel,
+      resolution: this.mapLtxResolution(this.getOption(options, ['resolution', 'size']), aspectRatio, requestedModel),
       duration: this.toNumber(this.getOption(options, ['duration', 'durationSec', 'seconds']), 6),
-      fps: this.toNumber(this.getOption(options, ['fps']), 24),
+      fps: this.clampLtxFps(this.toNumber(this.getOption(options, ['fps']), 24)),
     });
 
     const response = await fetch(`${LTX_BASE_URL}/v1/text-to-video`, {
@@ -1035,14 +1050,41 @@ export class ServiceManager {
     return fromMap[normalized] || '1:1';
   }
 
-  private mapLtxResolution(value: string | undefined, aspectRatio: string): '768x512' | '512x768' {
-    const normalized = (value || '').trim();
-    if (normalized === '768x512' || normalized === '512x768') return normalized;
+  private mapLtxResolution(
+    value: string | undefined,
+    aspectRatio: string,
+    model: 'ltx-2-3-fast' | 'ltx-2-3-pro' = 'ltx-2-3-fast',
+  ): '1920x1080' | '1080x1920' | '2560x1440' | '3840x2160' {
+    const supported = LTX_SUPPORTED_RESOLUTIONS[model];
+    const normalized = (value || '').trim().toLowerCase().replace(/\s+/g, '');
 
-    // ltx-2-3-fast only accepts 768x512 (landscape) / 512x768 (vertical 9:16).
-    // Larger HD / square values 400 out, so every request is coerced to these.
-    if (aspectRatio === '9:16') return '512x768';
-    return '768x512';
+    // Honor an explicit, supported resolution if the caller provided one.
+    if (supported.includes(normalized)) {
+      return normalized as '1920x1080' | '1080x1920' | '2560x1440' | '3840x2160';
+    }
+
+    // Otherwise derive from aspect ratio. Vertical → portrait HD, everything
+    // else → landscape HD. (Square/4:3 have no native LTX size, so we land on
+    // the safe 16:9 default the API always accepts.)
+    if (aspectRatio === '9:16' || aspectRatio === '3:4') {
+      return '1080x1920';
+    }
+    return '1920x1080';
+  }
+
+  private clampLtxFps(value: number): 24 | 25 | 30 {
+    if (!Number.isFinite(value)) return 24;
+    // Snap to the nearest LTX-accepted frame rate (24 / 25 / 30).
+    let nearest: 24 | 25 | 30 = 24;
+    let bestDelta = Infinity;
+    for (const candidate of LTX_ALLOWED_FPS) {
+      const delta = Math.abs(candidate - value);
+      if (delta < bestDelta) {
+        bestDelta = delta;
+        nearest = candidate;
+      }
+    }
+    return nearest;
   }
 
   private normalizeHeygenAspect(value?: string): '16:9' | '9:16' | '1:1' {
