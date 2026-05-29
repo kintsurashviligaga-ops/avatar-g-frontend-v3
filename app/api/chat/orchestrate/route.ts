@@ -49,6 +49,9 @@ const orchestrateSchema = z.object({
   selectedOptions: z.record(z.string()).optional(),
   imageUrl: z.string().url().optional(),
 
+  // ── Personalization (Settings → Custom Instructions) ──
+  customInstructions: z.string().max(2000).optional(),
+
   // ── Polling ──
   predictionId: z.string().optional(),
 
@@ -123,6 +126,7 @@ export async function POST(req: NextRequest) {
       selectedOptions: data.selectedOptions,
       imageUrl: data.imageUrl,
       metadata: data.metadata,
+      customInstructions: data.customInstructions,
     });
 
     return NextResponse.json(response);

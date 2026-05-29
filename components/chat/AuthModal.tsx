@@ -36,7 +36,33 @@ type Strings = {
   haveAccount: string; noAccount: string;
   forgot: string; useMagic: string; usePassword: string;
   checkEmail: string; orContinue: string; notConfigured: string; back: string;
+  // Friendly, localised auth errors (never surface raw provider JSON).
+  errInvalidEmail: string; errInvalidCredentials: string; errEmailInUse: string;
+  errRateLimited: string; errWeakPassword: string; errEmailNotConfirmed: string;
+  errNetwork: string; errGeneric: string;
 };
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/**
+ * Map a provider/network error to an elegant, localised line. Anything that
+ * looks like a raw JSON/HTML payload (or is suspiciously long) is collapsed to
+ * a friendly generic message so the user never sees a raw dump.
+ */
+function humanizeAuthError(err: unknown, t: Strings): string {
+  const raw = (err instanceof Error ? err.message : typeof err === 'string' ? err : '').trim();
+  if (!raw || /^[[{<]/.test(raw)) return t.errGeneric;
+  const m = raw.toLowerCase();
+  if (/invalid login credentials|invalid email or password|wrong password|bad credentials/.test(m)) return t.errInvalidCredentials;
+  if (/unable to validate email|invalid.*email|email.*invalid|email address.*invalid/.test(m)) return t.errInvalidEmail;
+  if (/already registered|already exists|already been registered|user already/.test(m)) return t.errEmailInUse;
+  if (/rate limit|too many|429|over_email_send_rate/.test(m)) return t.errRateLimited;
+  if (/password.*(short|at least|weak|6|minimum)|weak password/.test(m)) return t.errWeakPassword;
+  if (/email not confirmed|confirm your email|not confirmed/.test(m)) return t.errEmailNotConfirmed;
+  if (/network|failed to fetch|fetch failed|timeout|offline/.test(m)) return t.errNetwork;
+  // Short, human-readable provider messages are safe to pass through.
+  return raw.length <= 120 ? raw : t.errGeneric;
+}
 
 const COPY: Record<Lang, Strings> = {
   ka: {
@@ -48,6 +74,14 @@ const COPY: Record<Lang, Strings> = {
     checkEmail: 'შეამოწმე ელ.ფოსტა — ბმული გამოგზავნილია.', orContinue: 'ან',
     notConfigured: 'ავთენტიფიკაცია ამ გარემოში გამორთულია (demo).',
     back: 'უკან',
+    errInvalidEmail: 'შეიყვანე სწორი ელ.ფოსტის მისამართი.',
+    errInvalidCredentials: 'ელ.ფოსტა ან პაროლი არასწორია.',
+    errEmailInUse: 'ეს ელ.ფოსტა უკვე რეგისტრირებულია. სცადე შესვლა.',
+    errRateLimited: 'ძალიან ბევრი მცდელობა. სცადე ცოტა ხანში.',
+    errWeakPassword: 'პაროლი სუსტია — გამოიყენე მინიმუმ 6 სიმბოლო.',
+    errEmailNotConfirmed: 'ჯერ დაადასტურე ელ.ფოსტა მიღებული ბმულით.',
+    errNetwork: 'ქსელის შეცდომა. შეამოწმე კავშირი და სცადე ხელახლა.',
+    errGeneric: 'ვერ მოხერხდა ავტორიზაცია. სცადე ხელახლა.',
   },
   en: {
     login: 'Sign in', register: 'Create account', reset: 'Reset password', magic: 'Magic link',
@@ -58,6 +92,14 @@ const COPY: Record<Lang, Strings> = {
     checkEmail: 'Check your email — a link is on its way.', orContinue: 'or',
     notConfigured: 'Authentication is disabled in this environment (demo).',
     back: 'Back',
+    errInvalidEmail: 'Please enter a valid email address.',
+    errInvalidCredentials: 'Email or password is incorrect.',
+    errEmailInUse: 'That email is already registered. Try signing in.',
+    errRateLimited: 'Too many attempts. Please try again shortly.',
+    errWeakPassword: 'Password is too weak — use at least 6 characters.',
+    errEmailNotConfirmed: 'Please confirm your email via the link we sent.',
+    errNetwork: 'Network error. Check your connection and try again.',
+    errGeneric: "Couldn't sign you in. Please try again.",
   },
   ru: {
     login: 'Вход', register: 'Регистрация', reset: 'Сброс пароля', magic: 'Магическая ссылка',
@@ -68,6 +110,14 @@ const COPY: Record<Lang, Strings> = {
     checkEmail: 'Проверьте почту — ссылка отправлена.', orContinue: 'или',
     notConfigured: 'Аутентификация отключена в этой среде (demo).',
     back: 'Назад',
+    errInvalidEmail: 'Введите корректный адрес эл. почты.',
+    errInvalidCredentials: 'Неверная почта или пароль.',
+    errEmailInUse: 'Эта почта уже зарегистрирована. Попробуйте войти.',
+    errRateLimited: 'Слишком много попыток. Повторите чуть позже.',
+    errWeakPassword: 'Пароль слишком простой — минимум 6 символов.',
+    errEmailNotConfirmed: 'Сначала подтвердите почту по ссылке из письма.',
+    errNetwork: 'Ошибка сети. Проверьте подключение и повторите.',
+    errGeneric: 'Не удалось войти. Попробуйте снова.',
   },
 };
 
@@ -94,6 +144,8 @@ export default function AuthModal({ open, locale, onClose, onAuthed }: AuthModal
   const submit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
     reset();
+    // Client-side email validation → elegant inline error before any round-trip.
+    if (!EMAIL_RE.test(email.trim())) { setError(t.errInvalidEmail); return; }
     const supabase = createBrowserClient();
     if (!supabase || !isSupabaseConfigured()) { setError(t.notConfigured); return; }
     setBusy(true);
@@ -120,7 +172,7 @@ export default function AuthModal({ open, locale, onClose, onAuthed }: AuthModal
         setNotice(t.checkEmail);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Authentication failed');
+      setError(humanizeAuthError(err, t));
     } finally {
       setBusy(false);
     }

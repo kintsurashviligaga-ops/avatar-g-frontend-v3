@@ -16,6 +16,7 @@ export default async function DashboardPage({ params }: Props) {
   const { locale } = await params;
 
   let userName = 'Guest';
+  let userEmail: string | undefined;
   let isAuthenticated = false;
   let shouldOnboard = false;
 
@@ -28,6 +29,7 @@ export default async function DashboardPage({ params }: Props) {
     if (user) {
       isAuthenticated = true;
       userName = user.user_metadata?.full_name || user.email || 'Authenticated User';
+      userEmail = user.email ?? undefined;
 
       // First-login onboarding gate
       const { data: avatar } = await supabase
@@ -54,6 +56,7 @@ export default async function DashboardPage({ params }: Props) {
     <MyAvatarChatV2
       locale={locale}
       userName={userName}
+      userEmail={userEmail}
       isAuthenticated={isAuthenticated}
     />
   );

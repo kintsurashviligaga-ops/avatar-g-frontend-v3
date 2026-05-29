@@ -1,0 +1,231 @@
+/**
+ * Unit tests for the client conversation store + chat preferences.
+ * Runs in the default jsdom environment (real localStorage).
+ */
+import {
+  bucketFor,
+  deriveTitle,
+  deleteConversation,
+  getConversation,
+  groupConversationsByTime,
+  loadConversations,
+  renameConversation,
+  sanitizeMessageForStore,
+  sanitizeMessagesForStore,
+  upsertConversation,
+  type StoredConversation,
+  type StoredMessage,
+} from './conversationStore';
+import {
+  DEFAULT_PREFERENCES,
+  MAX_CUSTOM_INSTRUCTIONS,
+  loadPreferences,
+  normalizePreferences,
+  savePreferences,
+} from './preferences';
+
+const DAY = 86_400_000;
+
+function makeConvo(id: string, updatedAt: number, firstPrompt = 'hello world'): StoredConversation {
+  const msg: StoredMessage = { id: `${id}_m`, role: 'user', text: firstPrompt, timestamp: updatedAt };
+  return { id, title: deriveTitle(firstPrompt), createdAt: updatedAt, updatedAt, messages: [msg] };
+}
+
+beforeEach(() => {
+  window.localStorage.clear();
+});
+
+describe('deriveTitle', () => {
+  test('empty / whitespace → fallback', () => {
+    expect(deriveTitle('')).toBe('New chat');
+    expect(deriveTitle('   \n  ')).toBe('New chat');
+  });
+
+  test('short text preserved, whitespace collapsed', () => {
+    expect(deriveTitle('  make   a  video ')).toBe('make a video');
+  });
+
+  test('long text truncated with ellipsis at 48 chars', () => {
+    const long = 'A'.repeat(80);
+    const title = deriveTitle(long);
+    expect(title.endsWith('…')).toBe(true);
+    expect(title.length).toBeLessThanOrEqual(49); // 48 chars + ellipsis
+  });
+});
+
+describe('bucketFor', () => {
+  // Fixed "now": 2026-05-29 12:00:00 local.
+  const now = new Date(2026, 4, 29, 12, 0, 0).getTime();
+
+  test('earlier today → today', () => {
+    const earlierToday = new Date(2026, 4, 29, 1, 0, 0).getTime();
+    expect(bucketFor(earlierToday, now)).toBe('today');
+  });
+
+  test('yesterday → previous7', () => {
+    expect(bucketFor(now - 1 * DAY, now)).toBe('previous7');
+  });
+
+  test('5 days ago → previous7', () => {
+    expect(bucketFor(now - 5 * DAY, now)).toBe('previous7');
+  });
+
+  test('20 days ago → previous30', () => {
+    expect(bucketFor(now - 20 * DAY, now)).toBe('previous30');
+  });
+
+  test('100 days ago → older', () => {
+    expect(bucketFor(now - 100 * DAY, now)).toBe('older');
+  });
+});
+
+describe('groupConversationsByTime', () => {
+  const now = new Date(2026, 4, 29, 12, 0, 0).getTime();
+
+  test('orders buckets and omits empty ones', () => {
+    const convos = [
+      makeConvo('a', new Date(2026, 4, 29, 9, 0, 0).getTime()), // today
+      makeConvo('b', now - 3 * DAY), // previous7
+      makeConvo('c', now - 100 * DAY), // older
+    ];
+    const groups = groupConversationsByTime(convos, now);
+    expect(groups.map((g) => g.bucket)).toEqual(['today', 'previous7', 'older']);
+    // previous30 is omitted (no member)
+    expect(groups.find((g) => g.bucket === 'previous30')).toBeUndefined();
+  });
+
+  test('within a bucket, most-recent first', () => {
+    const older1 = makeConvo('o1', now - 40 * DAY);
+    const older2 = makeConvo('o2', now - 50 * DAY);
+    const groups = groupConversationsByTime([older2, older1], now);
+    const olderGroup = groups.find((g) => g.bucket === 'older')!;
+    expect(olderGroup.conversations.map((c) => c.id)).toEqual(['o1', 'o2']);
+  });
+});
+
+describe('sanitize / asset eviction', () => {
+  test('oversized data: URL is evicted, message text kept', () => {
+    const big = `data:video/mp4;base64,${'A'.repeat(200_001)}`;
+    const m: StoredMessage = { id: 'm1', role: 'assistant', text: 'here is your clip', timestamp: 1, assetUrl: big, assetType: 'video' };
+    const out = sanitizeMessageForStore(m);
+    expect(out.assetUrl).toBeNull();
+    expect(out.assetEvicted).toBe(true);
+    expect(out.text).toBe('here is your clip');
+  });
+
+  test('blob: URL is evicted', () => {
+    const m: StoredMessage = { id: 'm2', role: 'assistant', text: '', timestamp: 1, assetUrl: 'blob:https://x/abc', assetType: 'audio' };
+    expect(sanitizeMessageForStore(m).assetUrl).toBeNull();
+    expect(sanitizeMessageForStore(m).assetEvicted).toBe(true);
+  });
+
+  test('remote http(s) URL is preserved', () => {
+    const url = 'https://cdn.example.com/render.mp4';
+    const m: StoredMessage = { id: 'm3', role: 'assistant', text: '', timestamp: 1, assetUrl: url, assetType: 'video' };
+    expect(sanitizeMessageForStore(m).assetUrl).toBe(url);
+    expect(sanitizeMessageForStore(m).assetEvicted).toBeUndefined();
+  });
+
+  test('small data: URL (e.g. tiny image) is preserved', () => {
+    const small = `data:image/png;base64,${'A'.repeat(100)}`;
+    const m: StoredMessage = { id: 'm4', role: 'user', text: '', timestamp: 1, assetUrl: small, assetType: 'image' };
+    expect(sanitizeMessageForStore(m).assetUrl).toBe(small);
+  });
+
+  test('sanitizeMessagesForStore maps across a list', () => {
+    const big = `data:video/mp4;base64,${'A'.repeat(200_001)}`;
+    const out = sanitizeMessagesForStore([
+      { id: 'a', role: 'user', text: 'hi', timestamp: 1 },
+      { id: 'b', role: 'assistant', text: 'clip', timestamp: 2, assetUrl: big, assetType: 'video' },
+    ]);
+    expect(out[0].assetUrl).toBeUndefined();
+    expect(out[1].assetUrl).toBeNull();
+  });
+});
+
+describe('CRUD round-trip (localStorage)', () => {
+  test('upsert inserts then updates the same id', () => {
+    upsertConversation(makeConvo('x', 1000, 'first'));
+    expect(loadConversations()).toHaveLength(1);
+    upsertConversation({ ...makeConvo('x', 2000, 'first'), title: 'renamed-by-upsert' });
+    const list = loadConversations();
+    expect(list).toHaveLength(1);
+    expect(list[0].title).toBe('renamed-by-upsert');
+    expect(list[0].updatedAt).toBe(2000);
+  });
+
+  test('loadConversations returns most-recent first', () => {
+    upsertConversation(makeConvo('old', 1000));
+    upsertConversation(makeConvo('new', 5000));
+    expect(loadConversations().map((c) => c.id)).toEqual(['new', 'old']);
+  });
+
+  test('renameConversation updates the title only', () => {
+    upsertConversation(makeConvo('r', 1000, 'original'));
+    renameConversation('r', '  Custom Title  ');
+    expect(getConversation('r')?.title).toBe('Custom Title');
+  });
+
+  test('rename to blank keeps the previous title', () => {
+    upsertConversation({ ...makeConvo('r', 1000), title: 'keep me' });
+    renameConversation('r', '   ');
+    expect(getConversation('r')?.title).toBe('keep me');
+  });
+
+  test('deleteConversation removes it', () => {
+    upsertConversation(makeConvo('d', 1000));
+    upsertConversation(makeConvo('keep', 2000));
+    deleteConversation('d');
+    expect(loadConversations().map((c) => c.id)).toEqual(['keep']);
+    expect(getConversation('d')).toBeNull();
+  });
+
+  test('oversized assets are evicted at the persistence boundary', () => {
+    const big = `data:video/mp4;base64,${'A'.repeat(200_001)}`;
+    upsertConversation({
+      id: 'media',
+      title: 't',
+      createdAt: 1,
+      updatedAt: 1,
+      messages: [{ id: 'm', role: 'assistant', text: 'clip', timestamp: 1, assetUrl: big, assetType: 'video' }],
+    });
+    const restored = getConversation('media');
+    expect(restored?.messages[0].assetUrl).toBeNull();
+    expect(restored?.messages[0].assetEvicted).toBe(true);
+  });
+
+  test('malformed JSON in storage degrades to empty', () => {
+    window.localStorage.setItem('myavatar.conversations.v1', '{not json');
+    expect(loadConversations()).toEqual([]);
+  });
+});
+
+describe('preferences', () => {
+  test('normalize fills defaults from partial / garbage input', () => {
+    expect(normalizePreferences(null)).toEqual(DEFAULT_PREFERENCES);
+    expect(normalizePreferences({ submitOnEnter: false })).toEqual({
+      ...DEFAULT_PREFERENCES,
+      submitOnEnter: false,
+    });
+  });
+
+  test('custom instructions are clamped to the max length', () => {
+    const huge = 'x'.repeat(MAX_CUSTOM_INSTRUCTIONS + 500);
+    expect(normalizePreferences({ customInstructions: huge }).customInstructions.length).toBe(
+      MAX_CUSTOM_INSTRUCTIONS,
+    );
+  });
+
+  test('save → load round-trip', () => {
+    savePreferences({ submitOnEnter: false, autoplayMedia: true, customInstructions: 'be concise' });
+    expect(loadPreferences()).toEqual({
+      submitOnEnter: false,
+      autoplayMedia: true,
+      customInstructions: 'be concise',
+    });
+  });
+
+  test('load with no stored value returns defaults', () => {
+    expect(loadPreferences()).toEqual(DEFAULT_PREFERENCES);
+  });
+});

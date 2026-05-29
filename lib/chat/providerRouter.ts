@@ -40,6 +40,19 @@ export interface OrchestratorInput {
   selectedOptions?: Record<string, string>;
   imageUrl?: string;
   metadata?: Record<string, unknown>;
+  /**
+   * Optional user "Custom Instructions" (Settings → personalization). Appended
+   * to the agent's system prompt so it biases tone/behaviour without polluting
+   * the visible conversation. Bounded by the caller (see orchestrate route).
+   */
+  customInstructions?: string;
+}
+
+/** Append the user's custom instructions to a base system prompt (if any). */
+function withCustomInstructions(base: string, customInstructions?: string): string {
+  const trimmed = (customInstructions || '').trim().slice(0, 2000);
+  if (!trimmed) return base;
+  return `${base}\n\n[User custom instructions]\nThe user has set the following persistent preferences. Honour them unless they conflict with safety:\n${trimmed}`;
 }
 
 export interface ChatResponse {
@@ -148,7 +161,7 @@ async function handleGeminiMultimodal(input: OrchestratorInput): Promise<ChatRes
   const imageBase64 = input.metadata?.imageBase64 as string | undefined;
   const mimeType = (input.metadata?.mimeType as string) ?? 'image/jpeg';
   const ctx = toGeminiServiceContext(input.serviceContext);
-  const systemPrompt = getGeminiSystemPrompt(ctx, input.locale ?? 'ka');
+  const systemPrompt = withCustomInstructions(getGeminiSystemPrompt(ctx, input.locale ?? 'ka'), input.customInstructions);
 
   const startMs = Date.now();
   const response = await generateWithGemini({
@@ -740,7 +753,7 @@ async function handleTextIntent(
   // the instant that project is on the paid tier, Gemini serves with no change.
   // OpenAI stays fully out of the runtime path.
   const ctx = toGeminiServiceContext(input.serviceContext);
-  const systemPrompt = getGeminiSystemPrompt(ctx, input.locale || 'ka');
+  const systemPrompt = withCustomInstructions(getGeminiSystemPrompt(ctx, input.locale || 'ka'), input.customInstructions);
   let geminiError: string | null = null;
 
   if (process.env.GEMINI_API_KEY) {

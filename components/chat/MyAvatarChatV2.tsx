@@ -35,7 +35,7 @@
  *      ↑ safe-area-inset-bottom padding so iOS Safari can't clip
  */
 
-import { isValidElement, useCallback, useEffect, useReducer, useRef, useState, type ReactNode } from 'react';
+import { isValidElement, useCallback, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from 'react';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -60,6 +60,7 @@ import {
   Mic,
   MicOff,
   Minimize2,
+  MoreHorizontal,
   Music,
   Paperclip,
   Pencil,
@@ -67,6 +68,8 @@ import {
   RotateCcw,
   Send,
   Settings,
+  Sparkles,
+  PenSquare,
   ThumbsDown,
   ThumbsUp,
   Trash2,
@@ -82,6 +85,26 @@ import AuthModal from '@/components/chat/AuthModal';
 import type { ServiceChatAttachment } from '@/components/service-chat/types';
 import { resolveAvatarVideo } from '@/lib/avatar/video-config';
 import { useKeyboardResilience } from '@/hooks/useKeyboardResilience';
+import { Skeleton } from '@/components/ui/Skeleton';
+import {
+  deriveTitle,
+  deleteConversation,
+  getConversation,
+  groupConversationsByTime,
+  loadConversations,
+  renameConversation,
+  upsertConversation,
+  type StoredConversation,
+  type StoredMessage,
+  type TimeBucket,
+} from '@/lib/chat/conversationStore';
+import {
+  DEFAULT_PREFERENCES,
+  MAX_CUSTOM_INSTRUCTIONS,
+  loadPreferences,
+  savePreferences,
+  type ChatPreferences,
+} from '@/lib/chat/preferences';
 
 // Monochrome system accent (near-white). Keeps the whole workspace flat and
 // premium (Apple/Gemini dark aesthetic) — no neon, no chroma. Drives the send
@@ -103,6 +126,8 @@ interface Props {
   locale: string;
   userName: string;
   isAuthenticated: boolean;
+  /** Logged-in email, surfaced in Settings → Account. Optional (guest = none). */
+  userEmail?: string;
 }
 
 interface ChatMessage {
@@ -118,6 +143,8 @@ interface ChatMessage {
   model?: string;
   /** Service mode that produced this asset (drives preview aspect, e.g. avatar→9:16). */
   mode?: ServiceMode;
+  /** Set on restore when a large/ephemeral asset was dropped from local storage. */
+  assetEvicted?: boolean;
 }
 
 interface ChatState {
@@ -133,6 +160,7 @@ type Action =
   | { type: 'SET_LOADING'; value: boolean }
   | { type: 'ADD_MESSAGE'; message: ChatMessage }
   | { type: 'CLEAR_MESSAGES' }
+  | { type: 'LOAD_MESSAGES'; messages: ChatMessage[] }
   | { type: 'ADD_ATTACHMENT'; attachment: ServiceChatAttachment }
   | { type: 'REMOVE_ATTACHMENT'; id: string }
   | { type: 'CLEAR_ATTACHMENTS' }
@@ -144,6 +172,8 @@ function reducer(state: ChatState, action: Action): ChatState {
     case 'SET_LOADING':       return { ...state, isLoading: action.value };
     case 'ADD_MESSAGE':       return { ...state, messages: [...state.messages, action.message] };
     case 'CLEAR_MESSAGES':    return { ...state, messages: [] };
+    // Wholesale replace — used to restore a stored conversation into the viewport.
+    case 'LOAD_MESSAGES':     return { ...state, messages: action.messages, inputText: '', attachments: [] };
     case 'ADD_ATTACHMENT':    return { ...state, attachments: [...state.attachments, action.attachment] };
     case 'REMOVE_ATTACHMENT': return { ...state, attachments: state.attachments.filter((a) => a.id !== action.id) };
     case 'CLEAR_ATTACHMENTS': return { ...state, attachments: [] };
@@ -165,6 +195,95 @@ const COPY = {
   ka: { placeholder: 'დაწერე შეტყობინება…', signIn: 'შესვლა', signOut: 'გასვლა', clearHistory: 'ისტორიის გასუფთავება', history: 'ისტორია', menu: 'მენიუ', settings: 'პარამეტრები', language: 'ენა', sound: 'ავატარის ხმა', genericError: 'რაღაც ხარვეზი. სცადე ხელახლა.', fileTooLarge: 'ფაილი ძალიან დიდია (მაქს. {max}MB).', fileBadType: 'არასწორი ფაილის ტიპი. გამოიყენე სურათი, ვიდეო ან აუდიო.', voiceUnsupported: 'ხმოვანი შეყვანა ამ ბრაუზერში არ მუშაობს.', listening: 'გისმენ…' },
   ru: { placeholder: 'Введите сообщение…', signIn: 'Войти', signOut: 'Выйти', clearHistory: 'Очистить историю', history: 'История', menu: 'Меню', settings: 'Настройки', language: 'Язык', sound: 'Звук аватара', genericError: 'Что-то пошло не так. Попробуйте снова.', fileTooLarge: 'Файл слишком большой (макс. {max}МБ).', fileBadType: 'Неподдерживаемый тип файла. Используйте изображение, видео или аудио.', voiceUnsupported: 'Голосовой ввод не поддерживается в этом браузере.', listening: 'Слушаю…' },
 } as const;
+
+// Ecosystem-tier strings (history sidebar, settings modal, attachments). Kept
+// in a separate map so the large base COPY block above stays untouched.
+const XCOPY = {
+  en: {
+    newChat: 'New chat', rename: 'Rename', delete: 'Delete', open: 'Open',
+    deleteTitle: 'Delete chat?', deleteBody: 'This conversation will be permanently removed from this device. This can’t be undone.',
+    cancel: 'Cancel', save: 'Save', done: 'Done', close: 'Close', noChats: 'No conversations yet.',
+    account: 'Account', preferences: 'Preferences', signedInAs: 'Signed in as', guest: 'Guest (not signed in)',
+    submitOnEnter: 'Send with Enter', submitOnEnterHint: 'Off: Enter adds a new line, ⌘/Ctrl+Enter sends',
+    autoplay: 'Autoplay generated media', customInstructions: 'Custom instructions',
+    ciPlaceholder: 'e.g. Always reply in Georgian, be concise, prefer cinematic prompts…',
+    ciHint: 'Added to every conversation to personalise the assistant.',
+    dropToAttach: 'Drop to attach', mediaExpired: 'Media not stored — regenerate to view',
+  },
+  ka: {
+    newChat: 'ახალი ჩატი', rename: 'გადარქმევა', delete: 'წაშლა', open: 'გახსნა',
+    deleteTitle: 'წავშალო ჩატი?', deleteBody: 'ეს საუბარი სამუდამოდ წაიშლება ამ მოწყობილობიდან. დაბრუნება შეუძლებელია.',
+    cancel: 'გაუქმება', save: 'შენახვა', done: 'მზადაა', close: 'დახურვა', noChats: 'ჯერ საუბრები არ არის.',
+    account: 'ანგარიში', preferences: 'პარამეტრები', signedInAs: 'შესული ხართ', guest: 'სტუმარი (არ ხართ შესული)',
+    submitOnEnter: 'გაგზავნა Enter-ით', submitOnEnterHint: 'გამორთულზე: Enter ახალ ხაზს ამატებს, ⌘/Ctrl+Enter აგზავნის',
+    autoplay: 'მედიის ავტომატური დაკვრა', customInstructions: 'პერსონალური ინსტრუქციები',
+    ciPlaceholder: 'მაგ.: ყოველთვის უპასუხე ქართულად, იყავი ლაკონური…',
+    ciHint: 'ემატება ყველა საუბარს ასისტენტის პერსონალიზაციისთვის.',
+    dropToAttach: 'ჩააგდე მისამაგრებლად', mediaExpired: 'მედია არ შენახულა — ხელახლა დააგენერირე',
+  },
+  ru: {
+    newChat: 'Новый чат', rename: 'Переименовать', delete: 'Удалить', open: 'Открыть',
+    deleteTitle: 'Удалить чат?', deleteBody: 'Этот разговор будет навсегда удалён с этого устройства. Отменить нельзя.',
+    cancel: 'Отмена', save: 'Сохранить', done: 'Готово', close: 'Закрыть', noChats: 'Пока нет разговоров.',
+    account: 'Аккаунт', preferences: 'Настройки', signedInAs: 'Вы вошли как', guest: 'Гость (не выполнен вход)',
+    submitOnEnter: 'Отправка по Enter', submitOnEnterHint: 'Выкл.: Enter — новая строка, ⌘/Ctrl+Enter — отправка',
+    autoplay: 'Автовоспроизведение медиа', customInstructions: 'Пользовательские инструкции',
+    ciPlaceholder: 'Напр.: всегда отвечай по-русски, будь краток…',
+    ciHint: 'Добавляется к каждому разговору для персонализации ассистента.',
+    dropToAttach: 'Отпустите, чтобы прикрепить', mediaExpired: 'Медиа не сохранено — сгенерируйте заново',
+  },
+} as const;
+
+// Time-bucket headers for the grouped history sidebar (Tier-1 LLM layout).
+const GROUP_LABELS: Record<TimeBucket, { en: string; ka: string; ru: string }> = {
+  today: { en: 'Today', ka: 'დღეს', ru: 'Сегодня' },
+  previous7: { en: 'Previous 7 Days', ka: 'წინა 7 დღე', ru: 'Предыдущие 7 дней' },
+  previous30: { en: 'Previous 30 Days', ka: 'წინა 30 დღე', ru: 'Предыдущие 30 дней' },
+  older: { en: 'Older', ka: 'უფრო ძველი', ru: 'Ранее' },
+};
+
+/** Fresh stable session id (also the conversation key). */
+function newSessionId(): string {
+  const rand =
+    typeof crypto !== 'undefined' && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
+  return `session_web_${rand}`;
+}
+
+/** Runtime → persisted message (assets are sanitized inside the store). */
+function toStored(m: ChatMessage): StoredMessage {
+  return {
+    id: m.id,
+    role: m.role,
+    text: m.text,
+    timestamp: m.timestamp,
+    assetUrl: m.assetUrl ?? null,
+    assetType: m.assetType ?? null,
+    sourcePrompt: m.sourcePrompt,
+    agentId: m.agentId,
+    model: m.model,
+    mode: m.mode,
+    assetEvicted: m.assetEvicted,
+  };
+}
+
+/** Persisted → runtime message (restoration into the viewport). */
+function fromStored(m: StoredMessage): ChatMessage {
+  return {
+    id: m.id,
+    role: m.role,
+    text: m.text,
+    timestamp: m.timestamp,
+    assetUrl: m.assetUrl ?? null,
+    assetType: m.assetType ?? null,
+    sourcePrompt: m.sourcePrompt,
+    agentId: m.agentId,
+    model: m.model,
+    mode: m.mode as ServiceMode | undefined,
+    assetEvicted: m.assetEvicted,
+  };
+}
 
 // Pre-flight upload bounds. Images are inlined as base64 data URLs (≈+33%), so
 // the image cap is conservative to stay under serverless request-body limits.
@@ -309,9 +428,10 @@ type SpeechRecognitionLike = {
   stop: () => void;
 };
 
-export default function MyAvatarChatV2({ locale, userName, isAuthenticated }: Props) {
+export default function MyAvatarChatV2({ locale, userName, isAuthenticated, userEmail }: Props) {
   const lang = (locale === 'ka' || locale === 'ru' ? locale : 'en') as 'en' | 'ka' | 'ru';
   const copy = COPY[lang];
+  const xc = XCOPY[lang];
 
   const [state, dispatch] = useReducer(reducer, initialState);
   const { messages, inputText, isLoading, attachments, isRecording } = state;
@@ -325,17 +445,19 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated }: Pr
   const [avatarExpanded, setAvatarExpanded] = useState(false);
   const [balanceGel, setBalanceGel] = useState<number | null>(null);
   const [mode, setMode] = useState<ServiceMode>('global');
-  // Stable per-session id sent on EVERY request (initial + polls). The backend
-  // bakes this into the predictionId/taskRef; if polls arrive with a different
-  // (or missing) session it throws "Session mismatch". Generating it once here
-  // keeps the whole async lifecycle on one session.
-  const [sessionId] = useState<string>(() =>
-    `session_web_${
-      typeof crypto !== 'undefined' && crypto.randomUUID
-        ? crypto.randomUUID()
-        : `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`
-    }`,
-  );
+  // Stable per-conversation id sent on EVERY request (initial + polls). The
+  // backend bakes this into the predictionId/taskRef; if polls arrive with a
+  // different (or missing) session it throws "Session mismatch". It doubles as
+  // the persisted conversation key, so starting a new chat mints a fresh one.
+  const [conversationId, setConversationId] = useState<string>(() => newSessionId());
+  // Persisted conversation log (localStorage) + grouping / restore UI state.
+  const [conversations, setConversations] = useState<StoredConversation[]>([]);
+  const [switching, setSwitching] = useState(false);      // brief skeleton on restore
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  // Persisted user preferences (Submit-on-Enter, autoplay, custom instructions).
+  const [prefs, setPrefs] = useState<ChatPreferences>(DEFAULT_PREFERENCES);
+  const [dragActive, setDragActive] = useState(false);    // composer drag-and-drop
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [avatarSoundOn, setAvatarSoundOn] = useState(false);
   // Live multi-stage render telemetry, driven by REAL backend poll status
@@ -398,6 +520,33 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated }: Pr
     el.style.height = 'auto';
     el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
   }, [inputText]);
+
+  // ── Hydrate persisted conversations + preferences (client only) ─────
+  useEffect(() => {
+    setConversations(loadConversations());
+    setPrefs(loadPreferences());
+  }, []);
+
+  // ── Persist the live conversation on every change ───────────────────
+  // Keyed by [messages, conversationId] so both appending a turn and
+  // switching chats flush to localStorage. A pre-existing manual title is
+  // preserved; otherwise the title is auto-derived from the first prompt.
+  // Large/ephemeral assets are evicted inside the store (data:/blob: URLs).
+  useEffect(() => {
+    const first = messages[0];
+    const last = messages[messages.length - 1];
+    if (!first || !last) return;
+    const firstUser = messages.find((m) => m.role === 'user');
+    const existing = getConversation(conversationId);
+    const convo: StoredConversation = {
+      id: conversationId,
+      title: existing?.title || deriveTitle(firstUser?.text || ''),
+      createdAt: existing?.createdAt ?? first.timestamp,
+      updatedAt: last.timestamp,
+      messages: messages.map(toStored),
+    };
+    setConversations(upsertConversation(convo));
+  }, [messages, conversationId]);
 
   // ── Speech recognition init (Web Speech API) ───────────────────────
   // Continuous dictation: every recognized chunk (interim + final) is folded
@@ -595,7 +744,15 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated }: Pr
         .slice(-8)
         .map((m) => ({ role: m.role, content: m.text }));
 
-      let resp = await postOrchestrate({ message: text, sessionId, serviceContext: mode, locale: lang, history, ...(imageUrl ? { imageUrl } : {}) });
+      let resp = await postOrchestrate({
+        message: text,
+        sessionId: conversationId,
+        serviceContext: mode,
+        locale: lang,
+        history,
+        ...(imageUrl ? { imageUrl } : {}),
+        ...(prefs.customInstructions.trim() ? { customInstructions: prefs.customInstructions } : {}),
+      });
       if (resp.success === false && !resp.predictionId) {
         throw new Error(resp.error || resp.message || copy.genericError);
       }
@@ -609,7 +766,7 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated }: Pr
       while (resp.predictionId && !isTerminalStatus(resp.predictionStatus) && polls < MAX_POLLS) {
         await sleep(POLL_INTERVAL, signal);
         polls++;
-        resp = await postOrchestrate({ message: text, sessionId, predictionId: resp.predictionId, serviceContext: mode, locale: lang });
+        resp = await postOrchestrate({ message: text, sessionId: conversationId, predictionId: resp.predictionId, serviceContext: mode, locale: lang });
         setPipeline(derivePipeline(resp));
       }
 
@@ -647,7 +804,7 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated }: Pr
       setPipeline(null);
       abortRef.current = null;
     }
-  }, [inputText, isLoading, messages, lang, mode, attachments, sessionId, copy.genericError]);
+  }, [inputText, isLoading, messages, lang, mode, attachments, conversationId, prefs.customInstructions, copy.genericError]);
 
   const stop = useCallback(() => abortRef.current?.abort(), []);
 
@@ -664,6 +821,43 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated }: Pr
       try { el.setSelectionRange(end, end); } catch { /* noop */ }
       el.scrollIntoView({ block: 'nearest' });
     });
+  }, []);
+
+  // ── Conversation lifecycle (sidebar: new / restore / rename / delete) ──
+  const startNewChat = useCallback(() => {
+    abortRef.current?.abort();
+    setConversationId(newSessionId());
+    dispatch({ type: 'LOAD_MESSAGES', messages: [] });
+    setHistoryOpen(false);
+  }, []);
+
+  // Seamless restore: clicking a past chat replaces the viewport with its
+  // stored messages WITHOUT re-triggering any generation. A short skeleton
+  // beat makes the load read as deliberate (Tier-1 LLM feel).
+  const openConversation = useCallback((id: string) => {
+    const convo = getConversation(id);
+    if (!convo) return;
+    abortRef.current?.abort();
+    setSwitching(true);
+    setConversationId(id);
+    dispatch({ type: 'LOAD_MESSAGES', messages: convo.messages.map(fromStored) });
+    setHistoryOpen(false);
+    window.setTimeout(() => setSwitching(false), 280);
+  }, []);
+
+  const renameConvo = useCallback((id: string, title: string) => {
+    setConversations(renameConversation(id, title));
+    setRenamingId(null);
+  }, []);
+
+  const removeConvo = useCallback((id: string) => {
+    setConversations(deleteConversation(id));
+    setDeleteTarget(null);
+    if (id === conversationId) startNewChat();
+  }, [conversationId, startNewChat]);
+
+  const updatePref = useCallback((partial: Partial<ChatPreferences>) => {
+    setPrefs((prev) => savePreferences({ ...prev, ...partial }));
   }, []);
 
   const toggleRecording = useCallback(() => {
@@ -685,15 +879,16 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated }: Pr
   }, [isRecording, lang, inputText, speechSupported, showNotice, copy.voiceUnsupported]);
 
   const onPickFile = useCallback(() => fileInputRef.current?.click(), []);
-  const onFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    e.target.value = ''; // reset early so re-picking the same file re-fires
-    if (!file) return;
 
-    // ── Pre-flight validation (non-blocking) ──────────────────────────
-    const kind = file.type.startsWith('image/') ? 'image'
+  // Shared ingestion for both the file picker and drag-and-drop. Accepts
+  // images / video / audio plus PDF documents (PDF/JPG/PNG are the directive's
+  // first-class types); anything else is rejected with a non-blocking notice.
+  const ingestFile = useCallback((file: File) => {
+    const kind: ServiceChatAttachment['type'] | null =
+      file.type.startsWith('image/') ? 'image'
       : file.type.startsWith('video/') ? 'video'
       : file.type.startsWith('audio/') ? 'audio'
+      : (file.type === 'application/pdf' || /\.pdf$/i.test(file.name)) ? 'file'
       : null;
     if (!kind) {
       showNotice(copy.fileBadType);
@@ -709,7 +904,7 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated }: Pr
       id: `att_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
       name: file.name,
       type: kind,
-      mimeType: file.type,
+      mimeType: file.type || (kind === 'file' ? 'application/pdf' : ''),
       size: file.size,
     };
     if (kind === 'image') {
@@ -721,6 +916,29 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated }: Pr
       dispatch({ type: 'ADD_ATTACHMENT', attachment: att });
     }
   }, [showNotice, copy.fileBadType, copy.fileTooLarge, copy.genericError]);
+
+  const onFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // reset early so re-picking the same file re-fires
+    if (file) ingestFile(file);
+  }, [ingestFile]);
+
+  // ── Drag-and-drop attachment (whole-surface drop target) ────────────
+  const onDragOver = useCallback((e: React.DragEvent) => {
+    if (e.dataTransfer?.types?.includes('Files')) {
+      e.preventDefault();
+      setDragActive(true);
+    }
+  }, []);
+  const onDragLeave = useCallback((e: React.DragEvent) => {
+    // Only clear when the cursor actually leaves the surface (not on child cross).
+    if (e.currentTarget === e.target) setDragActive(false);
+  }, []);
+  const onDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setDragActive(false);
+    Array.from(e.dataTransfer?.files || []).forEach(ingestFile);
+  }, [ingestFile]);
 
   const handleSignOut = useCallback(async () => {
     try {
@@ -752,11 +970,20 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated }: Pr
     } catch { /* best-effort */ }
   }, []);
 
+  // Time-grouped conversation list for the sidebar (Today / Previous 7 / 30 / Older).
+  const groupedConversations = useMemo(
+    () => groupConversationsByTime(conversations),
+    [conversations],
+  );
+
   /* ─── Render ─────────────────────────────────────────────────────── */
 
   return (
     <div
       ref={stageRef}
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
       className="fixed inset-x-0 top-0 z-[5] flex flex-col bg-[#030303] text-zinc-100 antialiased overflow-hidden"
       style={{ height: keyboardOffset > 0 ? `calc(100dvh - ${keyboardOffset}px)` : '100dvh' }}
     >
@@ -765,24 +992,34 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated }: Pr
         className="flex items-center justify-between px-3 py-2 border-b border-white/[0.05] bg-[#030303]/95 backdrop-blur-md"
         style={{ paddingTop: 'calc(0.5rem + env(safe-area-inset-top, 0px))' }}
       >
-        {/* Hamburger → conversation-log drawer */}
-        <button
-          onClick={() => setHistoryOpen(true)}
-          aria-label={copy.menu}
-          className="h-9 w-9 rounded-full flex items-center justify-center text-zinc-300 hover:text-zinc-50 hover:bg-zinc-900 transition active:scale-95"
-        >
-          <Menu size={18} />
-        </button>
+        {/* Hamburger → conversation drawer · New chat → clears context */}
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => setHistoryOpen(true)}
+            aria-label={copy.menu}
+            className="h-9 w-9 rounded-full flex items-center justify-center text-zinc-300 hover:text-zinc-50 hover:bg-zinc-900 transition active:scale-95"
+          >
+            <Menu size={18} />
+          </button>
+          <button
+            onClick={startNewChat}
+            aria-label={xc.newChat}
+            title={xc.newChat}
+            className="h-9 w-9 rounded-full flex items-center justify-center text-zinc-300 hover:text-zinc-50 hover:bg-zinc-900 transition active:scale-95"
+          >
+            <PenSquare size={18} />
+          </button>
+        </div>
 
         <BalanceChip balanceGel={balanceGel} onClick={() => setWalletOpen(true)} />
 
-        <div className="relative flex items-center gap-1">
-          {/* Settings gear → system-state popover */}
+        <div className="flex items-center gap-1">
+          {/* Settings gear → full Settings & Profile modal */}
           <button
-            onClick={() => setSettingsOpen((v) => !v)}
+            onClick={() => setSettingsOpen(true)}
             aria-label={copy.settings}
-            aria-expanded={settingsOpen}
-            className={`h-9 w-9 rounded-full flex items-center justify-center transition active:scale-95 ${settingsOpen ? 'text-neutral-50 bg-neutral-800' : 'text-zinc-300 hover:text-zinc-50 hover:bg-zinc-900'}`}
+            aria-haspopup="dialog"
+            className="h-9 w-9 rounded-full flex items-center justify-center transition active:scale-95 text-zinc-300 hover:text-zinc-50 hover:bg-zinc-900"
           >
             <Settings size={18} />
           </button>
@@ -803,58 +1040,21 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated }: Pr
               {copy.signIn}
             </button>
           )}
-
-          {/* Settings popover */}
-          <AnimatePresence>
-            {settingsOpen ? (
-              <>
-                <div className="fixed inset-0 z-40" onClick={() => setSettingsOpen(false)} aria-hidden />
-                <motion.div
-                  initial={{ opacity: 0, y: -6, scale: 0.98 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, y: -6, scale: 0.98 }}
-                  transition={{ duration: 0.16 }}
-                  role="menu"
-                  className="absolute right-0 top-11 z-50 w-56 rounded-2xl border border-zinc-800/80 bg-[#0a0a0a] p-3 shadow-[0_24px_60px_-20px_rgba(0,0,0,0.9)]"
-                >
-                  <div className="flex items-center gap-2 px-1 pb-2 text-[11px] uppercase tracking-wider text-zinc-500">
-                    <Globe size={13} /> {copy.language}
-                  </div>
-                  <div className="flex gap-1.5 pb-3">
-                    {(['ka', 'en', 'ru'] as const).map((lc) => (
-                      <button
-                        key={lc}
-                        onClick={() => changeLanguage(lc)}
-                        className={`flex-1 h-8 rounded-lg text-[12px] font-semibold uppercase transition active:scale-95 border ${lang === lc ? 'border-white/25 bg-neutral-800 text-neutral-50' : 'border-white/10 bg-[#121212] text-zinc-400 hover:text-zinc-200'}`}
-                      >
-                        {lc}
-                      </button>
-                    ))}
-                  </div>
-                  <button
-                    onClick={toggleAvatarSound}
-                    role="menuitemcheckbox"
-                    aria-checked={avatarSoundOn}
-                    className="w-full h-9 px-2 rounded-lg flex items-center justify-between text-[12.5px] text-zinc-300 hover:bg-zinc-900 transition"
-                  >
-                    <span className="flex items-center gap-2">
-                      {avatarSoundOn ? <Volume2 size={15} /> : <VolumeX size={15} />} {copy.sound}
-                    </span>
-                    <span className={`relative h-5 w-9 rounded-full transition ${avatarSoundOn ? 'bg-neutral-200' : 'bg-zinc-700'}`}>
-                      <span className={`absolute top-0.5 h-4 w-4 rounded-full transition-all ${avatarSoundOn ? 'left-[1.125rem] bg-neutral-900' : 'left-0.5 bg-white'}`} />
-                    </span>
-                  </button>
-                </motion.div>
-              </>
-            ) : null}
-          </AnimatePresence>
         </div>
       </header>
 
       {/* ── Message feed ──────────────────────────────────────────── */}
       <main ref={mainRef} onScroll={onMainScroll} className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
         <div className="max-w-2xl mx-auto px-3 sm:px-4 py-4 flex flex-col gap-4">
-          {messages.length === 0 ? (
+          {switching ? (
+            // Premium restore skeleton — brief beat while a stored chat loads.
+            <div className="flex flex-col gap-4 py-2">
+              <div className="flex justify-end"><Skeleton className="h-10 w-1/2 rounded-2xl" /></div>
+              <div className="flex justify-start"><Skeleton className="h-24 w-3/4 rounded-2xl" /></div>
+              <div className="flex justify-end"><Skeleton className="h-10 w-2/5 rounded-2xl" /></div>
+              <div className="flex justify-start"><Skeleton className="h-16 w-2/3 rounded-2xl" /></div>
+            </div>
+          ) : messages.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 text-center">
               <div className="w-16 h-16 rounded-full bg-zinc-900 border border-zinc-800/70 flex items-center justify-center mb-4 text-[28px]">⬡</div>
               <p className="text-[13px] text-zinc-400 leading-7">Ask anything. Generate music, video, or images.</p>
@@ -865,6 +1065,8 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated }: Pr
                 key={m.id}
                 message={m}
                 accent={ACCENT}
+                autoplay={prefs.autoplayMedia}
+                mediaExpiredLabel={xc.mediaExpired}
                 streaming={i === messages.length - 1 && m.role === 'assistant' && !!m.text && !isLoading}
                 onStreamTick={() => pinBottom(false)}
                 onRegenerate={() => sendMessage(m.sourcePrompt)}
@@ -991,29 +1193,47 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated }: Pr
         className="flex-shrink-0 border-t border-white/[0.05] bg-[#030303]/95 backdrop-blur-md"
         style={{ paddingBottom: 'calc(0.5rem + env(safe-area-inset-bottom, 0px))' }}
       >
-        {/* Attachment chips */}
+        {/* Attachment pills — image = thumbnail, document/media = labelled pill */}
         {attachments.length > 0 ? (
-          <div className="px-3 pt-2 flex gap-2 overflow-x-auto">
+          <div className="px-3 pt-2 flex gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {attachments.map((att) => (
-              <div
-                key={att.id}
-                className="relative w-12 h-12 rounded-xl overflow-hidden flex-shrink-0 group bg-zinc-900 border border-zinc-800/70"
-              >
-                {att.preview ? (
-                  <Image src={att.preview} alt={att.name} width={48} height={48} unoptimized className="w-full h-full object-cover" />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center text-[10px] text-zinc-400">
-                    {att.type === 'video' ? '🎬' : att.type === 'audio' ? '🎵' : '📄'}
-                  </div>
-                )}
-                <button
-                  onClick={() => dispatch({ type: 'REMOVE_ATTACHMENT', id: att.id })}
-                  className="absolute top-0.5 right-0.5 w-4 h-4 rounded-full bg-black/70 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-                  aria-label="Remove attachment"
+              att.type === 'image' && att.preview ? (
+                <div
+                  key={att.id}
+                  className="relative w-12 h-12 rounded-xl overflow-hidden flex-shrink-0 group bg-zinc-900 border border-zinc-800/70"
                 >
-                  <span className="text-[8px] text-white">✕</span>
-                </button>
-              </div>
+                  <Image src={att.preview} alt={att.name} width={48} height={48} unoptimized className="w-full h-full object-cover" />
+                  <button
+                    onClick={() => dispatch({ type: 'REMOVE_ATTACHMENT', id: att.id })}
+                    className="absolute top-0.5 right-0.5 w-4 h-4 rounded-full bg-black/70 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                    aria-label="Remove attachment"
+                  >
+                    <span className="text-[8px] text-white">✕</span>
+                  </button>
+                </div>
+              ) : (
+                <div
+                  key={att.id}
+                  className="relative flex-shrink-0 group inline-flex items-center gap-2 h-12 max-w-[220px] pl-2.5 pr-8 rounded-xl bg-zinc-900 border border-zinc-800/70"
+                >
+                  <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-white/[0.06] text-[14px]">
+                    {att.type === 'video' ? '🎬' : att.type === 'audio' ? '🎵' : '📄'}
+                  </span>
+                  <span className="flex flex-col min-w-0">
+                    <span className="truncate text-[12px] font-medium text-zinc-200 max-w-[150px]">{att.name}</span>
+                    <span className="text-[10px] uppercase tracking-wide text-zinc-500">
+                      {att.type === 'file' ? 'PDF' : att.type} · {Math.max(1, Math.round(att.size / 1024))} KB
+                    </span>
+                  </span>
+                  <button
+                    onClick={() => dispatch({ type: 'REMOVE_ATTACHMENT', id: att.id })}
+                    className="absolute top-1/2 right-1.5 -translate-y-1/2 w-5 h-5 rounded-full bg-black/60 flex items-center justify-center text-zinc-300 hover:text-white hover:bg-black/80 transition"
+                    aria-label="Remove attachment"
+                  >
+                    <X size={11} />
+                  </button>
+                </div>
+              )
             ))}
           </div>
         ) : null}
@@ -1047,7 +1267,7 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated }: Pr
 
             {/* Composer row — attachment, camera, input, mic, send */}
             <div className="flex items-end gap-1.5 px-2 py-2">
-              <input ref={fileInputRef} type="file" className="hidden" accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.txt" onChange={onFileChange} />
+              <input ref={fileInputRef} type="file" className="hidden" accept="image/png,image/jpeg,image/*,video/*,audio/*,application/pdf,.pdf" onChange={onFileChange} />
               <button
                 onClick={onPickFile}
                 aria-label="Attach file"
@@ -1067,10 +1287,14 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated }: Pr
                 value={inputText}
                 onChange={(e) => dispatch({ type: 'SET_INPUT', text: e.target.value })}
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    if (inputText.trim() && !isLoading) void sendMessage();
-                  }
+                  if (e.key !== 'Enter') return;
+                  // Honour the user's send-key preference:
+                  //  • on  → Enter sends, Shift+Enter = newline
+                  //  • off → Enter = newline, ⌘/Ctrl+Enter sends
+                  const shouldSend = prefs.submitOnEnter ? !e.shiftKey : (e.metaKey || e.ctrlKey);
+                  if (!shouldSend) return;
+                  e.preventDefault();
+                  if (inputText.trim() && !isLoading) void sendMessage();
                 }}
                 placeholder={copy.placeholder}
                 rows={1}
@@ -1145,27 +1369,242 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated }: Pr
               <div className="flex items-center justify-between px-4 pb-3 border-b border-zinc-800/70">
                 <span className="text-[13px] font-semibold tracking-wide text-zinc-100">{copy.history}</span>
                 <button
-                  onClick={() => { dispatch({ type: 'CLEAR_MESSAGES' }); setHistoryOpen(false); }}
-                  aria-label={copy.clearHistory}
-                  className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-full text-[11px] text-rose-300 hover:bg-rose-500/10 transition active:scale-95"
+                  onClick={() => setHistoryOpen(false)}
+                  aria-label={xc.close}
+                  className="h-7 w-7 rounded-full flex items-center justify-center text-zinc-400 hover:text-zinc-100 hover:bg-zinc-900 transition active:scale-95"
                 >
-                  <Trash2 size={13} /> {copy.clearHistory}
+                  <X size={15} />
                 </button>
               </div>
-              <div className="flex-1 overflow-y-auto px-4 py-3 text-[12px] text-zinc-500">
-                {/* Server-side history list lives in a follow-up — local-session preview only. */}
-                {messages.length === 0 ? (
-                  <p>No messages yet.</p>
+
+              {/* New chat — clears context without reloading the app */}
+              <div className="px-3 pt-3 pb-2">
+                <button
+                  onClick={startNewChat}
+                  className="w-full inline-flex items-center gap-2 h-10 px-3 rounded-xl border border-zinc-800/80 bg-[#0a0a0a] text-[13px] font-medium text-zinc-100 hover:border-zinc-600/80 hover:bg-zinc-900 transition active:scale-[0.99]"
+                >
+                  <PenSquare size={16} /> {xc.newChat}
+                </button>
+              </div>
+
+              {/* Time-grouped conversation log */}
+              <div className="flex-1 overflow-y-auto px-2 py-1 [scrollbar-width:thin]">
+                {groupedConversations.length === 0 ? (
+                  <p className="px-2 py-4 text-[12px] text-zinc-500">{xc.noChats}</p>
                 ) : (
-                  messages.slice(-20).map((m) => (
-                    <div key={m.id} className="py-1.5 truncate" style={{ color: m.role === 'user' ? '#d4d4d8' : '#a1a1aa' }}>
-                      <span className="text-[10px] uppercase tracking-wider mr-1.5 text-zinc-500">{m.role}</span>
-                      {m.text.slice(0, 80)}
+                  groupedConversations.map((group) => (
+                    <div key={group.bucket} className="pb-2">
+                      <div className="px-2 pt-3 pb-1 text-[10.5px] font-semibold uppercase tracking-wider text-zinc-500">
+                        {GROUP_LABELS[group.bucket][lang]}
+                      </div>
+                      {group.conversations.map((c) => (
+                        <ConversationRow
+                          key={c.id}
+                          convo={c}
+                          active={c.id === conversationId}
+                          renaming={renamingId === c.id}
+                          xc={xc}
+                          onOpen={() => openConversation(c.id)}
+                          onStartRename={() => setRenamingId(c.id)}
+                          onCancelRename={() => setRenamingId(null)}
+                          onCommitRename={(title) => renameConvo(c.id, title)}
+                          onDelete={() => setDeleteTarget(c.id)}
+                        />
+                      ))}
                     </div>
                   ))
                 )}
               </div>
             </motion.aside>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+
+      {/* ── Settings & Profile modal ─────────────────────────────── */}
+      <AnimatePresence>
+        {settingsOpen ? (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[75] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
+            onClick={() => setSettingsOpen(false)}
+            role="dialog"
+            aria-modal="true"
+          >
+            <motion.div
+              initial={{ opacity: 0, y: 14, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 14, scale: 0.98 }}
+              transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+              onClick={(e) => e.stopPropagation()}
+              className="w-full max-w-md max-h-[88vh] overflow-y-auto rounded-3xl border border-zinc-800/80 bg-[#0a0a0a] shadow-[0_40px_120px_-30px_rgba(0,0,0,0.9)]"
+            >
+              <div className="sticky top-0 z-10 flex items-center justify-between px-5 py-4 border-b border-zinc-800/70 bg-[#0a0a0a]/95 backdrop-blur">
+                <span className="text-[15px] font-semibold text-zinc-50">{copy.settings}</span>
+                <button
+                  onClick={() => setSettingsOpen(false)}
+                  aria-label={xc.close}
+                  className="h-8 w-8 rounded-full flex items-center justify-center text-zinc-400 hover:text-zinc-100 hover:bg-zinc-900 transition active:scale-95"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              <div className="px-5 py-4 flex flex-col gap-6">
+                {/* Account */}
+                <section className="flex flex-col gap-2">
+                  <h3 className="text-[11px] font-semibold uppercase tracking-wider text-zinc-500">{xc.account}</h3>
+                  <div className="flex items-center gap-3 rounded-2xl border border-zinc-800/70 bg-[#0f0f0f] p-3">
+                    <span className="flex h-10 w-10 items-center justify-center rounded-full bg-neutral-800 text-neutral-200">
+                      <User size={18} />
+                    </span>
+                    <div className="min-w-0">
+                      {isAuthenticated ? (
+                        <>
+                          <p className="text-[10px] uppercase tracking-wider text-zinc-500">{xc.signedInAs}</p>
+                          <p className="truncate text-[13.5px] font-medium text-zinc-100">{userEmail || userName}</p>
+                        </>
+                      ) : (
+                        <p className="text-[13px] text-zinc-400">{xc.guest}</p>
+                      )}
+                    </div>
+                  </div>
+                </section>
+
+                {/* Preferences */}
+                <section className="flex flex-col gap-2">
+                  <h3 className="text-[11px] font-semibold uppercase tracking-wider text-zinc-500">{xc.preferences}</h3>
+                  <div className="rounded-2xl border border-zinc-800/70 bg-[#0f0f0f] divide-y divide-zinc-800/60">
+                    <SettingToggle
+                      label={xc.submitOnEnter}
+                      hint={xc.submitOnEnterHint}
+                      checked={prefs.submitOnEnter}
+                      onChange={(v) => updatePref({ submitOnEnter: v })}
+                    />
+                    <SettingToggle
+                      label={xc.autoplay}
+                      checked={prefs.autoplayMedia}
+                      onChange={(v) => updatePref({ autoplayMedia: v })}
+                    />
+                    <SettingToggle
+                      label={copy.sound}
+                      checked={avatarSoundOn}
+                      onChange={() => toggleAvatarSound()}
+                    />
+                    {/* Language */}
+                    <div className="flex items-center justify-between gap-3 px-3 py-3">
+                      <span className="flex items-center gap-2 text-[13.5px] text-zinc-200">
+                        <Globe size={15} /> {copy.language}
+                      </span>
+                      <div className="flex gap-1.5">
+                        {(['ka', 'en', 'ru'] as const).map((lc) => (
+                          <button
+                            key={lc}
+                            onClick={() => changeLanguage(lc)}
+                            className={`h-8 w-9 rounded-lg text-[12px] font-semibold uppercase transition active:scale-95 border ${lang === lc ? 'border-white/25 bg-neutral-800 text-neutral-50' : 'border-white/10 bg-[#121212] text-zinc-400 hover:text-zinc-200'}`}
+                          >
+                            {lc}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </section>
+
+                {/* Custom instructions */}
+                <section className="flex flex-col gap-2">
+                  <h3 className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
+                    <Sparkles size={13} /> {xc.customInstructions}
+                  </h3>
+                  <textarea
+                    value={prefs.customInstructions}
+                    onChange={(e) => updatePref({ customInstructions: e.target.value })}
+                    maxLength={MAX_CUSTOM_INSTRUCTIONS}
+                    rows={4}
+                    placeholder={xc.ciPlaceholder}
+                    className="w-full resize-none rounded-2xl border border-zinc-800/70 bg-[#0f0f0f] p-3 text-[13.5px] leading-6 text-zinc-100 placeholder-zinc-600 outline-none focus:border-zinc-600/80 transition"
+                  />
+                  <div className="flex items-center justify-between text-[11px] text-zinc-500">
+                    <span>{xc.ciHint}</span>
+                    <span className="tabular-nums">{prefs.customInstructions.length}/{MAX_CUSTOM_INSTRUCTIONS}</span>
+                  </div>
+                </section>
+              </div>
+
+              <div className="sticky bottom-0 flex justify-end px-5 py-4 border-t border-zinc-800/70 bg-[#0a0a0a]/95 backdrop-blur">
+                <button
+                  onClick={() => setSettingsOpen(false)}
+                  className="h-9 px-5 rounded-full text-[13px] font-semibold bg-neutral-100 text-neutral-900 hover:bg-white transition active:scale-95"
+                >
+                  {xc.done}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+
+      {/* ── Delete-conversation confirmation ─────────────────────── */}
+      <AnimatePresence>
+        {deleteTarget ? (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[80] flex items-center justify-center bg-black/75 backdrop-blur-sm p-4"
+            onClick={() => setDeleteTarget(null)}
+            role="dialog"
+            aria-modal="true"
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.96, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.96, y: 10 }}
+              transition={{ duration: 0.18 }}
+              onClick={(e) => e.stopPropagation()}
+              className="w-full max-w-sm rounded-3xl border border-zinc-800/80 bg-[#0a0a0a] p-5 shadow-[0_40px_120px_-30px_rgba(0,0,0,0.9)]"
+            >
+              <div className="flex items-center gap-2.5 pb-2">
+                <span className="flex h-9 w-9 items-center justify-center rounded-full bg-rose-500/10 text-rose-300">
+                  <Trash2 size={17} />
+                </span>
+                <h3 className="text-[15px] font-semibold text-zinc-50">{xc.deleteTitle}</h3>
+              </div>
+              <p className="text-[13px] leading-6 text-zinc-400 pb-4">{xc.deleteBody}</p>
+              <div className="flex justify-end gap-2">
+                <button
+                  onClick={() => setDeleteTarget(null)}
+                  className="h-9 px-4 rounded-full text-[13px] font-medium text-zinc-300 hover:bg-zinc-900 transition active:scale-95"
+                >
+                  {xc.cancel}
+                </button>
+                <button
+                  onClick={() => removeConvo(deleteTarget)}
+                  className="h-9 px-4 rounded-full text-[13px] font-semibold bg-rose-500/90 text-white hover:bg-rose-500 transition active:scale-95"
+                >
+                  {xc.delete}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+
+      {/* ── Drag-and-drop overlay ────────────────────────────────── */}
+      <AnimatePresence>
+        {dragActive ? (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="pointer-events-none fixed inset-0 z-[85] flex items-center justify-center bg-black/60 backdrop-blur-sm"
+          >
+            <div className="flex flex-col items-center gap-3 rounded-3xl border-2 border-dashed border-white/30 bg-[#0a0a0a]/80 px-10 py-8 text-center">
+              <Paperclip size={28} className="text-zinc-200" />
+              <p className="text-[14px] font-semibold text-zinc-100">{xc.dropToAttach}</p>
+              <p className="text-[11.5px] text-zinc-500">PDF · JPG · PNG</p>
+            </div>
           </motion.div>
         ) : null}
       </AnimatePresence>
@@ -1193,6 +1632,134 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated }: Pr
           >
             {notice}
           </motion.div>
+        ) : null}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+/* ─── Settings row toggle — labelled switch with an optional hint line. ─── */
+function SettingToggle({
+  label, hint, checked, onChange,
+}: {
+  label: string;
+  hint?: string;
+  checked: boolean;
+  onChange: (value: boolean) => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      onClick={() => onChange(!checked)}
+      className="w-full flex items-center justify-between gap-3 px-3 py-3 text-left hover:bg-zinc-900/40 transition"
+    >
+      <span className="flex flex-col min-w-0">
+        <span className="text-[13.5px] text-zinc-200">{label}</span>
+        {hint ? <span className="text-[11px] leading-4 text-zinc-500">{hint}</span> : null}
+      </span>
+      <span className={`relative h-5 w-9 flex-shrink-0 rounded-full transition ${checked ? 'bg-neutral-200' : 'bg-zinc-700'}`}>
+        <span className={`absolute top-0.5 h-4 w-4 rounded-full transition-all ${checked ? 'left-[1.125rem] bg-neutral-900' : 'left-0.5 bg-white'}`} />
+      </span>
+    </button>
+  );
+}
+
+/* ─── Conversation row — title button + hover (…) menu (Rename / Delete).
+ * Rename swaps the title into an inline input; Enter / blur commits, Esc
+ * cancels. The whole row opens the stored chat (seamless restore). ─────── */
+function ConversationRow({
+  convo, active, renaming, xc, onOpen, onStartRename, onCancelRename, onCommitRename, onDelete,
+}: {
+  convo: StoredConversation;
+  active: boolean;
+  renaming: boolean;
+  xc: typeof XCOPY[keyof typeof XCOPY];
+  onOpen: () => void;
+  onStartRename: () => void;
+  onCancelRename: () => void;
+  onCommitRename: (title: string) => void;
+  onDelete: () => void;
+}) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [draft, setDraft] = useState(convo.title);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (renaming) {
+      setDraft(convo.title);
+      requestAnimationFrame(() => { inputRef.current?.focus(); inputRef.current?.select(); });
+    }
+  }, [renaming, convo.title]);
+
+  if (renaming) {
+    return (
+      <div className="px-1.5 py-0.5">
+        <input
+          ref={inputRef}
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') { e.preventDefault(); onCommitRename(draft); }
+            else if (e.key === 'Escape') { e.preventDefault(); onCancelRename(); }
+          }}
+          onBlur={() => onCommitRename(draft)}
+          className="w-full h-9 px-2.5 rounded-lg bg-[#121212] border border-zinc-600/70 text-[13px] text-zinc-100 outline-none focus:border-zinc-400/70"
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative group/row px-1.5">
+      <button
+        onClick={onOpen}
+        className={`w-full flex items-center gap-2 h-9 pl-2.5 pr-8 rounded-lg text-left text-[13px] truncate transition ${
+          active ? 'bg-neutral-800 text-neutral-50' : 'text-zinc-300 hover:bg-zinc-900'
+        }`}
+      >
+        <MessageSquare size={14} className="flex-shrink-0 opacity-60" />
+        <span className="truncate">{convo.title}</span>
+      </button>
+
+      <button
+        onClick={(e) => { e.stopPropagation(); setMenuOpen((v) => !v); }}
+        aria-label={`${xc.rename} / ${xc.delete}`}
+        aria-haspopup="menu"
+        className={`absolute top-1/2 right-2 -translate-y-1/2 h-6 w-6 rounded-md flex items-center justify-center text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition ${
+          menuOpen ? 'opacity-100' : 'opacity-0 group-hover/row:opacity-100 focus:opacity-100'
+        }`}
+      >
+        <MoreHorizontal size={15} />
+      </button>
+
+      <AnimatePresence>
+        {menuOpen ? (
+          <>
+            <div className="fixed inset-0 z-[61]" onClick={(e) => { e.stopPropagation(); setMenuOpen(false); }} aria-hidden />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.96, y: -4 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.96, y: -4 }}
+              transition={{ duration: 0.13 }}
+              role="menu"
+              className="absolute right-2 top-9 z-[62] w-36 rounded-xl border border-zinc-800/80 bg-[#0d0d0d] p-1 shadow-[0_20px_50px_-18px_rgba(0,0,0,0.9)]"
+            >
+              <button
+                onClick={(e) => { e.stopPropagation(); setMenuOpen(false); onStartRename(); }}
+                className="w-full flex items-center gap-2 h-8 px-2.5 rounded-lg text-[12.5px] text-zinc-200 hover:bg-zinc-800 transition"
+              >
+                <Pencil size={14} /> {xc.rename}
+              </button>
+              <button
+                onClick={(e) => { e.stopPropagation(); setMenuOpen(false); onDelete(); }}
+                className="w-full flex items-center gap-2 h-8 px-2.5 rounded-lg text-[12.5px] text-rose-300 hover:bg-rose-500/10 transition"
+              >
+                <Trash2 size={14} /> {xc.delete}
+              </button>
+            </motion.div>
+          </>
         ) : null}
       </AnimatePresence>
     </div>
@@ -1367,11 +1934,13 @@ function StreamingText({
 /* ─── Per-message bubble with executive toolbar ────────────────────── */
 
 function MessageBubble({
-  message, accent, streaming = false, onStreamTick, onRegenerate, onEdit, onFeedback, onPlayAudio,
+  message, accent, streaming = false, autoplay = false, mediaExpiredLabel, onStreamTick, onRegenerate, onEdit, onFeedback, onPlayAudio,
 }: {
   message: ChatMessage;
   accent: string;
   streaming?: boolean;
+  autoplay?: boolean;
+  mediaExpiredLabel?: string;
   onStreamTick?: () => void;
   onRegenerate: () => void;
   onEdit: (text: string) => void;
@@ -1381,8 +1950,22 @@ function MessageBubble({
   const isUser = message.role === 'user';
   const isError = message.role === 'error';
   const bubbleVideoRef = useRef<HTMLVideoElement>(null);
+  const bubbleAudioRef = useRef<HTMLAudioElement>(null);
   const [lightbox, setLightbox] = useState(false);
   const [copiedText, setCopiedText] = useState(false);
+
+  // Autoplay generated media when the preference is on. Video plays muted
+  // (browsers block unmuted autoplay); audio play is best-effort.
+  useEffect(() => {
+    if (!autoplay || !message.assetUrl) return;
+    if (message.assetType === 'video') {
+      const v = bubbleVideoRef.current;
+      if (v) { v.muted = true; void Promise.resolve(v.play()).catch(() => {}); }
+    } else if (message.assetType === 'audio') {
+      const a = bubbleAudioRef.current;
+      if (a) void Promise.resolve(a.play()).catch(() => {});
+    }
+  }, [autoplay, message.assetUrl, message.assetType]);
 
   const copyMessageText = useCallback(() => {
     if (!navigator.clipboard || !message.text) return;
@@ -1512,9 +2095,18 @@ function MessageBubble({
               </span>
               <span>Audio</span>
             </div>
-            <audio controls preload="metadata" className="w-full">
+            <audio ref={bubbleAudioRef} controls preload="metadata" className="w-full">
               <source src={message.assetUrl} />
             </audio>
+          </div>
+        ) : null}
+
+        {/* Evicted-media hint — the asset was too large/ephemeral to persist
+            (data:/blob: URL dropped on save); offer regeneration instead. */}
+        {!message.assetUrl && message.assetEvicted && mediaExpiredLabel ? (
+          <div className="flex items-center gap-2 rounded-2xl border border-zinc-800/70 bg-[#0a0a0a] px-3 py-2.5 text-[12px] text-zinc-400">
+            <Film size={14} className="opacity-60" />
+            <span>{mediaExpiredLabel}</span>
           </div>
         ) : null}
 
