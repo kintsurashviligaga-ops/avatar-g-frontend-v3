@@ -35,14 +35,19 @@
  *      ↑ safe-area-inset-bottom padding so iOS Safari can't clip
  */
 
-import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
+import { isValidElement, useCallback, useEffect, useReducer, useRef, useState, type ReactNode } from 'react';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import rehypeHighlight from 'rehype-highlight';
+import type { Components } from 'react-markdown';
 import {
   AlertCircle,
   Box,
   Camera,
   Check,
   Circle,
+  Copy,
   Download,
   Film,
   Globe,
@@ -57,6 +62,7 @@ import {
   Minimize2,
   Music,
   Paperclip,
+  Pencil,
   PictureInPicture2,
   RotateCcw,
   Send,
@@ -155,9 +161,9 @@ const initialState: ChatState = {
 };
 
 const COPY = {
-  en: { placeholder: 'Type a message…', signIn: 'Sign in', signOut: 'Sign out', clearHistory: 'Clear history', history: 'History', menu: 'Menu', settings: 'Settings', language: 'Language', sound: 'Avatar sound', genericError: 'Something went wrong. Try again.', fileTooLarge: 'File is too large (max {max}MB).', fileBadType: 'Unsupported file type. Use an image, video, or audio file.' },
-  ka: { placeholder: 'დაწერე შეტყობინება…', signIn: 'შესვლა', signOut: 'გასვლა', clearHistory: 'ისტორიის გასუფთავება', history: 'ისტორია', menu: 'მენიუ', settings: 'პარამეტრები', language: 'ენა', sound: 'ავატარის ხმა', genericError: 'რაღაც ხარვეზი. სცადე ხელახლა.', fileTooLarge: 'ფაილი ძალიან დიდია (მაქს. {max}MB).', fileBadType: 'არასწორი ფაილის ტიპი. გამოიყენე სურათი, ვიდეო ან აუდიო.' },
-  ru: { placeholder: 'Введите сообщение…', signIn: 'Войти', signOut: 'Выйти', clearHistory: 'Очистить историю', history: 'История', menu: 'Меню', settings: 'Настройки', language: 'Язык', sound: 'Звук аватара', genericError: 'Что-то пошло не так. Попробуйте снова.', fileTooLarge: 'Файл слишком большой (макс. {max}МБ).', fileBadType: 'Неподдерживаемый тип файла. Используйте изображение, видео или аудио.' },
+  en: { placeholder: 'Type a message…', signIn: 'Sign in', signOut: 'Sign out', clearHistory: 'Clear history', history: 'History', menu: 'Menu', settings: 'Settings', language: 'Language', sound: 'Avatar sound', genericError: 'Something went wrong. Try again.', fileTooLarge: 'File is too large (max {max}MB).', fileBadType: 'Unsupported file type. Use an image, video, or audio file.', voiceUnsupported: 'Voice input isn’t supported in this browser.', listening: 'Listening…' },
+  ka: { placeholder: 'დაწერე შეტყობინება…', signIn: 'შესვლა', signOut: 'გასვლა', clearHistory: 'ისტორიის გასუფთავება', history: 'ისტორია', menu: 'მენიუ', settings: 'პარამეტრები', language: 'ენა', sound: 'ავატარის ხმა', genericError: 'რაღაც ხარვეზი. სცადე ხელახლა.', fileTooLarge: 'ფაილი ძალიან დიდია (მაქს. {max}MB).', fileBadType: 'არასწორი ფაილის ტიპი. გამოიყენე სურათი, ვიდეო ან აუდიო.', voiceUnsupported: 'ხმოვანი შეყვანა ამ ბრაუზერში არ მუშაობს.', listening: 'გისმენ…' },
+  ru: { placeholder: 'Введите сообщение…', signIn: 'Войти', signOut: 'Выйти', clearHistory: 'Очистить историю', history: 'История', menu: 'Меню', settings: 'Настройки', language: 'Язык', sound: 'Звук аватара', genericError: 'Что-то пошло не так. Попробуйте снова.', fileTooLarge: 'Файл слишком большой (макс. {max}МБ).', fileBadType: 'Неподдерживаемый тип файла. Используйте изображение, видео или аудио.', voiceUnsupported: 'Голосовой ввод не поддерживается в этом браузере.', listening: 'Слушаю…' },
 } as const;
 
 // Pre-flight upload bounds. Images are inlined as base64 data URLs (≈+33%), so
@@ -296,8 +302,9 @@ type SpeechRecognitionLike = {
   continuous: boolean;
   interimResults: boolean;
   lang: string;
-  onresult: (e: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void;
+  onresult: (e: { resultIndex?: number; results: ArrayLike<ArrayLike<{ transcript: string }> & { isFinal?: boolean }> }) => void;
   onend: () => void;
+  onerror: ((e: { error?: string }) => void) | null;
   start: () => void;
   stop: () => void;
 };
@@ -350,6 +357,8 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated }: Pr
   const endRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
+  const baseTranscriptRef = useRef('');           // input text snapshot at mic-start
+  const [speechSupported, setSpeechSupported] = useState(false);
   const stageRef = useRef<HTMLDivElement>(null);          // drag-constraints boundary
   const cornerVideoRef = useRef<HTMLVideoElement>(null);  // ambient corner loop
   const fullVideoRef = useRef<HTMLVideoElement>(null);    // expanded 9:16 preview
@@ -390,21 +399,38 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated }: Pr
     el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
   }, [inputText]);
 
-  // ── Speech recognition init ────────────────────────────────────────
+  // ── Speech recognition init (Web Speech API) ───────────────────────
+  // Continuous dictation: every recognized chunk (interim + final) is folded
+  // into the live transcript and appended to whatever the user had already
+  // typed, so speaking flows straight into the composer in real time.
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const SR = (window as unknown as { webkitSpeechRecognition?: new () => SpeechRecognitionLike })
-      .webkitSpeechRecognition;
-    if (!SR) return;
-    const rec = new SR();
-    rec.continuous = false;
+    const SR = (window as unknown as {
+      webkitSpeechRecognition?: new () => SpeechRecognitionLike;
+      SpeechRecognition?: new () => SpeechRecognitionLike;
+    });
+    const Ctor = SR.SpeechRecognition || SR.webkitSpeechRecognition;
+    if (!Ctor) { setSpeechSupported(false); return; }
+    setSpeechSupported(true);
+
+    const rec = new Ctor();
+    rec.continuous = true;
     rec.interimResults = true;
     rec.onresult = (e) => {
-      const t = e.results[0]?.[0]?.transcript;
-      if (t) dispatch({ type: 'SET_INPUT', text: t });
+      let transcript = '';
+      for (let i = 0; i < e.results.length; i++) {
+        transcript += e.results[i]?.[0]?.transcript ?? '';
+      }
+      transcript = transcript.trim();
+      const base = baseTranscriptRef.current;
+      const merged = base ? `${base} ${transcript}`.trim() : transcript;
+      dispatch({ type: 'SET_INPUT', text: merged });
     };
+    rec.onerror = () => dispatch({ type: 'SET_RECORDING', value: false });
     rec.onend = () => dispatch({ type: 'SET_RECORDING', value: false });
     recognitionRef.current = rec;
+
+    return () => { try { rec.stop(); } catch { /* noop */ } };
   }, []);
 
   // ── Fetch wallet balance ──────────────────────────────────────────
@@ -625,12 +651,38 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated }: Pr
 
   const stop = useCallback(() => abortRef.current?.abort(), []);
 
+  // Edit a prior user prompt → pull it back into the composer, focus, and place
+  // the caret at the end so the user can refine and resubmit (branching the
+  // conversation with a fresh turn rather than mutating history in place).
+  const editPrompt = useCallback((text: string) => {
+    dispatch({ type: 'SET_INPUT', text });
+    requestAnimationFrame(() => {
+      const el = inputRef.current;
+      if (!el) return;
+      el.focus();
+      const end = el.value.length;
+      try { el.setSelectionRange(end, end); } catch { /* noop */ }
+      el.scrollIntoView({ block: 'nearest' });
+    });
+  }, []);
+
   const toggleRecording = useCallback(() => {
     const rec = recognitionRef.current;
-    if (!rec) return;
-    if (isRecording) { rec.stop(); dispatch({ type: 'SET_RECORDING', value: false }); }
-    else { rec.lang = lang === 'ka' ? 'ka-GE' : lang === 'ru' ? 'ru-RU' : 'en-US'; rec.start(); dispatch({ type: 'SET_RECORDING', value: true }); }
-  }, [isRecording, lang]);
+    if (!rec || !speechSupported) {
+      showNotice(copy.voiceUnsupported);
+      return;
+    }
+    if (isRecording) {
+      try { rec.stop(); } catch { /* noop */ }
+      dispatch({ type: 'SET_RECORDING', value: false });
+    } else {
+      // Snapshot the current composer text so dictation appends, not overwrites.
+      baseTranscriptRef.current = inputText.trim();
+      rec.lang = lang === 'ka' ? 'ka-GE' : lang === 'ru' ? 'ru-RU' : 'en-US';
+      try { rec.start(); dispatch({ type: 'SET_RECORDING', value: true }); }
+      catch { /* already started — ignore */ }
+    }
+  }, [isRecording, lang, inputText, speechSupported, showNotice, copy.voiceUnsupported]);
 
   const onPickFile = useCallback(() => fileInputRef.current?.click(), []);
   const onFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -816,6 +868,7 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated }: Pr
                 streaming={i === messages.length - 1 && m.role === 'assistant' && !!m.text && !isLoading}
                 onStreamTick={() => pinBottom(false)}
                 onRegenerate={() => sendMessage(m.sourcePrompt)}
+                onEdit={editPrompt}
                 onFeedback={sendFeedback}
                 onPlayAudio={playAssetAudio}
               />
@@ -1026,9 +1079,20 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated }: Pr
               <button
                 onClick={toggleRecording}
                 aria-label={isRecording ? 'Stop recording' : 'Start voice input'}
-                className={`h-9 w-9 flex items-center justify-center rounded-xl transition active:scale-95 ${isRecording ? 'text-rose-300 bg-rose-500/10' : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-900'}`}
+                aria-pressed={isRecording}
+                title={speechSupported ? undefined : copy.voiceUnsupported}
+                className={`relative h-9 w-9 flex items-center justify-center rounded-xl transition active:scale-95 ${isRecording ? 'text-rose-300 bg-rose-500/10' : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-900'}`}
               >
-                {isRecording ? <MicOff size={18} /> : <Mic size={18} />}
+                {isRecording ? (
+                  <>
+                    {/* Pulsating active-listening indicator */}
+                    <span className="absolute inset-0 rounded-xl border border-rose-400/60 animate-ping" aria-hidden />
+                    <span className="absolute inset-0 rounded-xl bg-rose-500/10 animate-pulse" aria-hidden />
+                    <Mic size={18} className="relative animate-pulse" />
+                  </>
+                ) : (
+                  <Mic size={18} />
+                )}
               </button>
               {isLoading ? (
                 <button
@@ -1141,6 +1205,118 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated }: Pr
  * regardless of length, snaps to full if interrupted, and respects
  * prefers-reduced-motion (instant render). onTick lets the parent pin scroll. */
 
+/* ─── Markdown rendering — full GFM (tables, lists, headers, bold) with
+ * dark-themed syntax-highlighted code blocks + a Copy button. Styled to the
+ * monochrome Apple/Gemini system so generated content reads like a Tier-1 LLM
+ * surface rather than a plain-text dump. */
+
+// Flatten React children (including rehype-highlight's nested <span> token tree)
+// back to the raw source string — needed so "Copy" yields clean, un-highlighted
+// code rather than the DOM's interleaved markup.
+function nodeToText(node: ReactNode): string {
+  if (node == null || node === false || node === true) return '';
+  if (typeof node === 'string' || typeof node === 'number') return String(node);
+  if (Array.isArray(node)) return node.map(nodeToText).join('');
+  if (isValidElement(node)) return nodeToText((node.props as { children?: ReactNode }).children);
+  return '';
+}
+
+function CodeBlock({ language, raw, codeClassName, children }: {
+  language?: string;
+  raw: string;
+  codeClassName?: string;
+  children: ReactNode;
+}) {
+  const [copied, setCopied] = useState(false);
+  const copy = useCallback(() => {
+    if (!navigator.clipboard) return;
+    navigator.clipboard.writeText(raw)
+      .then(() => { setCopied(true); setTimeout(() => setCopied(false), 1800); })
+      .catch(() => { /* clipboard blocked — no-op */ });
+  }, [raw]);
+
+  return (
+    <div className="my-2.5 overflow-hidden rounded-xl border border-neutral-800 bg-[#0b0b0b]">
+      <div className="flex items-center justify-between border-b border-neutral-800 bg-neutral-900/50 px-3 py-1.5">
+        <span className="text-[10.5px] font-medium uppercase tracking-[0.12em] text-neutral-500">
+          {language || 'code'}
+        </span>
+        <button
+          type="button"
+          onClick={copy}
+          aria-label="Copy code"
+          className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] text-neutral-400 transition-colors hover:text-neutral-100 active:scale-95"
+        >
+          {copied ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
+          {copied ? 'Copied' : 'Copy'}
+        </button>
+      </div>
+      <pre className="overflow-x-auto px-3.5 py-3 text-[12.5px] leading-relaxed">
+        <code className={`${codeClassName || ''} font-mono`}>{children}</code>
+      </pre>
+    </div>
+  );
+}
+
+const MD_COMPONENTS: Components = {
+  p: ({ children }) => <p className="my-2 leading-relaxed first:mt-0 last:mb-0">{children}</p>,
+  h1: ({ children }) => <h1 className="mb-1.5 mt-3 text-[17px] font-semibold first:mt-0">{children}</h1>,
+  h2: ({ children }) => <h2 className="mb-1.5 mt-3 text-[15px] font-semibold first:mt-0">{children}</h2>,
+  h3: ({ children }) => <h3 className="mb-1 mt-2.5 text-[14px] font-semibold first:mt-0">{children}</h3>,
+  ul: ({ children }) => <ul className="my-2 list-disc space-y-1 pl-5 marker:text-neutral-500">{children}</ul>,
+  ol: ({ children }) => <ol className="my-2 list-decimal space-y-1 pl-5 marker:text-neutral-500">{children}</ol>,
+  li: ({ children }) => <li className="leading-relaxed">{children}</li>,
+  strong: ({ children }) => <strong className="font-semibold text-neutral-50">{children}</strong>,
+  em: ({ children }) => <em className="italic">{children}</em>,
+  a: ({ children, href }) => (
+    <a href={href} target="_blank" rel="noopener noreferrer" className="underline underline-offset-2" style={{ color: ACCENT }}>
+      {children}
+    </a>
+  ),
+  blockquote: ({ children }) => (
+    <blockquote className="my-2 border-l-2 border-neutral-700 pl-3 text-neutral-400">{children}</blockquote>
+  ),
+  hr: () => <hr className="my-3 border-neutral-800" />,
+  table: ({ children }) => (
+    <div className="my-2.5 overflow-x-auto rounded-lg border border-neutral-800">
+      <table className="w-full border-collapse text-[13px]">{children}</table>
+    </div>
+  ),
+  thead: ({ children }) => <thead className="bg-neutral-900/60">{children}</thead>,
+  th: ({ children }) => <th className="px-3 py-1.5 text-left font-semibold text-neutral-200">{children}</th>,
+  td: ({ children }) => <td className="border-t border-neutral-800/70 px-3 py-1.5 align-top">{children}</td>,
+  pre: ({ children }) => <>{children}</>,
+  code: ({ className, children }) => {
+    const match = /language-(\w+)/.exec(className || '');
+    const raw = nodeToText(children);
+    const isBlock = !!match || raw.includes('\n');
+    if (!isBlock) {
+      return (
+        <code className="rounded bg-neutral-800/80 px-1.5 py-0.5 font-mono text-[0.85em] text-neutral-100">
+          {children}
+        </code>
+      );
+    }
+    return (
+      <CodeBlock language={match?.[1]} raw={raw.replace(/\n$/, '')} codeClassName={className}>
+        {children}
+      </CodeBlock>
+    );
+  },
+};
+
+function MarkdownView({ source }: { source: string }) {
+  return (
+    <ReactMarkdown
+      remarkPlugins={[remarkGfm]}
+      rehypePlugins={[[rehypeHighlight, { detect: true, ignoreMissing: true }]]}
+      components={MD_COMPONENTS}
+    >
+      {source}
+    </ReactMarkdown>
+  );
+}
+
 function StreamingText({
   text, active, onTick,
 }: {
@@ -1179,25 +1355,26 @@ function StreamingText({
   const shown = animate ? text.slice(0, count) : text;
   const blinking = animate && count < text.length;
   return (
-    <span className="whitespace-pre-wrap">
-      {shown}
+    <div className="md-body">
+      <MarkdownView source={shown} />
       {blinking ? (
-        <span className="inline-block w-[2px] h-[0.95em] translate-y-[2px] ml-[1px] bg-current opacity-70 animate-pulse" aria-hidden />
+        <span className="-mt-1 inline-block h-[0.95em] w-[2px] translate-y-[2px] animate-pulse bg-current opacity-70" aria-hidden />
       ) : null}
-    </span>
+    </div>
   );
 }
 
 /* ─── Per-message bubble with executive toolbar ────────────────────── */
 
 function MessageBubble({
-  message, accent, streaming = false, onStreamTick, onRegenerate, onFeedback, onPlayAudio,
+  message, accent, streaming = false, onStreamTick, onRegenerate, onEdit, onFeedback, onPlayAudio,
 }: {
   message: ChatMessage;
   accent: string;
   streaming?: boolean;
   onStreamTick?: () => void;
   onRegenerate: () => void;
+  onEdit: (text: string) => void;
   onFeedback: (id: string, rating: 'up' | 'down') => void;
   onPlayAudio: (url: string) => void;
 }) {
@@ -1205,6 +1382,14 @@ function MessageBubble({
   const isError = message.role === 'error';
   const bubbleVideoRef = useRef<HTMLVideoElement>(null);
   const [lightbox, setLightbox] = useState(false);
+  const [copiedText, setCopiedText] = useState(false);
+
+  const copyMessageText = useCallback(() => {
+    if (!navigator.clipboard || !message.text) return;
+    navigator.clipboard.writeText(message.text)
+      .then(() => { setCopiedText(true); setTimeout(() => setCopiedText(false), 1800); })
+      .catch(() => { /* clipboard blocked — no-op */ });
+  }, [message.text]);
 
   const togglePiP = useCallback(async () => {
     const v = bubbleVideoRef.current;
@@ -1259,7 +1444,7 @@ function MessageBubble({
   }, [message.assetUrl, message.assetType, message.id]);
 
   return (
-    <div className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
+    <div className={`group flex ${isUser ? 'justify-end' : 'justify-start'}`}>
       <div className={`flex flex-col gap-2 max-w-[88%] ${isUser ? 'items-end' : 'items-start'}`}>
         {message.text ? (
           <div
@@ -1401,6 +1586,15 @@ function MessageBubble({
                 <Download size={18} />
               </button>
             ) : null}
+            {message.text ? (
+              <button
+                onClick={copyMessageText}
+                aria-label="Copy response"
+                className="h-9 w-9 flex items-center justify-center rounded-full text-neutral-500 hover:bg-neutral-800 hover:text-neutral-200 transition-all duration-200 active:scale-95"
+              >
+                {copiedText ? <Check size={18} className="text-emerald-400" /> : <Copy size={18} />}
+              </button>
+            ) : null}
             {message.sourcePrompt ? (
               <button
                 onClick={onRegenerate}
@@ -1410,6 +1604,26 @@ function MessageBubble({
                 <RotateCcw size={18} />
               </button>
             ) : null}
+          </div>
+        ) : null}
+
+        {/* User controls — discreet Edit (branch the prompt) + Copy */}
+        {isUser && message.text ? (
+          <div className="flex items-center gap-1 mt-0.5 text-neutral-600 opacity-0 transition-opacity duration-200 group-hover:opacity-100 focus-within:opacity-100">
+            <button
+              onClick={() => onEdit(message.text)}
+              aria-label="Edit prompt"
+              className="h-8 w-8 flex items-center justify-center rounded-full text-neutral-500 hover:bg-neutral-800 hover:text-neutral-200 transition-all duration-200 active:scale-95"
+            >
+              <Pencil size={15} />
+            </button>
+            <button
+              onClick={copyMessageText}
+              aria-label="Copy prompt"
+              className="h-8 w-8 flex items-center justify-center rounded-full text-neutral-500 hover:bg-neutral-800 hover:text-neutral-200 transition-all duration-200 active:scale-95"
+            >
+              {copiedText ? <Check size={15} className="text-emerald-400" /> : <Copy size={15} />}
+            </button>
           </div>
         ) : null}
       </div>
