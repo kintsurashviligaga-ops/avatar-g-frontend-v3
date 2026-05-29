@@ -38,8 +38,11 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
+  AlertCircle,
   Box,
   Camera,
+  Check,
+  Circle,
   Download,
   Film,
   Globe,
@@ -328,9 +331,10 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated }: Pr
   );
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [avatarSoundOn, setAvatarSoundOn] = useState(false);
-  // Async lifecycle state retained for telemetry/diagnostics; the visible
-  // loading affordance is the shaped <MediaSkeleton/>.
-  const [, setPipeline] = useState<PipelineState | null>(null);
+  // Live multi-stage render telemetry, driven by REAL backend poll status
+  // (derivePipeline). Surfaced under the shaped <MediaSkeleton/> as the chat's
+  // micro-progress indicator for media jobs.
+  const [pipeline, setPipeline] = useState<PipelineState | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const noticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -792,7 +796,14 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated }: Pr
           ) : (
             messages.map((m) => <MessageBubble key={m.id} message={m} accent={ACCENT} onRegenerate={() => sendMessage(m.sourcePrompt)} onFeedback={sendFeedback} onPlayAudio={playAssetAudio} />)
           )}
-          {isLoading ? <MediaSkeleton mode={mode} accent={ACCENT} /> : null}
+          {isLoading ? (
+            <div className="flex flex-col gap-2.5">
+              <MediaSkeleton mode={mode} accent={ACCENT} />
+              {mode !== 'global' && pipeline?.active && pipeline.stages.length ? (
+                <PipelineTelemetry stages={pipeline.stages} lang={lang} accent={ACCENT} />
+              ) : null}
+            </div>
+          ) : null}
           <div ref={endRef} />
         </div>
       </main>
@@ -1318,6 +1329,48 @@ function MessageBubble({
           </div>
         ) : null}
       </div>
+    </div>
+  );
+}
+
+/* ─── Live render telemetry — a per-stage progress strip bound to genuine
+ * backend status (derivePipeline). Each row reflects a real lifecycle phase:
+ * analysis → audio synthesis → GPU render. No fabricated percentages. */
+
+function PipelineTelemetry({
+  stages, lang, accent,
+}: {
+  stages: PipelineStage[];
+  lang: 'en' | 'ka' | 'ru';
+  accent: string;
+}) {
+  return (
+    <div className="w-full max-w-sm rounded-2xl border border-zinc-800/70 bg-[#0a0a0a] p-3 flex flex-col gap-2">
+      {stages
+        .filter((s) => s.state !== 'skipped')
+        .map((s) => {
+          const labelColor =
+            s.state === 'done' ? 'text-neutral-300'
+            : s.state === 'active' ? 'text-neutral-100'
+            : s.state === 'failed' ? 'text-rose-300'
+            : 'text-neutral-500';
+          return (
+            <div key={s.key} className="flex items-center gap-2.5 text-[12px]">
+              <span className="flex h-4 w-4 items-center justify-center flex-shrink-0">
+                {s.state === 'done' ? (
+                  <Check size={14} className="text-emerald-400" />
+                ) : s.state === 'active' ? (
+                  <Loader2 size={14} className="animate-spin" style={{ color: accent }} />
+                ) : s.state === 'failed' ? (
+                  <AlertCircle size={14} className="text-rose-400" />
+                ) : (
+                  <Circle size={9} className="text-neutral-600" />
+                )}
+              </span>
+              <span className={`leading-tight ${labelColor}`}>{s.label[lang]}</span>
+            </div>
+          );
+        })}
     </div>
   );
 }

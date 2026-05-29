@@ -1,4 +1,5 @@
-import { createClient } from '@supabase/supabase-js';
+import { createBrowserClient as createSsrBrowserClient } from '@supabase/ssr';
+import type { SupabaseClient } from '@supabase/supabase-js';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -9,11 +10,29 @@ const isConfigured =
   !supabaseUrl.includes('placeholder') &&
   !supabaseAnonKey.includes('placeholder');
 
-let browserClient: ReturnType<typeof createClient> | null = null;
+// Keep the public type identical to the previous bare supabase-js client so
+// downstream call sites (query builders, onAuthStateChange callbacks) retain the
+// exact same loose typing — only the underlying storage/flow changes to cookies.
+type BrowserClient = SupabaseClient;
 
-function getOrCreateBrowserClient() {
+let browserClient: BrowserClient | null = null;
+
+/**
+ * Cookie-backed browser client (PKCE flow).
+ *
+ * We use @supabase/ssr's createBrowserClient — NOT the bare supabase-js
+ * createClient — so the auth session and PKCE code-verifier live in cookies
+ * (not localStorage). This keeps three things coherent that previously diverged:
+ *
+ *   1. The /auth/callback server route can run exchangeCodeForSession(), because
+ *      the PKCE verifier cookie set here is readable server-side.
+ *   2. middleware.ts / lib/supabase/server.ts see the same session cookies, so
+ *      session refresh and server reads actually observe the logged-in user.
+ *   3. OAuth and email magic-link both return a ?code= the server can exchange.
+ */
+function getOrCreateBrowserClient(): BrowserClient {
   if (!isConfigured) {
-    return null as unknown as ReturnType<typeof createClient>;
+    return null as unknown as BrowserClient;
   }
 
   if (browserClient) {
@@ -23,18 +42,18 @@ function getOrCreateBrowserClient() {
   if (typeof window !== 'undefined') {
     const globalKey = '__avatarg_supabase_browser_client__' as const;
     const globalWithClient = window as typeof window & {
-      [globalKey]?: ReturnType<typeof createClient>;
+      [globalKey]?: BrowserClient;
     };
 
     if (!globalWithClient[globalKey]) {
-      globalWithClient[globalKey] = createClient(supabaseUrl!, supabaseAnonKey!);
+      globalWithClient[globalKey] = (createSsrBrowserClient(supabaseUrl!, supabaseAnonKey!) as unknown as BrowserClient);
     }
 
     browserClient = globalWithClient[globalKey]!;
     return browserClient;
   }
 
-  browserClient = createClient(supabaseUrl!, supabaseAnonKey!);
+  browserClient = (createSsrBrowserClient(supabaseUrl!, supabaseAnonKey!) as unknown as BrowserClient);
   return browserClient;
 }
 
@@ -45,7 +64,7 @@ export function isSupabaseConfigured(): boolean {
 }
 
 /**
- * Returns a new Supabase client instance for browser usage.
+ * Returns the cookie-backed Supabase client for browser usage.
  * Returns null when Supabase is not configured (demo mode).
  */
 export function createBrowserClient() {

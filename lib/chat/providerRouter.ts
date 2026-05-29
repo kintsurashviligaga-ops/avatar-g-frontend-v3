@@ -744,45 +744,65 @@ async function handleTextIntent(
   let geminiError: string | null = null;
 
   if (process.env.GEMINI_API_KEY) {
-    let geminiTimer: ReturnType<typeof setTimeout> | undefined;
-    try {
-      const prefersPro = input.message.length > 1200 || input.history.length > 12 || ctx === 'interior' || ctx === 'business';
-      // Hard 10s cap so a hung Gemini call can't block the request up to
-      // maxDuration — on failure/timeout it drops straight to the Claude
-      // fallback below, keeping "zero breakdown visibility" for the user.
-      const gemini = await Promise.race([
-        generateWithGemini({
-        prompt: input.message,
-        systemPrompt,
-        tier: prefersPro ? 'pro' : 'flash',
-        history: input.history?.map((h) => ({
-          role: h.role === 'assistant' ? ('model' as const) : ('user' as const),
-          parts: [{ text: h.content }],
-        })),
-        temperature: 0.6,
-        }),
-        new Promise<never>((_, reject) => {
-          geminiTimer = setTimeout(() => reject(new Error('Gemini timeout (10s)')), 10000);
-        }),
-      ]);
-      if (geminiTimer) clearTimeout(geminiTimer);
-      return {
-        success: true,
-        intent: detected.intent,
-        responseType: 'text',
-        message: gemini.text,
-        metadata: {
-          provider: 'gemini',
-          model: gemini.model,
-          tokensIn: gemini.tokensIn,
-          tokensOut: gemini.tokensOut,
-          confidence: detected.confidence,
-        },
-      };
-    } catch (error) {
-      if (geminiTimer) clearTimeout(geminiTimer);
-      geminiError = error instanceof Error ? error.message : 'Gemini request failed';
-      console.warn('[providerRouter] Gemini text path failed, falling back to Claude:', geminiError);
+    const prefersPro = input.message.length > 1200 || input.history.length > 12 || ctx === 'interior' || ctx === 'business';
+    // Transient Gemini conditions (model overloaded / rate-limited) are worth a
+    // fast retry before surrendering to Claude — the GA endpoints intermittently
+    // return 503 UNAVAILABLE under load. We retry only these (never a hung call),
+    // with short backoff, so Gemini stays the primary engine instead of bleeding
+    // traffic to the fallback on momentary blips.
+    const isTransient = (msg: string) =>
+      /\b(429|503)\b|overloaded|unavailable|resource_exhausted|rate limit|try again/i.test(msg);
+    const MAX_ATTEMPTS = 3;
+
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+      let geminiTimer: ReturnType<typeof setTimeout> | undefined;
+      try {
+        // Hard 9s cap per attempt so a hung Gemini call can't block up to
+        // maxDuration. A timeout is NOT treated as transient (no retry) — it
+        // drops to the Claude fallback to preserve "zero breakdown visibility".
+        const gemini = await Promise.race([
+          generateWithGemini({
+            prompt: input.message,
+            systemPrompt,
+            tier: prefersPro ? 'pro' : 'flash',
+            history: input.history?.map((h) => ({
+              role: h.role === 'assistant' ? ('model' as const) : ('user' as const),
+              parts: [{ text: h.content }],
+            })),
+            temperature: 0.6,
+          }),
+          new Promise<never>((_, reject) => {
+            geminiTimer = setTimeout(() => reject(new Error('Gemini timeout (9s)')), 9000);
+          }),
+        ]);
+        if (geminiTimer) clearTimeout(geminiTimer);
+        return {
+          success: true,
+          intent: detected.intent,
+          responseType: 'text',
+          message: gemini.text,
+          metadata: {
+            provider: 'gemini',
+            model: gemini.model,
+            tokensIn: gemini.tokensIn,
+            tokensOut: gemini.tokensOut,
+            confidence: detected.confidence,
+            ...(attempt > 1 ? { geminiRetries: attempt - 1 } : {}),
+          },
+        };
+      } catch (error) {
+        if (geminiTimer) clearTimeout(geminiTimer);
+        geminiError = error instanceof Error ? error.message : 'Gemini request failed';
+        if (isTransient(geminiError) && attempt < MAX_ATTEMPTS) {
+          await new Promise((r) => setTimeout(r, 350 * attempt)); // 350ms, 700ms
+          continue;
+        }
+        console.warn(
+          `[providerRouter] Gemini text path failed after ${attempt} attempt(s), falling back to Claude:`,
+          geminiError,
+        );
+        break;
+      }
     }
   }
 

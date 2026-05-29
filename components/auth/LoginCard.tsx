@@ -20,11 +20,56 @@ import { createBrowserClient, isSupabaseConfigured } from '@/lib/supabase/browse
 type Lang = 'ka' | 'en' | 'ru';
 type Provider = 'google' | 'apple' | 'github';
 
-const LABELS: Record<Lang, { continueWith: string; notConfigured: string; redirecting: string }> = {
-  ka: { continueWith: 'გააგრძელე', notConfigured: 'ავთენტიფიკაცია ამ გარემოში გამორთულია (demo).', redirecting: 'გადამისამართება…' },
-  en: { continueWith: 'Continue with', notConfigured: 'Authentication is disabled in this environment (demo).', redirecting: 'Redirecting…' },
-  ru: { continueWith: 'Продолжить с', notConfigured: 'Аутентификация отключена в этой среде (demo).', redirecting: 'Перенаправление…' },
+const LABELS: Record<
+  Lang,
+  {
+    continueWith: string;
+    notConfigured: string;
+    redirecting: string;
+    or: string;
+    emailPlaceholder: string;
+    sendLink: string;
+    sending: string;
+    linkSent: string;
+    invalidEmail: string;
+  }
+> = {
+  ka: {
+    continueWith: 'გააგრძელე',
+    notConfigured: 'ავთენტიფიკაცია ამ გარემოში გამორთულია (demo).',
+    redirecting: 'გადამისამართება…',
+    or: 'ან',
+    emailPlaceholder: 'შენი ელ-ფოსტა',
+    sendLink: 'შესვლის ბმულის გაგზავნა',
+    sending: 'იგზავნება…',
+    linkSent: 'შესვლის ბმული გაიგზავნა. შეამოწმე ელ-ფოსტა.',
+    invalidEmail: 'შეიყვანე სწორი ელ-ფოსტა.',
+  },
+  en: {
+    continueWith: 'Continue with',
+    notConfigured: 'Authentication is disabled in this environment (demo).',
+    redirecting: 'Redirecting…',
+    or: 'or',
+    emailPlaceholder: 'your email',
+    sendLink: 'Send sign-in link',
+    sending: 'Sending…',
+    linkSent: 'Sign-in link sent. Check your email.',
+    invalidEmail: 'Enter a valid email.',
+  },
+  ru: {
+    continueWith: 'Продолжить с',
+    notConfigured: 'Аутентификация отключена в этой среде (demo).',
+    redirecting: 'Перенаправление…',
+    or: 'или',
+    emailPlaceholder: 'ваш email',
+    sendLink: 'Отправить ссылку для входа',
+    sending: 'Отправка…',
+    linkSent: 'Ссылка для входа отправлена. Проверьте почту.',
+    invalidEmail: 'Введите корректный email.',
+  },
 };
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function GoogleIcon() {
   return (
@@ -70,18 +115,25 @@ export function LoginCard({ locale = 'ka', redirectTo, className }: LoginCardPro
   const t = LABELS[locale] ?? LABELS.ka;
   const [loading, setLoading] = useState<Provider | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [email, setEmail] = useState('');
+  const [emailLoading, setEmailLoading] = useState(false);
+  const [linkSent, setLinkSent] = useState(false);
+
+  const callbackFor = useCallback(() => {
+    const dest = redirectTo || `/${locale}/dashboard`;
+    return `${window.location.origin}/auth/callback?redirect=${encodeURIComponent(dest)}`;
+  }, [locale, redirectTo]);
 
   const handleOAuth = useCallback(async (provider: Provider) => {
     setError(null);
+    setLinkSent(false);
     const supabase = createBrowserClient();
     if (!supabase || !isSupabaseConfigured()) { setError(t.notConfigured); return; }
     setLoading(provider);
-    const dest = redirectTo || `/${locale}/dashboard`;
-    const callbackUrl = `${window.location.origin}/auth/callback?redirect=${encodeURIComponent(dest)}`;
     try {
       const { error: oauthError } = await supabase.auth.signInWithOAuth({
         provider,
-        options: { redirectTo: callbackUrl },
+        options: { redirectTo: callbackFor() },
       });
       if (oauthError) { setError(oauthError.message); setLoading(null); }
       // On success the browser is redirected to the provider — no further work.
@@ -89,7 +141,34 @@ export function LoginCard({ locale = 'ka', redirectTo, className }: LoginCardPro
       setError(e instanceof Error ? e.message : 'OAuth failed');
       setLoading(null);
     }
-  }, [locale, redirectTo, t.notConfigured]);
+  }, [callbackFor, t.notConfigured]);
+
+  // Email magic-link — works without any OAuth provider being enabled in the
+  // Supabase dashboard. Email auth is on by default, so this is the resilient
+  // fallback when Google/GitHub return "provider is not enabled". The link lands
+  // on /auth/callback?code=… which exchangeCodeForSession() + ensureProfile()
+  // already handle, registering the user into the profiles table.
+  const handleMagicLink = useCallback(async () => {
+    setError(null);
+    setLinkSent(false);
+    const trimmed = email.trim();
+    if (!EMAIL_RE.test(trimmed)) { setError(t.invalidEmail); return; }
+    const supabase = createBrowserClient();
+    if (!supabase || !isSupabaseConfigured()) { setError(t.notConfigured); return; }
+    setEmailLoading(true);
+    try {
+      const { error: otpError } = await supabase.auth.signInWithOtp({
+        email: trimmed,
+        options: { emailRedirectTo: callbackFor(), shouldCreateUser: true },
+      });
+      if (otpError) { setError(otpError.message); }
+      else { setLinkSent(true); }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Magic-link request failed');
+    } finally {
+      setEmailLoading(false);
+    }
+  }, [callbackFor, email, t.invalidEmail, t.notConfigured]);
 
   return (
     <div className={`flex flex-col gap-2.5 ${className ?? ''}`}>
@@ -110,6 +189,41 @@ export function LoginCard({ locale = 'ka', redirectTo, className }: LoginCardPro
           <span>{loading === id ? t.redirecting : `${t.continueWith} ${name}`}</span>
         </button>
       ))}
+
+      <div className="flex items-center gap-3 my-0.5">
+        <span className="h-px flex-1 bg-white/10" />
+        <span className="text-[11px] uppercase tracking-wider text-neutral-500">{t.or}</span>
+        <span className="h-px flex-1 bg-white/10" />
+      </div>
+
+      <form
+        onSubmit={(e) => { e.preventDefault(); void handleMagicLink(); }}
+        className="flex flex-col gap-2.5"
+      >
+        <input
+          type="email"
+          inputMode="email"
+          autoComplete="email"
+          value={email}
+          onChange={(e) => { setEmail(e.target.value); if (linkSent) setLinkSent(false); }}
+          placeholder={t.emailPlaceholder}
+          disabled={emailLoading || loading !== null}
+          aria-label={t.emailPlaceholder}
+          className="w-full h-11 rounded-xl bg-neutral-900 text-neutral-50 text-[14px] px-3.5 border border-white/10 placeholder:text-neutral-500 focus:outline-none focus:border-white/25 disabled:opacity-60 transition-colors duration-150"
+        />
+        <button
+          type="submit"
+          disabled={emailLoading || loading !== null}
+          className="group relative w-full h-11 rounded-xl bg-neutral-800 text-neutral-50 text-[14px] font-semibold flex items-center justify-center gap-3 border border-white/10 hover:bg-neutral-700 active:scale-[0.99] disabled:opacity-60 disabled:cursor-not-allowed transition-all duration-150"
+        >
+          {emailLoading && (
+            <span className="h-4 w-4 rounded-full border-2 border-neutral-50/30 border-t-neutral-50 animate-spin" />
+          )}
+          <span>{emailLoading ? t.sending : t.sendLink}</span>
+        </button>
+      </form>
+
+      {linkSent && <p className="text-[12px] text-emerald-300 px-1 text-center">{t.linkSent}</p>}
       {error && <p className="text-[12px] text-rose-300 px-1 text-center">{error}</p>}
     </div>
   );
