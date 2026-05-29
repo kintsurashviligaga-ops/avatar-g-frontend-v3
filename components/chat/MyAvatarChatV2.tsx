@@ -41,6 +41,7 @@ import {
   Box,
   Camera,
   Download,
+  Film,
   Globe,
   ImagePlus,
   Loader2,
@@ -166,6 +167,7 @@ const MAX_MEDIA_MB = 25;
 const MODES = [
   { id: 'global',   Icon: MessageSquare, accent: '#22d3ee', label: { en: 'Chat',     ka: 'ჩათი',            ru: 'Чат' } },
   { id: 'image',    Icon: ImagePlus,     accent: '#34d399', label: { en: 'Image',     ka: 'სურათი',          ru: 'Изображение' } },
+  { id: 'video',    Icon: Film,          accent: '#38bdf8', label: { en: '30s Film',  ka: '30 წმ ფილმი',     ru: '30-сек фильм' } },
   { id: 'music',    Icon: Music,         accent: '#f472b6', label: { en: 'Music',     ka: 'მუსიკა',          ru: 'Музыка' } },
   { id: 'avatar',   Icon: User,          accent: '#818cf8', label: { en: 'Avatar',    ka: 'AI ავატარი',      ru: 'AI Аватар' } },
   { id: 'interior', Icon: Box,           accent: '#10b981', label: { en: 'Room 3D',   ka: 'ოთახის 3D',       ru: 'Комната 3D' } },
@@ -687,7 +689,7 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated }: Pr
     >
       {/* ── Top bar ────────────────────────────────────────────────── */}
       <header
-        className="flex items-center justify-between px-3 py-2 border-b border-zinc-800/70 bg-[#030303]/95 backdrop-blur-md"
+        className="flex items-center justify-between px-3 py-2 border-b border-white/[0.05] bg-[#030303]/95 backdrop-blur-md"
         style={{ paddingTop: 'calc(0.5rem + env(safe-area-inset-top, 0px))' }}
       >
         {/* Hamburger → conversation-log drawer */}
@@ -894,7 +896,7 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated }: Pr
 
       {/* ── Composer (bottom anchor) ─────────────────────────────── */}
       <footer
-        className="flex-shrink-0 border-t border-zinc-800/70 bg-[#030303]/95 backdrop-blur-md"
+        className="flex-shrink-0 border-t border-white/[0.05] bg-[#030303]/95 backdrop-blur-md"
         style={{ paddingBottom: 'calc(0.5rem + env(safe-area-inset-bottom, 0px))' }}
       >
         {/* Attachment chips */}
@@ -926,7 +928,7 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated }: Pr
 
         {/* ── Unified monolithic console: mode selector + composer ───── */}
         <div className="px-3 pt-2 pb-2 max-w-2xl mx-auto">
-          <div className="rounded-2xl border border-zinc-800/80 bg-[#0a0a0a] transition-colors focus-within:border-zinc-700">
+          <div className="rounded-2xl border border-white/[0.06] bg-[#0a0a0a] transition-colors focus-within:border-white/[0.12]">
             {/* Mode selector — sets the orchestrator service context */}
             <div className="flex gap-1.5 overflow-x-auto px-2 pt-2 pb-1.5 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
               {MODES.map(({ id, Icon, accent, label }) => {
@@ -940,7 +942,7 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated }: Pr
                     className={`flex-shrink-0 inline-flex items-center gap-1.5 h-8 px-3 rounded-full text-[12px] font-medium border bg-[#121212] transition-colors active:scale-95 ${
                       active
                         ? 'border-cyan-400/40 text-zinc-100'
-                        : 'border-white/10 text-zinc-400 hover:text-zinc-200 hover:border-white/20'
+                        : 'border-transparent text-zinc-400 hover:text-zinc-200'
                     }`}
                   >
                     <Icon size={14} style={active ? { color: accent } : undefined} />
@@ -950,7 +952,6 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated }: Pr
               })}
             </div>
 
-            <div className="mx-2 border-t border-zinc-800/70" />
 
             {/* Composer row — attachment, camera, input, mic, send */}
             <div className="flex items-end gap-1.5 px-2 py-2">
@@ -1005,7 +1006,7 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated }: Pr
                   aria-label="Send"
                   className="h-9 w-9 flex items-center justify-center rounded-xl text-zinc-950 active:scale-95 transition disabled:opacity-40 disabled:cursor-not-allowed"
                   style={{
-                    background: inputText.trim() ? `linear-gradient(135deg, ${ACCENT}, #0891b2)` : 'transparent',
+                    background: inputText.trim() ? ACCENT : 'transparent',
                   }}
                 >
                   <Send size={16} />
