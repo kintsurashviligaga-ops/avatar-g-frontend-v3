@@ -258,196 +258,125 @@ export function CameraModal({ isOpen, accentColor, onClose, onAttach, showFaceGu
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        // When immersive (full-screen API or `fullScreen` prop), use the
-        // absolute-black layer the chat shell expects. Otherwise apply mobile
-        // padding + safe-area insets so iOS Safari can't clip the controls.
-        className={immersive
-          ? 'fixed inset-0 z-[100] flex items-center justify-center'
-          : 'fixed inset-0 z-[100] flex items-center justify-center p-2 sm:p-4'}
-        style={immersive
-          ? { background: '#000', backdropFilter: 'none' }
-          : {
-              background: 'rgba(0,0,0,0.85)',
-              backdropFilter: 'blur(8px)',
-              paddingTop: 'max(env(safe-area-inset-top, 0px), 0.5rem)',
-              paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 0.5rem)',
-            }}
+        className="fixed inset-0 z-[100] bg-black flex flex-col"
+        style={{ paddingTop: 'env(safe-area-inset-top, 0px)', paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
       >
-        <motion.div
-          ref={containerRef}
-          initial={{ scale: 0.95, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          exit={{ scale: 0.95, opacity: 0 }}
-          // Immersive: full-viewport black layer for chat shell.
-          // Otherwise: classic 2xl card that fills mobile safe-area without
-          // clipping controls.
-          className={`relative w-full overflow-hidden flex flex-col ${immersive ? '' : 'max-w-2xl rounded-2xl sm:rounded-3xl'}`}
-          style={immersive
-            ? {
-                background: '#000',
-                border: 'none',
-                boxShadow: 'none',
-                maxWidth: '100%',
-                borderRadius: 0,
-                height: '100vh',
-                width: '100vw',
-              }
-            : {
-                background: '#0a0e14',
-                border: `1px solid ${accentColor}25`,
-                boxShadow: `0 8px 60px rgba(0,0,0,0.6), 0 0 60px ${accentColor}10`,
-                maxHeight: '100%',
-              }}
-        >
-          {/* ── Header ── */}
-          <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-            <div className="flex items-center gap-3">
-              {/* Mode toggle */}
-              <div className="flex rounded-lg overflow-hidden" style={{ border: '1px solid rgba(255,255,255,0.08)' }}>
-                {(['photo', 'video'] as CameraMode[]).map(m => (
-                  <button
-                    key={m}
-                    onClick={() => { setMode(m); if (state === 'ready') startCamera(); }}
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider transition-all"
-                    style={{
-                      background: mode === m ? `${accentColor}20` : 'transparent',
-                      color: mode === m ? accentColor : 'rgba(255,255,255,0.4)',
-                    }}
-                  >
-                    {m === 'photo' ? <Camera className="w-3.5 h-3.5" /> : <Video className="w-3.5 h-3.5" />}
-                    {m === 'photo' ? c.photo : c.video}
-                  </button>
-                ))}
-              </div>
-              {state === 'recording' && (
-                <div className="flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full animate-pulse" style={{ backgroundColor: '#ef4444', boxShadow: '0 0 8px #ef4444' }} />
-                  <span className="text-xs font-mono font-bold" style={{ color: '#ef4444' }}>{formatTime(recordingTime)}</span>
-                </div>
-              )}
-            </div>
-            <div className="flex items-center gap-2">
-              <button onClick={toggleFullscreen} className="p-1.5 rounded-lg transition-all" style={{ color: 'rgba(255,255,255,0.4)' }}>
-                {isFullscreen ? <Minimize className="w-4 h-4" /> : <Maximize className="w-4 h-4" />}
-              </button>
-              <button onClick={onClose} className="p-1.5 rounded-lg transition-all" style={{ color: 'rgba(255,255,255,0.4)' }}>
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-
-          {/* ── Viewport ── */}
-          {/* flex-1 + min-h-0 lets the frame absorb leftover modal height.
-              Non-immersive mode also caps maxHeight against dvh so portrait
-              mobile viewports never overflow the control bar. */}
-          <div
-            className="relative flex-1 min-h-0 bg-black"
-            style={{
-              aspectRatio: immersive ? undefined : '4/3',
-              maxHeight: immersive ? undefined : 'min(72vh, calc(100dvh - 200px))',
-            }}
+        {/* Top bar — minimal: close + recording timer */}
+        <div className="flex items-center justify-between px-4 py-3">
+          <button
+            onClick={onClose}
+            aria-label="Close"
+            className="h-10 w-10 rounded-full flex items-center justify-center bg-white/10 text-white active:scale-90 transition"
           >
-            {/* Live feed */}
-            {(state === 'ready' || state === 'recording') && (
-              <>
-                <video ref={videoRef} className="w-full h-full object-contain sm:object-cover" autoPlay muted playsInline />
-                {/* Face guide */}
-                {showFaceGuide && state === 'ready' && mode === 'photo' && (
-                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                    <div className="w-44 h-56 sm:w-52 sm:h-68 rounded-[50%] border-2" style={{ borderColor: `${accentColor}60`, boxShadow: `0 0 20px ${accentColor}15`, animation: 'pulse 2s ease-in-out infinite' }} />
-                    <span className="absolute bottom-20 text-[11px] font-medium px-3 py-1 rounded-full" style={{ background: 'rgba(0,0,0,0.6)', color: accentColor }}>{c.align}</span>
-                  </div>
-                )}
-                {/* Corner crosshairs — hidden in the immersive (Apple-style)
-                    layer to keep the viewport clean; shown only in the compact
-                    card view where they read as a deliberate framing accent. */}
-                {!immersive && [{ top: 12, left: 12 }, { top: 12, right: 12 }, { bottom: 12, left: 12 }, { bottom: 12, right: 12 }].map((pos, i) => (
-                  <div key={i} className="absolute w-4 h-4 pointer-events-none" style={pos as React.CSSProperties}>
-                    <div className="absolute top-0 left-0 w-4 h-px" style={{ backgroundColor: `${accentColor}50` }} />
-                    <div className="absolute top-0 left-0 w-px h-4" style={{ backgroundColor: `${accentColor}50` }} />
-                  </div>
-                ))}
-              </>
+            <X className="w-5 h-5" />
+          </button>
+          {state === 'recording' ? (
+            <div className="flex items-center gap-2 rounded-full bg-black/50 px-3 py-1">
+              <span className="w-2 h-2 rounded-full animate-pulse" style={{ backgroundColor: '#ef4444' }} />
+              <span className="text-[13px] font-mono font-semibold text-white">{formatTime(recordingTime)}</span>
+            </div>
+          ) : (
+            <span className="w-10" />
+          )}
+        </div>
+
+        {/* Full-screen viewport with rounded bounds */}
+        <div className="relative flex-1 min-h-0 mx-3 rounded-[1.75rem] overflow-hidden bg-black">
+          {(state === 'ready' || state === 'recording') && (
+            <video ref={videoRef} className="absolute inset-0 h-full w-full object-cover" autoPlay muted playsInline />
+          )}
+          {state === 'preview' && previewUrl && (
+            mode === 'video' ? (
+              <video src={previewUrl} className="absolute inset-0 h-full w-full object-cover" controls autoPlay loop playsInline />
+            ) : (
+              <Image src={previewUrl} alt="Captured" width={1200} height={1600} unoptimized className="absolute inset-0 h-full w-full object-cover" />
+            )
+          )}
+          {error && (
+            <div className="absolute inset-0 flex items-center justify-center px-6 text-center">
+              <p className="text-sm font-medium text-rose-400">{error}</p>
+            </div>
+          )}
+          {state === 'idle' && !error && (
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="w-9 h-9 rounded-full border-2 border-white/15 border-t-white animate-spin" />
+            </div>
+          )}
+        </div>
+
+        {/* Bottom: mode wheel + shutter */}
+        <div className="flex-shrink-0 pt-4">
+          {(state === 'ready' || state === 'idle') && (
+            <div className="flex items-center justify-center gap-7 pb-5 text-[12px] font-semibold uppercase tracking-[0.18em]">
+              {(['photo', 'video'] as CameraMode[]).map((m) => (
+                <button
+                  key={m}
+                  onClick={() => { setMode(m); if (state === 'ready') startCamera(); }}
+                  className="transition-colors"
+                  style={{ color: mode === m ? '#fde047' : 'rgba(255,255,255,0.45)' }}
+                >
+                  {m === 'photo' ? c.photo : c.video}
+                </button>
+              ))}
+            </div>
+          )}
+
+          <div className="relative flex items-center justify-center h-24">
+            {state === 'ready' && (
+              <button
+                onClick={switchCamera}
+                aria-label={c.switchCam}
+                className="absolute right-8 h-12 w-12 rounded-full flex items-center justify-center bg-white/10 text-white active:scale-90 transition"
+              >
+                <RefreshCw className="w-5 h-5" />
+              </button>
             )}
 
-            {/* Preview */}
-            {state === 'preview' && previewUrl && (
-              mode === 'video' ? (
-                <video src={previewUrl} className="w-full h-full object-contain sm:object-cover" controls autoPlay loop playsInline />
-              ) : (
-                <Image src={previewUrl} alt="Captured" width={1200} height={900} unoptimized className="w-full h-full object-contain sm:object-cover" />
-              )
-            )}
-
-            {/* Error */}
-            {error && (
-              <div className="absolute inset-0 flex items-center justify-center">
-                <p className="text-sm font-medium" style={{ color: '#f87171' }}>{error}</p>
-              </div>
-            )}
-
-            {/* Idle loading */}
-            {state === 'idle' && !error && (
-              <div className="absolute inset-0 flex items-center justify-center">
-                <div className="w-10 h-10 rounded-full border-2 animate-spin" style={{ borderColor: 'rgba(255,255,255,0.1)', borderTopColor: accentColor }} />
-              </div>
-            )}
-          </div>
-
-          {/* ── Controls ── */}
-          <div
-            className="flex items-center justify-center gap-4 px-4 flex-shrink-0"
-            style={{
-              borderTop: '1px solid rgba(255,255,255,0.06)',
-              paddingTop: '1rem',
-              paddingBottom: 'calc(1rem + env(safe-area-inset-bottom, 0px))',
-            }}
-          >
             {state === 'ready' && mode === 'photo' && (
-              <>
-                <button onClick={switchCamera} className="w-10 h-10 rounded-full flex items-center justify-center transition-all active:scale-90" style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)' }}>
-                  <RefreshCw className="w-4 h-4" style={{ color: 'rgba(255,255,255,0.6)' }} />
-                </button>
-                <button onClick={capturePhoto} className="w-16 h-16 rounded-full flex items-center justify-center transition-all active:scale-90" style={{ background: `linear-gradient(135deg, ${accentColor}, ${accentColor}bb)`, boxShadow: `0 0 30px ${accentColor}40`, border: '3px solid rgba(255,255,255,0.3)' }}>
-                  <div className="w-11 h-11 rounded-full" style={{ border: '2px solid rgba(255,255,255,0.8)' }} />
-                </button>
-                <button onClick={toggleFullscreen} className="w-10 h-10 rounded-full flex items-center justify-center transition-all active:scale-90" style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)' }}>
-                  <Maximize className="w-4 h-4" style={{ color: 'rgba(255,255,255,0.6)' }} />
-                </button>
-              </>
+              <button
+                onClick={capturePhoto}
+                aria-label={c.capture}
+                className="h-[74px] w-[74px] rounded-full bg-white active:scale-90 transition ring-4 ring-white/35 ring-offset-2 ring-offset-black"
+              />
             )}
             {state === 'ready' && mode === 'video' && (
-              <>
-                <button onClick={switchCamera} className="w-10 h-10 rounded-full flex items-center justify-center transition-all active:scale-90" style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)' }}>
-                  <RefreshCw className="w-4 h-4" style={{ color: 'rgba(255,255,255,0.6)' }} />
-                </button>
-                <button onClick={startRecording} className="w-16 h-16 rounded-full flex items-center justify-center transition-all active:scale-90" style={{ background: 'linear-gradient(135deg, #ef4444, #dc2626)', boxShadow: '0 0 30px rgba(239,68,68,0.4)', border: '3px solid rgba(255,255,255,0.3)' }}>
-                  <div className="w-5 h-5 rounded-full bg-white" />
-                </button>
-                <button onClick={toggleFullscreen} className="w-10 h-10 rounded-full flex items-center justify-center transition-all active:scale-90" style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)' }}>
-                  <Maximize className="w-4 h-4" style={{ color: 'rgba(255,255,255,0.6)' }} />
-                </button>
-              </>
+              <button
+                onClick={startRecording}
+                aria-label={c.record}
+                className="h-[74px] w-[74px] rounded-full bg-white flex items-center justify-center active:scale-90 transition ring-4 ring-white/35 ring-offset-2 ring-offset-black"
+              >
+                <span className="h-6 w-6 rounded-full bg-red-500" />
+              </button>
             )}
             {state === 'recording' && (
-              <button onClick={stopRecording} className="w-16 h-16 rounded-full flex items-center justify-center transition-all active:scale-90" style={{ background: 'linear-gradient(135deg, #ef4444, #dc2626)', boxShadow: '0 0 30px rgba(239,68,68,0.4)', border: '3px solid rgba(255,255,255,0.3)' }}>
-                <div className="w-5 h-5 rounded-sm bg-white" />
+              <button
+                onClick={stopRecording}
+                aria-label={c.stop}
+                className="h-[74px] w-[74px] rounded-full bg-white flex items-center justify-center active:scale-90 transition ring-4 ring-white/35 ring-offset-2 ring-offset-black"
+              >
+                <span className="h-6 w-6 rounded-md bg-red-500" />
               </button>
             )}
             {state === 'preview' && (
-              <>
-                <button onClick={retake} className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold transition-all active:scale-95" style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.7)' }}>
-                  <RotateCcw className="w-3.5 h-3.5" /> {c.retake}
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={retake}
+                  className="flex items-center gap-2 px-5 py-3 rounded-full text-[13px] font-semibold bg-white/10 text-white active:scale-95 transition"
+                >
+                  <RotateCcw className="w-4 h-4" /> {c.retake}
                 </button>
-                <button onClick={attachMedia} className="flex items-center gap-2 px-6 py-2.5 rounded-xl text-xs font-bold transition-all active:scale-95" style={{ background: `linear-gradient(135deg, ${accentColor}30, ${accentColor}15)`, border: `1px solid ${accentColor}40`, color: accentColor, boxShadow: `0 0 20px ${accentColor}15` }}>
-                  <Check className="w-3.5 h-3.5" /> {c.attach}
+                <button
+                  onClick={attachMedia}
+                  className="flex items-center gap-2 px-6 py-3 rounded-full text-[13px] font-semibold bg-white text-black active:scale-95 transition"
+                >
+                  <Check className="w-4 h-4" /> {c.attach}
                 </button>
-              </>
+              </div>
             )}
           </div>
+        </div>
 
-          <canvas ref={canvasRef} className="hidden" />
-        </motion.div>
+        <canvas ref={canvasRef} className="hidden" />
       </motion.div>
     </AnimatePresence>
   );
