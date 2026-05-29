@@ -63,9 +63,11 @@ import {
   MoreHorizontal,
   Music,
   Paperclip,
+  Pause,
   Pencil,
   PictureInPicture2,
   RotateCcw,
+  Search,
   Send,
   Settings,
   Sparkles,
@@ -105,6 +107,7 @@ import {
   savePreferences,
   type ChatPreferences,
 } from '@/lib/chat/preferences';
+import { generateConversationTitle } from '@/lib/chat/titleClient';
 
 // Monochrome system accent (near-white). Keeps the whole workspace flat and
 // premium (Apple/Gemini dark aesthetic) — no neon, no chroma. Drives the send
@@ -209,6 +212,9 @@ const XCOPY = {
     ciPlaceholder: 'e.g. Always reply in Georgian, be concise, prefer cinematic prompts…',
     ciHint: 'Added to every conversation to personalise the assistant.',
     dropToAttach: 'Drop to attach', mediaExpired: 'Media not stored — regenerate to view',
+    readAloud: 'Read aloud', pauseReading: 'Pause', via: 'via', searchChats: 'Search chats',
+    noResults: 'No matching chats', emptyTitle: 'What can I create for you?',
+    emptySubtitle: 'Pick a starting point, or just type below.',
   },
   ka: {
     newChat: 'ახალი ჩატი', rename: 'გადარქმევა', delete: 'წაშლა', open: 'გახსნა',
@@ -220,6 +226,9 @@ const XCOPY = {
     ciPlaceholder: 'მაგ.: ყოველთვის უპასუხე ქართულად, იყავი ლაკონური…',
     ciHint: 'ემატება ყველა საუბარს ასისტენტის პერსონალიზაციისთვის.',
     dropToAttach: 'ჩააგდე მისამაგრებლად', mediaExpired: 'მედია არ შენახულა — ხელახლა დააგენერირე',
+    readAloud: 'ხმამაღლა წაკითხვა', pauseReading: 'პაუზა', via: '·', searchChats: 'ჩატების ძებნა',
+    noResults: 'ჩატები ვერ მოიძებნა', emptyTitle: 'რა შევქმნა შენთვის?',
+    emptySubtitle: 'აირჩიე დასაწყისი ან უბრალოდ დაწერე ქვემოთ.',
   },
   ru: {
     newChat: 'Новый чат', rename: 'Переименовать', delete: 'Удалить', open: 'Открыть',
@@ -231,6 +240,9 @@ const XCOPY = {
     ciPlaceholder: 'Напр.: всегда отвечай по-русски, будь краток…',
     ciHint: 'Добавляется к каждому разговору для персонализации ассистента.',
     dropToAttach: 'Отпустите, чтобы прикрепить', mediaExpired: 'Медиа не сохранено — сгенерируйте заново',
+    readAloud: 'Озвучить', pauseReading: 'Пауза', via: '·', searchChats: 'Поиск чатов',
+    noResults: 'Ничего не найдено', emptyTitle: 'Что мне создать для вас?',
+    emptySubtitle: 'Выберите начало или просто напишите ниже.',
   },
 } as const;
 
@@ -305,6 +317,60 @@ const MODES = [
   { id: 'voice',    Icon: Volume2,       accent: '#f59e0b', label: { en: 'Voice',     ka: 'ხმა',             ru: 'Голос' } },
 ] as const;
 type ServiceMode = typeof MODES[number]['id'];
+
+/**
+ * Empty-state capability cards — a minimalist "Quick Prompts" grid shown in a
+ * fresh chat (Tier-1 LLM onboarding). Each card pre-selects a service mode and
+ * seeds the composer with a localized starter prompt. Clicking a card NEVER
+ * auto-sends (no surprise spend) — it just primes mode + input and focuses the
+ * composer so the user stays in control.
+ */
+const CAPABILITY_CARDS = [
+  {
+    mode: 'avatar' as ServiceMode,
+    Icon: User,
+    accent: '#818cf8',
+    title: { en: 'Cinematic avatar', ka: 'კინო-ავატარი', ru: 'Кино-аватар' },
+    prompt: {
+      en: 'Create a 9:16 cinematic AI avatar of a confident founder, soft studio lighting',
+      ka: 'შექმენი 9:16 კინემატოგრაფიული AI ავატარი თავდაჯერებული დამფუძნებლის, რბილი სტუდიური განათებით',
+      ru: 'Создай кинематографичный AI-аватар 9:16 уверенного основателя, мягкий студийный свет',
+    },
+  },
+  {
+    mode: 'video' as ServiceMode,
+    Icon: Film,
+    accent: '#38bdf8',
+    title: { en: '30-second film', ka: '30-წამიანი ფილმი', ru: '30-секундный фильм' },
+    prompt: {
+      en: 'Produce a 30-second cinematic product teaser with dynamic camera moves',
+      ka: 'შექმენი 30-წამიანი კინემატოგრაფიული პროდუქტის თიზერი დინამიური კამერის მოძრაობით',
+      ru: 'Сделай 30-секундный кинематографичный тизер продукта с динамичной камерой',
+    },
+  },
+  {
+    mode: 'interior' as ServiceMode,
+    Icon: Box,
+    accent: '#10b981',
+    title: { en: '3D room layout', ka: '3D ოთახის გეგმა', ru: '3D-планировка' },
+    prompt: {
+      en: 'Design a 3D studio apartment layout, warm minimalist Scandinavian style',
+      ka: 'დააპროექტე 3D სტუდიური ბინის გეგმა, თბილი მინიმალისტური სკანდინავიური სტილით',
+      ru: 'Спроектируй 3D-планировку квартиры-студии в тёплом минималистичном скандинавском стиле',
+    },
+  },
+  {
+    mode: 'image' as ServiceMode,
+    Icon: ImagePlus,
+    accent: '#34d399',
+    title: { en: 'Brand visual', ka: 'ბრენდის ვიზუალი', ru: 'Визуал бренда' },
+    prompt: {
+      en: 'Generate a striking hero image for a Georgian tech brand, neon-on-charcoal',
+      ka: 'დააგენერირე ეფექტური მთავარი სურათი ქართული ტექ-ბრენდისთვის, ნეონი ნახშირისფერზე',
+      ru: 'Сгенерируй яркое hero-изображение для грузинского tech-бренда, неон на угольном фоне',
+    },
+  },
+] as const;
 
 /* ─── Live orchestration telemetry (driven by real backend status) ───────────
  * /api/chat/orchestrate returns a single JSON response; async media generation
@@ -455,6 +521,12 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
   const [switching, setSwitching] = useState(false);      // brief skeleton on restore
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [renamingId, setRenamingId] = useState<string | null>(null);
+  // Real-time history search (filters conversation titles in the sidebar).
+  const [search, setSearch] = useState('');
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  // Set when a ⌘/Ctrl+K shortcut opens the drawer so the search field can grab
+  // focus once it mounts (see the historyOpen effect below).
+  const focusSearchRef = useRef(false);
   // Persisted user preferences (Submit-on-Enter, autoplay, custom instructions).
   const [prefs, setPrefs] = useState<ChatPreferences>(DEFAULT_PREFERENCES);
   const [dragActive, setDragActive] = useState(false);    // composer drag-and-drop
@@ -485,6 +557,10 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
   const cornerVideoRef = useRef<HTMLVideoElement>(null);  // ambient corner loop
   const fullVideoRef = useRef<HTMLVideoElement>(null);    // expanded 9:16 preview
   const avatarDraggedRef = useRef(false);                 // distinguishes drag from tap
+  // Conversation ids we've already attempted auto-titling for. Seeded on
+  // hydration with every restored conversation so a RESTORE never re-bills the
+  // title endpoint — only chats minted in this session are eligible.
+  const titledRef = useRef<Set<string>>(new Set());
 
   // ── Stick-to-bottom auto-scroll (Tier-1 LLM behavior) ──────────────
   // The viewport pins to the newest token / media block. We respect the user's
@@ -523,8 +599,12 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
 
   // ── Hydrate persisted conversations + preferences (client only) ─────
   useEffect(() => {
-    setConversations(loadConversations());
+    const loaded = loadConversations();
+    setConversations(loaded);
     setPrefs(loadPreferences());
+    // Mark every restored conversation as already-titled so opening an old
+    // chat never re-triggers (or re-bills) the title endpoint.
+    loaded.forEach((c) => titledRef.current.add(c.id));
   }, []);
 
   // ── Persist the live conversation on every change ───────────────────
@@ -547,6 +627,30 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
     };
     setConversations(upsertConversation(convo));
   }, [messages, conversationId]);
+
+  // ── Incremental auto-title (Tier-1 LLM) ────────────────────────────
+  // Once a NEW chat has its first user prompt, async-call the fast LLM tier for
+  // a clean ≤4-word title and swap it into the sidebar — but only if the user
+  // hasn't manually renamed it (we apply the result only while the stored title
+  // still equals the deterministic placeholder). Runs once per conversation;
+  // restored chats are pre-seeded into titledRef so they're skipped entirely.
+  useEffect(() => {
+    const firstUser = messages.find((m) => m.role === 'user');
+    const prompt = firstUser?.text.trim();
+    if (!prompt || titledRef.current.has(conversationId)) return;
+    titledRef.current.add(conversationId);
+    const id = conversationId;
+    const ctrl = new AbortController();
+    void generateConversationTitle(prompt, lang, ctrl.signal).then((title) => {
+      if (!title) return;
+      const existing = getConversation(id);
+      // Only adopt the generated title if it would replace the auto-derived
+      // placeholder — never clobber a manual rename.
+      if (!existing || existing.title !== deriveTitle(prompt)) return;
+      setConversations(renameConversation(id, title));
+    });
+    return () => ctrl.abort();
+  }, [messages, conversationId, lang]);
 
   // ── Speech recognition init (Web Speech API) ───────────────────────
   // Continuous dictation: every recognized chunk (interim + final) is folded
@@ -823,6 +927,14 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
     });
   }, []);
 
+  // Prime the composer from an empty-state capability card: select the matching
+  // service mode + seed the localized starter prompt + focus. Never auto-sends
+  // (no surprise spend) — the user reviews and presses send themselves.
+  const applyCapabilityCard = useCallback((next: ServiceMode, text: string) => {
+    setMode(next);
+    editPrompt(text);
+  }, [editPrompt]);
+
   // ── Conversation lifecycle (sidebar: new / restore / rename / delete) ──
   const startNewChat = useCallback(() => {
     abortRef.current?.abort();
@@ -976,6 +1088,49 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
     [conversations],
   );
 
+  // Real-time title filter — drops empty buckets so the sidebar collapses
+  // cleanly to just the matching results (or none) as the user types.
+  const filteredGroups = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return groupedConversations;
+    return groupedConversations
+      .map((g) => ({
+        bucket: g.bucket,
+        conversations: g.conversations.filter((c) => c.title.toLowerCase().includes(q)),
+      }))
+      .filter((g) => g.conversations.length > 0);
+  }, [groupedConversations, search]);
+
+  // ── Global keyboard shortcuts (Tier-1 LLM parity) ──────────────────
+  //   ⌘/Ctrl+K        → open the history drawer with the search field focused
+  //   ⌘/Ctrl+Shift+O  → toggle the history sidebar
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey)) return;
+      const key = e.key.toLowerCase();
+      if (key === 'k' && !e.shiftKey) {
+        e.preventDefault();
+        focusSearchRef.current = true;
+        setHistoryOpen(true);
+        // Already-open case: the historyOpen effect won't re-fire, so focus now.
+        searchInputRef.current?.focus();
+      } else if (key === 'o' && e.shiftKey) {
+        e.preventDefault();
+        setHistoryOpen((v) => !v);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
+
+  // Grab focus for the search field once the drawer mounts after a ⌘/Ctrl+K.
+  useEffect(() => {
+    if (historyOpen && focusSearchRef.current) {
+      focusSearchRef.current = false;
+      searchInputRef.current?.focus();
+    }
+  }, [historyOpen]);
+
   /* ─── Render ─────────────────────────────────────────────────────── */
 
   return (
@@ -1055,9 +1210,32 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
               <div className="flex justify-start"><Skeleton className="h-16 w-2/3 rounded-2xl" /></div>
             </div>
           ) : messages.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-16 text-center">
-              <div className="w-16 h-16 rounded-full bg-zinc-900 border border-zinc-800/70 flex items-center justify-center mb-4 text-[28px]">⬡</div>
-              <p className="text-[13px] text-zinc-400 leading-7">Ask anything. Generate music, video, or images.</p>
+            <div className="flex flex-col items-center justify-center py-12 sm:py-16 text-center">
+              <div className="w-14 h-14 rounded-2xl bg-zinc-900 border border-zinc-800/70 flex items-center justify-center mb-4">
+                <Sparkles size={22} className="text-zinc-300" />
+              </div>
+              <h2 className="text-[18px] sm:text-[20px] font-semibold text-zinc-100 tracking-tight">{xc.emptyTitle}</h2>
+              <p className="mt-1.5 text-[13px] text-zinc-500 leading-6 max-w-xs">{xc.emptySubtitle}</p>
+              <div className="mt-7 grid w-full max-w-md grid-cols-1 sm:grid-cols-2 gap-2.5">
+                {CAPABILITY_CARDS.map((card) => (
+                  <button
+                    key={card.mode}
+                    onClick={() => applyCapabilityCard(card.mode, card.prompt[lang])}
+                    className="group flex items-start gap-3 rounded-2xl border border-zinc-800/70 bg-[#070707] p-3.5 text-left transition hover:border-zinc-600/70 hover:bg-zinc-900/60 active:scale-[0.99] min-w-0"
+                  >
+                    <span
+                      className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-white/5"
+                      style={{ backgroundColor: `${card.accent}1a`, color: card.accent }}
+                    >
+                      <card.Icon size={16} />
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block text-[13px] font-medium text-zinc-100">{card.title[lang]}</span>
+                      <span className="mt-0.5 block text-[11.5px] leading-[1.35] text-zinc-500 line-clamp-2">{card.prompt[lang]}</span>
+                    </span>
+                  </button>
+                ))}
+              </div>
             </div>
           ) : (
             messages.map((m, i) => (
@@ -1065,8 +1243,10 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
                 key={m.id}
                 message={m}
                 accent={ACCENT}
+                lang={lang}
                 autoplay={prefs.autoplayMedia}
                 mediaExpiredLabel={xc.mediaExpired}
+                ttsLabels={{ readAloud: xc.readAloud, pause: xc.pauseReading, via: xc.via }}
                 streaming={i === messages.length - 1 && m.role === 'assistant' && !!m.text && !isLoading}
                 onStreamTick={() => pinBottom(false)}
                 onRegenerate={() => sendMessage(m.sourcePrompt)}
@@ -1387,12 +1567,47 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
                 </button>
               </div>
 
+              {/* Real-time history search (filters titles client-side) */}
+              {conversations.length > 0 ? (
+                <div className="px-3 pb-2">
+                  <div className="relative">
+                    <Search
+                      size={14}
+                      className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500"
+                    />
+                    <input
+                      ref={searchInputRef}
+                      type="text"
+                      value={search}
+                      onChange={(e) => setSearch(e.target.value)}
+                      placeholder={xc.searchChats}
+                      aria-label={xc.searchChats}
+                      className="w-full h-9 pl-9 pr-8 rounded-xl border border-zinc-800/80 bg-[#0a0a0a] text-[13px] text-zinc-100 placeholder:text-zinc-600 outline-none focus:border-zinc-600/80 transition"
+                    />
+                    {search ? (
+                      <button
+                        onClick={() => {
+                          setSearch('');
+                          searchInputRef.current?.focus();
+                        }}
+                        aria-label={xc.close}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 h-6 w-6 rounded-full flex items-center justify-center text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800 transition active:scale-90"
+                      >
+                        <X size={13} />
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+              ) : null}
+
               {/* Time-grouped conversation log */}
               <div className="flex-1 overflow-y-auto px-2 py-1 [scrollbar-width:thin]">
                 {groupedConversations.length === 0 ? (
                   <p className="px-2 py-4 text-[12px] text-zinc-500">{xc.noChats}</p>
+                ) : filteredGroups.length === 0 ? (
+                  <p className="px-2 py-4 text-[12px] text-zinc-500">{xc.noResults}</p>
                 ) : (
-                  groupedConversations.map((group) => (
+                  filteredGroups.map((group) => (
                     <div key={group.bucket} className="pb-2">
                       <div className="px-2 pt-3 pb-1 text-[10.5px] font-semibold uppercase tracking-wider text-zinc-500">
                         {GROUP_LABELS[group.bucket][lang]}
@@ -1826,17 +2041,17 @@ function CodeBlock({ language, raw, codeClassName, children }: {
 }
 
 const MD_COMPONENTS: Components = {
-  p: ({ children }) => <p className="my-2 leading-relaxed first:mt-0 last:mb-0">{children}</p>,
-  h1: ({ children }) => <h1 className="mb-1.5 mt-3 text-[17px] font-semibold first:mt-0">{children}</h1>,
-  h2: ({ children }) => <h2 className="mb-1.5 mt-3 text-[15px] font-semibold first:mt-0">{children}</h2>,
-  h3: ({ children }) => <h3 className="mb-1 mt-2.5 text-[14px] font-semibold first:mt-0">{children}</h3>,
+  p: ({ children }) => <p className="my-2 leading-relaxed break-words first:mt-0 last:mb-0">{children}</p>,
+  h1: ({ children }) => <h1 className="mb-1.5 mt-3 text-[17px] font-semibold break-words first:mt-0">{children}</h1>,
+  h2: ({ children }) => <h2 className="mb-1.5 mt-3 text-[15px] font-semibold break-words first:mt-0">{children}</h2>,
+  h3: ({ children }) => <h3 className="mb-1 mt-2.5 text-[14px] font-semibold break-words first:mt-0">{children}</h3>,
   ul: ({ children }) => <ul className="my-2 list-disc space-y-1 pl-5 marker:text-neutral-500">{children}</ul>,
   ol: ({ children }) => <ol className="my-2 list-decimal space-y-1 pl-5 marker:text-neutral-500">{children}</ol>,
-  li: ({ children }) => <li className="leading-relaxed">{children}</li>,
+  li: ({ children }) => <li className="leading-relaxed break-words">{children}</li>,
   strong: ({ children }) => <strong className="font-semibold text-neutral-50">{children}</strong>,
   em: ({ children }) => <em className="italic">{children}</em>,
   a: ({ children, href }) => (
-    <a href={href} target="_blank" rel="noopener noreferrer" className="underline underline-offset-2" style={{ color: ACCENT }}>
+    <a href={href} target="_blank" rel="noopener noreferrer" className="underline underline-offset-2 break-all" style={{ color: ACCENT }}>
       {children}
     </a>
   ),
@@ -1859,7 +2074,7 @@ const MD_COMPONENTS: Components = {
     const isBlock = !!match || raw.includes('\n');
     if (!isBlock) {
       return (
-        <code className="rounded bg-neutral-800/80 px-1.5 py-0.5 font-mono text-[0.85em] text-neutral-100">
+        <code className="rounded bg-neutral-800/80 px-1.5 py-0.5 font-mono text-[0.85em] text-neutral-100 break-all">
           {children}
         </code>
       );
@@ -1922,7 +2137,7 @@ function StreamingText({
   const shown = animate ? text.slice(0, count) : text;
   const blinking = animate && count < text.length;
   return (
-    <div className="md-body">
+    <div className="md-body min-w-0 max-w-full break-words">
       <MarkdownView source={shown} />
       {blinking ? (
         <span className="-mt-1 inline-block h-[0.95em] w-[2px] translate-y-[2px] animate-pulse bg-current opacity-70" aria-hidden />
@@ -1931,16 +2146,47 @@ function StreamingText({
   );
 }
 
+/* ─── Token/cost transparency — map a raw model id to a friendly label so the
+ * assistant footer can read "· Gemini 2.5 Pro" (the directive's optional
+ * processing-mode indicator). Returns null when there's nothing worth showing. */
+function prettyModel(model?: string): string | null {
+  if (!model) return null;
+  const m = model.toLowerCase();
+  if (m.includes('gemini')) {
+    const ver = m.includes('2.5') ? '2.5' : m.includes('1.5') ? '1.5' : '';
+    const tier = m.includes('pro') ? 'Pro' : m.includes('flash') ? 'Flash' : '';
+    return `Gemini${ver ? ` ${ver}` : ''}${tier ? ` ${tier}` : ''}`.trim();
+  }
+  if (m.includes('claude')) {
+    if (m.includes('opus')) return 'Claude Opus';
+    if (m.includes('sonnet')) return 'Claude Sonnet';
+    if (m.includes('haiku')) return 'Claude Haiku';
+    return 'Claude';
+  }
+  if (m.includes('udio')) return 'Udio';
+  if (m.includes('marble') || m.includes('worldlabs')) return 'World Labs';
+  if (m.includes('nanobanana') || m.includes('nano-banana')) return 'Nano Banana';
+  // Otherwise surface a trimmed raw id (capped) rather than nothing.
+  return model.length > 22 ? `${model.slice(0, 22)}…` : model;
+}
+
+/** Map the surface locale to a BCP-47 tag for SpeechSynthesis read-aloud. */
+function speechLang(lang: 'en' | 'ka' | 'ru'): string {
+  return lang === 'ka' ? 'ka-GE' : lang === 'ru' ? 'ru-RU' : 'en-US';
+}
+
 /* ─── Per-message bubble with executive toolbar ────────────────────── */
 
 function MessageBubble({
-  message, accent, streaming = false, autoplay = false, mediaExpiredLabel, onStreamTick, onRegenerate, onEdit, onFeedback, onPlayAudio,
+  message, accent, lang, streaming = false, autoplay = false, mediaExpiredLabel, ttsLabels, onStreamTick, onRegenerate, onEdit, onFeedback, onPlayAudio,
 }: {
   message: ChatMessage;
   accent: string;
+  lang: 'en' | 'ka' | 'ru';
   streaming?: boolean;
   autoplay?: boolean;
   mediaExpiredLabel?: string;
+  ttsLabels: { readAloud: string; pause: string; via: string };
   onStreamTick?: () => void;
   onRegenerate: () => void;
   onEdit: (text: string) => void;
@@ -1953,6 +2199,20 @@ function MessageBubble({
   const bubbleAudioRef = useRef<HTMLAudioElement>(null);
   const [lightbox, setLightbox] = useState(false);
   const [copiedText, setCopiedText] = useState(false);
+  // Reactive feedback selection (Tier-1 micro-interaction). Local-only; the
+  // network call is fire-and-forget via onFeedback.
+  const [feedback, setFeedback] = useState<'up' | 'down' | null>(null);
+  // Read-aloud (browser SpeechSynthesis) play/pause lifecycle.
+  const [ttsState, setTtsState] = useState<'idle' | 'playing' | 'paused'>('idle');
+  const [ttsSupported, setTtsSupported] = useState(false);
+  const utterRef = useRef<SpeechSynthesisUtterance | null>(null);
+  // Smooth content mount: media starts blurred + transparent and resolves to a
+  // crisp frame on first decode (hardware-accelerated opacity+blur transition).
+  const [mediaReady, setMediaReady] = useState(false);
+  // GPU-accelerated fade-from-skeleton — same easing for image / video frames.
+  const mediaFadeClass = `transition-[opacity,filter] duration-500 ease-out will-change-[opacity,filter] transform-gpu ${
+    mediaReady ? 'opacity-100 blur-0' : 'opacity-0 blur-md'
+  }`;
 
   // Autoplay generated media when the preference is on. Video plays muted
   // (browsers block unmuted autoplay); audio play is best-effort.
@@ -1973,6 +2233,41 @@ function MessageBubble({
       .then(() => { setCopiedText(true); setTimeout(() => setCopiedText(false), 1800); })
       .catch(() => { /* clipboard blocked — no-op */ });
   }, [message.text]);
+
+  // Detect SpeechSynthesis support once; cancel any in-flight speech on unmount.
+  useEffect(() => {
+    setTtsSupported(typeof window !== 'undefined' && 'speechSynthesis' in window);
+    return () => {
+      if (typeof window !== 'undefined' && 'speechSynthesis' in window && utterRef.current) {
+        try { window.speechSynthesis.cancel(); } catch { /* noop */ }
+      }
+    };
+  }, []);
+
+  const handleFeedback = useCallback((rating: 'up' | 'down') => {
+    setFeedback((prev) => (prev === rating ? null : rating));
+    onFeedback(message.id, rating);
+  }, [message.id, onFeedback]);
+
+  // Read-aloud play/pause toggle. Plain text (markdown stripped) is spoken via
+  // the browser engine in the surface locale; a second tap pauses, a third
+  // resumes. Starting cancels any other bubble's speech (the engine is global).
+  const toggleReadAloud = useCallback(() => {
+    if (typeof window === 'undefined' || !('speechSynthesis' in window) || !message.text) return;
+    const synth = window.speechSynthesis;
+    if (ttsState === 'playing') { try { synth.pause(); } catch { /* noop */ } setTtsState('paused'); return; }
+    if (ttsState === 'paused') { try { synth.resume(); } catch { /* noop */ } setTtsState('playing'); return; }
+    try { synth.cancel(); } catch { /* noop */ }
+    const plain = message.text.replace(/[*_`#>~|]/g, '').replace(/\[(.*?)\]\(.*?\)/g, '$1').slice(0, 4000);
+    const utter = new SpeechSynthesisUtterance(plain);
+    utter.lang = speechLang(lang);
+    utter.onend = () => { utterRef.current = null; setTtsState('idle'); };
+    utter.onerror = () => { utterRef.current = null; setTtsState('idle'); };
+    utterRef.current = utter;
+    try { synth.speak(utter); setTtsState('playing'); } catch { setTtsState('idle'); }
+  }, [ttsState, message.text, lang]);
+
+  const modelLabel = prettyModel(message.model);
 
   const togglePiP = useCallback(async () => {
     const v = bubbleVideoRef.current;
@@ -2027,21 +2322,21 @@ function MessageBubble({
   }, [message.assetUrl, message.assetType, message.id]);
 
   return (
-    <div className={`group flex ${isUser ? 'justify-end' : 'justify-start'}`}>
-      <div className={`flex flex-col gap-2 max-w-[88%] ${isUser ? 'items-end' : 'items-start'}`}>
+    <div className={`group flex min-w-0 ${isUser ? 'justify-end' : 'justify-start'}`}>
+      <div className={`flex flex-col gap-2 min-w-0 max-w-[88%] ${isUser ? 'items-end' : 'items-start'}`}>
         {message.text ? (
           <div
             className={
               isError
-                ? 'rounded-2xl px-4 py-2.5 text-[15px] leading-relaxed tracking-[-0.01em] border border-rose-500/25 bg-rose-500/[0.05] text-rose-200'
+                ? 'max-w-full min-w-0 overflow-hidden break-words rounded-2xl px-4 py-2.5 text-[15px] leading-relaxed tracking-[-0.01em] border border-rose-500/25 bg-rose-500/[0.05] text-rose-200'
                 : isUser
-                ? 'rounded-2xl px-4 py-2.5 text-[15px] leading-relaxed tracking-[-0.01em] bg-neutral-100 text-neutral-900'
-                : 'rounded-2xl px-4 py-2.5 text-[15px] leading-relaxed tracking-[-0.01em] bg-neutral-900/80 border border-neutral-800 text-neutral-100'
+                ? 'max-w-full min-w-0 overflow-hidden break-words rounded-2xl px-4 py-2.5 text-[15px] leading-relaxed tracking-[-0.01em] bg-neutral-100 text-neutral-900'
+                : 'max-w-full min-w-0 overflow-hidden break-words rounded-2xl px-4 py-2.5 text-[15px] leading-relaxed tracking-[-0.01em] bg-neutral-900/80 border border-neutral-800 text-neutral-100'
             }
           >
             {!isUser && !isError
               ? <StreamingText text={message.text} active={streaming} onTick={onStreamTick} />
-              : message.text}
+              : <span className="whitespace-pre-wrap break-words">{message.text}</span>}
           </div>
         ) : null}
 
@@ -2052,7 +2347,15 @@ function MessageBubble({
             aria-label="Open full-size image"
             className="group relative block overflow-hidden rounded-2xl border border-zinc-800/70 bg-black max-w-full active:scale-[0.99] transition"
           >
-            <Image src={message.assetUrl} alt="Generated" width={1200} height={800} unoptimized className="max-w-full max-h-[300px] w-auto object-contain" />
+            <Image
+              src={message.assetUrl}
+              alt="Generated"
+              width={1200}
+              height={800}
+              unoptimized
+              onLoadingComplete={() => setMediaReady(true)}
+              className={`max-w-full max-h-[300px] w-auto object-contain ${mediaFadeClass}`}
+            />
             <span className="absolute top-2 right-2 h-7 w-7 rounded-full bg-black/55 backdrop-blur-sm flex items-center justify-center text-white/90 opacity-0 group-hover:opacity-100 transition">
               <Maximize2 size={14} />
             </span>
@@ -2067,8 +2370,9 @@ function MessageBubble({
                 controls
                 playsInline
                 preload="metadata"
+                onLoadedData={() => setMediaReady(true)}
                 style={{ transform: 'translateZ(0)' }}
-                className="h-full w-full object-cover"
+                className={`h-full w-full object-cover ${mediaFadeClass}`}
               >
                 <source src={message.assetUrl} />
               </video>
@@ -2080,8 +2384,9 @@ function MessageBubble({
               controls
               playsInline
               preload="metadata"
+              onLoadedData={() => setMediaReady(true)}
               style={{ transform: 'translateZ(0)' }}
-              className="rounded-2xl border border-zinc-800/70 max-w-full max-h-[320px] w-auto object-contain bg-black"
+              className={`rounded-2xl border border-zinc-800/70 max-w-full max-h-[320px] w-auto object-contain bg-black ${mediaFadeClass}`}
             >
               <source src={message.assetUrl} />
             </video>
@@ -2135,21 +2440,40 @@ function MessageBubble({
 
         {/* Executive toolbar — assistant messages only */}
         {!isUser && !isError ? (
-          <div className="flex items-center gap-1.5 mt-1 text-neutral-500">
+          <div className="flex flex-wrap items-center gap-1.5 mt-1 text-neutral-500">
             <button
-              onClick={() => onFeedback(message.id, 'up')}
+              onClick={() => handleFeedback('up')}
               aria-label="Good response"
-              className="h-9 w-9 flex items-center justify-center rounded-full text-neutral-500 hover:bg-neutral-800 hover:text-neutral-200 transition-all duration-200 active:scale-95"
+              aria-pressed={feedback === 'up'}
+              className={`h-9 w-9 flex items-center justify-center rounded-full transition-all duration-200 active:scale-90 ${
+                feedback === 'up' ? 'text-emerald-400 bg-emerald-500/10 scale-110' : 'text-neutral-500 hover:bg-neutral-800 hover:text-neutral-200'
+              }`}
             >
-              <ThumbsUp size={18} />
+              <ThumbsUp size={18} fill={feedback === 'up' ? 'currentColor' : 'none'} />
             </button>
             <button
-              onClick={() => onFeedback(message.id, 'down')}
+              onClick={() => handleFeedback('down')}
               aria-label="Poor response"
-              className="h-9 w-9 flex items-center justify-center rounded-full text-neutral-500 hover:bg-neutral-800 hover:text-neutral-200 transition-all duration-200 active:scale-95"
+              aria-pressed={feedback === 'down'}
+              className={`h-9 w-9 flex items-center justify-center rounded-full transition-all duration-200 active:scale-90 ${
+                feedback === 'down' ? 'text-rose-400 bg-rose-500/10 scale-110' : 'text-neutral-500 hover:bg-neutral-800 hover:text-neutral-200'
+              }`}
             >
-              <ThumbsDown size={18} />
+              <ThumbsDown size={18} fill={feedback === 'down' ? 'currentColor' : 'none'} />
             </button>
+            {ttsSupported && message.text ? (
+              <button
+                onClick={toggleReadAloud}
+                aria-label={ttsState === 'playing' ? ttsLabels.pause : ttsLabels.readAloud}
+                aria-pressed={ttsState !== 'idle'}
+                title={ttsState === 'playing' ? ttsLabels.pause : ttsLabels.readAloud}
+                className={`h-9 w-9 flex items-center justify-center rounded-full transition-all duration-200 active:scale-90 ${
+                  ttsState !== 'idle' ? 'text-neutral-100 bg-neutral-800' : 'text-neutral-500 hover:bg-neutral-800 hover:text-neutral-200'
+                }`}
+              >
+                {ttsState === 'playing' ? <Pause size={18} /> : <Volume2 size={18} />}
+              </button>
+            ) : null}
             {message.assetUrl && message.assetType === 'audio' ? (
               <button
                 onClick={() => onPlayAudio(message.assetUrl!)}
@@ -2196,6 +2520,16 @@ function MessageBubble({
                 <RotateCcw size={18} />
               </button>
             ) : null}
+            {/* Token/cost transparency — minimalist processing-mode indicator */}
+            {modelLabel ? (
+              <span
+                className="ml-0.5 inline-flex items-center gap-1 h-6 rounded-full px-2 text-[10.5px] font-medium text-neutral-500 select-none"
+                title={message.model}
+              >
+                <Sparkles size={11} className="opacity-70" />
+                <span className="whitespace-nowrap">{ttsLabels.via} {modelLabel}</span>
+              </span>
+            ) : null}
           </div>
         ) : null}
 
@@ -2234,11 +2568,46 @@ function PipelineTelemetry({
   lang: 'en' | 'ka' | 'ru';
   accent: string;
 }) {
+  const visible = stages.filter((s) => s.state !== 'skipped');
+  const doneCount = visible.filter((s) => s.state === 'done').length;
+
   return (
-    <div className="w-full max-w-sm rounded-2xl border border-zinc-800/70 bg-[#0a0a0a] p-3 flex flex-col gap-2">
-      {stages
-        .filter((s) => s.state !== 'skipped')
-        .map((s) => {
+    <div className="w-full max-w-sm rounded-2xl border border-zinc-800/70 bg-[#0a0a0a] p-3 flex flex-col gap-3">
+      {/* Stepped horizontal progress — one segment per genuine lifecycle phase.
+          A completed phase is solid; the in-flight phase shows an indeterminate
+          sweep (no fabricated %); pending phases stay empty. */}
+      <div
+        className="flex items-center gap-1.5"
+        role="progressbar"
+        aria-valuemin={0}
+        aria-valuemax={visible.length}
+        aria-valuenow={doneCount}
+      >
+        {visible.map((s) => (
+          <div
+            key={s.key}
+            className="relative h-1.5 flex-1 overflow-hidden rounded-full bg-neutral-800"
+          >
+            {s.state === 'done' ? (
+              <span className="absolute inset-0 rounded-full bg-emerald-500/80" />
+            ) : s.state === 'failed' ? (
+              <span className="absolute inset-0 rounded-full bg-rose-500/80" />
+            ) : s.state === 'active' ? (
+              <motion.span
+                className="absolute inset-y-0 w-1/2 rounded-full"
+                style={{ backgroundColor: accent }}
+                initial={{ x: '-110%' }}
+                animate={{ x: ['-110%', '210%'] }}
+                transition={{ duration: 1.1, ease: 'easeInOut', repeat: Infinity }}
+              />
+            ) : null}
+          </div>
+        ))}
+      </div>
+
+      {/* Per-stage labels, bound to the same backend status. */}
+      <div className="flex flex-col gap-2">
+        {visible.map((s) => {
           const labelColor =
             s.state === 'done' ? 'text-neutral-300'
             : s.state === 'active' ? 'text-neutral-100'
@@ -2261,6 +2630,7 @@ function PipelineTelemetry({
             </div>
           );
         })}
+      </div>
     </div>
   );
 }
