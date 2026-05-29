@@ -36,7 +36,7 @@
  */
 
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import {
   AlertCircle,
   Box,
@@ -355,10 +355,23 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated }: Pr
   const fullVideoRef = useRef<HTMLVideoElement>(null);    // expanded 9:16 preview
   const avatarDraggedRef = useRef(false);                 // distinguishes drag from tap
 
-  // ── Auto-scroll on new message / async resolve ─────────────────────
-  useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
-  }, [messages.length, isLoading]);
+  // ── Stick-to-bottom auto-scroll (Tier-1 LLM behavior) ──────────────
+  // The viewport pins to the newest token / media block. We respect the user's
+  // intent: if they scroll up to re-read, we stop yanking them down; the moment
+  // they return near the bottom (or send a new message) pinning resumes.
+  const mainRef = useRef<HTMLElement>(null);
+  const stickRef = useRef(true);
+  const onMainScroll = useCallback(() => {
+    const el = mainRef.current;
+    if (!el) return;
+    stickRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+  }, []);
+  const pinBottom = useCallback((smooth: boolean) => {
+    if (!stickRef.current) return;
+    endRef.current?.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto', block: 'end' });
+  }, []);
+
+  useEffect(() => { pinBottom(true); }, [messages.length, isLoading, pipeline, pinBottom]);
 
   // ── Restore focus to the composer the instant generation finishes ──
   // (only on the loading→idle transition, never on initial mount, so we
@@ -474,6 +487,7 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated }: Pr
     dispatch({ type: 'CLEAR_ATTACHMENTS' });
     dispatch({ type: 'SET_LOADING', value: true });
     setPipeline(derivePipeline(null));
+    stickRef.current = true; // sending always re-pins the viewport to the bottom
 
     const controller = new AbortController();
     abortRef.current = controller;
@@ -786,7 +800,7 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated }: Pr
       </header>
 
       {/* ── Message feed ──────────────────────────────────────────── */}
-      <main className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
+      <main ref={mainRef} onScroll={onMainScroll} className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
         <div className="max-w-2xl mx-auto px-3 sm:px-4 py-4 flex flex-col gap-4">
           {messages.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 text-center">
@@ -794,7 +808,18 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated }: Pr
               <p className="text-[13px] text-zinc-400 leading-7">Ask anything. Generate music, video, or images.</p>
             </div>
           ) : (
-            messages.map((m) => <MessageBubble key={m.id} message={m} accent={ACCENT} onRegenerate={() => sendMessage(m.sourcePrompt)} onFeedback={sendFeedback} onPlayAudio={playAssetAudio} />)
+            messages.map((m, i) => (
+              <MessageBubble
+                key={m.id}
+                message={m}
+                accent={ACCENT}
+                streaming={i === messages.length - 1 && m.role === 'assistant' && !!m.text && !isLoading}
+                onStreamTick={() => pinBottom(false)}
+                onRegenerate={() => sendMessage(m.sourcePrompt)}
+                onFeedback={sendFeedback}
+                onPlayAudio={playAssetAudio}
+              />
+            ))
           )}
           {isLoading ? (
             <div className="flex flex-col gap-2.5">
@@ -1110,13 +1135,68 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated }: Pr
   );
 }
 
+/* ─── Streaming text — progressive typewriter reveal of an assistant reply.
+ * The orchestrator returns the full text in one JSON; this animates its reveal
+ * for the fluid, token-by-token feel of a Tier-1 LLM. Duration is bounded (~1.7s)
+ * regardless of length, snaps to full if interrupted, and respects
+ * prefers-reduced-motion (instant render). onTick lets the parent pin scroll. */
+
+function StreamingText({
+  text, active, onTick,
+}: {
+  text: string;
+  active: boolean;
+  onTick?: () => void;
+}) {
+  const reduceMotion = useReducedMotion();
+  const animate = active && !reduceMotion;
+  const [count, setCount] = useState(animate ? 0 : text.length);
+  const onTickRef = useRef(onTick);
+  useEffect(() => { onTickRef.current = onTick; }, [onTick]);
+
+  useEffect(() => {
+    if (!animate) { setCount(text.length); return; }
+    let cancelled = false;
+    let current = 0;
+    let last = 0;
+    const total = text.length;
+    const step = Math.max(2, Math.ceil(total / 70)); // bound total reveal ≈1.7s
+    let raf = 0;
+    const tick = (ts: number) => {
+      if (cancelled) return;
+      if (ts - last >= 24) {
+        last = ts;
+        current = Math.min(total, current + step);
+        setCount(current);
+        onTickRef.current?.();
+      }
+      if (current < total) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => { cancelled = true; cancelAnimationFrame(raf); };
+  }, [text, animate]);
+
+  const shown = animate ? text.slice(0, count) : text;
+  const blinking = animate && count < text.length;
+  return (
+    <span className="whitespace-pre-wrap">
+      {shown}
+      {blinking ? (
+        <span className="inline-block w-[2px] h-[0.95em] translate-y-[2px] ml-[1px] bg-current opacity-70 animate-pulse" aria-hidden />
+      ) : null}
+    </span>
+  );
+}
+
 /* ─── Per-message bubble with executive toolbar ────────────────────── */
 
 function MessageBubble({
-  message, accent, onRegenerate, onFeedback, onPlayAudio,
+  message, accent, streaming = false, onStreamTick, onRegenerate, onFeedback, onPlayAudio,
 }: {
   message: ChatMessage;
   accent: string;
+  streaming?: boolean;
+  onStreamTick?: () => void;
   onRegenerate: () => void;
   onFeedback: (id: string, rating: 'up' | 'down') => void;
   onPlayAudio: (url: string) => void;
@@ -1181,17 +1261,21 @@ function MessageBubble({
   return (
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
       <div className={`flex flex-col gap-2 max-w-[88%] ${isUser ? 'items-end' : 'items-start'}`}>
-        <div
-          className={
-            isError
-              ? 'rounded-2xl px-4 py-2.5 text-[15px] leading-relaxed tracking-[-0.01em] border border-rose-500/25 bg-rose-500/[0.05] text-rose-200'
-              : isUser
-              ? 'rounded-2xl px-4 py-2.5 text-[15px] leading-relaxed tracking-[-0.01em] bg-neutral-100 text-neutral-900'
-              : 'rounded-2xl px-4 py-2.5 text-[15px] leading-relaxed tracking-[-0.01em] bg-neutral-900/80 border border-neutral-800 text-neutral-100'
-          }
-        >
-          {message.text}
-        </div>
+        {message.text ? (
+          <div
+            className={
+              isError
+                ? 'rounded-2xl px-4 py-2.5 text-[15px] leading-relaxed tracking-[-0.01em] border border-rose-500/25 bg-rose-500/[0.05] text-rose-200'
+                : isUser
+                ? 'rounded-2xl px-4 py-2.5 text-[15px] leading-relaxed tracking-[-0.01em] bg-neutral-100 text-neutral-900'
+                : 'rounded-2xl px-4 py-2.5 text-[15px] leading-relaxed tracking-[-0.01em] bg-neutral-900/80 border border-neutral-800 text-neutral-100'
+            }
+          >
+            {!isUser && !isError
+              ? <StreamingText text={message.text} active={streaming} onTick={onStreamTick} />
+              : message.text}
+          </div>
+        ) : null}
 
         {message.assetUrl && message.assetType === 'image' ? (
           <button
