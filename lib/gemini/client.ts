@@ -8,9 +8,11 @@
 
 const GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta';
 
+// gemini-2.0-flash is deprecated ("no longer available to new users", 404).
+// Default to current GA models; override via env if Google rotates names again.
 export const GEMINI_MODELS = {
-  pro: process.env.GEMINI_MODEL_PRO ?? 'gemini-2.0-flash',
-  flash: process.env.GEMINI_MODEL_FLASH ?? 'gemini-2.0-flash',
+  pro: process.env.GEMINI_MODEL_PRO ?? 'gemini-2.5-pro',
+  flash: process.env.GEMINI_MODEL_FLASH ?? 'gemini-2.5-flash',
 } as const;
 
 export type GeminiModelTier = 'pro' | 'flash';
