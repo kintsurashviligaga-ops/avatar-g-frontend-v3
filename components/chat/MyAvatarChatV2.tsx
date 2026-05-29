@@ -35,7 +35,7 @@
  *      ↑ safe-area-inset-bottom padding so iOS Safari can't clip
  */
 
-import { isValidElement, useCallback, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from 'react';
+import { isValidElement, useCallback, useEffect, useMemo, useReducer, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -52,6 +52,7 @@ import {
   Film,
   Globe,
   ImagePlus,
+  Link2,
   Loader2,
   LogOut,
   Maximize2,
@@ -108,6 +109,8 @@ import {
   type ChatPreferences,
 } from '@/lib/chat/preferences';
 import { generateConversationTitle } from '@/lib/chat/titleClient';
+import { deriveCarryContext } from '@/lib/chat/carryContext';
+import { classifyChatError } from '@/lib/chat/errorResilience';
 
 // Monochrome system accent (near-white). Keeps the whole workspace flat and
 // premium (Apple/Gemini dark aesthetic) — no neon, no chroma. Drives the send
@@ -220,6 +223,9 @@ const XCOPY = {
     room3d: 'Interactive 3D room', orbitHint: 'Drag to orbit · scroll to zoom',
     dropToAnalyze: 'Drop media to analyze with MyAvatarG', working: 'is working…',
     refine: 'Refine', resetView: 'Reset', download: 'Download', expandHint: 'Expand to workspace',
+    nextSteps: 'What’s next', copyLink: 'Copy link', linkCopied: 'Link copied', share: 'Share',
+    diagnosticsLoading: 'Streaming from provider…', diagnosticsSlow: 'Taking longer than usual — still working',
+    diagnosticsRetry: 'Connection hiccup — retrying', mediaUnavailable: 'Preview unavailable — open or download directly',
   },
   ka: {
     newChat: 'ახალი ჩატი', rename: 'გადარქმევა', delete: 'წაშლა', open: 'გახსნა',
@@ -239,6 +245,9 @@ const XCOPY = {
     room3d: 'ინტერაქტიული 3D ოთახი', orbitHint: 'გადაათრიე ბრუნვისთვის · სქროლი მასშტაბისთვის',
     dropToAnalyze: 'ჩააგდე მედია MyAvatarG-ით გასაანალიზებლად', working: 'მუშაობს…',
     refine: 'დახვეწა', resetView: 'საწყისზე', download: 'ჩამოტვირთვა', expandHint: 'სამუშაო სივრცეში გაშლა',
+    nextSteps: 'შემდეგ ნაბიჯები', copyLink: 'ბმულის კოპირება', linkCopied: 'ბმული დაკოპირდა', share: 'გაზიარება',
+    diagnosticsLoading: 'იტვირთება პროვაიდერიდან…', diagnosticsSlow: 'ჩვეულებრივზე მეტ დროს იღებს — მუშაობა გრძელდება',
+    diagnosticsRetry: 'კავშირის შეფერხება — ხელახლა ვცდილობთ', mediaUnavailable: 'გადახედვა მიუწვდომელია — გახსენი ან ჩამოტვირთე პირდაპირ',
   },
   ru: {
     newChat: 'Новый чат', rename: 'Переименовать', delete: 'Удалить', open: 'Открыть',
@@ -258,6 +267,9 @@ const XCOPY = {
     room3d: 'Интерактивная 3D-комната', orbitHint: 'Перетащите для вращения · колесо для зума',
     dropToAnalyze: 'Перетащите медиа для анализа в MyAvatarG', working: 'работает…',
     refine: 'Уточнить', resetView: 'Сброс', download: 'Скачать', expandHint: 'Развернуть в рабочую область',
+    nextSteps: 'Что дальше', copyLink: 'Копировать ссылку', linkCopied: 'Ссылка скопирована', share: 'Поделиться',
+    diagnosticsLoading: 'Загрузка от провайдера…', diagnosticsSlow: 'Дольше обычного — всё ещё работаем',
+    diagnosticsRetry: 'Сбой соединения — повторяем', mediaUnavailable: 'Предпросмотр недоступен — откройте или скачайте напрямую',
   },
 } as const;
 
@@ -316,6 +328,38 @@ function fromStored(m: StoredMessage): ChatMessage {
 // the image cap is conservative to stay under serverless request-body limits.
 const MAX_IMAGE_MB = 4;
 const MAX_MEDIA_MB = 25;
+
+/**
+ * Lazy-mount gate (PHASE 38 §3b — Hydration & Storage Optimization).
+ *
+ * Returns a ref + a latched `inView` flag that flips true the first time the
+ * element nears the viewport. Used to defer decoding heavy historical media
+ * (inline base64 images, videos, 3D canvases) until it's actually about to be
+ * seen — so restoring a long conversation never blocks the main thread mounting
+ * every asset at once. SSR / unsupported-IO environments resolve to `true`
+ * immediately so nothing is ever hidden.
+ */
+function useInView<T extends HTMLElement>(rootMargin = '400px 0px'): [RefObject<T>, boolean] {
+  const ref = useRef<T>(null);
+  const [inView, setInView] = useState(false);
+  useEffect(() => {
+    if (inView) return undefined; // latched — stop observing once seen
+    const el = ref.current;
+    if (!el) return undefined;
+    if (typeof IntersectionObserver === 'undefined') { setInView(true); return undefined; }
+    const io = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) { setInView(true); io.disconnect(); break; }
+        }
+      },
+      { rootMargin },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [inView, rootMargin]);
+  return [ref, inView];
+}
 
 /**
  * Unified control-dock modes. The selected mode is passed as `serviceContext`
@@ -464,6 +508,50 @@ const REFINEMENTS: Partial<Record<ServiceMode, { en: string; ka: string; ru: str
     { en: 'Change the voice profile', ka: 'შეცვალე ხმის პროფილი', ru: 'Смени профиль голоса' },
     { en: 'Slower pace', ka: 'უფრო ნელი ტემპი', ru: 'Медленнее темп' },
     { en: 'More expressive delivery', ka: 'უფრო ექსპრესიული კითხვა', ru: 'Более выразительно' },
+  ],
+};
+
+/**
+ * Dynamic Quick-Followups (PHASE 38 §1b). At the end of a complete generation
+ * cycle we surface three output-aware "what's next" actions under the latest
+ * media result. Unlike REFINEMENTS (which tweak the *same* output), these are
+ * next-step transformations — and several cross into a different agent. When a
+ * chip carries `mode`, picking it retargets the engine (so the @-mention router
+ * + Smart Adaptive Context Memory carry the prior creative direction forward).
+ * Like every chip in this app, they PRIME the composer and NEVER auto-send, so
+ * no paid render is ever billed without the user's explicit confirmation.
+ */
+type Followup = { en: string; ka: string; ru: string; mode?: ServiceMode };
+const FOLLOWUPS: Partial<Record<ServiceMode, Followup[]>> = {
+  image: [
+    { en: 'Upscale to 4K', ka: 'გაადიდე 4K-მდე', ru: 'Апскейл до 4K' },
+    { en: 'Animate this into a 5-second video', ka: 'აქციე ეს 5-წამიან ვიდეოდ', ru: 'Оживи это в 5-секундное видео', mode: 'video' },
+    { en: 'Create three variations', ka: 'შექმენი სამი ვარიაცია', ru: 'Создай три вариации' },
+  ],
+  video: [
+    { en: 'Upscale to 4K', ka: 'გაადიდე 4K-მდე', ru: 'Апскейл до 4K' },
+    { en: 'Regenerate with orchestral audio', ka: 'ხელახლა შექმენი ორკესტრის მუსიკით', ru: 'Перегенерируй с оркестровым аудио' },
+    { en: 'Extract keyframes as images', ka: 'ამოიღე საკვანძო კადრები სურათებად', ru: 'Извлеки ключевые кадры как изображения', mode: 'image' },
+  ],
+  avatar: [
+    { en: 'Upscale to 4K', ka: 'გაადიდე 4K-მდე', ru: 'Апскейл до 4K' },
+    { en: 'Give the avatar a spoken intro', ka: 'დაამატე ავატარს ნათქვამი ინტრო', ru: 'Добавь аватару озвученное интро', mode: 'voice' },
+    { en: 'Try a cinematic camera move', ka: 'სცადე კინემატოგრაფიული კამერა', ru: 'Попробуй кинематографичное движение камеры' },
+  ],
+  interior: [
+    { en: 'Render a night-time version', ka: 'დააგენერირე ღამის ვერსია', ru: 'Сделай ночную версию' },
+    { en: 'Generate a 3D walkthrough video', ka: 'შექმენი 3D ვიდეო-ტური', ru: 'Сгенерируй видео-обход в 3D', mode: 'video' },
+    { en: 'Produce a styling shopping list', ka: 'შეადგინე ნივთების სია', ru: 'Составь список для покупок', mode: 'global' },
+  ],
+  music: [
+    { en: 'Extend the track by 30 seconds', ka: 'გააგრძელე ტრეკი 30 წამით', ru: 'Продли трек на 30 секунд' },
+    { en: 'Create a matching music video', ka: 'შექმენი შესაბამისი მუსიკალური ვიდეო', ru: 'Создай подходящий клип', mode: 'video' },
+    { en: 'Export an instrumental mix', ka: 'შექმენი ინსტრუმენტული მიქსი', ru: 'Экспортируй инструментал' },
+  ],
+  voice: [
+    { en: 'Try a different voice profile', ka: 'სცადე სხვა ხმის პროფილი', ru: 'Попробуй другой голос' },
+    { en: 'Generate a talking avatar', ka: 'შექმენი მოლაპარაკე ავატარი', ru: 'Создай говорящего аватара', mode: 'avatar' },
+    { en: 'Add background music', ka: 'დაამატე ფონური მუსიკა', ru: 'Добавь фоновую музыку', mode: 'music' },
   ],
 };
 
@@ -948,6 +1036,12 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
         .slice(-8)
         .map((m) => ({ role: m.role, content: m.text }));
 
+      // Smart Adaptive Context Memory — when the user has pivoted to a different
+      // creative agent (e.g. @Interior → @Film), carry the prior output's
+      // creative direction forward so palettes / aesthetics survive the switch
+      // without re-typing. Tolerant extra field (backend may use or ignore it).
+      const carryContext = deriveCarryContext(messages, mode);
+
       let resp = await postOrchestrate({
         message: text,
         sessionId: conversationId,
@@ -955,6 +1049,7 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
         locale: lang,
         history,
         ...(imageUrl ? { imageUrl } : {}),
+        ...(carryContext ? { carryContext } : {}),
         ...(prefs.customInstructions.trim() ? { customInstructions: prefs.customInstructions } : {}),
       });
       if (resp.success === false && !resp.predictionId) {
@@ -996,10 +1091,14 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
       if (err instanceof Error && err.name === 'AbortError') {
         // user cancelled; keep prior messages
       } else {
+        // Intelligent Error Resilience — translate raw provider/auth faults into
+        // a friendly, localized troubleshooting prompt (the transient retry
+        // already happened silently inside postOrchestrate).
+        const friendly = classifyChatError(err, lang, err instanceof Error ? err.message : undefined);
         dispatch({ type: 'ADD_MESSAGE', message: {
           id: `e_${Date.now()}`,
           role: 'error',
-          text: err instanceof Error ? err.message : copy.genericError,
+          text: friendly.message || copy.genericError,
           timestamp: Date.now(),
         }});
       }
@@ -1047,6 +1146,15 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
   // focus moved to composer). Deliberately does NOT auto-send to avoid billing a
   // render the user didn't explicitly confirm.
   const applyRefinement = useCallback((instruction: string) => {
+    editPrompt(instruction);
+  }, [editPrompt]);
+
+  // Dynamic Quick-Followup → prime the composer with a next-step action. If the
+  // chip targets a different agent (e.g. image → @Film), retarget the mode first
+  // so the engine + Smart Adaptive Context Memory carry the prior creative
+  // direction forward. Still PRIMES only (never auto-sends) — no surprise spend.
+  const applyFollowup = useCallback((instruction: string, nextMode?: ServiceMode) => {
+    if (nextMode) setMode(nextMode);
     editPrompt(instruction);
   }, [editPrompt]);
 
@@ -1424,6 +1532,37 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
               ) : null}
             </div>
           ) : null}
+
+          {/* Dynamic Quick-Followups — output-aware next-step chips rendered at
+              the end of a complete generation cycle (latest media result). They
+              PRIME the composer (and retarget the agent when cross-mode); never
+              auto-send, so no paid render is billed without explicit confirm. */}
+          {(() => {
+            if (isLoading) return null;
+            const last = messages[messages.length - 1];
+            if (!last || last.role !== 'assistant' || !last.assetUrl || !last.mode) return null;
+            const chips = FOLLOWUPS[last.mode];
+            if (!chips || !chips.length) return null;
+            return (
+              <div className="flex flex-col gap-1.5">
+                <p className="flex items-center gap-1.5 text-[11px] uppercase tracking-wide text-zinc-500">
+                  <Sparkles size={12} /> {xc.nextSteps}
+                </p>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {chips.map((f) => (
+                    <button
+                      key={f.en}
+                      type="button"
+                      onClick={() => applyFollowup(f[lang], f.mode)}
+                      className="rounded-full border border-zinc-800/80 bg-[#0a0a0a] px-3 py-1 text-[12px] font-medium text-zinc-300 transition hover:border-zinc-600/80 hover:text-zinc-100 active:scale-95"
+                    >
+                      {f[lang]}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
           <div ref={endRef} />
         </div>
       </main>
@@ -1724,7 +1863,9 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
               workspace: xc.workspace, details: xc.details, promptLabel: xc.promptLabel,
               agentLabel: xc.agentLabel, aspectLabel: xc.aspectLabel, room3d: xc.room3d,
               orbitHint: xc.orbitHint, resetView: xc.resetView, refine: xc.refine,
-              download: xc.download, close: xc.close,
+              download: xc.download, close: xc.close, copyLink: xc.copyLink, linkCopied: xc.linkCopied,
+              diagnosticsLoading: xc.diagnosticsLoading, diagnosticsSlow: xc.diagnosticsSlow,
+              mediaUnavailable: xc.mediaUnavailable,
             }}
             onClose={closeWorkspace}
             onRefine={applyRefinement}
@@ -2399,6 +2540,26 @@ function isDirectImage(url: string): boolean {
   return /^data:image\//i.test(url) || /\.(png|jpe?g|webp|gif|avif|svg)(\?|#|$)/i.test(url);
 }
 
+/**
+ * Build a clean, human-readable download filename base from the generating
+ * prompt (the "generated short title"). Latin-slugged + length-capped so it is
+ * filesystem-safe across PWA/Safari; falls back to the message id when the
+ * prompt is non-latin (e.g. Georgian/Russian) or empty.
+ */
+function assetFileBase(message: { id: string; sourcePrompt?: string }): string {
+  const slug = (message.sourcePrompt ?? '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, ' ')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 6)
+    .join('-')
+    .slice(0, 48)
+    .replace(/-+$/g, '');
+  return slug ? `myavatarg-${slug}` : `myavatarg-${message.id}`;
+}
+
 /* ─── Preview Workspace (split-pane interactive media canvas) ──────────
  * Docks beside the chat stream on wide screens and overlays full-screen on
  * mobile. It is driven purely by the `message` prop (never remounted between
@@ -2422,7 +2583,8 @@ function PreviewWorkspace({
   labels: {
     workspace: string; details: string; promptLabel: string; agentLabel: string;
     aspectLabel: string; room3d: string; orbitHint: string; resetView: string;
-    refine: string; download: string; close: string;
+    refine: string; download: string; close: string; copyLink: string; linkCopied: string;
+    diagnosticsLoading: string; diagnosticsSlow: string; mediaUnavailable: string;
   };
   onClose: () => void;
   onRefine: (instruction: string) => void;
@@ -2430,6 +2592,14 @@ function PreviewWorkspace({
   const reduceMotion = useReducedMotion();
   const [aspect, setAspect] = useState<Aspect>('native');
   const [mediaReady, setMediaReady] = useState(false);
+  // Ultimate Resiliency Guard — track decode failure + a "slow-stream" phase so
+  // the viewer frame NEVER collapses; it shows a high-fidelity skeleton with
+  // live diagnostics while a third-party asset streams, and a graceful direct
+  // open/download fallback if it ultimately fails.
+  const [mediaError, setMediaError] = useState(false);
+  const [loadPhase, setLoadPhase] = useState<'loading' | 'slow'>('loading');
+  // One-Click Asset Extraction — Shareable Link Builder copy-state feedback.
+  const [linkCopied, setLinkCopied] = useState(false);
 
   const mode: ServiceMode = message.mode ?? 'global';
   const agent = AGENTS[mode];
@@ -2440,10 +2610,28 @@ function PreviewWorkspace({
   // Interior asset that isn't a flat image → treat as a live 3D room canvas.
   const isRoom3D = mode === 'interior' && !!assetUrl && !isDirectImage(assetUrl) && assetType !== 'video' && assetType !== 'audio';
   const showAspect = assetType === 'image' || assetType === 'video';
+  // A real, distributable URL (not an inline data:/blob:) → eligible for the
+  // Shareable Link Builder (internal team distribution).
+  const isShareableUrl = /^https?:\/\//i.test(assetUrl);
 
-  // Reset framing + decode state whenever we swap to a different artifact so the
-  // panel never inherits the previous asset's aspect or stale "ready" flag.
-  useEffect(() => { setAspect('native'); setMediaReady(false); }, [message.id]);
+  // Reset framing + decode/diagnostic state whenever we swap to a different
+  // artifact so the panel never inherits the previous asset's flags.
+  useEffect(() => {
+    setAspect('native');
+    setMediaReady(false);
+    setMediaError(false);
+    setLoadPhase('loading');
+    setLinkCopied(false);
+  }, [message.id]);
+
+  // Live diagnostics escalation: if the asset hasn't decoded within ~6s, flip
+  // the inline skeleton's status copy to "taking longer than usual" — honest
+  // progress feedback instead of a dead frame. Cleared once ready/errored.
+  useEffect(() => {
+    if (mediaReady || mediaError) return undefined;
+    const t = setTimeout(() => setLoadPhase('slow'), 6000);
+    return () => clearTimeout(t);
+  }, [mediaReady, mediaError, message.id]);
 
   const frameClass =
     aspect === '9:16' ? 'aspect-[9/16] max-h-[64vh] mx-auto'
@@ -2453,18 +2641,86 @@ function PreviewWorkspace({
     mediaReady ? 'opacity-100 blur-0' : 'opacity-0 blur-md'
   }`;
 
-  const downloadAsset = useCallback(() => {
+  // Direct Download — robust streaming trigger. Routes through
+  // arrayBuffer → Blob(octet-stream) so the browser SAVES (critical for
+  // standalone Safari/PWA) rather than navigating; falls back to a direct
+  // anchor when the asset is CORS-blocked. Named from the generated short title.
+  const downloadAsset = useCallback(async () => {
     if (!assetUrl) return;
     const ext = assetType === 'video' ? 'mp4' : assetType === 'audio' ? 'mp3' : 'png';
+    const filename = `${assetFileBase(message)}.${ext}`;
+    try {
+      const res = await fetch(assetUrl, { credentials: 'omit' });
+      if (!res.ok) throw new Error('fetch failed');
+      const buf = await res.arrayBuffer();
+      const objectUrl = URL.createObjectURL(new Blob([buf], { type: 'application/octet-stream' }));
+      const a = document.createElement('a');
+      a.href = objectUrl;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(objectUrl), 15000);
+      return;
+    } catch {
+      /* CORS / network — best-effort direct anchor */
+    }
     const a = document.createElement('a');
     a.href = assetUrl;
-    a.download = `myavatarg-${message.id}.${ext}`;
+    a.download = filename;
     a.target = '_blank';
     a.rel = 'noopener';
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
-  }, [assetUrl, assetType, message.id]);
+  }, [assetUrl, assetType, message]);
+
+  // Shareable Link Builder — copy the canonical asset URL for fast internal
+  // distribution. Only offered for real http(s) URLs (never inline data:/blob:).
+  const copyShareLink = useCallback(() => {
+    if (!isShareableUrl || typeof navigator === 'undefined' || !navigator.clipboard) return;
+    navigator.clipboard.writeText(assetUrl)
+      .then(() => { setLinkCopied(true); setTimeout(() => setLinkCopied(false), 1800); })
+      .catch(() => { /* clipboard blocked — no-op */ });
+  }, [assetUrl, isShareableUrl]);
+
+  // Inline resiliency overlay — a premium skeleton + live status that keeps the
+  // viewer frame intact while media streams, plus a direct-open fallback on
+  // failure. Rendered inside every media frame (image / video / 3D canvas).
+  const renderDiagnostics = () => {
+    if (mediaReady && !mediaError) return null;
+    const text = mediaError ? labels.mediaUnavailable
+      : loadPhase === 'slow' ? labels.diagnosticsSlow
+      : labels.diagnosticsLoading;
+    return (
+      <div className="absolute inset-0 flex items-center justify-center">
+        {!mediaError ? (
+          <div className="absolute inset-0 animate-pulse bg-gradient-to-br from-zinc-900/80 via-black to-zinc-900/50" />
+        ) : null}
+        <div className="relative flex flex-col items-center gap-2.5 px-6 text-center">
+          {!mediaError ? (
+            <span
+              className="h-7 w-7 animate-spin rounded-full border-2 border-white/15"
+              style={{ borderTopColor: accent }}
+            />
+          ) : (
+            <AlertCircle size={24} className="text-zinc-300" />
+          )}
+          <span className="text-[12px] font-medium text-zinc-300">{text}</span>
+          {mediaError ? (
+            <a
+              href={assetUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-1 rounded-full border border-zinc-700 bg-zinc-900/80 px-3 py-1 text-[11.5px] text-zinc-200 transition hover:border-zinc-500 hover:text-zinc-100"
+            >
+              {labels.download}
+            </a>
+          ) : null}
+        </div>
+      </div>
+    );
+  };
 
   if (!assetUrl) return null;
 
@@ -2494,6 +2750,8 @@ function PreviewWorkspace({
             <p className="truncate text-[11px] text-zinc-500">{labels.workspace}</p>
           </div>
         </div>
+        {/* One-Click Asset Extraction — premium action group: Direct Download +
+            Shareable Link Builder (the latter only for real distributable URLs). */}
         <div className="flex items-center gap-1">
           <button
             onClick={downloadAsset}
@@ -2503,6 +2761,19 @@ function PreviewWorkspace({
           >
             <Download size={18} />
           </button>
+          {isShareableUrl ? (
+            <button
+              onClick={copyShareLink}
+              aria-label={linkCopied ? labels.linkCopied : labels.copyLink}
+              title={linkCopied ? labels.linkCopied : labels.copyLink}
+              className={`h-9 w-9 flex items-center justify-center rounded-full transition active:scale-95 ${
+                linkCopied ? 'text-emerald-400 bg-emerald-500/10' : 'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100'
+              }`}
+            >
+              {linkCopied ? <Check size={18} /> : <Link2 size={18} />}
+            </button>
+          ) : null}
+          <span className="mx-0.5 h-5 w-px bg-white/10" aria-hidden />
           <button
             onClick={onClose}
             aria-label={labels.close}
@@ -2545,8 +2816,10 @@ function PreviewWorkspace({
               fill
               unoptimized
               onLoadingComplete={() => setMediaReady(true)}
+              onError={() => setMediaError(true)}
               className={`object-contain ${fadeClass}`}
             />
+            {renderDiagnostics()}
           </div>
         ) : null}
 
@@ -2557,11 +2830,13 @@ function PreviewWorkspace({
               playsInline
               preload="metadata"
               onLoadedData={() => setMediaReady(true)}
+              onError={() => setMediaError(true)}
               style={{ transform: 'translateZ(0)' }}
               className={`absolute inset-0 h-full w-full object-contain ${fadeClass}`}
             >
               <source src={assetUrl} />
             </video>
+            {renderDiagnostics()}
           </div>
         ) : null}
 
@@ -2574,8 +2849,10 @@ function PreviewWorkspace({
                 allow="accelerometer; gyroscope; xr-spatial-tracking; fullscreen"
                 sandbox="allow-scripts allow-same-origin allow-pointer-lock"
                 onLoad={() => setMediaReady(true)}
+                onError={() => setMediaError(true)}
                 className={`absolute inset-0 h-full w-full ${fadeClass}`}
               />
+              {renderDiagnostics()}
             </div>
             <div className="flex items-center gap-2 px-3 py-2 text-[11.5px] text-zinc-400">
               <Box size={14} style={{ color: agent.color }} />
@@ -2683,6 +2960,10 @@ function MessageBubble({
   // Smooth content mount: media starts blurred + transparent and resolves to a
   // crisp frame on first decode (hardware-accelerated opacity+blur transition).
   const [mediaReady, setMediaReady] = useState(false);
+  // Lazy-mount gate (§3b): heavy media (inline base64 image / video) only mounts
+  // once this bubble nears the viewport, so restoring a long conversation never
+  // decodes every historical asset synchronously on the main thread.
+  const [mediaRef, mediaInView] = useInView<HTMLDivElement>();
   // GPU-accelerated fade-from-skeleton — same easing for image / video frames.
   const mediaFadeClass = `transition-[opacity,filter] duration-500 ease-out will-change-[opacity,filter] transform-gpu ${
     mediaReady ? 'opacity-100 blur-0' : 'opacity-0 blur-md'
@@ -2802,7 +3083,7 @@ function MessageBubble({
   }, [message.assetUrl, message.assetType, message.id]);
 
   return (
-    <div className={`group flex min-w-0 ${isUser ? 'justify-end' : 'justify-start'}`}>
+    <div ref={mediaRef} className={`group flex min-w-0 ${isUser ? 'justify-end' : 'justify-start'}`}>
       <div className={`flex flex-col gap-2 min-w-0 max-w-[88%] ${isUser ? 'items-end' : 'items-start'}`}>
         {showAgentChip ? (
           <div className="flex items-center gap-1.5 text-[11px]">
@@ -2832,30 +3113,51 @@ function MessageBubble({
         ) : null}
 
         {message.assetUrl && message.assetType === 'image' ? (
-          <button
-            type="button"
-            onClick={() => (onExpand ? onExpand(message) : setLightbox(true))}
-            aria-label={expandLabel || 'Open full-size image'}
-            className="group relative block overflow-hidden rounded-2xl border border-zinc-800/70 bg-black max-w-full active:scale-[0.99] transition"
-          >
-            <Image
-              src={message.assetUrl}
-              alt="Generated"
-              width={1200}
-              height={800}
-              unoptimized
-              onLoadingComplete={() => setMediaReady(true)}
-              className={`max-w-full max-h-[300px] w-auto object-contain ${mediaFadeClass}`}
-            />
-            <span className="absolute top-2 right-2 h-7 w-7 rounded-full bg-black/55 backdrop-blur-sm flex items-center justify-center text-white/90 opacity-0 group-hover:opacity-100 transition">
-              <Maximize2 size={14} />
-            </span>
-          </button>
+          mediaInView ? (
+            <button
+              type="button"
+              onClick={() => (onExpand ? onExpand(message) : setLightbox(true))}
+              aria-label={expandLabel || 'Open full-size image'}
+              className="group relative block overflow-hidden rounded-2xl border border-zinc-800/70 bg-black max-w-full active:scale-[0.99] transition"
+            >
+              <Image
+                src={message.assetUrl}
+                alt="Generated"
+                width={1200}
+                height={800}
+                unoptimized
+                decoding="async"
+                onLoadingComplete={() => setMediaReady(true)}
+                className={`max-w-full max-h-[300px] w-auto object-contain ${mediaFadeClass}`}
+              />
+              <span className="absolute top-2 right-2 h-7 w-7 rounded-full bg-black/55 backdrop-blur-sm flex items-center justify-center text-white/90 opacity-0 group-hover:opacity-100 transition">
+                <Maximize2 size={14} />
+              </span>
+            </button>
+          ) : (
+            // Lazy placeholder — reserves space (no CLS) until scrolled near.
+            <div className="h-48 w-64 max-w-full animate-pulse rounded-2xl border border-zinc-800/70 bg-zinc-900/60" aria-hidden />
+          )
         ) : null}
         {message.assetUrl && message.assetType === 'video' ? (
-          message.mode === 'avatar' ? (
-            // Avatar → strict native 9:16 portrait stage (object-cover, premium framing).
-            <div className="aspect-[9/16] w-full max-w-[320px] rounded-2xl overflow-hidden border border-zinc-800/70 shadow-2xl bg-black">
+          mediaInView ? (
+            message.mode === 'avatar' ? (
+              // Avatar → strict native 9:16 portrait stage (object-cover, premium framing).
+              <div className="aspect-[9/16] w-full max-w-[320px] rounded-2xl overflow-hidden border border-zinc-800/70 shadow-2xl bg-black">
+                <video
+                  ref={bubbleVideoRef}
+                  controls
+                  playsInline
+                  preload="metadata"
+                  onLoadedData={() => setMediaReady(true)}
+                  style={{ transform: 'translateZ(0)' }}
+                  className={`h-full w-full object-cover ${mediaFadeClass}`}
+                >
+                  <source src={message.assetUrl} />
+                </video>
+              </div>
+            ) : (
+              // Film / other → adaptive responsive framing (object-contain, no distortion).
               <video
                 ref={bubbleVideoRef}
                 controls
@@ -2863,24 +3165,19 @@ function MessageBubble({
                 preload="metadata"
                 onLoadedData={() => setMediaReady(true)}
                 style={{ transform: 'translateZ(0)' }}
-                className={`h-full w-full object-cover ${mediaFadeClass}`}
+                className={`rounded-2xl border border-zinc-800/70 max-w-full max-h-[320px] w-auto object-contain bg-black ${mediaFadeClass}`}
               >
                 <source src={message.assetUrl} />
               </video>
-            </div>
+            )
           ) : (
-            // Film / other → adaptive responsive framing (object-contain, no distortion).
-            <video
-              ref={bubbleVideoRef}
-              controls
-              playsInline
-              preload="metadata"
-              onLoadedData={() => setMediaReady(true)}
-              style={{ transform: 'translateZ(0)' }}
-              className={`rounded-2xl border border-zinc-800/70 max-w-full max-h-[320px] w-auto object-contain bg-black ${mediaFadeClass}`}
-            >
-              <source src={message.assetUrl} />
-            </video>
+            // Lazy placeholder — reserves portrait/landscape footprint until near.
+            <div
+              className={`animate-pulse rounded-2xl border border-zinc-800/70 bg-zinc-900/60 ${
+                message.mode === 'avatar' ? 'aspect-[9/16] w-full max-w-[320px]' : 'h-48 w-72 max-w-full'
+              }`}
+              aria-hidden
+            />
           )
         ) : null}
         {message.assetUrl && message.assetType === 'audio' ? (
