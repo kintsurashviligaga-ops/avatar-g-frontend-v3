@@ -215,6 +215,11 @@ const XCOPY = {
     readAloud: 'Read aloud', pauseReading: 'Pause', via: 'via', searchChats: 'Search chats',
     noResults: 'No matching chats', emptyTitle: 'What can I create for you?',
     emptySubtitle: 'Pick a starting point, or just type below.',
+    workspace: 'Workspace', expand: 'Expand to workspace', details: 'Details',
+    promptLabel: 'Prompt', agentLabel: 'Agent', aspectLabel: 'Aspect',
+    room3d: 'Interactive 3D room', orbitHint: 'Drag to orbit · scroll to zoom',
+    dropToAnalyze: 'Drop media to analyze with MyAvatarG', working: 'is working…',
+    refine: 'Refine', resetView: 'Reset', download: 'Download', expandHint: 'Expand to workspace',
   },
   ka: {
     newChat: 'ახალი ჩატი', rename: 'გადარქმევა', delete: 'წაშლა', open: 'გახსნა',
@@ -229,6 +234,11 @@ const XCOPY = {
     readAloud: 'ხმამაღლა წაკითხვა', pauseReading: 'პაუზა', via: '·', searchChats: 'ჩატების ძებნა',
     noResults: 'ჩატები ვერ მოიძებნა', emptyTitle: 'რა შევქმნა შენთვის?',
     emptySubtitle: 'აირჩიე დასაწყისი ან უბრალოდ დაწერე ქვემოთ.',
+    workspace: 'სამუშაო სივრცე', expand: 'სამუშაო სივრცეში გაშლა', details: 'დეტალები',
+    promptLabel: 'მოთხოვნა', agentLabel: 'აგენტი', aspectLabel: 'ფორმატი',
+    room3d: 'ინტერაქტიული 3D ოთახი', orbitHint: 'გადაათრიე ბრუნვისთვის · სქროლი მასშტაბისთვის',
+    dropToAnalyze: 'ჩააგდე მედია MyAvatarG-ით გასაანალიზებლად', working: 'მუშაობს…',
+    refine: 'დახვეწა', resetView: 'საწყისზე', download: 'ჩამოტვირთვა', expandHint: 'სამუშაო სივრცეში გაშლა',
   },
   ru: {
     newChat: 'Новый чат', rename: 'Переименовать', delete: 'Удалить', open: 'Открыть',
@@ -243,6 +253,11 @@ const XCOPY = {
     readAloud: 'Озвучить', pauseReading: 'Пауза', via: '·', searchChats: 'Поиск чатов',
     noResults: 'Ничего не найдено', emptyTitle: 'Что мне создать для вас?',
     emptySubtitle: 'Выберите начало или просто напишите ниже.',
+    workspace: 'Рабочая область', expand: 'Развернуть в рабочую область', details: 'Детали',
+    promptLabel: 'Запрос', agentLabel: 'Агент', aspectLabel: 'Формат',
+    room3d: 'Интерактивная 3D-комната', orbitHint: 'Перетащите для вращения · колесо для зума',
+    dropToAnalyze: 'Перетащите медиа для анализа в MyAvatarG', working: 'работает…',
+    refine: 'Уточнить', resetView: 'Сброс', download: 'Скачать', expandHint: 'Развернуть в рабочую область',
   },
 } as const;
 
@@ -371,6 +386,86 @@ const CAPABILITY_CARDS = [
     },
   },
 ] as const;
+
+/**
+ * Multi-agent identity registry — maps a service mode to the specialized
+ * sub-agent that handles it. Drives the "Agent presence" indicator, the
+ * composer's agent-theme border, and the @-mention router. Codenames echo the
+ * mandate's voice ("Agent N: Interior Designer", "Agent K: Cinematic Orchestrator").
+ */
+const AGENTS: Record<ServiceMode, {
+  codename: string;
+  color: string;
+  Icon: typeof MessageSquare;
+  name: { en: string; ka: string; ru: string };
+}> = {
+  global:   { codename: 'G', color: '#22d3ee', Icon: MessageSquare, name: { en: 'General Concierge',      ka: 'ზოგადი კონსიერჟი',     ru: 'Главный консьерж' } },
+  image:    { codename: 'I', color: '#34d399', Icon: ImagePlus,     name: { en: 'Image Synthesist',        ka: 'სურათის სინთეზატორი',  ru: 'Синтезатор изображений' } },
+  video:    { codename: 'K', color: '#38bdf8', Icon: Film,          name: { en: 'Cinematic Orchestrator',  ka: 'კინო-ორკესტრატორი',    ru: 'Кинематографический оркестратор' } },
+  music:    { codename: 'M', color: '#f472b6', Icon: Music,         name: { en: 'Music Composer',          ka: 'მუსიკის კომპოზიტორი',  ru: 'Музыкальный композитор' } },
+  avatar:   { codename: 'A', color: '#818cf8', Icon: User,          name: { en: 'Avatar Director',         ka: 'ავატარის რეჟისორი',    ru: 'Режиссёр аватаров' } },
+  interior: { codename: 'N', color: '#10b981', Icon: Box,           name: { en: 'Interior Designer',       ka: 'ინტერიერის დიზაინერი', ru: 'Дизайнер интерьера' } },
+  voice:    { codename: 'V', color: '#f59e0b', Icon: Volume2,       name: { en: 'Voice Synthesist',        ka: 'ხმის სინთეზატორი',     ru: 'Синтезатор голоса' } },
+};
+
+/**
+ * @-mention → service-mode router. Typing e.g. "@interior", "@film", "@avatar"
+ * at the start of the composer instantly retargets the orchestrator engine.
+ */
+const AGENT_MENTIONS: Record<string, ServiceMode> = {
+  chat: 'global', general: 'global',
+  image: 'image', img: 'image', photo: 'image',
+  film: 'video', video: 'video', cinema: 'video',
+  music: 'music', song: 'music', audio: 'music',
+  avatar: 'avatar', face: 'avatar',
+  interior: 'interior', room: 'interior', '3d': 'interior',
+  voice: 'voice', tts: 'voice', speak: 'voice',
+};
+
+/** Detect a leading "@mention" token and resolve it to a service mode (or null). */
+function detectAgentMention(text: string): ServiceMode | null {
+  const m = /^\s*@([a-z0-9]+)/i.exec(text);
+  if (!m || !m[1]) return null;
+  return AGENT_MENTIONS[m[1].toLowerCase()] ?? null;
+}
+
+/**
+ * Contextual refinement chips shown under a finished media output. Clicking a
+ * chip primes the composer with the instruction (it does NOT auto-send — the
+ * user reviews and presses send, so no render is ever billed by surprise).
+ */
+const REFINEMENTS: Partial<Record<ServiceMode, { en: string; ka: string; ru: string }[]>> = {
+  image: [
+    { en: 'Make it more photorealistic', ka: 'უფრო ფოტორეალისტური გახადე', ru: 'Сделай более фотореалистичным' },
+    { en: 'Brighter, warmer lighting', ka: 'უფრო კაშკაშა, თბილი განათება', ru: 'Ярче, тёплый свет' },
+    { en: 'Try a different angle', ka: 'სხვა რაკურსი სცადე', ru: 'Попробуй другой ракурс' },
+  ],
+  video: [
+    { en: 'Extend the video by 5 seconds', ka: 'გააგრძელე ვიდეო 5 წამით', ru: 'Продли видео на 5 секунд' },
+    { en: 'Make the lighting warmer', ka: 'განათება უფრო თბილი გახადე', ru: 'Сделай освещение теплее' },
+    { en: 'Add a slow-motion moment', ka: 'დაამატე ნელი მოძრაობის მომენტი', ru: 'Добавь момент слоу-мо' },
+  ],
+  avatar: [
+    { en: 'Warmer studio lighting', ka: 'უფრო თბილი სტუდიური განათება', ru: 'Тёплый студийный свет' },
+    { en: 'Closer, tighter framing', ka: 'უფრო ახლო კადრირება', ru: 'Более крупный план' },
+    { en: 'Change the outfit', ka: 'შეცვალე სამოსი', ru: 'Смени наряд' },
+  ],
+  interior: [
+    { en: 'Warmer lighting', ka: 'უფრო თბილი განათება', ru: 'Тёплое освещение' },
+    { en: 'Add more plants', ka: 'დაამატე მეტი მცენარე', ru: 'Добавь больше растений' },
+    { en: 'Try Scandinavian style', ka: 'სცადე სკანდინავიური სტილი', ru: 'Попробуй скандинавский стиль' },
+  ],
+  music: [
+    { en: 'Slower tempo', ka: 'უფრო ნელი ტემპი', ru: 'Медленнее темп' },
+    { en: 'Add drums', ka: 'დაამატე დასარტყამები', ru: 'Добавь барабаны' },
+    { en: 'More upbeat mood', ka: 'უფრო ენერგიული განწყობა', ru: 'Более бодрое настроение' },
+  ],
+  voice: [
+    { en: 'Change the voice profile', ka: 'შეცვალე ხმის პროფილი', ru: 'Смени профиль голоса' },
+    { en: 'Slower pace', ka: 'უფრო ნელი ტემპი', ru: 'Медленнее темп' },
+    { en: 'More expressive delivery', ka: 'უფრო ექსპრესიული კითხვა', ru: 'Более выразительно' },
+  ],
+};
 
 /* ─── Live orchestration telemetry (driven by real backend status) ───────────
  * /api/chat/orchestrate returns a single JSON response; async media generation
@@ -509,6 +604,10 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
   const [cameraOpen, setCameraOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [avatarExpanded, setAvatarExpanded] = useState(false);
+  // Artifacts/Canvas split-pane: the message whose asset is mounted in the
+  // right-hand Preview Workspace (null = single-column chat). Kept mounted while
+  // switching artifacts so the panel slides/swaps without an unmount flash.
+  const [workspace, setWorkspace] = useState<ChatMessage | null>(null);
   const [balanceGel, setBalanceGel] = useState<number | null>(null);
   const [mode, setMode] = useState<ServiceMode>('global');
   // Stable per-conversation id sent on EVERY request (initial + polls). The
@@ -548,6 +647,7 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
 
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const blobUrlsRef = useRef<string[]>([]);        // object-URLs to revoke on unmount
   const endRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
@@ -935,12 +1035,38 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
     editPrompt(text);
   }, [editPrompt]);
 
+  // Open / swap the Preview Workspace for a given message's asset. Setting state
+  // (rather than remounting) lets the panel repopulate instantly with no flash.
+  const openWorkspace = useCallback((m: ChatMessage) => {
+    if (!m.assetUrl) return;
+    setWorkspace(m);
+  }, []);
+  const closeWorkspace = useCallback(() => setWorkspace(null), []);
+
+  // Refinement chip → prime the composer with a follow-up instruction (mode kept,
+  // focus moved to composer). Deliberately does NOT auto-send to avoid billing a
+  // render the user didn't explicitly confirm.
+  const applyRefinement = useCallback((instruction: string) => {
+    editPrompt(instruction);
+  }, [editPrompt]);
+
+  // Composer input handler with inline "@mention" agent routing. Typing e.g.
+  // "@interior" / "@film" / "@avatar" at the start instantly retargets the
+  // orchestrator engine (and re-themes the composer border) while leaving the
+  // text intact so the user keeps typing their prompt after the mention.
+  const onComposerInput = useCallback((text: string) => {
+    dispatch({ type: 'SET_INPUT', text });
+    const mention = detectAgentMention(text);
+    if (mention) setMode((prev) => (prev === mention ? prev : mention));
+  }, []);
+
   // ── Conversation lifecycle (sidebar: new / restore / rename / delete) ──
   const startNewChat = useCallback(() => {
     abortRef.current?.abort();
     setConversationId(newSessionId());
     dispatch({ type: 'LOAD_MESSAGES', messages: [] });
     setHistoryOpen(false);
+    setWorkspace(null);
   }, []);
 
   // Seamless restore: clicking a past chat replaces the viewport with its
@@ -954,6 +1080,7 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
     setConversationId(id);
     dispatch({ type: 'LOAD_MESSAGES', messages: convo.messages.map(fromStored) });
     setHistoryOpen(false);
+    setWorkspace(null);
     window.setTimeout(() => setSwitching(false), 280);
   }, []);
 
@@ -1024,6 +1151,12 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
       reader.onload = () => dispatch({ type: 'ADD_ATTACHMENT', attachment: { ...att, preview: reader.result as string, dataUrl: reader.result as string } });
       reader.onerror = () => showNotice(copy.genericError);
       reader.readAsDataURL(file);
+    } else if (kind === 'video') {
+      // Object-URL preview → render the first video frame as a micro-thumbnail
+      // (revoked on unmount). Purely visual; the send path ignores video blobs.
+      const objectUrl = URL.createObjectURL(file);
+      blobUrlsRef.current.push(objectUrl);
+      dispatch({ type: 'ADD_ATTACHMENT', attachment: { ...att, preview: objectUrl } });
     } else {
       dispatch({ type: 'ADD_ATTACHMENT', attachment: att });
     }
@@ -1123,6 +1256,13 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
     return () => window.removeEventListener('keydown', onKeyDown);
   }, []);
 
+  // Revoke any object-URL attachment previews (video thumbnails) on unmount so
+  // the browser can reclaim the blobs.
+  useEffect(() => () => {
+    blobUrlsRef.current.forEach((u) => { try { URL.revokeObjectURL(u); } catch { /* noop */ } });
+    blobUrlsRef.current = [];
+  }, []);
+
   // Grab focus for the search field once the drawer mounts after a ⌘/Ctrl+K.
   useEffect(() => {
     if (historyOpen && focusSearchRef.current) {
@@ -1139,9 +1279,14 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
       onDragOver={onDragOver}
       onDragLeave={onDragLeave}
       onDrop={onDrop}
-      className="fixed inset-x-0 top-0 z-[5] flex flex-col bg-[#030303] text-zinc-100 antialiased overflow-hidden"
+      className="fixed inset-x-0 top-0 z-[5] flex bg-[#030303] text-zinc-100 antialiased overflow-hidden"
       style={{ height: keyboardOffset > 0 ? `calc(100dvh - ${keyboardOffset}px)` : '100dvh' }}
     >
+      {/* ── Chat column (Left: stream) ─────────────────────────────────
+          The header + feed + composer live in a self-contained flex column
+          so the Preview Workspace can dock beside them as a real split pane
+          on wide screens (and overlay full-screen on mobile). */}
+      <div className="flex flex-col flex-1 min-w-0 h-full">
       {/* ── Top bar ────────────────────────────────────────────────── */}
       <header
         className="flex items-center justify-between px-3 py-2 border-b border-white/[0.05] bg-[#030303]/95 backdrop-blur-md"
@@ -1246,6 +1391,7 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
                 lang={lang}
                 autoplay={prefs.autoplayMedia}
                 mediaExpiredLabel={xc.mediaExpired}
+                expandLabel={xc.expandHint}
                 ttsLabels={{ readAloud: xc.readAloud, pause: xc.pauseReading, via: xc.via }}
                 streaming={i === messages.length - 1 && m.role === 'assistant' && !!m.text && !isLoading}
                 onStreamTick={() => pinBottom(false)}
@@ -1253,11 +1399,25 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
                 onEdit={editPrompt}
                 onFeedback={sendFeedback}
                 onPlayAudio={playAssetAudio}
+                onExpand={openWorkspace}
+                onRefine={applyRefinement}
               />
             ))
           )}
           {isLoading ? (
             <div className="flex flex-col gap-2.5">
+              {/* Agent presence — which sub-agent is handling this request. */}
+              <div className="flex items-center gap-2 text-[12px]">
+                <span
+                  className="flex h-6 w-6 items-center justify-center rounded-lg border border-white/10 text-[11px] font-bold leading-none"
+                  style={{ backgroundColor: `${AGENTS[mode].color}1f`, color: AGENTS[mode].color }}
+                >
+                  {AGENTS[mode].codename}
+                </span>
+                <span className="font-medium text-zinc-300">{AGENTS[mode].name[lang]}</span>
+                <span className="text-zinc-500">{xc.working}</span>
+                <Loader2 size={12} className="animate-spin text-zinc-500" />
+              </div>
               <MediaSkeleton mode={mode} accent={ACCENT} />
               {mode !== 'global' && pipeline?.active && pipeline.stages.length ? (
                 <PipelineTelemetry stages={pipeline.stages} lang={lang} accent={ACCENT} />
@@ -1391,6 +1551,23 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
                     <span className="text-[8px] text-white">✕</span>
                   </button>
                 </div>
+              ) : att.type === 'video' && att.preview ? (
+                <div
+                  key={att.id}
+                  className="relative w-12 h-12 rounded-xl overflow-hidden flex-shrink-0 group bg-black border border-zinc-800/70"
+                >
+                  <video src={att.preview} muted playsInline preload="metadata" className="w-full h-full object-cover" />
+                  <span className="absolute inset-0 flex items-center justify-center bg-black/30 text-white/90 pointer-events-none">
+                    <Film size={14} />
+                  </span>
+                  <button
+                    onClick={() => dispatch({ type: 'REMOVE_ATTACHMENT', id: att.id })}
+                    className="absolute top-0.5 right-0.5 w-4 h-4 rounded-full bg-black/70 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                    aria-label="Remove attachment"
+                  >
+                    <span className="text-[8px] text-white">✕</span>
+                  </button>
+                </div>
               ) : (
                 <div
                   key={att.id}
@@ -1418,9 +1595,15 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
           </div>
         ) : null}
 
-        {/* ── Unified monolithic console: mode selector + composer ───── */}
+        {/* ── Unified monolithic console: mode selector + composer ─────
+            The border picks up the active agent's theme colour (set via mode
+            pill or an "@mention"), giving an at-a-glance cue of which engine
+            the next prompt will route to. */}
         <div className="px-3 pt-2 pb-2 max-w-2xl mx-auto">
-          <div className="rounded-2xl border border-white/[0.06] bg-[#0a0a0a] transition-colors focus-within:border-white/[0.12]">
+          <div
+            className="rounded-2xl border bg-[#0a0a0a] transition-colors focus-within:border-white/[0.18]"
+            style={{ borderColor: mode === 'global' ? 'rgba(255,255,255,0.06)' : `${AGENTS[mode].color}73` }}
+          >
             {/* Mode selector — sets the orchestrator service context */}
             <div className="flex gap-1.5 overflow-x-auto px-2 pt-2 pb-1.5 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
               {MODES.map(({ id, Icon, label }) => {
@@ -1437,7 +1620,7 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
                         : 'border-transparent bg-[#121212] text-zinc-400 hover:text-zinc-200'
                     }`}
                   >
-                    <Icon size={14} />
+                    <Icon size={14} style={active && id !== 'global' ? { color: AGENTS[id].color } : undefined} />
                     {label[lang]}
                   </button>
                 );
@@ -1465,7 +1648,7 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
               <textarea
                 ref={inputRef}
                 value={inputText}
-                onChange={(e) => dispatch({ type: 'SET_INPUT', text: e.target.value })}
+                onChange={(e) => onComposerInput(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key !== 'Enter') return;
                   // Honour the user's send-key preference:
@@ -1523,6 +1706,31 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
           </div>
         </div>
       </footer>
+      </div>{/* /chat column */}
+
+      {/* ── Preview Workspace (Right: interactive media canvas) ───────
+          Docks as a split pane on wide screens, full-screen overlay on
+          mobile. Driven purely by `workspace` state (never remounted), so
+          clicking any historical media card repopulates it instantly with
+          no flash. */}
+      <AnimatePresence mode="wait">
+        {workspace ? (
+          <PreviewWorkspace
+            key="preview-workspace"
+            message={workspace}
+            lang={lang}
+            accent={ACCENT}
+            labels={{
+              workspace: xc.workspace, details: xc.details, promptLabel: xc.promptLabel,
+              agentLabel: xc.agentLabel, aspectLabel: xc.aspectLabel, room3d: xc.room3d,
+              orbitHint: xc.orbitHint, resetView: xc.resetView, refine: xc.refine,
+              download: xc.download, close: xc.close,
+            }}
+            onClose={closeWorkspace}
+            onRefine={applyRefinement}
+          />
+        ) : null}
+      </AnimatePresence>
 
       {/* ── Side-drawer history ──────────────────────────────────── */}
       <AnimatePresence>
@@ -1806,20 +2014,31 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
         ) : null}
       </AnimatePresence>
 
-      {/* ── Drag-and-drop overlay ────────────────────────────────── */}
+      {/* ── Global drag-and-drop overlay ─────────────────────────────
+          Whole-window dropzone: dragging any file over the dashboard blurs the
+          surface and invites the user to "Drop media to analyze with MyAvatarG". */}
       <AnimatePresence>
         {dragActive ? (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="pointer-events-none fixed inset-0 z-[85] flex items-center justify-center bg-black/60 backdrop-blur-sm"
+            transition={{ duration: 0.18 }}
+            className="pointer-events-none fixed inset-0 z-[85] flex items-center justify-center bg-black/65 backdrop-blur-md p-6"
           >
-            <div className="flex flex-col items-center gap-3 rounded-3xl border-2 border-dashed border-white/30 bg-[#0a0a0a]/80 px-10 py-8 text-center">
-              <Paperclip size={28} className="text-zinc-200" />
-              <p className="text-[14px] font-semibold text-zinc-100">{xc.dropToAttach}</p>
-              <p className="text-[11.5px] text-zinc-500">PDF · JPG · PNG</p>
-            </div>
+            <motion.div
+              initial={{ scale: 0.94, opacity: 0, y: 8 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.94, opacity: 0, y: 8 }}
+              transition={{ type: 'spring', stiffness: 320, damping: 28 }}
+              className="flex flex-col items-center gap-3 rounded-[1.75rem] border-2 border-dashed border-white/30 bg-[#0a0a0a]/85 px-12 py-10 text-center shadow-[0_40px_140px_-30px_rgba(0,0,0,0.9)]"
+            >
+              <span className="flex h-14 w-14 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.04]">
+                <ImagePlus size={28} className="text-zinc-100" />
+              </span>
+              <p className="max-w-[16rem] text-[15px] font-semibold leading-snug text-zinc-50">{xc.dropToAnalyze}</p>
+              <p className="text-[11.5px] uppercase tracking-wide text-zinc-500">PDF · JPG · PNG · MP4 · MP3</p>
+            </motion.div>
           </motion.div>
         ) : null}
       </AnimatePresence>
@@ -2175,10 +2394,262 @@ function speechLang(lang: 'en' | 'ka' | 'ru'): string {
   return lang === 'ka' ? 'ka-GE' : lang === 'ru' ? 'ru-RU' : 'en-US';
 }
 
+/** True when a URL resolves to a directly-renderable raster image. */
+function isDirectImage(url: string): boolean {
+  return /^data:image\//i.test(url) || /\.(png|jpe?g|webp|gif|avif|svg)(\?|#|$)/i.test(url);
+}
+
+/* ─── Preview Workspace (split-pane interactive media canvas) ──────────
+ * Docks beside the chat stream on wide screens and overlays full-screen on
+ * mobile. It is driven purely by the `message` prop (never remounted between
+ * artifacts), so clicking any historical media card repopulates it instantly
+ * with no unmount flash. Every media type gets a tailored canvas:
+ *   • image / video → aspect-ratio switcher (native · 9:16 · 16:9) + scrubber
+ *   • interior 3D   → iframe canvas mount (WorldLabs/Marble) with orbit hint,
+ *                     cleanly bypassing the static fallback when a live URL is
+ *                     delivered; falls back to a framed still otherwise
+ *   • audio         → full-width player
+ * A metadata layer surfaces the originating prompt, agent identity, and model.
+ * Refinement chips PRIME the composer (never auto-send → no surprise renders). */
+type Aspect = 'native' | '9:16' | '16:9';
+
+function PreviewWorkspace({
+  message, lang, accent, labels, onClose, onRefine,
+}: {
+  message: ChatMessage;
+  lang: 'en' | 'ka' | 'ru';
+  accent: string;
+  labels: {
+    workspace: string; details: string; promptLabel: string; agentLabel: string;
+    aspectLabel: string; room3d: string; orbitHint: string; resetView: string;
+    refine: string; download: string; close: string;
+  };
+  onClose: () => void;
+  onRefine: (instruction: string) => void;
+}) {
+  const reduceMotion = useReducedMotion();
+  const [aspect, setAspect] = useState<Aspect>('native');
+  const [mediaReady, setMediaReady] = useState(false);
+
+  const mode: ServiceMode = message.mode ?? 'global';
+  const agent = AGENTS[mode];
+  const assetUrl = message.assetUrl ?? '';
+  const assetType = message.assetType ?? null;
+  const modelLabel = prettyModel(message.model);
+  const refinements = REFINEMENTS[mode];
+  // Interior asset that isn't a flat image → treat as a live 3D room canvas.
+  const isRoom3D = mode === 'interior' && !!assetUrl && !isDirectImage(assetUrl) && assetType !== 'video' && assetType !== 'audio';
+  const showAspect = assetType === 'image' || assetType === 'video';
+
+  // Reset framing + decode state whenever we swap to a different artifact so the
+  // panel never inherits the previous asset's aspect or stale "ready" flag.
+  useEffect(() => { setAspect('native'); setMediaReady(false); }, [message.id]);
+
+  const frameClass =
+    aspect === '9:16' ? 'aspect-[9/16] max-h-[64vh] mx-auto'
+    : aspect === '16:9' ? 'aspect-[16/9]'
+    : 'min-h-[38vh] max-h-[64vh]';
+  const fadeClass = `transition-[opacity,filter] duration-500 ease-out will-change-[opacity,filter] transform-gpu ${
+    mediaReady ? 'opacity-100 blur-0' : 'opacity-0 blur-md'
+  }`;
+
+  const downloadAsset = useCallback(() => {
+    if (!assetUrl) return;
+    const ext = assetType === 'video' ? 'mp4' : assetType === 'audio' ? 'mp3' : 'png';
+    const a = document.createElement('a');
+    a.href = assetUrl;
+    a.download = `myavatarg-${message.id}.${ext}`;
+    a.target = '_blank';
+    a.rel = 'noopener';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  }, [assetUrl, assetType, message.id]);
+
+  if (!assetUrl) return null;
+
+  return (
+    <motion.aside
+      initial={reduceMotion ? { opacity: 0 } : { x: '100%', opacity: 0 }}
+      animate={reduceMotion ? { opacity: 1 } : { x: 0, opacity: 1 }}
+      exit={reduceMotion ? { opacity: 0 } : { x: '100%', opacity: 0 }}
+      transition={{ type: 'spring', stiffness: 320, damping: 36 }}
+      className="fixed inset-0 z-[70] flex flex-col bg-[#050505] lg:static lg:z-auto lg:h-full lg:w-[44%] lg:max-w-[680px] lg:min-w-[380px] lg:shrink-0 lg:border-l lg:border-white/[0.06]"
+      aria-label={labels.workspace}
+    >
+      {/* Header: agent identity + close / download */}
+      <div
+        className="flex items-center justify-between gap-2 border-b border-white/[0.06] px-3 py-2.5"
+        style={{ paddingTop: 'calc(0.625rem + env(safe-area-inset-top, 0px))' }}
+      >
+        <div className="flex min-w-0 items-center gap-2">
+          <span
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-white/10 text-[12px] font-bold"
+            style={{ backgroundColor: `${agent.color}1f`, color: agent.color }}
+          >
+            {agent.codename}
+          </span>
+          <div className="min-w-0">
+            <p className="truncate text-[13px] font-semibold text-zinc-100">{agent.name[lang]}</p>
+            <p className="truncate text-[11px] text-zinc-500">{labels.workspace}</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={downloadAsset}
+            aria-label={labels.download}
+            title={labels.download}
+            className="h-9 w-9 flex items-center justify-center rounded-full text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100 transition active:scale-95"
+          >
+            <Download size={18} />
+          </button>
+          <button
+            onClick={onClose}
+            aria-label={labels.close}
+            title={labels.close}
+            className="h-9 w-9 flex items-center justify-center rounded-full text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100 transition active:scale-95"
+          >
+            <X size={18} />
+          </button>
+        </div>
+      </div>
+
+      {/* Aspect-ratio switcher — only meaningful for image / video. */}
+      {showAspect ? (
+        <div className="flex items-center gap-2 border-b border-white/[0.04] px-3 py-2">
+          <span className="text-[11px] uppercase tracking-wide text-zinc-500">{labels.aspectLabel}</span>
+          <div className="flex items-center gap-1 rounded-full bg-zinc-900/80 p-0.5">
+            {(['native', '9:16', '16:9'] as Aspect[]).map((a) => (
+              <button
+                key={a}
+                onClick={() => setAspect(a)}
+                aria-pressed={aspect === a}
+                className={`rounded-full px-2.5 py-1 text-[11px] font-medium transition ${
+                  aspect === a ? 'bg-zinc-100 text-zinc-900' : 'text-zinc-400 hover:text-zinc-100'
+                }`}
+              >
+                {a === 'native' ? labels.resetView : a}
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      {/* Canvas body */}
+      <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-3 py-3">
+        {assetType === 'image' && !isRoom3D ? (
+          <div className={`relative w-full overflow-hidden rounded-2xl border border-zinc-800/70 bg-black ${frameClass}`}>
+            <Image
+              src={assetUrl}
+              alt="Generated"
+              fill
+              unoptimized
+              onLoadingComplete={() => setMediaReady(true)}
+              className={`object-contain ${fadeClass}`}
+            />
+          </div>
+        ) : null}
+
+        {assetType === 'video' ? (
+          <div className={`relative w-full overflow-hidden rounded-2xl border border-zinc-800/70 bg-black ${frameClass}`}>
+            <video
+              controls
+              playsInline
+              preload="metadata"
+              onLoadedData={() => setMediaReady(true)}
+              style={{ transform: 'translateZ(0)' }}
+              className={`absolute inset-0 h-full w-full object-contain ${fadeClass}`}
+            >
+              <source src={assetUrl} />
+            </video>
+          </div>
+        ) : null}
+
+        {isRoom3D ? (
+          <div className="overflow-hidden rounded-2xl border border-zinc-800/70 bg-black">
+            <div className="relative aspect-[16/9] w-full">
+              <iframe
+                src={assetUrl}
+                title={labels.room3d}
+                allow="accelerometer; gyroscope; xr-spatial-tracking; fullscreen"
+                sandbox="allow-scripts allow-same-origin allow-pointer-lock"
+                onLoad={() => setMediaReady(true)}
+                className={`absolute inset-0 h-full w-full ${fadeClass}`}
+              />
+            </div>
+            <div className="flex items-center gap-2 px-3 py-2 text-[11.5px] text-zinc-400">
+              <Box size={14} style={{ color: agent.color }} />
+              <span>{labels.orbitHint}</span>
+            </div>
+          </div>
+        ) : null}
+
+        {assetType === 'audio' ? (
+          <div className="w-full rounded-2xl border border-zinc-800/70 bg-[#0a0a0a] p-4">
+            <div className="flex items-center gap-2 pb-3 text-[13px] font-medium text-zinc-200">
+              <span className="flex h-8 w-8 items-center justify-center rounded-full bg-white/5">
+                <Volume2 size={18} style={{ color: accent }} />
+              </span>
+              <span>{agent.name[lang]}</span>
+            </div>
+            <audio controls preload="metadata" className="w-full">
+              <source src={assetUrl} />
+            </audio>
+          </div>
+        ) : null}
+
+        {/* Metadata layer */}
+        <div className="mt-3 space-y-2 rounded-2xl border border-white/[0.05] bg-[#080808] p-3">
+          <div className="flex items-center gap-2 text-[11px] uppercase tracking-wide text-zinc-500">
+            <Sparkles size={12} /> <span>{labels.details}</span>
+          </div>
+          <dl className="space-y-1.5 text-[12.5px]">
+            <div className="flex gap-2">
+              <dt className="w-16 shrink-0 text-zinc-500">{labels.agentLabel}</dt>
+              <dd className="min-w-0 text-zinc-200" style={{ color: agent.color }}>{agent.name[lang]}</dd>
+            </div>
+            {modelLabel ? (
+              <div className="flex gap-2">
+                <dt className="w-16 shrink-0 text-zinc-500">Model</dt>
+                <dd className="min-w-0 break-words text-zinc-300">{modelLabel}</dd>
+              </div>
+            ) : null}
+            {message.sourcePrompt ? (
+              <div className="flex gap-2">
+                <dt className="w-16 shrink-0 text-zinc-500">{labels.promptLabel}</dt>
+                <dd className="min-w-0 break-words text-zinc-300">{message.sourcePrompt}</dd>
+              </div>
+            ) : null}
+          </dl>
+        </div>
+
+        {/* Refinement chips — prime the composer (no auto-send). */}
+        {refinements && refinements.length ? (
+          <div className="mt-3">
+            <p className="mb-1.5 text-[11px] uppercase tracking-wide text-zinc-500">{labels.refine}</p>
+            <div className="flex flex-wrap gap-1.5">
+              {refinements.map((r) => (
+                <button
+                  key={r.en}
+                  type="button"
+                  onClick={() => onRefine(r[lang])}
+                  className="rounded-full border border-zinc-800/80 bg-[#0a0a0a] px-3 py-1 text-[12px] font-medium text-zinc-300 transition hover:border-zinc-600/80 hover:text-zinc-100 active:scale-95"
+                >
+                  {r[lang]}
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : null}
+      </div>
+    </motion.aside>
+  );
+}
+
 /* ─── Per-message bubble with executive toolbar ────────────────────── */
 
 function MessageBubble({
-  message, accent, lang, streaming = false, autoplay = false, mediaExpiredLabel, ttsLabels, onStreamTick, onRegenerate, onEdit, onFeedback, onPlayAudio,
+  message, accent, lang, streaming = false, autoplay = false, mediaExpiredLabel, expandLabel, ttsLabels, onStreamTick, onRegenerate, onEdit, onFeedback, onPlayAudio, onExpand, onRefine,
 }: {
   message: ChatMessage;
   accent: string;
@@ -2186,12 +2657,15 @@ function MessageBubble({
   streaming?: boolean;
   autoplay?: boolean;
   mediaExpiredLabel?: string;
+  expandLabel?: string;
   ttsLabels: { readAloud: string; pause: string; via: string };
   onStreamTick?: () => void;
   onRegenerate: () => void;
   onEdit: (text: string) => void;
   onFeedback: (id: string, rating: 'up' | 'down') => void;
   onPlayAudio: (url: string) => void;
+  onExpand?: (m: ChatMessage) => void;
+  onRefine?: (instruction: string) => void;
 }) {
   const isUser = message.role === 'user';
   const isError = message.role === 'error';
@@ -2268,6 +2742,12 @@ function MessageBubble({
   }, [ttsState, message.text, lang]);
 
   const modelLabel = prettyModel(message.model);
+  // Agent presence: which specialized sub-agent produced this turn. Derived from
+  // the message's service mode (reliable) — surfaced as a small identity chip on
+  // assistant turns from a specialized engine (general chat stays chip-free).
+  const bubbleMode: ServiceMode = message.mode ?? 'global';
+  const bubbleAgent = AGENTS[bubbleMode];
+  const showAgentChip = !isUser && !isError && (bubbleMode !== 'global' || !!message.assetUrl);
 
   const togglePiP = useCallback(async () => {
     const v = bubbleVideoRef.current;
@@ -2324,6 +2804,17 @@ function MessageBubble({
   return (
     <div className={`group flex min-w-0 ${isUser ? 'justify-end' : 'justify-start'}`}>
       <div className={`flex flex-col gap-2 min-w-0 max-w-[88%] ${isUser ? 'items-end' : 'items-start'}`}>
+        {showAgentChip ? (
+          <div className="flex items-center gap-1.5 text-[11px]">
+            <span
+              className="flex h-5 w-5 items-center justify-center rounded-md border border-white/10 text-[10px] font-bold leading-none"
+              style={{ backgroundColor: `${bubbleAgent.color}1f`, color: bubbleAgent.color }}
+            >
+              {bubbleAgent.codename}
+            </span>
+            <span className="font-medium text-zinc-400">{bubbleAgent.name[lang]}</span>
+          </div>
+        ) : null}
         {message.text ? (
           <div
             className={
@@ -2343,8 +2834,8 @@ function MessageBubble({
         {message.assetUrl && message.assetType === 'image' ? (
           <button
             type="button"
-            onClick={() => setLightbox(true)}
-            aria-label="Open full-size image"
+            onClick={() => (onExpand ? onExpand(message) : setLightbox(true))}
+            aria-label={expandLabel || 'Open full-size image'}
             className="group relative block overflow-hidden rounded-2xl border border-zinc-800/70 bg-black max-w-full active:scale-[0.99] transition"
           >
             <Image
@@ -2438,6 +2929,24 @@ function MessageBubble({
           ) : null}
         </AnimatePresence>
 
+        {/* Refinement chips — under a finished media output. Each chip PRIMES
+            the composer with a follow-up instruction (never auto-sends), so the
+            user reviews and confirms before any paid render is billed. */}
+        {!isUser && !isError && message.assetUrl && message.mode && onRefine && REFINEMENTS[message.mode] ? (
+          <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
+            {(REFINEMENTS[message.mode] ?? []).map((r) => (
+              <button
+                key={r.en}
+                type="button"
+                onClick={() => onRefine(r[lang])}
+                className="rounded-full border border-zinc-800/80 bg-[#0a0a0a] px-3 py-1 text-[12px] font-medium text-zinc-300 transition hover:border-zinc-600/80 hover:text-zinc-100 active:scale-95"
+              >
+                {r[lang]}
+              </button>
+            ))}
+          </div>
+        ) : null}
+
         {/* Executive toolbar — assistant messages only */}
         {!isUser && !isError ? (
           <div className="flex flex-wrap items-center gap-1.5 mt-1 text-neutral-500">
@@ -2491,6 +3000,16 @@ function MessageBubble({
                 className="h-9 w-9 flex items-center justify-center rounded-full text-neutral-500 hover:bg-neutral-800 hover:text-neutral-200 transition-all duration-200 active:scale-95"
               >
                 <PictureInPicture2 size={18} />
+              </button>
+            ) : null}
+            {message.assetUrl && onExpand ? (
+              <button
+                onClick={() => onExpand(message)}
+                aria-label={expandLabel || 'Expand to workspace'}
+                title={expandLabel || 'Expand to workspace'}
+                className="h-9 w-9 flex items-center justify-center rounded-full text-neutral-500 hover:bg-neutral-800 hover:text-neutral-200 transition-all duration-200 active:scale-95"
+              >
+                <Maximize2 size={18} />
               </button>
             ) : null}
             {message.assetUrl ? (
