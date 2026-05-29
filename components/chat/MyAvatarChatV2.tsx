@@ -1169,10 +1169,10 @@ function MessageBubble({
         <div
           className={
             isError
-              ? 'rounded-2xl px-3.5 py-2.5 text-[14px] leading-7 border border-rose-500/30 bg-rose-500/[0.06] text-rose-200'
+              ? 'rounded-2xl px-4 py-2.5 text-[15px] leading-relaxed tracking-[-0.01em] border border-rose-500/25 bg-rose-500/[0.05] text-rose-200'
               : isUser
-              ? 'rounded-2xl px-3.5 py-2.5 text-[14px] leading-7 bg-zinc-100 text-zinc-950'
-              : 'rounded-2xl px-3.5 py-2.5 text-[15px] leading-7 bg-[#0a0a0a] border border-zinc-800/70 text-zinc-100'
+              ? 'rounded-2xl px-4 py-2.5 text-[15px] leading-relaxed tracking-[-0.01em] bg-neutral-100 text-neutral-900'
+              : 'rounded-2xl px-4 py-2.5 text-[15px] leading-relaxed tracking-[-0.01em] bg-neutral-900/80 border border-neutral-800 text-neutral-100'
           }
         >
           {message.text}
@@ -1224,7 +1224,7 @@ function MessageBubble({
           <div className="w-full max-w-sm rounded-2xl border border-zinc-800/70 bg-[#0a0a0a] p-3">
             <div className="flex items-center gap-2 pb-2 text-[12px] font-medium text-zinc-300">
               <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white/5">
-                <Volume2 size={13} style={{ color: accent }} />
+                <Volume2 size={18} style={{ color: accent }} />
               </span>
               <span>Audio</span>
             </div>
@@ -1259,56 +1259,56 @@ function MessageBubble({
 
         {/* Executive toolbar — assistant messages only */}
         {!isUser && !isError ? (
-          <div className="flex items-center gap-1 mt-0.5 text-zinc-500">
+          <div className="flex items-center gap-1.5 mt-1 text-neutral-500">
             <button
               onClick={() => onFeedback(message.id, 'up')}
               aria-label="Good response"
-              className="h-7 w-7 flex items-center justify-center rounded-full hover:bg-zinc-900 hover:text-zinc-200 transition active:scale-95"
+              className="h-9 w-9 flex items-center justify-center rounded-full text-neutral-500 hover:bg-neutral-800 hover:text-neutral-200 transition-all duration-200 active:scale-95"
             >
-              <ThumbsUp size={13} />
+              <ThumbsUp size={18} />
             </button>
             <button
               onClick={() => onFeedback(message.id, 'down')}
               aria-label="Poor response"
-              className="h-7 w-7 flex items-center justify-center rounded-full hover:bg-zinc-900 hover:text-zinc-200 transition active:scale-95"
+              className="h-9 w-9 flex items-center justify-center rounded-full text-neutral-500 hover:bg-neutral-800 hover:text-neutral-200 transition-all duration-200 active:scale-95"
             >
-              <ThumbsDown size={13} />
+              <ThumbsDown size={18} />
             </button>
             {message.assetUrl && message.assetType === 'audio' ? (
               <button
                 onClick={() => onPlayAudio(message.assetUrl!)}
                 aria-label="Play audio"
-                className="h-7 w-7 flex items-center justify-center rounded-full hover:bg-zinc-900 hover:text-zinc-200 transition active:scale-95"
+                className="h-9 w-9 flex items-center justify-center rounded-full text-neutral-500 hover:bg-neutral-800 hover:text-neutral-200 transition-all duration-200 active:scale-95"
                 style={{ color: accent }}
               >
-                <Volume2 size={13} />
+                <Volume2 size={18} />
               </button>
             ) : null}
             {message.assetUrl && message.assetType === 'video' ? (
               <button
                 onClick={togglePiP}
                 aria-label="Picture in picture"
-                className="h-7 w-7 flex items-center justify-center rounded-full hover:bg-zinc-900 hover:text-zinc-200 transition active:scale-95"
+                className="h-9 w-9 flex items-center justify-center rounded-full text-neutral-500 hover:bg-neutral-800 hover:text-neutral-200 transition-all duration-200 active:scale-95"
               >
-                <PictureInPicture2 size={13} />
+                <PictureInPicture2 size={18} />
               </button>
             ) : null}
             {message.assetUrl ? (
               <button
                 onClick={downloadAsset}
                 aria-label="Download media"
-                className="h-7 w-7 flex items-center justify-center rounded-full hover:bg-zinc-900 hover:text-zinc-200 transition active:scale-95"
+                className="h-9 w-9 flex items-center justify-center rounded-full text-neutral-500 hover:bg-neutral-800 hover:text-neutral-200 transition-all duration-200 active:scale-95"
               >
-                <Download size={13} />
+                <Download size={18} />
               </button>
             ) : null}
             {message.sourcePrompt ? (
               <button
                 onClick={onRegenerate}
                 aria-label="Regenerate"
-                className="h-7 w-7 flex items-center justify-center rounded-full hover:bg-zinc-900 hover:text-zinc-200 transition active:scale-95"
+                className="h-9 w-9 flex items-center justify-center rounded-full text-neutral-500 hover:bg-neutral-800 hover:text-neutral-200 transition-all duration-200 active:scale-95"
               >
-                <RotateCcw size={13} />
+                <RotateCcw size={18} />
               </button>
             ) : null}
           </div>
