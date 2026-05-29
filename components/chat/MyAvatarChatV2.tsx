@@ -74,7 +74,10 @@ import type { ServiceChatAttachment } from '@/components/service-chat/types';
 import { resolveAvatarVideo } from '@/lib/avatar/video-config';
 import { useKeyboardResilience } from '@/hooks/useKeyboardResilience';
 
-const ACCENT = '#22d3ee';
+// Monochrome system accent (near-white). Keeps the whole workspace flat and
+// premium (Apple/Gemini dark aesthetic) — no neon, no chroma. Drives the send
+// button, skeleton spinners, speaker glyphs, and audio scrubber.
+const ACCENT = '#e5e5e5';
 
 // Bundled fallback so the floating widget always renders the real executive
 // avatar even when NEXT_PUBLIC_AVATAR_IDLE_VIDEO_URL isn't configured in the
@@ -709,7 +712,7 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated }: Pr
             onClick={() => setSettingsOpen((v) => !v)}
             aria-label={copy.settings}
             aria-expanded={settingsOpen}
-            className={`h-9 w-9 rounded-full flex items-center justify-center transition active:scale-95 ${settingsOpen ? 'text-cyan-300 bg-zinc-900' : 'text-zinc-300 hover:text-zinc-50 hover:bg-zinc-900'}`}
+            className={`h-9 w-9 rounded-full flex items-center justify-center transition active:scale-95 ${settingsOpen ? 'text-neutral-50 bg-neutral-800' : 'text-zinc-300 hover:text-zinc-50 hover:bg-zinc-900'}`}
           >
             <Settings size={18} />
           </button>
@@ -752,7 +755,7 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated }: Pr
                       <button
                         key={lc}
                         onClick={() => changeLanguage(lc)}
-                        className={`flex-1 h-8 rounded-lg text-[12px] font-semibold uppercase transition active:scale-95 border ${lang === lc ? 'border-cyan-400/50 bg-[#121212] text-cyan-200' : 'border-white/10 bg-[#121212] text-zinc-400 hover:text-zinc-200'}`}
+                        className={`flex-1 h-8 rounded-lg text-[12px] font-semibold uppercase transition active:scale-95 border ${lang === lc ? 'border-white/25 bg-neutral-800 text-neutral-50' : 'border-white/10 bg-[#121212] text-zinc-400 hover:text-zinc-200'}`}
                       >
                         {lc}
                       </button>
@@ -767,8 +770,8 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated }: Pr
                     <span className="flex items-center gap-2">
                       {avatarSoundOn ? <Volume2 size={15} /> : <VolumeX size={15} />} {copy.sound}
                     </span>
-                    <span className={`relative h-5 w-9 rounded-full transition ${avatarSoundOn ? 'bg-cyan-500/70' : 'bg-zinc-700'}`}>
-                      <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white transition-all ${avatarSoundOn ? 'left-[1.125rem]' : 'left-0.5'}`} />
+                    <span className={`relative h-5 w-9 rounded-full transition ${avatarSoundOn ? 'bg-neutral-200' : 'bg-zinc-700'}`}>
+                      <span className={`absolute top-0.5 h-4 w-4 rounded-full transition-all ${avatarSoundOn ? 'left-[1.125rem] bg-neutral-900' : 'left-0.5 bg-white'}`} />
                     </span>
                   </button>
                 </motion.div>
@@ -808,7 +811,7 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated }: Pr
             exit={{ opacity: 0 }}
             className="fixed inset-0 z-[60] bg-[#030303] flex items-center justify-center"
           >
-            <div className="relative h-full w-full overflow-hidden md:h-[94vh] md:w-auto md:aspect-[9/16] md:rounded-[1.75rem] md:border md:border-white/10 md:shadow-[0_40px_140px_-30px_rgba(34,211,238,0.6)]">
+            <div className="relative h-full w-full overflow-hidden md:h-[94vh] md:w-auto md:aspect-[9/16] md:rounded-[1.75rem] md:border md:border-white/10 md:shadow-[0_40px_140px_-30px_rgba(0,0,0,0.85)]">
               {HAS_AVATAR_VIDEO ? (
                 <video
                   ref={fullVideoRef}
@@ -820,7 +823,7 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated }: Pr
                 />
               ) : (
                 <div className="flex h-full w-full flex-col items-center justify-center gap-4 text-zinc-400">
-                  <span className="flex h-28 w-28 items-center justify-center rounded-full bg-gradient-to-br from-cyan-400 via-sky-500 to-blue-600 text-white text-[44px]">🤖</span>
+                  <span className="flex h-28 w-28 items-center justify-center rounded-full bg-neutral-800 border border-white/10 text-neutral-200 text-[44px]">🤖</span>
                   <p className="text-sm">Live avatar</p>
                 </div>
               )}
@@ -867,9 +870,9 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated }: Pr
             style={{
               bottom: 'calc(150px + env(safe-area-inset-bottom, 0px))',
               right: 16,
-              border: `2px solid ${ACCENT}55`,
-              boxShadow: `0 10px 36px -8px ${ACCENT}99`,
-              background: 'radial-gradient(60% 60% at 50% 35%, rgba(34,211,238,0.18), rgba(0,0,0,0.6))',
+              border: '2px solid rgba(255,255,255,0.14)',
+              boxShadow: '0 10px 36px -8px rgba(0,0,0,0.85)',
+              background: 'radial-gradient(60% 60% at 50% 35%, rgba(255,255,255,0.06), rgba(0,0,0,0.65))',
             }}
           >
             {HAS_AVATAR_VIDEO ? (
@@ -886,7 +889,7 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated }: Pr
             ) : (
               <span className="text-[24px] pointer-events-none" aria-hidden>🤖</span>
             )}
-            <span aria-hidden className="pointer-events-none absolute -inset-1 rounded-full ring-2 ring-cyan-400/30 animate-ping" />
+            <span aria-hidden className="pointer-events-none absolute -inset-px rounded-full ring-1 ring-white/10" />
             <span className="absolute bottom-0.5 right-0.5 h-4 w-4 rounded-full bg-[#030303] border border-zinc-700/80 flex items-center justify-center pointer-events-none">
               <Maximize2 size={9} className="text-zinc-300" />
             </span>
@@ -931,7 +934,7 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated }: Pr
           <div className="rounded-2xl border border-white/[0.06] bg-[#0a0a0a] transition-colors focus-within:border-white/[0.12]">
             {/* Mode selector — sets the orchestrator service context */}
             <div className="flex gap-1.5 overflow-x-auto px-2 pt-2 pb-1.5 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
-              {MODES.map(({ id, Icon, accent, label }) => {
+              {MODES.map(({ id, Icon, label }) => {
                 const active = mode === id;
                 return (
                   <button
@@ -939,13 +942,13 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated }: Pr
                     type="button"
                     onClick={() => setMode(id)}
                     aria-pressed={active}
-                    className={`flex-shrink-0 inline-flex items-center gap-1.5 h-8 px-3 rounded-full text-[12px] font-medium border bg-[#121212] transition-colors active:scale-95 ${
+                    className={`flex-shrink-0 inline-flex items-center gap-1.5 h-8 px-3 rounded-full text-[12px] font-medium border transition-colors active:scale-95 ${
                       active
-                        ? 'border-cyan-400/40 text-zinc-100'
-                        : 'border-transparent text-zinc-400 hover:text-zinc-200'
+                        ? 'border-white/15 bg-neutral-800 text-neutral-50'
+                        : 'border-transparent bg-[#121212] text-zinc-400 hover:text-zinc-200'
                     }`}
                   >
-                    <Icon size={14} style={active ? { color: accent } : undefined} />
+                    <Icon size={14} />
                     {label[lang]}
                   </button>
                 );
@@ -1085,7 +1088,7 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated }: Pr
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 12 }}
             role="alert"
-            className="fixed left-1/2 z-[70] -translate-x-1/2 rounded-full border border-amber-400/30 bg-[#1a1407]/95 px-4 py-2 text-[12.5px] font-medium text-amber-200 shadow-[0_12px_40px_-12px_rgba(0,0,0,0.8)] backdrop-blur-md"
+            className="fixed left-1/2 z-[70] -translate-x-1/2 rounded-full border border-white/15 bg-neutral-900/95 px-4 py-2 text-[12.5px] font-medium text-neutral-100 shadow-[0_12px_40px_-12px_rgba(0,0,0,0.8)] backdrop-blur-md"
             style={{ bottom: 'calc(180px + env(safe-area-inset-bottom, 0px))' }}
           >
             {notice}
