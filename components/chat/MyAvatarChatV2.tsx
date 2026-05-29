@@ -40,7 +40,6 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Box,
   Camera,
-  Check,
   Download,
   Globe,
   ImagePlus,
@@ -104,6 +103,8 @@ interface ChatMessage {
   sourcePrompt?: string;
   agentId?: string;
   model?: string;
+  /** Service mode that produced this asset (drives preview aspect, e.g. avatar→9:16). */
+  mode?: ServiceMode;
 }
 
 interface ChatState {
@@ -322,7 +323,9 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated }: Pr
   );
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [avatarSoundOn, setAvatarSoundOn] = useState(false);
-  const [pipeline, setPipeline] = useState<PipelineState | null>(null);
+  // Async lifecycle state retained for telemetry/diagnostics; the visible
+  // loading affordance is the shaped <MediaSkeleton/>.
+  const [, setPipeline] = useState<PipelineState | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const noticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -343,10 +346,19 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated }: Pr
   const fullVideoRef = useRef<HTMLVideoElement>(null);    // expanded 9:16 preview
   const avatarDraggedRef = useRef(false);                 // distinguishes drag from tap
 
-  // ── Auto-scroll on new message ─────────────────────────────────────
+  // ── Auto-scroll on new message / async resolve ─────────────────────
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
   }, [messages.length, isLoading]);
+
+  // ── Restore focus to the composer the instant generation finishes ──
+  // (only on the loading→idle transition, never on initial mount, so we
+  // don't force the mobile keyboard open before the user types).
+  const wasLoadingRef = useRef(false);
+  useEffect(() => {
+    if (wasLoadingRef.current && !isLoading) inputRef.current?.focus();
+    wasLoadingRef.current = isLoading;
+  }, [isLoading]);
 
   // ── Auto-resize textarea ───────────────────────────────────────────
   useEffect(() => {
@@ -523,6 +535,7 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated }: Pr
           assetUrl: audioUrl,
           assetType: 'audio',
           sourcePrompt: text,
+          mode: 'voice',
           model: ttsRes.headers.get('X-Voice-Provider') || 'elevenlabs',
         }});
         return;
@@ -565,6 +578,7 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated }: Pr
         assetUrl: resp.assetUrl ?? null,
         assetType,
         sourcePrompt: text,
+        mode,
         agentId: resp.metadata?.agentId,
         model: resp.metadata?.model,
       }});
@@ -773,16 +787,7 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated }: Pr
           ) : (
             messages.map((m) => <MessageBubble key={m.id} message={m} accent={ACCENT} onRegenerate={() => sendMessage(m.sourcePrompt)} onFeedback={sendFeedback} onPlayAudio={playAssetAudio} />)
           )}
-          {isLoading ? (
-            pipeline?.active ? (
-              <AgentTelemetry pipeline={pipeline} lang={lang} />
-            ) : (
-              <div className="flex items-center gap-2 text-[12px] text-zinc-400">
-                <Loader2 className="w-4 h-4 animate-spin" style={{ color: ACCENT }} />
-                <span>…</span>
-              </div>
-            )
-          ) : null}
+          {isLoading ? <MediaSkeleton mode={mode} accent={ACCENT} /> : null}
           <div ref={endRef} />
         </div>
       </main>
@@ -1127,29 +1132,25 @@ function MessageBubble({
       : 'bin';
     const filename = `myavatar-${message.id}.${ext}`;
 
-    const standalone =
-      window.matchMedia?.('(display-mode: standalone)').matches ||
-      (window.navigator as Navigator & { standalone?: boolean }).standalone === true;
-
-    // In a standalone PWA / iOS web-view a plain cross-origin anchor opens a
-    // blank frame instead of saving. Force a fetch→blob→objectURL save; fall
-    // back to a direct anchor when the fetch is CORS-blocked.
-    if (standalone || url.startsWith('blob:') || url.startsWith('data:')) {
-      try {
-        const res = await fetch(url, { credentials: 'omit' });
-        if (!res.ok) throw new Error('fetch failed');
-        const objectUrl = URL.createObjectURL(await res.blob());
-        const a = document.createElement('a');
-        a.href = objectUrl;
-        a.download = filename;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        setTimeout(() => URL.revokeObjectURL(objectUrl), 10000);
-        return;
-      } catch {
-        /* CORS / network — fall through to direct navigation */
-      }
+    // Always route through arrayBuffer → Blob(application/octet-stream) so the
+    // browser is forced to SAVE rather than navigate/open a raw asset tab —
+    // critical for standalone Safari/PWA web-views. Falls back to a direct
+    // anchor only when the fetch is CORS-blocked (truly cross-origin assets).
+    try {
+      const res = await fetch(url, { credentials: 'omit' });
+      if (!res.ok) throw new Error('fetch failed');
+      const buf = await res.arrayBuffer();
+      const objectUrl = URL.createObjectURL(new Blob([buf], { type: 'application/octet-stream' }));
+      const a = document.createElement('a');
+      a.href = objectUrl;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(objectUrl), 15000);
+      return;
+    } catch {
+      /* CORS / network — best-effort direct anchor */
     }
 
     const a = document.createElement('a');
@@ -1191,20 +1192,33 @@ function MessageBubble({
           </button>
         ) : null}
         {message.assetUrl && message.assetType === 'video' ? (
-          <video
-            ref={bubbleVideoRef}
-            controls
-            playsInline
-            preload="metadata"
-            // translateZ(0) promotes to a compositor layer so PiP / tab-switch
-            // on memory-constrained mobile doesn't stall the decode pipeline.
-            // object-contain preserves the source aspect (9:16 avatar / 16:9 film)
-            // inside a bounded premium frame without distortion.
-            style={{ transform: 'translateZ(0)' }}
-            className="rounded-2xl border border-zinc-800/70 max-w-full max-h-[320px] w-auto object-contain bg-black"
-          >
-            <source src={message.assetUrl} />
-          </video>
+          message.mode === 'avatar' ? (
+            // Avatar → strict native 9:16 portrait stage (object-cover, premium framing).
+            <div className="aspect-[9/16] w-full max-w-[320px] rounded-2xl overflow-hidden border border-zinc-800/70 shadow-2xl bg-black">
+              <video
+                ref={bubbleVideoRef}
+                controls
+                playsInline
+                preload="metadata"
+                style={{ transform: 'translateZ(0)' }}
+                className="h-full w-full object-cover"
+              >
+                <source src={message.assetUrl} />
+              </video>
+            </div>
+          ) : (
+            // Film / other → adaptive responsive framing (object-contain, no distortion).
+            <video
+              ref={bubbleVideoRef}
+              controls
+              playsInline
+              preload="metadata"
+              style={{ transform: 'translateZ(0)' }}
+              className="rounded-2xl border border-zinc-800/70 max-w-full max-h-[320px] w-auto object-contain bg-black"
+            >
+              <source src={message.assetUrl} />
+            </video>
+          )
         ) : null}
         {message.assetUrl && message.assetType === 'audio' ? (
           <div className="w-full max-w-sm rounded-2xl border border-zinc-800/70 bg-[#0a0a0a] p-3">
@@ -1304,51 +1318,55 @@ function MessageBubble({
   );
 }
 
-/* ─── Live agent telemetry — bound to real backend prediction status ─────────
- * Monochrome, sequential progress. Each stage's state comes from derivePipeline
- * (real predictionStatus / composite metadata.legs), never from a timer. */
+/* ─── Shaped skeleton loaders — the placeholder assumes the exact shape of the
+ * incoming asset (9:16 for avatar, square for image, 16:9 for film, waveform for
+ * audio) so the real preview lands with zero layout shift. */
 
-function AgentTelemetry({ pipeline, lang }: { pipeline: PipelineState; lang: 'en' | 'ka' | 'ru' }) {
-  const visible = pipeline.stages.filter((s) => s.state !== 'skipped');
-  if (visible.length === 0) return null;
-
-  return (
-    <div className="w-full max-w-md rounded-2xl border border-zinc-800/70 bg-[#0a0a0a] p-3.5">
-      <div className="flex flex-col gap-2.5">
-        {visible.map((s) => (
-          <div key={s.key} className="flex items-center gap-2.5">
-            <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center">
-              {s.state === 'active' ? (
-                <Loader2 size={15} className="animate-spin text-zinc-100" />
-              ) : s.state === 'done' ? (
-                <Check size={15} className="text-zinc-400" />
-              ) : s.state === 'failed' ? (
-                <X size={15} className="text-rose-400" />
-              ) : (
-                <span className="h-2 w-2 rounded-full border border-zinc-600" />
-              )}
-            </span>
-            <span
-              className={`text-[12.5px] ${
-                s.state === 'active'
-                  ? 'text-zinc-100'
-                  : s.state === 'done'
-                  ? 'text-zinc-400'
-                  : s.state === 'failed'
-                  ? 'text-rose-300'
-                  : 'text-zinc-600'
-              }`}
-            >
-              {s.label[lang]}
-            </span>
-            {s.state === 'active' ? (
-              <span className="ml-auto h-1 w-16 overflow-hidden rounded-full bg-zinc-800">
-                <span className="block h-full w-2/3 animate-pulse rounded-full bg-zinc-300/70" />
-              </span>
-            ) : null}
-          </div>
-        ))}
+function MediaSkeleton({ mode, accent }: { mode: ServiceMode; accent: string }) {
+  // Chat → slim text shimmer.
+  if (mode === 'global') {
+    return (
+      <div className="flex items-center gap-2.5">
+        <Loader2 className="w-4 h-4 animate-spin flex-shrink-0" style={{ color: accent }} />
+        <div className="flex flex-col gap-1.5">
+          <span className="h-2.5 w-40 rounded bg-neutral-800 animate-pulse" />
+          <span className="h-2.5 w-24 rounded bg-neutral-800 animate-pulse" />
+        </div>
       </div>
+    );
+  }
+
+  // Music / Voice → sleek pulsing waveform.
+  if (mode === 'music' || mode === 'voice') {
+    return (
+      <div className="w-full max-w-sm rounded-2xl border border-zinc-800/70 bg-[#0a0a0a] p-3">
+        <div className="flex items-center gap-2 pb-2 text-[12px] text-zinc-400">
+          <Loader2 className="w-3.5 h-3.5 animate-spin" style={{ color: accent }} />
+          <span>{mode === 'voice' ? 'Synthesizing voice…' : 'Composing…'}</span>
+        </div>
+        <div className="flex items-end gap-[3px] h-12">
+          {Array.from({ length: 32 }).map((_, i) => (
+            <span
+              key={i}
+              className="flex-1 rounded-full bg-neutral-800 animate-pulse"
+              style={{ height: `${25 + ((i * 41) % 70)}%`, animationDelay: `${(i % 8) * 90}ms` }}
+            />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // Image / Video / Avatar → a block in the exact future aspect ratio.
+  const shape =
+    mode === 'avatar' ? 'aspect-[9/16] w-full max-w-[320px]'
+    : mode === 'image' ? 'aspect-square w-full max-w-[280px]'
+    : 'aspect-video w-full max-w-full';
+  return (
+    <div className={`relative overflow-hidden rounded-2xl border border-zinc-800/70 bg-neutral-900 animate-pulse ${shape}`}>
+      <span className="absolute inset-0 flex items-center justify-center">
+        <Loader2 className="w-6 h-6 animate-spin" style={{ color: accent }} />
+      </span>
     </div>
   );
 }
