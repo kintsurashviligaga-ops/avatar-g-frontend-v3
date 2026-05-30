@@ -2,11 +2,14 @@ import {
   isThirtySecondFilm,
   buildConsistencySeed,
   buildCharacterAnchor,
+  buildStyleGuide,
+  sceneBeat,
   planFilmScenes,
   buildFilmClipRequest,
   filmProgressStages,
   FILM_TOTAL_SEC,
   FILM_SCENE_COUNT,
+  type FilmShared,
 } from './filmPipeline';
 
 describe('film constants', () => {
@@ -105,6 +108,72 @@ describe('planFilmScenes — continuity-locked production plan', () => {
     const plan = planFilmScenes('a city at dawn', { style: 'noir' });
     expect(plan.shared.style).toBe('noir');
     expect(plan.scenes.every((s) => /noir/i.test(s.prompt))).toBe(true);
+  });
+
+  // PHASE 44 §2 — the real defect the live-fire exposed: a monotone film.
+  it('gives every scene a DISTINCT cinematic composition (no monotone loop)', () => {
+    const plan = planFilmScenes('a cyberpunk samurai walks through neon Tokyo');
+    const heads = plan.scenes.map((s) => s.prompt.split(' — ')[0]);
+    // All five framings differ — the film is an arc, not one beat ×5.
+    expect(new Set(heads).size).toBe(plan.scenes.length);
+    // The arc opens on an establishing shot and closes on a resolving pull-back.
+    expect(plan.scenes[0]!.prompt).toMatch(/establishing/i);
+    expect(plan.scenes[plan.scenes.length - 1]!.prompt).toMatch(/pull-back|resol/i);
+    // A mid-film close-up re-asserts the protagonist's identity (continuity anchor).
+    expect(plan.scenes.some((s) => /close-up/i.test(s.prompt))).toBe(true);
+  });
+
+  it('stamps the rigid visual style guide on EVERY scene (locked world)', () => {
+    const plan = planFilmScenes('a knight crosses a frozen lake', { style: 'epic' });
+    for (const scene of plan.scenes) {
+      expect(scene.prompt).toContain('Rigid visual style guide');
+      expect(scene.prompt).toMatch(/consistent color palette/i);
+    }
+  });
+
+  it('varies the camera motion across the arc while the seed stays constant', () => {
+    const plan = planFilmScenes('a lighthouse in a storm');
+    const seeds = new Set(plan.scenes.map((s) => s.seed));
+    expect(seeds.size).toBe(1); // continuity: one seed
+    const motions = new Set(plan.scenes.map((s) => s.cameraMotion));
+    expect(motions.size).toBeGreaterThan(1); // progression: distinct camera grammar
+  });
+});
+
+describe('sceneBeat — deterministic cinematic arc selection', () => {
+  it('always opens establishing and closes resolving for a 5-beat film', () => {
+    expect(sceneBeat(0, 5).framing).toMatch(/establishing/i);
+    expect(sceneBeat(4, 5).framing).toMatch(/pull-back|resolve/i);
+  });
+
+  it('degrades coherently for any scene count (1..8)', () => {
+    for (let count = 1; count <= 8; count++) {
+      for (let i = 0; i < count; i++) {
+        expect(typeof sceneBeat(i, count).framing).toBe('string');
+        expect(sceneBeat(i, count).framing.length).toBeGreaterThan(0);
+      }
+    }
+    // A single-scene film still establishes.
+    expect(sceneBeat(0, 1).framing).toMatch(/establishing/i);
+  });
+});
+
+describe('buildStyleGuide — the rigid continuity contract', () => {
+  const base: FilmShared = {
+    seed: 1, characterAnchor: 'x', avatarReference: null, style: null, sceneCount: 5, totalSec: 30,
+  };
+  it('locks palette, lighting, lens and character design', () => {
+    const g = buildStyleGuide(base);
+    expect(g).toMatch(/color palette/i);
+    expect(g).toMatch(/lighting/i);
+    expect(g).toMatch(/lens/i);
+    expect(g).toMatch(/character design/i);
+  });
+  it('folds the chosen aesthetic in when a style is set', () => {
+    expect(buildStyleGuide({ ...base, style: 'noir' })).toMatch(/noir aesthetic/i);
+  });
+  it('locks to the user avatar identity when supplied', () => {
+    expect(buildStyleGuide({ ...base, avatarReference: 'avatar://me' })).toMatch(/custom avatar/i);
   });
 });
 

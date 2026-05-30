@@ -2108,6 +2108,7 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
               diagnosticsLoading: xc.diagnosticsLoading, diagnosticsSlow: xc.diagnosticsSlow,
               mediaUnavailable: xc.mediaUnavailable, retry: xc.retry,
             }}
+            autoplay={prefs.autoplayMedia}
             onClose={closeWorkspace}
             onRefine={applyRefinement}
           />
@@ -2827,7 +2828,7 @@ function assetFileBase(message: { id: string; sourcePrompt?: string }): string {
 type Aspect = 'native' | '9:16' | '16:9';
 
 function PreviewWorkspace({
-  message, lang, accent, labels, onClose, onRefine,
+  message, lang, accent, labels, autoplay = false, onClose, onRefine,
 }: {
   message: ChatMessage;
   lang: 'en' | 'ka' | 'ru';
@@ -2838,6 +2839,9 @@ function PreviewWorkspace({
     refine: string; download: string; close: string; copyLink: string; linkCopied: string;
     diagnosticsLoading: string; diagnosticsSlow: string; mediaUnavailable: string; retry: string;
   };
+  /** PHASE 44 §3 — when on, the mounted film/video auto-plays (muted, per
+   *  browser policy) the instant it decodes, with native controls left visible. */
+  autoplay?: boolean;
   onClose: () => void;
   onRefine: (instruction: string) => void;
 }) {
@@ -2863,6 +2867,10 @@ function PreviewWorkspace({
   // bring the workspace into active display center rather than leaving it parked
   // off-screen in the desktop split-pane.
   const rootRef = useRef<HTMLElement>(null);
+  // PHASE 44 §3 — direct handle on the workspace <video> so we can kick off a
+  // muted autoplay the instant the master film/clip decodes (browsers block
+  // unmuted autoplay), while leaving the native controls fully interactive.
+  const previewVideoRef = useRef<HTMLVideoElement>(null);
 
   const mode: ServiceMode = message.mode ?? 'global';
   const agent = AGENTS[mode];
@@ -2909,6 +2917,19 @@ function PreviewWorkspace({
     const t = setTimeout(() => setLoadPhase('slow'), 6000);
     return () => clearTimeout(t);
   }, [mediaReady, mediaError, message.id]);
+
+  // PHASE 44 §3 — autoplay polish. When the preference is on and the decoded
+  // artifact is a video (a finished 30-second film or a single clip), start
+  // playback muted the moment it's ready. Muting satisfies the browser
+  // autoplay gate; native controls stay visible so the user can unmute/scrub.
+  // Gated on `mediaReady` so we play a decoded surface (no flash, no CLS).
+  useEffect(() => {
+    if (!autoplay || assetType !== 'video' || !assetUrl || !mediaReady) return;
+    const v = previewVideoRef.current;
+    if (!v) return;
+    v.muted = true;
+    void Promise.resolve(v.play()).catch(() => { /* gate still closed — controls remain */ });
+  }, [autoplay, assetType, assetUrl, mediaReady, reloadNonce]);
 
   const frameClass =
     aspect === '9:16' ? 'aspect-[9/16] max-h-[64vh] mx-auto'
@@ -3122,6 +3143,7 @@ function PreviewWorkspace({
           <div className={`relative w-full overflow-hidden rounded-2xl border border-zinc-800/70 bg-black ${frameClass}`}>
             <video
               key={`vid-${reloadNonce}`}
+              ref={previewVideoRef}
               controls
               playsInline
               preload="metadata"

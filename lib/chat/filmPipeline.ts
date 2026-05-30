@@ -86,6 +86,65 @@ export function buildCharacterAnchor(prompt: string, opts: FilmPlanOptions = {})
   return 'the same primary character — identical face, wardrobe, palette and styling in every shot';
 }
 
+/**
+ * PHASE 44 §2 — The rigid VISUAL STYLE GUIDE stamped, verbatim, on every scene.
+ *
+ * The seed locks the diffusion noise; this clause locks the *semantics* the seed
+ * alone can't guarantee — wardrobe, palette, lighting, lens, grain, character
+ * design. Appended identically to all N clips so that, even as the camera and
+ * composition change shot-to-shot, the world and protagonist do not. This is the
+ * "rigid visual style guide" continuity contract the Master Agent enforces.
+ */
+export function buildStyleGuide(shared: FilmShared): string {
+  const aesthetic = shared.style ? `${shared.style} aesthetic` : 'a single consistent cinematic aesthetic';
+  const identity = shared.avatarReference
+    ? "the user's custom avatar (same face, hair, wardrobe)"
+    : 'the same character design (same face, hair, wardrobe)';
+  return (
+    `Rigid visual style guide — identical in every shot: ${aesthetic}; one consistent color palette; `
+    + `consistent key and rim lighting; the same lens, depth of field and film grain; unchanged props and set dressing; `
+    + `${identity}.`
+  );
+}
+
+// ─── Cinematic shot progression (the real Storyboard arc) ────────────────────
+//
+// PHASE 44 §2 — Without a Claude scene-writer the planner used to emit five
+// identical prompts (differing only by " — shot N of 5"), so all five clips
+// rendered as the same 6-second beat: continuity was perfect but the film was a
+// monotone loop. This deterministic 5-beat grammar gives each scene a distinct
+// composition + camera move (a genuine establishing → resolution arc) WITHOUT
+// touching the seed or the style guide — so the protagonist holds while the
+// cinematography actually progresses. Beat 3's enforced close-up doubles as a
+// continuity anchor (it re-asserts the face mid-film).
+
+interface CinematicBeat {
+  /** Composition + camera direction folded into one render-ready framing phrase. */
+  framing: string;
+  /** One of script-breakdown's CAMERA_MOTIONS, kept honest for the segment record. */
+  cameraMotion: string;
+}
+
+const CINEMATIC_BEATS: readonly CinematicBeat[] = [
+  { framing: 'Wide cinematic establishing shot with a slow push-in, revealing the world and the protagonist entering frame', cameraMotion: 'zoom_in' },
+  { framing: 'Medium tracking shot gliding alongside the protagonist as they move through the scene', cameraMotion: 'dolly' },
+  { framing: 'Intimate close-up holding on the protagonist’s face and signature details', cameraMotion: 'pan_left' },
+  { framing: 'Dynamic low-angle hero shot at the dramatic peak of the action', cameraMotion: 'pan_right' },
+  { framing: 'Sweeping crane pull-back as the protagonist settles and the scene resolves', cameraMotion: 'zoom_out' },
+];
+
+/**
+ * Select the cinematic beat for scene `index` of `count`. The first scene always
+ * establishes and the last always resolves; the middle scenes spread evenly
+ * across the remaining beats, so any scene count (1–8) yields a coherent arc.
+ */
+export function sceneBeat(index: number, count: number): CinematicBeat {
+  const last = CINEMATIC_BEATS.length - 1;
+  if (count <= 1) return CINEMATIC_BEATS[0]!;
+  const pos = Math.min(1, Math.max(0, index / (count - 1)));
+  return CINEMATIC_BEATS[Math.round(pos * last)]!;
+}
+
 // ─── Plan model ──────────────────────────────────────────────────────────────
 
 export interface FilmPlanOptions {
@@ -138,6 +197,10 @@ export function planFilmScenes(prompt: string, opts: FilmPlanOptions = {}): Film
   const seed = buildConsistencySeed(prompt);
   const characterAnchor = buildCharacterAnchor(prompt, opts);
   const traits = extractPromptTraits(prompt, { defaultAudio: true });
+  // The core subject, stripped of the splitter's " — shot N of N" suffix so each
+  // scene reframes the SAME subject under a different cinematic beat.
+  const subject = String(prompt || '').trim().replace(/\s*—\s*shot\s+\d+\s+of\s+\d+\s*$/i, '')
+    || 'cinematic establishing shot';
 
   const shared: FilmShared = {
     seed,
@@ -148,15 +211,21 @@ export function planFilmScenes(prompt: string, opts: FilmPlanOptions = {}): Film
     totalSec,
   };
 
+  const styleGuide = buildStyleGuide(shared);
+
   const scenes: FilmScene[] = segments.map((seg) => {
-    const continuity = `Continuity: ${characterAnchor}. Match the palette and lighting of the other shots (consistency seed ${seed}).`;
-    const styled = shared.style ? `${seg.prompt}, ${shared.style} style` : seg.prompt;
-    const enriched = enrichVideoPrompt(`${styled}. ${continuity}`, traits, 1200);
+    // §2 — vary the COMPOSITION per scene (real storyboard arc)…
+    const beat = sceneBeat(seg.index, segments.length);
+    const styled = shared.style ? `, ${shared.style} style` : '';
+    const head = `${beat.framing} — ${subject}${styled}`;
+    // …while the seed + style guide + character anchor hold the world CONSTANT.
+    const continuity = `${styleGuide} Continuity: ${characterAnchor}; match every other shot exactly (consistency seed ${seed}).`;
+    const enriched = enrichVideoPrompt(`${head}. ${continuity}`, traits, 1200);
     return {
       index: seg.index,
       ordinal: seg.index + 1,
       durationSec: seg.durationSec,
-      cameraMotion: seg.cameraMotion,
+      cameraMotion: beat.cameraMotion,
       prompt: enriched,
       seed,
     };
