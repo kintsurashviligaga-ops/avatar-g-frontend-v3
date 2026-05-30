@@ -1,4 +1,5 @@
 import { setTimeout as delay } from 'timers/promises';
+import { resolveUdioApiKey, UDIO_API_KEY_ALIASES } from '@/lib/chat/mediaKeys';
 
 export type UdioTaskStatus = 'queued' | 'processing' | 'succeeded' | 'failed';
 
@@ -107,9 +108,11 @@ function buildUdioAuthHeaders(apiKey: string): Record<string, string> {
 }
 
 function getUdioApiKey(): string {
-  const key = process.env.UDIO_API_KEY?.trim();
+  // PHASE 46 §1 — resolve from any provisioned Udio alias so a host-aliased key
+  // still fires the real generation call instead of throwing "not configured".
+  const key = resolveUdioApiKey();
   if (!key) {
-    throw new Error('UDIO_API_KEY is not configured');
+    throw new Error(`UDIO_API_KEY is not configured (${UDIO_API_KEY_ALIASES.join(' / ')})`);
   }
   return key;
 }

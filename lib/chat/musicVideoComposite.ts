@@ -40,6 +40,7 @@ import { createServiceRoleClient } from '@/lib/supabase/server';
 import { ServiceManager } from './ServiceManager';
 import { encodeCompositeRef } from './compositeTaskRef';
 import { hasLtxApiKey } from './ltxKey';
+import { hasUdioApiKey } from './mediaKeys';
 
 const serviceManager = new ServiceManager();
 
@@ -199,7 +200,7 @@ export async function handleMusicVideoComposite(input: OrchestratorInput): Promi
   const baseStyle = opts.style?.toLowerCase() || 'hip-hop';
 
   // Music leg — Udio.
-  const musicPromise: Promise<string | null> = process.env.UDIO_API_KEY
+  const musicPromise: Promise<string | null> = hasUdioApiKey()
     ? withTrace(
         {
           userId: input.userId || null,

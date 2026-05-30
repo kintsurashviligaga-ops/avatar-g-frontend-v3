@@ -28,6 +28,7 @@
 
 import 'server-only';
 import { hasLtxApiKey } from './ltxKey';
+import { hasUdioApiKey } from './mediaKeys';
 import type { OrchestratorInput, ChatResponse } from './providerRouter';
 import { withTrace } from '@/lib/observability/agentTrace';
 import { forecastMarginForAction } from '@/lib/monetization/audit-engine';
@@ -248,7 +249,7 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
 
   // ── Leg 4: bind one cohesive audio track across the timeline (Udio) ────────
   let musicWorkId: string | null = null;
-  if (anyClip && process.env.UDIO_API_KEY) {
+  if (anyClip && hasUdioApiKey()) {
     try {
       const audioForecast = forecastMarginForAction('voice_tts');
       musicWorkId = await withTrace(

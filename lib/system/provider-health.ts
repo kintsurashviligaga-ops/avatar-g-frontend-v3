@@ -1,6 +1,7 @@
 import 'server-only';
 
 import { resolveLtxApiKey } from '@/lib/chat/ltxKey';
+import { resolveUdioApiKey } from '@/lib/chat/mediaKeys';
 
 type ProviderName = 'openai' | 'udio' | 'worldlabs' | 'heygen' | 'ltx' | 'anthropic' | 'gemini';
 
@@ -40,14 +41,16 @@ const ROUTING_MATRIX: Array<{ category: ServiceRoutingAudit['category']; provide
 ];
 
 function hasKey(provider: ProviderName): boolean {
-  // PHASE 45 §1 — LTX ships under several historical aliases; honour all of them.
+  // PHASE 45/46 §1 — LTX and Udio ship under several historical aliases; honour all.
   if (provider === 'ltx') return resolveLtxApiKey() !== null;
+  if (provider === 'udio') return resolveUdioApiKey() !== null;
   const env = PROVIDER_ENV[provider];
   return typeof process.env[env] === 'string' && String(process.env[env]).trim().length > 0;
 }
 
 function getKey(provider: ProviderName): string {
   if (provider === 'ltx') return resolveLtxApiKey() || '';
+  if (provider === 'udio') return resolveUdioApiKey() || '';
   return String(process.env[PROVIDER_ENV[provider]] || '').trim();
 }
 

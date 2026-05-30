@@ -304,6 +304,17 @@ const FILM_AGENT_DIALOGUE = [
   '🎵 Editor Agent syncing Udio score and ElevenLabs audio master track…',
 ] as const;
 
+// PHASE 46 §3 — graceful failure boundaries. When a provider leg throws a
+// transient network/auth error mid-generation, the telemetry strip degrades to
+// one of these honest fallback lines instead of locking the skeleton in an
+// infinite spin. The pipeline itself already treats audio as optional, so the
+// film still mounts — these lines just narrate the degraded path truthfully.
+const FILM_AGENT_FALLBACKS = {
+  audio: '⚠️ Audio agent auth failed – mounting film with local ambient soundtrack fallback…',
+  clip: '⚠️ A scene render failed – Editor will assemble the remaining clips…',
+  stitch: '⚠️ Editor hit a snag – mounting the first completed scene…',
+} as const;
+
 // Time-bucket headers for the grouped history sidebar (Tier-1 LLM layout).
 const GROUP_LABELS: Record<TimeBucket, { en: string; ka: string; ru: string }> = {
   today: { en: 'Today', ka: 'დღეს', ru: 'Сегодня' },
@@ -3795,7 +3806,21 @@ function FilmStoryboardSkeleton({
   const audioOrStitchActive =
     stitch?.state === 'active' || stitch?.state === 'done' || score?.state === 'active' || score?.state === 'done';
   const dialogueIndex = (audioOrStitchActive || allClipsResolved) ? 2 : anyClipStarted ? 1 : 0;
-  const dialogueLine = FILM_AGENT_DIALOGUE[dialogueIndex] ?? FILM_AGENT_DIALOGUE[0];
+
+  // PHASE 46 §3 — a failed leg takes priority over the forward-progress beat and
+  // surfaces an honest degraded line (highest-severity first: stitch > audio >
+  // clip). `isDegraded` repaints the strip amber and stops it claiming progress.
+  const stitchFailed = stitch?.state === 'failed';
+  const scoreFailed = score?.state === 'failed';
+  const someClipFailed = clips.some((s) => s.state === 'failed');
+  const degradedLine =
+    stitchFailed ? FILM_AGENT_FALLBACKS.stitch
+    : scoreFailed ? FILM_AGENT_FALLBACKS.audio
+    : (someClipFailed && allClipsResolved) ? FILM_AGENT_FALLBACKS.clip
+    : null;
+  const isDegraded = degradedLine !== null;
+  const dialogueLine = degradedLine ?? FILM_AGENT_DIALOGUE[dialogueIndex] ?? FILM_AGENT_DIALOGUE[0];
+  const dialogueKey = isDegraded ? `degraded:${stitchFailed ? 's' : scoreFailed ? 'a' : 'c'}` : `beat:${dialogueIndex}`;
 
   return (
     <motion.aside
@@ -3831,23 +3856,23 @@ function FilmStoryboardSkeleton({
           three beats narrate the Nano Banano → Director (LTX) → Editor (Udio +
           ElevenLabs) handoff, switching as real pipeline state advances. */}
       <div
-        className="flex items-center gap-2 border-b border-white/[0.06] bg-white/[0.02] px-3 py-2"
+        className={`flex items-center gap-2 border-b border-white/[0.06] px-3 py-2 ${isDegraded ? 'bg-amber-500/[0.06]' : 'bg-white/[0.02]'}`}
         aria-live="polite"
         aria-atomic
       >
         <span
-          className="flex h-1.5 w-1.5 shrink-0 rounded-full"
-          style={{ backgroundColor: accent }}
+          className={`flex h-1.5 w-1.5 shrink-0 rounded-full ${isDegraded ? '' : 'animate-pulse'}`}
+          style={{ backgroundColor: isDegraded ? '#f59e0b' : accent }}
           aria-hidden
         />
         <AnimatePresence mode="wait" initial={false}>
           <motion.p
-            key={dialogueIndex}
+            key={dialogueKey}
             initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 4 }}
             animate={reduceMotion ? { opacity: 1 } : { opacity: 1, y: 0 }}
             exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: -4 }}
             transition={{ duration: 0.28 }}
-            className="min-w-0 flex-1 truncate text-[11.5px] font-medium leading-5 text-zinc-300"
+            className={`min-w-0 flex-1 truncate text-[11.5px] font-medium leading-5 ${isDegraded ? 'text-amber-300' : 'text-zinc-300'}`}
           >
             {dialogueLine}
           </motion.p>

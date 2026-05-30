@@ -16,6 +16,7 @@ import { generateNanoBananaImage } from '@/lib/nanobanana/client';
 import { getNanoBananaCreditCost, resolveNanoBananaEndpoint } from '@/lib/nanobanana/endpoints';
 import { ServiceManager, type ServiceManagerResponse } from './ServiceManager';
 import { getUdioGenerationStatus, startUdioGeneration } from '@/lib/udio/client';
+import { hasUdioApiKey } from './mediaKeys';
 import { buildInteriorDesignBrief } from '@/lib/interior/smart-intake';
 import { generateWorldLabsInterior } from '@/lib/worldlabs/client';
 import { buildIterativePrompt } from './iteration-store';
@@ -754,7 +755,7 @@ async function handleMusicIntent(
     opts.provider
       || opts.music_provider
       || opts.musicProvider
-      || (process.env.UDIO_API_KEY?.trim() ? 'udio' : 'replicate'),
+      || (hasUdioApiKey() ? 'udio' : 'replicate'),
   ).toLowerCase();
 
   if (provider === 'replicate') {
