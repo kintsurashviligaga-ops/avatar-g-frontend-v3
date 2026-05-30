@@ -26,6 +26,7 @@ import { extractMediaArtifact, type MediaKind } from '@/lib/media/extractArtifac
 import { isMusicVideoComposite, handleMusicVideoComposite } from './musicVideoComposite';
 import { isThirtySecondFilm, handleFilmComposite } from './filmComposite';
 import { isCompositeRef, decodeCompositeRef } from './compositeTaskRef';
+import { isFilmRef, decodeFilmRef, computeFilmUnion, type FilmTaskRef, type FilmLegRuntimeStatus } from './filmTaskRef';
 import { isFounderAuditCommand, isFounder, runFounderAudit, renderAuditAsMarkdown } from '@/lib/monetization/audit-engine';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -277,6 +278,13 @@ export async function orchestrate(
 }
 
 export async function pollOrchestrationTask(predictionId: string, sessionId?: string): Promise<ChatResponse> {
+  // Film union poll (5 clips + audio + editor) — decode and poll the whole
+  // matrix in lock-step. Checked FIRST: a `film:` token must never fall through
+  // to the composite/udio single-leg pollers.
+  if (isFilmRef(predictionId)) {
+    return pollFilmTask(predictionId, sessionId);
+  }
+
   // Composite (music + video + lyrics) — decode and poll each leg.
   if (isCompositeRef(predictionId)) {
     return pollCompositeTask(predictionId, sessionId);
@@ -387,6 +395,163 @@ async function pollCompositeTask(predictionId: string, sessionId?: string): Prom
       video: { status: video.status, url: video.url, error: video.error },
     },
   };
+}
+
+/**
+ * PHASE 43 §1 — The "Union Poll Codec" tick for the 30-second film.
+ *
+ * Decodes the `film:` token and polls EVERY clip + the audio leg in a single
+ * lock-step pass, then computes a union status. Unlike the legacy behaviour
+ * (which tracked only the first clip), this reports the collective progress of
+ * all sub-agents so the client's per-agent telemetry strip + storyboard skeleton
+ * reflect the true matrix.
+ *
+ * Resolution contract:
+ *   - Per-clip status + resolved URL ride in `metadata.film.clips[]`.
+ *   - The render phase resolves to `succeeded` only when every non-skipped clip
+ *     has landed AND the audio leg is terminal. At that moment `readyToStitch`
+ *     flips true and `metadata.film.clips[].url` + `metadata.film.audioUrl` carry
+ *     everything the authenticated client needs to fire `/api/video/assemble`
+ *     and mount the fully stitched + audio-synced master (the editor leg).
+ *   - A single failed leg degrades gracefully: surviving clips still finish; the
+ *     union reports `failed` without discarding the clips that did land.
+ */
+type FilmLegPollStatus = FilmLegRuntimeStatus;
+
+async function pollFilmTask(predictionId: string, sessionId?: string): Promise<ChatResponse> {
+  const ref = decodeFilmRef(predictionId);
+  if (!ref) {
+    return {
+      success: false,
+      intent: 'video_generation',
+      responseType: 'text',
+      message: 'Film task token is malformed.',
+      predictionId,
+      predictionStatus: 'error',
+      metadata: { provider: 'composite', composite: true, film: true },
+    };
+  }
+
+  const effectiveSession = sessionId || ref.sessionId;
+
+  // ── Poll all clip legs in lock-step ─────────────────────────────────────────
+  const clipStates = await Promise.all(
+    ref.clips.map(async (clip) => pollFilmClip(clip, effectiveSession)),
+  );
+
+  // ── Poll the audio leg (Udio) ───────────────────────────────────────────────
+  let audioStatus: FilmLegPollStatus = ref.musicWorkId ? 'pending' : 'skipped';
+  let audioUrl: string | null = null;
+  if (ref.musicWorkId) {
+    try {
+      const udio = await pollUdioTask(ref.musicWorkId, `${UDIO_PREDICTION_PREFIX}${ref.musicWorkId}`);
+      if (udio.predictionStatus === 'succeeded') {
+        audioStatus = 'succeeded';
+        audioUrl = udio.assetUrl ?? null;
+      } else if (udio.predictionStatus === 'failed') {
+        audioStatus = 'failed';
+      }
+    } catch {
+      audioStatus = 'failed';
+    }
+  }
+
+  // ── Union computation across the render legs (clips + audio) ─────────────────
+  // The editor (stitch) leg becomes ready only when every clip has landed and
+  // the score is terminal. We never claim the stitch "done" here — the authed
+  // client owns the real /api/video/assemble dispatch (it holds the session and
+  // the 20-credit charge), then mounts the resulting master.
+  const union = computeFilmUnion(clipStates.map((c) => c.status), audioStatus);
+  const { readyToStitch, anyClipPending, filmStatus, stitchStatus } = union;
+
+  // Ordered clip URLs the client hands to the assembler (only the ready ones).
+  const orderedClips = [...clipStates].sort((a, b) => a.ordinal - b.ordinal);
+  const succeededClips = clipStates.filter((c) => c.status === 'succeeded').length;
+  const activeClips = clipStates.filter((c) => c.status !== 'skipped').length;
+
+  const summaryLines = [
+    `🎬 Film render: ${succeededClips}/${activeClips} clips ready`,
+    `🎵 Score: ${audioStatus}`,
+    readyToStitch ? '✂️ Editor ready — stitching final cut' : '⏳ Awaiting clips',
+  ];
+
+  return {
+    success: filmStatus !== 'failed',
+    intent: 'video_generation',
+    responseType: 'video',
+    message: summaryLines.join('\n'),
+    // Preview the first ready clip while the editor assembles the master; the
+    // client swaps in the stitched mp4 once /api/video/assemble returns.
+    assetUrl: orderedClips.find((c) => c.url)?.url ?? null,
+    assetType: 'composite-film',
+    predictionId,
+    predictionStatus: filmStatus,
+    metadata: {
+      provider: 'composite',
+      composite: true,
+      film: {
+        sceneCount: ref.sceneCount,
+        seed: ref.seed,
+        storyboard: 'succeeded',
+        clips: orderedClips.map((c) => ({
+          ordinal: c.ordinal,
+          status: filmLegToClientStatus(c.status),
+          url: c.url,
+          attempts: c.attempts ?? 1,
+        })),
+        stitch: filmStitchToClientStatus(stitchStatus, anyClipPending),
+        audio: filmLegToClientStatus(audioStatus),
+        audioUrl,
+        readyToStitch,
+      },
+    },
+  };
+}
+
+type FilmLegStitchStatus = 'pending' | 'ready' | 'blocked';
+
+interface FilmClipPollState {
+  ordinal: number;
+  status: FilmLegPollStatus;
+  url: string | null;
+  attempts?: number;
+}
+
+/** Poll one clip leg; null taskRef short-circuits to its dispatch-time verdict. */
+async function pollFilmClip(clip: FilmTaskRef['clips'][number], sessionId?: string): Promise<FilmClipPollState> {
+  if (!clip.taskRef) {
+    // No provider job was ever queued — carry the dispatch verdict through.
+    const status: FilmLegPollStatus = clip.status === 'failed' ? 'failed' : 'skipped';
+    return { ordinal: clip.ordinal, status, url: null, attempts: clip.attempts };
+  }
+  try {
+    const sm = await serviceManager.poll(clip.taskRef, sessionId);
+    if (sm.predictionStatus === 'succeeded') {
+      return { ordinal: clip.ordinal, status: 'succeeded', url: sm.assetUrl ?? null, attempts: clip.attempts };
+    }
+    if (sm.predictionStatus === 'failed' || sm.predictionStatus === 'error' || sm.predictionStatus === 'canceled') {
+      return { ordinal: clip.ordinal, status: 'failed', url: null, attempts: clip.attempts };
+    }
+    return { ordinal: clip.ordinal, status: 'pending', url: null, attempts: clip.attempts };
+  } catch {
+    return { ordinal: clip.ordinal, status: 'failed', url: null, attempts: clip.attempts };
+  }
+}
+
+/** Map an internal poll status to the client FilmMeta leg vocabulary. */
+function filmLegToClientStatus(s: FilmLegPollStatus): 'pending' | 'queued' | 'succeeded' | 'failed' | 'skipped' {
+  if (s === 'pending') return 'queued';
+  return s;
+}
+
+/** Map the stitch state to the client FilmMeta leg vocabulary. */
+function filmStitchToClientStatus(
+  s: FilmLegStitchStatus,
+  anyClipPending: boolean,
+): 'pending' | 'queued' | 'succeeded' | 'failed' | 'skipped' {
+  if (s === 'blocked') return 'failed';
+  if (s === 'ready') return 'queued'; // ready-to-assemble; client owns final stitch
+  return anyClipPending ? 'queued' : 'pending';
 }
 
 function shouldRouteInteriorToWorldLabs(input: OrchestratorInput): boolean {

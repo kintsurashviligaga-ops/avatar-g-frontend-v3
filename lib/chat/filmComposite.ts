@@ -33,6 +33,7 @@ import { forecastMarginForAction } from '@/lib/monetization/audit-engine';
 import { createServiceRoleClient } from '@/lib/supabase/server';
 import { startUdioGeneration } from '@/lib/udio/client';
 import { ServiceManager } from './ServiceManager';
+import { encodeFilmRef } from './filmTaskRef';
 import {
   planFilmScenes,
   buildFilmClipRequest,
@@ -51,16 +52,34 @@ interface FilmClipResult {
   ordinal: number;
   taskRef: string | null;
   status: LegStatus;
+  /** PHASE 43 §3 — dispatch attempts made (1 = first try, >1 = retried). */
+  attempts: number;
 }
 
 interface FilmPlanSummary {
   sceneCount: number;
   seed: number;
   storyboard: LegStatus;
-  clips: FilmClipResult[];
+  clips: { ordinal: number; status: LegStatus; url: string | null; attempts: number }[];
   stitch: LegStatus;
   audio: LegStatus;
+  audioUrl: string | null;
+  /** True once every non-skipped clip has landed and the editor can stitch. */
+  readyToStitch: boolean;
   musicWorkId: string | null;
+}
+
+/**
+ * PHASE 43 §3 — Sub-agent fault tolerance. Each clip is dispatched with bounded,
+ * isolated retry: a dispatch failure on one leg retries ONLY that leg without
+ * discarding or re-dispatching its siblings. Capped low so a hard provider
+ * outage degrades fast instead of multiplying spend.
+ */
+const MAX_CLIP_DISPATCH_ATTEMPTS = 2;
+
+/** Narrow a dispatch-time LegStatus to the token's clip status union. */
+function clipDispatchStatus(s: LegStatus): 'queued' | 'failed' | 'skipped' | 'pending' {
+  return s === 'succeeded' ? 'queued' : s;
 }
 
 interface ForecastResult {
@@ -110,40 +129,60 @@ async function renderClip(
   forecastClipRetail: number,
 ): Promise<FilmClipResult> {
   if (!process.env.LTX_VIDEO_API_KEY) {
-    return { ordinal: scene.ordinal, taskRef: null, status: 'skipped' };
+    return { ordinal: scene.ordinal, taskRef: null, status: 'skipped', attempts: 0 };
   }
   const clipReq = buildFilmClipRequest(scene, shared);
-  try {
-    const taskRef = await withTrace(
-      {
-        userId: input.userId || null,
-        agentId: 'video-agent',
-        workerKind: 'ltx',
-        action: 'generate_clip',
-        promptSummary: clipReq.userPrompt,
-        costWholesaleGel: forecastClipWholesale,
-        costRetailGel: forecastClipRetail,
-        metadata: { composite: true, leg: 'film-clip', ordinal: scene.ordinal, seed: scene.seed },
-        deduct: true,
-        deductRef: `${compositeId}:clip:${scene.ordinal}`,
-      },
-      () =>
-        serviceManager.execute({
-          sessionId: input.sessionId,
-          serviceContext: 'video',
-          intent: 'video_generation',
-          userPrompt: clipReq.userPrompt,
-          selectedOptions: clipReq.selectedOptions,
-          locale: input.locale,
-        }),
-      (r) => r.predictionId || r.assetUrl || null,
-    ).then((r) => r.predictionId || r.assetUrl || null);
-    return { ordinal: scene.ordinal, taskRef, status: taskRef ? 'queued' : 'failed' };
-  } catch (err) {
-    // eslint-disable-next-line no-console
-    console.warn(`[film] clip ${scene.ordinal} failed:`, err instanceof Error ? err.message : err);
-    return { ordinal: scene.ordinal, taskRef: null, status: 'failed' };
+
+  // PHASE 43 §3 — Isolated per-leg retry. We retry ONLY when a dispatch fails to
+  // produce a provider job (throw or null taskRef); a successfully queued clip is
+  // never re-dispatched (that would double-render + double-charge). The shared
+  // `deductRef` keeps every attempt idempotent so a partial first attempt can't
+  // double-bill the same scene. Siblings are untouched — one bad leg never
+  // discards or re-runs Clips 1,2,4,5.
+  let lastErr: unknown = null;
+  for (let attempt = 1; attempt <= MAX_CLIP_DISPATCH_ATTEMPTS; attempt++) {
+    try {
+      const taskRef = await withTrace(
+        {
+          userId: input.userId || null,
+          agentId: 'video-agent',
+          workerKind: 'ltx',
+          action: 'generate_clip',
+          promptSummary: clipReq.userPrompt,
+          costWholesaleGel: forecastClipWholesale,
+          costRetailGel: forecastClipRetail,
+          metadata: { composite: true, leg: 'film-clip', ordinal: scene.ordinal, seed: scene.seed, attempt },
+          deduct: true,
+          deductRef: `${compositeId}:clip:${scene.ordinal}`,
+        },
+        () =>
+          serviceManager.execute({
+            sessionId: input.sessionId,
+            serviceContext: 'video',
+            intent: 'video_generation',
+            userPrompt: clipReq.userPrompt,
+            selectedOptions: clipReq.selectedOptions,
+            locale: input.locale,
+          }),
+        (r) => r.predictionId || r.assetUrl || null,
+      ).then((r) => r.predictionId || r.assetUrl || null);
+      if (taskRef) {
+        return { ordinal: scene.ordinal, taskRef, status: 'queued', attempts: attempt };
+      }
+      // No provider job materialised — treat as a soft failure and retry.
+      lastErr = new Error('dispatch returned no task reference');
+    } catch (err) {
+      lastErr = err;
+      // eslint-disable-next-line no-console
+      console.warn(
+        `[film] clip ${scene.ordinal} dispatch attempt ${attempt}/${MAX_CLIP_DISPATCH_ATTEMPTS} failed:`,
+        err instanceof Error ? err.message : err,
+      );
+    }
   }
+  // eslint-disable-next-line no-console
+  console.warn(`[film] clip ${scene.ordinal} exhausted retries:`, lastErr instanceof Error ? lastErr.message : lastErr);
+  return { ordinal: scene.ordinal, taskRef: null, status: 'failed', attempts: MAX_CLIP_DISPATCH_ATTEMPTS };
 }
 
 /**
@@ -195,7 +234,6 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
     ),
   );
   const anyClip = clips.some((c) => c.status === 'queued');
-  const firstClipRef = clips.find((c) => c.taskRef)?.taskRef ?? null;
 
   // ── Leg 4: bind one cohesive audio track across the timeline (Udio) ────────
   let musicWorkId: string | null = null;
@@ -230,16 +268,31 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
     }
   }
 
+  // PHASE 43 §1 — Mint the Union Poll token. Every clip taskRef + the audio
+  // workId rides in ONE predictionId; `pollFilmTask` decodes it and polls the
+  // full matrix in lock-step instead of tracking a single clip.
+  const filmToken = encodeFilmRef({
+    sessionId: input.sessionId,
+    createdAt: Date.now(),
+    seed: plan.shared.seed,
+    sceneCount,
+    clips: clips.map((c) => ({ ordinal: c.ordinal, taskRef: c.taskRef, status: clipDispatchStatus(c.status), attempts: c.attempts })),
+    musicWorkId,
+  });
+
   // The Editor (stitch) and Audio legs depend on the clips finishing first, so
   // they are reported as queued (the async assembler picks them up) — never
-  // claimed done before the clips land.
+  // claimed done before the clips land. `readyToStitch` flips true only once the
+  // poll confirms every non-skipped clip has landed.
   const filmSummary: FilmPlanSummary = {
     sceneCount,
     seed: plan.shared.seed,
     storyboard: 'succeeded',
-    clips,
+    clips: clips.map((c) => ({ ordinal: c.ordinal, status: c.status, url: null, attempts: c.attempts })),
     stitch: anyClip ? 'queued' : 'skipped',
     audio: musicWorkId ? 'queued' : anyClip ? 'pending' : 'skipped',
+    audioUrl: null,
+    readyToStitch: false,
     musicWorkId,
   };
 
@@ -257,7 +310,8 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
     intent: 'video_generation',
     responseType: 'video',
     message: summary,
-    predictionId: firstClipRef ?? undefined,
+    // PHASE 43 §1 — track the WHOLE matrix via the union token, not one clip.
+    predictionId: anyClip ? filmToken : undefined,
     predictionStatus: anyClip ? 'processing' : 'failed',
     assetType: 'composite-film',
     metadata: {

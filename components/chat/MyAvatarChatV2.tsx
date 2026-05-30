@@ -228,6 +228,10 @@ const XCOPY = {
     diagnosticsRetry: 'Connection hiccup — retrying', mediaUnavailable: 'Preview unavailable — open or download directly',
     retry: 'Retry', previewReady: 'Preview ready — opened in workspace',
     emptyAgentHint: 'ready — describe what to create below', transmit: 'Sending your prompt to {agent}…',
+    filmStoryboard: 'Assembling your 30-second film', filmScene: 'Scene',
+    filmStitching: 'Editor agent stitching the final cut…',
+    filmStitchReady: '30-second film ready — opened in workspace',
+    filmStitchFallback: 'Editor couldn’t finish the stitch — showing the first scene',
   },
   ka: {
     newChat: 'ახალი ჩატი', rename: 'გადარქმევა', delete: 'წაშლა', open: 'გახსნა',
@@ -252,6 +256,10 @@ const XCOPY = {
     diagnosticsRetry: 'კავშირის შეფერხება — ხელახლა ვცდილობთ', mediaUnavailable: 'გადახედვა მიუწვდომელია — გახსენი ან ჩამოტვირთე პირდაპირ',
     retry: 'ხელახლა', previewReady: 'გადახედვა მზადაა — გაიხსნა სამუშაო სივრცეში',
     emptyAgentHint: 'მზადაა — აღწერე ქვემოთ რა შევქმნა', transmit: 'შენი მოთხოვნა იგზავნება {agent}-თან…',
+    filmStoryboard: 'იქმნება შენი 30-წამიანი ფილმი', filmScene: 'სცენა',
+    filmStitching: 'მონტაჟის აგენტი ასრულებს საბოლოო კადრს…',
+    filmStitchReady: '30-წამიანი ფილმი მზადაა — გაიხსნა სამუშაო სივრცეში',
+    filmStitchFallback: 'მონტაჟი ვერ დასრულდა — ნაჩვენებია პირველი სცენა',
   },
   ru: {
     newChat: 'Новый чат', rename: 'Переименовать', delete: 'Удалить', open: 'Открыть',
@@ -276,6 +284,10 @@ const XCOPY = {
     diagnosticsRetry: 'Сбой соединения — повторяем', mediaUnavailable: 'Предпросмотр недоступен — откройте или скачайте напрямую',
     retry: 'Повторить', previewReady: 'Превью готово — открыто в рабочей области',
     emptyAgentHint: 'готов — опишите ниже, что создать', transmit: 'Отправляю ваш запрос в {agent}…',
+    filmStoryboard: 'Собираем ваш 30-секундный фильм', filmScene: 'Сцена',
+    filmStitching: 'Агент монтажа собирает финальную версию…',
+    filmStitchReady: '30-секундный фильм готов — открыт в рабочей области',
+    filmStitchFallback: 'Монтаж не завершён — показана первая сцена',
   },
 } as const;
 
@@ -551,13 +563,25 @@ type LegStatus = 'pending' | 'succeeded' | 'failed' | 'skipped';
 // film composite (lib/chat/filmComposite.ts). Drives the progressive agent
 // timeline (Storyboard → 5 clips → Stitch → Audio → Finalize).
 type FilmLegStatus = 'pending' | 'queued' | 'succeeded' | 'failed' | 'skipped';
+interface FilmClipMeta {
+  ordinal: number;
+  status: FilmLegStatus;
+  /** PHASE 43 §1 — resolved clip URL once the leg lands (drives the skeleton). */
+  url?: string | null;
+  /** PHASE 43 §3 — dispatch attempts; >1 means the master agent retried it. */
+  attempts?: number;
+}
 interface FilmMeta {
   sceneCount: number;
   seed: number;
   storyboard: FilmLegStatus;
-  clips: { ordinal: number; status: FilmLegStatus }[];
+  clips: FilmClipMeta[];
   stitch: FilmLegStatus;
   audio: FilmLegStatus;
+  /** PHASE 43 §1 — cohesive score URL once Udio lands. */
+  audioUrl?: string | null;
+  /** PHASE 43 §1/§4 — true when every clip has landed and the editor can stitch. */
+  readyToStitch?: boolean;
 }
 
 interface OrchestrateResponse {
@@ -653,15 +677,22 @@ function deriveFilmStages(film: FilmMeta, terminal: boolean, failed: boolean): P
   const clips = [...(film.clips || [])].sort((a, b) => a.ordinal - b.ordinal);
   const total = film.sceneCount || clips.length;
   for (const clip of clips) {
-    stages.push({
-      key: `clip_${clip.ordinal}`,
-      label: {
-        en: `Rendering clip ${clip.ordinal} of ${total} — character consistency`,
-        ka: `კლიპი ${clip.ordinal}/${total} — პერსონაჟის თანმიმდევრულობა`,
-        ru: `Клип ${clip.ordinal} из ${total} — консистентность персонажа`,
-      },
-      state: filmLegToStage(clip.status, terminal, failed),
-    });
+    const stageState = filmLegToStage(clip.status, terminal, failed);
+    // PHASE 43 §3 — when the master agent retried this leg, surface it subtly
+    // ("Retrying scene N…") instead of alarming the user with a hard failure.
+    const retrying = (clip.attempts ?? 1) > 1 && (stageState === 'active' || stageState === 'failed');
+    const label = retrying
+      ? {
+          en: `Retrying scene ${clip.ordinal} of ${total}…`,
+          ka: `სცენა ${clip.ordinal}/${total} ხელახლა…`,
+          ru: `Повтор сцены ${clip.ordinal} из ${total}…`,
+        }
+      : {
+          en: `Rendering clip ${clip.ordinal} of ${total} — character consistency`,
+          ka: `კლიპი ${clip.ordinal}/${total} — პერსონაჟის თანმიმდევრულობა`,
+          ru: `Клип ${clip.ordinal} из ${total} — консистентность персонажа`,
+        };
+    stages.push({ key: `clip_${clip.ordinal}`, label, state: stageState });
   }
 
   stages.push({
@@ -685,6 +716,53 @@ function deriveFilmStages(film: FilmMeta, terminal: boolean, failed: boolean): P
   });
 
   return { active: !terminal, stages };
+}
+
+/**
+ * PHASE 43 §4 — telemetry for the brief window where the Union Poll has resolved
+ * every clip and the client is driving the real /api/video/assemble stitch. All
+ * render legs read done; the Editor (stitch) stage pulses active until the master
+ * lands, then the workspace swaps in the finished film.
+ */
+function deriveFilmStitching(resp: OrchestrateResponse): PipelineState {
+  const film = resp.metadata?.film;
+  if (!film) return derivePipeline(resp);
+  const stitching: FilmMeta = {
+    ...film,
+    storyboard: 'succeeded',
+    clips: film.clips.map((c) => ({ ...c, status: c.status === 'skipped' ? 'skipped' : 'succeeded' })),
+    stitch: 'queued',
+    audio: film.audio === 'skipped' ? 'skipped' : 'succeeded',
+  };
+  // terminal=false so the 'queued' stitch leg resolves to an 'active' stage.
+  return deriveFilmStages(stitching, false, false);
+}
+
+/**
+ * PHASE 43 §4 — Editor Agent dispatch. Hands the landed clip URLs (+ cohesive
+ * score) to the authenticated /api/video/assemble endpoint, which stitches the
+ * final audio-synced 30s master (GPU RunPod when provisioned, else CPU ffmpeg).
+ * Returns the master URL, or null when the editor couldn't finish (caller falls
+ * back to the first-scene preview). Credentials ride the browser session.
+ */
+async function assembleFilm(
+  clipUrls: string[],
+  musicUrl: string | null,
+  signal?: AbortSignal,
+): Promise<string | null> {
+  const res = await fetch('/api/video/assemble', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    signal,
+    body: JSON.stringify({
+      segments: clipUrls.map((url) => ({ url, durationSec: 6 })),
+      ...(musicUrl ? { musicUrl } : {}),
+    }),
+  });
+  if (!res.ok) return null;
+  const json = (await res.json().catch(() => null)) as { url?: unknown } | null;
+  return json && typeof json.url === 'string' && json.url.length > 0 ? json.url : null;
 }
 
 /** Build the telemetry stage list from a real response (or in-flight state). */
@@ -1164,6 +1242,34 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
         polls++;
         resp = await postOrchestrate({ message: text, sessionId: conversationId, predictionId: resp.predictionId, serviceContext: mode, locale: lang });
         setPipeline(derivePipeline(resp));
+      }
+
+      // PHASE 43 §4 — Editor Agent. Once the Union Poll confirms every clip has
+      // landed (`readyToStitch`), assemble the ordered clips + cohesive score
+      // into the fully stitched + audio-synced 30s master via /api/video/assemble
+      // (the authenticated, credit-metered stitch). The master replaces the
+      // preview-clip URL so the workspace mounts the finished film, not scene 1.
+      const film = resp.metadata?.film;
+      if (film?.readyToStitch && resp.predictionStatus === 'succeeded') {
+        const clipUrls = [...(film.clips || [])]
+          .sort((a, b) => a.ordinal - b.ordinal)
+          .map((c) => c.url)
+          .filter((u): u is string => typeof u === 'string' && u.length > 0);
+        if (clipUrls.length >= 2) {
+          setPipeline(deriveFilmStitching(resp));
+          showNotice(xc.filmStitching);
+          try {
+            const masterUrl = await assembleFilm(clipUrls, film.audioUrl ?? null, signal);
+            if (masterUrl) {
+              resp = { ...resp, assetUrl: masterUrl, message: resp.message };
+            } else {
+              showNotice(xc.filmStitchFallback);
+            }
+          } catch (stitchErr) {
+            if (stitchErr instanceof Error && stitchErr.name === 'AbortError') throw stitchErr;
+            showNotice(xc.filmStitchFallback);
+          }
+        }
       }
 
       const assetType: ChatMessage['assetType'] =
@@ -2004,6 +2110,17 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
             }}
             onClose={closeWorkspace}
             onRefine={applyRefinement}
+          />
+        ) : pipeline?.active && pipeline.stages.some((s) => s.key.startsWith('clip_')) ? (
+          // PHASE 43 §2 — no finished asset yet, but a 30-second film is rendering:
+          // dock the cinematic Storyboard skeleton so the canvas lights up scene by
+          // scene. Swaps seamlessly to PreviewWorkspace once the master mp4 mounts.
+          <FilmStoryboardSkeleton
+            key="film-storyboard"
+            stages={pipeline.stages}
+            lang={lang}
+            accent={ACCENT}
+            labels={{ storyboard: xc.filmStoryboard, scene: xc.filmScene, stitching: xc.filmStitching }}
           />
         ) : null}
       </AnimatePresence>
@@ -3553,6 +3670,137 @@ function MessageBubble({
         ) : null}
       </div>
     </div>
+  );
+}
+
+/* ─── PHASE 43 §2 — Multi-Stage Cinematic Loading Skeleton ("the Storyboard").
+ * While the 30-second film renders, the Preview Workspace docks this in place of
+ * the not-yet-existent player: a filmstrip of N scene slots that light up / show
+ * a checkmark the instant each LTX clip lands (driven by the SAME Union-Poll
+ * telemetry that feeds the left-rail strip), plus an Editor (stitch) + Score
+ * footer. Pure-derived from `pipeline.stages` — ZERO local state, so it can never
+ * trigger a re-render loop, and it shares the PreviewWorkspace container exactly
+ * so the swap to the finished player is seamless. */
+
+function FilmLegGlyph({ state, accent, size = 14 }: { state: StageState; accent: string; size?: number }) {
+  if (state === 'done') return <Check size={size} className="text-emerald-400" />;
+  if (state === 'active') return <Loader2 size={size} className="animate-spin" style={{ color: accent }} />;
+  if (state === 'failed') return <AlertCircle size={size} className="text-rose-400" />;
+  return <Circle size={Math.round(size * 0.64)} className="text-neutral-600" />;
+}
+
+function FilmStoryboardSkeleton({
+  stages, lang, accent, labels,
+}: {
+  stages: PipelineStage[];
+  lang: 'en' | 'ka' | 'ru';
+  accent: string;
+  labels: { storyboard: string; scene: string; stitching: string };
+}) {
+  const reduceMotion = useReducedMotion();
+  const clips = stages.filter((s) => s.key.startsWith('clip_'));
+  const stitch = stages.find((s) => s.key === 'stitch');
+  const score = stages.find((s) => s.key === 'film_audio');
+  const total = clips.length || 5;
+  const doneCount = clips.filter((s) => s.state === 'done').length;
+
+  return (
+    <motion.aside
+      initial={reduceMotion ? { opacity: 0 } : { x: '100%', opacity: 0 }}
+      animate={reduceMotion ? { opacity: 1 } : { x: 0, opacity: 1 }}
+      exit={reduceMotion ? { opacity: 0 } : { x: '100%', opacity: 0 }}
+      transition={{ type: 'spring', stiffness: 320, damping: 36 }}
+      className="fixed inset-0 z-[70] flex flex-col bg-[#050505] lg:static lg:z-auto lg:h-full lg:w-[44%] lg:max-w-[680px] lg:min-w-[380px] lg:shrink-0 lg:border-l lg:border-white/[0.06]"
+      aria-label={labels.storyboard}
+      aria-busy
+    >
+      {/* Header — film identity + live scene progress */}
+      <div
+        className="flex items-center justify-between gap-2 border-b border-white/[0.06] px-3 py-2.5"
+        style={{ paddingTop: 'calc(0.625rem + env(safe-area-inset-top, 0px))' }}
+      >
+        <div className="flex min-w-0 items-center gap-2">
+          <span
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-white/10"
+            style={{ backgroundColor: `${accent}1f`, color: accent }}
+          >
+            <Film size={15} />
+          </span>
+          <div className="min-w-0">
+            <p className="truncate text-[13px] font-semibold text-zinc-100">{labels.storyboard}</p>
+            <p className="truncate text-[11px] text-zinc-500 tabular-nums">{doneCount}/{total} · {labels.scene}</p>
+          </div>
+        </div>
+        <Loader2 size={16} className="animate-spin text-zinc-500" />
+      </div>
+
+      {/* Scene filmstrip — one cinematic 16:9 slot per scene, lit per status. */}
+      <div className="flex-1 overflow-y-auto p-3">
+        <div className="flex flex-col gap-2.5">
+          {clips.map((s, idx) => {
+            const ordinal = Number(s.key.slice('clip_'.length)) || idx + 1;
+            const st = s.state;
+            const frame =
+              st === 'done' ? 'border-emerald-500/40 bg-emerald-500/[0.05]'
+              : st === 'active' ? 'border-white/[0.12] bg-neutral-900'
+              : st === 'failed' ? 'border-rose-500/40 bg-rose-500/[0.05]'
+              : st === 'skipped' ? 'border-white/[0.06] bg-neutral-950 opacity-50'
+              : 'border-dashed border-white/10 bg-neutral-950';
+            return (
+              <div
+                key={s.key}
+                className={`relative flex aspect-video items-center justify-center overflow-hidden rounded-xl border transition-colors duration-500 ${frame}`}
+              >
+                {/* indeterminate light sweep while this scene is in flight */}
+                {st === 'active' && !reduceMotion ? (
+                  <motion.span
+                    className="pointer-events-none absolute inset-y-0 w-1/3"
+                    style={{ background: `linear-gradient(90deg, transparent, ${accent}1f, transparent)` }}
+                    initial={{ x: '-120%' }}
+                    animate={{ x: ['-120%', '320%'] }}
+                    transition={{ duration: 1.4, ease: 'easeInOut', repeat: Infinity }}
+                  />
+                ) : null}
+
+                {/* scene ordinal badge */}
+                <span className="absolute left-2.5 top-2 text-[11px] font-bold tabular-nums tracking-wide text-zinc-500">
+                  {String(ordinal).padStart(2, '0')}
+                </span>
+
+                {/* center status glyph */}
+                <span className="relative flex h-9 w-9 items-center justify-center">
+                  <FilmLegGlyph state={st} accent={accent} size={st === 'done' ? 22 : 20} />
+                </span>
+
+                {/* scene label */}
+                <span className="absolute bottom-2 left-2.5 text-[11px] font-medium text-zinc-400">
+                  {labels.scene} {ordinal}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Footer — Editor (stitch) leg + cohesive Score leg. */}
+      <div
+        className="border-t border-white/[0.06] px-3 py-2.5"
+        style={{ paddingBottom: 'calc(0.625rem + env(safe-area-inset-bottom, 0px))' }}
+      >
+        <div className="flex items-center gap-2 text-[12px]">
+          <span className="flex h-4 w-4 items-center justify-center flex-shrink-0">
+            <FilmLegGlyph state={stitch?.state ?? 'pending'} accent={accent} />
+          </span>
+          <span className="text-zinc-400">{labels.stitching}</span>
+          {score && score.state !== 'skipped' ? (
+            <span className="ml-auto flex items-center gap-1.5 text-zinc-500">
+              <Music size={12} />
+              <FilmLegGlyph state={score.state} accent={accent} size={13} />
+            </span>
+          ) : null}
+        </div>
+      </div>
+    </motion.aside>
   );
 }
 
