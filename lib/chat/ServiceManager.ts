@@ -504,6 +504,7 @@ export class ServiceManager {
       || await this.getHeygenVoiceId(apiKey, parsed.voiceGender, parsed.voiceLanguage);
 
     const avatarId = this.getOption(options, ['avatar_id', 'avatarId']) || await this.getHeygenFirstAvatar(apiKey);
+    const avatarStyle = this.normalizeHeygenAvatarStyle(this.getOption(options, ['avatar_style', 'avatarStyle', 'style']));
     const dimension = this.mapHeygenDimension(parsed.aspectRatio);
 
     const response = await fetch(`${HEYGEN_BASE_URL}/v2/video/generate`, {
@@ -517,7 +518,7 @@ export class ServiceManager {
           character: {
             type: 'avatar',
             avatar_id: avatarId,
-            avatar_style: 'normal',
+            avatar_style: avatarStyle,
           },
           voice: {
             type: 'text',
@@ -1096,6 +1097,16 @@ export class ServiceManager {
 
   private normalizeVoiceGender(value?: string): 'female' | 'male' {
     return String(value || '').toLowerCase() === 'male' ? 'male' : 'female';
+  }
+
+  // PHASE 39 §2 — avatar_style is no longer hardcoded. The user's selected
+  // framing flows through (normal / circle / closeUp), so the engine honors the
+  // active prompt's face/body intent instead of a locked default.
+  private normalizeHeygenAvatarStyle(value?: string): 'normal' | 'circle' | 'closeUp' {
+    const v = String(value || '').toLowerCase().replace(/[\s_-]/g, '');
+    if (v === 'circle') return 'circle';
+    if (v === 'closeup' || v === 'close') return 'closeUp';
+    return 'normal';
   }
 
   private mapHeygenDimension(aspectRatio: '16:9' | '9:16' | '1:1'): { width: number; height: number } {

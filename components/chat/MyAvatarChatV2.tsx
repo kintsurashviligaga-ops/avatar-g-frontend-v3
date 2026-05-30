@@ -226,6 +226,8 @@ const XCOPY = {
     nextSteps: 'What’s next', copyLink: 'Copy link', linkCopied: 'Link copied', share: 'Share',
     diagnosticsLoading: 'Streaming from provider…', diagnosticsSlow: 'Taking longer than usual — still working',
     diagnosticsRetry: 'Connection hiccup — retrying', mediaUnavailable: 'Preview unavailable — open or download directly',
+    retry: 'Retry', previewReady: 'Preview ready — opened in workspace',
+    emptyAgentHint: 'ready — describe what to create below', transmit: 'Sending your prompt to {agent}…',
   },
   ka: {
     newChat: 'ახალი ჩატი', rename: 'გადარქმევა', delete: 'წაშლა', open: 'გახსნა',
@@ -248,6 +250,8 @@ const XCOPY = {
     nextSteps: 'შემდეგ ნაბიჯები', copyLink: 'ბმულის კოპირება', linkCopied: 'ბმული დაკოპირდა', share: 'გაზიარება',
     diagnosticsLoading: 'იტვირთება პროვაიდერიდან…', diagnosticsSlow: 'ჩვეულებრივზე მეტ დროს იღებს — მუშაობა გრძელდება',
     diagnosticsRetry: 'კავშირის შეფერხება — ხელახლა ვცდილობთ', mediaUnavailable: 'გადახედვა მიუწვდომელია — გახსენი ან ჩამოტვირთე პირდაპირ',
+    retry: 'ხელახლა', previewReady: 'გადახედვა მზადაა — გაიხსნა სამუშაო სივრცეში',
+    emptyAgentHint: 'მზადაა — აღწერე ქვემოთ რა შევქმნა', transmit: 'შენი მოთხოვნა იგზავნება {agent}-თან…',
   },
   ru: {
     newChat: 'Новый чат', rename: 'Переименовать', delete: 'Удалить', open: 'Открыть',
@@ -270,6 +274,8 @@ const XCOPY = {
     nextSteps: 'Что дальше', copyLink: 'Копировать ссылку', linkCopied: 'Ссылка скопирована', share: 'Поделиться',
     diagnosticsLoading: 'Загрузка от провайдера…', diagnosticsSlow: 'Дольше обычного — всё ещё работаем',
     diagnosticsRetry: 'Сбой соединения — повторяем', mediaUnavailable: 'Предпросмотр недоступен — откройте или скачайте напрямую',
+    retry: 'Повторить', previewReady: 'Превью готово — открыто в рабочей области',
+    emptyAgentHint: 'готов — опишите ниже, что создать', transmit: 'Отправляю ваш запрос в {agent}…',
   },
 } as const;
 
@@ -339,9 +345,13 @@ const MAX_MEDIA_MB = 25;
  * every asset at once. SSR / unsupported-IO environments resolve to `true`
  * immediately so nothing is ever hidden.
  */
-function useInView<T extends HTMLElement>(rootMargin = '400px 0px'): [RefObject<T>, boolean] {
+function useInView<T extends HTMLElement>(rootMargin = '400px 0px', eager = false): [RefObject<T>, boolean] {
   const ref = useRef<T>(null);
-  const [inView, setInView] = useState(false);
+  // `eager` (PHASE 39 §1) bypasses lazy evaluation entirely — used for the
+  // freshly returned asset so a just-generated MP4/PNG/3D mounts the instant the
+  // token lands, never gated behind an IntersectionObserver that may not fire
+  // inside the fixed/transformed chat container.
+  const [inView, setInView] = useState(eager);
   useEffect(() => {
     if (inView) return undefined; // latched — stop observing once seen
     const el = ref.current;
@@ -356,7 +366,10 @@ function useInView<T extends HTMLElement>(rootMargin = '400px 0px'): [RefObject<
       { rootMargin },
     );
     io.observe(el);
-    return () => io.disconnect();
+    // Safety net: if the observer never reports (transformed/clipped ancestor on
+    // some iOS PWA wrappers), force-resolve so a placeholder can NEVER get stuck.
+    const failsafe = setTimeout(() => setInView(true), 2500);
+    return () => { io.disconnect(); clearTimeout(failsafe); };
   }, [inView, rootMargin]);
   return [ref, inView];
 }
@@ -377,59 +390,15 @@ const MODES = [
 ] as const;
 type ServiceMode = typeof MODES[number]['id'];
 
-/**
- * Empty-state capability cards — a minimalist "Quick Prompts" grid shown in a
- * fresh chat (Tier-1 LLM onboarding). Each card pre-selects a service mode and
- * seeds the composer with a localized starter prompt. Clicking a card NEVER
- * auto-sends (no surprise spend) — it just primes mode + input and focuses the
- * composer so the user stays in control.
- */
-const CAPABILITY_CARDS = [
-  {
-    mode: 'avatar' as ServiceMode,
-    Icon: User,
-    accent: '#818cf8',
-    title: { en: 'Cinematic avatar', ka: 'კინო-ავატარი', ru: 'Кино-аватар' },
-    prompt: {
-      en: 'Create a 9:16 cinematic AI avatar of a confident founder, soft studio lighting',
-      ka: 'შექმენი 9:16 კინემატოგრაფიული AI ავატარი თავდაჯერებული დამფუძნებლის, რბილი სტუდიური განათებით',
-      ru: 'Создай кинематографичный AI-аватар 9:16 уверенного основателя, мягкий студийный свет',
-    },
-  },
-  {
-    mode: 'video' as ServiceMode,
-    Icon: Film,
-    accent: '#38bdf8',
-    title: { en: '30-second film', ka: '30-წამიანი ფილმი', ru: '30-секундный фильм' },
-    prompt: {
-      en: 'Produce a 30-second cinematic product teaser with dynamic camera moves',
-      ka: 'შექმენი 30-წამიანი კინემატოგრაფიული პროდუქტის თიზერი დინამიური კამერის მოძრაობით',
-      ru: 'Сделай 30-секундный кинематографичный тизер продукта с динамичной камерой',
-    },
-  },
-  {
-    mode: 'interior' as ServiceMode,
-    Icon: Box,
-    accent: '#10b981',
-    title: { en: '3D room layout', ka: '3D ოთახის გეგმა', ru: '3D-планировка' },
-    prompt: {
-      en: 'Design a 3D studio apartment layout, warm minimalist Scandinavian style',
-      ka: 'დააპროექტე 3D სტუდიური ბინის გეგმა, თბილი მინიმალისტური სკანდინავიური სტილით',
-      ru: 'Спроектируй 3D-планировку квартиры-студии в тёплом минималистичном скандинавском стиле',
-    },
-  },
-  {
-    mode: 'image' as ServiceMode,
-    Icon: ImagePlus,
-    accent: '#34d399',
-    title: { en: 'Brand visual', ka: 'ბრენდის ვიზუალი', ru: 'Визуал бренда' },
-    prompt: {
-      en: 'Generate a striking hero image for a Georgian tech brand, neon-on-charcoal',
-      ka: 'დააგენერირე ეფექტური მთავარი სურათი ქართული ტექ-ბრენდისთვის, ნეონი ნახშირისფერზე',
-      ru: 'Сгенерируй яркое hero-изображение для грузинского tech-бренда, неон на угольном фоне',
-    },
-  },
-] as const;
+// Modes that dispatch a media-generation engine (vs. plain text chat / voice).
+// Drives the PHASE 39 §3 transmission micro-toast so the user always sees a
+// render request leave the composer.
+const GENERATION_MODES = new Set<ServiceMode>(['image', 'video', 'avatar', 'interior', 'music']);
+
+/* PHASE 39 §3 — The 4 legacy "middle template" capability cards (CAPABILITY_CARDS)
+ * and their applyCapabilityCard handler were completely removed. The empty state
+ * now renders a clean minimalist greeting pill synced to the composer's active
+ * agent/mode (see the empty-state block below). */
 
 /**
  * Multi-agent identity registry — maps a service mode to the specialized
@@ -1042,6 +1011,13 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
       // without re-typing. Tolerant extra field (backend may use or ignore it).
       const carryContext = deriveCarryContext(messages, mode);
 
+      // PHASE 39 §3 — End-to-End Visual State Verification. Surface a visible
+      // micro-toast the moment we transmit prompt parameters to a generation
+      // engine, so the user always SEES the request leave (e.g. avatar engine).
+      if (GENERATION_MODES.has(mode)) {
+        showNotice(xc.transmit.replace('{agent}', AGENTS[mode].name[lang]));
+      }
+
       let resp = await postOrchestrate({
         message: text,
         sessionId: conversationId,
@@ -1075,7 +1051,7 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
         : resp.responseType === 'audio' ? 'audio'
         : null;
 
-      dispatch({ type: 'ADD_MESSAGE', message: {
+      const assistantMessage: ChatMessage = {
         id: `a_${Date.now()}`,
         role: resp.success === false ? 'error' : 'assistant',
         text: resp.message || (resp.success === false ? copy.genericError : ''),
@@ -1086,7 +1062,21 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
         mode,
         agentId: resp.metadata?.agentId,
         model: resp.metadata?.model,
-      }});
+      };
+      dispatch({ type: 'ADD_MESSAGE', message: assistantMessage });
+
+      // PHASE 39 §1 — Auto-Mount on Success. The instant a visual asset
+      // (PNG / MP4 / interactive 3D room) lands, slide the Preview Workspace open
+      // and inject the resolved URL directly into its canvas — no user download
+      // action is ever required to initialize the viewer.
+      if (
+        assistantMessage.role === 'assistant'
+        && assistantMessage.assetUrl
+        && (assetType === 'image' || assetType === 'video')
+      ) {
+        setWorkspace(assistantMessage);
+        showNotice(xc.previewReady);
+      }
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') {
         // user cancelled; keep prior messages
@@ -1107,7 +1097,7 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
       setPipeline(null);
       abortRef.current = null;
     }
-  }, [inputText, isLoading, messages, lang, mode, attachments, conversationId, prefs.customInstructions, copy.genericError]);
+  }, [inputText, isLoading, messages, lang, mode, attachments, conversationId, prefs.customInstructions, copy.genericError, showNotice, xc]);
 
   const stop = useCallback(() => abortRef.current?.abort(), []);
 
@@ -1125,14 +1115,6 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
       el.scrollIntoView({ block: 'nearest' });
     });
   }, []);
-
-  // Prime the composer from an empty-state capability card: select the matching
-  // service mode + seed the localized starter prompt + focus. Never auto-sends
-  // (no surprise spend) — the user reviews and presses send themselves.
-  const applyCapabilityCard = useCallback((next: ServiceMode, text: string) => {
-    setMode(next);
-    editPrompt(text);
-  }, [editPrompt]);
 
   // Open / swap the Preview Workspace for a given message's asset. Setting state
   // (rather than remounting) lets the panel repopulate instantly with no flash.
@@ -1469,25 +1451,18 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
               </div>
               <h2 className="text-[18px] sm:text-[20px] font-semibold text-zinc-100 tracking-tight">{xc.emptyTitle}</h2>
               <p className="mt-1.5 text-[13px] text-zinc-500 leading-6 max-w-xs">{xc.emptySubtitle}</p>
-              <div className="mt-7 grid w-full max-w-md grid-cols-1 sm:grid-cols-2 gap-2.5">
-                {CAPABILITY_CARDS.map((card) => (
-                  <button
-                    key={card.mode}
-                    onClick={() => applyCapabilityCard(card.mode, card.prompt[lang])}
-                    className="group flex items-start gap-3 rounded-2xl border border-zinc-800/70 bg-[#070707] p-3.5 text-left transition hover:border-zinc-600/70 hover:bg-zinc-900/60 active:scale-[0.99] min-w-0"
-                  >
-                    <span
-                      className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-white/5"
-                      style={{ backgroundColor: `${card.accent}1a`, color: card.accent }}
-                    >
-                      <card.Icon size={16} />
-                    </span>
-                    <span className="min-w-0">
-                      <span className="block text-[13px] font-medium text-zinc-100">{card.title[lang]}</span>
-                      <span className="mt-0.5 block text-[11.5px] leading-[1.35] text-zinc-500 line-clamp-2">{card.prompt[lang]}</span>
-                    </span>
-                  </button>
-                ))}
+              {/* PHASE 39 §3 — the 4 legacy template cards were removed. In their
+                  place, a clean minimalist greeting pill synced directly to the
+                  quick-composer dock's currently-selected agent/mode. */}
+              <div className="mt-6 inline-flex items-center gap-2 rounded-full border border-zinc-800/70 bg-[#070707] px-3.5 py-2">
+                <span
+                  className="flex h-6 w-6 items-center justify-center rounded-lg border border-white/10 text-[11px] font-bold leading-none"
+                  style={{ backgroundColor: `${AGENTS[mode].color}1f`, color: AGENTS[mode].color }}
+                >
+                  {AGENTS[mode].codename}
+                </span>
+                <span className="text-[12.5px] font-medium text-zinc-200">{AGENTS[mode].name[lang]}</span>
+                <span className="text-[12px] text-zinc-500">{xc.emptyAgentHint}</span>
               </div>
             </div>
           ) : (
@@ -1498,6 +1473,7 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
                 accent={ACCENT}
                 lang={lang}
                 autoplay={prefs.autoplayMedia}
+                eager={i === messages.length - 1}
                 mediaExpiredLabel={xc.mediaExpired}
                 expandLabel={xc.expandHint}
                 ttsLabels={{ readAloud: xc.readAloud, pause: xc.pauseReading, via: xc.via }}
@@ -1865,7 +1841,7 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
               orbitHint: xc.orbitHint, resetView: xc.resetView, refine: xc.refine,
               download: xc.download, close: xc.close, copyLink: xc.copyLink, linkCopied: xc.linkCopied,
               diagnosticsLoading: xc.diagnosticsLoading, diagnosticsSlow: xc.diagnosticsSlow,
-              mediaUnavailable: xc.mediaUnavailable,
+              mediaUnavailable: xc.mediaUnavailable, retry: xc.retry,
             }}
             onClose={closeWorkspace}
             onRefine={applyRefinement}
@@ -2584,7 +2560,7 @@ function PreviewWorkspace({
     workspace: string; details: string; promptLabel: string; agentLabel: string;
     aspectLabel: string; room3d: string; orbitHint: string; resetView: string;
     refine: string; download: string; close: string; copyLink: string; linkCopied: string;
-    diagnosticsLoading: string; diagnosticsSlow: string; mediaUnavailable: string;
+    diagnosticsLoading: string; diagnosticsSlow: string; mediaUnavailable: string; retry: string;
   };
   onClose: () => void;
   onRefine: (instruction: string) => void;
@@ -2598,6 +2574,10 @@ function PreviewWorkspace({
   // open/download fallback if it ultimately fails.
   const [mediaError, setMediaError] = useState(false);
   const [loadPhase, setLoadPhase] = useState<'loading' | 'slow'>('loading');
+  // PHASE 39 §1 — a decode hiccup must NEVER permanently dead-end the canvas.
+  // Bumping this nonce remounts the media element so it re-attempts the stream
+  // in place, removing the old "download-to-view" blocking fallback.
+  const [reloadNonce, setReloadNonce] = useState(0);
   // One-Click Asset Extraction — Shareable Link Builder copy-state feedback.
   const [linkCopied, setLinkCopied] = useState(false);
 
@@ -2708,14 +2688,25 @@ function PreviewWorkspace({
           )}
           <span className="text-[12px] font-medium text-zinc-300">{text}</span>
           {mediaError ? (
-            <a
-              href={assetUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="mt-1 rounded-full border border-zinc-700 bg-zinc-900/80 px-3 py-1 text-[11.5px] text-zinc-200 transition hover:border-zinc-500 hover:text-zinc-100"
-            >
-              {labels.download}
-            </a>
+            <div className="mt-1 flex items-center gap-2">
+              {/* Primary: re-initialize the canvas in place (no download needed). */}
+              <button
+                type="button"
+                onClick={() => { setMediaError(false); setMediaReady(false); setLoadPhase('loading'); setReloadNonce((n) => n + 1); }}
+                className="inline-flex items-center gap-1.5 rounded-full border border-zinc-700 bg-zinc-900/80 px-3 py-1 text-[11.5px] text-zinc-100 transition hover:border-zinc-500 active:scale-95"
+              >
+                <RotateCcw size={13} /> {labels.retry}
+              </button>
+              {/* Secondary: open the asset directly if the stream stays unreachable. */}
+              <a
+                href={assetUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="rounded-full border border-zinc-800 bg-zinc-900/60 px-3 py-1 text-[11.5px] text-zinc-300 transition hover:border-zinc-600 hover:text-zinc-100"
+              >
+                {labels.download}
+              </a>
+            </div>
           ) : null}
         </div>
       </div>
@@ -2811,6 +2802,7 @@ function PreviewWorkspace({
         {assetType === 'image' && !isRoom3D ? (
           <div className={`relative w-full overflow-hidden rounded-2xl border border-zinc-800/70 bg-black ${frameClass}`}>
             <Image
+              key={`img-${reloadNonce}`}
               src={assetUrl}
               alt="Generated"
               fill
@@ -2826,6 +2818,7 @@ function PreviewWorkspace({
         {assetType === 'video' ? (
           <div className={`relative w-full overflow-hidden rounded-2xl border border-zinc-800/70 bg-black ${frameClass}`}>
             <video
+              key={`vid-${reloadNonce}`}
               controls
               playsInline
               preload="metadata"
@@ -2844,6 +2837,7 @@ function PreviewWorkspace({
           <div className="overflow-hidden rounded-2xl border border-zinc-800/70 bg-black">
             <div className="relative aspect-[16/9] w-full">
               <iframe
+                key={`room-${reloadNonce}`}
                 src={assetUrl}
                 title={labels.room3d}
                 allow="accelerometer; gyroscope; xr-spatial-tracking; fullscreen"
@@ -2926,13 +2920,14 @@ function PreviewWorkspace({
 /* ─── Per-message bubble with executive toolbar ────────────────────── */
 
 function MessageBubble({
-  message, accent, lang, streaming = false, autoplay = false, mediaExpiredLabel, expandLabel, ttsLabels, onStreamTick, onRegenerate, onEdit, onFeedback, onPlayAudio, onExpand, onRefine,
+  message, accent, lang, streaming = false, autoplay = false, eager = false, mediaExpiredLabel, expandLabel, ttsLabels, onStreamTick, onRegenerate, onEdit, onFeedback, onPlayAudio, onExpand, onRefine,
 }: {
   message: ChatMessage;
   accent: string;
   lang: 'en' | 'ka' | 'ru';
   streaming?: boolean;
   autoplay?: boolean;
+  eager?: boolean;
   mediaExpiredLabel?: string;
   expandLabel?: string;
   ttsLabels: { readAloud: string; pause: string; via: string };
@@ -2962,8 +2957,10 @@ function MessageBubble({
   const [mediaReady, setMediaReady] = useState(false);
   // Lazy-mount gate (§3b): heavy media (inline base64 image / video) only mounts
   // once this bubble nears the viewport, so restoring a long conversation never
-  // decodes every historical asset synchronously on the main thread.
-  const [mediaRef, mediaInView] = useInView<HTMLDivElement>();
+  // decodes every historical asset synchronously on the main thread. PHASE 39 §1:
+  // the freshly returned bubble passes `eager` to bypass the gate so a brand-new
+  // asset paints immediately (no download-to-reveal regression).
+  const [mediaRef, mediaInView] = useInView<HTMLDivElement>('400px 0px', eager);
   // GPU-accelerated fade-from-skeleton — same easing for image / video frames.
   const mediaFadeClass = `transition-[opacity,filter] duration-500 ease-out will-change-[opacity,filter] transform-gpu ${
     mediaReady ? 'opacity-100 blur-0' : 'opacity-0 blur-md'

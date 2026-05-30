@@ -13,6 +13,26 @@ const STORE = new Map<string, IterationState>();
 const MAX_PROMPT_LENGTH = 8000;
 const TTL_MS = 1000 * 60 * 30;
 
+/**
+ * PHASE 39 §2 — Avatar payload sanitization & engine purge.
+ *
+ * The avatar engine must treat EVERY prompt as a brand-new, standalone render
+ * request. The iterative store was silently merging short avatar prompts under
+ * the previously-stored prompt and accumulating selectedOptions across calls,
+ * which made the engine "ignore unique prompt overrides" — it kept replaying a
+ * stale, cached config. For avatar contexts we therefore bypass the store
+ * entirely: no read, no write, no merge, no option accumulation. The prompt
+ * maps 1:1 to the current active user input bubble.
+ */
+const NON_ITERATIVE_CONTEXTS = new Set<string>([
+  'avatar',
+  'avatar_generation',
+]);
+
+function isNonIterativeContext(serviceContext: string): boolean {
+  return NON_ITERATIVE_CONTEXTS.has(serviceContext.trim().toLowerCase());
+}
+
 function makeKey(sessionId: string, serviceContext: string): string {
   return `${sessionId}::${serviceContext}`;
 }
@@ -56,6 +76,19 @@ export function buildIterativePrompt(input: {
   const serviceContext = String(input.serviceContext || 'global').trim();
   const message = String(input.message || '').trim();
   const selectedOptions = input.selectedOptions || {};
+
+  // PHASE 39 §2 — Avatar (and other non-iterative) contexts NEVER persist or
+  // merge prompt state. Return the current message verbatim with zero caching so
+  // every avatar render reflects exactly what the user just typed. This also
+  // guarantees no payload bleed across separate sessions or prompt iterations.
+  if (isNonIterativeContext(serviceContext)) {
+    return {
+      prompt: normalizePrompt(message),
+      iteration: 1,
+      hasPreviousContext: false,
+    };
+  }
+
   const key = makeKey(sessionId, serviceContext);
   const previous = STORE.get(key);
 

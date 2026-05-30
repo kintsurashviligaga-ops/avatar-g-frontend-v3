@@ -5,6 +5,22 @@ export const maxDuration = 60;
 
 const HEYGEN_BASE = 'https://api.heygen.com';
 
+// PHASE 39 §2 — avatar framing is user-driven, not a locked default. Normalize
+// any caller-supplied style into the values HeyGen accepts.
+function normalizeAvatarStyle(value?: string): 'normal' | 'circle' | 'closeUp' {
+  const v = String(value || '').toLowerCase().replace(/[\s_-]/g, '');
+  if (v === 'circle') return 'circle';
+  if (v === 'closeup' || v === 'close') return 'closeUp';
+  return 'normal';
+}
+
+function normalizeTalkingPhotoStyle(value?: string): 'square' | 'circle' | 'rectangle' {
+  const v = String(value || '').toLowerCase().replace(/[\s_-]/g, '');
+  if (v === 'square') return 'square';
+  if (v === 'circle') return 'circle';
+  return 'rectangle';
+}
+
 // ─── Voice mapping by gender + language ──────────────────────────────────────
 
 const VOICE_MAP: Record<string, Record<string, string>> = {
@@ -111,6 +127,7 @@ async function createVideoWithTalkingPhoto(
   voiceId: string,
   script: string,
   dimension: { width: number; height: number },
+  talkingPhotoStyle: string,
 ): Promise<string> {
   const res = await fetch(`${HEYGEN_BASE}/v2/video/generate`, {
     method: 'POST',
@@ -120,7 +137,7 @@ async function createVideoWithTalkingPhoto(
         character: {
           type: 'talking_photo',
           talking_photo_id: talkingPhotoId,
-          talking_photo_style: 'rectangle',
+          talking_photo_style: talkingPhotoStyle,
         },
         voice: {
           type: 'text',
@@ -148,6 +165,7 @@ async function createVideoWithStockAvatar(
   voiceId: string,
   script: string,
   dimension: { width: number; height: number },
+  avatarStyle: string,
 ): Promise<string> {
   const res = await fetch(`${HEYGEN_BASE}/v2/video/generate`, {
     method: 'POST',
@@ -157,7 +175,7 @@ async function createVideoWithStockAvatar(
         character: {
           type: 'avatar',
           avatar_id: avatarId,
-          avatar_style: 'normal',
+          avatar_style: avatarStyle,
         },
         voice: {
           type: 'text',
@@ -199,6 +217,8 @@ export async function POST(req: NextRequest) {
       videoFormat?: string;
       avatarId?: string;
       voiceId?: string;
+      avatarStyle?: string;
+      talkingPhotoStyle?: string;
     };
 
     const script = (body.script ?? body.prompt ?? '').trim();
@@ -209,6 +229,8 @@ export async function POST(req: NextRequest) {
     const voiceGender   = body.voiceGender   ?? 'female';
     const voiceLanguage = body.voiceLanguage ?? 'en';
     const videoFormat   = body.videoFormat   ?? '16:9';
+    const avatarStyle        = normalizeAvatarStyle(body.avatarStyle);
+    const talkingPhotoStyle  = normalizeTalkingPhotoStyle(body.talkingPhotoStyle);
 
     const dimension =
       videoFormat === '9:16' ? { width: 720, height: 1280 } :
@@ -222,10 +244,10 @@ export async function POST(req: NextRequest) {
     if (body.photoBase64) {
       const assetId       = await uploadPhotoAsset(apiKey, body.photoBase64, body.photoMimeType ?? 'image/jpeg');
       const talkingPhotoId = await createTalkingPhoto(apiKey, assetId);
-      videoId = await createVideoWithTalkingPhoto(apiKey, talkingPhotoId, voiceId, script, dimension);
+      videoId = await createVideoWithTalkingPhoto(apiKey, talkingPhotoId, voiceId, script, dimension, talkingPhotoStyle);
     } else {
       const avatarId = body.avatarId ?? await getFirstStockAvatar(apiKey);
-      videoId = await createVideoWithStockAvatar(apiKey, avatarId, voiceId, script, dimension);
+      videoId = await createVideoWithStockAvatar(apiKey, avatarId, voiceId, script, dimension, avatarStyle);
     }
 
     return NextResponse.json({ success: true, videoId, status: 'processing' });
