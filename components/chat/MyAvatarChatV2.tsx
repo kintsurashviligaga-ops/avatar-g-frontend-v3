@@ -220,7 +220,7 @@ const XCOPY = {
     emptySubtitle: 'Pick a starting point, or just type below.',
     workspace: 'Workspace', expand: 'Expand to workspace', details: 'Details',
     promptLabel: 'Prompt', agentLabel: 'Agent', aspectLabel: 'Aspect',
-    room3d: 'Interactive 3D room', orbitHint: 'Drag to orbit · scroll to zoom',
+    room3d: 'Interior Design', orbitHint: 'Drag to orbit · scroll to zoom',
     dropToAnalyze: 'Drop media to analyze with MyAvatarG', working: 'is working…',
     refine: 'Refine', resetView: 'Reset', download: 'Download', expandHint: 'Expand to workspace',
     nextSteps: 'What’s next', copyLink: 'Copy link', linkCopied: 'Link copied', share: 'Share',
@@ -244,7 +244,7 @@ const XCOPY = {
     emptySubtitle: 'აირჩიე დასაწყისი ან უბრალოდ დაწერე ქვემოთ.',
     workspace: 'სამუშაო სივრცე', expand: 'სამუშაო სივრცეში გაშლა', details: 'დეტალები',
     promptLabel: 'მოთხოვნა', agentLabel: 'აგენტი', aspectLabel: 'ფორმატი',
-    room3d: 'ინტერაქტიული 3D ოთახი', orbitHint: 'გადაათრიე ბრუნვისთვის · სქროლი მასშტაბისთვის',
+    room3d: 'ინტერიერის დიზაინი', orbitHint: 'გადაათრიე ბრუნვისთვის · სქროლი მასშტაბისთვის',
     dropToAnalyze: 'ჩააგდე მედია MyAvatarG-ით გასაანალიზებლად', working: 'მუშაობს…',
     refine: 'დახვეწა', resetView: 'საწყისზე', download: 'ჩამოტვირთვა', expandHint: 'სამუშაო სივრცეში გაშლა',
     nextSteps: 'შემდეგ ნაბიჯები', copyLink: 'ბმულის კოპირება', linkCopied: 'ბმული დაკოპირდა', share: 'გაზიარება',
@@ -268,7 +268,7 @@ const XCOPY = {
     emptySubtitle: 'Выберите начало или просто напишите ниже.',
     workspace: 'Рабочая область', expand: 'Развернуть в рабочую область', details: 'Детали',
     promptLabel: 'Запрос', agentLabel: 'Агент', aspectLabel: 'Формат',
-    room3d: 'Интерактивная 3D-комната', orbitHint: 'Перетащите для вращения · колесо для зума',
+    room3d: 'Дизайн интерьера', orbitHint: 'Перетащите для вращения · колесо для зума',
     dropToAnalyze: 'Перетащите медиа для анализа в MyAvatarG', working: 'работает…',
     refine: 'Уточнить', resetView: 'Сброс', download: 'Скачать', expandHint: 'Развернуть в рабочую область',
     nextSteps: 'Что дальше', copyLink: 'Копировать ссылку', linkCopied: 'Ссылка скопирована', share: 'Поделиться',
@@ -385,10 +385,24 @@ const MODES = [
   { id: 'video',    Icon: Film,          accent: '#38bdf8', label: { en: '30s Film',  ka: '30 წმ ფილმი',     ru: '30-сек фильм' } },
   { id: 'music',    Icon: Music,         accent: '#f472b6', label: { en: 'Music',     ka: 'მუსიკა',          ru: 'Музыка' } },
   { id: 'avatar',   Icon: User,          accent: '#818cf8', label: { en: 'Avatar',    ka: 'AI ავატარი',      ru: 'AI Аватар' } },
-  { id: 'interior', Icon: Box,           accent: '#10b981', label: { en: 'Room 3D',   ka: 'ოთახის 3D',       ru: 'Комната 3D' } },
+  { id: 'interior', Icon: Box,           accent: '#10b981', label: { en: 'Interior Design', ka: 'ინტერიერის დიზაინი', ru: 'Дизайн интерьера' } },
   { id: 'voice',    Icon: Volume2,       accent: '#f59e0b', label: { en: 'Voice',     ka: 'ხმა',             ru: 'Голос' } },
 ] as const;
 type ServiceMode = typeof MODES[number]['id'];
+
+// PHASE 42 §2 — The flagship "30-Second Film" call-to-action. The Cyan button in
+// the composer dock PRIMES the composer with this starter brief and retargets the
+// video engine; it never auto-sends (no surprise paid render). The user reviews /
+// edits the brief, then hits send to launch the multi-agent studio pipeline.
+const FILM_FLAGSHIP = {
+  title:   { en: '30-Second Film',           ka: '30-წამიანი ფილმი',         ru: '30-секундный фильм' },
+  tagline: { en: 'Full AI studio · one prompt', ka: 'სრული AI სტუდია · ერთი ბრძანება', ru: 'Полная AI-студия · один запрос' },
+  starter: {
+    en: 'Make a 30-second film of my avatar in cyberpunk Tokyo — cinematic, neon-lit, with a cohesive score.',
+    ka: 'შექმენი ჩემი ავატარის 30-წამიანი ფილმი კიბერპანკ ტოკიოში — კინემატოგრაფიული, ნეონის შუქით, ერთიანი მუსიკით.',
+    ru: 'Сделай 30-секундный фильм с моим аватаром в киберпанк-Токио — кинематографично, неоновый свет, цельный саундтрек.',
+  },
+} as const;
 
 // Modes that dispatch a media-generation engine (vs. plain text chat / voice).
 // Drives the PHASE 39 §3 transmission micro-toast so the user always sees a
@@ -533,6 +547,19 @@ const FOLLOWUPS: Partial<Record<ServiceMode, Followup[]>> = {
 
 type LegStatus = 'pending' | 'succeeded' | 'failed' | 'skipped';
 
+// PHASE 42 §1/§4 — the 30-second-film production matrix surfaced by the server
+// film composite (lib/chat/filmComposite.ts). Drives the progressive agent
+// timeline (Storyboard → 5 clips → Stitch → Audio → Finalize).
+type FilmLegStatus = 'pending' | 'queued' | 'succeeded' | 'failed' | 'skipped';
+interface FilmMeta {
+  sceneCount: number;
+  seed: number;
+  storyboard: FilmLegStatus;
+  clips: { ordinal: number; status: FilmLegStatus }[];
+  stitch: FilmLegStatus;
+  audio: FilmLegStatus;
+}
+
 interface OrchestrateResponse {
   success?: boolean;
   message?: string;
@@ -548,6 +575,8 @@ interface OrchestrateResponse {
     // lets the telemetry surface a real "audio synthesis" stage instead of
     // marking it skipped on single-prediction video jobs.
     audioEnabled?: boolean;
+    // PHASE 42 §1/§4 — full 30-second-film production matrix (multi-agent).
+    film?: FilmMeta;
     [k: string]: unknown;
   };
   error?: string;
@@ -555,13 +584,18 @@ interface OrchestrateResponse {
 
 type StageState = 'pending' | 'active' | 'done' | 'failed' | 'skipped';
 interface PipelineStage {
-  key: 'analysis' | 'audio' | 'render';
+  // 'analysis' | 'audio' | 'render' for standard jobs; widened to string so the
+  // 30-second-film pipeline can emit per-clip stage keys (storyboard, clip_N…).
+  key: string;
   label: { en: string; ka: string; ru: string };
   state: StageState;
 }
 interface PipelineState { active: boolean; stages: PipelineStage[] }
 
-const STAGE_LABELS: Record<PipelineStage['key'], PipelineStage['label']> = {
+// Narrow literal keys (not PipelineStage['key'], which is widened to string for
+// the film pipeline) so property access stays non-optional under
+// noUncheckedIndexedAccess.
+const STAGE_LABELS: Record<'analysis' | 'audio' | 'render', PipelineStage['label']> = {
   analysis: { en: 'Script & layout analysis', ka: 'სცენარის ანალიზი', ru: 'Анализ сценария' },
   audio:    { en: 'Audio & waveform synthesis', ka: 'აუდიოს სინთეზი', ru: 'Синтез аудио' },
   render:   { en: 'GPU cinematic render', ka: 'GPU ვიდეო რენდერი', ru: 'GPU рендер видео' },
@@ -578,6 +612,79 @@ function legToStage(s: LegStatus | undefined): StageState {
   if (s === 'skipped') return 'skipped';
   if (s === 'pending') return 'active';
   return 'pending';
+}
+
+/**
+ * Map a single film leg's backend status to a telemetry StageState.
+ * `terminal`/`failed` reflect the primary tracker (first clip) so that legs the
+ * backend reports as still-queued surface as 'active' while the job is live, and
+ * resolve to done/failed once the tracked prediction reaches a terminal state.
+ */
+function filmLegToStage(s: FilmLegStatus | undefined, terminal: boolean, failed: boolean): StageState {
+  if (s === 'succeeded') return 'done';
+  if (s === 'failed') return 'failed';
+  if (s === 'skipped') return 'skipped';
+  if (failed) return 'failed';
+  if (terminal) return 'done';
+  // 'queued' | 'pending' (or unknown) while the pipeline is still running.
+  return 'active';
+}
+
+/**
+ * PHASE 42 §4 — Progressive agentic transparency for the 30-second film studio.
+ * Expands the real `metadata.film` production matrix into the per-agent timeline
+ * the user watches: Storyboard → Clip 1…N (character consistency) → Stitch →
+ * Score. Labels are inlined (trilingual) so the client never imports the
+ * server-only film pipeline module.
+ */
+function deriveFilmStages(film: FilmMeta, terminal: boolean, failed: boolean): PipelineState {
+  const stages: PipelineStage[] = [];
+
+  stages.push({
+    key: 'storyboard',
+    label: {
+      en: 'Storyboard Agent — scene breakdown',
+      ka: 'სცენარის აგენტი — სცენების დაყოფა',
+      ru: 'Агент раскадровки — разбивка сцен',
+    },
+    state: filmLegToStage(film.storyboard, terminal, failed),
+  });
+
+  const clips = [...(film.clips || [])].sort((a, b) => a.ordinal - b.ordinal);
+  const total = film.sceneCount || clips.length;
+  for (const clip of clips) {
+    stages.push({
+      key: `clip_${clip.ordinal}`,
+      label: {
+        en: `Rendering clip ${clip.ordinal} of ${total} — character consistency`,
+        ka: `კლიპი ${clip.ordinal}/${total} — პერსონაჟის თანმიმდევრულობა`,
+        ru: `Клип ${clip.ordinal} из ${total} — консистентность персонажа`,
+      },
+      state: filmLegToStage(clip.status, terminal, failed),
+    });
+  }
+
+  stages.push({
+    key: 'stitch',
+    label: {
+      en: 'Editor Agent — stitching final cut',
+      ka: 'მონტაჟის აგენტი — საბოლოო კადრის აწყობა',
+      ru: 'Агент монтажа — сборка финальной версии',
+    },
+    state: filmLegToStage(film.stitch, terminal, failed),
+  });
+
+  stages.push({
+    key: 'film_audio',
+    label: {
+      en: 'Audio & Foley Agent — scoring the film',
+      ka: 'აუდიო აგენტი — ფილმის გახმოვანება',
+      ru: 'Аудио-агент — озвучивание фильма',
+    },
+    state: filmLegToStage(film.audio, terminal, failed),
+  });
+
+  return { active: !terminal, stages };
 }
 
 /** Build the telemetry stage list from a real response (or in-flight state). */
@@ -602,6 +709,10 @@ function derivePipeline(resp: OrchestrateResponse | null): PipelineState {
 
   const terminal = isTerminalStatus(resp.predictionStatus);
   const failed = resp.predictionStatus === 'failed' || resp.predictionStatus === 'error' || resp.predictionStatus === 'canceled';
+
+  // PHASE 42 §4 — the 30-second film studio publishes a full production matrix;
+  // surface the per-agent timeline instead of the generic 3-stage pipeline.
+  if (resp.metadata?.film) return deriveFilmStages(resp.metadata.film, terminal, failed);
 
   // Analysis completes the moment the backend accepts the request.
   const analysis: StageState = 'done';
@@ -1149,6 +1260,15 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
     if (nextMode) setMode(nextMode);
     editPrompt(instruction);
   }, [editPrompt]);
+
+  // PHASE 42 §2 — Flagship "30-Second Film" CTA. Retargets the video engine and
+  // primes the composer with the starter brief so the user can personalise it
+  // (swap the avatar, scene, mood) before launching the multi-agent studio. Like
+  // every chip in the app it PRIMES only — never auto-sends a paid render.
+  const startFilmFlagship = useCallback(() => {
+    setMode('video');
+    editPrompt(FILM_FLAGSHIP.starter[lang]);
+  }, [editPrompt, lang]);
 
   // Composer input handler with inline "@mention" agent routing. Typing e.g.
   // "@interior" / "@film" / "@avatar" at the start instantly retargets the
@@ -1729,6 +1849,35 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
             className="rounded-2xl border bg-[#0a0a0a] transition-colors focus-within:border-white/[0.18]"
             style={{ borderColor: mode === 'global' ? 'rgba(255,255,255,0.06)' : `${AGENTS[mode].color}73` }}
           >
+            {/* ── PHASE 42 §2 — Flagship "30-Second Film" CTA ──────────────
+                The platform's highest-value action, lifted out of the mode pill
+                row into a prominent premium Cyan button with a soft glow. Primes
+                the composer with a starter brief + targets the film studio; it
+                never auto-sends, so the user always confirms the (paid) render. */}
+            <div className="px-2 pt-2">
+              <button
+                type="button"
+                onClick={startFilmFlagship}
+                aria-label={FILM_FLAGSHIP.title[lang]}
+                className="group relative w-full overflow-hidden rounded-xl px-3.5 py-2.5 flex items-center gap-3 text-left bg-gradient-to-r from-cyan-500 to-sky-500 shadow-[0_0_20px_-2px_rgba(6,182,212,0.55)] ring-1 ring-cyan-300/40 transition active:scale-[0.99] hover:shadow-[0_0_28px_-1px_rgba(6,182,212,0.75)]"
+              >
+                {/* sheen sweep on hover for a premium feel */}
+                <span className="pointer-events-none absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/25 to-transparent transition-transform duration-700 group-hover:translate-x-full" />
+                <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-black/20 ring-1 ring-white/30">
+                  <Film size={17} className="text-white" />
+                </span>
+                <span className="flex min-w-0 flex-col">
+                  <span className="flex items-center gap-1.5 text-[13px] font-semibold leading-tight text-white">
+                    {FILM_FLAGSHIP.title[lang]}
+                    <Sparkles size={12} className="text-white/90" />
+                  </span>
+                  <span className="truncate text-[11px] font-medium leading-tight text-white/80">
+                    {FILM_FLAGSHIP.tagline[lang]}
+                  </span>
+                </span>
+              </button>
+            </div>
+
             {/* Mode selector — sets the orchestrator service context */}
             <div className="flex gap-1.5 overflow-x-auto px-2 pt-2 pb-1.5 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
               {MODES.map(({ id, Icon, label }) => {

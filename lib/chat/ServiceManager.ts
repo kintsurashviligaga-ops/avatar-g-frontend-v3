@@ -44,6 +44,11 @@ const ltxRequestSchema = z.object({
   // extracted from the prompt (see promptTraits) so cinematic / spoken clips
   // ship with LTX's native synchronized audio track instead of silent video.
   generateAudio: z.boolean().default(true),
+  // PHASE 42 §1 — continuity controls for the 30-second-film pipeline. A fixed
+  // seed re-anchors the protagonist across consecutive clips so the character
+  // never mutates; characterReference pins the user's avatar identity.
+  seed: z.number().int().min(0).max(2_147_483_647).optional(),
+  characterReference: z.string().min(1).max(2048).optional(),
 });
 
 const heygenRequestSchema = z.object({
@@ -373,6 +378,14 @@ export class ServiceManager {
       : traits.wantsAudio;
     const enrichedPrompt = enrichVideoPrompt(request.userPrompt, traits, 1500);
 
+    // PHASE 42 §1 — continuity controls. A film-pipeline clip carries a fixed
+    // seed (shared across the 5 consecutive clips) and, when the user supplies a
+    // custom avatar, a character reference — so the protagonist stays identical.
+    const seedRaw = this.getOption(options, ['seed', 'consistencySeed']);
+    const seedParsed = seedRaw != null ? Number.parseInt(seedRaw, 10) : NaN;
+    const seedOpt = Number.isFinite(seedParsed) && seedParsed >= 0 ? seedParsed : undefined;
+    const charRefOpt = this.getOption(options, ['characterReference', 'character_reference', 'avatarReference']) || undefined;
+
     const aspectRatio = this.normalizeAspectRatio(this.getOption(options, ['aspect', 'aspectRatio', 'ratio'])) || '16:9';
     const requestedModel = this.getOption(options, ['model', 'videoModel']) === 'ltx-2-3-pro' ? 'ltx-2-3-pro' : 'ltx-2-3-fast';
     const parsed = ltxRequestSchema.parse({
@@ -382,6 +395,8 @@ export class ServiceManager {
       duration: this.toNumber(this.getOption(options, ['duration', 'durationSec', 'seconds']), 6),
       fps: this.clampLtxFps(this.toNumber(this.getOption(options, ['fps']), 24)),
       generateAudio: wantAudio,
+      ...(seedOpt != null ? { seed: seedOpt } : {}),
+      ...(charRefOpt ? { characterReference: charRefOpt } : {}),
     });
 
     const response = await fetch(`${LTX_BASE_URL}/v1/text-to-video`, {
@@ -397,6 +412,8 @@ export class ServiceManager {
         duration: parsed.duration,
         fps: parsed.fps,
         generate_audio: parsed.generateAudio,
+        ...(parsed.seed != null ? { seed: parsed.seed } : {}),
+        ...(parsed.characterReference ? { character_reference: parsed.characterReference } : {}),
       }),
       cache: 'no-store',
     });

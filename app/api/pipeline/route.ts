@@ -503,7 +503,7 @@ async function generateInterior(
   if (!confirmed) {
     return {
       outputKind: 'text',
-      error: 'Please confirm the generated Design Brief before calling World Labs.',
+      error: 'Please confirm the generated Design Brief before generating the Interior Design.',
     };
   }
 
@@ -538,7 +538,7 @@ async function generateInterior(
       adminAlertTriggered: world.adminAlertTriggered,
     };
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'World Labs interior generation failed';
+    const message = error instanceof Error ? error.message : 'Interior Design generation failed';
     return { outputKind: 'text', error: message };
   }
 }

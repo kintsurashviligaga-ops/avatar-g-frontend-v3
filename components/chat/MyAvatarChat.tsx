@@ -1158,9 +1158,9 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
     if (!attachment) {
       setMessages(m => [...m, {
         id: mkId(), role: 'assistant', ts: Date.now(),
-        text: localeCode === 'ka' ? 'ჯერ მიამაგრე ოთახის ფოტო (📎 ან 📷), მერე დააჭირე „ოთახის დიზაინი 3D".'
-          : localeCode === 'ru' ? 'Сначала прикрепите фото комнаты (📎 или 📷), затем нажмите «Дизайн комнаты 3D».'
-          : 'Attach a room photo first (📎 or 📷), then tap "Design Room 3D".',
+        text: localeCode === 'ka' ? 'ჯერ მიამაგრე ოთახის ფოტო (📎 ან 📷), მერე დააჭირე „ინტერიერის დიზაინი".'
+          : localeCode === 'ru' ? 'Сначала прикрепите фото комнаты (📎 или 📷), затем нажмите «Дизайн интерьера».'
+          : 'Attach a room photo first (📎 or 📷), then tap "Interior Design".',
       }]);
       return;
     }
@@ -1728,7 +1728,7 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
                   className="flex-1 min-w-[30%] inline-flex items-center justify-center gap-2 h-11 rounded-2xl font-semibold text-[13px] text-white/90 bg-[#121212] border border-white/10 hover:border-emerald-400/40 hover:bg-white/[0.05] hover:shadow-[0_8px_30px_-12px_rgba(16,185,129,0.5)] active:scale-[0.99] disabled:opacity-50 transition-all duration-200"
                 >
                   <SofaIcon size={15} className="text-emerald-300" />
-                  {localeCode === 'ka' ? 'ოთახის 3D' : localeCode === 'ru' ? 'Комната 3D' : 'Design Room'}
+                  {localeCode === 'ka' ? 'ინტერიერის დიზაინი' : localeCode === 'ru' ? 'Дизайн интерьера' : 'Interior Design'}
                 </button>
               </div>
             )}
@@ -2007,9 +2007,9 @@ function localizedProduceError(_err: string | null, locale: string): string {
 
 // TASK 4: graceful interior failure (e.g. unsupported video / streaming bottleneck).
 function localizedInteriorError(_err: string | null, locale: string): string {
-  if (locale === 'ka') return 'ოთახის 3D ანალიზი ამ წამს ვერ დასრულდა — ფაილი ან ფორმატი ვერ დამუშავდა. სცადე სხვა/ნათელი ფოტოთი (JPG/PNG) ან ცადე ხელახლა.';
-  if (locale === 'ru') return 'Не удалось завершить 3D-анализ комнаты — файл или формат не обработан. Попробуйте другое чёткое фото (JPG/PNG) или повторите.';
-  return "I couldn't finish the 3D room analysis — that file or format didn't process. Try a clearer photo (JPG/PNG) or give it another go.";
+  if (locale === 'ka') return 'ინტერიერის დიზაინის ანალიზი ამ წამს ვერ დასრულდა — ფაილი ან ფორმატი ვერ დამუშავდა. სცადე სხვა/ნათელი ფოტოთი (JPG/PNG) ან ცადე ხელახლა.';
+  if (locale === 'ru') return 'Не удалось завершить анализ для дизайна интерьера — файл или формат не обработан. Попробуйте другое чёткое фото (JPG/PNG) или повторите.';
+  return "I couldn't finish the Interior Design analysis — that file or format didn't process. Try a clearer photo (JPG/PNG) or give it another go.";
 }
 
 // TASK 4: graceful avatar failure — HeyGen concurrency gets a calm queue message.

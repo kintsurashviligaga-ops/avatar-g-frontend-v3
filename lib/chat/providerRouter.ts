@@ -24,6 +24,7 @@ import { generateWithGemini } from '@/lib/gemini/client';
 import { getGeminiSystemPrompt, type GeminiServiceContext } from '@/lib/gemini/prompts';
 import { extractMediaArtifact, type MediaKind } from '@/lib/media/extractArtifact';
 import { isMusicVideoComposite, handleMusicVideoComposite } from './musicVideoComposite';
+import { isThirtySecondFilm, handleFilmComposite } from './filmComposite';
 import { isCompositeRef, decodeCompositeRef } from './compositeTaskRef';
 import { isFounderAuditCommand, isFounder, runFounderAudit, renderAuditAsMarkdown } from '@/lib/monetization/audit-engine';
 
@@ -237,6 +238,15 @@ export async function orchestrate(
         metadata: { provider: 'founder-audit' },
       };
     }
+  }
+
+  // PHASE 42 §1 — The flagship "30-Second Film" pipeline is the most specific
+  // composite, so it is checked FIRST. `isThirtySecondFilm` is deliberately
+  // conservative (explicit "30-second film / short film / mini-movie" phrasing),
+  // so a plain "music video" request still falls through to the music-video
+  // composite below. See lib/chat/filmComposite.ts.
+  if (isThirtySecondFilm(input.message)) {
+    return handleFilmComposite(input);
   }
 
   // Composite check runs BEFORE single-intent detection. Music-video prompts
@@ -542,12 +552,12 @@ async function handleInteriorIntent(input: OrchestratorInput): Promise<ChatRespo
     // diagnostics, but show the user a premium, non-breaking message instead
     // of a raw "no Route matched" string. Honest wording — the service is
     // temporarily unavailable, not silently "succeeding".
-    const raw = error instanceof Error ? error.message : 'World Labs interior generation failed.';
+    const raw = error instanceof Error ? error.message : 'Interior Design generation failed.';
     const loc = input.locale || 'ka';
     const friendly =
-      loc === 'en' ? 'The 3D Room engine is reconnecting to the spatial agent — please try again shortly.'
-      : loc === 'ru' ? 'Движок 3D-комнаты переподключается к пространственному агенту — попробуйте чуть позже.'
-      : 'ოთახის 3D ძრავი სინქრონიზდება სპატიალურ აგენტთან — სცადეთ ცოტა ხანში.';
+      loc === 'en' ? 'The Interior Design engine is reconnecting to the spatial agent — please try again shortly.'
+      : loc === 'ru' ? 'Движок дизайна интерьера переподключается к пространственному агенту — попробуйте чуть позже.'
+      : 'ინტერიერის დიზაინის ძრავი სინქრონიზდება სპატიალურ აგენტთან — სცადეთ ცოტა ხანში.';
     return {
       success: false,
       intent: 'image_generation',
