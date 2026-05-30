@@ -9,6 +9,7 @@ import { buildModelInput, validateInput } from '@/lib/replicate/schemas';
 import { normalizeOutput } from '@/lib/replicate/normalizer';
 import type { IntentCategory } from '@/lib/chat/intentDetector';
 import { extractPromptTraits, enrichVideoPrompt } from '@/lib/chat/promptTraits';
+import { resolveLtxApiKey } from '@/lib/chat/ltxKey';
 
 export type DeterministicProvider = 'nanobanana' | 'replicate' | 'ltx' | 'heygen';
 export type DeterministicOperation = 'text-to-image' | 'video-avatar';
@@ -357,9 +358,10 @@ export class ServiceManager {
   }
 
   private async runLtxVideo(request: ServiceManagerRequest): Promise<ServiceManagerResponse> {
-    const apiKey = process.env.LTX_VIDEO_API_KEY?.trim();
+    // PHASE 45 §1 — accept the key under any provisioned alias.
+    const apiKey = resolveLtxApiKey();
     if (!apiKey) {
-      throw new Error('LTX_VIDEO_API_KEY is not configured');
+      throw new Error('LTX video API key is not configured (LTX_VIDEO_API_KEY / LTX_API_KEY / LTX2_API_KEY)');
     }
 
     const options = request.selectedOptions || {};
@@ -385,6 +387,21 @@ export class ServiceManager {
     const seedParsed = seedRaw != null ? Number.parseInt(seedRaw, 10) : NaN;
     const seedOpt = Number.isFinite(seedParsed) && seedParsed >= 0 ? seedParsed : undefined;
     const charRefOpt = this.getOption(options, ['characterReference', 'character_reference', 'avatarReference']) || undefined;
+    // PHASE 45 §2 — multimodal IP-Adapter array: 1–3 reference images locking the
+    // protagonist's identity across the clip. Arrives JSON-encoded from the film
+    // pipeline; falls back silently to the single-ref path when absent/invalid.
+    const charRefsOpt = this.getOption(options, ['characterReferences', 'character_references']);
+    let characterReferences: string[] = [];
+    if (charRefsOpt) {
+      try {
+        const parsedRefs: unknown = JSON.parse(charRefsOpt);
+        if (Array.isArray(parsedRefs)) {
+          characterReferences = parsedRefs
+            .filter((x): x is string => typeof x === 'string' && x.trim().length > 0)
+            .slice(0, 3);
+        }
+      } catch { /* not JSON — the single characterReference path already covers it */ }
+    }
 
     const aspectRatio = this.normalizeAspectRatio(this.getOption(options, ['aspect', 'aspectRatio', 'ratio'])) || '16:9';
     const requestedModel = this.getOption(options, ['model', 'videoModel']) === 'ltx-2-3-pro' ? 'ltx-2-3-pro' : 'ltx-2-3-fast';
@@ -414,6 +431,7 @@ export class ServiceManager {
         generate_audio: parsed.generateAudio,
         ...(parsed.seed != null ? { seed: parsed.seed } : {}),
         ...(parsed.characterReference ? { character_reference: parsed.characterReference } : {}),
+        ...(characterReferences.length ? { character_references: characterReferences } : {}),
       }),
       cache: 'no-store',
     });
@@ -801,9 +819,10 @@ export class ServiceManager {
   }
 
   private async pollLtxTask(decoded: EncodedTaskRef, taskRef: string): Promise<ServiceManagerResponse> {
-    const apiKey = process.env.LTX_VIDEO_API_KEY?.trim();
+    // PHASE 45 §1 — accept the key under any provisioned alias.
+    const apiKey = resolveLtxApiKey();
     if (!apiKey) {
-      throw new Error('LTX_VIDEO_API_KEY is not configured');
+      throw new Error('LTX video API key is not configured (LTX_VIDEO_API_KEY / LTX_API_KEY / LTX2_API_KEY)');
     }
 
     const candidateUrls = [

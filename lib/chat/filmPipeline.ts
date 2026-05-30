@@ -97,9 +97,12 @@ export function buildCharacterAnchor(prompt: string, opts: FilmPlanOptions = {})
  */
 export function buildStyleGuide(shared: FilmShared): string {
   const aesthetic = shared.style ? `${shared.style} aesthetic` : 'a single consistent cinematic aesthetic';
-  const identity = shared.avatarReference
-    ? "the user's custom avatar (same face, hair, wardrobe)"
-    : 'the same character design (same face, hair, wardrobe)';
+  const refCount = shared.referenceImages?.length ?? 0;
+  const identity = refCount > 0
+    ? `the exact subject from the user's ${refCount} uploaded reference image${refCount > 1 ? 's' : ''} (same face, hair, wardrobe)`
+    : shared.avatarReference
+      ? "the user's custom avatar (same face, hair, wardrobe)"
+      : 'the same character design (same face, hair, wardrobe)';
   return (
     `Rigid visual style guide — identical in every shot: ${aesthetic}; one consistent color palette; `
     + `consistent key and rim lighting; the same lens, depth of field and film grain; unchanged props and set dressing; `
@@ -147,9 +150,51 @@ export function sceneBeat(index: number, count: number): CinematicBeat {
 
 // ─── Plan model ──────────────────────────────────────────────────────────────
 
+/** PHASE 45 §2/§3 — a film accepts up to THREE user reference images that lock
+ *  the protagonist's identity into the LTX character-reference / IP-Adapter array. */
+export const FILM_MAX_REFERENCE_IMAGES = 3;
+
+/**
+ * Normalise an arbitrary multimodal reference-image payload into a clean, capped,
+ * de-duplicated array of 0–`max` non-empty string refs (data URLs / https URLs /
+ * asset ids). Tolerates a single string, an array, JSON-encoded arrays, comma
+ * lists, and null/undefined — the composer and the orchestrator both feed this.
+ */
+export function normalizeReferenceImages(input: unknown, max = FILM_MAX_REFERENCE_IMAGES): string[] {
+  let raw: unknown[] = [];
+  if (Array.isArray(input)) {
+    raw = input;
+  } else if (typeof input === 'string') {
+    const trimmed = input.trim();
+    if (!trimmed) return [];
+    if (trimmed.startsWith('[')) {
+      try { const parsed = JSON.parse(trimmed); raw = Array.isArray(parsed) ? parsed : [trimmed]; }
+      catch { raw = [trimmed]; }
+    } else if (trimmed.includes(',') && !trimmed.startsWith('data:')) {
+      // Comma lists are unsafe for data: URLs (which contain commas) — only split plain refs.
+      raw = trimmed.split(',');
+    } else {
+      raw = [trimmed];
+    }
+  } else if (input != null) {
+    raw = [input];
+  }
+  const out: string[] = [];
+  for (const v of raw) {
+    if (typeof v !== 'string') continue;
+    const t = v.trim();
+    if (!t || out.includes(t)) continue;
+    out.push(t);
+    if (out.length >= max) break;
+  }
+  return out;
+}
+
 export interface FilmPlanOptions {
   /** A reference to the user's custom avatar (image URL / id) to lock identity. */
   avatarReference?: string | null;
+  /** PHASE 45 §2 — 1–3 user-uploaded reference images for multimodal identity lock. */
+  referenceImages?: unknown;
   /** Optional aesthetic/genre override (e.g. "cyberpunk", "noir"). */
   style?: string | null;
   /** Override total runtime; defaults to FILM_TOTAL_SEC (30s). */
@@ -161,6 +206,8 @@ export interface FilmShared {
   seed: number;
   characterAnchor: string;
   avatarReference: string | null;
+  /** PHASE 45 §2 — 0–3 reference images mapped into the LTX characterReference array. */
+  referenceImages: string[];
   style: string | null;
   sceneCount: number;
   totalSec: number;
@@ -195,7 +242,13 @@ export function planFilmScenes(prompt: string, opts: FilmPlanOptions = {}): Film
   const totalSec = opts.totalSec && opts.totalSec > 0 ? opts.totalSec : FILM_TOTAL_SEC;
   const segments = deterministicBreakdown(prompt, totalSec);
   const seed = buildConsistencySeed(prompt);
-  const characterAnchor = buildCharacterAnchor(prompt, opts);
+  // PHASE 45 §2 — fold uploaded reference images into the identity lock. The
+  // explicit avatarReference wins; otherwise the FIRST reference image becomes
+  // the primary character anchor so the storyboard agent treats the upload as
+  // the canonical protagonist.
+  const referenceImages = normalizeReferenceImages(opts.referenceImages);
+  const avatarReference = opts.avatarReference ?? referenceImages[0] ?? null;
+  const characterAnchor = buildCharacterAnchor(prompt, { ...opts, avatarReference });
   const traits = extractPromptTraits(prompt, { defaultAudio: true });
   // The core subject, stripped of the splitter's " — shot N of N" suffix so each
   // scene reframes the SAME subject under a different cinematic beat.
@@ -205,7 +258,8 @@ export function planFilmScenes(prompt: string, opts: FilmPlanOptions = {}): Film
   const shared: FilmShared = {
     seed,
     characterAnchor,
-    avatarReference: opts.avatarReference ?? null,
+    avatarReference,
+    referenceImages,
     style: opts.style ?? null,
     sceneCount: segments.length,
     totalSec,
@@ -255,7 +309,16 @@ export function buildFilmClipRequest(scene: FilmScene, shared: FilmShared): Film
     seed: String(scene.seed),
     generate_audio: 'false',
   };
-  if (shared.avatarReference) selectedOptions.characterReference = shared.avatarReference;
+  // PHASE 45 §2 — map the 1–3 reference images into the LTX character-reference /
+  // IP-Adapter array. The primary ref stays in `characterReference` for the
+  // single-image path; the full set rides in `characterReferences` (JSON) so the
+  // Director Agent can lock identity across all clips when multiple are supplied.
+  const refs = shared.referenceImages?.length
+    ? shared.referenceImages
+    : (shared.avatarReference ? [shared.avatarReference] : []);
+  const primaryRef = refs[0];
+  if (primaryRef) selectedOptions.characterReference = primaryRef;
+  if (refs.length > 0) selectedOptions.characterReferences = JSON.stringify(refs);
   if (shared.style) selectedOptions.style = shared.style;
   return { userPrompt: scene.prompt, selectedOptions };
 }

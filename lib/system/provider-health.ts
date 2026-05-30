@@ -1,5 +1,7 @@
 import 'server-only';
 
+import { resolveLtxApiKey } from '@/lib/chat/ltxKey';
+
 type ProviderName = 'openai' | 'udio' | 'worldlabs' | 'heygen' | 'ltx' | 'anthropic' | 'gemini';
 
 export type ProviderAuditEntry = {
@@ -38,11 +40,14 @@ const ROUTING_MATRIX: Array<{ category: ServiceRoutingAudit['category']; provide
 ];
 
 function hasKey(provider: ProviderName): boolean {
+  // PHASE 45 §1 — LTX ships under several historical aliases; honour all of them.
+  if (provider === 'ltx') return resolveLtxApiKey() !== null;
   const env = PROVIDER_ENV[provider];
   return typeof process.env[env] === 'string' && String(process.env[env]).trim().length > 0;
 }
 
 function getKey(provider: ProviderName): string {
+  if (provider === 'ltx') return resolveLtxApiKey() || '';
   return String(process.env[PROVIDER_ENV[provider]] || '').trim();
 }
 

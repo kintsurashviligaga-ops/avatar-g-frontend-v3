@@ -232,6 +232,7 @@ const XCOPY = {
     filmStitching: 'Editor agent stitching the final cut…',
     filmStitchReady: '30-second film ready — opened in workspace',
     filmStitchFallback: 'Editor couldn’t finish the stitch — showing the first scene',
+    refImagesLock: '{n}/3 reference images — identity locked across your film',
   },
   ka: {
     newChat: 'ახალი ჩატი', rename: 'გადარქმევა', delete: 'წაშლა', open: 'გახსნა',
@@ -260,6 +261,7 @@ const XCOPY = {
     filmStitching: 'მონტაჟის აგენტი ასრულებს საბოლოო კადრს…',
     filmStitchReady: '30-წამიანი ფილმი მზადაა — გაიხსნა სამუშაო სივრცეში',
     filmStitchFallback: 'მონტაჟი ვერ დასრულდა — ნაჩვენებია პირველი სცენა',
+    refImagesLock: '{n}/3 რეფერენს სურათი — პერსონაჟი დაფიქსირდა მთელ ფილმში',
   },
   ru: {
     newChat: 'Новый чат', rename: 'Переименовать', delete: 'Удалить', open: 'Открыть',
@@ -288,8 +290,19 @@ const XCOPY = {
     filmStitching: 'Агент монтажа собирает финальную версию…',
     filmStitchReady: '30-секундный фильм готов — открыт в рабочей области',
     filmStitchFallback: 'Монтаж не завершён — показана первая сцена',
+    refImagesLock: '{n}/3 референс-изображения — личность зафиксирована во всём фильме',
   },
 } as const;
+
+// PHASE 45 §4 — Autonomous agent-to-agent dialogue telemetry. These three beats
+// narrate the Nano Banano → Director (LTX) → Editor (Udio + ElevenLabs) handoff
+// while the film renders. Agent names are proper nouns, so the strings are shared
+// verbatim across locales (not translated) to match the production blueprint exactly.
+const FILM_AGENT_DIALOGUE = [
+  '🧠 Nano Banano communicating 5-beat script architecture to Director Agent…',
+  '🎬 Director Agent enforcing characterReference array into LTX generation…',
+  '🎵 Editor Agent syncing Udio score and ElevenLabs audio master track…',
+] as const;
 
 // Time-bucket headers for the grouped history sidebar (Tier-1 LLM layout).
 const GROUP_LABELS: Record<TimeBucket, { en: string; ka: string; ru: string }> = {
@@ -1110,6 +1123,17 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
     const imageAttachment = attachments.find((a) => a.type === 'image' && (a.dataUrl || a.preview));
     const imageUrl = imageAttachment?.dataUrl || imageAttachment?.preview;
 
+    // PHASE 45 §2/§3 — multimodal identity lock. Collect up to THREE image
+    // attachments and forward them as `referenceImages`; the film pipeline maps
+    // them into the LTX character-reference / IP-Adapter array so the protagonist
+    // stays identical across all 5 clips. (imageUrl above remains the single-image
+    // path for image-edit / interior / photo→avatar.)
+    const referenceImages = attachments
+      .filter((a) => a.type === 'image')
+      .map((a) => a.dataUrl || a.preview)
+      .filter((u): u is string => typeof u === 'string' && u.length > 0)
+      .slice(0, 3);
+
     dispatch({ type: 'ADD_MESSAGE', message: {
       id: `u_${Date.now()}`,
       role: 'user',
@@ -1224,6 +1248,7 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
         locale: lang,
         history,
         ...(imageUrl ? { imageUrl } : {}),
+        ...(referenceImages.length ? { referenceImages } : {}),
         ...(carryContext ? { carryContext } : {}),
         ...(prefs.customInstructions.trim() ? { customInstructions: prefs.customInstructions } : {}),
       });
@@ -1886,6 +1911,7 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
       >
         {/* Attachment pills — image = thumbnail, document/media = labelled pill */}
         {attachments.length > 0 ? (
+          <>
           <div className="px-3 pt-2 flex gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {attachments.map((att) => (
               att.type === 'image' && att.preview ? (
@@ -1944,6 +1970,21 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
               )
             ))}
           </div>
+          {/* PHASE 45 §3 — reference-image identity-lock caption. Surfaces that 1–3
+              uploaded images are threaded into the film's characterReference array. */}
+          {(() => {
+            const imageCount = attachments.filter((a) => a.type === 'image').length;
+            if (imageCount < 1) return null;
+            return (
+              <div className="px-3 pt-1.5 max-w-2xl mx-auto">
+                <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-cyan-300/80">
+                  <span aria-hidden>🔒</span>
+                  {xc.refImagesLock.replace('{n}', String(Math.min(3, imageCount)))}
+                </span>
+              </div>
+            );
+          })()}
+          </>
         ) : null}
 
         {/* ── Unified monolithic console: mode selector + composer ─────
@@ -2918,23 +2959,41 @@ function PreviewWorkspace({
     return () => clearTimeout(t);
   }, [mediaReady, mediaError, message.id]);
 
-  // PHASE 44 §3 — autoplay polish. When the preference is on and the decoded
-  // artifact is a video (a finished 30-second film or a single clip), start
-  // playback muted the moment it's ready. Muting satisfies the browser
-  // autoplay gate; native controls stay visible so the user can unmute/scrub.
-  // Gated on `mediaReady` so we play a decoded surface (no flash, no CLS).
+  // PHASE 45 §4 — unmuted final-cut transition. The decoded artifact (a finished
+  // 30-second film carrying a real audio master — Udio score + ElevenLabs VO, or
+  // a single clip) starts the instant it's ready. We attempt UNMUTED playback
+  // first so the film lands with sound. Browser autoplay policy may reject sound
+  // without a fresh user gesture; if the unmuted play() promise rejects we
+  // transparently fall back to muted playback with native controls still visible,
+  // so the user unmutes with one tap. No silent dead-frame, and we never claim
+  // sound is playing when the gate blocked it. Gated on `mediaReady` (decoded
+  // surface → no flash, no CLS).
   useEffect(() => {
-    if (!autoplay || assetType !== 'video' || !assetUrl || !mediaReady) return;
+    if (!autoplay || assetType !== 'video' || !assetUrl || !mediaReady) return undefined;
     const v = previewVideoRef.current;
-    if (!v) return;
-    v.muted = true;
-    void Promise.resolve(v.play()).catch(() => { /* gate still closed — controls remain */ });
+    if (!v) return undefined;
+    let cancelled = false;
+    v.muted = false;
+    void Promise.resolve(v.play()).catch(() => {
+      if (cancelled) return undefined;
+      // Unmuted gate closed — degrade to muted autoplay so motion still starts.
+      v.muted = true;
+      return Promise.resolve(v.play()).catch(() => { /* gate fully closed — controls remain */ });
+    });
+    return () => { cancelled = true; };
   }, [autoplay, assetType, assetUrl, mediaReady, reloadNonce]);
 
   const frameClass =
     aspect === '9:16' ? 'aspect-[9/16] max-h-[64vh] mx-auto'
     : aspect === '16:9' ? 'aspect-[16/9]'
     : 'min-h-[38vh] max-h-[64vh]';
+  // PHASE 45 §4 — the 30-second film mounts into a hard, hardware-accelerated
+  // 16:9 container so the layout reserves its exact box BEFORE the .mp4 decodes
+  // (zero CLS). 'native' resolves to a locked 16:9 here (object-contain
+  // letterboxes any off-ratio source); the 9:16 toggle still applies for verticals.
+  const videoFrameClass =
+    aspect === '9:16' ? 'aspect-[9/16] max-h-[64vh] mx-auto'
+    : 'aspect-[16/9]';
   const fadeClass = `transition-[opacity,filter] duration-500 ease-out will-change-[opacity,filter] transform-gpu ${
     mediaReady ? 'opacity-100 blur-0' : 'opacity-0 blur-md'
   }`;
@@ -3140,7 +3199,7 @@ function PreviewWorkspace({
         ) : null}
 
         {assetType === 'video' ? (
-          <div className={`relative w-full overflow-hidden rounded-2xl border border-zinc-800/70 bg-black ${frameClass}`}>
+          <div className={`relative w-full overflow-hidden rounded-2xl border border-zinc-800/70 bg-black transform-gpu ${videoFrameClass}`}>
             <video
               key={`vid-${reloadNonce}`}
               ref={previewVideoRef}
@@ -3726,6 +3785,18 @@ function FilmStoryboardSkeleton({
   const total = clips.length || 5;
   const doneCount = clips.filter((s) => s.state === 'done').length;
 
+  // PHASE 45 §4 — autonomous agent-to-agent dialogue. Pick which handoff beat is
+  // narrating right now from genuine pipeline state (no fabricated timeline):
+  //   0 → Nano Banano scripting (no clip has started yet)
+  //   1 → Director enforcing characterReference into LTX (clips in flight)
+  //   2 → Editor syncing Udio + ElevenLabs (all clips done, stitch/score running)
+  const anyClipStarted = clips.some((s) => s.state === 'active' || s.state === 'done');
+  const allClipsResolved = clips.length > 0 && clips.every((s) => s.state === 'done' || s.state === 'failed' || s.state === 'skipped');
+  const audioOrStitchActive =
+    stitch?.state === 'active' || stitch?.state === 'done' || score?.state === 'active' || score?.state === 'done';
+  const dialogueIndex = (audioOrStitchActive || allClipsResolved) ? 2 : anyClipStarted ? 1 : 0;
+  const dialogueLine = FILM_AGENT_DIALOGUE[dialogueIndex] ?? FILM_AGENT_DIALOGUE[0];
+
   return (
     <motion.aside
       initial={reduceMotion ? { opacity: 0 } : { x: '100%', opacity: 0 }}
@@ -3754,6 +3825,33 @@ function FilmStoryboardSkeleton({
           </div>
         </div>
         <Loader2 size={16} className="animate-spin text-zinc-500" />
+      </div>
+
+      {/* PHASE 45 §4 — live agent-to-agent dialogue micro-progress strip. The
+          three beats narrate the Nano Banano → Director (LTX) → Editor (Udio +
+          ElevenLabs) handoff, switching as real pipeline state advances. */}
+      <div
+        className="flex items-center gap-2 border-b border-white/[0.06] bg-white/[0.02] px-3 py-2"
+        aria-live="polite"
+        aria-atomic
+      >
+        <span
+          className="flex h-1.5 w-1.5 shrink-0 rounded-full"
+          style={{ backgroundColor: accent }}
+          aria-hidden
+        />
+        <AnimatePresence mode="wait" initial={false}>
+          <motion.p
+            key={dialogueIndex}
+            initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 4 }}
+            animate={reduceMotion ? { opacity: 1 } : { opacity: 1, y: 0 }}
+            exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: -4 }}
+            transition={{ duration: 0.28 }}
+            className="min-w-0 flex-1 truncate text-[11.5px] font-medium leading-5 text-zinc-300"
+          >
+            {dialogueLine}
+          </motion.p>
+        </AnimatePresence>
       </div>
 
       {/* Scene filmstrip — one cinematic 16:9 slot per scene, lit per status. */}

@@ -7,8 +7,10 @@ import {
   planFilmScenes,
   buildFilmClipRequest,
   filmProgressStages,
+  normalizeReferenceImages,
   FILM_TOTAL_SEC,
   FILM_SCENE_COUNT,
+  FILM_MAX_REFERENCE_IMAGES,
   type FilmShared,
 } from './filmPipeline';
 
@@ -160,7 +162,7 @@ describe('sceneBeat — deterministic cinematic arc selection', () => {
 
 describe('buildStyleGuide — the rigid continuity contract', () => {
   const base: FilmShared = {
-    seed: 1, characterAnchor: 'x', avatarReference: null, style: null, sceneCount: 5, totalSec: 30,
+    seed: 1, characterAnchor: 'x', avatarReference: null, referenceImages: [], style: null, sceneCount: 5, totalSec: 30,
   };
   it('locks palette, lighting, lens and character design', () => {
     const g = buildStyleGuide(base);
@@ -174,6 +176,54 @@ describe('buildStyleGuide — the rigid continuity contract', () => {
   });
   it('locks to the user avatar identity when supplied', () => {
     expect(buildStyleGuide({ ...base, avatarReference: 'avatar://me' })).toMatch(/custom avatar/i);
+  });
+});
+
+describe('normalizeReferenceImages — multimodal payload hardening', () => {
+  it('accepts a plain array and caps at 3', () => {
+    expect(normalizeReferenceImages(['a', 'b', 'c', 'd'])).toEqual(['a', 'b', 'c']);
+    expect(FILM_MAX_REFERENCE_IMAGES).toBe(3);
+  });
+  it('de-duplicates and drops empties', () => {
+    expect(normalizeReferenceImages(['a', 'a', '', '  ', 'b'])).toEqual(['a', 'b']);
+  });
+  it('parses a JSON-encoded array string', () => {
+    expect(normalizeReferenceImages('["x","y"]')).toEqual(['x', 'y']);
+  });
+  it('splits a plain comma list but NEVER a data: URL', () => {
+    expect(normalizeReferenceImages('one,two')).toEqual(['one', 'two']);
+    const dataUrl = 'data:image/png;base64,AAAA';
+    expect(normalizeReferenceImages(dataUrl)).toEqual([dataUrl]);
+  });
+  it('treats a lone string as one ref and null/undefined as empty', () => {
+    expect(normalizeReferenceImages('https://x/y.png')).toEqual(['https://x/y.png']);
+    expect(normalizeReferenceImages(null)).toEqual([]);
+    expect(normalizeReferenceImages(undefined)).toEqual([]);
+  });
+});
+
+describe('planFilmScenes — multimodal reference-image identity lock', () => {
+  it('threads 1–3 reference images into shared params + the primary anchor', () => {
+    const plan = planFilmScenes('a hero in a storm', { referenceImages: ['img://1', 'img://2', 'img://3', 'img://4'] });
+    expect(plan.shared.referenceImages).toEqual(['img://1', 'img://2', 'img://3']);
+    // The first reference image becomes the primary avatar reference.
+    expect(plan.shared.avatarReference).toBe('img://1');
+    expect(plan.scenes[0]!.prompt).toMatch(/custom avatar|reference image/i);
+  });
+
+  it('folds the reference-image count into the rigid style guide', () => {
+    const plan = planFilmScenes('a hero in a storm', { referenceImages: ['img://1', 'img://2'] });
+    expect(plan.scenes.every((s) => /2 uploaded reference images/i.test(s.prompt))).toBe(true);
+  });
+
+  it('an explicit avatarReference still wins over uploaded images', () => {
+    const plan = planFilmScenes('x', { avatarReference: 'avatar://me', referenceImages: ['img://1'] });
+    expect(plan.shared.avatarReference).toBe('avatar://me');
+    expect(plan.shared.referenceImages).toEqual(['img://1']);
+  });
+
+  it('defaults to an empty reference set when none supplied', () => {
+    expect(planFilmScenes('x').shared.referenceImages).toEqual([]);
   });
 });
 
@@ -197,6 +247,20 @@ describe('buildFilmClipRequest — LTX request shaping', () => {
     const plan = planFilmScenes('a lone wolf on a ridge');
     const req = buildFilmClipRequest(plan.scenes[0]!, plan.shared);
     expect(req.selectedOptions.characterReference).toBeUndefined();
+    expect(req.selectedOptions.characterReferences).toBeUndefined();
+  });
+
+  it('maps 1–3 reference images into both the single ref and the JSON array', () => {
+    const plan = planFilmScenes('my avatar on stage', { referenceImages: ['img://a', 'img://b'] });
+    const req = buildFilmClipRequest(plan.scenes[1]!, plan.shared);
+    expect(req.selectedOptions.characterReference).toBe('img://a');
+    expect(JSON.parse(req.selectedOptions.characterReferences!)).toEqual(['img://a', 'img://b']);
+  });
+
+  it('keeps a single avatarReference as a 1-element array for the Director Agent', () => {
+    const plan = planFilmScenes('my avatar on stage', { avatarReference: 'avatar://x' });
+    const req = buildFilmClipRequest(plan.scenes[0]!, plan.shared);
+    expect(JSON.parse(req.selectedOptions.characterReferences!)).toEqual(['avatar://x']);
   });
 });
 

@@ -27,6 +27,7 @@
  */
 
 import 'server-only';
+import { hasLtxApiKey } from './ltxKey';
 import type { OrchestratorInput, ChatResponse } from './providerRouter';
 import { withTrace } from '@/lib/observability/agentTrace';
 import { forecastMarginForAction } from '@/lib/monetization/audit-engine';
@@ -128,7 +129,9 @@ async function renderClip(
   forecastClipWholesale: number,
   forecastClipRetail: number,
 ): Promise<FilmClipResult> {
-  if (!process.env.LTX_VIDEO_API_KEY) {
+  // PHASE 45 §1 — resolve the LTX key from any provisioned alias so a correctly
+  // configured credential fires the render instead of silently skipping.
+  if (!hasLtxApiKey()) {
     return { ordinal: scene.ordinal, taskRef: null, status: 'skipped', attempts: 0 };
   }
   const clipReq = buildFilmClipRequest(scene, shared);
@@ -198,8 +201,16 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
     (typeof input.metadata?.avatarUrl === 'string' ? input.metadata.avatarUrl : undefined) ||
     null;
   const style = opts.style || null;
+  // PHASE 45 §2/§3 — accept 1–3 multimodal reference images from the composer.
+  // They arrive either as a JSON string in selectedOptions or as an array on
+  // metadata; planFilmScenes normalises/caps/dedupes them either way.
+  const referenceImages =
+    opts.referenceImages ??
+    opts.characterReferences ??
+    (input.metadata?.referenceImages as unknown) ??
+    null;
 
-  const plan = planFilmScenes(input.message, { avatarReference, style });
+  const plan = planFilmScenes(input.message, { avatarReference, referenceImages, style });
   const sceneCount = plan.shared.sceneCount || FILM_SCENE_COUNT;
   const forecast = forecastFilm(sceneCount);
   const clipForecast = forecastMarginForAction('video_film');

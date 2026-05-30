@@ -48,6 +48,9 @@ const orchestrateSchema = z.object({
   // ── Generation options ──
   selectedOptions: z.record(z.string()).optional(),
   imageUrl: z.string().url().optional(),
+  // PHASE 45 §2/§3 — 1–3 multimodal reference images (data:/https URLs) that lock
+  // the protagonist's identity across the 30-second film. Capped server-side.
+  referenceImages: z.array(z.string().min(1)).max(3).optional(),
 
   // ── Personalization (Settings → Custom Instructions) ──
   customInstructions: z.string().max(2000).optional(),
@@ -125,7 +128,11 @@ export async function POST(req: NextRequest) {
       history: data.history,
       selectedOptions: data.selectedOptions,
       imageUrl: data.imageUrl,
-      metadata: data.metadata,
+      // PHASE 45 §2/§3 — forward reference images via metadata so the film
+      // composite (handleFilmComposite) threads them into the identity lock.
+      metadata: data.referenceImages?.length
+        ? { ...(data.metadata || {}), referenceImages: data.referenceImages }
+        : data.metadata,
       customInstructions: data.customInstructions,
     });
 
