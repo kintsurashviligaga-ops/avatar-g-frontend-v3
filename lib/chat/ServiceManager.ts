@@ -60,6 +60,11 @@ const ltxRequestSchema = z.object({
   // never mutates; characterReference pins the user's avatar identity.
   seed: z.number().int().min(0).max(2_147_483_647).optional(),
   characterReference: z.string().min(1).max(2048).optional(),
+  // PHASE 50 §3 — image-to-video anchor. When the user triggers "Turn this into
+  // a video" from an existing image card, the originating asset URL is bound here
+  // as a HARD first-frame / conditioning reference so LTX animates the actual
+  // image instead of writing a fresh text-to-video prompt from scratch.
+  imageReference: z.string().min(1).max(4096).optional(),
 });
 
 const heygenRequestSchema = z.object({
@@ -466,10 +471,34 @@ export class ServiceManager {
       } catch { /* not JSON — the single characterReference path already covers it */ }
     }
 
+    // PHASE 50 §3 — image-to-video anchor resolution. "Turn this into a video"
+    // from an existing image card binds the prior asset URL as a HARD first-frame
+    // reference. Accepted under several aliases from the orchestrate selectedOptions,
+    // and falls back to request.imageUrl if a single-image edit context flows in.
+    const imageReferenceOpt =
+      this.getOption(options, [
+        'image_reference', 'imageReference',
+        'frame_input', 'frameInput',
+        'first_frame', 'firstFrame',
+        'sourceImage', 'source_image', 'image_url',
+      ]) || request.imageUrl || undefined;
+
+    // When an anchor is present, the Video Agent is FORBIDDEN from inventing a
+    // fresh scene: it must ingest and expand upon the active visual. We prepend a
+    // hard continuity directive so the prompt enriches the existing frame rather
+    // than describing something new, then re-clamp to the 1500-char schema bound.
+    const anchoredPrompt = imageReferenceOpt
+      ? enrichVideoPrompt(
+          `Animate the supplied source image as the opening frame. Preserve its exact subject, composition, colour palette and identity, then add natural cinematic motion. ${request.userPrompt}`.trim(),
+          traits,
+          1500,
+        )
+      : enrichedPrompt;
+
     const aspectRatio = this.normalizeAspectRatio(this.getOption(options, ['aspect', 'aspectRatio', 'ratio'])) || '16:9';
     const requestedModel = this.getOption(options, ['model', 'videoModel']) === 'ltx-2-3-pro' ? 'ltx-2-3-pro' : 'ltx-2-3-fast';
     const parsed = ltxRequestSchema.parse({
-      prompt: enrichedPrompt,
+      prompt: anchoredPrompt,
       model: requestedModel,
       resolution: this.mapLtxResolution(this.getOption(options, ['resolution', 'size']), aspectRatio, requestedModel),
       duration: this.toNumber(this.getOption(options, ['duration', 'durationSec', 'seconds']), 6),
@@ -477,6 +506,7 @@ export class ServiceManager {
       generateAudio: wantAudio,
       ...(seedOpt != null ? { seed: seedOpt } : {}),
       ...(charRefOpt ? { characterReference: charRefOpt } : {}),
+      ...(imageReferenceOpt ? { imageReference: imageReferenceOpt } : {}),
     });
 
     // PHASE 47 §3 — dispatch through the bounded exponential-backoff retry so a
@@ -498,6 +528,12 @@ export class ServiceManager {
         ...(parsed.seed != null ? { seed: parsed.seed } : {}),
         ...(parsed.characterReference ? { character_reference: parsed.characterReference } : {}),
         ...(characterReferences.length ? { character_references: characterReferences } : {}),
+        // PHASE 50 §3 — bind the prior asset as the hard conditioning frame. We
+        // send it under both the image_reference and frame_input keys so the
+        // image-to-video path activates regardless of which the LTX schema reads.
+        ...(parsed.imageReference
+          ? { image_reference: parsed.imageReference, frame_input: parsed.imageReference }
+          : {}),
       }),
       cache: 'no-store',
     });
@@ -530,6 +566,7 @@ export class ServiceManager {
             operation: 'video-avatar',
             outputType: 'video',
             audioEnabled: parsed.generateAudio,
+            imageAnchored: !!parsed.imageReference,
             sessionId: request.sessionId,
             promptHash,
             confidence: request.confidence,

@@ -1032,6 +1032,12 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
   // hydration with every restored conversation so a RESTORE never re-bills the
   // title endpoint — only chats minted in this session are eligible.
   const titledRef = useRef<Set<string>>(new Set());
+  // PHASE 50 §3 — image-to-video anchor. When the user taps "Turn this into a
+  // video" under an image card, the source image's hosted URL is parked here and
+  // forwarded on the NEXT send as a hard LTX image_reference, so the Video Agent
+  // animates the actual image instead of writing a fresh prompt from scratch.
+  // Consumed (and cleared) by sendMessage; cleared on new/restore chat.
+  const pendingVideoSourceRef = useRef<string | null>(null);
 
   // ── Stick-to-bottom auto-scroll (Tier-1 LLM behavior) ──────────────
   // The viewport pins to the newest token / media block. We respect the user's
@@ -1348,6 +1354,13 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
         showNotice(xc.transmit.replace('{agent}', AGENTS[mode].name[lang]));
       }
 
+      // PHASE 50 §3 — consume the image-to-video anchor (set when the user tapped
+      // "Turn this into a video" under an image card). Forwarded via selectedOptions
+      // — NOT imageUrl — so it binds as a hard LTX image_reference WITHOUT diverting
+      // the request into the Gemini image-analysis path. One-shot: cleared on read.
+      const videoAnchorUrl = mode === 'video' ? pendingVideoSourceRef.current : null;
+      pendingVideoSourceRef.current = null;
+
       let resp = await postOrchestrate({
         message: text,
         sessionId: conversationId,
@@ -1356,6 +1369,7 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
         history,
         ...(imageUrl ? { imageUrl } : {}),
         ...(referenceImages.length ? { referenceImages } : {}),
+        ...(videoAnchorUrl ? { selectedOptions: { image_reference: videoAnchorUrl } } : {}),
         ...(carryContext ? { carryContext } : {}),
         ...(prefs.customInstructions.trim() ? { customInstructions: prefs.customInstructions } : {}),
       });
@@ -1499,8 +1513,16 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
   // chip targets a different agent (e.g. image → @Film), retarget the mode first
   // so the engine + Smart Adaptive Context Memory carry the prior creative
   // direction forward. Still PRIMES only (never auto-sends) — no surprise spend.
-  const applyFollowup = useCallback((instruction: string, nextMode?: ServiceMode) => {
+  const applyFollowup = useCallback((instruction: string, nextMode?: ServiceMode, sourceImageUrl?: string) => {
     if (nextMode) setMode(nextMode);
+    // PHASE 50 §3 — "Turn this into a video" carries the originating image's
+    // hosted URL forward as the image-to-video anchor (only a real http(s) URL is
+    // usable server-side; data:/blob: previews are dropped). Picking any other
+    // chip clears a stale anchor so it never leaks onto an unrelated render.
+    pendingVideoSourceRef.current =
+      nextMode === 'video' && typeof sourceImageUrl === 'string' && /^https?:\/\//i.test(sourceImageUrl)
+        ? sourceImageUrl
+        : null;
     editPrompt(instruction);
   }, [editPrompt]);
 
@@ -1526,6 +1548,7 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
   // ── Conversation lifecycle (sidebar: new / restore / rename / delete) ──
   const startNewChat = useCallback(() => {
     abortRef.current?.abort();
+    pendingVideoSourceRef.current = null; // PHASE 50 §3 — drop any unused anchor
     setConversationId(newSessionId());
     dispatch({ type: 'LOAD_MESSAGES', messages: [] });
     setHistoryOpen(false);
@@ -1905,7 +1928,15 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
                     <button
                       key={f.en}
                       type="button"
-                      onClick={() => applyFollowup(f[lang], f.mode)}
+                      onClick={() => applyFollowup(
+                        f[lang],
+                        f.mode,
+                        // PHASE 50 §3 — when the next-step is a video and the
+                        // current card is an image, hand its URL to the anchor.
+                        f.mode === 'video' && last.assetType === 'image' && last.assetUrl
+                          ? last.assetUrl
+                          : undefined,
+                      )}
                       className="rounded-full border border-zinc-800/80 bg-[#0a0a0a] px-3 py-1 text-[12px] font-medium text-zinc-300 transition hover:border-zinc-600/80 hover:text-zinc-100 active:scale-95"
                     >
                       {f[lang]}
@@ -3150,6 +3181,29 @@ function PreviewWorkspace({
     return () => clearTimeout(t);
   }, [mediaReady, mediaError, message.id]);
 
+  // PHASE 50 §2 — Hard anti-hang watchdog. The 'slow' phase above only changes
+  // the COPY; a media element whose decode SILENTLY stalls (neither onLoadedData
+  // nor onError ever fires — the exact "right preview dock hangs forever on
+  // ჩვეულებრივზე მეტ დროს იღებს" symptom) would otherwise spin indefinitely.
+  // If the asset is still neither ready nor errored well past the slow mark, we
+  // proactively run the SAME one-shot recovery the error path uses (re-fetch +
+  // same-origin blob remount, which decodes from local memory and reliably
+  // mounts media the streamed element refused). If recovery was already spent,
+  // we surface the graceful failure card instead of an eternal spinner. Re-arms
+  // on every remount (reloadNonce) so it can escalate recovery → failure.
+  useEffect(() => {
+    if (mediaReady || mediaError) return undefined;
+    if (assetType !== 'video' && assetType !== 'image') return undefined;
+    const t = setTimeout(() => {
+      if (recoveryTriedRef.current) {
+        setMediaError(true);
+      } else {
+        handleMediaError();
+      }
+    }, 14000);
+    return () => clearTimeout(t);
+  }, [mediaReady, mediaError, message.id, reloadNonce, assetType, handleMediaError]);
+
   // PHASE 45 §4 — unmuted final-cut transition. The decoded artifact (a finished
   // 30-second film carrying a real audio master — Udio score + ElevenLabs VO, or
   // a single clip) starts the instant it's ready. We attempt UNMUTED playback
@@ -3407,7 +3461,15 @@ function PreviewWorkspace({
               controls
               playsInline
               preload="metadata"
+              // PHASE 50 §2 — recognize readiness on ANY of the decode milestones,
+              // not just `loadeddata`. Under preload="metadata" some browsers/CDNs
+              // (notably hosted .mp4 without range support) fire loadedmetadata /
+              // canplay but never loadeddata, leaving the old single-event gate
+              // stuck on the loading skeleton forever. Listening to all three makes
+              // the reveal fire the instant the first frame is decodable.
+              onLoadedMetadata={() => setMediaReady(true)}
               onLoadedData={() => setMediaReady(true)}
+              onCanPlay={() => setMediaReady(true)}
               onError={handleMediaError}
               style={{ transform: 'translateZ(0)' }}
               className={`absolute inset-0 h-full w-full object-contain ${fadeClass}`}
@@ -3739,7 +3801,12 @@ function MessageBubble({
                   controls
                   playsInline
                   preload="metadata"
+                  // PHASE 50 §2 — reveal on any decode milestone, not just
+                  // loadeddata (which can never fire under preload="metadata"),
+                  // so the inline clip never stays stuck invisible (opacity-0).
+                  onLoadedMetadata={() => setMediaReady(true)}
                   onLoadedData={() => setMediaReady(true)}
+                  onCanPlay={() => setMediaReady(true)}
                   style={{ transform: 'translateZ(0)' }}
                   className={`h-full w-full object-cover ${mediaFadeClass}`}
                 >
@@ -3753,7 +3820,10 @@ function MessageBubble({
                 controls
                 playsInline
                 preload="metadata"
+                // PHASE 50 §2 — reveal on any decode milestone (see above).
+                onLoadedMetadata={() => setMediaReady(true)}
                 onLoadedData={() => setMediaReady(true)}
+                onCanPlay={() => setMediaReady(true)}
                 style={{ transform: 'translateZ(0)' }}
                 className={`rounded-2xl border border-zinc-800/70 max-w-full max-h-[320px] w-auto object-contain bg-black ${mediaFadeClass}`}
               >
