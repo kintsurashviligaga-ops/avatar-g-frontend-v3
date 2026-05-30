@@ -10,35 +10,11 @@ const buildVersion = process.env.NEXT_PUBLIC_BUILD_ID || String(Date.now());
 const isDev = process.env.NODE_ENV === 'development';
 
 // ─── Content Security Policy ─────────────────────────────────────────────────
-// Tightly scoped to prevent XSS, clickjacking, and data exfiltration.
-// Supabase, Stripe, OpenAI CDN, Google Fonts, and self-hosted assets allowed.
-const CSP_DIRECTIVES = [
-  "default-src 'self'",
-  // Scripts: self + Stripe.js + Google Tag Manager
-  "script-src 'self' 'unsafe-eval' 'unsafe-inline' https://js.stripe.com https://www.googletagmanager.com https://www.google-analytics.com",
-  // Styles: self + Google Fonts + inline (required by Tailwind & framer-motion)
-  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-  // Fonts: self + Google Fonts CDN
-  "font-src 'self' https://fonts.gstatic.com data:",
-  // Images: self + Supabase storage + Cloudflare R2 + Stripe + placehold.co
-  "img-src 'self' blob: data: https://*.supabase.co https://*.r2.cloudflarestorage.com https://placehold.co https://js.stripe.com",
-  // Connect: API calls — self + Supabase + OpenAI + Replicate + ElevenLabs + Stripe + Upstash + PostHog + Sentry + Vercel Analytics
-  "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.openai.com https://api.replicate.com https://api.elevenlabs.io https://api.stripe.com https://*.upstash.io https://www.google-analytics.com https://app.posthog.com https://us.i.posthog.com https://o*.ingest.sentry.io https://vitals.vercel-insights.com",
-  // Frames: only Stripe iframes allowed (for Stripe Elements)
-  "frame-src 'self' https://js.stripe.com https://hooks.stripe.com",
-  // Media: self + blob (for audio/video previews)
-  "media-src 'self' blob: https://*.supabase.co https://*.r2.cloudflarestorage.com",
-  // Workers: self (for service workers)
-  "worker-src 'self' blob:",
-  // Manifests
-  "manifest-src 'self'",
-  // Form actions: self only
-  "form-action 'self'",
-  // Base URI: prevent base tag injection
-  "base-uri 'self'",
-  // Object/embed: disallow plugins
-  "object-src 'none'",
-].join('; ');
+// Tightly scoped to prevent XSS, clickjacking, and data exfiltration. Extracted
+// into lib/security/csp.js so the directive set is unit-tested (PHASE 48 §2),
+// which is how the `data:` media-src regression — inline data:video/audio
+// previews blocked from playback — is now locked down against re-introduction.
+const { CSP_DIRECTIVES } = require('./lib/security/csp');
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {

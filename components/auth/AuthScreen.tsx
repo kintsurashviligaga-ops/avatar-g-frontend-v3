@@ -60,6 +60,47 @@ export function resolveAuthCallbackUrl(
   return `${base}${sep}redirect=${encodeURIComponent(redirectTo || '/')}`;
 }
 
+/**
+ * PHASE 48 §1 — Auth handshake watchdog.
+ *
+ * THE PRODUCTION BUG THIS FIXES
+ * -----------------------------
+ * Every auth handler did `setLoading(true)` and only reset it on the Supabase
+ * promise resolving. If that promise never settles — network stall, Supabase
+ * unreachable, a token handshake that hangs — the client is left in an INFINITE
+ * frozen spinner with no escape, exactly the "fail to hydrate or maintain a
+ * session state" symptom from the live audit.
+ *
+ * `withAuthTimeout` races the auth call against a bounded deadline so a hung
+ * handshake rejects deterministically; the handler then clears loading and
+ * surfaces an honest, actionable error instead of freezing forever.
+ *
+ * On the OAuth/sign-in SUCCESS path the SDK redirects (or we navigate), so the
+ * promise settles well before the deadline and the timer is discarded — the
+ * watchdog only ever fires on a genuine stall.
+ */
+export const AUTH_TIMEOUT_MS = 15000;
+
+export class AuthTimeoutError extends Error {
+  constructor() {
+    super('AUTH_TIMEOUT');
+    this.name = 'AuthTimeoutError';
+  }
+}
+
+export function withAuthTimeout<T>(promise: PromiseLike<T>, ms: number = AUTH_TIMEOUT_MS): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new AuthTimeoutError()), ms);
+    Promise.resolve(promise).then(
+      (value) => { clearTimeout(timer); resolve(value); },
+      (err) => { clearTimeout(timer); reject(err); },
+    );
+  });
+}
+
+const TIMEOUT_MESSAGE =
+  'The connection timed out. Please check your network and try again.';
+
 // ─── Provider Icons ──────────────────────────────────────────────────────────
 
 function AppleIcon() {
@@ -208,13 +249,23 @@ function AuthScreenInner({ mode: initialMode, locale, redirectTo = '/' }: AuthSc
     setLoadingProvider(provider);
     setError(null);
 
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider,
-      options: { redirectTo: callbackUrl },
-    });
+    try {
+      const { error } = await withAuthTimeout(
+        supabase.auth.signInWithOAuth({
+          provider,
+          options: { redirectTo: callbackUrl },
+        }),
+      );
 
-    if (error) {
-      setError(error.message);
+      if (error) {
+        setError(error.message);
+        setLoading(false);
+        setLoadingProvider(null);
+      }
+      // Success: the SDK is redirecting to the provider — keep the spinner.
+    } catch (err) {
+      // Hung handshake (timeout or network failure) — never freeze the screen.
+      setError(err instanceof AuthTimeoutError ? TIMEOUT_MESSAGE : 'Sign-in failed. Please try again.');
       setLoading(false);
       setLoadingProvider(null);
     }
@@ -247,25 +298,37 @@ function AuthScreenInner({ mode: initialMode, locale, redirectTo = '/' }: AuthSc
         return;
       }
 
-      const { error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: { emailRedirectTo: callbackUrl },
-      });
+      try {
+        const { error } = await withAuthTimeout(
+          supabase.auth.signUp({
+            email,
+            password,
+            options: { emailRedirectTo: callbackUrl },
+          }),
+        );
 
-      if (error) {
-        setError(error.message);
-      } else {
-        setSuccess(true);
+        if (error) {
+          setError(error.message);
+        } else {
+          setSuccess(true);
+        }
+      } catch (err) {
+        setError(err instanceof AuthTimeoutError ? TIMEOUT_MESSAGE : 'Sign-up failed. Please try again.');
       }
     } else {
-      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      try {
+        const { error } = await withAuthTimeout(
+          supabase.auth.signInWithPassword({ email, password }),
+        );
 
-      if (error) {
-        setError(error.message);
-      } else {
-        window.location.href = redirectTo;
-        return;
+        if (error) {
+          setError(error.message);
+        } else {
+          window.location.href = redirectTo;
+          return;
+        }
+      } catch (err) {
+        setError(err instanceof AuthTimeoutError ? TIMEOUT_MESSAGE : 'Sign-in failed. Please try again.');
       }
     }
 
@@ -286,15 +349,21 @@ function AuthScreenInner({ mode: initialMode, locale, redirectTo = '/' }: AuthSc
     setLoadingProvider('forgot');
     setError(null);
 
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: typeof window !== 'undefined' ? `${window.location.origin}/auth/callback` : '/auth/callback',
-    });
+    try {
+      const { error } = await withAuthTimeout(
+        supabase.auth.resetPasswordForEmail(email, {
+          redirectTo: typeof window !== 'undefined' ? `${window.location.origin}/auth/callback` : '/auth/callback',
+        }),
+      );
 
-    if (error) {
-      setError(error.message);
-    } else {
-      setError(null);
-      setSuccess(true);
+      if (error) {
+        setError(error.message);
+      } else {
+        setError(null);
+        setSuccess(true);
+      }
+    } catch (err) {
+      setError(err instanceof AuthTimeoutError ? TIMEOUT_MESSAGE : 'Request failed. Please try again.');
     }
 
     setLoading(false);

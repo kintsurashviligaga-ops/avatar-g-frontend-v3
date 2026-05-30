@@ -2988,6 +2988,14 @@ function PreviewWorkspace({
   // A real, distributable URL (not an inline data:/blob:) → eligible for the
   // Shareable Link Builder (internal team distribution).
   const isShareableUrl = /^https?:\/\//i.test(assetUrl);
+  // PHASE 48 §2 — when the asset is an inline data: URL, pull its exact embedded
+  // MIME (e.g. audio/mpeg, audio/wav) so the <source> type hint is always
+  // correct; for hosted URLs we omit type and let the browser sniff the
+  // Content-Type, exactly as before. A wrong hint would make the browser skip
+  // the source, so deriving it (rather than hardcoding) is the safe path.
+  const inlineMediaType = assetUrl.startsWith('data:')
+    ? (assetUrl.slice(5).split(/[;,]/)[0] || undefined)
+    : undefined;
 
   // Reset framing + decode/diagnostic state whenever we swap to a different
   // artifact so the panel never inherits the previous asset's flags.
@@ -3274,7 +3282,10 @@ function PreviewWorkspace({
               style={{ transform: 'translateZ(0)' }}
               className={`absolute inset-0 h-full w-full object-contain ${fadeClass}`}
             >
-              <source src={assetUrl} />
+              {/* PHASE 48 §2 — declare the codec so the browser commits to the
+                  element even when a data:/proxied source carries a weak or
+                  missing Content-Type; inline data:video/mp4 now also passes CSP. */}
+              <source src={assetUrl} type="video/mp4" />
             </video>
             {renderDiagnostics()}
           </div>
@@ -3311,7 +3322,9 @@ function PreviewWorkspace({
               <span>{agent.name[lang]}</span>
             </div>
             <audio controls preload="metadata" className="w-full">
-              <source src={assetUrl} />
+              {/* PHASE 48 §2 — exact embedded MIME for inline data: audio so it
+                  mounts under CSP and the browser never skips the source. */}
+              <source src={assetUrl} type={inlineMediaType} />
             </audio>
           </div>
         ) : null}

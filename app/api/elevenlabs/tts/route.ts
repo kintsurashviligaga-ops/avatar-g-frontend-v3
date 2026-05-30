@@ -1,4 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
+import {
+  selectTtsModel,
+  voiceSettingsForModel,
+  type ElevenLabsModelId,
+} from '@/lib/audio/tts-model';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -27,7 +32,12 @@ function audioResponse(buffer: ArrayBuffer, provider: string): NextResponse {
 // and PIPE the chunked body straight through — first audio bytes reach the client
 // far sooner than buffering the whole file. Consumers that need a blob/arrayBuffer
 // (blob playback, MCP) still work; consumers that support MSE play progressively.
-async function streamElevenLabs(text: string, voiceId: string, apiKey: string): Promise<NextResponse | null> {
+async function streamElevenLabs(
+  text: string,
+  voiceId: string,
+  apiKey: string,
+  modelId: ElevenLabsModelId,
+): Promise<NextResponse | null> {
   const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}/stream?optimize_streaming_latency=3`, {
     method: 'POST',
     headers: {
@@ -37,14 +47,11 @@ async function streamElevenLabs(text: string, voiceId: string, apiKey: string): 
     },
     body: JSON.stringify({
       text: text.slice(0, 5000),
-      model_id: 'eleven_turbo_v2_5',
-      voice_settings: {
-        stability: 0.75,
-        similarity_boost: 0.85,
-        style: 0.25,
-        use_speaker_boost: true,
-        speed: 0.95,
-      },
+      // PHASE 48 §3 — model is chosen per-language. Georgian MUST run on
+      // eleven_multilingual_v2 (stable Georgian phonemes); turbo is English-first
+      // and mangles Georgian. Settings are tuned to match the selected model.
+      model_id: modelId,
+      voice_settings: voiceSettingsForModel(modelId),
       apply_text_normalization: 'auto',
     }),
   });
@@ -60,6 +67,7 @@ async function streamElevenLabs(text: string, voiceId: string, apiKey: string): 
     headers: {
       'Content-Type': 'audio/mpeg',
       'X-Voice-Provider': 'elevenlabs',
+      'X-Voice-Model': modelId,
       'Cache-Control': 'no-store',
       'X-Accel-Buffering': 'no',
     },
@@ -121,9 +129,13 @@ export async function POST(req: NextRequest) {
     ?? process.env.ELEVENLABS_VOICE_ID
     ?? 'vWpzdSR8GpLUKR0ai8Li';
 
+  // PHASE 48 §3 — hard-force eleven_multilingual_v2 when the text/locale is
+  // Georgian; everything else keeps the low-latency turbo default.
+  const modelId = selectTtsModel(text, body.locale);
+
   // Primary: ElevenLabs (progressive streaming — minimal time-to-first-sound)
   if (apiKey) {
-    const streamed = await streamElevenLabs(text, voiceId, apiKey);
+    const streamed = await streamElevenLabs(text, voiceId, apiKey, modelId);
     if (streamed) return streamed;
   }
 
