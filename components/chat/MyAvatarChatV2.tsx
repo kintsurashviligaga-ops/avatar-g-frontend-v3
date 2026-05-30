@@ -197,9 +197,9 @@ const initialState: ChatState = {
 };
 
 const COPY = {
-  en: { placeholder: 'Type a message…', signIn: 'Sign in', signOut: 'Sign out', clearHistory: 'Clear history', history: 'History', menu: 'Menu', settings: 'Settings', language: 'Language', sound: 'Avatar sound', genericError: 'Something went wrong. Try again.', fileTooLarge: 'File is too large (max {max}MB).', fileBadType: 'Unsupported file type. Use an image, video, or audio file.', voiceUnsupported: 'Voice input isn’t supported in this browser.', listening: 'Listening…' },
-  ka: { placeholder: 'დაწერე შეტყობინება…', signIn: 'შესვლა', signOut: 'გასვლა', clearHistory: 'ისტორიის გასუფთავება', history: 'ისტორია', menu: 'მენიუ', settings: 'პარამეტრები', language: 'ენა', sound: 'ავატარის ხმა', genericError: 'რაღაც ხარვეზი. სცადე ხელახლა.', fileTooLarge: 'ფაილი ძალიან დიდია (მაქს. {max}MB).', fileBadType: 'არასწორი ფაილის ტიპი. გამოიყენე სურათი, ვიდეო ან აუდიო.', voiceUnsupported: 'ხმოვანი შეყვანა ამ ბრაუზერში არ მუშაობს.', listening: 'გისმენ…' },
-  ru: { placeholder: 'Введите сообщение…', signIn: 'Войти', signOut: 'Выйти', clearHistory: 'Очистить историю', history: 'История', menu: 'Меню', settings: 'Настройки', language: 'Язык', sound: 'Звук аватара', genericError: 'Что-то пошло не так. Попробуйте снова.', fileTooLarge: 'Файл слишком большой (макс. {max}МБ).', fileBadType: 'Неподдерживаемый тип файла. Используйте изображение, видео или аудио.', voiceUnsupported: 'Голосовой ввод не поддерживается в этом браузере.', listening: 'Слушаю…' },
+  en: { placeholder: 'Type a message…', signIn: 'Sign in', signOut: 'Sign out', clearHistory: 'Clear history', history: 'History', menu: 'Menu', settings: 'Settings', language: 'Language', sound: 'Avatar sound', genericError: 'Something went wrong. Try again.', fileTooLarge: 'File is too large (max {max}MB).', fileBadType: 'Unsupported file type. Use an image, video, or audio file.', voiceUnsupported: 'Voice input isn’t supported in this browser.', listening: 'Listening…', micDenied: 'Microphone access is blocked. Enable it in your browser settings and try again.', micNoDevice: 'No microphone was found. Connect one and try again.', micNetwork: 'Voice recognition couldn’t reach the network. Check your connection.', micError: 'The microphone couldn’t start. Please try again.' },
+  ka: { placeholder: 'დაწერე შეტყობინება…', signIn: 'შესვლა', signOut: 'გასვლა', clearHistory: 'ისტორიის გასუფთავება', history: 'ისტორია', menu: 'მენიუ', settings: 'პარამეტრები', language: 'ენა', sound: 'ავატარის ხმა', genericError: 'რაღაც ხარვეზი. სცადე ხელახლა.', fileTooLarge: 'ფაილი ძალიან დიდია (მაქს. {max}MB).', fileBadType: 'არასწორი ფაილის ტიპი. გამოიყენე სურათი, ვიდეო ან აუდიო.', voiceUnsupported: 'ხმოვანი შეყვანა ამ ბრაუზერში არ მუშაობს.', listening: 'გისმენ…', micDenied: 'მიკროფონზე წვდომა დაბლოკილია. ჩართე ბრაუზერის პარამეტრებში და სცადე ხელახლა.', micNoDevice: 'მიკროფონი ვერ მოიძებნა. დააკავშირე და სცადე ხელახლა.', micNetwork: 'ხმის ამოცნობამ ქსელთან დაკავშირება ვერ შეძლო. შეამოწმე კავშირი.', micError: 'მიკროფონი ვერ ჩაირთო. გთხოვ, სცადე ხელახლა.' },
+  ru: { placeholder: 'Введите сообщение…', signIn: 'Войти', signOut: 'Выйти', clearHistory: 'Очистить историю', history: 'История', menu: 'Меню', settings: 'Настройки', language: 'Язык', sound: 'Звук аватара', genericError: 'Что-то пошло не так. Попробуйте снова.', fileTooLarge: 'Файл слишком большой (макс. {max}МБ).', fileBadType: 'Неподдерживаемый тип файла. Используйте изображение, видео или аудио.', voiceUnsupported: 'Голосовой ввод не поддерживается в этом браузере.', listening: 'Слушаю…', micDenied: 'Доступ к микрофону заблокирован. Включите его в настройках браузера и попробуйте снова.', micNoDevice: 'Микрофон не найден. Подключите его и попробуйте снова.', micNetwork: 'Распознавание речи не смогло подключиться к сети. Проверьте соединение.', micError: 'Не удалось запустить микрофон. Пожалуйста, попробуйте снова.' },
 } as const;
 
 // Ecosystem-tier strings (history sidebar, settings modal, attachments). Kept
@@ -916,6 +916,35 @@ type SpeechRecognitionLike = {
   stop: () => void;
 };
 
+/**
+ * PHASE 49 §4 — Map a Web Speech API error code to a clear, localized notice.
+ *
+ * The mic previously failed SILENTLY: `onerror` only flipped the recording flag
+ * off, so a blocked-permission or no-device handshake looked identical to "the
+ * user said nothing" — the exact "mic fails to register audio" live symptom.
+ * Returns `null` for benign codes ('no-speech'/'aborted') so we don't nag the
+ * user when they simply paused or tapped stop.
+ */
+function sttErrorMessage(
+  code: string | undefined,
+  copy: { micDenied: string; micNoDevice: string; micNetwork: string; micError: string },
+): string | null {
+  switch (code) {
+    case 'not-allowed':
+    case 'service-not-allowed':
+      return copy.micDenied;
+    case 'audio-capture':
+      return copy.micNoDevice;
+    case 'network':
+      return copy.micNetwork;
+    case 'no-speech':
+    case 'aborted':
+      return null;
+    default:
+      return copy.micError;
+  }
+}
+
 export default function MyAvatarChatV2({ locale, userName, isAuthenticated, userEmail }: Props) {
   const lang = (locale === 'ka' || locale === 'ru' ? locale : 'en') as 'en' | 'ka' | 'ru';
   const copy = COPY[lang];
@@ -972,6 +1001,16 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
     noticeTimerRef.current = setTimeout(() => setNotice(null), 4000);
   }, []);
 
+  // PHASE 49 §4 — keep the mic-error handler current (locale-aware) for the
+  // once-created SpeechRecognition instance. Benign codes resolve to null and
+  // raise no notice; real handshake failures surface a clear localized message.
+  useEffect(() => {
+    sttErrorRef.current = (code?: string) => {
+      const msg = sttErrorMessage(code, copy);
+      if (msg) showNotice(msg);
+    };
+  }, [copy, showNotice]);
+
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const blobUrlsRef = useRef<string[]>([]);        // object-URLs to revoke on unmount
@@ -980,6 +1019,11 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const baseTranscriptRef = useRef('');           // input text snapshot at mic-start
   const [speechSupported, setSpeechSupported] = useState(false);
+  // PHASE 49 §4 — the SpeechRecognition instance is created once in a []-deps
+  // effect, so its onerror callback would close over a STALE locale/notice. We
+  // route errors through this ref (kept current by the effect below) so the mic
+  // failure surfaces a fresh, correctly-localized notice instead of dying mute.
+  const sttErrorRef = useRef<(code?: string) => void>(() => {});
   const stageRef = useRef<HTMLDivElement>(null);          // drag-constraints boundary
   const cornerVideoRef = useRef<HTMLVideoElement>(null);  // ambient corner loop
   const fullVideoRef = useRef<HTMLVideoElement>(null);    // expanded 9:16 preview
@@ -1106,7 +1150,12 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
       const merged = base ? `${base} ${transcript}`.trim() : transcript;
       dispatch({ type: 'SET_INPUT', text: merged });
     };
-    rec.onerror = () => dispatch({ type: 'SET_RECORDING', value: false });
+    rec.onerror = (e) => {
+      // Stop the recording UI AND surface a clear, localized reason (permission
+      // blocked / no device / network) instead of failing silently.
+      dispatch({ type: 'SET_RECORDING', value: false });
+      sttErrorRef.current?.(e?.error);
+    };
     rec.onend = () => dispatch({ type: 'SET_RECORDING', value: false });
     recognitionRef.current = rec;
 
@@ -1525,6 +1574,9 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
     } else {
       // Snapshot the current composer text so dictation appends, not overwrites.
       baseTranscriptRef.current = inputText.trim();
+      // PHASE 49 §4 — lock the transcription decoder to the active locale's BCP-47
+      // tag. 'ka-GE' forces the engine to decode the Georgian script + phonology
+      // (mojibake/empty results otherwise); 'ru-RU'/'en-US' for the other locales.
       rec.lang = lang === 'ka' ? 'ka-GE' : lang === 'ru' ? 'ru-RU' : 'en-US';
       try { rec.start(); dispatch({ type: 'SET_RECORDING', value: true }); }
       catch { /* already started — ignore */ }
@@ -2962,6 +3014,17 @@ function PreviewWorkspace({
   // Bumping this nonce remounts the media element so it re-attempts the stream
   // in place, removing the old "download-to-view" blocking fallback.
   const [reloadNonce, setReloadNonce] = useState(0);
+  // PHASE 49 §3 — Inline re-encode recovery proxy. When a media element fails to
+  // auto-mount (opaque CORS, missing/weak Content-Type, a hosted URL the media
+  // framework refuses), we fetch the bytes once and re-wrap them as a
+  // same-origin `blob:` URL. A blob: source is decoded from local memory with a
+  // concrete MIME, which forces the browser to recognize and play media it
+  // initially rejected — WITHOUT ever degrading to a download. One-shot per
+  // asset (guarded by recoveryTriedRef) so a genuinely dead URL still surfaces
+  // the graceful failure card instead of looping.
+  const [recoveredUrl, setRecoveredUrl] = useState<string | null>(null);
+  const [recoveredType, setRecoveredType] = useState<string | undefined>(undefined);
+  const recoveryTriedRef = useRef(false);
   // One-Click Asset Extraction — Shareable Link Builder copy-state feedback.
   const [linkCopied, setLinkCopied] = useState(false);
   // PHASE 41 §2 — visible download feedback so the UI never feels frozen while
@@ -2998,14 +3061,71 @@ function PreviewWorkspace({
     : undefined;
 
   // Reset framing + decode/diagnostic state whenever we swap to a different
-  // artifact so the panel never inherits the previous asset's flags.
+  // artifact so the panel never inherits the previous asset's flags. Also tear
+  // down any recovery blob: URL from the previous asset and re-arm the one-shot
+  // recovery guard.
   useEffect(() => {
     setAspect('native');
     setMediaReady(false);
     setMediaError(false);
     setLoadPhase('loading');
     setLinkCopied(false);
+    recoveryTriedRef.current = false;
+    setRecoveredUrl((prev) => {
+      if (prev) {
+        try { URL.revokeObjectURL(prev); } catch { /* already revoked */ }
+      }
+      return null;
+    });
+    setRecoveredType(undefined);
   }, [message.id]);
+
+  // Revoke the recovery blob: URL on unmount so we never leak object URLs.
+  useEffect(() => {
+    return () => {
+      if (recoveredUrl) {
+        try { URL.revokeObjectURL(recoveredUrl); } catch { /* already revoked */ }
+      }
+    };
+  }, [recoveredUrl]);
+
+  // The URL actually fed to the media elements: the recovered same-origin blob
+  // when in-place recovery succeeded, otherwise the original artifact URL.
+  const effectiveUrl = recoveredUrl ?? assetUrl;
+  const effectiveAudioType = recoveredType ?? inlineMediaType;
+  const effectiveVideoType = recoveredType ?? 'video/mp4';
+
+  // Media `onError` handler — fire the one-shot inline recovery proxy before
+  // ever showing the failure card. If recovery is unavailable or also fails,
+  // surface the graceful diagnostics fallback.
+  const handleMediaError = useCallback(() => {
+    if (
+      !recoveryTriedRef.current &&
+      assetUrl &&
+      !assetUrl.startsWith('blob:') &&
+      typeof fetch === 'function'
+    ) {
+      recoveryTriedRef.current = true;
+      void (async () => {
+        try {
+          const res = await fetch(assetUrl, { credentials: 'omit' });
+          if (!res.ok) throw new Error('recovery proxy fetch failed');
+          const blob = await res.blob();
+          const objectUrl = URL.createObjectURL(blob);
+          setRecoveredType(blob.type || undefined);
+          setRecoveredUrl(objectUrl);
+          setMediaError(false);
+          setMediaReady(false);
+          setLoadPhase('loading');
+          setReloadNonce((n) => n + 1);
+        } catch {
+          setMediaError(true);
+        }
+      })();
+      return;
+    }
+    setMediaError(true);
+  }, [assetUrl]);
 
   // PHASE 40 §3 — the instant a successful asset mounts, scroll the workspace
   // into the active viewport center (smooth, GPU-composited). On mobile the
@@ -3143,8 +3263,9 @@ function PreviewWorkspace({
               {/* Primary: re-initialize the canvas in place (no download needed). */}
               <button
                 type="button"
-                onClick={() => { setMediaError(false); setMediaReady(false); setLoadPhase('loading'); setReloadNonce((n) => n + 1); }}
-                className="inline-flex items-center gap-1.5 rounded-full border border-zinc-700 bg-zinc-900/80 px-3 py-1 text-[11.5px] text-zinc-100 transition hover:border-zinc-500 active:scale-95"
+                onClick={() => { recoveryTriedRef.current = false; setMediaError(false); setMediaReady(false); setLoadPhase('loading'); setReloadNonce((n) => n + 1); }}
+                className="inline-flex items-center gap-1.5 rounded-full border border-[#D4AF37]/40 bg-[#0A0A0A] px-3 py-1 text-[11.5px] text-zinc-100 transition hover:border-[#D4AF37] active:scale-95"
+                style={{ color: '#D4AF37' }}
               >
                 <RotateCcw size={13} /> {labels.retry}
               </button>
@@ -3254,23 +3375,32 @@ function PreviewWorkspace({
       {/* Canvas body */}
       <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-3 py-3">
         {assetType === 'image' && !isRoom3D ? (
-          <div className={`relative w-full overflow-hidden rounded-2xl border border-zinc-800/70 bg-black ${frameClass}`}>
-            <Image
+          <div
+            className={`relative w-full overflow-hidden rounded-2xl border border-[#D4AF37]/25 ${frameClass}`}
+            style={{ backgroundColor: '#0A0A0A' }}
+          >
+            {/* PHASE 49 §3 — native <img> for instant, framework-native decode
+                (no next/image optimizer indirection). `effectiveUrl` swaps to the
+                recovered same-origin blob: source if the original failed to mount. */}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
               key={`img-${reloadNonce}`}
-              src={assetUrl}
+              src={effectiveUrl}
               alt="Generated"
-              fill
-              unoptimized
-              onLoadingComplete={() => setMediaReady(true)}
-              onError={() => setMediaError(true)}
-              className={`object-contain ${fadeClass}`}
+              decoding="async"
+              onLoad={() => setMediaReady(true)}
+              onError={handleMediaError}
+              className={`absolute inset-0 h-full w-full object-contain ${fadeClass}`}
             />
             {renderDiagnostics()}
           </div>
         ) : null}
 
         {assetType === 'video' ? (
-          <div className={`relative w-full overflow-hidden rounded-2xl border border-zinc-800/70 bg-black transform-gpu ${videoFrameClass}`}>
+          <div
+            className={`relative w-full overflow-hidden rounded-2xl border border-[#D4AF37]/25 transform-gpu ${videoFrameClass}`}
+            style={{ backgroundColor: '#0A0A0A' }}
+          >
             <video
               key={`vid-${reloadNonce}`}
               ref={previewVideoRef}
@@ -3278,21 +3408,23 @@ function PreviewWorkspace({
               playsInline
               preload="metadata"
               onLoadedData={() => setMediaReady(true)}
-              onError={() => setMediaError(true)}
+              onError={handleMediaError}
               style={{ transform: 'translateZ(0)' }}
               className={`absolute inset-0 h-full w-full object-contain ${fadeClass}`}
             >
               {/* PHASE 48 §2 — declare the codec so the browser commits to the
                   element even when a data:/proxied source carries a weak or
-                  missing Content-Type; inline data:video/mp4 now also passes CSP. */}
-              <source src={assetUrl} type="video/mp4" />
+                  missing Content-Type; inline data:video/mp4 now also passes CSP.
+                  PHASE 49 §3 — `effectiveUrl`/`effectiveVideoType` carry the
+                  recovered blob: source + its concrete MIME when recovery fired. */}
+              <source src={effectiveUrl} type={effectiveVideoType} />
             </video>
             {renderDiagnostics()}
           </div>
         ) : null}
 
         {isRoom3D ? (
-          <div className="overflow-hidden rounded-2xl border border-zinc-800/70 bg-black">
+          <div className="overflow-hidden rounded-2xl border border-[#D4AF37]/25" style={{ backgroundColor: '#0A0A0A' }}>
             <div className="relative aspect-[16/9] w-full">
               <iframe
                 key={`room-${reloadNonce}`}
@@ -3314,17 +3446,18 @@ function PreviewWorkspace({
         ) : null}
 
         {assetType === 'audio' ? (
-          <div className="w-full rounded-2xl border border-zinc-800/70 bg-[#0a0a0a] p-4">
+          <div className="w-full rounded-2xl border border-[#D4AF37]/25 p-4" style={{ backgroundColor: '#0A0A0A' }}>
             <div className="flex items-center gap-2 pb-3 text-[13px] font-medium text-zinc-200">
               <span className="flex h-8 w-8 items-center justify-center rounded-full bg-white/5">
                 <Volume2 size={18} style={{ color: accent }} />
               </span>
               <span>{agent.name[lang]}</span>
             </div>
-            <audio controls preload="metadata" className="w-full">
+            <audio key={`aud-${reloadNonce}`} controls preload="metadata" onError={handleMediaError} className="w-full">
               {/* PHASE 48 §2 — exact embedded MIME for inline data: audio so it
-                  mounts under CSP and the browser never skips the source. */}
-              <source src={assetUrl} type={inlineMediaType} />
+                  mounts under CSP and the browser never skips the source.
+                  PHASE 49 §3 — recovered blob: source + concrete MIME on failure. */}
+              <source src={effectiveUrl} type={effectiveAudioType} />
             </audio>
           </div>
         ) : null}

@@ -101,6 +101,58 @@ export function withAuthTimeout<T>(promise: PromiseLike<T>, ms: number = AUTH_TI
 const TIMEOUT_MESSAGE =
   'The connection timed out. Please check your network and try again.';
 
+/**
+ * PHASE 49 §2 — Honest OAuth error translation.
+ *
+ * THE LIVE FAILURE
+ * ----------------
+ * Clicking "Continue with Google" surfaced the raw GoTrue payload
+ *   {"code":400,"error_code":"validation_failed",
+ *    "msg":"Unsupported provider: provider is not enabled"}
+ * The client ALREADY sends the correct payload (`provider: 'google'`); GoTrue
+ * returns this ONLY when the Google provider is toggled OFF in the Supabase
+ * dashboard (Authentication → Providers → Google). That is a server-side
+ * configuration state the browser cannot fix — but it must NOT dead-end the user
+ * with an opaque JSON blob. We detect that exact condition and return a clear,
+ * localized, actionable message that steers the user to a working path (email).
+ *
+ * Pure + exported so the mapping is unit-tested without a live Supabase.
+ */
+export function describeOAuthError(
+  rawMessage: string | null | undefined,
+  provider: string,
+  locale: string = 'en',
+): string {
+  const raw = (rawMessage || '').toLowerCase();
+  const providerLabel = provider ? provider.charAt(0).toUpperCase() + provider.slice(1) : 'OAuth';
+  const providerDisabled =
+    raw.includes('provider is not enabled') ||
+    raw.includes('unsupported provider') ||
+    raw.includes('validation_failed');
+
+  if (providerDisabled) {
+    switch (locale) {
+      case 'ka':
+        return `${providerLabel}-ით შესვლა ამჟამად მიუწვდომელია. გთხოვთ, გამოიყენოთ ელ. ფოსტით შესვლა.`;
+      case 'ru':
+        return `Вход через ${providerLabel} сейчас недоступен. Пожалуйста, войдите по электронной почте.`;
+      default:
+        return `${providerLabel} sign-in is temporarily unavailable. Please sign in with your email instead.`;
+    }
+  }
+
+  if (rawMessage && rawMessage.trim().length > 0) return rawMessage;
+
+  switch (locale) {
+    case 'ka':
+      return 'შესვლა ვერ მოხერხდა. გთხოვთ, სცადოთ თავიდან.';
+    case 'ru':
+      return 'Не удалось войти. Пожалуйста, попробуйте снова.';
+    default:
+      return 'Sign-in failed. Please try again.';
+  }
+}
+
 // ─── Provider Icons ──────────────────────────────────────────────────────────
 
 function AppleIcon() {
@@ -258,18 +310,20 @@ function AuthScreenInner({ mode: initialMode, locale, redirectTo = '/' }: AuthSc
       );
 
       if (error) {
-        setError(error.message);
+        // Translate the cryptic GoTrue "provider is not enabled" payload into an
+        // honest, localized, actionable message instead of dumping raw JSON.
+        setError(describeOAuthError(error.message, provider, locale));
         setLoading(false);
         setLoadingProvider(null);
       }
       // Success: the SDK is redirecting to the provider — keep the spinner.
     } catch (err) {
       // Hung handshake (timeout or network failure) — never freeze the screen.
-      setError(err instanceof AuthTimeoutError ? TIMEOUT_MESSAGE : 'Sign-in failed. Please try again.');
+      setError(err instanceof AuthTimeoutError ? TIMEOUT_MESSAGE : describeOAuthError(null, provider, locale));
       setLoading(false);
       setLoadingProvider(null);
     }
-  }, [supabase, callbackUrl]);
+  }, [supabase, callbackUrl, locale]);
 
   // ─── Email handler ───────────────────────────────────────────────────────
 

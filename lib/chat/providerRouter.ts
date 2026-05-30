@@ -52,6 +52,23 @@ export interface OrchestratorInput {
   customInstructions?: string;
 }
 
+/**
+ * PHASE 49 §1 — Strict hybrid cognitive routing.
+ *
+ * Gemini is the PRIMARY foundational core for all default interactions: the
+ * conversational agent, standard UI responses, prompt execution and Georgian
+ * linguistic processing. Claude is a SECONDARY SPECIALIST — invoked first only
+ * for complex programming, deep science/math parsing, or large technical
+ * blueprints, where its long-form reasoning is worth the latency. Everything
+ * else stays Gemini-led (Claude remains the silent fallback so chat never dark).
+ *
+ * Pure + exported so the routing decision is unit-tested in isolation.
+ */
+// The routing decision lives in a dependency-free module so it can be
+// unit-tested in isolation (providerRouter itself pulls in heavy provider SDKs).
+export { prefersClaudeSpecialist } from './specialistRouting';
+import { prefersClaudeSpecialist } from './specialistRouting';
+
 /** Append the user's custom instructions to a base system prompt (if any). */
 function withCustomInstructions(base: string, customInstructions?: string): string {
   const trimmed = (customInstructions || '').trim().slice(0, 2000);
@@ -942,17 +959,81 @@ function toChatResponse(
 
 // ─── Text LLM path ──────────────────────────────────────────────────────────
 
+/**
+ * Claude (Anthropic) completion. Returns a normalized ChatResponse on success,
+ * or null on failure so the caller can fall back. `routedAs` records WHY Claude
+ * was chosen ('specialist' = §1 complex-task lead, 'fallback' = Gemini surrendered).
+ */
+async function tryClaudeCompletion(
+  input: OrchestratorInput,
+  detected: DetectedIntent,
+  systemPrompt: string,
+  opts: { routedAs: 'specialist' | 'fallback'; geminiError?: string | null } = { routedAs: 'fallback' },
+): Promise<ChatResponse | null> {
+  const anthropicKey = process.env.ANTHROPIC_API_KEY;
+  if (!anthropicKey) return null;
+  try {
+    const anthropic = new Anthropic({ apiKey: anthropicKey });
+    // Specialist work (code/science/blueprints) earns the stronger Sonnet model
+    // and a larger token budget; the fallback path keeps the fast/cheap default.
+    const model = process.env.ANTHROPIC_MODEL
+      || (opts.routedAs === 'specialist' ? 'claude-sonnet-4-5-20250929' : 'claude-haiku-4-5-20251001');
+    const msg = await anthropic.messages.create({
+      model,
+      max_tokens: opts.routedAs === 'specialist' ? 4096 : 1024,
+      system: systemPrompt,
+      messages: [
+        ...input.history.map((h) => ({
+          role: h.role === 'assistant' ? ('assistant' as const) : ('user' as const),
+          content: h.content,
+        })),
+        { role: 'user' as const, content: input.message },
+      ],
+    });
+    const text = msg.content
+      .filter((b): b is Anthropic.TextBlock => b.type === 'text')
+      .map((b) => b.text)
+      .join('')
+      .trim();
+    return {
+      success: true,
+      intent: detected.intent,
+      responseType: 'text',
+      message: text || '…',
+      metadata: {
+        provider: 'anthropic',
+        model: msg.model,
+        tokensIn: msg.usage?.input_tokens,
+        tokensOut: msg.usage?.output_tokens,
+        confidence: detected.confidence,
+        routedAs: opts.routedAs,
+        ...(opts.geminiError ? { geminiFallbackFrom: opts.geminiError } : {}),
+      },
+    };
+  } catch (error) {
+    console.error(`[providerRouter] Claude ${opts.routedAs} completion failed:`, error);
+    return null;
+  }
+}
+
 async function handleTextIntent(
   input: OrchestratorInput,
   detected: DetectedIntent,
 ): Promise<ChatResponse> {
-  // Cognitive core: Gemini is PRIMARY. Claude is the automatic fallback so chat
-  // never goes dark while the Gemini project is rate-limited (free-tier limit 0);
-  // the instant that project is on the paid tier, Gemini serves with no change.
+  // PHASE 49 §1 — Strict hybrid core. Gemini is PRIMARY for every default,
+  // conversational and Georgian interaction; Claude is the SECONDARY SPECIALIST.
   // OpenAI stays fully out of the runtime path.
   const ctx = toGeminiServiceContext(input.serviceContext);
   const systemPrompt = withCustomInstructions(getGeminiSystemPrompt(ctx, input.locale || 'ka'), input.customInstructions);
   let geminiError: string | null = null;
+
+  // Specialist lead: complex programming / deep science-math / large technical
+  // blueprints go to Claude FIRST. If Claude is unavailable we transparently
+  // fall through to the Gemini-primary path below (chat never goes dark).
+  if (prefersClaudeSpecialist(input.message) && process.env.ANTHROPIC_API_KEY) {
+    const specialist = await tryClaudeCompletion(input, detected, systemPrompt, { routedAs: 'specialist' });
+    if (specialist) return specialist;
+  }
 
   if (process.env.GEMINI_API_KEY) {
     const prefersPro = input.message.length > 1200 || input.history.length > 12 || ctx === 'interior' || ctx === 'business';
@@ -1017,54 +1098,17 @@ async function handleTextIntent(
     }
   }
 
-  // ── Claude fallback (Anthropic) ──
-  const anthropicKey = process.env.ANTHROPIC_API_KEY;
-  if (anthropicKey) {
-    try {
-      const anthropic = new Anthropic({ apiKey: anthropicKey });
-      const model = process.env.ANTHROPIC_MODEL || 'claude-haiku-4-5-20251001';
-      const msg = await anthropic.messages.create({
-        model,
-        max_tokens: 1024,
-        system: systemPrompt,
-        messages: [
-          ...input.history.map((h) => ({
-            role: h.role === 'assistant' ? ('assistant' as const) : ('user' as const),
-            content: h.content,
-          })),
-          { role: 'user' as const, content: input.message },
-        ],
-      });
-      const text = msg.content
-        .filter((b): b is Anthropic.TextBlock => b.type === 'text')
-        .map((b) => b.text)
-        .join('')
-        .trim();
-      return {
-        success: true,
-        intent: detected.intent,
-        responseType: 'text',
-        message: text || '…',
-        metadata: {
-          provider: 'anthropic',
-          model: msg.model,
-          tokensIn: msg.usage?.input_tokens,
-          tokensOut: msg.usage?.output_tokens,
-          confidence: detected.confidence,
-          ...(geminiError ? { geminiFallbackFrom: geminiError } : {}),
-        },
-      };
-    } catch (error) {
-      const m = error instanceof Error ? error.message : 'Claude request failed';
-      console.error('[providerRouter] Claude fallback failed:', error);
-      return {
-        success: false,
-        intent: detected.intent,
-        responseType: 'text',
-        message: 'Chat is temporarily unavailable. Please try again shortly.',
-        metadata: { provider: 'anthropic', error: m, ...(geminiError ? { geminiError } : {}) },
-      };
-    }
+  // ── Claude fallback (Anthropic) — keeps chat alive when Gemini surrenders ──
+  if (process.env.ANTHROPIC_API_KEY) {
+    const fallback = await tryClaudeCompletion(input, detected, systemPrompt, { routedAs: 'fallback', geminiError });
+    if (fallback) return fallback;
+    return {
+      success: false,
+      intent: detected.intent,
+      responseType: 'text',
+      message: 'Chat is temporarily unavailable. Please try again shortly.',
+      metadata: { provider: 'anthropic', ...(geminiError ? { geminiError } : {}) },
+    };
   }
 
   // Neither provider configured / Gemini failed with no Claude fallback.
