@@ -28,6 +28,7 @@ import { isMusicVideoComposite, handleMusicVideoComposite } from './musicVideoCo
 import { isThirtySecondFilm, handleFilmComposite } from './filmComposite';
 import { isCompositeRef, decodeCompositeRef } from './compositeTaskRef';
 import { isFilmRef, decodeFilmRef, computeFilmUnion, type FilmTaskRef, type FilmLegRuntimeStatus } from './filmTaskRef';
+import { deriveFilmTokenId, buildFilmSnapshot, putFilmStatus } from './filmStatusStore';
 import { isFounderAuditCommand, isFounder, runFounderAudit, renderAuditAsMarkdown } from '@/lib/monetization/audit-engine';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -465,6 +466,25 @@ async function pollFilmTask(predictionId: string, sessionId?: string): Promise<C
   const union = computeFilmUnion(clipStates.map((c) => c.status), audioStatus);
   const { readyToStitch, anyClipPending, filmStatus, stitchStatus } = union;
 
+  // PHASE 47 §1 — persist a compact snapshot to the storage-backed status tracker
+  // so a reload / second device can recover the unified state (and the final
+  // master, once the assemble route stamps it) via /api/video/status/[tokenId].
+  // Best-effort + fail-open: a tracking write must never break the poll.
+  const statusTokenId = deriveFilmTokenId({ sessionId: ref.sessionId, createdAt: ref.createdAt, seed: ref.seed });
+  try {
+    await putFilmStatus(
+      buildFilmSnapshot({
+        tokenId: statusTokenId,
+        clips: clipStates.map((c) => ({ ordinal: c.ordinal, status: filmLegToClientStatus(c.status), url: c.url })),
+        audioStatus,
+        readyToStitch,
+        filmStatus,
+      }),
+    );
+  } catch {
+    /* fail-open — tracking is best-effort, the render is the source of truth */
+  }
+
   // Ordered clip URLs the client hands to the assembler (only the ready ones).
   const orderedClips = [...clipStates].sort((a, b) => a.ordinal - b.ordinal);
   const succeededClips = clipStates.filter((c) => c.status === 'succeeded').length;
@@ -504,6 +524,8 @@ async function pollFilmTask(predictionId: string, sessionId?: string): Promise<C
         audio: filmLegToClientStatus(audioStatus),
         audioUrl,
         readyToStitch,
+        // PHASE 47 §1 — the unified status-tracker key for /api/video/status.
+        statusTokenId,
       },
     },
   };

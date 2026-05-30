@@ -606,6 +606,9 @@ interface FilmMeta {
   audioUrl?: string | null;
   /** PHASE 43 §1/§4 — true when every clip has landed and the editor can stitch. */
   readyToStitch?: boolean;
+  /** PHASE 47 §1 — key for the storage-backed unified status tracker
+   *  (GET /api/video/status/[tokenId]); lets the finished master survive a reload. */
+  statusTokenId?: string;
 }
 
 interface OrchestrateResponse {
@@ -637,6 +640,13 @@ interface PipelineStage {
   key: string;
   label: { en: string; ka: string; ru: string };
   state: StageState;
+  // PHASE 47 §2 — per-clip cinematic preview hints (film pipeline only). When a
+  // clip leg lands, `previewUrl` carries its playable URL so the storyboard slot
+  // shows live native playback instead of a static glyph; `recovered` marks a
+  // leg the master agent retried, so the slot can blend in a seamless filter
+  // rather than expose an abrupt cut.
+  previewUrl?: string | null;
+  recovered?: boolean;
 }
 interface PipelineState { active: boolean; stages: PipelineStage[] }
 
@@ -716,7 +726,15 @@ function deriveFilmStages(film: FilmMeta, terminal: boolean, failed: boolean): P
           ka: `კლიპი ${clip.ordinal}/${total} — პერსონაჟის თანმიმდევრულობა`,
           ru: `Клип ${clip.ordinal} из ${total} — консистентность персонажа`,
         };
-    stages.push({ key: `clip_${clip.ordinal}`, label, state: stageState });
+    // PHASE 47 §2 — pass the landed clip URL + retry flag to the storyboard slot
+    // so it can mount live native playback and blend recovered scenes seamlessly.
+    stages.push({
+      key: `clip_${clip.ordinal}`,
+      label,
+      state: stageState,
+      previewUrl: clip.url ?? null,
+      recovered: (clip.attempts ?? 1) > 1,
+    });
   }
 
   stages.push({
@@ -773,6 +791,7 @@ async function assembleFilm(
   clipUrls: string[],
   musicUrl: string | null,
   signal?: AbortSignal,
+  statusTokenId?: string,
 ): Promise<string | null> {
   const res = await fetch('/api/video/assemble', {
     method: 'POST',
@@ -782,11 +801,39 @@ async function assembleFilm(
     body: JSON.stringify({
       segments: clipUrls.map((url) => ({ url, durationSec: 6 })),
       ...(musicUrl ? { musicUrl } : {}),
+      // PHASE 47 §1 — let the route stamp the finished master onto the unified
+      // status tracker so a reload / second device can recover it.
+      ...(statusTokenId ? { filmTokenId: statusTokenId } : {}),
     }),
   });
   if (!res.ok) return null;
   const json = (await res.json().catch(() => null)) as { url?: unknown } | null;
   return json && typeof json.url === 'string' && json.url.length > 0 ? json.url : null;
+}
+
+/**
+ * PHASE 47 §1 — Recover an already-assembled master from the storage-backed
+ * tracker. A reload or second device that re-enters a film whose render finished
+ * elsewhere can mount the playable 30s master without re-driving the pipeline.
+ * Returns the hosted master URL when the tracker reports phase 'assembled'.
+ */
+async function fetchAssembledMaster(statusTokenId: string, signal?: AbortSignal): Promise<string | null> {
+  try {
+    const res = await fetch(`/api/video/status/${encodeURIComponent(statusTokenId)}`, {
+      method: 'GET',
+      credentials: 'include',
+      signal,
+      cache: 'no-store',
+    });
+    if (!res.ok) return null;
+    const json = (await res.json().catch(() => null)) as { phase?: unknown; masterUrl?: unknown } | null;
+    if (json && json.phase === 'assembled' && typeof json.masterUrl === 'string' && json.masterUrl.length > 0) {
+      return json.masterUrl;
+    }
+    return null;
+  } catch {
+    return null;
+  }
 }
 
 /** Build the telemetry stage list from a real response (or in-flight state). */
@@ -1294,8 +1341,13 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
         if (clipUrls.length >= 2) {
           setPipeline(deriveFilmStitching(resp));
           showNotice(xc.filmStitching);
+          const statusTokenId = film.statusTokenId;
           try {
-            const masterUrl = await assembleFilm(clipUrls, film.audioUrl ?? null, signal);
+            // PHASE 47 §1 — if this film was already assembled (e.g. on another
+            // device / before a reload), recover the hosted master from the
+            // storage-backed tracker instead of paying to stitch it again.
+            const recovered = statusTokenId ? await fetchAssembledMaster(statusTokenId, signal) : null;
+            const masterUrl = recovered ?? (await assembleFilm(clipUrls, film.audioUrl ?? null, signal, statusTokenId));
             if (masterUrl) {
               resp = { ...resp, assetUrl: masterUrl, message: resp.message };
             } else {
@@ -3885,15 +3937,23 @@ function FilmStoryboardSkeleton({
           {clips.map((s, idx) => {
             const ordinal = Number(s.key.slice('clip_'.length)) || idx + 1;
             const st = s.state;
+            // PHASE 47 §2 — a landed clip with a playable URL upgrades its slot
+            // from a status glyph to live, high-fidelity native playback.
+            const hasPreview = st === 'done' && typeof s.previewUrl === 'string' && s.previewUrl.length > 0;
+            const recovered = s.recovered === true;
             const frame =
-              st === 'done' ? 'border-emerald-500/40 bg-emerald-500/[0.05]'
+              st === 'done' ? (recovered ? 'border-amber-400/40 bg-amber-400/[0.05]' : 'border-emerald-500/40 bg-emerald-500/[0.05]')
               : st === 'active' ? 'border-white/[0.12] bg-neutral-900'
               : st === 'failed' ? 'border-rose-500/40 bg-rose-500/[0.05]'
               : st === 'skipped' ? 'border-white/[0.06] bg-neutral-950 opacity-50'
               : 'border-dashed border-white/10 bg-neutral-950';
             return (
-              <div
+              <motion.div
                 key={s.key}
+                layout={!reduceMotion}
+                initial={reduceMotion ? false : { opacity: 0, scale: 0.97 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ type: 'spring', stiffness: 360, damping: 30, delay: reduceMotion ? 0 : idx * 0.04 }}
                 className={`relative flex aspect-video items-center justify-center overflow-hidden rounded-xl border transition-colors duration-500 ${frame}`}
               >
                 {/* indeterminate light sweep while this scene is in flight */}
@@ -3907,21 +3967,75 @@ function FilmStoryboardSkeleton({
                   />
                 ) : null}
 
+                {/* PHASE 47 §2 — crossfade between the status glyph and the landed
+                    clip's live playback. Both occupy the SAME aspect-video box, so
+                    the swap is zero-CLS. A recovered scene gets a seamless filter +
+                    a vignette so it reads as continuity, never an abrupt cut. */}
+                <AnimatePresence mode="wait" initial={false}>
+                  {hasPreview ? (
+                    <motion.div
+                      key="preview"
+                      className="absolute inset-0"
+                      initial={reduceMotion ? { opacity: 0 } : { opacity: 0, scale: 1.04 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0 }}
+                      transition={{ duration: reduceMotion ? 0.2 : 0.6, ease: 'easeOut' }}
+                    >
+                      <video
+                        src={s.previewUrl ?? undefined}
+                        muted
+                        loop
+                        autoPlay
+                        playsInline
+                        preload="metadata"
+                        className="h-full w-full object-cover transform-gpu"
+                        style={recovered ? { filter: 'saturate(1.06) contrast(1.03) brightness(1.02)' } : undefined}
+                      />
+                      {/* gradient scrim so the ordinal + label stay legible over video */}
+                      <span className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/55 via-transparent to-black/25" aria-hidden />
+                      {recovered && !reduceMotion ? (
+                        <motion.span
+                          className="pointer-events-none absolute inset-0"
+                          style={{ boxShadow: 'inset 0 0 48px rgba(245,158,11,0.18)' }}
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: [0, 1, 0.6] }}
+                          transition={{ duration: 1.1, ease: 'easeInOut' }}
+                          aria-hidden
+                        />
+                      ) : null}
+                    </motion.div>
+                  ) : (
+                    <motion.span
+                      key="glyph"
+                      className="relative flex h-9 w-9 items-center justify-center"
+                      initial={reduceMotion ? false : { opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      transition={{ duration: 0.25 }}
+                    >
+                      <FilmLegGlyph state={st} accent={accent} size={st === 'done' ? 22 : 20} />
+                    </motion.span>
+                  )}
+                </AnimatePresence>
+
                 {/* scene ordinal badge */}
-                <span className="absolute left-2.5 top-2 text-[11px] font-bold tabular-nums tracking-wide text-zinc-500">
+                <span className="absolute left-2.5 top-2 z-10 text-[11px] font-bold tabular-nums tracking-wide text-zinc-300 mix-blend-plus-lighter">
                   {String(ordinal).padStart(2, '0')}
                 </span>
 
-                {/* center status glyph */}
-                <span className="relative flex h-9 w-9 items-center justify-center">
-                  <FilmLegGlyph state={st} accent={accent} size={st === 'done' ? 22 : 20} />
-                </span>
+                {/* PHASE 47 §2 — recovered-scene chip: honest signal that this beat
+                    was re-rendered on-model to keep the cut continuous. */}
+                {recovered ? (
+                  <span className="absolute right-2 top-2 z-10 inline-flex items-center gap-1 rounded-full bg-amber-400/15 px-1.5 py-0.5 text-[10px] font-semibold text-amber-200">
+                    <RotateCcw size={9} /> recovered
+                  </span>
+                ) : null}
 
                 {/* scene label */}
-                <span className="absolute bottom-2 left-2.5 text-[11px] font-medium text-zinc-400">
+                <span className="absolute bottom-2 left-2.5 z-10 text-[11px] font-medium text-zinc-300">
                   {labels.scene} {ordinal}
                 </span>
-              </div>
+              </motion.div>
             );
           })}
         </div>

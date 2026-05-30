@@ -21,6 +21,16 @@ const LTX_BASE_URL = 'https://api.ltx.video';
 const HEYGEN_BASE_URL = 'https://api.heygen.com';
 const TASK_REF_VERSION = 1;
 
+// PHASE 47 §3 — Radical agent recovery. A film clip's LTX dispatch is retried up
+// to 3 times with exponential backoff before the master agent falls back to the
+// amber strip. We retry ONLY transient failures (network throw / 429 / 5xx); a
+// deterministic 4xx (401/403/400 — auth or bad request) fails fast on the first
+// try so we never burn three slow round-trips on a credential that will never
+// validate. A failed dispatch creates no provider job, so retrying can never
+// double-render or double-charge.
+const LTX_MAX_DISPATCH_ATTEMPTS = 3;
+const LTX_RETRY_BASE_MS = 400;
+
 const LTX_SUPPORTED_RESOLUTIONS: Record<'ltx-2-3-fast' | 'ltx-2-3-pro', readonly string[]> = {
   'ltx-2-3-fast': ['1920x1080', '1080x1920', '2560x1440', '3840x2160'],
   'ltx-2-3-pro': ['1920x1080', '1080x1920', '2560x1440', '3840x2160'],
@@ -357,6 +367,59 @@ export class ServiceManager {
     };
   }
 
+  /** PHASE 47 §3 — abortable sleep used between backoff attempts. */
+  private delay(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  /** A 5xx or 429 is transient and worth retrying; a 4xx is deterministic. */
+  private isRetryableLtxStatus(status: number): boolean {
+    return status === 429 || status >= 500;
+  }
+
+  /**
+   * PHASE 47 §3 — Dispatch the LTX render with bounded exponential backoff.
+   *
+   * Returns the first successful (`response.ok`) Response, OR the final Response
+   * even when it is a non-retryable error — so the caller's existing
+   * `if (!response.ok)` branch still produces the exact provider error text.
+   * Only transient failures (network throw / 429 / 5xx) consume a retry; a
+   * deterministic 4xx returns immediately. Backoff grows 400ms → 800ms → 1600ms
+   * with light jitter to avoid thundering-herd retries across the 5 parallel
+   * clip legs.
+   */
+  private async dispatchLtxWithRetry(url: string, init: RequestInit): Promise<Response> {
+    let lastError: unknown = null;
+    for (let attempt = 1; attempt <= LTX_MAX_DISPATCH_ATTEMPTS; attempt++) {
+      try {
+        const response = await fetch(url, init);
+        if (response.ok || !this.isRetryableLtxStatus(response.status)) {
+          return response;
+        }
+        // Transient HTTP error — drain the body so the socket can be reused,
+        // then back off and retry (unless this was the final attempt).
+        await response.text().catch(() => undefined);
+        lastError = new Error(`LTX transient HTTP ${response.status}`);
+        if (attempt === LTX_MAX_DISPATCH_ATTEMPTS) return response;
+      } catch (err) {
+        // Network/DNS/abort throw — retry unless we're out of attempts.
+        lastError = err;
+        if (attempt === LTX_MAX_DISPATCH_ATTEMPTS) throw err;
+      }
+      const backoff = LTX_RETRY_BASE_MS * 2 ** (attempt - 1);
+      const jitter = Math.floor(Math.random() * 120);
+      // eslint-disable-next-line no-console
+      console.warn(
+        `[ltx] dispatch attempt ${attempt}/${LTX_MAX_DISPATCH_ATTEMPTS} transient failure; retrying in ${backoff + jitter}ms:`,
+        lastError instanceof Error ? lastError.message : lastError,
+      );
+      await this.delay(backoff + jitter);
+    }
+    // Unreachable (the loop always returns/throws on the final attempt), but the
+    // type checker needs a terminal throw.
+    throw lastError instanceof Error ? lastError : new Error('LTX dispatch failed');
+  }
+
   private async runLtxVideo(request: ServiceManagerRequest): Promise<ServiceManagerResponse> {
     // PHASE 45 §1 — accept the key under any provisioned alias.
     const apiKey = resolveLtxApiKey();
@@ -416,7 +479,10 @@ export class ServiceManager {
       ...(charRefOpt ? { characterReference: charRefOpt } : {}),
     });
 
-    const response = await fetch(`${LTX_BASE_URL}/v1/text-to-video`, {
+    // PHASE 47 §3 — dispatch through the bounded exponential-backoff retry so a
+    // transient provider blip (the exact failure that dropped clips 3 & 4 in the
+    // PHASE 46 live-fire) self-heals before the master agent gives up.
+    const response = await this.dispatchLtxWithRetry(`${LTX_BASE_URL}/v1/text-to-video`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${apiKey}`,

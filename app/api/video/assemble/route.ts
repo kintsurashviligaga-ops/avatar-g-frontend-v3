@@ -25,6 +25,7 @@ import { readRunPodConfig, dispatchRunPod, type RunPodManifest } from '@/lib/orc
 import { deductCredits, refundCredits } from '@/lib/orchestrator/ledger';
 import { reSignIfInternal } from '@/lib/orchestrator/storage-adapter';
 import { assembleWithFfmpeg } from '@/lib/orchestrator/ffmpeg-assembly';
+import { recordFilmAssembling, recordFilmMaster, recordFilmFailed } from '@/lib/chat/filmStatusStore';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -44,6 +45,10 @@ interface AssembleBody {
   musicUrl?: string | null;
   sfxUrl?: string | null;
   globalRender?: Record<string, string | number | boolean>;
+  /** PHASE 47 §1 — the film's unified status-tracker id. When present, the
+   *  finished master is stamped onto the storage-backed record so any client /
+   *  reload can recover it via GET /api/video/status/[tokenId]. */
+  filmTokenId?: string | null;
 }
 
 export async function POST(req: NextRequest) {
@@ -64,6 +69,11 @@ export async function POST(req: NextRequest) {
   if (!user) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   }
+
+  // PHASE 47 §1 — flip the unified tracker to 'assembling' so a polling client
+  // (or a reload) sees the editor working, not a stalled 'ready'. Fail-open.
+  const filmTokenId = typeof body.filmTokenId === 'string' && body.filmTokenId.trim() ? body.filmTokenId.trim() : null;
+  if (filmTokenId) await recordFilmAssembling(filmTokenId);
 
   // Idempotency — block duplicate submissions of the same composition.
   const idemKey = await hashPayload({ u: user.id, segs: segments.map(s => s.url), v: body.voiceoverUrl, m: body.musicUrl });
@@ -162,11 +172,18 @@ export async function POST(req: NextRequest) {
   const resultUrl = typeof bag.tempUrl === 'string' ? bag.tempUrl : null;
 
   if (!saga.ok) {
+    // PHASE 47 §1 — record the terminal failure so the tracker stops claiming
+    // 'assembling' forever; the client's amber fallback already covers the UX.
+    if (filmTokenId) await recordFilmFailed(filmTokenId, String(saga.error || 'assembly failed'));
     return NextResponse.json(
       { error: 'assembly_failed', failedStep: saga.failedStep, message: saga.error, compensated: saga.compensatedSteps },
       { status: 502 },
     );
   }
 
-  return NextResponse.json({ url: resultUrl, sagaId: saga.sagaId });
+  // PHASE 47 §1 — stamp the finished hosted master onto the unified tracker so a
+  // reload / second device can recover the playable 30s film without re-rendering.
+  if (filmTokenId && resultUrl) await recordFilmMaster(filmTokenId, resultUrl);
+
+  return NextResponse.json({ url: resultUrl, sagaId: saga.sagaId, filmTokenId });
 }

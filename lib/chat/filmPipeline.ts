@@ -213,6 +213,32 @@ export interface FilmShared {
   totalSec: number;
 }
 
+/**
+ * PHASE 47 §3 — Nano Banano's visual contingency plan for a single scene.
+ *
+ * When a clip is dropped by a transient provider failure and a fallback variant
+ * must be mounted in its place, the editor needs that fallback to cosmetically
+ * MATCH its neighbours — same protagonist, same seed, same palette — so the
+ * 30-second cut reads as one continuous film, not an abrupt swap. Nano Banano
+ * (the storyboard architect) emits this contingency alongside the primary prompt
+ * and it rides in the clip's asset payload metadata. It deliberately re-asserts
+ * the SAME continuity levers as the primary render (seed + character anchor +
+ * reference) plus a motion-light "safe" framing that blends between the adjacent
+ * shots instead of introducing a new camera move.
+ */
+export interface FilmSceneContingency {
+  /** Identical to the primary render so a fallback re-anchors the same noise. */
+  seed: number;
+  /** Neutral, low-motion framing safe to swap in without a jarring camera move. */
+  fallbackFraming: string;
+  /** Ordinals of the adjacent scenes whose look the fallback must match. */
+  matchNeighbors: number[];
+  /** The shared character anchor the fallback must preserve verbatim. */
+  characterAnchor: string;
+  /** The primary character reference (avatar / first uploaded image), if any. */
+  characterReference: string | null;
+}
+
 export interface FilmScene {
   /** 0-based render index. */
   index: number;
@@ -224,6 +250,28 @@ export interface FilmScene {
   prompt: string;
   /** SAME across all scenes (continuity). */
   seed: number;
+  /** PHASE 47 §3 — the visual fallback plan that keeps a dropped clip on-model. */
+  contingency: FilmSceneContingency;
+}
+
+/**
+ * PHASE 47 §3 — Derive a scene's contingency plan. The fallback framing leans on
+ * the neighbours' established look: an interior scene blends the previous and
+ * next beats so a swapped-in clip never jumps the eyeline. Pure + deterministic.
+ */
+export function buildSceneContingency(
+  index: number,
+  count: number,
+  shared: FilmShared,
+): FilmSceneContingency {
+  const ordinal = index + 1;
+  const matchNeighbors = [ordinal - 1, ordinal + 1].filter((n) => n >= 1 && n <= count);
+  const characterReference = shared.avatarReference ?? shared.referenceImages[0] ?? null;
+  const fallbackFraming =
+    'Steady, low-motion continuity shot holding the established framing — '
+    + `${shared.characterAnchor}; identical palette, lighting and lens as the surrounding scenes `
+    + `(consistency seed ${shared.seed}). No new camera move; blend seamlessly between adjacent shots.`;
+  return { seed: shared.seed, fallbackFraming, matchNeighbors, characterAnchor: shared.characterAnchor, characterReference };
 }
 
 export interface FilmPlan {
@@ -282,6 +330,8 @@ export function planFilmScenes(prompt: string, opts: FilmPlanOptions = {}): Film
       cameraMotion: beat.cameraMotion,
       prompt: enriched,
       seed,
+      // PHASE 47 §3 — Nano Banano stamps each scene with its on-model fallback.
+      contingency: buildSceneContingency(seg.index, segments.length, shared),
     };
   });
 
@@ -320,6 +370,10 @@ export function buildFilmClipRequest(scene: FilmScene, shared: FilmShared): Film
   if (primaryRef) selectedOptions.characterReference = primaryRef;
   if (refs.length > 0) selectedOptions.characterReferences = JSON.stringify(refs);
   if (shared.style) selectedOptions.style = shared.style;
+  // PHASE 47 §3 — carry Nano Banano's on-model fallback plan in the asset payload
+  // metadata so the Director/Editor can swap in a continuity-matched variant if
+  // this leg drops, without re-rolling a fresh (off-model) character.
+  selectedOptions.contingency = JSON.stringify(scene.contingency);
   return { userPrompt: scene.prompt, selectedOptions };
 }
 
