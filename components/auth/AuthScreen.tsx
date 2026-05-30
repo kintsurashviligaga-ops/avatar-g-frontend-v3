@@ -26,6 +26,40 @@ interface ProviderConfig {
   style?: React.CSSProperties;
 }
 
+/**
+ * PHASE 41 §1 — Robust OAuth / magic-link callback URL builder.
+ *
+ * The previous logic used NEXT_PUBLIC_AUTH_REDIRECT_URL verbatim, which (a)
+ * silently dropped the post-login `redirect` target and (b) hardcoded a single
+ * origin — so any non-production origin (localhost, a Vercel preview URL) sent
+ * the OAuth round-trip back to the wrong host and dead-ended the session
+ * ("redirects into the void"). This always rebinds the callback to the LIVE
+ * runtime origin (each environment completes its own handshake) and always
+ * carries the redirect target forward.
+ *
+ * Pure + exported for unit testing — no window/env access inside.
+ */
+export function resolveAuthCallbackUrl(
+  origin: string,
+  configured: string | undefined,
+  redirectTo: string,
+): string {
+  let path = '/auth/callback';
+  if (configured) {
+    try {
+      // A full URL was configured — keep its PATH but discard its origin so we
+      // never cross-redirect between environments.
+      path = new URL(configured).pathname || path;
+    } catch {
+      // Not a full URL (likely a bare path) — normalize to an absolute path.
+      path = configured.startsWith('/') ? configured : `/${configured}`;
+    }
+  }
+  const base = `${origin}${path}`;
+  const sep = base.includes('?') ? '&' : '?';
+  return `${base}${sep}redirect=${encodeURIComponent(redirectTo || '/')}`;
+}
+
 // ─── Provider Icons ──────────────────────────────────────────────────────────
 
 function AppleIcon() {
@@ -164,7 +198,7 @@ function AuthScreenInner({ mode: initialMode, locale, redirectTo = '/' }: AuthSc
   }, [searchParams]);
 
   const callbackUrl = typeof window !== 'undefined'
-    ? (process.env.NEXT_PUBLIC_AUTH_REDIRECT_URL || `${window.location.origin}/auth/callback?redirect=${encodeURIComponent(redirectTo)}`)
+    ? resolveAuthCallbackUrl(window.location.origin, process.env.NEXT_PUBLIC_AUTH_REDIRECT_URL, redirectTo)
     : '/auth/callback';
 
   // ─── OAuth handler ───────────────────────────────────────────────────────

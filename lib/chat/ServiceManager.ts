@@ -8,6 +8,7 @@ import { resolveModel } from '@/lib/replicate/models';
 import { buildModelInput, validateInput } from '@/lib/replicate/schemas';
 import { normalizeOutput } from '@/lib/replicate/normalizer';
 import type { IntentCategory } from '@/lib/chat/intentDetector';
+import { extractPromptTraits, enrichVideoPrompt } from '@/lib/chat/promptTraits';
 
 export type DeterministicProvider = 'nanobanana' | 'replicate' | 'ltx' | 'heygen';
 export type DeterministicOperation = 'text-to-image' | 'video-avatar';
@@ -39,6 +40,10 @@ const ltxRequestSchema = z.object({
       message: 'fps must be one of 24, 25, 30',
     })
     .default(24),
+  // PHASE 40 §1 — audio is no longer hardcoded off. Driven by acoustic intent
+  // extracted from the prompt (see promptTraits) so cinematic / spoken clips
+  // ship with LTX's native synchronized audio track instead of silent video.
+  generateAudio: z.boolean().default(true),
 });
 
 const heygenRequestSchema = z.object({
@@ -355,14 +360,28 @@ export class ServiceManager {
     const options = request.selectedOptions || {};
     const promptHash = this.hashPrompt(request.userPrompt);
 
+    // PHASE 40 §2 — Cognitive Prompt Deep-Exploitation. Mine the raw prompt for
+    // camera/style/lighting/tone/audio intent, then (a) decide whether LTX must
+    // generate a synchronized audio track and (b) fold the extracted directorial
+    // traits back into the prompt so none of the user's nuance is truncated.
+    // @Film / cinematic video defaults to audio-on (defaultAudio) — a muted
+    // cinematic clip is exactly the failure mode we are eliminating.
+    const traits = extractPromptTraits(request.userPrompt, { defaultAudio: true });
+    const explicitAudio = this.getOption(options, ['generate_audio', 'generateAudio', 'audio']);
+    const wantAudio = explicitAudio != null
+      ? !/^(false|0|off|no|mute|silent)$/i.test(explicitAudio)
+      : traits.wantsAudio;
+    const enrichedPrompt = enrichVideoPrompt(request.userPrompt, traits, 1500);
+
     const aspectRatio = this.normalizeAspectRatio(this.getOption(options, ['aspect', 'aspectRatio', 'ratio'])) || '16:9';
     const requestedModel = this.getOption(options, ['model', 'videoModel']) === 'ltx-2-3-pro' ? 'ltx-2-3-pro' : 'ltx-2-3-fast';
     const parsed = ltxRequestSchema.parse({
-      prompt: request.userPrompt,
+      prompt: enrichedPrompt,
       model: requestedModel,
       resolution: this.mapLtxResolution(this.getOption(options, ['resolution', 'size']), aspectRatio, requestedModel),
       duration: this.toNumber(this.getOption(options, ['duration', 'durationSec', 'seconds']), 6),
       fps: this.clampLtxFps(this.toNumber(this.getOption(options, ['fps']), 24)),
+      generateAudio: wantAudio,
     });
 
     const response = await fetch(`${LTX_BASE_URL}/v1/text-to-video`, {
@@ -377,7 +396,7 @@ export class ServiceManager {
         resolution: parsed.resolution,
         duration: parsed.duration,
         fps: parsed.fps,
-        generate_audio: false,
+        generate_audio: parsed.generateAudio,
       }),
       cache: 'no-store',
     });
@@ -409,6 +428,7 @@ export class ServiceManager {
             model: parsed.model,
             operation: 'video-avatar',
             outputType: 'video',
+            audioEnabled: parsed.generateAudio,
             sessionId: request.sessionId,
             promptHash,
             confidence: request.confidence,
@@ -443,6 +463,7 @@ export class ServiceManager {
             model: parsed.model,
             operation: 'video-avatar',
             outputType: 'video',
+            audioEnabled: parsed.generateAudio,
             sessionId: request.sessionId,
             taskRef,
             providerTaskId,
@@ -477,6 +498,7 @@ export class ServiceManager {
         model: parsed.model,
         operation: 'video-avatar',
         outputType: 'video',
+        audioEnabled: parsed.generateAudio,
         sessionId: request.sessionId,
         promptHash,
         confidence: request.confidence,

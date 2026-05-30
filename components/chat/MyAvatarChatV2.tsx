@@ -544,6 +544,10 @@ interface OrchestrateResponse {
     model?: string;
     agentId?: string;
     legs?: { music?: { status: LegStatus }; video?: { status: LegStatus } };
+    // PHASE 40 §1 — LTX now ships a synchronized native audio track; this flag
+    // lets the telemetry surface a real "audio synthesis" stage instead of
+    // marking it skipped on single-prediction video jobs.
+    audioEnabled?: boolean;
     [k: string]: unknown;
   };
   error?: string;
@@ -609,8 +613,14 @@ function derivePipeline(resp: OrchestrateResponse | null): PipelineState {
     // Composite music-video pipeline: bind to genuine per-leg status.
     audio = legToStage(legs.music?.status);
     render = legToStage(legs.video?.status);
+  } else if (resp.metadata?.audioEnabled && resp.responseType === 'video') {
+    // PHASE 40 §1 — single LTX video job with a native synchronized audio track.
+    // Surface a real audio-synthesis stage that completes alongside the render
+    // (LTX muxes audio in-pipeline, so the two finish together).
+    render = failed ? 'failed' : terminal ? 'done' : 'active';
+    audio = render;
   } else {
-    // Single async prediction: no separate audio leg.
+    // Single async prediction with no audio track: no separate audio leg.
     audio = 'skipped';
     render = failed ? 'failed' : terminal ? 'done' : 'active';
   }
@@ -2580,6 +2590,13 @@ function PreviewWorkspace({
   const [reloadNonce, setReloadNonce] = useState(0);
   // One-Click Asset Extraction — Shareable Link Builder copy-state feedback.
   const [linkCopied, setLinkCopied] = useState(false);
+  // PHASE 41 §2 — visible download feedback so the UI never feels frozen while
+  // the asset streams down over the network.
+  const [downloading, setDownloading] = useState(false);
+  // PHASE 40 §3 — hardware-accelerated viewport lock: when a fresh asset mounts,
+  // bring the workspace into active display center rather than leaving it parked
+  // off-screen in the desktop split-pane.
+  const rootRef = useRef<HTMLElement>(null);
 
   const mode: ServiceMode = message.mode ?? 'global';
   const agent = AGENTS[mode];
@@ -2604,6 +2621,20 @@ function PreviewWorkspace({
     setLinkCopied(false);
   }, [message.id]);
 
+  // PHASE 40 §3 — the instant a successful asset mounts, scroll the workspace
+  // into the active viewport center (smooth, GPU-composited). On mobile the
+  // panel is a full-screen fixed overlay so this is a no-op there.
+  useEffect(() => {
+    if (!assetUrl || typeof window === 'undefined') return;
+    const el = rootRef.current;
+    if (!el || typeof el.scrollIntoView !== 'function') return;
+    const id = requestAnimationFrame(() => {
+      try { el.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' }); }
+      catch { /* older engines — non-fatal */ }
+    });
+    return () => cancelAnimationFrame(id);
+  }, [message.id, assetUrl]);
+
   // Live diagnostics escalation: if the asset hasn't decoded within ~6s, flip
   // the inline skeleton's status copy to "taking longer than usual" — honest
   // progress feedback instead of a dead frame. Cleared once ready/errored.
@@ -2626,9 +2657,10 @@ function PreviewWorkspace({
   // standalone Safari/PWA) rather than navigating; falls back to a direct
   // anchor when the asset is CORS-blocked. Named from the generated short title.
   const downloadAsset = useCallback(async () => {
-    if (!assetUrl) return;
+    if (!assetUrl || downloading) return;
     const ext = assetType === 'video' ? 'mp4' : assetType === 'audio' ? 'mp3' : 'png';
     const filename = `${assetFileBase(message)}.${ext}`;
+    setDownloading(true);
     try {
       const res = await fetch(assetUrl, { credentials: 'omit' });
       if (!res.ok) throw new Error('fetch failed');
@@ -2644,6 +2676,8 @@ function PreviewWorkspace({
       return;
     } catch {
       /* CORS / network — best-effort direct anchor */
+    } finally {
+      setDownloading(false);
     }
     const a = document.createElement('a');
     a.href = assetUrl;
@@ -2653,7 +2687,7 @@ function PreviewWorkspace({
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
-  }, [assetUrl, assetType, message]);
+  }, [assetUrl, assetType, message, downloading]);
 
   // Shareable Link Builder — copy the canonical asset URL for fast internal
   // distribution. Only offered for real http(s) URLs (never inline data:/blob:).
@@ -2717,6 +2751,7 @@ function PreviewWorkspace({
 
   return (
     <motion.aside
+      ref={rootRef}
       initial={reduceMotion ? { opacity: 0 } : { x: '100%', opacity: 0 }}
       animate={reduceMotion ? { opacity: 1 } : { x: 0, opacity: 1 }}
       exit={reduceMotion ? { opacity: 0 } : { x: '100%', opacity: 0 }}
@@ -2746,11 +2781,13 @@ function PreviewWorkspace({
         <div className="flex items-center gap-1">
           <button
             onClick={downloadAsset}
+            disabled={downloading}
             aria-label={labels.download}
+            aria-busy={downloading}
             title={labels.download}
-            className="h-9 w-9 flex items-center justify-center rounded-full text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100 transition active:scale-95"
+            className="h-9 w-9 flex items-center justify-center rounded-full text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100 transition active:scale-95 disabled:opacity-70"
           >
-            <Download size={18} />
+            {downloading ? <Loader2 size={18} className="animate-spin" /> : <Download size={18} />}
           </button>
           {isShareableUrl ? (
             <button
