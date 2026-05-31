@@ -819,6 +819,7 @@ async function assembleFilm(
   musicUrl: string | null,
   signal?: AbortSignal,
   statusTokenId?: string,
+  scorePrompt?: string | null,
 ): Promise<string | null> {
   const res = await fetch('/api/video/assemble', {
     method: 'POST',
@@ -828,6 +829,9 @@ async function assembleFilm(
     body: JSON.stringify({
       segments: clipUrls.map((url) => ({ url, durationSec: 6 })),
       ...(musicUrl ? { musicUrl } : {}),
+      // PHASE 55 §2 — when the Udio score is missing (musicUrl null), the route
+      // composes a MusicGen fallback; pass the brief so it matches the film mood.
+      ...(scorePrompt && scorePrompt.trim() ? { scorePrompt: scorePrompt.trim() } : {}),
       // PHASE 47 §1 — let the route stamp the finished master onto the unified
       // status tracker so a reload / second device can recover it.
       ...(statusTokenId ? { filmTokenId: statusTokenId } : {}),
@@ -1461,7 +1465,7 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
             // device / before a reload), recover the hosted master from the
             // storage-backed tracker instead of paying to stitch it again.
             const recovered = statusTokenId ? await fetchAssembledMaster(statusTokenId, signal) : null;
-            const masterUrl = recovered ?? (await assembleFilm(clipUrls, film.audioUrl ?? null, signal, statusTokenId));
+            const masterUrl = recovered ?? (await assembleFilm(clipUrls, film.audioUrl ?? null, signal, statusTokenId, text));
             if (masterUrl) {
               resp = { ...resp, assetUrl: masterUrl, message: resp.message };
             } else {
@@ -4486,6 +4490,9 @@ function FilmStoryboardSkeleton({
   const score = stages.find((s) => s.key === 'film_audio');
   const total = clips.length || 5;
   const doneCount = clips.filter((s) => s.state === 'done').length;
+  // PHASE 55 §1 — whole-film percentage across every leg (storyboard → clips →
+  // stitch → score), so the canvas shows a live, fluid completion figure.
+  const filmPct = useSmoothProgress(stages, reduceMotion ?? false);
 
   // PHASE 45 §4 — autonomous agent-to-agent dialogue. Pick which handoff beat is
   // narrating right now from genuine pipeline state (no fabricated timeline):
@@ -4541,6 +4548,11 @@ function FilmStoryboardSkeleton({
           </div>
         </div>
         <Loader2 size={16} className="animate-spin text-zinc-500" />
+      </div>
+
+      {/* PHASE 55 §1 — whole-film linear tracking bar + live numeric percentage. */}
+      <div className="border-b border-white/[0.06] px-3 py-2.5">
+        <PercentBar pct={filmPct} accent={accent} failed={isDegraded} />
       </div>
 
       {/* PHASE 45 §4 — live agent-to-agent dialogue micro-progress strip. The
@@ -4702,9 +4714,93 @@ function FilmStoryboardSkeleton({
   );
 }
 
+/* ─── PHASE 55 §1 — Real-time percentage progression.
+ * A smooth, mathematically sound asymptotic loader bound to GENUINE pipeline
+ * state — not a blind timer. Every completed stage sets a hard floor; the
+ * in-flight stage lets the bar crawl (easing out) into, but never complete, its
+ * own slice; the bar snaps to 100% the instant the backend confirms every stage
+ * done. The exponential ease produces the desired feel — a rapid early climb,
+ * a steady advance through the middle, then a crisp snap-completion — without
+ * ever fabricating a number ahead of the real lifecycle phase. */
+function useSmoothProgress(stages: PipelineStage[], reduceMotion = false): number {
+  const visible = stages.filter((s) => s.state !== 'skipped');
+  const total = Math.max(1, visible.length);
+  const done = visible.filter((s) => s.state === 'done').length;
+  const active = visible.some((s) => s.state === 'active');
+  const allDone = done >= total;
+
+  // Real completion floor + the headroom the in-flight stage may crawl into.
+  const slice = 100 / total;
+  const floor = done * slice;
+  const cap = allDone ? 100 : Math.min(97, floor + (active ? slice * 0.94 : slice * 0.25));
+
+  const [pct, setPct] = useState(() => Math.round(floor));
+  const valueRef = useRef(floor);
+  const shownRef = useRef(Math.round(floor));
+
+  useEffect(() => {
+    if (reduceMotion) {
+      const target = Math.round(allDone ? 100 : cap);
+      valueRef.current = target;
+      shownRef.current = target;
+      setPct(target);
+      return;
+    }
+    let frame = 0;
+    const clock = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
+    let last = clock();
+    const tick = () => {
+      const now = clock();
+      const dt = Math.min(0.12, (now - last) / 1000);
+      last = now;
+      // A just-completed stage snaps the floor up immediately; otherwise ease
+      // exponentially toward the cap (fast far away, slow near it).
+      let next = Math.max(valueRef.current, floor);
+      const k = allDone ? 9 : 1.1;
+      next = Math.min(next + (cap - next) * Math.min(1, dt * k), allDone ? 100 : cap);
+      valueRef.current = next;
+      const r = Math.round(next);
+      if (r !== shownRef.current) { shownRef.current = r; setPct(r); }
+      if (allDone && next >= 99.6) { valueRef.current = 100; if (shownRef.current !== 100) { shownRef.current = 100; setPct(100); } return; }
+      frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [floor, cap, allDone, reduceMotion]);
+
+  return pct;
+}
+
+/* A sleek horizontal linear tracking bar + live numeric percentage. The fill
+ * width is CSS-transitioned so the integer ticks read as one fluid climb. */
+function PercentBar({ pct, accent, failed = false }: { pct: number; accent: string; failed?: boolean }) {
+  return (
+    <div className="flex items-center gap-2.5">
+      <div
+        className="relative h-1.5 flex-1 overflow-hidden rounded-full bg-neutral-800"
+        role="progressbar"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={pct}
+      >
+        <span
+          className="absolute inset-y-0 left-0 rounded-full transition-[width] duration-300 ease-out"
+          style={{ width: `${pct}%`, backgroundColor: failed ? '#f43f5e' : accent }}
+        />
+      </div>
+      <span
+        className="w-9 shrink-0 text-right text-[12px] font-semibold tabular-nums"
+        style={{ color: failed ? '#fb7185' : accent }}
+      >
+        {pct}%
+      </span>
+    </div>
+  );
+}
+
 /* ─── Live render telemetry — a per-stage progress strip bound to genuine
  * backend status (derivePipeline). Each row reflects a real lifecycle phase:
- * analysis → audio synthesis → GPU render. No fabricated percentages. */
+ * analysis → audio synthesis → GPU render, fronted by the §1 percentage bar. */
 
 function PipelineTelemetry({
   stages, lang, accent,
@@ -4713,8 +4809,10 @@ function PipelineTelemetry({
   lang: 'en' | 'ka' | 'ru';
   accent: string;
 }) {
+  const reduceMotion = useReducedMotion();
   const visible = stages.filter((s) => s.state !== 'skipped');
-  const doneCount = visible.filter((s) => s.state === 'done').length;
+  const failed = visible.some((s) => s.state === 'failed');
+  const pct = useSmoothProgress(stages, reduceMotion ?? false);
 
   return (
     // PHASE 53 §7 — cohesive Obsidian Black (#0A0A0A) loading card with the same
@@ -4722,37 +4820,9 @@ function PipelineTelemetry({
     // whole render-status surface (Pending → Generating → Stitched) reads as one
     // luxury loading language.
     <div className="w-full max-w-sm rounded-2xl border border-[#D4AF37]/25 bg-[#0A0A0A] p-3 flex flex-col gap-3">
-      {/* Stepped horizontal progress — one segment per genuine lifecycle phase.
-          A completed phase is solid; the in-flight phase shows an indeterminate
-          sweep (no fabricated %); pending phases stay empty. */}
-      <div
-        className="flex items-center gap-1.5"
-        role="progressbar"
-        aria-valuemin={0}
-        aria-valuemax={visible.length}
-        aria-valuenow={doneCount}
-      >
-        {visible.map((s) => (
-          <div
-            key={s.key}
-            className="relative h-1.5 flex-1 overflow-hidden rounded-full bg-neutral-800"
-          >
-            {s.state === 'done' ? (
-              <span className="absolute inset-0 rounded-full bg-emerald-500/80" />
-            ) : s.state === 'failed' ? (
-              <span className="absolute inset-0 rounded-full bg-rose-500/80" />
-            ) : s.state === 'active' ? (
-              <motion.span
-                className="absolute inset-y-0 w-1/2 rounded-full"
-                style={{ backgroundColor: accent }}
-                initial={{ x: '-110%' }}
-                animate={{ x: ['-110%', '210%'] }}
-                transition={{ duration: 1.1, ease: 'easeInOut', repeat: Infinity }}
-              />
-            ) : null}
-          </div>
-        ))}
-      </div>
+      {/* PHASE 55 §1 — single sleek linear tracking bar + live numeric percentage,
+          asymptotically tied to genuine lifecycle phases (useSmoothProgress). */}
+      <PercentBar pct={pct} accent={accent} failed={failed} />
 
       {/* Per-stage labels, bound to the same backend status. */}
       <div className="flex flex-col gap-2">

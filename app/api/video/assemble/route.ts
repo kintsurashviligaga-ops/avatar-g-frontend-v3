@@ -26,6 +26,7 @@ import { deductCredits, refundCredits } from '@/lib/orchestrator/ledger';
 import { reSignIfInternal } from '@/lib/orchestrator/storage-adapter';
 import { assembleWithFfmpeg } from '@/lib/orchestrator/ffmpeg-assembly';
 import { recordFilmAssembling, recordFilmMaster, recordFilmFailed } from '@/lib/chat/filmStatusStore';
+import { generateMusic } from '@/lib/ai/replicate';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -49,6 +50,9 @@ interface AssembleBody {
    *  finished master is stamped onto the storage-backed record so any client /
    *  reload can recover it via GET /api/video/status/[tokenId]. */
   filmTokenId?: string | null;
+  /** PHASE 55 §2 — the film brief, used to compose a cohesive fallback score
+   *  on Replicate MusicGen when the upstream Udio track is missing. */
+  scorePrompt?: string | null;
 }
 
 export async function POST(req: NextRequest) {
@@ -108,10 +112,39 @@ export async function POST(req: NextRequest) {
       render: s.render ?? {},
     })),
   );
+  // PHASE 55 §2 — Cochlear score fallback. When the upstream Udio score failed
+  // under credit exhaustion the client sends no musicUrl, and the stitched 30s
+  // master would play completely silent. Synthesize a cohesive cinematic score
+  // on the funded Replicate MusicGen module and overlay it across the whole
+  // timeline so the film is never mute. Best-effort: a fallback miss degrades
+  // gracefully to silent — it never fails the stitch.
+  let resolvedMusicUrl = body.musicUrl ? await reSignIfInternal(body.musicUrl) : null;
+  let scoreFallback: 'udio->musicgen' | null = null;
+  if (!resolvedMusicUrl && process.env.REPLICATE_API_TOKEN) {
+    // Match the score length to the assembled timeline so MusicGen returns a
+    // track that spans every compiled clip rather than looping a short stub.
+    const totalSec = Math.min(
+      30,
+      Math.max(8, Math.round(signedSegments.reduce((sum, s) => sum + (Number(s.durationSec) || 6), 0))),
+    );
+    const brief =
+      typeof body.scorePrompt === 'string' && body.scorePrompt.trim()
+        ? body.scorePrompt.trim()
+        : 'emotional orchestral instrumental, cohesive cinematic film score';
+    try {
+      const score = await generateMusic(`${brief}, ${totalSec}-second continuous film score, instrumental`, totalSec);
+      resolvedMusicUrl = score.audioUrl;
+      scoreFallback = 'udio->musicgen';
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn('[assemble] MusicGen score fallback failed (film stays silent):', err instanceof Error ? err.message : err);
+    }
+  }
+
   const manifest: RunPodManifest = {
     segments: signedSegments,
     voiceoverUrl: body.voiceoverUrl ? await reSignIfInternal(body.voiceoverUrl) : null,
-    musicUrl: body.musicUrl ? await reSignIfInternal(body.musicUrl) : null,
+    musicUrl: resolvedMusicUrl,
     sfxUrl: body.sfxUrl ? await reSignIfInternal(body.sfxUrl) : null,
     globalRender: body.globalRender ?? {},
     pipelineId: '',
@@ -199,5 +232,5 @@ export async function POST(req: NextRequest) {
   // reload / second device can recover the playable 30s film without re-rendering.
   if (filmTokenId && resultUrl) await recordFilmMaster(filmTokenId, resultUrl);
 
-  return NextResponse.json({ url: resultUrl, sagaId: saga.sagaId, filmTokenId });
+  return NextResponse.json({ url: resultUrl, sagaId: saga.sagaId, filmTokenId, scoreFallback });
 }
