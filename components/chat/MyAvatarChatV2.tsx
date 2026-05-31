@@ -3645,7 +3645,18 @@ function PreviewWorkspace({
   // the OpenAI/Gemini/Grok behaviour (element present, shimmer behind, frame
   // replaces it, error card only on true failure).
   const renderLoadingBackdrop = () => {
-    if (mediaReady || mediaError) return null;
+    // PHASE 56 §1 — FORCED SYNCHRONOUS MOUNT. The loader's lifetime is bound to
+    // URL PRESENCE, never to an async decode handshake. The split second a valid
+    // asset URL exists (`effectiveUrl`), the skeleton is destroyed from the DOM and
+    // the native media node (already mounted at z-[1], opacity-100) owns the frame
+    // — its OWN buffering UI covers any network wait. Gating the loader on a JS
+    // decode event (onLoad / onLoadedData / onCanPlay) is the exact defect that
+    // stranded a perfectly good asset behind an eternal spinner on iOS-PWA /
+    // flaky-CDN paths where those events are silently dropped by the webview.
+    // The dock only ever opens WITH a resolved URL, so this skeleton is now
+    // effectively never shown; the `onError` → one-shot recovery → error-card
+    // path remains the sole authority for a genuinely dead asset.
+    if (effectiveUrl || mediaError) return null;
     const text = loadPhase === 'slow' ? labels.diagnosticsSlow : labels.diagnosticsLoading;
     return (
       <div className="absolute inset-0 z-0 flex items-center justify-center">
