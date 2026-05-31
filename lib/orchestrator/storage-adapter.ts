@@ -87,12 +87,19 @@ export async function reSignIfInternal(url: string, expiresSec: number = SIGNED_
   return signed ?? url;
 }
 
-/** Upload a base64 fragment + return its 15-minute signed URL. */
+/**
+ * Upload a base64 fragment + return its signed URL.
+ *
+ * `expiresSec` defaults to the 15-minute internal-fragment TTL, but callers
+ * re-hosting a user-facing render (PHASE 51 §2 — LTX MP4 binaries) pass a
+ * longer lifetime so the asset survives well past the render session.
+ */
 export async function uploadAndSign(
   bucket: string,
   path: string,
   base64: string,
   contentType: string,
+  expiresSec: number = SIGNED_URL_TTL_SEC,
 ): Promise<string | null> {
   const sb = client();
   if (!sb) return null;
@@ -106,7 +113,7 @@ export async function uploadAndSign(
     const bytes = Buffer.from(base64.includes(',') ? base64.split(',')[1] ?? '' : base64, 'base64');
     const { error } = await sb.storage.from(bucket).upload(path, bytes, { contentType, upsert: true });
     if (error) return null;
-    return createSignedAssetUrl(bucket, path, SIGNED_URL_TTL_SEC);
+    return createSignedAssetUrl(bucket, path, expiresSec);
   } catch {
     return null;
   }

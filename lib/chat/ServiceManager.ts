@@ -10,6 +10,7 @@ import { normalizeOutput } from '@/lib/replicate/normalizer';
 import type { IntentCategory } from '@/lib/chat/intentDetector';
 import { extractPromptTraits, enrichVideoPrompt } from '@/lib/chat/promptTraits';
 import { resolveLtxApiKey } from '@/lib/chat/ltxKey';
+import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
 
 export type DeterministicProvider = 'nanobanana' | 'replicate' | 'ltx' | 'heygen';
 export type DeterministicOperation = 'text-to-image' | 'video-avatar';
@@ -30,6 +31,15 @@ const TASK_REF_VERSION = 1;
 // double-render or double-charge.
 const LTX_MAX_DISPATCH_ATTEMPTS = 3;
 const LTX_RETRY_BASE_MS = 400;
+
+// PHASE 51 §2 — Re-hosted LTX render URLs live for 7 days. A sync LTX call
+// returns the MP4 *binary*; turning that into a multi-MB `data:` URL is the
+// known iOS / standalone-PWA infinite-spinner failure (the <video> element
+// never fires loadedmetadata for a giant inline source). We re-host the bytes
+// to our CSP-allowed *.supabase.co storage and hand the browser a real https
+// URL it can stream natively — with a 7-day signed lifetime so the asset
+// survives well past the render session.
+const LTX_REHOST_TTL_SEC = 7 * 24 * 60 * 60;
 
 const LTX_SUPPORTED_RESOLUTIONS: Record<'ltx-2-3-fast' | 'ltx-2-3-pro', readonly string[]> = {
   'ltx-2-3-fast': ['1920x1080', '1080x1920', '2560x1440', '3840x2160'],
@@ -509,10 +519,23 @@ export class ServiceManager {
       ...(imageReferenceOpt ? { imageReference: imageReferenceOpt } : {}),
     });
 
+    // PHASE 51 §1 — CRITICAL FIX. When an image anchor is present we MUST call
+    // the dedicated image-to-video endpoint and pass the parent asset as the
+    // documented `image_uri` first-frame field. The PHASE 50 build sent the
+    // anchor to /v1/text-to-video under invented keys (image_reference /
+    // frame_input); that endpoint silently ignores unknown fields and generated
+    // an unrelated scene from prompt text alone — exactly the live "ignored the
+    // image" failure. Per docs.ltx.video, POST /v1/image-to-video requires
+    // `image_uri` (HTTPS URL or base64 data URI) as the conditioning frame.
+    const isImageToVideo = !!parsed.imageReference;
+    const ltxEndpoint = isImageToVideo
+      ? `${LTX_BASE_URL}/v1/image-to-video`
+      : `${LTX_BASE_URL}/v1/text-to-video`;
+
     // PHASE 47 §3 — dispatch through the bounded exponential-backoff retry so a
     // transient provider blip (the exact failure that dropped clips 3 & 4 in the
     // PHASE 46 live-fire) self-heals before the master agent gives up.
-    const response = await this.dispatchLtxWithRetry(`${LTX_BASE_URL}/v1/text-to-video`, {
+    const response = await this.dispatchLtxWithRetry(ltxEndpoint, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${apiKey}`,
@@ -528,12 +551,11 @@ export class ServiceManager {
         ...(parsed.seed != null ? { seed: parsed.seed } : {}),
         ...(parsed.characterReference ? { character_reference: parsed.characterReference } : {}),
         ...(characterReferences.length ? { character_references: characterReferences } : {}),
-        // PHASE 50 §3 — bind the prior asset as the hard conditioning frame. We
-        // send it under both the image_reference and frame_input keys so the
-        // image-to-video path activates regardless of which the LTX schema reads.
-        ...(parsed.imageReference
-          ? { image_reference: parsed.imageReference, frame_input: parsed.imageReference }
-          : {}),
+        // PHASE 51 §1 — bind the parent image as the hard first-frame anchor on
+        // the image-to-video endpoint. `image_uri` is the authoritative field
+        // name (docs.ltx.video). This is the line that makes LTX animate the
+        // ACTUAL image instead of hallucinating a fresh scene from text.
+        ...(parsed.imageReference ? { image_uri: parsed.imageReference } : {}),
       }),
       cache: 'no-store',
     });
@@ -620,7 +642,13 @@ export class ServiceManager {
       throw new Error('LTX returned oversized video payload for inline transport');
     }
 
-    const dataUrl = `data:${contentType || 'video/mp4'};base64,${bytes.toString('base64')}`;
+    // PHASE 51 §2 — re-host the binary MP4 to CSP-allowed *.supabase.co storage
+    // and serve a real https URL. A multi-MB inline `data:` video is the known
+    // iOS / standalone-PWA infinite-spinner failure — the <video> element never
+    // fires loadedmetadata for a giant data: source, so PreviewWorkspace hangs
+    // on "assembling" forever even though the render succeeded. Fail-safe: the
+    // helper falls back to the data: URL when storage is unconfigured.
+    const hostedUrl = await this.rehostLtxVideo(bytes, contentType, request.sessionId, promptHash);
 
     return {
       success: true,
@@ -628,7 +656,7 @@ export class ServiceManager {
       operation: 'video-avatar',
       responseType: 'video',
       message: 'Video generation completed successfully.',
-      assetUrl: dataUrl,
+      assetUrl: hostedUrl,
       assetType: 'video',
       predictionStatus: 'succeeded',
       metadata: {
@@ -637,11 +665,39 @@ export class ServiceManager {
         operation: 'video-avatar',
         outputType: 'video',
         audioEnabled: parsed.generateAudio,
+        imageAnchored: !!parsed.imageReference,
+        rehosted: /^https:\/\//i.test(hostedUrl),
         sessionId: request.sessionId,
         promptHash,
         confidence: request.confidence,
       },
     };
+  }
+
+  // PHASE 51 §2 — Re-host an LTX binary MP4 to our Supabase storage and return a
+  // CSP-allowed *.supabase.co signed URL the browser can stream natively. The
+  // sync LTX API returns the MP4 *binary* directly; turning that into a
+  // multi-megabyte `data:` URL is what froze PreviewWorkspace on the live DOM.
+  // Fail-safe by contract: any storage failure returns the data: URL so a
+  // successful render is never lost — we degrade transport, never the result.
+  private async rehostLtxVideo(
+    bytes: Buffer,
+    contentType: string,
+    sessionId: string,
+    promptHash: string,
+  ): Promise<string> {
+    const ct = contentType && contentType.includes('/') ? contentType.split(';')[0] || 'video/mp4' : 'video/mp4';
+    const ext = ct.includes('webm') ? 'webm' : 'mp4';
+    const base64 = bytes.toString('base64');
+    const dataUrl = `data:${ct};base64,${base64}`;
+    try {
+      const safeSession = (sessionId || 'anon').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 64) || 'anon';
+      const path = `ltx/${safeSession}/${promptHash}-${Date.now()}.${ext}`;
+      const hosted = await uploadAndSign('renders', path, base64, ct, LTX_REHOST_TTL_SEC);
+      return hosted || dataUrl;
+    } catch {
+      return dataUrl;
+    }
   }
 
   private async runHeygenAvatarVideo(request: ServiceManagerRequest): Promise<ServiceManagerResponse> {
@@ -930,6 +986,8 @@ export class ServiceManager {
 
     const candidateUrls = [
       `${LTX_BASE_URL}/v1/text-to-video/${encodeURIComponent(decoded.providerTaskId)}`,
+      // PHASE 51 §1 — image-to-video jobs poll under their own resource path.
+      `${LTX_BASE_URL}/v1/image-to-video/${encodeURIComponent(decoded.providerTaskId)}`,
       `${LTX_BASE_URL}/v1/generations/${encodeURIComponent(decoded.providerTaskId)}`,
       `${LTX_BASE_URL}/v1/videos/${encodeURIComponent(decoded.providerTaskId)}`,
       `${LTX_BASE_URL}/v1/tasks/${encodeURIComponent(decoded.providerTaskId)}`,
@@ -949,14 +1007,17 @@ export class ServiceManager {
 
       if (!contentType.includes('application/json')) {
         const bytes = Buffer.from(await res.arrayBuffer());
-        const dataUrl = `data:${contentType || 'video/mp4'};base64,${bytes.toString('base64')}`;
+        // PHASE 51 §2 — same re-host as the sync path: never hand the client a
+        // multi-MB data: video (the iOS infinite-spinner failure). Re-host to
+        // *.supabase.co, fail-safe to the data: URL when storage is down.
+        const hostedUrl = await this.rehostLtxVideo(bytes, contentType, decoded.sessionId, decoded.promptHash);
         return {
           success: true,
           provider: 'ltx',
           operation: decoded.operation,
           responseType: 'video',
           message: 'Video generation completed successfully.',
-          assetUrl: dataUrl,
+          assetUrl: hostedUrl,
           assetType: 'video',
           predictionId: taskRef,
           predictionStatus: 'succeeded',
@@ -964,6 +1025,7 @@ export class ServiceManager {
             provider: 'ltx',
             operation: decoded.operation,
             outputType: 'video',
+            rehosted: /^https:\/\//i.test(hostedUrl),
             sessionId: decoded.sessionId,
             taskRef,
             providerTaskId: decoded.providerTaskId,

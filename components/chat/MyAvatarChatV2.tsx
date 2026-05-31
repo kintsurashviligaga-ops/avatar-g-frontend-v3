@@ -3204,6 +3204,26 @@ function PreviewWorkspace({
     return () => clearTimeout(t);
   }, [mediaReady, mediaError, message.id, reloadNonce, assetType, handleMediaError]);
 
+  // PHASE 51 §2 — Optimistic native-reveal (kills the infinite "assembling"
+  // spinner). Founder directive: when the parent message carries a VALID hosted
+  // file payload URL, the workspace must break out of the loading layout
+  // INSTANTLY and render the asset through native HTML media nodes — never sit
+  // forever waiting on a JS decode event (onLoadedMetadata/onCanPlay) that a
+  // hosted CDN sometimes never fires. The server now re-hosts LTX output to a
+  // real *.supabase.co https URL (PHASE 51 §2 server fix), so a short grace
+  // after mount we force `mediaReady` and let the native <video>/<img> own its
+  // OWN buffering + controls instead of our skeleton. We scope this to real
+  // https sources (streamable natively); data:/blob: payloads keep the strict
+  // event-gated reveal so a broken inline asset still escalates through the
+  // recovery watchdog above. Re-arms on each (re)mount via reloadNonce.
+  useEffect(() => {
+    if (mediaReady || mediaError) return undefined;
+    if (assetType !== 'video' && assetType !== 'image') return undefined;
+    if (!/^https:\/\//i.test(effectiveUrl)) return undefined;
+    const t = setTimeout(() => setMediaReady(true), 1200);
+    return () => clearTimeout(t);
+  }, [mediaReady, mediaError, assetType, effectiveUrl, reloadNonce]);
+
   // PHASE 45 §4 — unmuted final-cut transition. The decoded artifact (a finished
   // 30-second film carrying a real audio master — Udio score + ElevenLabs VO, or
   // a single clip) starts the instant it's ready. We attempt UNMUTED playback
