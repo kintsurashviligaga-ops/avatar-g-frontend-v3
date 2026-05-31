@@ -115,6 +115,7 @@ import {
 import { generateConversationTitle } from '@/lib/chat/titleClient';
 import { deriveCarryContext } from '@/lib/chat/carryContext';
 import { classifyChatError } from '@/lib/chat/errorResilience';
+import { resolveAssetType } from '@/lib/chat/assetType';
 
 // Monochrome system accent (near-white). Keeps the whole workspace flat and
 // premium (Apple/Gemini dark aesthetic) — no neon, no chroma. Drives the send
@@ -1478,11 +1479,17 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
         }
       }
 
-      const assetType: ChatMessage['assetType'] =
-        resp.responseType === 'image' ? 'image'
-        : resp.responseType === 'video' ? 'video'
-        : resp.responseType === 'audio' ? 'audio'
-        : null;
+      // PHASE 57 hotfix — derive the renderable kind defensively. `responseType`
+      // is authoritative when it names a media kind, but a service that returns
+      // an asset URL under a non-media responseType must STILL show a preview, so
+      // we sniff the URL (and finally the composer mode) as fallbacks. Without
+      // this, any such turn silently dropped to a text-only bubble — the
+      // "no service shows a preview" regression.
+      const assetType: ChatMessage['assetType'] = resolveAssetType(
+        resp.responseType,
+        resp.assetUrl,
+        mode,
+      );
 
       const assistantMessage: ChatMessage = {
         id: `a_${Date.now()}`,
