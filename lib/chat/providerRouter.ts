@@ -858,6 +858,27 @@ async function handleMusicIntent(
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : 'Udio generation failed';
 
+    // PHASE 57 — a billing/credit failure from Udio (e.g. "No credit",
+    // insufficient funds, quota) must NOT be a dead end: transparently fail
+    // over to the funded Replicate (Meta MusicGen) music model so the user
+    // still receives a track. Mirrors the image (NanoBanana→FLUX) and video
+    // (LTX→Zeroscope) failovers. A non-billing error still surfaces honestly
+    // so we never mask a real bug.
+    if (isProviderCreditError(errorMsg)) {
+      const fallback = await handleReplicateIntent(input, detected).catch(() => null);
+      if (fallback && fallback.success) {
+        return {
+          ...fallback,
+          metadata: {
+            ...fallback.metadata,
+            musicFallback: 'udio->replicate',
+            primaryProvider: 'udio',
+            primaryProviderError: errorMsg,
+          },
+        };
+      }
+    }
+
     return {
       success: false,
       intent: detected.intent,
@@ -870,6 +891,15 @@ async function handleMusicIntent(
       },
     };
   }
+}
+
+/**
+ * PHASE 57 — true when a provider error message indicates a billing/credit/auth
+ * failure (out of funds, quota, payment, unauthorized) rather than a
+ * deterministic bad-request bug. Drives the music Udio→Replicate failover.
+ */
+function isProviderCreditError(message: string): boolean {
+  return /no credit|insufficient|insufficient_funds|top.?up|quota|exceeded|payment|balance|out of credit|unauthor|forbidden|denied|\b402\b|\b429\b/i.test(message || '');
 }
 
 async function pollUdioTask(workId: string, predictionId: string): Promise<ChatResponse> {
