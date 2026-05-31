@@ -11,7 +11,7 @@
 import { detectIntent, intentToReplicateService, type DetectedIntent, type IntentCategory } from './intentDetector';
 import { validateInput, buildModelInput, type GenerateInput } from '@/lib/replicate/schemas';
 import { resolveModel } from '@/lib/replicate/models';
-import { createPrediction } from '@/lib/replicate/client';
+import { createPrediction, pollUntilDone } from '@/lib/replicate/client';
 import { generateNanoBananaImage } from '@/lib/nanobanana/client';
 import { getNanoBananaCreditCost, resolveNanoBananaEndpoint } from '@/lib/nanobanana/endpoints';
 import { ServiceManager, type ServiceManagerResponse } from './ServiceManager';
@@ -253,6 +253,15 @@ export async function orchestrate(
   input: OrchestratorInput,
   _baseUrl?: string,
 ): Promise<ChatResponse> {
+  // PHASE 56 — Interior REDESIGN (depth-locked FLUX ControlNet) takes priority
+  // over the WorldLabs 3D-world route: when a room photo is attached in the
+  // Interior service and the user hasn't explicitly asked for a 3D world /
+  // walkthrough, re-render the SAME room with new materials, furniture and
+  // lighting. Explicit 3D/world asks still fall through to WorldLabs below.
+  if (shouldRedesignInterior(input)) {
+    return handleInteriorRedesign(input);
+  }
+
   if (shouldRouteInteriorToWorldLabs(input)) {
     return handleInteriorIntent(input);
   }
@@ -635,6 +644,154 @@ function filmStitchToClientStatus(
   if (s === 'blocked') return 'failed';
   if (s === 'ready') return 'queued'; // ready-to-assemble; client owns final stitch
   return anyClipPending ? 'queued' : 'pending';
+}
+
+// PHASE 56 — Interior REDESIGN engine model. Black Forest Labs' official
+// FLUX.1 [Dev] depth-ControlNet: it derives a depth map from the uploaded room
+// photo (locking walls, windows, proportions and camera perspective) and
+// re-renders photorealistic materials, furniture, decor and lighting from the
+// user's brief onto that exact geometry. Env-overridable for a later pin/swap.
+const INTERIOR_REDESIGN_MODEL = process.env.REPLICATE_INTERIOR_MODEL || 'black-forest-labs/flux-depth-dev';
+
+// The pure redesign-vs-WorldLabs decision lives in a dependency-free module so
+// it can be unit-tested in isolation (providerRouter pulls in heavy SDKs).
+export { shouldRedesignInterior } from './interiorRouting';
+import { shouldRedesignInterior } from './interiorRouting';
+
+/** Normalize the many shapes a Replicate image output can take into a URL. */
+function extractReplicateImageUrl(output: unknown): string | null {
+  if (typeof output === 'string') return output;
+  if (Array.isArray(output)) {
+    const first = output.find((o) => typeof o === 'string');
+    return typeof first === 'string' ? first : null;
+  }
+  if (output && typeof output === 'object') {
+    const obj = output as Record<string, unknown>;
+    if (typeof obj.url === 'string') return obj.url;
+    if (Array.isArray(obj.output)) {
+      const first = obj.output.find((o) => typeof o === 'string');
+      return typeof first === 'string' ? first : null;
+    }
+  }
+  return null;
+}
+
+/**
+ * PHASE 56 — Interior REDESIGN handler (Replicate · FLUX.1 [Dev] + depth
+ * ControlNet). Locks the room's spatial geometry from the uploaded photo and
+ * re-renders photorealistic materials, furniture and lighting from the user's
+ * restyle brief onto the SAME space. Returns a flat 2D "after" image.
+ *
+ * Synchronous create + poll: the orchestrate route's maxDuration=300 gives a
+ * single depth render plenty of headroom. Failures degrade to an honest,
+ * localized message — never a fabricated success.
+ */
+async function handleInteriorRedesign(input: OrchestratorInput): Promise<ChatResponse> {
+  const iterative = buildIterativePrompt({
+    sessionId: input.sessionId,
+    serviceContext: 'interior',
+    message: input.message,
+    selectedOptions: input.selectedOptions,
+    imageUrl: input.imageUrl,
+  });
+
+  const opts = input.selectedOptions || {};
+  const controlImage = input.imageUrl || opts.image_url || opts.reference_image || '';
+
+  // Compose a depth-locked restyle brief: the user's words lead, the UI design
+  // answers follow, and a geometry-preservation guardrail anchors the depth
+  // ControlNet so the room's walls/windows/proportions/perspective stay intact.
+  const styleAnswers = [
+    opts.primary_goal && `goal: ${opts.primary_goal.replace(/_/g, ' ')}`,
+    opts.color_palette && `palette: ${opts.color_palette.replace(/_/g, ' ')}`,
+    opts.materials && `materials: ${opts.materials.replace(/_/g, ' ')}`,
+    opts.lighting_vibe && `lighting: ${opts.lighting_vibe.replace(/_/g, ' ')}`,
+    opts.style && `style: ${opts.style}`,
+  ]
+    .filter(Boolean)
+    .join(', ');
+
+  const prompt = [
+    iterative.prompt.trim(),
+    styleAnswers,
+    'photorealistic interior redesign of the same room, preserve the exact geometry, walls, windows, doorways, proportions and camera perspective, only re-render materials, furniture, decor and lighting, professional architectural visualization, natural light, high detail, 8k',
+  ]
+    .filter(Boolean)
+    .join('. ');
+
+  try {
+    const created = await createPrediction(INTERIOR_REDESIGN_MODEL, {
+      prompt,
+      control_image: controlImage,
+      guidance: 10,
+      num_inference_steps: 28,
+      megapixels: '1',
+      num_outputs: 1,
+      output_format: 'webp',
+      output_quality: 90,
+    });
+
+    const done =
+      created.status === 'succeeded' || created.status === 'failed' || created.status === 'canceled'
+        ? created
+        : await pollUntilDone(created.id, 90, 2000);
+
+    if (done.status !== 'succeeded') {
+      throw new Error(done.error || `redesign ${done.status}`);
+    }
+
+    const assetUrl = extractReplicateImageUrl(done.output);
+    if (!assetUrl) {
+      throw new Error('redesign produced no image');
+    }
+
+    const loc = input.locale || 'ka';
+    const message =
+      loc === 'en'
+        ? 'Interior redesign ready — same room, restyled materials, furniture and lighting. Send a follow-up to iterate.'
+        : loc === 'ru'
+          ? 'Редизайн интерьера готов — та же комната, новые материалы, мебель и освещение. Напишите уточнение, и я доработаю.'
+          : 'ინტერიერის რედიზაინი მზადაა — იგივე ოთახი, განახლებული მასალები, ავეჯი და განათება. მომწერეთ დამატება და დავხვეწავ.';
+
+    return {
+      success: true,
+      intent: 'image_generation',
+      responseType: 'image',
+      message,
+      assetUrl,
+      assetType: 'image',
+      metadata: {
+        provider: 'replicate',
+        model: INTERIOR_REDESIGN_MODEL,
+        engine: 'flux-depth-controlnet',
+        predictId: done.id,
+        predictTime: done.metrics?.predict_time,
+        iteration: iterative.iteration,
+      },
+    };
+  } catch (error) {
+    const raw = error instanceof Error ? error.message : 'Interior redesign failed.';
+    const loc = input.locale || 'ka';
+    const friendly =
+      loc === 'en'
+        ? 'The Interior redesign engine hit a snag rendering your room — please try again shortly.'
+        : loc === 'ru'
+          ? 'Движок редизайна интерьера не смог отрисовать комнату — попробуйте чуть позже.'
+          : 'ინტერიერის რედიზაინის ძრავმა ვერ დაარენდერა ოთახი — სცადეთ ცოტა ხანში.';
+    return {
+      success: false,
+      intent: 'image_generation',
+      responseType: 'text',
+      message: friendly,
+      metadata: {
+        provider: 'replicate',
+        model: INTERIOR_REDESIGN_MODEL,
+        engine: 'flux-depth-controlnet',
+        iteration: iterative.iteration,
+        error: raw,
+      },
+    };
+  }
 }
 
 function shouldRouteInteriorToWorldLabs(input: OrchestratorInput): boolean {
