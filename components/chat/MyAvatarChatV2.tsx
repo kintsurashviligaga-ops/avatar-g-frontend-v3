@@ -3310,17 +3310,14 @@ function PreviewWorkspace({
   // Bumping this nonce remounts the media element so it re-attempts the stream
   // in place, removing the old "download-to-view" blocking fallback.
   const [reloadNonce, setReloadNonce] = useState(0);
-  // PHASE 49 §3 — Inline re-encode recovery proxy. When a media element fails to
-  // auto-mount (opaque CORS, missing/weak Content-Type, a hosted URL the media
-  // framework refuses), we fetch the bytes once and re-wrap them as a
-  // same-origin `blob:` URL. A blob: source is decoded from local memory with a
-  // concrete MIME, which forces the browser to recognize and play media it
-  // initially rejected — WITHOUT ever degrading to a download. One-shot per
-  // asset (guarded by recoveryTriedRef) so a genuinely dead URL still surfaces
-  // the graceful failure card instead of looping.
-  const [recoveredUrl, setRecoveredUrl] = useState<string | null>(null);
-  const [recoveredType, setRecoveredType] = useState<string | undefined>(undefined);
-  const recoveryTriedRef = useRef(false);
+  // v61 — DIRECT NATIVE MOUNT. The old cross-origin "recovery proxy" (on a media
+  // onError, fetch the bytes → re-wrap them as a same-origin blob: URL) is GONE.
+  // That fetch needs CORS, which provider CDNs (replicate.delivery / Supabase /
+  // R2 / api.ltx.video) do NOT grant, so it ALWAYS threw → setMediaError(true) →
+  // the black "preview unavailable" card dropped over a perfectly playable
+  // asset. Native <img>/<video>/<audio> play cross-origin media WITHOUT CORS, so
+  // we let the element own the load and only surface the fallback card on a
+  // genuine, terminal native onError.
   // One-Click Asset Extraction — Shareable Link Builder copy-state feedback.
   const [linkCopied, setLinkCopied] = useState(false);
   // PHASE 41 §2 — visible download feedback so the UI never feels frozen while
@@ -3347,19 +3344,8 @@ function PreviewWorkspace({
   // A real, distributable URL (not an inline data:/blob:) → eligible for the
   // Shareable Link Builder (internal team distribution).
   const isShareableUrl = /^https?:\/\//i.test(assetUrl);
-  // PHASE 48 §2 — when the asset is an inline data: URL, pull its exact embedded
-  // MIME (e.g. audio/mpeg, audio/wav) so the <source> type hint is always
-  // correct; for hosted URLs we omit type and let the browser sniff the
-  // Content-Type, exactly as before. A wrong hint would make the browser skip
-  // the source, so deriving it (rather than hardcoding) is the safe path.
-  const inlineMediaType = assetUrl.startsWith('data:')
-    ? (assetUrl.slice(5).split(/[;,]/)[0] || undefined)
-    : undefined;
-
   // Reset framing + decode/diagnostic state whenever we swap to a different
-  // artifact so the panel never inherits the previous asset's flags. Also tear
-  // down any recovery blob: URL from the previous asset and re-arm the one-shot
-  // recovery guard.
+  // artifact so the panel never inherits the previous asset's flags.
   useEffect(() => {
     setAspect('native');
     // PHASE 54 §2 — INSTANT LOADER CLEAR. An inline data: image carries its full
@@ -3373,62 +3359,16 @@ function PreviewWorkspace({
     setMediaError(false);
     setLoadPhase('loading');
     setLinkCopied(false);
-    recoveryTriedRef.current = false;
-    setRecoveredUrl((prev) => {
-      if (prev) {
-        try { URL.revokeObjectURL(prev); } catch { /* already revoked */ }
-      }
-      return null;
-    });
-    setRecoveredType(undefined);
   }, [message.id]);
 
-  // Revoke the recovery blob: URL on unmount so we never leak object URLs.
-  useEffect(() => {
-    return () => {
-      if (recoveredUrl) {
-        try { URL.revokeObjectURL(recoveredUrl); } catch { /* already revoked */ }
-      }
-    };
-  }, [recoveredUrl]);
-
-  // The URL actually fed to the media elements: the recovered same-origin blob
-  // when in-place recovery succeeded, otherwise the original artifact URL.
-  const effectiveUrl = recoveredUrl ?? assetUrl;
-  const effectiveAudioType = recoveredType ?? inlineMediaType;
-  const effectiveVideoType = recoveredType ?? 'video/mp4';
-
-  // Media `onError` handler — fire the one-shot inline recovery proxy before
-  // ever showing the failure card. If recovery is unavailable or also fails,
-  // surface the graceful diagnostics fallback.
+  // v61 — Genuine, terminal failure handler. A native <img>/<video>/<audio>
+  // only fires `onError` when the resource truly cannot be loaded or decoded;
+  // it never fires for a valid cross-origin asset. So this is a safe,
+  // non-spurious trigger for the download-anchor fallback card — no pre-fetch,
+  // no blob recovery, nothing that could mask a working asset.
   const handleMediaError = useCallback(() => {
-    if (
-      !recoveryTriedRef.current &&
-      assetUrl &&
-      !assetUrl.startsWith('blob:') &&
-      typeof fetch === 'function'
-    ) {
-      recoveryTriedRef.current = true;
-      void (async () => {
-        try {
-          const res = await fetch(assetUrl, { credentials: 'omit' });
-          if (!res.ok) throw new Error('recovery proxy fetch failed');
-          const blob = await res.blob();
-          const objectUrl = URL.createObjectURL(blob);
-          setRecoveredType(blob.type || undefined);
-          setRecoveredUrl(objectUrl);
-          setMediaError(false);
-          setMediaReady(false);
-          setLoadPhase('loading');
-          setReloadNonce((n) => n + 1);
-        } catch {
-          setMediaError(true);
-        }
-      })();
-      return;
-    }
     setMediaError(true);
-  }, [assetUrl]);
+  }, []);
 
   // PHASE 40 §3 — the instant a successful asset mounts, scroll the workspace
   // into the active viewport center (smooth, GPU-composited). On mobile the
@@ -3453,28 +3393,11 @@ function PreviewWorkspace({
     return () => clearTimeout(t);
   }, [mediaReady, mediaError, message.id]);
 
-  // PHASE 50 §2 — Hard anti-hang watchdog. The 'slow' phase above only changes
-  // the COPY; a media element whose decode SILENTLY stalls (neither onLoadedData
-  // nor onError ever fires — the exact "right preview dock hangs forever on
-  // ჩვეულებრივზე მეტ დროს იღებს" symptom) would otherwise spin indefinitely.
-  // If the asset is still neither ready nor errored well past the slow mark, we
-  // proactively run the SAME one-shot recovery the error path uses (re-fetch +
-  // same-origin blob remount, which decodes from local memory and reliably
-  // mounts media the streamed element refused). If recovery was already spent,
-  // we surface the graceful failure card instead of an eternal spinner. Re-arms
-  // on every remount (reloadNonce) so it can escalate recovery → failure.
-  useEffect(() => {
-    if (mediaReady || mediaError) return undefined;
-    if (assetType !== 'video' && assetType !== 'image') return undefined;
-    const t = setTimeout(() => {
-      if (recoveryTriedRef.current) {
-        setMediaError(true);
-      } else {
-        handleMediaError();
-      }
-    }, 14000);
-    return () => clearTimeout(t);
-  }, [mediaReady, mediaError, message.id, reloadNonce, assetType, handleMediaError]);
+  // v61 — the old 14s anti-hang watchdog that escalated to setMediaError(true)
+  // (or to the CORS-doomed recovery fetch) is REMOVED: it was a primary source
+  // of the spurious black card. A native media element manages its own buffering
+  // and never needs us to time it out; if it genuinely cannot load it fires
+  // onError, which is the only thing that now reveals the fallback card.
 
   // PHASE 51 §2 — Optimistic native-reveal (kills the infinite "assembling"
   // spinner). Founder directive: when the parent message carries a VALID hosted
@@ -3496,42 +3419,25 @@ function PreviewWorkspace({
     // navigable) would leave the dock spinning forever with no watchdog. Image
     // / video / room are now all caught.
     if (assetType !== 'video' && assetType !== 'image' && !isRoom3D) return undefined;
-    if (!effectiveUrl) return undefined;
+    if (!assetUrl) return undefined;
     // PHASE 54 §2 — UNIVERSAL anti-lock net (was https-only). Mobile browsers
     // (notably iOS Safari/standalone PWA) silently drop decode events
-    // (onLoad/onLoadedData/onCanPlay) for hosted https AND blob: sources, which
-    // froze the loader shell forever. We force-reveal across every scheme so the
-    // spinner can never lock: images reveal almost immediately (400ms — they
-    // decode fast or are already inline), videos get a tight 900ms grace to
-    // begin buffering, the 3D room gets 2500ms to mount its canvas. The onError
-    // → one-shot recovery path still fires independently, so a genuinely broken
-    // asset still escalates to recovery → the graceful failure card rather than
-    // a false "ready" frame.
+    // (onLoad/onLoadedData/onCanPlay) for hosted https sources, which froze the
+    // loader shell forever. We force-reveal across every scheme so the spinner
+    // can never lock: images reveal almost immediately (400ms — they decode fast
+    // or are already inline), videos get a tight 900ms grace to begin buffering,
+    // the 3D room gets 2500ms to mount its canvas. This only DISMISSES the
+    // cosmetic loader; it never sets the failure flag, so it can't mask media.
     const grace = assetType === 'image' ? 400 : isRoom3D ? 2500 : 900;
     const t = setTimeout(() => setMediaReady(true), grace);
     return () => clearTimeout(t);
-  }, [mediaReady, mediaError, assetType, isRoom3D, effectiveUrl, reloadNonce]);
+  }, [mediaReady, mediaError, assetType, isRoom3D, assetUrl, reloadNonce]);
 
-  // PHASE 54 (single-focus preview ultimatum) — 300ms inline-asset failsafe.
-  // Founder mandate: "if a blob fails to resolve within 300ms, force a raw cache
-  // re-fetch to pop the asset onto the layout card." We honour that for the case
-  // it literally applies to — INLINE/local payloads (data:) and still images —
-  // where a decode bytes → same-origin blob → remount is fast and safe. The
-  // re-fetch is one-shot (recoveryTriedRef) so it can never loop, and it never
-  // sets the failure flag itself (only a thrown fetch does), so a slow-but-fine
-  // asset is nudged, not killed. Hosted https VIDEO is deliberately excluded:
-  // it streams via native Range requests, so a blanket whole-file re-fetch would
-  // defeat range streaming — those keep the onError + long-watchdog recovery.
-  useEffect(() => {
-    if (mediaReady || mediaError || recoveryTriedRef.current) return undefined;
-    if (!assetUrl) return undefined;
-    const eligible = assetUrl.startsWith('data:') || (assetType === 'image' && !assetUrl.startsWith('blob:'));
-    if (!eligible) return undefined;
-    const t = setTimeout(() => {
-      if (!recoveryTriedRef.current && !mediaReady && !mediaError) handleMediaError();
-    }, 300);
-    return () => clearTimeout(t);
-  }, [mediaReady, mediaError, assetType, assetUrl, reloadNonce, handleMediaError]);
+  // v61 — the old 300ms "re-fetch the bytes" inline failsafe is REMOVED. It
+  // fired the CORS-doomed recovery fetch for ordinary cross-origin images and
+  // was the direct cause of the black card landing on a fully-decodable image.
+  // Inline data: images are marked ready synchronously on mount (see the reset
+  // effect's `inlineImage`), and every other asset rides the native element.
 
   // PHASE 54 (single-focus preview ultimatum) — UNCONDITIONAL muted autostart.
   // The instant the <video> node exists we set `muted` as a real DOM PROPERTY
@@ -3542,13 +3448,13 @@ function PreviewWorkspace({
   // spinner. Fires on mount/remount, independent of the autoplay preference; the
   // pref-gated effect just below then upgrades to unmuted SOUND when ready.
   useEffect(() => {
-    if (assetType !== 'video' || !effectiveUrl) return undefined;
+    if (assetType !== 'video' || !assetUrl) return undefined;
     const v = previewVideoRef.current;
     if (!v) return undefined;
     v.muted = true;
     void Promise.resolve(v.play()).catch(() => { /* gesture-gated — native controls remain */ });
     return undefined;
-  }, [assetType, effectiveUrl, reloadNonce]);
+  }, [assetType, assetUrl, reloadNonce]);
 
   // PHASE 45 §4 — unmuted final-cut transition. The decoded artifact (a finished
   // 30-second film carrying a real audio master — Udio score + ElevenLabs VO, or
@@ -3649,8 +3555,8 @@ function PreviewWorkspace({
   //   renderLoadingBackdrop()  → z-0, BEHIND the media — purely cosmetic; the
   //                              instant the native node paints a frame it wins.
   //   <img>/<video>/<iframe>   → z-[1], VISIBLE from first paint.
-  //   renderErrorCard()        → z-20, ON TOP, but ONLY on a genuine failure
-  //                              (after the one-shot recovery re-fetch is spent).
+  //   renderErrorCard()        → z-20, ON TOP, but ONLY on a genuine, terminal
+  //                              native onError (no recovery fetch, no watchdog).
   //
   // Net effect: the spinner can no longer hang over a decodable asset — exactly
   // the OpenAI/Gemini/Grok behaviour (element present, shimmer behind, frame
@@ -3658,16 +3564,15 @@ function PreviewWorkspace({
   const renderLoadingBackdrop = () => {
     // PHASE 56 §1 — FORCED SYNCHRONOUS MOUNT. The loader's lifetime is bound to
     // URL PRESENCE, never to an async decode handshake. The split second a valid
-    // asset URL exists (`effectiveUrl`), the skeleton is destroyed from the DOM and
-    // the native media node (already mounted at z-[1], opacity-100) owns the frame
-    // — its OWN buffering UI covers any network wait. Gating the loader on a JS
-    // decode event (onLoad / onLoadedData / onCanPlay) is the exact defect that
-    // stranded a perfectly good asset behind an eternal spinner on iOS-PWA /
-    // flaky-CDN paths where those events are silently dropped by the webview.
-    // The dock only ever opens WITH a resolved URL, so this skeleton is now
-    // effectively never shown; the `onError` → one-shot recovery → error-card
-    // path remains the sole authority for a genuinely dead asset.
-    if (effectiveUrl || mediaError) return null;
+    // `assetUrl` exists, the skeleton is destroyed from the DOM and the native
+    // media node (already mounted at z-[1], opacity-100) owns the frame — its OWN
+    // buffering UI covers any network wait. Gating the loader on a JS decode
+    // event (onLoad / onLoadedData / onCanPlay) is the exact defect that stranded
+    // a perfectly good asset behind an eternal spinner on iOS-PWA / flaky-CDN
+    // paths where those events are silently dropped by the webview. The dock only
+    // ever opens WITH a resolved URL, so this skeleton is now effectively never
+    // shown; a genuine native `onError` is the sole authority for a dead asset.
+    if (assetUrl || mediaError) return null;
     const text = loadPhase === 'slow' ? labels.diagnosticsSlow : labels.diagnosticsLoading;
     return (
       <div className="absolute inset-0 z-0 flex items-center justify-center">
@@ -3694,7 +3599,7 @@ function PreviewWorkspace({
             {/* Primary: re-initialize the canvas in place (no download needed). */}
             <button
               type="button"
-              onClick={() => { recoveryTriedRef.current = false; setMediaError(false); setMediaReady(false); setLoadPhase('loading'); setReloadNonce((n) => n + 1); }}
+              onClick={() => { setMediaError(false); setMediaReady(false); setLoadPhase('loading'); setReloadNonce((n) => n + 1); }}
               className="inline-flex items-center gap-1.5 rounded-full border border-[#D4AF37]/40 bg-[#0A0A0A] px-3 py-1 text-[11.5px] text-zinc-100 transition hover:border-[#D4AF37] active:scale-95"
               style={{ color: '#D4AF37' }}
             >
@@ -3810,15 +3715,16 @@ function PreviewWorkspace({
             style={{ backgroundColor: '#0A0A0A' }}
           >
             {renderLoadingBackdrop()}
-            {/* PHASE 49 §3 — native <img> for instant, framework-native decode
-                (no next/image optimizer indirection). `effectiveUrl` swaps to the
-                recovered same-origin blob: source if the original failed to mount.
-                PHASE 54 — z-[1] + always-visible: paints over the shimmer the
-                instant bytes decode; never gated behind a decode handshake. */}
+            {/* v61 — native <img> mounted DIRECTLY from the raw `assetUrl` (no
+                next/image optimizer, no blob recovery indirection). z-[1] +
+                always-visible: it paints over the shimmer the instant bytes
+                decode; never gated behind a decode handshake. A real cross-origin
+                image loads here WITHOUT CORS — onError only fires if it's truly
+                dead, which is the only thing that reveals the fallback card. */}
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               key={`img-${reloadNonce}`}
-              src={effectiveUrl}
+              src={assetUrl}
               alt="Generated"
               decoding="async"
               onLoad={() => setMediaReady(true)}
@@ -3862,12 +3768,11 @@ function PreviewWorkspace({
               style={{ transform: 'translateZ(0)' }}
               className={`absolute inset-0 z-[1] h-full w-full object-contain ${fadeClass}`}
             >
-              {/* PHASE 48 §2 — declare the codec so the browser commits to the
-                  element even when a data:/proxied source carries a weak or
-                  missing Content-Type; inline data:video/mp4 now also passes CSP.
-                  PHASE 49 §3 — `effectiveUrl`/`effectiveVideoType` carry the
-                  recovered blob: source + its concrete MIME when recovery fired. */}
-              <source src={effectiveUrl} type={effectiveVideoType} />
+              {/* v61 — direct source from the raw `assetUrl`. The browser sniffs
+                  the hosted Content-Type, and an inline data:video/... URI carries
+                  its own MIME, so no type hint is needed (and a wrong hint would
+                  make the browser skip the source). */}
+              <source src={assetUrl} />
             </video>
             {renderErrorCard()}
           </div>
@@ -3908,10 +3813,10 @@ function PreviewWorkspace({
                 browsers that gate unmuted audio autoplay simply leave the native
                 controls ready for a one-tap start (no spinner, no download path). */}
             <audio key={`aud-${reloadNonce}`} controls autoPlay preload="metadata" onError={handleMediaError} className="w-full">
-              {/* PHASE 48 §2 — exact embedded MIME for inline data: audio so it
-                  mounts under CSP and the browser never skips the source.
-                  PHASE 49 §3 — recovered blob: source + concrete MIME on failure. */}
-              <source src={effectiveUrl} type={effectiveAudioType} />
+              {/* v61 — direct source from the raw `assetUrl`; the browser sniffs
+                  the hosted Content-Type and an inline data:audio/... URI carries
+                  its own MIME. */}
+              <source src={assetUrl} />
             </audio>
           </div>
         ) : null}
