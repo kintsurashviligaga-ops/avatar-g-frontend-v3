@@ -3988,10 +3988,13 @@ function MessageBubble({
   // Reactive feedback selection (Tier-1 micro-interaction). Local-only; the
   // network call is fire-and-forget via onFeedback.
   const [feedback, setFeedback] = useState<'up' | 'down' | null>(null);
-  // Read-aloud (browser SpeechSynthesis) play/pause lifecycle.
-  const [ttsState, setTtsState] = useState<'idle' | 'playing' | 'paused'>('idle');
-  const [ttsSupported, setTtsSupported] = useState(false);
+  // Read-aloud lifecycle. PHASE 56 — premium ElevenLabs audio is the PRIMARY
+  // engine (eleven_multilingual_v2 for Georgian, Google ka-GE fallback server-
+  // side); the browser SpeechSynthesis path survives only as a last resort, so
+  // `loading` covers the network fetch of the synthesized clip.
+  const [ttsState, setTtsState] = useState<'idle' | 'loading' | 'playing' | 'paused'>('idle');
   const utterRef = useRef<SpeechSynthesisUtterance | null>(null);
+  const readAloudAudioRef = useRef<HTMLAudioElement | null>(null);
   // Smooth content mount: media starts blurred + transparent and resolves to a
   // crisp frame on first decode (hardware-accelerated opacity+blur transition).
   const [mediaReady, setMediaReady] = useState(false);
@@ -4046,12 +4049,18 @@ function MessageBubble({
       .catch(() => { /* clipboard blocked — no-op */ });
   }, [message.text]);
 
-  // Detect SpeechSynthesis support once; cancel any in-flight speech on unmount.
+  // Tear down any in-flight read (browser speech OR the ElevenLabs audio clip)
+  // and release its blob URL when the bubble unmounts.
   useEffect(() => {
-    setTtsSupported(typeof window !== 'undefined' && 'speechSynthesis' in window);
     return () => {
       if (typeof window !== 'undefined' && 'speechSynthesis' in window && utterRef.current) {
         try { window.speechSynthesis.cancel(); } catch { /* noop */ }
+      }
+      const audio = readAloudAudioRef.current;
+      if (audio) {
+        try { audio.pause(); } catch { /* noop */ }
+        try { if (audio.src.startsWith('blob:')) URL.revokeObjectURL(audio.src); } catch { /* noop */ }
+        readAloudAudioRef.current = null;
       }
     };
   }, []);
@@ -4061,23 +4070,76 @@ function MessageBubble({
     onFeedback(message.id, rating);
   }, [message.id, onFeedback]);
 
-  // Read-aloud play/pause toggle. Plain text (markdown stripped) is spoken via
-  // the browser engine in the surface locale; a second tap pauses, a third
-  // resumes. Starting cancels any other bubble's speech (the engine is global).
-  const toggleReadAloud = useCallback(() => {
-    if (typeof window === 'undefined' || !('speechSynthesis' in window) || !message.text) return;
+  // Browser SpeechSynthesis — the LAST-RESORT read engine. Most browsers ship
+  // no Georgian (ka-GE) voice, so this only runs when the premium ElevenLabs
+  // stream is unreachable. Markdown-stripped prose, surface-locale voice.
+  const speakViaBrowser = useCallback((plain: string) => {
+    if (typeof window === 'undefined' || !('speechSynthesis' in window)) { setTtsState('idle'); return; }
     const synth = window.speechSynthesis;
-    if (ttsState === 'playing') { try { synth.pause(); } catch { /* noop */ } setTtsState('paused'); return; }
-    if (ttsState === 'paused') { try { synth.resume(); } catch { /* noop */ } setTtsState('playing'); return; }
     try { synth.cancel(); } catch { /* noop */ }
-    const plain = message.text.replace(/[*_`#>~|]/g, '').replace(/\[(.*?)\]\(.*?\)/g, '$1').slice(0, 4000);
     const utter = new SpeechSynthesisUtterance(plain);
     utter.lang = speechLang(lang);
     utter.onend = () => { utterRef.current = null; setTtsState('idle'); };
     utter.onerror = () => { utterRef.current = null; setTtsState('idle'); };
     utterRef.current = utter;
     try { synth.speak(utter); setTtsState('playing'); } catch { setTtsState('idle'); }
-  }, [ttsState, message.text, lang]);
+  }, [lang]);
+
+  // Read-aloud play/pause toggle. PHASE 56 — first tap synthesizes the message
+  // through the premium ElevenLabs voice (/api/elevenlabs/tts: multilingual_v2
+  // for Georgian, Google ka-GE fallback) and plays the returned clip; a second
+  // tap pauses, a third resumes. ElevenLabs is a server call so it works on
+  // every browser — unlike SpeechSynthesis, which can't pronounce Georgian.
+  const toggleReadAloud = useCallback(async () => {
+    if (!message.text || ttsState === 'loading') return;
+
+    const audio = readAloudAudioRef.current;
+    if (ttsState === 'playing') {
+      if (audio) { try { audio.pause(); } catch { /* noop */ } }
+      else if (typeof window !== 'undefined' && 'speechSynthesis' in window) { try { window.speechSynthesis.pause(); } catch { /* noop */ } }
+      setTtsState('paused');
+      return;
+    }
+    if (ttsState === 'paused') {
+      if (audio) { try { await audio.play(); } catch { /* noop */ } }
+      else if (typeof window !== 'undefined' && 'speechSynthesis' in window) { try { window.speechSynthesis.resume(); } catch { /* noop */ } }
+      setTtsState('playing');
+      return;
+    }
+
+    const plain = message.text.replace(/[*_`#>~|]/g, '').replace(/\[(.*?)\]\(.*?\)/g, '$1').slice(0, 4000);
+
+    // Cancel any prior read (this bubble's or, for speech, a sibling's).
+    if (readAloudAudioRef.current) {
+      try { readAloudAudioRef.current.pause(); } catch { /* noop */ }
+      try { if (readAloudAudioRef.current.src.startsWith('blob:')) URL.revokeObjectURL(readAloudAudioRef.current.src); } catch { /* noop */ }
+      readAloudAudioRef.current = null;
+    }
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) { try { window.speechSynthesis.cancel(); } catch { /* noop */ } }
+
+    setTtsState('loading');
+    try {
+      const res = await fetch('/api/elevenlabs/tts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ text: plain, locale: lang }),
+      });
+      if (!res.ok) throw new Error(`tts ${res.status}`);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const el = new Audio(url);
+      el.onended = () => { try { URL.revokeObjectURL(url); } catch { /* noop */ } readAloudAudioRef.current = null; setTtsState('idle'); };
+      el.onerror = () => { try { URL.revokeObjectURL(url); } catch { /* noop */ } readAloudAudioRef.current = null; setTtsState('idle'); };
+      readAloudAudioRef.current = el;
+      await el.play();
+      setTtsState('playing');
+    } catch {
+      // Premium voice unreachable — degrade to the browser engine.
+      readAloudAudioRef.current = null;
+      speakViaBrowser(plain);
+    }
+  }, [ttsState, message.text, lang, speakViaBrowser]);
 
   const modelLabel = prettyModel(message.model);
   // Agent presence: which specialized sub-agent produced this turn. Derived from
@@ -4354,17 +4416,21 @@ function MessageBubble({
             >
               <ThumbsDown size={18} fill={feedback === 'down' ? 'currentColor' : 'none'} />
             </button>
-            {ttsSupported && message.text ? (
+            {message.text ? (
               <button
                 onClick={toggleReadAloud}
+                disabled={ttsState === 'loading'}
                 aria-label={ttsState === 'playing' ? ttsLabels.pause : ttsLabels.readAloud}
                 aria-pressed={ttsState !== 'idle'}
+                aria-busy={ttsState === 'loading'}
                 title={ttsState === 'playing' ? ttsLabels.pause : ttsLabels.readAloud}
                 className={`h-9 w-9 flex items-center justify-center rounded-full transition-all duration-200 active:scale-90 ${
                   ttsState !== 'idle' ? 'text-neutral-100 bg-neutral-800' : 'text-neutral-500 hover:bg-neutral-800 hover:text-neutral-200'
                 }`}
               >
-                {ttsState === 'playing' ? <Pause size={18} /> : <Volume2 size={18} />}
+                {ttsState === 'loading' ? <Loader2 size={18} className="animate-spin" />
+                  : ttsState === 'playing' ? <Pause size={18} />
+                  : <Volume2 size={18} />}
               </button>
             ) : null}
             {message.assetUrl && message.assetType === 'audio' ? (

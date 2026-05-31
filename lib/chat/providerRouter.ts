@@ -136,8 +136,6 @@ const UDIO_PREDICTION_PREFIX = 'udio:';
 
 // ─── Gemini multimodal handler ────────────────────────────────────────────────
 
-const GEMINI_MULTIMODAL_SERVICES = new Set(['image', 'avatar', 'video', 'photo']);
-
 function toGeminiServiceContext(serviceContext: string): GeminiServiceContext {
   const normalized = String(serviceContext || '').toLowerCase();
   switch (normalized) {
@@ -168,8 +166,17 @@ function toGeminiServiceContext(serviceContext: string): GeminiServiceContext {
   }
 }
 
+/** Split a `data:<mime>;base64,<payload>` URL into the inline-data pair Gemini
+ *  expects. Returns null for a non-data / malformed URL. */
+function dataUrlToInlinePart(dataUrl: string): { mimeType: string; data: string } | null {
+  const m = /^data:([^;,]+)(?:;[^,]*)?;base64,(.+)$/i.exec(dataUrl.trim());
+  if (!m) return null;
+  return { mimeType: m[1] || 'image/jpeg', data: m[2] ?? '' };
+}
+
 async function handleGeminiMultimodal(input: OrchestratorInput): Promise<ChatResponse | null> {
-  const hasImage = !!input.imageUrl || !!input.metadata?.imageBase64;
+  if (!process.env.GEMINI_API_KEY) return null;
+
   const metadataAttachments = Array.isArray(input.metadata?.attachments)
     ? input.metadata.attachments as Array<{ type?: string; mimeType?: string; data?: string }>
     : [];
@@ -177,11 +184,40 @@ async function handleGeminiMultimodal(input: OrchestratorInput): Promise<ChatRes
     const type = String(item.type || '').toLowerCase();
     return type === 'image' || type === 'pdf' || type === 'video';
   });
-  const hasExtraAttachments = supportedMetadataAttachments.length > 0;
-  if ((!hasImage && !hasExtraAttachments) || !process.env.GEMINI_API_KEY) return null;
+
+  // PHASE 56 — full multimodal VISION. The attachments handed to Gemini are
+  // assembled from every channel the surfaces can use, in priority order:
+  //   (1) an explicit base64 blob in metadata (legacy MCP / server callers),
+  //   (2) the `imageUrl` the chat composer actually sends — a data: URL for a
+  //       fresh upload or an https: URL for a prior asset; this was previously
+  //       IGNORED here, so Gemini "couldn't see" composer uploads at all,
+  //   (3) any extra typed attachments forwarded via metadata.attachments.
+  const attachments: { type: 'image' | 'pdf' | 'video'; mimeType: string; data: string }[] = [];
 
   const imageBase64 = input.metadata?.imageBase64 as string | undefined;
-  const mimeType = (input.metadata?.mimeType as string) ?? 'image/jpeg';
+  const metaMime = (input.metadata?.mimeType as string) ?? 'image/jpeg';
+  if (imageBase64) attachments.push({ type: 'image', mimeType: metaMime, data: imageBase64 });
+
+  if (input.imageUrl) {
+    try {
+      const part = dataUrlToInlinePart(await loadImageAsDataUrl(input.imageUrl));
+      if (part?.data) attachments.push({ type: 'image', mimeType: part.mimeType, data: part.data });
+    } catch {
+      // Unreadable reference (CORS / 404) — degrade to whatever else we have.
+    }
+  }
+
+  for (const item of supportedMetadataAttachments) {
+    attachments.push({
+      type: String(item.type).toLowerCase() as 'image' | 'pdf' | 'video',
+      mimeType: String(item.mimeType || 'application/octet-stream'),
+      data: String(item.data || ''),
+    });
+  }
+
+  const usable = attachments.filter((a) => a.data.length > 0);
+  if (usable.length === 0) return null;
+
   const ctx = toGeminiServiceContext(input.serviceContext);
   const systemPrompt = withCustomInstructions(getGeminiSystemPrompt(ctx, input.locale ?? 'ka'), input.customInstructions);
 
@@ -190,14 +226,7 @@ async function handleGeminiMultimodal(input: OrchestratorInput): Promise<ChatRes
     prompt: input.message,
     systemPrompt,
     tier: 'pro',
-    attachments: [
-      ...(imageBase64 ? [{ type: 'image' as const, mimeType, data: imageBase64 }] : []),
-      ...supportedMetadataAttachments.map((item) => ({
-        type: String(item.type).toLowerCase() as 'image' | 'pdf' | 'video',
-        mimeType: String(item.mimeType || 'application/octet-stream'),
-        data: String(item.data || ''),
-      })),
-    ],
+    attachments: usable,
     history: input.history?.map((h) => ({
       role: h.role === 'assistant' ? ('model' as const) : ('user' as const),
       parts: [{ text: h.content }],
@@ -213,7 +242,7 @@ async function handleGeminiMultimodal(input: OrchestratorInput): Promise<ChatRes
       provider: 'gemini',
       model: response.model,
       durationMs: Date.now() - startMs,
-      attachment_count: (imageBase64 ? 1 : 0) + (hasExtraAttachments ? supportedMetadataAttachments.length : 0),
+      attachment_count: usable.length,
     },
   };
 }
@@ -228,10 +257,23 @@ export async function orchestrate(
     return handleInteriorIntent(input);
   }
 
-  // Gemini multimodal path for image-bearing requests on supported services
-  if (GEMINI_MULTIMODAL_SERVICES.has(input.serviceContext)) {
-    const geminiResponse = await handleGeminiMultimodal(input);
-    if (geminiResponse) return geminiResponse;
+  // PHASE 56 — Gemini multimodal VISION, unleashed across EVERY conversational
+  // context. Previously gated to the image/avatar/video/photo service set, so an
+  // asset attached in general chat was silently dropped and Gemini appeared
+  // "unable to read" it. Now ANY attached asset (image / PDF / video; data: or
+  // https:) is read by Gemini Pro — UNLESS the turn is an explicit media-
+  // generation command, which still falls through to the deterministic
+  // NanoBanana / LTX / HeyGen path that threads the asset in as a reference.
+  const hasAttachedAsset = !!input.imageUrl
+    || !!input.metadata?.imageBase64
+    || (Array.isArray(input.metadata?.attachments) && input.metadata.attachments.length > 0);
+  if (hasAttachedAsset) {
+    const probe = detectIntent(input.message, input.serviceContext);
+    const isGenerationCommand = DETERMINISTIC_INTENTS.has(probe.intent) || probe.intent === 'music_generation';
+    if (!isGenerationCommand) {
+      const geminiResponse = await handleGeminiMultimodal(input);
+      if (geminiResponse) return geminiResponse;
+    }
   }
 
   // Founder Audit short-circuit. Bypasses normal routing for an allowlisted
