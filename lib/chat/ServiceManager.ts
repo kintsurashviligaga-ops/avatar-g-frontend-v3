@@ -463,6 +463,120 @@ export class ServiceManager {
     };
   }
 
+  /**
+   * PHASE 57 — Replicate (Zeroscope) text-to-video fallback. Mirrors
+   * runReplicateImage: validate → resolve the funded `video` route → fire a
+   * prediction → return an immediate asset URL when synchronous, else a
+   * replicate taskRef the existing poll path already understands. Used as the
+   * automatic failover when the primary LTX provider is out of funds (402).
+   * The text-to-video route can't honor an image-anchor, but a generated clip
+   * beats a hard error; image anchors degrade gracefully to prompt-only.
+   */
+  private async runReplicateVideo(request: ServiceManagerRequest): Promise<ServiceManagerResponse> {
+    const options = request.selectedOptions || {};
+    const promptHash = this.hashPrompt(request.userPrompt);
+    const aspectRatio = this.normalizeAspectRatio(this.getOption(options, ['aspect', 'aspectRatio', 'ratio'])) || '16:9';
+
+    const validation = validateInput({
+      service: 'video',
+      prompt: request.userPrompt,
+      variant: 'text-to-video',
+      quality: 'high',
+      aspectRatio,
+    });
+
+    if (!validation.valid || !validation.sanitized) {
+      throw new Error(validation.error || 'Invalid text-to-video payload for Replicate');
+    }
+
+    validation.sanitized.prompt = request.userPrompt;
+
+    const model = resolveModel('video', validation.sanitized.variant || 'text-to-video');
+    const modelInput = buildModelInput(validation.sanitized);
+    const prediction = await createPrediction(model.id, modelInput);
+
+    if (prediction.status === 'succeeded') {
+      const normalized = normalizeOutput(
+        'video',
+        model.label,
+        model.outputType,
+        prediction.id,
+        prediction.status,
+        prediction.output,
+        prediction.error,
+        prediction.metrics as unknown as Record<string, unknown> | undefined,
+      );
+
+      if (normalized.url) {
+        return {
+          success: true,
+          provider: 'replicate',
+          operation: 'video-avatar',
+          responseType: 'video',
+          message: 'Video generation completed successfully.',
+          assetUrl: normalized.url,
+          assetType: 'video',
+          predictionStatus: 'succeeded',
+          metadata: {
+            provider: 'replicate',
+            model: model.label,
+            operation: 'video-avatar',
+            outputType: model.outputType,
+            sessionId: request.sessionId,
+            providerTaskId: prediction.id,
+            promptHash,
+            confidence: request.confidence,
+            metrics: prediction.metrics,
+          },
+        };
+      }
+    }
+
+    const taskRef = this.encodeTaskRef({
+      provider: 'replicate',
+      providerTaskId: prediction.id,
+      sessionId: request.sessionId,
+      serviceContext: request.serviceContext,
+      intent: request.intent,
+      operation: 'video-avatar',
+      responseType: 'video',
+      promptHash,
+      createdAt: Date.now(),
+    });
+
+    return {
+      success: true,
+      provider: 'replicate',
+      operation: 'video-avatar',
+      responseType: 'video',
+      message: 'Video generation started. Waiting for provider status.',
+      predictionId: taskRef,
+      predictionStatus: prediction.status === 'failed' ? 'failed' : 'processing',
+      metadata: {
+        provider: 'replicate',
+        model: model.label,
+        operation: 'video-avatar',
+        outputType: model.outputType,
+        sessionId: request.sessionId,
+        taskRef,
+        providerTaskId: prediction.id,
+        promptHash,
+        confidence: request.confidence,
+      },
+    };
+  }
+
+  /**
+   * PHASE 57 — true when a provider HTTP failure means "no output is possible"
+   * for a billing/auth reason (out of funds, quota, payment, unauthorized) as
+   * opposed to a deterministic bad-request bug we'd want to surface. Drives the
+   * automatic LTX→Replicate video failover.
+   */
+  private isProviderCreditError(status: number, text: string): boolean {
+    if (status === 402 || status === 429) return true;
+    return /insufficient|insufficient_funds|top.?up|quota|exceeded|payment|balance|out of credit|unauthor|forbidden|denied/i.test(text || '');
+  }
+
   /** PHASE 47 §3 — abortable sleep used between backoff attempts. */
   private delay(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
@@ -652,6 +766,25 @@ export class ServiceManager {
 
     if (!response.ok) {
       const err = await response.text();
+      // PHASE 57 — a billing/auth failure from LTX (e.g. 402 insufficient_funds)
+      // must NOT be a dead end: transparently fail over to the funded Replicate
+      // (Zeroscope) text-to-video path so the user still receives a clip. Only
+      // genuine credit/auth failures fall over; a deterministic 4xx bad-request
+      // still surfaces so we never mask our own bugs.
+      if (this.isProviderCreditError(response.status, err)) {
+        const fallback = await this.runReplicateVideo(request).catch(() => null);
+        if (fallback && fallback.success) {
+          return {
+            ...fallback,
+            metadata: {
+              ...fallback.metadata,
+              videoFallback: 'ltx->replicate',
+              primaryProvider: 'ltx',
+              primaryProviderError: `LTX request failed (${response.status})`,
+            },
+          };
+        }
+      }
       throw new Error(`LTX request failed (${response.status}): ${err || 'unknown error'}`);
     }
 
