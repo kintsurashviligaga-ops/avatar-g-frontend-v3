@@ -49,6 +49,7 @@ import {
   ChevronDown,
   Circle,
   Copy,
+  Cpu,
   Download,
   Film,
   Globe,
@@ -80,10 +81,12 @@ import {
   User,
   Volume2,
   VolumeX,
+  Wallet,
   X,
 } from 'lucide-react';
 import Image from 'next/image';
 import { BalanceChip, WalletRefillModal } from '@/components/chat/WalletRefill';
+import { formatGEL } from '@/lib/billing/gel';
 import { CameraModal } from '@/components/service-chat/CameraModal';
 import AuthModal from '@/components/chat/AuthModal';
 import type { ServiceChatAttachment } from '@/components/service-chat/types';
@@ -235,6 +238,9 @@ const XCOPY = {
     filmStitchReady: '30-second film ready — opened in workspace',
     filmStitchFallback: 'Editor couldn’t finish the stitch — showing the first scene',
     refImagesLock: '{n}/3 reference images — identity locked across your film',
+    planBalance: 'Plan & Balance', balanceLabel: 'Wallet balance', planLabel: 'Account tier',
+    engineLabel: 'AI engine', engineValue: 'Gemini Core · Claude specialist',
+    topUp: 'Top up', signInForBalance: 'Sign in to view your balance and add funds.',
   },
   ka: {
     newChat: 'ახალი ჩატი', rename: 'გადარქმევა', delete: 'წაშლა', open: 'გახსნა',
@@ -265,6 +271,9 @@ const XCOPY = {
     filmStitchReady: '30-წამიანი ფილმი მზადაა — გაიხსნა სამუშაო სივრცეში',
     filmStitchFallback: 'მონტაჟი ვერ დასრულდა — ნაჩვენებია პირველი სცენა',
     refImagesLock: '{n}/3 რეფერენს სურათი — პერსონაჟი დაფიქსირდა მთელ ფილმში',
+    planBalance: 'გეგმა და ბალანსი', balanceLabel: 'საფულის ბალანსი', planLabel: 'ანგარიშის დონე',
+    engineLabel: 'AI ძრავა', engineValue: 'Gemini Core · Claude სპეციალისტი',
+    topUp: 'შევსება', signInForBalance: 'შედი ბალანსის სანახავად და თანხის დასამატებლად.',
   },
   ru: {
     newChat: 'Новый чат', rename: 'Переименовать', delete: 'Удалить', open: 'Открыть',
@@ -295,6 +304,9 @@ const XCOPY = {
     filmStitchReady: '30-секундный фильм готов — открыт в рабочей области',
     filmStitchFallback: 'Монтаж не завершён — показана первая сцена',
     refImagesLock: '{n}/3 референс-изображения — личность зафиксирована во всём фильме',
+    planBalance: 'Тариф и баланс', balanceLabel: 'Баланс кошелька', planLabel: 'Уровень аккаунта',
+    engineLabel: 'AI-движок', engineValue: 'Gemini Core · Claude специалист',
+    topUp: 'Пополнить', signInForBalance: 'Войдите, чтобы увидеть баланс и пополнить счёт.',
   },
 } as const;
 
@@ -448,6 +460,17 @@ const FILM_FLAGSHIP = {
 // Drives the PHASE 39 §3 transmission micro-toast so the user always sees a
 // render request leave the composer.
 const GENERATION_MODES = new Set<ServiceMode>(['image', 'video', 'avatar', 'interior', 'music']);
+
+/* PHASE 53 §5 — Smart contextual file uploads ("blind sensing"). When an asset
+ * is transmitted with an EMPTY prompt box, the user bubble shows just the image,
+ * but the orchestrator is handed this localized instruction so the primary Gemini
+ * core intercepts the action, parses the file's visual/metadata context, and
+ * returns an intuitive conversational question (instead of failing inert). */
+const CONTEXTUAL_FILE_PROMPT: Record<'en' | 'ka' | 'ru', string> = {
+  en: 'I have attached a file without any instructions. Briefly describe what you see, then ask me one concise question about what I would like to do with it.',
+  ka: 'ფაილი ავტვირთე ინსტრუქციის გარეშე. მოკლედ აღწერე რას ხედავ და დამისვი ერთი ლაკონური შეკითხვა, თუ რისი გაკეთება მსურს მასთან დაკავშირებით.',
+  ru: 'Я прикрепил файл без инструкций. Кратко опиши, что видишь, и задай один лаконичный вопрос о том, что я хочу с ним сделать.',
+};
 
 /* PHASE 39 §3 — The 4 legacy "middle template" capability cards (CAPABILITY_CARDS)
  * and their applyCapabilityCard handler were completely removed. The empty state
@@ -969,6 +992,9 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
   // switching artifacts so the panel slides/swaps without an unmount flash.
   const [workspace, setWorkspace] = useState<ChatMessage | null>(null);
   const [balanceGel, setBalanceGel] = useState<number | null>(null);
+  // PHASE 53 §2 — the account tier (plan_id from /api/billing/credits), surfaced
+  // read-only in Settings → Plan & Balance.
+  const [planId, setPlanId] = useState<string | null>(null);
   const [mode, setMode] = useState<ServiceMode>('global');
   // PHASE 52 TASK 3 — the service-vector pill row is consolidated into a single
   // Gemini-style selection dropdown. This drives its open/collapsed state.
@@ -1183,8 +1209,10 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
     let alive = true;
     fetch('/api/billing/credits', { credentials: 'include' })
       .then((r) => r.ok ? r.json() : null)
-      .then((j: { balance?: number } | null) => {
-        if (alive && j && typeof j.balance === 'number') setBalanceGel(j.balance);
+      .then((j: { balance?: number; plan_id?: string } | null) => {
+        if (!alive || !j) return;
+        if (typeof j.balance === 'number') setBalanceGel(j.balance);
+        if (typeof j.plan_id === 'string') setPlanId(j.plan_id);
       })
       .catch(() => {});
     return () => { alive = false; };
@@ -1236,8 +1264,22 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
 
   // ── Send message (real async lifecycle: POST → poll predictionId) ──
   const sendMessage = useCallback(async (overrideText?: string) => {
-    const text = (overrideText ?? inputText).trim();
-    if (!text || isLoading) return;
+    if (isLoading) return;
+    const rawText = (overrideText ?? inputText).trim();
+    const hasAttachment = attachments.length > 0;
+
+    // PHASE 53 §5 — a send is valid with EITHER typed text OR an attachment.
+    // Voice (ხმა) is pure TTS, so it always needs text to read aloud.
+    if (!rawText && !hasAttachment) return;
+    if (mode === 'voice' && !rawText) return;
+
+    // PHASE 53 §5 — "blind sensing": the user bubble shows whatever they actually
+    // typed (`displayText`, may be empty for an image-only send), but the
+    // orchestrator receives a localized "describe + ask me a question" instruction
+    // whenever the prompt box was empty so the Gemini core parses the asset and
+    // replies conversationally instead of stalling on an empty message.
+    const displayText = rawText;
+    const text = rawText || CONTEXTUAL_FILE_PROMPT[lang];
 
     // Image attachment → orchestrator `imageUrl` (it accepts data: URLs directly,
     // see providerRouter.loadImageAsDataUrl). This is what drives the image-edit /
@@ -1259,7 +1301,7 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
     dispatch({ type: 'ADD_MESSAGE', message: {
       id: `u_${Date.now()}`,
       role: 'user',
-      text,
+      text: displayText,
       timestamp: Date.now(),
       assetUrl: imageUrl ?? null,
       assetType: imageUrl ? 'image' : null,
@@ -2143,10 +2185,13 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
             pill or an "@mention"), giving an at-a-glance cue of which engine
             the next prompt will route to. */}
         <div className="px-3 sm:px-4 pt-2.5 pb-2.5 max-w-3xl mx-auto">
-          <div
-            className="rounded-3xl border bg-[#0a0a0a] transition-colors focus-within:border-white/[0.18]"
-            style={{ borderColor: mode === 'global' ? 'rgba(255,255,255,0.06)' : `${AGENTS[mode].color}73` }}
-          >
+          {/* PHASE 53 §1 — SANITIZED GEMINI BAR. The per-agent neon accent track
+              (agent-coloured border) and shifting focus animations are removed.
+              The panel is a single solid, calm surface with one hairline neutral
+              border that only brightens subtly on focus — matching Gemini's clean
+              aesthetic. The active engine is now communicated by the selection
+              dropdown chip above, not by a coloured glow around the whole bar. */}
+          <div className="rounded-3xl border border-white/[0.07] bg-[#0a0a0a] transition-colors focus-within:border-white/20">
             {/* ── PHASE 42 §2 — Flagship "30-Second Film" CTA ──────────────
                 The platform's highest-value action, lifted out of the mode pill
                 row into a prominent premium Cyan button with a soft glow. Primes
@@ -2286,7 +2331,8 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
                   const shouldSend = prefs.submitOnEnter ? !e.shiftKey : (e.metaKey || e.ctrlKey);
                   if (!shouldSend) return;
                   e.preventDefault();
-                  if (inputText.trim() && !isLoading) void sendMessage();
+                  // PHASE 53 §5 — Enter also sends an attachment-only message.
+                  if ((inputText.trim() || attachments.length > 0) && !isLoading) void sendMessage();
                 }}
                 placeholder={copy.placeholder}
                 rows={1}
@@ -2321,11 +2367,12 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
               ) : (
                 <button
                   onClick={() => void sendMessage()}
-                  disabled={!inputText.trim()}
+                  disabled={!inputText.trim() && attachments.length === 0}
                   aria-label="Send"
                   className="h-9 w-9 flex items-center justify-center rounded-xl text-zinc-950 active:scale-95 transition disabled:opacity-40 disabled:cursor-not-allowed"
                   style={{
-                    background: inputText.trim() ? ACCENT : 'transparent',
+                    // PHASE 53 §5 — light the send button for an attachment-only send too.
+                    background: (inputText.trim() || attachments.length > 0) ? ACCENT : 'transparent',
                   }}
                 >
                   <Send size={16} />
@@ -2536,6 +2583,58 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
                       )}
                     </div>
                   </div>
+                </section>
+
+                {/* PHASE 53 §2 — Plan & Balance: real wallet balance + account tier
+                    (from /api/billing/credits), the active AI engine, and a direct
+                    top-up entry into the Pay-As-You-Go wallet refill flow. */}
+                <section className="flex flex-col gap-2">
+                  <h3 className="text-[11px] font-semibold uppercase tracking-wider text-zinc-500">{xc.planBalance}</h3>
+                  {isAuthenticated ? (
+                    <div className="rounded-2xl border border-zinc-800/70 bg-[#0f0f0f] divide-y divide-zinc-800/60">
+                      {/* Wallet balance + Top-up */}
+                      <div className="flex items-center justify-between gap-3 px-3 py-3">
+                        <span className="flex items-center gap-2 text-[13.5px] text-zinc-200">
+                          <Wallet size={15} /> {xc.balanceLabel}
+                        </span>
+                        <div className="flex items-center gap-2.5">
+                          <span className="text-[14px] font-semibold tabular-nums text-zinc-50">
+                            {balanceGel === null ? '—' : formatGEL(balanceGel)}
+                          </span>
+                          <button
+                            onClick={() => { setSettingsOpen(false); setWalletOpen(true); }}
+                            className="h-7 px-3 rounded-full text-[12px] font-semibold text-[#0A0A0A] active:scale-95 transition"
+                            style={{ background: '#D4AF37' }}
+                          >
+                            {xc.topUp}
+                          </button>
+                        </div>
+                      </div>
+                      {/* Account tier */}
+                      <div className="flex items-center justify-between gap-3 px-3 py-3">
+                        <span className="flex items-center gap-2 text-[13.5px] text-zinc-200">
+                          <Sparkles size={15} /> {xc.planLabel}
+                        </span>
+                        <span className="text-[13px] font-medium capitalize text-zinc-100">
+                          {planId ?? '—'}
+                        </span>
+                      </div>
+                      {/* Active AI engine (read-only — hybrid routing is automatic) */}
+                      <div className="flex items-center justify-between gap-3 px-3 py-3">
+                        <span className="flex items-center gap-2 text-[13.5px] text-zinc-200">
+                          <Cpu size={15} /> {xc.engineLabel}
+                        </span>
+                        <span className="text-[12.5px] font-medium text-zinc-400">{xc.engineValue}</span>
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => { setSettingsOpen(false); setAuthOpen(true); }}
+                      className="rounded-2xl border border-zinc-800/70 bg-[#0f0f0f] px-3 py-3 text-left text-[13px] text-zinc-400 hover:border-zinc-600/80 hover:text-zinc-200 transition"
+                    >
+                      {xc.signInForBalance}
+                    </button>
+                  )}
                 </section>
 
                 {/* Preferences */}
@@ -3703,6 +3802,18 @@ function MessageBubble({
     mediaReady ? 'opacity-100 blur-0' : 'opacity-0 blur-md'
   }`;
 
+  // PHASE 53 §3 — inline-media anti-hang net. next/image's onLoadingComplete and
+  // the <video> decode events (onLoadedMetadata/onCanPlay) can SILENTLY never fire
+  // on flaky CDNs / iOS PWA wrappers, which would freeze this bubble's asset at
+  // opacity-0 forever (the "loading fallback hang"). Once the asset is mounted in
+  // view, force-reveal after a short grace so the native element always owns its
+  // own loading state and the decoded frame is never masked by the fade gate.
+  useEffect(() => {
+    if (!message.assetUrl || !mediaInView || mediaReady) return undefined;
+    const t = setTimeout(() => setMediaReady(true), 1500);
+    return () => clearTimeout(t);
+  }, [message.assetUrl, mediaInView, mediaReady]);
+
   // Autoplay generated media when the preference is on. Video plays muted
   // (browsers block unmuted autoplay); audio play is best-effort.
   useEffect(() => {
@@ -3850,7 +3961,10 @@ function MessageBubble({
           mediaInView ? (
             <button
               type="button"
-              onClick={() => (onExpand ? onExpand(message) : setLightbox(true))}
+              // PHASE 53 §4 — tapping ANY image card (generated or uploaded) opens
+              // the unconfined full-screen Lightbox layer. (The explicit "expand"
+              // affordance below still mounts the split-pane Preview Workspace.)
+              onClick={() => setLightbox(true)}
               aria-label={expandLabel || 'Open full-size image'}
               className="group relative block overflow-hidden rounded-2xl border border-zinc-800/70 bg-black max-w-full active:scale-[0.99] transition"
             >
@@ -3955,7 +4069,18 @@ function MessageBubble({
               className="fixed inset-0 z-[80] flex items-center justify-center bg-black/90 backdrop-blur-md p-4"
               onClick={() => setLightbox(false)}
             >
-              <Image src={message.assetUrl} alt="Generated (full size)" width={2048} height={2048} unoptimized className="max-h-[92vh] max-w-[96vw] w-auto h-auto object-contain rounded-xl" />
+              {/* PHASE 53 §4 — the image scales up into the unconfined layer; tapping
+                  the image itself doesn't dismiss (only the backdrop / close button). */}
+              <motion.div
+                initial={{ scale: 0.92, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.95, opacity: 0 }}
+                transition={{ type: 'spring', stiffness: 260, damping: 28 }}
+                onClick={(e) => e.stopPropagation()}
+                className="flex items-center justify-center"
+              >
+                <Image src={message.assetUrl} alt="Generated (full size)" width={2048} height={2048} unoptimized className="max-h-[92vh] max-w-[96vw] w-auto h-auto object-contain rounded-xl" />
+              </motion.div>
               <button
                 onClick={() => setLightbox(false)}
                 aria-label="Close"
@@ -4376,7 +4501,11 @@ function PipelineTelemetry({
   const doneCount = visible.filter((s) => s.state === 'done').length;
 
   return (
-    <div className="w-full max-w-sm rounded-2xl border border-zinc-800/70 bg-[#0a0a0a] p-3 flex flex-col gap-3">
+    // PHASE 53 §7 — cohesive Obsidian Black (#0A0A0A) loading card with the same
+    // hairline Metallic Gold (#D4AF37) border as the shaped MediaSkeleton, so the
+    // whole render-status surface (Pending → Generating → Stitched) reads as one
+    // luxury loading language.
+    <div className="w-full max-w-sm rounded-2xl border border-[#D4AF37]/25 bg-[#0A0A0A] p-3 flex flex-col gap-3">
       {/* Stepped horizontal progress — one segment per genuine lifecycle phase.
           A completed phase is solid; the in-flight phase shows an indeterminate
           sweep (no fabricated %); pending phases stay empty. */}
