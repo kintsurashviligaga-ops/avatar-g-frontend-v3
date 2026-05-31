@@ -135,6 +135,36 @@ export interface ServiceManagerResponse {
   };
 }
 
+/**
+ * PHASE 56 (root-cause) — a NanoBanana response with NO media URL is not always
+ * a success. The image provider returns soft failures — HTTP 402 "insufficient
+ * credits", quota/rate limits, auth faults — as an ordinary JSON body carrying a
+ * numeric `code` >= 400 and a human message, rather than throwing. The no-URL
+ * branch previously laundered that into `success:true responseType:'text'`, so
+ * the client believed generation succeeded and opened a preview with no asset to
+ * mount — the exact "preview never shows the image / hangs" report. This returns
+ * the provider's error message when the result is a failure, or null when it is a
+ * genuine text answer (so a real text reply still flows through untouched).
+ */
+function detectNanoProviderError(result: { url?: string; text?: string; raw: unknown }): string | null {
+  if (result.url) return null;
+  let code: number | undefined;
+  let rawMsg: string | undefined;
+  if (result.raw && typeof result.raw === 'object') {
+    const r = result.raw as Record<string, unknown>;
+    if (typeof r.code === 'number') code = r.code;
+    const m = r.msg ?? r.message ?? r.error;
+    if (typeof m === 'string') rawMsg = m;
+  }
+  const text = (result.text || rawMsg || '').trim();
+  const errorByCode = typeof code === 'number' && code >= 400;
+  const errorByText = /insufficient|top.?up|quota|rate.?limit|unauthor|invalid api|forbidden|denied|payment|balance/i.test(text);
+  if (errorByCode || errorByText) {
+    return text || `Image provider error${typeof code === 'number' ? ` (HTTP ${code})` : ''}`;
+  }
+  return null;
+}
+
 const HEYGEN_VOICE_MAP: Record<'female' | 'male', Record<string, string>> = {
   female: {
     en: '1bd001e7e50f421d891986aad5158bc8',
@@ -260,6 +290,56 @@ export class ServiceManager {
           promptHash,
           confidence: request.confidence,
           raw: result.raw,
+        },
+      };
+    }
+
+    // PHASE 56 (root-cause) — a no-URL result that carries a provider error
+    // (402 insufficient credits, quota, auth) means NanoBanana produced NOTHING.
+    // The default image provider being out of credits must NOT become a dead end:
+    // transparently fail over to the funded Replicate (FLUX) image path so the
+    // user still receives a real image to preview. The fallback returns either an
+    // immediate asset URL or a predictionId the client already knows how to poll.
+    // Only when that fallback ALSO fails do we surface the honest provider error
+    // (a clear, actionable message) instead of a silent empty preview.
+    const providerError = detectNanoProviderError(result);
+    if (providerError) {
+      try {
+        const fallback = await this.runReplicateImage(request);
+        if (fallback.success) {
+          return {
+            ...fallback,
+            metadata: {
+              ...fallback.metadata,
+              imageFallback: 'nanobanana->replicate',
+              primaryProvider: 'nanobanana',
+              primaryProviderError: providerError,
+            },
+          };
+        }
+      } catch {
+        // Replicate also unavailable — fall through to the honest NanoBanana
+        // error below, which is the most actionable signal for the operator.
+      }
+
+      return {
+        success: false,
+        provider: 'nanobanana',
+        operation: 'text-to-image',
+        responseType: 'text',
+        message: providerError,
+        predictionStatus: 'failed',
+        metadata: {
+          provider: 'nanobanana',
+          operation: 'text-to-image',
+          sessionId: request.sessionId,
+          endpoint,
+          creditCost: getNanoBananaCreditCost(endpoint),
+          outputType: 'text',
+          promptHash,
+          confidence: request.confidence,
+          raw: result.raw,
+          error: providerError,
         },
       };
     }
