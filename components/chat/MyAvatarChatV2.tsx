@@ -35,7 +35,7 @@
  *      ↑ safe-area-inset-bottom padding so iOS Safari can't clip
  */
 
-import { isValidElement, useCallback, useEffect, useMemo, useReducer, useRef, useState, type ReactNode, type RefObject } from 'react';
+import { Component, isValidElement, useCallback, useEffect, useMemo, useReducer, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -2387,23 +2387,32 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
           no flash. */}
       <AnimatePresence mode="wait">
         {workspace ? (
-          <PreviewWorkspace
+          <PreviewErrorBoundary
             key="preview-workspace"
-            message={workspace}
-            lang={lang}
-            accent={ACCENT}
-            labels={{
-              workspace: xc.workspace, details: xc.details, promptLabel: xc.promptLabel,
-              agentLabel: xc.agentLabel, aspectLabel: xc.aspectLabel, room3d: xc.room3d,
-              orbitHint: xc.orbitHint, resetView: xc.resetView, refine: xc.refine,
-              download: xc.download, close: xc.close, copyLink: xc.copyLink, linkCopied: xc.linkCopied,
-              diagnosticsLoading: xc.diagnosticsLoading, diagnosticsSlow: xc.diagnosticsSlow,
-              mediaUnavailable: xc.mediaUnavailable, retry: xc.retry,
-            }}
-            autoplay={prefs.autoplayMedia}
+            resetKey={workspace.id}
             onClose={closeWorkspace}
-            onRefine={applyRefinement}
-          />
+            labels={{
+              mediaUnavailable: xc.mediaUnavailable, retry: xc.retry,
+              close: xc.close, workspace: xc.workspace,
+            }}
+          >
+            <PreviewWorkspace
+              message={workspace}
+              lang={lang}
+              accent={ACCENT}
+              labels={{
+                workspace: xc.workspace, details: xc.details, promptLabel: xc.promptLabel,
+                agentLabel: xc.agentLabel, aspectLabel: xc.aspectLabel, room3d: xc.room3d,
+                orbitHint: xc.orbitHint, resetView: xc.resetView, refine: xc.refine,
+                download: xc.download, close: xc.close, copyLink: xc.copyLink, linkCopied: xc.linkCopied,
+                diagnosticsLoading: xc.diagnosticsLoading, diagnosticsSlow: xc.diagnosticsSlow,
+                mediaUnavailable: xc.mediaUnavailable, retry: xc.retry,
+              }}
+              autoplay={prefs.autoplayMedia}
+              onClose={closeWorkspace}
+              onRefine={applyRefinement}
+            />
+          </PreviewErrorBoundary>
         ) : pipeline?.active && pipeline.stages.some((s) => s.key.startsWith('clip_')) ? (
           // PHASE 43 §2 — no finished asset yet, but a 30-second film is rendering:
           // dock the cinematic Storyboard skeleton so the canvas lights up scene by
@@ -3179,6 +3188,72 @@ function assetFileBase(message: { id: string; sourcePrompt?: string }): string {
   return slug ? `myavatarg-${slug}` : `myavatarg-${message.id}`;
 }
 
+/* ─── Preview render guard ────────────────────────────────────────────
+ * PHASE 55 §1 (Task 1) — a hard error boundary wrapping the live preview dock.
+ * If ANY descendant throws during render or mount (a malformed asset payload,
+ * an unexpected null deref, a media node that blows up while binding), React
+ * would otherwise tear down the ENTIRE chat tree and leave a blank screen —
+ * the precise "throwing critical rendering errors / empty wireframe" symptom
+ * from the audit. This intercepts the throw, keeps the chat surface alive, and
+ * paints a graceful, dismissible card in the dock instead. It auto re-arms the
+ * instant a new asset arrives (`resetKey` = message id changes) so one broken
+ * payload can never permanently wedge the preview for every asset after it.
+ * Error boundaries have no hook form, hence the class. */
+type PreviewBoundaryProps = {
+  resetKey: string;
+  onClose: () => void;
+  labels: { mediaUnavailable: string; retry: string; close: string; workspace: string };
+  children: ReactNode;
+};
+type PreviewBoundaryState = { hasError: boolean };
+
+class PreviewErrorBoundary extends Component<PreviewBoundaryProps, PreviewBoundaryState> {
+  state: PreviewBoundaryState = { hasError: false };
+
+  static getDerivedStateFromError(): PreviewBoundaryState {
+    return { hasError: true };
+  }
+
+  componentDidUpdate(prevProps: PreviewBoundaryProps) {
+    if (prevProps.resetKey !== this.props.resetKey && this.state.hasError) {
+      this.setState({ hasError: false });
+    }
+  }
+
+  private handleRetry = () => this.setState({ hasError: false });
+
+  render() {
+    if (!this.state.hasError) return this.props.children;
+    const { labels, onClose } = this.props;
+    return (
+      <aside
+        className="fixed inset-0 z-[70] flex flex-col items-center justify-center gap-4 bg-[#050505] px-8 text-center lg:static lg:z-auto lg:h-full lg:w-[44%] lg:max-w-[680px] lg:min-w-[380px] lg:shrink-0 lg:border-l lg:border-white/[0.06]"
+        aria-label={labels.workspace}
+      >
+        <AlertCircle size={28} className="text-zinc-300" />
+        <p className="max-w-xs text-[13px] font-medium text-zinc-300">{labels.mediaUnavailable}</p>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={this.handleRetry}
+            className="inline-flex items-center gap-1.5 rounded-full border border-[#D4AF37]/40 bg-[#0A0A0A] px-3.5 py-1.5 text-[12px] transition hover:border-[#D4AF37] active:scale-95"
+            style={{ color: '#D4AF37' }}
+          >
+            <RotateCcw size={13} /> {labels.retry}
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-full border border-zinc-800 bg-zinc-900/60 px-3.5 py-1.5 text-[12px] text-zinc-300 transition hover:border-zinc-600 hover:text-zinc-100 active:scale-95"
+          >
+            {labels.close}
+          </button>
+        </div>
+      </aside>
+    );
+  }
+}
+
 /* ─── Preview Workspace (split-pane interactive media canvas) ──────────
  * Docks beside the chat stream on wide screens and overlays full-screen on
  * mobile. It is driven purely by the `message` prop (never remounted between
@@ -3404,21 +3479,27 @@ function PreviewWorkspace({
   // recovery watchdog above. Re-arms on each (re)mount via reloadNonce.
   useEffect(() => {
     if (mediaReady || mediaError) return undefined;
-    if (assetType !== 'video' && assetType !== 'image') return undefined;
+    // PHASE 55 §1 (Task 1) — net now also covers the live 3D-room iframe. The
+    // iframe reveal previously relied SOLELY on its `onLoad`; a cross-origin
+    // world canvas that never fires `onLoad` (or fires it before its scene is
+    // navigable) would leave the dock spinning forever with no watchdog. Image
+    // / video / room are now all caught.
+    if (assetType !== 'video' && assetType !== 'image' && !isRoom3D) return undefined;
     if (!effectiveUrl) return undefined;
     // PHASE 54 §2 — UNIVERSAL anti-lock net (was https-only). Mobile browsers
     // (notably iOS Safari/standalone PWA) silently drop decode events
     // (onLoad/onLoadedData/onCanPlay) for hosted https AND blob: sources, which
-    // froze the loader shell forever. We now force-reveal across every scheme so
-    // the spinner can never lock: images reveal almost immediately (400ms — they
-    // decode fast or are already inline), videos get a short 1200ms grace to
-    // begin buffering. The onError → one-shot recovery path still fires
-    // independently, so a genuinely broken asset still escalates to recovery →
-    // the graceful failure card rather than a false "ready" frame.
-    const grace = assetType === 'image' ? 400 : 1200;
+    // froze the loader shell forever. We force-reveal across every scheme so the
+    // spinner can never lock: images reveal almost immediately (400ms — they
+    // decode fast or are already inline), videos get a tight 900ms grace to
+    // begin buffering, the 3D room gets 2500ms to mount its canvas. The onError
+    // → one-shot recovery path still fires independently, so a genuinely broken
+    // asset still escalates to recovery → the graceful failure card rather than
+    // a false "ready" frame.
+    const grace = assetType === 'image' ? 400 : isRoom3D ? 2500 : 900;
     const t = setTimeout(() => setMediaReady(true), grace);
     return () => clearTimeout(t);
-  }, [mediaReady, mediaError, assetType, effectiveUrl, reloadNonce]);
+  }, [mediaReady, mediaError, assetType, isRoom3D, effectiveUrl, reloadNonce]);
 
   // PHASE 45 §4 — unmuted final-cut transition. The decoded artifact (a finished
   // 30-second film carrying a real audio master — Udio score + ElevenLabs VO, or
