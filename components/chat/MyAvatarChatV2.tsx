@@ -3501,15 +3501,53 @@ function PreviewWorkspace({
     return () => clearTimeout(t);
   }, [mediaReady, mediaError, assetType, isRoom3D, effectiveUrl, reloadNonce]);
 
+  // PHASE 54 (single-focus preview ultimatum) — 300ms inline-asset failsafe.
+  // Founder mandate: "if a blob fails to resolve within 300ms, force a raw cache
+  // re-fetch to pop the asset onto the layout card." We honour that for the case
+  // it literally applies to — INLINE/local payloads (data:) and still images —
+  // where a decode bytes → same-origin blob → remount is fast and safe. The
+  // re-fetch is one-shot (recoveryTriedRef) so it can never loop, and it never
+  // sets the failure flag itself (only a thrown fetch does), so a slow-but-fine
+  // asset is nudged, not killed. Hosted https VIDEO is deliberately excluded:
+  // it streams via native Range requests, so a blanket whole-file re-fetch would
+  // defeat range streaming — those keep the onError + long-watchdog recovery.
+  useEffect(() => {
+    if (mediaReady || mediaError || recoveryTriedRef.current) return undefined;
+    if (!assetUrl) return undefined;
+    const eligible = assetUrl.startsWith('data:') || (assetType === 'image' && !assetUrl.startsWith('blob:'));
+    if (!eligible) return undefined;
+    const t = setTimeout(() => {
+      if (!recoveryTriedRef.current && !mediaReady && !mediaError) handleMediaError();
+    }, 300);
+    return () => clearTimeout(t);
+  }, [mediaReady, mediaError, assetType, assetUrl, reloadNonce, handleMediaError]);
+
+  // PHASE 54 (single-focus preview ultimatum) — UNCONDITIONAL muted autostart.
+  // The instant the <video> node exists we set `muted` as a real DOM PROPERTY
+  // (React does not reliably apply the `muted` *attribute* — a long-standing
+  // quirk — so the bare `autoPlay muted` markup alone can be silently rejected)
+  // and call play(). Muted autoplay is the one form every browser/webview permits
+  // without a user gesture, so the clip shows motion immediately, no tap, no
+  // spinner. Fires on mount/remount, independent of the autoplay preference; the
+  // pref-gated effect just below then upgrades to unmuted SOUND when ready.
+  useEffect(() => {
+    if (assetType !== 'video' || !effectiveUrl) return undefined;
+    const v = previewVideoRef.current;
+    if (!v) return undefined;
+    v.muted = true;
+    void Promise.resolve(v.play()).catch(() => { /* gesture-gated — native controls remain */ });
+    return undefined;
+  }, [assetType, effectiveUrl, reloadNonce]);
+
   // PHASE 45 §4 — unmuted final-cut transition. The decoded artifact (a finished
   // 30-second film carrying a real audio master — Udio score + ElevenLabs VO, or
-  // a single clip) starts the instant it's ready. We attempt UNMUTED playback
-  // first so the film lands with sound. Browser autoplay policy may reject sound
-  // without a fresh user gesture; if the unmuted play() promise rejects we
+  // a single clip) upgrades to sound the instant it's ready. We attempt UNMUTED
+  // playback so the film lands with audio. Browser autoplay policy may reject
+  // sound without a fresh user gesture; if the unmuted play() promise rejects we
   // transparently fall back to muted playback with native controls still visible,
   // so the user unmutes with one tap. No silent dead-frame, and we never claim
-  // sound is playing when the gate blocked it. Gated on `mediaReady` (decoded
-  // surface → no flash, no CLS).
+  // sound is playing when the gate blocked it. Gated on `mediaReady` + the
+  // autoplay preference.
   useEffect(() => {
     if (!autoplay || assetType !== 'video' || !assetUrl || !mediaReady) return undefined;
     const v = previewVideoRef.current;
@@ -3536,9 +3574,15 @@ function PreviewWorkspace({
   const videoFrameClass =
     aspect === '9:16' ? 'aspect-[9/16] max-h-[64vh] mx-auto'
     : 'aspect-[16/9]';
-  const fadeClass = `transition-[opacity,filter] duration-500 ease-out will-change-[opacity,filter] transform-gpu ${
-    mediaReady ? 'opacity-100 blur-0' : 'opacity-0 blur-md'
-  }`;
+  // PHASE 54 (single-focus preview ultimatum) — the media node mounts VISIBLE
+  // from the first paint. We NO LONGER hide it behind an opacity/blur gate that
+  // waits on a decode handshake (onLoad / onLoadedData / onCanPlay); those
+  // events silently never fire on some iOS-PWA / flaky-CDN paths, which is the
+  // exact regression that stranded a perfectly good asset behind an eternal
+  // spinner. The native element owns its own progressive paint; the loading
+  // shimmer now renders BEHIND it (see the split overlay below) so a decoded
+  // frame always wins and the spinner can never mask working media.
+  const fadeClass = 'opacity-100 transform-gpu';
 
   // Direct Download — robust streaming trigger. Routes through
   // arrayBuffer → Blob(octet-stream) so the browser SAVES (critical for
@@ -3586,51 +3630,64 @@ function PreviewWorkspace({
       .catch(() => { /* clipboard blocked — no-op */ });
   }, [assetUrl, isShareableUrl]);
 
-  // Inline resiliency overlay — a premium skeleton + live status that keeps the
-  // viewer frame intact while media streams, plus a direct-open fallback on
-  // failure. Rendered inside every media frame (image / video / 3D canvas).
-  const renderDiagnostics = () => {
-    if (mediaReady && !mediaError) return null;
-    const text = mediaError ? labels.mediaUnavailable
-      : loadPhase === 'slow' ? labels.diagnosticsSlow
-      : labels.diagnosticsLoading;
+  // PHASE 54 — the old single `renderDiagnostics()` overlay sat ON TOP of the
+  // media and was gated only by `mediaReady`, so a decode event that never
+  // fired left the spinner permanently covering a working asset. It is now
+  // split in two, with the media element sandwiched between them in the DOM:
+  //
+  //   renderLoadingBackdrop()  → z-0, BEHIND the media — purely cosmetic; the
+  //                              instant the native node paints a frame it wins.
+  //   <img>/<video>/<iframe>   → z-[1], VISIBLE from first paint.
+  //   renderErrorCard()        → z-20, ON TOP, but ONLY on a genuine failure
+  //                              (after the one-shot recovery re-fetch is spent).
+  //
+  // Net effect: the spinner can no longer hang over a decodable asset — exactly
+  // the OpenAI/Gemini/Grok behaviour (element present, shimmer behind, frame
+  // replaces it, error card only on true failure).
+  const renderLoadingBackdrop = () => {
+    if (mediaReady || mediaError) return null;
+    const text = loadPhase === 'slow' ? labels.diagnosticsSlow : labels.diagnosticsLoading;
     return (
-      <div className="absolute inset-0 flex items-center justify-center">
-        {!mediaError ? (
-          <div className="absolute inset-0 animate-pulse bg-gradient-to-br from-zinc-900/80 via-black to-zinc-900/50" />
-        ) : null}
+      <div className="absolute inset-0 z-0 flex items-center justify-center">
+        <div className="absolute inset-0 animate-pulse bg-gradient-to-br from-zinc-900/80 via-black to-zinc-900/50" />
         <div className="relative flex flex-col items-center gap-2.5 px-6 text-center">
-          {!mediaError ? (
-            <span
-              className="h-7 w-7 animate-spin rounded-full border-2 border-white/15"
-              style={{ borderTopColor: accent }}
-            />
-          ) : (
-            <AlertCircle size={24} className="text-zinc-300" />
-          )}
+          <span
+            className="h-7 w-7 animate-spin rounded-full border-2 border-white/15"
+            style={{ borderTopColor: accent }}
+          />
           <span className="text-[12px] font-medium text-zinc-300">{text}</span>
-          {mediaError ? (
-            <div className="mt-1 flex items-center gap-2">
-              {/* Primary: re-initialize the canvas in place (no download needed). */}
-              <button
-                type="button"
-                onClick={() => { recoveryTriedRef.current = false; setMediaError(false); setMediaReady(false); setLoadPhase('loading'); setReloadNonce((n) => n + 1); }}
-                className="inline-flex items-center gap-1.5 rounded-full border border-[#D4AF37]/40 bg-[#0A0A0A] px-3 py-1 text-[11.5px] text-zinc-100 transition hover:border-[#D4AF37] active:scale-95"
-                style={{ color: '#D4AF37' }}
-              >
-                <RotateCcw size={13} /> {labels.retry}
-              </button>
-              {/* Secondary: open the asset directly if the stream stays unreachable. */}
-              <a
-                href={assetUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="rounded-full border border-zinc-800 bg-zinc-900/60 px-3 py-1 text-[11.5px] text-zinc-300 transition hover:border-zinc-600 hover:text-zinc-100"
-              >
-                {labels.download}
-              </a>
-            </div>
-          ) : null}
+        </div>
+      </div>
+    );
+  };
+
+  const renderErrorCard = () => {
+    if (!mediaError) return null;
+    return (
+      <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/75">
+        <div className="relative flex flex-col items-center gap-2.5 px-6 text-center">
+          <AlertCircle size={24} className="text-zinc-300" />
+          <span className="text-[12px] font-medium text-zinc-300">{labels.mediaUnavailable}</span>
+          <div className="mt-1 flex items-center gap-2">
+            {/* Primary: re-initialize the canvas in place (no download needed). */}
+            <button
+              type="button"
+              onClick={() => { recoveryTriedRef.current = false; setMediaError(false); setMediaReady(false); setLoadPhase('loading'); setReloadNonce((n) => n + 1); }}
+              className="inline-flex items-center gap-1.5 rounded-full border border-[#D4AF37]/40 bg-[#0A0A0A] px-3 py-1 text-[11.5px] text-zinc-100 transition hover:border-[#D4AF37] active:scale-95"
+              style={{ color: '#D4AF37' }}
+            >
+              <RotateCcw size={13} /> {labels.retry}
+            </button>
+            {/* Secondary: open the asset directly if the stream stays unreachable. */}
+            <a
+              href={assetUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="rounded-full border border-zinc-800 bg-zinc-900/60 px-3 py-1 text-[11.5px] text-zinc-300 transition hover:border-zinc-600 hover:text-zinc-100"
+            >
+              {labels.download}
+            </a>
+          </div>
         </div>
       </div>
     );
@@ -3730,9 +3787,12 @@ function PreviewWorkspace({
             className={`relative w-full overflow-hidden rounded-2xl border border-[#D4AF37]/25 ${frameClass}`}
             style={{ backgroundColor: '#0A0A0A' }}
           >
+            {renderLoadingBackdrop()}
             {/* PHASE 49 §3 — native <img> for instant, framework-native decode
                 (no next/image optimizer indirection). `effectiveUrl` swaps to the
-                recovered same-origin blob: source if the original failed to mount. */}
+                recovered same-origin blob: source if the original failed to mount.
+                PHASE 54 — z-[1] + always-visible: paints over the shimmer the
+                instant bytes decode; never gated behind a decode handshake. */}
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               key={`img-${reloadNonce}`}
@@ -3741,9 +3801,9 @@ function PreviewWorkspace({
               decoding="async"
               onLoad={() => setMediaReady(true)}
               onError={handleMediaError}
-              className={`absolute inset-0 h-full w-full object-contain ${fadeClass}`}
+              className={`absolute inset-0 z-[1] h-full w-full object-contain ${fadeClass}`}
             />
-            {renderDiagnostics()}
+            {renderErrorCard()}
           </div>
         ) : null}
 
@@ -3752,24 +3812,33 @@ function PreviewWorkspace({
             className={`relative w-full overflow-hidden rounded-2xl border border-[#D4AF37]/25 transform-gpu ${videoFrameClass}`}
             style={{ backgroundColor: '#0A0A0A' }}
           >
+            {renderLoadingBackdrop()}
             <video
               key={`vid-${reloadNonce}`}
               ref={previewVideoRef}
               controls
               playsInline
+              // PHASE 54 (single-focus preview ultimatum) — `autoPlay muted` on the
+              // DOM node itself force-initialises the clip the instant it mounts,
+              // bypassing the mobile-webview "no playback without a user gesture"
+              // restriction. It starts muted (the only autoplay browsers permit),
+              // native controls stay live, and the unmute-on-ready effect below
+              // upgrades to sound when the autoplay preference is on.
+              autoPlay
+              muted
               preload="metadata"
               // PHASE 50 §2 — recognize readiness on ANY of the decode milestones,
               // not just `loadeddata`. Under preload="metadata" some browsers/CDNs
               // (notably hosted .mp4 without range support) fire loadedmetadata /
-              // canplay but never loadeddata, leaving the old single-event gate
-              // stuck on the loading skeleton forever. Listening to all three makes
-              // the reveal fire the instant the first frame is decodable.
+              // canplay but never loadeddata. These now only DISMISS THE SHIMMER —
+              // the element is already visible (z-[1]), so even if none ever fire
+              // the decoded frame still paints over the backdrop.
               onLoadedMetadata={() => setMediaReady(true)}
               onLoadedData={() => setMediaReady(true)}
               onCanPlay={() => setMediaReady(true)}
               onError={handleMediaError}
               style={{ transform: 'translateZ(0)' }}
-              className={`absolute inset-0 h-full w-full object-contain ${fadeClass}`}
+              className={`absolute inset-0 z-[1] h-full w-full object-contain ${fadeClass}`}
             >
               {/* PHASE 48 §2 — declare the codec so the browser commits to the
                   element even when a data:/proxied source carries a weak or
@@ -3778,13 +3847,14 @@ function PreviewWorkspace({
                   recovered blob: source + its concrete MIME when recovery fired. */}
               <source src={effectiveUrl} type={effectiveVideoType} />
             </video>
-            {renderDiagnostics()}
+            {renderErrorCard()}
           </div>
         ) : null}
 
         {isRoom3D ? (
           <div className="overflow-hidden rounded-2xl border border-[#D4AF37]/25" style={{ backgroundColor: '#0A0A0A' }}>
             <div className="relative aspect-[16/9] w-full">
+              {renderLoadingBackdrop()}
               <iframe
                 key={`room-${reloadNonce}`}
                 src={assetUrl}
@@ -3793,9 +3863,9 @@ function PreviewWorkspace({
                 sandbox="allow-scripts allow-same-origin allow-pointer-lock"
                 onLoad={() => setMediaReady(true)}
                 onError={() => setMediaError(true)}
-                className={`absolute inset-0 h-full w-full ${fadeClass}`}
+                className={`absolute inset-0 z-[1] h-full w-full ${fadeClass}`}
               />
-              {renderDiagnostics()}
+              {renderErrorCard()}
             </div>
             <div className="flex items-center gap-2 px-3 py-2 text-[11.5px] text-zinc-400">
               <Box size={14} style={{ color: agent.color }} />
@@ -3812,7 +3882,10 @@ function PreviewWorkspace({
               </span>
               <span>{agent.name[lang]}</span>
             </div>
-            <audio key={`aud-${reloadNonce}`} controls preload="metadata" onError={handleMediaError} className="w-full">
+            {/* PHASE 54 — `autoPlay` so the score/VO begins the instant it mounts;
+                browsers that gate unmuted audio autoplay simply leave the native
+                controls ready for a one-tap start (no spinner, no download path). */}
+            <audio key={`aud-${reloadNonce}`} controls autoPlay preload="metadata" onError={handleMediaError} className="w-full">
               {/* PHASE 48 §2 — exact embedded MIME for inline data: audio so it
                   mounts under CSP and the browser never skips the source.
                   PHASE 49 §3 — recovered blob: source + concrete MIME on failure. */}
@@ -3913,10 +3986,14 @@ function MessageBubble({
   // the freshly returned bubble passes `eager` to bypass the gate so a brand-new
   // asset paints immediately (no download-to-reveal regression).
   const [mediaRef, mediaInView] = useInView<HTMLDivElement>('400px 0px', eager);
-  // GPU-accelerated fade-from-skeleton — same easing for image / video frames.
-  const mediaFadeClass = `transition-[opacity,filter] duration-500 ease-out will-change-[opacity,filter] transform-gpu ${
-    mediaReady ? 'opacity-100 blur-0' : 'opacity-0 blur-md'
-  }`;
+  // PHASE 54 (single-focus preview ultimatum) — the in-stream asset is VISIBLE
+  // from the first paint, exactly like the Preview dock. We dropped the
+  // opacity/blur gate that waited on a decode handshake (onLoadingComplete /
+  // onLoadedData / onCanPlay) which silently never fires on some iOS-PWA / CDN
+  // paths and stranded the bubble's media invisible. The lazy in-view gate
+  // (mediaInView) still defers heavy historical assets for scroll perf, but once
+  // a bubble is mounted its asset paints progressively with no reveal gate.
+  const mediaFadeClass = 'opacity-100 transform-gpu';
 
   // PHASE 53 §3 — inline-media anti-hang net. next/image's onLoadingComplete and
   // the <video> decode events (onLoadedMetadata/onCanPlay) can SILENTLY never fire
@@ -3930,18 +4007,22 @@ function MessageBubble({
     return () => clearTimeout(t);
   }, [message.assetUrl, mediaInView, mediaReady]);
 
-  // Autoplay generated media when the preference is on. Video plays muted
-  // (browsers block unmuted autoplay); audio play is best-effort.
+  // PHASE 54 (single-focus preview ultimatum) — inline video gets UNCONDITIONAL
+  // muted autostart (React doesn't reliably apply the `muted` attribute, so we
+  // set the DOM property + call play() here); re-runs when the bubble scrolls
+  // into view and the element actually mounts (`mediaInView` dep). Audio
+  // autostart stays preference-gated — unprompted sound in a scrolling feed is
+  // intrusive and browsers block it anyway, so the native controls are the path.
   useEffect(() => {
-    if (!autoplay || !message.assetUrl) return;
+    if (!message.assetUrl || !mediaInView) return;
     if (message.assetType === 'video') {
       const v = bubbleVideoRef.current;
       if (v) { v.muted = true; void Promise.resolve(v.play()).catch(() => {}); }
-    } else if (message.assetType === 'audio') {
+    } else if (autoplay && message.assetType === 'audio') {
       const a = bubbleAudioRef.current;
       if (a) void Promise.resolve(a.play()).catch(() => {});
     }
-  }, [autoplay, message.assetUrl, message.assetType]);
+  }, [autoplay, message.assetUrl, message.assetType, mediaInView]);
 
   const copyMessageText = useCallback(() => {
     if (!navigator.clipboard || !message.text) return;
@@ -4112,10 +4193,13 @@ function MessageBubble({
                   ref={bubbleVideoRef}
                   controls
                   playsInline
+                  // PHASE 54 — force instant muted autoplay so the inline clip
+                  // self-starts in mobile webviews without a tap; controls stay live.
+                  autoPlay
+                  muted
                   preload="metadata"
                   // PHASE 50 §2 — reveal on any decode milestone, not just
-                  // loadeddata (which can never fire under preload="metadata"),
-                  // so the inline clip never stays stuck invisible (opacity-0).
+                  // loadeddata (which can never fire under preload="metadata").
                   onLoadedMetadata={() => setMediaReady(true)}
                   onLoadedData={() => setMediaReady(true)}
                   onCanPlay={() => setMediaReady(true)}
@@ -4131,6 +4215,9 @@ function MessageBubble({
                 ref={bubbleVideoRef}
                 controls
                 playsInline
+                // PHASE 54 — force instant muted autoplay (see avatar branch above).
+                autoPlay
+                muted
                 preload="metadata"
                 // PHASE 50 §2 — reveal on any decode milestone (see above).
                 onLoadedMetadata={() => setMediaReady(true)}
@@ -4160,7 +4247,9 @@ function MessageBubble({
               </span>
               <span>Audio</span>
             </div>
-            <audio ref={bubbleAudioRef} controls preload="metadata" className="w-full">
+            {/* PHASE 54 — autoPlay so the track begins on mount; gated browsers
+                fall back to one-tap on the live native controls. */}
+            <audio ref={bubbleAudioRef} controls autoPlay preload="metadata" className="w-full">
               <source src={message.assetUrl} />
             </audio>
           </div>
