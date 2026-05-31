@@ -64,6 +64,26 @@ export async function claimIdempotencyKey(userId: string, key: string, windowSec
   }
 }
 
+/**
+ * Release a previously-claimed idempotency key (PHASE 52 TASK 4).
+ *
+ * `claimIdempotencyKey` reserves the key for `windowSec` to swallow rapid
+ * double-clicks. But when the underlying pipeline FAILS, that reservation
+ * would otherwise lock the user out of an honest retry for the full window —
+ * a paid render that errored once should be immediately re-runnable. The
+ * assemble Saga calls this on rollback so the key is freed the instant the
+ * job fails. No-op when Redis is unconfigured.
+ */
+export async function releaseIdempotencyKey(userId: string, key: string): Promise<void> {
+  const r = redis();
+  if (!r) return;
+  try {
+    await r.del(`idem:${userId}:${key}`);
+  } catch {
+    // Fail open — a stuck key merely expires on its own TTL.
+  }
+}
+
 // ─── Token lock (Saga-aware) ──────────────────────────────────────────────────
 
 export interface TokenLock {

@@ -39,9 +39,32 @@ describe('buildFilterComplex', () => {
     expect(g.amap).toBe('[aout]');
   });
 
-  test('music only (no voice) → background is the audio map', () => {
+  test('music only (no voice) → background feeds the timeline-scaled audio map', () => {
     const g = buildFilterComplex({ nClips: 2, hasVoice: false, hasMusic: true, hasSfx: false, fps: 24, duckPct: 30 });
-    expect(g.amap).toBe('[2:a]'); // 2 video inputs (0,1), voice absent → music at index 2
+    // 2 video inputs (0,1), voice absent → music at index 2 feeds the pad+trim stage.
+    expect(g.filter).toContain('[2:a]apad,atrim=0:');
+    expect(g.amap).toBe('[aout]');
+  });
+
+  test('PHASE 52 — final audio is padded + trimmed to the master timeline', () => {
+    // 5 clips · 6s − 4 transitions · 1s = 26s compiled master.
+    const g = buildFilterComplex({ nClips: 5, hasVoice: true, hasMusic: true, hasSfx: false, fps: 24, duckPct: 30 });
+    expect(g.filter).toContain('apad,atrim=0:26.00,asetpts=N/SR/TB[aout]');
+    expect(g.amap).toBe('[aout]');
+    // The ducked mix is computed FIRST (intermediate [apre]) then scaled.
+    expect(g.filter).toContain('[apre]apad');
+  });
+
+  test('PHASE 52 — single clip music bed still scales to clip length', () => {
+    const g = buildFilterComplex({ nClips: 1, hasVoice: false, hasMusic: true, hasSfx: false, fps: 24, duckPct: 30 });
+    expect(g.filter).toContain('atrim=0:6.00'); // 1 clip · 6s, no transitions
+    expect(g.amap).toBe('[aout]');
+  });
+
+  test('no audio at all → amap stays null (no pad/trim stage emitted)', () => {
+    const g = buildFilterComplex({ nClips: 3, hasVoice: false, hasMusic: false, hasSfx: false, fps: 24, duckPct: 30 });
+    expect(g.amap).toBeNull();
+    expect(g.filter).not.toContain('apad');
   });
 
   test('duck 0% → minimal sidechain ratio (≈no ducking)', () => {

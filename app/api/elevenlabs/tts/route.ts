@@ -4,6 +4,7 @@ import {
   voiceSettingsForModel,
   type ElevenLabsModelId,
 } from '@/lib/audio/tts-model';
+import { extractVoiceDirectives } from '@/lib/chat/outputEnforcement';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -14,6 +15,31 @@ interface TtsRequest {
   voiceId?: string;
   voice_id?: string;
   locale?: string;
+  /** PHASE 52 TASK 5 — optional delivery directive ("calm measured narration",
+   *  "excited fast hype"). When present, the asked delivery is mirrored into the
+   *  ElevenLabs voice_settings so the read MATCHES the requested tone. Omitting
+   *  it preserves the existing per-model defaults (backward compatible). */
+  voiceStyle?: string;
+}
+
+/**
+ * PHASE 52 TASK 5 — fold an explicit delivery directive into the model's
+ * baseline voice_settings. The directive's stability/style win (they are the
+ * mirrored user intent); similarity_boost / speaker_boost / speed stay on the
+ * language-tuned baseline so Georgian phonemes remain stable.
+ */
+function enforceVoiceSettings(
+  base: ReturnType<typeof voiceSettingsForModel>,
+  voiceStyle?: string,
+): ReturnType<typeof voiceSettingsForModel> {
+  if (!voiceStyle || !voiceStyle.trim()) return base;
+  const d = extractVoiceDirectives(voiceStyle);
+  if (!d.emotion && !d.cadence) return base;
+  return {
+    ...base,
+    stability: d.voiceSettings.stability,
+    style: d.voiceSettings.style,
+  };
 }
 
 function audioResponse(buffer: ArrayBuffer, provider: string): NextResponse {
@@ -37,6 +63,7 @@ async function streamElevenLabs(
   voiceId: string,
   apiKey: string,
   modelId: ElevenLabsModelId,
+  voiceStyle?: string,
 ): Promise<NextResponse | null> {
   const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}/stream?optimize_streaming_latency=3`, {
     method: 'POST',
@@ -50,8 +77,9 @@ async function streamElevenLabs(
       // PHASE 48 §3 — model is chosen per-language. Georgian MUST run on
       // eleven_multilingual_v2 (stable Georgian phonemes); turbo is English-first
       // and mangles Georgian. Settings are tuned to match the selected model.
+      // PHASE 52 §5 — an explicit delivery directive then mirrors the asked tone.
       model_id: modelId,
-      voice_settings: voiceSettingsForModel(modelId),
+      voice_settings: enforceVoiceSettings(voiceSettingsForModel(modelId), voiceStyle),
       apply_text_normalization: 'auto',
     }),
   });
@@ -135,7 +163,7 @@ export async function POST(req: NextRequest) {
 
   // Primary: ElevenLabs (progressive streaming — minimal time-to-first-sound)
   if (apiKey) {
-    const streamed = await streamElevenLabs(text, voiceId, apiKey, modelId);
+    const streamed = await streamElevenLabs(text, voiceId, apiKey, modelId, body.voiceStyle);
     if (streamed) return streamed;
   }
 

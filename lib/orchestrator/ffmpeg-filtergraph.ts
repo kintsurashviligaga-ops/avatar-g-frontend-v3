@@ -41,6 +41,12 @@ export function buildFilterComplex(opts: FilterGraphOpts): {
   const trans = XFADE[opts.transition ?? 'crossfade'] ?? 'fade';
   const parts: string[] = [];
 
+  // PHASE 52 TASK 4 — the exact length of the compiled master after the xfade
+  // chain. N clips each `clipSec` long, overlapped by `TRANSITION_SEC` at every
+  // join: totalDur = N·clipSec − (N−1)·TRANSITION_SEC. The background audio bed
+  // is later padded/trimmed to THIS value so music/SFX scale to the timeline.
+  const totalDur = nClips * clipSec - Math.max(0, nClips - 1) * TRANSITION_SEC;
+
   // ── Video: normalize + color-match QA pass per clip, then xfade-chain ──────
   // A uniform mild grade (eq) keeps contrast/saturation consistent across clips
   // generated independently — the "color match tuning" pass before assembly.
@@ -70,7 +76,9 @@ export function buildFilterComplex(opts: FilterGraphOpts): {
   const bg = [musicIdx, sfxIdx].filter((x): x is number => x !== null);
   const duck = Math.max(0, Math.min(1, opts.duckPct / 100));
 
-  let amap: string | null = null;
+  // The pre-final audio label produced by mixing/ducking, before the master
+  // timeline pad+trim is applied. Null when the film carries no audio at all.
+  let apre: string | null = null;
   if (voiceIdx !== null && bg.length > 0) {
     let bgLabel: string;
     if (bg.length > 1) {
@@ -85,17 +93,29 @@ export function buildFilterComplex(opts: FilterGraphOpts): {
     const ratio = Math.max(2, Math.round(2 + duck * 18)); // 0%→2 … 100%→20
     parts.push(`[${voiceIdx}:a]asplit=2[vkey][vmix]`);
     parts.push(`${bgLabel}[vkey]sidechaincompress=threshold=0.05:ratio=${ratio}:attack=20:release=300[bgduck]`);
-    parts.push(`[bgduck][vmix]amix=inputs=2:normalize=0[aout]`);
-    amap = '[aout]';
+    parts.push(`[bgduck][vmix]amix=inputs=2:normalize=0[apre]`);
+    apre = '[apre]';
   } else if (voiceIdx !== null) {
-    amap = `[${voiceIdx}:a]`;
+    apre = `[${voiceIdx}:a]`;
   } else if (bg.length > 0) {
     if (bg.length > 1) {
-      parts.push(`${bg.map(i => `[${i}:a]`).join('')}amix=inputs=${bg.length}:normalize=0[aout]`);
-      amap = '[aout]';
+      parts.push(`${bg.map(i => `[${i}:a]`).join('')}amix=inputs=${bg.length}:normalize=0[apre]`);
+      apre = '[apre]';
     } else {
-      amap = `[${bg[0]}:a]`;
+      apre = `[${bg[0]}:a]`;
     }
+  }
+
+  // PHASE 52 TASK 4 — scale the final audio bed to the master video timeline.
+  // Without this, a music/SFX track shorter than the compiled film leaves a
+  // silent tail and a longer track bleeds past the last frame (the "audio does
+  // not track the render" defect). `apad` tops the stream up with silence, then
+  // `atrim`+`asetpts` hard-cut it to the exact compiled duration so the bed and
+  // the picture end on the same frame regardless of source clip lengths.
+  let amap: string | null = null;
+  if (apre !== null) {
+    parts.push(`${apre}apad,atrim=0:${totalDur.toFixed(2)},asetpts=N/SR/TB[aout]`);
+    amap = '[aout]';
   }
 
   return { filter: parts.join(';'), vmap, amap };

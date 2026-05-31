@@ -20,6 +20,7 @@ import { hasUdioApiKey } from './mediaKeys';
 import { buildInteriorDesignBrief } from '@/lib/interior/smart-intake';
 import { generateWorldLabsInterior } from '@/lib/worldlabs/client';
 import { buildIterativePrompt } from './iteration-store';
+import { buildEnforcedMusicStyle } from './outputEnforcement';
 import Anthropic from '@anthropic-ai/sdk';
 import { generateWithGemini } from '@/lib/gemini/client';
 import { getGeminiSystemPrompt, type GeminiServiceContext } from '@/lib/gemini/prompts';
@@ -804,17 +805,31 @@ async function handleMusicIntent(
   const lyricsMode = String(opts.lyrics_mode || opts.lyricsMode || '').toLowerCase();
   const styleTags = parseOptionList(opts.style_tags || opts.styleTags || opts.tags);
 
+  // PHASE 52 TASK 5 — strict prompt mirroring. Force the genre/tempo/mood/
+  // instrumentation the user TYPED into the Udio style anchor (their words go
+  // first so the provider weights them highest), and honor an explicit
+  // "instrumental / no vocals" ask. This is what stops a "techno" prompt from
+  // drifting into a generic ambient bed. Any UI-selected style/genre/mood and
+  // tags are merged in AFTER the typed keywords, so nothing is lost.
+  const enforced = buildEnforcedMusicStyle(
+    iterative.prompt,
+    [opts.style, opts.genre, opts.mood].filter(Boolean).join(', '),
+    styleTags,
+  );
+  const requestedInstrumental =
+    parseBooleanOption(opts.make_instrumental || opts.instrumental) || lyricsMode === 'instrumental';
+
   try {
     const started = await startUdioGeneration({
       prompt: iterative.prompt,
       lyrics: opts.lyrics,
-      style: opts.style,
+      // `style` now carries the mirrored anchor (typed keywords ∪ UI tags); we
+      // intentionally omit the separate genre/mood/styleTags fields so they are
+      // not double-appended by the Udio body builder.
+      style: enforced.style,
       title: opts.title,
-      genre: opts.genre,
-      mood: opts.mood,
-      styleTags,
       model: opts.model || opts.variant,
-      makeInstrumental: parseBooleanOption(opts.make_instrumental || opts.instrumental) || lyricsMode === 'instrumental',
+      makeInstrumental: requestedInstrumental || enforced.forceInstrumental,
       callbackUrl: typeof input.metadata?.callback_url === 'string'
         ? input.metadata.callback_url
         : typeof input.metadata?.callbackUrl === 'string'

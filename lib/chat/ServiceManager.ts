@@ -9,6 +9,7 @@ import { buildModelInput, validateInput } from '@/lib/replicate/schemas';
 import { normalizeOutput } from '@/lib/replicate/normalizer';
 import type { IntentCategory } from '@/lib/chat/intentDetector';
 import { extractPromptTraits, enrichVideoPrompt } from '@/lib/chat/promptTraits';
+import { extractAspectDirective } from '@/lib/chat/outputEnforcement';
 import { resolveLtxApiKey } from '@/lib/chat/ltxKey';
 import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
 
@@ -505,7 +506,16 @@ export class ServiceManager {
         )
       : enrichedPrompt;
 
-    const aspectRatio = this.normalizeAspectRatio(this.getOption(options, ['aspect', 'aspectRatio', 'ratio'])) || '16:9';
+    // PHASE 52 TASK 5 — strict prompt mirroring for framing. If the user TYPED an
+    // explicit orientation ("vertical reel", "anamorphic", "widescreen"), that
+    // directive OVERRIDES the UI/default aspect so an anamorphic ask never ships
+    // as a portrait clip (and vice-versa). When the prompt says nothing about
+    // framing, the selected/default aspect stands.
+    const selectedAspect = this.normalizeAspectRatio(this.getOption(options, ['aspect', 'aspectRatio', 'ratio'])) || '16:9';
+    const promptAspect = extractAspectDirective(request.userPrompt);
+    const aspectRatio = promptAspect
+      ? (promptAspect === '9:16' || promptAspect === '4:5' || promptAspect === '3:4' ? '9:16' : '16:9')
+      : selectedAspect;
     const requestedModel = this.getOption(options, ['model', 'videoModel']) === 'ltx-2-3-pro' ? 'ltx-2-3-pro' : 'ltx-2-3-fast';
     const parsed = ltxRequestSchema.parse({
       prompt: anchoredPrompt,

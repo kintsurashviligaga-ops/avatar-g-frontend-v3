@@ -7,10 +7,12 @@ interface SkeletonProps {
 }
 
 export function Skeleton({ className }: SkeletonProps) {
+  // PHASE 52 TASK 4a — solid Obsidian Black (#0A0A0A) surface with a hairline
+  // Metallic Gold (#D4AF37) border and a gold shimmer light-sweep.
   return (
     <div
       className={cn(
-        'relative overflow-hidden rounded-xl bg-white/[0.06] before:absolute before:inset-0 before:-translate-x-full before:animate-[shimmer_1.6s_infinite] before:bg-gradient-to-r before:from-transparent before:via-white/[0.08] before:to-transparent',
+        'relative overflow-hidden rounded-xl bg-[#0A0A0A] border border-[#D4AF37]/25 before:absolute before:inset-0 before:-translate-x-full before:animate-[shimmer_1.6s_infinite] before:bg-gradient-to-r before:from-transparent before:via-[#D4AF37]/15 before:to-transparent',
         className
       )}
     />

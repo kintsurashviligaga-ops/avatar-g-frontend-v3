@@ -46,6 +46,7 @@ import {
   Box,
   Camera,
   Check,
+  ChevronDown,
   Circle,
   Copy,
   Download,
@@ -63,8 +64,8 @@ import {
   Minimize2,
   MoreHorizontal,
   Music,
-  Paperclip,
   Pause,
+  Plus,
   Pencil,
   PictureInPicture2,
   RotateCcw,
@@ -218,6 +219,7 @@ const XCOPY = {
     readAloud: 'Read aloud', pauseReading: 'Pause', via: 'via', searchChats: 'Search chats',
     noResults: 'No matching chats', emptyTitle: 'What can I create for you?',
     emptySubtitle: 'Pick a starting point, or just type below.',
+    greeting: 'Hello', selectService: 'Select a service',
     workspace: 'Workspace', expand: 'Expand to workspace', details: 'Details',
     promptLabel: 'Prompt', agentLabel: 'Agent', aspectLabel: 'Aspect',
     room3d: 'Interior Design', orbitHint: 'Drag to orbit · scroll to zoom',
@@ -247,6 +249,7 @@ const XCOPY = {
     readAloud: 'ხმამაღლა წაკითხვა', pauseReading: 'პაუზა', via: '·', searchChats: 'ჩატების ძებნა',
     noResults: 'ჩატები ვერ მოიძებნა', emptyTitle: 'რა შევქმნა შენთვის?',
     emptySubtitle: 'აირჩიე დასაწყისი ან უბრალოდ დაწერე ქვემოთ.',
+    greeting: 'გამარჯობა', selectService: 'აირჩიე სერვისი',
     workspace: 'სამუშაო სივრცე', expand: 'სამუშაო სივრცეში გაშლა', details: 'დეტალები',
     promptLabel: 'მოთხოვნა', agentLabel: 'აგენტი', aspectLabel: 'ფორმატი',
     room3d: 'ინტერიერის დიზაინი', orbitHint: 'გადაათრიე ბრუნვისთვის · სქროლი მასშტაბისთვის',
@@ -276,6 +279,7 @@ const XCOPY = {
     readAloud: 'Озвучить', pauseReading: 'Пауза', via: '·', searchChats: 'Поиск чатов',
     noResults: 'Ничего не найдено', emptyTitle: 'Что мне создать для вас?',
     emptySubtitle: 'Выберите начало или просто напишите ниже.',
+    greeting: 'Привет', selectService: 'Выберите сервис',
     workspace: 'Рабочая область', expand: 'Развернуть в рабочую область', details: 'Детали',
     promptLabel: 'Запрос', agentLabel: 'Агент', aspectLabel: 'Формат',
     room3d: 'Дизайн интерьера', orbitHint: 'Перетащите для вращения · колесо для зума',
@@ -966,6 +970,11 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
   const [workspace, setWorkspace] = useState<ChatMessage | null>(null);
   const [balanceGel, setBalanceGel] = useState<number | null>(null);
   const [mode, setMode] = useState<ServiceMode>('global');
+  // PHASE 52 TASK 3 — the service-vector pill row is consolidated into a single
+  // Gemini-style selection dropdown. This drives its open/collapsed state.
+  const [modeMenuOpen, setModeMenuOpen] = useState(false);
+  // PHASE 52 TASK 2 — honor reduced-motion for the clean-canvas greeting fade.
+  const prefersReducedMotion = useReducedMotion();
   // Stable per-conversation id sent on EVERY request (initial + polls). The
   // backend bakes this into the predictionId/taskRef; if polls arrive with a
   // different (or missing) session it throws "Session mismatch". It doubles as
@@ -1844,25 +1853,21 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
               <div className="flex justify-start"><Skeleton className="h-16 w-2/3 rounded-2xl" /></div>
             </div>
           ) : messages.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12 sm:py-16 text-center">
-              <div className="w-14 h-14 rounded-2xl bg-zinc-900 border border-zinc-800/70 flex items-center justify-center mb-4">
-                <Sparkles size={22} className="text-zinc-300" />
-              </div>
-              <h2 className="text-[18px] sm:text-[20px] font-semibold text-zinc-100 tracking-tight">{xc.emptyTitle}</h2>
-              <p className="mt-1.5 text-[13px] text-zinc-500 leading-6 max-w-xs">{xc.emptySubtitle}</p>
-              {/* PHASE 39 §3 — the 4 legacy template cards were removed. In their
-                  place, a clean minimalist greeting pill synced directly to the
-                  quick-composer dock's currently-selected agent/mode. */}
-              <div className="mt-6 inline-flex items-center gap-2 rounded-full border border-zinc-800/70 bg-[#070707] px-3.5 py-2">
-                <span
-                  className="flex h-6 w-6 items-center justify-center rounded-lg border border-white/10 text-[11px] font-bold leading-none"
-                  style={{ backgroundColor: `${AGENTS[mode].color}1f`, color: AGENTS[mode].color }}
-                >
-                  {AGENTS[mode].codename}
-                </span>
-                <span className="text-[12.5px] font-medium text-zinc-200">{AGENTS[mode].name[lang]}</span>
-                <span className="text-[12px] text-zinc-500">{xc.emptyAgentHint}</span>
-              </div>
+            // PHASE 52 TASK 2 — THE IMMACULATE CLEAN CANVAS INCEPTION.
+            // All persistent landing layout (capability cards, icon badge,
+            // title/subtitle, agent greeting pill) is purged. The only element
+            // present at the center of the frame is a single luxurious fade-in
+            // greeting: "Hello".
+            <div className="flex min-h-[60vh] flex-col items-center justify-center text-center">
+              <motion.h1
+                initial={prefersReducedMotion ? false : { opacity: 0, y: 14, filter: 'blur(8px)' }}
+                animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+                transition={{ duration: 1.1, ease: [0.16, 1, 0.3, 1] }}
+                className="select-none bg-gradient-to-br from-white via-zinc-300 to-zinc-500 bg-clip-text text-transparent text-[44px] sm:text-[64px] font-semibold tracking-tight leading-none"
+                style={{ textShadow: '0 1px 40px rgba(255,255,255,0.06)' }}
+              >
+                {xc.greeting}
+              </motion.h1>
             </div>
           ) : (
             messages.map((m, i) => (
@@ -2137,9 +2142,9 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
             The border picks up the active agent's theme colour (set via mode
             pill or an "@mention"), giving an at-a-glance cue of which engine
             the next prompt will route to. */}
-        <div className="px-3 pt-2 pb-2 max-w-2xl mx-auto">
+        <div className="px-3 sm:px-4 pt-2.5 pb-2.5 max-w-3xl mx-auto">
           <div
-            className="rounded-2xl border bg-[#0a0a0a] transition-colors focus-within:border-white/[0.18]"
+            className="rounded-3xl border bg-[#0a0a0a] transition-colors focus-within:border-white/[0.18]"
             style={{ borderColor: mode === 'global' ? 'rgba(255,255,255,0.06)' : `${AGENTS[mode].color}73` }}
           >
             {/* ── PHASE 42 §2 — Flagship "30-Second Film" CTA ──────────────
@@ -2171,39 +2176,96 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
               </button>
             </div>
 
-            {/* Mode selector — sets the orchestrator service context */}
-            <div className="flex gap-1.5 overflow-x-auto px-2 pt-2 pb-1.5 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
-              {MODES.map(({ id, Icon, label }) => {
-                const active = mode === id;
-                return (
-                  <button
-                    key={id}
-                    type="button"
-                    onClick={() => setMode(id)}
-                    aria-pressed={active}
-                    className={`flex-shrink-0 inline-flex items-center gap-1.5 h-8 px-3 rounded-full text-[12px] font-medium border transition-colors active:scale-95 ${
-                      active
-                        ? 'border-white/15 bg-neutral-800 text-neutral-50'
-                        : 'border-transparent bg-[#121212] text-zinc-400 hover:text-zinc-200'
-                    }`}
-                  >
-                    <Icon size={14} style={active && id !== 'global' ? { color: AGENTS[id].color } : undefined} />
-                    {label[lang]}
-                  </button>
-                );
-              })}
+            {/* ── PHASE 52 TASK 3 — SERVICE-VECTOR SELECTION DROPDOWN ──────
+                The deprecated multi-slide pill carousel is removed. The four+
+                service vectors (Chat, Image, 30s Film, Music, Avatar, Interior,
+                Voice) consolidate into a single elegant selection button. A
+                click reveals a seamless drop-down list; choosing a node maps the
+                session context (setMode) and instantly auto-collapses. */}
+            <div className="relative px-2 pt-2 pb-1.5">
+              <button
+                type="button"
+                onClick={() => setModeMenuOpen((o) => !o)}
+                aria-haspopup="listbox"
+                aria-expanded={modeMenuOpen}
+                aria-label={xc.selectService}
+                className="inline-flex items-center gap-2 h-9 pl-2 pr-2.5 rounded-full border border-white/10 bg-[#121212] text-[12.5px] font-medium text-zinc-200 hover:border-white/20 transition active:scale-[0.98]"
+              >
+                <span
+                  className="flex h-6 w-6 items-center justify-center rounded-full border border-white/10"
+                  style={{ backgroundColor: mode !== 'global' ? `${AGENTS[mode].color}1f` : 'rgba(255,255,255,0.04)' }}
+                >
+                  {(() => {
+                    const ActiveIcon = AGENTS[mode].Icon;
+                    return <ActiveIcon size={13} style={mode !== 'global' ? { color: AGENTS[mode].color } : undefined} />;
+                  })()}
+                </span>
+                <span>{MODES.find((m) => m.id === mode)?.label[lang] ?? xc.selectService}</span>
+                <ChevronDown size={15} className={`text-zinc-500 transition-transform duration-200 ${modeMenuOpen ? 'rotate-180' : ''}`} />
+              </button>
+
+              <AnimatePresence>
+                {modeMenuOpen ? (
+                  <>
+                    {/* click-away scrim — collapses the dropdown */}
+                    <button
+                      type="button"
+                      aria-hidden
+                      tabIndex={-1}
+                      onClick={() => setModeMenuOpen(false)}
+                      className="fixed inset-0 z-[40] cursor-default"
+                    />
+                    <motion.ul
+                      role="listbox"
+                      aria-label={xc.selectService}
+                      initial={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: 8, scale: 0.98 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: 8, scale: 0.98 }}
+                      transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
+                      className="absolute bottom-[calc(100%+6px)] left-2 z-[41] w-60 origin-bottom-left overflow-hidden rounded-2xl border border-white/10 bg-[#0a0a0a] p-1.5 shadow-[0_12px_44px_-8px_rgba(0,0,0,0.85)]"
+                    >
+                      {MODES.map(({ id, Icon, label }) => {
+                        const active = mode === id;
+                        return (
+                          <li key={id} role="option" aria-selected={active}>
+                            <button
+                              type="button"
+                              onClick={() => { setMode(id); setModeMenuOpen(false); }}
+                              className={`flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left text-[13px] transition-colors ${
+                                active ? 'bg-white/[0.08] text-zinc-50' : 'text-zinc-300 hover:bg-white/[0.04]'
+                              }`}
+                            >
+                              <span
+                                className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg border border-white/10"
+                                style={{ backgroundColor: id !== 'global' ? `${AGENTS[id].color}1f` : 'rgba(255,255,255,0.04)' }}
+                              >
+                                <Icon size={15} style={id !== 'global' ? { color: AGENTS[id].color } : undefined} />
+                              </span>
+                              <span className="flex-1 font-medium">{label[lang]}</span>
+                              {active ? <Check size={15} className="text-zinc-300" /> : null}
+                            </button>
+                          </li>
+                        );
+                      })}
+                    </motion.ul>
+                  </>
+                ) : null}
+              </AnimatePresence>
             </div>
 
 
             {/* Composer row — attachment, camera, input, mic, send */}
             <div className="flex items-end gap-1.5 px-2 py-2">
               <input ref={fileInputRef} type="file" className="hidden" accept="image/png,image/jpeg,image/*,video/*,audio/*,application/pdf,.pdf" onChange={onFileChange} />
+              {/* PHASE 52 TASK 1 — the legacy paperclip upload control is replaced
+                  by a high-end minimalist Plus ("+") icon button sitting on the
+                  immediate left of the inner text boundary box (Gemini paradigm). */}
               <button
                 onClick={onPickFile}
-                aria-label="Attach file"
-                className="h-9 w-9 flex items-center justify-center rounded-xl text-zinc-400 hover:text-zinc-100 hover:bg-zinc-900 transition active:scale-95"
+                aria-label="Add attachment"
+                className="h-10 w-10 flex items-center justify-center rounded-full border border-white/10 text-zinc-300 hover:text-white hover:border-white/25 hover:bg-white/[0.05] transition active:scale-95"
               >
-                <Paperclip size={18} />
+                <Plus size={20} />
               </button>
               <button
                 onClick={() => setCameraOpen(true)}
@@ -2228,7 +2290,7 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
                 }}
                 placeholder={copy.placeholder}
                 rows={1}
-                className="flex-1 bg-transparent text-[15px] leading-7 text-zinc-50 placeholder-zinc-500 resize-none outline-none px-1 py-1.5 min-h-[36px]"
+                className="flex-1 bg-transparent text-base leading-7 text-zinc-50 placeholder-zinc-500 resize-none outline-none px-1.5 py-2 min-h-[44px] max-h-48"
               />
               <button
                 onClick={toggleRecording}
@@ -4382,23 +4444,31 @@ function PipelineTelemetry({
  * audio) so the real preview lands with zero layout shift. */
 
 function MediaSkeleton({ mode, accent }: { mode: ServiceMode; accent: string }) {
+  // PHASE 52 TASK 4a — every loading block is re-skinned to a highly responsive
+  // shimmering skeleton framed in solid Obsidian Black (#0A0A0A) with a hairline
+  // Metallic Gold (#D4AF37) border. `obsidian` = surface + hairline; `shimmer` =
+  // the gold light-sweep overlay (reuses the shipped `shimmer` keyframe).
+  const obsidian = 'bg-[#0A0A0A] border border-[#D4AF37]/25';
+  const shimmer =
+    'relative overflow-hidden before:absolute before:inset-0 before:-translate-x-full before:animate-[shimmer_1.6s_infinite] before:bg-gradient-to-r before:from-transparent before:via-[#D4AF37]/15 before:to-transparent';
+
   // Chat → slim text shimmer.
   if (mode === 'global') {
     return (
       <div className="flex items-center gap-2.5">
         <Loader2 className="w-4 h-4 animate-spin flex-shrink-0" style={{ color: accent }} />
         <div className="flex flex-col gap-1.5">
-          <span className="h-2.5 w-40 rounded bg-neutral-800 animate-pulse" />
-          <span className="h-2.5 w-24 rounded bg-neutral-800 animate-pulse" />
+          <span className={`h-2.5 w-40 rounded ${obsidian} ${shimmer}`} />
+          <span className={`h-2.5 w-24 rounded ${obsidian} ${shimmer}`} />
         </div>
       </div>
     );
   }
 
-  // Music / Voice → sleek pulsing waveform.
+  // Music / Voice → sleek shimmering waveform on an obsidian/gold card.
   if (mode === 'music' || mode === 'voice') {
     return (
-      <div className="w-full max-w-sm rounded-2xl border border-zinc-800/70 bg-[#0a0a0a] p-3">
+      <div className={`w-full max-w-sm rounded-2xl p-3 ${obsidian}`}>
         <div className="flex items-center gap-2 pb-2 text-[12px] text-zinc-400">
           <Loader2 className="w-3.5 h-3.5 animate-spin" style={{ color: accent }} />
           <span>{mode === 'voice' ? 'Synthesizing voice…' : 'Composing…'}</span>
@@ -4407,7 +4477,7 @@ function MediaSkeleton({ mode, accent }: { mode: ServiceMode; accent: string }) 
           {Array.from({ length: 32 }).map((_, i) => (
             <span
               key={i}
-              className="flex-1 rounded-full bg-neutral-800 animate-pulse"
+              className="flex-1 rounded-full bg-[#D4AF37]/25 animate-pulse"
               style={{ height: `${25 + ((i * 41) % 70)}%`, animationDelay: `${(i % 8) * 90}ms` }}
             />
           ))}
@@ -4416,14 +4486,14 @@ function MediaSkeleton({ mode, accent }: { mode: ServiceMode; accent: string }) 
     );
   }
 
-  // Image / Video / Avatar → a block in the exact future aspect ratio.
+  // Image / Video / Avatar → a shimmering block in the exact future aspect ratio.
   const shape =
     mode === 'avatar' ? 'aspect-[9/16] w-full max-w-[320px]'
     : mode === 'image' ? 'aspect-square w-full max-w-[280px]'
     : 'aspect-video w-full max-w-full';
   return (
-    <div className={`relative overflow-hidden rounded-2xl border border-zinc-800/70 bg-neutral-900 animate-pulse ${shape}`}>
-      <span className="absolute inset-0 flex items-center justify-center">
+    <div className={`rounded-2xl ${obsidian} ${shimmer} ${shape}`}>
+      <span className="absolute inset-0 z-[1] flex items-center justify-center">
         <Loader2 className="w-6 h-6 animate-spin" style={{ color: accent }} />
       </span>
     </div>

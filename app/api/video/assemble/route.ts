@@ -19,7 +19,7 @@ import { authedClientFromRequest } from '@/lib/supabase/server';
 import { runSaga, type SagaStep } from '@/lib/orchestrator/saga';
 import {
   lockTokens, commitTokenLock, releaseTokenLock, type TokenLock,
-  claimIdempotencyKey, hashPayload,
+  claimIdempotencyKey, releaseIdempotencyKey, hashPayload,
 } from '@/lib/orchestrator/idempotency';
 import { readRunPodConfig, dispatchRunPod, type RunPodManifest } from '@/lib/orchestrator/runpod-adapter';
 import { deductCredits, refundCredits } from '@/lib/orchestrator/ledger';
@@ -59,8 +59,18 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'invalid JSON body' }, { status: 400 });
   }
 
-  const segments = (body.segments ?? []).filter((s): s is Required<Pick<SegmentInput, 'url'>> & SegmentInput =>
-    typeof s.url === 'string' && s.url.length > 0);
+  // PHASE 52 TASK 4 — defend the stitch order against the two failure modes that
+  // produce "missing chunk indices": (a) a clip whose URL never resolved (kept a
+  // placeholder) and (b) the same sub-clip submitted twice, which would double a
+  // chunk and shift every index after it. We keep the caller's order, drop
+  // url-less entries, and de-duplicate by URL so the timeline is contiguous.
+  const seenUrls = new Set<string>();
+  const segments = (body.segments ?? []).filter((s): s is Required<Pick<SegmentInput, 'url'>> & SegmentInput => {
+    if (typeof s.url !== 'string' || s.url.length === 0) return false;
+    if (seenUrls.has(s.url)) return false;
+    seenUrls.add(s.url);
+    return true;
+  });
   if (segments.length < 2) {
     return NextResponse.json({ error: 'at least 2 ready segments required' }, { status: 400 });
   }
@@ -172,6 +182,10 @@ export async function POST(req: NextRequest) {
   const resultUrl = typeof bag.tempUrl === 'string' ? bag.tempUrl : null;
 
   if (!saga.ok) {
+    // PHASE 52 TASK 4 — free the idempotency reservation the instant the job
+    // fails so the user can retry immediately instead of waiting out the 60s
+    // double-click window on a render they already paid (and got refunded) for.
+    await releaseIdempotencyKey(user.id, `assemble:${idemKey}`);
     // PHASE 47 §1 — record the terminal failure so the tracker stops claiming
     // 'assembling' forever; the client's amber fallback already covers the UX.
     if (filmTokenId) await recordFilmFailed(filmTokenId, String(saga.error || 'assembly failed'));
