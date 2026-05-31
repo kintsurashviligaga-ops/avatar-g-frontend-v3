@@ -1,4 +1,4 @@
-const CACHE_NAME = 'avatar-g-shell-v58';
+const CACHE_NAME = 'avatar-g-shell-v59';
 const CORE_ASSETS = [
   '/offline.html',
   '/manifest.json',
@@ -7,11 +7,38 @@ const CORE_ASSETS = [
   '/icons/icon-512x512.png',
 ];
 
+// Cache one request/response pair, swallowing any failure. cache.put() throws a
+// TypeError / "string did not match the expected pattern" DOMException on
+// unsupported schemes (blob:/data:/chrome-extension:), 206 partials, or quota
+// pressure — none of which must ever reject the caller or surface as an
+// unhandled rejection that wedges the SW lifecycle.
+function safeCachePut(cache, request, response) {
+  try {
+    return cache.put(request, response).catch(() => {});
+  } catch (_e) {
+    return Promise.resolve();
+  }
+}
+
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches
       .open(CACHE_NAME)
-      .then((cache) => cache.addAll(CORE_ASSETS))
+      // RESILIENT pre-cache: a single missing/renamed core asset must NEVER fail
+      // the whole install. A failed install leaves the previous SW in control,
+      // which can keep serving stale (broken) JS/HTML to every client — the
+      // classic "a bad deploy froze the whole app" trap. allSettled + per-asset
+      // catch guarantees activation proceeds even if an asset 404s.
+      .then((cache) =>
+        Promise.allSettled(
+          CORE_ASSETS.map((asset) =>
+            fetch(asset, { cache: 'no-cache' })
+              .then((res) => (res && res.ok ? safeCachePut(cache, asset, res) : undefined))
+              .catch(() => undefined),
+          ),
+        ),
+      )
+      .catch(() => undefined)
       .then(() => self.skipWaiting()),
   );
 });
@@ -51,7 +78,7 @@ self.addEventListener('fetch', (event) => {
       fetch(request)
         .then((response) => {
           const copy = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
+          caches.open(CACHE_NAME).then((cache) => safeCachePut(cache, request, copy));
           return response;
         })
         .catch(async () => {
@@ -81,7 +108,7 @@ self.addEventListener('fetch', (event) => {
         const network = fetch(request)
           .then((response) => {
             const copy = response.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
+            caches.open(CACHE_NAME).then((cache) => safeCachePut(cache, request, copy));
             return response;
           })
           .catch(() => cached);
@@ -96,7 +123,7 @@ self.addEventListener('fetch', (event) => {
       fetch(request)
         .then((response) => {
           const copy = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
+          caches.open(CACHE_NAME).then((cache) => safeCachePut(cache, request, copy));
           return response;
         })
         .catch(() => caches.match(request)),
@@ -112,7 +139,7 @@ self.addEventListener('fetch', (event) => {
       fetch(request)
         .then((response) => {
           const copy = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
+          caches.open(CACHE_NAME).then((cache) => safeCachePut(cache, request, copy));
           return response;
         })
         .catch(() => caches.match(request)),

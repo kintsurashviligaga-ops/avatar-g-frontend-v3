@@ -35,9 +35,17 @@ function redis(): Redis | null {
 /** Stable hash of an arbitrary payload — used as the idempotency key. */
 export async function hashPayload(payload: unknown): Promise<string> {
   const json = typeof payload === 'string' ? payload : JSON.stringify(payload);
+  // Prefer WebCrypto SHA-256, but NEVER let a crypto fault propagate: a thrown
+  // DOMException here would reject every caller. Any failure (missing algo,
+  // locked subtle in an insecure context, malformed input) degrades silently to
+  // the deterministic FNV-1a fallback below — the idempotency key stays stable.
   if (typeof crypto !== 'undefined' && crypto.subtle) {
-    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(json));
-    return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('').slice(0, 32);
+    try {
+      const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(json));
+      return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('').slice(0, 32);
+    } catch {
+      /* fall through to FNV-1a */
+    }
   }
   // Fallback hash (FNV-1a) for runtimes without WebCrypto.
   let h = 0x811c9dc5;
