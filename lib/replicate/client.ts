@@ -37,7 +37,14 @@ export async function createPrediction(
   const version = await resolveModelVersion(modelId, token);
   const body = { version, input };
 
-  for (let attempt = 0; attempt < 2; attempt += 1) {
+  // PHASE 57 — a burst of parallel prediction creations (e.g. the 30-second
+  // film fires 5 clips at once, each after an LTX→Replicate failover) can trip
+  // Replicate's account rate limit. A single retry wasn't enough to clear the
+  // burst (it left ~2/5 clips failing), so retry up to 4 times with the
+  // server-advised retry-after plus exponential backoff + jitter to de-sync the
+  // sibling legs. Only 429s are retried; every other status surfaces at once.
+  const MAX_ATTEMPTS = 4;
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
     const res = await fetch('https://api.replicate.com/v1/predictions', {
       method: 'POST',
       headers: {
@@ -53,9 +60,10 @@ export async function createPrediction(
     }
 
     const errText = await res.text();
-    if (res.status === 429 && attempt === 0) {
-      const retryAfterMs = parseRetryAfterMs(errText, res.headers.get('retry-after'));
-      await new Promise((resolve) => setTimeout(resolve, retryAfterMs));
+    if (res.status === 429 && attempt < MAX_ATTEMPTS - 1) {
+      const advised = parseRetryAfterMs(errText, res.headers.get('retry-after'));
+      const backoff = advised + attempt * 600 + Math.floor(Math.random() * 500);
+      await new Promise((resolve) => setTimeout(resolve, backoff));
       continue;
     }
 

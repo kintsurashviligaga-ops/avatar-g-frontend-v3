@@ -135,6 +135,17 @@ async function renderClip(
   if (!hasLtxApiKey()) {
     return { ordinal: scene.ordinal, taskRef: null, status: 'skipped', attempts: 0 };
   }
+
+  // PHASE 57 — the 5 clips dispatch via Promise.all; when LTX is out of funds
+  // each leg fails over to a Replicate prediction, so 5 createPrediction calls
+  // would otherwise fire in the same instant and trip Replicate's account rate
+  // limit (observed: ~2/5 clips failing). Stagger each leg by its ordinal so the
+  // failover calls are spread over ~1.5s instead of bursting together. This is a
+  // dispatch-only delay (the renders still run in parallel on the provider).
+  if (scene.ordinal > 1) {
+    await new Promise((resolve) => setTimeout(resolve, (scene.ordinal - 1) * 400));
+  }
+
   const clipReq = buildFilmClipRequest(scene, shared);
 
   // PHASE 43 §3 — Isolated per-leg retry. We retry ONLY when a dispatch fails to
