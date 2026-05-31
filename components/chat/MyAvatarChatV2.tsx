@@ -2170,7 +2170,8 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
             if (imageCount < 1) return null;
             return (
               <div className="px-3 pt-1.5 max-w-2xl mx-auto">
-                <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-cyan-300/80">
+                {/* PHASE 54 §1 — NEON PURGE: cyan caption → neutral zinc tone. */}
+                <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-zinc-400">
                   <span aria-hidden>🔒</span>
                   {xc.refImagesLock.replace('{n}', String(Math.min(3, imageCount)))}
                 </span>
@@ -2192,29 +2193,29 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
               aesthetic. The active engine is now communicated by the selection
               dropdown chip above, not by a coloured glow around the whole bar. */}
           <div className="rounded-3xl border border-white/[0.07] bg-[#0a0a0a] transition-colors focus-within:border-white/20">
-            {/* ── PHASE 42 §2 — Flagship "30-Second Film" CTA ──────────────
-                The platform's highest-value action, lifted out of the mode pill
-                row into a prominent premium Cyan button with a soft glow. Primes
-                the composer with a starter brief + targets the film studio; it
-                never auto-sends, so the user always confirms the (paid) render. */}
+            {/* ── PHASE 54 §1 — Flagship "30-Second Film" CTA (SANITIZED) ───
+                NEON PURGE: the prior cyan gradient, multi-layer glow shadows,
+                cyan ring, and animated hover sheen-sweep are all removed. This
+                is now a static, solid obsidian surface with a single neutral
+                hairline border (Gemini paradigm). It primes the composer with a
+                starter brief + targets the film studio; never auto-sends, so the
+                user always confirms the (paid) render. */}
             <div className="px-2 pt-2">
               <button
                 type="button"
                 onClick={startFilmFlagship}
                 aria-label={FILM_FLAGSHIP.title[lang]}
-                className="group relative w-full overflow-hidden rounded-xl px-3.5 py-2.5 flex items-center gap-3 text-left bg-gradient-to-r from-cyan-500 to-sky-500 shadow-[0_0_20px_-2px_rgba(6,182,212,0.55)] ring-1 ring-cyan-300/40 transition active:scale-[0.99] hover:shadow-[0_0_28px_-1px_rgba(6,182,212,0.75)]"
+                className="w-full rounded-xl px-3.5 py-2.5 flex items-center gap-3 text-left border border-white/10 bg-white/[0.03] hover:bg-white/[0.06] hover:border-white/20 transition-colors active:scale-[0.99]"
               >
-                {/* sheen sweep on hover for a premium feel */}
-                <span className="pointer-events-none absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/25 to-transparent transition-transform duration-700 group-hover:translate-x-full" />
-                <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-black/20 ring-1 ring-white/30">
-                  <Film size={17} className="text-white" />
+                <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/[0.04]">
+                  <Film size={17} className="text-zinc-200" />
                 </span>
                 <span className="flex min-w-0 flex-col">
-                  <span className="flex items-center gap-1.5 text-[13px] font-semibold leading-tight text-white">
+                  <span className="flex items-center gap-1.5 text-[13px] font-semibold leading-tight text-zinc-100">
                     {FILM_FLAGSHIP.title[lang]}
-                    <Sparkles size={12} className="text-white/90" />
+                    <Sparkles size={12} className="text-zinc-400" />
                   </span>
-                  <span className="truncate text-[11px] font-medium leading-tight text-white/80">
+                  <span className="truncate text-[11px] font-medium leading-tight text-zinc-400">
                     {FILM_FLAGSHIP.tagline[lang]}
                   </span>
                 </span>
@@ -2343,18 +2344,13 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
                 aria-label={isRecording ? 'Stop recording' : 'Start voice input'}
                 aria-pressed={isRecording}
                 title={speechSupported ? undefined : copy.voiceUnsupported}
-                className={`relative h-9 w-9 flex items-center justify-center rounded-xl transition active:scale-95 ${isRecording ? 'text-rose-300 bg-rose-500/10' : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-900'}`}
+                className={`relative h-9 w-9 flex items-center justify-center rounded-xl transition-colors active:scale-95 ${isRecording ? 'text-rose-300 bg-rose-500/15 border border-rose-400/40' : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-900'}`}
               >
-                {isRecording ? (
-                  <>
-                    {/* Pulsating active-listening indicator */}
-                    <span className="absolute inset-0 rounded-xl border border-rose-400/60 animate-ping" aria-hidden />
-                    <span className="absolute inset-0 rounded-xl bg-rose-500/10 animate-pulse" aria-hidden />
-                    <Mic size={18} className="relative animate-pulse" />
-                  </>
-                ) : (
-                  <Mic size={18} />
-                )}
+                {/* PHASE 54 §1 — NEON PURGE: the animate-ping ring and the two
+                    stacked animate-pulse layers are removed. Active recording is
+                    now shown with a calm, static rose tint + hairline border —
+                    no flashing. */}
+                <Mic size={18} className="relative" />
               </button>
               {isLoading ? (
                 <button
@@ -2527,6 +2523,28 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
                     </div>
                   ))
                 )}
+              </div>
+
+              {/* PHASE 54 §3 — Sidebar matrix footer. Rounds out the nav panel
+                  with the session's two standing destinations: Billing (wallet
+                  balance + top-up) and Settings. Each closes the drawer first so
+                  the target surface opens cleanly with no overlapping layers. */}
+              <div className="mt-auto border-t border-zinc-800/70 px-3 pt-3 space-y-1">
+                <button
+                  onClick={() => { setHistoryOpen(false); setWalletOpen(true); }}
+                  className="w-full inline-flex items-center gap-2.5 h-10 px-3 rounded-xl text-[13px] font-medium text-zinc-200 hover:bg-zinc-900 transition active:scale-[0.99]"
+                >
+                  <Wallet size={16} className="text-zinc-400" />
+                  <span className="flex-1 text-left">{xc.balanceLabel}</span>
+                  <span className="text-[12px] font-semibold text-zinc-400">{balanceGel === null ? '—' : formatGEL(balanceGel)}</span>
+                </button>
+                <button
+                  onClick={() => { setHistoryOpen(false); setSettingsOpen(true); }}
+                  className="w-full inline-flex items-center gap-2.5 h-10 px-3 rounded-xl text-[13px] font-medium text-zinc-200 hover:bg-zinc-900 transition active:scale-[0.99]"
+                >
+                  <Settings size={16} className="text-zinc-400" />
+                  <span className="flex-1 text-left">{copy.settings}</span>
+                </button>
               </div>
             </motion.aside>
           </motion.div>
@@ -3258,7 +3276,14 @@ function PreviewWorkspace({
   // recovery guard.
   useEffect(() => {
     setAspect('native');
-    setMediaReady(false);
+    // PHASE 54 §2 — INSTANT LOADER CLEAR. An inline data: image carries its full
+    // bytes in the URL (there is NO network stream), so it is decodable the moment
+    // it mounts — it must never sit behind a spinner. Initialise it ready so the
+    // loader shell clears the same tick the completed asset registers. Streamed
+    // (https/blob) assets start gated and are cleared by decode events or the short
+    // safety net below; the onError recovery path still fires independently.
+    const inlineImage = assetType === 'image' && assetUrl.startsWith('data:');
+    setMediaReady(inlineImage);
     setMediaError(false);
     setLoadPhase('loading');
     setLinkCopied(false);
@@ -3380,8 +3405,18 @@ function PreviewWorkspace({
   useEffect(() => {
     if (mediaReady || mediaError) return undefined;
     if (assetType !== 'video' && assetType !== 'image') return undefined;
-    if (!/^https:\/\//i.test(effectiveUrl)) return undefined;
-    const t = setTimeout(() => setMediaReady(true), 1200);
+    if (!effectiveUrl) return undefined;
+    // PHASE 54 §2 — UNIVERSAL anti-lock net (was https-only). Mobile browsers
+    // (notably iOS Safari/standalone PWA) silently drop decode events
+    // (onLoad/onLoadedData/onCanPlay) for hosted https AND blob: sources, which
+    // froze the loader shell forever. We now force-reveal across every scheme so
+    // the spinner can never lock: images reveal almost immediately (400ms — they
+    // decode fast or are already inline), videos get a short 1200ms grace to
+    // begin buffering. The onError → one-shot recovery path still fires
+    // independently, so a genuinely broken asset still escalates to recovery →
+    // the graceful failure card rather than a false "ready" frame.
+    const grace = assetType === 'image' ? 400 : 1200;
+    const t = setTimeout(() => setMediaReady(true), grace);
     return () => clearTimeout(t);
   }, [mediaReady, mediaError, assetType, effectiveUrl, reloadNonce]);
 
