@@ -1,4 +1,4 @@
-import { categorizeChatError, classifyChatError } from './errorResilience';
+import { categorizeChatError, classifyChatError, isOpaquePlatformError } from './errorResilience';
 
 describe('categorizeChatError', () => {
   it('detects timeouts', () => {
@@ -61,5 +61,44 @@ describe('classifyChatError', () => {
     expect(out.message).not.toBe(huge);
     const html = classifyChatError('unmatched', 'en', '<html><body>error</body></html>');
     expect(html.message).not.toContain('<html>');
+  });
+
+  it('never surfaces the raw Safari new URL DOMException to the user', () => {
+    // The live production red bubble: WebKit's `new URL()` TypeError text.
+    const out = classifyChatError(
+      new Error('The string did not match the expected pattern.'),
+      'en',
+      'The string did not match the expected pattern.',
+    );
+    expect(out.message).not.toContain('did not match the expected pattern');
+    expect(out.message).toBe('Something went wrong. Please try again.');
+    // ka / ru degrade to their own localized generic copy too.
+    expect(classifyChatError('Invalid URL', 'ka').message).toMatch(/[Ⴀ-ჿ]/);
+  });
+
+  it('still passes through legitimate short business-rule messages', () => {
+    const out = classifyChatError(
+      'unmatched',
+      'en',
+      'Upload a clear room photo first, then I will generate the 3D interior world.',
+    );
+    expect(out.message).toContain('Upload a clear room photo first');
+  });
+});
+
+describe('isOpaquePlatformError', () => {
+  it('flags engine-specific URL / parser faults', () => {
+    expect(isOpaquePlatformError('The string did not match the expected pattern.')).toBe(true);
+    expect(isOpaquePlatformError('Invalid URL')).toBe(true);
+    expect(isOpaquePlatformError("Failed to construct 'URL': Invalid URL")).toBe(true);
+    expect(isOpaquePlatformError('SyntaxError: Unexpected token <')).toBe(true);
+    expect(isOpaquePlatformError('URI malformed')).toBe(true);
+  });
+
+  it('does NOT flag human-readable business messages', () => {
+    expect(isOpaquePlatformError('Insufficient balance')).toBe(false);
+    expect(isOpaquePlatformError('Upload a clear room photo first')).toBe(false);
+    expect(isOpaquePlatformError('')).toBe(false);
+    expect(isOpaquePlatformError(undefined)).toBe(false);
   });
 });

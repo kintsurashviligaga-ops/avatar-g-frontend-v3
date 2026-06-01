@@ -3741,9 +3741,16 @@ function PreviewWorkspace({
             style={{ backgroundColor: '#0A0A0A' }}
           >
             {renderLoadingBackdrop()}
+            {/* v62 — `src` directly on the <video> node (NOT a child <source>).
+                A typeless child <source> makes Safari/iOS refuse to load a
+                signed/extensionless/cross-origin URL (it never probes the real
+                Content-Type), which left the player frozen with no metadata. A
+                direct `src` forces the request, reads the hosted Content-Type,
+                and an inline data:video/... URI carries its own MIME. */}
             <video
               key={`vid-${reloadNonce}`}
               ref={previewVideoRef}
+              src={assetUrl}
               controls
               playsInline
               // PHASE 54 (single-focus preview ultimatum) — `autoPlay muted` on the
@@ -3767,13 +3774,7 @@ function PreviewWorkspace({
               onError={handleMediaError}
               style={{ transform: 'translateZ(0)' }}
               className={`absolute inset-0 z-[1] h-full w-full object-contain ${fadeClass}`}
-            >
-              {/* v61 — direct source from the raw `assetUrl`. The browser sniffs
-                  the hosted Content-Type, and an inline data:video/... URI carries
-                  its own MIME, so no type hint is needed (and a wrong hint would
-                  make the browser skip the source). */}
-              <source src={assetUrl} />
-            </video>
+            />
             {renderErrorCard()}
           </div>
         ) : null}
@@ -3811,13 +3812,19 @@ function PreviewWorkspace({
             </div>
             {/* PHASE 54 — `autoPlay` so the score/VO begins the instant it mounts;
                 browsers that gate unmuted audio autoplay simply leave the native
-                controls ready for a one-tap start (no spinner, no download path). */}
-            <audio key={`aud-${reloadNonce}`} controls autoPlay preload="metadata" onError={handleMediaError} className="w-full">
-              {/* v61 — direct source from the raw `assetUrl`; the browser sniffs
-                  the hosted Content-Type and an inline data:audio/... URI carries
-                  its own MIME. */}
-              <source src={assetUrl} />
-            </audio>
+                controls ready for a one-tap start (no spinner, no download path).
+                v62 — `src` directly on the <audio> node (NOT a child <source>):
+                a typeless <source> left Safari/iOS stuck at 00:00 on signed/
+                extensionless URLs because it never probed the real Content-Type. */}
+            <audio
+              key={`aud-${reloadNonce}`}
+              src={assetUrl}
+              controls
+              autoPlay
+              preload="metadata"
+              onError={handleMediaError}
+              className="w-full"
+            />
           </div>
         ) : null}
 
@@ -4178,8 +4185,11 @@ function MessageBubble({
             message.mode === 'avatar' ? (
               // Avatar → strict native 9:16 portrait stage (object-cover, premium framing).
               <div className="aspect-[9/16] w-full max-w-[320px] rounded-2xl overflow-hidden border border-zinc-800/70 shadow-2xl bg-black">
+                {/* v62 — direct `src` (not a typeless child <source>) so Safari/iOS
+                    actually loads signed/extensionless avatar clips. */}
                 <video
                   ref={bubbleVideoRef}
+                  src={message.assetUrl}
                   controls
                   playsInline
                   // PHASE 54 — force instant muted autoplay so the inline clip
@@ -4194,14 +4204,15 @@ function MessageBubble({
                   onCanPlay={() => setMediaReady(true)}
                   style={{ transform: 'translateZ(0)' }}
                   className={`h-full w-full object-cover ${mediaFadeClass}`}
-                >
-                  <source src={message.assetUrl} />
-                </video>
+                />
               </div>
             ) : (
               // Film / other → adaptive responsive framing (object-contain, no distortion).
+              // v62 — direct `src` (not a typeless child <source>) so Safari/iOS
+              // loads signed/extensionless hosted clips and reads their Content-Type.
               <video
                 ref={bubbleVideoRef}
+                src={message.assetUrl}
                 controls
                 playsInline
                 // PHASE 54 — force instant muted autoplay (see avatar branch above).
@@ -4214,9 +4225,7 @@ function MessageBubble({
                 onCanPlay={() => setMediaReady(true)}
                 style={{ transform: 'translateZ(0)' }}
                 className={`rounded-2xl border border-zinc-800/70 max-w-full max-h-[320px] w-auto object-contain bg-black ${mediaFadeClass}`}
-              >
-                <source src={message.assetUrl} />
-              </video>
+              />
             )
           ) : (
             // Lazy placeholder — reserves portrait/landscape footprint until near.
@@ -4237,10 +4246,18 @@ function MessageBubble({
               <span>Audio</span>
             </div>
             {/* PHASE 54 — autoPlay so the track begins on mount; gated browsers
-                fall back to one-tap on the live native controls. */}
-            <audio ref={bubbleAudioRef} controls autoPlay preload="metadata" className="w-full">
-              <source src={message.assetUrl} />
-            </audio>
+                fall back to one-tap on the live native controls.
+                v62 — `src` directly on the <audio> node (NOT a typeless child
+                <source>), which was the cause of the "00:00 / no duration" stall:
+                Safari/iOS never probed the signed/extensionless URL's real MIME. */}
+            <audio
+              ref={bubbleAudioRef}
+              src={message.assetUrl}
+              controls
+              autoPlay
+              preload="metadata"
+              className="w-full"
+            />
           </div>
         ) : null}
 

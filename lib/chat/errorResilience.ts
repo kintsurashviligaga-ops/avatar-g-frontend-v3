@@ -59,6 +59,25 @@ const COPY: Record<ChatErrorCategory, Record<Locale, string>> = {
   },
 };
 
+/**
+ * Low-level PLATFORM faults whose raw text is meaningless (and alarming) to an
+ * end-user. These are engine-specific DOMException / parser strings — most
+ * notably WebKit/Safari's `new URL()` TypeError, which reads literally:
+ *   "The string did not match the expected pattern."
+ * (Chromium says "Invalid URL", Node says "Invalid URL" — same root cause, three
+ * different wordings.) Other entries cover Cache/History DOMExceptions, JSON and
+ * regex SyntaxErrors, and malformed-URI errors. When the caught error matches one
+ * of these we MUST NOT surface it verbatim; we fall back to the friendly,
+ * localized generic copy instead. Business-rule messages (e.g. "Upload a clear
+ * room photo first") never match, so they still pass through untouched.
+ */
+const OPAQUE_PLATFORM_ERROR =
+  /did not match the expected pattern|invalid url|failed to construct|is not a valid (url|selector)|\bsyntaxerror\b|\bdomexception\b|unexpected token|json(\.| )parse|uri malformed|\burierror\b|the operation is insecure/i;
+
+export function isOpaquePlatformError(raw: string | undefined | null): boolean {
+  return !!raw && OPAQUE_PLATFORM_ERROR.test(raw);
+}
+
 /** Inspect a raw error string + numeric hints and bucket it. */
 export function categorizeChatError(err: unknown): ChatErrorCategory {
   const raw =
@@ -101,8 +120,15 @@ export function classifyChatError(
   if (category === 'generic') {
     const trimmed = (fallback ?? '').trim();
     // Keep a meaningful, concise backend message (e.g. business-rule errors)
-    // but never surface a giant stack/JSON blob to the user.
-    if (trimmed && trimmed.length <= 160 && !/[<{]/.test(trimmed)) {
+    // but never surface a giant stack/JSON blob — OR an opaque low-level platform
+    // fault like Safari's "The string did not match the expected pattern." — to
+    // the user. Those degrade to the friendly localized generic copy instead.
+    if (
+      trimmed
+      && trimmed.length <= 160
+      && !/[<{]/.test(trimmed)
+      && !isOpaquePlatformError(trimmed)
+    ) {
       return { category, message: trimmed };
     }
     return { category, message: COPY.generic[locale] };
