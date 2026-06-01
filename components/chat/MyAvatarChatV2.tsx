@@ -1926,8 +1926,7 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
                 initial={prefersReducedMotion ? false : { opacity: 0, y: 14, filter: 'blur(8px)' }}
                 animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
                 transition={{ duration: 1.1, ease: [0.16, 1, 0.3, 1] }}
-                className="select-none bg-gradient-to-br from-white via-zinc-300 to-zinc-500 bg-clip-text text-transparent text-[44px] sm:text-[64px] font-semibold tracking-tight leading-none"
-                style={{ textShadow: '0 1px 40px rgba(255,255,255,0.06)' }}
+                className="select-none bg-gradient-to-br from-app-text via-app-text/70 to-app-muted bg-clip-text text-transparent text-[44px] sm:text-[64px] font-semibold tracking-tight leading-none"
               >
                 {xc.greeting}
               </motion.h1>
@@ -1960,14 +1959,14 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
               {/* Agent presence — which sub-agent is handling this request. */}
               <div className="flex items-center gap-2 text-[12px]">
                 <span
-                  className="flex h-6 w-6 items-center justify-center rounded-lg border border-white/10 text-[11px] font-bold leading-none"
+                  className="flex h-6 w-6 items-center justify-center rounded-lg border border-app-border/12 text-[11px] font-bold leading-none"
                   style={{ backgroundColor: `${AGENTS[mode].color}1f`, color: AGENTS[mode].color }}
                 >
                   {AGENTS[mode].codename}
                 </span>
-                <span className="font-medium text-zinc-300">{AGENTS[mode].name[lang]}</span>
-                <span className="text-zinc-500">{xc.working}</span>
-                <Loader2 size={12} className="animate-spin text-zinc-500" />
+                <span className="font-medium text-app-text">{AGENTS[mode].name[lang]}</span>
+                <span className="text-app-muted">{xc.working}</span>
+                <Loader2 size={12} className="animate-spin text-app-muted" />
               </div>
               <MediaSkeleton mode={mode} accent={ACCENT} />
               {mode !== 'global' && pipeline?.active && pipeline.stages.length ? (
@@ -1988,7 +1987,7 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
             if (!chips || !chips.length) return null;
             return (
               <div className="flex flex-col gap-1.5">
-                <p className="flex items-center gap-1.5 text-[11px] uppercase tracking-wide text-zinc-500">
+                <p className="flex items-center gap-1.5 text-[11px] uppercase tracking-wide text-app-muted">
                   <Sparkles size={12} /> {xc.nextSteps}
                 </p>
                 <div className="flex flex-wrap items-center gap-1.5">
@@ -2005,7 +2004,7 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
                           ? last.assetUrl
                           : undefined,
                       )}
-                      className="rounded-full border border-zinc-800/80 bg-[#0a0a0a] px-3 py-1 text-[12px] font-medium text-zinc-300 transition hover:border-zinc-600/80 hover:text-zinc-100 active:scale-95"
+                      className="rounded-full border border-app-border/15 bg-app-surface px-3 py-1 text-[12px] font-medium text-app-muted transition hover:border-app-border/30 hover:text-app-text active:scale-95"
                     >
                       {f[lang]}
                     </button>
@@ -2120,7 +2119,7 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
 
       {/* ── Composer (bottom anchor) ─────────────────────────────── */}
       <footer
-        className="flex-shrink-0 border-t border-white/[0.05] bg-[#030303]/95 backdrop-blur-md"
+        className="flex-shrink-0 border-t border-app-border/10 bg-app-bg/95 backdrop-blur-md"
         style={{ paddingBottom: 'calc(0.5rem + env(safe-area-inset-bottom, 0px))' }}
       >
         {/* Attachment pills — image = thumbnail, document/media = labelled pill */}
@@ -2131,7 +2130,7 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
               att.type === 'image' && att.preview ? (
                 <div
                   key={att.id}
-                  className="relative w-12 h-12 rounded-xl overflow-hidden flex-shrink-0 group bg-zinc-900 border border-zinc-800/70"
+                  className="relative w-12 h-12 rounded-xl overflow-hidden flex-shrink-0 group bg-app-elevated border border-app-border/15"
                 >
                   <Image src={att.preview} alt={att.name} width={48} height={48} unoptimized className="w-full h-full object-cover" />
                   <button
@@ -2145,7 +2144,7 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
               ) : att.type === 'video' && att.preview ? (
                 <div
                   key={att.id}
-                  className="relative w-12 h-12 rounded-xl overflow-hidden flex-shrink-0 group bg-black border border-zinc-800/70"
+                  className="relative w-12 h-12 rounded-xl overflow-hidden flex-shrink-0 group bg-app-surface border border-app-border/15"
                 >
                   <video src={att.preview} muted playsInline preload="metadata" className="w-full h-full object-cover" />
                   <span className="absolute inset-0 flex items-center justify-center bg-black/30 text-white/90 pointer-events-none">
@@ -2162,20 +2161,20 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
               ) : (
                 <div
                   key={att.id}
-                  className="relative flex-shrink-0 group inline-flex items-center gap-2 h-12 max-w-[220px] pl-2.5 pr-8 rounded-xl bg-zinc-900 border border-zinc-800/70"
+                  className="relative flex-shrink-0 group inline-flex items-center gap-2 h-12 max-w-[220px] pl-2.5 pr-8 rounded-xl bg-app-elevated border border-app-border/15"
                 >
-                  <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-white/[0.06] text-[14px]">
+                  <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-app-border/10 text-[14px]">
                     {att.type === 'video' ? '🎬' : att.type === 'audio' ? '🎵' : '📄'}
                   </span>
                   <span className="flex flex-col min-w-0">
-                    <span className="truncate text-[12px] font-medium text-zinc-200 max-w-[150px]">{att.name}</span>
-                    <span className="text-[10px] uppercase tracking-wide text-zinc-500">
+                    <span className="truncate text-[12px] font-medium text-app-text max-w-[150px]">{att.name}</span>
+                    <span className="text-[10px] uppercase tracking-wide text-app-muted">
                       {att.type === 'file' ? 'PDF' : att.type} · {Math.max(1, Math.round(att.size / 1024))} KB
                     </span>
                   </span>
                   <button
                     onClick={() => dispatch({ type: 'REMOVE_ATTACHMENT', id: att.id })}
-                    className="absolute top-1/2 right-1.5 -translate-y-1/2 w-5 h-5 rounded-full bg-black/60 flex items-center justify-center text-zinc-300 hover:text-white hover:bg-black/80 transition"
+                    className="absolute top-1/2 right-1.5 -translate-y-1/2 w-5 h-5 rounded-full bg-app-border/10 flex items-center justify-center text-app-muted hover:text-app-text hover:bg-app-border/20 transition"
                     aria-label="Remove attachment"
                   >
                     <X size={11} />
@@ -2192,7 +2191,7 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
             return (
               <div className="px-3 pt-1.5 max-w-2xl mx-auto">
                 {/* PHASE 54 §1 — NEON PURGE: cyan caption → neutral zinc tone. */}
-                <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-zinc-400">
+                <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-app-muted">
                   <span aria-hidden>🔒</span>
                   {xc.refImagesLock.replace('{n}', String(Math.min(3, imageCount)))}
                 </span>
@@ -2465,18 +2464,18 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
               exit={{ x: -300 }}
               transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
               onClick={(e) => e.stopPropagation()}
-              className="absolute inset-y-0 left-0 w-72 max-w-[85vw] bg-[#030303] border-r border-zinc-800/70 flex flex-col"
+              className="absolute inset-y-0 left-0 w-72 max-w-[85vw] bg-app-bg border-r border-app-border/15 flex flex-col"
               style={{
                 paddingTop: 'calc(0.75rem + env(safe-area-inset-top, 0px))',
                 paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom, 0px))',
               }}
             >
-              <div className="flex items-center justify-between px-4 pb-3 border-b border-zinc-800/70">
-                <span className="text-[13px] font-semibold tracking-wide text-zinc-100">{copy.history}</span>
+              <div className="flex items-center justify-between px-4 pb-3 border-b border-app-border/15">
+                <span className="text-[13px] font-semibold tracking-wide text-app-text">{copy.history}</span>
                 <button
                   onClick={() => setHistoryOpen(false)}
                   aria-label={xc.close}
-                  className="h-7 w-7 rounded-full flex items-center justify-center text-zinc-400 hover:text-zinc-100 hover:bg-zinc-900 transition active:scale-95"
+                  className="h-7 w-7 rounded-full flex items-center justify-center text-app-muted hover:text-app-text hover:bg-app-elevated/60 transition active:scale-95"
                 >
                   <X size={15} />
                 </button>
@@ -2486,7 +2485,7 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
               <div className="px-3 pt-3 pb-2">
                 <button
                   onClick={startNewChat}
-                  className="w-full inline-flex items-center gap-2 h-10 px-3 rounded-xl border border-zinc-800/80 bg-[#0a0a0a] text-[13px] font-medium text-zinc-100 hover:border-zinc-600/80 hover:bg-zinc-900 transition active:scale-[0.99]"
+                  className="w-full inline-flex items-center gap-2 h-10 px-3 rounded-xl border border-app-border/15 bg-app-surface text-[13px] font-medium text-app-text hover:border-app-border/30 hover:bg-app-elevated/60 transition active:scale-[0.99]"
                 >
                   <PenSquare size={16} /> {xc.newChat}
                 </button>
@@ -2498,7 +2497,7 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
                   <div className="relative">
                     <Search
                       size={14}
-                      className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500"
+                      className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-app-muted"
                     />
                     <input
                       ref={searchInputRef}
@@ -2507,7 +2506,7 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
                       onChange={(e) => setSearch(e.target.value)}
                       placeholder={xc.searchChats}
                       aria-label={xc.searchChats}
-                      className="w-full h-9 pl-9 pr-8 rounded-xl border border-zinc-800/80 bg-[#0a0a0a] text-[13px] text-zinc-100 placeholder:text-zinc-600 outline-none focus:border-zinc-600/80 transition"
+                      className="w-full h-9 pl-9 pr-8 rounded-xl border border-app-border/15 bg-app-surface text-[13px] text-app-text placeholder:text-app-muted outline-none focus:border-app-border/30 transition"
                     />
                     {search ? (
                       <button
@@ -2516,7 +2515,7 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
                           searchInputRef.current?.focus();
                         }}
                         aria-label={xc.close}
-                        className="absolute right-2 top-1/2 -translate-y-1/2 h-6 w-6 rounded-full flex items-center justify-center text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800 transition active:scale-90"
+                        className="absolute right-2 top-1/2 -translate-y-1/2 h-6 w-6 rounded-full flex items-center justify-center text-app-muted hover:text-app-text hover:bg-app-elevated transition active:scale-90"
                       >
                         <X size={13} />
                       </button>
@@ -2528,13 +2527,13 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
               {/* Time-grouped conversation log */}
               <div className="flex-1 overflow-y-auto px-2 py-1 [scrollbar-width:thin]">
                 {groupedConversations.length === 0 ? (
-                  <p className="px-2 py-4 text-[12px] text-zinc-500">{xc.noChats}</p>
+                  <p className="px-2 py-4 text-[12px] text-app-muted">{xc.noChats}</p>
                 ) : filteredGroups.length === 0 ? (
-                  <p className="px-2 py-4 text-[12px] text-zinc-500">{xc.noResults}</p>
+                  <p className="px-2 py-4 text-[12px] text-app-muted">{xc.noResults}</p>
                 ) : (
                   filteredGroups.map((group) => (
                     <div key={group.bucket} className="pb-2">
-                      <div className="px-2 pt-3 pb-1 text-[10.5px] font-semibold uppercase tracking-wider text-zinc-500">
+                      <div className="px-2 pt-3 pb-1 text-[10.5px] font-semibold uppercase tracking-wider text-app-muted">
                         {GROUP_LABELS[group.bucket][lang]}
                       </div>
                       {group.conversations.map((c) => (
@@ -2560,20 +2559,20 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
                   with the session's two standing destinations: Billing (wallet
                   balance + top-up) and Settings. Each closes the drawer first so
                   the target surface opens cleanly with no overlapping layers. */}
-              <div className="mt-auto border-t border-zinc-800/70 px-3 pt-3 space-y-1">
+              <div className="mt-auto border-t border-app-border/15 px-3 pt-3 space-y-1">
                 <button
                   onClick={() => { setHistoryOpen(false); setWalletOpen(true); }}
-                  className="w-full inline-flex items-center gap-2.5 h-10 px-3 rounded-xl text-[13px] font-medium text-zinc-200 hover:bg-zinc-900 transition active:scale-[0.99]"
+                  className="w-full inline-flex items-center gap-2.5 h-10 px-3 rounded-xl text-[13px] font-medium text-app-text hover:bg-app-elevated/60 transition active:scale-[0.99]"
                 >
-                  <Wallet size={16} className="text-zinc-400" />
+                  <Wallet size={16} className="text-app-muted" />
                   <span className="flex-1 text-left">{xc.balanceLabel}</span>
-                  <span className="text-[12px] font-semibold text-zinc-400">{balanceGel === null ? '—' : formatGEL(balanceGel)}</span>
+                  <span className="text-[12px] font-semibold text-app-muted">{balanceGel === null ? '—' : formatGEL(balanceGel)}</span>
                 </button>
                 <button
                   onClick={() => { setHistoryOpen(false); setSettingsOpen(true); }}
-                  className="w-full inline-flex items-center gap-2.5 h-10 px-3 rounded-xl text-[13px] font-medium text-zinc-200 hover:bg-zinc-900 transition active:scale-[0.99]"
+                  className="w-full inline-flex items-center gap-2.5 h-10 px-3 rounded-xl text-[13px] font-medium text-app-text hover:bg-app-elevated/60 transition active:scale-[0.99]"
                 >
-                  <Settings size={16} className="text-zinc-400" />
+                  <Settings size={16} className="text-app-muted" />
                   <span className="flex-1 text-left">{copy.settings}</span>
                 </button>
               </div>
@@ -2600,14 +2599,14 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
               exit={{ opacity: 0, y: 14, scale: 0.98 }}
               transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
               onClick={(e) => e.stopPropagation()}
-              className="w-full max-w-md max-h-[88vh] overflow-y-auto rounded-3xl border border-zinc-800/80 bg-[#0a0a0a] shadow-[0_40px_120px_-30px_rgba(0,0,0,0.9)]"
+              className="w-full max-w-md max-h-[88vh] overflow-y-auto rounded-3xl border border-app-border/15 bg-app-surface shadow-[0_40px_120px_-30px_rgba(0,0,0,0.9)]"
             >
-              <div className="sticky top-0 z-10 flex items-center justify-between px-5 py-4 border-b border-zinc-800/70 bg-[#0a0a0a]/95 backdrop-blur">
-                <span className="text-[15px] font-semibold text-zinc-50">{copy.settings}</span>
+              <div className="sticky top-0 z-10 flex items-center justify-between px-5 py-4 border-b border-app-border/15 bg-app-surface/95 backdrop-blur">
+                <span className="text-[15px] font-semibold text-app-text">{copy.settings}</span>
                 <button
                   onClick={() => setSettingsOpen(false)}
                   aria-label={xc.close}
-                  className="h-8 w-8 rounded-full flex items-center justify-center text-zinc-400 hover:text-zinc-100 hover:bg-zinc-900 transition active:scale-95"
+                  className="h-8 w-8 rounded-full flex items-center justify-center text-app-muted hover:text-app-text hover:bg-app-elevated/60 transition active:scale-95"
                 >
                   <X size={16} />
                 </button>
@@ -2616,19 +2615,19 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
               <div className="px-5 py-4 flex flex-col gap-6">
                 {/* Account */}
                 <section className="flex flex-col gap-2">
-                  <h3 className="text-[11px] font-semibold uppercase tracking-wider text-zinc-500">{xc.account}</h3>
-                  <div className="flex items-center gap-3 rounded-2xl border border-zinc-800/70 bg-[#0f0f0f] p-3">
-                    <span className="flex h-10 w-10 items-center justify-center rounded-full bg-neutral-800 text-neutral-200">
+                  <h3 className="text-[11px] font-semibold uppercase tracking-wider text-app-muted">{xc.account}</h3>
+                  <div className="flex items-center gap-3 rounded-2xl border border-app-border/15 bg-app-elevated p-3">
+                    <span className="flex h-10 w-10 items-center justify-center rounded-full bg-app-border/10 text-app-text">
                       <User size={18} />
                     </span>
                     <div className="min-w-0">
                       {isAuthenticated ? (
                         <>
-                          <p className="text-[10px] uppercase tracking-wider text-zinc-500">{xc.signedInAs}</p>
-                          <p className="truncate text-[13.5px] font-medium text-zinc-100">{userEmail || userName}</p>
+                          <p className="text-[10px] uppercase tracking-wider text-app-muted">{xc.signedInAs}</p>
+                          <p className="truncate text-[13.5px] font-medium text-app-text">{userEmail || userName}</p>
                         </>
                       ) : (
-                        <p className="text-[13px] text-zinc-400">{xc.guest}</p>
+                        <p className="text-[13px] text-app-muted">{xc.guest}</p>
                       )}
                     </div>
                   </div>
@@ -2638,16 +2637,16 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
                     (from /api/billing/credits), the active AI engine, and a direct
                     top-up entry into the Pay-As-You-Go wallet refill flow. */}
                 <section className="flex flex-col gap-2">
-                  <h3 className="text-[11px] font-semibold uppercase tracking-wider text-zinc-500">{xc.planBalance}</h3>
+                  <h3 className="text-[11px] font-semibold uppercase tracking-wider text-app-muted">{xc.planBalance}</h3>
                   {isAuthenticated ? (
-                    <div className="rounded-2xl border border-zinc-800/70 bg-[#0f0f0f] divide-y divide-zinc-800/60">
+                    <div className="rounded-2xl border border-app-border/15 bg-app-elevated divide-y divide-app-border/10">
                       {/* Wallet balance + Top-up */}
                       <div className="flex items-center justify-between gap-3 px-3 py-3">
-                        <span className="flex items-center gap-2 text-[13.5px] text-zinc-200">
+                        <span className="flex items-center gap-2 text-[13.5px] text-app-text">
                           <Wallet size={15} /> {xc.balanceLabel}
                         </span>
                         <div className="flex items-center gap-2.5">
-                          <span className="text-[14px] font-semibold tabular-nums text-zinc-50">
+                          <span className="text-[14px] font-semibold tabular-nums text-app-text">
                             {balanceGel === null ? '—' : formatGEL(balanceGel)}
                           </span>
                           <button
@@ -2661,25 +2660,25 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
                       </div>
                       {/* Account tier */}
                       <div className="flex items-center justify-between gap-3 px-3 py-3">
-                        <span className="flex items-center gap-2 text-[13.5px] text-zinc-200">
+                        <span className="flex items-center gap-2 text-[13.5px] text-app-text">
                           <Sparkles size={15} /> {xc.planLabel}
                         </span>
-                        <span className="text-[13px] font-medium capitalize text-zinc-100">
+                        <span className="text-[13px] font-medium capitalize text-app-text">
                           {planId ?? '—'}
                         </span>
                       </div>
                       {/* Active AI engine (read-only — hybrid routing is automatic) */}
                       <div className="flex items-center justify-between gap-3 px-3 py-3">
-                        <span className="flex items-center gap-2 text-[13.5px] text-zinc-200">
+                        <span className="flex items-center gap-2 text-[13.5px] text-app-text">
                           <Cpu size={15} /> {xc.engineLabel}
                         </span>
-                        <span className="text-[12.5px] font-medium text-zinc-400">{xc.engineValue}</span>
+                        <span className="text-[12.5px] font-medium text-app-muted">{xc.engineValue}</span>
                       </div>
                     </div>
                   ) : (
                     <button
                       onClick={() => { setSettingsOpen(false); setAuthOpen(true); }}
-                      className="rounded-2xl border border-zinc-800/70 bg-[#0f0f0f] px-3 py-3 text-left text-[13px] text-zinc-400 hover:border-zinc-600/80 hover:text-zinc-200 transition"
+                      className="rounded-2xl border border-app-border/15 bg-app-elevated px-3 py-3 text-left text-[13px] text-app-muted hover:border-app-border/30 hover:text-app-text transition"
                     >
                       {xc.signInForBalance}
                     </button>
@@ -2688,8 +2687,8 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
 
                 {/* Preferences */}
                 <section className="flex flex-col gap-2">
-                  <h3 className="text-[11px] font-semibold uppercase tracking-wider text-zinc-500">{xc.preferences}</h3>
-                  <div className="rounded-2xl border border-zinc-800/70 bg-[#0f0f0f] divide-y divide-zinc-800/60">
+                  <h3 className="text-[11px] font-semibold uppercase tracking-wider text-app-muted">{xc.preferences}</h3>
+                  <div className="rounded-2xl border border-app-border/15 bg-app-elevated divide-y divide-app-border/10">
                     <SettingToggle
                       label={xc.submitOnEnter}
                       hint={xc.submitOnEnterHint}
@@ -2708,7 +2707,7 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
                     />
                     {/* Language */}
                     <div className="flex items-center justify-between gap-3 px-3 py-3">
-                      <span className="flex items-center gap-2 text-[13.5px] text-zinc-200">
+                      <span className="flex items-center gap-2 text-[13.5px] text-app-text">
                         <Globe size={15} /> {copy.language}
                       </span>
                       <div className="flex gap-1.5">
@@ -2716,7 +2715,7 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
                           <button
                             key={lc}
                             onClick={() => changeLanguage(lc)}
-                            className={`h-8 w-9 rounded-lg text-[12px] font-semibold uppercase transition active:scale-95 border ${lang === lc ? 'border-white/25 bg-neutral-800 text-neutral-50' : 'border-white/10 bg-[#121212] text-zinc-400 hover:text-zinc-200'}`}
+                            className={`h-8 w-9 rounded-lg text-[12px] font-semibold uppercase transition active:scale-95 border ${lang === lc ? 'border-app-border/30 bg-app-elevated text-app-text' : 'border-app-border/12 bg-app-surface text-app-muted hover:text-app-text'}`}
                           >
                             {lc}
                           </button>
@@ -2728,7 +2727,7 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
 
                 {/* Custom instructions */}
                 <section className="flex flex-col gap-2">
-                  <h3 className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
+                  <h3 className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-app-muted">
                     <Sparkles size={13} /> {xc.customInstructions}
                   </h3>
                   <textarea
@@ -2737,19 +2736,19 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
                     maxLength={MAX_CUSTOM_INSTRUCTIONS}
                     rows={4}
                     placeholder={xc.ciPlaceholder}
-                    className="w-full resize-none rounded-2xl border border-zinc-800/70 bg-[#0f0f0f] p-3 text-[13.5px] leading-6 text-zinc-100 placeholder-zinc-600 outline-none focus:border-zinc-600/80 transition"
+                    className="w-full resize-none rounded-2xl border border-app-border/15 bg-app-elevated p-3 text-[13.5px] leading-6 text-app-text placeholder-app-muted outline-none focus:border-app-border/30 transition"
                   />
-                  <div className="flex items-center justify-between text-[11px] text-zinc-500">
+                  <div className="flex items-center justify-between text-[11px] text-app-muted">
                     <span>{xc.ciHint}</span>
                     <span className="tabular-nums">{prefs.customInstructions.length}/{MAX_CUSTOM_INSTRUCTIONS}</span>
                   </div>
                 </section>
               </div>
 
-              <div className="sticky bottom-0 flex justify-end px-5 py-4 border-t border-zinc-800/70 bg-[#0a0a0a]/95 backdrop-blur">
+              <div className="sticky bottom-0 flex justify-end px-5 py-4 border-t border-app-border/15 bg-app-surface/95 backdrop-blur">
                 <button
                   onClick={() => setSettingsOpen(false)}
-                  className="h-9 px-5 rounded-full text-[13px] font-semibold bg-neutral-100 text-neutral-900 hover:bg-white transition active:scale-95"
+                  className="h-9 px-5 rounded-full text-[13px] font-semibold bg-app-text text-app-bg hover:opacity-90 transition active:scale-95"
                 >
                   {xc.done}
                 </button>
@@ -2777,19 +2776,19 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
               exit={{ opacity: 0, scale: 0.96, y: 10 }}
               transition={{ duration: 0.18 }}
               onClick={(e) => e.stopPropagation()}
-              className="w-full max-w-sm rounded-3xl border border-zinc-800/80 bg-[#0a0a0a] p-5 shadow-[0_40px_120px_-30px_rgba(0,0,0,0.9)]"
+              className="w-full max-w-sm rounded-3xl border border-app-border/15 bg-app-surface p-5 shadow-[0_40px_120px_-30px_rgba(0,0,0,0.9)]"
             >
               <div className="flex items-center gap-2.5 pb-2">
-                <span className="flex h-9 w-9 items-center justify-center rounded-full bg-rose-500/10 text-rose-300">
+                <span className="flex h-9 w-9 items-center justify-center rounded-full bg-rose-500/10 text-rose-500">
                   <Trash2 size={17} />
                 </span>
-                <h3 className="text-[15px] font-semibold text-zinc-50">{xc.deleteTitle}</h3>
+                <h3 className="text-[15px] font-semibold text-app-text">{xc.deleteTitle}</h3>
               </div>
-              <p className="text-[13px] leading-6 text-zinc-400 pb-4">{xc.deleteBody}</p>
+              <p className="text-[13px] leading-6 text-app-muted pb-4">{xc.deleteBody}</p>
               <div className="flex justify-end gap-2">
                 <button
                   onClick={() => setDeleteTarget(null)}
-                  className="h-9 px-4 rounded-full text-[13px] font-medium text-zinc-300 hover:bg-zinc-900 transition active:scale-95"
+                  className="h-9 px-4 rounded-full text-[13px] font-medium text-app-muted hover:bg-app-elevated/60 transition active:scale-95"
                 >
                   {xc.cancel}
                 </button>
@@ -2878,14 +2877,14 @@ function SettingToggle({
       role="switch"
       aria-checked={checked}
       onClick={() => onChange(!checked)}
-      className="w-full flex items-center justify-between gap-3 px-3 py-3 text-left hover:bg-zinc-900/40 transition"
+      className="w-full flex items-center justify-between gap-3 px-3 py-3 text-left hover:bg-app-elevated/40 transition"
     >
       <span className="flex flex-col min-w-0">
-        <span className="text-[13.5px] text-zinc-200">{label}</span>
-        {hint ? <span className="text-[11px] leading-4 text-zinc-500">{hint}</span> : null}
+        <span className="text-[13.5px] text-app-text">{label}</span>
+        {hint ? <span className="text-[11px] leading-4 text-app-muted">{hint}</span> : null}
       </span>
-      <span className={`relative h-5 w-9 flex-shrink-0 rounded-full transition ${checked ? 'bg-neutral-200' : 'bg-zinc-700'}`}>
-        <span className={`absolute top-0.5 h-4 w-4 rounded-full transition-all ${checked ? 'left-[1.125rem] bg-neutral-900' : 'left-0.5 bg-white'}`} />
+      <span className={`relative h-5 w-9 flex-shrink-0 rounded-full transition ${checked ? 'bg-app-text' : 'bg-app-border/30'}`}>
+        <span className={`absolute top-0.5 h-4 w-4 rounded-full transition-all ${checked ? 'left-[1.125rem] bg-app-bg' : 'left-0.5 bg-app-muted'}`} />
       </span>
     </button>
   );
@@ -2930,7 +2929,7 @@ function ConversationRow({
             else if (e.key === 'Escape') { e.preventDefault(); onCancelRename(); }
           }}
           onBlur={() => onCommitRename(draft)}
-          className="w-full h-9 px-2.5 rounded-lg bg-[#121212] border border-zinc-600/70 text-[13px] text-zinc-100 outline-none focus:border-zinc-400/70"
+          className="w-full h-9 px-2.5 rounded-lg bg-app-elevated border border-app-border/30 text-[13px] text-app-text outline-none focus:border-app-border/50"
         />
       </div>
     );
@@ -2941,7 +2940,7 @@ function ConversationRow({
       <button
         onClick={onOpen}
         className={`w-full flex items-center gap-2 h-9 pl-2.5 pr-8 rounded-lg text-left text-[13px] truncate transition ${
-          active ? 'bg-neutral-800 text-neutral-50' : 'text-zinc-300 hover:bg-zinc-900'
+          active ? 'bg-app-elevated text-app-text' : 'text-app-muted hover:bg-app-elevated/60'
         }`}
       >
         <MessageSquare size={14} className="flex-shrink-0 opacity-60" />
@@ -2952,7 +2951,7 @@ function ConversationRow({
         onClick={(e) => { e.stopPropagation(); setMenuOpen((v) => !v); }}
         aria-label={`${xc.rename} / ${xc.delete}`}
         aria-haspopup="menu"
-        className={`absolute top-1/2 right-2 -translate-y-1/2 h-6 w-6 rounded-md flex items-center justify-center text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition ${
+        className={`absolute top-1/2 right-2 -translate-y-1/2 h-6 w-6 rounded-md flex items-center justify-center text-app-muted hover:text-app-text hover:bg-app-elevated transition ${
           menuOpen ? 'opacity-100' : 'opacity-0 group-hover/row:opacity-100 focus:opacity-100'
         }`}
       >
@@ -2969,17 +2968,17 @@ function ConversationRow({
               exit={{ opacity: 0, scale: 0.96, y: -4 }}
               transition={{ duration: 0.13 }}
               role="menu"
-              className="absolute right-2 top-9 z-[62] w-36 rounded-xl border border-zinc-800/80 bg-[#0d0d0d] p-1 shadow-[0_20px_50px_-18px_rgba(0,0,0,0.9)]"
+              className="absolute right-2 top-9 z-[62] w-36 rounded-xl border border-app-border/15 bg-app-surface p-1 shadow-[0_20px_50px_-18px_rgba(0,0,0,0.9)]"
             >
               <button
                 onClick={(e) => { e.stopPropagation(); setMenuOpen(false); onStartRename(); }}
-                className="w-full flex items-center gap-2 h-8 px-2.5 rounded-lg text-[12.5px] text-zinc-200 hover:bg-zinc-800 transition"
+                className="w-full flex items-center gap-2 h-8 px-2.5 rounded-lg text-[12.5px] text-app-text hover:bg-app-elevated transition"
               >
                 <Pencil size={14} /> {xc.rename}
               </button>
               <button
                 onClick={(e) => { e.stopPropagation(); setMenuOpen(false); onDelete(); }}
-                className="w-full flex items-center gap-2 h-8 px-2.5 rounded-lg text-[12.5px] text-rose-300 hover:bg-rose-500/10 transition"
+                className="w-full flex items-center gap-2 h-8 px-2.5 rounded-lg text-[12.5px] text-rose-500 hover:bg-rose-500/10 transition"
               >
                 <Trash2 size={14} /> {xc.delete}
               </button>
@@ -3055,10 +3054,10 @@ const MD_COMPONENTS: Components = {
   h1: ({ children }) => <h1 className="mb-1.5 mt-3 text-[17px] font-semibold break-words first:mt-0">{children}</h1>,
   h2: ({ children }) => <h2 className="mb-1.5 mt-3 text-[15px] font-semibold break-words first:mt-0">{children}</h2>,
   h3: ({ children }) => <h3 className="mb-1 mt-2.5 text-[14px] font-semibold break-words first:mt-0">{children}</h3>,
-  ul: ({ children }) => <ul className="my-2 list-disc space-y-1 pl-5 marker:text-neutral-500">{children}</ul>,
-  ol: ({ children }) => <ol className="my-2 list-decimal space-y-1 pl-5 marker:text-neutral-500">{children}</ol>,
+  ul: ({ children }) => <ul className="my-2 list-disc space-y-1 pl-5 marker:text-app-muted">{children}</ul>,
+  ol: ({ children }) => <ol className="my-2 list-decimal space-y-1 pl-5 marker:text-app-muted">{children}</ol>,
   li: ({ children }) => <li className="leading-relaxed break-words">{children}</li>,
-  strong: ({ children }) => <strong className="font-semibold text-neutral-50">{children}</strong>,
+  strong: ({ children }) => <strong className="font-semibold text-app-text">{children}</strong>,
   em: ({ children }) => <em className="italic">{children}</em>,
   a: ({ children, href }) => (
     <a href={href} target="_blank" rel="noopener noreferrer" className="underline underline-offset-2 break-all" style={{ color: ACCENT }}>
@@ -3066,17 +3065,17 @@ const MD_COMPONENTS: Components = {
     </a>
   ),
   blockquote: ({ children }) => (
-    <blockquote className="my-2 border-l-2 border-neutral-700 pl-3 text-neutral-400">{children}</blockquote>
+    <blockquote className="my-2 border-l-2 border-app-border/30 pl-3 text-app-muted">{children}</blockquote>
   ),
-  hr: () => <hr className="my-3 border-neutral-800" />,
+  hr: () => <hr className="my-3 border-app-border/15" />,
   table: ({ children }) => (
-    <div className="my-2.5 overflow-x-auto rounded-lg border border-neutral-800">
+    <div className="my-2.5 overflow-x-auto rounded-lg border border-app-border/15">
       <table className="w-full border-collapse text-[13px]">{children}</table>
     </div>
   ),
-  thead: ({ children }) => <thead className="bg-neutral-900/60">{children}</thead>,
-  th: ({ children }) => <th className="px-3 py-1.5 text-left font-semibold text-neutral-200">{children}</th>,
-  td: ({ children }) => <td className="border-t border-neutral-800/70 px-3 py-1.5 align-top">{children}</td>,
+  thead: ({ children }) => <thead className="bg-app-elevated">{children}</thead>,
+  th: ({ children }) => <th className="px-3 py-1.5 text-left font-semibold text-app-text">{children}</th>,
+  td: ({ children }) => <td className="border-t border-app-border/15 px-3 py-1.5 align-top">{children}</td>,
   pre: ({ children }) => <>{children}</>,
   code: ({ className, children }) => {
     const match = /language-(\w+)/.exec(className || '');
@@ -3084,7 +3083,7 @@ const MD_COMPONENTS: Components = {
     const isBlock = !!match || raw.includes('\n');
     if (!isBlock) {
       return (
-        <code className="rounded bg-neutral-800/80 px-1.5 py-0.5 font-mono text-[0.85em] text-neutral-100 break-all">
+        <code className="rounded bg-app-elevated px-1.5 py-0.5 font-mono text-[0.85em] text-app-text break-all">
           {children}
         </code>
       );
@@ -3249,16 +3248,16 @@ class PreviewErrorBoundary extends Component<PreviewBoundaryProps, PreviewBounda
     const { labels, onClose } = this.props;
     return (
       <aside
-        className="fixed inset-0 z-[70] flex flex-col items-center justify-center gap-4 bg-[#050505] px-8 text-center lg:static lg:z-auto lg:h-full lg:w-[44%] lg:max-w-[680px] lg:min-w-[380px] lg:shrink-0 lg:border-l lg:border-white/[0.06]"
+        className="fixed inset-0 z-[70] flex flex-col items-center justify-center gap-4 bg-app-bg px-8 text-center lg:static lg:z-auto lg:h-full lg:w-[44%] lg:max-w-[680px] lg:min-w-[380px] lg:shrink-0 lg:border-l lg:border-app-border/15"
         aria-label={labels.workspace}
       >
-        <AlertCircle size={28} className="text-zinc-300" />
-        <p className="max-w-xs text-[13px] font-medium text-zinc-300">{labels.mediaUnavailable}</p>
+        <AlertCircle size={28} className="text-app-muted" />
+        <p className="max-w-xs text-[13px] font-medium text-app-muted">{labels.mediaUnavailable}</p>
         <div className="flex items-center gap-2">
           <button
             type="button"
             onClick={this.handleRetry}
-            className="inline-flex items-center gap-1.5 rounded-full border border-[#D4AF37]/40 bg-[#0A0A0A] px-3.5 py-1.5 text-[12px] transition hover:border-[#D4AF37] active:scale-95"
+            className="inline-flex items-center gap-1.5 rounded-full border border-[#D4AF37]/40 bg-app-surface px-3.5 py-1.5 text-[12px] transition hover:border-[#D4AF37] active:scale-95"
             style={{ color: '#D4AF37' }}
           >
             <RotateCcw size={13} /> {labels.retry}
@@ -3266,7 +3265,7 @@ class PreviewErrorBoundary extends Component<PreviewBoundaryProps, PreviewBounda
           <button
             type="button"
             onClick={onClose}
-            className="rounded-full border border-zinc-800 bg-zinc-900/60 px-3.5 py-1.5 text-[12px] text-zinc-300 transition hover:border-zinc-600 hover:text-zinc-100 active:scale-95"
+            className="rounded-full border border-app-border/15 bg-app-elevated px-3.5 py-1.5 text-[12px] text-app-muted transition hover:border-app-border/30 hover:text-app-text active:scale-95"
           >
             {labels.close}
           </button>
@@ -3587,13 +3586,13 @@ function PreviewWorkspace({
     const text = loadPhase === 'slow' ? labels.diagnosticsSlow : labels.diagnosticsLoading;
     return (
       <div className="absolute inset-0 z-0 flex items-center justify-center">
-        <div className="absolute inset-0 animate-pulse bg-gradient-to-br from-zinc-900/80 via-black to-zinc-900/50" />
+        <div className="absolute inset-0 animate-pulse bg-gradient-to-br from-app-elevated via-app-surface to-app-elevated" />
         <div className="relative flex flex-col items-center gap-2.5 px-6 text-center">
           <span
-            className="h-7 w-7 animate-spin rounded-full border-2 border-white/15"
+            className="h-7 w-7 animate-spin rounded-full border-2 border-app-border/30"
             style={{ borderTopColor: accent }}
           />
-          <span className="text-[12px] font-medium text-zinc-300">{text}</span>
+          <span className="text-[12px] font-medium text-app-muted">{text}</span>
         </div>
       </div>
     );
@@ -3602,16 +3601,16 @@ function PreviewWorkspace({
   const renderErrorCard = () => {
     if (!mediaError) return null;
     return (
-      <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/75">
+      <div className="absolute inset-0 z-20 flex items-center justify-center bg-app-surface/90">
         <div className="relative flex flex-col items-center gap-2.5 px-6 text-center">
-          <AlertCircle size={24} className="text-zinc-300" />
-          <span className="text-[12px] font-medium text-zinc-300">{labels.mediaUnavailable}</span>
+          <AlertCircle size={24} className="text-app-muted" />
+          <span className="text-[12px] font-medium text-app-muted">{labels.mediaUnavailable}</span>
           <div className="mt-1 flex items-center gap-2">
             {/* Primary: re-initialize the canvas in place (no download needed). */}
             <button
               type="button"
               onClick={() => { setMediaError(false); setMediaReady(false); setLoadPhase('loading'); setReloadNonce((n) => n + 1); }}
-              className="inline-flex items-center gap-1.5 rounded-full border border-[#D4AF37]/40 bg-[#0A0A0A] px-3 py-1 text-[11.5px] text-zinc-100 transition hover:border-[#D4AF37] active:scale-95"
+              className="inline-flex items-center gap-1.5 rounded-full border border-[#D4AF37]/40 bg-app-surface px-3 py-1 text-[11.5px] text-app-text transition hover:border-[#D4AF37] active:scale-95"
               style={{ color: '#D4AF37' }}
             >
               <RotateCcw size={13} /> {labels.retry}
@@ -3621,7 +3620,7 @@ function PreviewWorkspace({
               href={assetUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="rounded-full border border-zinc-800 bg-zinc-900/60 px-3 py-1 text-[11.5px] text-zinc-300 transition hover:border-zinc-600 hover:text-zinc-100"
+              className="rounded-full border border-app-border/15 bg-app-elevated px-3 py-1 text-[11.5px] text-app-muted transition hover:border-app-border/30 hover:text-app-text"
             >
               {labels.download}
             </a>
@@ -3640,25 +3639,25 @@ function PreviewWorkspace({
       animate={reduceMotion ? { opacity: 1 } : { x: 0, opacity: 1 }}
       exit={reduceMotion ? { opacity: 0 } : { x: '100%', opacity: 0 }}
       transition={{ type: 'spring', stiffness: 320, damping: 36 }}
-      className="fixed inset-0 z-[70] flex flex-col bg-[#050505] lg:static lg:z-auto lg:h-full lg:w-[44%] lg:max-w-[680px] lg:min-w-[380px] lg:shrink-0 lg:border-l lg:border-white/[0.06]"
+      className="fixed inset-0 z-[70] flex flex-col bg-app-bg lg:static lg:z-auto lg:h-full lg:w-[44%] lg:max-w-[680px] lg:min-w-[380px] lg:shrink-0 lg:border-l lg:border-app-border/15"
       aria-label={labels.workspace}
       data-testid="preview-workspace"
     >
       {/* Header: agent identity + close / download */}
       <div
-        className="flex items-center justify-between gap-2 border-b border-white/[0.06] px-3 py-2.5"
+        className="flex items-center justify-between gap-2 border-b border-app-border/15 px-3 py-2.5"
         style={{ paddingTop: 'calc(0.625rem + env(safe-area-inset-top, 0px))' }}
       >
         <div className="flex min-w-0 items-center gap-2">
           <span
-            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-white/10 text-[12px] font-bold"
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-app-border/15 text-[12px] font-bold"
             style={{ backgroundColor: `${agent.color}1f`, color: agent.color }}
           >
             {agent.codename}
           </span>
           <div className="min-w-0">
-            <p className="truncate text-[13px] font-semibold text-zinc-100">{agent.name[lang]}</p>
-            <p className="truncate text-[11px] text-zinc-500">{labels.workspace}</p>
+            <p className="truncate text-[13px] font-semibold text-app-text">{agent.name[lang]}</p>
+            <p className="truncate text-[11px] text-app-muted">{labels.workspace}</p>
           </div>
         </div>
         {/* One-Click Asset Extraction — premium action group: Direct Download +
@@ -3670,7 +3669,7 @@ function PreviewWorkspace({
             aria-label={labels.download}
             aria-busy={downloading}
             title={labels.download}
-            className="h-9 w-9 flex items-center justify-center rounded-full text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100 transition active:scale-95 disabled:opacity-70"
+            className="h-9 w-9 flex items-center justify-center rounded-full text-app-muted hover:bg-app-elevated/60 hover:text-app-text transition active:scale-95 disabled:opacity-70"
           >
             {downloading ? <Loader2 size={18} className="animate-spin" /> : <Download size={18} />}
           </button>
@@ -3680,18 +3679,18 @@ function PreviewWorkspace({
               aria-label={linkCopied ? labels.linkCopied : labels.copyLink}
               title={linkCopied ? labels.linkCopied : labels.copyLink}
               className={`h-9 w-9 flex items-center justify-center rounded-full transition active:scale-95 ${
-                linkCopied ? 'text-emerald-400 bg-emerald-500/10' : 'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100'
+                linkCopied ? 'text-emerald-400 bg-emerald-500/10' : 'text-app-muted hover:bg-app-elevated/60 hover:text-app-text'
               }`}
             >
               {linkCopied ? <Check size={18} /> : <Link2 size={18} />}
             </button>
           ) : null}
-          <span className="mx-0.5 h-5 w-px bg-white/10" aria-hidden />
+          <span className="mx-0.5 h-5 w-px bg-app-border/15" aria-hidden />
           <button
             onClick={onClose}
             aria-label={labels.close}
             title={labels.close}
-            className="h-9 w-9 flex items-center justify-center rounded-full text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100 transition active:scale-95"
+            className="h-9 w-9 flex items-center justify-center rounded-full text-app-muted hover:bg-app-elevated/60 hover:text-app-text transition active:scale-95"
           >
             <X size={18} />
           </button>
@@ -3700,16 +3699,16 @@ function PreviewWorkspace({
 
       {/* Aspect-ratio switcher — only meaningful for image / video. */}
       {showAspect ? (
-        <div className="flex items-center gap-2 border-b border-white/[0.04] px-3 py-2">
-          <span className="text-[11px] uppercase tracking-wide text-zinc-500">{labels.aspectLabel}</span>
-          <div className="flex items-center gap-1 rounded-full bg-zinc-900/80 p-0.5">
+        <div className="flex items-center gap-2 border-b border-app-border/10 px-3 py-2">
+          <span className="text-[11px] uppercase tracking-wide text-app-muted">{labels.aspectLabel}</span>
+          <div className="flex items-center gap-1 rounded-full bg-app-elevated p-0.5">
             {(['native', '9:16', '16:9'] as Aspect[]).map((a) => (
               <button
                 key={a}
                 onClick={() => setAspect(a)}
                 aria-pressed={aspect === a}
                 className={`rounded-full px-2.5 py-1 text-[11px] font-medium transition ${
-                  aspect === a ? 'bg-zinc-100 text-zinc-900' : 'text-zinc-400 hover:text-zinc-100'
+                  aspect === a ? 'bg-app-text text-app-bg' : 'text-app-muted hover:text-app-text'
                 }`}
               >
                 {a === 'native' ? labels.resetView : a}
@@ -3723,8 +3722,7 @@ function PreviewWorkspace({
       <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-3 py-3">
         {assetType === 'image' && !isRoom3D ? (
           <div
-            className={`relative w-full overflow-hidden rounded-2xl border border-[#D4AF37]/25 ${frameClass}`}
-            style={{ backgroundColor: '#0A0A0A' }}
+            className={`relative w-full overflow-hidden rounded-2xl border border-[#D4AF37]/25 bg-app-surface ${frameClass}`}
           >
             {renderLoadingBackdrop()}
             {/* v61 — native <img> mounted DIRECTLY from the raw `assetUrl` (no
@@ -3749,8 +3747,7 @@ function PreviewWorkspace({
 
         {assetType === 'video' ? (
           <div
-            className={`relative w-full overflow-hidden rounded-2xl border border-[#D4AF37]/25 transform-gpu ${videoFrameClass}`}
-            style={{ backgroundColor: '#0A0A0A' }}
+            className={`relative w-full overflow-hidden rounded-2xl border border-[#D4AF37]/25 bg-app-surface transform-gpu ${videoFrameClass}`}
           >
             {renderLoadingBackdrop()}
             {/* v62 — `src` directly on the <video> node (NOT a child <source>).
@@ -3792,7 +3789,7 @@ function PreviewWorkspace({
         ) : null}
 
         {isRoom3D ? (
-          <div className="overflow-hidden rounded-2xl border border-[#D4AF37]/25" style={{ backgroundColor: '#0A0A0A' }}>
+          <div className="overflow-hidden rounded-2xl border border-[#D4AF37]/25 bg-app-surface">
             <div className="relative aspect-[16/9] w-full">
               {renderLoadingBackdrop()}
               <iframe
@@ -3807,7 +3804,7 @@ function PreviewWorkspace({
               />
               {renderErrorCard()}
             </div>
-            <div className="flex items-center gap-2 px-3 py-2 text-[11.5px] text-zinc-400">
+            <div className="flex items-center gap-2 px-3 py-2 text-[11.5px] text-app-muted">
               <Box size={14} style={{ color: agent.color }} />
               <span>{labels.orbitHint}</span>
             </div>
@@ -3815,9 +3812,9 @@ function PreviewWorkspace({
         ) : null}
 
         {assetType === 'audio' ? (
-          <div className="w-full rounded-2xl border border-[#D4AF37]/25 p-4" style={{ backgroundColor: '#0A0A0A' }}>
-            <div className="flex items-center gap-2 pb-3 text-[13px] font-medium text-zinc-200">
-              <span className="flex h-8 w-8 items-center justify-center rounded-full bg-white/5">
+          <div className="w-full rounded-2xl border border-[#D4AF37]/25 bg-app-surface p-4">
+            <div className="flex items-center gap-2 pb-3 text-[13px] font-medium text-app-text">
+              <span className="flex h-8 w-8 items-center justify-center rounded-full bg-app-border/10">
                 <Volume2 size={18} style={{ color: accent }} />
               </span>
               <span>{agent.name[lang]}</span>
@@ -3841,25 +3838,25 @@ function PreviewWorkspace({
         ) : null}
 
         {/* Metadata layer */}
-        <div className="mt-3 space-y-2 rounded-2xl border border-white/[0.05] bg-[#080808] p-3">
-          <div className="flex items-center gap-2 text-[11px] uppercase tracking-wide text-zinc-500">
+        <div className="mt-3 space-y-2 rounded-2xl border border-app-border/15 bg-app-elevated p-3">
+          <div className="flex items-center gap-2 text-[11px] uppercase tracking-wide text-app-muted">
             <Sparkles size={12} /> <span>{labels.details}</span>
           </div>
           <dl className="space-y-1.5 text-[12.5px]">
             <div className="flex gap-2">
-              <dt className="w-16 shrink-0 text-zinc-500">{labels.agentLabel}</dt>
-              <dd className="min-w-0 text-zinc-200" style={{ color: agent.color }}>{agent.name[lang]}</dd>
+              <dt className="w-16 shrink-0 text-app-muted">{labels.agentLabel}</dt>
+              <dd className="min-w-0 text-app-text" style={{ color: agent.color }}>{agent.name[lang]}</dd>
             </div>
             {modelLabel ? (
               <div className="flex gap-2">
-                <dt className="w-16 shrink-0 text-zinc-500">Model</dt>
-                <dd className="min-w-0 break-words text-zinc-300">{modelLabel}</dd>
+                <dt className="w-16 shrink-0 text-app-muted">Model</dt>
+                <dd className="min-w-0 break-words text-app-muted">{modelLabel}</dd>
               </div>
             ) : null}
             {message.sourcePrompt ? (
               <div className="flex gap-2">
-                <dt className="w-16 shrink-0 text-zinc-500">{labels.promptLabel}</dt>
-                <dd className="min-w-0 break-words text-zinc-300">{message.sourcePrompt}</dd>
+                <dt className="w-16 shrink-0 text-app-muted">{labels.promptLabel}</dt>
+                <dd className="min-w-0 break-words text-app-muted">{message.sourcePrompt}</dd>
               </div>
             ) : null}
           </dl>
@@ -3868,14 +3865,14 @@ function PreviewWorkspace({
         {/* Refinement chips — prime the composer (no auto-send). */}
         {refinements && refinements.length ? (
           <div className="mt-3">
-            <p className="mb-1.5 text-[11px] uppercase tracking-wide text-zinc-500">{labels.refine}</p>
+            <p className="mb-1.5 text-[11px] uppercase tracking-wide text-app-muted">{labels.refine}</p>
             <div className="flex flex-wrap gap-1.5">
               {refinements.map((r) => (
                 <button
                   key={r.en}
                   type="button"
                   onClick={() => onRefine(r[lang])}
-                  className="rounded-full border border-zinc-800/80 bg-[#0a0a0a] px-3 py-1 text-[12px] font-medium text-zinc-300 transition hover:border-zinc-600/80 hover:text-zinc-100 active:scale-95"
+                  className="rounded-full border border-app-border/15 bg-app-surface px-3 py-1 text-[12px] font-medium text-app-muted transition hover:border-app-border/30 hover:text-app-text active:scale-95"
                 >
                   {r[lang]}
                 </button>
@@ -4138,22 +4135,22 @@ function MessageBubble({
         {showAgentChip ? (
           <div className="flex items-center gap-1.5 text-[11px]">
             <span
-              className="flex h-5 w-5 items-center justify-center rounded-md border border-white/10 text-[10px] font-bold leading-none"
+              className="flex h-5 w-5 items-center justify-center rounded-md border border-app-border/15 text-[10px] font-bold leading-none"
               style={{ backgroundColor: `${bubbleAgent.color}1f`, color: bubbleAgent.color }}
             >
               {bubbleAgent.codename}
             </span>
-            <span className="font-medium text-zinc-400">{bubbleAgent.name[lang]}</span>
+            <span className="font-medium text-app-muted">{bubbleAgent.name[lang]}</span>
           </div>
         ) : null}
         {message.text ? (
           <div
             className={
               isError
-                ? 'max-w-full min-w-0 overflow-hidden break-words rounded-2xl px-4 py-2.5 text-[15px] leading-relaxed tracking-[-0.01em] border border-rose-500/25 bg-rose-500/[0.05] text-rose-200'
+                ? 'max-w-full min-w-0 overflow-hidden break-words rounded-2xl px-4 py-2.5 text-[15px] leading-relaxed tracking-[-0.01em] border border-rose-500/25 bg-rose-500/[0.06] text-rose-600 dark:text-rose-200'
                 : isUser
-                ? 'max-w-full min-w-0 overflow-hidden break-words rounded-2xl px-4 py-2.5 text-[15px] leading-relaxed tracking-[-0.01em] bg-neutral-100 text-neutral-900'
-                : 'max-w-full min-w-0 overflow-hidden break-words rounded-2xl px-4 py-2.5 text-[15px] leading-relaxed tracking-[-0.01em] bg-neutral-900/80 border border-neutral-800 text-neutral-100'
+                ? 'max-w-full min-w-0 overflow-hidden break-words rounded-2xl px-4 py-2.5 text-[15px] leading-relaxed tracking-[-0.01em] bg-app-text text-app-bg'
+                : 'max-w-full min-w-0 overflow-hidden break-words rounded-2xl px-4 py-2.5 text-[15px] leading-relaxed tracking-[-0.01em] bg-app-surface border border-app-border/15 text-app-text'
             }
           >
             {!isUser && !isError
@@ -4171,7 +4168,7 @@ function MessageBubble({
               // affordance below still mounts the split-pane Preview Workspace.)
               onClick={() => setLightbox(true)}
               aria-label={expandLabel || 'Open full-size image'}
-              className="group relative block overflow-hidden rounded-2xl border border-zinc-800/70 bg-black max-w-full active:scale-[0.99] transition"
+              className="group relative block overflow-hidden rounded-2xl border border-app-border/15 bg-app-surface max-w-full active:scale-[0.99] transition"
             >
               <Image
                 src={message.assetUrl}
@@ -4189,14 +4186,14 @@ function MessageBubble({
             </button>
           ) : (
             // Lazy placeholder — reserves space (no CLS) until scrolled near.
-            <div className="h-48 w-64 max-w-full animate-pulse rounded-2xl border border-zinc-800/70 bg-zinc-900/60" aria-hidden />
+            <div className="h-48 w-64 max-w-full animate-pulse rounded-2xl border border-app-border/15 bg-app-elevated" aria-hidden />
           )
         ) : null}
         {message.assetUrl && message.assetType === 'video' ? (
           mediaInView ? (
             message.mode === 'avatar' ? (
               // Avatar → strict native 9:16 portrait stage (object-cover, premium framing).
-              <div className="aspect-[9/16] w-full max-w-[320px] rounded-2xl overflow-hidden border border-zinc-800/70 shadow-2xl bg-black">
+              <div className="aspect-[9/16] w-full max-w-[320px] rounded-2xl overflow-hidden border border-app-border/15 shadow-2xl bg-app-surface">
                 {/* v62 — direct `src` (not a typeless child <source>) so Safari/iOS
                     actually loads signed/extensionless avatar clips. */}
                 <video
@@ -4236,13 +4233,13 @@ function MessageBubble({
                 onLoadedData={() => setMediaReady(true)}
                 onCanPlay={() => setMediaReady(true)}
                 style={{ transform: 'translateZ(0)' }}
-                className={`rounded-2xl border border-zinc-800/70 max-w-full max-h-[320px] w-auto object-contain bg-black ${mediaFadeClass}`}
+                className={`rounded-2xl border border-app-border/15 max-w-full max-h-[320px] w-auto object-contain bg-app-surface ${mediaFadeClass}`}
               />
             )
           ) : (
             // Lazy placeholder — reserves portrait/landscape footprint until near.
             <div
-              className={`animate-pulse rounded-2xl border border-zinc-800/70 bg-zinc-900/60 ${
+              className={`animate-pulse rounded-2xl border border-app-border/15 bg-app-elevated ${
                 message.mode === 'avatar' ? 'aspect-[9/16] w-full max-w-[320px]' : 'h-48 w-72 max-w-full'
               }`}
               aria-hidden
@@ -4250,9 +4247,9 @@ function MessageBubble({
           )
         ) : null}
         {message.assetUrl && message.assetType === 'audio' ? (
-          <div className="w-full max-w-sm rounded-2xl border border-zinc-800/70 bg-[#0a0a0a] p-3">
-            <div className="flex items-center gap-2 pb-2 text-[12px] font-medium text-zinc-300">
-              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white/5">
+          <div className="w-full max-w-sm rounded-2xl border border-app-border/15 bg-app-surface p-3">
+            <div className="flex items-center gap-2 pb-2 text-[12px] font-medium text-app-muted">
+              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-app-border/10">
                 <Volume2 size={18} style={{ color: accent }} />
               </span>
               <span>Audio</span>
@@ -4276,7 +4273,7 @@ function MessageBubble({
         {/* Evicted-media hint — the asset was too large/ephemeral to persist
             (data:/blob: URL dropped on save); offer regeneration instead. */}
         {!message.assetUrl && message.assetEvicted && mediaExpiredLabel ? (
-          <div className="flex items-center gap-2 rounded-2xl border border-zinc-800/70 bg-[#0a0a0a] px-3 py-2.5 text-[12px] text-zinc-400">
+          <div className="flex items-center gap-2 rounded-2xl border border-app-border/15 bg-app-surface px-3 py-2.5 text-[12px] text-app-muted">
             <Film size={14} className="opacity-60" />
             <span>{mediaExpiredLabel}</span>
           </div>
@@ -4326,7 +4323,7 @@ function MessageBubble({
                 key={r.en}
                 type="button"
                 onClick={() => onRefine(r[lang])}
-                className="rounded-full border border-zinc-800/80 bg-[#0a0a0a] px-3 py-1 text-[12px] font-medium text-zinc-300 transition hover:border-zinc-600/80 hover:text-zinc-100 active:scale-95"
+                className="rounded-full border border-app-border/15 bg-app-surface px-3 py-1 text-[12px] font-medium text-app-muted transition hover:border-app-border/30 hover:text-app-text active:scale-95"
               >
                 {r[lang]}
               </button>
@@ -4336,13 +4333,13 @@ function MessageBubble({
 
         {/* Executive toolbar — assistant messages only */}
         {!isUser && !isError ? (
-          <div className="flex flex-wrap items-center gap-1.5 mt-1 text-neutral-500">
+          <div className="flex flex-wrap items-center gap-1.5 mt-1 text-app-muted">
             <button
               onClick={() => handleFeedback('up')}
               aria-label="Good response"
               aria-pressed={feedback === 'up'}
               className={`h-9 w-9 flex items-center justify-center rounded-full transition-all duration-200 active:scale-90 ${
-                feedback === 'up' ? 'text-emerald-400 bg-emerald-500/10 scale-110' : 'text-neutral-500 hover:bg-neutral-800 hover:text-neutral-200'
+                feedback === 'up' ? 'text-emerald-400 bg-emerald-500/10 scale-110' : 'text-app-muted hover:bg-app-elevated/60 hover:text-app-text'
               }`}
             >
               <ThumbsUp size={18} fill={feedback === 'up' ? 'currentColor' : 'none'} />
@@ -4352,7 +4349,7 @@ function MessageBubble({
               aria-label="Poor response"
               aria-pressed={feedback === 'down'}
               className={`h-9 w-9 flex items-center justify-center rounded-full transition-all duration-200 active:scale-90 ${
-                feedback === 'down' ? 'text-rose-400 bg-rose-500/10 scale-110' : 'text-neutral-500 hover:bg-neutral-800 hover:text-neutral-200'
+                feedback === 'down' ? 'text-rose-400 bg-rose-500/10 scale-110' : 'text-app-muted hover:bg-app-elevated/60 hover:text-app-text'
               }`}
             >
               <ThumbsDown size={18} fill={feedback === 'down' ? 'currentColor' : 'none'} />
@@ -4366,7 +4363,7 @@ function MessageBubble({
                 aria-busy={ttsState === 'loading'}
                 title={ttsState === 'playing' ? ttsLabels.pause : ttsLabels.readAloud}
                 className={`h-9 w-9 flex items-center justify-center rounded-full transition-all duration-200 active:scale-90 ${
-                  ttsState !== 'idle' ? 'text-neutral-100 bg-neutral-800' : 'text-neutral-500 hover:bg-neutral-800 hover:text-neutral-200'
+                  ttsState !== 'idle' ? 'text-app-text bg-app-elevated' : 'text-app-muted hover:bg-app-elevated/60 hover:text-app-text'
                 }`}
               >
                 {ttsState === 'loading' ? <Loader2 size={18} className="animate-spin" />
@@ -4378,7 +4375,7 @@ function MessageBubble({
               <button
                 onClick={() => onPlayAudio(message.assetUrl!)}
                 aria-label="Play audio"
-                className="h-9 w-9 flex items-center justify-center rounded-full text-neutral-500 hover:bg-neutral-800 hover:text-neutral-200 transition-all duration-200 active:scale-95"
+                className="h-9 w-9 flex items-center justify-center rounded-full text-app-muted hover:bg-app-elevated/60 hover:text-app-text transition-all duration-200 active:scale-95"
                 style={{ color: accent }}
               >
                 <Volume2 size={18} />
@@ -4388,7 +4385,7 @@ function MessageBubble({
               <button
                 onClick={togglePiP}
                 aria-label="Picture in picture"
-                className="h-9 w-9 flex items-center justify-center rounded-full text-neutral-500 hover:bg-neutral-800 hover:text-neutral-200 transition-all duration-200 active:scale-95"
+                className="h-9 w-9 flex items-center justify-center rounded-full text-app-muted hover:bg-app-elevated/60 hover:text-app-text transition-all duration-200 active:scale-95"
               >
                 <PictureInPicture2 size={18} />
               </button>
@@ -4398,7 +4395,7 @@ function MessageBubble({
                 onClick={() => onExpand(message)}
                 aria-label={expandLabel || 'Expand to workspace'}
                 title={expandLabel || 'Expand to workspace'}
-                className="h-9 w-9 flex items-center justify-center rounded-full text-neutral-500 hover:bg-neutral-800 hover:text-neutral-200 transition-all duration-200 active:scale-95"
+                className="h-9 w-9 flex items-center justify-center rounded-full text-app-muted hover:bg-app-elevated/60 hover:text-app-text transition-all duration-200 active:scale-95"
               >
                 <Maximize2 size={18} />
               </button>
@@ -4407,7 +4404,7 @@ function MessageBubble({
               <button
                 onClick={downloadAsset}
                 aria-label="Download media"
-                className="h-9 w-9 flex items-center justify-center rounded-full text-neutral-500 hover:bg-neutral-800 hover:text-neutral-200 transition-all duration-200 active:scale-95"
+                className="h-9 w-9 flex items-center justify-center rounded-full text-app-muted hover:bg-app-elevated/60 hover:text-app-text transition-all duration-200 active:scale-95"
               >
                 <Download size={18} />
               </button>
@@ -4416,7 +4413,7 @@ function MessageBubble({
               <button
                 onClick={copyMessageText}
                 aria-label="Copy response"
-                className="h-9 w-9 flex items-center justify-center rounded-full text-neutral-500 hover:bg-neutral-800 hover:text-neutral-200 transition-all duration-200 active:scale-95"
+                className="h-9 w-9 flex items-center justify-center rounded-full text-app-muted hover:bg-app-elevated/60 hover:text-app-text transition-all duration-200 active:scale-95"
               >
                 {copiedText ? <Check size={18} className="text-emerald-400" /> : <Copy size={18} />}
               </button>
@@ -4425,7 +4422,7 @@ function MessageBubble({
               <button
                 onClick={onRegenerate}
                 aria-label="Regenerate"
-                className="h-9 w-9 flex items-center justify-center rounded-full text-neutral-500 hover:bg-neutral-800 hover:text-neutral-200 transition-all duration-200 active:scale-95"
+                className="h-9 w-9 flex items-center justify-center rounded-full text-app-muted hover:bg-app-elevated/60 hover:text-app-text transition-all duration-200 active:scale-95"
               >
                 <RotateCcw size={18} />
               </button>
@@ -4433,7 +4430,7 @@ function MessageBubble({
             {/* Token/cost transparency — minimalist processing-mode indicator */}
             {modelLabel ? (
               <span
-                className="ml-0.5 inline-flex items-center gap-1 h-6 rounded-full px-2 text-[10.5px] font-medium text-neutral-500 select-none"
+                className="ml-0.5 inline-flex items-center gap-1 h-6 rounded-full px-2 text-[10.5px] font-medium text-app-muted select-none"
                 title={message.model}
               >
                 <Sparkles size={11} className="opacity-70" />
@@ -4445,18 +4442,18 @@ function MessageBubble({
 
         {/* User controls — discreet Edit (branch the prompt) + Copy */}
         {isUser && message.text ? (
-          <div className="flex items-center gap-1 mt-0.5 text-neutral-600 opacity-0 transition-opacity duration-200 group-hover:opacity-100 focus-within:opacity-100">
+          <div className="flex items-center gap-1 mt-0.5 text-app-muted opacity-0 transition-opacity duration-200 group-hover:opacity-100 focus-within:opacity-100">
             <button
               onClick={() => onEdit(message.text)}
               aria-label="Edit prompt"
-              className="h-8 w-8 flex items-center justify-center rounded-full text-neutral-500 hover:bg-neutral-800 hover:text-neutral-200 transition-all duration-200 active:scale-95"
+              className="h-8 w-8 flex items-center justify-center rounded-full text-app-muted hover:bg-app-elevated/60 hover:text-app-text transition-all duration-200 active:scale-95"
             >
               <Pencil size={15} />
             </button>
             <button
               onClick={copyMessageText}
               aria-label="Copy prompt"
-              className="h-8 w-8 flex items-center justify-center rounded-full text-neutral-500 hover:bg-neutral-800 hover:text-neutral-200 transition-all duration-200 active:scale-95"
+              className="h-8 w-8 flex items-center justify-center rounded-full text-app-muted hover:bg-app-elevated/60 hover:text-app-text transition-all duration-200 active:scale-95"
             >
               {copiedText ? <Check size={15} className="text-emerald-400" /> : <Copy size={15} />}
             </button>
@@ -4480,7 +4477,7 @@ function FilmLegGlyph({ state, accent, size = 14 }: { state: StageState; accent:
   if (state === 'done') return <Check size={size} className="text-emerald-400" />;
   if (state === 'active') return <Loader2 size={size} className="animate-spin" style={{ color: accent }} />;
   if (state === 'failed') return <AlertCircle size={size} className="text-rose-400" />;
-  return <Circle size={Math.round(size * 0.64)} className="text-neutral-600" />;
+  return <Circle size={Math.round(size * 0.64)} className="text-app-muted/60" />;
 }
 
 function FilmStoryboardSkeleton({
@@ -4533,32 +4530,32 @@ function FilmStoryboardSkeleton({
       animate={reduceMotion ? { opacity: 1 } : { x: 0, opacity: 1 }}
       exit={reduceMotion ? { opacity: 0 } : { x: '100%', opacity: 0 }}
       transition={{ type: 'spring', stiffness: 320, damping: 36 }}
-      className="fixed inset-0 z-[70] flex flex-col bg-[#050505] lg:static lg:z-auto lg:h-full lg:w-[44%] lg:max-w-[680px] lg:min-w-[380px] lg:shrink-0 lg:border-l lg:border-white/[0.06]"
+      className="fixed inset-0 z-[70] flex flex-col bg-app-bg lg:static lg:z-auto lg:h-full lg:w-[44%] lg:max-w-[680px] lg:min-w-[380px] lg:shrink-0 lg:border-l lg:border-app-border/15"
       aria-label={labels.storyboard}
       aria-busy
     >
       {/* Header — film identity + live scene progress */}
       <div
-        className="flex items-center justify-between gap-2 border-b border-white/[0.06] px-3 py-2.5"
+        className="flex items-center justify-between gap-2 border-b border-app-border/15 px-3 py-2.5"
         style={{ paddingTop: 'calc(0.625rem + env(safe-area-inset-top, 0px))' }}
       >
         <div className="flex min-w-0 items-center gap-2">
           <span
-            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-white/10"
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-app-border/15"
             style={{ backgroundColor: `${accent}1f`, color: accent }}
           >
             <Film size={15} />
           </span>
           <div className="min-w-0">
-            <p className="truncate text-[13px] font-semibold text-zinc-100">{labels.storyboard}</p>
-            <p className="truncate text-[11px] text-zinc-500 tabular-nums">{doneCount}/{total} · {labels.scene}</p>
+            <p className="truncate text-[13px] font-semibold text-app-text">{labels.storyboard}</p>
+            <p className="truncate text-[11px] text-app-muted tabular-nums">{doneCount}/{total} · {labels.scene}</p>
           </div>
         </div>
-        <Loader2 size={16} className="animate-spin text-zinc-500" />
+        <Loader2 size={16} className="animate-spin text-app-muted" />
       </div>
 
       {/* PHASE 55 §1 — whole-film linear tracking bar + live numeric percentage. */}
-      <div className="border-b border-white/[0.06] px-3 py-2.5">
+      <div className="border-b border-app-border/15 px-3 py-2.5">
         <PercentBar pct={filmPct} accent={accent} failed={isDegraded} />
       </div>
 
@@ -4566,7 +4563,7 @@ function FilmStoryboardSkeleton({
           three beats narrate the Nano Banano → Director (LTX) → Editor (Udio +
           ElevenLabs) handoff, switching as real pipeline state advances. */}
       <div
-        className={`flex items-center gap-2 border-b border-white/[0.06] px-3 py-2 ${isDegraded ? 'bg-amber-500/[0.06]' : 'bg-white/[0.02]'}`}
+        className={`flex items-center gap-2 border-b border-app-border/15 px-3 py-2 ${isDegraded ? 'bg-amber-500/[0.06]' : 'bg-app-elevated'}`}
         aria-live="polite"
         aria-atomic
       >
@@ -4582,7 +4579,7 @@ function FilmStoryboardSkeleton({
             animate={reduceMotion ? { opacity: 1 } : { opacity: 1, y: 0 }}
             exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: -4 }}
             transition={{ duration: 0.28 }}
-            className={`min-w-0 flex-1 truncate text-[11.5px] font-medium leading-5 ${isDegraded ? 'text-amber-300' : 'text-zinc-300'}`}
+            className={`min-w-0 flex-1 truncate text-[11.5px] font-medium leading-5 ${isDegraded ? 'text-amber-300' : 'text-app-muted'}`}
           >
             {dialogueLine}
           </motion.p>
@@ -4601,10 +4598,10 @@ function FilmStoryboardSkeleton({
             const recovered = s.recovered === true;
             const frame =
               st === 'done' ? (recovered ? 'border-amber-400/40 bg-amber-400/[0.05]' : 'border-emerald-500/40 bg-emerald-500/[0.05]')
-              : st === 'active' ? 'border-white/[0.12] bg-neutral-900'
+              : st === 'active' ? 'border-app-border/20 bg-app-elevated'
               : st === 'failed' ? 'border-rose-500/40 bg-rose-500/[0.05]'
-              : st === 'skipped' ? 'border-white/[0.06] bg-neutral-950 opacity-50'
-              : 'border-dashed border-white/10 bg-neutral-950';
+              : st === 'skipped' ? 'border-app-border/10 bg-app-surface opacity-50'
+              : 'border-dashed border-app-border/15 bg-app-surface';
             return (
               <motion.div
                 key={s.key}
@@ -4677,7 +4674,7 @@ function FilmStoryboardSkeleton({
                 </AnimatePresence>
 
                 {/* scene ordinal badge */}
-                <span className="absolute left-2.5 top-2 z-10 text-[11px] font-bold tabular-nums tracking-wide text-zinc-300 mix-blend-plus-lighter">
+                <span className="absolute left-2.5 top-2 z-10 text-[11px] font-bold tabular-nums tracking-wide text-zinc-300">
                   {String(ordinal).padStart(2, '0')}
                 </span>
 
@@ -4701,16 +4698,16 @@ function FilmStoryboardSkeleton({
 
       {/* Footer — Editor (stitch) leg + cohesive Score leg. */}
       <div
-        className="border-t border-white/[0.06] px-3 py-2.5"
+        className="border-t border-app-border/15 px-3 py-2.5"
         style={{ paddingBottom: 'calc(0.625rem + env(safe-area-inset-bottom, 0px))' }}
       >
         <div className="flex items-center gap-2 text-[12px]">
           <span className="flex h-4 w-4 items-center justify-center flex-shrink-0">
             <FilmLegGlyph state={stitch?.state ?? 'pending'} accent={accent} />
           </span>
-          <span className="text-zinc-400">{labels.stitching}</span>
+          <span className="text-app-muted">{labels.stitching}</span>
           {score && score.state !== 'skipped' ? (
-            <span className="ml-auto flex items-center gap-1.5 text-zinc-500">
+            <span className="ml-auto flex items-center gap-1.5 text-app-muted">
               <Music size={12} />
               <FilmLegGlyph state={score.state} accent={accent} size={13} />
             </span>
@@ -4784,7 +4781,7 @@ function PercentBar({ pct, accent, failed = false }: { pct: number; accent: stri
   return (
     <div className="flex items-center gap-2.5">
       <div
-        className="relative h-1.5 flex-1 overflow-hidden rounded-full bg-neutral-800"
+        className="relative h-1.5 flex-1 overflow-hidden rounded-full bg-app-elevated"
         role="progressbar"
         aria-valuemin={0}
         aria-valuemax={100}
@@ -4826,7 +4823,7 @@ function PipelineTelemetry({
     // hairline Metallic Gold (#D4AF37) border as the shaped MediaSkeleton, so the
     // whole render-status surface (Pending → Generating → Stitched) reads as one
     // luxury loading language.
-    <div className="w-full max-w-sm rounded-2xl border border-[#D4AF37]/25 bg-[#0A0A0A] p-3 flex flex-col gap-3">
+    <div className="w-full max-w-sm rounded-2xl border border-[#D4AF37]/25 bg-app-surface p-3 flex flex-col gap-3">
       {/* PHASE 55 §1 — single sleek linear tracking bar + live numeric percentage,
           asymptotically tied to genuine lifecycle phases (useSmoothProgress). */}
       <PercentBar pct={pct} accent={accent} failed={failed} />
@@ -4835,10 +4832,10 @@ function PipelineTelemetry({
       <div className="flex flex-col gap-2">
         {visible.map((s) => {
           const labelColor =
-            s.state === 'done' ? 'text-neutral-300'
-            : s.state === 'active' ? 'text-neutral-100'
-            : s.state === 'failed' ? 'text-rose-300'
-            : 'text-neutral-500';
+            s.state === 'done' ? 'text-app-muted'
+            : s.state === 'active' ? 'text-app-text'
+            : s.state === 'failed' ? 'text-rose-400'
+            : 'text-app-muted';
           return (
             <div key={s.key} className="flex items-center gap-2.5 text-[12px]">
               <span className="flex h-4 w-4 items-center justify-center flex-shrink-0">
@@ -4849,7 +4846,7 @@ function PipelineTelemetry({
                 ) : s.state === 'failed' ? (
                   <AlertCircle size={14} className="text-rose-400" />
                 ) : (
-                  <Circle size={9} className="text-neutral-600" />
+                  <Circle size={9} className="text-app-muted/60" />
                 )}
               </span>
               <span className={`leading-tight ${labelColor}`}>{s.label[lang]}</span>
@@ -4870,7 +4867,7 @@ function MediaSkeleton({ mode, accent }: { mode: ServiceMode; accent: string }) 
   // shimmering skeleton framed in solid Obsidian Black (#0A0A0A) with a hairline
   // Metallic Gold (#D4AF37) border. `obsidian` = surface + hairline; `shimmer` =
   // the gold light-sweep overlay (reuses the shipped `shimmer` keyframe).
-  const obsidian = 'bg-[#0A0A0A] border border-[#D4AF37]/25';
+  const obsidian = 'bg-app-surface border border-[#D4AF37]/25';
   const shimmer =
     'relative overflow-hidden before:absolute before:inset-0 before:-translate-x-full before:animate-[shimmer_1.6s_infinite] before:bg-gradient-to-r before:from-transparent before:via-[#D4AF37]/15 before:to-transparent';
 
@@ -4891,7 +4888,7 @@ function MediaSkeleton({ mode, accent }: { mode: ServiceMode; accent: string }) 
   if (mode === 'music' || mode === 'voice') {
     return (
       <div className={`w-full max-w-sm rounded-2xl p-3 ${obsidian}`}>
-        <div className="flex items-center gap-2 pb-2 text-[12px] text-zinc-400">
+        <div className="flex items-center gap-2 pb-2 text-[12px] text-app-muted">
           <Loader2 className="w-3.5 h-3.5 animate-spin" style={{ color: accent }} />
           <span>{mode === 'voice' ? 'Synthesizing voice…' : 'Composing…'}</span>
         </div>

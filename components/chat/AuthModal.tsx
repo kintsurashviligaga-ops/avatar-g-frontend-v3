@@ -178,7 +178,7 @@ export default function AuthModal({ open, locale, onClose, onAuthed }: AuthModal
     }
   }, [mode, email, password, name, locale, t, onAuthed, onClose, reset]);
 
-  const inputCls = 'w-full bg-white/[0.04] border border-white/[0.12] rounded-xl pl-10 pr-3 py-3 text-[14px] text-white placeholder:text-white/35 outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent transition-all';
+  const inputCls = 'w-full bg-app-elevated border border-app-border/15 rounded-xl pl-10 pr-3 py-3 text-[14px] text-app-text placeholder:text-app-muted outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent transition-all';
   const title = mode === 'login' ? t.login : mode === 'register' ? t.register : mode === 'reset' ? t.reset : t.magic;
   const cta = mode === 'login' ? t.loginCta : mode === 'register' ? t.registerCta : mode === 'reset' ? t.resetCta : t.magicCta;
 
@@ -200,13 +200,13 @@ export default function AuthModal({ open, locale, onClose, onAuthed }: AuthModal
             exit={{ opacity: 0, scale: 0.96, y: 12 }}
             transition={{ type: 'spring', stiffness: 360, damping: 30 }}
             onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-[400px] rounded-3xl bg-black border border-white/[0.12] p-6 shadow-[0_30px_90px_-20px_rgba(56,189,248,0.35)]"
+            className="w-full max-w-[400px] rounded-3xl bg-app-surface border border-app-border/15 p-6 shadow-[0_30px_90px_-20px_rgba(56,189,248,0.35)]"
           >
             <div className="flex items-center justify-between mb-5">
               <div className="flex items-center gap-2">
                 {mode === 'reset' || mode === 'magic' ? (
                   <button type="button" onClick={() => { setMode('login'); reset(); }} aria-label={t.back}
-                    className="h-8 w-8 rounded-full hover:bg-white/[0.08] flex items-center justify-center text-white/60">
+                    className="h-8 w-8 rounded-full hover:bg-app-border/10 flex items-center justify-center text-app-muted">
                     <ArrowLeft size={16} />
                   </button>
                 ) : (
@@ -214,10 +214,10 @@ export default function AuthModal({ open, locale, onClose, onAuthed }: AuthModal
                     <Sparkles size={15} className="text-white" />
                   </span>
                 )}
-                <h2 className="text-[17px] font-bold text-white tracking-tight">{title}</h2>
+                <h2 className="text-[17px] font-bold text-app-text tracking-tight">{title}</h2>
               </div>
               <button type="button" onClick={onClose} aria-label="Close"
-                className="h-8 w-8 rounded-full hover:bg-white/[0.08] flex items-center justify-center text-white/60">
+                className="h-8 w-8 rounded-full hover:bg-app-border/10 flex items-center justify-center text-app-muted">
                 <X size={16} />
               </button>
             </div>
@@ -226,10 +226,10 @@ export default function AuthModal({ open, locale, onClose, onAuthed }: AuthModal
             {(mode === 'login' || mode === 'register') && (
               <>
                 <LoginCard locale={locale} redirectTo={`/${locale}/dashboard`} className="mb-1" />
-                <div className="my-3 flex items-center gap-3 text-[11px] uppercase tracking-wider text-white/35">
-                  <span className="h-px flex-1 bg-white/[0.10]" />
+                <div className="my-3 flex items-center gap-3 text-[11px] uppercase tracking-wider text-app-muted">
+                  <span className="h-px flex-1 bg-app-border/15" />
                   {t.orContinue}
-                  <span className="h-px flex-1 bg-white/[0.10]" />
+                  <span className="h-px flex-1 bg-app-border/15" />
                 </div>
               </>
             )}
@@ -237,23 +237,23 @@ export default function AuthModal({ open, locale, onClose, onAuthed }: AuthModal
             <form onSubmit={submit} className="space-y-3">
               {mode === 'register' && (
                 <div className="relative">
-                  <Sparkles size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/35" />
+                  <Sparkles size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-app-muted" />
                   <input value={name} onChange={(e) => setName(e.target.value)} placeholder={t.name} className={inputCls} autoComplete="name" />
                 </div>
               )}
               <div className="relative">
-                <Mail size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/35" />
+                <Mail size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-app-muted" />
                 <input value={email} onChange={(e) => setEmail(e.target.value)} type="email" required placeholder={t.email} className={inputCls} autoComplete="email" />
               </div>
               {(mode === 'login' || mode === 'register') && (
                 <div className="relative">
-                  <Lock size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/35" />
+                  <Lock size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-app-muted" />
                   <input value={password} onChange={(e) => setPassword(e.target.value)} type="password" required minLength={6} placeholder={t.password} className={inputCls} autoComplete={mode === 'login' ? 'current-password' : 'new-password'} />
                 </div>
               )}
 
-              {error && <p className="text-[12px] text-rose-300 px-1">{error}</p>}
-              {notice && <p className="text-[12px] text-emerald-300 px-1">{notice}</p>}
+              {error && <p className="text-[12px] text-rose-600 dark:text-rose-300 px-1">{error}</p>}
+              {notice && <p className="text-[12px] text-emerald-600 dark:text-emerald-300 px-1">{notice}</p>}
 
               <motion.button
                 type="submit"
@@ -271,25 +271,25 @@ export default function AuthModal({ open, locale, onClose, onAuthed }: AuthModal
             <div className="mt-4 space-y-2 text-center text-[12px]">
               {mode === 'login' && (
                 <>
-                  <button type="button" onClick={() => { setMode('magic'); reset(); }} className="block w-full text-sky-300 hover:text-sky-200 transition">{t.useMagic}</button>
-                  <div className="flex items-center justify-center gap-3 text-white/45">
-                    <button type="button" onClick={() => { setMode('reset'); reset(); }} className="hover:text-white/70 transition">{t.forgot}</button>
+                  <button type="button" onClick={() => { setMode('magic'); reset(); }} className="block w-full text-sky-500 dark:text-sky-300 hover:text-sky-400 dark:hover:text-sky-200 transition">{t.useMagic}</button>
+                  <div className="flex items-center justify-center gap-3 text-app-muted">
+                    <button type="button" onClick={() => { setMode('reset'); reset(); }} className="hover:text-app-text transition">{t.forgot}</button>
                     <span aria-hidden>·</span>
-                    <button type="button" onClick={() => { setMode('register'); reset(); }} className="hover:text-white/70 transition">{t.noAccount}</button>
+                    <button type="button" onClick={() => { setMode('register'); reset(); }} className="hover:text-app-text transition">{t.noAccount}</button>
                   </div>
                 </>
               )}
               {mode === 'register' && (
-                <button type="button" onClick={() => { setMode('login'); reset(); }} className="text-white/55 hover:text-white/80 transition">{t.haveAccount} <span className="text-sky-300">{t.login}</span></button>
+                <button type="button" onClick={() => { setMode('login'); reset(); }} className="text-app-muted hover:text-app-text transition">{t.haveAccount} <span className="text-sky-500 dark:text-sky-300">{t.login}</span></button>
               )}
               {mode === 'magic' && (
-                <button type="button" onClick={() => { setMode('login'); reset(); }} className="text-white/55 hover:text-white/80 transition">{t.usePassword}</button>
+                <button type="button" onClick={() => { setMode('login'); reset(); }} className="text-app-muted hover:text-app-text transition">{t.usePassword}</button>
               )}
             </div>
 
             {/* Official support node */}
-            <div className="mt-4 pt-3 border-t border-white/[0.06] text-center text-[11px] text-white/35">
-              <a href={buildSupportMailto({ subject: 'MyAvatar.ge — help' })} className="hover:text-sky-300 transition">
+            <div className="mt-4 pt-3 border-t border-app-border/10 text-center text-[11px] text-app-muted">
+              <a href={buildSupportMailto({ subject: 'MyAvatar.ge — help' })} className="hover:text-sky-500 dark:hover:text-sky-300 transition">
                 {SUPPORT_EMAIL}
               </a>
             </div>
