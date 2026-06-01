@@ -89,6 +89,7 @@ import {
 } from 'lucide-react';
 import Image from 'next/image';
 import { BalanceChip, WalletRefillModal } from '@/components/chat/WalletRefill';
+import { ThemeToggle } from '@/components/ThemeToggle';
 import { formatGEL } from '@/lib/billing/gel';
 import { CameraModal } from '@/components/service-chat/CameraModal';
 import AuthModal from '@/components/chat/AuthModal';
@@ -1833,7 +1834,7 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
       onDragOver={onDragOver}
       onDragLeave={onDragLeave}
       onDrop={onDrop}
-      className="fixed inset-x-0 top-0 z-[5] flex bg-[#030303] text-zinc-100 antialiased overflow-hidden"
+      className="fixed inset-x-0 top-0 z-[5] flex bg-app-bg text-app-text antialiased overflow-hidden"
       style={{ height: keyboardOffset > 0 ? `calc(100dvh - ${keyboardOffset}px)` : '100dvh' }}
     >
       {/* ── Chat column (Left: stream) ─────────────────────────────────
@@ -1843,7 +1844,7 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
       <div className="flex flex-col flex-1 min-w-0 h-full">
       {/* ── Top bar ────────────────────────────────────────────────── */}
       <header
-        className="flex items-center justify-between px-3 py-2 border-b border-white/[0.05] bg-[#030303]/95 backdrop-blur-md"
+        className="flex items-center justify-between px-3 py-2 border-b border-app-border/[0.06] bg-app-bg/95 backdrop-blur-md"
         style={{ paddingTop: 'calc(0.5rem + env(safe-area-inset-top, 0px))' }}
       >
         {/* Hamburger → conversation drawer · New chat → clears context */}
@@ -1851,7 +1852,7 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
           <button
             onClick={() => setHistoryOpen(true)}
             aria-label={copy.menu}
-            className="h-9 w-9 rounded-full flex items-center justify-center text-zinc-300 hover:text-zinc-50 hover:bg-zinc-900 transition active:scale-95"
+            className="h-9 w-9 rounded-full flex items-center justify-center text-app-muted hover:text-app-text hover:bg-app-elevated/60 transition active:scale-95"
           >
             <Menu size={18} />
           </button>
@@ -1859,7 +1860,7 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
             onClick={startNewChat}
             aria-label={xc.newChat}
             title={xc.newChat}
-            className="h-9 w-9 rounded-full flex items-center justify-center text-zinc-300 hover:text-zinc-50 hover:bg-zinc-900 transition active:scale-95"
+            className="h-9 w-9 rounded-full flex items-center justify-center text-app-muted hover:text-app-text hover:bg-app-elevated/60 transition active:scale-95"
           >
             <PenSquare size={18} />
           </button>
@@ -1868,12 +1869,18 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
         <BalanceChip balanceGel={balanceGel} onClick={() => setWalletOpen(true)} />
 
         <div className="flex items-center gap-1">
+          {/* Dark / light theme toggle */}
+          <ThemeToggle
+            label={lang === 'ka' ? 'თემის გადართვა' : lang === 'ru' ? 'Сменить тему' : 'Toggle theme'}
+            className="h-9 w-9 rounded-full flex items-center justify-center transition active:scale-95 text-app-muted hover:text-app-text hover:bg-app-elevated/60"
+          />
+
           {/* Settings gear → full Settings & Profile modal */}
           <button
             onClick={() => setSettingsOpen(true)}
             aria-label={copy.settings}
             aria-haspopup="dialog"
-            className="h-9 w-9 rounded-full flex items-center justify-center transition active:scale-95 text-zinc-300 hover:text-zinc-50 hover:bg-zinc-900"
+            className="h-9 w-9 rounded-full flex items-center justify-center transition active:scale-95 text-app-muted hover:text-app-text hover:bg-app-elevated/60"
           >
             <Settings size={18} />
           </button>
@@ -1882,14 +1889,14 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
             <button
               onClick={handleSignOut}
               aria-label={copy.signOut}
-              className="h-9 px-3 rounded-full flex items-center gap-2 text-[12px] font-medium text-zinc-300 hover:text-zinc-50 hover:bg-zinc-900 transition active:scale-95"
+              className="h-9 px-3 rounded-full flex items-center gap-2 text-[12px] font-medium text-app-muted hover:text-app-text hover:bg-app-elevated/60 transition active:scale-95"
             >
               <LogOut size={14} /> <span className="hidden sm:inline">{userName}</span>
             </button>
           ) : (
             <button
               onClick={() => setAuthOpen(true)}
-              className="h-9 px-4 rounded-full flex items-center gap-2 text-[12px] font-semibold border border-zinc-700/70 bg-[#070707] text-zinc-100 hover:border-zinc-500/80 transition active:scale-95"
+              className="h-9 px-4 rounded-full flex items-center gap-2 text-[12px] font-semibold border border-app-border/30 bg-app-surface text-app-text hover:border-app-border/50 transition active:scale-95"
             >
               {copy.signIn}
             </button>
@@ -2206,7 +2213,7 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
               border that only brightens subtly on focus — matching Gemini's clean
               aesthetic. The active engine is now communicated by the selection
               dropdown chip above, not by a coloured glow around the whole bar. */}
-          <div className="rounded-3xl border border-white/[0.07] bg-[#0a0a0a] transition-colors focus-within:border-white/20">
+          <div className="rounded-3xl border border-app-border/[0.08] bg-app-surface transition-colors focus-within:border-app-border/25">
             {/* ── PHASE 54 §1 — Flagship "30-Second Film" CTA (SANITIZED) ───
                 NEON PURGE: the prior cyan gradient, multi-layer glow shadows,
                 cyan ring, and animated hover sheen-sweep are all removed. This
@@ -2219,17 +2226,17 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
                 type="button"
                 onClick={startFilmFlagship}
                 aria-label={FILM_FLAGSHIP.title[lang]}
-                className="w-full rounded-xl px-3.5 py-2.5 flex items-center gap-3 text-left border border-white/10 bg-white/[0.03] hover:bg-white/[0.06] hover:border-white/20 transition-colors active:scale-[0.99]"
+                className="w-full rounded-xl px-3.5 py-2.5 flex items-center gap-3 text-left border border-app-border/10 bg-app-border/[0.03] hover:bg-app-border/[0.06] hover:border-app-border/20 transition-colors active:scale-[0.99]"
               >
-                <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/[0.04]">
-                  <Film size={17} className="text-zinc-200" />
+                <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg border border-app-border/10 bg-app-border/[0.04]">
+                  <Film size={17} className="text-app-text" />
                 </span>
                 <span className="flex min-w-0 flex-col">
-                  <span className="flex items-center gap-1.5 text-[13px] font-semibold leading-tight text-zinc-100">
+                  <span className="flex items-center gap-1.5 text-[13px] font-semibold leading-tight text-app-text">
                     {FILM_FLAGSHIP.title[lang]}
-                    <Sparkles size={12} className="text-zinc-400" />
+                    <Sparkles size={12} className="text-app-muted" />
                   </span>
-                  <span className="truncate text-[11px] font-medium leading-tight text-zinc-400">
+                  <span className="truncate text-[11px] font-medium leading-tight text-app-muted">
                     {FILM_FLAGSHIP.tagline[lang]}
                   </span>
                 </span>
@@ -2249,7 +2256,7 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
                 aria-haspopup="listbox"
                 aria-expanded={modeMenuOpen}
                 aria-label={xc.selectService}
-                className="inline-flex items-center gap-2 h-9 pl-2 pr-2.5 rounded-full border border-white/10 bg-[#121212] text-[12.5px] font-medium text-zinc-200 hover:border-white/20 transition active:scale-[0.98]"
+                className="inline-flex items-center gap-2 h-9 pl-2 pr-2.5 rounded-full border border-app-border/10 bg-app-elevated text-[12.5px] font-medium text-app-text hover:border-app-border/20 transition active:scale-[0.98]"
               >
                 <span
                   className="flex h-6 w-6 items-center justify-center rounded-full border border-white/10"
@@ -2261,7 +2268,7 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
                   })()}
                 </span>
                 <span>{MODES.find((m) => m.id === mode)?.label[lang] ?? xc.selectService}</span>
-                <ChevronDown size={15} className={`text-zinc-500 transition-transform duration-200 ${modeMenuOpen ? 'rotate-180' : ''}`} />
+                <ChevronDown size={15} className={`text-app-muted transition-transform duration-200 ${modeMenuOpen ? 'rotate-180' : ''}`} />
               </button>
 
               <AnimatePresence>
@@ -2282,7 +2289,7 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
                       animate={{ opacity: 1, y: 0, scale: 1 }}
                       exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: 8, scale: 0.98 }}
                       transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
-                      className="absolute bottom-[calc(100%+6px)] left-2 z-[41] w-60 origin-bottom-left overflow-hidden rounded-2xl border border-white/10 bg-[#0a0a0a] p-1.5 shadow-[0_12px_44px_-8px_rgba(0,0,0,0.85)]"
+                      className="absolute bottom-[calc(100%+6px)] left-2 z-[41] w-60 origin-bottom-left overflow-hidden rounded-2xl border border-app-border/10 bg-app-surface p-1.5 shadow-[0_12px_44px_-8px_rgba(0,0,0,0.85)]"
                     >
                       {MODES.map(({ id, Icon, label }) => {
                         const active = mode === id;
@@ -2292,17 +2299,17 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
                               type="button"
                               onClick={() => { setMode(id); setModeMenuOpen(false); }}
                               className={`flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left text-[13px] transition-colors ${
-                                active ? 'bg-white/[0.08] text-zinc-50' : 'text-zinc-300 hover:bg-white/[0.04]'
+                                active ? 'bg-app-border/[0.08] text-app-text' : 'text-app-muted hover:bg-app-border/[0.04]'
                               }`}
                             >
                               <span
-                                className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg border border-white/10"
-                                style={{ backgroundColor: id !== 'global' ? `${AGENTS[id].color}1f` : 'rgba(255,255,255,0.04)' }}
+                                className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg border border-app-border/10"
+                                style={{ backgroundColor: id !== 'global' ? `${AGENTS[id].color}1f` : 'rgba(127,127,140,0.06)' }}
                               >
                                 <Icon size={15} style={id !== 'global' ? { color: AGENTS[id].color } : undefined} />
                               </span>
                               <span className="flex-1 font-medium">{label[lang]}</span>
-                              {active ? <Check size={15} className="text-zinc-300" /> : null}
+                              {active ? <Check size={15} className="text-app-muted" /> : null}
                             </button>
                           </li>
                         );
@@ -2323,14 +2330,14 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
               <button
                 onClick={onPickFile}
                 aria-label="Add attachment"
-                className="h-10 w-10 flex items-center justify-center rounded-full border border-white/10 text-zinc-300 hover:text-white hover:border-white/25 hover:bg-white/[0.05] transition active:scale-95"
+                className="h-10 w-10 flex items-center justify-center rounded-full border border-app-border/10 text-app-muted hover:text-app-text hover:border-app-border/25 hover:bg-app-border/[0.05] transition active:scale-95"
               >
                 <Plus size={20} />
               </button>
               <button
                 onClick={() => setCameraOpen(true)}
                 aria-label="Open camera"
-                className="h-9 w-9 flex items-center justify-center rounded-xl text-zinc-400 hover:text-zinc-100 hover:bg-zinc-900 transition active:scale-95"
+                className="h-9 w-9 flex items-center justify-center rounded-xl text-app-muted hover:text-app-text hover:bg-app-elevated/60 transition active:scale-95"
               >
                 <Camera size={18} />
               </button>
@@ -2352,14 +2359,14 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
                 placeholder={copy.placeholder}
                 rows={1}
                 data-testid="chat-input"
-                className="flex-1 bg-transparent text-base leading-7 text-zinc-50 placeholder-zinc-500 resize-none outline-none px-1.5 py-2 min-h-[44px] max-h-48"
+                className="flex-1 bg-transparent text-base leading-7 text-app-text placeholder-app-muted resize-none outline-none px-1.5 py-2 min-h-[44px] max-h-48"
               />
               <button
                 onClick={toggleRecording}
                 aria-label={isRecording ? 'Stop recording' : 'Start voice input'}
                 aria-pressed={isRecording}
                 title={speechSupported ? undefined : copy.voiceUnsupported}
-                className={`relative h-9 w-9 flex items-center justify-center rounded-xl transition-colors active:scale-95 ${isRecording ? 'text-rose-300 bg-rose-500/15 border border-rose-400/40' : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-900'}`}
+                className={`relative h-9 w-9 flex items-center justify-center rounded-xl transition-colors active:scale-95 ${isRecording ? 'text-rose-300 bg-rose-500/15 border border-rose-400/40' : 'text-app-muted hover:text-app-text hover:bg-app-elevated/60'}`}
               >
                 {/* PHASE 54 §1 — NEON PURGE: the animate-ping ring and the two
                     stacked animate-pulse layers are removed. Active recording is
