@@ -29,6 +29,8 @@
     "db:apply-ledger": "node scripts/apply-ledger-migration.mjs",
     "db:apply-jobs": "node scripts/apply-generation-jobs-migration.mjs",
     "db:apply-wallet": "node scripts/apply-wallet-onboarding-migration.mjs",
+    "db:apply-rag": "node scripts/apply-rag-migration.mjs",
+    "rag:ingest": "node scripts/rag-ingest.mjs",
     "verify:prod": "node scripts/verify-production.mjs",
     "mcp:install": "npm --prefix apps/myavatar-mcp-server install && npm --prefix apps/myavatar-mcp-server run build",
     "mcp:skill": "node scripts/mcp-skill.mjs",

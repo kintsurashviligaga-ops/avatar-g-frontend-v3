@@ -21,6 +21,7 @@ import { RATE_LIMITS } from '@/lib/api/rate-limit';
 import { sanitizePrompt } from '@/lib/security/apiGuard';
 import { orchestrate, pollOrchestrationTask, type ChatResponse } from '@/lib/chat/providerRouter';
 import { detectIntent } from '@/lib/chat/intentDetector';
+import { retrieveContext } from '@/lib/rag/retrieve';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -54,6 +55,12 @@ const orchestrateSchema = z.object({
 
   // ── Personalization (Settings → Custom Instructions) ──
   customInstructions: z.string().max(2000).optional(),
+
+  // ── RAG (Retrieval-Augmented Generation) ──
+  // When true AND the message is a text question, ground the answer in the
+  // Supabase pgvector corpus. Fail-safe: if RAG is unconfigured / empty, this
+  // is a silent no-op (see lib/rag/retrieve.ts).
+  useRag: z.boolean().default(false),
 
   // ── Polling ──
   predictionId: z.string().optional(),
@@ -117,6 +124,20 @@ export async function POST(req: NextRequest) {
       } satisfies ChatResponse);
     }
 
+    // ── RAG grounding (optional, fail-safe) ──────────────────────────
+    // Only for text questions — never alter deterministic generation prompts.
+    // retrieveContext() never throws and returns '' when RAG is off/empty, so
+    // a failure degrades to an ungrounded answer instead of breaking the chat.
+    let effectiveInstructions = data.customInstructions;
+    if (data.useRag && detectedIntent.intent === 'text_chat') {
+      const ragContext = await retrieveContext(routedMessage, { locale: data.locale });
+      if (ragContext) {
+        effectiveInstructions = [ragContext, data.customInstructions]
+          .filter(Boolean)
+          .join('\n\n');
+      }
+    }
+
     // ── Orchestrate (direct in-process calls, no HTTP self-fetch) ──
     const response = await orchestrate({
       message: routedMessage,
@@ -133,7 +154,7 @@ export async function POST(req: NextRequest) {
       metadata: data.referenceImages?.length
         ? { ...(data.metadata || {}), referenceImages: data.referenceImages }
         : data.metadata,
-      customInstructions: data.customInstructions,
+      customInstructions: effectiveInstructions,
     });
 
     return NextResponse.json(response);
