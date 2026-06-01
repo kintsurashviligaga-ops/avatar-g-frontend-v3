@@ -126,9 +126,23 @@ export default async function RootLayout({
 			lang={documentLocale}
 			data-theme="dark"
 			suppressHydrationWarning
-			className={`${inter.variable} ${syne.variable} ${dmSans.variable}`}
+			className={`dark ${inter.variable} ${syne.variable} ${dmSans.variable}`}
 			style={{ ['--font-geist' as string]: 'var(--font-ui)' }}
 		>
+			<head>
+				{/*
+				  Anti-FOUC theme boot — runs before first paint so the persisted
+				  light/dark choice is applied with zero flash. SSR renders the
+				  dark palette (data-theme="dark"); this rewrites it synchronously
+				  from localStorage before React hydrates (html has
+				  suppressHydrationWarning, so the attribute swap is safe).
+				*/}
+				<script
+					dangerouslySetInnerHTML={{
+						__html: `(function(){try{var t=localStorage.getItem('myavatar-theme');if(t!=='light'&&t!=='dark'){t='dark';}var e=document.documentElement;e.setAttribute('data-theme',t);e.classList.toggle('dark',t==='dark');e.classList.toggle('light',t==='light');}catch(_){}})();`,
+					}}
+				/>
+			</head>
 			<body className="font-sans antialiased">
 				<PostHogProvider>
 					<Providers>
