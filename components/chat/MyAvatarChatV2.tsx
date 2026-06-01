@@ -47,6 +47,7 @@ import type { Components } from 'react-markdown';
 import {
   AlertCircle,
   Box,
+  BookOpen,
   Camera,
   Check,
   ChevronDown,
@@ -1031,6 +1032,21 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
   const [dragActive, setDragActive] = useState(false);    // composer drag-and-drop
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [avatarSoundOn, setAvatarSoundOn] = useState(false);
+  // RAG grounding toggle — when on, text questions are grounded in the Supabase
+  // pgvector corpus (retrieveContext). Fail-safe: a silent no-op if the corpus
+  // is empty/unconfigured, so leaving it ON never breaks an ungrounded answer.
+  // Persisted across reloads (localStorage); default ON.
+  const [useRag, setUseRag] = useState(true);
+  useEffect(() => {
+    try { const v = localStorage.getItem('myavatar-use-rag'); if (v !== null) setUseRag(v === '1'); } catch { /* noop */ }
+  }, []);
+  const toggleRag = useCallback(() => {
+    setUseRag((prev) => {
+      const next = !prev;
+      try { localStorage.setItem('myavatar-use-rag', next ? '1' : '0'); } catch { /* noop */ }
+      return next;
+    });
+  }, []);
   // Live multi-stage render telemetry, driven by REAL backend poll status
   // (derivePipeline). Surfaced under the shaped <MediaSkeleton/> as the chat's
   // micro-progress indicator for media jobs.
@@ -1427,6 +1443,9 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
         serviceContext: mode,
         locale: lang,
         history,
+        // RAG grounding flag — backend only applies it to text_chat intents and
+        // silently no-ops when the corpus is empty/unconfigured (see route).
+        useRag,
         ...(imageUrl ? { imageUrl } : {}),
         ...(referenceImages.length ? { referenceImages } : {}),
         ...(videoAnchorUrl ? { selectedOptions: { image_reference: videoAnchorUrl } } : {}),
@@ -1541,7 +1560,7 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
       setPipeline(null);
       abortRef.current = null;
     }
-  }, [inputText, isLoading, messages, lang, mode, attachments, conversationId, prefs.customInstructions, copy.genericError, showNotice, xc]);
+  }, [inputText, isLoading, messages, lang, mode, attachments, conversationId, prefs.customInstructions, copy.genericError, showNotice, xc, useRag]);
 
   const stop = useCallback(() => abortRef.current?.abort(), []);
 
@@ -1869,6 +1888,25 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
         <BalanceChip balanceGel={balanceGel} onClick={() => setWalletOpen(true)} />
 
         <div className="flex items-center gap-1">
+          {/* RAG grounding toggle — ground text answers in the knowledge corpus.
+              Tinted (accent) when ON; hairline-muted when OFF. Persisted. */}
+          <button
+            type="button"
+            onClick={toggleRag}
+            data-testid="rag-toggle"
+            aria-pressed={useRag}
+            aria-label={lang === 'ka' ? 'ცოდნის ბაზა' : lang === 'ru' ? 'База знаний' : 'Knowledge grounding (RAG)'}
+            title={
+              useRag
+                ? (lang === 'ka' ? 'ცოდნის ბაზა: ჩართულია' : lang === 'ru' ? 'База знаний: вкл.' : 'Knowledge grounding: on')
+                : (lang === 'ka' ? 'ცოდნის ბაზა: გამორთულია' : lang === 'ru' ? 'База знаний: выкл.' : 'Knowledge grounding: off')
+            }
+            className={`h-9 w-9 rounded-full flex items-center justify-center transition active:scale-95 ${useRag ? 'text-app-text bg-app-elevated' : 'text-app-muted hover:text-app-text hover:bg-app-elevated/60'}`}
+            style={useRag ? { color: ACCENT, backgroundColor: `${ACCENT}1f` } : undefined}
+          >
+            <BookOpen size={17} />
+          </button>
+
           {/* Dark / light theme toggle */}
           <ThemeToggle
             label={lang === 'ka' ? 'თემის გადართვა' : lang === 'ru' ? 'Сменить тему' : 'Toggle theme'}
@@ -2376,8 +2414,10 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
               {isLoading ? (
                 <button
                   onClick={stop}
-                  aria-label="Stop"
-                  className="h-9 w-9 flex items-center justify-center rounded-xl text-rose-300 hover:bg-rose-500/10 active:scale-95"
+                  aria-label={lang === 'ka' ? 'გენერაციის შეჩერება' : lang === 'ru' ? 'Остановить генерацию' : 'Stop generating'}
+                  title={lang === 'ka' ? 'გენერაციის შეჩერება' : lang === 'ru' ? 'Остановить генерацию' : 'Stop generating'}
+                  data-testid="stop-generating"
+                  className="h-9 w-9 flex items-center justify-center rounded-xl text-rose-500 dark:text-rose-300 hover:bg-rose-500/10 active:scale-95"
                 >
                   <X size={18} />
                 </button>
@@ -4871,15 +4911,20 @@ function MediaSkeleton({ mode, accent }: { mode: ServiceMode; accent: string }) 
   const shimmer =
     'relative overflow-hidden before:absolute before:inset-0 before:-translate-x-full before:animate-[shimmer_1.6s_infinite] before:bg-gradient-to-r before:from-transparent before:via-[#D4AF37]/15 before:to-transparent';
 
-  // Chat → slim text shimmer.
+  // Chat → typing indicator (three bouncing dots), the universal "assistant is
+  // composing a reply" cue. Tinted with the active agent accent. Built-in
+  // Tailwind `animate-bounce` with staggered negative delays for the wave.
   if (mode === 'global') {
     return (
-      <div className="flex items-center gap-2.5">
-        <Loader2 className="w-4 h-4 animate-spin flex-shrink-0" style={{ color: accent }} />
-        <div className="flex flex-col gap-1.5">
-          <span className={`h-2.5 w-40 rounded ${obsidian} ${shimmer}`} />
-          <span className={`h-2.5 w-24 rounded ${obsidian} ${shimmer}`} />
-        </div>
+      <div
+        className="inline-flex items-center gap-1.5 rounded-2xl border border-app-border/15 bg-app-surface px-3.5 py-3"
+        role="status"
+        aria-label="Assistant is typing"
+        data-testid="typing-indicator"
+      >
+        <span className="h-2 w-2 rounded-full animate-bounce [animation-delay:-0.32s]" style={{ backgroundColor: accent }} />
+        <span className="h-2 w-2 rounded-full animate-bounce [animation-delay:-0.16s]" style={{ backgroundColor: accent }} />
+        <span className="h-2 w-2 rounded-full animate-bounce" style={{ backgroundColor: accent }} />
       </div>
     );
   }
