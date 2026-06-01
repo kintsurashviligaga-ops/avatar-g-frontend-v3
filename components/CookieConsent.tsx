@@ -109,6 +109,7 @@ export default function CookieConsent() {
         <button
           type="button"
           onClick={() => pick('all')}
+          data-testid="cookie-accept"
           className="flex-1 inline-flex items-center justify-center h-9 rounded-full bg-white text-black text-[12px] font-semibold hover:bg-white/90 transition"
         >
           {t.acceptAll}
@@ -116,6 +117,7 @@ export default function CookieConsent() {
         <button
           type="button"
           onClick={() => pick('necessary')}
+          data-testid="cookie-necessary"
           className="flex-1 inline-flex items-center justify-center h-9 rounded-full bg-black border border-white/[0.15] text-white text-[12px] font-medium hover:border-white/[0.30] transition"
         >
           {t.necessaryOnly}

@@ -2348,6 +2348,7 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
                 }}
                 placeholder={copy.placeholder}
                 rows={1}
+                data-testid="chat-input"
                 className="flex-1 bg-transparent text-base leading-7 text-zinc-50 placeholder-zinc-500 resize-none outline-none px-1.5 py-2 min-h-[44px] max-h-48"
               />
               <button
@@ -3631,6 +3632,7 @@ function PreviewWorkspace({
       transition={{ type: 'spring', stiffness: 320, damping: 36 }}
       className="fixed inset-0 z-[70] flex flex-col bg-[#050505] lg:static lg:z-auto lg:h-full lg:w-[44%] lg:max-w-[680px] lg:min-w-[380px] lg:shrink-0 lg:border-l lg:border-white/[0.06]"
       aria-label={labels.workspace}
+      data-testid="preview-workspace"
     >
       {/* Header: agent identity + close / download */}
       <div

@@ -22,6 +22,7 @@
     "test:watch": "jest --watch --passWithNoTests",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
+    "test:e2e:preview": "playwright test tests/preview-e2e.spec.ts",
     "test:e2e:voice-smoke": "PLAYWRIGHT_DEV_PORT=3003 PLAYWRIGHT_FORCE_FRESH_SERVER=1 PLAYWRIGHT_CLEAN_NEXT=1 playwright test tests/voice-v2v-smoke.spec.ts",
     "health:providers": "node scripts/provider-health-check.mjs",
     "preflight": "node scripts/preflight-check.mjs",
