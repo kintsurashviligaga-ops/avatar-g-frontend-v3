@@ -54,7 +54,13 @@ export function FilmStudioHome({ locale, isAuthenticated = false }: FilmStudioHo
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-950 via-[#0a0f1e] to-black text-white">
       {/* ── Top bar ─────────────────────────────────────────────────── */}
-      <header className="sticky top-0 z-30 border-b border-white/[0.06] bg-slate-950/70 backdrop-blur-xl">
+      {/* Additive safe-area top inset (base 0 + env) keeps the bar below the
+          translucent iOS status bar in standalone PWA mode — matches the
+          calc(base + env(...)) convention the prior home used. */}
+      <header
+        className="sticky top-0 z-30 border-b border-white/[0.06] bg-slate-950/70 backdrop-blur-xl"
+        style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
+      >
         <div className="mx-auto flex h-14 max-w-5xl items-center justify-between gap-3 px-4 sm:px-6">
           <Link
             href={`/${locale}/dashboard`}
@@ -90,7 +96,12 @@ export function FilmStudioHome({ locale, isAuthenticated = false }: FilmStudioHo
       </header>
 
       {/* ── Studio ──────────────────────────────────────────────────── */}
-      <main className="mx-auto max-w-3xl px-4 py-8 sm:px-6 sm:py-12">
+      {/* Additive bottom inset (base 2rem + env) keeps the Compile action clear
+          of the iOS home indicator in standalone PWA mode. */}
+      <main
+        className="mx-auto max-w-3xl px-4 py-8 sm:px-6 sm:py-12"
+        style={{ paddingBottom: 'calc(2rem + env(safe-area-inset-bottom, 0px))' }}
+      >
         <p className="mb-6 text-center text-sm text-white/45">{t.lead}</p>
         <CinematicFilmStudio locale={locale} />
       </main>
