@@ -11,6 +11,7 @@ import {
   Zap,
 } from 'lucide-react';
 import { CreditBadge } from '@/components/ui/CreditBadge';
+import { CinematicFilmStudio } from '@/components/studio/CinematicFilmStudio';
 import { AGENT_COSTS, type AgentType } from '@/store/useAiPipelineStore';
 
 // ─── Agent manifest ───────────────────────────────────────────────────────────
@@ -95,6 +96,33 @@ export default function StudioPage() {
             <CreditBadge />
           </div>
         </motion.div>
+
+        {/* Flagship — 30-second cinematic film */}
+        <motion.section
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, delay: 0.05 }}
+          className="space-y-4"
+        >
+          <div className="flex items-center justify-between gap-4 flex-wrap">
+            <div className="flex items-center gap-2">
+              <span className="rounded-full border border-purple-400/30 bg-purple-400/10 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-purple-300">
+                Flagship
+              </span>
+              <h2 className="text-lg font-semibold text-white">30-Second Cinematic Film</h2>
+            </div>
+            <Link
+              href="/studio/film"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-purple-400/30 bg-purple-400/10 px-3 py-1.5 text-xs font-semibold text-purple-200 hover:bg-purple-400/20 transition-colors"
+            >
+              Open Film Studio
+              <Zap className="h-3 w-3" />
+            </Link>
+          </div>
+          {/* Live, network-free preview of the real pipeline; the CTA inside
+              links through to /studio/film where the render actually runs. */}
+          <CinematicFilmStudio preview studioHref="/studio/film" />
+        </motion.section>
 
         {/* Agent grid */}
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
