@@ -2062,6 +2062,10 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
           orb when no avatar video asset is configured. */}
       <AnimatePresence>
         {avatarExpanded ? (
+          // LIGHT-MODE NOTE: this is a full-screen video stage (talking-avatar
+          // playback) — intentionally kept on a near-black canvas in BOTH themes,
+          // like a cinema/lightbox surface. Its overlay controls inherit the same
+          // dark treatment so they stay legible over the video.
           <motion.div
             key="avatar-full"
             initial={{ opacity: 0 }}
@@ -2296,8 +2300,8 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
                 className="inline-flex items-center gap-2 h-9 pl-2 pr-2.5 rounded-full border border-app-border/10 bg-app-elevated text-[12.5px] font-medium text-app-text hover:border-app-border/20 transition active:scale-[0.98]"
               >
                 <span
-                  className="flex h-6 w-6 items-center justify-center rounded-full border border-white/10"
-                  style={{ backgroundColor: mode !== 'global' ? `${AGENTS[mode].color}1f` : 'rgba(255,255,255,0.04)' }}
+                  className="flex h-6 w-6 items-center justify-center rounded-full border border-app-border/10"
+                  style={{ backgroundColor: mode !== 'global' ? `${AGENTS[mode].color}1f` : 'rgba(127,127,140,0.06)' }}
                 >
                   {(() => {
                     const ActiveIcon = AGENTS[mode].Icon;
@@ -2861,13 +2865,13 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
               animate={{ scale: 1, opacity: 1, y: 0 }}
               exit={{ scale: 0.94, opacity: 0, y: 8 }}
               transition={{ type: 'spring', stiffness: 320, damping: 28 }}
-              className="flex flex-col items-center gap-3 rounded-[1.75rem] border-2 border-dashed border-white/30 bg-[#0a0a0a]/85 px-12 py-10 text-center shadow-[0_40px_140px_-30px_rgba(0,0,0,0.9)]"
+              className="flex flex-col items-center gap-3 rounded-[1.75rem] border-2 border-dashed border-app-border/40 bg-app-surface/95 px-12 py-10 text-center shadow-[0_40px_140px_-30px_rgba(0,0,0,0.9)]"
             >
-              <span className="flex h-14 w-14 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.04]">
-                <ImagePlus size={28} className="text-zinc-100" />
+              <span className="flex h-14 w-14 items-center justify-center rounded-2xl border border-app-border/15 bg-app-elevated">
+                <ImagePlus size={28} className="text-app-text" />
               </span>
-              <p className="max-w-[16rem] text-[15px] font-semibold leading-snug text-zinc-50">{xc.dropToAnalyze}</p>
-              <p className="text-[11.5px] uppercase tracking-wide text-zinc-500">PDF · JPG · PNG · MP4 · MP3</p>
+              <p className="max-w-[16rem] text-[15px] font-semibold leading-snug text-app-text">{xc.dropToAnalyze}</p>
+              <p className="text-[11.5px] uppercase tracking-wide text-app-muted">PDF · JPG · PNG · MP4 · MP3</p>
             </motion.div>
           </motion.div>
         ) : null}
@@ -2891,7 +2895,7 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 12 }}
             role="alert"
-            className="fixed left-1/2 z-[70] -translate-x-1/2 rounded-full border border-white/15 bg-neutral-900/95 px-4 py-2 text-[12.5px] font-medium text-neutral-100 shadow-[0_12px_40px_-12px_rgba(0,0,0,0.8)] backdrop-blur-md"
+            className="fixed left-1/2 z-[70] -translate-x-1/2 rounded-full border border-transparent bg-app-text px-4 py-2 text-[12.5px] font-medium text-app-bg shadow-[0_12px_40px_-12px_rgba(0,0,0,0.8)] backdrop-blur-md"
             style={{ bottom: 'calc(180px + env(safe-area-inset-bottom, 0px))' }}
           >
             {notice}
@@ -4319,7 +4323,10 @@ function MessageBubble({
           </div>
         ) : null}
 
-        {/* Image lightbox */}
+        {/* Image lightbox
+            LIGHT-MODE NOTE: a full-screen media viewer — intentionally kept dark
+            (bg-black/90 + translucent-white controls) in BOTH themes so the image
+            is framed against neutral darkness, the universal lightbox convention. */}
         <AnimatePresence>
           {lightbox && message.assetUrl && message.assetType === 'image' ? (
             <motion.div

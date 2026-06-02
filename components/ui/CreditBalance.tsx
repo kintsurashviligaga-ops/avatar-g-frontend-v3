@@ -130,7 +130,7 @@ export function CreditBalance({
             transition={{ duration: 1.2 }}
             className={cn(
               'pointer-events-none absolute -top-4 right-0 text-[10px] font-bold',
-              delta > 0 ? 'text-emerald-400' : 'text-rose-400',
+              delta > 0 ? 'text-emerald-500 dark:text-emerald-400' : 'text-rose-500 dark:text-rose-400',
             )}
           >
             {delta > 0 ? `+${delta}` : delta}
@@ -152,17 +152,17 @@ export function CreditBalance({
           'flex items-center gap-1.5 rounded-full border px-3 py-1 transition-all',
           isLow
             ? 'border-rose-400/30 bg-rose-400/10'
-            : 'border-white/10 bg-white/[0.04]',
+            : 'border-app-border/10 bg-app-elevated',
         )}
       >
-        <span className={cn('text-xs font-bold', isLow ? 'text-rose-300' : 'text-cyan-300')}>
+        <span className={cn('text-xs font-bold', isLow ? 'text-rose-500 dark:text-rose-300' : 'text-cyan-600 dark:text-cyan-300')}>
           <AnimatedNumber value={balance} />
         </span>
-        <span className={cn('text-[10px]', isLow ? 'text-rose-300/70' : 'text-white/40')}>
+        <span className={cn('text-[10px]', isLow ? 'text-rose-500/70 dark:text-rose-300/70' : 'text-app-muted')}>
           {creditLabel}
         </span>
         {showLabel && (
-          <span className="hidden text-[10px] text-white/30 sm:inline">{balanceLabel}</span>
+          <span className="hidden text-[10px] text-app-muted sm:inline">{balanceLabel}</span>
         )}
       </div>
 
@@ -171,7 +171,7 @@ export function CreditBalance({
         <motion.span
           initial={{ opacity: 0, scale: 0.8 }}
           animate={{ opacity: 1, scale: 1 }}
-          className="hidden whitespace-nowrap rounded-full border border-rose-400/20 bg-rose-400/10 px-2 py-0.5 text-[9px] text-rose-300 sm:inline"
+          className="hidden whitespace-nowrap rounded-full border border-rose-400/20 bg-rose-400/10 px-2 py-0.5 text-[9px] text-rose-500 dark:text-rose-300 sm:inline"
         >
           ⚠ {lowWarning}
         </motion.span>

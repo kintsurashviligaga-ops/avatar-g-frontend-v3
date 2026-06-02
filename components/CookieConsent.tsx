@@ -95,13 +95,13 @@ export default function CookieConsent() {
       role="dialog"
       aria-live="polite"
       aria-label={t.title}
-      className="fixed left-3 right-3 z-[60] bottom-3 sm:left-auto sm:right-4 sm:bottom-4 sm:max-w-[420px] rounded-2xl border border-white/[0.12] bg-black/95 backdrop-blur-md p-4 text-white shadow-[0_20px_60px_-20px_rgba(0,0,0,0.8)]"
+      className="fixed left-3 right-3 z-[60] bottom-3 sm:left-auto sm:right-4 sm:bottom-4 sm:max-w-[420px] rounded-2xl border border-app-border/15 bg-app-surface backdrop-blur-md p-4 text-app-text shadow-[0_20px_60px_-20px_rgba(0,0,0,0.8)]"
       style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 16px)' }}
     >
       <div className="text-[14px] font-semibold mb-1">{t.title}</div>
-      <p className="text-[12px] text-white/65 leading-relaxed">
+      <p className="text-[12px] text-app-muted leading-relaxed">
         {t.body}{' '}
-        <Link href={`/${locale}/privacy`} className="text-violet-300 hover:text-violet-200 underline-offset-4 hover:underline transition">
+        <Link href={`/${locale}/privacy`} className="text-violet-500 dark:text-violet-300 hover:text-violet-400 dark:hover:text-violet-200 underline-offset-4 hover:underline transition">
           {t.privacyLink}
         </Link>
       </p>
@@ -110,7 +110,7 @@ export default function CookieConsent() {
           type="button"
           onClick={() => pick('all')}
           data-testid="cookie-accept"
-          className="flex-1 inline-flex items-center justify-center h-9 rounded-full bg-white text-black text-[12px] font-semibold hover:bg-white/90 transition"
+          className="flex-1 inline-flex items-center justify-center h-9 rounded-full bg-app-text text-app-bg text-[12px] font-semibold hover:opacity-90 transition"
         >
           {t.acceptAll}
         </button>
@@ -118,7 +118,7 @@ export default function CookieConsent() {
           type="button"
           onClick={() => pick('necessary')}
           data-testid="cookie-necessary"
-          className="flex-1 inline-flex items-center justify-center h-9 rounded-full bg-black border border-white/[0.15] text-white text-[12px] font-medium hover:border-white/[0.30] transition"
+          className="flex-1 inline-flex items-center justify-center h-9 rounded-full bg-app-elevated border border-app-border/15 text-app-text text-[12px] font-medium hover:border-app-border/30 transition"
         >
           {t.necessaryOnly}
         </button>
