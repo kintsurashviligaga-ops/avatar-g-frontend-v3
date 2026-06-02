@@ -16,14 +16,16 @@
  *                        Studio landing showcase. It animates the same stages
  *                        and then links to the real Studio instead of fabricating
  *                        a video, so nobody mistakes the demo for a real render.
+ *
+ * Visual language: premium minimalist — soft near-black surfaces (#090a0f),
+ * hairline neutral borders, quiet uppercase micro-labels, and a single white
+ * primary action. No loud gradients; the content is the focus.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import {
-  Film,
   Upload,
-  Sparkles,
   Cpu,
   Clock,
   Play,
@@ -281,30 +283,25 @@ export function CinematicFilmStudio({
   return (
     <div
       className={[
-        'w-full max-w-3xl mx-auto bg-slate-950 border border-slate-800/80 rounded-2xl overflow-hidden shadow-2xl text-slate-200',
+        'w-full max-w-3xl mx-auto bg-[#090a0f] border border-neutral-900 rounded-3xl overflow-hidden shadow-2xl text-neutral-200',
         className ?? '',
       ].join(' ')}
     >
-      {/* ── Header ─────────────────────────────────────────────────── */}
-      <div className="p-6 bg-gradient-to-r from-purple-900/40 via-indigo-950/40 to-slate-950 border-b border-slate-800 flex items-center justify-between gap-4">
-        <div className="flex items-center gap-4 min-w-0">
-          <div className="p-3 bg-purple-600/10 border border-purple-500/20 rounded-xl shrink-0">
-            <Film className="w-6 h-6 text-purple-400" />
-          </div>
+      {/* ── Header (minimal) ───────────────────────────────────────── */}
+      <div className="px-6 py-5 sm:px-8 bg-[#0b0c14]/50 backdrop-blur-md border-b border-neutral-900/70 flex items-center justify-between gap-4">
+        <div className="flex items-center gap-3 min-w-0">
+          <span className="h-2.5 w-2.5 rounded-full bg-indigo-500 animate-pulse shrink-0" />
           <div className="min-w-0">
-            <h3 className="text-lg sm:text-xl font-bold tracking-tight text-white truncate">
+            <h3 className="text-sm sm:text-base font-medium tracking-wide text-white truncate">
               30-Second Cinematic Film Studio
             </h3>
-            <p className="text-xs text-slate-400 mt-0.5">
-              Identity stitching · AI generation · Beat-sync editing
+            <p className="text-[11px] text-neutral-500 mt-0.5 truncate">
+              Identity stitching · AI generation · beat-sync editing
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2 bg-purple-500/10 border border-purple-500/20 px-3 py-1.5 rounded-lg shrink-0">
-          <Sparkles className="w-3.5 h-3.5 text-purple-400" />
-          <span className="hidden sm:inline text-xs font-semibold text-purple-300 uppercase tracking-wider">
-            {preview ? 'Live Preview' : 'Advanced Pipeline'}
-          </span>
+        <div className="shrink-0 rounded-full border border-neutral-800 bg-neutral-900/30 px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-neutral-400">
+          {preview ? 'Live Preview' : 'Live Core Pipeline'}
         </div>
       </div>
 
@@ -312,10 +309,10 @@ export function CinematicFilmStudio({
         {/* ── Stage 1: Persona ingestion ───────────────────────────── */}
         <div>
           <div className="flex justify-between items-center mb-3 gap-3">
-            <label className="text-xs font-bold uppercase tracking-widest text-slate-400">
-              Stage 1: Persona Ingestion
+            <label className="text-[11px] font-bold uppercase tracking-widest text-neutral-500">
+              Stage 01 · Identity Ingestion
             </label>
-            <span className="text-[11px] text-slate-500 font-medium text-right">
+            <span className="text-[11px] text-neutral-600 font-medium text-right">
               Add 1–3 reference photos (optional)
             </span>
           </div>
@@ -326,7 +323,7 @@ export function CinematicFilmStudio({
               return (
                 <div
                   key={idx}
-                  className="relative aspect-[4/5] rounded-xl border border-slate-800 bg-slate-900/50 overflow-hidden group hover:border-purple-500/50 transition-colors"
+                  className="relative aspect-[4/5] rounded-2xl border border-neutral-900 bg-[#0d0e16]/40 overflow-hidden group hover:border-neutral-700 transition-colors"
                 >
                   {slot ? (
                     <>
@@ -337,18 +334,18 @@ export function CinematicFilmStudio({
                         onClick={() => clearSlot(idx)}
                         disabled={driving}
                         aria-label="Remove photo"
-                        className="absolute top-1.5 right-1.5 p-1 rounded-md bg-slate-950/80 border border-slate-700 text-slate-300 hover:text-white disabled:opacity-40"
+                        className="absolute top-1.5 right-1.5 p-1 rounded-md bg-black/70 border border-neutral-800 text-neutral-300 hover:text-white disabled:opacity-40"
                       >
                         <X className="w-3.5 h-3.5" />
                       </button>
                     </>
                   ) : (
                     <label className="cursor-pointer flex flex-col items-center justify-center p-3 text-center h-full w-full">
-                      <div className="p-2 bg-slate-950 rounded-lg border border-slate-800 mb-2 group-hover:scale-105 transition-transform">
-                        <Upload className="w-4 h-4 text-slate-400" />
+                      <div className="p-2 bg-[#090a0f] rounded-lg border border-neutral-900 mb-2 group-hover:border-neutral-700 transition-colors">
+                        <Upload className="w-4 h-4 text-neutral-600 group-hover:text-neutral-400 transition-colors" />
                       </div>
-                      <span className="text-[11px] sm:text-xs text-slate-300 font-semibold">Identity slot {idx + 1}</span>
-                      <span className="text-[10px] text-slate-500 mt-1">{roleLabel}</span>
+                      <span className="text-[11px] sm:text-xs text-neutral-300 font-medium">Identity slot {idx + 1}</span>
+                      <span className="text-[10px] text-neutral-600 mt-1">{roleLabel}</span>
                       <input
                         type="file"
                         accept="image/*"
@@ -366,12 +363,12 @@ export function CinematicFilmStudio({
 
         {/* ── Stage 2: Cinematic script direction ──────────────────── */}
         <div>
-          <label className="block text-xs font-bold uppercase tracking-widest text-slate-400 mb-3">
-            Stage 2: Cinematic Script Direction
+          <label className="block text-[11px] font-bold uppercase tracking-widest text-neutral-500 mb-3">
+            Stage 02 · Director Prompt Script
           </label>
           <textarea
-            className="w-full min-h-[104px] bg-slate-900/40 border border-slate-800 rounded-xl p-4 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-purple-500/60 focus:ring-1 focus:ring-purple-500/20 transition-colors resize-none leading-relaxed"
-            placeholder="Provide scene directions, aesthetic environments, cinematic mood parameters, and stylistic transitions… e.g. “A warrior walking through neon-lit Tbilisi at night, cinematic, moody, slow dolly shots.”"
+            className="w-full min-h-[104px] bg-[#0d0e16]/40 border border-neutral-900 rounded-2xl p-4 text-sm text-neutral-200 placeholder-neutral-700 focus:outline-none focus:border-neutral-700 transition-colors resize-none leading-relaxed"
+            placeholder="Specify mood parameters, camera trajectories, lighting behaviours, and scene transitions… e.g. “A warrior walking through neon-lit Tbilisi at night, cinematic, moody, slow dolly shots.”"
             value={prompt}
             disabled={driving}
             onChange={(e) => setPrompt(e.target.value)}
@@ -380,39 +377,39 @@ export function CinematicFilmStudio({
 
         {/* ── Stage 3: Resource ledger (real GEL) ──────────────────── */}
         <div>
-          <label className="block text-xs font-bold uppercase tracking-widest text-slate-400 mb-3">
-            Stage 3: Predictive Valuation &amp; Resource Ledger
+          <label className="block text-[11px] font-bold uppercase tracking-widest text-neutral-500 mb-3">
+            Stage 03 · Predictive Valuation &amp; Resource Ledger
           </label>
-          <div className="grid grid-cols-3 gap-px bg-slate-800/60 border border-slate-800 rounded-xl overflow-hidden">
+          <div className="grid grid-cols-3 gap-px bg-neutral-900/70 border border-neutral-900 rounded-2xl overflow-hidden">
             <LedgerCard icon={<Cpu className="w-3.5 h-3.5" />} label="Scenes" value={`${FILM_SCENE_COUNT}`} unit="× 6s" />
             <LedgerCard icon={<Clock className="w-3.5 h-3.5" />} label="Runtime" value="30" unit="sec" />
             <LedgerCard
-              icon={<span className="w-3.5 h-3.5 rounded-full bg-slate-800 text-slate-300 text-[10px] flex items-center justify-center font-bold">₾</span>}
+              icon={<span className="w-3.5 h-3.5 rounded-full bg-neutral-800 text-neutral-300 text-[10px] flex items-center justify-center font-bold">₾</span>}
               label="Est. cost"
               value={formatGEL(estCost).replace(' ₾', '')}
               unit="GEL"
               accent
             />
           </div>
-          <p className="mt-2 text-[11px] text-slate-500">
+          <p className="mt-2 text-[11px] text-neutral-600">
             Estimate from the live cost matrix. The exact charge is metered server-side when the render runs.
           </p>
         </div>
 
         {/* ── Progress tracker (real per-leg status) ───────────────── */}
         {showTracker && (
-          <div className="space-y-3 rounded-xl border border-purple-500/20 bg-purple-950/10 p-4">
+          <div className="space-y-3 rounded-2xl border border-neutral-900 bg-neutral-950 p-4">
             <div className="flex items-center gap-3">
               {finished ? (
                 <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
               ) : (
-                <Loader2 className="w-5 h-5 text-purple-400 animate-spin shrink-0" />
+                <Loader2 className="w-5 h-5 text-indigo-400 animate-spin shrink-0" />
               )}
               <div className="min-w-0">
-                <span className="block text-[10px] font-bold uppercase tracking-wider text-purple-300">
+                <span className="block text-[10px] font-bold uppercase tracking-wider text-neutral-400">
                   {finished ? 'Pipeline complete' : preview ? 'Preview pipeline running' : 'Pipeline executing'}
                 </span>
-                <p className="text-xs text-slate-300 mt-0.5">{progress?.message || 'Working…'}</p>
+                <p className="text-xs text-neutral-300 mt-0.5">{progress?.message || 'Working…'}</p>
               </div>
             </div>
             <ul className="space-y-1.5">
@@ -422,12 +419,12 @@ export function CinematicFilmStudio({
                   <span
                     className={
                       s.state === 'done'
-                        ? 'text-slate-300'
+                        ? 'text-neutral-300'
                         : s.state === 'active'
                           ? 'text-white'
                           : s.state === 'failed'
                             ? 'text-rose-300'
-                            : 'text-slate-500'
+                            : 'text-neutral-600'
                     }
                   >
                     {s.label}
@@ -437,7 +434,7 @@ export function CinematicFilmStudio({
                       src={s.previewUrl}
                       muted
                       playsInline
-                      className="ml-auto h-7 w-12 rounded object-cover border border-slate-700"
+                      className="ml-auto h-7 w-12 rounded object-cover border border-neutral-800"
                     />
                   )}
                 </li>
@@ -448,7 +445,7 @@ export function CinematicFilmStudio({
 
         {/* ── Error ────────────────────────────────────────────────── */}
         {error && (
-          <div className="flex items-start gap-2.5 rounded-xl border border-rose-500/25 bg-rose-950/15 p-4 text-xs text-rose-200">
+          <div className="flex items-start gap-2.5 rounded-2xl border border-rose-500/25 bg-rose-950/15 p-4 text-xs text-rose-200">
             <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
             <span>{error}</span>
           </div>
@@ -457,18 +454,18 @@ export function CinematicFilmStudio({
         {/* ── Output ───────────────────────────────────────────────── */}
         {masterUrl && !preview && (
           <div className="space-y-3">
-            <div className="flex items-center gap-2 text-emerald-400 text-xs font-bold uppercase tracking-widest">
+            <div className="flex items-center gap-2 text-emerald-400 text-[10px] font-bold uppercase tracking-widest">
               <CheckCircle2 className="w-4 h-4" />
               <span>Master ready · 30-second film</span>
             </div>
-            <div className="relative aspect-video w-full rounded-xl bg-black overflow-hidden border border-slate-800">
+            <div className="relative aspect-video w-full rounded-2xl bg-black overflow-hidden border border-neutral-900">
               <video src={masterUrl} controls playsInline className="w-full h-full object-contain bg-black" />
             </div>
             <a
               href={masterUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 text-xs text-purple-300 hover:text-purple-200"
+              className="inline-flex items-center gap-1.5 text-xs text-neutral-300 hover:text-white"
             >
               Open / download master <ArrowRight className="w-3.5 h-3.5" />
             </a>
@@ -479,7 +476,7 @@ export function CinematicFilmStudio({
         {!masterUrl && previewUrl && !preview && (
           <div className="space-y-2">
             <p className="text-[11px] text-amber-300/90">Editor still finishing — showing the first rendered scene.</p>
-            <div className="relative aspect-video w-full rounded-xl bg-black overflow-hidden border border-slate-800">
+            <div className="relative aspect-video w-full rounded-2xl bg-black overflow-hidden border border-neutral-900">
               <video src={previewUrl} controls playsInline className="w-full h-full object-contain bg-black" />
             </div>
           </div>
@@ -487,13 +484,13 @@ export function CinematicFilmStudio({
 
         {/* Preview-mode CTA — never fabricates a video. */}
         {preview && previewDone && (
-          <div className="rounded-xl border border-purple-500/25 bg-purple-950/15 p-5 text-center space-y-3">
-            <p className="text-sm text-slate-200 font-medium">
+          <div className="rounded-2xl border border-neutral-900 bg-neutral-950 p-5 text-center space-y-3">
+            <p className="text-sm text-neutral-200 font-medium">
               This is a live preview of the pipeline. Open the Studio to generate your real 30-second film.
             </p>
             <Link
               href={studioHref}
-              className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 px-5 py-2.5 text-xs font-bold uppercase tracking-widest text-white"
+              className="inline-flex items-center gap-2 rounded-2xl bg-white text-black hover:bg-neutral-200 px-5 py-2.5 text-xs font-bold uppercase tracking-widest transition-colors"
             >
               Open Film Studio <ArrowRight className="w-4 h-4" />
             </Link>
@@ -507,23 +504,23 @@ export function CinematicFilmStudio({
             onClick={handleCompile}
             disabled={!canCompile}
             className={[
-              'flex-1 py-4 px-6 rounded-xl font-bold text-xs tracking-widest uppercase transition-all border',
+              'flex-1 py-3.5 px-6 rounded-2xl font-semibold text-xs tracking-widest uppercase transition-all',
               !canCompile
-                ? 'bg-slate-900 text-slate-600 border-slate-800/50 cursor-not-allowed'
-                : 'bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white border-purple-500/20 active:scale-[0.99]',
+                ? 'bg-neutral-900/40 text-neutral-600 cursor-not-allowed'
+                : 'bg-white text-black hover:bg-neutral-200 shadow-lg active:scale-[0.99]',
             ].join(' ')}
           >
             {driving
               ? preview
                 ? 'Running preview…'
                 : 'Producing film…'
-              : 'Compile automated 30-second film'}
+              : 'Run automated 30-second production'}
           </button>
           {driving && (
             <button
               type="button"
               onClick={handleCancel}
-              className="py-4 px-4 rounded-xl border border-slate-800 bg-slate-900 text-xs font-semibold text-slate-400 hover:text-slate-200"
+              className="py-3.5 px-4 rounded-2xl border border-neutral-800 bg-neutral-900/40 text-xs font-semibold text-neutral-400 hover:text-neutral-200"
             >
               Cancel
             </button>
@@ -531,7 +528,7 @@ export function CinematicFilmStudio({
         </div>
 
         {!preview && (
-          <p className="flex items-center justify-center gap-1.5 text-[11px] text-slate-500">
+          <p className="flex items-center justify-center gap-1.5 text-[11px] text-neutral-600">
             <Play className="w-3 h-3" />
             Real render · requires sign-in · credits charged on completion
           </p>
@@ -557,13 +554,13 @@ function LedgerCard({
   accent?: boolean;
 }) {
   return (
-    <div className="p-4 bg-slate-950 flex flex-col justify-center">
-      <div className="flex items-center gap-2 text-slate-500 mb-1">
+    <div className="p-4 bg-[#090a0f] flex flex-col justify-center">
+      <div className="flex items-center gap-2 text-neutral-600 mb-1">
         {icon}
         <span className="text-[10px] uppercase font-bold tracking-wider">{label}</span>
       </div>
-      <div className={`text-base font-bold tracking-tight ${accent ? 'text-purple-400' : 'text-slate-200'}`}>
-        {value} <span className="text-xs font-normal text-slate-500">{unit}</span>
+      <div className={`text-base font-bold tracking-tight ${accent ? 'text-white' : 'text-neutral-200'}`}>
+        {value} <span className="text-xs font-normal text-neutral-600">{unit}</span>
       </div>
     </div>
   );
@@ -571,10 +568,10 @@ function LedgerCard({
 
 function StatusDot({ state }: { state: DotState }) {
   if (state === 'done') return <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />;
-  if (state === 'active') return <Loader2 className="w-3.5 h-3.5 text-purple-400 animate-spin shrink-0" />;
+  if (state === 'active') return <Loader2 className="w-3.5 h-3.5 text-indigo-400 animate-spin shrink-0" />;
   if (state === 'failed') return <AlertTriangle className="w-3.5 h-3.5 text-rose-400 shrink-0" />;
-  if (state === 'skipped') return <span className="w-3.5 h-3.5 rounded-full border border-slate-700 shrink-0" />;
-  return <span className="w-3.5 h-3.5 rounded-full border border-slate-700 shrink-0" />;
+  if (state === 'skipped') return <span className="w-3.5 h-3.5 rounded-full border border-neutral-700 shrink-0" />;
+  return <span className="w-3.5 h-3.5 rounded-full border border-neutral-700 shrink-0" />;
 }
 
 export default CinematicFilmStudio;
