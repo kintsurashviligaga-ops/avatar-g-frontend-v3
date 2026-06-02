@@ -11,7 +11,8 @@
  *     double-click cannot launch two render jobs (fails-open w/o Redis).
  *   - Saga: reserve credits → dispatch → commit; any failure releases the
  *     credit lock and best-effort purges the partial render.
- *   - Honest degradation: 503 when the GPU node env is unprovisioned.
+ *   - Honest degradation: when no GPU worker (RunPod) is provisioned the stitch
+ *     falls back to the bundled on-node CPU FFmpeg assembler — never a 503.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
