@@ -518,7 +518,7 @@ export function ConversationalFilmStudio({
             {/* Financial GEL ledger — live wallet balance in ₾, with a compact
                 cyan top-up control that opens the Stripe-hosted checkout inline
                 (no page leave). Replaces the old opaque "credits" badge. */}
-            <div className="inline-flex items-center overflow-hidden rounded-lg border border-white/10 bg-[#0A0A0A]">
+            <div className="inline-flex items-center overflow-hidden rounded-lg border border-white/10 bg-black">
               <span className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-bold tabular-nums text-white">
                 <span className="text-[#00D2FF]">₾</span>
                 {formatGEL(balanceGel ?? 0)}
@@ -538,7 +538,7 @@ export function ConversationalFilmStudio({
               type="button"
               onClick={() => setMenuOpen(true)}
               aria-label={t.menu}
-              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-[#0A0A0A] text-neutral-300 transition-colors hover:border-[#00D2FF]/40 hover:text-white"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-black text-neutral-300 transition-colors hover:border-[#00D2FF]/40 hover:text-white"
             >
               <Menu className="h-4 w-4" />
             </button>
@@ -555,16 +555,16 @@ export function ConversationalFilmStudio({
         <div className="mx-auto w-full max-w-3xl px-4 py-5 space-y-4">
           {/* Compact identity strip — reference photos are OPTIONAL. A slim row
               of small thumbnails so the chat keeps the lion's share of the view. */}
-          <div className="rounded-2xl border border-white/10 bg-[#0A0A0A] p-3">
-            <div className="flex items-center gap-3">
-              <div className="flex items-center gap-2 shrink-0">
+          <div className="rounded-2xl border border-white/10 bg-black p-2.5 sm:p-3">
+            <div className="flex items-center gap-2.5 sm:gap-3">
+              <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
                 {[0, 1, 2].map((idx) => {
                   const slot = slots[idx] ?? null;
                   const role = t.roles[idx] ?? '';
                   return (
                     <div
                       key={idx}
-                      className="relative h-14 w-14 rounded-lg border border-white/10 bg-black overflow-hidden group transition-colors hover:border-[#00D2FF]/40"
+                      className="relative h-11 w-11 sm:h-14 sm:w-14 rounded-lg border border-white/10 bg-black overflow-hidden group transition-colors hover:border-[#00D2FF]/40"
                     >
                       {slot ? (
                         <>
@@ -616,7 +616,7 @@ export function ConversationalFilmStudio({
                   'max-w-[85%] rounded-2xl px-4 py-3 text-[13px] leading-relaxed',
                   msg.role === 'user'
                     ? 'bg-white text-black font-medium rounded-tr-sm shadow-[0_0_20px_rgba(255,255,255,0.06)]'
-                    : 'bg-[#0A0A0A] text-neutral-300 border border-white/10 rounded-tl-sm',
+                    : 'bg-black text-neutral-300 border border-white/10 rounded-tl-sm',
                 ].join(' ')}
               >
                 {msg.text}
@@ -626,7 +626,7 @@ export function ConversationalFilmStudio({
 
           {/* Live per-leg progress tracker (real onProgress) — cyan accents. */}
           {showTracker && (
-            <div className="rounded-2xl border border-white/10 bg-[#0A0A0A] p-4 space-y-3">
+            <div className="rounded-2xl border border-white/10 bg-black p-4 space-y-3">
               <div className="flex items-center gap-3">
                 {finished ? (
                   <CheckCircle2 className="w-5 h-5 text-[#00D2FF] shrink-0" />
@@ -692,7 +692,7 @@ export function ConversationalFilmStudio({
 
           {/* Real master output. */}
           {masterUrl && (
-            <div className="rounded-2xl border border-white/10 bg-[#0A0A0A] p-3 space-y-2.5">
+            <div className="rounded-2xl border border-white/10 bg-black p-3 space-y-2.5">
               <div className="flex items-center gap-2 text-[#00D2FF] text-[10px] font-bold uppercase tracking-widest">
                 <CheckCircle2 className="w-3.5 h-3.5" />
                 <span>{t.masterReady}</span>
@@ -713,7 +713,7 @@ export function ConversationalFilmStudio({
 
           {/* First-scene fallback when the editor could not host the master. */}
           {!masterUrl && previewUrl && (
-            <div className="rounded-2xl border border-white/10 bg-[#0A0A0A] p-3 space-y-2">
+            <div className="rounded-2xl border border-white/10 bg-black p-3 space-y-2">
               <p className="text-[11px] text-neutral-400">{t.firstScene}</p>
               <div className="relative aspect-video w-full rounded-xl bg-black overflow-hidden border border-white/10">
                 <video src={previewUrl} controls playsInline className="w-full h-full object-contain bg-black" />
@@ -735,7 +735,7 @@ export function ConversationalFilmStudio({
               The bar lights cyan on focus; the CTA turns full electric-cyan when the
               server confirms a free founder slot, otherwise it stays clean white and
               the existing /api/video/assemble billing gate charges normally. */}
-          <div className="flex items-end gap-2 rounded-2xl border border-white/10 bg-[#0A0A0A] p-2 transition-all focus-within:border-[#00D2FF] focus-within:shadow-[0_0_15px_rgba(0,210,255,0.15)]">
+          <div className="flex items-end gap-2 rounded-2xl border border-white/10 bg-black p-2 transition-all focus-within:border-[#00D2FF] focus-within:shadow-[0_0_15px_rgba(0,210,255,0.15)]">
             <textarea
               rows={1}
               className="flex-1 bg-transparent text-[13px] px-2.5 py-2 focus:outline-none placeholder-neutral-600 resize-none text-white max-h-32"
@@ -745,22 +745,25 @@ export function ConversationalFilmStudio({
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
             />
+            {/* Native round action button, docked in the bar's corner like
+                ChatGPT/Claude. Cyan when a free founder slot is live, otherwise
+                clean white; muted + non-interactive until there's prompt text. */}
             <button
               type="button"
               onClick={handleSend}
               disabled={!canSend}
               aria-label={t.generate}
+              title={t.generate}
               className={[
-                'inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl text-[13px] font-bold transition-all shrink-0',
+                'inline-flex h-9 w-9 items-center justify-center rounded-full transition-all shrink-0',
                 !canSend
-                  ? 'bg-white/5 text-neutral-600 cursor-not-allowed'
+                  ? 'bg-white/10 text-neutral-600 cursor-not-allowed'
                   : isFreeFilm
-                    ? 'bg-[#00D2FF] text-black shadow-[0_0_18px_rgba(0,210,255,0.45)] hover:brightness-110 active:scale-95'
-                    : 'bg-white text-black hover:bg-neutral-200 active:scale-95',
+                    ? 'bg-[#00D2FF] text-black shadow-[0_0_18px_rgba(0,210,255,0.45)] hover:brightness-110 active:scale-90'
+                    : 'bg-white text-black hover:bg-neutral-200 active:scale-90',
               ].join(' ')}
             >
               {driving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-              <span className="hidden sm:inline">{t.generate}</span>
             </button>
           </div>
           {/* Live tariff / promo readout — driven by the same server-authoritative
@@ -792,7 +795,7 @@ export function ConversationalFilmStudio({
         >
           <aside
             onClick={(e) => e.stopPropagation()}
-            className="flex h-full w-72 max-w-[80vw] flex-col border-l border-white/10 bg-[#0A0A0A] shadow-[0_0_60px_rgba(0,0,0,0.8)] animate-[slideIn_0.2s_ease-out]"
+            className="flex h-full w-72 max-w-[80vw] flex-col border-l border-white/10 bg-black shadow-[0_0_60px_rgba(0,0,0,0.8)] animate-[slideIn_0.2s_ease-out]"
             style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
           >
             <div className="flex items-center justify-between border-b border-white/10 px-4 py-4">
