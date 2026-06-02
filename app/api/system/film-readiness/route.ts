@@ -27,6 +27,7 @@ import {
   ELEVENLABS_API_KEY_ALIASES,
   NANOBANANA_API_KEY_ALIASES,
 } from '@/lib/chat/mediaKeys';
+import { computeEditorReadiness, editorVerdict, editorSyncInstructions } from '@/lib/chat/filmReadiness';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -79,14 +80,42 @@ export async function GET() {
   const canRenderClips = byProvider.ltx;
   const canScore = byProvider.udio;
   const canVoice = byProvider.elevenlabs;
-  const fullyAutonomous = canRenderClips && (canScore || canVoice);
+  const generationAutonomous = canRenderClips && (canScore || canVoice);
+
+  // PHASE 56 §1 — cover the FINAL leg: clips alone are not a film. The editor /
+  // assembler must be able to stitch the timeline AND host the master, or the
+  // user pays for a render that never yields a downloadable URL. Compute it
+  // from the same env contract the assemble route enforces at call time.
+  const editor = computeEditorReadiness();
+  const canDeliverMaster = editor.canDeliverMaster;
+
+  // "Fully autonomous" now means the WHOLE chain — generate, stitch, AND
+  // deliver. The old generation-only field is preserved under its own name so
+  // nothing that read it breaks.
+  const fullyAutonomous = generationAutonomous && canDeliverMaster;
 
   const missing = providers.filter((p) => !p.present);
-  const syncInstructions = missing.map((p) => ({
+  const providerSync = missing.map((p) => ({
     provider: p.provider,
     role: p.role,
     action: `Set ${p.canonicalEnv} in the Vercel project (Settings → Environment Variables → Production), or any accepted alias: ${p.checkedAliases.join(', ')}`,
   }));
+  const editorSync = editorSyncInstructions(editor).map((e) => ({
+    provider: 'editor' as const,
+    role: e.leg,
+    action: e.action,
+  }));
+  const syncInstructions = [...providerSync, ...editorSync];
+
+  // Whole-chain verdict: a missing LTX key or an un-hostable master both mean
+  // the user cannot receive a finished film, so both are BLOCKED.
+  const verdict = !canRenderClips
+    ? 'BLOCKED — LTX director key absent; no clips can render'
+    : !canDeliverMaster
+      ? `BLOCKED (delivery) — clips render but ${editorVerdict(editor).replace(/^BLOCKED — /, '')}`
+      : fullyAutonomous
+        ? 'READY — full autonomous chain can fire end-to-end (generate → stitch → deliver)'
+        : 'PARTIAL — clips render + master delivers; audio leg will use graceful fallback';
 
   return NextResponse.json({
     pipeline: '30-second-film',
@@ -95,14 +124,19 @@ export async function GET() {
       canRenderClips,
       canScore,
       canVoice,
+      canDeliverMaster,
+      stitchPath: editor.stitchPath,
+      generationAutonomous,
       fullyAutonomous,
-      verdict: !canRenderClips
-        ? 'BLOCKED — LTX director key absent; no clips can render'
-        : fullyAutonomous
-          ? 'READY — full autonomous chain can fire'
-          : 'PARTIAL — clips render; audio leg will use graceful fallback',
+      verdict,
     },
     providers,
+    editor: {
+      ...editor,
+      verdict: editorVerdict(editor),
+      note:
+        'The assemble route picks the GPU RunPod worker when configured, else stitches on-node with the bundled CPU FFmpeg binary (always available). A playable master REQUIRES Supabase Storage (master hosting); REPLICATE_API_TOKEN arms clip failover + the silent-film score rescue.',
+    },
     syncInstructions,
     note: 'Names-only report. Presence reflects whether a non-empty value exists under an accepted alias; secret values are never read into the response. A present key can still be rejected by the provider at call time (e.g. 401) — this report confirms wiring, not validity.',
   });
