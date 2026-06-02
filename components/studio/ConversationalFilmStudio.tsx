@@ -46,10 +46,8 @@ import {
   driveFilmStudio,
   estimateFilmCostGel,
   type FilmStudioProgress,
-  type FilmStudioMatrix,
-  type FilmStudioPhase,
-  type FilmLegClientStatus,
 } from '@/lib/chat/filmStudioClient';
+import { summarizeFilmPipeline, type StageState } from '@/lib/chat/filmStudioStages';
 
 interface Slot {
   dataUrl: string;
@@ -67,7 +65,6 @@ interface ConversationalFilmStudioProps {
   isAuthenticated?: boolean;
 }
 
-type DotState = 'pending' | 'active' | 'done' | 'failed' | 'skipped';
 type Lang = 'ka' | 'en' | 'ru';
 
 // ─── Localised copy ───────────────────────────────────────────────────────────
@@ -281,65 +278,6 @@ async function compressImageToDataUrl(file: File): Promise<string> {
   }
 }
 
-function legToDot(status: FilmLegClientStatus | undefined, active: boolean): DotState {
-  if (status === 'succeeded') return 'done';
-  if (status === 'failed') return 'failed';
-  if (status === 'skipped') return 'skipped';
-  if (active) return 'active';
-  return 'pending';
-}
-
-interface DerivedStage {
-  key: string;
-  label: string;
-  state: DotState;
-  previewUrl?: string | null;
-}
-
-function deriveStages(progress: FilmStudioProgress | null, roleScene: string): DerivedStage[] {
-  const m: FilmStudioMatrix | null = progress?.matrix ?? null;
-  const phase: FilmStudioPhase = progress?.phase ?? 'idle';
-  const rendering = phase === 'rendering' || phase === 'dispatching';
-  const total = m?.sceneCount || m?.clips.length || FILM_SCENE_COUNT;
-
-  const stages: DerivedStage[] = [];
-  stages.push({
-    key: 'storyboard',
-    label: 'Storyboard — scene breakdown',
-    state: m ? legToDot(m.storyboard, rendering) : phase === 'dispatching' ? 'active' : 'pending',
-  });
-
-  const clips = m ? [...m.clips].sort((a, b) => a.ordinal - b.ordinal) : [];
-  for (let i = 0; i < total; i++) {
-    const clip = clips[i];
-    stages.push({
-      key: `clip_${i + 1}`,
-      label: `${roleScene} ${i + 1} / ${total}`,
-      state: clip ? legToDot(clip.status, rendering) : rendering ? 'active' : 'pending',
-      previewUrl: clip?.url ?? null,
-    });
-  }
-
-  stages.push({
-    key: 'stitch',
-    label: 'Editor — stitching the final cut',
-    state:
-      phase === 'assembled'
-        ? 'done'
-        : phase === 'stitching'
-          ? 'active'
-          : m
-            ? legToDot(m.stitch, false)
-            : 'pending',
-  });
-  stages.push({
-    key: 'score',
-    label: 'Audio & Foley — scoring the film',
-    state: m ? legToDot(m.audio, rendering) : 'pending',
-  });
-  return stages;
-}
-
 // ─── Component ─────────────────────────────────────────────────────────────────
 
 export function ConversationalFilmStudio({
@@ -541,9 +479,15 @@ export function ConversationalFilmStudio({
     [handleSend],
   );
 
-  const stages = deriveStages(progress, lang === 'ka' ? 'სცენა' : lang === 'ru' ? 'Сцена' : 'Scene');
+  // Single source of truth for the live STATUS PIPELINE — derived by the pure,
+  // unit-tested `summarizeFilmPipeline` (lib/chat/filmStudioStages). Returns the
+  // ordered legs plus aggregate metrics (scene count, scenes rendered, whole-
+  // pipeline percent, terminal done/failed) the tracker UI renders verbatim.
+  const roleSceneLabel = lang === 'ka' ? 'სცენა' : lang === 'ru' ? 'Сцена' : 'Scene';
+  const pipeline = summarizeFilmPipeline(progress, roleSceneLabel);
+  const stages = pipeline.stages;
   const showTracker = driving || (progress != null && progress.phase !== 'idle');
-  const finished = progress?.phase === 'assembled';
+  const finished = pipeline.done;
 
   return (
     // STRICT three-tone matrix — pure black canvas (#000000, infinite depth on
@@ -553,7 +497,16 @@ export function ConversationalFilmStudio({
     // the iOS keyboard. overflow-hidden on the shell + a single inner scroller
     // kills the Safari/Chrome rubber-band "page slide".
     <>
-    <div className="flex h-[100dvh] w-full flex-col items-stretch justify-between overflow-hidden bg-black text-white antialiased">
+    {/* ABSOLUTE viewport lock: `fixed inset-0` pins the shell to all four edges
+        of the visual viewport, so the studio can never be center-clamped or
+        leave dead space regardless of any parent layout. `height: 100dvh` is the
+        iOS-correct unit (tracks Safari/Chrome dynamic toolbars), so the composer
+        is never cut off behind the keyboard or address bar — the regression a
+        raw 100vh `h-screen` would reintroduce. */}
+    <div
+      className="fixed inset-0 z-0 flex flex-col overflow-hidden bg-black text-white antialiased"
+      style={{ height: '100dvh' }}
+    >
       {/* ── Top app bar ────────────────────────────────────────────────── */}
       <header
         className="shrink-0 sticky top-0 z-30 border-b border-white/10 bg-black/90 backdrop-blur-xl"
@@ -708,6 +661,25 @@ export function ConversationalFilmStudio({
                     {t.cancel}
                   </button>
                 )}
+              </div>
+              {/* Whole-pipeline progress: a thin cyan bar + scene/percent readout,
+                  both driven by the unit-tested summarizeFilmPipeline metrics. */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider tabular-nums">
+                  <span className="text-neutral-500">
+                    {pipeline.scenesRendered} / {pipeline.totalScenes} {roleSceneLabel}
+                  </span>
+                  <span className={pipeline.failed ? 'text-red-300' : 'text-[#00D2FF]'}>{pipeline.percent}%</span>
+                </div>
+                <div className="h-1 w-full overflow-hidden rounded-full bg-white/10">
+                  <div
+                    className={[
+                      'h-full rounded-full transition-[width] duration-500 ease-out',
+                      pipeline.failed ? 'bg-red-400/80' : 'bg-[#00D2FF] shadow-[0_0_10px_rgba(0,210,255,0.5)]',
+                    ].join(' ')}
+                    style={{ width: `${pipeline.percent}%` }}
+                  />
+                </div>
               </div>
               <ul className="space-y-1.5">
                 {stages.map((s) => (
@@ -900,15 +872,22 @@ export function ConversationalFilmStudio({
       )}
 
       {/* Stripe-hosted wallet top-up — opens inline, redirects to Stripe on tier
-          select. We NEVER render a card form ourselves. */}
-      <WalletRefillModal open={walletOpen} locale={locale} onClose={() => setWalletOpen(false)} />
+          select. We NEVER render a card form ourselves. `variant="obsidian"`
+          forces the pure-#000000 / white / cyan studio skin so the modal matches
+          the OLED shell regardless of the user's light/dark theme. */}
+      <WalletRefillModal
+        open={walletOpen}
+        locale={locale}
+        variant="obsidian"
+        onClose={() => setWalletOpen(false)}
+      />
     </>
   );
 }
 
 // ─── Small presentational atoms ──────────────────────────────────────────────
 
-function StatusDot({ state }: { state: DotState }) {
+function StatusDot({ state }: { state: StageState }) {
   if (state === 'done') return <CheckCircle2 className="w-3.5 h-3.5 text-[#00D2FF] shrink-0" />;
   if (state === 'active') return <Loader2 className="w-3.5 h-3.5 text-[#00D2FF] animate-spin shrink-0" />;
   if (state === 'failed') return <AlertTriangle className="w-3.5 h-3.5 text-red-400 shrink-0" />;

@@ -28,15 +28,46 @@ export function BalanceChip({ balanceGel, onClick }: { balanceGel: number | null
 }
 
 export function WalletRefillModal({
-  open, locale, requiredAmount, onClose,
+  open, locale, requiredAmount, variant = 'theme', onClose,
 }: {
   open: boolean;
   locale: string;
   requiredAmount?: number | null;
+  /**
+   * 'theme'   → app-token skin that respects light/dark (chat surfaces).
+   * 'obsidian'→ hard pure-#000000 / white / electric-cyan skin for the always-
+   *             dark Film Studio shell, so the modal never flashes a light card
+   *             over the OLED-black studio.
+   */
+  variant?: 'theme' | 'obsidian';
   onClose: () => void;
 }) {
   const [busy, setBusy] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const obsidian = variant === 'obsidian';
+
+  // Skin map — the 'theme' branch keeps the exact original token classes so the
+  // chat surfaces are untouched; 'obsidian' hardcodes the 3-tone studio palette.
+  const skin = {
+    panel: obsidian
+      ? 'w-full max-w-sm rounded-t-3xl sm:rounded-3xl border border-white/10 bg-black p-5 shadow-[0_-12px_60px_-12px_rgba(0,0,0,0.95)] sm:shadow-[0_24px_80px_-24px_rgba(0,0,0,0.9)]'
+      : 'w-full max-w-sm rounded-t-3xl sm:rounded-3xl border border-app-border/15 bg-app-bg p-5 shadow-[0_-12px_60px_-12px_rgba(0,0,0,0.95)] sm:shadow-[0_24px_80px_-24px_rgba(0,0,0,0.9)]',
+    title: obsidian ? 'text-white' : 'text-app-text',
+    icon: obsidian ? 'text-[#00D2FF]' : 'text-app-muted',
+    close: obsidian
+      ? 'text-neutral-400 hover:text-white hover:bg-white/10'
+      : 'text-app-muted hover:text-app-text hover:bg-app-elevated/60',
+    tierPower: obsidian
+      ? 'relative inline-flex items-center justify-center gap-1.5 h-14 rounded-2xl font-semibold text-[17px] text-white bg-[#00D2FF]/10 border border-[#00D2FF]/40 hover:border-[#00D2FF]/60 hover:bg-[#00D2FF]/20 disabled:opacity-60 transition-all duration-200 active:scale-[0.98] shadow-[0_0_22px_-8px_rgba(0,210,255,0.55)] tabular-nums col-span-2'
+      : 'relative inline-flex items-center justify-center gap-1.5 h-14 rounded-2xl font-semibold text-[17px] text-app-text bg-app-elevated border border-cyan-400/30 hover:border-cyan-300/50 hover:bg-app-surface disabled:opacity-60 transition-all duration-200 active:scale-[0.98] shadow-[0_0_22px_-8px_rgba(56,189,248,0.55)] tabular-nums col-span-2',
+    tier: obsidian
+      ? 'relative inline-flex items-center justify-center gap-1.5 h-14 rounded-2xl font-semibold text-[17px] text-white bg-black border border-white/10 hover:border-[#00D2FF]/40 hover:bg-white/5 disabled:opacity-60 transition-all duration-200 active:scale-[0.98] tabular-nums'
+      : 'relative inline-flex items-center justify-center gap-1.5 h-14 rounded-2xl font-semibold text-[17px] text-app-text bg-app-elevated border border-app-border/15 hover:border-app-border/30 hover:bg-app-surface disabled:opacity-60 transition-all duration-200 active:scale-[0.98] tabular-nums',
+    minBadge: obsidian ? 'bg-white text-black' : 'bg-app-text text-app-bg',
+    premiumBadge: obsidian ? 'bg-[#00D2FF] text-black' : 'bg-cyan-400 text-zinc-950',
+    note: obsidian ? 'text-neutral-500' : 'text-app-muted',
+    error: obsidian ? 'text-red-300' : 'text-rose-600 dark:text-rose-300',
+  };
 
   const charge = useCallback(async (amountGel: number) => {
     setBusy(amountGel); setError(null);
@@ -75,13 +106,13 @@ export function WalletRefillModal({
           // Theme-aware drawer: app-bg canvas, app-border hairline, deep shadow.
           // Bottom-attached on mobile (items-end), centered on desktop.
           style={{ paddingBottom: 'calc(1.25rem + env(safe-area-inset-bottom, 0px))' }}
-          className="w-full max-w-sm rounded-t-3xl sm:rounded-3xl border border-app-border/15 bg-app-bg p-5 shadow-[0_-12px_60px_-12px_rgba(0,0,0,0.95)] sm:shadow-[0_24px_80px_-24px_rgba(0,0,0,0.9)]"
+          className={skin.panel}
         >
           <div className="flex items-center justify-between mb-4">
-            <span className="inline-flex items-center gap-2 text-[15px] font-semibold text-app-text">
-              <Wallet size={17} className="text-app-muted" /> {title}
+            <span className={`inline-flex items-center gap-2 text-[15px] font-semibold ${skin.title}`}>
+              <Wallet size={17} className={skin.icon} /> {title}
             </span>
-            <button type="button" onClick={onClose} aria-label="Close" className="h-7 w-7 rounded-full flex items-center justify-center text-app-muted hover:text-app-text hover:bg-app-elevated/60 transition active:scale-90">
+            <button type="button" onClick={onClose} aria-label="Close" className={`h-7 w-7 rounded-full flex items-center justify-center transition active:scale-90 ${skin.close}`}>
               <X size={15} />
             </button>
           </div>
@@ -101,22 +132,16 @@ export function WalletRefillModal({
                   type="button"
                   onClick={() => void charge(tier)}
                   disabled={busy !== null}
-                  className={
-                    isPower
-                      // Top tier gets the only neon accent in the grid — a deliberate
-                      // visual anchor for the 500 ₾ power-user choice.
-                      ? 'relative inline-flex items-center justify-center gap-1.5 h-14 rounded-2xl font-semibold text-[17px] text-app-text bg-app-elevated border border-cyan-400/30 hover:border-cyan-300/50 hover:bg-app-surface disabled:opacity-60 transition-all duration-200 active:scale-[0.98] shadow-[0_0_22px_-8px_rgba(56,189,248,0.55)] tabular-nums col-span-2'
-                      : 'relative inline-flex items-center justify-center gap-1.5 h-14 rounded-2xl font-semibold text-[17px] text-app-text bg-app-elevated border border-app-border/15 hover:border-app-border/30 hover:bg-app-surface disabled:opacity-60 transition-all duration-200 active:scale-[0.98] tabular-nums'
-                  }
+                  className={isPower ? skin.tierPower : skin.tier}
                 >
                   {busy === tier ? <Loader2 size={18} className="animate-spin" /> : `${tier} ₾`}
                   {tier === MIN_REFILL_GEL && (
-                    <span className="absolute -top-2 left-1/2 -translate-x-1/2 text-[8.5px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-app-text text-app-bg whitespace-nowrap">
+                    <span className={`absolute -top-2 left-1/2 -translate-x-1/2 text-[8.5px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full whitespace-nowrap ${skin.minBadge}`}>
                       {locale === 'ka' ? 'მინ.' : 'min'}
                     </span>
                   )}
                   {isPower && (
-                    <span className="absolute -top-2 left-1/2 -translate-x-1/2 text-[8.5px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-cyan-400 text-zinc-950 whitespace-nowrap">
+                    <span className={`absolute -top-2 left-1/2 -translate-x-1/2 text-[8.5px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full whitespace-nowrap ${skin.premiumBadge}`}>
                       {locale === 'ka' ? 'პრემიუმი' : locale === 'ru' ? 'премиум' : 'premium'}
                     </span>
                   )}
@@ -125,8 +150,8 @@ export function WalletRefillModal({
             })}
           </div>
 
-          {error && <p className="mt-3 text-[12px] text-rose-600 dark:text-rose-300 leading-relaxed">{error}</p>}
-          <p className="mt-3 text-[11px] text-app-muted leading-relaxed">
+          {error && <p className={`mt-3 text-[12px] leading-relaxed ${skin.error}`}>{error}</p>}
+          <p className={`mt-3 text-[11px] leading-relaxed ${skin.note}`}>
             {locale === 'ka' ? 'გადახდა მუშავდება Stripe-ით (₾ / GEL).' : locale === 'ru' ? 'Оплата через Stripe (₾ / GEL).' : 'Secure checkout via Stripe (₾ / GEL).'}
           </p>
         </motion.div>
