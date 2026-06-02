@@ -25,8 +25,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import {
   Upload,
-  Cpu,
-  Clock,
   Send,
   CheckCircle2,
   Loader2,
@@ -348,7 +346,6 @@ export function ConversationalFilmStudio({
 
   const estCost = useMemo(() => estimateFilmCostGel(), []);
   const isFreeFilm = typeof freeFilmsRemaining === 'number' && freeFilmsRemaining > 0;
-  const filledCount = slots.filter(Boolean).length;
   const canSend = !driving && input.trim().length > 0;
 
   const handlePick = useCallback(
@@ -452,30 +449,31 @@ export function ConversationalFilmStudio({
   const finished = progress?.phase === 'assembled';
 
   return (
-    // Page-flow shell (min-h-screen, NOT a rigid h-dvh viewport lock): on a large
-    // monitor the content fills the full width/height in normal proportions
-    // (max-w-6xl) instead of being stranded in a narrow centered column. Deep
-    // asphalt-black canvas; blocks lift one tone with hairline slate borders.
-    <div className="min-h-screen w-full bg-[#0B0F17] text-slate-200 antialiased">
-      {/* ── Top app bar — pinned to the very top, full container width ──── */}
+    // STRICT three-tone matrix — pure black canvas (#000000, infinite depth on
+    // OLED iPhones), white type, electric-cyan (#00D2FF) for every active accent.
+    // A true full-screen chatbot shell: header pinned top, the conversation feed
+    // owns the height, and the composer is locked to the bottom so it rides above
+    // the iOS keyboard. overflow-hidden on the shell + a single inner scroller
+    // kills the Safari/Chrome rubber-band "page slide".
+    <div className="flex h-[100dvh] w-full flex-col overflow-hidden bg-black text-white antialiased">
+      {/* ── Top app bar ────────────────────────────────────────────────── */}
       <header
-        className="sticky top-0 z-30 border-b border-slate-800 bg-[#0B0F17]/90 backdrop-blur-xl"
+        className="shrink-0 sticky top-0 z-30 border-b border-white/10 bg-black/90 backdrop-blur-xl"
         style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
       >
-        <div className="mx-auto flex h-14 w-full max-w-6xl items-center justify-between gap-2 px-4">
+        <div className="mx-auto flex h-14 w-full max-w-3xl items-center justify-between gap-2 px-4">
           <Link href={`/${locale}/dashboard`} className="group flex items-center gap-2.5 min-w-0">
-            {/* 3D rocket brand mark — ambient pulse + a gentle tilt on hover for
-                that premium SaaS feel, without leaning on a heavyweight 3D lib. */}
-            <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 shadow-[0_0_18px_rgba(99,102,241,0.30)] transition-transform duration-500 ease-out group-hover:rotate-12 group-hover:scale-105">
+            {/* 3D rocket mark — cyan halo, ambient pulse, gentle hover tilt. */}
+            <span className="flex h-8 w-8 items-center justify-center rounded-xl border border-[#00D2FF]/40 bg-[#00D2FF]/10 shadow-[0_0_15px_rgba(0,210,255,0.25)] transition-transform duration-500 ease-out group-hover:rotate-12 group-hover:scale-105">
               <span className="text-[15px] leading-none animate-pulse" aria-hidden="true">
                 🚀
               </span>
             </span>
             <span className="min-w-0">
               <span className="block truncate text-sm font-bold tracking-wide text-white">
-                MyAvatar<span className="text-indigo-400">.ge</span>
+                MyAvatar<span className="text-[#00D2FF]">.ge</span>
               </span>
-              <span className="block text-[9px] uppercase font-bold tracking-[0.18em] text-slate-500">
+              <span className="block text-[9px] uppercase font-bold tracking-[0.18em] text-neutral-500">
                 {t.brandSub}
               </span>
             </span>
@@ -487,7 +485,7 @@ export function ConversationalFilmStudio({
             <Link
               href={`/${locale}/chat`}
               aria-label={t.chat}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-800 bg-[#151D2A] px-2.5 py-1.5 text-xs font-semibold text-slate-300 transition-colors hover:border-slate-700 hover:text-white"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-[#0A0A0A] px-2.5 py-1.5 text-xs font-semibold text-neutral-300 transition-colors hover:border-[#00D2FF]/40 hover:text-white"
             >
               <MessageSquare className="h-3.5 w-3.5" />
               <span className="hidden sm:inline">{t.chat}</span>
@@ -496,7 +494,7 @@ export function ConversationalFilmStudio({
               <Link
                 href={`/${locale}/login`}
                 aria-label={t.login}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-400/30 bg-indigo-400/10 px-2.5 py-1.5 text-xs font-semibold text-indigo-200 transition-colors hover:bg-indigo-400/20"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-[#00D2FF]/40 bg-[#00D2FF]/10 px-2.5 py-1.5 text-xs font-semibold text-[#00D2FF] transition-colors hover:bg-[#00D2FF]/20"
               >
                 <LogIn className="h-3.5 w-3.5" />
                 <span className="hidden sm:inline">{t.login}</span>
@@ -506,51 +504,46 @@ export function ConversationalFilmStudio({
         </div>
       </header>
 
-      {/* ── Workspace ──────────────────────────────────────────────────── */}
-      {/* Mobile: one stacked column. Desktop: a fixed 320px setup rail beside a
-          fluid conversation column, so the slots + chat are evenly distributed
-          across the width and no dead background is left in the middle. */}
-      <div className="mx-auto w-full max-w-6xl px-4 py-6">
-        <div className="grid gap-6 lg:grid-cols-[320px_minmax(0,1fr)]">
-          {/* ── Left rail: Setup (identity ingestion + cost ledger) ────── */}
-          <aside className="space-y-4 lg:sticky lg:top-20 lg:self-start">
-            <h2 className="px-1 text-[11px] font-bold uppercase tracking-widest text-slate-500">{t.setupTitle}</h2>
-
-            {/* Identity ingestion widget — reference photos are OPTIONAL. */}
-            <div className="rounded-2xl border border-slate-800 bg-[#151D2A] p-4 space-y-3">
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-                  {t.identityLabel}
-                </span>
-                <span className="text-[10px] text-slate-500 font-medium">{t.identityHint}</span>
-              </div>
-              <div className="grid grid-cols-3 gap-2.5">
+      {/* ── Conversation feed (the hero — owns all spare height) ────────── */}
+      {/* no-scrollbar + momentum + overscroll-contain so only THIS pane scrolls. */}
+      <div
+        className="flex-1 overflow-y-auto no-scrollbar"
+        style={{ WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain' }}
+      >
+        <div className="mx-auto w-full max-w-3xl px-4 py-5 space-y-4">
+          {/* Compact identity strip — reference photos are OPTIONAL. A slim row
+              of small thumbnails so the chat keeps the lion's share of the view. */}
+          <div className="rounded-2xl border border-white/10 bg-[#0A0A0A] p-3">
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2 shrink-0">
                 {[0, 1, 2].map((idx) => {
                   const slot = slots[idx] ?? null;
                   const role = t.roles[idx] ?? '';
                   return (
                     <div
                       key={idx}
-                      className="relative aspect-[3/4] rounded-xl border border-slate-800 bg-[#0B0F17] overflow-hidden group hover:border-slate-600 transition-colors"
+                      className="relative h-14 w-14 rounded-lg border border-white/10 bg-black overflow-hidden group transition-colors hover:border-[#00D2FF]/40"
                     >
                       {slot ? (
                         <>
                           {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img src={slot.dataUrl} alt={role} className="w-full h-full object-cover" />
+                          <img src={slot.dataUrl} alt={role} className="h-full w-full object-cover" />
                           <button
                             type="button"
                             onClick={() => clearSlot(idx)}
                             disabled={driving}
                             aria-label="Remove photo"
-                            className="absolute top-1.5 right-1.5 p-1 rounded-md bg-black/70 border border-slate-700 text-slate-300 hover:text-white disabled:opacity-40"
+                            className="absolute top-0.5 right-0.5 rounded-md border border-white/10 bg-black/70 p-0.5 text-neutral-300 hover:text-white disabled:opacity-40"
                           >
-                            <X className="w-3 h-3" />
+                            <X className="h-2.5 w-2.5" />
                           </button>
                         </>
                       ) : (
-                        <label className="cursor-pointer flex flex-col items-center justify-center p-2 text-center h-full w-full">
-                          <Upload className="w-4 h-4 text-slate-600 group-hover:text-slate-400 transition-colors mb-1" />
-                          <span className="text-[10px] text-slate-400 font-medium leading-tight">{role}</span>
+                        <label
+                          aria-label={role}
+                          className="flex h-full w-full cursor-pointer items-center justify-center"
+                        >
+                          <Upload className="h-4 w-4 text-neutral-600 transition-colors group-hover:text-[#00D2FF]" />
                           {/* accept="image/*" natively offers Take Photo / Library on iOS & Android. */}
                           <input
                             type="file"
@@ -565,210 +558,186 @@ export function ConversationalFilmStudio({
                   );
                 })}
               </div>
-            </div>
-
-            {/* Honest GEL ledger — real estimate, metered server-side. */}
-            <div className="rounded-2xl border border-slate-800 bg-[#151D2A] p-4 space-y-3">
-              <div className="grid grid-cols-3 gap-px bg-slate-800 rounded-xl overflow-hidden border border-slate-800">
-                <LedgerCard icon={<Cpu className="w-3 h-3" />} label={t.scenes} value={`${FILM_SCENE_COUNT}`} unit="× 6s" />
-                <LedgerCard icon={<Clock className="w-3 h-3" />} label={t.runtime} value="30" unit="sec" />
-                <LedgerCard
-                  icon={
-                    <span className="w-3 h-3 rounded-full bg-slate-700 text-slate-200 text-[9px] flex items-center justify-center font-bold">
-                      ₾
-                    </span>
-                  }
-                  label={t.cost}
-                  value={isFreeFilm ? '0.00' : formatGEL(estCost).replace(' ₾', '')}
-                  unit="GEL"
-                  accent
-                />
+              <div className="min-w-0">
+                <p className="truncate text-[11px] font-bold uppercase tracking-wider text-neutral-400">
+                  {t.identityLabel}
+                </p>
+                <p className="text-[10px] text-neutral-600">{t.identityHint}</p>
               </div>
-              {isFreeFilm ? (
-                <div className="space-y-1.5">
-                  <div className="inline-flex items-center gap-1.5 rounded-full border border-emerald-400/30 bg-emerald-400/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-emerald-300">
-                    <CheckCircle2 className="h-3 w-3" />
-                    {t.freeFilmBadge}
-                  </div>
-                  <p className="text-[10px] text-slate-500 leading-relaxed">{t.freeFilmNote}</p>
-                </div>
-              ) : (
-                <p className="text-[10px] text-slate-500 leading-relaxed">{t.estNote}</p>
-              )}
             </div>
-          </aside>
+          </div>
 
-          {/* ── Right column: conversation feed + sticky composer ──────── */}
-          <main className="flex min-h-[60vh] flex-col">
-            <div className="flex-1 space-y-5">
-              {messages.map((msg) => (
-                <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                  <div
-                    className={[
-                      'max-w-[85%] rounded-2xl px-4 py-3 text-[13px] leading-relaxed',
-                      msg.role === 'user'
-                        ? 'bg-white text-black font-medium rounded-tr-sm shadow-md'
-                        : 'bg-[#151D2A] text-slate-300 border border-slate-800 rounded-tl-sm',
-                    ].join(' ')}
-                  >
-                    {msg.text}
-                  </div>
-                </div>
-              ))}
-
-              {/* Live per-leg progress tracker (real onProgress). */}
-              {showTracker && (
-                <div className="rounded-2xl border border-slate-800 bg-[#151D2A] p-4 space-y-3">
-                  <div className="flex items-center gap-3">
-                    {finished ? (
-                      <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
-                    ) : (
-                      <Loader2 className="w-5 h-5 text-indigo-400 animate-spin shrink-0" />
-                    )}
-                    <div className="min-w-0">
-                      <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                        {finished ? t.pipelineDone : t.pipelineRunning}
-                      </span>
-                      <p className="text-xs text-slate-300 mt-0.5">{progress?.message || 'Working…'}</p>
-                    </div>
-                    {driving && (
-                      <button
-                        type="button"
-                        onClick={handleCancel}
-                        className="ml-auto shrink-0 rounded-lg border border-slate-700 bg-[#0B0F17] px-2.5 py-1 text-[11px] font-semibold text-slate-400 hover:text-slate-200"
-                      >
-                        {t.cancel}
-                      </button>
-                    )}
-                  </div>
-                  <ul className="space-y-1.5">
-                    {stages.map((s) => (
-                      <li key={s.key} className="flex items-center gap-2.5 text-xs">
-                        <StatusDot state={s.state} />
-                        <span
-                          className={
-                            s.state === 'done'
-                              ? 'text-slate-300'
-                              : s.state === 'active'
-                                ? 'text-white'
-                                : s.state === 'failed'
-                                  ? 'text-rose-300'
-                                  : 'text-slate-600'
-                          }
-                        >
-                          {s.label}
-                        </span>
-                        {s.previewUrl && (
-                          <video
-                            src={s.previewUrl}
-                            muted
-                            playsInline
-                            className="ml-auto h-7 w-12 rounded object-cover border border-slate-700"
-                          />
-                        )}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-
-              {/* Error card. */}
-              {error && (
-                <div className="flex items-start gap-2.5 rounded-2xl border border-rose-500/25 bg-rose-950/15 p-4 text-xs text-rose-200">
-                  <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
-                  <span>{error}</span>
-                </div>
-              )}
-
-              {/* Real master output. */}
-              {masterUrl && (
-                <div className="rounded-2xl border border-slate-800 bg-[#151D2A] p-3 space-y-2.5">
-                  <div className="flex items-center gap-2 text-emerald-400 text-[10px] font-bold uppercase tracking-widest">
-                    <CheckCircle2 className="w-3.5 h-3.5" />
-                    <span>{t.masterReady}</span>
-                  </div>
-                  <div className="relative aspect-video w-full rounded-xl bg-black overflow-hidden border border-slate-700">
-                    <video src={masterUrl} controls playsInline className="w-full h-full object-contain bg-black" />
-                  </div>
-                  <a
-                    href={masterUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 text-xs text-slate-300 hover:text-white"
-                  >
-                    {t.openMaster} <ArrowRight className="w-3.5 h-3.5" />
-                  </a>
-                </div>
-              )}
-
-              {/* First-scene fallback when the editor could not host the master. */}
-              {!masterUrl && previewUrl && (
-                <div className="rounded-2xl border border-slate-800 bg-[#151D2A] p-3 space-y-2">
-                  <p className="text-[11px] text-amber-300/90">{t.firstScene}</p>
-                  <div className="relative aspect-video w-full rounded-xl bg-black overflow-hidden border border-slate-700">
-                    <video src={previewUrl} controls playsInline className="w-full h-full object-contain bg-black" />
-                  </div>
-                </div>
-              )}
-
-              <div ref={feedEndRef} />
-            </div>
-
-            {/* ── Unified conversion bar: prompt + Generate CTA ─────────── */}
-            {/* The prompt input and the big "Generate video" button live in ONE
-                bar — a single conversion surface. The CTA turns emerald when the
-                server confirms a free founder slot, otherwise it stays neutral and
-                the existing server-side billing gate (/api/video/assemble) charges
-                normally. Sticky so it stays reachable as the feed grows. */}
-            <div
-              className="sticky bottom-0 z-20 mt-5 -mx-4 border-t border-slate-800 bg-[#0B0F17]/95 px-4 pt-3 backdrop-blur-lg"
-              style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom, 0px))' }}
-            >
-              <div className="flex items-end gap-2 rounded-2xl border border-slate-700 bg-[#151D2A] p-2 focus-within:border-slate-600 transition-colors">
-                <textarea
-                  rows={1}
-                  className="flex-1 bg-transparent text-[13px] px-2.5 py-2 focus:outline-none placeholder-slate-600 resize-none text-white max-h-32"
-                  placeholder={driving ? t.placeholderBusy : t.placeholder}
-                  disabled={driving}
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  onKeyDown={handleKeyDown}
-                />
-                <button
-                  type="button"
-                  onClick={handleSend}
-                  disabled={!canSend}
-                  aria-label={t.generate}
-                  className={[
-                    'inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl text-[13px] font-bold transition-all shrink-0',
-                    !canSend
-                      ? 'bg-slate-800 text-slate-600 cursor-not-allowed'
-                      : isFreeFilm
-                        ? 'bg-emerald-500 text-white hover:bg-emerald-400 shadow-[0_0_18px_rgba(16,185,129,0.35)] active:scale-95'
-                        : 'bg-white text-black hover:bg-slate-200 shadow-md active:scale-95',
-                  ].join(' ')}
-                >
-                  {driving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-                  <span className="hidden sm:inline">{t.generate}</span>
-                </button>
+          {messages.map((msg) => (
+            <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+              <div
+                className={[
+                  'max-w-[85%] rounded-2xl px-4 py-3 text-[13px] leading-relaxed',
+                  msg.role === 'user'
+                    ? 'bg-white text-black font-medium rounded-tr-sm shadow-[0_0_20px_rgba(255,255,255,0.06)]'
+                    : 'bg-[#0A0A0A] text-neutral-300 border border-white/10 rounded-tl-sm',
+                ].join(' ')}
+              >
+                {msg.text}
               </div>
-              {/* Live tariff / promo readout — driven by the same server-authoritative
-                  freeFilmsRemaining state, so it always tells the truth about cost. */}
-              <p className="mt-2 text-center text-[11px] font-semibold">
-                {isFreeFilm ? (
-                  <span className="inline-flex items-center gap-1.5 text-emerald-300">
-                    <CheckCircle2 className="h-3 w-3" />
-                    {t.promoLimit}
-                  </span>
+            </div>
+          ))}
+
+          {/* Live per-leg progress tracker (real onProgress) — cyan accents. */}
+          {showTracker && (
+            <div className="rounded-2xl border border-white/10 bg-[#0A0A0A] p-4 space-y-3">
+              <div className="flex items-center gap-3">
+                {finished ? (
+                  <CheckCircle2 className="w-5 h-5 text-[#00D2FF] shrink-0" />
                 ) : (
-                  <span className="text-slate-300">
-                    {t.tariffLabel} · {formatGEL(estCost)}
-                  </span>
+                  <Loader2 className="w-5 h-5 text-[#00D2FF] animate-spin shrink-0" />
                 )}
-              </p>
-              <p className="mt-1 text-center text-[10px] text-slate-600">{t.signinNote}</p>
+                <div className="min-w-0">
+                  <span className="block text-[10px] font-bold uppercase tracking-wider text-neutral-400">
+                    {finished ? t.pipelineDone : t.pipelineRunning}
+                  </span>
+                  <p className="text-xs text-neutral-300 mt-0.5">{progress?.message || 'Working…'}</p>
+                </div>
+                {driving && (
+                  <button
+                    type="button"
+                    onClick={handleCancel}
+                    className="ml-auto shrink-0 rounded-lg border border-white/10 bg-black px-2.5 py-1 text-[11px] font-semibold text-neutral-400 hover:text-white"
+                  >
+                    {t.cancel}
+                  </button>
+                )}
+              </div>
+              <ul className="space-y-1.5">
+                {stages.map((s) => (
+                  <li key={s.key} className="flex items-center gap-2.5 text-xs">
+                    <StatusDot state={s.state} />
+                    <span
+                      className={
+                        s.state === 'done'
+                          ? 'text-neutral-300'
+                          : s.state === 'active'
+                            ? 'text-white'
+                            : s.state === 'failed'
+                              ? 'text-red-300'
+                              : 'text-neutral-600'
+                      }
+                    >
+                      {s.label}
+                    </span>
+                    {s.previewUrl && (
+                      <video
+                        src={s.previewUrl}
+                        muted
+                        playsInline
+                        className="ml-auto h-7 w-12 rounded object-cover border border-white/10"
+                      />
+                    )}
+                  </li>
+                ))}
+              </ul>
             </div>
-          </main>
+          )}
+
+          {/* Error card — restrained red is kept ONLY here so a failure always
+              reads unambiguously as an error (a deliberate exception to the
+              black/white/cyan brand palette). */}
+          {error && (
+            <div className="flex items-start gap-2.5 rounded-2xl border border-red-500/30 bg-red-500/5 p-4 text-xs text-red-300">
+              <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+              <span>{error}</span>
+            </div>
+          )}
+
+          {/* Real master output. */}
+          {masterUrl && (
+            <div className="rounded-2xl border border-white/10 bg-[#0A0A0A] p-3 space-y-2.5">
+              <div className="flex items-center gap-2 text-[#00D2FF] text-[10px] font-bold uppercase tracking-widest">
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                <span>{t.masterReady}</span>
+              </div>
+              <div className="relative aspect-video w-full rounded-xl bg-black overflow-hidden border border-white/10">
+                <video src={masterUrl} controls playsInline className="w-full h-full object-contain bg-black" />
+              </div>
+              <a
+                href={masterUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 text-xs text-neutral-300 hover:text-[#00D2FF]"
+              >
+                {t.openMaster} <ArrowRight className="w-3.5 h-3.5" />
+              </a>
+            </div>
+          )}
+
+          {/* First-scene fallback when the editor could not host the master. */}
+          {!masterUrl && previewUrl && (
+            <div className="rounded-2xl border border-white/10 bg-[#0A0A0A] p-3 space-y-2">
+              <p className="text-[11px] text-neutral-400">{t.firstScene}</p>
+              <div className="relative aspect-video w-full rounded-xl bg-black overflow-hidden border border-white/10">
+                <video src={previewUrl} controls playsInline className="w-full h-full object-contain bg-black" />
+              </div>
+            </div>
+          )}
+
+          <div ref={feedEndRef} />
+        </div>
+      </div>
+
+      {/* ── Composer — locked to the bottom, rides above the iOS keyboard ─ */}
+      <div
+        className="shrink-0 border-t border-white/10 bg-black/95 backdrop-blur-lg"
+        style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom, 0px))' }}
+      >
+        <div className="mx-auto w-full max-w-3xl px-4 pt-3">
+          {/* Prompt + the big "Generate video" CTA in ONE focused conversion bar.
+              The bar lights cyan on focus; the CTA turns full electric-cyan when the
+              server confirms a free founder slot, otherwise it stays clean white and
+              the existing /api/video/assemble billing gate charges normally. */}
+          <div className="flex items-end gap-2 rounded-2xl border border-white/10 bg-[#0A0A0A] p-2 transition-all focus-within:border-[#00D2FF] focus-within:shadow-[0_0_15px_rgba(0,210,255,0.15)]">
+            <textarea
+              rows={1}
+              className="flex-1 bg-transparent text-[13px] px-2.5 py-2 focus:outline-none placeholder-neutral-600 resize-none text-white max-h-32"
+              placeholder={driving ? t.placeholderBusy : t.placeholder}
+              disabled={driving}
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+            />
+            <button
+              type="button"
+              onClick={handleSend}
+              disabled={!canSend}
+              aria-label={t.generate}
+              className={[
+                'inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl text-[13px] font-bold transition-all shrink-0',
+                !canSend
+                  ? 'bg-white/5 text-neutral-600 cursor-not-allowed'
+                  : isFreeFilm
+                    ? 'bg-[#00D2FF] text-black shadow-[0_0_18px_rgba(0,210,255,0.45)] hover:brightness-110 active:scale-95'
+                    : 'bg-white text-black hover:bg-neutral-200 active:scale-95',
+              ].join(' ')}
+            >
+              {driving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+              <span className="hidden sm:inline">{t.generate}</span>
+            </button>
+          </div>
+          {/* Live tariff / promo readout — driven by the same server-authoritative
+              freeFilmsRemaining state, so it always tells the truth about cost. */}
+          <p className="mt-2 text-center text-[11px] font-semibold">
+            {isFreeFilm ? (
+              <span className="inline-flex items-center gap-1.5 text-[#00D2FF]">
+                <CheckCircle2 className="h-3 w-3" />
+                {t.promoLimit}
+              </span>
+            ) : (
+              <span className="text-white">
+                {t.tariffLabel} · {formatGEL(estCost)}
+              </span>
+            )}
+          </p>
+          <p className="mt-1 text-center text-[10px] text-neutral-600">
+            {FILM_SCENE_COUNT} × 6s · {t.signinNote}
+          </p>
         </div>
       </div>
     </div>
@@ -777,37 +746,11 @@ export function ConversationalFilmStudio({
 
 // ─── Small presentational atoms ──────────────────────────────────────────────
 
-function LedgerCard({
-  icon,
-  label,
-  value,
-  unit,
-  accent,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: string;
-  unit: string;
-  accent?: boolean;
-}) {
-  return (
-    <div className="p-3 bg-[#151D2A] flex flex-col justify-center">
-      <div className="flex items-center gap-1.5 text-slate-500 mb-1">
-        {icon}
-        <span className="text-[9px] uppercase font-bold tracking-wider truncate">{label}</span>
-      </div>
-      <div className={`text-sm font-bold tracking-tight ${accent ? 'text-white' : 'text-slate-200'}`}>
-        {value} <span className="text-[11px] font-normal text-slate-500">{unit}</span>
-      </div>
-    </div>
-  );
-}
-
 function StatusDot({ state }: { state: DotState }) {
-  if (state === 'done') return <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />;
-  if (state === 'active') return <Loader2 className="w-3.5 h-3.5 text-indigo-400 animate-spin shrink-0" />;
-  if (state === 'failed') return <AlertTriangle className="w-3.5 h-3.5 text-rose-400 shrink-0" />;
-  return <span className="w-3.5 h-3.5 rounded-full border border-neutral-700 shrink-0" />;
+  if (state === 'done') return <CheckCircle2 className="w-3.5 h-3.5 text-[#00D2FF] shrink-0" />;
+  if (state === 'active') return <Loader2 className="w-3.5 h-3.5 text-[#00D2FF] animate-spin shrink-0" />;
+  if (state === 'failed') return <AlertTriangle className="w-3.5 h-3.5 text-red-400 shrink-0" />;
+  return <span className="w-3.5 h-3.5 rounded-full border border-white/15 shrink-0" />;
 }
 
 export default ConversationalFilmStudio;
