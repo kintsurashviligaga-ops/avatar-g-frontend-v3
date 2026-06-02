@@ -38,6 +38,8 @@ import {
 } from 'lucide-react';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { WalletRefillModal } from '@/components/chat/WalletRefill';
+import { analytics } from '@/components/analytics/PostHogProvider';
+import { reportError } from '@/lib/observability/report-error';
 import { formatGEL } from '@/lib/billing/gel';
 import { FILM_SCENE_COUNT } from '@/lib/chat/filmPipeline';
 import {
@@ -237,6 +239,48 @@ function fileToDataUrl(file: File): Promise<string> {
   });
 }
 
+function loadImage(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error('image decode failed'));
+    img.src = src;
+  });
+}
+
+// Longest-edge cap + JPEG re-encode for reference photos. iPhone 4K/HEIC frames
+// can be 6–12 MB raw — far over Vercel's 4.5 MB serverless payload ceiling once
+// the data URL is base64-inflated. We downscale to ≤1280px and re-encode at
+// q0.82 BEFORE the image ever leaves the device. Every failure path falls back
+// to the original bytes so a quirky codec never blocks an upload.
+const MAX_REF_EDGE = 1280;
+const REF_JPEG_QUALITY = 0.82;
+
+async function compressImageToDataUrl(file: File): Promise<string> {
+  const raw = await fileToDataUrl(file);
+  if (typeof document === 'undefined' || !file.type.startsWith('image/')) return raw;
+  try {
+    const img = await loadImage(raw);
+    const longest = Math.max(img.width, img.height) || 1;
+    const scale = Math.min(1, MAX_REF_EDGE / longest);
+    // Already small in both dimensions and bytes → keep the original.
+    if (scale >= 1 && raw.length < 1_500_000) return raw;
+    const w = Math.max(1, Math.round(img.width * scale));
+    const h = Math.max(1, Math.round(img.height * scale));
+    const canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return raw;
+    ctx.drawImage(img, 0, 0, w, h);
+    const out = canvas.toDataURL('image/jpeg', REF_JPEG_QUALITY);
+    // Only adopt the re-encode when it actually shrinks the payload.
+    return out && out.length < raw.length ? out : raw;
+  } catch {
+    return raw;
+  }
+}
+
 function legToDot(status: FilmLegClientStatus | undefined, active: boolean): DotState {
   if (status === 'succeeded') return 'done';
   if (status === 'failed') return 'failed';
@@ -388,7 +432,7 @@ export function ConversationalFilmStudio({
       const file = fileList?.[0];
       if (!file) return;
       try {
-        const dataUrl = await fileToDataUrl(file);
+        const dataUrl = await compressImageToDataUrl(file);
         setSlots((prev) => {
           const next = [...prev];
           next[idx] = { dataUrl, name: file.name };
@@ -421,6 +465,11 @@ export function ConversationalFilmStudio({
       setProgress({ phase: 'dispatching', matrix: null, message: '', masterUrl: null, previewUrl: null });
       setDriving(true);
       pushMessage('system', t.producing);
+      // PostHog funnel entry — credits is 0 on a free founder slot, else the
+      // real GEL estimate. safeCapture is a no-op without a key, never throws.
+      const billedGel = isFreeFilm ? 0 : estCost;
+      const startedAt = Date.now();
+      analytics.generationStarted('film', billedGel);
 
       const ctrl = new AbortController();
       abortRef.current = ctrl;
@@ -437,13 +486,18 @@ export function ConversationalFilmStudio({
         if (!res.ok && res.error) {
           setError(res.error);
           pushMessage('system', `${t.failed} ${res.error}`);
+          analytics.generationFailed('film', res.error);
+          reportError(res.error, { surface: 'ConversationalFilmStudio', action: 'film_generation', locale });
         } else {
           pushMessage('system', t.ready);
+          analytics.generationSuccess('film', billedGel, Date.now() - startedAt);
         }
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Unexpected error.';
         setError(message);
         pushMessage('system', `${t.failed} ${message}`);
+        analytics.generationFailed('film', message);
+        reportError(err, { surface: 'ConversationalFilmStudio', action: 'film_generation', locale });
       } finally {
         setDriving(false);
         abortRef.current = null;
@@ -455,7 +509,7 @@ export function ConversationalFilmStudio({
         void refreshBalance();
       }
     },
-    [slots, locale, pushMessage, t.producing, t.ready, t.failed, refreshFreeFilms, refreshBalance],
+    [slots, locale, pushMessage, t.producing, t.ready, t.failed, refreshFreeFilms, refreshBalance, estCost, isFreeFilm],
   );
 
   const handleSend = useCallback(() => {
@@ -470,6 +524,12 @@ export function ConversationalFilmStudio({
     abortRef.current?.abort();
     setDriving(false);
   }, []);
+
+  // Open the Stripe top-up modal + record the funnel intent in PostHog.
+  const openWallet = useCallback(() => {
+    analytics.walletTopupClicked('film_studio_header', balanceGel);
+    setWalletOpen(true);
+  }, [balanceGel]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -525,7 +585,7 @@ export function ConversationalFilmStudio({
               </span>
               <button
                 type="button"
-                onClick={() => setWalletOpen(true)}
+                onClick={openWallet}
                 aria-label={t.topUp}
                 className="flex items-center gap-1 border-l border-white/10 bg-[#00D2FF]/10 px-2 py-1.5 text-xs font-bold text-[#00D2FF] transition-colors hover:bg-[#00D2FF]/20"
               >
@@ -549,7 +609,7 @@ export function ConversationalFilmStudio({
       {/* ── Conversation feed (the hero — owns all spare height) ────────── */}
       {/* no-scrollbar + momentum + overscroll-contain so only THIS pane scrolls. */}
       <div
-        className="flex-1 overflow-y-auto no-scrollbar"
+        className="flex-1 min-h-0 overflow-y-auto no-scrollbar"
         style={{ WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain' }}
       >
         <div className="mx-auto w-full max-w-3xl px-4 py-5 space-y-4">

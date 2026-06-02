@@ -79,6 +79,10 @@ export const analytics = {
   checkoutStarted: (planId: string, billingTier: string) => {
     safeCapture('checkout_started', { plan_id: planId, billing_tier: billingTier });
   },
+  /** Track wallet top-up intent — fired when the GEL refill modal is opened */
+  walletTopupClicked: (source: string, balanceGel?: number | null) => {
+    safeCapture('wallet_topup_clicked', { source, balance_gel: balanceGel ?? null });
+  },
   /** Track share page view */
   shareView: (kind: string, token: string) => {
     safeCapture('share_page_view', { kind, token });
