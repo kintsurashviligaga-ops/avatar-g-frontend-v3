@@ -33,9 +33,11 @@ import {
   ArrowRight,
   MessageSquare,
   LogIn,
+  Menu,
+  Plus,
 } from 'lucide-react';
-import { CreditBadge } from '@/components/ui/CreditBadge';
 import { ThemeToggle } from '@/components/ThemeToggle';
+import { WalletRefillModal } from '@/components/chat/WalletRefill';
 import { formatGEL } from '@/lib/billing/gel';
 import { FILM_SCENE_COUNT } from '@/lib/chat/filmPipeline';
 import {
@@ -103,6 +105,9 @@ const COPY: Record<
     tariffLabel: string;
     generate: string;
     setupTitle: string;
+    menu: string;
+    settings: string;
+    topUp: string;
   }
 > = {
   ka: {
@@ -139,6 +144,9 @@ const COPY: Record<
     tariffLabel: 'ტარიფი',
     generate: 'ვიდეოს გენერაცია',
     setupTitle: 'მომზადება',
+    menu: 'მენიუ',
+    settings: 'პარამეტრები',
+    topUp: 'შევსება',
   },
   en: {
     brandSub: 'Cinematic Hub',
@@ -174,6 +182,9 @@ const COPY: Record<
     tariffLabel: 'Rate',
     generate: 'Generate video',
     setupTitle: 'Setup',
+    menu: 'Menu',
+    settings: 'Settings',
+    topUp: 'Top up',
   },
   ru: {
     brandSub: 'Кинематографический хаб',
@@ -209,6 +220,9 @@ const COPY: Record<
     tariffLabel: 'Тариф',
     generate: 'Сгенерировать',
     setupTitle: 'Настройка',
+    menu: 'Меню',
+    settings: 'Настройки',
+    topUp: 'Пополнить',
   },
 };
 
@@ -302,6 +316,12 @@ export function ConversationalFilmStudio({
   // real GEL estimate; > 0 → first film is free (honest founder promo). Never
   // assume free without the server confirming it.
   const [freeFilmsRemaining, setFreeFilmsRemaining] = useState<number | null>(null);
+  // Real GEL wallet balance (null = unknown/anonymous). Sourced from the same
+  // /api/credits/balance endpoint the chat surface uses, so the financial chip
+  // in the header always shows the live ledger — never a fabricated number.
+  const [balanceGel, setBalanceGel] = useState<number | null>(null);
+  const [walletOpen, setWalletOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   const msgIdRef = useRef(1);
   const [messages, setMessages] = useState<ChatMsg[]>(() => [
@@ -340,9 +360,24 @@ export function ConversationalFilmStudio({
     }
   }, [isAuthenticated]);
 
+  // Live GEL balance for the header chip. Fail-safe: any error simply leaves the
+  // balance null and the chip renders 0.00 ₾ — never blocks the studio.
+  const refreshBalance = useCallback(async () => {
+    if (!isAuthenticated) return;
+    try {
+      const res = await fetch('/api/credits/balance', { cache: 'no-store', credentials: 'include' });
+      if (!res.ok) return;
+      const json = (await res.json()) as { balance?: number | null };
+      if (typeof json?.balance === 'number') setBalanceGel(json.balance);
+    } catch {
+      /* fail-safe: leave null → chip shows 0.00 ₾ */
+    }
+  }, [isAuthenticated]);
+
   useEffect(() => {
     void refreshFreeFilms();
-  }, [refreshFreeFilms]);
+    void refreshBalance();
+  }, [refreshFreeFilms, refreshBalance]);
 
   const estCost = useMemo(() => estimateFilmCostGel(), []);
   const isFreeFilm = typeof freeFilmsRemaining === 'number' && freeFilmsRemaining > 0;
@@ -412,13 +447,15 @@ export function ConversationalFilmStudio({
       } finally {
         setDriving(false);
         abortRef.current = null;
-        // Re-sync the free-film count from the server — a successful render
-        // consumes the founder slot, so the ledger should flip to the real
-        // paid estimate for the next video. (No-op for anonymous users.)
+        // Re-sync the free-film count + GEL balance from the server — a
+        // successful render consumes the founder slot and/or debits the wallet,
+        // so both ledgers should reflect the new reality for the next video.
+        // (No-op for anonymous users.)
         void refreshFreeFilms();
+        void refreshBalance();
       }
     },
-    [slots, locale, pushMessage, t.producing, t.ready, t.failed, refreshFreeFilms],
+    [slots, locale, pushMessage, t.producing, t.ready, t.failed, refreshFreeFilms, refreshBalance],
   );
 
   const handleSend = useCallback(() => {
@@ -455,6 +492,7 @@ export function ConversationalFilmStudio({
     // owns the height, and the composer is locked to the bottom so it rides above
     // the iOS keyboard. overflow-hidden on the shell + a single inner scroller
     // kills the Safari/Chrome rubber-band "page slide".
+    <>
     <div className="flex h-[100dvh] w-full flex-col overflow-hidden bg-black text-white antialiased">
       {/* ── Top app bar ────────────────────────────────────────────────── */}
       <header
@@ -469,37 +507,41 @@ export function ConversationalFilmStudio({
                 🚀
               </span>
             </span>
-            <span className="min-w-0">
-              <span className="block truncate text-sm font-bold tracking-wide text-white">
-                MyAvatar<span className="text-[#00D2FF]">.ge</span>
-              </span>
-              <span className="block text-[9px] uppercase font-bold tracking-[0.18em] text-neutral-500">
-                {t.brandSub}
-              </span>
+            {/* Clean brand name only — no subtitle. Decluttered per the
+                App-Store-grade header spec. */}
+            <span className="block truncate text-sm font-bold tracking-wide text-white">
+              MyAvatar<span className="text-[#00D2FF]">.ge</span>
             </span>
           </Link>
 
           <div className="flex items-center gap-1.5 shrink-0">
-            <CreditBadge />
-            <ThemeToggle label={t.theme} />
-            <Link
-              href={`/${locale}/chat`}
-              aria-label={t.chat}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-[#0A0A0A] px-2.5 py-1.5 text-xs font-semibold text-neutral-300 transition-colors hover:border-[#00D2FF]/40 hover:text-white"
-            >
-              <MessageSquare className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">{t.chat}</span>
-            </Link>
-            {!isAuthenticated && (
-              <Link
-                href={`/${locale}/login`}
-                aria-label={t.login}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-[#00D2FF]/40 bg-[#00D2FF]/10 px-2.5 py-1.5 text-xs font-semibold text-[#00D2FF] transition-colors hover:bg-[#00D2FF]/20"
+            {/* Financial GEL ledger — live wallet balance in ₾, with a compact
+                cyan top-up control that opens the Stripe-hosted checkout inline
+                (no page leave). Replaces the old opaque "credits" badge. */}
+            <div className="inline-flex items-center overflow-hidden rounded-lg border border-white/10 bg-[#0A0A0A]">
+              <span className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-bold tabular-nums text-white">
+                <span className="text-[#00D2FF]">₾</span>
+                {formatGEL(balanceGel ?? 0)}
+              </span>
+              <button
+                type="button"
+                onClick={() => setWalletOpen(true)}
+                aria-label={t.topUp}
+                className="flex items-center gap-1 border-l border-white/10 bg-[#00D2FF]/10 px-2 py-1.5 text-xs font-bold text-[#00D2FF] transition-colors hover:bg-[#00D2FF]/20"
               >
-                <LogIn className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">{t.login}</span>
-              </Link>
-            )}
+                <Plus className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">{t.topUp}</span>
+              </button>
+            </div>
+            {/* Native hamburger — slides out the minimalist settings panel. */}
+            <button
+              type="button"
+              onClick={() => setMenuOpen(true)}
+              aria-label={t.menu}
+              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-[#0A0A0A] text-neutral-300 transition-colors hover:border-[#00D2FF]/40 hover:text-white"
+            >
+              <Menu className="h-4 w-4" />
+            </button>
           </div>
         </div>
       </header>
@@ -741,6 +783,63 @@ export function ConversationalFilmStudio({
         </div>
       </div>
     </div>
+
+      {/* ── Settings drawer — slides in from the right on hamburger tap ──── */}
+      {menuOpen && (
+        <div
+          className="fixed inset-0 z-[80] flex justify-end bg-black/70 backdrop-blur-sm"
+          onClick={() => setMenuOpen(false)}
+        >
+          <aside
+            onClick={(e) => e.stopPropagation()}
+            className="flex h-full w-72 max-w-[80vw] flex-col border-l border-white/10 bg-[#0A0A0A] shadow-[0_0_60px_rgba(0,0,0,0.8)] animate-[slideIn_0.2s_ease-out]"
+            style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
+          >
+            <div className="flex items-center justify-between border-b border-white/10 px-4 py-4">
+              <span className="text-sm font-bold tracking-wide text-white">{t.settings}</span>
+              <button
+                type="button"
+                onClick={() => setMenuOpen(false)}
+                aria-label={t.cancel}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-black text-neutral-400 transition-colors hover:text-white"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="flex flex-col gap-2 p-4">
+              {/* Theme toggle relocated here from the header. */}
+              <div className="flex items-center justify-between rounded-xl border border-white/10 bg-black px-3 py-2.5">
+                <span className="text-xs font-semibold text-neutral-300">{t.theme}</span>
+                <ThemeToggle label={t.theme} />
+              </div>
+              {/* Chat access preserved (moved out of the header into the panel). */}
+              <Link
+                href={`/${locale}/chat`}
+                onClick={() => setMenuOpen(false)}
+                className="inline-flex items-center gap-2.5 rounded-xl border border-white/10 bg-black px-3 py-2.5 text-xs font-semibold text-neutral-300 transition-colors hover:border-[#00D2FF]/40 hover:text-white"
+              >
+                <MessageSquare className="h-4 w-4" />
+                {t.chat}
+              </Link>
+              {!isAuthenticated && (
+                <Link
+                  href={`/${locale}/login`}
+                  onClick={() => setMenuOpen(false)}
+                  className="inline-flex items-center gap-2.5 rounded-xl border border-[#00D2FF]/40 bg-[#00D2FF]/10 px-3 py-2.5 text-xs font-semibold text-[#00D2FF] transition-colors hover:bg-[#00D2FF]/20"
+                >
+                  <LogIn className="h-4 w-4" />
+                  {t.login}
+                </Link>
+              )}
+            </div>
+          </aside>
+        </div>
+      )}
+
+      {/* Stripe-hosted wallet top-up — opens inline, redirects to Stripe on tier
+          select. We NEVER render a card form ourselves. */}
+      <WalletRefillModal open={walletOpen} locale={locale} onClose={() => setWalletOpen(false)} />
+    </>
   );
 }
 

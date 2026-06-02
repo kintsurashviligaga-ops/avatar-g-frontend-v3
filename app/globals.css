@@ -890,6 +890,12 @@ a {
   to { opacity: 1; transform: none; }
 }
 
+/* Right-side settings drawer entrance (ConversationalFilmStudio hamburger). */
+@keyframes slideIn {
+  from { opacity: 0; transform: translateX(100%); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
 @keyframes agNeonFlow {
   0% {
     background-position: 0% 50%;
