@@ -24,6 +24,7 @@ import {
 } from '@/lib/orchestrator/idempotency';
 import { readRunPodConfig, dispatchRunPod, type RunPodManifest } from '@/lib/orchestrator/runpod-adapter';
 import { deductCredits, refundCredits } from '@/lib/orchestrator/ledger';
+import { consumeFreeFilm, restoreFreeFilm } from '@/lib/billing/wallet-ledger';
 import { reSignIfInternal } from '@/lib/orchestrator/storage-adapter';
 import { assembleWithFfmpeg } from '@/lib/orchestrator/ffmpeg-assembly';
 import { recordFilmAssembling, recordFilmMaster, recordFilmFailed } from '@/lib/chat/filmStatusStore';
@@ -161,6 +162,19 @@ export async function POST(req: NextRequest) {
       run: async (ctx) => {
         const lock = await lockTokens(user.id, ASSEMBLE_COST, 900);
         ctx.bag.lock = lock;
+
+        // FOUNDER PROMO — the user's FIRST 30-second film is free. consume_free_film
+        // atomically burns the one free slot: >= 0 means it was granted (waive the
+        // charge entirely), while -1 (none left) or null (RPC/migration absent)
+        // fall through to the normal paid debit. This is FAIL-SAFE by construction:
+        // we only ever skip the charge when the DB POSITIVELY confirms and decrements
+        // a free slot — a missing migration can never become an infinite free loop.
+        const freeFilm = await consumeFreeFilm(user.id);
+        if (typeof freeFilm === 'number' && freeFilm >= 0) {
+          ctx.bag.freeFilm = true;
+          return lock;
+        }
+
         const debit = await deductCredits(user.id, ASSEMBLE_COST, `assemble:${ctx.sagaId}`);
         ctx.bag.debited = debit.ok;
         // Fail-fast on a real rejection so we never dispatch a paid render
@@ -173,7 +187,11 @@ export async function POST(req: NextRequest) {
       compensate: async (_r, ctx) => {
         const lock = ctx.bag.lock as TokenLock | null | undefined;
         if (lock) await releaseTokenLock(lock);
-        if (ctx.bag.debited) await refundCredits(user.id, ASSEMBLE_COST, `assemble-rollback:${ctx.sagaId}`);
+        // Hand the free slot back when a render that consumed it fails, so a
+        // broken render never silently burns the user's one free film. Only ONE
+        // of these branches runs — a free render never also debited credits.
+        if (ctx.bag.freeFilm) await restoreFreeFilm(user.id);
+        else if (ctx.bag.debited) await refundCredits(user.id, ASSEMBLE_COST, `assemble-rollback:${ctx.sagaId}`);
       },
     },
     {
@@ -233,5 +251,5 @@ export async function POST(req: NextRequest) {
   // reload / second device can recover the playable 30s film without re-rendering.
   if (filmTokenId && resultUrl) await recordFilmMaster(filmTokenId, resultUrl);
 
-  return NextResponse.json({ url: resultUrl, sagaId: saga.sagaId, filmTokenId, scoreFallback });
+  return NextResponse.json({ url: resultUrl, sagaId: saga.sagaId, filmTokenId, scoreFallback, freeFilm: Boolean(bag.freeFilm) });
 }

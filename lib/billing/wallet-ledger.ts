@@ -50,6 +50,44 @@ export async function consumeFreeAvatarChat(userId: string): Promise<number | nu
   }
 }
 
+/**
+ * Atomically consume the user's one free 30-second film.
+ *   >= 0 → the free film was burned (new remaining count) → caller WAIVES the charge
+ *   -1   → none remaining → caller charges normally
+ *   null → RPC/migration absent or errored → caller charges normally (fail-SAFE:
+ *          we only ever waive the charge when the DB positively confirms a slot,
+ *          so a missing migration can never create an infinite free loophole)
+ */
+export async function consumeFreeFilm(userId: string): Promise<number | null> {
+  const sb = client();
+  if (!sb) return null;
+  try {
+    const { data, error } = await sb.rpc('consume_free_film', { p_user_id: userId });
+    if (error) return null;
+    return typeof data === 'number' ? data : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Compensation for consumeFreeFilm: returns the free slot when a render that
+ * consumed it later fails (saga rollback). Best-effort — a miss here only means
+ * the user keeps having spent their free film, never a charge. Returns the new
+ * remaining count, or null when unavailable.
+ */
+export async function restoreFreeFilm(userId: string): Promise<number | null> {
+  const sb = client();
+  if (!sb) return null;
+  try {
+    const { data, error } = await sb.rpc('restore_free_film', { p_user_id: userId });
+    if (error) return null;
+    return typeof data === 'number' ? data : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Persist the avatar name + flip is_avatar_named server-side. Best-effort. */
 export async function setAvatarName(userId: string, name: string): Promise<boolean> {
   const sb = client();
@@ -66,6 +104,9 @@ export interface OnboardingState {
   avatarName: string | null;
   isAvatarNamed: boolean;
   freeRemaining: number;
+  /** Free 30-second films left (founder promo, default 1). Drives the honest
+   *  "0.00 GEL · 1 Free Founder Video Remaining" ledger on the studio home. */
+  freeFilmsRemaining: number;
 }
 
 /** Read the authed user's onboarding state from their profile row. Fail-open null. */
@@ -75,15 +116,21 @@ export async function getOnboardingState(userId: string): Promise<OnboardingStat
   try {
     const { data, error } = await sb
       .from('profiles')
-      .select('avatar_name,is_avatar_named,free_avatar_chats_remaining')
+      .select('avatar_name,is_avatar_named,free_avatar_chats_remaining,free_films_remaining')
       .eq('id', userId)
       .maybeSingle();
     if (error || !data) return null;
-    const row = data as { avatar_name?: string | null; is_avatar_named?: boolean | null; free_avatar_chats_remaining?: number | null };
+    const row = data as {
+      avatar_name?: string | null;
+      is_avatar_named?: boolean | null;
+      free_avatar_chats_remaining?: number | null;
+      free_films_remaining?: number | null;
+    };
     return {
       avatarName: row.avatar_name ?? null,
       isAvatarNamed: Boolean(row.is_avatar_named),
       freeRemaining: typeof row.free_avatar_chats_remaining === 'number' ? row.free_avatar_chats_remaining : 3,
+      freeFilmsRemaining: typeof row.free_films_remaining === 'number' ? row.free_films_remaining : 0,
     };
   } catch {
     return null;

@@ -100,6 +100,8 @@ const COPY: Record<
     firstScene: string;
     signinNote: string;
     cancel: string;
+    freeFilmBadge: string;
+    freeFilmNote: string;
   }
 > = {
   ka: {
@@ -130,6 +132,8 @@ const COPY: Record<
     firstScene: 'მონტაჟი მთავრდება — ნაჩვენებია პირველი დარენდერებული სცენა.',
     signinNote: 'რეალური რენდერი · საჭიროა ავტორიზაცია · კრედიტი ჩამოიჭრება დასრულებისას',
     cancel: 'გაუქმება',
+    freeFilmBadge: '1 უფასო Founder ვიდეო დარჩა',
+    freeFilmNote: 'პირველი 30-წამიანი ფილმი სრულიად უფასოა — ღირებულებას ფარავს Founder-ბონუსი. შემდეგი ვიდეოები დაიანგარიშება ჩვეულებრივი ფასით.',
   },
   en: {
     brandSub: 'Cinematic Hub',
@@ -159,6 +163,8 @@ const COPY: Record<
     firstScene: 'Editor still finishing — showing the first rendered scene.',
     signinNote: 'Real render · requires sign-in · credits charged on completion',
     cancel: 'Cancel',
+    freeFilmBadge: '1 Free Founder Video Remaining',
+    freeFilmNote: 'Your first 30-second film is completely free — the founder bonus covers its cost. Subsequent videos are metered at the normal rate.',
   },
   ru: {
     brandSub: 'Кинематографический хаб',
@@ -188,6 +194,8 @@ const COPY: Record<
     firstScene: 'Монтаж ещё идёт — показана первая отрендеренная сцена.',
     signinNote: 'Реальный рендер · нужен вход · кредиты списываются по завершении',
     cancel: 'Отмена',
+    freeFilmBadge: 'Осталось 1 бесплатное Founder-видео',
+    freeFilmNote: 'Ваш первый 30-секундный фильм совершенно бесплатен — стоимость покрывает Founder-бонус. Последующие видео считаются по обычному тарифу.',
   },
 };
 
@@ -277,6 +285,10 @@ export function ConversationalFilmStudio({
   const [masterUrl, setMasterUrl] = useState<string | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Server-authoritative free-film count. null = unknown/anonymous → show the
+  // real GEL estimate; > 0 → first film is free (honest founder promo). Never
+  // assume free without the server confirming it.
+  const [freeFilmsRemaining, setFreeFilmsRemaining] = useState<number | null>(null);
 
   const msgIdRef = useRef(1);
   const [messages, setMessages] = useState<ChatMsg[]>(() => [
@@ -299,7 +311,28 @@ export function ConversationalFilmStudio({
     return () => abortRef.current?.abort();
   }, []);
 
+  // Pull the server-authoritative onboarding state so the ledger reflects the
+  // REAL remaining free-film count for this account — never a hardcoded promo.
+  // Anonymous visitors (or an unapplied migration) simply keep the paid estimate.
+  const refreshFreeFilms = useCallback(async () => {
+    if (!isAuthenticated) return;
+    try {
+      const res = await fetch('/api/profile/onboarding', { cache: 'no-store' });
+      if (!res.ok) return;
+      const json = (await res.json()) as { state?: { freeFilmsRemaining?: number | null } | null };
+      const n = json?.state?.freeFilmsRemaining;
+      if (typeof n === 'number') setFreeFilmsRemaining(n);
+    } catch {
+      /* fail-safe: leave null → show the real paid estimate */
+    }
+  }, [isAuthenticated]);
+
+  useEffect(() => {
+    void refreshFreeFilms();
+  }, [refreshFreeFilms]);
+
   const estCost = useMemo(() => estimateFilmCostGel(), []);
+  const isFreeFilm = typeof freeFilmsRemaining === 'number' && freeFilmsRemaining > 0;
   const filledCount = slots.filter(Boolean).length;
   const canSend = !driving && input.trim().length > 0;
 
@@ -367,9 +400,13 @@ export function ConversationalFilmStudio({
       } finally {
         setDriving(false);
         abortRef.current = null;
+        // Re-sync the free-film count from the server — a successful render
+        // consumes the founder slot, so the ledger should flip to the real
+        // paid estimate for the next video. (No-op for anonymous users.)
+        void refreshFreeFilms();
       }
     },
-    [slots, locale, pushMessage, t.producing, t.ready, t.failed],
+    [slots, locale, pushMessage, t.producing, t.ready, t.failed, refreshFreeFilms],
   );
 
   const handleSend = useCallback(() => {
@@ -527,12 +564,22 @@ export function ConversationalFilmStudio({
                   </span>
                 }
                 label={t.cost}
-                value={formatGEL(estCost).replace(' ₾', '')}
+                value={isFreeFilm ? '0.00' : formatGEL(estCost).replace(' ₾', '')}
                 unit="GEL"
                 accent
               />
             </div>
-            <p className="text-[10px] text-neutral-600 leading-relaxed">{t.estNote}</p>
+            {isFreeFilm ? (
+              <div className="space-y-1.5">
+                <div className="inline-flex items-center gap-1.5 rounded-full border border-emerald-400/30 bg-emerald-400/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-emerald-300">
+                  <CheckCircle2 className="h-3 w-3" />
+                  {t.freeFilmBadge}
+                </div>
+                <p className="text-[10px] text-neutral-600 leading-relaxed">{t.freeFilmNote}</p>
+              </div>
+            ) : (
+              <p className="text-[10px] text-neutral-600 leading-relaxed">{t.estNote}</p>
+            )}
           </div>
 
           {/* Live per-leg progress tracker (real onProgress). */}

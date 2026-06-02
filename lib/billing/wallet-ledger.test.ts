@@ -17,7 +17,7 @@ jest.mock('../supabase/server', () => ({
   },
 }));
 
-import { creditWalletGel, consumeFreeAvatarChat, setAvatarName, getOnboardingState } from './wallet-ledger';
+import { creditWalletGel, consumeFreeAvatarChat, consumeFreeFilm, restoreFreeFilm, setAvatarName, getOnboardingState } from './wallet-ledger';
 
 beforeEach(() => {
   mockThrow = false;
@@ -59,6 +59,36 @@ describe('consumeFreeAvatarChat', () => {
   });
 });
 
+describe('consumeFreeFilm', () => {
+  test('returns remaining (>=0) when the free film is granted → caller waives charge', async () => {
+    mockRpc = async (fn) => { expect(fn).toBe('consume_free_film'); return { data: 0, error: null }; };
+    expect(await consumeFreeFilm('u')).toBe(0);
+  });
+  test('returns -1 when exhausted → caller charges normally', async () => {
+    mockRpc = async () => ({ data: -1, error: null });
+    expect(await consumeFreeFilm('u')).toBe(-1);
+  });
+  test('FAIL-SAFE: null on RPC/migration absence → caller charges normally', async () => {
+    mockRpc = async () => ({ data: null, error: { message: 'no fn' } });
+    expect(await consumeFreeFilm('u')).toBeNull();
+  });
+  test('fail-safe null when no client', async () => {
+    mockThrow = true;
+    expect(await consumeFreeFilm('u')).toBeNull();
+  });
+});
+
+describe('restoreFreeFilm', () => {
+  test('returns the new remaining count on success', async () => {
+    mockRpc = async (fn) => { expect(fn).toBe('restore_free_film'); return { data: 1, error: null }; };
+    expect(await restoreFreeFilm('u')).toBe(1);
+  });
+  test('null on error (best-effort compensation)', async () => {
+    mockRpc = async () => ({ data: null, error: { message: 'no fn' } });
+    expect(await restoreFreeFilm('u')).toBeNull();
+  });
+});
+
 describe('setAvatarName', () => {
   test('true on success', async () => {
     mockRpc = async (fn, args) => { expect(fn).toBe('set_avatar_name'); expect(args.p_name).toBe('ნავი'); return { data: null, error: null }; };
@@ -72,15 +102,15 @@ describe('setAvatarName', () => {
 
 describe('getOnboardingState', () => {
   test('maps the profile row', async () => {
-    mockSelectResult = { data: { avatar_name: 'Navi', is_avatar_named: true, free_avatar_chats_remaining: 1 }, error: null };
-    expect(await getOnboardingState('u')).toEqual({ avatarName: 'Navi', isAvatarNamed: true, freeRemaining: 1 });
+    mockSelectResult = { data: { avatar_name: 'Navi', is_avatar_named: true, free_avatar_chats_remaining: 1, free_films_remaining: 1 }, error: null };
+    expect(await getOnboardingState('u')).toEqual({ avatarName: 'Navi', isAvatarNamed: true, freeRemaining: 1, freeFilmsRemaining: 1 });
   });
   test('null when no row', async () => {
     mockSelectResult = { data: null, error: null };
     expect(await getOnboardingState('u')).toBeNull();
   });
-  test('defaults freeRemaining to 3 when column null', async () => {
-    mockSelectResult = { data: { avatar_name: null, is_avatar_named: false, free_avatar_chats_remaining: null }, error: null };
-    expect(await getOnboardingState('u')).toEqual({ avatarName: null, isAvatarNamed: false, freeRemaining: 3 });
+  test('defaults freeRemaining to 3 and freeFilmsRemaining to 0 when columns null', async () => {
+    mockSelectResult = { data: { avatar_name: null, is_avatar_named: false, free_avatar_chats_remaining: null, free_films_remaining: null }, error: null };
+    expect(await getOnboardingState('u')).toEqual({ avatarName: null, isAvatarNamed: false, freeRemaining: 3, freeFilmsRemaining: 0 });
   });
 });
