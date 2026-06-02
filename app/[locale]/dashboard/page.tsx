@@ -1,10 +1,11 @@
 import { redirect } from 'next/navigation';
-import MyAvatarChatV2 from '@/components/chat/MyAvatarChatV2';
+import { FilmStudioHome } from '@/components/studio/FilmStudioHome';
 import { createServerClient } from '@/lib/supabase/server';
 
-// V2 = the minimalist Cyber-Black single-window shell.
-// V1 (MyAvatarChat) is left intact at components/chat/MyAvatarChat.tsx
-// so the rollback path is a one-line import swap.
+// Home surface = the 30-Second Cinematic Film Studio (product decision).
+// The full multimodal chat hub (MyAvatarChatV2) is preserved and demoted to
+// /{locale}/chat — reachable from the studio top bar. Rollback path is a
+// one-line import swap back to MyAvatarChatV2 here.
 
 export const dynamic = 'force-dynamic';
 
@@ -53,7 +54,7 @@ export default async function DashboardPage({ params }: Props) {
   }
 
   return (
-    <MyAvatarChatV2
+    <FilmStudioHome
       locale={locale}
       userName={userName}
       userEmail={userEmail}
