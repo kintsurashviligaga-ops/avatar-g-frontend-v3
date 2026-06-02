@@ -35,7 +35,6 @@ import {
   ArrowRight,
   MessageSquare,
   LogIn,
-  Sparkles,
 } from 'lucide-react';
 import { CreditBadge } from '@/components/ui/CreditBadge';
 import { ThemeToggle } from '@/components/ThemeToggle';
@@ -102,6 +101,8 @@ const COPY: Record<
     cancel: string;
     freeFilmBadge: string;
     freeFilmNote: string;
+    promoLimit: string;
+    tariffLabel: string;
   }
 > = {
   ka: {
@@ -134,6 +135,8 @@ const COPY: Record<
     cancel: 'გაუქმება',
     freeFilmBadge: '1 უფასო Founder ვიდეო დარჩა',
     freeFilmNote: 'პირველი 30-წამიანი ფილმი სრულიად უფასოა — ღირებულებას ფარავს Founder-ბონუსი. შემდეგი ვიდეოები დაიანგარიშება ჩვეულებრივი ფასით.',
+    promoLimit: 'პრომო ლიმიტი · 1 უფასო ფილმი',
+    tariffLabel: 'ტარიფი',
   },
   en: {
     brandSub: 'Cinematic Hub',
@@ -165,6 +168,8 @@ const COPY: Record<
     cancel: 'Cancel',
     freeFilmBadge: '1 Free Founder Video Remaining',
     freeFilmNote: 'Your first 30-second film is completely free — the founder bonus covers its cost. Subsequent videos are metered at the normal rate.',
+    promoLimit: 'Promo · 1 free film remaining',
+    tariffLabel: 'Rate',
   },
   ru: {
     brandSub: 'Кинематографический хаб',
@@ -196,6 +201,8 @@ const COPY: Record<
     cancel: 'Отмена',
     freeFilmBadge: 'Осталось 1 бесплатное Founder-видео',
     freeFilmNote: 'Ваш первый 30-секундный фильм совершенно бесплатен — стоимость покрывает Founder-бонус. Последующие видео считаются по обычному тарифу.',
+    promoLimit: 'Промо · 1 бесплатный фильм',
+    tariffLabel: 'Тариф',
   },
 };
 
@@ -444,9 +451,13 @@ export function ConversationalFilmStudio({
         style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
       >
         <div className="mx-auto flex h-14 max-w-2xl items-center justify-between gap-2 px-4">
-          <Link href={`/${locale}/dashboard`} className="flex items-center gap-2.5 min-w-0">
-            <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 shadow-[0_0_18px_rgba(99,102,241,0.30)]">
-              <Sparkles className="h-4 w-4 text-white" />
+          <Link href={`/${locale}/dashboard`} className="group flex items-center gap-2.5 min-w-0">
+            {/* 3D rocket brand mark — ambient pulse + a gentle tilt on hover for
+                that premium SaaS feel, without leaning on a heavyweight 3D lib. */}
+            <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 shadow-[0_0_18px_rgba(99,102,241,0.30)] transition-transform duration-500 ease-out group-hover:rotate-12 group-hover:scale-105">
+              <span className="text-[15px] leading-none animate-pulse" aria-hidden="true">
+                🚀
+              </span>
             </span>
             <span className="min-w-0">
               <span className="block truncate text-sm font-bold tracking-wide text-white">
@@ -484,7 +495,12 @@ export function ConversationalFilmStudio({
       </header>
 
       {/* ── Conversational feed ────────────────────────────────────────── */}
-      <div className="flex-1 overflow-y-auto">
+      {/* no-scrollbar (hides the WebKit/Firefox track) + momentum scrolling so
+          the feed glides natively inside the iOS/Android WebView app shell. */}
+      <div
+        className="flex-1 overflow-y-auto no-scrollbar"
+        style={{ WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain' }}
+      >
         <div className="mx-auto max-w-2xl px-4 py-5 space-y-5">
           {messages.map((msg) => (
             <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
@@ -712,7 +728,21 @@ export function ConversationalFilmStudio({
               {driving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
             </button>
           </div>
-          <p className="mt-2 text-center text-[10px] text-neutral-600">{t.signinNote}</p>
+          {/* Live tariff / promo readout — driven by the same server-authoritative
+              freeFilmsRemaining state, so it always tells the truth about cost. */}
+          <p className="mt-2 text-center text-[11px] font-semibold">
+            {isFreeFilm ? (
+              <span className="inline-flex items-center gap-1.5 text-emerald-300">
+                <CheckCircle2 className="h-3 w-3" />
+                {t.promoLimit}
+              </span>
+            ) : (
+              <span className="text-neutral-300">
+                {t.tariffLabel} · {formatGEL(estCost)}
+              </span>
+            )}
+          </p>
+          <p className="mt-1 text-center text-[10px] text-neutral-600">{t.signinNote}</p>
         </div>
       </div>
     </div>
