@@ -553,7 +553,7 @@ export function ConversationalFilmStudio({
     // the iOS keyboard. overflow-hidden on the shell + a single inner scroller
     // kills the Safari/Chrome rubber-band "page slide".
     <>
-    <div className="flex h-[100dvh] w-full flex-col overflow-hidden bg-black text-white antialiased">
+    <div className="flex h-[100dvh] w-full flex-col items-stretch justify-between overflow-hidden bg-black text-white antialiased">
       {/* ── Top app bar ────────────────────────────────────────────────── */}
       <header
         className="shrink-0 sticky top-0 z-30 border-b border-white/10 bg-black/90 backdrop-blur-xl"
