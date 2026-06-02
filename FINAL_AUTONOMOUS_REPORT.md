@@ -11,7 +11,7 @@ on `tsc --noEmit` + `npm run build`, and push to `main`.
 
 | # | Requirement | Status | Notes |
 |---|-------------|--------|-------|
-| 1 | **CI workflow** (`.github/workflows/e2e.yml`) — deterministic, secret-free preview-contract E2E on push/PR to `main` | ⚠️ | File is authored, committed, and pushed **if** the active git credential carries the `workflow` scope. GitHub blocks PAT/OAuth pushes that touch `.github/workflows/**` without that scope. If the final push was rejected, the file content is reproduced verbatim in **§6** for a one-click add via the GitHub web UI. |
+| 1 | **CI workflow** (`.github/workflows/e2e.yml`) — deterministic, secret-free preview-contract E2E on push/PR to `main` | ✅ | **Live on `main` as commit `6f703a6`**, added via the GitHub web UI. (A PAT lacking the `workflow` scope cannot push under `.github/workflows/**`; the web UI is not subject to that restriction.) Functionally identical to the authored version in **§6** — only the `name:` em-dash and the inline explanatory comments differ cosmetically. |
 | 2 | **RAG UI toggle** in the chat header (`useState` + `localStorage`, sends `useRag` to `/api/chat/orchestrate`, default ON, `data-testid="rag-toggle"`) | ✅ | Commit `cb93a43`. Persists under `myavatar-use-rag`; threaded into the orchestrate payload; server already honours `useRag` for `text_chat` intent (fail-safe no-op when the corpus is empty). |
 | 3 | **Typing indicator + Stop button** (three bouncing dots while waiting; an abortable "Stop generating" control) | ✅ | Commit `cb93a43`. Chat is a single JSON POST (not SSE), so the indicator covers the request window and "Stop" fires the existing `AbortController`. `data-testid="typing-indicator"` and `data-testid="stop-generating"`. Streaming Markdown render path untouched. |
 | 4 | **Light-mode audit** of remaining chat surfaces (sidebar nav, model/service selector, settings panel, cookie consent, remaining modals, file-upload area, credit widget) | ✅ | Commits `3d4ee30` + `b91671d`. All chat-experience surfaces use `app-*` tokens. Genuine media overlays (avatar full-screen video stage, image lightbox, in-thumbnail controls, film-storyboard tiles) are **intentionally kept dark** with explanatory comments — the universal cinema/lightbox convention. |
@@ -32,7 +32,8 @@ Legend: ✅ done · ⚠️ done but needs a manual action you must perform · �
 | `1afba18` | `feat(theme): ship light-mode toggle + convert chat shell to tokens` |
 | `6a60d9a` | `feat(theme): light-mode foundation — token palette, real toggle context, anti-FOUC boot` |
 
-A separate isolated commit adds `.github/workflows/e2e.yml` (see §1 row 1 and §6).
+`.github/workflows/e2e.yml` landed separately on `main` as commit `6f703a6`
+(added via the GitHub web UI — see §1 row 1 and §6).
 
 ---
 
@@ -89,11 +90,10 @@ production-build/`.next` dev-chunk corruption observed earlier in the run.
    ```
    Until then, `useRag` requests degrade gracefully to ungrounded answers.
 
-2. **CI workflow** — if the final push of `.github/workflows/e2e.yml` was rejected
-   for a missing `workflow` scope, add the file manually (content in §6) via
-   **GitHub → Add file → Create new file → `.github/workflows/e2e.yml`**, or push
-   again from a credential that has the `workflow` scope. Everything else is already
-   on `main`.
+2. **CI workflow — DONE.** `.github/workflows/e2e.yml` is live on `main` (commit
+   `6f703a6`), added via the GitHub web UI. No further action needed. The first
+   push to `main` will have triggered the workflow; check the run under
+   **GitHub → Actions → "E2E - Preview Contract"**.
 
 3. **Security — revoke the leaked token.** A GitHub Personal Access Token was pasted
    into chat earlier in this project's history. It must be treated as **compromised**:
