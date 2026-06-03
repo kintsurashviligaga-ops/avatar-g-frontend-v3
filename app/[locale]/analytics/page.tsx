@@ -4,7 +4,7 @@ import { createServerClient } from '@/lib/supabase/server';
 import { LineChart, BarChart, TopicList, KpiTile } from '@/components/analytics/AnalyticsCharts';
 
 export const dynamic = 'force-dynamic';
-export const metadata = { title: 'Analytics — myavatar.ge' };
+export const metadata = { title: 'Analytics' };
 
 interface DayCount { date: string; count: number }
 interface SummaryResponse {

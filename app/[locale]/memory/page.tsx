@@ -6,7 +6,7 @@ import { createServerClient } from '@/lib/supabase/server';
 export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
-  title: 'Memory — myavatar',
+  title: 'Memory',
 };
 
 type Props = {

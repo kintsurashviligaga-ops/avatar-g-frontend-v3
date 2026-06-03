@@ -1,7 +1,7 @@
 import { AiHubShell } from '@/components/hub/AiHubShell';
 
 export const metadata = {
-  title: 'AI Studio Hub — MyAvatar',
+  title: 'AI Studio Hub',
   description: 'All 18 AI services in one production workspace',
 };
 

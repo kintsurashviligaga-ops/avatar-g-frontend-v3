@@ -42,9 +42,11 @@ export const metadata: Metadata = {
     url: metadataBaseUrl,
     siteName: "Avatar G",
     images: [{
-      url: "/brand/logo-primary-transparent.png",
-      width: 512,
-      height: 512,
+      // 1200×630 landscape card — `summary_large_image` and Facebook/LinkedIn
+      // crop a 512² square badly. The dedicated /og-image.png is the right ratio.
+      url: "/og-image.png",
+      width: 1200,
+      height: 630,
       alt: "Avatar G - AI მედია პლატფორმა"
     }]
   },
@@ -52,7 +54,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "Avatar G - AI მედია პლატფორმა",
     description: "AI მედიის შექმნა Avatar G-სთან ერთად",
-    images: ["/brand/logo-primary-transparent.png"]
+    images: ["/og-image.png"]
   },
   robots: {
     index: true,

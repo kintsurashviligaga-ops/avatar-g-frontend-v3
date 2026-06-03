@@ -76,10 +76,11 @@ export const metadata: Metadata = {
 		'apple-mobile-web-app-capable': 'yes',
 		'apple-mobile-web-app-status-bar-style': 'black-translucent',
 	},
-	title: {
-		default: "Avatar G - AI მედია პლატფორმა",
-		template: "%s - Avatar G"
-	},
+	// Plain string (no `template`) on purpose: the real pages live under the
+	// `[locale]` layout, which owns the "%s - Avatar G" template for its child
+	// routes. A template HERE would also wrap the locale layout's own default,
+	// producing the doubled "<brand> - AI მედია პლატფორმა - Avatar G" seen live.
+	title: "Avatar G - AI მედია პლატფორმა",
 	description: "შექმენი ავატარები, ვიდეო, სურათები და მუსიკა AI-ით",
 	keywords: ["AI", "ავატარი", "ვიდეო გენერაცია", "სურათის გენერაცია", "მუსიკის გენერაცია"],
 	authors: [{ name: "Avatar G Team" }],

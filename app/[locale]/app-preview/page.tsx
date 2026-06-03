@@ -1,7 +1,7 @@
 import { IPhoneMockup } from './IPhoneMockup'
 
 export const metadata = {
-  title: 'App Preview — MyAvatar.ge',
+  title: 'App Preview',
   description: 'Agent G iPhone App UI Preview',
 }
 
