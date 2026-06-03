@@ -27,7 +27,6 @@
  */
 
 import 'server-only';
-import { hasLtxApiKey } from './ltxKey';
 import { hasVideoProvider, videoProviderUnavailableMessage, videoProviderConnectionFailedMessage } from './videoProvider';
 import { hasUdioApiKey } from './mediaKeys';
 import type { OrchestratorInput, ChatResponse } from './providerRouter';
@@ -141,9 +140,13 @@ async function renderClip(
   forecastClipWholesale: number,
   forecastClipRetail: number,
 ): Promise<FilmClipResult> {
-  // PHASE 45 §1 — resolve the LTX key from any provisioned alias so a correctly
-  // configured credential fires the render instead of silently skipping.
-  if (!hasLtxApiKey()) {
+  // Gate on the SAME predicate as the pipeline pre-flight (hasVideoProvider =
+  // LTX OR Replicate). The runtime now renders via Replicate as a primary when no
+  // LTX key is present (see ServiceManager.runLtxVideo), so this leg only skips
+  // when NEITHER provider exists — which the door-level pre-flight already caught.
+  // Using hasLtxApiKey() here would skip every clip on a Replicate-only config the
+  // pre-flight had waved through, re-creating the ~38% silent-skip-after-spend trap.
+  if (!hasVideoProvider()) {
     return { ordinal: scene.ordinal, taskRef: null, status: 'skipped', attempts: 0, debited: false };
   }
 

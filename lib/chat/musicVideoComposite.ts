@@ -39,7 +39,7 @@ import { forecastMarginForAction } from '@/lib/monetization/audit-engine';
 import { createServiceRoleClient } from '@/lib/supabase/server';
 import { ServiceManager } from './ServiceManager';
 import { encodeCompositeRef } from './compositeTaskRef';
-import { hasLtxApiKey } from './ltxKey';
+import { hasVideoProvider } from './videoProvider';
 import { hasUdioApiKey } from './mediaKeys';
 
 const serviceManager = new ServiceManager();
@@ -238,7 +238,7 @@ export async function handleMusicVideoComposite(input: OrchestratorInput): Promi
     ? `${baseStyle} music video, 30 seconds, cinematic, performer lip-syncing the following lyrics: ${plan.lyrics.slice(0, 600)}`
     : `${baseStyle} music video, 30 seconds, cinematic, based on: ${input.message}`;
 
-  const videoPromise: Promise<string | null> = hasLtxApiKey()
+  const videoPromise: Promise<string | null> = hasVideoProvider()
     ? withTrace(
         {
           userId: input.userId || null,
