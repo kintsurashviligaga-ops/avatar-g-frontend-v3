@@ -36,6 +36,8 @@ import {
   Menu,
   Plus,
   Clapperboard,
+  Play,
+  Download,
 } from 'lucide-react';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { WalletRefillModal } from '@/components/chat/WalletRefill';
@@ -122,6 +124,8 @@ const COPY: Record<
     statReady: string;
     statRendering: string;
     statFailed: string;
+    statQueued: string;
+    scenePreviewHint: string;
   }
 > = {
   ka: {
@@ -174,6 +178,8 @@ const COPY: Record<
     statReady: 'მზად',
     statRendering: 'მუშავდება',
     statFailed: 'ჩაიშალა',
+    statQueued: 'რიგში',
+    scenePreviewHint: 'დააჭირე დასრულებულ სცენას სანახავად',
   },
   en: {
     brandSub: 'Cinematic Hub',
@@ -225,6 +231,8 @@ const COPY: Record<
     statReady: 'ready',
     statRendering: 'rendering',
     statFailed: 'failed',
+    statQueued: 'queued',
+    scenePreviewHint: 'Tap a finished scene to preview it',
   },
   ru: {
     brandSub: 'Кинематографический хаб',
@@ -276,6 +284,8 @@ const COPY: Record<
     statReady: 'готово',
     statRendering: 'рендеринг',
     statFailed: 'ошибка',
+    statQueued: 'в очереди',
+    scenePreviewHint: 'Нажмите на готовую сцену для просмотра',
   },
 };
 
@@ -362,6 +372,9 @@ export function ConversationalFilmStudio({
   const [masterUrl, setMasterUrl] = useState<string | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // A landed scene the user tapped to preview before the master is stitched.
+  // Cleared on every new run so a stale scene from a prior render never lingers.
+  const [selectedSceneUrl, setSelectedSceneUrl] = useState<string | null>(null);
   // Server-authoritative free-film count. null = unknown/anonymous → show the
   // real GEL estimate; > 0 → first film is free (honest founder promo). Never
   // assume free without the server confirming it.
@@ -579,6 +592,7 @@ export function ConversationalFilmStudio({
       setError(null);
       setMasterUrl(null);
       setPreviewUrl(null);
+      setSelectedSceneUrl(null);
       setProgress({ phase: 'dispatching', matrix: null, message: '', masterUrl: null, previewUrl: null });
       setDriving(true);
       pushMessage('system', t.producing);
@@ -742,6 +756,14 @@ export function ConversationalFilmStudio({
   const terminal = showTracker && !driving;
   const pipeline = summarizeFilmPipeline(progress, roleSceneLabel, { terminal });
   const stages = pipeline.stages;
+  // Split the legs: the cinematic SCENE renders get their own gallery of
+  // stylish tiles, while the flow legs (storyboard / editor / score) stay a
+  // compact checklist. The clip keys are `clip_N` (see filmStudioStages).
+  const sceneStages = stages.filter((s) => s.key.startsWith('clip_'));
+  const flowStages = stages.filter((s) => !s.key.startsWith('clip_'));
+  // The video shown in the hero preview: the finished master wins; otherwise a
+  // scene the user tapped; otherwise the honest first-rendered-scene fallback.
+  const heroPreviewUrl = masterUrl ?? selectedSceneUrl ?? previewUrl;
   const finished = pipeline.done;
   // A render is HALTED (terminal failure) only when work has STOPPED and no master
   // landed — never merely because an individual scene leg failed mid-render. The
@@ -1002,8 +1024,9 @@ export function ConversationalFilmStudio({
                   />
                 </div>
               </div>
+              {/* Flow legs (storyboard → editor → score) as a quiet checklist. */}
               <ul className="space-y-1.5">
-                {stages.map((s) => (
+                {flowStages.map((s) => (
                   <li key={s.key} className="flex items-center gap-2.5 text-xs">
                     <StatusDot state={s.state} />
                     <span
@@ -1019,17 +1042,48 @@ export function ConversationalFilmStudio({
                     >
                       {s.label}
                     </span>
-                    {s.previewUrl && (
-                      <video
-                        src={s.previewUrl}
-                        muted
-                        playsInline
-                        className="ml-auto h-7 w-12 rounded object-cover border border-white/10"
-                      />
-                    )}
                   </li>
                 ))}
               </ul>
+
+              {/* Scene gallery — a stylish tile per clip: shimmer while it
+                  renders, the live thumbnail the instant it lands (tap to preview),
+                  a calm red tile on failure. The content the film is made of, made
+                  visible. */}
+              {sceneStages.length > 0 && (
+                <div className="space-y-2 pt-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-500">
+                      {t.scenes}
+                    </span>
+                    {sceneStages.some((s) => s.state === 'done' && s.previewUrl) && !masterUrl && (
+                      <span className="text-[10px] text-neutral-600">{t.scenePreviewHint}</span>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                    {sceneStages.map((s, i) => (
+                      <FilmSceneCard
+                        key={s.key}
+                        index={i}
+                        state={s.state}
+                        previewUrl={s.previewUrl}
+                        sceneWord={roleSceneLabel}
+                        selected={!!s.previewUrl && s.previewUrl === selectedSceneUrl}
+                        statusLabel={
+                          s.state === 'done'
+                            ? t.statReady
+                            : s.state === 'active'
+                              ? t.statRendering
+                              : s.state === 'failed'
+                                ? t.statFailed
+                                : t.statQueued
+                        }
+                        onPreview={(url) => setSelectedSceneUrl(url)}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -1043,35 +1097,18 @@ export function ConversationalFilmStudio({
             </div>
           )}
 
-          {/* Real master output. */}
-          {masterUrl && (
-            <div className="rounded-2xl border border-white/10 bg-black p-3 space-y-2.5">
-              <div className="flex items-center gap-2 text-[#00D2FF] text-[10px] font-bold uppercase tracking-widest">
-                <CheckCircle2 className="w-3.5 h-3.5" />
-                <span>{t.masterReady}</span>
-              </div>
-              <div className="relative aspect-video w-full rounded-xl bg-black overflow-hidden border border-white/10">
-                <video src={masterUrl} controls playsInline className="w-full h-full object-contain bg-black" />
-              </div>
-              <a
-                href={masterUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 text-xs text-neutral-300 hover:text-[#00D2FF]"
-              >
-                {t.openMaster} <ArrowRight className="w-3.5 h-3.5" />
-              </a>
-            </div>
-          )}
-
-          {/* First-scene fallback when the editor could not host the master. */}
-          {!masterUrl && previewUrl && (
-            <div className="rounded-2xl border border-white/10 bg-black p-3 space-y-2">
-              <p className="text-[11px] text-neutral-400">{t.firstScene}</p>
-              <div className="relative aspect-video w-full rounded-xl bg-black overflow-hidden border border-white/10">
-                <video src={previewUrl} controls playsInline className="w-full h-full object-contain bg-black" />
-              </div>
-            </div>
+          {/* Hero preview — ONE premium player. Shows the finished master, or a
+              scene the user tapped, or the honest first-rendered-scene fallback.
+              Master gets the cyan "ready" ring + download; a scene preview is
+              clearly labelled so it's never mistaken for the final cut. */}
+          {heroPreviewUrl && (
+            <FilmPreviewPlayer
+              url={heroPreviewUrl}
+              isMaster={!!masterUrl}
+              isScenePreview={!masterUrl && !!selectedSceneUrl}
+              headline={masterUrl ? t.masterReady : selectedSceneUrl ? `${roleSceneLabel} · ${t.statReady}` : t.firstScene}
+              openLabel={t.openMaster}
+            />
           )}
 
           <div ref={feedEndRef} />
@@ -1273,6 +1310,197 @@ function StatusDot({ state }: { state: StageState }) {
   if (state === 'active') return <Loader2 className="w-3.5 h-3.5 text-[#00D2FF] animate-spin shrink-0" />;
   if (state === 'failed') return <AlertTriangle className="w-3.5 h-3.5 text-red-400 shrink-0" />;
   return <span className="w-3.5 h-3.5 rounded-full border border-white/15 shrink-0" />;
+}
+
+/**
+ * A single cinematic scene tile. Shimmers in electric-cyan while the clip
+ * renders, swaps to the live thumbnail the instant it lands (tap → hero
+ * preview, hover → autoplay scrub), and shows a calm red state on failure.
+ * Strict black / white / cyan palette; red reserved for the failed leg only.
+ */
+function FilmSceneCard({
+  index,
+  state,
+  previewUrl,
+  sceneWord,
+  statusLabel,
+  selected,
+  onPreview,
+}: {
+  index: number;
+  state: StageState;
+  previewUrl?: string | null;
+  sceneWord: string;
+  statusLabel: string;
+  selected: boolean;
+  onPreview: (url: string) => void;
+}) {
+  const n = index + 1;
+  const isDone = state === 'done';
+  const isActive = state === 'active';
+  const isFailed = state === 'failed';
+  const hasClip = isDone && !!previewUrl;
+
+  return (
+    <button
+      type="button"
+      disabled={!hasClip}
+      onClick={() => hasClip && onPreview(previewUrl as string)}
+      onMouseEnter={(e) => {
+        const v = e.currentTarget.querySelector('video') as HTMLVideoElement | null;
+        if (v) void v.play().catch(() => {});
+      }}
+      onMouseLeave={(e) => {
+        const v = e.currentTarget.querySelector('video') as HTMLVideoElement | null;
+        if (v) {
+          v.pause();
+          v.currentTime = 0;
+        }
+      }}
+      className={[
+        'group relative aspect-video overflow-hidden rounded-xl border text-left transition-all duration-300',
+        hasClip ? 'cursor-pointer' : 'cursor-default',
+        isFailed
+          ? 'border-red-500/30 bg-red-500/5'
+          : isActive
+            ? 'border-[#00D2FF]/40 bg-[#00D2FF]/[0.04] shadow-[0_0_18px_rgba(0,210,255,0.10)]'
+            : isDone
+              ? selected
+                ? 'border-[#00D2FF] shadow-[0_0_18px_rgba(0,210,255,0.30)]'
+                : 'border-white/10 bg-black hover:border-[#00D2FF]/60'
+              : 'border-white/10 bg-white/[0.02]',
+      ].join(' ')}
+    >
+      {hasClip ? (
+        // eslint-disable-next-line jsx-a11y/media-has-caption
+        <video
+          src={previewUrl as string}
+          muted
+          loop
+          playsInline
+          preload="metadata"
+          className="absolute inset-0 h-full w-full object-cover opacity-90 transition-opacity duration-300 group-hover:opacity-100"
+        />
+      ) : isActive ? (
+        <span className="absolute inset-0 animate-shimmer bg-[linear-gradient(110deg,transparent_20%,rgba(0,210,255,0.10)_45%,rgba(0,210,255,0.18)_50%,rgba(0,210,255,0.10)_55%,transparent_80%)] bg-[length:200%_100%]" />
+      ) : null}
+
+      {/* Legibility floor for the overlaid labels. */}
+      <span className="pointer-events-none absolute inset-x-0 bottom-0 h-2/3 bg-gradient-to-t from-black/85 via-black/15 to-transparent" />
+
+      {/* Scene ordinal. */}
+      <span className="absolute left-2 top-2 rounded-md bg-black/55 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white/85 backdrop-blur-sm tabular-nums">
+        {sceneWord} {n}
+      </span>
+
+      {/* Status corner glyph. */}
+      <span className="absolute right-2 top-2">
+        {isDone ? (
+          <CheckCircle2 className="h-4 w-4 text-[#00D2FF] drop-shadow-[0_0_4px_rgba(0,210,255,0.6)]" />
+        ) : isActive ? (
+          <Loader2 className="h-4 w-4 animate-spin text-[#00D2FF]" />
+        ) : isFailed ? (
+          <AlertTriangle className="h-4 w-4 text-red-400" />
+        ) : (
+          <span className="block h-3.5 w-3.5 rounded-full border border-white/25" />
+        )}
+      </span>
+
+      {/* Play affordance over a finished clip. */}
+      {hasClip && (
+        <span className="absolute inset-0 flex items-center justify-center opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+          <span className="flex h-9 w-9 items-center justify-center rounded-full bg-black/55 ring-1 ring-white/20 backdrop-blur-sm">
+            <Play className="h-4 w-4 text-white" />
+          </span>
+        </span>
+      )}
+
+      {/* Footer status word. */}
+      <span
+        className={[
+          'absolute inset-x-2 bottom-1.5 text-[10px] font-semibold tracking-wide',
+          isFailed ? 'text-red-300' : isActive ? 'text-[#00D2FF]' : isDone ? 'text-white/80' : 'text-white/35',
+        ].join(' ')}
+      >
+        {statusLabel}
+      </span>
+    </button>
+  );
+}
+
+/**
+ * The hero preview player. One premium surface for the finished master (cyan
+ * "ready" ring + download), a tapped scene, or the honest first-scene fallback.
+ * `key={url}` remounts the <video> on source change so a switch always reloads
+ * cleanly. The master plays with sound on the user's press; scene/fallback
+ * previews autoplay muted-loop for an instant glance.
+ */
+function FilmPreviewPlayer({
+  url,
+  isMaster,
+  isScenePreview,
+  headline,
+  openLabel,
+}: {
+  url: string;
+  isMaster: boolean;
+  isScenePreview: boolean;
+  headline: string;
+  openLabel: string;
+}) {
+  return (
+    <div
+      className={[
+        'space-y-2.5 rounded-2xl border bg-black p-3 transition-all',
+        isMaster ? 'border-[#00D2FF]/40 shadow-[0_0_30px_rgba(0,210,255,0.12)]' : 'border-white/10',
+      ].join(' ')}
+    >
+      <div className="flex items-center justify-between gap-2">
+        <div
+          className={[
+            'flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest',
+            isMaster ? 'text-[#00D2FF]' : 'text-neutral-400',
+          ].join(' ')}
+        >
+          {isMaster ? (
+            <CheckCircle2 className="h-3.5 w-3.5" />
+          ) : isScenePreview ? (
+            <Play className="h-3.5 w-3.5" />
+          ) : (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          )}
+          <span className="truncate">{headline}</span>
+        </div>
+        <a
+          href={url}
+          target="_blank"
+          rel="noopener noreferrer"
+          download
+          className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-white/10 px-2.5 py-1 text-[11px] font-semibold text-neutral-300 transition-colors hover:border-[#00D2FF]/50 hover:text-[#00D2FF]"
+        >
+          <Download className="h-3 w-3" /> {openLabel}
+        </a>
+      </div>
+      <div
+        className={[
+          'relative aspect-video w-full overflow-hidden rounded-xl bg-black ring-1',
+          isMaster ? 'ring-[#00D2FF]/30' : 'ring-white/10',
+        ].join(' ')}
+      >
+        {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+        <video
+          key={url}
+          src={url}
+          controls
+          autoPlay={!isMaster}
+          muted={!isMaster}
+          loop={!isMaster}
+          playsInline
+          className="h-full w-full bg-black object-contain"
+        />
+      </div>
+    </div>
+  );
 }
 
 export default ConversationalFilmStudio;
