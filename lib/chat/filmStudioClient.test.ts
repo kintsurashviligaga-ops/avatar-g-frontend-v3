@@ -4,6 +4,8 @@ import {
   readyClipUrls,
   firstPreviewUrl,
   summarizeProgress,
+  canSalvagePartialCut,
+  MIN_SALVAGE_CLIPS,
   type FilmStudioMatrix,
 } from './filmStudioClient';
 import { FILM_SCENE_COUNT } from './filmPipeline';
@@ -96,6 +98,62 @@ describe('firstPreviewUrl — graceful fallback while the editor stitches', () =
   it('returns null when no clip has landed', () => {
     expect(firstPreviewUrl(matrix({ clips: [{ ordinal: 1, status: 'pending', url: null }] }))).toBeNull();
     expect(firstPreviewUrl(null)).toBeNull();
+  });
+});
+
+describe('canSalvagePartialCut — keep a 4-of-5 render instead of discarding it', () => {
+  it('salvages when ≥2 scenes landed even though a clip failed', () => {
+    // The server union reports `failed` the moment ONE clip fails, but four
+    // landed clips are still a real film — this is the load-bearing case the
+    // old code threw away on terminal failure.
+    const m = matrix({
+      clips: [
+        { ordinal: 1, status: 'succeeded', url: 'c1' },
+        { ordinal: 2, status: 'succeeded', url: 'c2' },
+        { ordinal: 3, status: 'succeeded', url: 'c3' },
+        { ordinal: 4, status: 'succeeded', url: 'c4' },
+        { ordinal: 5, status: 'failed', url: null },
+      ],
+    });
+    expect(canSalvagePartialCut(m)).toBe(true);
+  });
+
+  it('salvages at exactly the minimum (2 landed clips)', () => {
+    const m = matrix({
+      clips: [
+        { ordinal: 1, status: 'succeeded', url: 'c1' },
+        { ordinal: 2, status: 'succeeded', url: 'c2' },
+        { ordinal: 3, status: 'failed', url: null },
+      ],
+    });
+    expect(readyClipUrls(m).length).toBe(MIN_SALVAGE_CLIPS);
+    expect(canSalvagePartialCut(m)).toBe(true);
+  });
+
+  it('does NOT salvage a single landed clip (a clip is not a cut)', () => {
+    const m = matrix({
+      clips: [
+        { ordinal: 1, status: 'succeeded', url: 'c1' },
+        { ordinal: 2, status: 'failed', url: null },
+        { ordinal: 3, status: 'failed', url: null },
+      ],
+    });
+    expect(canSalvagePartialCut(m)).toBe(false);
+  });
+
+  it('does NOT salvage when nothing landed, incl. a null matrix', () => {
+    expect(canSalvagePartialCut(matrix({ clips: [] }))).toBe(false);
+    expect(canSalvagePartialCut(null)).toBe(false);
+  });
+
+  it('counts de-duplicated URLs, so two copies of one clip is not a cut', () => {
+    const m = matrix({
+      clips: [
+        { ordinal: 1, status: 'succeeded', url: 'dup' },
+        { ordinal: 2, status: 'succeeded', url: 'dup' },
+      ],
+    });
+    expect(canSalvagePartialCut(m)).toBe(false);
   });
 });
 

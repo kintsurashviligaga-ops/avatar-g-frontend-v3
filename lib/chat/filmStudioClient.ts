@@ -134,6 +134,25 @@ export function firstPreviewUrl(matrix: FilmStudioMatrix | null): string | null 
 }
 
 /**
+ * The editor needs at least this many landed clips to assemble a film. Mirrors
+ * the /api/video/assemble guard ("at least 2 ready segments required"): a single
+ * clip is just a clip, not a cut.
+ */
+export const MIN_SALVAGE_CLIPS = 2;
+
+/**
+ * True when enough scenes have landed to salvage a watchable partial cut even
+ * though the full render didn't complete cleanly — a clip leg failed OR the
+ * deadline passed. This is the load-bearing decision that keeps a 4-of-5 render
+ * from being thrown away: the server union reports `failed` the moment ONE clip
+ * fails (it can't be a complete 5-scene cut), but the surviving clips are still
+ * a real film. Pure + exported so the salvage gate is unit-testable off-network.
+ */
+export function canSalvagePartialCut(matrix: FilmStudioMatrix | null): boolean {
+  return readyClipUrls(matrix).length >= MIN_SALVAGE_CLIPS;
+}
+
+/**
  * Localized copy for the live progress line. Georgian is the canonical platform
  * language; en/ru mirror it. `{done}` / `{total}` / `{audio}` are interpolated.
  * Unknown locales fall back to English (the function default), so the existing
@@ -343,6 +362,7 @@ export async function driveFilmStudio(opts: DriveFilmOptions): Promise<FilmStudi
 
     // 2 ── Poll until ready to stitch / terminal / timeout
     const deadline = Date.now() + maxPollMs;
+    let renderFailed = false;
     while (!matrix.readyToStitch && Date.now() < deadline) {
       if (predictionId === undefined) break;
       await sleep(pollIntervalMs, signal);
@@ -351,22 +371,29 @@ export async function driveFilmStudio(opts: DriveFilmOptions): Promise<FilmStudi
       if (poll.metadata?.film) matrix = poll.metadata.film;
       emit('rendering', matrix, null);
       if (poll.predictionStatus && TERMINAL_FAIL.has(poll.predictionStatus) && !matrix.readyToStitch) {
-        return fail('One or more scenes failed to render, so the film could not be assembled.', matrix);
+        // A leg reported terminal failure. The server union flips to `failed`
+        // the moment ONE clip fails — but the clips that DID land are still a
+        // real film. Don't discard them: break and let the salvage gate below
+        // stitch a partial cut when ≥2 scenes survived. (Previously this
+        // returned immediately, so a 4-of-5 render was thrown away even though
+        // the salvage path was built for exactly this case — it was simply
+        // unreachable on terminal failure, only on a clean timeout.)
+        renderFailed = true;
+        break;
       }
     }
 
-    // The poll loop ended either because every scene is ready OR the deadline
-    // passed. A timeout with too few scenes is a hard fail — route it through
-    // fail() so it EMITS a terminal 'failed' (the old inline return left the
-    // last emitted phase at 'rendering', so the UI kept spinning all 5 scenes
-    // under a red "halted" header — a contradictory tracker). But if enough
-    // scenes DID land before the deadline, salvage a partial cut instead of
-    // throwing the whole film away: fall through to the stitch block, which
-    // assembles from whatever ready clips exist.
-    const readyAtDeadline = readyClipUrls(matrix);
-    if (!matrix.readyToStitch && readyAtDeadline.length < 2) {
+    // The poll loop ended for one of three reasons: every scene is ready, a leg
+    // failed terminally, or the deadline passed. When the full render didn't
+    // complete cleanly we still salvage a partial cut if ≥2 scenes landed —
+    // otherwise we route through fail() so it EMITS a terminal 'failed' (an
+    // inline return would leave the last emitted phase at 'rendering', spinning
+    // all 5 scenes under a red "halted" header — a contradictory tracker).
+    if (!matrix.readyToStitch && !canSalvagePartialCut(matrix)) {
       return fail(
-        'The render timed out before enough scenes were ready to assemble a film.',
+        renderFailed
+          ? 'One or more scenes failed to render, so the film could not be assembled.'
+          : 'The render timed out before enough scenes were ready to assemble a film.',
         matrix,
       );
     }
@@ -375,7 +402,7 @@ export async function driveFilmStudio(opts: DriveFilmOptions): Promise<FilmStudi
     // Reached when every scene is ready OR a timeout left ≥2 salvageable clips.
     emit('stitching', matrix, null);
     const clips = readyClipUrls(matrix);
-    if (clips.length < 2) {
+    if (clips.length < MIN_SALVAGE_CLIPS) {
       return fail('Not enough scenes rendered to stitch a film (need at least 2).', matrix);
     }
     let master = await assembleMaster(clips, matrix.audioUrl ?? null, matrix.statusTokenId, message, signal);
