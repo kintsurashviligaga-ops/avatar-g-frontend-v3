@@ -8,6 +8,7 @@ import {
   clipsSettled,
   everyClipLanded,
   filmProgressKey,
+  asErrorText,
   MIN_SALVAGE_CLIPS,
   type FilmStudioMatrix,
 } from './filmStudioClient';
@@ -281,6 +282,31 @@ describe('filmProgressKey — stall detection signature', () => {
 
   it('returns a constant sentinel for a null matrix', () => {
     expect(filmProgressKey(null)).toBe('none');
+  });
+});
+
+describe('asErrorText — never let a non-string error crash the UI', () => {
+  it('passes a string through unchanged', () => {
+    expect(asErrorText('Insufficient balance')).toBe('Insufficient balance');
+  });
+
+  it('unwraps an Error / object message (the structured provider rejection)', () => {
+    expect(asErrorText(new Error('boom'))).toBe('boom');
+    // The exact shape that caused "[object Object]" + the `.slice` crash.
+    expect(asErrorText({ type: 'insufficient_funds_error', message: 'Insufficient funds. Required: 36 cents' })).toBe(
+      'Insufficient funds. Required: 36 cents',
+    );
+    expect(asErrorText({ error: 'nested error string' })).toBe('nested error string');
+  });
+
+  it('JSON-stringifies a message-less object instead of rendering [object Object]', () => {
+    expect(asErrorText({ code: 402 })).toBe('{"code":402}');
+  });
+
+  it('handles null / undefined / primitives without throwing', () => {
+    expect(asErrorText(null)).toBe('');
+    expect(asErrorText(undefined)).toBe('');
+    expect(asErrorText(402)).toBe('402');
   });
 });
 

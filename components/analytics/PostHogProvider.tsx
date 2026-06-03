@@ -63,9 +63,23 @@ export const analytics = {
   generationSuccess: (service: string, credits: number, durationMs?: number) => {
     safeCapture('ai_generation_success', { service, credits_cost: credits, duration_ms: durationMs });
   },
-  /** Track AI generation failure */
-  generationFailed: (service: string, error: string) => {
-    safeCapture('ai_generation_failed', { service, error_message: error.slice(0, 200) });
+  /** Track AI generation failure. Accepts ANY error shape — a structured
+   *  provider error object must never crash the failure handler itself (the
+   *  `error.slice is not a function` regression). Always coerce to a string. */
+  generationFailed: (service: string, error: unknown) => {
+    const msg =
+      typeof error === 'string'
+        ? error
+        : error instanceof Error
+          ? error.message
+          : (() => {
+              try {
+                return JSON.stringify(error);
+              } catch {
+                return String(error);
+              }
+            })();
+    safeCapture('ai_generation_failed', { service, error_message: msg.slice(0, 200) });
   },
   /** @deprecated use generationSuccess */
   generation: (service: string, credits: number, success: boolean) => {

@@ -291,7 +291,27 @@ interface OrchestrateLike {
   predictionStatus?: string;
   assetUrl?: string | null;
   metadata?: { film?: FilmStudioMatrix; [k: string]: unknown };
-  error?: string;
+  // The server may send a plain string OR a structured error object (e.g. a
+  // provider rejection). Typed `unknown` so callers are forced to coerce — a
+  // raw object reaching the UI caused the "[object Object]" + `.slice` crash.
+  error?: unknown;
+}
+
+/** Coerce any server/error value to a safe, human-readable string. */
+export function asErrorText(v: unknown): string {
+  if (typeof v === 'string') return v;
+  if (v instanceof Error) return v.message;
+  if (v && typeof v === 'object') {
+    const o = v as Record<string, unknown>;
+    if (typeof o.message === 'string' && o.message.trim()) return o.message;
+    if (typeof o.error === 'string' && o.error.trim()) return o.error;
+    try {
+      return JSON.stringify(v);
+    } catch {
+      return 'Unknown error';
+    }
+  }
+  return v == null ? '' : String(v);
 }
 
 const TERMINAL_FAIL = new Set(['failed', 'error', 'canceled']);
@@ -402,9 +422,11 @@ export async function driveFilmStudio(opts: DriveFilmOptions): Promise<FilmStudi
     });
   };
 
-  const fail = (error: string, matrix: FilmStudioMatrix | null): FilmStudioResult => {
+  const fail = (error: unknown, matrix: FilmStudioMatrix | null): FilmStudioResult => {
     emit('failed', matrix, null);
-    return { ok: false, phase: 'failed', masterUrl: null, previewUrl: firstPreviewUrl(matrix), matrix, error };
+    // ALWAYS resolve `error` to a string so the UI never renders "[object Object]"
+    // nor crashes on `.slice` (the generationFailed regression).
+    return { ok: false, phase: 'failed', masterUrl: null, previewUrl: firstPreviewUrl(matrix), matrix, error: asErrorText(error) };
   };
 
   try {
@@ -427,7 +449,11 @@ export async function driveFilmStudio(opts: DriveFilmOptions): Promise<FilmStudi
     if (!predictionId || !matrix) {
       // No film job dispatched — surface the honest server reason (insufficient
       // credits, provider not configured, auth) instead of a silent spinner.
-      return fail(dispatch.message || dispatch.error || 'The film service could not start this render.', matrix);
+      return fail(
+        (typeof dispatch.message === 'string' && dispatch.message.trim() ? dispatch.message : asErrorText(dispatch.error)) ||
+          'The film service could not start this render.',
+        matrix,
+      );
     }
 
     emit('rendering', matrix, null);
