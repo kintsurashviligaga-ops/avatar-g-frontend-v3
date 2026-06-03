@@ -133,16 +133,63 @@ export function firstPreviewUrl(matrix: FilmStudioMatrix | null): string | null 
   return ready?.url ?? null;
 }
 
-/** A short, honest status line for the progress UI. */
-export function summarizeProgress(matrix: FilmStudioMatrix | null, phase: FilmStudioPhase): string {
-  if (phase === 'dispatching') return 'Dispatching the production — storyboard + 5 scene renders…';
-  if (phase === 'assembled') return 'Compilation complete — your 30-second film is ready.';
-  if (phase === 'failed') return 'The render could not be completed.';
-  if (!matrix) return 'Working…';
+/**
+ * Localized copy for the live progress line. Georgian is the canonical platform
+ * language; en/ru mirror it. `{done}` / `{total}` / `{audio}` are interpolated.
+ * Unknown locales fall back to English (the function default), so the existing
+ * English-only callers and tests are unaffected.
+ */
+const PROGRESS_COPY: Record<'ka' | 'en' | 'ru', {
+  dispatching: string;
+  assembled: string;
+  failed: string;
+  working: string;
+  stitching: string;
+  rendering: string;
+}> = {
+  ka: {
+    dispatching: 'წარმოება იწყება — სცენარი + 5 სცენის რენდერი…',
+    assembled: 'მონტაჟი დასრულდა — თქვენი 30-წამიანი ფილმი მზად არის.',
+    failed: 'რენდერი ვერ დასრულდა.',
+    working: 'მუშავდება…',
+    stitching: 'რედაქტორი კრებს საბოლოო ვერსიას — {done}/{total} სცენა დარენდერდა.',
+    rendering: 'სცენების რენდერი — {done}/{total} მზად · საუნდტრეკი {audio}.',
+  },
+  en: {
+    dispatching: 'Dispatching the production — storyboard + 5 scene renders…',
+    assembled: 'Compilation complete — your 30-second film is ready.',
+    failed: 'The render could not be completed.',
+    working: 'Working…',
+    stitching: 'Editor stitching the final cut — {done}/{total} scenes rendered.',
+    rendering: 'Rendering scenes — {done}/{total} ready · score {audio}.',
+  },
+  ru: {
+    dispatching: 'Запуск производства — раскадровка + рендер 5 сцен…',
+    assembled: 'Монтаж завершён — ваш 30-секундный фильм готов.',
+    failed: 'Рендер не удалось завершить.',
+    working: 'Обработка…',
+    stitching: 'Редактор собирает финальную версию — отрендерено {done}/{total} сцен.',
+    rendering: 'Рендер сцен — {done}/{total} готово · саундтрек {audio}.',
+  },
+};
+
+/** A short, honest status line for the progress UI (localized). */
+export function summarizeProgress(
+  matrix: FilmStudioMatrix | null,
+  phase: FilmStudioPhase,
+  locale: string = 'en',
+): string {
+  const c = PROGRESS_COPY[locale === 'ka' ? 'ka' : locale === 'ru' ? 'ru' : 'en'];
+  if (phase === 'dispatching') return c.dispatching;
+  if (phase === 'assembled') return c.assembled;
+  if (phase === 'failed') return c.failed;
+  if (!matrix) return c.working;
   const total = matrix.sceneCount || matrix.clips.length;
   const done = matrix.clips.filter((c) => c.status === 'succeeded').length;
-  if (phase === 'stitching') return `Editor stitching the final cut — ${done}/${total} scenes rendered.`;
-  return `Rendering scenes — ${done}/${total} ready · score ${matrix.audio}.`;
+  const fill = (s: string) =>
+    s.replace('{done}', String(done)).replace('{total}', String(total)).replace('{audio}', String(matrix.audio));
+  if (phase === 'stitching') return fill(c.stitching);
+  return fill(c.rendering);
 }
 
 // ─── Internal transport ──────────────────────────────────────────────────────
@@ -258,7 +305,7 @@ export async function driveFilmStudio(opts: DriveFilmOptions): Promise<FilmStudi
     onProgress?.({
       phase,
       matrix,
-      message: summarizeProgress(matrix, phase),
+      message: summarizeProgress(matrix, phase, locale),
       masterUrl,
       previewUrl: firstPreviewUrl(matrix),
     });

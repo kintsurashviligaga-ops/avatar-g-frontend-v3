@@ -94,6 +94,7 @@ const COPY: Record<
     estNote: string;
     pipelineRunning: string;
     pipelineDone: string;
+    pipelineFailed: string;
     masterReady: string;
     openMaster: string;
     firstScene: string;
@@ -142,6 +143,7 @@ const COPY: Record<
     estNote: 'შეფასება ცოცხალი ფასების მატრიცით. ზუსტი თანხა იზომება სერვერზე გაშვებისას.',
     pipelineRunning: 'წარმოება მიმდინარეობს',
     pipelineDone: 'წარმოება დასრულდა',
+    pipelineFailed: 'წარმოება შეჩერდა',
     masterReady: 'მასტერი მზად არის · 30-წამიანი ფილმი',
     openMaster: 'გახსენი / ჩამოტვირთე მასტერი',
     firstScene: 'მონტაჟი მთავრდება — ნაჩვენებია პირველი დარენდერებული სცენა.',
@@ -189,6 +191,7 @@ const COPY: Record<
     estNote: 'Estimate from the live cost matrix. The exact charge is metered server-side when the render runs.',
     pipelineRunning: 'Pipeline executing',
     pipelineDone: 'Pipeline complete',
+    pipelineFailed: 'Production halted',
     masterReady: 'Master ready · 30-second film',
     openMaster: 'Open / download master',
     firstScene: 'Editor still finishing — showing the first rendered scene.',
@@ -236,6 +239,7 @@ const COPY: Record<
     estNote: 'Оценка по живой матрице цен. Точная сумма считается на сервере при запуске рендера.',
     pipelineRunning: 'Конвейер выполняется',
     pipelineDone: 'Конвейер завершён',
+    pipelineFailed: 'Производство остановлено',
     masterReady: 'Мастер готов · 30-секундный фильм',
     openMaster: 'Открыть / скачать мастер',
     firstScene: 'Монтаж ещё идёт — показана первая отрендеренная сцена.',
@@ -906,18 +910,29 @@ export function ConversationalFilmStudio({
           {showTracker && (
             <div className="rounded-2xl border border-white/10 bg-black p-4 space-y-3">
               <div className="flex items-center gap-3">
-                {finished ? (
+                {/* Terminal-failure FIRST: a halted render must never keep spinning
+                    the "in progress" loader (the contradictory state users saw —
+                    a spinner + "render could not be completed"). Failed → red
+                    alert; done → cyan check; otherwise → the live spinner. */}
+                {pipeline.failed ? (
+                  <AlertTriangle className="w-5 h-5 text-red-400 shrink-0" />
+                ) : finished ? (
                   <CheckCircle2 className="w-5 h-5 text-[#00D2FF] shrink-0" />
                 ) : (
-                  <Loader2 className="w-5 h-5 text-[#00D2FF] animate-spin shrink-0" />
+                  <Loader2 className="w-5 h-5 text-[#00D2FF] animate-spin shrink-0 motion-reduce:animate-none" />
                 )}
                 <div className="min-w-0">
-                  <span className="block text-[10px] font-bold uppercase tracking-wider text-neutral-400">
-                    {finished ? t.pipelineDone : t.pipelineRunning}
+                  <span
+                    className={[
+                      'block text-[10px] font-bold uppercase tracking-wider',
+                      pipeline.failed ? 'text-red-300' : 'text-neutral-400',
+                    ].join(' ')}
+                  >
+                    {pipeline.failed ? t.pipelineFailed : finished ? t.pipelineDone : t.pipelineRunning}
                   </span>
                   <p className="text-xs text-neutral-300 mt-0.5">{progress?.message || 'Working…'}</p>
                 </div>
-                {driving && (
+                {driving && !pipeline.failed && (
                   <button
                     type="button"
                     onClick={handleCancel}

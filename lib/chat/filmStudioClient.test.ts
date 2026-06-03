@@ -130,4 +130,28 @@ describe('summarizeProgress — phase-aware, honest copy', () => {
     });
     expect(summarizeProgress(m, 'stitching')).toMatch(/4\/4/);
   });
+
+  it('localizes the terminal copy (ka/ru) while defaulting to English', () => {
+    // Georgian is the canonical platform language — the studio runs ka by default.
+    expect(summarizeProgress(null, 'failed', 'ka')).toMatch(/ვერ დასრულდა/);
+    expect(summarizeProgress(null, 'assembled', 'ka')).toMatch(/მზად არის/);
+    expect(summarizeProgress(null, 'failed', 'ru')).toMatch(/не удалось/i);
+    // Unknown/omitted locale falls back to English.
+    expect(summarizeProgress(null, 'failed', 'zz')).toMatch(/could not/i);
+    expect(summarizeProgress(null, 'failed')).toMatch(/could not/i);
+  });
+
+  it('keeps the scene counter numerics across every locale', () => {
+    const m = matrix({
+      sceneCount: 5,
+      clips: [
+        { ordinal: 1, status: 'succeeded', url: 'a' },
+        { ordinal: 2, status: 'succeeded', url: 'b' },
+        { ordinal: 3, status: 'pending', url: null },
+      ],
+    });
+    // The {done}/{total} substitution must survive in ka + ru, not just en.
+    expect(summarizeProgress(m, 'rendering', 'ka')).toMatch(/2\/5/);
+    expect(summarizeProgress(m, 'rendering', 'ru')).toMatch(/2\/5/);
+  });
 });
