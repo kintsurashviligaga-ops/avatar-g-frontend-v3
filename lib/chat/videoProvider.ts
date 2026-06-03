@@ -86,3 +86,24 @@ export function videoProviderUnavailableMessage(locale: string): string {
   }
   return 'სისტემური ხარვეზი: ვიდეო პროვაიდერი მიუწვდომელია. გთხოვთ, შეავსოთ API ცვლადები.';
 }
+
+/**
+ * RUNTIME failure copy — distinct from `videoProviderUnavailableMessage`.
+ *
+ * The "unavailable" message above is shown when NO provider is configured (a
+ * deployment/config gap). THIS message is shown when a provider IS configured
+ * but the upstream synthesis request times out or throws mid-pipeline (the
+ * ~38% "scene synthesis" failure). It is paired with an atomic ledger rollback,
+ * so it makes an explicit promise to the user: their balance was returned. The
+ * Georgian copy is the canonical, verbatim string surfaced by the studio.
+ */
+export function videoProviderConnectionFailedMessage(locale: string): string {
+  const loc = locale === 'en' ? 'en' : locale === 'ru' ? 'ru' : 'ka';
+  if (loc === 'en') {
+    return "Couldn't connect to the video provider. Your balance is protected.";
+  }
+  if (loc === 'ru') {
+    return 'Не удалось подключиться к видео-провайдеру. Баланс сохранён.';
+  }
+  return 'ვიდეო პროვაიდერთან კავშირი ვერ დამყარდა. ბალანსი დაცულია.';
+}

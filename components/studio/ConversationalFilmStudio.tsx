@@ -406,6 +406,12 @@ export function ConversationalFilmStudio({
   const estCost = useMemo(() => estimateFilmCostGel(), []);
   const isFreeFilm = typeof freeFilmsRemaining === 'number' && freeFilmsRemaining > 0;
   const canSend = !driving && input.trim().length > 0;
+  // PUBLIC-LAUNCH §4 — the send control glows Electric Cyan only when the action
+  // is actually fundable: a live founder promo slot OR a wallet balance that
+  // covers the estimated film cost. Otherwise it stays clean/neutral (and empty
+  // input keeps it fully disabled), so the colour never over-promises.
+  const balanceCoversCost = typeof balanceGel === 'number' && balanceGel >= estCost;
+  const sendValidated = isFreeFilm || balanceCoversCost;
 
   const handlePick = useCallback(
     async (idx: number, fileList: FileList | null) => {
@@ -820,8 +826,10 @@ export function ConversationalFilmStudio({
               onKeyDown={handleKeyDown}
             />
             {/* Native round action button, docked in the bar's corner like
-                ChatGPT/Claude. Cyan when a free founder slot is live, otherwise
-                clean white; muted + non-interactive until there's prompt text. */}
+                ChatGPT/Claude. Electric-cyan glow when the action is fundable
+                (promo slot OR balance covers the cost); clean white when active
+                but not yet validated; muted + non-interactive until prompt text
+                exists. */}
             <button
               type="button"
               onClick={handleSend}
@@ -832,7 +840,7 @@ export function ConversationalFilmStudio({
                 'inline-flex h-9 w-9 items-center justify-center rounded-full transition-all shrink-0',
                 !canSend
                   ? 'bg-white/10 text-neutral-600 cursor-not-allowed'
-                  : isFreeFilm
+                  : sendValidated
                     ? 'bg-[#00D2FF] text-black shadow-[0_0_18px_rgba(0,210,255,0.45)] hover:brightness-110 active:scale-90'
                     : 'bg-white text-black hover:bg-neutral-200 active:scale-90',
               ].join(' ')}

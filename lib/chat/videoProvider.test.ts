@@ -4,6 +4,7 @@ import {
   hasVideoProvider,
   computeVideoProviderStatus,
   videoProviderUnavailableMessage,
+  videoProviderConnectionFailedMessage,
 } from './videoProvider';
 
 describe('hasReplicateToken', () => {
@@ -60,5 +61,26 @@ describe('videoProviderUnavailableMessage', () => {
   test('localizes en + ru', () => {
     expect(videoProviderUnavailableMessage('en')).toMatch(/video provider is unavailable/i);
     expect(videoProviderUnavailableMessage('ru')).toMatch(/видео-провайдер недоступен/i);
+  });
+});
+
+describe('videoProviderConnectionFailedMessage', () => {
+  test('Georgian is the canonical runtime-failure copy and matches the spec verbatim', () => {
+    expect(videoProviderConnectionFailedMessage('ka')).toBe(
+      'ვიდეო პროვაიდერთან კავშირი ვერ დამყარდა. ბალანსი დაცულია.',
+    );
+  });
+
+  test('is distinct from the config-missing "unavailable" message', () => {
+    expect(videoProviderConnectionFailedMessage('ka')).not.toBe(videoProviderUnavailableMessage('ka'));
+  });
+
+  test('promises balance protection in en + ru', () => {
+    expect(videoProviderConnectionFailedMessage('en')).toMatch(/balance is protected/i);
+    expect(videoProviderConnectionFailedMessage('ru')).toMatch(/Баланс сохранён/i);
+  });
+
+  test('falls back to Georgian for an unknown locale', () => {
+    expect(videoProviderConnectionFailedMessage('zz')).toContain('ბალანსი დაცულია');
   });
 });

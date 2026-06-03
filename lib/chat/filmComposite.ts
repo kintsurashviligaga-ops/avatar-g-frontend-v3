@@ -28,12 +28,13 @@
 
 import 'server-only';
 import { hasLtxApiKey } from './ltxKey';
-import { hasVideoProvider, videoProviderUnavailableMessage } from './videoProvider';
+import { hasVideoProvider, videoProviderUnavailableMessage, videoProviderConnectionFailedMessage } from './videoProvider';
 import { hasUdioApiKey } from './mediaKeys';
 import type { OrchestratorInput, ChatResponse } from './providerRouter';
 import { withTrace } from '@/lib/observability/agentTrace';
 import { forecastMarginForAction } from '@/lib/monetization/audit-engine';
 import { createServiceRoleClient } from '@/lib/supabase/server';
+import { creditWalletGel } from '@/lib/billing/wallet-ledger';
 import { startUdioGeneration } from '@/lib/udio/client';
 import { ServiceManager } from './ServiceManager';
 import { encodeFilmRef } from './filmTaskRef';
@@ -57,6 +58,15 @@ interface FilmClipResult {
   status: LegStatus;
   /** PHASE 43 §3 — dispatch attempts made (1 = first try, >1 = retried). */
   attempts: number;
+  /**
+   * True once a wallet debit was actually issued for this leg. withTrace debits
+   * the moment its inner call RESOLVES (trace status 'succeeded') — which happens
+   * even when the provider accepted the request but returned no usable taskRef (a
+   * soft upstream failure). So a clip can be `failed` yet still have been charged.
+   * We track this so a total scene-synthesis failure can atomically refund exactly
+   * the legs that were billed — never more, never less.
+   */
+  debited: boolean;
 }
 
 interface FilmPlanSummary {
@@ -134,8 +144,15 @@ async function renderClip(
   // PHASE 45 §1 — resolve the LTX key from any provisioned alias so a correctly
   // configured credential fires the render instead of silently skipping.
   if (!hasLtxApiKey()) {
-    return { ordinal: scene.ordinal, taskRef: null, status: 'skipped', attempts: 0 };
+    return { ordinal: scene.ordinal, taskRef: null, status: 'skipped', attempts: 0, debited: false };
   }
+
+  // A debit is only ever issued by withTrace for a real, billable user with a
+  // positive retail price. Track it locally so the orchestrator can refund this
+  // exact leg if the whole film collapses.
+  const realUser = Boolean(input.userId && input.userId !== 'anonymous');
+  const billable = realUser && forecastClipRetail > 0;
+  let debited = false;
 
   // PHASE 57 — the 5 clips dispatch via Promise.all; when LTX is out of funds
   // each leg fails over to a Replicate prediction, so 5 createPrediction calls
@@ -182,8 +199,12 @@ async function renderClip(
           }),
         (r) => r.predictionId || r.assetUrl || null,
       ).then((r) => r.predictionId || r.assetUrl || null);
+      // The inner call resolved, so withTrace has issued the (idempotent) debit
+      // for this leg — flag it even when no taskRef came back, so a downstream
+      // total-failure rollback refunds exactly what was billed.
+      if (billable) debited = true;
       if (taskRef) {
-        return { ordinal: scene.ordinal, taskRef, status: 'queued', attempts: attempt };
+        return { ordinal: scene.ordinal, taskRef, status: 'queued', attempts: attempt, debited };
       }
       // No provider job materialised — treat as a soft failure and retry.
       lastErr = new Error('dispatch returned no task reference');
@@ -198,7 +219,7 @@ async function renderClip(
   }
   // eslint-disable-next-line no-console
   console.warn(`[film] clip ${scene.ordinal} exhausted retries:`, lastErr instanceof Error ? lastErr.message : lastErr);
-  return { ordinal: scene.ordinal, taskRef: null, status: 'failed', attempts: MAX_CLIP_DISPATCH_ATTEMPTS };
+  return { ordinal: scene.ordinal, taskRef: null, status: 'failed', attempts: MAX_CLIP_DISPATCH_ATTEMPTS, debited };
 }
 
 /**
@@ -276,17 +297,69 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
     }
   }
 
+  const realUser = Boolean(input.userId && input.userId !== 'anonymous');
+
+  // ATOMIC LEDGER ROLLBACK — refund EXACTLY the legs that were billed. Keyed by a
+  // distinct `:refund` ref so the credit RPC is itself idempotent (a retried
+  // rollback can't over-credit), and fail-open so a missing migration never
+  // throws. This is the "balance protected" guarantee behind the localized
+  // connection-failed copy.
+  const rollbackFilmDebits = async (legs: FilmClipResult[]): Promise<void> => {
+    if (!realUser || clipForecast.retailGel <= 0) return;
+    const billed = legs.filter((c) => c.debited);
+    if (billed.length === 0) return;
+    // eslint-disable-next-line no-console
+    console.warn(`[film] scene synthesis failed — refunding ${billed.length} billed clip leg(s) for ${input.userId}`);
+    await Promise.all(
+      billed.map((c) =>
+        creditWalletGel(input.userId as string, clipForecast.retailGel, `${compositeId}:clip:${c.ordinal}:refund`),
+      ),
+    );
+  };
+
+  const connectionFailed = (): ChatResponse => ({
+    success: false,
+    intent: 'video_generation',
+    responseType: 'text',
+    message: videoProviderConnectionFailedMessage(input.locale),
+    metadata: {
+      provider: 'composite',
+      composite: true,
+      providerConnectionFailed: true,
+      balanceProtected: true,
+    },
+  });
+
   // ── Legs 2 + 3: render the 5 continuity-locked clips in parallel ───────────
-  const clips = await Promise.all(
-    plan.scenes.map((scene) =>
-      renderClip(input, scene, plan.shared, compositeId, clipForecast.wholesaleGel, clipForecast.retailGel),
-    ),
-  );
+  // renderClip never throws (it catches per-leg), but guard the fan-out anyway:
+  // an unexpected throw must still roll the ledger back and surface the clean
+  // localized halt rather than a 500.
+  let clips: FilmClipResult[];
+  try {
+    clips = await Promise.all(
+      plan.scenes.map((scene) =>
+        renderClip(input, scene, plan.shared, compositeId, clipForecast.wholesaleGel, clipForecast.retailGel),
+      ),
+    );
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('[film] scene synthesis threw — protecting balance:', err instanceof Error ? err.message : err);
+    return connectionFailed();
+  }
   const anyClip = clips.some((c) => c.status === 'queued');
 
+  // ── 38% FAILURE GUARD — the upstream synthesis request timed out / threw and
+  // NO clip queued. Atomically refund every billed leg and return the clean,
+  // localized "balance protected" halt instead of a half-charged dead pipeline.
+  if (!anyClip) {
+    await rollbackFilmDebits(clips);
+    return connectionFailed();
+  }
+
   // ── Leg 4: bind one cohesive audio track across the timeline (Udio) ────────
+  // (Past the 38% guard above, at least one clip is guaranteed queued.)
   let musicWorkId: string | null = null;
-  if (anyClip && hasUdioApiKey()) {
+  if (hasUdioApiKey()) {
     try {
       const audioForecast = forecastMarginForAction('voice_tts');
       musicWorkId = await withTrace(
@@ -338,8 +411,8 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
     seed: plan.shared.seed,
     storyboard: 'succeeded',
     clips: clips.map((c) => ({ ordinal: c.ordinal, status: c.status, url: null, attempts: c.attempts })),
-    stitch: anyClip ? 'queued' : 'skipped',
-    audio: musicWorkId ? 'queued' : anyClip ? 'pending' : 'skipped',
+    stitch: 'queued',
+    audio: musicWorkId ? 'queued' : 'pending',
     audioUrl: null,
     readyToStitch: false,
     musicWorkId,
@@ -350,18 +423,18 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
     '🎬 30-Second Film pipeline started',
     `📝 Storyboard: ${sceneCount} scenes planned`,
     `🎥 Clips dispatched: ${renderedCount}/${sceneCount} (shared seed ${plan.shared.seed})`,
-    anyClip ? '✂️ Editor will stitch the final cut' : '⚠️ Video skipped (no provider)',
+    '✂️ Editor will stitch the final cut',
     musicWorkId ? '🎵 Score generation started' : '⚠️ Score skipped',
   ].join('\n');
 
   return {
-    success: anyClip,
+    success: true,
     intent: 'video_generation',
     responseType: 'video',
     message: summary,
     // PHASE 43 §1 — track the WHOLE matrix via the union token, not one clip.
-    predictionId: anyClip ? filmToken : undefined,
-    predictionStatus: anyClip ? 'processing' : 'failed',
+    predictionId: filmToken,
+    predictionStatus: 'processing',
     assetType: 'composite-film',
     metadata: {
       provider: 'composite',
