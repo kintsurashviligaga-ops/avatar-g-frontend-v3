@@ -26,6 +26,7 @@ import Link from 'next/link';
 import {
   Upload,
   Send,
+  Mic,
   CheckCircle2,
   Loader2,
   AlertTriangle,
@@ -110,6 +111,10 @@ const COPY: Record<
     providerLabel: string;
     providerOnline: string;
     providerOffline: string;
+    micStart: string;
+    micStop: string;
+    micDenied: string;
+    voiceUnsupported: string;
   }
 > = {
   ka: {
@@ -153,6 +158,10 @@ const COPY: Record<
     providerLabel: 'ვიდეო პროვაიდერი',
     providerOnline: 'აქტიური',
     providerOffline: 'არ არის კონფიგურირებული',
+    micStart: 'ხმოვანი შეყვანა',
+    micStop: 'ჩაწერის შეჩერება',
+    micDenied: 'მიკროფონზე წვდომა შეზღუდულია. გთხოვთ, ჩართოთ პარამეტრებიდან.',
+    voiceUnsupported: 'ხმოვანი შეყვანა ამ ბრაუზერში არ არის მხარდაჭერილი.',
   },
   en: {
     brandSub: 'Cinematic Hub',
@@ -195,6 +204,10 @@ const COPY: Record<
     providerLabel: 'Video provider',
     providerOnline: 'Connected',
     providerOffline: 'Unconfigured',
+    micStart: 'Voice input',
+    micStop: 'Stop recording',
+    micDenied: 'Microphone access is restricted. Please enable it in settings.',
+    voiceUnsupported: "Voice input isn't supported in this browser.",
   },
   ru: {
     brandSub: 'Кинематографический хаб',
@@ -237,6 +250,10 @@ const COPY: Record<
     providerLabel: 'Видео-провайдер',
     providerOnline: 'Активен',
     providerOffline: 'Не настроен',
+    micStart: 'Голосовой ввод',
+    micStop: 'Остановить запись',
+    micDenied: 'Доступ к микрофону ограничен. Пожалуйста, включите его в настройках.',
+    voiceUnsupported: 'Голосовой ввод не поддерживается в этом браузере.',
   },
 };
 
@@ -293,6 +310,20 @@ async function compressImageToDataUrl(file: File): Promise<string> {
   }
 }
 
+// Minimal structural type for the Web Speech API surface we touch. We avoid the
+// DOM lib's `SpeechRecognition` types (not present in every TS lib target) and
+// model only the fields the composer reads/writes, so dictation stays portable.
+type SpeechRecognitionLike = {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  onresult: (e: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void;
+  onend: () => void;
+  onerror: ((e: { error?: string }) => void) | null;
+  start: () => void;
+  stop: () => void;
+};
+
 // ─── Component ─────────────────────────────────────────────────────────────────
 
 export function ConversationalFilmStudio({
@@ -326,6 +357,20 @@ export function ConversationalFilmStudio({
   // probed (neutral), true = LTX/Replicate wired (green), false = unconfigured
   // (red). Names-only probe — never reads a secret value to the client.
   const [providerReady, setProviderReady] = useState<boolean | null>(null);
+  // ── Voice-to-Text (native Web Speech API dictation) ──────────────────────────
+  // `speechSupported` gates whether the mic button renders at all (false on
+  // browsers without webkitSpeechRecognition/SpeechRecognition). `isRecording`
+  // drives the pulse-cyan button state. `micNotice` is an ephemeral, non-intrusive
+  // toast (auto-dismissed) used for the iOS permission-denied / unsupported copy —
+  // kept SEPARATE from the persistent pipeline `error` so a mic hiccup never reads
+  // like a production failure.
+  const [speechSupported, setSpeechSupported] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [micNotice, setMicNotice] = useState<string | null>(null);
+  const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
+  // Whatever the user had already typed when dictation started — live transcript
+  // is appended to THIS base so speaking never clobbers manual edits.
+  const baseTranscriptRef = useRef('');
 
   const msgIdRef = useRef(1);
   const [messages, setMessages] = useState<ChatMsg[]>(() => [
@@ -347,6 +392,69 @@ export function ConversationalFilmStudio({
   useEffect(() => {
     return () => abortRef.current?.abort();
   }, []);
+
+  // ── Speech-recognition bootstrap (created ONCE) ──────────────────────────────
+  // Continuous + interim dictation: every recognized chunk (interim and final)
+  // is folded into the full transcript and merged onto whatever the user already
+  // typed, so speech flows straight into the composer in real time and stays
+  // editable. The instance is built a single time; `lang` + the base snapshot are
+  // set at start (see `toggleRecording`). Fail-safe: missing API → mic hidden.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const SR = window as unknown as {
+      webkitSpeechRecognition?: new () => SpeechRecognitionLike;
+      SpeechRecognition?: new () => SpeechRecognitionLike;
+    };
+    const Ctor = SR.SpeechRecognition || SR.webkitSpeechRecognition;
+    if (!Ctor) {
+      setSpeechSupported(false);
+      return;
+    }
+    setSpeechSupported(true);
+
+    const rec = new Ctor();
+    rec.continuous = true;
+    rec.interimResults = true;
+    rec.onresult = (e) => {
+      let transcript = '';
+      for (let i = 0; i < e.results.length; i++) {
+        transcript += e.results[i]?.[0]?.transcript ?? '';
+      }
+      transcript = transcript.trim();
+      const base = baseTranscriptRef.current;
+      const merged = base ? `${base} ${transcript}`.trim() : transcript;
+      setInput(merged);
+    };
+    rec.onerror = (ev) => {
+      // Stop the recording UI and surface a clear, localized reason for the two
+      // cases users actually hit on iOS/Safari (permission blocked, no device);
+      // anything else simply ends the session silently.
+      setIsRecording(false);
+      const code = ev?.error;
+      if (code === 'not-allowed' || code === 'service-not-allowed' || code === 'audio-capture') {
+        setMicNotice(t.micDenied);
+      }
+    };
+    rec.onend = () => setIsRecording(false);
+    recognitionRef.current = rec;
+
+    return () => {
+      try {
+        rec.stop();
+      } catch {
+        /* noop */
+      }
+      recognitionRef.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Auto-dismiss the mic toast so it stays non-intrusive (never lingers).
+  useEffect(() => {
+    if (!micNotice) return;
+    const id = setTimeout(() => setMicNotice(null), 4500);
+    return () => clearTimeout(id);
+  }, [micNotice]);
 
   // Pull the server-authoritative onboarding state so the ledger reflects the
   // REAL remaining free-film count for this account — never a hardcoded promo.
@@ -500,11 +608,60 @@ export function ConversationalFilmStudio({
 
   const handleSend = useCallback(() => {
     if (!canSend) return;
+    // Finalize any in-flight dictation so the recognizer releases the mic before
+    // the prompt is dispatched.
+    try {
+      recognitionRef.current?.stop();
+    } catch {
+      /* noop */
+    }
+    setIsRecording(false);
     const userPrompt = input.trim();
     setInput('');
     pushMessage('user', userPrompt);
     void runReal(userPrompt);
   }, [canSend, input, pushMessage, runReal]);
+
+  // Toggle native dictation. On START we explicitly probe mic permission via
+  // getUserMedia (the clean Safari/iOS path): a denied promise surfaces the
+  // localized "enable in settings" toast instead of a silent no-op. We snapshot
+  // the current input as the append base and set the recognizer locale from the
+  // active UI language (ka-GE / ru-RU / en-US) right before starting.
+  const toggleRecording = useCallback(async () => {
+    const rec = recognitionRef.current;
+    if (!rec || !speechSupported) {
+      setMicNotice(t.voiceUnsupported);
+      return;
+    }
+    if (isRecording) {
+      try {
+        rec.stop();
+      } catch {
+        /* noop */
+      }
+      setIsRecording(false);
+      return;
+    }
+    try {
+      if (typeof navigator !== 'undefined' && navigator.mediaDevices?.getUserMedia) {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        // Release the probe stream immediately — SpeechRecognition opens its own.
+        stream.getTracks().forEach((tr) => tr.stop());
+      }
+    } catch {
+      setMicNotice(t.micDenied);
+      return;
+    }
+    baseTranscriptRef.current = input;
+    try {
+      rec.lang = lang === 'ka' ? 'ka-GE' : lang === 'ru' ? 'ru-RU' : 'en-US';
+      rec.start();
+      setIsRecording(true);
+    } catch {
+      // .start() throws if already started — keep the UI honest.
+      setIsRecording(false);
+    }
+  }, [speechSupported, isRecording, input, lang, t.voiceUnsupported, t.micDenied]);
 
   const handleCancel = useCallback(() => {
     abortRef.current?.abort();
@@ -811,6 +968,17 @@ export function ConversationalFilmStudio({
         style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom, 0px))' }}
       >
         <div className="mx-auto w-full max-w-3xl px-4 pt-3">
+          {/* Ephemeral mic toast — permission denied / unsupported. Non-intrusive,
+              auto-dismissed, and visually distinct from the red pipeline error so a
+              mic hiccup never reads like a production failure. */}
+          {micNotice && (
+            <div
+              role="status"
+              className="mb-2 rounded-xl border border-white/10 bg-black px-3 py-2 text-center text-[11px] text-neutral-300"
+            >
+              {micNotice}
+            </div>
+          )}
           {/* Prompt + the big "Generate video" CTA in ONE focused conversion bar.
               The bar lights cyan on focus; the CTA turns full electric-cyan when the
               server confirms a free founder slot, otherwise it stays clean white and
@@ -825,6 +993,29 @@ export function ConversationalFilmStudio({
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
             />
+            {/* Native Voice-to-Text toggle, docked just before Send. Minimalist:
+                muted gray when idle, pulse Electric-Cyan while live-transcribing.
+                Only rendered when the browser exposes the Web Speech API. */}
+            {speechSupported && (
+              <button
+                type="button"
+                onClick={toggleRecording}
+                disabled={driving}
+                aria-pressed={isRecording}
+                aria-label={isRecording ? t.micStop : t.micStart}
+                title={isRecording ? t.micStop : t.micStart}
+                className={[
+                  'inline-flex h-9 w-9 items-center justify-center rounded-full transition-all shrink-0',
+                  driving
+                    ? 'text-neutral-700 cursor-not-allowed'
+                    : isRecording
+                      ? 'text-[#00D2FF] animate-pulse'
+                      : 'text-white/40 hover:text-white/70 active:scale-90',
+                ].join(' ')}
+              >
+                <Mic className="w-4 h-4" />
+              </button>
+            )}
             {/* Native round action button, docked in the bar's corner like
                 ChatGPT/Claude. Electric-cyan glow when the action is fundable
                 (promo slot OR balance covers the cost); clean white when active
