@@ -33,7 +33,7 @@ import type { OrchestratorInput, ChatResponse } from './providerRouter';
 import { withTrace } from '@/lib/observability/agentTrace';
 import { forecastMarginForAction } from '@/lib/monetization/audit-engine';
 import { createServiceRoleClient } from '@/lib/supabase/server';
-import { creditWalletGel } from '@/lib/billing/wallet-ledger';
+import { creditWalletGel, getOnboardingState } from '@/lib/billing/wallet-ledger';
 import { startUdioGeneration } from '@/lib/udio/client';
 import { ServiceManager } from './ServiceManager';
 import { encodeFilmRef } from './filmTaskRef';
@@ -307,8 +307,16 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
 
   // ── Pre-flight: balance gate (skips anonymous; downstream gate covers them) ─
   if (input.userId && input.userId !== 'anonymous') {
-    const balance = await readWalletBalanceGel(input.userId);
-    if (filmBalanceDecision(balance, forecast.totalRetailGel) === 'insufficient') {
+    // A founder/promo FREE film needs ZERO wallet balance, so it must bypass the
+    // gate entirely — otherwise a 0.00 ₾ wallet would block the very first free
+    // film (the regression the no-row→0 balance change introduced). We only PEEK
+    // the slot here (read, never consume); the actual waiver happens at the
+    // charge step. Fail-open: an unreadable slot just falls through to the
+    // balance check below.
+    const onboarding = await getOnboardingState(input.userId).catch(() => null);
+    const hasFreeFilm = (onboarding?.freeFilmsRemaining ?? 0) > 0;
+    const balance = hasFreeFilm ? null : await readWalletBalanceGel(input.userId);
+    if (!hasFreeFilm && filmBalanceDecision(balance, forecast.totalRetailGel) === 'insufficient') {
       return {
         success: false,
         intent: 'video_generation',
