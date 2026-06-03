@@ -28,6 +28,7 @@
 
 import 'server-only';
 import { hasLtxApiKey } from './ltxKey';
+import { hasVideoProvider, videoProviderUnavailableMessage } from './videoProvider';
 import { hasUdioApiKey } from './mediaKeys';
 import type { OrchestratorInput, ChatResponse } from './providerRouter';
 import { withTrace } from '@/lib/observability/agentTrace';
@@ -206,6 +207,31 @@ async function renderClip(
  * `metadata.film` for the progressive agent timeline.
  */
 export async function handleFilmComposite(input: OrchestratorInput): Promise<ChatResponse> {
+  // ── STRICT PRE-FLIGHT: video provider gate ─────────────────────────────────
+  // Halt the ENTIRE pipeline at the door when no render provider is wired (no
+  // LTX alias AND no Replicate failover token). This runs BEFORE the storyboard
+  // engine (planFilmScenes), the wallet balance gate, and every per-leg credit
+  // debit — so a missing infrastructure token can never burn a founder free-film
+  // slot or a GEL charge, and never strands the user at the ~38% "Video skipped
+  // (no provider)" mark. Returns a clean, localized, zero-cost failure instead.
+  if (!hasVideoProvider()) {
+    // eslint-disable-next-line no-console
+    console.error('[film] aborted pre-storyboard: no video provider configured (LTX / Replicate both absent)');
+    return {
+      success: false,
+      intent: 'video_generation',
+      responseType: 'text',
+      message: videoProviderUnavailableMessage(input.locale),
+      metadata: {
+        provider: 'composite',
+        composite: true,
+        providerUnavailable: true,
+        // Names-only — surfaced for diagnostics, never a secret value.
+        missingEnv: ['LTX2_API_KEY', 'REPLICATE_API_TOKEN'],
+      },
+    };
+  }
+
   const opts = input.selectedOptions || {};
   const avatarReference =
     opts.avatarReference ||

@@ -18,9 +18,12 @@ export const runtime = 'nodejs';
 
 export async function GET(req: NextRequest) {
   const { user } = await authedClientFromRequest(req);
-  if (!user) return NextResponse.json({ authenticated: false, state: null });
+  if (!user) return NextResponse.json({ authenticated: false, email: null, state: null });
   const state = await getOnboardingState(user.id);
-  return NextResponse.json({ authenticated: true, state });
+  // Email surfaced so the studio settings drawer can show an honest account
+  // line ("მომხმარებელი: …") without a second round-trip. Never the password
+  // or any token — only the already-authenticated identity address.
+  return NextResponse.json({ authenticated: true, email: user.email ?? null, state });
 }
 
 export async function POST(req: NextRequest) {

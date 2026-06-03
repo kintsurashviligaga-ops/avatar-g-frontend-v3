@@ -31,7 +31,6 @@ import {
   AlertTriangle,
   X,
   ArrowRight,
-  MessageSquare,
   LogIn,
   Menu,
   Plus,
@@ -81,7 +80,6 @@ const COPY: Record<
     placeholder: string;
     placeholderBusy: string;
     sendAria: string;
-    chat: string;
     login: string;
     theme: string;
     identityLabel: string;
@@ -107,6 +105,11 @@ const COPY: Record<
     menu: string;
     settings: string;
     topUp: string;
+    account: string;
+    accountGuest: string;
+    providerLabel: string;
+    providerOnline: string;
+    providerOffline: string;
   }
 > = {
   ka: {
@@ -120,7 +123,6 @@ const COPY: Record<
     placeholder: 'ჩაწერე რეჟისორული სცენარი…',
     placeholderBusy: 'მიმდინარეობს წარმოება…',
     sendAria: 'გაშვება',
-    chat: 'ჩათი',
     login: 'შესვლა',
     theme: 'თემის გადართვა',
     identityLabel: 'ეტაპი 01 · პერსონის იდენტობა',
@@ -146,6 +148,11 @@ const COPY: Record<
     menu: 'მენიუ',
     settings: 'პარამეტრები',
     topUp: 'შევსება',
+    account: 'მომხმარებელი',
+    accountGuest: 'სტუმარი',
+    providerLabel: 'ვიდეო პროვაიდერი',
+    providerOnline: 'აქტიური',
+    providerOffline: 'არ არის კონფიგურირებული',
   },
   en: {
     brandSub: 'Cinematic Hub',
@@ -158,7 +165,6 @@ const COPY: Record<
     placeholder: 'Type your director script…',
     placeholderBusy: 'Production in progress…',
     sendAria: 'Run',
-    chat: 'Chat',
     login: 'Sign in',
     theme: 'Toggle theme',
     identityLabel: 'Stage 01 · Identity Ingestion',
@@ -184,6 +190,11 @@ const COPY: Record<
     menu: 'Menu',
     settings: 'Settings',
     topUp: 'Top up',
+    account: 'User',
+    accountGuest: 'Guest',
+    providerLabel: 'Video provider',
+    providerOnline: 'Connected',
+    providerOffline: 'Unconfigured',
   },
   ru: {
     brandSub: 'Кинематографический хаб',
@@ -196,7 +207,6 @@ const COPY: Record<
     placeholder: 'Введите режиссёрский сценарий…',
     placeholderBusy: 'Идёт производство…',
     sendAria: 'Запустить',
-    chat: 'Чат',
     login: 'Войти',
     theme: 'Сменить тему',
     identityLabel: 'Этап 01 · Идентичность персонажа',
@@ -222,6 +232,11 @@ const COPY: Record<
     menu: 'Меню',
     settings: 'Настройки',
     topUp: 'Пополнить',
+    account: 'Пользователь',
+    accountGuest: 'Гость',
+    providerLabel: 'Видео-провайдер',
+    providerOnline: 'Активен',
+    providerOffline: 'Не настроен',
   },
 };
 
@@ -304,6 +319,13 @@ export function ConversationalFilmStudio({
   const [balanceGel, setBalanceGel] = useState<number | null>(null);
   const [walletOpen, setWalletOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  // Authenticated identity address for the settings-drawer account line. null =
+  // anonymous/unknown → the panel shows the localized "Guest" label instead.
+  const [userEmail, setUserEmail] = useState<string | null>(null);
+  // Live video-provider readiness for the drawer status dot. null = not yet
+  // probed (neutral), true = LTX/Replicate wired (green), false = unconfigured
+  // (red). Names-only probe — never reads a secret value to the client.
+  const [providerReady, setProviderReady] = useState<boolean | null>(null);
 
   const msgIdRef = useRef(1);
   const [messages, setMessages] = useState<ChatMsg[]>(() => [
@@ -334,13 +356,32 @@ export function ConversationalFilmStudio({
     try {
       const res = await fetch('/api/profile/onboarding', { cache: 'no-store' });
       if (!res.ok) return;
-      const json = (await res.json()) as { state?: { freeFilmsRemaining?: number | null } | null };
+      const json = (await res.json()) as {
+        email?: string | null;
+        state?: { freeFilmsRemaining?: number | null } | null;
+      };
       const n = json?.state?.freeFilmsRemaining;
       if (typeof n === 'number') setFreeFilmsRemaining(n);
+      // Capture the authenticated email for the drawer account line in the SAME
+      // round-trip — no extra request.
+      if (typeof json?.email === 'string' && json.email.length > 0) setUserEmail(json.email);
     } catch {
       /* fail-safe: leave null → show the real paid estimate */
     }
   }, [isAuthenticated]);
+
+  // Names-only video-provider probe for the drawer status dot. Fail-safe: any
+  // error leaves the dot neutral and never blocks the studio.
+  const refreshProviderStatus = useCallback(async () => {
+    try {
+      const res = await fetch('/api/system/video-provider', { cache: 'no-store' });
+      if (!res.ok) return;
+      const json = (await res.json()) as { ready?: boolean };
+      if (typeof json?.ready === 'boolean') setProviderReady(json.ready);
+    } catch {
+      /* fail-safe: leave null → neutral dot */
+    }
+  }, []);
 
   // Live GEL balance for the header chip. Fail-safe: any error simply leaves the
   // balance null and the chip renders 0.00 ₾ — never blocks the studio.
@@ -359,7 +400,8 @@ export function ConversationalFilmStudio({
   useEffect(() => {
     void refreshFreeFilms();
     void refreshBalance();
-  }, [refreshFreeFilms, refreshBalance]);
+    void refreshProviderStatus();
+  }, [refreshFreeFilms, refreshBalance, refreshProviderStatus]);
 
   const estCost = useMemo(() => estimateFilmCostGel(), []);
   const isFreeFilm = typeof freeFilmsRemaining === 'number' && freeFilmsRemaining > 0;
@@ -842,20 +884,43 @@ export function ConversationalFilmStudio({
               </button>
             </div>
             <div className="flex flex-col gap-2 p-4">
+              {/* Field 1 — Account details. Non-interactive identity line: the
+                  authenticated email, or the localized "Guest" label when
+                  anonymous. Truncates gracefully for long addresses. */}
+              <div className="rounded-xl border border-white/10 bg-black px-3 py-2.5">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-neutral-500">{t.account}</p>
+                <p className="mt-0.5 truncate text-xs font-medium text-white" title={userEmail ?? undefined}>
+                  {userEmail ?? t.accountGuest}
+                </p>
+              </div>
+
+              {/* Field 2 — Provider status indicator. Green = LTX/Replicate
+                  wired (render path can fire), red = unconfigured, neutral while
+                  the names-only probe resolves. */}
+              <div className="flex items-center justify-between rounded-xl border border-white/10 bg-black px-3 py-2.5">
+                <span className="text-xs font-semibold text-neutral-300">{t.providerLabel}</span>
+                <span className="inline-flex items-center gap-1.5">
+                  <span
+                    aria-hidden
+                    className={`h-2 w-2 rounded-full ${
+                      providerReady === null
+                        ? 'bg-neutral-600'
+                        : providerReady
+                          ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.75)]'
+                          : 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.75)]'
+                    }`}
+                  />
+                  <span className={`text-[11px] font-medium ${providerReady === false ? 'text-red-300' : 'text-neutral-400'}`}>
+                    {providerReady === null ? '…' : providerReady ? t.providerOnline : t.providerOffline}
+                  </span>
+                </span>
+              </div>
+
               {/* Theme toggle relocated here from the header. */}
               <div className="flex items-center justify-between rounded-xl border border-white/10 bg-black px-3 py-2.5">
                 <span className="text-xs font-semibold text-neutral-300">{t.theme}</span>
                 <ThemeToggle label={t.theme} />
               </div>
-              {/* Chat access preserved (moved out of the header into the panel). */}
-              <Link
-                href={`/${locale}/chat`}
-                onClick={() => setMenuOpen(false)}
-                className="inline-flex items-center gap-2.5 rounded-xl border border-white/10 bg-black px-3 py-2.5 text-xs font-semibold text-neutral-300 transition-colors hover:border-[#00D2FF]/40 hover:text-white"
-              >
-                <MessageSquare className="h-4 w-4" />
-                {t.chat}
-              </Link>
               {!isAuthenticated && (
                 <Link
                   href={`/${locale}/login`}
