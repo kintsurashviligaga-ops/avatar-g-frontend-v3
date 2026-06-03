@@ -71,6 +71,39 @@ export function computeVideoProviderStatus(env: NodeJS.ProcessEnv = process.env)
   };
 }
 
+/** Which provider the video render path should drive as PRIMARY (null = halt). */
+export type VideoPrimaryProvider = 'ltx' | 'replicate' | null;
+
+export interface VideoPrimaryDecision {
+  /** The provider to render with first. `null` means no provider — caller halts. */
+  primary: VideoPrimaryProvider;
+  /**
+   * Machine-readable rationale, surfaced verbatim in response metadata
+   * (`primaryProviderReason`) so a Replicate-only render is observably explained
+   * rather than looking like a silent LTX bypass.
+   */
+  reason: 'ltx-key-present' | 'ltx-key-absent' | 'no-provider';
+}
+
+/**
+ * Single source of truth for the LTX-vs-Replicate PRIMARY selection.
+ *
+ * LTX is the director provider and wins whenever its key is present (any alias).
+ * With NO LTX key, a provisioned Replicate token is promoted from "402 failover"
+ * to the PRIMARY render path — this is what lets a Replicate-only deployment
+ * actually emit clips instead of passing the `hasVideoProvider` pre-flight and
+ * then skipping every leg AFTER a founder slot / wallet debit was reserved.
+ * With neither, the decision is a clean `null` halt (the pipeline must not spend).
+ *
+ * Pure + env-injectable so the just-shipped Replicate-primary behavior is
+ * testable without standing up the heavy `ServiceManager`.
+ */
+export function selectVideoPrimaryProvider(env: NodeJS.ProcessEnv = process.env): VideoPrimaryDecision {
+  if (hasLtxApiKey(env)) return { primary: 'ltx', reason: 'ltx-key-present' };
+  if (hasReplicateToken(env)) return { primary: 'replicate', reason: 'ltx-key-absent' };
+  return { primary: null, reason: 'no-provider' };
+}
+
 /**
  * Localized, user-facing error shown when the pipeline halts for a missing
  * video provider. Georgian is the canonical copy (the platform is Georgian

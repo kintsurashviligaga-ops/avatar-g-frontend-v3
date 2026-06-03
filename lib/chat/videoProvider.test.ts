@@ -3,6 +3,7 @@ import {
   hasReplicateToken,
   hasVideoProvider,
   computeVideoProviderStatus,
+  selectVideoPrimaryProvider,
   videoProviderUnavailableMessage,
   videoProviderConnectionFailedMessage,
 } from './videoProvider';
@@ -44,6 +45,53 @@ describe('computeVideoProviderStatus', () => {
 
   test('unconfigured env → not ready', () => {
     expect(computeVideoProviderStatus({}).ready).toBe(false);
+  });
+});
+
+describe('selectVideoPrimaryProvider', () => {
+  test('LTX wins as PRIMARY whenever its key is present — even if Replicate is also set', () => {
+    expect(selectVideoPrimaryProvider({ LTX_VIDEO_API_KEY: 'k' })).toEqual({
+      primary: 'ltx',
+      reason: 'ltx-key-present',
+    });
+    // LTX still wins over a co-provisioned Replicate token (LTX is the director).
+    expect(selectVideoPrimaryProvider({ LTX2_API_KEY: 'k', REPLICATE_API_TOKEN: 'r8' })).toEqual({
+      primary: 'ltx',
+      reason: 'ltx-key-present',
+    });
+  });
+
+  test('Replicate is promoted to PRIMARY when no LTX key exists — the silent-skip-trap fix', () => {
+    // This is the exact case that used to pass the hasVideoProvider pre-flight and
+    // then skip every clip AFTER reserving a founder slot / GEL.
+    expect(selectVideoPrimaryProvider({ REPLICATE_API_TOKEN: 'r8' })).toEqual({
+      primary: 'replicate',
+      reason: 'ltx-key-absent',
+    });
+  });
+
+  test('no provider → null halt (the pipeline must not spend)', () => {
+    expect(selectVideoPrimaryProvider({})).toEqual({ primary: null, reason: 'no-provider' });
+    expect(selectVideoPrimaryProvider({ LTX_API_KEY: '   ', REPLICATE_API_TOKEN: '' })).toEqual({
+      primary: null,
+      reason: 'no-provider',
+    });
+  });
+
+  test('decision stays consistent with hasVideoProvider across every env shape', () => {
+    const envs: NodeJS.ProcessEnv[] = [
+      {},
+      { LTX_VIDEO_API_KEY: 'k' },
+      { LTX_API_KEY: 'k' },
+      { LTX2_API_KEY: 'k' },
+      { REPLICATE_API_TOKEN: 'r8' },
+      { LTX2_API_KEY: 'k', REPLICATE_API_TOKEN: 'r8' },
+      { LTX2_API_KEY: '   ', REPLICATE_API_TOKEN: '  ' },
+    ];
+    for (const env of envs) {
+      const decided = selectVideoPrimaryProvider(env).primary !== null;
+      expect(decided).toBe(hasVideoProvider(env));
+    }
   });
 });
 

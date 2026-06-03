@@ -11,7 +11,7 @@ import type { IntentCategory } from '@/lib/chat/intentDetector';
 import { extractPromptTraits, enrichVideoPrompt } from '@/lib/chat/promptTraits';
 import { extractAspectDirective } from '@/lib/chat/outputEnforcement';
 import { resolveLtxApiKey } from '@/lib/chat/ltxKey';
-import { hasReplicateToken } from '@/lib/chat/videoProvider';
+import { selectVideoPrimaryProvider } from '@/lib/chat/videoProvider';
 import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
 
 export type DeterministicProvider = 'nanobanana' | 'replicate' | 'ltx' | 'heygen';
@@ -637,19 +637,21 @@ export class ServiceManager {
     if (!apiKey) {
       // LTX absent. Replicate is normally the *failover* triggered once a
       // configured LTX endpoint returns a credit/auth error — but with NO LTX key
-      // at all that failover branch (below) is never reached. So when Replicate IS
-      // provisioned, promote it to the PRIMARY render path here. This is what makes
-      // a Replicate-only deployment actually render clips, instead of the pipeline
+      // at all that failover branch (below) is never reached. `selectVideoPrimaryProvider`
+      // is the single source of truth for this choice: with no LTX key it promotes a
+      // provisioned Replicate token to the PRIMARY render path. This is what makes a
+      // Replicate-only deployment actually render clips, instead of the pipeline
       // pre-flight (hasVideoProvider = LTX || Replicate) waving the run through only
       // for every clip to skip at ~38% AFTER a founder slot / GEL was reserved.
-      if (hasReplicateToken()) {
+      const decision = selectVideoPrimaryProvider();
+      if (decision.primary === 'replicate') {
         const primary = await this.runReplicateVideo(request);
         return {
           ...primary,
           metadata: {
             ...primary.metadata,
             videoPrimary: 'replicate',
-            primaryProviderReason: 'ltx-key-absent',
+            primaryProviderReason: decision.reason,
           },
         };
       }
