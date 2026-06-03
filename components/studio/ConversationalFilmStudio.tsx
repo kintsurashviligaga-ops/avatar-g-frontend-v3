@@ -730,17 +730,24 @@ export function ConversationalFilmStudio({
   // ordered legs plus aggregate metrics (scene count, scenes rendered, whole-
   // pipeline percent, terminal done/failed) the tracker UI renders verbatim.
   const roleSceneLabel = lang === 'ka' ? 'სცენა' : lang === 'ru' ? 'Сцена' : 'Scene';
-  const pipeline = summarizeFilmPipeline(progress, roleSceneLabel);
-  const stages = pipeline.stages;
   const showTracker = driving || (progress != null && progress.phase !== 'idle');
+  // The production has come to a dead STOP once the driver promise resolves
+  // (`driving` flips false) — success, failure, timeout, or cancel. At that
+  // point nothing more is emitted, so no leg may keep spinning. Feeding
+  // `terminal` into the pure summary downgrades any lingering 'active' (e.g.
+  // still-'queued') legs to a calm pending dot, which is the safety net that
+  // kills the contradictory "5 scenes spinning under a red halted header" — it
+  // covers even the timeout / cancel paths that resolve without an emitted
+  // terminal 'failed' phase.
+  const terminal = showTracker && !driving;
+  const pipeline = summarizeFilmPipeline(progress, roleSceneLabel, { terminal });
+  const stages = pipeline.stages;
   const finished = pipeline.done;
   // A render is HALTED (terminal failure) only when work has STOPPED and no master
   // landed — never merely because an individual scene leg failed mid-render. The
   // editor can still stitch a film from the scenes that DID succeed, so while
-  // `driving` is true we always show the live spinner, not a red halt. This also
-  // covers the timeout / no-master / cancel paths that resolve without ever
-  // emitting a terminal `failed` phase (so `pipeline.failed` alone is unreliable).
-  const halted = showTracker && !driving && !finished && !masterUrl;
+  // `driving` is true we always show the live spinner, not a red halt.
+  const halted = terminal && !finished && !masterUrl;
 
   // First-run starter chips: shown only on the pristine canvas — before the user
   // has typed/sent anything and while nothing is rendering or rendered — so they

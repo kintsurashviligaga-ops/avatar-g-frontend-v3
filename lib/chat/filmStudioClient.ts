@@ -294,7 +294,7 @@ export async function driveFilmStudio(opts: DriveFilmOptions): Promise<FilmStudi
     signal,
     onProgress,
     pollIntervalMs = 4000,
-    maxPollMs = 240_000,
+    maxPollMs = 300_000,
   } = opts;
 
   const sessionId = `session_studio_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
@@ -355,19 +355,24 @@ export async function driveFilmStudio(opts: DriveFilmOptions): Promise<FilmStudi
       }
     }
 
-    if (!matrix.readyToStitch) {
-      const preview = firstPreviewUrl(matrix);
-      return {
-        ok: false,
-        phase: 'failed',
-        masterUrl: null,
-        previewUrl: preview,
+    // The poll loop ended either because every scene is ready OR the deadline
+    // passed. A timeout with too few scenes is a hard fail — route it through
+    // fail() so it EMITS a terminal 'failed' (the old inline return left the
+    // last emitted phase at 'rendering', so the UI kept spinning all 5 scenes
+    // under a red "halted" header — a contradictory tracker). But if enough
+    // scenes DID land before the deadline, salvage a partial cut instead of
+    // throwing the whole film away: fall through to the stitch block, which
+    // assembles from whatever ready clips exist.
+    const readyAtDeadline = readyClipUrls(matrix);
+    if (!matrix.readyToStitch && readyAtDeadline.length < 2) {
+      return fail(
+        'The render timed out before enough scenes were ready to assemble a film.',
         matrix,
-        error: 'The render timed out before every scene was ready.',
-      };
+      );
     }
 
-    // 3 ── Stitch the master (authed saga: credits → GPU/CPU → host)
+    // 3 ── Stitch the master (authed saga: credits → GPU/CPU → host).
+    // Reached when every scene is ready OR a timeout left ≥2 salvageable clips.
     emit('stitching', matrix, null);
     const clips = readyClipUrls(matrix);
     if (clips.length < 2) {
@@ -381,15 +386,12 @@ export async function driveFilmStudio(opts: DriveFilmOptions): Promise<FilmStudi
     }
 
     if (!master) {
-      const preview = firstPreviewUrl(matrix);
-      return {
-        ok: false,
-        phase: 'failed',
-        masterUrl: null,
-        previewUrl: preview,
+      // Route through fail() so a terminal 'failed' is EMITTED (the old inline
+      // return left the last phase at 'stitching', wedging the UI on a spinner).
+      return fail(
+        'The editor could not host the final master. Showing the first rendered scene instead.',
         matrix,
-        error: 'The editor could not host the final master. Showing the first rendered scene instead.',
-      };
+      );
     }
 
     emit('assembled', matrix, master);

@@ -72,14 +72,26 @@ const ACTIVE_LEG_WEIGHT = 0.5;
  * Build the ordered list of pipeline stages from the live progress matrix.
  * Behaviour is identical to the studio's former inline `deriveStages`, kept as a
  * pure function so the workflow is testable in isolation.
+ *
+ * `opts.terminal` is a frontend safety net: when the production has come to a
+ * dead stop (halted / canceled / failed) but the last emitted matrix still
+ * carries `queued` clip statuses, those legs would otherwise render as spinning
+ * "active" loaders FOREVER under a red header — the exact contradictory tracker
+ * seen live. With `terminal:true` every non-resolved leg is forced down to a
+ * calm `pending` dot so no scene can spin past the end of the run, even if a
+ * terminal `emit('failed')` was somehow missed upstream.
  */
 export function deriveFilmStages(
   progress: FilmStudioProgress | null,
   roleSceneLabel: string,
+  opts?: { terminal?: boolean },
 ): PipelineStage[] {
   const m: FilmStudioMatrix | null = progress?.matrix ?? null;
   const phase: FilmStudioPhase = progress?.phase ?? 'idle';
-  const rendering = phase === 'rendering' || phase === 'dispatching';
+  const terminal = opts?.terminal === true;
+  // When the run has stopped, nothing is "rendering" anymore — clip/storyboard
+  // legs must not be lit active off a stale matrix.
+  const rendering = !terminal && (phase === 'rendering' || phase === 'dispatching');
   const total = m?.sceneCount || m?.clips.length || FILM_SCENE_COUNT;
 
   const stages: PipelineStage[] = [];
@@ -125,6 +137,15 @@ export function deriveFilmStages(
     state: m ? legToStageState(m.audio, false) : 'pending',
   });
 
+  // Terminal safety net: a stopped run can have NO spinning legs. Force any leg
+  // still computed as 'active' (e.g. the stitch leg mid-phase) down to 'pending'
+  // so the tracker can never contradict a red "halted"/"failed" header.
+  if (terminal) {
+    for (const stage of stages) {
+      if (stage.state === 'active') stage.state = 'pending';
+    }
+  }
+
   return stages;
 }
 
@@ -136,9 +157,10 @@ export function deriveFilmStages(
 export function summarizeFilmPipeline(
   progress: FilmStudioProgress | null,
   roleSceneLabel: string,
+  opts?: { terminal?: boolean },
 ): PipelineSummary {
   const phase: FilmStudioPhase = progress?.phase ?? 'idle';
-  const stages = deriveFilmStages(progress, roleSceneLabel);
+  const stages = deriveFilmStages(progress, roleSceneLabel, opts);
 
   const clipStages = stages.filter((s) => s.key.startsWith('clip_'));
   const totalScenes = clipStages.length;

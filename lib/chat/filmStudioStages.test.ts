@@ -131,6 +131,57 @@ describe('deriveFilmStages', () => {
     const failed = deriveFilmStages(progress({ phase: 'rendering', matrix: matrix({ audio: 'failed' }) }), ROLE);
     expect(failed.find((s) => s.key === 'score')?.state).toBe('failed');
   });
+
+  test('terminal:true downgrades lingering active legs to pending (no stuck spinners)', () => {
+    // The exact contradictory-tracker shape: the run has STOPPED (timeout/cancel)
+    // but the last emitted matrix still says phase=rendering with queued clips.
+    // Without the terminal flag every queued clip spins as "active" forever under
+    // a red halt header. terminal:true must calm them to pending dots.
+    const stale = progress({
+      phase: 'rendering',
+      matrix: matrix({
+        sceneCount: 5,
+        storyboard: 'succeeded',
+        clips: [
+          { ordinal: 1, status: 'succeeded', url: 'c1' },
+          { ordinal: 2, status: 'queued' },
+          { ordinal: 3, status: 'queued' },
+          { ordinal: 4, status: 'queued' },
+          { ordinal: 5, status: 'queued' },
+        ],
+      }),
+    });
+    const live = deriveFilmStages(stale, ROLE);
+    const terminal = deriveFilmStages(stale, ROLE, { terminal: true });
+    // Live: the 4 queued scenes spin active.
+    expect(live.filter((s) => s.state === 'active')).toHaveLength(4);
+    // Terminal: NOTHING spins; the succeeded clip stays done, the rest go pending.
+    expect(terminal.some((s) => s.state === 'active')).toBe(false);
+    expect(terminal.find((s) => s.key === 'clip_1')?.state).toBe('done');
+    expect(terminal.find((s) => s.key === 'clip_2')?.state).toBe('pending');
+  });
+
+  test('terminal:true keeps genuinely terminal leg states intact (done/failed/skipped)', () => {
+    const stages = deriveFilmStages(
+      progress({
+        phase: 'failed',
+        matrix: matrix({
+          sceneCount: 3,
+          storyboard: 'succeeded',
+          clips: [
+            { ordinal: 1, status: 'succeeded', url: 'c1' },
+            { ordinal: 2, status: 'failed' },
+            { ordinal: 3, status: 'skipped' },
+          ],
+        }),
+      }),
+      ROLE,
+      { terminal: true },
+    );
+    expect(stages.find((s) => s.key === 'clip_1')?.state).toBe('done');
+    expect(stages.find((s) => s.key === 'clip_2')?.state).toBe('failed');
+    expect(stages.find((s) => s.key === 'clip_3')?.state).toBe('skipped');
+  });
 });
 
 describe('summarizeFilmPipeline', () => {
@@ -223,5 +274,30 @@ describe('summarizeFilmPipeline', () => {
 
   test('terminal failure phase raises the failed flag even with no failed leg', () => {
     expect(summarizeFilmPipeline(progress({ phase: 'failed' }), ROLE).failed).toBe(true);
+  });
+
+  test('terminal:true zeroes scenesRendering so a halted summary never reports in-flight scenes', () => {
+    const stale = progress({
+      phase: 'rendering',
+      matrix: matrix({
+        sceneCount: 5,
+        storyboard: 'succeeded',
+        clips: [
+          { ordinal: 1, status: 'succeeded', url: 'c1' },
+          { ordinal: 2, status: 'queued' },
+          { ordinal: 3, status: 'queued' },
+          { ordinal: 4, status: 'queued' },
+          { ordinal: 5, status: 'queued' },
+        ],
+      }),
+    });
+    const live = summarizeFilmPipeline(stale, ROLE);
+    const halted = summarizeFilmPipeline(stale, ROLE, { terminal: true });
+    expect(live.scenesRendering).toBe(4);
+    expect(halted.scenesRendering).toBe(0);
+    expect(halted.scenesRendered).toBe(1);
+    // The single landed scene still counts; the percent must not regress below it.
+    expect(halted.percent).toBeGreaterThan(0);
+    expect(halted.percent).toBeLessThanOrEqual(99);
   });
 });
