@@ -744,18 +744,23 @@ export class ServiceManager {
       ...(imageReferenceOpt ? { imageReference: imageReferenceOpt } : {}),
     });
 
-    // PHASE 51 §1 — CRITICAL FIX. When an image anchor is present we MUST call
-    // the dedicated image-to-video endpoint and pass the parent asset as the
-    // documented `image_uri` first-frame field. The PHASE 50 build sent the
-    // anchor to /v1/text-to-video under invented keys (image_reference /
-    // frame_input); that endpoint silently ignores unknown fields and generated
-    // an unrelated scene from prompt text alone — exactly the live "ignored the
-    // image" failure. Per docs.ltx.video, POST /v1/image-to-video requires
-    // `image_uri` (HTTPS URL or base64 data URI) as the conditioning frame.
+    // PHASE 51 §1 — When an image anchor is present we MUST call the dedicated
+    // image-to-video endpoint and pass the parent asset as the documented
+    // `image_uri` first-frame field, else the endpoint generates an unrelated
+    // scene from prompt text alone (the live "ignored the image" failure).
+    //
+    // PHASE 59 — CRITICAL VERSION FIX. The live API is /v2/, not /v1/. Probing
+    // api.ltx.video confirmed POST /v1/text-to-video still 401s (a lingering
+    // legacy route) BUT the async STATUS endpoint only exists on /v2/
+    // (GET /v1/text-to-video/{id} → 404, GET /v2/text-to-video/{id} → 401). So a
+    // /v1 dispatch could never be polled to completion — every status read 404'd
+    // and the clip span "processing" until the deadline (the 0/5 stall). Per
+    // docs.ltx.video the contract is: POST /v2/{text,image}-to-video → { id },
+    // then poll GET /v2/{...}/{id} until status==completed → result.video_url.
     const isImageToVideo = !!parsed.imageReference;
     const ltxEndpoint = isImageToVideo
-      ? `${LTX_BASE_URL}/v1/image-to-video`
-      : `${LTX_BASE_URL}/v1/text-to-video`;
+      ? `${LTX_BASE_URL}/v2/image-to-video`
+      : `${LTX_BASE_URL}/v2/text-to-video`;
 
     // PHASE 47 §3 — dispatch through the bounded exponential-backoff retry so a
     // transient provider blip (the exact failure that dropped clips 3 & 4 in the
@@ -1228,13 +1233,13 @@ export class ServiceManager {
       throw new Error('LTX video API key is not configured (LTX_VIDEO_API_KEY / LTX_API_KEY / LTX2_API_KEY)');
     }
 
+    // PHASE 59 — Poll the DOCUMENTED /v2 status endpoints. GET /v2/{kind}-to-video/{id}
+    // is the only status route that actually exists (the old /v1/{id} guesses all
+    // 404'd, which is what wedged every clip on "processing"). A text job 404s on
+    // the image path and vice-versa, so we try both and use whichever resolves.
     const candidateUrls = [
-      `${LTX_BASE_URL}/v1/text-to-video/${encodeURIComponent(decoded.providerTaskId)}`,
-      // PHASE 51 §1 — image-to-video jobs poll under their own resource path.
-      `${LTX_BASE_URL}/v1/image-to-video/${encodeURIComponent(decoded.providerTaskId)}`,
-      `${LTX_BASE_URL}/v1/generations/${encodeURIComponent(decoded.providerTaskId)}`,
-      `${LTX_BASE_URL}/v1/videos/${encodeURIComponent(decoded.providerTaskId)}`,
-      `${LTX_BASE_URL}/v1/tasks/${encodeURIComponent(decoded.providerTaskId)}`,
+      `${LTX_BASE_URL}/v2/text-to-video/${encodeURIComponent(decoded.providerTaskId)}`,
+      `${LTX_BASE_URL}/v2/image-to-video/${encodeURIComponent(decoded.providerTaskId)}`,
     ];
 
     // A deterministic auth/billing rejection (401 unauthorized / 402 payment
