@@ -153,6 +153,41 @@ export function canSalvagePartialCut(matrix: FilmStudioMatrix | null): boolean {
 }
 
 /**
+ * True once every clip leg has reached a TERMINAL state — none is still
+ * `queued`/`pending`. At that point no further clip will ever land, so idling
+ * until the poll deadline is pure dead time. (The server union only flips
+ * `readyToStitch` when every clip ALSO succeeds AND the audio leg is terminal —
+ * so a single failed clip, or a wedged Udio score, otherwise keeps the driver
+ * waiting out the entire window.) Pure + exported for off-network unit tests.
+ */
+export function clipsSettled(matrix: FilmStudioMatrix | null): boolean {
+  if (!matrix || matrix.clips.length === 0) return false;
+  return !matrix.clips.some((c) => c.status === 'queued' || c.status === 'pending');
+}
+
+/**
+ * True when every non-skipped clip leg SUCCEEDED — a complete N-scene cut is
+ * still on the table, so it's worth waiting briefly for the Udio score to
+ * finalize `readyToStitch` instead of salvaging early. Distinguishes "all clips
+ * done, only audio outstanding" (keep waiting) from "a clip failed" (salvage now).
+ */
+export function everyClipLanded(matrix: FilmStudioMatrix | null): boolean {
+  if (!matrix) return false;
+  const active = matrix.clips.filter((c) => c.status !== 'skipped');
+  return active.length > 0 && active.every((c) => c.status === 'succeeded');
+}
+
+/**
+ * Default client patience for the full 5-clip render. LTX-2 6-second clips
+ * dispatch in waves (CLIP_DISPATCH_CONCURRENCY) and each takes ~1–3 min, so the
+ * union of all five realistically needs well beyond 5 minutes — the prior 5-min
+ * cap surfaced as "the render timed out before enough scenes were ready." Each
+ * poll is a cheap status check (not a long-running function), so a generous
+ * window costs almost nothing and lets slow-but-successful renders land + salvage.
+ */
+export const DEFAULT_FILM_MAX_POLL_MS = 900_000;
+
+/**
  * Localized copy for the live progress line. Georgian is the canonical platform
  * language; en/ru mirror it. `{done}` / `{total}` / `{audio}` are interpolated.
  * Unknown locales fall back to English (the function default), so the existing
@@ -313,7 +348,7 @@ export async function driveFilmStudio(opts: DriveFilmOptions): Promise<FilmStudi
     signal,
     onProgress,
     pollIntervalMs = 4000,
-    maxPollMs = 300_000,
+    maxPollMs = DEFAULT_FILM_MAX_POLL_MS,
   } = opts;
 
   const sessionId = `session_studio_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
@@ -379,6 +414,17 @@ export async function driveFilmStudio(opts: DriveFilmOptions): Promise<FilmStudi
         // the salvage path was built for exactly this case — it was simply
         // unreachable on terminal failure, only on a clean timeout.)
         renderFailed = true;
+        break;
+      }
+      // Early salvage: every clip leg has settled (none still rendering) but we
+      // still aren't readyToStitch, AND a complete cut is no longer possible (a
+      // clip failed/skipped, or the audio leg is wedged pending). There is
+      // nothing left to wait for — break NOW instead of idling out the rest of
+      // the poll window, and let the salvage gate stitch the survivors. When
+      // every clip DID succeed we deliberately keep waiting so the Udio score
+      // can finalize readyToStitch (the deadline still caps that).
+      if (!matrix.readyToStitch && clipsSettled(matrix) && !everyClipLanded(matrix)) {
+        renderFailed = !canSalvagePartialCut(matrix);
         break;
       }
     }

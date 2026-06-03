@@ -1715,7 +1715,18 @@ export class ServiceManager {
     }
 
     const record = payload as Record<string, unknown>;
-    const keys = ['url', 'video_url', 'output_url', 'result_url', 'asset_url', 'assetUrl'];
+    // Direct URL-bearing fields. Broadened beyond the original
+    // url/video_url/output_url/result_url/asset_url set because a COMPLETED LTX-2
+    // job that returns its mp4 under any other documented field name
+    // (output, download_url, signed_url, …) would otherwise read as "no url" and
+    // the poll would report `processing` forever — the exact 0-of-5 stall where
+    // every clip renders but never flips to succeeded.
+    const keys = [
+      'url', 'video_url', 'videoUrl', 'output_url', 'outputUrl',
+      'result_url', 'resultUrl', 'asset_url', 'assetUrl',
+      'download_url', 'downloadUrl', 'signed_url', 'signedUrl',
+      'file_url', 'fileUrl', 'mp4', 'mp4_url', 'src', 'href', 'uri',
+    ];
     for (const key of keys) {
       const maybe = this.extractUrl(record[key]);
       if (maybe) {
@@ -1723,7 +1734,14 @@ export class ServiceManager {
       }
     }
 
-    const nestedKeys = ['data', 'result', 'response'];
+    // Containers that commonly wrap the finished asset. Recursing into these
+    // (in addition to the legacy data/result/response) lets the extractor reach
+    // a URL nested under output/outputs/assets/generations/video[s]/file[s].
+    const nestedKeys = [
+      'data', 'result', 'response',
+      'output', 'outputs', 'assets', 'asset',
+      'generations', 'generation', 'video', 'videos', 'files', 'file', 'media',
+    ];
     for (const key of nestedKeys) {
       const nested = this.extractUrl(record[key]);
       if (nested) {

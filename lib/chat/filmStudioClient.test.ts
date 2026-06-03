@@ -5,6 +5,8 @@ import {
   firstPreviewUrl,
   summarizeProgress,
   canSalvagePartialCut,
+  clipsSettled,
+  everyClipLanded,
   MIN_SALVAGE_CLIPS,
   type FilmStudioMatrix,
 } from './filmStudioClient';
@@ -154,6 +156,83 @@ describe('canSalvagePartialCut — keep a 4-of-5 render instead of discarding it
       ],
     });
     expect(canSalvagePartialCut(m)).toBe(false);
+  });
+});
+
+describe('clipsSettled — no clip is still rendering', () => {
+  it('is true when every clip reached a terminal state (mix of outcomes)', () => {
+    const m = matrix({
+      clips: [
+        { ordinal: 1, status: 'succeeded', url: 'c1' },
+        { ordinal: 2, status: 'failed', url: null },
+        { ordinal: 3, status: 'skipped', url: null },
+      ],
+    });
+    expect(clipsSettled(m)).toBe(true);
+  });
+
+  it('is false while any clip is still pending or queued', () => {
+    expect(
+      clipsSettled(
+        matrix({
+          clips: [
+            { ordinal: 1, status: 'succeeded', url: 'c1' },
+            { ordinal: 2, status: 'pending', url: null },
+          ],
+        }),
+      ),
+    ).toBe(false);
+    expect(
+      clipsSettled(
+        matrix({
+          clips: [{ ordinal: 1, status: 'queued', url: null }],
+        }),
+      ),
+    ).toBe(false);
+  });
+
+  it('is false for an empty clip list or a null matrix (nothing dispatched yet)', () => {
+    expect(clipsSettled(matrix({ clips: [] }))).toBe(false);
+    expect(clipsSettled(null)).toBe(false);
+  });
+});
+
+describe('everyClipLanded — a complete cut is still on the table', () => {
+  it('is true only when every non-skipped clip succeeded', () => {
+    const m = matrix({
+      clips: [
+        { ordinal: 1, status: 'succeeded', url: 'c1' },
+        { ordinal: 2, status: 'succeeded', url: 'c2' },
+        { ordinal: 3, status: 'skipped', url: null },
+      ],
+    });
+    expect(everyClipLanded(m)).toBe(true);
+  });
+
+  it('is false when any active clip failed (salvage, do not keep waiting)', () => {
+    const m = matrix({
+      clips: [
+        { ordinal: 1, status: 'succeeded', url: 'c1' },
+        { ordinal: 2, status: 'failed', url: null },
+      ],
+    });
+    expect(everyClipLanded(m)).toBe(false);
+  });
+
+  it('is false when a clip is still in flight (not yet landed)', () => {
+    const m = matrix({
+      clips: [
+        { ordinal: 1, status: 'succeeded', url: 'c1' },
+        { ordinal: 2, status: 'pending', url: null },
+      ],
+    });
+    expect(everyClipLanded(m)).toBe(false);
+  });
+
+  it('is false when every clip was skipped, an empty list, or a null matrix', () => {
+    expect(everyClipLanded(matrix({ clips: [{ ordinal: 1, status: 'skipped', url: null }] }))).toBe(false);
+    expect(everyClipLanded(matrix({ clips: [] }))).toBe(false);
+    expect(everyClipLanded(null)).toBe(false);
   });
 });
 
