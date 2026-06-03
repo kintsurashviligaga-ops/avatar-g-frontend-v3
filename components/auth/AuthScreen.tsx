@@ -278,6 +278,11 @@ function AuthScreenInner({ mode: initialMode, locale, redirectTo = '/' }: AuthSc
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [showMoreProviders, setShowMoreProviders] = useState(false);
+  // Which OAuth providers the Supabase project ACTUALLY has enabled. null =
+  // not yet known (show none → email-only, never a dead button). Self-configuring:
+  // we ask GoTrue's public /settings so we never render "Continue with Google"
+  // when Google is toggled off (the live "login doesn't work" — a dead button).
+  const [enabledOAuth, setEnabledOAuth] = useState<Set<string> | null>(null);
 
   const searchParams = useSearchParams();
   const supabase = createBrowserClient();
@@ -289,6 +294,34 @@ function AuthScreenInner({ mode: initialMode, locale, redirectTo = '/' }: AuthSc
       localStorage.setItem('agentg_pending_referral', refCode.toUpperCase());
     }
   }, [searchParams]);
+
+  // Discover the enabled OAuth providers from GoTrue's public settings endpoint,
+  // so the UI only ever offers buttons that actually work. Fail-safe: on any
+  // error we fall back to GitHub (the confirmed-enabled provider) so the social
+  // path never vanishes; email/password is always available regardless.
+  useEffect(() => {
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    if (!url || !anon) {
+      setEnabledOAuth(new Set(['github']));
+      return;
+    }
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 6000);
+    fetch(`${url}/auth/v1/settings`, { headers: { apikey: anon }, signal: ctrl.signal })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j: { external?: Record<string, boolean> } | null) => {
+        const ext = j?.external ?? {};
+        const enabled = Object.keys(ext).filter((k) => ext[k]);
+        setEnabledOAuth(new Set(enabled.length ? enabled : ['github']));
+      })
+      .catch(() => setEnabledOAuth(new Set(['github'])))
+      .finally(() => clearTimeout(t));
+    return () => {
+      clearTimeout(t);
+      ctrl.abort();
+    };
+  }, []);
 
   const callbackUrl = typeof window !== 'undefined'
     ? resolveAuthCallbackUrl(window.location.origin, process.env.NEXT_PUBLIC_AUTH_REDIRECT_URL, redirectTo)
@@ -478,6 +511,13 @@ function AuthScreenInner({ mode: initialMode, locale, redirectTo = '/' }: AuthSc
     },
   ];
 
+  // Only surface providers the project has enabled. While discovery is pending
+  // (enabledOAuth === null) we show none — email/password stays the reliable
+  // path and no dead OAuth button ever flashes.
+  const isProviderLive = (id: string) => enabledOAuth?.has(id) ?? false;
+  const livePrimary = primaryProviders.filter((p) => isProviderLive(p.id));
+  const liveSecondary = secondaryProviders.filter((p) => isProviderLive(p.id));
+
   // ─── Success state (email confirmation) ──────────────────────────────────
 
   if (success) {
@@ -543,80 +583,86 @@ function AuthScreenInner({ mode: initialMode, locale, redirectTo = '/' }: AuthSc
         {/* Auth Card */}
         <div className="rounded-2xl p-6 sm:p-8 holo-panel">
 
-          {/* Primary Social Providers */}
-          <div className="space-y-3">
-            {primaryProviders.map((provider) => (
+          {/* Primary Social Providers — only the ones the project enabled. */}
+          {livePrimary.length > 0 && (
+            <div className="space-y-3">
+              {livePrimary.map((provider) => (
+                <button
+                  key={provider.id}
+                  onClick={() => handleOAuth(provider.id)}
+                  disabled={loading}
+                  className={`w-full flex items-center justify-center gap-3 font-medium text-[15px] h-12 rounded-xl transition-all duration-200 disabled:opacity-50 ${provider.className}`}
+                  style={provider.style}
+                >
+                  {loadingProvider === provider.id ? <SpinnerIcon /> : provider.icon}
+                  <span>{loadingProvider === provider.id ? 'Redirecting…' : provider.label}</span>
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Secondary Providers — only shown when some are actually enabled. */}
+          {liveSecondary.length > 0 && (
+            <div className="mt-3">
               <button
-                key={provider.id}
-                onClick={() => handleOAuth(provider.id)}
-                disabled={loading}
-                className={`w-full flex items-center justify-center gap-3 font-medium text-[15px] h-12 rounded-xl transition-all duration-200 disabled:opacity-50 ${provider.className}`}
-                style={provider.style}
+                onClick={() => setShowMoreProviders(!showMoreProviders)}
+                className="w-full flex items-center justify-center gap-2 text-xs py-2 transition-colors"
+                style={{ color: 'var(--color-text-tertiary)' }}
               >
-                {loadingProvider === provider.id ? <SpinnerIcon /> : provider.icon}
-                <span>{loadingProvider === provider.id ? 'Redirecting…' : provider.label}</span>
+                <span>{showMoreProviders ? 'Fewer options' : 'More options'}</span>
+                <svg
+                  width="12"
+                  height="12"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className={`transition-transform duration-200 ${showMoreProviders ? 'rotate-180' : ''}`}
+                >
+                  <polyline points="6 9 12 15 18 9" />
+                </svg>
               </button>
-            ))}
-          </div>
 
-          {/* Secondary Providers */}
-          <div className="mt-3">
-            <button
-              onClick={() => setShowMoreProviders(!showMoreProviders)}
-              className="w-full flex items-center justify-center gap-2 text-xs py-2 transition-colors"
-              style={{ color: 'var(--color-text-tertiary)' }}
-            >
-              <span>{showMoreProviders ? 'Fewer options' : 'More options'}</span>
-              <svg
-                width="12"
-                height="12"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                className={`transition-transform duration-200 ${showMoreProviders ? 'rotate-180' : ''}`}
+              <div
+                className="overflow-hidden transition-all duration-300 ease-in-out"
+                style={{
+                  maxHeight: showMoreProviders ? '200px' : '0',
+                  opacity: showMoreProviders ? 1 : 0,
+                }}
               >
-                <polyline points="6 9 12 15 18 9" />
-              </svg>
-            </button>
-
-            <div
-              className="overflow-hidden transition-all duration-300 ease-in-out"
-              style={{
-                maxHeight: showMoreProviders ? '200px' : '0',
-                opacity: showMoreProviders ? 1 : 0,
-              }}
-            >
-              <div className="grid grid-cols-4 gap-2 pt-1 pb-2">
-                {secondaryProviders.map((provider) => (
-                  <button
-                    key={provider.id}
-                    onClick={() => handleOAuth(provider.id)}
-                    disabled={loading}
-                    title={provider.label}
-                    className={`flex items-center justify-center h-10 rounded-lg transition-all duration-200 disabled:opacity-50 ${provider.className}`}
-                    style={provider.style}
-                  >
-                    {loadingProvider === provider.id ? <SpinnerIcon /> : provider.icon}
-                  </button>
-                ))}
+                <div className="grid grid-cols-4 gap-2 pt-1 pb-2">
+                  {liveSecondary.map((provider) => (
+                    <button
+                      key={provider.id}
+                      onClick={() => handleOAuth(provider.id)}
+                      disabled={loading}
+                      title={provider.label}
+                      className={`flex items-center justify-center h-10 rounded-lg transition-all duration-200 disabled:opacity-50 ${provider.className}`}
+                      style={provider.style}
+                    >
+                      {loadingProvider === provider.id ? <SpinnerIcon /> : provider.icon}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
-          </div>
+          )}
 
-          {/* Divider */}
-          <div className="relative my-5">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full" style={{ borderTop: '1px solid var(--color-border)' }} />
+          {/* Divider — only meaningful when social buttons appear above it. */}
+          {(livePrimary.length > 0 || liveSecondary.length > 0) && (
+            <div className="relative my-5">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full" style={{ borderTop: '1px solid var(--color-border)' }} />
+              </div>
+              <div className="relative flex justify-center">
+                <span className="px-4 text-xs" style={{ color: 'var(--color-text-tertiary)', backgroundColor: 'var(--color-surface)' }}>
+                  or continue with email
+                </span>
+              </div>
             </div>
-            <div className="relative flex justify-center">
-              <span className="px-4 text-xs" style={{ color: 'var(--color-text-tertiary)', backgroundColor: 'var(--color-surface)' }}>
-                or continue with email
-              </span>
-            </div>
-          </div>
+          )}
 
           {/* Email Form */}
           <form onSubmit={handleEmailSubmit} className="space-y-3">
