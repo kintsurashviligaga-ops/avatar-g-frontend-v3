@@ -1,23 +1,26 @@
 /**
  * lib/chat/filmClipRetry.ts
  * =========================
- * PHASE 58 — Pure, framework-free timing math for the film pipeline's per-clip
- * dispatch + retry schedule. Extracted out of `filmComposite.ts` (which is
- * `server-only` and therefore un-importable from a node Jest env) so the
- * back-off / stagger schedule that decides whether the LAST-dispatched clips
+ * PHASE 58 — Pure, framework-free timing + concurrency math for the film
+ * pipeline's per-clip dispatch + retry schedule. Extracted out of
+ * `filmComposite.ts` (which is `server-only` and therefore un-importable from a
+ * node Jest env) so the policy that decides whether the LAST-dispatched clips
  * (4 & 5) survive a provider rate-limit window is independently unit-testable.
  *
- * Why this exists: the 5 clips fan out via `Promise.all`. When LTX is out of
- * funds each leg fails over to a fresh Replicate prediction, so without spacing
- * 5 `createPrediction` calls fire in the same instant and trip the account rate
- * limit (observed: ~2/5 clips failing — typically the last-dispatched ones).
- * Two independent dials defend against that:
+ * Why this exists: the 5 clips used to fan out via a single `Promise.all`. When
+ * LTX is out of funds each leg fails over to a fresh Replicate prediction, so 5
+ * `createPrediction` calls fired in the same instant and tripped the account
+ * rate limit (observed live: storyboard + 3 clips queued fine, the last 2
+ * failed). Three independent dials defend against that:
  *
- *   1. clipDispatchStaggerMs — spreads the FIRST dispatch of each leg by ordinal
- *      so the initial burst is smeared over ~1.5s instead of firing at once.
- *   2. clipRetryBackoffMs — when a leg's dispatch fails, it waits an
+ *   1. CLIP_DISPATCH_CONCURRENCY + mapWithConcurrency — never more than N clip
+ *      dispatches are in flight at once, so the burst is capped at the source
+ *      instead of all 5 hitting the provider together.
+ *   2. clipDispatchJitterMs — a tiny random pre-dispatch delay so the (few)
+ *      concurrent dispatches in a wave don't fire on the exact same millisecond.
+ *   3. clipRetryBackoffMs — when a leg's dispatch fails, it waits an
  *      exponentially-growing, jittered, ordinal-offset window before retrying so
- *      the retries of several legs don't re-collide into the same rate limit.
+ *      retries of several legs don't re-collide into the same rate limit.
  *
  * Nothing here touches the network, clock, or `window`; the only impurity
  * (jitter) is injected via an optional `rand` arg defaulting to Math.random.
@@ -31,8 +34,17 @@
  */
 export const MAX_CLIP_DISPATCH_ATTEMPTS = 3;
 
-/** Per-ordinal spacing applied to the FIRST dispatch of each clip (ms). */
-export const CLIP_DISPATCH_STAGGER_MS = 400;
+/**
+ * Max number of clip dispatches in flight at once. The live failure showed the
+ * provider tolerating ~3 near-simultaneous createPrediction calls and throttling
+ * beyond, so 2 keeps a safe margin while still rendering 5 clips in a few short
+ * waves. The renders themselves still run fully in parallel on the provider —
+ * this caps only the dispatch fan-out.
+ */
+export const CLIP_DISPATCH_CONCURRENCY = 2;
+
+/** Random 0..this delay before each dispatch so a wave's calls de-sync (ms). */
+export const CLIP_DISPATCH_JITTER_MS = 350;
 
 /** First retry waits ~this long; each further retry doubles it (ms). */
 export const CLIP_RETRY_BASE_MS = 800;
@@ -44,13 +56,12 @@ export const CLIP_RETRY_JITTER_MS = 400;
 export const CLIP_RETRY_ORDINAL_SPREAD_MS = 150;
 
 /**
- * Delay before FIRST-dispatching a clip, spread by its 1-based ordinal so the
- * initial fan-out doesn't burst. Clip 1 fires immediately; each later clip waits
- * `(ordinal - 1) * CLIP_DISPATCH_STAGGER_MS`.
+ * A small random pre-dispatch delay. Applied at the top of every clip dispatch
+ * so the (up to CLIP_DISPATCH_CONCURRENCY) legs starting in the same wave don't
+ * issue their provider call on the exact same millisecond.
  */
-export function clipDispatchStaggerMs(ordinal: number): number {
-  if (!Number.isFinite(ordinal) || ordinal <= 1) return 0;
-  return (Math.floor(ordinal) - 1) * CLIP_DISPATCH_STAGGER_MS;
+export function clipDispatchJitterMs(rand: () => number = Math.random): number {
+  return Math.round(clamp01(rand()) * CLIP_DISPATCH_JITTER_MS);
 }
 
 /**
@@ -75,6 +86,36 @@ export function clipRetryBackoffMs(
   const ord = Number.isFinite(ordinal) && ordinal > 1 ? Math.floor(ordinal) - 1 : 0;
   const spread = ord * CLIP_RETRY_ORDINAL_SPREAD_MS;
   return base + jitter + spread;
+}
+
+/**
+ * Run `fn` over `items` with at most `limit` calls in flight at once, preserving
+ * input order in the returned array. A worker pool pulls the next index off a
+ * shared cursor as it frees up, so a slow leg never blocks the others beyond the
+ * concurrency cap. `fn` is expected to resolve (never reject) — callers that can
+ * throw should catch internally; a rejection here aborts the pool.
+ */
+export async function mapWithConcurrency<T, R>(
+  items: readonly T[],
+  limit: number,
+  fn: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  if (items.length === 0) return results;
+  const effective = Math.max(1, Math.min(Math.floor(limit) || 1, items.length));
+  let cursor = 0;
+  const worker = async (): Promise<void> => {
+    for (;;) {
+      const i = cursor;
+      cursor += 1;
+      if (i >= items.length) return;
+      // i < items.length, so the element is present — the cast satisfies
+      // noUncheckedIndexedAccess without a redundant runtime guard.
+      results[i] = await fn(items[i] as T, i);
+    }
+  };
+  await Promise.all(Array.from({ length: effective }, () => worker()));
+  return results;
 }
 
 /** Defensive clamp so a misbehaving rand() can never make the delay negative or huge. */

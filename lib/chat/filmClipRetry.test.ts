@@ -1,35 +1,27 @@
 /** @jest-environment node */
 import {
   MAX_CLIP_DISPATCH_ATTEMPTS,
-  CLIP_DISPATCH_STAGGER_MS,
+  CLIP_DISPATCH_CONCURRENCY,
+  CLIP_DISPATCH_JITTER_MS,
   CLIP_RETRY_BASE_MS,
   CLIP_RETRY_JITTER_MS,
   CLIP_RETRY_ORDINAL_SPREAD_MS,
-  clipDispatchStaggerMs,
+  clipDispatchJitterMs,
   clipRetryBackoffMs,
+  mapWithConcurrency,
 } from './filmClipRetry';
 
-describe('clipDispatchStaggerMs — smears the initial fan-out', () => {
-  test('clip 1 fires immediately', () => {
-    expect(clipDispatchStaggerMs(1)).toBe(0);
+describe('clipDispatchJitterMs — de-syncs a wave of concurrent dispatches', () => {
+  test('stays within [0, CLIP_DISPATCH_JITTER_MS]', () => {
+    expect(clipDispatchJitterMs(() => 0)).toBe(0);
+    expect(clipDispatchJitterMs(() => 1)).toBe(CLIP_DISPATCH_JITTER_MS);
+    expect(clipDispatchJitterMs(() => 0.5)).toBe(Math.round(CLIP_DISPATCH_JITTER_MS / 2));
   });
 
-  test('later clips are spaced linearly by ordinal', () => {
-    expect(clipDispatchStaggerMs(2)).toBe(CLIP_DISPATCH_STAGGER_MS);
-    expect(clipDispatchStaggerMs(5)).toBe(4 * CLIP_DISPATCH_STAGGER_MS);
-  });
-
-  test('monotonic non-decreasing across the planned scene range', () => {
-    const vals = [1, 2, 3, 4, 5].map(clipDispatchStaggerMs);
-    for (let i = 1; i < vals.length; i++) {
-      expect(vals[i]).toBeGreaterThanOrEqual(vals[i - 1]);
-    }
-  });
-
-  test('non-finite / non-positive ordinals collapse to 0 (never negative)', () => {
-    expect(clipDispatchStaggerMs(0)).toBe(0);
-    expect(clipDispatchStaggerMs(-3)).toBe(0);
-    expect(clipDispatchStaggerMs(Number.NaN)).toBe(0);
+  test('a misbehaving rand() can never go negative or runaway', () => {
+    expect(clipDispatchJitterMs(() => -9)).toBe(0);
+    expect(clipDispatchJitterMs(() => 99)).toBe(CLIP_DISPATCH_JITTER_MS);
+    expect(clipDispatchJitterMs(() => Number.NaN)).toBe(0);
   });
 });
 
@@ -67,14 +59,57 @@ describe('clipRetryBackoffMs — spaced, jittered, exponential retry windows', (
   });
 
   test('the full attempt budget keeps the last clip inside a sane total wait', () => {
-    // Worst case (max jitter) for the last-dispatched clip across every retry it
-    // can make — a guardrail so a future budget bump can never silently blow out
-    // into a multi-minute hang.
     let total = 0;
     for (let attempt = 1; attempt <= MAX_CLIP_DISPATCH_ATTEMPTS; attempt++) {
       total += clipRetryBackoffMs(attempt, 5, () => 1);
     }
     expect(MAX_CLIP_DISPATCH_ATTEMPTS).toBe(3);
     expect(total).toBeLessThanOrEqual(10_000);
+  });
+});
+
+describe('mapWithConcurrency — caps the dispatch burst, preserves order', () => {
+  test('returns results in input order regardless of completion order', async () => {
+    const out = await mapWithConcurrency([10, 20, 30, 40, 50], CLIP_DISPATCH_CONCURRENCY, async (n) => {
+      // Reverse the settle order: bigger numbers resolve first.
+      await new Promise((r) => setTimeout(r, 60 - n));
+      return n * 2;
+    });
+    expect(out).toEqual([20, 40, 60, 80, 100]);
+  });
+
+  test('never exceeds the concurrency limit of in-flight calls', async () => {
+    let inFlight = 0;
+    let peak = 0;
+    await mapWithConcurrency([1, 2, 3, 4, 5], 2, async () => {
+      inFlight += 1;
+      peak = Math.max(peak, inFlight);
+      await new Promise((r) => setTimeout(r, 5));
+      inFlight -= 1;
+      return null;
+    });
+    expect(peak).toBeLessThanOrEqual(2);
+    expect(CLIP_DISPATCH_CONCURRENCY).toBe(2);
+  });
+
+  test('processes every item exactly once', async () => {
+    const seen: number[] = [];
+    await mapWithConcurrency([1, 2, 3, 4, 5], 2, async (n) => {
+      seen.push(n);
+      return n;
+    });
+    expect(seen.sort((a, b) => a - b)).toEqual([1, 2, 3, 4, 5]);
+  });
+
+  test('an empty input resolves to an empty array without spawning workers', async () => {
+    const fn = jest.fn(async (n: number) => n);
+    const out = await mapWithConcurrency([] as number[], 2, fn);
+    expect(out).toEqual([]);
+    expect(fn).not.toHaveBeenCalled();
+  });
+
+  test('a degenerate limit (0 / NaN) is clamped up to a single worker', async () => {
+    const out = await mapWithConcurrency([1, 2, 3], 0, async (n) => n * 10);
+    expect(out).toEqual([10, 20, 30]);
   });
 });

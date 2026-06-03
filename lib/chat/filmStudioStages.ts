@@ -35,6 +35,10 @@ export interface PipelineSummary {
   totalScenes: number;
   /** Scene clips that have fully rendered. */
   scenesRendered: number;
+  /** Scene clips currently in flight (dispatched / rendering). */
+  scenesRendering: number;
+  /** Scene clips that failed to render. */
+  scenesFailed: number;
   /** Coarse 0–100 progress across the WHOLE pipeline (storyboard + clips + stitch + score). */
   percent: number;
   /** The master has been stitched and is ready. */
@@ -56,6 +60,13 @@ export function legToStageState(status: FilmLegClientStatus | undefined, active:
 function isResolved(state: StageState): boolean {
   return state === 'done' || state === 'skipped';
 }
+
+/**
+ * Partial credit a single in-flight (active) leg contributes to the whole-
+ * pipeline percent. Half a unit keeps the bar visibly advancing the moment a
+ * leg starts rendering, without ever claiming a leg is finished before it is.
+ */
+const ACTIVE_LEG_WEIGHT = 0.5;
 
 /**
  * Build the ordered list of pipeline stages from the live progress matrix.
@@ -132,23 +143,35 @@ export function summarizeFilmPipeline(
   const clipStages = stages.filter((s) => s.key.startsWith('clip_'));
   const totalScenes = clipStages.length;
   const scenesRendered = clipStages.filter((s) => s.state === 'done').length;
+  const scenesRendering = clipStages.filter((s) => s.state === 'active').length;
+  const scenesFailed = clipStages.filter((s) => s.state === 'failed').length;
 
-  const resolved = stages.filter((s) => isResolved(s.state)).length;
   const failed = phase === 'failed' || stages.some((s) => s.state === 'failed');
 
-  // Assembled = 100. Otherwise a coarse, weighted progress: every leg
-  // (storyboard + each clip + stitch + score) is one equal unit of work.
+  // Assembled = 100. Otherwise a WEIGHTED progress so the bar reflects real
+  // motion instead of stalling at the storyboard's lone unit while N scenes
+  // visibly render. Each leg is one equal unit of work; a terminal leg
+  // (done / skipped / failed) earns a full unit, an in-flight ACTIVE leg earns
+  // partial credit, and a pending leg earns nothing. Capped below 100 until the
+  // master is actually stitched (phase 'assembled').
+  const progressUnits = stages.reduce((sum, s) => {
+    if (isResolved(s.state) || s.state === 'failed') return sum + 1;
+    if (s.state === 'active') return sum + ACTIVE_LEG_WEIGHT;
+    return sum;
+  }, 0);
   const percent =
     phase === 'assembled'
       ? 100
       : stages.length > 0
-        ? Math.min(99, Math.max(0, Math.round((resolved / stages.length) * 100)))
+        ? Math.min(99, Math.max(0, Math.round((progressUnits / stages.length) * 100)))
         : 0;
 
   return {
     stages,
     totalScenes,
     scenesRendered,
+    scenesRendering,
+    scenesFailed,
     percent,
     done: phase === 'assembled',
     failed,

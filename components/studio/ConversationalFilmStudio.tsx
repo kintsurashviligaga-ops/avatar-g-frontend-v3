@@ -119,6 +119,9 @@ const COPY: Record<
     micDenied: string;
     voiceUnsupported: string;
     starterHint: string;
+    statReady: string;
+    statRendering: string;
+    statFailed: string;
   }
 > = {
   ka: {
@@ -168,6 +171,9 @@ const COPY: Record<
     micDenied: 'მიკროფონზე წვდომა შეზღუდულია. გთხოვთ, ჩართოთ პარამეტრებიდან.',
     voiceUnsupported: 'ხმოვანი შეყვანა ამ ბრაუზერში არ არის მხარდაჭერილი.',
     starterHint: 'დასაწყისად სცადე ნიმუში',
+    statReady: 'მზად',
+    statRendering: 'მუშავდება',
+    statFailed: 'ჩაიშალა',
   },
   en: {
     brandSub: 'Cinematic Hub',
@@ -216,6 +222,9 @@ const COPY: Record<
     micDenied: 'Microphone access is restricted. Please enable it in settings.',
     voiceUnsupported: "Voice input isn't supported in this browser.",
     starterHint: 'Try a starter script',
+    statReady: 'ready',
+    statRendering: 'rendering',
+    statFailed: 'failed',
   },
   ru: {
     brandSub: 'Кинематографический хаб',
@@ -264,6 +273,9 @@ const COPY: Record<
     micDenied: 'Доступ к микрофону ограничен. Пожалуйста, включите его в настройках.',
     voiceUnsupported: 'Голосовой ввод не поддерживается в этом браузере.',
     starterHint: 'Попробуйте сценарий для начала',
+    statReady: 'готово',
+    statRendering: 'рендеринг',
+    statFailed: 'ошибка',
   },
 };
 
@@ -955,8 +967,21 @@ export function ConversationalFilmStudio({
                   both driven by the unit-tested summarizeFilmPipeline metrics. */}
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider tabular-nums">
-                  <span className="text-neutral-500">
-                    {pipeline.scenesRendered} / {pipeline.totalScenes} {roleSceneLabel}
+                  {/* Honest live breakdown: how many scenes are READY, still
+                      RENDERING (cyan), and FAILED (red) — so the counter explains
+                      the bar instead of a lone discouraging "0/5". A failed scene
+                      doesn't doom the film; the editor stitches from the ones that
+                      land, so failures read as a calm tally, not an alarm. */}
+                  <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                    <span className="text-neutral-300">
+                      {pipeline.scenesRendered} / {pipeline.totalScenes} {t.statReady}
+                    </span>
+                    {pipeline.scenesRendering > 0 && (
+                      <span className="text-[#00D2FF]">· {pipeline.scenesRendering} {t.statRendering}</span>
+                    )}
+                    {pipeline.scenesFailed > 0 && (
+                      <span className="text-red-300">· {pipeline.scenesFailed} {t.statFailed}</span>
+                    )}
                   </span>
                   <span className={halted ? 'text-red-300' : 'text-[#00D2FF]'}>{pipeline.percent}%</span>
                 </div>

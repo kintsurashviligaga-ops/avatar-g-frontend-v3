@@ -167,6 +167,37 @@ describe('summarizeFilmPipeline', () => {
     expect(s.percent).toBeLessThanOrEqual(99); // capped below 100 until assembled
   });
 
+  test('in-flight scenes lift the percent so the bar moves, not stalls at the storyboard', () => {
+    // The exact live-failure shape: storyboard done, 3 scenes rendering, 2 failed.
+    // The OLD resolved-only percent reported a near-frozen ~13% (only the
+    // storyboard counted). The weighted percent must visibly advance.
+    const s = summarizeFilmPipeline(
+      progress({
+        phase: 'rendering',
+        matrix: matrix({
+          sceneCount: 5,
+          storyboard: 'succeeded',
+          clips: [
+            { ordinal: 1, status: 'queued' },
+            { ordinal: 2, status: 'queued' },
+            { ordinal: 3, status: 'queued' },
+            { ordinal: 4, status: 'failed' },
+            { ordinal: 5, status: 'failed' },
+          ],
+        }),
+      }),
+      ROLE,
+    );
+    expect(s.scenesRendered).toBe(0);
+    expect(s.scenesRendering).toBe(3);
+    expect(s.scenesFailed).toBe(2);
+    expect(s.failed).toBe(true);
+    // storyboard(1) + 3×active(0.5) + 2×failed(1) over 8 legs ⇒ well above the
+    // old ~13%, and still capped under 100 before assembly.
+    expect(s.percent).toBeGreaterThan(40);
+    expect(s.percent).toBeLessThanOrEqual(99);
+  });
+
   test('assembled pipeline is exactly 100% and done', () => {
     const s = summarizeFilmPipeline(
       progress({

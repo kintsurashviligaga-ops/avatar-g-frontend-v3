@@ -46,8 +46,10 @@ import {
 } from './filmPipeline';
 import {
   MAX_CLIP_DISPATCH_ATTEMPTS,
-  clipDispatchStaggerMs,
+  CLIP_DISPATCH_CONCURRENCY,
+  clipDispatchJitterMs,
   clipRetryBackoffMs,
+  mapWithConcurrency,
 } from './filmClipRetry';
 
 const serviceManager = new ServiceManager();
@@ -154,15 +156,16 @@ async function renderClip(
   const billable = realUser && forecastClipRetail > 0;
   let debited = false;
 
-  // PHASE 57 — the 5 clips dispatch via Promise.all; when LTX is out of funds
-  // each leg fails over to a Replicate prediction, so 5 createPrediction calls
-  // would otherwise fire in the same instant and trip Replicate's account rate
-  // limit (observed: ~2/5 clips failing). Stagger each leg by its ordinal so the
-  // failover calls are spread over ~1.5s instead of bursting together. This is a
-  // dispatch-only delay (the renders still run in parallel on the provider).
-  const firstStagger = clipDispatchStaggerMs(scene.ordinal);
-  if (firstStagger > 0) {
-    await new Promise((resolve) => setTimeout(resolve, firstStagger));
+  // PHASE 58 — the clips dispatch through a bounded concurrency pool (see
+  // CLIP_DISPATCH_CONCURRENCY) so at most a couple of createPrediction calls are
+  // ever in flight at once — the live failure showed the provider throttling the
+  // tail clips when all 5 fired together. On top of the pool, a tiny random
+  // pre-dispatch jitter de-syncs the few legs that start in the same wave so they
+  // don't issue their call on the exact same millisecond. Dispatch-only delay —
+  // the renders still run fully in parallel on the provider.
+  const dispatchJitter = clipDispatchJitterMs();
+  if (dispatchJitter > 0) {
+    await new Promise((resolve) => setTimeout(resolve, dispatchJitter));
   }
 
   const clipReq = buildFilmClipRequest(scene, shared);
@@ -337,16 +340,17 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
     },
   });
 
-  // ── Legs 2 + 3: render the 5 continuity-locked clips in parallel ───────────
+  // ── Legs 2 + 3: render the continuity-locked clips through a bounded pool ──
+  // mapWithConcurrency caps how many clip dispatches are in flight at once
+  // (CLIP_DISPATCH_CONCURRENCY) so the failover createPrediction calls can't
+  // burst the provider rate limit, while preserving scene order in the result.
   // renderClip never throws (it catches per-leg), but guard the fan-out anyway:
   // an unexpected throw must still roll the ledger back and surface the clean
   // localized halt rather than a 500.
   let clips: FilmClipResult[];
   try {
-    clips = await Promise.all(
-      plan.scenes.map((scene) =>
-        renderClip(input, scene, plan.shared, compositeId, clipForecast.wholesaleGel, clipForecast.retailGel),
-      ),
+    clips = await mapWithConcurrency(plan.scenes, CLIP_DISPATCH_CONCURRENCY, (scene) =>
+      renderClip(input, scene, plan.shared, compositeId, clipForecast.wholesaleGel, clipForecast.retailGel),
     );
   } catch (err) {
     // eslint-disable-next-line no-console
