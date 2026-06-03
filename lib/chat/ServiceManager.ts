@@ -1237,6 +1237,14 @@ export class ServiceManager {
       `${LTX_BASE_URL}/v1/tasks/${encodeURIComponent(decoded.providerTaskId)}`,
     ];
 
+    // A deterministic auth/billing rejection (401 unauthorized / 402 payment
+    // required / 403 forbidden) is NEVER transient — masking it as "processing"
+    // is what wedges a clip on the 0/5 spinner until the client deadline. Track
+    // it across candidates and surface a terminal failure below. (404 stays
+    // transient: a freshly-dispatched job legitimately 404s before it registers,
+    // and 429 is a rate-limit, not a dead job — both keep polling as 'processing'.)
+    let authBillingRejected = false;
+
     for (const url of candidateUrls) {
       const res = await fetch(url, {
         headers: { Authorization: `Bearer ${apiKey}` },
@@ -1244,6 +1252,9 @@ export class ServiceManager {
       });
 
       if (!res.ok) {
+        if (res.status === 401 || res.status === 402 || res.status === 403) {
+          authBillingRejected = true;
+        }
         continue;
       }
 
@@ -1347,6 +1358,32 @@ export class ServiceManager {
           providerTaskId: decoded.providerTaskId,
           promptHash: decoded.promptHash,
           raw: payload,
+        },
+      };
+    }
+
+    // Every candidate status URL responded non-OK with a deterministic
+    // auth/billing rejection — the provider key is invalid or out of funds. This
+    // is terminal: reporting 'processing' here is exactly what stranded the clip
+    // on a 0/5 spinner. Surface a clean 'failed' so the film union flips and the
+    // client salvages/halts immediately instead of waiting out the poll window.
+    if (authBillingRejected) {
+      return {
+        success: false,
+        provider: 'ltx',
+        operation: decoded.operation,
+        responseType: 'video',
+        message: 'LTX rejected the request (authentication or insufficient provider funds).',
+        predictionId: taskRef,
+        predictionStatus: 'failed',
+        metadata: {
+          provider: 'ltx',
+          operation: decoded.operation,
+          sessionId: decoded.sessionId,
+          taskRef,
+          providerTaskId: decoded.providerTaskId,
+          promptHash: decoded.promptHash,
+          providerRejection: 'auth-or-billing',
         },
       };
     }

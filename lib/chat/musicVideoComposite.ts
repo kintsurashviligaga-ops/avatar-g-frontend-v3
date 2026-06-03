@@ -105,12 +105,15 @@ function forecastComposite(): ForecastResult {
 async function readWalletBalanceGel(userId: string): Promise<number | null> {
   try {
     const supabase = createServiceRoleClient();
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('credits')
       .select('balance_gel, balance')
       .eq('user_id', userId)
       .maybeSingle();
-    if (!data) return null;
+    // null = UNKNOWN (DB error → gate fails open); 0 = confirmed no-row balance,
+    // so the gate blocks an unpayable render instead of stranding the user.
+    if (error) return null;
+    if (!data) return 0;
     const num = Number(data.balance_gel ?? data.balance ?? 0);
     return Number.isFinite(num) ? num : null;
   } catch {

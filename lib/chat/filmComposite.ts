@@ -51,6 +51,7 @@ import {
   clipRetryBackoffMs,
   mapWithConcurrency,
 } from './filmClipRetry';
+import { filmBalanceDecision } from './filmBalanceGate';
 
 const serviceManager = new ServiceManager();
 
@@ -113,22 +114,39 @@ function forecastFilm(sceneCount: number): ForecastResult {
   };
 }
 
-/** Read the user's wallet balance; null when missing or DB unconfigured. */
+/**
+ * Read the user's wallet balance in GEL.
+ *  • `null`  → balance is UNKNOWN (DB error / missing table / client unconfigured).
+ *  • `0`     → query SUCCEEDED with no credits row: a CONFIRMED zero balance.
+ *  • `>0`    → the stored balance.
+ *
+ * The null-vs-0 distinction is load-bearing: previously a no-row user returned
+ * `null`, the gate skipped, and an unpayable render dispatched anyway — stranding
+ * the user on a 0/5 spinner that the funded stitch step could never deliver. A
+ * genuine query error still returns null so the gate fails OPEN (an infra blip
+ * must not lock paying users out; per-leg debit + rollback still protect spend).
+ */
 async function readWalletBalanceGel(userId: string): Promise<number | null> {
   try {
     const supabase = createServiceRoleClient();
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('credits')
       .select('balance_gel, balance')
       .eq('user_id', userId)
       .maybeSingle();
-    if (!data) return null;
+    if (error) return null; // unknown → fail open
+    if (!data) return 0; // confirmed: no credits row == zero balance
     const num = Number(data.balance_gel ?? data.balance ?? 0);
     return Number.isFinite(num) ? num : null;
   } catch {
     return null;
   }
 }
+
+// The up-front gate decision is a pure, dependency-free helper (see
+// ./filmBalanceGate) so it can be unit-tested without filmComposite's heavy
+// server imports. Re-exported for callers that import it from here.
+export { filmBalanceDecision };
 
 /** Dispatch a single film clip through ServiceManager/LTX, traced for cost. */
 async function renderClip(
@@ -290,18 +308,18 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
   // ── Pre-flight: balance gate (skips anonymous; downstream gate covers them) ─
   if (input.userId && input.userId !== 'anonymous') {
     const balance = await readWalletBalanceGel(input.userId);
-    if (balance !== null && balance < forecast.totalRetailGel) {
+    if (filmBalanceDecision(balance, forecast.totalRetailGel) === 'insufficient') {
       return {
         success: false,
         intent: 'video_generation',
         responseType: 'text',
-        message: `Insufficient balance for the 30-second film pipeline. Required: ${forecast.totalRetailGel.toFixed(2)} ₾. Current: ${balance.toFixed(2)} ₾.`,
+        message: `Insufficient balance for the 30-second film pipeline. Required: ${forecast.totalRetailGel.toFixed(2)} ₾. Current: ${(balance ?? 0).toFixed(2)} ₾.`,
         metadata: {
           provider: 'composite',
           composite: true,
           insufficientBalance: true,
           requiredGel: forecast.totalRetailGel,
-          balanceGel: balance,
+          balanceGel: balance ?? 0,
         },
       };
     }
