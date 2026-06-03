@@ -38,6 +38,8 @@ import {
   Clapperboard,
   Play,
   Download,
+  UserPlus,
+  History,
 } from 'lucide-react';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { WalletRefillModal } from '@/components/chat/WalletRefill';
@@ -126,6 +128,8 @@ const COPY: Record<
     statFailed: string;
     statQueued: string;
     scenePreviewHint: string;
+    library: string;
+    signup: string;
   }
 > = {
   ka: {
@@ -180,6 +184,8 @@ const COPY: Record<
     statFailed: 'ჩაიშალა',
     statQueued: 'რიგში',
     scenePreviewHint: 'დააჭირე დასრულებულ სცენას სანახავად',
+    library: 'ბიბლიოთეკა · ისტორია',
+    signup: 'რეგისტრაცია',
   },
   en: {
     brandSub: 'Cinematic Hub',
@@ -233,6 +239,8 @@ const COPY: Record<
     statFailed: 'failed',
     statQueued: 'queued',
     scenePreviewHint: 'Tap a finished scene to preview it',
+    library: 'Library · History',
+    signup: 'Sign up',
   },
   ru: {
     brandSub: 'Кинематографический хаб',
@@ -286,6 +294,8 @@ const COPY: Record<
     statFailed: 'ошибка',
     statQueued: 'в очереди',
     scenePreviewHint: 'Нажмите на готовую сцену для просмотра',
+    library: 'Библиотека · История',
+    signup: 'Регистрация',
   },
 };
 
@@ -1274,15 +1284,39 @@ export function ConversationalFilmStudio({
                 <span className="text-xs font-semibold text-neutral-300">{t.theme}</span>
                 <ThemeToggle label={t.theme} />
               </div>
+
+              {/* Library / History — every rendered film + generation lands in
+                  the persisted history; this is the always-available entry to it. */}
+              <Link
+                href={`/${locale}/studio/history`}
+                onClick={() => setMenuOpen(false)}
+                className="inline-flex items-center gap-2.5 rounded-xl border border-white/10 bg-black px-3 py-2.5 text-xs font-semibold text-neutral-200 transition-colors hover:border-[#00D2FF]/50 hover:text-[#00D2FF]"
+              >
+                <History className="h-4 w-4" />
+                {t.library}
+              </Link>
+
+              {/* Auth — Sign in + Sign up side by side when anonymous. The pages
+                  already exist at /{locale}/login and /{locale}/signup. */}
               {!isAuthenticated && (
-                <Link
-                  href={`/${locale}/login`}
-                  onClick={() => setMenuOpen(false)}
-                  className="inline-flex items-center gap-2.5 rounded-xl border border-[#00D2FF]/40 bg-[#00D2FF]/10 px-3 py-2.5 text-xs font-semibold text-[#00D2FF] transition-colors hover:bg-[#00D2FF]/20"
-                >
-                  <LogIn className="h-4 w-4" />
-                  {t.login}
-                </Link>
+                <div className="grid grid-cols-2 gap-2">
+                  <Link
+                    href={`/${locale}/login`}
+                    onClick={() => setMenuOpen(false)}
+                    className="inline-flex items-center justify-center gap-2 rounded-xl border border-[#00D2FF]/40 bg-[#00D2FF]/10 px-3 py-2.5 text-xs font-semibold text-[#00D2FF] transition-colors hover:bg-[#00D2FF]/20"
+                  >
+                    <LogIn className="h-4 w-4" />
+                    {t.login}
+                  </Link>
+                  <Link
+                    href={`/${locale}/signup`}
+                    onClick={() => setMenuOpen(false)}
+                    className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/10 bg-black px-3 py-2.5 text-xs font-semibold text-neutral-200 transition-colors hover:border-[#00D2FF]/50 hover:text-[#00D2FF]"
+                  >
+                    <UserPlus className="h-4 w-4" />
+                    {t.signup}
+                  </Link>
+                </div>
               )}
             </div>
           </aside>
