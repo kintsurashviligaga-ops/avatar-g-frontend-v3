@@ -588,6 +588,9 @@ async function pollFilmTask(predictionId: string, sessionId?: string): Promise<C
           status: filmLegToClientStatus(c.status),
           url: c.url,
           attempts: c.attempts ?? 1,
+          // Diagnostics (harmless extra fields; the client reads status/url only).
+          ...(c.providerStatus ? { providerStatus: c.providerStatus } : {}),
+          ...(c.note ? { note: c.note } : {}),
         })),
         stitch: filmStitchToClientStatus(stitchStatus, anyClipPending),
         audio: filmLegToClientStatus(audioStatus),
@@ -607,6 +610,11 @@ interface FilmClipPollState {
   status: FilmLegPollStatus;
   url: string | null;
   attempts?: number;
+  /** Diagnostics: the RAW provider poll verdict + a short note, surfaced into
+   *  metadata.film.clips so a stuck render is self-explanatory in the network
+   *  response (no server-log access needed to see why a clip sits pending). */
+  providerStatus?: string;
+  note?: string;
 }
 
 /** Poll one clip leg; null taskRef short-circuits to its dispatch-time verdict. */
@@ -618,15 +626,24 @@ async function pollFilmClip(clip: FilmTaskRef['clips'][number], sessionId?: stri
   }
   try {
     const sm = await serviceManager.poll(clip.taskRef, sessionId);
+    const providerStatus = sm.predictionStatus;
+    const note = (sm.message || '').slice(0, 140) || undefined;
     if (sm.predictionStatus === 'succeeded') {
-      return { ordinal: clip.ordinal, status: 'succeeded', url: sm.assetUrl ?? null, attempts: clip.attempts };
+      return { ordinal: clip.ordinal, status: 'succeeded', url: sm.assetUrl ?? null, attempts: clip.attempts, providerStatus };
     }
     if (sm.predictionStatus === 'failed' || sm.predictionStatus === 'error' || sm.predictionStatus === 'canceled') {
-      return { ordinal: clip.ordinal, status: 'failed', url: null, attempts: clip.attempts };
+      return { ordinal: clip.ordinal, status: 'failed', url: null, attempts: clip.attempts, providerStatus, note };
     }
-    return { ordinal: clip.ordinal, status: 'pending', url: null, attempts: clip.attempts };
-  } catch {
-    return { ordinal: clip.ordinal, status: 'failed', url: null, attempts: clip.attempts };
+    return { ordinal: clip.ordinal, status: 'pending', url: null, attempts: clip.attempts, providerStatus, note };
+  } catch (err) {
+    return {
+      ordinal: clip.ordinal,
+      status: 'failed',
+      url: null,
+      attempts: clip.attempts,
+      providerStatus: 'threw',
+      note: (err instanceof Error ? err.message : String(err)).slice(0, 140),
+    };
   }
 }
 
