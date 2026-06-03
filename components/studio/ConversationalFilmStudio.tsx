@@ -24,7 +24,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import {
-  Upload,
+  ImagePlus,
   Send,
   Mic,
   CheckCircle2,
@@ -35,6 +35,7 @@ import {
   LogIn,
   Menu,
   Plus,
+  Clapperboard,
 } from 'lucide-react';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { WalletRefillModal } from '@/components/chat/WalletRefill';
@@ -48,6 +49,7 @@ import {
   type FilmStudioProgress,
 } from '@/lib/chat/filmStudioClient';
 import { summarizeFilmPipeline, type StageState } from '@/lib/chat/filmStudioStages';
+import { filmStarterPrompts } from '@/lib/chat/filmStarterPrompts';
 
 interface Slot {
   dataUrl: string;
@@ -115,6 +117,7 @@ const COPY: Record<
     micStop: string;
     micDenied: string;
     voiceUnsupported: string;
+    starterHint: string;
   }
 > = {
   ka: {
@@ -162,6 +165,7 @@ const COPY: Record<
     micStop: 'ჩაწერის შეჩერება',
     micDenied: 'მიკროფონზე წვდომა შეზღუდულია. გთხოვთ, ჩართოთ პარამეტრებიდან.',
     voiceUnsupported: 'ხმოვანი შეყვანა ამ ბრაუზერში არ არის მხარდაჭერილი.',
+    starterHint: 'დასაწყისად სცადე ნიმუში',
   },
   en: {
     brandSub: 'Cinematic Hub',
@@ -208,6 +212,7 @@ const COPY: Record<
     micStop: 'Stop recording',
     micDenied: 'Microphone access is restricted. Please enable it in settings.',
     voiceUnsupported: "Voice input isn't supported in this browser.",
+    starterHint: 'Try a starter script',
   },
   ru: {
     brandSub: 'Кинематографический хаб',
@@ -254,6 +259,7 @@ const COPY: Record<
     micStop: 'Остановить запись',
     micDenied: 'Доступ к микрофону ограничен. Пожалуйста, включите его в настройках.',
     voiceUnsupported: 'Голосовой ввод не поддерживается в этом браузере.',
+    starterHint: 'Попробуйте сценарий для начала',
   },
 };
 
@@ -379,6 +385,7 @@ export function ConversationalFilmStudio({
   const nudgedRef = useRef(false);
   const abortRef = useRef<AbortController | null>(null);
   const feedEndRef = useRef<HTMLDivElement | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   const pushMessage = useCallback((role: ChatMsg['role'], text: string) => {
     setMessages((prev) => [...prev, { id: msgIdRef.current++, role, text }]);
@@ -663,6 +670,24 @@ export function ConversationalFilmStudio({
     }
   }, [speechSupported, isRecording, input, lang, t.voiceUnsupported, t.micDenied]);
 
+  // Pre-fill the composer from a tapped starter chip and focus it (caret at end)
+  // WITHOUT auto-sending — the user still reviews/edits and presses generate, so
+  // a tap never spends a founder slot or debits the wallet on its own.
+  const fillFromStarter = useCallback((prompt: string) => {
+    setInput(prompt);
+    requestAnimationFrame(() => {
+      const el = textareaRef.current;
+      if (!el) return;
+      el.focus();
+      const end = el.value.length;
+      try {
+        el.setSelectionRange(end, end);
+      } catch {
+        /* some browsers throw on setSelectionRange for certain states */
+      }
+    });
+  }, []);
+
   const handleCancel = useCallback(() => {
     abortRef.current?.abort();
     setDriving(false);
@@ -694,6 +719,13 @@ export function ConversationalFilmStudio({
   const showTracker = driving || (progress != null && progress.phase !== 'idle');
   const finished = pipeline.done;
 
+  // First-run starter chips: shown only on the pristine canvas — before the user
+  // has typed/sent anything and while nothing is rendering or rendered — so they
+  // guide the empty state without ever cluttering an active conversation.
+  const hasUserMessage = messages.some((m) => m.role === 'user');
+  const showStarters =
+    !hasUserMessage && !showTracker && !driving && !masterUrl && !previewUrl && !error;
+
   return (
     // STRICT three-tone matrix — pure black canvas (#000000, infinite depth on
     // OLED iPhones), white type, electric-cyan (#00D2FF) for every active accent.
@@ -721,7 +753,7 @@ export function ConversationalFilmStudio({
           <Link href={`/${locale}/dashboard`} className="group flex items-center gap-2.5 min-w-0">
             {/* 3D rocket mark — cyan halo, ambient pulse, gentle hover tilt. */}
             <span className="flex h-8 w-8 items-center justify-center rounded-xl border border-[#00D2FF]/40 bg-[#00D2FF]/10 shadow-[0_0_15px_rgba(0,210,255,0.25)] transition-transform duration-500 ease-out group-hover:rotate-12 group-hover:scale-105">
-              <span className="text-[15px] leading-none animate-pulse" aria-hidden="true">
+              <span className="text-[15px] leading-none animate-pulse motion-reduce:animate-none" aria-hidden="true">
                 🚀
               </span>
             </span>
@@ -737,15 +769,19 @@ export function ConversationalFilmStudio({
                 cyan top-up control that opens the Stripe-hosted checkout inline
                 (no page leave). Replaces the old opaque "credits" badge. */}
             <div className="inline-flex items-center overflow-hidden rounded-lg border border-white/10 bg-black">
-              <span className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-bold tabular-nums text-white">
+              {/* Live wallet balance. `formatGEL` already emits the `₾` suffix, so
+                  we render it exactly ONCE (the previous extra cyan prefix made the
+                  chip read "₾ 0.00 ₾"); the trailing symbol is tinted cyan via the
+                  flex layout below. */}
+              <span className="flex items-baseline gap-1 px-2.5 py-1.5 text-xs font-bold tabular-nums text-white">
+                {(balanceGel ?? 0).toFixed(2)}
                 <span className="text-[#00D2FF]">₾</span>
-                {formatGEL(balanceGel ?? 0)}
               </span>
               <button
                 type="button"
                 onClick={openWallet}
                 aria-label={t.topUp}
-                className="flex items-center gap-1 border-l border-white/10 bg-[#00D2FF]/10 px-2 py-1.5 text-xs font-bold text-[#00D2FF] transition-colors hover:bg-[#00D2FF]/20"
+                className="flex items-center gap-1 border-l border-white/10 bg-[#00D2FF]/10 px-2 py-1.5 text-xs font-bold text-[#00D2FF] transition-colors hover:bg-[#00D2FF]/20 touch-manipulation"
               >
                 <Plus className="h-3.5 w-3.5" />
                 <span className="hidden sm:inline">{t.topUp}</span>
@@ -756,7 +792,7 @@ export function ConversationalFilmStudio({
               type="button"
               onClick={() => setMenuOpen(true)}
               aria-label={t.menu}
-              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-black text-neutral-300 transition-colors hover:border-[#00D2FF]/40 hover:text-white"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-black text-neutral-300 transition-colors hover:border-[#00D2FF]/40 hover:text-white touch-manipulation"
             >
               <Menu className="h-4 w-4" />
             </button>
@@ -803,7 +839,7 @@ export function ConversationalFilmStudio({
                           aria-label={role}
                           className="flex h-full w-full cursor-pointer items-center justify-center"
                         >
-                          <Upload className="h-4 w-4 text-neutral-600 transition-colors group-hover:text-[#00D2FF]" />
+                          <ImagePlus className="h-4 w-4 text-neutral-600 transition-colors group-hover:text-[#00D2FF]" />
                           {/* accept="image/*" natively offers Take Photo / Library on iOS & Android. */}
                           <input
                             type="file"
@@ -841,6 +877,30 @@ export function ConversationalFilmStudio({
               </div>
             </div>
           ))}
+
+          {/* First-run starter chips — tappable example director scripts that
+              pre-fill the composer (never auto-send). Shown only on the pristine
+              canvas so they guide the empty state without crowding a live chat. */}
+          {showStarters && (
+            <div className="space-y-2">
+              <p className="px-1 text-[10px] font-bold uppercase tracking-wider text-neutral-600">
+                {t.starterHint}
+              </p>
+              <div className="flex flex-col gap-2">
+                {filmStarterPrompts(locale).map((prompt, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => fillFromStarter(prompt)}
+                    className="group flex items-center gap-2.5 rounded-2xl border border-white/10 bg-black px-3.5 py-3 text-left text-[13px] leading-snug text-neutral-300 transition-colors hover:border-[#00D2FF]/40 hover:text-white active:scale-[0.99] motion-reduce:active:scale-100 touch-manipulation"
+                  >
+                    <Clapperboard className="h-4 w-4 shrink-0 text-[#00D2FF]/70 transition-colors group-hover:text-[#00D2FF]" />
+                    <span>{prompt}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Live per-leg progress tracker (real onProgress) — cyan accents. */}
           {showTracker && (
@@ -985,6 +1045,7 @@ export function ConversationalFilmStudio({
               the existing /api/video/assemble billing gate charges normally. */}
           <div className="flex items-end gap-2 rounded-2xl border border-white/10 bg-black p-2 transition-all focus-within:border-[#00D2FF] focus-within:shadow-[0_0_15px_rgba(0,210,255,0.15)]">
             <textarea
+              ref={textareaRef}
               rows={1}
               className="flex-1 bg-transparent text-[13px] px-2.5 py-2 focus:outline-none placeholder-neutral-600 resize-none text-white max-h-32"
               placeholder={driving ? t.placeholderBusy : t.placeholder}
@@ -1005,12 +1066,12 @@ export function ConversationalFilmStudio({
                 aria-label={isRecording ? t.micStop : t.micStart}
                 title={isRecording ? t.micStop : t.micStart}
                 className={[
-                  'inline-flex h-9 w-9 items-center justify-center rounded-full transition-all shrink-0',
+                  'inline-flex h-10 w-10 items-center justify-center rounded-full transition-all shrink-0 touch-manipulation',
                   driving
                     ? 'text-neutral-700 cursor-not-allowed'
                     : isRecording
-                      ? 'text-[#00D2FF] animate-pulse'
-                      : 'text-white/40 hover:text-white/70 active:scale-90',
+                      ? 'text-[#00D2FF] animate-pulse motion-reduce:animate-none'
+                      : 'text-white/40 hover:text-white/70 active:scale-90 motion-reduce:active:scale-100',
                 ].join(' ')}
               >
                 <Mic className="w-4 h-4" />
@@ -1028,12 +1089,12 @@ export function ConversationalFilmStudio({
               aria-label={t.generate}
               title={t.generate}
               className={[
-                'inline-flex h-9 w-9 items-center justify-center rounded-full transition-all shrink-0',
+                'inline-flex h-10 w-10 items-center justify-center rounded-full transition-all shrink-0 touch-manipulation',
                 !canSend
                   ? 'bg-white/10 text-neutral-600 cursor-not-allowed'
                   : sendValidated
-                    ? 'bg-[#00D2FF] text-black shadow-[0_0_18px_rgba(0,210,255,0.45)] hover:brightness-110 active:scale-90'
-                    : 'bg-white text-black hover:bg-neutral-200 active:scale-90',
+                    ? 'bg-[#00D2FF] text-black shadow-[0_0_18px_rgba(0,210,255,0.45)] hover:brightness-110 active:scale-90 motion-reduce:active:scale-100'
+                    : 'bg-white text-black hover:bg-neutral-200 active:scale-90 motion-reduce:active:scale-100',
               ].join(' ')}
             >
               {driving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
