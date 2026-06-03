@@ -7,6 +7,7 @@ import {
   canSalvagePartialCut,
   clipsSettled,
   everyClipLanded,
+  filmProgressKey,
   MIN_SALVAGE_CLIPS,
   type FilmStudioMatrix,
 } from './filmStudioClient';
@@ -233,6 +234,53 @@ describe('everyClipLanded — a complete cut is still on the table', () => {
     expect(everyClipLanded(matrix({ clips: [{ ordinal: 1, status: 'skipped', url: null }] }))).toBe(false);
     expect(everyClipLanded(matrix({ clips: [] }))).toBe(false);
     expect(everyClipLanded(null)).toBe(false);
+  });
+});
+
+describe('filmProgressKey — stall detection signature', () => {
+  it('is stable across polls when nothing advances (the frozen-0/5 stall)', () => {
+    const frozen = () =>
+      matrix({
+        storyboard: 'succeeded',
+        audio: 'pending',
+        clips: [
+          { ordinal: 1, status: 'pending', url: null },
+          { ordinal: 2, status: 'pending', url: null },
+        ],
+      });
+    expect(filmProgressKey(frozen())).toBe(filmProgressKey(frozen()));
+  });
+
+  it('changes the moment a clip lands (forward progress resets the timer)', () => {
+    const before = matrix({
+      clips: [
+        { ordinal: 1, status: 'pending', url: null },
+        { ordinal: 2, status: 'pending', url: null },
+      ],
+    });
+    const after = matrix({
+      clips: [
+        { ordinal: 1, status: 'succeeded', url: 'c1' },
+        { ordinal: 2, status: 'pending', url: null },
+      ],
+    });
+    expect(filmProgressKey(after)).not.toBe(filmProgressKey(before));
+  });
+
+  it('changes when a non-clip leg advances (e.g. the score finalizes)', () => {
+    const before = matrix({ audio: 'pending', clips: [{ ordinal: 1, status: 'succeeded', url: 'c1' }] });
+    const after = matrix({ audio: 'succeeded', clips: [{ ordinal: 1, status: 'succeeded', url: 'c1' }] });
+    expect(filmProgressKey(after)).not.toBe(filmProgressKey(before));
+  });
+
+  it('changes when a clip flips to a terminal failure (so the loop can react)', () => {
+    const before = matrix({ clips: [{ ordinal: 1, status: 'pending', url: null }] });
+    const after = matrix({ clips: [{ ordinal: 1, status: 'failed', url: null }] });
+    expect(filmProgressKey(after)).not.toBe(filmProgressKey(before));
+  });
+
+  it('returns a constant sentinel for a null matrix', () => {
+    expect(filmProgressKey(null)).toBe('none');
   });
 });
 

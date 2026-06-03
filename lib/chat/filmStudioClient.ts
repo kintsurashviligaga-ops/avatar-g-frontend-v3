@@ -87,6 +87,8 @@ export interface DriveFilmOptions {
   /** Defaults tuned to the route's maxDuration (300s) with headroom. */
   pollIntervalMs?: number;
   maxPollMs?: number;
+  /** Max time with NO forward progress before failing fast (anti-stall). */
+  stallMs?: number;
 }
 
 // ─── Pure helpers (unit-tested) ──────────────────────────────────────────────
@@ -186,6 +188,40 @@ export function everyClipLanded(matrix: FilmStudioMatrix | null): boolean {
  * window costs almost nothing and lets slow-but-successful renders land + salvage.
  */
 export const DEFAULT_FILM_MAX_POLL_MS = 900_000;
+
+/**
+ * A compact, comparable signature of every leg's observable state. The driver
+ * snapshots this between polls to detect a STALLED render — one frozen with no
+ * forward progress at all (e.g. stuck at 0/5 because the provider jobs never
+ * leave `processing` and so never flip a clip to a terminal state). Any leg
+ * advancing — a clip landing, the score finalizing, stitch readiness — changes
+ * the key. Pure + exported so the stall decision is unit-testable off-network.
+ */
+export function filmProgressKey(matrix: FilmStudioMatrix | null): string {
+  if (!matrix) return 'none';
+  const landed = readyClipUrls(matrix).length;
+  const terminalClips = matrix.clips.filter(
+    (c) => c.status === 'succeeded' || c.status === 'failed' || c.status === 'skipped',
+  ).length;
+  return [
+    matrix.storyboard,
+    landed,
+    terminalClips,
+    matrix.audio,
+    matrix.stitch,
+    matrix.readyToStitch ? 1 : 0,
+  ].join('|');
+}
+
+/**
+ * How long the render may make ZERO forward progress before the driver gives up
+ * early. Generous enough to ride out one slow LTX clip (~1–3 min) yet well under
+ * the full poll window, so a render frozen at 0/5 — the "გაჭედილია" stall —
+ * surfaces an honest failure in ~5 min instead of spinning the tracker for the
+ * entire 15. A render that IS landing clips keeps resetting the stall timer and
+ * is therefore allowed its full patience.
+ */
+export const DEFAULT_FILM_STALL_MS = 300_000;
 
 /**
  * Localized copy for the live progress line. Georgian is the canonical platform
@@ -349,6 +385,7 @@ export async function driveFilmStudio(opts: DriveFilmOptions): Promise<FilmStudi
     onProgress,
     pollIntervalMs = 4000,
     maxPollMs = DEFAULT_FILM_MAX_POLL_MS,
+    stallMs = DEFAULT_FILM_STALL_MS,
   } = opts;
 
   const sessionId = `session_studio_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
@@ -398,6 +435,12 @@ export async function driveFilmStudio(opts: DriveFilmOptions): Promise<FilmStudi
     // 2 ── Poll until ready to stitch / terminal / timeout
     const deadline = Date.now() + maxPollMs;
     let renderFailed = false;
+    let renderStalled = false;
+    // Stall tracking: snapshot the production signature and the wall-clock time
+    // it last changed. A render that keeps landing clips resets this and earns
+    // its full patience; a render frozen at 0/5 trips the stall guard below.
+    let lastProgressKey = filmProgressKey(matrix);
+    let lastProgressAt = Date.now();
     while (!matrix.readyToStitch && Date.now() < deadline) {
       if (predictionId === undefined) break;
       await sleep(pollIntervalMs, signal);
@@ -405,6 +448,12 @@ export async function driveFilmStudio(opts: DriveFilmOptions): Promise<FilmStudi
       predictionId = poll.predictionId ?? predictionId;
       if (poll.metadata?.film) matrix = poll.metadata.film;
       emit('rendering', matrix, null);
+
+      const progressKey = filmProgressKey(matrix);
+      if (progressKey !== lastProgressKey) {
+        lastProgressKey = progressKey;
+        lastProgressAt = Date.now();
+      }
       if (poll.predictionStatus && TERMINAL_FAIL.has(poll.predictionStatus) && !matrix.readyToStitch) {
         // A leg reported terminal failure. The server union flips to `failed`
         // the moment ONE clip fails — but the clips that DID land are still a
@@ -427,6 +476,16 @@ export async function driveFilmStudio(opts: DriveFilmOptions): Promise<FilmStudi
         renderFailed = !canSalvagePartialCut(matrix);
         break;
       }
+      // Stall guard: the render has made NO forward progress for the whole stall
+      // window — it's frozen (typically stuck at 0/5 because the provider jobs
+      // never leave `processing`, so no clip ever flips terminal and the
+      // clipsSettled break above can't fire). Spinning the tracker for the rest
+      // of the 15-min deadline is pure dead time. Fail fast with an honest
+      // reason — UNLESS enough scenes already landed to salvage a partial cut.
+      if (!matrix.readyToStitch && Date.now() - lastProgressAt > stallMs && !canSalvagePartialCut(matrix)) {
+        renderStalled = true;
+        break;
+      }
     }
 
     // The poll loop ended for one of three reasons: every scene is ready, a leg
@@ -437,9 +496,11 @@ export async function driveFilmStudio(opts: DriveFilmOptions): Promise<FilmStudi
     // all 5 scenes under a red "halted" header — a contradictory tracker).
     if (!matrix.readyToStitch && !canSalvagePartialCut(matrix)) {
       return fail(
-        renderFailed
-          ? 'One or more scenes failed to render, so the film could not be assembled.'
-          : 'The render timed out before enough scenes were ready to assemble a film.',
+        renderStalled
+          ? 'The render stalled — no scenes finished in time. This usually means the video provider rejected the jobs (out of quota / invalid key) or the wallet has no funds. Please check billing and try again.'
+          : renderFailed
+            ? 'One or more scenes failed to render, so the film could not be assembled.'
+            : 'The render timed out before enough scenes were ready to assemble a film.',
         matrix,
       );
     }
