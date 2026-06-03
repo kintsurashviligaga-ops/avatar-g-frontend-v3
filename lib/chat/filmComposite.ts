@@ -44,6 +44,11 @@ import {
   type FilmScene,
   type FilmShared,
 } from './filmPipeline';
+import {
+  MAX_CLIP_DISPATCH_ATTEMPTS,
+  clipDispatchStaggerMs,
+  clipRetryBackoffMs,
+} from './filmClipRetry';
 
 const serviceManager = new ServiceManager();
 
@@ -80,14 +85,6 @@ interface FilmPlanSummary {
   readyToStitch: boolean;
   musicWorkId: string | null;
 }
-
-/**
- * PHASE 43 §3 — Sub-agent fault tolerance. Each clip is dispatched with bounded,
- * isolated retry: a dispatch failure on one leg retries ONLY that leg without
- * discarding or re-dispatching its siblings. Capped low so a hard provider
- * outage degrades fast instead of multiplying spend.
- */
-const MAX_CLIP_DISPATCH_ATTEMPTS = 2;
 
 /** Narrow a dispatch-time LegStatus to the token's clip status union. */
 function clipDispatchStatus(s: LegStatus): 'queued' | 'failed' | 'skipped' | 'pending' {
@@ -163,20 +160,27 @@ async function renderClip(
   // limit (observed: ~2/5 clips failing). Stagger each leg by its ordinal so the
   // failover calls are spread over ~1.5s instead of bursting together. This is a
   // dispatch-only delay (the renders still run in parallel on the provider).
-  if (scene.ordinal > 1) {
-    await new Promise((resolve) => setTimeout(resolve, (scene.ordinal - 1) * 400));
+  const firstStagger = clipDispatchStaggerMs(scene.ordinal);
+  if (firstStagger > 0) {
+    await new Promise((resolve) => setTimeout(resolve, firstStagger));
   }
 
   const clipReq = buildFilmClipRequest(scene, shared);
 
-  // PHASE 43 §3 — Isolated per-leg retry. We retry ONLY when a dispatch fails to
-  // produce a provider job (throw or null taskRef); a successfully queued clip is
-  // never re-dispatched (that would double-render + double-charge). The shared
-  // `deductRef` keeps every attempt idempotent so a partial first attempt can't
-  // double-bill the same scene. Siblings are untouched — one bad leg never
-  // discards or re-runs Clips 1,2,4,5.
+  // PHASE 43 §3 / PHASE 58 — Isolated per-leg retry. We retry ONLY when a dispatch
+  // fails to produce a provider job (throw or null taskRef); a successfully queued
+  // clip is never re-dispatched (that would double-render + double-charge). The
+  // shared `deductRef` keeps every attempt idempotent so a partial first attempt
+  // can't double-bill the same scene. Siblings are untouched — one bad leg never
+  // discards or re-runs the others. Between attempts we wait an exponentially
+  // growing, jittered, ordinal-offset window (clipRetryBackoffMs) so the
+  // last-dispatched legs don't retry straight back into the same rate-limit burst.
   let lastErr: unknown = null;
   for (let attempt = 1; attempt <= MAX_CLIP_DISPATCH_ATTEMPTS; attempt++) {
+    const backoff = clipRetryBackoffMs(attempt, scene.ordinal);
+    if (backoff > 0) {
+      await new Promise((resolve) => setTimeout(resolve, backoff));
+    }
     try {
       const taskRef = await withTrace(
         {
