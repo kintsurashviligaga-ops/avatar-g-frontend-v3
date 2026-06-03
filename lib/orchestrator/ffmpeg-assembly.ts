@@ -37,14 +37,24 @@ export function ffmpegAssemblyAvailable(): boolean {
   return Boolean(ffmpegStatic);
 }
 
-async function download(url: string, dest: string): Promise<string> {
-  const r = await fetch(url);
+async function download(url: string, dest: string, signal?: AbortSignal): Promise<string> {
+  const r = await fetch(url, signal ? { signal } : {});
   if (!r.ok) throw new Error(`asset download failed (${r.status})`);
   await writeFile(dest, Buffer.from(await r.arrayBuffer()));
   return dest;
 }
 
-export async function assembleWithFfmpeg(m: FfmpegManifest): Promise<{ url: string }> {
+/**
+ * Stitch the composition on this node.
+ *
+ * `signal` (optional) makes every blocking phase — clip/audio downloads and the
+ * FFmpeg exec — abortable. The assemble route's atomic dispatch deadline passes
+ * it so a render that stalls (a clip URL that never resolves, an exec that hangs
+ * at ~38%) is cancelled promptly instead of pinning the function until the
+ * platform hard-kills it — which would skip the saga compensation and strand the
+ * user's reserved slot/credits.
+ */
+export async function assembleWithFfmpeg(m: FfmpegManifest, signal?: AbortSignal): Promise<{ url: string }> {
   const bin = ffmpegStatic as unknown as string | null;
   if (!bin) throw new Error('ffmpeg binary unavailable');
 
@@ -55,11 +65,11 @@ export async function assembleWithFfmpeg(m: FfmpegManifest): Promise<{ url: stri
   try {
     const inputs: string[] = [];
     for (let i = 0; i < segs.length; i++) {
-      inputs.push(await download(segs[i]!.url, join(dir, `seg${i}.mp4`)));
+      inputs.push(await download(segs[i]!.url, join(dir, `seg${i}.mp4`), signal));
     }
-    const voice = m.voiceoverUrl ? await download(m.voiceoverUrl, join(dir, 'voice.m4a')) : null;
-    const music = m.musicUrl ? await download(m.musicUrl, join(dir, 'music.m4a')) : null;
-    const sfx = m.sfxUrl ? await download(m.sfxUrl, join(dir, 'sfx.m4a')) : null;
+    const voice = m.voiceoverUrl ? await download(m.voiceoverUrl, join(dir, 'voice.m4a'), signal) : null;
+    const music = m.musicUrl ? await download(m.musicUrl, join(dir, 'music.m4a'), signal) : null;
+    const sfx = m.sfxUrl ? await download(m.sfxUrl, join(dir, 'sfx.m4a'), signal) : null;
 
     const g = m.globalRender ?? {};
     const fps = String(g.fps) === '60' ? 60 : 24;
@@ -87,7 +97,7 @@ export async function assembleWithFfmpeg(m: FfmpegManifest): Promise<{ url: stri
       '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', out,
     );
 
-    await exec(bin, args, { maxBuffer: 1 << 28, timeout: 280_000 });
+    await exec(bin, args, { maxBuffer: 1 << 28, timeout: 280_000, ...(signal ? { signal } : {}) });
 
     const data = await readFile(out);
     const objectPath = `${m.pipelineId || 'render'}/${Date.now()}.mp4`;

@@ -36,6 +36,22 @@ export const maxDuration = 300; // CPU FFmpeg stitch of a 30s master needs headr
 
 const ASSEMBLE_COST = 20; // credits to stitch a composition
 
+// Atomic dispatch deadline. A render that stalls mid-stitch (a clip URL that
+// never resolves, a render-node stream that hangs at ~38%) must NOT be allowed
+// to pin the function until the platform hard-kills it at maxDuration — a hard
+// kill skips the saga rollback entirely, stranding the user's reserved free
+// slot / debited GEL with nothing to give it back. We give dispatch a deadline
+// strictly below maxDuration (300s) so the timeout fires *inside* the function:
+// it aborts the in-flight work and throws, which trips the saga compensate that
+// releases the lock and hands the slot/credits back instantly. Override with
+// ASSEMBLE_DISPATCH_TIMEOUT_MS; clamped to a sane [30s, 290s] window.
+const DISPATCH_TIMEOUT_MS = (() => {
+  const raw = Number(process.env.ASSEMBLE_DISPATCH_TIMEOUT_MS);
+  const fallback = 270_000; // 30s headroom under maxDuration for compensate + response
+  if (!Number.isFinite(raw) || raw <= 0) return fallback;
+  return Math.min(290_000, Math.max(30_000, Math.round(raw)));
+})();
+
 interface SegmentInput {
   url?: string;
   durationSec?: number;
@@ -197,12 +213,38 @@ export async function POST(req: NextRequest) {
     {
       name: 'dispatch',
       run: async (ctx) => {
-        // GPU worker when configured; else stitch on this node with CPU FFmpeg.
-        const res = cfg
-          ? await dispatchRunPod(cfg, { ...manifest, pipelineId: ctx.sagaId }, { signal: ctx.signal })
-          : await assembleWithFfmpeg({ ...manifest, pipelineId: ctx.sagaId });
-        ctx.bag.tempUrl = res.url;
-        return res.url;
+        // ATOMIC DISPATCH DEADLINE — race the stitch against a hard timer. We
+        // chain a local AbortController off the request signal (Stop button /
+        // disconnect) AND the deadline, so whichever trips first cancels the
+        // in-flight render: the RunPod fetch and the CPU FFmpeg downloads/exec
+        // both honor this signal. On timeout we reject, which fails the saga and
+        // runs reserve-credits' compensate — the user's free slot / GEL is
+        // returned instantly instead of being stranded by a silent hang.
+        const ac = new AbortController();
+        const abort = () => ac.abort();
+        if (ctx.signal) {
+          if (ctx.signal.aborted) ac.abort();
+          else ctx.signal.addEventListener('abort', abort, { once: true });
+        }
+        let timer: ReturnType<typeof setTimeout> | null = null;
+        const deadline = new Promise<never>((_, reject) => {
+          timer = setTimeout(() => {
+            ac.abort();
+            reject(new Error(`dispatch stalled — aborted after ${DISPATCH_TIMEOUT_MS}ms`));
+          }, DISPATCH_TIMEOUT_MS);
+        });
+        try {
+          // GPU worker when configured; else stitch on this node with CPU FFmpeg.
+          const work = cfg
+            ? dispatchRunPod(cfg, { ...manifest, pipelineId: ctx.sagaId }, { signal: ac.signal })
+            : assembleWithFfmpeg({ ...manifest, pipelineId: ctx.sagaId }, ac.signal);
+          const res = await Promise.race([work, deadline]);
+          ctx.bag.tempUrl = res.url;
+          return res.url;
+        } finally {
+          if (timer) clearTimeout(timer);
+          if (ctx.signal) ctx.signal.removeEventListener('abort', abort);
+        }
       },
       compensate: async (_r, ctx) => {
         // Only the RunPod path leaves a remote temp render to purge.
