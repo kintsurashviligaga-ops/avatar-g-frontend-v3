@@ -102,6 +102,35 @@ describe('deriveFilmStages', () => {
     const stages = deriveFilmStages(progress({ phase: 'assembled', matrix: matrix({ stitch: 'pending' }) }), ROLE);
     expect(stages.find((s) => s.key === 'stitch')?.state).toBe('done');
   });
+
+  test('the score leg never shows a false spinner while scenes render (queued → pending)', () => {
+    const stages = deriveFilmStages(
+      progress({
+        phase: 'rendering',
+        matrix: matrix({
+          sceneCount: 3,
+          storyboard: 'succeeded',
+          audio: 'queued',
+          clips: [
+            { ordinal: 1, status: 'succeeded', url: 'c1' },
+            { ordinal: 2, status: 'queued' },
+            { ordinal: 3, status: 'pending' },
+          ],
+        }),
+      }),
+      ROLE,
+    );
+    // The scenes are the legs actually rendering — a still-queued score must read
+    // pending (calm dot), not a misleading "active" spinner.
+    expect(stages.find((s) => s.key === 'score')?.state).toBe('pending');
+  });
+
+  test('the score leg reflects its own terminal status during rendering', () => {
+    const done = deriveFilmStages(progress({ phase: 'rendering', matrix: matrix({ audio: 'succeeded' }) }), ROLE);
+    expect(done.find((s) => s.key === 'score')?.state).toBe('done');
+    const failed = deriveFilmStages(progress({ phase: 'rendering', matrix: matrix({ audio: 'failed' }) }), ROLE);
+    expect(failed.find((s) => s.key === 'score')?.state).toBe('failed');
+  });
 });
 
 describe('summarizeFilmPipeline', () => {

@@ -722,6 +722,13 @@ export function ConversationalFilmStudio({
   const stages = pipeline.stages;
   const showTracker = driving || (progress != null && progress.phase !== 'idle');
   const finished = pipeline.done;
+  // A render is HALTED (terminal failure) only when work has STOPPED and no master
+  // landed — never merely because an individual scene leg failed mid-render. The
+  // editor can still stitch a film from the scenes that DID succeed, so while
+  // `driving` is true we always show the live spinner, not a red halt. This also
+  // covers the timeout / no-master / cancel paths that resolve without ever
+  // emitting a terminal `failed` phase (so `pipeline.failed` alone is unreliable).
+  const halted = showTracker && !driving && !finished && !masterUrl;
 
   // First-run starter chips: shown only on the pristine canvas — before the user
   // has typed/sent anything and while nothing is rendering or rendered — so they
@@ -910,11 +917,13 @@ export function ConversationalFilmStudio({
           {showTracker && (
             <div className="rounded-2xl border border-white/10 bg-black p-4 space-y-3">
               <div className="flex items-center gap-3">
-                {/* Terminal-failure FIRST: a halted render must never keep spinning
+                {/* Terminal-failure FIRST: a HALTED render must never keep spinning
                     the "in progress" loader (the contradictory state users saw —
-                    a spinner + "render could not be completed"). Failed → red
-                    alert; done → cyan check; otherwise → the live spinner. */}
-                {pipeline.failed ? (
+                    a spinner + "render could not be completed"). Halted → red
+                    alert; done → cyan check; otherwise (incl. mid-render with some
+                    failed scenes) → the live spinner, because the film can still
+                    stitch from the scenes that succeeded. */}
+                {halted ? (
                   <AlertTriangle className="w-5 h-5 text-red-400 shrink-0" />
                 ) : finished ? (
                   <CheckCircle2 className="w-5 h-5 text-[#00D2FF] shrink-0" />
@@ -925,14 +934,14 @@ export function ConversationalFilmStudio({
                   <span
                     className={[
                       'block text-[10px] font-bold uppercase tracking-wider',
-                      pipeline.failed ? 'text-red-300' : 'text-neutral-400',
+                      halted ? 'text-red-300' : 'text-neutral-400',
                     ].join(' ')}
                   >
-                    {pipeline.failed ? t.pipelineFailed : finished ? t.pipelineDone : t.pipelineRunning}
+                    {halted ? t.pipelineFailed : finished ? t.pipelineDone : t.pipelineRunning}
                   </span>
                   <p className="text-xs text-neutral-300 mt-0.5">{progress?.message || 'Working…'}</p>
                 </div>
-                {driving && !pipeline.failed && (
+                {driving && (
                   <button
                     type="button"
                     onClick={handleCancel}
@@ -949,13 +958,13 @@ export function ConversationalFilmStudio({
                   <span className="text-neutral-500">
                     {pipeline.scenesRendered} / {pipeline.totalScenes} {roleSceneLabel}
                   </span>
-                  <span className={pipeline.failed ? 'text-red-300' : 'text-[#00D2FF]'}>{pipeline.percent}%</span>
+                  <span className={halted ? 'text-red-300' : 'text-[#00D2FF]'}>{pipeline.percent}%</span>
                 </div>
                 <div className="h-1 w-full overflow-hidden rounded-full bg-white/10">
                   <div
                     className={[
                       'h-full rounded-full transition-[width] duration-500 ease-out',
-                      pipeline.failed ? 'bg-red-400/80' : 'bg-[#00D2FF] shadow-[0_0_10px_rgba(0,210,255,0.5)]',
+                      halted ? 'bg-red-400/80' : 'bg-[#00D2FF] shadow-[0_0_10px_rgba(0,210,255,0.5)]',
                     ].join(' ')}
                     style={{ width: `${pipeline.percent}%` }}
                   />

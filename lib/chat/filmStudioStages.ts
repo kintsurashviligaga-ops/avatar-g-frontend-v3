@@ -103,10 +103,15 @@ export function deriveFilmStages(
             : 'pending',
   });
 
+  // Score leg is driven by its OWN status (active=false), like the stitch leg —
+  // never by the blanket `rendering` flag. Otherwise a still-QUEUED score spins a
+  // misleading "active" loader while the scenes are the ones actually rendering
+  // ("score queued" in the status line, yet a spinner in the list). Honest:
+  // queued/pending → a calm pending dot, succeeded → done, failed → failed.
   stages.push({
     key: 'score',
     label: 'Audio & Foley — scoring the film',
-    state: m ? legToStageState(m.audio, rendering) : 'pending',
+    state: m ? legToStageState(m.audio, false) : 'pending',
   });
 
   return stages;
