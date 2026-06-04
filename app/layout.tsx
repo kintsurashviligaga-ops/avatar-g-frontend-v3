@@ -105,7 +105,83 @@ export const metadata: Metadata = {
 	robots: {
 		index: true,
 		follow: true
-	}
+	},
+	creator: "MyAvatar",
+	publisher: "MyAvatar",
+	category: "technology"
+};
+
+/**
+ * SEO structured data (schema.org JSON-LD), server-rendered into <head>.
+ * Three linked nodes via @graph:
+ *   • Organization — the brand/publisher (logo + name) so Google can attach a
+ *     knowledge panel and pick the right logo for rich results.
+ *   • WebSite — the site identity + the three supported UI languages.
+ *   • WebApplication — what the product actually is (a multimedia AI studio),
+ *     its real feature list, supported platforms, and "free to start" offer.
+ * Everything here is FACTUAL — no invented aggregateRating, review counts, or
+ * social profiles (fabricated structured data risks a manual penalty). Purely
+ * additive: no client JS, no layout cost. Strings stay English for the schema
+ * vocabulary; the human-facing UI remains fully localized elsewhere.
+ */
+const SITE_DESCRIPTION_EN =
+	"Georgian AI creative studio — chat, image, video, music, voice, avatar, interior design and an app builder in one window.";
+
+const structuredData = {
+	"@context": "https://schema.org",
+	"@graph": [
+		{
+			"@type": "Organization",
+			"@id": `${metadataBaseUrl}/#organization`,
+			name: "MyAvatar",
+			alternateName: "MyAvatar.ge",
+			url: metadataBaseUrl,
+			logo: {
+				"@type": "ImageObject",
+				url: `${metadataBaseUrl}/icons/icon-512x512.png`,
+				width: 512,
+				height: 512
+			}
+		},
+		{
+			"@type": "WebSite",
+			"@id": `${metadataBaseUrl}/#website`,
+			url: metadataBaseUrl,
+			name: "MyAvatar",
+			description: SITE_DESCRIPTION_EN,
+			inLanguage: ["ka", "en", "ru"],
+			publisher: { "@id": `${metadataBaseUrl}/#organization` }
+		},
+		{
+			"@type": "WebApplication",
+			"@id": `${metadataBaseUrl}/#webapp`,
+			name: "MyAvatar",
+			url: metadataBaseUrl,
+			description: SITE_DESCRIPTION_EN,
+			applicationCategory: "MultimediaApplication",
+			operatingSystem: "Web, iOS, Android",
+			browserRequirements: "Requires JavaScript. Runs in any modern browser.",
+			inLanguage: ["ka", "en", "ru"],
+			image: `${metadataBaseUrl}/og-image.png`,
+			featureList: [
+				"AI chat assistant",
+				"AI image generation",
+				"AI video generation",
+				"AI music generation",
+				"Georgian AI voice synthesis",
+				"AI avatar creation",
+				"AI interior design",
+				"30-second AI film studio"
+			],
+			offers: {
+				"@type": "Offer",
+				price: "0",
+				priceCurrency: "GEL",
+				description: "Free to start, pay-as-you-go credits."
+			},
+			publisher: { "@id": `${metadataBaseUrl}/#organization` }
+		}
+	]
 };
 
 export default async function RootLayout({
@@ -142,6 +218,15 @@ export default async function RootLayout({
 					dangerouslySetInnerHTML={{
 						__html: `(function(){try{var t=localStorage.getItem('myavatar-theme');if(t!=='light'&&t!=='dark'){t='dark';}var e=document.documentElement;e.setAttribute('data-theme',t);e.classList.toggle('dark',t==='dark');e.classList.toggle('light',t==='light');}catch(_){}})();`,
 					}}
+				/>
+				{/*
+				  schema.org JSON-LD (Organization + WebSite + WebApplication).
+				  Server-rendered, factual, no client JS — makes the site eligible
+				  for Google rich results / knowledge panel. See structuredData above.
+				*/}
+				<script
+					type="application/ld+json"
+					dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
 				/>
 			</head>
 			<body className="font-sans antialiased">
