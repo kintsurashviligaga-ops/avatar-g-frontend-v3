@@ -279,30 +279,20 @@ export class ServiceManager {
     const aspect =
       this.normalizeAspectRatio(this.getOption(request.selectedOptions || {}, ['aspect', 'aspectRatio', 'ratio'])) ||
       '16:9';
-    const input: Record<string, unknown> = {
-      prompt: request.userPrompt,
-      aspect_ratio: aspect,
-      length: 97,
-      target_size: 640,
-    };
-    // Image-to-video anchor when a parent frame is supplied.
-    if (request.imageUrl && /^https?:\/\//i.test(request.imageUrl)) {
-      input.image = request.imageUrl;
-    }
-
-    const res = await fetch('https://api.replicate.com/v1/predictions', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      cache: 'no-store',
-      body: JSON.stringify({ version: REPLICATE_LTX_VIDEO_VERSION, input }),
-    });
-    if (!res.ok) {
-      const txt = await res.text().catch(() => '');
-      throw new Error(`Replicate LTX-video create failed (${res.status}): ${txt.slice(0, 180)}`);
-    }
-    const pred = (await res.json().catch(() => ({}))) as { id?: string; status?: string; output?: unknown };
+    const imageUrl =
+      request.imageUrl && /^https?:\/\//i.test(request.imageUrl) ? request.imageUrl : undefined;
+    // LTX-2 (native 1080p + synced audio) with automatic fallback to the proven
+    // legacy clip model, so an LTX-2 hiccup can never break the render pipeline.
+    const { pred, modelLabel } = await this.createReplicateLtxPrediction(
+      token,
+      request.userPrompt,
+      aspect,
+      imageUrl,
+    );
+    // The helper guarantees an id (it throws otherwise); this guard narrows the
+    // optional type for the encodeTaskRef / metadata uses below.
     if (!pred.id) {
-      throw new Error('Replicate LTX-video returned no prediction id');
+      throw new Error('Replicate LTX returned no prediction id');
     }
     // Rare immediate completion — hand back the URL straight away.
     const immediateUrl = this.extractUrl(pred.output);
@@ -318,7 +308,7 @@ export class ServiceManager {
         predictionStatus: 'succeeded',
         metadata: {
           provider: 'replicate',
-          model: 'lightricks/ltx-video',
+          model: modelLabel,
           operation: 'video-avatar',
           outputType: 'video',
           sessionId: request.sessionId,
@@ -349,7 +339,7 @@ export class ServiceManager {
       predictionStatus: pred.status === 'failed' ? 'failed' : 'processing',
       metadata: {
         provider: 'replicate',
-        model: 'lightricks/ltx-video',
+        model: modelLabel,
         operation: 'video-avatar',
         outputType: 'video',
         sessionId: request.sessionId,
@@ -358,6 +348,78 @@ export class ServiceManager {
         promptHash,
       },
     };
+  }
+
+  /**
+   * Create a Replicate clip prediction, preferring LTX-2 with graceful fallback.
+   *
+   * LTX-2 (`lightricks/ltx-2-fast` by default, env `REPLICATE_LTX_MODEL`) is the
+   * production-grade Lightricks model: native 1080p/4K with SYNCHRONISED AUDIO
+   * (voices, music, SFX) generated in the same pass — the full LTX-2 capability
+   * set. It is run by MODEL NAME (`/v1/models/{owner}/{name}/predictions`) so it
+   * always uses the latest published version, with a minimal, confirmed input
+   * ({prompt, duration[, image]}); audio + resolution use the model's defaults.
+   *
+   * SAFETY: if the LTX-2 create fails for ANY reason (schema drift, model
+   * unavailable, quota), it transparently falls back to the proven legacy
+   * `lightricks/ltx-video` (pinned version, 640p, no audio). So upgrading the
+   * clip model can never break the just-stabilised render pipeline — worst case
+   * is a silent downgrade to the old quality, never a failed film.
+   *
+   * Returns the raw prediction plus the model label that actually accepted it
+   * (for honest telemetry).
+   */
+  private async createReplicateLtxPrediction(
+    token: string,
+    prompt: string,
+    aspect: string,
+    imageUrl?: string,
+  ): Promise<{ pred: { id?: string; status?: string; output?: unknown }; modelLabel: string }> {
+    const ltx2Model = (process.env.REPLICATE_LTX_MODEL || 'lightricks/ltx-2-fast').trim();
+
+    if (/ltx-2/i.test(ltx2Model)) {
+      try {
+        const input: Record<string, unknown> = { prompt, duration: 6 };
+        if (imageUrl) input.image = imageUrl;
+        const res = await fetch(`https://api.replicate.com/v1/models/${ltx2Model}/predictions`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+          cache: 'no-store',
+          body: JSON.stringify({ input }),
+        });
+        if (res.ok) {
+          const pred = (await res.json().catch(() => ({}))) as { id?: string; status?: string; output?: unknown };
+          if (pred.id) return { pred, modelLabel: ltx2Model };
+        }
+        // Non-ok or id-less → fall through to the proven legacy model below.
+      } catch {
+        /* network/other → fall through to legacy */
+      }
+    }
+
+    // Legacy proven path: lightricks/ltx-video (640p, no audio) by pinned version.
+    const input: Record<string, unknown> = {
+      prompt,
+      aspect_ratio: aspect,
+      length: 97,
+      target_size: 640,
+    };
+    if (imageUrl) input.image = imageUrl;
+    const res = await fetch('https://api.replicate.com/v1/predictions', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      cache: 'no-store',
+      body: JSON.stringify({ version: REPLICATE_LTX_VIDEO_VERSION, input }),
+    });
+    if (!res.ok) {
+      const txt = await res.text().catch(() => '');
+      throw new Error(`Replicate LTX create failed (${res.status}): ${txt.slice(0, 180)}`);
+    }
+    const pred = (await res.json().catch(() => ({}))) as { id?: string; status?: string; output?: unknown };
+    if (!pred.id) {
+      throw new Error('Replicate LTX returned no prediction id');
+    }
+    return { pred, modelLabel: 'lightricks/ltx-video' };
   }
 
   private async runNanoBananaImage(request: ServiceManagerRequest): Promise<ServiceManagerResponse> {
