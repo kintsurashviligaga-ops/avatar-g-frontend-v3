@@ -1,42 +1,67 @@
 import { MetadataRoute } from "next";
 import { publicEnv } from "@/lib/env/public";
 
+/**
+ * Dynamic sitemap. Every entry MUST be a canonical, 200-returning URL — a
+ * sitemap full of redirects or 404s wastes crawl budget and erodes trust.
+ *
+ * The whole app is locale-prefixed (`/[locale]/…`); the bare `/pricing`,
+ * `/dashboard`, … paths all 307-redirect to their `/{locale}/…` form, so we
+ * list the redirect *target* (the canonical 200) rather than the redirector.
+ * Verified live (2026-06): the 14 service slugs below all 200 — note the slug
+ * is `prompt` (not `prompt-builder`, which 308-redirects), and there is NO
+ * `/dashboard/billing` route (it 404s), so it is intentionally omitted.
+ */
 export default function sitemap(): MetadataRoute.Sitemap {
   const baseUrl = publicEnv.NEXT_PUBLIC_APP_URL || "https://myavatar.ge";
   const now = new Date();
-  
-  // Core pages
-  const corePages = [
-    { url: baseUrl, priority: 1, changeFrequency: 'daily' as const },
-    { url: `${baseUrl}/pricing`, priority: 0.9, changeFrequency: 'weekly' as const },
-    { url: `${baseUrl}/dashboard`, priority: 0.8, changeFrequency: 'daily' as const },
-    { url: `${baseUrl}/dashboard/billing`, priority: 0.7, changeFrequency: 'weekly' as const },
+  const locales = ['ka', 'en', 'ru'] as const;
+
+  // ka is the primary market → slightly higher priority than en/ru.
+  const localePriority = (locale: string, base: number) =>
+    locale === 'ka' ? base : Math.max(0.3, Math.round((base - 0.1) * 10) / 10);
+
+  // Root domain (redirects to the default-locale landing; the root itself is
+  // the canonical entry point so it stays at priority 1).
+  const rootPage = {
+    url: baseUrl,
+    lastModified: now,
+    changeFrequency: 'daily' as const,
+    priority: 1,
+  };
+
+  // Core app / marketing pages, emitted per-locale at their canonical 200 URL.
+  const coreSlugs: { slug: string; priority: number; changeFrequency: 'daily' | 'weekly' }[] = [
+    { slug: 'pricing', priority: 0.9, changeFrequency: 'weekly' },
+    { slug: 'dashboard', priority: 0.8, changeFrequency: 'daily' },
+    { slug: 'chat', priority: 0.7, changeFrequency: 'daily' },
+    { slug: 'agent', priority: 0.7, changeFrequency: 'weekly' },
   ];
-  
-  // All 14 core AI services (locales: ka, en, ru)
+  const corePages = locales.flatMap(locale =>
+    coreSlugs.map(({ slug, priority, changeFrequency }) => ({
+      url: `${baseUrl}/${locale}/${slug}`,
+      lastModified: now,
+      changeFrequency,
+      priority: localePriority(locale, priority),
+    }))
+  );
+
+  // All 14 core AI service landing pages (dynamic `[slug]` route), per locale.
   const services = [
     'avatar', 'video', 'image', 'music', 'voice',
-    'game', 'interior', 'prompt-builder', 'terminal',
+    'game', 'interior', 'prompt', 'terminal',
     'content-writer', 'podcast', 'character', 'event', 'tourism',
   ];
-  const locales = ['ka', 'en', 'ru'];
-  
   const servicePages = locales.flatMap(locale =>
     services.map(service => ({
       url: `${baseUrl}/${locale}/services/${service}`,
       lastModified: now,
       changeFrequency: 'weekly' as const,
-      priority: locale === 'ka' ? 0.9 : 0.8,
+      priority: localePriority(locale, 0.9),
     }))
   );
-  
-  // Additional pages
-  const additionalPages = [
-    { url: `${baseUrl}/chat`, priority: 0.7, changeFrequency: 'daily' as const },
-    { url: `${baseUrl}/agent`, priority: 0.7, changeFrequency: 'weekly' as const },
-  ];
 
-  // Legal/support — emit per locale so App Store can resolve a localized URL
+  // Legal / support — per locale so the App Store can resolve a localized URL.
   const legalSlugs = ['terms', 'privacy', 'support', 'refund-policy'];
   const legalPages = locales.flatMap(locale =>
     legalSlugs.map(slug => ({
@@ -46,21 +71,11 @@ export default function sitemap(): MetadataRoute.Sitemap {
       priority: 0.4,
     }))
   );
-  
+
   return [
-    ...corePages.map(page => ({
-      url: page.url,
-      lastModified: now,
-      changeFrequency: page.changeFrequency,
-      priority: page.priority,
-    })),
+    rootPage,
+    ...corePages,
     ...servicePages,
-    ...additionalPages.map(page => ({
-      url: page.url,
-      lastModified: now,
-      changeFrequency: page.changeFrequency,
-      priority: page.priority,
-    })),
     ...legalPages,
   ];
 }
