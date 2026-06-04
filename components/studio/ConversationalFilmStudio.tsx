@@ -40,7 +40,12 @@ import {
   Download,
   UserPlus,
   History,
+  LogOut,
+  Shield,
+  FileText,
+  LifeBuoy,
 } from 'lucide-react';
+import { createBrowserClient } from '@/lib/supabase/browser';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { WalletRefillModal } from '@/components/chat/WalletRefill';
 import { analytics } from '@/components/analytics/PostHogProvider';
@@ -130,6 +135,11 @@ const COPY: Record<
     scenePreviewHint: string;
     library: string;
     signup: string;
+    signOut: string;
+    privacy: string;
+    terms: string;
+    support: string;
+    legalLabel: string;
   }
 > = {
   ka: {
@@ -186,6 +196,11 @@ const COPY: Record<
     scenePreviewHint: 'დააჭირე დასრულებულ სცენას სანახავად',
     library: 'ბიბლიოთეკა · ისტორია',
     signup: 'რეგისტრაცია',
+    signOut: 'გასვლა',
+    privacy: 'კონფიდენციალურობა',
+    terms: 'წესები და პირობები',
+    support: 'დახმარება',
+    legalLabel: 'სამართლებრივი',
   },
   en: {
     brandSub: 'Cinematic Hub',
@@ -241,6 +256,11 @@ const COPY: Record<
     scenePreviewHint: 'Tap a finished scene to preview it',
     library: 'Library · History',
     signup: 'Sign up',
+    signOut: 'Sign out',
+    privacy: 'Privacy Policy',
+    terms: 'Terms of Service',
+    support: 'Support',
+    legalLabel: 'Legal',
   },
   ru: {
     brandSub: 'Кинематографический хаб',
@@ -296,6 +316,11 @@ const COPY: Record<
     scenePreviewHint: 'Нажмите на готовую сцену для просмотра',
     library: 'Библиотека · История',
     signup: 'Регистрация',
+    signOut: 'Выйти',
+    privacy: 'Политика конфиденциальности',
+    terms: 'Условия использования',
+    support: 'Поддержка',
+    legalLabel: 'Правовая информация',
   },
 };
 
@@ -1318,6 +1343,55 @@ export function ConversationalFilmStudio({
                   </Link>
                 </div>
               )}
+
+              {/* Sign out — authenticated users (was missing; every account-based
+                  app needs a logout control). Clears the Supabase session, then
+                  returns to a clean dashboard. */}
+              {isAuthenticated && (
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      await createBrowserClient().auth.signOut();
+                    } catch {
+                      /* ignore — fall through to navigation */
+                    }
+                    setMenuOpen(false);
+                    if (typeof window !== 'undefined') window.location.href = `/${locale}/dashboard`;
+                  }}
+                  className="inline-flex items-center gap-2.5 rounded-xl border border-white/10 bg-black px-3 py-2.5 text-xs font-semibold text-neutral-200 transition-colors hover:border-white/25 hover:text-white"
+                >
+                  <LogOut className="h-4 w-4" />
+                  {t.signOut}
+                </button>
+              )}
+
+              {/* Legal + Support — App Store / public-launch requirement. The
+                  pages already exist; this is the entry point to them. */}
+              <div className="space-y-2 border-t border-white/10 pt-3">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-neutral-500">{t.legalLabel}</p>
+                <Link
+                  href={`/${locale}/privacy`}
+                  onClick={() => setMenuOpen(false)}
+                  className="inline-flex w-full items-center gap-2.5 rounded-xl border border-white/10 bg-black px-3 py-2.5 text-xs font-medium text-neutral-300 transition-colors hover:border-[#00D2FF]/40 hover:text-[#00D2FF]"
+                >
+                  <Shield className="h-4 w-4" /> {t.privacy}
+                </Link>
+                <Link
+                  href={`/${locale}/terms`}
+                  onClick={() => setMenuOpen(false)}
+                  className="inline-flex w-full items-center gap-2.5 rounded-xl border border-white/10 bg-black px-3 py-2.5 text-xs font-medium text-neutral-300 transition-colors hover:border-[#00D2FF]/40 hover:text-[#00D2FF]"
+                >
+                  <FileText className="h-4 w-4" /> {t.terms}
+                </Link>
+                <Link
+                  href={`/${locale}/support`}
+                  onClick={() => setMenuOpen(false)}
+                  className="inline-flex w-full items-center gap-2.5 rounded-xl border border-white/10 bg-black px-3 py-2.5 text-xs font-medium text-neutral-300 transition-colors hover:border-[#00D2FF]/40 hover:text-[#00D2FF]"
+                >
+                  <LifeBuoy className="h-4 w-4" /> {t.support}
+                </Link>
+              </div>
             </div>
           </aside>
         </div>
