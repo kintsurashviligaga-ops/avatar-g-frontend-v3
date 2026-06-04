@@ -931,6 +931,18 @@ a {
   }
 }
 
+/*
+ * Apple App Store IAP compliance (Guideline 3.1.1).
+ * The native iOS shell (Capacitor wrapper) sets data-native-ios="1" on <html>
+ * before first paint. Inside it, every external (Stripe / web) purchase entry
+ * point must be hidden — digital credits are bought on the web, never in-app
+ * through a non-IAP mechanism. Tag any such CTA with `data-iap-external`.
+ * In a normal browser the attribute is absent, so nothing is hidden.
+ */
+html[data-native-ios='1'] [data-iap-external] {
+  display: none !important;
+}
+
 /* Focus-visible ring for keyboard navigation accessibility */
 :focus-visible {
   outline: 2px solid var(--color-accent);

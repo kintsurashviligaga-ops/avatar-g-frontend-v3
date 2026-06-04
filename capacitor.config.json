@@ -20,7 +20,8 @@
     "contentInset": "always",
     "scrollEnabled": true,
     "allowsLinkPreview": false,
-    "preferredContentMode": "mobile"
+    "preferredContentMode": "mobile",
+    "appendUserAgent": "MyAvatarApp"
   },
   "plugins": {
     "SplashScreen": {

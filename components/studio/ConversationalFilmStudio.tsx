@@ -993,6 +993,8 @@ export function ConversationalFilmStudio({
                 type="button"
                 onClick={openWallet}
                 aria-label={t.topUp}
+                // Apple IAP compliance: hidden inside the native iOS shell (top-up is a web/Stripe purchase).
+                data-iap-external
                 className="flex items-center gap-1 border-l border-white/10 bg-[#00D2FF]/10 px-2 py-1.5 text-xs font-bold text-[#00D2FF] transition-colors hover:bg-[#00D2FF]/20 touch-manipulation"
               >
                 <Plus className="h-3.5 w-3.5" />

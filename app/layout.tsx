@@ -228,6 +228,19 @@ export default async function RootLayout({
 					type="application/ld+json"
 					dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
 				/>
+				{/*
+				  Native iOS shell detection (Capacitor wrapper) — runs before
+				  first paint so external-purchase CTAs never flash. Apple
+				  Guideline 3.1.1: in-app digital purchases must use Apple IAP, so
+				  inside the iOS shell we hide every Stripe/web purchase entry
+				  (a global CSS rule hides [data-iap-external] under this attr).
+				  In a normal browser the attribute is never set → Stripe stays.
+				*/}
+				<script
+					dangerouslySetInnerHTML={{
+						__html: `(function(){try{var ua=navigator.userAgent||'';var c=window.Capacitor;var ios=(c&&c.isNativePlatform&&c.isNativePlatform()&&c.getPlatform&&c.getPlatform()==='ios')||(/iPhone|iPad|iPod/i.test(ua)&&/MyAvatarApp/i.test(ua));if(ios){document.documentElement.setAttribute('data-native-ios','1');}}catch(_){}})();`,
+					}}
+				/>
 			</head>
 			<body className="font-sans antialiased">
 				<PostHogProvider>

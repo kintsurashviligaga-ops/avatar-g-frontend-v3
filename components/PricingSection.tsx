@@ -137,6 +137,8 @@ export function PricingSection() {
                         ? `/${locale}/signup`
                         : `/${locale}/signup?plan=${plan.name.toLowerCase()}`
                     }
+                    // Apple IAP compliance: paid-plan CTA hidden inside the iOS shell.
+                    {...(plan.price === 0 ? {} : { 'data-iap-external': true })}
                     className={`block text-center py-3.5 rounded-xl font-bold text-sm transition-all duration-300 ${
                       isPopular
                         ? 'bg-gradient-to-r from-cyan-500 to-blue-600 text-white hover:shadow-[0_0_40px_rgba(6,182,212,0.3)] hover:brightness-110'
