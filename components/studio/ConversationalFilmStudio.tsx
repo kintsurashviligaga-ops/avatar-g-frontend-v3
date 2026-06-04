@@ -783,6 +783,22 @@ export function ConversationalFilmStudio({
 
   const handleSend = useCallback(() => {
     if (!canSend) return;
+    // Generation requires an account: the final cut (/api/video/assemble) is
+    // auth-gated, so an anonymous user would render clips for ~2 min only to
+    // fail at the stitch step. Prompt sign-in UP FRONT and open the menu (which
+    // hosts the Sign in / Sign up links) instead of starting a doomed render.
+    if (!isAuthenticated) {
+      pushMessage(
+        'system',
+        locale === 'ka'
+          ? 'ფილმის შესაქმნელად ჯერ გაიარე ავტორიზაცია — ერთ წამში. შენი ნამუშევარი ანგარიშზე შეინახება.'
+          : locale === 'ru'
+            ? 'Войдите, чтобы создать фильм — это займёт секунду. Ваша работа сохранится в аккаунте.'
+            : 'Please sign in to create your film — it takes a second, and your work is saved to your account.',
+      );
+      setMenuOpen(true);
+      return;
+    }
     // Finalize any in-flight dictation so the recognizer releases the mic before
     // the prompt is dispatched.
     try {
@@ -796,7 +812,7 @@ export function ConversationalFilmStudio({
     lastPromptRef.current = userPrompt;
     pushMessage('user', userPrompt);
     void runReal(userPrompt);
-  }, [canSend, input, pushMessage, runReal]);
+  }, [canSend, isAuthenticated, locale, input, pushMessage, runReal]);
 
   // Re-run the most recent prompt after a failure — one tap instead of retyping.
   const handleRetry = useCallback(() => {
