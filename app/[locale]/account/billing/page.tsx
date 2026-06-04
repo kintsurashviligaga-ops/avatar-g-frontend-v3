@@ -9,8 +9,12 @@ import { Button } from '@/components/ui/button';
 import { useSubscriptionStatus } from '@/hooks/useSubscriptionStatus';
 import type { FinanceSummaryResponse } from '@/lib/types/finance';
 
-export const dynamic = 'force-dynamic';
-export const revalidate = 0;
+// NOTE: no `export const dynamic` / `revalidate` here. This is a Client
+// Component ('use client' above) and route-segment config is only valid in
+// Server Components — leaving them in made Next read `revalidate` as
+// "[object Object]" and 500 the entire route. The page fetches its data on the
+// client, so it needs no segment config; if dynamic rendering is ever required
+// it must be declared from a Server Component (e.g. a sibling layout.tsx).
 
 export default function AccountBillingPage() {
   const t = useTranslations('billing');
