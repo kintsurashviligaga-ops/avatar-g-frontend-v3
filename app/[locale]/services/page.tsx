@@ -1,5 +1,6 @@
 ﻿import Link from 'next/link';
 import Image from 'next/image';
+import type { Metadata } from 'next';
 import type { ComponentType } from 'react';
 import { ServiceCardVisual } from '@/components/ui/ServiceCardVisual';
 import {
@@ -36,6 +37,38 @@ import {
 type ServicesPageProps = {
   params: Promise<{ locale: string }>;
 };
+
+// Localized metadata for the services hub. Previously this top-level,
+// high-traffic page inherited the generic locale-layout title (and an
+// always-Georgian description, even on /en and /ru) — fixed here per locale
+// with a self-referential canonical and matching social cards.
+const SERVICES_META: Record<string, { title: string; description: string }> = {
+  ka: { title: 'ყველა AI სერვისი', description: 'ერთ სივრცეში — ჩატი, სურათი, ვიდეო, მუსიკა, ხმა, ავატარი, ინტერიერი და აპლიკაციის შემქმნელი.' },
+  en: { title: 'All AI Services', description: 'One window — chat, image, video, music, voice, avatar, interior design and an app builder.' },
+  ru: { title: 'Все AI-сервисы', description: 'В одном окне — чат, изображения, видео, музыка, голос, аватар, дизайн интерьера и конструктор приложений.' },
+};
+const SERVICES_OG_LOCALE: Record<string, string> = { ka: 'ka_GE', en: 'en_US', ru: 'ru_RU' };
+
+export async function generateMetadata({ params }: ServicesPageProps): Promise<Metadata> {
+  const { locale } = await params;
+  const m = SERVICES_META[locale] ?? SERVICES_META['en']!;
+  const canonical = `/${locale}/services`;
+  return {
+    title: m.title,
+    description: m.description,
+    alternates: { canonical },
+    openGraph: {
+      type: 'website',
+      title: m.title,
+      description: m.description,
+      url: canonical,
+      siteName: 'MyAvatar',
+      locale: SERVICES_OG_LOCALE[locale] ?? 'en_US',
+      images: [{ url: '/og-image.png', width: 1200, height: 630, alt: m.title }],
+    },
+    twitter: { card: 'summary_large_image', title: m.title, description: m.description, images: ['/og-image.png'] },
+  };
+}
 
 type ServiceId =
   | 'avatar'
