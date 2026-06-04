@@ -42,6 +42,10 @@ type ProviderReadiness = {
   resolvedAlias: string | null;
   canonicalEnv: string;
   checkedAliases: readonly string[];
+  /** Per-alias presence (names + booleans ONLY, never values). Lets us see, for
+   *  diagnostics, exactly WHICH env aliases the deploy has set — e.g. whether a
+   *  funded key lives under a non-resolved alias (the LTX key-mismatch case). */
+  presentAliases: { name: string; present: boolean }[];
 };
 
 function describe(
@@ -59,6 +63,10 @@ function describe(
     resolvedAlias,
     canonicalEnv: aliases[0] ?? '',
     checkedAliases: aliases,
+    presentAliases: aliases.map((name) => ({
+      name,
+      present: typeof process.env[name] === 'string' && process.env[name]!.trim().length > 0,
+    })),
   };
 }
 
