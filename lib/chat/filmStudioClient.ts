@@ -187,7 +187,7 @@ export function everyClipLanded(matrix: FilmStudioMatrix | null): boolean {
  * poll is a cheap status check (not a long-running function), so a generous
  * window costs almost nothing and lets slow-but-successful renders land + salvage.
  */
-export const DEFAULT_FILM_MAX_POLL_MS = 900_000;
+export const DEFAULT_FILM_MAX_POLL_MS = 1_200_000;
 
 /**
  * A compact, comparable signature of every leg's observable state. The driver

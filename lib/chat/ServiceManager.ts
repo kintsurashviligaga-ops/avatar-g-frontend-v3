@@ -22,6 +22,13 @@ type ResponseType = 'text' | 'image' | 'video' | 'audio' | 'analysis' | 'action_
 
 const LTX_BASE_URL = 'https://api.ltx.video';
 const HEYGEN_BASE_URL = 'https://api.heygen.com';
+// PHASE 60 — Replicate-hosted LTX-Video (the SAME Lightricks model) used as the
+// default render path: the direct api.ltx.video account was charging-but-never-
+// completing in prod, while this funded, verified Replicate model generates real
+// mp4s end-to-end. Pinned version is env-overridable for a clean future bump.
+const REPLICATE_LTX_VIDEO_VERSION =
+  process.env.REPLICATE_LTX_VIDEO_VERSION ||
+  '8c47da666861d081eeb4d1261853087de23923a268a69b63febdf5dc1dee08e4';
 const TASK_REF_VERSION = 1;
 
 // PHASE 47 §3 — Radical agent recovery. A film clip's LTX dispatch is retried up
@@ -245,7 +252,112 @@ export class ServiceManager {
       return this.runHeygenAvatarVideo(request);
     }
 
+    // PHASE 60 — Default the LTX render path to Replicate-hosted lightricks/ltx-video
+    // (same model, funded + verified end-to-end). The direct api.ltx.video account
+    // charged-but-never-completed in prod (clips stuck 0/5). Opt out with
+    // LTX_VIA_REPLICATE=0 once the direct account is healthy.
+    if (process.env.LTX_VIA_REPLICATE !== '0' && typeof process.env.REPLICATE_API_TOKEN === 'string' && process.env.REPLICATE_API_TOKEN.trim()) {
+      return this.runReplicateLtxVideo(request);
+    }
+
     return this.runLtxVideo(request);
+  }
+
+  /**
+   * PHASE 60 — Dispatch a clip to Replicate-hosted `lightricks/ltx-video` (the
+   * same Lightricks model), returning a `replicate` task-ref so the EXISTING,
+   * proven Replicate poll path (pollReplicateTask → normalizeOutput('video'))
+   * resolves the mp4. Self-contained: the input is the model's exact schema
+   * ({prompt, aspect_ratio, length, target_size, [image]}), so it never collides
+   * with the shared zeroscope input builder. renderClip's retry loop covers a
+   * transient create failure (this throws on a non-2xx create).
+   */
+  private async runReplicateLtxVideo(request: ServiceManagerRequest): Promise<ServiceManagerResponse> {
+    const token = process.env.REPLICATE_API_TOKEN;
+    if (!token) return this.runLtxVideo(request); // safety net: no token → direct API
+    const promptHash = this.hashPrompt(request.userPrompt);
+    const aspect =
+      this.normalizeAspectRatio(this.getOption(request.selectedOptions || {}, ['aspect', 'aspectRatio', 'ratio'])) ||
+      '16:9';
+    const input: Record<string, unknown> = {
+      prompt: request.userPrompt,
+      aspect_ratio: aspect,
+      length: 97,
+      target_size: 640,
+    };
+    // Image-to-video anchor when a parent frame is supplied.
+    if (request.imageUrl && /^https?:\/\//i.test(request.imageUrl)) {
+      input.image = request.imageUrl;
+    }
+
+    const res = await fetch('https://api.replicate.com/v1/predictions', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      cache: 'no-store',
+      body: JSON.stringify({ version: REPLICATE_LTX_VIDEO_VERSION, input }),
+    });
+    if (!res.ok) {
+      const txt = await res.text().catch(() => '');
+      throw new Error(`Replicate LTX-video create failed (${res.status}): ${txt.slice(0, 180)}`);
+    }
+    const pred = (await res.json().catch(() => ({}))) as { id?: string; status?: string; output?: unknown };
+    if (!pred.id) {
+      throw new Error('Replicate LTX-video returned no prediction id');
+    }
+    // Rare immediate completion — hand back the URL straight away.
+    const immediateUrl = this.extractUrl(pred.output);
+    if (pred.status === 'succeeded' && immediateUrl) {
+      return {
+        success: true,
+        provider: 'replicate',
+        operation: 'video-avatar',
+        responseType: 'video',
+        message: 'Video generation completed successfully.',
+        assetUrl: immediateUrl,
+        assetType: 'video',
+        predictionStatus: 'succeeded',
+        metadata: {
+          provider: 'replicate',
+          model: 'lightricks/ltx-video',
+          operation: 'video-avatar',
+          outputType: 'video',
+          sessionId: request.sessionId,
+          providerTaskId: pred.id,
+          promptHash,
+        },
+      };
+    }
+
+    const taskRef = this.encodeTaskRef({
+      provider: 'replicate',
+      providerTaskId: pred.id,
+      sessionId: request.sessionId,
+      serviceContext: request.serviceContext,
+      intent: request.intent,
+      operation: 'video-avatar',
+      responseType: 'video',
+      promptHash,
+      createdAt: Date.now(),
+    });
+    return {
+      success: true,
+      provider: 'replicate',
+      operation: 'video-avatar',
+      responseType: 'video',
+      message: 'LTX-Video (Replicate) accepted the request. Polling for completion.',
+      predictionId: taskRef,
+      predictionStatus: pred.status === 'failed' ? 'failed' : 'processing',
+      metadata: {
+        provider: 'replicate',
+        model: 'lightricks/ltx-video',
+        operation: 'video-avatar',
+        outputType: 'video',
+        sessionId: request.sessionId,
+        taskRef,
+        providerTaskId: pred.id,
+        promptHash,
+      },
+    };
   }
 
   private async runNanoBananaImage(request: ServiceManagerRequest): Promise<ServiceManagerResponse> {
