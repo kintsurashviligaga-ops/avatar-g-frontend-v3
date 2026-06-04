@@ -417,6 +417,58 @@ type SpeechRecognitionLike = {
 
 // ─── Component ─────────────────────────────────────────────────────────────────
 
+// ─── Reload-recovery for an in-flight film ───────────────────────────────────
+// A 30-second film renders for 1–2 min. If the tab is reloaded or backgrounded
+// out mid-render, the run used to be lost. We persist the union poll token the
+// moment a render starts and re-attach to it on remount, so an interrupted film
+// resumes instead of vanishing. Best-effort throughout — storage failures never
+// break a render.
+const FILM_INFLIGHT_KEY = 'myavatar:film:inflight';
+const FILM_INFLIGHT_TTL_MS = 1_500_000; // 25 min — matches the driver's max poll window.
+
+type InflightFilm = { predictionId: string; sessionId: string; prompt: string; locale: string; ts: number };
+
+function persistInflightFilm(v: Omit<InflightFilm, 'ts'>): void {
+  try {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem(FILM_INFLIGHT_KEY, JSON.stringify({ ...v, ts: Date.now() }));
+  } catch {
+    /* storage unavailable/full — recovery is best-effort */
+  }
+}
+
+function clearInflightFilm(): void {
+  try {
+    if (typeof window !== 'undefined') window.localStorage.removeItem(FILM_INFLIGHT_KEY);
+  } catch {
+    /* noop */
+  }
+}
+
+function readInflightFilm(): InflightFilm | null {
+  try {
+    if (typeof window === 'undefined') return null;
+    const raw = window.localStorage.getItem(FILM_INFLIGHT_KEY);
+    if (!raw) return null;
+    const v = JSON.parse(raw) as Partial<InflightFilm>;
+    if (!v || typeof v.predictionId !== 'string' || typeof v.sessionId !== 'string') return null;
+    // Expired tokens point at jobs that are surely done + cleared; drop them.
+    if (typeof v.ts !== 'number' || Date.now() - v.ts > FILM_INFLIGHT_TTL_MS) {
+      clearInflightFilm();
+      return null;
+    }
+    return {
+      predictionId: v.predictionId,
+      sessionId: v.sessionId,
+      prompt: typeof v.prompt === 'string' ? v.prompt : '',
+      locale: typeof v.locale === 'string' ? v.locale : 'ka',
+      ts: v.ts,
+    };
+  } catch {
+    return null;
+  }
+}
+
 export function ConversationalFilmStudio({
   locale = 'ka',
   isAuthenticated = false,
@@ -475,6 +527,9 @@ export function ConversationalFilmStudio({
   const feedEndRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const lastPromptRef = useRef<string>('');
+  // Guards the one-shot reload-recovery so a StrictMode double-mount (or a late
+  // re-render) can't kick off two resume attempts for the same film.
+  const recoveredRef = useRef(false);
 
   const pushMessage = useCallback((role: ChatMsg['role'], text: string) => {
     setMessages((prev) => [...prev, { id: msgIdRef.current++, role, text }]);
@@ -648,29 +703,37 @@ export function ConversationalFilmStudio({
   }, []);
 
   const runReal = useCallback(
-    async (userPrompt: string) => {
+    async (userPrompt: string, resume?: { predictionId: string; sessionId: string }) => {
       setError(null);
       setMasterUrl(null);
       setPreviewUrl(null);
       setSelectedSceneUrl(null);
-      setProgress({ phase: 'dispatching', matrix: null, message: '', masterUrl: null, previewUrl: null });
+      setProgress({ phase: resume ? 'rendering' : 'dispatching', matrix: null, message: '', masterUrl: null, previewUrl: null });
       setDriving(true);
       pushMessage('system', t.producing);
       // PostHog funnel entry — credits is 0 on a free founder slot, else the
       // real GEL estimate. safeCapture is a no-op without a key, never throws.
+      // On RESUME the funnel was already entered before the reload, so we don't
+      // re-count the start — only the eventual success/failure is recorded.
       const billedGel = isFreeFilm ? 0 : estCost;
       const startedAt = Date.now();
-      analytics.generationStarted('film', billedGel);
+      if (!resume) analytics.generationStarted('film', billedGel);
 
       const ctrl = new AbortController();
       abortRef.current = ctrl;
       try {
         const res = await driveFilmStudio({
           prompt: userPrompt,
-          referenceImages: slots.filter((s): s is Slot => !!s).map((s) => s.dataUrl),
+          // A resume only re-attaches to the existing job; the reference images
+          // were already consumed by the original dispatch.
+          referenceImages: resume ? [] : slots.filter((s): s is Slot => !!s).map((s) => s.dataUrl),
           locale,
           signal: ctrl.signal,
           onProgress: (p) => setProgress(p),
+          ...(resume ? { resume } : {}),
+          // Persist the token the moment it's known so a reload can recover it.
+          onDispatched: ({ predictionId, sessionId }) =>
+            persistInflightFilm({ predictionId, sessionId, prompt: userPrompt, locale }),
         });
         setMasterUrl(res.masterUrl);
         setPreviewUrl(res.previewUrl);
@@ -690,6 +753,9 @@ export function ConversationalFilmStudio({
         analytics.generationFailed('film', message);
         reportError(err, { surface: 'ConversationalFilmStudio', action: 'film_generation', locale });
       } finally {
+        // The render settled (success / failure / cancel) — drop the recovery
+        // token so the next page load doesn't try to resume a finished film.
+        clearInflightFilm();
         setDriving(false);
         abortRef.current = null;
         // Re-sync the free-film count + GEL balance from the server — a
@@ -702,6 +768,18 @@ export function ConversationalFilmStudio({
     },
     [slots, locale, pushMessage, t.producing, t.ready, t.failed, refreshFreeFilms, refreshBalance, estCost, isFreeFilm],
   );
+
+  // Reload-recovery: on first mount, if a film was mid-render when the tab was
+  // reloaded/closed, re-attach to that job by its persisted poll token and
+  // resume the tracker — the render isn't lost. One-shot via recoveredRef.
+  useEffect(() => {
+    if (recoveredRef.current) return;
+    recoveredRef.current = true;
+    const inflight = readInflightFilm();
+    if (!inflight) return;
+    lastPromptRef.current = inflight.prompt;
+    void runReal(inflight.prompt, { predictionId: inflight.predictionId, sessionId: inflight.sessionId });
+  }, [runReal]);
 
   const handleSend = useCallback(() => {
     if (!canSend) return;

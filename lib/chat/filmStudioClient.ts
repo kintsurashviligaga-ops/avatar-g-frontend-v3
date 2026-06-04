@@ -89,6 +89,20 @@ export interface DriveFilmOptions {
   maxPollMs?: number;
   /** Max time with NO forward progress before failing fast (anti-stall). */
   stallMs?: number;
+  /**
+   * Resume an already-dispatched render instead of starting a new one. Used for
+   * reload-recovery: the client persists the union poll token + sessionId when a
+   * render starts, and on remount re-attaches to that job (skips dispatch, polls
+   * straight away) so an interrupted film picks up where it left off rather than
+   * being lost.
+   */
+  resume?: { predictionId: string; sessionId: string };
+  /**
+   * Fires once the union poll token is known (right after dispatch, or on
+   * resume). The caller persists `{ predictionId, sessionId }` so the render can
+   * be recovered after a reload; it's cleared when the run settles.
+   */
+  onDispatched?: (info: { predictionId: string; sessionId: string }) => void;
 }
 
 // ─── Pure helpers (unit-tested) ──────────────────────────────────────────────
@@ -408,7 +422,9 @@ export async function driveFilmStudio(opts: DriveFilmOptions): Promise<FilmStudi
     stallMs = DEFAULT_FILM_STALL_MS,
   } = opts;
 
-  const sessionId = `session_studio_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+  const sessionId =
+    opts.resume?.sessionId ??
+    `session_studio_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
   const message = buildFilmPrompt(prompt);
   const refs = (referenceImages ?? []).filter((s) => typeof s === 'string' && s.length > 0).slice(0, 3);
 
@@ -430,31 +446,53 @@ export async function driveFilmStudio(opts: DriveFilmOptions): Promise<FilmStudi
   };
 
   try {
-    // 1 ── Dispatch
-    emit('dispatching', null, null);
-    const dispatch = await postOrchestrate(
-      {
-        message,
-        sessionId,
-        serviceContext: 'video',
-        locale,
-        ...(refs.length ? { referenceImages: refs } : {}),
-      },
-      signal,
-    );
+    // 1 ── Dispatch (or re-attach to an in-flight render after a reload)
+    let predictionId: string | undefined;
+    let matrix: FilmStudioMatrix | null;
 
-    let predictionId = dispatch.predictionId;
-    let matrix: FilmStudioMatrix | null = dispatch.metadata?.film ?? null;
-
-    if (!predictionId || !matrix) {
-      // No film job dispatched — surface the honest server reason (insufficient
-      // credits, provider not configured, auth) instead of a silent spinner.
-      return fail(
-        (typeof dispatch.message === 'string' && dispatch.message.trim() ? dispatch.message : asErrorText(dispatch.error)) ||
-          'The film service could not start this render.',
-        matrix,
+    if (opts.resume?.predictionId) {
+      // RESUME: skip dispatch, re-attach to the existing job by its union poll
+      // token and pull the current matrix straight away. If the server can't
+      // resolve it (already finished + cleared, or expired), fail gracefully so
+      // the user simply re-runs — never a silent spinner on a dead token.
+      predictionId = opts.resume.predictionId;
+      emit('rendering', null, null);
+      const first = await postOrchestrate({ predictionId, sessionId }, signal);
+      predictionId = first.predictionId ?? predictionId;
+      matrix = first.metadata?.film ?? null;
+      if (!predictionId || !matrix) {
+        return fail('This render could not be resumed — it may have already finished or expired.', matrix);
+      }
+    } else {
+      emit('dispatching', null, null);
+      const dispatch = await postOrchestrate(
+        {
+          message,
+          sessionId,
+          serviceContext: 'video',
+          locale,
+          ...(refs.length ? { referenceImages: refs } : {}),
+        },
+        signal,
       );
+
+      predictionId = dispatch.predictionId;
+      matrix = dispatch.metadata?.film ?? null;
+
+      if (!predictionId || !matrix) {
+        // No film job dispatched — surface the honest server reason (insufficient
+        // credits, provider not configured, auth) instead of a silent spinner.
+        return fail(
+          (typeof dispatch.message === 'string' && dispatch.message.trim() ? dispatch.message : asErrorText(dispatch.error)) ||
+            'The film service could not start this render.',
+          matrix,
+        );
+      }
     }
+
+    // Token is known — let the caller persist { predictionId, sessionId } for
+    // reload-recovery (and refresh it on resume so a second reload still works).
+    opts.onDispatched?.({ predictionId, sessionId });
 
     emit('rendering', matrix, null);
 
