@@ -37,23 +37,30 @@ export const MAX_CLIP_DISPATCH_ATTEMPTS = 4;
 /**
  * Max number of clip dispatches in flight at once. PHASE 60 — the live provider
  * (Replicate, < $5 credit) throttles createPrediction to "6/min, BURST OF 1":
- * two simultaneous calls → one 201, one 429. So we SERIALIZE dispatch (1 at a
- * time); combined with the throttle-aware retry backoff below, every clip gets
- * its own slot instead of 4-of-5 failing. The renders still run in parallel on
- * the provider once accepted — this caps only the create fan-out. Funding the
- * provider past $5 lifts the throttle and a higher value here would parallelize.
+ * two simultaneous calls → one 201, one 429. So we SERIALIZE dispatch (default
+ * 1); combined with the throttle-aware retry backoff below, every clip gets its
+ * own slot instead of 4-of-5 failing. The renders still run in parallel on the
+ * provider once accepted — this caps only the create fan-out.
+ *
+ * ENV-TUNABLE: once the provider balance clears $5 the throttle lifts, so set
+ * `CLIP_DISPATCH_CONCURRENCY=5` (and `CLIP_RETRY_BASE_MS=1500`) in the env to
+ * fan all 5 clips out at once — no redeploy. Clamped to a sane 1..5.
  */
-export const CLIP_DISPATCH_CONCURRENCY = 1;
+export const CLIP_DISPATCH_CONCURRENCY = Math.max(
+  1,
+  Math.min(5, Math.round(Number(process.env.CLIP_DISPATCH_CONCURRENCY) || 1)),
+);
 
 /** Random 0..this delay before each dispatch so a wave's calls de-sync (ms). */
 export const CLIP_DISPATCH_JITTER_MS = 350;
 
 /**
  * First retry waits ~this long; each further retry doubles it (ms). PHASE 60 —
- * set to ~11s because the provider's burst-1 throttle "resets in ~10s"; a sub-
- * second retry just re-trips it. 11s lets the next clip claim the freed slot.
+ * defaults to ~11s because the provider's burst-1 throttle "resets in ~10s"; a
+ * sub-second retry just re-trips it. 11s lets the next clip claim the freed slot.
+ * ENV-TUNABLE (`CLIP_RETRY_BASE_MS`): drop it to ~1500 once the throttle lifts.
  */
-export const CLIP_RETRY_BASE_MS = 11_000;
+export const CLIP_RETRY_BASE_MS = Math.max(500, Math.round(Number(process.env.CLIP_RETRY_BASE_MS) || 11_000));
 
 /** Random 0..this added to every retry so concurrent legs de-sync (ms). */
 export const CLIP_RETRY_JITTER_MS = 400;
