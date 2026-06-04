@@ -46,6 +46,7 @@ import {
   LifeBuoy,
   Share2,
   Check,
+  RefreshCw,
 } from 'lucide-react';
 import { createBrowserClient } from '@/lib/supabase/browser';
 import { ThemeToggle } from '@/components/ThemeToggle';
@@ -144,6 +145,9 @@ const COPY: Record<
     legalLabel: string;
     share: string;
     copied: string;
+    newFilm: string;
+    tryAgain: string;
+    writingStoryboard: string;
   }
 > = {
   ka: {
@@ -207,6 +211,9 @@ const COPY: Record<
     legalLabel: 'სამართლებრივი',
     share: 'გაზიარება',
     copied: 'ბმული დაკოპირდა',
+    newFilm: 'ახალი ფილმი',
+    tryAgain: 'ხელახლა ცდა',
+    writingStoryboard: 'სცენარი იწერება — 5 სცენის რეჟისურა…',
   },
   en: {
     brandSub: 'Cinematic Hub',
@@ -269,6 +276,9 @@ const COPY: Record<
     legalLabel: 'Legal',
     share: 'Share',
     copied: 'Link copied',
+    newFilm: 'New film',
+    tryAgain: 'Try again',
+    writingStoryboard: 'Writing the script — directing 5 scenes…',
   },
   ru: {
     brandSub: 'Кинематографический хаб',
@@ -331,6 +341,9 @@ const COPY: Record<
     legalLabel: 'Правовая информация',
     share: 'Поделиться',
     copied: 'Ссылка скопирована',
+    newFilm: 'Новый фильм',
+    tryAgain: 'Повторить',
+    writingStoryboard: 'Пишется сценарий — режиссура 5 сцен…',
   },
 };
 
@@ -460,6 +473,7 @@ export function ConversationalFilmStudio({
   const abortRef = useRef<AbortController | null>(null);
   const feedEndRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const lastPromptRef = useRef<string>('');
 
   const pushMessage = useCallback((role: ChatMsg['role'], text: string) => {
     setMessages((prev) => [...prev, { id: msgIdRef.current++, role, text }]);
@@ -700,9 +714,31 @@ export function ConversationalFilmStudio({
     setIsRecording(false);
     const userPrompt = input.trim();
     setInput('');
+    lastPromptRef.current = userPrompt;
     pushMessage('user', userPrompt);
     void runReal(userPrompt);
   }, [canSend, input, pushMessage, runReal]);
+
+  // Re-run the most recent prompt after a failure — one tap instead of retyping.
+  const handleRetry = useCallback(() => {
+    const p = lastPromptRef.current.trim();
+    if (!p || driving) return;
+    setError(null);
+    void runReal(p);
+  }, [driving, runReal]);
+
+  // Clean slate for the next film: clears the render + progress so the studio
+  // returns to a pristine canvas (the conversation history is preserved above).
+  const handleNewFilm = useCallback(() => {
+    abortRef.current?.abort();
+    setProgress(null);
+    setMasterUrl(null);
+    setPreviewUrl(null);
+    setSelectedSceneUrl(null);
+    setError(null);
+    setInput('');
+    textareaRef.current?.focus();
+  }, []);
 
   // Toggle native dictation. On START we explicitly probe mic permission via
   // getUserMedia (the clean Safari/iOS path): a denied promise surfaces the
@@ -1037,6 +1073,24 @@ export function ConversationalFilmStudio({
                   </button>
                 )}
               </div>
+
+              {/* Storyboard skeleton — a cinematic shimmer while the script is
+                  being written (before any scene status exists). Reassures the
+                  user that work is happening during the longest silent gap. */}
+              {progress?.phase === 'dispatching' && (
+                <div className="space-y-2">
+                  <p className="text-[11px] font-medium text-[#00D2FF]/80">{t.writingStoryboard}</p>
+                  <div className="space-y-2">
+                    {[0, 1, 2].map((i) => (
+                      <div
+                        key={i}
+                        className="h-3 overflow-hidden rounded-full bg-[linear-gradient(110deg,rgba(255,255,255,0.04)_30%,rgba(0,210,255,0.14)_50%,rgba(255,255,255,0.04)_70%)] bg-[length:200%_100%] animate-shimmer"
+                        style={{ width: `${[92, 78, 60][i]}%` }}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
               {/* Whole-pipeline progress: a thin cyan bar + scene/percent readout,
                   both driven by the unit-tested summarizeFilmPipeline metrics. */}
               <div className="space-y-1.5">
@@ -1136,9 +1190,22 @@ export function ConversationalFilmStudio({
               reads unambiguously as an error (a deliberate exception to the
               black/white/cyan brand palette). */}
           {error && (
-            <div className="flex items-start gap-2.5 rounded-2xl border border-red-500/30 bg-red-500/5 p-4 text-xs text-red-300">
-              <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
-              <span>{error}</span>
+            <div className="space-y-3 rounded-2xl border border-red-500/30 bg-red-500/5 p-4 text-xs text-red-300">
+              <div className="flex items-start gap-2.5">
+                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                <span>{error}</span>
+              </div>
+              {/* Action-oriented recovery: one tap re-runs the last prompt. */}
+              {!driving && lastPromptRef.current.trim() && (
+                <button
+                  type="button"
+                  onClick={handleRetry}
+                  className="inline-flex min-h-[40px] items-center gap-2 rounded-xl border border-white/15 bg-black px-4 py-2 text-xs font-semibold text-white transition-colors hover:border-[#00D2FF]/50 hover:text-[#00D2FF]"
+                >
+                  <RefreshCw className="h-4 w-4" />
+                  {t.tryAgain}
+                </button>
+              )}
             </div>
           )}
 
@@ -1156,6 +1223,19 @@ export function ConversationalFilmStudio({
               shareLabel={t.share}
               copiedLabel={t.copied}
             />
+          )}
+
+          {/* Start-over — once a master is assembled (or the run failed), offer a
+              clean slate so the next film doesn't pile under the old one. */}
+          {!driving && (masterUrl || (finished && !heroPreviewUrl) || (error && lastPromptRef.current.trim())) && (
+            <button
+              type="button"
+              onClick={handleNewFilm}
+              className="inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-2xl border border-white/10 bg-black px-4 py-3 text-xs font-bold uppercase tracking-widest text-neutral-200 transition-colors hover:border-[#00D2FF]/50 hover:text-[#00D2FF]"
+            >
+              <Plus className="h-4 w-4" />
+              {t.newFilm}
+            </button>
           )}
 
           <div ref={feedEndRef} />
@@ -1283,7 +1363,10 @@ export function ConversationalFilmStudio({
                 <X className="h-4 w-4" />
               </button>
             </div>
-            <div className="flex flex-col gap-2 p-4">
+            <div
+              className="flex flex-1 flex-col gap-2 overflow-y-auto p-4"
+              style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom, 0px))' }}
+            >
               {/* Field 1 — Account details. Non-interactive identity line: the
                   authenticated email, or the localized "Guest" label when
                   anonymous. Truncates gracefully for long addresses. */}
