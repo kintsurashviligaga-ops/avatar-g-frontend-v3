@@ -49,6 +49,7 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import { createBrowserClient } from '@/lib/supabase/browser';
+import { DeleteAccountButton } from '@/components/account/DeleteAccountButton';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { WalletRefillModal } from '@/components/chat/WalletRefill';
 import { analytics } from '@/components/analytics/PostHogProvider';
@@ -1461,6 +1462,11 @@ export function ConversationalFilmStudio({
                 </button>
               )}
 
+              {/* Delete account — Apple App Store Guideline 5.1.1(v): an
+                  account-based app must let users delete their account from
+                  within the app. Type-to-confirm modal lives in the component. */}
+              {isAuthenticated && <DeleteAccountButton locale={locale} />}
+
               {/* Legal + Support — App Store / public-launch requirement. The
                   pages already exist; this is the entry point to them. */}
               <div className="space-y-2 border-t border-white/10 pt-3">
@@ -1548,6 +1554,7 @@ function FilmSceneCard({
     <button
       type="button"
       disabled={!hasClip}
+      aria-label={`${sceneWord} ${n} — ${statusLabel}`}
       // Staggered entrance so the gallery assembles like a film strip, not a pop.
       style={{ animationDelay: `${Math.min(index, 5) * 70}ms` }}
       onClick={() => hasClip && onPreview(previewUrl as string)}
@@ -1584,6 +1591,8 @@ function FilmSceneCard({
           loop
           playsInline
           preload="metadata"
+          aria-hidden="true"
+          tabIndex={-1}
           className="absolute inset-0 h-full w-full object-cover opacity-90 transition-opacity duration-300 group-hover:opacity-100"
         />
       ) : isActive ? (
