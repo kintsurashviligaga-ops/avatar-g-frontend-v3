@@ -34,7 +34,12 @@ export const maxDuration = 300;
 
 const orchestrateSchema = z.object({
   // ── Core fields ──
-  message: z.string().min(1).max(4000),
+  // Optional at the schema level: a POLL request sends ONLY { predictionId,
+  // sessionId } and carries no message. A `.refine` below requires `message`
+  // for the dispatch path. (Previously this was required outright, so every
+  // poll — which the whole film/video render loop depends on — 400'd with
+  // "Invalid request" and the UI froze at "processing" forever.)
+  message: z.string().min(1).max(4000).optional(),
   sessionId: z.string().optional(),
   serviceContext: z.string().default('global'),
   agentId: z.string().optional(),
@@ -69,7 +74,13 @@ const orchestrateSchema = z.object({
   serviceId: z.string().optional(),
   demoMode: z.boolean().default(false),
   metadata: z.record(z.unknown()).optional(),
-});
+}).refine(
+  // Dispatch needs a message; a poll needs a predictionId. Require exactly one
+  // of those entry points so neither a blank dispatch nor a malformed poll slips
+  // through, while a normal { predictionId } poll is accepted.
+  (d) => Boolean(d.predictionId) || Boolean(d.message && d.message.trim().length > 0),
+  { message: 'message is required', path: ['message'] },
+);
 
 // ─── POST handler ────────────────────────────────────────────────────────────
 
@@ -101,7 +112,10 @@ export async function POST(req: NextRequest) {
 
     const userId = gate.auth?.userId || 'anonymous';
 
-    const rawMessage = data.message.trim();
+    // Guaranteed present here: the poll path returned above, and the schema
+    // refine requires `message` whenever there's no predictionId. The `?? ''`
+    // just satisfies the optional type without a non-null assertion.
+    const rawMessage = (data.message ?? '').trim();
     const detectedIntent = detectIntent(rawMessage, data.serviceContext);
     const preservePrompt = detectedIntent.intent === 'image_generation'
       || detectedIntent.intent === 'photo_edit'
