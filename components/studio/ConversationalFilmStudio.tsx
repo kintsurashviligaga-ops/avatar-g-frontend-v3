@@ -44,6 +44,8 @@ import {
   Shield,
   FileText,
   LifeBuoy,
+  Share2,
+  Check,
 } from 'lucide-react';
 import { createBrowserClient } from '@/lib/supabase/browser';
 import { ThemeToggle } from '@/components/ThemeToggle';
@@ -140,6 +142,8 @@ const COPY: Record<
     terms: string;
     support: string;
     legalLabel: string;
+    share: string;
+    copied: string;
   }
 > = {
   ka: {
@@ -201,6 +205,8 @@ const COPY: Record<
     terms: 'წესები და პირობები',
     support: 'დახმარება',
     legalLabel: 'სამართლებრივი',
+    share: 'გაზიარება',
+    copied: 'ბმული დაკოპირდა',
   },
   en: {
     brandSub: 'Cinematic Hub',
@@ -261,6 +267,8 @@ const COPY: Record<
     terms: 'Terms of Service',
     support: 'Support',
     legalLabel: 'Legal',
+    share: 'Share',
+    copied: 'Link copied',
   },
   ru: {
     brandSub: 'Кинематографический хаб',
@@ -321,6 +329,8 @@ const COPY: Record<
     terms: 'Условия использования',
     support: 'Поддержка',
     legalLabel: 'Правовая информация',
+    share: 'Поделиться',
+    copied: 'Ссылка скопирована',
   },
 };
 
@@ -1143,6 +1153,8 @@ export function ConversationalFilmStudio({
               isScenePreview={!masterUrl && !!selectedSceneUrl}
               headline={masterUrl ? t.masterReady : selectedSceneUrl ? `${roleSceneLabel} · ${t.statReady}` : t.firstScene}
               openLabel={t.openMaster}
+              shareLabel={t.share}
+              copiedLabel={t.copied}
             />
           )}
 
@@ -1453,6 +1465,8 @@ function FilmSceneCard({
     <button
       type="button"
       disabled={!hasClip}
+      // Staggered entrance so the gallery assembles like a film strip, not a pop.
+      style={{ animationDelay: `${Math.min(index, 5) * 70}ms` }}
       onClick={() => hasClip && onPreview(previewUrl as string)}
       onMouseEnter={(e) => {
         const v = e.currentTarget.querySelector('video') as HTMLVideoElement | null;
@@ -1466,7 +1480,7 @@ function FilmSceneCard({
         }
       }}
       className={[
-        'group relative aspect-video overflow-hidden rounded-xl border text-left transition-all duration-300',
+        'group relative aspect-video overflow-hidden rounded-xl border text-left transition-all duration-300 motion-safe:animate-fade-in',
         hasClip ? 'cursor-pointer' : 'cursor-default',
         isFailed
           ? 'border-red-500/30 bg-red-500/5'
@@ -1549,13 +1563,39 @@ function FilmPreviewPlayer({
   isScenePreview,
   headline,
   openLabel,
+  shareLabel,
+  copiedLabel,
 }: {
   url: string;
   isMaster: boolean;
   isScenePreview: boolean;
   headline: string;
   openLabel: string;
+  shareLabel: string;
+  copiedLabel: string;
 }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleShare = useCallback(async () => {
+    // Native share sheet first (mobile/PWA); fall back to copying the link.
+    const nav = typeof navigator !== 'undefined' ? navigator : undefined;
+    try {
+      if (nav?.share) {
+        await nav.share({ title: 'MyAvatar.ge — 30-second film', url });
+        return;
+      }
+    } catch {
+      /* user dismissed the share sheet — fall through to copy */
+    }
+    try {
+      await nav?.clipboard?.writeText(url);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2200);
+    } catch {
+      /* clipboard blocked — the Download link remains the reliable path */
+    }
+  }, [url]);
+
   return (
     <div
       className={[
@@ -1579,15 +1619,33 @@ function FilmPreviewPlayer({
           )}
           <span className="truncate">{headline}</span>
         </div>
-        <a
-          href={url}
-          target="_blank"
-          rel="noopener noreferrer"
-          download
-          className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-white/10 px-2.5 py-1 text-[11px] font-semibold text-neutral-300 transition-colors hover:border-[#00D2FF]/50 hover:text-[#00D2FF]"
-        >
-          <Download className="h-3 w-3" /> {openLabel}
-        </a>
+        <div className="flex shrink-0 items-center gap-1.5">
+          {/* Share — only for the finished master; a scene preview isn't shareable yet. */}
+          {isMaster && (
+            <button
+              type="button"
+              onClick={handleShare}
+              className={[
+                'inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[11px] font-semibold transition-colors',
+                copied
+                  ? 'border-[#00D2FF]/60 text-[#00D2FF]'
+                  : 'border-white/10 text-neutral-300 hover:border-[#00D2FF]/50 hover:text-[#00D2FF]',
+              ].join(' ')}
+            >
+              {copied ? <Check className="h-3 w-3" /> : <Share2 className="h-3 w-3" />}
+              {copied ? copiedLabel : shareLabel}
+            </button>
+          )}
+          <a
+            href={url}
+            target="_blank"
+            rel="noopener noreferrer"
+            download
+            className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 px-2.5 py-1 text-[11px] font-semibold text-neutral-300 transition-colors hover:border-[#00D2FF]/50 hover:text-[#00D2FF]"
+          >
+            <Download className="h-3 w-3" /> {openLabel}
+          </a>
+        </div>
       </div>
       <div
         className={[
