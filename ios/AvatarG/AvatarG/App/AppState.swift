@@ -123,6 +123,27 @@ final class AppState: ObservableObject {
         APIClient.shared.setAuthToken(nil)
     }
 
+    /// Permanently deletes the signed-in user's account (Apple App Store
+    /// Guideline 5.1.1(v): account-based apps must offer in-app deletion), then
+    /// signs out locally. The server derives the user from the bearer token, so
+    /// only the caller's own account can ever be removed; every user-owned table
+    /// cascades from auth.users on delete. On failure the session is kept intact
+    /// and `globalError` is surfaced.
+    @discardableResult
+    func deleteAccount() async -> Bool {
+        struct DeleteAccountResponse: Decodable { let ok: Bool? }
+        isLoading = true
+        defer { isLoading = false }
+        do {
+            let _: DeleteAccountResponse = try await APIClient.shared.post(.deleteAccount, body: [String: String]())
+            signOut()
+            return true
+        } catch {
+            globalError = "Account deletion failed. Please try again."
+            return false
+        }
+    }
+
     func updateCredits(_ newAmount: Int) {
         credits = newAmount
         currentUser?.credits = newAmount

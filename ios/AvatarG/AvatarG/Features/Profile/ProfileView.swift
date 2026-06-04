@@ -61,7 +61,10 @@ struct ProfileView: View {
             Text("Are you sure you want to sign out?")
         }
         .alert("Delete Account", isPresented: $showDeleteConfirm) {
-            Button("Delete", role: .destructive) {}
+            Button("Delete", role: .destructive) {
+                // Apple Guideline 5.1.1(v): actually delete the account in-app.
+                Task { await appState.deleteAccount() }
+            }
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("This action cannot be undone. All your data will be permanently deleted.")

@@ -34,6 +34,7 @@ enum Endpoint {
     // User
     case userProfile
     case updateProfile
+    case deleteAccount
 
     // Jam Sessions (Phase 6)
     case jamCreate
@@ -84,6 +85,8 @@ enum Endpoint {
             return "/api/user/profile"
         case .updateProfile:
             return "/api/user/profile"
+        case .deleteAccount:
+            return "/api/account/delete"
         case .jamCreate:
             return "/api/jam/create"
         case .jamSession(let id):
@@ -126,7 +129,8 @@ enum Endpoint {
              .jamCreate, .jamEnd, .jamStemUpload, .jamAIFill, .jamMerge,
              .licenseGenerate, .licenseMint, .licenseTxStatus,
              .licenseUpdateNFT, .licensePurchase,
-             .contentGuard, .reportViolation:
+             .contentGuard, .reportViolation,
+             .deleteAccount:
             return .post
         case .musicStatus, .gallery, .userProfile, .jamSession:
             return .get
