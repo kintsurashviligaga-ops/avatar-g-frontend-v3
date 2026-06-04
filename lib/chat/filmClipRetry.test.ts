@@ -58,13 +58,16 @@ describe('clipRetryBackoffMs — spaced, jittered, exponential retry windows', (
     expect(clipRetryBackoffMs(2, 1, () => Number.NaN)).toBe(CLIP_RETRY_BASE_MS);
   });
 
-  test('the full attempt budget keeps the last clip inside a sane total wait', () => {
+  test('the full attempt budget spans the provider throttle reset window', () => {
     let total = 0;
     for (let attempt = 1; attempt <= MAX_CLIP_DISPATCH_ATTEMPTS; attempt++) {
       total += clipRetryBackoffMs(attempt, 5, () => 1);
     }
-    expect(MAX_CLIP_DISPATCH_ATTEMPTS).toBe(3);
-    expect(total).toBeLessThanOrEqual(10_000);
+    expect(MAX_CLIP_DISPATCH_ATTEMPTS).toBe(4);
+    // PHASE 60 — retries must outlast the provider's ~10s burst-1 throttle reset,
+    // so the total is intentionally large (tens of seconds), bounded under ~2 min.
+    expect(total).toBeGreaterThanOrEqual(11_000);
+    expect(total).toBeLessThanOrEqual(120_000);
   });
 });
 
@@ -89,7 +92,7 @@ describe('mapWithConcurrency — caps the dispatch burst, preserves order', () =
       return null;
     });
     expect(peak).toBeLessThanOrEqual(2);
-    expect(CLIP_DISPATCH_CONCURRENCY).toBe(2);
+    expect(CLIP_DISPATCH_CONCURRENCY).toBe(1);
   });
 
   test('processes every item exactly once', async () => {

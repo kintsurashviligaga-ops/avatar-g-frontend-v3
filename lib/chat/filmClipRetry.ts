@@ -32,22 +32,28 @@
  * degrades fast instead of multiplying spend, but high enough (3) that a clip
  * caught in a transient rate-limit window gets two spaced retries to self-heal.
  */
-export const MAX_CLIP_DISPATCH_ATTEMPTS = 3;
+export const MAX_CLIP_DISPATCH_ATTEMPTS = 4;
 
 /**
- * Max number of clip dispatches in flight at once. The live failure showed the
- * provider tolerating ~3 near-simultaneous createPrediction calls and throttling
- * beyond, so 2 keeps a safe margin while still rendering 5 clips in a few short
- * waves. The renders themselves still run fully in parallel on the provider —
- * this caps only the dispatch fan-out.
+ * Max number of clip dispatches in flight at once. PHASE 60 — the live provider
+ * (Replicate, < $5 credit) throttles createPrediction to "6/min, BURST OF 1":
+ * two simultaneous calls → one 201, one 429. So we SERIALIZE dispatch (1 at a
+ * time); combined with the throttle-aware retry backoff below, every clip gets
+ * its own slot instead of 4-of-5 failing. The renders still run in parallel on
+ * the provider once accepted — this caps only the create fan-out. Funding the
+ * provider past $5 lifts the throttle and a higher value here would parallelize.
  */
-export const CLIP_DISPATCH_CONCURRENCY = 2;
+export const CLIP_DISPATCH_CONCURRENCY = 1;
 
 /** Random 0..this delay before each dispatch so a wave's calls de-sync (ms). */
 export const CLIP_DISPATCH_JITTER_MS = 350;
 
-/** First retry waits ~this long; each further retry doubles it (ms). */
-export const CLIP_RETRY_BASE_MS = 800;
+/**
+ * First retry waits ~this long; each further retry doubles it (ms). PHASE 60 —
+ * set to ~11s because the provider's burst-1 throttle "resets in ~10s"; a sub-
+ * second retry just re-trips it. 11s lets the next clip claim the freed slot.
+ */
+export const CLIP_RETRY_BASE_MS = 11_000;
 
 /** Random 0..this added to every retry so concurrent legs de-sync (ms). */
 export const CLIP_RETRY_JITTER_MS = 400;

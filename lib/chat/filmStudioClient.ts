@@ -187,7 +187,7 @@ export function everyClipLanded(matrix: FilmStudioMatrix | null): boolean {
  * poll is a cheap status check (not a long-running function), so a generous
  * window costs almost nothing and lets slow-but-successful renders land + salvage.
  */
-export const DEFAULT_FILM_MAX_POLL_MS = 1_200_000;
+export const DEFAULT_FILM_MAX_POLL_MS = 1_500_000;
 
 /**
  * A compact, comparable signature of every leg's observable state. The driver
@@ -221,7 +221,7 @@ export function filmProgressKey(matrix: FilmStudioMatrix | null): string {
  * entire 15. A render that IS landing clips keeps resetting the stall timer and
  * is therefore allowed its full patience.
  */
-export const DEFAULT_FILM_STALL_MS = 300_000;
+export const DEFAULT_FILM_STALL_MS = 720_000;
 
 /**
  * Localized copy for the live progress line. Georgian is the canonical platform
