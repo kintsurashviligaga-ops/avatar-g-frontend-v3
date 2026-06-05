@@ -40,6 +40,12 @@ const TASK_REF_VERSION = 1;
 // double-render or double-charge.
 const LTX_MAX_DISPATCH_ATTEMPTS = 3;
 const LTX_RETRY_BASE_MS = 400;
+// Hard ceiling on a single provider *create* (queue-a-job) call. A create returns
+// in a few seconds when healthy; without this cap a degraded/hanging provider can
+// stall the synchronous film dispatch past the 300s gateway limit → a 504 that
+// looks like "video generation is broken". On abort the caller falls through to
+// the legacy model / per-clip retry, so the dispatch always returns its poll token.
+const PROVIDER_CREATE_TIMEOUT_MS = 25_000;
 
 // PHASE 51 §2 — Re-hosted LTX render URLs live for 7 days. A sync LTX call
 // returns the MP4 *binary*; turning that into a multi-MB `data:` URL is the
@@ -437,6 +443,7 @@ export class ServiceManager {
             headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
             cache: 'no-store',
             body: JSON.stringify({ input }),
+            signal: AbortSignal.timeout(PROVIDER_CREATE_TIMEOUT_MS),
           });
           if (res.ok) {
             const pred = (await res.json().catch(() => ({}))) as { id?: string; status?: string; output?: unknown };
@@ -462,6 +469,7 @@ export class ServiceManager {
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       cache: 'no-store',
       body: JSON.stringify({ version: REPLICATE_LTX_VIDEO_VERSION, input }),
+      signal: AbortSignal.timeout(PROVIDER_CREATE_TIMEOUT_MS),
     });
     if (!res.ok) {
       const txt = await res.text().catch(() => '');

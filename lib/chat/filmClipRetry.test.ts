@@ -58,16 +58,17 @@ describe('clipRetryBackoffMs — spaced, jittered, exponential retry windows', (
     expect(clipRetryBackoffMs(2, 1, () => Number.NaN)).toBe(CLIP_RETRY_BASE_MS);
   });
 
-  test('the full attempt budget spans the provider throttle reset window', () => {
+  test('the full attempt budget is recoverable yet bounded under the gateway limit', () => {
     let total = 0;
     for (let attempt = 1; attempt <= MAX_CLIP_DISPATCH_ATTEMPTS; attempt++) {
       total += clipRetryBackoffMs(attempt, 5, () => 1);
     }
     expect(MAX_CLIP_DISPATCH_ATTEMPTS).toBe(4);
-    // PHASE 60 — retries must outlast the provider's ~10s burst-1 throttle reset,
-    // so the total is intentionally large (tens of seconds), bounded under ~2 min.
-    expect(total).toBeGreaterThanOrEqual(11_000);
-    expect(total).toBeLessThanOrEqual(120_000);
+    // PHASE 61 — the throttle-era 11s base is gone. The retry budget must still
+    // ride out a transient create failure (a few seconds) but stay far under the
+    // 300s gateway limit so a parallel fan-out never 504s.
+    expect(total).toBeGreaterThanOrEqual(5_000);
+    expect(total).toBeLessThanOrEqual(60_000);
   });
 });
 
@@ -92,7 +93,8 @@ describe('mapWithConcurrency — caps the dispatch burst, preserves order', () =
       return null;
     });
     expect(peak).toBeLessThanOrEqual(2);
-    expect(CLIP_DISPATCH_CONCURRENCY).toBe(1);
+    // PHASE 61 — default fans all 5 clips out in one wave (throttle lifted).
+    expect(CLIP_DISPATCH_CONCURRENCY).toBe(5);
   });
 
   test('processes every item exactly once', async () => {

@@ -768,9 +768,11 @@ export function ConversationalFilmStudio({
     });
   }, []);
 
-  // §5 — read the user's chosen soundtrack into a data: URL (capped so the
-  // assemble request body stays sane; the master only needs ≤30s anyway).
-  const MV_AUDIO_MAX_BYTES = 12 * 1024 * 1024; // 12 MB
+  // §5 — read the user's chosen soundtrack into a data: URL. Capped at 3 MB so the
+  // base64 payload keeps the assemble request body under the serverless 4.5 MB
+  // limit. A 30-second soundtrack (this is a 30s film) is ~1–2 MB even at high
+  // bitrate, so the cap never bites the real use case; FFmpeg trims it to length.
+  const MV_AUDIO_MAX_BYTES = 3 * 1024 * 1024; // 3 MB (Vercel body-limit safe)
   const onPickSoundtrack = useCallback(
     (file: File | null | undefined) => {
       if (!file) return;
@@ -779,7 +781,7 @@ export function ConversationalFilmStudio({
         return;
       }
       if (file.size > MV_AUDIO_MAX_BYTES) {
-        setMicNotice(locale === 'en' ? 'Audio is too large (12MB max).' : locale === 'ru' ? 'Аудио слишком большое (макс. 12МБ).' : 'აუდიო ძალიან დიდია (მაქს. 12MB).');
+        setMicNotice(locale === 'en' ? 'Audio is too large (3MB max — a ~30s clip).' : locale === 'ru' ? 'Аудио слишком большое (макс. 3МБ, ~30с).' : 'აუდიო ძალიან დიდია (მაქს. 3MB — ~30წმ).');
         return;
       }
       const reader = new FileReader();

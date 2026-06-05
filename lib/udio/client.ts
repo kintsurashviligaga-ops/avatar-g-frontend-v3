@@ -376,6 +376,10 @@ export async function startUdioGeneration(input: UdioGenerationInput): Promise<U
     },
     body: JSON.stringify(buildGenerateBody(input)),
     cache: 'no-store',
+    // Bound the create so a slow/hanging Udio endpoint can't stall the synchronous
+    // film dispatch past the gateway limit. On abort the film's audio leg catches
+    // and proceeds with musicWorkId=null; the assemble step composes the score.
+    signal: AbortSignal.timeout(25_000),
   });
 
   const payload = await response.json().catch(() => null);
