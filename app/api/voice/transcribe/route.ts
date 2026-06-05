@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { transcribeRealtimePcmChunk } from '@/lib/voice-v2v/providers';
+import { transcribeWithGemini, hasGeminiSttKey } from '@/lib/voice-v2v/geminiStt';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -43,16 +44,34 @@ export async function POST(req: NextRequest) {
     const audioBase64 = Buffer.from(bytes).toString('base64');
     const mimeType = audio.type || 'audio/webm';
 
-    const result = await transcribeRealtimePcmChunk({
-      audioBase64,
-      language,
-      mimeType,
-    });
+    // Primary STT — OpenAI Whisper (OPENAI_API_KEY) or Deepgram (DEEPGRAM_API_KEY).
+    let text = '';
+    let provider = 'none';
+    try {
+      const result = await transcribeRealtimePcmChunk({ audioBase64, language, mimeType });
+      text = (result.text ?? '').trim();
+      provider = result.provider;
+    } catch (primaryErr) {
+      // eslint-disable-next-line no-console
+      console.warn('[transcribe] primary STT failed:', primaryErr instanceof Error ? primaryErr.message : primaryErr);
+    }
 
-    return NextResponse.json({
-      text: result.text ?? '',
-      provider: result.provider,
-    });
+    // Fallback — Gemini (always configured for chat). Kicks in when the primary
+    // produced nothing: no OPENAI/DEEPGRAM key, an upstream error, or empty text.
+    // This is what keeps Georgian dictation working with zero extra keys.
+    if (!text && hasGeminiSttKey()) {
+      try {
+        text = await transcribeWithGemini(audioBase64, mimeType, language);
+        provider = 'gemini';
+      } catch (geminiErr) {
+        // eslint-disable-next-line no-console
+        console.warn('[transcribe] gemini STT fallback failed:', geminiErr instanceof Error ? geminiErr.message : geminiErr);
+      }
+    }
+
+    // Always 200 — an empty string is a valid "heard nothing" result the client
+    // handles gracefully (it never wedges the mic on a 500).
+    return NextResponse.json({ text, provider });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'transcription failed';
     return NextResponse.json({ error: message }, { status: 500 });
