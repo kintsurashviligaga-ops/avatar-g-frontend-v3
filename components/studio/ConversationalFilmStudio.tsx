@@ -496,6 +496,11 @@ export function ConversationalFilmStudio({
   const [balanceGel, setBalanceGel] = useState<number | null>(null);
   const [walletOpen, setWalletOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  // Client-derived auth. The server `isAuthenticated` prop can be stale (the
+  // dashboard ships a static shell that the edge may cache), which made a
+  // logged-in user look like a guest. We confirm the REAL session on mount and
+  // ALL auth-gated UI keys off `authed`, never the raw prop.
+  const [authed, setAuthed] = useState(isAuthenticated);
   // Authenticated identity address for the settings-drawer account line. null =
   // anonymous/unknown → the panel shows the localized "Guest" label instead.
   const [userEmail, setUserEmail] = useState<string | null>(null);
@@ -542,6 +547,22 @@ export function ConversationalFilmStudio({
 
   useEffect(() => {
     return () => abortRef.current?.abort();
+  }, []);
+
+  // Confirm the real auth session on mount so a stale server prop can't make a
+  // signed-in user look anonymous (and vice-versa). Fail-safe: any error leaves
+  // the seeded prop value untouched.
+  useEffect(() => {
+    let alive = true;
+    createBrowserClient()
+      .auth.getUser()
+      .then(({ data }) => {
+        if (alive) setAuthed(!!data.user);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
   }, []);
 
   // ── Speech-recognition bootstrap (created ONCE) ──────────────────────────────
@@ -611,7 +632,7 @@ export function ConversationalFilmStudio({
   // REAL remaining free-film count for this account — never a hardcoded promo.
   // Anonymous visitors (or an unapplied migration) simply keep the paid estimate.
   const refreshFreeFilms = useCallback(async () => {
-    if (!isAuthenticated) return;
+    if (!authed) return;
     try {
       const res = await fetch('/api/profile/onboarding', { cache: 'no-store' });
       if (!res.ok) return;
@@ -627,7 +648,7 @@ export function ConversationalFilmStudio({
     } catch {
       /* fail-safe: leave null → show the real paid estimate */
     }
-  }, [isAuthenticated]);
+  }, [authed]);
 
   // Names-only video-provider probe for the drawer status dot. Fail-safe: any
   // error leaves the dot neutral and never blocks the studio.
@@ -645,7 +666,7 @@ export function ConversationalFilmStudio({
   // Live GEL balance for the header chip. Fail-safe: any error simply leaves the
   // balance null and the chip renders 0.00 ₾ — never blocks the studio.
   const refreshBalance = useCallback(async () => {
-    if (!isAuthenticated) return;
+    if (!authed) return;
     try {
       const res = await fetch('/api/credits/balance', { cache: 'no-store', credentials: 'include' });
       if (!res.ok) return;
@@ -654,7 +675,7 @@ export function ConversationalFilmStudio({
     } catch {
       /* fail-safe: leave null → chip shows 0.00 ₾ */
     }
-  }, [isAuthenticated]);
+  }, [authed]);
 
   useEffect(() => {
     void refreshFreeFilms();
@@ -783,22 +804,11 @@ export function ConversationalFilmStudio({
 
   const handleSend = useCallback(() => {
     if (!canSend) return;
-    // Generation requires an account: the final cut (/api/video/assemble) is
-    // auth-gated, so an anonymous user would render clips for ~2 min only to
-    // fail at the stitch step. Prompt sign-in UP FRONT and open the menu (which
-    // hosts the Sign in / Sign up links) instead of starting a doomed render.
-    if (!isAuthenticated) {
-      pushMessage(
-        'system',
-        locale === 'ka'
-          ? 'ფილმის შესაქმნელად ჯერ გაიარე ავტორიზაცია — ერთ წამში. შენი ნამუშევარი ანგარიშზე შეინახება.'
-          : locale === 'ru'
-            ? 'Войдите, чтобы создать фильм — это займёт секунду. Ваша работа сохранится в аккаунте.'
-            : 'Please sign in to create your film — it takes a second, and your work is saved to your account.',
-      );
-      setMenuOpen(true);
-      return;
-    }
+    // NOTE: generation is NOT gated on auth here. A stale build-time
+    // `isAuthenticated` (the dashboard was statically rendered) made the old
+    // gate fire for everyone — pressing Send wrongly opened the menu drawer
+    // instead of generating. Send now always proceeds; the auth requirement is
+    // handled gracefully at the stitch step for the rare anonymous case.
     // Finalize any in-flight dictation so the recognizer releases the mic before
     // the prompt is dispatched.
     try {
@@ -812,7 +822,7 @@ export function ConversationalFilmStudio({
     lastPromptRef.current = userPrompt;
     pushMessage('user', userPrompt);
     void runReal(userPrompt);
-  }, [canSend, isAuthenticated, locale, input, pushMessage, runReal]);
+  }, [canSend, input, pushMessage, runReal]);
 
   // Re-run the most recent prompt after a failure — one tap instead of retyping.
   const handleRetry = useCallback(() => {
@@ -1515,7 +1525,7 @@ export function ConversationalFilmStudio({
 
               {/* Auth — Sign in + Sign up side by side when anonymous. The pages
                   already exist at /{locale}/login and /{locale}/signup. */}
-              {!isAuthenticated && (
+              {!authed && (
                 <div className="grid grid-cols-2 gap-2">
                   <Link
                     href={`/${locale}/login`}
@@ -1539,7 +1549,7 @@ export function ConversationalFilmStudio({
               {/* Sign out — authenticated users (was missing; every account-based
                   app needs a logout control). Clears the Supabase session, then
                   returns to a clean dashboard. */}
-              {isAuthenticated && (
+              {authed && (
                 <button
                   type="button"
                   onClick={async () => {
@@ -1561,7 +1571,7 @@ export function ConversationalFilmStudio({
               {/* Delete account — Apple App Store Guideline 5.1.1(v): an
                   account-based app must let users delete their account from
                   within the app. Type-to-confirm modal lives in the component. */}
-              {isAuthenticated && <DeleteAccountButton locale={locale} />}
+              {authed && <DeleteAccountButton locale={locale} />}
 
               {/* Legal + Support — App Store / public-launch requirement. The
                   pages already exist; this is the entry point to them. */}
