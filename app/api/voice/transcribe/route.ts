@@ -47,30 +47,51 @@ export async function POST(req: NextRequest) {
     // Primary STT — OpenAI Whisper (OPENAI_API_KEY) or Deepgram (DEEPGRAM_API_KEY).
     let text = '';
     let provider = 'none';
+    let primaryErrMsg: string | null = null;
+    let geminiErrMsg: string | null = null;
     try {
       const result = await transcribeRealtimePcmChunk({ audioBase64, language, mimeType });
       text = (result.text ?? '').trim();
       provider = result.provider;
     } catch (primaryErr) {
+      primaryErrMsg = primaryErr instanceof Error ? primaryErr.message : String(primaryErr);
       // eslint-disable-next-line no-console
-      console.warn('[transcribe] primary STT failed:', primaryErr instanceof Error ? primaryErr.message : primaryErr);
+      console.warn('[transcribe] primary STT failed:', primaryErrMsg);
     }
 
     // Fallback — Gemini (always configured for chat). Kicks in when the primary
     // produced nothing: no OPENAI/DEEPGRAM key, an upstream error, or empty text.
     // This is what keeps Georgian dictation working with zero extra keys.
-    if (!text && hasGeminiSttKey()) {
+    const geminiKeyPresent = hasGeminiSttKey();
+    if (!text && geminiKeyPresent) {
       try {
         text = await transcribeWithGemini(audioBase64, mimeType, language);
         provider = 'gemini';
       } catch (geminiErr) {
+        geminiErrMsg = geminiErr instanceof Error ? geminiErr.message : String(geminiErr);
         // eslint-disable-next-line no-console
-        console.warn('[transcribe] gemini STT fallback failed:', geminiErr instanceof Error ? geminiErr.message : geminiErr);
+        console.warn('[transcribe] gemini STT fallback failed:', geminiErrMsg);
       }
     }
 
     // Always 200 — an empty string is a valid "heard nothing" result the client
     // handles gracefully (it never wedges the mic on a 500).
+    // `?diag=1` surfaces *why* a transcription produced nothing (which provider
+    // ran, key presence, upstream error text) WITHOUT ever exposing the key
+    // itself — an operator-only breadcrumb for the "mic types nothing" report.
+    if (req.nextUrl.searchParams.get('diag') === '1') {
+      return NextResponse.json({
+        text,
+        provider,
+        diag: {
+          mimeType,
+          audioBytes: bytes.byteLength,
+          geminiKeyPresent,
+          primaryError: primaryErrMsg,
+          geminiError: geminiErrMsg,
+        },
+      });
+    }
     return NextResponse.json({ text, provider });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'transcription failed';
