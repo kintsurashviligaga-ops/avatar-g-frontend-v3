@@ -837,7 +837,15 @@ export class ServiceManager {
     let lastError: unknown = null;
     for (let attempt = 1; attempt <= LTX_MAX_DISPATCH_ATTEMPTS; attempt++) {
       try {
-        const response = await fetch(url, init);
+        // Bound each direct-LTX create attempt so a hanging api.ltx.video call
+        // can't stall the synchronous film dispatch past the gateway limit
+        // (mirrors the Replicate create timeout). A fresh signal per attempt;
+        // respect a caller-supplied signal if one was passed.
+        const attemptInit: RequestInit = {
+          ...init,
+          signal: init.signal ?? AbortSignal.timeout(PROVIDER_CREATE_TIMEOUT_MS),
+        };
+        const response = await fetch(url, attemptInit);
         if (response.ok || !this.isRetryableLtxStatus(response.status)) {
           return response;
         }
