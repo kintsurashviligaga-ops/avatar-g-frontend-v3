@@ -97,19 +97,25 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'at least 2 ready segments required' }, { status: 400 });
   }
 
+  // Anonymous trial renders are allowed. The expensive part — rendering the 5
+  // clips — already runs for anonymous callers (dispatch is open), so gating ONLY
+  // the cheap final stitch left users with rendered-but-unusable clips and the
+  // "could not host the final master" dead-end. Anonymous renders skip the credit
+  // / free-film saga entirely (there is no wallet to charge); the full billing
+  // saga still runs unchanged for signed-in users.
   const { user } = await authedClientFromRequest(req);
-  if (!user) {
-    return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
-  }
+  const uid = user?.id ?? null;
 
   // PHASE 47 §1 — flip the unified tracker to 'assembling' so a polling client
   // (or a reload) sees the editor working, not a stalled 'ready'. Fail-open.
   const filmTokenId = typeof body.filmTokenId === 'string' && body.filmTokenId.trim() ? body.filmTokenId.trim() : null;
   if (filmTokenId) await recordFilmAssembling(filmTokenId);
 
-  // Idempotency — block duplicate submissions of the same composition.
-  const idemKey = await hashPayload({ u: user.id, segs: segments.map(s => s.url), v: body.voiceoverUrl, m: body.musicUrl });
-  const fresh = await claimIdempotencyKey(user.id, `assemble:${idemKey}`, 60);
+  // Idempotency — block duplicate submissions of the same composition. Anonymous
+  // callers key off the film token (or a constant) since there is no user id.
+  const idemOwner = uid ?? `anon:${filmTokenId ?? 'session'}`;
+  const idemKey = await hashPayload({ u: idemOwner, segs: segments.map(s => s.url), v: body.voiceoverUrl, m: body.musicUrl });
+  const fresh = await claimIdempotencyKey(idemOwner, `assemble:${idemKey}`, 60);
   if (!fresh) {
     return NextResponse.json({ error: 'duplicate_request', message: 'This composition is already being assembled.' }, { status: 409 });
   }
@@ -176,7 +182,12 @@ export async function POST(req: NextRequest) {
     {
       name: 'reserve-credits',
       run: async (ctx) => {
-        const lock = await lockTokens(user.id, ASSEMBLE_COST, 900);
+        if (uid === null) {
+          // Anonymous trial render — nothing to reserve (no wallet / free slot).
+          ctx.bag.freeFilm = true;
+          return null;
+        }
+        const lock = await lockTokens(uid, ASSEMBLE_COST, 900);
         ctx.bag.lock = lock;
 
         // FOUNDER PROMO — the user's FIRST 30-second film is free. consume_free_film
@@ -185,13 +196,13 @@ export async function POST(req: NextRequest) {
         // fall through to the normal paid debit. This is FAIL-SAFE by construction:
         // we only ever skip the charge when the DB POSITIVELY confirms and decrements
         // a free slot — a missing migration can never become an infinite free loop.
-        const freeFilm = await consumeFreeFilm(user.id);
+        const freeFilm = await consumeFreeFilm(uid);
         if (typeof freeFilm === 'number' && freeFilm >= 0) {
           ctx.bag.freeFilm = true;
           return lock;
         }
 
-        const debit = await deductCredits(user.id, ASSEMBLE_COST, `assemble:${ctx.sagaId}`);
+        const debit = await deductCredits(uid, ASSEMBLE_COST, `assemble:${ctx.sagaId}`);
         ctx.bag.debited = debit.ok;
         // Fail-fast on a real rejection so we never dispatch a paid render
         // the user can't afford or that the DB couldn't record. 'skipped'
@@ -201,13 +212,14 @@ export async function POST(req: NextRequest) {
         return lock;
       },
       compensate: async (_r, ctx) => {
+        if (uid === null) return; // anonymous render reserved nothing to roll back
         const lock = ctx.bag.lock as TokenLock | null | undefined;
         if (lock) await releaseTokenLock(lock);
         // Hand the free slot back when a render that consumed it fails, so a
         // broken render never silently burns the user's one free film. Only ONE
         // of these branches runs — a free render never also debited credits.
-        if (ctx.bag.freeFilm) await restoreFreeFilm(user.id);
-        else if (ctx.bag.debited) await refundCredits(user.id, ASSEMBLE_COST, `assemble-rollback:${ctx.sagaId}`);
+        if (ctx.bag.freeFilm) await restoreFreeFilm(uid);
+        else if (ctx.bag.debited) await refundCredits(uid, ASSEMBLE_COST, `assemble-rollback:${ctx.sagaId}`);
       },
     },
     {
@@ -279,7 +291,7 @@ export async function POST(req: NextRequest) {
     // PHASE 52 TASK 4 — free the idempotency reservation the instant the job
     // fails so the user can retry immediately instead of waiting out the 60s
     // double-click window on a render they already paid (and got refunded) for.
-    await releaseIdempotencyKey(user.id, `assemble:${idemKey}`);
+    await releaseIdempotencyKey(idemOwner, `assemble:${idemKey}`);
     // PHASE 47 §1 — record the terminal failure so the tracker stops claiming
     // 'assembling' forever; the client's amber fallback already covers the UX.
     if (filmTokenId) await recordFilmFailed(filmTokenId, String(saga.error || 'assembly failed'));
