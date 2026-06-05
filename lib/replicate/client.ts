@@ -53,6 +53,9 @@ export async function createPrediction(
         'Prefer': 'respond-async',
       },
       body: JSON.stringify(body),
+      // Bound the create so a hanging Replicate call can't stall the caller (e.g.
+      // the assemble score-gen) past its gateway budget.
+      signal: AbortSignal.timeout(25_000),
     });
 
     if (res.ok) {
@@ -79,6 +82,9 @@ export async function pollPrediction(predictionId: string): Promise<PredictionRe
 
   const res = await fetch(`https://api.replicate.com/v1/predictions/${predictionId}`, {
     headers: { Authorization: `Bearer ${token}` },
+    // A status GET is quick; bound it so a hung poll can't stall the render
+    // tracker (a stuck "rendering" with no resolution). The client re-polls.
+    signal: AbortSignal.timeout(15_000),
   });
 
   if (!res.ok) throw new Error(`Replicate poll error ${res.status}`);
