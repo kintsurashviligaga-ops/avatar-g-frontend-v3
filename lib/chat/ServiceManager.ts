@@ -3,6 +3,7 @@ import { z } from 'zod';
 
 import { generateNanoBananaImage } from '@/lib/nanobanana/client';
 import { getNanoBananaCreditCost, resolveNanoBananaEndpoint } from '@/lib/nanobanana/endpoints';
+import { generateGrokImage, hasXaiApiKey } from '@/lib/ai/xaiImage';
 import { createPrediction, pollPrediction } from '@/lib/replicate/client';
 import { resolveModel } from '@/lib/replicate/models';
 import { buildModelInput, validateInput } from '@/lib/replicate/schemas';
@@ -14,7 +15,7 @@ import { resolveLtxApiKey } from '@/lib/chat/ltxKey';
 import { selectVideoPrimaryProvider } from '@/lib/chat/videoProvider';
 import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
 
-export type DeterministicProvider = 'nanobanana' | 'replicate' | 'ltx' | 'heygen';
+export type DeterministicProvider = 'nanobanana' | 'replicate' | 'ltx' | 'heygen' | 'xai';
 export type DeterministicOperation = 'text-to-image' | 'video-avatar';
 
 type AsyncProvider = 'replicate' | 'ltx' | 'heygen';
@@ -553,8 +554,27 @@ export class ServiceManager {
           };
         }
       } catch {
-        // Replicate also unavailable — fall through to the honest NanoBanana
-        // error below, which is the most actionable signal for the operator.
+        // Replicate also unavailable — try the Grok tier before the honest error.
+      }
+
+      // Tier 3 — Grok Imagine (xAI). Funded last-resort image leg so a credits
+      // outage on BOTH NanoBanana and Replicate still yields a real preview.
+      try {
+        const grok = await this.runGrokImage(request);
+        if (grok && grok.success) {
+          return {
+            ...grok,
+            metadata: {
+              ...grok.metadata,
+              imageFallback: 'nanobanana->replicate->grok',
+              primaryProvider: 'nanobanana',
+              primaryProviderError: providerError,
+            },
+          };
+        }
+      } catch {
+        // Grok also unavailable — fall through to the honest NanoBanana error
+        // below, which is the most actionable signal for the operator.
       }
 
       return {
@@ -596,6 +616,39 @@ export class ServiceManager {
         promptHash,
         confidence: request.confidence,
         raw: result.raw,
+      },
+    };
+  }
+
+  /**
+   * Grok Imagine (xAI) — the THIRD image tier. Reached only when NanoBanana AND
+   * the Replicate FLUX failover have both failed. Reads XAI_API_KEY (operator-set
+   * in env); returns null when unconfigured so the caller treats it as "leg
+   * unavailable", or throws a diagnosable status on a real provider error.
+   */
+  private async runGrokImage(request: ServiceManagerRequest): Promise<ServiceManagerResponse | null> {
+    if (!hasXaiApiKey()) return null;
+    const promptHash = this.hashPrompt(request.userPrompt);
+    const img = await generateGrokImage(request.userPrompt);
+    const url = img?.url ?? (img?.b64 ? `data:image/png;base64,${img.b64}` : null);
+    if (!url) return null;
+    return {
+      success: true,
+      provider: 'xai',
+      operation: 'text-to-image',
+      responseType: 'image',
+      message: img?.revisedPrompt || 'Image generation completed successfully.',
+      assetUrl: url,
+      assetType: 'image',
+      predictionStatus: 'succeeded',
+      metadata: {
+        provider: 'xai',
+        model: img?.model || 'grok-2-image',
+        operation: 'text-to-image',
+        outputType: 'image',
+        sessionId: request.sessionId,
+        promptHash,
+        confidence: request.confidence,
       },
     };
   }
