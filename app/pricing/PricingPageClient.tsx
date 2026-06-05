@@ -191,6 +191,7 @@ function PlanCard({ plan, index, onCheckout, checkoutLoading }: {
 
       {/* CTA */}
       <button
+        data-iap-external
         onClick={() => onCheckout(plan.id)}
         disabled={isLoadingThis}
         style={{

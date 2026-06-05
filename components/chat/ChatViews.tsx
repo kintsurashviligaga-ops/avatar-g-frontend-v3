@@ -347,6 +347,7 @@ function StripePortalButton({ locale }: { locale: string }) {
   return (
     <button
       type="button"
+      data-iap-external
       onClick={openPortal}
       disabled={loading}
       aria-label={label}

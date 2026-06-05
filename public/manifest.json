@@ -1,16 +1,18 @@
 {
-  "name": "Avatar G - Digital Twin Protocol",
-  "short_name": "Avatar G",
-  "description": "AI-powered digital twin and media generation platform",
+  "name": "MyAvatar — AI Film & Avatar Studio",
+  "short_name": "MyAvatar",
+  "description": "Create cinematic 30-second AI films and talking avatars from a photo and a prompt — Georgian-first multimodal AI studio.",
   "start_url": "/ka/dashboard",
   "scope": "/",
+  "lang": "ka",
+  "dir": "ltr",
   "display": "standalone",
   "display_override": ["standalone", "minimal-ui"],
-  "background_color": "#05070A",
-  "theme_color": "#05070A",
+  "background_color": "#000000",
+  "theme_color": "#000000",
   "orientation": "portrait-primary",
   "prefer_related_applications": false,
-  "categories": ["productivity", "utilities"],
+  "categories": ["photo", "video", "entertainment", "productivity"],
   "icons": [
     {
       "src": "/icons/icon-192x192.png",
@@ -25,7 +27,7 @@
       "purpose": "any"
     },
     {
-      "src": "/icons/icon-512x512.png",
+      "src": "/icons/icon-maskable-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"

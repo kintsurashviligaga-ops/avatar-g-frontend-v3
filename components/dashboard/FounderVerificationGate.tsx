@@ -64,6 +64,7 @@ export function FounderVerificationGate({ locale }: { locale: string }) {
       </p>
       <button
         type="button"
+        data-iap-external
         onClick={verify}
         disabled={busy}
         className="w-full inline-flex items-center justify-center gap-2 h-12 rounded-2xl font-bold text-[14px] text-white bg-gradient-to-r from-amber-500 to-sky-600 hover:from-amber-400 hover:to-sky-500 disabled:opacity-60 transition-all duration-300 active:scale-[0.99] shadow-[0_10px_34px_-12px_rgba(251,191,36,0.7)]"
