@@ -2120,6 +2120,9 @@ function FilmPreviewPlayer({
   copiedLabel: string;
 }) {
   const [copied, setCopied] = useState(false);
+  // Default 16:9; updated to the master's true ratio once metadata loads so the
+  // frame fits a 9:16 vertical export just as cleanly as a landscape one.
+  const [videoAspect, setVideoAspect] = useState('16 / 9');
 
   const handleShare = useCallback(async () => {
     // Native share sheet first (mobile/PWA); fall back to copying the link.
@@ -2193,8 +2196,14 @@ function FilmPreviewPlayer({
         </div>
       </div>
       <div
+        // The container's aspect-ratio MATCHES the video's real dimensions (read on
+        // loadedmetadata) so a 16:9 OR a 9:16 master fills the frame edge-to-edge
+        // with NO black side-bars and NO crop — the "video falls out of the frame /
+        // empty black space on the sides" bug. Height is capped so a tall 9:16 clip
+        // never pushes the composer off-screen on mobile; mx-auto keeps it centred.
+        style={{ aspectRatio: videoAspect }}
         className={[
-          'relative aspect-video w-full overflow-hidden rounded-xl bg-black ring-1',
+          'relative mx-auto max-h-[70vh] w-full overflow-hidden rounded-xl bg-black ring-1',
           isMaster ? 'ring-[#00D2FF]/30' : 'ring-white/10',
         ].join(' ')}
       >
@@ -2207,6 +2216,10 @@ function FilmPreviewPlayer({
           muted={!isMaster}
           loop={!isMaster}
           playsInline
+          onLoadedMetadata={(e) => {
+            const v = e.currentTarget;
+            if (v.videoWidth > 0 && v.videoHeight > 0) setVideoAspect(`${v.videoWidth} / ${v.videoHeight}`);
+          }}
           className="h-full w-full bg-black object-contain"
         />
       </div>

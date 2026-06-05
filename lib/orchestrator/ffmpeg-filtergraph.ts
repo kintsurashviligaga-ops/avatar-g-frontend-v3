@@ -20,6 +20,8 @@ export interface FilterGraphOpts {
   duckPct: number;      // 0–100, background attenuation under the voice
   clipSec?: number;     // per-clip seconds (default 6)
   transition?: string;  // crossfade | dissolve | wipe | fade_to_black
+  /** Output orientation. 'vertical' → 1080×1920 (9:16, TikTok/Reels/Shorts). */
+  orientation?: 'landscape' | 'vertical';
 }
 
 const XFADE: Record<string, string> = {
@@ -41,6 +43,13 @@ export function buildFilterComplex(opts: FilterGraphOpts): {
   const trans = XFADE[opts.transition ?? 'crossfade'] ?? 'fade';
   const parts: string[] = [];
 
+  // Output canvas: 1920×1080 (16:9) by default, or 1080×1920 (9:16) for the
+  // vertical TikTok/Reels/Shorts pipeline. Every clip is normalised onto this
+  // exact canvas so the xfade chain never errors on mismatched dimensions.
+  const vertical = opts.orientation === 'vertical';
+  const W = vertical ? 1080 : 1920;
+  const H = vertical ? 1920 : 1080;
+
   // PHASE 52 TASK 4 — the exact length of the compiled master after the xfade
   // chain. N clips each `clipSec` long, overlapped by `TRANSITION_SEC` at every
   // join: totalDur = N·clipSec − (N−1)·TRANSITION_SEC. The background audio bed
@@ -54,10 +63,15 @@ export function buildFilterComplex(opts: FilterGraphOpts): {
   // from erroring on a mismatched source. Then a uniform cinematic grade
   // (contrast + saturation + slightly lifted blacks via gamma) keeps the look
   // consistent across clips, plus a touch of unsharp for crispness.
+  // Fit strategy: landscape letterboxes (decrease + pad) to preserve the full 16:9
+  // frame; vertical FILLS the 9:16 canvas (increase + centre-crop) so a TikTok/
+  // Reels clip is full-frame, not a thin letterboxed strip with huge black bars.
+  const fit = vertical
+    ? `scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H}`
+    : `scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:-1:-1:color=black`;
   for (let i = 0; i < nClips; i++) {
     parts.push(
-      `[${i}:v]scale=1920:1080:force_original_aspect_ratio=decrease,` +
-        `pad=1920:1080:-1:-1:color=black,setsar=1,settb=AVTB,fps=${vfps},` +
+      `[${i}:v]${fit},setsar=1,settb=AVTB,fps=${vfps},` +
         `format=yuv420p,eq=contrast=1.06:saturation=1.08:gamma=0.98,unsharp=3:3:0.3[v${i}]`,
     );
   }
@@ -85,12 +99,23 @@ export function buildFilterComplex(opts: FilterGraphOpts): {
   // (No film grain: it inflated the encoded bitrate ~5× — high-entropy noise
   // defeats H.264 compression — for a marginal, subjective texture gain.)
   const FADE_SEC = 0.6;
+  // BRAND PROMISE — a "30-SECOND film". The xfade chain shortens the timeline to
+  // N·clipSec − (N−1)·trans, so the full 5-clip film lands at ~26s (the reported
+  // "renders 26s not 30s" bug). Pad the master to exactly the target and let the
+  // tail be a cinematic slow fade-to-black (a graceful outro, never a frozen
+  // hold). Short test renders (<4 clips) keep their natural length untouched.
+  const MASTER_TARGET_SEC = 30;
+  const targetDur = nClips >= 4 && totalDur < MASTER_TARGET_SEC ? MASTER_TARGET_SEC : totalDur;
+  const padSec = Math.max(0, targetDur - totalDur);
+  const fadeOutStart = padSec > 0 ? Math.max(0, totalDur - 0.3) : Math.max(0, targetDur - FADE_SEC);
+  const fadeOutDur = padSec > 0 ? padSec + 0.3 : FADE_SEC;
   parts.push(
     `${vmap}colorbalance=rs=-0.02:bs=0.05:rm=0.03:bm=-0.02:rh=0.05:bh=-0.05,` +
       `eq=contrast=1.04:saturation=1.06:gamma=0.98,` +
       `vignette=angle=PI/4.2,` +
+      (padSec > 0 ? `tpad=stop_mode=clone:stop_duration=${padSec.toFixed(2)},` : '') +
       `fade=t=in:st=0:d=${FADE_SEC},` +
-      `fade=t=out:st=${Math.max(0, totalDur - FADE_SEC).toFixed(2)}:d=${FADE_SEC}[vfinal]`,
+      `fade=t=out:st=${fadeOutStart.toFixed(2)}:d=${fadeOutDur.toFixed(2)}[vfinal]`,
   );
   vmap = '[vfinal]';
 
@@ -145,8 +170,8 @@ export function buildFilterComplex(opts: FilterGraphOpts): {
     // normalisation to a streaming-standard −14 LUFS (−1.5 dBTP ceiling) so every
     // film plays back at a consistent, broadcast-grade volume.
     parts.push(
-      `${apre}apad,atrim=0:${totalDur.toFixed(2)},asetpts=N/SR/TB,` +
-        `afade=t=in:st=0:d=0.5,afade=t=out:st=${Math.max(0, totalDur - 0.8).toFixed(2)}:d=0.8,` +
+      `${apre}apad,atrim=0:${targetDur.toFixed(2)},asetpts=N/SR/TB,` +
+        `afade=t=in:st=0:d=0.5,afade=t=out:st=${Math.max(0, targetDur - 0.8).toFixed(2)}:d=0.8,` +
         `loudnorm=I=-14:TP=-1.5:LRA=11[aout]`,
     );
     amap = '[aout]';

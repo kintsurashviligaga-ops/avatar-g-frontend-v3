@@ -107,6 +107,8 @@ export interface DriveFilmOptions {
    * music. Absent → the pipeline composes a score as before.
    */
   soundtrackUrl?: string | null;
+  /** 'vertical' → 9:16 (1080×1920) master for TikTok/Reels/Shorts; else 16:9. */
+  orientation?: 'landscape' | 'vertical';
   locale?: string;
   signal?: AbortSignal;
   onProgress?: (p: FilmStudioProgress) => void;
@@ -391,6 +393,7 @@ async function assembleMaster(
   statusTokenId: string | undefined,
   scorePrompt: string,
   signal?: AbortSignal,
+  orientation?: 'landscape' | 'vertical',
 ): Promise<{ url: string; qa: FilmQaSummary | null } | null> {
   const res = await fetch('/api/video/assemble', {
     method: 'POST',
@@ -402,6 +405,7 @@ async function assembleMaster(
       ...(musicUrl ? { musicUrl } : {}),
       ...(scorePrompt.trim() ? { scorePrompt: scorePrompt.trim() } : {}),
       ...(statusTokenId ? { filmTokenId: statusTokenId } : {}),
+      ...(orientation === 'vertical' ? { orientation: 'vertical' } : {}),
     }),
   });
   if (!res.ok) return null;
@@ -605,7 +609,7 @@ export async function driveFilmStudio(opts: DriveFilmOptions): Promise<FilmStudi
     }
     // §5 — a user soundtrack (Music-Video mode) wins over any generated score.
     const musicBed = opts.soundtrackUrl ?? matrix.audioUrl ?? null;
-    let assembled = await assembleMaster(clips, musicBed, matrix.statusTokenId, message, signal);
+    let assembled = await assembleMaster(clips, musicBed, matrix.statusTokenId, message, signal, opts.orientation);
 
     // 4 ── Recover if the assemble response was lost in transit
     if (!assembled && matrix.statusTokenId) {

@@ -63,7 +63,11 @@ export interface QaReport {
  */
 export function expectedMasterDuration(nClips: number, clipSec = 6, transitionSec = 1): number {
   const n = Math.max(1, Math.floor(nClips));
-  return n * clipSec - Math.max(0, n - 1) * transitionSec;
+  const natural = n * clipSec - Math.max(0, n - 1) * transitionSec;
+  // The full film (≥4 clips) is padded to the 30s brand target in assembly
+  // (ffmpeg-filtergraph), so the QA must expect 30s — not the shorter xfade
+  // length — or it would flag every film as duration-drift.
+  return n >= 4 && natural < 30 ? 30 : natural;
 }
 
 export function validateMaster(f: MasterFacts): QaReport {

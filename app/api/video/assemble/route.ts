@@ -65,6 +65,8 @@ interface AssembleBody {
   musicUrl?: string | null;
   sfxUrl?: string | null;
   globalRender?: Record<string, string | number | boolean>;
+  /** 'vertical' → 9:16 (1080×1920) master for TikTok/Reels/Shorts; else 16:9. */
+  orientation?: string;
   /** PHASE 47 §1 — the film's unified status-tracker id. When present, the
    *  finished master is stamped onto the storage-backed record so any client /
    *  reload can recover it via GET /api/video/status/[tokenId]. */
@@ -171,7 +173,7 @@ export async function POST(req: NextRequest) {
     voiceoverUrl: body.voiceoverUrl ? await reSignIfInternal(body.voiceoverUrl) : null,
     musicUrl: resolvedMusicUrl,
     sfxUrl: body.sfxUrl ? await reSignIfInternal(body.sfxUrl) : null,
-    globalRender: body.globalRender ?? {},
+    globalRender: { ...(body.globalRender ?? {}), ...(body.orientation ? { orientation: String(body.orientation) } : {}) },
     pipelineId: '',
     callbackUrl: new URL('/api/video/assemble/callback', req.url).toString(),
   };

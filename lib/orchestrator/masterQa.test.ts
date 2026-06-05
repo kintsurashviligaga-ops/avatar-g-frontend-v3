@@ -11,8 +11,8 @@ const HEALTHY: MasterFacts = {
 };
 
 describe('expectedMasterDuration', () => {
-  test('5 clips · 6s − 4 · 1s = 26s', () => {
-    expect(expectedMasterDuration(5)).toBe(26);
+  test('the full 5-clip film is padded to the 30s brand target', () => {
+    expect(expectedMasterDuration(5)).toBe(30);
   });
   test('single clip → 6s (no transitions)', () => {
     expect(expectedMasterDuration(1)).toBe(6);

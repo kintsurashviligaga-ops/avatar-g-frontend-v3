@@ -54,7 +54,9 @@ describe('buildFilterComplex', () => {
   test('PHASE 52 — final audio is padded + trimmed to the master timeline', () => {
     // 5 clips · 6s − 4 transitions · 1s = 26s compiled master.
     const g = buildFilterComplex({ nClips: 5, hasVoice: true, hasMusic: true, hasSfx: false, fps: 24, duckPct: 30 });
-    expect(g.filter).toContain('apad,atrim=0:26.00,asetpts=N/SR/TB,');
+    // The 5-clip film is padded to the 30s brand target (was 26s after xfades).
+    expect(g.filter).toContain('apad,atrim=0:30.00,asetpts=N/SR/TB,');
+    expect(g.filter).toContain('tpad=stop_mode=clone'); // video held to 30s with a fade tail
     expect(g.filter).toContain('loudnorm=I=-14'); // EBU R128 broadcast loudness
     expect(g.amap).toBe('[aout]');
     // The ducked mix is computed FIRST (intermediate [apre]) then scaled.

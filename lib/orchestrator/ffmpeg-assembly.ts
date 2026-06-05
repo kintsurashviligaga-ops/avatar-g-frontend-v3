@@ -111,8 +111,14 @@ export async function assembleWithFfmpeg(m: FfmpegManifest, signal?: AbortSignal
     const fps = String(g.fps) === '60' ? 60 : 24;
     const duckPct = typeof g.vocal_ducking_pct === 'number' ? g.vocal_ducking_pct : 30;
     const transition = String(g.transition ?? 'crossfade');
+    // 9:16 vertical (TikTok/Reels/Shorts) when the orientation / aspect says so.
+    const orientation: 'landscape' | 'vertical' =
+      String(g.orientation || g.aspect || '').replace(':', 'x') === '9x16' || String(g.orientation) === 'vertical'
+        ? 'vertical'
+        : 'landscape';
 
     const { filter, vmap, amap } = buildFilterComplex({
+      orientation,
       nClips: inputs.length,
       hasVoice: Boolean(voice),
       hasMusic: Boolean(music),
