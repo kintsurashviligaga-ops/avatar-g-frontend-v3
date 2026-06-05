@@ -200,6 +200,8 @@ async function renderClip(
   compositeId: string,
   forecastClipWholesale: number,
   forecastClipRetail: number,
+  /** Pre-generated NanoBanana identity frame for THIS scene (null = none). */
+  sceneFrame: string | null,
 ): Promise<FilmClipResult> {
   // Gate on the SAME predicate as the pipeline pre-flight (hasVideoProvider =
   // LTX OR Replicate). The runtime now renders via Replicate as a primary when no
@@ -230,11 +232,10 @@ async function renderClip(
     await new Promise((resolve) => setTimeout(resolve, dispatchJitter));
   }
 
-  // PER-SCENE IDENTITY FRAME — stylize the selfie into this scene's composition
-  // (NanoBanana), then anchor LTX-2 to that hosted frame so the protagonist is
-  // the uploaded person. Best-effort: a null frame leaves the raw reference in
-  // place (buildFilmClipRequest already wired it), so the clip never blocks.
-  const sceneFrame = await stylizeSceneFrame(input, scene, shared);
+  // PER-SCENE IDENTITY FRAME — anchor LTX-2 to the pre-generated NanoBanana frame
+  // for this scene (computed in PARALLEL before the fan-out, so 5 frames cost one
+  // frame's latency, not five). Best-effort: a null frame leaves the raw
+  // reference in place (buildFilmClipRequest already wired it).
   const clipReq = buildFilmClipRequest(scene, shared);
   if (sceneFrame) clipReq.selectedOptions.characterReference = sceneFrame;
 
@@ -425,8 +426,23 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
   // localized halt rather than a 500.
   let clips: FilmClipResult[];
   try {
-    clips = await mapWithConcurrency(plan.scenes, CLIP_DISPATCH_CONCURRENCY, (scene) =>
-      renderClip(input, scene, plan.shared, compositeId, clipForecast.wholesaleGel, clipForecast.retailGel),
+    // Stylize ALL scene identity frames in PARALLEL up front (NanoBanana has no
+    // per-account burst limit like the clip provider), so the dispatch waits one
+    // frame's latency instead of five serialised ones (the 5×-slower dispatch
+    // the per-scene chain first introduced). stylizeSceneFrame never rejects.
+    const sceneFrames = await Promise.all(
+      plan.scenes.map((scene) => stylizeSceneFrame(input, scene, plan.shared)),
+    );
+    clips = await mapWithConcurrency(plan.scenes, CLIP_DISPATCH_CONCURRENCY, (scene, i) =>
+      renderClip(
+        input,
+        scene,
+        plan.shared,
+        compositeId,
+        clipForecast.wholesaleGel,
+        clipForecast.retailGel,
+        sceneFrames[i] ?? null,
+      ),
     );
   } catch (err) {
     // eslint-disable-next-line no-console

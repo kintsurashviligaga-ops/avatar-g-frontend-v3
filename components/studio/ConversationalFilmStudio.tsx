@@ -1427,23 +1427,29 @@ export function ConversationalFilmStudio({
               {driving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
             </button>
           </div>
-          {/* Live tariff / promo readout — driven by the same server-authoritative
-              freeFilmsRemaining state, so it always tells the truth about cost. */}
-          <p className="mt-2 text-center text-[11px] font-semibold">
-            {isFreeFilm ? (
-              <span className="inline-flex items-center gap-1.5 text-[#00D2FF]">
-                <CheckCircle2 className="h-3 w-3" />
-                {t.promoLimit}
-              </span>
-            ) : (
-              <span className="text-white">
-                {t.tariffLabel} · {formatGEL(estCost)}
-              </span>
-            )}
-          </p>
-          <p className="mt-1 text-center text-[10px] text-neutral-600">
-            {FILM_SCENE_COUNT} × 6s · {t.signinNote}
-          </p>
+          {/* No always-on "tariff" menu — the studio goes straight to the
+              process. The cost is shown ONLY once the user has typed a prompt
+              (or as the free-film note), so it reads as "this video costs X ₾"
+              for the action they're about to take, not a price list. */}
+          {(isFreeFilm || input.trim().length > 0) && (
+            <p className="mt-2 text-center text-[11px] font-semibold">
+              {isFreeFilm ? (
+                <span className="inline-flex items-center gap-1.5 text-[#00D2FF]">
+                  <CheckCircle2 className="h-3 w-3" />
+                  {t.promoLimit}
+                </span>
+              ) : (
+                <span className="text-white">
+                  {locale === 'ka'
+                    ? 'ვიდეოს ღირებულება'
+                    : locale === 'ru'
+                      ? 'Стоимость видео'
+                      : 'Video cost'}{' '}
+                  ≈ <span className="text-[#00D2FF]">{formatGEL(estCost)}</span>
+                </span>
+              )}
+            </p>
+          )}
         </div>
       </div>
     </div>
