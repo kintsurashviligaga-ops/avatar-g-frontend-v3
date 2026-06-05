@@ -30,7 +30,24 @@ export function hasGeminiSttKey(): boolean {
   return geminiKey().length > 0;
 }
 
-const GEMINI_STT_MODEL = (process.env.VOICE_V2V_GEMINI_MODEL || 'gemini-2.0-flash').trim();
+/**
+ * Candidate models, tried in order. The first is the app-wide canonical model
+ * (matches lib/gemini/client.ts), the rest are graceful step-downs. We iterate
+ * because Google RETIRES model aliases without notice — `gemini-2.0-flash` was
+ * decommissioned (404 "model is no longer available"), which is exactly what
+ * silently killed Georgian dictation. Skipping a dead model to the next keeps
+ * the mic alive across these deprecations, mirroring the chat route's self-heal.
+ */
+const GEMINI_STT_MODELS: string[] = Array.from(
+  new Set(
+    [
+      (process.env.VOICE_V2V_GEMINI_MODEL || '').trim(),
+      'gemini-2.5-flash',
+      'gemini-flash-latest',
+      'gemini-2.0-flash-lite',
+    ].filter(Boolean),
+  ),
+);
 
 const LANGUAGE_NAME: Record<string, string> = {
   'ka-GE': 'Georgian',
@@ -54,42 +71,53 @@ export async function transcribeWithGemini(
   const langName = LANGUAGE_NAME[language] || 'Georgian';
   const mt = mimeType || 'audio/webm';
 
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(GEMINI_STT_MODEL)}:generateContent?key=${encodeURIComponent(key)}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      cache: 'no-store',
-      body: JSON.stringify({
-        contents: [
+  const body = JSON.stringify({
+    contents: [
+      {
+        parts: [
           {
-            parts: [
-              {
-                text: `Transcribe this audio in ${langName}. Output ONLY the exact spoken words — no translation, no punctuation commentary, no quotes, no extra text. If silent, output nothing.`,
-              },
-              { inline_data: { mime_type: mt, data: audioBase64 } },
-            ],
+            text: `Transcribe this audio in ${langName}. Output ONLY the exact spoken words — no translation, no punctuation commentary, no quotes, no extra text. If silent, output nothing.`,
           },
+          { inline_data: { mime_type: mt, data: audioBase64 } },
         ],
-        generationConfig: { temperature: 0, maxOutputTokens: 1024 },
-      }),
-      signal: AbortSignal.timeout(25_000),
-    },
-  );
+      },
+    ],
+    generationConfig: { temperature: 0, maxOutputTokens: 1024 },
+  });
 
-  if (!res.ok) {
+  let lastErr = '';
+  for (const model of GEMINI_STT_MODELS) {
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(key)}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        cache: 'no-store',
+        body,
+        signal: AbortSignal.timeout(25_000),
+      },
+    );
+
+    if (res.ok) {
+      const json = (await res.json().catch(() => null)) as {
+        candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+      } | null;
+      const parts = json?.candidates?.[0]?.content?.parts ?? [];
+      return parts
+        .map((p) => p.text ?? '')
+        .join('')
+        .replace(/\s+/g, ' ')
+        .trim();
+    }
+
     const txt = await res.text().catch(() => '');
-    throw new Error(`Gemini STT failed (${res.status}): ${txt.slice(0, 180)}`);
+    lastErr = `Gemini STT failed (${res.status}) on ${model}: ${txt.slice(0, 160)}`;
+    // 404 / "no longer available" / "not found" → the model alias was retired;
+    // step down to the next candidate. Any other status is a real error (bad
+    // audio format, quota, auth) that the next model won't fix → stop early.
+    const retired = res.status === 404 || /no longer available|not found|is not supported/i.test(txt);
+    if (!retired) break;
   }
 
-  const json = (await res.json().catch(() => null)) as {
-    candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
-  } | null;
-
-  const parts = json?.candidates?.[0]?.content?.parts ?? [];
-  return parts
-    .map((p) => p.text ?? '')
-    .join('')
-    .replace(/\s+/g, ' ')
-    .trim();
+  throw new Error(lastErr || 'Gemini STT failed: no model available');
 }

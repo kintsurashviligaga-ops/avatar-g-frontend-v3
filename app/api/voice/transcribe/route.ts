@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { transcribeRealtimePcmChunk } from '@/lib/voice-v2v/providers';
 import { transcribeWithGemini, hasGeminiSttKey } from '@/lib/voice-v2v/geminiStt';
+import { transcribeWithReplicateWhisper, hasReplicateSttKey } from '@/lib/voice-v2v/replicateStt';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -49,6 +50,7 @@ export async function POST(req: NextRequest) {
     let provider = 'none';
     let primaryErrMsg: string | null = null;
     let geminiErrMsg: string | null = null;
+    let replicateErrMsg: string | null = null;
     try {
       const result = await transcribeRealtimePcmChunk({ audioBase64, language, mimeType });
       text = (result.text ?? '').trim();
@@ -59,9 +61,10 @@ export async function POST(req: NextRequest) {
       console.warn('[transcribe] primary STT failed:', primaryErrMsg);
     }
 
-    // Fallback — Gemini (always configured for chat). Kicks in when the primary
-    // produced nothing: no OPENAI/DEEPGRAM key, an upstream error, or empty text.
-    // This is what keeps Georgian dictation working with zero extra keys.
+    // Fallback 1 — Gemini (always configured for chat). Fast when it works, but
+    // it only ingests wav/mp3/aac/ogg/flac, so it REJECTS the webm/mp4 the
+    // browser mic actually records. Kept first because it's instant on the
+    // formats it does accept (and zero extra keys).
     const geminiKeyPresent = hasGeminiSttKey();
     if (!text && geminiKeyPresent) {
       try {
@@ -71,6 +74,23 @@ export async function POST(req: NextRequest) {
         geminiErrMsg = geminiErr instanceof Error ? geminiErr.message : String(geminiErr);
         // eslint-disable-next-line no-console
         console.warn('[transcribe] gemini STT fallback failed:', geminiErrMsg);
+      }
+    }
+
+    // Fallback 2 — Replicate Whisper-large-v3. This is the one that actually
+    // rescues the REAL mic: it accepts webm/mp4/mp3/wav alike and runs on the
+    // SAME REPLICATE_API_TOKEN the video pipeline already uses, so Georgian
+    // dictation works with no new operator secret. Slower (it polls), so it's
+    // the last resort after the instant paths.
+    const replicateKeyPresent = hasReplicateSttKey();
+    if (!text && replicateKeyPresent) {
+      try {
+        text = await transcribeWithReplicateWhisper(audioBase64, mimeType, language);
+        provider = 'replicate-whisper';
+      } catch (replicateErr) {
+        replicateErrMsg = replicateErr instanceof Error ? replicateErr.message : String(replicateErr);
+        // eslint-disable-next-line no-console
+        console.warn('[transcribe] replicate STT fallback failed:', replicateErrMsg);
       }
     }
 
@@ -87,8 +107,10 @@ export async function POST(req: NextRequest) {
           mimeType,
           audioBytes: bytes.byteLength,
           geminiKeyPresent,
+          replicateKeyPresent,
           primaryError: primaryErrMsg,
           geminiError: geminiErrMsg,
+          replicateError: replicateErrMsg,
         },
       });
     }
