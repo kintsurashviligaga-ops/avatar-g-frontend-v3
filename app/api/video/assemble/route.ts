@@ -27,6 +27,7 @@ import { deductCredits, refundCredits } from '@/lib/orchestrator/ledger';
 import { consumeFreeFilm, restoreFreeFilm } from '@/lib/billing/wallet-ledger';
 import { reSignIfInternal } from '@/lib/orchestrator/storage-adapter';
 import { assembleWithFfmpeg } from '@/lib/orchestrator/ffmpeg-assembly';
+import { type QaReport } from '@/lib/orchestrator/masterQa';
 import { recordFilmAssembling, recordFilmMaster, recordFilmFailed } from '@/lib/chat/filmStatusStore';
 import { generateMusic } from '@/lib/ai/replicate';
 
@@ -252,6 +253,8 @@ export async function POST(req: NextRequest) {
             : assembleWithFfmpeg({ ...manifest, pipelineId: ctx.sagaId }, ac.signal);
           const res = await Promise.race([work, deadline]);
           ctx.bag.tempUrl = res.url;
+          // Supervisor QA verdict (CPU path only; RunPod path returns no qa).
+          ctx.bag.qa = (res as { qa?: QaReport }).qa ?? null;
           return res.url;
         } finally {
           if (timer) clearTimeout(timer);
@@ -305,5 +308,6 @@ export async function POST(req: NextRequest) {
   // reload / second device can recover the playable 30s film without re-rendering.
   if (filmTokenId && resultUrl) await recordFilmMaster(filmTokenId, resultUrl);
 
-  return NextResponse.json({ url: resultUrl, sagaId: saga.sagaId, filmTokenId, scoreFallback, freeFilm: Boolean(bag.freeFilm) });
+  const qa = (bag.qa as QaReport | null | undefined) ?? null;
+  return NextResponse.json({ url: resultUrl, qa, sagaId: saga.sagaId, filmTokenId, scoreFallback, freeFilm: Boolean(bag.freeFilm) });
 }

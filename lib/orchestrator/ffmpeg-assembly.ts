@@ -18,9 +18,45 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import ffmpegStatic from 'ffmpeg-static';
 import { buildFilterComplex } from './ffmpeg-filtergraph';
+import { validateMaster, expectedMasterDuration, type QaReport } from './masterQa';
 import { uploadAndSign } from './storage-adapter';
 
 const exec = promisify(execFile);
+
+/**
+ * Best-effort probe of the encoded master so the Supervisor QA gate can grade
+ * real facts (duration, audio-stream presence, pixel dimensions). There is no
+ * ffprobe binary bundled, but `ffmpeg -i <file>` with no output target prints
+ * the full stream header to stderr and exits non-zero — we parse that. Any
+ * failure degrades gracefully to nulls (QA then grades on file size alone).
+ */
+async function probeMaster(
+  bin: string,
+  file: string,
+): Promise<{ actualDurSec: number | null; audioPresent: boolean | null; width: number | null; height: number | null }> {
+  let log = '';
+  try {
+    await exec(bin, ['-i', file], { maxBuffer: 1 << 24 });
+  } catch (e: unknown) {
+    log = String((e as { stderr?: string } | null)?.stderr ?? '');
+  }
+  if (!log) return { actualDurSec: null, audioPresent: null, width: null, height: null };
+
+  let actualDurSec: number | null = null;
+  const dm = log.match(/Duration:\s*(\d+):(\d{2}):(\d{2}(?:\.\d+)?)/);
+  if (dm) actualDurSec = Number(dm[1]) * 3600 + Number(dm[2]) * 60 + parseFloat(dm[3] ?? '0');
+
+  const audioPresent = /Stream #\d+:\d+[^\n]*:\s*Audio:/.test(log);
+
+  let width: number | null = null;
+  let height: number | null = null;
+  const vm = log.match(/Video:[^\n]*?(\d{2,5})x(\d{2,5})/);
+  if (vm) {
+    width = Number(vm[1]);
+    height = Number(vm[2]);
+  }
+  return { actualDurSec, audioPresent, width, height };
+}
 const RENDER_BUCKET = process.env.RENDER_BUCKET ?? 'renders';
 
 export interface FfmpegManifest {
@@ -54,7 +90,7 @@ async function download(url: string, dest: string, signal?: AbortSignal): Promis
  * platform hard-kills it — which would skip the saga compensation and strand the
  * user's reserved slot/credits.
  */
-export async function assembleWithFfmpeg(m: FfmpegManifest, signal?: AbortSignal): Promise<{ url: string }> {
+export async function assembleWithFfmpeg(m: FfmpegManifest, signal?: AbortSignal): Promise<{ url: string; qa?: QaReport }> {
   const bin = ffmpegStatic as unknown as string | null;
   if (!bin) throw new Error('ffmpeg binary unavailable');
 
@@ -106,10 +142,31 @@ export async function assembleWithFfmpeg(m: FfmpegManifest, signal?: AbortSignal
     await exec(bin, args, { maxBuffer: 1 << 28, timeout: 280_000, ...(signal ? { signal } : {}) });
 
     const data = await readFile(out);
+
+    // ── Supervisor QA gate ───────────────────────────────────────────────────
+    // Inspect the freshly-encoded master BEFORE it is hosted/handed to preview,
+    // grading it against the defects this pipeline has historically shipped
+    // (silent audio, truncated duration, empty stub, bitrate bloat, sub-1080p).
+    // The verdict rides back on the response so the orchestrator/UI never
+    // silently delivers a broken film.
+    const probe = await probeMaster(bin, out);
+    const qa = validateMaster({
+      sizeBytes: data.byteLength,
+      expectedDurSec: expectedMasterDuration(inputs.length),
+      actualDurSec: probe.actualDurSec,
+      audioExpected: amap !== null,
+      audioPresent: probe.audioPresent,
+      width: probe.width,
+      height: probe.height,
+    });
+    if (!qa.pass) {
+      console.warn(`[masterQa] master FAILED quality gate (grade ${qa.grade}, score ${qa.score}):`, qa.issues.map((i) => i.code).join(', '));
+    }
+
     const objectPath = `${m.pipelineId || 'render'}/${Date.now()}.mp4`;
     const url = await uploadAndSign(RENDER_BUCKET, objectPath, data.toString('base64'), 'video/mp4');
     if (!url) throw new Error('master upload failed (Supabase Storage not configured)');
-    return { url };
+    return { url, qa };
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
