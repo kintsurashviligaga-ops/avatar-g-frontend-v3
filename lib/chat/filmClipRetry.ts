@@ -42,18 +42,20 @@ export const MAX_CLIP_DISPATCH_ATTEMPTS = 4;
  * own slot instead of 4-of-5 failing. The renders still run in parallel on the
  * provider once accepted — this caps only the create fan-out.
  *
- * PHASE 61 — the low-balance burst-1 throttle has lifted, so the default is now
- * 5: fan ALL clips out in ONE wave. This is the single most important guard
- * against the dispatch 504 — with a parallel fan-out the dispatch's worst case is
- * ONE clip's bounded create time, not the SUM of five serialised ones. Even if a
- * throttle ever returns, the per-create timeout (ServiceManager) makes every clip
- * fail FAST + clean (a localized halt) rather than hang the gateway. Drop back to
- * `CLIP_DISPATCH_CONCURRENCY=1` via env only if a hard burst-1 limit reappears.
+ * PHASE 61 — default stays 1 (serialised create fan-out). A live test proved that
+ * fanning all 5 creates out at once still trips the provider's burst-1 throttle
+ * (every clip 429s → the whole film fails "couldn't connect"). Serialising lets
+ * each create claim its own slot and SUCCEED. The 504 that serial dispatch used to
+ * cause came from the old 11s retry backoff, NOT from serial creates — that is now
+ * fixed by CLIP_RETRY_BASE_MS=1500 + the per-create timeout, so serial dispatch of
+ * five clips stays comfortably inside the gateway budget. Renders still run in
+ * parallel on the provider once accepted — this caps only the create fan-out. Set
+ * `CLIP_DISPATCH_CONCURRENCY=5` in env once the account's burst limit is lifted.
  * Clamped to a sane 1..5.
  */
 export const CLIP_DISPATCH_CONCURRENCY = Math.max(
   1,
-  Math.min(5, Math.round(Number(process.env.CLIP_DISPATCH_CONCURRENCY) || 5)),
+  Math.min(5, Math.round(Number(process.env.CLIP_DISPATCH_CONCURRENCY) || 1)),
 );
 
 /** Random 0..this delay before each dispatch so a wave's calls de-sync (ms). */

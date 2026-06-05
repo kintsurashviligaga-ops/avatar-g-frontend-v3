@@ -93,8 +93,9 @@ describe('mapWithConcurrency — caps the dispatch burst, preserves order', () =
       return null;
     });
     expect(peak).toBeLessThanOrEqual(2);
-    // PHASE 61 — default fans all 5 clips out in one wave (throttle lifted).
-    expect(CLIP_DISPATCH_CONCURRENCY).toBe(5);
+    // PHASE 61 — default serialises creates (1) to respect the provider's burst-1
+    // throttle; the low retry backoff (not concurrency) is what keeps it off 504.
+    expect(CLIP_DISPATCH_CONCURRENCY).toBe(1);
   });
 
   test('processes every item exactly once', async () => {

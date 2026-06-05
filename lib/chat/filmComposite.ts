@@ -74,6 +74,8 @@ interface FilmClipResult {
    * the legs that were billed — never more, never less.
    */
   debited: boolean;
+  /** Last upstream failure reason (e.g. the Replicate create status) when failed. */
+  error?: string;
 }
 
 interface FilmPlanSummary {
@@ -304,9 +306,10 @@ async function renderClip(
       );
     }
   }
+  const failReason = lastErr instanceof Error ? lastErr.message : String(lastErr ?? 'unknown');
   // eslint-disable-next-line no-console
-  console.warn(`[film] clip ${scene.ordinal} exhausted retries:`, lastErr instanceof Error ? lastErr.message : lastErr);
-  return { ordinal: scene.ordinal, taskRef: null, status: 'failed', attempts: MAX_CLIP_DISPATCH_ATTEMPTS, debited };
+  console.warn(`[film] clip ${scene.ordinal} exhausted retries:`, failReason);
+  return { ordinal: scene.ordinal, taskRef: null, status: 'failed', attempts: MAX_CLIP_DISPATCH_ATTEMPTS, debited, error: failReason };
 }
 
 /**
@@ -412,7 +415,7 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
     );
   };
 
-  const connectionFailed = (): ChatResponse => ({
+  const connectionFailed = (diagnostic?: string | null): ChatResponse => ({
     success: false,
     intent: 'video_generation',
     responseType: 'text',
@@ -422,6 +425,10 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
       composite: true,
       providerConnectionFailed: true,
       balanceProtected: true,
+      // Surface the upstream reason (e.g. "Replicate LTX create failed (402)") so a
+      // dead provider is DIAGNOSABLE — a low balance / bad token / rate limit is no
+      // longer an opaque "couldn't connect". Never contains secrets (status + text).
+      ...(diagnostic ? { providerError: diagnostic.slice(0, 200) } : {}),
     },
   });
 
@@ -455,7 +462,7 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error('[film] scene synthesis threw — protecting balance:', err instanceof Error ? err.message : err);
-    return connectionFailed();
+    return connectionFailed(err instanceof Error ? err.message : String(err));
   }
   const anyClip = clips.some((c) => c.status === 'queued');
 
@@ -464,7 +471,10 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
   // localized "balance protected" halt instead of a half-charged dead pipeline.
   if (!anyClip) {
     await rollbackFilmDebits(clips);
-    return connectionFailed();
+    // Bubble up WHY every clip failed (first distinct upstream reason) so the
+    // failure is actionable instead of an opaque "couldn't connect".
+    const reason = clips.map((c) => c.error).find((e): e is string => Boolean(e)) ?? null;
+    return connectionFailed(reason);
   }
 
   // ── Leg 4: bind one cohesive audio track across the timeline (Udio) ────────
