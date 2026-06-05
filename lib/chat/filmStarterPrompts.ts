@@ -20,19 +20,22 @@ export type StarterLang = 'ka' | 'en' | 'ru';
 
 const STARTERS: Record<StarterLang, readonly string[]> = {
   ka: [
-    'ნისლიან მთებში მარტოსული მოგზაური გამთენიისას — ნელი კინემატოგრაფიული პანორამა, თბილი ოქროსფერი შუქი.',
-    'ნეონით განათებული ღამის ქალაქი წვიმაში — კამერა მიჰყვება პერსონაჟს, კინემატოგრაფიული ანარეკლები.',
-    'მყუდრო კაფე დილით, ორთქლი ამოდის ცხელი ყავიდან — ახლო ხედები, რბილი ბუნებრივი განათება.',
+    // 🎬 მუსიკალური ვიდეო
+    '30-წამიანი ჰიპ-ჰოპის ვიდეო კლიპი. ატვირთული პერსონაჟი ასრულებს ვოკალს, ტუჩების ზუსტი სინქრონიზაციით (Lipsync) ტრეკზე. კამერა აკეთებს დინამიურ 360-გრადუსიან Orbit მოძრაობას მის გარშემო, ნეონის განათება იცვლება მუსიკის ბიტზე, კინემატოგრაფიული ვიზუალი.',
+    // 📱 სარეკლამო ვიდეო
+    '30-წამიანი დინამიური რეკლამა Instagram-ისა და TikTok-ისთვის, ფორმატი 9:16. ახალგაზრდა მოდელი მოდურ ტანსაცმელში, კამერის სწრაფი Whip Pan მოძრაობები და მოდერნისტული ჭრები, ნათელი კომერციული სტუდიური განათება, ულტრა მაღალი 4K დეტალიზაცია.',
+    // 🤖 ფილმის სცენა
+    '30-წამიანი ფილმის ექშენ სცენა მომავალზე. უზარმაზარი კიბერპანკ რობოტი გადაადგილდება წვიმიან, ნისლიან მეგაპოლისში. კამერის ხედი: Low Angle, რათა გამოჩნდეს რობოტის მასშტაბი. რეალისტური მეტალის ანარეკლები, კინემატოგრაფიული ანამორფული ობიექტივი.',
   ],
   en: [
-    'A lone traveler in misty mountains at dawn — slow cinematic pan, warm golden light.',
-    'A neon-lit city at night in the rain — camera tracking a character, cinematic reflections.',
-    'A cozy café in the morning, steam rising from hot coffee — close-ups, soft natural light.',
+    'A 30-second hip-hop music video. The uploaded character performs vocals with precise lip-sync to the track. The camera does a dynamic 360° orbit around them, neon lighting pulses to the beat, cinematic visuals.',
+    'A 30-second dynamic ad for Instagram and TikTok, 9:16 format. A young model in fashionable clothing, fast Whip Pan camera moves and modern cuts, bright commercial studio lighting, ultra-high 4K detail.',
+    'A 30-second sci-fi action scene set in the future. A massive cyberpunk robot moves through a rainy, foggy megacity. Camera: Low Angle to reveal the robot’s scale. Realistic metal reflections, cinematic anamorphic lens.',
   ],
   ru: [
-    'Одинокий путник в туманных горах на рассвете — медленная кинопанорама, тёплый золотой свет.',
-    'Неоновый ночной город под дождём — камера следует за персонажем, кинематографичные отражения.',
-    'Уютное кафе утром, пар поднимается над горячим кофе — крупные планы, мягкий естественный свет.',
+    '30-секундный хип-хоп клип. Загруженный персонаж исполняет вокал с точной синхронизацией губ (Lipsync) под трек. Камера делает динамичный 360° Orbit вокруг него, неоновый свет пульсирует под бит, кинематографичная картинка.',
+    '30-секундная динамичная реклама для Instagram и TikTok, формат 9:16. Молодая модель в модной одежде, быстрые движения Whip Pan и современный монтаж, яркий коммерческий студийный свет, сверхвысокая детализация 4K.',
+    '30-секундная sci-fi экшен-сцена будущего. Огромный киберпанк-робот движется по дождливому туманному мегаполису. Ракурс: Low Angle, чтобы показать масштаб робота. Реалистичные металлические отражения, кинематографичный анаморфный объектив.',
   ],
 };
 

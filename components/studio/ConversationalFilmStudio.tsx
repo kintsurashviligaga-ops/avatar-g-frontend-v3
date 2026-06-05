@@ -935,8 +935,11 @@ export function ConversationalFilmStudio({
   const toggleRecording = useCallback(async () => {
     const whisperLang = lang === 'ka' ? 'ka-GE' : lang === 'ru' ? 'ru-RU' : 'en-US';
 
-    // ── Backend A: browser SpeechRecognition — live, interim dictation. ────────
-    if (speechSupported && recognitionRef.current) {
+    // ── Backend A: browser SpeechRecognition — used ONLY when MediaRecorder is
+    // unavailable. Whisper (Backend B below) is the PRIMARY path now: the browser
+    // engine drops the Georgian (ka-GE) locale and loses composer state too often,
+    // so the workflow records a blob and transcribes server-side with Whisper. ──
+    if (!recorderSupported && speechSupported && recognitionRef.current) {
       const rec = recognitionRef.current;
       if (isRecording) {
         try {
@@ -1017,6 +1020,19 @@ export function ConversationalFilmStudio({
           const text = json && typeof json.text === 'string' ? json.text.trim() : '';
           if (text) {
             setInput((prev) => (prev.trim() ? `${prev.trim()} ${text}` : text));
+            // Keep focus on the composer with the caret at the end so the user can
+            // immediately edit the transcribed Georgian text before sending.
+            requestAnimationFrame(() => {
+              const el = textareaRef.current;
+              if (!el) return;
+              el.focus();
+              try {
+                const end = el.value.length;
+                el.setSelectionRange(end, end);
+              } catch {
+                /* some browsers throw on setSelectionRange in certain states */
+              }
+            });
           } else {
             setMicNotice(t.voiceUnsupported);
           }
@@ -1129,9 +1145,11 @@ export function ConversationalFilmStudio({
     selected: string | null,
     onSelect: (id: string | null) => void,
   ) => (
-    <div className="flex items-start gap-2">
-      <span className="mt-1 w-14 shrink-0 text-[12px] text-white/40">{label}</span>
-      <div className="flex flex-wrap gap-1.5">
+    <div className="flex items-center gap-2">
+      <span className="w-14 shrink-0 text-[12px] text-white/40">{label}</span>
+      {/* Horizontally-scrollable carousel of chips — saves vertical space on
+          mobile and keeps each category to a single tidy row. */}
+      <div className="flex flex-1 gap-1.5 overflow-x-auto no-scrollbar -mx-0.5 px-0.5 py-0.5" style={{ WebkitOverflowScrolling: 'touch' }}>
         {items.map((it) => {
           const active = selected === it.id;
           return (
@@ -1141,7 +1159,7 @@ export function ConversationalFilmStudio({
               onClick={() => onSelect(active ? null : it.id)}
               aria-pressed={active}
               className={[
-                'rounded-full border px-2.5 py-1 text-[12px] transition-colors touch-manipulation',
+                'shrink-0 whitespace-nowrap rounded-full border px-3 py-1.5 text-[12px] transition-colors touch-manipulation',
                 active
                   ? 'border-[#00D2FF]/50 bg-[#00D2FF]/10 text-[#00D2FF]'
                   : 'border-white/12 text-white/55 hover:border-white/30 hover:text-white/80',
@@ -1678,7 +1696,7 @@ export function ConversationalFilmStudio({
               The bar lights cyan on focus; the CTA turns full electric-cyan when the
               server confirms a free founder slot, otherwise it stays clean white and
               the existing /api/video/assemble billing gate charges normally. */}
-          <div className="flex items-end gap-2 rounded-2xl border border-white/10 bg-black p-2 transition-all focus-within:border-[#00D2FF] focus-within:shadow-[0_0_15px_rgba(0,210,255,0.15)]">
+          <div className="flex items-end gap-2 rounded-2xl border border-[#3f3f46] bg-black p-2 transition-all focus-within:border-[#00D2FF] focus-within:shadow-[0_0_15px_rgba(0,210,255,0.15)]">
             <textarea
               ref={textareaRef}
               rows={1}
@@ -1702,12 +1720,16 @@ export function ConversationalFilmStudio({
                 aria-label={isRecording ? t.micStop : t.micStart}
                 title={isRecording ? t.micStop : t.micStart}
                 className={[
-                  'inline-flex h-10 w-10 items-center justify-center rounded-full transition-all shrink-0 touch-manipulation',
+                  // 44px touch target (a11y / mobile tap). Recording = animated RED
+                  // pulse (the universal "rec" signal); transcribing = cyan pulse.
+                  'inline-flex h-11 w-11 items-center justify-center rounded-full transition-all shrink-0 touch-manipulation',
                   driving
                     ? 'text-neutral-700 cursor-not-allowed'
-                    : isRecording || transcribing
-                      ? 'text-[#00D2FF] animate-pulse motion-reduce:animate-none'
-                      : 'text-white/40 hover:text-white/70 active:scale-90 motion-reduce:active:scale-100',
+                    : isRecording
+                      ? 'text-red-500 bg-red-500/10 animate-pulse motion-reduce:animate-none'
+                      : transcribing
+                        ? 'text-[#00D2FF] animate-pulse motion-reduce:animate-none'
+                        : 'text-white/40 hover:text-white/70 active:scale-90 motion-reduce:active:scale-100',
                 ].join(' ')}
               >
                 <Mic className="w-4 h-4" />
@@ -1725,7 +1747,7 @@ export function ConversationalFilmStudio({
               aria-label={t.generate}
               title={t.generate}
               className={[
-                'inline-flex h-10 w-10 items-center justify-center rounded-full transition-all shrink-0 touch-manipulation',
+                'inline-flex h-11 w-11 items-center justify-center rounded-full transition-all shrink-0 touch-manipulation',
                 !canSend
                   ? 'bg-white/10 text-neutral-600 cursor-not-allowed'
                   : sendValidated

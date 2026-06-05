@@ -61,6 +61,10 @@ export const MV_CAMERA_MOVES: CameraMove[] = [
   { id: 'pan', labelKa: 'პანორამა', labelEn: 'Pan', promptEn: 'smooth horizontal panning camera moves across the scene' },
   { id: 'zoom', labelKa: 'ზუმი', labelEn: 'Zoom', promptEn: 'a slow dramatic push-in zoom toward the performer' },
   { id: 'orbit', labelKa: 'ორბიტა', labelEn: 'Orbit', promptEn: 'a sweeping 360° orbit circling the performer' },
+  { id: 'drone360', labelKa: '360° დრონი', labelEn: '360° Drone', promptEn: 'a full 360° aerial drone shot circling high around the subject, panoramic reveal' },
+  { id: 'craneup', labelKa: 'კრეინი ↑', labelEn: 'Crane Up', promptEn: 'a dramatic vertical crane move rising up and away from the subject' },
+  { id: 'cranedown', labelKa: 'კრეინი ↓', labelEn: 'Crane Down', promptEn: 'a cinematic crane move descending down toward the subject' },
+  { id: 'whippan', labelKa: 'Whip Pan', labelEn: 'Whip Pan', promptEn: 'fast whip-pan transitions snapping on the beat for kinetic energy' },
 ];
 
 /** Framing / shot size (image_3.png "Select style…"). Drives the Cinematographer. */

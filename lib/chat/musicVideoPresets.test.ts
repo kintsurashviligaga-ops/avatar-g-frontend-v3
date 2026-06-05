@@ -14,7 +14,7 @@ describe('music-video presets', () => {
   test('exposes the advertised genres, shots, camera moves, and lighting', () => {
     expect(MV_GENRES.map((g) => g.id)).toEqual(['blues', 'hiphop', 'pop', 'cinematic']);
     expect(MV_SHOTS.map((s) => s.id)).toEqual(['wide', 'medium', 'closeup']);
-    expect(MV_CAMERA_MOVES.map((c) => c.id)).toEqual(['pan', 'zoom', 'orbit']);
+    expect(MV_CAMERA_MOVES.map((c) => c.id)).toEqual(['pan', 'zoom', 'orbit', 'drone360', 'craneup', 'cranedown', 'whippan']);
     expect(MV_LIGHTING.map((l) => l.id)).toEqual(['golden', 'cinematic', 'moody', 'melancholic']);
   });
 
