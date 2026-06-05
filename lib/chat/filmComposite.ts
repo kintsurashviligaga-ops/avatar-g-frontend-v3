@@ -165,6 +165,14 @@ async function stylizeSceneFrame(
   scene: FilmScene,
   shared: FilmShared,
 ): Promise<string | null> {
+  // OFF by default. Live measurement showed per-scene NanoBanana frame
+  // generation pushes the synchronous dispatch to ~200s (Gemini throttles the
+  // concurrent image calls, so even Promise.all serialises behind the provider)
+  // — that's near the route timeout and a terrible "dispatching" wait. Until
+  // it's moved off the dispatch hot-path, the pipeline anchors LTX-2 directly to
+  // the uploaded selfie (fast dispatch, identity still locked). Flip
+  // FILM_STYLE_FRAMES=1 to re-enable the stylized-frame chain.
+  if (process.env.FILM_STYLE_FRAMES !== '1') return null;
   const selfie = shared.referenceImages?.[0] ?? shared.avatarReference ?? null;
   if (!selfie) return null;
   const work = (async (): Promise<string | null> => {
