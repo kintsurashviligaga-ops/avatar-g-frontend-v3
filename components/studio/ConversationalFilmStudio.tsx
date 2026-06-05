@@ -1278,7 +1278,7 @@ export function ConversationalFilmStudio({
               </span>
               <span
                 className={[
-                  'rounded-full border px-2 py-0.5 text-[11px]',
+                  'rounded-full border px-2 py-0.5 text-[12px]',
                   mvMode ? 'border-[#00D2FF]/40 bg-[#00D2FF]/10 text-[#00D2FF]' : 'border-white/15 text-white/40',
                 ].join(' ')}
               >
@@ -1330,7 +1330,7 @@ export function ConversationalFilmStudio({
                   )}
                 </div>
 
-                <p className="text-[11px] leading-snug text-white/35">
+                <p className="text-[12px] leading-snug text-white/35">
                   {mvText(
                     'Upload a character photo (and a location) below; your track becomes the soundtrack. Then type a one-line scene and press generate.',
                     'ქვემოთ ატვირთე პერსონაჟის ფოტო (და ლოკაცია); შენი ტრეკი გახდება საუნდტრეკი. შემდეგ ჩაწერე სცენის ერთი წინადადება და დააჭირე გენერაციას.',
@@ -1399,10 +1399,10 @@ export function ConversationalFilmStudio({
                 })}
               </div>
               <div className="min-w-0">
-                <p className="truncate text-[11px] font-bold uppercase tracking-wider text-neutral-400">
+                <p className="truncate text-[12px] font-bold uppercase tracking-wider text-neutral-400">
                   {t.identityLabel}
                 </p>
-                <p className="text-[10px] text-neutral-600">{t.identityHint}</p>
+                <p className="text-[11px] text-neutral-600">{t.identityHint}</p>
               </div>
             </div>
           </div>
@@ -1427,7 +1427,7 @@ export function ConversationalFilmStudio({
               canvas so they guide the empty state without crowding a live chat. */}
           {showStarters && (
             <div className="space-y-2">
-              <p className="px-1 text-[10px] font-bold uppercase tracking-wider text-neutral-600">
+              <p className="px-1 text-[11px] font-bold uppercase tracking-wider text-neutral-600">
                 {t.starterHint}
               </p>
               <div className="flex flex-col gap-2">
@@ -1466,7 +1466,7 @@ export function ConversationalFilmStudio({
                 <div className="min-w-0">
                   <span
                     className={[
-                      'block text-[10px] font-bold uppercase tracking-wider',
+                      'block text-[11px] font-bold uppercase tracking-wider',
                       halted ? 'text-red-300' : 'text-neutral-400',
                     ].join(' ')}
                   >
@@ -1478,7 +1478,7 @@ export function ConversationalFilmStudio({
                   <button
                     type="button"
                     onClick={handleCancel}
-                    className="ml-auto shrink-0 rounded-lg border border-white/10 bg-black px-2.5 py-1 text-[11px] font-semibold text-neutral-400 hover:text-white"
+                    className="ml-auto shrink-0 rounded-lg border border-white/10 bg-black px-2.5 py-1 text-[12px] font-semibold text-neutral-400 hover:text-white"
                   >
                     {t.cancel}
                   </button>
@@ -1490,7 +1490,7 @@ export function ConversationalFilmStudio({
                   user that work is happening during the longest silent gap. */}
               {progress?.phase === 'dispatching' && (
                 <div className="space-y-2">
-                  <p className="text-[11px] font-medium text-[#00D2FF]/80">{t.writingStoryboard}</p>
+                  <p className="text-[12px] font-medium text-[#00D2FF]/80">{t.writingStoryboard}</p>
                   <div className="space-y-2">
                     {[0, 1, 2].map((i) => (
                       <div
@@ -1505,7 +1505,7 @@ export function ConversationalFilmStudio({
               {/* Whole-pipeline progress: a thin cyan bar + scene/percent readout,
                   both driven by the unit-tested summarizeFilmPipeline metrics. */}
               <div className="space-y-1.5">
-                <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider tabular-nums">
+                <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-wider tabular-nums">
                   {/* Honest live breakdown: how many scenes are READY, still
                       RENDERING (cyan), and FAILED (red) — so the counter explains
                       the bar instead of a lone discouraging "0/5". A failed scene
@@ -1563,11 +1563,11 @@ export function ConversationalFilmStudio({
               {sceneStages.length > 0 && (
                 <div className="space-y-2 pt-1">
                   <div className="flex items-center justify-between gap-2">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-500">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-neutral-500">
                       {t.scenes}
                     </span>
                     {sceneStages.some((s) => s.state === 'done' && s.previewUrl) && !masterUrl && (
-                      <span className="text-[10px] text-neutral-600">{t.scenePreviewHint}</span>
+                      <span className="text-[11px] text-neutral-600">{t.scenePreviewHint}</span>
                     )}
                   </div>
                   <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
@@ -1697,7 +1697,7 @@ export function ConversationalFilmStudio({
           {micNotice && (
             <div
               role="status"
-              className="mb-2 rounded-xl border border-white/10 bg-black px-3 py-2 text-center text-[11px] text-neutral-300"
+              className="mb-2 rounded-xl border border-white/10 bg-black px-3 py-2 text-center text-[12px] text-neutral-300"
             >
               {micNotice}
             </div>
@@ -1773,7 +1773,7 @@ export function ConversationalFilmStudio({
               (or as the free-film note), so it reads as "this video costs X ₾"
               for the action they're about to take, not a price list. */}
           {(isFreeFilm || input.trim().length > 0) && (
-            <p className="mt-2 text-center text-[11px] font-semibold">
+            <p className="mt-2 text-center text-[12px] font-semibold">
               {isFreeFilm ? (
                 <span className="inline-flex items-center gap-1.5 text-[#00D2FF]">
                   <CheckCircle2 className="h-3 w-3" />
@@ -1825,7 +1825,7 @@ export function ConversationalFilmStudio({
                   authenticated email, or the localized "Guest" label when
                   anonymous. Truncates gracefully for long addresses. */}
               <div className="rounded-xl border border-white/10 bg-black px-3 py-2.5">
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-neutral-500">{t.account}</p>
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-neutral-500">{t.account}</p>
                 <p className="mt-0.5 truncate text-xs font-medium text-white" title={userEmail ?? undefined}>
                   {userEmail ?? t.accountGuest}
                 </p>
@@ -1847,7 +1847,7 @@ export function ConversationalFilmStudio({
                           : 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.75)]'
                     }`}
                   />
-                  <span className={`text-[11px] font-medium ${providerReady === false ? 'text-red-300' : 'text-neutral-400'}`}>
+                  <span className={`text-[12px] font-medium ${providerReady === false ? 'text-red-300' : 'text-neutral-400'}`}>
                     {providerReady === null ? '…' : providerReady ? t.providerOnline : t.providerOffline}
                   </span>
                 </span>
@@ -1923,7 +1923,7 @@ export function ConversationalFilmStudio({
               {/* Legal + Support — App Store / public-launch requirement. The
                   pages already exist; this is the entry point to them. */}
               <div className="space-y-2 border-t border-white/10 pt-3">
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-neutral-500">{t.legalLabel}</p>
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-neutral-500">{t.legalLabel}</p>
                 <Link
                   href={`/${locale}/privacy`}
                   onClick={() => setMenuOpen(false)}
@@ -2056,7 +2056,7 @@ function FilmSceneCard({
       <span className="pointer-events-none absolute inset-x-0 bottom-0 h-2/3 bg-gradient-to-t from-black/85 via-black/15 to-transparent" />
 
       {/* Scene ordinal. */}
-      <span className="absolute left-2 top-2 rounded-md bg-black/55 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white/85 backdrop-blur-sm tabular-nums">
+      <span className="absolute left-2 top-2 rounded-md bg-black/55 px-1.5 py-0.5 text-[11px] font-bold uppercase tracking-wider text-white/85 backdrop-blur-sm tabular-nums">
         {sceneWord} {n}
       </span>
 
@@ -2085,7 +2085,7 @@ function FilmSceneCard({
       {/* Footer status word. */}
       <span
         className={[
-          'absolute inset-x-2 bottom-1.5 text-[10px] font-semibold tracking-wide',
+          'absolute inset-x-2 bottom-1.5 text-[11px] font-semibold tracking-wide',
           isFailed ? 'text-red-300' : isActive ? 'text-[#00D2FF]' : isDone ? 'text-white/80' : 'text-white/35',
         ].join(' ')}
       >
@@ -2151,7 +2151,7 @@ function FilmPreviewPlayer({
       <div className="flex items-center justify-between gap-2">
         <div
           className={[
-            'flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest',
+            'flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest',
             isMaster ? 'text-[#00D2FF]' : 'text-neutral-400',
           ].join(' ')}
         >
@@ -2171,7 +2171,7 @@ function FilmPreviewPlayer({
               type="button"
               onClick={handleShare}
               className={[
-                'inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[11px] font-semibold transition-colors',
+                'inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[12px] font-semibold transition-colors',
                 copied
                   ? 'border-[#00D2FF]/60 text-[#00D2FF]'
                   : 'border-white/10 text-neutral-300 hover:border-[#00D2FF]/50 hover:text-[#00D2FF]',
@@ -2186,7 +2186,7 @@ function FilmPreviewPlayer({
             target="_blank"
             rel="noopener noreferrer"
             download
-            className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 px-2.5 py-1 text-[11px] font-semibold text-neutral-300 transition-colors hover:border-[#00D2FF]/50 hover:text-[#00D2FF]"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 px-2.5 py-1 text-[12px] font-semibold text-neutral-300 transition-colors hover:border-[#00D2FF]/50 hover:text-[#00D2FF]"
           >
             <Download className="h-3 w-3" /> {openLabel}
           </a>
