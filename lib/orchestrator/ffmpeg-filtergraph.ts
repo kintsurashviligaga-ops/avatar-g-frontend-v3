@@ -76,11 +76,20 @@ export function buildFilterComplex(opts: FilterGraphOpts): {
     vmap = `[${prev}]`;
   }
 
-  // ── Cinematic master bookends: fade up from black at the head and fade to
-  // black at the tail — the professional open/close every finished film carries.
+  // ── Cinematic master grade + bookends, applied ONCE to the assembled timeline:
+  //   • colorbalance — a subtle teal-orange film look (cool shadows, warm
+  //     highlights), the signature Hollywood colour signature;
+  //   • eq          — a gentle finishing contrast/saturation with lifted blacks;
+  //   • vignette    — soft edge falloff that draws the eye to centre frame;
+  //   • fade in/out — fade up from black at the head, fade to black at the tail.
+  // (No film grain: it inflated the encoded bitrate ~5× — high-entropy noise
+  // defeats H.264 compression — for a marginal, subjective texture gain.)
   const FADE_SEC = 0.6;
   parts.push(
-    `${vmap}fade=t=in:st=0:d=${FADE_SEC},` +
+    `${vmap}colorbalance=rs=-0.02:bs=0.05:rm=0.03:bm=-0.02:rh=0.05:bh=-0.05,` +
+      `eq=contrast=1.04:saturation=1.06:gamma=0.98,` +
+      `vignette=angle=PI/4.2,` +
+      `fade=t=in:st=0:d=${FADE_SEC},` +
       `fade=t=out:st=${Math.max(0, totalDur - FADE_SEC).toFixed(2)}:d=${FADE_SEC}[vfinal]`,
   );
   vmap = '[vfinal]';

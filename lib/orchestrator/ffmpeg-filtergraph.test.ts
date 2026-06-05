@@ -21,9 +21,11 @@ describe('buildFilterComplex', () => {
     expect(g.filter).toContain('fade=t=out'); // fade-down close
   });
 
-  test('every clip gets the color-match QA grade', () => {
+  test('every clip gets the color-match QA grade + one master cinematic grade', () => {
     const g = buildFilterComplex({ nClips: 3, hasVoice: false, hasMusic: false, hasSfx: false, fps: 24, duckPct: 30 });
-    expect((g.filter.match(/eq=contrast/g) || []).length).toBe(3);
+    expect((g.filter.match(/eq=contrast=1\.06/g) || []).length).toBe(3); // per-clip colour-match
+    expect(g.filter).toContain('colorbalance='); // single master teal-orange grade
+    expect(g.filter).toContain('vignette='); // master vignette
   });
 
   test('voice + music → sidechain-ducked background under voice', () => {
