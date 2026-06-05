@@ -148,6 +148,50 @@ async function readWalletBalanceGel(userId: string): Promise<number | null> {
 // server imports. Re-exported for callers that import it from here.
 export { filmBalanceDecision };
 
+/**
+ * PER-SCENE IDENTITY FRAME (NanoBanana → LTX-2). Stylize the user's uploaded
+ * selfie into THIS scene's exact composition + camera framing as a photorealistic
+ * cinematic still, then hand that hosted frame to LTX-2 as the image-to-video
+ * anchor — so the protagonist IS the uploaded person, shot-to-shot, instead of a
+ * freshly-invented character. NanoBanana returns a hosted https URL synchronously
+ * (with a Replicate-FLUX fallback when out of credits).
+ *
+ * Best-effort by construction: returns null on any failure or after a hard 35s
+ * cap, and the caller falls back to the raw reference (or text-to-video) so a
+ * slow/failed frame never blocks or fails the clip.
+ */
+async function stylizeSceneFrame(
+  input: OrchestratorInput,
+  scene: FilmScene,
+  shared: FilmShared,
+): Promise<string | null> {
+  const selfie = shared.referenceImages?.[0] ?? shared.avatarReference ?? null;
+  if (!selfie) return null;
+  const work = (async (): Promise<string | null> => {
+    try {
+      const framePrompt =
+        `Cinematic film still. ${scene.prompt} Featuring the EXACT same person as the reference image — ` +
+        `identical face, hair and wardrobe. Photorealistic, professional cinematic colour, 16:9 composition.`;
+      const r = await serviceManager.execute({
+        sessionId: input.sessionId,
+        serviceContext: 'image',
+        intent: 'image_generation',
+        userPrompt: framePrompt,
+        imageUrl: selfie,
+        selectedOptions: { aspect: '16:9', aspectRatio: '16:9' },
+        locale: input.locale,
+      });
+      return typeof r.assetUrl === 'string' && /^https?:\/\//i.test(r.assetUrl) ? r.assetUrl : null;
+    } catch {
+      return null;
+    }
+  })();
+  return Promise.race([
+    work,
+    new Promise<null>((resolve) => setTimeout(() => resolve(null), 35_000)),
+  ]);
+}
+
 /** Dispatch a single film clip through ServiceManager/LTX, traced for cost. */
 async function renderClip(
   input: OrchestratorInput,
@@ -186,7 +230,13 @@ async function renderClip(
     await new Promise((resolve) => setTimeout(resolve, dispatchJitter));
   }
 
+  // PER-SCENE IDENTITY FRAME — stylize the selfie into this scene's composition
+  // (NanoBanana), then anchor LTX-2 to that hosted frame so the protagonist is
+  // the uploaded person. Best-effort: a null frame leaves the raw reference in
+  // place (buildFilmClipRequest already wired it), so the clip never blocks.
+  const sceneFrame = await stylizeSceneFrame(input, scene, shared);
   const clipReq = buildFilmClipRequest(scene, shared);
+  if (sceneFrame) clipReq.selectedOptions.characterReference = sceneFrame;
 
   // PHASE 43 §3 / PHASE 58 — Isolated per-leg retry. We retry ONLY when a dispatch
   // fails to produce a provider job (throw or null taskRef); a successfully queued
