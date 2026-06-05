@@ -524,6 +524,16 @@ export function ConversationalFilmStudio({
   // Whatever the user had already typed when dictation started — live transcript
   // is appended to THIS base so speaking never clobbers manual edits.
   const baseTranscriptRef = useRef('');
+  // ── Whisper fallback (§3 Georgian STT) ──────────────────────────────────────
+  // Where the browser exposes no SpeechRecognition (iOS Safari, most in-app
+  // webviews) the mic would otherwise be hidden entirely. Instead we record a
+  // short blob via MediaRecorder and POST it to /api/voice/transcribe, which runs
+  // Whisper (large-v3) in the caller's UI language — far stronger for Georgian
+  // (ka-GE) than the browser engine. `transcribing` drives a brief busy state.
+  const [recorderSupported, setRecorderSupported] = useState(false);
+  const [transcribing, setTranscribing] = useState(false);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const mediaStreamRef = useRef<MediaStream | null>(null);
 
   const msgIdRef = useRef(1);
   const [messages, setMessages] = useState<ChatMsg[]>(() => [
@@ -621,6 +631,25 @@ export function ConversationalFilmStudio({
       recognitionRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Detect the Whisper fallback's prerequisites (MediaRecorder + getUserMedia) so
+  // the mic stays available even where SpeechRecognition is absent.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const ok =
+      typeof MediaRecorder !== 'undefined' &&
+      typeof navigator !== 'undefined' &&
+      typeof navigator.mediaDevices?.getUserMedia === 'function';
+    setRecorderSupported(ok);
+    return () => {
+      try {
+        mediaRecorderRef.current?.stop();
+      } catch {
+        /* noop */
+      }
+      mediaStreamRef.current?.getTracks().forEach((tr) => tr.stop());
+    };
   }, []);
 
   // Auto-dismiss the mic toast so it stays non-intrusive (never lingers).
@@ -855,40 +884,114 @@ export function ConversationalFilmStudio({
   // the current input as the append base and set the recognizer locale from the
   // active UI language (ka-GE / ru-RU / en-US) right before starting.
   const toggleRecording = useCallback(async () => {
-    const rec = recognitionRef.current;
-    if (!rec || !speechSupported) {
-      setMicNotice(t.voiceUnsupported);
-      return;
-    }
-    if (isRecording) {
-      try {
-        rec.stop();
-      } catch {
-        /* noop */
+    const whisperLang = lang === 'ka' ? 'ka-GE' : lang === 'ru' ? 'ru-RU' : 'en-US';
+
+    // ── Backend A: browser SpeechRecognition — live, interim dictation. ────────
+    if (speechSupported && recognitionRef.current) {
+      const rec = recognitionRef.current;
+      if (isRecording) {
+        try {
+          rec.stop();
+        } catch {
+          /* noop */
+        }
+        setIsRecording(false);
+        return;
       }
-      setIsRecording(false);
+      try {
+        if (typeof navigator !== 'undefined' && navigator.mediaDevices?.getUserMedia) {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          // Release the probe stream immediately — SpeechRecognition opens its own.
+          stream.getTracks().forEach((tr) => tr.stop());
+        }
+      } catch {
+        setMicNotice(t.micDenied);
+        return;
+      }
+      baseTranscriptRef.current = input;
+      try {
+        rec.lang = whisperLang;
+        rec.start();
+        setIsRecording(true);
+      } catch {
+        // .start() throws if already started — keep the UI honest.
+        setIsRecording(false);
+      }
       return;
     }
-    try {
-      if (typeof navigator !== 'undefined' && navigator.mediaDevices?.getUserMedia) {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        // Release the probe stream immediately — SpeechRecognition opens its own.
+
+    // ── Backend B: MediaRecorder → Whisper (iOS Safari / no SpeechRecognition). ─
+    // Record a short blob and POST it to /api/voice/transcribe, which runs Whisper
+    // large-v3 in the UI language — far stronger for Georgian than the browser.
+    if (recorderSupported) {
+      if (isRecording) {
+        // Stop → fires recorder.onstop → transcribe.
+        try {
+          mediaRecorderRef.current?.stop();
+        } catch {
+          /* noop */
+        }
+        return;
+      }
+      let stream: MediaStream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      } catch {
+        setMicNotice(t.micDenied);
+        return;
+      }
+      const mime = MediaRecorder.isTypeSupported('audio/webm')
+        ? 'audio/webm'
+        : MediaRecorder.isTypeSupported('audio/mp4')
+          ? 'audio/mp4'
+          : '';
+      const recorder = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
+      const chunks: BlobPart[] = [];
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) chunks.push(e.data);
+      };
+      recorder.onstop = async () => {
+        setIsRecording(false);
+        stream.getTracks().forEach((tr) => tr.stop());
+        mediaStreamRef.current = null;
+        mediaRecorderRef.current = null;
+        if (chunks.length === 0) return;
+        const recMime = recorder.mimeType || 'audio/webm';
+        const blob = new Blob(chunks, { type: recMime });
+        const form = new FormData();
+        form.append('audio', blob, `voice.${recMime.includes('mp4') ? 'm4a' : 'webm'}`);
+        form.append('language', whisperLang);
+        setTranscribing(true);
+        try {
+          const res = await fetch('/api/voice/transcribe', { method: 'POST', body: form });
+          const json = (await res.json().catch(() => null)) as { text?: unknown } | null;
+          const text = json && typeof json.text === 'string' ? json.text.trim() : '';
+          if (text) {
+            setInput((prev) => (prev.trim() ? `${prev.trim()} ${text}` : text));
+          } else {
+            setMicNotice(t.voiceUnsupported);
+          }
+        } catch {
+          setMicNotice(t.micDenied);
+        } finally {
+          setTranscribing(false);
+        }
+      };
+      mediaRecorderRef.current = recorder;
+      mediaStreamRef.current = stream;
+      baseTranscriptRef.current = input;
+      try {
+        recorder.start();
+        setIsRecording(true);
+      } catch {
+        setIsRecording(false);
         stream.getTracks().forEach((tr) => tr.stop());
       }
-    } catch {
-      setMicNotice(t.micDenied);
       return;
     }
-    baseTranscriptRef.current = input;
-    try {
-      rec.lang = lang === 'ka' ? 'ka-GE' : lang === 'ru' ? 'ru-RU' : 'en-US';
-      rec.start();
-      setIsRecording(true);
-    } catch {
-      // .start() throws if already started — keep the UI honest.
-      setIsRecording(false);
-    }
-  }, [speechSupported, isRecording, input, lang, t.voiceUnsupported, t.micDenied]);
+
+    setMicNotice(t.voiceUnsupported);
+  }, [speechSupported, recorderSupported, isRecording, input, lang, t.voiceUnsupported, t.micDenied]);
 
   // Pre-fill the composer from a tapped starter chip and focus it (caret at end)
   // WITHOUT auto-sending — the user still reviews/edits and presses generate, so
@@ -1420,19 +1523,20 @@ export function ConversationalFilmStudio({
             {/* Native Voice-to-Text toggle, docked just before Send. Minimalist:
                 muted gray when idle, pulse Electric-Cyan while live-transcribing.
                 Only rendered when the browser exposes the Web Speech API. */}
-            {speechSupported && (
+            {(speechSupported || recorderSupported) && (
               <button
                 type="button"
                 onClick={toggleRecording}
-                disabled={driving}
+                disabled={driving || transcribing}
                 aria-pressed={isRecording}
+                aria-busy={transcribing}
                 aria-label={isRecording ? t.micStop : t.micStart}
                 title={isRecording ? t.micStop : t.micStart}
                 className={[
                   'inline-flex h-10 w-10 items-center justify-center rounded-full transition-all shrink-0 touch-manipulation',
                   driving
                     ? 'text-neutral-700 cursor-not-allowed'
-                    : isRecording
+                    : isRecording || transcribing
                       ? 'text-[#00D2FF] animate-pulse motion-reduce:animate-none'
                       : 'text-white/40 hover:text-white/70 active:scale-90 motion-reduce:active:scale-100',
                 ].join(' ')}
