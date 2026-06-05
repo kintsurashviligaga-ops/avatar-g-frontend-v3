@@ -279,8 +279,11 @@ export class ServiceManager {
     const aspect =
       this.normalizeAspectRatio(this.getOption(request.selectedOptions || {}, ['aspect', 'aspectRatio', 'ratio'])) ||
       '16:9';
-    const imageUrl =
-      request.imageUrl && /^https?:\/\//i.test(request.imageUrl) ? request.imageUrl : undefined;
+    // IDENTITY LOCK — the uploaded reference photo IS the protagonist. The film
+    // pipeline carries it in selectedOptions.characterReference(s); feeding it as
+    // the image-to-video anchor makes every clip animate FROM the user's subject
+    // (same face/wardrobe), not a freshly-invented character.
+    const imageUrl = this.resolveClipImage(request);
     // LTX-2 (native 1080p + synced audio) with automatic fallback to the proven
     // legacy clip model, so an LTX-2 hiccup can never break the render pipeline.
     const { pred, modelLabel } = await this.createReplicateLtxPrediction(
@@ -351,6 +354,43 @@ export class ServiceManager {
   }
 
   /**
+   * Resolve the identity-anchor image for a clip → the LTX image-to-video input.
+   *
+   * Priority: an explicit request.imageUrl, then the film pipeline's
+   * selectedOptions.characterReference (single) / characterReferences (JSON
+   * array — first entry). Accepts BOTH https URLs and `data:image/*` URIs, since
+   * the studio composer compresses uploads to data URLs. Returns undefined when
+   * no usable reference exists (clip renders text-to-video as before).
+   */
+  private resolveClipImage(request: ServiceManagerRequest): string | undefined {
+    const usable = (s: unknown): s is string => {
+      if (typeof s !== 'string') return false;
+      if (/^https?:\/\//i.test(s)) return true;
+      // data: image — cap the payload (~1.5 MB decoded) so an oversized upload
+      // can't bloat the provider request; the LTX-2 attempt loop degrades to
+      // text-to-video if it's skipped here.
+      return /^data:image\//i.test(s) && s.length <= 2_000_000;
+    };
+    if (usable(request.imageUrl)) return request.imageUrl;
+    const opts = request.selectedOptions || {};
+    const single = this.getOption(opts, ['characterReference', 'imageUrl', 'image', 'referenceImage', 'startImage']);
+    if (usable(single)) return single;
+    const refsJson = this.getOption(opts, ['characterReferences', 'referenceImages']);
+    if (refsJson) {
+      try {
+        const arr = JSON.parse(refsJson) as unknown;
+        if (Array.isArray(arr)) {
+          const first = arr.find(usable);
+          if (usable(first)) return first;
+        }
+      } catch {
+        /* not JSON → ignore */
+      }
+    }
+    return undefined;
+  }
+
+  /**
    * Create a Replicate clip prediction, preferring LTX-2 with graceful fallback.
    *
    * LTX-2 (`lightricks/ltx-2-fast` by default, env `REPLICATE_LTX_MODEL`) is the
@@ -378,22 +418,29 @@ export class ServiceManager {
     const ltx2Model = (process.env.REPLICATE_LTX_MODEL || 'lightricks/ltx-2-fast').trim();
 
     if (/ltx-2/i.test(ltx2Model)) {
-      try {
-        const input: Record<string, unknown> = { prompt, duration: 6 };
-        if (imageUrl) input.image = imageUrl;
-        const res = await fetch(`https://api.replicate.com/v1/models/${ltx2Model}/predictions`, {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-          cache: 'no-store',
-          body: JSON.stringify({ input }),
-        });
-        if (res.ok) {
-          const pred = (await res.json().catch(() => ({}))) as { id?: string; status?: string; output?: unknown };
-          if (pred.id) return { pred, modelLabel: ltx2Model };
+      // Try image-to-video FIRST (identity-locked to the uploaded subject). If
+      // that create fails — a rejected or oversized reference — retry the SAME
+      // model text-to-video, so a bad image never fails a clip that would
+      // otherwise render (it just loses the photo anchor, keeps LTX-2 quality).
+      const attempts: Array<Record<string, unknown>> = imageUrl
+        ? [{ prompt, duration: 6, image: imageUrl }, { prompt, duration: 6 }]
+        : [{ prompt, duration: 6 }];
+      for (const input of attempts) {
+        try {
+          const res = await fetch(`https://api.replicate.com/v1/models/${ltx2Model}/predictions`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+            cache: 'no-store',
+            body: JSON.stringify({ input }),
+          });
+          if (res.ok) {
+            const pred = (await res.json().catch(() => ({}))) as { id?: string; status?: string; output?: unknown };
+            if (pred.id) return { pred, modelLabel: ltx2Model };
+          }
+          // Non-ok → try the next attempt (image-less), then the legacy model.
+        } catch {
+          /* network/other → try next attempt / legacy */
         }
-        // Non-ok or id-less → fall through to the proven legacy model below.
-      } catch {
-        /* network/other → fall through to legacy */
       }
     }
 

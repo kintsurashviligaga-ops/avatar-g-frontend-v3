@@ -129,11 +129,11 @@ interface CinematicBeat {
 }
 
 const CINEMATIC_BEATS: readonly CinematicBeat[] = [
-  { framing: 'Wide cinematic establishing shot with a slow push-in, revealing the world and the protagonist entering frame', cameraMotion: 'zoom_in' },
-  { framing: 'Medium tracking shot gliding alongside the protagonist as they move through the scene', cameraMotion: 'dolly' },
-  { framing: 'Intimate close-up holding on the protagonist’s face and signature details', cameraMotion: 'pan_left' },
-  { framing: 'Dynamic low-angle hero shot at the dramatic peak of the action', cameraMotion: 'pan_right' },
-  { framing: 'Sweeping crane pull-back as the protagonist settles and the scene resolves', cameraMotion: 'zoom_out' },
+  { framing: 'Epic wide establishing shot, anamorphic lens, slow cinematic dolly push-in that reveals the world as the protagonist enters frame — deep focus, golden-hour key light, gentle atmospheric haze', cameraMotion: 'zoom_in' },
+  { framing: 'Smooth lateral tracking shot on a gimbal gliding alongside the protagonist at eye level — 35mm lens, shallow depth of field, soft rim light separating the subject from the background', cameraMotion: 'dolly' },
+  { framing: 'Intimate cinematic close-up, 85mm portrait lens, a slow controlled pan across the protagonist’s face and signature details — creamy bokeh, soft Rembrandt lighting', cameraMotion: 'pan_left' },
+  { framing: 'Dynamic low-angle hero shot at the dramatic peak with subtle handheld energy — wide lens, high contrast, volumetric backlight, the protagonist powerful against the sky', cameraMotion: 'pan_right' },
+  { framing: 'Sweeping crane pull-back rising as the protagonist settles and the scene resolves — expansive composition, warm cinematic colour grade, soft lens flare, a confident final beat', cameraMotion: 'zoom_out' },
 ];
 
 /**
