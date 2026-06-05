@@ -5,15 +5,16 @@ import { i18n } from '@/i18n.config';
 
 export const dynamic = 'force-dynamic';
 
+// The post-login landing page. The app's HOME is the film studio at
+// /{locale}/dashboard — NOT /services (which felt like "login took me elsewhere").
+const DEFAULT_POST_LOGIN = `/${i18n.defaultLocale}/dashboard`;
+
 function resolveSafeNextPath(input: string | null) {
-  if (!input || !input.startsWith('/')) {
-    return `/${i18n.defaultLocale}/services`;
+  // Reject empty, non-absolute, or protocol-relative (//evil.com) targets — an
+  // open-redirect guard — and fall back to the home dashboard.
+  if (!input || !input.startsWith('/') || input.startsWith('//')) {
+    return DEFAULT_POST_LOGIN;
   }
-
-  if (input.startsWith('//')) {
-    return `/${i18n.defaultLocale}/services`;
-  }
-
   return input;
 }
 
@@ -78,5 +79,5 @@ export async function GET(request: Request) {
     await ensureProfile(user);
   }
 
-  return NextResponse.redirect(new URL(next || `/${i18n.defaultLocale}/services`, requestUrl.origin));
+  return NextResponse.redirect(new URL(next || DEFAULT_POST_LOGIN, requestUrl.origin));
 }
