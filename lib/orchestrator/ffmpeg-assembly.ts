@@ -93,8 +93,13 @@ export async function assembleWithFfmpeg(m: FfmpegManifest, signal?: AbortSignal
     args.push('-filter_complex', filter, '-map', vmap);
     if (amap) args.push('-map', amap);
     args.push(
-      '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23', '-pix_fmt', 'yuv420p',
-      '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', out,
+      // Professional-grade H.264 encode: 'fast' (not 'veryfast') + CRF 20 lifts
+      // visual quality close to source while staying well inside the serverless
+      // CPU budget; High profile @ L4.2 is the standard 1080p delivery target.
+      '-c:v', 'libx264', '-preset', 'fast', '-crf', '20',
+      '-profile:v', 'high', '-level', '4.2', '-pix_fmt', 'yuv420p',
+      // 256 kbps / 48 kHz AAC for clean, full-bandwidth film audio.
+      '-c:a', 'aac', '-b:a', '256k', '-ar', '48000', '-movflags', '+faststart', out,
     );
 
     await exec(bin, args, { maxBuffer: 1 << 28, timeout: 280_000, ...(signal ? { signal } : {}) });

@@ -1,10 +1,12 @@
 import { buildFilterComplex } from './ffmpeg-filtergraph';
 
 describe('buildFilterComplex', () => {
-  test('single clip → straight video map, no xfade', () => {
+  test('single clip → no xfade, routed through the cinematic master', () => {
     const g = buildFilterComplex({ nClips: 1, hasVoice: false, hasMusic: false, hasSfx: false, fps: 24, duckPct: 30 });
-    expect(g.vmap).toBe('[v0]');
+    expect(g.vmap).toBe('[vfinal]'); // fade-in/out bookends applied to every film
     expect(g.filter).not.toContain('xfade');
+    expect(g.filter).toContain('scale=1920:1080'); // every clip normalised to 1080p
+    expect(g.filter).toContain('fade=t=in'); // professional fade-up open
     expect(g.amap).toBeNull();
   });
 
@@ -15,7 +17,8 @@ describe('buildFilterComplex', () => {
     expect(g.filter).toContain('duration=1');
     expect(g.filter).toContain('offset=5.00');
     expect(g.filter).toContain('offset=20.00');
-    expect(g.vmap).toBe('[vx4]');
+    expect(g.vmap).toBe('[vfinal]'); // xfade chain → cinematic fade bookends
+    expect(g.filter).toContain('fade=t=out'); // fade-down close
   });
 
   test('every clip gets the color-match QA grade', () => {
@@ -49,7 +52,8 @@ describe('buildFilterComplex', () => {
   test('PHASE 52 — final audio is padded + trimmed to the master timeline', () => {
     // 5 clips · 6s − 4 transitions · 1s = 26s compiled master.
     const g = buildFilterComplex({ nClips: 5, hasVoice: true, hasMusic: true, hasSfx: false, fps: 24, duckPct: 30 });
-    expect(g.filter).toContain('apad,atrim=0:26.00,asetpts=N/SR/TB[aout]');
+    expect(g.filter).toContain('apad,atrim=0:26.00,asetpts=N/SR/TB,');
+    expect(g.filter).toContain('loudnorm=I=-14'); // EBU R128 broadcast loudness
     expect(g.amap).toBe('[aout]');
     // The ducked mix is computed FIRST (intermediate [apre]) then scaled.
     expect(g.filter).toContain('[apre]apad');

@@ -48,10 +48,18 @@ export function buildFilterComplex(opts: FilterGraphOpts): {
   const totalDur = nClips * clipSec - Math.max(0, nClips - 1) * TRANSITION_SEC;
 
   // ── Video: normalize + color-match QA pass per clip, then xfade-chain ──────
-  // A uniform mild grade (eq) keeps contrast/saturation consistent across clips
-  // generated independently — the "color match tuning" pass before assembly.
+  // Per-clip finishing pass: scale EVERY clip onto a clean 1920×1080 canvas
+  // (letterboxed, square pixels) so independently-generated clips share identical
+  // dimensions — this both guarantees a 1080p master AND prevents the xfade chain
+  // from erroring on a mismatched source. Then a uniform cinematic grade
+  // (contrast + saturation + slightly lifted blacks via gamma) keeps the look
+  // consistent across clips, plus a touch of unsharp for crispness.
   for (let i = 0; i < nClips; i++) {
-    parts.push(`[${i}:v]settb=AVTB,fps=${vfps},format=yuv420p,eq=contrast=1.04:saturation=1.06[v${i}]`);
+    parts.push(
+      `[${i}:v]scale=1920:1080:force_original_aspect_ratio=decrease,` +
+        `pad=1920:1080:-1:-1:color=black,setsar=1,settb=AVTB,fps=${vfps},` +
+        `format=yuv420p,eq=contrast=1.06:saturation=1.08:gamma=0.98,unsharp=3:3:0.3[v${i}]`,
+    );
   }
   let vmap: string;
   if (nClips === 1) {
@@ -67,6 +75,15 @@ export function buildFilterComplex(opts: FilterGraphOpts): {
     }
     vmap = `[${prev}]`;
   }
+
+  // ── Cinematic master bookends: fade up from black at the head and fade to
+  // black at the tail — the professional open/close every finished film carries.
+  const FADE_SEC = 0.6;
+  parts.push(
+    `${vmap}fade=t=in:st=0:d=${FADE_SEC},` +
+      `fade=t=out:st=${Math.max(0, totalDur - FADE_SEC).toFixed(2)}:d=${FADE_SEC}[vfinal]`,
+  );
+  vmap = '[vfinal]';
 
   // ── Audio: voiceover (full) + ducked background (music ∪ sfx) ─────────────
   let ai = nClips; // audio inputs come after the N video inputs
@@ -114,7 +131,15 @@ export function buildFilterComplex(opts: FilterGraphOpts): {
   // the picture end on the same frame regardless of source clip lengths.
   let amap: string | null = null;
   if (apre !== null) {
-    parts.push(`${apre}apad,atrim=0:${totalDur.toFixed(2)},asetpts=N/SR/TB[aout]`);
+    // Scale the bed to the picture timeline, then MASTER it: gentle audio fade
+    // in/out so the track never clicks on at full level, and EBU R128 loudness
+    // normalisation to a streaming-standard −14 LUFS (−1.5 dBTP ceiling) so every
+    // film plays back at a consistent, broadcast-grade volume.
+    parts.push(
+      `${apre}apad,atrim=0:${totalDur.toFixed(2)},asetpts=N/SR/TB,` +
+        `afade=t=in:st=0:d=0.5,afade=t=out:st=${Math.max(0, totalDur - 0.8).toFixed(2)}:d=0.8,` +
+        `loudnorm=I=-14:TP=-1.5:LRA=11[aout]`,
+    );
     amap = '[aout]';
   }
 
