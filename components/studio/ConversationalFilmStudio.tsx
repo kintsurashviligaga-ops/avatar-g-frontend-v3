@@ -1348,7 +1348,17 @@ export function ConversationalFilmStudio({
               <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
                 {[0, 1, 2].map((idx) => {
                   const slot = slots[idx] ?? null;
-                  const role = t.roles[idx] ?? '';
+                  // §5 Music-Video mode relabels the ingestion zones: slot 0 is the
+                  // CHARACTER, slot 1 the LOCATION/background (the audio track is the
+                  // third zone, in the Music-Video panel above). Otherwise the slots
+                  // keep their identity-reference roles (face / profile / lighting).
+                  const role = mvMode
+                    ? idx === 0
+                      ? mvText('Character', 'პერსონაჟი', 'Персонаж')
+                      : idx === 1
+                        ? mvText('Location', 'ლოკაცია', 'Локация')
+                        : mvText('Extra', 'დამატ.', 'Доп.')
+                    : t.roles[idx] ?? '';
                   return (
                     <div
                       key={idx}
