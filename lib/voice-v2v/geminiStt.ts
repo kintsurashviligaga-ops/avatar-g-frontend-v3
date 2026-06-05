@@ -14,7 +14,16 @@ import 'server-only';
  */
 
 function geminiKey(): string {
-  return (process.env.GEMINI_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY || '').trim();
+  const single = (process.env.GEMINI_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY || '').trim();
+  if (single) return single;
+  // The chat path rotates a POOL of keys under GEMINI_API_KEYS (comma/space/newline
+  // separated). If the single var isn't set, draw the first key from the pool so
+  // the mic uses the SAME provisioned credential the rest of the app already does.
+  const pool = (process.env.GEMINI_API_KEYS || '')
+    .split(/[\s,]+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return pool[0] || '';
 }
 
 export function hasGeminiSttKey(): boolean {
