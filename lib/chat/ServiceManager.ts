@@ -11,7 +11,7 @@ import { normalizeOutput } from '@/lib/replicate/normalizer';
 import type { IntentCategory } from '@/lib/chat/intentDetector';
 import { extractPromptTraits, enrichVideoPrompt } from '@/lib/chat/promptTraits';
 import { extractAspectDirective } from '@/lib/chat/outputEnforcement';
-import { resolveLtxApiKey } from '@/lib/chat/ltxKey';
+import { resolveLtxApiKey, hasLtxApiKey } from '@/lib/chat/ltxKey';
 import { selectVideoPrimaryProvider } from '@/lib/chat/videoProvider';
 import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
 
@@ -259,19 +259,23 @@ export class ServiceManager {
       return this.runHeygenAvatarVideo(request);
     }
 
-    // VIDEO ENGINE CONTRACT — LTX-2 is the PRIMARY render source. The Replicate
-    // dispatch (runReplicateLtxVideo → createReplicateLtxPrediction) tries
-    // `lightricks/ltx-2-fast` FIRST (native 1080p + synced audio, image-to-video
-    // identity-locked, then text-to-video); the legacy `lightricks/ltx-video` is
-    // used ONLY as an automatic fallback when an LTX-2 create fails, so a hiccup
-    // can never break the render. The direct api.ltx.video account
-    // charged-but-never-completed in prod (clips stuck 0/5), so Replicate hosts
-    // LTX-2 by default; opt back to the direct API with LTX_VIA_REPLICATE=0.
-    if (process.env.LTX_VIA_REPLICATE !== '0' && typeof process.env.REPLICATE_API_TOKEN === 'string' && process.env.REPLICATE_API_TOKEN.trim()) {
+    // VIDEO ENGINE — prefer the DIRECT LTX-2.3 API (api.ltx.video) whenever a
+    // funded LTX key is configured: the operator provisioned LTX_VIDEO_API_KEY to
+    // spend their LTX.video balance, so that account is the PRIMARY render engine.
+    // runLtxVideo itself fails over to the Replicate-hosted LTX path on a credit/
+    // auth error, so a dry/invalid LTX key can never dead-end the render. Set
+    // LTX_VIA_REPLICATE=1 to force the Replicate-hosted LTX-2-fast path instead
+    // (e.g. while the direct account is empty). Either way the engine is LTX-2.
+    const forceReplicate = process.env.LTX_VIA_REPLICATE === '1';
+    const hasReplicate = typeof process.env.REPLICATE_API_TOKEN === 'string' && process.env.REPLICATE_API_TOKEN.trim().length > 0;
+
+    if (!forceReplicate && hasLtxApiKey()) {
+      return this.runLtxVideo(request);
+    }
+    if (hasReplicate) {
       return this.runReplicateLtxVideo(request);
     }
-
-    // No Replicate token → direct LTX-2 API (still LTX-2, never a non-LTX engine).
+    // No LTX key and no Replicate token → still attempt direct LTX (honest fail).
     return this.runLtxVideo(request);
   }
 
