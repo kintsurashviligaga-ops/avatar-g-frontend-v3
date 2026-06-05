@@ -68,13 +68,32 @@ export interface FilmStudioProgress {
   previewUrl: string | null;
 }
 
+/** Supervisor-QA verdict on the assembled master (mirror of the server summary). */
+export interface FilmQaSummary {
+  pass: boolean;
+  score: number;
+  grade: string;
+  issues: string[];
+}
+
 export interface FilmStudioResult {
   ok: boolean;
   phase: FilmStudioPhase;
   masterUrl: string | null;
   previewUrl: string | null;
   matrix: FilmStudioMatrix | null;
+  /** Quality grade of the master from the server Supervisor QA gate, if any. */
+  qa?: FilmQaSummary | null;
   error?: string;
+}
+
+/** Narrow an unknown JSON `qa` field to a FilmQaSummary, or null. */
+function asQa(v: unknown): FilmQaSummary | null {
+  if (!v || typeof v !== 'object') return null;
+  const o = v as Record<string, unknown>;
+  if (typeof o.pass !== 'boolean' || typeof o.score !== 'number' || typeof o.grade !== 'string') return null;
+  const issues = Array.isArray(o.issues) ? o.issues.filter((x): x is string => typeof x === 'string') : [];
+  return { pass: o.pass, score: o.score, grade: o.grade, issues };
 }
 
 export interface DriveFilmOptions {
@@ -365,7 +384,7 @@ async function assembleMaster(
   statusTokenId: string | undefined,
   scorePrompt: string,
   signal?: AbortSignal,
-): Promise<string | null> {
+): Promise<{ url: string; qa: FilmQaSummary | null } | null> {
   const res = await fetch('/api/video/assemble', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -379,12 +398,13 @@ async function assembleMaster(
     }),
   });
   if (!res.ok) return null;
-  const json = (await res.json().catch(() => null)) as { url?: unknown } | null;
-  return json && typeof json.url === 'string' && json.url.length > 0 ? json.url : null;
+  const json = (await res.json().catch(() => null)) as { url?: unknown; qa?: unknown } | null;
+  if (!(json && typeof json.url === 'string' && json.url.length > 0)) return null;
+  return { url: json.url, qa: asQa(json.qa) };
 }
 
-/** Recover an already-hosted master from the durable status tracker. */
-async function recoverMaster(statusTokenId: string, signal?: AbortSignal): Promise<string | null> {
+/** Recover an already-hosted master (+ its QA verdict) from the durable tracker. */
+async function recoverMaster(statusTokenId: string, signal?: AbortSignal): Promise<{ url: string; qa: FilmQaSummary | null } | null> {
   try {
     const res = await fetch(`/api/video/status/${encodeURIComponent(statusTokenId)}`, {
       method: 'GET',
@@ -393,9 +413,9 @@ async function recoverMaster(statusTokenId: string, signal?: AbortSignal): Promi
       signal,
     });
     if (!res.ok) return null;
-    const json = (await res.json().catch(() => null)) as { phase?: unknown; masterUrl?: unknown } | null;
+    const json = (await res.json().catch(() => null)) as { phase?: unknown; masterUrl?: unknown; qa?: unknown } | null;
     if (json && json.phase === 'assembled' && typeof json.masterUrl === 'string' && json.masterUrl.length > 0) {
-      return json.masterUrl;
+      return { url: json.masterUrl, qa: asQa(json.qa) };
     }
     return null;
   } catch {
@@ -576,14 +596,14 @@ export async function driveFilmStudio(opts: DriveFilmOptions): Promise<FilmStudi
     if (clips.length < MIN_SALVAGE_CLIPS) {
       return fail('Not enough scenes rendered to stitch a film (need at least 2).', matrix);
     }
-    let master = await assembleMaster(clips, matrix.audioUrl ?? null, matrix.statusTokenId, message, signal);
+    let assembled = await assembleMaster(clips, matrix.audioUrl ?? null, matrix.statusTokenId, message, signal);
 
     // 4 ── Recover if the assemble response was lost in transit
-    if (!master && matrix.statusTokenId) {
-      master = await recoverMaster(matrix.statusTokenId, signal);
+    if (!assembled && matrix.statusTokenId) {
+      assembled = await recoverMaster(matrix.statusTokenId, signal);
     }
 
-    if (!master) {
+    if (!assembled) {
       // Route through fail() so a terminal 'failed' is EMITTED (the old inline
       // return left the last phase at 'stitching', wedging the UI on a spinner).
       return fail(
@@ -592,8 +612,9 @@ export async function driveFilmStudio(opts: DriveFilmOptions): Promise<FilmStudi
       );
     }
 
+    const master = assembled.url;
     emit('assembled', matrix, master);
-    return { ok: true, phase: 'assembled', masterUrl: master, previewUrl: firstPreviewUrl(matrix), matrix };
+    return { ok: true, phase: 'assembled', masterUrl: master, qa: assembled.qa, previewUrl: firstPreviewUrl(matrix), matrix };
   } catch (err) {
     if (err instanceof DOMException && err.name === 'AbortError') {
       return { ok: false, phase: 'idle', masterUrl: null, previewUrl: null, matrix: null, error: 'Canceled.' };

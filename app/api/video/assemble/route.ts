@@ -306,8 +306,10 @@ export async function POST(req: NextRequest) {
 
   // PHASE 47 §1 — stamp the finished hosted master onto the unified tracker so a
   // reload / second device can recover the playable 30s film without re-rendering.
-  if (filmTokenId && resultUrl) await recordFilmMaster(filmTokenId, resultUrl);
-
+  // The Supervisor QA verdict rides along so the recovered film carries its grade.
   const qa = (bag.qa as QaReport | null | undefined) ?? null;
+  const qaSummary = qa ? { pass: qa.pass, score: qa.score, grade: qa.grade, issues: qa.issues.map((i) => i.code) } : null;
+  if (filmTokenId && resultUrl) await recordFilmMaster(filmTokenId, resultUrl, qaSummary);
+
   return NextResponse.json({ url: resultUrl, qa, sagaId: saga.sagaId, filmTokenId, scoreFallback, freeFilm: Boolean(bag.freeFilm) });
 }

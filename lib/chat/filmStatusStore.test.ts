@@ -111,9 +111,9 @@ describe('buildFilmSnapshot — pure phase + clip folding', () => {
 
 describe('mergeMaster — stamp a finished master', () => {
   test('synthesizes a minimal assembled record when none exists', () => {
-    const rec = mergeMaster(null, 't9', 'https://cdn/m.mp4', 5);
+    const rec = mergeMaster(null, 't9', 'https://cdn/m.mp4', null, 5);
     expect(rec).toEqual<FilmStatusRecord>({
-      tokenId: 't9', phase: 'assembled', clips: [], audioReady: false, masterUrl: 'https://cdn/m.mp4', updatedAt: 5, error: null,
+      tokenId: 't9', phase: 'assembled', clips: [], audioReady: false, masterUrl: 'https://cdn/m.mp4', qa: null, updatedAt: 5, error: null,
     });
   });
 
@@ -121,10 +121,16 @@ describe('mergeMaster — stamp a finished master', () => {
     const prev: FilmStatusRecord = {
       tokenId: 't9', phase: 'ready', clips: [{ ordinal: 1, status: 'succeeded', hasUrl: true }], audioReady: true, masterUrl: null, updatedAt: 1, error: null,
     };
-    const rec = mergeMaster(prev, 't9', 'https://cdn/m.mp4', 9);
+    const rec = mergeMaster(prev, 't9', 'https://cdn/m.mp4', null, 9);
     expect(rec.phase).toBe('assembled');
     expect(rec.masterUrl).toBe('https://cdn/m.mp4');
     expect(rec.clips).toHaveLength(1);
+  });
+
+  test('carries the Supervisor QA verdict onto the assembled record', () => {
+    const qa = { pass: false, score: 50, grade: 'F', issues: ['silent_master'] };
+    const rec = mergeMaster(null, 't9', 'https://cdn/m.mp4', qa, 7);
+    expect(rec.qa).toEqual(qa);
   });
 });
 

@@ -46,6 +46,18 @@ export interface FilmStatusClip {
   hasUrl: boolean;
 }
 
+/**
+ * Lean Supervisor-QA summary persisted alongside the master so a reload / second
+ * device sees the same quality verdict. Mirrors lib/orchestrator/masterQa's
+ * QaReport but flattens `issues` to their codes — the store stays dependency-free.
+ */
+export interface FilmQaSummary {
+  pass: boolean;
+  score: number;
+  grade: string;
+  issues: string[];
+}
+
 export interface FilmStatusRecord {
   tokenId: string;
   phase: FilmStatusPhase;
@@ -53,6 +65,8 @@ export interface FilmStatusRecord {
   audioReady: boolean;
   /** The hosted, stitched 30-second master once the editor finishes; else null. */
   masterUrl: string | null;
+  /** Supervisor QA verdict on the assembled master, once graded; else null. */
+  qa?: FilmQaSummary | null;
   updatedAt: number;
   error?: string | null;
 }
@@ -122,11 +136,11 @@ export function buildFilmSnapshot(input: FilmSnapshotInput): FilmStatusRecord {
  * minimal one), promoting the phase to 'assembled'. Used by the assemble route
  * so a completed stitch is recoverable by any client.
  */
-export function mergeMaster(prev: FilmStatusRecord | null, tokenId: string, masterUrl: string, now = Date.now()): FilmStatusRecord {
+export function mergeMaster(prev: FilmStatusRecord | null, tokenId: string, masterUrl: string, qa: FilmQaSummary | null = null, now = Date.now()): FilmStatusRecord {
   if (!prev) {
-    return { tokenId, phase: 'assembled', clips: [], audioReady: false, masterUrl, updatedAt: now, error: null };
+    return { tokenId, phase: 'assembled', clips: [], audioReady: false, masterUrl, qa, updatedAt: now, error: null };
   }
-  return { ...prev, phase: 'assembled', masterUrl, updatedAt: now, error: null };
+  return { ...prev, phase: 'assembled', masterUrl, qa: qa ?? prev.qa ?? null, updatedAt: now, error: null };
 }
 
 // ─── Backing store (Redis REST, fail-open, in-process fallback) ──────────────
@@ -200,9 +214,9 @@ export async function recordFilmAssembling(tokenId: string): Promise<void> {
 }
 
 /** Stamp the finished hosted master onto the record. Fails open. */
-export async function recordFilmMaster(tokenId: string, masterUrl: string): Promise<void> {
+export async function recordFilmMaster(tokenId: string, masterUrl: string, qa: FilmQaSummary | null = null): Promise<void> {
   const prev = await getFilmStatus(tokenId);
-  await putFilmStatus(mergeMaster(prev, tokenId, masterUrl));
+  await putFilmStatus(mergeMaster(prev, tokenId, masterUrl, qa));
 }
 
 /** Mark the film failed with a short reason. Fails open. */

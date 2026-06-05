@@ -60,6 +60,7 @@ import {
   driveFilmStudio,
   estimateFilmCostGel,
   type FilmStudioProgress,
+  type FilmQaSummary,
 } from '@/lib/chat/filmStudioClient';
 import { summarizeFilmPipeline, type StageState } from '@/lib/chat/filmStudioStages';
 import { filmStarterPrompts } from '@/lib/chat/filmStarterPrompts';
@@ -481,6 +482,7 @@ export function ConversationalFilmStudio({
   const [driving, setDriving] = useState(false);
   const [progress, setProgress] = useState<FilmStudioProgress | null>(null);
   const [masterUrl, setMasterUrl] = useState<string | null>(null);
+  const [filmQa, setFilmQa] = useState<FilmQaSummary | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   // A landed scene the user tapped to preview before the master is stitched.
@@ -727,6 +729,7 @@ export function ConversationalFilmStudio({
     async (userPrompt: string, resume?: { predictionId: string; sessionId: string }) => {
       setError(null);
       setMasterUrl(null);
+      setFilmQa(null);
       setPreviewUrl(null);
       setSelectedSceneUrl(null);
       setProgress({ phase: resume ? 'rendering' : 'dispatching', matrix: null, message: '', masterUrl: null, previewUrl: null });
@@ -757,6 +760,7 @@ export function ConversationalFilmStudio({
             persistInflightFilm({ predictionId, sessionId, prompt: userPrompt, locale }),
         });
         setMasterUrl(res.masterUrl);
+        setFilmQa(res.qa ?? null);
         setPreviewUrl(res.previewUrl);
         if (!res.ok && res.error) {
           setError(res.error);
@@ -1330,6 +1334,38 @@ export function ConversationalFilmStudio({
               shareLabel={t.share}
               copiedLabel={t.copied}
             />
+          )}
+
+          {/* Supervisor QA verdict — the automated quality gate's grade on the
+              finished master. Cyan when the film passed every check; red (the
+              only sanctioned use of red) when a real defect was detected, so a
+              flawed cut is never silently presented as final. */}
+          {masterUrl && filmQa && (
+            <div
+              className={`mt-2 flex items-center gap-2 rounded-xl border px-3 py-2 text-[13px] ${
+                filmQa.pass
+                  ? 'border-[#00D2FF]/30 bg-[#00D2FF]/5 text-[#00D2FF]'
+                  : 'border-red-500/40 bg-red-500/10 text-red-400'
+              }`}
+              role={filmQa.pass ? undefined : 'alert'}
+            >
+              <span aria-hidden className="text-[15px] leading-none">{filmQa.pass ? '✓' : '⚠'}</span>
+              <span className="font-medium">
+                {filmQa.pass
+                  ? locale === 'en'
+                    ? 'Quality check passed'
+                    : locale === 'ru'
+                      ? 'Проверка качества пройдена'
+                      : 'ხარისხის შემოწმება გავლილია'
+                  : locale === 'en'
+                    ? 'Quality warning — review before sharing'
+                    : locale === 'ru'
+                      ? 'Предупреждение о качестве'
+                      : 'ხარისხის გაფრთხილება — გადახედეთ გაზიარებამდე'}
+                {' · '}
+                {filmQa.grade} · {filmQa.score}/100
+              </span>
+            </div>
           )}
 
           {/* Start-over — once a master is assembled (or the run failed), offer a
