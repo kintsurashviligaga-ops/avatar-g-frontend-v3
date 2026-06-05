@@ -10,6 +10,7 @@ import {
 import { updateAccountStatus } from '@/lib/stripe/connect';
 import { updateCommissionStatus } from '@/lib/stripe/payments';
 import { createRouteHandlerClient } from '@/lib/supabase/server';
+import { creditWalletGel } from '@/lib/billing/wallet-ledger';
 import { recomputeFinanceDailyAggregates } from '@/lib/finance/aggregates';
 import { enqueueQueueItem } from '@/lib/platform/queues';
 
@@ -309,6 +310,32 @@ async function handleCheckoutSessionCompleted(event: Stripe.Event) {
   });
 
   try {
+    // One-off GEL WALLET TOP-UP (mode:'payment'). PROFITABILITY-CRITICAL: this
+    // webhook previously only handled subscriptions, so if Stripe was pointed at
+    // /api/stripe/webhook (not /api/billing/webhook) a paid top-up never credited
+    // the user's balance. Credit it here too — creditWalletGel is idempotent on
+    // `stripe:<session.id>`, so a double-delivery across both webhooks is a no-op.
+    if (session.metadata?.kind === 'wallet_topup') {
+      const customerId = session.customer ? String(session.customer) : '';
+      const amountGel = Number(session.metadata?.amount_gel);
+      if (customerId && Number.isFinite(amountGel) && amountGel > 0) {
+        const sb = createRouteHandlerClient();
+        const { data } = await sb
+          .from('subscriptions')
+          .select('user_id')
+          .eq('stripe_customer_id', customerId)
+          .maybeSingle();
+        const userId = (data?.user_id as string | undefined) ?? null;
+        if (userId) {
+          await creditWalletGel(userId, amountGel, `stripe:${session.id}`);
+          console.info('[Stripe Webhook] wallet top-up credited', { userId, amountGel, sessionId: session.id });
+        } else {
+          console.error('[Stripe Webhook] wallet top-up: no user for customer', customerId);
+        }
+      }
+      return;
+    }
+
     // For subscription checkout sessions
     if (session.mode === 'subscription' && session.subscription) {
       const stripe = getStripe();
