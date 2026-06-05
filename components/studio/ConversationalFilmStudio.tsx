@@ -47,6 +47,7 @@ import {
   Share2,
   Check,
   RefreshCw,
+  Music2,
 } from 'lucide-react';
 import { createBrowserClient } from '@/lib/supabase/browser';
 import { DeleteAccountButton } from '@/components/account/DeleteAccountButton';
@@ -62,6 +63,7 @@ import {
   type FilmStudioProgress,
   type FilmQaSummary,
 } from '@/lib/chat/filmStudioClient';
+import { composeMusicVideoPrompt, MV_GENRES, MV_SHOTS, MV_CAMERA_MOVES, MV_LIGHTING } from '@/lib/chat/musicVideoPresets';
 import { summarizeFilmPipeline, type StageState } from '@/lib/chat/filmStudioStages';
 import { filmStarterPrompts } from '@/lib/chat/filmStarterPrompts';
 
@@ -478,6 +480,18 @@ export function ConversationalFilmStudio({
   const t = COPY[lang];
 
   const [slots, setSlots] = useState<(Slot | null)[]>([null, null, null]);
+  // §5 Music-Video mode — a character photo (+ optional location) and the user's
+  // OWN audio track become a genre-styled music video. The audio is held as a
+  // data: URL and handed to the pipeline as the soundtrack, overriding the
+  // generated score; genre + camera presets compose the director prompt.
+  const [mvMode, setMvMode] = useState(false);
+  const [mvGenre, setMvGenre] = useState<string | null>(null);
+  const [mvShot, setMvShot] = useState<string | null>(null);
+  const [mvCamera, setMvCamera] = useState<string | null>(null);
+  const [mvLighting, setMvLighting] = useState<string | null>(null);
+  const [mvAudioDataUrl, setMvAudioDataUrl] = useState<string | null>(null);
+  const [mvAudioName, setMvAudioName] = useState<string | null>(null);
+  const mvAudioInputRef = useRef<HTMLInputElement | null>(null);
   const [input, setInput] = useState('');
   const [driving, setDriving] = useState(false);
   const [progress, setProgress] = useState<FilmStudioProgress | null>(null);
@@ -754,6 +768,33 @@ export function ConversationalFilmStudio({
     });
   }, []);
 
+  // §5 — read the user's chosen soundtrack into a data: URL (capped so the
+  // assemble request body stays sane; the master only needs ≤30s anyway).
+  const MV_AUDIO_MAX_BYTES = 12 * 1024 * 1024; // 12 MB
+  const onPickSoundtrack = useCallback(
+    (file: File | null | undefined) => {
+      if (!file) return;
+      if (!file.type.startsWith('audio/')) {
+        setMicNotice(locale === 'en' ? 'Please choose an audio file.' : locale === 'ru' ? 'Выберите аудиофайл.' : 'აირჩიეთ აუდიო ფაილი.');
+        return;
+      }
+      if (file.size > MV_AUDIO_MAX_BYTES) {
+        setMicNotice(locale === 'en' ? 'Audio is too large (12MB max).' : locale === 'ru' ? 'Аудио слишком большое (макс. 12МБ).' : 'აუდიო ძალიან დიდია (მაქს. 12MB).');
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = () => {
+        const url = typeof reader.result === 'string' ? reader.result : null;
+        if (url) {
+          setMvAudioDataUrl(url);
+          setMvAudioName(file.name);
+        }
+      };
+      reader.readAsDataURL(file);
+    },
+    [locale, MV_AUDIO_MAX_BYTES],
+  );
+
   const runReal = useCallback(
     async (userPrompt: string, resume?: { predictionId: string; sessionId: string }) => {
       setError(null);
@@ -776,10 +817,16 @@ export function ConversationalFilmStudio({
       abortRef.current = ctrl;
       try {
         const res = await driveFilmStudio({
-          prompt: userPrompt,
+          // §5 Music-Video mode composes the director prompt from the typed scene
+          // + the chosen genre + camera move (anchoring the uploaded character).
+          prompt: mvMode
+            ? composeMusicVideoPrompt({ userPrompt, genreId: mvGenre, cameraId: mvCamera, shotId: mvShot, lightingId: mvLighting })
+            : userPrompt,
           // A resume only re-attaches to the existing job; the reference images
           // were already consumed by the original dispatch.
           referenceImages: resume ? [] : slots.filter((s): s is Slot => !!s).map((s) => s.dataUrl),
+          // §5 — the user's uploaded track becomes the soundtrack verbatim.
+          ...(mvMode && mvAudioDataUrl ? { soundtrackUrl: mvAudioDataUrl } : {}),
           locale,
           signal: ctrl.signal,
           onProgress: (p) => setProgress(p),
@@ -820,7 +867,7 @@ export function ConversationalFilmStudio({
         void refreshBalance();
       }
     },
-    [slots, locale, pushMessage, t.producing, t.ready, t.failed, refreshFreeFilms, refreshBalance, estCost, isFreeFilm],
+    [slots, mvMode, mvGenre, mvShot, mvCamera, mvLighting, mvAudioDataUrl, locale, pushMessage, t.producing, t.ready, t.failed, refreshFreeFilms, refreshBalance, estCost, isFreeFilm],
   );
 
   // Reload-recovery: on first mount, if a film was mid-render when the tab was
@@ -1071,6 +1118,41 @@ export function ConversationalFilmStudio({
   const showStarters =
     !hasUserMessage && !showTracker && !driving && !masterUrl && !previewUrl && !error;
 
+  // §5 — localized chip label (presets carry ka + en; ru reuses en).
+  const mvText = (en: string, ka: string, ru: string) => (locale === 'en' ? en : locale === 'ru' ? ru : ka);
+  const mvItemLabel = (it: { labelKa: string; labelEn: string }) => (locale === 'ka' ? it.labelKa : it.labelEn);
+  const renderMvChips = (
+    label: string,
+    items: ReadonlyArray<{ id: string; labelKa: string; labelEn: string }>,
+    selected: string | null,
+    onSelect: (id: string | null) => void,
+  ) => (
+    <div className="flex items-start gap-2">
+      <span className="mt-1 w-14 shrink-0 text-[12px] text-white/40">{label}</span>
+      <div className="flex flex-wrap gap-1.5">
+        {items.map((it) => {
+          const active = selected === it.id;
+          return (
+            <button
+              key={it.id}
+              type="button"
+              onClick={() => onSelect(active ? null : it.id)}
+              aria-pressed={active}
+              className={[
+                'rounded-full border px-2.5 py-1 text-[12px] transition-colors touch-manipulation',
+                active
+                  ? 'border-[#00D2FF]/50 bg-[#00D2FF]/10 text-[#00D2FF]'
+                  : 'border-white/12 text-white/55 hover:border-white/30 hover:text-white/80',
+              ].join(' ')}
+            >
+              {mvItemLabel(it)}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+
   return (
     // STRICT three-tone matrix — pure black canvas (#000000, infinite depth on
     // OLED iPhones), white type, electric-cyan (#00D2FF) for every active accent.
@@ -1154,6 +1236,91 @@ export function ConversationalFilmStudio({
         style={{ WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain' }}
       >
         <div className="mx-auto w-full max-w-3xl px-4 py-5 space-y-4">
+          {/* §5 — Character Music Video: the "One Window" creative panel. The
+              complex LTX-2 prompt parameters (genre, framing, camera move,
+              lighting/mood) become tasteful cyan chips, and the user's OWN audio
+              becomes the soundtrack. Tucked behind a single toggle so the default
+              studio stays minimal; the photo strip below doubles as character +
+              location references in this mode. */}
+          <div className="rounded-2xl border border-white/10 bg-black p-2.5 sm:p-3">
+            <button
+              type="button"
+              onClick={() => setMvMode((v) => !v)}
+              aria-pressed={mvMode}
+              className={[
+                'flex w-full items-center justify-between gap-2 rounded-xl px-1.5 py-1 text-[14px] transition-colors',
+                mvMode ? 'text-[#00D2FF]' : 'text-white/70 hover:text-white',
+              ].join(' ')}
+            >
+              <span className="inline-flex items-center gap-2 font-medium">
+                <Music2 className="h-4 w-4" />
+                {mvText('Music Video', 'მუსიკალური ვიდეო', 'Музыкальное видео')}
+              </span>
+              <span
+                className={[
+                  'rounded-full border px-2 py-0.5 text-[11px]',
+                  mvMode ? 'border-[#00D2FF]/40 bg-[#00D2FF]/10 text-[#00D2FF]' : 'border-white/15 text-white/40',
+                ].join(' ')}
+              >
+                {mvMode ? mvText('On', 'ჩართ.', 'Вкл') : mvText('Off', 'გამორთ.', 'Выкл')}
+              </span>
+            </button>
+
+            {mvMode && (
+              <div className="mt-2.5 space-y-2 border-t border-white/10 pt-2.5">
+                {renderMvChips(mvText('Genre', 'ჟანრი', 'Жанр'), MV_GENRES, mvGenre, setMvGenre)}
+                {renderMvChips(mvText('Shot', 'კადრი', 'Кадр'), MV_SHOTS, mvShot, setMvShot)}
+                {renderMvChips(mvText('Camera', 'კამერა', 'Камера'), MV_CAMERA_MOVES, mvCamera, setMvCamera)}
+                {renderMvChips(mvText('Light', 'შუქი', 'Свет'), MV_LIGHTING, mvLighting, setMvLighting)}
+
+                <div className="flex items-center gap-2 pt-0.5">
+                  <span className="w-14 shrink-0 text-[12px] text-white/40">{mvText('Audio', 'აუდიო', 'Аудио')}</span>
+                  <input
+                    ref={mvAudioInputRef}
+                    type="file"
+                    accept="audio/*"
+                    className="hidden"
+                    onChange={(e) => onPickSoundtrack(e.target.files?.[0])}
+                  />
+                  {mvAudioName ? (
+                    <span className="inline-flex max-w-full items-center gap-2 rounded-lg border border-[#00D2FF]/30 bg-[#00D2FF]/5 px-2.5 py-1 text-[12px] text-[#00D2FF]">
+                      <Music2 className="h-3.5 w-3.5 shrink-0" />
+                      <span className="max-w-[150px] truncate">{mvAudioName}</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMvAudioDataUrl(null);
+                          setMvAudioName(null);
+                          if (mvAudioInputRef.current) mvAudioInputRef.current.value = '';
+                        }}
+                        aria-label={mvText('Remove audio', 'აუდიოს მოშორება', 'Удалить аудио')}
+                        className="text-white/40 hover:text-white"
+                      >
+                        ✕
+                      </button>
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => mvAudioInputRef.current?.click()}
+                      className="rounded-lg border border-white/15 px-2.5 py-1 text-[12px] text-white/60 transition-colors hover:border-[#00D2FF]/40 hover:text-white"
+                    >
+                      {mvText('Upload track', 'ატვირთე ტრეკი', 'Загрузить трек')}
+                    </button>
+                  )}
+                </div>
+
+                <p className="text-[11px] leading-snug text-white/35">
+                  {mvText(
+                    'Upload a character photo (and a location) below; your track becomes the soundtrack. Then type a one-line scene and press generate.',
+                    'ქვემოთ ატვირთე პერსონაჟის ფოტო (და ლოკაცია); შენი ტრეკი გახდება საუნდტრეკი. შემდეგ ჩაწერე სცენის ერთი წინადადება და დააჭირე გენერაციას.',
+                    'Загрузите фото персонажа (и локацию) ниже; ваш трек станет саундтреком. Затем введите сцену одной строкой и нажмите генерацию.',
+                  )}
+                </p>
+              </div>
+            )}
+          </div>
+
           {/* Compact identity strip — reference photos are OPTIONAL. A slim row
               of small thumbnails so the chat keeps the lion's share of the view. */}
           <div className="rounded-2xl border border-white/10 bg-black p-2.5 sm:p-3">

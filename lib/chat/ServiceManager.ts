@@ -252,14 +252,19 @@ export class ServiceManager {
       return this.runHeygenAvatarVideo(request);
     }
 
-    // PHASE 60 — Default the LTX render path to Replicate-hosted lightricks/ltx-video
-    // (same model, funded + verified end-to-end). The direct api.ltx.video account
-    // charged-but-never-completed in prod (clips stuck 0/5). Opt out with
-    // LTX_VIA_REPLICATE=0 once the direct account is healthy.
+    // VIDEO ENGINE CONTRACT — LTX-2 is the PRIMARY render source. The Replicate
+    // dispatch (runReplicateLtxVideo → createReplicateLtxPrediction) tries
+    // `lightricks/ltx-2-fast` FIRST (native 1080p + synced audio, image-to-video
+    // identity-locked, then text-to-video); the legacy `lightricks/ltx-video` is
+    // used ONLY as an automatic fallback when an LTX-2 create fails, so a hiccup
+    // can never break the render. The direct api.ltx.video account
+    // charged-but-never-completed in prod (clips stuck 0/5), so Replicate hosts
+    // LTX-2 by default; opt back to the direct API with LTX_VIA_REPLICATE=0.
     if (process.env.LTX_VIA_REPLICATE !== '0' && typeof process.env.REPLICATE_API_TOKEN === 'string' && process.env.REPLICATE_API_TOKEN.trim()) {
       return this.runReplicateLtxVideo(request);
     }
 
+    // No Replicate token → direct LTX-2 API (still LTX-2, never a non-LTX engine).
     return this.runLtxVideo(request);
   }
 

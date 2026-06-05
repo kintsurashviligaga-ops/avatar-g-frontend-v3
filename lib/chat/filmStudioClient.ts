@@ -100,6 +100,13 @@ export interface DriveFilmOptions {
   prompt: string;
   /** 1–3 data:/https reference images that lock the protagonist's identity. */
   referenceImages?: string[];
+  /**
+   * §5 Music-Video mode: a user-supplied soundtrack (data:/https URL). When set,
+   * it becomes the film's music bed verbatim — overriding the generated score —
+   * and the FFmpeg master ducks it under any voiceover exactly like generated
+   * music. Absent → the pipeline composes a score as before.
+   */
+  soundtrackUrl?: string | null;
   locale?: string;
   signal?: AbortSignal;
   onProgress?: (p: FilmStudioProgress) => void;
@@ -596,7 +603,9 @@ export async function driveFilmStudio(opts: DriveFilmOptions): Promise<FilmStudi
     if (clips.length < MIN_SALVAGE_CLIPS) {
       return fail('Not enough scenes rendered to stitch a film (need at least 2).', matrix);
     }
-    let assembled = await assembleMaster(clips, matrix.audioUrl ?? null, matrix.statusTokenId, message, signal);
+    // §5 — a user soundtrack (Music-Video mode) wins over any generated score.
+    const musicBed = opts.soundtrackUrl ?? matrix.audioUrl ?? null;
+    let assembled = await assembleMaster(clips, musicBed, matrix.statusTokenId, message, signal);
 
     // 4 ── Recover if the assemble response was lost in transit
     if (!assembled && matrix.statusTokenId) {
