@@ -1107,7 +1107,7 @@ export function ConversationalFilmStudio({
             <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
               <div
                 className={[
-                  'max-w-[85%] rounded-2xl px-4 py-3 text-[13px] leading-relaxed',
+                  'max-w-[85%] rounded-2xl px-4 py-3 text-[15px] leading-relaxed',
                   msg.role === 'user'
                     ? 'bg-white text-black font-medium rounded-tr-sm shadow-[0_0_20px_rgba(255,255,255,0.06)]'
                     : 'bg-black text-neutral-300 border border-white/10 rounded-tl-sm',
@@ -1132,7 +1132,7 @@ export function ConversationalFilmStudio({
                     key={i}
                     type="button"
                     onClick={() => fillFromStarter(prompt)}
-                    className="group flex items-center gap-2.5 rounded-2xl border border-white/10 bg-black px-3.5 py-3 text-left text-[13px] leading-snug text-neutral-300 transition-colors hover:border-[#00D2FF]/40 hover:text-white active:scale-[0.99] motion-reduce:active:scale-100 touch-manipulation"
+                    className="group flex items-center gap-2.5 rounded-2xl border border-white/10 bg-black px-3.5 py-3 text-left text-[14px] leading-snug text-neutral-300 transition-colors hover:border-[#00D2FF]/40 hover:text-white active:scale-[0.99] motion-reduce:active:scale-100 touch-manipulation"
                   >
                     <Clapperboard className="h-4 w-4 shrink-0 text-[#00D2FF]/70 transition-colors group-hover:text-[#00D2FF]" />
                     <span>{prompt}</span>
@@ -1374,7 +1374,7 @@ export function ConversationalFilmStudio({
             <textarea
               ref={textareaRef}
               rows={1}
-              className="flex-1 bg-transparent text-[13px] px-2.5 py-2 focus:outline-none placeholder-neutral-600 resize-none text-white max-h-32"
+              className="flex-1 bg-transparent text-[17px] leading-relaxed px-2.5 py-2 focus:outline-none placeholder-neutral-600 resize-none text-white max-h-32"
               placeholder={driving ? t.placeholderBusy : t.placeholder}
               disabled={driving}
               value={input}
