@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * OmniStudio (Service Hub — Card B). Google Gemini multimodal assistant.
+ * OmniStudio (Service Hub — Card B). MyAvatar Smart Assistant (multimodal).
  *
  * A continuous conversational grid wired to POST /api/chat/gemini (the funded
  * Gemini key; streams `data: {"text"}` deltas). Three input modes, per the
@@ -20,18 +20,18 @@ const COPY: Record<Lang, {
   title: string; subtitle: string; placeholder: string; empty: string; thinking: string; recording: string; micHint: string;
 }> = {
   ka: {
-    title: 'Google Omni სტუდია', subtitle: 'ინტელექტუალური მულტიმოდალური ასისტენტი (Gemini)',
-    placeholder: 'დაწერე, ჩაწერე ხმა, ან მიამაგრე სურათი…', empty: 'ჰკითხე ნებისმიერი რამ — ტექსტი, ხმა ან სურათი. Gemini გაანალიზებს და გიპასუხებს.',
+    title: 'ჭკვიანი ასისტენტი', subtitle: 'ინტელექტუალური მულტიმოდალური ასისტენტი',
+    placeholder: 'დაწერე, ჩაწერე ხმა, ან მიამაგრე სურათი…', empty: 'ჰკითხე ნებისმიერი რამ — ტექსტი, ხმა ან სურათი. ასისტენტი გაანალიზებს და გიპასუხებს.',
     thinking: 'ფიქრობს…', recording: 'იწერება…', micHint: 'ხმის ჩაწერა',
   },
   en: {
-    title: 'Google Omni Studio', subtitle: 'Intelligent multimodal assistant (Gemini)',
-    placeholder: 'Type, record your voice, or attach an image…', empty: 'Ask anything — text, voice or image. Gemini analyzes and responds.',
+    title: 'Smart Assistant', subtitle: 'Intelligent multimodal assistant',
+    placeholder: 'Type, record your voice, or attach an image…', empty: 'Ask anything — text, voice or image. The assistant analyzes and responds.',
     thinking: 'Thinking…', recording: 'Recording…', micHint: 'Record voice',
   },
   ru: {
-    title: 'Google Omni студия', subtitle: 'Интеллектуальный мультимодальный ассистент (Gemini)',
-    placeholder: 'Напишите, запишите голос или прикрепите изображение…', empty: 'Спросите что угодно — текст, голос или изображение. Gemini анализирует и отвечает.',
+    title: 'Умный ассистент', subtitle: 'Интеллектуальный мультимодальный ассистент',
+    placeholder: 'Напишите, запишите голос или прикрепите изображение…', empty: 'Спросите что угодно — текст, голос или изображение. Ассистент анализирует и отвечает.',
     thinking: 'Думает…', recording: 'Запись…', micHint: 'Записать голос',
   },
 };

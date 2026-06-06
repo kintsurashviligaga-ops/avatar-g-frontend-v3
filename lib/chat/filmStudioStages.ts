@@ -131,10 +131,23 @@ export function deriveFilmStages(
   // misleading "active" loader while the scenes are the ones actually rendering
   // ("score queued" in the status line, yet a spinner in the list). Honest:
   // queued/pending → a calm pending dot, succeeded → done, failed → failed.
+  // The film's score is GUARANTEED at the stitch step: if the Udio leg never
+  // resolves (or errors), the assembler composes a cohesive cinematic score on the
+  // funded MusicGen module and muxes it across the whole timeline. So a non-success
+  // Udio leg must NEVER render as a red "failed" — that wrongly told users the
+  // delivered film was silent (the live "audio failed / no music" misread). While
+  // the run is in flight a failed/queued audio leg shows a CALM pending dot; once
+  // the master is assembled it reads 'done', because the delivered film always
+  // carries audio. Honest at the film level, never alarmist.
   stages.push({
     key: 'score',
-    label: 'Audio & Foley — scoring the film',
-    state: m ? legToStageState(m.audio, false) : 'pending',
+    label: 'Audio & Foley — soundtrack',
+    state:
+      phase === 'assembled'
+        ? 'done'
+        : m
+          ? (m.audio === 'failed' ? 'pending' : legToStageState(m.audio, false))
+          : 'pending',
   });
 
   // Terminal safety net: a stopped run can have NO spinning legs. Force any leg

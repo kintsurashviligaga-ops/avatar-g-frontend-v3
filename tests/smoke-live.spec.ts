@@ -61,15 +61,15 @@ test.describe('myavatar.ge production smoke', () => {
 
   test('Service Hub renders the three product cards', async ({ page }) => {
     await page.goto('/ka/dashboard', { waitUntil: 'domcontentloaded' });
-    await expect(page.getByText('30-წამიანი კინო სტუდია')).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByText('Google Omni სტუდია')).toBeVisible();
-    await expect(page.getByText('AI Lipsync სტუდია')).toBeVisible();
+    await expect(page.getByText('კინო სტუდია')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText('ჭკვიანი ასისტენტი')).toBeVisible();
+    await expect(page.getByText('ლიფსინქ სტუდია')).toBeVisible();
     await expect(page.getByText(ERROR_FALLBACK)).toHaveCount(0);
   });
 
   test('Hub → Card A launches the film studio in-window (composer appears)', async ({ page }) => {
     await page.goto('/ka/dashboard', { waitUntil: 'domcontentloaded' });
-    await page.getByText('30-წამიანი კინო სტუდია').click();
+    await page.getByText('კინო სტუდია').click();
     await expect(page.locator('textarea').first()).toBeVisible({ timeout: 20_000 });
     expect(page.url()).toContain('#film'); // stayed in-window, hash-routed
   });
@@ -81,7 +81,7 @@ test.describe('myavatar.ge production smoke', () => {
 
   test('Card A: launching the studio shows the document/script strip', async ({ page }) => {
     await page.goto('/ka/dashboard', { waitUntil: 'domcontentloaded' });
-    await page.getByText('30-წამიანი კინო სტუდია').click();
+    await page.getByText('კინო სტუდია').click();
     await expect(page.locator('textarea').first()).toBeVisible({ timeout: 20_000 });
     // The reference document strip (Priority 1) is present in default film mode.
     await expect(page.getByText('სცენარი / storyboard')).toBeVisible({ timeout: 10_000 });
@@ -121,11 +121,11 @@ test.describe('myavatar.ge production smoke', () => {
     test(`mobile: hub + studio fit ${vp.name} with no horizontal scroll`, async ({ page }) => {
       await page.setViewportSize({ width: vp.width, height: vp.height });
       await page.goto('/ka/dashboard', { waitUntil: 'domcontentloaded' });
-      await expect(page.getByText('30-წამიანი კინო სტუდია')).toBeVisible({ timeout: 15_000 });
+      await expect(page.getByText('კინო სტუდია')).toBeVisible({ timeout: 15_000 });
       const hubOverflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
       expect(hubOverflow, 'hub horizontal overflow (px)').toBeLessThanOrEqual(1);
 
-      await page.getByText('30-წამიანი კინო სტუდია').click();
+      await page.getByText('კინო სტუდია').click();
       await expect(page.locator('textarea').first()).toBeVisible({ timeout: 20_000 });
       const studioOverflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
       expect(studioOverflow, 'studio horizontal overflow (px)').toBeLessThanOrEqual(1);

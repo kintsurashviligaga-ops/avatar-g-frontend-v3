@@ -8,9 +8,9 @@
  * IN-WINDOW (no route change — the active service lives in a URL hash so refresh /
  * back behaves, but the frame never breaks):
  *
- *   A · 30-Second Cinematic Film Studio  → ConversationalFilmStudio (the flagship)
- *   B · Google Omni Multimodal Studio    → OmniStudio (Gemini: voice·text·image)
- *   C · AI Lipsync Studio                → LipsyncStudio (Wav2Lip on Replicate)
+ *   A · Film Studio       → ConversationalFilmStudio (the flagship)
+ *   B · Smart Assistant   → OmniStudio (multimodal: voice·text·image)
+ *   C · Lip-Sync Studio   → LipsyncStudio (Wav2Lip on Replicate)
  *
  * Each launched studio shows a back control to return to the grid. Strict skin —
  * black · white · electric cyan (#00D2FF).
@@ -34,23 +34,23 @@ const COPY: Record<Lang, {
 }> = {
   ka: {
     heading: 'აირჩიე სერვისი', sub: 'სამი სტუდია — ერთ სივრცეში',
-    filmTitle: '30-წამიანი კინო სტუდია', filmSub: 'ფოტო + დოკუმენტი + რეჟისორის პრომპტი → 30წ ფილმი', filmTag: 'მთავარი სერვისი',
-    omniTitle: 'Google Omni სტუდია', omniSub: 'ხმა · ტექსტი · სურათი → ინტელექტუალური ანალიზი', omniTag: 'ასისტენტი',
-    lipTitle: 'AI Lipsync სტუდია', lipSub: 'ვიდეო + აუდიო → ზუსტი ტუჩების სინქრონი', lipTag: 'მუსიკალური კლიპები',
+    filmTitle: 'კინო სტუდია', filmSub: 'ფოტო + სცენარი → 30-წამიანი ფილმი', filmTag: 'მთავარი',
+    omniTitle: 'ჭკვიანი ასისტენტი', omniSub: 'ხმა · ტექსტი · სურათი → ჭკვიანი პასუხები', omniTag: 'ასისტენტი',
+    lipTitle: 'ლიფსინქ სტუდია', lipSub: 'ვიდეო + აუდიო → ტუჩების სინქრონი', lipTag: 'ლიფსინქი',
     open: 'გახსნა',
   },
   en: {
     heading: 'Choose a service', sub: 'Three studios — one window',
-    filmTitle: '30-Second Cinematic Film Studio', filmSub: 'Photos + documents + a director prompt → a 30s film', filmTag: 'Flagship',
-    omniTitle: 'Google Omni Studio', omniSub: 'Voice · text · image → intelligent multimodal analysis', omniTag: 'Assistant',
-    lipTitle: 'AI Lipsync Studio', lipSub: 'Video + audio → precise lip synchronization', lipTag: 'Music videos',
+    filmTitle: 'Film Studio', filmSub: 'A photo + a script → a 30-second film', filmTag: 'Main',
+    omniTitle: 'Smart Assistant', omniSub: 'Voice · text · image → smart answers', omniTag: 'Assistant',
+    lipTitle: 'Lip-Sync Studio', lipSub: 'Video + audio → lip synchronization', lipTag: 'Lip-sync',
     open: 'Open',
   },
   ru: {
     heading: 'Выберите сервис', sub: 'Три студии — одно окно',
-    filmTitle: '30-секундная кино-студия', filmSub: 'Фото + документы + промпт режиссёра → 30с фильм', filmTag: 'Флагман',
-    omniTitle: 'Google Omni студия', omniSub: 'Голос · текст · изображение → умный мультимодальный анализ', omniTag: 'Ассистент',
-    lipTitle: 'AI Lipsync студия', lipSub: 'Видео + аудио → точная синхронизация губ', lipTag: 'Клипы',
+    filmTitle: 'Кино-студия', filmSub: 'Фото + сценарий → 30-секундный фильм', filmTag: 'Главное',
+    omniTitle: 'Умный ассистент', omniSub: 'Голос · текст · изображение → умные ответы', omniTag: 'Ассистент',
+    lipTitle: 'Lip-Sync студия', lipSub: 'Видео + аудио → синхронизация губ', lipTag: 'Синхрон',
     open: 'Открыть',
   },
 };
@@ -86,7 +86,7 @@ export function ServiceHub({ locale = 'ka', isAuthenticated = false }: { locale?
   // Cards B & C — wrapped in a slim back-header shell.
   if (service === 'omni' || service === 'lipsync') {
     return (
-      <div className="flex h-full w-full flex-col bg-black text-white">
+      <div className="fixed inset-0 z-0 flex flex-col bg-black text-white" style={{ height: '100dvh' }}>
         <header className="sticky top-0 z-30 shrink-0 border-b border-white/10 bg-black/90 backdrop-blur-xl" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
           <div className="mx-auto flex h-14 w-full max-w-3xl items-center gap-2 px-4">
             <button type="button" onClick={() => go('hub')} aria-label="Services" className="-ml-2 flex h-11 w-11 items-center justify-center rounded-full text-neutral-400 transition-colors hover:bg-white/10 hover:text-[#00D2FF]">
@@ -112,8 +112,13 @@ export function ServiceHub({ locale = 'ka', isAuthenticated = false }: { locale?
   ];
 
   return (
-    <div className="h-full w-full overflow-y-auto bg-black text-white" style={{ paddingTop: 'env(safe-area-inset-top, 0px)', paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
-      <div className="mx-auto w-full max-w-5xl px-4 py-8 sm:py-12">
+    // FULL-SCREEN APP SHELL — `fixed inset-0 + 100dvh` pins the hub to the visual
+    // viewport so it fills the screen like a native app, escaping the locale
+    // layout's `min-h-screen flex items-center justify-center` wrapper that
+    // otherwise centred this panel and let the page gradient bleed in above and
+    // below (the "opens broken / dead space" report). Mirrors the film studio shell.
+    <div className="fixed inset-0 z-0 overflow-y-auto bg-black text-white" style={{ height: '100dvh', paddingTop: 'env(safe-area-inset-top, 0px)', paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
+      <div className="mx-auto flex min-h-full w-full max-w-5xl flex-col px-4 py-8 sm:py-12">
         <div className="mb-8 flex items-center gap-2.5">
           <span className="flex h-9 w-9 items-center justify-center rounded-xl border border-[#00D2FF]/40 bg-[#00D2FF]/10 text-[15px] shadow-[0_0_15px_rgba(0,210,255,0.25)]" aria-hidden>🚀</span>
           <span className="text-sm font-bold tracking-wide text-white">MyAvatar<span className="text-[#00D2FF]">.ge</span></span>
