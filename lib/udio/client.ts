@@ -407,20 +407,39 @@ export async function getUdioGenerationStatus(workId: string): Promise<UdioStatu
   const separator = baseUrl.includes('?') ? '&' : '?';
   const url = `${baseUrl}${separator}workId=${encodeURIComponent(workId)}`;
 
-  const response = await fetch(url, {
-    method: 'GET',
-    headers: buildUdioAuthHeaders(apiKey),
-    cache: 'no-store',
-  });
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method: 'GET',
+      headers: buildUdioAuthHeaders(apiKey),
+      cache: 'no-store',
+      // Bound the feed read so a hung gateway can't stall the whole film poll.
+      signal: AbortSignal.timeout(15_000),
+    });
+  } catch (err) {
+    // RESILIENCE — a network error / timeout on a single feed read is TRANSIENT.
+    // Returning 'failed' here permanently silenced the film on one blip (the live
+    // "soundtrack failed" the founder hit even with 551 Udio credits healthy).
+    // Report 'processing' so the caller polls again instead of killing the score.
+    return {
+      workId,
+      status: 'processing',
+      message: `Udio feed transient error: ${err instanceof Error ? err.message : String(err)}`,
+      raw: null,
+    };
+  }
 
   const payload = await response.json().catch(() => null);
 
   if (!response.ok) {
-    const message = extractMessage(payload) || `Udio feed failed (${response.status})`;
+    // A non-2xx feed read is also TRANSIENT, not a generation failure: a 429/5xx
+    // gateway hiccup, or a 404 in the brief window right after create before the
+    // job becomes queryable. Keep polling — a REAL generation failure surfaces as
+    // an explicit fail_message inside a 200 body (handled by parseFeed below).
     return {
       workId,
-      status: 'failed',
-      message,
+      status: 'processing',
+      message: extractMessage(payload) || `Udio feed transient (${response.status})`,
       raw: payload,
     };
   }
