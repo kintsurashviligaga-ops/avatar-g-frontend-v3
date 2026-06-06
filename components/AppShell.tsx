@@ -11,6 +11,22 @@ import CookieConsent from './CookieConsent';
 export function AppShell({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const pathname = usePathname();
+  // Embedded mode: when a page is opened inside the studio's in-window slide-over
+  // (an iframe with ?embed=1), strip ALL app-shell chrome — navbar, sidebar,
+  // bottom nav, floating chat, cookie banner — so the legal/help content renders
+  // bare inside the sheet, never a page-in-a-page. Detected client-side (the embed
+  // only ever happens in the browser): the ?embed=1 flag OR simply being framed.
+  const [isEmbed, setIsEmbed] = useState(false);
+  useEffect(() => {
+    try {
+      const embedParam = new URLSearchParams(window.location.search).get('embed') === '1';
+      const framed = window.self !== window.top;
+      setIsEmbed(embedParam || framed);
+    } catch {
+      // Cross-origin top access throws → we are definitely inside a frame.
+      setIsEmbed(true);
+    }
+  }, []);
 
   useEffect(() => {
     const nav = window.navigator as Navigator & { standalone?: boolean };
@@ -115,7 +131,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     /\/(login|signup|auth|register)(\/|$)/.test(pathname)
   );
 
-  const hideShellChrome = isImmersiveWorkspace || isLandingOrAuth;
+  const hideShellChrome = isImmersiveWorkspace || isLandingOrAuth || isEmbed;
 
   return (
     <div
@@ -140,7 +156,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         style={
           isImmersiveWorkspace
             ? { zIndex: 2, height: 'var(--app-screen-height)', minHeight: 'var(--app-screen-height)', overflow: 'hidden' }
-            : isLandingOrAuth
+            : (isLandingOrAuth || isEmbed)
             ? { zIndex: 2 }
             : {
                 paddingTop: 'calc(4rem + env(safe-area-inset-top, 0px))',
@@ -155,7 +171,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </main>
       {!hideShellChrome && <BottomNavigation />}
       {!hideShellChrome && <FloatingChatButton />}
-      <CookieConsent />
+      {!isEmbed && <CookieConsent />}
     </div>
   );
 }

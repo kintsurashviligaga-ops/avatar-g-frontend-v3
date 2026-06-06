@@ -54,6 +54,8 @@ import { DeleteAccountButton } from '@/components/account/DeleteAccountButton';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { WalletRefillModal } from '@/components/chat/WalletRefill';
 import AuthModal from '@/components/chat/AuthModal';
+import { StudioSheet } from '@/components/studio/StudioSheet';
+import StudioLibraryGrid from '@/components/studio/StudioLibraryGrid';
 import { analytics } from '@/components/analytics/PostHogProvider';
 import { reportError } from '@/lib/observability/report-error';
 import { formatGEL } from '@/lib/billing/gel';
@@ -525,6 +527,9 @@ export function ConversationalFilmStudio({
   // page reload — which is the whole point of Task 1.
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [authModalMode, setAuthModalMode] = useState<'login' | 'register'>('login');
+  // One Window: Library / Privacy / Terms / Help open as an in-studio slide-over
+  // (StudioSheet) instead of navigating away. null = closed.
+  const [sheet, setSheet] = useState<null | 'library' | 'privacy' | 'terms' | 'support'>(null);
   // Client-derived auth. The server `isAuthenticated` prop can be stale (the
   // dashboard ships a static shell that the edge may cache), which made a
   // logged-in user look like a guest. We confirm the REAL session on mount and
@@ -1943,16 +1948,17 @@ export function ConversationalFilmStudio({
                 <ThemeToggle label={t.theme} />
               </div>
 
-              {/* Library / History — every rendered film + generation lands in
-                  the persisted history; this is the always-available entry to it. */}
-              <Link
-                href={`/${locale}/studio/history`}
-                onClick={() => setMenuOpen(false)}
+              {/* Library / History — opens as an in-studio slide-over (One Window),
+                  never navigating away. The /{locale}/studio/history page remains
+                  as a deep link. */}
+              <button
+                type="button"
+                onClick={() => { setMenuOpen(false); setSheet('library'); }}
                 className="inline-flex items-center gap-2.5 rounded-xl border border-white/10 bg-black px-3 py-2.5 text-xs font-semibold text-neutral-200 transition-colors hover:border-[#00D2FF]/50 hover:text-[#00D2FF]"
               >
                 <History className="h-4 w-4" />
                 {t.library}
-              </Link>
+              </button>
 
               {/* Auth — Sign in + Sign up open the in-window AuthModal (no page
                   navigation). On success the onAuthStateChange listener flips the
@@ -2006,31 +2012,31 @@ export function ConversationalFilmStudio({
                   within the app. Type-to-confirm modal lives in the component. */}
               {authed && <DeleteAccountButton locale={locale} />}
 
-              {/* Legal + Support — App Store / public-launch requirement. The
-                  pages already exist; this is the entry point to them. */}
+              {/* Legal + Support — open as in-studio slide-overs (One Window),
+                  embedding the existing vetted pages so nothing navigates away. */}
               <div className="space-y-2 border-t border-white/10 pt-3">
                 <p className="text-[11px] font-semibold uppercase tracking-wider text-neutral-500">{t.legalLabel}</p>
-                <Link
-                  href={`/${locale}/privacy`}
-                  onClick={() => setMenuOpen(false)}
+                <button
+                  type="button"
+                  onClick={() => { setMenuOpen(false); setSheet('privacy'); }}
                   className="inline-flex w-full items-center gap-2.5 rounded-xl border border-white/10 bg-black px-3 py-2.5 text-xs font-medium text-neutral-300 transition-colors hover:border-[#00D2FF]/40 hover:text-[#00D2FF]"
                 >
                   <Shield className="h-4 w-4" /> {t.privacy}
-                </Link>
-                <Link
-                  href={`/${locale}/terms`}
-                  onClick={() => setMenuOpen(false)}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setMenuOpen(false); setSheet('terms'); }}
                   className="inline-flex w-full items-center gap-2.5 rounded-xl border border-white/10 bg-black px-3 py-2.5 text-xs font-medium text-neutral-300 transition-colors hover:border-[#00D2FF]/40 hover:text-[#00D2FF]"
                 >
                   <FileText className="h-4 w-4" /> {t.terms}
-                </Link>
-                <Link
-                  href={`/${locale}/support`}
-                  onClick={() => setMenuOpen(false)}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setMenuOpen(false); setSheet('support'); }}
                   className="inline-flex w-full items-center gap-2.5 rounded-xl border border-white/10 bg-black px-3 py-2.5 text-xs font-medium text-neutral-300 transition-colors hover:border-[#00D2FF]/40 hover:text-[#00D2FF]"
                 >
                   <LifeBuoy className="h-4 w-4" /> {t.support}
-                </Link>
+                </button>
               </div>
             </div>
           </aside>
@@ -2063,6 +2069,35 @@ export function ConversationalFilmStudio({
           void refreshBalance();
         }}
       />
+
+      {/* One Window slide-over — Library / Privacy / Terms / Help open ON TOP of
+          the studio instead of navigating away. Library is the native grid; the
+          legal/help panels embed the existing vetted pages (?embed=1 strips their
+          standalone chrome) so the source-of-truth content is reused, never
+          duplicated, and the workspace is never left. */}
+      <StudioSheet
+        open={sheet !== null}
+        title={
+          sheet === 'library' ? t.library
+            : sheet === 'privacy' ? t.privacy
+            : sheet === 'terms' ? t.terms
+            : sheet === 'support' ? t.support
+            : ''
+        }
+        onClose={() => setSheet(null)}
+        flush={sheet !== null && sheet !== 'library'}
+      >
+        {sheet === 'library' ? (
+          <StudioLibraryGrid locale={lang} />
+        ) : sheet ? (
+          <iframe
+            key={sheet}
+            src={`/${locale}/${sheet}?embed=1`}
+            title={sheet}
+            className="h-full w-full border-0 bg-black"
+          />
+        ) : null}
+      </StudioSheet>
     </>
   );
 }
