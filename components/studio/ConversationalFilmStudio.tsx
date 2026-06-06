@@ -102,7 +102,6 @@ const COPY: Record<
   Lang,
   {
     brandSub: string;
-    welcome: string;
     identityNudge: string;
     producing: string;
     ready: string;
@@ -167,8 +166,6 @@ const COPY: Record<
 > = {
   ka: {
     brandSub: 'კინემატოგრაფიული ჰაბი',
-    welcome:
-      'გამარჯობა! ეს არის 30-წამიანი კინემატოგრაფიული სტუდია. სურვილისამებრ ატვირთე 1–3 რეფერენს ფოტო პერსონაჟის შესანარჩუნებლად, შემდეგ ქვემოთ ჩაწერე რეჟისორული სცენარი — და მე ავაწყობ რეალურ ფილმს.',
     identityNudge: 'რეფერენსი მიღებულია. ახლა ჩაწერე სცენარი ქვედა ველში და გავუშვათ წარმოება.',
     producing: 'მივიღე. ვიწყებ რეალურ წარმოებას…',
     ready: 'შენი 30-წამიანი ფილმი მზად არის — იხილე ქვემოთ.',
@@ -232,8 +229,6 @@ const COPY: Record<
   },
   en: {
     brandSub: 'Cinematic Hub',
-    welcome:
-      'Welcome to the 30-Second Cinematic Studio. Optionally add 1–3 reference photos to lock the character, then type your director script below — and I’ll produce a real film.',
     identityNudge: 'Reference received. Now type your script below and we’ll start production.',
     producing: 'Got it. Starting the real production…',
     ready: 'Your 30-second film is ready — see below.',
@@ -297,8 +292,6 @@ const COPY: Record<
   },
   ru: {
     brandSub: 'Кинематографический хаб',
-    welcome:
-      'Добро пожаловать в 30-секундную кинематографическую студию. По желанию добавьте 1–3 референс-фото, чтобы зафиксировать персонажа, затем введите режиссёрский сценарий ниже — и я создам реальный фильм.',
     identityNudge: 'Референс получен. Теперь введите сценарий ниже, и мы начнём производство.',
     producing: 'Принято. Запускаю реальное производство…',
     ready: 'Ваш 30-секундный фильм готов — смотрите ниже.',
@@ -581,9 +574,11 @@ export function ConversationalFilmStudio({
   const mediaStreamRef = useRef<MediaStream | null>(null);
 
   const msgIdRef = useRef(1);
-  const [messages, setMessages] = useState<ChatMsg[]>(() => [
-    { id: 0, role: 'system', text: COPY[lang].welcome },
-  ]);
+  // Pristine canvas — NO seeded greeting bubble (Card A overhaul). The empty
+  // state is guided entirely by the identity/document slots + starter chips
+  // below; the first message appears only when the real conversation begins —
+  // a nudge on the first photo, or the user's own director prompt.
+  const [messages, setMessages] = useState<ChatMsg[]>(() => []);
   const nudgedRef = useRef(false);
   const abortRef = useRef<AbortController | null>(null);
   const feedEndRef = useRef<HTMLDivElement | null>(null);
