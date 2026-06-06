@@ -15,11 +15,21 @@
  *   { url: string | null }
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { lipsyncVideo, hasLipsyncProvider } from '@/lib/ai/lipsync';
+import { lipsyncVideo, hasLipsyncProvider, lipsyncStatus } from '@/lib/ai/lipsync';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 export const maxDuration = 300; // Wav2Lip on a 30s 1080p master needs headroom
+
+/**
+ * GET — names-only readiness probe ({ ready, model, faceField, audioField }) so the
+ * lipsync wiring is verifiable without spending a render. No secret is ever
+ * returned. The toggle hits exactly this model (devxpy/cog-wav2lip by default,
+ * overridable via LIPSYNC_REPLICATE_MODEL).
+ */
+export async function GET() {
+  return NextResponse.json(lipsyncStatus());
+}
 
 const isHttps = (u: unknown): u is string =>
   typeof u === 'string' && /^https:\/\/[^\s]+$/i.test(u) && u.length < 4000;

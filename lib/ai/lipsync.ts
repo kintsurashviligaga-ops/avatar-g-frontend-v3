@@ -42,6 +42,15 @@ export function hasLipsyncProvider(): boolean {
   return token().length > 0;
 }
 
+/**
+ * Names-only readiness snapshot for the lipsync wiring — never returns the token
+ * value, only whether it is present + which model the toggle will hit. Surfaced
+ * via GET /api/video/lipsync so the wiring can be verified without a paid render.
+ */
+export function lipsyncStatus(): { ready: boolean; model: string; faceField: string; audioField: string } {
+  return { ready: hasLipsyncProvider(), model: LIPSYNC_MODEL, faceField: FACE_FIELD, audioField: AUDIO_FIELD };
+}
+
 /** Pull the first usable URL out of whatever shape the model returned. */
 function extractUrl(output: unknown): string {
   if (typeof output === 'string') return output;
