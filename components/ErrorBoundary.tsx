@@ -1,4 +1,5 @@
 import React, { Component, ReactNode, ErrorInfo } from 'react';
+import { reportError } from '@/lib/observability/report-error';
 
 type ErrorBoundaryProps = {
   fallback: ReactNode;
@@ -24,7 +25,16 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
-    console.error('[ErrorBoundary] Caught render error:', error.message, info.componentStack);
+    // Forward to the unified reporter — structured console log AND Sentry
+    // captureException with the React component stack as context. Previously this
+    // only console.error'd, so a render crash showed a silent fallback UI while
+    // being INVISIBLE to error tracking. reportError never throws (fail-safe), so
+    // it is safe to call inside the boundary. (Sentry lights up when SENTRY_DSN is
+    // set; without it, the structured log still lands in the platform logs.)
+    reportError(error, {
+      surface: 'ErrorBoundary',
+      componentStack: info.componentStack ?? undefined,
+    });
   }
 
   render() {
