@@ -58,4 +58,24 @@ test.describe('myavatar.ge production smoke', () => {
     expect(typeof json.ready).toBe('boolean');
     expect(json.model).toBe('devxpy/cog-wav2lip');
   });
+
+  test('Service Hub renders the three product cards', async ({ page }) => {
+    await page.goto('/ka/dashboard', { waitUntil: 'domcontentloaded' });
+    await expect(page.getByText('30-წამიანი კინო სტუდია')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText('Google Omni სტუდია')).toBeVisible();
+    await expect(page.getByText('AI Lipsync სტუდია')).toBeVisible();
+    await expect(page.getByText(ERROR_FALLBACK)).toHaveCount(0);
+  });
+
+  test('Hub → Card A launches the film studio in-window (composer appears)', async ({ page }) => {
+    await page.goto('/ka/dashboard', { waitUntil: 'domcontentloaded' });
+    await page.getByText('30-წამიანი კინო სტუდია').click();
+    await expect(page.locator('textarea').first()).toBeVisible({ timeout: 20_000 });
+    expect(page.url()).toContain('#film'); // stayed in-window, hash-routed
+  });
+
+  test('upload route (Card B/C) is auth-gated', async ({ request }) => {
+    const res = await request.post('/api/upload', { data: { dataUrl: 'data:text/plain;base64,aGk=' } });
+    expect(res.status()).toBe(401);
+  });
 });
