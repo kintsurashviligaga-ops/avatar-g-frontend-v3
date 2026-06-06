@@ -23,19 +23,32 @@ export const maxDuration = 45;
 
 interface Doc { dataUrl?: unknown; type?: unknown; name?: unknown }
 
-/** Convert a client doc (data URL) → a Gemini inline attachment. Gemini reads
- *  application/pdf, image/*, and text/* inline; anything else is skipped. */
-function toAttachment(d: Doc): GeminiAttachment | null {
+function parseDoc(d: Doc): { dataUrl: string; mime: string; b64: string; name: string } | null {
   const dataUrl = typeof d.dataUrl === 'string' ? d.dataUrl : '';
   if (!dataUrl.startsWith('data:')) return null;
   const head = dataUrl.match(/^data:([^;,]+)[;,]/);
   const mime = String((typeof d.type === 'string' && d.type) || head?.[1] || '').toLowerCase();
   const b64 = dataUrl.includes(',') ? dataUrl.split(',')[1] ?? '' : '';
   if (!b64) return null;
-  if (mime === 'application/pdf') return { type: 'pdf', mimeType: 'application/pdf', data: b64 };
-  if (mime.startsWith('image/')) return { type: 'image', mimeType: mime, data: b64 };
-  if (mime.startsWith('text/')) return { type: 'pdf', mimeType: 'text/plain', data: b64 };
+  return { dataUrl, mime, b64, name: typeof d.name === 'string' ? d.name : 'document' };
+}
+
+/** PDF / image → a Gemini inline_data attachment (read natively). Returns null
+ *  for text (which is decoded + appended to the prompt instead — Gemini does not
+ *  accept text/plain as inline_data). */
+function toAttachment(p: { mime: string; b64: string }): GeminiAttachment | null {
+  if (p.mime === 'application/pdf') return { type: 'pdf', mimeType: 'application/pdf', data: p.b64 };
+  if (p.mime.startsWith('image/')) return { type: 'image', mimeType: p.mime, data: p.b64 };
   return null;
+}
+
+/** Decode a text/* document to a (length-capped) UTF-8 string for the prompt. */
+function decodeText(b64: string): string {
+  try {
+    return Buffer.from(b64, 'base64').toString('utf8').slice(0, 12_000);
+  } catch {
+    return '';
+  }
 }
 
 const SYSTEM_PROMPT =
@@ -60,15 +73,23 @@ export async function POST(req: NextRequest) {
   if (!geminiKeyPresent() || docs.length === 0) {
     return NextResponse.json({ brief: prompt, enriched: false });
   }
-  const attachments = docs.map(toAttachment).filter((a): a is GeminiAttachment => a !== null);
-  if (attachments.length === 0) {
+  const parsed = docs.map(parseDoc).filter((p): p is NonNullable<ReturnType<typeof parseDoc>> => p !== null);
+  const attachments = parsed.map(toAttachment).filter((a): a is GeminiAttachment => a !== null);
+  // text/* docs are decoded inline (Gemini rejects text/plain as inline_data).
+  const textBlocks = parsed
+    .filter((p) => p.mime.startsWith('text/'))
+    .map((p) => `--- ${p.name} ---\n${decodeText(p.b64)}`)
+    .filter((t) => t.trim().length > 4);
+
+  if (attachments.length === 0 && textBlocks.length === 0) {
     return NextResponse.json({ brief: prompt, enriched: false });
   }
 
   try {
     const instruction =
       `User brief: "${prompt || '(none — derive the brief from the documents)'}".\n\n`
-      + `Read the attached reference document(s) and produce ONE enriched, vivid film brief of `
+      + (textBlocks.length ? `Reference text:\n${textBlocks.join('\n\n')}\n\n` : '')
+      + `Read the reference material${attachments.length ? ' (text above + the attached file(s))' : ' above'} and produce ONE enriched, vivid film brief of `
       + `3–5 sentences that captures the story, the protagonist, the setting, the mood and the `
       + `visual style — ready to be split into six cohesive 5-second cinematic scenes.`;
     const r = await generateWithGemini({
