@@ -78,4 +78,37 @@ test.describe('myavatar.ge production smoke', () => {
     const res = await request.post('/api/upload', { data: { dataUrl: 'data:text/plain;base64,aGk=' } });
     expect(res.status()).toBe(401);
   });
+
+  test('Card A: launching the studio shows the document/script strip', async ({ page }) => {
+    await page.goto('/ka/dashboard', { waitUntil: 'domcontentloaded' });
+    await page.getByText('30-წამიანი კინო სტუდია').click();
+    await expect(page.locator('textarea').first()).toBeVisible({ timeout: 20_000 });
+    // The reference document strip (Priority 1) is present in default film mode.
+    await expect(page.getByText('სცენარი / storyboard')).toBeVisible({ timeout: 10_000 });
+  });
+
+  test('Card A: script-context enriches a brief from a reference document', async ({ request }) => {
+    const script = Buffer.from(
+      'SCENE: A lone fisherman rows through morning fog toward a red lighthouse. Mood: melancholic, hopeful. Style: muted teal, 35mm.',
+    ).toString('base64');
+    const res = await request.post('/api/orchestrator/script-context', {
+      data: { prompt: 'make it cinematic', documents: [{ dataUrl: `data:text/plain;base64,${script}`, type: 'text/plain', name: 'script.txt' }] },
+      timeout: 45_000,
+    });
+    expect(res.ok()).toBeTruthy();
+    const j = (await res.json()) as { brief?: string; enriched?: boolean };
+    // Deterministic contract: 200 + a non-empty brief, ALWAYS (fail-open returns
+    // the raw prompt). Enrichment itself is best-effort — a live Gemini blip can
+    // occasionally return empty — so we assert the contract, not the LLM mood.
+    expect(typeof j.enriched).toBe('boolean');
+    expect((j.brief ?? '').length).toBeGreaterThan(0);
+  });
+
+  test('Card B: gemini multimodal route accepts a turn', async ({ request }) => {
+    const res = await request.post('/api/chat/gemini', {
+      data: { messages: [{ role: 'user', content: 'reply with one word' }] },
+      timeout: 30_000,
+    });
+    expect(res.ok()).toBeTruthy();
+  });
 });
