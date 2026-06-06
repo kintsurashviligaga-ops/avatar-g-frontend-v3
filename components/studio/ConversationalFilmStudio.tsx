@@ -53,6 +53,7 @@ import { createBrowserClient } from '@/lib/supabase/browser';
 import { DeleteAccountButton } from '@/components/account/DeleteAccountButton';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { WalletRefillModal } from '@/components/chat/WalletRefill';
+import AuthModal from '@/components/chat/AuthModal';
 import { analytics } from '@/components/analytics/PostHogProvider';
 import { reportError } from '@/lib/observability/report-error';
 import { formatGEL } from '@/lib/billing/gel';
@@ -512,6 +513,12 @@ export function ConversationalFilmStudio({
   const [balanceGel, setBalanceGel] = useState<number | null>(null);
   const [walletOpen, setWalletOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  // In-window auth (One Window principle): a guest signs in/up WITHOUT leaving
+  // the studio. `authModalMode` seeds the modal on 'login' vs 'register'. On
+  // success the onAuthStateChange listener below flips `authed` instantly — no
+  // page reload — which is the whole point of Task 1.
+  const [authModalOpen, setAuthModalOpen] = useState(false);
+  const [authModalMode, setAuthModalMode] = useState<'login' | 'register'>('login');
   // Client-derived auth. The server `isAuthenticated` prop can be stale (the
   // dashboard ships a static shell that the edge may cache), which made a
   // logged-in user look like a guest. We confirm the REAL session on mount and
@@ -575,19 +582,42 @@ export function ConversationalFilmStudio({
     return () => abortRef.current?.abort();
   }, []);
 
-  // Confirm the real auth session on mount so a stale server prop can't make a
-  // signed-in user look anonymous (and vice-versa). Fail-safe: any error leaves
-  // the seeded prop value untouched.
+  // Confirm the real auth session on mount AND stay subscribed so the UI flips
+  // Guest⇄User INSTANTLY — no page reload. A stale server prop can otherwise make
+  // a signed-in user look anonymous; and after an in-window login (the modal, a
+  // magic link, or the OAuth redirect returning) the studio must reflect it live.
+  // onAuthStateChange fires on SIGNED_IN / SIGNED_OUT / TOKEN_REFRESHED /
+  // USER_UPDATED / INITIAL_SESSION, so this single listener keeps `authed` and the
+  // account email truthful for the whole session. Fail-safe: any error simply
+  // leaves the seeded prop untouched.
   useEffect(() => {
     let alive = true;
-    createBrowserClient()
-      .auth.getUser()
-      .then(({ data }) => {
-        if (alive) setAuthed(!!data.user);
-      })
+    const supabase = createBrowserClient();
+
+    const apply = (user: { email?: string | null } | null) => {
+      if (!alive) return;
+      setAuthed(!!user);
+      setUserEmail(user?.email ? String(user.email) : null);
+      if (!user) {
+        // A sign-out must also wipe account-scoped financials so a guest never
+        // sees the previous user's ledger lingering until the next reload.
+        setBalanceGel(null);
+        setFreeFilmsRemaining(null);
+      }
+    };
+
+    supabase.auth
+      .getUser()
+      .then(({ data }) => apply(data.user))
       .catch(() => {});
+
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+      apply(session?.user ?? null);
+    });
+
     return () => {
       alive = false;
+      sub?.subscription?.unsubscribe();
     };
   }, []);
 
@@ -1870,32 +1900,35 @@ export function ConversationalFilmStudio({
                 {t.library}
               </Link>
 
-              {/* Auth — Sign in + Sign up side by side when anonymous. The pages
-                  already exist at /{locale}/login and /{locale}/signup. */}
+              {/* Auth — Sign in + Sign up open the in-window AuthModal (no page
+                  navigation). On success the onAuthStateChange listener flips the
+                  studio to the signed-in state instantly. The /{locale}/login and
+                  /{locale}/signup pages still exist as deep links. */}
               {!authed && (
                 <div className="grid grid-cols-2 gap-2">
-                  <Link
-                    href={`/${locale}/login`}
-                    onClick={() => setMenuOpen(false)}
+                  <button
+                    type="button"
+                    onClick={() => { setMenuOpen(false); setAuthModalMode('login'); setAuthModalOpen(true); }}
                     className="inline-flex items-center justify-center gap-2 rounded-xl border border-[#00D2FF]/40 bg-[#00D2FF]/10 px-3 py-2.5 text-xs font-semibold text-[#00D2FF] transition-colors hover:bg-[#00D2FF]/20"
                   >
                     <LogIn className="h-4 w-4" />
                     {t.login}
-                  </Link>
-                  <Link
-                    href={`/${locale}/signup`}
-                    onClick={() => setMenuOpen(false)}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setMenuOpen(false); setAuthModalMode('register'); setAuthModalOpen(true); }}
                     className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/10 bg-black px-3 py-2.5 text-xs font-semibold text-neutral-200 transition-colors hover:border-[#00D2FF]/50 hover:text-[#00D2FF]"
                   >
                     <UserPlus className="h-4 w-4" />
                     {t.signup}
-                  </Link>
+                  </button>
                 </div>
               )}
 
               {/* Sign out — authenticated users (was missing; every account-based
-                  app needs a logout control). Clears the Supabase session, then
-                  returns to a clean dashboard. */}
+                  app needs a logout control). Clears the Supabase session; the
+                  onAuthStateChange SIGNED_OUT event then flips the studio back to
+                  the guest state INSTANTLY (no page reload, no ledger bleed). */}
               {authed && (
                 <button
                   type="button"
@@ -1903,10 +1936,9 @@ export function ConversationalFilmStudio({
                     try {
                       await createBrowserClient().auth.signOut();
                     } catch {
-                      /* ignore — fall through to navigation */
+                      /* ignore — the auth listener still clears local state */
                     }
                     setMenuOpen(false);
-                    if (typeof window !== 'undefined') window.location.href = `/${locale}/dashboard`;
                   }}
                   className="inline-flex items-center gap-2.5 rounded-xl border border-white/10 bg-black px-3 py-2.5 text-xs font-semibold text-neutral-200 transition-colors hover:border-white/25 hover:text-white"
                 >
@@ -1960,6 +1992,22 @@ export function ConversationalFilmStudio({
         locale={locale}
         variant="obsidian"
         onClose={() => setWalletOpen(false)}
+      />
+
+      {/* In-window authentication (Task 1): Sign in / Register / reset / magic +
+          Google · Apple · GitHub OAuth, WITHOUT leaving the studio. A password or
+          magic-link success here is reflected LIVE by the onAuthStateChange
+          listener above (authed flips, ledger refreshes) — no page reload. */}
+      <AuthModal
+        open={authModalOpen}
+        locale={lang}
+        initialMode={authModalMode}
+        onClose={() => setAuthModalOpen(false)}
+        onAuthed={() => {
+          setAuthModalOpen(false);
+          void refreshFreeFilms();
+          void refreshBalance();
+        }}
       />
     </>
   );

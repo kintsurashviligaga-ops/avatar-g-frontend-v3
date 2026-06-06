@@ -27,6 +27,9 @@ interface AuthModalProps {
   locale: Lang;
   onClose: () => void;
   onAuthed?: () => void;
+  /** Which tab to open on. Defaults to 'login'; the studio passes 'register'
+   *  for the "Sign up" entry so the modal lands on account creation directly. */
+  initialMode?: Mode;
 }
 
 type Strings = {
@@ -121,9 +124,9 @@ const COPY: Record<Lang, Strings> = {
   },
 };
 
-export default function AuthModal({ open, locale, onClose, onAuthed }: AuthModalProps) {
+export default function AuthModal({ open, locale, onClose, onAuthed, initialMode = 'login' }: AuthModalProps) {
   const t = COPY[locale] ?? COPY.ka;
-  const [mode, setMode] = useState<Mode>('login');
+  const [mode, setMode] = useState<Mode>(initialMode);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
@@ -138,6 +141,13 @@ export default function AuthModal({ open, locale, onClose, onAuthed }: AuthModal
     document.body.style.overflow = 'hidden';
     return () => { window.removeEventListener('keydown', onKey); document.body.style.overflow = ''; };
   }, [open, onClose]);
+
+  // The modal stays mounted (AnimatePresence). When it (re)opens, land on the
+  // caller's requested tab — 'login' for "Sign in", 'register' for "Sign up" —
+  // and clear any stale error/notice from a previous session.
+  useEffect(() => {
+    if (open) { setMode(initialMode); setError(null); setNotice(null); }
+  }, [open, initialMode]);
 
   const reset = useCallback(() => { setError(null); setNotice(null); }, []);
 
