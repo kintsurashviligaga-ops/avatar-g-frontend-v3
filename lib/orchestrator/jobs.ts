@@ -110,6 +110,52 @@ export async function failJob(id: string, error: string): Promise<void> {
 }
 
 /**
+ * Persist a finished FILM master as a COMPLETED row in a SINGLE write.
+ *
+ * The conversational film studio renders through the orchestrate → assemble path
+ * (not the produce routes), so its masters never landed in `generation_jobs` and
+ * therefore never showed up in the user's durable Library. This upserts the
+ * finished film directly as a completed 'film' job — keyed by the film token so a
+ * re-stamp of the same film updates rather than duplicates — making it appear in
+ * the per-user Library exactly like every other generation. Best-effort and
+ * fail-OPEN: a missing Supabase or a write error never blocks film delivery.
+ */
+export async function recordCompletedFilm(input: {
+  id: string;
+  userId: string;
+  url: string;
+  prompt?: string | null;
+  orientation?: string | null;
+  result?: Record<string, unknown>;
+}): Promise<boolean> {
+  const sb = client();
+  if (!sb) return false;
+  try {
+    const { error } = await sb.from(TABLE).upsert(
+      {
+        id: input.id,
+        user_id: input.userId,
+        service_type: 'film' as ProduceKind,
+        status: 'completed' as JobStatus,
+        current_stage: 'completed',
+        pct: 100,
+        params: {
+          prompt: input.prompt ?? null,
+          orientation: input.orientation ?? 'landscape',
+          source: 'film-studio',
+        },
+        result: input.result ?? { url: input.url },
+        signed_url: input.url,
+      },
+      { onConflict: 'id' },
+    );
+    return !error;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Mirror a single SSE emit into the durable row. Fire-and-forget: callers do
  * `void recordJobEvent(jobId, payload)` right after enqueuing the SSE chunk, so
  * persistence never adds latency to the live stream. No-op when jobId is null

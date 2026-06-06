@@ -29,6 +29,7 @@ import { reSignIfInternal } from '@/lib/orchestrator/storage-adapter';
 import { assembleWithFfmpeg } from '@/lib/orchestrator/ffmpeg-assembly';
 import { type QaReport } from '@/lib/orchestrator/masterQa';
 import { recordFilmAssembling, recordFilmMaster, recordFilmFailed } from '@/lib/chat/filmStatusStore';
+import { recordCompletedFilm } from '@/lib/orchestrator/jobs';
 import { generateMusic } from '@/lib/ai/replicate';
 
 export const dynamic = 'force-dynamic';
@@ -312,6 +313,22 @@ export async function POST(req: NextRequest) {
   const qa = (bag.qa as QaReport | null | undefined) ?? null;
   const qaSummary = qa ? { pass: qa.pass, score: qa.score, grade: qa.grade, issues: qa.issues.map((i) => i.code) } : null;
   if (filmTokenId && resultUrl) await recordFilmMaster(filmTokenId, resultUrl, qaSummary);
+
+  // Task 2 — persist the finished film into the user's durable per-user Library
+  // (generation_jobs). The studio renders through orchestrate→assemble, not the
+  // produce routes, so without this the film would never appear in History. Only
+  // for signed-in users (anonymous trials have no account to file it under).
+  // Best-effort + fail-open: keyed by the film token so a re-stamp upserts.
+  if (uid && resultUrl) {
+    await recordCompletedFilm({
+      id: filmTokenId || saga.sagaId,
+      userId: uid,
+      url: resultUrl,
+      prompt: typeof body.scorePrompt === 'string' ? body.scorePrompt : null,
+      orientation: body.orientation ? String(body.orientation) : 'landscape',
+      result: { url: resultUrl, qa: qaSummary, kind: 'film' },
+    });
+  }
 
   return NextResponse.json({ url: resultUrl, qa, sagaId: saga.sagaId, filmTokenId, scoreFallback, freeFilm: Boolean(bag.freeFilm) });
 }
