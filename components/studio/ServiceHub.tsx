@@ -89,8 +89,8 @@ export function ServiceHub({ locale = 'ka', isAuthenticated = false }: { locale?
       <div className="flex h-full w-full flex-col bg-black text-white">
         <header className="sticky top-0 z-30 shrink-0 border-b border-white/10 bg-black/90 backdrop-blur-xl" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
           <div className="mx-auto flex h-14 w-full max-w-3xl items-center gap-2 px-4">
-            <button type="button" onClick={() => go('hub')} aria-label="Services" className="-ml-1 flex h-8 w-8 items-center justify-center rounded-full text-neutral-400 transition-colors hover:bg-white/10 hover:text-[#00D2FF]">
-              <ArrowLeft className="h-4 w-4" />
+            <button type="button" onClick={() => go('hub')} aria-label="Services" className="-ml-2 flex h-11 w-11 items-center justify-center rounded-full text-neutral-400 transition-colors hover:bg-white/10 hover:text-[#00D2FF]">
+              <ArrowLeft className="h-5 w-5" />
             </button>
             <span className="truncate text-sm font-bold tracking-wide text-white">
               {service === 'omni' ? t.omniTitle : t.lipTitle}

@@ -111,4 +111,24 @@ test.describe('myavatar.ge production smoke', () => {
     });
     expect(res.ok()).toBeTruthy();
   });
+
+  // Mobile / Apple-HIG: the hub + Card A studio must fit every standard iPhone
+  // viewport with NO horizontal overflow (no clipped/unreachable zones).
+  for (const vp of [
+    { name: 'iPhone SE', width: 375, height: 667 },
+    { name: 'iPhone 15 Pro Max', width: 430, height: 932 },
+  ]) {
+    test(`mobile: hub + studio fit ${vp.name} with no horizontal scroll`, async ({ page }) => {
+      await page.setViewportSize({ width: vp.width, height: vp.height });
+      await page.goto('/ka/dashboard', { waitUntil: 'domcontentloaded' });
+      await expect(page.getByText('30-წამიანი კინო სტუდია')).toBeVisible({ timeout: 15_000 });
+      const hubOverflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+      expect(hubOverflow, 'hub horizontal overflow (px)').toBeLessThanOrEqual(1);
+
+      await page.getByText('30-წამიანი კინო სტუდია').click();
+      await expect(page.locator('textarea').first()).toBeVisible({ timeout: 20_000 });
+      const studioOverflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+      expect(studioOverflow, 'studio horizontal overflow (px)').toBeLessThanOrEqual(1);
+    });
+  }
 });

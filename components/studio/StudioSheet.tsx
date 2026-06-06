@@ -65,9 +65,9 @@ export function StudioSheet({ open, title, onClose, children, flush }: StudioShe
                 type="button"
                 onClick={onClose}
                 aria-label="Close"
-                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-neutral-400 transition-colors hover:bg-white/10 hover:text-white"
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-neutral-400 transition-colors hover:bg-white/10 hover:text-white"
               >
-                <X size={16} />
+                <X size={18} />
               </button>
             </header>
             <div className={`min-h-0 flex-1 overflow-y-auto ${flush ? '' : 'p-4'}`}>

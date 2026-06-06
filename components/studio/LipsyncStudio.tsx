@@ -86,7 +86,7 @@ function Dropzone({
       <button
         type="button"
         onClick={() => inputRef.current?.click()}
-        className="mt-1 rounded-lg border border-white/15 px-3 py-1 text-[12px] font-medium text-neutral-300 transition-colors hover:border-[#00D2FF]/40 hover:text-[#00D2FF]"
+        className="mt-1 inline-flex min-h-[44px] items-center rounded-lg border border-white/15 px-4 py-2.5 text-[13px] font-medium text-neutral-300 transition-colors hover:border-[#00D2FF]/40 hover:text-[#00D2FF]"
       >
         {picked ? replaceLabel : <span className="inline-flex items-center gap-1"><UploadCloud size={13} /> {hint.split('—')[0]?.trim()}</span>}
       </button>
@@ -134,7 +134,7 @@ export default function LipsyncStudio({ locale = 'ka' }: { locale?: Lang }) {
   }, [video, audio, upload, t]);
 
   return (
-    <div className="mx-auto w-full max-w-3xl px-4 py-6">
+    <div className="mx-auto w-full max-w-3xl px-4 pt-6" style={{ paddingBottom: 'max(1.5rem, env(safe-area-inset-bottom))' }}>
       <header className="mb-5">
         <h1 className="text-lg font-bold tracking-tight text-white">{t.title}</h1>
         <p className="mt-0.5 text-[13px] text-neutral-500">{t.subtitle}</p>

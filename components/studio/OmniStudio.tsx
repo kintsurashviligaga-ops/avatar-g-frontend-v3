@@ -160,7 +160,10 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   }, [recording, lang]);
 
   return (
-    <div className="mx-auto flex h-full w-full max-w-3xl flex-col px-4 py-4">
+    <div
+      className="mx-auto flex h-full w-full max-w-3xl flex-col px-4 pt-4"
+      style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}
+    >
       <header className="mb-3 shrink-0">
         <h1 className="text-lg font-bold tracking-tight text-white">{t.title}</h1>
         <p className="mt-0.5 text-[13px] text-neutral-500">{t.subtitle}</p>
@@ -219,11 +222,11 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             const r = new FileReader(); r.onload = () => setAttachment({ dataUrl: String(r.result), mimeType: f.type || 'application/octet-stream' }); r.readAsDataURL(f);
           }} />
           <button type="button" onClick={() => fileRef.current?.click()} aria-label="attach"
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-neutral-400 transition-colors hover:bg-white/5 hover:text-white">
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-neutral-400 transition-colors hover:bg-white/5 hover:text-white">
             <Paperclip size={18} />
           </button>
           <button type="button" onClick={() => void toggleMic()} aria-label={t.micHint}
-            className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl transition-colors ${
+            className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl transition-colors ${
               recording ? 'animate-pulse bg-red-500/15 text-red-400' : 'text-neutral-400 hover:bg-white/5 hover:text-white'
             }`}>
             {recording ? <Square size={16} /> : <Mic size={18} />}
@@ -234,10 +237,10 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send(); } }}
             rows={1}
             placeholder={recording ? t.recording : t.placeholder}
-            className="max-h-32 min-h-[40px] flex-1 resize-none rounded-xl bg-white/[0.04] px-3 py-2.5 text-[14px] text-white placeholder:text-neutral-600 outline-none focus:ring-1 focus:ring-[#00D2FF]/40"
+            className="max-h-32 min-h-[44px] flex-1 resize-none rounded-xl bg-white/[0.04] px-3 py-3 text-[16px] text-white placeholder:text-neutral-600 outline-none focus:ring-1 focus:ring-[#00D2FF]/40"
           />
           <button type="button" onClick={() => void send()} disabled={busy || (!input.trim() && !attachment)} aria-label="send"
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-r from-[#00D2FF] to-[#0085FF] text-black transition-all hover:brightness-110 disabled:opacity-40">
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-r from-[#00D2FF] to-[#0085FF] text-black transition-all hover:brightness-110 disabled:opacity-40">
             {busy ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
           </button>
         </div>

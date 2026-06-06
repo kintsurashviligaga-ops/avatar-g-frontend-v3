@@ -1338,9 +1338,9 @@ export function ConversationalFilmStudio({
               type="button"
               onClick={onExitToHub}
               aria-label="Services"
-              className="-ml-1 mr-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-neutral-400 transition-colors hover:bg-white/10 hover:text-[#00D2FF]"
+              className="-ml-2 flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-neutral-400 transition-colors hover:bg-white/10 hover:text-[#00D2FF]"
             >
-              <ArrowLeft className="h-4 w-4" />
+              <ArrowLeft className="h-5 w-5" />
             </button>
           )}
           <Link href={`/${locale}/dashboard`} className="group flex items-center gap-2.5 min-w-0">
