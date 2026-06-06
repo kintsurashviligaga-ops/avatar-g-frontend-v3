@@ -95,14 +95,21 @@ export async function POST(req: NextRequest) {
     const r = await generateWithGemini({
       prompt: instruction,
       systemPrompt: SYSTEM_PROMPT,
-      tier: 'pro', // Gemini 2.5 Pro — strongest document understanding
+      // gemini-2.5-flash is the model the chat route proves works on this key
+      // (2.5-pro can 404/quota on AI-Studio keys) and reads PDF/image/text well.
+      tier: 'flash',
       attachments,
       temperature: 0.5,
       maxTokens: 700,
     });
     const brief = (r.text || '').trim();
     return NextResponse.json({ brief: brief || prompt, enriched: Boolean(brief) });
-  } catch {
+  } catch (err) {
+    // FAIL-OPEN. `?diag=1` surfaces WHY (no secret) for the "didn't enrich" probe.
+    const reason = err instanceof Error ? err.message.slice(0, 200) : String(err).slice(0, 200);
+    if (req.nextUrl.searchParams.get('diag') === '1') {
+      return NextResponse.json({ brief: prompt, enriched: false, diag: reason });
+    }
     return NextResponse.json({ brief: prompt, enriched: false });
   }
 }
