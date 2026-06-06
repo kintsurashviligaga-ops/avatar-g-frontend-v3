@@ -91,8 +91,13 @@ const SPECS: IntegrationSpec[] = [
   },
   {
     id: 'stripe', label: 'Stripe', failOpen: false,
-    effect: 'Subscriptions + customer billing portal',
-    groups: [['STRIPE_SECRET_KEY']],
+    // BOTH are required for the REVENUE loop to actually close: the secret key
+    // creates the checkout, but the webhook secret is what lets the webhook
+    // verify the event and CREDIT the wallet. With the key but no webhook secret,
+    // a top-up charges yet never credits — money the founder can't see. So this
+    // reports 'degraded' (→ blocks readiness) until both are present.
+    effect: 'Wallet top-ups + subscriptions — needs the API key AND the webhook secret to credit a payment (the revenue loop)',
+    groups: [['STRIPE_SECRET_KEY'], ['STRIPE_WEBHOOK_SECRET']],
   },
 ];
 
