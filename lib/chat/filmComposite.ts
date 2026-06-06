@@ -6,11 +6,11 @@
  * Where `musicVideoComposite` fans a brief into lyrics + one 30s clip, the film
  * pipeline runs a full production studio:
  *
- *   1. Storyboard Agent   → `planFilmScenes` splits the brief into 5 sequential
- *                           6-second scenes (deterministic, continuity-locked).
- *   2. Continuity + Video → 5 LTX clips rendered with the SAME seed + character
+ *   1. Storyboard Agent   → `planFilmScenes` splits the brief into 6 sequential
+ *                           5-second scenes (deterministic, continuity-locked).
+ *   2. Continuity + Video → 6 LTX clips rendered with the SAME seed + character
  *                           reference so the protagonist never mutates.
- *   3. Editor Agent       → concatenate the 5 clips into one 30s stream.
+ *   3. Editor Agent       → hard-cut the 6 clips into one EXACTLY-30s stream.
  *   4. Audio / Foley      → bind one cohesive track / voiceover across the film.
  *
  * Every leg is env-gated and degrades gracefully — a missing provider key skips

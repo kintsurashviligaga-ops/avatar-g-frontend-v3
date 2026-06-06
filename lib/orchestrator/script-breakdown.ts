@@ -29,10 +29,16 @@ export interface ScriptSegment {
   cameraMotion: CameraMotion;
 }
 
-/** 30s → 5 shots. Clamped to [1, MAX_SEGMENTS]; non-finite/≤0 → 1. */
-export function planSegmentCount(totalSec: number): number {
+/**
+ * 30s → N shots. Clamped to [1, MAX_SEGMENTS]; non-finite/≤0 → 1.
+ * `segmentSec` defaults to the global 6s shot length but is overridable so a
+ * caller (the 30-second film, which runs at 5s × 6 scenes) can request a
+ * different cadence WITHOUT shifting the generic video path's 6s default.
+ */
+export function planSegmentCount(totalSec: number, segmentSec: number = SEGMENT_DURATION_SEC): number {
   if (!Number.isFinite(totalSec) || totalSec <= 0) return 1;
-  return Math.max(1, Math.min(MAX_SEGMENTS, Math.round(totalSec / SEGMENT_DURATION_SEC)));
+  const sec = Number.isFinite(segmentSec) && segmentSec > 0 ? segmentSec : SEGMENT_DURATION_SEC;
+  return Math.max(1, Math.min(MAX_SEGMENTS, Math.round(totalSec / sec)));
 }
 
 function coerceMotion(v: unknown): CameraMotion {
@@ -45,12 +51,17 @@ function coerceMotion(v: unknown): CameraMotion {
  * the Claude call/parse fails. Produces a valid, render-ready shot list so the
  * media pipeline always has something to assemble.
  */
-export function deterministicBreakdown(basePrompt: string, totalSec: number): ScriptSegment[] {
-  const count = planSegmentCount(totalSec);
+export function deterministicBreakdown(
+  basePrompt: string,
+  totalSec: number,
+  segmentSec: number = SEGMENT_DURATION_SEC,
+): ScriptSegment[] {
+  const sec = Number.isFinite(segmentSec) && segmentSec > 0 ? segmentSec : SEGMENT_DURATION_SEC;
+  const count = planSegmentCount(totalSec, sec);
   const prompt = basePrompt.trim() || 'cinematic establishing shot';
   return Array.from({ length: count }, (_, i): ScriptSegment => ({
     index: i,
-    durationSec: SEGMENT_DURATION_SEC,
+    durationSec: sec,
     prompt: count === 1 ? prompt : `${prompt} — shot ${i + 1} of ${count}`,
     cameraMotion: CAMERA_MOTIONS[i % CAMERA_MOTIONS.length]!,
   }));

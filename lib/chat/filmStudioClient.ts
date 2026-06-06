@@ -24,7 +24,7 @@
  * they can be unit-tested without the network.
  */
 
-import { isThirtySecondFilm, FILM_SCENE_COUNT } from './filmPipeline';
+import { isThirtySecondFilm, FILM_SCENE_COUNT, FILM_CLIP_SEC } from './filmPipeline';
 import { GEL_COST } from '@/lib/billing/gel';
 
 // ─── Public types ──────────────────────────────────────────────────────────
@@ -401,7 +401,7 @@ async function assembleMaster(
     credentials: 'include',
     signal,
     body: JSON.stringify({
-      segments: clipUrls.map((url) => ({ url, durationSec: 6 })),
+      segments: clipUrls.map((url) => ({ url, durationSec: FILM_CLIP_SEC })),
       ...(musicUrl ? { musicUrl } : {}),
       ...(scorePrompt.trim() ? { scorePrompt: scorePrompt.trim() } : {}),
       ...(statusTokenId ? { filmTokenId: statusTokenId } : {}),

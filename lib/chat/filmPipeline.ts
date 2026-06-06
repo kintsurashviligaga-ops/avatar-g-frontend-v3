@@ -30,8 +30,12 @@ import { extractPromptTraits, enrichVideoPrompt } from './promptTraits';
 
 /** The flagship runtime: a full 30-second film. */
 export const FILM_TOTAL_SEC = 30;
-/** 30s / 6s = 5 sequential scenes. Derived (not hardcoded) so it stays honest. */
-export const FILM_SCENE_COUNT = planSegmentCount(FILM_TOTAL_SEC);
+/** The film runs at a 5-second scene cadence (vs. the generic video 6s default),
+ *  so 30s decomposes into SIX sequential beats. With the hard-cut stitch this also
+ *  lands the master at EXACTLY 30s (6 × 5 − 0 overlap) — no pad-freeze. */
+export const FILM_CLIP_SEC = 5;
+/** 30s / 5s = 6 sequential scenes. Derived (not hardcoded) so it stays honest. */
+export const FILM_SCENE_COUNT = planSegmentCount(FILM_TOTAL_SEC, FILM_CLIP_SEC);
 
 // ─── Intent detection ────────────────────────────────────────────────────────
 // Deliberately conservative: matches explicit "30-second film / short film /
@@ -305,7 +309,8 @@ export interface FilmPlan {
  */
 export function planFilmScenes(prompt: string, opts: FilmPlanOptions = {}): FilmPlan {
   const totalSec = opts.totalSec && opts.totalSec > 0 ? opts.totalSec : FILM_TOTAL_SEC;
-  const segments = deterministicBreakdown(prompt, totalSec);
+  // The film runs at a 5-second scene cadence → six beats over the 30s runtime.
+  const segments = deterministicBreakdown(prompt, totalSec, FILM_CLIP_SEC);
   const seed = buildConsistencySeed(prompt);
   // PHASE 45 §2 — fold uploaded reference images into the identity lock. The
   // explicit avatarReference wins; otherwise the FIRST reference image becomes

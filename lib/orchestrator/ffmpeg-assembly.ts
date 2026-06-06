@@ -60,7 +60,10 @@ async function probeMaster(
 const RENDER_BUCKET = process.env.RENDER_BUCKET ?? 'renders';
 
 export interface FfmpegManifest {
-  segments: { url: string }[];
+  /** Each clip's source URL and (optionally) its intended length in seconds. The
+   *  assembler derives the master timeline from these durations so a 6-scene · 5s
+   *  film and a 5-shot · 6s video both stitch to the correct length. */
+  segments: { url: string; durationSec?: number }[];
   voiceoverUrl?: string | null;
   musicUrl?: string | null;
   sfxUrl?: string | null;
@@ -111,6 +114,13 @@ export async function assembleWithFfmpeg(m: FfmpegManifest, signal?: AbortSignal
     const fps = String(g.fps) === '60' ? 60 : 24;
     const duckPct = typeof g.vocal_ducking_pct === 'number' ? g.vocal_ducking_pct : 30;
     const transition = String(g.transition ?? 'crossfade');
+    // Derive the per-clip length from the segment durations so the master timeline
+    // is correct for ANY cadence — a 6-scene · 5s film, a 5-shot · 6s video, etc.
+    // (Average + round; all clips in a composition share one length.) Falls back to
+    // the 6s default when no durations were supplied.
+    const segDurs = segs.map((s) => Number(s.durationSec)).filter((d) => Number.isFinite(d) && d > 0);
+    const clipSec = segDurs.length ? Math.max(1, Math.round(segDurs.reduce((a, b) => a + b, 0) / segDurs.length)) : 6;
+    const transSec = transition === 'cut' ? 0 : 1;
     // 9:16 vertical (TikTok/Reels/Shorts) when the orientation / aspect says so.
     const orientation: 'landscape' | 'vertical' =
       String(g.orientation || g.aspect || '').replace(':', 'x') === '9x16' || String(g.orientation) === 'vertical'
@@ -126,6 +136,7 @@ export async function assembleWithFfmpeg(m: FfmpegManifest, signal?: AbortSignal
       fps,
       duckPct,
       transition,
+      clipSec,
     });
 
     const out = join(dir, 'master.mp4');
@@ -158,7 +169,7 @@ export async function assembleWithFfmpeg(m: FfmpegManifest, signal?: AbortSignal
     const probe = await probeMaster(bin, out);
     const qa = validateMaster({
       sizeBytes: data.byteLength,
-      expectedDurSec: expectedMasterDuration(inputs.length),
+      expectedDurSec: expectedMasterDuration(inputs.length, clipSec, transSec),
       actualDurSec: probe.actualDurSec,
       audioExpected: amap !== null,
       audioPresent: probe.audioPresent,

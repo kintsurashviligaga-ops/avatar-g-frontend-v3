@@ -15,9 +15,9 @@ import {
 } from './filmPipeline';
 
 describe('film constants', () => {
-  it('derives 5 scenes from a 30-second runtime', () => {
+  it('derives 6 scenes from a 30-second runtime at the 5s film cadence', () => {
     expect(FILM_TOTAL_SEC).toBe(30);
-    expect(FILM_SCENE_COUNT).toBe(5);
+    expect(FILM_SCENE_COUNT).toBe(6); // 30s / 5s = 6 sequential beats
   });
 });
 
@@ -73,13 +73,13 @@ describe('buildCharacterAnchor', () => {
 });
 
 describe('planFilmScenes — continuity-locked production plan', () => {
-  it('produces exactly 5 sequential 6-second scenes for a 30s film', () => {
+  it('produces exactly 6 sequential 5-second scenes for a 30s film', () => {
     const plan = planFilmScenes('a hero walks through a neon market');
-    expect(plan.scenes).toHaveLength(5);
-    expect(plan.shared.sceneCount).toBe(5);
+    expect(plan.scenes).toHaveLength(6);
+    expect(plan.shared.sceneCount).toBe(6);
     expect(plan.shared.totalSec).toBe(30);
     plan.scenes.forEach((s, i) => {
-      expect(s.durationSec).toBe(6);
+      expect(s.durationSec).toBe(5);
       expect(s.index).toBe(i);
       expect(s.ordinal).toBe(i + 1);
     });
@@ -233,7 +233,7 @@ describe('buildFilmClipRequest — LTX request shaping', () => {
     const req = buildFilmClipRequest(plan.scenes[0]!, plan.shared);
     expect(req.selectedOptions.seed).toBe(String(plan.shared.seed));
     expect(req.selectedOptions.generate_audio).toBe('false');
-    expect(req.selectedOptions.duration).toBe('6');
+    expect(req.selectedOptions.duration).toBe('5'); // 5s film cadence
     expect(req.userPrompt).toBe(plan.scenes[0]!.prompt);
   });
 
@@ -266,16 +266,16 @@ describe('buildFilmClipRequest — LTX request shaping', () => {
 
 describe('filmProgressStages — progressive agentic transparency', () => {
   it('emits storyboard → N clip stages → stitch → audio → finalize', () => {
-    const stages = filmProgressStages(5);
+    const stages = filmProgressStages(6);
     const keys = stages.map((s) => s.key);
     expect(keys[0]).toBe('storyboard');
     expect(keys).toContain('clip_1');
-    expect(keys).toContain('clip_5');
+    expect(keys).toContain('clip_6');
     expect(keys[keys.length - 3]).toBe('stitch');
     expect(keys[keys.length - 2]).toBe('audio');
     expect(keys[keys.length - 1]).toBe('finalize');
-    // 1 storyboard + 5 clips + stitch + audio + finalize = 9
-    expect(stages).toHaveLength(9);
+    // 1 storyboard + 6 clips + stitch + audio + finalize = 10
+    expect(stages).toHaveLength(10);
   });
 
   it('every stage carries all three locales', () => {
@@ -293,7 +293,8 @@ describe('filmProgressStages — progressive agentic transparency', () => {
   });
 
   it('falls back to the default scene count for bad input', () => {
-    expect(filmProgressStages(0)).toHaveLength(9);
-    expect(filmProgressStages(Number.NaN)).toHaveLength(9);
+    // bad input → FILM_SCENE_COUNT (6): 1 storyboard + 6 clips + stitch/audio/finalize = 10
+    expect(filmProgressStages(0)).toHaveLength(10);
+    expect(filmProgressStages(Number.NaN)).toHaveLength(10);
   });
 });
