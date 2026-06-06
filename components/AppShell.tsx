@@ -53,6 +53,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     window.addEventListener('resize', setViewportCssVars, { passive: true });
     window.addEventListener('orientationchange', setViewportCssVars);
 
+    let swUpdateCleanup: (() => void) | null = null;
     if (process.env.NODE_ENV === 'production' && 'serviceWorker' in navigator) {
       const hadController = !!navigator.serviceWorker.controller;
       let didReload = false;
@@ -63,9 +64,33 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         didReload = true;
         window.location.reload();
       });
-      void navigator.serviceWorker.register('/sw.js', { scope: '/', updateViaCache: 'none' }).catch(() => {
-        // Keep shell rendering resilient if SW registration fails.
-      });
+
+      // RELIABLE auto-update. The SW already skipWaiting()+clients.claim()s, but the
+      // browser only *discovers* a new worker on its own schedule — a long-lived PWA
+      // (especially iOS standalone, which users background/foreground for hours) can
+      // otherwise serve a STALE shell indefinitely. That stale client is exactly the
+      // recurring "it's broken" that was really an old cached version. We proactively
+      // poll for a new worker whenever the app regains focus/visibility, plus a gentle
+      // interval, so a fresh deploy is picked up within seconds → controllerchange →
+      // the reload above swaps it in. Best-effort: every call is guarded.
+      let swReg: ServiceWorkerRegistration | null = null;
+      const checkForUpdate = () => { void swReg?.update().catch(() => {}); };
+      const onVisible = () => { if (document.visibilityState === 'visible') checkForUpdate(); };
+      document.addEventListener('visibilitychange', onVisible);
+      window.addEventListener('focus', checkForUpdate);
+      const updateTimer = window.setInterval(checkForUpdate, 300_000); // every 5 min while open
+      swUpdateCleanup = () => {
+        document.removeEventListener('visibilitychange', onVisible);
+        window.removeEventListener('focus', checkForUpdate);
+        window.clearInterval(updateTimer);
+      };
+
+      void navigator.serviceWorker
+        .register('/sw.js', { scope: '/', updateViaCache: 'none' })
+        .then((reg) => { swReg = reg; })
+        .catch(() => {
+          // Keep shell rendering resilient if SW registration fails.
+        });
     }
 
     return () => {
@@ -73,6 +98,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       unbindStandalone();
       window.removeEventListener('resize', setViewportCssVars);
       window.removeEventListener('orientationchange', setViewportCssVars);
+      swUpdateCleanup?.();
     };
   }, []);
 
