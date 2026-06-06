@@ -12,32 +12,39 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Send, Mic, Square, Paperclip, X, Loader2, Sparkles, Film, Music2, FileText } from 'lucide-react';
+import { Send, Mic, Square, Paperclip, X, Loader2, Sparkles, Film, Music2, FileText, Image as ImageIcon, Download, MessageSquare } from 'lucide-react';
 
 type Lang = 'ka' | 'en' | 'ru';
 
 const COPY: Record<Lang, {
   title: string; subtitle: string; placeholder: string; empty: string; thinking: string; recording: string; micHint: string;
+  modeChat: string; modeImage: string; imgPlaceholder: string; generatingImage: string; imageFailed: string; imgDownload: string;
 }> = {
   ka: {
     title: 'ჭკვიანი ასისტენტი', subtitle: 'ინტელექტუალური მულტიმოდალური ასისტენტი',
     placeholder: 'დაწერე, ჩაწერე ხმა, ან მიამაგრე სურათი…', empty: 'ჰკითხე ნებისმიერი რამ — ტექსტი, ხმა ან სურათი. ასისტენტი გაანალიზებს და გიპასუხებს.',
     thinking: 'ფიქრობს…', recording: 'იწერება…', micHint: 'ხმის ჩაწერა',
+    modeChat: 'პასუხი', modeImage: 'სურათი', imgPlaceholder: 'აღწერე სურათი, რომ დაგიხატო…',
+    generatingImage: 'სურათი იქმნება…', imageFailed: 'სურათის გენერაცია ვერ მოხერხდა. სცადე თავიდან.', imgDownload: 'ჩამოტვირთვა',
   },
   en: {
     title: 'Smart Assistant', subtitle: 'Intelligent multimodal assistant',
     placeholder: 'Type, record your voice, or attach an image…', empty: 'Ask anything — text, voice or image. The assistant analyzes and responds.',
     thinking: 'Thinking…', recording: 'Recording…', micHint: 'Record voice',
+    modeChat: 'Answer', modeImage: 'Image', imgPlaceholder: 'Describe an image to generate…',
+    generatingImage: 'Generating image…', imageFailed: 'Image generation failed. Try again.', imgDownload: 'Download',
   },
   ru: {
     title: 'Умный ассистент', subtitle: 'Интеллектуальный мультимодальный ассистент',
     placeholder: 'Напишите, запишите голос или прикрепите изображение…', empty: 'Спросите что угодно — текст, голос или изображение. Ассистент анализирует и отвечает.',
     thinking: 'Думает…', recording: 'Запись…', micHint: 'Записать голос',
+    modeChat: 'Ответ', modeImage: 'Изображение', imgPlaceholder: 'Опишите изображение для генерации…',
+    generatingImage: 'Генерирую изображение…', imageFailed: 'Не удалось сгенерировать изображение. Попробуйте снова.', imgDownload: 'Скачать',
   },
 };
 
 interface Media { dataUrl: string; mimeType: string }
-interface Msg { role: 'user' | 'assistant'; text: string; media?: Media }
+interface Msg { role: 'user' | 'assistant'; text: string; media?: Media; imageUrl?: string }
 
 const isImage = (m: string) => m.startsWith('image/');
 const isAudio = (m: string) => m.startsWith('audio/');
@@ -50,6 +57,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   const [attachment, setAttachment] = useState<Media | null>(null); // image / audio / video / pdf
   const [busy, setBusy] = useState(false);
   const [recording, setRecording] = useState(false);
+  // Composer mode: 'chat' → Gemini multimodal answer; 'image' → NanoBanana image
+  // GENERATION (the prompt becomes a brand-new image rendered in the feed).
+  const [mode, setMode] = useState<'chat' | 'image'>('chat');
   const fileRef = useRef<HTMLInputElement | null>(null);
   const recRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -62,6 +72,46 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   const send = useCallback(async () => {
     const text = input.trim();
     if ((!text && !attachment) || busy) return;
+
+    // ── IMAGE GENERATION (NanoBanana) ──────────────────────────────────────────
+    // In image mode the typed prompt becomes a brand-new image: POST it to
+    // /api/nanobanana/image and render the returned URL as an assistant image
+    // bubble. Text prompt is required; fail-soft to a clean retry notice.
+    if (mode === 'image' && text) {
+      setMessages((prev) => [...prev, { role: 'user', text }, { role: 'assistant', text: '' }]);
+      setInput(''); setBusy(true);
+      try {
+        const res = await fetch('/api/nanobanana/image', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prompt: text, quality: 'high', aspectRatio: '1:1' }),
+          credentials: 'include',
+        });
+        const j = (await res.json().catch(() => ({}))) as { success?: boolean; url?: string; error?: string };
+        setMessages((prev) => {
+          const next = [...prev];
+          const last = next[next.length - 1];
+          if (last && last.role === 'assistant') {
+            next[next.length - 1] =
+              j.success && j.url
+                ? { role: 'assistant', text: '', imageUrl: j.url }
+                : { role: 'assistant', text: `⚠️ ${t.imageFailed}` };
+          }
+          return next;
+        });
+      } catch {
+        setMessages((prev) => {
+          const next = [...prev];
+          const last = next[next.length - 1];
+          if (last && last.role === 'assistant') next[next.length - 1] = { role: 'assistant', text: `⚠️ ${t.imageFailed}` };
+          return next;
+        });
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
+
     const userMsg: Msg = { role: 'user', text, ...(attachment ? { media: attachment } : {}) };
     const history = [...messages, userMsg];
     setMessages([...history, { role: 'assistant', text: '' }]);
@@ -125,7 +175,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     } finally {
       setBusy(false);
     }
-  }, [input, attachment, busy, messages]);
+  }, [input, attachment, busy, messages, mode, t.imageFailed]);
 
   const toggleMic = useCallback(async () => {
     if (recording) {
@@ -193,8 +243,23 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                   <span className="mb-2 inline-flex items-center gap-1.5 rounded-lg bg-white/5 px-2 py-1 text-[11px] text-neutral-400"><FileText size={12} /> document</span>
                 )
               )}
+              {m.imageUrl && (
+                <div className="space-y-1.5">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={m.imageUrl} alt="generated" className="max-h-80 w-full rounded-lg object-contain" />
+                  <a
+                    href={m.imageUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    download
+                    className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#00D2FF] hover:underline"
+                  >
+                    <Download size={11} /> {t.imgDownload}
+                  </a>
+                </div>
+              )}
               {m.text || (busy && m.role === 'assistant' && i === messages.length - 1
-                ? <span className="inline-flex items-center gap-1.5 text-neutral-500"><Loader2 size={13} className="animate-spin" /> {t.thinking}</span>
+                ? <span className="inline-flex items-center gap-1.5 text-neutral-500"><Loader2 size={13} className="animate-spin" /> {mode === 'image' ? t.generatingImage : t.thinking}</span>
                 : null)}
             </div>
           </div>
@@ -203,6 +268,25 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
 
       {/* Composer */}
       <div className="shrink-0 rounded-2xl border border-white/10 bg-black p-2">
+        {/* Mode toggle — Chat (multimodal answer) vs Image (NanoBanana generation). */}
+        <div className="mb-2 inline-flex rounded-lg border border-white/10 bg-white/[0.03] p-0.5 text-[12px] font-medium">
+          <button
+            type="button"
+            onClick={() => setMode('chat')}
+            aria-pressed={mode === 'chat'}
+            className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 transition-colors ${mode === 'chat' ? 'bg-[#00D2FF]/15 text-[#00D2FF]' : 'text-neutral-400 hover:text-white'}`}
+          >
+            <MessageSquare size={13} /> {t.modeChat}
+          </button>
+          <button
+            type="button"
+            onClick={() => setMode('image')}
+            aria-pressed={mode === 'image'}
+            className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 transition-colors ${mode === 'image' ? 'bg-[#00D2FF]/15 text-[#00D2FF]' : 'text-neutral-400 hover:text-white'}`}
+          >
+            <ImageIcon size={13} /> {t.modeImage}
+          </button>
+        </div>
         {attachment && (
           <div className="mb-2 inline-flex items-center gap-2 rounded-lg border border-[#00D2FF]/30 bg-[#00D2FF]/5 p-1 pr-2">
             {isImage(attachment.mimeType) ? (
@@ -236,7 +320,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send(); } }}
             rows={1}
-            placeholder={recording ? t.recording : t.placeholder}
+            placeholder={recording ? t.recording : mode === 'image' ? t.imgPlaceholder : t.placeholder}
             className="max-h-32 min-h-[44px] flex-1 resize-none rounded-xl bg-white/[0.04] px-3 py-3 text-[16px] text-white placeholder:text-neutral-600 outline-none focus:ring-1 focus:ring-[#00D2FF]/40"
           />
           <button type="button" onClick={() => void send()} disabled={busy || (!input.trim() && !attachment)} aria-label="send"

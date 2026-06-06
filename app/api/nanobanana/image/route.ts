@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generateNanoBananaImage } from '@/lib/nanobanana/client';
 import type { NanoBananaEndpoint } from '@/lib/nanobanana/endpoints';
+import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 120;
@@ -64,9 +65,30 @@ export async function POST(req: NextRequest) {
       }, { status: 502 });
     }
 
+    // RE-HOST to Supabase Storage so the image renders in-app. The provider
+    // returns a URL on its own CDN, which (a) is NOT in our CSP img-src — so the
+    // browser would block the <img> — and (b) is a short-lived temp link. Copying
+    // the bytes to our `*.supabase.co` bucket (CSP-allowed) returns a stable,
+    // signed URL the client can display + download. Fail-open: if the copy fails,
+    // fall back to the raw provider URL (better than nothing).
+    let hostedUrl = result.url;
+    try {
+      const r = await fetch(result.url);
+      if (r.ok) {
+        const ct = r.headers.get('content-type') || 'image/png';
+        const ext = /jpe?g/i.test(ct) ? 'jpg' : /webp/i.test(ct) ? 'webp' : 'png';
+        const b64 = Buffer.from(await r.arrayBuffer()).toString('base64');
+        const path = `omni/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+        const signed = await uploadAndSign('uploads', path, b64, ct, 604800); // 7-day signed URL
+        if (signed) hostedUrl = signed;
+      }
+    } catch {
+      /* fail-open — keep the provider URL */
+    }
+
     return NextResponse.json({
       success:   true,
-      url:       result.url,
+      url:       hostedUrl,
       model:     `NanoBananaAI ${endpoint.toUpperCase()}`,
       endpoint,
       credits:   result.credits,
