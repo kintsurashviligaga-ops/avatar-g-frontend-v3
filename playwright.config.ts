@@ -9,6 +9,10 @@ const webServerCommand = `${shouldCleanNextCache ? 'rm -rf .next && ' : ''}next 
 
 export default defineConfig({
   testDir: './tests',
+  // The live production smoke (smoke-live.spec.ts) runs ONLY via
+  // playwright.smoke.config.ts against the deployed site — never against the local
+  // `next dev` server this config boots.
+  testIgnore: /smoke-live\.spec\.ts/,
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
