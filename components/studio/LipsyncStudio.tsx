@@ -25,7 +25,7 @@ const COPY: Record<Lang, {
     title: 'AI Lipsync სტუდია', subtitle: 'ზუსტი ტუჩების სინქრონი — საუბარი ან მუსიკა',
     videoLabel: 'ავატარის ვიდეო', videoHint: 'MP4 / MOV / WEBM — ჩააგდე ან აირჩიე',
     audioLabel: 'აუდიო ტრეკი', audioHint: 'MP3 / WAV — ჩააგდე ან აირჩიე',
-    execute: 'სინქრონის გაშვება', running: 'სინქრონდება ტუჩები…', result: 'შედეგი',
+    execute: 'ლიფსინკის გაშვება', running: 'სინქრონდება ტუჩები…', result: 'შედეგი',
     download: 'ჩამოტვირთვა', needBoth: 'ატვირთე ვიდეოც და აუდიოც.', failed: 'სინქრონი ვერ მოხერხდა. სცადე სხვა ფაილებით.', replace: 'შეცვლა',
   },
   en: {

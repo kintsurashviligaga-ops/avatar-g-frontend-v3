@@ -40,10 +40,12 @@ import { encodeFilmRef } from './filmTaskRef';
 import {
   planFilmScenes,
   buildFilmClipRequest,
+  normalizeReferenceImages,
   FILM_SCENE_COUNT,
   type FilmScene,
   type FilmShared,
 } from './filmPipeline';
+import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
 import {
   MAX_CLIP_DISPATCH_ATTEMPTS,
   clipDispatchConcurrency,
@@ -353,13 +355,45 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
   // PHASE 45 §2/§3 — accept 1–3 multimodal reference images from the composer.
   // They arrive either as a JSON string in selectedOptions or as an array on
   // metadata; planFilmScenes normalises/caps/dedupes them either way.
-  const referenceImages =
+  const referenceImagesRaw =
     opts.referenceImages ??
     opts.characterReferences ??
     (input.metadata?.referenceImages as unknown) ??
     null;
 
-  const plan = planFilmScenes(input.message, { avatarReference, referenceImages, style });
+  // CARD A FIX — HOST the reference images. The composer hands us 1-3 photos as
+  // `data:image/...` URIs. The direct LTX endpoint (api.ltx.video) frequently
+  // REJECTS a data URI for its `image` input, so the identity anchor was being
+  // silently dropped (clips fell back to text-to-video → "it ignored my photo").
+  // Upload each data URI to a signed https URL up-front so EVERY downstream clip
+  // (direct LTX or Replicate) reliably ingests the subject. Fail-open per image:
+  // an upload miss keeps the original ref, so a storage hiccup never fails the
+  // film. https refs pass through untouched.
+  const refList = normalizeReferenceImages(referenceImagesRaw);
+  let hostedRefs: string[] = refList;
+  if (refList.length > 0) {
+    hostedRefs = await Promise.all(
+      refList.map(async (ref, i) => {
+        if (!ref.startsWith('data:')) return ref; // already an https/asset URL
+        try {
+          const m = ref.match(/^data:([^;,]+)[;,]/);
+          const mime = (m?.[1] || 'image/jpeg').toLowerCase();
+          const ext = mime.includes('png') ? 'png' : mime.includes('webp') ? 'webp' : 'jpg';
+          const b64 = ref.includes(',') ? ref.split(',')[1] ?? '' : '';
+          const path = `${input.userId || 'anon'}/film-ref/${Date.now()}-${i}.${ext}`;
+          const url = await uploadAndSign('uploads', path, b64, mime, 7200);
+          return url || ref; // fail-open → keep the data URI
+        } catch {
+          return ref;
+        }
+      }),
+    );
+  }
+  const hostedCount = hostedRefs.filter((r) => /^https?:\/\//i.test(r)).length;
+  // eslint-disable-next-line no-console
+  console.log('[filmComposite] reference images', { received: refList.length, hostedHttps: hostedCount });
+
+  const plan = planFilmScenes(input.message, { avatarReference, referenceImages: hostedRefs, style });
   const sceneCount = plan.shared.sceneCount || FILM_SCENE_COUNT;
   const forecast = forecastFilm(sceneCount);
   const clipForecast = forecastMarginForAction('video_film');

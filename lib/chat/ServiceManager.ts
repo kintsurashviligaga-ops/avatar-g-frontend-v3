@@ -1061,6 +1061,18 @@ export class ServiceManager {
       ? `${LTX_BASE_URL}/v2/image-to-video`
       : `${LTX_BASE_URL}/v2/text-to-video`;
 
+    // Runtime trace — make the LTX create boundary explicit (no secret values):
+    // which endpoint, whether the identity image actually rode along, model + dur.
+    // This is the line that proves an uploaded photo reached the render engine.
+    // eslint-disable-next-line no-console
+    console.log('[ltx:create]', {
+      endpoint: ltxEndpoint.replace(LTX_BASE_URL, ''),
+      model: parsed.model,
+      durationSec: parsed.duration,
+      characterRef: parsed.characterReference ? (/^https?:\/\//i.test(parsed.characterReference) ? 'https' : 'inline') : 'none',
+      characterRefs: characterReferences.length,
+      imageAnchor: parsed.imageReference ? 'yes' : 'no',
+    });
     // PHASE 47 §3 — dispatch through the bounded exponential-backoff retry so a
     // transient provider blip (the exact failure that dropped clips 3 & 4 in the
     // PHASE 46 live-fire) self-heals before the master agent gives up.
