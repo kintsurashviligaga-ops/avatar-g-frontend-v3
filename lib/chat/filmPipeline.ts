@@ -112,16 +112,28 @@ export function buildStyleGuide(shared: FilmShared): string {
 
 // ─── Cinematic shot progression (the real Storyboard arc) ────────────────────
 //
-// PHASE 44 §2 — Without a Claude scene-writer the planner used to emit five
-// identical prompts (differing only by " — shot N of 5"), so all five clips
-// rendered as the same 6-second beat: continuity was perfect but the film was a
-// monotone loop. This deterministic 5-beat grammar gives each scene a distinct
-// composition + camera move (a genuine establishing → resolution arc) WITHOUT
-// touching the seed or the style guide — so the protagonist holds while the
-// cinematography actually progresses. Beat 3's enforced close-up doubles as a
-// continuity anchor (it re-asserts the face mid-film).
+// PHASE 44 §2 / Task 5 — Without a Claude scene-writer the planner used to emit
+// identical prompts (differing only by " — shot N of N"), so every clip rendered
+// as the same beat: continuity was perfect but the film was a monotone loop. This
+// deterministic 6-BEAT grammar gives each scene a distinct composition + camera
+// move (a genuine establishing → resolution arc) WITHOUT touching the seed or the
+// style guide — so the protagonist holds while the cinematography actually
+// progresses. The six beats are the user's named per-scene "context agents":
+//
+//   1. Establishing   — wide reveal, the world + the artist enter frame
+//   2. Medium Close-Up — eye-level performance, gimbal-tracked
+//   3. Orbit          — 360° circle, neon pulsing on the beat (music-video energy)
+//   4. Extreme Close-Up — 85mm on the face + LIPS (the lip-sync anchor)
+//   5. Drone          — sweeping aerial pull-away, epic scale
+//   6. Outro          — crane pull-back, the scene resolves on a confident beat
+//
+// Beats 1 and 6 are the fixed bookends (establish / resolve); beat 4's extreme
+// close-up doubles as a continuity anchor (it re-asserts the face mid-film) and
+// is where a future lip-sync pass keys the mouth to the vocal.
 
 interface CinematicBeat {
+  /** Short label for the beat — surfaced to the user as the per-scene "agent". */
+  name: string;
   /** Composition + camera direction folded into one render-ready framing phrase. */
   framing: string;
   /** One of script-breakdown's CAMERA_MOTIONS, kept honest for the segment record. */
@@ -129,17 +141,19 @@ interface CinematicBeat {
 }
 
 const CINEMATIC_BEATS: readonly CinematicBeat[] = [
-  { framing: 'Epic wide establishing shot, anamorphic lens, slow cinematic dolly push-in that reveals the world as the protagonist enters frame — deep focus, golden-hour key light, gentle atmospheric haze', cameraMotion: 'zoom_in' },
-  { framing: 'Smooth lateral tracking shot on a gimbal gliding alongside the protagonist at eye level — 35mm lens, shallow depth of field, soft rim light separating the subject from the background', cameraMotion: 'dolly' },
-  { framing: 'Intimate cinematic close-up, 85mm portrait lens, a slow controlled pan across the protagonist’s face and signature details — creamy bokeh, soft Rembrandt lighting', cameraMotion: 'pan_left' },
-  { framing: 'Dynamic low-angle hero shot at the dramatic peak with subtle handheld energy — wide lens, high contrast, volumetric backlight, the protagonist powerful against the sky', cameraMotion: 'pan_right' },
-  { framing: 'Sweeping crane pull-back rising as the protagonist settles and the scene resolves — expansive composition, warm cinematic colour grade, soft lens flare, a confident final beat', cameraMotion: 'zoom_out' },
+  { name: 'Establishing', framing: 'Epic wide establishing shot, anamorphic lens, slow cinematic dolly push-in that reveals the world as the artist enters frame — deep focus, golden-hour key light, gentle atmospheric haze', cameraMotion: 'zoom_in' },
+  { name: 'Medium Close-Up', framing: 'Eye-level medium close-up tracking on a gimbal alongside the artist — 35mm lens, shallow depth of field, soft rim light separating the subject from the background, natural performance energy', cameraMotion: 'dolly' },
+  { name: 'Orbit', framing: 'Dynamic 360° orbit circling the artist, neon accents streaking with the motion and lights pulsing on the beat — 28mm, kinetic energy, shallow bokeh light-trails', cameraMotion: 'pan_right' },
+  { name: 'Extreme Close-Up', framing: 'Intimate extreme close-up, 85mm portrait lens, a slow controlled pan across the artist’s face and lips as they perform the vocal — creamy bokeh, soft Rembrandt lighting', cameraMotion: 'pan_left' },
+  { name: 'Drone', framing: 'Sweeping aerial drone shot rising and pulling away over the scene — expansive composition, volumetric light beams, the artist small against an epic backdrop', cameraMotion: 'zoom_out' },
+  { name: 'Outro', framing: 'Sweeping crane pull-back rising as the artist settles and the scene resolves — expansive composition, warm cinematic colour grade, soft lens flare, a confident final beat', cameraMotion: 'zoom_out' },
 ];
 
 /**
  * Select the cinematic beat for scene `index` of `count`. The first scene always
  * establishes and the last always resolves; the middle scenes spread evenly
  * across the remaining beats, so any scene count (1–8) yields a coherent arc.
+ * At the flagship 6-scene count every named beat is used exactly once.
  */
 export function sceneBeat(index: number, count: number): CinematicBeat {
   const last = CINEMATIC_BEATS.length - 1;
@@ -246,6 +260,9 @@ export interface FilmScene {
   ordinal: number;
   durationSec: number;
   cameraMotion: string;
+  /** The named cinematic beat this scene plays (Establishing · Medium Close-Up ·
+   *  Orbit · Extreme Close-Up · Drone · Outro) — the per-scene "context agent". */
+  beat: string;
   /** Fully enriched, continuity-anchored prompt for this clip. */
   prompt: string;
   /** SAME across all scenes (continuity). */
@@ -328,6 +345,7 @@ export function planFilmScenes(prompt: string, opts: FilmPlanOptions = {}): Film
       ordinal: seg.index + 1,
       durationSec: seg.durationSec,
       cameraMotion: beat.cameraMotion,
+      beat: beat.name,
       prompt: enriched,
       seed,
       // PHASE 47 §3 — Nano Banano stamps each scene with its on-model fallback.
