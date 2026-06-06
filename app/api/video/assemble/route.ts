@@ -160,9 +160,21 @@ export async function POST(req: NextRequest) {
         ? body.scorePrompt.trim()
         : 'emotional orchestral instrumental, cohesive cinematic film score';
     try {
-      const score = await generateMusic(`${brief}, ${totalSec}-second continuous film score, instrumental`, totalSec);
+      // BUDGET GUARD — MusicGen runs synchronously BEFORE the saga dispatch, so an
+      // unbounded cold-boot could eat the function's maxDuration (300s) and leave no
+      // headroom for the CPU stitch, hard-killing the request and stranding the
+      // reserved credits. Cap the score at 120s: long enough for a warm/cold render,
+      // short enough to leave the stitch its full window. A timeout degrades to a
+      // silent film (never a failed render).
+      const SCORE_BUDGET_MS = 120_000;
+      const score = await Promise.race([
+        generateMusic(`${brief}, ${totalSec}-second continuous film score, instrumental`, totalSec),
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('musicgen score timed out')), SCORE_BUDGET_MS)),
+      ]);
       resolvedMusicUrl = score.audioUrl;
       scoreFallback = 'udio->musicgen';
+      // eslint-disable-next-line no-console
+      console.log('[assemble] MusicGen score ready:', resolvedMusicUrl ? 'yes' : 'no');
     } catch (err) {
       // eslint-disable-next-line no-console
       console.warn('[assemble] MusicGen score fallback failed (film stays silent):', err instanceof Error ? err.message : err);

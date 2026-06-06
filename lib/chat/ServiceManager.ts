@@ -1008,6 +1008,22 @@ export class ServiceManager {
         'sourceImage', 'source_image', 'image_url',
       ]) || request.imageUrl || undefined;
 
+    // CRITICAL IDENTITY FIX — the film studio uploads the protagonist's selfie as
+    // `characterReference` (NOT as an explicit image_reference). Previously that
+    // only ever reached the /v2/text-to-video endpoint, where LTX does NOT lock to
+    // the face — so the uploaded photo never appeared in the rendered film (the
+    // live "my image isn't in the video" report). When there is no explicit anchor
+    // but a usable HOSTED (https) character reference exists, promote THAT selfie to
+    // the image-to-video first-frame anchor so every clip animates FROM the real
+    // subject. https-only: the film pipeline hosts the selfie to a signed https URL
+    // (well under the imageReference schema bound), and the provider rejects raw
+    // data: URIs; an unhosted data: ref still rides as `character_reference` below
+    // and the Replicate fallback path attempts it image-first.
+    const charRefIsHostedImage =
+      typeof charRefOpt === 'string' && /^https?:\/\//i.test(charRefOpt) && charRefOpt.length <= 4096;
+    const effectiveImageRef =
+      imageReferenceOpt || (charRefIsHostedImage ? charRefOpt : undefined);
+
     // When an anchor is present, the Video Agent is FORBIDDEN from inventing a
     // fresh scene: it must ingest and expand upon the active visual. We prepend a
     // hard continuity directive so the prompt enriches the existing frame rather
@@ -1040,7 +1056,7 @@ export class ServiceManager {
       generateAudio: wantAudio,
       ...(seedOpt != null ? { seed: seedOpt } : {}),
       ...(charRefOpt ? { characterReference: charRefOpt } : {}),
-      ...(imageReferenceOpt ? { imageReference: imageReferenceOpt } : {}),
+      ...(effectiveImageRef ? { imageReference: effectiveImageRef } : {}),
     });
 
     // PHASE 51 §1 — When an image anchor is present we MUST call the dedicated
@@ -1071,7 +1087,10 @@ export class ServiceManager {
       durationSec: parsed.duration,
       characterRef: parsed.characterReference ? (/^https?:\/\//i.test(parsed.characterReference) ? 'https' : 'inline') : 'none',
       characterRefs: characterReferences.length,
-      imageAnchor: parsed.imageReference ? 'yes' : 'no',
+      // 'explicit' = a "turn this into a video" anchor; 'character' = the film
+      // selfie promoted to the first-frame anchor (the identity fix); 'no' = pure
+      // text-to-video. This line PROVES the uploaded face reached the engine.
+      imageAnchor: parsed.imageReference ? (imageReferenceOpt ? 'explicit' : 'character') : 'no',
     });
     // PHASE 47 §3 — dispatch through the bounded exponential-backoff retry so a
     // transient provider blip (the exact failure that dropped clips 3 & 4 in the
