@@ -92,6 +92,10 @@ interface ConversationalFilmStudioProps {
 
 type Lang = 'ka' | 'en' | 'ru';
 
+/** A reference DOCUMENT slot (Priority 1): a script, storyboard or visual
+ *  guideline (PDF / text / image) that Gemini reads to enrich the film brief. */
+interface DocSlot { dataUrl: string; name: string; type: string }
+
 // ─── Localised copy ───────────────────────────────────────────────────────────
 
 const COPY: Record<
@@ -488,6 +492,10 @@ export function ConversationalFilmStudio({
   const t = COPY[lang];
 
   const [slots, setSlots] = useState<(Slot | null)[]>([null, null, null]);
+  // PRIORITY 1 — reference DOCUMENT slots (script / storyboard / visual guideline).
+  // 1-3 PDF/text/image files Gemini reads to enrich the brief before the 6×5s
+  // split. Separate from the photo slots, which lock the character's face.
+  const [docs, setDocs] = useState<(DocSlot | null)[]>([null, null, null]);
   // §5 Music-Video mode — a character photo (+ optional location) and the user's
   // OWN audio track become a genre-styled music video. The audio is held as a
   // data: URL and handed to the pipeline as the soundtrack, overriding the
@@ -843,6 +851,32 @@ export function ConversationalFilmStudio({
     [locale, MV_AUDIO_MAX_BYTES],
   );
 
+  // PRIORITY 1 — accept a reference document (script / storyboard / guideline)
+  // into slot `idx`. Capped at 2.5 MB each so the combined script-context payload
+  // stays under the serverless 4.5 MB body limit. Gemini reads PDF / text / image.
+  const DOC_MAX_BYTES = 2.5 * 1024 * 1024;
+  const onPickDoc = useCallback(
+    (idx: number, file: File | null | undefined) => {
+      if (!file) return;
+      const okType = file.type === 'application/pdf' || file.type.startsWith('text/') || file.type.startsWith('image/');
+      if (!okType) {
+        setMicNotice(locale === 'en' ? 'Use a PDF, text, or image document.' : locale === 'ru' ? 'PDF, текст или изображение.' : 'გამოიყენე PDF, ტექსტი ან სურათი.');
+        return;
+      }
+      if (file.size > DOC_MAX_BYTES) {
+        setMicNotice(locale === 'en' ? 'Document too large (2.5MB max).' : locale === 'ru' ? 'Документ слишком большой (макс. 2.5МБ).' : 'დოკუმენტი ძალიან დიდია (მაქს. 2.5MB).');
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = () => {
+        const url = typeof reader.result === 'string' ? reader.result : null;
+        if (url) setDocs((prev) => { const next = [...prev]; next[idx] = { dataUrl: url, name: file.name, type: file.type }; return next; });
+      };
+      reader.readAsDataURL(file);
+    },
+    [locale, DOC_MAX_BYTES],
+  );
+
   const runReal = useCallback(
     async (userPrompt: string, resume?: { predictionId: string; sessionId: string }) => {
       setError(null);
@@ -864,12 +898,37 @@ export function ConversationalFilmStudio({
       const ctrl = new AbortController();
       abortRef.current = ctrl;
       try {
+        // PRIORITY 1 — fold any attached reference documents (script / storyboard /
+        // visual guidelines) into the brief via Gemini's native document reading,
+        // so the 6×5s planner derives its six scenes from the script. FAIL-OPEN:
+        // any miss keeps the raw prompt (the proven pipeline). Skipped on resume
+        // (the brief was consumed by the original dispatch).
+        let effectivePrompt = userPrompt;
+        const activeDocs = docs.filter((d): d is DocSlot => !!d);
+        if (!resume && activeDocs.length > 0) {
+          const tx = (en: string, ka: string, ru: string) => (locale === 'en' ? en : locale === 'ru' ? ru : ka);
+          pushMessage('system', tx('Reading your reference documents…', 'ვკითხულობ შენს დოკუმენტებს…', 'Читаю ваши документы…'));
+          try {
+            const dr = await fetch('/api/orchestrator/script-context', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ prompt: userPrompt, documents: activeDocs.map((d) => ({ dataUrl: d.dataUrl, type: d.type, name: d.name })) }),
+              signal: ctrl.signal,
+            });
+            const dj = (await dr.json().catch(() => ({}))) as { brief?: string; enriched?: boolean };
+            if (dj.brief && dj.brief.trim()) effectivePrompt = dj.brief.trim();
+            if (dj.enriched) pushMessage('system', tx('Brief enriched from your script / storyboard.', 'ბრიფი გამდიდრდა შენი სცენარით / storyboard-ით.', 'Бриф обогащён вашим сценарием / раскадровкой.'));
+          } catch {
+            /* fail-open — keep the raw prompt */
+          }
+        }
         const res = await driveFilmStudio({
           // §5 Music-Video mode composes the director prompt from the typed scene
           // + the chosen genre + camera move (anchoring the uploaded character).
+          // The document-enriched brief (effectivePrompt) is the base in both modes.
           prompt: mvMode
-            ? composeMusicVideoPrompt({ userPrompt, genreId: mvGenre, cameraId: mvCamera, shotId: mvShot, lightingId: mvLighting })
-            : userPrompt,
+            ? composeMusicVideoPrompt({ userPrompt: effectivePrompt, genreId: mvGenre, cameraId: mvCamera, shotId: mvShot, lightingId: mvLighting })
+            : effectivePrompt,
           // A resume only re-attaches to the existing job; the reference images
           // were already consumed by the original dispatch.
           referenceImages: resume ? [] : slots.filter((s): s is Slot => !!s).map((s) => s.dataUrl),
@@ -944,7 +1003,7 @@ export function ConversationalFilmStudio({
         void refreshBalance();
       }
     },
-    [slots, mvMode, mvLipsync, mvGenre, mvShot, mvCamera, mvLighting, mvAudioDataUrl, locale, pushMessage, t.producing, t.ready, t.failed, refreshFreeFilms, refreshBalance, estCost, isFreeFilm],
+    [slots, docs, mvMode, mvLipsync, mvGenre, mvShot, mvCamera, mvLighting, mvAudioDataUrl, locale, pushMessage, t.producing, t.ready, t.failed, refreshFreeFilms, refreshBalance, estCost, isFreeFilm],
   );
 
   // Reload-recovery: on first mount, if a film was mid-render when the tab was
@@ -1512,6 +1571,58 @@ export function ConversationalFilmStudio({
               </div>
             </div>
           </div>
+
+          {/* PRIORITY 1 — reference DOCUMENT strip. 1-3 script / storyboard /
+              visual-guideline files (PDF · text · image) that Gemini reads to
+              enrich the brief before the 6×5s split. Hidden in Music-Video mode
+              (which uses its own dedicated panel above). */}
+          {!mvMode && (
+            <div className="rounded-2xl border border-white/10 bg-black p-2.5 sm:p-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="mr-1 min-w-0">
+                  <p className="truncate text-[12px] font-bold uppercase tracking-wider text-neutral-400">
+                    {mvText('Script / storyboard', 'სცენარი / storyboard', 'Сценарий / раскадровка')}
+                  </p>
+                  <p className="text-[11px] text-neutral-600">
+                    {mvText('Optional · 1–3 PDF / text / image', 'არასავალდებულო · 1–3 PDF / ტექსტი / სურათი', 'Необяз. · 1–3 PDF / текст / изобр.')}
+                  </p>
+                </div>
+                {docs.map((d, idx) =>
+                  d ? (
+                    <span key={idx} className="inline-flex items-center gap-1.5 rounded-lg border border-[#00D2FF]/30 bg-[#00D2FF]/5 px-2 py-1 text-[11px] text-[#00D2FF]">
+                      <FileText className="h-3 w-3 shrink-0" />
+                      <span className="max-w-[120px] truncate">{d.name}</span>
+                      <button
+                        type="button"
+                        onClick={() => setDocs((prev) => { const n = [...prev]; n[idx] = null; return n; })}
+                        disabled={driving}
+                        aria-label="Remove document"
+                        className="text-neutral-500 transition-colors hover:text-white disabled:opacity-40"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </span>
+                  ) : null,
+                )}
+                {docs.some((d) => !d) && (
+                  <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-white/15 px-2.5 py-1 text-[11px] text-neutral-400 transition-colors hover:border-[#00D2FF]/40 hover:text-[#00D2FF]">
+                    <FileText className="h-3 w-3" /> {mvText('Add document', 'დოკუმენტის დამატება', 'Добавить документ')}
+                    <input
+                      type="file"
+                      accept="application/pdf,text/*,image/*"
+                      disabled={driving}
+                      className="hidden"
+                      onChange={(e) => {
+                        const firstEmpty = docs.findIndex((x) => !x);
+                        if (firstEmpty >= 0) onPickDoc(firstEmpty, e.target.files?.[0]);
+                        e.currentTarget.value = '';
+                      }}
+                    />
+                  </label>
+                )}
+              </div>
+            </div>
+          )}
 
           {messages.map((msg) => (
             <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>

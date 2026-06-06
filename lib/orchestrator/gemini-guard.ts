@@ -20,6 +20,23 @@ export function geminiKeyPresent(): boolean {
   });
 }
 
+/**
+ * Resolve the first usable Gemini API key VALUE. Prefers the singular
+ * GEMINI_API_KEY / GOOGLE_GENERATIVE_AI_API_KEY; otherwise draws the first entry
+ * from the comma/space-separated GEMINI_API_KEYS pool — so a deployment that
+ * provisions Gemini as a rotating pool (not the singular var) still works. Returns
+ * '' when none is configured. Never logs the value.
+ */
+export function resolveGeminiKey(): string {
+  const single = (process.env.GEMINI_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY || '').trim();
+  if (single) return single;
+  const pool = (process.env.GEMINI_API_KEYS || '')
+    .split(/[\s,]+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return pool[0] || '';
+}
+
 /** Classify a Gemini HTTP response status (+ optional body) into a state. */
 export function classifyGeminiStatus(status: number, body = ''): GeminiState {
   if (status >= 200 && status < 300) return 'ok';

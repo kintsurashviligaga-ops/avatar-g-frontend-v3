@@ -55,20 +55,26 @@ function getAnthropicClient() {
 
 type IncomingPart =
   | { type: 'text'; text: string }
-  | { type: 'image'; image: string; mimeType?: string };
+  | { type: 'image'; image: string; mimeType?: string }
+  // PRIORITY 2 — native multimodal: audio / video / pdf documents. The client
+  // sends { type:'file', data:(dataURL|base64|https), mimeType } and Gemini 1.5/2.5
+  // Pro ingests it via inline_data, understanding the audio + video natively.
+  | { type: 'file'; data: string; mimeType: string };
 
 type IncomingMessage = {
   role: string;
   content: string | IncomingPart[];
 };
 
-// ai SDK accepts base64 strings or URL objects for images
+// ai SDK accepts base64 strings or URL objects for images; `file` parts carry an
+// explicit mimeType so the Google provider routes audio/video as inline_data.
 type ImageContent = { type: 'image'; image: string | URL };
+type FileContent = { type: 'file'; data: string | URL; mediaType: string };
 type TextContent = { type: 'text'; text: string };
 
 type ModelMessage =
   | { role: 'user' | 'assistant'; content: string }
-  | { role: 'user'; content: Array<TextContent | ImageContent> };
+  | { role: 'user'; content: Array<TextContent | ImageContent | FileContent> };
 
 // ─── 4. MULTIMODAL MESSAGE BUILDER ───────────────────────────────────────────
 // Handles three image sources:
@@ -84,7 +90,7 @@ function toCoreMessages(messages: IncomingMessage[]): ModelMessage[] {
         return { role: m.role as 'user' | 'assistant', content: String(m.content) };
       }
 
-      const parts = (m.content as IncomingPart[]).map((p): TextContent | ImageContent => {
+      const parts = (m.content as IncomingPart[]).map((p): TextContent | ImageContent | FileContent => {
         if (p.type === 'image') {
           // FLUX.1-schnell returns HTTPS URLs — pass as URL object so Gemini fetches them
           if (p.image.startsWith('http://') || p.image.startsWith('https://')) {
@@ -92,6 +98,13 @@ function toCoreMessages(messages: IncomingMessage[]): ModelMessage[] {
           }
           // Everything else (data URLs, raw base64) passes through as a string
           return { type: 'image', image: p.image };
+        }
+        if (p.type === 'file') {
+          // PRIORITY 2 — audio / video / pdf → an AI-SDK file part the Google
+          // provider maps to Gemini inline_data (or fileData for an https URL),
+          // so the model understands the media natively. https → URL object.
+          const isHttp = p.data.startsWith('http://') || p.data.startsWith('https://');
+          return { type: 'file', data: isHttp ? new URL(p.data) : p.data, mediaType: p.mimeType };
         }
         return { type: 'text', text: p.text };
       });

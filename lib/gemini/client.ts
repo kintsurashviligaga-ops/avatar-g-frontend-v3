@@ -6,6 +6,8 @@
  * Uses native fetch — no SDK package required at compile time.
  */
 
+import { resolveGeminiKey } from '@/lib/orchestrator/gemini-guard';
+
 const GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta';
 
 // gemini-2.0-flash is deprecated ("no longer available to new users", 404).
@@ -74,7 +76,7 @@ function buildParts(prompt: string, attachments?: GeminiAttachment[]): Part[] {
 export async function generateWithGemini(req: GeminiRequest): Promise<GeminiResponse> {
   const tier: GeminiModelTier = req.tier ?? 'pro';
   const modelName = GEMINI_MODELS[tier];
-  const apiKey = process.env.GEMINI_API_KEY ?? '';
+  const apiKey = resolveGeminiKey();
 
   if (!apiKey) {
     throw new Error('GEMINI_API_KEY is not configured');
@@ -139,7 +141,7 @@ export async function* streamWithGemini(
 ): AsyncGenerator<string, GeminiResponse, unknown> {
   const tier: GeminiModelTier = req.tier ?? 'flash';
   const modelName = GEMINI_MODELS[tier];
-  const apiKey = process.env.GEMINI_API_KEY ?? '';
+  const apiKey = resolveGeminiKey();
 
   if (!apiKey) throw new Error('GEMINI_API_KEY is not configured');
 

@@ -12,7 +12,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Send, Mic, Square, Paperclip, X, Loader2, Sparkles } from 'lucide-react';
+import { Send, Mic, Square, Paperclip, X, Loader2, Sparkles, Film, Music2, FileText } from 'lucide-react';
 
 type Lang = 'ka' | 'en' | 'ru';
 
@@ -36,13 +36,18 @@ const COPY: Record<Lang, {
   },
 };
 
-interface Msg { role: 'user' | 'assistant'; text: string; image?: string }
+interface Media { dataUrl: string; mimeType: string }
+interface Msg { role: 'user' | 'assistant'; text: string; media?: Media }
+
+const isImage = (m: string) => m.startsWith('image/');
+const isAudio = (m: string) => m.startsWith('audio/');
+const isVideo = (m: string) => m.startsWith('video/');
 
 export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   const t = COPY[locale] ?? COPY.ka;
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState('');
-  const [attachment, setAttachment] = useState<string | null>(null); // image data URL
+  const [attachment, setAttachment] = useState<Media | null>(null); // image / audio / video / pdf
   const [busy, setBusy] = useState(false);
   const [recording, setRecording] = useState(false);
   const fileRef = useRef<HTMLInputElement | null>(null);
@@ -57,18 +62,23 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   const send = useCallback(async () => {
     const text = input.trim();
     if ((!text && !attachment) || busy) return;
-    const userMsg: Msg = { role: 'user', text, ...(attachment ? { image: attachment } : {}) };
+    const userMsg: Msg = { role: 'user', text, ...(attachment ? { media: attachment } : {}) };
     const history = [...messages, userMsg];
     setMessages([...history, { role: 'assistant', text: '' }]);
     setInput(''); setAttachment(null); setBusy(true);
 
-    // Build the Gemini payload: text-only → string content; with an image →
-    // native multimodal parts (the route maps {type:'image'} → a Gemini image).
+    // Build the Gemini payload: text-only → string content; with media → native
+    // multimodal parts. Images map to a {type:'image'} part; audio / video / pdf
+    // map to a {type:'file'} part that the route forwards to Gemini as inline_data
+    // (Priority 2 — full native audio + video understanding).
     const payload = history.map((m) => {
-      if (m.image) {
+      if (m.media) {
+        const mediaPart = isImage(m.media.mimeType)
+          ? { type: 'image', image: m.media.dataUrl }
+          : { type: 'file', data: m.media.dataUrl, mimeType: m.media.mimeType };
         return { role: m.role, content: [
           ...(m.text ? [{ type: 'text', text: m.text }] : []),
-          { type: 'image', image: m.image },
+          mediaPart,
         ] };
       }
       return { role: m.role, content: m.text };
@@ -167,9 +177,18 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             <div className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 text-[14px] leading-relaxed ${
               m.role === 'user' ? 'bg-[#00D2FF]/15 text-white ring-1 ring-[#00D2FF]/30' : 'bg-white/[0.04] text-neutral-200 ring-1 ring-white/10'
             }`}>
-              {m.image && (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={m.image} alt="attachment" className="mb-2 max-h-48 rounded-lg" />
+              {m.media && (
+                isImage(m.media.mimeType) ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={m.media.dataUrl} alt="attachment" className="mb-2 max-h-48 rounded-lg" />
+                ) : isVideo(m.media.mimeType) ? (
+                  // eslint-disable-next-line jsx-a11y/media-has-caption
+                  <video src={m.media.dataUrl} controls className="mb-2 max-h-48 rounded-lg" />
+                ) : isAudio(m.media.mimeType) ? (
+                  <audio src={m.media.dataUrl} controls className="mb-2 w-full" />
+                ) : (
+                  <span className="mb-2 inline-flex items-center gap-1.5 rounded-lg bg-white/5 px-2 py-1 text-[11px] text-neutral-400"><FileText size={12} /> document</span>
+                )
               )}
               {m.text || (busy && m.role === 'assistant' && i === messages.length - 1
                 ? <span className="inline-flex items-center gap-1.5 text-neutral-500"><Loader2 size={13} className="animate-spin" /> {t.thinking}</span>
@@ -183,15 +202,21 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       <div className="shrink-0 rounded-2xl border border-white/10 bg-black p-2">
         {attachment && (
           <div className="mb-2 inline-flex items-center gap-2 rounded-lg border border-[#00D2FF]/30 bg-[#00D2FF]/5 p-1 pr-2">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={attachment} alt="" className="h-10 w-10 rounded object-cover" />
+            {isImage(attachment.mimeType) ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={attachment.dataUrl} alt="" className="h-10 w-10 rounded object-cover" />
+            ) : (
+              <span className="flex h-10 w-10 items-center justify-center rounded bg-black text-[#00D2FF]">
+                {isVideo(attachment.mimeType) ? <Film size={16} /> : isAudio(attachment.mimeType) ? <Music2 size={16} /> : <FileText size={16} />}
+              </span>
+            )}
             <button type="button" onClick={() => setAttachment(null)} className="text-neutral-400 hover:text-white"><X size={14} /></button>
           </div>
         )}
         <div className="flex items-end gap-2">
-          <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={(e) => {
+          <input ref={fileRef} type="file" accept="image/*,audio/*,video/*,application/pdf" className="hidden" onChange={(e) => {
             const f = e.target.files?.[0]; if (!f) return;
-            const r = new FileReader(); r.onload = () => setAttachment(String(r.result)); r.readAsDataURL(f);
+            const r = new FileReader(); r.onload = () => setAttachment({ dataUrl: String(r.result), mimeType: f.type || 'application/octet-stream' }); r.readAsDataURL(f);
           }} />
           <button type="button" onClick={() => fileRef.current?.click()} aria-label="attach"
             className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-neutral-400 transition-colors hover:bg-white/5 hover:text-white">
