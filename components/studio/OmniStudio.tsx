@@ -60,12 +60,24 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // Composer mode: 'chat' → Gemini multimodal answer; 'image' → NanoBanana image
   // GENERATION (the prompt becomes a brand-new image rendered in the feed).
   const [mode, setMode] = useState<'chat' | 'image'>('chat');
+  // Full-screen image lightbox — holds the URL of the tapped picture (generated or
+  // attached). null = closed. Tap a chat image to open; backdrop / X / Esc closes.
+  const [lightbox, setLightbox] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
   const recRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const feedRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => { feedRef.current?.scrollTo({ top: feedRef.current.scrollHeight, behavior: 'smooth' }); }, [messages, busy]);
+
+  // Close the full-screen lightbox on Escape (desktop affordance; the backdrop tap
+  // and the X button cover touch).
+  useEffect(() => {
+    if (!lightbox) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setLightbox(null); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [lightbox]);
 
   const lang = locale === 'en' ? 'en-US' : locale === 'ru' ? 'ru-RU' : 'ka-GE';
 
@@ -232,8 +244,10 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             }`}>
               {m.media && (
                 isImage(m.media.mimeType) ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={m.media.dataUrl} alt="attachment" className="mb-2 max-h-48 rounded-lg" />
+                  <button type="button" onClick={() => setLightbox(m.media!.dataUrl)} className="mb-2 block cursor-zoom-in" aria-label="open fullscreen">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={m.media.dataUrl} alt="attachment" className="max-h-48 rounded-lg" />
+                  </button>
                 ) : isVideo(m.media.mimeType) ? (
                   // eslint-disable-next-line jsx-a11y/media-has-caption
                   <video src={m.media.dataUrl} controls className="mb-2 max-h-48 rounded-lg" />
@@ -245,8 +259,10 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
               )}
               {m.imageUrl && (
                 <div className="space-y-1.5">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={m.imageUrl} alt="generated" className="max-h-80 w-full rounded-lg object-contain" />
+                  <button type="button" onClick={() => setLightbox(m.imageUrl!)} className="block w-full cursor-zoom-in" aria-label="open fullscreen">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={m.imageUrl} alt="generated" className="max-h-80 w-full rounded-lg object-contain transition-opacity hover:opacity-90" />
+                  </button>
                   <a
                     href={m.imageUrl}
                     target="_blank"
@@ -329,6 +345,45 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           </button>
         </div>
       </div>
+
+      {/* Full-screen image lightbox — tap any chat image to open it edge-to-edge.
+          Backdrop tap / the X button / Esc all close it; the picture itself swallows
+          the click so it stays open while you inspect it. */}
+      {lightbox && (
+        <div
+          className="fixed inset-0 z-[90] flex items-center justify-center bg-black/95 backdrop-blur-sm"
+          onClick={() => setLightbox(null)}
+          style={{ paddingTop: 'env(safe-area-inset-top)', paddingBottom: 'env(safe-area-inset-bottom)' }}
+        >
+          <button
+            type="button"
+            onClick={() => setLightbox(null)}
+            aria-label="close"
+            className="absolute right-3 z-10 flex h-11 w-11 items-center justify-center rounded-full bg-white/10 text-white transition-colors hover:bg-white/20"
+            style={{ top: 'max(0.75rem, env(safe-area-inset-top))' }}
+          >
+            <X size={20} />
+          </button>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={lightbox}
+            alt="fullscreen"
+            onClick={(e) => e.stopPropagation()}
+            className="max-h-[88vh] max-w-[96vw] rounded-lg object-contain"
+          />
+          <a
+            href={lightbox}
+            target="_blank"
+            rel="noopener noreferrer"
+            download
+            onClick={(e) => e.stopPropagation()}
+            className="absolute inset-x-0 mx-auto inline-flex w-fit items-center gap-1.5 rounded-lg border border-[#00D2FF]/30 bg-[#00D2FF]/10 px-3 py-1.5 text-[13px] font-semibold text-[#00D2FF] backdrop-blur"
+            style={{ bottom: 'max(1rem, env(safe-area-inset-bottom))' }}
+          >
+            <Download size={14} /> {t.imgDownload}
+          </a>
+        </div>
+      )}
     </div>
   );
 }
