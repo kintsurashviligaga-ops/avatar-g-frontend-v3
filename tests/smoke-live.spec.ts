@@ -40,4 +40,22 @@ test.describe('myavatar.ge production smoke', () => {
     const json = (await res.json()) as { items?: unknown };
     expect(Array.isArray(json.items)).toBeTruthy();
   });
+
+  test('One Window: embedded legal page renders content + strips app chrome', async ({ page }) => {
+    await page.goto('/ka/privacy?embed=1', { waitUntil: 'networkidle' });
+    // The legal content itself renders (a heading is present)…
+    await expect(page.locator('h1').first()).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText(ERROR_FALLBACK)).toHaveCount(0);
+    // …and the app-shell chrome is stripped (no global nav landmark) so it sits
+    // cleanly inside the studio slide-over rather than rendering a page-in-a-page.
+    await expect(page.locator('nav')).toHaveCount(0);
+  });
+
+  test('lipsync wiring is live + points at the configured model', async ({ request }) => {
+    const res = await request.get('/api/video/lipsync');
+    expect(res.ok()).toBeTruthy();
+    const json = (await res.json()) as { ready?: boolean; model?: string };
+    expect(typeof json.ready).toBe('boolean');
+    expect(json.model).toBe('devxpy/cog-wav2lip');
+  });
 });
