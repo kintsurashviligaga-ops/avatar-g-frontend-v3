@@ -46,7 +46,7 @@ import {
 } from './filmPipeline';
 import {
   MAX_CLIP_DISPATCH_ATTEMPTS,
-  CLIP_DISPATCH_CONCURRENCY,
+  clipDispatchConcurrency,
   clipDispatchJitterMs,
   clipRetryBackoffMs,
   mapWithConcurrency,
@@ -448,7 +448,7 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
     const sceneFrames = await Promise.all(
       plan.scenes.map((scene) => stylizeSceneFrame(input, scene, plan.shared)),
     );
-    clips = await mapWithConcurrency(plan.scenes, CLIP_DISPATCH_CONCURRENCY, (scene, i) =>
+    clips = await mapWithConcurrency(plan.scenes, clipDispatchConcurrency(), (scene, i) =>
       renderClip(
         input,
         scene,

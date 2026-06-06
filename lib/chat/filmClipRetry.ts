@@ -58,6 +58,29 @@ export const CLIP_DISPATCH_CONCURRENCY = Math.max(
   Math.min(5, Math.round(Number(process.env.CLIP_DISPATCH_CONCURRENCY) || 1)),
 );
 
+/**
+ * Provider-aware create-fan-out concurrency. The ONLY reason this is serialised
+ * to 1 is Replicate's free-tier "burst of 1" throttle on createPrediction. When
+ * the FUNDED direct LTX key (api.ltx.video) is configured, the film renders
+ * through it — which is NOT burst-1 limited — so a small wave of creates (3) is
+ * safe and trims the per-clip create overhead off the film's start. The
+ * Replicate-only fallback path stays at 1. An explicit CLIP_DISPATCH_CONCURRENCY
+ * env always wins (set it to 1 to force serial everywhere, or 5 to max out).
+ *
+ * This caps ONLY the create wave — the clips still render in parallel on the
+ * provider once accepted. Downside is bounded by the per-leg retry/backoff: even
+ * if the direct API momentarily 429s, that single clip retries on its own slot.
+ * Clamped 1..5. Reads env at call time so it reflects the live deployment.
+ */
+export function clipDispatchConcurrency(env: NodeJS.ProcessEnv = process.env): number {
+  const override = Number(env.CLIP_DISPATCH_CONCURRENCY);
+  if (Number.isFinite(override) && override >= 1) return Math.max(1, Math.min(5, Math.round(override)));
+  const hasDirectLtx = ['LTX_API_KEY', 'LTX2_API_KEY', 'LTX_VIDEO_API_KEY'].some(
+    (k) => typeof env[k] === 'string' && (env[k] as string).trim().length > 0,
+  );
+  return hasDirectLtx ? 3 : 1;
+}
+
 /** Random 0..this delay before each dispatch so a wave's calls de-sync (ms). */
 export const CLIP_DISPATCH_JITTER_MS = 350;
 

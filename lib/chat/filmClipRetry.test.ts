@@ -7,6 +7,7 @@ import {
   CLIP_RETRY_JITTER_MS,
   CLIP_RETRY_ORDINAL_SPREAD_MS,
   clipDispatchJitterMs,
+  clipDispatchConcurrency,
   clipRetryBackoffMs,
   mapWithConcurrency,
 } from './filmClipRetry';
@@ -96,6 +97,23 @@ describe('mapWithConcurrency — caps the dispatch burst, preserves order', () =
     // PHASE 61 — default serialises creates (1) to respect the provider's burst-1
     // throttle; the low retry backoff (not concurrency) is what keeps it off 504.
     expect(CLIP_DISPATCH_CONCURRENCY).toBe(1);
+  });
+
+  describe('clipDispatchConcurrency — provider-aware create fan-out', () => {
+    const base: NodeJS.ProcessEnv = {};
+    test('Replicate-only fallback path stays serial-1 (burst-1 safe)', () => {
+      expect(clipDispatchConcurrency({ ...base })).toBe(1);
+    });
+    test('funded DIRECT LTX key → a small parallel wave (3)', () => {
+      expect(clipDispatchConcurrency({ ...base, LTX_API_KEY: 'k' })).toBe(3);
+      expect(clipDispatchConcurrency({ ...base, LTX2_API_KEY: 'k' })).toBe(3);
+      expect(clipDispatchConcurrency({ ...base, LTX_VIDEO_API_KEY: 'k' })).toBe(3);
+    });
+    test('an explicit CLIP_DISPATCH_CONCURRENCY env always wins, clamped 1..5', () => {
+      expect(clipDispatchConcurrency({ ...base, LTX_API_KEY: 'k', CLIP_DISPATCH_CONCURRENCY: '1' })).toBe(1);
+      expect(clipDispatchConcurrency({ ...base, CLIP_DISPATCH_CONCURRENCY: '5' })).toBe(5);
+      expect(clipDispatchConcurrency({ ...base, CLIP_DISPATCH_CONCURRENCY: '99' })).toBe(5);
+    });
   });
 
   test('processes every item exactly once', async () => {
