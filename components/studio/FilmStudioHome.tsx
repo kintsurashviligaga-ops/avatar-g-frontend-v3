@@ -16,7 +16,7 @@
  * /studio/film. Rollback path: render MyAvatarChatV2 (or the card studio) here.
  */
 
-import { ConversationalFilmStudio } from '@/components/studio/ConversationalFilmStudio';
+import { ServiceHub } from '@/components/studio/ServiceHub';
 
 interface FilmStudioHomeProps {
   locale: string;
@@ -25,8 +25,14 @@ interface FilmStudioHomeProps {
   isAuthenticated?: boolean;
 }
 
+/**
+ * The /dashboard landing now opens the grid-based Service Selection Hub (One
+ * Window): three product cards — Film Studio (flagship), Omni Multimodal, and
+ * Lipsync — each launching its studio in-window. The film studio remains the
+ * flagship Card A. Rollback path: render ConversationalFilmStudio directly here.
+ */
 export function FilmStudioHome({ locale, isAuthenticated = false }: FilmStudioHomeProps) {
-  return <ConversationalFilmStudio locale={locale} isAuthenticated={isAuthenticated} />;
+  return <ServiceHub locale={locale} isAuthenticated={isAuthenticated} />;
 }
 
 export default FilmStudioHome;

@@ -48,6 +48,7 @@ import {
   Check,
   RefreshCw,
   Music2,
+  ArrowLeft,
 } from 'lucide-react';
 import { createBrowserClient } from '@/lib/supabase/browser';
 import { DeleteAccountButton } from '@/components/account/DeleteAccountButton';
@@ -84,6 +85,9 @@ interface ChatMsg {
 interface ConversationalFilmStudioProps {
   locale?: string;
   isAuthenticated?: boolean;
+  /** When provided (the studio is launched from the Service Hub), a back control
+   *  appears in the header to return to the hub — keeping everything One Window. */
+  onExitToHub?: () => void;
 }
 
 type Lang = 'ka' | 'en' | 'ru';
@@ -478,6 +482,7 @@ function readInflightFilm(): InflightFilm | null {
 export function ConversationalFilmStudio({
   locale = 'ka',
   isAuthenticated = false,
+  onExitToHub,
 }: ConversationalFilmStudioProps) {
   const lang: Lang = locale === 'en' ? 'en' : locale === 'ru' ? 'ru' : 'ka';
   const t = COPY[lang];
@@ -1267,6 +1272,18 @@ export function ConversationalFilmStudio({
         style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
       >
         <div className="mx-auto flex h-14 w-full max-w-3xl items-center justify-between gap-2 px-4">
+          {/* Service Hub back control — only when launched from the hub. Keeps the
+              whole experience One Window (returns to the grid, never navigates). */}
+          {onExitToHub && (
+            <button
+              type="button"
+              onClick={onExitToHub}
+              aria-label="Services"
+              className="-ml-1 mr-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-neutral-400 transition-colors hover:bg-white/10 hover:text-[#00D2FF]"
+            >
+              <ArrowLeft className="h-4 w-4" />
+            </button>
+          )}
           <Link href={`/${locale}/dashboard`} className="group flex items-center gap-2.5 min-w-0">
             {/* 3D rocket mark — cyan halo, ambient pulse, gentle hover tilt. */}
             <span className="flex h-8 w-8 items-center justify-center rounded-xl border border-[#00D2FF]/40 bg-[#00D2FF]/10 shadow-[0_0_15px_rgba(0,210,255,0.25)] transition-transform duration-500 ease-out group-hover:rotate-12 group-hover:scale-105">
