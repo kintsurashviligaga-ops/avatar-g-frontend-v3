@@ -32,6 +32,7 @@ import {
   NANOBANANA_API_KEY_ALIASES,
 } from '@/lib/chat/mediaKeys';
 import { computeEditorReadiness } from '@/lib/chat/filmReadiness';
+import { getUdioCredits } from '@/lib/udio/client';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -110,6 +111,23 @@ export async function GET(req: NextRequest) {
     ),
   ]);
 
+  // ── 2b. Optional LIVE Udio connectivity probe (read-only credits call — costs
+  // NOTHING, runs no generation). Gated behind ?udio=1 so the daily guardian stays
+  // fast and immune to Udio latency. Surfaces the EXACT reason the score leg fails
+  // on production (auth / wrong endpoint / balance) without firing a paid film.
+  let udioLive: { ok: boolean; credits?: number; detail: string } | undefined;
+  if (new URL(req.url).searchParams.get('udio') === '1') {
+    try {
+      const credits = await Promise.race([
+        getUdioCredits(),
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Udio probe timed out (12s)')), 12_000)),
+      ]);
+      udioLive = { ok: true, credits: credits.credits, detail: `Udio reachable — ${credits.credits} credits` };
+    } catch (err) {
+      udioLive = { ok: false, detail: `Udio probe failed: ${err instanceof Error ? err.message : String(err)}` };
+    }
+  }
+
   // ── 3. Editor (stitch + host) readiness ────────────────────────────────────
   const editor = computeEditorReadiness();
 
@@ -152,6 +170,7 @@ export async function GET(req: NextRequest) {
     healthy: criticalOk && probesOk && editor.canDeliverMaster,
     providers,
     liveContracts: probes,
+    ...(udioLive ? { udioLive } : {}),
     delivery: { canDeliverMaster: editor.canDeliverMaster, stitchPath: editor.stitchPath },
     recommendations,
     note: 'Free self-test: contract probes use cost-free rejection paths (malformed poll token + sub-threshold assemble). Provider presence is names-only and never reads a secret value.',
