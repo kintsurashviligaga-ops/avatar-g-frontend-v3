@@ -18,24 +18,21 @@
 
 export type StarterLang = 'ka' | 'en' | 'ru';
 
+// ONE flagship starter (Task 4): the premium 30-second music-video generator.
+// The studio is a music-clip engine first — a single, unmistakable template beats
+// three competing example scripts. It primes the exact winning flow (upload a
+// photo + a song → the character performs the track with lip-sync → a cinematic
+// 360° orbit, exactly 30 seconds) so the user's very first generation showcases
+// the product at its best.
 const STARTERS: Record<StarterLang, readonly string[]> = {
   ka: [
-    // 🎬 მუსიკალური ვიდეო
-    '30-წამიანი ჰიპ-ჰოპის ვიდეო კლიპი. ატვირთული პერსონაჟი ასრულებს ვოკალს, ტუჩების ზუსტი სინქრონიზაციით (Lipsync) ტრეკზე. კამერა აკეთებს დინამიურ 360-გრადუსიან Orbit მოძრაობას მის გარშემო, ნეონის განათება იცვლება მუსიკის ბიტზე, კინემატოგრაფიული ვიზუალი.',
-    // 📱 სარეკლამო ვიდეო
-    '30-წამიანი დინამიური რეკლამა Instagram-ისა და TikTok-ისთვის, ფორმატი 9:16. ახალგაზრდა მოდელი მოდურ ტანსაცმელში, კამერის სწრაფი Whip Pan მოძრაობები და მოდერნისტული ჭრები, ნათელი კომერციული სტუდიური განათება, ულტრა მაღალი 4K დეტალიზაცია.',
-    // 🤖 ფილმის სცენა
-    '30-წამიანი ფილმის ექშენ სცენა მომავალზე. უზარმაზარი კიბერპანკ რობოტი გადაადგილდება წვიმიან, ნისლიან მეგაპოლისში. კამერის ხედი: Low Angle, რათა გამოჩნდეს რობოტის მასშტაბი. რეალისტური მეტალის ანარეკლები, კინემატოგრაფიული ანამორფული ობიექტივი.',
+    '🔥 პრემიუმ მუსიკალური კლიპი — ატვირთე შენი ფოტო და სიმღერა. პერსონაჟი ასრულებს ვოკალს ტუჩების ზუსტი სინქრონიზაციით (Lipsync), კამერა აკეთებს კინემატოგრაფიულ 360° Orbit მოძრაობას, ნეონის განათება პულსირებს ბიტზე. ზუსტად 30 წამი, კინოხარისხი.',
   ],
   en: [
-    'A 30-second hip-hop music video. The uploaded character performs vocals with precise lip-sync to the track. The camera does a dynamic 360° orbit around them, neon lighting pulses to the beat, cinematic visuals.',
-    'A 30-second dynamic ad for Instagram and TikTok, 9:16 format. A young model in fashionable clothing, fast Whip Pan camera moves and modern cuts, bright commercial studio lighting, ultra-high 4K detail.',
-    'A 30-second sci-fi action scene set in the future. A massive cyberpunk robot moves through a rainy, foggy megacity. Camera: Low Angle to reveal the robot’s scale. Realistic metal reflections, cinematic anamorphic lens.',
+    '🔥 Premium music video — upload your photo and your song. The character performs the vocals with precise lip-sync, the camera sweeps in a cinematic 360° orbit, neon lighting pulses to the beat. Exactly 30 seconds, cinema quality.',
   ],
   ru: [
-    '30-секундный хип-хоп клип. Загруженный персонаж исполняет вокал с точной синхронизацией губ (Lipsync) под трек. Камера делает динамичный 360° Orbit вокруг него, неоновый свет пульсирует под бит, кинематографичная картинка.',
-    '30-секундная динамичная реклама для Instagram и TikTok, формат 9:16. Молодая модель в модной одежде, быстрые движения Whip Pan и современный монтаж, яркий коммерческий студийный свет, сверхвысокая детализация 4K.',
-    '30-секундная sci-fi экшен-сцена будущего. Огромный киберпанк-робот движется по дождливому туманному мегаполису. Ракурс: Low Angle, чтобы показать масштаб робота. Реалистичные металлические отражения, кинематографичный анаморфный объектив.',
+    '🔥 Премиум музыкальный клип — загрузите свою фотографию и песню. Персонаж исполняет вокал с точной синхронизацией губ (Lipsync), камера делает кинематографичный 360° Orbit, неоновый свет пульсирует под бит. Ровно 30 секунд, кинокачество.',
   ],
 };
 

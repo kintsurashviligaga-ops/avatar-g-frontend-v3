@@ -2,10 +2,11 @@
 import { filmStarterPrompts } from './filmStarterPrompts';
 
 describe('filmStarterPrompts', () => {
-  test('returns a non-empty, trimmed starter set for each supported locale', () => {
+  test('returns the single flagship music-clip starter for each supported locale', () => {
     for (const loc of ['ka', 'en', 'ru']) {
       const list = filmStarterPrompts(loc);
-      expect(list.length).toBeGreaterThanOrEqual(3);
+      // Task 4 — exactly ONE flagship template (was 3 competing example scripts).
+      expect(list.length).toBe(1);
       expect(list.every((s) => typeof s === 'string' && s.trim().length > 0)).toBe(true);
       // No leading/trailing whitespace — chips render the string verbatim.
       expect(list.every((s) => s === s.trim())).toBe(true);
