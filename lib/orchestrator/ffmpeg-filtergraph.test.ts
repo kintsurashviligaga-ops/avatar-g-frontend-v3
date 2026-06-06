@@ -21,6 +21,17 @@ describe('buildFilterComplex', () => {
     expect(g.filter).toContain('fade=t=out'); // fade-down close
   });
 
+  test('hard-cut transition concatenates with NO xfade → exactly N·clipSec, no pad-freeze', () => {
+    // 5 clips · 6s with hard cuts = exactly 30s: no xfade (N−1)s shortfall, so the
+    // pad-to-30 clone-freeze never fires. This is the honest "exactly 30 seconds".
+    const g = buildFilterComplex({ nClips: 5, hasVoice: false, hasMusic: true, hasSfx: false, fps: 24, duckPct: 30, transition: 'cut' });
+    expect(g.filter).toContain('concat=n=5:v=1:a=0'); // hard-cut concat chain
+    expect(g.filter).not.toContain('xfade');          // no crossfade overlap
+    expect(g.filter).not.toContain('tpad');           // already 30s → no clone-pad
+    expect(g.filter).toContain('atrim=0:30.00');      // audio bed scaled to the exact 30s
+    expect(g.vmap).toBe('[vfinal]');
+  });
+
   test('every clip gets the color-match QA grade + one master cinematic grade', () => {
     const g = buildFilterComplex({ nClips: 3, hasVoice: false, hasMusic: false, hasSfx: false, fps: 24, duckPct: 30 });
     expect((g.filter.match(/eq=contrast=1\.06/g) || []).length).toBe(3); // per-clip colour-match

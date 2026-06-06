@@ -40,7 +40,13 @@ export function buildFilterComplex(opts: FilterGraphOpts): {
   const nClips = Math.max(1, Math.floor(opts.nClips));
   const clipSec = opts.clipSec ?? 6;
   const vfps = opts.fps >= 30 ? 30 : 24; // CPU stays native (no 60fps minterpolate)
+  // Hard-cut (concat) stitch vs. xfade chain. A 'cut' join has NO overlap, so the
+  // master lands at EXACTLY N·clipSec (5·6 = 30s) with zero pad-freeze — the honest
+  // way to hit the 30-second brand promise, and the beat-synced grammar a music
+  // video wants. Every other transition keeps the proven 1-second xfade chain.
+  const isCut = opts.transition === 'cut';
   const trans = XFADE[opts.transition ?? 'crossfade'] ?? 'fade';
+  const overlap = isCut ? 0 : TRANSITION_SEC;
   const parts: string[] = [];
 
   // Output canvas: 1920×1080 (16:9) by default, or 1080×1920 (9:16) for the
@@ -54,7 +60,7 @@ export function buildFilterComplex(opts: FilterGraphOpts): {
   // chain. N clips each `clipSec` long, overlapped by `TRANSITION_SEC` at every
   // join: totalDur = N·clipSec − (N−1)·TRANSITION_SEC. The background audio bed
   // is later padded/trimmed to THIS value so music/SFX scale to the timeline.
-  const totalDur = nClips * clipSec - Math.max(0, nClips - 1) * TRANSITION_SEC;
+  const totalDur = nClips * clipSec - Math.max(0, nClips - 1) * overlap;
 
   // ── Video: normalize + color-match QA pass per clip, then xfade-chain ──────
   // Per-clip finishing pass: scale EVERY clip onto a clean 1920×1080 canvas
@@ -78,6 +84,14 @@ export function buildFilterComplex(opts: FilterGraphOpts): {
   let vmap: string;
   if (nClips === 1) {
     vmap = '[v0]';
+  } else if (isCut) {
+    // Hard cuts: concatenate the normalised clips end-to-end. Every clip already
+    // shares an identical canvas (scale+pad/crop), SAR (setsar=1), timebase
+    // (settb=AVTB), fps and pixel format from the per-clip fit pass, so concat
+    // never errors on a mismatch — and the master lands at EXACTLY N·clipSec.
+    const labels = Array.from({ length: nClips }, (_, i) => `[v${i}]`).join('');
+    parts.push(`${labels}concat=n=${nClips}:v=1:a=0[vcat]`);
+    vmap = '[vcat]';
   } else {
     let prev = 'v0';
     let offset = clipSec - TRANSITION_SEC;

@@ -174,7 +174,15 @@ export async function POST(req: NextRequest) {
     voiceoverUrl: body.voiceoverUrl ? await reSignIfInternal(body.voiceoverUrl) : null,
     musicUrl: resolvedMusicUrl,
     sfxUrl: body.sfxUrl ? await reSignIfInternal(body.sfxUrl) : null,
-    globalRender: { ...(body.globalRender ?? {}), ...(body.orientation ? { orientation: String(body.orientation) } : {}) },
+    globalRender: {
+      // A film hard-cuts between scenes so the stitched master is EXACTLY
+      // N·clipSec (5·6 = 30s) — no xfade (N−1)s shortfall, no pad-freeze tail.
+      // This is the honest "exactly 30 seconds" fix and the beat-synced grammar a
+      // music video wants. An explicit caller transition still wins (spread after).
+      ...(filmTokenId ? { transition: 'cut' } : {}),
+      ...(body.globalRender ?? {}),
+      ...(body.orientation ? { orientation: String(body.orientation) } : {}),
+    },
     pipelineId: '',
     callbackUrl: new URL('/api/video/assemble/callback', req.url).toString(),
   };
