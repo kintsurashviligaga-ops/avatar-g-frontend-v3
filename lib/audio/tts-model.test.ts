@@ -39,15 +39,20 @@ describe('TTS model selection — PHASE 48 §3 Georgian phoneme fix', () => {
   });
 
   describe('voiceSettingsForModel', () => {
-    it('uses higher stability for multilingual so Georgian vowels do not warble', () => {
+    it('uses NATURAL, expressive settings for multilingual (not a flat/robotic read)', () => {
       const s = voiceSettingsForModel('eleven_multilingual_v2');
-      expect(s.stability).toBeGreaterThanOrEqual(0.8);
+      // Stability sits in the human/expressive band (too high = monotone/robotic;
+      // too low = vowel warble). Style adds prosody; speaker_boost keeps presence.
+      expect(s.stability).toBeGreaterThanOrEqual(0.35);
+      expect(s.stability).toBeLessThanOrEqual(0.6);
+      expect(s.style).toBeGreaterThanOrEqual(0.3);
       expect(s.use_speaker_boost).toBe(true);
     });
 
-    it('keeps the snappier default for turbo', () => {
+    it('keeps turbo expressive + present too', () => {
       const s = voiceSettingsForModel('eleven_turbo_v2_5');
-      expect(s.stability).toBeCloseTo(0.75);
+      expect(s.stability).toBeLessThanOrEqual(0.6);
+      expect(s.use_speaker_boost).toBe(true);
     });
   });
 });

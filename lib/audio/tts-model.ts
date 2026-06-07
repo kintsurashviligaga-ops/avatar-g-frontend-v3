@@ -41,8 +41,15 @@ export function selectTtsModel(text: string, locale?: string | null): ElevenLabs
 }
 
 /**
- * Voice settings tuned per model. Multilingual benefits from slightly higher
- * stability so Georgian vowels don't warble; turbo keeps the snappier default.
+ * Voice settings tuned per model for NATURAL, human-like delivery.
+ *
+ * The old multilingual preset used stability 0.82 — far too high, which made the
+ * Georgian read flat and robotic (the live complaint). ElevenLabs stability is
+ * the expressiveness dial: high = monotone/consistent, low = lively/human. 0.5 is
+ * the sweet spot for Georgian on multilingual_v2 — the voice breathes and intones
+ * like a person WITHOUT the vowel-warble that very low values cause. A higher
+ * `style` adds prosodic variation; speaker_boost + full similarity keep it clear
+ * and present; speed 1.0 is a natural pace.
  */
 export function voiceSettingsForModel(model: ElevenLabsModelId): {
   stability: number;
@@ -52,7 +59,7 @@ export function voiceSettingsForModel(model: ElevenLabsModelId): {
   speed: number;
 } {
   if (model === 'eleven_multilingual_v2') {
-    return { stability: 0.82, similarity_boost: 0.85, style: 0.15, use_speaker_boost: true, speed: 0.98 };
+    return { stability: 0.5, similarity_boost: 0.8, style: 0.4, use_speaker_boost: true, speed: 1.0 };
   }
-  return { stability: 0.75, similarity_boost: 0.85, style: 0.25, use_speaker_boost: true, speed: 0.95 };
+  return { stability: 0.45, similarity_boost: 0.8, style: 0.45, use_speaker_boost: true, speed: 1.0 };
 }
