@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generateUdioTrack } from '@/lib/udio/client';
 import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
+import { authedClientFromRequest } from '@/lib/supabase/server';
+import { recordCompletedAsset } from '@/lib/orchestrator/jobs';
+import { randomUUID } from 'node:crypto';
 
 /**
  * Assistant music generation (Udio).
@@ -64,6 +67,16 @@ export async function POST(req: NextRequest) {
       }
     } catch {
       /* fail-open — keep the provider URL */
+    }
+
+    // Best-effort: file the track into the signed-in user's Library (Audio tab).
+    try {
+      const { user } = await authedClientFromRequest(req);
+      if (user) {
+        await recordCompletedAsset({ id: randomUUID(), userId: user.id, serviceType: 'music', url: hostedUrl, prompt: capped });
+      }
+    } catch {
+      /* fail-open */
     }
 
     return NextResponse.json({ success: true, url: hostedUrl });

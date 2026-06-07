@@ -156,6 +156,44 @@ export async function recordCompletedFilm(input: {
 }
 
 /**
+ * Generic sibling of recordCompletedFilm for one-shot assets (Smart Assistant
+ * image / music generations). Files a COMPLETED generation_jobs row under the
+ * given service_type so the asset shows in the user's Library immediately. Same
+ * upsert-by-id idempotency + service-role write (user_id is set explicitly).
+ * Best-effort: returns false on any miss, never throws.
+ */
+export async function recordCompletedAsset(input: {
+  id: string;
+  userId: string;
+  serviceType: ProduceKind;
+  url: string;
+  prompt?: string | null;
+  source?: string;
+}): Promise<boolean> {
+  const sb = client();
+  if (!sb) return false;
+  try {
+    const { error } = await sb.from(TABLE).upsert(
+      {
+        id: input.id,
+        user_id: input.userId,
+        service_type: input.serviceType,
+        status: 'completed' as JobStatus,
+        current_stage: 'completed',
+        pct: 100,
+        params: { prompt: input.prompt ?? null, source: input.source ?? 'smart-assistant' },
+        result: { url: input.url },
+        signed_url: input.url,
+      },
+      { onConflict: 'id' },
+    );
+    return !error;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Mirror a single SSE emit into the durable row. Fire-and-forget: callers do
  * `void recordJobEvent(jobId, payload)` right after enqueuing the SSE chunk, so
  * persistence never adds latency to the live stream. No-op when jobId is null

@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { generateNanoBananaImage } from '@/lib/nanobanana/client';
 import type { NanoBananaEndpoint } from '@/lib/nanobanana/endpoints';
 import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
+import { authedClientFromRequest } from '@/lib/supabase/server';
+import { recordCompletedAsset } from '@/lib/orchestrator/jobs';
+import { randomUUID } from 'node:crypto';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 120;
@@ -84,6 +87,18 @@ export async function POST(req: NextRequest) {
       }
     } catch {
       /* fail-open — keep the provider URL */
+    }
+
+    // Best-effort: file the image into the signed-in user's Library so it appears
+    // in the media grid immediately. Anonymous callers simply aren't filed; a
+    // Library-write failure never blocks returning the image.
+    try {
+      const { user } = await authedClientFromRequest(req);
+      if (user) {
+        await recordCompletedAsset({ id: randomUUID(), userId: user.id, serviceType: 'image', url: hostedUrl, prompt });
+      }
+    } catch {
+      /* fail-open */
     }
 
     return NextResponse.json({
