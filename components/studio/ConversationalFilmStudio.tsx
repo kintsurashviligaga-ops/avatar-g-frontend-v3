@@ -49,6 +49,7 @@ import {
   RefreshCw,
   Music2,
   ArrowLeft,
+  Wand2,
 } from 'lucide-react';
 import { createBrowserClient } from '@/lib/supabase/browser';
 import { DeleteAccountButton } from '@/components/account/DeleteAccountButton';
@@ -503,6 +504,8 @@ export function ConversationalFilmStudio({
   const mvAudioInputRef = useRef<HTMLInputElement | null>(null);
   const [input, setInput] = useState('');
   const [driving, setDriving] = useState(false);
+  // Magic Wand — true while the director prompt is being AI-enhanced in place.
+  const [enhancing, setEnhancing] = useState(false);
   const [progress, setProgress] = useState<FilmStudioProgress | null>(null);
   const [masterUrl, setMasterUrl] = useState<string | null>(null);
   const [filmQa, setFilmQa] = useState<FilmQaSummary | null>(null);
@@ -1209,6 +1212,32 @@ export function ConversationalFilmStudio({
     abortRef.current?.abort();
     setDriving(false);
   }, []);
+
+  // Magic Wand — rewrite the director prompt into an AI-optimized cinematic brief
+  // IN PLACE. Fail-soft: the endpoint returns the original prompt on any miss, so
+  // the composer is never blanked. Disabled while a render is in flight.
+  const magicEnhance = useCallback(async () => {
+    const text = input.trim();
+    if (!text || enhancing || driving) return;
+    setEnhancing(true);
+    try {
+      const res = await fetch('/api/ai/magic-wand', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: text }),
+        credentials: 'include',
+      });
+      const j = (await res.json().catch(() => ({}))) as { enhanced?: string };
+      if (j.enhanced && j.enhanced.trim()) {
+        setInput(j.enhanced.trim());
+        requestAnimationFrame(() => textareaRef.current?.focus());
+      }
+    } catch {
+      /* fail-soft — keep the original prompt */
+    } finally {
+      setEnhancing(false);
+    }
+  }, [input, enhancing, driving]);
 
   // Open the Stripe top-up modal + record the funnel intent in PostHog.
   const openWallet = useCallback(() => {
@@ -1924,7 +1953,7 @@ export function ConversationalFilmStudio({
               rows={1}
               className="flex-1 bg-transparent text-[17px] leading-relaxed px-2.5 py-2 focus:outline-none placeholder-neutral-600 resize-none text-white max-h-32"
               placeholder={driving ? t.placeholderBusy : t.placeholder}
-              disabled={driving}
+              disabled={driving || enhancing}
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
@@ -1957,6 +1986,25 @@ export function ConversationalFilmStudio({
                 <Mic className="w-4 h-4" />
               </button>
             )}
+            {/* Magic Wand — one-tap AI enhancement of the director prompt, in place.
+                Cyan pulse while it rewrites; muted until prompt text exists. */}
+            <button
+              type="button"
+              onClick={() => void magicEnhance()}
+              disabled={driving || enhancing || input.trim().length === 0}
+              aria-label={mvText('Enhance prompt with AI', 'AI-ით პრომპტის გაუმჯობესება', 'Улучшить промпт с AI')}
+              title={mvText('Enhance prompt with AI', 'AI-ით პრომპტის გაუმჯობესება', 'Улучшить промпт с AI')}
+              className={[
+                'inline-flex h-11 w-11 items-center justify-center rounded-full transition-all shrink-0 touch-manipulation',
+                driving || input.trim().length === 0
+                  ? 'text-neutral-700 cursor-not-allowed'
+                  : enhancing
+                    ? 'text-[#00D2FF] animate-pulse motion-reduce:animate-none'
+                    : 'text-white/40 hover:text-white/70 active:scale-90 motion-reduce:active:scale-100',
+              ].join(' ')}
+            >
+              {enhancing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Wand2 className="w-4 h-4" />}
+            </button>
             {/* Native round action button, docked in the bar's corner like
                 ChatGPT/Claude. Electric-cyan glow when the action is fundable
                 (promo slot OR balance covers the cost); clean white when active
