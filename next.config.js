@@ -107,8 +107,11 @@ const nextConfig = {
         source: '/(.*)',
         headers: [
           { key: 'x-build-id', value: buildVersion },
-          // Prevent embedding in iframes (clickjacking)
-          { key: 'X-Frame-Options', value: 'DENY' },
+          // Clickjacking protection — SAMEORIGIN (not DENY) so the One-Window
+          // studio can render its OWN pages (legal / help / library) inside the
+          // StudioSheet iframe. DENY blocked every frame, leaving those panels
+          // blank when opened from the drawer. Cross-origin framing stays blocked.
+          { key: 'X-Frame-Options', value: 'SAMEORIGIN' },
           // Prevent MIME sniffing
           { key: 'X-Content-Type-Options', value: 'nosniff' },
           // Referrer policy
