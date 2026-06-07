@@ -12,13 +12,14 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Send, Mic, Square, Paperclip, X, Loader2, Sparkles, Film, Music2, FileText, Image as ImageIcon, Download, MessageSquare } from 'lucide-react';
+import { Send, Mic, Square, Paperclip, X, Loader2, Sparkles, Film, Music2, FileText, Image as ImageIcon, Download, MessageSquare, Wand2 } from 'lucide-react';
 
 type Lang = 'ka' | 'en' | 'ru';
 
 const COPY: Record<Lang, {
   title: string; subtitle: string; placeholder: string; empty: string; thinking: string; recording: string; micHint: string;
   modeChat: string; modeImage: string; imgPlaceholder: string; generatingImage: string; imageFailed: string; imgDownload: string;
+  magicHint: string;
 }> = {
   ka: {
     title: 'ჭკვიანი ასისტენტი', subtitle: 'ინტელექტუალური მულტიმოდალური ასისტენტი',
@@ -26,6 +27,7 @@ const COPY: Record<Lang, {
     thinking: 'ფიქრობს…', recording: 'იწერება…', micHint: 'ხმის ჩაწერა',
     modeChat: 'პასუხი', modeImage: 'სურათი', imgPlaceholder: 'აღწერე სურათი, რომ დაგიხატო…',
     generatingImage: 'სურათი იქმნება…', imageFailed: 'სურათის გენერაცია ვერ მოხერხდა. სცადე თავიდან.', imgDownload: 'ჩამოტვირთვა',
+    magicHint: 'AI-ით პრომპტის გაუმჯობესება',
   },
   en: {
     title: 'Smart Assistant', subtitle: 'Intelligent multimodal assistant',
@@ -33,6 +35,7 @@ const COPY: Record<Lang, {
     thinking: 'Thinking…', recording: 'Recording…', micHint: 'Record voice',
     modeChat: 'Answer', modeImage: 'Image', imgPlaceholder: 'Describe an image to generate…',
     generatingImage: 'Generating image…', imageFailed: 'Image generation failed. Try again.', imgDownload: 'Download',
+    magicHint: 'Enhance prompt with AI',
   },
   ru: {
     title: 'Умный ассистент', subtitle: 'Интеллектуальный мультимодальный ассистент',
@@ -40,6 +43,7 @@ const COPY: Record<Lang, {
     thinking: 'Думает…', recording: 'Запись…', micHint: 'Записать голос',
     modeChat: 'Ответ', modeImage: 'Изображение', imgPlaceholder: 'Опишите изображение для генерации…',
     generatingImage: 'Генерирую изображение…', imageFailed: 'Не удалось сгенерировать изображение. Попробуйте снова.', imgDownload: 'Скачать',
+    magicHint: 'Улучшить промпт с AI',
   },
 };
 
@@ -63,6 +67,8 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // Full-screen image lightbox — holds the URL of the tapped picture (generated or
   // attached). null = closed. Tap a chat image to open; backdrop / X / Esc closes.
   const [lightbox, setLightbox] = useState<string | null>(null);
+  // Magic Wand — true while the prompt is being AI-enhanced in place.
+  const [enhancing, setEnhancing] = useState(false);
   const fileRef = useRef<HTMLInputElement | null>(null);
   const recRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -188,6 +194,29 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       setBusy(false);
     }
   }, [input, attachment, busy, messages, mode, t.imageFailed]);
+
+  // Magic Wand — rewrite the current textarea prompt into an AI-optimized version
+  // IN PLACE (Section 7 / 8A). Fail-soft: the endpoint returns the original prompt
+  // on any miss, so the composer is never blanked.
+  const magicEnhance = useCallback(async () => {
+    const text = input.trim();
+    if (!text || enhancing || busy) return;
+    setEnhancing(true);
+    try {
+      const res = await fetch('/api/ai/magic-wand', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: text }),
+        credentials: 'include',
+      });
+      const j = (await res.json().catch(() => ({}))) as { enhanced?: string };
+      if (j.enhanced && j.enhanced.trim()) setInput(j.enhanced.trim());
+    } catch {
+      /* fail-soft — keep the original prompt */
+    } finally {
+      setEnhancing(false);
+    }
+  }, [input, enhancing, busy]);
 
   const toggleMic = useCallback(async () => {
     if (recording) {
@@ -336,9 +365,21 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send(); } }}
             rows={1}
+            disabled={enhancing}
             placeholder={recording ? t.recording : mode === 'image' ? t.imgPlaceholder : t.placeholder}
-            className="max-h-32 min-h-[44px] flex-1 resize-none rounded-xl bg-white/[0.04] px-3 py-3 text-[16px] text-white placeholder:text-neutral-600 outline-none focus:ring-1 focus:ring-[#00D2FF]/40"
+            className="max-h-32 min-h-[44px] flex-1 resize-none rounded-xl bg-white/[0.04] px-3 py-3 text-[16px] text-white placeholder:text-neutral-600 outline-none focus:ring-1 focus:ring-[#00D2FF]/40 disabled:opacity-60"
           />
+          {/* Magic Wand — one-tap AI prompt enhancement, in place. */}
+          <button
+            type="button"
+            onClick={() => void magicEnhance()}
+            disabled={enhancing || busy || !input.trim()}
+            aria-label={t.magicHint}
+            title={t.magicHint}
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-neutral-400 transition-colors hover:bg-white/5 hover:text-[#00D2FF] disabled:opacity-40"
+          >
+            {enhancing ? <Loader2 size={18} className="animate-spin text-[#00D2FF]" /> : <Wand2 size={18} />}
+          </button>
           <button type="button" onClick={() => void send()} disabled={busy || (!input.trim() && !attachment)} aria-label="send"
             className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-r from-[#00D2FF] to-[#0085FF] text-black transition-all hover:brightness-110 disabled:opacity-40">
             {busy ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
