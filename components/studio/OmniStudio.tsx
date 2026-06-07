@@ -12,7 +12,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Send, Mic, Square, Paperclip, X, Loader2, Sparkles, Film, Music2, FileText, Image as ImageIcon, Download, MessageSquare, Wand2 } from 'lucide-react';
+import { Send, Mic, Square, Paperclip, X, Loader2, Sparkles, Film, Music2, FileText, Image as ImageIcon, Download, MessageSquare, Wand2, Volume2, Copy, Check } from 'lucide-react';
 
 type Lang = 'ka' | 'en' | 'ru';
 
@@ -100,6 +100,10 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   const [lightbox, setLightbox] = useState<string | null>(null);
   // Magic Wand — true while the prompt is being AI-enhanced in place.
   const [enhancing, setEnhancing] = useState(false);
+  // Per-message actions: which assistant reply was just copied / is being read aloud.
+  const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
+  const [speakingIdx, setSpeakingIdx] = useState<number | null>(null);
+  const ttsAudioRef = useRef<HTMLAudioElement | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
   const recRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -287,6 +291,50 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     }
   }, [input, enhancing, busy]);
 
+  // Copy an assistant reply to the clipboard (2s ✓ feedback).
+  const copyMsg = useCallback(async (text: string, i: number) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedIdx(i);
+      setTimeout(() => setCopiedIdx((c) => (c === i ? null : c)), 2000);
+    } catch {
+      /* clipboard blocked — no-op */
+    }
+  }, []);
+
+  // Read an assistant reply aloud via the premium TTS route (ElevenLabs Georgian
+  // voice, Google-TTS fallback). Toggles: tapping the speaking message stops it.
+  // Only one plays at a time. Fail-soft: any miss just clears the speaking state.
+  const speakMsg = useCallback(async (text: string, i: number) => {
+    if (ttsAudioRef.current) {
+      ttsAudioRef.current.pause();
+      ttsAudioRef.current = null;
+    }
+    if (speakingIdx === i) { setSpeakingIdx(null); return; }
+    setSpeakingIdx(i);
+    try {
+      const res = await fetch('/api/elevenlabs/tts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: text.slice(0, 5000), locale }),
+      });
+      if (!res.ok) { setSpeakingIdx((s) => (s === i ? null : s)); return; }
+      const url = URL.createObjectURL(await res.blob());
+      const audio = new Audio(url);
+      ttsAudioRef.current = audio;
+      const clear = () => { setSpeakingIdx((s) => (s === i ? null : s)); URL.revokeObjectURL(url); if (ttsAudioRef.current === audio) ttsAudioRef.current = null; };
+      audio.onended = clear;
+      audio.onerror = clear;
+      await audio.play();
+    } catch {
+      setSpeakingIdx((s) => (s === i ? null : s));
+      ttsAudioRef.current = null;
+    }
+  }, [speakingIdx, locale]);
+
+  // Stop any in-flight read-aloud when the studio unmounts.
+  useEffect(() => () => { try { ttsAudioRef.current?.pause(); } catch { /* noop */ } }, []);
+
   const toggleMic = useCallback(async () => {
     if (recording) {
       recRef.current?.stop();
@@ -408,6 +456,30 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
               {m.text || (busy && m.role === 'assistant' && i === messages.length - 1
                 ? <span className="inline-flex items-center gap-1.5 text-neutral-500"><Loader2 size={13} className="animate-spin" /> {mode === 'image' ? t.generatingImage : mode === 'music' ? t.generatingMusic : t.thinking}</span>
                 : null)}
+              {/* Per-response actions on a TEXT reply — Read-aloud + Copy. No
+                  Like/Dislike, per the one-window spec. */}
+              {m.role === 'assistant' && m.text && !m.text.startsWith('⚠️') && (
+                <div className="mt-1.5 flex items-center gap-0.5 text-neutral-500">
+                  <button
+                    type="button"
+                    onClick={() => void speakMsg(m.text, i)}
+                    aria-label={locale === 'en' ? 'Read aloud' : locale === 'ru' ? 'Озвучить' : 'ხმამაღლა წაკითხვა'}
+                    title={locale === 'en' ? 'Read aloud' : locale === 'ru' ? 'Озвучить' : 'ხმამაღლა წაკითხვა'}
+                    className={`flex h-7 w-7 items-center justify-center rounded-md transition-colors hover:bg-white/5 hover:text-[#00D2FF] ${speakingIdx === i ? 'text-[#00D2FF]' : ''}`}
+                  >
+                    {speakingIdx === i ? <Square size={13} /> : <Volume2 size={13} />}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void copyMsg(m.text, i)}
+                    aria-label={locale === 'en' ? 'Copy' : locale === 'ru' ? 'Копировать' : 'კოპირება'}
+                    title={locale === 'en' ? 'Copy' : locale === 'ru' ? 'Копировать' : 'კოპირება'}
+                    className={`flex h-7 w-7 items-center justify-center rounded-md transition-colors hover:bg-white/5 hover:text-[#00D2FF] ${copiedIdx === i ? 'text-[#00D2FF]' : ''}`}
+                  >
+                    {copiedIdx === i ? <Check size={13} /> : <Copy size={13} />}
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         ))}
