@@ -20,30 +20,37 @@ const COPY: Record<Lang, {
   title: string; subtitle: string; placeholder: string; empty: string; thinking: string; recording: string; micHint: string;
   modeChat: string; modeImage: string; imgPlaceholder: string; generatingImage: string; imageFailed: string; imgDownload: string;
   magicHint: string;
+  modeMusic: string; musicPlaceholder: string; generatingMusic: string; musicFailed: string;
 }> = {
   ka: {
     title: 'ჭკვიანი ასისტენტი', subtitle: 'ინტელექტუალური მულტიმოდალური ასისტენტი',
-    placeholder: 'დაწერე, ჩაწერე ხმა, ან მიამაგრე სურათი…', empty: 'ჰკითხე ნებისმიერი რამ — ტექსტი, ხმა ან სურათი. ასისტენტი გაანალიზებს და გიპასუხებს.',
+    placeholder: 'დაწერე, ჩაწერე ხმა, ან მიამაგრე სურათი…', empty: 'ჰკითხე ნებისმიერი რამ, შექმენი სურათი ან მუსიკა — ტექსტით, ხმით ან ფაილით.',
     thinking: 'ფიქრობს…', recording: 'იწერება…', micHint: 'ხმის ჩაწერა',
     modeChat: 'პასუხი', modeImage: 'სურათი', imgPlaceholder: 'აღწერე სურათი, რომ დაგიხატო…',
     generatingImage: 'სურათი იქმნება…', imageFailed: 'სურათის გენერაცია ვერ მოხერხდა. სცადე თავიდან.', imgDownload: 'ჩამოტვირთვა',
     magicHint: 'AI-ით პრომპტის გაუმჯობესება',
+    modeMusic: 'მუსიკა', musicPlaceholder: 'აღწერე მუსიკა (მაგ. ეპიკური კინო-სცენა)…',
+    generatingMusic: 'მუსიკა იქმნება… (1–3 წუთი)', musicFailed: 'მუსიკის გენერაცია ვერ მოხერხდა. სცადე თავიდან.',
   },
   en: {
     title: 'Smart Assistant', subtitle: 'Intelligent multimodal assistant',
-    placeholder: 'Type, record your voice, or attach an image…', empty: 'Ask anything — text, voice or image. The assistant analyzes and responds.',
+    placeholder: 'Type, record your voice, or attach an image…', empty: 'Ask anything, or generate an image or music — by text, voice or file.',
     thinking: 'Thinking…', recording: 'Recording…', micHint: 'Record voice',
     modeChat: 'Answer', modeImage: 'Image', imgPlaceholder: 'Describe an image to generate…',
     generatingImage: 'Generating image…', imageFailed: 'Image generation failed. Try again.', imgDownload: 'Download',
     magicHint: 'Enhance prompt with AI',
+    modeMusic: 'Music', musicPlaceholder: 'Describe the music (e.g. epic cinematic scene)…',
+    generatingMusic: 'Composing music… (1–3 min)', musicFailed: 'Music generation failed. Try again.',
   },
   ru: {
     title: 'Умный ассистент', subtitle: 'Интеллектуальный мультимодальный ассистент',
-    placeholder: 'Напишите, запишите голос или прикрепите изображение…', empty: 'Спросите что угодно — текст, голос или изображение. Ассистент анализирует и отвечает.',
+    placeholder: 'Напишите, запишите голос или прикрепите изображение…', empty: 'Спросите что угодно или создайте изображение или музыку — текстом, голосом или файлом.',
     thinking: 'Думает…', recording: 'Запись…', micHint: 'Записать голос',
     modeChat: 'Ответ', modeImage: 'Изображение', imgPlaceholder: 'Опишите изображение для генерации…',
     generatingImage: 'Генерирую изображение…', imageFailed: 'Не удалось сгенерировать изображение. Попробуйте снова.', imgDownload: 'Скачать',
     magicHint: 'Улучшить промпт с AI',
+    modeMusic: 'Музыка', musicPlaceholder: 'Опишите музыку (напр. эпичная кино-сцена)…',
+    generatingMusic: 'Создаю музыку… (1–3 мин)', musicFailed: 'Не удалось создать музыку. Попробуйте снова.',
   },
 };
 
@@ -51,27 +58,27 @@ const COPY: Record<Lang, {
 // Tapping pre-fills the composer (and switches to Image mode for a draw example)
 // WITHOUT auto-sending, so the user reviews + presses send (never an accidental
 // spend). `icon` maps to a lucide glyph in the render.
-type StarterIcon = 'chat' | 'image' | 'spark';
-const STARTERS: Record<Lang, { label: string; prompt: string; mode: 'chat' | 'image'; icon: StarterIcon }[]> = {
+type StarterIcon = 'chat' | 'image' | 'spark' | 'music';
+const STARTERS: Record<Lang, { label: string; prompt: string; mode: 'chat' | 'image' | 'music'; icon: StarterIcon }[]> = {
   ka: [
     { label: 'დახატე ნეონის ქალაქი წვიმაში', prompt: 'ნეონის ქალაქი წვიმაში ღამით, კინემატოგრაფიული, ანარეკლები ასფალტზე', mode: 'image', icon: 'image' },
+    { label: 'შექმენი ეპიკური კინო-მუსიკა', prompt: 'ეპიკური ორკესტრული კინო-მუსიკა, დრამატული, გმირული განწყობა', mode: 'music', icon: 'music' },
     { label: 'მომეცი იდეები 30-წამიანი ვიდეოსთვის', prompt: 'მომეცი 3 კრეატიული იდეა 30-წამიანი კინო-კლიპისთვის ქართულ ბუნებაზე', mode: 'chat', icon: 'spark' },
-    { label: 'ახსენი მარტივად', prompt: 'ახსენი მარტივ ენაზე, როგორ მუშაობს AI ვიდეო-გენერაცია', mode: 'chat', icon: 'chat' },
   ],
   en: [
     { label: 'Draw a neon city in the rain', prompt: 'A neon city in the rain at night, cinematic, reflections on the wet asphalt', mode: 'image', icon: 'image' },
+    { label: 'Compose epic cinematic music', prompt: 'Epic orchestral cinematic score, dramatic, heroic mood', mode: 'music', icon: 'music' },
     { label: 'Give me ideas for a 30s video', prompt: 'Give me 3 creative ideas for a 30-second cinematic clip about Georgian nature', mode: 'chat', icon: 'spark' },
-    { label: 'Explain it simply', prompt: 'Explain in simple terms how AI video generation works', mode: 'chat', icon: 'chat' },
   ],
   ru: [
     { label: 'Нарисуй неоновый город под дождём', prompt: 'Неоновый город под дождём ночью, кинематографично, отражения на мокром асфальте', mode: 'image', icon: 'image' },
+    { label: 'Создай эпичную кино-музыку', prompt: 'Эпичная оркестровая кино-музыка, драматичная, героическое настроение', mode: 'music', icon: 'music' },
     { label: 'Идеи для 30-секундного видео', prompt: 'Дай 3 креативные идеи для 30-секундного кинороликa о природе Грузии', mode: 'chat', icon: 'spark' },
-    { label: 'Объясни просто', prompt: 'Объясни простыми словами, как работает AI-генерация видео', mode: 'chat', icon: 'chat' },
   ],
 };
 
 interface Media { dataUrl: string; mimeType: string }
-interface Msg { role: 'user' | 'assistant'; text: string; media?: Media; imageUrl?: string }
+interface Msg { role: 'user' | 'assistant'; text: string; media?: Media; imageUrl?: string; audioUrl?: string }
 
 const isImage = (m: string) => m.startsWith('image/');
 const isAudio = (m: string) => m.startsWith('audio/');
@@ -84,9 +91,10 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   const [attachment, setAttachment] = useState<Media | null>(null); // image / audio / video / pdf
   const [busy, setBusy] = useState(false);
   const [recording, setRecording] = useState(false);
-  // Composer mode: 'chat' → Gemini multimodal answer; 'image' → NanoBanana image
-  // GENERATION (the prompt becomes a brand-new image rendered in the feed).
-  const [mode, setMode] = useState<'chat' | 'image'>('chat');
+  // Composer mode: 'chat' → multimodal answer; 'image' → NanoBanana image
+  // generation; 'music' → Udio music generation. The prompt becomes a brand-new
+  // asset (image / track) rendered inline in the feed.
+  const [mode, setMode] = useState<'chat' | 'image' | 'music'>('chat');
   // Full-screen image lightbox — holds the URL of the tapped picture (generated or
   // attached). null = closed. Tap a chat image to open; backdrop / X / Esc closes.
   const [lightbox, setLightbox] = useState<string | null>(null);
@@ -145,6 +153,44 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           const next = [...prev];
           const last = next[next.length - 1];
           if (last && last.role === 'assistant') next[next.length - 1] = { role: 'assistant', text: `⚠️ ${t.imageFailed}` };
+          return next;
+        });
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
+
+    // ── MUSIC GENERATION (Udio) ────────────────────────────────────────────────
+    // In music mode the prompt describes a vibe; POST it to /api/ai/music (Udio →
+    // re-hosted to Supabase) and render the track as an inline audio player.
+    if (mode === 'music' && text) {
+      setMessages((prev) => [...prev, { role: 'user', text }, { role: 'assistant', text: '' }]);
+      setInput(''); setBusy(true);
+      try {
+        const res = await fetch('/api/ai/music', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prompt: text }),
+          credentials: 'include',
+        });
+        const j = (await res.json().catch(() => ({}))) as { success?: boolean; url?: string };
+        setMessages((prev) => {
+          const next = [...prev];
+          const last = next[next.length - 1];
+          if (last && last.role === 'assistant') {
+            next[next.length - 1] =
+              j.success && j.url
+                ? { role: 'assistant', text: '', audioUrl: j.url }
+                : { role: 'assistant', text: `⚠️ ${t.musicFailed}` };
+          }
+          return next;
+        });
+      } catch {
+        setMessages((prev) => {
+          const next = [...prev];
+          const last = next[next.length - 1];
+          if (last && last.role === 'assistant') next[next.length - 1] = { role: 'assistant', text: `⚠️ ${t.musicFailed}` };
           return next;
         });
       } finally {
@@ -216,7 +262,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     } finally {
       setBusy(false);
     }
-  }, [input, attachment, busy, messages, mode, t.imageFailed]);
+  }, [input, attachment, busy, messages, mode, t.imageFailed, t.musicFailed]);
 
   // Magic Wand — rewrite the current textarea prompt into an AI-optimized version
   // IN PLACE (Section 7 / 8A). Fail-soft: the endpoint returns the original prompt
@@ -300,7 +346,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                   className="group flex items-center gap-2.5 rounded-xl border border-white/10 bg-white/[0.03] px-3.5 py-2.5 text-left text-[13px] text-neutral-300 transition-colors hover:border-[#00D2FF]/40 hover:text-white active:scale-[0.99] motion-reduce:active:scale-100"
                 >
                   <span className="shrink-0 text-[#00D2FF]/70 transition-colors group-hover:text-[#00D2FF]">
-                    {s.icon === 'image' ? <ImageIcon size={15} /> : s.icon === 'spark' ? <Sparkles size={15} /> : <MessageSquare size={15} />}
+                    {s.icon === 'image' ? <ImageIcon size={15} /> : s.icon === 'music' ? <Music2 size={15} /> : s.icon === 'spark' ? <Sparkles size={15} /> : <MessageSquare size={15} />}
                   </span>
                   <span className="flex-1">{s.label}</span>
                 </button>
@@ -344,8 +390,23 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                   </a>
                 </div>
               )}
+              {m.audioUrl && (
+                <div className="space-y-1.5">
+                  {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+                  <audio src={m.audioUrl} controls className="w-full" />
+                  <a
+                    href={m.audioUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    download
+                    className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#00D2FF] hover:underline"
+                  >
+                    <Download size={11} /> {t.imgDownload}
+                  </a>
+                </div>
+              )}
               {m.text || (busy && m.role === 'assistant' && i === messages.length - 1
-                ? <span className="inline-flex items-center gap-1.5 text-neutral-500"><Loader2 size={13} className="animate-spin" /> {mode === 'image' ? t.generatingImage : t.thinking}</span>
+                ? <span className="inline-flex items-center gap-1.5 text-neutral-500"><Loader2 size={13} className="animate-spin" /> {mode === 'image' ? t.generatingImage : mode === 'music' ? t.generatingMusic : t.thinking}</span>
                 : null)}
             </div>
           </div>
@@ -371,6 +432,14 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 transition-colors ${mode === 'image' ? 'bg-[#00D2FF]/15 text-[#00D2FF]' : 'text-neutral-400 hover:text-white'}`}
           >
             <ImageIcon size={13} /> {t.modeImage}
+          </button>
+          <button
+            type="button"
+            onClick={() => setMode('music')}
+            aria-pressed={mode === 'music'}
+            className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 transition-colors ${mode === 'music' ? 'bg-[#00D2FF]/15 text-[#00D2FF]' : 'text-neutral-400 hover:text-white'}`}
+          >
+            <Music2 size={13} /> {t.modeMusic}
           </button>
         </div>
         {attachment && (
@@ -407,7 +476,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send(); } }}
             rows={1}
             disabled={enhancing}
-            placeholder={recording ? t.recording : mode === 'image' ? t.imgPlaceholder : t.placeholder}
+            placeholder={recording ? t.recording : mode === 'image' ? t.imgPlaceholder : mode === 'music' ? t.musicPlaceholder : t.placeholder}
             className="max-h-32 min-h-[44px] flex-1 resize-none rounded-xl bg-white/[0.04] px-3 py-3 text-[16px] text-white placeholder:text-neutral-600 outline-none focus:ring-1 focus:ring-[#00D2FF]/40 disabled:opacity-60"
           />
           {/* Magic Wand — one-tap AI prompt enhancement, in place. */}
