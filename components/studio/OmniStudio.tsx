@@ -47,6 +47,29 @@ const COPY: Record<Lang, {
   },
 };
 
+// First-run examples — tappable cards that make the assistant self-explanatory.
+// Tapping pre-fills the composer (and switches to Image mode for a draw example)
+// WITHOUT auto-sending, so the user reviews + presses send (never an accidental
+// spend). `icon` maps to a lucide glyph in the render.
+type StarterIcon = 'chat' | 'image' | 'spark';
+const STARTERS: Record<Lang, { label: string; prompt: string; mode: 'chat' | 'image'; icon: StarterIcon }[]> = {
+  ka: [
+    { label: 'დახატე ნეონის ქალაქი წვიმაში', prompt: 'ნეონის ქალაქი წვიმაში ღამით, კინემატოგრაფიული, ანარეკლები ასფალტზე', mode: 'image', icon: 'image' },
+    { label: 'მომეცი იდეები 30-წამიანი ვიდეოსთვის', prompt: 'მომეცი 3 კრეატიული იდეა 30-წამიანი კინო-კლიპისთვის ქართულ ბუნებაზე', mode: 'chat', icon: 'spark' },
+    { label: 'ახსენი მარტივად', prompt: 'ახსენი მარტივ ენაზე, როგორ მუშაობს AI ვიდეო-გენერაცია', mode: 'chat', icon: 'chat' },
+  ],
+  en: [
+    { label: 'Draw a neon city in the rain', prompt: 'A neon city in the rain at night, cinematic, reflections on the wet asphalt', mode: 'image', icon: 'image' },
+    { label: 'Give me ideas for a 30s video', prompt: 'Give me 3 creative ideas for a 30-second cinematic clip about Georgian nature', mode: 'chat', icon: 'spark' },
+    { label: 'Explain it simply', prompt: 'Explain in simple terms how AI video generation works', mode: 'chat', icon: 'chat' },
+  ],
+  ru: [
+    { label: 'Нарисуй неоновый город под дождём', prompt: 'Неоновый город под дождём ночью, кинематографично, отражения на мокром асфальте', mode: 'image', icon: 'image' },
+    { label: 'Идеи для 30-секундного видео', prompt: 'Дай 3 креативные идеи для 30-секундного кинороликa о природе Грузии', mode: 'chat', icon: 'spark' },
+    { label: 'Объясни просто', prompt: 'Объясни простыми словами, как работает AI-генерация видео', mode: 'chat', icon: 'chat' },
+  ],
+};
+
 interface Media { dataUrl: string; mimeType: string }
 interface Msg { role: 'user' | 'assistant'; text: string; media?: Media; imageUrl?: string }
 
@@ -262,9 +285,27 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
 
       <div ref={feedRef} className="min-h-0 flex-1 space-y-3 overflow-y-auto pb-3">
         {messages.length === 0 ? (
-          <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
+          <div className="flex h-full flex-col items-center justify-center gap-4 px-2 text-center">
             <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#00D2FF]/10 text-[#00D2FF]"><Sparkles size={22} /></span>
             <p className="max-w-sm text-sm text-neutral-500">{t.empty}</p>
+            {/* Tappable first-run examples — pre-fill the composer (image example
+                also flips to Image mode), never auto-send. Makes the assistant
+                instantly understandable: chat · generate · ideate. */}
+            <div className="flex w-full max-w-md flex-col gap-2">
+              {(STARTERS[locale] ?? STARTERS.ka).map((s, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => { setMode(s.mode); setInput(s.prompt); }}
+                  className="group flex items-center gap-2.5 rounded-xl border border-white/10 bg-white/[0.03] px-3.5 py-2.5 text-left text-[13px] text-neutral-300 transition-colors hover:border-[#00D2FF]/40 hover:text-white active:scale-[0.99] motion-reduce:active:scale-100"
+                >
+                  <span className="shrink-0 text-[#00D2FF]/70 transition-colors group-hover:text-[#00D2FF]">
+                    {s.icon === 'image' ? <ImageIcon size={15} /> : s.icon === 'spark' ? <Sparkles size={15} /> : <MessageSquare size={15} />}
+                  </span>
+                  <span className="flex-1">{s.label}</span>
+                </button>
+              ))}
+            </div>
           </div>
         ) : messages.map((m, i) => (
           <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
