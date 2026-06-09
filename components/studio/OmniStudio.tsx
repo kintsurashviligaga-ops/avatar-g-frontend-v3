@@ -12,7 +12,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Send, Mic, Square, Paperclip, X, Loader2, Sparkles, Film, Music2, FileText, Image as ImageIcon, Download, MessageSquare, Wand2, Volume2, Copy, Check } from 'lucide-react';
+import { Send, Mic, Square, Paperclip, X, Loader2, Sparkles, Film, Music2, FileText, Image as ImageIcon, Download, MessageSquare, Wand2, Volume2, Copy, Check, Mic2 } from 'lucide-react';
 import { driveFilmStudio } from '@/lib/chat/filmStudioClient';
 
 type Lang = 'ka' | 'en' | 'ru';
@@ -23,6 +23,7 @@ const COPY: Record<Lang, {
   magicHint: string;
   modeMusic: string; musicPlaceholder: string; generatingMusic: string; musicFailed: string;
   modeVideo: string; videoPlaceholder: string; generatingVideo: string; videoFailed: string;
+  modeLipsync: string; lipsyncPlaceholder: string; generatingLipsync: string; lipsyncFailed: string; lipsyncNeedFiles: string; lipsyncAuth: string; lipAudioLabel: string;
 }> = {
   ka: {
     title: 'ჭკვიანი ასისტენტი', subtitle: 'ინტელექტუალური მულტიმოდალური ასისტენტი',
@@ -35,6 +36,8 @@ const COPY: Record<Lang, {
     generatingMusic: 'მუსიკა იქმნება… (1–3 წუთი)', musicFailed: 'მუსიკის გენერაცია ვერ მოხერხდა. სცადე თავიდან.',
     modeVideo: 'ვიდეო', videoPlaceholder: 'აღწერე 30-წამიანი ვიდეო (ფოტო — პერსონაჟისთვის)…',
     generatingVideo: 'ვიდეო იქმნება… (1–2 წუთი)', videoFailed: 'ვიდეოს გენერაცია ვერ მოხერხდა.',
+    modeLipsync: 'ლიფსინქი', lipsyncPlaceholder: 'მიამაგრე ვიდეო + აუდიო და დააჭირე გაგზავნას…',
+    generatingLipsync: 'ტუჩები სინქრონდება…', lipsyncFailed: 'ლიფსინქი ვერ მოხერხდა.', lipsyncNeedFiles: 'მიამაგრე ვიდეოც და აუდიოც.', lipsyncAuth: 'ლიფსინქისთვის ჯერ გაიარე ავტორიზაცია.', lipAudioLabel: 'აუდიო',
   },
   en: {
     title: 'Smart Assistant', subtitle: 'Intelligent multimodal assistant',
@@ -47,6 +50,8 @@ const COPY: Record<Lang, {
     generatingMusic: 'Composing music… (1–3 min)', musicFailed: 'Music generation failed. Try again.',
     modeVideo: 'Video', videoPlaceholder: 'Describe a 30-second video (attach a photo for the character)…',
     generatingVideo: 'Producing video… (1–2 min)', videoFailed: 'Video generation failed.',
+    modeLipsync: 'Lip-sync', lipsyncPlaceholder: 'Attach a video + audio, then press send…',
+    generatingLipsync: 'Syncing the lips…', lipsyncFailed: 'Lip-sync failed.', lipsyncNeedFiles: 'Attach both a video and audio.', lipsyncAuth: 'Sign in first to use lip-sync.', lipAudioLabel: 'Audio',
   },
   ru: {
     title: 'Умный ассистент', subtitle: 'Интеллектуальный мультимодальный ассистент',
@@ -59,6 +64,8 @@ const COPY: Record<Lang, {
     generatingMusic: 'Создаю музыку… (1–3 мин)', musicFailed: 'Не удалось создать музыку. Попробуйте снова.',
     modeVideo: 'Видео', videoPlaceholder: 'Опишите 30-секундное видео (фото — для персонажа)…',
     generatingVideo: 'Создаю видео… (1–2 мин)', videoFailed: 'Не удалось создать видео.',
+    modeLipsync: 'Синхрон', lipsyncPlaceholder: 'Прикрепите видео + аудио и нажмите отправить…',
+    generatingLipsync: 'Синхронизирую губы…', lipsyncFailed: 'Не удалось синхронизировать.', lipsyncNeedFiles: 'Прикрепите и видео, и аудио.', lipsyncAuth: 'Войдите, чтобы использовать синхронизацию.', lipAudioLabel: 'Аудио',
   },
 };
 
@@ -103,7 +110,10 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // 'music' → Udio track; 'video' → the 30-second film pipeline. Every generative
   // service lives in this ONE chatbox — the prompt becomes a brand-new asset
   // (image / track / film) rendered inline in the feed.
-  const [mode, setMode] = useState<'chat' | 'image' | 'music' | 'video'>('chat');
+  const [mode, setMode] = useState<'chat' | 'image' | 'music' | 'video' | 'lipsync'>('chat');
+  // Lip-sync mode needs a SECOND file (audio) alongside the video attachment.
+  const [lipAudio, setLipAudio] = useState<Media | null>(null);
+  const lipAudioRef = useRef<HTMLInputElement | null>(null);
   // Full-screen image lightbox — holds the URL of the tapped picture (generated or
   // attached). null = closed. Tap a chat image to open; backdrop / X / Esc closes.
   const [lightbox, setLightbox] = useState<string | null>(null);
@@ -264,6 +274,61 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       return;
     }
 
+    // ── LIP-SYNC (Wav2Lip) ─────────────────────────────────────────────────────
+    // Needs a video (the attachment) + an audio (lipAudio). Upload both to signed
+    // https (auth-gated), then POST /api/video/lipsync; render the synced master.
+    if (mode === 'lipsync') {
+      const vid = attachment && isVideo(attachment.mimeType) ? attachment : null;
+      if (!vid || !lipAudio) {
+        setMessages((prev) => [...prev, { role: 'assistant', text: `⚠️ ${t.lipsyncNeedFiles}` }]);
+        return;
+      }
+      const audioFile = lipAudio;
+      setMessages((prev) => [...prev, { role: 'user', text: '🎬 + 🎵', media: vid }, { role: 'assistant', text: t.generatingLipsync }]);
+      setAttachment(null); setLipAudio(null); setInput(''); setBusy(true);
+      const up = async (dataUrl: string, contentType: string): Promise<{ url: string } | { error: 'auth' | 'fail' }> => {
+        try {
+          const r = await fetch('/api/upload', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ dataUrl, contentType }), credentials: 'include',
+          });
+          if (r.status === 401) return { error: 'auth' };
+          const j = (await r.json().catch(() => ({}))) as { url?: string };
+          return j.url && j.url.startsWith('https://') ? { url: j.url } : { error: 'fail' };
+        } catch { return { error: 'fail' }; }
+      };
+      const failLip = (msg: string) => setMessages((prev) => {
+        const n = [...prev]; const l = n[n.length - 1];
+        if (l && l.role === 'assistant') n[n.length - 1] = { role: 'assistant', text: `⚠️ ${msg}` };
+        return n;
+      });
+      try {
+        const [v, a] = await Promise.all([up(vid.dataUrl, vid.mimeType), up(audioFile.dataUrl, audioFile.mimeType)]);
+        if ('error' in v || 'error' in a) {
+          const authBlocked = ('error' in v && v.error === 'auth') || ('error' in a && a.error === 'auth');
+          failLip(authBlocked ? t.lipsyncAuth : t.lipsyncFailed);
+          return;
+        }
+        const res = await fetch('/api/video/lipsync', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ videoUrl: v.url, audioUrl: a.url }), credentials: 'include',
+        });
+        const j = (await res.json().catch(() => ({}))) as { url?: string | null };
+        if (j.url && j.url.startsWith('https://')) {
+          setMessages((prev) => {
+            const n = [...prev]; const l = n[n.length - 1];
+            if (l && l.role === 'assistant') n[n.length - 1] = { role: 'assistant', text: '', videoUrl: j.url! };
+            return n;
+          });
+        } else failLip(t.lipsyncFailed);
+      } catch {
+        failLip(t.lipsyncFailed);
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
+
     const userMsg: Msg = { role: 'user', text, ...(attachment ? { media: attachment } : {}) };
     const history = [...messages, userMsg];
     setMessages([...history, { role: 'assistant', text: '' }]);
@@ -327,7 +392,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     } finally {
       setBusy(false);
     }
-  }, [input, attachment, busy, messages, mode, locale, t.imageFailed, t.musicFailed, t.videoFailed, t.generatingVideo]);
+  }, [input, attachment, busy, messages, mode, locale, lipAudio, t.imageFailed, t.musicFailed, t.videoFailed, t.generatingVideo, t.generatingLipsync, t.lipsyncNeedFiles, t.lipsyncAuth, t.lipsyncFailed]);
 
   // Magic Wand — rewrite the current textarea prompt into an AI-optimized version
   // IN PLACE (Section 7 / 8A). Fail-soft: the endpoint returns the original prompt
@@ -530,7 +595,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 </div>
               )}
               {m.text || (busy && m.role === 'assistant' && i === messages.length - 1
-                ? <span className="inline-flex items-center gap-1.5 text-neutral-500"><Loader2 size={13} className="animate-spin" /> {mode === 'image' ? t.generatingImage : mode === 'music' ? t.generatingMusic : mode === 'video' ? t.generatingVideo : t.thinking}</span>
+                ? <span className="inline-flex items-center gap-1.5 text-neutral-500"><Loader2 size={13} className="animate-spin" /> {mode === 'image' ? t.generatingImage : mode === 'music' ? t.generatingMusic : mode === 'video' ? t.generatingVideo : mode === 'lipsync' ? t.generatingLipsync : t.thinking}</span>
                 : null)}
               {/* Per-response actions on a TEXT reply — Read-aloud + Copy. No
                   Like/Dislike, per the one-window spec. */}
@@ -597,7 +662,47 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           >
             <Film size={13} /> {t.modeVideo}
           </button>
+          <button
+            type="button"
+            onClick={() => setMode('lipsync')}
+            aria-pressed={mode === 'lipsync'}
+            className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 transition-colors ${mode === 'lipsync' ? 'bg-[#00D2FF]/15 text-[#00D2FF]' : 'text-neutral-400 hover:text-white'}`}
+          >
+            <Mic2 size={13} /> {t.modeLipsync}
+          </button>
         </div>
+        {/* Lip-sync needs a SECOND file — the audio. The [Clip] button holds the
+            video; this chip holds the audio track. Shown only in lip-sync mode. */}
+        {mode === 'lipsync' && (
+          <div className="mb-2 flex items-center gap-2">
+            <input
+              ref={lipAudioRef}
+              type="file"
+              accept="audio/*"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0]; if (!f) return;
+                const r = new FileReader();
+                r.onload = () => setLipAudio({ dataUrl: String(r.result), mimeType: f.type || 'audio/mpeg' });
+                r.readAsDataURL(f);
+              }}
+            />
+            {lipAudio ? (
+              <span className="inline-flex items-center gap-2 rounded-lg border border-[#00D2FF]/30 bg-[#00D2FF]/5 px-2.5 py-1.5 text-[12px] text-[#00D2FF]">
+                <Music2 size={13} /> {t.lipAudioLabel}
+                <button type="button" onClick={() => setLipAudio(null)} aria-label="remove audio" className="text-neutral-400 hover:text-white"><X size={12} /></button>
+              </span>
+            ) : (
+              <button
+                type="button"
+                onClick={() => lipAudioRef.current?.click()}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-white/15 px-2.5 py-1.5 text-[12px] text-neutral-400 transition-colors hover:border-[#00D2FF]/40 hover:text-white"
+              >
+                <Music2 size={13} /> + {t.lipAudioLabel}
+              </button>
+            )}
+          </div>
+        )}
         {attachment && (
           <div className="mb-2 inline-flex items-center gap-2 rounded-lg border border-[#00D2FF]/30 bg-[#00D2FF]/5 p-1 pr-2">
             {isImage(attachment.mimeType) ? (
@@ -632,7 +737,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send(); } }}
             rows={1}
             disabled={enhancing}
-            placeholder={recording ? t.recording : mode === 'image' ? t.imgPlaceholder : mode === 'music' ? t.musicPlaceholder : mode === 'video' ? t.videoPlaceholder : t.placeholder}
+            placeholder={recording ? t.recording : mode === 'image' ? t.imgPlaceholder : mode === 'music' ? t.musicPlaceholder : mode === 'video' ? t.videoPlaceholder : mode === 'lipsync' ? t.lipsyncPlaceholder : t.placeholder}
             className="max-h-32 min-h-[44px] flex-1 resize-none rounded-xl bg-white/[0.04] px-3 py-3 text-[16px] text-white placeholder:text-neutral-600 outline-none focus:ring-1 focus:ring-[#00D2FF]/40 disabled:opacity-60"
           />
           {/* Magic Wand — one-tap AI prompt enhancement, in place. */}
@@ -646,7 +751,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           >
             {enhancing ? <Loader2 size={18} className="animate-spin text-[#00D2FF]" /> : <Wand2 size={18} />}
           </button>
-          <button type="button" onClick={() => void send()} disabled={busy || (!input.trim() && !attachment)} aria-label="send"
+          <button type="button" onClick={() => void send()} disabled={busy || (mode === 'lipsync' ? (!attachment || !lipAudio) : (!input.trim() && !attachment))} aria-label="send"
             className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-r from-[#00D2FF] to-[#0085FF] text-black transition-all hover:brightness-110 disabled:opacity-40">
             {busy ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
           </button>
