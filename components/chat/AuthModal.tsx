@@ -166,12 +166,19 @@ export default function AuthModal({ open, locale, onClose, onAuthed, initialMode
         if (error) throw error;
         onAuthed?.(); onClose();
       } else if (mode === 'register') {
-        const { error } = await supabase.auth.signUp({
+        const { data, error } = await supabase.auth.signUp({
           email, password,
           options: { data: { full_name: name || undefined }, emailRedirectTo: redirectTo },
         });
         if (error) throw error;
-        setNotice(t.checkEmail);
+        // CRITICAL: when the project has email-confirmation OFF, signUp returns a
+        // LIVE session — the user is already signed in. The old code always showed
+        // "check your email" and never logged them in, so registration looked
+        // broken (an email that never arrives). Sign them in immediately when a
+        // session exists; only fall back to the confirm-email notice when the
+        // project actually requires confirmation (no session returned).
+        if (data.session) { onAuthed?.(); onClose(); }
+        else setNotice(t.checkEmail);
       } else if (mode === 'magic') {
         const { error } = await supabase.auth.signInWithOtp({ email, options: { emailRedirectTo: redirectTo } });
         if (error) throw error;
