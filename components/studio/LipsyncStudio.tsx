@@ -19,28 +19,28 @@ const COPY: Record<Lang, {
   title: string; subtitle: string;
   videoLabel: string; videoHint: string; audioLabel: string; audioHint: string;
   execute: string; running: string; result: string; download: string;
-  needBoth: string; failed: string; replace: string;
+  needBoth: string; failed: string; replace: string; authNeeded: string;
 }> = {
   ka: {
     title: 'AI Lipsync სტუდია', subtitle: 'ზუსტი ტუჩების სინქრონი — საუბარი ან მუსიკა',
     videoLabel: 'ავატარის ვიდეო', videoHint: 'MP4 / MOV / WEBM — ჩააგდე ან აირჩიე',
     audioLabel: 'აუდიო ტრეკი', audioHint: 'MP3 / WAV — ჩააგდე ან აირჩიე',
     execute: 'ლიფსინკის გაშვება', running: 'სინქრონდება ტუჩები…', result: 'შედეგი',
-    download: 'ჩამოტვირთვა', needBoth: 'ატვირთე ვიდეოც და აუდიოც.', failed: 'სინქრონი ვერ მოხერხდა. სცადე სხვა ფაილებით.', replace: 'შეცვლა',
+    download: 'ჩამოტვირთვა', needBoth: 'ატვირთე ვიდეოც და აუდიოც.', failed: 'სინქრონი ვერ მოხერხდა. სცადე სხვა ფაილებით.', replace: 'შეცვლა', authNeeded: 'ლიფსინქისთვის ჯერ გაიარე ავტორიზაცია (ფაილების ასატვირთად).',
   },
   en: {
     title: 'AI Lipsync Studio', subtitle: 'Precise lip synchronization — speech or music',
     videoLabel: 'Avatar video', videoHint: 'MP4 / MOV / WEBM — drop or choose',
     audioLabel: 'Audio track', audioHint: 'MP3 / WAV — drop or choose',
     execute: 'Run lip-sync', running: 'Syncing the lips…', result: 'Result',
-    download: 'Download', needBoth: 'Add both a video and an audio track.', failed: 'Lip-sync failed. Try different files.', replace: 'Replace',
+    download: 'Download', needBoth: 'Add both a video and an audio track.', failed: 'Lip-sync failed. Try different files.', replace: 'Replace', authNeeded: 'Sign in first to use lip-sync (to upload your files).',
   },
   ru: {
     title: 'AI Lipsync студия', subtitle: 'Точная синхронизация губ — речь или музыка',
     videoLabel: 'Видео аватара', videoHint: 'MP4 / MOV / WEBM — перетащите или выберите',
     audioLabel: 'Аудиодорожка', audioHint: 'MP3 / WAV — перетащите или выберите',
     execute: 'Запустить синхро', running: 'Синхронизирую губы…', result: 'Результат',
-    download: 'Скачать', needBoth: 'Добавьте и видео, и аудио.', failed: 'Не удалось. Попробуйте другие файлы.', replace: 'Заменить',
+    download: 'Скачать', needBoth: 'Добавьте и видео, и аудио.', failed: 'Не удалось. Попробуйте другие файлы.', replace: 'Заменить', authNeeded: 'Войдите, чтобы использовать синхронизацию (для загрузки файлов).',
   },
 };
 
@@ -102,26 +102,34 @@ export default function LipsyncStudio({ locale = 'ka' }: { locale?: Lang }) {
   const [error, setError] = useState<string | null>(null);
   const [resultUrl, setResultUrl] = useState<string | null>(null);
 
-  const upload = useCallback(async (p: Picked): Promise<string | null> => {
+  const upload = useCallback(async (p: Picked): Promise<{ url: string } | { error: 'auth' | 'fail' }> => {
     try {
       const res = await fetch('/api/upload', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ dataUrl: p.dataUrl, contentType: p.type }), credentials: 'include',
       });
+      // /api/upload is auth-gated: a logged-out user gets 401, which previously
+      // surfaced only as a generic "lip-sync failed". Distinguish it so we can
+      // tell the user the REAL reason (sign in) instead of "try other files".
+      if (res.status === 401) return { error: 'auth' };
       const j = (await res.json().catch(() => ({}))) as { url?: string };
-      return j.url && j.url.startsWith('https://') ? j.url : null;
-    } catch { return null; }
+      return j.url && j.url.startsWith('https://') ? { url: j.url } : { error: 'fail' };
+    } catch { return { error: 'fail' }; }
   }, []);
 
   const run = useCallback(async () => {
     if (!video || !audio) { setError(t.needBoth); return; }
     setError(null); setResultUrl(null); setBusy(true);
     try {
-      const [videoUrl, audioUrl] = await Promise.all([upload(video), upload(audio)]);
-      if (!videoUrl || !audioUrl) { setError(t.failed); return; }
+      const [v, a] = await Promise.all([upload(video), upload(audio)]);
+      if ('error' in v || 'error' in a) {
+        const authBlocked = ('error' in v && v.error === 'auth') || ('error' in a && a.error === 'auth');
+        setError(authBlocked ? t.authNeeded : t.failed);
+        return;
+      }
       const res = await fetch('/api/video/lipsync', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ videoUrl, audioUrl }), credentials: 'include',
+        body: JSON.stringify({ videoUrl: v.url, audioUrl: a.url }), credentials: 'include',
       });
       const j = (await res.json().catch(() => ({}))) as { url?: string | null };
       if (j.url && j.url.startsWith('https://')) setResultUrl(j.url);
