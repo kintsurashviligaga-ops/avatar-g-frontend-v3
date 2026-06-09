@@ -13,6 +13,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Send, Mic, Square, Paperclip, X, Loader2, Sparkles, Film, Music2, FileText, Image as ImageIcon, Download, MessageSquare, Wand2, Volume2, Copy, Check } from 'lucide-react';
+import { driveFilmStudio } from '@/lib/chat/filmStudioClient';
 
 type Lang = 'ka' | 'en' | 'ru';
 
@@ -21,6 +22,7 @@ const COPY: Record<Lang, {
   modeChat: string; modeImage: string; imgPlaceholder: string; generatingImage: string; imageFailed: string; imgDownload: string;
   magicHint: string;
   modeMusic: string; musicPlaceholder: string; generatingMusic: string; musicFailed: string;
+  modeVideo: string; videoPlaceholder: string; generatingVideo: string; videoFailed: string;
 }> = {
   ka: {
     title: 'ჭკვიანი ასისტენტი', subtitle: 'ინტელექტუალური მულტიმოდალური ასისტენტი',
@@ -31,6 +33,8 @@ const COPY: Record<Lang, {
     magicHint: 'AI-ით პრომპტის გაუმჯობესება',
     modeMusic: 'მუსიკა', musicPlaceholder: 'აღწერე მუსიკა (მაგ. ეპიკური კინო-სცენა)…',
     generatingMusic: 'მუსიკა იქმნება… (1–3 წუთი)', musicFailed: 'მუსიკის გენერაცია ვერ მოხერხდა. სცადე თავიდან.',
+    modeVideo: 'ვიდეო', videoPlaceholder: 'აღწერე 30-წამიანი ვიდეო (ფოტო — პერსონაჟისთვის)…',
+    generatingVideo: 'ვიდეო იქმნება… (1–2 წუთი)', videoFailed: 'ვიდეოს გენერაცია ვერ მოხერხდა.',
   },
   en: {
     title: 'Smart Assistant', subtitle: 'Intelligent multimodal assistant',
@@ -41,6 +45,8 @@ const COPY: Record<Lang, {
     magicHint: 'Enhance prompt with AI',
     modeMusic: 'Music', musicPlaceholder: 'Describe the music (e.g. epic cinematic scene)…',
     generatingMusic: 'Composing music… (1–3 min)', musicFailed: 'Music generation failed. Try again.',
+    modeVideo: 'Video', videoPlaceholder: 'Describe a 30-second video (attach a photo for the character)…',
+    generatingVideo: 'Producing video… (1–2 min)', videoFailed: 'Video generation failed.',
   },
   ru: {
     title: 'Умный ассистент', subtitle: 'Интеллектуальный мультимодальный ассистент',
@@ -51,6 +57,8 @@ const COPY: Record<Lang, {
     magicHint: 'Улучшить промпт с AI',
     modeMusic: 'Музыка', musicPlaceholder: 'Опишите музыку (напр. эпичная кино-сцена)…',
     generatingMusic: 'Создаю музыку… (1–3 мин)', musicFailed: 'Не удалось создать музыку. Попробуйте снова.',
+    modeVideo: 'Видео', videoPlaceholder: 'Опишите 30-секундное видео (фото — для персонажа)…',
+    generatingVideo: 'Создаю видео… (1–2 мин)', videoFailed: 'Не удалось создать видео.',
   },
 };
 
@@ -78,7 +86,7 @@ const STARTERS: Record<Lang, { label: string; prompt: string; mode: 'chat' | 'im
 };
 
 interface Media { dataUrl: string; mimeType: string }
-interface Msg { role: 'user' | 'assistant'; text: string; media?: Media; imageUrl?: string; audioUrl?: string }
+interface Msg { role: 'user' | 'assistant'; text: string; media?: Media; imageUrl?: string; audioUrl?: string; videoUrl?: string }
 
 const isImage = (m: string) => m.startsWith('image/');
 const isAudio = (m: string) => m.startsWith('audio/');
@@ -91,10 +99,11 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   const [attachment, setAttachment] = useState<Media | null>(null); // image / audio / video / pdf
   const [busy, setBusy] = useState(false);
   const [recording, setRecording] = useState(false);
-  // Composer mode: 'chat' → multimodal answer; 'image' → NanoBanana image
-  // generation; 'music' → Udio music generation. The prompt becomes a brand-new
-  // asset (image / track) rendered inline in the feed.
-  const [mode, setMode] = useState<'chat' | 'image' | 'music'>('chat');
+  // Composer mode: 'chat' → multimodal answer; 'image' → NanoBanana image;
+  // 'music' → Udio track; 'video' → the 30-second film pipeline. Every generative
+  // service lives in this ONE chatbox — the prompt becomes a brand-new asset
+  // (image / track / film) rendered inline in the feed.
+  const [mode, setMode] = useState<'chat' | 'image' | 'music' | 'video'>('chat');
   // Full-screen image lightbox — holds the URL of the tapped picture (generated or
   // attached). null = closed. Tap a chat image to open; backdrop / X / Esc closes.
   const [lightbox, setLightbox] = useState<string | null>(null);
@@ -203,6 +212,58 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       return;
     }
 
+    // ── VIDEO GENERATION (30-second film pipeline) ─────────────────────────────
+    // In video mode the prompt is a scene; an attached photo locks the character.
+    // Reuses the proven driveFilmStudio client (orchestrate → poll → assemble),
+    // streams its live status into the assistant bubble, then renders the master
+    // inline — so the full film service lives in this one chatbox.
+    if (mode === 'video' && text) {
+      const refs = attachment && isImage(attachment.mimeType) ? [attachment.dataUrl] : [];
+      setMessages((prev) => [
+        ...prev,
+        { role: 'user', text, ...(attachment ? { media: attachment } : {}) },
+        { role: 'assistant', text: t.generatingVideo },
+      ]);
+      setInput(''); setAttachment(null); setBusy(true);
+      try {
+        const res = await driveFilmStudio({
+          prompt: text,
+          referenceImages: refs,
+          locale,
+          onProgress: (p) => {
+            const status = p.message?.trim() || t.generatingVideo;
+            setMessages((prev) => {
+              const next = [...prev];
+              const last = next[next.length - 1];
+              if (last && last.role === 'assistant' && !last.videoUrl) next[next.length - 1] = { ...last, text: status };
+              return next;
+            });
+          },
+        });
+        setMessages((prev) => {
+          const next = [...prev];
+          const last = next[next.length - 1];
+          if (last && last.role === 'assistant') {
+            next[next.length - 1] =
+              res.ok && res.masterUrl
+                ? { role: 'assistant', text: '', videoUrl: res.masterUrl }
+                : { role: 'assistant', text: `⚠️ ${res.error || t.videoFailed}` };
+          }
+          return next;
+        });
+      } catch {
+        setMessages((prev) => {
+          const next = [...prev];
+          const last = next[next.length - 1];
+          if (last && last.role === 'assistant') next[next.length - 1] = { role: 'assistant', text: `⚠️ ${t.videoFailed}` };
+          return next;
+        });
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
+
     const userMsg: Msg = { role: 'user', text, ...(attachment ? { media: attachment } : {}) };
     const history = [...messages, userMsg];
     setMessages([...history, { role: 'assistant', text: '' }]);
@@ -266,7 +327,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     } finally {
       setBusy(false);
     }
-  }, [input, attachment, busy, messages, mode, t.imageFailed, t.musicFailed]);
+  }, [input, attachment, busy, messages, mode, locale, t.imageFailed, t.musicFailed, t.videoFailed, t.generatingVideo]);
 
   // Magic Wand — rewrite the current textarea prompt into an AI-optimized version
   // IN PLACE (Section 7 / 8A). Fail-soft: the endpoint returns the original prompt
@@ -453,8 +514,23 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                   </a>
                 </div>
               )}
+              {m.videoUrl && (
+                <div className="space-y-1.5">
+                  {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+                  <video src={m.videoUrl} controls playsInline className="max-h-80 w-full rounded-lg bg-black" />
+                  <a
+                    href={m.videoUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    download
+                    className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#00D2FF] hover:underline"
+                  >
+                    <Download size={11} /> {t.imgDownload}
+                  </a>
+                </div>
+              )}
               {m.text || (busy && m.role === 'assistant' && i === messages.length - 1
-                ? <span className="inline-flex items-center gap-1.5 text-neutral-500"><Loader2 size={13} className="animate-spin" /> {mode === 'image' ? t.generatingImage : mode === 'music' ? t.generatingMusic : t.thinking}</span>
+                ? <span className="inline-flex items-center gap-1.5 text-neutral-500"><Loader2 size={13} className="animate-spin" /> {mode === 'image' ? t.generatingImage : mode === 'music' ? t.generatingMusic : mode === 'video' ? t.generatingVideo : t.thinking}</span>
                 : null)}
               {/* Per-response actions on a TEXT reply — Read-aloud + Copy. No
                   Like/Dislike, per the one-window spec. */}
@@ -513,6 +589,14 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           >
             <Music2 size={13} /> {t.modeMusic}
           </button>
+          <button
+            type="button"
+            onClick={() => setMode('video')}
+            aria-pressed={mode === 'video'}
+            className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 transition-colors ${mode === 'video' ? 'bg-[#00D2FF]/15 text-[#00D2FF]' : 'text-neutral-400 hover:text-white'}`}
+          >
+            <Film size={13} /> {t.modeVideo}
+          </button>
         </div>
         {attachment && (
           <div className="mb-2 inline-flex items-center gap-2 rounded-lg border border-[#00D2FF]/30 bg-[#00D2FF]/5 p-1 pr-2">
@@ -548,7 +632,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send(); } }}
             rows={1}
             disabled={enhancing}
-            placeholder={recording ? t.recording : mode === 'image' ? t.imgPlaceholder : mode === 'music' ? t.musicPlaceholder : t.placeholder}
+            placeholder={recording ? t.recording : mode === 'image' ? t.imgPlaceholder : mode === 'music' ? t.musicPlaceholder : mode === 'video' ? t.videoPlaceholder : t.placeholder}
             className="max-h-32 min-h-[44px] flex-1 resize-none rounded-xl bg-white/[0.04] px-3 py-3 text-[16px] text-white placeholder:text-neutral-600 outline-none focus:ring-1 focus:ring-[#00D2FF]/40 disabled:opacity-60"
           />
           {/* Magic Wand — one-tap AI prompt enhancement, in place. */}
