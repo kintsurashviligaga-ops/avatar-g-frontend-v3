@@ -27,22 +27,22 @@ import { ThemeToggle } from '@/components/ThemeToggle';
 type Lang = 'ka' | 'en' | 'ru';
 
 const COPY: Record<Lang, {
-  menu: string; settings: string; newChat: string; topUp: string; services: string;
+  menu: string; settings: string; newChat: string; topUp: string; services: string; language: string;
   account: string; accountGuest: string; library: string; login: string; signup: string;
   signOut: string; theme: string; legal: string; privacy: string; terms: string; support: string;
 }> = {
   ka: {
-    menu: 'მენიუ', settings: 'პარამეტრები', newChat: 'ახალი ჩატი', topUp: 'შევსება', services: 'სერვისები',
+    menu: 'მენიუ', settings: 'პარამეტრები', newChat: 'ახალი ჩატი', topUp: 'შევსება', services: 'სერვისები', language: 'ენა',
     account: 'ანგარიში', accountGuest: 'სტუმარი', library: 'ბიბლიოთეკა · ისტორია', login: 'შესვლა', signup: 'რეგისტრაცია',
     signOut: 'გასვლა', theme: 'თემა', legal: 'სამართლებრივი', privacy: 'კონფიდენციალურობა', terms: 'წესები და პირობები', support: 'დახმარება',
   },
   en: {
-    menu: 'Menu', settings: 'Settings', newChat: 'New chat', topUp: 'Top up', services: 'Services',
+    menu: 'Menu', settings: 'Settings', newChat: 'New chat', topUp: 'Top up', services: 'Services', language: 'Language',
     account: 'Account', accountGuest: 'Guest', library: 'Library · History', login: 'Sign in', signup: 'Sign up',
     signOut: 'Sign out', theme: 'Theme', legal: 'Legal', privacy: 'Privacy Policy', terms: 'Terms of Service', support: 'Support',
   },
   ru: {
-    menu: 'Меню', settings: 'Настройки', newChat: 'Новый чат', topUp: 'Пополнить', services: 'Сервисы',
+    menu: 'Меню', settings: 'Настройки', newChat: 'Новый чат', topUp: 'Пополнить', services: 'Сервисы', language: 'Язык',
     account: 'Аккаунт', accountGuest: 'Гость', library: 'Библиотека · История', login: 'Войти', signup: 'Регистрация',
     signOut: 'Выйти', theme: 'Тема', legal: 'Правовое', privacy: 'Конфиденциальность', terms: 'Условия', support: 'Поддержка',
   },
@@ -184,6 +184,22 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
               <div className="flex items-center justify-between rounded-xl px-3 py-2 text-[13.5px] text-app-text">
                 <span>{t.theme}</span>
                 <ThemeToggle label={t.theme} />
+              </div>
+
+              {/* Language switcher — ka / en / ru (navigates to the locale's dashboard). */}
+              <div className="px-3 pb-1 pt-2">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-app-muted">{t.language}</p>
+                <div className="mt-1.5 grid grid-cols-3 gap-1.5">
+                  {([['ka', 'ქართული'], ['en', 'English'], ['ru', 'Русский']] as const).map(([code, label]) => (
+                    <a
+                      key={code}
+                      href={`/${code}/dashboard`}
+                      className={`inline-flex items-center justify-center rounded-xl px-2 py-2 text-center text-[12px] font-medium transition-colors ${lang === code ? 'bg-app-accent/12 text-app-accent' : 'bg-app-elevated text-app-text hover:opacity-80'}`}
+                    >
+                      {label}
+                    </a>
+                  ))}
+                </div>
               </div>
 
               <button type="button" onClick={() => { setMenuOpen(false); setSheet('library'); }} className={drawerRow}>

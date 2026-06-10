@@ -17,7 +17,7 @@
  */
 
 import { useCallback, useEffect, useState } from 'react';
-import { Film, Sparkles, Wand2, ChevronRight } from 'lucide-react';
+import { Film, Sparkles, ChevronRight } from 'lucide-react';
 import { ConversationalFilmStudio } from './ConversationalFilmStudio';
 import OmniStudio from './OmniStudio';
 import LipsyncStudio from './LipsyncStudio';
@@ -113,7 +113,6 @@ export function ServiceHub({ locale = 'ka', isAuthenticated = false }: { locale?
   const cards = [
     { id: 'film' as const, icon: <Film size={22} />, title: t.filmTitle, sub: t.filmSub, tag: t.filmTag, primary: true },
     { id: 'omni' as const, icon: <Sparkles size={22} />, title: t.omniTitle, sub: t.omniSub, tag: t.omniTag, primary: false },
-    { id: 'lipsync' as const, icon: <Wand2 size={22} />, title: t.lipTitle, sub: t.lipSub, tag: t.lipTag, primary: false },
   ];
 
   return (

@@ -12,7 +12,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Send, Mic, Square, Plus, X, Loader2, Sparkles, Film, Music2, FileText, Image as ImageIcon, Download, MessageSquare, Wand2, Volume2, Copy, Check, Mic2, ChevronDown } from 'lucide-react';
+import { Send, Mic, Square, Plus, X, Loader2, Sparkles, Film, Music2, FileText, Image as ImageIcon, Download, MessageSquare, Wand2, Volume2, Copy, Check, ChevronDown } from 'lucide-react';
 import { driveFilmStudio } from '@/lib/chat/filmStudioClient';
 import { Markdown } from './Markdown';
 
@@ -102,7 +102,9 @@ const STAGES: Record<Lang, Record<'image' | 'music' | 'video' | 'lipsync', strin
 // Rough wall-clock targets (seconds) that drive the eased progress bar toward ~95%
 // without ever claiming completion before the asset actually returns.
 const PROGRESS_TARGET: Record<'image' | 'music' | 'video' | 'lipsync', number> = {
-  image: 22, music: 150, video: 110, lipsync: 70,
+  // image gen (2K) realistically takes ~50–75s; pace the bar to that so it doesn't
+  // sit at 95% looking stuck (the old 22s target felt "broken / not generating").
+  image: 65, music: 150, video: 110, lipsync: 70,
 };
 
 function fmtClock(sec: number): string {
@@ -169,7 +171,6 @@ const MODES = [
   { id: 'image', Icon: ImageIcon, key: 'modeImage' },
   { id: 'music', Icon: Music2, key: 'modeMusic' },
   { id: 'video', Icon: Film, key: 'modeVideo' },
-  { id: 'lipsync', Icon: Mic2, key: 'modeLipsync' },
 ] as const;
 
 // First-run examples — tappable cards that make the assistant self-explanatory.

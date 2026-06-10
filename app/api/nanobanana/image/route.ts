@@ -76,14 +76,22 @@ export async function POST(req: NextRequest) {
     // fall back to the raw provider URL (better than nothing).
     let hostedUrl = result.url;
     try {
-      const r = await fetch(result.url);
+      // Time-box the copy: a slow provider CDN must NOT hang the function until the
+      // Vercel maxDuration limit (that surfaced as an intermittent platform 500).
+      const ac = new AbortController();
+      const to = setTimeout(() => ac.abort(), 25_000);
+      const r = await fetch(result.url, { signal: ac.signal }).finally(() => clearTimeout(to));
       if (r.ok) {
         const ct = r.headers.get('content-type') || 'image/png';
         const ext = /jpe?g/i.test(ct) ? 'jpg' : /webp/i.test(ct) ? 'webp' : 'png';
-        const b64 = Buffer.from(await r.arrayBuffer()).toString('base64');
-        const path = `omni/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
-        const signed = await uploadAndSign('uploads', path, b64, ct, 604800); // 7-day signed URL
-        if (signed) hostedUrl = signed;
+        const buf = Buffer.from(await r.arrayBuffer());
+        // Guard against pathologically large payloads blowing the function's memory.
+        if (buf.byteLength <= 18 * 1024 * 1024) {
+          const b64 = buf.toString('base64');
+          const path = `omni/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+          const signed = await uploadAndSign('uploads', path, b64, ct, 604800); // 7-day signed URL
+          if (signed) hostedUrl = signed;
+        }
       }
     } catch {
       /* fail-open — keep the provider URL */
