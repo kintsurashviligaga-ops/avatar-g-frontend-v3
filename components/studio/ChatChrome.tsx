@@ -140,7 +140,15 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
       </header>
 
       {/* ── Body (the chat) ──────────────────────────────────────────────────── */}
-      <div className={`min-h-0 flex-1 ${scrollBody ? 'overflow-y-auto' : 'flex'}`}>{children}</div>
+      {/* paddingBottom = the cookie banner's height (a CSS var it publishes while
+          shown) so the composer is never covered by it on first visit; collapses
+          to 0 the moment the banner is dismissed. */}
+      <div
+        className={`min-h-0 flex-1 ${scrollBody ? 'overflow-y-auto' : 'flex'}`}
+        style={{ paddingBottom: 'var(--cookie-bar-h, 0px)', transition: 'padding-bottom 0.2s ease' }}
+      >
+        {children}
+      </div>
 
       {/* ── Settings drawer ──────────────────────────────────────────────────── */}
       {menuOpen && (

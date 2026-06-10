@@ -12,7 +12,7 @@
  * those SDKs checks this flag and no-ops if false.
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 
@@ -69,6 +69,23 @@ export default function CookieConsent() {
   const t = COPY[locale === 'ka' || locale === 'en' || locale === 'ru' ? locale : 'ka'];
 
   const [show, setShow] = useState(false);
+  const barRef = useRef<HTMLDivElement>(null);
+
+  // Publish the banner's height as a CSS var so the chat composer (a fixed
+  // bottom surface) can lift itself clear of it — otherwise the banner overlaps
+  // the input's bottom controls on first visit. Collapses to 0 once dismissed.
+  useEffect(() => {
+    const root = document.documentElement;
+    if (!show) { root.style.setProperty('--cookie-bar-h', '0px'); return; }
+    const apply = () => {
+      const h = barRef.current?.offsetHeight ?? 0;
+      root.style.setProperty('--cookie-bar-h', h ? `${h + 20}px` : '0px');
+    };
+    apply();
+    const id = window.setTimeout(apply, 150); // after layout settles
+    window.addEventListener('resize', apply);
+    return () => { window.clearTimeout(id); window.removeEventListener('resize', apply); root.style.setProperty('--cookie-bar-h', '0px'); };
+  }, [show]);
 
   useEffect(() => {
     try {
@@ -92,6 +109,7 @@ export default function CookieConsent() {
 
   return (
     <div
+      ref={barRef}
       role="dialog"
       aria-live="polite"
       aria-label={t.title}
