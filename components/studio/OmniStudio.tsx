@@ -197,7 +197,10 @@ const STARTERS: Record<Lang, { label: string; prompt: string; mode: 'chat' | 'im
 };
 
 interface Media { dataUrl: string; mimeType: string }
-interface Msg { role: 'user' | 'assistant'; text: string; media?: Media; imageUrl?: string; audioUrl?: string; videoUrl?: string }
+interface Msg { role: 'user' | 'assistant'; text: string; medias?: Media[]; imageUrl?: string; audioUrl?: string; videoUrl?: string }
+
+// Up to this many files/images (or one video) can ride along with a single message.
+const MAX_ATTACHMENTS = 5;
 
 const isImage = (m: string) => m.startsWith('image/');
 const isAudio = (m: string) => m.startsWith('audio/');
@@ -207,17 +210,15 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   const t = COPY[locale] ?? COPY.ka;
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState('');
-  const [attachment, setAttachment] = useState<Media | null>(null); // image / audio / video / pdf
+  // Up to MAX_ATTACHMENTS files (images / video / audio / pdf) ride with a message.
+  const [attachments, setAttachments] = useState<Media[]>([]);
   const [busy, setBusy] = useState(false);
   const [recording, setRecording] = useState(false);
   // Composer mode: 'chat' → multimodal answer; 'image' → NanoBanana image;
   // 'music' → Udio track; 'video' → the 30-second film pipeline. Every generative
   // service lives in this ONE chatbox — the prompt becomes a brand-new asset
   // (image / track / film) rendered inline in the feed.
-  const [mode, setMode] = useState<'chat' | 'image' | 'music' | 'video' | 'lipsync'>('chat');
-  // Lip-sync mode needs a SECOND file (audio) alongside the video attachment.
-  const [lipAudio, setLipAudio] = useState<Media | null>(null);
-  const lipAudioRef = useRef<HTMLInputElement | null>(null);
+  const [mode, setMode] = useState<'chat' | 'image' | 'music' | 'video'>('chat');
   // Full-screen image lightbox — holds the URL of the tapped picture (generated or
   // attached). null = closed. Tap a chat image to open; backdrop / X / Esc closes.
   const [lightbox, setLightbox] = useState<string | null>(null);
@@ -289,7 +290,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
 
   const send = useCallback(async () => {
     const text = input.trim();
-    if ((!text && !attachment) || busy) return;
+    if ((!text && attachments.length === 0) || busy) return;
 
     // New generation token + abort controller. Every async finalizer below checks
     // `mine()` before mutating state, so Stop (which bumps the token + aborts) or a
@@ -388,13 +389,14 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     // streams its live status into the assistant bubble, then renders the master
     // inline — so the full film service lives in this one chatbox.
     if (mode === 'video' && text) {
-      const refs = attachment && isImage(attachment.mimeType) ? [attachment.dataUrl] : [];
+      const refs = attachments.filter((a) => isImage(a.mimeType)).map((a) => a.dataUrl);
+      const sentMedias = attachments;
       setMessages((prev) => [
         ...prev,
-        { role: 'user', text, ...(attachment ? { media: attachment } : {}) },
+        { role: 'user', text, ...(sentMedias.length ? { medias: sentMedias } : {}) },
         { role: 'assistant', text: t.generatingVideo },
       ]);
-      setInput(''); setAttachment(null); setBusy(true);
+      setInput(''); setAttachments([]); setBusy(true);
       try {
         const res = await driveFilmStudio({
           prompt: text,
@@ -438,80 +440,24 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       return;
     }
 
-    // ── LIP-SYNC (Wav2Lip) ─────────────────────────────────────────────────────
-    // Needs a video (the attachment) + an audio (lipAudio). Upload both to signed
-    // https (auth-gated), then POST /api/video/lipsync; render the synced master.
-    if (mode === 'lipsync') {
-      const vid = attachment && isVideo(attachment.mimeType) ? attachment : null;
-      if (!vid || !lipAudio) {
-        setMessages((prev) => [...prev, { role: 'assistant', text: `⚠️ ${t.lipsyncNeedFiles}` }]);
-        return;
-      }
-      const audioFile = lipAudio;
-      setMessages((prev) => [...prev, { role: 'user', text: '🎬 + 🎵', media: vid }, { role: 'assistant', text: t.generatingLipsync }]);
-      setAttachment(null); setLipAudio(null); setInput(''); setBusy(true);
-      const up = async (dataUrl: string, contentType: string): Promise<{ url: string } | { error: 'auth' | 'fail' }> => {
-        try {
-          const r = await fetch('/api/upload', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ dataUrl, contentType }), credentials: 'include', signal: ac.signal,
-          });
-          if (r.status === 401) return { error: 'auth' };
-          const j = (await r.json().catch(() => ({}))) as { url?: string };
-          return j.url && j.url.startsWith('https://') ? { url: j.url } : { error: 'fail' };
-        } catch { return { error: 'fail' }; }
-      };
-      const failLip = (msg: string) => setMessages((prev) => {
-        if (!mine()) return prev;
-        const n = [...prev]; const l = n[n.length - 1];
-        if (l && l.role === 'assistant') n[n.length - 1] = { role: 'assistant', text: `⚠️ ${msg}` };
-        return n;
-      });
-      try {
-        const [v, a] = await Promise.all([up(vid.dataUrl, vid.mimeType), up(audioFile.dataUrl, audioFile.mimeType)]);
-        if ('error' in v || 'error' in a) {
-          const authBlocked = ('error' in v && v.error === 'auth') || ('error' in a && a.error === 'auth');
-          failLip(authBlocked ? t.lipsyncAuth : t.lipsyncFailed);
-          return;
-        }
-        const res = await fetch('/api/video/lipsync', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ videoUrl: v.url, audioUrl: a.url }), credentials: 'include', signal: ac.signal,
-        });
-        const j = (await res.json().catch(() => ({}))) as { url?: string | null };
-        if (j.url && j.url.startsWith('https://')) {
-          setMessages((prev) => {
-            if (!mine()) return prev;
-            const n = [...prev]; const l = n[n.length - 1];
-            if (l && l.role === 'assistant') n[n.length - 1] = { role: 'assistant', text: '', videoUrl: j.url! };
-            return n;
-          });
-        } else failLip(t.lipsyncFailed);
-      } catch {
-        if (mine()) failLip(t.lipsyncFailed);
-      } finally {
-        if (mine()) setBusy(false);
-      }
-      return;
-    }
-
-    const userMsg: Msg = { role: 'user', text, ...(attachment ? { media: attachment } : {}) };
+    // ── CHAT (multimodal Gemini) ───────────────────────────────────────────────
+    const userMsg: Msg = { role: 'user', text, ...(attachments.length ? { medias: attachments } : {}) };
     const history = [...messages, userMsg];
     setMessages([...history, { role: 'assistant', text: '' }]);
-    setInput(''); setAttachment(null); setBusy(true);
+    setInput(''); setAttachments([]); setBusy(true);
 
     // Build the Gemini payload: text-only → string content; with media → native
-    // multimodal parts. Images map to a {type:'image'} part; audio / video / pdf
-    // map to a {type:'file'} part that the route forwards to Gemini as inline_data
-    // (Priority 2 — full native audio + video understanding).
+    // multimodal parts. Each image maps to a {type:'image'} part; audio / video /
+    // pdf map to {type:'file'} parts the route forwards to Gemini as inline_data
+    // (full native multi-file understanding — up to MAX_ATTACHMENTS per turn).
     const payload = history.map((m) => {
-      if (m.media) {
-        const mediaPart = isImage(m.media.mimeType)
-          ? { type: 'image', image: m.media.dataUrl }
-          : { type: 'file', data: m.media.dataUrl, mimeType: m.media.mimeType };
+      if (m.medias && m.medias.length) {
+        const mediaParts = m.medias.map((md) => isImage(md.mimeType)
+          ? { type: 'image', image: md.dataUrl }
+          : { type: 'file', data: md.dataUrl, mimeType: md.mimeType });
         return { role: m.role, content: [
           ...(m.text ? [{ type: 'text', text: m.text }] : []),
-          mediaPart,
+          ...mediaParts,
         ] };
       }
       return { role: m.role, content: m.text };
@@ -561,7 +507,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     } finally {
       if (mine()) setBusy(false);
     }
-  }, [input, attachment, busy, messages, mode, locale, lipAudio, t.imageFailed, t.musicFailed, t.videoFailed, t.generatingVideo, t.generatingLipsync, t.lipsyncNeedFiles, t.lipsyncAuth, t.lipsyncFailed]);
+  }, [input, attachments, busy, messages, mode, locale, t.imageFailed, t.musicFailed, t.videoFailed, t.generatingVideo]);
 
   // STOP — cancel the in-flight generation. Bumps the generation token (so every
   // pending finalizer no-ops), aborts the fetch, frees the composer, and converts
@@ -688,7 +634,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   const activeMode = MODES.find((mm) => mm.id === mode) ?? MODES[0];
   const ActiveModeIcon = activeMode.Icon;
   const activeModeKey = activeMode.key;
-  const canSend = mode === 'lipsync' ? (!!attachment && !!lipAudio) : (!!input.trim() || !!attachment);
+  const canSend = !!input.trim() || attachments.length > 0;
 
   return (
     <div
@@ -734,20 +680,24 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 ? 'max-w-[85%] rounded-2xl bg-app-elevated px-4 py-2.5 text-app-text'
                 : 'w-full max-w-full text-app-text'
             }`}>
-              {m.media && (
-                isImage(m.media.mimeType) ? (
-                  <button type="button" onClick={() => setLightbox(m.media!.dataUrl)} className="mb-2 block cursor-zoom-in" aria-label="open fullscreen">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={m.media.dataUrl} alt="attachment" className="max-h-48 rounded-lg" />
-                  </button>
-                ) : isVideo(m.media.mimeType) ? (
-                  // eslint-disable-next-line jsx-a11y/media-has-caption
-                  <video src={m.media.dataUrl} controls className="mb-2 max-h-48 rounded-lg" />
-                ) : isAudio(m.media.mimeType) ? (
-                  <audio src={m.media.dataUrl} controls className="mb-2 w-full" />
-                ) : (
-                  <span className="mb-2 inline-flex items-center gap-1.5 rounded-lg bg-app-elevated px-2 py-1 text-[11px] text-app-muted"><FileText size={12} /> document</span>
-                )
+              {m.medias && m.medias.length > 0 && (
+                <div className="mb-2 flex flex-wrap gap-2">
+                  {m.medias.map((md, mi) => (
+                    isImage(md.mimeType) ? (
+                      <button key={mi} type="button" onClick={() => setLightbox(md.dataUrl)} className="block cursor-zoom-in" aria-label="open fullscreen">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={md.dataUrl} alt="attachment" className="max-h-44 rounded-lg" />
+                      </button>
+                    ) : isVideo(md.mimeType) ? (
+                      // eslint-disable-next-line jsx-a11y/media-has-caption
+                      <video key={mi} src={md.dataUrl} controls className="max-h-44 rounded-lg" />
+                    ) : isAudio(md.mimeType) ? (
+                      <audio key={mi} src={md.dataUrl} controls className="w-full" />
+                    ) : (
+                      <span key={mi} className="inline-flex items-center gap-1.5 rounded-lg bg-app-elevated px-2 py-1 text-[11px] text-app-muted"><FileText size={12} /> document</span>
+                    )
+                  ))}
+                </div>
               )}
               {m.imageUrl && (
                 <div className="space-y-1.5">
@@ -857,57 +807,39 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       {/* Composer — refined, Gemini-style: one rounded pill, [+] attach, an inline
           mode selector (the "Flash ⌄" analog) and mic-when-empty / send-when-typing. */}
       <div className="shrink-0 pt-1">
-        {/* Lip-sync needs a SECOND file — the audio chip ([attach] holds the video). */}
-        {mode === 'lipsync' && (
-          <div className="mb-2 flex items-center gap-2">
-            <input
-              ref={lipAudioRef}
-              type="file"
-              accept="audio/*"
-              className="hidden"
-              onChange={(e) => {
-                const f = e.target.files?.[0]; if (!f) return;
-                const r = new FileReader();
-                r.onload = () => setLipAudio({ dataUrl: String(r.result), mimeType: f.type || 'audio/mpeg' });
-                r.readAsDataURL(f);
-              }}
-            />
-            {lipAudio ? (
-              <span className="inline-flex items-center gap-2 rounded-full bg-app-accent/10 px-3 py-1.5 text-[12px] text-app-accent">
-                <Music2 size={13} /> {t.lipAudioLabel}
-                <button type="button" onClick={() => setLipAudio(null)} aria-label="remove audio" className="text-app-muted hover:text-app-text"><X size={12} /></button>
-              </span>
-            ) : (
-              <button
-                type="button"
-                onClick={() => lipAudioRef.current?.click()}
-                className="inline-flex items-center gap-1.5 rounded-full bg-app-elevated px-3 py-1.5 text-[12px] text-app-muted transition-colors hover:text-app-text"
-              >
-                <Music2 size={13} /> + {t.lipAudioLabel}
-              </button>
-            )}
+        {/* Attachment previews — up to MAX_ATTACHMENTS files / images / a video,
+            each removable. They ride with the next message (text + files together). */}
+        {attachments.length > 0 && (
+          <div className="mb-2 flex flex-wrap gap-2">
+            {attachments.map((a, ai) => (
+              <div key={ai} className="relative">
+                {isImage(a.mimeType) ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={a.dataUrl} alt="" className="h-14 w-14 rounded-xl object-cover" />
+                ) : (
+                  <span className="flex h-14 w-14 items-center justify-center rounded-xl bg-app-surface text-app-accent">
+                    {isVideo(a.mimeType) ? <Film size={18} /> : isAudio(a.mimeType) ? <Music2 size={18} /> : <FileText size={18} />}
+                  </span>
+                )}
+                <button type="button" onClick={() => setAttachments((prev) => prev.filter((_, k) => k !== ai))} aria-label="remove"
+                  className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-app-surface text-app-muted shadow ring-1 ring-app-border/15 hover:text-app-text"><X size={11} /></button>
+              </div>
+            ))}
           </div>
         )}
 
-        {/* Attachment preview chip. */}
-        {attachment && (
-          <div className="mb-2 inline-flex items-center gap-2 rounded-2xl bg-app-elevated p-1 pr-2">
-            {isImage(attachment.mimeType) ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={attachment.dataUrl} alt="" className="h-10 w-10 rounded-xl object-cover" />
-            ) : (
-              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-app-surface text-app-accent">
-                {isVideo(attachment.mimeType) ? <Film size={16} /> : isAudio(attachment.mimeType) ? <Music2 size={16} /> : <FileText size={16} />}
-              </span>
-            )}
-            <button type="button" onClick={() => setAttachment(null)} className="text-app-muted hover:text-app-text"><X size={14} /></button>
-          </div>
-        )}
-
-        {/* Input surface — one clean rounded pill, no border, no gradient. */}
-        <input ref={fileRef} type="file" accept="image/*,audio/*,video/*,application/pdf" className="hidden" onChange={(e) => {
-          const f = e.target.files?.[0]; if (!f) return;
-          const r = new FileReader(); r.onload = () => setAttachment({ dataUrl: String(r.result), mimeType: f.type || 'application/octet-stream' }); r.readAsDataURL(f);
+        {/* Input surface — one clean rounded pill. The picker accepts MULTIPLE files
+            (images / video / audio / pdf), capped at MAX_ATTACHMENTS. */}
+        <input ref={fileRef} type="file" multiple accept="image/*,audio/*,video/*,application/pdf" className="hidden" onChange={(e) => {
+          const files = Array.from(e.target.files ?? []);
+          if (files.length) {
+            files.forEach((f) => {
+              const r = new FileReader();
+              r.onload = () => setAttachments((prev) => prev.length >= MAX_ATTACHMENTS ? prev : [...prev, { dataUrl: String(r.result), mimeType: f.type || 'application/octet-stream' }]);
+              r.readAsDataURL(f);
+            });
+          }
+          e.target.value = '';
         }} />
         <div className="flex items-end gap-1 rounded-[26px] bg-app-elevated px-2 py-1.5">
           {/* [+] add / attach */}
@@ -923,7 +855,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send(); } }}
             rows={1}
             disabled={enhancing}
-            placeholder={recording ? t.recording : mode === 'image' ? t.imgPlaceholder : mode === 'music' ? t.musicPlaceholder : mode === 'video' ? t.videoPlaceholder : mode === 'lipsync' ? t.lipsyncPlaceholder : t.placeholder}
+            placeholder={recording ? t.recording : mode === 'image' ? t.imgPlaceholder : mode === 'music' ? t.musicPlaceholder : mode === 'video' ? t.videoPlaceholder : t.placeholder}
             className="max-h-40 min-h-[36px] flex-1 resize-none border-0 bg-transparent px-1.5 py-2 text-[16px] text-app-text placeholder:text-app-muted/70 outline-none focus:ring-0 disabled:opacity-60"
           />
 
