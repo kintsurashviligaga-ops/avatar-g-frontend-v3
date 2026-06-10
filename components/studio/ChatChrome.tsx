@@ -15,7 +15,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import {
-  Menu, X, Plus, ArrowLeft, History, LogIn, UserPlus, LogOut, Shield, FileText, LifeBuoy, MessageSquarePlus,
+  Menu, X, Plus, ArrowLeft, History, LogIn, UserPlus, LogOut, Shield, FileText, LifeBuoy, MessageSquarePlus, Loader2,
 } from 'lucide-react';
 import { createBrowserClient } from '@/lib/supabase/browser';
 import { WalletRefillModal } from '@/components/chat/WalletRefill';
@@ -69,7 +69,11 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
   const [walletOpen, setWalletOpen] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
-  const [libraryOpen, setLibraryOpen] = useState(false);
+  // Every secondary surface (Library + the 3 legal pages) opens IN-WINDOW in this
+  // one slide-over — never a new tab or a route change. Legal embeds the real,
+  // vetted page (?embed=1 strips its chrome); X-Frame-Options is SAMEORIGIN so the
+  // same-origin iframe renders the full content cleanly.
+  const [sheet, setSheet] = useState<null | 'library' | 'privacy' | 'terms' | 'support'>(null);
   const [authed, setAuthed] = useState(false);
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [balanceGel, setBalanceGel] = useState<number | null>(null);
@@ -169,7 +173,7 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
                 <ThemeToggle label={t.theme} />
               </div>
 
-              <button type="button" onClick={() => { setMenuOpen(false); setLibraryOpen(true); }} className={drawerRow}>
+              <button type="button" onClick={() => { setMenuOpen(false); setSheet('library'); }} className={drawerRow}>
                 <History className="h-[18px] w-[18px] text-app-muted" /> {t.library}
               </button>
 
@@ -182,11 +186,11 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
                 <button type="button" onClick={async () => { try { await createBrowserClient().auth.signOut(); } catch { /* listener clears state */ } setMenuOpen(false); }} className={drawerRow}><LogOut className="h-[18px] w-[18px] text-app-muted" /> {t.signOut}</button>
               )}
 
-              {/* Legal — plain links, open in a new tab (cannot break the app). */}
+              {/* Legal — open IN-WINDOW (the real pages embedded), never a new tab. */}
               <p className="px-3 pb-1 pt-4 text-[11px] font-semibold uppercase tracking-wider text-app-muted">{t.legal}</p>
-              <a href={`/${locale}/privacy`} target="_blank" rel="noopener noreferrer" className={drawerRow}><Shield className="h-[18px] w-[18px] text-app-muted" /> {t.privacy}</a>
-              <a href={`/${locale}/terms`} target="_blank" rel="noopener noreferrer" className={drawerRow}><FileText className="h-[18px] w-[18px] text-app-muted" /> {t.terms}</a>
-              <a href={`/${locale}/support`} target="_blank" rel="noopener noreferrer" className={drawerRow}><LifeBuoy className="h-[18px] w-[18px] text-app-muted" /> {t.support}</a>
+              <button type="button" onClick={() => { setMenuOpen(false); setSheet('privacy'); }} className={drawerRow}><Shield className="h-[18px] w-[18px] text-app-muted" /> {t.privacy}</button>
+              <button type="button" onClick={() => { setMenuOpen(false); setSheet('terms'); }} className={drawerRow}><FileText className="h-[18px] w-[18px] text-app-muted" /> {t.terms}</button>
+              <button type="button" onClick={() => { setMenuOpen(false); setSheet('support'); }} className={drawerRow}><LifeBuoy className="h-[18px] w-[18px] text-app-muted" /> {t.support}</button>
             </div>
           </aside>
         </div>
@@ -194,8 +198,24 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
 
       <WalletRefillModal open={walletOpen} locale={locale} variant="obsidian" onClose={() => { setWalletOpen(false); void refreshBalance(); }} />
       <AuthModal open={authOpen} locale={lang} initialMode={authMode} onClose={() => setAuthOpen(false)} onAuthed={() => { setAuthOpen(false); void refreshBalance(); }} />
-      <StudioSheet open={libraryOpen} title={t.library} onClose={() => setLibraryOpen(false)}>
-        <StudioLibraryGrid locale={lang} />
+      <StudioSheet
+        open={sheet !== null}
+        title={sheet === 'library' ? t.library : sheet === 'privacy' ? t.privacy : sheet === 'terms' ? t.terms : sheet === 'support' ? t.support : ''}
+        onClose={() => setSheet(null)}
+        flush={sheet !== null && sheet !== 'library'}
+      >
+        {sheet === 'library' ? (
+          <StudioLibraryGrid locale={lang} />
+        ) : sheet ? (
+          // Legal pages embedded in-window. A spinner sits behind the iframe and is
+          // covered the moment the (opaque) page paints — no blank flash.
+          <div className="relative h-full w-full bg-app-bg">
+            <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+              <Loader2 className="h-5 w-5 animate-spin text-app-muted" />
+            </div>
+            <iframe key={sheet} src={`/${locale}/${sheet}?embed=1`} title={sheet} className="relative h-full w-full border-0 bg-app-bg" />
+          </div>
+        ) : null}
       </StudioSheet>
     </div>
   );

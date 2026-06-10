@@ -14,6 +14,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Send, Mic, Square, Paperclip, X, Loader2, Sparkles, Film, Music2, FileText, Image as ImageIcon, Download, MessageSquare, Wand2, Volume2, Copy, Check, Mic2, ChevronDown } from 'lucide-react';
 import { driveFilmStudio } from '@/lib/chat/filmStudioClient';
+import { Markdown } from './Markdown';
 
 type Lang = 'ka' | 'en' | 'ru';
 
@@ -793,7 +794,12 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                   return <GenerationProgress kind={mode} elapsed={elapsed} status={m.text} locale={locale} />;
                 }
                 if (pending && mode === 'chat' && !m.text) return <TypingDots />;
-                return m.text ? <span className="whitespace-pre-wrap">{m.text}</span> : null;
+                if (!m.text) return null;
+                // Assistant replies render as rich markdown (bold · lists · code ·
+                // links · tables); the user's own text stays verbatim.
+                return m.role === 'assistant'
+                  ? <Markdown>{m.text}</Markdown>
+                  : <span className="whitespace-pre-wrap">{m.text}</span>;
               })()}
               {/* Per-response actions on a TEXT reply — Read-aloud + Copy. No
                   Like/Dislike, per the one-window spec. */}
