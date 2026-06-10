@@ -15,7 +15,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import {
-  Menu, X, Plus, ArrowLeft, History, LogIn, UserPlus, LogOut, Shield, FileText, LifeBuoy, MessageSquarePlus, Loader2,
+  Menu, X, Plus, History, LogIn, UserPlus, LogOut, Shield, FileText, LifeBuoy, MessageSquarePlus, Loader2, LayoutGrid,
 } from 'lucide-react';
 import { createBrowserClient } from '@/lib/supabase/browser';
 import { WalletRefillModal } from '@/components/chat/WalletRefill';
@@ -27,22 +27,22 @@ import { ThemeToggle } from '@/components/ThemeToggle';
 type Lang = 'ka' | 'en' | 'ru';
 
 const COPY: Record<Lang, {
-  menu: string; settings: string; newChat: string; topUp: string;
+  menu: string; settings: string; newChat: string; topUp: string; services: string;
   account: string; accountGuest: string; library: string; login: string; signup: string;
   signOut: string; theme: string; legal: string; privacy: string; terms: string; support: string;
 }> = {
   ka: {
-    menu: 'მენიუ', settings: 'პარამეტრები', newChat: 'ახალი ჩატი', topUp: 'შევსება',
+    menu: 'მენიუ', settings: 'პარამეტრები', newChat: 'ახალი ჩატი', topUp: 'შევსება', services: 'სერვისები',
     account: 'ანგარიში', accountGuest: 'სტუმარი', library: 'ბიბლიოთეკა · ისტორია', login: 'შესვლა', signup: 'რეგისტრაცია',
     signOut: 'გასვლა', theme: 'თემა', legal: 'სამართლებრივი', privacy: 'კონფიდენციალურობა', terms: 'წესები და პირობები', support: 'დახმარება',
   },
   en: {
-    menu: 'Menu', settings: 'Settings', newChat: 'New chat', topUp: 'Top up',
+    menu: 'Menu', settings: 'Settings', newChat: 'New chat', topUp: 'Top up', services: 'Services',
     account: 'Account', accountGuest: 'Guest', library: 'Library · History', login: 'Sign in', signup: 'Sign up',
     signOut: 'Sign out', theme: 'Theme', legal: 'Legal', privacy: 'Privacy Policy', terms: 'Terms of Service', support: 'Support',
   },
   ru: {
-    menu: 'Меню', settings: 'Настройки', newChat: 'Новый чат', topUp: 'Пополнить',
+    menu: 'Меню', settings: 'Настройки', newChat: 'Новый чат', topUp: 'Пополнить', services: 'Сервисы',
     account: 'Аккаунт', accountGuest: 'Гость', library: 'Библиотека · История', login: 'Войти', signup: 'Регистрация',
     signOut: 'Выйти', theme: 'Тема', legal: 'Правовое', privacy: 'Конфиденциальность', terms: 'Условия', support: 'Поддержка',
   },
@@ -112,12 +112,9 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
       {/* ── Top bar (minimal, borderless) ────────────────────────────────────── */}
       <header className="sticky top-0 z-30 shrink-0 bg-app-bg/85 backdrop-blur-xl" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
         <div className="mx-auto flex h-14 w-full max-w-3xl items-center justify-between gap-2 px-3">
+          {/* No back arrow — it was easy to mis-tap and navigate away. Returning to
+              the service hub now lives as an explicit "Services" item in the menu. */}
           <div className="flex min-w-0 items-center gap-1">
-            {onBack && (
-              <button type="button" onClick={onBack} aria-label="Services" className="-ml-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text">
-                <ArrowLeft className="h-5 w-5" />
-              </button>
-            )}
             <span className="truncate text-[15px] font-semibold tracking-tight text-app-text">
               {title ?? <>MyAvatar<span className="text-app-accent">.ge</span></>}
             </span>
@@ -158,6 +155,14 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
               {onNewChat && (
                 <button type="button" onClick={() => { setMenuOpen(false); onNewChat(); }} className={`${drawerRow} font-medium text-app-accent`}>
                   <MessageSquarePlus className="h-[18px] w-[18px]" /> {t.newChat}
+                </button>
+              )}
+
+              {/* Services — the deliberate way back to the 3-card hub (replaces the
+                  removed top-left arrow, so it can't be tapped by accident). */}
+              {onBack && (
+                <button type="button" onClick={() => { setMenuOpen(false); onBack(); }} className={drawerRow}>
+                  <LayoutGrid className="h-[18px] w-[18px] text-app-muted" /> {t.services}
                 </button>
               )}
 

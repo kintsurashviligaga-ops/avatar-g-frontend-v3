@@ -12,7 +12,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Send, Mic, Square, Paperclip, X, Loader2, Sparkles, Film, Music2, FileText, Image as ImageIcon, Download, MessageSquare, Wand2, Volume2, Copy, Check, Mic2, ChevronDown } from 'lucide-react';
+import { Send, Mic, Square, Plus, X, Loader2, Sparkles, Film, Music2, FileText, Image as ImageIcon, Download, MessageSquare, Wand2, Volume2, Copy, Check, Mic2, ChevronDown } from 'lucide-react';
 import { driveFilmStudio } from '@/lib/chat/filmStudioClient';
 import { Markdown } from './Markdown';
 
@@ -25,7 +25,7 @@ const COPY: Record<Lang, {
   modeMusic: string; musicPlaceholder: string; generatingMusic: string; musicFailed: string;
   modeVideo: string; videoPlaceholder: string; generatingVideo: string; videoFailed: string;
   modeLipsync: string; lipsyncPlaceholder: string; generatingLipsync: string; lipsyncFailed: string; lipsyncNeedFiles: string; lipsyncAuth: string; lipAudioLabel: string;
-  stop: string; stopped: string; scrollDown: string; regenerate: string; elapsedHint: string; greeting: string;
+  stop: string; stopped: string; scrollDown: string; regenerate: string; elapsedHint: string; greeting: string; attachHint: string;
 }> = {
   ka: {
     title: 'ჭკვიანი ასისტენტი', subtitle: 'ინტელექტუალური მულტიმოდალური ასისტენტი',
@@ -40,7 +40,7 @@ const COPY: Record<Lang, {
     generatingVideo: 'ვიდეო იქმნება… (1–2 წუთი)', videoFailed: 'ვიდეოს გენერაცია ვერ მოხერხდა.',
     modeLipsync: 'ლიფსინქი', lipsyncPlaceholder: 'მიამაგრე ვიდეო + აუდიო და დააჭირე გაგზავნას…',
     generatingLipsync: 'ტუჩები სინქრონდება…', lipsyncFailed: 'ლიფსინქი ვერ მოხერხდა.', lipsyncNeedFiles: 'მიამაგრე ვიდეოც და აუდიოც.', lipsyncAuth: 'ლიფსინქისთვის ჯერ გაიარე ავტორიზაცია.', lipAudioLabel: 'აუდიო',
-    stop: 'შეჩერება', stopped: 'შეჩერდა', scrollDown: 'ბოლოში გადასვლა', regenerate: 'თავიდან გენერაცია', elapsedHint: 'გავიდა', greeting: 'რით დაგეხმარო?',
+    stop: 'შეჩერება', stopped: 'შეჩერდა', scrollDown: 'ბოლოში გადასვლა', regenerate: 'თავიდან გენერაცია', elapsedHint: 'გავიდა', greeting: 'რით დაგეხმარო?', attachHint: 'დამატება',
   },
   en: {
     title: 'Smart Assistant', subtitle: 'Intelligent multimodal assistant',
@@ -55,7 +55,7 @@ const COPY: Record<Lang, {
     generatingVideo: 'Producing video… (1–2 min)', videoFailed: 'Video generation failed.',
     modeLipsync: 'Lip-sync', lipsyncPlaceholder: 'Attach a video + audio, then press send…',
     generatingLipsync: 'Syncing the lips…', lipsyncFailed: 'Lip-sync failed.', lipsyncNeedFiles: 'Attach both a video and audio.', lipsyncAuth: 'Sign in first to use lip-sync.', lipAudioLabel: 'Audio',
-    stop: 'Stop', stopped: 'Stopped', scrollDown: 'Scroll to bottom', regenerate: 'Regenerate', elapsedHint: 'elapsed', greeting: 'How can I help?',
+    stop: 'Stop', stopped: 'Stopped', scrollDown: 'Scroll to bottom', regenerate: 'Regenerate', elapsedHint: 'elapsed', greeting: 'How can I help?', attachHint: 'Add',
   },
   ru: {
     title: 'Умный ассистент', subtitle: 'Интеллектуальный мультимодальный ассистент',
@@ -70,7 +70,7 @@ const COPY: Record<Lang, {
     generatingVideo: 'Создаю видео… (1–2 мин)', videoFailed: 'Не удалось создать видео.',
     modeLipsync: 'Синхрон', lipsyncPlaceholder: 'Прикрепите видео + аудио и нажмите отправить…',
     generatingLipsync: 'Синхронизирую губы…', lipsyncFailed: 'Не удалось синхронизировать.', lipsyncNeedFiles: 'Прикрепите и видео, и аудио.', lipsyncAuth: 'Войдите, чтобы использовать синхронизацию.', lipAudioLabel: 'Аудио',
-    stop: 'Стоп', stopped: 'Остановлено', scrollDown: 'Вниз', regenerate: 'Заново', elapsedHint: 'прошло', greeting: 'Чем помочь?',
+    stop: 'Стоп', stopped: 'Остановлено', scrollDown: 'Вниз', regenerate: 'Заново', elapsedHint: 'прошло', greeting: 'Чем помочь?', attachHint: 'Добавить',
   },
 };
 
@@ -241,6 +241,8 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   const genStartRef = useRef(0);
   // Scroll-to-bottom affordance — shown only when the user scrolled up.
   const [showJump, setShowJump] = useState(false);
+  // Inline mode selector popover (the Gemini "Flash ⌄" analog).
+  const [modeMenuOpen, setModeMenuOpen] = useState(false);
 
   const scrollToBottom = useCallback((behavior: ScrollBehavior = 'smooth') => {
     const el = feedRef.current;
@@ -680,6 +682,13 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     }
   }, [recording, lang]);
 
+  // Composer derived state: the active mode's icon/label for the inline selector,
+  // and whether there's anything to send (drives the mic↔send swap).
+  const activeMode = MODES.find((mm) => mm.id === mode) ?? MODES[0];
+  const ActiveModeIcon = activeMode.Icon;
+  const activeModeKey = activeMode.key;
+  const canSend = mode === 'lipsync' ? (!!attachment && !!lipAudio) : (!!input.trim() || !!attachment);
+
   return (
     <div
       className="relative mx-auto flex h-full w-full max-w-3xl flex-col px-4 pt-2 text-app-text"
@@ -844,26 +853,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         </button>
       )}
 
-      {/* Composer — minimalist & borderless (Grok-style). */}
+      {/* Composer — refined, Gemini-style: one rounded pill, [+] attach, an inline
+          mode selector (the "Flash ⌄" analog) and mic-when-empty / send-when-typing. */}
       <div className="shrink-0 pt-1">
-        {/* Mode chips — what to create. Borderless row, horizontal-scroll on mobile. */}
-        <div className="mb-2 flex items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {MODES.map(({ id, Icon, key: labelKey }) => {
-            const active = mode === id;
-            return (
-              <button
-                key={id}
-                type="button"
-                onClick={() => setMode(id)}
-                aria-pressed={active}
-                className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-[12.5px] font-medium transition-colors ${active ? 'bg-app-accent/12 text-app-accent' : 'text-app-muted hover:bg-app-elevated hover:text-app-text'}`}
-              >
-                <Icon size={14} /> {t[labelKey]}
-              </button>
-            );
-          })}
-        </div>
-
         {/* Lip-sync needs a SECOND file — the audio chip ([attach] holds the video). */}
         {mode === 'lipsync' && (
           <div className="mb-2 flex items-center gap-2">
@@ -911,22 +903,18 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           </div>
         )}
 
-        {/* Input surface — one clean rounded field, no heavy border or gradient. */}
-        <div className="flex items-end gap-1 rounded-[26px] bg-app-elevated px-1.5 py-1.5">
-          <input ref={fileRef} type="file" accept="image/*,audio/*,video/*,application/pdf" className="hidden" onChange={(e) => {
-            const f = e.target.files?.[0]; if (!f) return;
-            const r = new FileReader(); r.onload = () => setAttachment({ dataUrl: String(r.result), mimeType: f.type || 'application/octet-stream' }); r.readAsDataURL(f);
-          }} />
-          <button type="button" onClick={() => fileRef.current?.click()} aria-label="attach"
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-surface hover:text-app-text">
-            <Paperclip size={18} />
+        {/* Input surface — one clean rounded pill, no border, no gradient. */}
+        <input ref={fileRef} type="file" accept="image/*,audio/*,video/*,application/pdf" className="hidden" onChange={(e) => {
+          const f = e.target.files?.[0]; if (!f) return;
+          const r = new FileReader(); r.onload = () => setAttachment({ dataUrl: String(r.result), mimeType: f.type || 'application/octet-stream' }); r.readAsDataURL(f);
+        }} />
+        <div className="flex items-end gap-1 rounded-[26px] bg-app-elevated px-2 py-1.5">
+          {/* [+] add / attach */}
+          <button type="button" onClick={() => fileRef.current?.click()} aria-label={t.attachHint} title={t.attachHint}
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-surface hover:text-app-text">
+            <Plus size={20} />
           </button>
-          <button type="button" onClick={() => void toggleMic()} aria-label={t.micHint}
-            className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition-colors ${
-              recording ? 'animate-pulse bg-app-danger/15 text-app-danger' : 'text-app-muted hover:bg-app-surface hover:text-app-text'
-            }`}>
-            {recording ? <Square size={16} /> : <Mic size={18} />}
-          </button>
+
           <textarea
             ref={taRef}
             value={input}
@@ -935,30 +923,69 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             rows={1}
             disabled={enhancing}
             placeholder={recording ? t.recording : mode === 'image' ? t.imgPlaceholder : mode === 'music' ? t.musicPlaceholder : mode === 'video' ? t.videoPlaceholder : mode === 'lipsync' ? t.lipsyncPlaceholder : t.placeholder}
-            className="max-h-40 min-h-[40px] flex-1 resize-none border-0 bg-transparent px-2 py-2 text-[16px] text-app-text placeholder:text-app-muted/70 outline-none focus:ring-0 disabled:opacity-60"
+            className="max-h-40 min-h-[36px] flex-1 resize-none border-0 bg-transparent px-1.5 py-2 text-[16px] text-app-text placeholder:text-app-muted/70 outline-none focus:ring-0 disabled:opacity-60"
           />
-          {/* Magic Wand — one-tap AI prompt enhancement, in place. */}
-          <button
-            type="button"
-            onClick={() => void magicEnhance()}
-            disabled={enhancing || busy || !input.trim()}
-            aria-label={t.magicHint}
-            title={t.magicHint}
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-surface hover:text-app-accent disabled:opacity-40"
-          >
-            {enhancing ? <Loader2 size={18} className="animate-spin text-app-accent" /> : <Wand2 size={18} />}
-          </button>
+
+          {/* Inline mode selector — the "Flash ⌄" analog. Tap to pick what to create. */}
+          <div className="relative shrink-0">
+            <button
+              type="button"
+              onClick={() => setModeMenuOpen((v) => !v)}
+              aria-haspopup="menu"
+              aria-expanded={modeMenuOpen}
+              className="flex h-9 items-center gap-1 rounded-full px-2.5 text-[12.5px] font-medium text-app-muted transition-colors hover:bg-app-surface hover:text-app-text"
+            >
+              <ActiveModeIcon size={15} />
+              <span className="hidden sm:inline">{t[activeModeKey]}</span>
+              <ChevronDown size={13} className={`transition-transform ${modeMenuOpen ? 'rotate-180' : ''}`} />
+            </button>
+            {modeMenuOpen && (
+              <>
+                <div className="fixed inset-0 z-10" onClick={() => setModeMenuOpen(false)} />
+                <div role="menu" className="absolute bottom-full right-0 z-20 mb-2 w-48 overflow-hidden rounded-2xl border border-app-border/10 bg-app-surface p-1 shadow-2xl">
+                  {MODES.map(({ id, Icon, key: lk }) => (
+                    <button
+                      key={id}
+                      type="button"
+                      role="menuitemradio"
+                      aria-checked={mode === id}
+                      onClick={() => { setMode(id); setModeMenuOpen(false); }}
+                      className={`flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-[13px] transition-colors ${mode === id ? 'bg-app-accent/10 text-app-accent' : 'text-app-text hover:bg-app-elevated'}`}
+                    >
+                      <Icon size={15} /> <span className="flex-1 text-left">{t[lk]}</span> {mode === id && <Check size={14} />}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* Right action: Stop while busy · Wand+Send when there's something to send ·
+              Mic otherwise (record voice). Mirrors Gemini's mic↔send swap. */}
           {busy ? (
-            // While generating, the send button becomes a STOP control — cancels
-            // the in-flight request immediately.
             <button type="button" onClick={stop} aria-label={t.stop} title={t.stop}
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-app-surface text-app-text transition-colors hover:text-app-accent">
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-app-surface text-app-text transition-colors hover:text-app-accent">
               <Square size={15} className="fill-current" />
             </button>
+          ) : canSend ? (
+            <>
+              {input.trim() && (
+                <button type="button" onClick={() => void magicEnhance()} disabled={enhancing} aria-label={t.magicHint} title={t.magicHint}
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-surface hover:text-app-accent disabled:opacity-40">
+                  {enhancing ? <Loader2 size={18} className="animate-spin text-app-accent" /> : <Wand2 size={18} />}
+                </button>
+              )}
+              <button type="button" onClick={() => void send()} aria-label="send"
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-app-accent text-app-bg transition-opacity hover:opacity-90">
+                <Send size={16} />
+              </button>
+            </>
           ) : (
-            <button type="button" onClick={() => void send()} disabled={mode === 'lipsync' ? (!attachment || !lipAudio) : (!input.trim() && !attachment)} aria-label="send"
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-app-accent text-app-bg transition-opacity hover:opacity-90 disabled:opacity-30">
-              <Send size={16} />
+            <button type="button" onClick={() => void toggleMic()} aria-label={t.micHint} title={t.micHint}
+              className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-colors ${
+                recording ? 'animate-pulse bg-app-danger/15 text-app-danger' : 'text-app-muted hover:bg-app-surface hover:text-app-text'
+              }`}>
+              {recording ? <Square size={16} /> : <Mic size={19} />}
             </button>
           )}
         </div>
