@@ -936,7 +936,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
               className="flex h-9 items-center gap-1 rounded-full px-2.5 text-[12.5px] font-medium text-app-muted transition-colors hover:bg-app-surface hover:text-app-text"
             >
               <ActiveModeIcon size={15} />
-              <span className="hidden sm:inline">{t[activeModeKey]}</span>
+              <span>{t[activeModeKey]}</span>
               <ChevronDown size={13} className={`transition-transform ${modeMenuOpen ? 'rotate-180' : ''}`} />
             </button>
             {modeMenuOpen && (
