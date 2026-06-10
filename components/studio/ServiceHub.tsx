@@ -17,10 +17,11 @@
  */
 
 import { useCallback, useEffect, useState } from 'react';
-import { Film, Sparkles, Wand2, ArrowLeft, ChevronRight } from 'lucide-react';
+import { Film, Sparkles, Wand2, ChevronRight } from 'lucide-react';
 import { ConversationalFilmStudio } from './ConversationalFilmStudio';
 import OmniStudio from './OmniStudio';
 import LipsyncStudio from './LipsyncStudio';
+import { ChatChrome } from './ChatChrome';
 
 type Lang = 'ka' | 'en' | 'ru';
 type Service = 'hub' | 'film' | 'omni' | 'lipsync';
@@ -64,6 +65,9 @@ export function ServiceHub({ locale = 'ka', isAuthenticated = false }: { locale?
   // stays reachable via #hub (the chatbox's back control) for the richer dedicated
   // Film studio. Every surface rides the URL hash so refresh / back / share behave.
   const [service, setService] = useState<Service>('omni');
+  // "New Chat" remounts the assistant by bumping this key — a clean reset of the
+  // whole conversation (messages, attachment, mode) without page reload.
+  const [chatResetKey, setChatResetKey] = useState(0);
 
   useEffect(() => {
     const read = () => {
@@ -88,24 +92,20 @@ export function ServiceHub({ locale = 'ka', isAuthenticated = false }: { locale?
     return <ConversationalFilmStudio locale={locale} isAuthenticated={isAuthenticated} onExitToHub={() => go('hub')} />;
   }
 
-  // Cards B & C — wrapped in a slim back-header shell.
+  // Cards B & C — wrapped in the full modern-chatbot chrome (top bar with brand +
+  // live GEL balance + top-up + hamburger drawer + New Chat). The assistant is the
+  // default one-window landing; the back control returns to the card hub.
   if (service === 'omni' || service === 'lipsync') {
     return (
-      <div className="fixed inset-0 z-0 flex flex-col bg-black text-white" style={{ height: '100dvh' }}>
-        <header className="sticky top-0 z-30 shrink-0 border-b border-white/10 bg-black/90 backdrop-blur-xl" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
-          <div className="mx-auto flex h-14 w-full max-w-3xl items-center gap-2 px-4">
-            <button type="button" onClick={() => go('hub')} aria-label="Services" className="-ml-2 flex h-11 w-11 items-center justify-center rounded-full text-neutral-400 transition-colors hover:bg-white/10 hover:text-[#00D2FF]">
-              <ArrowLeft className="h-5 w-5" />
-            </button>
-            <span className="truncate text-sm font-bold tracking-wide text-white">
-              {service === 'omni' ? t.omniTitle : t.lipTitle}
-            </span>
-          </div>
-        </header>
-        <div className={`min-h-0 flex-1 ${service === 'lipsync' ? 'overflow-y-auto' : 'flex'}`}>
-          {service === 'omni' ? <OmniStudio locale={lang} /> : <LipsyncStudio locale={lang} />}
-        </div>
-      </div>
+      <ChatChrome
+        locale={locale}
+        onBack={() => go('hub')}
+        title={service === 'lipsync' ? t.lipTitle : undefined}
+        onNewChat={service === 'omni' ? () => setChatResetKey((k) => k + 1) : undefined}
+        scrollBody={service === 'lipsync'}
+      >
+        {service === 'omni' ? <OmniStudio key={chatResetKey} locale={lang} /> : <LipsyncStudio locale={lang} />}
+      </ChatChrome>
     );
   }
 

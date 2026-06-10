@@ -12,7 +12,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Send, Mic, Square, Paperclip, X, Loader2, Sparkles, Film, Music2, FileText, Image as ImageIcon, Download, MessageSquare, Wand2, Volume2, Copy, Check, Mic2 } from 'lucide-react';
+import { Send, Mic, Square, Paperclip, X, Loader2, Sparkles, Film, Music2, FileText, Image as ImageIcon, Download, MessageSquare, Wand2, Volume2, Copy, Check, Mic2, ChevronDown } from 'lucide-react';
 import { driveFilmStudio } from '@/lib/chat/filmStudioClient';
 
 type Lang = 'ka' | 'en' | 'ru';
@@ -24,6 +24,7 @@ const COPY: Record<Lang, {
   modeMusic: string; musicPlaceholder: string; generatingMusic: string; musicFailed: string;
   modeVideo: string; videoPlaceholder: string; generatingVideo: string; videoFailed: string;
   modeLipsync: string; lipsyncPlaceholder: string; generatingLipsync: string; lipsyncFailed: string; lipsyncNeedFiles: string; lipsyncAuth: string; lipAudioLabel: string;
+  stop: string; stopped: string; scrollDown: string; regenerate: string; elapsedHint: string;
 }> = {
   ka: {
     title: 'ჭკვიანი ასისტენტი', subtitle: 'ინტელექტუალური მულტიმოდალური ასისტენტი',
@@ -38,6 +39,7 @@ const COPY: Record<Lang, {
     generatingVideo: 'ვიდეო იქმნება… (1–2 წუთი)', videoFailed: 'ვიდეოს გენერაცია ვერ მოხერხდა.',
     modeLipsync: 'ლიფსინქი', lipsyncPlaceholder: 'მიამაგრე ვიდეო + აუდიო და დააჭირე გაგზავნას…',
     generatingLipsync: 'ტუჩები სინქრონდება…', lipsyncFailed: 'ლიფსინქი ვერ მოხერხდა.', lipsyncNeedFiles: 'მიამაგრე ვიდეოც და აუდიოც.', lipsyncAuth: 'ლიფსინქისთვის ჯერ გაიარე ავტორიზაცია.', lipAudioLabel: 'აუდიო',
+    stop: 'შეჩერება', stopped: 'შეჩერდა', scrollDown: 'ბოლოში გადასვლა', regenerate: 'თავიდან გენერაცია', elapsedHint: 'გავიდა',
   },
   en: {
     title: 'Smart Assistant', subtitle: 'Intelligent multimodal assistant',
@@ -52,6 +54,7 @@ const COPY: Record<Lang, {
     generatingVideo: 'Producing video… (1–2 min)', videoFailed: 'Video generation failed.',
     modeLipsync: 'Lip-sync', lipsyncPlaceholder: 'Attach a video + audio, then press send…',
     generatingLipsync: 'Syncing the lips…', lipsyncFailed: 'Lip-sync failed.', lipsyncNeedFiles: 'Attach both a video and audio.', lipsyncAuth: 'Sign in first to use lip-sync.', lipAudioLabel: 'Audio',
+    stop: 'Stop', stopped: 'Stopped', scrollDown: 'Scroll to bottom', regenerate: 'Regenerate', elapsedHint: 'elapsed',
   },
   ru: {
     title: 'Умный ассистент', subtitle: 'Интеллектуальный мультимодальный ассистент',
@@ -66,8 +69,97 @@ const COPY: Record<Lang, {
     generatingVideo: 'Создаю видео… (1–2 мин)', videoFailed: 'Не удалось создать видео.',
     modeLipsync: 'Синхрон', lipsyncPlaceholder: 'Прикрепите видео + аудио и нажмите отправить…',
     generatingLipsync: 'Синхронизирую губы…', lipsyncFailed: 'Не удалось синхронизировать.', lipsyncNeedFiles: 'Прикрепите и видео, и аудио.', lipsyncAuth: 'Войдите, чтобы использовать синхронизацию.', lipAudioLabel: 'Аудио',
+    stop: 'Стоп', stopped: 'Остановлено', scrollDown: 'Вниз', regenerate: 'Заново', elapsedHint: 'прошло',
   },
 };
+
+// Staged process labels for the live progress card. The engines don't emit a real
+// percentage, so we narrate the work as human-legible stages while an eased,
+// time-based bar advances — the "loading process" a modern chatbot shows. (Video
+// already streams its own live status from the pipeline, which overrides these.)
+const STAGES: Record<Lang, Record<'image' | 'music' | 'video' | 'lipsync', string[]>> = {
+  ka: {
+    image: ['აღწერას ვიაზრებ…', 'კადრს ვხატავ…', 'დეტალებს ვამატებ…', 'ვასრულებ…'],
+    music: ['იდეას ვამუშავებ…', 'მელოდიას ვაკომპონებ…', 'ხმებს ვურევ…', 'ვასრულებ…'],
+    video: ['სცენარს ვშლი…', 'კადრებს ვქმნი…', 'ხმას ვამატებ…', 'ვაერთიანებ…'],
+    lipsync: ['ფაილებს ვამუშავებ…', 'ტუჩებს ვასინქრონებ…', 'ვასრულებ…'],
+  },
+  en: {
+    image: ['Reading your prompt…', 'Painting the frame…', 'Adding details…', 'Finishing up…'],
+    music: ['Shaping the idea…', 'Composing the melody…', 'Mixing the voices…', 'Finishing up…'],
+    video: ['Breaking down the script…', 'Generating the shots…', 'Adding sound…', 'Stitching together…'],
+    lipsync: ['Processing the files…', 'Syncing the lips…', 'Finishing up…'],
+  },
+  ru: {
+    image: ['Читаю запрос…', 'Рисую кадр…', 'Добавляю детали…', 'Завершаю…'],
+    music: ['Формирую идею…', 'Сочиняю мелодию…', 'Свожу голоса…', 'Завершаю…'],
+    video: ['Разбираю сценарий…', 'Создаю кадры…', 'Добавляю звук…', 'Собираю воедино…'],
+    lipsync: ['Обрабатываю файлы…', 'Синхронизирую губы…', 'Завершаю…'],
+  },
+};
+
+// Rough wall-clock targets (seconds) that drive the eased progress bar toward ~95%
+// without ever claiming completion before the asset actually returns.
+const PROGRESS_TARGET: Record<'image' | 'music' | 'video' | 'lipsync', number> = {
+  image: 22, music: 150, video: 110, lipsync: 70,
+};
+
+function fmtClock(sec: number): string {
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+/**
+ * GenerationProgress — the live "loading process" card shown in the pending
+ * assistant bubble for image / music / video / lip-sync. An eased, time-based bar
+ * (never a fake 100%) + narrated stage labels + an elapsed clock. For video the
+ * pipeline's own streamed status (`status`) takes over the headline line.
+ */
+function GenerationProgress({ kind, elapsed, status, locale }: {
+  kind: 'image' | 'music' | 'video' | 'lipsync';
+  elapsed: number;
+  status?: string;
+  locale: Lang;
+}) {
+  const stages = STAGES[locale][kind];
+  const target = PROGRESS_TARGET[kind];
+  // Eased growth — fast at first, asymptotic toward 95% so it never "finishes"
+  // ahead of the real asset. Completes only when the bubble swaps to media.
+  const pct = Math.min(95, Math.round((1 - Math.exp(-elapsed / (target / 2.4))) * 100));
+  const stageIdx = Math.min(stages.length - 1, Math.floor((pct / 100) * stages.length));
+  const headline = status && status.trim() ? status.trim() : stages[stageIdx];
+  return (
+    <div className="w-[min(72vw,380px)] space-y-2 py-0.5">
+      <div className="flex items-center justify-between gap-2 text-[12.5px]">
+        <span className="inline-flex min-w-0 items-center gap-1.5 text-[#00D2FF]">
+          <Loader2 size={13} className="shrink-0 animate-spin" />
+          <span className="truncate">{headline}</span>
+        </span>
+        <span className="shrink-0 tabular-nums text-neutral-500">{fmtClock(elapsed)}</span>
+      </div>
+      <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+        <div className="h-full rounded-full bg-gradient-to-r from-[#00D2FF] to-[#0085FF] transition-[width] duration-500 ease-out" style={{ width: `${Math.max(6, pct)}%` }} />
+      </div>
+      <div className="flex items-center gap-1.5">
+        {stages.map((s, i) => (
+          <span key={i} title={s} className={`h-1 flex-1 rounded-full transition-colors ${i <= stageIdx ? 'bg-[#00D2FF]/70' : 'bg-white/10'}`} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// Animated three-dot "typing" indicator for the chat-mode pending bubble.
+function TypingDots() {
+  return (
+    <span className="inline-flex items-center gap-1 py-1" aria-label="…">
+      {[0, 1, 2].map((i) => (
+        <span key={i} className="h-1.5 w-1.5 rounded-full bg-neutral-500 animate-bounce" style={{ animationDelay: `${i * 0.15}s`, animationDuration: '1s' }} />
+      ))}
+    </span>
+  );
+}
 
 // First-run examples — tappable cards that make the assistant self-explanatory.
 // Tapping pre-fills the composer (and switches to Image mode for a draw example)
@@ -127,8 +219,48 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   const recRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const feedRef = useRef<HTMLDivElement | null>(null);
+  const taRef = useRef<HTMLTextAreaElement | null>(null);
+  // Stop / cancel plumbing. `abortRef` aborts the in-flight fetch; `genIdRef` is a
+  // monotonic generation token — every finalizer checks it so a STOPPED or
+  // superseded request can never clobber a newer message (or re-clear `busy`).
+  const abortRef = useRef<AbortController | null>(null);
+  const genIdRef = useRef(0);
+  // Live elapsed seconds during a generation — drives the progress clock + bar.
+  const [elapsed, setElapsed] = useState(0);
+  const genStartRef = useRef(0);
+  // Scroll-to-bottom affordance — shown only when the user scrolled up.
+  const [showJump, setShowJump] = useState(false);
 
-  useEffect(() => { feedRef.current?.scrollTo({ top: feedRef.current.scrollHeight, behavior: 'smooth' }); }, [messages, busy]);
+  const scrollToBottom = useCallback((behavior: ScrollBehavior = 'smooth') => {
+    const el = feedRef.current;
+    if (el) el.scrollTo({ top: el.scrollHeight, behavior });
+  }, []);
+
+  // Auto-stick to the newest message — but only when the user is already near the
+  // bottom, so reading scrollback isn't yanked away mid-generation.
+  useEffect(() => {
+    const el = feedRef.current;
+    if (!el) return;
+    const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
+    if (dist < 160) scrollToBottom();
+  }, [messages, busy, scrollToBottom]);
+
+  // Tick the elapsed clock while a generation is in flight.
+  useEffect(() => {
+    if (!busy) { setElapsed(0); return; }
+    genStartRef.current = Date.now();
+    setElapsed(0);
+    const id = setInterval(() => setElapsed(Math.max(0, Math.round((Date.now() - genStartRef.current) / 1000))), 500);
+    return () => clearInterval(id);
+  }, [busy]);
+
+  // Auto-grow the composer textarea with its content (capped), like a modern chat.
+  useEffect(() => {
+    const el = taRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+  }, [input]);
 
   // Close the full-screen lightbox on Escape (desktop affordance; the backdrop tap
   // and the X button cover touch).
@@ -145,6 +277,14 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     const text = input.trim();
     if ((!text && !attachment) || busy) return;
 
+    // New generation token + abort controller. Every async finalizer below checks
+    // `mine()` before mutating state, so Stop (which bumps the token + aborts) or a
+    // superseded request can never overwrite a newer bubble or re-toggle `busy`.
+    const myGen = ++genIdRef.current;
+    const ac = new AbortController();
+    abortRef.current = ac;
+    const mine = () => genIdRef.current === myGen;
+
     // ── IMAGE GENERATION (NanoBanana) ──────────────────────────────────────────
     // In image mode the typed prompt becomes a brand-new image: POST it to
     // /api/nanobanana/image and render the returned URL as an assistant image
@@ -158,9 +298,11 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ prompt: text, quality: 'high', aspectRatio: '1:1' }),
           credentials: 'include',
+          signal: ac.signal,
         });
         const j = (await res.json().catch(() => ({}))) as { success?: boolean; url?: string; error?: string };
         setMessages((prev) => {
+          if (!mine()) return prev;
           const next = [...prev];
           const last = next[next.length - 1];
           if (last && last.role === 'assistant') {
@@ -172,6 +314,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           return next;
         });
       } catch {
+        if (!mine()) return;
         setMessages((prev) => {
           const next = [...prev];
           const last = next[next.length - 1];
@@ -179,7 +322,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           return next;
         });
       } finally {
-        setBusy(false);
+        if (mine()) setBusy(false);
       }
       return;
     }
@@ -196,9 +339,11 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ prompt: text }),
           credentials: 'include',
+          signal: ac.signal,
         });
         const j = (await res.json().catch(() => ({}))) as { success?: boolean; url?: string };
         setMessages((prev) => {
+          if (!mine()) return prev;
           const next = [...prev];
           const last = next[next.length - 1];
           if (last && last.role === 'assistant') {
@@ -210,6 +355,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           return next;
         });
       } catch {
+        if (!mine()) return;
         setMessages((prev) => {
           const next = [...prev];
           const last = next[next.length - 1];
@@ -217,7 +363,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           return next;
         });
       } finally {
-        setBusy(false);
+        if (mine()) setBusy(false);
       }
       return;
     }
@@ -240,9 +386,11 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           prompt: text,
           referenceImages: refs,
           locale,
+          signal: ac.signal,
           onProgress: (p) => {
             const status = p.message?.trim() || t.generatingVideo;
             setMessages((prev) => {
+              if (!mine()) return prev;
               const next = [...prev];
               const last = next[next.length - 1];
               if (last && last.role === 'assistant' && !last.videoUrl) next[next.length - 1] = { ...last, text: status };
@@ -251,6 +399,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           },
         });
         setMessages((prev) => {
+          if (!mine()) return prev;
           const next = [...prev];
           const last = next[next.length - 1];
           if (last && last.role === 'assistant') {
@@ -262,6 +411,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           return next;
         });
       } catch {
+        if (!mine()) return;
         setMessages((prev) => {
           const next = [...prev];
           const last = next[next.length - 1];
@@ -269,7 +419,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           return next;
         });
       } finally {
-        setBusy(false);
+        if (mine()) setBusy(false);
       }
       return;
     }
@@ -290,7 +440,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         try {
           const r = await fetch('/api/upload', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ dataUrl, contentType }), credentials: 'include',
+            body: JSON.stringify({ dataUrl, contentType }), credentials: 'include', signal: ac.signal,
           });
           if (r.status === 401) return { error: 'auth' };
           const j = (await r.json().catch(() => ({}))) as { url?: string };
@@ -298,6 +448,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         } catch { return { error: 'fail' }; }
       };
       const failLip = (msg: string) => setMessages((prev) => {
+        if (!mine()) return prev;
         const n = [...prev]; const l = n[n.length - 1];
         if (l && l.role === 'assistant') n[n.length - 1] = { role: 'assistant', text: `⚠️ ${msg}` };
         return n;
@@ -311,20 +462,21 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         }
         const res = await fetch('/api/video/lipsync', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ videoUrl: v.url, audioUrl: a.url }), credentials: 'include',
+          body: JSON.stringify({ videoUrl: v.url, audioUrl: a.url }), credentials: 'include', signal: ac.signal,
         });
         const j = (await res.json().catch(() => ({}))) as { url?: string | null };
         if (j.url && j.url.startsWith('https://')) {
           setMessages((prev) => {
+            if (!mine()) return prev;
             const n = [...prev]; const l = n[n.length - 1];
             if (l && l.role === 'assistant') n[n.length - 1] = { role: 'assistant', text: '', videoUrl: j.url! };
             return n;
           });
         } else failLip(t.lipsyncFailed);
       } catch {
-        failLip(t.lipsyncFailed);
+        if (mine()) failLip(t.lipsyncFailed);
       } finally {
-        setBusy(false);
+        if (mine()) setBusy(false);
       }
       return;
     }
@@ -354,13 +506,14 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     try {
       const res = await fetch('/api/chat/gemini', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: payload }), credentials: 'include',
+        body: JSON.stringify({ messages: payload }), credentials: 'include', signal: ac.signal,
       });
       if (!res.ok || !res.body) throw new Error('stream failed');
       const reader = res.body.getReader();
       const dec = new TextDecoder();
       let buf = '';
       for (;;) {
+        if (!mine()) { try { await reader.cancel(); } catch { /* noop */ } break; }
         const { value, done } = await reader.read();
         if (done) break;
         buf += dec.decode(value, { stream: true });
@@ -373,6 +526,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             const j = JSON.parse(m[1]!) as { text?: string };
             if (j.text) {
               setMessages((prev) => {
+                if (!mine()) return prev;
                 const next = [...prev];
                 const last = next[next.length - 1];
                 if (last && last.role === 'assistant') next[next.length - 1] = { ...last, text: last.text + j.text };
@@ -383,6 +537,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         }
       }
     } catch {
+      if (!mine()) return; // stopped / superseded — keep the partial stream as-is
       setMessages((prev) => {
         const next = [...prev];
         const last = next[next.length - 1];
@@ -390,9 +545,30 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         return next;
       });
     } finally {
-      setBusy(false);
+      if (mine()) setBusy(false);
     }
   }, [input, attachment, busy, messages, mode, locale, lipAudio, t.imageFailed, t.musicFailed, t.videoFailed, t.generatingVideo, t.generatingLipsync, t.lipsyncNeedFiles, t.lipsyncAuth, t.lipsyncFailed]);
+
+  // STOP — cancel the in-flight generation. Bumps the generation token (so every
+  // pending finalizer no-ops), aborts the fetch, frees the composer, and converts
+  // an empty pending bubble into a "stopped" note (a streamed partial is kept).
+  const stop = useCallback(() => {
+    genIdRef.current += 1;
+    try { abortRef.current?.abort(); } catch { /* noop */ }
+    abortRef.current = null;
+    setBusy(false);
+    setMessages((prev) => {
+      const next = [...prev];
+      const last = next[next.length - 1];
+      if (last && last.role === 'assistant' && !last.text && !last.imageUrl && !last.audioUrl && !last.videoUrl) {
+        next[next.length - 1] = { role: 'assistant', text: `⏹ ${t.stopped}` };
+      }
+      return next;
+    });
+  }, [t.stopped]);
+
+  // Abort any in-flight request if the studio unmounts (e.g. New Chat remount).
+  useEffect(() => () => { try { abortRef.current?.abort(); } catch { /* noop */ } }, []);
 
   // Magic Wand — rewrite the current textarea prompt into an AI-optimized version
   // IN PLACE (Section 7 / 8A). Fail-soft: the endpoint returns the original prompt
@@ -495,15 +671,17 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
 
   return (
     <div
-      className="mx-auto flex h-full w-full max-w-3xl flex-col px-4 pt-4"
+      className="relative mx-auto flex h-full w-full max-w-3xl flex-col px-4 pt-3"
       style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}
     >
-      <header className="mb-3 shrink-0">
-        <h1 className="text-lg font-bold tracking-tight text-white">{t.title}</h1>
-        <p className="mt-0.5 text-[13px] text-neutral-500">{t.subtitle}</p>
-      </header>
-
-      <div ref={feedRef} className="min-h-0 flex-1 space-y-3 overflow-y-auto pb-3">
+      <div
+        ref={feedRef}
+        onScroll={(e) => {
+          const el = e.currentTarget;
+          setShowJump(el.scrollHeight - el.scrollTop - el.clientHeight > 160);
+        }}
+        className="min-h-0 flex-1 space-y-3 overflow-y-auto pb-3 pt-1"
+      >
         {messages.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center gap-4 px-2 text-center">
             <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#00D2FF]/10 text-[#00D2FF]"><Sparkles size={22} /></span>
@@ -594,9 +772,16 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                   </a>
                 </div>
               )}
-              {m.text || (busy && m.role === 'assistant' && i === messages.length - 1
-                ? <span className="inline-flex items-center gap-1.5 text-neutral-500"><Loader2 size={13} className="animate-spin" /> {mode === 'image' ? t.generatingImage : mode === 'music' ? t.generatingMusic : mode === 'video' ? t.generatingVideo : mode === 'lipsync' ? t.generatingLipsync : t.thinking}</span>
-                : null)}
+              {(() => {
+                const pending = busy && m.role === 'assistant' && i === messages.length - 1 && !m.imageUrl && !m.audioUrl && !m.videoUrl;
+                // Generative modes get the live staged progress card (bar + clock +
+                // narrated steps) — the real "loading process". Chat gets typing dots.
+                if (pending && mode !== 'chat') {
+                  return <GenerationProgress kind={mode} elapsed={elapsed} status={m.text} locale={locale} />;
+                }
+                if (pending && mode === 'chat' && !m.text) return <TypingDots />;
+                return m.text ? <span className="whitespace-pre-wrap">{m.text}</span> : null;
+              })()}
               {/* Per-response actions on a TEXT reply — Read-aloud + Copy. No
                   Like/Dislike, per the one-window spec. */}
               {m.role === 'assistant' && m.text && !m.text.startsWith('⚠️') && (
@@ -625,6 +810,20 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           </div>
         ))}
       </div>
+
+      {/* Scroll-to-bottom — appears only when the user has scrolled up. */}
+      {showJump && messages.length > 0 && (
+        <button
+          type="button"
+          onClick={() => scrollToBottom()}
+          aria-label={t.scrollDown}
+          title={t.scrollDown}
+          className="absolute left-1/2 z-20 flex h-9 w-9 -translate-x-1/2 items-center justify-center rounded-full border border-white/15 bg-black/90 text-white shadow-lg backdrop-blur transition-colors hover:border-[#00D2FF]/50 hover:text-[#00D2FF]"
+          style={{ bottom: 'calc(env(safe-area-inset-bottom) + 108px)' }}
+        >
+          <ChevronDown size={18} />
+        </button>
+      )}
 
       {/* Composer */}
       <div className="shrink-0 rounded-2xl border border-white/10 bg-black p-2">
@@ -732,13 +931,14 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             {recording ? <Square size={16} /> : <Mic size={18} />}
           </button>
           <textarea
+            ref={taRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send(); } }}
             rows={1}
             disabled={enhancing}
             placeholder={recording ? t.recording : mode === 'image' ? t.imgPlaceholder : mode === 'music' ? t.musicPlaceholder : mode === 'video' ? t.videoPlaceholder : mode === 'lipsync' ? t.lipsyncPlaceholder : t.placeholder}
-            className="max-h-32 min-h-[44px] flex-1 resize-none rounded-xl bg-white/[0.04] px-3 py-3 text-[16px] text-white placeholder:text-neutral-600 outline-none focus:ring-1 focus:ring-[#00D2FF]/40 disabled:opacity-60"
+            className="max-h-40 min-h-[44px] flex-1 resize-none rounded-xl bg-white/[0.04] px-3 py-3 text-[16px] text-white placeholder:text-neutral-600 outline-none focus:ring-1 focus:ring-[#00D2FF]/40 disabled:opacity-60"
           />
           {/* Magic Wand — one-tap AI prompt enhancement, in place. */}
           <button
@@ -751,10 +951,19 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           >
             {enhancing ? <Loader2 size={18} className="animate-spin text-[#00D2FF]" /> : <Wand2 size={18} />}
           </button>
-          <button type="button" onClick={() => void send()} disabled={busy || (mode === 'lipsync' ? (!attachment || !lipAudio) : (!input.trim() && !attachment))} aria-label="send"
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-r from-[#00D2FF] to-[#0085FF] text-black transition-all hover:brightness-110 disabled:opacity-40">
-            {busy ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
-          </button>
+          {busy ? (
+            // While generating, the send button becomes a STOP control (modern
+            // chatbot affordance) — cancels the in-flight request immediately.
+            <button type="button" onClick={stop} aria-label={t.stop} title={t.stop}
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/20 bg-white/5 text-white transition-colors hover:border-[#00D2FF]/60 hover:text-[#00D2FF]">
+              <Square size={15} className="fill-current" />
+            </button>
+          ) : (
+            <button type="button" onClick={() => void send()} disabled={mode === 'lipsync' ? (!attachment || !lipAudio) : (!input.trim() && !attachment)} aria-label="send"
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-r from-[#00D2FF] to-[#0085FF] text-black transition-all hover:brightness-110 disabled:opacity-40">
+              <Send size={16} />
+            </button>
+          )}
         </div>
       </div>
 
