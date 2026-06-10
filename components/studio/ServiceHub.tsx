@@ -58,14 +58,17 @@ const COPY: Record<Lang, {
 export function ServiceHub({ locale = 'ka', isAuthenticated = false }: { locale?: string; isAuthenticated?: boolean }) {
   const lang: Lang = locale === 'en' ? 'en' : locale === 'ru' ? 'ru' : 'ka';
   const t = COPY[lang];
-  const [service, setService] = useState<Service>('hub');
+  // ONE WINDOW: the bare /dashboard lands DIRECTLY on the unified assistant
+  // chatbox (omni) — which now hosts every service (chat · image · music · video ·
+  // lip-sync) — so the chat IS the landing, no card-selection gate. The 3-card hub
+  // stays reachable via #hub (the chatbox's back control) for the richer dedicated
+  // Film studio. Every surface rides the URL hash so refresh / back / share behave.
+  const [service, setService] = useState<Service>('omni');
 
-  // The active service rides in the URL hash so refresh / back / share behave —
-  // without ever leaving the page (One Window).
   useEffect(() => {
     const read = () => {
       const h = (typeof window !== 'undefined' ? window.location.hash : '').replace('#', '');
-      setService(h === 'film' || h === 'omni' || h === 'lipsync' ? h : 'hub');
+      setService(h === 'film' || h === 'omni' || h === 'lipsync' || h === 'hub' ? (h as Service) : 'omni');
     };
     read();
     window.addEventListener('hashchange', read);
@@ -73,7 +76,9 @@ export function ServiceHub({ locale = 'ka', isAuthenticated = false }: { locale?
   }, []);
 
   const go = useCallback((s: Service) => {
-    if (typeof window !== 'undefined') window.location.hash = s === 'hub' ? '' : s;
+    // The default chatbox lives on the bare URL (empty hash); everything else —
+    // including the card hub — rides an explicit hash so it's shareable.
+    if (typeof window !== 'undefined') window.location.hash = s === 'omni' ? '' : s;
     setService(s);
   }, []);
 
