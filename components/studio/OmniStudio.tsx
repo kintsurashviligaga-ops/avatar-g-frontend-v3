@@ -24,7 +24,7 @@ const COPY: Record<Lang, {
   modeMusic: string; musicPlaceholder: string; generatingMusic: string; musicFailed: string;
   modeVideo: string; videoPlaceholder: string; generatingVideo: string; videoFailed: string;
   modeLipsync: string; lipsyncPlaceholder: string; generatingLipsync: string; lipsyncFailed: string; lipsyncNeedFiles: string; lipsyncAuth: string; lipAudioLabel: string;
-  stop: string; stopped: string; scrollDown: string; regenerate: string; elapsedHint: string;
+  stop: string; stopped: string; scrollDown: string; regenerate: string; elapsedHint: string; greeting: string;
 }> = {
   ka: {
     title: 'ჭკვიანი ასისტენტი', subtitle: 'ინტელექტუალური მულტიმოდალური ასისტენტი',
@@ -39,7 +39,7 @@ const COPY: Record<Lang, {
     generatingVideo: 'ვიდეო იქმნება… (1–2 წუთი)', videoFailed: 'ვიდეოს გენერაცია ვერ მოხერხდა.',
     modeLipsync: 'ლიფსინქი', lipsyncPlaceholder: 'მიამაგრე ვიდეო + აუდიო და დააჭირე გაგზავნას…',
     generatingLipsync: 'ტუჩები სინქრონდება…', lipsyncFailed: 'ლიფსინქი ვერ მოხერხდა.', lipsyncNeedFiles: 'მიამაგრე ვიდეოც და აუდიოც.', lipsyncAuth: 'ლიფსინქისთვის ჯერ გაიარე ავტორიზაცია.', lipAudioLabel: 'აუდიო',
-    stop: 'შეჩერება', stopped: 'შეჩერდა', scrollDown: 'ბოლოში გადასვლა', regenerate: 'თავიდან გენერაცია', elapsedHint: 'გავიდა',
+    stop: 'შეჩერება', stopped: 'შეჩერდა', scrollDown: 'ბოლოში გადასვლა', regenerate: 'თავიდან გენერაცია', elapsedHint: 'გავიდა', greeting: 'რით დაგეხმარო?',
   },
   en: {
     title: 'Smart Assistant', subtitle: 'Intelligent multimodal assistant',
@@ -54,7 +54,7 @@ const COPY: Record<Lang, {
     generatingVideo: 'Producing video… (1–2 min)', videoFailed: 'Video generation failed.',
     modeLipsync: 'Lip-sync', lipsyncPlaceholder: 'Attach a video + audio, then press send…',
     generatingLipsync: 'Syncing the lips…', lipsyncFailed: 'Lip-sync failed.', lipsyncNeedFiles: 'Attach both a video and audio.', lipsyncAuth: 'Sign in first to use lip-sync.', lipAudioLabel: 'Audio',
-    stop: 'Stop', stopped: 'Stopped', scrollDown: 'Scroll to bottom', regenerate: 'Regenerate', elapsedHint: 'elapsed',
+    stop: 'Stop', stopped: 'Stopped', scrollDown: 'Scroll to bottom', regenerate: 'Regenerate', elapsedHint: 'elapsed', greeting: 'How can I help?',
   },
   ru: {
     title: 'Умный ассистент', subtitle: 'Интеллектуальный мультимодальный ассистент',
@@ -69,7 +69,7 @@ const COPY: Record<Lang, {
     generatingVideo: 'Создаю видео… (1–2 мин)', videoFailed: 'Не удалось создать видео.',
     modeLipsync: 'Синхрон', lipsyncPlaceholder: 'Прикрепите видео + аудио и нажмите отправить…',
     generatingLipsync: 'Синхронизирую губы…', lipsyncFailed: 'Не удалось синхронизировать.', lipsyncNeedFiles: 'Прикрепите и видео, и аудио.', lipsyncAuth: 'Войдите, чтобы использовать синхронизацию.', lipAudioLabel: 'Аудио',
-    stop: 'Стоп', stopped: 'Остановлено', scrollDown: 'Вниз', regenerate: 'Заново', elapsedHint: 'прошло',
+    stop: 'Стоп', stopped: 'Остановлено', scrollDown: 'Вниз', regenerate: 'Заново', elapsedHint: 'прошло', greeting: 'Чем помочь?',
   },
 };
 
@@ -132,18 +132,18 @@ function GenerationProgress({ kind, elapsed, status, locale }: {
   return (
     <div className="w-[min(72vw,380px)] space-y-2 py-0.5">
       <div className="flex items-center justify-between gap-2 text-[12.5px]">
-        <span className="inline-flex min-w-0 items-center gap-1.5 text-[#00D2FF]">
+        <span className="inline-flex min-w-0 items-center gap-1.5 text-app-accent">
           <Loader2 size={13} className="shrink-0 animate-spin" />
           <span className="truncate">{headline}</span>
         </span>
-        <span className="shrink-0 tabular-nums text-neutral-500">{fmtClock(elapsed)}</span>
+        <span className="shrink-0 tabular-nums text-app-muted">{fmtClock(elapsed)}</span>
       </div>
-      <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/10">
-        <div className="h-full rounded-full bg-gradient-to-r from-[#00D2FF] to-[#0085FF] transition-[width] duration-500 ease-out" style={{ width: `${Math.max(6, pct)}%` }} />
+      <div className="h-1 w-full overflow-hidden rounded-full bg-app-border/10">
+        <div className="h-full rounded-full bg-app-accent transition-[width] duration-500 ease-out" style={{ width: `${Math.max(6, pct)}%` }} />
       </div>
       <div className="flex items-center gap-1.5">
         {stages.map((s, i) => (
-          <span key={i} title={s} className={`h-1 flex-1 rounded-full transition-colors ${i <= stageIdx ? 'bg-[#00D2FF]/70' : 'bg-white/10'}`} />
+          <span key={i} title={s} className={`h-0.5 flex-1 rounded-full transition-colors ${i <= stageIdx ? 'bg-app-accent/70' : 'bg-app-border/10'}`} />
         ))}
       </div>
     </div>
@@ -155,11 +155,21 @@ function TypingDots() {
   return (
     <span className="inline-flex items-center gap-1 py-1" aria-label="…">
       {[0, 1, 2].map((i) => (
-        <span key={i} className="h-1.5 w-1.5 rounded-full bg-neutral-500 animate-bounce" style={{ animationDelay: `${i * 0.15}s`, animationDuration: '1s' }} />
+        <span key={i} className="h-1.5 w-1.5 rounded-full bg-app-muted animate-bounce" style={{ animationDelay: `${i * 0.15}s`, animationDuration: '1s' }} />
       ))}
     </span>
   );
 }
+
+// The five generative modes — declared once, rendered as a clean borderless chip
+// row (no bordered container, no dividers — minimalist, Grok-style).
+const MODES = [
+  { id: 'chat', Icon: MessageSquare, key: 'modeChat' },
+  { id: 'image', Icon: ImageIcon, key: 'modeImage' },
+  { id: 'music', Icon: Music2, key: 'modeMusic' },
+  { id: 'video', Icon: Film, key: 'modeVideo' },
+  { id: 'lipsync', Icon: Mic2, key: 'modeLipsync' },
+] as const;
 
 // First-run examples — tappable cards that make the assistant self-explanatory.
 // Tapping pre-fills the composer (and switches to Image mode for a draw example)
@@ -671,7 +681,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
 
   return (
     <div
-      className="relative mx-auto flex h-full w-full max-w-3xl flex-col px-4 pt-3"
+      className="relative mx-auto flex h-full w-full max-w-3xl flex-col px-4 pt-2 text-app-text"
       style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}
     >
       <div
@@ -680,25 +690,26 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           const el = e.currentTarget;
           setShowJump(el.scrollHeight - el.scrollTop - el.clientHeight > 160);
         }}
-        className="min-h-0 flex-1 space-y-3 overflow-y-auto pb-3 pt-1"
+        className="min-h-0 flex-1 space-y-4 overflow-y-auto pb-3 pt-1"
       >
         {messages.length === 0 ? (
-          <div className="flex h-full flex-col items-center justify-center gap-4 px-2 text-center">
-            <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#00D2FF]/10 text-[#00D2FF]"><Sparkles size={22} /></span>
-            <p className="max-w-sm text-sm text-neutral-500">{t.empty}</p>
-            {/* Tappable first-run examples — pre-fill the composer (image example
-                also flips to Image mode), never auto-send. Makes the assistant
-                instantly understandable: chat · generate · ideate. */}
-            <div className="flex w-full max-w-md flex-col gap-2">
+          <div className="flex h-full flex-col items-center justify-center gap-5 px-2 text-center">
+            <div className="space-y-1.5">
+              <h2 className="text-[22px] font-semibold tracking-tight text-app-text">{t.greeting}</h2>
+              <p className="mx-auto max-w-sm text-[13.5px] text-app-muted">{t.empty}</p>
+            </div>
+            {/* Tappable first-run examples — borderless, minimal. Pre-fill the
+                composer (never auto-send); the user reviews then presses send. */}
+            <div className="flex w-full max-w-md flex-col gap-1.5">
               {(STARTERS[locale] ?? STARTERS.ka).map((s, i) => (
                 <button
                   key={i}
                   type="button"
                   onClick={() => { setMode(s.mode); setInput(s.prompt); }}
-                  className="group flex items-center gap-2.5 rounded-xl border border-white/10 bg-white/[0.03] px-3.5 py-2.5 text-left text-[13px] text-neutral-300 transition-colors hover:border-[#00D2FF]/40 hover:text-white active:scale-[0.99] motion-reduce:active:scale-100"
+                  className="group flex items-center gap-3 rounded-2xl bg-app-elevated/60 px-4 py-3 text-left text-[13.5px] text-app-text transition-colors hover:bg-app-elevated active:scale-[0.99] motion-reduce:active:scale-100"
                 >
-                  <span className="shrink-0 text-[#00D2FF]/70 transition-colors group-hover:text-[#00D2FF]">
-                    {s.icon === 'image' ? <ImageIcon size={15} /> : s.icon === 'music' ? <Music2 size={15} /> : s.icon === 'spark' ? <Sparkles size={15} /> : <MessageSquare size={15} />}
+                  <span className="shrink-0 text-app-muted transition-colors group-hover:text-app-accent">
+                    {s.icon === 'image' ? <ImageIcon size={16} /> : s.icon === 'music' ? <Music2 size={16} /> : s.icon === 'spark' ? <Sparkles size={16} /> : <MessageSquare size={16} />}
                   </span>
                   <span className="flex-1">{s.label}</span>
                 </button>
@@ -707,8 +718,10 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           </div>
         ) : messages.map((m, i) => (
           <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-            <div className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 text-[14px] leading-relaxed ${
-              m.role === 'user' ? 'bg-[#00D2FF]/15 text-white ring-1 ring-[#00D2FF]/30' : 'bg-white/[0.04] text-neutral-200 ring-1 ring-white/10'
+            <div className={`text-[14.5px] leading-relaxed ${
+              m.role === 'user'
+                ? 'max-w-[85%] rounded-2xl bg-app-elevated px-4 py-2.5 text-app-text'
+                : 'w-full max-w-full text-app-text'
             }`}>
               {m.media && (
                 isImage(m.media.mimeType) ? (
@@ -722,7 +735,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 ) : isAudio(m.media.mimeType) ? (
                   <audio src={m.media.dataUrl} controls className="mb-2 w-full" />
                 ) : (
-                  <span className="mb-2 inline-flex items-center gap-1.5 rounded-lg bg-white/5 px-2 py-1 text-[11px] text-neutral-400"><FileText size={12} /> document</span>
+                  <span className="mb-2 inline-flex items-center gap-1.5 rounded-lg bg-app-elevated px-2 py-1 text-[11px] text-app-muted"><FileText size={12} /> document</span>
                 )
               )}
               {m.imageUrl && (
@@ -736,7 +749,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                     target="_blank"
                     rel="noopener noreferrer"
                     download
-                    className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#00D2FF] hover:underline"
+                    className="inline-flex items-center gap-1 text-[11px] font-semibold text-app-accent hover:underline"
                   >
                     <Download size={11} /> {t.imgDownload}
                   </a>
@@ -751,7 +764,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                     target="_blank"
                     rel="noopener noreferrer"
                     download
-                    className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#00D2FF] hover:underline"
+                    className="inline-flex items-center gap-1 text-[11px] font-semibold text-app-accent hover:underline"
                   >
                     <Download size={11} /> {t.imgDownload}
                   </a>
@@ -760,13 +773,13 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
               {m.videoUrl && (
                 <div className="space-y-1.5">
                   {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
-                  <video src={m.videoUrl} controls playsInline className="max-h-80 w-full rounded-lg bg-black" />
+                  <video src={m.videoUrl} controls playsInline className="max-h-80 w-full rounded-lg bg-black/90" />
                   <a
                     href={m.videoUrl}
                     target="_blank"
                     rel="noopener noreferrer"
                     download
-                    className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#00D2FF] hover:underline"
+                    className="inline-flex items-center gap-1 text-[11px] font-semibold text-app-accent hover:underline"
                   >
                     <Download size={11} /> {t.imgDownload}
                   </a>
@@ -784,14 +797,14 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
               })()}
               {/* Per-response actions on a TEXT reply — Read-aloud + Copy. No
                   Like/Dislike, per the one-window spec. */}
-              {m.role === 'assistant' && m.text && !m.text.startsWith('⚠️') && (
-                <div className="mt-1.5 flex items-center gap-0.5 text-neutral-500">
+              {m.role === 'assistant' && m.text && !m.text.startsWith('⚠️') && !m.text.startsWith('⏹') && (
+                <div className="mt-1 flex items-center gap-0.5 text-app-muted">
                   <button
                     type="button"
                     onClick={() => void speakMsg(m.text, i)}
                     aria-label={locale === 'en' ? 'Read aloud' : locale === 'ru' ? 'Озвучить' : 'ხმამაღლა წაკითხვა'}
                     title={locale === 'en' ? 'Read aloud' : locale === 'ru' ? 'Озвучить' : 'ხმამაღლა წაკითხვა'}
-                    className={`flex h-7 w-7 items-center justify-center rounded-md transition-colors hover:bg-white/5 hover:text-[#00D2FF] ${speakingIdx === i ? 'text-[#00D2FF]' : ''}`}
+                    className={`flex h-7 w-7 items-center justify-center rounded-md transition-colors hover:bg-app-elevated hover:text-app-accent ${speakingIdx === i ? 'text-app-accent' : ''}`}
                   >
                     {speakingIdx === i ? <Square size={13} /> : <Volume2 size={13} />}
                   </button>
@@ -800,7 +813,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                     onClick={() => void copyMsg(m.text, i)}
                     aria-label={locale === 'en' ? 'Copy' : locale === 'ru' ? 'Копировать' : 'კოპირება'}
                     title={locale === 'en' ? 'Copy' : locale === 'ru' ? 'Копировать' : 'კოპირება'}
-                    className={`flex h-7 w-7 items-center justify-center rounded-md transition-colors hover:bg-white/5 hover:text-[#00D2FF] ${copiedIdx === i ? 'text-[#00D2FF]' : ''}`}
+                    className={`flex h-7 w-7 items-center justify-center rounded-md transition-colors hover:bg-app-elevated hover:text-app-accent ${copiedIdx === i ? 'text-app-accent' : ''}`}
                   >
                     {copiedIdx === i ? <Check size={13} /> : <Copy size={13} />}
                   </button>
@@ -818,60 +831,34 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           onClick={() => scrollToBottom()}
           aria-label={t.scrollDown}
           title={t.scrollDown}
-          className="absolute left-1/2 z-20 flex h-9 w-9 -translate-x-1/2 items-center justify-center rounded-full border border-white/15 bg-black/90 text-white shadow-lg backdrop-blur transition-colors hover:border-[#00D2FF]/50 hover:text-[#00D2FF]"
-          style={{ bottom: 'calc(env(safe-area-inset-bottom) + 108px)' }}
+          className="absolute left-1/2 z-20 flex h-9 w-9 -translate-x-1/2 items-center justify-center rounded-full border border-app-border/15 bg-app-surface text-app-text shadow-lg backdrop-blur transition-colors hover:text-app-accent"
+          style={{ bottom: 'calc(env(safe-area-inset-bottom) + 104px)' }}
         >
           <ChevronDown size={18} />
         </button>
       )}
 
-      {/* Composer */}
-      <div className="shrink-0 rounded-2xl border border-white/10 bg-black p-2">
-        {/* Mode toggle — Chat (multimodal answer) vs Image (NanoBanana generation). */}
-        <div className="mb-2 inline-flex rounded-lg border border-white/10 bg-white/[0.03] p-0.5 text-[12px] font-medium">
-          <button
-            type="button"
-            onClick={() => setMode('chat')}
-            aria-pressed={mode === 'chat'}
-            className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 transition-colors ${mode === 'chat' ? 'bg-[#00D2FF]/15 text-[#00D2FF]' : 'text-neutral-400 hover:text-white'}`}
-          >
-            <MessageSquare size={13} /> {t.modeChat}
-          </button>
-          <button
-            type="button"
-            onClick={() => setMode('image')}
-            aria-pressed={mode === 'image'}
-            className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 transition-colors ${mode === 'image' ? 'bg-[#00D2FF]/15 text-[#00D2FF]' : 'text-neutral-400 hover:text-white'}`}
-          >
-            <ImageIcon size={13} /> {t.modeImage}
-          </button>
-          <button
-            type="button"
-            onClick={() => setMode('music')}
-            aria-pressed={mode === 'music'}
-            className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 transition-colors ${mode === 'music' ? 'bg-[#00D2FF]/15 text-[#00D2FF]' : 'text-neutral-400 hover:text-white'}`}
-          >
-            <Music2 size={13} /> {t.modeMusic}
-          </button>
-          <button
-            type="button"
-            onClick={() => setMode('video')}
-            aria-pressed={mode === 'video'}
-            className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 transition-colors ${mode === 'video' ? 'bg-[#00D2FF]/15 text-[#00D2FF]' : 'text-neutral-400 hover:text-white'}`}
-          >
-            <Film size={13} /> {t.modeVideo}
-          </button>
-          <button
-            type="button"
-            onClick={() => setMode('lipsync')}
-            aria-pressed={mode === 'lipsync'}
-            className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 transition-colors ${mode === 'lipsync' ? 'bg-[#00D2FF]/15 text-[#00D2FF]' : 'text-neutral-400 hover:text-white'}`}
-          >
-            <Mic2 size={13} /> {t.modeLipsync}
-          </button>
+      {/* Composer — minimalist & borderless (Grok-style). */}
+      <div className="shrink-0 pt-1">
+        {/* Mode chips — what to create. Borderless row, horizontal-scroll on mobile. */}
+        <div className="mb-2 flex items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {MODES.map(({ id, Icon, key: labelKey }) => {
+            const active = mode === id;
+            return (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setMode(id)}
+                aria-pressed={active}
+                className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-[12.5px] font-medium transition-colors ${active ? 'bg-app-accent/12 text-app-accent' : 'text-app-muted hover:bg-app-elevated hover:text-app-text'}`}
+              >
+                <Icon size={14} /> {t[labelKey]}
+              </button>
+            );
+          })}
         </div>
-        {/* Lip-sync needs a SECOND file — the audio. The [Clip] button holds the
-            video; this chip holds the audio track. Shown only in lip-sync mode. */}
+
+        {/* Lip-sync needs a SECOND file — the audio chip ([attach] holds the video). */}
         {mode === 'lipsync' && (
           <div className="mb-2 flex items-center gap-2">
             <input
@@ -887,46 +874,50 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
               }}
             />
             {lipAudio ? (
-              <span className="inline-flex items-center gap-2 rounded-lg border border-[#00D2FF]/30 bg-[#00D2FF]/5 px-2.5 py-1.5 text-[12px] text-[#00D2FF]">
+              <span className="inline-flex items-center gap-2 rounded-full bg-app-accent/10 px-3 py-1.5 text-[12px] text-app-accent">
                 <Music2 size={13} /> {t.lipAudioLabel}
-                <button type="button" onClick={() => setLipAudio(null)} aria-label="remove audio" className="text-neutral-400 hover:text-white"><X size={12} /></button>
+                <button type="button" onClick={() => setLipAudio(null)} aria-label="remove audio" className="text-app-muted hover:text-app-text"><X size={12} /></button>
               </span>
             ) : (
               <button
                 type="button"
                 onClick={() => lipAudioRef.current?.click()}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-white/15 px-2.5 py-1.5 text-[12px] text-neutral-400 transition-colors hover:border-[#00D2FF]/40 hover:text-white"
+                className="inline-flex items-center gap-1.5 rounded-full bg-app-elevated px-3 py-1.5 text-[12px] text-app-muted transition-colors hover:text-app-text"
               >
                 <Music2 size={13} /> + {t.lipAudioLabel}
               </button>
             )}
           </div>
         )}
+
+        {/* Attachment preview chip. */}
         {attachment && (
-          <div className="mb-2 inline-flex items-center gap-2 rounded-lg border border-[#00D2FF]/30 bg-[#00D2FF]/5 p-1 pr-2">
+          <div className="mb-2 inline-flex items-center gap-2 rounded-2xl bg-app-elevated p-1 pr-2">
             {isImage(attachment.mimeType) ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={attachment.dataUrl} alt="" className="h-10 w-10 rounded object-cover" />
+              <img src={attachment.dataUrl} alt="" className="h-10 w-10 rounded-xl object-cover" />
             ) : (
-              <span className="flex h-10 w-10 items-center justify-center rounded bg-black text-[#00D2FF]">
+              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-app-surface text-app-accent">
                 {isVideo(attachment.mimeType) ? <Film size={16} /> : isAudio(attachment.mimeType) ? <Music2 size={16} /> : <FileText size={16} />}
               </span>
             )}
-            <button type="button" onClick={() => setAttachment(null)} className="text-neutral-400 hover:text-white"><X size={14} /></button>
+            <button type="button" onClick={() => setAttachment(null)} className="text-app-muted hover:text-app-text"><X size={14} /></button>
           </div>
         )}
-        <div className="flex items-end gap-2">
+
+        {/* Input surface — one clean rounded field, no heavy border or gradient. */}
+        <div className="flex items-end gap-1 rounded-[26px] bg-app-elevated px-1.5 py-1.5">
           <input ref={fileRef} type="file" accept="image/*,audio/*,video/*,application/pdf" className="hidden" onChange={(e) => {
             const f = e.target.files?.[0]; if (!f) return;
             const r = new FileReader(); r.onload = () => setAttachment({ dataUrl: String(r.result), mimeType: f.type || 'application/octet-stream' }); r.readAsDataURL(f);
           }} />
           <button type="button" onClick={() => fileRef.current?.click()} aria-label="attach"
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-neutral-400 transition-colors hover:bg-white/5 hover:text-white">
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-surface hover:text-app-text">
             <Paperclip size={18} />
           </button>
           <button type="button" onClick={() => void toggleMic()} aria-label={t.micHint}
-            className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl transition-colors ${
-              recording ? 'animate-pulse bg-red-500/15 text-red-400' : 'text-neutral-400 hover:bg-white/5 hover:text-white'
+            className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition-colors ${
+              recording ? 'animate-pulse bg-app-danger/15 text-app-danger' : 'text-app-muted hover:bg-app-surface hover:text-app-text'
             }`}>
             {recording ? <Square size={16} /> : <Mic size={18} />}
           </button>
@@ -938,7 +929,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             rows={1}
             disabled={enhancing}
             placeholder={recording ? t.recording : mode === 'image' ? t.imgPlaceholder : mode === 'music' ? t.musicPlaceholder : mode === 'video' ? t.videoPlaceholder : mode === 'lipsync' ? t.lipsyncPlaceholder : t.placeholder}
-            className="max-h-40 min-h-[44px] flex-1 resize-none rounded-xl bg-white/[0.04] px-3 py-3 text-[16px] text-white placeholder:text-neutral-600 outline-none focus:ring-1 focus:ring-[#00D2FF]/40 disabled:opacity-60"
+            className="max-h-40 min-h-[40px] flex-1 resize-none border-0 bg-transparent px-2 py-2 text-[16px] text-app-text placeholder:text-app-muted/70 outline-none focus:ring-0 disabled:opacity-60"
           />
           {/* Magic Wand — one-tap AI prompt enhancement, in place. */}
           <button
@@ -947,20 +938,20 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             disabled={enhancing || busy || !input.trim()}
             aria-label={t.magicHint}
             title={t.magicHint}
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-neutral-400 transition-colors hover:bg-white/5 hover:text-[#00D2FF] disabled:opacity-40"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-surface hover:text-app-accent disabled:opacity-40"
           >
-            {enhancing ? <Loader2 size={18} className="animate-spin text-[#00D2FF]" /> : <Wand2 size={18} />}
+            {enhancing ? <Loader2 size={18} className="animate-spin text-app-accent" /> : <Wand2 size={18} />}
           </button>
           {busy ? (
-            // While generating, the send button becomes a STOP control (modern
-            // chatbot affordance) — cancels the in-flight request immediately.
+            // While generating, the send button becomes a STOP control — cancels
+            // the in-flight request immediately.
             <button type="button" onClick={stop} aria-label={t.stop} title={t.stop}
-              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/20 bg-white/5 text-white transition-colors hover:border-[#00D2FF]/60 hover:text-[#00D2FF]">
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-app-surface text-app-text transition-colors hover:text-app-accent">
               <Square size={15} className="fill-current" />
             </button>
           ) : (
             <button type="button" onClick={() => void send()} disabled={mode === 'lipsync' ? (!attachment || !lipAudio) : (!input.trim() && !attachment)} aria-label="send"
-              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-r from-[#00D2FF] to-[#0085FF] text-black transition-all hover:brightness-110 disabled:opacity-40">
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-app-accent text-app-bg transition-opacity hover:opacity-90 disabled:opacity-30">
               <Send size={16} />
             </button>
           )}
@@ -998,7 +989,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             rel="noopener noreferrer"
             download
             onClick={(e) => e.stopPropagation()}
-            className="absolute inset-x-0 mx-auto inline-flex w-fit items-center gap-1.5 rounded-lg border border-[#00D2FF]/30 bg-[#00D2FF]/10 px-3 py-1.5 text-[13px] font-semibold text-[#00D2FF] backdrop-blur"
+            className="absolute inset-x-0 mx-auto inline-flex w-fit items-center gap-1.5 rounded-full bg-app-accent px-4 py-2 text-[13px] font-semibold text-app-bg backdrop-blur"
             style={{ bottom: 'max(1rem, env(safe-area-inset-bottom))' }}
           >
             <Download size={14} /> {t.imgDownload}

@@ -122,41 +122,40 @@ export function ServiceHub({ locale = 'ka', isAuthenticated = false }: { locale?
     // layout's `min-h-screen flex items-center justify-center` wrapper that
     // otherwise centred this panel and let the page gradient bleed in above and
     // below (the "opens broken / dead space" report). Mirrors the film studio shell.
-    <div className="fixed inset-0 z-0 overflow-y-auto bg-black text-white" style={{ height: '100dvh', paddingTop: 'env(safe-area-inset-top, 0px)', paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
+    <div className="fixed inset-0 z-0 overflow-y-auto bg-app-bg text-app-text" style={{ height: '100dvh', paddingTop: 'env(safe-area-inset-top, 0px)', paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
       <div className="mx-auto flex min-h-full w-full max-w-5xl flex-col px-4 py-8 sm:py-12">
-        <div className="mb-8 flex items-center gap-2.5">
-          <span className="flex h-9 w-9 items-center justify-center rounded-xl border border-[#00D2FF]/40 bg-[#00D2FF]/10 text-[15px] shadow-[0_0_15px_rgba(0,210,255,0.25)]" aria-hidden>🚀</span>
-          <span className="text-sm font-bold tracking-wide text-white">MyAvatar<span className="text-[#00D2FF]">.ge</span></span>
+        <div className="mb-8 flex items-center gap-2">
+          <span className="text-[15px] font-semibold tracking-tight text-app-text">MyAvatar<span className="text-app-accent">.ge</span></span>
         </div>
 
         <header className="mb-7">
-          <h1 className="text-2xl font-bold tracking-tight text-white sm:text-3xl">{t.heading}</h1>
-          <p className="mt-1 text-sm text-neutral-500">{t.sub}</p>
+          <h1 className="text-2xl font-semibold tracking-tight text-app-text sm:text-3xl">{t.heading}</h1>
+          <p className="mt-1 text-sm text-app-muted">{t.sub}</p>
         </header>
 
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           {cards.map((c) => (
             <button
               key={c.id}
               type="button"
               onClick={() => go(c.id)}
-              className={`group flex flex-col items-start gap-3 rounded-2xl border bg-black p-5 text-left transition-all hover:-translate-y-0.5 ${
+              className={`group flex flex-col items-start gap-3 rounded-2xl p-5 text-left transition-colors ${
                 c.primary
-                  ? 'border-[#00D2FF]/40 ring-1 ring-[#00D2FF]/20 hover:border-[#00D2FF] hover:shadow-[0_0_40px_-12px_rgba(0,210,255,0.5)]'
-                  : 'border-white/10 hover:border-[#00D2FF]/40 hover:shadow-[0_0_40px_-16px_rgba(0,210,255,0.35)]'
+                  ? 'bg-app-accent/10 hover:bg-app-accent/15'
+                  : 'bg-app-elevated/60 hover:bg-app-elevated'
               }`}
             >
               <div className="flex w-full items-center justify-between">
-                <span className={`flex h-12 w-12 items-center justify-center rounded-2xl ${c.primary ? 'bg-[#00D2FF]/15 text-[#00D2FF]' : 'bg-white/5 text-neutral-300 group-hover:text-[#00D2FF]'}`}>
+                <span className={`flex h-11 w-11 items-center justify-center rounded-2xl ${c.primary ? 'bg-app-accent/15 text-app-accent' : 'bg-app-surface text-app-muted group-hover:text-app-accent'}`}>
                   {c.icon}
                 </span>
-                <span className="rounded-full border border-white/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-neutral-500">{c.tag}</span>
+                <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-app-muted">{c.tag}</span>
               </div>
               <div className="space-y-1">
-                <h2 className="text-[15px] font-bold leading-tight text-white">{c.title}</h2>
-                <p className="text-[12.5px] leading-snug text-neutral-500">{c.sub}</p>
+                <h2 className="text-[15px] font-semibold leading-tight text-app-text">{c.title}</h2>
+                <p className="text-[12.5px] leading-snug text-app-muted">{c.sub}</p>
               </div>
-              <span className={`mt-auto inline-flex items-center gap-1 text-[12px] font-semibold ${c.primary ? 'text-[#00D2FF]' : 'text-neutral-400 group-hover:text-[#00D2FF]'}`}>
+              <span className={`mt-auto inline-flex items-center gap-1 text-[12px] font-semibold ${c.primary ? 'text-app-accent' : 'text-app-muted group-hover:text-app-accent'}`}>
                 {t.open} <ChevronRight size={13} className="transition-transform group-hover:translate-x-0.5" />
               </span>
             </button>
