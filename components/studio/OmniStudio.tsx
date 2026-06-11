@@ -206,22 +206,25 @@ function Chip({ active, onClick, children }: { active: boolean; onClick: () => v
 // Tapping pre-fills the composer (and switches to Image mode for a draw example)
 // WITHOUT auto-sending, so the user reviews + presses send (never an accidental
 // spend). `icon` maps to a lucide glyph in the render.
-type StarterIcon = 'chat' | 'image' | 'spark' | 'music';
-const STARTERS: Record<Lang, { label: string; prompt: string; mode: 'chat' | 'image' | 'music'; icon: StarterIcon }[]> = {
+type StarterIcon = 'chat' | 'image' | 'spark' | 'music' | 'film';
+const STARTERS: Record<Lang, { label: string; prompt: string; mode: 'chat' | 'image' | 'music' | 'video'; icon: StarterIcon }[]> = {
   ka: [
     { label: 'დახატე ნეონის ქალაქი წვიმაში', prompt: 'ნეონის ქალაქი წვიმაში ღამით, კინემატოგრაფიული, ანარეკლები ასფალტზე', mode: 'image', icon: 'image' },
+    { label: 'შექმენი 30-წამიანი კინო', prompt: 'ზღვისპირა ქალაქი მზის ჩასვლისას, მარტოხელა მოგზაური დადის ნაპირზე — კინემატოგრაფიული, თბილი ფერები', mode: 'video', icon: 'film' },
     { label: 'შექმენი ეპიკური კინო-მუსიკა', prompt: 'ეპიკური ორკესტრული კინო-მუსიკა, დრამატული, გმირული განწყობა', mode: 'music', icon: 'music' },
-    { label: 'მომეცი იდეები 30-წამიანი ვიდეოსთვის', prompt: 'მომეცი 3 კრეატიული იდეა 30-წამიანი კინო-კლიპისთვის ქართულ ბუნებაზე', mode: 'chat', icon: 'spark' },
+    { label: 'მომეცი იდეები ვიდეოსთვის', prompt: 'მომეცი 3 კრეატიული იდეა 30-წამიანი კინო-კლიპისთვის ქართულ ბუნებაზე', mode: 'chat', icon: 'spark' },
   ],
   en: [
     { label: 'Draw a neon city in the rain', prompt: 'A neon city in the rain at night, cinematic, reflections on the wet asphalt', mode: 'image', icon: 'image' },
+    { label: 'Make a 30-second film', prompt: 'A seaside town at sunset, a lone traveller walking along the shore — cinematic, warm tones', mode: 'video', icon: 'film' },
     { label: 'Compose epic cinematic music', prompt: 'Epic orchestral cinematic score, dramatic, heroic mood', mode: 'music', icon: 'music' },
-    { label: 'Give me ideas for a 30s video', prompt: 'Give me 3 creative ideas for a 30-second cinematic clip about Georgian nature', mode: 'chat', icon: 'spark' },
+    { label: 'Give me ideas for a video', prompt: 'Give me 3 creative ideas for a 30-second cinematic clip about Georgian nature', mode: 'chat', icon: 'spark' },
   ],
   ru: [
     { label: 'Нарисуй неоновый город под дождём', prompt: 'Неоновый город под дождём ночью, кинематографично, отражения на мокром асфальте', mode: 'image', icon: 'image' },
+    { label: 'Сделай 30-секундный фильм', prompt: 'Приморский город на закате, одинокий путник идёт по берегу — кинематографично, тёплые тона', mode: 'video', icon: 'film' },
     { label: 'Создай эпичную кино-музыку', prompt: 'Эпичная оркестровая кино-музыка, драматичная, героическое настроение', mode: 'music', icon: 'music' },
-    { label: 'Идеи для 30-секундного видео', prompt: 'Дай 3 креативные идеи для 30-секундного кинороликa о природе Грузии', mode: 'chat', icon: 'spark' },
+    { label: 'Идеи для видео', prompt: 'Дай 3 креативные идеи для 30-секундного кинороликa о природе Грузии', mode: 'chat', icon: 'spark' },
   ],
 };
 
@@ -709,7 +712,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                   className="group flex items-center gap-3 rounded-2xl bg-app-elevated/60 px-4 py-3 text-left text-[13.5px] text-app-text transition-colors hover:bg-app-elevated active:scale-[0.99] motion-reduce:active:scale-100"
                 >
                   <span className="shrink-0 text-app-muted transition-colors group-hover:text-app-accent">
-                    {s.icon === 'image' ? <ImageIcon size={16} /> : s.icon === 'music' ? <Music2 size={16} /> : s.icon === 'spark' ? <Sparkles size={16} /> : <MessageSquare size={16} />}
+                    {s.icon === 'image' ? <ImageIcon size={16} /> : s.icon === 'film' ? <Film size={16} /> : s.icon === 'music' ? <Music2 size={16} /> : s.icon === 'spark' ? <Sparkles size={16} /> : <MessageSquare size={16} />}
                   </span>
                   <span className="flex-1">{s.label}</span>
                 </button>
