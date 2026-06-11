@@ -47,6 +47,8 @@ export interface FilmStudioMatrix {
   stitch: FilmLegClientStatus;
   audio: FilmLegClientStatus;
   audioUrl?: string | null;
+  /** PHASE 48 §2 — commentator/narration track; handed to the assembler as `voiceoverUrl`. */
+  voiceUrl?: string | null;
   readyToStitch?: boolean;
   statusTokenId?: string;
 }
@@ -394,6 +396,7 @@ async function assembleMaster(
   scorePrompt: string,
   signal?: AbortSignal,
   orientation?: 'landscape' | 'vertical',
+  voiceUrl?: string | null,
 ): Promise<{ url: string; qa: FilmQaSummary | null } | null> {
   const res = await fetch('/api/video/assemble', {
     method: 'POST',
@@ -403,6 +406,9 @@ async function assembleMaster(
     body: JSON.stringify({
       segments: clipUrls.map((url) => ({ url, durationSec: FILM_CLIP_SEC })),
       ...(musicUrl ? { musicUrl } : {}),
+      // PHASE 48 §2 — the commentator/narration track; the FFmpeg master ducks
+      // the score under it (voiceoverUrl → vocal_ducking_pct).
+      ...(voiceUrl ? { voiceoverUrl: voiceUrl } : {}),
       ...(scorePrompt.trim() ? { scorePrompt: scorePrompt.trim() } : {}),
       ...(statusTokenId ? { filmTokenId: statusTokenId } : {}),
       ...(orientation === 'vertical' ? { orientation: 'vertical' } : {}),
@@ -609,7 +615,9 @@ export async function driveFilmStudio(opts: DriveFilmOptions): Promise<FilmStudi
     }
     // §5 — a user soundtrack (Music-Video mode) wins over any generated score.
     const musicBed = opts.soundtrackUrl ?? matrix.audioUrl ?? null;
-    let assembled = await assembleMaster(clips, musicBed, matrix.statusTokenId, message, signal, opts.orientation);
+    // PHASE 48 §2 — commentator/narration track, when the brief asked for one.
+    const voiceBed = matrix.voiceUrl ?? null;
+    let assembled = await assembleMaster(clips, musicBed, matrix.statusTokenId, message, signal, opts.orientation, voiceBed);
 
     // 4 ── Recover if the assemble response was lost in transit
     if (!assembled && matrix.statusTokenId) {

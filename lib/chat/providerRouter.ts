@@ -595,6 +595,10 @@ async function pollFilmTask(predictionId: string, sessionId?: string): Promise<C
         stitch: filmStitchToClientStatus(stitchStatus, anyClipPending),
         audio: filmLegToClientStatus(audioStatus),
         audioUrl,
+        // PHASE 48 §2 — commentator/narration track (already a resolved signed
+        // URL in the token; no polling). The client hands it to the assembler as
+        // `voiceoverUrl` and the FFmpeg master ducks the score under it.
+        voiceUrl: ref.voiceUrl ?? null,
         readyToStitch,
         // PHASE 47 §1 — the unified status-tracker key for /api/video/status.
         statusTokenId,

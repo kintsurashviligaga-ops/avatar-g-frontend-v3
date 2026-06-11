@@ -47,6 +47,14 @@ export interface FilmTaskRef {
   clips: FilmClipRef[];
   /** Udio workId for the cohesive score (NOT prefixed with `udio:` — bare). */
   musicWorkId: string | null;
+  /**
+   * PHASE 48 §2 — already-resolved signed URL of the commentator / narration
+   * voice-over (minted synchronously at dispatch; TTS is fast, unlike the async
+   * music workId). Optional + backward-compatible: older tokens without it decode
+   * fine and simply carry no spoken track. The assembler passes it as
+   * `voiceoverUrl` and the FFmpeg master ducks the score under it.
+   */
+  voiceUrl?: string | null;
 }
 
 function b64urlEncode(s: string): string {

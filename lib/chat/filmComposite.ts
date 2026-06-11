@@ -37,6 +37,7 @@ import { creditWalletGel, getOnboardingState } from '@/lib/billing/wallet-ledger
 import { startUdioGeneration } from '@/lib/udio/client';
 import { ServiceManager } from './ServiceManager';
 import { encodeFilmRef } from './filmTaskRef';
+import { generateFilmVoiceover, wantsCommentary } from './filmVoiceover';
 import {
   planFilmScenes,
   buildFilmClipRequest,
@@ -91,6 +92,8 @@ interface FilmPlanSummary {
   /** True once every non-skipped clip has landed and the editor can stitch. */
   readyToStitch: boolean;
   musicWorkId: string | null;
+  /** PHASE 48 §2 — commentator/narration track (resolved at dispatch, may be null). */
+  voiceUrl: string | null;
 }
 
 /** Narrow a dispatch-time LegStatus to the token's clip status union. */
@@ -545,6 +548,26 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
     }
   }
 
+  // ── Leg 4b: commentator / narration voice-over (PHASE 48 §2) ───────────────
+  // Only when the brief explicitly asks for a spoken commentator/narrator. The
+  // helper is STRICTLY fail-open: any failure (no key, model error, empty audio)
+  // returns null and the film falls back to the music-only timeline unchanged.
+  // It is NOT separately billed, so an absent/failed voice-over never burns GEL.
+  let voiceUrl: string | null = null;
+  if (wantsCommentary(input.message)) {
+    try {
+      voiceUrl = await generateFilmVoiceover({
+        brief: input.message,
+        totalSec: plan.shared.totalSec,
+        compositeId,
+      });
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn('[film] voiceover leg failed:', err instanceof Error ? err.message : err);
+      voiceUrl = null;
+    }
+  }
+
   // PHASE 43 §1 — Mint the Union Poll token. Every clip taskRef + the audio
   // workId rides in ONE predictionId; `pollFilmTask` decodes it and polls the
   // full matrix in lock-step instead of tracking a single clip.
@@ -555,6 +578,7 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
     sceneCount,
     clips: clips.map((c) => ({ ordinal: c.ordinal, taskRef: c.taskRef, status: clipDispatchStatus(c.status), attempts: c.attempts })),
     musicWorkId,
+    voiceUrl,
   });
 
   // The Editor (stitch) and Audio legs depend on the clips finishing first, so
@@ -571,6 +595,7 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
     audioUrl: null,
     readyToStitch: false,
     musicWorkId,
+    voiceUrl,
   };
 
   const renderedCount = clips.filter((c) => c.status === 'queued').length;
