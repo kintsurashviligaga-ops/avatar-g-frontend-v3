@@ -24,6 +24,10 @@ export interface NanoBananaGenerateInput {
   style?: string;
   referenceImageDataUrl?: string;
   service?: string;
+  /** Override the result-poll window (else falls back to env / defaults). Higher
+   *  tiers (2K/4K) need a longer window than 1K to avoid a premature timeout. */
+  pollMaxAttempts?: number;
+  pollIntervalMs?: number;
 }
 
 export interface NanoBananaGenerateResult {
@@ -361,10 +365,10 @@ function buildRequestError(result: NanoRequestResult): string {
     || `NanoBanana request failed (${result.status})`;
 }
 
-async function pollTaskResult(baseUrl: string, apiKey: string, taskId: string): Promise<{ url?: string; text?: string; raw: unknown }> {
+async function pollTaskResult(baseUrl: string, apiKey: string, taskId: string, opts?: { maxAttempts?: number; pollIntervalMs?: number }): Promise<{ url?: string; text?: string; raw: unknown }> {
   const pollUrl = composeUrl(baseUrl, resolveEndpointPath('task-details'));
-  const maxAttempts = parsePositiveInt(process.env.NANOBANANA_MAX_POLL_ATTEMPTS, 20);
-  const pollIntervalMs = parsePositiveInt(process.env.NANOBANANA_POLL_INTERVAL_MS, 1500);
+  const maxAttempts = opts?.maxAttempts ?? parsePositiveInt(process.env.NANOBANANA_MAX_POLL_ATTEMPTS, 20);
+  const pollIntervalMs = opts?.pollIntervalMs ?? parsePositiveInt(process.env.NANOBANANA_POLL_INTERVAL_MS, 1500);
 
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     const result = await requestNanoBanana(
@@ -513,7 +517,10 @@ export async function generateNanoBananaImage(input: NanoBananaGenerateInput): P
     throw new Error(extractText(createResult.parsed) || 'No message available');
   }
 
-  const taskResult = await pollTaskResult(baseUrl, apiKey, taskId);
+  const taskResult = await pollTaskResult(baseUrl, apiKey, taskId, {
+    maxAttempts: typeof input.pollMaxAttempts === 'number' ? input.pollMaxAttempts : undefined,
+    pollIntervalMs: typeof input.pollIntervalMs === 'number' ? input.pollIntervalMs : undefined,
+  });
 
   if (!taskResult.url && !taskResult.text) {
     throw new Error('NanoBanana response did not include output data');

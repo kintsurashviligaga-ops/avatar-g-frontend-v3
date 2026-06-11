@@ -7,7 +7,10 @@ import { recordCompletedAsset } from '@/lib/orchestrator/jobs';
 import { randomUUID } from 'node:crypto';
 
 export const dynamic = 'force-dynamic';
-export const maxDuration = 120;
+// 300s headroom so the higher-resolution tiers (2K/4K) have time to finish on the
+// provider instead of timing out at the old 120s ceiling (the "image won't
+// generate" report on `high`). 1K still returns in ~50s; the poll exits on success.
+export const maxDuration = 300;
 
 // Quality → NanoBanana endpoint mapping
 const QUALITY_ENDPOINT: Record<string, NanoBananaEndpoint> = {
@@ -54,11 +57,15 @@ export async function POST(req: NextRequest) {
     const styleSuffix = STYLE_SUFFIXES[styleLabel] ?? styleLabel;
     const enriched    = styleSuffix ? `${prompt}, ${styleSuffix}` : prompt;
 
+    // Give 2K/4K a long-enough result-poll window (≈250s) so they complete rather
+    // than timing out; 1K finishes far sooner and exits the poll early.
     const result = await generateNanoBananaImage({
       prompt:      enriched,
       endpoint,
       aspectRatio: body.aspectRatio ?? '1:1',
       style:       styleLabel || undefined,
+      pollMaxAttempts: 100,
+      pollIntervalMs:  2500,
     });
 
     if (!result.url) {

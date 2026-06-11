@@ -274,7 +274,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   const [modeMenuOpen, setModeMenuOpen] = useState(false);
   // Per-service generation options.
   const [imgAspect, setImgAspect] = useState<ImgAspect>('1:1');
-  const [imgQuality, setImgQuality] = useState<ImgQuality>('high');
+  // Default to the FAST, reliable 1K tier — live testing showed 2K/4K often
+  // out-run the provider poll window and time out. Users can opt into 2K/4K.
+  const [imgQuality, setImgQuality] = useState<ImgQuality>('standard');
   const [imgStyle, setImgStyle] = useState<string>('Auto');
   const [musicInstrumental, setMusicInstrumental] = useState(true);
   const [musicGenre, setMusicGenre] = useState<string>('cinematic');
@@ -359,7 +361,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             next[next.length - 1] =
               j.success && j.url
                 ? { role: 'assistant', text: '', imageUrl: j.url }
-                : { role: 'assistant', text: `⚠️ ${t.imageFailed}` };
+                : { role: 'assistant', text: `⚠️ ${j.error || t.imageFailed}` };
           }
           return next;
         });
@@ -391,7 +393,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           credentials: 'include',
           signal: ac.signal,
         });
-        const j = (await res.json().catch(() => ({}))) as { success?: boolean; url?: string };
+        const j = (await res.json().catch(() => ({}))) as { success?: boolean; url?: string; error?: string };
         setMessages((prev) => {
           if (!mine()) return prev;
           const next = [...prev];
@@ -400,7 +402,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             next[next.length - 1] =
               j.success && j.url
                 ? { role: 'assistant', text: '', audioUrl: j.url }
-                : { role: 'assistant', text: `⚠️ ${t.musicFailed}` };
+                : { role: 'assistant', text: `⚠️ ${j.error || t.musicFailed}` };
           }
           return next;
         });
@@ -670,7 +672,10 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   const activeMode = MODES.find((mm) => mm.id === mode) ?? MODES[0];
   const ActiveModeIcon = activeMode.Icon;
   const activeModeKey = activeMode.key;
-  const canSend = !!input.trim() || attachments.length > 0;
+  // Chat can send on text OR attachments alone; the generative modes need a text
+  // prompt (this also prevents an image/music/video send with only files from
+  // silently falling through to the chat branch).
+  const canSend = mode === 'chat' ? (!!input.trim() || attachments.length > 0) : !!input.trim();
 
   return (
     <div
