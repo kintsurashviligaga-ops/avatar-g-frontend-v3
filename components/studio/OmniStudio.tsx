@@ -753,14 +753,15 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                     target="_blank"
                     rel="noopener noreferrer"
                     download
-                    className="inline-flex items-center gap-1 text-[11px] font-semibold text-app-accent hover:underline"
+                    className="inline-flex items-center gap-1.5 rounded-full bg-app-accent px-3.5 py-1.5 text-[12px] font-semibold text-app-bg shadow-sm transition-opacity hover:opacity-90 active:scale-[0.98]"
                   >
-                    <Download size={11} /> {t.imgDownload}
+                    <Download size={13} /> {t.imgDownload}
                   </a>
                 </div>
               )}
               {m.audioUrl && (
-                <div className="space-y-1.5">
+                <div className="space-y-2 rounded-2xl bg-app-elevated/50 p-3">
+                  <div className="flex items-center gap-1.5 text-[12px] font-medium text-app-muted"><Music2 size={14} className="text-app-accent" /> {t.modeMusic}</div>
                   {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
                   <audio src={m.audioUrl} controls className="w-full" />
                   <a
@@ -768,9 +769,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                     target="_blank"
                     rel="noopener noreferrer"
                     download
-                    className="inline-flex items-center gap-1 text-[11px] font-semibold text-app-accent hover:underline"
+                    className="inline-flex items-center gap-1.5 rounded-full bg-app-accent px-3.5 py-1.5 text-[12px] font-semibold text-app-bg shadow-sm transition-opacity hover:opacity-90 active:scale-[0.98]"
                   >
-                    <Download size={11} /> {t.imgDownload}
+                    <Download size={13} /> {t.imgDownload}
                   </a>
                 </div>
               )}
@@ -783,9 +784,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                     target="_blank"
                     rel="noopener noreferrer"
                     download
-                    className="inline-flex items-center gap-1 text-[11px] font-semibold text-app-accent hover:underline"
+                    className="inline-flex items-center gap-1.5 rounded-full bg-app-accent px-3.5 py-1.5 text-[12px] font-semibold text-app-bg shadow-sm transition-opacity hover:opacity-90 active:scale-[0.98]"
                   >
-                    <Download size={11} /> {t.imgDownload}
+                    <Download size={13} /> {t.imgDownload}
                   </a>
                 </div>
               )}
