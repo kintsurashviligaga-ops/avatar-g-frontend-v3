@@ -29,6 +29,11 @@ const STYLE_SUFFIXES: Record<string, string> = {
   'Sketch':         'detailed pencil sketch, graphite drawing, fine line art, cross-hatching',
   '3D Render':      '3D render, octane render, cinema4d, photorealistic CGI, studio lighting',
   'Cinematic':      'cinematic photography, film grain, dramatic lighting, anamorphic, color graded',
+  'Cyberpunk':      'cyberpunk, neon-lit futuristic dystopia, blade runner aesthetic, holographic signage, rain-soaked streets',
+  'Fantasy':        'epic fantasy art, magical ethereal lighting, detailed concept art, mythical atmosphere, painterly',
+  'Minimalist':     'minimalist, clean composition, generous negative space, simple flat design, muted palette',
+  'Line Art':       'clean line art, bold confident outlines, monochrome ink illustration, vector style',
+  'Pixel Art':      '16-bit pixel art, retro game sprite, dithering, limited palette, crisp pixels',
 };
 
 export async function POST(req: NextRequest) {
