@@ -355,6 +355,10 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
     (typeof input.metadata?.avatarUrl === 'string' ? input.metadata.avatarUrl : undefined) ||
     null;
   const style = opts.style || null;
+  // Frame orientation forwarded from the composer (Video mode 16:9 / 9:16) via
+  // metadata. Drives the per-clip aspect ratio so the cut never changes shape.
+  const orientation: 'landscape' | 'vertical' =
+    input.metadata?.orientation === 'vertical' ? 'vertical' : 'landscape';
   // PHASE 45 §2/§3 — accept 1–3 multimodal reference images from the composer.
   // They arrive either as a JSON string in selectedOptions or as an array on
   // metadata; planFilmScenes normalises/caps/dedupes them either way.
@@ -396,7 +400,7 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
   // eslint-disable-next-line no-console
   console.log('[filmComposite] reference images', { received: refList.length, hostedHttps: hostedCount });
 
-  const plan = planFilmScenes(input.message, { avatarReference, referenceImages: hostedRefs, style });
+  const plan = planFilmScenes(input.message, { avatarReference, referenceImages: hostedRefs, style, orientation });
   const sceneCount = plan.shared.sceneCount || FILM_SCENE_COUNT;
   const forecast = forecastFilm(sceneCount);
   const clipForecast = forecastMarginForAction('video_film');

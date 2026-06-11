@@ -57,6 +57,9 @@ const orchestrateSchema = z.object({
   // PHASE 45 §2/§3 — 1–3 multimodal reference images (data:/https URLs) that lock
   // the protagonist's identity across the 30-second film. Capped server-side.
   referenceImages: z.array(z.string().min(1)).max(3).optional(),
+  // Frame orientation for the 30-second film — drives the per-clip aspect ratio
+  // so the stitched cut keeps ONE shape (was always 9:16 regardless of choice).
+  orientation: z.enum(['landscape', 'vertical']).optional(),
 
   // ── Personalization (Settings → Custom Instructions) ──
   customInstructions: z.string().max(2000).optional(),
@@ -163,10 +166,15 @@ export async function POST(req: NextRequest) {
       history: data.history,
       selectedOptions: data.selectedOptions,
       imageUrl: data.imageUrl,
-      // PHASE 45 §2/§3 — forward reference images via metadata so the film
-      // composite (handleFilmComposite) threads them into the identity lock.
-      metadata: data.referenceImages?.length
-        ? { ...(data.metadata || {}), referenceImages: data.referenceImages }
+      // PHASE 45 §2/§3 — forward reference images + frame orientation via metadata
+      // so the film composite (handleFilmComposite) threads them into the identity
+      // lock and the per-clip aspect ratio.
+      metadata: (data.referenceImages?.length || data.orientation)
+        ? {
+            ...(data.metadata || {}),
+            ...(data.referenceImages?.length ? { referenceImages: data.referenceImages } : {}),
+            ...(data.orientation ? { orientation: data.orientation } : {}),
+          }
         : data.metadata,
       customInstructions: effectiveInstructions,
     });

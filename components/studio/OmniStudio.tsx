@@ -417,7 +417,12 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     // In image mode the typed prompt becomes a brand-new image: POST it to
     // /api/nanobanana/image and render the returned URL as an assistant image
     // bubble. Text prompt is required; fail-soft to a clean retry notice.
-    if (mode === 'image' && text) {
+    // NOTE: image generation is text-to-image — it cannot consume an uploaded
+    // file. So if the user attached photos/files, we DON'T run image gen here;
+    // we fall through to the multimodal CHAT branch, which sends the text + the
+    // attachments together (and clears them). This fixes "the file stays in the
+    // box and only the text is sent" when an attachment is present in Image mode.
+    if (mode === 'image' && text && attachments.length === 0) {
       setMessages((prev) => [...prev, { role: 'user', text }, { role: 'assistant', text: '' }]);
       setInput(''); setBusy(true);
       try {
@@ -458,7 +463,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     // ── MUSIC GENERATION (Udio) ────────────────────────────────────────────────
     // In music mode the prompt describes a vibe; POST it to /api/ai/music (Udio →
     // re-hosted to Supabase) and render the track as an inline audio player.
-    if (mode === 'music' && text) {
+    // Same rule as Image: music is text-to-music. With attachments present, fall
+    // through to multimodal chat so the files are actually sent (and cleared).
+    if (mode === 'music' && text && attachments.length === 0) {
       setMessages((prev) => [...prev, { role: 'user', text }, { role: 'assistant', text: '' }]);
       setInput(''); setBusy(true);
       try {
@@ -751,7 +758,10 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // Chat can send on text OR attachments alone; the generative modes need a text
   // prompt (this also prevents an image/music/video send with only files from
   // silently falling through to the chat branch).
-  const canSend = mode === 'chat' ? (!!input.trim() || attachments.length > 0) : !!input.trim();
+  // Sendable when there's text OR any attachment — in EVERY mode. An attachment
+  // in Image/Music mode routes to multimodal chat (see send), so it must be able
+  // to trigger a send; this is also what clears the lingering attachment.
+  const canSend = !!input.trim() || attachments.length > 0;
 
   return (
     <div

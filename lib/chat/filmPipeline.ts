@@ -217,6 +217,8 @@ export interface FilmPlanOptions {
   style?: string | null;
   /** Override total runtime; defaults to FILM_TOTAL_SEC (30s). */
   totalSec?: number;
+  /** Frame orientation — drives the per-clip aspect ratio. Default landscape. */
+  orientation?: 'landscape' | 'vertical';
 }
 
 /** Parameters shared identically across every clip — the continuity contract. */
@@ -229,6 +231,8 @@ export interface FilmShared {
   style: string | null;
   sceneCount: number;
   totalSec: number;
+  /** Frame orientation, identical across all clips so the cut never changes shape. */
+  orientation: 'landscape' | 'vertical';
 }
 
 /**
@@ -333,6 +337,7 @@ export function planFilmScenes(prompt: string, opts: FilmPlanOptions = {}): Film
     style: opts.style ?? null,
     sceneCount: segments.length,
     totalSec,
+    orientation: opts.orientation === 'vertical' ? 'vertical' : 'landscape',
   };
 
   const styleGuide = buildStyleGuide(shared);
@@ -378,7 +383,10 @@ export function buildFilmClipRequest(scene: FilmScene, shared: FilmShared): Film
   const selectedOptions: Record<string, string> = {
     duration: String(scene.durationSec),
     fps: '24',
-    aspectRatio: '9:16',
+    // Aspect ratio follows the user's chosen orientation — IDENTICAL across every
+    // clip so the stitched cut never changes shape mid-film. (Was hardcoded 9:16,
+    // which fought a landscape stitch and made the format "change mid-video".)
+    aspectRatio: shared.orientation === 'vertical' ? '9:16' : '16:9',
     seed: String(scene.seed),
     generate_audio: 'false',
   };

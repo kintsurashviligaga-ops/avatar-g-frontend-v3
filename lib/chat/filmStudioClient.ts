@@ -509,6 +509,9 @@ export async function driveFilmStudio(opts: DriveFilmOptions): Promise<FilmStudi
           serviceContext: 'video',
           locale,
           ...(refs.length ? { referenceImages: refs } : {}),
+          // Send orientation at DISPATCH so the clips render in the chosen shape
+          // (was only sent at assemble → clips were always 9:16 then re-shaped).
+          ...(opts.orientation ? { orientation: opts.orientation } : {}),
         },
         signal,
       );
