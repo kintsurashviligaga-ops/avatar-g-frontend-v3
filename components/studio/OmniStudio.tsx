@@ -123,14 +123,16 @@ function fmtClock(sec: number): string {
  * (never a fake 100%) + narrated stage labels + an elapsed clock. For video the
  * pipeline's own streamed status (`status`) takes over the headline line.
  */
-function GenerationProgress({ kind, elapsed, status, locale }: {
+function GenerationProgress({ kind, elapsed, status, locale, targetSec }: {
   kind: 'image' | 'music' | 'video' | 'lipsync';
   elapsed: number;
   status?: string;
   locale: Lang;
+  /** Override the eased-bar target (s) — e.g. per image resolution tier. */
+  targetSec?: number;
 }) {
   const stages = STAGES[locale][kind];
-  const target = PROGRESS_TARGET[kind];
+  const target = targetSec ?? PROGRESS_TARGET[kind];
   // Eased growth — fast at first, asymptotic toward 95% so it never "finishes"
   // ahead of the real asset. Completes only when the bubble swaps to media.
   const pct = Math.min(95, Math.round((1 - Math.exp(-elapsed / (target / 2.4))) * 100));
@@ -792,7 +794,10 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 // Generative modes get the live staged progress card (bar + clock +
                 // narrated steps) — the real "loading process". Chat gets typing dots.
                 if (pending && mode !== 'chat') {
-                  return <GenerationProgress kind={mode} elapsed={elapsed} status={m.text} locale={locale} />;
+                  // Pace the image bar to the chosen resolution (1K ≈ 40s · 2K ≈
+                  // 170s · 4K ≈ 220s) so it doesn't sit at 95% looking stuck.
+                  const imgTarget = imgQuality === 'standard' ? 42 : imgQuality === 'high' ? 170 : 215;
+                  return <GenerationProgress kind={mode} elapsed={elapsed} status={m.text} locale={locale} targetSec={mode === 'image' ? imgTarget : undefined} />;
                 }
                 if (pending && mode === 'chat' && !m.text) return <TypingDots />;
                 if (!m.text) return null;
