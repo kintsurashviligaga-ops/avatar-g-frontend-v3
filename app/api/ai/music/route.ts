@@ -25,9 +25,13 @@ export const maxDuration = 300;
 
 export async function POST(req: NextRequest) {
   let prompt = '';
+  let style = 'cinematic';
+  let makeInstrumental = true;
   try {
-    const body = (await req.json().catch(() => ({}))) as { prompt?: unknown };
+    const body = (await req.json().catch(() => ({}))) as { prompt?: unknown; style?: unknown; instrumental?: unknown };
     prompt = typeof body.prompt === 'string' ? body.prompt.trim() : '';
+    if (typeof body.style === 'string' && body.style.trim()) style = body.style.trim();
+    if (typeof body.instrumental === 'boolean') makeInstrumental = body.instrumental;
   } catch {
     /* malformed body → guard below */
   }
@@ -40,7 +44,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const result = await generateUdioTrack(
-      { prompt: capped, style: 'cinematic', makeInstrumental: true, title: capped.slice(0, 60) },
+      { prompt: capped, style, makeInstrumental, title: capped.slice(0, 60) },
       // ~230s ceiling (46 × 5s) — safely under the 300s maxDuration, leaving room
       // for the re-host + response. Udio chirp typically lands in 60–180s.
       { maxAttempts: 46, pollIntervalMs: 5000 },
@@ -56,7 +60,9 @@ export async function POST(req: NextRequest) {
     // RE-HOST to Supabase so the audio plays in-app (CSP-allowed) + persists.
     let hostedUrl = result.audioUrl;
     try {
-      const r = await fetch(result.audioUrl);
+      const ac = new AbortController();
+      const to = setTimeout(() => ac.abort(), 25_000);
+      const r = await fetch(result.audioUrl, { signal: ac.signal }).finally(() => clearTimeout(to));
       if (r.ok) {
         const ct = r.headers.get('content-type') || 'audio/mpeg';
         const ext = /wav/i.test(ct) ? 'wav' : 'mp3';

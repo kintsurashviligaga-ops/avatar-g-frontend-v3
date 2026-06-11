@@ -26,6 +26,7 @@ const COPY: Record<Lang, {
   modeVideo: string; videoPlaceholder: string; generatingVideo: string; videoFailed: string;
   modeLipsync: string; lipsyncPlaceholder: string; generatingLipsync: string; lipsyncFailed: string; lipsyncNeedFiles: string; lipsyncAuth: string; lipAudioLabel: string;
   stop: string; stopped: string; scrollDown: string; regenerate: string; elapsedHint: string; greeting: string; attachHint: string;
+  instrumental: string; withVocals: string;
 }> = {
   ka: {
     title: 'ჭკვიანი ასისტენტი', subtitle: 'ინტელექტუალური მულტიმოდალური ასისტენტი',
@@ -41,6 +42,7 @@ const COPY: Record<Lang, {
     modeLipsync: 'ლიფსინქი', lipsyncPlaceholder: 'მიამაგრე ვიდეო + აუდიო და დააჭირე გაგზავნას…',
     generatingLipsync: 'ტუჩები სინქრონდება…', lipsyncFailed: 'ლიფსინქი ვერ მოხერხდა.', lipsyncNeedFiles: 'მიამაგრე ვიდეოც და აუდიოც.', lipsyncAuth: 'ლიფსინქისთვის ჯერ გაიარე ავტორიზაცია.', lipAudioLabel: 'აუდიო',
     stop: 'შეჩერება', stopped: 'შეჩერდა', scrollDown: 'ბოლოში გადასვლა', regenerate: 'თავიდან გენერაცია', elapsedHint: 'გავიდა', greeting: 'რით დაგეხმარო?', attachHint: 'დამატება',
+    instrumental: 'ინსტრუმენტალი', withVocals: 'ვოკალით',
   },
   en: {
     title: 'Smart Assistant', subtitle: 'Intelligent multimodal assistant',
@@ -56,6 +58,7 @@ const COPY: Record<Lang, {
     modeLipsync: 'Lip-sync', lipsyncPlaceholder: 'Attach a video + audio, then press send…',
     generatingLipsync: 'Syncing the lips…', lipsyncFailed: 'Lip-sync failed.', lipsyncNeedFiles: 'Attach both a video and audio.', lipsyncAuth: 'Sign in first to use lip-sync.', lipAudioLabel: 'Audio',
     stop: 'Stop', stopped: 'Stopped', scrollDown: 'Scroll to bottom', regenerate: 'Regenerate', elapsedHint: 'elapsed', greeting: 'How can I help?', attachHint: 'Add',
+    instrumental: 'Instrumental', withVocals: 'Vocals',
   },
   ru: {
     title: 'Умный ассистент', subtitle: 'Интеллектуальный мультимодальный ассистент',
@@ -71,6 +74,7 @@ const COPY: Record<Lang, {
     modeLipsync: 'Синхрон', lipsyncPlaceholder: 'Прикрепите видео + аудио и нажмите отправить…',
     generatingLipsync: 'Синхронизирую губы…', lipsyncFailed: 'Не удалось синхронизировать.', lipsyncNeedFiles: 'Прикрепите и видео, и аудио.', lipsyncAuth: 'Войдите, чтобы использовать синхронизацию.', lipAudioLabel: 'Аудио',
     stop: 'Стоп', stopped: 'Остановлено', scrollDown: 'Вниз', regenerate: 'Заново', elapsedHint: 'прошло', greeting: 'Чем помочь?', attachHint: 'Добавить',
+    instrumental: 'Инструментал', withVocals: 'Вокал',
   },
 };
 
@@ -173,6 +177,29 @@ const MODES = [
   { id: 'video', Icon: Film, key: 'modeVideo' },
 ] as const;
 
+// ── Per-service options (real backend capabilities) ──────────────────────────
+const IMG_ASPECTS = ['1:1', '16:9', '9:16', '4:3'] as const;
+type ImgAspect = (typeof IMG_ASPECTS)[number];
+const IMG_QUALITIES = [['standard', '1K'], ['high', '2K'], ['ultra', '4K']] as const;
+type ImgQuality = (typeof IMG_QUALITIES)[number][0];
+const IMG_STYLES = ['Auto', 'Photorealistic', 'Cinematic', 'Digital Art', 'Anime', '3D Render', 'Oil Painting', 'Watercolor'] as const;
+const MUSIC_GENRES = ['cinematic', 'pop', 'electronic', 'lo-fi', 'rock', 'hip-hop', 'classical', 'ambient'] as const;
+const VIDEO_STYLES = ['Cinematic', 'Documentary', 'Anime', 'Vintage', 'Neon', 'Nature'] as const;
+
+// A small, theme-tokenised option chip used by the per-service options bar.
+function Chip({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={`shrink-0 rounded-full px-2.5 py-1 text-[12px] font-medium transition-colors ${active ? 'bg-app-accent/15 text-app-accent' : 'bg-app-elevated text-app-muted hover:text-app-text'}`}
+    >
+      {children}
+    </button>
+  );
+}
+
 // First-run examples — tappable cards that make the assistant self-explanatory.
 // Tapping pre-fills the composer (and switches to Image mode for a draw example)
 // WITHOUT auto-sending, so the user reviews + presses send (never an accidental
@@ -245,6 +272,14 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   const [showJump, setShowJump] = useState(false);
   // Inline mode selector popover (the Gemini "Flash ⌄" analog).
   const [modeMenuOpen, setModeMenuOpen] = useState(false);
+  // Per-service generation options.
+  const [imgAspect, setImgAspect] = useState<ImgAspect>('1:1');
+  const [imgQuality, setImgQuality] = useState<ImgQuality>('high');
+  const [imgStyle, setImgStyle] = useState<string>('Auto');
+  const [musicInstrumental, setMusicInstrumental] = useState(true);
+  const [musicGenre, setMusicGenre] = useState<string>('cinematic');
+  const [videoOrientation, setVideoOrientation] = useState<'landscape' | 'vertical'>('landscape');
+  const [videoStyle, setVideoStyle] = useState<string>('Cinematic');
 
   const scrollToBottom = useCallback((behavior: ScrollBehavior = 'smooth') => {
     const el = feedRef.current;
@@ -311,7 +346,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         const res = await fetch('/api/nanobanana/image', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ prompt: text, quality: 'high', aspectRatio: '1:1' }),
+          body: JSON.stringify({ prompt: text, quality: imgQuality, aspectRatio: imgAspect, style: imgStyle === 'Auto' ? undefined : imgStyle }),
           credentials: 'include',
           signal: ac.signal,
         });
@@ -352,7 +387,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         const res = await fetch('/api/ai/music', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ prompt: text }),
+          body: JSON.stringify({ prompt: text, style: musicGenre, instrumental: musicInstrumental }),
           credentials: 'include',
           signal: ac.signal,
         });
@@ -399,8 +434,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       setInput(''); setAttachments([]); setBusy(true);
       try {
         const res = await driveFilmStudio({
-          prompt: text,
+          prompt: videoStyle ? `${text}. Visual style: ${videoStyle.toLowerCase()}, cinematic.` : text,
           referenceImages: refs,
+          orientation: videoOrientation,
           locale,
           signal: ac.signal,
           onProgress: (p) => {
@@ -507,7 +543,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     } finally {
       if (mine()) setBusy(false);
     }
-  }, [input, attachments, busy, messages, mode, locale, t.imageFailed, t.musicFailed, t.videoFailed, t.generatingVideo]);
+  }, [input, attachments, busy, messages, mode, locale, imgAspect, imgQuality, imgStyle, musicGenre, musicInstrumental, videoOrientation, videoStyle, t.imageFailed, t.musicFailed, t.videoFailed, t.generatingVideo]);
 
   // STOP — cancel the in-flight generation. Bumps the generation token (so every
   // pending finalizer no-ops), aborts the fetch, frees the composer, and converts
@@ -807,6 +843,38 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       {/* Composer — refined, Gemini-style: one rounded pill, [+] attach, an inline
           mode selector (the "Flash ⌄" analog) and mic-when-empty / send-when-typing. */}
       <div className="shrink-0 pt-1">
+        {/* Per-service options — real backend capabilities, shown for the active
+            generative mode. Borderless scrollable chip rows (clean, Gemini-like). */}
+        {mode !== 'chat' && (
+          <div className="mb-2 flex items-center gap-1.5 overflow-x-auto pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {mode === 'image' && (
+              <>
+                {IMG_ASPECTS.map((a) => <Chip key={a} active={imgAspect === a} onClick={() => setImgAspect(a)}>{a}</Chip>)}
+                <span className="mx-0.5 h-4 w-px shrink-0 bg-app-border/15" />
+                {IMG_QUALITIES.map(([q, lbl]) => <Chip key={q} active={imgQuality === q} onClick={() => setImgQuality(q)}>{lbl}</Chip>)}
+                <span className="mx-0.5 h-4 w-px shrink-0 bg-app-border/15" />
+                {IMG_STYLES.map((s) => <Chip key={s} active={imgStyle === s} onClick={() => setImgStyle(s)}>{s}</Chip>)}
+              </>
+            )}
+            {mode === 'music' && (
+              <>
+                <Chip active={musicInstrumental} onClick={() => setMusicInstrumental(true)}>{t.instrumental}</Chip>
+                <Chip active={!musicInstrumental} onClick={() => setMusicInstrumental(false)}>{t.withVocals}</Chip>
+                <span className="mx-0.5 h-4 w-px shrink-0 bg-app-border/15" />
+                {MUSIC_GENRES.map((g) => <Chip key={g} active={musicGenre === g} onClick={() => setMusicGenre(g)}>{g}</Chip>)}
+              </>
+            )}
+            {mode === 'video' && (
+              <>
+                <Chip active={videoOrientation === 'landscape'} onClick={() => setVideoOrientation('landscape')}>16:9</Chip>
+                <Chip active={videoOrientation === 'vertical'} onClick={() => setVideoOrientation('vertical')}>9:16</Chip>
+                <span className="mx-0.5 h-4 w-px shrink-0 bg-app-border/15" />
+                {VIDEO_STYLES.map((s) => <Chip key={s} active={videoStyle === s} onClick={() => setVideoStyle(s)}>{s}</Chip>)}
+              </>
+            )}
+          </div>
+        )}
+
         {/* Attachment previews — up to MAX_ATTACHMENTS files / images / a video,
             each removable. They ride with the next message (text + files together). */}
         {attachments.length > 0 && (
