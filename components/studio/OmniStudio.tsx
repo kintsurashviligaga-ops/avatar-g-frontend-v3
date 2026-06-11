@@ -315,12 +315,16 @@ interface StoryboardState {
 
 // Full-screen review surface: the six planned scenes + a frame each. The user
 // approves (→ render the film anchored to these frames), regenerates, or cancels.
-function StoryboardOverlay({ sb, t, busy, onGenerate, onRegenerate, onCancel }: {
+function StoryboardOverlay({ sb, t, busy, regenningOrdinal, onGenerate, onRegenerate, onRegenScene, onView, onCancel }: {
   sb: StoryboardState;
   t: (typeof COPY)[Lang];
   busy: boolean;
+  /** The scene ordinal currently re-rolling its frame (null = none). */
+  regenningOrdinal: number | null;
   onGenerate: () => void;
   onRegenerate: () => void;
+  onRegenScene: (ordinal: number) => void;
+  onView: (url: string) => void;
   onCancel: () => void;
 }) {
   const portrait = sb.orientation === 'vertical';
@@ -343,11 +347,17 @@ function StoryboardOverlay({ sb, t, busy, onGenerate, onRegenerate, onCancel }: 
                 <div className={`relative ${portrait ? 'aspect-[9/16]' : 'aspect-video'} bg-app-border/10`}>
                   {s.frameUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={s.frameUrl} alt={`${t.sbScene} ${s.ordinal}`} className="h-full w-full object-cover" />
+                    <img src={s.frameUrl} alt={`${t.sbScene} ${s.ordinal}`} onClick={() => s.frameUrl && onView(s.frameUrl)} className="h-full w-full cursor-zoom-in object-cover" />
                   ) : (
                     <div className="flex h-full w-full items-center justify-center text-app-muted/60"><ImageIcon size={22} /></div>
                   )}
                   <span className="absolute left-1.5 top-1.5 rounded-full bg-black/60 px-2 py-0.5 text-[11px] font-medium text-white">{t.sbScene} {s.ordinal}</span>
+                  <button type="button" onClick={() => onRegenScene(s.ordinal)} disabled={regenningOrdinal !== null || busy} aria-label={t.sbRegen} title={t.sbRegen} className="absolute right-1.5 top-1.5 flex h-7 w-7 items-center justify-center rounded-full bg-black/55 text-white transition-colors hover:bg-black/80 disabled:opacity-40">
+                    <RotateCcw size={13} />
+                  </button>
+                  {regenningOrdinal === s.ordinal && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-black/45"><Loader2 size={20} className="animate-spin text-white" /></div>
+                  )}
                 </div>
                 <div className="p-2">
                   <p className="text-[11.5px] font-semibold text-app-text">{s.beat}</p>
@@ -429,6 +439,8 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // reviews BEFORE committing to the full render. null = no storyboard pending.
   const [storyboard, setStoryboard] = useState<StoryboardState | null>(null);
   const [storyboardBusy, setStoryboardBusy] = useState(false);
+  // Which storyboard scene is currently re-rolling its single frame (null = none).
+  const [regenningOrdinal, setRegenningOrdinal] = useState<number | null>(null);
 
   const scrollToBottom = useCallback((behavior: ScrollBehavior = 'smooth') => {
     const el = feedRef.current;
@@ -559,6 +571,31 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       setStoryboardBusy(false);
     }
   }, [videoStyle, locale, renderFilm]);
+
+  // Re-roll a SINGLE storyboard frame (the others are untouched) and swap it in.
+  const regenScene = useCallback(async (ordinal: number) => {
+    if (!storyboard || regenningOrdinal !== null) return;
+    setRegenningOrdinal(ordinal);
+    try {
+      const res = await fetch('/api/film/storyboard', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ prompt: storyboard.filmPrompt, orientation: storyboard.orientation, referenceImages: storyboard.refs, style: videoStyle, locale, sceneOrdinal: ordinal }),
+      });
+      const j = (await res.json().catch(() => ({}))) as { success?: boolean; frameUrl?: string | null };
+      if (j.success && typeof j.frameUrl === 'string') {
+        const url = j.frameUrl;
+        setStoryboard((prev) => prev
+          ? { ...prev, scenes: prev.scenes.map((s) => (s.ordinal === ordinal ? { ...s, frameUrl: url } : s)) }
+          : prev);
+      }
+    } catch {
+      /* keep the existing frame on failure */
+    } finally {
+      setRegenningOrdinal(null);
+    }
+  }, [storyboard, regenningOrdinal, videoStyle, locale]);
 
   const send = useCallback(async () => {
     const text = input.trim();
@@ -1211,7 +1248,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           the click so it stays open while you inspect it. */}
       {lightbox && (
         <div
-          className="fixed inset-0 z-[90] flex items-center justify-center bg-black/95 backdrop-blur-sm"
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 backdrop-blur-sm"
           onClick={() => setLightbox(null)}
           style={{ paddingTop: 'env(safe-area-inset-top)', paddingBottom: 'env(safe-area-inset-bottom)' }}
         >
@@ -1262,6 +1299,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           sb={storyboard}
           t={t}
           busy={busy}
+          regenningOrdinal={regenningOrdinal}
+          onRegenScene={(ordinal) => void regenScene(ordinal)}
+          onView={(url) => setLightbox(url)}
           onGenerate={() => {
             const frameUrls = storyboard.scenes.map((s) => s.frameUrl);
             const sceneFrames = frameUrls.every((f): f is string => typeof f === 'string') ? frameUrls : undefined;

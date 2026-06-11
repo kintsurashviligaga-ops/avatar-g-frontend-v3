@@ -49,6 +49,8 @@ export async function POST(req: NextRequest) {
     style?: string;
     referenceImages?: unknown;
     locale?: string;
+    /** 1-based scene to regenerate in isolation; omit to render the full board. */
+    sceneOrdinal?: number;
   };
 
   const prompt = typeof body.prompt === 'string' ? body.prompt.trim() : '';
@@ -70,21 +72,20 @@ export async function POST(req: NextRequest) {
   const aspect = orientation === 'vertical' ? '9:16' : '16:9';
   const sessionId = `storyboard_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 
-  // One preview frame per scene — 1K (fastest tier) and bounded concurrency so
-  // six frames land well within maxDuration. Each frame is fail-open (null on miss).
-  const frames = await mapWithConcurrency(plan.scenes, 3, async (scene) => {
+  // One preview frame for a scene — 1K (fastest tier) so six land well within
+  // maxDuration, and v2-1k still honours the reference-image (selfie) anchor.
+  // Fail-open: any miss returns null and the scene plan still surfaces.
+  const genFrame = async (scenePrompt: string): Promise<string | null> => {
     try {
       const framePrompt = selfie
-        ? `Cinematic film still, ${aspect} composition. ${scene.prompt} Featuring the EXACT same person as the reference image — identical face, hair and wardrobe. Photorealistic, professional cinematic colour grade.`
-        : `Cinematic film still, ${aspect} composition. ${scene.prompt} Photorealistic, professional cinematic colour grade, sharp focus.`;
+        ? `Cinematic film still, ${aspect} composition. ${scenePrompt} Featuring the EXACT same person as the reference image — identical face, hair and wardrobe. Photorealistic, professional cinematic colour grade.`
+        : `Cinematic film still, ${aspect} composition. ${scenePrompt} Photorealistic, professional cinematic colour grade, sharp focus.`;
       const r = await serviceManager.execute({
         sessionId,
         serviceContext: 'image',
         intent: 'image_generation',
         userPrompt: framePrompt,
         ...(selfie ? { imageUrl: selfie } : {}),
-        // Pin the FAST 1K endpoint: six frames must land well within maxDuration,
-        // and v2-1k still honours the reference-image (selfie) identity anchor.
         selectedOptions: { aspect, aspectRatio: aspect, endpoint: 'v2-1k' },
         locale,
       });
@@ -92,7 +93,18 @@ export async function POST(req: NextRequest) {
     } catch {
       return null;
     }
-  });
+  };
+
+  // Single-scene regeneration — the user asked to re-roll just one frame.
+  const sceneOrdinal = typeof body.sceneOrdinal === 'number' ? Math.floor(body.sceneOrdinal) : null;
+  if (sceneOrdinal && sceneOrdinal >= 1 && sceneOrdinal <= plan.scenes.length) {
+    const scene = plan.scenes[sceneOrdinal - 1]!;
+    const frameUrl = await genFrame(scene.prompt);
+    return NextResponse.json({ success: true, ordinal: sceneOrdinal, frameUrl });
+  }
+
+  // Full board — all six frames in parallel (bounded concurrency).
+  const frames = await mapWithConcurrency(plan.scenes, 3, (scene) => genFrame(scene.prompt));
 
   const scenes = plan.scenes.map((s, i) => ({
     ordinal: s.ordinal,
