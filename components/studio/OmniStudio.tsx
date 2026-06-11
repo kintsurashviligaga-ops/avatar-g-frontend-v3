@@ -12,7 +12,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Send, Mic, Square, Plus, X, Loader2, Sparkles, Film, Music2, FileText, Image as ImageIcon, Download, MessageSquare, Wand2, Volume2, Copy, Check, ChevronDown } from 'lucide-react';
+import { Send, Mic, Square, Plus, X, Loader2, Sparkles, Film, Music2, FileText, Image as ImageIcon, Download, MessageSquare, Wand2, Volume2, Copy, Check, ChevronDown, RotateCcw } from 'lucide-react';
 import { driveFilmStudio } from '@/lib/chat/filmStudioClient';
 import { Markdown } from './Markdown';
 
@@ -28,6 +28,7 @@ const COPY: Record<Lang, {
   stop: string; stopped: string; scrollDown: string; regenerate: string; elapsedHint: string; greeting: string; attachHint: string;
   instrumental: string; withVocals: string;
   narration: string; narrationCue: string;
+  sbTitle: string; sbReview: string; sbGenerate: string; sbRegen: string; sbCancel: string; sbCreating: string; sbFailed: string; sbScene: string;
 }> = {
   ka: {
     title: 'ჭკვიანი ასისტენტი', subtitle: 'ინტელექტუალური მულტიმოდალური ასისტენტი',
@@ -45,6 +46,7 @@ const COPY: Record<Lang, {
     stop: 'შეჩერება', stopped: 'შეჩერდა', scrollDown: 'ბოლოში გადასვლა', regenerate: 'თავიდან გენერაცია', elapsedHint: 'გავიდა', greeting: 'რით დაგეხმარო?', attachHint: 'დამატება',
     instrumental: 'ინსტრუმენტალი', withVocals: 'ვოკალით',
     narration: 'ნარაცია', narrationCue: ' (პროფესიონალი კომენტატორის ხმოვანი ნარაციით)',
+    sbTitle: 'სტორიბორდი', sbReview: 'გადახედე 6 სცენას და კადრს — შემდეგ გაუშვი ვიდეო', sbGenerate: 'ვიდეოს გენერაცია', sbRegen: 'თავიდან', sbCancel: 'გაუქმება', sbCreating: 'სცენარი და 6 კადრი იქმნება…', sbFailed: 'სტორიბორდი ვერ შეიქმნა. სცადე თავიდან.', sbScene: 'სცენა',
   },
   en: {
     title: 'Smart Assistant', subtitle: 'Intelligent multimodal assistant',
@@ -62,6 +64,7 @@ const COPY: Record<Lang, {
     stop: 'Stop', stopped: 'Stopped', scrollDown: 'Scroll to bottom', regenerate: 'Regenerate', elapsedHint: 'elapsed', greeting: 'How can I help?', attachHint: 'Add',
     instrumental: 'Instrumental', withVocals: 'Vocals',
     narration: 'Narration', narrationCue: ' (with professional spoken voice-over narration)',
+    sbTitle: 'Storyboard', sbReview: 'Review the 6 scenes & frames — then generate the video', sbGenerate: 'Generate Video', sbRegen: 'Regenerate', sbCancel: 'Cancel', sbCreating: 'Creating storyboard & 6 frames…', sbFailed: 'Storyboard failed. Try again.', sbScene: 'Scene',
   },
   ru: {
     title: 'Умный ассистент', subtitle: 'Интеллектуальный мультимодальный ассистент',
@@ -79,6 +82,7 @@ const COPY: Record<Lang, {
     stop: 'Стоп', stopped: 'Остановлено', scrollDown: 'Вниз', regenerate: 'Заново', elapsedHint: 'прошло', greeting: 'Чем помочь?', attachHint: 'Добавить',
     instrumental: 'Инструментал', withVocals: 'Вокал',
     narration: 'Озвучка', narrationCue: ' (с профессиональной голосовой озвучкой)',
+    sbTitle: 'Раскадровка', sbReview: 'Просмотрите 6 сцен и кадров — затем сгенерируйте видео', sbGenerate: 'Сгенерировать видео', sbRegen: 'Заново', sbCancel: 'Отмена', sbCreating: 'Создаю раскадровку и 6 кадров…', sbFailed: 'Не удалось создать раскадровку. Попробуйте снова.', sbScene: 'Сцена',
   },
 };
 
@@ -299,6 +303,73 @@ function saveHistory(messages: Msg[]): void {
   } catch { /* quota / disabled — non-fatal */ }
 }
 
+// ── Storyboard preview (Video mode) ───────────────────────────────────────────
+interface StoryboardScene { ordinal: number; beat: string; prompt: string; frameUrl: string | null }
+interface StoryboardState {
+  filmPrompt: string;
+  refs: string[];
+  orientation: 'landscape' | 'vertical';
+  seed: number;
+  scenes: StoryboardScene[];
+}
+
+// Full-screen review surface: the six planned scenes + a frame each. The user
+// approves (→ render the film anchored to these frames), regenerates, or cancels.
+function StoryboardOverlay({ sb, t, busy, onGenerate, onRegenerate, onCancel }: {
+  sb: StoryboardState;
+  t: (typeof COPY)[Lang];
+  busy: boolean;
+  onGenerate: () => void;
+  onRegenerate: () => void;
+  onCancel: () => void;
+}) {
+  const portrait = sb.orientation === 'vertical';
+  return (
+    <div className="fixed inset-0 z-[90] flex flex-col bg-app-bg/95 backdrop-blur-md" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }} onClick={onCancel}>
+      <div onClick={(e) => e.stopPropagation()} className="mx-auto flex h-full w-full max-w-3xl flex-col">
+        <div className="flex items-start justify-between gap-2 px-4 py-3">
+          <div className="min-w-0">
+            <h2 className="text-[15px] font-semibold tracking-tight text-app-text">📋 {t.sbTitle}</h2>
+            <p className="truncate text-[12px] text-app-muted">{t.sbReview}</p>
+          </div>
+          <button type="button" onClick={onCancel} aria-label={t.sbCancel} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text">
+            <X size={18} />
+          </button>
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+            {sb.scenes.map((s) => (
+              <div key={s.ordinal} className="overflow-hidden rounded-xl border border-app-border/10 bg-app-elevated">
+                <div className={`relative ${portrait ? 'aspect-[9/16]' : 'aspect-video'} bg-app-border/10`}>
+                  {s.frameUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={s.frameUrl} alt={`${t.sbScene} ${s.ordinal}`} className="h-full w-full object-cover" />
+                  ) : (
+                    <div className="flex h-full w-full items-center justify-center text-app-muted/60"><ImageIcon size={22} /></div>
+                  )}
+                  <span className="absolute left-1.5 top-1.5 rounded-full bg-black/60 px-2 py-0.5 text-[11px] font-medium text-white">{t.sbScene} {s.ordinal}</span>
+                </div>
+                <div className="p-2">
+                  <p className="text-[11.5px] font-semibold text-app-text">{s.beat}</p>
+                  <p className="mt-0.5 line-clamp-2 text-[11px] leading-snug text-app-muted">{s.prompt}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="flex items-center gap-2 border-t border-app-border/10 px-4 py-3" style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom, 0px))' }}>
+          <button type="button" onClick={onRegenerate} disabled={busy} className="inline-flex items-center gap-1.5 rounded-full bg-app-elevated px-4 py-2.5 text-[13px] font-medium text-app-text transition-colors hover:bg-app-border/10 disabled:opacity-50">
+            <RotateCcw size={15} /> {t.sbRegen}
+          </button>
+          <button type="button" onClick={onGenerate} disabled={busy} className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-full bg-app-accent px-4 py-2.5 text-[13.5px] font-semibold text-app-bg transition-opacity hover:opacity-90 disabled:opacity-50">
+            <Film size={16} /> {t.sbGenerate}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   const t = COPY[locale] ?? COPY.ka;
   const [messages, setMessages] = useState<Msg[]>(loadHistory);
@@ -331,6 +402,8 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // superseded request can never clobber a newer message (or re-clear `busy`).
   const abortRef = useRef<AbortController | null>(null);
   const genIdRef = useRef(0);
+  // Abort handle for the (non-streaming) storyboard request, so Cancel can stop it.
+  const storyboardAbortRef = useRef<AbortController | null>(null);
   // Live elapsed seconds during a generation — drives the progress clock + bar.
   const [elapsed, setElapsed] = useState(0);
   const genStartRef = useRef(0);
@@ -352,6 +425,10 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // is appended to the brief so the film pipeline's wantsCommentary() detector
   // fires and a voice-over track is generated + mixed under the score.
   const [videoNarration, setVideoNarration] = useState(false);
+  // Storyboard preview gate (Video mode): the planned scenes + frames the user
+  // reviews BEFORE committing to the full render. null = no storyboard pending.
+  const [storyboard, setStoryboard] = useState<StoryboardState | null>(null);
+  const [storyboardBusy, setStoryboardBusy] = useState(false);
 
   const scrollToBottom = useCallback((behavior: ScrollBehavior = 'smooth') => {
     const el = feedRef.current;
@@ -400,6 +477,88 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   }, [lightbox]);
 
   const lang = locale === 'en' ? 'en-US' : locale === 'ru' ? 'ru-RU' : 'ka-GE';
+
+  // Drive the film render (orchestrate → poll → assemble) into a fresh assistant
+  // bubble. Shared by the storyboard "Generate Video" action and the direct
+  // fallback. `sceneFrames` (the approved storyboard frames) anchor each scene.
+  const renderFilm = useCallback(async (filmPrompt: string, refs: string[], orientation: 'landscape' | 'vertical', sceneFrames: string[] | undefined) => {
+    const myGen = ++genIdRef.current;
+    const ac = new AbortController();
+    abortRef.current = ac;
+    const mine = () => genIdRef.current === myGen;
+    setMessages((prev) => [...prev, { role: 'assistant', text: t.generatingVideo }]);
+    setBusy(true);
+    try {
+      const res = await driveFilmStudio({
+        prompt: filmPrompt,
+        referenceImages: refs,
+        orientation,
+        ...(sceneFrames?.length ? { sceneFrames } : {}),
+        locale,
+        signal: ac.signal,
+        onProgress: (p) => {
+          const status = p.message?.trim() || t.generatingVideo;
+          setMessages((prev) => {
+            if (!mine()) return prev;
+            const next = [...prev];
+            const last = next[next.length - 1];
+            if (last && last.role === 'assistant' && !last.videoUrl) next[next.length - 1] = { ...last, text: status };
+            return next;
+          });
+        },
+      });
+      setMessages((prev) => {
+        if (!mine()) return prev;
+        const next = [...prev];
+        const last = next[next.length - 1];
+        if (last && last.role === 'assistant') {
+          next[next.length - 1] = res.ok && res.masterUrl
+            ? { role: 'assistant', text: '', videoUrl: res.masterUrl }
+            : { role: 'assistant', text: `⚠️ ${res.error || t.videoFailed}` };
+        }
+        return next;
+      });
+    } catch {
+      if (!mine()) return;
+      setMessages((prev) => {
+        const next = [...prev];
+        const last = next[next.length - 1];
+        if (last && last.role === 'assistant') next[next.length - 1] = { role: 'assistant', text: `⚠️ ${t.videoFailed}` };
+        return next;
+      });
+    } finally {
+      if (mine()) setBusy(false);
+    }
+  }, [locale, t.generatingVideo, t.videoFailed]);
+
+  // Plan the storyboard (6 scenes + a frame each) and open the review overlay.
+  // Fail-open: a storyboard miss falls back to a direct render so the user is
+  // never blocked. A user Cancel (abort) stops quietly without rendering.
+  const createStoryboard = useCallback(async (filmPrompt: string, refs: string[], orientation: 'landscape' | 'vertical') => {
+    const ac = new AbortController();
+    storyboardAbortRef.current = ac;
+    setStoryboardBusy(true);
+    try {
+      const res = await fetch('/api/film/storyboard', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        signal: ac.signal,
+        body: JSON.stringify({ prompt: filmPrompt, orientation, referenceImages: refs, style: videoStyle, locale }),
+      });
+      const j = (await res.json().catch(() => ({}))) as { success?: boolean; seed?: number; scenes?: StoryboardScene[] };
+      if (j.success && Array.isArray(j.scenes) && j.scenes.length > 0) {
+        setStoryboard({ filmPrompt, refs, orientation, seed: j.seed ?? 0, scenes: j.scenes });
+      } else {
+        await renderFilm(filmPrompt, refs, orientation, undefined);
+      }
+    } catch {
+      if (ac.signal.aborted) return; // user cancelled — do nothing
+      await renderFilm(filmPrompt, refs, orientation, undefined);
+    } finally {
+      setStoryboardBusy(false);
+    }
+  }, [videoStyle, locale, renderFilm]);
 
   const send = useCallback(async () => {
     const text = input.trim();
@@ -510,54 +669,12 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     // inline — so the full film service lives in this one chatbox.
     if (mode === 'video' && text) {
       const refs = attachments.filter((a) => isImage(a.mimeType)).map((a) => a.dataUrl);
-      const sentMedias = attachments;
-      setMessages((prev) => [
-        ...prev,
-        { role: 'user', text, ...(sentMedias.length ? { medias: sentMedias } : {}) },
-        { role: 'assistant', text: t.generatingVideo },
-      ]);
-      setInput(''); setAttachments([]); setBusy(true);
-      try {
-        const res = await driveFilmStudio({
-          prompt: `${videoStyle ? `${text}. Visual style: ${videoStyle.toLowerCase()}, cinematic.` : text}${videoNarration ? t.narrationCue : ''}`,
-          referenceImages: refs,
-          orientation: videoOrientation,
-          locale,
-          signal: ac.signal,
-          onProgress: (p) => {
-            const status = p.message?.trim() || t.generatingVideo;
-            setMessages((prev) => {
-              if (!mine()) return prev;
-              const next = [...prev];
-              const last = next[next.length - 1];
-              if (last && last.role === 'assistant' && !last.videoUrl) next[next.length - 1] = { ...last, text: status };
-              return next;
-            });
-          },
-        });
-        setMessages((prev) => {
-          if (!mine()) return prev;
-          const next = [...prev];
-          const last = next[next.length - 1];
-          if (last && last.role === 'assistant') {
-            next[next.length - 1] =
-              res.ok && res.masterUrl
-                ? { role: 'assistant', text: '', videoUrl: res.masterUrl }
-                : { role: 'assistant', text: `⚠️ ${res.error || t.videoFailed}` };
-          }
-          return next;
-        });
-      } catch {
-        if (!mine()) return;
-        setMessages((prev) => {
-          const next = [...prev];
-          const last = next[next.length - 1];
-          if (last && last.role === 'assistant') next[next.length - 1] = { role: 'assistant', text: `⚠️ ${t.videoFailed}` };
-          return next;
-        });
-      } finally {
-        if (mine()) setBusy(false);
-      }
+      const filmPrompt = `${videoStyle ? `${text}. Visual style: ${videoStyle.toLowerCase()}, cinematic.` : text}${videoNarration ? t.narrationCue : ''}`;
+      setMessages((prev) => [...prev, { role: 'user', text, ...(attachments.length ? { medias: attachments } : {}) }]);
+      setInput(''); setAttachments([]);
+      // Storyboard-FIRST: plan the 6 scenes + a frame each for the user to review;
+      // the approved frames then anchor the full render (createStoryboard → renderFilm).
+      await createStoryboard(filmPrompt, refs, videoOrientation);
       return;
     }
 
@@ -628,7 +745,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     } finally {
       if (mine()) setBusy(false);
     }
-  }, [input, attachments, busy, messages, mode, locale, imgAspect, imgQuality, imgStyle, musicGenre, musicInstrumental, videoOrientation, videoStyle, videoNarration, t.narrationCue, t.imageFailed, t.musicFailed, t.videoFailed, t.generatingVideo]);
+  }, [input, attachments, busy, messages, mode, locale, imgAspect, imgQuality, imgStyle, musicGenre, musicInstrumental, videoOrientation, videoStyle, videoNarration, createStoryboard, t.narrationCue, t.imageFailed, t.musicFailed]);
 
   // STOP — cancel the in-flight generation. Bumps the generation token (so every
   // pending finalizer no-ops), aborts the fetch, frees the composer, and converts
@@ -1126,6 +1243,39 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             <Download size={14} /> {t.imgDownload}
           </a>
         </div>
+      )}
+
+      {/* Storyboard — generating the plan + 6 frames (cancellable). */}
+      {storyboardBusy && (
+        <div className="fixed inset-0 z-[90] flex flex-col items-center justify-center gap-4 bg-app-bg/95 px-6 text-center backdrop-blur-md" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
+          <Loader2 size={28} className="animate-spin text-app-accent" />
+          <p className="text-[14px] font-medium text-app-text">{t.sbCreating}</p>
+          <button type="button" onClick={() => { try { storyboardAbortRef.current?.abort(); } catch { /* noop */ } setStoryboardBusy(false); }} className="rounded-full bg-app-elevated px-4 py-2 text-[13px] font-medium text-app-muted transition-colors hover:text-app-text">
+            {t.sbCancel}
+          </button>
+        </div>
+      )}
+
+      {/* Storyboard — review the scenes/frames, then approve → render. */}
+      {storyboard && !storyboardBusy && (
+        <StoryboardOverlay
+          sb={storyboard}
+          t={t}
+          busy={busy}
+          onGenerate={() => {
+            const frameUrls = storyboard.scenes.map((s) => s.frameUrl);
+            const sceneFrames = frameUrls.every((f): f is string => typeof f === 'string') ? frameUrls : undefined;
+            const sb = storyboard;
+            setStoryboard(null);
+            void renderFilm(sb.filmPrompt, sb.refs, sb.orientation, sceneFrames);
+          }}
+          onRegenerate={() => {
+            const sb = storyboard;
+            setStoryboard(null);
+            void createStoryboard(sb.filmPrompt, sb.refs, sb.orientation);
+          }}
+          onCancel={() => setStoryboard(null)}
+        />
       )}
     </div>
   );

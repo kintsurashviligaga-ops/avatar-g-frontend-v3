@@ -111,6 +111,12 @@ export interface DriveFilmOptions {
   soundtrackUrl?: string | null;
   /** 'vertical' → 9:16 (1080×1920) master for TikTok/Reels/Shorts; else 16:9. */
   orientation?: 'landscape' | 'vertical';
+  /**
+   * Approved storyboard frames (ordered by scene) from /api/film/storyboard.
+   * When present, each becomes that scene's per-scene identity anchor, so the
+   * rendered film matches the storyboard the user approved.
+   */
+  sceneFrames?: string[];
   locale?: string;
   signal?: AbortSignal;
   onProgress?: (p: FilmStudioProgress) => void;
@@ -512,6 +518,8 @@ export async function driveFilmStudio(opts: DriveFilmOptions): Promise<FilmStudi
           // Send orientation at DISPATCH so the clips render in the chosen shape
           // (was only sent at assemble → clips were always 9:16 then re-shaped).
           ...(opts.orientation ? { orientation: opts.orientation } : {}),
+          // Approved storyboard frames → per-scene identity anchors for the render.
+          ...(opts.sceneFrames?.length ? { sceneFrames: opts.sceneFrames } : {}),
         },
         signal,
       );

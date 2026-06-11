@@ -482,13 +482,19 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
   // localized halt rather than a 500.
   let clips: FilmClipResult[];
   try {
-    // Stylize ALL scene identity frames in PARALLEL up front (NanoBanana has no
-    // per-account burst limit like the clip provider), so the dispatch waits one
-    // frame's latency instead of five serialised ones (the 5×-slower dispatch
-    // the per-scene chain first introduced). stylizeSceneFrame never rejects.
-    const sceneFrames = await Promise.all(
-      plan.scenes.map((scene) => stylizeSceneFrame(input, scene, plan.shared)),
-    );
+    // PREFER approved storyboard frames (from /api/film/storyboard) as the
+    // per-scene identity anchors: the user reviewed them, so the render MATCHES
+    // the storyboard — and we skip the costly on-dispatch frame generation that
+    // made stylizeSceneFrame too slow to keep on the hot-path. They align with
+    // plan.scenes by index (same deterministic plan/prompt/seed produced both).
+    // Fall back to stylizeSceneFrame (off by default) only when none were given.
+    const approvedFrames = Array.isArray(input.metadata?.sceneFrames)
+      ? (input.metadata.sceneFrames as unknown[]).map((f) =>
+          typeof f === 'string' && /^https?:\/\//i.test(f) ? f : null)
+      : null;
+    const sceneFrames = approvedFrames && approvedFrames.length === plan.scenes.length
+      ? approvedFrames
+      : await Promise.all(plan.scenes.map((scene) => stylizeSceneFrame(input, scene, plan.shared)));
     clips = await mapWithConcurrency(plan.scenes, clipDispatchConcurrency(), (scene, i) =>
       renderClip(
         input,
