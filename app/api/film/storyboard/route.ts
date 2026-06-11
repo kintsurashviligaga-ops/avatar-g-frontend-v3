@@ -27,6 +27,31 @@ export const maxDuration = 300;
 
 const serviceManager = new ServiceManager();
 
+/**
+ * Re-host a provider temp URL to Supabase. CRITICAL: the app CSP `img-src` allows
+ * `*.supabase.co` but NOT NanoBanana's raw host (`tempfile.aiquickdraw.com`), so a
+ * raw frame URL is BLOCKED by the browser (blank tiles) AND expires — which also
+ * breaks the render anchor (LTX can't fetch an expired temp URL). Copying the bytes
+ * to a 7-day signed Supabase URL fixes both. Fail-open: keep the raw URL on any miss.
+ */
+async function reHostFrame(url: string): Promise<string> {
+  try {
+    const ac = new AbortController();
+    const to = setTimeout(() => ac.abort(), 25_000);
+    const res = await fetch(url, { signal: ac.signal }).finally(() => clearTimeout(to));
+    if (!res.ok) return url;
+    const buf = Buffer.from(await res.arrayBuffer());
+    if (buf.byteLength > 18 * 1024 * 1024) return url;
+    const ct = res.headers.get('content-type') || 'image/jpeg';
+    const ext = ct.includes('png') ? 'png' : ct.includes('webp') ? 'webp' : 'jpg';
+    const path = `storyboard/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+    const signed = await uploadAndSign('uploads', path, buf.toString('base64'), ct, 604800);
+    return signed || url;
+  } catch {
+    return url;
+  }
+}
+
 /** Host a data: URI reference to a signed https URL (NanoBanana needs a fetchable image). */
 async function hostRef(ref: string, i: number): Promise<string> {
   if (!ref.startsWith('data:')) return ref;
@@ -89,7 +114,10 @@ export async function POST(req: NextRequest) {
         selectedOptions: { aspect, aspectRatio: aspect, endpoint: 'v2-1k' },
         locale,
       });
-      return typeof r.assetUrl === 'string' && /^https?:\/\//i.test(r.assetUrl) ? r.assetUrl : null;
+      const raw = typeof r.assetUrl === 'string' && /^https?:\/\//i.test(r.assetUrl) ? r.assetUrl : null;
+      // Re-host to a CSP-allowed Supabase URL — a raw provider temp URL is blocked
+      // by the browser img-src AND expires (breaking the render anchor too).
+      return raw ? await reHostFrame(raw) : null;
     } catch {
       return null;
     }
