@@ -143,22 +143,39 @@ function GenerationProgress({ kind, elapsed, status, locale, targetSec }: {
   const stageIdx = Math.min(stages.length - 1, Math.floor((pct / 100) * stages.length));
   const headline = status && status.trim() ? status.trim() : stages[stageIdx];
   return (
-    <div className="w-[min(72vw,380px)] space-y-2 py-0.5">
+    <div className="w-[min(82vw,420px)] space-y-2.5 rounded-2xl border border-app-border/10 bg-app-elevated/40 p-3">
+      {/* Headline — live pipeline status (video) or the current narrated stage —
+          with a live percentage + elapsed clock so progress is always legible. */}
       <div className="flex items-center justify-between gap-2 text-[12.5px]">
-        <span className="inline-flex min-w-0 items-center gap-1.5 text-app-accent">
-          <Loader2 size={13} className="shrink-0 animate-spin" />
+        <span className="inline-flex min-w-0 items-center gap-1.5 font-medium text-app-accent">
+          <Loader2 size={14} className="shrink-0 animate-spin" />
           <span className="truncate">{headline}</span>
         </span>
-        <span className="shrink-0 tabular-nums text-app-muted">{fmtClock(elapsed)}</span>
+        <span className="shrink-0 tabular-nums text-app-muted">{pct}% · {fmtClock(elapsed)}</span>
       </div>
-      <div className="h-1 w-full overflow-hidden rounded-full bg-app-border/10">
+      {/* Eased progress bar — never a fake 100% before the asset returns. */}
+      <div className="h-1.5 w-full overflow-hidden rounded-full bg-app-border/10">
         <div className="h-full rounded-full bg-app-accent transition-[width] duration-500 ease-out" style={{ width: `${Math.max(6, pct)}%` }} />
       </div>
-      <div className="flex items-center gap-1.5">
-        {stages.map((s, i) => (
-          <span key={i} title={s} className={`h-0.5 flex-1 rounded-full transition-colors ${i <= stageIdx ? 'bg-app-accent/70' : 'bg-app-border/10'}`} />
-        ))}
-      </div>
+      {/* Stage checklist — what each agent is doing: done ✓ · active ⟳ · pending ○.
+          Makes the pipeline legible so the user sees exactly where it is. */}
+      <ul className="space-y-1">
+        {stages.map((s, i) => {
+          const state = i < stageIdx ? 'done' : i === stageIdx ? 'active' : 'pending';
+          return (
+            <li key={i} className={`flex items-center gap-2 text-[12px] ${state === 'pending' ? 'text-app-muted/50' : state === 'active' ? 'text-app-text' : 'text-app-muted'}`}>
+              {state === 'done' ? (
+                <Check size={13} className="shrink-0 text-app-accent" />
+              ) : state === 'active' ? (
+                <Loader2 size={13} className="shrink-0 animate-spin text-app-accent" />
+              ) : (
+                <span className="h-[13px] w-[13px] shrink-0 rounded-full border border-app-border/30" />
+              )}
+              <span className="truncate">{s}</span>
+            </li>
+          );
+        })}
+      </ul>
     </div>
   );
 }
@@ -242,9 +259,49 @@ const isImage = (m: string) => m.startsWith('image/');
 const isAudio = (m: string) => m.startsWith('audio/');
 const isVideo = (m: string) => m.startsWith('video/');
 
+// ── Chat-history persistence ──────────────────────────────────────────────────
+// Conversations survive a reload (localStorage). We persist a LEAN copy — text +
+// the remote result URLs (image/audio/video) — and DROP base64 `medias` uploads,
+// which would blow the ~5 MB quota. "New Chat" clears this key (see ServiceHub).
+export const OMNI_HISTORY_KEY = 'myavatar-omni-history';
+const HISTORY_MAX = 60; // cap stored turns so the store can never grow unbounded
+
+function loadHistory(): Msg[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = window.localStorage.getItem(OMNI_HISTORY_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter((m): m is Msg => !!m && ((m as Msg).role === 'user' || (m as Msg).role === 'assistant') && typeof (m as Msg).text === 'string')
+      .slice(-HISTORY_MAX);
+  } catch { return []; }
+}
+
+function saveHistory(messages: Msg[]): void {
+  if (typeof window === 'undefined') return;
+  try {
+    // Drop a trailing empty assistant placeholder (mid-generation) and strip the
+    // heavy base64 `medias` — keep text + small remote result URLs only.
+    const lean = messages
+      .filter((m, i) => !(i === messages.length - 1 && m.role === 'assistant' && !m.text && !m.imageUrl && !m.audioUrl && !m.videoUrl))
+      .slice(-HISTORY_MAX)
+      .map((m) => ({
+        role: m.role,
+        text: m.text,
+        ...(m.imageUrl ? { imageUrl: m.imageUrl } : {}),
+        ...(m.audioUrl ? { audioUrl: m.audioUrl } : {}),
+        ...(m.videoUrl ? { videoUrl: m.videoUrl } : {}),
+      }));
+    if (lean.length === 0) { window.localStorage.removeItem(OMNI_HISTORY_KEY); return; }
+    window.localStorage.setItem(OMNI_HISTORY_KEY, JSON.stringify(lean));
+  } catch { /* quota / disabled — non-fatal */ }
+}
+
 export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   const t = COPY[locale] ?? COPY.ka;
-  const [messages, setMessages] = useState<Msg[]>([]);
+  const [messages, setMessages] = useState<Msg[]>(loadHistory);
   const [input, setInput] = useState('');
   // Up to MAX_ATTACHMENTS files (images / video / audio / pdf) ride with a message.
   const [attachments, setAttachments] = useState<Media[]>([]);
@@ -309,6 +366,12 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
     if (dist < 160) scrollToBottom();
   }, [messages, busy, scrollToBottom]);
+
+  // Persist the conversation once a generation settles (never per streaming token).
+  // Restored on next mount via loadHistory(); cleared by New Chat (ServiceHub).
+  useEffect(() => {
+    if (!busy) saveHistory(messages);
+  }, [messages, busy]);
 
   // Tick the elapsed clock while a generation is in flight.
   useEffect(() => {

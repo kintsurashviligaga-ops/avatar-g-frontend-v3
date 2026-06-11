@@ -19,7 +19,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Film, Sparkles, ChevronRight } from 'lucide-react';
 import { ConversationalFilmStudio } from './ConversationalFilmStudio';
-import OmniStudio from './OmniStudio';
+import OmniStudio, { OMNI_HISTORY_KEY } from './OmniStudio';
 import LipsyncStudio from './LipsyncStudio';
 import { ChatChrome } from './ChatChrome';
 
@@ -101,7 +101,7 @@ export function ServiceHub({ locale = 'ka', isAuthenticated = false }: { locale?
         locale={locale}
         onBack={() => go('hub')}
         title={service === 'lipsync' ? t.lipTitle : undefined}
-        onNewChat={service === 'omni' ? () => setChatResetKey((k) => k + 1) : undefined}
+        onNewChat={service === 'omni' ? () => { try { window.localStorage.removeItem(OMNI_HISTORY_KEY); } catch { /* noop */ } setChatResetKey((k) => k + 1); } : undefined}
         scrollBody={service === 'lipsync'}
       >
         {service === 'omni' ? <OmniStudio key={chatResetKey} locale={lang} /> : <LipsyncStudio locale={lang} />}
