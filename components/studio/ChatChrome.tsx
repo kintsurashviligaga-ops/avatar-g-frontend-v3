@@ -15,7 +15,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import {
-  Menu, X, Plus, History, LogIn, UserPlus, LogOut, Shield, FileText, LifeBuoy, MessageSquarePlus, Loader2, LayoutGrid,
+  Menu, X, Plus, History, LogIn, UserPlus, LogOut, Shield, FileText, LifeBuoy, MessageSquarePlus, Loader2,
 } from 'lucide-react';
 import { createBrowserClient } from '@/lib/supabase/browser';
 import { WalletRefillModal } from '@/components/chat/WalletRefill';
@@ -61,7 +61,7 @@ interface ChatChromeProps {
   children: React.ReactNode;
 }
 
-export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody = false, children }: ChatChromeProps) {
+export function ChatChrome({ locale = 'ka', onNewChat, title, scrollBody = false, children }: ChatChromeProps) {
   const lang: Lang = locale === 'en' ? 'en' : locale === 'ru' ? 'ru' : 'ka';
   const t = COPY[lang];
 
@@ -112,8 +112,8 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
       {/* ── Top bar (minimal, borderless) ────────────────────────────────────── */}
       <header className="sticky top-0 z-30 shrink-0 bg-app-bg/85 backdrop-blur-xl" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
         <div className="mx-auto flex h-14 w-full max-w-3xl items-center justify-between gap-2 px-3">
-          {/* No back arrow — it was easy to mis-tap and navigate away. Returning to
-              the service hub now lives as an explicit "Services" item in the menu. */}
+          {/* No back arrow — it was easy to mis-tap and navigate away. The chat is
+              the single home surface; there is no "Services" jump in the menu. */}
           <div className="flex min-w-0 items-center gap-1">
             <span className="truncate text-[15px] font-semibold tracking-tight text-app-text">
               {title ?? <>MyAvatar<span className="text-app-accent">.ge</span></>}
@@ -163,14 +163,6 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
               {onNewChat && (
                 <button type="button" onClick={() => { setMenuOpen(false); onNewChat(); }} className={`${drawerRow} font-medium text-app-accent`}>
                   <MessageSquarePlus className="h-[18px] w-[18px]" /> {t.newChat}
-                </button>
-              )}
-
-              {/* Services — the deliberate way back to the 3-card hub (replaces the
-                  removed top-left arrow, so it can't be tapped by accident). */}
-              {onBack && (
-                <button type="button" onClick={() => { setMenuOpen(false); onBack(); }} className={drawerRow}>
-                  <LayoutGrid className="h-[18px] w-[18px] text-app-muted" /> {t.services}
                 </button>
               )}
 
