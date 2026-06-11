@@ -114,6 +114,7 @@ export function buildScriptUserPrompt(prompt: string, totalSec: number): string 
     `You are the DIRECTOR. The ${count} shots must form ONE coherent film — never random, disconnected clips:`,
     `• Tell a single continuous story across all ${count} shots with a clear arc: establish → develop → turn → resolve.`,
     '• Keep ONE consistent protagonist, location, time-of-day and colour palette across every shot (visual + tonal continuity).',
+    '• LOCK THE SUBJECT: in shot 1, describe the key subject(s) with specific, memorable details — exact colour, material, markings (e.g. "a red sports car with gold rims and a white #7 decal", "a driver in a matte-black helmet with an orange visor"). Then repeat those EXACT descriptors VERBATIM in EVERY later shot. Never paraphrase, recolour, or drop them — the car/character/environment must never shift or disappear between scenes.',
     '• Each shot must use a deliberate CAMERA MOVE (slow push-in, tracking, crane up, orbit, pan, or a locked static) AND a clear SHOT SIZE / ANGLE (wide establishing · medium · close-up · low/high angle) chosen to serve that beat.',
     '• Progress the action shot-to-shot — each shot continues the previous one; no repeats, no jarring jumps.',
     '• Write each shot prompt as a vivid, self-contained cinematic description — subject, action, setting, lighting, mood, lens — so the renderer needs no extra context.',
