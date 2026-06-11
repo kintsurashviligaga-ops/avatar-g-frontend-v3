@@ -739,7 +739,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 <div className="space-y-1.5">
                   <button type="button" onClick={() => setLightbox(m.imageUrl!)} className="block w-full cursor-zoom-in" aria-label="open fullscreen">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={m.imageUrl} alt="generated" className="max-h-80 w-full rounded-lg object-contain transition-opacity hover:opacity-90" />
+                    <img src={m.imageUrl} alt="generated" className="max-h-96 w-full rounded-xl object-contain ring-1 ring-app-border/10 transition-opacity hover:opacity-90" />
                   </button>
                   <a
                     href={m.imageUrl}
@@ -770,7 +770,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
               {m.videoUrl && (
                 <div className="space-y-1.5">
                   {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
-                  <video src={m.videoUrl} controls playsInline className="max-h-80 w-full rounded-lg bg-black/90" />
+                  <video src={m.videoUrl} controls playsInline className="max-h-96 w-full rounded-xl bg-black/90 ring-1 ring-app-border/10" />
                   <a
                     href={m.videoUrl}
                     target="_blank"
