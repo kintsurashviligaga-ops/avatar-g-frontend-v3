@@ -149,7 +149,10 @@ export interface DriveFilmOptions {
  * a canonical one only when `isThirtySecondFilm` would otherwise miss.
  */
 export function buildFilmPrompt(prompt: string): string {
-  const trimmed = String(prompt || '').trim();
+  // Cap to stay within the orchestrate route's 4000-char `message` limit. A long
+  // pasted brief was 400'ing the ENTIRE render as "Invalid request" before the
+  // pipeline ever started. 3900 leaves room for the suffix appended below.
+  const trimmed = String(prompt || '').trim().slice(0, 3900);
   if (!trimmed) return 'a 30-second cinematic film';
   if (isThirtySecondFilm(trimmed)) return trimmed;
   return `${trimmed} — a 30-second cinematic film`;
