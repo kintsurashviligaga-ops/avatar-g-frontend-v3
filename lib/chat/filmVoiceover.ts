@@ -109,14 +109,52 @@ async function generateNarrationScript(brief: string, totalSec: number): Promise
  * (Georgian → eleven_multilingual_v2, natural settings). Returns base64 + content
  * type, or null on any failure.
  */
-async function synthesizeVoiceover(text: string): Promise<{ base64: string; contentType: string } | null> {
+/**
+ * Per-character Georgian voice map. To get a NATURAL, ACCENT-FREE Georgian read you
+ * need a Georgian-native voice (ElevenLabs has no built-in one). Two ways to fill
+ * these IN CODE (deploys via git — NO Vercel access needed):
+ *   • paste a cloned/library Georgian voice ID as the string default below, OR
+ *   • set the matching env var (ELEVENLABS_KA_*).
+ * Until a slot is filled it falls back to ELEVENLABS_GEORGIAN_VOICE_ID → the single
+ * configured voice, so nothing ever breaks. The persona is auto-detected from the
+ * brief so a male/female/child/elder/young story gets a fitting voice.
+ */
+type VoicePersona = 'male' | 'female' | 'child' | 'elder' | 'young' | 'narrator';
+const KA_VOICE_DEFAULTS: Record<VoicePersona, string> = {
+  // ↓↓↓ paste real Georgian voice IDs here (or set the ELEVENLABS_KA_* envs) ↓↓↓
+  male: '', female: '', child: '', elder: '', young: '', narrator: '',
+};
+function detectPersona(brief: string): VoicePersona {
+  const b = (brief || '').toLowerCase();
+  if (/\b(child|kid|boy|girl|baby|toddler)\b|ბავშვ|ბიჭუნა|გოგონა/.test(b)) return 'child';
+  if (/\b(old|elderly|aged|grandfather|grandmother)\b|მოხუც|ბებერ|ბაბუ|ბებია/.test(b)) return 'elder';
+  if (/\b(young|teen|youth|teenager)\b|ახალგაზრდ|ჭაბუკ|მოზარდ/.test(b)) return 'young';
+  if (/\b(woman|girl|lady|female|she|her|mother|sister|wife)\b|ქალ|გოგო|დედ|დის|ცოლ/.test(b)) return 'female';
+  if (/\b(man|male|soldier|father|brother|king|warrior)\b|კაც|მამაკაც|ჯარისკაც|მამა|ძმ|მეფ|მებრძ/.test(b)) return 'male';
+  return 'narrator';
+}
+/** Resolve the Georgian voice for a brief: env slot → code default → single fallback. */
+function pickGeorgianVoiceId(brief: string): string | null {
+  const persona = detectPersona(brief);
+  const envSlot = process.env[`ELEVENLABS_KA_${persona.toUpperCase()}`];
+  return (
+    (envSlot && envSlot.trim()) ||
+    (KA_VOICE_DEFAULTS[persona] && KA_VOICE_DEFAULTS[persona].trim()) ||
+    (process.env.ELEVENLABS_GEORGIAN_VOICE_ID && process.env.ELEVENLABS_GEORGIAN_VOICE_ID.trim()) ||
+    (process.env.ELEVENLABS_VOICE_ID && process.env.ELEVENLABS_VOICE_ID.trim()) ||
+    null
+  );
+}
+
+async function synthesizeVoiceover(text: string, voiceIdOverride?: string | null): Promise<{ base64: string; contentType: string } | null> {
   const apiKey = process.env.ELEVENLABS_API_KEY;
   if (!apiKey) return null;
   const georgian = isGeorgianText(text);
   const voiceId =
-    (georgian && process.env.ELEVENLABS_GEORGIAN_VOICE_ID
+    (voiceIdOverride && voiceIdOverride.trim() ? voiceIdOverride.trim() : null) ??
+    ((georgian && process.env.ELEVENLABS_GEORGIAN_VOICE_ID
       ? process.env.ELEVENLABS_GEORGIAN_VOICE_ID
-      : undefined) ?? process.env.ELEVENLABS_VOICE_ID;
+      : undefined) ?? process.env.ELEVENLABS_VOICE_ID);
   if (!voiceId) return null;
   const modelId = selectTtsModel(text);
   const ac = new AbortController();
@@ -161,7 +199,8 @@ export async function generateFilmVoiceover(opts: {
   try {
     const script = await generateNarrationScript(opts.brief, opts.totalSec);
     if (!script) return null;
-    const audio = await synthesizeVoiceover(script);
+    // Pick a voice that fits the story's protagonist (male/female/child/elder/young).
+    const audio = await synthesizeVoiceover(script, pickGeorgianVoiceId(opts.brief));
     if (!audio) return null;
     // 2-hour signed URL — comfortably outlives the render + assemble window.
     const path = `${opts.compositeId}/voiceover.mp3`;
