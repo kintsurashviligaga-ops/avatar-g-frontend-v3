@@ -49,6 +49,8 @@ export interface FilmStudioMatrix {
   audioUrl?: string | null;
   /** PHASE 48 §2 — commentator/narration track; handed to the assembler as `voiceoverUrl`. */
   voiceUrl?: string | null;
+  /** PHASE 49 §7 — cinematic SFX / sound-design track; handed to the assembler as `sfxUrl`. */
+  sfxUrl?: string | null;
   readyToStitch?: boolean;
   statusTokenId?: string;
 }
@@ -411,6 +413,7 @@ async function assembleMaster(
   signal?: AbortSignal,
   orientation?: 'landscape' | 'vertical',
   voiceUrl?: string | null,
+  sfxUrl?: string | null,
 ): Promise<{ url: string; qa: FilmQaSummary | null } | null> {
   const res = await fetch('/api/video/assemble', {
     method: 'POST',
@@ -423,6 +426,8 @@ async function assembleMaster(
       // PHASE 48 §2 — the commentator/narration track; the FFmpeg master ducks
       // the score under it (voiceoverUrl → vocal_ducking_pct).
       ...(voiceUrl ? { voiceoverUrl: voiceUrl } : {}),
+      // PHASE 49 §7 — cinematic SFX / sound-design, mixed under the score.
+      ...(sfxUrl ? { sfxUrl } : {}),
       ...(scorePrompt.trim() ? { scorePrompt: scorePrompt.trim() } : {}),
       ...(statusTokenId ? { filmTokenId: statusTokenId } : {}),
       ...(orientation === 'vertical' ? { orientation: 'vertical' } : {}),
@@ -638,7 +643,9 @@ export async function driveFilmStudio(opts: DriveFilmOptions): Promise<FilmStudi
     const musicBed = opts.soundtrackUrl ?? matrix.audioUrl ?? null;
     // PHASE 48 §2 — commentator/narration track, when the brief asked for one.
     const voiceBed = matrix.voiceUrl ?? null;
-    let assembled = await assembleMaster(clips, musicBed, matrix.statusTokenId, message, signal, opts.orientation, voiceBed);
+    // PHASE 49 §7 — cinematic SFX / sound-design track, mixed under the score.
+    const sfxBed = matrix.sfxUrl ?? null;
+    let assembled = await assembleMaster(clips, musicBed, matrix.statusTokenId, message, signal, opts.orientation, voiceBed, sfxBed);
 
     // 4 ── Recover if the assemble response was lost in transit
     if (!assembled && matrix.statusTokenId) {

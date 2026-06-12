@@ -170,3 +170,56 @@ export async function generateFilmVoiceover(opts: {
     return null;
   }
 }
+
+/**
+ * Synthesise a cinematic SOUND-DESIGN / ambience track via the ElevenLabs
+ * sound-generation API (text → layered SFX, foley, atmosphere). The FFmpeg master
+ * mixes this UNDER the music so the film has real environmental sound, not just a
+ * score. Fail-open: any miss returns null and the film keeps its music-only mix.
+ */
+async function synthesizeSfx(brief: string, totalSec: number): Promise<{ base64: string; contentType: string } | null> {
+  const apiKey = process.env.ELEVENLABS_API_KEY;
+  if (!apiKey) return null;
+  // The sound-generation endpoint caps at 22s; ask for as much as fits the film.
+  const duration = Math.max(8, Math.min(22, Math.round(totalSec)));
+  const text =
+    `Cinematic, immersive sound design and ambience for this film scene: ${brief.slice(0, 280)}. ` +
+    `Layered environmental sound effects and foley that fit the location and action. No music, no melody, no speech.`;
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), 40_000);
+  try {
+    const res = await fetch('https://api.elevenlabs.io/v1/sound-generation', {
+      method: 'POST',
+      headers: { 'xi-api-key': apiKey, 'Content-Type': 'application/json', Accept: 'audio/mpeg' },
+      body: JSON.stringify({ text, duration_seconds: duration, prompt_influence: 0.4 }),
+      signal: ac.signal,
+    });
+    if (!res.ok) return null;
+    const buf = Buffer.from(await res.arrayBuffer());
+    if (buf.byteLength < 1024) return null;
+    return { base64: buf.toString('base64'), contentType: 'audio/mpeg' };
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * End-to-end SFX leg: brief → sound design → hosted signed URL. Always resolves;
+ * returns null (never throws) so the caller falls back to the music-only mix.
+ */
+export async function generateFilmSfx(opts: {
+  brief: string;
+  totalSec: number;
+  compositeId: string;
+}): Promise<string | null> {
+  try {
+    const audio = await synthesizeSfx(opts.brief, opts.totalSec);
+    if (!audio) return null;
+    const path = `${opts.compositeId}/sfx.mp3`;
+    return (await uploadAndSign('renders', path, audio.base64, audio.contentType, 7200)) ?? null;
+  } catch {
+    return null;
+  }
+}

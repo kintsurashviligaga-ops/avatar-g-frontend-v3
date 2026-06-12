@@ -599,6 +599,8 @@ async function pollFilmTask(predictionId: string, sessionId?: string): Promise<C
         // URL in the token; no polling). The client hands it to the assembler as
         // `voiceoverUrl` and the FFmpeg master ducks the score under it.
         voiceUrl: ref.voiceUrl ?? null,
+        // PHASE 49 §7 — cinematic SFX / sound-design track; mixed under the score.
+        sfxUrl: ref.sfxUrl ?? null,
         readyToStitch,
         // PHASE 47 §1 — the unified status-tracker key for /api/video/status.
         statusTokenId,

@@ -55,6 +55,12 @@ export interface FilmTaskRef {
    * `voiceoverUrl` and the FFmpeg master ducks the score under it.
    */
   voiceUrl?: string | null;
+  /**
+   * PHASE 49 §7 — resolved signed URL of the cinematic SFX / sound-design track
+   * (minted at dispatch). Optional + backward-compatible. The assembler passes it
+   * as `sfxUrl` and the FFmpeg master mixes it UNDER the score.
+   */
+  sfxUrl?: string | null;
 }
 
 function b64urlEncode(s: string): string {

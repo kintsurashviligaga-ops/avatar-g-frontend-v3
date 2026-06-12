@@ -38,7 +38,7 @@ import { isAdminEmail } from '@/lib/auth/adminGuard';
 import { startUdioGeneration } from '@/lib/udio/client';
 import { ServiceManager } from './ServiceManager';
 import { encodeFilmRef } from './filmTaskRef';
-import { generateFilmVoiceover, wantsCommentary } from './filmVoiceover';
+import { generateFilmVoiceover, wantsCommentary, generateFilmSfx } from './filmVoiceover';
 import {
   planFilmScenes,
   buildFilmClipRequest,
@@ -95,6 +95,8 @@ interface FilmPlanSummary {
   musicWorkId: string | null;
   /** PHASE 48 §2 — commentator/narration track (resolved at dispatch, may be null). */
   voiceUrl: string | null;
+  /** PHASE 49 §7 — cinematic SFX / sound-design track (resolved at dispatch). */
+  sfxUrl: string | null;
 }
 
 /** Narrow a dispatch-time LegStatus to the token's clip status union. */
@@ -621,6 +623,23 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
     }
   }
 
+  // ── Leg 4c: cinematic SFX / sound-design (PHASE 49 §7) ─────────────────────
+  // Generated for EVERY film (ambience + foley make it feel real). Strictly
+  // fail-open: any failure leaves sfxUrl null and the music-only mix is unchanged.
+  // Not separately billed, so a failed/absent SFX leg never burns GEL.
+  let sfxUrl: string | null = null;
+  try {
+    sfxUrl = await generateFilmSfx({
+      brief: input.message,
+      totalSec: plan.shared.totalSec,
+      compositeId,
+    });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn('[film] sfx leg failed:', err instanceof Error ? err.message : err);
+    sfxUrl = null;
+  }
+
   // PHASE 43 §1 — Mint the Union Poll token. Every clip taskRef + the audio
   // workId rides in ONE predictionId; `pollFilmTask` decodes it and polls the
   // full matrix in lock-step instead of tracking a single clip.
@@ -632,6 +651,7 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
     clips: clips.map((c) => ({ ordinal: c.ordinal, taskRef: c.taskRef, status: clipDispatchStatus(c.status), attempts: c.attempts })),
     musicWorkId,
     voiceUrl,
+    sfxUrl,
   });
 
   // The Editor (stitch) and Audio legs depend on the clips finishing first, so
@@ -649,6 +669,7 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
     readyToStitch: false,
     musicWorkId,
     voiceUrl,
+    sfxUrl,
   };
 
   const renderedCount = clips.filter((c) => c.status === 'queued').length;
