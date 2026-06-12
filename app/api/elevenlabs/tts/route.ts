@@ -150,12 +150,13 @@ export async function POST(req: NextRequest) {
   // ElevenLabs) when configured; otherwise the default voice. An explicit
   // body.voiceId always wins.
   const isGeorgian = body.locale === 'ka' || /[ა-ჿ]/.test(text);
-  const georgianVoiceId = process.env.ELEVENLABS_GEORGIAN_VOICE_ID;
+  // Founder-supplied Georgian voice. CRITICAL ORDER: Georgian text must pick the
+  // Georgian voice BEFORE the (English) ELEVENLABS_VOICE_ID — otherwise Georgian
+  // gets read by an English voice and sounds heavily accented/robotic.
+  const georgianVoiceId = process.env.ELEVENLABS_GEORGIAN_VOICE_ID || 'hpp4J3VqNfWAUOO0d1Us';
   const voiceId = body.voiceId
     ?? body.voice_id
-    ?? (isGeorgian && georgianVoiceId ? georgianVoiceId : undefined)
-    ?? process.env.ELEVENLABS_VOICE_ID
-    ?? 'vWpzdSR8GpLUKR0ai8Li';
+    ?? (isGeorgian ? georgianVoiceId : (process.env.ELEVENLABS_VOICE_ID ?? georgianVoiceId));
 
   // PHASE 48 §3 — hard-force eleven_multilingual_v2 when the text/locale is
   // Georgian; everything else keeps the low-latency turbo default.

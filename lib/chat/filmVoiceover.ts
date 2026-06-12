@@ -121,8 +121,15 @@ async function generateNarrationScript(brief: string, totalSec: number): Promise
  */
 type VoicePersona = 'male' | 'female' | 'child' | 'elder' | 'young' | 'narrator';
 const KA_VOICE_DEFAULTS: Record<VoicePersona, string> = {
-  // ↓↓↓ paste real Georgian voice IDs here (or set the ELEVENLABS_KA_* envs) ↓↓↓
-  male: '', female: '', child: '', elder: '', young: '', narrator: '',
+  // Founder-supplied Georgian voices. ID #1 → male/narrator/elder/young, ID #2 →
+  // female/child (a lighter voice suits a child better than the deeper one). If the
+  // two are swapped gender-wise, just exchange the two IDs below.
+  male: 'hpp4J3VqNfWAUOO0d1Us',
+  narrator: 'hpp4J3VqNfWAUOO0d1Us',
+  elder: 'hpp4J3VqNfWAUOO0d1Us',
+  young: 'hpp4J3VqNfWAUOO0d1Us',
+  female: 'vWpzdSR8GpLUKR0ai8Li',
+  child: 'vWpzdSR8GpLUKR0ai8Li',
 };
 function detectPersona(brief: string): VoicePersona {
   const b = (brief || '').toLowerCase();
