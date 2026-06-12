@@ -12,7 +12,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Send, Mic, Square, Plus, X, Loader2, Sparkles, Film, Music2, FileText, Image as ImageIcon, Download, MessageSquare, Wand2, Volume2, Copy, Check, ChevronDown, RotateCcw } from 'lucide-react';
+import { Send, Mic, Square, Plus, X, Loader2, Sparkles, Film, Music2, FileText, Image as ImageIcon, Download, MessageSquare, Wand2, Volume2, Copy, Check, ChevronDown, RotateCcw, History, Trash2, MessageSquarePlus } from 'lucide-react';
 import { driveFilmStudio } from '@/lib/chat/filmStudioClient';
 import { Markdown } from './Markdown';
 
@@ -30,12 +30,13 @@ const COPY: Record<Lang, {
   narration: string; narrationCue: string;
   sbTitle: string; sbReview: string; sbGenerate: string; sbRegen: string; sbCancel: string; sbCreating: string; sbFailed: string; sbScene: string;
   charPhoto: string; charPhotoOn: string;
+  historyTitle: string; historyEmpty: string; historyNew: string; deleteLabel: string;
 }> = {
   ka: {
     title: 'ჭკვიანი ასისტენტი', subtitle: 'ინტელექტუალური მულტიმოდალური ასისტენტი',
     placeholder: 'დაწერე, ჩაწერე ხმა, ან მიამაგრე სურათი…', empty: 'ჰკითხე ნებისმიერი რამ, შექმენი სურათი ან მუსიკა — ტექსტით, ხმით ან ფაილით.',
     thinking: 'ფიქრობს…', recording: 'იწერება…', micHint: 'ხმის ჩაწერა',
-    modeChat: 'ჩეთი', modeImage: 'სურათი', imgPlaceholder: 'აღწერე სურათი, რომ დაგიხატო…',
+    modeChat: 'ჩატი', modeImage: 'სურათი', imgPlaceholder: 'აღწერე სურათი, რომ დაგიხატო…',
     generatingImage: 'სურათი იქმნება…', imageFailed: 'სურათის გენერაცია ვერ მოხერხდა. სცადე თავიდან.', imgDownload: 'ჩამოტვირთვა',
     magicHint: 'AI-ით პრომპტის გაუმჯობესება',
     modeMusic: 'მუსიკა', musicPlaceholder: 'აღწერე მუსიკა (მაგ. ეპიკური კინო-სცენა)…',
@@ -49,6 +50,7 @@ const COPY: Record<Lang, {
     narration: 'ნარაცია', narrationCue: ' (პროფესიონალი კომენტატორის ხმოვანი ნარაციით)',
     sbTitle: 'სტორიბორდი', sbReview: 'გადახედე 6 სცენას და კადრს — შემდეგ გაუშვი ვიდეო', sbGenerate: 'ვიდეოს გენერაცია', sbRegen: 'თავიდან', sbCancel: 'გაუქმება', sbCreating: 'სცენარი და 6 კადრი იქმნება…', sbFailed: 'სტორიბორდი ვერ შეიქმნა. სცადე თავიდან.', sbScene: 'სცენა',
     charPhoto: 'პერსონაჟის ფოტო', charPhotoOn: 'პერსონაჟი ✓',
+    historyTitle: 'ისტორია', historyEmpty: 'ჯერ საუბრები არ არის', historyNew: 'ახალი ჩატი', deleteLabel: 'წაშლა',
   },
   en: {
     title: 'Smart Assistant', subtitle: 'Intelligent multimodal assistant',
@@ -68,6 +70,7 @@ const COPY: Record<Lang, {
     narration: 'Narration', narrationCue: ' (with professional spoken voice-over narration)',
     sbTitle: 'Storyboard', sbReview: 'Review the 6 scenes & frames — then generate the video', sbGenerate: 'Generate Video', sbRegen: 'Regenerate', sbCancel: 'Cancel', sbCreating: 'Creating storyboard & 6 frames…', sbFailed: 'Storyboard failed. Try again.', sbScene: 'Scene',
     charPhoto: 'Character photo', charPhotoOn: 'Character ✓',
+    historyTitle: 'History', historyEmpty: 'No chats yet', historyNew: 'New chat', deleteLabel: 'Delete',
   },
   ru: {
     title: 'Умный ассистент', subtitle: 'Интеллектуальный мультимодальный ассистент',
@@ -87,6 +90,7 @@ const COPY: Record<Lang, {
     narration: 'Озвучка', narrationCue: ' (с профессиональной голосовой озвучкой)',
     sbTitle: 'Раскадровка', sbReview: 'Просмотрите 6 сцен и кадров — затем сгенерируйте видео', sbGenerate: 'Сгенерировать видео', sbRegen: 'Заново', sbCancel: 'Отмена', sbCreating: 'Создаю раскадровку и 6 кадров…', sbFailed: 'Не удалось создать раскадровку. Попробуйте снова.', sbScene: 'Сцена',
     charPhoto: 'Фото персонажа', charPhotoOn: 'Персонаж ✓',
+    historyTitle: 'История', historyEmpty: 'Пока нет чатов', historyNew: 'Новый чат', deleteLabel: 'Удалить',
   },
 };
 
@@ -269,44 +273,87 @@ const isImage = (m: string) => m.startsWith('image/');
 const isAudio = (m: string) => m.startsWith('audio/');
 const isVideo = (m: string) => m.startsWith('video/');
 
-// ── Chat-history persistence ──────────────────────────────────────────────────
-// Conversations survive a reload (localStorage). We persist a LEAN copy — text +
-// the remote result URLs (image/audio/video) — and DROP base64 `medias` uploads,
-// which would blow the ~5 MB quota. "New Chat" clears this key (see ServiceHub).
-export const OMNI_HISTORY_KEY = 'myavatar-omni-history';
-const HISTORY_MAX = 60; // cap stored turns so the store can never grow unbounded
+// ── Multi-conversation chat history (localStorage) ───────────────────────────
+// A real chat history like ChatGPT/Grok: every conversation is saved (id + title
+// + lean messages + updatedAt), survives reloads, can be resumed/renamed/deleted,
+// and "New Chat" starts a fresh one while the previous stays in the list. We store
+// a LEAN copy — text + remote result URLs — and DROP base64 `medias` uploads (they
+// would blow the ~5 MB quota). `OMNI_CURRENT_ID_KEY` tracks the active chat so a
+// reload or "New Chat" (see ServiceHub) resumes/forks correctly.
+export const OMNI_CONVERSATIONS_KEY = 'myavatar-omni-conversations';
+export const OMNI_CURRENT_ID_KEY = 'myavatar-omni-current';
+const HISTORY_MAX = 80;  // max turns kept per conversation
+const CONV_MAX = 40;     // max conversations kept overall
 
-function loadHistory(): Msg[] {
+interface Conversation { id: string; title: string; messages: Msg[]; updatedAt: number }
+
+function newConversationId(): string {
+  return `c_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+}
+function loadConversations(): Conversation[] {
   if (typeof window === 'undefined') return [];
   try {
-    const raw = window.localStorage.getItem(OMNI_HISTORY_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as unknown;
+    const parsed = JSON.parse(window.localStorage.getItem(OMNI_CONVERSATIONS_KEY) ?? '[]') as unknown;
     if (!Array.isArray(parsed)) return [];
     return parsed
-      .filter((m): m is Msg => !!m && ((m as Msg).role === 'user' || (m as Msg).role === 'assistant') && typeof (m as Msg).text === 'string')
-      .slice(-HISTORY_MAX);
+      .filter((c): c is Conversation => !!c && typeof (c as Conversation).id === 'string' && Array.isArray((c as Conversation).messages))
+      .sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0));
   } catch { return []; }
 }
-
-function saveHistory(messages: Msg[]): void {
+function saveConversations(list: Conversation[]): void {
   if (typeof window === 'undefined') return;
+  try { window.localStorage.setItem(OMNI_CONVERSATIONS_KEY, JSON.stringify(list.slice(0, CONV_MAX))); } catch { /* quota */ }
+}
+function currentConversationId(): string {
+  if (typeof window === 'undefined') return newConversationId();
   try {
-    // Drop a trailing empty assistant placeholder (mid-generation) and strip the
-    // heavy base64 `medias` — keep text + small remote result URLs only.
-    const lean = messages
-      .filter((m, i) => !(i === messages.length - 1 && m.role === 'assistant' && !m.text && !m.imageUrl && !m.audioUrl && !m.videoUrl))
-      .slice(-HISTORY_MAX)
-      .map((m) => ({
-        role: m.role,
-        text: m.text,
-        ...(m.imageUrl ? { imageUrl: m.imageUrl } : {}),
-        ...(m.audioUrl ? { audioUrl: m.audioUrl } : {}),
-        ...(m.videoUrl ? { videoUrl: m.videoUrl } : {}),
-      }));
-    if (lean.length === 0) { window.localStorage.removeItem(OMNI_HISTORY_KEY); return; }
-    window.localStorage.setItem(OMNI_HISTORY_KEY, JSON.stringify(lean));
-  } catch { /* quota / disabled — non-fatal */ }
+    const id = window.localStorage.getItem(OMNI_CURRENT_ID_KEY);
+    if (id) return id;
+    const fresh = newConversationId();
+    window.localStorage.setItem(OMNI_CURRENT_ID_KEY, fresh);
+    return fresh;
+  } catch { return newConversationId(); }
+}
+function setCurrentConversationId(id: string): void {
+  if (typeof window === 'undefined') return;
+  try { window.localStorage.setItem(OMNI_CURRENT_ID_KEY, id); } catch { /* */ }
+}
+function leanMessages(messages: Msg[]): Msg[] {
+  return messages
+    .filter((m, i) => !(i === messages.length - 1 && m.role === 'assistant' && !m.text && !m.imageUrl && !m.audioUrl && !m.videoUrl))
+    .slice(-HISTORY_MAX)
+    .map((m) => ({
+      role: m.role,
+      text: m.text,
+      ...(m.imageUrl ? { imageUrl: m.imageUrl } : {}),
+      ...(m.audioUrl ? { audioUrl: m.audioUrl } : {}),
+      ...(m.videoUrl ? { videoUrl: m.videoUrl } : {}),
+    }));
+}
+function conversationTitle(messages: Msg[]): string {
+  const firstUser = messages.find((m) => m.role === 'user' && m.text.trim());
+  const t = (firstUser?.text ?? '').trim().replace(/\s+/g, ' ');
+  return t ? (t.length > 52 ? `${t.slice(0, 52)}…` : t) : 'New chat';
+}
+function loadConversationMessages(id: string): Msg[] {
+  return loadConversations().find((c) => c.id === id)?.messages ?? [];
+}
+/** Save/update the active conversation; an emptied conversation is removed. */
+function upsertConversation(id: string, messages: Msg[]): void {
+  const lean = leanMessages(messages);
+  const list = loadConversations();
+  const idx = list.findIndex((c) => c.id === id);
+  if (lean.length === 0) {
+    if (idx >= 0) { list.splice(idx, 1); saveConversations(list); }
+    return;
+  }
+  const conv: Conversation = { id, title: conversationTitle(lean), messages: lean, updatedAt: Date.now() };
+  if (idx >= 0) list[idx] = conv; else list.unshift(conv);
+  list.sort((a, b) => b.updatedAt - a.updatedAt);
+  saveConversations(list);
+}
+function deleteConversation(id: string): void {
+  saveConversations(loadConversations().filter((c) => c.id !== id));
 }
 
 // ── Storyboard preview (Video mode) ───────────────────────────────────────────
@@ -390,7 +437,12 @@ function StoryboardOverlay({ sb, t, busy, regenningOrdinal, onGenerate, onRegene
 
 export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   const t = COPY[locale] ?? COPY.ka;
-  const [messages, setMessages] = useState<Msg[]>(loadHistory);
+  // The active conversation id + its messages (resumed from the saved history).
+  const [conversationId, setConversationId] = useState<string>(currentConversationId);
+  const [messages, setMessages] = useState<Msg[]>(() => loadConversationMessages(conversationId));
+  // Chat-history panel (list of past conversations) open state.
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyList, setHistoryList] = useState<Conversation[]>([]);
   const [input, setInput] = useState('');
   // Up to MAX_ATTACHMENTS files (images / video / audio / pdf) ride with a message.
   const [attachments, setAttachments] = useState<Media[]>([]);
@@ -464,11 +516,38 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     if (dist < 160) scrollToBottom();
   }, [messages, busy, scrollToBottom]);
 
-  // Persist the conversation once a generation settles (never per streaming token).
-  // Restored on next mount via loadHistory(); cleared by New Chat (ServiceHub).
+  // Persist the active conversation once a generation settles (never per token).
+  // Resumed on next mount; listed/resumable in the history panel.
   useEffect(() => {
-    if (!busy) saveHistory(messages);
-  }, [messages, busy]);
+    if (!busy) upsertConversation(conversationId, messages);
+  }, [messages, busy, conversationId]);
+
+  // Switch to / start / delete conversations (the chat-history panel actions).
+  const openHistory = useCallback(() => {
+    upsertConversation(conversationId, messages); // flush current first
+    setHistoryList(loadConversations());
+    setHistoryOpen(true);
+  }, [conversationId, messages]);
+  const resumeConversation = useCallback((id: string) => {
+    upsertConversation(conversationId, messages); // save current before leaving
+    setConversationId(id);
+    setCurrentConversationId(id);
+    setMessages(loadConversationMessages(id));
+    setHistoryOpen(false);
+  }, [conversationId, messages]);
+  const startNewConversation = useCallback(() => {
+    upsertConversation(conversationId, messages); // save current
+    const id = newConversationId();
+    setConversationId(id);
+    setCurrentConversationId(id);
+    setMessages([]);
+    setHistoryOpen(false);
+  }, [conversationId, messages]);
+  const removeConversation = useCallback((id: string) => {
+    deleteConversation(id);
+    setHistoryList(loadConversations());
+    if (id === conversationId) startNewConversation();
+  }, [conversationId, startNewConversation]);
 
   // Tick the elapsed clock while a generation is in flight.
   useEffect(() => {
@@ -931,6 +1010,16 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       className="relative mx-auto flex h-full w-full max-w-3xl flex-col px-4 pt-2 text-app-text"
       style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}
     >
+      {/* Chat-history button — opens the list of past conversations (resume/delete). */}
+      <button
+        type="button"
+        onClick={openHistory}
+        aria-label={t.historyTitle}
+        title={t.historyTitle}
+        className="absolute left-3 top-1.5 z-20 flex h-7 items-center gap-1.5 rounded-full bg-app-elevated/80 px-2.5 text-[11.5px] font-medium text-app-muted backdrop-blur transition-colors hover:text-app-text"
+      >
+        <History size={13} /> <span className="hidden sm:inline">{t.historyTitle}</span>
+      </button>
       <div
         ref={feedRef}
         onScroll={(e) => {
@@ -1333,6 +1422,40 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           }}
           onCancel={() => setStoryboard(null)}
         />
+      )}
+
+      {/* Chat history — the list of past conversations: resume, start new, delete. */}
+      {historyOpen && (
+        <div className="fixed inset-0 z-[95] flex justify-start bg-black/40 backdrop-blur-sm" onClick={() => setHistoryOpen(false)} style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
+          <aside onClick={(e) => e.stopPropagation()} className="flex h-full w-80 max-w-[86vw] flex-col bg-app-surface shadow-[0_0_60px_rgba(0,0,0,0.35)] animate-[slideIn_0.2s_ease-out]" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
+            <div className="flex items-center justify-between px-4 py-3.5">
+              <span className="inline-flex items-center gap-2 text-[15px] font-semibold tracking-tight text-app-text"><History size={16} /> {t.historyTitle}</span>
+              <button type="button" onClick={() => setHistoryOpen(false)} aria-label="close" className="flex h-8 w-8 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text"><X className="h-4 w-4" /></button>
+            </div>
+            <div className="px-2 pb-2">
+              <button type="button" onClick={startNewConversation} className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-[13.5px] font-medium text-app-accent transition-colors hover:bg-app-elevated">
+                <MessageSquarePlus className="h-[18px] w-[18px]" /> {t.historyNew}
+              </button>
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-4" style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom, 0px))' }}>
+              {historyList.length === 0 ? (
+                <p className="px-3 py-6 text-center text-[13px] text-app-muted">{t.historyEmpty}</p>
+              ) : (
+                historyList.map((c) => (
+                  <div key={c.id} className={`group flex items-center gap-1 rounded-xl pr-1 transition-colors hover:bg-app-elevated ${c.id === conversationId ? 'bg-app-elevated' : ''}`}>
+                    <button type="button" onClick={() => resumeConversation(c.id)} className="flex min-w-0 flex-1 items-center gap-2.5 px-3 py-2.5 text-left">
+                      <MessageSquare className="h-4 w-4 shrink-0 text-app-muted" />
+                      <span className="truncate text-[13px] text-app-text">{c.title}</span>
+                    </button>
+                    <button type="button" onClick={() => removeConversation(c.id)} aria-label={t.deleteLabel} title={t.deleteLabel} className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-app-muted opacity-0 transition-opacity hover:text-app-accent group-hover:opacity-100">
+                      <Trash2 className="h-[15px] w-[15px]" />
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+          </aside>
+        </div>
       )}
     </div>
   );
