@@ -24,6 +24,7 @@ import {
 } from '@/lib/orchestrator/idempotency';
 import { readRunPodConfig, dispatchRunPod, type RunPodManifest } from '@/lib/orchestrator/runpod-adapter';
 import { deductCredits, refundCredits } from '@/lib/orchestrator/ledger';
+import { isAdminUser } from '@/lib/chat/filmComposite';
 import { consumeFreeFilm, restoreFreeFilm } from '@/lib/billing/wallet-ledger';
 import { reSignIfInternal } from '@/lib/orchestrator/storage-adapter';
 import { assembleWithFfmpeg } from '@/lib/orchestrator/ffmpeg-assembly';
@@ -202,15 +203,21 @@ export async function POST(req: NextRequest) {
   // Saga: reserve credits (Redis lock + durable ledger debit) → dispatch →
   // commit. Failure releases the lock AND refunds the durable debit, and
   // best-effort purges the partial render.
+  // Founder/admin renders run on the platform's own provider budget, so the
+  // personal credit charge is skipped (their wallet may legitimately be 0 while
+  // the platform LTX balance funds the real render). Billed exactly like anon.
+  const skipBilling = uid === null ? true : await isAdminUser(uid);
+
   const steps: SagaStep[] = [
     {
       name: 'reserve-credits',
       run: async (ctx) => {
-        if (uid === null) {
-          // Anonymous trial render — nothing to reserve (no wallet / free slot).
+        if (skipBilling) {
+          // Anonymous trial OR founder/admin — nothing to reserve, no charge.
           ctx.bag.freeFilm = true;
           return null;
         }
+        if (uid === null) return null; // unreachable past skipBilling — narrows uid to string
         const lock = await lockTokens(uid, ASSEMBLE_COST, 900);
         ctx.bag.lock = lock;
 
@@ -236,7 +243,7 @@ export async function POST(req: NextRequest) {
         return lock;
       },
       compensate: async (_r, ctx) => {
-        if (uid === null) return; // anonymous render reserved nothing to roll back
+        if (skipBilling || uid === null) return; // anon / founder reserved nothing to roll back
         const lock = ctx.bag.lock as TokenLock | null | undefined;
         if (lock) await releaseTokenLock(lock);
         // Hand the free slot back when a render that consumed it fails, so a

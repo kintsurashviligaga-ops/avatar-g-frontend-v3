@@ -34,6 +34,7 @@ import { withTrace } from '@/lib/observability/agentTrace';
 import { forecastMarginForAction } from '@/lib/monetization/audit-engine';
 import { createServiceRoleClient } from '@/lib/supabase/server';
 import { creditWalletGel, getOnboardingState } from '@/lib/billing/wallet-ledger';
+import { isAdminEmail } from '@/lib/auth/adminGuard';
 import { startUdioGeneration } from '@/lib/udio/client';
 import { ServiceManager } from './ServiceManager';
 import { encodeFilmRef } from './filmTaskRef';
@@ -154,6 +155,25 @@ async function readWalletBalanceGel(userId: string): Promise<number | null> {
     return Number.isFinite(num) ? num : null;
   } catch {
     return null;
+  }
+}
+
+/**
+ * Founder/admin bypass: a platform admin (allowlisted email in lib/auth/adminGuard
+ * — the founder's address is built-in, no env needed) tests renders on the
+ * platform's own provider budget, so the wallet pre-flight must not block them
+ * (the very "founder/promo FREE film" case the gate below already anticipates).
+ * Self-contained: looks the email up by userId via the service role, fail-closed
+ * (any error → not admin → the normal gate runs, so non-admins are unaffected).
+ */
+export async function isAdminUser(userId: string): Promise<boolean> {
+  try {
+    const sb = createServiceRoleClient();
+    const { data, error } = await sb.auth.admin.getUserById(userId);
+    const email = data?.user?.email;
+    return !error && typeof email === 'string' ? isAdminEmail(email) : false;
+  } catch {
+    return false;
   }
 }
 
@@ -425,8 +445,12 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
     // balance check below.
     const onboarding = await getOnboardingState(input.userId).catch(() => null);
     const hasFreeFilm = (onboarding?.freeFilmsRemaining ?? 0) > 0;
-    const balance = hasFreeFilm ? null : await readWalletBalanceGel(input.userId);
-    if (!hasFreeFilm && filmBalanceDecision(balance, forecast.totalRetailGel) === 'insufficient') {
+    // Founder/admin renders on the platform's own provider budget → bypass the
+    // wallet gate (their personal wallet may legitimately be 0 while the platform
+    // LTX balance funds the real render). Checked only when no free film applies.
+    const founderBypass = hasFreeFilm ? false : await isAdminUser(input.userId);
+    const balance = (hasFreeFilm || founderBypass) ? null : await readWalletBalanceGel(input.userId);
+    if (!hasFreeFilm && !founderBypass && filmBalanceDecision(balance, forecast.totalRetailGel) === 'insufficient') {
       return {
         success: false,
         intent: 'video_generation',
