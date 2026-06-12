@@ -110,7 +110,8 @@ export function buildStyleGuide(shared: FilmShared): string {
   return (
     `Rigid visual style guide — identical in every shot: ${aesthetic}; one consistent color palette; `
     + `consistent key and rim lighting; the same lens, depth of field and film grain; unchanged props and set dressing; `
-    + `${identity}.`
+    + `${identity}. The SAME single protagonist appears in every shot — never swap the person, face, age or wardrobe between shots. `
+    + `Use only lighting and elements that belong to the world of the brief: NO neon, glowing light-streaks, lens flares, HUD overlays or sci-fi effects unless the brief explicitly asks for them.`
   );
 }
 
@@ -144,13 +145,19 @@ interface CinematicBeat {
   cameraMotion: string;
 }
 
+// PROFESSIONAL NARRATIVE cinematography — generic to ANY film (drama, period,
+// action, documentary), NOT a music video. The previous beats hardcoded "the
+// artist", "perform the vocal" and literal "neon accents / lights pulsing on the
+// beat / light-trails", which injected nonsensical blue light-streaks and a
+// performer framing into every render. These reference "the protagonist", use
+// motivated practical light only, and explicitly forbid artificial streaks.
 const CINEMATIC_BEATS: readonly CinematicBeat[] = [
-  { name: 'Establishing', framing: 'Epic wide establishing shot, anamorphic lens, slow cinematic dolly push-in that reveals the world as the artist enters frame — deep focus, golden-hour key light, gentle atmospheric haze', cameraMotion: 'zoom_in' },
-  { name: 'Medium Close-Up', framing: 'Eye-level medium close-up tracking on a gimbal alongside the artist — 35mm lens, shallow depth of field, soft rim light separating the subject from the background, natural performance energy', cameraMotion: 'dolly' },
-  { name: 'Orbit', framing: 'Dynamic 360° orbit circling the artist, neon accents streaking with the motion and lights pulsing on the beat — 28mm, kinetic energy, shallow bokeh light-trails', cameraMotion: 'pan_right' },
-  { name: 'Extreme Close-Up', framing: 'Intimate extreme close-up, 85mm portrait lens, a slow controlled pan across the artist’s face and lips as they perform the vocal — creamy bokeh, soft Rembrandt lighting', cameraMotion: 'pan_left' },
-  { name: 'Drone', framing: 'Sweeping aerial drone shot rising and pulling away over the scene — expansive composition, volumetric light beams, the artist small against an epic backdrop', cameraMotion: 'zoom_out' },
-  { name: 'Outro', framing: 'Sweeping crane pull-back rising as the artist settles and the scene resolves — expansive composition, warm cinematic colour grade, soft lens flare, a confident final beat', cameraMotion: 'zoom_out' },
+  { name: 'Establishing', framing: 'Epic wide establishing shot on an anamorphic lens, a slow cinematic dolly push-in that reveals the location and the protagonist within it — deep focus, motivated natural key light, gentle atmospheric depth', cameraMotion: 'zoom_in' },
+  { name: 'Medium Tracking', framing: 'Eye-level medium shot tracking smoothly alongside the protagonist on a gimbal — 35mm lens, shallow depth of field, soft rim light separating subject from background, grounded naturalistic tone', cameraMotion: 'dolly' },
+  { name: 'Arc Reveal', framing: 'A controlled camera arc moving around the protagonist to reveal the space and depth — 28mm lens, deliberate parallax, motivated PRACTICAL lighting only, absolutely no neon and no artificial light-streaks', cameraMotion: 'pan_right' },
+  { name: 'Close-Up', framing: 'Intimate close-up on an 85mm portrait lens, a slow controlled push on the protagonist’s face capturing a real, present emotional beat — creamy bokeh, soft Rembrandt lighting', cameraMotion: 'pan_left' },
+  { name: 'Wide Reveal', framing: 'A sweeping high aerial wide shot rising and pulling away over the scene — expansive composition, volumetric natural light, the protagonist small against an epic backdrop', cameraMotion: 'zoom_out' },
+  { name: 'Resolution', framing: 'A crane pull-back rising as the protagonist and the scene resolve — expansive composition, warm cinematic colour grade, a confident, conclusive final beat', cameraMotion: 'zoom_out' },
 ];
 
 /**
