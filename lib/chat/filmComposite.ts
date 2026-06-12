@@ -143,7 +143,14 @@ async function readWalletBalanceGel(userId: string): Promise<number | null> {
       .maybeSingle();
     if (error) return null; // unknown → fail open
     if (!data) return 0; // confirmed: no credits row == zero balance
-    const num = Number(data.balance_gel ?? data.balance ?? 0);
+    // The film GEL wallet (`balance_gel`) and the displayed balance (`balance` —
+    // what /api/credits/balance shows in the header AND what the assemble's
+    // deduct_credits charges) are TWO columns that can diverge. A user with funds
+    // in `balance` but a 0 `balance_gel` was wrongly told "insufficient" while the
+    // header showed money (the "balance exists but won't generate" bug). Respect
+    // the GREATER of the two in this pre-flight; the real per-leg debit + atomic
+    // rollback remain the true spend guard, so being lenient here cannot overspend.
+    const num = Math.max(Number(data.balance_gel ?? 0), Number(data.balance ?? 0));
     return Number.isFinite(num) ? num : null;
   } catch {
     return null;
