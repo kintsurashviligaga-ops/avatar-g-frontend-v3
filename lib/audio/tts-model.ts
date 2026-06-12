@@ -59,13 +59,14 @@ export function voiceSettingsForModel(model: ElevenLabsModelId): {
   speed: number;
 } {
   if (model === 'eleven_multilingual_v2') {
-    // Georgian, tuned for the most natural, human read on multilingual_v2:
-    // lower stability (0.40) lets the voice intone + breathe like a person rather
-    // than the flat/robotic monotone of higher values; a higher style (0.55) adds
-    // prosodic variation (rises/falls, emphasis); full similarity_boost keeps the
-    // timbre clear and on-voice. Below ~0.35 the Georgian vowels start to warble,
-    // so 0.40 is the natural-but-stable sweet spot.
-    return { stability: 0.4, similarity_boost: 0.85, style: 0.55, use_speaker_boost: true, speed: 1.0 };
+    // Georgian, retuned for a natural, accent-light human read. The previous
+    // style:0.55 OVER-exaggerated prosody on the non-native voice, which read as
+    // artificial/robotic; ElevenLabs `style` introduces artifacts as it rises, so
+    // for low-resource Georgian a LOW style (0.18) sounds far more human. Stability
+    // 0.48 keeps it lively but steady (no vowel-warble), full similarity_boost +
+    // speaker_boost keep the timbre on-voice and present, and speed 0.96 gives the
+    // Georgian phonemes a touch more room (less rushed/clipped = less robotic).
+    return { stability: 0.48, similarity_boost: 0.9, style: 0.18, use_speaker_boost: true, speed: 0.96 };
   }
   return { stability: 0.45, similarity_boost: 0.8, style: 0.45, use_speaker_boost: true, speed: 1.0 };
 }
