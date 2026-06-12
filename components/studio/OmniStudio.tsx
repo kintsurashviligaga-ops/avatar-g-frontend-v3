@@ -29,6 +29,7 @@ const COPY: Record<Lang, {
   instrumental: string; withVocals: string;
   narration: string; narrationCue: string;
   sbTitle: string; sbReview: string; sbGenerate: string; sbRegen: string; sbCancel: string; sbCreating: string; sbFailed: string; sbScene: string;
+  charPhoto: string; charPhotoOn: string;
 }> = {
   ka: {
     title: 'ჭკვიანი ასისტენტი', subtitle: 'ინტელექტუალური მულტიმოდალური ასისტენტი',
@@ -47,6 +48,7 @@ const COPY: Record<Lang, {
     instrumental: 'ინსტრუმენტალი', withVocals: 'ვოკალით',
     narration: 'ნარაცია', narrationCue: ' (პროფესიონალი კომენტატორის ხმოვანი ნარაციით)',
     sbTitle: 'სტორიბორდი', sbReview: 'გადახედე 6 სცენას და კადრს — შემდეგ გაუშვი ვიდეო', sbGenerate: 'ვიდეოს გენერაცია', sbRegen: 'თავიდან', sbCancel: 'გაუქმება', sbCreating: 'სცენარი და 6 კადრი იქმნება…', sbFailed: 'სტორიბორდი ვერ შეიქმნა. სცადე თავიდან.', sbScene: 'სცენა',
+    charPhoto: 'პერსონაჟის ფოტო', charPhotoOn: 'პერსონაჟი ✓',
   },
   en: {
     title: 'Smart Assistant', subtitle: 'Intelligent multimodal assistant',
@@ -65,6 +67,7 @@ const COPY: Record<Lang, {
     instrumental: 'Instrumental', withVocals: 'Vocals',
     narration: 'Narration', narrationCue: ' (with professional spoken voice-over narration)',
     sbTitle: 'Storyboard', sbReview: 'Review the 6 scenes & frames — then generate the video', sbGenerate: 'Generate Video', sbRegen: 'Regenerate', sbCancel: 'Cancel', sbCreating: 'Creating storyboard & 6 frames…', sbFailed: 'Storyboard failed. Try again.', sbScene: 'Scene',
+    charPhoto: 'Character photo', charPhotoOn: 'Character ✓',
   },
   ru: {
     title: 'Умный ассистент', subtitle: 'Интеллектуальный мультимодальный ассистент',
@@ -83,6 +86,7 @@ const COPY: Record<Lang, {
     instrumental: 'Инструментал', withVocals: 'Вокал',
     narration: 'Озвучка', narrationCue: ' (с профессиональной голосовой озвучкой)',
     sbTitle: 'Раскадровка', sbReview: 'Просмотрите 6 сцен и кадров — затем сгенерируйте видео', sbGenerate: 'Сгенерировать видео', sbRegen: 'Заново', sbCancel: 'Отмена', sbCreating: 'Создаю раскадровку и 6 кадров…', sbFailed: 'Не удалось создать раскадровку. Попробуйте снова.', sbScene: 'Сцена',
+    charPhoto: 'Фото персонажа', charPhotoOn: 'Персонаж ✓',
   },
 };
 
@@ -1120,6 +1124,10 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             )}
             {mode === 'video' && (
               <>
+                <Chip active={attachments.some((a) => isImage(a.mimeType))} onClick={() => fileRef.current?.click()}>
+                  🧑 {attachments.some((a) => isImage(a.mimeType)) ? t.charPhotoOn : t.charPhoto}
+                </Chip>
+                <span className="mx-0.5 h-4 w-px shrink-0 bg-app-border/15" />
                 <Chip active={videoOrientation === 'landscape'} onClick={() => setVideoOrientation('landscape')}>16:9</Chip>
                 <Chip active={videoOrientation === 'vertical'} onClick={() => setVideoOrientation('vertical')}>9:16</Chip>
                 <span className="mx-0.5 h-4 w-px shrink-0 bg-app-border/15" />
