@@ -313,6 +313,8 @@ interface StoryboardState {
   orientation: 'landscape' | 'vertical';
   seed: number;
   scenes: StoryboardScene[];
+  /** LLM story scenes (one per scene) — threaded to the render so clips match. */
+  sceneScripts?: string[] | null;
 }
 
 // Full-screen review surface: the six planned scenes + a frame each. The user
@@ -495,7 +497,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // Drive the film render (orchestrate → poll → assemble) into a fresh assistant
   // bubble. Shared by the storyboard "Generate Video" action and the direct
   // fallback. `sceneFrames` (the approved storyboard frames) anchor each scene.
-  const renderFilm = useCallback(async (filmPrompt: string, refs: string[], orientation: 'landscape' | 'vertical', sceneFrames: string[] | undefined) => {
+  const renderFilm = useCallback(async (filmPrompt: string, refs: string[], orientation: 'landscape' | 'vertical', sceneFrames: string[] | undefined, sceneScripts?: string[] | undefined) => {
     const myGen = ++genIdRef.current;
     const ac = new AbortController();
     abortRef.current = ac;
@@ -508,6 +510,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         referenceImages: refs,
         orientation,
         ...(sceneFrames?.length ? { sceneFrames } : {}),
+        ...(sceneScripts?.length ? { sceneScripts } : {}),
         locale,
         signal: ac.signal,
         onProgress: (p) => {
@@ -560,9 +563,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         signal: ac.signal,
         body: JSON.stringify({ prompt: filmPrompt, orientation, referenceImages: refs, style: videoStyle, locale }),
       });
-      const j = (await res.json().catch(() => ({}))) as { success?: boolean; seed?: number; scenes?: StoryboardScene[] };
+      const j = (await res.json().catch(() => ({}))) as { success?: boolean; seed?: number; scenes?: StoryboardScene[]; sceneScripts?: string[] | null };
       if (j.success && Array.isArray(j.scenes) && j.scenes.length > 0) {
-        setStoryboard({ filmPrompt, refs, orientation, seed: j.seed ?? 0, scenes: j.scenes });
+        setStoryboard({ filmPrompt, refs, orientation, seed: j.seed ?? 0, scenes: j.scenes, sceneScripts: Array.isArray(j.sceneScripts) ? j.sceneScripts : null });
       } else {
         await renderFilm(filmPrompt, refs, orientation, undefined);
       }
@@ -1312,7 +1315,8 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             // With approved per-scene frames the identity is already baked in, so the
             // original (possibly multi-MB data-URL) refs are redundant — dropping them
             // avoids a 413 body-overflow on the render dispatch when a photo was attached.
-            void renderFilm(sb.filmPrompt, sceneFrames ? [] : sb.refs, sb.orientation, sceneFrames);
+            // The LLM story scenes ride along so the clips render the SAME story.
+            void renderFilm(sb.filmPrompt, sceneFrames ? [] : sb.refs, sb.orientation, sceneFrames, sb.sceneScripts ?? undefined);
           }}
           onRegenerate={() => {
             const sb = storyboard;

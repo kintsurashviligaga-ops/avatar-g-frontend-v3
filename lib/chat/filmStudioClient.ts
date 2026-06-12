@@ -117,6 +117,11 @@ export interface DriveFilmOptions {
    * rendered film matches the storyboard the user approved.
    */
   sceneFrames?: string[];
+  /**
+   * Approved LLM story scenes (ordered) from /api/film/storyboard — the clips are
+   * rendered from these exact scene descriptions so the film matches the storyboard.
+   */
+  sceneScripts?: string[];
   locale?: string;
   signal?: AbortSignal;
   onProgress?: (p: FilmStudioProgress) => void;
@@ -523,6 +528,8 @@ export async function driveFilmStudio(opts: DriveFilmOptions): Promise<FilmStudi
           ...(opts.orientation ? { orientation: opts.orientation } : {}),
           // Approved storyboard frames → per-scene identity anchors for the render.
           ...(opts.sceneFrames?.length ? { sceneFrames: opts.sceneFrames } : {}),
+          // Approved LLM story scenes → the clips render from these exact scenes.
+          ...(opts.sceneScripts?.length ? { sceneScripts: opts.sceneScripts } : {}),
         },
         signal,
       );

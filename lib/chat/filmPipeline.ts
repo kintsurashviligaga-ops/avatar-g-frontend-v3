@@ -226,6 +226,13 @@ export interface FilmPlanOptions {
   totalSec?: number;
   /** Frame orientation — drives the per-clip aspect ratio. Default landscape. */
   orientation?: 'landscape' | 'vertical';
+  /**
+   * LLM-written, brief-specific scene descriptions (one per scene, in order) from
+   * the Script Agent. When present they REPLACE the deterministic camera-beat
+   * framings as each scene's content — a real story instead of generic angles —
+   * while the seed + style guide + character anchor still lock continuity.
+   */
+  sceneScripts?: string[];
 }
 
 /** Parameters shared identically across every clip — the continuity contract. */
@@ -353,7 +360,11 @@ export function planFilmScenes(prompt: string, opts: FilmPlanOptions = {}): Film
     // §2 — vary the COMPOSITION per scene (real storyboard arc)…
     const beat = sceneBeat(seg.index, segments.length);
     const styled = shared.style ? `, ${shared.style} style` : '';
-    const head = `${beat.framing} — ${subject}${styled}`;
+    // Prefer the LLM Script Agent's brief-specific scene (a real story beat with
+    // its own camera + shot-size direction). Fall back to the deterministic
+    // camera-beat framing when no script was supplied.
+    const llmScene = opts.sceneScripts?.[seg.index]?.trim();
+    const head = llmScene && llmScene.length > 0 ? llmScene : `${beat.framing} — ${subject}${styled}`;
     // …while the seed + style guide + character anchor hold the world CONSTANT.
     const continuity = `${styleGuide} Continuity: ${characterAnchor}; match every other shot exactly (consistency seed ${seed}).`;
     const enriched = enrichVideoPrompt(`${head}. ${continuity}`, traits, 1200);

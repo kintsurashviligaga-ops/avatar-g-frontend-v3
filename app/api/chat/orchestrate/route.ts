@@ -63,6 +63,8 @@ const orchestrateSchema = z.object({
   // Approved storyboard frames (ordered by scene) → per-scene identity anchors so
   // the rendered film matches the storyboard the user reviewed. Capped at 8.
   sceneFrames: z.array(z.string().min(1)).max(8).optional(),
+  // Approved LLM story scenes (ordered) → the clips render from these exact scenes.
+  sceneScripts: z.array(z.string().min(1).max(2000)).max(8).optional(),
 
   // ── Personalization (Settings → Custom Instructions) ──
   customInstructions: z.string().max(2000).optional(),
@@ -172,12 +174,13 @@ export async function POST(req: NextRequest) {
       // PHASE 45 §2/§3 — forward reference images + frame orientation via metadata
       // so the film composite (handleFilmComposite) threads them into the identity
       // lock and the per-clip aspect ratio.
-      metadata: (data.referenceImages?.length || data.orientation || data.sceneFrames?.length)
+      metadata: (data.referenceImages?.length || data.orientation || data.sceneFrames?.length || data.sceneScripts?.length)
         ? {
             ...(data.metadata || {}),
             ...(data.referenceImages?.length ? { referenceImages: data.referenceImages } : {}),
             ...(data.orientation ? { orientation: data.orientation } : {}),
             ...(data.sceneFrames?.length ? { sceneFrames: data.sceneFrames } : {}),
+            ...(data.sceneScripts?.length ? { sceneScripts: data.sceneScripts } : {}),
           }
         : data.metadata,
       customInstructions: effectiveInstructions,

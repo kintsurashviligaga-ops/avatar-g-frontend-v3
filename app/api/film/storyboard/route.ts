@@ -17,7 +17,9 @@
  * scene plan still returns so the user always sees the storyboard.
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { planFilmScenes, normalizeReferenceImages } from '@/lib/chat/filmPipeline';
+import Anthropic from '@anthropic-ai/sdk';
+import { planFilmScenes, normalizeReferenceImages, FILM_SCENE_COUNT } from '@/lib/chat/filmPipeline';
+import { extractJson } from '@/lib/orchestrator/script-breakdown';
 import { mapWithConcurrency } from '@/lib/chat/filmClipRetry';
 import { ServiceManager } from '@/lib/chat/ServiceManager';
 import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
@@ -26,6 +28,46 @@ export const runtime = 'nodejs';
 export const maxDuration = 300;
 
 const serviceManager = new ServiceManager();
+
+/**
+ * Script Agent — turn the brief into EXACTLY `count` sequential, brief-specific
+ * cinematic shot descriptions that tell ONE continuous story with a consistent
+ * protagonist. This is what gives the film real CONTENT instead of generic camera
+ * angles. Fail-open: any miss returns null and planFilmScenes falls back to its
+ * deterministic camera beats, so the storyboard always renders.
+ */
+async function generateSceneScripts(brief: string, count: number): Promise<string[] | null> {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) return null;
+  try {
+    const client = new Anthropic({ apiKey });
+    const msg = await client.messages.create({
+      model: process.env.ANTHROPIC_SCRIPT_MODEL ?? process.env.ANTHROPIC_MODEL ?? 'claude-haiku-4-5-20251001',
+      max_tokens: 1500,
+      system: 'You are a world-class film director and cinematographer. You write vivid, shootable, single-sentence-to-short-paragraph shot descriptions for a renderer.',
+      messages: [{
+        role: 'user',
+        content:
+          `Break this brief into EXACTLY ${count} sequential cinematic shots that tell ONE continuous story with a clear arc (establish → develop → turn → resolve). ` +
+          `Keep ONE consistent protagonist, location, time-of-day and colour palette across EVERY shot — describe the protagonist's key, memorable features in shot 1 (exact clothing, age, look) and carry them VERBATIM through every later shot; never swap the person. ` +
+          `Each shot is a vivid, self-contained visual description: subject + specific action + setting + lighting + a deliberate camera move + shot size. ` +
+          `Keep it period- and world-accurate to the brief; NO neon, glowing light-streaks, lens flares, HUD or sci-fi effects and NO anachronistic/modern objects unless the brief explicitly asks. ` +
+          `Brief: "${brief.trim().slice(0, 1500)}". ` +
+          `Return ONLY a JSON array of exactly ${count} strings (one shot description each, in order) — no prose, no keys.`,
+      }],
+    });
+    const text = msg.content
+      .filter((b): b is Anthropic.TextBlock => b.type === 'text')
+      .map((b) => b.text)
+      .join('');
+    const parsed = extractJson(text);
+    if (!Array.isArray(parsed)) return null;
+    const scripts = parsed.map((s) => (typeof s === 'string' ? s.trim() : '')).filter(Boolean);
+    return scripts.length >= Math.min(3, count) ? scripts.slice(0, count) : null;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Re-host a provider temp URL to Supabase. CRITICAL: the app CSP `img-src` allows
@@ -131,10 +173,18 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: true, ordinal: sceneOrdinal, frameUrl });
   }
 
-  // Full board — all six frames in parallel (bounded concurrency).
-  const frames = await mapWithConcurrency(plan.scenes, 3, (scene) => genFrame(scene.prompt));
+  // Full board — enrich each scene with the LLM Script Agent so the storyboard
+  // tells the REAL story of the brief (not generic camera angles). Fail-open: a
+  // miss leaves `plan` (deterministic beats) in place. The scripts are returned so
+  // the render can reuse the EXACT same scenes the user approved.
+  const sceneScripts = (await generateSceneScripts(prompt, FILM_SCENE_COUNT)) ?? null;
+  const storyPlan = sceneScripts
+    ? planFilmScenes(prompt, { referenceImages: hostedRefs, style, orientation, sceneScripts })
+    : plan;
 
-  const scenes = plan.scenes.map((s, i) => ({
+  const frames = await mapWithConcurrency(storyPlan.scenes, 3, (scene) => genFrame(scene.prompt));
+
+  const scenes = storyPlan.scenes.map((s, i) => ({
     ordinal: s.ordinal,
     beat: s.beat,
     // A short, human-readable shot summary (the full enriched prompt is long).
@@ -145,8 +195,11 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({
     success: true,
     sessionId,
-    seed: plan.shared.seed,
+    seed: storyPlan.shared.seed,
     orientation,
     scenes,
+    // The LLM scene scripts (one per scene) — the client threads these back to the
+    // render so the clips are generated from the same story, not the deterministic beats.
+    sceneScripts,
   });
 }
