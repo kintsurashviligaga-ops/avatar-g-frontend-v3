@@ -581,7 +581,14 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
         },
         () =>
           startUdioGeneration({
-            prompt: `Cohesive ${plan.shared.totalSec}-second cinematic score for a short film about: ${input.message}`,
+            // A professional FILM SCORE brief (not a song): match the era, mood and
+            // intensity of the story, with a real build-and-release dynamic arc that
+            // underscores the on-screen action. Fully instrumental, no vocals.
+            prompt:
+              `Professional, fully-instrumental cinematic FILM SCORE for a ${plan.shared.totalSec}-second short film. ` +
+              `Match the era, mood, location and intensity of this story: "${input.message.slice(0, 400)}". ` +
+              `Emotional and orchestral with a clear dynamic arc — a quiet build that swells through the middle and resolves at the end, ` +
+              `composed to underscore the on-screen action moment-to-moment. No vocals, no lyrics, no spoken word.`,
             style: style || 'cinematic',
             genre: style || 'cinematic',
             makeInstrumental: true,
