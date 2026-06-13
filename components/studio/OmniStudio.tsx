@@ -12,6 +12,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Send, Mic, Square, Plus, X, Loader2, Sparkles, Film, Music2, FileText, Image as ImageIcon, Download, MessageSquare, Wand2, Volume2, Copy, Check, ChevronDown, RotateCcw, History, Trash2, MessageSquarePlus, Pencil } from 'lucide-react';
 import { driveFilmStudio } from '@/lib/chat/filmStudioClient';
 import { Markdown } from './Markdown';
@@ -454,6 +455,16 @@ function StoryboardOverlay({ sb, t, busy, regenningOrdinal, onGenerate, onRegene
       </div>
     </div>
   );
+}
+
+// Renders children into document.body so fixed overlays (lightbox · storyboard ·
+// history) escape the chat shell's stacking context and paint ABOVE root-level
+// chrome like the cookie banner. SSR-safe via a mounted flag (no hydration flash).
+function Portal({ children }: { children: React.ReactNode }) {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  if (!mounted || typeof document === 'undefined') return null;
+  return createPortal(children, document.body);
 }
 
 export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
@@ -1675,6 +1686,10 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         </div>
       </div>
 
+      {/* All full-screen overlays portal to document.body so they render above
+          root-level chrome (the cookie banner) instead of being trapped in the chat
+          shell's lower stacking context. */}
+      <Portal>
       {/* Full-screen image lightbox — tap any chat image to open it edge-to-edge.
           Backdrop tap / the X button / Esc all close it; the picture itself swallows
           the click so it stays open while you inspect it. */}
@@ -1794,6 +1809,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           </aside>
         </div>
       )}
+      </Portal>
     </div>
   );
 }
