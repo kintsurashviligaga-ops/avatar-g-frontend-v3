@@ -45,7 +45,7 @@ function extractAudioUrl(output: unknown): string {
 export async function generateMusic(prompt: string, duration: number = 30) {
   try {
     const output = (await replicate.run(
-      "meta/musicgen:671ac645ce5e552cc63a54a2bbff63fcf298043f7c60f55056c40ae074096949",
+      "meta/musicgen:671ac645ce5e552cc63a54a2bbff63fcf798043055d2dac5fc9e36a837eedcfb",
       { input: { prompt: `${prompt}, high quality`, duration, model_version: "large", output_format: "mp3" } }
     )) as unknown;
     const audioUrl = extractAudioUrl(output);
@@ -67,7 +67,7 @@ export async function generateMusic(prompt: string, duration: number = 30) {
 export async function generateMusicCover(prompt: string, melodyUrl: string, duration: number = 30) {
   try {
     const output = (await replicate.run(
-      "meta/musicgen:671ac645ce5e552cc63a54a2bbff63fcf298043f7c60f55056c40ae074096949",
+      "meta/musicgen:671ac645ce5e552cc63a54a2bbff63fcf798043055d2dac5fc9e36a837eedcfb",
       {
         input: {
           prompt: `${prompt}, high quality`,
