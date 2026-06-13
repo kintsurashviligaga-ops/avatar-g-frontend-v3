@@ -12,7 +12,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Send, Mic, Square, Plus, X, Loader2, Sparkles, Film, Music2, FileText, Image as ImageIcon, Download, MessageSquare, Wand2, Volume2, Copy, Check, ChevronDown, RotateCcw, History, Trash2, MessageSquarePlus } from 'lucide-react';
+import { Send, Mic, Square, Plus, X, Loader2, Sparkles, Film, Music2, FileText, Image as ImageIcon, Download, MessageSquare, Wand2, Volume2, Copy, Check, ChevronDown, RotateCcw, History, Trash2, MessageSquarePlus, Pencil } from 'lucide-react';
 import { driveFilmStudio } from '@/lib/chat/filmStudioClient';
 import { Markdown } from './Markdown';
 
@@ -482,6 +482,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // Per-message actions: which assistant reply was just copied / is being read aloud.
   const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
   const [speakingIdx, setSpeakingIdx] = useState<number | null>(null);
+  // Inline edit-&-resend of a user turn: which message is being edited + its draft.
+  const [editingIdx, setEditingIdx] = useState<number | null>(null);
+  const [editText, setEditText] = useState('');
   const ttsAudioRef = useRef<HTMLAudioElement | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
   const recRef = useRef<MediaRecorder | null>(null);
@@ -1094,6 +1097,25 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     }
   }, []);
 
+  // Edit & resend a user turn: replace it with the edited text and re-run the chat
+  // from that point (everything after it is dropped) — the standard "edit message".
+  const startEdit = useCallback((i: number) => {
+    if (busy) return;
+    setEditingIdx(i);
+    setEditText(messages[i]?.text ?? '');
+  }, [busy, messages]);
+  const cancelEdit = useCallback(() => { setEditingIdx(null); setEditText(''); }, []);
+  const saveEdit = useCallback(() => {
+    if (editingIdx === null) return;
+    const idx = editingIdx;
+    const orig = messages[idx];
+    const trimmed = editText.trim();
+    if (!orig || orig.role !== 'user' || !trimmed) { setEditingIdx(null); return; }
+    setEditingIdx(null);
+    setEditText('');
+    void streamChat([...messages.slice(0, idx), { role: 'user', text: trimmed, ...(orig.medias ? { medias: orig.medias } : {}) }]);
+  }, [editingIdx, editText, messages, streamChat]);
+
   // Read an assistant reply aloud via the premium TTS route (ElevenLabs Georgian
   // voice, Google-TTS fallback). Toggles: tapping the speaking message stops it.
   // Only one plays at a time. Fail-soft: any miss just clears the speaking state.
@@ -1368,12 +1390,45 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 }
                 if (pending && mode === 'chat' && !m.text) return <TypingDots />;
                 if (!m.text) return null;
+                // Inline edit mode for a user turn → textarea + Send/Cancel.
+                if (m.role === 'user' && editingIdx === i) {
+                  return (
+                    <div className="space-y-1.5">
+                      <textarea
+                        value={editText}
+                        onChange={(e) => setEditText(e.target.value)}
+                        rows={2}
+                        autoFocus
+                        onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); saveEdit(); } else if (e.key === 'Escape') cancelEdit(); }}
+                        className="w-[min(70vw,420px)] max-w-full resize-none rounded-xl bg-app-surface px-3 py-2 text-[14.5px] text-app-text outline-none ring-1 ring-app-accent/40"
+                      />
+                      <div className="flex items-center justify-end gap-1.5">
+                        <button type="button" onClick={cancelEdit} className="rounded-full px-3 py-1.5 text-[12px] font-medium text-app-muted transition-colors hover:text-app-text">{locale === 'en' ? 'Cancel' : locale === 'ru' ? 'Отмена' : 'გაუქმება'}</button>
+                        <button type="button" onClick={saveEdit} disabled={!editText.trim()} className="inline-flex items-center gap-1.5 rounded-full bg-app-accent px-3.5 py-1.5 text-[12px] font-semibold text-app-bg transition-opacity hover:opacity-90 disabled:opacity-40">{locale === 'en' ? 'Send' : locale === 'ru' ? 'Отправить' : 'გაგზავნა'}</button>
+                      </div>
+                    </div>
+                  );
+                }
                 // Assistant replies render as rich markdown (bold · lists · code ·
                 // links · tables); the user's own text stays verbatim.
                 return m.role === 'assistant'
                   ? <Markdown>{m.text}</Markdown>
                   : <span className="whitespace-pre-wrap">{m.text}</span>;
               })()}
+              {/* Edit a user turn → re-run the chat from here (drops later turns). */}
+              {m.role === 'user' && m.text && editingIdx !== i && !busy && (
+                <div className="mt-1 flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => startEdit(i)}
+                    aria-label={locale === 'en' ? 'Edit' : locale === 'ru' ? 'Изменить' : 'რედაქტირება'}
+                    title={locale === 'en' ? 'Edit' : locale === 'ru' ? 'Изменить' : 'რედაქტირება'}
+                    className="flex h-7 w-7 items-center justify-center rounded-md text-app-muted/70 transition-colors hover:bg-app-border/15 hover:text-app-accent"
+                  >
+                    <Pencil size={12} />
+                  </button>
+                </div>
+              )}
               {/* Per-response actions on a TEXT reply — Read-aloud + Copy. No
                   Like/Dislike, per the one-window spec. */}
               {m.role === 'assistant' && m.text && !m.text.startsWith('⚠️') && !m.text.startsWith('⏹') && (
