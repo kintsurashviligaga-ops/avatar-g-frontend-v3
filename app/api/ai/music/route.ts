@@ -55,7 +55,9 @@ export async function POST(req: NextRequest) {
     if (typeof body.lyrics === 'string' && body.lyrics.trim()) lyrics = body.lyrics.trim().slice(0, 2000);
     // Cover: an uploaded reference track (data: URL) → Udio reimagines it in the
     // requested style/prompt.
-    if (typeof body.audioReference === 'string' && (body.audioReference.startsWith('data:') || /^https?:\/\//i.test(body.audioReference))) audioReference = body.audioReference;
+    // data: (small fallback) | https URL | storage path (browser-uploaded) — the
+    // cover branch resolves each to a fetchable melody URL.
+    if (typeof body.audioReference === 'string' && body.audioReference.trim()) audioReference = body.audioReference.trim();
   } catch {
     /* malformed body → guard below */
   }
