@@ -48,7 +48,7 @@ const COPY: Record<Lang, {
     stop: 'შეჩერება', stopped: 'შეჩერდა', scrollDown: 'ბოლოში გადასვლა', regenerate: 'თავიდან გენერაცია', elapsedHint: 'გავიდა', greeting: 'რით დაგეხმარო?', attachHint: 'დამატება',
     instrumental: 'ინსტრუმენტალი', withVocals: 'ვოკალით',
     narration: 'ნარაცია', narrationCue: ' (პროფესიონალი კომენტატორის ხმოვანი ნარაციით)',
-    sbTitle: 'სტორიბორდი', sbReview: 'გადახედე 6 სცენას და კადრს — შემდეგ გაუშვი ვიდეო', sbGenerate: 'ვიდეოს გენერაცია', sbRegen: 'თავიდან', sbCancel: 'გაუქმება', sbCreating: 'სცენარი და 6 კადრი იქმნება…', sbFailed: 'სტორიბორდი ვერ შეიქმნა. სცადე თავიდან.', sbScene: 'სცენა',
+    sbTitle: 'სტორიბორდი', sbReview: 'გადახედე 6 სცენას — შეცვალე ტექსტი ან თავიდან დააგენერირე კადრი, შემდეგ გაუშვი ვიდეო', sbGenerate: 'ვიდეოს გენერაცია', sbRegen: 'თავიდან', sbCancel: 'გაუქმება', sbCreating: 'სცენარი და 6 კადრი იქმნება…', sbFailed: 'სტორიბორდი ვერ შეიქმნა. სცადე თავიდან.', sbScene: 'სცენა',
     charPhoto: 'პერსონაჟის ფოტო', charPhotoOn: 'პერსონაჟი ✓',
     historyTitle: 'ისტორია', historyEmpty: 'ჯერ საუბრები არ არის', historyNew: 'ახალი ჩატი', deleteLabel: 'წაშლა',
   },
@@ -68,7 +68,7 @@ const COPY: Record<Lang, {
     stop: 'Stop', stopped: 'Stopped', scrollDown: 'Scroll to bottom', regenerate: 'Regenerate', elapsedHint: 'elapsed', greeting: 'How can I help?', attachHint: 'Add',
     instrumental: 'Instrumental', withVocals: 'Vocals',
     narration: 'Narration', narrationCue: ' (with professional spoken voice-over narration)',
-    sbTitle: 'Storyboard', sbReview: 'Review the 6 scenes & frames — then generate the video', sbGenerate: 'Generate Video', sbRegen: 'Regenerate', sbCancel: 'Cancel', sbCreating: 'Creating storyboard & 6 frames…', sbFailed: 'Storyboard failed. Try again.', sbScene: 'Scene',
+    sbTitle: 'Storyboard', sbReview: 'Review the 6 scenes — edit a description or re-roll a frame, then generate', sbGenerate: 'Generate Video', sbRegen: 'Regenerate', sbCancel: 'Cancel', sbCreating: 'Creating storyboard & 6 frames…', sbFailed: 'Storyboard failed. Try again.', sbScene: 'Scene',
     charPhoto: 'Character photo', charPhotoOn: 'Character ✓',
     historyTitle: 'History', historyEmpty: 'No chats yet', historyNew: 'New chat', deleteLabel: 'Delete',
   },
@@ -88,7 +88,7 @@ const COPY: Record<Lang, {
     stop: 'Стоп', stopped: 'Остановлено', scrollDown: 'Вниз', regenerate: 'Заново', elapsedHint: 'прошло', greeting: 'Чем помочь?', attachHint: 'Добавить',
     instrumental: 'Инструментал', withVocals: 'Вокал',
     narration: 'Озвучка', narrationCue: ' (с профессиональной голосовой озвучкой)',
-    sbTitle: 'Раскадровка', sbReview: 'Просмотрите 6 сцен и кадров — затем сгенерируйте видео', sbGenerate: 'Сгенерировать видео', sbRegen: 'Заново', sbCancel: 'Отмена', sbCreating: 'Создаю раскадровку и 6 кадров…', sbFailed: 'Не удалось создать раскадровку. Попробуйте снова.', sbScene: 'Сцена',
+    sbTitle: 'Раскадровка', sbReview: 'Просмотрите 6 сцен — измените описание или кадр, затем сгенерируйте', sbGenerate: 'Сгенерировать видео', sbRegen: 'Заново', sbCancel: 'Отмена', sbCreating: 'Создаю раскадровку и 6 кадров…', sbFailed: 'Не удалось создать раскадровку. Попробуйте снова.', sbScene: 'Сцена',
     charPhoto: 'Фото персонажа', charPhotoOn: 'Персонаж ✓',
     historyTitle: 'История', historyEmpty: 'Пока нет чатов', historyNew: 'Новый чат', deleteLabel: 'Удалить',
   },
@@ -364,7 +364,7 @@ function deleteConversation(id: string): void {
 }
 
 // ── Storyboard preview (Video mode) ───────────────────────────────────────────
-interface StoryboardScene { ordinal: number; beat: string; prompt: string; frameUrl: string | null }
+interface StoryboardScene { ordinal: number; beat: string; prompt: string; frameUrl: string | null; edited?: boolean }
 interface StoryboardState {
   filmPrompt: string;
   refs: string[];
@@ -377,7 +377,7 @@ interface StoryboardState {
 
 // Full-screen review surface: the six planned scenes + a frame each. The user
 // approves (→ render the film anchored to these frames), regenerates, or cancels.
-function StoryboardOverlay({ sb, t, busy, regenningOrdinal, onGenerate, onRegenerate, onRegenScene, onView, onCancel }: {
+function StoryboardOverlay({ sb, t, busy, regenningOrdinal, onGenerate, onRegenerate, onRegenScene, onEditScene, onView, onCancel }: {
   sb: StoryboardState;
   t: (typeof COPY)[Lang];
   busy: boolean;
@@ -386,6 +386,7 @@ function StoryboardOverlay({ sb, t, busy, regenningOrdinal, onGenerate, onRegene
   onGenerate: () => void;
   onRegenerate: () => void;
   onRegenScene: (ordinal: number) => void;
+  onEditScene: (ordinal: number, text: string) => void;
   onView: (url: string) => void;
   onCancel: () => void;
 }) {
@@ -423,7 +424,15 @@ function StoryboardOverlay({ sb, t, busy, regenningOrdinal, onGenerate, onRegene
                 </div>
                 <div className="p-2">
                   <p className="text-[11.5px] font-semibold text-app-text">{s.beat}</p>
-                  <p className="mt-0.5 line-clamp-2 text-[11px] leading-snug text-app-muted">{s.prompt}</p>
+                  {/* Editable shot description — type your own; the per-scene re-roll
+                      uses your words, and they thread into the final render. */}
+                  <textarea
+                    value={s.prompt}
+                    onChange={(e) => onEditScene(s.ordinal, e.target.value)}
+                    rows={2}
+                    aria-label={`${t.sbScene} ${s.ordinal}`}
+                    className="mt-1 w-full resize-none rounded-md bg-app-bg/40 px-1.5 py-1 text-[11px] leading-snug text-app-muted outline-none transition-colors focus:bg-app-bg/70 focus:text-app-text focus:ring-1 focus:ring-app-accent/40"
+                  />
                 </div>
               </div>
             ))}
@@ -674,12 +683,13 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   const regenScene = useCallback(async (ordinal: number) => {
     if (!storyboard || regenningOrdinal !== null) return;
     setRegenningOrdinal(ordinal);
+    const scene = storyboard.scenes.find((s) => s.ordinal === ordinal);
     try {
       const res = await fetch('/api/film/storyboard', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ prompt: storyboard.filmPrompt, orientation: storyboard.orientation, referenceImages: storyboard.refs, style: videoStyle, locale, sceneOrdinal: ordinal }),
+        body: JSON.stringify({ prompt: storyboard.filmPrompt, orientation: storyboard.orientation, referenceImages: storyboard.refs, style: videoStyle, locale, sceneOrdinal: ordinal, ...(scene?.edited && scene.prompt.trim() ? { scenePrompt: scene.prompt.trim() } : {}) }),
       });
       const j = (await res.json().catch(() => ({}))) as { success?: boolean; frameUrl?: string | null };
       if (j.success && typeof j.frameUrl === 'string') {
@@ -694,6 +704,15 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       setRegenningOrdinal(null);
     }
   }, [storyboard, regenningOrdinal, videoStyle, locale]);
+
+  // Edit a storyboard scene's shot description in place (Storyboard scene editing).
+  // The edit is used when re-rolling that scene's frame AND threaded into the final
+  // render so the clip matches what the user wrote.
+  const editScene = useCallback((ordinal: number, text: string) => {
+    setStoryboard((prev) => prev
+      ? { ...prev, scenes: prev.scenes.map((s) => (s.ordinal === ordinal ? { ...s, prompt: text, edited: true } : s)) }
+      : prev);
+  }, []);
 
   // One-click RE-ROLL of an image/music result: re-run the SAME prompt + settings
   // (a fresh variation) WITHOUT a new user bubble — the new asset lands as a fresh
@@ -1502,17 +1521,24 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           busy={busy}
           regenningOrdinal={regenningOrdinal}
           onRegenScene={(ordinal) => void regenScene(ordinal)}
+          onEditScene={editScene}
           onView={(url) => setLightbox(url)}
           onGenerate={() => {
             const frameUrls = storyboard.scenes.map((s) => s.frameUrl);
             const sceneFrames = frameUrls.every((f): f is string => typeof f === 'string') ? frameUrls : undefined;
             const sb = storyboard;
             setStoryboard(null);
+            // Thread the (possibly EDITED) per-scene descriptions into the render: an
+            // edited scene uses the user's own words; the rest keep the rich LLM script.
+            const anyEdited = sb.scenes.some((s) => s.edited);
+            const scripts = (sb.sceneScripts || anyEdited)
+              ? sb.scenes.map((s, i) => (s.edited && s.prompt.trim() ? s.prompt.trim() : (sb.sceneScripts?.[i] ?? s.prompt)))
+              : undefined;
             // With approved per-scene frames the identity is already baked in, so the
             // original (possibly multi-MB data-URL) refs are redundant — dropping them
             // avoids a 413 body-overflow on the render dispatch when a photo was attached.
-            // The LLM story scenes ride along so the clips render the SAME story.
-            void renderFilm(sb.filmPrompt, sceneFrames ? [] : sb.refs, sb.orientation, sceneFrames, sb.sceneScripts ?? undefined, sb.scenes.map((s) => ({ ordinal: s.ordinal, beat: s.beat, frameUrl: s.frameUrl })));
+            // The (possibly edited) story scenes ride along so the clips render the SAME story.
+            void renderFilm(sb.filmPrompt, sceneFrames ? [] : sb.refs, sb.orientation, sceneFrames, scripts, sb.scenes.map((s) => ({ ordinal: s.ordinal, beat: s.beat, frameUrl: s.frameUrl })));
           }}
           onRegenerate={() => {
             const sb = storyboard;

@@ -118,6 +118,8 @@ export async function POST(req: NextRequest) {
     locale?: string;
     /** 1-based scene to regenerate in isolation; omit to render the full board. */
     sceneOrdinal?: number;
+    /** A user-EDITED shot description for the single-scene regen (Storyboard editing). */
+    scenePrompt?: string;
   };
 
   const prompt = typeof body.prompt === 'string' ? body.prompt.trim() : '';
@@ -169,7 +171,10 @@ export async function POST(req: NextRequest) {
   const sceneOrdinal = typeof body.sceneOrdinal === 'number' ? Math.floor(body.sceneOrdinal) : null;
   if (sceneOrdinal && sceneOrdinal >= 1 && sceneOrdinal <= plan.scenes.length) {
     const scene = plan.scenes[sceneOrdinal - 1]!;
-    const frameUrl = await genFrame(scene.prompt);
+    // Honor a user-EDITED shot description (Storyboard scene editing) when present,
+    // so re-rolling the frame reflects the user's own wording; else the planned shot.
+    const customPrompt = typeof body.scenePrompt === 'string' && body.scenePrompt.trim() ? body.scenePrompt.trim().slice(0, 600) : null;
+    const frameUrl = await genFrame(customPrompt ?? scene.prompt);
     return NextResponse.json({ success: true, ordinal: sceneOrdinal, frameUrl });
   }
 
