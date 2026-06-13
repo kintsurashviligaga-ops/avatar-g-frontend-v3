@@ -264,7 +264,7 @@ const STARTERS: Record<Lang, { label: string; prompt: string; mode: 'chat' | 'im
 };
 
 interface Media { dataUrl: string; mimeType: string }
-interface Msg { role: 'user' | 'assistant'; text: string; medias?: Media[]; imageUrl?: string; audioUrl?: string; videoUrl?: string }
+interface Msg { role: 'user' | 'assistant'; text: string; medias?: Media[]; imageUrl?: string; audioUrl?: string; videoUrl?: string; storyboard?: { ordinal: number; beat?: string; frameUrl: string | null }[] }
 
 // Up to this many files/images (or one video) can ride along with a single message.
 const MAX_ATTACHMENTS = 5;
@@ -580,12 +580,15 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // Drive the film render (orchestrate → poll → assemble) into a fresh assistant
   // bubble. Shared by the storyboard "Generate Video" action and the direct
   // fallback. `sceneFrames` (the approved storyboard frames) anchor each scene.
-  const renderFilm = useCallback(async (filmPrompt: string, refs: string[], orientation: 'landscape' | 'vertical', sceneFrames: string[] | undefined, sceneScripts?: string[] | undefined) => {
+  const renderFilm = useCallback(async (filmPrompt: string, refs: string[], orientation: 'landscape' | 'vertical', sceneFrames: string[] | undefined, sceneScripts?: string[] | undefined, storyboardScenes?: { ordinal: number; beat?: string; frameUrl: string | null }[]) => {
     const myGen = ++genIdRef.current;
     const ac = new AbortController();
     abortRef.current = ac;
     const mine = () => genIdRef.current === myGen;
-    setMessages((prev) => [...prev, { role: 'assistant', text: t.generatingVideo }]);
+    // Keep the approved storyboard frames VISIBLE in the bubble while the film
+    // renders (~7 min), so the preview shows every scene + the live progress —
+    // the storyboard no longer just disappears on "Generate Video".
+    setMessages((prev) => [...prev, { role: 'assistant', text: t.generatingVideo, ...(storyboardScenes?.length ? { storyboard: storyboardScenes } : {}) }]);
     setBusy(true);
     try {
       const res = await driveFilmStudio({
@@ -1130,11 +1133,32 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 const pending = busy && m.role === 'assistant' && i === messages.length - 1 && !m.imageUrl && !m.audioUrl && !m.videoUrl;
                 // Generative modes get the live staged progress card (bar + clock +
                 // narrated steps) — the real "loading process". Chat gets typing dots.
-                if (pending && mode !== 'chat') {
+                if (pending && (mode !== 'chat' || (m.storyboard?.length ?? 0) > 0)) {
                   // Pace the image bar to the chosen resolution (1K ≈ 40s · 2K ≈
                   // 170s · 4K ≈ 220s) so it doesn't sit at 95% looking stuck.
                   const imgTarget = imgQuality === 'standard' ? 42 : imgQuality === 'high' ? 170 : 215;
-                  return <GenerationProgress kind={mode} elapsed={elapsed} status={m.text} locale={locale} targetSec={mode === 'image' ? imgTarget : undefined} />;
+                  const kind: 'image' | 'music' | 'video' | 'lipsync' = (m.storyboard?.length ?? 0) > 0 ? 'video' : (mode as 'image' | 'music' | 'video');
+                  return (
+                    <div className="space-y-3">
+                      {/* Keep the storyboard frames in view during the ~7-min render. */}
+                      {m.storyboard && m.storyboard.length > 0 && (
+                        <div className="grid grid-cols-3 gap-1.5 w-[min(82vw,420px)]">
+                          {m.storyboard.map((s) => (
+                            <div key={s.ordinal} className={`relative overflow-hidden rounded-lg ${videoOrientation === 'vertical' ? 'aspect-[9/16]' : 'aspect-video'} bg-app-border/10 ring-1 ring-app-border/10`}>
+                              {s.frameUrl ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img src={s.frameUrl} alt={`${t.sbScene} ${s.ordinal}`} onClick={() => s.frameUrl && setLightbox(s.frameUrl)} className="h-full w-full cursor-zoom-in object-cover" />
+                              ) : (
+                                <div className="flex h-full w-full items-center justify-center text-app-muted/50"><ImageIcon size={15} /></div>
+                              )}
+                              <span className="absolute left-1 top-1 rounded bg-black/60 px-1 text-[9px] font-medium text-white">{s.ordinal}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      <GenerationProgress kind={kind} elapsed={elapsed} status={m.text} locale={locale} targetSec={kind === 'image' ? imgTarget : undefined} />
+                    </div>
+                  );
                 }
                 if (pending && mode === 'chat' && !m.text) return <TypingDots />;
                 if (!m.text) return null;
@@ -1413,7 +1437,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             // original (possibly multi-MB data-URL) refs are redundant — dropping them
             // avoids a 413 body-overflow on the render dispatch when a photo was attached.
             // The LLM story scenes ride along so the clips render the SAME story.
-            void renderFilm(sb.filmPrompt, sceneFrames ? [] : sb.refs, sb.orientation, sceneFrames, sb.sceneScripts ?? undefined);
+            void renderFilm(sb.filmPrompt, sceneFrames ? [] : sb.refs, sb.orientation, sceneFrames, sb.sceneScripts ?? undefined, sb.scenes.map((s) => ({ ordinal: s.ordinal, beat: s.beat, frameUrl: s.frameUrl })));
           }}
           onRegenerate={() => {
             const sb = storyboard;
