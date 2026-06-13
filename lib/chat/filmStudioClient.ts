@@ -113,6 +113,8 @@ export interface DriveFilmOptions {
   soundtrackUrl?: string | null;
   /** 'vertical' → 9:16 (1080×1920) master for TikTok/Reels/Shorts; else 16:9. */
   orientation?: 'landscape' | 'vertical';
+  /** Scene-to-scene transition in the master stitch: soft 'crossfade' or hard 'cut'. */
+  transition?: 'crossfade' | 'cut';
   /**
    * Approved storyboard frames (ordered by scene) from /api/film/storyboard.
    * When present, each becomes that scene's per-scene identity anchor, so the
@@ -414,6 +416,7 @@ async function assembleMaster(
   orientation?: 'landscape' | 'vertical',
   voiceUrl?: string | null,
   sfxUrl?: string | null,
+  transition?: 'crossfade' | 'cut',
 ): Promise<{ url: string; qa: FilmQaSummary | null } | null> {
   const res = await fetch('/api/video/assemble', {
     method: 'POST',
@@ -431,6 +434,9 @@ async function assembleMaster(
       ...(scorePrompt.trim() ? { scorePrompt: scorePrompt.trim() } : {}),
       ...(statusTokenId ? { filmTokenId: statusTokenId } : {}),
       ...(orientation === 'vertical' ? { orientation: 'vertical' } : {}),
+      // Scene transition (crossfade/cut). globalRender wins over the route's
+      // film-token default ('cut'), so the user's choice is honoured.
+      ...(transition ? { globalRender: { transition } } : {}),
     }),
   });
   if (!res.ok) return null;
@@ -645,7 +651,7 @@ export async function driveFilmStudio(opts: DriveFilmOptions): Promise<FilmStudi
     const voiceBed = matrix.voiceUrl ?? null;
     // PHASE 49 §7 — cinematic SFX / sound-design track, mixed under the score.
     const sfxBed = matrix.sfxUrl ?? null;
-    let assembled = await assembleMaster(clips, musicBed, matrix.statusTokenId, message, signal, opts.orientation, voiceBed, sfxBed);
+    let assembled = await assembleMaster(clips, musicBed, matrix.statusTokenId, message, signal, opts.orientation, voiceBed, sfxBed, opts.transition);
 
     // 4 ── Recover if the assemble response was lost in transit
     if (!assembled && matrix.statusTokenId) {
