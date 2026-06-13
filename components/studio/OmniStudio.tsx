@@ -267,10 +267,14 @@ interface Media { dataUrl: string; mimeType: string }
 // A one-click re-roll spec: enough to re-run the EXACT image/music generation that
 // produced a result (same prompt + settings → a fresh variation). Persisted with the
 // message so the Regenerate button survives reloads.
-type RegenSpec =
-  | { kind: 'image'; prompt: string; quality: ImgQuality; aspect: ImgAspect; style: string }
-  | { kind: 'music'; prompt: string; genre: string; instrumental: boolean };
-interface Msg { role: 'user' | 'assistant'; text: string; medias?: Media[]; imageUrl?: string; audioUrl?: string; videoUrl?: string; storyboard?: { ordinal: number; beat?: string; frameUrl: string | null }[]; regen?: RegenSpec }
+type ImageRegenSpec = { kind: 'image'; prompt: string; quality: ImgQuality; aspect: ImgAspect; style: string };
+type MusicRegenSpec = { kind: 'music'; prompt: string; genre: string; instrumental: boolean };
+type RegenSpec = ImageRegenSpec | MusicRegenSpec;
+// A grid of N image variations generated together (the ×2 / ×4 batch). Each tile
+// fills in independently as its own parallel generation lands.
+interface BatchTile { status: 'pending' | 'done' | 'failed'; url?: string }
+interface ImageBatch { spec: ImageRegenSpec; tiles: BatchTile[] }
+interface Msg { role: 'user' | 'assistant'; text: string; medias?: Media[]; imageUrl?: string; audioUrl?: string; videoUrl?: string; storyboard?: { ordinal: number; beat?: string; frameUrl: string | null }[]; regen?: RegenSpec; batch?: ImageBatch }
 
 // Up to this many files/images (or one video) can ride along with a single message.
 const MAX_ATTACHMENTS = 5;
@@ -335,6 +339,7 @@ function leanMessages(messages: Msg[]): Msg[] {
       ...(m.audioUrl ? { audioUrl: m.audioUrl } : {}),
       ...(m.videoUrl ? { videoUrl: m.videoUrl } : {}),
       ...(m.regen ? { regen: m.regen } : {}),
+      ...(m.batch ? { batch: m.batch } : {}),
     }));
 }
 function conversationTitle(messages: Msg[]): string {
@@ -503,6 +508,8 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // out-run the provider poll window and time out. Users can opt into 2K/4K.
   const [imgQuality, setImgQuality] = useState<ImgQuality>('standard');
   const [imgStyle, setImgStyle] = useState<string>('Auto');
+  // ×1 / ×2 / ×4 — how many image variations to generate at once (the batch grid).
+  const [imgCount, setImgCount] = useState<1 | 2 | 4>(1);
   const [musicInstrumental, setMusicInstrumental] = useState(true);
   const [musicGenre, setMusicGenre] = useState<string>('cinematic');
   const [videoOrientation, setVideoOrientation] = useState<'landscape' | 'vertical'>('landscape');
@@ -766,6 +773,53 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     }
   }, [busy, t.imageFailed, t.musicFailed]);
 
+  // ×2 / ×4 image batch: generate N variations of the SAME prompt in parallel into
+  // ONE result grid, each tile filling in as its generation lands. Reused by send
+  // (new batch) and the grid's "regenerate all". Mirrors send()'s gen-token / abort
+  // discipline so Stop and superseded requests can never clobber a newer grid.
+  const runImageBatch = useCallback(async (spec: ImageRegenSpec, count: number) => {
+    const myGen = ++genIdRef.current;
+    const ac = new AbortController();
+    abortRef.current = ac;
+    const mine = () => genIdRef.current === myGen;
+    setMessages((prev) => [...prev, { role: 'assistant', text: '', batch: { spec, tiles: Array.from({ length: count }, () => ({ status: 'pending' as const })) } }]);
+    setBusy(true);
+    const updateTile = (k: number, tile: BatchTile) => {
+      setMessages((prev) => {
+        if (!mine()) return prev;
+        const next = [...prev];
+        for (let i = next.length - 1; i >= 0; i--) {
+          const mm = next[i];
+          if (mm && mm.role === 'assistant' && mm.batch) {
+            const tiles = mm.batch.tiles.slice();
+            tiles[k] = tile;
+            next[i] = { ...mm, batch: { ...mm.batch, tiles } };
+            break;
+          }
+        }
+        return next;
+      });
+    };
+    await Promise.all(
+      Array.from({ length: count }, async (_unused, k) => {
+        try {
+          const res = await fetch('/api/nanobanana/image', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ prompt: spec.prompt, quality: spec.quality, aspectRatio: spec.aspect, style: spec.style === 'Auto' ? undefined : spec.style }),
+            credentials: 'include',
+            signal: ac.signal,
+          });
+          const j = (await res.json().catch(() => ({}))) as { success?: boolean; url?: string };
+          updateTile(k, j.success && j.url ? { status: 'done', url: j.url } : { status: 'failed' });
+        } catch {
+          updateTile(k, { status: 'failed' });
+        }
+      }),
+    );
+    if (mine()) setBusy(false);
+  }, []);
+
   const send = useCallback(async () => {
     const text = input.trim();
     if ((!text && attachments.length === 0) || busy) return;
@@ -788,6 +842,13 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     // attachments together (and clears them). This fixes "the file stays in the
     // box and only the text is sent" when an attachment is present in Image mode.
     if (mode === 'image' && text && attachments.length === 0) {
+      // ×2 / ×4 → generate N variations in parallel into one result grid.
+      if (imgCount > 1) {
+        setMessages((prev) => [...prev, { role: 'user', text }]);
+        setInput('');
+        await runImageBatch({ kind: 'image', prompt: text, quality: imgQuality, aspect: imgAspect, style: imgStyle }, imgCount);
+        return;
+      }
       setMessages((prev) => [...prev, { role: 'user', text }, { role: 'assistant', text: '' }]);
       setInput(''); setBusy(true);
       try {
@@ -951,7 +1012,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     } finally {
       if (mine()) setBusy(false);
     }
-  }, [input, attachments, busy, messages, mode, locale, imgAspect, imgQuality, imgStyle, musicGenre, musicInstrumental, videoOrientation, videoStyle, videoNarration, createStoryboard, t.narrationCue, t.imageFailed, t.musicFailed]);
+  }, [input, attachments, busy, messages, mode, locale, imgAspect, imgQuality, imgStyle, imgCount, runImageBatch, musicGenre, musicInstrumental, videoOrientation, videoStyle, videoNarration, createStoryboard, t.narrationCue, t.imageFailed, t.musicFailed]);
 
   // STOP — cancel the in-flight generation. Bumps the generation token (so every
   // pending finalizer no-ops), aborts the fetch, frees the composer, and converts
@@ -1184,6 +1245,32 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                   </div>
                 </div>
               )}
+              {m.batch && (
+                <div className="space-y-2">
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {m.batch.tiles.map((tile, k) => (
+                      <div key={k} className="relative overflow-hidden rounded-xl bg-app-elevated/40 ring-1 ring-app-border/10" style={{ aspectRatio: m.batch!.spec.aspect.replace(':', '/') }}>
+                        {tile.status === 'done' && tile.url ? (
+                          <button type="button" onClick={() => setLightbox(tile.url!)} className="block h-full w-full cursor-zoom-in" aria-label="open fullscreen">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={tile.url} alt="variation" className="h-full w-full object-cover transition-opacity hover:opacity-90" />
+                          </button>
+                        ) : tile.status === 'failed' ? (
+                          <div className="flex h-full w-full items-center justify-center text-app-danger/70"><X size={18} /></div>
+                        ) : (
+                          <div className="flex h-full w-full items-center justify-center text-app-muted/50"><Loader2 size={18} className="animate-spin" /></div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                  {!m.batch.tiles.some((tl) => tl.status === 'pending') && (
+                    <button type="button" onClick={() => void runImageBatch(m.batch!.spec, m.batch!.tiles.length)} disabled={busy}
+                      className="inline-flex items-center gap-1.5 rounded-full bg-app-elevated px-3.5 py-1.5 text-[12px] font-semibold text-app-text ring-1 ring-app-border/15 transition-opacity hover:opacity-90 active:scale-[0.98] disabled:opacity-40">
+                      <RotateCcw size={13} /> {t.regenerate}
+                    </button>
+                  )}
+                </div>
+              )}
               {m.audioUrl && (
                 <div className="space-y-2 rounded-2xl bg-app-elevated/50 p-3">
                   <div className="flex items-center gap-1.5 text-[12px] font-medium text-app-muted"><Music2 size={14} className="text-app-accent" /> {t.modeMusic}</div>
@@ -1224,7 +1311,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 </div>
               )}
               {(() => {
-                const pending = busy && m.role === 'assistant' && i === messages.length - 1 && !m.imageUrl && !m.audioUrl && !m.videoUrl;
+                const pending = busy && m.role === 'assistant' && i === messages.length - 1 && !m.imageUrl && !m.audioUrl && !m.videoUrl && !m.batch;
                 // Generative modes get the live staged progress card (bar + clock +
                 // narrated steps) — the real "loading process". Chat gets typing dots.
                 if (pending && (mode !== 'chat' || (m.storyboard?.length ?? 0) > 0)) {
@@ -1317,6 +1404,8 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 {IMG_ASPECTS.map((a) => <Chip key={a} active={imgAspect === a} onClick={() => setImgAspect(a)}>{a}</Chip>)}
                 <span className="mx-0.5 h-4 w-px shrink-0 bg-app-border/15" />
                 {IMG_QUALITIES.map(([q, lbl]) => <Chip key={q} active={imgQuality === q} onClick={() => setImgQuality(q)}>{lbl}</Chip>)}
+                <span className="mx-0.5 h-4 w-px shrink-0 bg-app-border/15" />
+                {([1, 2, 4] as const).map((n) => <Chip key={n} active={imgCount === n} onClick={() => setImgCount(n)}>{n === 1 ? '1' : `×${n}`}</Chip>)}
                 <span className="mx-0.5 h-4 w-px shrink-0 bg-app-border/15" />
                 {IMG_STYLES.map((s) => <Chip key={s} active={imgStyle === s} onClick={() => setImgStyle(s)}>{s}</Chip>)}
               </>
