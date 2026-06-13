@@ -13,6 +13,7 @@
  */
 
 import { useEffect, useState, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Mail, Lock, Loader2, Sparkles, ArrowLeft } from 'lucide-react';
 import { createBrowserClient, isSupabaseConfigured } from '@/lib/supabase/browser';
@@ -133,6 +134,11 @@ export default function AuthModal({ open, locale, onClose, onAuthed, initialMode
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  // Portal readiness — the modal mounts into document.body so its z-index wins over
+  // root-level chrome (the cookie banner) instead of being trapped inside the chat
+  // shell's lower stacking context.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
 
   useEffect(() => {
     if (!open) return;
@@ -199,7 +205,8 @@ export default function AuthModal({ open, locale, onClose, onAuthed, initialMode
   const title = mode === 'login' ? t.login : mode === 'register' ? t.register : mode === 'reset' ? t.reset : t.magic;
   const cta = mode === 'login' ? t.loginCta : mode === 'register' ? t.registerCta : mode === 'reset' ? t.resetCta : t.magicCta;
 
-  return (
+  if (!mounted || typeof document === 'undefined') return null;
+  return createPortal(
     <AnimatePresence>
       {open && (
         <motion.div
@@ -313,6 +320,7 @@ export default function AuthModal({ open, locale, onClose, onAuthed, initialMode
           </motion.div>
         </motion.div>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body,
   );
 }
