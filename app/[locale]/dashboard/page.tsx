@@ -23,9 +23,16 @@ export default async function DashboardPage({ params }: Props) {
 
   try {
     const supabase = createServerClient();
+    // PERF (TTFB): the middleware (updateSession) already validated THIS request's
+    // session via getUser() moments ago, so reading it from the cookie here with
+    // getSession() is safe AND skips a second auth-server network round-trip on the
+    // cold launch path — and the dashboard is the app's entry surface, so that
+    // round-trip was directly inflating launch TTFB. All sensitive operations still
+    // run through authed API routes that validate independently.
     const {
-      data: { user },
-    } = await supabase.auth.getUser();
+      data: { session },
+    } = await supabase.auth.getSession();
+    const user = session?.user ?? null;
 
     if (user) {
       isAuthenticated = true;

@@ -4,7 +4,7 @@
   "webDir": "public",
   "bundledWebRuntime": false,
   "server": {
-    "url": "https://myavatar.ge",
+    "url": "https://myavatar.ge/ka/dashboard",
     "allowNavigation": [
       "myavatar.ge",
       "*.myavatar.ge",
