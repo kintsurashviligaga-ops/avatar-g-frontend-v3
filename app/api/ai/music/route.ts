@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generateUdioTrack } from '@/lib/udio/client';
 import { generateMusicCover } from '@/lib/ai/replicate';
-import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
+import { uploadAndSign, createSignedAssetUrl } from '@/lib/orchestrator/storage-adapter';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { recordCompletedAsset } from '@/lib/orchestrator/jobs';
 import { randomUUID } from 'node:crypto';
@@ -72,10 +72,17 @@ export async function POST(req: NextRequest) {
     // otherwise Udio composes a fresh track from the brief.
     let providerAudioUrl = '';
     if (audioReference) {
-      // https (browser-uploaded via /api/upload/sign — bypasses the function-body
-      // limit) → use directly; data: (small fallback) → host it first. Replicate
-      // fetches the melody by URL.
-      const melodyUrl = audioReference.startsWith('data:') ? await hostAudioReference(audioReference) : audioReference;
+      // Resolve the melody to an https URL Replicate can fetch:
+      //  • data:  → host it (small fallback)
+      //  • https  → use directly
+      //  • path   → a storage object uploaded by the browser via /api/upload/sign
+      //             (bypasses the function-body limit); sign a readable URL now that
+      //             the object exists.
+      const melodyUrl = audioReference.startsWith('data:')
+        ? await hostAudioReference(audioReference)
+        : /^https?:\/\//i.test(audioReference)
+          ? audioReference
+          : await createSignedAssetUrl(process.env.UPLOAD_BUCKET || 'uploads', audioReference, 3600);
       if (!melodyUrl) {
         return NextResponse.json({ success: false, error: 'Could not process the reference audio.' }, { status: 502 });
       }

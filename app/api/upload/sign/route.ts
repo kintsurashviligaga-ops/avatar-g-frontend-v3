@@ -17,7 +17,6 @@ export const runtime = 'nodejs';
 export const maxDuration = 20;
 
 const BUCKET = process.env.UPLOAD_BUCKET || 'uploads';
-const READ_TTL_SEC = 604800; // 7 days
 
 function extFor(ct: string): string {
   const c = ct.toLowerCase();
@@ -55,15 +54,12 @@ export async function POST(req: NextRequest) {
   if (upErr || !up) {
     return NextResponse.json({ error: upErr?.message || 'could not create upload url' }, { status: 502 });
   }
-  // A readable signed URL for the SAME path — valid for the read TTL; serves the bytes
-  // once the client's upload completes.
-  const { data: read } = await admin.storage.from(BUCKET).createSignedUrl(path, READ_TTL_SEC);
-
+  // The readable URL is signed by the consumer AFTER the upload lands (an object must
+  // exist before it can be signed), so we return just the upload handle + its path.
   return NextResponse.json({
     bucket: BUCKET,
     path,
     token: up.token,
     signedUrl: up.signedUrl,
-    readUrl: read?.signedUrl ?? null,
   });
 }

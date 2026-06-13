@@ -31,13 +31,15 @@ async function uploadBigFile(dataUrl: string, mimeType: string): Promise<string 
       credentials: 'include',
       body: JSON.stringify({ contentType: mimeType }),
     });
-    const sign = (await signRes.json().catch(() => ({}))) as { bucket?: string; path?: string; token?: string; readUrl?: string };
+    const sign = (await signRes.json().catch(() => ({}))) as { bucket?: string; path?: string; token?: string };
     if (!signRes.ok || !sign.path || !sign.token) return null;
     const blob = await (await fetch(dataUrl)).blob();
     const sb = createBrowserClient();
     const { error } = await sb.storage.from(sign.bucket || 'uploads').uploadToSignedUrl(sign.path, sign.token, blob, { contentType: mimeType });
     if (error) return null;
-    return sign.readUrl ?? null;
+    // Return the storage PATH — the consumer route signs a readable URL once the
+    // object exists (it can't be signed before the upload lands).
+    return sign.path ?? null;
   } catch {
     return null;
   }
