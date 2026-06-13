@@ -15,7 +15,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import {
-  Menu, X, Plus, History, LogIn, UserPlus, LogOut, Shield, FileText, LifeBuoy, MessageSquarePlus, Loader2,
+  Menu, X, Plus, History, LogIn, UserPlus, LogOut, Shield, FileText, LifeBuoy, MessageSquarePlus, Loader2, Trash2,
 } from 'lucide-react';
 import { createBrowserClient } from '@/lib/supabase/browser';
 import { WalletRefillModal } from '@/components/chat/WalletRefill';
@@ -29,22 +29,22 @@ type Lang = 'ka' | 'en' | 'ru';
 const COPY: Record<Lang, {
   menu: string; settings: string; newChat: string; topUp: string; services: string; language: string;
   account: string; accountGuest: string; library: string; login: string; signup: string;
-  signOut: string; theme: string; legal: string; privacy: string; terms: string; support: string;
+  signOut: string; theme: string; legal: string; privacy: string; terms: string; support: string; deleteAccount: string;
 }> = {
   ka: {
     menu: 'მენიუ', settings: 'პარამეტრები', newChat: 'ახალი ჩატი', topUp: 'შევსება', services: 'სერვისები', language: 'ენა',
     account: 'ანგარიში', accountGuest: 'სტუმარი', library: 'ბიბლიოთეკა · ისტორია', login: 'შესვლა', signup: 'რეგისტრაცია',
-    signOut: 'გასვლა', theme: 'თემა', legal: 'სამართლებრივი', privacy: 'კონფიდენციალურობა', terms: 'წესები და პირობები', support: 'დახმარება',
+    signOut: 'გასვლა', theme: 'თემა', legal: 'სამართლებრივი', privacy: 'კონფიდენციალურობა', terms: 'წესები და პირობები', support: 'დახმარება', deleteAccount: 'ანგარიშის წაშლა',
   },
   en: {
     menu: 'Menu', settings: 'Settings', newChat: 'New chat', topUp: 'Top up', services: 'Services', language: 'Language',
     account: 'Account', accountGuest: 'Guest', library: 'Library · History', login: 'Sign in', signup: 'Sign up',
-    signOut: 'Sign out', theme: 'Theme', legal: 'Legal', privacy: 'Privacy Policy', terms: 'Terms of Service', support: 'Support',
+    signOut: 'Sign out', theme: 'Theme', legal: 'Legal', privacy: 'Privacy Policy', terms: 'Terms of Service', support: 'Support', deleteAccount: 'Delete account',
   },
   ru: {
     menu: 'Меню', settings: 'Настройки', newChat: 'Новый чат', topUp: 'Пополнить', services: 'Сервисы', language: 'Язык',
     account: 'Аккаунт', accountGuest: 'Гость', library: 'Библиотека · История', login: 'Войти', signup: 'Регистрация',
-    signOut: 'Выйти', theme: 'Тема', legal: 'Правовое', privacy: 'Конфиденциальность', terms: 'Условия', support: 'Поддержка',
+    signOut: 'Выйти', theme: 'Тема', legal: 'Правовое', privacy: 'Конфиденциальность', terms: 'Условия', support: 'Поддержка', deleteAccount: 'Удалить аккаунт',
   },
 };
 
@@ -204,7 +204,11 @@ export function ChatChrome({ locale = 'ka', onNewChat, title, scrollBody = false
                   <button type="button" onClick={() => { setMenuOpen(false); setAuthMode('register'); setAuthOpen(true); }} className="inline-flex items-center justify-center gap-2 rounded-xl bg-app-elevated px-3 py-2.5 text-[13px] font-semibold text-app-text transition-colors hover:opacity-80"><UserPlus className="h-4 w-4" /> {t.signup}</button>
                 </div>
               ) : (
-                <button type="button" onClick={async () => { try { await createBrowserClient().auth.signOut(); } catch { /* listener clears state */ } setMenuOpen(false); }} className={drawerRow}><LogOut className="h-[18px] w-[18px] text-app-muted" /> {t.signOut}</button>
+                <>
+                  <button type="button" onClick={async () => { try { await createBrowserClient().auth.signOut(); } catch { /* listener clears state */ } setMenuOpen(false); }} className={drawerRow}><LogOut className="h-[18px] w-[18px] text-app-muted" /> {t.signOut}</button>
+                  {/* Delete account — Apple Guideline 5.1.1(v): in-app, user-initiated. */}
+                  <a href={`/${lang}/account/delete`} onClick={() => setMenuOpen(false)} className={drawerRow}><Trash2 className="h-[18px] w-[18px] text-app-danger" /> {t.deleteAccount}</a>
+                </>
               )}
 
               {/* Legal — open IN-WINDOW (the real pages embedded), never a new tab. */}
