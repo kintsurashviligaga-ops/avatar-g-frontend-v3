@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { generateUdioTrack } from '@/lib/udio/client';
+import { generateUdioTrack, generateUdioUploadCover } from '@/lib/udio/client';
 import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { recordCompletedAsset } from '@/lib/orchestrator/jobs';
@@ -28,13 +28,17 @@ export async function POST(req: NextRequest) {
   let style = 'cinematic';
   let makeInstrumental = true;
   let lyrics = '';
+  let audioReference = '';
   try {
-    const body = (await req.json().catch(() => ({}))) as { prompt?: unknown; style?: unknown; instrumental?: unknown; lyrics?: unknown };
+    const body = (await req.json().catch(() => ({}))) as { prompt?: unknown; style?: unknown; instrumental?: unknown; lyrics?: unknown; audioReference?: unknown };
     prompt = typeof body.prompt === 'string' ? body.prompt.trim() : '';
     if (typeof body.style === 'string' && body.style.trim()) style = body.style.trim();
     if (typeof body.instrumental === 'boolean') makeInstrumental = body.instrumental;
     // Custom lyrics (vocal tracks) — Udio sings these verbatim; empty → auto lyrics.
     if (typeof body.lyrics === 'string' && body.lyrics.trim()) lyrics = body.lyrics.trim().slice(0, 2000);
+    // Cover: an uploaded reference track (data: URL) → Udio reimagines it in the
+    // requested style/prompt.
+    if (typeof body.audioReference === 'string' && body.audioReference.startsWith('data:')) audioReference = body.audioReference;
   } catch {
     /* malformed body → guard below */
   }
@@ -46,12 +50,22 @@ export async function POST(req: NextRequest) {
   const capped = prompt.slice(0, 1000);
 
   try {
-    const result = await generateUdioTrack(
-      { prompt: capped, style, makeInstrumental, title: capped.slice(0, 60), ...(lyrics ? { lyrics } : {}) },
-      // ~230s ceiling (46 × 5s) — safely under the 300s maxDuration, leaving room
-      // for the re-host + response. Udio chirp typically lands in 60–180s.
-      { maxAttempts: 46, pollIntervalMs: 5000 },
-    );
+    // COVER vs compose: with an uploaded reference track, Udio re-creates it in the
+    // requested style (upload-cover); otherwise compose a fresh track from the brief.
+    const coverBuffer = audioReference
+      ? Buffer.from(audioReference.slice(audioReference.indexOf(',') + 1), 'base64')
+      : null;
+    const result = coverBuffer
+      ? await generateUdioUploadCover(
+          { audioBlob: coverBuffer, prompt: capped, style, title: capped.slice(0, 60) },
+          { maxAttempts: 46, pollIntervalMs: 5000 },
+        )
+      : await generateUdioTrack(
+          { prompt: capped, style, makeInstrumental, title: capped.slice(0, 60), ...(lyrics ? { lyrics } : {}) },
+          // ~230s ceiling (46 × 5s) — safely under the 300s maxDuration, leaving room
+          // for the re-host + response. Udio chirp typically lands in 60–180s.
+          { maxAttempts: 46, pollIntervalMs: 5000 },
+        );
 
     if (result.status !== 'succeeded' || !result.audioUrl) {
       return NextResponse.json(

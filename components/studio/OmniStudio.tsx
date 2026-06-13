@@ -1020,14 +1020,18 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     // re-hosted to Supabase) and render the track as an inline audio player.
     // Same rule as Image: music is text-to-music. With attachments present, fall
     // through to multimodal chat so the files are actually sent (and cleared).
-    if (mode === 'music' && text && attachments.length === 0) {
-      setMessages((prev) => [...prev, { role: 'user', text }, { role: 'assistant', text: '' }]);
-      setInput(''); setBusy(true);
+    // Music mode: an attached AUDIO becomes a COVER source (Udio reimagines it in the
+    // chosen genre/prompt); image/file/video attachments instead route to chat.
+    const audioRef = mode === 'music' ? attachments.find((a) => isAudio(a.mimeType))?.dataUrl : undefined;
+    const musicBlocked = mode === 'music' && attachments.some((a) => !isAudio(a.mimeType));
+    if (mode === 'music' && text && !musicBlocked) {
+      setMessages((prev) => [...prev, { role: 'user', text, ...(attachments.length ? { medias: attachments } : {}) }, { role: 'assistant', text: '' }]);
+      setInput(''); setAttachments([]); setBusy(true);
       try {
         const res = await fetch('/api/ai/music', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ prompt: text, style: musicGenre, instrumental: musicInstrumental, ...(!musicInstrumental && musicLyrics.trim() ? { lyrics: musicLyrics.trim() } : {}) }),
+          body: JSON.stringify({ prompt: text, style: musicGenre, instrumental: musicInstrumental, ...(!musicInstrumental && musicLyrics.trim() ? { lyrics: musicLyrics.trim() } : {}), ...(audioRef ? { audioReference: audioRef } : {}) }),
           credentials: 'include',
           signal: ac.signal,
         });
