@@ -58,3 +58,34 @@ export async function generateMusic(prompt: string, duration: number = 30) {
     throw new Error(`Music generation failed: ${message}`);
   }
 }
+
+/**
+ * Music COVER via Replicate MusicGen-melody: condition generation on an uploaded
+ * track's MELODY (`input_audio` + `continuation:false`) and re-imagine it in the
+ * requested style/prompt. `melodyUrl` must be an https URL Replicate can fetch.
+ */
+export async function generateMusicCover(prompt: string, melodyUrl: string, duration: number = 30) {
+  try {
+    const output = (await replicate.run(
+      "meta/musicgen:671ac645ce5e552cc63a54a2bbff63fcf298043f7c60f55056c40ae074096949",
+      {
+        input: {
+          prompt: `${prompt}, high quality`,
+          input_audio: melodyUrl,
+          continuation: false,            // use the audio as a MELODY, not a continuation
+          model_version: "stereo-melody-large",
+          duration,
+          output_format: "mp3",
+        },
+      }
+    )) as unknown;
+    const audioUrl = extractAudioUrl(output);
+    if (!audioUrl || !/^https?:\/\//i.test(audioUrl)) {
+      throw new Error('Replicate returned no usable cover audio URL');
+    }
+    return { audioUrl, duration, prompt };
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    throw new Error(`Music cover failed: ${message}`);
+  }
+}

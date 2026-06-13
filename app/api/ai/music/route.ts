@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { generateUdioTrack, generateUdioUploadCover } from '@/lib/udio/client';
+import { generateUdioTrack } from '@/lib/udio/client';
+import { generateMusicCover } from '@/lib/ai/replicate';
 import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { recordCompletedAsset } from '@/lib/orchestrator/jobs';
@@ -22,6 +23,22 @@ import { randomUUID } from 'node:crypto';
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 export const maxDuration = 300;
+
+// Host a data: reference track to a signed https URL — Replicate MusicGen fetches the
+// melody by URL, so an uploaded audio file is copied to Supabase first. Fail-open → null.
+async function hostAudioReference(dataUrl: string): Promise<string | null> {
+  try {
+    const m = dataUrl.match(/^data:([^;,]+)[;,]/);
+    const mime = (m?.[1] || 'audio/mpeg').toLowerCase();
+    const ext = /wav/i.test(mime) ? 'wav' : /ogg/i.test(mime) ? 'ogg' : /mp4|m4a|aac/i.test(mime) ? 'm4a' : 'mp3';
+    const b64 = dataUrl.includes(',') ? dataUrl.split(',')[1] ?? '' : '';
+    if (!b64) return null;
+    const path = `omni-music-ref/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+    return (await uploadAndSign('uploads', path, b64, mime, 7200)) || null;
+  } catch {
+    return null;
+  }
+}
 
 export async function POST(req: NextRequest) {
   let prompt = '';
@@ -50,36 +67,40 @@ export async function POST(req: NextRequest) {
   const capped = prompt.slice(0, 1000);
 
   try {
-    // COVER vs compose: with an uploaded reference track, Udio re-creates it in the
-    // requested style (upload-cover); otherwise compose a fresh track from the brief.
-    const coverBuffer = audioReference
-      ? Buffer.from(audioReference.slice(audioReference.indexOf(',') + 1), 'base64')
-      : null;
-    const result = coverBuffer
-      ? await generateUdioUploadCover(
-          { audioBlob: coverBuffer, prompt: capped, style, title: capped.slice(0, 60) },
-          { maxAttempts: 46, pollIntervalMs: 5000 },
-        )
-      : await generateUdioTrack(
-          { prompt: capped, style, makeInstrumental, title: capped.slice(0, 60), ...(lyrics ? { lyrics } : {}) },
-          // ~230s ceiling (46 × 5s) — safely under the 300s maxDuration, leaving room
-          // for the re-host + response. Udio chirp typically lands in 60–180s.
-          { maxAttempts: 46, pollIntervalMs: 5000 },
-        );
-
-    if (result.status !== 'succeeded' || !result.audioUrl) {
-      return NextResponse.json(
-        { success: false, error: result.message || 'Music generation did not complete in time.' },
-        { status: 502 },
+    // COVER vs compose: with an uploaded reference track, REPLICATE MusicGen-melody
+    // re-imagines it in the requested style (conditioned on the track's melody);
+    // otherwise Udio composes a fresh track from the brief.
+    let providerAudioUrl = '';
+    if (audioReference) {
+      const melodyUrl = await hostAudioReference(audioReference);
+      if (!melodyUrl) {
+        return NextResponse.json({ success: false, error: 'Could not process the reference audio.' }, { status: 502 });
+      }
+      const styledPrompt = style ? `${capped}, ${style} style` : capped;
+      const cover = await generateMusicCover(styledPrompt, melodyUrl, 30);
+      providerAudioUrl = cover.audioUrl;
+    } else {
+      const result = await generateUdioTrack(
+        { prompt: capped, style, makeInstrumental, title: capped.slice(0, 60), ...(lyrics ? { lyrics } : {}) },
+        // ~230s ceiling (46 × 5s) — safely under the 300s maxDuration, leaving room
+        // for the re-host + response. Udio chirp typically lands in 60–180s.
+        { maxAttempts: 46, pollIntervalMs: 5000 },
       );
+      if (result.status !== 'succeeded' || !result.audioUrl) {
+        return NextResponse.json(
+          { success: false, error: result.message || 'Music generation did not complete in time.' },
+          { status: 502 },
+        );
+      }
+      providerAudioUrl = result.audioUrl;
     }
 
     // RE-HOST to Supabase so the audio plays in-app (CSP-allowed) + persists.
-    let hostedUrl = result.audioUrl;
+    let hostedUrl = providerAudioUrl;
     try {
       const ac = new AbortController();
       const to = setTimeout(() => ac.abort(), 25_000);
-      const r = await fetch(result.audioUrl, { signal: ac.signal }).finally(() => clearTimeout(to));
+      const r = await fetch(providerAudioUrl, { signal: ac.signal }).finally(() => clearTimeout(to));
       if (r.ok) {
         const ct = r.headers.get('content-type') || 'audio/mpeg';
         const ext = /wav/i.test(ct) ? 'wav' : 'mp3';
