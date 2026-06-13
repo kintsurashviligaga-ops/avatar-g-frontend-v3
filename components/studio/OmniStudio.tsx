@@ -825,6 +825,89 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     if (mine()) setBusy(false);
   }, []);
 
+  // Stream one chat turn from /api/chat/gemini into a fresh assistant bubble. Shared
+  // by send (a new turn) and regenerateChat (re-roll the last answer). Owns its own
+  // gen token so Stop / a superseded request never clobbers a newer stream.
+  const streamChat = useCallback(async (history: Msg[]) => {
+    const myGen = ++genIdRef.current;
+    const ac = new AbortController();
+    abortRef.current = ac;
+    const mine = () => genIdRef.current === myGen;
+    setMessages([...history, { role: 'assistant', text: '' }]);
+    setBusy(true);
+    // Build the Gemini payload: text-only → string content; with media → native
+    // multimodal parts (image / file) the route forwards as inline_data.
+    const payload = history.map((m) => {
+      if (m.medias && m.medias.length) {
+        const mediaParts = m.medias.map((md) => isImage(md.mimeType)
+          ? { type: 'image', image: md.dataUrl }
+          : { type: 'file', data: md.dataUrl, mimeType: md.mimeType });
+        return { role: m.role, content: [
+          ...(m.text ? [{ type: 'text', text: m.text }] : []),
+          ...mediaParts,
+        ] };
+      }
+      return { role: m.role, content: m.text };
+    });
+    try {
+      const res = await fetch('/api/chat/gemini', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: payload }), credentials: 'include', signal: ac.signal,
+      });
+      if (!res.ok || !res.body) throw new Error('stream failed');
+      const reader = res.body.getReader();
+      const dec = new TextDecoder();
+      let buf = '';
+      for (;;) {
+        if (!mine()) { try { await reader.cancel(); } catch { /* noop */ } break; }
+        const { value, done } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        const lines = buf.split('\n\n');
+        buf = lines.pop() ?? '';
+        for (const line of lines) {
+          const mm = line.match(/^data:\s*(.+)$/s);
+          if (!mm) continue;
+          try {
+            const j = JSON.parse(mm[1]!) as { text?: string };
+            if (j.text) {
+              setMessages((prev) => {
+                if (!mine()) return prev;
+                const next = [...prev];
+                const last = next[next.length - 1];
+                if (last && last.role === 'assistant') next[next.length - 1] = { ...last, text: last.text + j.text };
+                return next;
+              });
+            }
+          } catch { /* ignore non-JSON keepalive lines */ }
+        }
+      }
+    } catch {
+      if (!mine()) return; // stopped / superseded — keep the partial stream as-is
+      setMessages((prev) => {
+        const next = [...prev];
+        const last = next[next.length - 1];
+        if (last && last.role === 'assistant' && !last.text) next[next.length - 1] = { ...last, text: '⚠️' };
+        return next;
+      });
+    } finally {
+      if (mine()) setBusy(false);
+    }
+  }, []);
+
+  // Regenerate the LAST assistant reply: re-stream from the conversation up to (and
+  // including) the user turn that prompted it — the standard chat "try again" /
+  // retry-on-error. Drops the old answer and streams a fresh one in its place.
+  const regenerateChat = useCallback(() => {
+    if (busy) return;
+    let lastA = -1;
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i]!.role === 'assistant') { lastA = i; break; }
+    }
+    if (lastA < 0) return;
+    void streamChat(messages.slice(0, lastA));
+  }, [busy, messages, streamChat]);
+
   const send = useCallback(async () => {
     const text = input.trim();
     if ((!text && attachments.length === 0) || busy) return;
@@ -952,72 +1035,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
 
     // ── CHAT (multimodal Gemini) ───────────────────────────────────────────────
     const userMsg: Msg = { role: 'user', text, ...(attachments.length ? { medias: attachments } : {}) };
-    const history = [...messages, userMsg];
-    setMessages([...history, { role: 'assistant', text: '' }]);
-    setInput(''); setAttachments([]); setBusy(true);
-
-    // Build the Gemini payload: text-only → string content; with media → native
-    // multimodal parts. Each image maps to a {type:'image'} part; audio / video /
-    // pdf map to {type:'file'} parts the route forwards to Gemini as inline_data
-    // (full native multi-file understanding — up to MAX_ATTACHMENTS per turn).
-    const payload = history.map((m) => {
-      if (m.medias && m.medias.length) {
-        const mediaParts = m.medias.map((md) => isImage(md.mimeType)
-          ? { type: 'image', image: md.dataUrl }
-          : { type: 'file', data: md.dataUrl, mimeType: md.mimeType });
-        return { role: m.role, content: [
-          ...(m.text ? [{ type: 'text', text: m.text }] : []),
-          ...mediaParts,
-        ] };
-      }
-      return { role: m.role, content: m.text };
-    });
-
-    try {
-      const res = await fetch('/api/chat/gemini', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: payload }), credentials: 'include', signal: ac.signal,
-      });
-      if (!res.ok || !res.body) throw new Error('stream failed');
-      const reader = res.body.getReader();
-      const dec = new TextDecoder();
-      let buf = '';
-      for (;;) {
-        if (!mine()) { try { await reader.cancel(); } catch { /* noop */ } break; }
-        const { value, done } = await reader.read();
-        if (done) break;
-        buf += dec.decode(value, { stream: true });
-        const lines = buf.split('\n\n');
-        buf = lines.pop() ?? '';
-        for (const line of lines) {
-          const m = line.match(/^data:\s*(.+)$/s);
-          if (!m) continue;
-          try {
-            const j = JSON.parse(m[1]!) as { text?: string };
-            if (j.text) {
-              setMessages((prev) => {
-                if (!mine()) return prev;
-                const next = [...prev];
-                const last = next[next.length - 1];
-                if (last && last.role === 'assistant') next[next.length - 1] = { ...last, text: last.text + j.text };
-                return next;
-              });
-            }
-          } catch { /* ignore non-JSON keepalive lines */ }
-        }
-      }
-    } catch {
-      if (!mine()) return; // stopped / superseded — keep the partial stream as-is
-      setMessages((prev) => {
-        const next = [...prev];
-        const last = next[next.length - 1];
-        if (last && last.role === 'assistant' && !last.text) next[next.length - 1] = { ...last, text: '⚠️' };
-        return next;
-      });
-    } finally {
-      if (mine()) setBusy(false);
-    }
-  }, [input, attachments, busy, messages, mode, locale, imgAspect, imgQuality, imgStyle, imgCount, runImageBatch, musicGenre, musicInstrumental, musicLyrics, videoOrientation, videoStyle, videoNarration, createStoryboard, t.narrationCue, t.imageFailed, t.musicFailed]);
+    setInput(''); setAttachments([]);
+    await streamChat([...messages, userMsg]);
+  }, [input, attachments, busy, messages, mode, locale, imgAspect, imgQuality, imgStyle, imgCount, runImageBatch, musicGenre, musicInstrumental, musicLyrics, videoOrientation, videoStyle, videoNarration, createStoryboard, streamChat, t.narrationCue, t.imageFailed, t.musicFailed]);
 
   // STOP — cancel the in-flight generation. Bumps the generation token (so every
   // pending finalizer no-ops), aborts the fetch, frees the composer, and converts
@@ -1376,7 +1396,28 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                   >
                     {copiedIdx === i ? <Check size={13} /> : <Copy size={13} />}
                   </button>
+                  {i === messages.length - 1 && !busy && (
+                    <button
+                      type="button"
+                      onClick={() => regenerateChat()}
+                      aria-label={t.regenerate}
+                      title={t.regenerate}
+                      className="flex h-7 w-7 items-center justify-center rounded-md transition-colors hover:bg-app-elevated hover:text-app-accent"
+                    >
+                      <RotateCcw size={13} />
+                    </button>
+                  )}
                 </div>
+              )}
+              {/* Retry — the last reply errored; re-run the same turn cleanly. */}
+              {m.role === 'assistant' && i === messages.length - 1 && !busy && m.text.startsWith('⚠️') && (
+                <button
+                  type="button"
+                  onClick={() => regenerateChat()}
+                  className="mt-1 inline-flex items-center gap-1.5 rounded-full bg-app-elevated px-3 py-1.5 text-[12px] font-semibold text-app-text ring-1 ring-app-border/15 transition-opacity hover:opacity-90 active:scale-[0.98]"
+                >
+                  <RotateCcw size={13} /> {t.regenerate}
+                </button>
               )}
             </div>
           </div>
