@@ -27,11 +27,14 @@ export async function POST(req: NextRequest) {
   let prompt = '';
   let style = 'cinematic';
   let makeInstrumental = true;
+  let lyrics = '';
   try {
-    const body = (await req.json().catch(() => ({}))) as { prompt?: unknown; style?: unknown; instrumental?: unknown };
+    const body = (await req.json().catch(() => ({}))) as { prompt?: unknown; style?: unknown; instrumental?: unknown; lyrics?: unknown };
     prompt = typeof body.prompt === 'string' ? body.prompt.trim() : '';
     if (typeof body.style === 'string' && body.style.trim()) style = body.style.trim();
     if (typeof body.instrumental === 'boolean') makeInstrumental = body.instrumental;
+    // Custom lyrics (vocal tracks) — Udio sings these verbatim; empty → auto lyrics.
+    if (typeof body.lyrics === 'string' && body.lyrics.trim()) lyrics = body.lyrics.trim().slice(0, 2000);
   } catch {
     /* malformed body → guard below */
   }
@@ -44,7 +47,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const result = await generateUdioTrack(
-      { prompt: capped, style, makeInstrumental, title: capped.slice(0, 60) },
+      { prompt: capped, style, makeInstrumental, title: capped.slice(0, 60), ...(lyrics ? { lyrics } : {}) },
       // ~230s ceiling (46 × 5s) — safely under the 300s maxDuration, leaving room
       // for the re-host + response. Udio chirp typically lands in 60–180s.
       { maxAttempts: 46, pollIntervalMs: 5000 },

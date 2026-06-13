@@ -26,7 +26,7 @@ const COPY: Record<Lang, {
   modeVideo: string; videoPlaceholder: string; generatingVideo: string; videoFailed: string;
   modeLipsync: string; lipsyncPlaceholder: string; generatingLipsync: string; lipsyncFailed: string; lipsyncNeedFiles: string; lipsyncAuth: string; lipAudioLabel: string;
   stop: string; stopped: string; scrollDown: string; regenerate: string; elapsedHint: string; greeting: string; attachHint: string;
-  instrumental: string; withVocals: string;
+  instrumental: string; withVocals: string; lyricsPlaceholder: string;
   narration: string; narrationCue: string; transCrossfade: string; transCut: string;
   sbTitle: string; sbReview: string; sbGenerate: string; sbRegen: string; sbCancel: string; sbCreating: string; sbFailed: string; sbScene: string;
   charPhoto: string; charPhotoOn: string;
@@ -46,7 +46,7 @@ const COPY: Record<Lang, {
     modeLipsync: 'ლიფსინქი', lipsyncPlaceholder: 'მიამაგრე ვიდეო + აუდიო და დააჭირე გაგზავნას…',
     generatingLipsync: 'ტუჩები სინქრონდება…', lipsyncFailed: 'ლიფსინქი ვერ მოხერხდა.', lipsyncNeedFiles: 'მიამაგრე ვიდეოც და აუდიოც.', lipsyncAuth: 'ლიფსინქისთვის ჯერ გაიარე ავტორიზაცია.', lipAudioLabel: 'აუდიო',
     stop: 'შეჩერება', stopped: 'შეჩერდა', scrollDown: 'ბოლოში გადასვლა', regenerate: 'თავიდან გენერაცია', elapsedHint: 'გავიდა', greeting: 'რით დაგეხმარო?', attachHint: 'დამატება',
-    instrumental: 'ინსტრუმენტალი', withVocals: 'ვოკალით',
+    instrumental: 'ინსტრუმენტალი', withVocals: 'ვოკალით', lyricsPlaceholder: 'ლირიკა (არჩევითი) — შენი ტექსტი; ცარიელი = ავტომატური',
     narration: 'ნარაცია', narrationCue: ' (პროფესიონალი კომენტატორის ხმოვანი ნარაციით)', transCrossfade: 'გადადნობა', transCut: 'კვეთა',
     sbTitle: 'სტორიბორდი', sbReview: 'გადახედე 6 სცენას — შეცვალე ტექსტი ან თავიდან დააგენერირე კადრი, შემდეგ გაუშვი ვიდეო', sbGenerate: 'ვიდეოს გენერაცია', sbRegen: 'თავიდან', sbCancel: 'გაუქმება', sbCreating: 'სცენარი და 6 კადრი იქმნება…', sbFailed: 'სტორიბორდი ვერ შეიქმნა. სცადე თავიდან.', sbScene: 'სცენა',
     charPhoto: 'პერსონაჟის ფოტო', charPhotoOn: 'პერსონაჟი ✓',
@@ -66,7 +66,7 @@ const COPY: Record<Lang, {
     modeLipsync: 'Lip-sync', lipsyncPlaceholder: 'Attach a video + audio, then press send…',
     generatingLipsync: 'Syncing the lips…', lipsyncFailed: 'Lip-sync failed.', lipsyncNeedFiles: 'Attach both a video and audio.', lipsyncAuth: 'Sign in first to use lip-sync.', lipAudioLabel: 'Audio',
     stop: 'Stop', stopped: 'Stopped', scrollDown: 'Scroll to bottom', regenerate: 'Regenerate', elapsedHint: 'elapsed', greeting: 'How can I help?', attachHint: 'Add',
-    instrumental: 'Instrumental', withVocals: 'Vocals',
+    instrumental: 'Instrumental', withVocals: 'Vocals', lyricsPlaceholder: 'Lyrics (optional) — your words; empty = auto-written',
     narration: 'Narration', narrationCue: ' (with professional spoken voice-over narration)', transCrossfade: 'Crossfade', transCut: 'Cut',
     sbTitle: 'Storyboard', sbReview: 'Review the 6 scenes — edit a description or re-roll a frame, then generate', sbGenerate: 'Generate Video', sbRegen: 'Regenerate', sbCancel: 'Cancel', sbCreating: 'Creating storyboard & 6 frames…', sbFailed: 'Storyboard failed. Try again.', sbScene: 'Scene',
     charPhoto: 'Character photo', charPhotoOn: 'Character ✓',
@@ -86,7 +86,7 @@ const COPY: Record<Lang, {
     modeLipsync: 'Синхрон', lipsyncPlaceholder: 'Прикрепите видео + аудио и нажмите отправить…',
     generatingLipsync: 'Синхронизирую губы…', lipsyncFailed: 'Не удалось синхронизировать.', lipsyncNeedFiles: 'Прикрепите и видео, и аудио.', lipsyncAuth: 'Войдите, чтобы использовать синхронизацию.', lipAudioLabel: 'Аудио',
     stop: 'Стоп', stopped: 'Остановлено', scrollDown: 'Вниз', regenerate: 'Заново', elapsedHint: 'прошло', greeting: 'Чем помочь?', attachHint: 'Добавить',
-    instrumental: 'Инструментал', withVocals: 'Вокал',
+    instrumental: 'Инструментал', withVocals: 'Вокал', lyricsPlaceholder: 'Текст (необязательно) — ваши слова; пусто = авто',
     narration: 'Озвучка', narrationCue: ' (с профессиональной голосовой озвучкой)', transCrossfade: 'Плавно', transCut: 'Резко',
     sbTitle: 'Раскадровка', sbReview: 'Просмотрите 6 сцен — измените описание или кадр, затем сгенерируйте', sbGenerate: 'Сгенерировать видео', sbRegen: 'Заново', sbCancel: 'Отмена', sbCreating: 'Создаю раскадровку и 6 кадров…', sbFailed: 'Не удалось создать раскадровку. Попробуйте снова.', sbScene: 'Сцена',
     charPhoto: 'Фото персонажа', charPhotoOn: 'Персонаж ✓',
@@ -268,7 +268,7 @@ interface Media { dataUrl: string; mimeType: string }
 // produced a result (same prompt + settings → a fresh variation). Persisted with the
 // message so the Regenerate button survives reloads.
 type ImageRegenSpec = { kind: 'image'; prompt: string; quality: ImgQuality; aspect: ImgAspect; style: string };
-type MusicRegenSpec = { kind: 'music'; prompt: string; genre: string; instrumental: boolean };
+type MusicRegenSpec = { kind: 'music'; prompt: string; genre: string; instrumental: boolean; lyrics?: string };
 type RegenSpec = ImageRegenSpec | MusicRegenSpec;
 // A grid of N image variations generated together (the ×2 / ×4 batch). Each tile
 // fills in independently as its own parallel generation lands.
@@ -512,6 +512,8 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   const [imgCount, setImgCount] = useState<1 | 2 | 4>(1);
   const [musicInstrumental, setMusicInstrumental] = useState(true);
   const [musicGenre, setMusicGenre] = useState<string>('cinematic');
+  // Custom lyrics for vocal tracks — empty means Udio writes the lyrics from the prompt.
+  const [musicLyrics, setMusicLyrics] = useState('');
   const [videoOrientation, setVideoOrientation] = useState<'landscape' | 'vertical'>('landscape');
   const [videoStyle, setVideoStyle] = useState<string>('Cinematic');
   // PHASE 48 §2 — opt-in spoken commentator/narration. When on, a localized cue
@@ -744,7 +746,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         body: JSON.stringify(
           spec.kind === 'image'
             ? { prompt: spec.prompt, quality: spec.quality, aspectRatio: spec.aspect, style: spec.style === 'Auto' ? undefined : spec.style }
-            : { prompt: spec.prompt, style: spec.genre, instrumental: spec.instrumental },
+            : { prompt: spec.prompt, style: spec.genre, instrumental: spec.instrumental, ...(spec.lyrics ? { lyrics: spec.lyrics } : {}) },
         ),
         credentials: 'include',
         signal: ac.signal,
@@ -901,7 +903,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         const res = await fetch('/api/ai/music', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ prompt: text, style: musicGenre, instrumental: musicInstrumental }),
+          body: JSON.stringify({ prompt: text, style: musicGenre, instrumental: musicInstrumental, ...(!musicInstrumental && musicLyrics.trim() ? { lyrics: musicLyrics.trim() } : {}) }),
           credentials: 'include',
           signal: ac.signal,
         });
@@ -913,7 +915,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           if (last && last.role === 'assistant') {
             next[next.length - 1] =
               j.success && j.url
-                ? { role: 'assistant', text: '', audioUrl: j.url, regen: { kind: 'music', prompt: text, genre: musicGenre, instrumental: musicInstrumental } }
+                ? { role: 'assistant', text: '', audioUrl: j.url, regen: { kind: 'music', prompt: text, genre: musicGenre, instrumental: musicInstrumental, ...(!musicInstrumental && musicLyrics.trim() ? { lyrics: musicLyrics.trim() } : {}) } }
                 : { role: 'assistant', text: `⚠️ ${j.error || t.musicFailed}` };
           }
           return next;
@@ -1015,7 +1017,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     } finally {
       if (mine()) setBusy(false);
     }
-  }, [input, attachments, busy, messages, mode, locale, imgAspect, imgQuality, imgStyle, imgCount, runImageBatch, musicGenre, musicInstrumental, videoOrientation, videoStyle, videoNarration, createStoryboard, t.narrationCue, t.imageFailed, t.musicFailed]);
+  }, [input, attachments, busy, messages, mode, locale, imgAspect, imgQuality, imgStyle, imgCount, runImageBatch, musicGenre, musicInstrumental, musicLyrics, videoOrientation, videoStyle, videoNarration, createStoryboard, t.narrationCue, t.imageFailed, t.musicFailed]);
 
   // STOP — cancel the in-flight generation. Bumps the generation token (so every
   // pending finalizer no-ops), aborts the fetch, frees the composer, and converts
@@ -1439,6 +1441,18 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
               </>
             )}
           </div>
+        )}
+
+        {/* Custom lyrics (vocals only) — the exact sung words; empty = Udio writes
+            the lyrics automatically from your prompt. */}
+        {mode === 'music' && !musicInstrumental && (
+          <textarea
+            value={musicLyrics}
+            onChange={(e) => setMusicLyrics(e.target.value)}
+            rows={2}
+            placeholder={t.lyricsPlaceholder}
+            className="mb-2 w-full resize-none rounded-xl bg-app-elevated/60 px-3 py-2 text-[13px] text-app-text outline-none transition-colors placeholder:text-app-muted/60 focus:bg-app-elevated"
+          />
         )}
 
         {/* Attachment previews — up to MAX_ATTACHMENTS files / images / a video,
