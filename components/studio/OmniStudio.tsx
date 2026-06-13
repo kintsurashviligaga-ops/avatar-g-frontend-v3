@@ -1585,13 +1585,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           }
           e.target.value = '';
         }} />
-        <div className="flex items-end gap-1 rounded-[26px] bg-app-elevated px-2 py-1.5">
-          {/* [+] add / attach */}
-          <button type="button" onClick={() => fileRef.current?.click()} aria-label={t.attachHint} title={t.attachHint}
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-surface hover:text-app-text">
-            <Plus size={20} />
-          </button>
-
+        <div className="rounded-[24px] bg-app-elevated px-3 py-2">
+          {/* Full-width prompt on its own line — a long prompt is never squeezed into a
+              narrow column by the controls (the old single-row pill did exactly that). */}
           <textarea
             ref={taRef}
             value={input}
@@ -1600,71 +1596,82 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             rows={1}
             disabled={enhancing}
             placeholder={recording ? t.recording : mode === 'image' ? t.imgPlaceholder : mode === 'music' ? t.musicPlaceholder : mode === 'video' ? t.videoPlaceholder : t.placeholder}
-            className="max-h-40 min-h-[36px] flex-1 resize-none border-0 bg-transparent px-1.5 py-2 text-[16px] text-app-text placeholder:text-app-muted/70 outline-none focus:ring-0 disabled:opacity-60"
+            className="max-h-40 min-h-[28px] w-full resize-none border-0 bg-transparent px-1 py-1.5 text-[16px] text-app-text placeholder:text-app-muted/70 outline-none focus:ring-0 disabled:opacity-60"
           />
 
-          {/* Inline mode selector — the "Flash ⌄" analog. Tap to pick what to create. */}
-          <div className="relative shrink-0">
-            <button
-              type="button"
-              onClick={() => setModeMenuOpen((v) => !v)}
-              aria-haspopup="menu"
-              aria-expanded={modeMenuOpen}
-              className="flex h-9 items-center gap-1 rounded-full px-2.5 text-[12.5px] font-medium text-app-muted transition-colors hover:bg-app-surface hover:text-app-text"
-            >
-              <ActiveModeIcon size={15} />
-              <span>{t[activeModeKey]}</span>
-              <ChevronDown size={13} className={`transition-transform ${modeMenuOpen ? 'rotate-180' : ''}`} />
+          {/* Controls row — attach · mode selector · (spacer) · mic/stop/send. */}
+          <div className="mt-1 flex items-center gap-1">
+            {/* [+] add / attach */}
+            <button type="button" onClick={() => fileRef.current?.click()} aria-label={t.attachHint} title={t.attachHint}
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-surface hover:text-app-text">
+              <Plus size={20} />
             </button>
-            {modeMenuOpen && (
+
+            {/* Inline mode selector — the "Flash ⌄" analog. Tap to pick what to create. */}
+            <div className="relative shrink-0">
+              <button
+                type="button"
+                onClick={() => setModeMenuOpen((v) => !v)}
+                aria-haspopup="menu"
+                aria-expanded={modeMenuOpen}
+                className="flex h-9 items-center gap-1 rounded-full bg-app-surface/60 px-2.5 text-[12.5px] font-medium text-app-muted transition-colors hover:bg-app-surface hover:text-app-text"
+              >
+                <ActiveModeIcon size={15} />
+                <span>{t[activeModeKey]}</span>
+                <ChevronDown size={13} className={`transition-transform ${modeMenuOpen ? 'rotate-180' : ''}`} />
+              </button>
+              {modeMenuOpen && (
+                <>
+                  <div className="fixed inset-0 z-10" onClick={() => setModeMenuOpen(false)} />
+                  <div role="menu" className="absolute bottom-full left-0 z-20 mb-2 w-48 overflow-hidden rounded-2xl border border-app-border/10 bg-app-surface p-1 shadow-2xl">
+                    {MODES.map(({ id, Icon, key: lk }) => (
+                      <button
+                        key={id}
+                        type="button"
+                        role="menuitemradio"
+                        aria-checked={mode === id}
+                        onClick={() => { setMode(id); setModeMenuOpen(false); }}
+                        className={`flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-[13px] transition-colors ${mode === id ? 'bg-app-accent/10 text-app-accent' : 'text-app-text hover:bg-app-elevated'}`}
+                      >
+                        <Icon size={15} /> <span className="flex-1 text-left">{t[lk]}</span> {mode === id && <Check size={14} />}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+
+            <div className="flex-1" />
+
+            {/* Right action: Stop while busy · Wand+Send when there's something to send ·
+                Mic otherwise (record voice). Mirrors Gemini's mic↔send swap. */}
+            {busy ? (
+              <button type="button" onClick={stop} aria-label={t.stop} title={t.stop}
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-app-surface text-app-text transition-colors hover:text-app-accent">
+                <Square size={15} className="fill-current" />
+              </button>
+            ) : canSend ? (
               <>
-                <div className="fixed inset-0 z-10" onClick={() => setModeMenuOpen(false)} />
-                <div role="menu" className="absolute bottom-full right-0 z-20 mb-2 w-48 overflow-hidden rounded-2xl border border-app-border/10 bg-app-surface p-1 shadow-2xl">
-                  {MODES.map(({ id, Icon, key: lk }) => (
-                    <button
-                      key={id}
-                      type="button"
-                      role="menuitemradio"
-                      aria-checked={mode === id}
-                      onClick={() => { setMode(id); setModeMenuOpen(false); }}
-                      className={`flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-[13px] transition-colors ${mode === id ? 'bg-app-accent/10 text-app-accent' : 'text-app-text hover:bg-app-elevated'}`}
-                    >
-                      <Icon size={15} /> <span className="flex-1 text-left">{t[lk]}</span> {mode === id && <Check size={14} />}
-                    </button>
-                  ))}
-                </div>
+                {input.trim() && (
+                  <button type="button" onClick={() => void magicEnhance()} disabled={enhancing} aria-label={t.magicHint} title={t.magicHint}
+                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-surface hover:text-app-accent disabled:opacity-40">
+                    {enhancing ? <Loader2 size={18} className="animate-spin text-app-accent" /> : <Wand2 size={18} />}
+                  </button>
+                )}
+                <button type="button" onClick={() => void send()} aria-label="send"
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-app-accent text-app-bg transition-opacity hover:opacity-90">
+                  <Send size={17} />
+                </button>
               </>
+            ) : (
+              <button type="button" onClick={() => void toggleMic()} aria-label={t.micHint} title={t.micHint}
+                className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-colors ${
+                  recording ? 'animate-pulse bg-app-danger/15 text-app-danger' : 'text-app-muted hover:bg-app-surface hover:text-app-text'
+                }`}>
+                {recording ? <Square size={16} /> : <Mic size={19} />}
+              </button>
             )}
           </div>
-
-          {/* Right action: Stop while busy · Wand+Send when there's something to send ·
-              Mic otherwise (record voice). Mirrors Gemini's mic↔send swap. */}
-          {busy ? (
-            <button type="button" onClick={stop} aria-label={t.stop} title={t.stop}
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-app-surface text-app-text transition-colors hover:text-app-accent">
-              <Square size={15} className="fill-current" />
-            </button>
-          ) : canSend ? (
-            <>
-              {input.trim() && (
-                <button type="button" onClick={() => void magicEnhance()} disabled={enhancing} aria-label={t.magicHint} title={t.magicHint}
-                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-surface hover:text-app-accent disabled:opacity-40">
-                  {enhancing ? <Loader2 size={18} className="animate-spin text-app-accent" /> : <Wand2 size={18} />}
-                </button>
-              )}
-              <button type="button" onClick={() => void send()} aria-label="send"
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-app-accent text-app-bg transition-opacity hover:opacity-90">
-                <Send size={16} />
-              </button>
-            </>
-          ) : (
-            <button type="button" onClick={() => void toggleMic()} aria-label={t.micHint} title={t.micHint}
-              className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-colors ${
-                recording ? 'animate-pulse bg-app-danger/15 text-app-danger' : 'text-app-muted hover:bg-app-surface hover:text-app-text'
-              }`}>
-              {recording ? <Square size={16} /> : <Mic size={19} />}
-            </button>
-          )}
         </div>
       </div>
 
