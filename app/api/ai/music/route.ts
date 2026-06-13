@@ -55,7 +55,7 @@ export async function POST(req: NextRequest) {
     if (typeof body.lyrics === 'string' && body.lyrics.trim()) lyrics = body.lyrics.trim().slice(0, 2000);
     // Cover: an uploaded reference track (data: URL) → Udio reimagines it in the
     // requested style/prompt.
-    if (typeof body.audioReference === 'string' && body.audioReference.startsWith('data:')) audioReference = body.audioReference;
+    if (typeof body.audioReference === 'string' && (body.audioReference.startsWith('data:') || /^https?:\/\//i.test(body.audioReference))) audioReference = body.audioReference;
   } catch {
     /* malformed body → guard below */
   }
@@ -72,7 +72,10 @@ export async function POST(req: NextRequest) {
     // otherwise Udio composes a fresh track from the brief.
     let providerAudioUrl = '';
     if (audioReference) {
-      const melodyUrl = await hostAudioReference(audioReference);
+      // https (browser-uploaded via /api/upload/sign — bypasses the function-body
+      // limit) → use directly; data: (small fallback) → host it first. Replicate
+      // fetches the melody by URL.
+      const melodyUrl = audioReference.startsWith('data:') ? await hostAudioReference(audioReference) : audioReference;
       if (!melodyUrl) {
         return NextResponse.json({ success: false, error: 'Could not process the reference audio.' }, { status: 502 });
       }

@@ -16,8 +16,32 @@ import { createPortal } from 'react-dom';
 import { Send, Mic, Square, Plus, X, Loader2, Sparkles, Film, Music2, FileText, Image as ImageIcon, Download, MessageSquare, Wand2, Volume2, Copy, Check, ChevronDown, RotateCcw, History, Trash2, MessageSquarePlus, Pencil } from 'lucide-react';
 import { driveFilmStudio } from '@/lib/chat/filmStudioClient';
 import { Markdown } from './Markdown';
+import { createBrowserClient } from '@/lib/supabase/browser';
 
 type Lang = 'ka' | 'en' | 'ru';
+
+// Upload a (possibly large) file straight to Supabase via a signed upload URL —
+// browser → Supabase, BYPASSING Vercel's ~4.5MB function-body limit (a real song
+// otherwise returns FUNCTION_PAYLOAD_TOO_LARGE). Returns a readable https URL or null.
+async function uploadBigFile(dataUrl: string, mimeType: string): Promise<string | null> {
+  try {
+    const signRes = await fetch('/api/upload/sign', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ contentType: mimeType }),
+    });
+    const sign = (await signRes.json().catch(() => ({}))) as { bucket?: string; path?: string; token?: string; readUrl?: string };
+    if (!signRes.ok || !sign.path || !sign.token) return null;
+    const blob = await (await fetch(dataUrl)).blob();
+    const sb = createBrowserClient();
+    const { error } = await sb.storage.from(sign.bucket || 'uploads').uploadToSignedUrl(sign.path, sign.token, blob, { contentType: mimeType });
+    if (error) return null;
+    return sign.readUrl ?? null;
+  } catch {
+    return null;
+  }
+}
 
 const COPY: Record<Lang, {
   title: string; subtitle: string; placeholder: string; empty: string; thinking: string; recording: string; micHint: string;
@@ -1023,15 +1047,19 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     // Music mode: an attached AUDIO becomes a COVER source (Udio reimagines it in the
     // chosen genre/prompt); image/file/video attachments instead route to chat.
     const audioRef = mode === 'music' ? attachments.find((a) => isAudio(a.mimeType))?.dataUrl : undefined;
+    const audioMime = mode === 'music' ? attachments.find((a) => isAudio(a.mimeType))?.mimeType : undefined;
     const musicBlocked = mode === 'music' && attachments.some((a) => !isAudio(a.mimeType));
     if (mode === 'music' && text && !musicBlocked) {
       setMessages((prev) => [...prev, { role: 'user', text, ...(attachments.length ? { medias: attachments } : {}) }, { role: 'assistant', text: '' }]);
       setInput(''); setAttachments([]); setBusy(true);
       try {
+        // Cover: upload the attached track to Supabase first (browser → storage), so
+        // the request body stays tiny — the audio never hits the function-body limit.
+        const audioReferenceUrl = audioRef ? await uploadBigFile(audioRef, audioMime || 'audio/mpeg') : undefined;
         const res = await fetch('/api/ai/music', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ prompt: text, style: musicGenre, instrumental: musicInstrumental, ...(!musicInstrumental && musicLyrics.trim() ? { lyrics: musicLyrics.trim() } : {}), ...(audioRef ? { audioReference: audioRef } : {}) }),
+          body: JSON.stringify({ prompt: text, style: musicGenre, instrumental: musicInstrumental, ...(!musicInstrumental && musicLyrics.trim() ? { lyrics: musicLyrics.trim() } : {}), ...(audioReferenceUrl ? { audioReference: audioReferenceUrl } : {}) }),
           credentials: 'include',
           signal: ac.signal,
         });
