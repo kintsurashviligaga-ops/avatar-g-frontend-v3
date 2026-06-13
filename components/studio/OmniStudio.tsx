@@ -21,7 +21,7 @@ type Lang = 'ka' | 'en' | 'ru';
 
 const COPY: Record<Lang, {
   title: string; subtitle: string; placeholder: string; empty: string; thinking: string; recording: string; micHint: string;
-  modeChat: string; modeImage: string; imgPlaceholder: string; generatingImage: string; imageFailed: string; imgDownload: string;
+  modeChat: string; modeImage: string; imgPlaceholder: string; generatingImage: string; imageFailed: string; imgDownload: string; editImage: string;
   magicHint: string;
   modeMusic: string; musicPlaceholder: string; generatingMusic: string; musicFailed: string;
   modeVideo: string; videoPlaceholder: string; generatingVideo: string; videoFailed: string;
@@ -38,7 +38,7 @@ const COPY: Record<Lang, {
     placeholder: 'დაწერე, ჩაწერე ხმა, ან მიამაგრე სურათი…', empty: 'ჰკითხე ნებისმიერი რამ, შექმენი სურათი ან მუსიკა — ტექსტით, ხმით ან ფაილით.',
     thinking: 'ფიქრობს…', recording: 'იწერება…', micHint: 'ხმის ჩაწერა',
     modeChat: 'ჩატი', modeImage: 'სურათი', imgPlaceholder: 'აღწერე სურათი, რომ დაგიხატო…',
-    generatingImage: 'სურათი იქმნება…', imageFailed: 'სურათის გენერაცია ვერ მოხერხდა. სცადე თავიდან.', imgDownload: 'ჩამოტვირთვა',
+    generatingImage: 'სურათი იქმნება…', imageFailed: 'სურათის გენერაცია ვერ მოხერხდა. სცადე თავიდან.', imgDownload: 'ჩამოტვირთვა', editImage: 'რედაქტირება',
     magicHint: 'AI-ით პრომპტის გაუმჯობესება',
     modeMusic: 'მუსიკა', musicPlaceholder: 'აღწერე მუსიკა (მაგ. ეპიკური კინო-სცენა)…',
     generatingMusic: 'მუსიკა იქმნება… (1–3 წუთი)', musicFailed: 'მუსიკის გენერაცია ვერ მოხერხდა. სცადე თავიდან.',
@@ -58,7 +58,7 @@ const COPY: Record<Lang, {
     placeholder: 'Type, record your voice, or attach an image…', empty: 'Ask anything, or generate an image or music — by text, voice or file.',
     thinking: 'Thinking…', recording: 'Recording…', micHint: 'Record voice',
     modeChat: 'Chat', modeImage: 'Image', imgPlaceholder: 'Describe an image to generate…',
-    generatingImage: 'Generating image…', imageFailed: 'Image generation failed. Try again.', imgDownload: 'Download',
+    generatingImage: 'Generating image…', imageFailed: 'Image generation failed. Try again.', imgDownload: 'Download', editImage: 'Edit',
     magicHint: 'Enhance prompt with AI',
     modeMusic: 'Music', musicPlaceholder: 'Describe the music (e.g. epic cinematic scene)…',
     generatingMusic: 'Composing music… (1–3 min)', musicFailed: 'Music generation failed. Try again.',
@@ -78,7 +78,7 @@ const COPY: Record<Lang, {
     placeholder: 'Напишите, запишите голос или прикрепите изображение…', empty: 'Спросите что угодно или создайте изображение или музыку — текстом, голосом или файлом.',
     thinking: 'Думает…', recording: 'Запись…', micHint: 'Записать голос',
     modeChat: 'Чат', modeImage: 'Изображение', imgPlaceholder: 'Опишите изображение для генерации…',
-    generatingImage: 'Генерирую изображение…', imageFailed: 'Не удалось сгенерировать изображение. Попробуйте снова.', imgDownload: 'Скачать',
+    generatingImage: 'Генерирую изображение…', imageFailed: 'Не удалось сгенерировать изображение. Попробуйте снова.', imgDownload: 'Скачать', editImage: 'Изменить',
     magicHint: 'Улучшить промпт с AI',
     modeMusic: 'Музыка', musicPlaceholder: 'Опишите музыку (напр. эпичная кино-сцена)…',
     generatingMusic: 'Создаю музыку… (1–3 мин)', musicFailed: 'Не удалось создать музыку. Попробуйте снова.',
@@ -268,7 +268,7 @@ interface Media { dataUrl: string; mimeType: string }
 // A one-click re-roll spec: enough to re-run the EXACT image/music generation that
 // produced a result (same prompt + settings → a fresh variation). Persisted with the
 // message so the Regenerate button survives reloads.
-type ImageRegenSpec = { kind: 'image'; prompt: string; quality: ImgQuality; aspect: ImgAspect; style: string };
+type ImageRegenSpec = { kind: 'image'; prompt: string; quality: ImgQuality; aspect: ImgAspect; style: string; referenceImage?: string };
 type MusicRegenSpec = { kind: 'music'; prompt: string; genre: string; instrumental: boolean; lyrics?: string };
 type RegenSpec = ImageRegenSpec | MusicRegenSpec;
 // A grid of N image variations generated together (the ×2 / ×4 batch). Each tile
@@ -329,6 +329,17 @@ function setCurrentConversationId(id: string): void {
   if (typeof window === 'undefined') return;
   try { window.localStorage.setItem(OMNI_CURRENT_ID_KEY, id); } catch { /* */ }
 }
+// Drop a (potentially multi-MB data:) reference image before persisting a spec to
+// localStorage — keeps the chat-history quota safe; the img2img source is re-supplied
+// live, so a reload simply regenerates text-to-image.
+function dropRef(spec: RegenSpec): RegenSpec {
+  if (spec.kind === 'image' && spec.referenceImage) {
+    const { referenceImage: _omit, ...rest } = spec;
+    void _omit;
+    return rest;
+  }
+  return spec;
+}
 function leanMessages(messages: Msg[]): Msg[] {
   return messages
     .filter((m, i) => !(i === messages.length - 1 && m.role === 'assistant' && !m.text && !m.imageUrl && !m.audioUrl && !m.videoUrl))
@@ -339,8 +350,8 @@ function leanMessages(messages: Msg[]): Msg[] {
       ...(m.imageUrl ? { imageUrl: m.imageUrl } : {}),
       ...(m.audioUrl ? { audioUrl: m.audioUrl } : {}),
       ...(m.videoUrl ? { videoUrl: m.videoUrl } : {}),
-      ...(m.regen ? { regen: m.regen } : {}),
-      ...(m.batch ? { batch: m.batch } : {}),
+      ...(m.regen ? { regen: dropRef(m.regen) } : {}),
+      ...(m.batch ? { batch: { tiles: m.batch.tiles, spec: dropRef(m.batch.spec) as ImageRegenSpec } } : {}),
     }));
 }
 function conversationTitle(messages: Msg[]): string {
@@ -759,7 +770,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(
           spec.kind === 'image'
-            ? { prompt: spec.prompt, quality: spec.quality, aspectRatio: spec.aspect, style: spec.style === 'Auto' ? undefined : spec.style }
+            ? { prompt: spec.prompt, quality: spec.quality, aspectRatio: spec.aspect, style: spec.style === 'Auto' ? undefined : spec.style, ...(spec.referenceImage ? { referenceImage: spec.referenceImage } : {}) }
             : { prompt: spec.prompt, style: spec.genre, instrumental: spec.instrumental, ...(spec.lyrics ? { lyrics: spec.lyrics } : {}) },
         ),
         credentials: 'include',
@@ -791,6 +802,16 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       if (mine()) setBusy(false);
     }
   }, [busy, t.imageFailed, t.musicFailed]);
+
+  // Edit a generated/attached image with img2img: load it as the source + switch to
+  // Image mode; the next prompt transforms it. https URLs feed NanoBanana directly,
+  // data: uploads are hosted by the route first.
+  const startImageEdit = useCallback((url: string) => {
+    setMode('image');
+    setAttachments([{ dataUrl: url, mimeType: 'image/png' }]);
+    setLightbox(null);
+    setTimeout(() => { try { taRef.current?.focus(); } catch { /* noop */ } }, 60);
+  }, []);
 
   // ×2 / ×4 image batch: generate N variations of the SAME prompt in parallel into
   // ONE result grid, each tile filling in as its generation lands. Reused by send
@@ -825,7 +846,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           const res = await fetch('/api/nanobanana/image', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ prompt: spec.prompt, quality: spec.quality, aspectRatio: spec.aspect, style: spec.style === 'Auto' ? undefined : spec.style }),
+            body: JSON.stringify({ prompt: spec.prompt, quality: spec.quality, aspectRatio: spec.aspect, style: spec.style === 'Auto' ? undefined : spec.style, ...(spec.referenceImage ? { referenceImage: spec.referenceImage } : {}) }),
             credentials: 'include',
             signal: ac.signal,
           });
@@ -943,21 +964,27 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     // we fall through to the multimodal CHAT branch, which sends the text + the
     // attachments together (and clears them). This fixes "the file stays in the
     // box and only the text is sent" when an attachment is present in Image mode.
-    if (mode === 'image' && text && attachments.length === 0) {
+    // Image mode: an attached IMAGE becomes the img2img / EDIT source (the route hosts
+    // it + feeds NanoBanana); a file/audio attachment instead falls through to the
+    // multimodal chat branch (it can't be an image input).
+    const imgRef = mode === 'image' ? attachments.find((a) => isImage(a.mimeType))?.dataUrl : undefined;
+    const nonImageAttach = attachments.some((a) => !isImage(a.mimeType));
+    if (mode === 'image' && text && !nonImageAttach) {
+      const imgSpec: ImageRegenSpec = { kind: 'image', prompt: text, quality: imgQuality, aspect: imgAspect, style: imgStyle, ...(imgRef ? { referenceImage: imgRef } : {}) };
       // ×2 / ×4 → generate N variations in parallel into one result grid.
       if (imgCount > 1) {
-        setMessages((prev) => [...prev, { role: 'user', text }]);
-        setInput('');
-        await runImageBatch({ kind: 'image', prompt: text, quality: imgQuality, aspect: imgAspect, style: imgStyle }, imgCount);
+        setMessages((prev) => [...prev, { role: 'user', text, ...(attachments.length ? { medias: attachments } : {}) }]);
+        setInput(''); setAttachments([]);
+        await runImageBatch(imgSpec, imgCount);
         return;
       }
-      setMessages((prev) => [...prev, { role: 'user', text }, { role: 'assistant', text: '' }]);
-      setInput(''); setBusy(true);
+      setMessages((prev) => [...prev, { role: 'user', text, ...(attachments.length ? { medias: attachments } : {}) }, { role: 'assistant', text: '' }]);
+      setInput(''); setAttachments([]); setBusy(true);
       try {
         const res = await fetch('/api/nanobanana/image', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ prompt: text, quality: imgQuality, aspectRatio: imgAspect, style: imgStyle === 'Auto' ? undefined : imgStyle }),
+          body: JSON.stringify({ prompt: text, quality: imgQuality, aspectRatio: imgAspect, style: imgStyle === 'Auto' ? undefined : imgStyle, ...(imgRef ? { referenceImage: imgRef } : {}) }),
           credentials: 'include',
           signal: ac.signal,
         });
@@ -969,7 +996,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           if (last && last.role === 'assistant') {
             next[next.length - 1] =
               j.success && j.url
-                ? { role: 'assistant', text: '', imageUrl: j.url, regen: { kind: 'image', prompt: text, quality: imgQuality, aspect: imgAspect, style: imgStyle } }
+                ? { role: 'assistant', text: '', imageUrl: j.url, regen: imgSpec }
                 : { role: 'assistant', text: `⚠️ ${j.error || t.imageFailed}` };
           }
           return next;
@@ -1300,6 +1327,11 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                         <RotateCcw size={13} /> {t.regenerate}
                       </button>
                     )}
+                    {/* Edit → load this image as the img2img source. */}
+                    <button type="button" onClick={() => startImageEdit(m.imageUrl!)} disabled={busy}
+                      className="inline-flex items-center gap-1.5 rounded-full bg-app-elevated px-3.5 py-1.5 text-[12px] font-semibold text-app-text ring-1 ring-app-border/15 transition-opacity hover:opacity-90 active:scale-[0.98] disabled:opacity-40">
+                      <Pencil size={13} /> {t.editImage}
+                    </button>
                   </div>
                 </div>
               )}
@@ -1715,17 +1747,28 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             onClick={(e) => e.stopPropagation()}
             className="max-h-[88vh] max-w-[96vw] rounded-lg object-contain"
           />
-          <a
-            href={lightbox}
-            target="_blank"
-            rel="noopener noreferrer"
-            download
-            onClick={(e) => e.stopPropagation()}
-            className="absolute inset-x-0 mx-auto inline-flex w-fit items-center gap-1.5 rounded-full bg-app-accent px-4 py-2 text-[13px] font-semibold text-app-bg backdrop-blur"
+          <div
+            className="absolute inset-x-0 mx-auto flex w-fit items-center gap-2"
             style={{ bottom: 'max(1rem, env(safe-area-inset-bottom))' }}
+            onClick={(e) => e.stopPropagation()}
           >
-            <Download size={14} /> {t.imgDownload}
-          </a>
+            <a
+              href={lightbox}
+              target="_blank"
+              rel="noopener noreferrer"
+              download
+              className="inline-flex w-fit items-center gap-1.5 rounded-full bg-app-accent px-4 py-2 text-[13px] font-semibold text-app-bg backdrop-blur"
+            >
+              <Download size={14} /> {t.imgDownload}
+            </a>
+            <button
+              type="button"
+              onClick={() => startImageEdit(lightbox)}
+              className="inline-flex w-fit items-center gap-1.5 rounded-full bg-white/15 px-4 py-2 text-[13px] font-semibold text-white backdrop-blur transition-colors hover:bg-white/25"
+            >
+              <Pencil size={14} /> {t.editImage}
+            </button>
+          </div>
         </div>
       )}
 

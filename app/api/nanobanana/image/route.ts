@@ -36,6 +36,23 @@ const STYLE_SUFFIXES: Record<string, string> = {
   'Pixel Art':      '16-bit pixel art, retro game sprite, dithering, limited palette, crisp pixels',
 };
 
+// Host a data: reference image to a signed https URL — NanoBanana's img2img only
+// accepts an https reference (extractImageUrls drops data: URLs), so a freshly
+// uploaded/attached image must be copied to Supabase first. Fail-open → null.
+async function hostReferenceImage(dataUrl: string): Promise<string | null> {
+  try {
+    const m = dataUrl.match(/^data:([^;,]+)[;,]/);
+    const mime = (m?.[1] || 'image/png').toLowerCase();
+    const ext = /jpe?g/i.test(mime) ? 'jpg' : /webp/i.test(mime) ? 'webp' : 'png';
+    const b64 = dataUrl.includes(',') ? dataUrl.split(',')[1] ?? '' : '';
+    if (!b64) return null;
+    const path = `omni-ref/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+    return (await uploadAndSign('uploads', path, b64, mime, 7200)) || null;
+  } catch {
+    return null;
+  }
+}
+
 export async function POST(req: NextRequest) {
   const apiKey = process.env.NANOBANANA_API_KEY;
   if (!apiKey) {
@@ -49,6 +66,8 @@ export async function POST(req: NextRequest) {
       quality?: string;
       aspectRatio?: string;
       endpoint?: string;
+      /** Img2img / edit: a source image (data: upload OR an https URL to edit). */
+      referenceImage?: string;
     };
 
     const prompt = (body.prompt ?? '').trim();
@@ -62,6 +81,14 @@ export async function POST(req: NextRequest) {
     const styleSuffix = STYLE_SUFFIXES[styleLabel] ?? styleLabel;
     const enriched    = styleSuffix ? `${prompt}, ${styleSuffix}` : prompt;
 
+    // Img2img / edit — resolve the reference image to an https URL the provider
+    // accepts: data: uploads are hosted to Supabase; https URLs (e.g. editing a
+    // previously generated image) pass straight through.
+    let referenceImageUrl: string | undefined;
+    const ref = typeof body.referenceImage === 'string' ? body.referenceImage.trim() : '';
+    if (ref.startsWith('data:')) referenceImageUrl = (await hostReferenceImage(ref)) || undefined;
+    else if (/^https?:\/\//i.test(ref)) referenceImageUrl = ref;
+
     // Give 2K/4K a long-enough result-poll window (≈250s) so they complete rather
     // than timing out; 1K finishes far sooner and exits the poll early.
     const result = await generateNanoBananaImage({
@@ -69,6 +96,7 @@ export async function POST(req: NextRequest) {
       endpoint,
       aspectRatio: body.aspectRatio ?? '1:1',
       style:       styleLabel || undefined,
+      ...(referenceImageUrl ? { referenceImageDataUrl: referenceImageUrl } : {}),
       pollMaxAttempts: 100,
       pollIntervalMs:  2500,
     });
