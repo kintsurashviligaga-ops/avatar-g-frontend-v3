@@ -264,7 +264,13 @@ const STARTERS: Record<Lang, { label: string; prompt: string; mode: 'chat' | 'im
 };
 
 interface Media { dataUrl: string; mimeType: string }
-interface Msg { role: 'user' | 'assistant'; text: string; medias?: Media[]; imageUrl?: string; audioUrl?: string; videoUrl?: string; storyboard?: { ordinal: number; beat?: string; frameUrl: string | null }[] }
+// A one-click re-roll spec: enough to re-run the EXACT image/music generation that
+// produced a result (same prompt + settings → a fresh variation). Persisted with the
+// message so the Regenerate button survives reloads.
+type RegenSpec =
+  | { kind: 'image'; prompt: string; quality: ImgQuality; aspect: ImgAspect; style: string }
+  | { kind: 'music'; prompt: string; genre: string; instrumental: boolean };
+interface Msg { role: 'user' | 'assistant'; text: string; medias?: Media[]; imageUrl?: string; audioUrl?: string; videoUrl?: string; storyboard?: { ordinal: number; beat?: string; frameUrl: string | null }[]; regen?: RegenSpec }
 
 // Up to this many files/images (or one video) can ride along with a single message.
 const MAX_ATTACHMENTS = 5;
@@ -328,6 +334,7 @@ function leanMessages(messages: Msg[]): Msg[] {
       ...(m.imageUrl ? { imageUrl: m.imageUrl } : {}),
       ...(m.audioUrl ? { audioUrl: m.audioUrl } : {}),
       ...(m.videoUrl ? { videoUrl: m.videoUrl } : {}),
+      ...(m.regen ? { regen: m.regen } : {}),
     }));
 }
 function conversationTitle(messages: Msg[]): string {
@@ -688,6 +695,58 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     }
   }, [storyboard, regenningOrdinal, videoStyle, locale]);
 
+  // One-click RE-ROLL of an image/music result: re-run the SAME prompt + settings
+  // (a fresh variation) WITHOUT a new user bubble — the new asset lands as a fresh
+  // assistant bubble beneath the original. Mirrors send()'s gen-token / abort
+  // discipline so Stop and superseded requests can never clobber a newer one.
+  const regenerate = useCallback(async (spec: RegenSpec) => {
+    if (busy) return;
+    const myGen = ++genIdRef.current;
+    const ac = new AbortController();
+    abortRef.current = ac;
+    const mine = () => genIdRef.current === myGen;
+    setMessages((prev) => [...prev, { role: 'assistant', text: '' }]);
+    setBusy(true);
+    const failMsg = spec.kind === 'image' ? t.imageFailed : t.musicFailed;
+    try {
+      const res = await fetch(spec.kind === 'image' ? '/api/nanobanana/image' : '/api/ai/music', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(
+          spec.kind === 'image'
+            ? { prompt: spec.prompt, quality: spec.quality, aspectRatio: spec.aspect, style: spec.style === 'Auto' ? undefined : spec.style }
+            : { prompt: spec.prompt, style: spec.genre, instrumental: spec.instrumental },
+        ),
+        credentials: 'include',
+        signal: ac.signal,
+      });
+      const j = (await res.json().catch(() => ({}))) as { success?: boolean; url?: string; error?: string };
+      setMessages((prev) => {
+        if (!mine()) return prev;
+        const next = [...prev];
+        const last = next[next.length - 1];
+        if (last && last.role === 'assistant') {
+          next[next.length - 1] = j.success && j.url
+            ? (spec.kind === 'image'
+                ? { role: 'assistant', text: '', imageUrl: j.url, regen: spec }
+                : { role: 'assistant', text: '', audioUrl: j.url, regen: spec })
+            : { role: 'assistant', text: `⚠️ ${j.error || failMsg}` };
+        }
+        return next;
+      });
+    } catch {
+      if (!mine()) return;
+      setMessages((prev) => {
+        const next = [...prev];
+        const last = next[next.length - 1];
+        if (last && last.role === 'assistant') next[next.length - 1] = { role: 'assistant', text: `⚠️ ${failMsg}` };
+        return next;
+      });
+    } finally {
+      if (mine()) setBusy(false);
+    }
+  }, [busy, t.imageFailed, t.musicFailed]);
+
   const send = useCallback(async () => {
     const text = input.trim();
     if ((!text && attachments.length === 0) || busy) return;
@@ -728,7 +787,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           if (last && last.role === 'assistant') {
             next[next.length - 1] =
               j.success && j.url
-                ? { role: 'assistant', text: '', imageUrl: j.url }
+                ? { role: 'assistant', text: '', imageUrl: j.url, regen: { kind: 'image', prompt: text, quality: imgQuality, aspect: imgAspect, style: imgStyle } }
                 : { role: 'assistant', text: `⚠️ ${j.error || t.imageFailed}` };
           }
           return next;
@@ -771,7 +830,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           if (last && last.role === 'assistant') {
             next[next.length - 1] =
               j.success && j.url
-                ? { role: 'assistant', text: '', audioUrl: j.url }
+                ? { role: 'assistant', text: '', audioUrl: j.url, regen: { kind: 'music', prompt: text, genre: musicGenre, instrumental: musicInstrumental } }
                 : { role: 'assistant', text: `⚠️ ${j.error || t.musicFailed}` };
           }
           return next;
@@ -1087,15 +1146,23 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src={m.imageUrl} alt="generated" className="max-h-96 w-full rounded-xl object-contain ring-1 ring-app-border/10 transition-opacity hover:opacity-90" />
                   </button>
-                  <a
-                    href={m.imageUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    download
-                    className="inline-flex items-center gap-1.5 rounded-full bg-app-accent px-3.5 py-1.5 text-[12px] font-semibold text-app-bg shadow-sm transition-opacity hover:opacity-90 active:scale-[0.98]"
-                  >
-                    <Download size={13} /> {t.imgDownload}
-                  </a>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <a
+                      href={m.imageUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      download
+                      className="inline-flex items-center gap-1.5 rounded-full bg-app-accent px-3.5 py-1.5 text-[12px] font-semibold text-app-bg shadow-sm transition-opacity hover:opacity-90 active:scale-[0.98]"
+                    >
+                      <Download size={13} /> {t.imgDownload}
+                    </a>
+                    {m.regen && (
+                      <button type="button" onClick={() => void regenerate(m.regen!)} disabled={busy}
+                        className="inline-flex items-center gap-1.5 rounded-full bg-app-elevated px-3.5 py-1.5 text-[12px] font-semibold text-app-text ring-1 ring-app-border/15 transition-opacity hover:opacity-90 active:scale-[0.98] disabled:opacity-40">
+                        <RotateCcw size={13} /> {t.regenerate}
+                      </button>
+                    )}
+                  </div>
                 </div>
               )}
               {m.audioUrl && (
@@ -1103,15 +1170,23 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                   <div className="flex items-center gap-1.5 text-[12px] font-medium text-app-muted"><Music2 size={14} className="text-app-accent" /> {t.modeMusic}</div>
                   {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
                   <audio src={m.audioUrl} controls className="w-full" />
-                  <a
-                    href={m.audioUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    download
-                    className="inline-flex items-center gap-1.5 rounded-full bg-app-accent px-3.5 py-1.5 text-[12px] font-semibold text-app-bg shadow-sm transition-opacity hover:opacity-90 active:scale-[0.98]"
-                  >
-                    <Download size={13} /> {t.imgDownload}
-                  </a>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <a
+                      href={m.audioUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      download
+                      className="inline-flex items-center gap-1.5 rounded-full bg-app-accent px-3.5 py-1.5 text-[12px] font-semibold text-app-bg shadow-sm transition-opacity hover:opacity-90 active:scale-[0.98]"
+                    >
+                      <Download size={13} /> {t.imgDownload}
+                    </a>
+                    {m.regen && (
+                      <button type="button" onClick={() => void regenerate(m.regen!)} disabled={busy}
+                        className="inline-flex items-center gap-1.5 rounded-full bg-app-elevated px-3.5 py-1.5 text-[12px] font-semibold text-app-text ring-1 ring-app-border/15 transition-opacity hover:opacity-90 active:scale-[0.98] disabled:opacity-40">
+                        <RotateCcw size={13} /> {t.regenerate}
+                      </button>
+                    )}
+                  </div>
                 </div>
               )}
               {m.videoUrl && (
