@@ -290,6 +290,35 @@ const STARTERS: Record<Lang, { label: string; prompt: string; mode: 'chat' | 'im
   ],
 };
 
+// Downscale a data: image (longest side ≤ maxDim, JPEG) so an attached photo used as
+// an img2img reference stays well under the ~4.5MB function-body limit — a full-res
+// phone photo would otherwise 413. The output image is still generated at full tier;
+// the reference only guides identity/composition. Fail-open → the original.
+async function downscaleDataUrl(dataUrl: string, maxDim = 1280): Promise<string> {
+  if (typeof document === 'undefined' || !dataUrl.startsWith('data:')) return dataUrl;
+  try {
+    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const el = new Image();
+      el.onload = () => resolve(el);
+      el.onerror = reject;
+      el.src = dataUrl;
+    });
+    const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+    if (scale >= 1 && dataUrl.length < 3_000_000) return dataUrl; // already small enough
+    const w = Math.max(1, Math.round(img.width * scale));
+    const h = Math.max(1, Math.round(img.height * scale));
+    const canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return dataUrl;
+    ctx.drawImage(img, 0, 0, w, h);
+    return canvas.toDataURL('image/jpeg', 0.85);
+  } catch {
+    return dataUrl;
+  }
+}
+
 // Minimal Web Speech API shapes (not in the standard TS DOM lib) — enough to drive
 // LIVE dictation: interim + finalized transcripts stream in as the user speaks.
 interface SRAlternative { readonly transcript: string }
@@ -1018,19 +1047,22 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     // Image mode: an attached IMAGE becomes the img2img / EDIT source (the route hosts
     // it + feeds NanoBanana); a file/audio attachment instead falls through to the
     // multimodal chat branch (it can't be an image input).
-    const imgRef = mode === 'image' ? attachments.find((a) => isImage(a.mimeType))?.dataUrl : undefined;
+    const imgRefRaw = mode === 'image' ? attachments.find((a) => isImage(a.mimeType))?.dataUrl : undefined;
     const nonImageAttach = attachments.some((a) => !isImage(a.mimeType));
     if (mode === 'image' && text && !nonImageAttach) {
+      const isBatch = imgCount > 1;
+      // ×2 / ×4 → a grid; ×1 → one bubble. Push the user turn first (instant feedback).
+      setMessages((prev) => [...prev, { role: 'user', text, ...(attachments.length ? { medias: attachments } : {}) }, ...(isBatch ? [] : [{ role: 'assistant' as const, text: '' }])]);
+      setInput(''); setAttachments([]);
+      if (!isBatch) setBusy(true);
+      // Downscale a data: reference so a full-res photo never exceeds the body limit;
+      // an https reference (the "Edit" action) is used as-is.
+      const imgRef = imgRefRaw ? await downscaleDataUrl(imgRefRaw) : undefined;
       const imgSpec: ImageRegenSpec = { kind: 'image', prompt: text, quality: imgQuality, aspect: imgAspect, style: imgStyle, ...(imgRef ? { referenceImage: imgRef } : {}) };
-      // ×2 / ×4 → generate N variations in parallel into one result grid.
-      if (imgCount > 1) {
-        setMessages((prev) => [...prev, { role: 'user', text, ...(attachments.length ? { medias: attachments } : {}) }]);
-        setInput(''); setAttachments([]);
+      if (isBatch) {
         await runImageBatch(imgSpec, imgCount);
         return;
       }
-      setMessages((prev) => [...prev, { role: 'user', text, ...(attachments.length ? { medias: attachments } : {}) }, { role: 'assistant', text: '' }]);
-      setInput(''); setAttachments([]); setBusy(true);
       try {
         const res = await fetch('/api/nanobanana/image', {
           method: 'POST',
