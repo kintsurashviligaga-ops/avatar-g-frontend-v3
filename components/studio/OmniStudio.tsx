@@ -53,7 +53,7 @@ const COPY: Record<Lang, {
   modeVideo: string; videoPlaceholder: string; generatingVideo: string; videoFailed: string;
   modeLipsync: string; lipsyncPlaceholder: string; generatingLipsync: string; lipsyncFailed: string; lipsyncNeedFiles: string; lipsyncAuth: string; lipAudioLabel: string;
   stop: string; stopped: string; scrollDown: string; regenerate: string; elapsedHint: string; greeting: string; attachHint: string;
-  instrumental: string; withVocals: string; lyricsPlaceholder: string;
+  instrumental: string; withVocals: string; lyricsPlaceholder: string; coverMode: string; voiceMode: string; voiceLyricsPlaceholder: string;
   narration: string; narrationCue: string; transCrossfade: string; transCut: string;
   sbTitle: string; sbReview: string; sbGenerate: string; sbRegen: string; sbCancel: string; sbCreating: string; sbFailed: string; sbScene: string;
   charPhoto: string; charPhotoOn: string;
@@ -73,7 +73,7 @@ const COPY: Record<Lang, {
     modeLipsync: 'ლიფსინქი', lipsyncPlaceholder: 'მიამაგრე ვიდეო + აუდიო და დააჭირე გაგზავნას…',
     generatingLipsync: 'ტუჩები სინქრონდება…', lipsyncFailed: 'ლიფსინქი ვერ მოხერხდა.', lipsyncNeedFiles: 'მიამაგრე ვიდეოც და აუდიოც.', lipsyncAuth: 'ლიფსინქისთვის ჯერ გაიარე ავტორიზაცია.', lipAudioLabel: 'აუდიო',
     stop: 'შეჩერება', stopped: 'შეჩერდა', scrollDown: 'ბოლოში გადასვლა', regenerate: 'თავიდან გენერაცია', elapsedHint: 'გავიდა', greeting: 'რით დაგეხმარო?', attachHint: 'დამატება',
-    instrumental: 'ინსტრუმენტალი', withVocals: 'ვოკალით', lyricsPlaceholder: 'ლირიკა (არჩევითი) — შენი ტექსტი; ცარიელი = ავტომატური',
+    instrumental: 'ინსტრუმენტალი', withVocals: 'ვოკალით', lyricsPlaceholder: 'ლირიკა (არჩევითი) — შენი ტექსტი; ცარიელი = ავტომატური', coverMode: '🎵 ქავერი', voiceMode: '🎤 ჩემი ხმით', voiceLyricsPlaceholder: 'ლირიკა — რას იმღერებს შენი ხმა (ატვირთე ≥15წმ ხმა)',
     narration: 'ნარაცია', narrationCue: ' (პროფესიონალი კომენტატორის ხმოვანი ნარაციით)', transCrossfade: 'გადადნობა', transCut: 'კვეთა',
     sbTitle: 'სტორიბორდი', sbReview: 'გადახედე 6 სცენას — შეცვალე ტექსტი ან თავიდან დააგენერირე კადრი, შემდეგ გაუშვი ვიდეო', sbGenerate: 'ვიდეოს გენერაცია', sbRegen: 'თავიდან', sbCancel: 'გაუქმება', sbCreating: 'სცენარი და 6 კადრი იქმნება…', sbFailed: 'სტორიბორდი ვერ შეიქმნა. სცადე თავიდან.', sbScene: 'სცენა',
     charPhoto: 'პერსონაჟის ფოტო', charPhotoOn: 'პერსონაჟი ✓',
@@ -93,7 +93,7 @@ const COPY: Record<Lang, {
     modeLipsync: 'Lip-sync', lipsyncPlaceholder: 'Attach a video + audio, then press send…',
     generatingLipsync: 'Syncing the lips…', lipsyncFailed: 'Lip-sync failed.', lipsyncNeedFiles: 'Attach both a video and audio.', lipsyncAuth: 'Sign in first to use lip-sync.', lipAudioLabel: 'Audio',
     stop: 'Stop', stopped: 'Stopped', scrollDown: 'Scroll to bottom', regenerate: 'Regenerate', elapsedHint: 'elapsed', greeting: 'How can I help?', attachHint: 'Add',
-    instrumental: 'Instrumental', withVocals: 'Vocals', lyricsPlaceholder: 'Lyrics (optional) — your words; empty = auto-written',
+    instrumental: 'Instrumental', withVocals: 'Vocals', lyricsPlaceholder: 'Lyrics (optional) — your words; empty = auto-written', coverMode: '🎵 Cover', voiceMode: '🎤 My voice', voiceLyricsPlaceholder: 'Lyrics — what your voice will sing (upload ≥15s of voice)',
     narration: 'Narration', narrationCue: ' (with professional spoken voice-over narration)', transCrossfade: 'Crossfade', transCut: 'Cut',
     sbTitle: 'Storyboard', sbReview: 'Review the 6 scenes — edit a description or re-roll a frame, then generate', sbGenerate: 'Generate Video', sbRegen: 'Regenerate', sbCancel: 'Cancel', sbCreating: 'Creating storyboard & 6 frames…', sbFailed: 'Storyboard failed. Try again.', sbScene: 'Scene',
     charPhoto: 'Character photo', charPhotoOn: 'Character ✓',
@@ -113,7 +113,7 @@ const COPY: Record<Lang, {
     modeLipsync: 'Синхрон', lipsyncPlaceholder: 'Прикрепите видео + аудио и нажмите отправить…',
     generatingLipsync: 'Синхронизирую губы…', lipsyncFailed: 'Не удалось синхронизировать.', lipsyncNeedFiles: 'Прикрепите и видео, и аудио.', lipsyncAuth: 'Войдите, чтобы использовать синхронизацию.', lipAudioLabel: 'Аудио',
     stop: 'Стоп', stopped: 'Остановлено', scrollDown: 'Вниз', regenerate: 'Заново', elapsedHint: 'прошло', greeting: 'Чем помочь?', attachHint: 'Добавить',
-    instrumental: 'Инструментал', withVocals: 'Вокал', lyricsPlaceholder: 'Текст (необязательно) — ваши слова; пусто = авто',
+    instrumental: 'Инструментал', withVocals: 'Вокал', lyricsPlaceholder: 'Текст (необязательно) — ваши слова; пусто = авто', coverMode: '🎵 Кавер', voiceMode: '🎤 Мой голос', voiceLyricsPlaceholder: 'Текст — что споёт ваш голос (загрузите ≥15с голоса)',
     narration: 'Озвучка', narrationCue: ' (с профессиональной голосовой озвучкой)', transCrossfade: 'Плавно', transCut: 'Резко',
     sbTitle: 'Раскадровка', sbReview: 'Просмотрите 6 сцен — измените описание или кадр, затем сгенерируйте', sbGenerate: 'Сгенерировать видео', sbRegen: 'Заново', sbCancel: 'Отмена', sbCreating: 'Создаю раскадровку и 6 кадров…', sbFailed: 'Не удалось создать раскадровку. Попробуйте снова.', sbScene: 'Сцена',
     charPhoto: 'Фото персонажа', charPhotoOn: 'Персонаж ✓',
@@ -617,6 +617,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   const [musicGenre, setMusicGenre] = useState<string>('cinematic');
   // Custom lyrics for vocal tracks — empty means Udio writes the lyrics from the prompt.
   const [musicLyrics, setMusicLyrics] = useState('');
+  // With an audio attached in Music mode: 'cover' remixes its melody (MusicGen);
+  // 'voice' clones the uploaded VOICE and sings the lyrics in it (MiniMax music-01).
+  const [musicAudioMode, setMusicAudioMode] = useState<'cover' | 'voice'>('cover');
   const [videoOrientation, setVideoOrientation] = useState<'landscape' | 'vertical'>('landscape');
   const [videoStyle, setVideoStyle] = useState<string>('Cinematic');
   // PHASE 48 §2 — opt-in spoken commentator/narration. When on, a localized cue
@@ -1114,11 +1117,23 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       try {
         // Cover: upload the attached track to Supabase first (browser → storage), so
         // the request body stays tiny — the audio never hits the function-body limit.
-        const audioReferenceUrl = audioRef ? await uploadBigFile(audioRef, audioMime || 'audio/mpeg') : undefined;
+        const uploadedAudioUrl = audioRef ? await uploadBigFile(audioRef, audioMime || 'audio/mpeg') : undefined;
+        // Voice-clone path: the uploaded audio is the user's VOICE → MiniMax sings the
+        // lyrics in it. Otherwise the attached audio is a cover (melody) source.
+        const isVoiceClone = !!uploadedAudioUrl && musicAudioMode === 'voice';
         const res = await fetch('/api/ai/music', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ prompt: text, style: musicGenre, instrumental: musicInstrumental, ...(!musicInstrumental && musicLyrics.trim() ? { lyrics: musicLyrics.trim() } : {}), ...(audioReferenceUrl ? { audioReference: audioReferenceUrl } : {}) }),
+          body: JSON.stringify({
+            prompt: text,
+            style: musicGenre,
+            instrumental: isVoiceClone ? false : musicInstrumental,
+            // Lyrics ride along for vocal tracks AND voice clones (what to sing).
+            ...((isVoiceClone || !musicInstrumental) && musicLyrics.trim() ? { lyrics: musicLyrics.trim() } : {}),
+            ...(isVoiceClone
+              ? { voiceReference: uploadedAudioUrl }
+              : uploadedAudioUrl ? { audioReference: uploadedAudioUrl } : {}),
+          }),
           credentials: 'include',
           signal: ac.signal,
         });
@@ -1735,9 +1750,23 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             )}
             {mode === 'music' && (
               <>
-                <Chip active={musicInstrumental} onClick={() => setMusicInstrumental(true)}>{t.instrumental}</Chip>
-                <Chip active={!musicInstrumental} onClick={() => setMusicInstrumental(false)}>{t.withVocals}</Chip>
-                <span className="mx-0.5 h-4 w-px shrink-0 bg-app-border/15" />
+                {/* With a voice/audio attached, choose what to do with it: remix the
+                    melody (Cover) or sing the lyrics in that uploaded voice (My voice). */}
+                {attachments.some((a) => isAudio(a.mimeType)) && (
+                  <>
+                    <Chip active={musicAudioMode === 'cover'} onClick={() => setMusicAudioMode('cover')}>{t.coverMode}</Chip>
+                    <Chip active={musicAudioMode === 'voice'} onClick={() => setMusicAudioMode('voice')}>{t.voiceMode}</Chip>
+                    <span className="mx-0.5 h-4 w-px shrink-0 bg-app-border/15" />
+                  </>
+                )}
+                {/* Instrumental/Vocals is meaningless in voice-clone mode (it always sings). */}
+                {!(musicAudioMode === 'voice' && attachments.some((a) => isAudio(a.mimeType))) && (
+                  <>
+                    <Chip active={musicInstrumental} onClick={() => setMusicInstrumental(true)}>{t.instrumental}</Chip>
+                    <Chip active={!musicInstrumental} onClick={() => setMusicInstrumental(false)}>{t.withVocals}</Chip>
+                    <span className="mx-0.5 h-4 w-px shrink-0 bg-app-border/15" />
+                  </>
+                )}
                 {MUSIC_GENRES.map((g) => <Chip key={g} active={musicGenre === g} onClick={() => setMusicGenre(g)}>{g}</Chip>)}
               </>
             )}
@@ -1761,17 +1790,21 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           </div>
         )}
 
-        {/* Custom lyrics (vocals only) — the exact sung words; empty = Udio writes
-            the lyrics automatically from your prompt. */}
-        {mode === 'music' && !musicInstrumental && (
-          <textarea
-            value={musicLyrics}
-            onChange={(e) => setMusicLyrics(e.target.value)}
-            rows={2}
-            placeholder={t.lyricsPlaceholder}
-            className="mb-2 w-full resize-none rounded-xl bg-app-elevated/60 px-3 py-2 text-[13px] text-app-text outline-none transition-colors placeholder:text-app-muted/60 focus:bg-app-elevated"
-          />
-        )}
+        {/* Custom lyrics — the exact sung words. Shown for vocal tracks, and ALWAYS in
+            voice-clone mode (the lyrics are what your uploaded voice will sing). */}
+        {mode === 'music' && (() => {
+          const voiceClone = musicAudioMode === 'voice' && attachments.some((a) => isAudio(a.mimeType));
+          if (musicInstrumental && !voiceClone) return null;
+          return (
+            <textarea
+              value={musicLyrics}
+              onChange={(e) => setMusicLyrics(e.target.value)}
+              rows={2}
+              placeholder={voiceClone ? t.voiceLyricsPlaceholder : t.lyricsPlaceholder}
+              className="mb-2 w-full resize-none rounded-xl bg-app-elevated/60 px-3 py-2 text-[13px] text-app-text outline-none transition-colors placeholder:text-app-muted/60 focus:bg-app-elevated"
+            />
+          );
+        })()}
 
         {/* Attachment previews — up to MAX_ATTACHMENTS files / images / a video,
             each removable. They ride with the next message (text + files together). */}

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generateUdioTrack } from '@/lib/udio/client';
-import { generateMusicCover } from '@/lib/ai/replicate';
+import { generateMusicCover, generateVoiceSong } from '@/lib/ai/replicate';
 import { generateNanoBananaImage } from '@/lib/nanobanana/client';
 import { uploadAndSign, createSignedAssetUrl } from '@/lib/orchestrator/storage-adapter';
 import { authedClientFromRequest } from '@/lib/supabase/server';
@@ -78,8 +78,9 @@ export async function POST(req: NextRequest) {
   let makeInstrumental = true;
   let lyrics = '';
   let audioReference = '';
+  let voiceReference = '';
   try {
-    const body = (await req.json().catch(() => ({}))) as { prompt?: unknown; style?: unknown; instrumental?: unknown; lyrics?: unknown; audioReference?: unknown };
+    const body = (await req.json().catch(() => ({}))) as { prompt?: unknown; style?: unknown; instrumental?: unknown; lyrics?: unknown; audioReference?: unknown; voiceReference?: unknown };
     prompt = typeof body.prompt === 'string' ? body.prompt.trim() : '';
     if (typeof body.style === 'string' && body.style.trim()) style = body.style.trim();
     if (typeof body.instrumental === 'boolean') makeInstrumental = body.instrumental;
@@ -90,6 +91,9 @@ export async function POST(req: NextRequest) {
     // data: (small fallback) | https URL | storage path (browser-uploaded) — the
     // cover branch resolves each to a fetchable melody URL.
     if (typeof body.audioReference === 'string' && body.audioReference.trim()) audioReference = body.audioReference.trim();
+    // Voice clone: an uploaded sample of the USER'S voice (>15s, data:/https/path) →
+    // MiniMax sings the lyrics in that voice. Highest-priority branch below.
+    if (typeof body.voiceReference === 'string' && body.voiceReference.trim()) voiceReference = body.voiceReference.trim();
   } catch {
     /* malformed body → guard below */
   }
@@ -109,7 +113,22 @@ export async function POST(req: NextRequest) {
     // re-imagines it in the requested style (conditioned on the track's melody);
     // otherwise Udio composes a fresh track from the brief.
     let providerAudioUrl = '';
-    if (audioReference) {
+    if (voiceReference) {
+      // "Create a song in MY voice" — resolve the user's uploaded voice sample to an
+      // https URL (data: → host · https → use · path → sign the browser upload) and
+      // have MiniMax sing the lyrics in that voice (zero-shot, ## adds accompaniment).
+      const voiceUrl = voiceReference.startsWith('data:')
+        ? await hostAudioReference(voiceReference)
+        : /^https?:\/\//i.test(voiceReference)
+          ? voiceReference
+          : await createSignedAssetUrl(process.env.UPLOAD_BUCKET || 'uploads', voiceReference, 3600);
+      if (!voiceUrl) {
+        return NextResponse.json({ success: false, error: 'Could not process the voice file.' }, { status: 502 });
+      }
+      // Lyrics are what MiniMax sings; fall back to the brief if the user only gave a vibe.
+      const song = await generateVoiceSong(lyrics || capped, { voiceUrl });
+      providerAudioUrl = song.audioUrl;
+    } else if (audioReference) {
       // Resolve the melody to an https URL Replicate can fetch:
       //  • data:  → host it (small fallback)
       //  • https  → use directly
