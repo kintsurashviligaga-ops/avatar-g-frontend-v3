@@ -23,7 +23,10 @@ import 'server-only';
  * never returned to the client.
  */
 
-const WHISPER_MODEL = (process.env.VOICE_STT_REPLICATE_MODEL || 'openai/whisper').trim();
+// openai/whisper is a COMMUNITY model → the model-latest predictions endpoint
+// (/v1/models/{model}/predictions) returns 404, which silently broke the mic. Run a
+// pinned VERSION via /v1/predictions instead. Override per env if the version rotates.
+const WHISPER_VERSION = (process.env.VOICE_STT_REPLICATE_VERSION || '8099696689d249cf8b122d833c36ac3f75505c666a395ca40ef26f68e7d3d16e').trim();
 
 /** Whisper takes a full language NAME (or "auto"); map our BCP-47 mic codes. */
 const LANGUAGE_NAME: Record<string, string> = {
@@ -82,18 +85,19 @@ export async function transcribeWithReplicateWhisper(
   const dataUri = `data:${mt};base64,${audioBase64}`;
   const langName = LANGUAGE_NAME[language] || 'georgian';
 
-  // Create the prediction (model-latest endpoint — mirrors the video pipeline's
-  // `/v1/models/{model}/predictions` convention so auth + shape stay consistent).
+  // Create the prediction via /v1/predictions with the pinned version (the
+  // model-latest endpoint 404s for this community model). `model` is NOT a valid
+  // input for openai/whisper — passing it was part of the breakage.
   const createRes = await fetch(
-    `https://api.replicate.com/v1/models/${WHISPER_MODEL}/predictions`,
+    'https://api.replicate.com/v1/predictions',
     {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       cache: 'no-store',
       body: JSON.stringify({
+        version: WHISPER_VERSION,
         input: {
           audio: dataUri,
-          model: 'large-v3',
           language: langName,
           transcription: 'plain text',
           translate: false,
