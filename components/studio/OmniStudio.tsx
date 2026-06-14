@@ -1294,29 +1294,46 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       }
       const rec = chosen ? new MediaRecorder(stream, { mimeType: chosen }) : new MediaRecorder(stream);
       const chunks: Blob[] = [];
-      rec.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
-      rec.onstop = async () => {
-        setRecording(false);
-        streamRef.current?.getTracks().forEach((tr) => tr.stop());
+      const base = input ? `${input.trimEnd()} ` : '';
+      const extFor = (t: string) => /mp4/i.test(t) ? 'mp4' : /aac/i.test(t) ? 'm4a' : /mpeg|mp3/i.test(t) ? 'mp3' : /wav/i.test(t) ? 'wav' : 'webm';
+      let inFlight = false;
+      let stopped = false;
+      // Transcribe the audio captured SO FAR and STREAM the text into the composer —
+      // the accumulated blob (chunk[0] carries the container header) is a valid clip,
+      // so the text grows live as you speak instead of only appearing when you stop.
+      const transcribeSoFar = async () => {
+        if (inFlight) return;
         const type = rec.mimeType || chosen || 'audio/webm';
         const blob = new Blob(chunks, { type });
-        const ext = /mp4/i.test(type) ? 'mp4' : /aac/i.test(type) ? 'm4a' : /mpeg|mp3/i.test(type) ? 'mp3' : /wav/i.test(type) ? 'wav' : 'webm';
-        const fd = new FormData();
-        fd.append('audio', blob, `clip.${ext}`);
-        fd.append('language', lang);
+        if (blob.size < 1600) return;
+        inFlight = true;
         try {
+          const fd = new FormData();
+          fd.append('audio', blob, `clip.${extFor(type)}`);
+          fd.append('language', lang);
           const r = await fetch('/api/voice/transcribe', { method: 'POST', body: fd });
           const j = (await r.json().catch(() => ({}))) as { text?: string };
-          if (j.text) setInput((v) => (v ? `${v} ${j.text}` : j.text!));
+          if (j.text && j.text.trim()) setInput(base + j.text.trim());
         } catch { /* fail-soft */ }
+        inFlight = false;
+      };
+      rec.ondataavailable = (e) => { if (e.data.size) { chunks.push(e.data); if (!stopped) void transcribeSoFar(); } };
+      rec.onstop = async () => {
+        stopped = true;
+        setRecording(false);
+        streamRef.current?.getTracks().forEach((tr) => tr.stop());
+        // Wait out any in-flight request, then do one FINAL pass over the whole clip.
+        for (let i = 0; inFlight && i < 25; i++) await new Promise((r) => setTimeout(r, 200));
+        inFlight = false;
+        await transcribeSoFar();
       };
       recRef.current = rec;
-      rec.start();
+      rec.start(2500); // emit a chunk every 2.5s → progressive, streaming transcription
       setRecording(true);
     } catch {
       setRecording(false);
     }
-  }, [lang]);
+  }, [input, lang]);
 
   const toggleMic = useCallback(async () => {
     if (recording) {

@@ -28,11 +28,12 @@ import 'server-only';
 // pinned VERSION via /v1/predictions instead. Override per env if the version rotates.
 const WHISPER_VERSION = (process.env.VOICE_STT_REPLICATE_VERSION || '8099696689d249cf8b122d833c36ac3f75505c666a395ca40ef26f68e7d3d16e').trim();
 
-/** Whisper takes a full language NAME (or "auto"); map our BCP-47 mic codes. */
-const LANGUAGE_NAME: Record<string, string> = {
-  'ka-GE': 'georgian',
-  'en-US': 'english',
-  'ru-RU': 'russian',
+/** This openai/whisper version wants an ISO-639-1 CODE (or "auto"), NOT a full name
+ *  ("georgian" 422s) — map our BCP-47 mic locales to the 2-letter code. */
+const LANGUAGE_CODE: Record<string, string> = {
+  'ka-GE': 'ka',
+  'en-US': 'en',
+  'ru-RU': 'ru',
 };
 
 function replicateToken(): string {
@@ -83,7 +84,7 @@ export async function transcribeWithReplicateWhisper(
 
   const mt = mimeType || 'audio/webm';
   const dataUri = `data:${mt};base64,${audioBase64}`;
-  const langName = LANGUAGE_NAME[language] || 'georgian';
+  const langCode = LANGUAGE_CODE[language] || 'auto';
 
   // Create the prediction via /v1/predictions with the pinned version (the
   // model-latest endpoint 404s for this community model). `model` is NOT a valid
@@ -98,7 +99,7 @@ export async function transcribeWithReplicateWhisper(
         version: WHISPER_VERSION,
         input: {
           audio: dataUri,
-          language: langName,
+          language: langCode,
           transcription: 'plain text',
           translate: false,
           temperature: 0,
