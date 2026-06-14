@@ -13,7 +13,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Send, Mic, Square, Plus, X, Loader2, Sparkles, Film, Music2, FileText, Image as ImageIcon, Download, MessageSquare, Wand2, Volume2, Copy, Check, ChevronDown, RotateCcw, History, Trash2, MessageSquarePlus, Pencil } from 'lucide-react';
+import { Send, Mic, Square, Plus, X, Loader2, Sparkles, Film, Music2, FileText, Image as ImageIcon, Download, Upload, MessageSquare, Wand2, Volume2, Copy, Check, ChevronDown, RotateCcw, History, Trash2, MessageSquarePlus, Pencil } from 'lucide-react';
 import { driveFilmStudio } from '@/lib/chat/filmStudioClient';
 import { Markdown } from './Markdown';
 import { createBrowserClient } from '@/lib/supabase/browser';
@@ -53,7 +53,7 @@ const COPY: Record<Lang, {
   modeVideo: string; videoPlaceholder: string; generatingVideo: string; videoFailed: string;
   modeLipsync: string; lipsyncPlaceholder: string; generatingLipsync: string; lipsyncFailed: string; lipsyncNeedFiles: string; lipsyncAuth: string; lipAudioLabel: string;
   stop: string; stopped: string; scrollDown: string; regenerate: string; elapsedHint: string; greeting: string; attachHint: string;
-  instrumental: string; withVocals: string; lyricsPlaceholder: string; coverMode: string; voiceMode: string; voiceLyricsPlaceholder: string;
+  instrumental: string; withVocals: string; lyricsPlaceholder: string; coverMode: string; voiceMode: string; voiceLyricsPlaceholder: string; voiceSecTitle: string; voiceRec: string; voiceUp: string; voiceReady: string; voiceRecHint: string; need15: string;
   narration: string; narrationCue: string; transCrossfade: string; transCut: string;
   sbTitle: string; sbReview: string; sbGenerate: string; sbRegen: string; sbCancel: string; sbCreating: string; sbFailed: string; sbScene: string;
   charPhoto: string; charPhotoOn: string;
@@ -73,7 +73,7 @@ const COPY: Record<Lang, {
     modeLipsync: 'ლიფსინქი', lipsyncPlaceholder: 'მიამაგრე ვიდეო + აუდიო და დააჭირე გაგზავნას…',
     generatingLipsync: 'ტუჩები სინქრონდება…', lipsyncFailed: 'ლიფსინქი ვერ მოხერხდა.', lipsyncNeedFiles: 'მიამაგრე ვიდეოც და აუდიოც.', lipsyncAuth: 'ლიფსინქისთვის ჯერ გაიარე ავტორიზაცია.', lipAudioLabel: 'აუდიო',
     stop: 'შეჩერება', stopped: 'შეჩერდა', scrollDown: 'ბოლოში გადასვლა', regenerate: 'თავიდან გენერაცია', elapsedHint: 'გავიდა', greeting: 'რით დაგეხმარო?', attachHint: 'დამატება',
-    instrumental: 'ინსტრუმენტალი', withVocals: 'ვოკალით', lyricsPlaceholder: 'ლირიკა (არჩევითი) — შენი ტექსტი; ცარიელი = ავტომატური', coverMode: '🎵 ქავერი', voiceMode: '🎤 ჩემი ხმით', voiceLyricsPlaceholder: 'ლირიკა — რას იმღერებს შენი ხმა (ატვირთე ≥15წმ ხმა)',
+    instrumental: 'ინსტრუმენტალი', withVocals: 'ვოკალით', lyricsPlaceholder: 'ლირიკა (არჩევითი) — შენი ტექსტი; ცარიელი = ავტომატური', coverMode: '🎵 ქავერი', voiceMode: '🎤 ჩემი ხმით', voiceLyricsPlaceholder: 'ლირიკა — რას იმღერებს შენი ხმა (ატვირთე ≥15წმ ხმა)', voiceSecTitle: '🎤 შენი ხმა', voiceRec: 'ჩაწერა', voiceUp: 'ატვირთვა', voiceReady: 'ხმა მზადაა — აირჩიე „ჩემი ხმით"', voiceRecHint: 'ჩაიწერე ან ატვირთე ≥15წმ ხმა — სიმღერა შენი ვოკალით შეიქმნება', need15: '≥15წმ',
     narration: 'ნარაცია', narrationCue: ' (პროფესიონალი კომენტატორის ხმოვანი ნარაციით)', transCrossfade: 'გადადნობა', transCut: 'კვეთა',
     sbTitle: 'სტორიბორდი', sbReview: 'გადახედე 6 სცენას — შეცვალე ტექსტი ან თავიდან დააგენერირე კადრი, შემდეგ გაუშვი ვიდეო', sbGenerate: 'ვიდეოს გენერაცია', sbRegen: 'თავიდან', sbCancel: 'გაუქმება', sbCreating: 'სცენარი და 6 კადრი იქმნება…', sbFailed: 'სტორიბორდი ვერ შეიქმნა. სცადე თავიდან.', sbScene: 'სცენა',
     charPhoto: 'პერსონაჟის ფოტო', charPhotoOn: 'პერსონაჟი ✓',
@@ -93,7 +93,7 @@ const COPY: Record<Lang, {
     modeLipsync: 'Lip-sync', lipsyncPlaceholder: 'Attach a video + audio, then press send…',
     generatingLipsync: 'Syncing the lips…', lipsyncFailed: 'Lip-sync failed.', lipsyncNeedFiles: 'Attach both a video and audio.', lipsyncAuth: 'Sign in first to use lip-sync.', lipAudioLabel: 'Audio',
     stop: 'Stop', stopped: 'Stopped', scrollDown: 'Scroll to bottom', regenerate: 'Regenerate', elapsedHint: 'elapsed', greeting: 'How can I help?', attachHint: 'Add',
-    instrumental: 'Instrumental', withVocals: 'Vocals', lyricsPlaceholder: 'Lyrics (optional) — your words; empty = auto-written', coverMode: '🎵 Cover', voiceMode: '🎤 My voice', voiceLyricsPlaceholder: 'Lyrics — what your voice will sing (upload ≥15s of voice)',
+    instrumental: 'Instrumental', withVocals: 'Vocals', lyricsPlaceholder: 'Lyrics (optional) — your words; empty = auto-written', coverMode: '🎵 Cover', voiceMode: '🎤 My voice', voiceLyricsPlaceholder: 'Lyrics — what your voice will sing (upload ≥15s of voice)', voiceSecTitle: '🎤 Your voice', voiceRec: 'Record', voiceUp: 'Upload', voiceReady: 'Voice ready — pick “My voice”', voiceRecHint: 'Record or upload ≥15s of voice — the song is sung in your voice', need15: '≥15s',
     narration: 'Narration', narrationCue: ' (with professional spoken voice-over narration)', transCrossfade: 'Crossfade', transCut: 'Cut',
     sbTitle: 'Storyboard', sbReview: 'Review the 6 scenes — edit a description or re-roll a frame, then generate', sbGenerate: 'Generate Video', sbRegen: 'Regenerate', sbCancel: 'Cancel', sbCreating: 'Creating storyboard & 6 frames…', sbFailed: 'Storyboard failed. Try again.', sbScene: 'Scene',
     charPhoto: 'Character photo', charPhotoOn: 'Character ✓',
@@ -113,7 +113,7 @@ const COPY: Record<Lang, {
     modeLipsync: 'Синхрон', lipsyncPlaceholder: 'Прикрепите видео + аудио и нажмите отправить…',
     generatingLipsync: 'Синхронизирую губы…', lipsyncFailed: 'Не удалось синхронизировать.', lipsyncNeedFiles: 'Прикрепите и видео, и аудио.', lipsyncAuth: 'Войдите, чтобы использовать синхронизацию.', lipAudioLabel: 'Аудио',
     stop: 'Стоп', stopped: 'Остановлено', scrollDown: 'Вниз', regenerate: 'Заново', elapsedHint: 'прошло', greeting: 'Чем помочь?', attachHint: 'Добавить',
-    instrumental: 'Инструментал', withVocals: 'Вокал', lyricsPlaceholder: 'Текст (необязательно) — ваши слова; пусто = авто', coverMode: '🎵 Кавер', voiceMode: '🎤 Мой голос', voiceLyricsPlaceholder: 'Текст — что споёт ваш голос (загрузите ≥15с голоса)',
+    instrumental: 'Инструментал', withVocals: 'Вокал', lyricsPlaceholder: 'Текст (необязательно) — ваши слова; пусто = авто', coverMode: '🎵 Кавер', voiceMode: '🎤 Мой голос', voiceLyricsPlaceholder: 'Текст — что споёт ваш голос (загрузите ≥15с голоса)', voiceSecTitle: '🎤 Ваш голос', voiceRec: 'Запись', voiceUp: 'Загрузить', voiceReady: 'Голос готов — выберите «Мой голос»', voiceRecHint: 'Запишите или загрузите ≥15с голоса — песня будет спета вашим голосом', need15: '≥15с',
     narration: 'Озвучка', narrationCue: ' (с профессиональной голосовой озвучкой)', transCrossfade: 'Плавно', transCut: 'Резко',
     sbTitle: 'Раскадровка', sbReview: 'Просмотрите 6 сцен — измените описание или кадр, затем сгенерируйте', sbGenerate: 'Сгенерировать видео', sbRegen: 'Заново', sbCancel: 'Отмена', sbCreating: 'Создаю раскадровку и 6 кадров…', sbFailed: 'Не удалось создать раскадровку. Попробуйте снова.', sbScene: 'Сцена',
     charPhoto: 'Фото персонажа', charPhotoOn: 'Персонаж ✓',
@@ -583,6 +583,13 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   const fileRef = useRef<HTMLInputElement | null>(null);
   const recRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  // Voice-SAMPLE recorder (music "my voice") — kept fully separate from the chat
+  // dictation recorder above so the two never collide.
+  const voiceFileRef = useRef<HTMLInputElement | null>(null);
+  const voiceRecRef = useRef<MediaRecorder | null>(null);
+  const voiceStreamRef = useRef<MediaStream | null>(null);
+  const voiceChunksRef = useRef<Blob[]>([]);
+  const voiceTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   // Live speech-to-text (Web Speech API): the active recognizer + the text composed
   // so far (base = input when dictation started; final = accumulated finalized text).
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
@@ -620,6 +627,10 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // With an audio attached in Music mode: 'cover' remixes its melody (MusicGen);
   // 'voice' clones the uploaded VOICE and sings the lyrics in it (MiniMax music-01).
   const [musicAudioMode, setMusicAudioMode] = useState<'cover' | 'voice'>('cover');
+  // In-app voice-sample recorder for "sing in my voice" — separate from the chat
+  // dictation mic. Captures ≥15s of audio → added as the music voice reference.
+  const [voiceRecording, setVoiceRecording] = useState(false);
+  const [voiceRecSec, setVoiceRecSec] = useState(0);
   const [videoOrientation, setVideoOrientation] = useState<'landscape' | 'vertical'>('landscape');
   const [videoStyle, setVideoStyle] = useState<string>('Cinematic');
   // PHASE 48 §2 — opt-in spoken commentator/narration. When on, a localized cue
@@ -1206,6 +1217,12 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
 
   // Abort any in-flight request if the studio unmounts (e.g. New Chat remount).
   useEffect(() => () => { try { abortRef.current?.abort(); } catch { /* noop */ } try { recognitionRef.current?.stop(); } catch { /* noop */ } }, []);
+  // Release the voice-sample recorder (mic + timer) if the component unmounts mid-capture.
+  useEffect(() => () => {
+    if (voiceTimerRef.current) clearInterval(voiceTimerRef.current);
+    try { voiceRecRef.current?.stop(); } catch { /* noop */ }
+    voiceStreamRef.current?.getTracks().forEach((tr) => tr.stop());
+  }, []);
 
   // Magic Wand — rewrite the current textarea prompt into an AI-optimized version
   // IN PLACE (Section 7 / 8A). Fail-soft: the endpoint returns the original prompt
@@ -1292,6 +1309,53 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
 
   // Stop any in-flight read-aloud when the studio unmounts.
   useEffect(() => () => { try { ttsAudioRef.current?.pause(); } catch { /* noop */ } }, []);
+
+  // ── Voice SAMPLE for "sing in my voice" (music) ──────────────────────────────
+  // Add an audio blob/file as the music VOICE reference (replaces any prior audio),
+  // then default to "my voice" mode so the lyrics box appears.
+  const addVoiceMedia = useCallback((dataUrl: string, mimeType: string) => {
+    setAttachments((prev) => [...prev.filter((a) => !isAudio(a.mimeType)), { dataUrl, mimeType }].slice(-MAX_ATTACHMENTS));
+    setMusicAudioMode('voice');
+  }, []);
+
+  const stopVoiceRecording = useCallback(() => {
+    try { voiceRecRef.current?.stop(); } catch { /* noop */ }
+    if (voiceTimerRef.current) { clearInterval(voiceTimerRef.current); voiceTimerRef.current = null; }
+    voiceStreamRef.current?.getTracks().forEach((tr) => tr.stop());
+    voiceStreamRef.current = null;
+    setVoiceRecording(false);
+  }, []);
+
+  const startVoiceRecording = useCallback(async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      voiceStreamRef.current = stream;
+      const cands = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/aac'];
+      let mime = '';
+      for (const c of cands) { try { if (MediaRecorder.isTypeSupported(c)) { mime = c; break; } } catch { /* noop */ } }
+      const rec = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
+      voiceChunksRef.current = [];
+      rec.ondataavailable = (e) => { if (e.data.size) voiceChunksRef.current.push(e.data); };
+      rec.onstop = () => {
+        const type = rec.mimeType || mime || 'audio/webm';
+        const blob = new Blob(voiceChunksRef.current, { type });
+        const r = new FileReader();
+        r.onload = () => addVoiceMedia(String(r.result), type);
+        r.readAsDataURL(blob);
+      };
+      voiceRecRef.current = rec;
+      rec.start();
+      setVoiceRecSec(0);
+      setVoiceRecording(true);
+      voiceTimerRef.current = setInterval(() => setVoiceRecSec((s) => {
+        const n = s + 1;
+        if (n >= 60) stopVoiceRecording(); // cap at 60s
+        return n;
+      }), 1000);
+    } catch {
+      setVoiceRecording(false);
+    }
+  }, [addVoiceMedia, stopVoiceRecording]);
 
   // Record-and-transcribe (Whisper) — the RELIABLE path on iOS (the Web Speech API
   // doesn't work in the WKWebView app) and any browser without live recognition.
@@ -1789,6 +1853,53 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             )}
           </div>
         )}
+
+        {/* Voice sample for "sing in MY voice" — record ≥15s in-app or upload a clip.
+            Once captured it becomes the audio reference; the Cover ↔ My-voice toggle
+            (in the chips above) + the lyrics box then take over. */}
+        {mode === 'music' && (
+          <div className="mb-2 rounded-xl border border-app-accent/25 bg-app-accent/[0.05] p-3">
+            <div className="mb-1.5 flex items-center gap-1.5 text-[12px] font-semibold text-app-text">
+              <Mic size={13} className="text-app-accent" /> {t.voiceSecTitle}
+            </div>
+            {!attachments.some((a) => isAudio(a.mimeType)) ? (
+              voiceRecording ? (
+                <div className="flex items-center gap-2.5 rounded-lg bg-black/20 px-2.5 py-1.5">
+                  <button type="button" onClick={stopVoiceRecording} className="inline-flex items-center gap-1.5 rounded-full bg-white px-3 py-1 text-[12px] font-semibold text-slate-950">
+                    <Square size={11} fill="currentColor" /> {t.stop}
+                  </button>
+                  <span className="flex h-2 w-2 animate-pulse rounded-full bg-red-500" />
+                  <span className="font-mono text-[13px] tabular-nums text-app-text">{Math.floor(voiceRecSec / 60)}:{String(voiceRecSec % 60).padStart(2, '0')}</span>
+                  <span className={`ml-auto text-[11px] font-medium ${voiceRecSec >= 15 ? 'text-app-accent' : 'text-app-muted'}`}>{voiceRecSec >= 15 ? '✓' : t.need15}</span>
+                </div>
+              ) : (
+                <>
+                  <div className="flex items-center gap-2">
+                    <button type="button" onClick={startVoiceRecording} className="inline-flex items-center gap-1.5 rounded-full bg-red-500 px-3 py-1.5 text-[12px] font-semibold text-white transition-transform hover:scale-105 active:scale-95">
+                      <Mic size={13} /> {t.voiceRec}
+                    </button>
+                    <button type="button" onClick={() => voiceFileRef.current?.click()} className="inline-flex items-center gap-1.5 rounded-full border border-app-border/20 px-3 py-1.5 text-[12px] font-medium text-app-muted transition-colors hover:bg-app-elevated">
+                      <Upload size={13} /> {t.voiceUp}
+                    </button>
+                  </div>
+                  <p className="mt-1.5 text-[11px] leading-relaxed text-app-muted/70">{t.voiceRecHint}</p>
+                </>
+              )
+            ) : (
+              <div className="flex items-center gap-1.5 text-[12px] font-medium text-app-accent">
+                <Check size={13} /> {t.voiceReady}
+              </div>
+            )}
+          </div>
+        )}
+        {/* Audio-only input dedicated to the voice upload (separate from the generic +). */}
+        <input ref={voiceFileRef} type="file" accept="audio/*" className="hidden" onChange={(e) => {
+          const f = e.target.files?.[0]; e.target.value = '';
+          if (!f) return;
+          const r = new FileReader();
+          r.onload = () => addVoiceMedia(String(r.result), f.type || 'audio/mpeg');
+          r.readAsDataURL(f);
+        }} />
 
         {/* Custom lyrics — the exact sung words. Shown for vocal tracks, and ALWAYS in
             voice-clone mode (the lyrics are what your uploaded voice will sing). */}
