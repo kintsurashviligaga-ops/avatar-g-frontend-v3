@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generateUdioTrack } from '@/lib/udio/client';
 import { generateMusicCover } from '@/lib/ai/replicate';
+import { generateNanoBananaImage } from '@/lib/nanobanana/client';
 import { uploadAndSign, createSignedAssetUrl } from '@/lib/orchestrator/storage-adapter';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { recordCompletedAsset } from '@/lib/orchestrator/jobs';
@@ -40,6 +41,35 @@ async function hostAudioReference(dataUrl: string): Promise<string | null> {
   }
 }
 
+// Suno-style album cover art for a generated track — themed to the brief + genre, so
+// the visual matches the song. Square, text-free. Fail-open → null (no cover).
+async function generateCoverArt(songPrompt: string, style: string): Promise<string | null> {
+  try {
+    const coverPrompt = `Album cover art for a ${style || 'cinematic'} music track. Mood and theme: ${songPrompt.slice(0, 220)}. Evocative, atmospheric, striking, professional album artwork, square composition, high detail. NO text, no words, no letters, no captions, no logos.`;
+    const result = await generateNanoBananaImage({
+      prompt: coverPrompt,
+      endpoint: 'v2-1k',
+      aspectRatio: '1:1',
+      pollMaxAttempts: 70,
+      pollIntervalMs: 2500,
+    });
+    if (!result.url) return null;
+    // Re-host to a CSP-allowed Supabase URL (provider URL is temp + blocked by img-src).
+    const ac = new AbortController();
+    const to = setTimeout(() => ac.abort(), 20_000);
+    const r = await fetch(result.url, { signal: ac.signal }).finally(() => clearTimeout(to));
+    if (!r.ok) return result.url;
+    const ct = r.headers.get('content-type') || 'image/jpeg';
+    const ext = /png/i.test(ct) ? 'png' : /webp/i.test(ct) ? 'webp' : 'jpg';
+    const buf = Buffer.from(await r.arrayBuffer());
+    if (buf.byteLength > 18 * 1024 * 1024) return result.url;
+    const path = `omni-music-cover/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+    return (await uploadAndSign('uploads', path, buf.toString('base64'), ct, 604800)) || result.url;
+  } catch {
+    return null;
+  }
+}
+
 export async function POST(req: NextRequest) {
   let prompt = '';
   let style = 'cinematic';
@@ -69,6 +99,10 @@ export async function POST(req: NextRequest) {
   const capped = prompt.slice(0, 1000);
 
   try {
+    // Suno-style cover art — generated in PARALLEL with the track (it's the faster of
+    // the two, so it adds no latency) and themed to the song's brief + genre.
+    const coverArtPromise = generateCoverArt(capped, style);
+
     // COVER vs compose: with an uploaded reference track, REPLICATE MusicGen-melody
     // re-imagines it in the requested style (conditioned on the track's melody);
     // otherwise Udio composes a fresh track from the brief.
@@ -135,7 +169,9 @@ export async function POST(req: NextRequest) {
       /* fail-open */
     }
 
-    return NextResponse.json({ success: true, url: hostedUrl });
+    // The cover finished while the track generated — attach it for the result card.
+    const coverUrl = await coverArtPromise;
+    return NextResponse.json({ success: true, url: hostedUrl, ...(coverUrl ? { coverUrl } : {}) });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Music generation failed';
     // eslint-disable-next-line no-console

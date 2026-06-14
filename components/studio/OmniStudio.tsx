@@ -290,6 +290,22 @@ const STARTERS: Record<Lang, { label: string; prompt: string; mode: 'chat' | 'im
   ],
 };
 
+// Minimal Web Speech API shapes (not in the standard TS DOM lib) — enough to drive
+// LIVE dictation: interim + finalized transcripts stream in as the user speaks.
+interface SRAlternative { readonly transcript: string }
+interface SRResult { readonly isFinal: boolean; readonly length: number; readonly [i: number]: SRAlternative }
+interface SREvent { readonly resultIndex: number; readonly results: { readonly length: number; readonly [i: number]: SRResult } }
+interface SpeechRecognitionLike {
+  lang: string;
+  continuous: boolean;
+  interimResults: boolean;
+  onresult: ((e: SREvent) => void) | null;
+  onend: (() => void) | null;
+  onerror: (() => void) | null;
+  start: () => void;
+  stop: () => void;
+}
+
 interface Media { dataUrl: string; mimeType: string }
 // A one-click re-roll spec: enough to re-run the EXACT image/music generation that
 // produced a result (same prompt + settings → a fresh variation). Persisted with the
@@ -301,7 +317,7 @@ type RegenSpec = ImageRegenSpec | MusicRegenSpec;
 // fills in independently as its own parallel generation lands.
 interface BatchTile { status: 'pending' | 'done' | 'failed'; url?: string }
 interface ImageBatch { spec: ImageRegenSpec; tiles: BatchTile[] }
-interface Msg { role: 'user' | 'assistant'; text: string; medias?: Media[]; imageUrl?: string; audioUrl?: string; videoUrl?: string; storyboard?: { ordinal: number; beat?: string; frameUrl: string | null }[]; regen?: RegenSpec; batch?: ImageBatch }
+interface Msg { role: 'user' | 'assistant'; text: string; medias?: Media[]; imageUrl?: string; audioUrl?: string; coverUrl?: string; videoUrl?: string; storyboard?: { ordinal: number; beat?: string; frameUrl: string | null }[]; regen?: RegenSpec; batch?: ImageBatch }
 
 // Up to this many files/images (or one video) can ride along with a single message.
 const MAX_ATTACHMENTS = 5;
@@ -375,6 +391,7 @@ function leanMessages(messages: Msg[]): Msg[] {
       text: m.text,
       ...(m.imageUrl ? { imageUrl: m.imageUrl } : {}),
       ...(m.audioUrl ? { audioUrl: m.audioUrl } : {}),
+      ...(m.coverUrl ? { coverUrl: m.coverUrl } : {}),
       ...(m.videoUrl ? { videoUrl: m.videoUrl } : {}),
       ...(m.regen ? { regen: dropRef(m.regen) } : {}),
       ...(m.batch ? { batch: { tiles: m.batch.tiles, spec: dropRef(m.batch.spec) as ImageRegenSpec } } : {}),
@@ -537,6 +554,11 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   const fileRef = useRef<HTMLInputElement | null>(null);
   const recRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  // Live speech-to-text (Web Speech API): the active recognizer + the text composed
+  // so far (base = input when dictation started; final = accumulated finalized text).
+  const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
+  const sttBaseRef = useRef('');
+  const sttFinalRef = useRef('');
   const feedRef = useRef<HTMLDivElement | null>(null);
   const taRef = useRef<HTMLTextAreaElement | null>(null);
   // Stop / cancel plumbing. `abortRef` aborts the in-flight fetch; `genIdRef` is a
@@ -802,7 +824,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         credentials: 'include',
         signal: ac.signal,
       });
-      const j = (await res.json().catch(() => ({}))) as { success?: boolean; url?: string; error?: string };
+      const j = (await res.json().catch(() => ({}))) as { success?: boolean; url?: string; error?: string; coverUrl?: string };
       setMessages((prev) => {
         if (!mine()) return prev;
         const next = [...prev];
@@ -811,7 +833,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           next[next.length - 1] = j.success && j.url
             ? (spec.kind === 'image'
                 ? { role: 'assistant', text: '', imageUrl: j.url, regen: spec }
-                : { role: 'assistant', text: '', audioUrl: j.url, regen: spec })
+                : { role: 'assistant', text: '', audioUrl: j.url, ...(j.coverUrl ? { coverUrl: j.coverUrl } : {}), regen: spec })
             : { role: 'assistant', text: `⚠️ ${j.error || failMsg}` };
         }
         return next;
@@ -1014,7 +1036,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           credentials: 'include',
           signal: ac.signal,
         });
-        const j = (await res.json().catch(() => ({}))) as { success?: boolean; url?: string; error?: string };
+        const j = (await res.json().catch(() => ({}))) as { success?: boolean; url?: string; error?: string; coverUrl?: string };
         setMessages((prev) => {
           if (!mine()) return prev;
           const next = [...prev];
@@ -1065,7 +1087,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           credentials: 'include',
           signal: ac.signal,
         });
-        const j = (await res.json().catch(() => ({}))) as { success?: boolean; url?: string; error?: string };
+        const j = (await res.json().catch(() => ({}))) as { success?: boolean; url?: string; error?: string; coverUrl?: string };
         setMessages((prev) => {
           if (!mine()) return prev;
           const next = [...prev];
@@ -1073,7 +1095,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           if (last && last.role === 'assistant') {
             next[next.length - 1] =
               j.success && j.url
-                ? { role: 'assistant', text: '', audioUrl: j.url, regen: { kind: 'music', prompt: text, genre: musicGenre, instrumental: musicInstrumental, ...(!musicInstrumental && musicLyrics.trim() ? { lyrics: musicLyrics.trim() } : {}) } }
+                ? { role: 'assistant', text: '', audioUrl: j.url, ...(j.coverUrl ? { coverUrl: j.coverUrl } : {}), regen: { kind: 'music', prompt: text, genre: musicGenre, instrumental: musicInstrumental, ...(!musicInstrumental && musicLyrics.trim() ? { lyrics: musicLyrics.trim() } : {}) } }
                 : { role: 'assistant', text: `⚠️ ${j.error || t.musicFailed}` };
           }
           return next;
@@ -1223,9 +1245,48 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
 
   const toggleMic = useCallback(async () => {
     if (recording) {
-      recRef.current?.stop();
+      // Stop whichever recognizer is active (live recognizer or fallback recorder).
+      try { recognitionRef.current?.stop(); } catch { /* noop */ }
+      try { recRef.current?.stop(); } catch { /* noop */ }
       return;
     }
+
+    // 1) LIVE streaming dictation via the Web Speech API — interim + final transcripts
+    //    flow into the composer IN REAL TIME as you speak (no wait for you to finish).
+    const SR = (typeof window !== 'undefined'
+      ? ((window as unknown as { SpeechRecognition?: unknown; webkitSpeechRecognition?: unknown }).SpeechRecognition
+        ?? (window as unknown as { webkitSpeechRecognition?: unknown }).webkitSpeechRecognition)
+      : undefined) as (new () => SpeechRecognitionLike) | undefined;
+    if (SR) {
+      try {
+        const rec = new SR();
+        rec.lang = lang;
+        rec.continuous = true;
+        rec.interimResults = true;
+        sttBaseRef.current = input ? `${input.trimEnd()} ` : '';
+        sttFinalRef.current = '';
+        rec.onresult = (e: SREvent) => {
+          let interim = '';
+          for (let i = e.resultIndex; i < e.results.length; i++) {
+            const res = e.results[i]!;
+            const txt = res[0]?.transcript ?? '';
+            if (res.isFinal) sttFinalRef.current += txt;
+            else interim += txt;
+          }
+          setInput((sttBaseRef.current + sttFinalRef.current + interim).replace(/\s+/g, ' ').trimStart());
+        };
+        rec.onend = () => { setRecording(false); recognitionRef.current = null; };
+        rec.onerror = () => { setRecording(false); recognitionRef.current = null; };
+        recognitionRef.current = rec;
+        rec.start();
+        setRecording(true);
+        return;
+      } catch {
+        /* Web Speech unavailable/blocked → fall through to the recorder below. */
+      }
+    }
+
+    // 2) Fallback (no Web Speech API): record the whole clip, transcribe on stop.
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
@@ -1251,7 +1312,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     } catch {
       setRecording(false);
     }
-  }, [recording, lang]);
+  }, [recording, lang, input]);
 
   // Composer derived state: the active mode's icon/label for the inline selector,
   // and whether there's anything to send (drives the mic↔send swap).
@@ -1396,26 +1457,36 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 </div>
               )}
               {m.audioUrl && (
-                <div className="space-y-2 rounded-2xl bg-app-elevated/50 p-3">
-                  <div className="flex items-center gap-1.5 text-[12px] font-medium text-app-muted"><Music2 size={14} className="text-app-accent" /> {t.modeMusic}</div>
-                  {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
-                  <audio src={m.audioUrl} controls className="w-full" />
-                  <div className="flex flex-wrap items-center gap-2">
-                    <a
-                      href={m.audioUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      download
-                      className="inline-flex items-center gap-1.5 rounded-full bg-app-accent px-3.5 py-1.5 text-[12px] font-semibold text-app-bg shadow-sm transition-opacity hover:opacity-90 active:scale-[0.98]"
-                    >
-                      <Download size={13} /> {t.imgDownload}
-                    </a>
-                    {m.regen && (
-                      <button type="button" onClick={() => void regenerate(m.regen!)} disabled={busy}
-                        className="inline-flex items-center gap-1.5 rounded-full bg-app-elevated px-3.5 py-1.5 text-[12px] font-semibold text-app-text ring-1 ring-app-border/15 transition-opacity hover:opacity-90 active:scale-[0.98] disabled:opacity-40">
-                        <RotateCcw size={13} /> {t.regenerate}
-                      </button>
-                    )}
+                <div className="w-[min(82vw,360px)] overflow-hidden rounded-2xl bg-app-elevated/50">
+                  {/* Suno-style cover art — themed to the song; tap to enlarge. */}
+                  {m.coverUrl && (
+                    <button type="button" onClick={() => setLightbox(m.coverUrl!)} className="relative block w-full cursor-zoom-in" aria-label="open cover art">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={m.coverUrl} alt="cover art" className="aspect-square w-full object-cover" />
+                      <span className="absolute bottom-2 left-2 inline-flex items-center gap-1.5 rounded-full bg-black/55 px-2.5 py-1 text-[11px] font-medium text-white backdrop-blur"><Music2 size={12} /> {t.modeMusic}</span>
+                    </button>
+                  )}
+                  <div className="space-y-2 p-3">
+                    {!m.coverUrl && <div className="flex items-center gap-1.5 text-[12px] font-medium text-app-muted"><Music2 size={14} className="text-app-accent" /> {t.modeMusic}</div>}
+                    {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+                    <audio src={m.audioUrl} controls className="w-full" />
+                    <div className="flex flex-wrap items-center gap-2">
+                      <a
+                        href={m.audioUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        download
+                        className="inline-flex items-center gap-1.5 rounded-full bg-app-accent px-3.5 py-1.5 text-[12px] font-semibold text-app-bg shadow-sm transition-opacity hover:opacity-90 active:scale-[0.98]"
+                      >
+                        <Download size={13} /> {t.imgDownload}
+                      </a>
+                      {m.regen && (
+                        <button type="button" onClick={() => void regenerate(m.regen!)} disabled={busy}
+                          className="inline-flex items-center gap-1.5 rounded-full bg-app-elevated px-3.5 py-1.5 text-[12px] font-semibold text-app-text ring-1 ring-app-border/15 transition-opacity hover:opacity-90 active:scale-[0.98] disabled:opacity-40">
+                          <RotateCcw size={13} /> {t.regenerate}
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
               )}
