@@ -1122,8 +1122,13 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     const audioRef = mode === 'music' ? attachments.find((a) => isAudio(a.mimeType))?.dataUrl : undefined;
     const audioMime = mode === 'music' ? attachments.find((a) => isAudio(a.mimeType))?.mimeType : undefined;
     const musicBlocked = mode === 'music' && attachments.some((a) => !isAudio(a.mimeType));
-    if (mode === 'music' && text && !musicBlocked) {
-      setMessages((prev) => [...prev, { role: 'user', text, ...(attachments.length ? { medias: attachments } : {}) }, { role: 'assistant', text: '' }]);
+    // Generate music when there's a vibe typed OR a voice/cover attached — you should
+    // NOT have to type a prompt just to sing in your own voice (that was a dead end).
+    if (mode === 'music' && (text || audioRef) && !musicBlocked) {
+      // Always have a prompt for the API: the typed vibe, else the lyrics, else the genre.
+      const musicPrompt = text || musicLyrics.trim() || `${musicGenre} music`;
+      const userBubble = text || (audioRef ? `🎤 ${musicAudioMode === 'voice' ? t.voiceMode : t.coverMode}` : musicPrompt);
+      setMessages((prev) => [...prev, { role: 'user', text: userBubble, ...(attachments.length ? { medias: attachments } : {}) }, { role: 'assistant', text: '' }]);
       setInput(''); setAttachments([]); setBusy(true);
       try {
         // Cover: upload the attached track to Supabase first (browser → storage), so
@@ -1136,7 +1141,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            prompt: text,
+            prompt: musicPrompt,
             style: musicGenre,
             instrumental: isVoiceClone ? false : musicInstrumental,
             // Lyrics ride along for vocal tracks AND voice clones (what to sing).
@@ -1156,7 +1161,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           if (last && last.role === 'assistant') {
             next[next.length - 1] =
               j.success && j.url
-                ? { role: 'assistant', text: '', audioUrl: j.url, ...(j.coverUrl ? { coverUrl: j.coverUrl } : {}), regen: { kind: 'music', prompt: text, genre: musicGenre, instrumental: musicInstrumental, ...(!musicInstrumental && musicLyrics.trim() ? { lyrics: musicLyrics.trim() } : {}) } }
+                ? { role: 'assistant', text: '', audioUrl: j.url, ...(j.coverUrl ? { coverUrl: j.coverUrl } : {}), regen: { kind: 'music', prompt: musicPrompt, genre: musicGenre, instrumental: musicInstrumental, ...(!musicInstrumental && musicLyrics.trim() ? { lyrics: musicLyrics.trim() } : {}) } }
                 : { role: 'assistant', text: `⚠️ ${j.error || t.musicFailed}` };
           }
           return next;
@@ -1195,7 +1200,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     const userMsg: Msg = { role: 'user', text, ...(attachments.length ? { medias: attachments } : {}) };
     setInput(''); setAttachments([]);
     await streamChat([...messages, userMsg]);
-  }, [input, attachments, busy, messages, mode, locale, imgAspect, imgQuality, imgStyle, imgCount, runImageBatch, musicGenre, musicInstrumental, musicLyrics, videoOrientation, videoStyle, videoNarration, createStoryboard, streamChat, t.narrationCue, t.imageFailed, t.musicFailed]);
+  }, [input, attachments, busy, messages, mode, locale, imgAspect, imgQuality, imgStyle, imgCount, runImageBatch, musicGenre, musicInstrumental, musicLyrics, musicAudioMode, videoOrientation, videoStyle, videoNarration, createStoryboard, streamChat, t.narrationCue, t.imageFailed, t.musicFailed, t.voiceMode, t.coverMode]);
 
   // STOP — cancel the in-flight generation. Bumps the generation token (so every
   // pending finalizer no-ops), aborts the fetch, frees the composer, and converts

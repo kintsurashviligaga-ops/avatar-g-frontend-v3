@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generateUdioTrack } from '@/lib/udio/client';
 import { generateMusicCover, generateVoiceSong } from '@/lib/ai/replicate';
+import { transcodeVoiceToMp3 } from '@/lib/audio/transcode';
 import { generateNanoBananaImage } from '@/lib/nanobanana/client';
 import { uploadAndSign, createSignedAssetUrl } from '@/lib/orchestrator/storage-adapter';
 import { authedClientFromRequest } from '@/lib/supabase/server';
@@ -125,8 +126,12 @@ export async function POST(req: NextRequest) {
       if (!voiceUrl) {
         return NextResponse.json({ success: false, error: 'Could not process the voice file.' }, { status: 502 });
       }
+      // Normalize the clip to MP3 first — the browser records webm/mp4 and users upload
+      // m4a/ogg, none of which MiniMax reliably accepts ("doesn't generate"). Fail-open:
+      // if transcoding hiccups we still try the original (works when it was already wav/mp3).
+      const mp3Voice = await transcodeVoiceToMp3(voiceUrl);
       // Lyrics are what MiniMax sings; fall back to the brief if the user only gave a vibe.
-      const song = await generateVoiceSong(lyrics || capped, { voiceUrl });
+      const song = await generateVoiceSong(lyrics || capped, { voiceUrl: mp3Voice || voiceUrl });
       providerAudioUrl = song.audioUrl;
     } else if (audioReference) {
       // Resolve the melody to an https URL Replicate can fetch:
