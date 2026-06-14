@@ -1278,62 +1278,31 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // Stop any in-flight read-aloud when the studio unmounts.
   useEffect(() => () => { try { ttsAudioRef.current?.pause(); } catch { /* noop */ } }, []);
 
-  const toggleMic = useCallback(async () => {
-    if (recording) {
-      // Stop whichever recognizer is active (live recognizer or fallback recorder).
-      try { recognitionRef.current?.stop(); } catch { /* noop */ }
-      try { recRef.current?.stop(); } catch { /* noop */ }
-      return;
-    }
-
-    // 1) LIVE streaming dictation via the Web Speech API — interim + final transcripts
-    //    flow into the composer IN REAL TIME as you speak (no wait for you to finish).
-    const SR = (typeof window !== 'undefined'
-      ? ((window as unknown as { SpeechRecognition?: unknown; webkitSpeechRecognition?: unknown }).SpeechRecognition
-        ?? (window as unknown as { webkitSpeechRecognition?: unknown }).webkitSpeechRecognition)
-      : undefined) as (new () => SpeechRecognitionLike) | undefined;
-    if (SR) {
-      try {
-        const rec = new SR();
-        rec.lang = lang;
-        rec.continuous = true;
-        rec.interimResults = true;
-        sttBaseRef.current = input ? `${input.trimEnd()} ` : '';
-        sttFinalRef.current = '';
-        rec.onresult = (e: SREvent) => {
-          let interim = '';
-          for (let i = e.resultIndex; i < e.results.length; i++) {
-            const res = e.results[i]!;
-            const txt = res[0]?.transcript ?? '';
-            if (res.isFinal) sttFinalRef.current += txt;
-            else interim += txt;
-          }
-          setInput((sttBaseRef.current + sttFinalRef.current + interim).replace(/\s+/g, ' ').trimStart());
-        };
-        rec.onend = () => { setRecording(false); recognitionRef.current = null; };
-        rec.onerror = () => { setRecording(false); recognitionRef.current = null; };
-        recognitionRef.current = rec;
-        rec.start();
-        setRecording(true);
-        return;
-      } catch {
-        /* Web Speech unavailable/blocked → fall through to the recorder below. */
-      }
-    }
-
-    // 2) Fallback (no Web Speech API): record the whole clip, transcribe on stop.
+  // Record-and-transcribe (Whisper) — the RELIABLE path on iOS (the Web Speech API
+  // doesn't work in the WKWebView app) and any browser without live recognition.
+  // Records in a container the platform actually supports and labels the file with the
+  // MATCHING extension: iOS records mp4, NOT webm — a wrong extension makes Whisper
+  // reject the audio (a real cause of "the mic does nothing on mobile").
+  const startRecorderFallback = useCallback(async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
-      const rec = new MediaRecorder(stream);
+      const candidates = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/aac', 'audio/mpeg'];
+      let chosen = '';
+      for (const c of candidates) {
+        try { if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported(c)) { chosen = c; break; } } catch { /* noop */ }
+      }
+      const rec = chosen ? new MediaRecorder(stream, { mimeType: chosen }) : new MediaRecorder(stream);
       const chunks: Blob[] = [];
       rec.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
       rec.onstop = async () => {
         setRecording(false);
         streamRef.current?.getTracks().forEach((tr) => tr.stop());
-        const blob = new Blob(chunks, { type: rec.mimeType || 'audio/webm' });
+        const type = rec.mimeType || chosen || 'audio/webm';
+        const blob = new Blob(chunks, { type });
+        const ext = /mp4/i.test(type) ? 'mp4' : /aac/i.test(type) ? 'm4a' : /mpeg|mp3/i.test(type) ? 'mp3' : /wav/i.test(type) ? 'wav' : 'webm';
         const fd = new FormData();
-        fd.append('audio', blob, 'clip.webm');
+        fd.append('audio', blob, `clip.${ext}`);
         fd.append('language', lang);
         try {
           const r = await fetch('/api/voice/transcribe', { method: 'POST', body: fd });
@@ -1347,7 +1316,60 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     } catch {
       setRecording(false);
     }
-  }, [recording, lang, input]);
+  }, [lang]);
+
+  const toggleMic = useCallback(async () => {
+    if (recording) {
+      // Stop whichever recognizer is active (live recognizer or fallback recorder).
+      try { recognitionRef.current?.stop(); } catch { /* noop */ }
+      try { recRef.current?.stop(); } catch { /* noop */ }
+      return;
+    }
+    // iOS (Safari + the WKWebView app) doesn't reliably support the Web Speech API, so
+    // there we go straight to record-and-transcribe. Everywhere else: try LIVE Web
+    // Speech (real-time text) and fall back to the recorder if it errors at runtime.
+    const ua = typeof navigator !== 'undefined' ? navigator.userAgent : '';
+    const isIOS = /iPhone|iPad|iPod/i.test(ua) || (/Macintosh/i.test(ua) && typeof document !== 'undefined' && 'ontouchend' in document);
+    const SR = (typeof window !== 'undefined'
+      ? ((window as unknown as { SpeechRecognition?: unknown; webkitSpeechRecognition?: unknown }).SpeechRecognition
+        ?? (window as unknown as { webkitSpeechRecognition?: unknown }).webkitSpeechRecognition)
+      : undefined) as (new () => SpeechRecognitionLike) | undefined;
+    if (SR && !isIOS) {
+      try {
+        const rec = new SR();
+        rec.lang = lang;
+        rec.continuous = true;
+        rec.interimResults = true;
+        sttBaseRef.current = input ? `${input.trimEnd()} ` : '';
+        sttFinalRef.current = '';
+        let fellBack = false;
+        rec.onresult = (e: SREvent) => {
+          let interim = '';
+          for (let i = e.resultIndex; i < e.results.length; i++) {
+            const res = e.results[i]!;
+            const txt = res[0]?.transcript ?? '';
+            if (res.isFinal) sttFinalRef.current += txt;
+            else interim += txt;
+          }
+          setInput((sttBaseRef.current + sttFinalRef.current + interim).replace(/\s+/g, ' ').trimStart());
+        };
+        rec.onend = () => { setRecording(false); recognitionRef.current = null; };
+        // Runtime failure → drop to the recorder so the mic still works (once).
+        rec.onerror = () => {
+          recognitionRef.current = null;
+          setRecording(false);
+          if (!fellBack) { fellBack = true; void startRecorderFallback(); }
+        };
+        recognitionRef.current = rec;
+        rec.start();
+        setRecording(true);
+        return;
+      } catch {
+        /* fall through to the recorder */
+      }
+    }
+    await startRecorderFallback();
+  }, [recording, lang, input, startRecorderFallback]);
 
   // Composer derived state: the active mode's icon/label for the inline selector,
   // and whether there's anything to send (drives the mic↔send swap).
