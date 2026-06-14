@@ -79,7 +79,9 @@ export async function POST(req: NextRequest) {
     const endpoint    = (body.endpoint ?? QUALITY_ENDPOINT[quality] ?? 'v2-2k') as NanoBananaEndpoint;
     const styleLabel  = body.style ?? '';
     const styleSuffix = STYLE_SUFFIXES[styleLabel] ?? styleLabel;
-    const enriched    = styleSuffix ? `${prompt}, ${styleSuffix}` : prompt;
+    // A style brings its own quality descriptors; an un-styled ("Auto") prompt gets a
+    // light universal boost so every image is crisp + detailed, not flat.
+    const enriched    = styleSuffix ? `${prompt}, ${styleSuffix}` : `${prompt}, ultra detailed, sharp focus, professional quality`;
 
     // Img2img / edit — resolve the reference image to an https URL the provider
     // accepts: data: uploads are hosted to Supabase; https URLs (e.g. editing a

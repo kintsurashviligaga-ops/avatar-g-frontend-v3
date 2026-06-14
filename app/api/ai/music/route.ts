@@ -47,10 +47,12 @@ async function generateCoverArt(songPrompt: string, style: string): Promise<stri
   try {
     const coverPrompt = `Album cover art for a ${style || 'cinematic'} music track. Mood and theme: ${songPrompt.slice(0, 220)}. Evocative, atmospheric, striking, professional album artwork, square composition, high detail. NO text, no words, no letters, no captions, no logos.`;
     const result = await generateNanoBananaImage({
+      // 2K cover art — sharper album artwork. It runs in parallel with the (slower)
+      // track, so the extra ~13s still lands well before the song finishes.
       prompt: coverPrompt,
-      endpoint: 'v2-1k',
+      endpoint: 'v2-2k',
       aspectRatio: '1:1',
-      pollMaxAttempts: 70,
+      pollMaxAttempts: 90,
       pollIntervalMs: 2500,
     });
     if (!result.url) return null;

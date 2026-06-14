@@ -577,9 +577,10 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   const [modeMenuOpen, setModeMenuOpen] = useState(false);
   // Per-service generation options.
   const [imgAspect, setImgAspect] = useState<ImgAspect>('1:1');
-  // Default to the FAST, reliable 1K tier — live testing showed 2K/4K often
-  // out-run the provider poll window and time out. Users can opt into 2K/4K.
-  const [imgQuality, setImgQuality] = useState<ImgQuality>('standard');
+  // Default to the 2K tier for sharper, higher-fidelity output. The wider provider
+  // poll window now makes 2K reliable (~33s live) without the old timeouts; users can
+  // drop to 1K for speed or pick 4K for maximum detail.
+  const [imgQuality, setImgQuality] = useState<ImgQuality>('high');
   const [imgStyle, setImgStyle] = useState<string>('Auto');
   // ×1 / ×2 / ×4 — how many image variations to generate at once (the batch grid).
   const [imgCount, setImgCount] = useState<1 | 2 | 4>(1);
@@ -994,6 +995,8 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   const send = useCallback(async () => {
     const text = input.trim();
     if ((!text && attachments.length === 0) || busy) return;
+    // Stop any live dictation so the recognizer doesn't keep appending after send.
+    try { recognitionRef.current?.stop(); } catch { /* noop */ }
 
     // New generation token + abort controller. Every async finalizer below checks
     // `mine()` before mutating state, so Stop (which bumps the token + aborts) or a
@@ -1155,7 +1158,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   }, [t.stopped]);
 
   // Abort any in-flight request if the studio unmounts (e.g. New Chat remount).
-  useEffect(() => () => { try { abortRef.current?.abort(); } catch { /* noop */ } }, []);
+  useEffect(() => () => { try { abortRef.current?.abort(); } catch { /* noop */ } try { recognitionRef.current?.stop(); } catch { /* noop */ } }, []);
 
   // Magic Wand — rewrite the current textarea prompt into an AI-optimized version
   // IN PLACE (Section 7 / 8A). Fail-soft: the endpoint returns the original prompt
