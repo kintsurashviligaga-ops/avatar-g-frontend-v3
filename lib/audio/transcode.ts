@@ -38,8 +38,25 @@ export async function transcodeVoiceToMp3(sourceUrl: string): Promise<string | n
     const inPath = join(dir, 'in');
     const outPath = join(dir, 'out.mp3');
     await writeFile(inPath, buf);
-    // ffmpeg auto-detects the input container; output a clean mono 44.1kHz MP3.
-    await exec(bin, ['-y', '-i', inPath, '-ac', '1', '-ar', '44100', '-b:a', '192k', '-f', 'mp3', outPath], { timeout: 60_000 });
+    // Probe the clip's duration via ffmpeg's own stderr (ffmpeg-static ships no ffprobe).
+    let dur = 0;
+    try {
+      await exec(bin, ['-i', inPath], { timeout: 20_000 });
+    } catch (e) {
+      const m = String((e as { stderr?: string })?.stderr || '').match(/Duration:\s*(\d+):(\d+):([\d.]+)/);
+      if (m) dur = Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3]);
+    }
+    // MiniMax needs voice_file LONGER than 15s. Loop a short clip up to ~16s so even a
+    // brief recording/upload still clones; cap very long clips at 30s. ffmpeg auto-detects
+    // the input container; output is a clean mono 44.1kHz MP3.
+    const args = ['-y'];
+    const short = dur > 0 && dur < 15.5;
+    if (short) args.push('-stream_loop', String(Math.max(1, Math.ceil(18 / dur) - 1)));
+    args.push('-i', inPath, '-ac', '1', '-ar', '44100', '-b:a', '192k');
+    if (short) args.push('-t', '18');          // looped → cap to a clean ~18s
+    else if (dur > 30) args.push('-t', '30');  // very long → cap at 30s
+    args.push('-f', 'mp3', outPath);
+    await exec(bin, args, { timeout: 90_000 });
     const mp3 = await readFile(outPath);
     if (!mp3.byteLength) return null;
 
