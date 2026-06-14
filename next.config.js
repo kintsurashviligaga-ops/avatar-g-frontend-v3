@@ -48,6 +48,9 @@ const nextConfig = {
     outputFileTracingIncludes: {
       '/api/video/assemble': ['./node_modules/ffmpeg-static/**'],
       '/api/orchestrator/produce': ['./node_modules/ffmpeg-static/**'],
+      // Music voice-clone transcodes the uploaded voice to mp3 (+ loops short clips)
+      // via ffmpeg-static before MiniMax — its binary must ride along in this lambda too.
+      '/api/ai/music': ['./node_modules/ffmpeg-static/**'],
       // The runtime migration gate reads raw .sql by path at request time. Next
       // only bundles files it can statically trace, so without this the lambda's
       // /var/task has no supabase/migrations/*.sql (ENOENT on POST). Force-trace

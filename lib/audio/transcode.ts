@@ -38,25 +38,33 @@ export async function transcodeVoiceToMp3(sourceUrl: string): Promise<string | n
     const inPath = join(dir, 'in');
     const outPath = join(dir, 'out.mp3');
     await writeFile(inPath, buf);
-    // Probe the clip's duration via ffmpeg's own stderr (ffmpeg-static ships no ffprobe).
+    // Probe TRUE duration by decoding to null (ffmpeg-static ships no ffprobe, and the
+    // browser's MediaRecorder webm has NO duration in its header — so `-i` alone reports
+    // N/A. Decoding emits progress lines whose LAST `time=` is the real length).
+    const parseDur = (s: string): number => {
+      const all = [...s.matchAll(/time=\s*(\d+):(\d+):([\d.]+)/g)];
+      if (all.length) { const m = all[all.length - 1]!; return Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3]); }
+      const d = s.match(/Duration:\s*(\d+):(\d+):([\d.]+)/);
+      return d ? Number(d[1]) * 3600 + Number(d[2]) * 60 + Number(d[3]) : 0;
+    };
     let dur = 0;
     try {
-      await exec(bin, ['-i', inPath], { timeout: 20_000 });
+      const { stderr } = await exec(bin, ['-i', inPath, '-f', 'null', '-'], { timeout: 30_000, maxBuffer: 8 * 1024 * 1024 });
+      dur = parseDur(String(stderr || ''));
     } catch (e) {
-      const m = String((e as { stderr?: string })?.stderr || '').match(/Duration:\s*(\d+):(\d+):([\d.]+)/);
-      if (m) dur = Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3]);
+      dur = parseDur(String((e as { stderr?: string })?.stderr || ''));
     }
-    // MiniMax needs voice_file LONGER than 15s. Loop a short clip up to ~16s so even a
-    // brief recording/upload still clones; cap very long clips at 30s. ffmpeg auto-detects
-    // the input container; output is a clean mono 44.1kHz MP3.
+    // MiniMax needs the voice LONGER than 15s. Loop a short clip (or one whose length we
+    // couldn't read) up to a clean ~18s so even a brief recording still clones; otherwise
+    // cap very long clips at 30s. Output is a clean mono 44.1kHz MP3.
     const args = ['-y'];
-    const short = dur > 0 && dur < 15.5;
-    if (short) args.push('-stream_loop', String(Math.max(1, Math.ceil(18 / dur) - 1)));
+    const needsLoop = !(dur >= 15.5); // short OR unknown → loop past the 15s floor
+    if (needsLoop) args.push('-stream_loop', dur > 0 ? String(Math.ceil(18 / dur)) : '24');
     args.push('-i', inPath, '-ac', '1', '-ar', '44100', '-b:a', '192k');
-    if (short) args.push('-t', '18');          // looped → cap to a clean ~18s
-    else if (dur > 30) args.push('-t', '30');  // very long → cap at 30s
+    if (needsLoop) args.push('-t', '18');
+    else if (dur > 30) args.push('-t', '30');
     args.push('-f', 'mp3', outPath);
-    await exec(bin, args, { timeout: 90_000 });
+    await exec(bin, args, { timeout: 90_000, maxBuffer: 8 * 1024 * 1024 });
     const mp3 = await readFile(outPath);
     if (!mp3.byteLength) return null;
 
