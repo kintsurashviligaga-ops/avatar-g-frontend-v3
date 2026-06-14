@@ -1426,16 +1426,16 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       try { recRef.current?.stop(); } catch { /* noop */ }
       return;
     }
-    // iOS (Safari + the WKWebView app) doesn't reliably support the Web Speech API, so
-    // there we go straight to record-and-transcribe. Everywhere else: try LIVE Web
-    // Speech (real-time text) and fall back to the recorder if it errors at runtime.
-    const ua = typeof navigator !== 'undefined' ? navigator.userAgent : '';
-    const isIOS = /iPhone|iPad|iPod/i.test(ua) || (/Macintosh/i.test(ua) && typeof document !== 'undefined' && 'ontouchend' in document);
     const SR = (typeof window !== 'undefined'
       ? ((window as unknown as { SpeechRecognition?: unknown; webkitSpeechRecognition?: unknown }).SpeechRecognition
         ?? (window as unknown as { webkitSpeechRecognition?: unknown }).webkitSpeechRecognition)
       : undefined) as (new () => SpeechRecognitionLike) | undefined;
-    if (SR && !isIOS) {
+    // Try LIVE Web Speech FIRST on EVERY platform — it streams text as you talk and
+    // works in mobile Safari too (iOS 14.5+); the old code skipped it on iOS, which is
+    // exactly why "text doesn't appear until I stop". A 4s watchdog catches engines
+    // that "start" but never deliver (some in-app webviews) and drops to the
+    // record-and-transcribe fallback so the mic always does something.
+    if (SR) {
       try {
         const rec = new SR();
         rec.lang = lang;
@@ -1444,7 +1444,18 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         sttBaseRef.current = input ? `${input.trimEnd()} ` : '';
         sttFinalRef.current = '';
         let fellBack = false;
+        let gotResult = false;
+        const toRecorder = () => {
+          if (fellBack) return;
+          fellBack = true;
+          try { rec.stop(); } catch { /* noop */ }
+          recognitionRef.current = null;
+          void startRecorderFallback();
+        };
+        const watchdog = setTimeout(() => { if (!gotResult) toRecorder(); }, 4000);
         rec.onresult = (e: SREvent) => {
+          gotResult = true;
+          clearTimeout(watchdog);
           let interim = '';
           for (let i = e.resultIndex; i < e.results.length; i++) {
             const res = e.results[i]!;
@@ -1454,13 +1465,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           }
           setInput((sttBaseRef.current + sttFinalRef.current + interim).replace(/\s+/g, ' ').trimStart());
         };
-        rec.onend = () => { setRecording(false); recognitionRef.current = null; };
-        // Runtime failure → drop to the recorder so the mic still works (once).
-        rec.onerror = () => {
-          recognitionRef.current = null;
-          setRecording(false);
-          if (!fellBack) { fellBack = true; void startRecorderFallback(); }
-        };
+        rec.onend = () => { clearTimeout(watchdog); recognitionRef.current = null; if (!fellBack) setRecording(false); };
+        // No text yet + an error (incl. the silent webview case) → record-and-transcribe.
+        rec.onerror = () => { clearTimeout(watchdog); if (!gotResult) toRecorder(); else { recognitionRef.current = null; setRecording(false); } };
         recognitionRef.current = rec;
         rec.start();
         setRecording(true);
