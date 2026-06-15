@@ -21,12 +21,15 @@ import 'server-only';
  * env-overridable if the model is updated or swapped.
  */
 
-// `owner/name` (label/diagnostics only) + the pinned version actually dispatched.
-const LIPSYNC_MODEL = (process.env.LIPSYNC_REPLICATE_MODEL || 'devxpy/cog-wav2lip').trim();
-const LIPSYNC_VERSION = (process.env.LIPSYNC_REPLICATE_VERSION || '8d65e3f4f4298520e079198b493c25adfc43c058ffec924f2aefc8010ed25eef').trim();
-// Wav2Lip input field names differ slightly between forks; keep them overridable.
-const FACE_FIELD = (process.env.LIPSYNC_FACE_FIELD || 'face').trim();
-const AUDIO_FIELD = (process.env.LIPSYNC_AUDIO_FIELD || 'audio').trim();
+// SadTalker (image + audio → talking head). Switched from devxpy/cog-wav2lip, whose
+// Replicate container stopped booting (predictions stuck in "starting" indefinitely
+// → every lip-sync silently timed out). SadTalker is purpose-built for the talking
+// PHOTO/character case and boots reliably. Model/version/fields are env-overridable.
+const LIPSYNC_MODEL = (process.env.LIPSYNC_REPLICATE_MODEL || 'lucataco/sadtalker').trim();
+const LIPSYNC_VERSION = (process.env.LIPSYNC_REPLICATE_VERSION || '85c698db7c0a66d5011435d0191db323034e1da04b912a6d365833141b6a285b').trim();
+// SadTalker fields: source_image + driven_audio (was face/audio on wav2lip).
+const FACE_FIELD = (process.env.LIPSYNC_FACE_FIELD || 'source_image').trim();
+const AUDIO_FIELD = (process.env.LIPSYNC_AUDIO_FIELD || 'driven_audio').trim();
 
 interface ReplicatePrediction {
   id?: string;
@@ -73,21 +76,18 @@ function extractUrl(output: unknown): string {
  * failure (the caller keeps the original master). Bounded so it never hangs the
  * request beyond the route budget.
  */
-export async function lipsyncVideo(videoUrl: string, audioUrl: string, resizeFactor = 1): Promise<string | null> {
+export async function lipsyncVideo(videoUrl: string, audioUrl: string, _resizeFactor = 1): Promise<string | null> {
   const key = token();
   if (!key || !videoUrl || !audioUrl) return null;
-
-  // `resize_factor` divides the processing resolution → roughly factor² faster. A
-  // 30s 1080p FILM master at factor 1 overruns the budget (~3.5 min), so the film
-  // pass passes 2 (≈4× faster, 540p talking cut). Short clips/photos keep factor 1.
-  const rf = Math.max(1, Math.min(3, Math.round(resizeFactor) || 1));
 
   try {
     const createRes = await fetch(`https://api.replicate.com/v1/predictions`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
       cache: 'no-store',
-      body: JSON.stringify({ version: LIPSYNC_VERSION, input: { [FACE_FIELD]: videoUrl, [AUDIO_FIELD]: audioUrl, resize_factor: rf } }),
+      // SadTalker: source_image + driven_audio → talking head. `still:true` keeps the
+      // head motion subtle/stable; `preprocess:full` retains the whole framing.
+      body: JSON.stringify({ version: LIPSYNC_VERSION, input: { [FACE_FIELD]: videoUrl, [AUDIO_FIELD]: audioUrl, still: true, preprocess: 'full' } }),
       signal: AbortSignal.timeout(20_000),
     });
     if (!createRes.ok) return null;
@@ -97,7 +97,7 @@ export async function lipsyncVideo(videoUrl: string, audioUrl: string, resizeFac
     if (!pollUrl) return null;
 
     // Bounded poll budget (leaves ~40s of the 300s route for the Supabase re-host).
-    const deadline = Date.now() + 255_000;
+    const deadline = Date.now() + 230_000;
     while (pred.status !== 'succeeded' && pred.status !== 'failed' && pred.status !== 'canceled') {
       if (Date.now() > deadline) return null;
       await new Promise((r) => setTimeout(r, 2500));
