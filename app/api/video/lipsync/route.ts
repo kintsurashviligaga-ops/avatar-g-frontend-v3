@@ -54,7 +54,7 @@ export async function GET(req: NextRequest) {
   const id = req.nextUrl.searchParams.get('id');
   if (!id) return NextResponse.json(lipsyncStatus());
 
-  const { status, url } = await lipsyncFetch(id);
+  const { status, url, error } = await lipsyncFetch(id);
   if (status === 'succeeded' && url) {
     // Re-host the talking video to a stable Supabase URL (the provider URL expires ~1h).
     let hosted = url;
@@ -75,7 +75,7 @@ export async function GET(req: NextRequest) {
     }
     return NextResponse.json({ done: true, url: hosted });
   }
-  if (status === 'failed' || status === 'canceled') return NextResponse.json({ done: true, url: null });
+  if (status === 'failed' || status === 'canceled') return NextResponse.json({ done: true, url: null, error });
   return NextResponse.json({ done: false });
 }
 

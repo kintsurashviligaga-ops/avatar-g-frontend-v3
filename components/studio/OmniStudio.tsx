@@ -1286,12 +1286,13 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         const startJson = (await startRes.json().catch(() => ({}))) as { jobId?: string | null };
         if (!startJson.jobId) throw new Error('start failed');
         let resultUrl: string | null = null;
-        for (let i = 0; i < 60; i++) { // ~6 min max (60 × 6s) — each poll is a quick request
+        let resultErr: string | null = null;
+        for (let i = 0; i < 80; i++) { // ~8 min max — 'full' preprocess can run longer; each poll is quick
           if (!mine()) return;
           await new Promise((r) => setTimeout(r, 6000));
           const pollRes = await fetch(`/api/video/lipsync?id=${encodeURIComponent(startJson.jobId)}`, { credentials: 'include', signal: ac.signal });
-          const pj = (await pollRes.json().catch(() => ({}))) as { done?: boolean; url?: string | null };
-          if (pj.done) { resultUrl = pj.url ?? null; break; }
+          const pj = (await pollRes.json().catch(() => ({}))) as { done?: boolean; url?: string | null; error?: string | null };
+          if (pj.done) { resultUrl = pj.url ?? null; resultErr = pj.error ?? null; break; }
         }
         setMessages((prev) => {
           if (!mine()) return prev;
@@ -1300,7 +1301,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           if (last && last.role === 'assistant') {
             next[next.length - 1] = resultUrl
               ? { role: 'assistant', text: '', videoUrl: resultUrl }
-              : { role: 'assistant', text: `⚠️ ${t.lipsyncFailed}` };
+              : { role: 'assistant', text: `⚠️ ${t.lipsyncFailed}${resultErr ? `\n\n\`${resultErr.slice(0, 200)}\`` : ''}` };
           }
           return next;
         });
