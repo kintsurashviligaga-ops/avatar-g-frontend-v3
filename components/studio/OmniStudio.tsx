@@ -348,7 +348,7 @@ type RegenSpec = ImageRegenSpec | MusicRegenSpec;
 // fills in independently as its own parallel generation lands.
 interface BatchTile { status: 'pending' | 'done' | 'failed'; url?: string }
 interface ImageBatch { spec: ImageRegenSpec; tiles: BatchTile[] }
-interface Msg { role: 'user' | 'assistant'; text: string; medias?: Media[]; imageUrl?: string; audioUrl?: string; coverUrl?: string; videoUrl?: string; storyboard?: { ordinal: number; beat?: string; frameUrl: string | null }[]; regen?: RegenSpec; batch?: ImageBatch }
+interface Msg { role: 'user' | 'assistant'; text: string; medias?: Media[]; imageUrl?: string; audioUrl?: string; coverUrl?: string; videoUrl?: string; videoProgress?: number; storyboard?: { ordinal: number; beat?: string; frameUrl: string | null }[]; regen?: RegenSpec; batch?: ImageBatch }
 
 // Up to this many files/images (or one video) can ride along with a single message.
 const MAX_ATTACHMENTS = 5;
@@ -761,12 +761,27 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         locale,
         signal: ac.signal,
         onProgress: (p) => {
-          const status = p.message?.trim() || t.generatingVideo;
+          // Build a real progress %: scenes ready / total during the long render phase,
+          // plus clear staged labels — so the ~5-7 min wait shows movement, not a wall.
+          const cs = p.matrix?.clips ?? [];
+          const ready = cs.filter((c) => c.status === 'succeeded').length;
+          const total = p.matrix?.sceneCount || cs.length || 6;
+          const pct = p.phase === 'assembled' ? 100
+            : p.phase === 'stitching' ? 90
+            : p.phase === 'rendering' ? Math.min(85, 25 + Math.round((ready / Math.max(1, total)) * 55))
+            : p.phase === 'dispatching' ? 12 : 6;
+          const status = p.phase === 'rendering'
+            ? `🎬 ${locale === 'en' ? 'Rendering scenes' : locale === 'ru' ? 'Рендер сцен' : 'სცენების რენდერი'} ${ready}/${total}`
+            : p.phase === 'stitching'
+              ? `🎞 ${locale === 'en' ? 'Editing + adding music & narration' : locale === 'ru' ? 'Монтаж + музыка и озвучка' : 'მონტაჟი + მუსიკა და ნარაცია'}`
+              : p.phase === 'dispatching'
+                ? `✨ ${locale === 'en' ? 'Preparing the scenes' : locale === 'ru' ? 'Подготовка сцен' : 'სცენების მომზადება'}`
+                : (p.message?.trim() || t.generatingVideo);
           setMessages((prev) => {
             if (!mine()) return prev;
             const next = [...prev];
             const last = next[next.length - 1];
-            if (last && last.role === 'assistant' && !last.videoUrl) next[next.length - 1] = { ...last, text: status };
+            if (last && last.role === 'assistant' && !last.videoUrl) next[next.length - 1] = { ...last, text: status, videoProgress: pct };
             return next;
           });
         },
@@ -1789,7 +1804,16 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 // Assistant replies render as rich markdown (bold · lists · code ·
                 // links · tables); the user's own text stays verbatim.
                 return m.role === 'assistant'
-                  ? <Markdown>{m.text}</Markdown>
+                  ? (
+                    <>
+                      {typeof m.videoProgress === 'number' && !m.videoUrl && (
+                        <div className="mb-2 h-1.5 w-[min(80vw,340px)] overflow-hidden rounded-full bg-app-border/20">
+                          <div className="h-full rounded-full bg-app-accent transition-[width] duration-700 ease-out" style={{ width: `${Math.max(4, m.videoProgress)}%` }} />
+                        </div>
+                      )}
+                      <Markdown>{m.text}</Markdown>
+                    </>
+                  )
                   : <span className="whitespace-pre-wrap">{m.text}</span>;
               })()}
               {/* Edit a user turn → re-run the chat from here (drops later turns). */}
