@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { uploadAndSign, createSignedAssetUrl } from '@/lib/orchestrator/storage-adapter';
 import { prepareDatasetZip, startRvcTraining, pollRvcPrediction, rehostModel, rvcNameFor } from '@/lib/audio/rvc';
-import { saveTrainingJob, getLatestTraining, markTrainingDone, markTrainingFailed } from '@/lib/audio/voiceModel';
+import { saveTrainingJob, getLatestTraining, markTrainingDone, markTrainingFailed, DEMO_VOICE_USER_ID } from '@/lib/audio/voiceModel';
 
 /**
  * Train (and check) a personal RVC voice model.
@@ -32,7 +32,8 @@ async function hostVoiceData(dataUrl: string): Promise<string | null> {
 
 export async function POST(req: NextRequest) {
   const { user } = await authedClientFromRequest(req);
-  if (!user) return NextResponse.json({ success: false, error: 'Sign in to train your voice.' }, { status: 401 });
+  // No sign-in required to TEST — fall back to a shared demo identity.
+  const userId = user?.id ?? DEMO_VOICE_USER_ID;
 
   const body = (await req.json().catch(() => ({}))) as { voiceReference?: unknown };
   const voiceRef = typeof body.voiceReference === 'string' ? body.voiceReference.trim() : '';
@@ -45,22 +46,22 @@ export async function POST(req: NextRequest) {
       : await createSignedAssetUrl(process.env.UPLOAD_BUCKET || 'uploads', voiceRef, 3600);
   if (!voiceUrl) return NextResponse.json({ success: false, error: 'Could not read the voice file.' }, { status: 502 });
 
-  const name = rvcNameFor(user.id);
+  const name = rvcNameFor(userId);
   const datasetUrl = await prepareDatasetZip(voiceUrl, name);
   if (!datasetUrl) return NextResponse.json({ success: false, error: 'Could not prepare the voice dataset (try a longer, clearer clip).' }, { status: 502 });
 
   const predictionId = await startRvcTraining(datasetUrl, 20);
   if (!predictionId) return NextResponse.json({ success: false, error: 'Could not start training.' }, { status: 502 });
 
-  await saveTrainingJob(user.id, predictionId, name);
+  await saveTrainingJob(userId, predictionId, name);
   return NextResponse.json({ success: true, jobId: predictionId, status: 'processing' });
 }
 
 export async function GET(req: NextRequest) {
   const { user } = await authedClientFromRequest(req);
-  if (!user) return NextResponse.json({ status: 'none' }, { status: 401 });
+  const userId = user?.id ?? DEMO_VOICE_USER_ID;
 
-  const job = await getLatestTraining(user.id);
+  const job = await getLatestTraining(userId);
   if (!job) return NextResponse.json({ status: 'none' });
   if (job.status === 'completed') return NextResponse.json({ status: 'completed', name: job.name });
   if (job.status === 'failed') return NextResponse.json({ status: 'failed' });

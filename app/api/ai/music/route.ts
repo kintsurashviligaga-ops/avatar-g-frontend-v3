@@ -3,7 +3,7 @@ import { generateUdioTrack } from '@/lib/udio/client';
 import { generateMusicCover, generateVoiceSong } from '@/lib/ai/replicate';
 import { transcodeVoiceToMp3 } from '@/lib/audio/transcode';
 import { convertSongWithRvc } from '@/lib/audio/rvc';
-import { getUserVoiceModel } from '@/lib/audio/voiceModel';
+import { getUserVoiceModel, DEMO_VOICE_USER_ID } from '@/lib/audio/voiceModel';
 import { generateNanoBananaImage } from '@/lib/nanobanana/client';
 import { uploadAndSign, createSignedAssetUrl } from '@/lib/orchestrator/storage-adapter';
 import { authedClientFromRequest } from '@/lib/supabase/server';
@@ -119,7 +119,7 @@ export async function POST(req: NextRequest) {
     // re-imagines it in the requested style (conditioned on the track's melody);
     // otherwise Udio composes a fresh track from the brief.
     let providerAudioUrl = '';
-    const trainedModel = useMyVoice ? await (async () => { try { const { user } = await authedClientFromRequest(req); return user ? await getUserVoiceModel(user.id) : null; } catch { return null; } })() : null;
+    const trainedModel = useMyVoice ? await (async () => { try { const { user } = await authedClientFromRequest(req); return await getUserVoiceModel(user?.id ?? DEMO_VOICE_USER_ID); } catch { return null; } })() : null;
     if (trainedModel) {
       // FAITHFUL "sing in my voice": Udio composes a song WITH vocals (it needs no
       // reference, unlike MiniMax), then realistic-voice-cloning swaps those vocals for

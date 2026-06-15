@@ -11,6 +11,14 @@ import { createServiceRoleClient } from '@/lib/supabase/server';
 
 const TABLE = 'generation_jobs';
 
+/**
+ * Shared "demo" identity for UNAUTHENTICATED voice training/singing — lets anyone
+ * test the feature without signing in (the founder asked to drop the sign-in gate).
+ * It's a real auth.users row so the generation_jobs FK holds. Anonymous testers
+ * share this one trained model. Re-gate by removing the fallbacks if abuse appears.
+ */
+export const DEMO_VOICE_USER_ID = '91b0d818-0cf5-4c9c-85c6-2218d27a39c0';
+
 function sb() {
   try { return createServiceRoleClient(); } catch { return null; }
 }
