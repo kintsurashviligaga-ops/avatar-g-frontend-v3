@@ -15,7 +15,7 @@
  *   { url: string | null }
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { lipsyncVideo, hasLipsyncProvider, lipsyncStatus } from '@/lib/ai/lipsync';
+import { lipsyncCreate, lipsyncFetch, hasLipsyncProvider, lipsyncStatus } from '@/lib/ai/lipsync';
 import { textToHostedSpeech } from '@/lib/chat/filmVoiceover';
 import { convertSongWithRvc } from '@/lib/audio/rvc';
 import { getUserVoiceModel, DEMO_VOICE_USER_ID } from '@/lib/audio/voiceModel';
@@ -45,35 +45,61 @@ export const runtime = 'nodejs';
 export const maxDuration = 300; // Wav2Lip on a 30s 1080p master needs headroom
 
 /**
- * GET — names-only readiness probe ({ ready, model, faceField, audioField }) so the
- * lipsync wiring is verifiable without spending a render. No secret is ever
- * returned. The toggle hits exactly this model (devxpy/cog-wav2lip by default,
- * overridable via LIPSYNC_REPLICATE_MODEL).
+ * GET — without ?id: names-only readiness probe. With ?id=<predictionId>: poll that
+ * lip-sync job ONCE → { done, url } when finished (re-hosted to Supabase), or
+ * { done:false } while still rendering. This short-request polling is what makes the
+ * ~150s SadTalker render survive mobile networks (a single long fetch gets dropped).
  */
-export async function GET() {
-  return NextResponse.json(lipsyncStatus());
+export async function GET(req: NextRequest) {
+  const id = req.nextUrl.searchParams.get('id');
+  if (!id) return NextResponse.json(lipsyncStatus());
+
+  const { status, url } = await lipsyncFetch(id);
+  if (status === 'succeeded' && url) {
+    // Re-host the talking video to a stable Supabase URL (the provider URL expires ~1h).
+    let hosted = url;
+    try {
+      const ac = new AbortController();
+      const to = setTimeout(() => ac.abort(), 30_000);
+      const r = await fetch(url, { signal: ac.signal }).finally(() => clearTimeout(to));
+      if (r.ok) {
+        const buf = Buffer.from(await r.arrayBuffer());
+        if (buf.byteLength && buf.byteLength <= 80 * 1024 * 1024) {
+          const path = `lipsync/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.mp4`;
+          const signed = await uploadAndSign('uploads', path, buf.toString('base64'), 'video/mp4', 604_800);
+          if (signed) hosted = signed;
+        }
+      }
+    } catch {
+      /* fail-open — keep the provider URL */
+    }
+    return NextResponse.json({ done: true, url: hosted });
+  }
+  if (status === 'failed' || status === 'canceled') return NextResponse.json({ done: true, url: null });
+  return NextResponse.json({ done: false });
 }
 
+/**
+ * POST — START a lip-sync job (async). Speaks the typed text (ElevenLabs, optionally
+ * the user's trained RVC voice), dispatches SadTalker, and returns { jobId } fast. The
+ * client polls GET ?id=jobId. Synchronous rendering was dropping on mobile (~150s).
+ */
 export async function POST(req: NextRequest) {
-  if (!hasLipsyncProvider()) return NextResponse.json({ url: null });
+  if (!hasLipsyncProvider()) return NextResponse.json({ jobId: null });
 
-  let body: { videoUrl?: unknown; audioUrl?: unknown; text?: unknown; useMyVoice?: unknown; resizeFactor?: unknown };
+  let body: { videoUrl?: unknown; audioUrl?: unknown; text?: unknown; useMyVoice?: unknown };
   try {
     body = (await req.json()) as typeof body;
   } catch {
-    return NextResponse.json({ url: null });
+    return NextResponse.json({ jobId: null });
   }
 
-  // Resolve the face video (external https, internal https, OR a bare upload path)
-  // to a provider-fetchable URL. audioUrl defaults to the video's own track.
+  // Resolve the face image (external https, internal https, OR a bare upload path).
   const videoUrl = await resolveMedia(body.videoUrl);
-  if (!videoUrl) {
-    return NextResponse.json({ url: null });
-  }
+  if (!videoUrl) return NextResponse.json({ jobId: null });
   let audioUrl: string = (await resolveMedia(body.audioUrl)) ?? videoUrl;
 
-  // "Dub from text": type a script → speak it (ElevenLabs) → optionally re-voice it in
-  // the user's TRAINED voice (RVC) → that becomes the audio the lips are keyed to.
+  // "Speak this text": type a script → ElevenLabs → optionally the user's TRAINED voice.
   const text = typeof body.text === 'string' ? body.text.trim().slice(0, 1200) : '';
   if (text) {
     const ttsUrl = await textToHostedSpeech(text);
@@ -94,27 +120,6 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const resizeFactor = typeof body.resizeFactor === 'number' ? body.resizeFactor : 1;
-  const url = await lipsyncVideo(videoUrl, audioUrl, resizeFactor);
-  if (!url) return NextResponse.json({ url: null });
-
-  // Re-host the Wav2Lip output to a stable Supabase URL — the provider URL expires in
-  // ~1h, so a saved talking video would otherwise break. Fail-open → provider URL.
-  let hosted = url;
-  try {
-    const ac = new AbortController();
-    const to = setTimeout(() => ac.abort(), 30_000);
-    const r = await fetch(url, { signal: ac.signal }).finally(() => clearTimeout(to));
-    if (r.ok) {
-      const buf = Buffer.from(await r.arrayBuffer());
-      if (buf.byteLength && buf.byteLength <= 80 * 1024 * 1024) {
-        const path = `lipsync/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.mp4`;
-        const signed = await uploadAndSign('uploads', path, buf.toString('base64'), 'video/mp4', 604_800);
-        if (signed) hosted = signed;
-      }
-    }
-  } catch {
-    /* fail-open — keep the provider URL */
-  }
-  return NextResponse.json({ url: hosted });
+  const jobId = await lipsyncCreate(videoUrl, audioUrl);
+  return NextResponse.json({ jobId });
 }

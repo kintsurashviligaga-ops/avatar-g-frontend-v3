@@ -1269,7 +1269,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         const videoUrl = await uploadBigFile(faceAtt.dataUrl, faceAtt.mimeType);
         if (!videoUrl) throw new Error('upload failed');
         const audioUrl = audioAtt ? await uploadBigFile(audioAtt.dataUrl, audioAtt.mimeType) : undefined;
-        const res = await fetch('/api/video/lipsync', {
+        // START the job (returns fast), then poll in SHORT requests — a single ~150s
+        // fetch gets dropped on mobile networks, so we never hold one long connection.
+        const startRes = await fetch('/api/video/lipsync', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -1281,14 +1283,23 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           credentials: 'include',
           signal: ac.signal,
         });
-        const j = (await res.json().catch(() => ({}))) as { url?: string | null };
+        const startJson = (await startRes.json().catch(() => ({}))) as { jobId?: string | null };
+        if (!startJson.jobId) throw new Error('start failed');
+        let resultUrl: string | null = null;
+        for (let i = 0; i < 60; i++) { // ~6 min max (60 × 6s) — each poll is a quick request
+          if (!mine()) return;
+          await new Promise((r) => setTimeout(r, 6000));
+          const pollRes = await fetch(`/api/video/lipsync?id=${encodeURIComponent(startJson.jobId)}`, { credentials: 'include', signal: ac.signal });
+          const pj = (await pollRes.json().catch(() => ({}))) as { done?: boolean; url?: string | null };
+          if (pj.done) { resultUrl = pj.url ?? null; break; }
+        }
         setMessages((prev) => {
           if (!mine()) return prev;
           const next = [...prev];
           const last = next[next.length - 1];
           if (last && last.role === 'assistant') {
-            next[next.length - 1] = j.url
-              ? { role: 'assistant', text: '', videoUrl: j.url }
+            next[next.length - 1] = resultUrl
+              ? { role: 'assistant', text: '', videoUrl: resultUrl }
               : { role: 'assistant', text: `⚠️ ${t.lipsyncFailed}` };
           }
           return next;

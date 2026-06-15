@@ -117,3 +117,47 @@ export async function lipsyncVideo(videoUrl: string, audioUrl: string, _resizeFa
     return null; // FAIL-OPEN — the caller keeps the original master
   }
 }
+
+/**
+ * ASYNC start: create the prediction and return its ID immediately (no polling). The
+ * client then polls /api/video/lipsync?id=… in SHORT requests — a single ~150s
+ * synchronous fetch gets dropped on mobile networks (the "lip-sync doesn't do it" bug).
+ */
+export async function lipsyncCreate(videoUrl: string, audioUrl: string): Promise<string | null> {
+  const key = token();
+  if (!key || !videoUrl || !audioUrl) return null;
+  try {
+    const res = await fetch(`https://api.replicate.com/v1/predictions`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+      cache: 'no-store',
+      body: JSON.stringify({ version: LIPSYNC_VERSION, input: { [FACE_FIELD]: videoUrl, [AUDIO_FIELD]: audioUrl } }),
+      signal: AbortSignal.timeout(20_000),
+    });
+    if (!res.ok) return null;
+    const pred = (await res.json().catch(() => ({}))) as ReplicatePrediction;
+    return pred.id || null;
+  } catch {
+    return null;
+  }
+}
+
+/** Poll a prediction ONCE → its status + (when succeeded) the output URL. */
+export async function lipsyncFetch(predictionId: string): Promise<{ status: string; url: string | null }> {
+  const key = token();
+  if (!key || !predictionId) return { status: 'failed', url: null };
+  try {
+    const res = await fetch(`https://api.replicate.com/v1/predictions/${encodeURIComponent(predictionId)}`, {
+      headers: { Authorization: `Bearer ${key}` },
+      cache: 'no-store',
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!res.ok) return { status: 'processing', url: null };
+    const pred = (await res.json().catch(() => ({}))) as ReplicatePrediction;
+    const status = pred.status || 'processing';
+    const url = status === 'succeeded' ? (extractUrl(pred.output).trim() || null) : null;
+    return { status, url };
+  } catch {
+    return { status: 'processing', url: null };
+  }
+}
