@@ -72,7 +72,7 @@ const COPY: Record<Lang, {
     generatingMusic: 'მუსიკა იქმნება… (1–3 წუთი)', musicFailed: 'მუსიკის გენერაცია ვერ მოხერხდა. სცადე თავიდან.', lyricsBlocked: '⚠️ ლირიკა დაიბლოკა (საავტორო უფლებები). შეცვალე სიტყვები ან დააჭირე „✨ ლირიკა დამიწერე".',
     modeVideo: 'ვიდეო', videoPlaceholder: 'აღწერე 30-წამიანი ვიდეო (ფოტო — პერსონაჟისთვის)…',
     generatingVideo: 'ვიდეო იქმნება… 6 სცენა + მონტაჟი (~5–7 წუთი, დაელოდე)', videoFailed: 'ვიდეოს გენერაცია ვერ მოხერხდა.', generatingMyVoice: '🎵 სიმღერა იქმნება შენი ხმით… (~2–3 წუთი, დაელოდე)', myVoiceCreate: 'ჩემი ხმით შექმნა', myVoiceLyricsPh: 'დაწერე ლირიკა — რას იმღერებს შენი ხმა', myVoiceReady: 'შენი ხმა მზადაა — დაწერე ლირიკა და შექმენი', writeLyricsBtn: '✨ ლირიკა დამიწერე', upscaleBtn: '⬆ HD გადიდება', upscaling: '🔍 ვადიდებ HD-მდე…', upscaleFailed: 'გადიდება ვერ მოხერხდა.',
-    modeLipsync: 'ლიფსინქი', lipsyncPlaceholder: 'მიამაგრე ვიდეო + აუდიო და დააჭირე გაგზავნას…',
+    modeLipsync: 'ლიფსინქი', lipsyncPlaceholder: 'მიამაგრე ვიდეო + ჩაწერე ტექსტი — პერსონაჟი ალაპარაკდება ლიფსინქით…',
     generatingLipsync: 'ტუჩები სინქრონდება…', lipsyncFailed: 'ლიფსინქი ვერ მოხერხდა.', lipsyncNeedFiles: 'მიამაგრე ვიდეოც და აუდიოც.', lipsyncAuth: 'ლიფსინქისთვის ჯერ გაიარე ავტორიზაცია.', lipAudioLabel: 'აუდიო',
     stop: 'შეჩერება', stopped: 'შეჩერდა', scrollDown: 'ბოლოში გადასვლა', regenerate: 'თავიდან გენერაცია', elapsedHint: 'გავიდა', greeting: 'რით დაგეხმარო?', attachHint: 'დამატება',
     instrumental: 'ინსტრუმენტალი', withVocals: 'ვოკალით', lyricsPlaceholder: 'ლირიკა (არჩევითი) — შენი ტექსტი; ცარიელი = ავტომატური', coverMode: '🎵 ქავერი', voiceMode: '🎤 ჩემი ხმით', voiceLyricsPlaceholder: 'ლირიკა — რას იმღერებს შენი ხმა (ატვირთე ≥15წმ ხმა)', voiceSecTitle: '🎤 შენი ხმა', voiceRec: 'ჩაწერა', voiceUp: 'ატვირთვა', voiceReady: 'ხმა მზადაა — აირჩიე „ჩემი ხმით"', voiceRecHint: 'ჩაიწერე ან ატვირთე ≥15წმ ხმა — სიმღერა შენი ვოკალით შეიქმნება', need15: '≥15წმ',
@@ -92,7 +92,7 @@ const COPY: Record<Lang, {
     generatingMusic: 'Composing music… (1–3 min)', musicFailed: 'Music generation failed. Try again.', lyricsBlocked: '⚠️ Lyrics were blocked (copyright). Change the words or tap "✨ Write lyrics".',
     modeVideo: 'Video', videoPlaceholder: 'Describe a 30-second video (attach a photo for the character)…',
     generatingVideo: 'Producing video… 6 scenes + montage (~5–7 min, please wait)', videoFailed: 'Video generation failed.', generatingMyVoice: '🎵 Creating a song in your voice… (~2–3 min, please wait)', myVoiceCreate: 'Create with my voice', myVoiceLyricsPh: 'Write lyrics — what your voice will sing', myVoiceReady: 'Your voice is ready — write lyrics and create', writeLyricsBtn: '✨ Write lyrics', upscaleBtn: '⬆ HD upscale', upscaling: '🔍 Upscaling to HD…', upscaleFailed: 'Upscale failed.',
-    modeLipsync: 'Lip-sync', lipsyncPlaceholder: 'Attach a video + audio, then press send…',
+    modeLipsync: 'Lip-sync', lipsyncPlaceholder: 'Attach a video + type a script — the character speaks it, lip-synced…',
     generatingLipsync: 'Syncing the lips…', lipsyncFailed: 'Lip-sync failed.', lipsyncNeedFiles: 'Attach both a video and audio.', lipsyncAuth: 'Sign in first to use lip-sync.', lipAudioLabel: 'Audio',
     stop: 'Stop', stopped: 'Stopped', scrollDown: 'Scroll to bottom', regenerate: 'Regenerate', elapsedHint: 'elapsed', greeting: 'How can I help?', attachHint: 'Add',
     instrumental: 'Instrumental', withVocals: 'Vocals', lyricsPlaceholder: 'Lyrics (optional) — your words; empty = auto-written', coverMode: '🎵 Cover', voiceMode: '🎤 My voice', voiceLyricsPlaceholder: 'Lyrics — what your voice will sing (upload ≥15s of voice)', voiceSecTitle: '🎤 Your voice', voiceRec: 'Record', voiceUp: 'Upload', voiceReady: 'Voice ready — pick “My voice”', voiceRecHint: 'Record or upload ≥15s of voice — the song is sung in your voice', need15: '≥15s',
@@ -112,7 +112,7 @@ const COPY: Record<Lang, {
     generatingMusic: 'Создаю музыку… (1–3 мин)', musicFailed: 'Не удалось создать музыку. Попробуйте снова.', lyricsBlocked: '⚠️ Текст заблокирован (авторские права). Измените слова или нажмите «✨ Написать текст».',
     modeVideo: 'Видео', videoPlaceholder: 'Опишите 30-секундное видео (фото — для персонажа)…',
     generatingVideo: 'Создаю видео… 6 сцен + монтаж (~5–7 мин, подождите)', videoFailed: 'Не удалось создать видео.', generatingMyVoice: '🎵 Создаю песню вашим голосом… (~2–3 мин, подождите)', myVoiceCreate: 'Создать моим голосом', myVoiceLyricsPh: 'Напишите текст — что споёт ваш голос', myVoiceReady: 'Ваш голос готов — напишите текст и создайте', writeLyricsBtn: '✨ Написать текст', upscaleBtn: '⬆ HD увеличить', upscaling: '🔍 Увеличиваю до HD…', upscaleFailed: 'Не удалось увеличить.',
-    modeLipsync: 'Синхрон', lipsyncPlaceholder: 'Прикрепите видео + аудио и нажмите отправить…',
+    modeLipsync: 'Синхрон', lipsyncPlaceholder: 'Прикрепите видео + введите текст — персонаж произнесёт его с синхроном губ…',
     generatingLipsync: 'Синхронизирую губы…', lipsyncFailed: 'Не удалось синхронизировать.', lipsyncNeedFiles: 'Прикрепите и видео, и аудио.', lipsyncAuth: 'Войдите, чтобы использовать синхронизацию.', lipAudioLabel: 'Аудио',
     stop: 'Стоп', stopped: 'Остановлено', scrollDown: 'Вниз', regenerate: 'Заново', elapsedHint: 'прошло', greeting: 'Чем помочь?', attachHint: 'Добавить',
     instrumental: 'Инструментал', withVocals: 'Вокал', lyricsPlaceholder: 'Текст (необязательно) — ваши слова; пусто = авто', coverMode: '🎵 Кавер', voiceMode: '🎤 Мой голос', voiceLyricsPlaceholder: 'Текст — что споёт ваш голос (загрузите ≥15с голоса)', voiceSecTitle: '🎤 Ваш голос', voiceRec: 'Запись', voiceUp: 'Загрузить', voiceReady: 'Голос готов — выберите «Мой голос»', voiceRecHint: 'Запишите или загрузите ≥15с голоса — песня будет спета вашим голосом', need15: '≥15с',
@@ -241,6 +241,7 @@ const MODES = [
   { id: 'image', Icon: ImageIcon, key: 'modeImage' },
   { id: 'music', Icon: Music2, key: 'modeMusic' },
   { id: 'video', Icon: Film, key: 'modeVideo' },
+  { id: 'lipsync', Icon: Volume2, key: 'modeLipsync' },
 ] as const;
 
 // ── Per-service options (real backend capabilities) ──────────────────────────
@@ -573,7 +574,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // 'music' → Udio track; 'video' → the 30-second film pipeline. Every generative
   // service lives in this ONE chatbox — the prompt becomes a brand-new asset
   // (image / track / film) rendered inline in the feed.
-  const [mode, setMode] = useState<'chat' | 'image' | 'music' | 'video'>('chat');
+  const [mode, setMode] = useState<'chat' | 'image' | 'music' | 'video' | 'lipsync'>('chat');
   // Full-screen image lightbox — holds the URL of the tapped picture (generated or
   // attached). null = closed. Tap a chat image to open; backdrop / X / Esc closes.
   const [lightbox, setLightbox] = useState<string | null>(null);
@@ -652,6 +653,8 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   const [videoNarration, setVideoNarration] = useState(false);
   // Narrate the film in the user's TRAINED voice (RVC) — needs a trained model.
   const [videoMyVoiceNarration, setVideoMyVoiceNarration] = useState(false);
+  // Lip-sync "dub from text" → speak the typed script in the user's TRAINED voice (RVC).
+  const [lipMyVoice, setLipMyVoice] = useState(false);
   // Scene-to-scene transition in the final stitch: soft crossfade or hard cut.
   const [videoTransition, setVideoTransition] = useState<'crossfade' | 'cut'>('crossfade');
   // Storyboard preview gate (Video mode): the planned scenes + frames the user
@@ -1231,11 +1234,67 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       return;
     }
 
+    // ── LIP-SYNC / DUB FROM TEXT ───────────────────────────────────────────────
+    // Attach a video → type a script → it's spoken (ElevenLabs, optionally re-voiced in
+    // the user's TRAINED voice via RVC) → Wav2Lip keys the character's lips to that
+    // audio. A direct audio attachment also works (skips TTS). One long request → the
+    // synced master, rendered inline like any other video result.
+    if (mode === 'lipsync') {
+      const videoAtt = attachments.find((a) => isVideo(a.mimeType));
+      const audioAtt = attachments.find((a) => isAudio(a.mimeType));
+      if (!videoAtt || (!text && !audioAtt)) {
+        setMessages((prev) => [...prev, { role: 'assistant', text: t.lipsyncNeedFiles }]);
+        return;
+      }
+      setMessages((prev) => [...prev, { role: 'user', text, ...(attachments.length ? { medias: attachments } : {}) }, { role: 'assistant', text: t.generatingLipsync }]);
+      setInput(''); setAttachments([]); setBusy(true);
+      try {
+        const videoUrl = await uploadBigFile(videoAtt.dataUrl, videoAtt.mimeType);
+        if (!videoUrl) throw new Error('upload failed');
+        const audioUrl = audioAtt ? await uploadBigFile(audioAtt.dataUrl, audioAtt.mimeType) : undefined;
+        const res = await fetch('/api/video/lipsync', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            videoUrl,
+            ...(audioUrl ? { audioUrl } : {}),
+            ...(text ? { text } : {}),
+            ...(lipMyVoice && hasTrainedVoice ? { useMyVoice: true } : {}),
+          }),
+          credentials: 'include',
+          signal: ac.signal,
+        });
+        const j = (await res.json().catch(() => ({}))) as { url?: string | null };
+        setMessages((prev) => {
+          if (!mine()) return prev;
+          const next = [...prev];
+          const last = next[next.length - 1];
+          if (last && last.role === 'assistant') {
+            next[next.length - 1] = j.url
+              ? { role: 'assistant', text: '', videoUrl: j.url }
+              : { role: 'assistant', text: `⚠️ ${t.lipsyncFailed}` };
+          }
+          return next;
+        });
+      } catch {
+        if (!mine()) return;
+        setMessages((prev) => {
+          const next = [...prev];
+          const last = next[next.length - 1];
+          if (last && last.role === 'assistant') next[next.length - 1] = { role: 'assistant', text: `⚠️ ${t.lipsyncFailed}` };
+          return next;
+        });
+      } finally {
+        if (mine()) setBusy(false);
+      }
+      return;
+    }
+
     // ── CHAT (multimodal Gemini) ───────────────────────────────────────────────
     const userMsg: Msg = { role: 'user', text, ...(attachments.length ? { medias: attachments } : {}) };
     setInput(''); setAttachments([]);
     await streamChat([...messages, userMsg]);
-  }, [input, attachments, busy, messages, mode, locale, imgAspect, imgQuality, imgStyle, imgCount, runImageBatch, musicGenre, musicInstrumental, musicLyrics, musicAudioMode, useMyVoice, hasTrainedVoice, videoOrientation, videoStyle, videoNarration, videoMyVoiceNarration, hasTrainedVoice, createStoryboard, streamChat, t.narrationCue, t.imageFailed, t.musicFailed, t.voiceMode, t.coverMode, t.generatingMyVoice]);
+  }, [input, attachments, busy, messages, mode, locale, imgAspect, imgQuality, imgStyle, imgCount, runImageBatch, musicGenre, musicInstrumental, musicLyrics, musicAudioMode, useMyVoice, hasTrainedVoice, videoOrientation, videoStyle, videoNarration, videoMyVoiceNarration, lipMyVoice, hasTrainedVoice, createStoryboard, streamChat, t.narrationCue, t.imageFailed, t.musicFailed, t.voiceMode, t.coverMode, t.generatingMyVoice, t.lipsyncNeedFiles, t.generatingLipsync, t.lipsyncFailed]);
 
   // STOP — cancel the in-flight generation. Bumps the generation token (so every
   // pending finalizer no-ops), aborts the fetch, frees the composer, and converts
@@ -1757,7 +1816,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                   // Pace the image bar to the chosen resolution (1K ≈ 40s · 2K ≈
                   // 170s · 4K ≈ 220s) so it doesn't sit at 95% looking stuck.
                   const imgTarget = imgQuality === 'standard' ? 42 : imgQuality === 'high' ? 170 : 215;
-                  const kind: 'image' | 'music' | 'video' | 'lipsync' = (m.storyboard?.length ?? 0) > 0 ? 'video' : (mode as 'image' | 'music' | 'video');
+                  const kind: 'image' | 'music' | 'video' | 'lipsync' = (m.storyboard?.length ?? 0) > 0 ? 'video' : (mode as 'image' | 'music' | 'video' | 'lipsync');
                   return (
                     <div className="space-y-3">
                       {/* Keep the storyboard frames in view during the ~7-min render. */}
@@ -1942,6 +2001,21 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 {VIDEO_STYLES.map((s) => <Chip key={s} active={videoStyle === s} onClick={() => setVideoStyle(s)}>{s}</Chip>)}
               </>
             )}
+            {mode === 'lipsync' && (
+              <>
+                <Chip active={attachments.some((a) => isVideo(a.mimeType))} onClick={() => fileRef.current?.click()}>
+                  🎬 {attachments.some((a) => isVideo(a.mimeType)) ? (locale === 'en' ? 'Video ✓' : locale === 'ru' ? 'Видео ✓' : 'ვიდეო ✓') : (locale === 'en' ? 'Attach video' : locale === 'ru' ? 'Прикрепить видео' : 'მიამაგრე ვიდეო')}
+                </Chip>
+                {attachments.some((a) => isAudio(a.mimeType)) && (
+                  <Chip active onClick={() => fileRef.current?.click()}>🎵 {t.lipAudioLabel} ✓</Chip>
+                )}
+                {hasTrainedVoice && (
+                  <Chip active={lipMyVoice} onClick={() => setLipMyVoice((v) => !v)}>
+                    🎤 {locale === 'en' ? 'My voice' : locale === 'ru' ? 'Мой голос' : 'ჩემი ხმით'}
+                  </Chip>
+                )}
+              </>
+            )}
           </div>
         )}
 
@@ -2041,7 +2115,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send(); } }}
             rows={1}
             disabled={enhancing}
-            placeholder={recording ? t.recording : mode === 'image' ? t.imgPlaceholder : mode === 'music' ? t.musicPlaceholder : mode === 'video' ? t.videoPlaceholder : t.placeholder}
+            placeholder={recording ? t.recording : mode === 'image' ? t.imgPlaceholder : mode === 'music' ? t.musicPlaceholder : mode === 'video' ? t.videoPlaceholder : mode === 'lipsync' ? t.lipsyncPlaceholder : t.placeholder}
             className="max-h-40 min-h-[28px] w-full resize-none border-0 bg-transparent px-1 py-1.5 text-[16px] text-app-text placeholder:text-app-muted/70 outline-none focus:ring-0 disabled:opacity-60"
           />
 

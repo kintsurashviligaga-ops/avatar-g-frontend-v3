@@ -16,6 +16,10 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { lipsyncVideo, hasLipsyncProvider, lipsyncStatus } from '@/lib/ai/lipsync';
+import { textToHostedSpeech } from '@/lib/chat/filmVoiceover';
+import { convertSongWithRvc } from '@/lib/audio/rvc';
+import { getUserVoiceModel, DEMO_VOICE_USER_ID } from '@/lib/audio/voiceModel';
+import { authedClientFromRequest } from '@/lib/supabase/server';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -37,7 +41,7 @@ const isHttps = (u: unknown): u is string =>
 export async function POST(req: NextRequest) {
   if (!hasLipsyncProvider()) return NextResponse.json({ url: null });
 
-  let body: { videoUrl?: unknown; audioUrl?: unknown };
+  let body: { videoUrl?: unknown; audioUrl?: unknown; text?: unknown; useMyVoice?: unknown };
   try {
     body = (await req.json()) as typeof body;
   } catch {
@@ -49,7 +53,29 @@ export async function POST(req: NextRequest) {
   if (!isHttps(body.videoUrl)) {
     return NextResponse.json({ url: null });
   }
-  const audioUrl = isHttps(body.audioUrl) ? body.audioUrl : body.videoUrl;
+  let audioUrl: string = isHttps(body.audioUrl) ? body.audioUrl : body.videoUrl;
+
+  // "Dub from text": type a script → speak it (ElevenLabs) → optionally re-voice it in
+  // the user's TRAINED voice (RVC) → that becomes the audio the lips are keyed to.
+  const text = typeof body.text === 'string' ? body.text.trim().slice(0, 1200) : '';
+  if (text) {
+    const ttsUrl = await textToHostedSpeech(text);
+    if (ttsUrl) {
+      audioUrl = ttsUrl;
+      if (body.useMyVoice === true) {
+        try {
+          const { user } = await authedClientFromRequest(req);
+          const model = await getUserVoiceModel(user?.id ?? DEMO_VOICE_USER_ID);
+          if (model) {
+            const converted = await convertSongWithRvc(ttsUrl, model.modelUrl);
+            if (converted) audioUrl = converted;
+          }
+        } catch {
+          /* keep the TTS voice */
+        }
+      }
+    }
+  }
 
   const url = await lipsyncVideo(body.videoUrl, audioUrl);
   return NextResponse.json({ url });

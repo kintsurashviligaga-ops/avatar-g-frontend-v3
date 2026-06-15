@@ -194,6 +194,22 @@ async function synthesizeVoiceover(text: string, voiceIdOverride?: string | null
 }
 
 /**
+ * Speak ARBITRARY user text → an mp3 hosted at a fetchable https URL. Powers the
+ * lip-sync "dub from text" flow (and any other text-to-voice need). Returns null on
+ * any failure so the caller can fall back. `voiceId` overrides the auto voice pick.
+ */
+export async function textToHostedSpeech(text: string, voiceId?: string | null): Promise<string | null> {
+  try {
+    const audio = await synthesizeVoiceover(text, voiceId ?? null);
+    if (!audio) return null;
+    const path = `lipsync-tts/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.mp3`;
+    return (await uploadAndSign('renders', path, audio.base64, audio.contentType, 7200)) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * End-to-end commentator leg: brief → narration → speech → hosted signed URL.
  * Always resolves; returns null (never throws) on any failure so the caller can
  * fall back to the music-only timeline with zero behavioural change.
