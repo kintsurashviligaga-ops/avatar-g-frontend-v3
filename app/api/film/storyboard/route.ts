@@ -18,7 +18,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
-import { planFilmScenes, normalizeReferenceImages, FILM_SCENE_COUNT } from '@/lib/chat/filmPipeline';
+import { planFilmScenes, normalizeReferenceImages, FILM_SCENE_COUNT, FILM_CLIP_SEC } from '@/lib/chat/filmPipeline';
 import { extractJson } from '@/lib/orchestrator/script-breakdown';
 import { mapWithConcurrency } from '@/lib/chat/filmClipRetry';
 import { ServiceManager } from '@/lib/chat/ServiceManager';
@@ -132,6 +132,11 @@ export async function POST(req: NextRequest) {
   const orientation: 'landscape' | 'vertical' = body.orientation === 'vertical' ? 'vertical' : 'landscape';
   const style = typeof body.style === 'string' && body.style.trim() ? body.style.trim() : null;
   const locale = typeof body.locale === 'string' ? body.locale : 'ka';
+  // Scene count = film length: the user picks 10s (2 scenes) or 30s (6). The scene
+  // count is driven by totalSec (count × clip seconds) — planFilmScenes splits the
+  // runtime into FILM_CLIP_SEC beats, so totalSec is what actually sets the count.
+  const sceneCount = Math.max(2, Math.min(FILM_SCENE_COUNT, Math.round(typeof body.sceneCount === 'number' ? body.sceneCount : FILM_SCENE_COUNT)));
+  const sceneTotalSec = sceneCount * FILM_CLIP_SEC;
 
   // Host any uploaded reference photos so the storyboard frames can lock the
   // protagonist's identity (and so the SAME selfie anchors the final render).
@@ -139,7 +144,7 @@ export async function POST(req: NextRequest) {
   const hostedRefs = refList.length ? await Promise.all(refList.map((r, i) => hostRef(r, i))) : [];
   const selfie = hostedRefs.find((r) => /^https?:\/\//i.test(r)) ?? null;
 
-  const plan = planFilmScenes(prompt, { referenceImages: hostedRefs, style, orientation });
+  const plan = planFilmScenes(prompt, { referenceImages: hostedRefs, style, orientation, totalSec: sceneTotalSec });
   const aspect = orientation === 'vertical' ? '9:16' : '16:9';
   const sessionId = `storyboard_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 
@@ -184,12 +189,9 @@ export async function POST(req: NextRequest) {
   // tells the REAL story of the brief (not generic camera angles). Fail-open: a
   // miss leaves `plan` (deterministic beats) in place. The scripts are returned so
   // the render can reuse the EXACT same scenes the user approved.
-  // Scene count = film length: the user picks 10s (2 scenes) or 30s (6). Clamp to a
-  // safe band so the deterministic plan + the render both stay within their limits.
-  const sceneCount = Math.max(2, Math.min(FILM_SCENE_COUNT, Math.round(typeof body.sceneCount === 'number' ? body.sceneCount : FILM_SCENE_COUNT)));
   const sceneScripts = (await generateSceneScripts(prompt, sceneCount)) ?? null;
   const storyPlan = sceneScripts
-    ? planFilmScenes(prompt, { referenceImages: hostedRefs, style, orientation, sceneScripts })
+    ? planFilmScenes(prompt, { referenceImages: hostedRefs, style, orientation, sceneScripts, totalSec: sceneTotalSec })
     : plan;
 
   const frames = await mapWithConcurrency(storyPlan.scenes, 3, (scene) => genFrame(scene.prompt));
