@@ -24,8 +24,11 @@ export async function POST(req: NextRequest) {
       systemPrompt:
         `You are a professional songwriter. Write SHORT, singable lyrics in ${langName}. ` +
         `Structure: one short verse + one chorus, 6–10 lines total, under 320 characters TOTAL ` +
-        `(a music model will sing them). One line per line (newline-separated). Output ONLY the ` +
-        `lyrics — no title, no section labels like [Verse]/[Chorus], no quotes, no commentary.`,
+        `(a music model will sing them). One line per line (newline-separated). ` +
+        `CRITICAL: the lyrics must be 100% ORIGINAL — never quote, copy, or paraphrase any existing ` +
+        `or famous song, and AVOID well-known clichéd lines (a copyright filter will reject those). ` +
+        `Use fresh, specific, personal imagery. Output ONLY the lyrics — no title, no section labels ` +
+        `like [Verse]/[Chorus], no quotes, no commentary.`,
       prompt: `Theme: ${theme}${style ? `. Style/mood: ${style}` : ''}.`,
       maxTokens: 400,
       temperature: 0.95,

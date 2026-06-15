@@ -51,7 +51,7 @@ const COPY: Record<Lang, {
   title: string; subtitle: string; placeholder: string; empty: string; thinking: string; recording: string; micHint: string;
   modeChat: string; modeImage: string; imgPlaceholder: string; generatingImage: string; imageFailed: string; imgDownload: string; editImage: string;
   magicHint: string;
-  modeMusic: string; musicPlaceholder: string; generatingMusic: string; musicFailed: string;
+  modeMusic: string; musicPlaceholder: string; generatingMusic: string; musicFailed: string; lyricsBlocked: string;
   modeVideo: string; videoPlaceholder: string; generatingVideo: string; videoFailed: string; generatingMyVoice: string; myVoiceCreate: string; myVoiceLyricsPh: string; myVoiceReady: string; writeLyricsBtn: string; upscaleBtn: string; upscaling: string; upscaleFailed: string;
   modeLipsync: string; lipsyncPlaceholder: string; generatingLipsync: string; lipsyncFailed: string; lipsyncNeedFiles: string; lipsyncAuth: string; lipAudioLabel: string;
   stop: string; stopped: string; scrollDown: string; regenerate: string; elapsedHint: string; greeting: string; attachHint: string;
@@ -69,7 +69,7 @@ const COPY: Record<Lang, {
     generatingImage: 'სურათი იქმნება…', imageFailed: 'სურათის გენერაცია ვერ მოხერხდა. სცადე თავიდან.', imgDownload: 'ჩამოტვირთვა', editImage: 'რედაქტირება',
     magicHint: 'AI-ით პრომპტის გაუმჯობესება',
     modeMusic: 'მუსიკა', musicPlaceholder: 'აღწერე მუსიკა (მაგ. ეპიკური კინო-სცენა)…',
-    generatingMusic: 'მუსიკა იქმნება… (1–3 წუთი)', musicFailed: 'მუსიკის გენერაცია ვერ მოხერხდა. სცადე თავიდან.',
+    generatingMusic: 'მუსიკა იქმნება… (1–3 წუთი)', musicFailed: 'მუსიკის გენერაცია ვერ მოხერხდა. სცადე თავიდან.', lyricsBlocked: '⚠️ ლირიკა დაიბლოკა (საავტორო უფლებები). შეცვალე სიტყვები ან დააჭირე „✨ ლირიკა დამიწერე".',
     modeVideo: 'ვიდეო', videoPlaceholder: 'აღწერე 30-წამიანი ვიდეო (ფოტო — პერსონაჟისთვის)…',
     generatingVideo: 'ვიდეო იქმნება… 6 სცენა + მონტაჟი (~5–7 წუთი, დაელოდე)', videoFailed: 'ვიდეოს გენერაცია ვერ მოხერხდა.', generatingMyVoice: '🎵 სიმღერა იქმნება შენი ხმით… (~2–3 წუთი, დაელოდე)', myVoiceCreate: 'ჩემი ხმით შექმნა', myVoiceLyricsPh: 'დაწერე ლირიკა — რას იმღერებს შენი ხმა', myVoiceReady: 'შენი ხმა მზადაა — დაწერე ლირიკა და შექმენი', writeLyricsBtn: '✨ ლირიკა დამიწერე', upscaleBtn: '⬆ HD გადიდება', upscaling: '🔍 ვადიდებ HD-მდე…', upscaleFailed: 'გადიდება ვერ მოხერხდა.',
     modeLipsync: 'ლიფსინქი', lipsyncPlaceholder: 'მიამაგრე ვიდეო + აუდიო და დააჭირე გაგზავნას…',
@@ -89,7 +89,7 @@ const COPY: Record<Lang, {
     generatingImage: 'Generating image…', imageFailed: 'Image generation failed. Try again.', imgDownload: 'Download', editImage: 'Edit',
     magicHint: 'Enhance prompt with AI',
     modeMusic: 'Music', musicPlaceholder: 'Describe the music (e.g. epic cinematic scene)…',
-    generatingMusic: 'Composing music… (1–3 min)', musicFailed: 'Music generation failed. Try again.',
+    generatingMusic: 'Composing music… (1–3 min)', musicFailed: 'Music generation failed. Try again.', lyricsBlocked: '⚠️ Lyrics were blocked (copyright). Change the words or tap "✨ Write lyrics".',
     modeVideo: 'Video', videoPlaceholder: 'Describe a 30-second video (attach a photo for the character)…',
     generatingVideo: 'Producing video… 6 scenes + montage (~5–7 min, please wait)', videoFailed: 'Video generation failed.', generatingMyVoice: '🎵 Creating a song in your voice… (~2–3 min, please wait)', myVoiceCreate: 'Create with my voice', myVoiceLyricsPh: 'Write lyrics — what your voice will sing', myVoiceReady: 'Your voice is ready — write lyrics and create', writeLyricsBtn: '✨ Write lyrics', upscaleBtn: '⬆ HD upscale', upscaling: '🔍 Upscaling to HD…', upscaleFailed: 'Upscale failed.',
     modeLipsync: 'Lip-sync', lipsyncPlaceholder: 'Attach a video + audio, then press send…',
@@ -109,7 +109,7 @@ const COPY: Record<Lang, {
     generatingImage: 'Генерирую изображение…', imageFailed: 'Не удалось сгенерировать изображение. Попробуйте снова.', imgDownload: 'Скачать', editImage: 'Изменить',
     magicHint: 'Улучшить промпт с AI',
     modeMusic: 'Музыка', musicPlaceholder: 'Опишите музыку (напр. эпичная кино-сцена)…',
-    generatingMusic: 'Создаю музыку… (1–3 мин)', musicFailed: 'Не удалось создать музыку. Попробуйте снова.',
+    generatingMusic: 'Создаю музыку… (1–3 мин)', musicFailed: 'Не удалось создать музыку. Попробуйте снова.', lyricsBlocked: '⚠️ Текст заблокирован (авторские права). Измените слова или нажмите «✨ Написать текст».',
     modeVideo: 'Видео', videoPlaceholder: 'Опишите 30-секундное видео (фото — для персонажа)…',
     generatingVideo: 'Создаю видео… 6 сцен + монтаж (~5–7 мин, подождите)', videoFailed: 'Не удалось создать видео.', generatingMyVoice: '🎵 Создаю песню вашим голосом… (~2–3 мин, подождите)', myVoiceCreate: 'Создать моим голосом', myVoiceLyricsPh: 'Напишите текст — что споёт ваш голос', myVoiceReady: 'Ваш голос готов — напишите текст и создайте', writeLyricsBtn: '✨ Написать текст', upscaleBtn: '⬆ HD увеличить', upscaling: '🔍 Увеличиваю до HD…', upscaleFailed: 'Не удалось увеличить.',
     modeLipsync: 'Синхрон', lipsyncPlaceholder: 'Прикрепите видео + аудио и нажмите отправить…',
@@ -650,6 +650,8 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // is appended to the brief so the film pipeline's wantsCommentary() detector
   // fires and a voice-over track is generated + mixed under the score.
   const [videoNarration, setVideoNarration] = useState(false);
+  // Narrate the film in the user's TRAINED voice (RVC) — needs a trained model.
+  const [videoMyVoiceNarration, setVideoMyVoiceNarration] = useState(false);
   // Scene-to-scene transition in the final stitch: soft crossfade or hard cut.
   const [videoTransition, setVideoTransition] = useState<'crossfade' | 'cut'>('crossfade');
   // Storyboard preview gate (Video mode): the planned scenes + frames the user
@@ -753,6 +755,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         referenceImages: refs,
         orientation,
         transition: videoTransition,
+        myVoiceNarration: videoMyVoiceNarration && hasTrainedVoice,
         ...(sceneFrames?.length ? { sceneFrames } : {}),
         ...(sceneScripts?.length ? { sceneScripts } : {}),
         locale,
@@ -790,7 +793,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     } finally {
       if (mine()) setBusy(false);
     }
-  }, [locale, videoTransition, t.generatingVideo, t.videoFailed]);
+  }, [locale, videoTransition, videoMyVoiceNarration, hasTrainedVoice, t.generatingVideo, t.videoFailed]);
 
   // Plan the storyboard (6 scenes + a frame each) and open the review overlay.
   // Fail-open: a storyboard miss falls back to a direct render so the user is
@@ -1179,7 +1182,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             next[next.length - 1] =
               j.success && j.url
                 ? { role: 'assistant', text: '', audioUrl: j.url, ...(j.coverUrl ? { coverUrl: j.coverUrl } : {}), regen: { kind: 'music', prompt: musicPrompt, genre: musicGenre, instrumental: musicInstrumental, ...(!musicInstrumental && musicLyrics.trim() ? { lyrics: musicLyrics.trim() } : {}) } }
-                : { role: 'assistant', text: `⚠️ ${j.error || t.musicFailed}` };
+                : { role: 'assistant', text: /copyright|copyrighted/i.test(j.error || '') ? t.lyricsBlocked : `⚠️ ${j.error || t.musicFailed}` };
           }
           return next;
         });
@@ -1204,7 +1207,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     // inline — so the full film service lives in this one chatbox.
     if (mode === 'video' && text) {
       const refs = attachments.filter((a) => isImage(a.mimeType)).map((a) => a.dataUrl);
-      const filmPrompt = `${videoStyle ? `${text}. Visual style: ${videoStyle.toLowerCase()}, cinematic.` : text}${videoNarration ? t.narrationCue : ''}`;
+      const filmPrompt = `${videoStyle ? `${text}. Visual style: ${videoStyle.toLowerCase()}, cinematic.` : text}${(videoNarration || (videoMyVoiceNarration && hasTrainedVoice)) ? t.narrationCue : ''}`;
       setMessages((prev) => [...prev, { role: 'user', text, ...(attachments.length ? { medias: attachments } : {}) }]);
       setInput(''); setAttachments([]);
       // Storyboard-FIRST: plan the 6 scenes + a frame each for the user to review;
@@ -1217,7 +1220,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     const userMsg: Msg = { role: 'user', text, ...(attachments.length ? { medias: attachments } : {}) };
     setInput(''); setAttachments([]);
     await streamChat([...messages, userMsg]);
-  }, [input, attachments, busy, messages, mode, locale, imgAspect, imgQuality, imgStyle, imgCount, runImageBatch, musicGenre, musicInstrumental, musicLyrics, musicAudioMode, useMyVoice, hasTrainedVoice, videoOrientation, videoStyle, videoNarration, createStoryboard, streamChat, t.narrationCue, t.imageFailed, t.musicFailed, t.voiceMode, t.coverMode, t.generatingMyVoice]);
+  }, [input, attachments, busy, messages, mode, locale, imgAspect, imgQuality, imgStyle, imgCount, runImageBatch, musicGenre, musicInstrumental, musicLyrics, musicAudioMode, useMyVoice, hasTrainedVoice, videoOrientation, videoStyle, videoNarration, videoMyVoiceNarration, hasTrainedVoice, createStoryboard, streamChat, t.narrationCue, t.imageFailed, t.musicFailed, t.voiceMode, t.coverMode, t.generatingMyVoice]);
 
   // STOP — cancel the in-flight generation. Bumps the generation token (so every
   // pending finalizer no-ops), aborts the fetch, frees the composer, and converts
@@ -1903,6 +1906,11 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 <Chip active={videoOrientation === 'vertical'} onClick={() => setVideoOrientation('vertical')}>9:16</Chip>
                 <span className="mx-0.5 h-4 w-px shrink-0 bg-app-border/15" />
                 <Chip active={videoNarration} onClick={() => setVideoNarration((v) => !v)}>🎙 {t.narration}</Chip>
+                {hasTrainedVoice && (
+                  <Chip active={videoMyVoiceNarration} onClick={() => setVideoMyVoiceNarration((v) => !v)}>
+                    🎤 {locale === 'en' ? 'My voice' : locale === 'ru' ? 'Мой голос' : 'ჩემი ხმით'}
+                  </Chip>
+                )}
                 <span className="mx-0.5 h-4 w-px shrink-0 bg-app-border/15" />
                 <Chip active={videoTransition === 'crossfade'} onClick={() => setVideoTransition('crossfade')}>⤫ {t.transCrossfade}</Chip>
                 <Chip active={videoTransition === 'cut'} onClick={() => setVideoTransition('cut')}>▮ {t.transCut}</Chip>

@@ -115,6 +115,8 @@ export interface DriveFilmOptions {
   orientation?: 'landscape' | 'vertical';
   /** Scene-to-scene transition in the master stitch: soft 'crossfade' or hard 'cut'. */
   transition?: 'crossfade' | 'cut';
+  /** Re-voice the narration in the user's TRAINED voice (RVC) before the stitch. */
+  myVoiceNarration?: boolean;
   /**
    * Approved storyboard frames (ordered by scene) from /api/film/storyboard.
    * When present, each becomes that scene's per-scene identity anchor, so the
@@ -417,7 +419,21 @@ async function assembleMaster(
   voiceUrl?: string | null,
   sfxUrl?: string | null,
   transition?: 'crossfade' | 'cut',
+  myVoiceNarration?: boolean,
 ): Promise<{ url: string; qa: FilmQaSummary | null } | null> {
+  // Optionally re-voice the narration in the user's TRAINED voice before the stitch
+  // (done here, not in the budget-tight assemble route). Fail-open keeps the original.
+  let finalVoiceUrl = voiceUrl ?? null;
+  if (myVoiceNarration && finalVoiceUrl) {
+    try {
+      const cr = await fetch('/api/video/voice-narration', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal,
+        body: JSON.stringify({ voiceoverUrl: finalVoiceUrl }),
+      });
+      const cj = (await cr.json().catch(() => null)) as { url?: string } | null;
+      if (cj?.url) finalVoiceUrl = cj.url;
+    } catch { /* keep the original TTS narration */ }
+  }
   const res = await fetch('/api/video/assemble', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -428,7 +444,7 @@ async function assembleMaster(
       ...(musicUrl ? { musicUrl } : {}),
       // PHASE 48 §2 — the commentator/narration track; the FFmpeg master ducks
       // the score under it (voiceoverUrl → vocal_ducking_pct).
-      ...(voiceUrl ? { voiceoverUrl: voiceUrl } : {}),
+      ...(finalVoiceUrl ? { voiceoverUrl: finalVoiceUrl } : {}),
       // PHASE 49 §7 — cinematic SFX / sound-design, mixed under the score.
       ...(sfxUrl ? { sfxUrl } : {}),
       ...(scorePrompt.trim() ? { scorePrompt: scorePrompt.trim() } : {}),
@@ -651,7 +667,7 @@ export async function driveFilmStudio(opts: DriveFilmOptions): Promise<FilmStudi
     const voiceBed = matrix.voiceUrl ?? null;
     // PHASE 49 §7 — cinematic SFX / sound-design track, mixed under the score.
     const sfxBed = matrix.sfxUrl ?? null;
-    let assembled = await assembleMaster(clips, musicBed, matrix.statusTokenId, message, signal, opts.orientation, voiceBed, sfxBed, opts.transition);
+    let assembled = await assembleMaster(clips, musicBed, matrix.statusTokenId, message, signal, opts.orientation, voiceBed, sfxBed, opts.transition, opts.myVoiceNarration);
 
     // 4 ── Recover if the assemble response was lost in transit
     if (!assembled && matrix.statusTokenId) {
