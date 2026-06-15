@@ -136,3 +136,17 @@ export async function generateMusicCover(prompt: string, melodyUrl: string, dura
     throw new Error(`Music cover failed: ${message}`);
   }
 }
+
+/**
+ * Upscale an image to a higher resolution + sharper detail via Real-ESRGAN.
+ * `imageUrl` must be an https URL Replicate can fetch; returns the upscaled URL.
+ */
+export async function upscaleImage(imageUrl: string, scale: 2 | 4 = 2): Promise<string> {
+  const output = (await replicate.run(
+    'nightmareai/real-esrgan:b3ef194191d13140337468c916c2c5b96dd0cb06dffc032a022a31807f6a5ea8',
+    { input: { image: imageUrl, scale, face_enhance: false } },
+  )) as unknown;
+  const url = extractAudioUrl(output); // generic URL extractor (string | {url} | FileOutput)
+  if (!url || !/^https?:\/\//i.test(url)) throw new Error('Upscale returned no usable URL');
+  return url;
+}
