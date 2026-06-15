@@ -609,12 +609,19 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
   // returns null and the film falls back to the music-only timeline unchanged.
   // It is NOT separately billed, so an absent/failed voice-over never burns GEL.
   let voiceUrl: string | null = null;
-  if (wantsCommentary(input.message)) {
+  // Verbatim dialogue the user typed in the video panel → spoken as-is. Its presence
+  // also FORCES the voiceover leg (the character speaks even if no narration cue).
+  const customNarration = (() => {
+    const v = (input.metadata as { narrationScript?: unknown } | undefined)?.narrationScript;
+    return typeof v === 'string' && v.trim() ? v.trim() : null;
+  })();
+  if (wantsCommentary(input.message) || customNarration) {
     try {
       voiceUrl = await generateFilmVoiceover({
         brief: input.message,
         totalSec: plan.shared.totalSec,
         compositeId,
+        narrationScript: customNarration,
       });
     } catch (err) {
       // eslint-disable-next-line no-console

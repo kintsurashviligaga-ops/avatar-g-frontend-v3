@@ -120,6 +120,8 @@ export async function POST(req: NextRequest) {
     sceneOrdinal?: number;
     /** A user-EDITED shot description for the single-scene regen (Storyboard editing). */
     scenePrompt?: string;
+    /** How many scenes (2 → ~10s · 6 → ~30s). Clamped to [2, FILM_SCENE_COUNT]. */
+    sceneCount?: number;
   };
 
   const prompt = typeof body.prompt === 'string' ? body.prompt.trim() : '';
@@ -182,7 +184,10 @@ export async function POST(req: NextRequest) {
   // tells the REAL story of the brief (not generic camera angles). Fail-open: a
   // miss leaves `plan` (deterministic beats) in place. The scripts are returned so
   // the render can reuse the EXACT same scenes the user approved.
-  const sceneScripts = (await generateSceneScripts(prompt, FILM_SCENE_COUNT)) ?? null;
+  // Scene count = film length: the user picks 10s (2 scenes) or 30s (6). Clamp to a
+  // safe band so the deterministic plan + the render both stay within their limits.
+  const sceneCount = Math.max(2, Math.min(FILM_SCENE_COUNT, Math.round(typeof body.sceneCount === 'number' ? body.sceneCount : FILM_SCENE_COUNT)));
+  const sceneScripts = (await generateSceneScripts(prompt, sceneCount)) ?? null;
   const storyPlan = sceneScripts
     ? planFilmScenes(prompt, { referenceImages: hostedRefs, style, orientation, sceneScripts })
     : plan;

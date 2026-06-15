@@ -65,6 +65,8 @@ interface AssembleBody {
   segments?: SegmentInput[];
   voiceoverUrl?: string | null;
   musicUrl?: string | null;
+  /** Music OFF → skip score generation entirely (voice-only film). */
+  noMusic?: boolean;
   sfxUrl?: string | null;
   globalRender?: Record<string, string | number | boolean>;
   /** 'vertical' → 9:16 (1080×1920) master for TikTok/Reels/Shorts; else 16:9. */
@@ -149,7 +151,7 @@ export async function POST(req: NextRequest) {
   // gracefully to silent — it never fails the stitch.
   let resolvedMusicUrl = body.musicUrl ? await reSignIfInternal(body.musicUrl) : null;
   let scoreFallback: 'udio->musicgen' | null = null;
-  if (!resolvedMusicUrl && process.env.REPLICATE_API_TOKEN) {
+  if (!resolvedMusicUrl && !body.noMusic && process.env.REPLICATE_API_TOKEN) {
     // Match the score length to the assembled timeline so MusicGen returns a
     // track that spans every compiled clip rather than looping a short stub.
     const totalSec = Math.min(

@@ -65,6 +65,8 @@ const orchestrateSchema = z.object({
   sceneFrames: z.array(z.string().min(1)).max(8).optional(),
   // Approved LLM story scenes (ordered) → the clips render from these exact scenes.
   sceneScripts: z.array(z.string().min(1).max(2000)).max(8).optional(),
+  // Verbatim dialogue the user typed in the video panel → spoken as the film's voice.
+  narrationScript: z.string().max(2000).optional(),
 
   // ── Personalization (Settings → Custom Instructions) ──
   customInstructions: z.string().max(2000).optional(),
@@ -174,13 +176,14 @@ export async function POST(req: NextRequest) {
       // PHASE 45 §2/§3 — forward reference images + frame orientation via metadata
       // so the film composite (handleFilmComposite) threads them into the identity
       // lock and the per-clip aspect ratio.
-      metadata: (data.referenceImages?.length || data.orientation || data.sceneFrames?.length || data.sceneScripts?.length)
+      metadata: (data.referenceImages?.length || data.orientation || data.sceneFrames?.length || data.sceneScripts?.length || data.narrationScript)
         ? {
             ...(data.metadata || {}),
             ...(data.referenceImages?.length ? { referenceImages: data.referenceImages } : {}),
             ...(data.orientation ? { orientation: data.orientation } : {}),
             ...(data.sceneFrames?.length ? { sceneFrames: data.sceneFrames } : {}),
             ...(data.sceneScripts?.length ? { sceneScripts: data.sceneScripts } : {}),
+            ...(data.narrationScript ? { narrationScript: data.narrationScript } : {}),
           }
         : data.metadata,
       customInstructions: effectiveInstructions,

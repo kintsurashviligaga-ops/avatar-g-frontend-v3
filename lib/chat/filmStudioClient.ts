@@ -117,6 +117,10 @@ export interface DriveFilmOptions {
   transition?: 'crossfade' | 'cut';
   /** Re-voice the narration in the user's TRAINED voice (RVC) before the stitch. */
   myVoiceNarration?: boolean;
+  /** Verbatim dialogue from the video panel — spoken as the film's voice-over (as-is). */
+  narrationScript?: string;
+  /** Music OFF → no score (voice-only film). */
+  noMusic?: boolean;
   /**
    * After the master is stitched, run a Wav2Lip pass so the character's LIPS move with
    * the narration — a real talking character, not just a voice-over. Keyed to the
@@ -426,6 +430,7 @@ async function assembleMaster(
   sfxUrl?: string | null,
   transition?: 'crossfade' | 'cut',
   myVoiceNarration?: boolean,
+  noMusic?: boolean,
 ): Promise<{ url: string; qa: FilmQaSummary | null } | null> {
   // Optionally re-voice the narration in the user's TRAINED voice before the stitch
   // (done here, not in the budget-tight assemble route). Fail-open keeps the original.
@@ -448,6 +453,8 @@ async function assembleMaster(
     body: JSON.stringify({
       segments: clipUrls.map((url) => ({ url, durationSec: FILM_CLIP_SEC })),
       ...(musicUrl ? { musicUrl } : {}),
+      // Music OFF → tell the route to skip score generation (no musicUrl + this flag).
+      ...(noMusic ? { noMusic: true } : {}),
       // PHASE 48 §2 — the commentator/narration track; the FFmpeg master ducks
       // the score under it (voiceoverUrl → vocal_ducking_pct).
       ...(finalVoiceUrl ? { voiceoverUrl: finalVoiceUrl } : {}),
@@ -563,6 +570,8 @@ export async function driveFilmStudio(opts: DriveFilmOptions): Promise<FilmStudi
           ...(opts.sceneFrames?.length ? { sceneFrames: opts.sceneFrames } : {}),
           // Approved LLM story scenes → the clips render from these exact scenes.
           ...(opts.sceneScripts?.length ? { sceneScripts: opts.sceneScripts } : {}),
+          // Verbatim dialogue the user typed → spoken as the film's voice-over.
+          ...(opts.narrationScript?.trim() ? { narrationScript: opts.narrationScript.trim() } : {}),
         },
         signal,
       );
@@ -668,12 +677,12 @@ export async function driveFilmStudio(opts: DriveFilmOptions): Promise<FilmStudi
       return fail('Not enough scenes rendered to stitch a film (need at least 2).', matrix);
     }
     // §5 — a user soundtrack (Music-Video mode) wins over any generated score.
-    const musicBed = opts.soundtrackUrl ?? matrix.audioUrl ?? null;
+    const musicBed = opts.noMusic ? null : (opts.soundtrackUrl ?? matrix.audioUrl ?? null);
     // PHASE 48 §2 — commentator/narration track, when the brief asked for one.
     const voiceBed = matrix.voiceUrl ?? null;
     // PHASE 49 §7 — cinematic SFX / sound-design track, mixed under the score.
     const sfxBed = matrix.sfxUrl ?? null;
-    let assembled = await assembleMaster(clips, musicBed, matrix.statusTokenId, message, signal, opts.orientation, voiceBed, sfxBed, opts.transition, opts.myVoiceNarration);
+    let assembled = await assembleMaster(clips, musicBed, matrix.statusTokenId, message, signal, opts.orientation, voiceBed, sfxBed, opts.transition, opts.myVoiceNarration, opts.noMusic);
 
     // 4 ── Recover if the assemble response was lost in transit
     if (!assembled && matrix.statusTokenId) {

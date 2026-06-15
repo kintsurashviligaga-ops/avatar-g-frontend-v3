@@ -220,9 +220,12 @@ export async function generateFilmVoiceover(opts: {
   brief: string;
   totalSec: number;
   compositeId: string;
+  /** Verbatim dialogue the user typed in the video panel — spoken as-is, no rewrite. */
+  narrationScript?: string | null;
 }): Promise<string | null> {
   try {
-    const script = await generateNarrationScript(opts.brief, opts.totalSec);
+    const custom = opts.narrationScript && opts.narrationScript.trim() ? opts.narrationScript.trim().slice(0, 600) : null;
+    const script = custom ?? (await generateNarrationScript(opts.brief, opts.totalSec));
     if (!script) return null;
     // Pick a voice that fits the story's protagonist (male/female/child/elder/young).
     const audio = await synthesizeVoiceover(script, pickGeorgianVoiceId(opts.brief));

@@ -659,6 +659,13 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   const [lipMyVoice, setLipMyVoice] = useState(false);
   // Scene-to-scene transition in the final stitch: soft crossfade or hard cut.
   const [videoTransition, setVideoTransition] = useState<'crossfade' | 'cut'>('crossfade');
+  // What the character SAYS — typed dialogue → spoken verbatim as the film's voice-over
+  // (empty = auto-written narration). The clear "what should they say" field.
+  const [videoSpeech, setVideoSpeech] = useState('');
+  // Film length: 10s (2 scenes) or 30s (6 scenes). Drives the storyboard scene count.
+  const [videoDuration, setVideoDuration] = useState<10 | 30>(30);
+  // Background score on/off (off → voice-only film).
+  const [videoMusic, setVideoMusic] = useState(true);
   // Storyboard preview gate (Video mode): the planned scenes + frames the user
   // reviews BEFORE committing to the full render. null = no storyboard pending.
   const [storyboard, setStoryboard] = useState<StoryboardState | null>(null);
@@ -761,6 +768,8 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         orientation,
         transition: videoTransition,
         myVoiceNarration: videoMyVoiceNarration && hasTrainedVoice,
+        ...(videoSpeech.trim() ? { narrationScript: videoSpeech.trim() } : {}),
+        ...(videoMusic ? {} : { noMusic: true }),
         ...(sceneFrames?.length ? { sceneFrames } : {}),
         ...(sceneScripts?.length ? { sceneScripts } : {}),
         locale,
@@ -813,7 +822,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     } finally {
       if (mine()) setBusy(false);
     }
-  }, [locale, videoTransition, videoMyVoiceNarration, videoNarration, hasTrainedVoice, t.generatingVideo, t.videoFailed]);
+  }, [locale, videoTransition, videoMyVoiceNarration, videoNarration, videoSpeech, videoMusic, hasTrainedVoice, t.generatingVideo, t.videoFailed]);
 
   // Plan the storyboard (6 scenes + a frame each) and open the review overlay.
   // Fail-open: a storyboard miss falls back to a direct render so the user is
@@ -828,7 +837,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         signal: ac.signal,
-        body: JSON.stringify({ prompt: filmPrompt, orientation, referenceImages: refs, style: videoStyle, locale }),
+        body: JSON.stringify({ prompt: filmPrompt, orientation, referenceImages: refs, style: videoStyle, locale, sceneCount: Math.round(videoDuration / 5) }),
       });
       const j = (await res.json().catch(() => ({}))) as { success?: boolean; seed?: number; scenes?: StoryboardScene[]; sceneScripts?: string[] | null };
       if (j.success && Array.isArray(j.scenes) && j.scenes.length > 0) {
@@ -842,7 +851,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     } finally {
       setStoryboardBusy(false);
     }
-  }, [videoStyle, locale, renderFilm]);
+  }, [videoStyle, locale, videoDuration, renderFilm]);
 
   // Re-roll a SINGLE storyboard frame (the others are untouched) and swap it in.
   const regenScene = useCallback(async (ordinal: number) => {
@@ -2005,7 +2014,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       <div className="shrink-0 pt-1">
         {/* Per-service options — real backend capabilities, shown for the active
             generative mode. Borderless scrollable chip rows (clean, Gemini-like). */}
-        {mode !== 'chat' && (
+        {mode !== 'chat' && mode !== 'video' && (
           <div className="mb-2 flex items-center gap-1.5 overflow-x-auto pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {mode === 'image' && (
               <>
@@ -2026,28 +2035,6 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 {MUSIC_GENRES.map((g) => <Chip key={g} active={musicGenre === g} onClick={() => setMusicGenre(g)}>{g}</Chip>)}
               </>
             )}
-            {mode === 'video' && (
-              <>
-                <Chip active={attachments.some((a) => isImage(a.mimeType))} onClick={() => fileRef.current?.click()}>
-                  🧑 {attachments.some((a) => isImage(a.mimeType)) ? t.charPhotoOn : t.charPhoto}
-                </Chip>
-                <span className="mx-0.5 h-4 w-px shrink-0 bg-app-border/15" />
-                <Chip active={videoOrientation === 'landscape'} onClick={() => setVideoOrientation('landscape')}>16:9</Chip>
-                <Chip active={videoOrientation === 'vertical'} onClick={() => setVideoOrientation('vertical')}>9:16</Chip>
-                <span className="mx-0.5 h-4 w-px shrink-0 bg-app-border/15" />
-                <Chip active={videoNarration} onClick={() => setVideoNarration((v) => !v)}>🎙 {t.narration}</Chip>
-                {hasTrainedVoice && (
-                  <Chip active={videoMyVoiceNarration} onClick={() => setVideoMyVoiceNarration((v) => !v)}>
-                    🎤 {locale === 'en' ? 'My voice' : locale === 'ru' ? 'Мой голос' : 'ჩემი ხმით'}
-                  </Chip>
-                )}
-                <span className="mx-0.5 h-4 w-px shrink-0 bg-app-border/15" />
-                <Chip active={videoTransition === 'crossfade'} onClick={() => setVideoTransition('crossfade')}>⤫ {t.transCrossfade}</Chip>
-                <Chip active={videoTransition === 'cut'} onClick={() => setVideoTransition('cut')}>▮ {t.transCut}</Chip>
-                <span className="mx-0.5 h-4 w-px shrink-0 bg-app-border/15" />
-                {VIDEO_STYLES.map((s) => <Chip key={s} active={videoStyle === s} onClick={() => setVideoStyle(s)}>{s}</Chip>)}
-              </>
-            )}
             {mode === 'lipsync' && (
               <>
                 <Chip active={attachments.some((a) => isVideo(a.mimeType) || isImage(a.mimeType))} onClick={() => fileRef.current?.click()}>
@@ -2063,6 +2050,53 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 )}
               </>
             )}
+          </div>
+        )}
+
+        {/* VIDEO — a clear, labeled control panel so every setting has an obvious place:
+            character · what they say · length · music · voice · effects · format. */}
+        {mode === 'video' && (
+          <div className="mb-2 space-y-2.5 rounded-xl border border-app-border/12 bg-app-elevated/40 p-3">
+            <div className="flex items-center justify-between gap-2">
+              <span className="shrink-0 text-[12px] font-medium text-app-muted">🧑 {locale === 'en' ? 'Character' : locale === 'ru' ? 'Персонаж' : 'პერსონაჟი'}</span>
+              <button type="button" onClick={() => fileRef.current?.click()}
+                className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12px] font-semibold transition-colors ${attachments.some((a) => isImage(a.mimeType)) ? 'bg-app-accent text-app-bg' : 'bg-app-bg/50 text-app-text ring-1 ring-app-border/20 hover:bg-app-bg/70'}`}>
+                <Upload size={13} /> {attachments.some((a) => isImage(a.mimeType)) ? t.charPhotoOn : t.charPhoto}
+              </button>
+            </div>
+            <div className="space-y-1">
+              <span className="text-[12px] font-medium text-app-muted">🗣 {locale === 'en' ? 'What the character says' : locale === 'ru' ? 'Что говорит персонаж' : 'რას ამბობს პერსონაჟი'}</span>
+              <textarea value={videoSpeech} onChange={(e) => setVideoSpeech(e.target.value)} rows={2}
+                placeholder={locale === 'en' ? 'Type the dialogue — spoken verbatim (empty = auto)…' : locale === 'ru' ? 'Введите реплику — произнесётся дословно (пусто = авто)…' : 'ჩაწერე რას იტყვის — ზუსტად ისე ილაპარაკებს (ცარიელი = ავტომატური)…'}
+                className="w-full resize-none rounded-lg border border-app-border/15 bg-app-bg/40 px-2.5 py-2 text-[12.5px] leading-relaxed text-app-text outline-none transition-colors placeholder:text-app-muted/45 focus:border-app-accent/60 focus:bg-app-bg/70 focus:ring-2 focus:ring-app-accent/25" />
+            </div>
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="mr-0.5 shrink-0 text-[12px] font-medium text-app-muted">⏱ {locale === 'en' ? 'Length' : locale === 'ru' ? 'Длина' : 'ხანგრძლივობა'}</span>
+              <Chip active={videoDuration === 10} onClick={() => setVideoDuration(10)}>10{locale === 'en' ? 's' : 'წმ'}</Chip>
+              <Chip active={videoDuration === 30} onClick={() => setVideoDuration(30)}>30{locale === 'en' ? 's' : 'წმ'}</Chip>
+            </div>
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="mr-0.5 shrink-0 text-[12px] font-medium text-app-muted">🎵 {locale === 'en' ? 'Music' : locale === 'ru' ? 'Музыка' : 'მუსიკა'}</span>
+              <Chip active={videoMusic} onClick={() => setVideoMusic(true)}>{locale === 'en' ? 'On' : locale === 'ru' ? 'Вкл' : 'ჩართ.'}</Chip>
+              <Chip active={!videoMusic} onClick={() => setVideoMusic(false)}>{locale === 'en' ? 'Off' : locale === 'ru' ? 'Выкл' : 'გამორთ.'}</Chip>
+              <span className="mx-1 h-4 w-px bg-app-border/15" />
+              <Chip active={videoNarration} onClick={() => setVideoNarration((v) => !v)}>🎙 {t.narration}</Chip>
+              {hasTrainedVoice && (
+                <Chip active={videoMyVoiceNarration} onClick={() => setVideoMyVoiceNarration((v) => !v)}>🎤 {locale === 'en' ? 'My voice' : locale === 'ru' ? 'Мой голос' : 'ჩემი ხმით'}</Chip>
+              )}
+            </div>
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="mr-0.5 shrink-0 text-[12px] font-medium text-app-muted">✨ {locale === 'en' ? 'Effect' : locale === 'ru' ? 'Эффект' : 'ეფექტი'}</span>
+              {VIDEO_STYLES.map((s) => <Chip key={s} active={videoStyle === s} onClick={() => setVideoStyle(s)}>{s}</Chip>)}
+              <span className="mx-1 h-4 w-px bg-app-border/15" />
+              <Chip active={videoTransition === 'crossfade'} onClick={() => setVideoTransition('crossfade')}>⤫ {t.transCrossfade}</Chip>
+              <Chip active={videoTransition === 'cut'} onClick={() => setVideoTransition('cut')}>▮ {t.transCut}</Chip>
+            </div>
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="mr-0.5 shrink-0 text-[12px] font-medium text-app-muted">📐 {locale === 'en' ? 'Format' : locale === 'ru' ? 'Формат' : 'ფორმატი'}</span>
+              <Chip active={videoOrientation === 'landscape'} onClick={() => setVideoOrientation('landscape')}>16:9</Chip>
+              <Chip active={videoOrientation === 'vertical'} onClick={() => setVideoOrientation('vertical')}>9:16</Chip>
+            </div>
           </div>
         )}
 
