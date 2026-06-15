@@ -85,9 +85,9 @@ export async function lipsyncVideo(videoUrl: string, audioUrl: string, _resizeFa
       method: 'POST',
       headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
       cache: 'no-store',
-      // SadTalker: source_image + driven_audio → talking head. `still:true` keeps the
-      // head motion subtle/stable; `preprocess:full` retains the whole framing.
-      body: JSON.stringify({ version: LIPSYNC_VERSION, input: { [FACE_FIELD]: videoUrl, [AUDIO_FIELD]: audioUrl, still: true, preprocess: 'full' } }),
+      // SadTalker: source_image + driven_audio → talking head. Keep the input MINIMAL —
+      // the default 'crop' preprocess runs ~180s (fits the budget); 'full' overran 230s.
+      body: JSON.stringify({ version: LIPSYNC_VERSION, input: { [FACE_FIELD]: videoUrl, [AUDIO_FIELD]: audioUrl } }),
       signal: AbortSignal.timeout(20_000),
     });
     if (!createRes.ok) return null;

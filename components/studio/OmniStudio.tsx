@@ -72,7 +72,7 @@ const COPY: Record<Lang, {
     generatingMusic: 'მუსიკა იქმნება… (1–3 წუთი)', musicFailed: 'მუსიკის გენერაცია ვერ მოხერხდა. სცადე თავიდან.', lyricsBlocked: '⚠️ ლირიკა დაიბლოკა (საავტორო უფლებები). შეცვალე სიტყვები ან დააჭირე „✨ ლირიკა დამიწერე".',
     modeVideo: 'ვიდეო', videoPlaceholder: 'აღწერე 30-წამიანი ვიდეო (ფოტო — პერსონაჟისთვის)…',
     generatingVideo: 'ვიდეო იქმნება… 6 სცენა + მონტაჟი (~5–7 წუთი, დაელოდე)', videoFailed: 'ვიდეოს გენერაცია ვერ მოხერხდა.', generatingMyVoice: '🎵 სიმღერა იქმნება შენი ხმით… (~2–3 წუთი, დაელოდე)', myVoiceCreate: 'ჩემი ხმით შექმნა', myVoiceLyricsPh: 'დაწერე ლირიკა — რას იმღერებს შენი ხმა', myVoiceReady: 'შენი ხმა მზადაა — დაწერე ლირიკა და შექმენი', writeLyricsBtn: '✨ ლირიკა დამიწერე', upscaleBtn: '⬆ HD გადიდება', upscaling: '🔍 ვადიდებ HD-მდე…', upscaleFailed: 'გადიდება ვერ მოხერხდა.',
-    modeLipsync: 'ლიფსინქი', lipsyncPlaceholder: 'მიამაგრე ვიდეო ან ფოტო + ჩაწერე ტექსტი — პერსონაჟი ალაპარაკდება ლიფსინქით…',
+    modeLipsync: 'ლიფსინქი', lipsyncPlaceholder: 'მიამაგრე პერსონაჟის ფოტო + ჩაწერე ტექსტი — სურათი ალაპარაკდება…',
     generatingLipsync: 'ტუჩები სინქრონდება…', lipsyncFailed: 'ლიფსინქი ვერ მოხერხდა.', lipsyncNeedFiles: 'მიამაგრე ვიდეოც და აუდიოც.', lipsyncAuth: 'ლიფსინქისთვის ჯერ გაიარე ავტორიზაცია.', lipAudioLabel: 'აუდიო',
     stop: 'შეჩერება', stopped: 'შეჩერდა', scrollDown: 'ბოლოში გადასვლა', regenerate: 'თავიდან გენერაცია', elapsedHint: 'გავიდა', greeting: 'რით დაგეხმარო?', attachHint: 'დამატება',
     instrumental: 'ინსტრუმენტალი', withVocals: 'ვოკალით', lyricsPlaceholder: 'ლირიკა (არჩევითი) — შენი ტექსტი; ცარიელი = ავტომატური', coverMode: '🎵 ქავერი', voiceMode: '🎤 ჩემი ხმით', voiceLyricsPlaceholder: 'ლირიკა — რას იმღერებს შენი ხმა (ატვირთე ≥15წმ ხმა)', voiceSecTitle: '🎤 შენი ხმა', voiceRec: 'ჩაწერა', voiceUp: 'ატვირთვა', voiceReady: 'ხმა მზადაა — აირჩიე „ჩემი ხმით"', voiceRecHint: 'ჩაიწერე ან ატვირთე ≥15წმ ხმა — სიმღერა შენი ვოკალით შეიქმნება', need15: '≥15წმ',
@@ -92,7 +92,7 @@ const COPY: Record<Lang, {
     generatingMusic: 'Composing music… (1–3 min)', musicFailed: 'Music generation failed. Try again.', lyricsBlocked: '⚠️ Lyrics were blocked (copyright). Change the words or tap "✨ Write lyrics".',
     modeVideo: 'Video', videoPlaceholder: 'Describe a 30-second video (attach a photo for the character)…',
     generatingVideo: 'Producing video… 6 scenes + montage (~5–7 min, please wait)', videoFailed: 'Video generation failed.', generatingMyVoice: '🎵 Creating a song in your voice… (~2–3 min, please wait)', myVoiceCreate: 'Create with my voice', myVoiceLyricsPh: 'Write lyrics — what your voice will sing', myVoiceReady: 'Your voice is ready — write lyrics and create', writeLyricsBtn: '✨ Write lyrics', upscaleBtn: '⬆ HD upscale', upscaling: '🔍 Upscaling to HD…', upscaleFailed: 'Upscale failed.',
-    modeLipsync: 'Lip-sync', lipsyncPlaceholder: 'Attach a video + type a script — the character speaks it, lip-synced…',
+    modeLipsync: 'Lip-sync', lipsyncPlaceholder: 'Attach a character photo + type a script — the photo speaks it…',
     generatingLipsync: 'Syncing the lips…', lipsyncFailed: 'Lip-sync failed.', lipsyncNeedFiles: 'Attach both a video and audio.', lipsyncAuth: 'Sign in first to use lip-sync.', lipAudioLabel: 'Audio',
     stop: 'Stop', stopped: 'Stopped', scrollDown: 'Scroll to bottom', regenerate: 'Regenerate', elapsedHint: 'elapsed', greeting: 'How can I help?', attachHint: 'Add',
     instrumental: 'Instrumental', withVocals: 'Vocals', lyricsPlaceholder: 'Lyrics (optional) — your words; empty = auto-written', coverMode: '🎵 Cover', voiceMode: '🎤 My voice', voiceLyricsPlaceholder: 'Lyrics — what your voice will sing (upload ≥15s of voice)', voiceSecTitle: '🎤 Your voice', voiceRec: 'Record', voiceUp: 'Upload', voiceReady: 'Voice ready — pick “My voice”', voiceRecHint: 'Record or upload ≥15s of voice — the song is sung in your voice', need15: '≥15s',
@@ -112,7 +112,7 @@ const COPY: Record<Lang, {
     generatingMusic: 'Создаю музыку… (1–3 мин)', musicFailed: 'Не удалось создать музыку. Попробуйте снова.', lyricsBlocked: '⚠️ Текст заблокирован (авторские права). Измените слова или нажмите «✨ Написать текст».',
     modeVideo: 'Видео', videoPlaceholder: 'Опишите 30-секундное видео (фото — для персонажа)…',
     generatingVideo: 'Создаю видео… 6 сцен + монтаж (~5–7 мин, подождите)', videoFailed: 'Не удалось создать видео.', generatingMyVoice: '🎵 Создаю песню вашим голосом… (~2–3 мин, подождите)', myVoiceCreate: 'Создать моим голосом', myVoiceLyricsPh: 'Напишите текст — что споёт ваш голос', myVoiceReady: 'Ваш голос готов — напишите текст и создайте', writeLyricsBtn: '✨ Написать текст', upscaleBtn: '⬆ HD увеличить', upscaling: '🔍 Увеличиваю до HD…', upscaleFailed: 'Не удалось увеличить.',
-    modeLipsync: 'Синхрон', lipsyncPlaceholder: 'Прикрепите видео + введите текст — персонаж произнесёт его с синхроном губ…',
+    modeLipsync: 'Синхрон', lipsyncPlaceholder: 'Прикрепите фото персонажа + введите текст — фото заговорит…',
     generatingLipsync: 'Синхронизирую губы…', lipsyncFailed: 'Не удалось синхронизировать.', lipsyncNeedFiles: 'Прикрепите и видео, и аудио.', lipsyncAuth: 'Войдите, чтобы использовать синхронизацию.', lipAudioLabel: 'Аудио',
     stop: 'Стоп', stopped: 'Остановлено', scrollDown: 'Вниз', regenerate: 'Заново', elapsedHint: 'прошло', greeting: 'Чем помочь?', attachHint: 'Добавить',
     instrumental: 'Инструментал', withVocals: 'Вокал', lyricsPlaceholder: 'Текст (необязательно) — ваши слова; пусто = авто', coverMode: '🎵 Кавер', voiceMode: '🎤 Мой голос', voiceLyricsPlaceholder: 'Текст — что споёт ваш голос (загрузите ≥15с голоса)', voiceSecTitle: '🎤 Ваш голос', voiceRec: 'Запись', voiceUp: 'Загрузить', voiceReady: 'Голос готов — выберите «Мой голос»', voiceRecHint: 'Запишите или загрузите ≥15с голоса — песня будет спета вашим голосом', need15: '≥15с',
@@ -1257,7 +1257,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     if (mode === 'lipsync') {
       // The "face" can be a VIDEO or a still PHOTO (Wav2Lip animates a portrait into a
       // talking clip) → covers both "dub a video" and "make a character speak".
-      const faceAtt = attachments.find((a) => isVideo(a.mimeType) || isImage(a.mimeType));
+      const faceAtt = attachments.find((a) => isImage(a.mimeType)) ?? attachments.find((a) => isVideo(a.mimeType));
       const audioAtt = attachments.find((a) => isAudio(a.mimeType));
       if (!faceAtt || (!text && !audioAtt)) {
         setMessages((prev) => [...prev, { role: 'assistant', text: t.lipsyncNeedFiles }]);
@@ -2042,7 +2042,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             {mode === 'lipsync' && (
               <>
                 <Chip active={attachments.some((a) => isVideo(a.mimeType) || isImage(a.mimeType))} onClick={() => fileRef.current?.click()}>
-                  🎬 {attachments.some((a) => isVideo(a.mimeType) || isImage(a.mimeType)) ? (locale === 'en' ? 'Video/Photo ✓' : locale === 'ru' ? 'Видео/Фото ✓' : 'ვიდეო/ფოტო ✓') : (locale === 'en' ? 'Attach video/photo' : locale === 'ru' ? 'Видео или фото' : 'მიამაგრე ვიდეო/ფოტო')}
+                  🧑 {attachments.some((a) => isImage(a.mimeType) || isVideo(a.mimeType)) ? (locale === 'en' ? 'Photo ✓' : locale === 'ru' ? 'Фото ✓' : 'ფოტო ✓') : (locale === 'en' ? 'Attach photo' : locale === 'ru' ? 'Прикрепить фото' : 'მიამაგრე ფოტო')}
                 </Chip>
                 {attachments.some((a) => isAudio(a.mimeType)) && (
                   <Chip active onClick={() => fileRef.current?.click()}>🎵 {t.lipAudioLabel} ✓</Chip>
