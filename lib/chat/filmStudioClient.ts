@@ -689,26 +689,12 @@ export async function driveFilmStudio(opts: DriveFilmOptions): Promise<FilmStudi
       );
     }
 
-    let master = assembled.url;
-
-    // 3.5 ── Lip-sync pass: make the character actually SPEAK. Wav2Lip keys the mouth
-    // region to the master's OWN embedded narration (voice + ducked score), leaving
-    // faceless / wide frames untouched. Fail-open → any failure keeps the voiced cut.
-    if (master && opts.lipsyncNarration && voiceBed) {
-      emit('stitching', matrix, master);
-      try {
-        const lr = await fetch('/api/video/lipsync', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ videoUrl: master, resizeFactor: 2 }),
-          credentials: 'include',
-          signal,
-        });
-        const lj = (await lr.json().catch(() => ({}))) as { url?: string | null };
-        if (lj.url) master = lj.url;
-      } catch { /* fail-open — keep the voiced master */ }
-    }
-
+    const master = assembled.url;
+    // NOTE (v287): a Wav2Lip lip-sync pass over the WHOLE 30s master is not viable in
+    // one request — cog-wav2lip needs >4 min for 30s (cold-boot + 750 frames), beyond
+    // the 300s route budget even at resize_factor 3. So the film SPEAKS (the narration
+    // voice-over is mixed under the score) but the master is not lip-synced here; the
+    // standalone Lip-sync mode covers true talking-character output for shorter clips.
     emit('assembled', matrix, master);
     return { ok: true, phase: 'assembled', masterUrl: master, qa: assembled.qa, previewUrl: firstPreviewUrl(matrix), matrix };
   } catch (err) {

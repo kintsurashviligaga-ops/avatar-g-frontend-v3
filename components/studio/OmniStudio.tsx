@@ -131,19 +131,19 @@ const STAGES: Record<Lang, Record<'image' | 'music' | 'video' | 'lipsync', strin
   ka: {
     image: ['აღწერას ვიაზრებ…', 'კადრს ვხატავ…', 'დეტალებს ვამატებ…', 'ვასრულებ…'],
     music: ['იდეას ვამუშავებ…', 'მელოდიას ვაკომპონებ…', 'ხმებს ვურევ…', 'ვასრულებ…'],
-    video: ['სცენარს ვშლი…', 'კადრებს ვქმნი…', 'ხმასა და მუსიკას ვამატებ…', 'ვაერთიანებ…', 'პერსონაჟს ვაამეტყველებ…'],
+    video: ['სცენარს ვშლი…', 'კადრებს ვქმნი…', 'ხმასა და მუსიკას ვამატებ…', 'ვაერთიანებ…'],
     lipsync: ['ფაილებს ვამუშავებ…', 'ტუჩებს ვასინქრონებ…', 'ვასრულებ…'],
   },
   en: {
     image: ['Reading your prompt…', 'Painting the frame…', 'Adding details…', 'Finishing up…'],
     music: ['Shaping the idea…', 'Composing the melody…', 'Mixing the voices…', 'Finishing up…'],
-    video: ['Breaking down the script…', 'Generating the shots…', 'Adding voice & music…', 'Stitching together…', 'Making the character speak…'],
+    video: ['Breaking down the script…', 'Generating the shots…', 'Adding voice & music…', 'Stitching together…'],
     lipsync: ['Processing the files…', 'Syncing the lips…', 'Finishing up…'],
   },
   ru: {
     image: ['Читаю запрос…', 'Рисую кадр…', 'Добавляю детали…', 'Завершаю…'],
     music: ['Формирую идею…', 'Сочиняю мелодию…', 'Свожу голоса…', 'Завершаю…'],
-    video: ['Разбираю сценарий…', 'Создаю кадры…', 'Добавляю голос и музыку…', 'Собираю воедино…', 'Оживляю губы персонажа…'],
+    video: ['Разбираю сценарий…', 'Создаю кадры…', 'Добавляю голос и музыку…', 'Собираю воедино…'],
     lipsync: ['Обрабатываю файлы…', 'Синхронизирую губы…', 'Завершаю…'],
   },
 };
@@ -153,9 +153,9 @@ const STAGES: Record<Lang, Record<'image' | 'music' | 'video' | 'lipsync', strin
 const PROGRESS_TARGET: Record<'image' | 'music' | 'video' | 'lipsync', number> = {
   // Pace each bar to the REAL wall-clock so it never hits 95% then sits frozen
   // (which read as "broken / not generating"). The 30s film is the big one: six
-  // LTX clips (~4–5 min) + the FFmpeg montage (~3 min) + the Wav2Lip talking-character
-  // pass (~1.5–2 min) ≈ 9 min end-to-end — so the bar must crawl across ~9 min.
-  image: 65, music: 150, video: 540, lipsync: 70,
+  // LTX clips (~4–5 min) + the FFmpeg montage (~3 min) ≈ 7–8 min end-to-end —
+  // measured live — so the bar must crawl across ~7 min, not finish at ~2 min.
+  image: 65, music: 150, video: 440, lipsync: 70,
 };
 
 function fmtClock(sec: number): string {
@@ -761,7 +761,6 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         orientation,
         transition: videoTransition,
         myVoiceNarration: videoMyVoiceNarration && hasTrainedVoice,
-        lipsyncNarration: videoNarration,
         ...(sceneFrames?.length ? { sceneFrames } : {}),
         ...(sceneScripts?.length ? { sceneScripts } : {}),
         locale,
