@@ -52,7 +52,7 @@ const COPY: Record<Lang, {
   modeChat: string; modeImage: string; imgPlaceholder: string; generatingImage: string; imageFailed: string; imgDownload: string; editImage: string;
   magicHint: string;
   modeMusic: string; musicPlaceholder: string; generatingMusic: string; musicFailed: string;
-  modeVideo: string; videoPlaceholder: string; generatingVideo: string; videoFailed: string; generatingMyVoice: string; myVoiceCreate: string; myVoiceLyricsPh: string; myVoiceReady: string;
+  modeVideo: string; videoPlaceholder: string; generatingVideo: string; videoFailed: string; generatingMyVoice: string; myVoiceCreate: string; myVoiceLyricsPh: string; myVoiceReady: string; writeLyricsBtn: string;
   modeLipsync: string; lipsyncPlaceholder: string; generatingLipsync: string; lipsyncFailed: string; lipsyncNeedFiles: string; lipsyncAuth: string; lipAudioLabel: string;
   stop: string; stopped: string; scrollDown: string; regenerate: string; elapsedHint: string; greeting: string; attachHint: string;
   instrumental: string; withVocals: string; lyricsPlaceholder: string; coverMode: string; voiceMode: string; voiceLyricsPlaceholder: string; voiceSecTitle: string; voiceRec: string; voiceUp: string; voiceReady: string; voiceRecHint: string; need15: string;
@@ -71,7 +71,7 @@ const COPY: Record<Lang, {
     modeMusic: 'მუსიკა', musicPlaceholder: 'აღწერე მუსიკა (მაგ. ეპიკური კინო-სცენა)…',
     generatingMusic: 'მუსიკა იქმნება… (1–3 წუთი)', musicFailed: 'მუსიკის გენერაცია ვერ მოხერხდა. სცადე თავიდან.',
     modeVideo: 'ვიდეო', videoPlaceholder: 'აღწერე 30-წამიანი ვიდეო (ფოტო — პერსონაჟისთვის)…',
-    generatingVideo: 'ვიდეო იქმნება… 6 სცენა + მონტაჟი (~5–7 წუთი, დაელოდე)', videoFailed: 'ვიდეოს გენერაცია ვერ მოხერხდა.', generatingMyVoice: '🎵 სიმღერა იქმნება შენი ხმით… (~2–3 წუთი, დაელოდე)', myVoiceCreate: 'ჩემი ხმით შექმნა', myVoiceLyricsPh: 'დაწერე ლირიკა — რას იმღერებს შენი ხმა', myVoiceReady: 'შენი ხმა მზადაა — დაწერე ლირიკა და შექმენი',
+    generatingVideo: 'ვიდეო იქმნება… 6 სცენა + მონტაჟი (~5–7 წუთი, დაელოდე)', videoFailed: 'ვიდეოს გენერაცია ვერ მოხერხდა.', generatingMyVoice: '🎵 სიმღერა იქმნება შენი ხმით… (~2–3 წუთი, დაელოდე)', myVoiceCreate: 'ჩემი ხმით შექმნა', myVoiceLyricsPh: 'დაწერე ლირიკა — რას იმღერებს შენი ხმა', myVoiceReady: 'შენი ხმა მზადაა — დაწერე ლირიკა და შექმენი', writeLyricsBtn: '✨ ლირიკა დამიწერე',
     modeLipsync: 'ლიფსინქი', lipsyncPlaceholder: 'მიამაგრე ვიდეო + აუდიო და დააჭირე გაგზავნას…',
     generatingLipsync: 'ტუჩები სინქრონდება…', lipsyncFailed: 'ლიფსინქი ვერ მოხერხდა.', lipsyncNeedFiles: 'მიამაგრე ვიდეოც და აუდიოც.', lipsyncAuth: 'ლიფსინქისთვის ჯერ გაიარე ავტორიზაცია.', lipAudioLabel: 'აუდიო',
     stop: 'შეჩერება', stopped: 'შეჩერდა', scrollDown: 'ბოლოში გადასვლა', regenerate: 'თავიდან გენერაცია', elapsedHint: 'გავიდა', greeting: 'რით დაგეხმარო?', attachHint: 'დამატება',
@@ -91,7 +91,7 @@ const COPY: Record<Lang, {
     modeMusic: 'Music', musicPlaceholder: 'Describe the music (e.g. epic cinematic scene)…',
     generatingMusic: 'Composing music… (1–3 min)', musicFailed: 'Music generation failed. Try again.',
     modeVideo: 'Video', videoPlaceholder: 'Describe a 30-second video (attach a photo for the character)…',
-    generatingVideo: 'Producing video… 6 scenes + montage (~5–7 min, please wait)', videoFailed: 'Video generation failed.', generatingMyVoice: '🎵 Creating a song in your voice… (~2–3 min, please wait)', myVoiceCreate: 'Create with my voice', myVoiceLyricsPh: 'Write lyrics — what your voice will sing', myVoiceReady: 'Your voice is ready — write lyrics and create',
+    generatingVideo: 'Producing video… 6 scenes + montage (~5–7 min, please wait)', videoFailed: 'Video generation failed.', generatingMyVoice: '🎵 Creating a song in your voice… (~2–3 min, please wait)', myVoiceCreate: 'Create with my voice', myVoiceLyricsPh: 'Write lyrics — what your voice will sing', myVoiceReady: 'Your voice is ready — write lyrics and create', writeLyricsBtn: '✨ Write lyrics',
     modeLipsync: 'Lip-sync', lipsyncPlaceholder: 'Attach a video + audio, then press send…',
     generatingLipsync: 'Syncing the lips…', lipsyncFailed: 'Lip-sync failed.', lipsyncNeedFiles: 'Attach both a video and audio.', lipsyncAuth: 'Sign in first to use lip-sync.', lipAudioLabel: 'Audio',
     stop: 'Stop', stopped: 'Stopped', scrollDown: 'Scroll to bottom', regenerate: 'Regenerate', elapsedHint: 'elapsed', greeting: 'How can I help?', attachHint: 'Add',
@@ -111,7 +111,7 @@ const COPY: Record<Lang, {
     modeMusic: 'Музыка', musicPlaceholder: 'Опишите музыку (напр. эпичная кино-сцена)…',
     generatingMusic: 'Создаю музыку… (1–3 мин)', musicFailed: 'Не удалось создать музыку. Попробуйте снова.',
     modeVideo: 'Видео', videoPlaceholder: 'Опишите 30-секундное видео (фото — для персонажа)…',
-    generatingVideo: 'Создаю видео… 6 сцен + монтаж (~5–7 мин, подождите)', videoFailed: 'Не удалось создать видео.', generatingMyVoice: '🎵 Создаю песню вашим голосом… (~2–3 мин, подождите)', myVoiceCreate: 'Создать моим голосом', myVoiceLyricsPh: 'Напишите текст — что споёт ваш голос', myVoiceReady: 'Ваш голос готов — напишите текст и создайте',
+    generatingVideo: 'Создаю видео… 6 сцен + монтаж (~5–7 мин, подождите)', videoFailed: 'Не удалось создать видео.', generatingMyVoice: '🎵 Создаю песню вашим голосом… (~2–3 мин, подождите)', myVoiceCreate: 'Создать моим голосом', myVoiceLyricsPh: 'Напишите текст — что споёт ваш голос', myVoiceReady: 'Ваш голос готов — напишите текст и создайте', writeLyricsBtn: '✨ Написать текст',
     modeLipsync: 'Синхрон', lipsyncPlaceholder: 'Прикрепите видео + аудио и нажмите отправить…',
     generatingLipsync: 'Синхронизирую губы…', lipsyncFailed: 'Не удалось синхронизировать.', lipsyncNeedFiles: 'Прикрепите и видео, и аудио.', lipsyncAuth: 'Войдите, чтобы использовать синхронизацию.', lipAudioLabel: 'Аудио',
     stop: 'Стоп', stopped: 'Остановлено', scrollDown: 'Вниз', regenerate: 'Заново', elapsedHint: 'прошло', greeting: 'Чем помочь?', attachHint: 'Добавить',
@@ -641,6 +641,8 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // and a toggle to sing with it instead of a one-shot upload.
   const [hasTrainedVoice, setHasTrainedVoice] = useState(false);
   const [useMyVoice, setUseMyVoice] = useState(false);
+  // Auto-write lyrics from a theme (removes the "I don't have lyrics" friction).
+  const [writingLyrics, setWritingLyrics] = useState(false);
   const [videoOrientation, setVideoOrientation] = useState<'landscape' | 'vertical'>('landscape');
   const [videoStyle, setVideoStyle] = useState<string>('Cinematic');
   // PHASE 48 §2 — opt-in spoken commentator/narration. When on, a localized cue
@@ -1527,6 +1529,22 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     }
   }, []);
 
+  // ✨ Auto-write lyrics from the typed vibe (or the genre) and drop them into the box.
+  const writeLyrics = useCallback(async () => {
+    if (writingLyrics) return;
+    const theme = input.trim() || musicLyrics.trim() || musicGenre;
+    setWritingLyrics(true);
+    try {
+      const r = await fetch('/api/ai/lyrics', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ theme, language: locale, style: musicGenre }),
+      });
+      const j = (await r.json().catch(() => ({}))) as { success?: boolean; lyrics?: string };
+      if (j.success && j.lyrics) setMusicLyrics(j.lyrics);
+    } catch { /* fail-soft */ }
+    setWritingLyrics(false);
+  }, [writingLyrics, input, musicLyrics, musicGenre, locale]);
+
   return (
     <div
       className="relative mx-auto flex h-full w-full max-w-3xl flex-col px-4 pt-2 text-app-text"
@@ -1889,6 +1907,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                   placeholder={t.myVoiceLyricsPh}
                   className="w-full resize-none rounded-lg border border-app-border/15 bg-app-bg/40 px-3 py-2 text-[13px] text-app-text outline-none transition-colors placeholder:text-app-muted/50 focus:border-app-accent/50 focus:bg-app-bg/70"
                 />
+                <button type="button" onClick={() => void writeLyrics()} disabled={writingLyrics} className="inline-flex w-fit items-center gap-1.5 rounded-full border border-app-border/20 px-3 py-1 text-[11px] font-medium text-app-muted transition-colors hover:bg-app-elevated hover:text-app-accent disabled:opacity-40">
+                  {writingLyrics ? <Loader2 size={11} className="animate-spin" /> : null} {t.writeLyricsBtn}
+                </button>
                 <button type="button" onClick={() => void send({ forceMyVoice: true })} disabled={busy}
                   className="flex w-full items-center justify-center gap-2 rounded-xl bg-app-accent px-4 py-3 text-[14px] font-bold text-app-bg shadow-[0_0_20px_rgba(34,211,238,0.3)] transition-all hover:opacity-90 disabled:opacity-50">
                   {busy ? <Loader2 size={16} className="animate-spin" /> : <>🎤 {t.myVoiceCreate}</>}
@@ -1904,13 +1925,18 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           const trained = useMyVoice && hasTrainedVoice;
           if (musicInstrumental && !trained) return null;
           return (
-            <textarea
-              value={musicLyrics}
-              onChange={(e) => setMusicLyrics(e.target.value)}
-              rows={2}
-              placeholder={trained ? t.voiceLyricsPlaceholder : t.lyricsPlaceholder}
-              className="mb-2 w-full resize-none rounded-xl bg-app-elevated/60 px-3 py-2 text-[13px] text-app-text outline-none transition-colors placeholder:text-app-muted/60 focus:bg-app-elevated"
-            />
+            <div className="mb-2 space-y-1.5">
+              <textarea
+                value={musicLyrics}
+                onChange={(e) => setMusicLyrics(e.target.value)}
+                rows={2}
+                placeholder={trained ? t.voiceLyricsPlaceholder : t.lyricsPlaceholder}
+                className="w-full resize-none rounded-xl bg-app-elevated/60 px-3 py-2 text-[13px] text-app-text outline-none transition-colors placeholder:text-app-muted/60 focus:bg-app-elevated"
+              />
+              <button type="button" onClick={() => void writeLyrics()} disabled={writingLyrics} className="inline-flex items-center gap-1.5 rounded-full border border-app-border/15 px-3 py-1 text-[11px] font-medium text-app-muted transition-colors hover:bg-app-elevated hover:text-app-accent disabled:opacity-40">
+                {writingLyrics ? <Loader2 size={11} className="animate-spin" /> : null} {t.writeLyricsBtn}
+              </button>
+            </div>
           );
         })()}
 
