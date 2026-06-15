@@ -118,6 +118,12 @@ export interface DriveFilmOptions {
   /** Re-voice the narration in the user's TRAINED voice (RVC) before the stitch. */
   myVoiceNarration?: boolean;
   /**
+   * After the master is stitched, run a Wav2Lip pass so the character's LIPS move with
+   * the narration — a real talking character, not just a voice-over. Keyed to the
+   * master's own embedded audio; fail-open (any failure keeps the voiced cut).
+   */
+  lipsyncNarration?: boolean;
+  /**
    * Approved storyboard frames (ordered by scene) from /api/film/storyboard.
    * When present, each becomes that scene's per-scene identity anchor, so the
    * rendered film matches the storyboard the user approved.
@@ -683,7 +689,26 @@ export async function driveFilmStudio(opts: DriveFilmOptions): Promise<FilmStudi
       );
     }
 
-    const master = assembled.url;
+    let master = assembled.url;
+
+    // 3.5 ── Lip-sync pass: make the character actually SPEAK. Wav2Lip keys the mouth
+    // region to the master's OWN embedded narration (voice + ducked score), leaving
+    // faceless / wide frames untouched. Fail-open → any failure keeps the voiced cut.
+    if (master && opts.lipsyncNarration && voiceBed) {
+      emit('stitching', matrix, master);
+      try {
+        const lr = await fetch('/api/video/lipsync', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ videoUrl: master }),
+          credentials: 'include',
+          signal,
+        });
+        const lj = (await lr.json().catch(() => ({}))) as { url?: string | null };
+        if (lj.url) master = lj.url;
+      } catch { /* fail-open — keep the voiced master */ }
+    }
+
     emit('assembled', matrix, master);
     return { ok: true, phase: 'assembled', masterUrl: master, qa: assembled.qa, previewUrl: firstPreviewUrl(matrix), matrix };
   } catch (err) {

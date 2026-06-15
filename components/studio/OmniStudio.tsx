@@ -131,19 +131,19 @@ const STAGES: Record<Lang, Record<'image' | 'music' | 'video' | 'lipsync', strin
   ka: {
     image: ['აღწერას ვიაზრებ…', 'კადრს ვხატავ…', 'დეტალებს ვამატებ…', 'ვასრულებ…'],
     music: ['იდეას ვამუშავებ…', 'მელოდიას ვაკომპონებ…', 'ხმებს ვურევ…', 'ვასრულებ…'],
-    video: ['სცენარს ვშლი…', 'კადრებს ვქმნი…', 'ხმას ვამატებ…', 'ვაერთიანებ…'],
+    video: ['სცენარს ვშლი…', 'კადრებს ვქმნი…', 'ხმასა და მუსიკას ვამატებ…', 'ვაერთიანებ…', 'პერსონაჟს ვაამეტყველებ…'],
     lipsync: ['ფაილებს ვამუშავებ…', 'ტუჩებს ვასინქრონებ…', 'ვასრულებ…'],
   },
   en: {
     image: ['Reading your prompt…', 'Painting the frame…', 'Adding details…', 'Finishing up…'],
     music: ['Shaping the idea…', 'Composing the melody…', 'Mixing the voices…', 'Finishing up…'],
-    video: ['Breaking down the script…', 'Generating the shots…', 'Adding sound…', 'Stitching together…'],
+    video: ['Breaking down the script…', 'Generating the shots…', 'Adding voice & music…', 'Stitching together…', 'Making the character speak…'],
     lipsync: ['Processing the files…', 'Syncing the lips…', 'Finishing up…'],
   },
   ru: {
     image: ['Читаю запрос…', 'Рисую кадр…', 'Добавляю детали…', 'Завершаю…'],
     music: ['Формирую идею…', 'Сочиняю мелодию…', 'Свожу голоса…', 'Завершаю…'],
-    video: ['Разбираю сценарий…', 'Создаю кадры…', 'Добавляю звук…', 'Собираю воедино…'],
+    video: ['Разбираю сценарий…', 'Создаю кадры…', 'Добавляю голос и музыку…', 'Собираю воедино…', 'Оживляю губы персонажа…'],
     lipsync: ['Обрабатываю файлы…', 'Синхронизирую губы…', 'Завершаю…'],
   },
 };
@@ -153,9 +153,9 @@ const STAGES: Record<Lang, Record<'image' | 'music' | 'video' | 'lipsync', strin
 const PROGRESS_TARGET: Record<'image' | 'music' | 'video' | 'lipsync', number> = {
   // Pace each bar to the REAL wall-clock so it never hits 95% then sits frozen
   // (which read as "broken / not generating"). The 30s film is the big one: six
-  // LTX clips (~4–5 min) + the FFmpeg montage (~3 min) ≈ 7–8 min end-to-end —
-  // measured live — so the bar must crawl across ~7 min, not finish at ~2 min.
-  image: 65, music: 150, video: 440, lipsync: 70,
+  // LTX clips (~4–5 min) + the FFmpeg montage (~3 min) + the Wav2Lip talking-character
+  // pass (~1.5–2 min) ≈ 9 min end-to-end — so the bar must crawl across ~9 min.
+  image: 65, music: 150, video: 540, lipsync: 70,
 };
 
 function fmtClock(sec: number): string {
@@ -521,10 +521,10 @@ function StoryboardOverlay({ sb, t, busy, regenningOrdinal, onGenerate, onRegene
                   <textarea
                     value={s.prompt}
                     onChange={(e) => onEditScene(s.ordinal, e.target.value)}
-                    rows={3}
+                    rows={4}
                     placeholder={t.sbEditHint}
                     aria-label={`${t.sbScene} ${s.ordinal}`}
-                    className="w-full flex-1 resize-none rounded-lg border border-app-border/15 bg-app-bg/40 px-2 py-1.5 text-[11px] leading-snug text-app-text outline-none transition-colors placeholder:text-app-muted/45 focus:border-app-accent/50 focus:bg-app-bg/70"
+                    className="min-h-[72px] w-full flex-1 resize-y rounded-lg border border-app-border/15 bg-app-bg/40 px-2.5 py-2 text-[12px] leading-relaxed text-app-text outline-none transition-colors placeholder:text-app-muted/45 focus:border-app-accent/60 focus:bg-app-bg/70 focus:ring-2 focus:ring-app-accent/25"
                   />
                   <button type="button" onClick={() => onRegenScene(s.ordinal)} disabled={regenningOrdinal !== null || busy} className="inline-flex items-center justify-center gap-1 rounded-md bg-app-bg/40 px-2 py-1 text-[10.5px] font-medium text-app-muted transition-colors hover:bg-app-accent/15 hover:text-app-accent disabled:opacity-40">
                     <RotateCcw size={11} /> {t.sbRegen}
@@ -649,10 +649,10 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   const [upscaling, setUpscaling] = useState(false);
   const [videoOrientation, setVideoOrientation] = useState<'landscape' | 'vertical'>('landscape');
   const [videoStyle, setVideoStyle] = useState<string>('Cinematic');
-  // PHASE 48 §2 — opt-in spoken commentator/narration. When on, a localized cue
-  // is appended to the brief so the film pipeline's wantsCommentary() detector
-  // fires and a voice-over track is generated + mixed under the score.
-  const [videoNarration, setVideoNarration] = useState(false);
+  // Spoken voice for the film — ON by default so the character actually TALKS (and,
+  // with the lip-sync pass, the lips move with it). When on, a localized cue is
+  // appended to the brief so the pipeline generates a voice-over + lip-syncs the master.
+  const [videoNarration, setVideoNarration] = useState(true);
   // Narrate the film in the user's TRAINED voice (RVC) — needs a trained model.
   const [videoMyVoiceNarration, setVideoMyVoiceNarration] = useState(false);
   // Lip-sync "dub from text" → speak the typed script in the user's TRAINED voice (RVC).
@@ -761,6 +761,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         orientation,
         transition: videoTransition,
         myVoiceNarration: videoMyVoiceNarration && hasTrainedVoice,
+        lipsyncNarration: videoNarration,
         ...(sceneFrames?.length ? { sceneFrames } : {}),
         ...(sceneScripts?.length ? { sceneScripts } : {}),
         locale,
@@ -813,7 +814,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     } finally {
       if (mine()) setBusy(false);
     }
-  }, [locale, videoTransition, videoMyVoiceNarration, hasTrainedVoice, t.generatingVideo, t.videoFailed]);
+  }, [locale, videoTransition, videoMyVoiceNarration, videoNarration, hasTrainedVoice, t.generatingVideo, t.videoFailed]);
 
   // Plan the storyboard (6 scenes + a frame each) and open the review overlay.
   // Fail-open: a storyboard miss falls back to a direct render so the user is
