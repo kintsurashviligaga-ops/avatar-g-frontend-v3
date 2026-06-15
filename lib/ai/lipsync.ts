@@ -15,12 +15,15 @@ import 'server-only';
  * simply keeps the original (already-perfect) master. Lip-sync can only ever make
  * the film better, never break it.
  *
- * The model is the model-LATEST endpoint (no pinned version hash that can go
- * stale); override the model or the input field names via env if needed.
+ * cog-wav2lip is a COMMUNITY model, so predictions run via /v1/predictions with a
+ * PINNED version hash — the /v1/models/{model}/predictions "latest" endpoint is
+ * official-models-only and 404s here. Model, version and input field names are all
+ * env-overridable if the model is updated or swapped.
  */
 
-// `owner/name` — runs the model's latest version via /v1/models/{model}/predictions.
+// `owner/name` (label/diagnostics only) + the pinned version actually dispatched.
 const LIPSYNC_MODEL = (process.env.LIPSYNC_REPLICATE_MODEL || 'devxpy/cog-wav2lip').trim();
+const LIPSYNC_VERSION = (process.env.LIPSYNC_REPLICATE_VERSION || '8d65e3f4f4298520e079198b493c25adfc43c058ffec924f2aefc8010ed25eef').trim();
 // Wav2Lip input field names differ slightly between forks; keep them overridable.
 const FACE_FIELD = (process.env.LIPSYNC_FACE_FIELD || 'face').trim();
 const AUDIO_FIELD = (process.env.LIPSYNC_AUDIO_FIELD || 'audio').trim();
@@ -47,8 +50,8 @@ export function hasLipsyncProvider(): boolean {
  * value, only whether it is present + which model the toggle will hit. Surfaced
  * via GET /api/video/lipsync so the wiring can be verified without a paid render.
  */
-export function lipsyncStatus(): { ready: boolean; model: string; faceField: string; audioField: string } {
-  return { ready: hasLipsyncProvider(), model: LIPSYNC_MODEL, faceField: FACE_FIELD, audioField: AUDIO_FIELD };
+export function lipsyncStatus(): { ready: boolean; model: string; version: string; faceField: string; audioField: string } {
+  return { ready: hasLipsyncProvider(), model: LIPSYNC_MODEL, version: LIPSYNC_VERSION, faceField: FACE_FIELD, audioField: AUDIO_FIELD };
 }
 
 /** Pull the first usable URL out of whatever shape the model returned. */
@@ -75,11 +78,11 @@ export async function lipsyncVideo(videoUrl: string, audioUrl: string): Promise<
   if (!key || !videoUrl || !audioUrl) return null;
 
   try {
-    const createRes = await fetch(`https://api.replicate.com/v1/models/${LIPSYNC_MODEL}/predictions`, {
+    const createRes = await fetch(`https://api.replicate.com/v1/predictions`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
       cache: 'no-store',
-      body: JSON.stringify({ input: { [FACE_FIELD]: videoUrl, [AUDIO_FIELD]: audioUrl } }),
+      body: JSON.stringify({ version: LIPSYNC_VERSION, input: { [FACE_FIELD]: videoUrl, [AUDIO_FIELD]: audioUrl } }),
       signal: AbortSignal.timeout(20_000),
     });
     if (!createRes.ok) return null;

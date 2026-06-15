@@ -200,7 +200,9 @@ async function synthesizeVoiceover(text: string, voiceIdOverride?: string | null
  */
 export async function textToHostedSpeech(text: string, voiceId?: string | null): Promise<string | null> {
   try {
-    const audio = await synthesizeVoiceover(text, voiceId ?? null);
+    // Fall back to the hardcoded KA voice map (pickGeorgianVoiceId) — NOT just the env
+    // voice — so TTS never silently returns null when ELEVENLABS_VOICE_ID is unset.
+    const audio = await synthesizeVoiceover(text, voiceId ?? pickGeorgianVoiceId(text));
     if (!audio) return null;
     const path = `lipsync-tts/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.mp3`;
     return (await uploadAndSign('renders', path, audio.base64, audio.contentType, 7200)) ?? null;

@@ -72,7 +72,7 @@ const COPY: Record<Lang, {
     generatingMusic: 'მუსიკა იქმნება… (1–3 წუთი)', musicFailed: 'მუსიკის გენერაცია ვერ მოხერხდა. სცადე თავიდან.', lyricsBlocked: '⚠️ ლირიკა დაიბლოკა (საავტორო უფლებები). შეცვალე სიტყვები ან დააჭირე „✨ ლირიკა დამიწერე".',
     modeVideo: 'ვიდეო', videoPlaceholder: 'აღწერე 30-წამიანი ვიდეო (ფოტო — პერსონაჟისთვის)…',
     generatingVideo: 'ვიდეო იქმნება… 6 სცენა + მონტაჟი (~5–7 წუთი, დაელოდე)', videoFailed: 'ვიდეოს გენერაცია ვერ მოხერხდა.', generatingMyVoice: '🎵 სიმღერა იქმნება შენი ხმით… (~2–3 წუთი, დაელოდე)', myVoiceCreate: 'ჩემი ხმით შექმნა', myVoiceLyricsPh: 'დაწერე ლირიკა — რას იმღერებს შენი ხმა', myVoiceReady: 'შენი ხმა მზადაა — დაწერე ლირიკა და შექმენი', writeLyricsBtn: '✨ ლირიკა დამიწერე', upscaleBtn: '⬆ HD გადიდება', upscaling: '🔍 ვადიდებ HD-მდე…', upscaleFailed: 'გადიდება ვერ მოხერხდა.',
-    modeLipsync: 'ლიფსინქი', lipsyncPlaceholder: 'მიამაგრე ვიდეო + ჩაწერე ტექსტი — პერსონაჟი ალაპარაკდება ლიფსინქით…',
+    modeLipsync: 'ლიფსინქი', lipsyncPlaceholder: 'მიამაგრე ვიდეო ან ფოტო + ჩაწერე ტექსტი — პერსონაჟი ალაპარაკდება ლიფსინქით…',
     generatingLipsync: 'ტუჩები სინქრონდება…', lipsyncFailed: 'ლიფსინქი ვერ მოხერხდა.', lipsyncNeedFiles: 'მიამაგრე ვიდეოც და აუდიოც.', lipsyncAuth: 'ლიფსინქისთვის ჯერ გაიარე ავტორიზაცია.', lipAudioLabel: 'აუდიო',
     stop: 'შეჩერება', stopped: 'შეჩერდა', scrollDown: 'ბოლოში გადასვლა', regenerate: 'თავიდან გენერაცია', elapsedHint: 'გავიდა', greeting: 'რით დაგეხმარო?', attachHint: 'დამატება',
     instrumental: 'ინსტრუმენტალი', withVocals: 'ვოკალით', lyricsPlaceholder: 'ლირიკა (არჩევითი) — შენი ტექსტი; ცარიელი = ავტომატური', coverMode: '🎵 ქავერი', voiceMode: '🎤 ჩემი ხმით', voiceLyricsPlaceholder: 'ლირიკა — რას იმღერებს შენი ხმა (ატვირთე ≥15წმ ხმა)', voiceSecTitle: '🎤 შენი ხმა', voiceRec: 'ჩაწერა', voiceUp: 'ატვირთვა', voiceReady: 'ხმა მზადაა — აირჩიე „ჩემი ხმით"', voiceRecHint: 'ჩაიწერე ან ატვირთე ≥15წმ ხმა — სიმღერა შენი ვოკალით შეიქმნება', need15: '≥15წმ',
@@ -1240,16 +1240,18 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     // audio. A direct audio attachment also works (skips TTS). One long request → the
     // synced master, rendered inline like any other video result.
     if (mode === 'lipsync') {
-      const videoAtt = attachments.find((a) => isVideo(a.mimeType));
+      // The "face" can be a VIDEO or a still PHOTO (Wav2Lip animates a portrait into a
+      // talking clip) → covers both "dub a video" and "make a character speak".
+      const faceAtt = attachments.find((a) => isVideo(a.mimeType) || isImage(a.mimeType));
       const audioAtt = attachments.find((a) => isAudio(a.mimeType));
-      if (!videoAtt || (!text && !audioAtt)) {
+      if (!faceAtt || (!text && !audioAtt)) {
         setMessages((prev) => [...prev, { role: 'assistant', text: t.lipsyncNeedFiles }]);
         return;
       }
       setMessages((prev) => [...prev, { role: 'user', text, ...(attachments.length ? { medias: attachments } : {}) }, { role: 'assistant', text: t.generatingLipsync }]);
       setInput(''); setAttachments([]); setBusy(true);
       try {
-        const videoUrl = await uploadBigFile(videoAtt.dataUrl, videoAtt.mimeType);
+        const videoUrl = await uploadBigFile(faceAtt.dataUrl, faceAtt.mimeType);
         if (!videoUrl) throw new Error('upload failed');
         const audioUrl = audioAtt ? await uploadBigFile(audioAtt.dataUrl, audioAtt.mimeType) : undefined;
         const res = await fetch('/api/video/lipsync', {
@@ -2003,8 +2005,8 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             )}
             {mode === 'lipsync' && (
               <>
-                <Chip active={attachments.some((a) => isVideo(a.mimeType))} onClick={() => fileRef.current?.click()}>
-                  🎬 {attachments.some((a) => isVideo(a.mimeType)) ? (locale === 'en' ? 'Video ✓' : locale === 'ru' ? 'Видео ✓' : 'ვიდეო ✓') : (locale === 'en' ? 'Attach video' : locale === 'ru' ? 'Прикрепить видео' : 'მიამაგრე ვიდეო')}
+                <Chip active={attachments.some((a) => isVideo(a.mimeType) || isImage(a.mimeType))} onClick={() => fileRef.current?.click()}>
+                  🎬 {attachments.some((a) => isVideo(a.mimeType) || isImage(a.mimeType)) ? (locale === 'en' ? 'Video/Photo ✓' : locale === 'ru' ? 'Видео/Фото ✓' : 'ვიდეო/ფოტო ✓') : (locale === 'en' ? 'Attach video/photo' : locale === 'ru' ? 'Видео или фото' : 'მიამაგრე ვიდეო/ფოტო')}
                 </Chip>
                 {attachments.some((a) => isAudio(a.mimeType)) && (
                   <Chip active onClick={() => fileRef.current?.click()}>🎵 {t.lipAudioLabel} ✓</Chip>
