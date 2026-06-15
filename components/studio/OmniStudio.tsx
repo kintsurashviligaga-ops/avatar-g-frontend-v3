@@ -1462,7 +1462,10 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           recognitionRef.current = null;
           void startRecorderFallback();
         };
-        const watchdog = setTimeout(() => { if (!gotResult) toRecorder(); }, 4000);
+        // Give Web Speech a generous window to deliver the first text before assuming
+        // it's a "silent" engine and dropping to the recorder — otherwise pausing a
+        // moment before speaking would wrongly kill live transcription.
+        const watchdog = setTimeout(() => { if (!gotResult) toRecorder(); }, 8000);
         rec.onresult = (e: SREvent) => {
           gotResult = true;
           clearTimeout(watchdog);
