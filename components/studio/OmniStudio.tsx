@@ -15,6 +15,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Send, Mic, Square, Plus, X, Loader2, Sparkles, Film, Music2, FileText, Image as ImageIcon, Download, Upload, MessageSquare, Wand2, Volume2, Copy, Check, ChevronDown, RotateCcw, History, Trash2, MessageSquarePlus, Pencil } from 'lucide-react';
 import { driveFilmStudio } from '@/lib/chat/filmStudioClient';
+import { VoiceTrainer } from '@/components/voice/VoiceTrainer';
 import { Markdown } from './Markdown';
 import { createBrowserClient } from '@/lib/supabase/browser';
 
@@ -631,6 +632,10 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // dictation mic. Captures ≥15s of audio → added as the music voice reference.
   const [voiceRecording, setVoiceRecording] = useState(false);
   const [voiceRecSec, setVoiceRecSec] = useState(0);
+  // Trained RVC voice (faithful) — set by the in-chat VoiceTrainer once a model is ready,
+  // and a toggle to sing with it instead of a one-shot upload.
+  const [hasTrainedVoice, setHasTrainedVoice] = useState(false);
+  const [useMyVoice, setUseMyVoice] = useState(false);
   const [videoOrientation, setVideoOrientation] = useState<'landscape' | 'vertical'>('landscape');
   const [videoStyle, setVideoStyle] = useState<string>('Cinematic');
   // PHASE 48 §2 — opt-in spoken commentator/narration. When on, a localized cue
@@ -1124,10 +1129,12 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     const musicBlocked = mode === 'music' && attachments.some((a) => !isAudio(a.mimeType));
     // Generate music when there's a vibe typed OR a voice/cover attached — you should
     // NOT have to type a prompt just to sing in your own voice (that was a dead end).
-    if (mode === 'music' && (text || audioRef) && !musicBlocked) {
+    // Faithful trained-voice path needs neither typed text nor an upload — just the toggle.
+    const useTrained = mode === 'music' && useMyVoice && hasTrainedVoice;
+    if (mode === 'music' && (text || audioRef || useTrained) && !musicBlocked) {
       // Always have a prompt for the API: the typed vibe, else the lyrics, else the genre.
       const musicPrompt = text || musicLyrics.trim() || `${musicGenre} music`;
-      const userBubble = text || (audioRef ? `🎤 ${musicAudioMode === 'voice' ? t.voiceMode : t.coverMode}` : musicPrompt);
+      const userBubble = text || (useTrained ? t.voiceMode : audioRef ? `🎤 ${musicAudioMode === 'voice' ? t.voiceMode : t.coverMode}` : musicPrompt);
       setMessages((prev) => [...prev, { role: 'user', text: userBubble, ...(attachments.length ? { medias: attachments } : {}) }, { role: 'assistant', text: '' }]);
       setInput(''); setAttachments([]); setBusy(true);
       try {
@@ -1136,17 +1143,19 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         const uploadedAudioUrl = audioRef ? await uploadBigFile(audioRef, audioMime || 'audio/mpeg') : undefined;
         // Voice-clone path: the uploaded audio is the user's VOICE → MiniMax sings the
         // lyrics in it. Otherwise the attached audio is a cover (melody) source.
-        const isVoiceClone = !!uploadedAudioUrl && musicAudioMode === 'voice';
+        const isVoiceClone = !!uploadedAudioUrl && musicAudioMode === 'voice' && !useTrained;
         const res = await fetch('/api/ai/music', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             prompt: musicPrompt,
             style: musicGenre,
-            instrumental: isVoiceClone ? false : musicInstrumental,
-            // Lyrics ride along for vocal tracks AND voice clones (what to sing).
-            ...((isVoiceClone || !musicInstrumental) && musicLyrics.trim() ? { lyrics: musicLyrics.trim() } : {}),
-            ...(isVoiceClone
+            // Trained voice (RVC) → no upload needed; the server uses the user's model.
+            ...(useTrained ? { useMyVoice: true } : {}),
+            instrumental: (useTrained || isVoiceClone) ? false : musicInstrumental,
+            // Lyrics ride along for vocal tracks, voice clones AND the trained voice.
+            ...((useTrained || isVoiceClone || !musicInstrumental) && musicLyrics.trim() ? { lyrics: musicLyrics.trim() } : {}),
+            ...(useTrained ? {} : isVoiceClone
               ? { voiceReference: uploadedAudioUrl }
               : uploadedAudioUrl ? { audioReference: uploadedAudioUrl } : {}),
           }),
@@ -1200,7 +1209,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     const userMsg: Msg = { role: 'user', text, ...(attachments.length ? { medias: attachments } : {}) };
     setInput(''); setAttachments([]);
     await streamChat([...messages, userMsg]);
-  }, [input, attachments, busy, messages, mode, locale, imgAspect, imgQuality, imgStyle, imgCount, runImageBatch, musicGenre, musicInstrumental, musicLyrics, musicAudioMode, videoOrientation, videoStyle, videoNarration, createStoryboard, streamChat, t.narrationCue, t.imageFailed, t.musicFailed, t.voiceMode, t.coverMode]);
+  }, [input, attachments, busy, messages, mode, locale, imgAspect, imgQuality, imgStyle, imgCount, runImageBatch, musicGenre, musicInstrumental, musicLyrics, musicAudioMode, useMyVoice, hasTrainedVoice, videoOrientation, videoStyle, videoNarration, createStoryboard, streamChat, t.narrationCue, t.imageFailed, t.musicFailed, t.voiceMode, t.coverMode]);
 
   // STOP — cancel the in-flight generation. Bumps the generation token (so every
   // pending finalizer no-ops), aborts the fetch, frees the composer, and converts
@@ -1490,7 +1499,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // Sendable when there's text OR any attachment — in EVERY mode. An attachment
   // in Image/Music mode routes to multimodal chat (see send), so it must be able
   // to trigger a send; this is also what clears the lingering attachment.
-  const canSend = !!input.trim() || attachments.length > 0;
+  const canSend = !!input.trim() || attachments.length > 0 || (mode === 'music' && useMyVoice && hasTrainedVoice);
 
   return (
     <div
@@ -1866,10 +1875,25 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           </div>
         )}
 
-        {/* Voice sample for "sing in MY voice" — record ≥15s in-app or upload a clip.
-            Once captured it becomes the audio reference; the Cover ↔ My-voice toggle
-            (in the chips above) + the lyrics box then take over. */}
+        {/* FAITHFUL trained voice (RVC) — train once right here in chat, then sing in
+            your REAL voice. No page jump; the whole service lives in this chatbox. */}
         {mode === 'music' && (
+          <div className="mb-2 space-y-2">
+            <VoiceTrainer lang={locale} onReady={setHasTrainedVoice} />
+            {hasTrainedVoice && (
+              <button type="button" onClick={() => setUseMyVoice((v) => !v)}
+                className={`flex w-full items-center justify-center gap-1.5 rounded-xl border px-3 py-2.5 text-[13px] font-bold transition-colors ${useMyVoice ? 'border-app-accent/70 bg-app-accent/20 text-app-accent' : 'border-app-border/20 text-app-muted hover:bg-app-elevated'}`}>
+                🎤 {useMyVoice
+                  ? (locale === 'en' ? 'My trained voice ✓' : locale === 'ru' ? 'Мой обученный голос ✓' : 'ჩემი ნავარჯიში ხმით ✓')
+                  : (locale === 'en' ? 'Sing with my trained voice' : locale === 'ru' ? 'Петь моим обученным голосом' : 'ვიმღერო ჩემი ნავარჯიში ხმით')}
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Voice sample for one-shot "sing in MY voice" — record ≥15s or upload a clip.
+            Hidden when you're singing with the TRAINED voice (no upload needed then). */}
+        {mode === 'music' && !(useMyVoice && hasTrainedVoice) && (
           <div className="mb-2 rounded-xl border border-app-accent/25 bg-app-accent/[0.05] p-3">
             <div className="mb-1.5 flex items-center gap-1.5 text-[12px] font-semibold text-app-text">
               <Mic size={13} className="text-app-accent" /> {t.voiceSecTitle}
@@ -1895,9 +1919,6 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                     </button>
                   </div>
                   <p className="mt-1.5 text-[11px] leading-relaxed text-app-muted/70">{t.voiceRecHint}</p>
-                  <a href={`/${locale}/studio/music`} className="mt-1 inline-block text-[11px] font-semibold text-app-accent underline-offset-2 hover:underline">
-                    {locale === 'en' ? '🎓 Train your real voice →' : locale === 'ru' ? '🎓 Обучить настоящий голос →' : '🎓 გაწვრთენი ნამდვილ ხმას (ფიდელ.) →'}
-                  </a>
                 </>
               )
             ) : (
@@ -1920,13 +1941,14 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             voice-clone mode (the lyrics are what your uploaded voice will sing). */}
         {mode === 'music' && (() => {
           const voiceClone = musicAudioMode === 'voice' && attachments.some((a) => isAudio(a.mimeType));
-          if (musicInstrumental && !voiceClone) return null;
+          const trained = useMyVoice && hasTrainedVoice;
+          if (musicInstrumental && !voiceClone && !trained) return null;
           return (
             <textarea
               value={musicLyrics}
               onChange={(e) => setMusicLyrics(e.target.value)}
               rows={2}
-              placeholder={voiceClone ? t.voiceLyricsPlaceholder : t.lyricsPlaceholder}
+              placeholder={voiceClone || trained ? t.voiceLyricsPlaceholder : t.lyricsPlaceholder}
               className="mb-2 w-full resize-none rounded-xl bg-app-elevated/60 px-3 py-2 text-[13px] text-app-text outline-none transition-colors placeholder:text-app-muted/60 focus:bg-app-elevated"
             />
           );
