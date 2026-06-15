@@ -1269,30 +1269,33 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         const videoUrl = await uploadBigFile(faceAtt.dataUrl, faceAtt.mimeType);
         if (!videoUrl) throw new Error('upload failed');
         const audioUrl = audioAtt ? await uploadBigFile(audioAtt.dataUrl, audioAtt.mimeType) : undefined;
-        // START the job (returns fast), then poll in SHORT requests — a single ~150s
-        // fetch gets dropped on mobile networks, so we never hold one long connection.
-        const startRes = await fetch('/api/video/lipsync', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            videoUrl,
-            ...(audioUrl ? { audioUrl } : {}),
-            ...(text ? { text } : {}),
-            ...(lipMyVoice && hasTrainedVoice ? { useMyVoice: true } : {}),
-          }),
-          credentials: 'include',
-          signal: ac.signal,
+        const startBody = JSON.stringify({
+          videoUrl,
+          ...(audioUrl ? { audioUrl } : {}),
+          ...(text ? { text } : {}),
+          ...(lipMyVoice && hasTrainedVoice ? { useMyVoice: true } : {}),
         });
-        const startJson = (await startRes.json().catch(() => ({}))) as { jobId?: string | null };
-        if (!startJson.jobId) throw new Error('start failed');
+        // START the job (returns fast) → poll in SHORT requests (mobile-safe). The
+        // SadTalker provider intermittently crashes (Pillow 'ANTIALIAS' on some of its
+        // runtime builds), so retry the WHOLE job up to 3× — a fresh run lands on a
+        // good build. Non-transient failures bail immediately.
         let resultUrl: string | null = null;
         let resultErr: string | null = null;
-        for (let i = 0; i < 80; i++) { // ~8 min max — 'full' preprocess can run longer; each poll is quick
+        for (let attempt = 0; attempt < 3 && !resultUrl; attempt++) {
           if (!mine()) return;
-          await new Promise((r) => setTimeout(r, 6000));
-          const pollRes = await fetch(`/api/video/lipsync?id=${encodeURIComponent(startJson.jobId)}`, { credentials: 'include', signal: ac.signal });
-          const pj = (await pollRes.json().catch(() => ({}))) as { done?: boolean; url?: string | null; error?: string | null };
-          if (pj.done) { resultUrl = pj.url ?? null; resultErr = pj.error ?? null; break; }
+          const startRes = await fetch('/api/video/lipsync', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: startBody, credentials: 'include', signal: ac.signal });
+          const startJson = (await startRes.json().catch(() => ({}))) as { jobId?: string | null };
+          if (!startJson.jobId) { resultErr = 'start failed'; continue; }
+          resultErr = null;
+          for (let i = 0; i < 70; i++) { // ~7 min per attempt; each poll is a quick request
+            if (!mine()) return;
+            await new Promise((r) => setTimeout(r, 6000));
+            const pollRes = await fetch(`/api/video/lipsync?id=${encodeURIComponent(startJson.jobId)}`, { credentials: 'include', signal: ac.signal });
+            const pj = (await pollRes.json().catch(() => ({}))) as { done?: boolean; url?: string | null; error?: string | null };
+            if (pj.done) { resultUrl = pj.url ?? null; resultErr = pj.error ?? null; break; }
+          }
+          // Retry only the known transient provider crash; bail on anything else.
+          if (!resultUrl && resultErr && !/antialias|has no attribute|cuda|out of memory|memory|runtimeerror/i.test(resultErr)) break;
         }
         setMessages((prev) => {
           if (!mine()) return prev;
