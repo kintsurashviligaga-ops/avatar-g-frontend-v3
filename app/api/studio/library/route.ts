@@ -12,7 +12,8 @@
  * jobs — one unified per-user media history.
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { authedClientFromRequest } from '@/lib/supabase/server';
+import { authedClientFromRequest, createServiceRoleClient } from '@/lib/supabase/server';
+import { DEMO_VOICE_USER_ID } from '@/lib/audio/voiceModel';
 import { JOB_COLUMNS, type GenerationJobRow } from '@/lib/orchestrator/jobs';
 
 export const dynamic = 'force-dynamic';
@@ -41,17 +42,22 @@ function pickUrl(row: GenerationJobRow): string | null {
 
 export async function GET(req: NextRequest) {
   const { supabase, user } = await authedClientFromRequest(req);
-  if (!user) return NextResponse.json({ items: [] });
+  // Anonymous testers (no sign-in) see the shared DEMO library, read with the service
+  // role since there's no session for RLS. Signed-in users see their own via RLS.
+  const uid = user?.id ?? DEMO_VOICE_USER_ID;
+  const client = user ? supabase : createServiceRoleClient();
+  if (!client) return NextResponse.json({ items: [] });
 
   const limit = Math.min(60, Math.max(1, Number(req.nextUrl.searchParams.get('limit') ?? 40) || 40));
   const kind = req.nextUrl.searchParams.get('kind'); // optional service_type filter
 
   try {
-    let query = supabase
+    let query = client
       .from('generation_jobs')
       .select(JOB_COLUMNS)
-      .eq('user_id', user.id)
+      .eq('user_id', uid)
       .eq('status', 'completed')
+      .neq('service_type', 'voice') // trained voice models aren't playable Library media
       .order('created_at', { ascending: false })
       .limit(limit);
     if (kind) query = query.eq('service_type', kind);

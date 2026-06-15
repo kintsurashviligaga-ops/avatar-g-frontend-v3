@@ -1,31 +1,10 @@
-"use client";
-
-import { motion } from "framer-motion";
-
+// Subtle, on-brand (cyan) root loader — replaces the old large gold (#D4AF37,
+// off-palette) spinner with "Initializing Digital Twin Protocol…" text that flashed
+// like a separate page. A small centred cyan ring is calm + consistent across the app.
 export default function Loading() {
   return (
-    <div className="min-h-screen bg-transparent text-white flex items-center justify-center">
-      <div className="text-center">
-        <motion.div
-          animate={{ 
-            rotate: 360,
-            scale: [1, 1.2, 1]
-          }}
-          transition={{ 
-            rotate: { duration: 2, repeat: Infinity, ease: "linear" },
-            scale: { duration: 1, repeat: Infinity }
-          }}
-          className="w-16 h-16 mx-auto mb-4 rounded-full border-4 border-[#D4AF37] border-t-transparent"
-        />
-        <motion.p
-          animate={{ opacity: [0.5, 1, 0.5] }}
-          transition={{ duration: 1.5, repeat: Infinity }}
-          className="text-gray-400"
-        >
-          Initializing Digital Twin Protocol...
-        </motion.p>
-      </div>
+    <div className="flex min-h-screen items-center justify-center bg-transparent">
+      <div className="h-8 w-8 animate-spin rounded-full border-2 border-white/15 border-t-cyan-400" />
     </div>
   );
 }
-

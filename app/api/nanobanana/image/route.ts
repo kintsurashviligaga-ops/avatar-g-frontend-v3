@@ -4,6 +4,7 @@ import type { NanoBananaEndpoint } from '@/lib/nanobanana/endpoints';
 import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { recordCompletedAsset } from '@/lib/orchestrator/jobs';
+import { DEMO_VOICE_USER_ID } from '@/lib/audio/voiceModel';
 import { randomUUID } from 'node:crypto';
 
 export const dynamic = 'force-dynamic';
@@ -144,9 +145,7 @@ export async function POST(req: NextRequest) {
     // Library-write failure never blocks returning the image.
     try {
       const { user } = await authedClientFromRequest(req);
-      if (user) {
-        await recordCompletedAsset({ id: randomUUID(), userId: user.id, serviceType: 'image', url: hostedUrl, prompt });
-      }
+      await recordCompletedAsset({ id: randomUUID(), userId: user?.id ?? DEMO_VOICE_USER_ID, serviceType: 'image', url: hostedUrl, prompt });
     } catch {
       /* fail-open */
     }

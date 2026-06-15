@@ -209,12 +209,11 @@ export async function POST(req: NextRequest) {
       /* fail-open — keep the provider URL */
     }
 
-    // Best-effort: file the track into the signed-in user's Library (Audio tab).
+    // File the track into the Library — under the signed-in user, or the shared demo
+    // identity when testing without sign-in (so anonymous generations still show up).
     try {
       const { user } = await authedClientFromRequest(req);
-      if (user) {
-        await recordCompletedAsset({ id: randomUUID(), userId: user.id, serviceType: 'music', url: hostedUrl, prompt: capped });
-      }
+      await recordCompletedAsset({ id: randomUUID(), userId: user?.id ?? DEMO_VOICE_USER_ID, serviceType: 'music', url: hostedUrl, prompt: capped });
     } catch {
       /* fail-open */
     }
