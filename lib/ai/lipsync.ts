@@ -73,16 +73,21 @@ function extractUrl(output: unknown): string {
  * failure (the caller keeps the original master). Bounded so it never hangs the
  * request beyond the route budget.
  */
-export async function lipsyncVideo(videoUrl: string, audioUrl: string): Promise<string | null> {
+export async function lipsyncVideo(videoUrl: string, audioUrl: string, resizeFactor = 1): Promise<string | null> {
   const key = token();
   if (!key || !videoUrl || !audioUrl) return null;
+
+  // `resize_factor` divides the processing resolution → roughly factor² faster. A
+  // 30s 1080p FILM master at factor 1 overruns the budget (~3.5 min), so the film
+  // pass passes 2 (≈4× faster, 540p talking cut). Short clips/photos keep factor 1.
+  const rf = Math.max(1, Math.min(3, Math.round(resizeFactor) || 1));
 
   try {
     const createRes = await fetch(`https://api.replicate.com/v1/predictions`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
       cache: 'no-store',
-      body: JSON.stringify({ version: LIPSYNC_VERSION, input: { [FACE_FIELD]: videoUrl, [AUDIO_FIELD]: audioUrl } }),
+      body: JSON.stringify({ version: LIPSYNC_VERSION, input: { [FACE_FIELD]: videoUrl, [AUDIO_FIELD]: audioUrl, resize_factor: rf } }),
       signal: AbortSignal.timeout(20_000),
     });
     if (!createRes.ok) return null;
@@ -91,8 +96,8 @@ export async function lipsyncVideo(videoUrl: string, audioUrl: string): Promise<
     const pollUrl = pred.urls?.get || (pred.id ? `https://api.replicate.com/v1/predictions/${pred.id}` : '');
     if (!pollUrl) return null;
 
-    // Wav2Lip on a 30s clip runs ~30–90s; poll within a bounded budget.
-    const deadline = Date.now() + 200_000;
+    // Bounded poll budget (leaves ~40s of the 300s route for the Supabase re-host).
+    const deadline = Date.now() + 255_000;
     while (pred.status !== 'succeeded' && pred.status !== 'failed' && pred.status !== 'canceled') {
       if (Date.now() > deadline) return null;
       await new Promise((r) => setTimeout(r, 2500));

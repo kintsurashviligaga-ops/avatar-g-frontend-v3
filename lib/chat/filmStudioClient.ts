@@ -700,7 +700,7 @@ export async function driveFilmStudio(opts: DriveFilmOptions): Promise<FilmStudi
         const lr = await fetch('/api/video/lipsync', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ videoUrl: master }),
+          body: JSON.stringify({ videoUrl: master, resizeFactor: 2 }),
           credentials: 'include',
           signal,
         });

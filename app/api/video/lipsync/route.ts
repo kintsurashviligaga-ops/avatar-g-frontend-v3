@@ -57,7 +57,7 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   if (!hasLipsyncProvider()) return NextResponse.json({ url: null });
 
-  let body: { videoUrl?: unknown; audioUrl?: unknown; text?: unknown; useMyVoice?: unknown };
+  let body: { videoUrl?: unknown; audioUrl?: unknown; text?: unknown; useMyVoice?: unknown; resizeFactor?: unknown };
   try {
     body = (await req.json()) as typeof body;
   } catch {
@@ -94,7 +94,8 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const url = await lipsyncVideo(videoUrl, audioUrl);
+  const resizeFactor = typeof body.resizeFactor === 'number' ? body.resizeFactor : 1;
+  const url = await lipsyncVideo(videoUrl, audioUrl, resizeFactor);
   if (!url) return NextResponse.json({ url: null });
 
   // Re-host the Wav2Lip output to a stable Supabase URL — the provider URL expires in
