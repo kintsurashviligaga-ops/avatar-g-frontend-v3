@@ -13,7 +13,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Send, Mic, Square, Plus, X, Loader2, Sparkles, Film, Music2, FileText, Image as ImageIcon, Download, Upload, MessageSquare, Wand2, Volume2, Copy, Check, ChevronDown, RotateCcw, History, Trash2, MessageSquarePlus, Pencil } from 'lucide-react';
+import { Send, Mic, Square, Plus, X, Loader2, Sparkles, Film, Music2, FileText, Image as ImageIcon, Download, Upload, MessageSquare, Wand2, Volume2, Copy, Check, ChevronDown, RotateCcw, History, Trash2, MessageSquarePlus, Pencil, Share2 } from 'lucide-react';
 import { driveFilmStudio } from '@/lib/chat/filmStudioClient';
 import { VoiceTrainer } from '@/components/voice/VoiceTrainer';
 import { TrackPlayer } from './TrackPlayer';
@@ -49,7 +49,7 @@ async function uploadBigFile(dataUrl: string, mimeType: string): Promise<string 
 
 const COPY: Record<Lang, {
   title: string; subtitle: string; placeholder: string; empty: string; thinking: string; recording: string; micHint: string;
-  modeChat: string; modeImage: string; imgPlaceholder: string; generatingImage: string; imageFailed: string; imgDownload: string; editImage: string;
+  modeChat: string; modeImage: string; imgPlaceholder: string; generatingImage: string; imageFailed: string; imgDownload: string; editImage: string; share: string; linkCopied: string;
   magicHint: string;
   modeMusic: string; musicPlaceholder: string; generatingMusic: string; musicFailed: string; lyricsBlocked: string;
   modeVideo: string; videoPlaceholder: string; generatingVideo: string; videoFailed: string; generatingMyVoice: string; myVoiceCreate: string; myVoiceLyricsPh: string; myVoiceReady: string; writeLyricsBtn: string; upscaleBtn: string; upscaling: string; upscaleFailed: string;
@@ -66,7 +66,7 @@ const COPY: Record<Lang, {
     placeholder: 'დაწერე, ჩაწერე ხმა, ან მიამაგრე სურათი…', empty: 'ჰკითხე ნებისმიერი რამ, შექმენი სურათი ან მუსიკა — ტექსტით, ხმით ან ფაილით.',
     thinking: 'ფიქრობს…', recording: 'იწერება…', micHint: 'ხმის ჩაწერა',
     modeChat: 'ჩატი', modeImage: 'სურათი', imgPlaceholder: 'აღწერე სურათი, რომ დაგიხატო…',
-    generatingImage: 'სურათი იქმნება…', imageFailed: 'სურათის გენერაცია ვერ მოხერხდა. სცადე თავიდან.', imgDownload: 'ჩამოტვირთვა', editImage: 'რედაქტირება',
+    generatingImage: 'სურათი იქმნება…', imageFailed: 'სურათის გენერაცია ვერ მოხერხდა. სცადე თავიდან.', imgDownload: 'ჩამოტვირთვა', editImage: 'რედაქტირება', share: 'გაზიარება', linkCopied: 'ბმული დაკოპირდა',
     magicHint: 'AI-ით პრომპტის გაუმჯობესება',
     modeMusic: 'მუსიკა', musicPlaceholder: 'აღწერე მუსიკა (მაგ. ეპიკური კინო-სცენა)…',
     generatingMusic: 'მუსიკა იქმნება… (1–3 წუთი)', musicFailed: 'მუსიკის გენერაცია ვერ მოხერხდა. სცადე თავიდან.', lyricsBlocked: '⚠️ ლირიკა დაიბლოკა (საავტორო უფლებები). შეცვალე სიტყვები ან დააჭირე „✨ ლირიკა დამიწერე".',
@@ -86,7 +86,7 @@ const COPY: Record<Lang, {
     placeholder: 'Type, record your voice, or attach an image…', empty: 'Ask anything, or generate an image or music — by text, voice or file.',
     thinking: 'Thinking…', recording: 'Recording…', micHint: 'Record voice',
     modeChat: 'Chat', modeImage: 'Image', imgPlaceholder: 'Describe an image to generate…',
-    generatingImage: 'Generating image…', imageFailed: 'Image generation failed. Try again.', imgDownload: 'Download', editImage: 'Edit',
+    generatingImage: 'Generating image…', imageFailed: 'Image generation failed. Try again.', imgDownload: 'Download', editImage: 'Edit', share: 'Share', linkCopied: 'Link copied',
     magicHint: 'Enhance prompt with AI',
     modeMusic: 'Music', musicPlaceholder: 'Describe the music (e.g. epic cinematic scene)…',
     generatingMusic: 'Composing music… (1–3 min)', musicFailed: 'Music generation failed. Try again.', lyricsBlocked: '⚠️ Lyrics were blocked (copyright). Change the words or tap "✨ Write lyrics".',
@@ -106,7 +106,7 @@ const COPY: Record<Lang, {
     placeholder: 'Напишите, запишите голос или прикрепите изображение…', empty: 'Спросите что угодно или создайте изображение или музыку — текстом, голосом или файлом.',
     thinking: 'Думает…', recording: 'Запись…', micHint: 'Записать голос',
     modeChat: 'Чат', modeImage: 'Изображение', imgPlaceholder: 'Опишите изображение для генерации…',
-    generatingImage: 'Генерирую изображение…', imageFailed: 'Не удалось сгенерировать изображение. Попробуйте снова.', imgDownload: 'Скачать', editImage: 'Изменить',
+    generatingImage: 'Генерирую изображение…', imageFailed: 'Не удалось сгенерировать изображение. Попробуйте снова.', imgDownload: 'Скачать', editImage: 'Изменить', share: 'Поделиться', linkCopied: 'Ссылка скопирована',
     magicHint: 'Улучшить промпт с AI',
     modeMusic: 'Музыка', musicPlaceholder: 'Опишите музыку (напр. эпичная кино-сцена)…',
     generatingMusic: 'Создаю музыку… (1–3 мин)', musicFailed: 'Не удалось создать музыку. Попробуйте снова.', lyricsBlocked: '⚠️ Текст заблокирован (авторские права). Измените слова или нажмите «✨ Написать текст».',
@@ -582,6 +582,8 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   const [enhancing, setEnhancing] = useState(false);
   // Per-message actions: which assistant reply was just copied / is being read aloud.
   const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
+  // Transient toast (e.g. "link copied") shown after a share falls back to clipboard.
+  const [shareToast, setShareToast] = useState<string | null>(null);
   const [speakingIdx, setSpeakingIdx] = useState<number | null>(null);
   // Inline edit-&-resend of a user turn: which message is being edited + its draft.
   const [editingIdx, setEditingIdx] = useState<number | null>(null);
@@ -1609,6 +1611,35 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     }
   }, []);
 
+  // Share an output (image / track / talking-video). Best UX: hand the real FILE to the
+  // native share sheet, so it lands as media in WhatsApp / Instagram / Messenger. Falls
+  // back to a URL share, then to copying the link with a toast — works on every device.
+  const share = useCallback(async (url: string, filename: string) => {
+    const nav = navigator as Navigator & {
+      canShare?: (d: { files?: File[] }) => boolean;
+      share?: (d: { title?: string; text?: string; url?: string; files?: File[] }) => Promise<void>;
+    };
+    try {
+      if (typeof nav.share === 'function') {
+        try {
+          const r = await fetch(url);
+          if (r.ok) {
+            const blob = await r.blob();
+            const file = new File([blob], filename, { type: blob.type || 'application/octet-stream' });
+            if (nav.canShare?.({ files: [file] })) { await nav.share({ files: [file], title: 'MyAvatar' }); return; }
+          }
+        } catch { /* fall through to URL / clipboard */ }
+        try { await nav.share({ url, title: 'MyAvatar', text: 'MyAvatar.ge' }); return; }
+        catch (e) { if ((e as { name?: string })?.name === 'AbortError') return; /* else fall through */ }
+      }
+      await navigator.clipboard.writeText(url);
+      setShareToast(t.linkCopied);
+      setTimeout(() => setShareToast((s) => (s === t.linkCopied ? null : s)), 2200);
+    } catch {
+      try { window.open(url, '_blank', 'noopener'); } catch { /* noop */ }
+    }
+  }, [t.linkCopied]);
+
   // ✨ Auto-write lyrics from the typed vibe (or the genre) and drop them into the box.
   const writeLyrics = useCallback(async () => {
     if (writingLyrics) return;
@@ -1732,6 +1763,10 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                     >
                       <Download size={13} /> {t.imgDownload}
                     </button>
+                    <button type="button" onClick={() => void share(m.imageUrl!, 'myavatar-image.png')}
+                      className="inline-flex items-center gap-1.5 rounded-full bg-app-elevated px-3.5 py-1.5 text-[12px] font-semibold text-app-text ring-1 ring-app-border/15 transition-opacity hover:opacity-90 active:scale-[0.98]">
+                      <Share2 size={13} /> {t.share}
+                    </button>
                     <button type="button" onClick={() => void upscale(m.imageUrl!)} disabled={upscaling}
                       className="inline-flex items-center gap-1.5 rounded-full bg-app-elevated px-3.5 py-1.5 text-[12px] font-semibold text-app-text ring-1 ring-app-border/15 transition-opacity hover:opacity-90 active:scale-[0.98] disabled:opacity-40">
                       <Sparkles size={13} /> {t.upscaleBtn}
@@ -1788,6 +1823,10 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                     >
                       <Download size={13} /> {t.imgDownload}
                     </button>
+                    <button type="button" onClick={() => void share(m.audioUrl!, 'myavatar-track.mp3')}
+                      className="inline-flex items-center gap-1.5 rounded-full bg-app-elevated px-3.5 py-1.5 text-[12px] font-semibold text-app-text ring-1 ring-app-border/15 transition-opacity hover:opacity-90 active:scale-[0.98]">
+                      <Share2 size={13} /> {t.share}
+                    </button>
                     {m.regen && (
                       <button type="button" onClick={() => void regenerate(m.regen!)} disabled={busy}
                         className="inline-flex items-center gap-1.5 rounded-full bg-app-elevated px-3.5 py-1.5 text-[12px] font-semibold text-app-text ring-1 ring-app-border/15 transition-opacity hover:opacity-90 active:scale-[0.98] disabled:opacity-40">
@@ -1801,13 +1840,19 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 <div className="space-y-1.5">
                   {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
                   <video src={m.videoUrl} controls playsInline className="max-h-96 w-full rounded-xl bg-black/90 ring-1 ring-app-border/10" />
-                  <button
-                    type="button"
-                    onClick={() => void dl(m.videoUrl!, 'myavatar-video.mp4')}
-                    className="inline-flex items-center gap-1.5 rounded-full bg-app-accent px-3.5 py-1.5 text-[12px] font-semibold text-app-bg shadow-sm transition-opacity hover:opacity-90 active:scale-[0.98]"
-                  >
-                    <Download size={13} /> {t.imgDownload}
-                  </button>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => void dl(m.videoUrl!, 'myavatar-video.mp4')}
+                      className="inline-flex items-center gap-1.5 rounded-full bg-app-accent px-3.5 py-1.5 text-[12px] font-semibold text-app-bg shadow-sm transition-opacity hover:opacity-90 active:scale-[0.98]"
+                    >
+                      <Download size={13} /> {t.imgDownload}
+                    </button>
+                    <button type="button" onClick={() => void share(m.videoUrl!, 'myavatar-video.mp4')}
+                      className="inline-flex items-center gap-1.5 rounded-full bg-app-elevated px-3.5 py-1.5 text-[12px] font-semibold text-app-text ring-1 ring-app-border/15 transition-opacity hover:opacity-90 active:scale-[0.98]">
+                      <Share2 size={13} /> {t.share}
+                    </button>
+                  </div>
                 </div>
               )}
               {(() => {
@@ -2209,6 +2254,15 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           root-level chrome (the cookie banner) instead of being trapped in the chat
           shell's lower stacking context. */}
       <Portal>
+      {/* Transient "link copied" toast — only shows when a share falls back to clipboard. */}
+      {shareToast && (
+        <div
+          className="pointer-events-none fixed inset-x-0 z-[110] mx-auto flex w-fit items-center gap-2 rounded-full bg-app-elevated px-4 py-2 text-[13px] font-medium text-app-text shadow-lg ring-1 ring-app-border/20"
+          style={{ bottom: 'max(5.5rem, calc(env(safe-area-inset-bottom) + 5rem))' }}
+        >
+          <Check size={14} className="text-app-accent" /> {shareToast}
+        </div>
+      )}
       {/* Full-screen image lightbox — tap any chat image to open it edge-to-edge.
           Backdrop tap / the X button / Esc all close it; the picture itself swallows
           the click so it stays open while you inspect it. */}
@@ -2245,6 +2299,13 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
               className="inline-flex w-fit items-center gap-1.5 rounded-full bg-app-accent px-4 py-2 text-[13px] font-semibold text-app-bg backdrop-blur"
             >
               <Download size={14} /> {t.imgDownload}
+            </button>
+            <button
+              type="button"
+              onClick={() => void share(lightbox, 'myavatar-image.png')}
+              className="inline-flex w-fit items-center gap-1.5 rounded-full bg-white/15 px-4 py-2 text-[13px] font-semibold text-white backdrop-blur transition-colors hover:bg-white/25"
+            >
+              <Share2 size={14} /> {t.share}
             </button>
             <button
               type="button"
