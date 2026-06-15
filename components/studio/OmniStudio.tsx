@@ -720,14 +720,15 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     if (id === conversationId) startNewConversation();
   }, [conversationId, startNewConversation]);
 
-  // Tick the elapsed clock while a generation is in flight.
+  // Tick the elapsed clock while a generation OR the storyboard build is in flight
+  // (so the storyboard overlay can show a live % too, not just a spinner).
   useEffect(() => {
-    if (!busy) { setElapsed(0); return; }
+    if (!busy && !storyboardBusy) { setElapsed(0); return; }
     genStartRef.current = Date.now();
     setElapsed(0);
     const id = setInterval(() => setElapsed(Math.max(0, Math.round((Date.now() - genStartRef.current) / 1000))), 500);
     return () => clearInterval(id);
-  }, [busy]);
+  }, [busy, storyboardBusy]);
 
   // Auto-grow the composer textarea with its content (capped), like a modern chat.
   useEffect(() => {
@@ -2364,11 +2365,16 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 <h2 className="text-[15px] font-semibold tracking-tight text-app-text">🎬 {t.sbTitle}</h2>
                 <p className="flex items-center gap-1.5 text-[12px] text-app-accent">
                   <Loader2 size={12} className="animate-spin" /> {t.sbCreating}
+                  <span className="tabular-nums text-app-muted">· {Math.min(95, Math.round((1 - Math.exp(-elapsed / 62)) * 100))}% · {fmtClock(elapsed)}</span>
                 </p>
               </div>
               <button type="button" onClick={() => { try { storyboardAbortRef.current?.abort(); } catch { /* noop */ } setStoryboardBusy(false); }} aria-label={t.sbCancel} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text">
                 <X size={18} />
               </button>
+            </div>
+            {/* Live progress bar — pace ~150s (the real storyboard build) toward 95%. */}
+            <div className="mx-4 mb-1 h-1 overflow-hidden rounded-full bg-app-border/15">
+              <div className="h-full rounded-full bg-app-accent transition-[width] duration-500 ease-out" style={{ width: `${Math.max(5, Math.min(95, Math.round((1 - Math.exp(-elapsed / 62)) * 100)))}%` }} />
             </div>
             {/* Skeleton preview of the 6 scenes being built — staggered shimmer so it
                 feels like the storyboard is materialising, not a blank spinner. */}
