@@ -16,6 +16,7 @@ import { createPortal } from 'react-dom';
 import { Send, Mic, Square, Plus, X, Loader2, Sparkles, Film, Music2, FileText, Image as ImageIcon, Download, Upload, MessageSquare, Wand2, Volume2, Copy, Check, ChevronDown, RotateCcw, History, Trash2, MessageSquarePlus, Pencil } from 'lucide-react';
 import { driveFilmStudio } from '@/lib/chat/filmStudioClient';
 import { VoiceTrainer } from '@/components/voice/VoiceTrainer';
+import { TrackPlayer } from './TrackPlayer';
 import { Markdown } from './Markdown';
 import { createBrowserClient } from '@/lib/supabase/browser';
 
@@ -1631,36 +1632,25 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 </div>
               )}
               {m.audioUrl && (
-                <div className="w-[min(82vw,360px)] overflow-hidden rounded-2xl bg-app-elevated/50">
-                  {/* Suno-style cover art — themed to the song; tap to enlarge. */}
-                  {m.coverUrl && (
-                    <button type="button" onClick={() => setLightbox(m.coverUrl!)} className="relative block w-full cursor-zoom-in" aria-label="open cover art">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={m.coverUrl} alt="cover art" className="aspect-square w-full object-cover" />
-                      <span className="absolute bottom-2 left-2 inline-flex items-center gap-1.5 rounded-full bg-black/55 px-2.5 py-1 text-[11px] font-medium text-white backdrop-blur"><Music2 size={12} /> {t.modeMusic}</span>
-                    </button>
-                  )}
-                  <div className="space-y-2 p-3">
-                    {!m.coverUrl && <div className="flex items-center gap-1.5 text-[12px] font-medium text-app-muted"><Music2 size={14} className="text-app-accent" /> {t.modeMusic}</div>}
-                    {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
-                    <audio src={m.audioUrl} controls className="w-full" />
-                    <div className="flex flex-wrap items-center gap-2">
-                      <a
-                        href={m.audioUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        download
-                        className="inline-flex items-center gap-1.5 rounded-full bg-app-accent px-3.5 py-1.5 text-[12px] font-semibold text-app-bg shadow-sm transition-opacity hover:opacity-90 active:scale-[0.98]"
-                      >
-                        <Download size={13} /> {t.imgDownload}
-                      </a>
-                      {m.regen && (
-                        <button type="button" onClick={() => void regenerate(m.regen!)} disabled={busy}
-                          className="inline-flex items-center gap-1.5 rounded-full bg-app-elevated px-3.5 py-1.5 text-[12px] font-semibold text-app-text ring-1 ring-app-border/15 transition-opacity hover:opacity-90 active:scale-[0.98] disabled:opacity-40">
-                          <RotateCcw size={13} /> {t.regenerate}
-                        </button>
-                      )}
-                    </div>
+                <div className="w-[min(82vw,360px)] overflow-hidden rounded-2xl bg-app-elevated/50 p-3">
+                  {/* Polished Suno-style player (album art + play/scrub/time). */}
+                  <TrackPlayer url={m.audioUrl} coverUrl={m.coverUrl} label={t.modeMusic} />
+                  <div className="mt-2.5 flex flex-wrap items-center gap-2">
+                    <a
+                      href={m.audioUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      download
+                      className="inline-flex items-center gap-1.5 rounded-full bg-app-accent px-3.5 py-1.5 text-[12px] font-semibold text-app-bg shadow-sm transition-opacity hover:opacity-90 active:scale-[0.98]"
+                    >
+                      <Download size={13} /> {t.imgDownload}
+                    </a>
+                    {m.regen && (
+                      <button type="button" onClick={() => void regenerate(m.regen!)} disabled={busy}
+                        className="inline-flex items-center gap-1.5 rounded-full bg-app-elevated px-3.5 py-1.5 text-[12px] font-semibold text-app-text ring-1 ring-app-border/15 transition-opacity hover:opacity-90 active:scale-[0.98] disabled:opacity-40">
+                        <RotateCcw size={13} /> {t.regenerate}
+                      </button>
+                    )}
                   </div>
                 </div>
               )}
@@ -1835,23 +1825,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             )}
             {mode === 'music' && (
               <>
-                {/* With a voice/audio attached, choose what to do with it: remix the
-                    melody (Cover) or sing the lyrics in that uploaded voice (My voice). */}
-                {attachments.some((a) => isAudio(a.mimeType)) && (
-                  <>
-                    <Chip active={musicAudioMode === 'cover'} onClick={() => setMusicAudioMode('cover')}>{t.coverMode}</Chip>
-                    <Chip active={musicAudioMode === 'voice'} onClick={() => setMusicAudioMode('voice')}>{t.voiceMode}</Chip>
-                    <span className="mx-0.5 h-4 w-px shrink-0 bg-app-border/15" />
-                  </>
-                )}
-                {/* Instrumental/Vocals is meaningless in voice-clone mode (it always sings). */}
-                {!(musicAudioMode === 'voice' && attachments.some((a) => isAudio(a.mimeType))) && (
-                  <>
-                    <Chip active={musicInstrumental} onClick={() => setMusicInstrumental(true)}>{t.instrumental}</Chip>
-                    <Chip active={!musicInstrumental} onClick={() => setMusicInstrumental(false)}>{t.withVocals}</Chip>
-                    <span className="mx-0.5 h-4 w-px shrink-0 bg-app-border/15" />
-                  </>
-                )}
+                <Chip active={musicInstrumental} onClick={() => setMusicInstrumental(true)}>{t.instrumental}</Chip>
+                <Chip active={!musicInstrumental} onClick={() => setMusicInstrumental(false)}>{t.withVocals}</Chip>
+                <span className="mx-0.5 h-4 w-px shrink-0 bg-app-border/15" />
                 {MUSIC_GENRES.map((g) => <Chip key={g} active={musicGenre === g} onClick={() => setMusicGenre(g)}>{g}</Chip>)}
               </>
             )}
@@ -1891,64 +1867,17 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           </div>
         )}
 
-        {/* Voice sample for one-shot "sing in MY voice" — record ≥15s or upload a clip.
-            Hidden when you're singing with the TRAINED voice (no upload needed then). */}
-        {mode === 'music' && !(useMyVoice && hasTrainedVoice) && (
-          <div className="mb-2 rounded-xl border border-app-accent/25 bg-app-accent/[0.05] p-3">
-            <div className="mb-1.5 flex items-center gap-1.5 text-[12px] font-semibold text-app-text">
-              <Mic size={13} className="text-app-accent" /> {t.voiceSecTitle}
-            </div>
-            {!attachments.some((a) => isAudio(a.mimeType)) ? (
-              voiceRecording ? (
-                <div className="flex items-center gap-2.5 rounded-lg bg-black/20 px-2.5 py-1.5">
-                  <button type="button" onClick={stopVoiceRecording} className="inline-flex items-center gap-1.5 rounded-full bg-white px-3 py-1 text-[12px] font-semibold text-slate-950">
-                    <Square size={11} fill="currentColor" /> {t.stop}
-                  </button>
-                  <span className="flex h-2 w-2 animate-pulse rounded-full bg-red-500" />
-                  <span className="font-mono text-[13px] tabular-nums text-app-text">{Math.floor(voiceRecSec / 60)}:{String(voiceRecSec % 60).padStart(2, '0')}</span>
-                  <span className={`ml-auto text-[11px] font-medium ${voiceRecSec >= 15 ? 'text-app-accent' : 'text-app-muted'}`}>{voiceRecSec >= 15 ? '✓' : t.need15}</span>
-                </div>
-              ) : (
-                <>
-                  <div className="flex items-center gap-2">
-                    <button type="button" onClick={startVoiceRecording} className="inline-flex items-center gap-1.5 rounded-full bg-red-500 px-3 py-1.5 text-[12px] font-semibold text-white transition-transform hover:scale-105 active:scale-95">
-                      <Mic size={13} /> {t.voiceRec}
-                    </button>
-                    <button type="button" onClick={() => voiceFileRef.current?.click()} className="inline-flex items-center gap-1.5 rounded-full border border-app-border/20 px-3 py-1.5 text-[12px] font-medium text-app-muted transition-colors hover:bg-app-elevated">
-                      <Upload size={13} /> {t.voiceUp}
-                    </button>
-                  </div>
-                  <p className="mt-1.5 text-[11px] leading-relaxed text-app-muted/70">{t.voiceRecHint}</p>
-                </>
-              )
-            ) : (
-              <div className="flex items-center gap-1.5 text-[12px] font-medium text-app-accent">
-                <Check size={13} /> {t.voiceReady}
-              </div>
-            )}
-          </div>
-        )}
-        {/* Audio-only input dedicated to the voice upload (separate from the generic +). */}
-        <input ref={voiceFileRef} type="file" accept="audio/*" className="hidden" onChange={(e) => {
-          const f = e.target.files?.[0]; e.target.value = '';
-          if (!f) return;
-          const r = new FileReader();
-          r.onload = () => addVoiceMedia(String(r.result), f.type || 'audio/mpeg');
-          r.readAsDataURL(f);
-        }} />
-
-        {/* Custom lyrics — the exact sung words. Shown for vocal tracks, and ALWAYS in
-            voice-clone mode (the lyrics are what your uploaded voice will sing). */}
+        {/* Custom lyrics — the exact sung words. Shown for vocal tracks AND when singing
+            with the trained voice (the lyrics are what your voice will sing). */}
         {mode === 'music' && (() => {
-          const voiceClone = musicAudioMode === 'voice' && attachments.some((a) => isAudio(a.mimeType));
           const trained = useMyVoice && hasTrainedVoice;
-          if (musicInstrumental && !voiceClone && !trained) return null;
+          if (musicInstrumental && !trained) return null;
           return (
             <textarea
               value={musicLyrics}
               onChange={(e) => setMusicLyrics(e.target.value)}
               rows={2}
-              placeholder={voiceClone || trained ? t.voiceLyricsPlaceholder : t.lyricsPlaceholder}
+              placeholder={trained ? t.voiceLyricsPlaceholder : t.lyricsPlaceholder}
               className="mb-2 w-full resize-none rounded-xl bg-app-elevated/60 px-3 py-2 text-[13px] text-app-text outline-none transition-colors placeholder:text-app-muted/60 focus:bg-app-elevated"
             />
           );
