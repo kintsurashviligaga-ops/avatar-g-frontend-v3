@@ -50,7 +50,9 @@ export async function POST(req: NextRequest) {
   const datasetUrl = await prepareDatasetZip(voiceUrl, name);
   if (!datasetUrl) return NextResponse.json({ success: false, error: 'Could not prepare the voice dataset (try a longer, clearer clip).' }, { status: 502 });
 
-  const predictionId = await startRvcTraining(datasetUrl, 20);
+  // More epochs → a noticeably more faithful voice (the founder reported it didn't
+  // sound like them). ~60 trains in a few minutes for a 1-min sample.
+  const predictionId = await startRvcTraining(datasetUrl, 60);
   if (!predictionId) return NextResponse.json({ success: false, error: 'Could not start training.' }, { status: 502 });
 
   await saveTrainingJob(userId, predictionId, name);

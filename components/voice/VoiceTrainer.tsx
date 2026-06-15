@@ -247,11 +247,14 @@ export function VoiceTrainer({ lang = 'ka', onReady }: { lang?: Lang; onReady?: 
 
       {status === 'have-sample' && (
         <div className="space-y-2">
-          <p className="text-[11px] text-app-muted/80">{lenLabel === t.idealLen ? t.idealLen : recSec >= MIN_REC ? t.goodLen : t.needMore}</p>
-          <div className="flex items-center gap-2">
-            {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
-            <audio src={preview} controls className="h-9 min-w-0 flex-1" />
-            <button type="button" onClick={clearSample} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-app-border/20 text-app-muted hover:bg-red-500/15 hover:text-red-300" aria-label={t.remove}><Trash2 size={14} /></button>
+          <p className={`text-[11px] font-medium ${recSec >= MIN_REC ? 'text-app-accent' : 'text-app-muted'}`}>{recSec >= IDEAL_REC ? t.idealLen : recSec >= MIN_REC ? t.goodLen : t.needMore}</p>
+          {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+          <audio src={preview} controls className="h-9 w-full" />
+          {/* Always offer a clear way to REDO — record again or pick another file. */}
+          <div className="flex flex-wrap items-center gap-2">
+            <button type="button" onClick={() => { clearSample(); void startRec(); }} className="inline-flex items-center gap-1.5 rounded-full border border-app-border/20 px-3 py-1.5 text-[12px] font-medium text-app-muted transition-colors hover:bg-app-elevated"><RefreshCw size={12} /> {t.rec}</button>
+            <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-app-border/20 px-3 py-1.5 text-[12px] font-medium text-app-muted transition-colors hover:bg-app-elevated"><Upload size={12} /> {t.upload}<input type="file" accept="audio/*" className="hidden" onChange={onFile} /></label>
+            <button type="button" onClick={clearSample} className="ml-auto flex h-8 w-8 items-center justify-center rounded-lg text-app-muted/70 transition-colors hover:bg-red-500/15 hover:text-red-300" aria-label={t.remove}><Trash2 size={14} /></button>
           </div>
           <button type="button" onClick={train} disabled={busy || recSec < MIN_REC} className="flex w-full items-center justify-center gap-2 rounded-lg bg-app-accent px-3 py-2.5 text-[13px] font-bold text-slate-950 transition-all hover:opacity-90 disabled:opacity-40">
             {busy ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />} {recSec < MIN_REC ? t.needMore : t.train}

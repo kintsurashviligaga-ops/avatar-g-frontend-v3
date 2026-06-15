@@ -1502,6 +1502,24 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // to trigger a send; this is also what clears the lingering attachment.
   const canSend = !!input.trim() || attachments.length > 0 || (mode === 'music' && useMyVoice && hasTrainedVoice);
 
+  // Force a REAL download. The <a download> attribute is ignored cross-origin (Supabase
+  // signed URLs), so the old button just opened the file in a new tab. Fetch → blob →
+  // save instead; fail-open to opening it.
+  const dl = useCallback(async (url: string, filename: string) => {
+    try {
+      const r = await fetch(url);
+      if (!r.ok) throw new Error('fetch failed');
+      const blob = await r.blob();
+      const obj = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = obj; a.download = filename;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(obj), 5000);
+    } catch {
+      window.open(url, '_blank', 'noopener');
+    }
+  }, []);
+
   return (
     <div
       className="relative mx-auto flex h-full w-full max-w-3xl flex-col px-4 pt-2 text-app-text"
@@ -1582,15 +1600,13 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                     <img src={m.imageUrl} alt="generated" className="max-h-96 w-full rounded-xl object-contain ring-1 ring-app-border/10 transition-opacity hover:opacity-90" />
                   </button>
                   <div className="flex flex-wrap items-center gap-2">
-                    <a
-                      href={m.imageUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      download
+                    <button
+                      type="button"
+                      onClick={() => void dl(m.imageUrl!, 'myavatar-image.png')}
                       className="inline-flex items-center gap-1.5 rounded-full bg-app-accent px-3.5 py-1.5 text-[12px] font-semibold text-app-bg shadow-sm transition-opacity hover:opacity-90 active:scale-[0.98]"
                     >
                       <Download size={13} /> {t.imgDownload}
-                    </a>
+                    </button>
                     {m.regen && (
                       <button type="button" onClick={() => void regenerate(m.regen!)} disabled={busy}
                         className="inline-flex items-center gap-1.5 rounded-full bg-app-elevated px-3.5 py-1.5 text-[12px] font-semibold text-app-text ring-1 ring-app-border/15 transition-opacity hover:opacity-90 active:scale-[0.98] disabled:opacity-40">
@@ -1636,15 +1652,13 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                   {/* Polished Suno-style player (album art + play/scrub/time). */}
                   <TrackPlayer url={m.audioUrl} coverUrl={m.coverUrl} label={t.modeMusic} />
                   <div className="mt-2.5 flex flex-wrap items-center gap-2">
-                    <a
-                      href={m.audioUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      download
+                    <button
+                      type="button"
+                      onClick={() => void dl(m.audioUrl!, 'myavatar-track.mp3')}
                       className="inline-flex items-center gap-1.5 rounded-full bg-app-accent px-3.5 py-1.5 text-[12px] font-semibold text-app-bg shadow-sm transition-opacity hover:opacity-90 active:scale-[0.98]"
                     >
                       <Download size={13} /> {t.imgDownload}
-                    </a>
+                    </button>
                     {m.regen && (
                       <button type="button" onClick={() => void regenerate(m.regen!)} disabled={busy}
                         className="inline-flex items-center gap-1.5 rounded-full bg-app-elevated px-3.5 py-1.5 text-[12px] font-semibold text-app-text ring-1 ring-app-border/15 transition-opacity hover:opacity-90 active:scale-[0.98] disabled:opacity-40">
@@ -1658,15 +1672,13 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 <div className="space-y-1.5">
                   {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
                   <video src={m.videoUrl} controls playsInline className="max-h-96 w-full rounded-xl bg-black/90 ring-1 ring-app-border/10" />
-                  <a
-                    href={m.videoUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    download
+                  <button
+                    type="button"
+                    onClick={() => void dl(m.videoUrl!, 'myavatar-video.mp4')}
                     className="inline-flex items-center gap-1.5 rounded-full bg-app-accent px-3.5 py-1.5 text-[12px] font-semibold text-app-bg shadow-sm transition-opacity hover:opacity-90 active:scale-[0.98]"
                   >
                     <Download size={13} /> {t.imgDownload}
-                  </a>
+                  </button>
                 </div>
               )}
               {(() => {
@@ -1860,8 +1872,8 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
               <button type="button" onClick={() => setUseMyVoice((v) => !v)}
                 className={`flex w-full items-center justify-center gap-1.5 rounded-xl border px-3 py-2.5 text-[13px] font-bold transition-colors ${useMyVoice ? 'border-app-accent/70 bg-app-accent/20 text-app-accent' : 'border-app-border/20 text-app-muted hover:bg-app-elevated'}`}>
                 🎤 {useMyVoice
-                  ? (locale === 'en' ? 'My trained voice ✓' : locale === 'ru' ? 'Мой обученный голос ✓' : 'ჩემი ნავარჯიში ხმით ✓')
-                  : (locale === 'en' ? 'Sing with my trained voice' : locale === 'ru' ? 'Петь моим обученным голосом' : 'ვიმღერო ჩემი ნავარჯიში ხმით')}
+                  ? (locale === 'en' ? 'My trained voice ✓' : locale === 'ru' ? 'Мой обученный голос ✓' : 'ჩემი გავარჯიშებული ხმით ✓')
+                  : (locale === 'en' ? 'Sing with my trained voice' : locale === 'ru' ? 'Петь моим обученным голосом' : 'ვიმღერო ჩემი გავარჯიშებული ხმით')}
               </button>
             )}
           </div>
@@ -1982,26 +1994,34 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-app-surface text-app-text transition-colors hover:text-app-accent">
                 <Square size={15} className="fill-current" />
               </button>
-            ) : canSend ? (
+            ) : recording ? (
+              // While dictating, a STOP that never disappears — even as live text
+              // arrives — so recording is always controllable.
+              <button type="button" onClick={() => void toggleMic()} aria-label={t.stop} title={t.stop}
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full animate-pulse bg-app-danger/15 text-app-danger">
+                <Square size={16} />
+              </button>
+            ) : (
               <>
+                {/* Mic stays available even with text in the box — tap again to keep
+                    dictating / continue where you left off. */}
+                <button type="button" onClick={() => void toggleMic()} aria-label={t.micHint} title={t.micHint}
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-surface hover:text-app-text">
+                  <Mic size={19} />
+                </button>
                 {input.trim() && (
                   <button type="button" onClick={() => void magicEnhance()} disabled={enhancing} aria-label={t.magicHint} title={t.magicHint}
                     className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-surface hover:text-app-accent disabled:opacity-40">
                     {enhancing ? <Loader2 size={18} className="animate-spin text-app-accent" /> : <Wand2 size={18} />}
                   </button>
                 )}
-                <button type="button" onClick={() => void send()} aria-label="send"
-                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-app-accent text-app-bg transition-opacity hover:opacity-90">
-                  <Send size={17} />
-                </button>
+                {canSend && (
+                  <button type="button" onClick={() => void send()} aria-label="send"
+                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-app-accent text-app-bg transition-opacity hover:opacity-90">
+                    <Send size={17} />
+                  </button>
+                )}
               </>
-            ) : (
-              <button type="button" onClick={() => void toggleMic()} aria-label={t.micHint} title={t.micHint}
-                className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-colors ${
-                  recording ? 'animate-pulse bg-app-danger/15 text-app-danger' : 'text-app-muted hover:bg-app-surface hover:text-app-text'
-                }`}>
-                {recording ? <Square size={16} /> : <Mic size={19} />}
-              </button>
             )}
           </div>
         </div>
@@ -2041,15 +2061,13 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             style={{ bottom: 'max(1rem, env(safe-area-inset-bottom))' }}
             onClick={(e) => e.stopPropagation()}
           >
-            <a
-              href={lightbox}
-              target="_blank"
-              rel="noopener noreferrer"
-              download
+            <button
+              type="button"
+              onClick={() => void dl(lightbox, 'myavatar-image.png')}
               className="inline-flex w-fit items-center gap-1.5 rounded-full bg-app-accent px-4 py-2 text-[13px] font-semibold text-app-bg backdrop-blur"
             >
               <Download size={14} /> {t.imgDownload}
-            </a>
+            </button>
             <button
               type="button"
               onClick={() => startImageEdit(lightbox)}

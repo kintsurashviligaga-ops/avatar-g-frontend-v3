@@ -157,7 +157,12 @@ export async function convertSongWithRvc(songUrl: string, modelUrl: string, pitc
       rvc_model: 'CUSTOM',
       custom_rvc_model_download_url: modelUrl,
       pitch_change: pitch,
-      index_rate: 0.66,
+      // Higher index_rate keeps MORE of the trained voice's character (= sounds more
+      // like the user); protect preserves consonant clarity.
+      index_rate: 0.82,
+      filter_radius: 3,
+      rms_mix_rate: 0.25,
+      protect: 0.33,
       main_vocals_volume_change: 0,
       output_format: 'mp3',
     },
