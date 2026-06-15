@@ -20,6 +20,7 @@ import { textToHostedSpeech } from '@/lib/chat/filmVoiceover';
 import { convertSongWithRvc } from '@/lib/audio/rvc';
 import { getUserVoiceModel, DEMO_VOICE_USER_ID } from '@/lib/audio/voiceModel';
 import { authedClientFromRequest } from '@/lib/supabase/server';
+import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -78,5 +79,25 @@ export async function POST(req: NextRequest) {
   }
 
   const url = await lipsyncVideo(body.videoUrl, audioUrl);
-  return NextResponse.json({ url });
+  if (!url) return NextResponse.json({ url: null });
+
+  // Re-host the Wav2Lip output to a stable Supabase URL — the provider URL expires in
+  // ~1h, so a saved talking video would otherwise break. Fail-open → provider URL.
+  let hosted = url;
+  try {
+    const ac = new AbortController();
+    const to = setTimeout(() => ac.abort(), 30_000);
+    const r = await fetch(url, { signal: ac.signal }).finally(() => clearTimeout(to));
+    if (r.ok) {
+      const buf = Buffer.from(await r.arrayBuffer());
+      if (buf.byteLength && buf.byteLength <= 80 * 1024 * 1024) {
+        const path = `lipsync/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.mp4`;
+        const signed = await uploadAndSign('uploads', path, buf.toString('base64'), 'video/mp4', 604_800);
+        if (signed) hosted = signed;
+      }
+    }
+  } catch {
+    /* fail-open — keep the provider URL */
+  }
+  return NextResponse.json({ url: hosted });
 }
