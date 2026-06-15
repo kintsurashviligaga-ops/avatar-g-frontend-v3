@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { generateUdioTrack } from '@/lib/udio/client';
 import { generateMusicCover, generateVoiceSong } from '@/lib/ai/replicate';
 import { transcodeVoiceToMp3 } from '@/lib/audio/transcode';
+import { convertSongWithRvc } from '@/lib/audio/rvc';
+import { getUserVoiceModel } from '@/lib/audio/voiceModel';
 import { generateNanoBananaImage } from '@/lib/nanobanana/client';
 import { uploadAndSign, createSignedAssetUrl } from '@/lib/orchestrator/storage-adapter';
 import { authedClientFromRequest } from '@/lib/supabase/server';
@@ -80,8 +82,9 @@ export async function POST(req: NextRequest) {
   let lyrics = '';
   let audioReference = '';
   let voiceReference = '';
+  let useMyVoice = false;
   try {
-    const body = (await req.json().catch(() => ({}))) as { prompt?: unknown; style?: unknown; instrumental?: unknown; lyrics?: unknown; audioReference?: unknown; voiceReference?: unknown };
+    const body = (await req.json().catch(() => ({}))) as { prompt?: unknown; style?: unknown; instrumental?: unknown; lyrics?: unknown; audioReference?: unknown; voiceReference?: unknown; useMyVoice?: unknown };
     prompt = typeof body.prompt === 'string' ? body.prompt.trim() : '';
     if (typeof body.style === 'string' && body.style.trim()) style = body.style.trim();
     if (typeof body.instrumental === 'boolean') makeInstrumental = body.instrumental;
@@ -95,6 +98,8 @@ export async function POST(req: NextRequest) {
     // Voice clone: an uploaded sample of the USER'S voice (>15s, data:/https/path) →
     // MiniMax sings the lyrics in that voice. Highest-priority branch below.
     if (typeof body.voiceReference === 'string' && body.voiceReference.trim()) voiceReference = body.voiceReference.trim();
+    // Use the user's TRAINED RVC voice (faithful) instead of a one-shot reference.
+    if (body.useMyVoice === true) useMyVoice = true;
   } catch {
     /* malformed body → guard below */
   }
@@ -114,7 +119,26 @@ export async function POST(req: NextRequest) {
     // re-imagines it in the requested style (conditioned on the track's melody);
     // otherwise Udio composes a fresh track from the brief.
     let providerAudioUrl = '';
-    if (voiceReference) {
+    const trainedModel = useMyVoice ? await (async () => { try { const { user } = await authedClientFromRequest(req); return user ? await getUserVoiceModel(user.id) : null; } catch { return null; } })() : null;
+    if (trainedModel) {
+      // FAITHFUL "sing in my voice": Udio composes a song WITH vocals (it needs no
+      // reference, unlike MiniMax), then realistic-voice-cloning swaps those vocals for
+      // the user's TRAINED RVC model. Udio is budgeted ~150s to leave room for the
+      // ~90s convert inside the 300s ceiling. Fail-open: if the convert misses, return
+      // the composed song so the user still gets a track.
+      const composed = await generateUdioTrack(
+        { prompt: capped, style, makeInstrumental: false, title: capped.slice(0, 60), ...(lyrics ? { lyrics } : {}) },
+        { maxAttempts: 30, pollIntervalMs: 5000 },
+      );
+      if (composed.status !== 'succeeded' || !composed.audioUrl) {
+        return NextResponse.json({ success: false, error: composed.message || 'Could not compose the base song.' }, { status: 502 });
+      }
+      try {
+        providerAudioUrl = await convertSongWithRvc(composed.audioUrl, trainedModel.modelUrl);
+      } catch {
+        providerAudioUrl = composed.audioUrl;
+      }
+    } else if (voiceReference) {
       // "Create a song in MY voice" — resolve the user's uploaded voice sample to an
       // https URL (data: → host · https → use · path → sign the browser upload) and
       // have MiniMax sing the lyrics in that voice (zero-shot, ## adds accompaniment).

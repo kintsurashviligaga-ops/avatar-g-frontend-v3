@@ -1895,6 +1895,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                     </button>
                   </div>
                   <p className="mt-1.5 text-[11px] leading-relaxed text-app-muted/70">{t.voiceRecHint}</p>
+                  <a href={`/${locale}/studio/music`} className="mt-1 inline-block text-[11px] font-semibold text-app-accent underline-offset-2 hover:underline">
+                    {locale === 'en' ? '🎓 Train your real voice →' : locale === 'ru' ? '🎓 Обучить настоящий голос →' : '🎓 გაწვრთენი ნამდვილ ხმას (ფიდელ.) →'}
+                  </a>
                 </>
               )
             ) : (

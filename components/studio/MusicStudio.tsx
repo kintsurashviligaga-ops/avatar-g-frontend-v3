@@ -26,6 +26,7 @@ import {
   Loader2, Sparkles, Trash2, AlertCircle, Wand2,
 } from 'lucide-react';
 import { CreditBadge } from '@/components/ui/CreditBadge';
+import { VoiceTrainer } from '@/components/voice/VoiceTrainer';
 
 // ─── i18n ───────────────────────────────────────────────────────────────────
 type Lang = 'ka' | 'en' | 'ru';
@@ -43,6 +44,7 @@ const STR = {
     generate: 'შექმნა', generating: 'იქმნება…', failed: 'ვერ შეიქმნა, სცადე თავიდან',
     micDenied: 'მიკროფონზე წვდომა ვერ მოხერხდა', tooBig: 'ფაილი დიდია — ჩაწერე უფრო მოკლე (≤60წმ)',
     result: 'შენი ტრეკი', download: 'ჩამოტვირთვა', newTrack: 'ახალი ტრეკი',
+    myVoiceOff: 'იმღერე ჩემი ნავარჯიში ხმით', myVoiceOn: 'ჩემი ნავარჯიში ხმით ✓',
   },
   en: {
     back: 'Back', title: 'Music Studio', subtitle: 'Create music — even in your own voice',
@@ -57,6 +59,7 @@ const STR = {
     generate: 'Create', generating: 'Creating…', failed: 'Failed — try again',
     micDenied: 'Could not access the microphone', tooBig: 'File too large — record shorter (≤60s)',
     result: 'Your track', download: 'Download', newTrack: 'New track',
+    myVoiceOff: 'Sing with my trained voice', myVoiceOn: 'My trained voice ✓',
   },
   ru: {
     back: 'Назад', title: 'Музыкальная студия', subtitle: 'Создавайте музыку — даже своим голосом',
@@ -71,6 +74,7 @@ const STR = {
     generate: 'Создать', generating: 'Создаётся…', failed: 'Не удалось — попробуйте снова',
     micDenied: 'Нет доступа к микрофону', tooBig: 'Файл слишком большой — запишите короче (≤60с)',
     result: 'Ваш трек', download: 'Скачать', newTrack: 'Новый трек',
+    myVoiceOff: 'Спеть моим обученным голосом', myVoiceOn: 'Мой обученный голос ✓',
   },
 } satisfies Record<Lang, Record<string, string>>;
 type MusicT = (typeof STR)['ka'];
@@ -204,6 +208,9 @@ export function MusicStudio() {
   const [elapsed, setElapsed] = useState(0);
   const [result, setResult] = useState<{ url: string; coverUrl?: string } | null>(null);
   const [error, setError] = useState('');
+  // Trained-voice (RVC) state — set by the VoiceTrainer once a model is ready.
+  const [hasTrainedVoice, setHasTrainedVoice] = useState(false);
+  const [useMyVoice, setUseMyVoice] = useState(false);
 
   const recRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -338,7 +345,11 @@ export function MusicStudio() {
         voiceRef = dataUrl;
       }
       const body: Record<string, unknown> = { prompt: prompt.trim(), style: genre };
-      if (isVoiceClone) {
+      if (useMyVoice && hasTrainedVoice) {
+        // Faithful: sing with the user's TRAINED voice model (no upload needed).
+        body.useMyVoice = true;
+        if (lyrics.trim()) body.lyrics = lyrics.trim();
+      } else if (isVoiceClone) {
         body.voiceReference = voiceRef;
         if (lyrics.trim()) body.lyrics = lyrics.trim();
       } else if (hasVoice) {
@@ -361,9 +372,9 @@ export function MusicStudio() {
     } finally {
       setBusy(false);
     }
-  }, [prompt, busy, hasVoice, voiceBlob, isVoiceClone, lyrics, genre, instrumental, t.failed, t.tooBig]);
+  }, [prompt, busy, hasVoice, voiceBlob, isVoiceClone, lyrics, genre, instrumental, useMyVoice, hasTrainedVoice, t.failed, t.tooBig]);
 
-  const showLyrics = (!instrumental && !hasVoice) || isVoiceClone;
+  const showLyrics = (!instrumental && !hasVoice) || isVoiceClone || (useMyVoice && hasTrainedVoice);
 
   return (
     <div className="min-h-screen bg-transparent text-white">
@@ -498,6 +509,15 @@ export function MusicStudio() {
               </div>
             )}
           </div>
+
+          {/* Faithful "my voice": train a personal RVC model, then sing with it. */}
+          <VoiceTrainer lang={lang} onReady={setHasTrainedVoice} />
+          {hasTrainedVoice && (
+            <button type="button" onClick={() => setUseMyVoice((v) => !v)}
+              className={`flex w-full items-center justify-center gap-2 rounded-xl border px-3 py-3 text-sm font-bold transition-colors ${useMyVoice ? 'border-cyan-400/70 bg-cyan-400/20 text-cyan-100' : 'border-white/10 text-white/60 hover:bg-white/5'}`}>
+              🎤 {useMyVoice ? t.myVoiceOn : t.myVoiceOff}
+            </button>
+          )}
 
           {/* Lyrics (vocals or voice-clone) */}
           <AnimatePresence>
