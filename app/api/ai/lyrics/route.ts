@@ -18,28 +18,35 @@ export async function POST(req: NextRequest) {
   if (!theme) return NextResponse.json({ success: false, error: 'theme is required' }, { status: 400 });
 
   const langName = language === 'en' ? 'English' : language === 'ru' ? 'Russian' : 'Georgian';
-  try {
-    const r = await generateWithGemini({
-      tier: 'flash',
-      systemPrompt:
-        `You are a professional songwriter. Write SHORT, ORIGINAL, singable lyrics in ${langName} ` +
-        `with fresh, specific, personal imagery. Structure: one short verse + one chorus, 6–10 lines ` +
-        `total, under 320 characters TOTAL (a music model will sing them). One line per line ` +
-        `(newline-separated). Output ONLY the lyrics — no title, no section labels like ` +
-        `[Verse]/[Chorus], no quotes, no commentary.`,
-      prompt: `Theme: ${theme}${style ? `. Style/mood: ${style}` : ''}.`,
-      maxTokens: 400,
-      temperature: 0.95,
-    });
-    const lyrics = (r.text || '')
-      .replace(/^\s*\[[^\]]*\]\s*$/gm, '') // strip [Verse]/[Chorus] label lines
-      .replace(/^["'`]+|["'`]+$/g, '')
-      .replace(/\n{3,}/g, '\n\n')
-      .trim()
-      .slice(0, 360);
-    if (!lyrics) return NextResponse.json({ success: false, error: 'Could not write lyrics, try again.' }, { status: 502 });
-    return NextResponse.json({ success: true, lyrics });
-  } catch {
-    return NextResponse.json({ success: false, error: 'Lyrics generation failed.' }, { status: 502 });
+  const sys =
+    `You are a professional songwriter. Write SHORT, ORIGINAL, singable lyrics in ${langName} ` +
+    `with fresh, specific, personal imagery. Structure: one short verse + one chorus, 6–10 lines ` +
+    `total, under 320 characters TOTAL (a music model will sing them). One line per line ` +
+    `(newline-separated). Output ONLY the lyrics — no title, no section labels like ` +
+    `[Verse]/[Chorus], no quotes, no commentary.`;
+  const clean = (s: string) => s
+    .replace(/^\s*\[[^\]]*\]\s*$/gm, '')
+    .replace(/^["'`]+|["'`]+$/g, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+    .slice(0, 360);
+
+  // Gemini's recitation/safety check sometimes blocks a take (more so in English).
+  // Retry with a fresher, higher-temperature attempt — and a pro-tier fallback — so the
+  // ✨ button reliably returns lyrics instead of a 502.
+  const attempts: Array<{ tier: 'flash' | 'pro'; prompt: string; temperature: number }> = [
+    { tier: 'flash', prompt: `Theme: ${theme}${style ? `. Style/mood: ${style}` : ''}.`, temperature: 0.95 },
+    { tier: 'flash', prompt: `Theme: ${theme}. Write something completely fresh, unusual and unique — nothing that resembles an existing song.`, temperature: 1.1 },
+    { tier: 'pro', prompt: `Theme: ${theme}${style ? `. Mood: ${style}` : ''}. Fresh, original wording only.`, temperature: 1.0 },
+  ];
+  for (const a of attempts) {
+    try {
+      const r = await generateWithGemini({ tier: a.tier, systemPrompt: sys, prompt: a.prompt, maxTokens: 400, temperature: a.temperature });
+      const lyrics = clean(r.text || '');
+      if (lyrics) return NextResponse.json({ success: true, lyrics });
+    } catch {
+      /* try the next attempt */
+    }
   }
+  return NextResponse.json({ success: false, error: 'Could not write lyrics, please try again.' }, { status: 502 });
 }
