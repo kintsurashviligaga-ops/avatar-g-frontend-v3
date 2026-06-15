@@ -128,7 +128,8 @@ export async function POST(req: NextRequest) {
       // the composed song so the user still gets a track.
       const composed = await generateUdioTrack(
         { prompt: capped, style, makeInstrumental: false, title: capped.slice(0, 60), ...(lyrics ? { lyrics } : {}) },
-        { maxAttempts: 30, pollIntervalMs: 5000 },
+        // ~125s Udio budget so the ~120–150s RVC convert still fits under the 300s ceiling.
+        { maxAttempts: 25, pollIntervalMs: 5000 },
       );
       if (composed.status !== 'succeeded' || !composed.audioUrl) {
         return NextResponse.json({ success: false, error: composed.message || 'Could not compose the base song.' }, { status: 502 });
