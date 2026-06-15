@@ -153,7 +153,7 @@ export async function POST(req: NextRequest) {
   // Founder-supplied Georgian voice. CRITICAL ORDER: Georgian text must pick the
   // Georgian voice BEFORE the (English) ELEVENLABS_VOICE_ID — otherwise Georgian
   // gets read by an English voice and sounds heavily accented/robotic.
-  const georgianVoiceId = process.env.ELEVENLABS_GEORGIAN_VOICE_ID || 'hpp4J3VqNfWAUOO0d1Us';
+  const georgianVoiceId = process.env.ELEVENLABS_GEORGIAN_VOICE_ID || 'vWpzdSR8GpLUKR0ai8Li';
   const voiceId = body.voiceId
     ?? body.voice_id
     ?? (isGeorgian ? georgianVoiceId : (process.env.ELEVENLABS_VOICE_ID ?? georgianVoiceId));

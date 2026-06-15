@@ -124,10 +124,10 @@ const KA_VOICE_DEFAULTS: Record<VoicePersona, string> = {
   // Founder-supplied Georgian voices. ID #1 → male/narrator/elder/young, ID #2 →
   // female/child (a lighter voice suits a child better than the deeper one). If the
   // two are swapped gender-wise, just exchange the two IDs below.
-  male: 'hpp4J3VqNfWAUOO0d1Us',
-  narrator: 'hpp4J3VqNfWAUOO0d1Us',
-  elder: 'hpp4J3VqNfWAUOO0d1Us',
-  young: 'hpp4J3VqNfWAUOO0d1Us',
+  male: 'vWpzdSR8GpLUKR0ai8Li',
+  narrator: 'vWpzdSR8GpLUKR0ai8Li',
+  elder: 'vWpzdSR8GpLUKR0ai8Li',
+  young: 'vWpzdSR8GpLUKR0ai8Li',
   female: 'vWpzdSR8GpLUKR0ai8Li',
   child: 'vWpzdSR8GpLUKR0ai8Li',
 };
