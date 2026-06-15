@@ -195,6 +195,14 @@ export async function POST(req: NextRequest) {
     : plan;
 
   const frames = await mapWithConcurrency(storyPlan.scenes, 3, (scene) => genFrame(scene.prompt));
+  // Retry any frame that failed (NanoBanana transient / rate-limit) in a second pass —
+  // so the storyboard rarely shows a scene with a missing image ("not all scenes
+  // generate"). One extra attempt per missing frame; still fail-soft to null.
+  const missing = frames.map((f, i) => (f ? -1 : i)).filter((i) => i >= 0);
+  if (missing.length) {
+    const retried = await mapWithConcurrency(missing.map((i) => storyPlan.scenes[i]!), 3, (scene) => genFrame(scene.prompt));
+    missing.forEach((sceneI, k) => { if (retried[k]) frames[sceneI] = retried[k]; });
+  }
 
   const scenes = storyPlan.scenes.map((s, i) => ({
     ordinal: s.ordinal,

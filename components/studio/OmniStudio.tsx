@@ -1085,6 +1085,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     if ((!text && attachments.length === 0) || busy) return;
     // Stop any live dictation so the recognizer doesn't keep appending after send.
     try { recognitionRef.current?.stop(); } catch { /* noop */ }
+    // Mobile: blur the composer so the on-screen keyboard COMMITS the IME buffer —
+    // otherwise a programmatic value='' doesn't visibly clear and the sent text lingers.
+    try { taRef.current?.blur(); } catch { /* noop */ }
 
     // New generation token + abort controller. Every async finalizer below checks
     // `mine()` before mutating state, so Stop (which bumps the token + aborts) or a
@@ -2371,7 +2374,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 feels like the storyboard is materialising, not a blank spinner. */}
             <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4">
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                {Array.from({ length: 6 }).map((_, i) => (
+                {Array.from({ length: Math.max(2, Math.min(6, Math.round(videoDuration / 5))) }).map((_, i) => (
                   <div key={i} className="overflow-hidden rounded-xl border border-app-border/10 bg-app-elevated">
                     <div className={`relative ${videoOrientation === 'vertical' ? 'aspect-[9/16]' : 'aspect-video'} animate-pulse bg-gradient-to-br from-app-border/20 via-app-border/8 to-app-border/15`} style={{ animationDelay: `${i * 140}ms` }}>
                       <span className="absolute left-1.5 top-1.5 rounded-full bg-black/45 px-2 py-0.5 text-[11px] font-medium text-white/75">{t.sbScene} {i + 1}</span>
