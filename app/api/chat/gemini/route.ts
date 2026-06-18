@@ -6,6 +6,7 @@ import { NextRequest } from 'next/server';
 import { reportError } from '@/lib/observability/report-error';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { embed } from '@/lib/memory/embed';
+import { webSearch, likelyNeedsWebSearch, buildSearchPreamble } from '@/lib/ai/webSearch';
 import { classifyGeminiMessage, logGeminiState } from '@/lib/orchestrator/gemini-guard';
 
 export const dynamic = 'force-dynamic';
@@ -247,7 +248,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const body = (await req.json()) as { messages: IncomingMessage[] };
+    const body = (await req.json()) as { messages: IncomingMessage[]; webSearch?: boolean };
     const { messages = [] } = body;
 
     if (!Array.isArray(messages) || messages.length === 0) {
@@ -262,9 +263,25 @@ export async function POST(req: NextRequest) {
     // Best-effort memory injection. Never blocks the chat — if the lookup
     // fails for any reason we fall back to the base system prompt.
     const memoryPreamble = await buildMemoryPreamble(req, messages);
-    const effectiveSystem = memoryPreamble
-      ? `${memoryPreamble}\n\n${SYSTEM_PROMPT}`
-      : SYSTEM_PROMPT;
+
+    // Best-effort live web search (#19). Grounds answers in up-to-date results
+    // when the query looks time-sensitive (or the client sets webSearch:true).
+    // Env-driven (TAVILY_API_KEY) — null without a key, so chat is unaffected.
+    let searchPreamble: string | null = null;
+    try {
+      const userText = extractLatestUserText(messages);
+      const wantSearch = body.webSearch === true || (userText ? likelyNeedsWebSearch(userText) : false);
+      if (userText && wantSearch) {
+        const search = await webSearch(userText);
+        if (search) searchPreamble = buildSearchPreamble(search);
+      }
+    } catch {
+      // never block chat on search
+    }
+
+    const effectiveSystem = [memoryPreamble, searchPreamble, SYSTEM_PROMPT]
+      .filter(Boolean)
+      .join('\n\n');
 
     const encoder = new TextEncoder();
     const readable = new ReadableStream({
