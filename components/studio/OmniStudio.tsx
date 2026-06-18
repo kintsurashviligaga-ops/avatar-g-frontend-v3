@@ -1297,7 +1297,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             if (pj.done) { resultUrl = pj.url ?? null; resultErr = pj.error ?? null; break; }
           }
           // Retry only the known transient provider crash; bail on anything else.
-          if (!resultUrl && resultErr && !/antialias|has no attribute|cuda|out of memory|memory|runtimeerror/i.test(resultErr)) break;
+          if (!resultUrl && resultErr && !/antialias|has no attribute|cuda|out of memory|memory|runtimeerror|baseexception|must derive/i.test(resultErr)) break;
         }
         setMessages((prev) => {
           if (!mine()) return prev;

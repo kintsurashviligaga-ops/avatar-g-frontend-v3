@@ -216,8 +216,12 @@ async function heygenLipsyncFetch(videoId: string): Promise<{ status: string; ur
  */
 export async function lipsyncCreate(videoUrl: string, audioUrl: string): Promise<string | null> {
   if (!videoUrl || !audioUrl) return null;
-  // Prefer HeyGen when configured — SadTalker keeps crashing model-side.
-  if (heygenKey()) {
+  // Prefer HeyGen only when explicitly enabled (LIPSYNC_HEYGEN=1). Its audio-driven
+  // talking-photo path still needs verification (the existing HeyGen route uses
+  // voice.type:'text'); until then the proven SadTalker path — with client-side retry
+  // on transient model crashes (ANTIALIAS / "exceptions must derive from BaseException")
+  // — is the default. The HeyGen engine stays wired for one-flag activation.
+  if (heygenKey() && process.env.LIPSYNC_HEYGEN === '1') {
     const heygenId = await heygenLipsyncCreate(videoUrl, audioUrl);
     if (heygenId) return heygenId;
   }
