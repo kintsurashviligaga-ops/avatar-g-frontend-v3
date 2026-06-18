@@ -30,10 +30,6 @@ targets:
         NSPhotoLibraryUsageDescription: "MyAvatar accesses your photo library so you can pick photos for AI avatar and content creation."
         NSPhotoLibraryAddUsageDescription: "MyAvatar saves the images and videos you generate to your photo library."
         ITSAppUsesNonExemptEncryption: false
-        UIBackgroundModes:
-          - audio
-          - fetch
-          - remote-notification
         CFBundleDisplayName: "MyAvatar"
         CFBundleName: "AvatarG"
         UILaunchScreen: {}

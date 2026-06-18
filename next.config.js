@@ -134,6 +134,15 @@ const nextConfig = {
       },
     ];
   },
+  async rewrites() {
+    return [
+      // Apple App Site Association (AASA) for iOS Universal Links. Served as JSON
+      // by app/api/aasa/route.ts. The middleware already exempts /.well-known/
+      // from locale routing, so Apple fetches it without a redirect.
+      { source: '/.well-known/apple-app-site-association', destination: '/api/aasa' },
+      { source: '/apple-app-site-association', destination: '/api/aasa' },
+    ];
+  },
   async redirects() {
     const serviceRedirects = [
       // Legacy full-slug → canonical short-slug

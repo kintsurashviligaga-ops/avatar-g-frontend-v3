@@ -33,12 +33,8 @@ This file tracks exactly what is **done in code** vs. what **you** must do in Xc
 ### Capabilities to reconcile (these need the matching App ID capability, or signing fails)
 The shell **declares** these but the entitlement/portal side is not wired. Pick one path per item:
 
-- **Universal Links** — `capacitor.config.json` + `project.yml` plugins set `handleUniversalLinks: true`, but `AvatarG.entitlements` has **no** `com.apple.developer.associated-domains`.
-  - *Keep it:* add `applinks:myavatar.ge` to entitlements + enable **Associated Domains** in the App ID + host `https://myavatar.ge/.well-known/apple-app-site-association`.
-  - *Drop it:* remove `handleUniversalLinks` to avoid dead config.
-- **Push** — `UIBackgroundModes` lists `remote-notification`, but there is **no** `aps-environment` entitlement and push is not yet wired in the web app.
-  - *Keep it:* enable **Push Notifications** capability + add `aps-environment`, and implement the handler.
-  - *Drop it:* remove `remote-notification` from `UIBackgroundModes` (recommended for v1 — see §D).
+- **Universal Links** — ✅ wired in code: `com.apple.developer.associated-domains` (`applinks:myavatar.ge`) in `AvatarG.entitlements`, and the AASA is served at `https://myavatar.ge/.well-known/apple-app-site-association` (`app/api/aasa/route.ts` + rewrite in `next.config.js`). **You must:** (1) set `APPLE_TEAM_ID` in Vercel env to your 10-char Team ID + redeploy (the AASA reads it at runtime), (2) enable the **Associated Domains** capability on the App ID so the provisioning profile carries the entitlement.
+- **Push** — ✅ `remote-notification` removed from `UIBackgroundModes` for v1 (push not implemented yet). When you add push later: enable the **Push Notifications** capability, add `aps-environment`, re-add the background mode, and implement the handler.
 
 ---
 
@@ -55,7 +51,7 @@ The shell **declares** these but the entitlement/portal side is not wired. Pick 
 
 ## D. ⚠️ Review-risk checklist (decide before submitting)
 
-- **Background modes (`audio`, `fetch`, `remote-notification`)** — Apple rejects (2.5.4 / 2.16) background modes the app doesn't actually use. For a webview shell, **none** of these likely apply. Recommended: trim `UIBackgroundModes` to only what's truly implemented (probably empty for v1). Edit in `project.yml`.
+- **Background modes** — ✅ done: `UIBackgroundModes` (`audio`, `fetch`, `remote-notification`) removed from `project.yml` for v1, since none are implemented in the webview shell (Apple rejects unused background modes under 2.5.4 / 2.16). Re-add a specific mode only when you actually implement it.
 - **Guideline 4.2 (minimum functionality)** — the app loads a remote URL (`server.url`). Pure web wrappers get rejected. Mitigation: the native widgets + Watch app + on-device camera/mic/photos integration are your "native" justification — make sure at least one is demonstrably working in the build.
 - **Reader-model usability (3.1.1)** — since all purchase CTAs are hidden on iOS, make sure: (a) **new iOS users get free starter credits** so core features are usable without paying (otherwise the app looks broken to a reviewer), and (b) **no "buy on myavatar.ge" text/link leaks** on iOS (that's prohibited steering). Audit any "insufficient balance" copy under `data-native-ios`.
 - **3.1.3(b) "multiplatform"** — fine to let users consume credits bought on web, as long as the app doesn't *advertise* the external purchase.

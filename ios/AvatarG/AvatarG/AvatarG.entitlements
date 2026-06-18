@@ -6,5 +6,9 @@
 	<array>
 		<string>group.ge.myavatar.app</string>
 	</array>
+	<key>com.apple.developer.associated-domains</key>
+	<array>
+		<string>applinks:myavatar.ge</string>
+	</array>
 </dict>
 </plist>
