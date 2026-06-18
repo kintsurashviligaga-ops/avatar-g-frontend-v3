@@ -43,9 +43,13 @@ function token(): string {
   return String(process.env.REPLICATE_API_TOKEN || '').trim();
 }
 
-/** True when the Wav2Lip pass can run (the shared Replicate token is present). */
+function heygenKey(): string {
+  return String(process.env.HEYGEN_API_KEY || '').trim();
+}
+
+/** True when a lip-sync provider is available (HeyGen preferred, Replicate fallback). */
 export function hasLipsyncProvider(): boolean {
-  return token().length > 0;
+  return heygenKey().length > 0 || token().length > 0;
 }
 
 /**
@@ -118,14 +122,107 @@ export async function lipsyncVideo(videoUrl: string, audioUrl: string, _resizeFa
   }
 }
 
+// ─── HeyGen talking-photo engine (PRIMARY) ──────────────────────────────────
+// A reliable, professional lip-sync path: upload the face photo → talking_photo →
+// video/generate driven by OUR ElevenLabs audio (voice.type:'audio'). This keeps the
+// Georgian voice quality AND removes the dependency on the flaky Replicate SadTalker
+// container (whose model-side Python throws "ANTIALIAS" / "exceptions must derive from
+// BaseException" — not our code). Fail-open: any miss → null → SadTalker fallback.
+const HEYGEN_BASE = 'https://api.heygen.com';
+
+async function faceUrlToBase64(url: string): Promise<{ base64: string; mime: string } | null> {
+  try {
+    const r = await fetch(url, { cache: 'no-store', signal: AbortSignal.timeout(20_000) });
+    if (!r.ok) return null;
+    const mime = r.headers.get('content-type') || 'image/jpeg';
+    const buf = Buffer.from(await r.arrayBuffer());
+    return buf.byteLength ? { base64: buf.toString('base64'), mime } : null;
+  } catch {
+    return null;
+  }
+}
+
+/** HeyGen: face URL + audio URL → "heygen:<videoId>" job handle (or null). */
+async function heygenLipsyncCreate(faceUrl: string, audioUrl: string): Promise<string | null> {
+  const key = heygenKey();
+  if (!key) return null;
+  try {
+    const img = await faceUrlToBase64(faceUrl);
+    if (!img) return null;
+
+    // 1) upload the photo as a HeyGen asset
+    const bin = Buffer.from(img.base64, 'base64');
+    const fd = new FormData();
+    fd.append('file', new Blob([new Uint8Array(bin)], { type: img.mime }), 'face.jpg');
+    fd.append('type', 'image');
+    const upRes = await fetch(`${HEYGEN_BASE}/v1/asset`, { method: 'POST', headers: { 'X-Api-Key': key }, body: fd, signal: AbortSignal.timeout(30_000) });
+    if (!upRes.ok) return null;
+    const upData = (await upRes.json().catch(() => ({}))) as { data?: { id?: string; asset_id?: string } };
+    const assetId = upData.data?.id ?? upData.data?.asset_id;
+    if (!assetId) return null;
+
+    // 2) make a talking_photo from the asset
+    const tpRes = await fetch(`${HEYGEN_BASE}/v1/talking_photo`, { method: 'POST', headers: { 'X-Api-Key': key, 'Content-Type': 'application/json' }, body: JSON.stringify({ image_asset_id: assetId }), signal: AbortSignal.timeout(20_000) });
+    if (!tpRes.ok) return null;
+    const tpData = (await tpRes.json().catch(() => ({}))) as { data?: { talking_photo_id?: string } };
+    const talkingPhotoId = tpData.data?.talking_photo_id;
+    if (!talkingPhotoId) return null;
+
+    // 3) generate the video driven by OUR audio (preserves the Georgian voice)
+    const genRes = await fetch(`${HEYGEN_BASE}/v2/video/generate`, {
+      method: 'POST',
+      headers: { 'X-Api-Key': key, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        video_inputs: [{
+          character: { type: 'talking_photo', talking_photo_id: talkingPhotoId, talking_photo_style: 'square' },
+          voice: { type: 'audio', audio_url: audioUrl },
+        }],
+        dimension: { width: 720, height: 1280 },
+      }),
+      signal: AbortSignal.timeout(20_000),
+    });
+    if (!genRes.ok) return null;
+    const genData = (await genRes.json().catch(() => ({}))) as { data?: { video_id?: string }; video_id?: string };
+    const videoId = genData.data?.video_id ?? genData.video_id;
+    return videoId ? `heygen:${videoId}` : null;
+  } catch {
+    return null;
+  }
+}
+
+/** HeyGen: poll a video_id once → normalized { status, url, error }. */
+async function heygenLipsyncFetch(videoId: string): Promise<{ status: string; url: string | null; error: string | null }> {
+  const key = heygenKey();
+  if (!key || !videoId) return { status: 'failed', url: null, error: null };
+  try {
+    const res = await fetch(`${HEYGEN_BASE}/v1/video_status.get?video_id=${encodeURIComponent(videoId)}`, { headers: { 'X-Api-Key': key }, cache: 'no-store', signal: AbortSignal.timeout(15_000) });
+    if (!res.ok) return { status: 'processing', url: null, error: null };
+    const d = ((await res.json().catch(() => ({}))) as { data?: { status?: string; video_url?: string; error?: unknown } }).data ?? {};
+    const st = d.status === 'completed' ? 'succeeded' : d.status === 'failed' ? 'failed' : 'processing';
+    const url = st === 'succeeded' ? (d.video_url ?? null) : null;
+    const error = typeof d.error === 'string' ? d.error.slice(0, 300) : d.error ? JSON.stringify(d.error).slice(0, 300) : null;
+    return { status: st, url, error };
+  } catch {
+    return { status: 'processing', url: null, error: null };
+  }
+}
+
 /**
  * ASYNC start: create the prediction and return its ID immediately (no polling). The
  * client then polls /api/video/lipsync?id=… in SHORT requests — a single ~150s
  * synchronous fetch gets dropped on mobile networks (the "lip-sync doesn't do it" bug).
+ *
+ * PRIMARY: HeyGen talking-photo (reliable). FALLBACK: Replicate SadTalker.
  */
 export async function lipsyncCreate(videoUrl: string, audioUrl: string): Promise<string | null> {
+  if (!videoUrl || !audioUrl) return null;
+  // Prefer HeyGen when configured — SadTalker keeps crashing model-side.
+  if (heygenKey()) {
+    const heygenId = await heygenLipsyncCreate(videoUrl, audioUrl);
+    if (heygenId) return heygenId;
+  }
   const key = token();
-  if (!key || !videoUrl || !audioUrl) return null;
+  if (!key) return null;
   try {
     const res = await fetch(`https://api.replicate.com/v1/predictions`, {
       method: 'POST',
@@ -147,8 +244,13 @@ export async function lipsyncCreate(videoUrl: string, audioUrl: string): Promise
 
 /** Poll a prediction ONCE → its status, the output URL (when succeeded), + any error. */
 export async function lipsyncFetch(predictionId: string): Promise<{ status: string; url: string | null; error: string | null }> {
+  if (!predictionId) return { status: 'failed', url: null, error: null };
+  // HeyGen jobs are tagged "heygen:<videoId>" by lipsyncCreate.
+  if (predictionId.startsWith('heygen:')) {
+    return heygenLipsyncFetch(predictionId.slice(7));
+  }
   const key = token();
-  if (!key || !predictionId) return { status: 'failed', url: null, error: null };
+  if (!key) return { status: 'failed', url: null, error: null };
   try {
     const res = await fetch(`https://api.replicate.com/v1/predictions/${encodeURIComponent(predictionId)}`, {
       headers: { Authorization: `Bearer ${key}` },
