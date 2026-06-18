@@ -2064,34 +2064,77 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       <div className="shrink-0 pt-1">
         {/* Per-service options — real backend capabilities, shown for the active
             generative mode. Borderless scrollable chip rows (clean, Gemini-like). */}
-        {mode !== 'chat' && mode !== 'video' && mode !== 'music' && (
-          <div className="mb-2 flex items-center gap-1.5 overflow-x-auto pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            {mode === 'image' && (
-              <>
-                {IMG_ASPECTS.map((a) => <Chip key={a} active={imgAspect === a} onClick={() => setImgAspect(a)}>{a}</Chip>)}
-                <span className="mx-0.5 h-4 w-px shrink-0 bg-app-border/15" />
-                {IMG_QUALITIES.map(([q, lbl]) => <Chip key={q} active={imgQuality === q} onClick={() => setImgQuality(q)}>{lbl}</Chip>)}
-                <span className="mx-0.5 h-4 w-px shrink-0 bg-app-border/15" />
-                {([1, 2, 4] as const).map((n) => <Chip key={n} active={imgCount === n} onClick={() => setImgCount(n)}>{n === 1 ? '1' : `×${n}`}</Chip>)}
-                <span className="mx-0.5 h-4 w-px shrink-0 bg-app-border/15" />
+        {/* IMAGE — dedicated card panel: aspect (visual previews) · count · quality · style */}
+        {mode === 'image' && (
+          <div className="mb-2 space-y-2">
+            <div className="space-y-2 rounded-xl border border-app-border/12 bg-app-elevated/40 p-3">
+              <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">📐 {locale === 'en' ? 'Aspect ratio' : locale === 'ru' ? 'Соотношение' : 'პროპორცია'}</span>
+              <div className="flex items-end gap-2.5 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                {IMG_ASPECTS.map((a) => {
+                  const [aw, ah] = a.split(':').map(Number) as [number, number];
+                  const max = 26;
+                  const bw = aw >= ah ? max : Math.round((max * aw) / ah);
+                  const bh = ah >= aw ? max : Math.round((max * ah) / aw);
+                  const on = imgAspect === a;
+                  return (
+                    <button key={a} type="button" onClick={() => setImgAspect(a)} aria-label={a} className="flex shrink-0 flex-col items-center gap-1 transition active:scale-95">
+                      <span className="flex h-7 w-7 items-center justify-center">
+                        <span className={`block rounded-[2px] border-2 transition-colors ${on ? 'border-app-accent bg-app-accent/25' : 'border-app-border/40'}`} style={{ width: bw, height: bh }} />
+                      </span>
+                      <span className={`text-[10px] font-medium ${on ? 'text-app-accent' : 'text-app-muted'}`}>{a}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-2 rounded-xl border border-app-border/12 bg-app-elevated/40 p-3">
+                <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">🔢 {locale === 'en' ? 'Count' : locale === 'ru' ? 'Количество' : 'რაოდენობა'}</span>
+                <div className="flex gap-1.5">
+                  {([1, 2, 4] as const).map((n) => <Chip key={n} active={imgCount === n} onClick={() => setImgCount(n)}>{n === 1 ? '1' : `×${n}`}</Chip>)}
+                </div>
+              </div>
+              <div className="space-y-2 rounded-xl border border-app-border/12 bg-app-elevated/40 p-3">
+                <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">⚡ {locale === 'en' ? 'Quality' : locale === 'ru' ? 'Качество' : 'ხარისხი'}</span>
+                <div className="flex flex-wrap gap-1.5">
+                  {IMG_QUALITIES.map(([q, lbl]) => <Chip key={q} active={imgQuality === q} onClick={() => setImgQuality(q)}>{lbl}</Chip>)}
+                </div>
+              </div>
+            </div>
+            <div className="space-y-2 rounded-xl border border-app-border/12 bg-app-elevated/40 p-3">
+              <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">🎨 {locale === 'en' ? 'Style' : locale === 'ru' ? 'Стиль' : 'სტილი'}</span>
+              <div className="flex flex-wrap gap-1.5">
                 {IMG_STYLES.map((s) => <Chip key={s} active={imgStyle === s} onClick={() => setImgStyle(s)}>{s}</Chip>)}
-              </>
-            )}
-            {/* music style controls now live in the dedicated Style card below */}
-            {mode === 'lipsync' && (
-              <>
-                <Chip active={attachments.some((a) => isVideo(a.mimeType) || isImage(a.mimeType))} onClick={() => fileRef.current?.click()}>
-                  🧑 {attachments.some((a) => isImage(a.mimeType) || isVideo(a.mimeType)) ? (locale === 'en' ? 'Photo ✓' : locale === 'ru' ? 'Фото ✓' : 'ფოტო ✓') : (locale === 'en' ? 'Attach photo' : locale === 'ru' ? 'Прикрепить фото' : 'მიამაგრე ფოტო')}
-                </Chip>
-                {attachments.some((a) => isAudio(a.mimeType)) && (
-                  <Chip active onClick={() => fileRef.current?.click()}>🎵 {t.lipAudioLabel} ✓</Chip>
-                )}
-                {hasTrainedVoice && (
-                  <Chip active={lipMyVoice} onClick={() => setLipMyVoice((v) => !v)}>
-                    🎤 {locale === 'en' ? 'My voice' : locale === 'ru' ? 'Мой голос' : 'ჩემი ხმით'}
-                  </Chip>
-                )}
-              </>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* LIPSYNC — dedicated card panel: character photo (+ hint) · voice */}
+        {mode === 'lipsync' && (
+          <div className="mb-2 space-y-2">
+            <div className="space-y-2 rounded-xl border border-app-border/12 bg-app-elevated/40 p-3">
+              <div className="flex items-center justify-between gap-2">
+                <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">🧑 {locale === 'en' ? 'Character photo' : locale === 'ru' ? 'Фото персонажа' : 'პერსონაჟის ფოტო'}</span>
+                <button type="button" onClick={() => fileRef.current?.click()}
+                  className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12px] font-semibold transition-colors ${attachments.some((a) => isImage(a.mimeType) || isVideo(a.mimeType)) ? 'bg-app-accent text-app-bg' : 'bg-app-bg/50 text-app-text ring-1 ring-app-border/20 hover:bg-app-bg/70'}`}>
+                  <Upload size={13} /> {attachments.some((a) => isImage(a.mimeType) || isVideo(a.mimeType)) ? (locale === 'en' ? 'Photo ✓' : locale === 'ru' ? 'Фото ✓' : 'ფოტო ✓') : (locale === 'en' ? 'Attach' : locale === 'ru' ? 'Прикрепить' : 'მიამაგრე')}
+                </button>
+              </div>
+              <span className="block text-[11px] leading-relaxed text-app-muted">{locale === 'en' ? 'Attach a face photo, then type what it should say below — the photo speaks it.' : locale === 'ru' ? 'Прикрепите фото лица, затем введите текст ниже — фото это произнесёт.' : 'მიამაგრე სახის ფოტო და ქვემოთ ჩაწერე ტექსტი — ფოტო ალაპარაკდება.'}</span>
+            </div>
+            {(attachments.some((a) => isAudio(a.mimeType)) || hasTrainedVoice) && (
+              <div className="space-y-2 rounded-xl border border-app-border/12 bg-app-elevated/40 p-3">
+                <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">🎙 {locale === 'en' ? 'Voice' : locale === 'ru' ? 'Голос' : 'ხმა'}</span>
+                <div className="flex flex-wrap gap-1.5">
+                  {attachments.some((a) => isAudio(a.mimeType)) && (
+                    <Chip active onClick={() => fileRef.current?.click()}>🎵 {t.lipAudioLabel} ✓</Chip>
+                  )}
+                  {hasTrainedVoice && (
+                    <Chip active={lipMyVoice} onClick={() => setLipMyVoice((v) => !v)}>🎤 {locale === 'en' ? 'My voice' : locale === 'ru' ? 'Мой голос' : 'ჩემი ხმით'}</Chip>
+                  )}
+                </div>
+              </div>
             )}
           </div>
         )}
