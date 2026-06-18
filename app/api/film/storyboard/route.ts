@@ -23,6 +23,7 @@ import { extractJson } from '@/lib/orchestrator/script-breakdown';
 import { mapWithConcurrency } from '@/lib/chat/filmClipRetry';
 import { ServiceManager } from '@/lib/chat/ServiceManager';
 import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
+import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300;
@@ -110,6 +111,9 @@ async function hostRef(ref: string, i: number): Promise<string> {
 }
 
 export async function POST(req: NextRequest) {
+  const rl = await checkRateLimit(req, RATE_LIMITS.EXPENSIVE);
+  if (rl) return rl;
+
   const body = (await req.json().catch(() => ({}))) as {
     prompt?: string;
     orientation?: string;

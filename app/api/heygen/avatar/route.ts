@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -201,6 +202,9 @@ async function createVideoWithStockAvatar(
 // POST → returns { videoId } immediately; client polls GET ?videoId=xxx
 
 export async function POST(req: NextRequest) {
+  const rl = await checkRateLimit(req, RATE_LIMITS.EXPENSIVE);
+  if (rl) return rl;
+
   const apiKey = process.env.HEYGEN_API_KEY;
   if (!apiKey) {
     return NextResponse.json({ success: false, error: 'HEYGEN_API_KEY not configured' }, { status: 500 });

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -36,6 +37,9 @@ const ASPECT_TO_RESOLUTION: Record<string, string> = {
 };
 
 export async function POST(req: NextRequest) {
+  const rl = await checkRateLimit(req, RATE_LIMITS.EXPENSIVE);
+  if (rl) return rl;
+
   try {
     const body = await req.json();
     const {
