@@ -5,6 +5,7 @@ import {
   type ElevenLabsModelId,
 } from '@/lib/audio/tts-model';
 import { extractVoiceDirectives } from '@/lib/chat/outputEnforcement';
+import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -139,6 +140,11 @@ async function synthesizeWithGoogleTTS(text: string): Promise<ArrayBuffer | null
 }
 
 export async function POST(req: NextRequest) {
+  // Cost/abuse guard: unauthenticated endpoint (powers guest "read aloud"); each
+  // call hits the paid ElevenLabs API, so rate-limit by IP.
+  const rateLimitError = await checkRateLimit(req, RATE_LIMITS.WRITE);
+  if (rateLimitError) return rateLimitError;
+
   const body = (await req.json()) as TtsRequest;
   const text = body.text?.trim();
   if (!text) {

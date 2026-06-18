@@ -8,6 +8,7 @@ import { authedClientFromRequest } from '@/lib/supabase/server';
 import { embed } from '@/lib/memory/embed';
 import { webSearch, likelyNeedsWebSearch, buildSearchPreamble } from '@/lib/ai/webSearch';
 import { classifyGeminiMessage, logGeminiState } from '@/lib/orchestrator/gemini-guard';
+import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -229,6 +230,12 @@ function localeFromMessages(messages: IncomingMessage[]): 'ka' | 'en' {
 // ─── 6. ROUTE HANDLER ────────────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
+  // Cost/abuse guard — reachable without auth (anonymous chat), and each call hits
+  // paid Gemini + optional Tavily search. Generous IP limit (CGNAT-safe) that still
+  // blocks scripted abuse.
+  const rateLimitError = await checkRateLimit(req, RATE_LIMITS.READ);
+  if (rateLimitError) return rateLimitError;
+
   // API key guard — fail fast before reading body
   const geminiKey = process.env.GEMINI_API_KEY ?? process.env.GOOGLE_GENERATIVE_AI_API_KEY ?? '';
   if (!geminiKey) {
