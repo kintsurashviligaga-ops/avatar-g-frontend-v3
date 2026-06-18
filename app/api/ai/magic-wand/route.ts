@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generateWithGemini } from '@/lib/gemini/client';
+import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 
 /**
  * Magic Wand — one-tap prompt enhancer (Section 7 / 8A).
@@ -25,6 +26,9 @@ const SYSTEM_PROMPT =
   'ALWAYS respond in the SAME language the user wrote in (Georgian, English or Russian).';
 
 export async function POST(req: NextRequest) {
+  const rl = await checkRateLimit(req, RATE_LIMITS.WRITE);
+  if (rl) return rl;
+
   let prompt = '';
   try {
     const body = (await req.json().catch(() => ({}))) as { prompt?: unknown };

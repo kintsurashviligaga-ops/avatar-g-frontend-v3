@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: NextRequest) {
+  const rl = await checkRateLimit(req, RATE_LIMITS.WRITE);
+  if (rl) return rl;
+
   const apiKey = process.env.ELEVENLABS_API_KEY;
   if (!apiKey) {
     return NextResponse.json({ success: false, error: 'ELEVENLABS_API_KEY not configured' }, { status: 500 });

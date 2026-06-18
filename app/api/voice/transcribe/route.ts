@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { transcribeRealtimePcmChunk } from '@/lib/voice-v2v/providers';
 import { transcribeWithGemini, hasGeminiSttKey } from '@/lib/voice-v2v/geminiStt';
 import { transcribeWithReplicateWhisper, hasReplicateSttKey } from '@/lib/voice-v2v/replicateStt';
+import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -22,6 +23,9 @@ export const maxDuration = 30;
  * Response: { text: string, provider: string }
  */
 export async function POST(req: NextRequest) {
+  const rl = await checkRateLimit(req, RATE_LIMITS.READ);
+  if (rl) return rl;
+
   try {
     const form = await req.formData();
     const audio = form.get('audio');

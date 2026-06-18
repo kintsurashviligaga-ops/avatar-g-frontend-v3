@@ -15,6 +15,7 @@ import { getAuthContext, checkDailyBudget, sanitizePrompt } from '@/lib/security
 import { detectIntent } from '@/lib/chat/intentDetector';
 import { orchestrate, pollOrchestrationTask } from '@/lib/chat/providerRouter';
 import { AGENT_G_SYSTEM_PROMPT } from '@/lib/agent-g-orchestrator';
+import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 
 // Same rotation as /api/chat (verified via /v1beta/models). 1.5 family is no
 // longer exposed on this API key; lite variants tried first for higher quota.
@@ -56,6 +57,9 @@ const shellStreamRequestSchema = z.object({
 const streamRequestSchema = z.union([legacyStreamRequestSchema, shellStreamRequestSchema]);
 
 export async function POST(req: NextRequest) {
+  const rl = await checkRateLimit(req, RATE_LIMITS.READ);
+  if (rl) return rl;
+
   try {
     const body = await req.json();
     const parsed = streamRequestSchema.safeParse(body);
