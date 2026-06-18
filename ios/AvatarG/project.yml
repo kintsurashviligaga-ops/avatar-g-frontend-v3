@@ -24,15 +24,17 @@ targets:
     info:
       path: AvatarG/Info.plist
       properties:
-        NSMicrophoneUsageDescription: "Agent G needs microphone access for voice commands in Georgian and other languages."
-        NSSpeechRecognitionUsageDescription: "Agent G uses speech recognition for Georgian and English voice input."
-        NSCameraUsageDescription: "Required for avatar creation and photo-based AI generation."
-        NSPhotoLibraryUsageDescription: "Access your photo library to create AI avatars and content."
+        NSMicrophoneUsageDescription: "MyAvatar uses the microphone to record your voice for AI voice training and in-app voice commands."
+        NSSpeechRecognitionUsageDescription: "MyAvatar uses speech recognition for Georgian and English voice input."
+        NSCameraUsageDescription: "MyAvatar uses the camera to capture photos for AI avatar creation and image generation."
+        NSPhotoLibraryUsageDescription: "MyAvatar accesses your photo library so you can pick photos for AI avatar and content creation."
+        NSPhotoLibraryAddUsageDescription: "MyAvatar saves the images and videos you generate to your photo library."
+        ITSAppUsesNonExemptEncryption: false
         UIBackgroundModes:
           - audio
           - fetch
           - remote-notification
-        CFBundleDisplayName: "Avatar G"
+        CFBundleDisplayName: "MyAvatar"
         CFBundleName: "AvatarG"
         UILaunchScreen: {}
         UISupportedInterfaceOrientations:
@@ -58,7 +60,7 @@ targets:
     info:
       path: AvatarGWidget/Info.plist
       properties:
-        CFBundleDisplayName: "Avatar G Widget"
+        CFBundleDisplayName: "MyAvatar"
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
     settings:
@@ -83,9 +85,9 @@ targets:
     info:
       path: AvatarGWatch/Info.plist
       properties:
-        CFBundleDisplayName: "Avatar G"
+        CFBundleDisplayName: "MyAvatar"
         WKApplication: true
-        NSMicrophoneUsageDescription: "Agent G uses the microphone for voice commands on Watch."
+        NSMicrophoneUsageDescription: "MyAvatar uses the microphone for voice commands on Apple Watch."
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: ge.myavatar.app.watchkitapp
