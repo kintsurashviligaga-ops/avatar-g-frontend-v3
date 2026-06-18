@@ -13,7 +13,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Send, Mic, Square, Plus, X, Loader2, Sparkles, Film, Music2, FileText, Image as ImageIcon, Download, Upload, MessageSquare, Wand2, Volume2, Copy, Check, ChevronDown, RotateCcw, History, Trash2, MessageSquarePlus, Pencil, Share2 } from 'lucide-react';
+import { Send, Mic, Square, Plus, X, Loader2, Sparkles, Film, Music2, FileText, Image as ImageIcon, Download, Upload, MessageSquare, Wand2, Volume2, Copy, Check, ChevronDown, RotateCcw, History, Trash2, MessageSquarePlus, Pencil, Share2, ThumbsUp, ThumbsDown } from 'lucide-react';
 import { driveFilmStudio } from '@/lib/chat/filmStudioClient';
 import { VoiceTrainer } from '@/components/voice/VoiceTrainer';
 import { TrackPlayer } from './TrackPlayer';
@@ -582,6 +582,8 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   const [enhancing, setEnhancing] = useState(false);
   // Per-message actions: which assistant reply was just copied / is being read aloud.
   const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
+  // Per-message thumbs feedback (#9): message index → 'up' | 'down' for the session.
+  const [ratedIdx, setRatedIdx] = useState<Record<number, 'up' | 'down'>>({});
   // Transient toast (e.g. "link copied") shown after a share falls back to clipboard.
   const [shareToast, setShareToast] = useState<string | null>(null);
   const [speakingIdx, setSpeakingIdx] = useState<number | null>(null);
@@ -1389,6 +1391,17 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     }
   }, []);
 
+  // Thumbs feedback (#9): record the rating locally + fire-and-forget to the
+  // server. Never throws — feedback must never disrupt the chat.
+  const rateMsg = useCallback((i: number, rating: 'up' | 'down', text: string) => {
+    setRatedIdx((r) => ({ ...r, [i]: rating }));
+    void fetch('/api/feedback', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ rating, preview: (text || '').slice(0, 280) }),
+    }).catch(() => {});
+  }, []);
+
   // Edit & resend a user turn: replace it with the edited text and re-run the chat
   // from that point (everything after it is dropped) — the standard "edit message".
   const startEdit = useCallback((i: number) => {
@@ -1985,6 +1998,24 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                     className={`flex h-7 w-7 items-center justify-center rounded-md transition-colors hover:bg-app-elevated hover:text-app-accent ${copiedIdx === i ? 'text-app-accent' : ''}`}
                   >
                     {copiedIdx === i ? <Check size={13} /> : <Copy size={13} />}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => rateMsg(i, 'up', m.text)}
+                    aria-label={locale === 'en' ? 'Good response' : locale === 'ru' ? 'Хороший ответ' : 'კარგი პასუხი'}
+                    title={locale === 'en' ? 'Good response' : locale === 'ru' ? 'Хороший ответ' : 'კარგი პასუხი'}
+                    className={`flex h-7 w-7 items-center justify-center rounded-md transition-colors hover:bg-app-elevated hover:text-app-accent ${ratedIdx[i] === 'up' ? 'text-app-accent' : ''}`}
+                  >
+                    <ThumbsUp size={13} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => rateMsg(i, 'down', m.text)}
+                    aria-label={locale === 'en' ? 'Bad response' : locale === 'ru' ? 'Плохой ответ' : 'ცუდი პასუხი'}
+                    title={locale === 'en' ? 'Bad response' : locale === 'ru' ? 'Плохой ответ' : 'ცუდი პასუხი'}
+                    className={`flex h-7 w-7 items-center justify-center rounded-md transition-colors hover:bg-app-elevated hover:text-app-accent ${ratedIdx[i] === 'down' ? 'text-app-accent' : ''}`}
+                  >
+                    <ThumbsDown size={13} />
                   </button>
                   {i === messages.length - 1 && !busy && (
                     <button
