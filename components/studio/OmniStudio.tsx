@@ -2064,7 +2064,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       <div className="shrink-0 pt-1">
         {/* Per-service options — real backend capabilities, shown for the active
             generative mode. Borderless scrollable chip rows (clean, Gemini-like). */}
-        {mode !== 'chat' && mode !== 'video' && (
+        {mode !== 'chat' && mode !== 'video' && mode !== 'music' && (
           <div className="mb-2 flex items-center gap-1.5 overflow-x-auto pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {mode === 'image' && (
               <>
@@ -2077,14 +2077,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 {IMG_STYLES.map((s) => <Chip key={s} active={imgStyle === s} onClick={() => setImgStyle(s)}>{s}</Chip>)}
               </>
             )}
-            {mode === 'music' && (
-              <>
-                <Chip active={musicInstrumental} onClick={() => setMusicInstrumental(true)}>{t.instrumental}</Chip>
-                <Chip active={!musicInstrumental} onClick={() => setMusicInstrumental(false)}>{t.withVocals}</Chip>
-                <span className="mx-0.5 h-4 w-px shrink-0 bg-app-border/15" />
-                {MUSIC_GENRES.map((g) => <Chip key={g} active={musicGenre === g} onClick={() => setMusicGenre(g)}>{g}</Chip>)}
-              </>
-            )}
+            {/* music style controls now live in the dedicated Style card below */}
             {mode === 'lipsync' && (
               <>
                 <Chip active={attachments.some((a) => isVideo(a.mimeType) || isImage(a.mimeType))} onClick={() => fileRef.current?.click()}>
@@ -2106,46 +2099,74 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         {/* VIDEO — a clear, labeled control panel so every setting has an obvious place:
             character · what they say · length · music · voice · effects · format. */}
         {mode === 'video' && (
-          <div className="mb-2 space-y-2.5 rounded-xl border border-app-border/12 bg-app-elevated/40 p-3">
-            <div className="flex items-center justify-between gap-2">
-              <span className="shrink-0 text-[12px] font-medium text-app-muted">🧑 {locale === 'en' ? 'Character' : locale === 'ru' ? 'Персонаж' : 'პერსონაჟი'}</span>
-              <button type="button" onClick={() => fileRef.current?.click()}
-                className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12px] font-semibold transition-colors ${attachments.some((a) => isImage(a.mimeType)) ? 'bg-app-accent text-app-bg' : 'bg-app-bg/50 text-app-text ring-1 ring-app-border/20 hover:bg-app-bg/70'}`}>
-                <Upload size={13} /> {attachments.some((a) => isImage(a.mimeType)) ? t.charPhotoOn : t.charPhoto}
-              </button>
+          <div className="mb-2 space-y-2">
+            {/* 1 · Character */}
+            <div className="rounded-xl border border-app-border/12 bg-app-elevated/40 p-3">
+              <div className="flex items-center justify-between gap-2">
+                <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">🧑 {locale === 'en' ? 'Character' : locale === 'ru' ? 'Персонаж' : 'პერსონაჟი'}</span>
+                <button type="button" onClick={() => fileRef.current?.click()}
+                  className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12px] font-semibold transition-colors ${attachments.some((a) => isImage(a.mimeType)) ? 'bg-app-accent text-app-bg' : 'bg-app-bg/50 text-app-text ring-1 ring-app-border/20 hover:bg-app-bg/70'}`}>
+                  <Upload size={13} /> {attachments.some((a) => isImage(a.mimeType)) ? t.charPhotoOn : t.charPhoto}
+                </button>
+              </div>
             </div>
-            <div className="space-y-1">
-              <span className="text-[12px] font-medium text-app-muted">🗣 {locale === 'en' ? 'What the character says' : locale === 'ru' ? 'Что говорит персонаж' : 'რას ამბობს პერსონაჟი'}</span>
+
+            {/* 2 · Dialogue */}
+            <div className="space-y-2 rounded-xl border border-app-border/12 bg-app-elevated/40 p-3">
+              <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">🗣 {locale === 'en' ? 'What the character says' : locale === 'ru' ? 'Что говорит персонаж' : 'რას ამბობს პერსონაჟი'}</span>
               <textarea value={videoSpeech} onChange={(e) => setVideoSpeech(e.target.value)} rows={2}
                 placeholder={locale === 'en' ? 'Type the dialogue — spoken verbatim (empty = auto)…' : locale === 'ru' ? 'Введите реплику — произнесётся дословно (пусто = авто)…' : 'ჩაწერე რას იტყვის — ზუსტად ისე ილაპარაკებს (ცარიელი = ავტომატური)…'}
                 className="w-full resize-none rounded-lg border border-app-border/15 bg-app-bg/40 px-2.5 py-2 text-[12.5px] leading-relaxed text-app-text outline-none transition-colors placeholder:text-app-muted/45 focus:border-app-accent/60 focus:bg-app-bg/70 focus:ring-2 focus:ring-app-accent/25" />
             </div>
-            <div className="flex flex-wrap items-center gap-1.5">
-              <span className="mr-0.5 shrink-0 text-[12px] font-medium text-app-muted">⏱ {locale === 'en' ? 'Length' : locale === 'ru' ? 'Длина' : 'ხანგრძლივობა'}</span>
-              <Chip active={videoDuration === 10} onClick={() => setVideoDuration(10)}>10{locale === 'en' ? 's' : 'წმ'}</Chip>
-              <Chip active={videoDuration === 30} onClick={() => setVideoDuration(30)}>30{locale === 'en' ? 's' : 'წმ'}</Chip>
+
+            {/* 3 · Length + Format, side by side */}
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-2 rounded-xl border border-app-border/12 bg-app-elevated/40 p-3">
+                <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">⏱ {locale === 'en' ? 'Length' : locale === 'ru' ? 'Длина' : 'ხანგრძლივობა'}</span>
+                <div className="flex gap-1.5">
+                  <Chip active={videoDuration === 10} onClick={() => setVideoDuration(10)}>10{locale === 'en' ? 's' : 'წმ'}</Chip>
+                  <Chip active={videoDuration === 30} onClick={() => setVideoDuration(30)}>30{locale === 'en' ? 's' : 'წმ'}</Chip>
+                </div>
+              </div>
+              <div className="space-y-2 rounded-xl border border-app-border/12 bg-app-elevated/40 p-3">
+                <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">📐 {locale === 'en' ? 'Format' : locale === 'ru' ? 'Формат' : 'ფორმატი'}</span>
+                <div className="flex items-end gap-3">
+                  <button type="button" onClick={() => setVideoOrientation('landscape')} aria-label="16:9" className="flex flex-col items-center gap-1 transition active:scale-95">
+                    <span className={`block rounded-[3px] border-2 transition-colors ${videoOrientation === 'landscape' ? 'border-app-accent bg-app-accent/25' : 'border-app-border/40'}`} style={{ width: 38, height: 22 }} />
+                    <span className={`text-[10.5px] font-medium ${videoOrientation === 'landscape' ? 'text-app-accent' : 'text-app-muted'}`}>16:9</span>
+                  </button>
+                  <button type="button" onClick={() => setVideoOrientation('vertical')} aria-label="9:16" className="flex flex-col items-center gap-1 transition active:scale-95">
+                    <span className={`block rounded-[3px] border-2 transition-colors ${videoOrientation === 'vertical' ? 'border-app-accent bg-app-accent/25' : 'border-app-border/40'}`} style={{ width: 22, height: 38 }} />
+                    <span className={`text-[10.5px] font-medium ${videoOrientation === 'vertical' ? 'text-app-accent' : 'text-app-muted'}`}>9:16</span>
+                  </button>
+                </div>
+              </div>
             </div>
-            <div className="flex flex-wrap items-center gap-1.5">
-              <span className="mr-0.5 shrink-0 text-[12px] font-medium text-app-muted">🎵 {locale === 'en' ? 'Music' : locale === 'ru' ? 'Музыка' : 'მუსიკა'}</span>
-              <Chip active={videoMusic} onClick={() => setVideoMusic(true)}>{locale === 'en' ? 'On' : locale === 'ru' ? 'Вкл' : 'ჩართ.'}</Chip>
-              <Chip active={!videoMusic} onClick={() => setVideoMusic(false)}>{locale === 'en' ? 'Off' : locale === 'ru' ? 'Выкл' : 'გამორთ.'}</Chip>
-              <span className="mx-1 h-4 w-px bg-app-border/15" />
-              <Chip active={videoNarration} onClick={() => setVideoNarration((v) => !v)}>🎙 {t.narration}</Chip>
-              {hasTrainedVoice && (
-                <Chip active={videoMyVoiceNarration} onClick={() => setVideoMyVoiceNarration((v) => !v)}>🎤 {locale === 'en' ? 'My voice' : locale === 'ru' ? 'Мой голос' : 'ჩემი ხმით'}</Chip>
-              )}
+
+            {/* 4 · Music & voice */}
+            <div className="space-y-2 rounded-xl border border-app-border/12 bg-app-elevated/40 p-3">
+              <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">🎵 {locale === 'en' ? 'Music & voice' : locale === 'ru' ? 'Музыка и голос' : 'მუსიკა და ხმა'}</span>
+              <div className="flex flex-wrap items-center gap-1.5">
+                <Chip active={videoMusic} onClick={() => setVideoMusic(true)}>{locale === 'en' ? 'Music on' : locale === 'ru' ? 'Музыка вкл' : 'მუსიკა ჩართ.'}</Chip>
+                <Chip active={!videoMusic} onClick={() => setVideoMusic(false)}>{locale === 'en' ? 'Off' : locale === 'ru' ? 'Выкл' : 'გამორთ.'}</Chip>
+                <span className="mx-1 h-4 w-px bg-app-border/15" />
+                <Chip active={videoNarration} onClick={() => setVideoNarration((v) => !v)}>🎙 {t.narration}</Chip>
+                {hasTrainedVoice && (
+                  <Chip active={videoMyVoiceNarration} onClick={() => setVideoMyVoiceNarration((v) => !v)}>🎤 {locale === 'en' ? 'My voice' : locale === 'ru' ? 'Мой голос' : 'ჩემი ხმით'}</Chip>
+                )}
+              </div>
             </div>
-            <div className="flex flex-wrap items-center gap-1.5">
-              <span className="mr-0.5 shrink-0 text-[12px] font-medium text-app-muted">✨ {locale === 'en' ? 'Effect' : locale === 'ru' ? 'Эффект' : 'ეფექტი'}</span>
-              {VIDEO_STYLES.map((s) => <Chip key={s} active={videoStyle === s} onClick={() => setVideoStyle(s)}>{s}</Chip>)}
-              <span className="mx-1 h-4 w-px bg-app-border/15" />
-              <Chip active={videoTransition === 'crossfade'} onClick={() => setVideoTransition('crossfade')}>⤫ {t.transCrossfade}</Chip>
-              <Chip active={videoTransition === 'cut'} onClick={() => setVideoTransition('cut')}>▮ {t.transCut}</Chip>
-            </div>
-            <div className="flex flex-wrap items-center gap-1.5">
-              <span className="mr-0.5 shrink-0 text-[12px] font-medium text-app-muted">📐 {locale === 'en' ? 'Format' : locale === 'ru' ? 'Формат' : 'ფორმატი'}</span>
-              <Chip active={videoOrientation === 'landscape'} onClick={() => setVideoOrientation('landscape')}>16:9</Chip>
-              <Chip active={videoOrientation === 'vertical'} onClick={() => setVideoOrientation('vertical')}>9:16</Chip>
+
+            {/* 5 · Effect & transition */}
+            <div className="space-y-2 rounded-xl border border-app-border/12 bg-app-elevated/40 p-3">
+              <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">✨ {locale === 'en' ? 'Effect & transition' : locale === 'ru' ? 'Эффект и переход' : 'ეფექტი და გადასვლა'}</span>
+              <div className="flex flex-wrap gap-1.5">
+                {VIDEO_STYLES.map((s) => <Chip key={s} active={videoStyle === s} onClick={() => setVideoStyle(s)}>{s}</Chip>)}
+              </div>
+              <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                <Chip active={videoTransition === 'crossfade'} onClick={() => setVideoTransition('crossfade')}>⤫ {t.transCrossfade}</Chip>
+                <Chip active={videoTransition === 'cut'} onClick={() => setVideoTransition('cut')}>▮ {t.transCut}</Chip>
+              </div>
             </div>
           </div>
         )}
@@ -2154,6 +2175,17 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             your REAL voice. No page jump; the whole service lives in this chatbox. */}
         {mode === 'music' && (
           <div className="mb-2 space-y-2">
+            {/* Style — instrumental/vocal + genre, in one clearly-labelled section */}
+            <div className="space-y-2 rounded-xl border border-app-border/12 bg-app-elevated/40 p-3">
+              <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">🎚 {locale === 'en' ? 'Style' : locale === 'ru' ? 'Стиль' : 'სტილი'}</span>
+              <div className="flex gap-1.5">
+                <Chip active={musicInstrumental} onClick={() => setMusicInstrumental(true)}>{t.instrumental}</Chip>
+                <Chip active={!musicInstrumental} onClick={() => setMusicInstrumental(false)}>{t.withVocals}</Chip>
+              </div>
+              <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                {MUSIC_GENRES.map((g) => <Chip key={g} active={musicGenre === g} onClick={() => setMusicGenre(g)}>{g}</Chip>)}
+              </div>
+            </div>
             <VoiceTrainer lang={locale} onReady={setHasTrainedVoice} />
             {/* Once trained: type lyrics + ONE button that GENERATES in your voice — no
                 confusing toggle, no separate send. Pressing it creates the song. */}
