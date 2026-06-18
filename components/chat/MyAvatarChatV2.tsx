@@ -2605,6 +2605,7 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
                   the target surface opens cleanly with no overlapping layers. */}
               <div className="mt-auto border-t border-app-border/15 px-3 pt-3 space-y-1">
                 <button
+                  data-iap-external
                   onClick={() => { setHistoryOpen(false); setWalletOpen(true); }}
                   className="w-full inline-flex items-center gap-2.5 h-10 px-3 rounded-xl text-[13px] font-medium text-app-text hover:bg-app-elevated/60 transition active:scale-[0.99]"
                 >
@@ -2694,6 +2695,7 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
                             {balanceGel === null ? '—' : formatGEL(balanceGel)}
                           </span>
                           <button
+                            data-iap-external
                             onClick={() => { setSettingsOpen(false); setWalletOpen(true); }}
                             className="h-7 px-3 rounded-full text-[12px] font-semibold text-[#0A0A0A] active:scale-95 transition"
                             style={{ background: '#D4AF37' }}
