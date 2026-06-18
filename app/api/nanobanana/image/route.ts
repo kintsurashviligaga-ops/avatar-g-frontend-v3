@@ -6,6 +6,7 @@ import { authedClientFromRequest } from '@/lib/supabase/server';
 import { recordCompletedAsset } from '@/lib/orchestrator/jobs';
 import { DEMO_VOICE_USER_ID } from '@/lib/audio/voiceModel';
 import { randomUUID } from 'node:crypto';
+import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 
 export const dynamic = 'force-dynamic';
 // 300s headroom so the higher-resolution tiers (2K/4K) have time to finish on the
@@ -55,6 +56,9 @@ async function hostReferenceImage(dataUrl: string): Promise<string | null> {
 }
 
 export async function POST(req: NextRequest) {
+  const rl = await checkRateLimit(req, RATE_LIMITS.EXPENSIVE);
+  if (rl) return rl;
+
   const apiKey = process.env.NANOBANANA_API_KEY;
   if (!apiKey) {
     return NextResponse.json({ success: false, error: 'NANOBANANA_API_KEY not configured' }, { status: 500 });

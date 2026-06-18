@@ -9,6 +9,7 @@ import { uploadAndSign, createSignedAssetUrl } from '@/lib/orchestrator/storage-
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { recordCompletedAsset } from '@/lib/orchestrator/jobs';
 import { randomUUID } from 'node:crypto';
+import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 
 /**
  * Assistant music generation (Udio).
@@ -76,6 +77,9 @@ async function generateCoverArt(songPrompt: string, style: string): Promise<stri
 }
 
 export async function POST(req: NextRequest) {
+  const rl = await checkRateLimit(req, RATE_LIMITS.EXPENSIVE);
+  if (rl) return rl;
+
   let prompt = '';
   let style = 'cinematic';
   let makeInstrumental = true;
