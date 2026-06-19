@@ -15,7 +15,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import {
-  Menu, X, Plus, History, LogIn, UserPlus, LogOut, Shield, FileText, LifeBuoy, MessageSquarePlus, Loader2, Trash2,
+  Menu, X, Plus, History, LogIn, UserPlus, LogOut, Shield, FileText, LifeBuoy, MessageSquarePlus, Loader2, Trash2, User, Download,
 } from 'lucide-react';
 import { createBrowserClient } from '@/lib/supabase/browser';
 import { WalletRefillModal } from '@/components/chat/WalletRefill';
@@ -77,15 +77,22 @@ export function ChatChrome({ locale = 'ka', onNewChat, title, scrollBody = false
   const [authed, setAuthed] = useState(false);
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [balanceGel, setBalanceGel] = useState<number | null>(null);
+  // Profile editing (#3) + GDPR data export (#4).
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [userName, setUserName] = useState<string | null>(null);
+  const [displayName, setDisplayName] = useState('');
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   // Reactive auth — flips Guest⇄User instantly (no reload) on sign in/out.
   useEffect(() => {
     let alive = true;
     const supabase = createBrowserClient();
-    const apply = (user: { email?: string | null } | null) => {
+    const apply = (user: { email?: string | null; user_metadata?: { name?: string } | null } | null) => {
       if (!alive) return;
       setAuthed(!!user);
       setUserEmail(user?.email ? String(user.email) : null);
+      setUserName(user?.user_metadata?.name ?? null);
       if (!user) setBalanceGel(null);
     };
     supabase.auth.getUser().then(({ data }) => apply(data.user)).catch(() => {});
@@ -106,6 +113,34 @@ export function ChatChrome({ locale = 'ka', onNewChat, title, scrollBody = false
   useEffect(() => { void refreshBalance(); }, [refreshBalance]);
 
   const drawerRow = 'flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-[13.5px] text-app-text transition-colors hover:bg-app-elevated';
+
+  // Save the display name to Supabase user_metadata (#3).
+  const saveProfile = useCallback(async () => {
+    setSavingProfile(true);
+    try {
+      await createBrowserClient().auth.updateUser({ data: { name: displayName.trim() } });
+      setUserName(displayName.trim() || null);
+      setProfileOpen(false);
+    } catch { /* keep modal open on failure */ }
+    finally { setSavingProfile(false); }
+  }, [displayName]);
+
+  // Fetch + download the user's full data as JSON (#4).
+  const exportData = useCallback(async () => {
+    setExporting(true);
+    try {
+      const res = await fetch('/api/account/export', { credentials: 'include', cache: 'no-store' });
+      if (res.ok) {
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = 'myavatar-data.json';
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 2000);
+      }
+    } catch { /* noop */ }
+    finally { setExporting(false); }
+  }, []);
 
   return (
     <div className="fixed inset-0 z-0 flex flex-col bg-app-bg text-app-text antialiased" style={{ height: '100dvh' }}>
@@ -207,9 +242,23 @@ export function ChatChrome({ locale = 'ka', onNewChat, title, scrollBody = false
                 </div>
               ) : (
                 <>
+                  {/* Balance + top-up — hidden inside the iOS shell (data-iap-external). */}
+                  <div data-iap-external className="mt-1 flex items-center justify-between rounded-xl bg-app-elevated/60 px-3 py-2.5">
+                    <div className="min-w-0">
+                      <p className="text-[11px] font-medium uppercase tracking-wider text-app-muted">{locale === 'en' ? 'Balance' : locale === 'ru' ? 'Баланс' : 'ბალანსი'}</p>
+                      <p className="text-[15px] font-semibold tabular-nums text-app-text">{(balanceGel ?? 0).toFixed(2)} ₾</p>
+                    </div>
+                    <button type="button" onClick={() => { setMenuOpen(false); setWalletOpen(true); }} className="shrink-0 rounded-full bg-app-accent px-3.5 py-1.5 text-[12px] font-semibold text-app-bg transition-opacity hover:opacity-90">{t.topUp}</button>
+                  </div>
+                  {/* Edit profile (#3) */}
+                  <button type="button" onClick={() => { setDisplayName(userName ?? ''); setMenuOpen(false); setProfileOpen(true); }} className={drawerRow}><User className="h-[18px] w-[18px] text-app-muted" /> {locale === 'en' ? 'Edit profile' : locale === 'ru' ? 'Профиль' : 'პროფილი'}</button>
+                  {/* Download my data — GDPR export (#4) */}
+                  <button type="button" onClick={() => void exportData()} disabled={exporting} className={`${drawerRow} disabled:opacity-50`}>{exporting ? <Loader2 className="h-[18px] w-[18px] animate-spin text-app-muted" /> : <Download className="h-[18px] w-[18px] text-app-muted" />} {locale === 'en' ? 'Download my data' : locale === 'ru' ? 'Скачать мои данные' : 'მონაცემების ჩამოტვირთვა'}</button>
+                  {/* Sign out */}
                   <button type="button" onClick={async () => { try { await createBrowserClient().auth.signOut(); } catch { /* listener clears state */ } setMenuOpen(false); }} className={drawerRow}><LogOut className="h-[18px] w-[18px] text-app-muted" /> {t.signOut}</button>
-                  {/* Delete account — Apple Guideline 5.1.1(v): in-app, user-initiated. */}
-                  <a href={`/${lang}/account/delete`} onClick={() => setMenuOpen(false)} className={drawerRow}><Trash2 className="h-[18px] w-[18px] text-app-danger" /> {t.deleteAccount}</a>
+                  {/* Danger zone — delete account (Apple Guideline 5.1.1(v)). */}
+                  <div className="mx-3 my-1.5 border-t border-app-border/10" />
+                  <a href={`/${lang}/account/delete`} onClick={() => setMenuOpen(false)} className={`${drawerRow} text-app-danger hover:bg-app-danger/10`}><Trash2 className="h-[18px] w-[18px]" /> {t.deleteAccount}</a>
                 </>
               )}
 
@@ -224,6 +273,20 @@ export function ChatChrome({ locale = 'ka', onNewChat, title, scrollBody = false
       )}
 
       <WalletRefillModal open={walletOpen} locale={locale} variant="obsidian" onClose={() => { setWalletOpen(false); void refreshBalance(); }} />
+      {/* Edit-profile modal (#3) — display name → Supabase user_metadata. */}
+      {profileOpen && (
+        <div className="fixed inset-0 z-[86] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm" onClick={() => setProfileOpen(false)}>
+          <div onClick={(e) => e.stopPropagation()} className="w-full max-w-sm rounded-2xl bg-app-surface p-4 shadow-[0_0_60px_rgba(0,0,0,0.4)]">
+            <div className="mb-3 flex items-center justify-between">
+              <span className="text-[15px] font-semibold text-app-text">{locale === 'en' ? 'Edit profile' : locale === 'ru' ? 'Редактировать профиль' : 'პროფილის რედაქტირება'}</span>
+              <button type="button" onClick={() => setProfileOpen(false)} aria-label="close" className="flex h-8 w-8 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text"><X className="h-4 w-4" /></button>
+            </div>
+            <p className="mb-1.5 text-[12px] text-app-muted">{locale === 'en' ? 'Display name' : locale === 'ru' ? 'Отображаемое имя' : 'სახელი'}</p>
+            <input value={displayName} onChange={(e) => setDisplayName(e.target.value)} maxLength={60} placeholder={userEmail ?? ''} className="w-full rounded-xl border border-app-border/15 bg-app-bg/40 px-3 py-2.5 text-[14px] text-app-text outline-none transition-colors placeholder:text-app-muted/45 focus:border-app-accent/60 focus:ring-2 focus:ring-app-accent/25" />
+            <button type="button" onClick={() => void saveProfile()} disabled={savingProfile} className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-app-accent px-4 py-2.5 text-[13px] font-semibold text-app-bg transition-opacity hover:opacity-90 disabled:opacity-50">{savingProfile ? <Loader2 className="h-4 w-4 animate-spin" /> : null} {locale === 'en' ? 'Save' : locale === 'ru' ? 'Сохранить' : 'შენახვა'}</button>
+          </div>
+        </div>
+      )}
       <AuthModal open={authOpen} locale={lang} initialMode={authMode} onClose={() => setAuthOpen(false)} onAuthed={() => { setAuthOpen(false); void refreshBalance(); }} />
       <StudioSheet
         open={sheet !== null}
