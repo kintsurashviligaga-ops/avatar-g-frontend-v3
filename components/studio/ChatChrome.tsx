@@ -172,16 +172,18 @@ export function ChatChrome({ locale = 'ka', onNewChat, title, scrollBody = false
                 <p className="mt-0.5 truncate text-[13px] text-app-text" title={userEmail ?? undefined}>{userEmail ?? t.accountGuest}</p>
               </div>
 
-              {/* Theme toggle row */}
+              {/* Preferences — theme + language grouped under one section header
+                  (Theme used to be the only unlabelled row). */}
+              <p className="px-3 pb-0.5 pt-3 text-[11px] font-semibold uppercase tracking-wider text-app-muted">{locale === 'en' ? 'Preferences' : locale === 'ru' ? 'Предпочтения' : 'პრეფერენციები'}</p>
               <div className="flex items-center justify-between rounded-xl px-3 py-2 text-[13.5px] text-app-text">
                 <span>{t.theme}</span>
                 <ThemeToggle label={t.theme} />
               </div>
 
               {/* Language switcher — ka / en / ru (navigates to the locale's dashboard). */}
-              <div className="px-3 pb-1 pt-2">
-                <p className="text-[11px] font-semibold uppercase tracking-wider text-app-muted">{t.language}</p>
-                <div className="mt-1.5 grid grid-cols-3 gap-1.5">
+              <div className="px-3 pb-1 pt-1">
+                <p className="mb-1.5 text-[12px] text-app-muted">{t.language}</p>
+                <div className="grid grid-cols-3 gap-1.5">
                   {([['ka', 'ქართული'], ['en', 'English'], ['ru', 'Русский']] as const).map(([code, label]) => (
                     <a
                       key={code}
