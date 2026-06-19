@@ -129,6 +129,9 @@ export async function lipsyncVideo(videoUrl: string, audioUrl: string, _resizeFa
 // container (whose model-side Python throws "ANTIALIAS" / "exceptions must derive from
 // BaseException" — not our code). Fail-open: any miss → null → SadTalker fallback.
 const HEYGEN_BASE = 'https://api.heygen.com';
+// Asset uploads use a SEPARATE host — api.heygen.com/v1/asset 404s — and take a RAW
+// binary body with Content-Type = the file's mime (NOT multipart form-data).
+const HEYGEN_UPLOAD = 'https://upload.heygen.com';
 
 async function faceUrlToBase64(url: string): Promise<{ base64: string; mime: string } | null> {
   try {
@@ -150,12 +153,9 @@ async function heygenLipsyncCreate(faceUrl: string, audioUrl: string): Promise<s
     const img = await faceUrlToBase64(faceUrl);
     if (!img) return null;
 
-    // 1) upload the photo as a HeyGen asset
+    // 1) upload the photo as a HeyGen asset — RAW binary body to the upload host.
     const bin = Buffer.from(img.base64, 'base64');
-    const fd = new FormData();
-    fd.append('file', new Blob([new Uint8Array(bin)], { type: img.mime }), 'face.jpg');
-    fd.append('type', 'image');
-    const upRes = await fetch(`${HEYGEN_BASE}/v1/asset`, { method: 'POST', headers: { 'X-Api-Key': key }, body: fd, signal: AbortSignal.timeout(30_000) });
+    const upRes = await fetch(`${HEYGEN_UPLOAD}/v1/asset`, { method: 'POST', headers: { 'X-Api-Key': key, 'Content-Type': img.mime }, body: new Uint8Array(bin), signal: AbortSignal.timeout(30_000) });
     if (!upRes.ok) return null;
     const upData = (await upRes.json().catch(() => ({}))) as { data?: { id?: string; asset_id?: string } };
     const assetId = upData.data?.id ?? upData.data?.asset_id;
@@ -225,11 +225,8 @@ export async function heygenSelfTest(faceUrl: string, audioUrl: string): Promise
     out.face = { ok: fr.ok, status: fr.status, bytes: faceBuf?.byteLength ?? 0, mime: faceMime };
     if (!faceBuf || !faceBuf.byteLength) { out.verdict = 'FACE_FETCH_FAILED'; return out; }
 
-    // 2 · upload the photo as a HeyGen asset
-    const fd = new FormData();
-    fd.append('file', new Blob([new Uint8Array(faceBuf)], { type: faceMime }), 'face.jpg');
-    fd.append('type', 'image');
-    const ar = await fetch(`${HEYGEN_BASE}/v1/asset`, { method: 'POST', headers: { 'X-Api-Key': key }, body: fd, signal: AbortSignal.timeout(30_000) });
+    // 2 · upload the photo as a HeyGen asset — RAW binary body to the upload host
+    const ar = await fetch(`${HEYGEN_UPLOAD}/v1/asset`, { method: 'POST', headers: { 'X-Api-Key': key, 'Content-Type': faceMime }, body: new Uint8Array(faceBuf), signal: AbortSignal.timeout(30_000) });
     const aText = await ar.text();
     let assetId: string | undefined;
     try { const j = JSON.parse(aText); assetId = j.data?.id ?? j.data?.asset_id; } catch { /* non-JSON */ }
