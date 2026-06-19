@@ -71,7 +71,7 @@ const COPY: Record<Lang, {
     modeMusic: 'მუსიკა', musicPlaceholder: 'აღწერე მუსიკა (მაგ. ეპიკური კინო-სცენა)…',
     generatingMusic: 'მუსიკა იქმნება… (1–3 წუთი)', musicFailed: 'მუსიკის გენერაცია ვერ მოხერხდა. სცადე თავიდან.', lyricsBlocked: '⚠️ ლირიკა დაიბლოკა (საავტორო უფლებები). შეცვალე სიტყვები ან დააჭირე „✨ ლირიკა დამიწერე".',
     modeVideo: 'ვიდეო', videoPlaceholder: 'აღწერე 30-წამიანი ვიდეო (ფოტო — პერსონაჟისთვის)…',
-    generatingVideo: 'ვიდეო იქმნება… 6 სცენა + მონტაჟი (~5–7 წუთი, დაელოდე)', videoFailed: 'ვიდეოს გენერაცია ვერ მოხერხდა.', generatingMyVoice: '🎵 სიმღერა იქმნება შენი ხმით… (~2–3 წუთი, დაელოდე)', myVoiceCreate: 'ჩემი ხმით შექმნა', myVoiceLyricsPh: 'დაწერე ლირიკა — რას იმღერებს შენი ხმა', myVoiceReady: 'დაწერე ლირიკა და შექმენი', writeLyricsBtn: '✨ ლირიკა დამიწერე', upscaleBtn: '⬆ HD გადიდება', upscaling: '🔍 ვადიდებ HD-მდე…', upscaleFailed: 'გადიდება ვერ მოხერხდა.',
+    generatingVideo: 'ვიდეო იქმნება… 6 სცენა + მონტაჟი (~5–7 წუთი, დაელოდე)', videoFailed: 'ვიდეოს გენერაცია ვერ მოხერხდა — შესაძლოა სერვისი დროებით დატვირთულია. სცადე თავიდან რამდენიმე წუთში.', generatingMyVoice: '🎵 სიმღერა იქმნება შენი ხმით… (~2–3 წუთი, დაელოდე)', myVoiceCreate: 'ჩემი ხმით შექმნა', myVoiceLyricsPh: 'დაწერე ლირიკა — რას იმღერებს შენი ხმა', myVoiceReady: 'დაწერე ლირიკა და შექმენი', writeLyricsBtn: '✨ ლირიკა დამიწერე', upscaleBtn: '⬆ HD გადიდება', upscaling: '🔍 ვადიდებ HD-მდე…', upscaleFailed: 'გადიდება ვერ მოხერხდა.',
     modeLipsync: 'ლიფსინქი', lipsyncPlaceholder: 'მიამაგრე პერსონაჟის ფოტო + ჩაწერე ტექსტი — სურათი ალაპარაკდება…',
     generatingLipsync: 'ტუჩები სინქრონდება…', lipsyncFailed: 'ლიფსინქი ვერ მოხერხდა.', lipsyncNeedFiles: 'მიამაგრე ვიდეოც და აუდიოც.', lipsyncAuth: 'ლიფსინქისთვის ჯერ გაიარე ავტორიზაცია.', lipAudioLabel: 'აუდიო',
     stop: 'შეჩერება', stopped: 'შეჩერდა', scrollDown: 'ბოლოში გადასვლა', regenerate: 'თავიდან გენერაცია', elapsedHint: 'გავიდა', greeting: 'რით დაგეხმარო?', attachHint: 'დამატება',
@@ -91,7 +91,7 @@ const COPY: Record<Lang, {
     modeMusic: 'Music', musicPlaceholder: 'Describe the music (e.g. epic cinematic scene)…',
     generatingMusic: 'Composing music… (1–3 min)', musicFailed: 'Music generation failed. Try again.', lyricsBlocked: '⚠️ Lyrics were blocked (copyright). Change the words or tap "✨ Write lyrics".',
     modeVideo: 'Video', videoPlaceholder: 'Describe a 30-second video (attach a photo for the character)…',
-    generatingVideo: 'Producing video… 6 scenes + montage (~5–7 min, please wait)', videoFailed: 'Video generation failed.', generatingMyVoice: '🎵 Creating a song in your voice… (~2–3 min, please wait)', myVoiceCreate: 'Create with my voice', myVoiceLyricsPh: 'Write lyrics — what your voice will sing', myVoiceReady: 'Write lyrics & create', writeLyricsBtn: '✨ Write lyrics', upscaleBtn: '⬆ HD upscale', upscaling: '🔍 Upscaling to HD…', upscaleFailed: 'Upscale failed.',
+    generatingVideo: 'Producing video… 6 scenes + montage (~5–7 min, please wait)', videoFailed: 'Video generation failed — the service may be busy. Please try again in a few minutes.', generatingMyVoice: '🎵 Creating a song in your voice… (~2–3 min, please wait)', myVoiceCreate: 'Create with my voice', myVoiceLyricsPh: 'Write lyrics — what your voice will sing', myVoiceReady: 'Write lyrics & create', writeLyricsBtn: '✨ Write lyrics', upscaleBtn: '⬆ HD upscale', upscaling: '🔍 Upscaling to HD…', upscaleFailed: 'Upscale failed.',
     modeLipsync: 'Lip-sync', lipsyncPlaceholder: 'Attach a character photo + type a script — the photo speaks it…',
     generatingLipsync: 'Syncing the lips…', lipsyncFailed: 'Lip-sync failed.', lipsyncNeedFiles: 'Attach both a video and audio.', lipsyncAuth: 'Sign in first to use lip-sync.', lipAudioLabel: 'Audio',
     stop: 'Stop', stopped: 'Stopped', scrollDown: 'Scroll to bottom', regenerate: 'Regenerate', elapsedHint: 'elapsed', greeting: 'How can I help?', attachHint: 'Add',
@@ -111,7 +111,7 @@ const COPY: Record<Lang, {
     modeMusic: 'Музыка', musicPlaceholder: 'Опишите музыку (напр. эпичная кино-сцена)…',
     generatingMusic: 'Создаю музыку… (1–3 мин)', musicFailed: 'Не удалось создать музыку. Попробуйте снова.', lyricsBlocked: '⚠️ Текст заблокирован (авторские права). Измените слова или нажмите «✨ Написать текст».',
     modeVideo: 'Видео', videoPlaceholder: 'Опишите 30-секундное видео (фото — для персонажа)…',
-    generatingVideo: 'Создаю видео… 6 сцен + монтаж (~5–7 мин, подождите)', videoFailed: 'Не удалось создать видео.', generatingMyVoice: '🎵 Создаю песню вашим голосом… (~2–3 мин, подождите)', myVoiceCreate: 'Создать моим голосом', myVoiceLyricsPh: 'Напишите текст — что споёт ваш голос', myVoiceReady: 'Напишите текст и создайте', writeLyricsBtn: '✨ Написать текст', upscaleBtn: '⬆ HD увеличить', upscaling: '🔍 Увеличиваю до HD…', upscaleFailed: 'Не удалось увеличить.',
+    generatingVideo: 'Создаю видео… 6 сцен + монтаж (~5–7 мин, подождите)', videoFailed: 'Не удалось создать видео — сервис может быть загружен. Попробуйте через несколько минут.', generatingMyVoice: '🎵 Создаю песню вашим голосом… (~2–3 мин, подождите)', myVoiceCreate: 'Создать моим голосом', myVoiceLyricsPh: 'Напишите текст — что споёт ваш голос', myVoiceReady: 'Напишите текст и создайте', writeLyricsBtn: '✨ Написать текст', upscaleBtn: '⬆ HD увеличить', upscaling: '🔍 Увеличиваю до HD…', upscaleFailed: 'Не удалось увеличить.',
     modeLipsync: 'Синхрон', lipsyncPlaceholder: 'Прикрепите фото персонажа + введите текст — фото заговорит…',
     generatingLipsync: 'Синхронизирую губы…', lipsyncFailed: 'Не удалось синхронизировать.', lipsyncNeedFiles: 'Прикрепите и видео, и аудио.', lipsyncAuth: 'Войдите, чтобы использовать синхронизацию.', lipAudioLabel: 'Аудио',
     stop: 'Стоп', stopped: 'Остановлено', scrollDown: 'Вниз', regenerate: 'Заново', elapsedHint: 'прошло', greeting: 'Чем помочь?', attachHint: 'Добавить',
@@ -185,34 +185,43 @@ function GenerationProgress({ kind, elapsed, status, locale, targetSec }: {
   const pct = Math.min(95, Math.round((1 - Math.exp(-elapsed / (target / 2.4))) * 100));
   const stageIdx = Math.min(stages.length - 1, Math.floor((pct / 100) * stages.length));
   const headline = status && status.trim() ? status.trim() : stages[stageIdx];
+  const remaining = Math.max(0, Math.round(target - elapsed));
+  const remLabel = locale === 'en' ? 'remaining' : locale === 'ru' ? 'осталось' : 'დარჩა';
   return (
-    <div className="w-[min(82vw,420px)] space-y-2.5 rounded-2xl border border-app-border/10 bg-app-elevated/40 p-3">
-      {/* Headline — live pipeline status (video) or the current narrated stage —
-          with a live percentage + elapsed clock so progress is always legible. */}
-      <div className="flex items-center justify-between gap-2 text-[12.5px]">
-        <span className="inline-flex min-w-0 items-center gap-1.5 font-medium text-app-accent">
-          <Loader2 size={14} className="shrink-0 animate-spin" />
-          <span className="truncate">{headline}</span>
-        </span>
-        <span className="shrink-0 tabular-nums text-app-muted">{pct}% · {fmtClock(elapsed)}</span>
+    <div className="w-[min(86vw,440px)] space-y-3 rounded-2xl border border-app-border/12 bg-app-elevated/50 p-4 shadow-[0_10px_34px_rgba(0,0,0,0.20)]">
+      {/* Big live % + current stage + estimated time remaining — legible at a glance. */}
+      <div className="flex items-end justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex items-baseline gap-1">
+            <span className="text-[34px] font-bold leading-none tabular-nums text-app-text">{pct}</span>
+            <span className="text-[17px] font-semibold text-app-muted">%</span>
+          </div>
+          <span className="mt-1.5 inline-flex min-w-0 max-w-full items-center gap-1.5 text-[12.5px] font-medium text-app-accent">
+            <Loader2 size={13} className="shrink-0 animate-spin" />
+            <span className="truncate">{headline}</span>
+          </span>
+        </div>
+        <div className="shrink-0 text-right">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-app-muted/70">{remLabel}</p>
+          <p className="text-[15px] font-semibold tabular-nums text-app-text">{remaining > 0 ? `~${fmtClock(remaining)}` : '…'}</p>
+        </div>
       </div>
-      {/* Eased progress bar — never a fake 100% before the asset returns. */}
-      <div className="h-1.5 w-full overflow-hidden rounded-full bg-app-border/10">
-        <div className="h-full rounded-full bg-app-accent transition-[width] duration-500 ease-out" style={{ width: `${Math.max(6, pct)}%` }} />
+      {/* Thicker gradient progress bar — never a fake 100% before the asset returns. */}
+      <div className="h-2.5 w-full overflow-hidden rounded-full bg-app-border/12">
+        <div className="h-full rounded-full bg-gradient-to-r from-app-accent/75 to-app-accent transition-[width] duration-700 ease-out" style={{ width: `${Math.max(6, pct)}%` }} />
       </div>
-      {/* Stage checklist — what each agent is doing: done ✓ · active ⟳ · pending ○.
-          Makes the pipeline legible so the user sees exactly where it is. */}
-      <ul className="space-y-1">
+      {/* Stage checklist — done ✓ · active ⟳ · pending ○ — in soft icon badges. */}
+      <ul className="space-y-1.5 pt-0.5">
         {stages.map((s, i) => {
           const state = i < stageIdx ? 'done' : i === stageIdx ? 'active' : 'pending';
           return (
-            <li key={i} className={`flex items-center gap-2 text-[12px] ${state === 'pending' ? 'text-app-muted/50' : state === 'active' ? 'text-app-text' : 'text-app-muted'}`}>
+            <li key={i} className={`flex items-center gap-2.5 text-[12.5px] ${state === 'pending' ? 'text-app-muted/45' : state === 'active' ? 'font-medium text-app-text' : 'text-app-muted'}`}>
               {state === 'done' ? (
-                <Check size={13} className="shrink-0 text-app-accent" />
+                <span className="flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full bg-app-accent/15"><Check size={12} className="text-app-accent" /></span>
               ) : state === 'active' ? (
-                <Loader2 size={13} className="shrink-0 animate-spin text-app-accent" />
+                <span className="flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full bg-app-accent/15"><Loader2 size={12} className="animate-spin text-app-accent" /></span>
               ) : (
-                <span className="h-[13px] w-[13px] shrink-0 rounded-full border border-app-border/30" />
+                <span className="flex h-[18px] w-[18px] shrink-0 items-center justify-center"><span className="h-[13px] w-[13px] rounded-full border border-app-border/30" /></span>
               )}
               <span className="truncate">{s}</span>
             </li>
