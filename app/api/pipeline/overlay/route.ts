@@ -38,8 +38,10 @@ export async function POST(req: NextRequest) {
     if (!r.ok) return NextResponse.json({ ok: false, error: `fetch video ${r.status}` }, { status: 502 });
     await writeFile(inPath, Buffer.from(await r.arrayBuffer()));
 
-    const ok = await applyMarketingOverlays(inPath, outPath, marketing, durationSec);
-    if (!ok) return NextResponse.json({ ok: false, error: 'overlay render failed' }, { status: 502 });
+    const ov = await applyMarketingOverlays(inPath, outPath, marketing, durationSec);
+    if (!ov.ok) {
+      return NextResponse.json({ ok: false, error: ov.error, fontExists: ov.fontExists, fontPath: ov.fontPath }, { status: 502 });
+    }
 
     const out = await readFile(outPath);
     const path = `overlays/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.mp4`;

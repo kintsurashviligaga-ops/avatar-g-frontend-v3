@@ -5,6 +5,7 @@
 // SINGLE-QUOTED so commas inside expressions are literal, not filtergraph separators.
 import 'server-only';
 import { spawn } from 'child_process';
+import { existsSync } from 'fs';
 import { join } from 'path';
 import ffmpegStatic from 'ffmpeg-static';
 
@@ -82,19 +83,28 @@ export function buildOverlayFilter(m: MarketingOverlay, durationSec: number, fon
   return `[0:v]${parts.join(',')}[vout]`;
 }
 
-/** Burn the marketing overlays from `inputPath` into `outputPath`. Returns success. */
+export interface OverlayResult {
+  ok: boolean;
+  error?: string;
+  fontExists: boolean;
+  fontPath: string;
+}
+
+/** Burn the marketing overlays from `inputPath` into `outputPath`. */
 export async function applyMarketingOverlays(
   inputPath: string,
   outputPath: string,
   m: MarketingOverlay,
   durationSec = 30,
-): Promise<boolean> {
+): Promise<OverlayResult> {
+  const fontExists = existsSync(OVERLAY_FONT_PATH);
+  const base = { fontExists, fontPath: OVERLAY_FONT_PATH };
   const filter = buildOverlayFilter(m, durationSec);
-  if (!filter) return false;
+  if (!filter) return { ok: false, error: 'no overlay fields supplied', ...base };
   const bin = ffmpegStatic as unknown as string | null;
-  if (!bin) return false;
+  if (!bin) return { ok: false, error: 'ffmpeg-static binary missing', ...base };
 
-  return new Promise<boolean>((resolve) => {
+  return new Promise<OverlayResult>((resolve) => {
     const args = [
       '-y',
       '-i', inputPath,
@@ -109,13 +119,7 @@ export async function applyMarketingOverlays(
     const ff = spawn(bin, args);
     let stderr = '';
     ff.stderr.on('data', (d) => { stderr += d.toString(); });
-    ff.on('close', (code) => {
-      if (code !== 0) {
-        // eslint-disable-next-line no-console
-        console.error('[overlay] ffmpeg exit', code, stderr.slice(-500));
-      }
-      resolve(code === 0);
-    });
-    ff.on('error', () => resolve(false));
+    ff.on('close', (code) => resolve({ ok: code === 0, error: code === 0 ? undefined : stderr.slice(-600), ...base }));
+    ff.on('error', (e) => resolve({ ok: false, error: `spawn: ${e.message}`, ...base }));
   });
 }
