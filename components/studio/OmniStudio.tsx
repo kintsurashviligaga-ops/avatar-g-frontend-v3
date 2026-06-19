@@ -1897,7 +1897,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
               {m.videoUrl && (
                 <div className="space-y-1.5">
                   {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
-                  <video src={m.videoUrl} controls playsInline className="max-h-96 w-full rounded-xl bg-black/90 ring-1 ring-app-border/10" />
+                  {/* #t=0.1 makes the browser paint a real frame as the poster (not a
+                      black box); preload=metadata forces that frame to load up front. */}
+                  <video src={`${m.videoUrl}#t=0.1`} poster={m.coverUrl || undefined} controls playsInline preload="metadata" className="max-h-96 w-full rounded-xl bg-black/90 ring-1 ring-app-border/10" />
                   <div className="flex flex-wrap items-center gap-2">
                     <button
                       type="button"
