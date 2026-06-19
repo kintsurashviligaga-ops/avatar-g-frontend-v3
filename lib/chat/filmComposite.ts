@@ -57,6 +57,7 @@ import {
   mapWithConcurrency,
 } from './filmClipRetry';
 import { filmBalanceDecision } from './filmBalanceGate';
+import { visionQaEnabled, qaHealKeyframes } from '@/lib/pipeline/quality/scene-qa';
 
 const serviceManager = new ServiceManager();
 
@@ -531,9 +532,21 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
       ? (input.metadata.sceneFrames as unknown[]).map((f) =>
           typeof f === 'string' && /^https?:\/\//i.test(f) ? f : null)
       : null;
-    const sceneFrames = approvedFrames && approvedFrames.length === plan.scenes.length
+    let sceneFrames = approvedFrames && approvedFrames.length === plan.scenes.length
       ? approvedFrames
       : await Promise.all(plan.scenes.map((scene) => stylizeSceneFrame(input, scene, plan.shared)));
+    // Vision QA heal pass (env-gated FILM_VISION_QA=1) — inspect each storyboard keyframe
+    // for severe artifacts/face-melting and regenerate failures via the SAME stylizeSceneFrame
+    // path BEFORE the costly render. Fail-OPEN per scene; structured report logged.
+    if (visionQaEnabled()) {
+      const qa = await qaHealKeyframes(sceneFrames, (i) => {
+        const sc = plan.scenes[i];
+        return sc ? stylizeSceneFrame(input, sc, plan.shared) : Promise.resolve(null);
+      });
+      sceneFrames = qa.frames;
+      // eslint-disable-next-line no-console
+      console.info('[film] vision-qa report:', JSON.stringify(qa.report));
+    }
     clips = await mapWithConcurrency(plan.scenes, clipDispatchConcurrency(), (scene, i) =>
       renderClip(
         input,
