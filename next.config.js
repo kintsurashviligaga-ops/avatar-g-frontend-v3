@@ -58,6 +58,9 @@ const nextConfig = {
       // /var/task has no supabase/migrations/*.sql (ENOENT on POST). Force-trace
       // both migration dirs so the turnkey `run-migration` curl works in prod.
       '/api/admin/run-migration': ['./supabase/migrations/**', './migrations/**'],
+      // B2B marketing overlays: ffmpeg-static binary + the bundled drawtext font ride
+      // along so the lambda can burn animated lower-thirds/price/CTA over the film.
+      '/api/pipeline/overlay': ['./node_modules/ffmpeg-static/**', './lib/pipeline/compositing/*.ttf'],
     },
   },
   eslint: {
