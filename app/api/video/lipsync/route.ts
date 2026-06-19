@@ -55,7 +55,7 @@ export async function GET(req: NextRequest) {
   // real runtime key) BEFORE flipping LIPSYNC_HEYGEN on for real traffic.
   //   GET /api/video/lipsync?selftest=heygen&key=<MIGRATION_RUN_KEY>
   if (req.nextUrl.searchParams.get('selftest') === 'heygen') {
-    const key = req.nextUrl.searchParams.get('key');
+    const key = req.headers.get('x-selftest-key'); // header, not query — keep the secret out of URLs/logs
     if (!key || key !== process.env.MIGRATION_RUN_KEY) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
     const faceUrl = 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=512&q=80';
     const audioUrl = await textToHostedSpeech('Hello, this is an Avatar voice test. One, two, three.');

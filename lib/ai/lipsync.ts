@@ -213,24 +213,68 @@ async function heygenLipsyncFetch(videoId: string): Promise<{ status: string; ur
  * PROVEN end-to-end before it is switched on for real traffic. Names-only: never returns
  * the key — only whether each step worked and the final job status.
  */
-export async function heygenSelfTest(faceUrl: string, audioUrl: string): Promise<{
-  configured: boolean; createOk: boolean; jobId: string | null; status: string; videoUrl: string | null; error: string | null; ms: number;
-}> {
-  const t0 = Date.now();
-  if (!heygenKey()) return { configured: false, createOk: false, jobId: null, status: 'no-key', videoUrl: null, error: 'HEYGEN_API_KEY missing at runtime', ms: 0 };
-  const jobId = await heygenLipsyncCreate(faceUrl, audioUrl);
-  if (!jobId) return { configured: true, createOk: false, jobId: null, status: 'create-failed', videoUrl: null, error: 'asset/talking_photo/generate did not return a video_id', ms: Date.now() - t0 };
-  let status = 'processing';
-  let videoUrl: string | null = null;
-  let error: string | null = null;
-  const deadline = Date.now() + 180_000; // poll up to ~3min within the 300s route budget
-  while (Date.now() < deadline) {
-    await new Promise((r) => setTimeout(r, 5000));
-    const r = await heygenLipsyncFetch(jobId.slice(7));
-    status = r.status; videoUrl = r.url; error = r.error;
-    if (status === 'succeeded' || status === 'failed') break;
+export async function heygenSelfTest(faceUrl: string, audioUrl: string): Promise<Record<string, unknown>> {
+  const key = heygenKey();
+  const out: Record<string, unknown> = { configured: key.length > 0, flag: process.env.LIPSYNC_HEYGEN ?? null };
+  if (!key) { out.verdict = 'NO_KEY'; return out; }
+  try {
+    // 1 · fetch the face image server-side
+    const fr = await fetch(faceUrl, { cache: 'no-store', signal: AbortSignal.timeout(20_000) });
+    const faceMime = fr.headers.get('content-type') || 'image/jpeg';
+    const faceBuf = fr.ok ? Buffer.from(await fr.arrayBuffer()) : null;
+    out.face = { ok: fr.ok, status: fr.status, bytes: faceBuf?.byteLength ?? 0, mime: faceMime };
+    if (!faceBuf || !faceBuf.byteLength) { out.verdict = 'FACE_FETCH_FAILED'; return out; }
+
+    // 2 · upload the photo as a HeyGen asset
+    const fd = new FormData();
+    fd.append('file', new Blob([new Uint8Array(faceBuf)], { type: faceMime }), 'face.jpg');
+    fd.append('type', 'image');
+    const ar = await fetch(`${HEYGEN_BASE}/v1/asset`, { method: 'POST', headers: { 'X-Api-Key': key }, body: fd, signal: AbortSignal.timeout(30_000) });
+    const aText = await ar.text();
+    let assetId: string | undefined;
+    try { const j = JSON.parse(aText); assetId = j.data?.id ?? j.data?.asset_id; } catch { /* non-JSON */ }
+    out.asset = { httpStatus: ar.status, ok: ar.ok, assetId: assetId ?? null, body: aText.slice(0, 300) };
+    if (!assetId) { out.verdict = 'ASSET_UPLOAD_FAILED'; return out; }
+
+    // 3 · make a talking_photo
+    const tr = await fetch(`${HEYGEN_BASE}/v1/talking_photo`, { method: 'POST', headers: { 'X-Api-Key': key, 'Content-Type': 'application/json' }, body: JSON.stringify({ image_asset_id: assetId }), signal: AbortSignal.timeout(20_000) });
+    const tText = await tr.text();
+    let tpId: string | undefined;
+    try { tpId = JSON.parse(tText).data?.talking_photo_id; } catch { /* non-JSON */ }
+    out.talkingPhoto = { httpStatus: tr.status, ok: tr.ok, talkingPhotoId: tpId ?? null, body: tText.slice(0, 300) };
+    if (!tpId) { out.verdict = 'TALKING_PHOTO_FAILED'; return out; }
+
+    // 4 · generate the video driven by OUR audio (voice.type:audio) — the unverified path
+    const gr = await fetch(`${HEYGEN_BASE}/v2/video/generate`, {
+      method: 'POST', headers: { 'X-Api-Key': key, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ video_inputs: [{ character: { type: 'talking_photo', talking_photo_id: tpId, talking_photo_style: 'square' }, voice: { type: 'audio', audio_url: audioUrl } }], dimension: { width: 720, height: 1280 } }),
+      signal: AbortSignal.timeout(20_000),
+    });
+    const gText = await gr.text();
+    let videoId: string | undefined;
+    try { const j = JSON.parse(gText); videoId = j.data?.video_id ?? j.video_id; } catch { /* non-JSON */ }
+    out.generate = { httpStatus: gr.status, ok: gr.ok, videoId: videoId ?? null, body: gText.slice(0, 400) };
+    if (!videoId) { out.verdict = 'GENERATE_FAILED'; return out; }
+
+    // 5 · poll the render to a final state
+    let status = 'processing';
+    let url: string | null = null;
+    let error: string | null = null;
+    const deadline = Date.now() + 150_000;
+    while (Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 5000));
+      const r = await heygenLipsyncFetch(videoId);
+      status = r.status; url = r.url; error = r.error;
+      if (status === 'succeeded' || status === 'failed') break;
+    }
+    out.poll = { status, videoUrl: url, error };
+    out.verdict = status === 'succeeded' ? 'HEYGEN_WORKS' : status === 'failed' ? 'RENDER_FAILED' : 'RENDER_TIMEOUT';
+    return out;
+  } catch (e) {
+    out.error = (e as Error).message;
+    out.verdict = 'EXCEPTION';
+    return out;
   }
-  return { configured: true, createOk: true, jobId, status, videoUrl, error, ms: Date.now() - t0 };
 }
 
 /**
