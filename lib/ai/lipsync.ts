@@ -153,16 +153,10 @@ async function heygenLipsyncCreate(faceUrl: string, audioUrl: string): Promise<s
     const img = await faceUrlToBase64(faceUrl);
     if (!img) return null;
 
-    // 1) upload the photo as a HeyGen asset — RAW binary body to the upload host.
+    // 1) upload the photo straight to HeyGen as a TALKING PHOTO — RAW binary body to the
+    //    upload host → returns the talking_photo_id directly (no separate asset step).
     const bin = Buffer.from(img.base64, 'base64');
-    const upRes = await fetch(`${HEYGEN_UPLOAD}/v1/asset`, { method: 'POST', headers: { 'X-Api-Key': key, 'Content-Type': img.mime }, body: new Uint8Array(bin), signal: AbortSignal.timeout(30_000) });
-    if (!upRes.ok) return null;
-    const upData = (await upRes.json().catch(() => ({}))) as { data?: { id?: string; asset_id?: string } };
-    const assetId = upData.data?.id ?? upData.data?.asset_id;
-    if (!assetId) return null;
-
-    // 2) make a talking_photo from the asset
-    const tpRes = await fetch(`${HEYGEN_BASE}/v1/talking_photo`, { method: 'POST', headers: { 'X-Api-Key': key, 'Content-Type': 'application/json' }, body: JSON.stringify({ image_asset_id: assetId }), signal: AbortSignal.timeout(20_000) });
+    const tpRes = await fetch(`${HEYGEN_UPLOAD}/v1/talking_photo`, { method: 'POST', headers: { 'X-Api-Key': key, 'Content-Type': img.mime }, body: new Uint8Array(bin), signal: AbortSignal.timeout(30_000) });
     if (!tpRes.ok) return null;
     const tpData = (await tpRes.json().catch(() => ({}))) as { data?: { talking_photo_id?: string } };
     const talkingPhotoId = tpData.data?.talking_photo_id;
@@ -225,21 +219,13 @@ export async function heygenSelfTest(faceUrl: string, audioUrl: string): Promise
     out.face = { ok: fr.ok, status: fr.status, bytes: faceBuf?.byteLength ?? 0, mime: faceMime };
     if (!faceBuf || !faceBuf.byteLength) { out.verdict = 'FACE_FETCH_FAILED'; return out; }
 
-    // 2 · upload the photo as a HeyGen asset — RAW binary body to the upload host
-    const ar = await fetch(`${HEYGEN_UPLOAD}/v1/asset`, { method: 'POST', headers: { 'X-Api-Key': key, 'Content-Type': faceMime }, body: new Uint8Array(faceBuf), signal: AbortSignal.timeout(30_000) });
-    const aText = await ar.text();
-    let assetId: string | undefined;
-    try { const j = JSON.parse(aText); assetId = j.data?.id ?? j.data?.asset_id; } catch { /* non-JSON */ }
-    out.asset = { httpStatus: ar.status, ok: ar.ok, assetId: assetId ?? null, body: aText.slice(0, 300) };
-    if (!assetId) { out.verdict = 'ASSET_UPLOAD_FAILED'; return out; }
-
-    // 3 · make a talking_photo
-    const tr = await fetch(`${HEYGEN_BASE}/v1/talking_photo`, { method: 'POST', headers: { 'X-Api-Key': key, 'Content-Type': 'application/json' }, body: JSON.stringify({ image_asset_id: assetId }), signal: AbortSignal.timeout(20_000) });
+    // 2 · upload the photo straight to HeyGen as a TALKING PHOTO (upload host, raw binary)
+    const tr = await fetch(`${HEYGEN_UPLOAD}/v1/talking_photo`, { method: 'POST', headers: { 'X-Api-Key': key, 'Content-Type': faceMime }, body: new Uint8Array(faceBuf), signal: AbortSignal.timeout(30_000) });
     const tText = await tr.text();
     let tpId: string | undefined;
     try { tpId = JSON.parse(tText).data?.talking_photo_id; } catch { /* non-JSON */ }
     out.talkingPhoto = { httpStatus: tr.status, ok: tr.ok, talkingPhotoId: tpId ?? null, body: tText.slice(0, 300) };
-    if (!tpId) { out.verdict = 'TALKING_PHOTO_FAILED'; return out; }
+    if (!tpId) { out.verdict = 'TALKING_PHOTO_UPLOAD_FAILED'; return out; }
 
     // 4 · generate the video driven by OUR audio (voice.type:audio) — the unverified path
     const gr = await fetch(`${HEYGEN_BASE}/v2/video/generate`, {
