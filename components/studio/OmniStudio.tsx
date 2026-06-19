@@ -1309,7 +1309,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           if (last && last.role === 'assistant') {
             next[next.length - 1] = resultUrl
               ? { role: 'assistant', text: '', videoUrl: resultUrl }
-              : { role: 'assistant', text: `⚠️ ${t.lipsyncFailed}${resultErr ? `\n\n\`${resultErr.slice(0, 200)}\`` : ''}` };
+              : { role: 'assistant', text: `⚠️ ${t.lipsyncFailed} ${locale === 'en' ? 'Please try again — re-attach the photo and resend.' : locale === 'ru' ? 'Попробуйте ещё раз — прикрепите фото и отправьте снова.' : 'სცადე თავიდან — ფოტო ხელახლა მიამაგრე და გააგზავნე.'}` };
           }
           return next;
         });
