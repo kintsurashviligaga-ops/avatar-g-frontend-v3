@@ -584,6 +584,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
   // Per-message thumbs feedback (#9): message index → 'up' | 'down' for the session.
   const [ratedIdx, setRatedIdx] = useState<Record<number, 'up' | 'down'>>({});
+  // Mobile: the service-option panels collapse behind a toggle so they never cover the
+  // chat (the cards are tall). Default collapsed on mobile; on desktop (sm:) always open.
+  const [optionsOpen, setOptionsOpen] = useState(false);
   // Transient toast (e.g. "link copied") shown after a share falls back to clipboard.
   const [shareToast, setShareToast] = useState<string | null>(null);
   const [speakingIdx, setSpeakingIdx] = useState<number | null>(null);
@@ -2062,8 +2065,17 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       {/* Composer — refined, Gemini-style: one rounded pill, [+] attach, an inline
           mode selector (the "Flash ⌄" analog) and mic-when-empty / send-when-typing. */}
       <div className="shrink-0 pt-1">
-        {/* Per-service options — real backend capabilities, shown for the active
-            generative mode. Borderless scrollable chip rows (clean, Gemini-like). */}
+        {/* Per-service options. On MOBILE they collapse behind this toggle so the chat is
+            never covered and the input stays reachable; on desktop (sm:) they're always
+            open. When open on mobile they're capped to 45vh and scroll internally. */}
+        {mode !== 'chat' && (
+          <button type="button" onClick={() => setOptionsOpen((v) => !v)} aria-expanded={optionsOpen}
+            className="mb-2 flex w-full items-center justify-between rounded-xl border border-app-border/12 bg-app-elevated/40 px-3 py-2 text-[12.5px] font-semibold text-app-text transition active:scale-[0.99] sm:hidden">
+            <span className="inline-flex items-center gap-1.5"><Sparkles size={14} className="text-app-accent" /> {locale === 'en' ? 'Options' : locale === 'ru' ? 'Опции' : 'პარამეტრები'}</span>
+            <ChevronDown size={16} className={`text-app-muted transition-transform ${optionsOpen ? 'rotate-180' : ''}`} />
+          </button>
+        )}
+        <div className={`${optionsOpen ? 'max-h-[45vh] overflow-y-auto pr-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden' : 'hidden'} sm:block sm:max-h-none sm:overflow-visible`}>
         {/* IMAGE — dedicated card panel: aspect (visual previews) · count · quality · style */}
         {mode === 'image' && (
           <div className="mb-2 space-y-2">
@@ -2276,6 +2288,8 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             </div>
           );
         })()}
+
+        </div>{/* /collapsible options */}
 
         {/* Attachment previews — up to MAX_ATTACHMENTS files / images / a video,
             each removable. They ride with the next message (text + files together). */}
