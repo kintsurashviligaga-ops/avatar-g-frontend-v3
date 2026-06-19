@@ -286,7 +286,12 @@ export async function POST(req: NextRequest) {
       // never block chat on search
     }
 
-    const effectiveSystem = [memoryPreamble, searchPreamble, SYSTEM_PROMPT]
+    // Ground the model in the REAL current date/time (Tbilisi, UTC+4). Without this an
+    // LLM has no clock and answers "what time is it?" with a "[current time]" placeholder.
+    const nowTbilisi = new Date().toLocaleString('en-GB', { timeZone: 'Asia/Tbilisi', dateStyle: 'full', timeStyle: 'short' });
+    const datePreamble = `CURRENT DATE & TIME in Tbilisi, Georgia (UTC+4): ${nowTbilisi}. When the user asks the time, date, or day, answer using THIS exact value — never output a placeholder like "[current time]".`;
+
+    const effectiveSystem = [datePreamble, memoryPreamble, searchPreamble, SYSTEM_PROMPT]
       .filter(Boolean)
       .join('\n\n');
 
