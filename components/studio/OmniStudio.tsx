@@ -507,13 +507,18 @@ function StoryboardOverlay({ sb, t, busy, regenningOrdinal, onGenerate, onRegene
         <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4">
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
             {sb.scenes.map((s) => (
-              <div key={s.ordinal} className="flex flex-col overflow-hidden rounded-xl border border-app-border/10 bg-app-elevated">
-                <div className={`relative ${portrait ? 'aspect-[9/16]' : 'aspect-video'} bg-app-border/10`}>
+              <div key={s.ordinal} className="flex flex-col overflow-hidden rounded-xl border border-app-border/12 bg-app-elevated shadow-[0_4px_16px_rgba(0,0,0,0.13)]">
+                <div className={`relative ${portrait ? 'aspect-[9/16]' : 'aspect-video'} bg-app-surface`}>
                   {s.frameUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={s.frameUrl} alt={`${t.sbScene} ${s.ordinal}`} onClick={() => s.frameUrl && onView(s.frameUrl)} className="h-full w-full cursor-zoom-in object-cover transition-opacity hover:opacity-90" />
+                    <img src={s.frameUrl} alt={`${t.sbScene} ${s.ordinal}`} onClick={() => s.frameUrl && onView(s.frameUrl)} className="h-full w-full cursor-zoom-in object-cover opacity-0 transition-opacity duration-500 hover:opacity-90" onLoad={(e) => { e.currentTarget.style.opacity = '1'; }} />
                   ) : (
-                    <div className="flex h-full w-full items-center justify-center text-app-muted/35"><ImageIcon size={22} /></div>
+                    // Generating — a pulsing skeleton with a spinner + the scene number,
+                    // so it reads as "creating scene N", never a broken-image box.
+                    <div className="flex h-full w-full animate-pulse flex-col items-center justify-center gap-2 bg-gradient-to-br from-app-elevated to-app-surface">
+                      <Loader2 size={18} className="animate-spin text-app-accent/70" />
+                      <span className="text-[10px] font-medium text-app-muted/70">{t.sbScene} {s.ordinal}</span>
+                    </div>
                   )}
                   <span className="absolute left-1.5 top-1.5 rounded-full bg-black/60 px-2 py-0.5 text-[11px] font-medium text-white">{t.sbScene} {s.ordinal}</span>
                   <button type="button" onClick={() => onRegenScene(s.ordinal)} disabled={regenningOrdinal !== null || busy} aria-label={t.sbReroll} title={t.sbReroll} className="absolute right-1.5 top-1.5 flex h-7 w-7 items-center justify-center rounded-full bg-black/55 text-white backdrop-blur transition-colors hover:bg-app-accent hover:text-app-bg disabled:opacity-40">
