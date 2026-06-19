@@ -6,7 +6,7 @@ import { ClaudeDirectorAgent } from '@/lib/pipeline/agents/claude-director';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
-export const maxDuration = 45;
+export const maxDuration = 110; // up to 2 self-correction attempts × ~45s director timeout
 
 const director = new ClaudeDirectorAgent();
 

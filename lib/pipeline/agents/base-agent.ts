@@ -22,12 +22,16 @@ export abstract class BaseAgent {
     this.breaker = new CircuitBreaker(failureThreshold, resetTimeoutMs);
   }
 
-  /** Run an action through the breaker + retry stack with a hard timeout. */
-  protected async guarded<T>(ctx: AgentContext, action: () => Promise<T>): Promise<T> {
+  /**
+   * Run an action through the breaker + retry stack with a hard timeout.
+   * `maxRetries` is configurable so callers that ALREADY retry (e.g. the director's
+   * self-correction loop) pass 1 and avoid retry amplification (3×2×timeout cascades).
+   */
+  protected async guarded<T>(ctx: AgentContext, action: () => Promise<T>, maxRetries = 3): Promise<T> {
     const start = Date.now();
     try {
       const result = await this.breaker.execute(() =>
-        RetryHandler.withExponentialBackoff(() => this.withTimeout(action())),
+        RetryHandler.withExponentialBackoff(() => this.withTimeout(action()), maxRetries),
       );
       logger.info({ agent: this.name, jobId: ctx.jobId, scene: ctx.sceneNumber, ms: Date.now() - start }, 'agent.success');
       return result;

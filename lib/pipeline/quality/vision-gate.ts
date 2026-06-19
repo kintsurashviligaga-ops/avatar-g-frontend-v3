@@ -5,7 +5,8 @@
 import 'server-only';
 import Anthropic from '@anthropic-ai/sdk';
 
-const MODEL = process.env.ANTHROPIC_VISION_MODEL || process.env.ANTHROPIC_SCRIPT_MODEL || 'claude-3-5-sonnet-20241022';
+// Fast vision-capable default — frame QA runs once per scene, so speed × 5 matters.
+const MODEL = process.env.ANTHROPIC_VISION_MODEL || 'claude-haiku-4-5-20251001';
 
 export interface QaVerdict {
   passed: boolean;

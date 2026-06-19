@@ -7,7 +7,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { BaseAgent, AgentContext } from './base-agent';
 import { OrchestrationOutputSchema, OrchestrationOutput } from '../schemas/orchestration-output.schema';
 
-const MODEL = process.env.ANTHROPIC_SCRIPT_MODEL || 'claude-3-5-sonnet-20241022';
+const MODEL = process.env.ANTHROPIC_DIRECTOR_MODEL || 'claude-sonnet-4-6';
 
 const SYSTEM_PROMPT = `You are the Central Director for MyAvatar.ge.
 Given a user prompt, produce EXACTLY 5 scenes of 6 seconds each (30s total).
@@ -22,13 +22,21 @@ export class ClaudeDirectorAgent extends BaseAgent {
   private client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
   constructor() {
-    super('ClaudeDirector', 20000);
+    super('ClaudeDirector', 45000); // generous: one 5-scene generation can take 20-40s
   }
 
   async direct(ctx: AgentContext, userPrompt: string): Promise<OrchestrationOutput> {
     let lastError: string | null = null;
+    // The self-correction loop IS the retry — so guarded runs with maxRetries=1 (breaker +
+    // timeout only). A thrown call (timeout/network) is caught and re-prompted here.
     for (let attempt = 0; attempt < 2; attempt++) {
-      const raw = await this.guarded(ctx, () => this.callModel(userPrompt, lastError));
+      let raw: string;
+      try {
+        raw = await this.guarded(ctx, () => this.callModel(userPrompt, lastError), 1);
+      } catch (e) {
+        lastError = (e as Error).message;
+        continue;
+      }
       let json: unknown;
       try {
         json = JSON.parse(this.stripFences(raw));
@@ -40,7 +48,7 @@ export class ClaudeDirectorAgent extends BaseAgent {
       if (parsed.success) return parsed.data;
       lastError = JSON.stringify(parsed.error.issues);
     }
-    throw new Error(`Director failed schema validation: ${lastError}`);
+    throw new Error(`Director failed after retries: ${lastError}`);
   }
 
   private stripFences(s: string): string {
