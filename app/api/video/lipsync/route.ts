@@ -15,7 +15,7 @@
  *   { url: string | null }
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { lipsyncCreate, lipsyncFetch, hasLipsyncProvider, lipsyncStatus } from '@/lib/ai/lipsync';
+import { lipsyncCreate, lipsyncFetch, hasLipsyncProvider, lipsyncStatus, heygenSelfTest } from '@/lib/ai/lipsync';
 import { textToHostedSpeech } from '@/lib/chat/filmVoiceover';
 import { convertSongWithRvc } from '@/lib/audio/rvc';
 import { getUserVoiceModel, DEMO_VOICE_USER_ID } from '@/lib/audio/voiceModel';
@@ -51,6 +51,17 @@ export const maxDuration = 300; // Wav2Lip on a 30s 1080p master needs headroom
  * ~150s SadTalker render survive mobile networks (a single long fetch gets dropped).
  */
 export async function GET(req: NextRequest) {
+  // Guarded HeyGen self-test — PROVE the "Avatar" engine end-to-end (server-side, with the
+  // real runtime key) BEFORE flipping LIPSYNC_HEYGEN on for real traffic.
+  //   GET /api/video/lipsync?selftest=heygen&key=<MIGRATION_RUN_KEY>
+  if (req.nextUrl.searchParams.get('selftest') === 'heygen') {
+    const key = req.nextUrl.searchParams.get('key');
+    if (!key || key !== process.env.MIGRATION_RUN_KEY) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+    const faceUrl = 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=512&q=80';
+    const audioUrl = await textToHostedSpeech('Hello, this is an Avatar voice test. One, two, three.');
+    if (!audioUrl) return NextResponse.json({ error: 'tts-failed' }, { status: 502 });
+    return NextResponse.json(await heygenSelfTest(faceUrl, audioUrl));
+  }
   const id = req.nextUrl.searchParams.get('id');
   if (!id) return NextResponse.json(lipsyncStatus());
 
@@ -87,7 +98,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   if (!hasLipsyncProvider()) return NextResponse.json({ jobId: null });
 
-  let body: { videoUrl?: unknown; audioUrl?: unknown; text?: unknown; useMyVoice?: unknown };
+  let body: { videoUrl?: unknown; audioUrl?: unknown; text?: unknown; useMyVoice?: unknown; forceSadTalker?: unknown };
   try {
     body = (await req.json()) as typeof body;
   } catch {
@@ -120,6 +131,7 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const jobId = await lipsyncCreate(videoUrl, audioUrl);
+  // forceSadTalker → skip HeyGen (the client sets this on a retry after a HeyGen job failed).
+  const jobId = await lipsyncCreate(videoUrl, audioUrl, { skipHeygen: body.forceSadTalker === true });
   return NextResponse.json({ jobId });
 }

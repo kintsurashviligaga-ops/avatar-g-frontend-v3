@@ -208,20 +208,46 @@ async function heygenLipsyncFetch(videoId: string): Promise<{ status: string; ur
 }
 
 /**
+ * One-shot server-side verification of the HeyGen "Avatar" path (asset → talking_photo →
+ * audio-driven generate → poll). Bypasses the LIPSYNC_HEYGEN flag so the engine can be
+ * PROVEN end-to-end before it is switched on for real traffic. Names-only: never returns
+ * the key — only whether each step worked and the final job status.
+ */
+export async function heygenSelfTest(faceUrl: string, audioUrl: string): Promise<{
+  configured: boolean; createOk: boolean; jobId: string | null; status: string; videoUrl: string | null; error: string | null; ms: number;
+}> {
+  const t0 = Date.now();
+  if (!heygenKey()) return { configured: false, createOk: false, jobId: null, status: 'no-key', videoUrl: null, error: 'HEYGEN_API_KEY missing at runtime', ms: 0 };
+  const jobId = await heygenLipsyncCreate(faceUrl, audioUrl);
+  if (!jobId) return { configured: true, createOk: false, jobId: null, status: 'create-failed', videoUrl: null, error: 'asset/talking_photo/generate did not return a video_id', ms: Date.now() - t0 };
+  let status = 'processing';
+  let videoUrl: string | null = null;
+  let error: string | null = null;
+  const deadline = Date.now() + 180_000; // poll up to ~3min within the 300s route budget
+  while (Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, 5000));
+    const r = await heygenLipsyncFetch(jobId.slice(7));
+    status = r.status; videoUrl = r.url; error = r.error;
+    if (status === 'succeeded' || status === 'failed') break;
+  }
+  return { configured: true, createOk: true, jobId, status, videoUrl, error, ms: Date.now() - t0 };
+}
+
+/**
  * ASYNC start: create the prediction and return its ID immediately (no polling). The
  * client then polls /api/video/lipsync?id=… in SHORT requests — a single ~150s
  * synchronous fetch gets dropped on mobile networks (the "lip-sync doesn't do it" bug).
  *
  * PRIMARY: HeyGen talking-photo (reliable). FALLBACK: Replicate SadTalker.
  */
-export async function lipsyncCreate(videoUrl: string, audioUrl: string): Promise<string | null> {
+export async function lipsyncCreate(videoUrl: string, audioUrl: string, opts?: { skipHeygen?: boolean }): Promise<string | null> {
   if (!videoUrl || !audioUrl) return null;
-  // Prefer HeyGen only when explicitly enabled (LIPSYNC_HEYGEN=1). Its audio-driven
-  // talking-photo path still needs verification (the existing HeyGen route uses
-  // voice.type:'text'); until then the proven SadTalker path — with client-side retry
-  // on transient model crashes (ANTIALIAS / "exceptions must derive from BaseException")
-  // — is the default. The HeyGen engine stays wired for one-flag activation.
-  if (heygenKey() && process.env.LIPSYNC_HEYGEN === '1') {
+  // Prefer HeyGen (the "Avatar" engine) when enabled (LIPSYNC_HEYGEN=1) — a reliable,
+  // professional talking-photo render driven by OUR ElevenLabs audio. Fail-open: if the
+  // HeyGen create path misses, fall straight through to the proven SadTalker pass.
+  // `skipHeygen` lets the client force SadTalker on a retry after a HeyGen job failed, so
+  // the Avatar service is bulletproof: HeyGen quality when it works, SadTalker always.
+  if (!opts?.skipHeygen && heygenKey() && process.env.LIPSYNC_HEYGEN === '1') {
     const heygenId = await heygenLipsyncCreate(videoUrl, audioUrl);
     if (heygenId) return heygenId;
   }
