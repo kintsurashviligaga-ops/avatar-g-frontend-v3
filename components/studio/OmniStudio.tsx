@@ -709,7 +709,11 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // Persist the active conversation once a generation settles (never per token).
   // Resumed on next mount; listed/resumable in the history panel.
   useEffect(() => {
-    if (!busy) upsertConversation(conversationId, messages);
+    if (!busy) {
+      upsertConversation(conversationId, messages);
+      // Notify the left sidebar's history list (ChatChrome) to refresh.
+      if (typeof window !== 'undefined') window.dispatchEvent(new Event('myavatar:conversations-updated'));
+    }
   }, [messages, busy, conversationId]);
 
   // Switch to / start / delete conversations (the chat-history panel actions).
@@ -733,6 +737,18 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     setMessages([]);
     setHistoryOpen(false);
   }, [conversationId, messages]);
+  // Bridge: the persistent left sidebar (ChatChrome) drives chat-history resume + new-chat
+  // via window events — so the sidebar works without prop-threading through the chrome.
+  useEffect(() => {
+    const onResume = (e: Event) => { const id = (e as CustomEvent<{ id?: string }>).detail?.id; if (id) resumeConversation(id); };
+    const onNew = () => startNewConversation();
+    window.addEventListener('myavatar:resume-conversation', onResume as EventListener);
+    window.addEventListener('myavatar:new-chat', onNew);
+    return () => {
+      window.removeEventListener('myavatar:resume-conversation', onResume as EventListener);
+      window.removeEventListener('myavatar:new-chat', onNew);
+    };
+  }, [resumeConversation, startNewConversation]);
   const removeConversation = useCallback((id: string) => {
     deleteConversation(id);
     setHistoryList(loadConversations());
@@ -1753,7 +1769,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         onClick={openHistory}
         aria-label={t.historyTitle}
         title={t.historyTitle}
-        className="absolute left-3 top-1.5 z-20 flex h-7 items-center gap-1.5 rounded-full bg-app-elevated/80 px-2.5 text-[11.5px] font-medium text-app-muted backdrop-blur transition-colors hover:text-app-text"
+        className="hidden"
       >
         <History size={13} /> <span className="hidden sm:inline">{t.historyTitle}</span>
       </button>

@@ -15,7 +15,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import {
-  Menu, X, Plus, History, LogIn, UserPlus, LogOut, Shield, FileText, LifeBuoy, MessageSquarePlus, Loader2, Trash2, User, Download,
+  Menu, X, Plus, History, LogIn, UserPlus, LogOut, Shield, FileText, LifeBuoy, MessageSquarePlus, Loader2, Trash2, User, Download, Settings, FolderOpen,
 } from 'lucide-react';
 import { createBrowserClient } from '@/lib/supabase/browser';
 import { WalletRefillModal } from '@/components/chat/WalletRefill';
@@ -113,6 +113,47 @@ export function ChatChrome({ locale = 'ka', onNewChat, title, scrollBody = false
   useEffect(() => { void refreshBalance(); }, [refreshBalance]);
 
   const drawerRow = 'flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-[13.5px] text-app-text transition-colors hover:bg-app-elevated';
+  const sideRow = 'flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px] font-medium text-app-text transition-colors hover:bg-app-elevated';
+
+  // ── Left sidebar: chat-history list (mirrors OmniStudio's localStorage) + mobile drawer ──
+  const OMNI_CONVERSATIONS_KEY = 'myavatar-omni-conversations';
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [conversations, setConversations] = useState<{ id: string; title: string; updatedAt: number }[]>([]);
+  const refreshConversations = useCallback(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const raw = JSON.parse(window.localStorage.getItem(OMNI_CONVERSATIONS_KEY) ?? '[]') as unknown;
+      if (!Array.isArray(raw)) return;
+      setConversations(
+        raw
+          .filter((c): c is { id: string; title?: string; updatedAt?: number } => !!c && typeof (c as { id?: unknown }).id === 'string')
+          .map((c) => ({ id: c.id, title: (c.title || 'New chat').trim() || 'New chat', updatedAt: c.updatedAt ?? 0 }))
+          .sort((a, b) => b.updatedAt - a.updatedAt)
+          .slice(0, 40),
+      );
+    } catch {
+      /* ignore corrupt history */
+    }
+  }, []);
+  useEffect(() => {
+    refreshConversations();
+    const onUpd = () => refreshConversations();
+    window.addEventListener('myavatar:conversations-updated', onUpd);
+    window.addEventListener('focus', onUpd);
+    return () => {
+      window.removeEventListener('myavatar:conversations-updated', onUpd);
+      window.removeEventListener('focus', onUpd);
+    };
+  }, [refreshConversations]);
+  const handleNewChat = useCallback(() => {
+    window.dispatchEvent(new Event('myavatar:new-chat'));
+    onNewChat?.();
+    setSidebarOpen(false);
+  }, [onNewChat]);
+  const handleSelectConversation = useCallback((id: string) => {
+    window.dispatchEvent(new CustomEvent('myavatar:resume-conversation', { detail: { id } }));
+    setSidebarOpen(false);
+  }, []);
 
   // Save the display name to Supabase user_metadata (#3).
   const saveProfile = useCallback(async () => {
@@ -142,65 +183,105 @@ export function ChatChrome({ locale = 'ka', onNewChat, title, scrollBody = false
     finally { setExporting(false); }
   }, []);
 
+  const tHistory = locale === 'en' ? 'Chat History' : locale === 'ru' ? 'История чатов' : 'ჩატების ისტორია';
+  const tNoHistory = locale === 'en' ? 'No conversations yet' : locale === 'ru' ? 'Пока нет чатов' : 'ჯერ არ არის ჩატები';
+  const tLibrary = locale === 'en' ? 'Library' : locale === 'ru' ? 'Библиотека' : 'ბიბლიოთეკა';
+
   return (
-    <div className="fixed inset-0 z-0 flex flex-col bg-app-bg text-app-text antialiased" style={{ height: '100dvh' }}>
-      {/* ── Top bar (minimal, borderless) ────────────────────────────────────── */}
-      <header className="sticky top-0 z-30 shrink-0 bg-app-bg/85 backdrop-blur-xl" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
-        <div className="mx-auto flex h-14 w-full max-w-3xl items-center justify-between gap-2 px-3">
-          {/* No back arrow — it was easy to mis-tap and navigate away. The chat is
-              the single home surface; there is no "Services" jump in the menu. */}
-          <div className="flex min-w-0 items-center gap-1">
-            <span className="truncate text-[15px] font-semibold tracking-tight text-app-text">
-              {title ?? <>MyAvatar<span className="text-app-accent">.ge</span></>}
-            </span>
-          </div>
+    <div className="fixed inset-0 z-0 flex bg-app-bg text-app-text antialiased" style={{ height: '100dvh' }}>
+      {/* Mobile backdrop for the slide-over sidebar. */}
+      {sidebarOpen && (
+        <div className="fixed inset-0 z-[60] bg-black/50 backdrop-blur-sm md:hidden" onClick={() => setSidebarOpen(false)} aria-hidden />
+      )}
 
-          <div className="flex shrink-0 items-center gap-0.5">
-            {/* Live GEL balance (always visible) + a minimal top-up (+) that hides
-                inside the native iOS shell for App-Store compliance. */}
-            <span className="px-1.5 text-[13px] font-semibold tabular-nums text-app-text">{(balanceGel ?? 0).toFixed(2)} ₾</span>
-            <button type="button" onClick={() => setWalletOpen(true)} aria-label={t.topUp} title={t.topUp} data-iap-external className="flex h-8 w-8 items-center justify-center rounded-full text-app-accent transition-colors hover:bg-app-elevated touch-manipulation">
-              <Plus className="h-4 w-4" />
-            </button>
-            {onNewChat && (
-              <button type="button" onClick={onNewChat} aria-label={t.newChat} title={t.newChat} className="flex h-8 w-8 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text touch-manipulation">
-                <MessageSquarePlus className="h-[18px] w-[18px]" />
-              </button>
-            )}
-            <button type="button" onClick={() => setMenuOpen(true)} aria-label={t.menu} className="flex h-8 w-8 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text touch-manipulation">
-              <Menu className="h-[18px] w-[18px]" />
-            </button>
-          </div>
-        </div>
-      </header>
-
-      {/* ── Body (the chat) ──────────────────────────────────────────────────── */}
-      {/* paddingBottom = the cookie banner's height (a CSS var it publishes while
-          shown) so the composer is never covered by it on first visit; collapses
-          to 0 the moment the banner is dismissed. */}
-      <div
-        className={`min-h-0 flex-1 ${scrollBody ? 'overflow-y-auto' : 'flex'}`}
-        style={{ paddingBottom: 'var(--cookie-bar-h, 0px)', transition: 'padding-bottom 0.2s ease' }}
+      {/* ── Left sidebar — persistent on desktop, swipe-from-left drawer on mobile ── */}
+      <aside
+        className={`fixed inset-y-0 left-0 z-[70] flex h-full w-[268px] max-w-[84vw] shrink-0 flex-col border-r border-app-border/10 bg-app-surface transition-transform duration-200 ease-out md:static md:z-0 md:max-w-none md:shadow-none ${sidebarOpen ? 'translate-x-0 shadow-[0_0_60px_rgba(0,0,0,0.45)]' : '-translate-x-full md:translate-x-0'}`}
+        style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
       >
-        {children}
+        <div className="flex items-center justify-between px-3 py-3.5">
+          <span className="truncate text-[15px] font-semibold tracking-tight text-app-text">MyAvatar<span className="text-app-accent">.ge</span></span>
+          <button type="button" onClick={() => setSidebarOpen(false)} aria-label="close" className="flex h-8 w-8 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text md:hidden"><X className="h-[18px] w-[18px]" /></button>
+        </div>
+
+        {/* New chat */}
+        <div className="px-2">
+          <button type="button" onClick={handleNewChat} className="flex w-full items-center gap-2.5 rounded-xl bg-app-elevated px-3 py-2.5 text-[13.5px] font-semibold text-app-text ring-1 ring-app-border/12 transition-colors hover:bg-app-border/10 active:scale-[0.99]">
+            <MessageSquarePlus className="h-[17px] w-[17px] text-app-accent" /> {t.newChat}
+          </button>
+        </div>
+
+        {/* Chat history list */}
+        <div className="mt-3 min-h-0 flex-1 overflow-y-auto px-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <p className="flex items-center gap-1.5 px-2 pb-1.5 text-[11px] font-semibold uppercase tracking-wider text-app-muted"><History className="h-3 w-3" /> {tHistory}</p>
+          {conversations.length === 0 ? (
+            <p className="px-2 py-1 text-[12px] text-app-muted/70">{tNoHistory}</p>
+          ) : (
+            <div className="space-y-0.5 pb-2">
+              {conversations.map((c) => (
+                <button key={c.id} type="button" onClick={() => handleSelectConversation(c.id)} title={c.title} className="block w-full truncate rounded-lg px-2.5 py-2 text-left text-[13px] text-app-text/90 transition-colors hover:bg-app-elevated">
+                  {c.title}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Bottom — Library + Settings */}
+        <div className="space-y-0.5 border-t border-app-border/10 px-2 py-2" style={{ paddingBottom: 'calc(0.5rem + env(safe-area-inset-bottom, 0px))' }}>
+          <button type="button" onClick={() => { setSheet('library'); setSidebarOpen(false); }} className={sideRow}>
+            <FolderOpen className="h-[17px] w-[17px] text-app-muted" /> {tLibrary}
+          </button>
+          <button type="button" onClick={() => { setMenuOpen(true); setSidebarOpen(false); }} className={sideRow}>
+            <Settings className="h-[17px] w-[17px] text-app-muted" /> {t.settings}
+          </button>
+        </div>
+      </aside>
+
+      {/* ── Main column (header + chat) ──────────────────────────────────────── */}
+      <div className="flex min-w-0 flex-1 flex-col">
+        <header className="sticky top-0 z-30 shrink-0 bg-app-bg/85 backdrop-blur-xl" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
+          <div className="mx-auto flex h-14 w-full max-w-3xl items-center justify-between gap-2 px-3">
+            <div className="flex min-w-0 items-center gap-1.5">
+              {/* Mobile: open the sidebar drawer. Desktop: sidebar is persistent. */}
+              <button type="button" onClick={() => setSidebarOpen(true)} aria-label={t.menu} className="-ml-1 flex h-8 w-8 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text touch-manipulation md:hidden">
+                <Menu className="h-[18px] w-[18px]" />
+              </button>
+              <span className="truncate text-[15px] font-semibold tracking-tight text-app-text md:hidden">
+                {title ?? <>MyAvatar<span className="text-app-accent">.ge</span></>}
+              </span>
+              {title && <span className="hidden truncate text-[15px] font-semibold tracking-tight text-app-text md:inline">{title}</span>}
+            </div>
+
+            <div className="flex shrink-0 items-center gap-0.5">
+              <span className="px-1.5 text-[13px] font-semibold tabular-nums text-app-text">{(balanceGel ?? 0).toFixed(2)} ₾</span>
+              <button type="button" onClick={() => setWalletOpen(true)} aria-label={t.topUp} title={t.topUp} data-iap-external className="flex h-8 w-8 items-center justify-center rounded-full text-app-accent transition-colors hover:bg-app-elevated touch-manipulation">
+                <Plus className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+        </header>
+
+        {/* paddingBottom = the cookie banner's height (a CSS var it publishes while
+            shown) so the composer is never covered by it on first visit. */}
+        <div
+          className={`min-h-0 flex-1 ${scrollBody ? 'overflow-y-auto' : 'flex'}`}
+          style={{ paddingBottom: 'var(--cookie-bar-h, 0px)', transition: 'padding-bottom 0.2s ease' }}
+        >
+          {children}
+        </div>
       </div>
 
       {/* ── Settings drawer ──────────────────────────────────────────────────── */}
       {menuOpen && (
-        <div className="fixed inset-0 z-[80] flex justify-end bg-black/40 backdrop-blur-sm" onClick={() => setMenuOpen(false)}>
-          <aside onClick={(e) => e.stopPropagation()} className="flex h-full w-72 max-w-[82vw] flex-col bg-app-surface shadow-[0_0_60px_rgba(0,0,0,0.35)] animate-[slideIn_0.2s_ease-out]" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm" onClick={() => setMenuOpen(false)}>
+          <aside onClick={(e) => e.stopPropagation()} className="flex max-h-[86vh] w-80 max-w-[92vw] flex-col overflow-hidden rounded-2xl bg-app-surface shadow-[0_0_60px_rgba(0,0,0,0.4)]">
             <div className="flex items-center justify-between px-4 py-4">
               <span className="text-[15px] font-semibold tracking-tight text-app-text">{t.settings}</span>
               <button type="button" onClick={() => setMenuOpen(false)} aria-label="close" className="flex h-8 w-8 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text"><X className="h-4 w-4" /></button>
             </div>
 
             <div className="flex flex-1 flex-col gap-0.5 overflow-y-auto px-2 pb-4" style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom, 0px))' }}>
-              {onNewChat && (
-                <button type="button" onClick={() => { setMenuOpen(false); onNewChat(); }} className={`${drawerRow} font-medium text-app-accent`}>
-                  <MessageSquarePlus className="h-[18px] w-[18px]" /> {t.newChat}
-                </button>
-              )}
-
               {/* Account line */}
               <div className="px-3 pb-1 pt-2">
                 <p className="text-[11px] font-semibold uppercase tracking-wider text-app-muted">{t.account}</p>
@@ -230,10 +311,6 @@ export function ChatChrome({ locale = 'ka', onNewChat, title, scrollBody = false
                   ))}
                 </div>
               </div>
-
-              <button type="button" onClick={() => { setMenuOpen(false); setSheet('library'); }} className={drawerRow}>
-                <History className="h-[18px] w-[18px] text-app-muted" /> {t.library}
-              </button>
 
               {!authed ? (
                 <div className="mt-1 grid grid-cols-2 gap-2 px-1">
