@@ -95,6 +95,20 @@ export interface OverlayResult {
   error?: string;
 }
 
+/** Read a video's pixel dimensions from `ffmpeg -i` stderr (no ffprobe in ffmpeg-static). */
+function probeDimensions(bin: string, inputPath: string): Promise<{ w: number; h: number } | null> {
+  return new Promise((resolve) => {
+    const ff = spawn(bin, ['-hide_banner', '-i', inputPath]); // no output → exits non-zero, prints stream info
+    let stderr = '';
+    ff.stderr.on('data', (d) => { stderr += d.toString(); });
+    ff.on('close', () => {
+      const mm = stderr.match(/Video:[^\n]*?\b(\d{2,5})x(\d{2,5})\b/);
+      resolve(mm && mm[1] && mm[2] ? { w: parseInt(mm[1], 10), h: parseInt(mm[2], 10) } : null);
+    });
+    ff.on('error', () => resolve(null));
+  });
+}
+
 /** Burn the marketing overlays from `inputPath` into `outputPath`. */
 export async function applyMarketingOverlays(
   inputPath: string,
@@ -103,26 +117,27 @@ export async function applyMarketingOverlays(
   width = 1920,
   height = 1080,
 ): Promise<OverlayResult> {
-  const png = await renderOverlayPng(m, width, height);
-  if (!png) return { ok: false, error: 'no overlay content supplied' };
   const bin = ffmpegStatic as unknown as string | null;
   if (!bin) return { ok: false, error: 'ffmpeg-static binary missing' };
+
+  // Render the overlay PNG at the ACTUAL video size (probed) so a plain overlay aligns
+  // pixel-perfectly — this avoids scale2ref, which drops the video stream on some
+  // ffmpeg-static (Linux) builds while working on others (Mac).
+  const dims = (await probeDimensions(bin, inputPath)) ?? { w: width, h: height };
+  const png = await renderOverlayPng(m, dims.w, dims.h);
+  if (!png) return { ok: false, error: 'no overlay content supplied' };
 
   const dir = await mkdtemp(join(tmpdir(), 'ovl-'));
   const pngPath = join(dir, 'overlay.png');
   await writeFile(pngPath, png);
   try {
     return await new Promise<OverlayResult>((resolve) => {
-      // Scale the overlay PNG to the real video size, then composite. scale2ref + overlay
-      // are core ffmpeg filters (no libfreetype) so this runs on Vercel's ffmpeg-static.
-      const filter =
-        '[1:v][0:v]scale2ref=w=iw:h=ih[ov0][vid];' +
-        '[vid][ov0]overlay=0:0:format=auto[vout]';
+      // Plain overlay — the most universal ffmpeg filter, present in every build.
       const args = [
         '-y',
         '-i', inputPath,
         '-i', pngPath,
-        '-filter_complex', filter,
+        '-filter_complex', '[0:v][1:v]overlay=0:0:format=auto[vout]',
         '-map', '[vout]',
         '-map', '0:a?',
         '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-pix_fmt', 'yuv420p',
