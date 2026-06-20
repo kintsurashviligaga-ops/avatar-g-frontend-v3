@@ -83,11 +83,11 @@ export function buildOverlaySvg(m: MarketingOverlay, w: number, h: number): stri
     els.push(`<text x="${s(44)}" y="${s(126) + i * s(50)}" font-size="${s(26)}" font-family="Noto Sans" fill="#ffffff">•  ${esc(sp)}</text>`);
   });
 
-  // CTA pill — bottom-right.
+  // CTA pill — centred, lifted clear ABOVE the lower-third so it never overlaps (any aspect).
   if (m.cta) {
     const cw = s(50) + textW(m.cta, s(34));
-    const x = w - cw - s(40);
-    const y = h - s(112);
+    const x = Math.round((w - cw) / 2);
+    const y = h - s(300);
     els.push(`<rect x="${x}" y="${y}" width="${cw}" height="${s(62)}" rx="${s(31)}" fill="#ffffff" fill-opacity="0.96"/>`);
     els.push(`<text x="${x + s(26)}" y="${y + s(42)}" font-size="${s(34)}" font-family="Noto Sans" fill="#000000">${esc(m.cta)}</text>`);
   }
