@@ -7,11 +7,26 @@
 import 'server-only';
 import { spawn } from 'child_process';
 import { mkdtemp, writeFile, rm } from 'fs/promises';
+import { existsSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import ffmpegStatic from 'ffmpeg-static';
-import sharp from 'sharp';
+import { Resvg } from '@resvg/resvg-js';
 import { NOTO_SANS_B64 } from './font-data';
+
+// Font passed to resvg EXPLICITLY as a buffer — Vercel's librsvg ignores @font-face data
+// URIs (renders tofu), but resvg honours an explicit font buffer identically everywhere.
+const FONT_BUFFER = Buffer.from(NOTO_SANS_B64, 'base64');
+
+let cachedFontFile: string | null = null;
+/** Materialize the embedded font to /tmp once → return its path for resvg's fontFiles. */
+function overlayFontFile(): string {
+  if (cachedFontFile && existsSync(cachedFontFile)) return cachedFontFile;
+  const p = join(tmpdir(), 'overlay-noto-sans.ttf');
+  if (!existsSync(p)) writeFileSync(p, FONT_BUFFER);
+  cachedFontFile = p;
+  return p;
+}
 
 export interface MarketingOverlay {
   overlayText?: string;
@@ -49,10 +64,10 @@ export function buildOverlaySvg(m: MarketingOverlay, w: number, h: number): stri
     const y = h - s(154);
     const bw = Math.min(Math.round(w * 0.62), s(40) + textW(m.overlayText, s(44)) + s(40));
     els.push(`<rect x="${s(40)}" y="${y}" width="${bw}" height="${s(100)}" rx="${s(14)}" fill="#000000" fill-opacity="0.58"/>`);
-    els.push(`<text x="${s(64)}" y="${y + s(58)}" font-size="${s(44)}" font-family="NotoX" fill="#ffffff">${esc(m.overlayText)}</text>`);
-    if (m.website) els.push(`<text x="${s(66)}" y="${y + s(88)}" font-size="${s(22)}" font-family="NotoX" fill="${ACCENT}">${esc(m.website)}</text>`);
+    els.push(`<text x="${s(64)}" y="${y + s(58)}" font-size="${s(44)}" font-family="Noto Sans" fill="#ffffff">${esc(m.overlayText)}</text>`);
+    if (m.website) els.push(`<text x="${s(66)}" y="${y + s(88)}" font-size="${s(22)}" font-family="Noto Sans" fill="${ACCENT}">${esc(m.website)}</text>`);
   } else if (m.website) {
-    els.push(`<text x="${s(48)}" y="${h - s(56)}" font-size="${s(26)}" font-family="NotoX" fill="${ACCENT}">${esc(m.website)}</text>`);
+    els.push(`<text x="${s(48)}" y="${h - s(56)}" font-size="${s(26)}" font-family="Noto Sans" fill="${ACCENT}">${esc(m.website)}</text>`);
   }
 
   // Price chip — top-right.
@@ -60,12 +75,12 @@ export function buildOverlaySvg(m: MarketingOverlay, w: number, h: number): stri
     const cw = s(40) + textW(m.priceTag, s(40));
     const x = w - cw - s(40);
     els.push(`<rect x="${x}" y="${s(40)}" width="${cw}" height="${s(70)}" rx="${s(14)}" fill="${ACCENT}"/>`);
-    els.push(`<text x="${x + s(22)}" y="${s(40) + s(48)}" font-size="${s(40)}" font-family="NotoX" fill="#000000">${esc(m.priceTag)}</text>`);
+    els.push(`<text x="${x + s(22)}" y="${s(40) + s(48)}" font-size="${s(40)}" font-family="Noto Sans" fill="#000000">${esc(m.priceTag)}</text>`);
   }
 
   // Spec bullets — top-left.
   (m.specs ?? []).slice(0, 3).forEach((sp, i) => {
-    els.push(`<text x="${s(44)}" y="${s(126) + i * s(50)}" font-size="${s(26)}" font-family="NotoX" fill="#ffffff">•  ${esc(sp)}</text>`);
+    els.push(`<text x="${s(44)}" y="${s(126) + i * s(50)}" font-size="${s(26)}" font-family="Noto Sans" fill="#ffffff">•  ${esc(sp)}</text>`);
   });
 
   // CTA pill — bottom-right.
@@ -74,17 +89,20 @@ export function buildOverlaySvg(m: MarketingOverlay, w: number, h: number): stri
     const x = w - cw - s(40);
     const y = h - s(112);
     els.push(`<rect x="${x}" y="${y}" width="${cw}" height="${s(62)}" rx="${s(31)}" fill="#ffffff" fill-opacity="0.96"/>`);
-    els.push(`<text x="${x + s(26)}" y="${y + s(42)}" font-size="${s(34)}" font-family="NotoX" fill="#000000">${esc(m.cta)}</text>`);
+    els.push(`<text x="${x + s(26)}" y="${y + s(42)}" font-size="${s(34)}" font-family="Noto Sans" fill="#000000">${esc(m.cta)}</text>`);
   }
 
-  return `<svg width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg"><defs><style>@font-face{font-family:'NotoX';src:url(data:font/ttf;base64,${NOTO_SANS_B64});}text{font-family:'NotoX';}</style></defs>${els.join('')}</svg>`;
+  return `<svg width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg">${els.join('')}</svg>`;
 }
 
 /** Render the overlay layer to a transparent PNG (sharp + librsvg), or null if empty. */
 export async function renderOverlayPng(m: MarketingOverlay, w: number, h: number): Promise<Buffer | null> {
   if (!m.overlayText && !m.priceTag && !m.cta && !m.website && !(m.specs && m.specs.length)) return null;
   try {
-    return await sharp(Buffer.from(buildOverlaySvg(m, w, h))).png().toBuffer();
+    const resvg = new Resvg(buildOverlaySvg(m, w, h), {
+      font: { fontFiles: [overlayFontFile()], loadSystemFonts: false, defaultFontFamily: 'Noto Sans' },
+    });
+    return Buffer.from(resvg.render().asPng());
   } catch {
     return null;
   }
