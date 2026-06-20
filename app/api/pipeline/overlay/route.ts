@@ -19,7 +19,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'forbidden' }, { status: 403 });
   }
 
-  let body: { videoUrl?: unknown; marketing?: unknown; durationSec?: unknown };
+  let body: { videoUrl?: unknown; marketing?: unknown; width?: unknown; height?: unknown };
   try {
     body = (await req.json()) as typeof body;
   } catch {
@@ -28,7 +28,8 @@ export async function POST(req: NextRequest) {
   const videoUrl = typeof body.videoUrl === 'string' ? body.videoUrl : '';
   if (!videoUrl) return NextResponse.json({ error: 'videoUrl required' }, { status: 400 });
   const marketing = (body.marketing && typeof body.marketing === 'object' ? body.marketing : {}) as MarketingOverlay;
-  const durationSec = typeof body.durationSec === 'number' ? body.durationSec : 30;
+  const width = typeof body.width === 'number' && body.width > 0 ? Math.round(body.width) : 1920;
+  const height = typeof body.height === 'number' && body.height > 0 ? Math.round(body.height) : 1080;
 
   const dir = await mkdtemp(join(tmpdir(), 'overlay-'));
   const inPath = join(dir, 'in.mp4');
@@ -38,9 +39,9 @@ export async function POST(req: NextRequest) {
     if (!r.ok) return NextResponse.json({ ok: false, error: `fetch video ${r.status}` }, { status: 502 });
     await writeFile(inPath, Buffer.from(await r.arrayBuffer()));
 
-    const ov = await applyMarketingOverlays(inPath, outPath, marketing, durationSec);
+    const ov = await applyMarketingOverlays(inPath, outPath, marketing, width, height);
     if (!ov.ok) {
-      return NextResponse.json({ ok: false, error: ov.error, fontExists: ov.fontExists, fontPath: ov.fontPath }, { status: 502 });
+      return NextResponse.json({ ok: false, error: ov.error }, { status: 502 });
     }
 
     const out = await readFile(outPath);

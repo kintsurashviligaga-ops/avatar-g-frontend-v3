@@ -44,7 +44,7 @@ const nextConfig = {
     // ffmpeg-static ships a native binary — don't let webpack bundle it; load it
     // from node_modules at runtime and force-trace it into the assemble lambda
     // so the CPU FFmpeg fallback (Option B) has its binary in production.
-    serverComponentsExternalPackages: ['ffmpeg-static'],
+    serverComponentsExternalPackages: ['ffmpeg-static', 'sharp'],
     outputFileTracingIncludes: {
       '/api/video/assemble': ['./node_modules/ffmpeg-static/**'],
       '/api/orchestrator/produce': ['./node_modules/ffmpeg-static/**'],
@@ -58,9 +58,9 @@ const nextConfig = {
       // /var/task has no supabase/migrations/*.sql (ENOENT on POST). Force-trace
       // both migration dirs so the turnkey `run-migration` curl works in prod.
       '/api/admin/run-migration': ['./supabase/migrations/**', './migrations/**'],
-      // B2B marketing overlays: ffmpeg-static binary + the bundled drawtext font ride
-      // along so the lambda can burn animated lower-thirds/price/CTA over the film.
-      '/api/pipeline/overlay': ['./node_modules/ffmpeg-static/**', './lib/pipeline/compositing/*.ttf'],
+      // B2B marketing overlays: ffmpeg-static binary + sharp (SVG→PNG renderer + its native
+      // libvips/@img bins) ride along so the lambda renders the overlay PNG and composites it.
+      '/api/pipeline/overlay': ['./node_modules/ffmpeg-static/**', './node_modules/sharp/**', './node_modules/@img/**'],
     },
   },
   eslint: {

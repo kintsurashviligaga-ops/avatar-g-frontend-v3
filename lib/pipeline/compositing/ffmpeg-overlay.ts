@@ -1,113 +1,98 @@
-// Master Prompt §7.1 — B2B marketing overlays via FFmpeg drawtext (the pragmatic, no-
-// Chromium alternative to Remotion). Builds an animated overlay layer — sliding lower-third
-// (title + website), a price-tag chip, a spec list, and a late CTA pill — as a single
-// filter_complex, then burns it over the finished film. All expression/text values are
-// SINGLE-QUOTED so commas inside expressions are literal, not filtergraph separators.
+// Master Prompt §7.1 — B2B marketing overlays. Vercel's ffmpeg-static is built WITHOUT
+// libfreetype, so the `drawtext` filter does not exist there. Instead we render the overlay
+// layer as an SVG→PNG via sharp (which bundles its own librsvg and honours an embedded
+// @font-face, so it is identical local↔Vercel), then composite it with ffmpeg's UNIVERSAL
+// scale2ref + fade + overlay filters (no external libs). Result: a premium, faded-in
+// lower-third / price chip / spec bullets / CTA pill burned over the finished film.
 import 'server-only';
 import { spawn } from 'child_process';
-import { existsSync, writeFileSync } from 'fs';
-import { join } from 'path';
+import { mkdtemp, writeFile, rm } from 'fs/promises';
 import { tmpdir } from 'os';
+import { join } from 'path';
 import ffmpegStatic from 'ffmpeg-static';
+import sharp from 'sharp';
 import { NOTO_SANS_B64 } from './font-data';
 
-// Traced copy (next.config outputFileTracingIncludes) — kept as a fallback only.
-export const OVERLAY_FONT_PATH = join(process.cwd(), 'lib/pipeline/compositing/NotoSans-Regular.ttf');
-
-let cachedFontPath: string | null = null;
-/**
- * Materialize the base64-embedded font to /tmp once and return its path. This is
- * bundle-independent — the font ships inside the JS, so it works even when Vercel's file
- * tracing doesn't carry the .ttf into the lambda. Falls back to the traced copy on error.
- */
-export function ensureOverlayFont(): string {
-  if (cachedFontPath && existsSync(cachedFontPath)) return cachedFontPath;
-  const p = join(tmpdir(), 'myavatar-noto-sans.ttf');
-  try {
-    if (!existsSync(p)) writeFileSync(p, Buffer.from(NOTO_SANS_B64, 'base64'));
-    cachedFontPath = p;
-    return p;
-  } catch {
-    return OVERLAY_FONT_PATH;
-  }
-}
-
 export interface MarketingOverlay {
-  overlayText?: string; // lower-third title
-  priceTag?: string; // chip, top-right
-  cta?: string; // pill, last 6s
-  website?: string; // under the title
-  specs?: string[]; // up to 3 bullet lines, top-left
+  overlayText?: string;
+  priceTag?: string;
+  cta?: string;
+  website?: string;
+  specs?: string[];
 }
 
-const ACCENT = '0x00D2FF'; // brand cyan
+const ACCENT = '#00D2FF';
 
-/** Escape chars that break a drawtext value. `:` separates options (even inside single
- *  quotes — verified live), so it MUST be backslash-escaped; commas inside single quotes
- *  are already literal. `'` → typographic apostrophe (can't sit inside single quotes). */
-function escText(s: string): string {
+/** XML-escape an SVG text value. */
+function esc(s: string): string {
   return s
-    .replace(/\\/g, '')
-    .replace(/'/g, '’')
-    .replace(/:/g, '\\:')
-    .replace(/%/g, '\\%')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
     .replace(/\n/g, ' ')
-    .slice(0, 120);
+    .slice(0, 140);
 }
 
-/** 0→1 ease progress over `dur` seconds starting at `start` (kept inside single quotes). */
-function prog(start: number, dur = 0.5): string {
-  return `min(max((t-${start})/${dur},0),1)`;
+/** Approx text width in px for chip sizing (NotoSans averages ~0.54em). */
+function textW(s: string, fontPx: number): number {
+  return Math.round(s.length * fontPx * 0.56);
 }
 
-/**
- * Build the drawtext filter_complex chain, or null if there's nothing to draw.
- * PURE + deterministic → unit/locally testable without spawning ffmpeg.
- */
-export function buildOverlayFilter(m: MarketingOverlay, durationSec: number, fontPath: string = OVERLAY_FONT_PATH): string | null {
-  const ff = fontPath.replace(/\\/g, '/');
-  const parts: string[] = [];
+/** Build the full overlay SVG, scaled to the target video w×h (positions adapt to aspect). */
+export function buildOverlaySvg(m: MarketingOverlay, w: number, h: number): string {
+  const s = (px: number) => Math.round(px * (h / 1080)); // scale to height
+  const els: string[] = [];
 
+  // Lower-third — title + website, bottom-left.
   if (m.overlayText) {
-    // Sliding lower-third title (box slides in with the text).
-    parts.push(
-      `drawtext=fontfile='${ff}':text='${escText(m.overlayText)}':fontsize=46:fontcolor=white:box=1:boxcolor=black@0.58:boxborderw=18:x='48-(1-${prog(0.4)})*560':y=h-160:enable='gte(t,0.4)'`,
-    );
-  }
-  if (m.website) {
-    parts.push(
-      `drawtext=fontfile='${ff}':text='${escText(m.website)}':fontsize=23:fontcolor=${ACCENT}:x='52-(1-${prog(0.55)})*560':y=h-98:enable='gte(t,0.55)'`,
-    );
-  }
-  if (m.priceTag) {
-    // Price chip drops in from above, top-right.
-    parts.push(
-      `drawtext=fontfile='${ff}':text='${escText(m.priceTag)}':fontsize=42:fontcolor=black:box=1:boxcolor=${ACCENT}@0.92:boxborderw=16:x=w-tw-52:y='-70+${prog(0.7)}*116':enable='gte(t,0.7)'`,
-    );
-  }
-  (m.specs ?? []).slice(0, 3).forEach((s, i) => {
-    const st = (1.0 + i * 0.18).toFixed(2);
-    parts.push(
-      `drawtext=fontfile='${ff}':text='${escText('•  ' + s)}':fontsize=25:fontcolor=white:box=1:boxcolor=black@0.42:boxborderw=11:x='48-(1-${prog(Number(st))})*560':y=${128 + i * 50}:enable='gte(t,${st})'`,
-    );
-  });
-  if (m.cta) {
-    // CTA pill rises up in the final 6 seconds, centred above the lower-third.
-    const c = Math.max(0.6, durationSec - 6).toFixed(2);
-    parts.push(
-      `drawtext=fontfile='${ff}':text='${escText(m.cta)}':fontsize=40:fontcolor=black:box=1:boxcolor=white@0.96:boxborderw=24:x=(w-tw)/2:y='h-300+(1-${prog(Number(c))})*150':enable='gte(t,${c})'`,
-    );
+    const y = h - s(154);
+    const bw = Math.min(Math.round(w * 0.62), s(40) + textW(m.overlayText, s(44)) + s(40));
+    els.push(`<rect x="${s(40)}" y="${y}" width="${bw}" height="${s(100)}" rx="${s(14)}" fill="#000000" fill-opacity="0.58"/>`);
+    els.push(`<text x="${s(64)}" y="${y + s(58)}" font-size="${s(44)}" font-family="NotoX" fill="#ffffff">${esc(m.overlayText)}</text>`);
+    if (m.website) els.push(`<text x="${s(66)}" y="${y + s(88)}" font-size="${s(22)}" font-family="NotoX" fill="${ACCENT}">${esc(m.website)}</text>`);
+  } else if (m.website) {
+    els.push(`<text x="${s(48)}" y="${h - s(56)}" font-size="${s(26)}" font-family="NotoX" fill="${ACCENT}">${esc(m.website)}</text>`);
   }
 
-  if (parts.length === 0) return null;
-  return `[0:v]${parts.join(',')}[vout]`;
+  // Price chip — top-right.
+  if (m.priceTag) {
+    const cw = s(40) + textW(m.priceTag, s(40));
+    const x = w - cw - s(40);
+    els.push(`<rect x="${x}" y="${s(40)}" width="${cw}" height="${s(70)}" rx="${s(14)}" fill="${ACCENT}"/>`);
+    els.push(`<text x="${x + s(22)}" y="${s(40) + s(48)}" font-size="${s(40)}" font-family="NotoX" fill="#000000">${esc(m.priceTag)}</text>`);
+  }
+
+  // Spec bullets — top-left.
+  (m.specs ?? []).slice(0, 3).forEach((sp, i) => {
+    els.push(`<text x="${s(44)}" y="${s(126) + i * s(50)}" font-size="${s(26)}" font-family="NotoX" fill="#ffffff">•  ${esc(sp)}</text>`);
+  });
+
+  // CTA pill — bottom-right.
+  if (m.cta) {
+    const cw = s(50) + textW(m.cta, s(34));
+    const x = w - cw - s(40);
+    const y = h - s(112);
+    els.push(`<rect x="${x}" y="${y}" width="${cw}" height="${s(62)}" rx="${s(31)}" fill="#ffffff" fill-opacity="0.96"/>`);
+    els.push(`<text x="${x + s(26)}" y="${y + s(42)}" font-size="${s(34)}" font-family="NotoX" fill="#000000">${esc(m.cta)}</text>`);
+  }
+
+  return `<svg width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg"><defs><style>@font-face{font-family:'NotoX';src:url(data:font/ttf;base64,${NOTO_SANS_B64});}text{font-family:'NotoX';}</style></defs>${els.join('')}</svg>`;
+}
+
+/** Render the overlay layer to a transparent PNG (sharp + librsvg), or null if empty. */
+export async function renderOverlayPng(m: MarketingOverlay, w: number, h: number): Promise<Buffer | null> {
+  if (!m.overlayText && !m.priceTag && !m.cta && !m.website && !(m.specs && m.specs.length)) return null;
+  try {
+    return await sharp(Buffer.from(buildOverlaySvg(m, w, h))).png().toBuffer();
+  } catch {
+    return null;
+  }
 }
 
 export interface OverlayResult {
   ok: boolean;
   error?: string;
-  fontExists: boolean;
-  fontPath: string;
 }
 
 /** Burn the marketing overlays from `inputPath` into `outputPath`. */
@@ -115,32 +100,43 @@ export async function applyMarketingOverlays(
   inputPath: string,
   outputPath: string,
   m: MarketingOverlay,
-  durationSec = 30,
+  width = 1920,
+  height = 1080,
 ): Promise<OverlayResult> {
-  const fontPath = ensureOverlayFont();
-  const fontExists = existsSync(fontPath);
-  const base = { fontExists, fontPath };
-  const filter = buildOverlayFilter(m, durationSec, fontPath);
-  if (!filter) return { ok: false, error: 'no overlay fields supplied', ...base };
+  const png = await renderOverlayPng(m, width, height);
+  if (!png) return { ok: false, error: 'no overlay content supplied' };
   const bin = ffmpegStatic as unknown as string | null;
-  if (!bin) return { ok: false, error: 'ffmpeg-static binary missing', ...base };
+  if (!bin) return { ok: false, error: 'ffmpeg-static binary missing' };
 
-  return new Promise<OverlayResult>((resolve) => {
-    const args = [
-      '-y',
-      '-i', inputPath,
-      '-filter_complex', filter,
-      '-map', '[vout]',
-      '-map', '0:a?',
-      '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-pix_fmt', 'yuv420p',
-      '-c:a', 'copy',
-      '-movflags', '+faststart',
-      outputPath,
-    ];
-    const ff = spawn(bin, args);
-    let stderr = '';
-    ff.stderr.on('data', (d) => { stderr += d.toString(); });
-    ff.on('close', (code) => resolve({ ok: code === 0, error: code === 0 ? undefined : stderr.slice(-600), ...base }));
-    ff.on('error', (e) => resolve({ ok: false, error: `spawn: ${e.message}`, ...base }));
-  });
+  const dir = await mkdtemp(join(tmpdir(), 'ovl-'));
+  const pngPath = join(dir, 'overlay.png');
+  await writeFile(pngPath, png);
+  try {
+    return await new Promise<OverlayResult>((resolve) => {
+      // Scale the overlay PNG to the real video size, then composite. scale2ref + overlay
+      // are core ffmpeg filters (no libfreetype) so this runs on Vercel's ffmpeg-static.
+      const filter =
+        '[1:v][0:v]scale2ref=w=iw:h=ih[ov0][vid];' +
+        '[vid][ov0]overlay=0:0:format=auto[vout]';
+      const args = [
+        '-y',
+        '-i', inputPath,
+        '-i', pngPath,
+        '-filter_complex', filter,
+        '-map', '[vout]',
+        '-map', '0:a?',
+        '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-pix_fmt', 'yuv420p',
+        '-c:a', 'copy',
+        '-movflags', '+faststart',
+        outputPath,
+      ];
+      const ff = spawn(bin, args);
+      let stderr = '';
+      ff.stderr.on('data', (d) => { stderr += d.toString(); });
+      ff.on('close', (code) => resolve({ ok: code === 0, error: code === 0 ? undefined : stderr.slice(-600) }));
+      ff.on('error', (e) => resolve({ ok: false, error: `spawn: ${e.message}` }));
+    });
+  } finally {
+    await rm(dir, { recursive: true, force: true }).catch(() => {});
+  }
 }
