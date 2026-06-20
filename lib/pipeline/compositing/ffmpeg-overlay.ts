@@ -6,12 +6,13 @@
 // lower-third / price chip / spec bullets / CTA pill burned over the finished film.
 import 'server-only';
 import { spawn } from 'child_process';
-import { mkdtemp, writeFile, rm } from 'fs/promises';
+import { mkdtemp, writeFile, readFile, rm } from 'fs/promises';
 import { existsSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import ffmpegStatic from 'ffmpeg-static';
 import { Resvg } from '@resvg/resvg-js';
+import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
 import { NOTO_SANS_B64 } from './font-data';
 
 // Font passed to resvg EXPLICITLY as a buffer — Vercel's librsvg ignores @font-face data
@@ -169,6 +170,37 @@ export async function applyMarketingOverlays(
       ff.on('close', (code) => resolve({ ok: code === 0, error: code === 0 ? undefined : stderr.slice(-600) }));
       ff.on('error', (e) => resolve({ ok: false, error: `spawn: ${e.message}` }));
     });
+  } finally {
+    await rm(dir, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
+/** True when the overlay has at least one field worth drawing. */
+export function hasOverlayContent(m: MarketingOverlay): boolean {
+  return Boolean(m.overlayText || m.priceTag || m.cta || m.website || (m.specs && m.specs.length));
+}
+
+/**
+ * Download a finished film master, burn the marketing overlays in, re-host to Supabase, and
+ * return the new URL. FAIL-OPEN: any miss → null and the caller keeps the original master.
+ * Overlays can only ever improve a B2B film, never break it.
+ */
+export async function overlayMasterUrl(videoUrl: string, m: MarketingOverlay): Promise<string | null> {
+  if (!videoUrl || !hasOverlayContent(m)) return null;
+  const dir = await mkdtemp(join(tmpdir(), 'master-ovl-'));
+  const inPath = join(dir, 'master.mp4');
+  const outPath = join(dir, 'master-overlaid.mp4');
+  try {
+    const r = await fetch(videoUrl, { signal: AbortSignal.timeout(60_000) });
+    if (!r.ok) return null;
+    await writeFile(inPath, Buffer.from(await r.arrayBuffer()));
+    const res = await applyMarketingOverlays(inPath, outPath, m); // probes the master's real dims
+    if (!res.ok) return null;
+    const out = await readFile(outPath);
+    const path = `films/overlay-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.mp4`;
+    return (await uploadAndSign('uploads', path, out.toString('base64'), 'video/mp4', 604_800)) ?? null;
+  } catch {
+    return null;
   } finally {
     await rm(dir, { recursive: true, force: true }).catch(() => {});
   }

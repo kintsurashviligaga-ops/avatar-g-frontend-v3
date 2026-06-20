@@ -30,6 +30,8 @@ import { reSignIfInternal } from '@/lib/orchestrator/storage-adapter';
 import { assembleWithFfmpeg } from '@/lib/orchestrator/ffmpeg-assembly';
 import { type QaReport } from '@/lib/orchestrator/masterQa';
 import { recordFilmAssembling, recordFilmMaster, recordFilmFailed } from '@/lib/chat/filmStatusStore';
+import { overlayMasterUrl, hasOverlayContent, type MarketingOverlay } from '@/lib/pipeline/compositing/ffmpeg-overlay';
+import { deriveMarketingFromBrief } from '@/lib/pipeline/marketing-from-brief';
 import { recordCompletedFilm } from '@/lib/orchestrator/jobs';
 import { generateMusic } from '@/lib/ai/replicate';
 
@@ -78,6 +80,9 @@ interface AssembleBody {
   /** PHASE 55 §2 — the film brief, used to compose a cohesive fallback score
    *  on Replicate MusicGen when the upstream Udio track is missing. */
   scorePrompt?: string | null;
+  /** B2B commercials only — the director's marketing copy. When present, the finished
+   *  master gets animated lower-third / price / CTA overlays burned in (fail-open). */
+  marketing?: MarketingOverlay | null;
 }
 
 export async function POST(req: NextRequest) {
@@ -320,7 +325,7 @@ export async function POST(req: NextRequest) {
 
   const bag: Record<string, unknown> = {};
   const saga = await runSaga(steps, { signal: req.signal, bag });
-  const resultUrl = typeof bag.tempUrl === 'string' ? bag.tempUrl : null;
+  let resultUrl = typeof bag.tempUrl === 'string' ? bag.tempUrl : null;
 
   if (!saga.ok) {
     // PHASE 52 TASK 4 — free the idempotency reservation the instant the job
@@ -334,6 +339,18 @@ export async function POST(req: NextRequest) {
       { error: 'assembly_failed', failedStep: saga.failedStep, message: saga.error, compensated: saga.compensatedSteps },
       { status: 502 },
     );
+  }
+
+  // B2B commercials — use the marketing copy the client passed, or AUTO-derive it from the
+  // film brief (intent classified by the director). Burn the overlays into the finished
+  // master before it is recorded/delivered. Fail-open at every step: a miss keeps the master.
+  let marketing: MarketingOverlay | null = body.marketing ?? null;
+  if (!marketing && resultUrl && typeof body.scorePrompt === 'string') {
+    marketing = await deriveMarketingFromBrief(body.scorePrompt);
+  }
+  if (resultUrl && marketing && hasOverlayContent(marketing)) {
+    const overlaid = await overlayMasterUrl(resultUrl, marketing);
+    if (overlaid) resultUrl = overlaid;
   }
 
   // PHASE 47 §1 — stamp the finished hosted master onto the unified tracker so a
