@@ -5,12 +5,32 @@
 // SINGLE-QUOTED so commas inside expressions are literal, not filtergraph separators.
 import 'server-only';
 import { spawn } from 'child_process';
-import { existsSync } from 'fs';
+import { existsSync, writeFileSync } from 'fs';
 import { join } from 'path';
+import { tmpdir } from 'os';
 import ffmpegStatic from 'ffmpeg-static';
+import { NOTO_SANS_B64 } from './font-data';
 
-// Bundled at deploy via next.config outputFileTracingIncludes. process.cwd() = project root.
+// Traced copy (next.config outputFileTracingIncludes) — kept as a fallback only.
 export const OVERLAY_FONT_PATH = join(process.cwd(), 'lib/pipeline/compositing/NotoSans-Regular.ttf');
+
+let cachedFontPath: string | null = null;
+/**
+ * Materialize the base64-embedded font to /tmp once and return its path. This is
+ * bundle-independent — the font ships inside the JS, so it works even when Vercel's file
+ * tracing doesn't carry the .ttf into the lambda. Falls back to the traced copy on error.
+ */
+export function ensureOverlayFont(): string {
+  if (cachedFontPath && existsSync(cachedFontPath)) return cachedFontPath;
+  const p = join(tmpdir(), 'myavatar-noto-sans.ttf');
+  try {
+    if (!existsSync(p)) writeFileSync(p, Buffer.from(NOTO_SANS_B64, 'base64'));
+    cachedFontPath = p;
+    return p;
+  } catch {
+    return OVERLAY_FONT_PATH;
+  }
+}
 
 export interface MarketingOverlay {
   overlayText?: string; // lower-third title
@@ -97,9 +117,10 @@ export async function applyMarketingOverlays(
   m: MarketingOverlay,
   durationSec = 30,
 ): Promise<OverlayResult> {
-  const fontExists = existsSync(OVERLAY_FONT_PATH);
-  const base = { fontExists, fontPath: OVERLAY_FONT_PATH };
-  const filter = buildOverlayFilter(m, durationSec);
+  const fontPath = ensureOverlayFont();
+  const fontExists = existsSync(fontPath);
+  const base = { fontExists, fontPath };
+  const filter = buildOverlayFilter(m, durationSec, fontPath);
   if (!filter) return { ok: false, error: 'no overlay fields supplied', ...base };
   const bin = ffmpegStatic as unknown as string | null;
   if (!bin) return { ok: false, error: 'ffmpeg-static binary missing', ...base };
