@@ -28,6 +28,8 @@ import { assembleContinuityCut, summarizeContinuity, type SceneClipRef } from '@
 import { ServiceManager } from '@/lib/chat/ServiceManager';
 import { assembleWithFfmpeg } from '@/lib/orchestrator/ffmpeg-assembly';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
+import { authedClientFromRequest } from '@/lib/supabase/server';
+import { recordCompletedFilm } from '@/lib/orchestrator/jobs';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -187,6 +189,28 @@ export async function POST(req: NextRequest): Promise<Response> {
     masterUrl = result?.url ?? null;
   } catch {
     /* assembler failed — surfaced below as success:false */
+  }
+
+  // P18 / §13 — file the remixed cut into the user's durable Library
+  // (generation_jobs), exactly like a fresh film, so the edited version shows in
+  // History instead of being lost. Best-effort + signed-in only (anonymous trials
+  // have no account to file it under); keyed by the remix session for idempotency.
+  if (masterUrl) {
+    try {
+      const { user } = await authedClientFromRequest(req);
+      if (user?.id) {
+        await recordCompletedFilm({
+          id: `remix_${stamp}`,
+          userId: user.id,
+          url: masterUrl,
+          prompt: `${originalPrompt} — ${editRequest}`.slice(0, 500),
+          orientation: 'landscape',
+          result: { url: masterUrl, kind: 'film', remix: true, summary: remix.summary },
+        });
+      }
+    } catch {
+      /* library filing is best-effort — never fails the remix response */
+    }
   }
 
   return json({

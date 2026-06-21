@@ -89,6 +89,9 @@ function LibraryCard({ item, t }: { item: LibraryItem; t: (typeof COPY)['ka'] })
   const [playing, setPlaying] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [copied, setCopied] = useState<'prompt' | 'link' | null>(null);
+  // §13 — per-tile lazy reveal: a shimmer sweep covers each thumbnail until its
+  // media actually paints, so the grid fills in progressively instead of flashing.
+  const [loaded, setLoaded] = useState(false);
 
   const flash = useCallback((which: 'prompt' | 'link') => {
     setCopied(which);
@@ -153,6 +156,7 @@ function LibraryCard({ item, t }: { item: LibraryItem; t: (typeof COPY)['ka'] })
               preload="metadata"
               playsInline
               onLoadedMetadata={(e) => setDuration(e.currentTarget.duration)}
+              onLoadedData={() => setLoaded(true)}
               onEnded={() => setPlaying(false)}
               onClick={togglePlay}
               className="h-full w-full cursor-pointer object-cover"
@@ -183,7 +187,20 @@ function LibraryCard({ item, t }: { item: LibraryItem; t: (typeof COPY)['ka'] })
         ) : (
           // image (and any other still kind)
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={item.url} alt={item.prompt ?? 'generated image'} className="h-full w-full object-cover" />
+          <img
+            src={item.url}
+            alt={item.prompt ?? 'generated image'}
+            loading="lazy"
+            onLoad={() => setLoaded(true)}
+            className={`h-full w-full object-cover transition-opacity duration-500 ${loaded ? 'opacity-100' : 'opacity-0'}`}
+          />
+        )}
+
+        {/* Shimmer sweep until the media paints (skipped for audio, which has no thumbnail) */}
+        {!loaded && !isAudio(item.kind) && (
+          <div className="pointer-events-none absolute inset-0 overflow-hidden bg-white/[0.03]">
+            <div className="absolute inset-0 animate-[tile-shimmer_1.6s_linear_infinite] bg-gradient-to-r from-transparent via-white/[0.07] to-transparent" />
+          </div>
         )}
 
         {/* Kind badge */}

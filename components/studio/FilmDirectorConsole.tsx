@@ -22,8 +22,10 @@ import {
   Loader2,
   Check,
   AlertTriangle,
+  Clock,
+  ArrowDown,
 } from 'lucide-react';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   deriveFilmRoster,
   overallFilmPct,
@@ -36,6 +38,11 @@ import type { FilmStudioProgress } from '@/lib/chat/filmStudioClient';
 
 type Loc = 'en' | 'ru' | 'ka';
 const asLoc = (l: string): Loc => (l === 'ru' || l === 'ka' ? l : 'en');
+
+const fmtClock = (sec: number): string => {
+  const s = Math.max(0, Math.round(sec));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+};
 
 const ICONS: Record<FilmAgentId, typeof Clapperboard> = {
   director: Clapperboard,
@@ -161,42 +168,90 @@ function AgentCard({ agent, loc }: { agent: FilmAgentVM; loc: Loc }) {
 }
 
 const FEED: Record<Loc, string> = { en: 'Live feed', ru: 'Лента', ka: 'ლაივ ფიდი' };
+const JUMP: Record<Loc, string> = { en: 'Jump to live', ru: 'К началу', ka: 'ლაივზე' };
 
-/** Master-Prompt §P4 — the streaming activity log terminal. Auto-scrolls to newest. */
+/**
+ * Master-Prompt §P4 — the streaming activity log terminal. Broadcast-ops chrome
+ * (traffic lights + live line count), per-line timestamps, and a polite auto-scroll
+ * that only follows the tail when the user is already pinned to the bottom — with a
+ * jump-to-live affordance when they've scrolled up to read earlier crew lines.
+ */
 function LogTerminal({ log, loc }: { log: FilmLogLine[]; loc: Loc }) {
-  const endRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [atBottom, setAtBottom] = useState(true);
+
+  const onScroll = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    setAtBottom(el.scrollHeight - el.scrollTop - el.clientHeight < 24);
+  };
+  const jumpToLive = () => {
+    const el = scrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+    setAtBottom(true);
+  };
+  // Only yank to the newest line when the user hasn't scrolled away.
   useEffect(() => {
-    endRef.current?.scrollIntoView({ block: 'end' });
-  }, [log.length]);
+    if (atBottom && scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+  }, [log.length, atBottom]);
+
   if (!log.length) return null;
   return (
-    <div>
-      <p className="mb-1 flex items-center gap-1.5 text-[9.5px] font-semibold uppercase tracking-wider text-app-muted/70">
-        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-500" />
-        {FEED[loc]}
-      </p>
-      <div className="max-h-[120px] overflow-y-auto rounded-lg border border-app-border/12 bg-black/25 p-2">
+    <div className="relative">
+      {/* terminal chrome — traffic lights + label + live line count */}
+      <div className="flex items-center gap-1.5 rounded-t-lg border border-b-0 border-app-border/12 bg-black/35 px-2.5 py-1">
+        <span className="h-2 w-2 rounded-full bg-red-500/70" />
+        <span className="h-2 w-2 rounded-full bg-amber-400/70" />
+        <span className="h-2 w-2 rounded-full bg-emerald-500/70" />
+        <span className="ml-1.5 flex items-center gap-1 text-[9.5px] font-semibold uppercase tracking-wider text-app-muted/70">
+          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-500" />
+          {FEED[loc]}
+        </span>
+        <span className="ml-auto font-mono text-[9.5px] tabular-nums text-app-muted/60">{log.length}</span>
+      </div>
+      <div
+        ref={scrollRef}
+        onScroll={onScroll}
+        className="max-h-[124px] overflow-y-auto rounded-b-lg border border-app-border/12 bg-black/25 p-2"
+      >
         <div className="space-y-0.5 font-mono">
           {log.map((l) => (
             <div key={l.key} className="flex items-start gap-1.5 text-[10.5px] leading-snug">
+              {typeof l.ts === 'number' ? (
+                <span className="shrink-0 tabular-nums text-app-muted/45">{fmtClock(l.ts)}</span>
+              ) : null}
               <span className="shrink-0">{l.icon}</span>
               <span className="text-app-text/85">{l.text}</span>
             </div>
           ))}
-          <div ref={endRef} className="flex items-center pt-0.5">
+          <div className="flex items-center pt-0.5">
             <span className="inline-block h-2.5 w-1.5 animate-pulse bg-app-accent/70" />
           </div>
         </div>
       </div>
+      {!atBottom ? (
+        <button
+          type="button"
+          onClick={jumpToLive}
+          className="absolute bottom-2 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-full border border-app-border/20 bg-app-elevated px-2 py-0.5 text-[10px] font-medium text-app-text shadow-md"
+        >
+          <ArrowDown size={11} /> {JUMP[loc]}
+        </button>
+      ) : null}
     </div>
   );
 }
+
+const ELAPSED: Record<Loc, string> = { en: 'elapsed', ru: 'прошло', ka: 'გავიდა' };
+const LEFT: Record<Loc, string> = { en: 'left', ru: 'осталось', ka: 'დარჩა' };
 
 export default function FilmDirectorConsole({
   roster,
   progress,
   log,
   statusText,
+  elapsed,
+  targetSec,
   locale,
 }: {
   /** Pre-derived roster from the live message; falls back to deriving from `progress`. */
@@ -205,12 +260,22 @@ export default function FilmDirectorConsole({
   /** Accumulated activity-log lines (Master-Prompt §P4). */
   log?: FilmLogLine[];
   statusText?: string;
+  /** Seconds since the render started — drives the header MM:SS clock. */
+  elapsed?: number;
+  /** Eased wall-clock target (s) for this render — drives the coarse ETA readout. */
+  targetSec?: number;
   locale: string;
 }) {
   const loc = asLoc(locale);
   const list = roster && roster.length ? roster : deriveFilmRoster(progress ?? null);
   const pct = overallFilmPct(list);
   const anyWorking = list.some((a) => a.status === 'processing');
+  const allDone = list.filter((a) => a.status !== 'idle').every((a) => a.status === 'completed');
+  // Coarse ETA from the eased render target (consistent with GenerationProgress);
+  // never shown once the crew has finished.
+  const remaining = typeof targetSec === 'number' && typeof elapsed === 'number' && !allDone
+    ? Math.max(0, targetSec - elapsed)
+    : null;
 
   return (
     <div className="w-[min(88vw,460px)] space-y-3 rounded-2xl border border-app-border/15 bg-app-elevated/55 p-4 shadow-[0_12px_40px_rgba(0,0,0,0.24)]">
@@ -226,9 +291,22 @@ export default function FilmDirectorConsole({
             <p className="text-[10px] font-medium uppercase tracking-wider text-app-muted/70">{SUBTITLE[loc]}</p>
           </div>
         </div>
-        <div className="flex items-baseline gap-0.5">
-          <span className="text-[26px] font-bold leading-none tabular-nums text-app-text">{pct}</span>
-          <span className="text-[13px] font-semibold text-app-muted">%</span>
+        <div className="flex items-end gap-3">
+          {typeof elapsed === 'number' ? (
+            <div className="text-right leading-tight">
+              <p className="flex items-center justify-end gap-1 text-[13px] font-semibold tabular-nums text-app-text">
+                <Clock size={11} className="text-app-muted" />
+                {fmtClock(elapsed)}
+              </p>
+              <p className="text-[9px] uppercase tracking-wider text-app-muted/60">
+                {remaining !== null && remaining > 0 ? `~${fmtClock(remaining)} ${LEFT[loc]}` : ELAPSED[loc]}
+              </p>
+            </div>
+          ) : null}
+          <div className="flex items-baseline gap-0.5">
+            <span className="text-[26px] font-bold leading-none tabular-nums text-app-text">{pct}</span>
+            <span className="text-[13px] font-semibold text-app-muted">%</span>
+          </div>
         </div>
       </div>
 

@@ -169,6 +169,8 @@ export interface FilmLogLine {
   key: string;
   icon: string;
   text: string;
+  /** Elapsed seconds when this line FIRST appeared (stamped by the caller on merge). */
+  ts?: number;
 }
 
 /**

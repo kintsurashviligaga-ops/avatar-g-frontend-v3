@@ -360,7 +360,7 @@ type RegenSpec = ImageRegenSpec | MusicRegenSpec;
 // fills in independently as its own parallel generation lands.
 interface BatchTile { status: 'pending' | 'done' | 'failed'; url?: string }
 interface ImageBatch { spec: ImageRegenSpec; tiles: BatchTile[] }
-interface Msg { role: 'user' | 'assistant'; text: string; medias?: Media[]; imageUrl?: string; audioUrl?: string; coverUrl?: string; videoUrl?: string; videoProgress?: number; storyboard?: { ordinal: number; beat?: string; frameUrl: string | null }[]; filmRoster?: FilmAgentVM[]; filmLog?: FilmLogLine[]; regen?: RegenSpec; batch?: ImageBatch }
+interface Msg { role: 'user' | 'assistant'; text: string; medias?: Media[]; imageUrl?: string; audioUrl?: string; coverUrl?: string; videoUrl?: string; videoProgress?: number; storyboard?: { ordinal: number; beat?: string; frameUrl: string | null }[]; filmRoster?: FilmAgentVM[]; filmLog?: FilmLogLine[]; genKind?: 'image' | 'music' | 'video' | 'lipsync'; regen?: RegenSpec; batch?: ImageBatch }
 
 // Up to this many files/images (or one video) can ride along with a single message.
 const MAX_ATTACHMENTS = 5;
@@ -797,7 +797,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     // Keep the approved storyboard frames VISIBLE in the bubble while the film
     // renders (~7 min), so the preview shows every scene + the live progress —
     // the storyboard no longer just disappears on "Generate Video".
-    setMessages((prev) => [...prev, { role: 'assistant', text: t.generatingVideo, ...(storyboardScenes?.length ? { storyboard: storyboardScenes } : {}) }]);
+    setMessages((prev) => [...prev, { role: 'assistant', text: t.generatingVideo, genKind: 'video', ...(storyboardScenes?.length ? { storyboard: storyboardScenes } : {}) }]);
     setBusy(true);
     try {
       const res = await driveFilmStudio({
@@ -833,12 +833,19 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           // Director's Console renders real per-agent state and a streaming feed
           // (not a fake timer) right in the bubble.
           const roster = deriveFilmRoster(p);
-          const filmLog = deriveFilmLog(p, locale);
+          const freshLog = deriveFilmLog(p, locale);
+          const nowElapsed = Math.max(0, Math.round((Date.now() - genStartRef.current) / 1000));
           setMessages((prev) => {
             if (!mine()) return prev;
             const next = [...prev];
             const last = next[next.length - 1];
-            if (last && last.role === 'assistant' && !last.videoUrl) next[next.length - 1] = { ...last, text: status, videoProgress: pct, filmRoster: roster, filmLog };
+            if (last && last.role === 'assistant' && !last.videoUrl) {
+              // Stamp each log line with the elapsed seconds it FIRST appeared, so the
+              // terminal can show per-line timestamps without re-stamping on each tick.
+              const prevByKey = new Map((last.filmLog ?? []).map((l) => [l.key, l]));
+              const filmLog = freshLog.map((l) => prevByKey.get(l.key) ?? { ...l, ts: nowElapsed });
+              next[next.length - 1] = { ...last, text: status, videoProgress: pct, filmRoster: roster, filmLog };
+            }
             return next;
           });
         },
@@ -1954,7 +1961,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                   // Pace the image bar to the chosen resolution (1K ≈ 40s · 2K ≈
                   // 170s · 4K ≈ 220s) so it doesn't sit at 95% looking stuck.
                   const imgTarget = imgQuality === 'standard' ? 42 : imgQuality === 'high' ? 170 : 215;
-                  const kind: 'image' | 'music' | 'video' | 'lipsync' = (m.storyboard?.length ?? 0) > 0 ? 'video' : (mode as 'image' | 'music' | 'video' | 'lipsync');
+                  // Prefer the kind stamped on the message at render-start (intrinsic),
+                  // so a mid-render mode switch can't swap the wrong progress UI in.
+                  const kind: 'image' | 'music' | 'video' | 'lipsync' = m.genKind ?? ((m.storyboard?.length ?? 0) > 0 ? 'video' : (mode as 'image' | 'music' | 'video' | 'lipsync'));
                   return (
                     <div className="space-y-3">
                       {/* Keep the storyboard frames in view during the ~7-min render. */}
@@ -1976,7 +1985,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                       {kind === 'video' ? (
                         // The Master-Prompt Director's Console — the 9-agent crew,
                         // live, driven by the real film-pipeline matrix.
-                        <FilmDirectorConsole roster={m.filmRoster} log={m.filmLog} statusText={m.text} locale={locale} />
+                        <FilmDirectorConsole roster={m.filmRoster} log={m.filmLog} statusText={m.text} elapsed={elapsed} targetSec={PROGRESS_TARGET.video} locale={locale} />
                       ) : (
                         <GenerationProgress kind={kind} elapsed={elapsed} status={m.text} locale={locale} targetSec={kind === 'image' ? imgTarget : undefined} />
                       )}
