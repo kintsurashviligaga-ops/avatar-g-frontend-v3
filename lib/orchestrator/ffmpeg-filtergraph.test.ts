@@ -39,11 +39,13 @@ describe('buildFilterComplex', () => {
     expect(g.filter).toContain('vignette='); // master vignette
   });
 
-  test('voice + music → sidechain-ducked background under voice', () => {
+  test('voice + music → narration-forward: lifted voice, lowered + hard-ducked bed', () => {
     const g = buildFilterComplex({ nClips: 2, hasVoice: true, hasMusic: true, hasSfx: false, fps: 24, duckPct: 30 });
     expect(g.filter).toContain('sidechaincompress');
-    expect(g.filter).toContain('ratio=7'); // 30% → round(2 + 0.3*18) = 7
+    expect(g.filter).toContain('ratio=12'); // 30% → round(8 + 0.3*12) = 12 (strong duck)
     expect(g.filter).toContain('asplit=2');
+    expect(g.filter).toContain('volume=1.25'); // voice lifted on top
+    expect(g.filter).toContain('volume=0.6');  // music/SFX bed sits lower
     expect(g.amap).toBe('[aout]');
   });
 
@@ -86,9 +88,9 @@ describe('buildFilterComplex', () => {
     expect(g.filter).not.toContain('apad');
   });
 
-  test('duck 0% → minimal sidechain ratio (≈no ducking)', () => {
+  test('duck 0% → floor sidechain ratio still keeps the narration on top', () => {
     const g = buildFilterComplex({ nClips: 2, hasVoice: true, hasMusic: true, hasSfx: false, fps: 24, duckPct: 0 });
-    expect(g.filter).toContain('ratio=2'); // 0% → round(2 + 0) = 2
+    expect(g.filter).toContain('ratio=8'); // 0% → floor 8 (narration-forward: never lets music bury the voice)
   });
 
   test('cpu path never emits minterpolate even at fps 60', () => {

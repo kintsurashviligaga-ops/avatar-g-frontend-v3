@@ -158,12 +158,17 @@ export function buildFilterComplex(opts: FilterGraphOpts): {
     } else {
       bgLabel = `[${bg[0]}:a]`;
     }
-    // True dynamic ducking: the voice keys a sidechain compressor on the
-    // music/SFX bed, dropping it (~duck dB) only while the voiceover speaks,
-    // then recovering — much cleaner than a constant volume cut.
-    const ratio = Math.max(2, Math.round(2 + duck * 18)); // 0%→2 … 100%→20
-    parts.push(`[${voiceIdx}:a]asplit=2[vkey][vmix]`);
-    parts.push(`${bgLabel}[vkey]sidechaincompress=threshold=0.05:ratio=${ratio}:attack=20:release=300[bgduck]`);
+    // NARRATION-FORWARD MIX (v329): keep the spoken voice clearly ON TOP of the
+    // score — the prior mix let the music bury the narration ("video voice not
+    // good" while the solo voice is fine). Three levers: (1) the music/SFX bed sits
+    // lower (volume 0.6); (2) it's HARD-ducked under the voice via a fast sidechain
+    // compressor (lower threshold, higher ratio, quick attack); (3) the voice is
+    // lifted a touch. loudnorm later sets the overall level + ceiling.
+    const ratio = Math.max(8, Math.round(8 + duck * 12)); // strong: 0%→8 … 100%→20
+    parts.push(`[${voiceIdx}:a]asplit=2[vkey][vraw]`);
+    parts.push(`[vraw]volume=1.25[vmix]`);
+    parts.push(`${bgLabel}volume=0.6[bglow]`);
+    parts.push(`[bglow][vkey]sidechaincompress=threshold=0.03:ratio=${ratio}:attack=5:release=250[bgduck]`);
     parts.push(`[bgduck][vmix]amix=inputs=2:normalize=0[apre]`);
     apre = '[apre]';
   } else if (voiceIdx !== null) {
