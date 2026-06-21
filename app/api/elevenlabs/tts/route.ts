@@ -6,6 +6,7 @@ import {
 } from '@/lib/audio/tts-model';
 import { extractVoiceDirectives } from '@/lib/chat/outputEnforcement';
 import { synthesizeGoogleTts } from '@/lib/audio/google-tts';
+import { synthesizeAzureGeorgian, azureTtsConfigured } from '@/lib/audio/azure-tts';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 
 export const dynamic = 'force-dynamic';
@@ -22,6 +23,8 @@ interface TtsRequest {
    *  ElevenLabs voice_settings so the read MATCHES the requested tone. Omitting
    *  it preserves the existing per-model defaults (backward compatible). */
   voiceStyle?: string;
+  /** Optional gender hint for native Georgian (Azure Eka female / Giorgi male). */
+  gender?: 'male' | 'female';
 }
 
 /**
@@ -165,6 +168,14 @@ export async function POST(req: NextRequest) {
   // ElevenLabs) when configured; otherwise the default voice. An explicit
   // body.voiceId always wins.
   const isGeorgian = body.locale === 'ka' || /[ა-ჿ]/.test(text);
+
+  // NATIVE GEORGIAN FIRST: Azure ka-GE-EkaNeural (female) / ka-GE-GiorgiNeural
+  // (male) are accent-free native Georgian voices. When an Azure key is configured
+  // they win for Georgian; otherwise we fall through to ElevenLabs eleven_v3.
+  if (isGeorgian && azureTtsConfigured()) {
+    const az = await synthesizeAzureGeorgian(text, body.gender === 'male' ? 'male' : 'female');
+    if (az) return audioResponse(az, 'azure-ka');
+  }
   // Founder-supplied Georgian voice. CRITICAL ORDER: Georgian text must pick the
   // Georgian voice BEFORE the (English) ELEVENLABS_VOICE_ID — otherwise Georgian
   // gets read by an English voice and sounds heavily accented/robotic.

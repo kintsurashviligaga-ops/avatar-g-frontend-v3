@@ -29,6 +29,7 @@ import 'server-only';
 import Anthropic from '@anthropic-ai/sdk';
 import { selectTtsModel, voiceSettingsForModel, isGeorgianText } from '@/lib/audio/tts-model';
 import { synthesizeGoogleTts, genderForPersona, type TtsGender } from '@/lib/audio/google-tts';
+import { synthesizeAzureGeorgian, azureTtsConfigured } from '@/lib/audio/azure-tts';
 import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
 
 /** Same model ladder the script agent uses, so narration matches the storyboard's voice. */
@@ -174,11 +175,22 @@ async function synthesizeVoiceover(
 ): Promise<{ base64: string; contentType: string } | null> {
   const georgian = isGeorgianText(text);
   const apiKey = process.env.ELEVENLABS_API_KEY;
-  // ElevenLabs is PRIMARY for every language, Georgian included: selectTtsModel
-  // routes Georgian to `eleven_v3`, the one ElevenLabs model that natively supports
-  // `ka` — so it reads on a real Georgian voice (natural), not the old
-  // multilingual_v2 approximation (robotic). Google Cloud TTS (native ka-GE neural)
-  // is the universal fallback for when ElevenLabs is absent/down.
+
+  // NATIVE GEORGIAN FIRST: Azure ka-GE-EkaNeural (female) / ka-GE-GiorgiNeural
+  // (male) are real Georgian voices — accent-free, human. When an Azure Speech key
+  // is configured, Georgian goes there first (gender-matched), which is the only
+  // way to a truly native ka read. ElevenLabs eleven_v3 + Google remain fallbacks.
+  if (georgian && azureTtsConfigured()) {
+    const a = await synthesizeAzureGeorgian(text, gender === 'MALE' ? 'male' : 'female');
+    if (a) {
+      const buf = Buffer.from(a);
+      if (buf.byteLength >= 512) return { base64: buf.toString('base64'), contentType: 'audio/mpeg' };
+    }
+  }
+
+  // ElevenLabs fallback: selectTtsModel routes Georgian to `eleven_v3` (the one
+  // ElevenLabs model that supports `ka`) — better than multilingual_v2, though it
+  // still carries some accent vs Azure's native voice. Primary for non-Georgian.
   if (apiKey) {
     const voiceId =
       (voiceIdOverride && voiceIdOverride.trim() ? voiceIdOverride.trim() : null) ??
