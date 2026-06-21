@@ -5,6 +5,7 @@ import {
   type ElevenLabsModelId,
 } from '@/lib/audio/tts-model';
 import { extractVoiceDirectives } from '@/lib/chat/outputEnforcement';
+import { synthesizeGoogleTts } from '@/lib/audio/google-tts';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 
 export const dynamic = 'force-dynamic';
@@ -103,40 +104,11 @@ async function streamElevenLabs(
   });
 }
 
+// Google Cloud TTS fallback — now routes through the shared helper, which picks the
+// BEST AVAILABLE neural ka-GE voice (Chirp3-HD / Neural2 / Wavenet) instead of the
+// old robotic `ka-GE-Standard-A`. Auto-detects language from the text.
 async function synthesizeWithGoogleTTS(text: string): Promise<ArrayBuffer | null> {
-  const apiKey = process.env.GEMINI_API_KEY ?? process.env.GOOGLE_GENERATIVE_AI_API_KEY ?? '';
-  if (!apiKey) return null;
-
-  const isGeorgian = /[ა-ჿ]/.test(text);
-  const isRussian = /[Ѐ-ӿ]/.test(text);
-  const languageCode = isGeorgian ? 'ka-GE' : isRussian ? 'ru-RU' : 'en-US';
-  const voiceName = isGeorgian ? 'ka-GE-Standard-A' : isRussian ? 'ru-RU-Standard-A' : 'en-US-Neural2-C';
-
-  const response = await fetch(
-    `https://texttospeech.googleapis.com/v1/text:synthesize?key=${apiKey}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        input: { text: text.slice(0, 4000) },
-        voice: { languageCode, name: voiceName },
-        audioConfig: { audioEncoding: 'MP3' },
-      }),
-    },
-  );
-
-  if (!response.ok) {
-    console.error('[elevenlabs/tts] Google TTS error', response.status);
-    return null;
-  }
-
-  const data = await response.json() as { audioContent?: string };
-  if (!data.audioContent) return null;
-
-  const binary = atob(data.audioContent);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-  return bytes.buffer;
+  return synthesizeGoogleTts(text);
 }
 
 export async function POST(req: NextRequest) {
