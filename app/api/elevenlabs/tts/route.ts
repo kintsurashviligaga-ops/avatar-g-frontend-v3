@@ -7,6 +7,7 @@ import {
 import { extractVoiceDirectives } from '@/lib/chat/outputEnforcement';
 import { synthesizeGoogleTts } from '@/lib/audio/google-tts';
 import { synthesizeAzureGeorgian, azureTtsConfigured } from '@/lib/audio/azure-tts';
+import { georgianVoiceId } from '@/lib/audio/georgian-voice';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 
 export const dynamic = 'force-dynamic';
@@ -169,17 +170,13 @@ export async function POST(req: NextRequest) {
   // body.voiceId always wins.
   const isGeorgian = body.locale === 'ka' || /[ა-ჿ]/.test(text);
 
-  // v329 — NATIVE Georgian voices CLONED (ElevenLabs IVC) from real Georgian
-  // speakers, read on eleven_v3 (the ka-capable model): female → KA_FEMALE,
-  // male → KA_MALE. Picked BEFORE the English ELEVENLABS_VOICE_ID so Georgian never
-  // gets an English voice. Env ELEVENLABS_GEORGIAN_VOICE_ID still overrides.
-  const KA_FEMALE = '9jZPhI8VfIo3Mx8pl6OF';
-  const KA_MALE = 'hYqARi31q6JpW0IjtFUt';
-  const georgianVoiceId =
-    process.env.ELEVENLABS_GEORGIAN_VOICE_ID || (body.gender === 'male' ? KA_MALE : KA_FEMALE);
+  // v329 — Georgian → the CLONED native voices (shared resolver), gender-matched,
+  // read on eleven_v3. Picked BEFORE the English ELEVENLABS_VOICE_ID so Georgian
+  // never gets an English voice. An explicit body.voiceId still wins.
+  const kaVoice = georgianVoiceId(body.gender === 'male' ? 'male' : 'female');
   const voiceId = body.voiceId
     ?? body.voice_id
-    ?? (isGeorgian ? georgianVoiceId : (process.env.ELEVENLABS_VOICE_ID ?? georgianVoiceId));
+    ?? (isGeorgian ? kaVoice : (process.env.ELEVENLABS_VOICE_ID ?? kaVoice));
 
   // v329 — Georgian routes to eleven_v3 (the only model that supports `ka`);
   // everything else keeps the low-latency turbo default.

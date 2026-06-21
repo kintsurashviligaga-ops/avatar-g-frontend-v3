@@ -30,6 +30,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { selectTtsModel, voiceSettingsForModel, isGeorgianText } from '@/lib/audio/tts-model';
 import { synthesizeGoogleTts, genderForPersona, type TtsGender } from '@/lib/audio/google-tts';
 import { synthesizeAzureGeorgian, azureTtsConfigured } from '@/lib/audio/azure-tts';
+import { KA_VOICE_MALE, KA_VOICE_FEMALE } from '@/lib/audio/georgian-voice';
 import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
 
 /** Same model ladder the script agent uses, so narration matches the storyboard's voice. */
@@ -126,15 +127,13 @@ type VoicePersona = 'male' | 'female' | 'child' | 'elder' | 'young' | 'narrator'
 // speakers supplied by the founder, read on eleven_v3 (the ka-capable model) for a
 // natural, accent-free result. Male personas → the male clone; female/child → the
 // female clone. Env (ELEVENLABS_KA_*) still overrides per-persona if ever needed.
-const KA_MALE = 'hYqARi31q6JpW0IjtFUt';
-const KA_FEMALE = '9jZPhI8VfIo3Mx8pl6OF';
 const KA_VOICE_DEFAULTS: Record<VoicePersona, string> = {
-  male: KA_MALE,
-  narrator: KA_MALE,
-  elder: KA_MALE,
-  young: KA_MALE,
-  female: KA_FEMALE,
-  child: KA_FEMALE,
+  male: KA_VOICE_MALE,
+  narrator: KA_VOICE_MALE,
+  elder: KA_VOICE_MALE,
+  young: KA_VOICE_MALE,
+  female: KA_VOICE_FEMALE,
+  child: KA_VOICE_FEMALE,
 };
 function detectPersona(brief: string): VoicePersona {
   const b = (brief || '').toLowerCase();
