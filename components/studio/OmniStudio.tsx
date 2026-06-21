@@ -957,8 +957,8 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     setStoryboardBusy(true);
     const sceneCount = Math.max(2, Math.min(6, Math.round(videoDuration / 5)));
     try {
-      // STEP 1 — fast PLAN-ONLY call: the six scenes + scripts, no frames. This
-      // returns in seconds so the board opens immediately (no long "frozen" wait).
+      // STEP 1 — fast PLAN-ONLY call: deterministic scene beats, no LLM, no frames.
+      // Returns in ~1s so the board opens immediately (no long "frozen" wait).
       const res = await fetch('/api/film/storyboard', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -987,28 +987,55 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       });
       setStoryboardBusy(false);
 
+      // STEP 2.5 — fetch the LLM story enrichment in the BACKGROUND (off the board-open
+      // hot-path). When it lands, store it so the RENDER tells the rich story; the
+      // streaming preview frames keep their deterministic prompts (still cinematic stills).
+      void (async () => {
+        try {
+          const sr = await fetch('/api/film/storyboard', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal: ac.signal,
+            body: JSON.stringify({ prompt: filmPrompt, orientation, referenceImages: [], style: videoStyle, locale, sceneCount, scriptsOnly: true }),
+          });
+          const sj = (await sr.json().catch(() => ({}))) as { sceneScripts?: string[] | null };
+          if (Array.isArray(sj.sceneScripts) && sj.sceneScripts.length) {
+            const scripts = sj.sceneScripts;
+            setStoryboard((prev) => (prev ? { ...prev, sceneScripts: scripts } : prev));
+          }
+        } catch { /* best-effort; render falls back to deterministic beats */ }
+      })();
+
       // STEP 3 — stream each frame in (concurrency 3); each tile fades in the moment
       // its own frame lands, and the N/M counter ticks up. A failed frame settles to
       // a graceful icon (removed from `pending`) — never an endless spinner.
       const fetchFrame = async (ordinal: number) => {
-        try {
-          const r = await fetch('/api/film/storyboard', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            signal: ac.signal,
-            body: JSON.stringify({ prompt: filmPrompt, orientation, referenceImages: refs, style: videoStyle, locale, sceneOrdinal: ordinal, scenePrompt: framePrompts[ordinal] }),
-          });
-          const jf = (await r.json().catch(() => ({}))) as { success?: boolean; frameUrl?: string | null };
-          const url = jf.success && typeof jf.frameUrl === 'string' ? jf.frameUrl : null;
-          setStoryboard((prev) => prev ? {
-            ...prev,
-            scenes: prev.scenes.map((s) => (s.ordinal === ordinal ? { ...s, frameUrl: url } : s)),
-            pending: (prev.pending ?? []).filter((o) => o !== ordinal),
-          } : prev);
-        } catch {
-          if (ac.signal.aborted) return;
-          setStoryboard((prev) => prev ? { ...prev, pending: (prev.pending ?? []).filter((o) => o !== ordinal) } : prev);
+        // Up to 2 attempts — a transient provider miss shouldn't leave a permanent
+        // graceful-icon gap when a quick retry would land the frame.
+        for (let attempt = 0; attempt < 2; attempt++) {
+          try {
+            const r = await fetch('/api/film/storyboard', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              credentials: 'include',
+              signal: ac.signal,
+              body: JSON.stringify({ prompt: filmPrompt, orientation, referenceImages: refs, style: videoStyle, locale, sceneOrdinal: ordinal, scenePrompt: framePrompts[ordinal] }),
+            });
+            const jf = (await r.json().catch(() => ({}))) as { success?: boolean; frameUrl?: string | null };
+            const url = jf.success && typeof jf.frameUrl === 'string' ? jf.frameUrl : null;
+            if (url || attempt === 1) {
+              setStoryboard((prev) => prev ? {
+                ...prev,
+                scenes: prev.scenes.map((s) => (s.ordinal === ordinal ? { ...s, frameUrl: url } : s)),
+                pending: (prev.pending ?? []).filter((o) => o !== ordinal),
+              } : prev);
+              return;
+            }
+          } catch {
+            if (ac.signal.aborted) return;
+            if (attempt === 1) {
+              setStoryboard((prev) => prev ? { ...prev, pending: (prev.pending ?? []).filter((o) => o !== ordinal) } : prev);
+              return;
+            }
+          }
         }
       };
       const queue = [...ordinals];

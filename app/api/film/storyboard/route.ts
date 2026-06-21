@@ -158,9 +158,14 @@ export async function POST(req: NextRequest) {
     scenePrompt?: string;
     /** How many scenes (2 → ~10s · 6 → ~30s). Clamped to [2, FILM_SCENE_COUNT]. */
     sceneCount?: number;
-    /** Plan-only: return the scenes + scripts FAST (no frames), so the client can
-     *  open the board immediately and stream each frame in via per-scene calls. */
+    /** Plan-only: return deterministic scene beats INSTANTLY (no LLM, no frames), so
+     *  the client opens the board in ~1s and streams each frame in per-scene. */
     planOnly?: boolean;
+    /** Scripts-only: run JUST the LLM Script Agent (story enrichment) and return the
+     *  per-scene scripts. The client fires this in the background after the board
+     *  opens, then threads the scripts into the render. Keeps the LLM off the
+     *  board-open hot-path. */
+    scriptsOnly?: boolean;
   };
 
   const prompt = typeof body.prompt === 'string' ? body.prompt.trim() : '';
@@ -232,37 +237,43 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: true, ordinal: sceneOrdinal, frameUrl });
   }
 
-  // Full board — enrich each scene with the LLM Script Agent so the storyboard
-  // tells the REAL story of the brief (not generic camera angles). Fail-open: a
-  // miss leaves `plan` (deterministic beats) in place. The scripts are returned so
-  // the render can reuse the EXACT same scenes the user approved.
-  const sceneScripts = (await generateSceneScripts(prompt, sceneCount)) ?? null;
-  const storyPlan = sceneScripts
-    ? planFilmScenes(prompt, { referenceImages: hostedRefs, style, orientation, sceneScripts, totalSec: sceneTotalSec })
-    : plan;
+  // SCRIPTS-ONLY — run JUST the LLM Script Agent and return the per-scene story
+  // scripts. The client fires this in the BACKGROUND after the board opens, then
+  // threads the scripts into the render, so the ~10-15s LLM call never blocks the
+  // board from appearing. Fail-open: a miss returns null (render uses deterministic).
+  if (body.scriptsOnly) {
+    const scripts = (await generateSceneScripts(prompt, sceneCount)) ?? null;
+    return NextResponse.json({ success: true, sceneScripts: scripts });
+  }
 
-  // PLAN-ONLY: return the scenes (no frames) immediately so the client can open the
-  // storyboard NOW and stream each frame in via per-scene (sceneOrdinal) calls — the
-  // user sees real "N/M scenes" progress with per-frame fade-in instead of one long
-  // blocking request that looks frozen. Each scene also carries the FULL prompt the
-  // per-scene frame call should use (the summary `prompt` is truncated for display).
+  // PLAN-ONLY (fast) — return the DETERMINISTIC scene beats IMMEDIATELY (no LLM, no
+  // frames) so the storyboard opens in ~1s; frames then stream in per-scene and the
+  // story enrichment arrives separately (scriptsOnly). Each scene carries its full
+  // frame prompt (the summary `prompt` is truncated for display).
   if (body.planOnly) {
     return NextResponse.json({
       success: true,
       sessionId,
-      seed: storyPlan.shared.seed,
+      seed: plan.shared.seed,
       orientation,
       planOnly: true,
-      scenes: storyPlan.scenes.map((s) => ({
+      scenes: plan.scenes.map((s) => ({
         ordinal: s.ordinal,
         beat: s.beat,
         prompt: s.prompt.replace(/\s+/g, ' ').slice(0, 160),
         framePrompt: s.prompt,
         frameUrl: null,
       })),
-      sceneScripts,
+      sceneScripts: null,
     });
   }
+
+  // Full board (legacy single-shot path) — enrich with the LLM Script Agent, then
+  // render all frames in one request. Fail-open: a miss leaves `plan` in place.
+  const sceneScripts = (await generateSceneScripts(prompt, sceneCount)) ?? null;
+  const storyPlan = sceneScripts
+    ? planFilmScenes(prompt, { referenceImages: hostedRefs, style, orientation, sceneScripts, totalSec: sceneTotalSec })
+    : plan;
 
   const frames = await mapWithConcurrency(storyPlan.scenes, 3, (scene) => genFrame(scene.prompt));
   // Retry any frame that failed (NanoBanana transient / rate-limit) in a second pass —
