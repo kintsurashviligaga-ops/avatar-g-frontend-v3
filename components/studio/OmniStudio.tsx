@@ -670,10 +670,16 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // Transient toast (e.g. "link copied") shown after a share falls back to clipboard.
   const [shareToast, setShareToast] = useState<string | null>(null);
   const [speakingIdx, setSpeakingIdx] = useState<number | null>(null);
+  // Read-aloud phase for the speaking bubble — 'loading' while eleven_v3 synthesises
+  // (a few seconds), 'playing' once audio starts. Drives the dynamic listen button.
+  const [speakPhase, setSpeakPhase] = useState<'loading' | 'playing' | null>(null);
   // Inline edit-&-resend of a user turn: which message is being edited + its draft.
   const [editingIdx, setEditingIdx] = useState<number | null>(null);
   const [editText, setEditText] = useState('');
   const ttsAudioRef = useRef<HTMLAudioElement | null>(null);
+  // Monotonic token so a tap that cancels (or supersedes) an in-flight read-aloud
+  // doesn't let the orphaned fetch start playing after the user moved on.
+  const ttsTokenRef = useRef(0);
   const fileRef = useRef<HTMLInputElement | null>(null);
   const recRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -1601,24 +1607,33 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       ttsAudioRef.current.pause();
       ttsAudioRef.current = null;
     }
-    if (speakingIdx === i) { setSpeakingIdx(null); return; }
+    // Tapping the active bubble (loading OR playing) stops it — bump the token so any
+    // in-flight synthesis for it is abandoned rather than auto-playing later.
+    if (speakingIdx === i) { ttsTokenRef.current++; setSpeakingIdx(null); setSpeakPhase(null); return; }
+    const token = ++ttsTokenRef.current;
+    const live = () => token === ttsTokenRef.current;
     setSpeakingIdx(i);
+    setSpeakPhase('loading'); // spinner while eleven_v3 synthesises the cloned voice
     try {
       const res = await fetch('/api/elevenlabs/tts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text: text.slice(0, 5000), locale }),
       });
-      if (!res.ok) { setSpeakingIdx((s) => (s === i ? null : s)); return; }
+      if (!live()) return; // superseded/cancelled during synthesis
+      if (!res.ok) { setSpeakingIdx(null); setSpeakPhase(null); return; }
       const url = URL.createObjectURL(await res.blob());
+      if (!live()) { URL.revokeObjectURL(url); return; }
       const audio = new Audio(url);
       ttsAudioRef.current = audio;
-      const clear = () => { setSpeakingIdx((s) => (s === i ? null : s)); URL.revokeObjectURL(url); if (ttsAudioRef.current === audio) ttsAudioRef.current = null; };
+      const clear = () => { if (live()) { setSpeakingIdx(null); setSpeakPhase(null); } URL.revokeObjectURL(url); if (ttsAudioRef.current === audio) ttsAudioRef.current = null; };
       audio.onended = clear;
       audio.onerror = clear;
       await audio.play();
+      if (live()) setSpeakPhase('playing');
+      else { audio.pause(); URL.revokeObjectURL(url); }
     } catch {
-      setSpeakingIdx((s) => (s === i ? null : s));
+      if (live()) { setSpeakingIdx(null); setSpeakPhase(null); }
       ttsAudioRef.current = null;
     }
   }, [speakingIdx, locale]);
@@ -2168,7 +2183,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                     title={locale === 'en' ? 'Read aloud' : locale === 'ru' ? 'Озвучить' : 'ხმამაღლა წაკითხვა'}
                     className={`flex h-7 w-7 items-center justify-center rounded-md transition-colors hover:bg-app-elevated hover:text-app-accent ${speakingIdx === i ? 'text-app-accent' : ''}`}
                   >
-                    {speakingIdx === i ? <Square size={13} /> : <Volume2 size={13} />}
+                    {speakingIdx === i
+                      ? (speakPhase === 'loading' ? <Loader2 size={13} className="animate-spin" /> : <Square size={13} />)
+                      : <Volume2 size={13} />}
                   </button>
                   <button
                     type="button"
