@@ -842,8 +842,12 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             if (last && last.role === 'assistant' && !last.videoUrl) {
               // Stamp each log line with the elapsed seconds it FIRST appeared, so the
               // terminal can show per-line timestamps without re-stamping on each tick.
-              const prevByKey = new Map((last.filmLog ?? []).map((l) => [l.key, l]));
-              const filmLog = freshLog.map((l) => prevByKey.get(l.key) ?? { ...l, ts: nowElapsed });
+              // Clamp to the max existing stamp so timestamps stay monotonic even when
+              // the elapsed clock re-anchors between the storyboard build and the render.
+              const prevLog = last.filmLog ?? [];
+              const prevByKey = new Map(prevLog.map((l) => [l.key, l]));
+              const stampTs = Math.max(nowElapsed, prevLog.reduce((m, l) => Math.max(m, l.ts ?? 0), 0));
+              const filmLog = freshLog.map((l) => prevByKey.get(l.key) ?? { ...l, ts: stampTs });
               next[next.length - 1] = { ...last, text: status, videoProgress: pct, filmRoster: roster, filmLog };
             }
             return next;
