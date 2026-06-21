@@ -15,6 +15,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Send, Mic, Square, Plus, X, Loader2, Sparkles, Film, Music2, FileText, Image as ImageIcon, Download, Upload, MessageSquare, Wand2, Volume2, Copy, Check, ChevronDown, RotateCcw, History, Trash2, MessageSquarePlus, Pencil, Share2, ThumbsUp, ThumbsDown } from 'lucide-react';
 import { driveFilmStudio } from '@/lib/chat/filmStudioClient';
+import FilmDirectorConsole from './FilmDirectorConsole';
+import { deriveFilmRoster, type FilmAgentVM } from '@/lib/chat/filmAgentRoster';
 import { VoiceTrainer } from '@/components/voice/VoiceTrainer';
 import { TrackPlayer } from './TrackPlayer';
 import { Markdown } from './Markdown';
@@ -358,7 +360,7 @@ type RegenSpec = ImageRegenSpec | MusicRegenSpec;
 // fills in independently as its own parallel generation lands.
 interface BatchTile { status: 'pending' | 'done' | 'failed'; url?: string }
 interface ImageBatch { spec: ImageRegenSpec; tiles: BatchTile[] }
-interface Msg { role: 'user' | 'assistant'; text: string; medias?: Media[]; imageUrl?: string; audioUrl?: string; coverUrl?: string; videoUrl?: string; videoProgress?: number; storyboard?: { ordinal: number; beat?: string; frameUrl: string | null }[]; regen?: RegenSpec; batch?: ImageBatch }
+interface Msg { role: 'user' | 'assistant'; text: string; medias?: Media[]; imageUrl?: string; audioUrl?: string; coverUrl?: string; videoUrl?: string; videoProgress?: number; storyboard?: { ordinal: number; beat?: string; frameUrl: string | null }[]; filmRoster?: FilmAgentVM[]; regen?: RegenSpec; batch?: ImageBatch }
 
 // Up to this many files/images (or one video) can ride along with a single message.
 const MAX_ATTACHMENTS = 5;
@@ -827,11 +829,14 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
               : p.phase === 'dispatching'
                 ? `✨ ${locale === 'en' ? 'Preparing the scenes' : locale === 'ru' ? 'Подготовка сцен' : 'სცენების მომზადება'}`
                 : (p.message?.trim() || t.generatingVideo);
+          // Fold the live matrix into the 9-agent roster so the Director's Console
+          // renders real per-agent state (not a fake timer) right in the bubble.
+          const roster = deriveFilmRoster(p);
           setMessages((prev) => {
             if (!mine()) return prev;
             const next = [...prev];
             const last = next[next.length - 1];
-            if (last && last.role === 'assistant' && !last.videoUrl) next[next.length - 1] = { ...last, text: status, videoProgress: pct };
+            if (last && last.role === 'assistant' && !last.videoUrl) next[next.length - 1] = { ...last, text: status, videoProgress: pct, filmRoster: roster };
             return next;
           });
         },
@@ -1966,7 +1971,13 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                           ))}
                         </div>
                       )}
-                      <GenerationProgress kind={kind} elapsed={elapsed} status={m.text} locale={locale} targetSec={kind === 'image' ? imgTarget : undefined} />
+                      {kind === 'video' ? (
+                        // The Master-Prompt Director's Console — the 9-agent crew,
+                        // live, driven by the real film-pipeline matrix.
+                        <FilmDirectorConsole roster={m.filmRoster} statusText={m.text} locale={locale} />
+                      ) : (
+                        <GenerationProgress kind={kind} elapsed={elapsed} status={m.text} locale={locale} targetSec={kind === 'image' ? imgTarget : undefined} />
+                      )}
                     </div>
                   );
                 }
