@@ -7,6 +7,7 @@ import {
 import { extractVoiceDirectives } from '@/lib/chat/outputEnforcement';
 import { synthesizeGoogleTts } from '@/lib/audio/google-tts';
 import { synthesizeAzureGeorgian, azureTtsConfigured } from '@/lib/audio/azure-tts';
+import { georgianVoiceId } from '@/lib/audio/georgian-voice';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 
 export const dynamic = 'force-dynamic';
@@ -169,28 +170,21 @@ export async function POST(req: NextRequest) {
   // body.voiceId always wins.
   const isGeorgian = body.locale === 'ka' || /[ა-ჿ]/.test(text);
 
-  // NATIVE GEORGIAN FIRST: Azure ka-GE-EkaNeural (female) / ka-GE-GiorgiNeural
-  // (male) are accent-free native Georgian voices. When an Azure key is configured
-  // they win for Georgian; otherwise we fall through to ElevenLabs eleven_v3.
-  if (isGeorgian && azureTtsConfigured()) {
-    const az = await synthesizeAzureGeorgian(text, body.gender === 'male' ? 'male' : 'female');
-    if (az) return audioResponse(az, 'azure-ka');
-  }
-  // Founder-supplied Georgian voice. CRITICAL ORDER: Georgian text must pick the
-  // Georgian voice BEFORE the (English) ELEVENLABS_VOICE_ID — otherwise Georgian
-  // gets read by an English voice and sounds heavily accented/robotic.
-  const georgianVoiceId = process.env.ELEVENLABS_GEORGIAN_VOICE_ID || 'vWpzdSR8GpLUKR0ai8Li';
+  // v329 — Georgian → the CLONED native voices (shared resolver), gender-matched,
+  // read on eleven_v3. Picked BEFORE the English ELEVENLABS_VOICE_ID so Georgian
+  // never gets an English voice. An explicit body.voiceId still wins.
+  const kaVoice = georgianVoiceId(body.gender === 'male' ? 'male' : 'female');
   const voiceId = body.voiceId
     ?? body.voice_id
-    ?? (isGeorgian ? georgianVoiceId : (process.env.ELEVENLABS_VOICE_ID ?? georgianVoiceId));
+    ?? (isGeorgian ? kaVoice : (process.env.ELEVENLABS_VOICE_ID ?? kaVoice));
 
   // v329 — Georgian routes to eleven_v3 (the only model that supports `ka`);
   // everything else keeps the low-latency turbo default.
   const modelId = selectTtsModel(text, body.locale);
 
-  // Primary: ElevenLabs. eleven_v3 is NOT reliably served by the low-latency
-  // /stream endpoint, so for v3 use the buffered endpoint directly; other models
-  // stream first (fastest time-to-first-sound) and fall back to buffered.
+  // Primary: ElevenLabs (cloned Georgian voice on eleven_v3). eleven_v3 is NOT
+  // reliably served by the low-latency /stream endpoint, so for v3 use the buffered
+  // endpoint directly; other models stream first then fall back to buffered.
   if (apiKey) {
     if (modelId !== 'eleven_v3') {
       const streamed = await streamElevenLabs(text, voiceId, apiKey, modelId, body.voiceStyle);
@@ -200,7 +194,11 @@ export async function POST(req: NextRequest) {
     if (buffered) return buffered;
   }
 
-  // Fallback: Google TTS (native ka-GE neural when a valid Google key exists)
+  // Fallbacks: Azure native ka (Eka/Giorgi) → Google ka-GE neural.
+  if (isGeorgian && azureTtsConfigured()) {
+    const az = await synthesizeAzureGeorgian(text, body.gender === 'male' ? 'male' : 'female');
+    if (az) return audioResponse(az, 'azure-ka');
+  }
   const googleAudio = await synthesizeWithGoogleTTS(text);
   if (googleAudio) return audioResponse(googleAudio, 'google-tts');
 

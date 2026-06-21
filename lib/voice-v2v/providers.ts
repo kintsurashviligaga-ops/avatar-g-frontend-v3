@@ -3,6 +3,7 @@ import 'server-only';
 import OpenAI from 'openai';
 
 import type { RealtimeVoiceLanguage } from '@/types/voice';
+import { KA_VOICE_FEMALE } from '@/lib/audio/georgian-voice';
 
 export type SttProviderName = 'openai-whisper-3-turbo' | 'deepgram-nova-2';
 export type TtsProviderName = 'elevenlabs-multilingual-v2' | 'cartesia-sonic';
@@ -327,9 +328,10 @@ export function createSemanticChunkAccumulator(minChunkChars = 64): {
 
 async function synthesizeWithElevenLabs(text: string, language: RealtimeVoiceLanguage): Promise<TtsResult> {
   const apiKey = String(process.env.ELEVENLABS_API_KEY || '').trim();
-  const georgianVoice = String(process.env.ELEVENLABS_GEORGIAN_VOICE_ID || '').trim();
+  // Georgian → the CLONED native voice (shared default) unless an env override is set.
+  const georgianVoice = String(process.env.ELEVENLABS_GEORGIAN_VOICE_ID || '').trim() || KA_VOICE_FEMALE;
   const defaultVoice = String(process.env.ELEVENLABS_VOICE_ID || '').trim();
-  const voiceId = language === 'ka-GE' ? georgianVoice || defaultVoice : defaultVoice || georgianVoice;
+  const voiceId = language === 'ka-GE' ? georgianVoice : (defaultVoice || georgianVoice);
 
   if (!apiKey || !voiceId) {
     throw new Error('elevenlabs_config_missing');

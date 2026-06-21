@@ -19,6 +19,8 @@ import { buildIterativePrompt } from '@/lib/chat/iteration-store';
 import { generateWithGemini } from '@/lib/gemini/client';
 import { getGeminiSystemPrompt, type GeminiServiceContext } from '@/lib/gemini/prompts';
 import { reportError } from '@/lib/observability/report-error';
+import { selectTtsModel, voiceSettingsForModel } from '@/lib/audio/tts-model';
+import { georgianVoiceId } from '@/lib/audio/georgian-voice';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300; // HeyGen avatar polling can take up to 150s; LTX video up to 90s
@@ -905,18 +907,29 @@ async function handleGenerate(
         break;
       case 'voice': {
         const elevenKey = process.env.ELEVENLABS_API_KEY;
-        const voiceId = process.env.ELEVENLABS_GEORGIAN_VOICE_ID || process.env.ELEVENLABS_VOICE_ID || 'vWpzdSR8GpLUKR0ai8Li';
+        // v329 — Georgian → the CLONED native voice on eleven_v3 (the only model that
+        // supports `ka`); other languages keep the configured voice on turbo. The old
+        // code hard-coded turbo (which mangles Georgian) + the non-native voice.
+        const isKa = /[ა-ჿ]/.test(effectivePrompt);
+        const voiceId = isKa
+          ? georgianVoiceId('female')
+          : (process.env.ELEVENLABS_VOICE_ID || georgianVoiceId('female'));
+        const modelId = selectTtsModel(effectivePrompt);
         if (elevenKey) {
+          // Buffered (binary) — the plain endpoint returns audio bytes, and eleven_v3
+          // is not reliably served by the streaming endpoint.
           const ttsRes = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
             method: 'POST',
-            headers: { 'xi-api-key': elevenKey, 'Content-Type': 'application/json', 'Accept': 'application/json' },
-             body: JSON.stringify({ text: effectivePrompt.slice(0, 5000), model_id: 'eleven_turbo_v2_5', voice_settings: { stability: 0.75, similarity_boost: 0.85 } }),
+            headers: { 'xi-api-key': elevenKey, 'Content-Type': 'application/json', 'Accept': 'audio/mpeg' },
+            body: JSON.stringify({ text: effectivePrompt.slice(0, 5000), model_id: modelId, voice_settings: voiceSettingsForModel(modelId) }),
           });
 
           if (ttsRes.ok) {
-            const ttsData = await ttsRes.json() as { audio_base64?: string };
-            genResult = { outputKind: 'audio', resultUrl: ttsData.audio_base64 ? `data:audio/mpeg;base64,${ttsData.audio_base64}` : undefined };
-            break;
+            const buf = Buffer.from(await ttsRes.arrayBuffer());
+            if (buf.byteLength > 1024) {
+              genResult = { outputKind: 'audio', resultUrl: `data:audio/mpeg;base64,${buf.toString('base64')}` };
+              break;
+            }
           }
         }
 

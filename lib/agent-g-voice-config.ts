@@ -1,3 +1,5 @@
+import { KA_VOICE_FEMALE } from '@/lib/audio/georgian-voice';
+
 type ToolDefinition = {
   type: 'function';
   function: {
@@ -42,7 +44,7 @@ CALL FLOW:
   },
   voice: {
     provider: 'elevenlabs',
-    voiceId: process.env.ELEVENLABS_GEORGIAN_VOICE_ID || '',
+    voiceId: process.env.ELEVENLABS_GEORGIAN_VOICE_ID || KA_VOICE_FEMALE,
     stability: 0.5,
     similarityBoost: 0.75,
     model: 'eleven_multilingual_v2',
