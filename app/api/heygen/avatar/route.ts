@@ -2,7 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 
 export const dynamic = 'force-dynamic';
-export const maxDuration = 60;
+// The HeyGen create-chain (getVoiceId + getFirstStockAvatar + createVideo) can
+// exceed 60s, which hit Vercel's function limit → 504 FUNCTION_INVOCATION_TIMEOUT
+// (every avatar generation failed before returning a videoId). Raised to 300 to
+// match the other heavy routes (produce, ai/music) so the start call completes.
+export const maxDuration = 300;
 
 const HEYGEN_BASE = 'https://api.heygen.com';
 
