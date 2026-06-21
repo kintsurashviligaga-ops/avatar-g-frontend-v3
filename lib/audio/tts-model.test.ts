@@ -24,13 +24,13 @@ describe('TTS model selection — PHASE 48 §3 Georgian phoneme fix', () => {
   });
 
   describe('selectTtsModel', () => {
-    it('HARD-FORCES eleven_multilingual_v2 for Georgian text', () => {
-      // The production bug: turbo (English-first) mangled Georgian phonemes.
-      expect(selectTtsModel('გამარჯობა, როგორ ხარ?')).toBe('eleven_multilingual_v2');
+    it('HARD-FORCES eleven_v3 for Georgian text (the only model that supports ka)', () => {
+      // The production bug: multilingual_v2 does NOT support Georgian → robotic.
+      expect(selectTtsModel('გამარჯობა, როგორ ხარ?')).toBe('eleven_v3');
     });
 
-    it('forces multilingual when the ka locale is set even if text is latin', () => {
-      expect(selectTtsModel('saxli', 'ka')).toBe('eleven_multilingual_v2');
+    it('forces eleven_v3 when the ka locale is set even if text is latin', () => {
+      expect(selectTtsModel('saxli', 'ka')).toBe('eleven_v3');
     });
 
     it('keeps the low-latency turbo model for English', () => {
@@ -39,6 +39,15 @@ describe('TTS model selection — PHASE 48 §3 Georgian phoneme fix', () => {
   });
 
   describe('voiceSettingsForModel', () => {
+    it('uses natural settings for eleven_v3 (the Georgian model)', () => {
+      const s = voiceSettingsForModel('eleven_v3');
+      // v3 stability ~Natural(0.5); low style avoids over-acting; present + on-voice.
+      expect(s.stability).toBeGreaterThanOrEqual(0.4);
+      expect(s.stability).toBeLessThanOrEqual(0.6);
+      expect(s.style).toBeLessThanOrEqual(0.3);
+      expect(s.use_speaker_boost).toBe(true);
+    });
+
     it('uses NATURAL, expressive settings for multilingual (not a flat/robotic read)', () => {
       const s = voiceSettingsForModel('eleven_multilingual_v2');
       // Stability sits in the human/expressive band (too high = monotone/robotic;
