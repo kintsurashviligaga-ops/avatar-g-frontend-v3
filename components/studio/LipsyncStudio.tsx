@@ -139,9 +139,13 @@ export default function LipsyncStudio({ locale = 'ka' }: { locale?: Lang }) {
 
       // Poll job status every 5s, up to 60 retries (~5 min). Mirrors the OmniStudio
       // poll pattern: GET ?id=<jobId> → { done, url, error }. Complete on done+url;
-      // fail only on an explicit failed/error status, or after the 60-retry budget.
+      // fail only on an explicit failed/error status, or after the retry budget.
+      // ~10 min (5s × 120): a live production test showed SadTalker renders take
+      // ~6 min (cold start + render), so a 5-min budget would mark a SUCCESSFUL
+      // render as "failed" seconds before it lands. This matches/exceeds the
+      // proven OmniStudio poll window.
       let settled = false;
-      for (let i = 0; i < 60; i++) {
+      for (let i = 0; i < 120; i++) {
         await new Promise((r) => setTimeout(r, 5000));
         const pollRes = await fetch(`/api/video/lipsync?id=${encodeURIComponent(startJson.jobId)}`, { credentials: 'include' });
         const pj = (await pollRes.json().catch(() => ({}))) as { done?: boolean; url?: string | null; error?: string | null };
@@ -152,7 +156,7 @@ export default function LipsyncStudio({ locale = 'ka' }: { locale?: Lang }) {
           break;
         }
       }
-      if (!settled) setError(t.failed); // exhausted 60 retries without completion
+      if (!settled) setError(t.failed); // exhausted the retry budget without completion
     } catch {
       setError(t.failed);
     } finally {
