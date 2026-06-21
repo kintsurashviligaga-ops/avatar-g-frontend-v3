@@ -127,13 +127,32 @@ export default function LipsyncStudio({ locale = 'ka' }: { locale?: Lang }) {
         setError(authBlocked ? t.authNeeded : t.failed);
         return;
       }
-      const res = await fetch('/api/video/lipsync', {
+      // Start the async lip-sync job. The route returns { jobId } — NOT a url;
+      // the rendered result is delivered only by polling GET ?id=. (The old code
+      // read j.url here, which is always undefined → every run showed "failed".)
+      const startRes = await fetch('/api/video/lipsync', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ videoUrl: v.url, audioUrl: a.url }), credentials: 'include',
       });
-      const j = (await res.json().catch(() => ({}))) as { url?: string | null };
-      if (j.url && j.url.startsWith('https://')) setResultUrl(j.url);
-      else setError(t.failed);
+      const startJson = (await startRes.json().catch(() => ({}))) as { jobId?: string | null; error?: string | null };
+      if (!startJson.jobId) { setError(startJson.error || t.failed); return; }
+
+      // Poll job status every 5s, up to 60 retries (~5 min). Mirrors the OmniStudio
+      // poll pattern: GET ?id=<jobId> → { done, url, error }. Complete on done+url;
+      // fail only on an explicit failed/error status, or after the 60-retry budget.
+      let settled = false;
+      for (let i = 0; i < 60; i++) {
+        await new Promise((r) => setTimeout(r, 5000));
+        const pollRes = await fetch(`/api/video/lipsync?id=${encodeURIComponent(startJson.jobId)}`, { credentials: 'include' });
+        const pj = (await pollRes.json().catch(() => ({}))) as { done?: boolean; url?: string | null; error?: string | null };
+        if (pj.done) {
+          settled = true;
+          if (pj.url && pj.url.startsWith('https://')) setResultUrl(pj.url);
+          else setError(pj.error || t.failed);
+          break;
+        }
+      }
+      if (!settled) setError(t.failed); // exhausted 60 retries without completion
     } catch {
       setError(t.failed);
     } finally {
