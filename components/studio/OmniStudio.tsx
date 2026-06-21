@@ -15,6 +15,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Send, Mic, Square, Plus, X, Loader2, Sparkles, Film, Music2, FileText, Image as ImageIcon, Download, Upload, MessageSquare, Wand2, Volume2, Copy, Check, ChevronDown, RotateCcw, History, Trash2, MessageSquarePlus, Pencil, Share2, ThumbsUp, ThumbsDown } from 'lucide-react';
 import { driveFilmStudio } from '@/lib/chat/filmStudioClient';
+import FilmDirectorConsole from './FilmDirectorConsole';
+import { deriveFilmRoster, deriveFilmLog, type FilmAgentVM, type FilmLogLine } from '@/lib/chat/filmAgentRoster';
 import { VoiceTrainer } from '@/components/voice/VoiceTrainer';
 import { TrackPlayer } from './TrackPlayer';
 import { Markdown } from './Markdown';
@@ -232,6 +234,41 @@ function GenerationProgress({ kind, elapsed, status, locale, targetSec }: {
   );
 }
 
+/**
+ * StoryboardFrame — one scene tile's media. Shows a spinner WHILE the frame image
+ * loads, the image once it paints (fade-in), and a graceful icon — never a broken-
+ * image glyph — when the URL is missing or fails to load (e.g. a CSP-blocked or
+ * expired provider URL). Fixes the "all six slots show a broken placeholder" report.
+ */
+function StoryboardFrame({ url, label, onZoom }: { url: string | null; label: string; onZoom: (u: string) => void }) {
+  const [state, setState] = useState<'loading' | 'loaded' | 'error'>(url ? 'loading' : 'error');
+  useEffect(() => { setState(url ? 'loading' : 'error'); }, [url]);
+  if (!url) {
+    return <div className="flex h-full w-full items-center justify-center text-app-muted/40"><ImageIcon size={15} /></div>;
+  }
+  return (
+    <>
+      {state !== 'loaded' && (
+        <div className="absolute inset-0 flex items-center justify-center bg-app-border/5">
+          {state === 'loading'
+            ? <Loader2 size={15} className="animate-spin text-app-muted/60" />
+            : <ImageIcon size={15} className="text-app-muted/40" />}
+        </div>
+      )}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={url}
+        alt={label}
+        loading="lazy"
+        onLoad={() => setState('loaded')}
+        onError={() => setState('error')}
+        onClick={() => state === 'loaded' && onZoom(url)}
+        className={`h-full w-full object-cover transition-opacity duration-300 ${state === 'loaded' ? 'cursor-zoom-in opacity-100' : 'opacity-0'}`}
+      />
+    </>
+  );
+}
+
 // Animated three-dot "typing" indicator for the chat-mode pending bubble.
 function TypingDots() {
   return (
@@ -358,7 +395,7 @@ type RegenSpec = ImageRegenSpec | MusicRegenSpec;
 // fills in independently as its own parallel generation lands.
 interface BatchTile { status: 'pending' | 'done' | 'failed'; url?: string }
 interface ImageBatch { spec: ImageRegenSpec; tiles: BatchTile[] }
-interface Msg { role: 'user' | 'assistant'; text: string; medias?: Media[]; imageUrl?: string; audioUrl?: string; coverUrl?: string; videoUrl?: string; videoProgress?: number; storyboard?: { ordinal: number; beat?: string; frameUrl: string | null }[]; regen?: RegenSpec; batch?: ImageBatch }
+interface Msg { role: 'user' | 'assistant'; text: string; medias?: Media[]; imageUrl?: string; audioUrl?: string; coverUrl?: string; videoUrl?: string; videoProgress?: number; storyboard?: { ordinal: number; beat?: string; frameUrl: string | null }[]; filmRoster?: FilmAgentVM[]; filmLog?: FilmLogLine[]; genKind?: 'image' | 'music' | 'video' | 'lipsync'; regen?: RegenSpec; batch?: ImageBatch }
 
 // Up to this many files/images (or one video) can ride along with a single message.
 const MAX_ATTACHMENTS = 5;
@@ -795,7 +832,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     // Keep the approved storyboard frames VISIBLE in the bubble while the film
     // renders (~7 min), so the preview shows every scene + the live progress —
     // the storyboard no longer just disappears on "Generate Video".
-    setMessages((prev) => [...prev, { role: 'assistant', text: t.generatingVideo, ...(storyboardScenes?.length ? { storyboard: storyboardScenes } : {}) }]);
+    setMessages((prev) => [...prev, { role: 'assistant', text: t.generatingVideo, genKind: 'video', ...(storyboardScenes?.length ? { storyboard: storyboardScenes } : {}) }]);
     setBusy(true);
     try {
       const res = await driveFilmStudio({
@@ -827,11 +864,27 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
               : p.phase === 'dispatching'
                 ? `✨ ${locale === 'en' ? 'Preparing the scenes' : locale === 'ru' ? 'Подготовка сцен' : 'სცენების მომზადება'}`
                 : (p.message?.trim() || t.generatingVideo);
+          // Fold the live matrix into the 9-agent roster + activity log so the
+          // Director's Console renders real per-agent state and a streaming feed
+          // (not a fake timer) right in the bubble.
+          const roster = deriveFilmRoster(p);
+          const freshLog = deriveFilmLog(p, locale);
+          const nowElapsed = Math.max(0, Math.round((Date.now() - genStartRef.current) / 1000));
           setMessages((prev) => {
             if (!mine()) return prev;
             const next = [...prev];
             const last = next[next.length - 1];
-            if (last && last.role === 'assistant' && !last.videoUrl) next[next.length - 1] = { ...last, text: status, videoProgress: pct };
+            if (last && last.role === 'assistant' && !last.videoUrl) {
+              // Stamp each log line with the elapsed seconds it FIRST appeared, so the
+              // terminal can show per-line timestamps without re-stamping on each tick.
+              // Clamp to the max existing stamp so timestamps stay monotonic even when
+              // the elapsed clock re-anchors between the storyboard build and the render.
+              const prevLog = last.filmLog ?? [];
+              const prevByKey = new Map(prevLog.map((l) => [l.key, l]));
+              const stampTs = Math.max(nowElapsed, prevLog.reduce((m, l) => Math.max(m, l.ts ?? 0), 0));
+              const filmLog = freshLog.map((l) => prevByKey.get(l.key) ?? { ...l, ts: stampTs });
+              next[next.length - 1] = { ...last, text: status, videoProgress: pct, filmRoster: roster, filmLog };
+            }
             return next;
           });
         },
@@ -1947,26 +2000,32 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                   // Pace the image bar to the chosen resolution (1K ≈ 40s · 2K ≈
                   // 170s · 4K ≈ 220s) so it doesn't sit at 95% looking stuck.
                   const imgTarget = imgQuality === 'standard' ? 42 : imgQuality === 'high' ? 170 : 215;
-                  const kind: 'image' | 'music' | 'video' | 'lipsync' = (m.storyboard?.length ?? 0) > 0 ? 'video' : (mode as 'image' | 'music' | 'video' | 'lipsync');
+                  // Prefer the kind stamped on the message at render-start (intrinsic),
+                  // so a mid-render mode switch can't swap the wrong progress UI in.
+                  const kind: 'image' | 'music' | 'video' | 'lipsync' = m.genKind ?? ((m.storyboard?.length ?? 0) > 0 ? 'video' : (mode as 'image' | 'music' | 'video' | 'lipsync'));
                   return (
-                    <div className="space-y-3">
-                      {/* Keep the storyboard frames in view during the ~7-min render. */}
+                    // Explicit vertical stack — the storyboard grid sits ABOVE the
+                    // Director's Console and the two can never overlap (no absolute/
+                    // fixed positioning, no shared z-index).
+                    <div className="flex flex-col gap-3">
+                      {/* Storyboard frames stay in view during the ~7-min render. */}
                       {m.storyboard && m.storyboard.length > 0 && (
-                        <div className="grid grid-cols-3 gap-1.5 w-[min(82vw,420px)]">
+                        <div className="grid w-[min(88vw,460px)] grid-cols-3 gap-1.5">
                           {m.storyboard.map((s) => (
                             <div key={s.ordinal} className={`relative overflow-hidden rounded-lg ${videoOrientation === 'vertical' ? 'aspect-[9/16]' : 'aspect-video'} bg-app-border/10 ring-1 ring-app-border/10`}>
-                              {s.frameUrl ? (
-                                // eslint-disable-next-line @next/next/no-img-element
-                                <img src={s.frameUrl} alt={`${t.sbScene} ${s.ordinal}`} onClick={() => s.frameUrl && setLightbox(s.frameUrl)} className="h-full w-full cursor-zoom-in object-cover" />
-                              ) : (
-                                <div className="flex h-full w-full items-center justify-center text-app-muted/50"><ImageIcon size={15} /></div>
-                              )}
-                              <span className="absolute left-1 top-1 rounded bg-black/60 px-1 text-[9px] font-medium text-white">{s.ordinal}</span>
+                              <StoryboardFrame url={s.frameUrl} label={`${t.sbScene} ${s.ordinal}`} onZoom={setLightbox} />
+                              <span className="absolute left-1 top-1 z-10 rounded bg-black/60 px-1 text-[9px] font-medium text-white">{s.ordinal}</span>
                             </div>
                           ))}
                         </div>
                       )}
-                      <GenerationProgress kind={kind} elapsed={elapsed} status={m.text} locale={locale} targetSec={kind === 'image' ? imgTarget : undefined} />
+                      {kind === 'video' ? (
+                        // The Master-Prompt Director's Console — the 9-agent crew,
+                        // live, driven by the real film-pipeline matrix.
+                        <FilmDirectorConsole roster={m.filmRoster} log={m.filmLog} statusText={m.text} elapsed={elapsed} targetSec={PROGRESS_TARGET.video} locale={locale} />
+                      ) : (
+                        <GenerationProgress kind={kind} elapsed={elapsed} status={m.text} locale={locale} targetSec={kind === 'image' ? imgTarget : undefined} />
+                      )}
                     </div>
                   );
                 }
