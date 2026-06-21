@@ -122,16 +122,19 @@ async function generateNarrationScript(brief: string, totalSec: number): Promise
  * brief so a male/female/child/elder/young story gets a fitting voice.
  */
 type VoicePersona = 'male' | 'female' | 'child' | 'elder' | 'young' | 'narrator';
+// v329 — NATIVE Georgian voices cloned (ElevenLabs IVC) from real Georgian
+// speakers supplied by the founder, read on eleven_v3 (the ka-capable model) for a
+// natural, accent-free result. Male personas → the male clone; female/child → the
+// female clone. Env (ELEVENLABS_KA_*) still overrides per-persona if ever needed.
+const KA_MALE = 'hYqARi31q6JpW0IjtFUt';
+const KA_FEMALE = '9jZPhI8VfIo3Mx8pl6OF';
 const KA_VOICE_DEFAULTS: Record<VoicePersona, string> = {
-  // Founder-supplied Georgian voices. ID #1 → male/narrator/elder/young, ID #2 →
-  // female/child (a lighter voice suits a child better than the deeper one). If the
-  // two are swapped gender-wise, just exchange the two IDs below.
-  male: 'vWpzdSR8GpLUKR0ai8Li',
-  narrator: 'vWpzdSR8GpLUKR0ai8Li',
-  elder: 'vWpzdSR8GpLUKR0ai8Li',
-  young: 'vWpzdSR8GpLUKR0ai8Li',
-  female: 'vWpzdSR8GpLUKR0ai8Li',
-  child: 'vWpzdSR8GpLUKR0ai8Li',
+  male: KA_MALE,
+  narrator: KA_MALE,
+  elder: KA_MALE,
+  young: KA_MALE,
+  female: KA_FEMALE,
+  child: KA_FEMALE,
 };
 function detectPersona(brief: string): VoicePersona {
   const b = (brief || '').toLowerCase();
@@ -176,21 +179,11 @@ async function synthesizeVoiceover(
   const georgian = isGeorgianText(text);
   const apiKey = process.env.ELEVENLABS_API_KEY;
 
-  // NATIVE GEORGIAN FIRST: Azure ka-GE-EkaNeural (female) / ka-GE-GiorgiNeural
-  // (male) are real Georgian voices — accent-free, human. When an Azure Speech key
-  // is configured, Georgian goes there first (gender-matched), which is the only
-  // way to a truly native ka read. ElevenLabs eleven_v3 + Google remain fallbacks.
-  if (georgian && azureTtsConfigured()) {
-    const a = await synthesizeAzureGeorgian(text, gender === 'MALE' ? 'male' : 'female');
-    if (a) {
-      const buf = Buffer.from(a);
-      if (buf.byteLength >= 512) return { base64: buf.toString('base64'), contentType: 'audio/mpeg' };
-    }
-  }
-
-  // ElevenLabs fallback: selectTtsModel routes Georgian to `eleven_v3` (the one
-  // ElevenLabs model that supports `ka`) — better than multilingual_v2, though it
-  // still carries some accent vs Azure's native voice. Primary for non-Georgian.
+  // PRIMARY: ElevenLabs. For Georgian the caller passes a CLONED native-Georgian
+  // voice (KA_VOICE_DEFAULTS — real Georgian speakers, IVC) read on eleven_v3 (the
+  // ka-capable model) → natural, accent-free, and the user's own chosen voices.
+  // For non-Georgian it's the configured voice on turbo. Azure (generic native ka)
+  // and Google are fallbacks only, so the cloned voices always win for Georgian.
   if (apiKey) {
     const voiceId =
       (voiceIdOverride && voiceIdOverride.trim() ? voiceIdOverride.trim() : null) ??
@@ -229,8 +222,15 @@ async function synthesizeVoiceover(
     }
   }
 
-  // Fallback when ElevenLabs is absent/down: Google TTS (native ka-GE neural when
-  // a valid Google key exists).
+  // Fallback when ElevenLabs is absent/down. For Georgian, Azure native ka voices
+  // (Eka/Giorgi) come before Google.
+  if (georgian && azureTtsConfigured()) {
+    const a = await synthesizeAzureGeorgian(text, gender === 'MALE' ? 'male' : 'female');
+    if (a) {
+      const buf = Buffer.from(a);
+      if (buf.byteLength >= 512) return { base64: buf.toString('base64'), contentType: 'audio/mpeg' };
+    }
+  }
   const g = await synthesizeViaGoogle(text, gender);
   if (g) return g;
   return null;
