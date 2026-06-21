@@ -1629,9 +1629,17 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       const clear = () => { if (live()) { setSpeakingIdx(null); setSpeakPhase(null); } URL.revokeObjectURL(url); if (ttsAudioRef.current === audio) ttsAudioRef.current = null; };
       audio.onended = clear;
       audio.onerror = clear;
-      await audio.play();
-      if (live()) setSpeakPhase('playing');
-      else { audio.pause(); URL.revokeObjectURL(url); }
+      // Drive state from events, not just play()'s promise: a browser that leaves
+      // play() pending (strict autoplay) must not strand the spinner. onplaying flips
+      // to 'playing'; a timeout recovers to 'playing'/null if it never starts.
+      audio.onplaying = () => { if (live()) setSpeakPhase('playing'); };
+      audio.play()
+        .then(() => { if (live()) setSpeakPhase('playing'); })
+        .catch(() => { if (live()) { setSpeakingIdx(null); setSpeakPhase(null); ttsAudioRef.current = null; } });
+      window.setTimeout(() => {
+        if (live()) setSpeakPhase((p) => (p === 'loading' ? (audio.paused ? null : 'playing') : p));
+        if (live() && audio.paused && ttsAudioRef.current === audio) { /* blocked → reset bubble */ setSpeakingIdx((s) => (s === i ? null : s)); }
+      }, 1800);
     } catch {
       if (live()) { setSpeakingIdx(null); setSpeakPhase(null); }
       ttsAudioRef.current = null;
