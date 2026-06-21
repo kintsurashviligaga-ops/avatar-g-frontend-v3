@@ -28,6 +28,7 @@
 import 'server-only';
 import Anthropic from '@anthropic-ai/sdk';
 import { selectTtsModel, voiceSettingsForModel, isGeorgianText } from '@/lib/audio/tts-model';
+import { synthesizeGoogleTts, genderForPersona, type TtsGender } from '@/lib/audio/google-tts';
 import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
 
 /** Same model ladder the script agent uses, so narration matches the storyboard's voice. */
@@ -153,44 +154,94 @@ function pickGeorgianVoiceId(brief: string): string | null {
   );
 }
 
-async function synthesizeVoiceover(text: string, voiceIdOverride?: string | null): Promise<{ base64: string; contentType: string } | null> {
-  const apiKey = process.env.ELEVENLABS_API_KEY;
-  if (!apiKey) return null;
+/**
+ * Synthesise via Google Cloud TTS — used as the GEORGIAN-NATIVE fallback. Google
+ * ships voices trained on ka-GE (Chirp3-HD / Neural2), which sound far more human
+ * than ElevenLabs' non-native multilingual approximation. Returns null on any miss.
+ */
+async function synthesizeViaGoogle(text: string, gender?: TtsGender): Promise<{ base64: string; contentType: string } | null> {
+  const audio = await synthesizeGoogleTts(text, { gender });
+  if (!audio) return null;
+  const buf = Buffer.from(audio);
+  if (buf.byteLength < 1024) return null;
+  return { base64: buf.toString('base64'), contentType: 'audio/mpeg' };
+}
+
+async function synthesizeVoiceover(
+  text: string,
+  voiceIdOverride?: string | null,
+  gender?: TtsGender,
+): Promise<{ base64: string; contentType: string } | null> {
   const georgian = isGeorgianText(text);
-  const voiceId =
-    (voiceIdOverride && voiceIdOverride.trim() ? voiceIdOverride.trim() : null) ??
-    ((georgian && process.env.ELEVENLABS_GEORGIAN_VOICE_ID
-      ? process.env.ELEVENLABS_GEORGIAN_VOICE_ID
-      : undefined) ?? process.env.ELEVENLABS_VOICE_ID);
-  if (!voiceId) return null;
-  const modelId = selectTtsModel(text);
-  const ac = new AbortController();
-  const timer = setTimeout(() => ac.abort(), 30_000);
-  try {
-    const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
-      method: 'POST',
-      headers: {
-        'xi-api-key': apiKey,
-        'Content-Type': 'application/json',
-        Accept: 'audio/mpeg',
-      },
-      body: JSON.stringify({
-        text,
-        model_id: modelId,
-        voice_settings: voiceSettingsForModel(modelId),
-      }),
-      signal: ac.signal,
-    });
-    if (!res.ok) return null;
-    const buf = Buffer.from(await res.arrayBuffer());
-    // Guard against an empty / error-page body masquerading as audio.
-    if (buf.byteLength < 1024) return null;
-    return { base64: buf.toString('base64'), contentType: 'audio/mpeg' };
-  } catch {
-    return null;
-  } finally {
-    clearTimeout(timer);
+  const apiKey = process.env.ELEVENLABS_API_KEY;
+  // GEORGIAN-FIRST ROUTING: ElevenLabs has no native Georgian voice (its
+  // multilingual model only approximates the phonemes → accented/robotic). When a
+  // Google key is configured, Georgian goes to Google's NATIVE ka-GE neural voice
+  // FIRST; ElevenLabs stays primary for non-Georgian (English/Russian) reads.
+  // Either way the other provider is the fallback, so a voice-over is produced
+  // whenever ANY key is live. Set TTS_FORCE_ELEVENLABS=1 to keep ElevenLabs primary
+  // for Georgian too (e.g. once a real cloned Georgian voice is supplied).
+  const preferGoogleForKa =
+    georgian && !!googleTtsConfigured() && process.env.TTS_FORCE_ELEVENLABS !== '1';
+  if (preferGoogleForKa) {
+    const g = await synthesizeViaGoogle(text, gender);
+    if (g) return g;
   }
+
+  if (apiKey) {
+    const voiceId =
+      (voiceIdOverride && voiceIdOverride.trim() ? voiceIdOverride.trim() : null) ??
+      ((georgian && process.env.ELEVENLABS_GEORGIAN_VOICE_ID
+        ? process.env.ELEVENLABS_GEORGIAN_VOICE_ID
+        : undefined) ?? process.env.ELEVENLABS_VOICE_ID);
+    if (voiceId) {
+      const modelId = selectTtsModel(text);
+      const ac = new AbortController();
+      const timer = setTimeout(() => ac.abort(), 30_000);
+      try {
+        const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
+          method: 'POST',
+          headers: {
+            'xi-api-key': apiKey,
+            'Content-Type': 'application/json',
+            Accept: 'audio/mpeg',
+          },
+          body: JSON.stringify({
+            text,
+            model_id: modelId,
+            voice_settings: voiceSettingsForModel(modelId),
+          }),
+          signal: ac.signal,
+        });
+        if (res.ok) {
+          const buf = Buffer.from(await res.arrayBuffer());
+          // Guard against an empty / error-page body masquerading as audio.
+          if (buf.byteLength >= 1024) return { base64: buf.toString('base64'), contentType: 'audio/mpeg' };
+        }
+      } catch {
+        /* fall through to the Google fallback below */
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+  }
+
+  // Last resort (incl. non-Georgian when ElevenLabs is down): Google TTS.
+  if (!preferGoogleForKa) {
+    const g = await synthesizeViaGoogle(text, gender);
+    if (g) return g;
+  }
+  return null;
+}
+
+/** True when SOME Google TTS key is present (mirrors lib/audio/google-tts key order). */
+function googleTtsConfigured(): boolean {
+  return !!(
+    process.env.GOOGLE_TTS_API_KEY ||
+    process.env.GOOGLE_API_KEY ||
+    process.env.GEMINI_API_KEY ||
+    process.env.GOOGLE_GENERATIVE_AI_API_KEY
+  );
 }
 
 /**
@@ -202,7 +253,7 @@ export async function textToHostedSpeech(text: string, voiceId?: string | null):
   try {
     // Fall back to the hardcoded KA voice map (pickGeorgianVoiceId) — NOT just the env
     // voice — so TTS never silently returns null when ELEVENLABS_VOICE_ID is unset.
-    const audio = await synthesizeVoiceover(text, voiceId ?? pickGeorgianVoiceId(text));
+    const audio = await synthesizeVoiceover(text, voiceId ?? pickGeorgianVoiceId(text), genderForPersona(detectPersona(text)));
     if (!audio) return null;
     const path = `lipsync-tts/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.mp3`;
     return (await uploadAndSign('renders', path, audio.base64, audio.contentType, 7200)) ?? null;
@@ -228,7 +279,7 @@ export async function generateFilmVoiceover(opts: {
     const script = custom ?? (await generateNarrationScript(opts.brief, opts.totalSec));
     if (!script) return null;
     // Pick a voice that fits the story's protagonist (male/female/child/elder/young).
-    const audio = await synthesizeVoiceover(script, pickGeorgianVoiceId(opts.brief));
+    const audio = await synthesizeVoiceover(script, pickGeorgianVoiceId(opts.brief), genderForPersona(detectPersona(opts.brief)));
     if (!audio) return null;
     // 2-hour signed URL — comfortably outlives the render + assemble window.
     const path = `${opts.compositeId}/voiceover.mp3`;

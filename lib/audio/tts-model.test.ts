@@ -42,10 +42,15 @@ describe('TTS model selection — PHASE 48 §3 Georgian phoneme fix', () => {
     it('uses NATURAL, expressive settings for multilingual (not a flat/robotic read)', () => {
       const s = voiceSettingsForModel('eleven_multilingual_v2');
       // Stability sits in the human/expressive band (too high = monotone/robotic;
-      // too low = vowel warble). Style adds prosody; speaker_boost keeps presence.
+      // too low = vowel warble). speaker_boost keeps presence.
       expect(s.stability).toBeGreaterThanOrEqual(0.35);
       expect(s.stability).toBeLessThanOrEqual(0.6);
-      expect(s.style).toBeGreaterThanOrEqual(0.3);
+      // `style` is intentionally LOW for Georgian: on the non-native multilingual
+      // voice a high `style` OVER-exaggerates prosody and reads artificial/robotic;
+      // ElevenLabs `style` adds artifacts as it rises, so low-resource Georgian
+      // sounds far more human at ~0.18. Keep it in the calm 0..0.3 band (not 0).
+      expect(s.style).toBeGreaterThan(0);
+      expect(s.style).toBeLessThanOrEqual(0.3);
       expect(s.use_speaker_boost).toBe(true);
     });
 

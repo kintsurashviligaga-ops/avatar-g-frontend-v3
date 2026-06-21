@@ -158,6 +158,9 @@ export async function POST(req: NextRequest) {
     scenePrompt?: string;
     /** How many scenes (2 → ~10s · 6 → ~30s). Clamped to [2, FILM_SCENE_COUNT]. */
     sceneCount?: number;
+    /** Plan-only: return the scenes + scripts FAST (no frames), so the client can
+     *  open the board immediately and stream each frame in via per-scene calls. */
+    planOnly?: boolean;
   };
 
   const prompt = typeof body.prompt === 'string' ? body.prompt.trim() : '';
@@ -237,6 +240,29 @@ export async function POST(req: NextRequest) {
   const storyPlan = sceneScripts
     ? planFilmScenes(prompt, { referenceImages: hostedRefs, style, orientation, sceneScripts, totalSec: sceneTotalSec })
     : plan;
+
+  // PLAN-ONLY: return the scenes (no frames) immediately so the client can open the
+  // storyboard NOW and stream each frame in via per-scene (sceneOrdinal) calls — the
+  // user sees real "N/M scenes" progress with per-frame fade-in instead of one long
+  // blocking request that looks frozen. Each scene also carries the FULL prompt the
+  // per-scene frame call should use (the summary `prompt` is truncated for display).
+  if (body.planOnly) {
+    return NextResponse.json({
+      success: true,
+      sessionId,
+      seed: storyPlan.shared.seed,
+      orientation,
+      planOnly: true,
+      scenes: storyPlan.scenes.map((s) => ({
+        ordinal: s.ordinal,
+        beat: s.beat,
+        prompt: s.prompt.replace(/\s+/g, ' ').slice(0, 160),
+        framePrompt: s.prompt,
+        frameUrl: null,
+      })),
+      sceneScripts,
+    });
+  }
 
   const frames = await mapWithConcurrency(storyPlan.scenes, 3, (scene) => genFrame(scene.prompt));
   // Retry any frame that failed (NanoBanana transient / rate-limit) in a second pass —

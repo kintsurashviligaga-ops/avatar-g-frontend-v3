@@ -59,7 +59,7 @@ const COPY: Record<Lang, {
   stop: string; stopped: string; scrollDown: string; regenerate: string; elapsedHint: string; greeting: string; attachHint: string;
   instrumental: string; withVocals: string; lyricsPlaceholder: string; coverMode: string; voiceMode: string; voiceLyricsPlaceholder: string; voiceSecTitle: string; voiceRec: string; voiceUp: string; voiceReady: string; voiceRecHint: string; need15: string;
   narration: string; narrationCue: string; transCrossfade: string; transCut: string;
-  sbTitle: string; sbReview: string; sbGenerate: string; sbRegen: string; sbCancel: string; sbCreating: string; sbFailed: string; sbScene: string; sbEditHint: string; sbReroll: string;
+  sbTitle: string; sbReview: string; sbGenerate: string; sbRegen: string; sbCancel: string; sbCreating: string; sbFailed: string; sbScene: string; sbEditHint: string; sbReroll: string; sbFrames: string;
   charPhoto: string; charPhotoOn: string;
   historyTitle: string; historyEmpty: string; historyNew: string; deleteLabel: string;
 }> = {
@@ -79,7 +79,7 @@ const COPY: Record<Lang, {
     stop: 'შეჩერება', stopped: 'შეჩერდა', scrollDown: 'ბოლოში გადასვლა', regenerate: 'თავიდან გენერაცია', elapsedHint: 'გავიდა', greeting: 'რით დაგეხმარო?', attachHint: 'დამატება',
     instrumental: 'ინსტრუმენტალი', withVocals: 'ვოკალით', lyricsPlaceholder: 'ლირიკა (არჩევითი) — შენი ტექსტი; ცარიელი = ავტომატური', coverMode: '🎵 ქავერი', voiceMode: '🎤 ჩემი ხმით', voiceLyricsPlaceholder: 'ლირიკა — რას იმღერებს შენი ხმა (ატვირთე ≥15წმ ხმა)', voiceSecTitle: '🎤 შენი ხმა', voiceRec: 'ჩაწერა', voiceUp: 'ატვირთვა', voiceReady: 'ხმა მზადაა — აირჩიე „ჩემი ხმით"', voiceRecHint: 'ჩაიწერე ან ატვირთე ≥15წმ ხმა — სიმღერა შენი ვოკალით შეიქმნება', need15: '≥15წმ',
     narration: 'ნარაცია', narrationCue: ' (პროფესიონალი კომენტატორის ხმოვანი ნარაციით)', transCrossfade: 'გადადნობა', transCut: 'კვეთა',
-    sbTitle: 'სტორიბორდი', sbReview: 'გადახედე 6 სცენას — შეცვალე ტექსტი ან თავიდან დააგენერირე კადრი, შემდეგ გაუშვი ვიდეო', sbGenerate: 'ვიდეოს გენერაცია', sbRegen: 'თავიდან', sbCancel: 'გაუქმება', sbCreating: 'სცენარი და 6 კადრი იქმნება…', sbFailed: 'სტორიბორდი ვერ შეიქმნა. სცადე თავიდან.', sbScene: 'სცენა', sbEditHint: 'შეცვალე ამ კადრის აღწერა…', sbReroll: 'კადრის თავიდან დაგენერირება',
+    sbTitle: 'სტორიბორდი', sbReview: 'გადახედე 6 სცენას — შეცვალე ტექსტი ან თავიდან დააგენერირე კადრი, შემდეგ გაუშვი ვიდეო', sbGenerate: 'ვიდეოს გენერაცია', sbRegen: 'თავიდან', sbCancel: 'გაუქმება', sbCreating: 'სცენარი და 6 კადრი იქმნება…', sbFailed: 'სტორიბორდი ვერ შეიქმნა. სცადე თავიდან.', sbScene: 'სცენა', sbEditHint: 'შეცვალე ამ კადრის აღწერა…', sbReroll: 'კადრის თავიდან დაგენერირება', sbFrames: 'კადრი',
     charPhoto: 'პერსონაჟის ფოტო', charPhotoOn: 'პერსონაჟი ✓',
     historyTitle: 'ისტორია', historyEmpty: 'ჯერ საუბრები არ არის', historyNew: 'ახალი ჩატი', deleteLabel: 'წაშლა',
   },
@@ -99,7 +99,7 @@ const COPY: Record<Lang, {
     stop: 'Stop', stopped: 'Stopped', scrollDown: 'Scroll to bottom', regenerate: 'Regenerate', elapsedHint: 'elapsed', greeting: 'How can I help?', attachHint: 'Add',
     instrumental: 'Instrumental', withVocals: 'Vocals', lyricsPlaceholder: 'Lyrics (optional) — your words; empty = auto-written', coverMode: '🎵 Cover', voiceMode: '🎤 My voice', voiceLyricsPlaceholder: 'Lyrics — what your voice will sing (upload ≥15s of voice)', voiceSecTitle: '🎤 Your voice', voiceRec: 'Record', voiceUp: 'Upload', voiceReady: 'Voice ready — pick “My voice”', voiceRecHint: 'Record or upload ≥15s of voice — the song is sung in your voice', need15: '≥15s',
     narration: 'Narration', narrationCue: ' (with professional spoken voice-over narration)', transCrossfade: 'Crossfade', transCut: 'Cut',
-    sbTitle: 'Storyboard', sbReview: 'Review the 6 scenes — edit a description or re-roll a frame, then generate', sbGenerate: 'Generate Video', sbRegen: 'Regenerate', sbCancel: 'Cancel', sbCreating: 'Creating storyboard & 6 frames…', sbFailed: 'Storyboard failed. Try again.', sbScene: 'Scene', sbEditHint: 'Edit this shot…', sbReroll: 'Re-roll this frame',
+    sbTitle: 'Storyboard', sbReview: 'Review the 6 scenes — edit a description or re-roll a frame, then generate', sbGenerate: 'Generate Video', sbRegen: 'Regenerate', sbCancel: 'Cancel', sbCreating: 'Creating storyboard & 6 frames…', sbFailed: 'Storyboard failed. Try again.', sbScene: 'Scene', sbEditHint: 'Edit this shot…', sbReroll: 'Re-roll this frame', sbFrames: 'frames',
     charPhoto: 'Character photo', charPhotoOn: 'Character ✓',
     historyTitle: 'History', historyEmpty: 'No chats yet', historyNew: 'New chat', deleteLabel: 'Delete',
   },
@@ -119,7 +119,7 @@ const COPY: Record<Lang, {
     stop: 'Стоп', stopped: 'Остановлено', scrollDown: 'Вниз', regenerate: 'Заново', elapsedHint: 'прошло', greeting: 'Чем помочь?', attachHint: 'Добавить',
     instrumental: 'Инструментал', withVocals: 'Вокал', lyricsPlaceholder: 'Текст (необязательно) — ваши слова; пусто = авто', coverMode: '🎵 Кавер', voiceMode: '🎤 Мой голос', voiceLyricsPlaceholder: 'Текст — что споёт ваш голос (загрузите ≥15с голоса)', voiceSecTitle: '🎤 Ваш голос', voiceRec: 'Запись', voiceUp: 'Загрузить', voiceReady: 'Голос готов — выберите «Мой голос»', voiceRecHint: 'Запишите или загрузите ≥15с голоса — песня будет спета вашим голосом', need15: '≥15с',
     narration: 'Озвучка', narrationCue: ' (с профессиональной голосовой озвучкой)', transCrossfade: 'Плавно', transCut: 'Резко',
-    sbTitle: 'Раскадровка', sbReview: 'Просмотрите 6 сцен — измените описание или кадр, затем сгенерируйте', sbGenerate: 'Сгенерировать видео', sbRegen: 'Заново', sbCancel: 'Отмена', sbCreating: 'Создаю раскадровку и 6 кадров…', sbFailed: 'Не удалось создать раскадровку. Попробуйте снова.', sbScene: 'Сцена', sbEditHint: 'Измените этот кадр…', sbReroll: 'Пересоздать кадр',
+    sbTitle: 'Раскадровка', sbReview: 'Просмотрите 6 сцен — измените описание или кадр, затем сгенерируйте', sbGenerate: 'Сгенерировать видео', sbRegen: 'Заново', sbCancel: 'Отмена', sbCreating: 'Создаю раскадровку и 6 кадров…', sbFailed: 'Не удалось создать раскадровку. Попробуйте снова.', sbScene: 'Сцена', sbEditHint: 'Измените этот кадр…', sbReroll: 'Пересоздать кадр', sbFrames: 'кадры',
     charPhoto: 'Фото персонажа', charPhotoOn: 'Персонаж ✓',
     historyTitle: 'История', historyEmpty: 'Пока нет чатов', historyNew: 'Новый чат', deleteLabel: 'Удалить',
   },
@@ -511,6 +511,11 @@ interface StoryboardState {
   scenes: StoryboardScene[];
   /** LLM story scenes (one per scene) — threaded to the render so clips match. */
   sceneScripts?: string[] | null;
+  /** Per-scene frame-prompt for the streaming single-scene frame calls. */
+  framePrompts?: Record<number, string>;
+  /** Scene ordinals whose frame is still being generated (drives the N/M counter
+   *  + per-tile spinner). Empty/undefined once every frame has settled. */
+  pending?: number[];
 }
 
 // Full-screen review surface: the six planned scenes + a frame each. The user
@@ -529,18 +534,35 @@ function StoryboardOverlay({ sb, t, busy, regenningOrdinal, onGenerate, onRegene
   onCancel: () => void;
 }) {
   const portrait = sb.orientation === 'vertical';
+  const pending = sb.pending ?? [];
+  const total = sb.scenes.length;
+  const loaded = sb.scenes.filter((s) => s.frameUrl).length;
+  const streaming = pending.length > 0; // frames are still arriving
   return (
     <div className="fixed inset-0 z-[90] flex flex-col bg-app-bg/95 backdrop-blur-md" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }} onClick={onCancel}>
       <div onClick={(e) => e.stopPropagation()} className="mx-auto flex h-full w-full max-w-3xl flex-col">
         <div className="flex items-start justify-between gap-2 px-4 py-3">
           <div className="min-w-0">
             <h2 className="text-[15px] font-semibold tracking-tight text-app-text">📋 {t.sbTitle}</h2>
-            <p className="truncate text-[12px] text-app-muted">{t.sbReview}</p>
+            {streaming ? (
+              <p className="flex items-center gap-1.5 text-[12px] text-app-accent">
+                <Loader2 size={12} className="animate-spin" />
+                <span className="tabular-nums">{loaded}/{total}</span> {t.sbFrames}…
+              </p>
+            ) : (
+              <p className="truncate text-[12px] text-app-muted">{t.sbReview}</p>
+            )}
           </div>
           <button type="button" onClick={onCancel} aria-label={t.sbCancel} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text">
             <X size={18} />
           </button>
         </div>
+        {/* Live frame-load progress — fills as each scene's frame streams in. */}
+        {streaming && (
+          <div className="mx-4 mb-2 h-1 overflow-hidden rounded-full bg-app-border/15">
+            <div className="h-full rounded-full bg-app-accent transition-[width] duration-500 ease-out" style={{ width: `${Math.max(5, Math.round((loaded / Math.max(1, total)) * 100))}%` }} />
+          </div>
+        )}
         <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4">
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
             {sb.scenes.map((s) => (
@@ -549,12 +571,19 @@ function StoryboardOverlay({ sb, t, busy, regenningOrdinal, onGenerate, onRegene
                   {s.frameUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img src={s.frameUrl} alt={`${t.sbScene} ${s.ordinal}`} onClick={() => s.frameUrl && onView(s.frameUrl)} className="h-full w-full cursor-zoom-in object-cover opacity-0 transition-opacity duration-500 hover:opacity-90" onLoad={(e) => { e.currentTarget.style.opacity = '1'; }} />
-                  ) : (
+                  ) : pending.includes(s.ordinal) ? (
                     // Generating — a pulsing skeleton with a spinner + the scene number,
                     // so it reads as "creating scene N", never a broken-image box.
                     <div className="flex h-full w-full animate-pulse flex-col items-center justify-center gap-2 bg-gradient-to-br from-app-elevated to-app-surface">
                       <Loader2 size={18} className="animate-spin text-app-accent/70" />
                       <span className="text-[10px] font-medium text-app-muted/70">{t.sbScene} {s.ordinal}</span>
+                    </div>
+                  ) : (
+                    // Frame settled with no image (provider miss) — graceful icon + a
+                    // re-roll hint, never an endless spinner or broken-image glyph.
+                    <div className="flex h-full w-full flex-col items-center justify-center gap-1.5 bg-app-surface text-app-muted/40">
+                      <ImageIcon size={18} />
+                      <RotateCcw size={12} className="opacity-70" />
                     </div>
                   )}
                   <span className="absolute left-1.5 top-1.5 rounded-full bg-black/60 px-2 py-0.5 text-[11px] font-medium text-white">{t.sbScene} {s.ordinal}</span>
@@ -920,20 +949,69 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     const ac = new AbortController();
     storyboardAbortRef.current = ac;
     setStoryboardBusy(true);
+    const sceneCount = Math.max(2, Math.min(6, Math.round(videoDuration / 5)));
     try {
+      // STEP 1 — fast PLAN-ONLY call: the six scenes + scripts, no frames. This
+      // returns in seconds so the board opens immediately (no long "frozen" wait).
       const res = await fetch('/api/film/storyboard', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         signal: ac.signal,
-        body: JSON.stringify({ prompt: filmPrompt, orientation, referenceImages: refs, style: videoStyle, locale, sceneCount: Math.round(videoDuration / 5) }),
+        body: JSON.stringify({ prompt: filmPrompt, orientation, referenceImages: refs, style: videoStyle, locale, sceneCount, planOnly: true }),
       });
-      const j = (await res.json().catch(() => ({}))) as { success?: boolean; seed?: number; scenes?: StoryboardScene[]; sceneScripts?: string[] | null };
-      if (j.success && Array.isArray(j.scenes) && j.scenes.length > 0) {
-        setStoryboard({ filmPrompt, refs, orientation, seed: j.seed ?? 0, scenes: j.scenes, sceneScripts: Array.isArray(j.sceneScripts) ? j.sceneScripts : null });
-      } else {
-        await renderFilm(filmPrompt, refs, orientation, undefined);
+      const j = (await res.json().catch(() => ({}))) as { success?: boolean; seed?: number; scenes?: (StoryboardScene & { framePrompt?: string })[]; sceneScripts?: string[] | null };
+      if (!(j.success && Array.isArray(j.scenes) && j.scenes.length > 0)) {
+        await renderFilm(filmPrompt, refs, orientation, undefined); // plan miss → direct render
+        return;
       }
+      const planned = j.scenes;
+      const scenes: StoryboardScene[] = planned.map((s) => ({ ordinal: s.ordinal, beat: s.beat, prompt: s.prompt, frameUrl: null }));
+      const framePrompts: Record<number, string> = {};
+      planned.forEach((s) => { framePrompts[s.ordinal] = (s.framePrompt && s.framePrompt.trim()) || s.prompt; });
+      const ordinals = scenes.map((s) => s.ordinal);
+      // STEP 2 — open the review board NOW with skeleton tiles + an N/M counter.
+      setStoryboard({
+        filmPrompt, refs, orientation,
+        seed: j.seed ?? 0,
+        scenes,
+        sceneScripts: Array.isArray(j.sceneScripts) ? j.sceneScripts : null,
+        framePrompts,
+        pending: ordinals,
+      });
+      setStoryboardBusy(false);
+
+      // STEP 3 — stream each frame in (concurrency 3); each tile fades in the moment
+      // its own frame lands, and the N/M counter ticks up. A failed frame settles to
+      // a graceful icon (removed from `pending`) — never an endless spinner.
+      const fetchFrame = async (ordinal: number) => {
+        try {
+          const r = await fetch('/api/film/storyboard', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            signal: ac.signal,
+            body: JSON.stringify({ prompt: filmPrompt, orientation, referenceImages: refs, style: videoStyle, locale, sceneOrdinal: ordinal, scenePrompt: framePrompts[ordinal] }),
+          });
+          const jf = (await r.json().catch(() => ({}))) as { success?: boolean; frameUrl?: string | null };
+          const url = jf.success && typeof jf.frameUrl === 'string' ? jf.frameUrl : null;
+          setStoryboard((prev) => prev ? {
+            ...prev,
+            scenes: prev.scenes.map((s) => (s.ordinal === ordinal ? { ...s, frameUrl: url } : s)),
+            pending: (prev.pending ?? []).filter((o) => o !== ordinal),
+          } : prev);
+        } catch {
+          if (ac.signal.aborted) return;
+          setStoryboard((prev) => prev ? { ...prev, pending: (prev.pending ?? []).filter((o) => o !== ordinal) } : prev);
+        }
+      };
+      const queue = [...ordinals];
+      await Promise.all(Array.from({ length: Math.min(3, queue.length) }, async () => {
+        while (queue.length && !ac.signal.aborted) {
+          const o = queue.shift();
+          if (typeof o === 'number') await fetchFrame(o);
+        }
+      }));
     } catch {
       if (ac.signal.aborted) return; // user cancelled — do nothing
       await renderFilm(filmPrompt, refs, orientation, undefined);
@@ -952,7 +1030,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ prompt: storyboard.filmPrompt, orientation: storyboard.orientation, referenceImages: storyboard.refs, style: videoStyle, locale, sceneOrdinal: ordinal, ...(scene?.edited && scene.prompt.trim() ? { scenePrompt: scene.prompt.trim() } : {}) }),
+        body: JSON.stringify({ prompt: storyboard.filmPrompt, orientation: storyboard.orientation, referenceImages: storyboard.refs, style: videoStyle, locale, sceneOrdinal: ordinal, ...((scene?.edited && scene.prompt.trim()) ? { scenePrompt: scene.prompt.trim() } : (storyboard.framePrompts?.[ordinal] ? { scenePrompt: storyboard.framePrompts[ordinal] } : {})) }),
       });
       const j = (await res.json().catch(() => ({}))) as { success?: boolean; frameUrl?: string | null };
       if (j.success && typeof j.frameUrl === 'string') {
@@ -2648,6 +2726,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           onEditScene={editScene}
           onView={(url) => setLightbox(url)}
           onGenerate={() => {
+            // Stop any still-streaming frame fetches — the user has approved; we
+            // don't need (or want to pay for) the remaining preview frames.
+            try { storyboardAbortRef.current?.abort(); } catch { /* noop */ }
             const frameUrls = storyboard.scenes.map((s) => s.frameUrl);
             const sceneFrames = frameUrls.every((f): f is string => typeof f === 'string') ? frameUrls : undefined;
             const sb = storyboard;
@@ -2665,11 +2746,12 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             void renderFilm(sb.filmPrompt, sceneFrames ? [] : sb.refs, sb.orientation, sceneFrames, scripts, sb.scenes.map((s) => ({ ordinal: s.ordinal, beat: s.beat, frameUrl: s.frameUrl })));
           }}
           onRegenerate={() => {
+            try { storyboardAbortRef.current?.abort(); } catch { /* noop */ }
             const sb = storyboard;
             setStoryboard(null);
             void createStoryboard(sb.filmPrompt, sb.refs, sb.orientation);
           }}
-          onCancel={() => setStoryboard(null)}
+          onCancel={() => { try { storyboardAbortRef.current?.abort(); } catch { /* noop */ } setStoryboard(null); }}
         />
       )}
 
