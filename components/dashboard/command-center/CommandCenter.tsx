@@ -750,8 +750,23 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
           mediaGenerated = true;
         } else {
           const res = await fetch('/api/replicate/image', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt: text }) });
-          const data = await res.json() as { url?: string; imageUrl?: string; output?: string[]; data?: { url?: string }; error?: string };
-          const url = data?.url || data?.imageUrl || data?.output?.[0] || data?.data?.url;
+          const data = await res.json() as { url?: string; imageUrl?: string; predictionId?: string; output?: string[]; data?: { url?: string }; error?: string };
+          let url = data?.url || data?.imageUrl || data?.output?.[0] || data?.data?.url;
+          // Async {predictionId} with NO url yet → poll every 3s (max 30 retries)
+          // until a real url lands. Do NOT throw on a predictionId.
+          if (!url && data?.predictionId) {
+            for (let i = 0; i < 30; i++) {
+              await new Promise((r) => setTimeout(r, 3000));
+              const pollRes = await fetch('/api/replicate/image', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ predictionId: data.predictionId }),
+              });
+              const pd = (await pollRes.json().catch(() => ({}))) as { url?: string; output?: string[]; status?: string; error?: string };
+              const u = pd.url || pd.output?.[0];
+              if (u) { url = u; break; }
+              if (pd.status === 'failed' || pd.error) break;
+            }
+          }
           if (!url) throw new Error(data?.error || copy.errorGeneric);
           setMessages(m => m.map(msg => msg.id === pendingMsg.id ? { ...msg, pending: false, content: '', media: { kind: 'image', url } } : msg));
           setCredits(c => c - cost);
@@ -807,8 +822,24 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ prompt: augmented, quality: 'standard', ratio: '16:9' }),
         });
-        const data = await res.json() as { url?: string; imageUrl?: string; output?: string[]; error?: string };
-        const url = data?.url || data?.imageUrl || data?.output?.[0];
+        const data = await res.json() as { url?: string; imageUrl?: string; predictionId?: string; output?: string[]; error?: string };
+        let url = data?.url || data?.imageUrl || data?.output?.[0];
+        // The route may return an async {predictionId} with NO url yet — poll it
+        // every 3s (max 30 retries) until a real url lands. Do NOT throw on a
+        // predictionId.
+        if (!url && data?.predictionId) {
+          for (let i = 0; i < 30; i++) {
+            await new Promise((r) => setTimeout(r, 3000));
+            const pollRes = await fetch('/api/replicate/image', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ predictionId: data.predictionId }),
+            });
+            const pd = (await pollRes.json().catch(() => ({}))) as { url?: string; output?: string[]; status?: string; error?: string };
+            const u = pd.url || pd.output?.[0];
+            if (u) { url = u; break; }
+            if (pd.status === 'failed' || pd.error) break;
+          }
+        }
         if (!url) throw new Error(data?.error || copy.errorGeneric);
         setMessages(m => m.map(msg => msg.id === pendingMsg.id ? { ...msg, pending: false, content: '', media: { kind: 'image', url } } : msg));
         setCredits(c => c - cost);

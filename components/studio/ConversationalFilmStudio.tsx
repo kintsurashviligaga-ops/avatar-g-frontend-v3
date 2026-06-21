@@ -68,6 +68,7 @@ import {
   type FilmStudioProgress,
   type FilmQaSummary,
 } from '@/lib/chat/filmStudioClient';
+import { looksLikeFilmEdit } from '@/lib/chat/remixPlanner';
 import { composeMusicVideoPrompt, MV_GENRES, MV_SHOTS, MV_CAMERA_MOVES, MV_LIGHTING } from '@/lib/chat/musicVideoPresets';
 import { summarizeFilmPipeline, type StageState } from '@/lib/chat/filmStudioStages';
 import { filmStarterPrompts } from '@/lib/chat/filmStarterPrompts';
@@ -587,6 +588,10 @@ export function ConversationalFilmStudio({
   const feedEndRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const lastPromptRef = useRef<string>('');
+  // The brief of the most recent SUCCESSFUL film — used to re-derive the scene
+  // plan when the user conversationally edits the rendered film ("make scene 2
+  // darker"). Set on create, never on a remix turn.
+  const filmBriefRef = useRef<string>('');
   // Guards the one-shot reload-recovery so a StrictMode double-mount (or a late
   // re-render) can't kick off two resume attempts for the same film.
   const recoveredRef = useRef(false);
@@ -1016,6 +1021,41 @@ export function ConversationalFilmStudio({
     void runReal(inflight.prompt, { predictionId: inflight.predictionId, sessionId: inflight.sessionId });
   }, [runReal]);
 
+  // Conversational film EDITING — re-render ONLY the scenes the edit touches and
+  // reuse the landed clips for the rest (POST /api/pipeline/remix). Purely
+  // additive: the create flow (runReal) is untouched; this fires only when an
+  // edit is issued against an already-rendered master.
+  const runRemix = useCallback(
+    async (editRequest: string) => {
+      const tx = (en: string, ka: string, ru: string) => (locale === 'en' ? en : locale === 'ru' ? ru : ka);
+      const clips = (progress?.matrix?.clips ?? [])
+        .filter((c) => typeof c.url === 'string' && c.url.length > 0)
+        .map((c) => ({ ordinal: c.ordinal, url: c.url as string }));
+      setDriving(true);
+      pushMessage('system', tx('Re-editing the film — re-rendering only the scenes you changed, reusing the rest…', 'ფილმს ვამუშავებ — მხოლოდ შეცვლილ სცენებს თავიდან ვარენდერებ, დანარჩენს ვტოვებ…', 'Редактирую фильм — перерисовываю только изменённые сцены…'));
+      try {
+        const res = await fetch('/api/pipeline/remix', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ originalPrompt: filmBriefRef.current, editRequest, landedClips: clips }),
+        });
+        const j = (await res.json().catch(() => ({}))) as { success?: boolean; masterUrl?: string | null; restitch?: string; message?: string };
+        if (j?.success && typeof j.masterUrl === 'string' && j.masterUrl) {
+          setMasterUrl(j.masterUrl);
+          pushMessage('system', j.restitch ?? tx('Edit applied.', 'ცვლილება გამოყენებულია.', 'Правка применена.'));
+        } else {
+          pushMessage('system', j?.message ?? tx('Couldn’t apply that edit — the film is unchanged.', 'ვერ მოვახერხე ცვლილება — ფილმი უცვლელია.', 'Не удалось применить правку — фильм без изменений.'));
+        }
+      } catch {
+        pushMessage('system', tx('Couldn’t apply that edit — the film is unchanged.', 'ვერ მოვახერხე ცვლილება.', 'Не удалось применить правку.'));
+      } finally {
+        setDriving(false);
+      }
+    },
+    [progress, pushMessage, locale],
+  );
+
   const handleSend = useCallback(() => {
     if (!canSend) return;
     // NOTE: generation is NOT gated on auth here. A stale build-time
@@ -1035,8 +1075,17 @@ export function ConversationalFilmStudio({
     setInput('');
     lastPromptRef.current = userPrompt;
     pushMessage('user', userPrompt);
-    void runReal(userPrompt);
-  }, [canSend, input, pushMessage, runReal]);
+    // Conversational EDIT of the rendered film: a master exists and the message
+    // is unambiguously an edit (strict discriminator — biased toward CREATE so a
+    // fresh brief is never swallowed). Otherwise it's a fresh film — remember the
+    // brief so later edits can re-derive its scene plan.
+    if (masterUrl && filmBriefRef.current && looksLikeFilmEdit(userPrompt)) {
+      void runRemix(userPrompt);
+    } else {
+      filmBriefRef.current = userPrompt;
+      void runReal(userPrompt);
+    }
+  }, [canSend, input, pushMessage, runReal, runRemix, masterUrl, progress]);
 
   // Re-run the most recent prompt after a failure — one tap instead of retyping.
   const handleRetry = useCallback(() => {
@@ -1056,6 +1105,7 @@ export function ConversationalFilmStudio({
     setSelectedSceneUrl(null);
     setError(null);
     setInput('');
+    filmBriefRef.current = ''; // clear the edit context so the next prompt creates fresh
     textareaRef.current?.focus();
   }, []);
 

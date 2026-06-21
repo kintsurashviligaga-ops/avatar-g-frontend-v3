@@ -77,7 +77,13 @@ export function buildFilterComplex(opts: FilterGraphOpts): {
     : `scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:-1:-1:color=black`;
   for (let i = 0; i < nClips; i++) {
     parts.push(
-      `[${i}:v]${fit},setsar=1,settb=AVTB,fps=${vfps},` +
+      // Trim EVERY clip to exactly `clipSec` FIRST. Generative clips routinely come
+      // back off-spec (e.g. 10s when 6s was asked), so without this the timeline
+      // equals the SUM of raw source lengths — the master overran 30s and the audio
+      // bed (atrim'd to targetDur) ended mid-film (the duration-drift + A/V-desync
+      // bug). `setpts=PTS-STARTPTS` rebases the trimmed clip to 0 for a clean
+      // concat/xfade so each [v{i}] is precisely clipSec long.
+      `[${i}:v]trim=0:${clipSec},setpts=PTS-STARTPTS,${fit},setsar=1,settb=AVTB,fps=${vfps},` +
         `format=yuv420p,eq=contrast=1.06:saturation=1.08:gamma=0.98,unsharp=3:3:0.3[v${i}]`,
     );
   }

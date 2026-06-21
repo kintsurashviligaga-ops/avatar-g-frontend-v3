@@ -153,7 +153,14 @@ export async function assembleWithFfmpeg(m: FfmpegManifest, signal?: AbortSignal
       '-c:v', 'libx264', '-preset', 'fast', '-crf', '18',
       '-profile:v', 'high', '-level', '4.2', '-pix_fmt', 'yuv420p',
       // 256 kbps / 48 kHz AAC for clean, full-bandwidth film audio.
-      '-c:a', 'aac', '-b:a', '256k', '-ar', '48000', '-movflags', '+faststart', out,
+      '-c:a', 'aac', '-b:a', '256k', '-ar', '48000',
+      // Hard-cap the container to the EXACT compiled target so the video and audio
+      // streams are trimmed TOGETHER to the same length — a belt-and-suspenders
+      // guarantee on top of the per-clip trim that the master is exactly this long
+      // (30s for a full ≥4-clip film). `-t` truncates only if longer, so it can't
+      // shorten a correctly-built timeline; it just enforces the contract.
+      '-t', String(expectedMasterDuration(inputs.length, clipSec, transSec)),
+      '-movflags', '+faststart', out,
     );
 
     await exec(bin, args, { maxBuffer: 1 << 28, timeout: 280_000, ...(signal ? { signal } : {}) });

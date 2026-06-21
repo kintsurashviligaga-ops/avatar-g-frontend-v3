@@ -680,10 +680,30 @@ export const useOmniDashboardStore = create<OmniDashboardState>((set, get) => {
           body: JSON.stringify({ service: 'image', prompt: cleanPrompt, quality: 'standard' }),
         });
 
-        const data = await res.json() as { success: boolean; url: string | null; error?: string };
+        const data = await res.json() as { success: boolean; url?: string | null; predictionId?: string; error?: string };
 
-        if (res.ok && data.success && data.url) {
-          const readyArtifact: PreviewArtifact = { ...loadingArtifact, sourceUrl: data.url };
+        // The route may return an async {predictionId} with NO url yet (the common
+        // Replicate path — NanoBanana exceeds the route's primary cap and falls
+        // through to async Replicate). Poll every 3s (max 30 retries) until a real
+        // url lands. Do NOT treat a predictionId as an error.
+        let imageUrl: string | null = (res.ok && data.success && data.url) ? data.url : null;
+        if (!imageUrl && res.ok && data.success && data.predictionId) {
+          for (let i = 0; i < 30; i++) {
+            await new Promise((r) => setTimeout(r, 3000));
+            const pollRes = await fetch('/api/replicate/image', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ predictionId: data.predictionId }),
+            });
+            const pd = (await pollRes.json().catch(() => ({}))) as { url?: string | null; output?: string[]; status?: string; error?: string };
+            const u = pd.url || pd.output?.[0];
+            if (u) { imageUrl = u; break; }
+            if (pd.status === 'failed' || pd.error) break;
+          }
+        }
+
+        if (imageUrl) {
+          const readyArtifact: PreviewArtifact = { ...loadingArtifact, sourceUrl: imageUrl };
 
           set((state) => {
             const svc = state.services[serviceId];
