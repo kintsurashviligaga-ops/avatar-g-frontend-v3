@@ -192,21 +192,26 @@ export async function POST(req: NextRequest) {
       const framePrompt = selfie
         ? `Cinematic film still, ${aspect} composition. ${scenePrompt} Featuring the EXACT same person as the reference image — identical face, hair and wardrobe. Photorealistic, professional cinematic colour grade.`
         : `Cinematic film still, ${aspect} composition. ${scenePrompt} Photorealistic, professional cinematic colour grade, sharp focus.`;
-      const r = await serviceManager.execute({
-        sessionId,
-        serviceContext: 'image',
-        intent: 'image_generation',
-        userPrompt: framePrompt,
-        ...(selfie ? { imageUrl: selfie } : {}),
-        selectedOptions: { aspect, aspectRatio: aspect, endpoint: 'v2-1k' },
-        locale,
-      });
-      // Primary = NanoBanana (via ServiceManager). If it yields nothing (e.g. the
-      // key is absent on this deployment → blank storyboard), fall back to Replicate
-      // FLUX so the frame still renders. Re-host either to a CSP-allowed Supabase URL
-      // (a raw provider temp URL is blocked by img-src AND expires).
-      const raw = typeof r.assetUrl === 'string' && /^https?:\/\//i.test(r.assetUrl) ? r.assetUrl : null;
+      // Primary = NanoBanana (via ServiceManager). ISOLATE its failure: if it throws
+      // (e.g. the key is absent on this deployment, which left storyboards blank) or
+      // returns nothing, we still fall through to the Replicate FLUX fallback below —
+      // FLUX backs the film clips too, so its key is present wherever clips render.
+      let raw: string | null = null;
+      try {
+        const r = await serviceManager.execute({
+          sessionId,
+          serviceContext: 'image',
+          intent: 'image_generation',
+          userPrompt: framePrompt,
+          ...(selfie ? { imageUrl: selfie } : {}),
+          selectedOptions: { aspect, aspectRatio: aspect, endpoint: 'v2-1k' },
+          locale,
+        });
+        raw = typeof r.assetUrl === 'string' && /^https?:\/\//i.test(r.assetUrl) ? r.assetUrl : null;
+      } catch { raw = null; }
       const resolved = raw ?? (await genFrameViaReplicate(framePrompt, aspect));
+      // Re-host to a CSP-allowed Supabase URL (a raw provider temp URL is blocked by
+      // img-src AND expires, which would break the render anchor too).
       return resolved ? await reHostFrame(resolved) : null;
     } catch {
       return null;
