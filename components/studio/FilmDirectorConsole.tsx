@@ -23,12 +23,14 @@ import {
   Check,
   AlertTriangle,
 } from 'lucide-react';
+import { useEffect, useRef } from 'react';
 import {
   deriveFilmRoster,
   overallFilmPct,
   type FilmAgentVM,
   type FilmAgentId,
   type FilmAgentStatus,
+  type FilmLogLine,
 } from '@/lib/chat/filmAgentRoster';
 import type { FilmStudioProgress } from '@/lib/chat/filmStudioClient';
 
@@ -65,6 +67,16 @@ const STATUS_LABEL: Record<FilmAgentStatus, Record<Loc, string>> = {
   processing: { en: 'Working', ru: 'В работе', ka: 'მუშაობს' },
   completed: { en: 'Done', ru: 'Готово', ka: 'მზადაა' },
   error: { en: 'Error', ru: 'Ошибка', ka: 'შეცდომა' },
+};
+
+// Adaptive per-agent micro-step text (Master-Prompt §P6) — what the agent is
+// actually doing right now, not just its status. Falls back to the status label.
+const MICRO: Partial<Record<FilmAgentId, { processing: Record<Loc, string>; completed: Record<Loc, string> }>> = {
+  director: { processing: { en: 'Planning…', ru: 'Планирует…', ka: 'გეგმავს…' }, completed: { en: 'Scenes planned', ru: 'Сцены готовы', ka: 'სცენები მზადაა' } },
+  storyboard: { processing: { en: 'Drawing frames…', ru: 'Кадры…', ka: 'კადრები…' }, completed: { en: 'Shot list locked', ru: 'Кадры готовы', ka: 'კადრები ჩაიკეტა' } },
+  voice: { processing: { en: 'Recording VO…', ru: 'Озвучка…', ka: 'გახმოვანება…' }, completed: { en: 'Voiceover ready', ru: 'Озвучка готова', ka: 'გახმოვანება მზადაა' } },
+  sfx: { processing: { en: 'Scoring…', ru: 'Музыка…', ka: 'მუსიკა…' }, completed: { en: 'Music + SFX', ru: 'Музыка и SFX', ka: 'მუსიკა + SFX' } },
+  montage: { processing: { en: 'Stitching…', ru: 'Склейка…', ka: 'მონტაჟი…' }, completed: { en: 'Final cut', ru: 'Финал готов', ka: 'საბოლოო კადრი' } },
 };
 
 const TITLE: Record<Loc, string> = { en: "Director's Console", ru: 'Пульт режиссёра', ka: 'რეჟისორის პულტი' };
@@ -114,10 +126,15 @@ function StatusIcon({ status }: { status: FilmAgentStatus }) {
 function AgentCard({ agent, loc }: { agent: FilmAgentVM; loc: Loc }) {
   const Icon = ICONS[agent.id];
   const s = STATUS_STYLE[agent.status];
+  const micro = MICRO[agent.id];
   const detail =
     agent.id === 'video' && (agent.status === 'processing' || agent.status === 'completed') && agent.total
       ? `${agent.ready ?? 0}/${agent.total} ${SCENES[loc]}`
-      : STATUS_LABEL[agent.status][loc];
+      : micro && agent.status === 'processing'
+        ? micro.processing[loc]
+        : micro && agent.status === 'completed'
+          ? micro.completed[loc]
+          : STATUS_LABEL[agent.status][loc];
   const barWidth = agent.status === 'idle' ? 0 : Math.max(agent.status === 'queued' ? 0 : 8, agent.pct);
   return (
     <div className={`flex flex-col gap-1.5 rounded-xl border p-2.5 transition-colors duration-500 ${s.card}`}>
@@ -143,15 +160,50 @@ function AgentCard({ agent, loc }: { agent: FilmAgentVM; loc: Loc }) {
   );
 }
 
+const FEED: Record<Loc, string> = { en: 'Live feed', ru: 'Лента', ka: 'ლაივ ფიდი' };
+
+/** Master-Prompt §P4 — the streaming activity log terminal. Auto-scrolls to newest. */
+function LogTerminal({ log, loc }: { log: FilmLogLine[]; loc: Loc }) {
+  const endRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    endRef.current?.scrollIntoView({ block: 'end' });
+  }, [log.length]);
+  if (!log.length) return null;
+  return (
+    <div>
+      <p className="mb-1 flex items-center gap-1.5 text-[9.5px] font-semibold uppercase tracking-wider text-app-muted/70">
+        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-500" />
+        {FEED[loc]}
+      </p>
+      <div className="max-h-[120px] overflow-y-auto rounded-lg border border-app-border/12 bg-black/25 p-2">
+        <div className="space-y-0.5 font-mono">
+          {log.map((l) => (
+            <div key={l.key} className="flex items-start gap-1.5 text-[10.5px] leading-snug">
+              <span className="shrink-0">{l.icon}</span>
+              <span className="text-app-text/85">{l.text}</span>
+            </div>
+          ))}
+          <div ref={endRef} className="flex items-center pt-0.5">
+            <span className="inline-block h-2.5 w-1.5 animate-pulse bg-app-accent/70" />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function FilmDirectorConsole({
   roster,
   progress,
+  log,
   statusText,
   locale,
 }: {
   /** Pre-derived roster from the live message; falls back to deriving from `progress`. */
   roster?: FilmAgentVM[];
   progress?: FilmStudioProgress | null;
+  /** Accumulated activity-log lines (Master-Prompt §P4). */
+  log?: FilmLogLine[];
   statusText?: string;
   locale: string;
 }) {
@@ -202,6 +254,9 @@ export default function FilmDirectorConsole({
           <span className="truncate text-[11.5px] font-medium text-app-text">{statusText.trim()}</span>
         </div>
       ) : null}
+
+      {/* Streaming activity log — the crew narrates its work in real time */}
+      {log && log.length ? <LogTerminal log={log} loc={loc} /> : null}
     </div>
   );
 }

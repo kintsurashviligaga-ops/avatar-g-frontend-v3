@@ -1,4 +1,4 @@
-import { deriveFilmRoster, overallFilmPct, FILM_AGENT_ORDER, type FilmAgentId, type FilmAgentStatus } from './filmAgentRoster';
+import { deriveFilmRoster, deriveFilmLog, overallFilmPct, FILM_AGENT_ORDER, type FilmAgentId, type FilmAgentStatus } from './filmAgentRoster';
 import type { FilmStudioProgress, FilmLegClientStatus } from './filmStudioClient';
 
 const clip = (status: FilmLegClientStatus, ordinal: number) => ({ ordinal, status });
@@ -104,5 +104,41 @@ describe('deriveFilmRoster', () => {
     const pct = overallFilmPct(deriveFilmRoster(progress({ phase: 'dispatching', matrix: { storyboard: 'pending' } })));
     expect(pct).toBeGreaterThanOrEqual(0);
     expect(pct).toBeLessThanOrEqual(100);
+  });
+});
+
+describe('deriveFilmLog', () => {
+  it('null progress → empty log', () => {
+    expect(deriveFilmLog(null, 'en')).toEqual([]);
+  });
+
+  it('grows monotonically and keys are stable + unique', () => {
+    const early = deriveFilmLog(progress({ phase: 'rendering', matrix: { clips: [clip('succeeded', 1)] } }), 'en');
+    const later = deriveFilmLog(progress({ phase: 'rendering', matrix: { clips: [clip('succeeded', 1), clip('succeeded', 2), clip('succeeded', 3)] } }), 'en');
+    // every early key survives in the later snapshot (monotonic)
+    const laterKeys = new Set(later.map((l) => l.key));
+    expect(early.every((l) => laterKeys.has(l.key))).toBe(true);
+    expect(later.length).toBeGreaterThan(early.length);
+    // keys unique
+    expect(new Set(later.map((l) => l.key)).size).toBe(later.length);
+  });
+
+  it('emits one line per landed scene, in ordinal order', () => {
+    const log = deriveFilmLog(progress({ phase: 'rendering', matrix: { clips: [clip('succeeded', 2), clip('succeeded', 1), clip('queued', 3)] } }), 'en');
+    const clipLines = log.filter((l) => l.key.startsWith('clip-'));
+    expect(clipLines.map((l) => l.key)).toEqual(['clip-1', 'clip-2']);
+  });
+
+  it('assembled → ends with the master-ready line', () => {
+    const log = deriveFilmLog(progress({ phase: 'assembled', masterUrl: 'http://m', matrix: { stitch: 'succeeded', audio: 'succeeded', clips: [clip('succeeded', 1), clip('succeeded', 2)], sceneCount: 2 } }), 'en');
+    expect(log.some((l) => l.key === 'master')).toBe(true);
+    expect(log[log.length - 1]!.key).toBe('master');
+  });
+
+  it('localizes (ka differs from en)', () => {
+    const en = deriveFilmLog(progress({ phase: 'dispatching', matrix: { storyboard: 'pending' } }), 'en');
+    const ka = deriveFilmLog(progress({ phase: 'dispatching', matrix: { storyboard: 'pending' } }), 'ka');
+    expect(en[0]!.text).not.toBe(ka[0]!.text);
+    expect(en[0]!.key).toBe(ka[0]!.key);
   });
 });

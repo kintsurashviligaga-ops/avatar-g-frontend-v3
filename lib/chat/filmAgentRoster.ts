@@ -161,3 +161,66 @@ export function overallFilmPct(roster: FilmAgentVM[]): number {
   const sum = active.reduce((s, r) => s + r.pct, 0);
   return Math.round(sum / active.length);
 }
+
+// ─── Live activity log (Master-Prompt §P4 — the Director's Console log terminal) ──
+
+export interface FilmLogLine {
+  /** Stable identity so the UI accumulates lines without duplicating them. */
+  key: string;
+  icon: string;
+  text: string;
+}
+
+/**
+ * Fold a live snapshot into the chronological activity log shown in the console's
+ * terminal. Monotonic by construction — as the pipeline advances the returned set
+ * only grows — so the caller can simply store the latest array (newest lines append
+ * at the bottom). Localized (en/ru/ka).
+ */
+export function deriveFilmLog(p: FilmStudioProgress | null | undefined, locale: string): FilmLogLine[] {
+  const loc = locale === 'ru' || locale === 'ka' ? locale : 'en';
+  const T = (en: string, ru: string, ka: string) => (loc === 'ru' ? ru : loc === 'ka' ? ka : en);
+
+  const phase = p?.phase ?? 'idle';
+  const m = p?.matrix ?? null;
+  const clips = m?.clips ?? [];
+  const total = m?.sceneCount || clips.length || 6;
+  const rendered = phase === 'rendering' || phase === 'stitching' || phase === 'assembled';
+  const lines: FilmLogLine[] = [];
+
+  if (phase === 'failed') {
+    // Surface the dispatch + whatever landed, then the failure, so context isn't lost.
+  }
+  if (phase !== 'idle') {
+    lines.push({ key: 'dispatch', icon: '🎬', text: T('Director — breaking down the script', 'Режиссёр — разбор сценария', 'რეჟისორი — სცენარის დაშლა') });
+  }
+  if (m) {
+    lines.push({ key: 'plan', icon: '📝', text: T(`${total} scenes planned`, `Запланировано сцен: ${total}`, `დაიგეგმა ${total} სცენა`) });
+  }
+  if (m?.storyboard === 'succeeded' || rendered) {
+    lines.push({ key: 'storyboard', icon: '🎞️', text: T('Storyboard — shot list locked', 'Раскадровка — кадры готовы', 'სცენარი — კადრები ჩაიკეტა') });
+  }
+  for (const c of clips.filter((x) => x.status === 'succeeded').sort((a, b) => a.ordinal - b.ordinal)) {
+    lines.push({
+      key: `clip-${c.ordinal}`,
+      icon: '🎥',
+      text: T(`Cinematographer — scene ${c.ordinal} rendered`, `Оператор — сцена ${c.ordinal} готова`, `ოპერატორი — სცენა ${c.ordinal} დარენდერდა`),
+    });
+  }
+  if (m?.voiceUrl || m?.audio === 'succeeded') {
+    lines.push({ key: 'voice', icon: '🎙️', text: T('Narrator — voiceover ready', 'Диктор — озвучка готова', 'ნარაცია — გახმოვანება მზადაა') });
+  }
+  if (m?.sfxUrl || m?.audio === 'succeeded') {
+    lines.push({ key: 'sfx', icon: '🔊', text: T('Sound — music & SFX bed ready', 'Звук — музыка и эффекты готовы', 'ხმა — მუსიკა და ეფექტები მზადაა') });
+  }
+  if (phase === 'stitching') {
+    lines.push({ key: 'stitch', icon: '✂️', text: T('Editor — assembling the final cut', 'Монтаж — финальная склейка', 'მონტაჟი — საბოლოო მონტაჟი') });
+  }
+  if (phase === 'assembled' || p?.masterUrl) {
+    lines.push({ key: 'master', icon: '✅', text: T('Final master ready', 'Мастер готов', 'მასტერი მზადაა') });
+  }
+  if (phase === 'failed') {
+    lines.push({ key: 'failed', icon: '⚠️', text: T('Render failed — see message', 'Ошибка рендера', 'რენდერი ჩაიშალა') });
+  }
+  return lines;
+}
