@@ -174,20 +174,11 @@ async function synthesizeVoiceover(
 ): Promise<{ base64: string; contentType: string } | null> {
   const georgian = isGeorgianText(text);
   const apiKey = process.env.ELEVENLABS_API_KEY;
-  // GEORGIAN-FIRST ROUTING: ElevenLabs has no native Georgian voice (its
-  // multilingual model only approximates the phonemes → accented/robotic). When a
-  // Google key is configured, Georgian goes to Google's NATIVE ka-GE neural voice
-  // FIRST; ElevenLabs stays primary for non-Georgian (English/Russian) reads.
-  // Either way the other provider is the fallback, so a voice-over is produced
-  // whenever ANY key is live. Set TTS_FORCE_ELEVENLABS=1 to keep ElevenLabs primary
-  // for Georgian too (e.g. once a real cloned Georgian voice is supplied).
-  const preferGoogleForKa =
-    georgian && !!googleTtsConfigured() && process.env.TTS_FORCE_ELEVENLABS !== '1';
-  if (preferGoogleForKa) {
-    const g = await synthesizeViaGoogle(text, gender);
-    if (g) return g;
-  }
-
+  // ElevenLabs is PRIMARY for every language, Georgian included: selectTtsModel
+  // routes Georgian to `eleven_v3`, the one ElevenLabs model that natively supports
+  // `ka` — so it reads on a real Georgian voice (natural), not the old
+  // multilingual_v2 approximation (robotic). Google Cloud TTS (native ka-GE neural)
+  // is the universal fallback for when ElevenLabs is absent/down.
   if (apiKey) {
     const voiceId =
       (voiceIdOverride && voiceIdOverride.trim() ? voiceIdOverride.trim() : null) ??
@@ -226,22 +217,11 @@ async function synthesizeVoiceover(
     }
   }
 
-  // Last resort (incl. non-Georgian when ElevenLabs is down): Google TTS.
-  if (!preferGoogleForKa) {
-    const g = await synthesizeViaGoogle(text, gender);
-    if (g) return g;
-  }
+  // Fallback when ElevenLabs is absent/down: Google TTS (native ka-GE neural when
+  // a valid Google key exists).
+  const g = await synthesizeViaGoogle(text, gender);
+  if (g) return g;
   return null;
-}
-
-/** True when SOME Google TTS key is present (mirrors lib/audio/google-tts key order). */
-function googleTtsConfigured(): boolean {
-  return !!(
-    process.env.GOOGLE_TTS_API_KEY ||
-    process.env.GOOGLE_API_KEY ||
-    process.env.GEMINI_API_KEY ||
-    process.env.GOOGLE_GENERATIVE_AI_API_KEY
-  );
 }
 
 /**

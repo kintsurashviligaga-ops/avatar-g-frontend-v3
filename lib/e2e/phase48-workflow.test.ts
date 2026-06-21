@@ -10,7 +10,7 @@
  *
  *   1. Auth      — resolveAuthCallbackUrl binds the handshake to myavatar.ge.
  *   2. Dropzone  — 1–3 reference images thread through the routing envelope.
- *   3. Georgian  — selectTtsModel HARD-FORCES eleven_multilingual_v2.
+ *   3. Georgian  — selectTtsModel HARD-FORCES eleven_v3 (the only ka-capable model).
  *   4. Preview   — CSP media-src admits inline data: so the clip plays inline.
  */
 
@@ -43,9 +43,9 @@ describe('PHASE 48 §4 — full live-workflow contract simulation', () => {
     expect(r.routing?.params).toMatchObject({ totalDurationSec: 30 });
   });
 
-  it('STEP 3 — Georgian Script Generation: voiceover hard-forces multilingual_v2', () => {
+  it('STEP 3 — Georgian Script Generation: voiceover hard-forces eleven_v3 (the ka-capable model)', () => {
     const georgianScript = 'გამარჯობა, ეს არის ჩემი ავატარის ხმა.';
-    expect(selectTtsModel(georgianScript, 'ka')).toBe('eleven_multilingual_v2');
+    expect(selectTtsModel(georgianScript, 'ka')).toBe('eleven_v3');
     // And the voice route engine is the Georgian synthesis grid.
     const voice = buildRouting('voice_tts', georgianScript);
     expect(voice?.engine).toBe('synthesis_voice_ka');
@@ -62,7 +62,7 @@ describe('PHASE 48 §4 — full live-workflow contract simulation', () => {
 
   it('END-TO-END — every link of the chain holds together', () => {
     const authOk = resolveAuthCallbackUrl('https://myavatar.ge', undefined, '/').startsWith('https://myavatar.ge/auth/callback');
-    const georgianOk = selectTtsModel('ქართული ტექსტი') === 'eleven_multilingual_v2';
+    const georgianOk = selectTtsModel('ქართული ტექსტი') === 'eleven_v3';
     const previewOk = (cspDirectiveMap()['media-src'] as string[]).includes('data:');
     expect([authOk, georgianOk, previewOk].every(Boolean)).toBe(true);
   });

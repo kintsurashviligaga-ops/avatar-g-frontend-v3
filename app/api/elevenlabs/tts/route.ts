@@ -76,10 +76,9 @@ async function streamElevenLabs(
     },
     body: JSON.stringify({
       text: text.slice(0, 5000),
-      // PHASE 48 §3 — model is chosen per-language. Georgian MUST run on
-      // eleven_multilingual_v2 (stable Georgian phonemes); turbo is English-first
-      // and mangles Georgian. Settings are tuned to match the selected model.
-      // PHASE 52 §5 — an explicit delivery directive then mirrors the asked tone.
+      // v329 — model is chosen per-language by selectTtsModel. Georgian → eleven_v3
+      // (the only model supporting `ka`); turbo is English-first. Settings are tuned
+      // per model. PHASE 52 §5 — an explicit delivery directive mirrors the tone.
       model_id: modelId,
       voice_settings: enforceVoiceSettings(voiceSettingsForModel(modelId), voiceStyle),
       apply_text_normalization: 'auto',
@@ -100,6 +99,44 @@ async function streamElevenLabs(
       'X-Voice-Model': modelId,
       'Cache-Control': 'no-store',
       'X-Accel-Buffering': 'no',
+    },
+  });
+}
+
+// Non-streaming ElevenLabs — buffered fetch on the plain TTS endpoint. Used as a
+// fallback because `eleven_v3` (the Georgian model) is NOT reliably served by the
+// low-latency /stream endpoint; the buffered endpoint handles it. Returns the whole
+// MP3 as one response (no progressive playback, but correct audio).
+async function bufferElevenLabs(
+  text: string,
+  voiceId: string,
+  apiKey: string,
+  modelId: ElevenLabsModelId,
+  voiceStyle?: string,
+): Promise<NextResponse | null> {
+  const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
+    method: 'POST',
+    headers: { 'xi-api-key': apiKey, 'Content-Type': 'application/json', Accept: 'audio/mpeg' },
+    body: JSON.stringify({
+      text: text.slice(0, 5000),
+      model_id: modelId,
+      voice_settings: enforceVoiceSettings(voiceSettingsForModel(modelId), voiceStyle),
+    }),
+  });
+  if (!res.ok) {
+    console.error('[elevenlabs/tts] buffered error', res.status, (await res.text().catch(() => '')).slice(0, 200));
+    return null;
+  }
+  const buf = await res.arrayBuffer();
+  if (buf.byteLength < 1024) return null;
+  return new NextResponse(buf, {
+    status: 200,
+    headers: {
+      'Content-Type': 'audio/mpeg',
+      'Content-Length': String(buf.byteLength),
+      'X-Voice-Provider': 'elevenlabs',
+      'X-Voice-Model': modelId,
+      'Cache-Control': 'no-store',
     },
   });
 }
@@ -136,17 +173,23 @@ export async function POST(req: NextRequest) {
     ?? body.voice_id
     ?? (isGeorgian ? georgianVoiceId : (process.env.ELEVENLABS_VOICE_ID ?? georgianVoiceId));
 
-  // PHASE 48 §3 — hard-force eleven_multilingual_v2 when the text/locale is
-  // Georgian; everything else keeps the low-latency turbo default.
+  // v329 — Georgian routes to eleven_v3 (the only model that supports `ka`);
+  // everything else keeps the low-latency turbo default.
   const modelId = selectTtsModel(text, body.locale);
 
-  // Primary: ElevenLabs (progressive streaming — minimal time-to-first-sound)
+  // Primary: ElevenLabs. eleven_v3 is NOT reliably served by the low-latency
+  // /stream endpoint, so for v3 use the buffered endpoint directly; other models
+  // stream first (fastest time-to-first-sound) and fall back to buffered.
   if (apiKey) {
-    const streamed = await streamElevenLabs(text, voiceId, apiKey, modelId, body.voiceStyle);
-    if (streamed) return streamed;
+    if (modelId !== 'eleven_v3') {
+      const streamed = await streamElevenLabs(text, voiceId, apiKey, modelId, body.voiceStyle);
+      if (streamed) return streamed;
+    }
+    const buffered = await bufferElevenLabs(text, voiceId, apiKey, modelId, body.voiceStyle);
+    if (buffered) return buffered;
   }
 
-  // Fallback: Google TTS (uses Gemini key, works for Georgian natively)
+  // Fallback: Google TTS (native ka-GE neural when a valid Google key exists)
   const googleAudio = await synthesizeWithGoogleTTS(text);
   if (googleAudio) return audioResponse(googleAudio, 'google-tts');
 
