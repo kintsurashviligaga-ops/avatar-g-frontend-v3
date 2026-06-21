@@ -234,6 +234,41 @@ function GenerationProgress({ kind, elapsed, status, locale, targetSec }: {
   );
 }
 
+/**
+ * StoryboardFrame — one scene tile's media. Shows a spinner WHILE the frame image
+ * loads, the image once it paints (fade-in), and a graceful icon — never a broken-
+ * image glyph — when the URL is missing or fails to load (e.g. a CSP-blocked or
+ * expired provider URL). Fixes the "all six slots show a broken placeholder" report.
+ */
+function StoryboardFrame({ url, label, onZoom }: { url: string | null; label: string; onZoom: (u: string) => void }) {
+  const [state, setState] = useState<'loading' | 'loaded' | 'error'>(url ? 'loading' : 'error');
+  useEffect(() => { setState(url ? 'loading' : 'error'); }, [url]);
+  if (!url) {
+    return <div className="flex h-full w-full items-center justify-center text-app-muted/40"><ImageIcon size={15} /></div>;
+  }
+  return (
+    <>
+      {state !== 'loaded' && (
+        <div className="absolute inset-0 flex items-center justify-center bg-app-border/5">
+          {state === 'loading'
+            ? <Loader2 size={15} className="animate-spin text-app-muted/60" />
+            : <ImageIcon size={15} className="text-app-muted/40" />}
+        </div>
+      )}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={url}
+        alt={label}
+        loading="lazy"
+        onLoad={() => setState('loaded')}
+        onError={() => setState('error')}
+        onClick={() => state === 'loaded' && onZoom(url)}
+        className={`h-full w-full object-cover transition-opacity duration-300 ${state === 'loaded' ? 'cursor-zoom-in opacity-100' : 'opacity-0'}`}
+      />
+    </>
+  );
+}
+
 // Animated three-dot "typing" indicator for the chat-mode pending bubble.
 function TypingDots() {
   return (
@@ -1969,19 +2004,17 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                   // so a mid-render mode switch can't swap the wrong progress UI in.
                   const kind: 'image' | 'music' | 'video' | 'lipsync' = m.genKind ?? ((m.storyboard?.length ?? 0) > 0 ? 'video' : (mode as 'image' | 'music' | 'video' | 'lipsync'));
                   return (
-                    <div className="space-y-3">
-                      {/* Keep the storyboard frames in view during the ~7-min render. */}
+                    // Explicit vertical stack — the storyboard grid sits ABOVE the
+                    // Director's Console and the two can never overlap (no absolute/
+                    // fixed positioning, no shared z-index).
+                    <div className="flex flex-col gap-3">
+                      {/* Storyboard frames stay in view during the ~7-min render. */}
                       {m.storyboard && m.storyboard.length > 0 && (
-                        <div className="grid grid-cols-3 gap-1.5 w-[min(82vw,420px)]">
+                        <div className="grid w-[min(88vw,460px)] grid-cols-3 gap-1.5">
                           {m.storyboard.map((s) => (
                             <div key={s.ordinal} className={`relative overflow-hidden rounded-lg ${videoOrientation === 'vertical' ? 'aspect-[9/16]' : 'aspect-video'} bg-app-border/10 ring-1 ring-app-border/10`}>
-                              {s.frameUrl ? (
-                                // eslint-disable-next-line @next/next/no-img-element
-                                <img src={s.frameUrl} alt={`${t.sbScene} ${s.ordinal}`} onClick={() => s.frameUrl && setLightbox(s.frameUrl)} className="h-full w-full cursor-zoom-in object-cover" />
-                              ) : (
-                                <div className="flex h-full w-full items-center justify-center text-app-muted/50"><ImageIcon size={15} /></div>
-                              )}
-                              <span className="absolute left-1 top-1 rounded bg-black/60 px-1 text-[9px] font-medium text-white">{s.ordinal}</span>
+                              <StoryboardFrame url={s.frameUrl} label={`${t.sbScene} ${s.ordinal}`} onZoom={setLightbox} />
+                              <span className="absolute left-1 top-1 z-10 rounded bg-black/60 px-1 text-[9px] font-medium text-white">{s.ordinal}</span>
                             </div>
                           ))}
                         </div>

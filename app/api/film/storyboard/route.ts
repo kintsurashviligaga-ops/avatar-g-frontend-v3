@@ -24,6 +24,10 @@ import { mapWithConcurrency } from '@/lib/chat/filmClipRetry';
 import { ServiceManager } from '@/lib/chat/ServiceManager';
 import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
+import { validateInput, buildModelInput } from '@/lib/replicate/schemas';
+import { resolveModel } from '@/lib/replicate/models';
+import { createPrediction, pollPrediction } from '@/lib/replicate/client';
+import { normalizeOutput } from '@/lib/replicate/normalizer';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300;
@@ -110,6 +114,34 @@ async function hostRef(ref: string, i: number): Promise<string> {
   }
 }
 
+/**
+ * Storyboard-frame FALLBACK: when the primary frame provider (NanoBanana) is
+ * unavailable — e.g. its key is missing on a given deployment, which left all six
+ * tiles blank — render the frame on Replicate FLUX instead (the same provider that
+ * already backs the film clips, so its key is present wherever clips render).
+ * Polled to completion server-side so the storyboard still returns a real URL.
+ * Fail-open: any miss returns null and the slot degrades gracefully.
+ */
+async function genFrameViaReplicate(framePrompt: string, aspect: string): Promise<string | null> {
+  try {
+    const validation = validateInput({ service: 'image', prompt: framePrompt, quality: 'standard', aspectRatio: aspect });
+    if (!validation.valid || !validation.sanitized) return null;
+    const model = resolveModel('image', validation.sanitized.variant);
+    const modelInput = buildModelInput(validation.sanitized);
+    let pred = await createPrediction(model.id, modelInput);
+    const deadline = Date.now() + 70_000;
+    while (pred.status !== 'succeeded' && pred.status !== 'failed' && pred.status !== 'canceled' && Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 2500));
+      pred = await pollPrediction(pred.id);
+    }
+    if (pred.status !== 'succeeded') return null;
+    const norm = normalizeOutput('image', model.label, model.outputType, pred.id, pred.status, pred.output, pred.error ?? null, pred.metrics) as { url?: string };
+    return typeof norm.url === 'string' && /^https?:\/\//i.test(norm.url) ? norm.url : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function POST(req: NextRequest) {
   const rl = await checkRateLimit(req, RATE_LIMITS.EXPENSIVE);
   if (rl) return rl;
@@ -169,10 +201,13 @@ export async function POST(req: NextRequest) {
         selectedOptions: { aspect, aspectRatio: aspect, endpoint: 'v2-1k' },
         locale,
       });
+      // Primary = NanoBanana (via ServiceManager). If it yields nothing (e.g. the
+      // key is absent on this deployment → blank storyboard), fall back to Replicate
+      // FLUX so the frame still renders. Re-host either to a CSP-allowed Supabase URL
+      // (a raw provider temp URL is blocked by img-src AND expires).
       const raw = typeof r.assetUrl === 'string' && /^https?:\/\//i.test(r.assetUrl) ? r.assetUrl : null;
-      // Re-host to a CSP-allowed Supabase URL — a raw provider temp URL is blocked
-      // by the browser img-src AND expires (breaking the render anchor too).
-      return raw ? await reHostFrame(raw) : null;
+      const resolved = raw ?? (await genFrameViaReplicate(framePrompt, aspect));
+      return resolved ? await reHostFrame(resolved) : null;
     } catch {
       return null;
     }
