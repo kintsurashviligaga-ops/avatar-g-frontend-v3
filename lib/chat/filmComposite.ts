@@ -617,49 +617,39 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
     }
   }
 
-  // ── Leg 4b: commentator / narration voice-over (PHASE 48 §2) ───────────────
-  // Only when the brief explicitly asks for a spoken commentator/narrator. The
-  // helper is STRICTLY fail-open: any failure (no key, model error, empty audio)
-  // returns null and the film falls back to the music-only timeline unchanged.
-  // It is NOT separately billed, so an absent/failed voice-over never burns GEL.
-  let voiceUrl: string | null = null;
-  // Verbatim dialogue the user typed in the video panel → spoken as-is. Its presence
-  // also FORCES the voiceover leg (the character speaks even if no narration cue).
+  // ── Legs 4b + 4c: narration voice-over (PHASE 48 §2) + cinematic SFX (§49.7) ─
+  // These two are INDEPENDENT (both derive from the brief, not from each other or
+  // the clips) and both STRICTLY fail-open + unbilled, so we run them CONCURRENTLY
+  // instead of back-to-back — the audio legs finish in max(voice, sfx) rather than
+  // their sum. Voice-over only fires when the brief asks for a commentator/narrator
+  // OR the user typed verbatim dialogue (narrationScript); SFX runs for every film.
   const customNarration = (() => {
     const v = (input.metadata as { narrationScript?: unknown } | undefined)?.narrationScript;
     return typeof v === 'string' && v.trim() ? v.trim() : null;
   })();
-  if (wantsCommentary(input.message) || customNarration) {
-    try {
-      voiceUrl = await generateFilmVoiceover({
-        brief: input.message,
-        totalSec: plan.shared.totalSec,
-        compositeId,
-        narrationScript: customNarration,
-      });
-    } catch (err) {
-      // eslint-disable-next-line no-console
-      console.warn('[film] voiceover leg failed:', err instanceof Error ? err.message : err);
-      voiceUrl = null;
-    }
-  }
-
-  // ── Leg 4c: cinematic SFX / sound-design (PHASE 49 §7) ─────────────────────
-  // Generated for EVERY film (ambience + foley make it feel real). Strictly
-  // fail-open: any failure leaves sfxUrl null and the music-only mix is unchanged.
-  // Not separately billed, so a failed/absent SFX leg never burns GEL.
-  let sfxUrl: string | null = null;
-  try {
-    sfxUrl = await generateFilmSfx({
+  const [voiceUrl, sfxUrl] = await Promise.all([
+    (wantsCommentary(input.message) || customNarration)
+      ? generateFilmVoiceover({
+          brief: input.message,
+          totalSec: plan.shared.totalSec,
+          compositeId,
+          narrationScript: customNarration,
+        }).catch((err) => {
+          // eslint-disable-next-line no-console
+          console.warn('[film] voiceover leg failed:', err instanceof Error ? err.message : err);
+          return null;
+        })
+      : Promise.resolve<string | null>(null),
+    generateFilmSfx({
       brief: input.message,
       totalSec: plan.shared.totalSec,
       compositeId,
-    });
-  } catch (err) {
-    // eslint-disable-next-line no-console
-    console.warn('[film] sfx leg failed:', err instanceof Error ? err.message : err);
-    sfxUrl = null;
-  }
+    }).catch((err) => {
+      // eslint-disable-next-line no-console
+      console.warn('[film] sfx leg failed:', err instanceof Error ? err.message : err);
+      return null;
+    }),
+  ]);
 
   // PHASE 43 §1 — Mint the Union Poll token. Every clip taskRef + the audio
   // workId rides in ONE predictionId; `pollFilmTask` decodes it and polls the

@@ -4092,6 +4092,10 @@ function MessageBubble({
     if (typeof window !== 'undefined' && 'speechSynthesis' in window) { try { window.speechSynthesis.cancel(); } catch { /* noop */ } }
 
     setTtsState('loading');
+    // STEP 1 — synthesize via the premium (cloned-voice) route. A failure HERE means
+    // the audio itself is unavailable → fall back to the browser engine.
+    let el: HTMLAudioElement;
+    let url: string;
     try {
       const res = await fetch('/api/elevenlabs/tts', {
         method: 'POST',
@@ -4101,18 +4105,30 @@ function MessageBubble({
       });
       if (!res.ok) throw new Error(`tts ${res.status}`);
       const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const el = new Audio(url);
+      if (!blob.size) throw new Error('empty audio');
+      url = URL.createObjectURL(blob);
+      el = new Audio(url);
       el.onended = () => { try { URL.revokeObjectURL(url); } catch { /* noop */ } readAloudAudioRef.current = null; setTtsState('idle'); };
       el.onerror = () => { try { URL.revokeObjectURL(url); } catch { /* noop */ } readAloudAudioRef.current = null; setTtsState('idle'); };
       readAloudAudioRef.current = el;
-      await el.play();
-      setTtsState('playing');
     } catch {
       // Premium voice unreachable — degrade to the browser engine.
       readAloudAudioRef.current = null;
       speakViaBrowser(plain);
+      return;
     }
+    // STEP 2 — play it. Drive state from EVENTS, not just the play() promise: some
+    // browsers (Safari/strict autoplay, automated contexts) leave play() pending
+    // forever, which would strand the button on 'loading'. `onplaying` confirms real
+    // audio; a short timeout recovers to 'paused' (tap-to-play with a fresh gesture)
+    // if it never starts. Never stuck on 'loading', never silent browser-TTS for ka.
+    el.onplaying = () => { if (readAloudAudioRef.current === el) setTtsState('playing'); };
+    el.play()
+      .then(() => { if (readAloudAudioRef.current === el) setTtsState('playing'); })
+      .catch(() => { if (readAloudAudioRef.current === el) setTtsState('paused'); });
+    window.setTimeout(() => {
+      if (readAloudAudioRef.current === el) setTtsState((s) => (s === 'loading' ? (el.paused ? 'paused' : 'playing') : s));
+    }, 1800);
   }, [ttsState, message.text, lang, speakViaBrowser]);
 
   const modelLabel = prettyModel(message.model);

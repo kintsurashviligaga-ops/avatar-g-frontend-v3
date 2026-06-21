@@ -74,7 +74,7 @@ const COPY: Record<Lang, {
     generatingMusic: 'მუსიკა იქმნება… (1–3 წუთი)', musicFailed: 'მუსიკის გენერაცია ვერ მოხერხდა. სცადე თავიდან.', lyricsBlocked: '⚠️ ლირიკა დაიბლოკა (საავტორო უფლებები). შეცვალე სიტყვები ან დააჭირე „✨ ლირიკა დამიწერე".',
     modeVideo: 'ვიდეო', videoPlaceholder: 'აღწერე 30-წამიანი ვიდეო (ფოტო — პერსონაჟისთვის)…',
     generatingVideo: 'ვიდეო იქმნება… 6 სცენა + მონტაჟი (~5–7 წუთი, დაელოდე)', videoFailed: 'ვიდეოს გენერაცია ვერ მოხერხდა — შესაძლოა სერვისი დროებით დატვირთულია. სცადე თავიდან რამდენიმე წუთში.', generatingMyVoice: '🎵 სიმღერა იქმნება შენი ხმით… (~2–3 წუთი, დაელოდე)', myVoiceCreate: 'ჩემი ხმით შექმნა', myVoiceLyricsPh: 'დაწერე ლირიკა — რას იმღერებს შენი ხმა', myVoiceReady: 'დაწერე ლირიკა და შექმენი', writeLyricsBtn: '✨ ლირიკა დამიწერე', upscaleBtn: '⬆ HD გადიდება', upscaling: '🔍 ვადიდებ HD-მდე…', upscaleFailed: 'გადიდება ვერ მოხერხდა.',
-    modeLipsync: 'ავატარი', lipsyncPlaceholder: 'მიამაგრე პერსონაჟის ფოტო + ჩაწერე ტექსტი — სურათი ალაპარაკდება…',
+    modeLipsync: 'ავატარი', lipsyncPlaceholder: 'ჩაწერე ტექსტი — AI წამყვანი ალაპარაკდება შენი ხმით (ან მიამაგრე ფოტო, რომ ის ალაპარაკდეს)…',
     generatingLipsync: 'ავატარი იქმნება…', lipsyncFailed: 'ავატარი ვერ შეიქმნა.', lipsyncNeedFiles: 'მიამაგრე ფოტო და ტექსტი (ან აუდიო).', lipsyncAuth: 'ავატარისთვის ჯერ გაიარე ავტორიზაცია.', lipAudioLabel: 'აუდიო',
     stop: 'შეჩერება', stopped: 'შეჩერდა', scrollDown: 'ბოლოში გადასვლა', regenerate: 'თავიდან გენერაცია', elapsedHint: 'გავიდა', greeting: 'რით დაგეხმარო?', attachHint: 'დამატება',
     instrumental: 'ინსტრუმენტალი', withVocals: 'ვოკალით', lyricsPlaceholder: 'ლირიკა (არჩევითი) — შენი ტექსტი; ცარიელი = ავტომატური', coverMode: '🎵 ქავერი', voiceMode: '🎤 ჩემი ხმით', voiceLyricsPlaceholder: 'ლირიკა — რას იმღერებს შენი ხმა (ატვირთე ≥15წმ ხმა)', voiceSecTitle: '🎤 შენი ხმა', voiceRec: 'ჩაწერა', voiceUp: 'ატვირთვა', voiceReady: 'ხმა მზადაა — აირჩიე „ჩემი ხმით"', voiceRecHint: 'ჩაიწერე ან ატვირთე ≥15წმ ხმა — სიმღერა შენი ვოკალით შეიქმნება', need15: '≥15წმ',
@@ -94,7 +94,7 @@ const COPY: Record<Lang, {
     generatingMusic: 'Composing music… (1–3 min)', musicFailed: 'Music generation failed. Try again.', lyricsBlocked: '⚠️ Lyrics were blocked (copyright). Change the words or tap "✨ Write lyrics".',
     modeVideo: 'Video', videoPlaceholder: 'Describe a 30-second video (attach a photo for the character)…',
     generatingVideo: 'Producing video… 6 scenes + montage (~5–7 min, please wait)', videoFailed: 'Video generation failed — the service may be busy. Please try again in a few minutes.', generatingMyVoice: '🎵 Creating a song in your voice… (~2–3 min, please wait)', myVoiceCreate: 'Create with my voice', myVoiceLyricsPh: 'Write lyrics — what your voice will sing', myVoiceReady: 'Write lyrics & create', writeLyricsBtn: '✨ Write lyrics', upscaleBtn: '⬆ HD upscale', upscaling: '🔍 Upscaling to HD…', upscaleFailed: 'Upscale failed.',
-    modeLipsync: 'Avatar', lipsyncPlaceholder: 'Attach a character photo + type a script — the photo speaks it…',
+    modeLipsync: 'Avatar', lipsyncPlaceholder: 'Type a script — an AI presenter speaks it in your voice (or attach a photo to make it talk)…',
     generatingLipsync: 'Creating your Avatar…', lipsyncFailed: 'Avatar creation failed.', lipsyncNeedFiles: 'Attach a photo and a script (or audio).', lipsyncAuth: 'Sign in first to use Avatar.', lipAudioLabel: 'Audio',
     stop: 'Stop', stopped: 'Stopped', scrollDown: 'Scroll to bottom', regenerate: 'Regenerate', elapsedHint: 'elapsed', greeting: 'How can I help?', attachHint: 'Add',
     instrumental: 'Instrumental', withVocals: 'Vocals', lyricsPlaceholder: 'Lyrics (optional) — your words; empty = auto-written', coverMode: '🎵 Cover', voiceMode: '🎤 My voice', voiceLyricsPlaceholder: 'Lyrics — what your voice will sing (upload ≥15s of voice)', voiceSecTitle: '🎤 Your voice', voiceRec: 'Record', voiceUp: 'Upload', voiceReady: 'Voice ready — pick “My voice”', voiceRecHint: 'Record or upload ≥15s of voice — the song is sung in your voice', need15: '≥15s',
@@ -114,7 +114,7 @@ const COPY: Record<Lang, {
     generatingMusic: 'Создаю музыку… (1–3 мин)', musicFailed: 'Не удалось создать музыку. Попробуйте снова.', lyricsBlocked: '⚠️ Текст заблокирован (авторские права). Измените слова или нажмите «✨ Написать текст».',
     modeVideo: 'Видео', videoPlaceholder: 'Опишите 30-секундное видео (фото — для персонажа)…',
     generatingVideo: 'Создаю видео… 6 сцен + монтаж (~5–7 мин, подождите)', videoFailed: 'Не удалось создать видео — сервис может быть загружен. Попробуйте через несколько минут.', generatingMyVoice: '🎵 Создаю песню вашим голосом… (~2–3 мин, подождите)', myVoiceCreate: 'Создать моим голосом', myVoiceLyricsPh: 'Напишите текст — что споёт ваш голос', myVoiceReady: 'Напишите текст и создайте', writeLyricsBtn: '✨ Написать текст', upscaleBtn: '⬆ HD увеличить', upscaling: '🔍 Увеличиваю до HD…', upscaleFailed: 'Не удалось увеличить.',
-    modeLipsync: 'Аватар', lipsyncPlaceholder: 'Прикрепите фото персонажа + введите текст — фото заговорит…',
+    modeLipsync: 'Аватар', lipsyncPlaceholder: 'Введите текст — AI-ведущий озвучит его вашим голосом (или прикрепите фото, чтобы оно заговорило)…',
     generatingLipsync: 'Создаю аватар…', lipsyncFailed: 'Не удалось создать аватар.', lipsyncNeedFiles: 'Прикрепите фото и текст (или аудио).', lipsyncAuth: 'Войдите, чтобы использовать Аватар.', lipAudioLabel: 'Аудио',
     stop: 'Стоп', stopped: 'Остановлено', scrollDown: 'Вниз', regenerate: 'Заново', elapsedHint: 'прошло', greeting: 'Чем помочь?', attachHint: 'Добавить',
     instrumental: 'Инструментал', withVocals: 'Вокал', lyricsPlaceholder: 'Текст (необязательно) — ваши слова; пусто = авто', coverMode: '🎵 Кавер', voiceMode: '🎤 Мой голос', voiceLyricsPlaceholder: 'Текст — что споёт ваш голос (загрузите ≥15с голоса)', voiceSecTitle: '🎤 Ваш голос', voiceRec: 'Запись', voiceUp: 'Загрузить', voiceReady: 'Голос готов — выберите «Мой голос»', voiceRecHint: 'Запишите или загрузите ≥15с голоса — песня будет спета вашим голосом', need15: '≥15с',
@@ -957,8 +957,8 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     setStoryboardBusy(true);
     const sceneCount = Math.max(2, Math.min(6, Math.round(videoDuration / 5)));
     try {
-      // STEP 1 — fast PLAN-ONLY call: the six scenes + scripts, no frames. This
-      // returns in seconds so the board opens immediately (no long "frozen" wait).
+      // STEP 1 — fast PLAN-ONLY call: deterministic scene beats, no LLM, no frames.
+      // Returns in ~1s so the board opens immediately (no long "frozen" wait).
       const res = await fetch('/api/film/storyboard', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -987,28 +987,55 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       });
       setStoryboardBusy(false);
 
+      // STEP 2.5 — fetch the LLM story enrichment in the BACKGROUND (off the board-open
+      // hot-path). When it lands, store it so the RENDER tells the rich story; the
+      // streaming preview frames keep their deterministic prompts (still cinematic stills).
+      void (async () => {
+        try {
+          const sr = await fetch('/api/film/storyboard', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal: ac.signal,
+            body: JSON.stringify({ prompt: filmPrompt, orientation, referenceImages: [], style: videoStyle, locale, sceneCount, scriptsOnly: true }),
+          });
+          const sj = (await sr.json().catch(() => ({}))) as { sceneScripts?: string[] | null };
+          if (Array.isArray(sj.sceneScripts) && sj.sceneScripts.length) {
+            const scripts = sj.sceneScripts;
+            setStoryboard((prev) => (prev ? { ...prev, sceneScripts: scripts } : prev));
+          }
+        } catch { /* best-effort; render falls back to deterministic beats */ }
+      })();
+
       // STEP 3 — stream each frame in (concurrency 3); each tile fades in the moment
       // its own frame lands, and the N/M counter ticks up. A failed frame settles to
       // a graceful icon (removed from `pending`) — never an endless spinner.
       const fetchFrame = async (ordinal: number) => {
-        try {
-          const r = await fetch('/api/film/storyboard', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            signal: ac.signal,
-            body: JSON.stringify({ prompt: filmPrompt, orientation, referenceImages: refs, style: videoStyle, locale, sceneOrdinal: ordinal, scenePrompt: framePrompts[ordinal] }),
-          });
-          const jf = (await r.json().catch(() => ({}))) as { success?: boolean; frameUrl?: string | null };
-          const url = jf.success && typeof jf.frameUrl === 'string' ? jf.frameUrl : null;
-          setStoryboard((prev) => prev ? {
-            ...prev,
-            scenes: prev.scenes.map((s) => (s.ordinal === ordinal ? { ...s, frameUrl: url } : s)),
-            pending: (prev.pending ?? []).filter((o) => o !== ordinal),
-          } : prev);
-        } catch {
-          if (ac.signal.aborted) return;
-          setStoryboard((prev) => prev ? { ...prev, pending: (prev.pending ?? []).filter((o) => o !== ordinal) } : prev);
+        // Up to 2 attempts — a transient provider miss shouldn't leave a permanent
+        // graceful-icon gap when a quick retry would land the frame.
+        for (let attempt = 0; attempt < 2; attempt++) {
+          try {
+            const r = await fetch('/api/film/storyboard', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              credentials: 'include',
+              signal: ac.signal,
+              body: JSON.stringify({ prompt: filmPrompt, orientation, referenceImages: refs, style: videoStyle, locale, sceneOrdinal: ordinal, scenePrompt: framePrompts[ordinal] }),
+            });
+            const jf = (await r.json().catch(() => ({}))) as { success?: boolean; frameUrl?: string | null };
+            const url = jf.success && typeof jf.frameUrl === 'string' ? jf.frameUrl : null;
+            if (url || attempt === 1) {
+              setStoryboard((prev) => prev ? {
+                ...prev,
+                scenes: prev.scenes.map((s) => (s.ordinal === ordinal ? { ...s, frameUrl: url } : s)),
+                pending: (prev.pending ?? []).filter((o) => o !== ordinal),
+              } : prev);
+              return;
+            }
+          } catch {
+            if (ac.signal.aborted) return;
+            if (attempt === 1) {
+              setStoryboard((prev) => prev ? { ...prev, pending: (prev.pending ?? []).filter((o) => o !== ordinal) } : prev);
+              return;
+            }
+          }
         }
       };
       const queue = [...ordinals];
@@ -1431,6 +1458,43 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       // talking clip) → covers both "dub a video" and "make a character speak".
       const faceAtt = attachments.find((a) => isImage(a.mimeType)) ?? attachments.find((a) => isVideo(a.mimeType));
       const audioAtt = attachments.find((a) => isAudio(a.mimeType));
+      // PRESENTER — no face photo but a typed script → a consistent stock avatar
+      // speaks it in the CLONED Georgian voice (audio-driven HeyGen). START + POLL,
+      // mobile-safe. (With a photo, fall through to the existing talking-photo flow.)
+      if (!faceAtt && text) {
+        setMessages((prev) => [...prev, { role: 'user', text }, { role: 'assistant', text: t.generatingLipsync, genKind: 'lipsync' }]);
+        setInput(''); setAttachments([]); setBusy(true);
+        try {
+          const startRes = await fetch('/api/heygen/presenter', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal: ac.signal,
+            body: JSON.stringify({ text, orientation: videoOrientation, gender: 'female' }),
+          });
+          const sj = (await startRes.json().catch(() => ({}))) as { success?: boolean; videoId?: string };
+          let url: string | null = null;
+          if (sj.success && sj.videoId) {
+            for (let i = 0; i < 60 && !url; i++) { // ~6 min of quick polls
+              if (!mine()) return;
+              await new Promise((r) => setTimeout(r, 6000));
+              const pr = await fetch(`/api/heygen/presenter?id=${encodeURIComponent(sj.videoId)}`, { credentials: 'include', signal: ac.signal });
+              const pj = (await pr.json().catch(() => ({}))) as { done?: boolean; url?: string | null };
+              if (pj.done) { url = pj.url ?? null; break; }
+            }
+          }
+          setMessages((prev) => {
+            if (!mine()) return prev;
+            const next = [...prev];
+            const last = next[next.length - 1];
+            if (last && last.role === 'assistant') next[next.length - 1] = url ? { role: 'assistant', text: '', videoUrl: url, genKind: 'lipsync' } : { role: 'assistant', text: `⚠️ ${t.lipsyncFailed}` };
+            return next;
+          });
+        } catch {
+          if (!mine()) return;
+          setMessages((prev) => { const next = [...prev]; const last = next[next.length - 1]; if (last && last.role === 'assistant') next[next.length - 1] = { role: 'assistant', text: `⚠️ ${t.lipsyncFailed}` }; return next; });
+        } finally {
+          if (mine()) setBusy(false);
+        }
+        return;
+      }
       if (!faceAtt || (!text && !audioAtt)) {
         setMessages((prev) => [...prev, { role: 'assistant', text: t.lipsyncNeedFiles }]);
         return;
@@ -1629,9 +1693,17 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       const clear = () => { if (live()) { setSpeakingIdx(null); setSpeakPhase(null); } URL.revokeObjectURL(url); if (ttsAudioRef.current === audio) ttsAudioRef.current = null; };
       audio.onended = clear;
       audio.onerror = clear;
-      await audio.play();
-      if (live()) setSpeakPhase('playing');
-      else { audio.pause(); URL.revokeObjectURL(url); }
+      // Drive state from events, not just play()'s promise: a browser that leaves
+      // play() pending (strict autoplay) must not strand the spinner. onplaying flips
+      // to 'playing'; a timeout recovers to 'playing'/null if it never starts.
+      audio.onplaying = () => { if (live()) setSpeakPhase('playing'); };
+      audio.play()
+        .then(() => { if (live()) setSpeakPhase('playing'); })
+        .catch(() => { if (live()) { setSpeakingIdx(null); setSpeakPhase(null); ttsAudioRef.current = null; } });
+      window.setTimeout(() => {
+        if (live()) setSpeakPhase((p) => (p === 'loading' ? (audio.paused ? null : 'playing') : p));
+        if (live() && audio.paused && ttsAudioRef.current === audio) { /* blocked → reset bubble */ setSpeakingIdx((s) => (s === i ? null : s)); }
+      }, 1800);
     } catch {
       if (live()) { setSpeakingIdx(null); setSpeakPhase(null); }
       ttsAudioRef.current = null;
